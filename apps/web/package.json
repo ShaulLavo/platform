@@ -12,10 +12,23 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@editor/core": "workspace:*",
+    "@editor/find": "workspace:*",
+    "@editor/gutters": "workspace:*",
+    "@editor/lsp": "workspace:*",
+    "@editor/minimap": "workspace:*",
+    "@editor/react": "workspace:*",
+    "@editor/scope-lines": "workspace:*",
+    "@editor/tree-sitter": "workspace:*",
+    "@editor/tree-sitter-languages": "workspace:*",
+    "@editor/typescript-lsp": "workspace:*",
+    "@elysia/eden": "^1.4.10",
     "@phosphor-icons/react": "^2.1.10",
+    "@pierre/trees": "1.0.0-beta.3",
     "@workspace/ui": "workspace:*",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "server": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",

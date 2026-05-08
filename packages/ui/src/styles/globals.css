@@ -128,3 +128,66 @@
     @apply bg-background text-foreground;
     }
 }
+
+.app-editor-host {
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.app-editor-host .editor-virtualized {
+    --editor-background: var(--background) !important;
+    --editor-gutter-background: var(--background) !important;
+    --editor-minimap-background: var(--background) !important;
+
+    flex: 1;
+    font-family: var(--font-mono);
+    min-height: 0;
+    min-width: 0;
+}
+
+.app-fold-gutter-icon {
+    height: 12px;
+    width: 12px;
+}
+
+.app-fold-chevron {
+    fill: currentColor;
+    height: 12px;
+    transform: rotate(0deg);
+    transform-origin: center;
+    width: 12px;
+}
+
+.editor-virtualized-fold-toggle[data-editor-fold-state="collapsed"] .app-fold-chevron {
+    transform: rotate(-90deg);
+}
+
+.editor-virtualized-fold-toggle[data-editor-fold-transition="collapse"] .app-fold-chevron {
+    animation: app-fold-chevron-collapse 120ms ease-out;
+}
+
+.editor-virtualized-fold-toggle[data-editor-fold-transition="expand"] .app-fold-chevron {
+    animation: app-fold-chevron-expand 120ms ease-out;
+}
+
+@keyframes app-fold-chevron-collapse {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(-90deg);
+    }
+}
+
+@keyframes app-fold-chevron-expand {
+    from {
+        transform: rotate(-90deg);
+    }
+
+    to {
+        transform: rotate(0deg);
+    }
+}

@@ -10,5 +10,14 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    dedupe: ["react", "react-dom"],
+  },
+  server: {
+    fs: {
+      allow: [path.resolve(__dirname, "../.."), "/Users/shaul/Desktop/editor"],
+    },
+  },
+  worker: {
+    format: "es",
   },
 })

@@ -1,19 +1,84 @@
-import { Button } from "@workspace/ui/components/button"
+import * as React from "react"
+
+import { AppHeader } from "@/components/app-header"
+import { EmptyWorkspace } from "@/components/empty-workspace"
+import {
+  FilePickerDialog,
+  type PickedFsEntry,
+} from "@/components/file-picker-dialog"
+import { WorkspaceView } from "@/components/workspace/workspace-view"
+import { useSelectedFile } from "@/hooks/use-selected-file"
+import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
+import { selectedTreeEntry } from "@/lib/tree-model"
+import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 
 export function App() {
+  const [pickerOpen, setPickerOpen] = React.useState(false)
+  const [rootFolder, setRootFolder] = React.useState<PickedFsEntry | null>(null)
+  const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(
+    null
+  )
+  const [definitionTarget, setDefinitionTarget] =
+    React.useState<TypeScriptLspDefinitionTarget | null>(null)
+  const { loadTreeDirectory, resetTreeLoad, retryTreeLoad, treeState } =
+    useWorkspaceTree(rootFolder)
+  const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
+  const selectedEntry = selectedFilePath
+    ? selectedTreeEntry(treeState, rootFolder?.path ?? null, selectedFilePath)
+    : null
+
+  function handlePick(entry: PickedFsEntry) {
+    setSelectedFilePath(null)
+    setDefinitionTarget(null)
+    resetFileLoad()
+    resetTreeLoad()
+    setRootFolder(entry)
+  }
+
+  const openDefinition = React.useCallback(
+    (target: TypeScriptLspDefinitionTarget) => {
+      setDefinitionTarget(target)
+      setSelectedFilePath(target.path)
+      return true
+    },
+    []
+  )
+
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="text-muted-foreground font-mono text-xs">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
+    <main className="h-svh overflow-hidden bg-background text-foreground">
+      <div className="flex h-full min-h-0 flex-col">
+        <AppHeader
+          rootFolder={rootFolder}
+          onChooseFolder={() => setPickerOpen(true)}
+        />
+
+        {rootFolder ? (
+          <WorkspaceView
+            definitionTarget={definitionTarget}
+            fileState={fileState}
+            onOpenDefinition={openDefinition}
+            rootFolder={rootFolder}
+            selectedEntry={selectedEntry}
+            selectedFilePath={selectedFilePath}
+            setSelectedFilePath={setSelectedFilePath}
+            treeState={treeState}
+            onLoadDirectory={loadTreeDirectory}
+            onRetryTree={retryTreeLoad}
+          />
+        ) : (
+          <EmptyWorkspace onChooseFolder={() => setPickerOpen(true)} />
+        )}
       </div>
-    </div>
+
+      {pickerOpen && (
+        <FilePickerDialog
+          mode="folder"
+          onOpenChange={setPickerOpen}
+          onPick={handlePick}
+          open={pickerOpen}
+          value={rootFolder}
+        />
+      )}
+    </main>
   )
 }
