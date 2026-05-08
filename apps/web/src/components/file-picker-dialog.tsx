@@ -19,6 +19,13 @@ import {
 
 import { fileMatchesAccept, iconForEntry } from "@/lib/file-icons"
 import { fsClient, fsServerUrl } from "@/lib/fs-client"
+import { filePickerKeys } from "@/lib/query-keys"
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -222,20 +229,15 @@ export function FilePickerDialog({
     resetOpenSession
   )
   const [reloadVersion, setReloadVersion] = useState(0)
-  const {
-    currentEntry,
-    loadState: directoryLoadState,
-    setCurrentEntry,
-    setLoadState,
-  } =
-    useDirectoryLoad({
-      currentPath,
-      effectiveQuery,
-      mode,
-      open,
-      reloadVersion,
-      serverInfo,
-    })
+  const recordRecentMutation = useRecordRecentMutation()
+  const { currentEntry, loadState: directoryLoadState } = useDirectoryLoad({
+    currentPath,
+    effectiveQuery,
+    mode,
+    open,
+    reloadVersion,
+    serverInfo,
+  })
   const recentState = useRecentEntries({
     open,
     reloadVersion,
@@ -252,7 +254,6 @@ export function FilePickerDialog({
     setHistory([])
     setQuery("")
     setSelectedEntry(value)
-    setCurrentEntry(null)
     setCurrentPath(initialPathForOpen(value, info.homePath))
   }
 
@@ -279,7 +280,10 @@ export function FilePickerDialog({
   }
 
   async function commitPick(entry: PickedFsEntry) {
-    if (entry.type === "directory") await recordRecent(entry).catch(() => null)
+    if (entry.type === "directory") {
+      await recordRecentMutation.mutateAsync(entry).catch(() => null)
+    }
+
     onPick(entry)
     onOpenChange(false)
   }
@@ -297,8 +301,6 @@ export function FilePickerDialog({
     setHistory((items) => items.slice(0, -1))
     setCurrentPath(previous)
     setSelectedEntry(null)
-    setCurrentEntry(null)
-    setLoadState(loadingLoadState)
     setQuery("")
   }
 
@@ -312,18 +314,14 @@ export function FilePickerDialog({
     if (keepHistory) setHistory((items) => [...items, currentPath])
     setCurrentPath(path)
     setSelectedEntry(null)
-    setCurrentEntry(null)
-    setLoadState(loadingLoadState)
     setQuery("")
   }
 
   function refresh() {
-    setLoadState(loadingLoadState)
     setReloadVersion((version) => version + 1)
   }
 
   function handleSearchChange(event: ChangeEvent<HTMLInputElement>) {
-    setLoadState(loadingLoadState)
     setQuery(event.target.value)
   }
 
@@ -526,13 +524,12 @@ function useServerInfoForOpen(
   onReady: (info: ServerInfo) => void,
   onClose: () => void
 ) {
-  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
-  const [serverInfoError, setServerInfoError] = useState<unknown>(null)
   const closeSession = useEffectEvent(onClose)
-  const applyServerInfo = useEffectEvent((info: ServerInfo) => {
-    setServerInfo(info)
-    setServerInfoError(null)
-    onReady(info)
+  const applyServerInfo = useEffectEvent(onReady)
+  const query = useQuery<ServerInfo>({
+    enabled: open,
+    queryFn: ({ signal }) => fetchServerInfo(signal),
+    queryKey: filePickerKeys.serverInfo(),
   })
 
   useEffect(() => {
@@ -540,22 +537,20 @@ function useServerInfoForOpen(
       closeSession()
       return
     }
+    if (!query.data) return
 
-    const controller = new AbortController()
-    void fetchServerInfo(controller.signal)
-      .then((info) => {
-        if (controller.signal.aborted) return
-        applyServerInfo(info)
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setServerInfoError(error)
-      })
+    applyServerInfo(query.data)
+  }, [open, query.data])
 
-    return () => controller.abort()
-  }, [open])
+  return {
+    serverInfo: query.data ?? null,
+    serverInfoError: query.isError ? query.error : null,
+  }
+}
 
-  return { serverInfo, serverInfoError }
+type DirectoryLoadData = {
+  currentEntry: DirectoryFsEntry | null
+  entries: FsEntry[]
 }
 
 function useDirectoryLoad({
@@ -573,47 +568,44 @@ function useDirectoryLoad({
   reloadVersion: number
   serverInfo: ServerInfo | null
 }) {
-  const [currentEntry, setCurrentEntry] = useState<DirectoryFsEntry | null>(
-    null
+  const queryClient = useQueryClient()
+  const enabled = open && Boolean(serverInfo)
+  const queryKey = filePickerKeys.directory(
+    currentPath,
+    effectiveQuery,
+    mode,
+    reloadVersion
   )
-  const [loadState, setLoadState] = useState<LoadState>({
-    status: "loading",
-  })
-  const applyLoadedEntries = useEffectEvent((entries: FsEntry[]) => {
-    setLoadState({ status: "ready", entries })
-  })
-
-  useEffect(() => {
-    if (!open || !serverInfo) return
-
-    const controller = new AbortController()
-    void Promise.all([
-      fetchCurrentEntry(currentPath, controller.signal),
-      loadEntries(
+  const query = useQuery<DirectoryLoadData>({
+    enabled,
+    placeholderData: (previousData) => previousData,
+    queryFn: ({ signal }) =>
+      loadDirectoryData(
         currentPath,
         effectiveQuery,
         mode,
-        controller.signal,
+        signal,
         (entries) => {
-          if (controller.signal.aborted) return
-          applyLoadedEntries(entries)
+          if (signal.aborted) return
+
+          queryClient.setQueryData(
+            queryKey,
+            (current: DirectoryLoadData | undefined) => ({
+              currentEntry: current?.currentEntry ?? null,
+              entries,
+            })
+          )
         }
       ),
-    ])
-      .then(([current, entries]) => {
-        if (controller.signal.aborted) return
-        setCurrentEntry(current)
-        setLoadState({ status: "ready", entries })
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setLoadState({ status: "error", message: errorMessage(error) })
-      })
+    queryKey,
+  })
 
-    return () => controller.abort()
-  }, [currentPath, effectiveQuery, mode, open, reloadVersion, serverInfo])
-
-  return { currentEntry, loadState, setCurrentEntry, setLoadState }
+  return {
+    currentEntry: query.isPlaceholderData
+      ? null
+      : (query.data?.currentEntry ?? null),
+    loadState: directoryLoadState(query, enabled),
+  }
 }
 
 function useRecentEntries({
@@ -625,28 +617,68 @@ function useRecentEntries({
   reloadVersion: number
   serverInfo: ServerInfo | null
 }) {
-  const [recentState, setRecentState] = useState<LoadState>({
-    status: "loading",
+  const query = useQuery<FsEntry[]>({
+    enabled: open && Boolean(serverInfo),
+    queryFn: ({ signal }) => fetchRecentEntries(signal),
+    queryKey: filePickerKeys.recentList(reloadVersion),
   })
 
-  useEffect(() => {
-    if (!open || !serverInfo) return
+  return entriesLoadState(query, open && Boolean(serverInfo))
+}
 
-    const controller = new AbortController()
-    void fetchRecentEntries(controller.signal)
-      .then((entries) => {
-        if (controller.signal.aborted) return
-        setRecentState({ status: "ready", entries })
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setRecentState({ status: "error", message: errorMessage(error) })
-      })
+function useRecordRecentMutation() {
+  const queryClient = useQueryClient()
 
-    return () => controller.abort()
-  }, [open, reloadVersion, serverInfo])
+  return useMutation({
+    mutationFn: recordRecent,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: filePickerKeys.recents() })
+    },
+  })
+}
 
-  return recentState
+async function loadDirectoryData(
+  path: string,
+  query: string,
+  mode: FilePickerMode,
+  signal: AbortSignal,
+  onEntries: (entries: FsEntry[]) => void
+): Promise<DirectoryLoadData> {
+  const [currentEntry, entries] = await Promise.all([
+    fetchCurrentEntry(path, signal),
+    loadEntries(path, query, mode, signal, onEntries),
+  ])
+
+  return { currentEntry, entries }
+}
+
+function directoryLoadState(
+  query: UseQueryResult<DirectoryLoadData>,
+  enabled: boolean
+): LoadState {
+  if (!enabled) return { status: "loading" }
+  if (query.isError)
+    return { status: "error", message: errorMessage(query.error) }
+  if (query.isPlaceholderData && query.data) {
+    return loadingLoadState({ status: "ready", entries: query.data.entries })
+  }
+  if (query.data) return { status: "ready", entries: query.data.entries }
+  if (query.isPending) return { status: "loading" }
+
+  return { status: "idle" }
+}
+
+function entriesLoadState(
+  query: UseQueryResult<FsEntry[]>,
+  enabled: boolean
+): LoadState {
+  if (!enabled) return { status: "loading" }
+  if (query.data) return { status: "ready", entries: query.data }
+  if (query.isError)
+    return { status: "error", message: errorMessage(query.error) }
+  if (query.isPending) return { status: "loading" }
+
+  return { status: "idle" }
 }
 
 function PlacesSidebar({

@@ -32,7 +32,8 @@ function fileLoadState(query: {
   isPending: boolean
 }): LoadState<FileResult> {
   if (query.data) return { status: "ready", data: query.data }
-  if (query.isError) return { status: "error", message: errorMessage(query.error) }
+  if (query.isError)
+    return { status: "error", message: errorMessage(query.error) }
   if (query.isPending) return { status: "loading" }
 
   return idleState

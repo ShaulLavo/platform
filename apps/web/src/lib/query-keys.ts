@@ -1,5 +1,3 @@
-import type { FilePickerMode } from "@/components/file-picker-dialog"
-
 export const fileSystemKeys = {
   all: ["file-system"] as const,
   files: () => [...fileSystemKeys.all, "files"] as const,
@@ -19,7 +17,7 @@ export const filePickerKeys = {
   directory: (
     path: string,
     query: string,
-    mode: FilePickerMode,
+    mode: "file" | "folder",
     reloadVersion: number
   ) =>
     [

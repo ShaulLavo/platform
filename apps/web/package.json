@@ -25,6 +25,7 @@
     "@elysia/eden": "^1.4.10",
     "@phosphor-icons/react": "^2.1.10",
     "@pierre/trees": "1.0.0-beta.3",
+    "@tanstack/react-query": "^5.100.9",
     "@workspace/ui": "workspace:*",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

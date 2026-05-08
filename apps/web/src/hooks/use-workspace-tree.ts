@@ -12,7 +12,11 @@ import {
   treeModel,
   type TreeModel,
 } from "@/lib/tree-model"
-import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
+import {
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query"
 
 export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
   const queryClient = useQueryClient()
@@ -63,23 +67,29 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
         queryKey: directoryKey,
       })
       .then((result) =>
-        queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
-          if (!model) return model
+        queryClient.setQueryData(
+          rootTreeKey,
+          (model: TreeModel | undefined) => {
+            if (!model) return model
 
-          return mergeDirectoryLoad(
-            model,
-            rootFolder.path,
-            result,
-            canonicalPath
-          )
-        })
+            return mergeDirectoryLoad(
+              model,
+              rootFolder.path,
+              result,
+              canonicalPath
+            )
+          }
+        )
       )
       .catch((error: unknown) => {
-        queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
-          if (!model) return model
+        queryClient.setQueryData(
+          rootTreeKey,
+          (model: TreeModel | undefined) => {
+            if (!model) return model
 
-          return markDirectoryError(model, canonicalPath, errorMessage(error))
-        })
+            return markDirectoryError(model, canonicalPath, errorMessage(error))
+          }
+        )
       })
   }
 
@@ -93,7 +103,8 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
 
 function treeLoadState(query: UseQueryResult<TreeModel>): LoadState<TreeModel> {
   if (query.data) return { status: "ready", data: query.data }
-  if (query.isError) return { status: "error", message: errorMessage(query.error) }
+  if (query.isError)
+    return { status: "error", message: errorMessage(query.error) }
   if (query.isPending) return { status: "loading" }
 
   return idleState
