@@ -1,4 +1,3 @@
-import * as React from "react"
 import { ArrowClockwiseIcon } from "@phosphor-icons/react"
 
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
@@ -39,10 +38,7 @@ export function WorkspaceView({
   onRetryTree: () => void
 }) {
   const treeModel = treeState.status === "ready" ? treeState.data : null
-  const workspaceEntries = React.useMemo(
-    () => workspaceSourceEntries(treeModel),
-    [treeModel]
-  )
+  const workspaceEntries = workspaceSourceEntries(treeModel)
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">

@@ -1,5 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react"
 
 type Theme = "dark" | "light" | "system"
 type ResolvedTheme = "dark" | "light"
@@ -19,9 +25,9 @@ type ThemeProviderState = {
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
 const THEME_VALUES: Theme[] = ["dark", "light", "system"]
 
-const ThemeProviderContext = createContext<
-  ThemeProviderState | undefined
->(undefined)
+const ThemeProviderContext = createContext<ThemeProviderState | undefined>(
+  undefined
+)
 
 function isTheme(value: string | null): value is Theme {
   if (value === null) {
@@ -55,6 +61,21 @@ function disableTransitionsTemporarily() {
         style.remove()
       })
     })
+  }
+}
+
+function applyTheme(nextTheme: Theme, disableTransitionOnChange: boolean) {
+  const root = document.documentElement
+  const resolvedTheme = nextTheme === "system" ? getSystemTheme() : nextTheme
+  const restoreTransitions = disableTransitionOnChange
+    ? disableTransitionsTemporarily()
+    : null
+
+  root.classList.remove("light", "dark")
+  root.classList.add(resolvedTheme)
+
+  if (restoreTransitions) {
+    restoreTransitions()
   }
 }
 
@@ -93,35 +114,13 @@ export function ThemeProvider({
     return defaultTheme
   })
 
-  const setTheme = useCallback(
-    (nextTheme: Theme) => {
-      localStorage.setItem(storageKey, nextTheme)
-      setThemeState(nextTheme)
-    },
-    [storageKey]
-  )
-
-  const applyTheme = useCallback(
-    (nextTheme: Theme) => {
-      const root = document.documentElement
-      const resolvedTheme =
-        nextTheme === "system" ? getSystemTheme() : nextTheme
-      const restoreTransitions = disableTransitionOnChange
-        ? disableTransitionsTemporarily()
-        : null
-
-      root.classList.remove("light", "dark")
-      root.classList.add(resolvedTheme)
-
-      if (restoreTransitions) {
-        restoreTransitions()
-      }
-    },
-    [disableTransitionOnChange]
-  )
+  function setTheme(nextTheme: Theme) {
+    localStorage.setItem(storageKey, nextTheme)
+    setThemeState(nextTheme)
+  }
 
   useEffect(() => {
-    applyTheme(theme)
+    applyTheme(theme, disableTransitionOnChange)
 
     if (theme !== "system") {
       return undefined
@@ -129,7 +128,7 @@ export function ThemeProvider({
 
     const mediaQuery = window.matchMedia(COLOR_SCHEME_QUERY)
     const handleChange = () => {
-      applyTheme("system")
+      applyTheme("system", disableTransitionOnChange)
     }
 
     mediaQuery.addEventListener("change", handleChange)
@@ -137,7 +136,7 @@ export function ThemeProvider({
     return () => {
       mediaQuery.removeEventListener("change", handleChange)
     }
-  }, [theme, applyTheme])
+  }, [disableTransitionOnChange, theme])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -204,13 +203,10 @@ export function ThemeProvider({
     }
   }, [defaultTheme, storageKey])
 
-  const value = useMemo(
-    () => ({
-      theme,
-      setTheme,
-    }),
-    [theme, setTheme]
-  )
+  const value = {
+    theme,
+    setTheme,
+  }
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>

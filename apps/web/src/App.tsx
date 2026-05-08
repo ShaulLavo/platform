@@ -1,5 +1,3 @@
-import * as React from "react"
-
 import { AppHeader } from "@/components/app-header"
 import { EmptyWorkspace } from "@/components/empty-workspace"
 import {
@@ -11,15 +9,14 @@ import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
 import { selectedTreeEntry } from "@/lib/tree-model"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import { useState } from "react"
 
 export function App() {
-  const [pickerOpen, setPickerOpen] = React.useState(false)
-  const [rootFolder, setRootFolder] = React.useState<PickedFsEntry | null>(null)
-  const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(
-    null
-  )
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [rootFolder, setRootFolder] = useState<PickedFsEntry | null>(null)
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [definitionTarget, setDefinitionTarget] =
-    React.useState<TypeScriptLspDefinitionTarget | null>(null)
+    useState<TypeScriptLspDefinitionTarget | null>(null)
   const { loadTreeDirectory, resetTreeLoad, retryTreeLoad, treeState } =
     useWorkspaceTree(rootFolder)
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
@@ -35,14 +32,11 @@ export function App() {
     setRootFolder(entry)
   }
 
-  const openDefinition = React.useCallback(
-    (target: TypeScriptLspDefinitionTarget) => {
-      setDefinitionTarget(target)
-      setSelectedFilePath(target.path)
-      return true
-    },
-    []
-  )
+  function openDefinition(target: TypeScriptLspDefinitionTarget) {
+    setDefinitionTarget(target)
+    setSelectedFilePath(target.path)
+    return true
+  }
 
   return (
     <main className="h-svh overflow-hidden bg-background text-foreground">

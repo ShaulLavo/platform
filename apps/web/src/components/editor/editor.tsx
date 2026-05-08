@@ -18,7 +18,7 @@ import type {
   EditorWorkspaceEntry,
 } from "@/components/editor/types"
 import { fsServerUrl } from "@/lib/fs-client"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 
 type EditorProps = {
   file: EditorFile
@@ -32,38 +32,27 @@ export function Editor({
   definitionTarget,
   file,
   rootPath,
-  workspaceEntries: _workspaceEntries,
   onOpenDefinition,
 }: EditorProps) {
   const [typeScriptStatus, setTypeScriptStatus] =
     useState<TypeScriptLspStatus>("idle")
   const [typeScriptDiagnostics, setTypeScriptDiagnostics] =
     useState<TypeScriptLspDiagnosticSummary | null>(null)
-  const typeScriptLsp = useMemo(
-    () =>
-      createTypeScriptLspPlugin({
-        rootUri: fileUriForPath(rootPath),
-        webSocketRoute: typeScriptLspRoute(rootPath),
-        onStatusChange: setTypeScriptStatus,
-        onDiagnostics: setTypeScriptDiagnostics,
-        onOpenDefinition,
-        onError: (error) => console.warn("[typescript-lsp]", error),
-      }),
-    [onOpenDefinition, rootPath]
-  )
-  const plugins = useMemo(
-    () => createEditorPlugins(typeScriptLsp),
-    [typeScriptLsp]
-  )
-  const document = useMemo(
-    () => ({
-      documentId: file.path,
-      languageId: languageIdForFilePath(file.path),
-      revision: file.mtimeMs,
-      text: file.content,
-    }),
-    [file.content, file.mtimeMs, file.path]
-  )
+  const typeScriptLsp = createTypeScriptLspPlugin({
+    rootUri: fileUriForPath(rootPath),
+    webSocketRoute: typeScriptLspRoute(rootPath),
+    onStatusChange: setTypeScriptStatus,
+    onDiagnostics: setTypeScriptDiagnostics,
+    onOpenDefinition,
+    onError: (error) => console.warn("[typescript-lsp]", error),
+  })
+  const plugins = createEditorPlugins(typeScriptLsp)
+  const document = {
+    documentId: file.path,
+    languageId: languageIdForFilePath(file.path),
+    revision: file.mtimeMs,
+    text: file.content,
+  }
   const controller = useEditor({
     cursorLineHighlight: {
       gutterNumber: true,
@@ -75,14 +64,15 @@ export function Editor({
   })
   const editorState = controller.useState()
   const text = controller.useText()
-  const selection = useMemo(
-    () => selectionForDefinition(file, definitionTarget),
-    [definitionTarget, file]
-  )
+  const selection = selectionForDefinition(file, definitionTarget)
 
   useEffect(() => {
     if (!selection) return
-    controller.commands.setSelection(selection.anchor, selection.head, selection.anchor)
+    controller.commands.setSelection(
+      selection.anchor,
+      selection.head,
+      selection.anchor
+    )
   }, [controller, selection])
 
   return (

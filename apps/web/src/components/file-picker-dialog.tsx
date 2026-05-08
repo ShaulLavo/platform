@@ -38,7 +38,16 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
-import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactElement, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react"
 
 type FsEntryType = "file" | "directory" | "symlink" | "other"
 type SearchScope = "current" | "system"
@@ -206,11 +215,10 @@ export function FilePickerDialog({
   const [query, setQuery] = useState("")
   const debouncedQuery = useDebouncedValue(query, 180)
   const effectiveQuery = query.trim() ? debouncedQuery : ""
-  const [selectedEntry, setSelectedEntry] = useState<FsEntry | null>(
-    value
+  const [selectedEntry, setSelectedEntry] = useState<FsEntry | null>(value)
+  const [currentEntry, setCurrentEntry] = useState<DirectoryFsEntry | null>(
+    null
   )
-  const [currentEntry, setCurrentEntry] =
-    useState<DirectoryFsEntry | null>(null)
   const [reloadVersion, setReloadVersion] = useState(0)
   const [loadState, setLoadState] = useState<LoadState>({
     status: "loading",
@@ -218,20 +226,6 @@ export function FilePickerDialog({
   const [recentState, setRecentState] = useState<LoadState>({
     status: "loading",
   })
-
-  const initializeOpenState = useCallback(
-    (info: ServerInfo, selectedValue: PickedFsEntry | null) => {
-      if (initializedOpenRef.current) return
-
-      initializedOpenRef.current = true
-      setHistory([])
-      setQuery("")
-      setSelectedEntry(selectedValue)
-      setCurrentEntry(null)
-      setCurrentPath(initialPathForOpen(selectedValue, info.homePath))
-    },
-    []
-  )
 
   useEffect(() => {
     if (!open) {
@@ -245,7 +239,14 @@ export function FilePickerDialog({
         if (controller.signal.aborted) return
 
         setServerInfo(info)
-        initializeOpenState(info, value)
+        if (initializedOpenRef.current) return
+
+        initializedOpenRef.current = true
+        setHistory([])
+        setQuery("")
+        setSelectedEntry(value)
+        setCurrentEntry(null)
+        setCurrentPath(initialPathForOpen(value, info.homePath))
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
@@ -253,7 +254,7 @@ export function FilePickerDialog({
       })
 
     return () => controller.abort()
-  }, [initializeOpenState, open, value])
+  }, [open, value])
 
   useEffect(() => {
     if (!open || !serverInfo) return
@@ -372,7 +373,7 @@ export function FilePickerDialog({
     onOpenChange(nextOpen)
   }
 
-  function handleListKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+  function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "ArrowDown") return selectByOffset(event, 1)
     if (event.key === "ArrowUp") return selectByOffset(event, -1)
     if (event.key === "Enter") return commitFromKeyboard(event)
@@ -383,7 +384,7 @@ export function FilePickerDialog({
   }
 
   function selectByOffset(
-    event: React.KeyboardEvent<HTMLDivElement>,
+    event: KeyboardEvent<HTMLDivElement>,
     offset: number
   ) {
     event.preventDefault()
@@ -397,21 +398,21 @@ export function FilePickerDialog({
     setSelectedEntry(nextEntry)
   }
 
-  function commitFromKeyboard(event: React.KeyboardEvent<HTMLDivElement>) {
+  function commitFromKeyboard(event: KeyboardEvent<HTMLDivElement>) {
     if (!selectedPickable) return
 
     event.preventDefault()
     chooseSelected()
   }
 
-  function enterDirectory(event: React.KeyboardEvent<HTMLDivElement>) {
+  function enterDirectory(event: KeyboardEvent<HTMLDivElement>) {
     if (selectedEntry?.type !== "directory") return
 
     event.preventDefault()
     navigateTo(selectedEntry.path)
   }
 
-  function leaveDirectory(event: React.KeyboardEvent<HTMLDivElement>) {
+  function leaveDirectory(event: KeyboardEvent<HTMLDivElement>) {
     if (!canGoUp) return
 
     event.preventDefault()
@@ -943,7 +944,7 @@ function FileList({
   isSearching: boolean
   loadState: LoadState
   mode: FilePickerMode
-  onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
   onNavigate: (path: string) => void
   onRetry: () => void
   onSelect: (entry: FsEntry) => void
