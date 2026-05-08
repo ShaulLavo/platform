@@ -1,4 +1,3 @@
-import * as React from "react"
 
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import { errorMessage, fetchTree } from "@/lib/file-server"
@@ -17,17 +16,18 @@ import {
   treeModel,
   type TreeModel,
 } from "@/lib/tree-model"
+import { useCallback, useEffect, useState } from "react";
 
 export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
-  const [treeReloadVersion, setTreeReloadVersion] = React.useState(0)
+  const [treeReloadVersion, setTreeReloadVersion] = useState(0)
   const [treeLoad, setTreeLoad] =
-    React.useState<KeyedLoadState<TreeModel> | null>(null)
+    useState<KeyedLoadState<TreeModel> | null>(null)
   const treeRequestKey = rootFolder
     ? requestKey(rootFolder.path, treeReloadVersion)
     : null
   const treeState = loadStateForKey(treeLoad, treeRequestKey)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!rootFolder || !treeRequestKey) return
 
     const controller = new AbortController()
@@ -51,17 +51,17 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
     return () => controller.abort()
   }, [rootFolder, treeRequestKey])
 
-  const resetTreeLoad = React.useCallback(() => {
+  const resetTreeLoad = useCallback(() => {
     setTreeLoad(null)
     setTreeReloadVersion((version) => version + 1)
   }, [])
 
-  const retryTreeLoad = React.useCallback(() => {
+  const retryTreeLoad = useCallback(() => {
     if (!rootFolder) return
     setTreeReloadVersion((version) => version + 1)
   }, [rootFolder])
 
-  const loadTreeDirectory = React.useCallback(
+  const loadTreeDirectory = useCallback(
     (entry: TreeEntry, treePath: string) => {
       if (!rootFolder || !treeRequestKey) return
       if (treeState.status !== "ready") return

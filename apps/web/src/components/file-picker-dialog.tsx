@@ -1,4 +1,3 @@
-import * as React from "react"
 import {
   ArrowClockwiseIcon,
   ArrowLeftIcon,
@@ -39,6 +38,7 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
+import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactElement, type ReactNode } from "react";
 
 type FsEntryType = "file" | "directory" | "symlink" | "other"
 type SearchScope = "current" | "system"
@@ -169,18 +169,21 @@ function sidebarLocationsFor(homePath: string) {
       label: "Desktop",
       path: joinPaths(homePath, "Desktop"),
       icon: FolderIcon,
+      openIcon: FolderOpenIcon,
     },
     {
       id: "documents",
       label: "Documents",
       path: joinPaths(homePath, "Documents"),
-      icon: FolderOpenIcon,
+      icon: FolderIcon,
+      openIcon: FolderOpenIcon,
     },
     {
       id: "downloads",
       label: "Downloads",
       path: joinPaths(homePath, "Downloads"),
       icon: FolderIcon,
+      openIcon: FolderOpenIcon,
     },
   ] as const
 }
@@ -196,27 +199,27 @@ export function FilePickerDialog({
   onOpenChange,
   onPick,
 }: FilePickerDialogProps) {
-  const initializedOpenRef = React.useRef(false)
-  const [serverInfo, setServerInfo] = React.useState<ServerInfo | null>(null)
-  const [currentPath, setCurrentPath] = React.useState(ROOT_PATH)
-  const [history, setHistory] = React.useState<string[]>([])
-  const [query, setQuery] = React.useState("")
+  const initializedOpenRef = useRef(false)
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
+  const [currentPath, setCurrentPath] = useState(ROOT_PATH)
+  const [history, setHistory] = useState<string[]>([])
+  const [query, setQuery] = useState("")
   const debouncedQuery = useDebouncedValue(query, 180)
   const effectiveQuery = query.trim() ? debouncedQuery : ""
-  const [selectedEntry, setSelectedEntry] = React.useState<FsEntry | null>(
+  const [selectedEntry, setSelectedEntry] = useState<FsEntry | null>(
     value
   )
   const [currentEntry, setCurrentEntry] =
-    React.useState<DirectoryFsEntry | null>(null)
-  const [reloadVersion, setReloadVersion] = React.useState(0)
-  const [loadState, setLoadState] = React.useState<LoadState>({
+    useState<DirectoryFsEntry | null>(null)
+  const [reloadVersion, setReloadVersion] = useState(0)
+  const [loadState, setLoadState] = useState<LoadState>({
     status: "loading",
   })
-  const [recentState, setRecentState] = React.useState<LoadState>({
+  const [recentState, setRecentState] = useState<LoadState>({
     status: "loading",
   })
 
-  const initializeOpenState = React.useCallback(
+  const initializeOpenState = useCallback(
     (info: ServerInfo, selectedValue: PickedFsEntry | null) => {
       if (initializedOpenRef.current) return
 
@@ -230,7 +233,7 @@ export function FilePickerDialog({
     []
   )
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) {
       initializedOpenRef.current = false
       return
@@ -252,7 +255,7 @@ export function FilePickerDialog({
     return () => controller.abort()
   }, [initializeOpenState, open, value])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open || !serverInfo) return
 
     const controller = new AbortController()
@@ -282,7 +285,7 @@ export function FilePickerDialog({
     return () => controller.abort()
   }, [currentPath, effectiveQuery, mode, open, reloadVersion, serverInfo])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open || !serverInfo) return
 
     const controller = new AbortController()
@@ -360,7 +363,7 @@ export function FilePickerDialog({
     setReloadVersion((version) => version + 1)
   }
 
-  function handleSearchChange(event: React.ChangeEvent<HTMLInputElement>) {
+  function handleSearchChange(event: ChangeEvent<HTMLInputElement>) {
     setLoadState(loadingLoadState)
     setQuery(event.target.value)
   }
@@ -606,8 +609,9 @@ function LocationButton({
   location: SidebarLocation
   onNavigate: (path: string) => void
 }) {
-  const Icon = location.icon
   const selected = currentPath === location.path
+  const Icon =
+    selected && "openIcon" in location ? location.openIcon : location.icon
 
   return (
     <button
@@ -736,7 +740,7 @@ function RecentShortcutLoading() {
   )
 }
 
-function RecentSidebarNote({ children }: { children: React.ReactNode }) {
+function RecentSidebarNote({ children }: { children: ReactNode }) {
   return (
     <div className="px-2 py-1 text-xs text-muted-foreground/80">{children}</div>
   )
@@ -847,7 +851,7 @@ function IconTooltip({
   children,
   label,
 }: {
-  children: React.ReactElement
+  children: ReactElement
   label: string
 }) {
   return (
@@ -880,7 +884,7 @@ function Breadcrumbs({
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs">
       {crumbs.map((crumb, index) => (
-        <React.Fragment key={crumb.path || "root"}>
+        <Fragment key={crumb.path || "root"}>
           {index > 0 && (
             <CaretRightIcon className="size-3 shrink-0 text-muted-foreground" />
           )}
@@ -894,7 +898,7 @@ function Breadcrumbs({
           >
             {crumb.label}
           </button>
-        </React.Fragment>
+        </Fragment>
       ))}
     </div>
   )
@@ -1171,24 +1175,29 @@ function EntryIcon({
   className,
   entry,
   iconMode,
+  open,
   selected,
 }: {
   className?: string
   entry: FsEntry
   iconMode: FilePickerIconMode
+  open?: boolean
   selected: boolean
 }) {
+  const openFolder = open ?? selected
+
   if (iconMode === "default") {
     return (
       <DefaultEntryIcon
         className={className}
         entry={entry}
+        open={openFolder}
         selected={selected}
       />
     )
   }
 
-  const icon = iconForEntry(entry)
+  const icon = iconForEntry(entry, { open: openFolder })
 
   return (
     <img
@@ -1204,15 +1213,19 @@ function EntryIcon({
 function DefaultEntryIcon({
   className,
   entry,
+  open,
   selected,
 }: {
   className?: string
   entry: FsEntry
+  open: boolean
   selected: boolean
 }) {
   if (entry.type === "directory") {
+    const Icon = open ? FolderOpenIcon : FolderIcon
+
     return (
-      <FolderIcon
+      <Icon
         className={cn(
           "shrink-0 text-amber-500",
           selected && "text-amber-600 dark:text-amber-300",
@@ -2084,9 +2097,9 @@ function isErrorPayload(
 }
 
 function useDebouncedValue(value: string, delay: number) {
-  const [debounced, setDebounced] = React.useState(value)
+  const [debounced, setDebounced] = useState(value)
 
-  React.useEffect(() => {
+  useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(value), delay)
     return () => window.clearTimeout(timer)
   }, [delay, value])

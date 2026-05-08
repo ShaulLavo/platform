@@ -1,7 +1,7 @@
-import * as React from "react"
 import type {
   FileTree as PierreFileTreeModel,
   FileTreeDirectoryHandle,
+  FileTreeItemHandle,
   FileTreeRowDecorationContext,
 } from "@pierre/trees"
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
@@ -16,6 +16,13 @@ import {
   treePathForSelectedPath,
   type TreeModel,
 } from "@/lib/tree-model"
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
 
 export function TreePane({
   model,
@@ -32,8 +39,8 @@ export function TreePane({
   setSelectedFilePath: (path: string | null) => void
   state: LoadState<TreeModel>
 }) {
-  const modelRef = React.useRef(model)
-  const onLoadDirectoryRef = React.useRef(onLoadDirectory)
+  const modelRef = useRef(model)
+  const onLoadDirectoryRef = useRef(onLoadDirectory)
 
   const initialSelectedPaths = selectedFilePath
     ? [treePathForSelectedPath(model, rootPath, selectedFilePath)]
@@ -55,23 +62,23 @@ export function TreePane({
     },
   })
 
-  React.useLayoutEffect(() => {
+  useLayoutEffect(() => {
     modelRef.current = model
     onLoadDirectoryRef.current = onLoadDirectory
   }, [model, onLoadDirectory])
 
-  React.useEffect(() => {
+  useEffect(() => {
     tree.resetPaths(model.paths, {
       initialExpandedPaths: expandedDirectoryPaths(model, tree),
     })
     loadExpandedDirectories(tree, model, onLoadDirectoryRef.current)
   }, [model, tree])
 
-  React.useEffect(() => {
+  useEffect(() => {
     syncSelectedFilePath(tree, model, rootPath, selectedFilePath)
   }, [model, rootPath, selectedFilePath, tree])
 
-  React.useEffect(() => {
+  useEffect(() => {
     return tree.subscribe(() => {
       loadExpandedDirectories(
         tree,
@@ -106,7 +113,7 @@ function TreeStatus({
   icon,
   label,
 }: {
-  icon?: React.ReactNode
+  icon?: ReactNode
   label: string
 }) {
   return (
@@ -152,7 +159,7 @@ function expandKnownAncestorDirectories(
 ) {
   for (const directoryPath of ancestorDirectoryPaths(treePath)) {
     const item = tree.getItem(directoryPath)
-    if (!item?.isDirectory()) continue
+    if (!isTreeDirectoryHandle(item)) continue
     if (item.isExpanded()) continue
 
     item.expand()
@@ -206,10 +213,15 @@ function loadExpandedDirectories(
 
 function isTreeDirectoryExpanded(tree: PierreFileTreeModel, treePath: string) {
   const item = tree.getItem(`${treePath}/`) ?? tree.getItem(treePath)
-  if (!item) return false
-  if (!item.isDirectory()) return false
+  if (!isTreeDirectoryHandle(item)) return false
 
-  return (item as FileTreeDirectoryHandle).isExpanded()
+  return item.isExpanded()
+}
+
+function isTreeDirectoryHandle(
+  item: FileTreeItemHandle | null
+): item is FileTreeDirectoryHandle {
+  return item?.isDirectory() === true
 }
 
 function treeRowDecoration(
@@ -230,7 +242,7 @@ const treeStyle = {
   "--trees-border-color-override": "var(--border)",
   "--trees-fg-override": "var(--foreground)",
   height: "100%",
-} as React.CSSProperties
+} as CSSProperties
 
 const treeUnsafeCss = `
   :host {

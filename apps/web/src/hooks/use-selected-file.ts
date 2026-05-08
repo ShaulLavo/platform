@@ -1,15 +1,15 @@
-import * as React from "react"
 
 import { errorMessage, fetchFile } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
 import { type KeyedLoadState, loadStateForKey } from "@/lib/load-state"
+import { useCallback, useEffect, useState } from "react";
 
 export function useSelectedFile(selectedFilePath: string | null) {
   const [fileLoad, setFileLoad] =
-    React.useState<KeyedLoadState<FileResult> | null>(null)
+    useState<KeyedLoadState<FileResult> | null>(null)
   const fileState = loadStateForKey(fileLoad, selectedFilePath)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!selectedFilePath) return
 
     const controller = new AbortController()
@@ -33,7 +33,7 @@ export function useSelectedFile(selectedFilePath: string | null) {
     return () => controller.abort()
   }, [selectedFilePath])
 
-  const resetFileLoad = React.useCallback(() => {
+  const resetFileLoad = useCallback(() => {
     setFileLoad(null)
   }, [])
 
