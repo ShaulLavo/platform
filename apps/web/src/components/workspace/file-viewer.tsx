@@ -30,6 +30,11 @@ export function FileViewer({
 }) {
   if (!selectedFilePath) return <FileViewerEmpty />
 
+  const displayedFile = fileState.status === "ready" ? fileState.data : null
+  const displayedPath = displayedFile?.path ?? selectedFilePath
+  const displayedEntry = entry?.path === displayedPath ? entry : null
+  const displayedSize = displayedEntry?.size ?? displayedFile?.size
+
   return (
     <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
       <div className="flex h-10 min-w-0 items-center justify-between gap-3 border-b px-3">
@@ -37,16 +42,16 @@ export function FileViewer({
           <FileIcon className="size-4 shrink-0 text-sky-600" weight="duotone" />
           <div className="min-w-0">
             <div className="truncate text-xs font-medium">
-              {entry?.name ?? basename(selectedFilePath)}
+              {displayedEntry?.name ?? basename(displayedPath)}
             </div>
             <div className="truncate text-[11px] text-muted-foreground">
-              {displayPath(selectedFilePath)}
+              {displayPath(displayedPath)}
             </div>
           </div>
         </div>
-        {entry && (
+        {typeof displayedSize === "number" && (
           <Badge className="shrink-0" variant="outline">
-            {formatSize(entry.size)}
+            {formatSize(displayedSize)}
           </Badge>
         )}
       </div>

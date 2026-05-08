@@ -6,8 +6,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 export function useSelectedFile(selectedFilePath: string | null) {
   const queryClient = useQueryClient()
-  const query = useQuery({
+  const query = useQuery<FileResult>({
     enabled: Boolean(selectedFilePath),
+    placeholderData: (previousFile) => previousFile,
     queryFn: ({ signal }) => fetchFile(selectedFilePath ?? "", signal),
     queryKey: fileSystemKeys.file(selectedFilePath ?? ""),
   })
