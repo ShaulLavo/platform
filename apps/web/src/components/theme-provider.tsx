@@ -2,6 +2,7 @@
 import {
   createContext,
   useContext,
+  useEffectEvent,
   useEffect,
   useState,
   type ReactNode,
@@ -119,6 +120,59 @@ export function ThemeProvider({
     setThemeState(nextTheme)
   }
 
+  const syncThemeClass = useEffectEvent(() => {
+    applyTheme(theme, disableTransitionOnChange)
+  })
+
+  const toggleThemeFromShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (event.repeat) {
+      return
+    }
+
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return
+    }
+
+    if (isEditableTarget(event.target)) {
+      return
+    }
+
+    if (event.key.toLowerCase() !== "d") {
+      return
+    }
+
+    setThemeState((currentTheme) => {
+      const nextTheme =
+        currentTheme === "dark"
+          ? "light"
+          : currentTheme === "light"
+            ? "dark"
+            : getSystemTheme() === "dark"
+              ? "light"
+              : "dark"
+
+      localStorage.setItem(storageKey, nextTheme)
+      return nextTheme
+    })
+  })
+
+  const syncThemeFromStorage = useEffectEvent((event: StorageEvent) => {
+    if (event.storageArea !== localStorage) {
+      return
+    }
+
+    if (event.key !== storageKey) {
+      return
+    }
+
+    if (isTheme(event.newValue)) {
+      setThemeState(event.newValue)
+      return
+    }
+
+    setThemeState(defaultTheme)
+  })
+
   useEffect(() => {
     applyTheme(theme, disableTransitionOnChange)
 
@@ -127,9 +181,7 @@ export function ThemeProvider({
     }
 
     const mediaQuery = window.matchMedia(COLOR_SCHEME_QUERY)
-    const handleChange = () => {
-      applyTheme("system", disableTransitionOnChange)
-    }
+    const handleChange = () => syncThemeClass()
 
     mediaQuery.addEventListener("change", handleChange)
 
@@ -139,69 +191,20 @@ export function ThemeProvider({
   }, [disableTransitionOnChange, theme])
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat) {
-        return
-      }
-
-      if (event.metaKey || event.ctrlKey || event.altKey) {
-        return
-      }
-
-      if (isEditableTarget(event.target)) {
-        return
-      }
-
-      if (event.key.toLowerCase() !== "d") {
-        return
-      }
-
-      setThemeState((currentTheme) => {
-        const nextTheme =
-          currentTheme === "dark"
-            ? "light"
-            : currentTheme === "light"
-              ? "dark"
-              : getSystemTheme() === "dark"
-                ? "light"
-                : "dark"
-
-        localStorage.setItem(storageKey, nextTheme)
-        return nextTheme
-      })
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", toggleThemeFromShortcut)
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("keydown", toggleThemeFromShortcut)
     }
-  }, [storageKey])
+  }, [])
 
   useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.storageArea !== localStorage) {
-        return
-      }
-
-      if (event.key !== storageKey) {
-        return
-      }
-
-      if (isTheme(event.newValue)) {
-        setThemeState(event.newValue)
-        return
-      }
-
-      setThemeState(defaultTheme)
-    }
-
-    window.addEventListener("storage", handleStorageChange)
+    window.addEventListener("storage", syncThemeFromStorage)
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange)
+      window.removeEventListener("storage", syncThemeFromStorage)
     }
-  }, [defaultTheme, storageKey])
+  }, [])
 
   const value = {
     theme,

@@ -17,6 +17,7 @@ import {
   type TreeModel,
 } from "@/lib/tree-model"
 import {
+  useEffectEvent,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -40,7 +41,11 @@ export function TreePane({
   state: LoadState<TreeModel>
 }) {
   const modelRef = useRef(model)
-  const onLoadDirectoryRef = useRef(onLoadDirectory)
+  const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
+    (currentTree: PierreFileTreeModel) => {
+      loadExpandedDirectories(currentTree, model, onLoadDirectory)
+    }
+  )
 
   const initialSelectedPaths = selectedFilePath
     ? [treePathForSelectedPath(model, rootPath, selectedFilePath)]
@@ -64,14 +69,13 @@ export function TreePane({
 
   useLayoutEffect(() => {
     modelRef.current = model
-    onLoadDirectoryRef.current = onLoadDirectory
-  }, [model, onLoadDirectory])
+  }, [model])
 
   useEffect(() => {
     tree.resetPaths(model.paths, {
       initialExpandedPaths: expandedDirectoryPaths(model, tree),
     })
-    loadExpandedDirectories(tree, model, onLoadDirectoryRef.current)
+    loadExpandedDirectoriesForCurrentModel(tree)
   }, [model, tree])
 
   useEffect(() => {
@@ -80,11 +84,7 @@ export function TreePane({
 
   useEffect(() => {
     return tree.subscribe(() => {
-      loadExpandedDirectories(
-        tree,
-        modelRef.current,
-        onLoadDirectoryRef.current
-      )
+      loadExpandedDirectoriesForCurrentModel(tree)
     })
   }, [tree])
 

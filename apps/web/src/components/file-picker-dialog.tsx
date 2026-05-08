@@ -40,6 +40,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import {
   Fragment,
+  useEffectEvent,
   useEffect,
   useRef,
   useState,
@@ -209,98 +210,55 @@ export function FilePickerDialog({
   onPick,
 }: FilePickerDialogProps) {
   const initializedOpenRef = useRef(false)
-  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
   const [currentPath, setCurrentPath] = useState(ROOT_PATH)
   const [history, setHistory] = useState<string[]>([])
   const [query, setQuery] = useState("")
   const debouncedQuery = useDebouncedValue(query, 180)
   const effectiveQuery = query.trim() ? debouncedQuery : ""
   const [selectedEntry, setSelectedEntry] = useState<FsEntry | null>(value)
-  const [currentEntry, setCurrentEntry] = useState<DirectoryFsEntry | null>(
-    null
+  const { serverInfo, serverInfoError } = useServerInfoForOpen(
+    open,
+    initializeOpenSession,
+    resetOpenSession
   )
   const [reloadVersion, setReloadVersion] = useState(0)
-  const [loadState, setLoadState] = useState<LoadState>({
-    status: "loading",
+  const {
+    currentEntry,
+    loadState: directoryLoadState,
+    setCurrentEntry,
+    setLoadState,
+  } =
+    useDirectoryLoad({
+      currentPath,
+      effectiveQuery,
+      mode,
+      open,
+      reloadVersion,
+      serverInfo,
+    })
+  const recentState = useRecentEntries({
+    open,
+    reloadVersion,
+    serverInfo,
   })
-  const [recentState, setRecentState] = useState<LoadState>({
-    status: "loading",
-  })
+  const loadState: LoadState = serverInfoError
+    ? { status: "error", message: errorMessage(serverInfoError) }
+    : directoryLoadState
 
-  useEffect(() => {
-    if (!open) {
-      initializedOpenRef.current = false
-      return
-    }
+  function initializeOpenSession(info: ServerInfo) {
+    if (initializedOpenRef.current) return
 
-    const controller = new AbortController()
-    void fetchServerInfo(controller.signal)
-      .then((info) => {
-        if (controller.signal.aborted) return
+    initializedOpenRef.current = true
+    setHistory([])
+    setQuery("")
+    setSelectedEntry(value)
+    setCurrentEntry(null)
+    setCurrentPath(initialPathForOpen(value, info.homePath))
+  }
 
-        setServerInfo(info)
-        if (initializedOpenRef.current) return
-
-        initializedOpenRef.current = true
-        setHistory([])
-        setQuery("")
-        setSelectedEntry(value)
-        setCurrentEntry(null)
-        setCurrentPath(initialPathForOpen(value, info.homePath))
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setLoadState({ status: "error", message: errorMessage(error) })
-      })
-
-    return () => controller.abort()
-  }, [open, value])
-
-  useEffect(() => {
-    if (!open || !serverInfo) return
-
-    const controller = new AbortController()
-    void Promise.all([
-      fetchCurrentEntry(currentPath, controller.signal),
-      loadEntries(
-        currentPath,
-        effectiveQuery,
-        mode,
-        controller.signal,
-        (entries) => {
-          if (controller.signal.aborted) return
-          setLoadState({ status: "ready", entries })
-        }
-      ),
-    ])
-      .then(([current, entries]) => {
-        if (controller.signal.aborted) return
-        setCurrentEntry(current)
-        setLoadState({ status: "ready", entries })
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setLoadState({ status: "error", message: errorMessage(error) })
-      })
-
-    return () => controller.abort()
-  }, [currentPath, effectiveQuery, mode, open, reloadVersion, serverInfo])
-
-  useEffect(() => {
-    if (!open || !serverInfo) return
-
-    const controller = new AbortController()
-    void fetchRecentEntries(controller.signal)
-      .then((entries) => {
-        setRecentState({ status: "ready", entries })
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setRecentState({ status: "error", message: errorMessage(error) })
-      })
-
-    return () => controller.abort()
-  }, [open, reloadVersion, serverInfo])
+  function resetOpenSession() {
+    initializedOpenRef.current = false
+  }
 
   const visibleEntries = loadStateEntries(loadState)
   const isLoadingEntries = loadState.status === "loading"
@@ -561,6 +519,134 @@ export function FilePickerDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function useServerInfoForOpen(
+  open: boolean,
+  onReady: (info: ServerInfo) => void,
+  onClose: () => void
+) {
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null)
+  const [serverInfoError, setServerInfoError] = useState<unknown>(null)
+  const closeSession = useEffectEvent(onClose)
+  const applyServerInfo = useEffectEvent((info: ServerInfo) => {
+    setServerInfo(info)
+    setServerInfoError(null)
+    onReady(info)
+  })
+
+  useEffect(() => {
+    if (!open) {
+      closeSession()
+      return
+    }
+
+    const controller = new AbortController()
+    void fetchServerInfo(controller.signal)
+      .then((info) => {
+        if (controller.signal.aborted) return
+        applyServerInfo(info)
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setServerInfoError(error)
+      })
+
+    return () => controller.abort()
+  }, [open])
+
+  return { serverInfo, serverInfoError }
+}
+
+function useDirectoryLoad({
+  currentPath,
+  effectiveQuery,
+  mode,
+  open,
+  reloadVersion,
+  serverInfo,
+}: {
+  currentPath: string
+  effectiveQuery: string
+  mode: FilePickerMode
+  open: boolean
+  reloadVersion: number
+  serverInfo: ServerInfo | null
+}) {
+  const [currentEntry, setCurrentEntry] = useState<DirectoryFsEntry | null>(
+    null
+  )
+  const [loadState, setLoadState] = useState<LoadState>({
+    status: "loading",
+  })
+  const applyLoadedEntries = useEffectEvent((entries: FsEntry[]) => {
+    setLoadState({ status: "ready", entries })
+  })
+
+  useEffect(() => {
+    if (!open || !serverInfo) return
+
+    const controller = new AbortController()
+    void Promise.all([
+      fetchCurrentEntry(currentPath, controller.signal),
+      loadEntries(
+        currentPath,
+        effectiveQuery,
+        mode,
+        controller.signal,
+        (entries) => {
+          if (controller.signal.aborted) return
+          applyLoadedEntries(entries)
+        }
+      ),
+    ])
+      .then(([current, entries]) => {
+        if (controller.signal.aborted) return
+        setCurrentEntry(current)
+        setLoadState({ status: "ready", entries })
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setLoadState({ status: "error", message: errorMessage(error) })
+      })
+
+    return () => controller.abort()
+  }, [currentPath, effectiveQuery, mode, open, reloadVersion, serverInfo])
+
+  return { currentEntry, loadState, setCurrentEntry, setLoadState }
+}
+
+function useRecentEntries({
+  open,
+  reloadVersion,
+  serverInfo,
+}: {
+  open: boolean
+  reloadVersion: number
+  serverInfo: ServerInfo | null
+}) {
+  const [recentState, setRecentState] = useState<LoadState>({
+    status: "loading",
+  })
+
+  useEffect(() => {
+    if (!open || !serverInfo) return
+
+    const controller = new AbortController()
+    void fetchRecentEntries(controller.signal)
+      .then((entries) => {
+        if (controller.signal.aborted) return
+        setRecentState({ status: "ready", entries })
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setRecentState({ status: "error", message: errorMessage(error) })
+      })
+
+    return () => controller.abort()
+  }, [open, reloadVersion, serverInfo])
+
+  return recentState
 }
 
 function PlacesSidebar({

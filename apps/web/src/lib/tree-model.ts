@@ -1,5 +1,5 @@
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
-import type { KeyedLoadState, LoadState } from "@/lib/load-state"
+import type { LoadState } from "@/lib/load-state"
 import { canonicalTreePath, toTreePath } from "@/lib/path-formatters"
 import type { EditorWorkspaceEntry } from "@/components/editor"
 
@@ -51,37 +51,31 @@ export function markDirectoryLoading(
 }
 
 export function markDirectoryError(
-  load: KeyedLoadState<TreeModel> | null,
-  key: string,
+  model: TreeModel,
   directoryTreePath: string,
   message: string
-): KeyedLoadState<TreeModel> | null {
-  if (!isReadyTreeLoad(load, key)) return load
-
-  const next = cloneTreeModel(load.state.data)
+): TreeModel {
+  const next = cloneTreeModel(model)
   next.loadingDirectoryPaths.delete(directoryTreePath)
   next.errorByDirectoryPath.set(directoryTreePath, message)
 
-  return { key, state: { status: "ready", data: next } }
+  return next
 }
 
 export function mergeDirectoryLoad(
-  load: KeyedLoadState<TreeModel> | null,
-  key: string,
+  model: TreeModel,
   rootPath: string,
   result: TreeResult,
   directoryTreePath: string
-): KeyedLoadState<TreeModel> | null {
-  if (!isReadyTreeLoad(load, key)) return load
-
-  const next = cloneTreeModel(load.state.data)
+): TreeModel {
+  const next = cloneTreeModel(model)
   addEntriesToModel(next, result.entries, rootPath)
   next.loadingDirectoryPaths.delete(directoryTreePath)
   next.errorByDirectoryPath.delete(directoryTreePath)
   next.loadedDirectoryPaths.add(directoryTreePath)
   next.paths = pathsFromEntries(next.entriesByTreePath)
 
-  return { key, state: { status: "ready", data: next } }
+  return next
 }
 
 export function selectedTreeEntry(
@@ -201,14 +195,4 @@ function pathsFromEntries(entriesByTreePath: Map<string, TreeEntry>) {
   }
 
   return paths
-}
-
-function isReadyTreeLoad(
-  load: KeyedLoadState<TreeModel> | null,
-  key: string
-): load is KeyedLoadState<TreeModel> & {
-  state: { status: "ready"; data: TreeModel }
-} {
-  if (load?.key !== key) return false
-  return load.state.status === "ready"
 }

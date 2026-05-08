@@ -1,41 +1,39 @@
 import { errorMessage, fetchFile } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
-import { type KeyedLoadState, loadStateForKey } from "@/lib/load-state"
-import { useEffect, useState } from "react"
+import { idleState, type LoadState } from "@/lib/load-state"
+import { fileSystemKeys } from "@/lib/query-keys"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 export function useSelectedFile(selectedFilePath: string | null) {
-  const [fileLoad, setFileLoad] = useState<KeyedLoadState<FileResult> | null>(
-    null
-  )
-  const fileState = loadStateForKey(fileLoad, selectedFilePath)
-
-  useEffect(() => {
-    if (!selectedFilePath) return
-
-    const controller = new AbortController()
-
-    void fetchFile(selectedFilePath, controller.signal)
-      .then((file) => {
-        if (controller.signal.aborted) return
-        setFileLoad({
-          key: selectedFilePath,
-          state: { status: "ready", data: file },
-        })
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        setFileLoad({
-          key: selectedFilePath,
-          state: { status: "error", message: errorMessage(error) },
-        })
-      })
-
-    return () => controller.abort()
-  }, [selectedFilePath])
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    enabled: Boolean(selectedFilePath),
+    queryFn: ({ signal }) => fetchFile(selectedFilePath ?? "", signal),
+    queryKey: fileSystemKeys.file(selectedFilePath ?? ""),
+  })
+  const fileState = selectedFilePath ? fileLoadState(query) : idleState
 
   function resetFileLoad() {
-    setFileLoad(null)
+    if (!selectedFilePath) return
+
+    queryClient.removeQueries({
+      exact: true,
+      queryKey: fileSystemKeys.file(selectedFilePath),
+    })
   }
 
   return { fileState, resetFileLoad }
+}
+
+function fileLoadState(query: {
+  data: FileResult | undefined
+  error: Error | null
+  isError: boolean
+  isPending: boolean
+}): LoadState<FileResult> {
+  if (query.data) return { status: "ready", data: query.data }
+  if (query.isError) return { status: "error", message: errorMessage(query.error) }
+  if (query.isPending) return { status: "loading" }
+
+  return idleState
 }
