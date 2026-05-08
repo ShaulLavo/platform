@@ -20,7 +20,8 @@ const FOLD_CHEVRON_PATH =
   "M297.4 438.6C309.9 451.1 330.2 451.1 342.7 438.6L502.7 278.6C515.2 266.1 515.2 245.8 502.7 233.3C490.2 220.8 469.9 220.8 457.4 233.3L320 370.7L182.6 233.4C170.1 220.9 149.8 220.9 137.3 233.4C124.8 245.9 124.8 266.2 137.3 278.7L297.3 438.7z"
 
 export function createEditorPlugins(
-  typeScriptLsp: TypeScriptLspPlugin
+  typeScriptLsp: TypeScriptLspPlugin,
+  shikiTheme: string
 ): readonly EditorPlugin[] {
   return [
     javaScript({ jsx: true }),
@@ -30,7 +31,7 @@ export function createEditorPlugins(
     json(),
     markdown(),
     createShikiHighlighterPlugin({
-      theme: "github-dark",
+      theme: shikiTheme,
       preloadLanguages: [
         "css",
         "html",
@@ -40,7 +41,7 @@ export function createEditorPlugins(
         "tsx",
         "typescript",
       ],
-      preloadThemes: ["github-dark"],
+      preloadThemes: ["github-dark", "github-light"],
     }),
     createLineGutterPlugin(),
     createFoldGutterPlugin({

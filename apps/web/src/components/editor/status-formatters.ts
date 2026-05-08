@@ -4,12 +4,6 @@ import type {
   TypeScriptLspStatus,
 } from "@editor/typescript-lsp"
 
-export function formatCursorStatus(state: EditorState | null) {
-  if (!state?.documentId) return ""
-
-  return `Ln ${state.cursor.row + 1}, Col ${state.cursor.column + 1}`
-}
-
 export function formatSyntaxStatus(state: EditorState | null) {
   if (!state?.documentId) return "Plain text"
 

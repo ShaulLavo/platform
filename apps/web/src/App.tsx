@@ -8,13 +8,22 @@ import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
 import { selectedTreeEntry } from "@/lib/tree-model"
+import {
+  readWorkspaceCache,
+  writeWorkspaceCache,
+} from "@/lib/workspace-cache"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 export function App() {
+  const [cachedWorkspace] = useState(readWorkspaceCache)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [rootFolder, setRootFolder] = useState<PickedFsEntry | null>(null)
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  const [rootFolder, setRootFolder] = useState<PickedFsEntry | null>(
+    cachedWorkspace.rootFolder
+  )
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(
+    cachedWorkspace.selectedFilePath
+  )
   const [definitionTarget, setDefinitionTarget] =
     useState<TypeScriptLspDefinitionTarget | null>(null)
   const { loadTreeDirectory, resetTreeLoad, retryTreeLoad, treeState } =
@@ -23,6 +32,10 @@ export function App() {
   const selectedEntry = selectedFilePath
     ? selectedTreeEntry(treeState, rootFolder?.path ?? null, selectedFilePath)
     : null
+
+  useEffect(() => {
+    writeWorkspaceCache({ rootFolder, selectedFilePath })
+  }, [rootFolder, selectedFilePath])
 
   function handlePick(entry: PickedFsEntry) {
     setSelectedFilePath(null)

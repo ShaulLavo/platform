@@ -13,6 +13,7 @@ import {
 import { createEditorPlugins } from "@/components/editor/editor-plugins"
 import { EditorStatusBar } from "@/components/editor/editor-status-bar"
 import { languageIdForFilePath } from "@/components/editor/file-path"
+import { useTheme } from "@/components/theme-provider"
 import type {
   EditorFile,
   EditorWorkspaceEntry,
@@ -34,6 +35,10 @@ export function Editor({
   rootPath,
   onOpenDefinition,
 }: EditorProps) {
+  const { theme } = useTheme()
+  const resolvedTheme = useResolvedTheme(theme)
+  const shikiTheme =
+    resolvedTheme === "dark" ? "github-dark" : "github-light"
   const [typeScriptStatus, setTypeScriptStatus] =
     useState<TypeScriptLspStatus>("idle")
   const [typeScriptDiagnostics, setTypeScriptDiagnostics] =
@@ -46,7 +51,7 @@ export function Editor({
     onOpenDefinition,
     onError: (error) => console.warn("[typescript-lsp]", error),
   })
-  const plugins = createEditorPlugins(typeScriptLsp)
+  const plugins = createEditorPlugins(typeScriptLsp, shikiTheme)
   const document = {
     documentId: file.path,
     languageId: languageIdForFilePath(file.path),
@@ -77,7 +82,11 @@ export function Editor({
 
   return (
     <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] bg-background">
-      <EditorHost className="app-editor-host" controller={controller} />
+      <EditorHost
+        key={shikiTheme}
+        className="app-editor-host"
+        controller={controller}
+      />
       <EditorStatusBar
         filePath={file.path}
         state={editorState}
@@ -87,6 +96,30 @@ export function Editor({
       />
     </div>
   )
+}
+
+function useResolvedTheme(theme: "dark" | "light" | "system") {
+  const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() =>
+    systemThemePreference()
+  )
+
+  useEffect(() => {
+    if (theme !== "system") return
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+    const handleChange = () => setSystemTheme(systemThemePreference())
+
+    mediaQuery.addEventListener("change", handleChange)
+    return () => mediaQuery.removeEventListener("change", handleChange)
+  }, [theme])
+
+  if (theme === "system") return systemTheme
+  return theme
+}
+
+function systemThemePreference(): "dark" | "light" {
+  if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark"
+  return "light"
 }
 
 function typeScriptLspRoute(rootPath: string) {
