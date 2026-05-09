@@ -7,23 +7,18 @@ import type { SessionContext } from "../shared/context"
 
 /**
  * File extensions the TypeScript language service recognizes as source.
- * Matches the set previously held in `session.ts`; duplicated here so the
- * handler module is self-contained during the Wave 3 parallel-extraction
- * window (Req 6.1). Task 5.12 will consolidate these helpers into a shared
- * module after `session.ts` is rewritten.
  */
 const TYPE_SCRIPT_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"])
 
 /**
- * Handle a `textDocument/didOpen` notification (Req 6.1, Req 6.2).
+ * Handle a `textDocument/didOpen` notification.
  *
  * Validates the params shape, resolves the document URI to a path inside the
- * session root (Req 6.2 — documents outside the configured root are
- * ignored), and registers the document in the shared registry. After
- * registration the handler bumps the script version, triggers incremental
- * file-content invalidation so the language service observes the new text
- * without a full rebuild (Req 14.1, Req 14.2), and schedules diagnostic
- * publication.
+ * session root (documents outside the configured root are ignored), and
+ * registers the document in the shared registry. After registration the
+ * handler bumps the script version, triggers incremental file-content
+ * invalidation so the language service observes the new text without a
+ * full rebuild, and schedules diagnostic publication.
  */
 export function handleDidOpen(ctx: SessionContext, params: unknown): void {
   const textDocument = textDocumentItem(params)

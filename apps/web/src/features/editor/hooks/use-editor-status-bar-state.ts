@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react"
 
-import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
+import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
 import {
   formatHistoryStatus,
   formatSyntaxStatus,
   formatTypeScriptLspStatus,
-} from "@/components/editor/status-formatters"
+} from "@/features/editor/utils/status-formatters"
 
 type UseEditorStatusBarStateOptions = EditorStatusBarState & {
   onChange?: (state: EditorStatusBarState) => void

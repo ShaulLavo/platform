@@ -8,8 +8,8 @@ import type {
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
 import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
 
-import { useEditorCommands } from "@/components/editor/state/editor-commands"
-import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
+import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { fileTreeIconsForPaths } from "@/lib/file-icons"
 import type { TreeEntry } from "@/lib/file-system-types"

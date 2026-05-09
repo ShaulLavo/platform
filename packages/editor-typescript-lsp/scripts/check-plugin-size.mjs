@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Enforces the 400 source-line budget for `plugin.ts` defined in
- * codebase-review-remediation Req 1.5.
+ * Enforces the 400 source-line budget for `plugin.ts`.
  *
  * Counts every line that is not entirely blank and not entirely a comment.
  * A line is counted when, after trimming leading/trailing whitespace, it:
@@ -79,7 +78,7 @@ for (const raw of lines) {
 if (count > MAX_SOURCE_LINES) {
   console.error(
     `check-plugin-size: plugin.ts has ${count} non-blank, non-comment source lines ` +
-      `(budget: ${MAX_SOURCE_LINES}). See codebase-review-remediation Req 1.5.`,
+      `(budget: ${MAX_SOURCE_LINES}).`,
   )
   process.exit(1)
 }

@@ -1,19 +1,19 @@
 import { describe, expect, it } from "bun:test"
 
-import { createEditorCommands } from "@/components/editor/state/editor-commands"
-import { createEditorDocumentStore } from "@/components/editor/state/editor-document-state"
+import { createEditorCommands } from "@/features/editor/state/editor-commands"
+import { createEditorDocumentStore } from "@/features/editor/state/editor-document-state"
 import {
   removeDirtyFilePath,
   renameDirtyFilePath,
   updateDirtyFilePaths,
-} from "@/components/editor/state/editor-dirty-paths"
+} from "@/features/editor/state/editor-dirty-paths"
 import {
   nextSelectedFilePath,
   openFilePathList,
   renameOpenFilePath,
-} from "@/components/editor/state/editor-tab-paths"
-import { createEditorUiStore } from "@/components/editor/state/editor-ui-state"
-import { createEditorWorkspaceStore } from "@/components/editor/state/editor-workspace-state"
+} from "@/features/editor/state/editor-tab-paths"
+import { createEditorUiStore } from "@/features/editor/state/editor-ui-state"
+import { createEditorWorkspaceStore } from "@/features/editor/state/editor-workspace-state"
 import type { FileResult } from "@/lib/file-system-types"
 import type { CachedWorkspaceState } from "@/lib/workspace-cache"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"

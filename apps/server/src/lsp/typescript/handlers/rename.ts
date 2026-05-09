@@ -7,77 +7,83 @@ import type * as lsp from "vscode-languageserver-protocol"
 import type { SessionContext } from "../shared/context"
 
 /**
- * Handle a `textDocument/hover` request.
+ * Handle a `textDocument/rename` request.
  *
- * Resolves the document URI to a path inside the session root, queries the
- * TypeScript language service for quick-info at the cursor, and converts the
- * result into an LSP hover payload. The language service is obtained through
- * {@link SessionContext.getLanguageService} on every invocation so
- * invalidation rebuilds are observed without stale references.
+ * Asks the language service for every rename location touched by the symbol
+ * under the cursor and projects the result into an LSP `WorkspaceEdit`.
+ * Each location's `prefixText` and `suffixText` (used for things like
+ * `{ foo: fooNewName }` shorthand-property expansion) are preserved so the
+ * resulting edit matches the language-service output exactly.
  *
- * Returns `null` for malformed params, out-of-root URIs, documents the
- * handler cannot read, or positions where the language service reports no
- * quick-info.
+ * Returns `null` for malformed params, out-of-root URIs, or documents the
+ * handler cannot read; returns a `WorkspaceEdit` with an empty `changes`
+ * map when the language service finds no rename locations. Rename
+ * locations that resolve outside the session root are skipped so we never
+ * emit edits the client cannot apply.
  */
-export function handleHover(ctx: SessionContext, params: unknown): lsp.Hover | null {
-  const request = textDocumentPosition(ctx, params)
-  if (!request) return null
-
-  const text = documentText(ctx, request.fileName)
-  if (text === null) return null
-
-  const service = ctx.getLanguageService()
-  const offset = lspPositionToOffset(text, request.position)
-  const quickInfo = service.getQuickInfoAtPosition(request.fileName, offset)
-  if (!quickInfo) return null
-
-  return hoverFromQuickInfo(text, quickInfo)
-}
-
-function hoverFromQuickInfo(text: string, quickInfo: ts.QuickInfo): lsp.Hover {
-  const display = ts.displayPartsToString(quickInfo.displayParts ?? [])
-  const documentation = ts.displayPartsToString(quickInfo.documentation ?? [])
-  const tags = quickInfo.tags?.map(tagText).filter(Boolean) ?? []
-
-  return {
-    contents: {
-      kind: "markdown",
-      value: hoverMarkdown(display, documentation, tags),
-    },
-    range: rangeFromTextSpan(text, quickInfo.textSpan),
-  }
-}
-
-function hoverMarkdown(display: string, documentation: string, tags: readonly string[]): string {
-  const sections: string[] = []
-  if (display) sections.push(["```ts", display, "```"].join("\n"))
-  if (documentation) sections.push(documentation)
-  if (tags.length > 0) sections.push(tags.join("\n"))
-  return sections.join("\n\n")
-}
-
-function tagText(tag: ts.JSDocTagInfo): string {
-  const text = ts.displayPartsToString(tag.text ?? [])
-  return text ? `@${tag.name} ${text}` : `@${tag.name}`
-}
-
-type TextDocumentPositionRequest = {
-  uri: lsp.DocumentUri
-  fileName: string
-  position: lsp.Position
-}
-
-function textDocumentPosition(
-  ctx: SessionContext,
-  params: unknown,
-): TextDocumentPositionRequest | null {
-  const request = textDocumentPositionParams(params)
+export function handleRename(ctx: SessionContext, params: unknown): lsp.WorkspaceEdit | null {
+  const request = renameParams(params)
   if (!request) return null
 
   const fileName = fileNameForUri(ctx, request.uri)
   if (!fileName) return null
 
-  return { ...request, fileName }
+  const text = documentText(ctx, fileName)
+  if (text === null) return null
+
+  const offset = lspPositionToOffset(text, request.position)
+  const locations =
+    ctx.getLanguageService().findRenameLocations(fileName, offset, false, false, true) ?? []
+  return workspaceEditFromRenameLocations(ctx, locations, request.newName)
+}
+
+function workspaceEditFromRenameLocations(
+  ctx: SessionContext,
+  locations: readonly ts.RenameLocation[],
+  newName: string,
+): lsp.WorkspaceEdit {
+  const changes: Record<lsp.DocumentUri, lsp.TextEdit[]> = {}
+  for (const location of locations) {
+    appendTextChange(ctx, changes, location.fileName, {
+      span: location.textSpan,
+      newText: `${location.prefixText ?? ""}${newName}${location.suffixText ?? ""}`,
+    })
+  }
+
+  return { changes }
+}
+
+function appendTextChange(
+  ctx: SessionContext,
+  changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
+  fileName: string,
+  textChange: ts.TextChange,
+): void {
+  const normalized = normalizeNativePath(fileName)
+  if (!isInsidePath(ctx.root, normalized)) return
+
+  const text = documentText(ctx, normalized)
+  if (text === null) return
+
+  const uri = documentUriForFileName(ctx, normalized)
+  const edits = changes[uri] ?? []
+  edits.push({
+    range: rangeFromTextSpan(text, textChange.span),
+    newText: textChange.newText,
+  })
+  changes[uri] = edits
+}
+
+function renameParams(params: unknown): {
+  uri: lsp.DocumentUri
+  position: lsp.Position
+  newName: string
+} | null {
+  const request = textDocumentPositionParams(params)
+  if (!request) return null
+  if (!isRecord(params)) return null
+  if (typeof params.newName !== "string") return null
+  return { ...request, newName: params.newName }
 }
 
 function textDocumentPositionParams(params: unknown): {
@@ -101,16 +107,12 @@ function textDocumentPositionParams(params: unknown): {
 }
 
 function documentText(ctx: SessionContext, fileName: string): string | null {
-  return readFile(ctx, fileName) ?? null
-}
-
-function readFile(ctx: SessionContext, fileName: string): string | undefined {
   const normalized = normalizeNativePath(fileName)
   for (const document of ctx.documents.values()) {
     if (samePath(document.fileName, normalized)) return document.text
   }
-  if (!canReadFile(ctx, normalized)) return undefined
-  return ts.sys.readFile(normalized)
+  if (!canReadFile(ctx, normalized)) return null
+  return ts.sys.readFile(normalized) ?? null
 }
 
 function canReadFile(ctx: SessionContext, fileName: string): boolean {
@@ -150,6 +152,29 @@ function documentUriToWorkspaceFileName(workspaceRoot: string, uri: string): str
   } catch {
     return null
   }
+}
+
+function documentUriForFileName(ctx: SessionContext, fileName: string): lsp.DocumentUri {
+  const normalized = normalizeNativePath(fileName)
+  if (!isInsidePath(ctx.workspaceRoot, normalized)) return fileNameToDocumentUri(normalized)
+
+  const relativePath = path.relative(ctx.workspaceRoot, normalized)
+  return relativePathToDocumentUri(relativePath)
+}
+
+function fileNameToDocumentUri(fileName: string): lsp.DocumentUri {
+  const normalized = normalizeNativePath(fileName)
+  return `file://${normalized.split("/").map(encodePathPart).join("/")}`
+}
+
+function relativePathToDocumentUri(relativePath: string): lsp.DocumentUri {
+  const normalized = relativePath.split(path.sep).join("/").replace(/^\/+/, "")
+  return `file:///${normalized.split("/").map(encodeURIComponent).join("/")}`
+}
+
+function encodePathPart(part: string, index: number): string {
+  if (index === 0 && part === "") return ""
+  return encodeURIComponent(part)
 }
 
 function rangeFromTextSpan(text: string, span: ts.TextSpan): lsp.Range {

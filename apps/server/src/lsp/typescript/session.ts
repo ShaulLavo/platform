@@ -1,9 +1,17 @@
-import { existsSync, statSync } from "node:fs"
+import { existsSync } from "node:fs"
 import path from "node:path"
 
 import { isRecord } from "@workspace/contracts"
 import ts from "typescript"
 import type * as lsp from "vscode-languageserver-protocol"
+
+import {
+  classifyInvalidation,
+  invalidateForFileContentChange,
+  invalidateForProjectConfigChange,
+  type InvalidationState,
+} from "./shared/invalidation"
+import { createScriptVersionRegistry, type ScriptVersionRegistry } from "./shared/script-versions"
 
 const JSON_RPC_VERSION = "2.0"
 const METHOD_NOT_FOUND = -32601
@@ -52,10 +60,12 @@ export class TypeScriptLspSession {
   private readonly sendMessage: (message: string) => void
   private readonly documents = new Map<lsp.DocumentUri, OpenDocument>()
   private readonly diagnosticTimers = new Map<lsp.DocumentUri, ReturnType<typeof setTimeout>>()
-  private readonly scriptVersions = new Map<string, number>()
+  private readonly scriptVersions: ScriptVersionRegistry = createScriptVersionRegistry()
+  private readonly invalidationState: InvalidationState
   private compilerOptionsOverride: ts.CompilerOptions = {}
   private diagnosticDelayMs: number
   private service: ts.LanguageService | null = null
+  private serviceFailed = false
   private projectVersion = 0
   private shutdown = false
 
@@ -64,6 +74,7 @@ export class TypeScriptLspSession {
     this.workspaceRoot = normalizeNativePath(options.workspaceRoot ?? options.root)
     this.sendMessage = options.send
     this.diagnosticDelayMs = options.diagnosticDelayMs ?? DEFAULT_DIAGNOSTIC_DELAY_MS
+    this.invalidationState = this.createInvalidationState()
   }
 
   handleMessage(data: string | ArrayBuffer | Uint8Array): void {
@@ -132,7 +143,7 @@ export class TypeScriptLspSession {
     const options = initializationOptions(params)
     this.compilerOptionsOverride = options.compilerOptions ?? {}
     this.diagnosticDelayMs = options.diagnosticDelayMs ?? DEFAULT_DIAGNOSTIC_DELAY_MS
-    this.invalidateService()
+    invalidateForProjectConfigChange(this.invalidationState)
 
     return {
       capabilities: {
@@ -189,8 +200,7 @@ export class TypeScriptLspSession {
       version: textDocument.version,
       text: textDocument.text,
     })
-    this.bumpScriptVersion(fileName)
-    this.invalidateService()
+    this.invalidateForFile(textDocument.uri, fileName)
     this.scheduleDiagnostics(textDocument.uri)
   }
 
@@ -204,8 +214,7 @@ export class TypeScriptLspSession {
     const text = applyContentChanges(current.text, change.contentChanges)
     const document = { ...current, version: change.version, text }
     this.documents.set(change.uri, document)
-    this.bumpScriptVersion(document.fileName)
-    if (isProjectMetadataFile(document.fileName)) this.invalidateService()
+    this.invalidateForFile(change.uri, document.fileName)
     this.scheduleDiagnostics(document.uri)
   }
 

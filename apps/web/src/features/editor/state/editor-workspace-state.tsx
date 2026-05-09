@@ -1,5 +1,5 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
-import type { EditorDiffViewMode } from "@/components/editor/diff-view-mode"
+import type { EditorDiffViewMode } from "@/features/editor/utils/diff-view-mode"
 import type {
   CachedWorkspaceState,
   WorkspacePanelTab,

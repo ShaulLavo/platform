@@ -185,23 +185,11 @@ export type {
 } from '@workspace/contracts'
 export type TreeEntryLike = ContractsTreeEntry
 
-// --- Compile-time parity assertions (Req 5.2, 5.7) ---------------------
-
-/**
- * Structural equality check between two types. Uses the conditional-type
- * identity trick: two types are considered equal iff they induce the
- * same distribution in both positions.
- */
 type Equals<A, B> =
 	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
 		? true
 		: false
 
-/**
- * Forces `T` to resolve to `true`; otherwise the type assignment fails.
- * Used below so any structural drift between a Valibot schema's inferred
- * output and its `@workspace/contracts` mirror breaks `turbo typecheck`.
- */
 type Assert<T extends true> = T
 
 // Assertions are held by exported `const` bindings so `noUnusedLocals` does

@@ -4,10 +4,10 @@ import { useLayoutEffect, useRef, type CSSProperties } from "react"
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
-} from "@/components/editor/diff-view-mode"
-import { useEditorCommands } from "@/components/editor/state/editor-commands"
-import { useEditorDocumentState } from "@/components/editor/state/editor-document-state"
-import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
+} from "@/features/editor/utils/diff-view-mode"
+import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import { useEditorDocumentState } from "@/features/editor/state/editor-document-state"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import {
   diffDocumentLabel,

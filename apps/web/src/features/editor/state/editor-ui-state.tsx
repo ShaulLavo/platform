@@ -1,4 +1,4 @@
-import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
+import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 import { createContext, useContext } from "react"
 import { useStore } from "zustand"

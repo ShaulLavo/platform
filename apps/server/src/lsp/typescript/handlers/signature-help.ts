@@ -7,13 +7,13 @@ import type * as lsp from "vscode-languageserver-protocol"
 import type { SessionContext } from "../shared/context"
 
 /**
- * Handle a `textDocument/signatureHelp` request (Req 6.1, Req 6.2).
+ * Handle a `textDocument/signatureHelp` request.
  *
  * Queries the TypeScript language service for signature-help items at the
  * cursor position and converts the result into the LSP `SignatureHelp`
  * shape. Returns `null` when params are malformed, the URI resolves outside
  * the session root, the document cannot be read, or the language service
- * reports no signature help — matching pre-extraction behavior (Req 6.4).
+ * reports no signature help.
  */
 export function handleSignatureHelp(
   ctx: SessionContext,

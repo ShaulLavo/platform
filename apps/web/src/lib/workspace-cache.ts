@@ -3,7 +3,7 @@ import {
   DEFAULT_DIFF_VIEW_MODE,
   isEditorDiffViewMode,
   type EditorDiffViewMode,
-} from "@/components/editor/diff-view-mode"
+} from "@/features/editor/utils/diff-view-mode"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 
 const CACHE_KEY = "platform.workspace-state.v1"

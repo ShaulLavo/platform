@@ -1,7 +1,7 @@
 import { EmptyWorkspace } from "@/components/empty-workspace"
-import { useEditorCommands } from "@/components/editor/state/editor-commands"
-import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
-import { EditorStateProvider } from "@/components/editor/editor-state-provider"
+import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
+import { EditorStateProvider } from "@/features/editor/editor-state-provider"
 import {
   FilePickerDialog,
   type PickedFsEntry,

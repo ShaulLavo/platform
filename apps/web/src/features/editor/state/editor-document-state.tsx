@@ -2,7 +2,7 @@ import {
   removeDirtyFilePath,
   renameDirtyFilePath,
   updateDirtyFilePaths,
-} from "@/components/editor/state/editor-dirty-paths"
+} from "@/features/editor/state/editor-dirty-paths"
 import type { FileResult } from "@/lib/file-system-types"
 import {
   createDocumentSession,

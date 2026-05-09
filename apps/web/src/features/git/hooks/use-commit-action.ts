@@ -1,4 +1,4 @@
-import { useEditorCommands } from "@/components/editor/state/editor-commands"
+import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useGitState } from "../state"
 import { useCommitMutation } from "./use-commit-mutation"
 import { useCommitPending } from "./use-commit-pending"

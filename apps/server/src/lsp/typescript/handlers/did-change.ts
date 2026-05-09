@@ -6,24 +6,21 @@ import type * as lsp from "vscode-languageserver-protocol"
 import type { SessionContext } from "../shared/context"
 
 /**
- * Handle a `textDocument/didChange` notification (Req 6.1, Req 6.2).
+ * Handle a `textDocument/didChange` notification.
  *
  * Applies the incremental content changes against the document stored in
  * {@link SessionContext.documents}, bumps the per-file script version, and
- * routes through the Req 14 invalidation decision table:
+ * routes through the invalidation decision table:
  *
  *   - edits to a project-metadata file (`tsconfig.json`, `package.json`)
  *     trigger {@link SessionContext.invalidateForProjectConfigChange} so the
  *     next request rebuilds the language service against the new project
- *     graph (Req 14.1, Req 14.3);
+ *     graph;
  *   - edits to any other file trigger
  *     {@link SessionContext.invalidateForFileContentChange}, which keeps the
- *     current service alive and simply bumps the project version (Req 14.1,
- *     Req 14.2).
+ *     current service alive and simply bumps the project version.
  *
- * Malformed params or unknown document URIs are ignored silently — the
- * pre-extraction session behaved the same way so clients see no drift
- * (Req 6.4).
+ * Malformed params or unknown document URIs are ignored silently.
  */
 export function handleDidChange(ctx: SessionContext, params: unknown): void {
   const change = didChangeParams(params)

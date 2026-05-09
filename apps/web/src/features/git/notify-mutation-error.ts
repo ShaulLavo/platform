@@ -3,13 +3,13 @@ import { toast } from "sonner"
 import { toClientError } from "@/lib/client-error-taxonomy"
 
 /**
- * Surface a failed git mutation through the Client_Error_Taxonomy (Req 7.2).
+ * Surface a failed git mutation through the Client_Error_Taxonomy.
  *
  * Routing the input through `toClientError` classifies the failure by the
  * same category table as every other client-side error surface (tree loads,
  * file reads, workspace events), so server codes like `GIT_COMMAND_FAILED`
  * and `GIT_REPOSITORY_NOT_FOUND` produce a category-derived, distinct
- * message (Req 7.4) instead of whatever raw string the server attached.
+ * message instead of whatever raw string the server attached.
  *
  * The toast is kept git-flavored ("Git command failed") so the feature
  * framing survives the migration; the description is the taxonomy's

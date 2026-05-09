@@ -7,14 +7,13 @@ import type * as lsp from "vscode-languageserver-protocol"
 import type { SessionContext } from "../shared/context"
 
 /**
- * Handle a `textDocument/completion` request (Req 6.1, Req 6.2).
+ * Handle a `textDocument/completion` request.
  *
  * Queries the language service for completions at the cursor position and
  * converts each `ts.CompletionEntry` into an `lsp.CompletionItem`. When the
  * request is malformed, resolves outside the session root, cannot be read,
  * or the language service returns no completions, the handler returns an
- * empty (non-incomplete) completion list — matching pre-extraction behavior
- * (Req 6.4).
+ * empty (non-incomplete) completion list.
  */
 export function handleCompletion(ctx: SessionContext, params: unknown): lsp.CompletionList {
   const request = textDocumentPosition(ctx, params)

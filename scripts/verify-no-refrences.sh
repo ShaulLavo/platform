@@ -4,8 +4,6 @@
 # tracked tree (outside this feature's spec documents, which reference the
 # original name for traceability).
 #
-# See .kiro/specs/codebase-review-remediation/requirements.md, Requirement 10.
-#
 # Exits 0 when no offending matches exist, 1 otherwise.
 #
 # Implementation note: this guard's own bookkeeping (the script file itself
@@ -29,7 +27,7 @@ if [ -n "$matches" ]; then
   echo "$matches" >&2
   echo "" >&2
   echo "verify:spelling: found references to the misspelling 'refrences'." >&2
-  echo "                 Use 'references' instead (see Requirement 10)." >&2
+  echo "                 Use 'references' instead." >&2
   exit 1
 fi
 

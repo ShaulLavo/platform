@@ -1,15 +1,15 @@
 import { WarningCircleIcon } from "@phosphor-icons/react"
 import { useEffect, useMemo } from "react"
 
-import { Editor } from "@/components/editor"
-import { useEditorCommands } from "@/components/editor/state/editor-commands"
+import { Editor } from "@/features/editor/components/editor"
+import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import {
   type CachedEditorDocument,
   useEditorDocumentState,
-} from "@/components/editor/state/editor-document-state"
-import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
-import { useEditorUiState } from "@/components/editor/state/editor-ui-state"
-import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
+} from "@/features/editor/state/editor-document-state"
+import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
+import { useEditorUiState } from "@/features/editor/state/editor-ui-state"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
 import { GitDiffViewer } from "@/features/git/components/diff-viewer"
 import { parseDiffDocumentId } from "@/features/git/diff-document"

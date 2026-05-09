@@ -7,106 +7,144 @@ import type * as lsp from "vscode-languageserver-protocol"
 import type { SessionContext } from "../shared/context"
 
 /**
- * Handle a `textDocument/definition` request.
+ * Handle a `textDocument/codeAction` request.
  *
- * Queries the language service for the definition (preferring
- * `getDefinitionAndBoundSpan` so declaration renames observe the bound span)
- * and converts each `ts.DefinitionInfo` to an LSP location whose URI is
- * produced relative to the workspace root when possible. Definitions that
- * resolve outside the session root are filtered out so we never leak paths
- * the client cannot open.
+ * Collects the numeric TypeScript diagnostic codes carried in
+ * `context.diagnostics`, asks the language service for quickfixes at the
+ * selection range, and projects each `ts.CodeFixAction` into an LSP
+ * `CodeAction` of kind `"quickfix"`. Returns an empty result for malformed
+ * params, out-of-root URIs, documents the handler cannot read, or requests
+ * whose diagnostics carry no TypeScript error codes.
  *
- * Returns an empty array for malformed params, out-of-root URIs, or
- * positions where no definition is found.
+ * The return type is `readonly (lsp.Command | lsp.CodeAction)[]`; this
+ * handler only emits `lsp.CodeAction` values.
  */
-export function handleDefinition(ctx: SessionContext, params: unknown): lsp.Location[] {
-  const request = textDocumentPosition(ctx, params)
+export function handleCodeAction(
+  ctx: SessionContext,
+  params: unknown,
+): readonly (lsp.Command | lsp.CodeAction)[] {
+  const request = codeActionParams(params)
   if (!request) return []
 
-  const text = documentText(ctx, request.fileName)
+  const fileName = fileNameForUri(ctx, request.uri)
+  if (!fileName) return []
+
+  const text = documentText(ctx, fileName)
   if (text === null) return []
 
-  const service = ctx.getLanguageService()
-  const offset = lspPositionToOffset(text, request.position)
-  const definitions =
-    service.getDefinitionAndBoundSpan(request.fileName, offset)?.definitions ??
-    service.getDefinitionAtPosition(request.fileName, offset) ??
-    []
+  const start = lspPositionToOffset(text, request.range.start)
+  const end = lspPositionToOffset(text, request.range.end)
+  const errorCodes = request.diagnostics.flatMap(diagnosticCode)
+  if (errorCodes.length === 0) return []
 
-  return definitions.flatMap((definition) =>
-    locationForTextSpan(ctx, definition.fileName, definition.textSpan),
-  )
+  const fixes = ctx
+    .getLanguageService()
+    .getCodeFixesAtPosition(fileName, start, end, errorCodes, {}, {})
+  return fixes.flatMap((fix) => codeActionFromFix(ctx, fix, request.diagnostics))
 }
 
-function locationForTextSpan(
+function codeActionFromFix(
   ctx: SessionContext,
-  fileName: string,
-  span: ts.TextSpan,
-): readonly lsp.Location[] {
-  const normalized = normalizeNativePath(fileName)
-  if (!isInsidePath(ctx.root, normalized)) return []
-
-  const text = documentText(ctx, normalized)
-  if (text === null) return []
+  fix: ts.CodeFixAction,
+  diagnostics: readonly lsp.Diagnostic[],
+): readonly lsp.CodeAction[] {
+  const edit = workspaceEditFromFileTextChanges(ctx, fix.changes)
+  if (!edit) return []
 
   return [
     {
-      uri: documentUriForFileName(ctx, normalized),
-      range: rangeFromTextSpan(text, span),
+      title: fix.description,
+      kind: "quickfix",
+      diagnostics: [...diagnostics],
+      edit,
     },
   ]
 }
 
-type TextDocumentPositionRequest = {
-  uri: lsp.DocumentUri
-  fileName: string
-  position: lsp.Position
-}
-
-function textDocumentPosition(
+function workspaceEditFromFileTextChanges(
   ctx: SessionContext,
-  params: unknown,
-): TextDocumentPositionRequest | null {
-  const request = textDocumentPositionParams(params)
-  if (!request) return null
-
-  const fileName = fileNameForUri(ctx, request.uri)
-  if (!fileName) return null
-
-  return { ...request, fileName }
+  changes: readonly ts.FileTextChanges[],
+): lsp.WorkspaceEdit | null {
+  const result: Record<lsp.DocumentUri, lsp.TextEdit[]> = {}
+  for (const change of changes) appendFileTextChanges(ctx, result, change)
+  if (Object.keys(result).length === 0) return null
+  return { changes: result }
 }
 
-function textDocumentPositionParams(params: unknown): {
-  uri: lsp.DocumentUri
-  position: lsp.Position
-} | null {
-  if (!isRecord(params)) return null
-  if (!isRecord(params.textDocument)) return null
-  if (!isRecord(params.position)) return null
-  if (typeof params.textDocument.uri !== "string") return null
-  if (typeof params.position.line !== "number") return null
-  if (typeof params.position.character !== "number") return null
-
-  return {
-    uri: params.textDocument.uri,
-    position: {
-      line: params.position.line,
-      character: params.position.character,
-    },
+function appendFileTextChanges(
+  ctx: SessionContext,
+  changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
+  fileChange: ts.FileTextChanges,
+): void {
+  for (const textChange of fileChange.textChanges) {
+    appendTextChange(ctx, changes, fileChange.fileName, textChange)
   }
 }
 
-function documentText(ctx: SessionContext, fileName: string): string | null {
-  return readFile(ctx, fileName) ?? null
+function appendTextChange(
+  ctx: SessionContext,
+  changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
+  fileName: string,
+  textChange: ts.TextChange,
+): void {
+  const normalized = normalizeNativePath(fileName)
+  if (!isInsidePath(ctx.root, normalized)) return
+
+  const text = documentText(ctx, normalized)
+  if (text === null) return
+
+  const uri = documentUriForFileName(ctx, normalized)
+  const edits = changes[uri] ?? []
+  edits.push({
+    range: rangeFromTextSpan(text, textChange.span),
+    newText: textChange.newText,
+  })
+  changes[uri] = edits
 }
 
-function readFile(ctx: SessionContext, fileName: string): string | undefined {
+function codeActionParams(params: unknown): {
+  uri: lsp.DocumentUri
+  range: lsp.Range
+  diagnostics: readonly lsp.Diagnostic[]
+} | null {
+  if (!isRecord(params)) return null
+  if (!isRecord(params.textDocument)) return null
+  if (!isRecord(params.range)) return null
+  if (!isRecord(params.context)) return null
+  if (typeof params.textDocument.uri !== "string") return null
+  if (!isLspRange(params.range)) return null
+  if (!Array.isArray(params.context.diagnostics)) return null
+
+  return {
+    uri: params.textDocument.uri,
+    range: params.range,
+    diagnostics: params.context.diagnostics as lsp.Diagnostic[],
+  }
+}
+
+function isLspRange(value: Record<string, unknown>): value is lsp.Range {
+  if (!isRecord(value.start)) return false
+  if (!isRecord(value.end)) return false
+  if (typeof value.start.line !== "number") return false
+  if (typeof value.start.character !== "number") return false
+  if (typeof value.end.line !== "number") return false
+  return typeof value.end.character === "number"
+}
+
+function diagnosticCode(diagnostic: lsp.Diagnostic): readonly number[] {
+  if (typeof diagnostic.code === "number") return [diagnostic.code]
+  if (typeof diagnostic.code !== "string") return []
+  const parsed = Number(diagnostic.code)
+  return Number.isInteger(parsed) ? [parsed] : []
+}
+
+function documentText(ctx: SessionContext, fileName: string): string | null {
   const normalized = normalizeNativePath(fileName)
   for (const document of ctx.documents.values()) {
     if (samePath(document.fileName, normalized)) return document.text
   }
-  if (!canReadFile(ctx, normalized)) return undefined
-  return ts.sys.readFile(normalized)
+  if (!canReadFile(ctx, normalized)) return null
+  return ts.sys.readFile(normalized) ?? null
 }
 
 function canReadFile(ctx: SessionContext, fileName: string): boolean {

@@ -5,8 +5,6 @@
  * type, a layered input-to-category mapper, a category-derived human message
  * helper, and a `reportError` sink that toasts critical categories and
  * always logs.
- *
- * Codebase-review-remediation spec: Requirements 7.1, 7.2, 7.3, 7.4, 7.6.
  */
 
 import { toast } from "sonner"
@@ -19,8 +17,8 @@ import type { ErrorCategory } from "@workspace/contracts"
 /**
  * Re-export {@link ErrorCategory} from `@workspace/contracts` so the client
  * and server share a single source of truth for the eight category
- * identifiers (Req 5.1, 7.1). The mapping from server `FsErrorCode` values
- * to categories still lives in this module via {@link toClientError}.
+ * identifiers. The mapping from server `FsErrorCode` values to categories
+ * still lives in this module via {@link toClientError}.
  */
 export type { ErrorCategory }
 
@@ -31,8 +29,8 @@ export type ClientError = {
 }
 
 /**
- * Human-readable message per category. Each message is distinct (Req 7.4):
- * no two categories share the same string.
+ * Human-readable message per category. Each message is distinct: no two
+ * categories share the same string.
  */
 export const messagesByCategory: Record<ErrorCategory, string> = {
   not_found: "The requested file or folder could not be found.",
@@ -74,7 +72,7 @@ type FsErrorCode =
   // `watchError`). Not part of the server's `FsError` union but reaches the
   // client through the same error-shape `{ type: "error", code, message }`,
   // and is conceptually an IO failure, so we recognize it here to preserve
-  // the pre-taxonomy "File watcher stopped" toast (Req 7.6).
+  // the pre-taxonomy "File watcher stopped" toast.
   | "WATCH_FAILED"
 
 const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
@@ -100,16 +98,14 @@ const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
 
 /**
  * Map any incoming error value to a {@link ClientError}. Total over
- * `unknown`: never throws, always returns one of the eight categories
- * (Req 7.2, 7.3).
+ * `unknown`: never throws, always returns one of the eight categories.
  *
  * Recognition is layered:
  *   1. Eden RPC error payloads carrying `{ value: { error: { code } } }`.
  *   2. Plain objects with a top-level string `code` (direct server
  *      responses or rethrown payloads).
  *   3. `DOMException` with name `"AbortError"` → `unknown`. Surface-policy
- *      filtering in {@link reportError} skips toasts for this case
- *      (Req 7 "AbortError passthrough").
+ *      filtering in {@link reportError} skips toasts for this case.
  *   4. Otherwise → `unknown`.
  */
 export function toClientError(input: unknown): ClientError {
@@ -140,8 +136,8 @@ export function toClientError(input: unknown): ClientError {
 
 /**
  * Derive a human-readable message from `input`. Output is drawn exclusively
- * from {@link messagesByCategory} per the mapped category (Req 7.4), so
- * messages never leak raw server strings into the UI.
+ * from {@link messagesByCategory} per the mapped category, so messages
+ * never leak raw server strings into the UI.
  */
 export function errorMessage(input: unknown): string {
   return toClientError(input).message
@@ -149,8 +145,8 @@ export function errorMessage(input: unknown): string {
 
 /**
  * Surface an error. Always logs via `console.error`; additionally emits a
- * `sonner` toast for the five user-actionable categories (Req 7.6). Aborts
- * routed through `unknown` remain silent.
+ * `sonner` toast for the five user-actionable categories. Aborts routed
+ * through `unknown` remain silent.
  */
 export function reportError(error: ClientError): void {
   // Always log. `apps/web` has no dedicated structured logger today, so

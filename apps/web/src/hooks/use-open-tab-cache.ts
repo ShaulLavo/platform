@@ -4,8 +4,8 @@ import { useQueryClient } from "@tanstack/react-query"
 import {
   type CachedEditorDocument,
   useEditorDocumentState,
-} from "@/components/editor/state/editor-document-state"
-import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
+} from "@/features/editor/state/editor-document-state"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import type { FileResult } from "@/lib/file-system-types"
 import { fetchFile } from "@/lib/file-server"

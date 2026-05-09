@@ -9,7 +9,7 @@ import {
   formatHistoryStatus,
   formatSyntaxStatus,
   formatTypeScriptLspStatus,
-} from "@/components/editor/status-formatters"
+} from "@/features/editor/utils/status-formatters"
 
 type EditorStatusBarProps = {
   charCount: number

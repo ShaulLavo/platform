@@ -1,4 +1,4 @@
-import { useEditorCommands } from "@/components/editor/state/editor-commands"
+import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { gitKeys } from "@/lib/query-keys"
 import { useQueryClient } from "@tanstack/react-query"
 import { fetchDiff } from "../api"

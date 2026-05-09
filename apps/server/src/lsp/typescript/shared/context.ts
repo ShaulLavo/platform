@@ -4,9 +4,9 @@ import type * as lsp from "vscode-languageserver-protocol"
 /**
  * Open document tracked by the TypeScript LSP session.
  *
- * Mirrors the shape used internally by `session.ts` today; re-homed here so
- * that handler modules (Req 6.1) can reference the same structural type
- * without reaching into the session class.
+ * Mirrors the shape used internally by `session.ts`; re-homed here so that
+ * handler modules can reference the same structural type without reaching
+ * into the session class.
  */
 export type OpenDocument = {
   uri: lsp.DocumentUri
@@ -17,28 +17,26 @@ export type OpenDocument = {
 }
 
 /**
- * Shared session state passed to every extracted LSP handler (Req 6.2).
+ * Shared session state passed to every extracted LSP handler.
  *
  * Handlers receive a `SessionContext` instead of a reference to the
  * `TypeScriptLspSession` class, which keeps each handler module a pure
  * function of its inputs and avoids circular imports between `session.ts`
  * and `handlers/*`.
  *
- * The shape matches design §"Req 6":
- *
  * - `root` / `workspaceRoot` — normalized absolute paths the session was
  *   constructed with.
  * - `documents` — live document registry keyed by LSP document URI.
  * - `getLanguageService` / `getProjectVersion` — late-bound accessors so
  *   handlers always observe the current language service instance and
- *   project version, even after Req 14 invalidation rebuilds them.
+ *   project version, even after invalidation rebuilds them.
  * - `scheduleDiagnostics` / `clearScheduledDiagnostics` — debounced
  *   diagnostic publish scheduling used by lifecycle handlers.
  * - `bumpScriptVersion` — per-file script-version bookkeeping consumed by
- *   `didOpen` / `didChange` / `didClose` (Req 6.2, Req 14).
+ *   `didOpen` / `didChange` / `didClose`.
  * - `invalidateForFileContentChange` / `invalidateForProjectConfigChange` —
- *   incremental invalidation primitives (Req 14). `*FileContentChange` keeps
- *   the language service alive; `*ProjectConfigChange` disposes and rebuilds.
+ *   incremental invalidation primitives. `*FileContentChange` keeps the
+ *   language service alive; `*ProjectConfigChange` disposes and rebuilds.
  * - `postDiagnostics` / `postLogMessage` / `postResponse` / `postResponseError`
  *   — JSON-RPC send helpers. Handlers never touch the underlying transport
  *   directly.
@@ -46,12 +44,11 @@ export type OpenDocument = {
  *   `initializationOptions`; read-only for handlers.
  * - `applyInitializationOptions` — mutation surface the `initialize` handler
  *   uses to replace the session-scoped compiler-options override and
- *   diagnostic-publish delay in a single call (Req 6.1). Omitted fields
- *   reset to their documented defaults (`{}` for `compilerOptions`,
+ *   diagnostic-publish delay in a single call. Omitted fields reset to
+ *   their documented defaults (`{}` for `compilerOptions`,
  *   `DEFAULT_DIAGNOSTIC_DELAY_MS` for `diagnosticDelayMs`). Callers are
  *   expected to follow up with `invalidateForProjectConfigChange()` because
- *   applying new compiler options requires rebuilding the language service
- *   (Req 14.1, Req 14.3).
+ *   applying new compiler options requires rebuilding the language service.
  */
 export type SessionContext = {
   readonly root: string

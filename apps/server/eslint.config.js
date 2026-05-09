@@ -19,10 +19,6 @@ export default defineConfig([
       },
     },
     rules: {
-      // Requirement 3.5: `isRecord` is owned by `@workspace/contracts` and must
-      // not be redefined locally. The canonical declaration lives in
-      // `packages/contracts/src/is-record.ts`; everything else must import it
-      // from `@workspace/contracts`.
       'no-restricted-syntax': [
         'error',
         {

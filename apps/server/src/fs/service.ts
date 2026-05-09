@@ -342,23 +342,6 @@ function pathBasename(input: string) {
   return parts.at(-1) ?? "Root"
 }
 
-/**
- * Compile-time interface completeness assertions (Requirements 2.2, 2.6).
- *
- * Forward conformance: `_assertImplements` verifies that a value of type
- * `FileSystemService` is assignable to `FileSystem_Interface` — every member
- * declared on the interface exists on the class with a compatible signature.
- *
- * Reverse conformance: `_MissingOnInterface` collects every public key of
- * `FileSystemService` that is not mirrored on `FileSystem_Interface`.
- * TypeScript excludes `private`/`protected` fields (`maxSearchContentBytes`,
- * `maxTextFileBytes`, `treeConcurrency`) from `keyof FileSystemService`, so
- * this computation naturally surfaces only the public surface. The
- * `_requireEmpty` binding forces `_MissingOnInterface` to resolve to `never`;
- * if a new public member is added to `FileSystemService` without being added
- * to `FileSystem_Interface`, the conditional type resolves to `never` and the
- * `true` initializer fails to compile, breaking `turbo typecheck`.
- */
 const _assertImplements: FileSystem_Interface = {} as FileSystemService
 type _MissingOnInterface = Exclude<
   keyof FileSystemService,

@@ -1,21 +1,21 @@
-import { fallbackDocumentPathForSelection } from "@/components/editor/state/editor-fallback-path"
+import { fallbackDocumentPathForSelection } from "@/features/editor/state/editor-fallback-path"
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
-} from "@/components/editor/state/editor-document-state"
+} from "@/features/editor/state/editor-document-state"
 import {
   nextSelectedFilePath,
   openFilePathList,
   renameOpenFilePath,
-} from "@/components/editor/state/editor-tab-paths"
+} from "@/features/editor/state/editor-tab-paths"
 import {
   useEditorUiStoreApi,
   type EditorUiStoreApi,
-} from "@/components/editor/state/editor-ui-state"
+} from "@/features/editor/state/editor-ui-state"
 import {
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStoreApi,
-} from "@/components/editor/state/editor-workspace-state"
+} from "@/features/editor/state/editor-workspace-state"
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 import { useMemo } from "react"
