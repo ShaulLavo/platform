@@ -38,10 +38,11 @@ export function FileViewer({
   )
   const setStatusBarState = useEditorState((state) => state.setStatusBarState)
   const openDefinition = useEditorState((state) => state.openDefinition)
-  const selectedFile = selectedReadyFile(fileState, selectedFilePath)
+  const selectedFile = readyFile(fileState)
+  const visibleFilePath = selectedFile?.path ?? selectedFilePath
   const cachedDocument =
-    selectedFilePath && documentCacheVersion >= 0
-      ? getCachedEditorDocument(selectedFilePath)
+    visibleFilePath && documentCacheVersion >= 0
+      ? getCachedEditorDocument(visibleFilePath)
       : null
 
   useEffect(() => {
@@ -148,12 +149,8 @@ function FileViewerLoading() {
   )
 }
 
-function selectedReadyFile(
-  fileState: LoadState<FileResult>,
-  selectedFilePath: string | null
-) {
+function readyFile(fileState: LoadState<FileResult>) {
   if (fileState.status !== "ready") return null
-  if (fileState.data.path !== selectedFilePath) return null
 
   return fileState.data
 }

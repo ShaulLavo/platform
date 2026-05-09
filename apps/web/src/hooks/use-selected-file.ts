@@ -40,9 +40,10 @@ function fileLoadState(
   if (query.data?.path === selectedFilePath) {
     return { status: "ready", data: query.data }
   }
+  if (query.data) return { status: "ready", data: query.data }
   if (query.isError)
     return { status: "error", message: errorMessage(query.error) }
-  if (query.isPending || query.data) return { status: "loading" }
+  if (query.isPending) return { status: "loading" }
 
   return idleState
 }
