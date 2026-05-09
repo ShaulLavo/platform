@@ -36,12 +36,6 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
     queryClient.removeQueries({ queryKey: fileSystemKeys.trees() })
   }
 
-  function retryTreeLoad() {
-    if (!rootFolder) return
-
-    void queryClient.invalidateQueries({ queryKey: rootTreeKey })
-  }
-
   function loadTreeDirectory(entry: TreeEntry, treePath: string) {
     if (!rootFolder) return
     if (treeState.status !== "ready") return
@@ -96,7 +90,6 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
   return {
     loadTreeDirectory,
     resetTreeLoad,
-    retryTreeLoad,
     treeState,
   }
 }

@@ -39,7 +39,7 @@ export function EditorTabBar() {
   return (
     <nav
       aria-label="Open files"
-      className="flex h-10 min-w-0 shrink-0 overflow-x-auto border-b bg-muted/30"
+      className="app-scrollbar-thin flex h-10 min-w-0 shrink-0 overflow-x-auto border-b bg-muted/30"
       ref={tabListRef}
       role="tablist"
     >

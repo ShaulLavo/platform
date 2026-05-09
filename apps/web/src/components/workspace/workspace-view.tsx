@@ -1,5 +1,3 @@
-import { ArrowClockwiseIcon } from "@phosphor-icons/react"
-
 import { EditorStatusBar } from "@/components/editor/editor-status-bar"
 import { useEditorState } from "@/components/editor/editor-state"
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
@@ -12,20 +10,17 @@ import {
   treeStateLabel,
   type TreeModel,
 } from "@/lib/tree-model"
-import { Button } from "@workspace/ui/components/button"
 
 export function WorkspaceView({
   fileState,
   rootFolder,
   treeState,
   onLoadDirectory,
-  onRetryTree,
 }: {
   fileState: LoadState<FileResult>
   rootFolder: PickedFsEntry
   treeState: LoadState<TreeModel>
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
-  onRetryTree: () => void
 }) {
   const statusBarState = useEditorState((state) => state.statusBarState)
   const treeModel = treeState.status === "ready" ? treeState.data : null
@@ -34,7 +29,7 @@ export function WorkspaceView({
     <div className="min-h-0 flex-1 overflow-auto">
       <div className="grid h-full min-w-[1024px] grid-cols-[320px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
         <aside className="flex min-h-0 flex-col border-r">
-          <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-3">
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
             <div className="min-w-0">
               <div className="truncate text-xs font-medium">
                 {rootFolder.name}
@@ -43,15 +38,6 @@ export function WorkspaceView({
                 {treeStateLabel(treeState)}
               </div>
             </div>
-            <Button
-              aria-label="Refresh tree"
-              onClick={onRetryTree}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <ArrowClockwiseIcon />
-            </Button>
           </div>
           <div className="min-h-0 flex-1">
             <TreePane

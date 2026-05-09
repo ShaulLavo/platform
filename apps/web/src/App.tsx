@@ -33,7 +33,7 @@ function AppContent() {
   const openPicker = useEditorState((state) => state.openPicker)
   const pickRootFolder = useEditorState((state) => state.pickRootFolder)
   const setPickerOpen = useEditorState((state) => state.setPickerOpen)
-  const { loadTreeDirectory, resetTreeLoad, retryTreeLoad, treeState } =
+  const { loadTreeDirectory, resetTreeLoad, treeState } =
     useWorkspaceTree(rootFolder)
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
   useWorkspaceEvents(rootFolder)
@@ -61,7 +61,6 @@ function AppContent() {
             rootFolder={rootFolder}
             treeState={treeState}
             onLoadDirectory={loadTreeDirectory}
-            onRetryTree={retryTreeLoad}
           />
         ) : (
           <EmptyWorkspace onChooseFolder={openPicker} />
