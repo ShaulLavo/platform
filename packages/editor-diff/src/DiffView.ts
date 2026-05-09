@@ -22,13 +22,17 @@ import type {
 } from "./types"
 
 type MountedPane = {
-  readonly view: VirtualizedTextView
-  readonly rows: readonly DiffRenderRow[]
+  rows: readonly DiffRenderRow[]
+  syntaxGeneration: number
+  tokens?: readonly EditorToken[]
   readonly side: "old" | "new" | "stacked"
+  readonly view: VirtualizedTextView
+  readonly disposeEvents: () => void
   syntaxSession?: { dispose(): void }
 }
 
 const DEFAULT_THEME = "github-dark"
+const WHEEL_LINE_DELTA = 40
 let nextDiffViewId = 0
 
 export class DiffView {
@@ -42,6 +46,8 @@ export class DiffView {
   private mode: DiffViewMode
   private panes: MountedPane[] = []
   private hunkRows: ReadonlyMap<number, number> = new Map()
+  private expandedHunksByPath = new Map<string, Set<number>>()
+  private disposeScrollSync: (() => void) | null = null
   private syncingScroll = false
 
   constructor(container: HTMLElement, options: DiffViewOptions = {}) {
@@ -134,7 +140,9 @@ export class DiffView {
   }
 
   private renderSplitFile(file: DiffFile): void {
-    const projection = createSplitProjection(file)
+    const projection = createSplitProjection(file, {
+      expandedHunks: this.expandedHunksForFile(file),
+    })
     this.hunkRows = projection.hunkRows
     const split = this.root.ownerDocument.createElement("div")
     split.className = "editor-diff-split"
@@ -142,11 +150,13 @@ export class DiffView {
     const left = this.createPane(split, "old", projection.leftRows, file)
     const right = this.createPane(split, "new", projection.rightRows, file)
     this.panes = [left, right]
-    this.installScrollSync(left.view, right.view)
+    this.disposeScrollSync = this.installScrollSync(left.view, right.view)
   }
 
   private renderStackedFile(file: DiffFile): void {
-    const projection = createStackedProjection(file)
+    const projection = createStackedProjection(file, {
+      expandedHunks: this.expandedHunksForFile(file),
+    })
     this.hunkRows = projection.hunkRows
     const pane = this.createPane(this.content, "stacked", projection.rows, file)
     this.panes = [pane]
@@ -161,9 +171,12 @@ export class DiffView {
     const host = this.root.ownerDocument.createElement("div")
     host.className = `editor-diff-pane editor-diff-pane-${side}`
     parent.appendChild(host)
+    let mountedPane: MountedPane | null = null
     const view = new VirtualizedTextView(host, {
       className: "editor-diff-text editor-virtualized",
-      gutterContributions: [createDiffGutterContribution(side, () => rows)],
+      gutterContributions: [
+        createDiffGutterContribution(side, () => mountedPane?.rows ?? rows),
+      ],
       lineHeight: this.options.lineHeight,
       selectionHighlightName: `${this.highlightPrefix}-${side}-selection`,
       tabSize: this.options.tabSize,
@@ -178,36 +191,203 @@ export class DiffView {
         backgroundColor: "rgba(255, 255, 255, 0.18)",
       }
     )
-    void this.applySyntaxHighlighting({ view, rows, side }, file).catch(
-      (error: unknown) => {
-        console.warn("[editor/diff] syntax highlighting failed", error)
+    const disposeEvents = this.installPaneInteractions(
+      view,
+      () => mountedPane?.rows ?? rows
+    )
+    mountedPane = { view, rows, side, disposeEvents, syntaxGeneration: 0 }
+    this.refreshSyntaxHighlighting(mountedPane, file)
+    return mountedPane
+  }
+
+  private installPaneInteractions(
+    view: VirtualizedTextView,
+    getRows: () => readonly DiffRenderRow[]
+  ): () => void {
+    const onClick = (event: MouseEvent) => this.handlePaneClick(event, getRows)
+    view.scrollElement.addEventListener("click", onClick)
+    return () => view.scrollElement.removeEventListener("click", onClick)
+  }
+
+  private handlePaneClick(
+    event: MouseEvent,
+    getRows: () => readonly DiffRenderRow[]
+  ): void {
+    const target = event.target
+    if (!(target instanceof Element)) return
+
+    const rowElement = target.closest<HTMLElement>("[data-editor-virtual-row]")
+    if (!rowElement) return
+
+    this.toggleRowHunk(getRows()[Number(rowElement.dataset.editorVirtualRow)])
+  }
+
+  private toggleRowHunk(row: DiffRenderRow | undefined): void {
+    if (row?.type !== "hunk") return
+    if (!row.expandable) return
+    if (row.hunkIndex === undefined) return
+
+    const file = this.selectedFile()
+    if (!file) return
+
+    toggleSetValue(this.mutableExpandedHunksForFile(file), row.hunkIndex)
+    this.updateSelectedFilePanes(file)
+  }
+
+  private updateSelectedFilePanes(file: DiffFile): void {
+    if (this.mode === "stacked") {
+      this.updateStackedFile(file)
+      return
+    }
+
+    this.updateSplitFile(file)
+  }
+
+  private updateSplitFile(file: DiffFile): void {
+    const left = this.panes[0]
+    const right = this.panes[1]
+    if (!left || !right || left.side !== "old" || right.side !== "new") {
+      this.renderSelectedFile()
+      return
+    }
+
+    const projection = createSplitProjection(file, {
+      expandedHunks: this.expandedHunksForFile(file),
+    })
+    this.hunkRows = projection.hunkRows
+    this.updatePaneRows(left, projection.leftRows, file)
+    this.updatePaneRows(right, projection.rightRows, file)
+  }
+
+  private updateStackedFile(file: DiffFile): void {
+    const pane = this.panes[0]
+    if (!pane || pane.side !== "stacked") {
+      this.renderSelectedFile()
+      return
+    }
+
+    const projection = createStackedProjection(file, {
+      expandedHunks: this.expandedHunksForFile(file),
+    })
+    this.hunkRows = projection.hunkRows
+    this.updatePaneRows(pane, projection.rows, file)
+  }
+
+  private updatePaneRows(
+    pane: MountedPane,
+    rows: readonly DiffRenderRow[],
+    file: DiffFile
+  ): void {
+    pane.rows = rows
+    pane.view.setText(joinRenderLines(rows))
+    if (pane.tokens) pane.view.setTokens(pane.tokens)
+    pane.view.setRowDecorations(rowDecorations(rows))
+    pane.view.setRangeHighlight(
+      this.inlineHighlightName(pane.side),
+      inlineHighlightRanges(rows),
+      {
+        backgroundColor: "rgba(255, 255, 255, 0.18)",
       }
     )
-    return { view, rows, side }
+    this.refreshSyntaxHighlighting(pane, file)
   }
 
   private installScrollSync(
     left: VirtualizedTextView,
     right: VirtualizedTextView
-  ): void {
-    left.scrollElement.addEventListener("scroll", () =>
-      this.syncScroll(left, right)
-    )
-    right.scrollElement.addEventListener("scroll", () =>
-      this.syncScroll(right, left)
-    )
+  ): () => void {
+    const leftElement = left.scrollElement
+    const rightElement = right.scrollElement
+    let pendingFrame = 0
+    let pendingSource: HTMLElement | null = null
+    let pendingTarget: HTMLElement | null = null
+
+    const onLeftWheel = (event: WheelEvent) =>
+      this.syncWheelScroll(event, leftElement, rightElement)
+    const onRightWheel = (event: WheelEvent) =>
+      this.syncWheelScroll(event, rightElement, leftElement)
+    const onLeftScroll = () => {
+      if (this.syncingScroll) return
+
+      pendingSource = leftElement
+      pendingTarget = rightElement
+      pendingFrame ||=
+        this.root.ownerDocument.defaultView?.requestAnimationFrame(
+          flushPendingScroll
+        ) ?? 0
+    }
+    const onRightScroll = () => {
+      if (this.syncingScroll) return
+
+      pendingSource = rightElement
+      pendingTarget = leftElement
+      pendingFrame ||=
+        this.root.ownerDocument.defaultView?.requestAnimationFrame(
+          flushPendingScroll
+        ) ?? 0
+    }
+    const flushPendingScroll = () => {
+      pendingFrame = 0
+      if (!pendingSource || !pendingTarget) return
+
+      this.syncScrollElements(pendingSource, pendingTarget)
+      pendingSource = null
+      pendingTarget = null
+    }
+
+    leftElement.addEventListener("wheel", onLeftWheel, { passive: false })
+    rightElement.addEventListener("wheel", onRightWheel, { passive: false })
+    leftElement.addEventListener("scroll", onLeftScroll)
+    rightElement.addEventListener("scroll", onRightScroll)
+
+    return () => {
+      const view = this.root.ownerDocument.defaultView
+      if (pendingFrame) view?.cancelAnimationFrame(pendingFrame)
+      leftElement.removeEventListener("wheel", onLeftWheel)
+      rightElement.removeEventListener("wheel", onRightWheel)
+      leftElement.removeEventListener("scroll", onLeftScroll)
+      rightElement.removeEventListener("scroll", onRightScroll)
+    }
   }
 
-  private syncScroll(
-    source: VirtualizedTextView,
-    target: VirtualizedTextView
+  private syncWheelScroll(
+    event: WheelEvent,
+    source: HTMLElement,
+    target: HTMLElement
   ): void {
-    if (this.syncingScroll) return
+    if (!event.cancelable) return
 
+    const delta = normalizedWheelDelta(event, source)
+    if (!delta.top && !delta.left) return
+
+    event.preventDefault()
+    this.withScrollSync(() => {
+      const beforeTop = source.scrollTop
+      const beforeLeft = source.scrollLeft
+      source.scrollTop += delta.top
+      source.scrollLeft += delta.left
+      target.scrollTop += source.scrollTop - beforeTop
+      target.scrollLeft += source.scrollLeft - beforeLeft
+    })
+  }
+
+  private syncScrollElements(source: HTMLElement, target: HTMLElement): void {
+    this.withScrollSync(() => {
+      target.scrollTop = source.scrollTop
+      target.scrollLeft = source.scrollLeft
+    })
+  }
+
+  private withScrollSync(sync: () => void): void {
     this.syncingScroll = true
-    target.scrollElement.scrollTop = source.scrollElement.scrollTop
-    target.scrollElement.scrollLeft = source.scrollElement.scrollLeft
-    this.syncingScroll = false
+    sync()
+    const view = this.root.ownerDocument.defaultView
+    if (!view) {
+      this.syncingScroll = false
+      return
+    }
+
+    view.requestAnimationFrame(() => (this.syncingScroll = false))
   }
 
   private renderEmptyState(text: string): void {
@@ -227,16 +407,45 @@ export class DiffView {
   }
 
   private disposePanes(): void {
+    this.disposeScrollSync?.()
+    this.disposeScrollSync = null
     for (const pane of this.panes) {
+      pane.disposeEvents()
       pane.syntaxSession?.dispose()
       pane.view.dispose()
     }
     this.panes = []
   }
 
+  private expandedHunksForFile(file: DiffFile): ReadonlySet<number> {
+    return this.expandedHunksByPath.get(file.path) ?? new Set()
+  }
+
+  private mutableExpandedHunksForFile(file: DiffFile): Set<number> {
+    const existing = this.expandedHunksByPath.get(file.path)
+    if (existing) return existing
+
+    const next = new Set<number>()
+    this.expandedHunksByPath.set(file.path, next)
+    return next
+  }
+
+  private refreshSyntaxHighlighting(pane: MountedPane, file: DiffFile): void {
+    pane.syntaxSession?.dispose()
+    pane.syntaxSession = undefined
+    pane.syntaxGeneration += 1
+    const generation = pane.syntaxGeneration
+    void this.applySyntaxHighlighting(pane, file, generation).catch(
+      (error: unknown) => {
+        console.warn("[editor/diff] syntax highlighting failed", error)
+      }
+    )
+  }
+
   private async applySyntaxHighlighting(
     pane: MountedPane,
-    file: DiffFile
+    file: DiffFile,
+    generation: number
   ): Promise<void> {
     if (this.options.syntaxHighlight === false) return
     if (!canUseShikiWorker()) return
@@ -258,13 +467,24 @@ export class DiffView {
     })
     if (!session) return
 
+    if (pane.syntaxGeneration !== generation) {
+      session.dispose()
+      return
+    }
+
     pane.syntaxSession = session
     const [theme, result] = await Promise.all([
       loadConfiguredTheme(this.options.theme),
       session.refresh(snapshot, syntaxText),
     ])
-    pane.view.setTheme(result.theme ?? theme)
-    pane.view.setTokens(result.tokens as readonly EditorToken[])
+    if (pane.syntaxGeneration !== generation) {
+      session.dispose()
+      return
+    }
+
+    pane.view.setTheme(syntaxOnlyTheme(result.theme ?? theme))
+    pane.tokens = result.tokens as readonly EditorToken[]
+    pane.view.setTokens(pane.tokens)
   }
 
   private inlineHighlightName(side: MountedPane["side"]): string {
@@ -278,6 +498,41 @@ function selectedPathForFiles(
 ): string | null {
   if (current && files.some((file) => file.path === current)) return current
   return files[0]?.path ?? null
+}
+
+function toggleSetValue(set: Set<number>, value: number): void {
+  if (set.delete(value)) return
+
+  set.add(value)
+}
+
+function normalizedWheelDelta(
+  event: WheelEvent,
+  element: HTMLElement
+): { left: number; top: number } {
+  const multiplier = wheelDeltaMultiplier(event, element)
+  const top = event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY
+  const left =
+    event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
+  return {
+    left: left * multiplier,
+    top: top * multiplier,
+  }
+}
+
+function wheelDeltaMultiplier(event: WheelEvent, element: HTMLElement): number {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return WHEEL_LINE_DELTA
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return element.clientHeight
+
+  return 1
+}
+
+function syntaxOnlyTheme(
+  theme: EditorTheme | null | undefined
+): EditorTheme | null {
+  if (!theme) return null
+
+  return { syntax: theme.syntax }
 }
 
 function rowDecorations(
@@ -316,8 +571,9 @@ function appendInlineRanges(
 
 function decorationForRow(row: DiffRenderRow): VirtualizedTextRowDecoration {
   const suffix = row.type
+  const expandable = row.expandable ? " editor-diff-row-expandable" : ""
   return {
-    className: `editor-diff-row editor-diff-row-${suffix}`,
+    className: `editor-diff-row editor-diff-row-${suffix}${expandable}`,
     gutterClassName: `editor-diff-gutter-row editor-diff-gutter-row-${suffix}`,
   }
 }

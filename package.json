@@ -7,7 +7,8 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "verify:spelling": "bash scripts/verify-no-refrences.sh"
   },
   "devDependencies": {
     "prettier": "^3.8.1",

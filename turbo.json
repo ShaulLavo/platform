@@ -8,7 +8,10 @@
       "outputs": ["dist/**"]
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^lint", "//#verify:spelling"]
+    },
+    "//#verify:spelling": {
+      "inputs": ["scripts/verify-no-refrences.sh", "**/*", "!.kiro/specs/**"]
     },
     "format": {
       "dependsOn": ["^format"]

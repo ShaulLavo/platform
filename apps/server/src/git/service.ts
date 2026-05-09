@@ -147,7 +147,9 @@ export class GitService {
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
     const diffs = parseDiff(result.stdout, repository.rootPath, staged)
-    return Promise.all(diffs.map((diff) => this.withDiffContent(repository, diff)))
+    return Promise.all(
+      diffs.map((diff) => this.withDiffContent(repository, diff))
+    )
   }
 
   async file(input: string, ref: string) {
@@ -155,7 +157,10 @@ export class GitService {
     if (!repository?.pathspec) throw new FsError("GIT_REPOSITORY_NOT_FOUND")
 
     const revisionPath = `${ref}:${repository.pathspec}`
-    const result = await this.git(repository.rootAbsolutePath, ["show", revisionPath])
+    const result = await this.git(repository.rootAbsolutePath, [
+      "show",
+      revisionPath,
+    ])
     return { content: result.stdout, path: input, ref }
   }
 
@@ -224,7 +229,8 @@ export class GitService {
     const repository = await this.resolveRepository(input)
     if (!repository) return { repository: null, branches: [] }
 
-    const format = "%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(objectname:short)%00"
+    const format =
+      "%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(objectname:short)%00"
     const result = await this.git(repository.rootAbsolutePath, [
       "branch",
       "--format",
@@ -275,8 +281,10 @@ export class GitService {
   private async resolveMutationTarget(body: GitPathsBody) {
     const paths = mutationPaths(body)
     const repository = await this.requiredRepository(paths[0])
-    const pathspecs = paths.map((input) =>
-      this.pathspecForRepository(repository.rootDisplayAbsolutePath, input) ?? "."
+    const pathspecs = paths.map(
+      (input) =>
+        this.pathspecForRepository(repository.rootDisplayAbsolutePath, input) ??
+        "."
     )
 
     return { pathspecs, repository }
@@ -365,7 +373,10 @@ export class GitService {
   }
 
   private async oldDiffContent(repository: GitRepository, diff: GitFileDiff) {
-    const path = repositoryRelativePath(repository.rootPath, diff.oldPath ?? diff.path)
+    const path = repositoryRelativePath(
+      repository.rootPath,
+      diff.oldPath ?? diff.path
+    )
     if (!path) return ""
     if (diff.oldFileMissing) return ""
     if (diff.staged) return this.gitText(repository, `HEAD:${path}`)
@@ -383,16 +394,26 @@ export class GitService {
   }
 
   private async gitText(repository: GitRepository, revisionPath: string) {
-    const result = await this.git(repository.rootAbsolutePath, ["show", revisionPath], {
-      allowFailure: true,
-    })
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      ["show", revisionPath],
+      {
+        allowFailure: true,
+      }
+    )
     if (result.exitCode !== 0) return ""
 
     return result.stdout
   }
 
-  private async workingTreeText(repository: GitRepository, relativePath: string) {
-    const absolutePath = path.join(repository.rootDisplayAbsolutePath, relativePath)
+  private async workingTreeText(
+    repository: GitRepository,
+    relativePath: string
+  ) {
+    const absolutePath = path.join(
+      repository.rootDisplayAbsolutePath,
+      relativePath
+    )
     this.paths.assertInside(absolutePath)
 
     try {
@@ -457,7 +478,10 @@ function lexicalRepositoryRoot(cwd: string, prefix: string) {
   return path.resolve(cwd, ...segments.map(() => ".."))
 }
 
-function parseRepositoryInfo(output: string, rootPath: string): GitRepositoryInfo {
+function parseRepositoryInfo(
+  output: string,
+  rootPath: string
+): GitRepositoryInfo {
   const branch = {
     ahead: 0,
     behind: 0,
@@ -481,7 +505,12 @@ function parseRepositoryInfo(output: string, rootPath: string): GitRepositoryInf
 }
 
 function applyBranchRecord(
-  branch: { ahead: number; behind: number; commit: string | null; name: string | null },
+  branch: {
+    ahead: number
+    behind: number
+    commit: string | null
+    name: string | null
+  },
   record: string
 ) {
   const value = record.slice(STATUS_BRANCH_PREFIX.length)
@@ -525,11 +554,16 @@ function parseStatusRecord(
   rootPath: string
 ) {
   const record = records[index] ?? ""
-  if (record.startsWith("1 ")) return parseOrdinaryStatus(record, rootPath, index)
-  if (record.startsWith("2 ")) return parseRenamedStatus(records, rootPath, index)
-  if (record.startsWith("u ")) return parseUnmergedStatus(record, rootPath, index)
-  if (record.startsWith("? ")) return untrackedStatus(record.slice(2), rootPath, index)
-  if (record.startsWith("! ")) return ignoredStatus(record.slice(2), rootPath, index)
+  if (record.startsWith("1 "))
+    return parseOrdinaryStatus(record, rootPath, index)
+  if (record.startsWith("2 "))
+    return parseRenamedStatus(records, rootPath, index)
+  if (record.startsWith("u "))
+    return parseUnmergedStatus(record, rootPath, index)
+  if (record.startsWith("? "))
+    return untrackedStatus(record.slice(2), rootPath, index)
+  if (record.startsWith("! "))
+    return ignoredStatus(record.slice(2), rootPath, index)
 
   return null
 }
@@ -650,10 +684,13 @@ function parseDiff(output: string, rootPath: string, staged: boolean) {
     if (!current) continue
 
     current.lines.push(line)
-    if (line.startsWith("rename from ")) current.oldPath = joinPath(rootPath, line.slice(12))
-    if (line.startsWith("rename to ")) current.path = joinPath(rootPath, line.slice(10))
+    if (line.startsWith("rename from "))
+      current.oldPath = joinPath(rootPath, line.slice(12))
+    if (line.startsWith("rename to "))
+      current.path = joinPath(rootPath, line.slice(10))
     if (line === "--- /dev/null") current.oldFileMissing = true
-    if (line.startsWith("--- ")) current.oldPath = diffPath(rootPath, line, "a/")
+    if (line.startsWith("--- "))
+      current.oldPath = diffPath(rootPath, line, "a/")
     if (line === "+++ /dev/null") current.newFileMissing = true
     if (line.startsWith("+++ ")) {
       current.path = diffPath(rootPath, line, "b/") ?? current.path

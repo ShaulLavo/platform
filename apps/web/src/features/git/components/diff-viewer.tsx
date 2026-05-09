@@ -79,7 +79,7 @@ function EditorDiffView({ file }: { file: DiffFile }) {
   return (
     <div
       ref={hostRef}
-      className="flex min-h-0 min-w-0 flex-1"
+      className="flex min-h-0 min-w-0 flex-1 bg-background text-foreground"
       style={diffViewStyle}
     />
   )
@@ -90,6 +90,10 @@ const diffViewStyle = {
   "--editor-foreground": "var(--foreground)",
   "--editor-gutter-background": "var(--background)",
   "--editor-gutter-foreground": "var(--muted-foreground)",
+  "--editor-diff-background": "var(--background)",
+  "--editor-diff-foreground": "var(--foreground)",
+  "--editor-diff-gutter-background": "var(--background)",
+  "--editor-diff-gutter-foreground": "var(--muted-foreground)",
 } as CSSProperties
 
 function DiffState({
@@ -113,15 +117,17 @@ function DiffState({
 function editorDiffFile(diff: FileDiff): DiffFile {
   const oldPath = diff.oldPath ?? diff.path
   const languageId = languageIdForFilePath(diff.path)
+  const oldLines = textLines(diff.oldText) ?? collectLines(diff.hunks, "old")
+  const newLines = textLines(diff.newText) ?? collectLines(diff.hunks, "new")
 
   return {
     changeType: "change",
     hunks: diff.hunks.map(editorDiffHunk),
-    isPartial: true,
+    isPartial: diff.oldText === undefined || diff.newText === undefined,
     languageId,
-    newLines: collectLines(diff.hunks, "new"),
+    newLines,
     newPath: diff.path,
-    oldLines: collectLines(diff.hunks, "old"),
+    oldLines,
     oldPath,
     path: diff.path,
   }
@@ -176,6 +182,13 @@ function collectLines(hunks: readonly GitDiffHunk[], side: "old" | "new") {
   }
 
   return lines
+}
+
+function textLines(text: string | undefined) {
+  if (text === undefined) return null
+  if (text.length === 0) return []
+
+  return text.split("\n")
 }
 
 function resolvedShikiTheme(theme: "dark" | "light" | "system") {
