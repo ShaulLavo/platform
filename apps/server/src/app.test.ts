@@ -374,7 +374,7 @@ describe("git rpc", () => {
     )
     const staged = await app.handle(
       new Request("http://local/git/stage", {
-        body: JSON.stringify({ path: "tracked.txt" }),
+        body: JSON.stringify({ paths: ["tracked.txt"] }),
         headers: trustedOriginHeaders({ "content-type": "application/json" }),
         method: "POST",
       })

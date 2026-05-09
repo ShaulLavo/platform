@@ -1,5 +1,6 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import { FilesystemConflictToast } from "@/features/editor/components/filesystem-conflict-toast"
+import { conflictEditorText } from "@/features/editor/conflict-editor-text"
 import {
   conflictDiffDocumentId,
   parseConflictDiffDocumentId,
@@ -369,6 +370,11 @@ async function refreshAffectedOpenFiles({
     recreatedPaths,
     rootPath
   )
+  logWorkspaceEvents("affected open files", {
+    fileBackedPaths,
+    recreatedPaths: [...recreatedPaths],
+    refreshPaths,
+  })
 
   for (const event of events) {
     if (event.type === "deleted") {
@@ -440,9 +446,15 @@ async function refreshChangedOpenFile(
   conflictContext: ConflictContext,
   signal: AbortSignal
 ) {
+  logWorkspaceEvents("refreshing changed open file", { path })
   const file = await fetchFileWithRetry(path, signal)
   queryClient.setQueryData(fileSystemKeys.file(path), file)
   if (isDirtyCachedDocument(path, dirtyFilePaths, conflictContext)) {
+    logWorkspaceEvents("dirty changed file conflict", {
+      mtimeMs: file.mtimeMs,
+      path,
+      size: file.size,
+    })
     notifyFilesystemConflict(
       changedConflict(path, file, conflictContext),
       conflictContext
@@ -451,6 +463,10 @@ async function refreshChangedOpenFile(
   }
 
   const result = forceReplaceCachedEditorDocument(file)
+  logWorkspaceEvents("replaced open file from disk", {
+    path,
+    wasDirty: result.wasDirty,
+  })
   if (result.wasDirty) notifyDirtyOverwrite(path)
 }
 
@@ -459,10 +475,16 @@ async function fetchFileWithRetry(path: string, signal: AbortSignal) {
 
   for (let attempt = 0; attempt < FILE_REFRESH_RETRY_ATTEMPTS; attempt += 1) {
     try {
+      logWorkspaceEvents("fetching file", { attempt: attempt + 1, path })
       return await fetchFile(path, signal)
     } catch (error) {
       lastError = error
       if (signal.aborted) throw error
+      logWorkspaceEvents("fetch file retry scheduled", {
+        attempt: attempt + 1,
+        error,
+        path,
+      })
       await delay(FILE_REFRESH_RETRY_DELAY_MS, signal)
     }
   }
@@ -561,6 +583,13 @@ function notifyFilesystemConflict(
 ) {
   const current = matchingConflict(conflict, context)
   const next = current ? refreshedConflict(current, conflict) : conflict
+  logWorkspaceEvents("notify conflict", {
+    eventType: next.eventType,
+    id: next.id,
+    localPath: next.localPath,
+    remotePath: next.remotePath,
+    reused: Boolean(current),
+  })
   context.conflictStore.getState().addConflict(next)
   if (current?.toastId) return
 
@@ -608,6 +637,13 @@ function openConflictDiff(id: string, context: ConflictContext) {
   if (!conflict) return
 
   const documentId = conflict.diffDocumentId ?? conflictDiffDocumentId(id)
+  logWorkspaceEvents("open conflict editor", {
+    documentId,
+    eventType: conflict.eventType,
+    id,
+    localPath: conflict.localPath,
+    remotePath: conflict.remotePath,
+  })
   ensureConflictEditorDocument(documentId, conflict, context)
   context.conflictStore
     .getState()
@@ -657,10 +693,18 @@ async function resolveConflict(
   if (!conflict) return
 
   try {
+    logWorkspaceEvents("resolve conflict", {
+      eventType: conflict.eventType,
+      id,
+      localPath: conflict.localPath,
+      remotePath: conflict.remotePath,
+      resolution,
+    })
     if (resolution === "local") await applyLocalConflict(conflict, context)
     if (resolution === "remote") await applyRemoteConflict(conflict, context)
     finishConflict(conflict, context)
   } catch (error) {
+    logWorkspaceEvents("resolve conflict failed", { error, id, resolution })
     reportError(toClientError(error))
   }
 }
@@ -776,6 +820,10 @@ function discardDeletedOpenFiles(
   for (const openPath of openFilePaths) {
     if (!isSameOrChildPath(openPath, path)) continue
     if (isDirtyCachedDocument(openPath, dirtyFilePaths, conflictContext)) {
+      logWorkspaceEvents("dirty deleted file conflict", {
+        deletedPath: path,
+        openPath,
+      })
       notifyFilesystemConflict(
         deletedConflict(openPath, conflictContext),
         conflictContext
@@ -784,6 +832,11 @@ function discardDeletedOpenFiles(
     }
 
     const result = discardCachedEditorDocument(openPath)
+    logWorkspaceEvents("discarded deleted open file", {
+      deletedPath: path,
+      openPath,
+      wasDirty: result.wasDirty,
+    })
     queryClient.removeQueries({
       exact: true,
       queryKey: fileSystemKeys.file(openPath),
@@ -807,11 +860,22 @@ async function renameOpenFiles(
     const nextPath = renamedPath(openPath, event.oldPath, event.path)
     if (!nextPath) continue
     if (isDirtyCachedDocument(openPath, dirtyFilePaths, conflictContext)) {
+      logWorkspaceEvents("dirty renamed file conflict", {
+        nextPath,
+        oldPath: event.oldPath,
+        openPath,
+        path: event.path,
+      })
       await notifyRenamedFilesystemConflict(openPath, nextPath, conflictContext)
       continue
     }
 
     const result = renameCachedEditorDocument(openPath, nextPath)
+    logWorkspaceEvents("renamed open file from disk", {
+      nextPath,
+      openPath,
+      wasDirty: result.wasDirty,
+    })
     moveFileQueryData(queryClient, openPath, nextPath)
     if (result.wasDirty) notifyDirtyOverwrite(openPath)
   }
@@ -984,6 +1048,25 @@ function notifyDirtyOverwrite(path: string) {
   toast.error("Local edits were overwritten", {
     description: `${path} changed on disk. The remote version replaced your unsaved local edits.`,
   })
+}
+
+function logWorkspaceEvents(message: string, data?: unknown) {
+  console.info(WORKSPACE_EVENTS_LOG_PREFIX, message, data ?? "")
+}
+
+function eventLogSummary(event: FilesystemEvent) {
+  if (event.type === "renamed") {
+    return {
+      oldPath: event.oldPath,
+      path: event.path,
+      type: event.type,
+    }
+  }
+
+  return {
+    path: event.path,
+    type: event.type,
+  }
 }
 
 function delay(ms: number, signal: AbortSignal) {

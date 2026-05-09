@@ -29,7 +29,7 @@ export function useTypeScriptLspPlugin({
         onStatusChange: setTypeScriptStatus,
         onDiagnostics: setTypeScriptDiagnostics,
         onOpenDefinition,
-        onError: (error) => console.warn("[typescript-lsp]", error),
+        onError: () => undefined,
       }),
     [onOpenDefinition, rootPath]
   )
