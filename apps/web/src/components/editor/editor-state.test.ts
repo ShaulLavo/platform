@@ -72,6 +72,7 @@ function workspaceState(openFilePaths: string[], selectedFilePath: string) {
       type: "directory" as const,
     },
     selectedFilePath,
+    workspacePanelTab: "files" as const,
   }
 }
 

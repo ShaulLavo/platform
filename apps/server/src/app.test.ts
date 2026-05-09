@@ -346,6 +346,80 @@ describe("fs rpc events", () => {
   })
 })
 
+describe("git rpc", () => {
+  it("reports status, diffs, and staged files", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "tracked.txt"), "before\n")
+    await runGit(root, ["add", "tracked.txt"])
+    await runGit(root, ["commit", "-m", "initial"])
+    await writeFile(path.join(root, "tracked.txt"), "after\n")
+    await writeFile(path.join(root, "new.txt"), "new\n")
+    const app = testApp(root)
+
+    const status = await app.handle(
+      new Request("http://local/git/status", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const diff = await app.handle(
+      new Request("http://local/git/diff?path=tracked.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const staged = await app.handle(
+      new Request("http://local/git/stage", {
+        body: JSON.stringify({ path: "tracked.txt" }),
+        headers: trustedOriginHeaders({ "content-type": "application/json" }),
+        method: "POST",
+      })
+    )
+
+    expect(status.status).toBe(200)
+    const statusPayload = (await status.json()) as GitStatusTestPayload
+    expect(statusPayload.repository).toMatchObject({ path: "" })
+    expect(statusPayload.files).toContainEqual(
+      expect.objectContaining({ path: "new.txt", status: "untracked" })
+    )
+    expect(statusPayload.files).toContainEqual(
+      expect.objectContaining({ path: "tracked.txt", status: "modified" })
+    )
+    expect(diff.status).toBe(200)
+    expect(await diff.json()).toMatchObject([
+      {
+        path: "tracked.txt",
+        staged: false,
+        hunks: [
+          {
+            changes: [
+              { oldLine: 1, text: "before", type: "deleted" },
+              { newLine: 1, text: "after", type: "added" },
+            ],
+          },
+        ],
+      },
+    ])
+    expect(staged.status).toBe(200)
+    const stagedPayload = (await staged.json()) as GitStatusTestPayload
+    expect(stagedPayload.files).toContainEqual(
+      expect.objectContaining({ path: "new.txt", status: "untracked" })
+    )
+    expect(stagedPayload.files).toContainEqual(
+      expect.objectContaining({
+        index: "modified",
+        path: "tracked.txt",
+        status: "modified",
+        worktree: "unmodified",
+      })
+    )
+  })
+})
+
+type GitStatusTestPayload = {
+  repository: { branch: string | null; path: string } | null
+  files: Array<Record<string, unknown>>
+}
+
 function testApp(
   root: string,
   options: {
@@ -373,6 +447,27 @@ async function fixtureRoot() {
   const root = await mkdtemp(path.join(tmpdir(), "platform-fs-rpc-"))
   roots.push(root)
   return root
+}
+
+async function initGitRepository(root: string) {
+  await runGit(root, ["init"])
+  await runGit(root, ["config", "user.email", "test@example.com"])
+  await runGit(root, ["config", "user.name", "Test User"])
+}
+
+async function runGit(root: string, args: readonly string[]) {
+  const process = Bun.spawn(["git", "-C", root, ...args], {
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited,
+  ])
+  if (exitCode === 0) return { stderr, stdout }
+
+  throw new Error(`${stderr}${stdout}`.trim())
 }
 
 function trustedOriginHeaders(headers: HeadersInit = {}) {

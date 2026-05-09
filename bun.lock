@@ -37,6 +37,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@editor/core": "workspace:*",
+        "@editor/diff": "workspace:*",
         "@editor/find": "workspace:*",
         "@editor/gutters": "workspace:*",
         "@editor/lsp": "workspace:*",
@@ -87,6 +88,22 @@
         "@playwright/test": "^1.57.0",
         "@typescript/native-preview": "latest",
         "@vitest/browser": "^3.2.4",
+        "happy-dom": "^20.8.9",
+        "oxfmt": "latest",
+        "oxlint": "latest",
+        "typescript": "~5.9.3",
+        "vitest": "^3.1.1",
+      },
+    },
+    "packages/editor-diff": {
+      "name": "@editor/diff",
+      "version": "0.0.0",
+      "dependencies": {
+        "@editor/core": "workspace:*",
+        "diff": "^8.0.3",
+      },
+      "devDependencies": {
+        "@typescript/native-preview": "latest",
         "happy-dom": "^20.8.9",
         "oxfmt": "latest",
         "oxlint": "latest",
@@ -384,6 +401,8 @@
     "@ecies/ciphers": ["@ecies/ciphers@0.2.6", "", { "peerDependencies": { "@noble/ciphers": "^1.0.0" } }, "sha512-patgsRPKGkhhoBjETV4XxD0En4ui5fbX0hzayqI3M8tvNMGUoUvmyYAIWwlxBc1KX5cturfqByYdj5bYGRpN9g=="],
 
     "@editor/core": ["@editor/core@workspace:packages/editor-core"],
+
+    "@editor/diff": ["@editor/diff@workspace:packages/editor-diff"],
 
     "@editor/find": ["@editor/find@workspace:packages/editor-find"],
 

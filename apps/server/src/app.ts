@@ -16,6 +16,16 @@ import {
   type WatchServerMessage,
 } from "./fs/contracts"
 import {
+  gitApplyPatchBodySchema,
+  gitCheckoutBodySchema,
+  gitCommitBodySchema,
+  gitCreateBranchBodySchema,
+  gitDiffQuerySchema,
+  gitFileQuerySchema,
+  gitPathQuerySchema,
+  gitPathsBodySchema,
+} from "./git/contracts"
+import {
   authGuard,
   createAuthConfig,
   isCorsOriginAllowed,
@@ -25,6 +35,7 @@ import { errorPayload, FsError, isFsError } from "./fs/errors"
 import { FileSystemService, type FileSystemServiceOptions } from "./fs/service"
 import type { FindStreamEvent } from "./fs/search"
 import { parseWatchInputs } from "./fs/watch"
+import { GitService } from "./git/service"
 import { typeScriptLspRoutes } from "./lsp/typescript/routes"
 
 export type AppOptions = FileSystemServiceOptions & {
@@ -33,6 +44,7 @@ export type AppOptions = FileSystemServiceOptions & {
 
 export function createApp(options: AppOptions) {
   const fs = new FileSystemService(options)
+  const git = new GitService(fs.paths)
   const auth = createAuthConfig(options.auth)
 
   return new Elysia({ name: "fs-rpc" })
@@ -71,6 +83,54 @@ export function createApp(options: AppOptions) {
       ...fs.info(),
     }))
     .ws("/lsp/typescript", typeScriptLspRoutes(fs, auth))
+    .group("/git", (app) =>
+      app
+        .get("/repo", ({ query }) => git.repo(query.path), {
+          query: gitPathQuerySchema,
+        })
+        .get("/status", ({ query }) => git.status(query.path), {
+          query: gitPathQuerySchema,
+        })
+        .get("/diff", ({ query }) => git.diff(query.path, query.staged), {
+          query: gitDiffQuerySchema,
+        })
+        .get("/file", ({ query }) => git.file(query.path, query.ref), {
+          query: gitFileQuerySchema,
+        })
+        .get("/branches", ({ query }) => git.branches(query.path), {
+          query: gitPathQuerySchema,
+        })
+        .post("/stage", ({ body }) => git.stage(body), {
+          body: gitPathsBodySchema,
+        })
+        .post("/unstage", ({ body }) => git.unstage(body), {
+          body: gitPathsBodySchema,
+        })
+        .post("/discard", ({ body }) => git.discard(body), {
+          body: gitPathsBodySchema,
+        })
+        .post("/apply-patch", ({ body }) => git.applyPatch(body), {
+          body: gitApplyPatchBodySchema,
+        })
+        .post("/commit", ({ body }) => git.commit(body), {
+          body: gitCommitBodySchema,
+        })
+        .post("/checkout", ({ body }) => git.checkout(body), {
+          body: gitCheckoutBodySchema,
+        })
+        .post("/create-branch", ({ body }) => git.createBranch(body), {
+          body: gitCreateBranchBodySchema,
+        })
+        .post("/fetch", ({ body }) => git.fetch(body.path), {
+          body: gitPathQuerySchema,
+        })
+        .post("/pull", ({ body }) => git.pull(body.path), {
+          body: gitPathQuerySchema,
+        })
+        .post("/push", ({ body }) => git.push(body.path), {
+          body: gitPathQuerySchema,
+        })
+    )
     .group("/fs", (app) =>
       app
         .get("/stat", ({ query }) => fs.stat(query.path), {

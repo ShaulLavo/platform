@@ -1,7 +1,10 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import type { FileResult } from "@/lib/file-system-types"
-import type { CachedWorkspaceState } from "@/lib/workspace-cache"
+import type {
+  CachedWorkspaceState,
+  WorkspacePanelTab,
+} from "@/lib/workspace-cache"
 import { readWorkspaceCache } from "@/lib/workspace-cache"
 import {
   createDocumentSession,
@@ -24,6 +27,7 @@ type EditorStoreState = CachedWorkspaceState & {
   definitionTarget: TypeScriptLspDefinitionTarget | null
   dirtyFilePaths: ReadonlySet<string>
   documentCacheVersion: number
+  fallbackDocumentPath: string | null
   statusBarState: EditorStatusBarState | null
   pickerOpen: boolean
 }
@@ -49,6 +53,7 @@ type EditorStoreActions = {
   ) => void
   setStatusBarState: (status: EditorStatusBarState | null) => void
   setPickerOpen: (open: boolean) => void
+  setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
 }
 
 type EditorStore = EditorStoreState & EditorStoreActions
@@ -75,11 +80,13 @@ export function createEditorStore(
     definitionTarget: null,
     dirtyFilePaths: new Set(),
     documentCacheVersion: 0,
+    fallbackDocumentPath: null,
     statusBarState: null,
     openFilePaths: initialState.openFilePaths,
     pickerOpen: false,
     rootFolder: initialState.rootFolder,
     selectedFilePath: initialState.selectedFilePath,
+    workspacePanelTab: initialState.workspacePanelTab,
     ensureCachedEditorDocument: (file) => {
       const cached = documentCache.get(file.path)
       if (cached && cached.session.isDirty()) return cached
@@ -100,6 +107,10 @@ export function createEditorStore(
           removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
           state.dirtyFilePaths,
         documentCacheVersion: state.documentCacheVersion + 1,
+        fallbackDocumentPath:
+          state.selectedFilePath === file.path
+            ? file.path
+            : state.fallbackDocumentPath,
       }))
       return document
     },
@@ -107,6 +118,11 @@ export function createEditorStore(
     openDefinition: (definitionTarget) => {
       set((state) => ({
         definitionTarget,
+        fallbackDocumentPath: fallbackDocumentPathForSelection(
+          documentCache,
+          state.selectedFilePath,
+          state.fallbackDocumentPath
+        ),
         statusBarState: null,
         openFilePaths: openFilePathList(
           state.openFilePaths,
@@ -124,11 +140,13 @@ export function createEditorStore(
           definitionTarget: null,
           dirtyFilePaths: new Set(),
           documentCacheVersion: state.documentCacheVersion + 1,
+          fallbackDocumentPath: null,
           statusBarState: null,
           openFilePaths: [],
           pickerOpen: false,
           rootFolder,
           selectedFilePath: null,
+          workspacePanelTab: "files",
         }
       }),
     closeTab: (path) =>
@@ -160,6 +178,14 @@ export function createEditorStore(
           documentCacheVersion: evicted
             ? state.documentCacheVersion + 1
             : state.documentCacheVersion,
+          fallbackDocumentPath:
+            state.fallbackDocumentPath === path
+              ? fallbackDocumentPathForSelection(
+                  documentCache,
+                  selectedFilePath,
+                  null
+                )
+              : state.fallbackDocumentPath,
           openFilePaths,
           selectedFilePath,
         }
@@ -189,6 +215,14 @@ export function createEditorStore(
             hadCachedDocument || state.openFilePaths.includes(path)
               ? state.documentCacheVersion + 1
               : state.documentCacheVersion,
+          fallbackDocumentPath:
+            state.fallbackDocumentPath === path
+              ? fallbackDocumentPathForSelection(
+                  documentCache,
+                  selectedFilePath,
+                  null
+                )
+              : state.fallbackDocumentPath,
           openFilePaths,
           selectedFilePath,
           statusBarState:
@@ -211,6 +245,10 @@ export function createEditorStore(
             removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
             state.dirtyFilePaths,
           documentCacheVersion: state.documentCacheVersion + 1,
+          fallbackDocumentPath:
+            state.selectedFilePath === file.path
+              ? file.path
+              : state.fallbackDocumentPath,
         }
       })
       return { wasDirty }
@@ -227,6 +265,10 @@ export function createEditorStore(
               ? { ...state.definitionTarget, path: to }
               : state.definitionTarget,
           dirtyFilePaths: renameDirtyFilePath(state.dirtyFilePaths, from, to),
+          fallbackDocumentPath:
+            state.fallbackDocumentPath === from
+              ? to
+              : state.fallbackDocumentPath,
           documentCacheVersion:
             state.openFilePaths.includes(from) || wasDirty
               ? state.documentCacheVersion + 1
@@ -240,6 +282,11 @@ export function createEditorStore(
     },
     selectFile: (selectedFilePath) =>
       set((state) => ({
+        fallbackDocumentPath: fallbackDocumentPathForSelection(
+          documentCache,
+          state.selectedFilePath,
+          state.fallbackDocumentPath
+        ),
         statusBarState: null,
         openFilePaths: selectedFilePath
           ? openFilePathList(state.openFilePaths, selectedFilePath)
@@ -270,6 +317,7 @@ export function createEditorStore(
         return { statusBarState: status }
       }),
     setPickerOpen: (pickerOpen) => set({ pickerOpen }),
+    setWorkspacePanelTab: (workspacePanelTab) => set({ workspacePanelTab }),
   }))
 }
 
@@ -277,6 +325,21 @@ function openFilePathList(paths: readonly string[], path: string) {
   if (paths.includes(path)) return [...paths]
 
   return [...paths, path]
+}
+
+function fallbackDocumentPathForSelection(
+  documentCache: Map<string, CachedEditorDocument>,
+  selectedFilePath: string | null,
+  fallbackDocumentPath: string | null
+) {
+  if (selectedFilePath && documentCache.has(selectedFilePath)) {
+    return selectedFilePath
+  }
+  if (fallbackDocumentPath && documentCache.has(fallbackDocumentPath)) {
+    return fallbackDocumentPath
+  }
+
+  return null
 }
 
 function nextSelectedFilePath(openFilePaths: readonly string[], path: string) {

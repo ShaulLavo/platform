@@ -3,7 +3,8 @@ import { useEditorState } from "@/components/editor/editor-state"
 import { errorMessage, fetchFile, fetchTree } from "@/lib/file-server"
 import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import { fsServerUrl } from "@/lib/fs-client"
-import { fileSystemKeys } from "@/lib/query-keys"
+import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { fileSystemKeys, gitKeys } from "@/lib/query-keys"
 import { parseSseStream } from "@/lib/sse"
 import { toTreePath } from "@/lib/path-formatters"
 import { affectedOpenFileRefreshPaths } from "@/lib/workspace-event-model"
@@ -37,7 +38,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const queryClient = useQueryClient()
   const dirtyFilePaths = useEditorState((state) => state.dirtyFilePaths)
   const openFilePaths = useEditorState((state) => state.openFilePaths)
-  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
   const discardCachedEditorDocument = useEditorState(
     (state) => state.discardCachedEditorDocument
   )
@@ -72,10 +72,9 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   )
   const applyReady = useEffectEvent(
     (signal: AbortSignal, currentRootPath: string) => {
-      const refreshPaths =
-        selectedFilePath && !dirtyFilePaths.has(selectedFilePath)
-          ? [selectedFilePath]
-          : []
+      const refreshPaths = openFilePaths.filter(
+        (path) => !dirtyFilePaths.has(path)
+      )
 
       void applyWorkspaceReady({
         forceReplaceCachedEditorDocument,
@@ -99,22 +98,18 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       applyEvents(events, controller.signal, rootPath)
     )
 
-    void streamWorkspaceEvents(
-      rootPath,
-      controller.signal,
-      (message) => {
-        if (message.type === "ready") {
-          applyReady(controller.signal, rootPath)
-          return
-        }
-        if (message.type === "error") {
-          notifyStreamError(message.message)
-          return
-        }
-
-        queue.push(message)
+    void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
+      if (message.type === "ready") {
+        applyReady(controller.signal, rootPath)
+        return
       }
-    ).catch((error: unknown) => {
+      if (message.type === "error") {
+        notifyStreamError(message.message)
+        return
+      }
+
+      queue.push(message)
+    }).catch((error: unknown) => {
       if (controller.signal.aborted) return
 
       notifyStreamError(errorMessage(error))
@@ -149,6 +144,7 @@ async function applyWorkspaceEvents({
   rootPath: string
   signal: AbortSignal
 }) {
+  invalidateGitState(queryClient)
   patchChangedTreeEntries(queryClient, rootPath, events)
   await refreshAffectedTreeDirectories(queryClient, rootPath, events, signal)
   await refreshAffectedOpenFiles({
@@ -184,6 +180,10 @@ function patchChangedTreeEntries(
   })
 }
 
+function invalidateGitState(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: gitKeys.all })
+}
+
 async function applyWorkspaceReady({
   forceReplaceCachedEditorDocument,
   openFilePaths,
@@ -197,12 +197,13 @@ async function applyWorkspaceReady({
   rootPath: string
   signal: AbortSignal
 }) {
+  invalidateGitState(queryClient)
   await refreshTreeDirectory(queryClient, rootPath, rootPath, signal).catch(
     () => null
   )
 
   await Promise.all(
-    openFilePaths.map((path) =>
+    fileBackedOpenPaths(openFilePaths).map((path) =>
       refreshChangedOpenFile(
         queryClient,
         path,
@@ -272,9 +273,10 @@ async function refreshAffectedOpenFiles({
   signal: AbortSignal
 }) {
   const recreatedPaths = recreatedOpenFilePaths(events)
+  const fileBackedPaths = fileBackedOpenPaths(openFilePaths)
   const refreshPaths = affectedOpenFileRefreshPaths(
     events,
-    openFilePaths,
+    fileBackedPaths,
     recreatedPaths,
     rootPath
   )
@@ -285,7 +287,7 @@ async function refreshAffectedOpenFiles({
 
       discardDeletedOpenFiles(
         event.path,
-        openFilePaths,
+        fileBackedPaths,
         discardCachedEditorDocument,
         queryClient
       )
@@ -295,7 +297,7 @@ async function refreshAffectedOpenFiles({
 
     renameOpenFiles(
       event,
-      openFilePaths,
+      fileBackedPaths,
       renameCachedEditorDocument,
       queryClient
     )
@@ -309,6 +311,10 @@ async function refreshAffectedOpenFiles({
       signal
     )
   }
+}
+
+function fileBackedOpenPaths(openFilePaths: readonly string[]) {
+  return openFilePaths.filter((path) => !parseDiffDocumentId(path))
 }
 
 function recreatedOpenFilePaths(events: readonly FilesystemEvent[]) {

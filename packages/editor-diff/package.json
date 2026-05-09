@@ -1,0 +1,32 @@
+{
+  "name": "@editor/diff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "./src/style.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./style.css": "./src/style.css"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt ."
+  },
+  "dependencies": {
+    "@editor/core": "workspace:*",
+    "diff": "^8.0.3"
+  },
+  "devDependencies": {
+    "@typescript/native-preview": "latest",
+    "happy-dom": "^20.8.9",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "typescript": "~5.9.3",
+    "vitest": "^3.1.1"
+  }
+}

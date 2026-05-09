@@ -1,0 +1,203 @@
+.editor-diff-view {
+  --editor-diff-added: #5ecc71;
+  --editor-diff-deleted: #ff6762;
+  --editor-diff-modified: #69b1ff;
+  --editor-diff-added-bg: color-mix(
+    in srgb,
+    var(--editor-background) 78%,
+    var(--editor-diff-added)
+  );
+  --editor-diff-deleted-bg: color-mix(
+    in srgb,
+    var(--editor-background) 78%,
+    var(--editor-diff-deleted)
+  );
+  --editor-diff-hunk-bg: color-mix(
+    in srgb,
+    var(--editor-background) 84%,
+    var(--editor-diff-modified)
+  );
+  --editor-diff-placeholder-bg: color-mix(in srgb, var(--editor-background) 92%, #ffffff);
+  --editor-diff-border: #3f3f46;
+  --editor-diff-muted: #a1a1aa;
+
+  background: var(--editor-background, #1e1e1e);
+  color: var(--editor-foreground, #d4d4d4);
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor-diff-file-list {
+  background: #252526;
+  border-right: 1px solid var(--editor-diff-border);
+  flex: 0 0 220px;
+  min-width: 160px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.editor-diff-file-button {
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  color: var(--editor-foreground, #d4d4d4);
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  overflow: hidden;
+  padding: 4px 6px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.editor-diff-file-button:hover {
+  background: #37373d;
+}
+
+.editor-diff-file-button[aria-pressed="true"] {
+  background: #094771;
+  color: #fff;
+}
+
+.editor-diff-file-button::before {
+  color: var(--editor-diff-modified);
+  content: "M";
+  display: inline-block;
+  margin-right: 6px;
+  width: 1.25em;
+}
+
+.editor-diff-file-button[data-change-type="add"]::before {
+  color: var(--editor-diff-added);
+  content: "A";
+}
+
+.editor-diff-file-button[data-change-type="delete"]::before {
+  color: var(--editor-diff-deleted);
+  content: "D";
+}
+
+.editor-diff-file-button[data-change-type="rename"]::before,
+.editor-diff-file-button[data-change-type="rename-change"]::before {
+  color: var(--editor-diff-modified);
+  content: "R";
+}
+
+.editor-diff-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor-diff-split {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor-diff-pane {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor-diff-pane-old {
+  border-right: 1px solid var(--editor-diff-border);
+}
+
+.editor-diff-text {
+  flex: 1;
+}
+
+.editor-diff-row-addition {
+  background: var(--editor-diff-added-bg);
+}
+
+.editor-diff-row-deletion {
+  background: var(--editor-diff-deleted-bg);
+}
+
+.editor-diff-row-placeholder {
+  background: var(--editor-diff-placeholder-bg);
+}
+
+.editor-diff-row-hunk {
+  background: var(--editor-diff-hunk-bg);
+  color: #9cdcfe;
+}
+
+.editor-diff-row-empty {
+  color: var(--editor-diff-muted);
+}
+
+.editor-diff-gutter-row-addition,
+.editor-diff-gutter-row-deletion,
+.editor-diff-gutter-row-hunk,
+.editor-diff-gutter-row-placeholder {
+  background: inherit;
+}
+
+.editor-diff-gutter {
+  align-items: center;
+  color: var(--editor-gutter-foreground, #71717a);
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+  gap: 4px;
+  height: 100%;
+  justify-content: flex-end;
+  padding-right: 6px;
+  width: 100%;
+}
+
+.editor-diff-gutter-indicator {
+  display: inline-block;
+  text-align: center;
+  width: 10px;
+}
+
+.editor-diff-gutter-number {
+  min-width: 2ch;
+  text-align: right;
+}
+
+.editor-diff-gutter[data-diff-row-type="addition"] {
+  color: var(--editor-diff-added);
+}
+
+.editor-diff-gutter[data-diff-row-type="deletion"] {
+  color: var(--editor-diff-deleted);
+}
+
+.editor-diff-gutter[data-diff-row-type="hunk"] {
+  color: #9cdcfe;
+}
+
+.editor-diff-empty {
+  align-items: center;
+  color: var(--editor-diff-muted);
+  display: flex;
+  flex: 1;
+  justify-content: center;
+}
+
+@media (max-width: 760px) {
+  .editor-diff-file-list {
+    display: none;
+  }
+
+  .editor-diff-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-diff-pane-old {
+    border-right: 0;
+  }
+}

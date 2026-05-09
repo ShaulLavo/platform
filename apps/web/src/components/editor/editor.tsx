@@ -18,10 +18,12 @@ import { useTheme } from "@/components/theme-provider"
 import { useEditorStatusBarState } from "@/components/editor/use-editor-status-bar-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { fsServerUrl } from "@/lib/fs-client"
+import type { FileDiff } from "@/features/git/types"
 import type {
   EditorPlugin,
   EditorScrollPosition,
   EditorViewSnapshot,
+  VirtualizedTextRowDecoration,
 } from "@editor/core"
 import {
   useEffect,
@@ -36,6 +38,7 @@ type EditorProps = {
   document: CachedEditorDocument
   rootPath: string
   definitionTarget?: TypeScriptLspDefinitionTarget | null
+  gitDiff?: FileDiff | null
   onDirtyChange?: (path: string, dirty: boolean) => void
   onOpenDefinition?: (target: TypeScriptLspDefinitionTarget) => void | boolean
   onScrollPositionChange?: (
@@ -53,6 +56,7 @@ const editorThemeRefreshByShikiTheme = {
 export function Editor({
   definitionTarget,
   document: cachedDocument,
+  gitDiff,
   rootPath,
   onDirtyChange,
   onOpenDefinition,
@@ -167,6 +171,7 @@ export function Editor({
     plugins,
     theme: editorThemeRefresh,
   })
+  const editorInstance = controller.useEditorInstance()
   const editorState = controller.useState()
   const selection = selectionForDefinition(
     cachedDocument.path,
@@ -216,6 +221,12 @@ export function Editor({
     controller.commands.focus()
   }, [controller, editorFocusRequestId])
 
+  useEffect(() => {
+    if (!editorInstance) return
+
+    editorInstance.setRowDecorations(gitRowDecorations(gitDiff))
+  }, [editorInstance, gitDiff])
+
   return (
     <div
       className="flex h-full w-full min-w-0 flex-1 bg-background"
@@ -226,6 +237,52 @@ export function Editor({
       <EditorHost className="app-editor-host" controller={controller} />
     </div>
   )
+}
+
+function gitRowDecorations(diff: FileDiff | null | undefined) {
+  const decorations = new Map<number, VirtualizedTextRowDecoration>()
+  if (!diff) return decorations
+
+  for (const hunk of diff.hunks) {
+    for (const change of hunk.changes) {
+      if (change.type === "context") continue
+
+      const row = gitDecorationRow(change.newLine, hunk.newStart)
+      mergeGitRowDecoration(decorations, row, change.type)
+    }
+  }
+
+  return decorations
+}
+
+function gitDecorationRow(newLine: number | null, hunkNewStart: number) {
+  if (newLine !== null) return Math.max(0, newLine - 1)
+
+  return Math.max(0, hunkNewStart - 1)
+}
+
+function mergeGitRowDecoration(
+  decorations: Map<number, VirtualizedTextRowDecoration>,
+  row: number,
+  type: "added" | "deleted"
+) {
+  const current = decorations.get(row)
+  const className =
+    type === "added" ? "app-git-row-added" : "app-git-row-deleted"
+  const gutterClassName =
+    type === "added" ? "app-git-gutter-added" : "app-git-gutter-deleted"
+
+  decorations.set(row, {
+    className: mergeClassName(current?.className, className),
+    gutterClassName: mergeClassName(current?.gutterClassName, gutterClassName),
+  })
+}
+
+function mergeClassName(current: string | undefined, next: string) {
+  if (!current) return next
+  if (current.split(" ").includes(next)) return current
+
+  return `${current} ${next}`
 }
 
 type ScrollPersistenceState = {

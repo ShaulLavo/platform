@@ -34,6 +34,7 @@ export function createEditorPlugins(
       theme: shikiTheme,
       preloadLanguages: [
         "css",
+        "diff",
         "html",
         "javascript",
         "json",

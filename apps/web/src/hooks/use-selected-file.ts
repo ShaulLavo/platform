@@ -1,34 +1,41 @@
 import { errorMessage, fetchFile } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
+import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { idleState, type LoadState } from "@/lib/load-state"
 import { fileSystemKeys } from "@/lib/query-keys"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 export function useSelectedFile(selectedFilePath: string | null) {
   const queryClient = useQueryClient()
+  const filePath = filePathForRequest(selectedFilePath)
   const query = useQuery<FileResult>({
-    enabled: Boolean(selectedFilePath),
+    enabled: Boolean(filePath),
     placeholderData: (previousFile) => previousFile,
-    queryFn: ({ signal }) => fetchFile(selectedFilePath ?? "", signal),
-    queryKey: fileSystemKeys.file(selectedFilePath ?? ""),
+    queryFn: ({ signal }) => fetchFile(filePath ?? "", signal),
+    queryKey: fileSystemKeys.file(filePath ?? ""),
   })
-  const fileState = selectedFilePath
-    ? fileLoadState(query, selectedFilePath)
-    : idleState
+  const fileState = filePath ? fileLoadState(query, filePath) : idleState
 
   function resetFileLoad() {
-    if (!selectedFilePath) return
+    if (!filePath) return
 
     queryClient.removeQueries({
       exact: true,
-      queryKey: fileSystemKeys.file(selectedFilePath),
+      queryKey: fileSystemKeys.file(filePath),
     })
   }
 
   return { fileState, resetFileLoad }
 }
 
-function fileLoadState(
+function filePathForRequest(selectedFilePath: string | null) {
+  if (!selectedFilePath) return null
+  if (parseDiffDocumentId(selectedFilePath)) return null
+
+  return selectedFilePath
+}
+
+export function fileLoadState(
   query: {
     data: FileResult | undefined
     error: Error | null
@@ -40,10 +47,10 @@ function fileLoadState(
   if (query.data?.path === selectedFilePath) {
     return { status: "ready", data: query.data }
   }
-  if (query.data) return { status: "ready", data: query.data }
   if (query.isError)
     return { status: "error", message: errorMessage(query.error) }
-  if (query.isPending) return { status: "loading" }
+  if (query.data) return idleState
+  if (query.isPending) return idleState
 
   return idleState
 }

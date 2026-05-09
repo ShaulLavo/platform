@@ -3,6 +3,7 @@ import type {
   FileTreeDirectoryHandle,
   FileTreeItemHandle,
   FileTreeRowDecorationContext,
+  GitStatusEntry,
 } from "@pierre/trees"
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
 import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
@@ -30,11 +31,13 @@ import {
 } from "react"
 
 export function TreePane({
+  gitStatus,
   model,
   onLoadDirectory,
   rootPath,
   state,
 }: {
+  gitStatus?: readonly GitStatusEntry[]
   model: TreeModel
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
@@ -57,6 +60,7 @@ export function TreePane({
   const { model: tree } = useFileTree({
     density: "compact",
     flattenEmptyDirectories: true,
+    gitStatus,
     icons,
     initialExpansion: "closed",
     initialSelectedPaths,
@@ -79,6 +83,10 @@ export function TreePane({
   useEffect(() => {
     tree.setIcons(icons)
   }, [icons, tree])
+
+  useEffect(() => {
+    tree.setGitStatus(gitStatus)
+  }, [gitStatus, tree])
 
   useEffect(() => {
     tree.resetPaths(model.paths, {

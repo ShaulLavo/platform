@@ -1,5 +1,5 @@
-import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
-import { useEffect } from "react"
+import { WarningCircleIcon } from "@phosphor-icons/react"
+import { useEffect, useMemo } from "react"
 
 import { Editor } from "@/components/editor"
 import {
@@ -8,6 +8,10 @@ import {
 } from "@/components/editor/editor-state"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
+import { GitDiffViewer } from "@/features/git/components/diff-viewer"
+import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { useFileDiff } from "@/features/git/hooks"
+import type { FileDiff } from "@/features/git/types"
 import type { FileResult } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
@@ -26,6 +30,9 @@ export function FileViewer({
   const ensureCachedEditorDocument = useEditorState(
     (state) => state.ensureCachedEditorDocument
   )
+  const fallbackDocumentPath = useEditorState(
+    (state) => state.fallbackDocumentPath
+  )
   const getCachedEditorDocument = useEditorState(
     (state) => state.getCachedEditorDocument
   )
@@ -38,12 +45,29 @@ export function FileViewer({
   )
   const setStatusBarState = useEditorState((state) => state.setStatusBarState)
   const openDefinition = useEditorState((state) => state.openDefinition)
-  const selectedFile = readyFile(fileState)
-  const visibleFilePath = selectedFile?.path ?? selectedFilePath
-  const cachedDocument =
-    visibleFilePath && documentCacheVersion >= 0
-      ? getCachedEditorDocument(visibleFilePath)
+  const selectedDiff = useMemo(
+    () => parseDiffDocumentId(selectedFilePath),
+    [selectedFilePath]
+  )
+  const selectedFile = selectedDiff ? null : readyFile(fileState)
+  const selectedDiffQuery = useFileDiff(
+    selectedDiff?.path ?? null,
+    selectedDiff?.staged ?? false
+  )
+  const selectedCachedDocument =
+    selectedFilePath && documentCacheVersion >= 0
+      ? getCachedEditorDocument(selectedFilePath)
       : null
+  const fallbackDocument =
+    fallbackDocumentPath && documentCacheVersion >= 0
+      ? getCachedEditorDocument(fallbackDocumentPath)
+      : null
+  const visibleDocument =
+    selectedCachedDocument ??
+    (fileState.status === "error" ? null : fallbackDocument)
+  const visibleFilePath = visibleDocument?.path ?? selectedFilePath
+  const fileGitDiff = useFileDiff(selectedDiff ? null : visibleFilePath)
+  const editorGitDiff = fileGitDiff.data?.[0] ?? null
 
   useEffect(() => {
     if (!selectedFile) return
@@ -52,26 +76,47 @@ export function FileViewer({
   }, [ensureCachedEditorDocument, selectedFile])
 
   useEffect(() => {
-    if (selectedFilePath && cachedDocument) return
+    if (selectedDiff) {
+      setStatusBarState(null)
+      return
+    }
+    if (selectedFilePath && selectedCachedDocument) return
     if (selectedFilePath && fileState.status === "ready") return
 
     setStatusBarState(null)
-  }, [cachedDocument, fileState.status, selectedFilePath, setStatusBarState])
+  }, [
+    fileState.status,
+    selectedDiff,
+    selectedCachedDocument,
+    selectedFilePath,
+    setStatusBarState,
+  ])
 
   return (
     <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
       <EditorTabBar />
       {selectedFilePath ? (
-        <FileViewerBody
-          cachedDocument={cachedDocument}
-          definitionTarget={definitionTarget}
-          fileState={fileState}
-          rootPath={rootPath}
-          onEditorDirtyChange={setCachedEditorDocumentDirty}
-          onEditorScrollPositionChange={setCachedEditorDocumentScrollPosition}
-          onEditorStatusChange={setStatusBarState}
-          onOpenDefinition={openDefinition}
-        />
+        selectedDiff ? (
+          <GitDiffViewer
+            diff={selectedDiffQuery.data?.[0] ?? null}
+            error={selectedDiffQuery.error}
+            isError={selectedDiffQuery.isError}
+            isPending={selectedDiffQuery.isPending}
+            path={selectedDiff.path}
+          />
+        ) : (
+          <FileViewerBody
+            cachedDocument={visibleDocument}
+            definitionTarget={definitionTarget}
+            fileState={fileState}
+            gitDiff={editorGitDiff}
+            rootPath={rootPath}
+            onEditorDirtyChange={setCachedEditorDocumentDirty}
+            onEditorScrollPositionChange={setCachedEditorDocumentScrollPosition}
+            onEditorStatusChange={setStatusBarState}
+            onOpenDefinition={openDefinition}
+          />
+        )
       ) : (
         <FileViewerEmpty />
       )}
@@ -87,6 +132,7 @@ function FileViewerBody({
   cachedDocument,
   definitionTarget,
   fileState,
+  gitDiff,
   rootPath,
   onEditorDirtyChange,
   onEditorScrollPositionChange,
@@ -96,8 +142,9 @@ function FileViewerBody({
   cachedDocument: CachedEditorDocument | null
   definitionTarget: TypeScriptLspDefinitionTarget | null
   fileState: LoadState<FileResult>
+  gitDiff: FileDiff | null
   rootPath: string
-  onEditorDirtyChange: (path: string, dirty: boolean) => void
+  onEditorDirtyChange?: (path: string, dirty: boolean) => void
   onEditorScrollPositionChange: (
     path: string,
     scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
@@ -110,6 +157,7 @@ function FileViewerBody({
       <Editor
         definitionTarget={definitionTarget}
         document={cachedDocument}
+        gitDiff={gitDiff}
         rootPath={rootPath}
         onDirtyChange={onEditorDirtyChange}
         onScrollPositionChange={onEditorScrollPositionChange}
@@ -119,14 +167,6 @@ function FileViewerBody({
     )
   }
 
-  if (fileState.status === "loading") {
-    return (
-      <div className="flex min-h-0 items-center justify-center p-6 text-xs text-muted-foreground">
-        <CircleNotchIcon className="mr-2 size-4 animate-spin" />
-        Loading file
-      </div>
-    )
-  }
   if (fileState.status === "error") {
     return (
       <div className="flex min-h-0 items-center justify-center p-6 text-xs text-muted-foreground">
@@ -135,18 +175,8 @@ function FileViewerBody({
       </div>
     )
   }
-  if (fileState.status !== "ready") return null
 
-  return <FileViewerLoading />
-}
-
-function FileViewerLoading() {
-  return (
-    <div className="flex min-h-0 items-center justify-center p-6 text-xs text-muted-foreground">
-      <CircleNotchIcon className="mr-2 size-4 animate-spin" />
-      Loading file
-    </div>
-  )
+  return null
 }
 
 function readyFile(fileState: LoadState<FileResult>) {

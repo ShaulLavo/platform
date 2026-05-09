@@ -30,7 +30,7 @@ export function errorMessage(error: unknown) {
   return "The file server did not return a usable response."
 }
 
-function rpcErrorMessage(error: unknown) {
+export function rpcErrorMessage(error: unknown) {
   const value = errorValue(error)
   if (isErrorPayload(value)) return value.error.message
 

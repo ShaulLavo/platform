@@ -3,13 +3,25 @@ import { useEditorState } from "@/components/editor/editor-state"
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import { FileViewer } from "@/components/workspace/file-viewer"
 import { TreePane } from "@/components/workspace/tree-pane"
+import { FolderIcon, GitBranchIcon } from "@phosphor-icons/react"
+import { Panel as GitPanel } from "@/features/git/panel"
+import { useStatus } from "@/features/git/hooks"
+import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
 import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
+import type { WorkspacePanelTab } from "@/lib/workspace-cache"
 import {
   EMPTY_TREE_MODEL,
   treeStateLabel,
   type TreeModel,
 } from "@/lib/tree-model"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@workspace/ui/components/tabs"
+import { useMemo } from "react"
 
 export function WorkspaceView({
   fileState,
@@ -23,7 +35,17 @@ export function WorkspaceView({
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
 }) {
   const statusBarState = useEditorState((state) => state.statusBarState)
+  const workspacePanelTab = useEditorState((state) => state.workspacePanelTab)
+  const setWorkspacePanelTab = useEditorState(
+    (state) => state.setWorkspacePanelTab
+  )
   const treeModel = treeState.status === "ready" ? treeState.data : null
+
+  function handleWorkspacePanelTabChange(value: string) {
+    if (!isWorkspacePanelTab(value)) return
+
+    setWorkspacePanelTab(value)
+  }
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -39,15 +61,35 @@ export function WorkspaceView({
               </div>
             </div>
           </div>
-          <div className="min-h-0 flex-1">
-            <TreePane
-              key={rootFolder.path}
-              model={treeModel ?? EMPTY_TREE_MODEL}
-              rootPath={rootFolder.path}
-              state={treeState}
-              onLoadDirectory={onLoadDirectory}
-            />
-          </div>
+          <Tabs
+            className="min-h-0 flex-1"
+            value={workspacePanelTab}
+            orientation="horizontal"
+            onValueChange={handleWorkspacePanelTabChange}
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="files">
+                <FolderIcon />
+                Files
+              </TabsTrigger>
+              <TabsTrigger value="git">
+                <GitBranchIcon />
+                Git
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent keepMounted value="files">
+              <WorkspaceTreePane
+                key={rootFolder.path}
+                model={treeModel ?? EMPTY_TREE_MODEL}
+                rootPath={rootFolder.path}
+                state={treeState}
+                onLoadDirectory={onLoadDirectory}
+              />
+            </TabsContent>
+            <TabsContent keepMounted value="git">
+              <GitPanel rootPath={rootFolder.path} />
+            </TabsContent>
+          </Tabs>
         </aside>
         <FileViewer fileState={fileState} rootPath={rootFolder.path} />
         {statusBarState && (
@@ -57,5 +99,37 @@ export function WorkspaceView({
         )}
       </div>
     </div>
+  )
+}
+
+function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
+  return value === "files" || value === "git"
+}
+
+function WorkspaceTreePane({
+  model,
+  rootPath,
+  state,
+  onLoadDirectory,
+}: {
+  model: TreeModel
+  rootPath: string
+  state: LoadState<TreeModel>
+  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+}) {
+  const gitStatus = useStatus(rootPath)
+  const gitStatusEntries = useMemo(
+    () => statusEntriesForTree(gitStatus.data?.files ?? [], rootPath),
+    [gitStatus.data?.files, rootPath]
+  )
+
+  return (
+    <TreePane
+      gitStatus={gitStatusEntries}
+      model={model}
+      rootPath={rootPath}
+      state={state}
+      onLoadDirectory={onLoadDirectory}
+    />
   )
 }

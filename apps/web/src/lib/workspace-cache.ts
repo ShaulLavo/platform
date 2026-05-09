@@ -1,4 +1,5 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import { parseDiffDocumentId } from "@/features/git/diff-document"
 
 const CACHE_KEY = "platform.workspace-state.v1"
 
@@ -14,18 +15,29 @@ type WorkspaceCachePayload =
       selectedFilePath: string | null
       version: 2
     }
+  | {
+      openFilePaths: string[]
+      rootFolder: PickedFsEntry | null
+      selectedFilePath: string | null
+      version: 3
+      workspacePanelTab: WorkspacePanelTab
+    }
 
-type WorkspaceCachePayloadV2 = {
+type WorkspaceCachePayloadV3 = {
   openFilePaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
-  version: 2
+  version: 3
+  workspacePanelTab: WorkspacePanelTab
 }
+
+export type WorkspacePanelTab = "files" | "git"
 
 export type CachedWorkspaceState = {
   openFilePaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
+  workspacePanelTab: WorkspacePanelTab
 }
 
 export function readWorkspaceCache(): CachedWorkspaceState {
@@ -39,12 +51,13 @@ export function writeWorkspaceCache({
   openFilePaths,
   rootFolder,
   selectedFilePath,
+  workspacePanelTab,
 }: CachedWorkspaceState) {
   if (!canUseLocalStorage()) return
 
   try {
     const selectedPath = selectedPathForWorkspace(rootFolder, selectedFilePath)
-    const payload: WorkspaceCachePayloadV2 = {
+    const payload: WorkspaceCachePayloadV3 = {
       openFilePaths: openPathsForWorkspace(
         rootFolder,
         openFilePaths,
@@ -52,7 +65,8 @@ export function writeWorkspaceCache({
       ),
       rootFolder,
       selectedFilePath: selectedPath,
-      version: 2,
+      version: 3,
+      workspacePanelTab,
     }
 
     localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
@@ -90,10 +104,13 @@ function isCachePayload(value: unknown): value is WorkspaceCachePayload {
   if (!isOptionalString(value.selectedFilePath)) return false
 
   if (value.version === 1) return true
-  if (value.version !== 2) return false
   if (!("openFilePaths" in value)) return false
+  if (!isStringArray(value.openFilePaths)) return false
+  if (value.version === 2) return true
+  if (value.version !== 3) return false
+  if (!("workspacePanelTab" in value)) return false
 
-  return isStringArray(value.openFilePaths)
+  return isWorkspacePanelTab(value.workspacePanelTab)
 }
 
 function isOptionalPickedDirectory(
@@ -124,6 +141,10 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
 }
 
+function isWorkspacePanelTab(value: unknown): value is WorkspacePanelTab {
+  return value === "files" || value === "git"
+}
+
 function workspaceStateFromPayload(
   payload: WorkspaceCachePayload
 ): CachedWorkspaceState {
@@ -132,7 +153,7 @@ function workspaceStateFromPayload(
     payload.selectedFilePath
   )
   const payloadOpenPaths =
-    payload.version === 2
+    payload.version === 2 || payload.version === 3
       ? payload.openFilePaths
       : selectedFilePathForArray(selectedFilePath)
 
@@ -144,6 +165,8 @@ function workspaceStateFromPayload(
     ),
     rootFolder: payload.rootFolder,
     selectedFilePath,
+    workspacePanelTab:
+      payload.version === 3 ? payload.workspacePanelTab : "files",
   }
 }
 
@@ -153,7 +176,12 @@ function selectedPathForWorkspace(
 ) {
   if (!rootFolder) return null
   if (!selectedFilePath) return null
-  if (isPathInWorkspace(selectedFilePath, rootFolder.path)) {
+  if (
+    isPathInWorkspace(
+      backingPathForWorkspace(selectedFilePath),
+      rootFolder.path
+    )
+  ) {
     return selectedFilePath
   }
 
@@ -178,7 +206,14 @@ function openPathsForWorkspace(
 function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
   if (!rootFolder) return false
 
-  return isPathInWorkspace(path, rootFolder.path)
+  return isPathInWorkspace(backingPathForWorkspace(path), rootFolder.path)
+}
+
+function backingPathForWorkspace(path: string) {
+  const diff = parseDiffDocumentId(path)
+  if (diff) return diff.path
+
+  return path
 }
 
 function isPathInWorkspace(path: string, rootPath: string) {
@@ -197,6 +232,7 @@ function emptyWorkspaceState(): CachedWorkspaceState {
     openFilePaths: [],
     rootFolder: null,
     selectedFilePath: null,
+    workspacePanelTab: "files",
   }
 }
 

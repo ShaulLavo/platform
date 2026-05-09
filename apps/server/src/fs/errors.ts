@@ -2,6 +2,8 @@ export type FsErrorCode =
 	| 'UNAUTHORIZED'
 	| 'FORBIDDEN_ORIGIN'
 	| 'PATH_OUTSIDE_WORKSPACE'
+	| 'GIT_COMMAND_FAILED'
+	| 'GIT_REPOSITORY_NOT_FOUND'
 	| 'NOT_FOUND'
 	| 'ALREADY_EXISTS'
 	| 'FILE_CHANGED'
@@ -15,6 +17,8 @@ const statusByCode: Record<FsErrorCode, number> = {
 	UNAUTHORIZED: 401,
 	FORBIDDEN_ORIGIN: 403,
 	PATH_OUTSIDE_WORKSPACE: 403,
+	GIT_COMMAND_FAILED: 500,
+	GIT_REPOSITORY_NOT_FOUND: 404,
 	NOT_FOUND: 404,
 	ALREADY_EXISTS: 409,
 	FILE_CHANGED: 409,
@@ -29,6 +33,8 @@ const messageByCode: Record<FsErrorCode, string> = {
 	UNAUTHORIZED: 'request is not from a trusted local app origin',
 	FORBIDDEN_ORIGIN: 'origin is not allowed',
 	PATH_OUTSIDE_WORKSPACE: 'path is outside the workspace',
+	GIT_COMMAND_FAILED: 'git command failed',
+	GIT_REPOSITORY_NOT_FOUND: 'git repository not found',
 	NOT_FOUND: 'file not found',
 	ALREADY_EXISTS: 'target already exists',
 	FILE_CHANGED: 'file changed on disk',

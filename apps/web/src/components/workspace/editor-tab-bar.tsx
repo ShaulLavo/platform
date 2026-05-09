@@ -4,6 +4,11 @@ import { useLayoutEffect, useRef, type CSSProperties } from "react"
 import { useEditorState } from "@/components/editor/editor-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import {
+  diffDocumentLabel,
+  diffDocumentTitle,
+  parseDiffDocumentId,
+} from "@/features/git/diff-document"
+import {
   colorForFileIcon,
   iconForEntry,
   type ResolvedFileIcon,
@@ -55,8 +60,8 @@ export function EditorTabBar({
         {openFilePaths.map((path) => {
           const active = path === selectedFilePath
           const dirty = dirtyFilePaths.has(path)
-          const name = basename(path)
-          const icon = iconForEntry({ name, type: "file" })
+          const name = tabName(path)
+          const icon = iconForEntry({ name: iconName(path), type: "file" })
           const showCloseIcon = active && !dirty
 
           return (
@@ -73,12 +78,12 @@ export function EditorTabBar({
               <button
                 aria-selected={active}
                 className={cn(
-                  "flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
+                  "flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
                   active && "text-foreground"
                 )}
                 onClick={() => handleSelectTab(path)}
                 role="tab"
-                title={displayPath(path)}
+                title={tabTitle(path)}
                 type="button"
               >
                 <span
@@ -91,7 +96,7 @@ export function EditorTabBar({
               <button
                 aria-label={`Close ${name}`}
                 className={cn(
-                  "group/close relative mr-1 flex size-6 shrink-0 items-center justify-center text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
+                  "group/close relative mr-1 flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
                   showCloseIcon || dirty
                     ? "opacity-100"
                     : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
@@ -121,6 +126,25 @@ export function EditorTabBar({
       </div>
     </nav>
   )
+}
+
+function iconName(path: string) {
+  const diff = parseDiffDocumentId(path)
+  if (diff) return basename(diff.path)
+
+  return basename(path)
+}
+
+function tabName(path: string) {
+  if (parseDiffDocumentId(path)) return diffDocumentLabel(path)
+
+  return basename(path)
+}
+
+function tabTitle(path: string) {
+  if (parseDiffDocumentId(path)) return diffDocumentTitle(path)
+
+  return displayPath(path)
 }
 
 function tabSizingClassName(tabSizing: EditorTabSizing) {

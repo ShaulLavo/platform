@@ -7,6 +7,7 @@ import {
 } from "@/components/file-picker-dialog"
 import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+import { useOpenTabCache } from "@/hooks/use-open-tab-cache"
 import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
@@ -30,17 +31,24 @@ function AppContent() {
   const rootFolder = useEditorState((state) => state.rootFolder)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
   const openFilePaths = useEditorState((state) => state.openFilePaths)
+  const workspacePanelTab = useEditorState((state) => state.workspacePanelTab)
   const openPicker = useEditorState((state) => state.openPicker)
   const pickRootFolder = useEditorState((state) => state.pickRootFolder)
   const setPickerOpen = useEditorState((state) => state.setPickerOpen)
   const { loadTreeDirectory, resetTreeLoad, treeState } =
     useWorkspaceTree(rootFolder)
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
+  useOpenTabCache()
   useWorkspaceEvents(rootFolder)
 
   useEffect(() => {
-    writeWorkspaceCache({ openFilePaths, rootFolder, selectedFilePath })
-  }, [openFilePaths, rootFolder, selectedFilePath])
+    writeWorkspaceCache({
+      openFilePaths,
+      rootFolder,
+      selectedFilePath,
+      workspacePanelTab,
+    })
+  }, [openFilePaths, rootFolder, selectedFilePath, workspacePanelTab])
 
   function handlePick(entry: PickedFsEntry) {
     resetFileLoad()
