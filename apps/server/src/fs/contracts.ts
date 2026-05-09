@@ -20,6 +20,15 @@ export const booleanQueryValueSchema = v.pipe(
 	v.transform(value => value === 'true' || value === '1')
 )
 
+export const treeEntrySchema = v.object({
+	name: v.string(),
+	path: pathSchema,
+	type: entryTypeQueryValueSchema,
+	size: v.number(),
+	mtimeMs: v.number(),
+	birthtimeMs: v.number()
+})
+
 export const pathQuerySchema = v.object({
 	path: v.optional(pathSchema, '')
 })
@@ -119,11 +128,13 @@ export const watchServerMessageSchema = v.variant('type', [
 	}),
 	v.object({
 		type: v.literal('created'),
-		path: pathSchema
+		path: pathSchema,
+		entry: v.optional(treeEntrySchema)
 	}),
 	v.object({
 		type: v.literal('changed'),
-		path: pathSchema
+		path: pathSchema,
+		entry: v.optional(treeEntrySchema)
 	}),
 	v.object({
 		type: v.literal('deleted'),
@@ -132,7 +143,8 @@ export const watchServerMessageSchema = v.variant('type', [
 	v.object({
 		type: v.literal('renamed'),
 		path: pathSchema,
-		oldPath: pathSchema
+		oldPath: pathSchema,
+		entry: v.optional(treeEntrySchema)
 	}),
 	v.object({
 		type: v.literal('error'),
@@ -149,6 +161,7 @@ export type CopyBody = v.InferOutput<typeof copyBodySchema>
 export type DeleteBody = v.InferOutput<typeof deleteBodySchema>
 export type RecordRecentBody = v.InferOutput<typeof recordRecentBodySchema>
 export type EntryTypeFilter = v.InferOutput<typeof entryTypeQueryValueSchema>
+export type TreeEntryLike = v.InferOutput<typeof treeEntrySchema>
 export type WatchClientMessage = v.InferOutput<typeof watchClientMessageSchema>
 export type WatchServerMessage = v.InferOutput<typeof watchServerMessageSchema>
 

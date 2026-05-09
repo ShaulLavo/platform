@@ -21,6 +21,7 @@ import {
   metadataRowToEntry,
   type FsMetadataEntry,
 } from "./metadata"
+import type { FsStat } from "./stat"
 import type {
   CopyBody,
   CreateFileBody,
@@ -28,6 +29,7 @@ import type {
   DeleteBody,
   EntryTypeFilter,
   RenameBody,
+  TreeEntryLike,
   WatchServerMessage,
   WriteBody,
 } from "./contracts"
@@ -108,28 +110,33 @@ export class FileSystemService {
 
   async write(body: WriteBody) {
     const path = await writeTextFile(this.paths, body)
-    this.changes.emit({ type: "changed", path })
+    const entry = await this.statEntry(path)
+    this.changes.emit({ type: "changed", path, entry })
 
     return this.stat(path)
   }
 
   async createFile(body: CreateFileBody) {
     const path = await createFile(this.paths, body)
-    this.changes.emit({ type: "created", path })
+    const entry = await this.statEntry(path)
+    this.changes.emit({ type: "created", path, entry })
 
     return this.stat(path)
   }
 
   async createFolder(body: CreateFolderBody) {
     const path = await createFolder(this.paths, body)
-    this.changes.emit({ type: "created", path })
+    const entry = await this.statEntry(path)
+    this.changes.emit({ type: "created", path, entry })
 
     return this.stat(path)
   }
 
   async rename(body: RenameBody) {
     const result = await renamePath(this.paths, body)
+    const entry = await this.statEntry(result.to)
     this.changes.emit({
+      entry,
       type: "renamed",
       oldPath: result.from,
       path: result.to,
@@ -140,7 +147,8 @@ export class FileSystemService {
 
   async copy(body: CopyBody) {
     const result = await copyPath(this.paths, body)
-    this.changes.emit({ type: "created", path: result.to })
+    const entry = await this.statEntry(result.to)
+    this.changes.emit({ type: "created", path: result.to, entry })
 
     return this.stat(result.to)
   }
@@ -242,13 +250,24 @@ export class FileSystemService {
     const stat = await this.stat(input)
 
     return {
-      path: stat.path,
-      name: pathBasename(stat.path),
-      type: stat.type,
-      size: stat.size,
-      mtimeMs: stat.mtimeMs,
-      birthtimeMs: stat.birthtimeMs,
+      ...entryFromStat(stat),
     }
+  }
+
+  private async statEntry(input: string): Promise<TreeEntryLike> {
+    const stat = await this.stat(input)
+    return entryFromStat(stat)
+  }
+}
+
+function entryFromStat(stat: FsStat): TreeEntryLike {
+  return {
+    path: stat.path,
+    name: pathBasename(stat.path),
+    type: stat.type,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    birthtimeMs: stat.birthtimeMs,
   }
 }
 

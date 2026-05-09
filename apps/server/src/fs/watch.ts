@@ -3,7 +3,8 @@ import { stat } from "node:fs/promises"
 import path from "node:path"
 import { FsError } from "./errors"
 import { isIgnoredPath, toPosix, type WorkspacePaths } from "./path"
-import type { WatchServerMessage } from "./contracts"
+import { statPath, type FsStat } from "./stat"
+import type { TreeEntryLike, WatchServerMessage } from "./contracts"
 
 type Listener = (event: WatchServerMessage) => void
 type WatchRelease = () => void
@@ -36,6 +37,7 @@ export class FileChangeHub {
 
   stream(inputs: string[], signal?: AbortSignal) {
     const subscribed = subscribedPaths(this.paths, inputs)
+    watchLog("stream", { subscribed: [...subscribed] })
     return this.createStream(subscribed, signal)
   }
 
@@ -56,16 +58,27 @@ export class FileChangeHub {
     relativeRoot: string,
     onError: (event: WatchServerMessage) => void
   ): WatchRelease {
-    if (!this.watchEnabled) return noop
+    if (!this.watchEnabled) {
+      watchLog("disabled", { relativeRoot })
+      return noop
+    }
 
     const existing = this.nativeWatchers.get(relativeRoot)
     if (existing) {
       existing.refCount += 1
+      watchLog("retain-existing", {
+        refCount: existing.refCount,
+        relativeRoot,
+      })
       return () => this.releaseWatcher(relativeRoot)
     }
 
     try {
       const target = this.paths.resolve(relativeRoot)
+      watchLog("start", {
+        absolutePath: target.absolutePath,
+        relativeRoot,
+      })
       const watcher = watch(
         target.absolutePath,
         { recursive: true },
@@ -78,10 +91,12 @@ export class FileChangeHub {
         }
       )
       watcher.on("error", (error) => {
+        watchLog("native-error", { error: errorMessage(error), relativeRoot })
         onError(watchError(error, relativeRoot))
       })
       this.nativeWatchers.set(relativeRoot, { refCount: 1, watcher })
     } catch (error) {
+      watchLog("start-error", { error: errorMessage(error), relativeRoot })
       onError(watchError(error, relativeRoot))
       return noop
     }
@@ -94,10 +109,17 @@ export class FileChangeHub {
     if (!entry) return
 
     entry.refCount -= 1
-    if (entry.refCount > 0) return
+    if (entry.refCount > 0) {
+      watchLog("release-retained", {
+        refCount: entry.refCount,
+        relativeRoot,
+      })
+      return
+    }
 
     entry.watcher.close()
     this.nativeWatchers.delete(relativeRoot)
+    watchLog("stop", { relativeRoot })
   }
 
   private async handleNativeEvent(
@@ -106,12 +128,27 @@ export class FileChangeHub {
     filename: string
   ) {
     const relativePath = watchEventPath(relativeRoot, filename)
-    if (isIgnoredPath(relativePath)) return
+    if (isIgnoredPath(relativePath)) {
+      watchIgnoredLog("ignored-native-event", {
+        filename,
+        nativeEvent,
+        relativePath,
+      })
+      return
+    }
 
-    this.broadcast({
-      type: await nativeEventType(this.paths, relativePath, nativeEvent),
-      path: relativePath,
+    const type = await nativeEventType(this.paths, relativePath, nativeEvent)
+    const entry =
+      type === "deleted" ? undefined : await nativeEventEntry(this.paths, relativePath)
+    watchLog("native-event", {
+      entry,
+      filename,
+      nativeEvent,
+      relativePath,
+      type,
     })
+
+    this.broadcast(nativeWatchEvent(type, relativePath, entry))
   }
 
   private async *createStream(subscribed: Set<string>, signal?: AbortSignal) {
@@ -119,14 +156,24 @@ export class FileChangeHub {
     let wake: (() => void) | null = null
 
     const listener = (event: WatchServerMessage) => {
-      if (!shouldDeliver(event, subscribed)) return
+      if (!shouldDeliver(event, subscribed)) {
+        watchLog("skip-delivery", { event, subscribed: [...subscribed] })
+        return
+      }
+
+      watchLog("deliver", { event, subscribed: [...subscribed] })
       queue.push(event)
       wake?.()
     }
 
     const abort = () => wake?.()
     const enqueue = (event: WatchServerMessage) => {
-      if (!shouldDeliver(event, subscribed)) return
+      if (!shouldDeliver(event, subscribed)) {
+        watchLog("skip-direct-delivery", { event, subscribed: [...subscribed] })
+        return
+      }
+
+      watchLog("direct-deliver", { event, subscribed: [...subscribed] })
       queue.push(event)
       wake?.()
     }
@@ -156,6 +203,7 @@ export class FileChangeHub {
   }
 
   private broadcast(event: WatchServerMessage) {
+    watchLog("broadcast", event)
     for (const listener of this.listeners) listener(event)
   }
 }
@@ -220,6 +268,17 @@ async function nativeEventType(
   return exists ? "created" : "deleted"
 }
 
+function nativeWatchEvent(
+  type: "created" | "changed" | "deleted",
+  path: string,
+  entry: TreeEntryLike | undefined
+): WatchServerMessage {
+  if (type === "deleted") return { type, path }
+  if (!entry) return { type, path }
+
+  return { type, path, entry }
+}
+
 async function pathExists(paths: WorkspacePaths, relativePath: string) {
   try {
     const target = paths.resolve(relativePath)
@@ -228,6 +287,33 @@ async function pathExists(paths: WorkspacePaths, relativePath: string) {
   } catch {
     return false
   }
+}
+
+async function nativeEventEntry(
+  paths: WorkspacePaths,
+  relativePath: string
+): Promise<TreeEntryLike | undefined> {
+  try {
+    return entryFromStat(await statPath(paths, relativePath))
+  } catch {
+    return undefined
+  }
+}
+
+function entryFromStat(stat: FsStat): TreeEntryLike {
+  return {
+    path: stat.path,
+    name: pathBasename(stat.path),
+    type: stat.type,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    birthtimeMs: stat.birthtimeMs,
+  }
+}
+
+function pathBasename(input: string) {
+  const parts = input.split("/").filter(Boolean)
+  return parts.at(-1) ?? "Root"
 }
 
 function watchError(error: unknown, path: string): WatchServerMessage {
@@ -246,6 +332,18 @@ function errorMessage(error: unknown) {
 
 function noop() {
   // no-op release for disabled or failed native watchers
+}
+
+function watchLog(message: string, data: unknown) {
+  if (process.env.FS_WATCH_DEBUG !== "true") return
+
+  console.debug("[fs-watch]", message, data)
+}
+
+function watchIgnoredLog(message: string, data: unknown) {
+  if (process.env.FS_WATCH_LOG_IGNORED !== "true") return
+
+  watchLog(message, data)
 }
 
 export function parseWatchInputs(

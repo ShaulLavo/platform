@@ -239,6 +239,86 @@ describe("fs rpc events", () => {
     await events.close()
   })
 
+  it("includes entry metadata on changed events for existing files", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "file.txt"), "before")
+    const app = testApp(root, { watch: false })
+    const stream = await app.handle(
+      new Request("http://local/fs/events", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    const changed = app.handle(
+      new Request("http://local/fs/write", {
+        body: JSON.stringify({ path: "file.txt", content: "after" }),
+        headers: trustedOriginHeaders({ "content-type": "application/json" }),
+        method: "POST",
+      })
+    )
+    const event = await events.next()
+
+    expect(event).toMatchObject({
+      entry: {
+        name: "file.txt",
+        path: "file.txt",
+        size: 5,
+        type: "file",
+      },
+      path: "file.txt",
+      type: "changed",
+    })
+    expect(typeof event.entry).toBe("object")
+    expect(typeof (event.entry as Record<string, unknown>).mtimeMs).toBe(
+      "number"
+    )
+    expect((await changed).status).toBe(200)
+    await events.close()
+  })
+
+  it("does not include entry metadata on deleted events", async () => {
+    const root = await fixtureRoot()
+    const app = testApp(root, { watch: false })
+    const stream = await app.handle(
+      new Request("http://local/fs/events", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    const created = await app.handle(
+      new Request("http://local/fs/create-file", {
+        body: JSON.stringify({ path: "gone.txt", content: "ok" }),
+        headers: trustedOriginHeaders({ "content-type": "application/json" }),
+        method: "POST",
+      })
+    )
+    expect(created.status).toBe(200)
+    expect(await events.next()).toMatchObject({ type: "created" })
+
+    const deleted = app.handle(
+      new Request("http://local/fs/delete", {
+        body: JSON.stringify({ path: "gone.txt" }),
+        headers: trustedOriginHeaders({ "content-type": "application/json" }),
+        method: "POST",
+      })
+    )
+    const event = await events.next()
+
+    expect(event).toMatchObject({
+      path: "gone.txt",
+      type: "deleted",
+    })
+    expect(event).not.toHaveProperty("entry")
+    expect((await deleted).status).toBe(200)
+    await events.close()
+  })
+
   it("filters ignored path changes out of event streams", async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, "node_modules"), { recursive: true })

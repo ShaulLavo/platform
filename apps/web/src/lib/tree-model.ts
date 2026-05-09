@@ -95,6 +95,23 @@ export function replaceDirectoryLoad(
   return next
 }
 
+export function patchTreeEntryMetadata(
+  model: TreeModel,
+  rootPath: string,
+  entry: TreeEntry
+): TreeModel {
+  const treePath = canonicalTreePath(toTreePath(entry.path, rootPath))
+  const current = model.entriesByTreePath.get(treePath)
+  if (!current) return model
+
+  const next = cloneTreeModel(model)
+  next.entriesByTreePath.set(treePath, {
+    ...entry,
+    children: current.children,
+  })
+  return next
+}
+
 export function selectedTreeEntry(
   state: LoadState<TreeModel>,
   rootPath: string | null,

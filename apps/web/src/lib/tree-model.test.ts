@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
-import { replaceDirectoryLoad, treeModel } from "@/lib/tree-model"
+import {
+  patchTreeEntryMetadata,
+  replaceDirectoryLoad,
+  treeModel,
+} from "@/lib/tree-model"
 
 describe("replaceDirectoryLoad", () => {
   it("replaces root children and removes stale entries", () => {
@@ -37,6 +41,35 @@ describe("replaceDirectoryLoad", () => {
     expect(next.paths).toEqual(["src/", "README.md", "src/new.ts"])
     expect(next.entriesByTreePath.has("src/old.ts")).toBe(false)
     expect(next.entriesByTreePath.has("README.md")).toBe(true)
+  })
+})
+
+describe("patchTreeEntryMetadata", () => {
+  it("updates an existing entry without removing siblings", () => {
+    const root = "repo"
+    const model = treeModel(
+      tree(root, [file("repo/a.ts"), file("repo/b.ts")]),
+      root
+    )
+    const next = patchTreeEntryMetadata(model, root, {
+      ...file("repo/a.ts"),
+      mtimeMs: 25,
+      size: 10,
+    })
+
+    expect(next.entriesByTreePath.get("a.ts")).toMatchObject({
+      mtimeMs: 25,
+      size: 10,
+    })
+    expect(next.entriesByTreePath.has("b.ts")).toBe(true)
+    expect(next.paths).toEqual(["a.ts", "b.ts"])
+  })
+
+  it("returns the current model when the entry is not visible", () => {
+    const model = treeModel(tree("repo", [file("repo/a.ts")]), "repo")
+    const next = patchTreeEntryMetadata(model, "repo", file("repo/missing.ts"))
+
+    expect(next).toBe(model)
   })
 })
 
