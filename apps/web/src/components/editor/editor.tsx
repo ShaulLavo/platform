@@ -11,7 +11,7 @@ import {
 } from "@editor/typescript-lsp"
 
 import { createEditorPlugins } from "@/components/editor/editor-plugins"
-import { EditorStatusBar } from "@/components/editor/editor-status-bar"
+import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import { languageIdForFilePath } from "@/components/editor/file-path"
 import { useTheme } from "@/components/theme-provider"
 import type {
@@ -27,6 +27,7 @@ type EditorProps = {
   workspaceEntries: readonly EditorWorkspaceEntry[]
   definitionTarget?: TypeScriptLspDefinitionTarget | null
   onOpenDefinition?: (target: TypeScriptLspDefinitionTarget) => void | boolean
+  onStatusChange?: (status: EditorStatusBarState) => void
 }
 
 export function Editor({
@@ -34,6 +35,7 @@ export function Editor({
   file,
   rootPath,
   onOpenDefinition,
+  onStatusChange,
 }: EditorProps) {
   const { theme } = useTheme()
   const resolvedTheme = useResolvedTheme(theme)
@@ -72,6 +74,23 @@ export function Editor({
   const selection = selectionForDefinition(file, definitionTarget)
 
   useEffect(() => {
+    onStatusChange?.({
+      charCount: text.length,
+      filePath: file.path,
+      state: editorState,
+      typeScriptDiagnostics,
+      typeScriptStatus,
+    })
+  }, [
+    editorState,
+    file.path,
+    onStatusChange,
+    text.length,
+    typeScriptDiagnostics,
+    typeScriptStatus,
+  ])
+
+  useEffect(() => {
     if (!selection) return
     controller.commands.setSelection(
       selection.anchor,
@@ -81,18 +100,11 @@ export function Editor({
   }, [controller, selection])
 
   return (
-    <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] bg-background">
+    <div className="flex h-full min-h-0 min-w-0 bg-background">
       <EditorHost
         key={shikiTheme}
         className="app-editor-host"
         controller={controller}
-      />
-      <EditorStatusBar
-        filePath={file.path}
-        state={editorState}
-        text={text}
-        typeScriptDiagnostics={typeScriptDiagnostics}
-        typeScriptStatus={typeScriptStatus}
       />
     </div>
   )

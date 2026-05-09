@@ -3,8 +3,10 @@ import {
   FileIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react"
+import { useEffect } from "react"
 
 import { Editor, type EditorWorkspaceEntry } from "@/components/editor"
+import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import { basename, displayPath, formatSize } from "@/lib/path-formatters"
@@ -19,6 +21,7 @@ export function FileViewer({
   selectedFilePath,
   workspaceEntries,
   onOpenDefinition,
+  onEditorStatusChange,
 }: {
   definitionTarget: TypeScriptLspDefinitionTarget | null
   entry: TreeEntry | null
@@ -27,7 +30,14 @@ export function FileViewer({
   selectedFilePath: string | null
   workspaceEntries: readonly EditorWorkspaceEntry[]
   onOpenDefinition: (target: TypeScriptLspDefinitionTarget) => void | boolean
+  onEditorStatusChange: (status: EditorStatusBarState | null) => void
 }) {
+  useEffect(() => {
+    if (selectedFilePath && fileState.status === "ready") return
+
+    onEditorStatusChange(null)
+  }, [fileState.status, onEditorStatusChange, selectedFilePath])
+
   if (!selectedFilePath) return <FileViewerEmpty />
 
   const displayedFile = fileState.status === "ready" ? fileState.data : null
@@ -60,6 +70,7 @@ export function FileViewer({
         fileState={fileState}
         rootPath={rootPath}
         workspaceEntries={workspaceEntries}
+        onEditorStatusChange={onEditorStatusChange}
         onOpenDefinition={onOpenDefinition}
       />
     </section>
@@ -75,12 +86,14 @@ function FileViewerBody({
   fileState,
   rootPath,
   workspaceEntries,
+  onEditorStatusChange,
   onOpenDefinition,
 }: {
   definitionTarget: TypeScriptLspDefinitionTarget | null
   fileState: LoadState<FileResult>
   rootPath: string
   workspaceEntries: readonly EditorWorkspaceEntry[]
+  onEditorStatusChange: (status: EditorStatusBarState | null) => void
   onOpenDefinition: (target: TypeScriptLspDefinitionTarget) => void | boolean
 }) {
   if (fileState.status === "loading") {
@@ -107,6 +120,7 @@ function FileViewerBody({
       file={fileState.data}
       rootPath={rootPath}
       workspaceEntries={workspaceEntries}
+      onStatusChange={onEditorStatusChange}
       onOpenDefinition={onOpenDefinition}
     />
   )

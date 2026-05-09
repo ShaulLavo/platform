@@ -3,8 +3,8 @@ import type {
   TypeScriptLspDiagnosticSummary,
   TypeScriptLspStatus,
 } from "@editor/typescript-lsp"
+import { AnimatedCounter } from "react-animated-counter"
 
-import Counter from "@/components/react-bits/counter"
 import {
   formatHistoryStatus,
   formatSyntaxStatus,
@@ -12,44 +12,55 @@ import {
 } from "@/components/editor/status-formatters"
 
 type EditorStatusBarProps = {
+  charCount: number
   filePath: string
   state: EditorState | null
-  text: string
   typeScriptDiagnostics: TypeScriptLspDiagnosticSummary | null
   typeScriptStatus: TypeScriptLspStatus
 }
 
-function wholeNumberPlaces(value: number) {
-  const digitCount = Math.max(1, Math.floor(value).toString().length)
+export type EditorStatusBarState = EditorStatusBarProps
 
-  return Array.from({ length: digitCount }, (_, index) => {
-    return 10 ** (digitCount - index - 1)
-  })
-}
+const STATUS_COUNTER_CONTAINER_STYLES = {
+  display: "inline-flex",
+  margin: 0,
+} as const
 
-function CursorMetric({
+const STATUS_COUNTER_DIGIT_STYLES = {
+  fontVariantNumeric: "tabular-nums",
+  fontWeight: 500,
+} as const
+
+function CounterMetric({
+  includeCommas = false,
   label,
+  labelPosition = "before",
   value,
 }: {
+  includeCommas?: boolean
   label: string
+  labelPosition?: "before" | "after"
   value: number
 }) {
   return (
-    <span className="inline-flex items-center gap-1" aria-label={`${label} ${value}`}>
-      <span>{label}</span>
-      <Counter
-        digitPlaceHolders={false}
-        fontSize={11}
-        fontWeight={500}
-        gap={1}
-        gradientFrom="var(--background)"
-        gradientHeight={3}
-        horizontalPadding={0}
-        places={wholeNumberPlaces(value)}
-        textColor="currentColor"
+    <div
+      className="inline-flex items-center gap-1"
+      aria-label={`${value.toLocaleString()} ${label}`}
+    >
+      {labelPosition === "before" && <span>{label}</span>}
+      <AnimatedCounter
+        color="currentColor"
+        containerStyles={STATUS_COUNTER_CONTAINER_STYLES}
+        decrementColor="currentColor"
+        digitStyles={STATUS_COUNTER_DIGIT_STYLES}
+        fontSize="11px"
+        includeCommas={includeCommas}
+        includeDecimals={false}
+        incrementColor="currentColor"
         value={value}
       />
-    </span>
+      {labelPosition === "after" && <span>{label}</span>}
+    </div>
   )
 }
 
@@ -58,16 +69,16 @@ function CursorStatus({ state }: { state: EditorState | null }) {
 
   return (
     <span className="inline-flex items-center gap-2">
-      <CursorMetric label="Ln" value={state.cursor.row + 1} />
-      <CursorMetric label="Col" value={state.cursor.column + 1} />
+      <CounterMetric label="Ln" value={state.cursor.row + 1} />
+      <CounterMetric label="Col" value={state.cursor.column + 1} />
     </span>
   )
 }
 
 export function EditorStatusBar({
+  charCount,
   filePath,
   state,
-  text,
   typeScriptDiagnostics,
   typeScriptStatus,
 }: EditorStatusBarProps) {
@@ -77,7 +88,12 @@ export function EditorStatusBar({
         {state?.documentId ? filePath : "No file"}
       </span>
       <CursorStatus state={state} />
-      <span>{text.length.toLocaleString()} chars</span>
+      <CounterMetric
+        includeCommas
+        label="chars"
+        labelPosition="after"
+        value={charCount}
+      />
       <span>{formatSyntaxStatus(state)}</span>
       <span>
         {formatTypeScriptLspStatus(typeScriptStatus, typeScriptDiagnostics)}

@@ -1,4 +1,3 @@
-import { AppHeader } from "@/components/app-header"
 import { EmptyWorkspace } from "@/components/empty-workspace"
 import {
   FilePickerDialog,
@@ -54,11 +53,6 @@ export function App() {
   return (
     <main className="h-svh overflow-hidden bg-background text-foreground">
       <div className="flex h-full min-h-0 flex-col">
-        <AppHeader
-          rootFolder={rootFolder}
-          onChooseFolder={() => setPickerOpen(true)}
-        />
-
         {rootFolder ? (
           <WorkspaceView
             definitionTarget={definitionTarget}
