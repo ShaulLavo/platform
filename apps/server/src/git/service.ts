@@ -1,4 +1,4 @@
-import { lstat } from "node:fs/promises"
+import { lstat, readFile } from "node:fs/promises"
 import path from "node:path"
 import { FsError } from "../fs/errors"
 import type { WorkspacePaths } from "../fs/path"
@@ -60,6 +60,10 @@ export type GitDiffHunk = {
 export type GitFileDiff = {
   path: string
   oldPath?: string
+  oldFileMissing?: boolean
+  newFileMissing?: boolean
+  oldText?: string
+  newText?: string
   staged: boolean
   patch: string
   hunks: GitDiffHunk[]
@@ -142,7 +146,8 @@ export class GitService {
       ...pathspecArgs(repository.pathspec),
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
-    return parseDiff(result.stdout, repository.rootPath, staged)
+    const diffs = parseDiff(result.stdout, repository.rootPath, staged)
+    return Promise.all(diffs.map((diff) => this.withDiffContent(repository, diff)))
   }
 
   async file(input: string, ref: string) {
@@ -335,6 +340,66 @@ export class GitService {
       "--untracked-files=no",
     ])
     return parseRepositoryInfo(result.stdout, rootPath)
+  }
+
+  private async withDiffContent(
+    repository: GitRepository,
+    diff: GitFileDiff
+  ): Promise<GitFileDiff> {
+    const [oldText, newText] = await Promise.all([
+      this.diffSideContent(repository, diff, "old"),
+      this.diffSideContent(repository, diff, "new"),
+    ])
+
+    return { ...diff, oldText, newText }
+  }
+
+  private async diffSideContent(
+    repository: GitRepository,
+    diff: GitFileDiff,
+    side: "old" | "new"
+  ) {
+    if (side === "old") return this.oldDiffContent(repository, diff)
+
+    return this.newDiffContent(repository, diff)
+  }
+
+  private async oldDiffContent(repository: GitRepository, diff: GitFileDiff) {
+    const path = repositoryRelativePath(repository.rootPath, diff.oldPath ?? diff.path)
+    if (!path) return ""
+    if (diff.oldFileMissing) return ""
+    if (diff.staged) return this.gitText(repository, `HEAD:${path}`)
+
+    return this.gitText(repository, `:${path}`)
+  }
+
+  private async newDiffContent(repository: GitRepository, diff: GitFileDiff) {
+    const path = repositoryRelativePath(repository.rootPath, diff.path)
+    if (!path) return ""
+    if (diff.newFileMissing) return ""
+    if (diff.staged) return this.gitText(repository, `:${path}`)
+
+    return this.workingTreeText(repository, path)
+  }
+
+  private async gitText(repository: GitRepository, revisionPath: string) {
+    const result = await this.git(repository.rootAbsolutePath, ["show", revisionPath], {
+      allowFailure: true,
+    })
+    if (result.exitCode !== 0) return ""
+
+    return result.stdout
+  }
+
+  private async workingTreeText(repository: GitRepository, relativePath: string) {
+    const absolutePath = path.join(repository.rootDisplayAbsolutePath, relativePath)
+    this.paths.assertInside(absolutePath)
+
+    try {
+      return await readFile(absolutePath, "utf8")
+    } catch {
+      return ""
+    }
   }
 
   private async git(
@@ -587,7 +652,9 @@ function parseDiff(output: string, rootPath: string, staged: boolean) {
     current.lines.push(line)
     if (line.startsWith("rename from ")) current.oldPath = joinPath(rootPath, line.slice(12))
     if (line.startsWith("rename to ")) current.path = joinPath(rootPath, line.slice(10))
+    if (line === "--- /dev/null") current.oldFileMissing = true
     if (line.startsWith("--- ")) current.oldPath = diffPath(rootPath, line, "a/")
+    if (line === "+++ /dev/null") current.newFileMissing = true
     if (line.startsWith("+++ ")) {
       current.path = diffPath(rootPath, line, "b/") ?? current.path
     }
@@ -602,6 +669,8 @@ function parseDiff(output: string, rootPath: string, staged: boolean) {
 
   return diffs.map((diff) => ({
     hunks: diff.hunks.map(finalizeHunk),
+    newFileMissing: diff.newFileMissing,
+    oldFileMissing: diff.oldFileMissing,
     oldPath: diff.oldPath === diff.path ? undefined : diff.oldPath,
     patch: ensureTrailingNewline(diff.lines.join("\n")),
     path: diff.path,
@@ -619,6 +688,8 @@ function diffLines(output: string) {
 type MutableGitFileDiff = {
   path: string
   oldPath?: string
+  oldFileMissing?: boolean
+  newFileMissing?: boolean
   staged: boolean
   lines: string[]
   hunks: MutableGitDiffHunk[]
@@ -794,6 +865,16 @@ function joinPath(rootPath: string, childPath: string | undefined) {
   if (!rootPath) return childPath
 
   return `${rootPath}/${childPath}`
+}
+
+function repositoryRelativePath(rootPath: string, filePath: string) {
+  if (!rootPath) return filePath
+  if (filePath === rootPath) return ""
+
+  const prefix = `${rootPath}/`
+  if (!filePath.startsWith(prefix)) return filePath
+
+  return filePath.slice(prefix.length)
 }
 
 function unquoteGitPath(value: string) {

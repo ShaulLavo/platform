@@ -84,6 +84,9 @@ export type DiffRenderRow = {
   readonly oldLineNumber?: number
   readonly newLineNumber?: number
   readonly hunkIndex?: number
+  readonly expanded?: boolean
+  readonly expandable?: boolean
+  readonly skippedLines?: number
   readonly inlineRanges?: readonly DiffInlineRange[]
 }
 

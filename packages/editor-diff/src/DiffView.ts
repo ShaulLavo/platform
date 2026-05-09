@@ -241,25 +241,27 @@ export class DiffView {
     if (this.options.syntaxHighlight === false) return
     if (!canUseShikiWorker()) return
 
-    const text = joinRenderLines(pane.rows)
+    const syntaxText = joinSyntaxLines(pane.rows)
     const lang = shikiLanguageForFile(file)
     if (!lang) return
 
-    const snapshot = createPieceTableSnapshot(text)
+    const snapshot = createPieceTableSnapshot(syntaxText)
     const session = createShikiHighlighterSession({
       documentId: `${file.path}:${pane.side}`,
       languageId: file.languageId ?? lang,
-      text,
+      text: syntaxText,
       snapshot,
+      langs: [lang],
       lang,
       theme: this.options.theme ?? DEFAULT_THEME,
+      themes: [this.options.theme ?? DEFAULT_THEME],
     })
     if (!session) return
 
     pane.syntaxSession = session
     const [theme, result] = await Promise.all([
       loadConfiguredTheme(this.options.theme),
-      session.refresh(snapshot, text),
+      session.refresh(snapshot, syntaxText),
     ])
     pane.view.setTheme(result.theme ?? theme)
     pane.view.setTokens(result.tokens as readonly EditorToken[])
@@ -318,6 +320,22 @@ function decorationForRow(row: DiffRenderRow): VirtualizedTextRowDecoration {
     className: `editor-diff-row editor-diff-row-${suffix}`,
     gutterClassName: `editor-diff-gutter-row editor-diff-gutter-row-${suffix}`,
   }
+}
+
+function joinSyntaxLines(rows: readonly DiffRenderRow[]): string {
+  return rows.map(syntaxLineText).join("\n")
+}
+
+function syntaxLineText(row: DiffRenderRow): string {
+  if (
+    row.type === "context" ||
+    row.type === "addition" ||
+    row.type === "deletion"
+  ) {
+    return row.text
+  }
+
+  return " ".repeat(row.text.length)
 }
 
 function shikiLanguageForFile(file: DiffFile): string | null {

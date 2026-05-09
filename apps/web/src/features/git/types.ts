@@ -47,6 +47,10 @@ export type DiffHunk = {
 export type FileDiff = {
   path: string
   oldPath?: string
+  oldFileMissing?: boolean
+  newFileMissing?: boolean
+  oldText?: string
+  newText?: string
   staged: boolean
   patch: string
   hunks: DiffHunk[]
