@@ -1,67 +1,41 @@
 import { ArrowClockwiseIcon } from "@phosphor-icons/react"
-import { useCallback, useState } from "react"
 
+import { EditorStatusBar } from "@/components/editor/editor-status-bar"
+import { useEditorState } from "@/components/editor/editor-state"
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
-import {
-  EditorStatusBar,
-  type EditorStatusBarState,
-} from "@/components/editor/editor-status-bar"
-import {
-  formatHistoryStatus,
-  formatSyntaxStatus,
-  formatTypeScriptLspStatus,
-} from "@/components/editor/status-formatters"
 import { FileViewer } from "@/components/workspace/file-viewer"
 import { TreePane } from "@/components/workspace/tree-pane"
 import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import {
   EMPTY_TREE_MODEL,
+  selectedTreeEntry,
   treeStateLabel,
   type TreeModel,
   workspaceSourceEntries,
 } from "@/lib/tree-model"
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 import { Button } from "@workspace/ui/components/button"
 
 export function WorkspaceView({
-  definitionTarget,
   fileState,
-  onOpenDefinition,
   rootFolder,
-  selectedEntry,
-  selectedFilePath,
-  setSelectedFilePath,
   treeState,
   onLoadDirectory,
   onRetryTree,
 }: {
-  definitionTarget: TypeScriptLspDefinitionTarget | null
   fileState: LoadState<FileResult>
-  onOpenDefinition: (target: TypeScriptLspDefinitionTarget) => void | boolean
   rootFolder: PickedFsEntry
-  selectedEntry: TreeEntry | null
-  selectedFilePath: string | null
-  setSelectedFilePath: (path: string | null) => void
   treeState: LoadState<TreeModel>
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   onRetryTree: () => void
 }) {
+  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
+  const editorStatus = useEditorState((state) => state.editorStatus)
   const treeModel = treeState.status === "ready" ? treeState.data : null
   const workspaceEntries = workspaceSourceEntries(treeModel)
-  const [editorStatus, setEditorStatus] =
-    useState<EditorStatusBarState | null>(null)
-  const handleEditorStatusChange = useCallback(
-    (status: EditorStatusBarState | null) => {
-      setEditorStatus((currentStatus) => {
-        if (!status) return null
-        if (sameEditorStatus(currentStatus, status)) return currentStatus
-
-        return status
-      })
-    },
-    []
-  )
+  const selectedEntry = selectedFilePath
+    ? selectedTreeEntry(treeState, rootFolder.path, selectedFilePath)
+    : null
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -91,22 +65,16 @@ export function WorkspaceView({
               key={rootFolder.path}
               model={treeModel ?? EMPTY_TREE_MODEL}
               rootPath={rootFolder.path}
-              selectedFilePath={selectedFilePath}
-              setSelectedFilePath={setSelectedFilePath}
               state={treeState}
               onLoadDirectory={onLoadDirectory}
             />
           </div>
         </aside>
         <FileViewer
-          definitionTarget={definitionTarget}
           entry={selectedEntry}
           fileState={fileState}
           rootPath={rootFolder.path}
-          selectedFilePath={selectedFilePath}
           workspaceEntries={workspaceEntries}
-          onEditorStatusChange={handleEditorStatusChange}
-          onOpenDefinition={onOpenDefinition}
         />
         {editorStatus && (
           <div className="col-span-2 min-w-0">
@@ -116,34 +84,4 @@ export function WorkspaceView({
       </div>
     </div>
   )
-}
-
-function sameEditorStatus(
-  currentStatus: EditorStatusBarState | null,
-  nextStatus: EditorStatusBarState
-) {
-  if (!currentStatus) return false
-
-  return editorStatusKey(currentStatus) === editorStatusKey(nextStatus)
-}
-
-function editorStatusKey(status: EditorStatusBarState) {
-  const cursor = status.state?.documentId
-    ? `${status.state.cursor.row}:${status.state.cursor.column}`
-    : ""
-  const syntax = formatSyntaxStatus(status.state)
-  const history = formatHistoryStatus(status.state)
-  const typeScript = formatTypeScriptLspStatus(
-    status.typeScriptStatus,
-    status.typeScriptDiagnostics
-  )
-
-  return [
-    status.filePath,
-    status.charCount,
-    cursor,
-    syntax,
-    history,
-    typeScript,
-  ].join("\u0000")
 }

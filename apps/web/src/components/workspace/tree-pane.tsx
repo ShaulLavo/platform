@@ -7,6 +7,7 @@ import type {
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
 import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
 
+import { useEditorState } from "@/components/editor/editor-state"
 import type { TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import { canonicalTreePath } from "@/lib/path-formatters"
@@ -29,17 +30,15 @@ export function TreePane({
   model,
   onLoadDirectory,
   rootPath,
-  selectedFilePath,
-  setSelectedFilePath,
   state,
 }: {
   model: TreeModel
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
-  selectedFilePath: string | null
-  setSelectedFilePath: (path: string | null) => void
   state: LoadState<TreeModel>
 }) {
+  const selectedFilePath = useEditorState((store) => store.selectedFilePath)
+  const selectFile = useEditorState((store) => store.selectFile)
   const modelRef = useRef(model)
   const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
     (currentTree: PierreFileTreeModel) => {
@@ -63,7 +62,7 @@ export function TreePane({
       const entry = entryForTreePath(modelRef.current, selectedPaths[0])
       if (!entry || entry.type !== "file") return
 
-      setSelectedFilePath(entry.path)
+      selectFile(entry.path)
     },
   })
 
@@ -109,13 +108,7 @@ export function TreePane({
   )
 }
 
-function TreeStatus({
-  icon,
-  label,
-}: {
-  icon?: ReactNode
-  label: string
-}) {
+function TreeStatus({ icon, label }: { icon?: ReactNode; label: string }) {
   return (
     <div className="flex h-full min-h-48 items-center justify-center p-4 text-xs text-muted-foreground">
       <div className="flex items-center gap-2">

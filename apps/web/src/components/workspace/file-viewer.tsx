@@ -6,6 +6,7 @@ import {
 import { useEffect } from "react"
 
 import { Editor, type EditorWorkspaceEntry } from "@/components/editor"
+import { useEditorState } from "@/components/editor/editor-state"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
@@ -14,29 +15,26 @@ import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 import { Badge } from "@workspace/ui/components/badge"
 
 export function FileViewer({
-  definitionTarget,
   entry,
   fileState,
   rootPath,
-  selectedFilePath,
   workspaceEntries,
-  onOpenDefinition,
-  onEditorStatusChange,
 }: {
-  definitionTarget: TypeScriptLspDefinitionTarget | null
   entry: TreeEntry | null
   fileState: LoadState<FileResult>
   rootPath: string
-  selectedFilePath: string | null
   workspaceEntries: readonly EditorWorkspaceEntry[]
-  onOpenDefinition: (target: TypeScriptLspDefinitionTarget) => void | boolean
-  onEditorStatusChange: (status: EditorStatusBarState | null) => void
 }) {
+  const definitionTarget = useEditorState((state) => state.definitionTarget)
+  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
+  const setEditorStatus = useEditorState((state) => state.setEditorStatus)
+  const openDefinition = useEditorState((state) => state.openDefinition)
+
   useEffect(() => {
     if (selectedFilePath && fileState.status === "ready") return
 
-    onEditorStatusChange(null)
-  }, [fileState.status, onEditorStatusChange, selectedFilePath])
+    setEditorStatus(null)
+  }, [fileState.status, selectedFilePath, setEditorStatus])
 
   if (!selectedFilePath) return <FileViewerEmpty />
 
@@ -70,8 +68,8 @@ export function FileViewer({
         fileState={fileState}
         rootPath={rootPath}
         workspaceEntries={workspaceEntries}
-        onEditorStatusChange={onEditorStatusChange}
-        onOpenDefinition={onOpenDefinition}
+        onEditorStatusChange={setEditorStatus}
+        onOpenDefinition={openDefinition}
       />
     </section>
   )

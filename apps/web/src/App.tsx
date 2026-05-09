@@ -1,4 +1,6 @@
 import { EmptyWorkspace } from "@/components/empty-workspace"
+import { useEditorState } from "@/components/editor/editor-state"
+import { EditorStateProvider } from "@/components/editor/editor-state-provider"
 import {
   FilePickerDialog,
   type PickedFsEntry,
@@ -6,48 +8,36 @@ import {
 import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
-import { selectedTreeEntry } from "@/lib/tree-model"
-import {
-  readWorkspaceCache,
-  writeWorkspaceCache,
-} from "@/lib/workspace-cache"
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
-import { useEffect, useState } from "react"
+import { writeWorkspaceCache } from "@/lib/workspace-cache"
+import { useEffect } from "react"
 
 export function App() {
-  const [cachedWorkspace] = useState(readWorkspaceCache)
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [rootFolder, setRootFolder] = useState<PickedFsEntry | null>(
-    cachedWorkspace.rootFolder
+  return (
+    <EditorStateProvider>
+      <AppContent />
+    </EditorStateProvider>
   )
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(
-    cachedWorkspace.selectedFilePath
-  )
-  const [definitionTarget, setDefinitionTarget] =
-    useState<TypeScriptLspDefinitionTarget | null>(null)
+}
+
+function AppContent() {
+  const pickerOpen = useEditorState((state) => state.pickerOpen)
+  const rootFolder = useEditorState((state) => state.rootFolder)
+  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
+  const openPicker = useEditorState((state) => state.openPicker)
+  const pickRootFolder = useEditorState((state) => state.pickRootFolder)
+  const setPickerOpen = useEditorState((state) => state.setPickerOpen)
   const { loadTreeDirectory, resetTreeLoad, retryTreeLoad, treeState } =
     useWorkspaceTree(rootFolder)
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
-  const selectedEntry = selectedFilePath
-    ? selectedTreeEntry(treeState, rootFolder?.path ?? null, selectedFilePath)
-    : null
 
   useEffect(() => {
     writeWorkspaceCache({ rootFolder, selectedFilePath })
   }, [rootFolder, selectedFilePath])
 
   function handlePick(entry: PickedFsEntry) {
-    setSelectedFilePath(null)
-    setDefinitionTarget(null)
     resetFileLoad()
     resetTreeLoad()
-    setRootFolder(entry)
-  }
-
-  function openDefinition(target: TypeScriptLspDefinitionTarget) {
-    setDefinitionTarget(target)
-    setSelectedFilePath(target.path)
-    return true
+    pickRootFolder(entry)
   }
 
   return (
@@ -55,19 +45,14 @@ export function App() {
       <div className="flex h-full min-h-0 flex-col">
         {rootFolder ? (
           <WorkspaceView
-            definitionTarget={definitionTarget}
             fileState={fileState}
-            onOpenDefinition={openDefinition}
             rootFolder={rootFolder}
-            selectedEntry={selectedEntry}
-            selectedFilePath={selectedFilePath}
-            setSelectedFilePath={setSelectedFilePath}
             treeState={treeState}
             onLoadDirectory={loadTreeDirectory}
             onRetryTree={retryTreeLoad}
           />
         ) : (
-          <EmptyWorkspace onChooseFolder={() => setPickerOpen(true)} />
+          <EmptyWorkspace onChooseFolder={openPicker} />
         )}
       </div>
 
