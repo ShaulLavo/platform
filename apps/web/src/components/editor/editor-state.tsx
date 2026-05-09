@@ -1,10 +1,5 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
-import {
-  formatHistoryStatus,
-  formatSyntaxStatus,
-  formatTypeScriptLspStatus,
-} from "@/components/editor/status-formatters"
 import type { CachedWorkspaceState } from "@/lib/workspace-cache"
 import { readWorkspaceCache } from "@/lib/workspace-cache"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
@@ -14,7 +9,7 @@ import { createStore, type StoreApi } from "zustand/vanilla"
 
 type EditorStoreState = CachedWorkspaceState & {
   definitionTarget: TypeScriptLspDefinitionTarget | null
-  editorStatus: EditorStatusBarState | null
+  statusBarState: EditorStatusBarState | null
   pickerOpen: boolean
 }
 
@@ -24,7 +19,7 @@ type EditorStoreActions = {
   openPicker: () => void
   pickRootFolder: (rootFolder: PickedFsEntry) => void
   selectFile: (path: string | null) => void
-  setEditorStatus: (status: EditorStatusBarState | null) => void
+  setStatusBarState: (status: EditorStatusBarState | null) => void
   setPickerOpen: (open: boolean) => void
 }
 
@@ -48,7 +43,7 @@ export function createEditorStore(
 ) {
   return createStore<EditorStore>()((set) => ({
     definitionTarget: null,
-    editorStatus: null,
+    statusBarState: null,
     openFilePaths: initialState.openFilePaths,
     pickerOpen: false,
     rootFolder: initialState.rootFolder,
@@ -56,7 +51,7 @@ export function createEditorStore(
     openDefinition: (definitionTarget) => {
       set((state) => ({
         definitionTarget,
-        editorStatus: null,
+        statusBarState: null,
         openFilePaths: openFilePathList(
           state.openFilePaths,
           definitionTarget.path
@@ -69,7 +64,7 @@ export function createEditorStore(
     pickRootFolder: (rootFolder) =>
       set({
         definitionTarget: null,
-        editorStatus: null,
+        statusBarState: null,
         openFilePaths: [],
         pickerOpen: false,
         rootFolder,
@@ -92,9 +87,9 @@ export function createEditorStore(
             state.definitionTarget?.path === path
               ? null
               : state.definitionTarget,
-          editorStatus:
+          statusBarState:
             state.selectedFilePath === selectedFilePath
-              ? state.editorStatus
+              ? state.statusBarState
               : null,
           openFilePaths,
           selectedFilePath,
@@ -102,18 +97,17 @@ export function createEditorStore(
       }),
     selectFile: (selectedFilePath) =>
       set((state) => ({
-        editorStatus: null,
+        statusBarState: null,
         openFilePaths: selectedFilePath
           ? openFilePathList(state.openFilePaths, selectedFilePath)
           : state.openFilePaths,
         selectedFilePath,
       })),
-    setEditorStatus: (status) =>
+    setStatusBarState: (status) =>
       set((state) => {
-        const editorStatus = nextEditorStatus(state.editorStatus, status)
-        if (editorStatus === state.editorStatus) return state
+        if (status === state.statusBarState) return state
 
-        return { editorStatus }
+        return { statusBarState: status }
       }),
     setPickerOpen: (pickerOpen) => set({ pickerOpen }),
   }))
@@ -130,44 +124,4 @@ function nextSelectedFilePath(openFilePaths: readonly string[], path: string) {
   if (closedIndex === -1) return null
 
   return openFilePaths[closedIndex + 1] ?? openFilePaths[closedIndex - 1] ?? null
-}
-
-function nextEditorStatus(
-  currentStatus: EditorStatusBarState | null,
-  nextStatus: EditorStatusBarState | null
-) {
-  if (!nextStatus) return null
-  if (sameEditorStatus(currentStatus, nextStatus)) return currentStatus
-
-  return nextStatus
-}
-
-function sameEditorStatus(
-  currentStatus: EditorStatusBarState | null,
-  nextStatus: EditorStatusBarState
-) {
-  if (!currentStatus) return false
-
-  return editorStatusKey(currentStatus) === editorStatusKey(nextStatus)
-}
-
-function editorStatusKey(status: EditorStatusBarState) {
-  const cursor = status.state?.documentId
-    ? `${status.state.cursor.row}:${status.state.cursor.column}`
-    : ""
-  const syntax = formatSyntaxStatus(status.state)
-  const history = formatHistoryStatus(status.state)
-  const typeScript = formatTypeScriptLspStatus(
-    status.typeScriptStatus,
-    status.typeScriptDiagnostics
-  )
-
-  return [
-    status.filePath,
-    status.charCount,
-    cursor,
-    syntax,
-    history,
-    typeScript,
-  ].join("\u0000")
 }

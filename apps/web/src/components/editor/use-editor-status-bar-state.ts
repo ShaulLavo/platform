@@ -1,0 +1,52 @@
+import { useEffect, useRef } from "react"
+
+import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
+import {
+  formatHistoryStatus,
+  formatSyntaxStatus,
+  formatTypeScriptLspStatus,
+} from "@/components/editor/status-formatters"
+
+type UseEditorStatusBarStateOptions = EditorStatusBarState & {
+  onChange?: (state: EditorStatusBarState) => void
+}
+
+export function useEditorStatusBarState({
+  onChange,
+  ...state
+}: UseEditorStatusBarStateOptions) {
+  const key = editorStatusBarStateKey(state)
+  const previousKey = useRef<string | null>(null)
+  const previousOnChange = useRef<typeof onChange>(undefined)
+
+  useEffect(() => {
+    if (previousKey.current === key && previousOnChange.current === onChange) {
+      return
+    }
+
+    previousKey.current = key
+    previousOnChange.current = onChange
+    onChange?.(state)
+  }, [key, onChange, state])
+}
+
+function editorStatusBarStateKey(status: EditorStatusBarState) {
+  const cursor = status.state?.documentId
+    ? `${status.state.cursor.row}:${status.state.cursor.column}`
+    : ""
+  const syntax = formatSyntaxStatus(status.state)
+  const history = formatHistoryStatus(status.state)
+  const typeScript = formatTypeScriptLspStatus(
+    status.typeScriptStatus,
+    status.typeScriptDiagnostics
+  )
+
+  return [
+    status.filePath,
+    status.charCount,
+    cursor,
+    syntax,
+    history,
+    typeScript,
+  ].join("\u0000")
+}

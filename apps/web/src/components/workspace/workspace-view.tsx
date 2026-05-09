@@ -28,7 +28,7 @@ export function WorkspaceView({
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   onRetryTree: () => void
 }) {
-  const editorStatus = useEditorState((state) => state.editorStatus)
+  const statusBarState = useEditorState((state) => state.statusBarState)
   const treeModel = treeState.status === "ready" ? treeState.data : null
   const workspaceEntries = workspaceSourceEntries(treeModel)
 
@@ -70,9 +70,9 @@ export function WorkspaceView({
           rootPath={rootFolder.path}
           workspaceEntries={workspaceEntries}
         />
-        {editorStatus && (
+        {statusBarState && (
           <div className="col-span-2 min-w-0">
-            <EditorStatusBar {...editorStatus} />
+            <EditorStatusBar {...statusBarState} />
           </div>
         )}
       </div>

@@ -23,14 +23,14 @@ export function FileViewer({
 }) {
   const definitionTarget = useEditorState((state) => state.definitionTarget)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
-  const setEditorStatus = useEditorState((state) => state.setEditorStatus)
+  const setStatusBarState = useEditorState((state) => state.setStatusBarState)
   const openDefinition = useEditorState((state) => state.openDefinition)
 
   useEffect(() => {
     if (selectedFilePath && fileState.status === "ready") return
 
-    setEditorStatus(null)
-  }, [fileState.status, selectedFilePath, setEditorStatus])
+    setStatusBarState(null)
+  }, [fileState.status, selectedFilePath, setStatusBarState])
 
   return (
     <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
@@ -41,7 +41,7 @@ export function FileViewer({
           fileState={fileState}
           rootPath={rootPath}
           workspaceEntries={workspaceEntries}
-          onEditorStatusChange={setEditorStatus}
+          onEditorStatusChange={setStatusBarState}
           onOpenDefinition={openDefinition}
         />
       ) : (

@@ -131,15 +131,17 @@
 
 .app-editor-host {
     display: flex;
+    flex: 1;
+    height: 100%;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
+    width: 100%;
 }
 
 .app-editor-host .editor-virtualized {
     --editor-background: var(--background) !important;
     --editor-gutter-background: var(--background) !important;
-    --editor-minimap-background: var(--background) !important;
 
     flex: 1;
     font-family: var(--font-mono);

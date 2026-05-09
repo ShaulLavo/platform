@@ -18,6 +18,7 @@ import type {
   EditorFile,
   EditorWorkspaceEntry,
 } from "@/components/editor/types"
+import { useEditorStatusBarState } from "@/components/editor/use-editor-status-bar-state"
 import { fsServerUrl } from "@/lib/fs-client"
 import { useEffect, useState } from "react"
 
@@ -73,22 +74,14 @@ export function Editor({
   const text = controller.useText()
   const selection = selectionForDefinition(file, definitionTarget)
 
-  useEffect(() => {
-    onStatusChange?.({
-      charCount: text.length,
-      filePath: file.path,
-      state: editorState,
-      typeScriptDiagnostics,
-      typeScriptStatus,
-    })
-  }, [
-    editorState,
-    file.path,
-    onStatusChange,
-    text.length,
+  useEditorStatusBarState({
+    charCount: text.length,
+    filePath: file.path,
+    onChange: onStatusChange,
+    state: editorState,
     typeScriptDiagnostics,
     typeScriptStatus,
-  ])
+  })
 
   useEffect(() => {
     if (!selection) return
@@ -100,7 +93,7 @@ export function Editor({
   }, [controller, selection])
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 bg-background">
+    <div className="flex h-full w-full min-w-0 flex-1 bg-background">
       <EditorHost
         key={shikiTheme}
         className="app-editor-host"
