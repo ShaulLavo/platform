@@ -1,4 +1,4 @@
-import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import type { PickedFsEntry } from "@/lib/file-system-types"
 import { errorMessage, fetchTree } from "@/lib/file-server"
 import type { TreeEntry } from "@/lib/file-system-types"
 import { idleState, type LoadState } from "@/lib/load-state"

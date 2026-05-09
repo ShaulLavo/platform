@@ -48,12 +48,18 @@ const messageByCode: Record<FsErrorCode, string> = {
 export class FsError extends Error {
   readonly code: FsErrorCode
   readonly statusCode: number
+  override readonly cause?: unknown
 
-  constructor(code: FsErrorCode, message = messageByCode[code]) {
+  constructor(
+    code: FsErrorCode,
+    message = messageByCode[code],
+    cause?: unknown
+  ) {
     super(message)
     this.name = "FsError"
     this.code = code
     this.statusCode = statusByCode[code]
+    this.cause = cause
   }
 }
 
@@ -64,12 +70,13 @@ export function isFsError(error: unknown): error is FsError {
 export function mapNodeError(error: unknown): FsError {
   const code = nodeErrorCode(error)
 
-  if (code === "ENOENT") return new FsError("NOT_FOUND")
-  if (code === "EEXIST") return new FsError("ALREADY_EXISTS")
-  if (code === "ENOTDIR") return new FsError("NOT_A_DIRECTORY")
-  if (code === "EISDIR") return new FsError("NOT_A_FILE")
+  if (code === "ENOENT") return new FsError("NOT_FOUND", undefined, error)
+  if (code === "EEXIST") return new FsError("ALREADY_EXISTS", undefined, error)
+  if (code === "ENOTDIR")
+    return new FsError("NOT_A_DIRECTORY", undefined, error)
+  if (code === "EISDIR") return new FsError("NOT_A_FILE", undefined, error)
 
-  return new FsError("OPERATION_FAILED")
+  return new FsError("OPERATION_FAILED", undefined, error)
 }
 
 export function errorPayload(error: FsError) {

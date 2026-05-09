@@ -1,4 +1,4 @@
-import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import type { PickedFsEntry } from "@/lib/file-system-types"
 import {
   DEFAULT_DIFF_VIEW_MODE,
   isEditorDiffViewMode,

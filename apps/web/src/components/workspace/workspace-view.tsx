@@ -1,7 +1,7 @@
 import { EditorStatusBar } from "@/features/editor/components/editor-status-bar"
 import { useEditorUiState } from "@/features/editor/state/editor-ui-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
-import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import type { PickedFsEntry } from "@/lib/file-system-types"
 import { FileViewer } from "@/components/workspace/file-viewer"
 import { TreePane } from "@/components/workspace/tree-pane"
 import { FolderIcon, GitBranchIcon } from "@phosphor-icons/react"

@@ -2,10 +2,7 @@ import { EmptyWorkspace } from "@/components/empty-workspace"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorStateProvider } from "@/features/editor/editor-state-provider"
-import {
-  FilePickerDialog,
-  type PickedFsEntry,
-} from "@/components/file-picker-dialog"
+import { FilePickerDialog } from "@/components/file-picker-dialog"
 import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { useOpenTabCache } from "@/hooks/use-open-tab-cache"
@@ -13,6 +10,7 @@ import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
+import type { PickedFsEntry } from "@/lib/file-system-types"
 import { writeWorkspaceCache } from "@/lib/workspace-cache"
 import { useEffect } from "react"
 
@@ -34,9 +32,7 @@ function AppContent() {
     (state) => state.selectedFilePath
   )
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
-  const openFilePaths = useEditorWorkspaceState(
-    (state) => state.openFilePaths
-  )
+  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const workspacePanelTab = useEditorWorkspaceState(
     (state) => state.workspacePanelTab
   )

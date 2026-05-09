@@ -16,7 +16,7 @@ import {
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStoreApi,
 } from "@/features/editor/state/editor-workspace-state"
-import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import type { PickedFsEntry } from "@/lib/file-system-types"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 import { useMemo } from "react"
 

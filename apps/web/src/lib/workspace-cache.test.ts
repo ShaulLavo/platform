@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
-import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import type { PickedFsEntry } from "@/lib/file-system-types"
 import { conflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { diffDocumentId } from "@/features/git/diff-document"
 import type { FileDiff } from "@/features/git/types"

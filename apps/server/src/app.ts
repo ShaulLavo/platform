@@ -76,7 +76,7 @@ export function createApp(options: AppOptions) {
       }
 
       set.status = 500
-      return errorPayload(new FsError("OPERATION_FAILED"))
+      return errorPayload(new FsError("OPERATION_FAILED", undefined, error))
     })
     .onBeforeHandle(authGuard(auth))
     .get("/health", () => ({
@@ -252,7 +252,9 @@ async function* toFindSse(events: AsyncGenerator<FindStreamEvent>) {
       })
     }
   } catch (error) {
-    const fsError = isFsError(error) ? error : new FsError("OPERATION_FAILED")
+    const fsError = isFsError(error)
+      ? error
+      : new FsError("OPERATION_FAILED", undefined, error)
     yield sse({
       event: "error",
       data: errorPayload(fsError),

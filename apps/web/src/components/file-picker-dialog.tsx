@@ -19,6 +19,17 @@ import {
 
 import { fileMatchesAccept, iconForEntry } from "@/lib/file-icons"
 import { fsClient, fsServerUrl } from "@/lib/fs-client"
+import type {
+  FindMatch,
+  FsEntry,
+  FsEntryType,
+  PickedFsEntry,
+  RecentResult,
+  SearchScope,
+  ServerInfo,
+  StatResult,
+  TreeResult,
+} from "@/lib/file-system-types"
 import { filePickerKeys } from "@/lib/query-keys"
 import { parseSseStream, type ParsedSseEvent } from "@/lib/sse"
 import {
@@ -59,44 +70,6 @@ import {
   type UIEvent,
 } from "react"
 
-type FsEntryType = "file" | "directory" | "symlink" | "other"
-type SearchScope = "current" | "system"
-
-type FsEntry = {
-  name: string
-  path: string
-  type: FsEntryType
-  size: number
-  mtimeMs: number
-  birthtimeMs: number
-  searchScope?: SearchScope
-}
-
-type TreeResult = {
-  path: string
-  entries: FsEntry[]
-}
-
-type StatResult = Omit<FsEntry, "name">
-
-type FindMatch = {
-  kind: "name" | "content"
-  path: string
-  type: FsEntryType
-  searchScope?: SearchScope
-}
-
-type RecentResult = {
-  entries: FsEntry[]
-}
-
-type ServerInfo = {
-  ok: boolean
-  workspaceRoot: string
-  defaultPath: string
-  homePath: string
-}
-
 type FindErrorEvent = {
   error?: {
     message?: string
@@ -111,10 +84,6 @@ type LoadState =
 
 type DirectoryFsEntry = FsEntry & {
   type: "directory"
-}
-
-export type PickedFsEntry = FsEntry & {
-  type: "file" | "directory"
 }
 
 export type FilePickerMode = "folder" | "file"
