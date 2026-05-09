@@ -37,7 +37,6 @@ export class FileChangeHub {
 
   stream(inputs: string[], signal?: AbortSignal) {
     const subscribed = subscribedPaths(this.paths, inputs)
-    watchLog("stream", { subscribed: [...subscribed] })
     return this.createStream(subscribed, signal)
   }
 
@@ -59,26 +58,17 @@ export class FileChangeHub {
     onError: (event: WatchServerMessage) => void
   ): WatchRelease {
     if (!this.watchEnabled) {
-      watchLog("disabled", { relativeRoot })
       return noop
     }
 
     const existing = this.nativeWatchers.get(relativeRoot)
     if (existing) {
       existing.refCount += 1
-      watchLog("retain-existing", {
-        refCount: existing.refCount,
-        relativeRoot,
-      })
       return () => this.releaseWatcher(relativeRoot)
     }
 
     try {
       const target = this.paths.resolve(relativeRoot)
-      watchLog("start", {
-        absolutePath: target.absolutePath,
-        relativeRoot,
-      })
       const watcher = watch(
         target.absolutePath,
         { recursive: true },
@@ -91,12 +81,10 @@ export class FileChangeHub {
         }
       )
       watcher.on("error", (error) => {
-        watchLog("native-error", { error: errorMessage(error), relativeRoot })
         onError(watchError(error, relativeRoot))
       })
       this.nativeWatchers.set(relativeRoot, { refCount: 1, watcher })
     } catch (error) {
-      watchLog("start-error", { error: errorMessage(error), relativeRoot })
       onError(watchError(error, relativeRoot))
       return noop
     }
@@ -109,17 +97,10 @@ export class FileChangeHub {
     if (!entry) return
 
     entry.refCount -= 1
-    if (entry.refCount > 0) {
-      watchLog("release-retained", {
-        refCount: entry.refCount,
-        relativeRoot,
-      })
-      return
-    }
+    if (entry.refCount > 0) return
 
     entry.watcher.close()
     this.nativeWatchers.delete(relativeRoot)
-    watchLog("stop", { relativeRoot })
   }
 
   private async handleNativeEvent(
@@ -128,25 +109,11 @@ export class FileChangeHub {
     filename: string
   ) {
     const relativePath = watchEventPath(relativeRoot, filename)
-    if (isIgnoredPath(relativePath)) {
-      watchIgnoredLog("ignored-native-event", {
-        filename,
-        nativeEvent,
-        relativePath,
-      })
-      return
-    }
+    if (isIgnoredPath(relativePath)) return
 
     const type = await nativeEventType(this.paths, relativePath, nativeEvent)
     const entry =
       type === "deleted" ? undefined : await nativeEventEntry(this.paths, relativePath)
-    watchLog("native-event", {
-      entry,
-      filename,
-      nativeEvent,
-      relativePath,
-      type,
-    })
 
     this.broadcast(nativeWatchEvent(type, relativePath, entry))
   }
@@ -156,24 +123,16 @@ export class FileChangeHub {
     let wake: (() => void) | null = null
 
     const listener = (event: WatchServerMessage) => {
-      if (!shouldDeliver(event, subscribed)) {
-        watchLog("skip-delivery", { event, subscribed: [...subscribed] })
-        return
-      }
+      if (!shouldDeliver(event, subscribed)) return
 
-      watchLog("deliver", { event, subscribed: [...subscribed] })
       queue.push(event)
       wake?.()
     }
 
     const abort = () => wake?.()
     const enqueue = (event: WatchServerMessage) => {
-      if (!shouldDeliver(event, subscribed)) {
-        watchLog("skip-direct-delivery", { event, subscribed: [...subscribed] })
-        return
-      }
+      if (!shouldDeliver(event, subscribed)) return
 
-      watchLog("direct-deliver", { event, subscribed: [...subscribed] })
       queue.push(event)
       wake?.()
     }
@@ -203,7 +162,6 @@ export class FileChangeHub {
   }
 
   private broadcast(event: WatchServerMessage) {
-    watchLog("broadcast", event)
     for (const listener of this.listeners) listener(event)
   }
 }
@@ -332,18 +290,6 @@ function errorMessage(error: unknown) {
 
 function noop() {
   // no-op release for disabled or failed native watchers
-}
-
-function watchLog(message: string, data: unknown) {
-  if (process.env.FS_WATCH_DEBUG !== "true") return
-
-  console.debug("[fs-watch]", message, data)
-}
-
-function watchIgnoredLog(message: string, data: unknown) {
-  if (process.env.FS_WATCH_LOG_IGNORED !== "true") return
-
-  watchLog(message, data)
 }
 
 export function parseWatchInputs(

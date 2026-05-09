@@ -32,7 +32,6 @@ export type FilesystemEvent = Extract<
 const EVENT_BATCH_DELAY_MS = 100
 const FILE_REFRESH_RETRY_DELAY_MS = 80
 const FILE_REFRESH_RETRY_ATTEMPTS = 5
-const WATCH_DEBUG = import.meta.env.DEV
 
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const queryClient = useQueryClient()
@@ -55,13 +54,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       signal: AbortSignal,
       currentRootPath: string
     ) => {
-      watchLog("apply", {
-        dirtyFilePaths: [...dirtyFilePaths],
-        events,
-        openFilePaths,
-        rootPath: currentRootPath,
-      })
-
       void applyWorkspaceEvents({
         discardCachedEditorDocument,
         events,
@@ -74,7 +66,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       }).catch((error: unknown) => {
         if (signal.aborted) return
 
-        watchLog("apply-error", error)
         notifyUpdateError(errorMessage(error))
       })
     }
@@ -85,13 +76,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         selectedFilePath && !dirtyFilePaths.has(selectedFilePath)
           ? [selectedFilePath]
           : []
-      watchLog("ready-refresh", {
-        dirtyFilePaths: [...dirtyFilePaths],
-        openFilePaths,
-        refreshPaths,
-        rootPath: currentRootPath,
-        selectedFilePath,
-      })
 
       void applyWorkspaceReady({
         forceReplaceCachedEditorDocument,
@@ -102,7 +86,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       }).catch((error: unknown) => {
         if (signal.aborted) return
 
-        watchLog("ready-refresh-error", error)
         notifyUpdateError(errorMessage(error))
       })
     }
@@ -115,16 +98,11 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     const queue = createEventQueue((events) =>
       applyEvents(events, controller.signal, rootPath)
     )
-    watchLog("subscribe", {
-      rootPath,
-      url: workspaceEventsUrl(rootPath).toString(),
-    })
 
     void streamWorkspaceEvents(
       rootPath,
       controller.signal,
       (message) => {
-        watchLog("message", message)
         if (message.type === "ready") {
           applyReady(controller.signal, rootPath)
           return
@@ -139,12 +117,10 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     ).catch((error: unknown) => {
       if (controller.signal.aborted) return
 
-      watchLog("stream-error", error)
       notifyStreamError(errorMessage(error))
     })
 
     return () => {
-      watchLog("unsubscribe", { rootPath })
       controller.abort()
       queue.clear()
     }
@@ -232,14 +208,7 @@ async function applyWorkspaceReady({
         path,
         forceReplaceCachedEditorDocument,
         signal
-      ).catch((error: unknown) => {
-        if (signal.aborted) return
-
-        watchLog("ready-file-refresh-error", {
-          error: errorMessage(error),
-          path,
-        })
-      })
+      ).catch(() => undefined)
     )
   )
 }
@@ -269,16 +238,9 @@ async function refreshTreeDirectory(
 ) {
   const rootTreeKey = fileSystemKeys.tree(rootPath)
   const model = queryClient.getQueryData<TreeModel>(rootTreeKey)
-  if (!model) {
-    watchLog("tree-skip-no-model", { path, rootPath })
-    return
-  }
-  if (!shouldRefreshDirectory(model, rootPath, path)) {
-    watchLog("tree-skip-unloaded-directory", { path, rootPath })
-    return
-  }
+  if (!model) return
+  if (!shouldRefreshDirectory(model, rootPath, path)) return
 
-  watchLog("tree-refresh", { path, rootPath })
   const result = await fetchTree(path, signal)
   queryClient.setQueryData(rootTreeKey, (current: TreeModel | undefined) => {
     if (!current) return current
@@ -316,11 +278,6 @@ async function refreshAffectedOpenFiles({
     recreatedPaths,
     rootPath
   )
-  watchLog("file-refresh-candidates", {
-    events,
-    openFilePaths,
-    refreshPaths,
-  })
 
   for (const event of events) {
     if (event.type === "deleted") {
@@ -378,15 +335,9 @@ async function refreshChangedOpenFile(
   forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean },
   signal: AbortSignal
 ) {
-  watchLog("file-refresh", { path })
   const file = await fetchFileWithRetry(path, signal)
   queryClient.setQueryData(fileSystemKeys.file(path), file)
   const result = forceReplaceCachedEditorDocument(file)
-  watchLog("file-replaced", {
-    mtimeMs: file.mtimeMs,
-    path,
-    wasDirty: result.wasDirty,
-  })
   if (result.wasDirty) notifyDirtyOverwrite(path)
 }
 
@@ -395,16 +346,10 @@ async function fetchFileWithRetry(path: string, signal: AbortSignal) {
 
   for (let attempt = 0; attempt < FILE_REFRESH_RETRY_ATTEMPTS; attempt += 1) {
     try {
-      watchLog("file-fetch-attempt", { attempt: attempt + 1, path })
       return await fetchFile(path, signal)
     } catch (error) {
       lastError = error
       if (signal.aborted) throw error
-      watchLog("file-fetch-retry", {
-        attempt: attempt + 1,
-        error: errorMessage(error),
-        path,
-      })
       await delay(FILE_REFRESH_RETRY_DELAY_MS, signal)
     }
   }
@@ -421,7 +366,6 @@ function discardDeletedOpenFiles(
   for (const openPath of openFilePaths) {
     if (!isSameOrChildPath(openPath, path)) continue
 
-    watchLog("file-discard", { openPath, path })
     const result = discardCachedEditorDocument(openPath)
     queryClient.removeQueries({
       exact: true,
@@ -444,7 +388,6 @@ function renameOpenFiles(
     const nextPath = renamedPath(openPath, event.oldPath, event.path)
     if (!nextPath) continue
 
-    watchLog("file-rename", { nextPath, openPath })
     const result = renameCachedEditorDocument(openPath, nextPath)
     moveFileQueryData(queryClient, openPath, nextPath)
     if (result.wasDirty) notifyDirtyOverwrite(openPath)
@@ -589,7 +532,6 @@ function createEventQueue(onFlush: (events: FilesystemEvent[]) => void) {
       timeout = null
     },
     push: (event: FilesystemEvent) => {
-      watchLog("queue", event)
       queued.push(event)
       if (timeout !== null) return
 
@@ -597,7 +539,6 @@ function createEventQueue(onFlush: (events: FilesystemEvent[]) => void) {
         const events = queued
         queued = []
         timeout = null
-        watchLog("flush", { events })
         onFlush(events)
       }, EVENT_BATCH_DELAY_MS)
     },
@@ -646,10 +587,4 @@ function delay(ms: number, signal: AbortSignal) {
       { once: true }
     )
   })
-}
-
-function watchLog(message: string, data?: unknown) {
-  if (!WATCH_DEBUG) return
-
-  console.log("[fs-watch]", message, data)
 }
