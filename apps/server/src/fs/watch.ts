@@ -113,7 +113,9 @@ export class FileChangeHub {
 
     const type = await nativeEventType(this.paths, relativePath, nativeEvent)
     const entry =
-      type === "deleted" ? undefined : await nativeEventEntry(this.paths, relativePath)
+      type === "deleted"
+        ? undefined
+        : await nativeEventEntry(this.paths, relativePath)
 
     this.broadcast(nativeWatchEvent(type, relativePath, entry))
   }
@@ -288,9 +290,7 @@ function errorMessage(error: unknown) {
   return "native filesystem watcher failed"
 }
 
-function noop() {
-  // no-op release for disabled or failed native watchers
-}
+function noop() {}
 
 export function parseWatchInputs(
   pathInput?: string,

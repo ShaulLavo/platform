@@ -28,51 +28,10 @@ export type FilesystemEvent = Extract<
   { type: "created" | "changed" | "deleted" | "renamed" }
 >
 
-/**
- * Debounce window applied between the first filesystem event arriving and the
- * queue flushing to React Query / editor state.
- *
- * Unit: milliseconds.
- *
- * Rationale: A single user-facing action (saving a file, running a formatter,
- * switching a git branch) typically produces a burst of `created` / `changed`
- * / `deleted` / `renamed` events within a few dozen milliseconds. Flushing on
- * every event would trigger one `refreshTreeDirectory` + `fetchFile` round per
- * event and thrash the editor cache. A 100 ms window is short enough to stay
- * well under the ~150 ms threshold where users start to perceive UI latency,
- * while long enough to coalesce those bursts into a single batched
- * `applyWorkspaceEvents` pass.
- */
 const EVENT_BATCH_DELAY_MS = 100
 
-/**
- * Delay between successive attempts in {@link fetchFileWithRetry} when a file
- * refresh triggered by a filesystem event fails.
- *
- * Unit: milliseconds.
- *
- * Rationale: File watchers commonly fire a `changed` event before the writer
- * has finished flushing the new contents to disk, so an immediate read can
- * race the write and fail (partial read, `ENOENT` on an atomic rename, stat
- * mismatch). An 80 ms gap is long enough for the vast majority of local disk
- * writes to settle without being perceptible to the user; combined with the
- * retry count below it caps the worst-case refresh latency at well under half
- * a second.
- */
 const FILE_REFRESH_RETRY_DELAY_MS = 80
 
-/**
- * Maximum number of attempts {@link fetchFileWithRetry} makes before giving up
- * and surfacing the error through the Client_Error_Taxonomy's `reportError`.
- *
- * Unit: integer count (not a duration).
- *
- * Rationale: Paired with {@link FILE_REFRESH_RETRY_DELAY_MS}, five attempts
- * bound the total retry window to roughly 320 ms (four inter-attempt sleeps of
- * 80 ms), which comfortably covers the write-settling races described above
- * without letting a genuinely missing or permission-denied file hang the user
- * behind a long silent retry loop.
- */
 const FILE_REFRESH_RETRY_ATTEMPTS = 5
 
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
@@ -146,17 +105,9 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         return
       }
       if (message.type === "error") {
-        // Forward the full SSE error frame so toClientError can inspect
-        // the server-emitted `code` (e.g. GIT_REPOSITORY_NOT_FOUND) when
-        // it matches an FsErrorCode; otherwise it falls to `unknown`.
         reportError(toClientError(message))
         return
       }
-      // The contracts `WatchServerMessage` union is a superset of what
-      // the web app drives behavior off of. `subscribed`,
-      // `unsubscribed`, and `pong` are acknowledgement frames that
-      // carry no filesystem mutation, so they flow through as no-ops
-      // and are not enqueued for `applyWorkspaceEvents`.
       if (
         message.type === "subscribed" ||
         message.type === "unsubscribed" ||

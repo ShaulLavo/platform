@@ -1,13 +1,6 @@
 import type ts from "typescript"
 import type * as lsp from "vscode-languageserver-protocol"
 
-/**
- * Open document tracked by the TypeScript LSP session.
- *
- * Mirrors the shape used internally by `session.ts`; re-homed here so that
- * handler modules can reference the same structural type without reaching
- * into the session class.
- */
 export type OpenDocument = {
   uri: lsp.DocumentUri
   fileName: string
@@ -16,40 +9,6 @@ export type OpenDocument = {
   text: string
 }
 
-/**
- * Shared session state passed to every extracted LSP handler.
- *
- * Handlers receive a `SessionContext` instead of a reference to the
- * `TypeScriptLspSession` class, which keeps each handler module a pure
- * function of its inputs and avoids circular imports between `session.ts`
- * and `handlers/*`.
- *
- * - `root` / `workspaceRoot` — normalized absolute paths the session was
- *   constructed with.
- * - `documents` — live document registry keyed by LSP document URI.
- * - `getLanguageService` / `getProjectVersion` — late-bound accessors so
- *   handlers always observe the current language service instance and
- *   project version, even after invalidation rebuilds them.
- * - `scheduleDiagnostics` / `clearScheduledDiagnostics` — debounced
- *   diagnostic publish scheduling used by lifecycle handlers.
- * - `bumpScriptVersion` — per-file script-version bookkeeping consumed by
- *   `didOpen` / `didChange` / `didClose`.
- * - `invalidateForFileContentChange` / `invalidateForProjectConfigChange` —
- *   incremental invalidation primitives. `*FileContentChange` keeps the
- *   language service alive; `*ProjectConfigChange` disposes and rebuilds.
- * - `postDiagnostics` / `postLogMessage` / `postResponse` / `postResponseError`
- *   — JSON-RPC send helpers. Handlers never touch the underlying transport
- *   directly.
- * - `compilerOptionsOverride` — compiler options supplied via
- *   `initializationOptions`; read-only for handlers.
- * - `applyInitializationOptions` — mutation surface the `initialize` handler
- *   uses to replace the session-scoped compiler-options override and
- *   diagnostic-publish delay in a single call. Omitted fields reset to
- *   their documented defaults (`{}` for `compilerOptions`,
- *   `DEFAULT_DIAGNOSTIC_DELAY_MS` for `diagnosticDelayMs`). Callers are
- *   expected to follow up with `invalidateForProjectConfigChange()` because
- *   applying new compiler options requires rebuilding the language service.
- */
 export type SessionContext = {
   readonly root: string
   readonly workspaceRoot: string
@@ -64,7 +23,7 @@ export type SessionContext = {
   postDiagnostics(
     uri: lsp.DocumentUri,
     version: number | null,
-    diagnostics: readonly lsp.Diagnostic[],
+    diagnostics: readonly lsp.Diagnostic[]
   ): void
   postLogMessage(error: unknown): void
   postResponse(id: lsp.RequestMessage["id"] | null, result: unknown): void

@@ -127,9 +127,7 @@ export function writeWorkspaceCache({
     }
 
     localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
-  } catch {
-    // Ignore private-mode or quota failures; the app should still open normally.
-  }
+  } catch {}
 }
 
 function readCachePayload() {

@@ -1071,7 +1071,6 @@ function FileList({
     [entries, isSearching]
   )
   const scrollParentRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual drives the picker row window.
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     estimateSize: (index) => estimatedFileListRowSize(rows[index]),

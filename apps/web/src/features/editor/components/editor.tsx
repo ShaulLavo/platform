@@ -4,10 +4,13 @@ import "@editor/minimap/style.css"
 import { useEditor } from "@editor/react"
 import "@editor/scope-lines/style.css"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
-import { useEffect, useLayoutEffect, useMemo } from "react"
+import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 
 import { EditorFrame } from "@/features/editor/components/editor-frame"
-import { createEditorPlugins } from "@/features/editor/editor-plugins"
+import {
+  createCriticalEditorPlugins,
+  loadNonCriticalEditorPlugins,
+} from "@/features/editor/editor-plugins"
 import { selectionForDefinition } from "@/features/editor/utils/editor-position"
 import { languageIdForFilePath } from "@/features/editor/utils/file-path"
 import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
@@ -58,12 +61,21 @@ export function Editor({
     document: cachedDocument,
     onScrollPositionChange,
   })
+  const [nonCriticalPlugins, setNonCriticalPlugins] = useState<
+    readonly ReturnType<typeof createCriticalEditorPlugins>[number][]
+  >([])
   const plugins = useMemo(
     () => [
-      ...createEditorPlugins(typeScriptLsp, shikiThemeResolver),
+      ...createCriticalEditorPlugins(typeScriptLsp, shikiThemeResolver),
+      ...nonCriticalPlugins,
       scrollPersistencePlugin,
     ],
-    [scrollPersistencePlugin, shikiThemeResolver, typeScriptLsp]
+    [
+      nonCriticalPlugins,
+      scrollPersistencePlugin,
+      shikiThemeResolver,
+      typeScriptLsp,
+    ]
   )
   const document = useMemo(
     () => ({
@@ -102,6 +114,18 @@ export function Editor({
     typeScriptDiagnostics,
     typeScriptStatus,
   })
+
+  useEffect(() => {
+    let active = true
+    scheduleNonCriticalPluginLoad(async () => {
+      const loaded = await loadNonCriticalEditorPlugins()
+      if (active) setNonCriticalPlugins(loaded)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     onDirtyChange?.(
@@ -148,4 +172,13 @@ export function Editor({
       onActivate={() => setFocusArea("editor")}
     />
   )
+}
+
+function scheduleNonCriticalPluginLoad(load: () => void) {
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(load)
+    return
+  }
+
+  queueMicrotask(load)
 }

@@ -7,7 +7,6 @@ import { defineConfig } from "vite"
 const workspaceRoot = path.resolve(__dirname, "../..")
 const editorSourceRoot = resolveEditorSourceRoot(workspaceRoot)
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react({

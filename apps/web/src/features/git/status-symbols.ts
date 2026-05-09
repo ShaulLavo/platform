@@ -3,11 +3,8 @@ import type { FileStatus, PanelSection, StatusPresentation } from "./types"
 export type GitSymbolSource = PanelSection | "historical"
 
 // TODO(git): Add VS Code-style incoming/outgoing decorations such as "↓M"
-// once we model remote history refs.
 // TODO(git): Support the full VS Code status alphabet: copied (C),
-// type-changed (T), intent-to-add, and intent-to-rename.
 // TODO(git): Split staged/worktree theme colors like VS Code's
-// stageModifiedResourceForeground vs modifiedResourceForeground.
 export function gitStatusSymbol(
   status: FileStatus["index"] | FileStatus["worktree"],
   source: GitSymbolSource

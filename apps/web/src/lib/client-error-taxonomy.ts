@@ -1,25 +1,6 @@
-/**
- * Client_Error_Taxonomy — the Web_App mirror of the server's FsError taxonomy.
- *
- * Exports the eight canonical error categories, a structural `ClientError`
- * type, a layered input-to-category mapper, a category-derived human message
- * helper, and a `reportError` sink that toasts critical categories and
- * always logs.
- */
-
 import { toast } from "sonner"
 import type { ErrorCategory } from "@workspace/contracts"
 
-// ---------------------------------------------------------------------------
-// Category taxonomy
-// ---------------------------------------------------------------------------
-
-/**
- * Re-export {@link ErrorCategory} from `@workspace/contracts` so the client
- * and server share a single source of truth for the eight category
- * identifiers. The mapping from server `FsErrorCode` values to categories
- * still lives in this module via {@link toClientError}.
- */
 export type { ErrorCategory }
 
 export type ClientError = {
@@ -28,10 +9,6 @@ export type ClientError = {
   readonly cause?: unknown
 }
 
-/**
- * Human-readable message per category. Each message is distinct: no two
- * categories share the same string.
- */
 export const messagesByCategory: Record<ErrorCategory, string> = {
   not_found: "The requested file or folder could not be found.",
   permission_denied: "You do not have permission to access that path.",
@@ -43,17 +20,6 @@ export const messagesByCategory: Record<ErrorCategory, string> = {
   unknown: "Something went wrong while talking to the file server.",
 }
 
-// ---------------------------------------------------------------------------
-// FsErrorCode → ErrorCategory mapping
-// ---------------------------------------------------------------------------
-
-/**
- * The server's full FsErrorCode taxonomy. Kept as a local literal union so
- * this module does not need to import from `apps/server`. Any new server
- * code must be added here and to {@link categoryByFsErrorCode} below.
- *
- * Source of truth: `apps/server/src/fs/errors.ts`.
- */
 type FsErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN_ORIGIN"
@@ -68,11 +34,6 @@ type FsErrorCode =
   | "NOT_A_DIRECTORY"
   | "FILE_TOO_LARGE"
   | "OPERATION_FAILED"
-  // Emitted only by the SSE file-watch stream (`apps/server/src/fs/watch.ts`
-  // `watchError`). Not part of the server's `FsError` union but reaches the
-  // client through the same error-shape `{ type: "error", code, message }`,
-  // and is conceptually an IO failure, so we recognize it here to preserve
-  // the pre-taxonomy "File watcher stopped" toast.
   | "WATCH_FAILED"
 
 const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
@@ -92,22 +53,6 @@ const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
   WATCH_FAILED: "io_error",
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Map any incoming error value to a {@link ClientError}. Total over
- * `unknown`: never throws, always returns one of the eight categories.
- *
- * Recognition is layered:
- *   1. Eden RPC error payloads carrying `{ value: { error: { code } } }`.
- *   2. Plain objects with a top-level string `code` (direct server
- *      responses or rethrown payloads).
- *   3. `DOMException` with name `"AbortError"` → `unknown`. Surface-policy
- *      filtering in {@link reportError} skips toasts for this case.
- *   4. Otherwise → `unknown`.
- */
 export function toClientError(input: unknown): ClientError {
   if (isAbortError(input)) {
     return {
@@ -134,24 +79,11 @@ export function toClientError(input: unknown): ClientError {
   }
 }
 
-/**
- * Derive a human-readable message from `input`. Output is drawn exclusively
- * from {@link messagesByCategory} per the mapped category, so messages
- * never leak raw server strings into the UI.
- */
 export function errorMessage(input: unknown): string {
   return toClientError(input).message
 }
 
-/**
- * Surface an error. Always logs via `console.error`; additionally emits a
- * `sonner` toast for the five user-actionable categories. Aborts routed
- * through `unknown` remain silent.
- */
 export function reportError(error: ClientError): void {
-  // Always log. `apps/web` has no dedicated structured logger today, so
-  // `console.error` preserves the existing behavior at every current call
-  // site (`use-workspace-events.ts`, `file-server.ts`, etc.).
   console.error("[client-error-taxonomy]", {
     category: error.category,
     message: error.message,
@@ -164,10 +96,6 @@ export function reportError(error: ClientError): void {
     description: error.message,
   })
 }
-
-// ---------------------------------------------------------------------------
-// Internals
-// ---------------------------------------------------------------------------
 
 const toastableCategories: ReadonlySet<ErrorCategory> = new Set<ErrorCategory>([
   "not_found",
@@ -201,7 +129,6 @@ function isAbortError(input: unknown): boolean {
 function extractFsErrorCode(input: unknown): FsErrorCode | null {
   if (!input || typeof input !== "object") return null
 
-  // Eden / RPC envelope: `{ value: { error: { code, message } } }`.
   if ("value" in input) {
     const code = fsErrorCodeFromErrorContainer(
       (input as { value: unknown }).value
@@ -209,11 +136,9 @@ function extractFsErrorCode(input: unknown): FsErrorCode | null {
     if (code) return code
   }
 
-  // Direct `{ error: { code } }` payload (e.g. rethrown server response).
   const direct = fsErrorCodeFromErrorContainer(input)
   if (direct) return direct
 
-  // Flat `{ code: "..." }` payload.
   if ("code" in input) {
     const raw = (input as { code: unknown }).code
     if (isFsErrorCode(raw)) return raw

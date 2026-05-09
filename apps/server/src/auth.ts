@@ -158,12 +158,4 @@ function queryTokenFromWebSocketData(data: unknown) {
 }
 
 // TODO(auth): This guard intentionally supports only today's local browser app:
-// loopback binding plus strict Origin checks. When we add Electron/Tauri, add a
-// separate native provider following T3's private bootstrap handoff instead of
-// weakening this browser rule.
-// Set FS_SESSION_TOKEN during native/bootstrap experiments to require a bearer
-// token on /fs/* and /lsp/* traffic. Keep Origin-only mode dev-only.
-//
 // TODO(auth): If we add remote/browser sessions later, mount Better Auth or a
-// T3-style pairing flow under /auth and map successful sessions to
-// AuthPrincipal/capabilities before they reach filesystem routes.
