@@ -6,19 +6,7 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * Handle a `textDocument/definition` request.
- *
- * Queries the language service for the definition (preferring
- * `getDefinitionAndBoundSpan` so declaration renames observe the bound span)
- * and converts each `ts.DefinitionInfo` to an LSP location whose URI is
- * produced relative to the workspace root when possible. Definitions that
- * resolve outside the session root are filtered out so we never leak paths
- * the client cannot open.
- *
- * Returns an empty array for malformed params, out-of-root URIs, or
- * positions where no definition is found.
- */
+
 export function handleDefinition(ctx: SessionContext, params: unknown): lsp.Location[] {
   const request = textDocumentPosition(ctx, params)
   if (!request) return []

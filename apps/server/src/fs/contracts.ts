@@ -167,23 +167,13 @@ export type CopyBody = v.InferOutput<typeof copyBodySchema>
 export type DeleteBody = v.InferOutput<typeof deleteBodySchema>
 export type RecordRecentBody = v.InferOutput<typeof recordRecentBodySchema>
 
-// Cross-boundary shared types are sourced from `@workspace/contracts`.
-// The Valibot schemas above remain the runtime validation source on the
-// server; the compile-time parity assertions below guarantee that the
-// pure-TypeScript mirrors in `@workspace/contracts` stay structurally
-// equivalent to `v.InferOutput<typeof ...>` for every schema that has
-// a mirror. Any drift breaks `turbo typecheck` at this file.
-//
-// `TreeEntryLike` is retained as a backward-compatible alias for the
-// historical name used by server-internal consumers; new code should
-// import `TreeEntry` directly from `@workspace/contracts`.
+
 export type {
 	EntryTypeFilter,
 	TreeEntry,
 	WatchClientMessage,
 	WatchServerMessage
 } from '@workspace/contracts'
-export type TreeEntryLike = ContractsTreeEntry
 
 type Equals<A, B> =
 	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
@@ -192,9 +182,7 @@ type Equals<A, B> =
 
 type Assert<T extends true> = T
 
-// Assertions are held by exported `const` bindings so `noUnusedLocals` does
-// not strip them. They carry no runtime payload (`true as const`) and the
-// type-level work happens in the `Assert<...>` annotation.
+
 export const _assertEntryTypeFilterParity: Assert<
 	Equals<
 		v.InferOutput<typeof entryTypeQueryValueSchema>,

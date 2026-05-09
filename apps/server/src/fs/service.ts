@@ -29,7 +29,7 @@ import type {
   DeleteBody,
   EntryTypeFilter,
   RenameBody,
-  TreeEntryLike,
+  TreeEntry,
   WatchServerMessage,
   WriteBody,
 } from "./contracts"
@@ -47,37 +47,12 @@ export type FileSystemServiceOptions = {
 
 export const DEFAULT_TREE_CONCURRENCY = 32
 
-/**
- * Maximum bytes a single text file is permitted to occupy when loaded in full
- * via {@link FileSystemService.read}.
- *
- * Unit: bytes. Value: 209_715_200 (200 MiB).
- *
- * Rationale: 200 MiB caps pathological whole-file loads without blocking
- * typical source files; chunked reads are the long-term fix.
- *
- * Override mechanism: set the `MAX_TEXT_FILE_BYTES` environment variable to an
- * integer in the inclusive range `[1, 2_147_483_647]` to raise or lower the
- * cap at runtime (see {@link resolveMaxTextFileBytes}). Values that are not
- * integers, are below 1, or exceed `2_147_483_647` are rejected; the server
- * logs the rejection through its standard error reporting path and falls back
- * to this default.
- */
+
 export const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
 
-/** Inclusive upper bound for `MAX_TEXT_FILE_BYTES` (max signed 32-bit int). */
 const MAX_TEXT_FILE_BYTES_UPPER_BOUND = 2_147_483_647
 
-/**
- * Resolve the effective maximum text-file size in bytes.
- *
- * Reads `env.MAX_TEXT_FILE_BYTES` and returns:
- * - {@link DEFAULT_MAX_TEXT_FILE_BYTES} when the variable is unset.
- * - the parsed integer when it parses as a base-10 integer in the inclusive
- *   range `[1, 2_147_483_647]`.
- * - {@link DEFAULT_MAX_TEXT_FILE_BYTES} otherwise, after reporting the
- *   rejection via the server's standard error reporting path.
- */
+
 export function resolveMaxTextFileBytes(
   env: NodeJS.ProcessEnv = process.env
 ): number {
@@ -306,13 +281,13 @@ export class FileSystemService {
     }
   }
 
-  private async statEntry(input: string): Promise<TreeEntryLike> {
+  private async statEntry(input: string): Promise<TreeEntry> {
     const stat = await this.stat(input)
     return entryFromStat(stat)
   }
 }
 
-function entryFromStat(stat: FsStat): TreeEntryLike {
+function entryFromStat(stat: FsStat): TreeEntry {
   return {
     path: stat.path,
     name: pathBasename(stat.path),

@@ -6,19 +6,6 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * Handle a `textDocument/prepareRename` request.
- *
- * Asks the language service whether the symbol at the cursor can be renamed
- * and, if so, returns the triggering span together with the current display
- * name so the client can open a rename UI prefilled with the existing
- * identifier. Returns `null` when the language service reports the location
- * as non-renameable.
- *
- * Per the LSP spec and the existing session implementation the return value
- * is either `null` or the `{ range, placeholder }` struct form — the plain
- * `lsp.Range` form is also permitted by the signature but not emitted here.
- */
 export function handlePrepareRename(
   ctx: SessionContext,
   params: unknown,

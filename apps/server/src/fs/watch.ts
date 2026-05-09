@@ -4,7 +4,7 @@ import path from "node:path"
 import { FsError } from "./errors"
 import { isIgnoredPath, toPosix, type WorkspacePaths } from "./path"
 import { statPath, type FsStat } from "./stat"
-import type { TreeEntryLike, WatchServerMessage } from "./contracts"
+import type { TreeEntry, WatchServerMessage } from "./contracts"
 
 type Listener = (event: WatchServerMessage) => void
 type WatchRelease = () => void
@@ -229,7 +229,7 @@ async function nativeEventType(
 function nativeWatchEvent(
   type: "created" | "changed" | "deleted",
   path: string,
-  entry: TreeEntryLike | undefined
+  entry: TreeEntry | undefined
 ): WatchServerMessage {
   if (type === "deleted") return { type, path }
   if (!entry) return { type, path }
@@ -250,7 +250,7 @@ async function pathExists(paths: WorkspacePaths, relativePath: string) {
 async function nativeEventEntry(
   paths: WorkspacePaths,
   relativePath: string
-): Promise<TreeEntryLike | undefined> {
+): Promise<TreeEntry | undefined> {
   try {
     return entryFromStat(await statPath(paths, relativePath))
   } catch {
@@ -258,7 +258,7 @@ async function nativeEventEntry(
   }
 }
 
-function entryFromStat(stat: FsStat): TreeEntryLike {
+function entryFromStat(stat: FsStat): TreeEntry {
   return {
     path: stat.path,
     name: pathBasename(stat.path),

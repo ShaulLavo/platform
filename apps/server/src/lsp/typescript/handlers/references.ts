@@ -6,17 +6,7 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * Handle a `textDocument/references` request.
- *
- * Queries the language service for references to the symbol under the
- * cursor and converts each `ts.ReferencedSymbolEntry` into an LSP location
- * whose URI is expressed relative to the workspace root when possible.
- * References outside the session root are filtered out so we never leak
- * paths the client cannot open. Returns an empty array for malformed
- * params, out-of-root URIs, or positions where the language service reports
- * no references.
- */
+
 export function handleReferences(ctx: SessionContext, params: unknown): lsp.Location[] {
   const request = textDocumentPosition(ctx, params)
   if (!request) return []

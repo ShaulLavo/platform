@@ -5,6 +5,8 @@ import {
   type EditorDiffViewMode,
 } from "@/features/editor/utils/diff-view-mode"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { reportError, toClientError } from "@/lib/client-error-taxonomy"
+import * as v from "valibot"
 
 const CACHE_KEY = "platform.workspace-state.v1"
 
@@ -39,6 +41,51 @@ type WorkspaceCachePayloadV4 = {
 }
 
 export type WorkspacePanelTab = "files" | "git"
+
+const pickedDirectorySchema = v.object({
+  birthtimeMs: v.number(),
+  mtimeMs: v.number(),
+  name: v.string(),
+  path: v.string(),
+  size: v.number(),
+  type: v.literal("directory"),
+})
+const rootFolderSchema = v.nullable(pickedDirectorySchema)
+const selectedFilePathSchema = v.nullable(v.string())
+const workspacePanelTabSchema = v.union([v.literal("files"), v.literal("git")])
+const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)
+const v1Schema = v.object({
+  rootFolder: rootFolderSchema,
+  selectedFilePath: selectedFilePathSchema,
+  version: v.literal(1),
+})
+const v2Schema = v.object({
+  openFilePaths: v.array(v.string()),
+  rootFolder: rootFolderSchema,
+  selectedFilePath: selectedFilePathSchema,
+  version: v.literal(2),
+})
+const v3Schema = v.object({
+  openFilePaths: v.array(v.string()),
+  rootFolder: rootFolderSchema,
+  selectedFilePath: selectedFilePathSchema,
+  version: v.literal(3),
+  workspacePanelTab: workspacePanelTabSchema,
+})
+const v4Schema = v.object({
+  diffViewMode: diffViewModeSchema,
+  openFilePaths: v.array(v.string()),
+  rootFolder: rootFolderSchema,
+  selectedFilePath: selectedFilePathSchema,
+  version: v.literal(4),
+  workspacePanelTab: workspacePanelTabSchema,
+})
+const workspaceCachePayloadSchema = v.variant("version", [
+  v1Schema,
+  v2Schema,
+  v3Schema,
+  v4Schema,
+])
 
 export type CachedWorkspaceState = {
   diffViewMode: EditorDiffViewMode
@@ -89,73 +136,28 @@ function readCachePayload() {
   if (!canUseLocalStorage()) return null
 
   try {
-    return parseCachePayload(localStorage.getItem(CACHE_KEY))
-  } catch {
+    const value = localStorage.getItem(CACHE_KEY)
+    if (!value) return null
+
+    const payload = parseCachePayload(value)
+    if (payload) return payload
+
     localStorage.removeItem(CACHE_KEY)
+    reportError(toClientError({ code: "INVALID_PATH" }))
+    return null
+  } catch (error) {
+    localStorage.removeItem(CACHE_KEY)
+    reportError(toClientError({ code: "OPERATION_FAILED", error }))
     return null
   }
 }
 
-function parseCachePayload(value: string | null): WorkspaceCachePayload | null {
-  if (!value) return null
-
+function parseCachePayload(value: string): WorkspaceCachePayload | null {
   const parsed: unknown = JSON.parse(value)
-  if (!isCachePayload(parsed)) return null
+  const result = v.safeParse(workspaceCachePayloadSchema, parsed)
+  if (!result.success) return null
 
-  return parsed
-}
-
-function isCachePayload(value: unknown): value is WorkspaceCachePayload {
-  if (!value || typeof value !== "object") return false
-  if (!("version" in value)) return false
-  if (!("rootFolder" in value)) return false
-  if (!("selectedFilePath" in value)) return false
-  if (!isOptionalPickedDirectory(value.rootFolder)) return false
-  if (!isOptionalString(value.selectedFilePath)) return false
-
-  if (value.version === 1) return true
-  if (!("openFilePaths" in value)) return false
-  if (!isStringArray(value.openFilePaths)) return false
-  if (value.version === 2) return true
-  if (!("workspacePanelTab" in value)) return false
-  if (!isWorkspacePanelTab(value.workspacePanelTab)) return false
-  if (value.version === 3) return true
-  if (value.version !== 4) return false
-  if (!("diffViewMode" in value)) return false
-
-  return isEditorDiffViewMode(value.diffViewMode)
-}
-
-function isOptionalPickedDirectory(
-  value: unknown
-): value is PickedFsEntry | null {
-  return value === null || isPickedDirectory(value)
-}
-
-function isPickedDirectory(value: unknown): value is PickedFsEntry {
-  if (!value || typeof value !== "object") return false
-  if (!("type" in value) || value.type !== "directory") return false
-  if (!("name" in value) || typeof value.name !== "string") return false
-  if (!("path" in value) || typeof value.path !== "string") return false
-  if (!("size" in value) || typeof value.size !== "number") return false
-  if (!("mtimeMs" in value) || typeof value.mtimeMs !== "number") return false
-  if (!("birthtimeMs" in value) || typeof value.birthtimeMs !== "number") {
-    return false
-  }
-
-  return true
-}
-
-function isOptionalString(value: unknown): value is string | null {
-  return value === null || typeof value === "string"
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string")
-}
-
-function isWorkspacePanelTab(value: unknown): value is WorkspacePanelTab {
-  return value === "files" || value === "git"
+  return result.output
 }
 
 function workspaceStateFromPayload(

@@ -27,8 +27,9 @@ export type DeleteCachedEditorDocumentResult = {
 
 type EditorDocumentStoreState = {
   dirtyFilePaths: ReadonlySet<string>
-  documentCacheVersion: number
+  documents: Readonly<Record<string, CachedEditorDocument>>
   fallbackDocumentPath: string | null
+  scrollPositionByPath: Readonly<Record<string, EditorScrollPosition>>
 }
 
 type EditorDocumentStoreActions = {
@@ -87,20 +88,17 @@ export function useEditorDocumentState<T>(
 }
 
 export function createEditorDocumentStore() {
-  const documentCache = new Map<string, CachedEditorDocument>()
-
-  return createStore<EditorDocumentStore>()((set) => ({
+  return createStore<EditorDocumentStore>()((set, get) => ({
     dirtyFilePaths: new Set(),
-    documentCacheVersion: 0,
+    documents: {},
     fallbackDocumentPath: null,
+    scrollPositionByPath: {},
     clearCachedEditorDocuments: () =>
-      set((state) => {
-        documentCache.clear()
-        return {
-          dirtyFilePaths: new Set(),
-          documentCacheVersion: state.documentCacheVersion + 1,
-          fallbackDocumentPath: null,
-        }
+      set({
+        dirtyFilePaths: new Set(),
+        documents: {},
+        fallbackDocumentPath: null,
+        scrollPositionByPath: {},
       }),
     deleteCachedEditorDocument: (path, options) => {
       let result: DeleteCachedEditorDocumentResult = {
@@ -108,12 +106,8 @@ export function createEditorDocumentStore() {
         wasDirty: false,
       }
       set((state) => {
-        const wasDirty = isDirtyPath(
-          documentCache,
-          state.dirtyFilePaths,
-          path
-        )
-        const hadCachedDocument = documentCache.delete(path)
+        const wasDirty = isDirtyPath(state, path)
+        const hadCachedDocument = state.documents[path] !== undefined
         result = {
           hadCachedDocument,
           wasDirty,
@@ -123,28 +117,32 @@ export function createEditorDocumentStore() {
           state.dirtyFilePaths
         const shouldBumpVersion =
           result.hadCachedDocument || options?.bumpVersion === true
+        if (!shouldBumpVersion) return { dirtyFilePaths }
 
         return {
+          documents: omitKey(state.documents, path),
           dirtyFilePaths,
-          documentCacheVersion: shouldBumpVersion
-            ? state.documentCacheVersion + 1
-            : state.documentCacheVersion,
+          scrollPositionByPath: omitKey(state.scrollPositionByPath, path),
         }
       })
       return result
     },
     ensureCachedEditorDocument: (file, selectedFilePath = null) => {
-      const cached = documentCache.get(file.path)
+      const state = get()
+      const cached = state.documents[file.path]
       if (cached?.session.isDirty()) return cached
       if (cached?.revision === file.mtimeMs) return cached
 
-      const document = freshCachedEditorDocument(file, cached)
-      documentCache.set(file.path, document)
+      const document = freshCachedEditorDocument(
+        file,
+        cached,
+        state.scrollPositionByPath[file.path]
+      )
       set((state) => ({
+        documents: { ...state.documents, [file.path]: document },
         dirtyFilePaths:
           removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
           state.dirtyFilePaths,
-        documentCacheVersion: state.documentCacheVersion + 1,
         fallbackDocumentPath:
           selectedFilePath === file.path
             ? file.path
@@ -153,31 +151,33 @@ export function createEditorDocumentStore() {
       return document
     },
     evictCleanCachedEditorDocument: (path) => {
-      const cached = documentCache.get(path)
+      const cached = get().documents[path]
       if (!cached) return false
       if (cached.session.isDirty()) return false
 
-      documentCache.delete(path)
       set((state) => ({
+        documents: omitKey(state.documents, path),
         dirtyFilePaths:
           removeDirtyFilePath(state.dirtyFilePaths, path) ??
           state.dirtyFilePaths,
-        documentCacheVersion: state.documentCacheVersion + 1,
+        scrollPositionByPath: omitKey(state.scrollPositionByPath, path),
       }))
       return true
     },
     forceReplaceCachedEditorDocument: (file, selectedFilePath = null) => {
       let wasDirty = false
       set((state) => {
-        const cached = documentCache.get(file.path)
-        wasDirty = isDirtyPath(documentCache, state.dirtyFilePaths, file.path)
-        documentCache.set(file.path, freshCachedEditorDocument(file, cached))
+        const cached = state.documents[file.path]
+        wasDirty = isDirtyPath(state, file.path)
 
         return {
+          documents: {
+            ...state.documents,
+            [file.path]: freshCachedEditorDocument(file, cached),
+          },
           dirtyFilePaths:
             removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
             state.dirtyFilePaths,
-          documentCacheVersion: state.documentCacheVersion + 1,
           fallbackDocumentPath:
             selectedFilePath === file.path
               ? file.path
@@ -186,24 +186,39 @@ export function createEditorDocumentStore() {
       })
       return { wasDirty }
     },
-    getCachedEditorDocument: (path) => documentCache.get(path) ?? null,
-    hasCachedEditorDocument: (path) => documentCache.has(path),
+    getCachedEditorDocument: (path) => {
+      const state = get()
+      return cachedDocumentWithScroll(state, path)
+    },
+    hasCachedEditorDocument: (path) => get().documents[path] !== undefined,
     renameCachedEditorDocumentPath: (from, to, options) => {
       let wasDirty = false
       set((state) => {
-        wasDirty = isDirtyPath(documentCache, state.dirtyFilePaths, from)
-        moveCachedEditorDocument(documentCache, from, to)
+        wasDirty = isDirtyPath(state, from)
+        const document = state.documents[from]
+        const scrollPosition = state.scrollPositionByPath[from]
+        const shouldMove = document || options?.bumpVersion === true || wasDirty
+        if (!shouldMove) {
+          return {
+            dirtyFilePaths: renameDirtyFilePath(state.dirtyFilePaths, from, to),
+            fallbackDocumentPath:
+              state.fallbackDocumentPath === from
+                ? to
+                : state.fallbackDocumentPath,
+          }
+        }
 
         return {
+          documents: moveCachedEditorDocument(state.documents, from, to),
           dirtyFilePaths: renameDirtyFilePath(state.dirtyFilePaths, from, to),
-          documentCacheVersion:
-            options?.bumpVersion === true || wasDirty
-              ? state.documentCacheVersion + 1
-              : state.documentCacheVersion,
           fallbackDocumentPath:
             state.fallbackDocumentPath === from
               ? to
               : state.fallbackDocumentPath,
+          scrollPositionByPath:
+            scrollPosition === undefined
+              ? state.scrollPositionByPath
+              : moveValue(state.scrollPositionByPath, from, to),
         }
       })
       return { wasDirty }
@@ -220,10 +235,16 @@ export function createEditorDocumentStore() {
         return { dirtyFilePaths }
       }),
     setCachedEditorDocumentScrollPosition: (path, scrollPosition) => {
-      const cached = documentCache.get(path)
-      if (!cached) return
+      set((state) => {
+        if (!state.documents[path]) return state
 
-      cached.scrollPosition = scrollPosition
+        return {
+          scrollPositionByPath: {
+            ...state.scrollPositionByPath,
+            [path]: scrollPosition,
+          },
+        }
+      })
     },
     setFallbackDocumentPath: (fallbackDocumentPath) =>
       set({ fallbackDocumentPath }),
@@ -232,7 +253,8 @@ export function createEditorDocumentStore() {
 
 function freshCachedEditorDocument(
   file: FileResult,
-  cached: CachedEditorDocument | undefined
+  cached: CachedEditorDocument | undefined,
+  scrollPosition?: EditorScrollPosition
 ): CachedEditorDocument {
   const session = createDocumentSession(file.content)
   session.markClean()
@@ -240,30 +262,60 @@ function freshCachedEditorDocument(
   return {
     path: file.path,
     revision: file.mtimeMs,
-    scrollPosition: cached?.scrollPosition,
+    scrollPosition: scrollPosition ?? cached?.scrollPosition,
     session,
   }
 }
 
-function isDirtyPath(
-  documentCache: Map<string, CachedEditorDocument>,
-  dirtyFilePaths: ReadonlySet<string>,
-  path: string
-) {
+function isDirtyPath(state: EditorDocumentStoreState, path: string) {
   return (
-    dirtyFilePaths.has(path) ||
-    documentCache.get(path)?.session.isDirty() === true
+    state.dirtyFilePaths.has(path) ||
+    state.documents[path]?.session.isDirty() === true
   )
 }
 
 function moveCachedEditorDocument(
-  documentCache: Map<string, CachedEditorDocument>,
+  documents: Readonly<Record<string, CachedEditorDocument>>,
   from: string,
   to: string
-) {
-  const cached = documentCache.get(from)
-  if (!cached) return
+): Readonly<Record<string, CachedEditorDocument>> {
+  const cached = documents[from]
+  if (!cached) return documents
 
-  documentCache.delete(from)
-  documentCache.set(to, { ...cached, path: to })
+  return { ...omitKey(documents, from), [to]: { ...cached, path: to } }
+}
+
+function cachedDocumentWithScroll(
+  state: EditorDocumentStoreState,
+  path: string
+): CachedEditorDocument | null {
+  const document = state.documents[path]
+  if (!document) return null
+
+  const scrollPosition = state.scrollPositionByPath[path]
+  if (scrollPosition === undefined) return document
+  if (document.scrollPosition === scrollPosition) return document
+
+  return { ...document, scrollPosition }
+}
+
+function omitKey<T>(
+  record: Readonly<Record<string, T>>,
+  key: string
+): Readonly<Record<string, T>> {
+  if (!(key in record)) return record
+
+  const { [key]: _removed, ...rest } = record
+  return rest
+}
+
+function moveValue<T>(
+  record: Readonly<Record<string, T>>,
+  from: string,
+  to: string
+): Readonly<Record<string, T>> {
+  const value = record[from]
+  if (value === undefined) return record
+
+  return { ...omitKey(record, from), [to]: value }
 }

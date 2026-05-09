@@ -6,16 +6,7 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * Handle a `textDocument/documentSymbol` request.
- *
- * Asks the language service for the file's navigation tree, then projects
- * each top-level child into an LSP `DocumentSymbol`. Children preserve the
- * parent's span for `range` and `selectionRange`.
- *
- * Returns an empty array for malformed params, URIs outside the session
- * root, or files the handler cannot read.
- */
+
 export function handleDocumentSymbol(
   ctx: SessionContext,
   params: unknown,

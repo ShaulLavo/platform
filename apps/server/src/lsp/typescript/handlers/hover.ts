@@ -6,19 +6,7 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * Handle a `textDocument/hover` request.
- *
- * Resolves the document URI to a path inside the session root, queries the
- * TypeScript language service for quick-info at the cursor, and converts the
- * result into an LSP hover payload. The language service is obtained through
- * {@link SessionContext.getLanguageService} on every invocation so
- * invalidation rebuilds are observed without stale references.
- *
- * Returns `null` for malformed params, out-of-root URIs, documents the
- * handler cannot read, or positions where the language service reports no
- * quick-info.
- */
+
 export function handleHover(ctx: SessionContext, params: unknown): lsp.Hover | null {
   const request = textDocumentPosition(ctx, params)
   if (!request) return null

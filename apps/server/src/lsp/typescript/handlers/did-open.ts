@@ -5,21 +5,10 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * File extensions the TypeScript language service recognizes as source.
- */
+
 const TYPE_SCRIPT_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"])
 
-/**
- * Handle a `textDocument/didOpen` notification.
- *
- * Validates the params shape, resolves the document URI to a path inside the
- * session root (documents outside the configured root are ignored), and
- * registers the document in the shared registry. After registration the
- * handler bumps the script version, triggers incremental file-content
- * invalidation so the language service observes the new text without a
- * full rebuild, and schedules diagnostic publication.
- */
+
 export function handleDidOpen(ctx: SessionContext, params: unknown): void {
   const textDocument = textDocumentItem(params)
   if (!textDocument) return

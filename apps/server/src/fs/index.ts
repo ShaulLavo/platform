@@ -16,7 +16,6 @@ export type {
 	EntryTypeFilter,
 	RecordRecentBody,
 	RenameBody,
-	TreeEntryLike,
 	WatchClientMessage,
 	WatchServerMessage,
 	WriteBody,

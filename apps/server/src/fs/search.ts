@@ -14,23 +14,7 @@ import {
 import { assertDirectory, type FsEntryType, typeFromStats } from './stat'
 import type { EntryTypeFilter } from './contracts'
 
-/**
- * Maximum size, in bytes, of the bounded line/chunk buffer used by the
- * streaming fallback content matcher in `addContentMatch`.
- *
- * Unit: bytes (64 KiB = 65_536).
- *
- * Purpose: caps memory held by the streaming UTF-8 line reader to a single
- * fixed-size buffer per concurrent file scan, so matching a file at the
- * per-file size limit never forces the full file into memory.
- *
- * Rationale: 64 KiB comfortably fits typical source-file lines (which are
- * usually well under 1 KiB and almost always under 16 KiB even for minified
- * or generated output), while keeping the worst-case resident memory of a
- * concurrent search low. Lines longer than the buffer are split at the
- * buffer boundary by the reader; they continue to participate in matching
- * at byte-level positions but do not grow the buffer.
- */
+
 export const SEARCH_LINE_BUFFER_BYTES = 65_536
 
 export type FindOptions = {

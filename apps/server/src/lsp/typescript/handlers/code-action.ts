@@ -6,19 +6,7 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * Handle a `textDocument/codeAction` request.
- *
- * Collects the numeric TypeScript diagnostic codes carried in
- * `context.diagnostics`, asks the language service for quickfixes at the
- * selection range, and projects each `ts.CodeFixAction` into an LSP
- * `CodeAction` of kind `"quickfix"`. Returns an empty result for malformed
- * params, out-of-root URIs, documents the handler cannot read, or requests
- * whose diagnostics carry no TypeScript error codes.
- *
- * The return type is `readonly (lsp.Command | lsp.CodeAction)[]`; this
- * handler only emits `lsp.CodeAction` values.
- */
+
 export function handleCodeAction(
   ctx: SessionContext,
   params: unknown,

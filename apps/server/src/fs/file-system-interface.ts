@@ -16,12 +16,7 @@ import type {
   WriteBody,
 } from "./contracts"
 
-/**
- * Shape of the object returned by {@link FileSystem_Interface.info}.
- *
- * Mirrors the literal object composed inside `FileSystemService.info()` — the
- * service's own fields plus the shape of `FileChangeHub.info()` spread in.
- */
+
 export type FileSystemInfo = {
   workspaceRoot: string
   systemRoot: string
@@ -33,21 +28,6 @@ export type FileSystemInfo = {
   watchEnabled: boolean
 }
 
-/**
- * Structural contract for the filesystem service.
- *
- * `FileSystem_Interface` declares every public method and property of the
- * concrete `FileSystemService` class (see `./service.ts`) with identical
- * names, parameters, and return types. Internal call sites inside
- * `apps/server/src/` hold values of this interface type rather than the
- * concrete class, so that the class remains replaceable and no call site
- * depends on private implementation details.
- *
- * Construction sites (`new FileSystemService(...)`) continue to reference the
- * concrete class. A compile-time assertion in `./service.ts` keeps the
- * interface and the class in sync: any new public member added to
- * `FileSystemService` that is not mirrored here will fail `turbo typecheck`.
- */
 export interface FileSystem_Interface {
   readonly paths: WorkspacePaths
   readonly changes: FileChangeHub

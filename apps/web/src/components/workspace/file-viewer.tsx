@@ -26,9 +26,7 @@ export function FileViewer({
   rootPath: string
 }) {
   const definitionTarget = useEditorUiState((state) => state.definitionTarget)
-  const documentCacheVersion = useEditorDocumentState(
-    (state) => state.documentCacheVersion
-  )
+  const documents = useEditorDocumentState((state) => state.documents)
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
   const ensureCachedEditorDocument = useEditorDocumentState(
     (state) => state.ensureCachedEditorDocument
@@ -36,8 +34,8 @@ export function FileViewer({
   const fallbackDocumentPath = useEditorDocumentState(
     (state) => state.fallbackDocumentPath
   )
-  const getCachedEditorDocument = useEditorDocumentState(
-    (state) => state.getCachedEditorDocument
+  const scrollPositionByPath = useEditorDocumentState(
+    (state) => state.scrollPositionByPath
   )
   const selectedFilePath = useEditorWorkspaceState(
     (state) => state.selectedFilePath
@@ -60,12 +58,12 @@ export function FileViewer({
   const selectedFile = selectedDiff ? null : readyFile(fileState)
   const selectedDiffQuery = useDiffDocumentDiff(selectedDiff)
   const selectedCachedDocument =
-    selectedFilePath && documentCacheVersion >= 0
-      ? getCachedEditorDocument(selectedFilePath)
+    selectedFilePath
+      ? documentWithScroll(documents[selectedFilePath], scrollPositionByPath)
       : null
   const fallbackDocument =
-    fallbackDocumentPath && documentCacheVersion >= 0
-      ? getCachedEditorDocument(fallbackDocumentPath)
+    fallbackDocumentPath
+      ? documentWithScroll(documents[fallbackDocumentPath], scrollPositionByPath)
       : null
   const visibleDocument =
     selectedCachedDocument ??
@@ -186,4 +184,18 @@ function readyFile(fileState: LoadState<FileResult>) {
   if (fileState.status !== "ready") return null
 
   return fileState.data
+}
+
+function documentWithScroll(
+  document: CachedEditorDocument | undefined,
+  scrollPositionByPath: Readonly<
+    Record<string, NonNullable<CachedEditorDocument["scrollPosition"]>>
+  >
+) {
+  if (!document) return null
+
+  const scrollPosition = scrollPositionByPath[document.path]
+  if (scrollPosition === undefined) return document
+
+  return { ...document, scrollPosition }
 }
