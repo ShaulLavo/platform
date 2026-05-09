@@ -11,7 +11,15 @@ import {
 import { basename, displayPath } from "@/lib/path-formatters"
 import { cn } from "@workspace/ui/lib/utils"
 
-export function EditorTabBar() {
+export type EditorTabSizing = "fit" | "fixed" | "shrink"
+
+const DEFAULT_EDITOR_TAB_SIZING: EditorTabSizing = "fit"
+
+export function EditorTabBar({
+  tabSizing = DEFAULT_EDITOR_TAB_SIZING,
+}: {
+  tabSizing?: EditorTabSizing
+}) {
   const selectedTabRef = useRef<HTMLDivElement>(null)
   const tabListRef = useRef<HTMLElement>(null)
   const dirtyFilePaths = useEditorState((state) => state.dirtyFilePaths)
@@ -43,7 +51,7 @@ export function EditorTabBar() {
       ref={tabListRef}
       role="tablist"
     >
-      <div className="flex min-w-0 items-end">
+      <div className="flex min-w-full flex-1 items-end">
         {openFilePaths.map((path) => {
           const active = path === selectedFilePath
           const dirty = dirtyFilePaths.has(path)
@@ -54,7 +62,8 @@ export function EditorTabBar() {
           return (
             <div
               className={cn(
-                "group flex h-10 min-w-36 max-w-56 shrink-0 items-center border-r border-border bg-background/40 text-xs",
+                "group flex h-10 items-center border-r border-border bg-background/40 text-xs",
+                tabSizingClassName(tabSizing),
                 active &&
                   "border-t-2 border-t-foreground bg-background text-foreground"
               )}
@@ -112,6 +121,13 @@ export function EditorTabBar() {
       </div>
     </nav>
   )
+}
+
+function tabSizingClassName(tabSizing: EditorTabSizing) {
+  if (tabSizing === "fixed") return "min-w-[50px] max-w-40 flex-[1_0_0]"
+  if (tabSizing === "shrink") return "min-w-20 max-w-fit basis-0 grow"
+
+  return "w-[120px] min-w-fit shrink-0"
 }
 
 function scrollSelectedTabIntoView(
