@@ -42,6 +42,13 @@ export type DiffHunk = {
   readonly lines: readonly DiffHunkLine[];
 };
 
+export type DiffHunkLocation = {
+  readonly index: number;
+  readonly row: number;
+  readonly path: string;
+  readonly hunk: DiffHunk;
+};
+
 export type DiffFile = {
   readonly path: string;
   readonly oldPath?: string;

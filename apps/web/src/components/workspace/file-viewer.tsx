@@ -1,5 +1,5 @@
 import { WarningCircleIcon } from "@phosphor-icons/react"
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 
 import { Editor } from "@/features/editor/components/editor"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
@@ -11,7 +11,10 @@ import type { EditorStatusBarState } from "@/features/editor/components/editor-s
 import { useEditorUiState } from "@/features/editor/state/editor-ui-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
-import { GitDiffViewer } from "@/features/git/components/diff-viewer"
+import {
+  GitDiffViewer,
+  type GitDiffViewerHandle,
+} from "@/features/git/components/diff-viewer"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { useDiffDocumentDiff } from "@/features/git/hooks"
 import type { FileResult } from "@/lib/file-system-types"
@@ -26,6 +29,7 @@ export function FileViewer({
   rootPath: string
 }) {
   const definitionTarget = useEditorUiState((state) => state.definitionTarget)
+  const diffViewerRef = useRef<GitDiffViewerHandle | null>(null)
   const documents = useEditorDocumentState((state) => state.documents)
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
   const ensureCachedEditorDocument = useEditorDocumentState(
@@ -69,6 +73,14 @@ export function FileViewer({
     selectedCachedDocument ??
     (fileState.status === "error" ? null : fallbackDocument)
 
+  function handleRevealPreviousChange() {
+    diffViewerRef.current?.revealPreviousHunk({ wrap: true })
+  }
+
+  function handleRevealNextChange() {
+    diffViewerRef.current?.revealNextHunk({ wrap: true })
+  }
+
   useEffect(() => {
     if (!selectedFile) return
 
@@ -98,6 +110,8 @@ export function FileViewer({
         diffViewMode={selectedDiff ? diffViewMode : null}
         rootPath={rootPath}
         onDiffViewModeChange={setDiffViewMode}
+        onRevealNextChange={handleRevealNextChange}
+        onRevealPreviousChange={handleRevealPreviousChange}
       />
       {selectedFilePath ? (
         selectedDiff ? (
@@ -108,6 +122,7 @@ export function FileViewer({
             isPending={selectedDiffQuery.isPending}
             mode={diffViewMode}
             path={selectedDiff.path}
+            ref={diffViewerRef}
           />
         ) : (
           <FileViewerBody

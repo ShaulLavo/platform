@@ -2,13 +2,22 @@ import {
   DiffView,
   annotateInlineChanges,
   type DiffFile,
+  type DiffHunkLocation,
   type DiffHunkLine,
   type DiffSplitHandleContext,
 } from "@editor/diff"
 import "@editor/diff/style.css"
 import "./diff-viewer.css"
 import { WarningCircleIcon } from "@phosphor-icons/react"
-import { useLayoutEffect, useMemo, useRef, type CSSProperties } from "react"
+import {
+  forwardRef,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type CSSProperties,
+  type RefObject,
+} from "react"
 
 import type { EditorDiffViewMode } from "@/features/editor/utils/diff-view-mode"
 import { languageIdForFilePath } from "@/features/editor/utils/file-path"
@@ -26,48 +35,73 @@ type GitDiffViewerProps = {
   path: string
 }
 
-export function GitDiffViewer({
-  diff,
-  error,
-  isError,
-  isPending,
-  mode,
-  path,
-}: GitDiffViewerProps) {
-  const diffFile = useMemo(() => (diff ? editorDiffFile(diff) : null), [diff])
+type HunkRevealOptions = { readonly wrap?: boolean }
 
-  if (diffFile?.hunks.length) {
-    return <EditorDiffView file={diffFile} mode={mode} />
-  }
-
-  if (isPending) return null
-
-  if (isError) {
-    return (
-      <DiffState
-        icon
-        message={`Git diff failed for ${displayPath(path)}.`}
-        detail={errorMessage(error)}
-      />
-    )
-  }
-
-  return (
-    <DiffState message={`No git diff available for ${displayPath(path)}.`} />
-  )
+export type GitDiffViewerHandle = {
+  getCurrentHunk: () => DiffHunkLocation | null
+  revealHunk: (index: number) => boolean
+  revealNextHunk: (options?: HunkRevealOptions) => boolean
+  revealPreviousHunk: (options?: HunkRevealOptions) => boolean
 }
 
-function EditorDiffView({
-  file,
-  mode,
-}: {
-  file: DiffFile
-  mode: EditorDiffViewMode
-}) {
+export const GitDiffViewer = forwardRef<GitDiffViewerHandle, GitDiffViewerProps>(
+  function GitDiffViewer(
+    { diff, error, isError, isPending, mode, path },
+    ref
+  ) {
+    const diffFile = useMemo(() => (diff ? editorDiffFile(diff) : null), [diff])
+    const viewRef = useRef<GitDiffViewerHandle | null>(null)
+
+    useImperativeHandle(ref, () => diffViewerHandle(viewRef), [])
+
+    if (diffFile?.hunks.length) {
+      return <EditorDiffView ref={viewRef} file={diffFile} mode={mode} />
+    }
+
+    if (isPending) return null
+
+    if (isError) {
+      return (
+        <DiffState
+          icon
+          message={`Git diff failed for ${displayPath(path)}.`}
+          detail={errorMessage(error)}
+        />
+      )
+    }
+
+    return (
+      <DiffState message={`No git diff available for ${displayPath(path)}.`} />
+    )
+  }
+)
+
+function diffViewerHandle(
+  viewRef: RefObject<GitDiffViewerHandle | null>
+): GitDiffViewerHandle {
+  return {
+    getCurrentHunk: () => viewRef.current?.getCurrentHunk() ?? null,
+    revealHunk: (index) => viewRef.current?.revealHunk(index) ?? false,
+    revealNextHunk: (options) =>
+      viewRef.current?.revealNextHunk(options) ?? false,
+    revealPreviousHunk: (options) =>
+      viewRef.current?.revealPreviousHunk(options) ?? false,
+  }
+}
+
+const EditorDiffView = forwardRef<
+  GitDiffViewerHandle,
+  {
+    file: DiffFile
+    mode: EditorDiffViewMode
+  }
+>(function EditorDiffView({ file, mode }, ref) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<DiffView | null>(null)
   const { theme } = useTheme()
   const shikiTheme = resolvedShikiTheme(theme)
+
+  useImperativeHandle(ref, () => diffViewHandle(viewRef), [])
 
   useLayoutEffect(() => {
     const host = hostRef.current
@@ -104,6 +138,19 @@ function EditorDiffView({
       style={diffViewStyle}
     />
   )
+})
+
+function diffViewHandle(
+  viewRef: RefObject<DiffView | null>
+): GitDiffViewerHandle {
+  return {
+    getCurrentHunk: () => viewRef.current?.getCurrentHunk() ?? null,
+    revealHunk: (index) => viewRef.current?.revealHunk(index) ?? false,
+    revealNextHunk: (options) =>
+      viewRef.current?.revealNextHunk(options) ?? false,
+    revealPreviousHunk: (options) =>
+      viewRef.current?.revealPreviousHunk(options) ?? false,
+  }
 }
 
 const diffViewStyle = {

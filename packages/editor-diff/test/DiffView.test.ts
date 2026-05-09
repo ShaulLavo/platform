@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createTextDiff, DiffView } from "../src";
-import type { DiffSplitHandleContext, DiffSplitPaneOptions } from "../src";
+import type { DiffFile, DiffSplitHandleContext, DiffSplitPaneOptions } from "../src";
 
 beforeAll(() => {
   installHighlightPolyfill();
@@ -51,10 +51,24 @@ describe("DiffView split panes", () => {
     expect(container.querySelector(".editor-diff-split")).toBeNull();
     expect(container.querySelector(".editor-diff-pane-stacked")).not.toBeNull();
   });
+
+  it("reveals next and previous hunks with wrapping", () => {
+    const { diffView } = renderDiffView({ file: multiHunkDiff() });
+
+    expect(diffView.getCurrentHunk()?.index).toBe(0);
+    expect(diffView.revealNextHunk()).toBe(true);
+    expect(diffView.getCurrentHunk()?.index).toBe(1);
+    expect(diffView.revealNextHunk()).toBe(false);
+    expect(diffView.revealNextHunk({ wrap: true })).toBe(true);
+    expect(diffView.getCurrentHunk()?.index).toBe(0);
+    expect(diffView.revealPreviousHunk({ wrap: true })).toBe(true);
+    expect(diffView.getCurrentHunk()?.index).toBe(1);
+  });
 });
 
 type RenderDiffViewOptions = {
   readonly createHandle?: DiffSplitPaneOptions["createHandle"];
+  readonly file?: DiffFile;
 };
 
 function renderDiffView(options: RenderDiffViewOptions = {}) {
@@ -67,13 +81,23 @@ function renderDiffView(options: RenderDiffViewOptions = {}) {
     },
     syntaxHighlight: false,
   });
-  diffView.setFiles([
-    createTextDiff({
-      oldFile: { path: "note.txt", text: "one\ntwo\n" },
-      newFile: { path: "note.txt", text: "one\nTWO\n" },
-    }),
-  ]);
+  diffView.setFiles([options.file ?? singleHunkDiff()]);
   return { container, diffView };
+}
+
+function singleHunkDiff() {
+  return createTextDiff({
+    oldFile: { path: "note.txt", text: "one\ntwo\n" },
+    newFile: { path: "note.txt", text: "one\nTWO\n" },
+  });
+}
+
+function multiHunkDiff() {
+  return createTextDiff({
+    contextLines: 0,
+    oldFile: { path: "note.txt", text: "one\ntwo\nthree\nfour\nfive\nsix\n" },
+    newFile: { path: "note.txt", text: "ONE\ntwo\nthree\nFOUR\nfive\nsix\n" },
+  });
 }
 
 function querySplit(container: HTMLElement): HTMLElement {
