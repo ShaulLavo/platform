@@ -100,4 +100,5 @@ export type ChangeRow = {
 export type StatusPresentation = {
   className: string
   label: string
+  title: string
 }

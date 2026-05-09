@@ -16,8 +16,11 @@ import {
   parseDiffDocumentId,
 } from "@/features/git/diff-document"
 import { useStatus } from "@/features/git/hooks"
+import {
+  gitStatusSymbol,
+  type GitSymbolSource,
+} from "@/features/git/status-symbols"
 import type { FileStatus } from "@/features/git/types"
-import { statusPresentation } from "@/features/git/utils"
 import {
   colorForFileIcon,
   iconForEntry,
@@ -130,6 +133,7 @@ export function EditorTabBar({
                         "shrink-0 text-xs leading-none font-semibold tabular-nums",
                         diffStatus?.className ?? "text-muted-foreground"
                       )}
+                      title={diffStatus?.title}
                     >
                       {diffSuffix}
                     </span>
@@ -249,9 +253,11 @@ function tabDiffStatus(
   if (!diff) return null
 
   const file = files.find((file) => diffStatusMatchesFile(diff, file, rootPath))
-  if (!file) return null
+  const live = file ? liveSymbolForDiff(diff, file) : null
+  if (live) return live
+  if (diff.kind !== "snapshot" || !diff.status) return null
 
-  return statusPresentation(file.status)
+  return gitStatusSymbol(diff.status, "historical")
 }
 
 function tabDiffSuffix(hash: string, status: string | undefined) {
@@ -271,16 +277,59 @@ function diffStatusMatchesFile(
 
 const EMPTY_GIT_FILES: readonly FileStatus[] = []
 
+function liveSymbolForDiff(
+  diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>,
+  file: FileStatus
+) {
+  const preferred = diff.kind === "snapshot" ? diff.source : undefined
+  const source = liveSymbolSource(file, preferred)
+  if (!source) return null
+
+  return gitStatusSymbol(statusForSymbolSource(file, source), source)
+}
+
+function liveSymbolSource(
+  file: FileStatus,
+  preferred: GitSymbolSource | undefined
+): GitSymbolSource | null {
+  if (preferred === "staged" && isStagedStatus(file.index)) return "staged"
+  if (preferred === "worktree" && isWorktreeStatus(file.worktree))
+    return "worktree"
+  if (isStagedStatus(file.index)) return "staged"
+  if (isWorktreeStatus(file.worktree)) return "worktree"
+
+  return null
+}
+
+function statusForSymbolSource(file: FileStatus, source: GitSymbolSource) {
+  if (source === "staged") return file.index
+  if (source === "worktree") return file.worktree
+
+  return file.status
+}
+
+function isStagedStatus(status: FileStatus["index"]) {
+  return status !== "unmodified" && status !== "untracked"
+}
+
+function isWorktreeStatus(status: FileStatus["worktree"]) {
+  return status !== "unmodified"
+}
+
 function diffStatusPaths(
   diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>
 ) {
   if (diff.kind === "legacy") return [diff.path]
 
-  return [diff.path, diff.query.oldPath].filter(Boolean)
+  return [diff.path, diff.query.oldPath].filter(isPresentPath)
 }
 
 function statusPaths(file: FileStatus) {
-  return [file.path, file.oldPath].filter(Boolean)
+  return [file.path, file.oldPath].filter(isPresentPath)
+}
+
+function isPresentPath(path: string | undefined): path is string {
+  return Boolean(path)
 }
 
 function pathSetsOverlap(

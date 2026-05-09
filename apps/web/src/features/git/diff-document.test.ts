@@ -32,6 +32,8 @@ describe("git diff document ids", () => {
         oldPath: "/repo/src/old.ts",
         path: "/repo/src/new.ts",
       },
+      source: "worktree",
+      status: "renamed",
     })
     expect(diffDocumentLabel(id)).toBe("new.ts")
     expect(diffDocumentShortHash(id)).toBe("b".repeat(7))

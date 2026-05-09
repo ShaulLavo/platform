@@ -4,6 +4,7 @@ import type {
   RepositoryInfo,
   StatusPresentation,
 } from "./types"
+import { gitChangeSymbol } from "./status-symbols"
 
 export function changeRows(files: readonly FileStatus[]) {
   const staged: ChangeRow[] = []
@@ -24,17 +25,7 @@ export function changeRows(files: readonly FileStatus[]) {
 export function statusPresentation(
   status: FileStatus["index"] | FileStatus["worktree"]
 ): StatusPresentation {
-  if (status === "added") return { className: "text-emerald-500", label: "A" }
-  if (status === "deleted") return { className: "text-destructive", label: "D" }
-  if (status === "ignored")
-    return { className: "text-muted-foreground", label: "I" }
-  if (status === "renamed") return { className: "text-sky-500", label: "R" }
-  if (status === "untracked")
-    return { className: "text-emerald-500", label: "U" }
-  if (status === "conflicted")
-    return { className: "text-destructive", label: "!" }
-
-  return { className: "text-amber-500", label: "M" }
+  return gitChangeSymbol(status)
 }
 
 export function parentPath(path: string) {

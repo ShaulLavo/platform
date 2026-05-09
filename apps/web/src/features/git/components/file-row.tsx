@@ -8,8 +8,9 @@ import { cn } from "@workspace/ui/lib/utils"
 import type { CSSProperties, KeyboardEvent } from "react"
 
 import { useOpenDiffDocument } from "../hooks"
+import { gitStatusSymbol } from "../status-symbols"
 import type { ChangeRow } from "../types"
-import { parentPath, statusPresentation } from "../utils"
+import { parentPath } from "../utils"
 import { FileActions } from "./file-actions"
 
 export function FileRow({
@@ -24,7 +25,7 @@ export function FileRow({
   const name = basename(relativePath)
   const directory = parentPath(relativePath)
   const icon = iconForEntry({ name, type: "file" })
-  const status = statusPresentation(row.status)
+  const status = gitStatusSymbol(row.status, row.section)
 
   function handleOpen() {
     void openDiff(row)
@@ -39,7 +40,7 @@ export function FileRow({
 
   return (
     <div
-      className="group/row grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_18px] items-center px-2 text-xs leading-none outline-none hover:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring/50"
+      className="group/row grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-none outline-none hover:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring/50"
       role="button"
       tabIndex={0}
       onClick={handleOpen}
@@ -64,6 +65,7 @@ export function FileRow({
           "justify-self-end text-xs font-semibold",
           status.className
         )}
+        title={status.title}
       >
         {status.label}
       </span>

@@ -44,6 +44,14 @@ export type OpenDocument = {
  *   directly.
  * - `compilerOptionsOverride` — compiler options supplied via
  *   `initializationOptions`; read-only for handlers.
+ * - `applyInitializationOptions` — mutation surface the `initialize` handler
+ *   uses to replace the session-scoped compiler-options override and
+ *   diagnostic-publish delay in a single call (Req 6.1). Omitted fields
+ *   reset to their documented defaults (`{}` for `compilerOptions`,
+ *   `DEFAULT_DIAGNOSTIC_DELAY_MS` for `diagnosticDelayMs`). Callers are
+ *   expected to follow up with `invalidateForProjectConfigChange()` because
+ *   applying new compiler options requires rebuilding the language service
+ *   (Req 14.1, Req 14.3).
  */
 export type SessionContext = {
   readonly root: string
@@ -65,4 +73,8 @@ export type SessionContext = {
   postResponse(id: lsp.RequestMessage["id"] | null, result: unknown): void
   postResponseError(id: lsp.RequestMessage["id"] | null, error: unknown): void
   readonly compilerOptionsOverride: ts.CompilerOptions
+  applyInitializationOptions(options: {
+    compilerOptions?: ts.CompilerOptions
+    diagnosticDelayMs?: number
+  }): void
 }

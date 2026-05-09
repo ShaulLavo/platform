@@ -1,0 +1,22 @@
+import { describe, expect, it } from "bun:test"
+import { gitStatusSymbol } from "./status-symbols"
+
+describe("git status symbols", () => {
+  it("prefixes live staged and worktree status letters", () => {
+    expect(gitStatusSymbol("modified", "staged")).toMatchObject({
+      label: "+M",
+      title: "Staged modified",
+    })
+    expect(gitStatusSymbol("modified", "worktree")).toMatchObject({
+      label: "*M",
+      title: "Unstaged modified",
+    })
+  })
+
+  it("leaves historical status letters unprefixed", () => {
+    expect(gitStatusSymbol("modified", "historical")).toMatchObject({
+      label: "M",
+      title: "Historical modified",
+    })
+  })
+})

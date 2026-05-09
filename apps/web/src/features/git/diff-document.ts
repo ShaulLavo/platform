@@ -1,5 +1,10 @@
 import { basename, displayPath } from "@/lib/path-formatters"
-import type { BlobDiffRequest, FileDiff } from "./types"
+import type {
+  BlobDiffRequest,
+  FileDiff,
+  FileStatus,
+  PanelSection,
+} from "./types"
 
 export type DiffDocumentInfo =
   | {
@@ -13,6 +18,8 @@ export type DiffDocumentInfo =
       kind: "snapshot"
       path: string
       query: BlobDiffRequest
+      source?: PanelSection
+      status?: FileStatus["index"] | FileStatus["worktree"]
     }
 
 type SnapshotPayload = {
@@ -20,6 +27,8 @@ type SnapshotPayload = {
   oldObjectId?: string
   oldPath?: string
   path: string
+  source?: PanelSection
+  status?: FileStatus["index"] | FileStatus["worktree"]
   version: 2
 }
 
@@ -87,6 +96,8 @@ function snapshotDiffDocumentId(diff: FileDiff) {
     oldObjectId: diff.oldObjectId,
     oldPath: diff.oldPath,
     path: diff.path,
+    source: diff.staged ? "staged" : "worktree",
+    status: diffStatus(diff),
     version: 2,
   }
 
@@ -109,6 +120,8 @@ function parseSnapshotDiffDocument(id: string, encoded: string) {
       oldPath: payload.oldPath,
       path: payload.path,
     },
+    source: payload.source,
+    status: payload.status,
   }
 }
 
@@ -132,12 +145,35 @@ function isSnapshotPayload(value: unknown): value is SnapshotPayload {
   if (!optionalString(payload.oldPath)) return false
   if (!optionalString(payload.oldObjectId)) return false
   if (!optionalString(payload.newObjectId)) return false
+  if (!optionalDiffSource(payload.source)) return false
+  if (!optionalDiffStatus(payload.status)) return false
 
   return Boolean(payload.oldObjectId || payload.newObjectId)
 }
 
 function optionalString(value: unknown) {
   return value === undefined || typeof value === "string"
+}
+
+function optionalDiffSource(value: unknown): value is PanelSection | undefined {
+  return value === undefined || value === "staged" || value === "worktree"
+}
+
+function optionalDiffStatus(
+  value: unknown
+): value is SnapshotPayload["status"] {
+  if (value === undefined) return true
+
+  return (
+    value === "added" ||
+    value === "deleted" ||
+    value === "ignored" ||
+    value === "modified" ||
+    value === "renamed" ||
+    value === "untracked" ||
+    value === "unmodified" ||
+    value === "conflicted"
+  )
 }
 
 function parseLegacyDiffDocument(
@@ -166,4 +202,14 @@ function snapshotShortHash(info: DiffDocumentInfo) {
 
   const hash = info.query.newObjectId ?? info.query.oldObjectId
   return hash?.slice(0, 7) ?? ""
+}
+
+function diffStatus(
+  diff: FileDiff
+): FileStatus["index"] | FileStatus["worktree"] {
+  if (diff.oldPath && diff.oldPath !== diff.path) return "renamed"
+  if (diff.oldFileMissing) return diff.staged ? "added" : "untracked"
+  if (diff.newFileMissing) return "deleted"
+
+  return "modified"
 }
