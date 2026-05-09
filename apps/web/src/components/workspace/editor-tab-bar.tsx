@@ -1,6 +1,8 @@
-import { FileIcon, XIcon } from "@phosphor-icons/react"
+import { XIcon } from "@phosphor-icons/react"
 
 import { useEditorState } from "@/components/editor/editor-state"
+import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+import { iconForEntry } from "@/lib/file-icons"
 import { basename, displayPath } from "@/lib/path-formatters"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -10,8 +12,16 @@ export function EditorTabBar() {
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
   const closeTab = useEditorState((state) => state.closeTab)
   const selectFile = useEditorState((state) => state.selectFile)
+  const requestEditorFocus = useWorkspaceFocus(
+    (state) => state.requestEditorFocus
+  )
 
   if (openFilePaths.length === 0) return null
+
+  function handleSelectTab(path: string) {
+    selectFile(path)
+    requestEditorFocus()
+  }
 
   return (
     <nav
@@ -24,6 +34,7 @@ export function EditorTabBar() {
           const active = path === selectedFilePath
           const dirty = dirtyFilePaths.has(path)
           const name = basename(path)
+          const icon = iconForEntry({ name, type: "file" })
           const showCloseIcon = active && !dirty
 
           return (
@@ -41,14 +52,17 @@ export function EditorTabBar() {
                   "flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
                   active && "text-foreground"
                 )}
-                onClick={() => selectFile(path)}
+                onClick={() => handleSelectTab(path)}
                 role="tab"
                 title={displayPath(path)}
                 type="button"
               >
-                <FileIcon
-                  className="size-3.5 shrink-0 text-sky-600"
-                  weight="duotone"
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 object-contain"
+                  draggable={false}
+                  src={icon.src}
                 />
                 <span className="truncate">{name}</span>
               </button>

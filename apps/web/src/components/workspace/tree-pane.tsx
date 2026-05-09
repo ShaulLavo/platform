@@ -8,6 +8,7 @@ import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
 import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
 
 import { useEditorState } from "@/components/editor/editor-state"
+import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import type { TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import { canonicalTreePath } from "@/lib/path-formatters"
@@ -39,6 +40,7 @@ export function TreePane({
 }) {
   const selectedFilePath = useEditorState((store) => store.selectedFilePath)
   const selectFile = useEditorState((store) => store.selectFile)
+  const setFocusArea = useWorkspaceFocus((store) => store.setFocusArea)
   const modelRef = useRef(model)
   const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
     (currentTree: PierreFileTreeModel) => {
@@ -87,6 +89,22 @@ export function TreePane({
     })
   }, [tree])
 
+  return (
+    <div
+      className="h-full"
+      onFocusCapture={() => setFocusArea("file-tree")}
+      onPointerDownCapture={() => setFocusArea("file-tree")}
+    >
+      {treePaneContent(state, model, tree)}
+    </div>
+  )
+}
+
+function treePaneContent(
+  state: LoadState<TreeModel>,
+  model: TreeModel,
+  tree: PierreFileTreeModel
+) {
   if (state.status === "loading") return <TreeStatus label="Loading folder" />
   if (state.status === "error") {
     return (

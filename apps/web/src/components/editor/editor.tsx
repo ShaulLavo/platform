@@ -16,6 +16,7 @@ import type { EditorStatusBarState } from "@/components/editor/editor-status-bar
 import { languageIdForFilePath } from "@/components/editor/file-path"
 import { useTheme } from "@/components/theme-provider"
 import { useEditorStatusBarState } from "@/components/editor/use-editor-status-bar-state"
+import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { fsServerUrl } from "@/lib/fs-client"
 import type {
   EditorPlugin,
@@ -59,6 +60,13 @@ export function Editor({
   onStatusChange,
 }: EditorProps) {
   const { theme } = useTheme()
+  const editorActive = useWorkspaceFocus(
+    (state) => state.activeArea === "editor"
+  )
+  const editorFocusRequestId = useWorkspaceFocus((state) =>
+    state.consumeEditorFocusRequest()
+  )
+  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const resolvedTheme = useResolvedTheme(theme)
   const shikiTheme = resolvedTheme === "dark" ? "github-dark" : "github-light"
   const [shikiThemeSource] = useState(() => createShikiThemeSource(shikiTheme))
@@ -202,8 +210,19 @@ export function Editor({
     )
   }, [controller, selection])
 
+  useEffect(() => {
+    if (editorFocusRequestId === 0) return
+
+    controller.commands.focus()
+  }, [controller, editorFocusRequestId])
+
   return (
-    <div className="flex h-full w-full min-w-0 flex-1 bg-background">
+    <div
+      className="flex h-full w-full min-w-0 flex-1 bg-background"
+      data-editor-focus-active={editorActive ? "true" : "false"}
+      onFocusCapture={() => setFocusArea("editor")}
+      onPointerDownCapture={() => setFocusArea("editor")}
+    >
       <EditorHost className="app-editor-host" controller={controller} />
     </div>
   )

@@ -5,6 +5,10 @@ import {
   FilePickerDialog,
   type PickedFsEntry,
 } from "@/components/file-picker-dialog"
+import {
+  useWorkspaceFocus,
+  WorkspaceFocusProvider,
+} from "@/components/workspace/workspace-focus-state"
 import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
@@ -14,12 +18,15 @@ import { useEffect } from "react"
 export function App() {
   return (
     <EditorStateProvider>
-      <AppContent />
+      <WorkspaceFocusProvider>
+        <AppContent />
+      </WorkspaceFocusProvider>
     </EditorStateProvider>
   )
 }
 
 function AppContent() {
+  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const pickerOpen = useEditorState((state) => state.pickerOpen)
   const rootFolder = useEditorState((state) => state.rootFolder)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
@@ -42,7 +49,11 @@ function AppContent() {
   }
 
   return (
-    <main className="h-svh overflow-hidden bg-background text-foreground">
+    <main
+      className="h-svh overflow-hidden bg-background text-foreground"
+      onFocusCapture={() => setFocusArea("global")}
+      onPointerDownCapture={() => setFocusArea("global")}
+    >
       <div className="flex h-full min-h-0 flex-col">
         {rootFolder ? (
           <WorkspaceView

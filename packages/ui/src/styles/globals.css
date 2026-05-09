@@ -149,6 +149,14 @@
     min-width: 0;
 }
 
+[data-editor-focus-active="false"] .app-editor-host .editor-virtualized-caret-layer {
+    display: none;
+}
+
+[data-editor-focus-active="false"] .app-editor-host .editor-virtualized-selection-range {
+    background-color: rgba(56, 189, 248, 0.16);
+}
+
 .app-fold-gutter-icon {
     height: 12px;
     width: 12px;
