@@ -64,18 +64,13 @@ export function Editor({
   const [nonCriticalPlugins, setNonCriticalPlugins] = useState<
     readonly ReturnType<typeof createCriticalEditorPlugins>[number][]
   >([])
+  const criticalPlugins = useMemo(
+    () => createCriticalEditorPlugins(typeScriptLsp, shikiThemeResolver),
+    [shikiThemeResolver, typeScriptLsp]
+  )
   const plugins = useMemo(
-    () => [
-      ...createCriticalEditorPlugins(typeScriptLsp, shikiThemeResolver),
-      ...nonCriticalPlugins,
-      scrollPersistencePlugin,
-    ],
-    [
-      nonCriticalPlugins,
-      scrollPersistencePlugin,
-      shikiThemeResolver,
-      typeScriptLsp,
-    ]
+    () => [...criticalPlugins, ...nonCriticalPlugins, scrollPersistencePlugin],
+    [criticalPlugins, nonCriticalPlugins, scrollPersistencePlugin]
   )
   const document = useMemo(
     () => ({

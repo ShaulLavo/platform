@@ -1,5 +1,10 @@
-import { ColumnsIcon, RowsIcon, XIcon } from "@phosphor-icons/react"
-import { useLayoutEffect, useRef, type CSSProperties } from "react"
+import { ColumnsIcon, FileIcon, RowsIcon, XIcon } from "@phosphor-icons/react"
+import {
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
 
 import {
   nextEditorDiffViewMode,
@@ -57,6 +62,7 @@ export function EditorTabBar({
   const selectedFilePath = useEditorWorkspaceState(
     (state) => state.selectedFilePath
   )
+  const selectedDiff = parseDiffDocumentId(selectedFilePath)
   const { closeTab, selectFile } = useEditorCommands()
   const requestEditorFocus = useWorkspaceFocus(
     (state) => state.requestEditorFocus
@@ -171,13 +177,54 @@ export function EditorTabBar({
           })}
         </div>
       </div>
-      {diffViewMode && onDiffViewModeChange ? (
-        <DiffViewModeToggle
+      {diffViewMode && onDiffViewModeChange && selectedDiff ? (
+        <DiffTabActions
+          diffPath={selectedDiff.path}
           mode={diffViewMode}
           onModeChange={onDiffViewModeChange}
+          onOpenFile={handleSelectTab}
         />
       ) : null}
     </nav>
+  )
+}
+
+function DiffTabActions({
+  diffPath,
+  mode,
+  onModeChange,
+  onOpenFile,
+}: {
+  diffPath: string
+  mode: EditorDiffViewMode
+  onModeChange: (mode: EditorDiffViewMode) => void
+  onOpenFile: (path: string) => void
+}) {
+  return (
+    <div className="flex h-full shrink-0 items-center gap-0.5 border-l bg-background/40 px-1">
+      <OpenOriginalFileButton path={diffPath} onOpenFile={onOpenFile} />
+      <DiffViewModeToggle mode={mode} onModeChange={onModeChange} />
+    </div>
+  )
+}
+
+function OpenOriginalFileButton({
+  path,
+  onOpenFile,
+}: {
+  path: string
+  onOpenFile: (path: string) => void
+}) {
+  const label = `Open original file: ${displayPath(path)}`
+
+  function handleClick() {
+    onOpenFile(path)
+  }
+
+  return (
+    <ToolbarIconButton label={label} onClick={handleClick}>
+      <FileIcon className="size-3.5" />
+    </ToolbarIconButton>
   )
 }
 
@@ -196,26 +243,40 @@ function DiffViewModeToggle({
   }
 
   return (
-    <div className="flex h-full shrink-0 items-center border-l bg-background/40 px-1">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label={label}
-              className="size-7 text-muted-foreground hover:text-foreground"
-              onClick={handleClick}
-              size="icon-sm"
-              title={label}
-              type="button"
-              variant="ghost"
-            >
-              <DiffViewModeToggleIcon mode={nextMode} />
-            </Button>
-          }
-        />
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-    </div>
+    <ToolbarIconButton label={label} onClick={handleClick}>
+      <DiffViewModeToggleIcon mode={nextMode} />
+    </ToolbarIconButton>
+  )
+}
+
+function ToolbarIconButton({
+  children,
+  label,
+  onClick,
+}: {
+  children: ReactNode
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={label}
+            className="size-7 text-muted-foreground hover:text-foreground"
+            onClick={onClick}
+            size="icon-sm"
+            title={label}
+            type="button"
+            variant="ghost"
+          >
+            {children}
+          </Button>
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
