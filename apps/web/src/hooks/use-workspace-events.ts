@@ -1,5 +1,7 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
-import { useEditorState } from "@/components/editor/editor-state"
+import { useEditorCommands } from "@/components/editor/state/editor-commands"
+import { useEditorDocumentState } from "@/components/editor/state/editor-document-state"
+import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
 import { fetchFile, fetchTree } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
@@ -75,18 +77,19 @@ const FILE_REFRESH_RETRY_ATTEMPTS = 5
 
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const queryClient = useQueryClient()
-  const dirtyFilePaths = useEditorState((state) => state.dirtyFilePaths)
-  const openFilePaths = useEditorState((state) => state.openFilePaths)
-  const discardCachedEditorDocument = useEditorState(
-    (state) => state.discardCachedEditorDocument
-  )
-  const forceReplaceCachedEditorDocument = useEditorState(
+  const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
+  const forceReplaceCachedEditorDocument = useEditorDocumentState(
     (state) => state.forceReplaceCachedEditorDocument
   )
-  const renameCachedEditorDocument = useEditorState(
-    (state) => state.renameCachedEditorDocument
+  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
+  const selectedFilePath = useEditorWorkspaceState(
+    (state) => state.selectedFilePath
   )
+  const { discardCachedEditorDocument, renameCachedEditorDocument } =
+    useEditorCommands()
   const rootPath = rootFolder?.path ?? null
+  const forceReplaceSelectedDocument = (file: FileResult) =>
+    forceReplaceCachedEditorDocument(file, selectedFilePath)
   const applyEvents = useEffectEvent(
     (
       events: FilesystemEvent[],
@@ -96,7 +99,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       void applyWorkspaceEvents({
         discardCachedEditorDocument,
         events,
-        forceReplaceCachedEditorDocument,
+        forceReplaceCachedEditorDocument: forceReplaceSelectedDocument,
         openFilePaths,
         queryClient,
         renameCachedEditorDocument,
@@ -116,7 +119,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       )
 
       void applyWorkspaceReady({
-        forceReplaceCachedEditorDocument,
+        forceReplaceCachedEditorDocument: forceReplaceSelectedDocument,
         openFilePaths: refreshPaths,
         queryClient,
         rootPath: currentRootPath,

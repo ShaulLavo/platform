@@ -1,5 +1,6 @@
 import { EmptyWorkspace } from "@/components/empty-workspace"
-import { useEditorState } from "@/components/editor/editor-state"
+import { useEditorCommands } from "@/components/editor/state/editor-commands"
+import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
 import { EditorStateProvider } from "@/components/editor/editor-state-provider"
 import {
   FilePickerDialog,
@@ -27,15 +28,21 @@ export function App() {
 
 function AppContent() {
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const pickerOpen = useEditorState((state) => state.pickerOpen)
-  const rootFolder = useEditorState((state) => state.rootFolder)
-  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
-  const diffViewMode = useEditorState((state) => state.diffViewMode)
-  const openFilePaths = useEditorState((state) => state.openFilePaths)
-  const workspacePanelTab = useEditorState((state) => state.workspacePanelTab)
-  const openPicker = useEditorState((state) => state.openPicker)
-  const pickRootFolder = useEditorState((state) => state.pickRootFolder)
-  const setPickerOpen = useEditorState((state) => state.setPickerOpen)
+  const pickerOpen = useEditorWorkspaceState((state) => state.pickerOpen)
+  const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
+  const selectedFilePath = useEditorWorkspaceState(
+    (state) => state.selectedFilePath
+  )
+  const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
+  const openFilePaths = useEditorWorkspaceState(
+    (state) => state.openFilePaths
+  )
+  const workspacePanelTab = useEditorWorkspaceState(
+    (state) => state.workspacePanelTab
+  )
+  const openPicker = useEditorWorkspaceState((state) => state.openPicker)
+  const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
+  const { pickRootFolder } = useEditorCommands()
   const { loadTreeDirectory, resetTreeLoad, treeState } =
     useWorkspaceTree(rootFolder)
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)

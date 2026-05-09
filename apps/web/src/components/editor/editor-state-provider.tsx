@@ -1,15 +1,29 @@
 import {
-  createEditorStore,
-  EditorStateContext,
-} from "@/components/editor/editor-state"
+  createEditorDocumentStore,
+  EditorDocumentStateContext,
+} from "@/components/editor/state/editor-document-state"
+import {
+  createEditorUiStore,
+  EditorUiStateContext,
+} from "@/components/editor/state/editor-ui-state"
+import {
+  createEditorWorkspaceStore,
+  EditorWorkspaceStateContext,
+} from "@/components/editor/state/editor-workspace-state"
 import { useState, type ReactNode } from "react"
 
 export function EditorStateProvider({ children }: { children: ReactNode }) {
-  const [store] = useState(createEditorStore)
+  const [documentStore] = useState(createEditorDocumentStore)
+  const [uiStore] = useState(createEditorUiStore)
+  const [workspaceStore] = useState(createEditorWorkspaceStore)
 
   return (
-    <EditorStateContext.Provider value={store}>
-      {children}
-    </EditorStateContext.Provider>
+    <EditorWorkspaceStateContext.Provider value={workspaceStore}>
+      <EditorDocumentStateContext.Provider value={documentStore}>
+        <EditorUiStateContext.Provider value={uiStore}>
+          {children}
+        </EditorUiStateContext.Provider>
+      </EditorDocumentStateContext.Provider>
+    </EditorWorkspaceStateContext.Provider>
   )
 }

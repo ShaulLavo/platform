@@ -54,14 +54,25 @@ export function diffDocumentLabel(id: string) {
   const info = parseDiffDocumentId(id)
   if (!info) return basename(id)
 
-  return `${basename(info.path)} (diff)`
+  return basename(info.path)
 }
 
 export function diffDocumentTitle(id: string) {
   const info = parseDiffDocumentId(id)
   if (!info) return displayPath(id)
 
-  return `${displayDiffPath(info.path)} (diff)`
+  const hash = snapshotShortHash(info)
+  if (!hash) return `${displayDiffPath(info.path)} diff`
+
+  return `${displayDiffPath(info.path)} diff at ${hash}`
+}
+
+export function diffDocumentShortHash(id: string) {
+  const info = parseDiffDocumentId(id)
+  if (!info || info.kind !== "snapshot") return ""
+
+  const hash = info.query.newObjectId ?? info.query.oldObjectId
+  return hash?.slice(0, 7) ?? ""
 }
 
 function legacyDiffDocumentId(path: string, staged: boolean) {
@@ -148,4 +159,11 @@ function displayDiffPath(path: string) {
   if (path.startsWith("/")) return path
 
   return displayPath(path)
+}
+
+function snapshotShortHash(info: DiffDocumentInfo) {
+  if (info.kind !== "snapshot") return ""
+
+  const hash = info.query.newObjectId ?? info.query.oldObjectId
+  return hash?.slice(0, 7) ?? ""
 }

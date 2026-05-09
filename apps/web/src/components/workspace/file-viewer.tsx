@@ -2,11 +2,14 @@ import { WarningCircleIcon } from "@phosphor-icons/react"
 import { useEffect, useMemo } from "react"
 
 import { Editor } from "@/components/editor"
+import { useEditorCommands } from "@/components/editor/state/editor-commands"
 import {
   type CachedEditorDocument,
-  useEditorState,
-} from "@/components/editor/editor-state"
+  useEditorDocumentState,
+} from "@/components/editor/state/editor-document-state"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
+import { useEditorUiState } from "@/components/editor/state/editor-ui-state"
+import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
 import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
 import { GitDiffViewer } from "@/features/git/components/diff-viewer"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
@@ -22,30 +25,34 @@ export function FileViewer({
   fileState: LoadState<FileResult>
   rootPath: string
 }) {
-  const definitionTarget = useEditorState((state) => state.definitionTarget)
-  const documentCacheVersion = useEditorState(
+  const definitionTarget = useEditorUiState((state) => state.definitionTarget)
+  const documentCacheVersion = useEditorDocumentState(
     (state) => state.documentCacheVersion
   )
-  const diffViewMode = useEditorState((state) => state.diffViewMode)
-  const ensureCachedEditorDocument = useEditorState(
+  const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
+  const ensureCachedEditorDocument = useEditorDocumentState(
     (state) => state.ensureCachedEditorDocument
   )
-  const fallbackDocumentPath = useEditorState(
+  const fallbackDocumentPath = useEditorDocumentState(
     (state) => state.fallbackDocumentPath
   )
-  const getCachedEditorDocument = useEditorState(
+  const getCachedEditorDocument = useEditorDocumentState(
     (state) => state.getCachedEditorDocument
   )
-  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
-  const setCachedEditorDocumentDirty = useEditorState(
+  const selectedFilePath = useEditorWorkspaceState(
+    (state) => state.selectedFilePath
+  )
+  const setCachedEditorDocumentDirty = useEditorDocumentState(
     (state) => state.setCachedEditorDocumentDirty
   )
-  const setCachedEditorDocumentScrollPosition = useEditorState(
+  const setCachedEditorDocumentScrollPosition = useEditorDocumentState(
     (state) => state.setCachedEditorDocumentScrollPosition
   )
-  const setDiffViewMode = useEditorState((state) => state.setDiffViewMode)
-  const setStatusBarState = useEditorState((state) => state.setStatusBarState)
-  const openDefinition = useEditorState((state) => state.openDefinition)
+  const setDiffViewMode = useEditorWorkspaceState(
+    (state) => state.setDiffViewMode
+  )
+  const setStatusBarState = useEditorUiState((state) => state.setStatusBarState)
+  const { openDefinition } = useEditorCommands()
   const selectedDiff = useMemo(
     () => parseDiffDocumentId(selectedFilePath),
     [selectedFilePath]
@@ -67,8 +74,8 @@ export function FileViewer({
   useEffect(() => {
     if (!selectedFile) return
 
-    ensureCachedEditorDocument(selectedFile)
-  }, [ensureCachedEditorDocument, selectedFile])
+    ensureCachedEditorDocument(selectedFile, selectedFilePath)
+  }, [ensureCachedEditorDocument, selectedFile, selectedFilePath])
 
   useEffect(() => {
     if (selectedDiff) {
@@ -91,6 +98,7 @@ export function FileViewer({
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
       <EditorTabBar
         diffViewMode={selectedDiff ? diffViewMode : null}
+        rootPath={rootPath}
         onDiffViewModeChange={setDiffViewMode}
       />
       {selectedFilePath ? (

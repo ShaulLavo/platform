@@ -1,5 +1,6 @@
 import { EditorStatusBar } from "@/components/editor/editor-status-bar"
-import { useEditorState } from "@/components/editor/editor-state"
+import { useEditorUiState } from "@/components/editor/state/editor-ui-state"
+import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import { FileViewer } from "@/components/workspace/file-viewer"
 import { TreePane } from "@/components/workspace/tree-pane"
@@ -39,9 +40,11 @@ export function WorkspaceView({
   treeState: LoadState<TreeModel>
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
 }) {
-  const statusBarState = useEditorState((state) => state.statusBarState)
-  const workspacePanelTab = useEditorState((state) => state.workspacePanelTab)
-  const setWorkspacePanelTab = useEditorState(
+  const statusBarState = useEditorUiState((state) => state.statusBarState)
+  const workspacePanelTab = useEditorWorkspaceState(
+    (state) => state.workspacePanelTab
+  )
+  const setWorkspacePanelTab = useEditorWorkspaceState(
     (state) => state.setWorkspacePanelTab
   )
   const treeModel = treeState.status === "ready" ? treeState.data : null

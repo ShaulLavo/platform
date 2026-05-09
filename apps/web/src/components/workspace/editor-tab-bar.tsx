@@ -5,13 +5,19 @@ import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from "@/components/editor/diff-view-mode"
-import { useEditorState } from "@/components/editor/editor-state"
+import { useEditorCommands } from "@/components/editor/state/editor-commands"
+import { useEditorDocumentState } from "@/components/editor/state/editor-document-state"
+import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import {
   diffDocumentLabel,
+  diffDocumentShortHash,
   diffDocumentTitle,
   parseDiffDocumentId,
 } from "@/features/git/diff-document"
+import { useStatus } from "@/features/git/hooks"
+import type { FileStatus } from "@/features/git/types"
+import { statusPresentation } from "@/features/git/utils"
 import {
   colorForFileIcon,
   iconForEntry,
@@ -33,22 +39,27 @@ const DEFAULT_EDITOR_TAB_SIZING: EditorTabSizing = "fit"
 export function EditorTabBar({
   diffViewMode = null,
   onDiffViewModeChange,
+  rootPath,
   tabSizing = DEFAULT_EDITOR_TAB_SIZING,
 }: {
   diffViewMode?: EditorDiffViewMode | null
   onDiffViewModeChange?: (mode: EditorDiffViewMode) => void
+  rootPath: string
   tabSizing?: EditorTabSizing
 }) {
   const selectedTabRef = useRef<HTMLDivElement>(null)
   const tabListRef = useRef<HTMLDivElement>(null)
-  const dirtyFilePaths = useEditorState((state) => state.dirtyFilePaths)
-  const openFilePaths = useEditorState((state) => state.openFilePaths)
-  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
-  const closeTab = useEditorState((state) => state.closeTab)
-  const selectFile = useEditorState((state) => state.selectFile)
+  const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
+  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
+  const selectedFilePath = useEditorWorkspaceState(
+    (state) => state.selectedFilePath
+  )
+  const { closeTab, selectFile } = useEditorCommands()
   const requestEditorFocus = useWorkspaceFocus(
     (state) => state.requestEditorFocus
   )
+  const gitStatus = useStatus(rootPath)
+  const gitFiles = gitStatus.data?.files ?? EMPTY_GIT_FILES
 
   useLayoutEffect(() => {
     if (!selectedFilePath) return
@@ -80,6 +91,9 @@ export function EditorTabBar({
             const name = tabName(path)
             const icon = iconForEntry({ name: iconName(path), type: "file" })
             const showCloseIcon = active && !dirty
+            const diffStatus = tabDiffStatus(path, gitFiles, rootPath)
+            const diffHash = diffDocumentShortHash(path)
+            const diffSuffix = tabDiffSuffix(diffHash, diffStatus?.label)
 
             return (
               <div
@@ -109,6 +123,17 @@ export function EditorTabBar({
                     style={fileIconStyle(icon)}
                   />
                   <span className="truncate">{name}</span>
+                  {diffSuffix ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "shrink-0 text-xs leading-none font-semibold tabular-nums",
+                        diffStatus?.className ?? "text-muted-foreground"
+                      )}
+                    >
+                      {diffSuffix}
+                    </span>
+                  ) : null}
                 </button>
                 <button
                   aria-label={`Close ${name}`}
@@ -213,6 +238,86 @@ function tabTitle(path: string) {
   if (parseDiffDocumentId(path)) return diffDocumentTitle(path)
 
   return displayPath(path)
+}
+
+function tabDiffStatus(
+  path: string,
+  files: readonly FileStatus[],
+  rootPath: string
+) {
+  const diff = parseDiffDocumentId(path)
+  if (!diff) return null
+
+  const file = files.find((file) => diffStatusMatchesFile(diff, file, rootPath))
+  if (!file) return null
+
+  return statusPresentation(file.status)
+}
+
+function tabDiffSuffix(hash: string, status: string | undefined) {
+  if (!hash) return ""
+  if (!status) return `(${hash})`
+
+  return `(${hash} ${status})`
+}
+
+function diffStatusMatchesFile(
+  diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>,
+  file: FileStatus,
+  rootPath: string
+) {
+  return pathSetsOverlap(diffStatusPaths(diff), statusPaths(file), rootPath)
+}
+
+const EMPTY_GIT_FILES: readonly FileStatus[] = []
+
+function diffStatusPaths(
+  diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>
+) {
+  if (diff.kind === "legacy") return [diff.path]
+
+  return [diff.path, diff.query.oldPath].filter(Boolean)
+}
+
+function statusPaths(file: FileStatus) {
+  return [file.path, file.oldPath].filter(Boolean)
+}
+
+function pathSetsOverlap(
+  left: readonly string[],
+  right: readonly string[],
+  rootPath: string
+) {
+  const normalizedRight = new Set(
+    right.flatMap((path) => comparablePaths(path, rootPath))
+  )
+
+  return left.some((path) =>
+    comparablePaths(path, rootPath).some((candidate) =>
+      normalizedRight.has(candidate)
+    )
+  )
+}
+
+function comparablePaths(path: string, rootPath: string) {
+  const normalized = normalizePath(path)
+  const root = normalizePath(rootPath)
+  const paths = [normalized, stripLeadingSlash(normalized)]
+  const rootPrefix = `${root}/`
+
+  if (root && normalized.startsWith(rootPrefix)) {
+    paths.push(normalized.slice(rootPrefix.length))
+  }
+
+  return [...new Set(paths.filter(Boolean))]
+}
+
+function normalizePath(path: string) {
+  return path.replace(/\/+/gu, "/").replace(/\/$/u, "")
+}
+
+function stripLeadingSlash(path: string) {
+  return path.startsWith("/") ? path.slice(1) : path
 }
 
 function tabSizingClassName(tabSizing: EditorTabSizing) {

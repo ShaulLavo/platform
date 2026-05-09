@@ -1,8 +1,11 @@
 import { useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 
-import type { CachedEditorDocument } from "@/components/editor/editor-state"
-import { useEditorState } from "@/components/editor/editor-state"
+import {
+  type CachedEditorDocument,
+  useEditorDocumentState,
+} from "@/components/editor/state/editor-document-state"
+import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import type { FileResult } from "@/lib/file-system-types"
 import { fetchFile } from "@/lib/file-server"
@@ -16,11 +19,11 @@ type OpenTabCacheContext = {
 }
 
 export function useOpenTabCache() {
-  const openFilePaths = useEditorState((state) => state.openFilePaths)
-  const ensureCachedEditorDocument = useEditorState(
+  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
+  const ensureCachedEditorDocument = useEditorDocumentState(
     (state) => state.ensureCachedEditorDocument
   )
-  const getCachedEditorDocument = useEditorState(
+  const getCachedEditorDocument = useEditorDocumentState(
     (state) => state.getCachedEditorDocument
   )
   const queryClient = useQueryClient()

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
   diffDocumentId,
   diffDocumentLabel,
+  diffDocumentShortHash,
   diffDocumentTitle,
   parseDiffDocumentId,
 } from "./diff-document"
@@ -32,8 +33,11 @@ describe("git diff document ids", () => {
         path: "/repo/src/new.ts",
       },
     })
-    expect(diffDocumentLabel(id)).toBe("new.ts (diff)")
-    expect(diffDocumentTitle(id)).toBe("/repo/src/new.ts (diff)")
+    expect(diffDocumentLabel(id)).toBe("new.ts")
+    expect(diffDocumentShortHash(id)).toBe("b".repeat(7))
+    expect(diffDocumentTitle(id)).toBe(
+      `/repo/src/new.ts diff at ${"b".repeat(7)}`
+    )
   })
 
   it("parses legacy staged and worktree diff documents", () => {
@@ -50,5 +54,6 @@ describe("git diff document ids", () => {
       path: "/repo/src/app.ts",
       staged: false,
     })
+    expect(diffDocumentLabel(worktree)).toBe("app.ts")
   })
 })

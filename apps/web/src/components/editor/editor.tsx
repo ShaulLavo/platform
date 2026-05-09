@@ -11,7 +11,7 @@ import type {
 import { createTypeScriptLspPlugin } from "@editor/typescript-lsp/websocket"
 
 import { createEditorPlugins } from "@/components/editor/editor-plugins"
-import type { CachedEditorDocument } from "@/components/editor/editor-state"
+import type { CachedEditorDocument } from "@/components/editor/state/editor-document-state"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import { languageIdForFilePath } from "@/components/editor/file-path"
 import { useTheme } from "@/components/theme-provider"

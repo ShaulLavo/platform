@@ -1,4 +1,4 @@
-import { useEditorState } from "@/components/editor/editor-state"
+import { useEditorCommands } from "@/components/editor/state/editor-commands"
 import { gitKeys } from "@/lib/query-keys"
 import { useQueryClient } from "@tanstack/react-query"
 import { fetchDiff } from "../api"
@@ -7,7 +7,7 @@ import type { ChangeRow, FileDiff } from "../types"
 
 export function useOpenDiffDocument() {
   const queryClient = useQueryClient()
-  const selectFile = useEditorState((state) => state.selectFile)
+  const { selectFile } = useEditorCommands()
 
   async function openDiff(row: ChangeRow) {
     const staged = row.section === "staged"

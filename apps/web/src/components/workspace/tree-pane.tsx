@@ -8,7 +8,8 @@ import type {
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
 import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
 
-import { useEditorState } from "@/components/editor/editor-state"
+import { useEditorCommands } from "@/components/editor/state/editor-commands"
+import { useEditorWorkspaceState } from "@/components/editor/state/editor-workspace-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { fileTreeIconsForPaths } from "@/lib/file-icons"
 import type { TreeEntry } from "@/lib/file-system-types"
@@ -43,8 +44,10 @@ export function TreePane({
   rootPath: string
   state: LoadState<TreeModel>
 }) {
-  const selectedFilePath = useEditorState((store) => store.selectedFilePath)
-  const selectFile = useEditorState((store) => store.selectFile)
+  const selectedFilePath = useEditorWorkspaceState(
+    (store) => store.selectedFilePath
+  )
+  const { selectFile } = useEditorCommands()
   const setFocusArea = useWorkspaceFocus((store) => store.setFocusArea)
   const modelRef = useRef(model)
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
