@@ -82,6 +82,7 @@ describe("ResizablePaneGroup", () => {
     expect(handle.classList.contains("editor-resizable-pane-handle")).toBe(true);
     expect(handle.getAttribute("role")).toBe("separator");
     expect(handle.getAttribute("aria-orientation")).toBe("vertical");
+    expect(handle.style.cursor).toBe("ew-resize");
     expect(handle.dataset.editorPaneHandleState).toBe("inactive");
   });
 

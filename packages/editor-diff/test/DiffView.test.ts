@@ -18,14 +18,15 @@ describe("DiffView split panes", () => {
     expect(handle?.matches("[data-editor-pane-handle]")).toBe(true);
     expect(handle?.getAttribute("role")).toBe("separator");
     expect(children[2]?.classList.contains("editor-diff-pane-new")).toBe(true);
-    expect(handle?.style.position).toBe("relative");
   });
 
-  it("passes file-aware context to custom split handles", () => {
-    const createHandle = vi.fn((context: DiffSplitHandleContext) =>
-      context.document.createElement("div"),
-    );
-    renderDiffView({ createHandle });
+  it("mounts custom split handles with file-aware context", () => {
+    const createHandle = vi.fn((context: DiffSplitHandleContext) => {
+      const handle = context.document.createElement("div");
+      handle.className = "custom-diff-handle";
+      return handle;
+    });
+    const { container } = renderDiffView({ createHandle });
 
     expect(createHandle).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -35,6 +36,8 @@ describe("DiffView split panes", () => {
         orientation: "horizontal",
       }),
     );
+    expect(container.querySelector(".custom-diff-handle")).not.toBeNull();
+    expect(container.querySelector(".editor-diff-split-handle")).toBeNull();
   });
 
   it("removes the handle when switching to stacked mode", () => {

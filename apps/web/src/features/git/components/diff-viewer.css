@@ -1,10 +1,15 @@
+.app-git-diff-split-handle {
+  align-self: stretch;
+}
+
 .editor-diff-split .app-git-diff-split-handle::before {
   display: none;
 }
 
 .app-git-diff-split-handle-line {
-  background: var(--editor-diff-border);
+  background: var(--border);
   display: block;
+  height: 100%;
   width: 1px;
 }
 

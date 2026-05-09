@@ -53,7 +53,7 @@ export function WorkspaceView({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div className="h-full min-h-0 flex-1 overflow-auto">
       <div className="flex h-full min-w-[1024px] flex-col">
         <ResizablePanelGroup
           className="min-h-0 flex-1"
@@ -112,7 +112,7 @@ export function WorkspaceView({
           <ResizableHandle withHandle />
           <ResizablePanel
             id="workspace-editor"
-            className="min-h-0 min-w-0"
+            className="h-full min-h-0 min-w-0 overflow-hidden"
             minSize="480px"
           >
             <FileViewer fileState={fileState} rootPath={rootFolder.path} />

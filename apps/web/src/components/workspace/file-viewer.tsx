@@ -109,7 +109,7 @@ export function FileViewer({
   ])
 
   return (
-    <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
       <EditorTabBar
         diffViewMode={selectedDiff ? diffViewMode : null}
         onDiffViewModeChange={setDiffViewMode}

@@ -100,7 +100,7 @@ function EditorDiffView({
   return (
     <div
       ref={hostRef}
-      className="flex min-h-0 min-w-0 flex-1 bg-background text-foreground"
+      className="flex h-full min-h-0 min-w-0 flex-1 bg-background text-foreground"
       style={diffViewStyle}
     />
   )
@@ -124,6 +124,8 @@ function createGitDiffSplitHandle({
   const handle = document.createElement("div")
   const line = document.createElement("span")
   handle.className = "app-git-diff-split-handle"
+  handle.style.cursor = "ew-resize"
+  handle.style.width = "1px"
   line.className = "app-git-diff-split-handle-line"
   line.setAttribute("aria-hidden", "true")
   handle.appendChild(line)

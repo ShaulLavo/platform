@@ -32,6 +32,7 @@
   color: var(--editor-diff-foreground, var(--editor-foreground, #d4d4d4));
   display: flex;
   flex: 1;
+  height: 100%;
   min-height: 0;
   min-width: 0;
 }
@@ -98,6 +99,7 @@
   background: var(--editor-diff-background, var(--editor-background, #1e1e1e));
   display: flex;
   flex: 1;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -106,6 +108,7 @@
 .editor-diff-split {
   background: var(--editor-diff-background, var(--editor-background, #1e1e1e));
   flex: 1;
+  height: 100%;
   min-height: 0;
   min-width: 0;
 }
@@ -114,12 +117,16 @@
   background: var(--editor-diff-background, var(--editor-background, #1e1e1e));
   display: flex;
   flex: 1 1 0;
+  height: 100%;
   min-height: 0;
   min-width: 0;
 }
 
 .editor-diff-text {
   flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
 .editor-diff-split .editor-resizable-pane-handle {
@@ -179,7 +186,10 @@
     --editor-diff-gutter-background,
     var(--editor-diff-background, #1e1e1e)
   ) !important;
-  --editor-gutter-foreground: var(--editor-diff-gutter-foreground, #71717a) !important;
+  --editor-gutter-foreground: var(
+    --editor-diff-gutter-foreground,
+    #71717a
+  ) !important;
 }
 
 .editor-diff-view .editor-virtualized::selection,
