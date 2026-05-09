@@ -11,23 +11,26 @@ import {
 } from "@editor/typescript-lsp"
 
 import { createEditorPlugins } from "@/components/editor/editor-plugins"
+import type { CachedEditorDocument } from "@/components/editor/editor-state"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import { languageIdForFilePath } from "@/components/editor/file-path"
 import { useTheme } from "@/components/theme-provider"
-import type {
-  EditorFile,
-  EditorWorkspaceEntry,
-} from "@/components/editor/types"
+import type { EditorWorkspaceEntry } from "@/components/editor/types"
 import { useEditorStatusBarState } from "@/components/editor/use-editor-status-bar-state"
 import { fsServerUrl } from "@/lib/fs-client"
 import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 
 type EditorProps = {
-  file: EditorFile
+  document: CachedEditorDocument
   rootPath: string
   workspaceEntries: readonly EditorWorkspaceEntry[]
   definitionTarget?: TypeScriptLspDefinitionTarget | null
+  onDirtyChange?: (path: string, dirty: boolean) => void
   onOpenDefinition?: (target: TypeScriptLspDefinitionTarget) => void | boolean
+  onScrollPositionChange?: (
+    path: string,
+    scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
+  ) => void
   onStatusChange?: (status: EditorStatusBarState) => void
 }
 
@@ -38,9 +41,11 @@ const editorThemeRefreshByShikiTheme = {
 
 export function Editor({
   definitionTarget,
-  file,
+  document: cachedDocument,
   rootPath,
+  onDirtyChange,
   onOpenDefinition,
+  onScrollPositionChange,
   onStatusChange,
 }: EditorProps) {
   const { theme } = useTheme()
@@ -77,12 +82,14 @@ export function Editor({
   )
   const document = useMemo(
     () => ({
-      documentId: file.path,
-      languageId: languageIdForFilePath(file.path),
-      revision: file.mtimeMs,
-      text: file.content,
+      documentId: cachedDocument.path,
+      languageId: languageIdForFilePath(cachedDocument.path),
+      revision: cachedDocument.revision,
+      scrollPosition: cachedDocument.scrollPosition,
+      session: cachedDocument.session,
+      text: cachedDocument.session.getText(),
     }),
-    [file.content, file.mtimeMs, file.path]
+    [cachedDocument]
   )
 
   useLayoutEffect(() => {
@@ -101,16 +108,36 @@ export function Editor({
   })
   const editorState = controller.useState()
   const text = controller.useText()
-  const selection = selectionForDefinition(file, definitionTarget)
+  const selection = selectionForDefinition(
+    cachedDocument.path,
+    text,
+    definitionTarget
+  )
 
   useEditorStatusBarState({
     charCount: text.length,
-    filePath: file.path,
+    filePath: cachedDocument.path,
     onChange: onStatusChange,
     state: editorState,
     typeScriptDiagnostics,
     typeScriptStatus,
   })
+
+  useEffect(() => {
+    onDirtyChange?.(
+      cachedDocument.path,
+      editorState?.isDirty ?? cachedDocument.session.isDirty()
+    )
+  }, [cachedDocument, editorState?.isDirty, onDirtyChange])
+
+  useLayoutEffect(() => {
+    return () => {
+      const scrollPosition = controller.getEditor()?.getScrollPosition()
+      if (!scrollPosition) return
+
+      onScrollPositionChange?.(cachedDocument.path, scrollPosition)
+    }
+  }, [cachedDocument.path, controller, onScrollPositionChange])
 
   useEffect(() => {
     if (!selection) return
@@ -180,14 +207,15 @@ function fileUriForPath(path: string) {
 }
 
 function selectionForDefinition(
-  file: EditorFile,
+  filePath: string,
+  text: string,
   target: TypeScriptLspDefinitionTarget | null | undefined
 ) {
   if (!target) return null
-  if (target.path !== file.path) return null
+  if (target.path !== filePath) return null
 
-  const anchor = offsetForPosition(file.content, target.range.start)
-  const head = offsetForPosition(file.content, target.range.end)
+  const anchor = offsetForPosition(text, target.range.start)
+  const head = offsetForPosition(text, target.range.end)
   return { anchor, head }
 }
 

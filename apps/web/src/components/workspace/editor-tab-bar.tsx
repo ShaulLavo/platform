@@ -5,6 +5,7 @@ import { basename, displayPath } from "@/lib/path-formatters"
 import { cn } from "@workspace/ui/lib/utils"
 
 export function EditorTabBar() {
+  const dirtyFilePaths = useEditorState((state) => state.dirtyFilePaths)
   const openFilePaths = useEditorState((state) => state.openFilePaths)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
   const closeTab = useEditorState((state) => state.closeTab)
@@ -21,6 +22,7 @@ export function EditorTabBar() {
       <div className="flex min-w-0 items-end">
         {openFilePaths.map((path) => {
           const active = path === selectedFilePath
+          const dirty = dirtyFilePaths.has(path)
           const name = basename(path)
 
           return (
@@ -48,6 +50,12 @@ export function EditorTabBar() {
                   weight="duotone"
                 />
                 <span className="truncate">{name}</span>
+                {dirty && (
+                  <span
+                    aria-hidden="true"
+                    className="size-1.5 shrink-0 rounded-full bg-amber-500"
+                  />
+                )}
               </button>
               <button
                 aria-label={`Close ${name}`}

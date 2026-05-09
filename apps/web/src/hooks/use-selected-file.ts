@@ -12,7 +12,9 @@ export function useSelectedFile(selectedFilePath: string | null) {
     queryFn: ({ signal }) => fetchFile(selectedFilePath ?? "", signal),
     queryKey: fileSystemKeys.file(selectedFilePath ?? ""),
   })
-  const fileState = selectedFilePath ? fileLoadState(query) : idleState
+  const fileState = selectedFilePath
+    ? fileLoadState(query, selectedFilePath)
+    : idleState
 
   function resetFileLoad() {
     if (!selectedFilePath) return
@@ -26,16 +28,21 @@ export function useSelectedFile(selectedFilePath: string | null) {
   return { fileState, resetFileLoad }
 }
 
-function fileLoadState(query: {
-  data: FileResult | undefined
-  error: Error | null
-  isError: boolean
-  isPending: boolean
-}): LoadState<FileResult> {
-  if (query.data) return { status: "ready", data: query.data }
+function fileLoadState(
+  query: {
+    data: FileResult | undefined
+    error: Error | null
+    isError: boolean
+    isPending: boolean
+  },
+  selectedFilePath: string
+): LoadState<FileResult> {
+  if (query.data?.path === selectedFilePath) {
+    return { status: "ready", data: query.data }
+  }
   if (query.isError)
     return { status: "error", message: errorMessage(query.error) }
-  if (query.isPending) return { status: "loading" }
+  if (query.isPending || query.data) return { status: "loading" }
 
   return idleState
 }
