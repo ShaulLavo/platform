@@ -1,8 +1,10 @@
+import { isRecord } from "@workspace/contracts"
+
 import { TypeScriptLspSession } from "./session"
-import type { FileSystemService } from "../../fs/service"
+import type { FileSystem_Interface } from "../../fs/file-system-interface"
 import { authenticateWebSocketData, type AuthConfig } from "../../auth"
 
-export function typeScriptLspRoutes(fs: FileSystemService, auth: AuthConfig) {
+export function typeScriptLspRoutes(fs: FileSystem_Interface, auth: AuthConfig) {
   const sessions = new WeakMap<object, TypeScriptLspSession>()
 
   return {
@@ -89,8 +91,4 @@ function lspMessage(value: unknown): string | ArrayBuffer | Uint8Array | null {
   if (value instanceof Uint8Array) return value
   if (isRecord(value)) return JSON.stringify(value)
   return null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }

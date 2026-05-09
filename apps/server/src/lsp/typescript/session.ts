@@ -1,5 +1,7 @@
 import { existsSync, statSync } from "node:fs"
 import path from "node:path"
+
+import { isRecord } from "@workspace/contracts"
 import ts from "typescript"
 import type * as lsp from "vscode-languageserver-protocol"
 
@@ -1305,10 +1307,6 @@ function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === "string") return error
   return "TypeScript LSP operation failed"
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 export const testInternals = {

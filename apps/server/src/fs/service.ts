@@ -33,6 +33,7 @@ import type {
   WatchServerMessage,
   WriteBody,
 } from "./contracts"
+import type { FileSystem_Interface } from "./file-system-interface"
 
 export type FileSystemServiceOptions = {
   workspaceRoot?: string
@@ -208,7 +209,7 @@ export class FileSystemService {
     const path = await deletePath(this.paths, body)
     this.changes.emit({ type: "deleted", path })
 
-    return { path, deleted: true }
+    return { path, deleted: true as const }
   }
 
   find(
@@ -340,3 +341,29 @@ function pathBasename(input: string) {
   const parts = input.split("/").filter(Boolean)
   return parts.at(-1) ?? "Root"
 }
+
+/**
+ * Compile-time interface completeness assertions (Requirements 2.2, 2.6).
+ *
+ * Forward conformance: `_assertImplements` verifies that a value of type
+ * `FileSystemService` is assignable to `FileSystem_Interface` — every member
+ * declared on the interface exists on the class with a compatible signature.
+ *
+ * Reverse conformance: `_MissingOnInterface` collects every public key of
+ * `FileSystemService` that is not mirrored on `FileSystem_Interface`.
+ * TypeScript excludes `private`/`protected` fields (`maxSearchContentBytes`,
+ * `maxTextFileBytes`, `treeConcurrency`) from `keyof FileSystemService`, so
+ * this computation naturally surfaces only the public surface. The
+ * `_requireEmpty` binding forces `_MissingOnInterface` to resolve to `never`;
+ * if a new public member is added to `FileSystemService` without being added
+ * to `FileSystem_Interface`, the conditional type resolves to `never` and the
+ * `true` initializer fails to compile, breaking `turbo typecheck`.
+ */
+const _assertImplements: FileSystem_Interface = {} as FileSystemService
+type _MissingOnInterface = Exclude<
+  keyof FileSystemService,
+  keyof FileSystem_Interface
+>
+const _requireEmpty: _MissingOnInterface extends never ? true : never = true
+void _assertImplements
+void _requireEmpty

@@ -1,3 +1,9 @@
+import type {
+	EntryTypeFilter as ContractsEntryTypeFilter,
+	TreeEntry as ContractsTreeEntry,
+	WatchClientMessage as ContractsWatchClientMessage,
+	WatchServerMessage as ContractsWatchServerMessage
+} from '@workspace/contracts'
 import * as v from 'valibot'
 
 export const pathSchema = v.pipe(v.string(), v.maxLength(4096))
@@ -160,10 +166,71 @@ export type RenameBody = v.InferOutput<typeof renameBodySchema>
 export type CopyBody = v.InferOutput<typeof copyBodySchema>
 export type DeleteBody = v.InferOutput<typeof deleteBodySchema>
 export type RecordRecentBody = v.InferOutput<typeof recordRecentBodySchema>
-export type EntryTypeFilter = v.InferOutput<typeof entryTypeQueryValueSchema>
-export type TreeEntryLike = v.InferOutput<typeof treeEntrySchema>
-export type WatchClientMessage = v.InferOutput<typeof watchClientMessageSchema>
-export type WatchServerMessage = v.InferOutput<typeof watchServerMessageSchema>
+
+// Cross-boundary shared types are sourced from `@workspace/contracts`.
+// The Valibot schemas above remain the runtime validation source on the
+// server; the compile-time parity assertions below guarantee that the
+// pure-TypeScript mirrors in `@workspace/contracts` stay structurally
+// equivalent to `v.InferOutput<typeof ...>` for every schema that has
+// a mirror. Any drift breaks `turbo typecheck` at this file.
+//
+// `TreeEntryLike` is retained as a backward-compatible alias for the
+// historical name used by server-internal consumers; new code should
+// import `TreeEntry` directly from `@workspace/contracts`.
+export type {
+	EntryTypeFilter,
+	TreeEntry,
+	WatchClientMessage,
+	WatchServerMessage
+} from '@workspace/contracts'
+export type TreeEntryLike = ContractsTreeEntry
+
+// --- Compile-time parity assertions (Req 5.2, 5.7) ---------------------
+
+/**
+ * Structural equality check between two types. Uses the conditional-type
+ * identity trick: two types are considered equal iff they induce the
+ * same distribution in both positions.
+ */
+type Equals<A, B> =
+	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+		? true
+		: false
+
+/**
+ * Forces `T` to resolve to `true`; otherwise the type assignment fails.
+ * Used below so any structural drift between a Valibot schema's inferred
+ * output and its `@workspace/contracts` mirror breaks `turbo typecheck`.
+ */
+type Assert<T extends true> = T
+
+// Assertions are held by exported `const` bindings so `noUnusedLocals` does
+// not strip them. They carry no runtime payload (`true as const`) and the
+// type-level work happens in the `Assert<...>` annotation.
+export const _assertEntryTypeFilterParity: Assert<
+	Equals<
+		v.InferOutput<typeof entryTypeQueryValueSchema>,
+		ContractsEntryTypeFilter
+	>
+> = true
+
+export const _assertTreeEntryParity: Assert<
+	Equals<v.InferOutput<typeof treeEntrySchema>, ContractsTreeEntry>
+> = true
+
+export const _assertWatchClientMessageParity: Assert<
+	Equals<
+		v.InferOutput<typeof watchClientMessageSchema>,
+		ContractsWatchClientMessage
+	>
+> = true
+
+export const _assertWatchServerMessageParity: Assert<
+	Equals<
+		v.InferOutput<typeof watchServerMessageSchema>,
+		ContractsWatchServerMessage
+	>
+> = true
 
 function integerQueryValueSchema(defaultValue: string, max: number) {
 	return v.pipe(

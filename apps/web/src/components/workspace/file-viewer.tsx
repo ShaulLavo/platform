@@ -11,7 +11,6 @@ import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
 import { GitDiffViewer } from "@/features/git/components/diff-viewer"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { useFileDiff } from "@/features/git/hooks"
-import type { FileDiff } from "@/features/git/types"
 import type { FileResult } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
@@ -67,9 +66,6 @@ export function FileViewer({
   const visibleDocument =
     selectedCachedDocument ??
     (fileState.status === "error" ? null : fallbackDocument)
-  const visibleFilePath = visibleDocument?.path ?? selectedFilePath
-  const fileGitDiff = useFileDiff(selectedDiff ? null : visibleFilePath)
-  const editorGitDiff = fileGitDiff.data?.[0] ?? null
 
   useEffect(() => {
     if (!selectedFile) return
@@ -115,7 +111,6 @@ export function FileViewer({
             cachedDocument={visibleDocument}
             definitionTarget={definitionTarget}
             fileState={fileState}
-            gitDiff={editorGitDiff}
             rootPath={rootPath}
             onEditorDirtyChange={setCachedEditorDocumentDirty}
             onEditorScrollPositionChange={setCachedEditorDocumentScrollPosition}
@@ -138,7 +133,6 @@ function FileViewerBody({
   cachedDocument,
   definitionTarget,
   fileState,
-  gitDiff,
   rootPath,
   onEditorDirtyChange,
   onEditorScrollPositionChange,
@@ -148,7 +142,6 @@ function FileViewerBody({
   cachedDocument: CachedEditorDocument | null
   definitionTarget: TypeScriptLspDefinitionTarget | null
   fileState: LoadState<FileResult>
-  gitDiff: FileDiff | null
   rootPath: string
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
   onEditorScrollPositionChange: (
@@ -163,7 +156,6 @@ function FileViewerBody({
       <Editor
         definitionTarget={definitionTarget}
         document={cachedDocument}
-        gitDiff={gitDiff}
         rootPath={rootPath}
         onDirtyChange={onEditorDirtyChange}
         onScrollPositionChange={onEditorScrollPositionChange}

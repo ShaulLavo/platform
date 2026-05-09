@@ -32,6 +32,7 @@ import {
   type AuthOptions,
 } from "./auth"
 import { errorPayload, FsError, isFsError } from "./fs/errors"
+import type { FileSystem_Interface } from "./fs/file-system-interface"
 import { FileSystemService, type FileSystemServiceOptions } from "./fs/service"
 import type { FindStreamEvent } from "./fs/search"
 import { parseWatchInputs } from "./fs/watch"
@@ -43,7 +44,7 @@ export type AppOptions = FileSystemServiceOptions & {
 }
 
 export function createApp(options: AppOptions) {
-  const fs = new FileSystemService(options)
+  const fs: FileSystem_Interface = new FileSystemService(options)
   const git = new GitService(fs.paths)
   const auth = createAuthConfig(options.auth)
 
@@ -249,7 +250,7 @@ export function createApp(options: AppOptions) {
 
 export type App = ReturnType<typeof createApp>
 
-type BlobFile = Awaited<ReturnType<FileSystemService["blob"]>>
+type BlobFile = Awaited<ReturnType<FileSystem_Interface["blob"]>>
 
 async function fileResponse(result: BlobFile) {
   const file = Bun.file(result.absolutePath)

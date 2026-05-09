@@ -1,4 +1,9 @@
-import { DiffView, type DiffFile, type DiffHunkLine } from "@editor/diff"
+import {
+  DiffView,
+  annotateInlineChanges,
+  type DiffFile,
+  type DiffHunkLine,
+} from "@editor/diff"
 import "@editor/diff/style.css"
 import { WarningCircleIcon } from "@phosphor-icons/react"
 import { useLayoutEffect, useMemo, useRef, type CSSProperties } from "react"
@@ -149,7 +154,7 @@ function editorDiffFile(diff: FileDiff): DiffFile {
 function editorDiffHunk(hunk: GitDiffHunk) {
   return {
     header: hunk.header,
-    lines: hunk.changes.map(editorDiffLine),
+    lines: annotateInlineChanges(hunk.changes.map(editorDiffLine)),
     newLines: hunk.newLines,
     newStart: hunk.newStart,
     oldLines: hunk.oldLines,

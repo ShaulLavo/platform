@@ -1,5 +1,9 @@
 import { fsClient } from "@/lib/fs-client"
 import type { FileResult, TreeResult } from "@/lib/file-system-types"
+import {
+  errorMessage as clientErrorMessage,
+  toClientError,
+} from "@/lib/client-error-taxonomy"
 
 const TREE_LOAD_DEPTH = 1
 
@@ -25,32 +29,27 @@ export async function fetchFile(path: string, signal: AbortSignal) {
   return response.data as FileResult
 }
 
+/**
+ * Derive a human-readable error message for UI surfaces.
+ *
+ * Delegates to the Client_Error_Taxonomy (Req 7.4) so the message is drawn
+ * from the mapped category and stays consistent with `rpcErrorMessage` and
+ * `reportError`. Kept as a named export to preserve the existing
+ * `@/lib/file-server` import path across the Web_App.
+ */
 export function errorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-  return "The file server did not return a usable response."
+  return clientErrorMessage(error)
 }
 
+/**
+ * Derive a human-readable error message from an Eden RPC error payload.
+ *
+ * Routes the RPC envelope through the Client_Error_Taxonomy (Req 7.2, 7.4)
+ * so the resulting message is category-derived and shared across every
+ * `@/lib/file-server` consumer. The legacy envelope-unwrapping logic was
+ * collapsed into `toClientError`, which recognizes the Eden
+ * `{ value: { error: { code, message } } }` shape directly.
+ */
 export function rpcErrorMessage(error: unknown) {
-  const value = errorValue(error)
-  if (isErrorPayload(value)) return value.error.message
-
-  return "The file server rejected the request."
-}
-
-function errorValue(error: unknown) {
-  if (!error || typeof error !== "object") return null
-  if (!("value" in error)) return null
-
-  return error.value
-}
-
-function isErrorPayload(
-  value: unknown
-): value is { error: { message: string } } {
-  if (!value || typeof value !== "object") return false
-  if (!("error" in value)) return false
-
-  const error = value.error
-  if (!error || typeof error !== "object") return false
-  return "message" in error && typeof error.message === "string"
+  return toClientError(error).message
 }

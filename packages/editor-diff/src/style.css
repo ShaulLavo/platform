@@ -1,3 +1,5 @@
+@import "@editor/panes/style.css";
+
 .editor-diff-view {
   --editor-diff-added: #5ecc71;
   --editor-diff-deleted: #ff6762;
@@ -23,6 +25,7 @@
     #ffffff
   );
   --editor-diff-border: #3f3f46;
+  --editor-diff-split-handle: #71717a;
   --editor-diff-muted: #a1a1aa;
 
   background: var(--editor-diff-background, var(--editor-background, #1e1e1e));
@@ -102,9 +105,7 @@
 
 .editor-diff-split {
   background: var(--editor-diff-background, var(--editor-background, #1e1e1e));
-  display: grid;
   flex: 1;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
 }
@@ -120,6 +121,56 @@
   flex: 1;
 }
 
+.editor-diff-split .editor-resizable-pane-handle {
+  align-items: stretch;
+  background: transparent;
+  display: flex;
+  justify-content: center;
+  overflow: visible;
+  width: 1px;
+  z-index: 1;
+}
+
+.editor-diff-split .editor-resizable-pane-handle::before,
+.editor-diff-split-handle-line {
+  background: var(--editor-diff-split-handle);
+  content: "";
+  display: block;
+  width: 1px;
+}
+
+.editor-diff-split .editor-resizable-pane-handle::after {
+  background: transparent;
+  content: "";
+  inset: 0 -4px;
+  position: absolute;
+}
+
+.editor-diff-split
+  .editor-resizable-pane-handle:is(
+    [data-editor-pane-handle-state="hover"],
+    [data-editor-pane-handle-state="focus"],
+    [data-editor-pane-handle-state="dragging"]
+  ) {
+  background: color-mix(in srgb, var(--editor-diff-modified) 12%, transparent);
+}
+
+.editor-diff-split
+  .editor-resizable-pane-handle:is(
+    [data-editor-pane-handle-state="hover"],
+    [data-editor-pane-handle-state="focus"],
+    [data-editor-pane-handle-state="dragging"]
+  )::before,
+.editor-diff-split
+  .editor-resizable-pane-handle:is(
+    [data-editor-pane-handle-state="hover"],
+    [data-editor-pane-handle-state="focus"],
+    [data-editor-pane-handle-state="dragging"]
+  )
+  .editor-diff-split-handle-line {
+  background: var(--editor-diff-modified);
+}
+
 .editor-diff-view .editor-virtualized {
   --editor-background: var(--editor-diff-background, #1e1e1e) !important;
   --editor-foreground: var(--editor-diff-foreground, #d4d4d4) !important;
@@ -127,10 +178,7 @@
     --editor-diff-gutter-background,
     var(--editor-diff-background, #1e1e1e)
   ) !important;
-  --editor-gutter-foreground: var(
-    --editor-diff-gutter-foreground,
-    #71717a
-  ) !important;
+  --editor-gutter-foreground: var(--editor-diff-gutter-foreground, #71717a) !important;
 }
 
 .editor-diff-view .editor-virtualized::selection,
@@ -227,6 +275,10 @@
   }
 
   .editor-diff-split {
-    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column !important;
+  }
+
+  .editor-diff-split .editor-resizable-pane-handle {
+    display: none;
   }
 }

@@ -1,4 +1,5 @@
 export { DiffView } from "./DiffView";
+export { annotateInlineChanges } from "./inline";
 export { createTextDiff, parseGitPatch } from "./model";
 export { createSplitProjection, createStackedProjection } from "./projection";
 export type {
@@ -11,6 +12,10 @@ export type {
   DiffLineType,
   DiffRenderRow,
   DiffRenderRowType,
+  DiffSplitHandleContext,
+  DiffSplitPaneId,
+  DiffSplitPaneLayout,
+  DiffSplitPaneOptions,
   DiffSyntaxTokens,
   DiffTextFile,
   DiffViewMode,

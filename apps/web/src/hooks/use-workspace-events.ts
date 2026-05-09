@@ -1,7 +1,8 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import { useEditorState } from "@/components/editor/editor-state"
-import { errorMessage, fetchFile, fetchTree } from "@/lib/file-server"
-import type { FileResult, TreeEntry } from "@/lib/file-system-types"
+import { reportError, toClientError } from "@/lib/client-error-taxonomy"
+import { fetchFile, fetchTree } from "@/lib/file-server"
+import type { FileResult } from "@/lib/file-system-types"
 import { fsServerUrl } from "@/lib/fs-client"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { fileSystemKeys, gitKeys } from "@/lib/query-keys"
@@ -16,14 +17,9 @@ import {
 import { useQueryClient } from "@tanstack/react-query"
 import { useEffect, useEffectEvent } from "react"
 import { toast } from "sonner"
+import type { WatchServerMessage } from "@workspace/contracts"
 
-export type WatchServerMessage =
-  | { type: "ready"; root: string }
-  | { type: "created"; path: string; entry?: TreeEntry }
-  | { type: "changed"; path: string; entry?: TreeEntry }
-  | { type: "deleted"; path: string }
-  | { type: "renamed"; path: string; oldPath: string; entry?: TreeEntry }
-  | { type: "error"; code: string; message: string }
+export type { WatchServerMessage }
 
 export type FilesystemEvent = Extract<
   WatchServerMessage,
@@ -65,7 +61,7 @@ const FILE_REFRESH_RETRY_DELAY_MS = 80
 
 /**
  * Maximum number of attempts {@link fetchFileWithRetry} makes before giving up
- * and surfacing the error via `notifyUpdateError`.
+ * and surfacing the error through the Client_Error_Taxonomy's `reportError`.
  *
  * Unit: integer count (not a duration).
  *
@@ -109,7 +105,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       }).catch((error: unknown) => {
         if (signal.aborted) return
 
-        notifyUpdateError(errorMessage(error))
+        reportError(toClientError(error))
       })
     }
   )
@@ -128,7 +124,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       }).catch((error: unknown) => {
         if (signal.aborted) return
 
-        notifyUpdateError(errorMessage(error))
+        reportError(toClientError(error))
       })
     }
   )
@@ -147,7 +143,22 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         return
       }
       if (message.type === "error") {
-        notifyStreamError(message.message)
+        // Forward the full SSE error frame so toClientError can inspect
+        // the server-emitted `code` (e.g. GIT_REPOSITORY_NOT_FOUND) when
+        // it matches an FsErrorCode; otherwise it falls to `unknown`.
+        reportError(toClientError(message))
+        return
+      }
+      // The contracts `WatchServerMessage` union is a superset of what
+      // the web app drives behavior off of. `subscribed`,
+      // `unsubscribed`, and `pong` are acknowledgement frames that
+      // carry no filesystem mutation, so they flow through as no-ops
+      // and are not enqueued for `applyWorkspaceEvents`.
+      if (
+        message.type === "subscribed" ||
+        message.type === "unsubscribed" ||
+        message.type === "pong"
+      ) {
         return
       }
 
@@ -155,7 +166,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return
 
-      notifyStreamError(errorMessage(error))
+      reportError(toClientError(error))
     })
 
     return () => {
@@ -603,18 +614,6 @@ function renamedPath(path: string, from: string, to: string) {
 
 function isSameOrChildPath(path: string, parent: string) {
   return path === parent || path.startsWith(`${parent}/`)
-}
-
-function notifyStreamError(message: string) {
-  toast.error("File watcher stopped", {
-    description: message,
-  })
-}
-
-function notifyUpdateError(message: string) {
-  toast.error("File watcher update failed", {
-    description: message,
-  })
 }
 
 function notifyDirtyOverwrite(path: string) {

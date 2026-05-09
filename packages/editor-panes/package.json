@@ -1,5 +1,5 @@
 {
-  "name": "@editor/diff",
+  "name": "@editor/panes",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,11 +16,6 @@
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt ."
-  },
-  "dependencies": {
-    "@editor/core": "workspace:*",
-    "@editor/panes": "workspace:*",
-    "diff": "^8.0.3"
   },
   "devDependencies": {
     "@typescript/native-preview": "latest",

@@ -1,3 +1,5 @@
+import { isRecord } from "@workspace/contracts"
+
 import { errorPayload, FsError } from "./fs/errors"
 
 export type AuthCapability = "filesystem:read" | "filesystem:write"
@@ -153,10 +155,6 @@ function queryTokenFromWebSocketData(data: unknown) {
   } catch {
     return null
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 // TODO(auth): This guard intentionally supports only today's local browser app:

@@ -282,42 +282,6 @@
     background-color: rgba(56, 189, 248, 0.16);
 }
 
-.app-editor-host .app-git-row-added {
-    background:
-        linear-gradient(
-            90deg,
-            color-mix(in lab, #10b981 14%, transparent),
-            transparent 72%
-        );
-}
-
-.app-editor-host .app-git-row-deleted {
-    background:
-        linear-gradient(
-            90deg,
-            color-mix(in lab, #ef4444 12%, transparent),
-            transparent 72%
-        );
-}
-
-.app-editor-host .app-git-gutter-added::before,
-.app-editor-host .app-git-gutter-deleted::before {
-    border-radius: 999px;
-    content: "";
-    display: block;
-    height: 14px;
-    margin-left: 2px;
-    width: 2px;
-}
-
-.app-editor-host .app-git-gutter-added::before {
-    background: #10b981;
-}
-
-.app-editor-host .app-git-gutter-deleted::before {
-    background: #ef4444;
-}
-
 .app-fold-gutter-icon {
     height: 12px;
     width: 12px;

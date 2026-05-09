@@ -82,6 +82,12 @@ type FsErrorCode =
   | "NOT_A_DIRECTORY"
   | "FILE_TOO_LARGE"
   | "OPERATION_FAILED"
+  // Emitted only by the SSE file-watch stream (`apps/server/src/fs/watch.ts`
+  // `watchError`). Not part of the server's `FsError` union but reaches the
+  // client through the same error-shape `{ type: "error", code, message }`,
+  // and is conceptually an IO failure, so we recognize it here to preserve
+  // the pre-taxonomy "File watcher stopped" toast (Req 7.6).
+  | "WATCH_FAILED"
 
 const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
   NOT_FOUND: "not_found",
@@ -97,6 +103,7 @@ const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
   OPERATION_FAILED: "io_error",
   GIT_COMMAND_FAILED: "io_error",
   GIT_REPOSITORY_NOT_FOUND: "io_error",
+  WATCH_FAILED: "io_error",
 }
 
 // ---------------------------------------------------------------------------

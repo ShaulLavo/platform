@@ -116,6 +116,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@editor/core": "workspace:*",
+        "@editor/panes": "workspace:*",
         "diff": "^8.0.3",
       },
       "devDependencies": {
@@ -167,6 +168,7 @@
       "name": "@editor/lsp",
       "version": "0.0.0",
       "dependencies": {
+        "@workspace/contracts": "workspace:*",
         "vscode-languageserver-protocol": "^3.17.5",
       },
       "devDependencies": {
@@ -192,6 +194,18 @@
         "@playwright/test": "^1.57.0",
         "@typescript/native-preview": "latest",
         "@vitest/browser": "^3.2.4",
+        "happy-dom": "^20.8.9",
+        "oxfmt": "latest",
+        "oxlint": "latest",
+        "typescript": "~5.9.3",
+        "vitest": "^3.1.1",
+      },
+    },
+    "packages/editor-panes": {
+      "name": "@editor/panes",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@typescript/native-preview": "latest",
         "happy-dom": "^20.8.9",
         "oxfmt": "latest",
         "oxlint": "latest",
@@ -291,6 +305,7 @@
       "dependencies": {
         "@editor/lsp": "workspace:*",
         "@typescript/vfs": "^1.6.4",
+        "@workspace/contracts": "workspace:*",
         "remark-gfm": "^4.0.1",
         "remark-parse": "^11.0.0",
         "remark-stringify": "^11.0.0",
@@ -428,6 +443,8 @@
     "@editor/lsp": ["@editor/lsp@workspace:packages/editor-lsp"],
 
     "@editor/minimap": ["@editor/minimap@workspace:packages/editor-minimap"],
+
+    "@editor/panes": ["@editor/panes@workspace:packages/editor-panes"],
 
     "@editor/react": ["@editor/react@workspace:packages/editor-react"],
 
