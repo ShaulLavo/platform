@@ -30,11 +30,17 @@ type EditorStoreState = CachedWorkspaceState & {
 
 type EditorStoreActions = {
   closeTab: (path: string) => void
+  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
   ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
+  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
   getCachedEditorDocument: (path: string) => CachedEditorDocument | null
   openDefinition: (target: TypeScriptLspDefinitionTarget) => boolean
   openPicker: () => void
   pickRootFolder: (rootFolder: PickedFsEntry) => void
+  renameCachedEditorDocument: (
+    from: string,
+    to: string
+  ) => { wasDirty: boolean }
   selectFile: (path: string | null) => void
   setCachedEditorDocumentDirty: (path: string, dirty: boolean) => void
   setCachedEditorDocumentScrollPosition: (
@@ -148,8 +154,8 @@ export function createEditorStore(
               ? state.statusBarState
               : null,
           dirtyFilePaths: evicted
-            ? removeDirtyFilePath(state.dirtyFilePaths, path) ??
-              state.dirtyFilePaths
+            ? (removeDirtyFilePath(state.dirtyFilePaths, path) ??
+              state.dirtyFilePaths)
             : state.dirtyFilePaths,
           documentCacheVersion: evicted
             ? state.documentCacheVersion + 1
@@ -158,6 +164,80 @@ export function createEditorStore(
           selectedFilePath,
         }
       }),
+    discardCachedEditorDocument: (path) => {
+      let wasDirty = false
+      set((state) => {
+        wasDirty = isDirtyPath(documentCache, state.dirtyFilePaths, path)
+        const hadCachedDocument = documentCache.delete(path)
+        const openFilePaths = state.openFilePaths.filter(
+          (filePath) => filePath !== path
+        )
+        const selectedFilePath =
+          state.selectedFilePath === path
+            ? nextSelectedFilePath(state.openFilePaths, path)
+            : state.selectedFilePath
+
+        return {
+          definitionTarget:
+            state.definitionTarget?.path === path
+              ? null
+              : state.definitionTarget,
+          dirtyFilePaths:
+            removeDirtyFilePath(state.dirtyFilePaths, path) ??
+            state.dirtyFilePaths,
+          documentCacheVersion:
+            hadCachedDocument || state.openFilePaths.includes(path)
+              ? state.documentCacheVersion + 1
+              : state.documentCacheVersion,
+          openFilePaths,
+          selectedFilePath,
+          statusBarState:
+            state.selectedFilePath === selectedFilePath
+              ? state.statusBarState
+              : null,
+        }
+      })
+      return { wasDirty }
+    },
+    forceReplaceCachedEditorDocument: (file) => {
+      let wasDirty = false
+      set((state) => {
+        const cached = documentCache.get(file.path)
+        wasDirty = isDirtyPath(documentCache, state.dirtyFilePaths, file.path)
+        documentCache.set(file.path, freshCachedEditorDocument(file, cached))
+
+        return {
+          dirtyFilePaths:
+            removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
+            state.dirtyFilePaths,
+          documentCacheVersion: state.documentCacheVersion + 1,
+        }
+      })
+      return { wasDirty }
+    },
+    renameCachedEditorDocument: (from, to) => {
+      let wasDirty = false
+      set((state) => {
+        wasDirty = isDirtyPath(documentCache, state.dirtyFilePaths, from)
+        moveCachedEditorDocument(documentCache, from, to)
+
+        return {
+          definitionTarget:
+            state.definitionTarget?.path === from
+              ? { ...state.definitionTarget, path: to }
+              : state.definitionTarget,
+          dirtyFilePaths: renameDirtyFilePath(state.dirtyFilePaths, from, to),
+          documentCacheVersion:
+            state.openFilePaths.includes(from) || wasDirty
+              ? state.documentCacheVersion + 1
+              : state.documentCacheVersion,
+          openFilePaths: renameOpenFilePath(state.openFilePaths, from, to),
+          selectedFilePath:
+            state.selectedFilePath === from ? to : state.selectedFilePath,
+        }
+      })
+      return { wasDirty }
+    },
     selectFile: (selectedFilePath) =>
       set((state) => ({
         statusBarState: null,
@@ -203,7 +283,9 @@ function nextSelectedFilePath(openFilePaths: readonly string[], path: string) {
   const closedIndex = openFilePaths.indexOf(path)
   if (closedIndex === -1) return null
 
-  return openFilePaths[closedIndex + 1] ?? openFilePaths[closedIndex - 1] ?? null
+  return (
+    openFilePaths[closedIndex + 1] ?? openFilePaths[closedIndex - 1] ?? null
+  )
 }
 
 function evictCleanCachedEditorDocument(
@@ -216,6 +298,55 @@ function evictCleanCachedEditorDocument(
 
   documentCache.delete(path)
   return true
+}
+
+function freshCachedEditorDocument(
+  file: FileResult,
+  cached: CachedEditorDocument | undefined
+): CachedEditorDocument {
+  const session = createDocumentSession(file.content)
+  session.markClean()
+
+  return {
+    path: file.path,
+    revision: file.mtimeMs,
+    scrollPosition: cached?.scrollPosition,
+    session,
+  }
+}
+
+function isDirtyPath(
+  documentCache: Map<string, CachedEditorDocument>,
+  dirtyFilePaths: ReadonlySet<string>,
+  path: string
+) {
+  return (
+    dirtyFilePaths.has(path) ||
+    documentCache.get(path)?.session.isDirty() === true
+  )
+}
+
+function moveCachedEditorDocument(
+  documentCache: Map<string, CachedEditorDocument>,
+  from: string,
+  to: string
+) {
+  const cached = documentCache.get(from)
+  if (!cached) return
+
+  documentCache.delete(from)
+  documentCache.set(to, { ...cached, path: to })
+}
+
+function renameOpenFilePath(
+  paths: readonly string[],
+  from: string,
+  to: string
+) {
+  if (!paths.includes(from)) return [...paths]
+
+  const renamed = paths.map((path) => (path === from ? to : path))
+  return [...new Set(renamed)]
 }
 
 function updateDirtyFilePaths(
@@ -238,4 +369,17 @@ function updateDirtyFilePaths(
 
 function removeDirtyFilePath(paths: ReadonlySet<string>, path: string) {
   return updateDirtyFilePaths(paths, path, false)
+}
+
+function renameDirtyFilePath(
+  paths: ReadonlySet<string>,
+  from: string,
+  to: string
+) {
+  if (!paths.has(from)) return paths
+
+  const nextPaths = new Set(paths)
+  nextPaths.delete(from)
+  nextPaths.add(to)
+  return nextPaths
 }

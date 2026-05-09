@@ -13,6 +13,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 export function EditorTabBar() {
   const selectedTabRef = useRef<HTMLDivElement>(null)
+  const tabListRef = useRef<HTMLElement>(null)
   const dirtyFilePaths = useEditorState((state) => state.dirtyFilePaths)
   const openFilePaths = useEditorState((state) => state.openFilePaths)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
@@ -25,10 +26,7 @@ export function EditorTabBar() {
   useLayoutEffect(() => {
     if (!selectedFilePath) return
 
-    selectedTabRef.current?.scrollIntoView({
-      block: "nearest",
-      inline: "nearest",
-    })
+    scrollSelectedTabIntoView(tabListRef.current, selectedTabRef.current)
   }, [selectedFilePath])
 
   if (openFilePaths.length === 0) return null
@@ -42,6 +40,7 @@ export function EditorTabBar() {
     <nav
       aria-label="Open files"
       className="flex h-10 min-w-0 shrink-0 overflow-x-auto border-b bg-muted/30"
+      ref={tabListRef}
       role="tablist"
     >
       <div className="flex min-w-0 items-end">
@@ -113,6 +112,25 @@ export function EditorTabBar() {
       </div>
     </nav>
   )
+}
+
+function scrollSelectedTabIntoView(
+  tabList: HTMLElement | null,
+  selectedTab: HTMLElement | null
+) {
+  if (!tabList || !selectedTab) return
+
+  const tabListRect = tabList.getBoundingClientRect()
+  const selectedTabRect = selectedTab.getBoundingClientRect()
+
+  if (selectedTabRect.left < tabListRect.left) {
+    tabList.scrollLeft -= tabListRect.left - selectedTabRect.left
+    return
+  }
+
+  if (selectedTabRect.right > tabListRect.right) {
+    tabList.scrollLeft += selectedTabRect.right - tabListRect.right
+  }
 }
 
 function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {

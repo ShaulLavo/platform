@@ -72,7 +72,7 @@ export class FileSystemService {
       options.maxTextFileBytes ?? DEFAULT_MAX_TEXT_FILE_BYTES
     this.treeConcurrency = options.treeConcurrency ?? DEFAULT_TREE_CONCURRENCY
     this.changes = new FileChangeHub(this.paths, {
-      enabled: options.watch ?? false,
+      enabled: options.watch ?? true,
     })
   }
 
@@ -84,6 +84,7 @@ export class FileSystemService {
       defaultPath: this.defaultPath,
       metadataDbPath: this.metadata.databasePath,
       maxTextFileBytes: this.maxTextFileBytes,
+      ...this.changes.info(),
     }
   }
 

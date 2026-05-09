@@ -77,6 +77,24 @@ export function mergeDirectoryLoad(
   return next
 }
 
+export function replaceDirectoryLoad(
+  model: TreeModel,
+  rootPath: string,
+  result: TreeResult
+): TreeModel {
+  const directoryTreePath = directoryTreePathForResult(result.path, rootPath)
+  const next = cloneTreeModel(model)
+
+  removeDirectoryChildren(next, directoryTreePath)
+  addEntriesToModel(next, result.entries, rootPath)
+  next.loadingDirectoryPaths.delete(directoryTreePath)
+  next.errorByDirectoryPath.delete(directoryTreePath)
+  if (directoryTreePath) next.loadedDirectoryPaths.add(directoryTreePath)
+  next.paths = pathsFromEntries(next.entriesByTreePath)
+
+  return next
+}
+
 export function selectedTreeEntry(
   state: LoadState<TreeModel>,
   rootPath: string | null,
@@ -166,6 +184,41 @@ function addEntriesToModel(
     model.loadedDirectoryPaths.add(canonicalPath)
     addEntriesToModel(model, entry.children, rootPath)
   }
+}
+
+function removeDirectoryChildren(model: TreeModel, directoryTreePath: string) {
+  for (const treePath of [...model.entriesByTreePath.keys()]) {
+    if (!isDirectoryChildPath(treePath, directoryTreePath)) continue
+
+    model.entriesByTreePath.delete(treePath)
+  }
+
+  removeDirectoryState(model.loadedDirectoryPaths, directoryTreePath)
+  removeDirectoryState(model.loadingDirectoryPaths, directoryTreePath)
+  removeDirectoryState(model.errorByDirectoryPath, directoryTreePath)
+}
+
+function removeDirectoryState(
+  state: Map<string, unknown> | Set<string>,
+  directoryTreePath: string
+) {
+  for (const treePath of [...state.keys()]) {
+    if (!isDirectoryChildPath(treePath, directoryTreePath)) continue
+
+    state.delete(treePath)
+  }
+}
+
+function isDirectoryChildPath(treePath: string, directoryTreePath: string) {
+  if (!directoryTreePath) return true
+
+  return treePath.startsWith(`${directoryTreePath}/`)
+}
+
+function directoryTreePathForResult(path: string, rootPath: string) {
+  if (path === rootPath) return ""
+
+  return canonicalTreePath(toTreePath(path, rootPath))
 }
 
 function cloneTreeModel(model: TreeModel): TreeModel {

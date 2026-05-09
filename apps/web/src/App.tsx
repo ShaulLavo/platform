@@ -5,12 +5,11 @@ import {
   FilePickerDialog,
   type PickedFsEntry,
 } from "@/components/file-picker-dialog"
-import {
-  WorkspaceFocusProvider,
-} from "@/components/workspace/workspace-focus-provider"
+import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
+import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
 import { writeWorkspaceCache } from "@/lib/workspace-cache"
 import { useEffect } from "react"
@@ -37,6 +36,7 @@ function AppContent() {
   const { loadTreeDirectory, resetTreeLoad, retryTreeLoad, treeState } =
     useWorkspaceTree(rootFolder)
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
+  useWorkspaceEvents(rootFolder)
 
   useEffect(() => {
     writeWorkspaceCache({ openFilePaths, rootFolder, selectedFilePath })

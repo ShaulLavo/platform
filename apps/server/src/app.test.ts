@@ -182,6 +182,88 @@ describe("fs rpc filesystem limits", () => {
     expect(response.status).toBe(200)
     expect(payload.entries).toHaveLength(96)
   })
+
+  it("reports native watcher state", async () => {
+    const enabled = testApp(await fixtureRoot())
+    const disabled = testApp(await fixtureRoot(), { watch: false })
+
+    const enabledHealth = await enabled.handle(
+      new Request("http://local/health", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const disabledHealth = await disabled.handle(
+      new Request("http://local/health", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(await enabledHealth.json()).toMatchObject({
+      nativeWatcherCount: 0,
+      watchEnabled: true,
+    })
+    expect(await disabledHealth.json()).toMatchObject({
+      nativeWatcherCount: 0,
+      watchEnabled: false,
+    })
+  })
+})
+
+describe("fs rpc events", () => {
+  it("delivers child path changes to parent path subscriptions", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "src"), { recursive: true })
+    const app = testApp(root, { watch: false })
+    const stream = await app.handle(
+      new Request("http://local/fs/events?path=src", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    const created = app.handle(
+      new Request("http://local/fs/create-file", {
+        body: JSON.stringify({ path: "src/child.txt", content: "ok" }),
+        headers: trustedOriginHeaders({ "content-type": "application/json" }),
+        method: "POST",
+      })
+    )
+
+    expect(await events.next()).toMatchObject({
+      path: "src/child.txt",
+      type: "created",
+    })
+    expect((await created).status).toBe(200)
+    await events.close()
+  })
+
+  it("filters ignored path changes out of event streams", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "node_modules"), { recursive: true })
+    const app = testApp(root, { watch: false })
+    const stream = await app.handle(
+      new Request("http://local/fs/events", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    const created = await app.handle(
+      new Request("http://local/fs/create-file", {
+        body: JSON.stringify({ path: "node_modules/ignored.txt" }),
+        headers: trustedOriginHeaders({ "content-type": "application/json" }),
+        method: "POST",
+      })
+    )
+
+    expect(created.status).toBe(200)
+    await expect(noEvent(events)).resolves.toBe(true)
+    await events.close()
+  })
 })
 
 function testApp(
@@ -191,6 +273,7 @@ function testApp(
     maxTextFileBytes?: number
     sessionToken?: string
     treeConcurrency?: number
+    watch?: boolean
   } = {}
 ) {
   return createApp({
@@ -201,6 +284,7 @@ function testApp(
     homeDirectory: options.homeDirectory,
     maxTextFileBytes: options.maxTextFileBytes,
     treeConcurrency: options.treeConcurrency,
+    watch: options.watch,
     workspaceRoot: root,
   })
 }
@@ -221,4 +305,64 @@ function trustedOriginHeaders(headers: HeadersInit = {}) {
 async function errorCode(response: Response) {
   const payload = (await response.json()) as { error: { code: string } }
   return payload.error.code
+}
+
+function createSseReader(response: Response) {
+  if (!response.body) throw new Error("missing event stream body")
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffered = ""
+
+  return {
+    close: () => reader.cancel(),
+    next: async () => {
+      while (true) {
+        const event = shiftSseEvent()
+        if (event) return event
+
+        const chunk = await reader.read()
+        if (chunk.done) throw new Error("event stream ended")
+        buffered += decodeSseChunk(decoder, chunk.value)
+      }
+    },
+  }
+
+  function shiftSseEvent() {
+    const separator = buffered.indexOf("\n\n")
+    if (separator < 0) return null
+
+    const raw = buffered.slice(0, separator)
+    buffered = buffered.slice(separator + 2)
+    return parseSsePayload(raw)
+  }
+}
+
+function decodeSseChunk(decoder: TextDecoder, value: unknown) {
+  if (typeof value === "string") return value
+
+  return decoder.decode(value as BufferSource, { stream: true })
+}
+
+function parseSsePayload(raw: string) {
+  const data = raw
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+
+  return JSON.parse(data) as Record<string, unknown>
+}
+
+async function noEvent(events: ReturnType<typeof createSseReader>) {
+  const result = await Promise.race([
+    events.next().then(() => false),
+    delay(50).then(() => true),
+  ])
+
+  return result
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
