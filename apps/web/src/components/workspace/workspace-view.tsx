@@ -9,7 +9,6 @@ import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import {
   EMPTY_TREE_MODEL,
-  selectedTreeEntry,
   treeStateLabel,
   type TreeModel,
   workspaceSourceEntries,
@@ -29,13 +28,9 @@ export function WorkspaceView({
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   onRetryTree: () => void
 }) {
-  const selectedFilePath = useEditorState((state) => state.selectedFilePath)
   const editorStatus = useEditorState((state) => state.editorStatus)
   const treeModel = treeState.status === "ready" ? treeState.data : null
   const workspaceEntries = workspaceSourceEntries(treeModel)
-  const selectedEntry = selectedFilePath
-    ? selectedTreeEntry(treeState, rootFolder.path, selectedFilePath)
-    : null
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -71,7 +66,6 @@ export function WorkspaceView({
           </div>
         </aside>
         <FileViewer
-          entry={selectedEntry}
           fileState={fileState}
           rootPath={rootFolder.path}
           workspaceEntries={workspaceEntries}

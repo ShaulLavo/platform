@@ -2,13 +2,28 @@ import type { PickedFsEntry } from "@/components/file-picker-dialog"
 
 const CACHE_KEY = "platform.workspace-state.v1"
 
-type WorkspaceCachePayload = {
+type WorkspaceCachePayload =
+  | {
+      rootFolder: PickedFsEntry | null
+      selectedFilePath: string | null
+      version: 1
+    }
+  | {
+      openFilePaths: string[]
+      rootFolder: PickedFsEntry | null
+      selectedFilePath: string | null
+      version: 2
+    }
+
+type WorkspaceCachePayloadV2 = {
+  openFilePaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
-  version: 1
+  version: 2
 }
 
 export type CachedWorkspaceState = {
+  openFilePaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
 }
@@ -17,26 +32,27 @@ export function readWorkspaceCache(): CachedWorkspaceState {
   const payload = readCachePayload()
   if (!payload) return emptyWorkspaceState()
 
-  return {
-    rootFolder: payload.rootFolder,
-    selectedFilePath: selectedPathForWorkspace(
-      payload.rootFolder,
-      payload.selectedFilePath
-    ),
-  }
+  return workspaceStateFromPayload(payload)
 }
 
 export function writeWorkspaceCache({
+  openFilePaths,
   rootFolder,
   selectedFilePath,
 }: CachedWorkspaceState) {
   if (!canUseLocalStorage()) return
 
   try {
-    const payload: WorkspaceCachePayload = {
+    const selectedPath = selectedPathForWorkspace(rootFolder, selectedFilePath)
+    const payload: WorkspaceCachePayloadV2 = {
+      openFilePaths: openPathsForWorkspace(
+        rootFolder,
+        openFilePaths,
+        selectedPath
+      ),
       rootFolder,
-      selectedFilePath: selectedPathForWorkspace(rootFolder, selectedFilePath),
-      version: 1,
+      selectedFilePath: selectedPath,
+      version: 2,
     }
 
     localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
@@ -67,13 +83,16 @@ function parseCachePayload(value: string | null): WorkspaceCachePayload | null {
 
 function isCachePayload(value: unknown): value is WorkspaceCachePayload {
   if (!value || typeof value !== "object") return false
-  if (!("version" in value) || value.version !== 1) return false
+  if (!("version" in value)) return false
+  if (value.version !== 1 && value.version !== 2) return false
   if (!("rootFolder" in value)) return false
   if (!("selectedFilePath" in value)) return false
+  if (value.version === 2 && !("openFilePaths" in value)) return false
 
   return (
     isOptionalPickedDirectory(value.rootFolder) &&
-    isOptionalString(value.selectedFilePath)
+    isOptionalString(value.selectedFilePath) &&
+    (value.version === 1 || isStringArray(value.openFilePaths))
   )
 }
 
@@ -101,6 +120,33 @@ function isOptionalString(value: unknown): value is string | null {
   return value === null || typeof value === "string"
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
+function workspaceStateFromPayload(
+  payload: WorkspaceCachePayload
+): CachedWorkspaceState {
+  const selectedFilePath = selectedPathForWorkspace(
+    payload.rootFolder,
+    payload.selectedFilePath
+  )
+  const payloadOpenPaths =
+    payload.version === 2
+      ? payload.openFilePaths
+      : selectedFilePathForArray(selectedFilePath)
+
+  return {
+    openFilePaths: openPathsForWorkspace(
+      payload.rootFolder,
+      payloadOpenPaths,
+      selectedFilePath
+    ),
+    rootFolder: payload.rootFolder,
+    selectedFilePath,
+  }
+}
+
 function selectedPathForWorkspace(
   rootFolder: PickedFsEntry | null,
   selectedFilePath: string | null
@@ -114,6 +160,27 @@ function selectedPathForWorkspace(
   return null
 }
 
+function openPathsForWorkspace(
+  rootFolder: PickedFsEntry | null,
+  openFilePaths: readonly string[],
+  selectedFilePath: string | null
+) {
+  const validPaths = openFilePaths.filter((path) =>
+    pathForWorkspace(rootFolder, path)
+  )
+  const uniquePaths = [...new Set(validPaths)]
+  if (!selectedFilePath) return uniquePaths
+  if (uniquePaths.includes(selectedFilePath)) return uniquePaths
+
+  return [...uniquePaths, selectedFilePath]
+}
+
+function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
+  if (!rootFolder) return false
+
+  return isPathInWorkspace(path, rootFolder.path)
+}
+
 function isPathInWorkspace(path: string, rootPath: string) {
   if (!rootPath) return true
   if (path === rootPath) return true
@@ -121,8 +188,13 @@ function isPathInWorkspace(path: string, rootPath: string) {
   return path.startsWith(`${rootPath}/`)
 }
 
+function selectedFilePathForArray(selectedFilePath: string | null) {
+  return selectedFilePath ? [selectedFilePath] : []
+}
+
 function emptyWorkspaceState(): CachedWorkspaceState {
   return {
+    openFilePaths: [],
     rootFolder: null,
     selectedFilePath: null,
   }

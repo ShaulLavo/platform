@@ -23,6 +23,7 @@ function AppContent() {
   const pickerOpen = useEditorState((state) => state.pickerOpen)
   const rootFolder = useEditorState((state) => state.rootFolder)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
+  const openFilePaths = useEditorState((state) => state.openFilePaths)
   const openPicker = useEditorState((state) => state.openPicker)
   const pickRootFolder = useEditorState((state) => state.pickRootFolder)
   const setPickerOpen = useEditorState((state) => state.setPickerOpen)
@@ -31,8 +32,8 @@ function AppContent() {
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
 
   useEffect(() => {
-    writeWorkspaceCache({ rootFolder, selectedFilePath })
-  }, [rootFolder, selectedFilePath])
+    writeWorkspaceCache({ openFilePaths, rootFolder, selectedFilePath })
+  }, [openFilePaths, rootFolder, selectedFilePath])
 
   function handlePick(entry: PickedFsEntry) {
     resetFileLoad()

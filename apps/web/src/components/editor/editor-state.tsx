@@ -19,6 +19,7 @@ type EditorStoreState = CachedWorkspaceState & {
 }
 
 type EditorStoreActions = {
+  closeTab: (path: string) => void
   openDefinition: (target: TypeScriptLspDefinitionTarget) => boolean
   openPicker: () => void
   pickRootFolder: (rootFolder: PickedFsEntry) => void
@@ -48,14 +49,20 @@ export function createEditorStore(
   return createStore<EditorStore>()((set) => ({
     definitionTarget: null,
     editorStatus: null,
+    openFilePaths: initialState.openFilePaths,
     pickerOpen: false,
     rootFolder: initialState.rootFolder,
     selectedFilePath: initialState.selectedFilePath,
     openDefinition: (definitionTarget) => {
-      set({
+      set((state) => ({
         definitionTarget,
+        editorStatus: null,
+        openFilePaths: openFilePathList(
+          state.openFilePaths,
+          definitionTarget.path
+        ),
         selectedFilePath: definitionTarget.path,
-      })
+      }))
       return true
     },
     openPicker: () => set({ pickerOpen: true }),
@@ -63,15 +70,44 @@ export function createEditorStore(
       set({
         definitionTarget: null,
         editorStatus: null,
+        openFilePaths: [],
         pickerOpen: false,
         rootFolder,
         selectedFilePath: null,
       }),
-    selectFile: (selectedFilePath) =>
-      set({
-        editorStatus: null,
-        selectedFilePath,
+    closeTab: (path) =>
+      set((state) => {
+        if (!state.openFilePaths.includes(path)) return state
+
+        const openFilePaths = state.openFilePaths.filter(
+          (filePath) => filePath !== path
+        )
+        const selectedFilePath =
+          state.selectedFilePath === path
+            ? nextSelectedFilePath(state.openFilePaths, path)
+            : state.selectedFilePath
+
+        return {
+          definitionTarget:
+            state.definitionTarget?.path === path
+              ? null
+              : state.definitionTarget,
+          editorStatus:
+            state.selectedFilePath === selectedFilePath
+              ? state.editorStatus
+              : null,
+          openFilePaths,
+          selectedFilePath,
+        }
       }),
+    selectFile: (selectedFilePath) =>
+      set((state) => ({
+        editorStatus: null,
+        openFilePaths: selectedFilePath
+          ? openFilePathList(state.openFilePaths, selectedFilePath)
+          : state.openFilePaths,
+        selectedFilePath,
+      })),
     setEditorStatus: (status) =>
       set((state) => {
         const editorStatus = nextEditorStatus(state.editorStatus, status)
@@ -81,6 +117,19 @@ export function createEditorStore(
       }),
     setPickerOpen: (pickerOpen) => set({ pickerOpen }),
   }))
+}
+
+function openFilePathList(paths: readonly string[], path: string) {
+  if (paths.includes(path)) return [...paths]
+
+  return [...paths, path]
+}
+
+function nextSelectedFilePath(openFilePaths: readonly string[], path: string) {
+  const closedIndex = openFilePaths.indexOf(path)
+  if (closedIndex === -1) return null
+
+  return openFilePaths[closedIndex + 1] ?? openFilePaths[closedIndex - 1] ?? null
 }
 
 function nextEditorStatus(
