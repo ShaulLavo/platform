@@ -96,6 +96,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@tanstack/hotkeys": "0.8.0",
+        "diff": "^8.0.3",
         "shiki": "^1.29.2",
       },
       "devDependencies": {

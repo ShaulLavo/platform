@@ -36,6 +36,7 @@ type EditorProps = {
     scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
   ) => void
   onStatusChange?: (status: EditorStatusBarState) => void
+  onTextChange?: (path: string, text: string) => void
 }
 
 export function Editor({
@@ -46,6 +47,7 @@ export function Editor({
   onOpenDefinition,
   onScrollPositionChange,
   onStatusChange,
+  onTextChange,
 }: EditorProps) {
   const editorActive = useWorkspaceFocus(
     (state) => state.activeArea === "editor"
@@ -90,6 +92,12 @@ export function Editor({
       rowBackground: true,
     },
     document,
+    onChange: (_state, change) => {
+      if (!change || change.kind === "selection" || change.kind === "none")
+        return
+
+      onTextChange?.(cachedDocument.path, cachedDocument.session.getText())
+    },
     plugins,
     theme: editorThemeRefresh,
   })

@@ -1,6 +1,5 @@
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { FilesystemConflictToast } from "@/features/editor/components/filesystem-conflict-toast"
-import { conflictEditorText } from "@/features/editor/conflict-editor-text"
 import {
   conflictDiffDocumentId,
   parseConflictDiffDocumentId,
@@ -37,6 +36,7 @@ import {
   type TreeModel,
 } from "@/lib/tree-model"
 import { useQueryClient } from "@tanstack/react-query"
+import { createMergeConflictDocumentText } from "@editor/core"
 import { createElement, useEffect, useEffectEvent } from "react"
 import { toast } from "sonner"
 import type { WatchServerMessage } from "@workspace/contracts"
@@ -635,7 +635,7 @@ function ensureConflictEditorDocument(
 ) {
   if (context.getCachedEditorDocument(documentId)) return
 
-  const content = conflictEditorText(conflict)
+  const content = createMergeConflictDocumentText(conflict)
   context.ensureCachedEditorDocument({
     content,
     mtimeMs: Date.now(),
@@ -729,7 +729,9 @@ function finishConflict(
   conflict: FilesystemConflict,
   context: ConflictContext
 ) {
-  if (conflict.diffDocumentId) context.closeTab(conflict.diffDocumentId)
+  if (conflict.diffDocumentId) {
+    context.discardCachedEditorDocument(conflict.diffDocumentId)
+  }
   if (conflict.toastId) toast.dismiss(conflict.toastId)
 
   context.conflictStore.getState().removeConflict(conflict.id)

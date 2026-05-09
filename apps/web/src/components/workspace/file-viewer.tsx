@@ -1,9 +1,13 @@
 import { WarningCircleIcon } from "@phosphor-icons/react"
-import { useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 
 import { Editor } from "@/features/editor/components/editor"
 import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import {
+  useEditorConflictStoreApi,
+  type FilesystemConflict,
+} from "@/features/editor/state/editor-conflict-state"
 import {
   type CachedEditorDocument,
   useEditorDocumentState,
@@ -18,9 +22,20 @@ import {
 } from "@/features/git/components/diff-viewer"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { useDiffDocumentDiff } from "@/features/git/hooks"
+import { reportError, toClientError } from "@/lib/client-error-taxonomy"
+import {
+  createFileContent,
+  ensureFolderPath,
+  fetchFile,
+  writeFileContent,
+} from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
+import { fileSystemKeys } from "@/lib/query-keys"
 import type { LoadState } from "@/lib/load-state"
+import { parseMergeConflicts } from "@editor/core"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 export function FileViewer({
   fileState,
@@ -48,6 +63,9 @@ export function FileViewer({
   const setCachedEditorDocumentDirty = useEditorDocumentState(
     (state) => state.setCachedEditorDocumentDirty
   )
+  const forceReplaceCachedEditorDocument = useEditorDocumentState(
+    (state) => state.forceReplaceCachedEditorDocument
+  )
   const setCachedEditorDocumentScrollPosition = useEditorDocumentState(
     (state) => state.setCachedEditorDocumentScrollPosition
   )
@@ -55,7 +73,16 @@ export function FileViewer({
     (state) => state.setDiffViewMode
   )
   const setStatusBarState = useEditorUiState((state) => state.setStatusBarState)
-  const { openDefinition } = useEditorCommands()
+  const {
+    discardCachedEditorDocument,
+    openDefinition,
+    renameCachedEditorDocument,
+  } = useEditorCommands()
+  const resolveConflictEditorDocument = useConflictEditorResolution({
+    discardCachedEditorDocument,
+    forceReplaceCachedEditorDocument,
+    renameCachedEditorDocument,
+  })
   const selectedDiff = useMemo(
     () => parseDiffDocumentId(selectedFilePath),
     [selectedFilePath]
@@ -137,6 +164,7 @@ export function FileViewer({
             onEditorDirtyChange={setCachedEditorDocumentDirty}
             onEditorScrollPositionChange={setCachedEditorDocumentScrollPosition}
             onEditorStatusChange={setStatusBarState}
+            onEditorTextChange={resolveConflictEditorDocument}
             onOpenDefinition={openDefinition}
           />
         )
@@ -159,6 +187,7 @@ function FileViewerBody({
   onEditorDirtyChange,
   onEditorScrollPositionChange,
   onEditorStatusChange,
+  onEditorTextChange,
   onOpenDefinition,
 }: {
   cachedDocument: CachedEditorDocument | null
@@ -171,6 +200,7 @@ function FileViewerBody({
     scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
   ) => void
   onEditorStatusChange: (status: EditorStatusBarState | null) => void
+  onEditorTextChange?: (path: string, text: string) => void
   onOpenDefinition: (target: TypeScriptLspDefinitionTarget) => void | boolean
 }) {
   if (cachedDocument) {
@@ -182,6 +212,7 @@ function FileViewerBody({
         onDirtyChange={onEditorDirtyChange}
         onScrollPositionChange={onEditorScrollPositionChange}
         onStatusChange={onEditorStatusChange}
+        onTextChange={onEditorTextChange}
         onOpenDefinition={onOpenDefinition}
       />
     )
@@ -217,4 +248,136 @@ function documentWithScroll(
   if (scrollPosition === undefined) return document
 
   return { ...document, scrollPosition }
+}
+
+function useConflictEditorResolution({
+  discardCachedEditorDocument,
+  forceReplaceCachedEditorDocument,
+  renameCachedEditorDocument,
+}: {
+  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
+  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  renameCachedEditorDocument: (
+    from: string,
+    to: string
+  ) => { wasDirty: boolean }
+}) {
+  const conflictStore = useEditorConflictStoreApi()
+  const queryClient = useQueryClient()
+  const resolvingConflictIds = useRef(new Set<string>())
+
+  return useCallback(
+    (path: string, text: string) => {
+      const conflictDiff = parseConflictDiffDocumentId(path)
+      if (!conflictDiff) return
+      if (parseMergeConflicts(text).length > 0) return
+
+      const conflict =
+        conflictStore.getState().conflicts[conflictDiff.conflictId]
+      if (!conflict) return
+      if (resolvingConflictIds.current.has(conflict.id)) return
+
+      resolvingConflictIds.current.add(conflict.id)
+      void applyConflictEditorResolution(conflict, text, {
+        conflictStore,
+        discardCachedEditorDocument,
+        forceReplaceCachedEditorDocument,
+        queryClient,
+        renameCachedEditorDocument,
+      })
+        .catch((error: unknown) => {
+          reportError(toClientError(error))
+        })
+        .finally(() => {
+          resolvingConflictIds.current.delete(conflict.id)
+        })
+    },
+    [
+      conflictStore,
+      discardCachedEditorDocument,
+      forceReplaceCachedEditorDocument,
+      queryClient,
+      renameCachedEditorDocument,
+    ]
+  )
+}
+
+async function applyConflictEditorResolution(
+  conflict: FilesystemConflict,
+  resolvedText: string,
+  context: ConflictEditorResolutionContext
+) {
+  if (conflict.eventType === "deleted") {
+    await ensureFolderPath(parentPath(conflict.remotePath))
+    await createFileContent(conflict.remotePath, resolvedText)
+  } else {
+    await writeFileContent(
+      conflict.remotePath,
+      resolvedText,
+      conflict.remoteMtimeMs
+    )
+  }
+
+  const file = await fetchFile(conflict.remotePath, new AbortController().signal)
+  replaceResolvedConflictFile(conflict.localPath, file, context)
+  finishEditorResolvedConflict(conflict, context)
+}
+
+type ConflictEditorResolutionContext = {
+  conflictStore: ReturnType<typeof useEditorConflictStoreApi>
+  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
+  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  queryClient: ReturnType<typeof useQueryClient>
+  renameCachedEditorDocument: (
+    from: string,
+    to: string
+  ) => { wasDirty: boolean }
+}
+
+function replaceResolvedConflictFile(
+  localPath: string,
+  file: FileResult,
+  context: ConflictEditorResolutionContext
+) {
+  if (localPath !== file.path) {
+    context.renameCachedEditorDocument(localPath, file.path)
+    moveFileQueryData(context.queryClient, localPath, file.path)
+  }
+
+  context.queryClient.setQueryData(fileSystemKeys.file(file.path), file)
+  context.forceReplaceCachedEditorDocument(file)
+}
+
+function finishEditorResolvedConflict(
+  conflict: FilesystemConflict,
+  context: ConflictEditorResolutionContext
+) {
+  if (conflict.diffDocumentId) {
+    context.discardCachedEditorDocument(conflict.diffDocumentId)
+  }
+  if (conflict.toastId) toast.dismiss(conflict.toastId)
+
+  context.conflictStore.getState().removeConflict(conflict.id)
+}
+
+function moveFileQueryData(
+  queryClient: ReturnType<typeof useQueryClient>,
+  from: string,
+  to: string
+) {
+  const file = queryClient.getQueryData<FileResult>(fileSystemKeys.file(from))
+  queryClient.removeQueries({
+    exact: true,
+    queryKey: fileSystemKeys.file(from),
+  })
+  if (!file) return
+
+  queryClient.setQueryData(fileSystemKeys.file(to), { ...file, path: to })
+}
+
+function parentPath(path: string) {
+  const index = path.lastIndexOf("/")
+  if (index < 0) return ""
+
+  return path.slice(0, index)
 }
