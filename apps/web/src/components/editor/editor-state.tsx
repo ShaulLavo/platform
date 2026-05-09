@@ -1,4 +1,5 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import type { EditorDiffViewMode } from "@/components/editor/diff-view-mode"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import type { FileResult } from "@/lib/file-system-types"
 import type {
@@ -46,6 +47,7 @@ type EditorStoreActions = {
     to: string
   ) => { wasDirty: boolean }
   selectFile: (path: string | null) => void
+  setDiffViewMode: (mode: EditorDiffViewMode) => void
   setCachedEditorDocumentDirty: (path: string, dirty: boolean) => void
   setCachedEditorDocumentScrollPosition: (
     path: string,
@@ -80,6 +82,7 @@ export function createEditorStore(
     definitionTarget: null,
     dirtyFilePaths: new Set(),
     documentCacheVersion: 0,
+    diffViewMode: initialState.diffViewMode,
     fallbackDocumentPath: null,
     statusBarState: null,
     openFilePaths: initialState.openFilePaths,
@@ -140,6 +143,7 @@ export function createEditorStore(
           definitionTarget: null,
           dirtyFilePaths: new Set(),
           documentCacheVersion: state.documentCacheVersion + 1,
+          diffViewMode: state.diffViewMode,
           fallbackDocumentPath: null,
           statusBarState: null,
           openFilePaths: [],
@@ -304,6 +308,7 @@ export function createEditorStore(
 
         return { dirtyFilePaths }
       }),
+    setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
     setCachedEditorDocumentScrollPosition: (path, scrollPosition) => {
       const cached = documentCache.get(path)
       if (!cached) return

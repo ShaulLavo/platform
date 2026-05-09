@@ -178,6 +178,7 @@ export function Editor({
     document.text,
     definitionTarget
   )
+  const preparedCommitMessagePathRef = useRef<string | null>(null)
 
   useEditorStatusBarState({
     charCount: editorState?.length ?? document.text.length,
@@ -220,6 +221,20 @@ export function Editor({
 
     controller.commands.focus()
   }, [controller, editorFocusRequestId])
+
+  useEffect(() => {
+    if (!editorInstance) return
+    if (!isGitCommitMessagePath(cachedDocument.path)) {
+      preparedCommitMessagePathRef.current = null
+      return
+    }
+    if (preparedCommitMessagePathRef.current === cachedDocument.path) return
+
+    preparedCommitMessagePathRef.current = cachedDocument.path
+    const offset = rowStartOffset(cachedDocument.session.getText(), 1)
+    editorInstance.setSelection(offset, offset, offset)
+    editorInstance.focus()
+  }, [cachedDocument.path, cachedDocument.session, editorInstance])
 
   useEffect(() => {
     if (!editorInstance) return
@@ -283,6 +298,24 @@ function mergeClassName(current: string | undefined, next: string) {
   if (current.split(" ").includes(next)) return current
 
   return `${current} ${next}`
+}
+
+function isGitCommitMessagePath(path: string) {
+  return path.endsWith("/.git/COMMIT_EDITMSG") || path === ".git/COMMIT_EDITMSG"
+}
+
+function rowStartOffset(text: string, row: number) {
+  if (row <= 0) return 0
+
+  let offset = 0
+  for (let index = 0; index < row; index += 1) {
+    const nextLine = text.indexOf("\n", offset)
+    if (nextLine === -1) return text.length
+
+    offset = nextLine + 1
+  }
+
+  return offset
 }
 
 type ScrollPersistenceState = {

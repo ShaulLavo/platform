@@ -6,12 +6,14 @@ import type { PanelSection } from "./types"
 
 type StoreState = {
   commitMessage: string
+  panelOpen: boolean
   sectionOpen: Record<PanelSection, boolean>
 }
 
 type StoreActions = {
   resetCommitMessage: () => void
   setCommitMessage: (message: string) => void
+  setPanelOpen: (open: boolean) => void
   setSectionOpen: (section: PanelSection, open: boolean) => void
 }
 
@@ -33,12 +35,14 @@ export function useGitState<T>(selector: (state: GitStore) => T): T {
 export function createGitStore() {
   return createStore<GitStore>()((set) => ({
     commitMessage: "",
+    panelOpen: true,
     sectionOpen: {
       staged: true,
       worktree: true,
     },
     resetCommitMessage: () => set({ commitMessage: "" }),
     setCommitMessage: (commitMessage) => set({ commitMessage }),
+    setPanelOpen: (panelOpen) => set({ panelOpen }),
     setSectionOpen: (section, open) =>
       set((state) => ({
         sectionOpen: {

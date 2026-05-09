@@ -27,6 +27,7 @@ export function FileViewer({
   const documentCacheVersion = useEditorState(
     (state) => state.documentCacheVersion
   )
+  const diffViewMode = useEditorState((state) => state.diffViewMode)
   const ensureCachedEditorDocument = useEditorState(
     (state) => state.ensureCachedEditorDocument
   )
@@ -43,6 +44,7 @@ export function FileViewer({
   const setCachedEditorDocumentScrollPosition = useEditorState(
     (state) => state.setCachedEditorDocumentScrollPosition
   )
+  const setDiffViewMode = useEditorState((state) => state.setDiffViewMode)
   const setStatusBarState = useEditorState((state) => state.setStatusBarState)
   const openDefinition = useEditorState((state) => state.openDefinition)
   const selectedDiff = useMemo(
@@ -94,7 +96,10 @@ export function FileViewer({
 
   return (
     <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-      <EditorTabBar />
+      <EditorTabBar
+        diffViewMode={selectedDiff ? diffViewMode : null}
+        onDiffViewModeChange={setDiffViewMode}
+      />
       {selectedFilePath ? (
         selectedDiff ? (
           <GitDiffViewer
@@ -102,6 +107,7 @@ export function FileViewer({
             error={selectedDiffQuery.error}
             isError={selectedDiffQuery.isError}
             isPending={selectedDiffQuery.isPending}
+            mode={diffViewMode}
             path={selectedDiff.path}
           />
         ) : (

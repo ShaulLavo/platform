@@ -45,9 +45,60 @@ export type FileSystemServiceOptions = {
 }
 
 export const DEFAULT_TREE_CONCURRENCY = 32
-// Dev-only until chunked file reads land. Launch builds must lower this cap or
-// replace whole-file reads with metadata-first, chunked text loading.
-export const DEFAULT_MAX_TEXT_FILE_BYTES = 200 * 1024 * 1024
+
+/**
+ * Maximum bytes a single text file is permitted to occupy when loaded in full
+ * via {@link FileSystemService.read}.
+ *
+ * Unit: bytes. Value: 209_715_200 (200 MiB).
+ *
+ * Rationale: 200 MiB caps pathological whole-file loads without blocking
+ * typical source files; chunked reads are the long-term fix.
+ *
+ * Override mechanism: set the `MAX_TEXT_FILE_BYTES` environment variable to an
+ * integer in the inclusive range `[1, 2_147_483_647]` to raise or lower the
+ * cap at runtime (see {@link resolveMaxTextFileBytes}). Values that are not
+ * integers, are below 1, or exceed `2_147_483_647` are rejected; the server
+ * logs the rejection through its standard error reporting path and falls back
+ * to this default.
+ */
+export const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
+
+/** Inclusive upper bound for `MAX_TEXT_FILE_BYTES` (max signed 32-bit int). */
+const MAX_TEXT_FILE_BYTES_UPPER_BOUND = 2_147_483_647
+
+/**
+ * Resolve the effective maximum text-file size in bytes.
+ *
+ * Reads `env.MAX_TEXT_FILE_BYTES` and returns:
+ * - {@link DEFAULT_MAX_TEXT_FILE_BYTES} when the variable is unset.
+ * - the parsed integer when it parses as a base-10 integer in the inclusive
+ *   range `[1, 2_147_483_647]`.
+ * - {@link DEFAULT_MAX_TEXT_FILE_BYTES} otherwise, after reporting the
+ *   rejection via the server's standard error reporting path.
+ */
+export function resolveMaxTextFileBytes(
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  const raw = env.MAX_TEXT_FILE_BYTES
+  if (raw === undefined) return DEFAULT_MAX_TEXT_FILE_BYTES
+
+  const parsed = Number.parseInt(raw, 10)
+  if (
+    !Number.isInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_TEXT_FILE_BYTES_UPPER_BOUND
+  ) {
+    console.error(
+      `[fs] Ignoring invalid MAX_TEXT_FILE_BYTES=${JSON.stringify(raw)}: ` +
+        `expected integer in [1, ${MAX_TEXT_FILE_BYTES_UPPER_BOUND}]. ` +
+        `Falling back to DEFAULT_MAX_TEXT_FILE_BYTES=${DEFAULT_MAX_TEXT_FILE_BYTES}.`
+    )
+    return DEFAULT_MAX_TEXT_FILE_BYTES
+  }
+
+  return parsed
+}
 
 export class FileSystemService {
   readonly paths
@@ -71,7 +122,7 @@ export class FileSystemService {
     this.metadata = new FsMetadataStore()
     this.maxSearchContentBytes = options.maxSearchContentBytes ?? 1024 * 1024
     this.maxTextFileBytes =
-      options.maxTextFileBytes ?? DEFAULT_MAX_TEXT_FILE_BYTES
+      options.maxTextFileBytes ?? resolveMaxTextFileBytes()
     this.treeConcurrency = options.treeConcurrency ?? DEFAULT_TREE_CONCURRENCY
     this.changes = new FileChangeHub(this.paths, {
       enabled: options.watch ?? true,

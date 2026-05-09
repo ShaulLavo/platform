@@ -12,6 +12,7 @@ import {
   usePullRemoteMutation,
   usePushRemoteMutation,
 } from "../hooks"
+import { useGitState } from "../state"
 import type { RepositoryInfo } from "../types"
 import { aheadBehindLabel } from "../utils"
 import { ToolbarButton } from "./toolbar-button"
@@ -19,22 +20,33 @@ import { ToolbarButton } from "./toolbar-button"
 export function Header({
   repository,
   rootPath,
-  stagedCount,
 }: {
   repository: RepositoryInfo
   rootPath: string
-  stagedCount: number
 }) {
+  const open = useGitState((state) => state.panelOpen)
+  const setPanelOpen = useGitState((state) => state.setPanelOpen)
+
   return (
     <header className="flex h-9 shrink-0 items-center gap-1 border-b px-2">
-      <CaretDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <div className="flex min-w-0 flex-1 items-center gap-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex min-w-0 flex-1 items-center gap-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+        onClick={() => setPanelOpen(!open)}
+      >
+        <CaretDownIcon
+          className={[
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            open ? "" : "-rotate-90",
+          ].join(" ")}
+        />
         <span className="shrink-0 text-sm font-semibold">Changes</span>
         <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
           {aheadBehindLabel(repository)}
         </span>
-      </div>
-      <HeaderCommitButton rootPath={rootPath} stagedCount={stagedCount} />
+      </button>
+      <HeaderCommitButton rootPath={rootPath} />
       <FetchToolbarButton rootPath={rootPath} />
       <PullToolbarButton rootPath={rootPath} />
       <PushToolbarButton rootPath={rootPath} />
@@ -42,21 +54,11 @@ export function Header({
   )
 }
 
-function HeaderCommitButton({
-  rootPath,
-  stagedCount,
-}: {
-  rootPath: string
-  stagedCount: number
-}) {
-  const commit = useCommitAction(rootPath, stagedCount)
+function HeaderCommitButton({ rootPath }: { rootPath: string }) {
+  const commit = useCommitAction(rootPath)
 
   return (
-    <ToolbarButton
-      disabled={!commit.canSubmit || commit.isPending}
-      label="Commit"
-      onClick={commit.submit}
-    >
+    <ToolbarButton label="Commit" onClick={commit.submit}>
       <CheckIcon />
     </ToolbarButton>
   )

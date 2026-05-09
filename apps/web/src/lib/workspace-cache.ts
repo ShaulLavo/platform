@@ -1,4 +1,9 @@
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import {
+  DEFAULT_DIFF_VIEW_MODE,
+  isEditorDiffViewMode,
+  type EditorDiffViewMode,
+} from "@/components/editor/diff-view-mode"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 
 const CACHE_KEY = "platform.workspace-state.v1"
@@ -22,18 +27,21 @@ type WorkspaceCachePayload =
       version: 3
       workspacePanelTab: WorkspacePanelTab
     }
+  | WorkspaceCachePayloadV4
 
-type WorkspaceCachePayloadV3 = {
+type WorkspaceCachePayloadV4 = {
+  diffViewMode: EditorDiffViewMode
   openFilePaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
-  version: 3
+  version: 4
   workspacePanelTab: WorkspacePanelTab
 }
 
 export type WorkspacePanelTab = "files" | "git"
 
 export type CachedWorkspaceState = {
+  diffViewMode: EditorDiffViewMode
   openFilePaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
@@ -52,12 +60,14 @@ export function writeWorkspaceCache({
   rootFolder,
   selectedFilePath,
   workspacePanelTab,
+  diffViewMode,
 }: CachedWorkspaceState) {
   if (!canUseLocalStorage()) return
 
   try {
     const selectedPath = selectedPathForWorkspace(rootFolder, selectedFilePath)
-    const payload: WorkspaceCachePayloadV3 = {
+    const payload: WorkspaceCachePayloadV4 = {
+      diffViewMode,
       openFilePaths: openPathsForWorkspace(
         rootFolder,
         openFilePaths,
@@ -65,7 +75,7 @@ export function writeWorkspaceCache({
       ),
       rootFolder,
       selectedFilePath: selectedPath,
-      version: 3,
+      version: 4,
       workspacePanelTab,
     }
 
@@ -107,10 +117,13 @@ function isCachePayload(value: unknown): value is WorkspaceCachePayload {
   if (!("openFilePaths" in value)) return false
   if (!isStringArray(value.openFilePaths)) return false
   if (value.version === 2) return true
-  if (value.version !== 3) return false
   if (!("workspacePanelTab" in value)) return false
+  if (!isWorkspacePanelTab(value.workspacePanelTab)) return false
+  if (value.version === 3) return true
+  if (value.version !== 4) return false
+  if (!("diffViewMode" in value)) return false
 
-  return isWorkspacePanelTab(value.workspacePanelTab)
+  return isEditorDiffViewMode(value.diffViewMode)
 }
 
 function isOptionalPickedDirectory(
@@ -153,11 +166,13 @@ function workspaceStateFromPayload(
     payload.selectedFilePath
   )
   const payloadOpenPaths =
-    payload.version === 2 || payload.version === 3
-      ? payload.openFilePaths
-      : selectedFilePathForArray(selectedFilePath)
+    payload.version === 1
+      ? selectedFilePathForArray(selectedFilePath)
+      : payload.openFilePaths
 
   return {
+    diffViewMode:
+      payload.version === 4 ? payload.diffViewMode : DEFAULT_DIFF_VIEW_MODE,
     openFilePaths: openPathsForWorkspace(
       payload.rootFolder,
       payloadOpenPaths,
@@ -165,9 +180,16 @@ function workspaceStateFromPayload(
     ),
     rootFolder: payload.rootFolder,
     selectedFilePath,
-    workspacePanelTab:
-      payload.version === 3 ? payload.workspacePanelTab : "files",
+    workspacePanelTab: workspacePanelTabFromPayload(payload),
   }
+}
+
+function workspacePanelTabFromPayload(payload: WorkspaceCachePayload) {
+  if (payload.version === 3 || payload.version === 4) {
+    return payload.workspacePanelTab
+  }
+
+  return "files"
 }
 
 function selectedPathForWorkspace(
@@ -229,6 +251,7 @@ function selectedFilePathForArray(selectedFilePath: string | null) {
 
 function emptyWorkspaceState(): CachedWorkspaceState {
   return {
+    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     openFilePaths: [],
     rootFolder: null,
     selectedFilePath: null,

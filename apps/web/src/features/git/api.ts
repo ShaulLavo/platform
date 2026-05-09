@@ -1,6 +1,11 @@
 import { rpcErrorMessage } from "@/lib/file-server"
 import { fsClient } from "@/lib/fs-client"
-import type { BranchesResult, FileDiff, StatusResult } from "./types"
+import type {
+  BranchesResult,
+  CommitResult,
+  FileDiff,
+  StatusResult,
+} from "./types"
 
 export async function fetchStatus(path: string, signal?: AbortSignal) {
   const response = await fsClient.git.status.get({
@@ -85,7 +90,7 @@ export async function commitChanges(path: string, message: string) {
   const response = await fsClient.git.commit.post({ message, path })
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
-  return response.data as { output: string }
+  return response.data as CommitResult
 }
 
 export async function checkoutBranch(path: string, branch: string) {

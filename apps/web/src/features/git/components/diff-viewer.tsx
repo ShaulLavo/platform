@@ -3,6 +3,7 @@ import "@editor/diff/style.css"
 import { WarningCircleIcon } from "@phosphor-icons/react"
 import { useLayoutEffect, useMemo, useRef, type CSSProperties } from "react"
 
+import type { EditorDiffViewMode } from "@/components/editor/diff-view-mode"
 import { languageIdForFilePath } from "@/components/editor/file-path"
 import { useTheme } from "@/components/theme-provider"
 import { errorMessage } from "@/lib/file-server"
@@ -14,6 +15,7 @@ type GitDiffViewerProps = {
   error: unknown
   isError: boolean
   isPending: boolean
+  mode: EditorDiffViewMode
   path: string
 }
 
@@ -22,6 +24,7 @@ export function GitDiffViewer({
   error,
   isError,
   isPending,
+  mode,
   path,
 }: GitDiffViewerProps) {
   const diffFile = useMemo(() => (diff ? editorDiffFile(diff) : null), [diff])
@@ -46,10 +49,16 @@ export function GitDiffViewer({
     )
   }
 
-  return <EditorDiffView file={diffFile} />
+  return <EditorDiffView file={diffFile} mode={mode} />
 }
 
-function EditorDiffView({ file }: { file: DiffFile }) {
+function EditorDiffView({
+  file,
+  mode,
+}: {
+  file: DiffFile
+  mode: EditorDiffViewMode
+}) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<DiffView | null>(null)
   const { theme } = useTheme()
@@ -71,6 +80,10 @@ function EditorDiffView({ file }: { file: DiffFile }) {
       viewRef.current = null
     }
   }, [shikiTheme])
+
+  useLayoutEffect(() => {
+    viewRef.current?.setMode(mode)
+  }, [mode, shikiTheme])
 
   useLayoutEffect(() => {
     viewRef.current?.setFiles([file])

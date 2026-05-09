@@ -133,6 +133,18 @@
   ) !important;
 }
 
+.editor-diff-view .editor-virtualized::selection,
+.editor-diff-view .editor-virtualized-row::selection,
+.editor-diff-view .editor-virtualized-row-chunk::selection {
+  background: color-mix(in srgb, var(--editor-diff-modified) 42%, transparent);
+  color: inherit;
+}
+
+.editor-diff-view .editor-virtualized-row,
+.editor-diff-view .editor-virtualized-row-chunk {
+  user-select: text;
+}
+
 .editor-diff-row-addition {
   background: var(--editor-diff-added-bg);
 }

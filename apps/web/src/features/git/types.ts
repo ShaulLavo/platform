@@ -68,6 +68,18 @@ export type BranchesResult = {
   branches: Branch[]
 }
 
+export type CommitResult =
+  | {
+      kind: "committed"
+      output: string
+      repository: RepositoryInfo
+    }
+  | {
+      kind: "message-file"
+      path: string
+      repository: RepositoryInfo
+    }
+
 export type PanelSection = "staged" | "worktree"
 
 export type ChangeRow = {

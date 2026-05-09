@@ -63,6 +63,7 @@ describe("editor remote document cache updates", () => {
 function workspaceState(openFilePaths: string[], selectedFilePath: string) {
   return {
     openFilePaths,
+    diffViewMode: "split" as const,
     rootFolder: {
       birthtimeMs: 1,
       mtimeMs: 1,

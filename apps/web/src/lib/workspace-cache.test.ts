@@ -24,6 +24,7 @@ describe("workspace cache", () => {
     const diffPath = diffDocumentId("/repo/src/app.ts", false)
 
     writeWorkspaceCache({
+      diffViewMode: "stacked",
       openFilePaths: ["/repo/src/readme.md", diffPath],
       rootFolder,
       selectedFilePath: diffPath,
@@ -31,6 +32,7 @@ describe("workspace cache", () => {
     })
 
     expect(readWorkspaceCache()).toEqual({
+      diffViewMode: "stacked",
       openFilePaths: ["/repo/src/readme.md", diffPath],
       rootFolder,
       selectedFilePath: diffPath,
@@ -43,6 +45,7 @@ describe("workspace cache", () => {
     const diffPath = diffDocumentId("/other/src/app.ts", false)
 
     writeWorkspaceCache({
+      diffViewMode: "split",
       openFilePaths: [diffPath],
       rootFolder,
       selectedFilePath: diffPath,
@@ -50,6 +53,7 @@ describe("workspace cache", () => {
     })
 
     expect(readWorkspaceCache()).toEqual({
+      diffViewMode: "split",
       openFilePaths: [],
       rootFolder,
       selectedFilePath: null,

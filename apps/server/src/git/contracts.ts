@@ -29,7 +29,7 @@ export const gitApplyPatchBodySchema = v.object({
 
 export const gitCommitBodySchema = v.object({
   path: v.optional(pathSchema, ""),
-  message: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  message: v.string(),
 })
 
 export const gitCheckoutBodySchema = v.object({

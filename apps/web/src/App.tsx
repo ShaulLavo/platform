@@ -30,6 +30,7 @@ function AppContent() {
   const pickerOpen = useEditorState((state) => state.pickerOpen)
   const rootFolder = useEditorState((state) => state.rootFolder)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
+  const diffViewMode = useEditorState((state) => state.diffViewMode)
   const openFilePaths = useEditorState((state) => state.openFilePaths)
   const workspacePanelTab = useEditorState((state) => state.workspacePanelTab)
   const openPicker = useEditorState((state) => state.openPicker)
@@ -44,11 +45,18 @@ function AppContent() {
   useEffect(() => {
     writeWorkspaceCache({
       openFilePaths,
+      diffViewMode,
       rootFolder,
       selectedFilePath,
       workspacePanelTab,
     })
-  }, [openFilePaths, rootFolder, selectedFilePath, workspacePanelTab])
+  }, [
+    diffViewMode,
+    openFilePaths,
+    rootFolder,
+    selectedFilePath,
+    workspacePanelTab,
+  ])
 
   function handlePick(entry: PickedFsEntry) {
     resetFileLoad()

@@ -8,13 +8,11 @@ import { useCommitAction } from "../hooks"
 export function CommitControls({
   branch,
   rootPath,
-  stagedCount,
 }: {
   branch: string
   rootPath: string
-  stagedCount: number
 }) {
-  const commit = useCommitAction(rootPath, stagedCount)
+  const commit = useCommitAction(rootPath)
 
   function handleCommitKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (!event.metaKey && !event.ctrlKey) return
@@ -42,7 +40,6 @@ export function CommitControls({
       <div className="shrink-0 px-2 pt-3">
         <Button
           className="h-8 w-full text-sm"
-          disabled={!commit.canSubmit || commit.isPending}
           onClick={commit.submit}
           type="button"
           variant="default"

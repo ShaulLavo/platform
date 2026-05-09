@@ -1,4 +1,4 @@
-import { lstat, readFile } from "node:fs/promises"
+import { lstat, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { FsError } from "../fs/errors"
 import type { WorkspacePaths } from "../fs/path"
@@ -80,6 +80,18 @@ export type GitBranchesResult = {
   repository: GitRepositoryInfo | null
   branches: GitBranch[]
 }
+
+export type GitCommitResult =
+  | {
+      kind: "committed"
+      output: string
+      repository: GitRepositoryInfo
+    }
+  | {
+      kind: "message-file"
+      path: string
+      repository: GitRepositoryInfo
+    }
 
 type GitCommandResult = {
   stdout: string
@@ -217,12 +229,19 @@ export class GitService {
 
   async commit(body: GitCommitBody) {
     const repository = await this.requiredRepository(body.path)
+    const message = body.message.trim()
+    if (!message) return this.openCommitMessage(repository)
+
     const result = await this.git(repository.rootAbsolutePath, [
       "commit",
       "-m",
-      body.message,
+      message,
     ])
-    return { output: result.stdout.trim(), repository: repository.info }
+    return {
+      kind: "committed" as const,
+      output: result.stdout.trim(),
+      repository: repository.info,
+    }
   }
 
   async branches(input = ""): Promise<GitBranchesResult> {
@@ -423,6 +442,43 @@ export class GitService {
     }
   }
 
+  private async openCommitMessage(
+    repository: GitRepository
+  ): Promise<GitCommitResult> {
+    const target = await this.commitMessageTarget(repository)
+    const template = await this.commitMessageTemplate(repository)
+    await writeFile(target.absolutePath, template, "utf8")
+    return {
+      kind: "message-file",
+      path: target.path,
+      repository: repository.info,
+    }
+  }
+
+  private async commitMessageTarget(repository: GitRepository) {
+    const result = await this.git(repository.rootAbsolutePath, [
+      "rev-parse",
+      "--git-path",
+      "COMMIT_EDITMSG",
+    ])
+    const gitPath = result.stdout.trim()
+    const absolutePath = path.isAbsolute(gitPath)
+      ? gitPath
+      : path.resolve(repository.rootDisplayAbsolutePath, gitPath)
+    this.paths.assertInside(absolutePath)
+    return { absolutePath, path: this.paths.toRelative(absolutePath) }
+  }
+
+  private async commitMessageTemplate(repository: GitRepository) {
+    const result = await this.git(repository.rootAbsolutePath, [
+      "status",
+      "--short",
+      "--branch",
+      "--untracked-files=all",
+    ])
+    return commitMessageTemplate(result.stdout)
+  }
+
   private async git(
     cwd: string,
     args: readonly string[],
@@ -527,6 +583,150 @@ function applyBranchRecord(
   const match = /\+(\d+) -(\d+)/.exec(value)
   branch.ahead = Number(match?.[1] ?? 0)
   branch.behind = Number(match?.[2] ?? 0)
+}
+
+function commitMessageTemplate(statusOutput: string) {
+  const records = statusOutput.split(/\r?\n/).filter(Boolean)
+  const branch = records[0]?.startsWith("## ") ? records.shift() : undefined
+  const sections = commitStatusSections(records)
+  const lines = [
+    "",
+    "# Please enter the commit message for your changes. Lines starting",
+    "# with '#' will be ignored, and an empty message aborts the commit.",
+    "#",
+    ...commitBranchLines(branch),
+    "#",
+    ...commitSectionLines("Changes to be committed:", sections.staged),
+    ...commitSectionLines("Changes not staged for commit:", sections.unstaged),
+    ...commitSectionLines("Untracked files:", sections.untracked),
+  ]
+
+  return ensureTrailingNewline(lines.join("\n"))
+}
+
+function commitBranchLines(branchRecord: string | undefined) {
+  const branch = parseShortBranchRecord(branchRecord)
+  if (!branch) return ["# On branch HEAD"]
+
+  const lines = [`# On branch ${branch.name}`]
+  const upstreamLines = commitUpstreamLines(branch)
+  if (upstreamLines.length > 0) lines.push(...upstreamLines)
+  return lines
+}
+
+function commitUpstreamLines(branch: ShortBranch) {
+  if (!branch.upstream) return []
+  if (branch.ahead > 0 && branch.behind > 0) {
+    return [
+      `# Your branch and '${branch.upstream}' have diverged,`,
+      `# and have ${commitCount(branch.ahead)} and ${commitCount(branch.behind)} different commits each, respectively.`,
+    ]
+  }
+  if (branch.ahead > 0) {
+    return [
+      `# Your branch is ahead of '${branch.upstream}' by ${commitCount(branch.ahead)}.`,
+      '#   (use "git push" to publish your local commits)',
+    ]
+  }
+  if (branch.behind > 0) {
+    return [
+      `# Your branch is behind '${branch.upstream}' by ${commitCount(branch.behind)}.`,
+      '#   (use "git pull" to update your local branch)',
+    ]
+  }
+
+  return []
+}
+
+type ShortBranch = {
+  ahead: number
+  behind: number
+  name: string
+  upstream: string | null
+}
+
+function parseShortBranchRecord(
+  record: string | undefined
+): ShortBranch | null {
+  if (!record) return null
+
+  const text = record.slice(3)
+  const statusMatch = /\[(?<status>[^\]]+)\]$/.exec(text)
+  const withoutStatus = text.replace(/\s+\[[^\]]+\]$/, "")
+  const [namePart = withoutStatus, upstream = null] = withoutStatus.split("...")
+  const noCommitsPrefix = "No commits yet on "
+  const name = namePart.startsWith(noCommitsPrefix)
+    ? namePart.slice(noCommitsPrefix.length)
+    : namePart
+
+  return {
+    ahead: statusCount(statusMatch?.groups?.status, "ahead"),
+    behind: statusCount(statusMatch?.groups?.status, "behind"),
+    name,
+    upstream,
+  }
+}
+
+function statusCount(status: string | undefined, key: "ahead" | "behind") {
+  const match = new RegExp(`${key} (\\d+)`).exec(status ?? "")
+  return Number(match?.[1] ?? 0)
+}
+
+function commitStatusSections(records: readonly string[]) {
+  const sections = {
+    staged: [] as string[],
+    unstaged: [] as string[],
+    untracked: [] as string[],
+  }
+  for (const record of records) appendCommitStatusRecord(sections, record)
+  return sections
+}
+
+function appendCommitStatusRecord(
+  sections: {
+    staged: string[]
+    unstaged: string[]
+    untracked: string[]
+  },
+  record: string
+) {
+  const indexStatus = record[0] ?? " "
+  const worktreeStatus = record[1] ?? " "
+  const file = record.slice(3)
+  if (indexStatus === "?" && worktreeStatus === "?") {
+    sections.untracked.push(file)
+    return
+  }
+  if (indexStatus !== " ") {
+    sections.staged.push(commitStatusLine(indexStatus, file))
+  }
+  if (worktreeStatus !== " ") {
+    sections.unstaged.push(commitStatusLine(worktreeStatus, file))
+  }
+}
+
+function commitStatusLine(status: string, file: string) {
+  return `${commitStatusLabel(status)}:   ${file}`
+}
+
+function commitStatusLabel(status: string) {
+  if (status === "A") return "new file"
+  if (status === "D") return "deleted"
+  if (status === "R") return "renamed"
+  if (status === "C") return "copied"
+  if (status === "U") return "unmerged"
+
+  return "modified"
+}
+
+function commitSectionLines(title: string, files: readonly string[]) {
+  if (files.length === 0) return []
+
+  return ["#", `# ${title}`, ...files.map((file) => `#\t${file}`), "#"]
+}
+
+function commitCount(count: number) {
+  return `${count} ${count === 1 ? "commit" : "commits"}`
 }
 
 function parseStatus(output: string, rootPath: string): GitFileStatus[] {
