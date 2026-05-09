@@ -158,7 +158,10 @@ export class GitService {
       ...pathspecArgs(repository.pathspec),
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
-    const diffs = parseDiff(result.stdout, repository.rootPath, staged)
+    const diffs =
+      result.stdout || staged
+        ? parseDiff(result.stdout, repository.rootPath, staged)
+        : await this.untrackedDiffs(repository)
     return Promise.all(
       diffs.map((diff) => this.withDiffContent(repository, diff))
     )
@@ -379,6 +382,58 @@ export class GitService {
     ])
 
     return { ...diff, oldText, newText }
+  }
+
+  private async untrackedDiffs(
+    repository: GitRepository
+  ): Promise<GitFileDiff[]> {
+    if (!repository.pathspec) return []
+
+    const files = await this.untrackedFiles(repository)
+    const outputs = await Promise.all(
+      files.map((file) => this.noIndexDiff(repository, file))
+    )
+
+    return outputs.flatMap((output) =>
+      parseDiff(output, repository.rootPath, false)
+    )
+  }
+
+  private async untrackedFiles(repository: GitRepository) {
+    if (!repository.pathspec) return []
+
+    const result = await this.git(repository.rootAbsolutePath, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      repository.pathspec,
+    ])
+
+    return result.stdout.split("\0").filter(Boolean)
+  }
+
+  private async noIndexDiff(repository: GitRepository, pathspec: string) {
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      [
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--unified=3",
+        "--no-index",
+        "--",
+        "/dev/null",
+        pathspec,
+      ],
+      { allowFailure: true }
+    )
+    if (result.exitCode <= 1) return result.stdout
+
+    throw new FsError("GIT_COMMAND_FAILED", gitErrorMessage(result))
   }
 
   private async diffSideContent(

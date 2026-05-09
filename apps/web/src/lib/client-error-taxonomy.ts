@@ -7,34 +7,22 @@
  * always logs.
  *
  * Codebase-review-remediation spec: Requirements 7.1, 7.2, 7.3, 7.4, 7.6.
- *
- * TODO(spec:codebase-review-remediation task 3.1): `ErrorCategory` will move
- * to `@workspace/contracts` (shared with the server's FsError code table).
- * Once task 3.1 populates that package, replace the local declaration below
- * with `export type { ErrorCategory } from "@workspace/contracts"` and keep
- * the rest of this module unchanged.
  */
 
 import { toast } from "sonner"
+import type { ErrorCategory } from "@workspace/contracts"
 
 // ---------------------------------------------------------------------------
 // Category taxonomy
 // ---------------------------------------------------------------------------
 
 /**
- * The eight client-side error categories. Mirrors the server's FsError codes
- * through the mapping table in {@link toClientError}; the `unknown` category
- * is the catch-all per Req 7.3.
+ * Re-export {@link ErrorCategory} from `@workspace/contracts` so the client
+ * and server share a single source of truth for the eight category
+ * identifiers (Req 5.1, 7.1). The mapping from server `FsErrorCode` values
+ * to categories still lives in this module via {@link toClientError}.
  */
-export type ErrorCategory =
-  | "not_found"
-  | "permission_denied"
-  | "not_a_file"
-  | "not_a_directory"
-  | "too_large"
-  | "invalid_path"
-  | "io_error"
-  | "unknown"
+export type { ErrorCategory }
 
 export type ClientError = {
   readonly category: ErrorCategory

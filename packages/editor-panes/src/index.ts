@@ -403,6 +403,7 @@ function configureHandle(
   handle.element.setAttribute("role", "separator");
   handle.element.style.flexGrow = "0";
   handle.element.style.flexShrink = "0";
+  handle.element.style.position ||= "relative";
   handle.element.style.touchAction = "none";
   applyHandleOrientationStyle(handle.element, orientation, disabled);
   handle.element.tabIndex = disabled ? -1 : 0;

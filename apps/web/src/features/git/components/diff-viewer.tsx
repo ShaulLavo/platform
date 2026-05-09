@@ -3,8 +3,10 @@ import {
   annotateInlineChanges,
   type DiffFile,
   type DiffHunkLine,
+  type DiffSplitHandleContext,
 } from "@editor/diff"
 import "@editor/diff/style.css"
+import "./diff-viewer.css"
 import { WarningCircleIcon } from "@phosphor-icons/react"
 import { useLayoutEffect, useMemo, useRef, type CSSProperties } from "react"
 
@@ -34,9 +36,11 @@ export function GitDiffViewer({
 }: GitDiffViewerProps) {
   const diffFile = useMemo(() => (diff ? editorDiffFile(diff) : null), [diff])
 
-  if (isPending) {
-    return <DiffState message={`Loading diff for ${displayPath(path)}...`} />
+  if (diffFile?.hunks.length) {
+    return <EditorDiffView file={diffFile} mode={mode} />
   }
+
+  if (isPending) return null
 
   if (isError) {
     return (
@@ -48,13 +52,9 @@ export function GitDiffViewer({
     )
   }
 
-  if (!diffFile?.hunks.length) {
-    return (
-      <DiffState message={`No git diff available for ${displayPath(path)}.`} />
-    )
-  }
-
-  return <EditorDiffView file={diffFile} mode={mode} />
+  return (
+    <DiffState message={`No git diff available for ${displayPath(path)}.`} />
+  )
 }
 
 function EditorDiffView({
@@ -76,6 +76,9 @@ function EditorDiffView({
     const view = new DiffView(host, {
       mode: "split",
       showFileList: false,
+      splitPane: {
+        createHandle: createGitDiffSplitHandle,
+      },
       theme: shikiTheme,
     })
     viewRef.current = view
@@ -109,10 +112,23 @@ const diffViewStyle = {
   "--editor-gutter-background": "var(--background)",
   "--editor-gutter-foreground": "var(--muted-foreground)",
   "--editor-diff-background": "var(--background)",
+  "--editor-diff-border": "var(--border)",
   "--editor-diff-foreground": "var(--foreground)",
   "--editor-diff-gutter-background": "var(--background)",
   "--editor-diff-gutter-foreground": "var(--muted-foreground)",
 } as CSSProperties
+
+function createGitDiffSplitHandle({
+  document,
+}: DiffSplitHandleContext): HTMLElement {
+  const handle = document.createElement("div")
+  const line = document.createElement("span")
+  handle.className = "app-git-diff-split-handle"
+  line.className = "app-git-diff-split-handle-line"
+  line.setAttribute("aria-hidden", "true")
+  handle.appendChild(line)
+  return handle
+}
 
 function DiffState({
   detail,

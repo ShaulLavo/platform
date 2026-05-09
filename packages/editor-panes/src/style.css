@@ -32,12 +32,12 @@
 }
 
 .editor-resizable-pane-handle[aria-orientation="vertical"] {
-  cursor: col-resize;
+  cursor: ew-resize;
   width: 6px;
 }
 
 .editor-resizable-pane-handle[aria-orientation="horizontal"] {
-  cursor: row-resize;
+  cursor: ns-resize;
   height: 6px;
 }
 

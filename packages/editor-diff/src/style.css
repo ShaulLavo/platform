@@ -113,6 +113,7 @@
 .editor-diff-pane {
   background: var(--editor-diff-background, var(--editor-background, #1e1e1e));
   display: flex;
+  flex: 1 1 0;
   min-height: 0;
   min-width: 0;
 }

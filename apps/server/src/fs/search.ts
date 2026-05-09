@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
-import { lstat, readdir, readFile, stat } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { lstat, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
+import type { Readable } from 'node:stream'
 import { FsError, mapNodeError } from './errors'
 import {
 	assertExistingRealPathInside,
@@ -488,7 +490,7 @@ async function searchEntry(
 	if (!stats.isFile()) return
 	if (stats.size > options.maxContentBytes) return
 
-	await addContentMatch(absolutePath, relativePath, query, matches, options.limit)
+	await addContentMatch(absolutePath, relativePath, query, matches, options.limit, options.maxContentBytes)
 }
 
 function canSearchChildren(depth: number, maxDepth?: number) {
@@ -520,15 +522,153 @@ async function addContentMatch(
 	relativePath: string,
 	query: string,
 	matches: FindMatch[],
-	limit: number
+	limit: number,
+	maxContentBytes: number
 ) {
-	const content = await readFile(absolutePath, 'utf8').catch(() => null)
-	if (!content) return
+	const stream = createReadStream(absolutePath, {
+		highWaterMark: SEARCH_LINE_BUFFER_BYTES
+	})
+	let bytesRead = 0
+	let lineIndex = 0
 
-	const lines = content.split(/\r?\n/)
-	for (let index = 0; index < lines.length; index += 1) {
-		if (matches.length >= limit) return
-		addLineMatch(relativePath, lines[index] ?? '', index, query, matches)
+	try {
+		for await (const line of streamLines(stream, SEARCH_LINE_BUFFER_BYTES)) {
+			bytesRead += line.byteLength + line.terminatorLength
+			if (bytesRead > maxContentBytes) break
+
+			addLineMatch(relativePath, line.text, lineIndex, query, matches)
+			lineIndex += 1
+
+			if (matches.length >= limit) break
+		}
+	} catch (error) {
+		reportSearchContentError(relativePath, error)
+	} finally {
+		stream.destroy()
+	}
+}
+
+/**
+ * Reports I/O or decoding failures encountered during streaming content
+ * matching. Mirrors the behavior of the previous `readFile(...).catch(() =>
+ * null)` path: the file is silently skipped so the overall search continues,
+ * but the cause is surfaced through the server's standard error logger so
+ * operators can diagnose persistent failures.
+ */
+function reportSearchContentError(relativePath: string, error: unknown) {
+	const message = error instanceof Error ? error.message : String(error)
+	console.error(`[fs/search] skipped ${relativePath}: ${message}`)
+}
+
+type StreamedLine = {
+	text: string
+	byteLength: number
+	terminatorLength: number
+}
+
+const LINE_FEED = 0x0a
+const CARRIAGE_RETURN = 0x0d
+
+/**
+ * Streams UTF-8 lines from a byte-oriented readable stream while holding at
+ * most a single bounded buffer of `maxLineBytes` plus one incoming chunk in
+ * memory.
+ *
+ * Lines are split at LF (`\n`) boundaries; a preceding CR (`\r`) — whether in
+ * the same chunk or at the tail of the previous chunk — is treated as part of
+ * a CRLF terminator and stripped from the emitted `text`. The terminator
+ * length (1 for LF, 2 for CRLF, 0 for a trailing unterminated line or an
+ * over-long line segment) is reported so callers can track cumulative bytes
+ * consumed from the underlying stream.
+ *
+ * When a single logical line exceeds `maxLineBytes`, the full buffer is
+ * emitted with `terminatorLength: 0` and scanning continues for the
+ * remainder of the line. This keeps worst-case resident memory at one buffer
+ * regardless of input size while still allowing matches on byte positions
+ * that fall within the emitted segments.
+ *
+ * Invalid UTF-8 sequences decode to the Unicode replacement character via
+ * the default non-fatal `TextDecoder` policy, consistent with the
+ * previous `readFile(absolutePath, 'utf8')` behavior.
+ */
+async function* streamLines(
+	stream: Readable,
+	maxLineBytes: number
+): AsyncGenerator<StreamedLine> {
+	const decoder = new TextDecoder('utf-8')
+	let pending: Buffer = Buffer.alloc(0)
+
+	for await (const chunk of stream) {
+		let remaining = chunk as Buffer
+
+		while (remaining.length > 0) {
+			const lfIndex = remaining.indexOf(LINE_FEED)
+
+			if (lfIndex === -1) {
+				const room = maxLineBytes - pending.length
+
+				if (remaining.length <= room) {
+					pending =
+						pending.length === 0 ? remaining : Buffer.concat([pending, remaining])
+					break
+				}
+
+				if (room > 0) {
+					pending =
+						pending.length === 0
+							? remaining.subarray(0, room)
+							: Buffer.concat([pending, remaining.subarray(0, room)])
+				}
+
+				yield {
+					text: decoder.decode(pending),
+					byteLength: pending.length,
+					terminatorLength: 0
+				}
+				pending = Buffer.alloc(0)
+				remaining = remaining.subarray(room)
+				continue
+			}
+
+			const hasPendingCr =
+				lfIndex === 0 &&
+				pending.length > 0 &&
+				pending[pending.length - 1] === CARRIAGE_RETURN
+			const hasChunkCr =
+				lfIndex > 0 && remaining[lfIndex - 1] === CARRIAGE_RETURN
+
+			let lineBytes: Buffer
+			if (hasChunkCr) {
+				lineBytes =
+					pending.length === 0
+						? remaining.subarray(0, lfIndex - 1)
+						: Buffer.concat([pending, remaining.subarray(0, lfIndex - 1)])
+			} else if (hasPendingCr) {
+				lineBytes = pending.subarray(0, pending.length - 1)
+			} else {
+				lineBytes =
+					pending.length === 0
+						? remaining.subarray(0, lfIndex)
+						: Buffer.concat([pending, remaining.subarray(0, lfIndex)])
+			}
+
+			yield {
+				text: decoder.decode(lineBytes),
+				byteLength: lineBytes.length,
+				terminatorLength: hasChunkCr || hasPendingCr ? 2 : 1
+			}
+
+			pending = Buffer.alloc(0)
+			remaining = remaining.subarray(lfIndex + 1)
+		}
+	}
+
+	if (pending.length > 0) {
+		yield {
+			text: decoder.decode(pending),
+			byteLength: pending.length,
+			terminatorLength: 0
+		}
 	}
 }
 

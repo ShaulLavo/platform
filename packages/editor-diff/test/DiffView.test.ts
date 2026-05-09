@@ -11,12 +11,14 @@ describe("DiffView split panes", () => {
     const { container } = renderDiffView();
     const split = querySplit(container);
     const children = Array.from(split.children);
+    const handle = children[1] as HTMLElement | undefined;
 
     expect(children).toHaveLength(3);
     expect(children[0]?.classList.contains("editor-diff-pane-old")).toBe(true);
-    expect(children[1]?.matches("[data-editor-pane-handle]")).toBe(true);
-    expect(children[1]?.getAttribute("role")).toBe("separator");
+    expect(handle?.matches("[data-editor-pane-handle]")).toBe(true);
+    expect(handle?.getAttribute("role")).toBe("separator");
     expect(children[2]?.classList.contains("editor-diff-pane-new")).toBe(true);
+    expect(handle?.style.position).toBe("relative");
   });
 
   it("passes file-aware context to custom split handles", () => {

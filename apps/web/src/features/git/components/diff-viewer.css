@@ -1,0 +1,28 @@
+.editor-diff-split .app-git-diff-split-handle::before {
+  display: none;
+}
+
+.app-git-diff-split-handle-line {
+  background: var(--editor-diff-border);
+  display: block;
+  width: 1px;
+}
+
+.editor-diff-split
+  .app-git-diff-split-handle:is(
+    [data-editor-pane-handle-state="hover"],
+    [data-editor-pane-handle-state="focus"],
+    [data-editor-pane-handle-state="dragging"]
+  ) {
+  background: transparent;
+}
+
+.editor-diff-split
+  .app-git-diff-split-handle:is(
+    [data-editor-pane-handle-state="hover"],
+    [data-editor-pane-handle-state="focus"],
+    [data-editor-pane-handle-state="dragging"]
+  )
+  .app-git-diff-split-handle-line {
+  background: var(--editor-diff-modified);
+}

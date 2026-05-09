@@ -18,5 +18,24 @@ export default defineConfig([
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    rules: {
+      // Requirement 3.5: `isRecord` is owned by `@workspace/contracts` and must
+      // not be redefined locally. The canonical declaration lives in
+      // `packages/contracts/src/is-record.ts`; everything else must import it
+      // from `@workspace/contracts`.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'FunctionDeclaration[id.name="isRecord"]',
+          message:
+            'Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.',
+        },
+        {
+          selector: 'VariableDeclarator[id.name="isRecord"]',
+          message:
+            'Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.',
+        },
+      ],
+    },
   },
 ])

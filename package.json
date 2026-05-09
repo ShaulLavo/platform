@@ -8,6 +8,7 @@
     "lint": "turbo lint",
     "format": "turbo format",
     "typecheck": "turbo typecheck",
+    "test": "turbo test",
     "verify:spelling": "bash scripts/verify-no-refrences.sh"
   },
   "devDependencies": {

@@ -55,6 +55,24 @@ export function FileViewer({
     selectedDiff?.path ?? null,
     selectedDiff?.staged ?? false
   )
+  const selectedDiffEmpty =
+    Boolean(selectedDiff) &&
+    !selectedDiffQuery.isPending &&
+    !selectedDiffQuery.isError &&
+    selectedDiffQuery.data?.length === 0
+  const alternateDiffQuery = useFileDiff(
+    selectedDiff?.path ?? null,
+    !(selectedDiff?.staged ?? false),
+    { enabled: selectedDiffEmpty, keepPrevious: false }
+  )
+  const shouldShowAlternateDiff =
+    selectedDiffEmpty &&
+    (alternateDiffQuery.isPending ||
+      alternateDiffQuery.isError ||
+      Boolean(alternateDiffQuery.data?.length))
+  const visibleDiffQuery = shouldShowAlternateDiff
+    ? alternateDiffQuery
+    : selectedDiffQuery
   const selectedCachedDocument =
     selectedFilePath && documentCacheVersion >= 0
       ? getCachedEditorDocument(selectedFilePath)
@@ -99,10 +117,10 @@ export function FileViewer({
       {selectedFilePath ? (
         selectedDiff ? (
           <GitDiffViewer
-            diff={selectedDiffQuery.data?.[0] ?? null}
-            error={selectedDiffQuery.error}
-            isError={selectedDiffQuery.isError}
-            isPending={selectedDiffQuery.isPending}
+            diff={visibleDiffQuery.data?.[0] ?? null}
+            error={visibleDiffQuery.error}
+            isError={visibleDiffQuery.isError}
+            isPending={visibleDiffQuery.isPending}
             mode={diffViewMode}
             path={selectedDiff.path}
           />

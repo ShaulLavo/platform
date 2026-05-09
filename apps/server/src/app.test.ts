@@ -367,6 +367,11 @@ describe("git rpc", () => {
         headers: trustedOriginHeaders(),
       })
     )
+    const untrackedDiff = await app.handle(
+      new Request("http://local/git/diff?path=new.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
     const staged = await app.handle(
       new Request("http://local/git/stage", {
         body: JSON.stringify({ path: "tracked.txt" }),
@@ -395,6 +400,19 @@ describe("git rpc", () => {
               { oldLine: 1, text: "before", type: "deleted" },
               { newLine: 1, text: "after", type: "added" },
             ],
+          },
+        ],
+      },
+    ])
+    expect(untrackedDiff.status).toBe(200)
+    expect(await untrackedDiff.json()).toMatchObject([
+      {
+        oldFileMissing: true,
+        path: "new.txt",
+        staged: false,
+        hunks: [
+          {
+            changes: [{ newLine: 1, text: "new", type: "added" }],
           },
         ],
       },
