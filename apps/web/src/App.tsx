@@ -6,9 +6,9 @@ import {
   type PickedFsEntry,
 } from "@/components/file-picker-dialog"
 import {
-  useWorkspaceFocus,
   WorkspaceFocusProvider,
-} from "@/components/workspace/workspace-focus-state"
+} from "@/components/workspace/workspace-focus-provider"
+import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
