@@ -1,4 +1,3 @@
-import { useEditorState } from "@/components/editor/editor-state"
 import {
   colorForFileIcon,
   iconForEntry,
@@ -8,7 +7,7 @@ import { basename, toTreePath } from "@/lib/path-formatters"
 import { cn } from "@workspace/ui/lib/utils"
 import type { CSSProperties, KeyboardEvent } from "react"
 
-import { diffDocumentId } from "../diff-document"
+import { useOpenDiffDocument } from "../hooks"
 import type { ChangeRow } from "../types"
 import { parentPath, statusPresentation } from "../utils"
 import { FileActions } from "./file-actions"
@@ -20,7 +19,7 @@ export function FileRow({
   rootPath: string
   row: ChangeRow
 }) {
-  const selectFile = useEditorState((state) => state.selectFile)
+  const { openDiff } = useOpenDiffDocument()
   const relativePath = toTreePath(row.file.path, rootPath)
   const name = basename(relativePath)
   const directory = parentPath(relativePath)
@@ -28,7 +27,7 @@ export function FileRow({
   const status = statusPresentation(row.status)
 
   function handleOpen() {
-    selectFile(diffDocumentId(row.file.path, row.section === "staged"))
+    void openDiff(row)
   }
 
   function handleRowKeyDown(event: KeyboardEvent<HTMLDivElement>) {

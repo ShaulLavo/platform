@@ -1,4 +1,3 @@
-import { useEditorState } from "@/components/editor/editor-state"
 import {
   ArrowBendUpLeftIcon,
   FilePlusIcon,
@@ -7,10 +6,10 @@ import {
 } from "@phosphor-icons/react"
 import type { ReactNode } from "react"
 
-import { diffDocumentId } from "../diff-document"
 import {
   useDiscardPathsMutation,
   useDiscardStagedPathsMutation,
+  useOpenDiffDocument,
   useStagePathsMutation,
   useUnstagePathsMutation,
 } from "../hooks"
@@ -96,17 +95,13 @@ function StagedGroupActions({
 }
 
 function OpenAllDiffsButton({ rows }: { rows: readonly ChangeRow[] }) {
-  const selectFile = useEditorState((state) => state.selectFile)
+  const { openDiffs } = useOpenDiffDocument()
 
   return (
     <RowActionButton
       disabled={false}
       label="Open all diffs"
-      onClick={() => {
-        for (const row of rows) {
-          selectFile(diffDocumentId(row.file.path, row.section === "staged"))
-        }
-      }}
+      onClick={() => void openDiffs(rows)}
     >
       <FilePlusIcon />
     </RowActionButton>

@@ -49,6 +49,8 @@ export type FileDiff = {
   oldPath?: string
   oldFileMissing?: boolean
   newFileMissing?: boolean
+  oldObjectId?: string
+  newObjectId?: string
   oldText?: string
   newText?: string
   staged: boolean
@@ -81,6 +83,13 @@ export type CommitResult =
     }
 
 export type PanelSection = "staged" | "worktree"
+
+export type BlobDiffRequest = {
+  path: string
+  oldPath?: string
+  oldObjectId?: string
+  newObjectId?: string
+}
 
 export type ChangeRow = {
   file: FileStatus

@@ -1,10 +1,12 @@
-import { lstat, readFile, writeFile } from "node:fs/promises"
+import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import path from "node:path"
 import { FsError } from "../fs/errors"
 import type { WorkspacePaths } from "../fs/path"
 import { toPosix } from "../fs/path"
 import type {
   GitApplyPatchBody,
+  GitBlobDiffQuery,
   GitCheckoutBody,
   GitCommitBody,
   GitCreateBranchBody,
@@ -62,6 +64,8 @@ export type GitFileDiff = {
   oldPath?: string
   oldFileMissing?: boolean
   newFileMissing?: boolean
+  oldObjectId?: string
+  newObjectId?: string
   oldText?: string
   newText?: string
   staged: boolean
@@ -146,6 +150,7 @@ export class GitService {
     const repository = await this.resolveRepository(input)
     if (!repository) return []
 
+    const pathspecs = await this.diffPathspecArgs(repository, staged)
     const args = [
       "diff",
       "--no-color",
@@ -155,7 +160,7 @@ export class GitService {
       "--find-renames",
       "--unified=3",
       ...(staged ? ["--cached"] : []),
-      ...pathspecArgs(repository.pathspec),
+      ...pathspecs,
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
     const diffs =
@@ -165,6 +170,42 @@ export class GitService {
     return Promise.all(
       diffs.map((diff) => this.withDiffContent(repository, diff))
     )
+  }
+
+  async diffBlob(query: GitBlobDiffQuery): Promise<GitFileDiff[]> {
+    const repository = await this.requiredRepository(
+      query.path || query.oldPath || ""
+    )
+    const oldPath = query.oldPath ?? query.path
+    const [oldText, newText] = await Promise.all([
+      query.oldObjectId
+        ? this.gitObjectText(repository, query.oldObjectId)
+        : "",
+      query.newObjectId
+        ? this.gitObjectText(repository, query.newObjectId)
+        : "",
+    ])
+    const rawPatch = await this.textPatch(repository, {
+      newObjectId: query.newObjectId,
+      newText,
+      oldObjectId: query.oldObjectId,
+      oldText,
+    })
+    const patch = rewriteBlobPatchPaths(rawPatch, {
+      newObjectId: query.newObjectId,
+      oldObjectId: query.oldObjectId,
+      oldPath,
+      path: query.path,
+    })
+    const diffs = parseDiff(patch, repository.rootPath, false)
+
+    return diffs.map((diff) => ({
+      ...diff,
+      newObjectId: query.newObjectId,
+      newText,
+      oldObjectId: query.oldObjectId,
+      oldText,
+    }))
   }
 
   async file(input: string, ref: string) {
@@ -372,16 +413,59 @@ export class GitService {
     return parseRepositoryInfo(result.stdout, rootPath)
   }
 
+  private async diffPathspecArgs(
+    repository: GitRepository,
+    staged: boolean
+  ): Promise<string[]> {
+    if (!repository.pathspec) return []
+
+    const related = await this.relatedDiffPathspecs(repository, staged)
+    return ["--", ...related]
+  }
+
+  private async relatedDiffPathspecs(
+    repository: GitRepository,
+    staged: boolean
+  ) {
+    const pathspec = repository.pathspec
+    if (!pathspec) return []
+
+    const result = await this.git(repository.rootAbsolutePath, [
+      "status",
+      "--porcelain=v2",
+      "-z",
+      "--untracked-files=all",
+    ])
+    const files = parseStatus(result.stdout, repository.rootPath)
+    const matched = files.find((file) =>
+      statusMatchesPathspec(file, repository, staged)
+    )
+    if (!matched?.oldPath) return [pathspec]
+
+    return [
+      repositoryRelativePath(repository.rootPath, matched.oldPath),
+      repositoryRelativePath(repository.rootPath, matched.path),
+    ].filter((pathspec) => pathspec.length > 0)
+  }
+
   private async withDiffContent(
     repository: GitRepository,
     diff: GitFileDiff
   ): Promise<GitFileDiff> {
-    const [oldText, newText] = await Promise.all([
+    const [oldObjectId, newObjectId, oldText, newText] = await Promise.all([
+      this.diffSideObjectId(repository, diff, "old"),
+      this.diffSideObjectId(repository, diff, "new"),
       this.diffSideContent(repository, diff, "old"),
       this.diffSideContent(repository, diff, "new"),
     ])
 
-    return { ...diff, oldText, newText }
+    return {
+      ...diff,
+      newObjectId: newObjectId ?? undefined,
+      newText,
+      oldObjectId: oldObjectId ?? undefined,
+      oldText,
+    }
   }
 
   private async untrackedDiffs(
@@ -446,6 +530,16 @@ export class GitService {
     return this.newDiffContent(repository, diff)
   }
 
+  private async diffSideObjectId(
+    repository: GitRepository,
+    diff: GitFileDiff,
+    side: "old" | "new"
+  ) {
+    if (side === "old") return this.oldDiffObjectId(repository, diff)
+
+    return this.newDiffObjectId(repository, diff)
+  }
+
   private async oldDiffContent(repository: GitRepository, diff: GitFileDiff) {
     const path = repositoryRelativePath(
       repository.rootPath,
@@ -458,6 +552,18 @@ export class GitService {
     return this.gitText(repository, `:${path}`)
   }
 
+  private async oldDiffObjectId(repository: GitRepository, diff: GitFileDiff) {
+    const path = repositoryRelativePath(
+      repository.rootPath,
+      diff.oldPath ?? diff.path
+    )
+    if (!path) return null
+    if (diff.oldFileMissing) return null
+    if (diff.staged) return this.gitObjectId(repository, `HEAD:${path}`)
+
+    return this.gitObjectId(repository, `:${path}`)
+  }
+
   private async newDiffContent(repository: GitRepository, diff: GitFileDiff) {
     const path = repositoryRelativePath(repository.rootPath, diff.path)
     if (!path) return ""
@@ -465,6 +571,15 @@ export class GitService {
     if (diff.staged) return this.gitText(repository, `:${path}`)
 
     return this.workingTreeText(repository, path)
+  }
+
+  private async newDiffObjectId(repository: GitRepository, diff: GitFileDiff) {
+    const path = repositoryRelativePath(repository.rootPath, diff.path)
+    if (!path) return null
+    if (diff.newFileMissing) return null
+    if (diff.staged) return this.gitObjectId(repository, `:${path}`)
+
+    return this.writeWorkingTreeObject(repository, path)
   }
 
   private async gitText(repository: GitRepository, revisionPath: string) {
@@ -478,6 +593,92 @@ export class GitService {
     if (result.exitCode !== 0) return ""
 
     return result.stdout
+  }
+
+  private async gitObjectId(repository: GitRepository, revisionPath: string) {
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      ["rev-parse", revisionPath],
+      { allowFailure: true }
+    )
+    if (result.exitCode !== 0) return null
+
+    return result.stdout.trim() || null
+  }
+
+  private async gitObjectText(repository: GitRepository, objectId: string) {
+    const result = await this.git(repository.rootAbsolutePath, [
+      "cat-file",
+      "-p",
+      objectId,
+    ])
+    return result.stdout
+  }
+
+  private async writeWorkingTreeObject(
+    repository: GitRepository,
+    relativePath: string
+  ) {
+    const result = await this.git(repository.rootAbsolutePath, [
+      "hash-object",
+      "-w",
+      "--",
+      relativePath,
+    ])
+    return result.stdout.trim() || null
+  }
+
+  private async textPatch(
+    repository: GitRepository,
+    input: {
+      newObjectId?: string
+      newText: string
+      oldObjectId?: string
+      oldText: string
+    }
+  ) {
+    if (!input.oldObjectId && !input.newObjectId) return ""
+
+    const directory = await mkdtemp(path.join(tmpdir(), "platform-git-diff-"))
+
+    try {
+      return await this.temporaryFilePatch(repository, directory, input)
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  }
+
+  private async temporaryFilePatch(
+    repository: GitRepository,
+    directory: string,
+    input: {
+      newObjectId?: string
+      newText: string
+      oldObjectId?: string
+      oldText: string
+    }
+  ) {
+    const oldPath = path.join(directory, "old")
+    const newPath = path.join(directory, "new")
+    if (input.oldObjectId) await writeFile(oldPath, input.oldText, "utf8")
+    if (input.newObjectId) await writeFile(newPath, input.newText, "utf8")
+
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      [
+        "diff",
+        "--no-index",
+        "--no-color",
+        "--no-ext-diff",
+        "--unified=3",
+        input.oldObjectId ? oldPath : "/dev/null",
+        input.newObjectId ? newPath : "/dev/null",
+      ],
+      { allowFailure: true }
+    )
+    if (result.exitCode <= 1) return result.stdout
+
+    throw new FsError("GIT_COMMAND_FAILED", gitErrorMessage(result))
   }
 
   private async workingTreeText(
@@ -925,6 +1126,25 @@ function effectiveStatus(
   return "modified"
 }
 
+function statusMatchesPathspec(
+  file: GitFileStatus,
+  repository: GitRepository,
+  staged: boolean
+) {
+  const status = staged ? file.index : file.worktree
+  if (status === "unmodified") return false
+
+  const pathspec = repository.pathspec
+  if (!pathspec) return true
+
+  const path = repositoryRelativePath(repository.rootPath, file.path)
+  const oldPath = file.oldPath
+    ? repositoryRelativePath(repository.rootPath, file.oldPath)
+    : null
+
+  return path === pathspec || oldPath === pathspec
+}
+
 function parseDiff(output: string, rootPath: string, staged: boolean) {
   const diffs: MutableGitFileDiff[] = []
   let current: MutableGitFileDiff | null = null
@@ -1086,6 +1306,49 @@ function diffLineType(line: string): GitLineChange["type"] {
   if (line.startsWith("-")) return "deleted"
 
   return "context"
+}
+
+function rewriteBlobPatchPaths(
+  patch: string,
+  input: {
+    newObjectId?: string
+    oldObjectId?: string
+    oldPath: string
+    path: string
+  }
+) {
+  const oldPath = `a/${input.oldPath}`
+  const newPath = `b/${input.path}`
+  const lines = diffLines(patch).map((line) =>
+    rewriteBlobPatchLine(line, { ...input, newPath, oldPath })
+  )
+
+  if (lines.length === 0) return ""
+
+  return ensureTrailingNewline(lines.join("\n"))
+}
+
+function rewriteBlobPatchLine(
+  line: string,
+  input: {
+    newObjectId?: string
+    newPath: string
+    oldObjectId?: string
+    oldPath: string
+    path: string
+  }
+) {
+  if (line.startsWith("diff --git ")) {
+    return `diff --git ${input.oldPath} ${input.newPath}`
+  }
+  if (line.startsWith("--- ")) {
+    return input.oldObjectId ? `--- ${input.oldPath}` : "--- /dev/null"
+  }
+  if (line.startsWith("+++ ")) {
+    return input.newObjectId ? `+++ ${input.newPath}` : "+++ /dev/null"
+  }
+
+  return line
 }
 
 function diffGitPath(line: string) {

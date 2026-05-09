@@ -10,7 +10,7 @@ import type { EditorStatusBarState } from "@/components/editor/editor-status-bar
 import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
 import { GitDiffViewer } from "@/features/git/components/diff-viewer"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
-import { useFileDiff } from "@/features/git/hooks"
+import { useDiffDocumentDiff } from "@/features/git/hooks"
 import type { FileResult } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
@@ -51,28 +51,7 @@ export function FileViewer({
     [selectedFilePath]
   )
   const selectedFile = selectedDiff ? null : readyFile(fileState)
-  const selectedDiffQuery = useFileDiff(
-    selectedDiff?.path ?? null,
-    selectedDiff?.staged ?? false
-  )
-  const selectedDiffEmpty =
-    Boolean(selectedDiff) &&
-    !selectedDiffQuery.isPending &&
-    !selectedDiffQuery.isError &&
-    selectedDiffQuery.data?.length === 0
-  const alternateDiffQuery = useFileDiff(
-    selectedDiff?.path ?? null,
-    !(selectedDiff?.staged ?? false),
-    { enabled: selectedDiffEmpty, keepPrevious: false }
-  )
-  const shouldShowAlternateDiff =
-    selectedDiffEmpty &&
-    (alternateDiffQuery.isPending ||
-      alternateDiffQuery.isError ||
-      Boolean(alternateDiffQuery.data?.length))
-  const visibleDiffQuery = shouldShowAlternateDiff
-    ? alternateDiffQuery
-    : selectedDiffQuery
+  const selectedDiffQuery = useDiffDocumentDiff(selectedDiff)
   const selectedCachedDocument =
     selectedFilePath && documentCacheVersion >= 0
       ? getCachedEditorDocument(selectedFilePath)
@@ -117,10 +96,10 @@ export function FileViewer({
       {selectedFilePath ? (
         selectedDiff ? (
           <GitDiffViewer
-            diff={visibleDiffQuery.data?.[0] ?? null}
-            error={visibleDiffQuery.error}
-            isError={visibleDiffQuery.isError}
-            isPending={visibleDiffQuery.isPending}
+            diff={selectedDiffQuery.data?.[0] ?? null}
+            error={selectedDiffQuery.error}
+            isError={selectedDiffQuery.isError}
+            isPending={selectedDiffQuery.isPending}
             mode={diffViewMode}
             path={selectedDiff.path}
           />

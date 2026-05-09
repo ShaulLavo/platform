@@ -30,6 +30,12 @@ export const filePickerKeys = {
 export const gitKeys = {
   all: ["git"] as const,
   branches: (path: string) => [...gitKeys.all, "branches", path] as const,
+  blobDiff: (query: {
+    newObjectId?: string
+    oldObjectId?: string
+    oldPath?: string
+    path: string
+  }) => [...gitKeys.diffs(), "blob", query] as const,
   diffs: () => [...gitKeys.all, "diffs"] as const,
   diff: (path: string, staged: boolean) =>
     [...gitKeys.diffs(), path, staged] as const,

@@ -431,11 +431,195 @@ describe("git rpc", () => {
       })
     )
   })
+
+  it("renders staged blob snapshots after the index changes", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "tracked.txt"), "before\n")
+    await runGit(root, ["add", "tracked.txt"])
+    await runGit(root, ["commit", "-m", "initial"])
+    await writeFile(path.join(root, "tracked.txt"), "after\n")
+    await runGit(root, ["add", "tracked.txt"])
+    const app = testApp(root)
+
+    const live = await app.handle(
+      new Request("http://local/git/diff?path=tracked.txt&staged=true", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    expect(live.status).toBe(200)
+    const [snapshot] = (await live.json()) as GitDiffTestPayload
+    await runGit(root, ["restore", "--staged", "tracked.txt"])
+
+    const stale = await app.handle(
+      new Request(`http://local/git/diff/blob?${blobDiffParams(snapshot)}`, {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(stale.status).toBe(200)
+    expect(await stale.json()).toMatchObject([
+      {
+        newObjectId: snapshot.newObjectId,
+        oldObjectId: snapshot.oldObjectId,
+        path: "tracked.txt",
+        hunks: [
+          {
+            changes: [
+              { oldLine: 1, text: "before", type: "deleted" },
+              { newLine: 1, text: "after", type: "added" },
+            ],
+          },
+        ],
+      },
+    ])
+  })
+
+  it("renders unstaged blob snapshots after the worktree changes again", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "tracked.txt"), "before\n")
+    await runGit(root, ["add", "tracked.txt"])
+    await runGit(root, ["commit", "-m", "initial"])
+    await writeFile(path.join(root, "tracked.txt"), "after\n")
+    const app = testApp(root)
+
+    const live = await app.handle(
+      new Request("http://local/git/diff?path=tracked.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    expect(live.status).toBe(200)
+    const [snapshot] = (await live.json()) as GitDiffTestPayload
+    await writeFile(path.join(root, "tracked.txt"), "later\n")
+
+    const stale = await app.handle(
+      new Request(`http://local/git/diff/blob?${blobDiffParams(snapshot)}`, {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(stale.status).toBe(200)
+    expect(await stale.json()).toMatchObject([
+      {
+        path: "tracked.txt",
+        hunks: [
+          {
+            changes: [
+              { oldLine: 1, text: "before", type: "deleted" },
+              { newLine: 1, text: "after", type: "added" },
+            ],
+          },
+        ],
+      },
+    ])
+  })
+
+  it("renders untracked blob snapshots after the file is deleted", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "new.txt"), "new\n")
+    const app = testApp(root)
+
+    const live = await app.handle(
+      new Request("http://local/git/diff?path=new.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    expect(live.status).toBe(200)
+    const [snapshot] = (await live.json()) as GitDiffTestPayload
+    await rm(path.join(root, "new.txt"))
+
+    const stale = await app.handle(
+      new Request(`http://local/git/diff/blob?${blobDiffParams(snapshot)}`, {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(stale.status).toBe(200)
+    expect(await stale.json()).toMatchObject([
+      {
+        oldFileMissing: true,
+        path: "new.txt",
+        hunks: [
+          {
+            changes: [{ newLine: 1, text: "new", type: "added" }],
+          },
+        ],
+      },
+    ])
+  })
+
+  it("renders deletion and rename blob snapshots with stable paths", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "old.txt"), "one\ntwo\nthree\nfour\n")
+    await writeFile(path.join(root, "deleted.txt"), "gone\n")
+    await runGit(root, ["add", "old.txt"])
+    await runGit(root, ["add", "deleted.txt"])
+    await runGit(root, ["commit", "-m", "initial"])
+    await runGit(root, ["mv", "old.txt", "new.txt"])
+    await writeFile(path.join(root, "new.txt"), "one\nTWO\nthree\nfour\n")
+    await runGit(root, ["add", "new.txt"])
+    await rm(path.join(root, "deleted.txt"))
+    const app = testApp(root)
+
+    const rename = await app.handle(
+      new Request("http://local/git/diff?path=new.txt&staged=true", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const deletion = await app.handle(
+      new Request("http://local/git/diff?path=deleted.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const [renameSnapshot] = (await rename.json()) as GitDiffTestPayload
+    const [deletionSnapshot] = (await deletion.json()) as GitDiffTestPayload
+
+    const staleRename = await app.handle(
+      new Request(
+        `http://local/git/diff/blob?${blobDiffParams(renameSnapshot)}`,
+        { headers: trustedOriginHeaders() }
+      )
+    )
+    const staleDeletion = await app.handle(
+      new Request(
+        `http://local/git/diff/blob?${blobDiffParams(deletionSnapshot)}`,
+        { headers: trustedOriginHeaders() }
+      )
+    )
+
+    expect(staleRename.status).toBe(200)
+    expect(await staleRename.json()).toMatchObject([
+      { oldPath: "old.txt", path: "new.txt" },
+    ])
+    expect(staleDeletion.status).toBe(200)
+    expect(await staleDeletion.json()).toMatchObject([
+      { newFileMissing: true, path: "deleted.txt" },
+    ])
+  })
 })
 
 type GitStatusTestPayload = {
   repository: { branch: string | null; path: string } | null
   files: Array<Record<string, unknown>>
+}
+
+type GitDiffTestPayload = Array<{
+  newObjectId?: string
+  oldObjectId?: string
+  oldPath?: string
+  path: string
+}>
+
+function blobDiffParams(diff: GitDiffTestPayload[number]) {
+  const params = new URLSearchParams({ path: diff.path })
+  if (diff.oldPath) params.set("oldPath", diff.oldPath)
+  if (diff.oldObjectId) params.set("oldObjectId", diff.oldObjectId)
+  if (diff.newObjectId) params.set("newObjectId", diff.newObjectId)
+
+  return params
 }
 
 function testApp(

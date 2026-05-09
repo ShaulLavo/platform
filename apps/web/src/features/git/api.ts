@@ -2,6 +2,7 @@ import { rpcErrorMessage } from "@/lib/file-server"
 import { fsClient } from "@/lib/fs-client"
 import type {
   BranchesResult,
+  BlobDiffRequest,
   CommitResult,
   FileDiff,
   StatusResult,
@@ -25,6 +26,20 @@ export async function fetchDiff(
 ) {
   const response = await fsClient.git.diff.get({
     query: { path, staged },
+    fetch: { signal },
+  })
+
+  if (response.error) throw new Error(rpcErrorMessage(response.error))
+
+  return response.data as FileDiff[]
+}
+
+export async function fetchBlobDiff(
+  query: BlobDiffRequest,
+  signal?: AbortSignal
+) {
+  const response = await fsClient.git.diff.blob.get({
+    query,
     fetch: { signal },
   })
 

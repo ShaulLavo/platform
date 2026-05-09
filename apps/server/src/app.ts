@@ -17,6 +17,7 @@ import {
 } from "./fs/contracts"
 import {
   gitApplyPatchBodySchema,
+  gitBlobDiffQuerySchema,
   gitCheckoutBodySchema,
   gitCommitBodySchema,
   gitCreateBranchBodySchema,
@@ -91,6 +92,9 @@ export function createApp(options: AppOptions) {
         })
         .get("/status", ({ query }) => git.status(query.path), {
           query: gitPathQuerySchema,
+        })
+        .get("/diff/blob", ({ query }) => git.diffBlob(query), {
+          query: gitBlobDiffQuerySchema,
         })
         .get("/diff", ({ query }) => git.diff(query.path, query.staged), {
           query: gitDiffQuerySchema,

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
 import { diffDocumentId } from "@/features/git/diff-document"
+import type { FileDiff } from "@/features/git/types"
 import { readWorkspaceCache, writeWorkspaceCache } from "@/lib/workspace-cache"
 
 const STORE = new Map<string, string>()
@@ -21,7 +22,7 @@ describe("workspace cache", () => {
 
   it("persists git diff tabs when their backing file is in the workspace", () => {
     const rootFolder = pickedDirectory("/repo")
-    const diffPath = diffDocumentId("/repo/src/app.ts", false)
+    const diffPath = diffDocumentId(snapshotDiff("/repo/src/app.ts"))
 
     writeWorkspaceCache({
       diffViewMode: "stacked",
@@ -42,7 +43,7 @@ describe("workspace cache", () => {
 
   it("filters git diff tabs when their backing file is outside the workspace", () => {
     const rootFolder = pickedDirectory("/repo")
-    const diffPath = diffDocumentId("/other/src/app.ts", false)
+    const diffPath = diffDocumentId(snapshotDiff("/other/src/app.ts"))
 
     writeWorkspaceCache({
       diffViewMode: "split",
@@ -61,6 +62,17 @@ describe("workspace cache", () => {
     })
   })
 })
+
+function snapshotDiff(path: string): FileDiff {
+  return {
+    hunks: [],
+    newObjectId: "b".repeat(40),
+    oldObjectId: "a".repeat(40),
+    patch: "",
+    path,
+    staged: false,
+  }
+}
 
 function pickedDirectory(path: string): PickedFsEntry {
   return {
