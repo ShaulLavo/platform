@@ -66,6 +66,7 @@ export class TypeScriptLspSession {
   private diagnosticDelayMs: number
   private service: ts.LanguageService | null = null
   private serviceFailed = false
+  private serviceFailureMessage = "TypeScript language service unavailable"
   private projectVersion = 0
   private shutdown = false
 
@@ -225,8 +226,7 @@ export class TypeScriptLspSession {
     const document = this.documents.get(uri)
     this.documents.delete(uri)
     this.clearScheduledDiagnostics(uri)
-    if (document) this.bumpScriptVersion(document.fileName)
-    this.invalidateService()
+    if (document) this.invalidateForFile(uri, document.fileName)
     this.postDiagnostics(uri, document?.version ?? null, [])
   }
 
@@ -348,7 +348,9 @@ export class TypeScriptLspSession {
 
     const offset = lspPositionToOffset(text, request.position)
     const locations =
-      this.ensureService().findRenameLocations(fileName, offset, false, false, true) ?? []
+      this.ensureService().findRenameLocations(fileName, offset, false, false, {
+        providePrefixAndSuffixTextForRename: true,
+      }) ?? []
     return this.workspaceEditFromRenameLocations(locations, request.newName)
   }
 
@@ -380,11 +382,26 @@ export class TypeScriptLspSession {
 
   private ensureService(): ts.LanguageService {
     if (this.service) return this.service
+    if (this.serviceFailed) throw rpcError(INTERNAL_ERROR, this.serviceFailureMessage)
 
-    const config = this.projectConfig()
-    const host = this.languageServiceHost(config)
-    this.service = ts.createLanguageService(host, ts.createDocumentRegistry())
-    return this.service
+    const priorProjectVersion = this.projectVersion
+    try {
+      const config = this.projectConfig()
+      const host = this.languageServiceHost(config)
+      this.service = ts.createLanguageService(host, ts.createDocumentRegistry())
+      this.serviceFailed = false
+      return this.service
+    } catch (error) {
+      // Req 14.6: replacement service instantiation failed. Keep
+      // `service = null`, retain the prior `projectVersion`, and surface
+      // INTERNAL_ERROR for subsequent requests until another invalidation
+      // resets the failure flag.
+      this.service = null
+      this.projectVersion = priorProjectVersion
+      this.serviceFailed = true
+      this.serviceFailureMessage = errorMessage(error)
+      throw rpcError(INTERNAL_ERROR, this.serviceFailureMessage)
+    }
   }
 
   private projectConfig(): ProjectConfig {
@@ -586,12 +603,7 @@ export class TypeScriptLspSession {
     const openDocument = this.documentForFileName(normalized)
     if (openDocument) return String(openDocument.version)
 
-    const cached = this.scriptVersions.get(normalized)
-    if (cached !== undefined) return String(cached)
-
-    const version = fileMtimeVersion(normalized)
-    this.scriptVersions.set(normalized, version)
-    return String(version)
+    return this.scriptVersions.get(normalized)
   }
 
   private canReadFile(fileName: string): boolean {
@@ -794,20 +806,33 @@ export class TypeScriptLspSession {
     return relativePathToDocumentUri(relativePath)
   }
 
-  private bumpScriptVersion(fileName: string): void {
-    const current = this.scriptVersions.get(fileName) ?? fileMtimeVersion(fileName)
-    this.scriptVersions.set(fileName, current + 1)
-    this.projectVersion += 1
-  }
-
-  private invalidateService(): void {
-    this.projectVersion += 1
-    this.disposeService()
+  private invalidateForFile(uri: lsp.DocumentUri, fileName: string): void {
+    if (classifyInvalidation(uri) === "project-config-change") {
+      invalidateForProjectConfigChange(this.invalidationState)
+      return
+    }
+    invalidateForFileContentChange(this.invalidationState, fileName)
   }
 
   private disposeService(): void {
     this.service?.dispose()
     this.service = null
+  }
+
+  private createInvalidationState(): InvalidationState {
+    return {
+      bumpProjectVersion: () => {
+        this.projectVersion += 1
+      },
+      scriptVersions: this.scriptVersions,
+      getLanguageService: () => this.service,
+      setLanguageService: (service) => {
+        this.service = service
+        // Any invalidation call resets a prior failure so the next
+        // `ensureService()` attempt may try to rebuild (Req 14.6).
+        if (service === null) this.serviceFailed = false
+      },
+    }
   }
 
   private reportConfigDiagnostics(diagnostics: readonly ts.Diagnostic[]): void {
@@ -1255,19 +1280,6 @@ function typeScriptLibDirectory(): string {
 
 function isTypeScriptFileName(fileName: string): boolean {
   return TYPE_SCRIPT_EXTENSIONS.has(path.extname(fileName).toLowerCase())
-}
-
-function isProjectMetadataFile(fileName: string): boolean {
-  const name = path.basename(fileName)
-  return name === "tsconfig.json" || name === "package.json"
-}
-
-function fileMtimeVersion(fileName: string): number {
-  try {
-    return statSync(fileName).mtimeMs
-  } catch {
-    return 0
-  }
 }
 
 function parseIncomingMessage(data: string | ArrayBuffer | Uint8Array): unknown {

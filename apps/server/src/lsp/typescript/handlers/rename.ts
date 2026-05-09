@@ -6,21 +6,7 @@ import type * as lsp from "vscode-languageserver-protocol"
 
 import type { SessionContext } from "../shared/context"
 
-/**
- * Handle a `textDocument/rename` request.
- *
- * Asks the language service for every rename location touched by the symbol
- * under the cursor and projects the result into an LSP `WorkspaceEdit`.
- * Each location's `prefixText` and `suffixText` (used for things like
- * `{ foo: fooNewName }` shorthand-property expansion) are preserved so the
- * resulting edit matches the language-service output exactly.
- *
- * Returns `null` for malformed params, out-of-root URIs, or documents the
- * handler cannot read; returns a `WorkspaceEdit` with an empty `changes`
- * map when the language service finds no rename locations. Rename
- * locations that resolve outside the session root are skipped so we never
- * emit edits the client cannot apply.
- */
+
 export function handleRename(ctx: SessionContext, params: unknown): lsp.WorkspaceEdit | null {
   const request = renameParams(params)
   if (!request) return null
@@ -33,7 +19,11 @@ export function handleRename(ctx: SessionContext, params: unknown): lsp.Workspac
 
   const offset = lspPositionToOffset(text, request.position)
   const locations =
-    ctx.getLanguageService().findRenameLocations(fileName, offset, false, false, true) ?? []
+    ctx
+      .getLanguageService()
+      .findRenameLocations(fileName, offset, false, false, {
+        providePrefixAndSuffixTextForRename: true,
+      }) ?? []
   return workspaceEditFromRenameLocations(ctx, locations, request.newName)
 }
 
