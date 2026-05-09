@@ -17,20 +17,32 @@ const MAX_WORKSPACE_CONTEXT_BYTES = 1_500_000
 const MAX_WORKSPACE_CONTEXT_FILE_BYTES = 160_000
 
 const SOURCE_CONTEXT_EXTENSIONS = new Set([
+  ".babelrc",
   ".cjs",
+  ".commitlintrc",
   ".css",
   ".cts",
+  ".eslintrc",
+  ".hintrc",
   ".htm",
   ".html",
   ".js",
   ".json",
+  ".jsonc",
+  ".lintstagedrc",
+  ".lock",
   ".jsx",
   ".markdown",
   ".md",
   ".mjs",
   ".mts",
+  ".prettierrc",
+  ".releaserc",
+  ".stylelintrc",
+  ".swcrc",
   ".ts",
   ".tsx",
+  ".watchmanconfig",
 ])
 
 export function sourceContextCandidates(
