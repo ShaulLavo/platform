@@ -24,6 +24,7 @@ export function EditorTabBar() {
           const active = path === selectedFilePath
           const dirty = dirtyFilePaths.has(path)
           const name = basename(path)
+          const showCloseIcon = active && !dirty
 
           return (
             <div
@@ -50,21 +51,33 @@ export function EditorTabBar() {
                   weight="duotone"
                 />
                 <span className="truncate">{name}</span>
-                {dirty && (
-                  <span
-                    aria-hidden="true"
-                    className="size-1.5 shrink-0 rounded-full bg-amber-500"
-                  />
-                )}
               </button>
               <button
                 aria-label={`Close ${name}`}
-                className="mr-1 flex size-6 shrink-0 items-center justify-center text-muted-foreground opacity-70 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50 group-hover:opacity-100"
+                className={cn(
+                  "group/close relative mr-1 flex size-6 shrink-0 items-center justify-center text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
+                  showCloseIcon || dirty
+                    ? "opacity-100"
+                    : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                )}
                 onClick={() => closeTab(path)}
                 title={`Close ${name}`}
                 type="button"
               >
-                <XIcon className="size-3" />
+                <XIcon
+                  className={cn(
+                    "size-3 transition-opacity",
+                    showCloseIcon
+                      ? "opacity-70"
+                      : "opacity-0 group-hover:opacity-70 group-focus-visible/close:opacity-70"
+                  )}
+                />
+                {dirty && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute size-2 rounded-full bg-amber-500 transition-opacity group-hover:opacity-0 group-focus-visible/close:opacity-0"
+                  />
+                )}
               </button>
             </div>
           )
