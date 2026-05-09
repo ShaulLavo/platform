@@ -19,7 +19,8 @@ export type BlobFileResult = {
 
 export async function readTextFile(
   paths: WorkspacePaths,
-  input: string
+  input: string,
+  maxBytes: number
 ): Promise<ReadFileResult> {
   const target = paths.resolve(input)
 
@@ -27,6 +28,7 @@ export async function readTextFile(
     await assertExistingRealPathInside(paths, target.absolutePath)
     const stats = await stat(target.absolutePath)
     assertFile(stats)
+    if (stats.size > maxBytes) throw new FsError("FILE_TOO_LARGE")
 
     return {
       path: target.relativePath,

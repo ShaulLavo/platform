@@ -1795,7 +1795,9 @@ async function* streamFindEvents(
   mode: FilePickerMode,
   signal: AbortSignal
 ): AsyncGenerator<ParsedSseEvent> {
-  const response = await fetch(findEventsUrl(path, query, mode), { signal })
+  const response = await fetch(findEventsUrl(path, query, mode), {
+    signal,
+  })
   if (!response.ok)
     throw new Error(`Search failed with status ${response.status}`)
   if (!response.body) throw new Error("Search response did not include a body.")

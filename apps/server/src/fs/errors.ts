@@ -1,4 +1,6 @@
 export type FsErrorCode =
+	| 'UNAUTHORIZED'
+	| 'FORBIDDEN_ORIGIN'
 	| 'PATH_OUTSIDE_WORKSPACE'
 	| 'NOT_FOUND'
 	| 'ALREADY_EXISTS'
@@ -10,6 +12,8 @@ export type FsErrorCode =
 	| 'OPERATION_FAILED'
 
 const statusByCode: Record<FsErrorCode, number> = {
+	UNAUTHORIZED: 401,
+	FORBIDDEN_ORIGIN: 403,
 	PATH_OUTSIDE_WORKSPACE: 403,
 	NOT_FOUND: 404,
 	ALREADY_EXISTS: 409,
@@ -22,6 +26,8 @@ const statusByCode: Record<FsErrorCode, number> = {
 }
 
 const messageByCode: Record<FsErrorCode, string> = {
+	UNAUTHORIZED: 'request is not from a trusted local app origin',
+	FORBIDDEN_ORIGIN: 'origin is not allowed',
 	PATH_OUTSIDE_WORKSPACE: 'path is outside the workspace',
 	NOT_FOUND: 'file not found',
 	ALREADY_EXISTS: 'target already exists',

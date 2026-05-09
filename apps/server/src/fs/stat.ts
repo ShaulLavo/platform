@@ -16,17 +16,18 @@ export async function statPath(paths: WorkspacePaths, input: string): Promise<Fs
 	const target = paths.resolve(input)
 
 	try {
-		await assertExistingRealPathInside(paths, target.absolutePath)
-		const stats = await stat(target.absolutePath)
+		const displayStats = await lstat(target.absolutePath)
+		const stats = await targetStats(paths, target.absolutePath, displayStats)
 
 		return {
 			path: target.relativePath,
-			type: typeFromStats(stats),
-			size: stats.size,
-			mtimeMs: stats.mtimeMs,
-			birthtimeMs: stats.birthtimeMs
+			type: typeFromStats(displayStats),
+			size: Number(displayStats.size),
+			mtimeMs: Number(stats.mtimeMs),
+			birthtimeMs: Number(stats.birthtimeMs)
 		}
 	} catch (error) {
+		if (error instanceof FsError) throw error
 		throw mapNodeError(error)
 	}
 }
@@ -58,4 +59,15 @@ export function assertFile(stats: Awaited<ReturnType<typeof stat>>) {
 export function assertDirectory(stats: Awaited<ReturnType<typeof stat>>) {
 	if (stats.isDirectory()) return
 	throw new FsError('NOT_A_DIRECTORY')
+}
+
+async function targetStats(
+	paths: WorkspacePaths,
+	absolutePath: string,
+	displayStats: Awaited<ReturnType<typeof lstat>>
+) {
+	if (displayStats.isSymbolicLink()) return displayStats
+
+	await assertExistingRealPathInside(paths, absolutePath)
+	return stat(absolutePath)
 }

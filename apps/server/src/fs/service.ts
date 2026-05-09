@@ -37,7 +37,10 @@ export type FileSystemServiceOptions = {
   homeDirectory?: string
   watch?: boolean
   maxSearchContentBytes?: number
+  maxTextFileBytes?: number
 }
+
+export const DEFAULT_MAX_TEXT_FILE_BYTES = 200 * 1024 * 1024
 
 export class FileSystemService {
   readonly paths
@@ -45,6 +48,7 @@ export class FileSystemService {
   readonly homePath
   readonly metadata
   private readonly maxSearchContentBytes
+  private readonly maxTextFileBytes
 
   constructor(options: FileSystemServiceOptions = {}) {
     this.paths = createWorkspacePaths(options.workspaceRoot)
@@ -54,6 +58,8 @@ export class FileSystemService {
     )
     this.metadata = new FsMetadataStore()
     this.maxSearchContentBytes = options.maxSearchContentBytes ?? 1024 * 1024
+    // TODO(fs): stream large text files into a virtualized editor instead of rejecting them.
+    this.maxTextFileBytes = options.maxTextFileBytes ?? DEFAULT_MAX_TEXT_FILE_BYTES
     this.changes = new FileChangeHub(this.paths, {
       enabled: options.watch ?? false,
     })
@@ -76,7 +82,7 @@ export class FileSystemService {
   }
 
   read(path: string) {
-    return readTextFile(this.paths, path)
+    return readTextFile(this.paths, path, this.maxTextFileBytes)
   }
 
   blob(path: string) {

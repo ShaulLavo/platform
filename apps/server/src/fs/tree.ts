@@ -1,4 +1,4 @@
-import { readdir, stat } from 'node:fs/promises'
+import { lstat, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { FsError, mapNodeError } from './errors'
 import {
@@ -93,7 +93,7 @@ async function readEntry(
 	if (isIgnoredPath(relativePath, treeIgnoredNames)) return null
 
 	const absolutePath = path.join(absoluteDirectory, name)
-	const stats = await safeStatInside(paths, absolutePath)
+	const stats = await safeLstatInside(paths, absolutePath)
 	if (!stats) return null
 
 	const type = typeFromStats(stats)
@@ -113,8 +113,11 @@ async function readEntry(
 	return matchingEntry(entry, entryType)
 }
 
-async function safeStatInside(paths: WorkspacePaths, absolutePath: string) {
+async function safeLstatInside(paths: WorkspacePaths, absolutePath: string) {
 	try {
+		const stats = await lstat(absolutePath)
+		if (stats.isSymbolicLink()) return stats
+
 		await assertExistingRealPathInside(paths, absolutePath)
 		return await stat(absolutePath)
 	} catch {

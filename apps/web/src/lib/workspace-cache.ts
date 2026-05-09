@@ -84,16 +84,16 @@ function parseCachePayload(value: string | null): WorkspaceCachePayload | null {
 function isCachePayload(value: unknown): value is WorkspaceCachePayload {
   if (!value || typeof value !== "object") return false
   if (!("version" in value)) return false
-  if (value.version !== 1 && value.version !== 2) return false
   if (!("rootFolder" in value)) return false
   if (!("selectedFilePath" in value)) return false
-  if (value.version === 2 && !("openFilePaths" in value)) return false
+  if (!isOptionalPickedDirectory(value.rootFolder)) return false
+  if (!isOptionalString(value.selectedFilePath)) return false
 
-  return (
-    isOptionalPickedDirectory(value.rootFolder) &&
-    isOptionalString(value.selectedFilePath) &&
-    (value.version === 1 || isStringArray(value.openFilePaths))
-  )
+  if (value.version === 1) return true
+  if (value.version !== 2) return false
+  if (!("openFilePaths" in value)) return false
+
+  return isStringArray(value.openFilePaths)
 }
 
 function isOptionalPickedDirectory(

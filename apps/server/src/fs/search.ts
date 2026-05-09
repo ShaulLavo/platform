@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { lstat, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { FsError, mapNodeError } from './errors'
 import {
@@ -275,7 +275,7 @@ async function nameMatchFromPath(
 	entryType?: EntryTypeFilter
 ): Promise<FindMatch | null> {
 	const absolutePath = paths.resolve(relativePath).absolutePath
-	const stats = await safeStatInside(paths, absolutePath)
+	const stats = await safeLstatInside(paths, absolutePath)
 	if (!stats) return null
 
 	const type = typeFromStats(stats)
@@ -307,7 +307,7 @@ async function contentMatchFromRgEvent(
 ): Promise<FindMatch | null> {
 	const relativePath = rgRelativePath(paths, context, event.data.path.text)
 	const absolutePath = paths.resolve(relativePath).absolutePath
-	const stats = await safeStatInside(paths, absolutePath)
+	const stats = await safeContentStatInside(paths, absolutePath)
 	if (!stats) return null
 	if (!stats.isFile()) return null
 
@@ -453,7 +453,7 @@ async function searchEntry(
 	if (isIgnoredPath(relativePath)) return
 
 	const absolutePath = path.join(absoluteDirectory, name)
-	const stats = await safeStatInside(paths, absolutePath)
+	const stats = await safeLstatInside(paths, absolutePath)
 	if (!stats) return
 
 	const type = typeFromStats(stats)
@@ -533,7 +533,19 @@ function addLineMatch(
 	})
 }
 
-async function safeStatInside(paths: WorkspacePaths, absolutePath: string) {
+async function safeLstatInside(paths: WorkspacePaths, absolutePath: string) {
+	try {
+		const stats = await lstat(absolutePath)
+		if (stats.isSymbolicLink()) return stats
+
+		await assertExistingRealPathInside(paths, absolutePath)
+		return await stat(absolutePath)
+	} catch {
+		return null
+	}
+}
+
+async function safeContentStatInside(paths: WorkspacePaths, absolutePath: string) {
 	try {
 		await assertExistingRealPathInside(paths, absolutePath)
 		return await stat(absolutePath)

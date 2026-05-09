@@ -1,13 +1,19 @@
 import { TypeScriptLspSession } from "./session"
 import type { FileSystemService } from "../../fs/service"
+import { authenticateWebSocketData, type AuthConfig } from "../../auth"
 
-export function typeScriptLspRoutes(fs: FileSystemService) {
+export function typeScriptLspRoutes(fs: FileSystemService, auth: AuthConfig) {
   const sessions = new WeakMap<object, TypeScriptLspSession>()
 
   return {
     open(ws: unknown) {
       const socket = websocketObject(ws)
       if (!socket) return
+      const authError = authenticateWebSocketData(socket.data, auth)
+      if (authError) {
+        socket.close()
+        return
+      }
 
       const root = fs.paths.resolve(socket.root)
       const session = new TypeScriptLspSession({
@@ -39,6 +45,8 @@ export function typeScriptLspRoutes(fs: FileSystemService) {
 }
 
 type LspWebSocket = {
+  close(): unknown
+  data: unknown
   key: object
   root: string
   send(message: string): unknown
@@ -48,8 +56,11 @@ function websocketObject(value: unknown): LspWebSocket | null {
   if (!isRecord(value)) return null
   if (typeof value.send !== "function") return null
 
+  const close = value.close
   const send = value.send
   return {
+    close: () => typeof close === "function" ? close.call(value) : undefined,
+    data: value.data,
     key: websocketKey(value),
     root: rootFromWebSocketData(value.data),
     send: (message) => send.call(value, message),

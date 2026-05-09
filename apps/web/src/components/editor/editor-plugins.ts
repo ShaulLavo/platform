@@ -21,7 +21,7 @@ const FOLD_CHEVRON_PATH =
 
 export function createEditorPlugins(
   typeScriptLsp: TypeScriptLspPlugin,
-  shikiTheme: string
+  shikiTheme: string | (() => string)
 ): readonly EditorPlugin[] {
   return [
     javaScript({ jsx: true }),

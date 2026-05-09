@@ -20,7 +20,7 @@ import type {
 } from "@/components/editor/types"
 import { useEditorStatusBarState } from "@/components/editor/use-editor-status-bar-state"
 import { fsServerUrl } from "@/lib/fs-client"
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 
 type EditorProps = {
   file: EditorFile
@@ -29,6 +29,11 @@ type EditorProps = {
   definitionTarget?: TypeScriptLspDefinitionTarget | null
   onOpenDefinition?: (target: TypeScriptLspDefinitionTarget) => void | boolean
   onStatusChange?: (status: EditorStatusBarState) => void
+}
+
+const editorThemeRefreshByShikiTheme = {
+  "github-dark": {},
+  "github-light": {},
 }
 
 export function Editor({
@@ -42,25 +47,48 @@ export function Editor({
   const resolvedTheme = useResolvedTheme(theme)
   const shikiTheme =
     resolvedTheme === "dark" ? "github-dark" : "github-light"
+  const [shikiThemeSource] = useState(() =>
+    createShikiThemeSource(shikiTheme)
+  )
+  const shikiThemeResolver = useMemo(
+    () => shikiThemeSource.getTheme,
+    [shikiThemeSource]
+  )
+  const editorThemeRefresh = editorThemeRefreshByShikiTheme[shikiTheme]
   const [typeScriptStatus, setTypeScriptStatus] =
     useState<TypeScriptLspStatus>("idle")
   const [typeScriptDiagnostics, setTypeScriptDiagnostics] =
     useState<TypeScriptLspDiagnosticSummary | null>(null)
-  const typeScriptLsp = createTypeScriptLspPlugin({
-    rootUri: fileUriForPath(rootPath),
-    webSocketRoute: typeScriptLspRoute(rootPath),
-    onStatusChange: setTypeScriptStatus,
-    onDiagnostics: setTypeScriptDiagnostics,
-    onOpenDefinition,
-    onError: (error) => console.warn("[typescript-lsp]", error),
-  })
-  const plugins = createEditorPlugins(typeScriptLsp, shikiTheme)
-  const document = {
-    documentId: file.path,
-    languageId: languageIdForFilePath(file.path),
-    revision: file.mtimeMs,
-    text: file.content,
-  }
+  const typeScriptLsp = useMemo(
+    () =>
+      createTypeScriptLspPlugin({
+        rootUri: fileUriForPath(rootPath),
+        webSocketRoute: typeScriptLspRoute(rootPath),
+        onStatusChange: setTypeScriptStatus,
+        onDiagnostics: setTypeScriptDiagnostics,
+        onOpenDefinition,
+        onError: (error) => console.warn("[typescript-lsp]", error),
+      }),
+    [onOpenDefinition, rootPath]
+  )
+  const plugins = useMemo(
+    () => createEditorPlugins(typeScriptLsp, shikiThemeResolver),
+    [shikiThemeResolver, typeScriptLsp]
+  )
+  const document = useMemo(
+    () => ({
+      documentId: file.path,
+      languageId: languageIdForFilePath(file.path),
+      revision: file.mtimeMs,
+      text: file.content,
+    }),
+    [file.content, file.mtimeMs, file.path]
+  )
+
+  useLayoutEffect(() => {
+    shikiThemeSource.setTheme(shikiTheme)
+  }, [shikiTheme, shikiThemeSource])
+
   const controller = useEditor({
     cursorLineHighlight: {
       gutterNumber: true,
@@ -69,6 +97,7 @@ export function Editor({
     },
     document,
     plugins,
+    theme: editorThemeRefresh,
   })
   const editorState = controller.useState()
   const text = controller.useText()
@@ -95,12 +124,22 @@ export function Editor({
   return (
     <div className="flex h-full w-full min-w-0 flex-1 bg-background">
       <EditorHost
-        key={shikiTheme}
         className="app-editor-host"
         controller={controller}
       />
     </div>
   )
+}
+
+function createShikiThemeSource(initialTheme: string) {
+  let theme = initialTheme
+
+  return {
+    getTheme: () => theme,
+    setTheme: (nextTheme: string) => {
+      theme = nextTheme
+    },
+  }
 }
 
 function useResolvedTheme(theme: "dark" | "light" | "system") {

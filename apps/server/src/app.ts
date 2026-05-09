@@ -15,17 +15,33 @@ import {
 	writeBodySchema,
 	type WatchServerMessage
 } from './fs/contracts'
+import {
+	authGuard,
+	createAuthConfig,
+	isCorsOriginAllowed,
+	type AuthOptions
+} from './auth'
 import { errorPayload, FsError, isFsError } from './fs/errors'
 import { FileSystemService, type FileSystemServiceOptions } from './fs/service'
 import type { FindStreamEvent } from './fs/search'
 import { parseWatchInputs } from './fs/watch'
 import { typeScriptLspRoutes } from './lsp/typescript/routes'
 
-export function createApp(options: FileSystemServiceOptions = {}) {
+export type AppOptions = FileSystemServiceOptions & {
+	auth?: AuthOptions
+}
+
+export function createApp(options: AppOptions) {
 	const fs = new FileSystemService(options)
+	const auth = createAuthConfig(options.auth)
 
 	return new Elysia({ name: 'fs-rpc' })
-		.use(cors())
+		.use(cors({
+			allowedHeaders: ['authorization', 'content-type'],
+			exposeHeaders: ['content-length', 'content-type', 'x-fs-mtime-ms', 'x-fs-path'],
+			methods: ['GET', 'POST', 'OPTIONS'],
+			origin: request => isCorsOriginAllowed(auth, request.headers.get('origin'))
+		}))
 		.onError(({ code, error, set }) => {
 			if (isFsError(error)) {
 				set.status = error.statusCode
@@ -40,11 +56,12 @@ export function createApp(options: FileSystemServiceOptions = {}) {
 			set.status = 500
 			return errorPayload(new FsError('OPERATION_FAILED'))
 		})
+		.onBeforeHandle(authGuard(auth))
 		.get('/health', () => ({
 			ok: true,
 			...fs.info()
 		}))
-		.ws('/lsp/typescript', typeScriptLspRoutes(fs))
+		.ws('/lsp/typescript', typeScriptLspRoutes(fs, auth))
 		.group('/fs', app =>
 			app
 				.get('/stat', ({ query }) => fs.stat(query.path), {
