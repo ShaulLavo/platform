@@ -1,3 +1,6 @@
+import { getBuiltInFileIconColor } from "@pierre/trees"
+import type { FileTreeIconConfig, RemappedIcon } from "@pierre/trees"
+
 export type FileIconEntry = {
   name: string
   type: "file" | "directory" | "symlink" | "other"
@@ -113,6 +116,8 @@ export type ResolvedFileIcon = {
 }
 
 const ICON_BASE_PATH = "/vscode-icons"
+const TREE_ICON_SYMBOL_PREFIX = "app-vscode-icon-"
+const DEFAULT_FILE_ICON_TOKEN = "default"
 
 const VSCODE_ICON_RULES = {
   IconLayers3Middle: { stems: ["layers", "layer", "stack"] },
@@ -373,6 +378,25 @@ export function iconForEntry(
   return iconResult(iconNameForFile(entry.name))
 }
 
+export function fileTreeIconsForPaths(
+  paths: readonly string[]
+): FileTreeIconConfig {
+  return {
+    ...BASE_FILE_TREE_ICONS,
+    byFileName: {
+      ...BASE_FILE_TREE_ICONS.byFileName,
+      ...fileTreeFileNameIconsForPaths(paths),
+    },
+  }
+}
+
+export function colorForFileIcon(icon: ResolvedFileIcon) {
+  return (
+    getBuiltInFileIconColor(tokenForIconName(icon.name)) ??
+    getBuiltInFileIconColor(DEFAULT_FILE_ICON_TOKEN)
+  )
+}
+
 export function fileMatchesAccept(name: string, accept?: readonly string[]) {
   if (!accept || accept.length === 0) return true
 
@@ -457,8 +481,181 @@ function setIconMapValue(
 function iconResult(name: VscodeIconName): ResolvedFileIcon {
   return {
     name,
-    src: `${ICON_BASE_PATH}/${name}.svg`,
+    src: iconSrc(name),
   }
+}
+
+const ICON_TOKENS: Partial<Record<VscodeIconName, string>> = {
+  astro: "astro",
+  babel: "babel",
+  "bash-duo": "bash",
+  bash: "bash",
+  biome: "biome",
+  "bootstrap-duo": "bootstrap",
+  bootstrap: "bootstrap",
+  braces: "json",
+  "browserslist-duo": "browserslist",
+  "bun-duo": "bun",
+  bun: "bun",
+  claude: "claude",
+  css: "css",
+  docker: "docker",
+  eslint: "eslint",
+  "file-table-duo": "table",
+  "file-table": "table",
+  "file-text-duo": "text",
+  "file-text": "text",
+  "file-zip-duo": "zip",
+  "file-zip": "zip",
+  font: "default",
+  git: "git",
+  graphql: "graphql",
+  html: "html",
+  "image-duo": "image",
+  image: "image",
+  javascript: "javascript",
+  "lang-css-duo": "css",
+  "lang-css": "css",
+  "lang-go": "go",
+  "lang-html-duo": "html",
+  "lang-html": "html",
+  "lang-html5-duo": "html",
+  "lang-html5": "html",
+  "lang-javascript-duo": "javascript",
+  "lang-javascript": "javascript",
+  "lang-markdown": "markdown",
+  "lang-python": "python",
+  "lang-ruby": "ruby",
+  "lang-rust": "rust",
+  "lang-swift": "swift",
+  "lang-typescript-duo": "typescript",
+  "lang-typescript": "typescript",
+  markdown: "markdown",
+  mcp: "mcp",
+  nextjs: "default",
+  "npm-duo": "npm",
+  npm: "npm",
+  "oxc-fill": "oxc",
+  oxc: "oxc",
+  postcss: "postcss",
+  prettier: "prettier",
+  react: "react",
+  rss: "text",
+  sass: "sass",
+  stylelint: "default",
+  svelte: "svelte",
+  "svg-2": "svg",
+  svg: "svg",
+  svgo: "svgo",
+  tailwind: "tailwind",
+  terraform: "terraform",
+  typescript: "typescript",
+  vite: "vite",
+  vscode: "vscode",
+  vue: "vue",
+  "wasm-duo": "wasm",
+  wasm: "wasm",
+  webpack: "webpack",
+  yml: "yml",
+  zig: "zig",
+}
+
+const BASE_FILE_TREE_ICONS = {
+  set: "complete",
+  colored: true,
+  spriteSheet: vscodeIconSpriteSheet(),
+  remap: {
+    "file-tree-icon-file": treeIconReference("file-duo"),
+  },
+  byFileName: fileTreeFileNameIconRules(),
+  byFileExtension: fileTreeExtensionIconRules(),
+} satisfies FileTreeIconConfig
+
+function fileTreeFileNameIconsForPaths(paths: readonly string[]) {
+  const icons: Record<string, RemappedIcon> = {}
+
+  for (const path of paths) {
+    if (path.endsWith("/")) continue
+
+    const name = basenameForIconPath(path)
+    icons[normalizeName(name)] = treeIconReference(iconNameForFile(name))
+  }
+
+  return icons
+}
+
+function fileTreeFileNameIconRules() {
+  const icons: Record<string, RemappedIcon> = {}
+
+  for (const iconName of VSCODE_ICON_NAMES) {
+    const rule = ICON_RULES[iconName]
+    addFileTreeIconRules(icons, rule.filenames, iconName)
+    addFileTreeIconRules(icons, rule.stems, iconName)
+  }
+
+  return icons
+}
+
+function fileTreeExtensionIconRules() {
+  const icons: Record<string, RemappedIcon> = {}
+
+  for (const iconName of VSCODE_ICON_NAMES) {
+    const extensions = ICON_RULES[iconName].extensions ?? []
+    for (const extension of extensions) {
+      icons[extension.replace(/^\./u, "")] = treeIconReference(iconName)
+    }
+  }
+
+  return icons
+}
+
+function addFileTreeIconRules(
+  icons: Record<string, RemappedIcon>,
+  values: readonly string[] | undefined,
+  iconName: VscodeIconName
+) {
+  if (!values) return
+
+  for (const value of values) {
+    icons[normalizeRuleValue(value)] = treeIconReference(iconName)
+  }
+}
+
+function vscodeIconSpriteSheet() {
+  const symbols = VSCODE_ICON_NAMES.map(vscodeIconSymbol).join("")
+
+  return `<svg data-vscode-icon-sprite aria-hidden="true" width="0" height="0">${symbols}</svg>`
+}
+
+function vscodeIconSymbol(name: VscodeIconName) {
+  const symbolName = treeIconSymbolName(name)
+  const src = iconSrc(name)
+
+  return `<symbol id="${symbolName}" viewBox="0 0 16 16"><rect width="16" height="16" fill="currentColor" style="mask:url('${src}') center / contain no-repeat;-webkit-mask:url('${src}') center / contain no-repeat"/></symbol>`
+}
+
+function treeIconReference(name: VscodeIconName): RemappedIcon {
+  return {
+    name: treeIconSymbolName(name),
+    token: tokenForIconName(name),
+  } as RemappedIcon
+}
+
+function treeIconSymbolName(name: VscodeIconName) {
+  return `${TREE_ICON_SYMBOL_PREFIX}${name}`
+}
+
+function iconSrc(name: VscodeIconName) {
+  return `${ICON_BASE_PATH}/${name}.svg`
+}
+
+function basenameForIconPath(path: string) {
+  const parts = path.split("/").filter(Boolean)
+  return parts.at(-1) ?? path
+}
+
+function tokenForIconName(name: VscodeIconName) {
+  return ICON_TOKENS[name] ?? DEFAULT_FILE_ICON_TOKEN
 }
 
 function extensionCandidates(name: string) {

@@ -9,6 +9,7 @@ import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
 
 import { useEditorState } from "@/components/editor/editor-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+import { fileTreeIconsForPaths } from "@/lib/file-icons"
 import type { TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import { canonicalTreePath } from "@/lib/path-formatters"
@@ -22,6 +23,7 @@ import {
   useEffectEvent,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   type CSSProperties,
   type ReactNode,
@@ -42,6 +44,7 @@ export function TreePane({
   const selectFile = useEditorState((store) => store.selectFile)
   const setFocusArea = useWorkspaceFocus((store) => store.setFocusArea)
   const modelRef = useRef(model)
+  const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
     (currentTree: PierreFileTreeModel) => {
       loadExpandedDirectories(currentTree, model, onLoadDirectory)
@@ -54,6 +57,7 @@ export function TreePane({
   const { model: tree } = useFileTree({
     density: "compact",
     flattenEmptyDirectories: true,
+    icons,
     initialExpansion: "closed",
     initialSelectedPaths,
     paths: model.paths,
@@ -71,6 +75,10 @@ export function TreePane({
   useLayoutEffect(() => {
     modelRef.current = model
   }, [model])
+
+  useEffect(() => {
+    tree.setIcons(icons)
+  }, [icons, tree])
 
   useEffect(() => {
     tree.resetPaths(model.paths, {

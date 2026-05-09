@@ -1,12 +1,18 @@
 import { XIcon } from "@phosphor-icons/react"
+import { useLayoutEffect, useRef, type CSSProperties } from "react"
 
 import { useEditorState } from "@/components/editor/editor-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
-import { iconForEntry } from "@/lib/file-icons"
+import {
+  colorForFileIcon,
+  iconForEntry,
+  type ResolvedFileIcon,
+} from "@/lib/file-icons"
 import { basename, displayPath } from "@/lib/path-formatters"
 import { cn } from "@workspace/ui/lib/utils"
 
 export function EditorTabBar() {
+  const selectedTabRef = useRef<HTMLDivElement>(null)
   const dirtyFilePaths = useEditorState((state) => state.dirtyFilePaths)
   const openFilePaths = useEditorState((state) => state.openFilePaths)
   const selectedFilePath = useEditorState((state) => state.selectedFilePath)
@@ -15,6 +21,15 @@ export function EditorTabBar() {
   const requestEditorFocus = useWorkspaceFocus(
     (state) => state.requestEditorFocus
   )
+
+  useLayoutEffect(() => {
+    if (!selectedFilePath) return
+
+    selectedTabRef.current?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    })
+  }, [selectedFilePath])
 
   if (openFilePaths.length === 0) return null
 
@@ -45,6 +60,7 @@ export function EditorTabBar() {
                   "border-t-2 border-t-foreground bg-background text-foreground"
               )}
               key={path}
+              ref={active ? selectedTabRef : undefined}
             >
               <button
                 aria-selected={active}
@@ -57,12 +73,10 @@ export function EditorTabBar() {
                 title={displayPath(path)}
                 type="button"
               >
-                <img
-                  alt=""
+                <span
                   aria-hidden="true"
                   className="size-3.5 shrink-0 object-contain"
-                  draggable={false}
-                  src={icon.src}
+                  style={fileIconStyle(icon)}
                 />
                 <span className="truncate">{name}</span>
               </button>
@@ -99,4 +113,14 @@ export function EditorTabBar() {
       </div>
     </nav>
   )
+}
+
+function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
+  const mask = `url(${icon.src}) center / contain no-repeat`
+
+  return {
+    backgroundColor: colorForFileIcon(icon),
+    mask,
+    WebkitMask: mask,
+  }
 }
