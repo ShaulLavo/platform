@@ -305,8 +305,9 @@ function omitKey<T>(
 ): Readonly<Record<string, T>> {
   if (!(key in record)) return record
 
-  const { [key]: _removed, ...rest } = record
-  return rest
+  return Object.fromEntries(
+    Object.entries(record).filter(([entryKey]) => entryKey !== key)
+  ) as Readonly<Record<string, T>>
 }
 
 function moveValue<T>(

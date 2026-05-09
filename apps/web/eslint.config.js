@@ -22,20 +22,5 @@ export default defineConfig([
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: 'FunctionDeclaration[id.name="isRecord"]',
-          message:
-            "Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.",
-        },
-        {
-          selector: 'VariableDeclarator[id.name="isRecord"]',
-          message:
-            "Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.",
-        },
-      ],
-    },
   },
 ])

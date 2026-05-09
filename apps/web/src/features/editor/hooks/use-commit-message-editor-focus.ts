@@ -1,4 +1,3 @@
-import type { EditorInstance } from "@editor/core"
 import { useEffect, useRef } from "react"
 
 import type { CachedEditorDocument } from "@/features/editor/state/editor-document-state"
@@ -6,7 +5,12 @@ import { rowStartOffset } from "@/features/editor/utils/editor-position"
 
 type UseCommitMessageEditorFocusOptions = {
   document: CachedEditorDocument
-  editorInstance: EditorInstance | null
+  editorInstance: CommitMessageEditorInstance | null
+}
+
+type CommitMessageEditorInstance = {
+  focus(): void
+  setSelection(anchor: number, head: number, preferredColumn?: number): void
 }
 
 export function useCommitMessageEditorFocus({

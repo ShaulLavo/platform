@@ -12,7 +12,7 @@ import { useLayoutEffect, useMemo, useRef, type CSSProperties } from "react"
 
 import type { EditorDiffViewMode } from "@/features/editor/utils/diff-view-mode"
 import { languageIdForFilePath } from "@/features/editor/utils/file-path"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
 import { errorMessage } from "@/lib/file-server"
 import { displayPath } from "@/lib/path-formatters"
 import type { DiffHunk as GitDiffHunk, FileDiff, LineChange } from "../types"

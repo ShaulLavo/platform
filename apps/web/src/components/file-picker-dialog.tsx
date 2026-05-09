@@ -27,7 +27,6 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query"
-import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -57,6 +56,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type UIEvent,
 } from "react"
 
 type FsEntryType = "file" | "directory" | "symlink" | "other"
@@ -1071,13 +1071,12 @@ function FileList({
     [entries, isSearching]
   )
   const scrollParentRef = useRef<HTMLDivElement>(null)
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    estimateSize: (index) => estimatedFileListRowSize(rows[index]),
-    getItemKey: (index) => fileListRowKey(rows[index], index),
-    getScrollElement: () => scrollParentRef.current,
-    overscan: 12,
-  })
+  const [viewport, setViewport] = useState({ height: 480, top: 0 })
+  const rowMetrics = useMemo(() => fileListRowMetrics(rows), [rows])
+  const virtualRows = useMemo(
+    () => visibleFileListRows(rowMetrics, viewport),
+    [rowMetrics, viewport]
+  )
 
   if (loadState.status === "error") {
     return <ErrorState message={loadState.message} onRetry={onRetry} />
@@ -1087,16 +1086,20 @@ function FileList({
   }
 
   return (
-    <div ref={scrollParentRef} className="min-h-0 overflow-auto">
+    <div
+      ref={scrollParentRef}
+      className="min-h-0 overflow-auto"
+      onScroll={handleFileListScroll(setViewport)}
+    >
       <div
         aria-label={listLabel(mode)}
         className="relative p-1.5 outline-none"
         onKeyDown={onKeyDown}
         role="listbox"
-        style={{ height: rowVirtualizer.getTotalSize() }}
+        style={{ height: rowMetrics.totalSize }}
         tabIndex={0}
       >
-        {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+        {virtualRows.map((virtualRow) => (
           <FileListVirtualRow
             key={virtualRow.key}
             accept={accept}
@@ -1127,6 +1130,18 @@ type FileListRow =
       showPath: boolean
     }
 
+type FileListVirtualItem = {
+  index: number
+  key: string
+  size: number
+  start: number
+}
+
+type FileListRowMetrics = {
+  items: readonly FileListVirtualItem[]
+  totalSize: number
+}
+
 function FileListVirtualRow({
   accept,
   iconMode,
@@ -1144,7 +1159,7 @@ function FileListVirtualRow({
   onSelect: (entry: FsEntry) => void
   row: FileListRow | undefined
   selectedPath: string | null
-  virtualRow: VirtualItem
+  virtualRow: FileListVirtualItem
 }) {
   if (!row) return null
 
@@ -1210,6 +1225,50 @@ function estimatedFileListRowSize(row: FileListRow | undefined) {
 
 function fileListRowKey(row: FileListRow | undefined, index: number) {
   return row?.key ?? `missing:${index}`
+}
+
+function fileListRowMetrics(rows: readonly FileListRow[]): FileListRowMetrics {
+  const items: FileListVirtualItem[] = []
+  let totalSize = 0
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const size = estimatedFileListRowSize(rows[index])
+    items.push({
+      index,
+      key: fileListRowKey(rows[index], index),
+      size,
+      start: totalSize,
+    })
+    totalSize += size
+  }
+
+  return { items, totalSize }
+}
+
+function visibleFileListRows(
+  metrics: FileListRowMetrics,
+  viewport: { height: number; top: number }
+) {
+  const overscan = 12
+  const start = Math.max(0, viewport.top - viewport.height)
+  const end = viewport.top + viewport.height * 2
+  const visible = metrics.items.filter(
+    (item) => item.start + item.size >= start && item.start <= end
+  )
+  if (visible.length > 0) return visible
+
+  return metrics.items.slice(0, overscan)
+}
+
+function handleFileListScroll(
+  setViewport: (viewport: { height: number; top: number }) => void
+) {
+  return (event: UIEvent<HTMLDivElement>) => {
+    setViewport({
+      height: event.currentTarget.clientHeight,
+      top: event.currentTarget.scrollTop,
+    })
+  }
 }
 
 function hasSearchScope(entry: FsEntry) {

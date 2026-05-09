@@ -3,12 +3,12 @@ import type { ReactNode } from "react"
 
 export function ToolbarButton({
   children,
-  disabled,
+  disabled = false,
   label,
   onClick,
 }: {
   children: ReactNode
-  disabled: boolean
+  disabled?: boolean
   label: string
   onClick?: () => void
 }) {

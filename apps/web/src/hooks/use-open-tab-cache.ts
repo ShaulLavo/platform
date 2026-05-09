@@ -85,5 +85,7 @@ async function cacheOpenFileTab(
     if (getCachedEditorDocument(path)) return
 
     ensureCachedEditorDocument(file)
-  } catch {}
+  } catch {
+    // Background tab warming should not interrupt the active editor.
+  }
 }

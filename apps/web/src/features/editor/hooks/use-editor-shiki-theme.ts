@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
 
 const editorThemeRefreshByShikiTheme = {
   "github-dark": {},
