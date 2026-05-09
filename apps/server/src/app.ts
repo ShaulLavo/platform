@@ -23,6 +23,7 @@ import {
   gitCreateBranchBodySchema,
   gitDiffQuerySchema,
   gitFileQuerySchema,
+  gitPathBodySchema,
   gitPathQuerySchema,
   gitPathsBodySchema,
 } from "./git/contracts"
@@ -126,13 +127,13 @@ export function createApp(options: AppOptions) {
           body: gitCreateBranchBodySchema,
         })
         .post("/fetch", ({ body }) => git.fetch(body.path), {
-          body: gitPathQuerySchema,
+          body: gitPathBodySchema,
         })
         .post("/pull", ({ body }) => git.pull(body.path), {
-          body: gitPathQuerySchema,
+          body: gitPathBodySchema,
         })
         .post("/push", ({ body }) => git.push(body.path), {
-          body: gitPathQuerySchema,
+          body: gitPathBodySchema,
         })
     )
     .group("/fs", (app) =>

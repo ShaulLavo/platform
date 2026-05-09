@@ -60,7 +60,7 @@ export async function fetchBranches(path: string, signal?: AbortSignal) {
 }
 
 export async function stagePath(path: string) {
-  const response = await fsClient.git.stage.post({ path })
+  const response = await fsClient.git.stage.post({ paths: [path] })
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
   return response.data as StatusResult
@@ -74,7 +74,7 @@ export async function stagePaths(paths: readonly string[]) {
 }
 
 export async function unstagePath(path: string) {
-  const response = await fsClient.git.unstage.post({ path })
+  const response = await fsClient.git.unstage.post({ paths: [path] })
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
   return response.data as StatusResult
@@ -88,7 +88,7 @@ export async function unstagePaths(paths: readonly string[]) {
 }
 
 export async function discardPath(path: string) {
-  const response = await fsClient.git.discard.post({ path })
+  const response = await fsClient.git.discard.post({ paths: [path] })
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
   return response.data as StatusResult

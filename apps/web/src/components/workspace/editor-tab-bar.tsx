@@ -17,7 +17,13 @@ import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from "@/features/editor/utils/diff-view-mode"
+import {
+  conflictDiffDocumentLabel,
+  conflictDiffDocumentTitle,
+  parseConflictDiffDocumentId,
+} from "@/features/editor/conflict-diff-document"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import { useEditorConflictState } from "@/features/editor/state/editor-conflict-state"
 import { useEditorDocumentState } from "@/features/editor/state/editor-document-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
@@ -74,6 +80,7 @@ export function EditorTabBar({
     (state) => state.selectedFilePath
   )
   const selectedDiff = parseDiffDocumentId(selectedFilePath)
+  const conflicts = useEditorConflictState((state) => state.conflicts)
   const { closeTab, selectFile } = useEditorCommands()
   const requestEditorFocus = useWorkspaceFocus(
     (state) => state.requestEditorFocus
@@ -108,8 +115,11 @@ export function EditorTabBar({
           {openFilePaths.map((path) => {
             const active = path === selectedFilePath
             const dirty = dirtyFilePaths.has(path)
-            const name = tabName(path)
-            const icon = iconForEntry({ name: iconName(path), type: "file" })
+            const name = tabName(path, conflicts)
+            const icon = iconForEntry({
+              name: iconName(path, conflicts),
+              type: "file",
+            })
             const showCloseIcon = active && !dirty
             const diffStatus = tabDiffStatus(path, gitFiles, rootPath)
             const diffHash = diffDocumentShortHash(path)
@@ -134,7 +144,7 @@ export function EditorTabBar({
                   )}
                   onClick={() => handleSelectTab(path)}
                   role="tab"
-                  title={tabTitle(path)}
+                  title={tabTitle(path, conflicts)}
                   type="button"
                 >
                   <span
@@ -223,7 +233,10 @@ function DiffTabActions({
         direction="previous"
         onRevealChange={onRevealPreviousChange}
       />
-      <RevealChangeButton direction="next" onRevealChange={onRevealNextChange} />
+      <RevealChangeButton
+        direction="next"
+        onRevealChange={onRevealNextChange}
+      />
       <OpenOriginalFileButton path={diffPath} onOpenFile={onOpenFile} />
       <DiffViewModeToggle mode={mode} onModeChange={onModeChange} />
     </div>
@@ -336,21 +349,39 @@ function DiffViewModeToggleIcon({ mode }: { mode: EditorDiffViewMode }) {
   return <ColumnsIcon className="size-3.5" />
 }
 
-function iconName(path: string) {
+function iconName(
+  path: string,
+  conflicts: Readonly<Record<string, { remotePath: string }>>
+) {
   const diff = parseDiffDocumentId(path)
   if (diff) return basename(diff.path)
+  const conflict = conflictForDocument(path, conflicts)
+  if (conflict) return basename(conflict.remotePath)
+  if (parseConflictDiffDocumentId(path)) return "conflict.txt"
 
   return basename(path)
 }
 
-function tabName(path: string) {
+function tabName(
+  path: string,
+  conflicts: Readonly<Record<string, { remotePath: string }>>
+) {
   if (parseDiffDocumentId(path)) return diffDocumentLabel(path)
+  const conflict = conflictForDocument(path, conflicts)
+  if (conflict) return conflictDiffDocumentLabel(conflict.remotePath)
+  if (parseConflictDiffDocumentId(path)) return "Conflict"
 
   return basename(path)
 }
 
-function tabTitle(path: string) {
+function tabTitle(
+  path: string,
+  conflicts: Readonly<Record<string, { remotePath: string }>>
+) {
   if (parseDiffDocumentId(path)) return diffDocumentTitle(path)
+  const conflict = conflictForDocument(path, conflicts)
+  if (conflict) return conflictDiffDocumentTitle(conflict.remotePath)
+  if (parseConflictDiffDocumentId(path)) return "Filesystem conflict editor"
 
   return displayPath(path)
 }
@@ -360,6 +391,8 @@ function tabDiffStatus(
   files: readonly FileStatus[],
   rootPath: string
 ) {
+  if (parseConflictDiffDocumentId(path)) return null
+
   const diff = parseDiffDocumentId(path)
   if (!diff) return null
 
@@ -369,6 +402,16 @@ function tabDiffStatus(
   if (diff.kind !== "snapshot" || !diff.status) return null
 
   return gitStatusSymbol(diff.status, "historical")
+}
+
+function conflictForDocument(
+  path: string | null | undefined,
+  conflicts: Readonly<Record<string, { remotePath: string }>>
+) {
+  const conflictDiff = parseConflictDiffDocumentId(path)
+  if (!conflictDiff) return null
+
+  return conflicts[conflictDiff.conflictId] ?? null
 }
 
 function tabDiffSuffix(hash: string, status: string | undefined) {

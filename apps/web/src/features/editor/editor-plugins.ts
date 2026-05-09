@@ -1,4 +1,4 @@
-import type { EditorPlugin } from "@editor/core"
+import { createMergeConflictPlugin, type EditorPlugin } from "@editor/core"
 import { createEditorFindPlugin } from "@editor/find"
 import { createFoldGutterPlugin, createLineGutterPlugin } from "@editor/gutters"
 import type { FoldGutterIconContext } from "@editor/gutters"
@@ -50,6 +50,7 @@ export function createCriticalEditorPlugins(
       iconClassName: "app-fold-gutter-icon",
     }),
     createEditorFindPlugin(),
+    createMergeConflictPlugin(),
     typeScriptLsp,
   ]
 }

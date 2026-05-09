@@ -1,5 +1,5 @@
 import { fsClient } from "@/lib/fs-client"
-import type { FileResult, TreeResult } from "@/lib/file-system-types"
+import type { FileResult, TreeEntry, TreeResult } from "@/lib/file-system-types"
 import {
   errorMessage as clientErrorMessage,
   toClientError,
@@ -27,6 +27,43 @@ export async function fetchFile(path: string, signal: AbortSignal) {
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
   return response.data as FileResult
+}
+
+export async function writeFileContent(
+  path: string,
+  content: string,
+  expectedMtimeMs?: number | null
+) {
+  const body =
+    expectedMtimeMs === undefined || expectedMtimeMs === null
+      ? { content, path }
+      : { content, expectedMtimeMs, path }
+  const response = await fsClient.fs.write.post(body)
+
+  if (response.error) throw new Error(rpcErrorMessage(response.error))
+
+  return response.data as TreeEntry
+}
+
+export async function createFileContent(path: string, content: string) {
+  const response = await fsClient.fs["create-file"].post({ content, path })
+
+  if (response.error) throw new Error(rpcErrorMessage(response.error))
+
+  return response.data as TreeEntry
+}
+
+export async function ensureFolderPath(path: string) {
+  if (!path) return null
+
+  const response = await fsClient.fs["create-folder"].post({
+    path,
+    recursive: true,
+  })
+
+  if (response.error) throw new Error(rpcErrorMessage(response.error))
+
+  return response.data as TreeEntry
 }
 
 export function errorMessage(error: unknown) {

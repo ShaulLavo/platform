@@ -2,8 +2,7 @@ import { FsError } from "../fs/errors"
 import type { GitPathsBody } from "./contracts"
 
 export function mutationPaths(body: GitPathsBody) {
-  const paths = body.paths?.length ? body.paths : body.path ? [body.path] : []
-  if (paths.length > 0) return paths
+  if (body.paths.length > 0) return body.paths
 
   throw new FsError("INVALID_PATH")
 }

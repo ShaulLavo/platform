@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import { createEditorCommands } from "@/features/editor/state/editor-commands"
+import { createEditorConflictStore } from "@/features/editor/state/editor-conflict-state"
 import { createEditorDocumentStore } from "@/features/editor/state/editor-document-state"
 import {
   removeDirtyFilePath,
@@ -28,8 +29,9 @@ describe("editor path utilities", () => {
     expect(nextSelectedFilePath(["src/a.ts", "src/b.ts"], "src/a.ts")).toBe(
       "src/b.ts"
     )
-    expect(renameOpenFilePath(["src/a.ts", "src/b.ts"], "src/a.ts", "src/b.ts"))
-      .toEqual(["src/b.ts"])
+    expect(
+      renameOpenFilePath(["src/a.ts", "src/b.ts"], "src/a.ts", "src/b.ts")
+    ).toEqual(["src/b.ts"])
   })
 
   it("updates dirty path sets without unnecessary replacements", () => {
@@ -75,6 +77,36 @@ describe("editor document store", () => {
     expect(
       store.getState().getCachedEditorDocument("src/file.ts")?.scrollPosition
     ).toEqual({ left: 10, top: 20 })
+  })
+})
+
+describe("editor conflict store", () => {
+  it("adds, updates, and removes filesystem conflicts", () => {
+    const store = createEditorConflictStore()
+
+    store.getState().addConflict({
+      eventType: "changed",
+      id: "conflict-1",
+      localPath: "src/file.ts",
+      localText: "local",
+      remoteMtimeMs: 2,
+      remotePath: "src/file.ts",
+      remoteSize: 6,
+      remoteText: "remote",
+    })
+    store.getState().updateConflict("conflict-1", {
+      diffDocumentId: "conflict-diff:conflict-1",
+      toastId: "toast-1",
+    })
+
+    expect(store.getState().conflicts["conflict-1"]).toMatchObject({
+      diffDocumentId: "conflict-diff:conflict-1",
+      toastId: "toast-1",
+    })
+
+    store.getState().removeConflict("conflict-1")
+
+    expect(store.getState().conflicts["conflict-1"]).toBeUndefined()
   })
 })
 
@@ -151,9 +183,7 @@ describe("editor commands", () => {
     expect(documentStore.getState().dirtyFilePaths.has("src/old.ts")).toBe(
       false
     )
-    expect(documentStore.getState().dirtyFilePaths.has("src/new.ts")).toBe(
-      true
-    )
+    expect(documentStore.getState().dirtyFilePaths.has("src/new.ts")).toBe(true)
     expect(
       documentStore.getState().getCachedEditorDocument("src/new.ts")?.path
     ).toBe("src/new.ts")

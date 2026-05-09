@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
 import type { PickedFsEntry } from "@/components/file-picker-dialog"
+import { conflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { diffDocumentId } from "@/features/git/diff-document"
 import type { FileDiff } from "@/features/git/types"
 import { readWorkspaceCache, writeWorkspaceCache } from "@/lib/workspace-cache"
@@ -59,6 +60,27 @@ describe("workspace cache", () => {
       rootFolder,
       selectedFilePath: null,
       workspacePanelTab: "git",
+    })
+  })
+
+  it("does not persist transient conflict diff tabs", () => {
+    const rootFolder = pickedDirectory("/repo")
+    const conflictPath = conflictDiffDocumentId("conflict-1")
+
+    writeWorkspaceCache({
+      diffViewMode: "split",
+      openFilePaths: ["/repo/src/readme.md", conflictPath],
+      rootFolder,
+      selectedFilePath: conflictPath,
+      workspacePanelTab: "files",
+    })
+
+    expect(readWorkspaceCache()).toEqual({
+      diffViewMode: "split",
+      openFilePaths: ["/repo/src/readme.md"],
+      rootFolder,
+      selectedFilePath: null,
+      workspacePanelTab: "files",
     })
   })
 })

@@ -5,6 +5,7 @@ import {
   type CachedEditorDocument,
   useEditorDocumentState,
 } from "@/features/editor/state/editor-document-state"
+import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import type { FileResult } from "@/lib/file-system-types"
@@ -30,7 +31,10 @@ export function useOpenTabCache() {
 
   useEffect(() => {
     const paths = openFilePaths.filter(
-      (path) => !parseDiffDocumentId(path) && !getCachedEditorDocument(path)
+      (path) =>
+        !parseDiffDocumentId(path) &&
+        !parseConflictDiffDocumentId(path) &&
+        !getCachedEditorDocument(path)
     )
     if (!paths.length) return
 

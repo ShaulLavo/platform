@@ -2,6 +2,7 @@ import { WarningCircleIcon } from "@phosphor-icons/react"
 import { useEffect, useMemo, useRef } from "react"
 
 import { Editor } from "@/features/editor/components/editor"
+import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import {
   type CachedEditorDocument,
@@ -59,16 +60,19 @@ export function FileViewer({
     () => parseDiffDocumentId(selectedFilePath),
     [selectedFilePath]
   )
-  const selectedFile = selectedDiff ? null : readyFile(fileState)
+  const selectedConflictDiff = useMemo(
+    () => parseConflictDiffDocumentId(selectedFilePath),
+    [selectedFilePath]
+  )
+  const selectedFile =
+    selectedDiff || selectedConflictDiff ? null : readyFile(fileState)
   const selectedDiffQuery = useDiffDocumentDiff(selectedDiff)
-  const selectedCachedDocument =
-    selectedFilePath
-      ? documentWithScroll(documents[selectedFilePath], scrollPositionByPath)
-      : null
-  const fallbackDocument =
-    fallbackDocumentPath
-      ? documentWithScroll(documents[fallbackDocumentPath], scrollPositionByPath)
-      : null
+  const selectedCachedDocument = selectedFilePath
+    ? documentWithScroll(documents[selectedFilePath], scrollPositionByPath)
+    : null
+  const fallbackDocument = fallbackDocumentPath
+    ? documentWithScroll(documents[fallbackDocumentPath], scrollPositionByPath)
+    : null
   const visibleDocument =
     selectedCachedDocument ??
     (fileState.status === "error" ? null : fallbackDocument)

@@ -1,5 +1,6 @@
 import { errorMessage, fetchFile } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
+import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { idleState, type LoadState } from "@/lib/load-state"
 import { fileSystemKeys } from "@/lib/query-keys"
@@ -31,6 +32,7 @@ export function useSelectedFile(selectedFilePath: string | null) {
 function filePathForRequest(selectedFilePath: string | null) {
   if (!selectedFilePath) return null
   if (parseDiffDocumentId(selectedFilePath)) return null
+  if (parseConflictDiffDocumentId(selectedFilePath)) return null
 
   return selectedFilePath
 }

@@ -5,6 +5,10 @@ export const gitPathQuerySchema = v.object({
   path: v.optional(pathSchema, ""),
 })
 
+export const gitPathBodySchema = v.object({
+  path: v.optional(pathSchema, ""),
+})
+
 export const gitDiffQuerySchema = v.object({
   path: v.optional(pathSchema, ""),
   staged: v.optional(booleanQueryValueSchema, "false"),
@@ -25,8 +29,7 @@ export const gitFileQuerySchema = v.object({
 })
 
 export const gitPathsBodySchema = v.object({
-  path: v.optional(pathSchema),
-  paths: v.optional(v.array(pathSchema)),
+  paths: v.array(pathSchema),
 })
 
 export const gitApplyPatchBodySchema = v.object({
@@ -54,6 +57,7 @@ export const gitCreateBranchBodySchema = v.object({
 })
 
 export type GitPathQuery = v.InferOutput<typeof gitPathQuerySchema>
+export type GitPathBody = v.InferOutput<typeof gitPathBodySchema>
 export type GitDiffQuery = v.InferOutput<typeof gitDiffQuerySchema>
 export type GitBlobDiffQuery = v.InferOutput<typeof gitBlobDiffQuerySchema>
 export type GitFileQuery = v.InferOutput<typeof gitFileQuerySchema>

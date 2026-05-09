@@ -35,6 +35,16 @@ type GitDiffViewerProps = {
   path: string
 }
 
+type TextDiffViewerProps = {
+  detail?: string | null
+  emptyMessage: string
+  errorMessage?: string
+  file: DiffFile | null
+  isError?: boolean
+  isPending?: boolean
+  mode: EditorDiffViewMode
+}
+
 type HunkRevealOptions = { readonly wrap?: boolean }
 
 export type GitDiffViewerHandle = {
@@ -44,37 +54,59 @@ export type GitDiffViewerHandle = {
   revealPreviousHunk: (options?: HunkRevealOptions) => boolean
 }
 
-export const GitDiffViewer = forwardRef<GitDiffViewerHandle, GitDiffViewerProps>(
-  function GitDiffViewer(
-    { diff, error, isError, isPending, mode, path },
-    ref
-  ) {
-    const diffFile = useMemo(() => (diff ? editorDiffFile(diff) : null), [diff])
-    const viewRef = useRef<GitDiffViewerHandle | null>(null)
+export const GitDiffViewer = forwardRef<
+  GitDiffViewerHandle,
+  GitDiffViewerProps
+>(function GitDiffViewer({ diff, error, isError, isPending, mode, path }, ref) {
+  const diffFile = useMemo(() => (diff ? editorDiffFile(diff) : null), [diff])
 
-    useImperativeHandle(ref, () => diffViewerHandle(viewRef), [])
+  return (
+    <TextDiffViewer
+      detail={errorMessage(error)}
+      emptyMessage={`No git diff available for ${displayPath(path)}.`}
+      errorMessage={`Git diff failed for ${displayPath(path)}.`}
+      file={diffFile}
+      isError={isError}
+      isPending={isPending}
+      mode={mode}
+      ref={ref}
+    />
+  )
+})
 
-    if (diffFile?.hunks.length) {
-      return <EditorDiffView ref={viewRef} file={diffFile} mode={mode} />
-    }
+export const TextDiffViewer = forwardRef<
+  GitDiffViewerHandle,
+  TextDiffViewerProps
+>(function TextDiffViewer(
+  {
+    detail = null,
+    emptyMessage,
+    errorMessage: failedMessage = "Diff failed.",
+    file,
+    isError = false,
+    isPending = false,
+    mode,
+  },
+  ref
+) {
+  const viewRef = useRef<GitDiffViewerHandle | null>(null)
 
-    if (isPending) return null
+  useImperativeHandle(ref, () => diffViewerHandle(viewRef), [])
 
-    if (isError) {
-      return (
-        <DiffState
-          icon
-          message={`Git diff failed for ${displayPath(path)}.`}
-          detail={errorMessage(error)}
-        />
-      )
-    }
+  if (file?.hunks.length) {
+    return <EditorDiffView ref={viewRef} file={file} mode={mode} />
+  }
 
+  if (isPending) return null
+
+  if (isError) {
     return (
-      <DiffState message={`No git diff available for ${displayPath(path)}.`} />
+      <DiffState icon message={failedMessage} detail={detail ?? undefined} />
     )
   }
-)
+
+  return <DiffState message={emptyMessage} />
+})
 
 function diffViewerHandle(
   viewRef: RefObject<GitDiffViewerHandle | null>
