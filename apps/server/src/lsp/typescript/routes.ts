@@ -1,10 +1,17 @@
 import { isRecord } from "@workspace/contracts"
 
 import { TypeScriptLspSession } from "./session"
-import type { FileSystem_Interface } from "../../fs/file-system-interface"
 import { authenticateWebSocketData, type AuthConfig } from "../../auth"
+import type { WorkspacePaths } from "../../fs/path"
 
-export function typeScriptLspRoutes(fs: FileSystem_Interface, auth: AuthConfig) {
+type TypeScriptLspFileSystem = {
+  readonly paths: WorkspacePaths
+}
+
+export function typeScriptLspRoutes(
+  fs: TypeScriptLspFileSystem,
+  auth: AuthConfig
+) {
   const sessions = new WeakMap<object, TypeScriptLspSession>()
 
   return {
@@ -61,7 +68,7 @@ function websocketObject(value: unknown): LspWebSocket | null {
   const close = value.close
   const send = value.send
   return {
-    close: () => typeof close === "function" ? close.call(value) : undefined,
+    close: () => (typeof close === "function" ? close.call(value) : undefined),
     data: value.data,
     key: websocketKey(value),
     root: rootFromWebSocketData(value.data),
@@ -75,7 +82,8 @@ function websocketKey(value: Record<string, unknown>): object {
 
 function rootFromWebSocketData(data: unknown) {
   if (!isRecord(data)) return ""
-  if (isRecord(data.query) && typeof data.query.root === "string") return data.query.root
+  if (isRecord(data.query) && typeof data.query.root === "string")
+    return data.query.root
   if (typeof data.url !== "string") return ""
 
   try {

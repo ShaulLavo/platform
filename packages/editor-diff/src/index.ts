@@ -7,6 +7,7 @@ export type {
   DiffFile,
   DiffFileChangeType,
   DiffHunk,
+  DiffHunkLocation,
   DiffHunkLine,
   DiffInlineRange,
   DiffLineType,

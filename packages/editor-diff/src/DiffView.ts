@@ -17,6 +17,7 @@ import { joinRenderLines, languageIdForPath } from "./lines";
 import { createSplitProjection, createStackedProjection } from "./projection";
 import type {
   DiffFile,
+  DiffHunkLocation,
   DiffRenderRow,
   DiffSplitPaneLayout,
   DiffViewMode,
@@ -89,11 +90,40 @@ export class DiffView {
     this.render();
   }
 
-  revealHunk(index: number): void {
+  revealNextHunk(options: { readonly wrap?: boolean } = {}): boolean {
+    const locations = this.selectedHunkLocations();
+    const position = this.currentHunkPosition(locations);
+    const next = locations[position + 1] ?? null;
+    if (next) return this.revealHunk(next.index);
+    if (!options.wrap) return false;
+
+    const first = locations[0] ?? null;
+    return first ? this.revealHunk(first.index) : false;
+  }
+
+  revealPreviousHunk(options: { readonly wrap?: boolean } = {}): boolean {
+    const locations = this.selectedHunkLocations();
+    const position = this.currentHunkPosition(locations);
+    const previous = locations[position - 1] ?? null;
+    if (previous) return this.revealHunk(previous.index);
+    if (!options.wrap) return false;
+
+    const last = locations.at(-1) ?? null;
+    return last ? this.revealHunk(last.index) : false;
+  }
+
+  revealHunk(index: number): boolean {
     const row = this.hunkRows.get(index);
-    if (row === undefined) return;
+    if (row === undefined) return false;
 
     for (const pane of this.panes) pane.view.scrollToRow(row);
+    return true;
+  }
+
+  getCurrentHunk(): DiffHunkLocation | null {
+    const locations = this.selectedHunkLocations();
+    const position = this.currentHunkPosition(locations);
+    return locations[position] ?? null;
   }
 
   dispose(): void {
@@ -410,6 +440,37 @@ export class DiffView {
 
   private selectedFile(): DiffFile | null {
     return this.files.find((file) => file.path === this.selectedPath) ?? this.files[0] ?? null;
+  }
+
+  private selectedHunkLocations(): readonly DiffHunkLocation[] {
+    const file = this.selectedFile();
+    if (!file) return [];
+
+    const locations = [...this.hunkRows].flatMap(([index, row]) => {
+      const hunk = file.hunks[index];
+      if (!hunk) return [];
+
+      return [{ hunk, index, path: file.path, row }];
+    });
+
+    return locations.sort((left, right) => left.row - right.row);
+  }
+
+  private currentHunkPosition(locations: readonly DiffHunkLocation[]): number {
+    const topRow = this.currentTopRow();
+    let current = -1;
+
+    for (const [position, location] of locations.entries()) {
+      if (location.row > topRow) break;
+
+      current = position;
+    }
+
+    return current;
+  }
+
+  private currentTopRow(): number {
+    return this.panes[0]?.view.getState().visibleRange.start ?? 0;
   }
 
   private disposePanes(): void {

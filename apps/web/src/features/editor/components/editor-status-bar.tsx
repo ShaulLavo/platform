@@ -3,7 +3,6 @@ import type {
   TypeScriptLspDiagnosticSummary,
   TypeScriptLspStatus,
 } from "@editor/typescript-lsp"
-import { AnimatedCounter } from "react-animated-counter"
 
 import {
   formatHistoryStatus,
@@ -20,16 +19,6 @@ type EditorStatusBarProps = {
 }
 
 export type EditorStatusBarState = EditorStatusBarProps
-
-const STATUS_COUNTER_CONTAINER_STYLES = {
-  display: "inline-flex",
-  margin: 0,
-} as const
-
-const STATUS_COUNTER_DIGIT_STYLES = {
-  fontVariantNumeric: "tabular-nums",
-  fontWeight: 500,
-} as const
 
 function CounterMetric({
   includeCommas = false,
@@ -48,17 +37,9 @@ function CounterMetric({
       aria-label={`${value.toLocaleString()} ${label}`}
     >
       {labelPosition === "before" && <span>{label}</span>}
-      <AnimatedCounter
-        color="currentColor"
-        containerStyles={STATUS_COUNTER_CONTAINER_STYLES}
-        decrementColor="currentColor"
-        digitStyles={STATUS_COUNTER_DIGIT_STYLES}
-        fontSize="11px"
-        includeCommas={includeCommas}
-        includeDecimals={false}
-        incrementColor="currentColor"
-        value={value}
-      />
+      <span className="font-medium tabular-nums">
+        {includeCommas ? value.toLocaleString() : value}
+      </span>
       {labelPosition === "after" && <span>{label}</span>}
     </div>
   )

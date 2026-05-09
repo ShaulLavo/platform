@@ -13,6 +13,7 @@ import { copyPath } from "./copy"
 import {
   findInWorkspace,
   findInWorkspaceStream,
+  type FindOptions,
   type FindStreamEvent,
 } from "./search"
 import { FsError } from "./errors"
@@ -33,7 +34,9 @@ import type {
   WatchServerMessage,
   WriteBody,
 } from "./contracts"
-import type { FileSystem_Interface } from "./file-system-interface"
+
+export type FileSystemInfo = ReturnType<FileSystemService["info"]>
+export type FileSystemFindOptions = Omit<FindOptions, "maxContentBytes">
 
 export type FileSystemServiceOptions = {
   workspaceRoot?: string
@@ -47,11 +50,9 @@ export type FileSystemServiceOptions = {
 
 export const DEFAULT_TREE_CONCURRENCY = 32
 
-
 export const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
 
 const MAX_TEXT_FILE_BYTES_UPPER_BOUND = 2_147_483_647
-
 
 export function resolveMaxTextFileBytes(
   env: NodeJS.ProcessEnv = process.env
@@ -187,43 +188,21 @@ export class FileSystemService {
     return { path, deleted: true as const }
   }
 
-  find(
-    path: string,
-    query: string,
-    limit: number,
-    includeContent: boolean,
-    entryType?: EntryTypeFilter,
-    maxDepth?: number
-  ) {
+  find(options: FileSystemFindOptions) {
     return findInWorkspace(this.paths, {
-      path,
-      query,
-      limit,
-      includeContent,
-      entryType,
-      maxDepth,
+      ...options,
       maxContentBytes: this.maxSearchContentBytes,
     })
   }
 
   findEvents(
-    path: string,
-    query: string,
-    limit: number,
-    includeContent: boolean,
-    entryType?: EntryTypeFilter,
-    maxDepth?: number,
+    options: FileSystemFindOptions,
     signal?: AbortSignal
   ): AsyncGenerator<FindStreamEvent> {
     return findInWorkspaceStream(
       this.paths,
       {
-        path,
-        query,
-        limit,
-        includeContent,
-        entryType,
-        maxDepth,
+        ...options,
         maxContentBytes: this.maxSearchContentBytes,
       },
       signal
@@ -316,12 +295,3 @@ function pathBasename(input: string) {
   const parts = input.split("/").filter(Boolean)
   return parts.at(-1) ?? "Root"
 }
-
-const _assertImplements: FileSystem_Interface = {} as FileSystemService
-type _MissingOnInterface = Exclude<
-  keyof FileSystemService,
-  keyof FileSystem_Interface
->
-const _requireEmpty: _MissingOnInterface extends never ? true : never = true
-void _assertImplements
-void _requireEmpty

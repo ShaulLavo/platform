@@ -33,7 +33,6 @@ import {
   type AuthOptions,
 } from "./auth"
 import { errorPayload, FsError, isFsError } from "./fs/errors"
-import type { FileSystem_Interface } from "./fs/file-system-interface"
 import { FileSystemService, type FileSystemServiceOptions } from "./fs/service"
 import type { FindStreamEvent } from "./fs/search"
 import { parseWatchInputs } from "./fs/watch"
@@ -45,7 +44,7 @@ export type AppOptions = FileSystemServiceOptions & {
 }
 
 export function createApp(options: AppOptions) {
-  const fs: FileSystem_Interface = new FileSystemService(options)
+  const fs = new FileSystemService(options)
   const git = new GitService(fs.paths)
   const auth = createAuthConfig(options.auth)
 
@@ -161,51 +160,17 @@ export function createApp(options: AppOptions) {
         .get(
           "/find/events",
           ({ query, request }) =>
-            toFindSse(
-              fs.findEvents(
-                query.path,
-                query.query,
-                query.limit,
-                query.includeContent,
-                query.entryType,
-                query.maxDepth,
-                request.signal
-              )
-            ),
+            toFindSse(fs.findEvents(query, request.signal)),
           {
             query: findQuerySchema,
           }
         )
-        .get(
-          "/find",
-          ({ query }) =>
-            fs.find(
-              query.path,
-              query.query,
-              query.limit,
-              query.includeContent,
-              query.entryType,
-              query.maxDepth
-            ),
-          {
-            query: findQuerySchema,
-          }
-        )
-        .get(
-          "/search",
-          ({ query }) =>
-            fs.find(
-              query.path,
-              query.query,
-              query.limit,
-              query.includeContent,
-              query.entryType,
-              query.maxDepth
-            ),
-          {
-            query: findQuerySchema,
-          }
-        )
+        .get("/find", ({ query }) => fs.find(query), {
+          query: findQuerySchema,
+        })
+        .get("/search", ({ query }) => fs.find(query), {
+          query: findQuerySchema,
+        })
         .get(
           "/events",
           ({ query, request }) =>
@@ -254,7 +219,7 @@ export function createApp(options: AppOptions) {
 
 export type App = ReturnType<typeof createApp>
 
-type BlobFile = Awaited<ReturnType<FileSystem_Interface["blob"]>>
+type BlobFile = Awaited<ReturnType<FileSystemService["blob"]>>
 
 async function fileResponse(result: BlobFile) {
   const file = Bun.file(result.absolutePath)

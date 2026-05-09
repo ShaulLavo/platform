@@ -153,7 +153,13 @@ function readCachePayload() {
 }
 
 function parseCachePayload(value: string): WorkspaceCachePayload | null {
-  const parsed: unknown = JSON.parse(value)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return null
+  }
+
   const result = v.safeParse(workspaceCachePayloadSchema, parsed)
   if (!result.success) return null
 

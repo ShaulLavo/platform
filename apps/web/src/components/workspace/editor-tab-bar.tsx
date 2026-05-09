@@ -1,4 +1,11 @@
-import { ColumnsIcon, FileIcon, RowsIcon, XIcon } from "@phosphor-icons/react"
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ColumnsIcon,
+  FileIcon,
+  RowsIcon,
+  XIcon,
+} from "@phosphor-icons/react"
 import {
   useLayoutEffect,
   useRef,
@@ -47,11 +54,15 @@ const DEFAULT_EDITOR_TAB_SIZING: EditorTabSizing = "fit"
 export function EditorTabBar({
   diffViewMode = null,
   onDiffViewModeChange,
+  onRevealNextChange,
+  onRevealPreviousChange,
   rootPath,
   tabSizing = DEFAULT_EDITOR_TAB_SIZING,
 }: {
   diffViewMode?: EditorDiffViewMode | null
   onDiffViewModeChange?: (mode: EditorDiffViewMode) => void
+  onRevealNextChange?: () => void
+  onRevealPreviousChange?: () => void
   rootPath: string
   tabSizing?: EditorTabSizing
 }) {
@@ -183,6 +194,8 @@ export function EditorTabBar({
           mode={diffViewMode}
           onModeChange={onDiffViewModeChange}
           onOpenFile={handleSelectTab}
+          onRevealNextChange={onRevealNextChange}
+          onRevealPreviousChange={onRevealPreviousChange}
         />
       ) : null}
     </nav>
@@ -194,17 +207,47 @@ function DiffTabActions({
   mode,
   onModeChange,
   onOpenFile,
+  onRevealNextChange,
+  onRevealPreviousChange,
 }: {
   diffPath: string
   mode: EditorDiffViewMode
   onModeChange: (mode: EditorDiffViewMode) => void
   onOpenFile: (path: string) => void
+  onRevealNextChange?: () => void
+  onRevealPreviousChange?: () => void
 }) {
   return (
     <div className="flex h-full shrink-0 items-center gap-0.5 border-l bg-background/40 px-1">
+      <RevealChangeButton
+        direction="previous"
+        onRevealChange={onRevealPreviousChange}
+      />
+      <RevealChangeButton direction="next" onRevealChange={onRevealNextChange} />
       <OpenOriginalFileButton path={diffPath} onOpenFile={onOpenFile} />
       <DiffViewModeToggle mode={mode} onModeChange={onModeChange} />
     </div>
+  )
+}
+
+function RevealChangeButton({
+  direction,
+  onRevealChange,
+}: {
+  direction: "previous" | "next"
+  onRevealChange?: () => void
+}) {
+  const label = `${capitalize(direction)} change`
+  const Icon = direction === "previous" ? ArrowUpIcon : ArrowDownIcon
+
+  return (
+    <ToolbarIconButton
+      disabled={!onRevealChange}
+      label={label}
+      onClick={() => onRevealChange?.()}
+    >
+      <Icon className="size-3.5" />
+    </ToolbarIconButton>
   )
 }
 
@@ -251,10 +294,12 @@ function DiffViewModeToggle({
 
 function ToolbarIconButton({
   children,
+  disabled = false,
   label,
   onClick,
 }: {
   children: ReactNode
+  disabled?: boolean
   label: string
   onClick: () => void
 }) {
@@ -265,6 +310,7 @@ function ToolbarIconButton({
           <Button
             aria-label={label}
             className="size-7 text-muted-foreground hover:text-foreground"
+            disabled={disabled}
             onClick={onClick}
             size="icon-sm"
             title={label}
@@ -278,6 +324,10 @@ function ToolbarIconButton({
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   )
+}
+
+function capitalize(value: string) {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`
 }
 
 function DiffViewModeToggleIcon({ mode }: { mode: EditorDiffViewMode }) {
