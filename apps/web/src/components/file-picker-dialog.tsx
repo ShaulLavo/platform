@@ -26,6 +26,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query"
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -37,7 +38,6 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
-import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   Tooltip,
@@ -49,6 +49,7 @@ import {
   Fragment,
   useEffectEvent,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -91,6 +92,7 @@ type RecentResult = {
 type ServerInfo = {
   ok: boolean
   workspaceRoot: string
+  defaultPath: string
   homePath: string
 }
 
@@ -254,7 +256,7 @@ export function FilePickerDialog({
     setHistory([])
     setQuery("")
     setSelectedEntry(value)
-    setCurrentPath(initialPathForOpen(value, info.homePath))
+    setCurrentPath(initialPathForOpen(value, info.defaultPath ?? info.homePath))
   }
 
   function resetOpenSession() {
@@ -1068,6 +1070,20 @@ function FileList({
   onSelect: (entry: FsEntry) => void
   selectedPath: string | null
 }) {
+  const rows = useMemo(
+    () => fileListRows(entries, isSearching),
+    [entries, isSearching]
+  )
+  const scrollParentRef = useRef<HTMLDivElement>(null)
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual drives the picker row window.
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    estimateSize: (index) => estimatedFileListRowSize(rows[index]),
+    getItemKey: (index) => fileListRowKey(rows[index], index),
+    getScrollElement: () => scrollParentRef.current,
+    overscan: 12,
+  })
+
   if (loadState.status === "error") {
     return <ErrorState message={loadState.message} onRetry={onRetry} />
   }
@@ -1075,92 +1091,134 @@ function FileList({
     return <EmptyState mode={mode} />
   }
 
-  const showSearchSections = isSearching && entries.some(hasSearchScope)
-  const sections = showSearchSections ? searchResultSections(entries) : []
-
   return (
-    <ScrollArea className="min-h-0">
+    <div ref={scrollParentRef} className="min-h-0 overflow-auto">
       <div
         aria-label={listLabel(mode)}
-        className="p-1.5 outline-none"
+        className="relative p-1.5 outline-none"
         onKeyDown={onKeyDown}
         role="listbox"
+        style={{ height: rowVirtualizer.getTotalSize() }}
         tabIndex={0}
       >
-        {showSearchSections
-          ? sections.map((section) => (
-              <SearchResultSection
-                key={section.scope}
-                accept={accept}
-                iconMode={iconMode}
-                mode={mode}
-                onNavigate={onNavigate}
-                onSelect={onSelect}
-                section={section}
-                selectedPath={selectedPath}
-              />
-            ))
-          : entries.map((entry) => (
-              <FileRow
-                entry={entry}
-                key={entry.path}
-                accept={accept}
-                iconMode={iconMode}
-                mode={mode}
-                onNavigate={onNavigate}
-                onSelect={onSelect}
-                selected={entry.path === selectedPath}
-                showPath={false}
-              />
-            ))}
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+          <FileListVirtualRow
+            key={virtualRow.key}
+            accept={accept}
+            iconMode={iconMode}
+            mode={mode}
+            onNavigate={onNavigate}
+            onSelect={onSelect}
+            row={rows[virtualRow.index]}
+            selectedPath={selectedPath}
+            virtualRow={virtualRow}
+          />
+        ))}
       </div>
-    </ScrollArea>
+    </div>
   )
 }
 
-function hasSearchScope(entry: FsEntry) {
-  return entry.searchScope === "current" || entry.searchScope === "system"
-}
+type FileListRow =
+  | {
+      kind: "section"
+      key: string
+      label: string
+    }
+  | {
+      kind: "entry"
+      key: string
+      entry: FsEntry
+      showPath: boolean
+    }
 
-function SearchResultSection({
+function FileListVirtualRow({
   accept,
   iconMode,
   mode,
   onNavigate,
   onSelect,
-  section,
+  row,
   selectedPath,
+  virtualRow,
 }: {
   accept?: readonly string[]
   iconMode: FilePickerIconMode
   mode: FilePickerMode
   onNavigate: (path: string) => void
   onSelect: (entry: FsEntry) => void
-  section: ReturnType<typeof searchResultSections>[number]
+  row: FileListRow | undefined
   selectedPath: string | null
+  virtualRow: VirtualItem
 }) {
-  if (section.entries.length === 0) return null
+  if (!row) return null
 
   return (
-    <div className="pb-1">
-      <div className="px-2 py-1.5 text-[11px] font-medium tracking-normal text-muted-foreground uppercase">
-        {section.label}
-      </div>
-      {section.entries.map((entry) => (
+    <div
+      className="absolute top-0 right-1.5 left-1.5"
+      style={{ transform: `translateY(${virtualRow.start}px)` }}
+    >
+      {row.kind === "section" ? (
+        <div className="px-2 py-1.5 text-[11px] font-medium tracking-normal text-muted-foreground uppercase">
+          {row.label}
+        </div>
+      ) : (
         <FileRow
-          entry={entry}
-          key={`${section.scope}:${entry.path}`}
           accept={accept}
+          entry={row.entry}
           iconMode={iconMode}
           mode={mode}
           onNavigate={onNavigate}
           onSelect={onSelect}
-          selected={entry.path === selectedPath}
-          showPath
+          selected={row.entry.path === selectedPath}
+          showPath={row.showPath}
         />
-      ))}
+      )}
     </div>
   )
+}
+
+function fileListRows(entries: FsEntry[], isSearching: boolean): FileListRow[] {
+  if (!isSearching || !entries.some(hasSearchScope)) {
+    return entries.map((entry) => ({
+      kind: "entry",
+      key: entry.path,
+      entry,
+      showPath: false,
+    }))
+  }
+
+  return searchResultSections(entries).flatMap((section) =>
+    section.entries.length === 0
+      ? []
+      : [
+          {
+            kind: "section",
+            key: `section:${section.scope}`,
+            label: section.label,
+          },
+          ...section.entries.map((entry) => ({
+            kind: "entry" as const,
+            key: `${section.scope}:${entry.path}`,
+            entry,
+            showPath: true,
+          })),
+        ]
+  )
+}
+
+function estimatedFileListRowSize(row: FileListRow | undefined) {
+  if (row?.kind === "section") return 28
+
+  return 44
+}
+
+function fileListRowKey(row: FileListRow | undefined, index: number) {
+  return row?.key ?? `missing:${index}`
+}
+
+function hasSearchScope(entry: FsEntry) {
+  return entry.searchScope === "current" || entry.searchScope === "system"
 }
 
 function searchResultSections(entries: FsEntry[]) {
@@ -1669,12 +1727,13 @@ async function streamFindEntries(
 ) {
   const matches: FindMatch[] = []
   const seenPaths = new Set<string>()
+  const scope = path === ROOT_PATH ? "system" : "current"
 
   await streamFindScope(
     path,
     query,
     mode,
-    "current",
+    scope,
     matches,
     seenPaths,
     signal,
@@ -1683,22 +1742,6 @@ async function streamFindEntries(
       onEntries(fallbackEntries(matches))
     }
   )
-
-  if (path !== ROOT_PATH) {
-    await streamFindScope(
-      ROOT_PATH,
-      query,
-      mode,
-      "system",
-      matches,
-      seenPaths,
-      signal,
-      SEARCH_SCOPE_TIMEOUT_MS,
-      () => {
-        onEntries(fallbackEntries(matches))
-      }
-    )
-  }
 
   return hydrateMatches(matches, signal)
 }

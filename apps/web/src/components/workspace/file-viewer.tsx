@@ -1,10 +1,7 @@
-import {
-  CircleNotchIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react"
+import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
 import { useEffect } from "react"
 
-import { Editor, type EditorWorkspaceEntry } from "@/components/editor"
+import { Editor } from "@/components/editor"
 import {
   type CachedEditorDocument,
   useEditorState,
@@ -18,11 +15,9 @@ import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 export function FileViewer({
   fileState,
   rootPath,
-  workspaceEntries,
 }: {
   fileState: LoadState<FileResult>
   rootPath: string
-  workspaceEntries: readonly EditorWorkspaceEntry[]
 }) {
   const definitionTarget = useEditorState((state) => state.definitionTarget)
   const documentCacheVersion = useEditorState(
@@ -71,7 +66,6 @@ export function FileViewer({
           definitionTarget={definitionTarget}
           fileState={fileState}
           rootPath={rootPath}
-          workspaceEntries={workspaceEntries}
           onEditorDirtyChange={setCachedEditorDocumentDirty}
           onEditorScrollPositionChange={setCachedEditorDocumentScrollPosition}
           onEditorStatusChange={setStatusBarState}
@@ -93,7 +87,6 @@ function FileViewerBody({
   definitionTarget,
   fileState,
   rootPath,
-  workspaceEntries,
   onEditorDirtyChange,
   onEditorScrollPositionChange,
   onEditorStatusChange,
@@ -103,7 +96,6 @@ function FileViewerBody({
   definitionTarget: TypeScriptLspDefinitionTarget | null
   fileState: LoadState<FileResult>
   rootPath: string
-  workspaceEntries: readonly EditorWorkspaceEntry[]
   onEditorDirtyChange: (path: string, dirty: boolean) => void
   onEditorScrollPositionChange: (
     path: string,
@@ -118,7 +110,6 @@ function FileViewerBody({
         definitionTarget={definitionTarget}
         document={cachedDocument}
         rootPath={rootPath}
-        workspaceEntries={workspaceEntries}
         onDirtyChange={onEditorDirtyChange}
         onScrollPositionChange={onEditorScrollPositionChange}
         onStatusChange={onEditorStatusChange}

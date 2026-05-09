@@ -3,27 +3,37 @@ import "@editor/find/style.css"
 import "@editor/minimap/style.css"
 import { EditorHost, useEditor } from "@editor/react"
 import "@editor/scope-lines/style.css"
-import {
-  createTypeScriptLspPlugin,
-  type TypeScriptLspDefinitionTarget,
-  type TypeScriptLspDiagnosticSummary,
-  type TypeScriptLspStatus,
+import type {
+  TypeScriptLspDefinitionTarget,
+  TypeScriptLspDiagnosticSummary,
+  TypeScriptLspStatus,
 } from "@editor/typescript-lsp"
+import { createTypeScriptLspPlugin } from "@editor/typescript-lsp/websocket"
 
 import { createEditorPlugins } from "@/components/editor/editor-plugins"
 import type { CachedEditorDocument } from "@/components/editor/editor-state"
 import type { EditorStatusBarState } from "@/components/editor/editor-status-bar"
 import { languageIdForFilePath } from "@/components/editor/file-path"
 import { useTheme } from "@/components/theme-provider"
-import type { EditorWorkspaceEntry } from "@/components/editor/types"
 import { useEditorStatusBarState } from "@/components/editor/use-editor-status-bar-state"
 import { fsServerUrl } from "@/lib/fs-client"
-import { useEffect, useLayoutEffect, useMemo, useState } from "react"
+import type {
+  EditorPlugin,
+  EditorScrollPosition,
+  EditorViewSnapshot,
+} from "@editor/core"
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react"
 
 type EditorProps = {
   document: CachedEditorDocument
   rootPath: string
-  workspaceEntries: readonly EditorWorkspaceEntry[]
   definitionTarget?: TypeScriptLspDefinitionTarget | null
   onDirtyChange?: (path: string, dirty: boolean) => void
   onOpenDefinition?: (target: TypeScriptLspDefinitionTarget) => void | boolean
@@ -50,15 +60,16 @@ export function Editor({
 }: EditorProps) {
   const { theme } = useTheme()
   const resolvedTheme = useResolvedTheme(theme)
-  const shikiTheme =
-    resolvedTheme === "dark" ? "github-dark" : "github-light"
-  const [shikiThemeSource] = useState(() =>
-    createShikiThemeSource(shikiTheme)
-  )
+  const shikiTheme = resolvedTheme === "dark" ? "github-dark" : "github-light"
+  const [shikiThemeSource] = useState(() => createShikiThemeSource(shikiTheme))
   const shikiThemeResolver = useMemo(
     () => shikiThemeSource.getTheme,
     [shikiThemeSource]
   )
+  const scrollPersistenceRef = useRef<ScrollPersistenceState>({
+    onChange: onScrollPositionChange,
+    path: cachedDocument.path,
+  })
   const editorThemeRefresh = editorThemeRefreshByShikiTheme[shikiTheme]
   const [typeScriptStatus, setTypeScriptStatus] =
     useState<TypeScriptLspStatus>("idle")
@@ -76,9 +87,44 @@ export function Editor({
       }),
     [onOpenDefinition, rootPath]
   )
+  const scrollPersistencePlugin = useMemo<EditorPlugin>(
+    () => ({
+      name: "platform-scroll-persistence",
+      activate: (context) =>
+        context.registerViewContribution({
+          createContribution: ({ scrollElement }) => {
+            const persister = createScrollPositionPersister(
+              scrollPersistenceRef,
+              scrollElement
+            )
+            scrollElement.addEventListener("scroll", persister.handleScroll, {
+              passive: true,
+            })
+
+            return {
+              update: (snapshot) =>
+                persistSnapshotScrollPosition(
+                  scrollPersistenceRef.current,
+                  snapshot,
+                  persister.activeDocumentChanged
+                ),
+              dispose: () =>
+                scrollElement.removeEventListener(
+                  "scroll",
+                  persister.handleScroll
+                ),
+            }
+          },
+        }),
+    }),
+    []
+  )
   const plugins = useMemo(
-    () => createEditorPlugins(typeScriptLsp, shikiThemeResolver),
-    [shikiThemeResolver, typeScriptLsp]
+    () => [
+      ...createEditorPlugins(typeScriptLsp, shikiThemeResolver),
+      scrollPersistencePlugin,
+    ],
+    [scrollPersistencePlugin, shikiThemeResolver, typeScriptLsp]
   )
   const document = useMemo(
     () => ({
@@ -96,6 +142,13 @@ export function Editor({
     shikiThemeSource.setTheme(shikiTheme)
   }, [shikiTheme, shikiThemeSource])
 
+  useLayoutEffect(() => {
+    scrollPersistenceRef.current = {
+      onChange: onScrollPositionChange,
+      path: cachedDocument.path,
+    }
+  }, [cachedDocument.path, onScrollPositionChange])
+
   const controller = useEditor({
     cursorLineHighlight: {
       gutterNumber: true,
@@ -107,15 +160,14 @@ export function Editor({
     theme: editorThemeRefresh,
   })
   const editorState = controller.useState()
-  const text = controller.useText()
   const selection = selectionForDefinition(
     cachedDocument.path,
-    text,
+    document.text,
     definitionTarget
   )
 
   useEditorStatusBarState({
-    charCount: text.length,
+    charCount: editorState?.length ?? document.text.length,
     filePath: cachedDocument.path,
     onChange: onStatusChange,
     state: editorState,
@@ -132,7 +184,9 @@ export function Editor({
 
   useLayoutEffect(() => {
     return () => {
-      const scrollPosition = controller.getEditor()?.getScrollPosition()
+      const scrollPosition =
+        controller.getEditor()?.getScrollPosition() ??
+        scrollPositionFromSnapshot(controller.getSnapshot())
       if (!scrollPosition) return
 
       onScrollPositionChange?.(cachedDocument.path, scrollPosition)
@@ -150,12 +204,69 @@ export function Editor({
 
   return (
     <div className="flex h-full w-full min-w-0 flex-1 bg-background">
-      <EditorHost
-        className="app-editor-host"
-        controller={controller}
-      />
+      <EditorHost className="app-editor-host" controller={controller} />
     </div>
   )
+}
+
+type ScrollPersistenceState = {
+  path: string
+  onChange?: (path: string, scrollPosition: EditorScrollPosition) => void
+}
+
+function createScrollPositionPersister(
+  stateRef: RefObject<ScrollPersistenceState>,
+  scrollElement: HTMLElement
+) {
+  let activePath = stateRef.current.path
+  let lastPath = ""
+  let lastLeft = -1
+  let lastTop = -1
+
+  const handleScroll = () => {
+    const state = stateRef.current
+    const left = scrollElement.scrollLeft
+    const top = scrollElement.scrollTop
+    if (activePath === lastPath && left === lastLeft && top === lastTop) {
+      return
+    }
+
+    lastPath = activePath
+    lastLeft = left
+    lastTop = top
+    state.onChange?.(activePath, { left, top })
+  }
+
+  return {
+    activeDocumentChanged: (path: string) => {
+      activePath = path
+    },
+    handleScroll,
+  }
+}
+
+function persistSnapshotScrollPosition(
+  state: ScrollPersistenceState,
+  snapshot: EditorViewSnapshot,
+  activeDocumentChanged: (path: string) => void
+) {
+  const path = snapshot.documentId ?? state.path
+  activeDocumentChanged(path)
+  state.onChange?.(path, {
+    left: snapshot.viewport.scrollLeft,
+    top: snapshot.viewport.scrollTop,
+  })
+}
+
+function scrollPositionFromSnapshot(
+  snapshot: EditorViewSnapshot | null
+): EditorScrollPosition | null {
+  if (!snapshot) return null
+
+  return {
+    left: snapshot.viewport.scrollLeft,
+    top: snapshot.viewport.scrollTop,
+  }
 }
 
 function createShikiThemeSource(initialTheme: string) {

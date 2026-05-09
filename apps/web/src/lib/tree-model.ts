@@ -1,7 +1,6 @@
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import { canonicalTreePath, toTreePath } from "@/lib/path-formatters"
-import type { EditorWorkspaceEntry } from "@/components/editor"
 
 export type TreeModel = {
   paths: string[]
@@ -95,14 +94,6 @@ export function entryForTreePath(
   if (!treePath) return null
 
   return model.entriesByTreePath.get(canonicalTreePath(treePath)) ?? null
-}
-
-export function workspaceSourceEntries(
-  model: TreeModel | null
-): readonly EditorWorkspaceEntry[] {
-  if (!model) return []
-
-  return Array.from(model.entriesByTreePath.values())
 }
 
 export function treePathForAbsolutePath(model: TreeModel, path: string) {

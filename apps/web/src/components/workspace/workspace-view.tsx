@@ -11,7 +11,6 @@ import {
   EMPTY_TREE_MODEL,
   treeStateLabel,
   type TreeModel,
-  workspaceSourceEntries,
 } from "@/lib/tree-model"
 import { Button } from "@workspace/ui/components/button"
 
@@ -30,7 +29,6 @@ export function WorkspaceView({
 }) {
   const statusBarState = useEditorState((state) => state.statusBarState)
   const treeModel = treeState.status === "ready" ? treeState.data : null
-  const workspaceEntries = workspaceSourceEntries(treeModel)
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -65,11 +63,7 @@ export function WorkspaceView({
             />
           </div>
         </aside>
-        <FileViewer
-          fileState={fileState}
-          rootPath={rootFolder.path}
-          workspaceEntries={workspaceEntries}
-        />
+        <FileViewer fileState={fileState} rootPath={rootFolder.path} />
         {statusBarState && (
           <div className="col-span-2 min-w-0">
             <EditorStatusBar {...statusBarState} />

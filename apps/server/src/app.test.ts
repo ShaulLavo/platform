@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink, truncate, writeFile } from "node:fs/promises"
+import {
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  truncate,
+  writeFile,
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "bun:test"
@@ -59,9 +66,63 @@ describe("fs rpc auth", () => {
       TRUSTED_ORIGIN
     )
   })
+
+  it("requires the bootstrap session token when configured", async () => {
+    const app = testApp(await fixtureRoot(), { sessionToken: "secret" })
+    const missing = await app.handle(
+      new Request("http://local/health", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const invalid = await app.handle(
+      new Request("http://local/health", {
+        headers: trustedOriginHeaders({ authorization: "Bearer wrong" }),
+      })
+    )
+    const valid = await app.handle(
+      new Request("http://local/health", {
+        headers: trustedOriginHeaders({ authorization: "Bearer secret" }),
+      })
+    )
+
+    expect(missing.status).toBe(401)
+    expect(await errorCode(missing)).toBe("UNAUTHORIZED")
+    expect(invalid.status).toBe(401)
+    expect(await errorCode(invalid)).toBe("UNAUTHORIZED")
+    expect(valid.status).toBe(200)
+    expect(await valid.json()).toMatchObject({ authMode: "session-token" })
+  })
 })
 
 describe("fs rpc filesystem limits", () => {
+  it("reports home as the default browsing path while keeping root selectable", async () => {
+    const root = await fixtureRoot()
+    const home = path.join(root, "home")
+    await mkdir(home, { recursive: true })
+    const app = testApp(root, { homeDirectory: home })
+
+    const health = await app.handle(
+      new Request("http://local/health", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const tree = await app.handle(
+      new Request("http://local/fs/tree?path=&depth=1", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(health.status).toBe(200)
+    expect(await health.json()).toMatchObject({
+      defaultPath: "home",
+      homePath: "home",
+      systemRoot: path.parse(home).root,
+      workspaceRoot: root,
+    })
+    expect(tree.status).toBe(200)
+    expect(await tree.json()).toMatchObject({ path: "" })
+  })
+
   it("rejects text reads above the configured cap", async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, "large.txt"), "")
@@ -99,17 +160,47 @@ describe("fs rpc filesystem limits", () => {
     expect(linked).toMatchObject({ path: "linked", type: "symlink" })
     expect(linked).not.toHaveProperty("children")
   })
+
+  it("loads large directories through bounded concurrent stat reads", async () => {
+    const root = await fixtureRoot()
+    await Promise.all(
+      Array.from({ length: 96 }, (_, index) =>
+        writeFile(path.join(root, `file-${index}.txt`), "ok")
+      )
+    )
+    const app = testApp(root, { treeConcurrency: 4 })
+
+    const response = await app.handle(
+      new Request("http://local/fs/tree?path=&depth=1", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const payload = (await response.json()) as {
+      entries: Array<{ path: string }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(payload.entries).toHaveLength(96)
+  })
 })
 
 function testApp(
   root: string,
-  options: { maxTextFileBytes?: number } = {}
+  options: {
+    homeDirectory?: string
+    maxTextFileBytes?: number
+    sessionToken?: string
+    treeConcurrency?: number
+  } = {}
 ) {
   return createApp({
     auth: {
       allowedOrigins: [TRUSTED_ORIGIN],
+      sessionToken: options.sessionToken,
     },
+    homeDirectory: options.homeDirectory,
     maxTextFileBytes: options.maxTextFileBytes,
+    treeConcurrency: options.treeConcurrency,
     workspaceRoot: root,
   })
 }

@@ -34,32 +34,43 @@ import type {
 
 export type FileSystemServiceOptions = {
   workspaceRoot?: string
+  systemRoot?: string
   homeDirectory?: string
   watch?: boolean
   maxSearchContentBytes?: number
   maxTextFileBytes?: number
+  treeConcurrency?: number
 }
 
+export const DEFAULT_TREE_CONCURRENCY = 32
+// Dev-only until chunked file reads land. Launch builds must lower this cap or
+// replace whole-file reads with metadata-first, chunked text loading.
 export const DEFAULT_MAX_TEXT_FILE_BYTES = 200 * 1024 * 1024
 
 export class FileSystemService {
   readonly paths
   readonly changes
   readonly homePath
+  readonly systemRoot
+  readonly defaultPath
   readonly metadata
   private readonly maxSearchContentBytes
   private readonly maxTextFileBytes
+  private readonly treeConcurrency
 
   constructor(options: FileSystemServiceOptions = {}) {
-    this.paths = createWorkspacePaths(options.workspaceRoot)
-    this.homePath = resolveHomePath(
-      this.paths,
-      options.homeDirectory ?? homedir()
+    const homeDirectory = options.homeDirectory ?? homedir()
+    this.systemRoot = path.resolve(
+      options.systemRoot ?? path.parse(homeDirectory).root
     )
+    this.paths = createWorkspacePaths(options.workspaceRoot ?? this.systemRoot)
+    this.homePath = resolveHomePath(this.paths, homeDirectory)
+    this.defaultPath = this.homePath
     this.metadata = new FsMetadataStore()
     this.maxSearchContentBytes = options.maxSearchContentBytes ?? 1024 * 1024
-    // TODO(fs): stream large text files into a virtualized editor instead of rejecting them.
-    this.maxTextFileBytes = options.maxTextFileBytes ?? DEFAULT_MAX_TEXT_FILE_BYTES
+    this.maxTextFileBytes =
+      options.maxTextFileBytes ?? DEFAULT_MAX_TEXT_FILE_BYTES
+    this.treeConcurrency = options.treeConcurrency ?? DEFAULT_TREE_CONCURRENCY
     this.changes = new FileChangeHub(this.paths, {
       enabled: options.watch ?? false,
     })
@@ -68,8 +79,11 @@ export class FileSystemService {
   info() {
     return {
       workspaceRoot: this.paths.workspaceRoot,
+      systemRoot: this.systemRoot,
       homePath: this.homePath,
+      defaultPath: this.defaultPath,
       metadataDbPath: this.metadata.databasePath,
+      maxTextFileBytes: this.maxTextFileBytes,
     }
   }
 
@@ -78,7 +92,9 @@ export class FileSystemService {
   }
 
   tree(path: string, depth: number, entryType?: EntryTypeFilter) {
-    return readTree(this.paths, path, depth, entryType)
+    return readTree(this.paths, path, depth, entryType, {
+      concurrency: this.treeConcurrency,
+    })
   }
 
   read(path: string) {

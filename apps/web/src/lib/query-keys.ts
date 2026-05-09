@@ -6,8 +6,6 @@ export const fileSystemKeys = {
   tree: (rootPath: string) => [...fileSystemKeys.trees(), rootPath] as const,
   treeDirectory: (rootPath: string, treePath: string, path: string) =>
     [...fileSystemKeys.tree(rootPath), "directory", treePath, path] as const,
-  workspaceSources: (key: string) =>
-    [...fileSystemKeys.all, "workspace-sources", key] as const,
 }
 
 export const filePickerKeys = {
