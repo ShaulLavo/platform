@@ -1,10 +1,6 @@
-import { rm, rename } from "node:fs/promises"
+import { lstat, rm, rename } from "node:fs/promises"
 import { FsError, mapNodeError } from "./errors"
-import {
-  assertExistingRealPathInside,
-  assertParentRealPathInside,
-  type WorkspacePaths,
-} from "./path"
+import type { WorkspacePaths } from "./path"
 import type { RenameBody } from "./contracts"
 
 export async function renamePath(paths: WorkspacePaths, body: RenameBody) {
@@ -14,9 +10,8 @@ export async function renamePath(paths: WorkspacePaths, body: RenameBody) {
   try {
     assertNotRoot(from.relativePath)
     assertNotRoot(to.relativePath)
-    await assertExistingRealPathInside(paths, from.absolutePath)
-    await assertParentRealPathInside(paths, to.absolutePath)
-    await removeDestinationIfAllowed(paths, to.absolutePath, body.overwrite)
+    await assertExistingPath(from.absolutePath)
+    await removeDestinationIfAllowed(to.absolutePath, body.overwrite)
     await rename(from.absolutePath, to.absolutePath)
 
     return {
@@ -30,20 +25,23 @@ export async function renamePath(paths: WorkspacePaths, body: RenameBody) {
 }
 
 async function removeDestinationIfAllowed(
-  paths: WorkspacePaths,
   absolutePath: string,
   overwrite?: boolean
 ) {
-  const exists = await destinationExists(paths, absolutePath)
+  const exists = await destinationExists(absolutePath)
   if (!exists) return
   if (!overwrite) throw new FsError("ALREADY_EXISTS")
 
   await rm(absolutePath, { recursive: true, force: false })
 }
 
-async function destinationExists(paths: WorkspacePaths, absolutePath: string) {
+async function assertExistingPath(absolutePath: string) {
+  await lstat(absolutePath)
+}
+
+async function destinationExists(absolutePath: string) {
   try {
-    await assertExistingRealPathInside(paths, absolutePath)
+    await lstat(absolutePath)
     return true
   } catch (error) {
     if (nodeErrorCode(error) === "ENOENT") return false

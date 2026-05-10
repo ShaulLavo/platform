@@ -8,6 +8,15 @@ import {
 } from "@/lib/tree-model"
 
 describe("treeModelWithDirectoryLoads", () => {
+  it("treats symlink directory targets as loadable directory paths", () => {
+    const model = treeModel(
+      tree("repo", [symlinkDirectory("repo/packages")]),
+      "repo"
+    )
+
+    expect(model.paths).toEqual(["packages/"])
+  })
+
   it("merges selected-file ancestor directory loads into the initial model", () => {
     const root = "repo"
     const model = treeModelWithDirectoryLoads(
@@ -115,6 +124,13 @@ function directory(path: string, children?: TreeEntry[]): TreeEntry {
 
 function file(path: string): TreeEntry {
   return entry(path, "file")
+}
+
+function symlinkDirectory(path: string): TreeEntry {
+  return {
+    ...entry(path, "symlink"),
+    targetType: "directory",
+  }
 }
 
 function entry(

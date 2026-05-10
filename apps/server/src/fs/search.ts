@@ -1,17 +1,24 @@
 import { spawn } from "node:child_process"
 import { createReadStream } from "node:fs"
-import { lstat, readdir, stat } from "node:fs/promises"
+import { readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import type { Readable } from "node:stream"
 import { FsError, mapNodeError } from "./errors"
 import {
-  assertExistingRealPathInside,
   defaultIgnoredNames,
   isIgnoredPath,
   toPosix,
   type WorkspacePaths,
 } from "./path"
-import { assertDirectory, type FsEntryType, typeFromStats } from "./stat"
+import {
+  assertDirectory,
+  isDirectoryEntry,
+  isFileEntry,
+  matchesEntryType,
+  readEntryStats,
+  type FsEntryType,
+  type FsEntryTypeCarrier,
+} from "./stat"
 import type { EntryTypeFilter } from "./contracts"
 
 export const SEARCH_LINE_BUFFER_BYTES = 65_536
@@ -30,6 +37,7 @@ export type FindMatch = {
   kind: "name" | "content"
   path: string
   type: FsEntryType
+  targetType?: FsEntryType
   line?: number
   column?: number
   preview?: string
@@ -132,7 +140,6 @@ async function createFindContext(
   if (!normalizedQuery) throw new FsError("INVALID_PATH", "query is required")
 
   try {
-    await assertExistingRealPathInside(paths, root.absolutePath)
     const stats = await stat(root.absolutePath)
     assertDirectory(stats)
 
@@ -155,7 +162,7 @@ async function* searchWithTools(
 ): AsyncGenerator<FindMatch> {
   if (!(await canUseTools(context.options))) {
     // TODO: remove this fallback after fd/rg installation or tool discovery is guaranteed.
-    yield* searchWithFallback(paths, context)
+    yield* searchWithFallback(context)
     return
   }
 
@@ -227,6 +234,7 @@ function fdArgs(context: FindContext) {
     "--base-directory",
     context.root.absolutePath,
     "--fixed-strings",
+    "--follow",
     "--ignore-case",
     "--hidden",
     "--no-ignore",
@@ -249,6 +257,7 @@ function rgArgs(context: FindContext) {
   const args = [
     "--json",
     "--fixed-strings",
+    "--follow",
     "--ignore-case",
     "--hidden",
     "--no-ignore",
@@ -266,8 +275,6 @@ function rgArgs(context: FindContext) {
 }
 
 function fdType(entryType?: EntryTypeFilter) {
-  if (entryType === "file") return "file"
-  if (entryType === "directory") return "directory"
   if (entryType === "symlink") return "symlink"
 
   return null
@@ -286,16 +293,16 @@ async function nameMatchFromPath(
   entryType?: EntryTypeFilter
 ): Promise<FindMatch | null> {
   const absolutePath = paths.resolve(relativePath).absolutePath
-  const stats = await safeLstatInside(paths, absolutePath)
-  if (!stats) return null
+  const entryStats = await safeEntryStats(absolutePath)
+  if (!entryStats) return null
 
-  const type = typeFromStats(stats)
-  if (entryType && type !== entryType) return null
+  if (!matchesEntryType(entryStats, entryType)) return null
 
   return {
     kind: "name",
     path: relativePath,
-    type,
+    targetType: entryStats.targetType,
+    type: entryStats.type,
   }
 }
 
@@ -316,11 +323,13 @@ async function contentMatchFromRgEvent(
   context: FindContext,
   event: RgMatchEvent
 ): Promise<FindMatch | null> {
-  const relativePath = rgRelativePath(paths, context, event.data.path.text)
+  const relativePath = safeRgRelativePath(paths, context, event.data.path.text)
+  if (!relativePath) return null
+
   const absolutePath = paths.resolve(relativePath).absolutePath
-  const stats = await safeContentStatInside(paths, absolutePath)
-  if (!stats) return null
-  if (!stats.isFile()) return null
+  const entryStats = await safeEntryStats(absolutePath)
+  if (!entryStats) return null
+  if (!isFileEntry(entryStats)) return null
 
   const line = event.data.lines.text
   const match = event.data.submatches[0]
@@ -329,10 +338,23 @@ async function contentMatchFromRgEvent(
   return {
     kind: "content",
     path: relativePath,
-    type: "file",
+    targetType: entryStats.targetType,
+    type: entryStats.type,
     line: event.data.line_number,
     column: match.start + 1,
     preview: line.trim().slice(0, 240),
+  }
+}
+
+function safeRgRelativePath(
+  paths: WorkspacePaths,
+  context: FindContext,
+  input: string
+) {
+  try {
+    return rgRelativePath(paths, context, input)
+  } catch {
+    return null
   }
 }
 
@@ -423,13 +445,9 @@ async function* readLines(
   if (buffered) yield buffered
 }
 
-async function* searchWithFallback(
-  paths: WorkspacePaths,
-  context: FindContext
-): AsyncGenerator<FindMatch> {
+async function* searchWithFallback(context: FindContext) {
   const matches: FindMatch[] = []
   await searchDirectory(
-    paths,
     context.root.absolutePath,
     context.root.relativePath,
     context.normalizedQuery,
@@ -442,7 +460,6 @@ async function* searchWithFallback(
 }
 
 async function searchDirectory(
-  paths: WorkspacePaths,
   absoluteDirectory: string,
   relativeDirectory: string,
   query: string,
@@ -456,7 +473,6 @@ async function searchDirectory(
   for (const dirent of dirents) {
     if (matches.length >= options.limit) return
     await searchEntry(
-      paths,
       absoluteDirectory,
       relativeDirectory,
       dirent.name,
@@ -469,7 +485,6 @@ async function searchDirectory(
 }
 
 async function searchEntry(
-  paths: WorkspacePaths,
   absoluteDirectory: string,
   relativeDirectory: string,
   name: string,
@@ -482,15 +497,20 @@ async function searchEntry(
   if (isIgnoredPath(relativePath)) return
 
   const absolutePath = path.join(absoluteDirectory, name)
-  const stats = await safeLstatInside(paths, absolutePath)
-  if (!stats) return
+  const entryStats = await safeEntryStats(absolutePath)
+  if (!entryStats) return
 
-  const type = typeFromStats(stats)
-  addNameMatch(relativePath, name, type, query, matches, options.entryType)
-  if (stats.isDirectory()) {
+  addNameMatch(
+    relativePath,
+    name,
+    entryStats,
+    query,
+    matches,
+    options.entryType
+  )
+  if (isDirectoryEntry(entryStats)) {
     if (!canSearchChildren(depth, options.maxDepth)) return
     await searchDirectory(
-      paths,
       absolutePath,
       relativePath,
       query,
@@ -501,14 +521,15 @@ async function searchEntry(
     return
   }
 
-  if (options.entryType && type !== options.entryType) return
+  if (!matchesEntryType(entryStats, options.entryType)) return
   if (!options.includeContent) return
-  if (!stats.isFile()) return
-  if (stats.size > options.maxContentBytes) return
+  if (!isFileEntry(entryStats)) return
+  if (entryStats.targetStats.size > options.maxContentBytes) return
 
   await addContentMatch(
     absolutePath,
     relativePath,
+    entryStats,
     query,
     matches,
     options.limit,
@@ -525,24 +546,26 @@ function canSearchChildren(depth: number, maxDepth?: number) {
 function addNameMatch(
   relativePath: string,
   name: string,
-  type: FsEntryType,
+  entry: FsEntryTypeCarrier,
   query: string,
   matches: FindMatch[],
   entryType?: EntryTypeFilter
 ) {
-  if (entryType && type !== entryType) return
+  if (!matchesEntryType(entry, entryType)) return
   if (!name.toLocaleLowerCase().includes(query)) return
 
   matches.push({
     kind: "name",
     path: relativePath,
-    type,
+    targetType: entry.targetType,
+    type: entry.type,
   })
 }
 
 async function addContentMatch(
   absolutePath: string,
   relativePath: string,
+  entry: FsEntryTypeCarrier,
   query: string,
   matches: FindMatch[],
   limit: number,
@@ -559,7 +582,7 @@ async function addContentMatch(
       bytesRead += line.byteLength + line.terminatorLength
       if (bytesRead > maxContentBytes) break
 
-      addLineMatch(relativePath, line.text, lineIndex, query, matches)
+      addLineMatch(relativePath, entry, line.text, lineIndex, query, matches)
       lineIndex += 1
 
       if (matches.length >= limit) break
@@ -670,6 +693,7 @@ async function* streamLines(
 
 function addLineMatch(
   relativePath: string,
+  entry: FsEntryTypeCarrier,
   line: string,
   index: number,
   query: string,
@@ -681,32 +705,17 @@ function addLineMatch(
   matches.push({
     kind: "content",
     path: relativePath,
-    type: "file",
+    targetType: entry.targetType,
+    type: entry.type,
     line: index + 1,
     column: column + 1,
     preview: line.trim().slice(0, 240),
   })
 }
 
-async function safeLstatInside(paths: WorkspacePaths, absolutePath: string) {
+async function safeEntryStats(absolutePath: string) {
   try {
-    const stats = await lstat(absolutePath)
-    if (stats.isSymbolicLink()) return stats
-
-    await assertExistingRealPathInside(paths, absolutePath)
-    return await stat(absolutePath)
-  } catch {
-    return null
-  }
-}
-
-async function safeContentStatInside(
-  paths: WorkspacePaths,
-  absolutePath: string
-) {
-  try {
-    await assertExistingRealPathInside(paths, absolutePath)
-    return await stat(absolutePath)
+    return await readEntryStats(absolutePath)
   } catch {
     return null
   }

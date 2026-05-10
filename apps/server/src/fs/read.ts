@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises"
 import { FsError, mapNodeError } from "./errors"
-import { assertExistingRealPathInside, type WorkspacePaths } from "./path"
+import type { WorkspacePaths } from "./path"
 import { assertFile } from "./stat"
 
 export type ReadFileResult = {
@@ -25,7 +25,6 @@ export async function readTextFile(
   const target = paths.resolve(input)
 
   try {
-    await assertExistingRealPathInside(paths, target.absolutePath)
     const stats = await stat(target.absolutePath)
     assertFile(stats)
     if (stats.size > maxBytes) throw new FsError("FILE_TOO_LARGE")
@@ -49,7 +48,6 @@ export async function getBlobFile(
   const target = paths.resolve(input)
 
   try {
-    await assertExistingRealPathInside(paths, target.absolutePath)
     const stats = await stat(target.absolutePath)
     assertFile(stats)
 

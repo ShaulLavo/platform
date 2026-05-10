@@ -1,10 +1,11 @@
-import type { TreeEntry as ContractsTreeEntry } from "@workspace/contracts"
-
-export type {
-  EntryTypeFilter as FsEntryType,
-  FileResult,
+import type {
+  EntryTypeFilter,
+  TreeEntry as ContractsTreeEntry,
 } from "@workspace/contracts"
-import type { EntryTypeFilter } from "@workspace/contracts"
+
+export type { FileResult } from "@workspace/contracts"
+
+export type FsEntryType = EntryTypeFilter
 
 export type SearchScope = "current" | "system"
 
@@ -27,6 +28,7 @@ export type FindMatch = {
   kind: "name" | "content"
   path: string
   type: EntryTypeFilter
+  targetType?: EntryTypeFilter
   searchScope?: SearchScope
 }
 
@@ -41,6 +43,35 @@ export type ServerInfo = {
   homePath: string
 }
 
-export type PickedFsEntry = FsEntry & {
-  type: "file" | "directory"
+export type PickedFsEntry = FsEntry &
+  (
+    | {
+        type: "file" | "directory"
+      }
+    | {
+        type: "symlink"
+        targetType: "file" | "directory"
+      }
+  )
+
+export function effectiveEntryType(entry: EntryTypeCarrier): FsEntryType {
+  return entry.targetType ?? entry.type
+}
+
+export function isDirectoryEntry(entry: EntryTypeCarrier) {
+  return effectiveEntryType(entry) === "directory"
+}
+
+export function isFileEntry(entry: EntryTypeCarrier) {
+  return effectiveEntryType(entry) === "file"
+}
+
+export function isPickedFsEntry(entry: FsEntry): entry is PickedFsEntry {
+  const type = effectiveEntryType(entry)
+  return type === "file" || type === "directory"
+}
+
+type EntryTypeCarrier = {
+  type: FsEntryType
+  targetType?: FsEntryType
 }

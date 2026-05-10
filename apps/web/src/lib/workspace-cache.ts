@@ -51,7 +51,18 @@ const pickedDirectorySchema = v.object({
   size: v.number(),
   type: v.literal("directory"),
 })
-const rootFolderSchema = v.nullable(pickedDirectorySchema)
+const pickedSymlinkDirectorySchema = v.object({
+  birthtimeMs: v.number(),
+  mtimeMs: v.number(),
+  name: v.string(),
+  path: v.string(),
+  size: v.number(),
+  targetType: v.literal("directory"),
+  type: v.literal("symlink"),
+})
+const rootFolderSchema = v.nullable(
+  v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema])
+)
 const selectedFilePathSchema = v.nullable(v.string())
 const workspacePanelTabSchema = v.union([v.literal("files"), v.literal("git")])
 const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)

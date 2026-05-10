@@ -1,10 +1,6 @@
-import { cp, rm } from "node:fs/promises"
+import { cp, lstat, rm } from "node:fs/promises"
 import { FsError, mapNodeError } from "./errors"
-import {
-  assertExistingRealPathInside,
-  assertParentRealPathInside,
-  type WorkspacePaths,
-} from "./path"
+import type { WorkspacePaths } from "./path"
 import type { CopyBody } from "./contracts"
 
 export async function copyPath(paths: WorkspacePaths, body: CopyBody) {
@@ -13,9 +9,8 @@ export async function copyPath(paths: WorkspacePaths, body: CopyBody) {
 
   try {
     assertNotRoot(to.relativePath)
-    await assertExistingRealPathInside(paths, from.absolutePath)
-    await assertParentRealPathInside(paths, to.absolutePath)
-    await removeDestinationIfAllowed(paths, to.absolutePath, body.overwrite)
+    await assertExistingPath(from.absolutePath)
+    await removeDestinationIfAllowed(to.absolutePath, body.overwrite)
     await cp(from.absolutePath, to.absolutePath, {
       recursive: Boolean(body.recursive),
       errorOnExist: !body.overwrite,
@@ -33,20 +28,23 @@ export async function copyPath(paths: WorkspacePaths, body: CopyBody) {
 }
 
 async function removeDestinationIfAllowed(
-  paths: WorkspacePaths,
   absolutePath: string,
   overwrite?: boolean
 ) {
-  const exists = await destinationExists(paths, absolutePath)
+  const exists = await destinationExists(absolutePath)
   if (!exists) return
   if (!overwrite) throw new FsError("ALREADY_EXISTS")
 
   await rm(absolutePath, { recursive: true, force: false })
 }
 
-async function destinationExists(paths: WorkspacePaths, absolutePath: string) {
+async function assertExistingPath(absolutePath: string) {
+  await lstat(absolutePath)
+}
+
+async function destinationExists(absolutePath: string) {
   try {
-    await assertExistingRealPathInside(paths, absolutePath)
+    await lstat(absolutePath)
     return true
   } catch (error) {
     if (nodeErrorCode(error) === "ENOENT") return false

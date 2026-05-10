@@ -1,20 +1,27 @@
-import { lstat, readdir, stat } from "node:fs/promises"
+import { readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import { FsError, mapNodeError } from "./errors"
 import {
-  assertExistingRealPathInside,
   isIgnoredPath,
   treeIgnoredNames,
   toPosix,
   type WorkspacePaths,
 } from "./path"
-import { assertDirectory, type FsEntryType, typeFromStats } from "./stat"
+import {
+  assertDirectory,
+  effectiveEntryType,
+  isDirectoryEntry,
+  matchesEntryType,
+  readEntryStats,
+  type FsEntryType,
+} from "./stat"
 import type { EntryTypeFilter } from "./contracts"
 
 export type TreeEntry = {
   name: string
   path: string
   type: FsEntryType
+  targetType?: FsEntryType
   size: number
   mtimeMs: number
   birthtimeMs: number
@@ -43,7 +50,6 @@ export async function readTree(
   const limit = createTaskLimiter(options.concurrency ?? 32)
 
   try {
-    await assertExistingRealPathInside(paths, target.absolutePath)
     const stats = await stat(target.absolutePath)
     assertDirectory(stats)
 
@@ -100,11 +106,11 @@ async function readEntry(
   limit: TaskLimiter
 ) {
   const entry = await limit(() =>
-    readEntryMetadata(paths, absoluteDirectory, relativeDirectory, name)
+    readEntryMetadata(absoluteDirectory, relativeDirectory, name)
   )
   if (!entry) return null
 
-  if (entry.type !== "directory") return matchingEntry(entry, entryType)
+  if (!isDirectoryEntry(entry)) return matchingEntry(entry, entryType)
   if (depth <= 1) return matchingEntry(entry, entryType)
 
   entry.children = await readEntries(
@@ -119,7 +125,6 @@ async function readEntry(
 }
 
 async function readEntryMetadata(
-  paths: WorkspacePaths,
   absoluteDirectory: string,
   relativeDirectory: string,
   name: string
@@ -128,26 +133,23 @@ async function readEntryMetadata(
   if (isIgnoredPath(relativePath, treeIgnoredNames)) return null
 
   const absolutePath = path.join(absoluteDirectory, name)
-  const stats = await safeLstatInside(paths, absolutePath)
-  if (!stats) return null
+  const entryStats = await safeEntryStats(absolutePath)
+  if (!entryStats) return null
 
   return {
     name,
     path: relativePath,
-    type: typeFromStats(stats),
-    size: stats.size,
-    mtimeMs: stats.mtimeMs,
-    birthtimeMs: stats.birthtimeMs,
+    type: entryStats.type,
+    targetType: entryStats.targetType,
+    size: entryStats.targetStats.size,
+    mtimeMs: entryStats.targetStats.mtimeMs,
+    birthtimeMs: entryStats.targetStats.birthtimeMs,
   } satisfies TreeEntry
 }
 
-async function safeLstatInside(paths: WorkspacePaths, absolutePath: string) {
+async function safeEntryStats(absolutePath: string) {
   try {
-    const stats = await lstat(absolutePath)
-    if (stats.isSymbolicLink()) return stats
-
-    paths.assertInside(absolutePath)
-    return stats
+    return await readEntryStats(absolutePath)
   } catch {
     return null
   }
@@ -177,8 +179,10 @@ function joinRelative(parent: string, child: string) {
 }
 
 function compareTreeEntries(a: TreeEntry, b: TreeEntry) {
-  if (a.type === "directory" && b.type !== "directory") return -1
-  if (a.type !== "directory" && b.type === "directory") return 1
+  const aType = effectiveEntryType(a)
+  const bType = effectiveEntryType(b)
+  if (aType === "directory" && bType !== "directory") return -1
+  if (aType !== "directory" && bType === "directory") return 1
 
   if (a.name < b.name) return -1
   if (a.name > b.name) return 1
@@ -186,8 +190,7 @@ function compareTreeEntries(a: TreeEntry, b: TreeEntry) {
 }
 
 function matchingEntry(entry: TreeEntry, entryType?: EntryTypeFilter) {
-  if (!entryType) return entry
-  if (entry.type === entryType) return entry
+  if (matchesEntryType(entry, entryType)) return entry
 
   return null
 }

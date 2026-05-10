@@ -1,6 +1,8 @@
 import {
   mkdir,
   mkdtemp,
+  lstat,
+  readFile,
   rm,
   symlink,
   truncate,
@@ -138,7 +140,7 @@ describe("fs rpc filesystem limits", () => {
     expect(await errorCode(response)).toBe("FILE_TOO_LARGE")
   })
 
-  it("reports symlink directories without recursively traversing them", async () => {
+  it("loads symlink directory targets through the tree API", async () => {
     const root = await fixtureRoot()
     const outside = await fixtureRoot()
     await mkdir(path.join(outside, "target"), { recursive: true })
@@ -152,13 +154,61 @@ describe("fs rpc filesystem limits", () => {
       })
     )
     const payload = (await response.json()) as {
-      entries: Array<{ children?: unknown; path: string; type: string }>
+      entries: Array<{
+        children?: Array<{ path: string; type: string }>
+        path: string
+        targetType?: string
+        type: string
+      }>
     }
     const linked = payload.entries.find((entry) => entry.path === "linked")
 
     expect(response.status).toBe(200)
-    expect(linked).toMatchObject({ path: "linked", type: "symlink" })
-    expect(linked).not.toHaveProperty("children")
+    expect(linked).toMatchObject({
+      path: "linked",
+      targetType: "directory",
+      type: "symlink",
+    })
+    expect(linked?.children).toContainEqual(
+      expect.objectContaining({ path: "linked/secret.txt", type: "file" })
+    )
+  })
+
+  it("reads and writes symlink file targets without replacing the link", async () => {
+    const root = await fixtureRoot()
+    const outside = await fixtureRoot()
+    const target = path.join(outside, "target.txt")
+    const linked = path.join(root, "linked.txt")
+    await writeFile(target, "before")
+    await symlink(target, linked)
+    const app = testApp(root)
+
+    const read = await app.handle(
+      new Request("http://local/fs/read?path=linked.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const written = await app.handle(
+      new Request("http://local/fs/write", {
+        body: JSON.stringify({ path: "linked.txt", content: "after" }),
+        headers: trustedOriginHeaders({ "content-type": "application/json" }),
+        method: "POST",
+      })
+    )
+
+    expect(read.status).toBe(200)
+    expect(await read.json()).toMatchObject({
+      content: "before",
+      path: "linked.txt",
+    })
+    expect(written.status).toBe(200)
+    expect(await written.json()).toMatchObject({
+      path: "linked.txt",
+      targetType: "file",
+      type: "symlink",
+    })
+    expect(await readFile(target, "utf8")).toBe("after")
+    expect((await lstat(linked)).isSymbolicLink()).toBe(true)
   })
 
   it("filters ignored tree entries and keeps directory-first sorting", async () => {

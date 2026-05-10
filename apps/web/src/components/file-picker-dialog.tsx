@@ -30,6 +30,11 @@ import type {
   StatResult,
   TreeResult,
 } from "@/lib/file-system-types"
+import {
+  effectiveEntryType,
+  isDirectoryEntry,
+  isFileEntry,
+} from "@/lib/file-system-types"
 import { filePickerKeys } from "@/lib/query-keys"
 import { parseSseStream, type ParsedSseEvent } from "@/lib/sse"
 import {
@@ -82,9 +87,16 @@ type LoadState =
   | { status: "ready"; entries: FsEntry[] }
   | { status: "error"; message: string }
 
-type DirectoryFsEntry = FsEntry & {
-  type: "directory"
-}
+type DirectoryFsEntry = FsEntry &
+  (
+    | {
+        type: "directory"
+      }
+    | {
+        targetType: "directory"
+        type: "symlink"
+      }
+  )
 
 export type FilePickerMode = "folder" | "file"
 export type FilePickerIconMode = "default" | "vscode"
@@ -247,7 +259,7 @@ export function FilePickerDialog({
   }
 
   async function commitPick(entry: PickedFsEntry) {
-    if (entry.type === "directory") {
+    if (isDirectoryEntry(entry)) {
       await recordRecentMutation.mutateAsync(entry).catch(() => null)
     }
 
@@ -329,7 +341,7 @@ export function FilePickerDialog({
   }
 
   function enterDirectory(event: KeyboardEvent<HTMLDivElement>) {
-    if (selectedEntry?.type !== "directory") return
+    if (!selectedEntry || !isDirectoryEntry(selectedEntry)) return
 
     event.preventDefault()
     navigateTo(selectedEntry.path)
@@ -1279,10 +1291,10 @@ function FileRow({
   showPath: boolean
 }) {
   const pickable = isPickableEntry(entry, mode, accept)
-  const interactive = pickable || entry.type === "directory"
+  const interactive = pickable || isDirectoryEntry(entry)
 
   function handleDoubleClick() {
-    if (entry.type === "directory") return onNavigate(entry.path)
+    if (isDirectoryEntry(entry)) return onNavigate(entry.path)
   }
 
   return (
@@ -1346,7 +1358,7 @@ function EntryPreviewTile({
   size: "sm" | "lg"
 }) {
   const large = size === "lg"
-  const extension = entry.type === "file" ? fileExtension(entry.name) : ""
+  const extension = isFileEntry(entry) ? fileExtension(entry.name) : ""
 
   return (
     <span
@@ -1421,7 +1433,7 @@ function DefaultEntryIcon({
   open: boolean
   selected: boolean
 }) {
-  if (entry.type === "directory") {
+  if (isDirectoryEntry(entry)) {
     const Icon = open ? FolderOpenIcon : FolderIcon
 
     return (
@@ -1436,7 +1448,7 @@ function DefaultEntryIcon({
     )
   }
 
-  if (entry.type === "file") {
+  if (isFileEntry(entry)) {
     return (
       <FileIcon
         className={cn(
@@ -1457,7 +1469,7 @@ function DefaultEntryIcon({
 }
 
 function KindBadge({ entry }: { entry: FsEntry }) {
-  if (entry.type === "directory") {
+  if (isDirectoryEntry(entry)) {
     return (
       <Badge className="justify-center border-amber-200/70 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300">
         Folder
@@ -1465,7 +1477,7 @@ function KindBadge({ entry }: { entry: FsEntry }) {
     )
   }
 
-  if (entry.type === "file") {
+  if (isFileEntry(entry)) {
     return (
       <Badge className="justify-center border-sky-200/70 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-300">
         File
@@ -1540,7 +1552,7 @@ function EntryPreviewDetails({
       <Separator className="my-4" />
       <dl className="grid w-full gap-2 text-left text-xs">
         <PreviewFact label="Kind" value={kindLabel(entry)} />
-        {entry.type !== "directory" && (
+        {!isDirectoryEntry(entry) && (
           <PreviewFact label="Size" value={formatSize(entry.size)} />
         )}
         <PreviewFact label="Modified" value={formatModified(entry.mtimeMs)} />
@@ -1705,7 +1717,7 @@ async function fetchServerInfo(signal: AbortSignal) {
 
 async function fetchCurrentEntry(path: string, signal: AbortSignal) {
   const entry = await fetchJson<StatResult>(fsUrl("/fs/stat", { path }), signal)
-  if (entry.type !== "directory") {
+  if (!isDirectoryEntry(entry)) {
     throw new Error("The current path is not a folder.")
   }
 
@@ -1713,7 +1725,7 @@ async function fetchCurrentEntry(path: string, signal: AbortSignal) {
     ...entry,
     name: basename(entry.path),
     type: entry.type,
-  }
+  } as DirectoryFsEntry
 }
 
 async function fetchTreeEntries(path: string, signal: AbortSignal) {
@@ -1948,8 +1960,17 @@ function isFindMatch(match: unknown): match is FindMatch {
   if (!("kind" in match) || match.kind !== "name") return false
   if (!("path" in match) || typeof match.path !== "string") return false
   if (!("type" in match) || !isFsEntryType(match.type)) return false
+  if ("targetType" in match && !isOptionalFsEntryType(match.targetType)) {
+    return false
+  }
 
   return true
+}
+
+function isOptionalFsEntryType(type: unknown): type is FsEntryType | undefined {
+  if (type === undefined) return true
+
+  return isFsEntryType(type)
 }
 
 function isFsEntryType(type: unknown): type is FsEntryType {
@@ -2018,8 +2039,8 @@ function isPickableEntry(
   mode: FilePickerMode,
   accept?: readonly string[]
 ): entry is PickedFsEntry {
-  if (mode === "folder") return entry.type === "directory"
-  if (entry.type !== "file") return false
+  if (mode === "folder") return isDirectoryEntry(entry)
+  if (!isFileEntry(entry)) return false
 
   return fileMatchesAccept(entry.name, accept)
 }
@@ -2071,21 +2092,23 @@ function displayPath(path: string) {
 }
 
 function compareEntries(a: FsEntry, b: FsEntry) {
-  if (a.type === "directory" && b.type !== "directory") return -1
-  if (a.type !== "directory" && b.type === "directory") return 1
+  const aType = effectiveEntryType(a)
+  const bType = effectiveEntryType(b)
+  if (aType === "directory" && bType !== "directory") return -1
+  if (aType !== "directory" && bType === "directory") return 1
 
   return a.name.localeCompare(b.name)
 }
 
 function tileTone(entry: FsEntry, selected: boolean) {
-  if (entry.type === "directory") {
+  if (isDirectoryEntry(entry)) {
     return cn(
       "border-amber-200/70 bg-amber-50 text-amber-600 dark:border-amber-900/70 dark:bg-amber-950/30",
       selected && "border-amber-300 bg-amber-100 dark:border-amber-800"
     )
   }
 
-  if (entry.type === "file") {
+  if (isFileEntry(entry)) {
     return cn(
       "border-sky-200/70 bg-sky-50 text-sky-600 dark:border-sky-900/70 dark:bg-sky-950/30",
       selected && "border-sky-300 bg-sky-100 dark:border-sky-800"
@@ -2096,8 +2119,14 @@ function tileTone(entry: FsEntry, selected: boolean) {
 }
 
 function kindLabel(entry: FsEntry) {
-  if (entry.type === "directory") return "Folder"
-  if (entry.type === "file") return "File"
+  if (entry.type === "symlink" && entry.targetType === "directory") {
+    return "Alias folder"
+  }
+  if (entry.type === "symlink" && entry.targetType === "file") {
+    return "Alias file"
+  }
+  if (isDirectoryEntry(entry)) return "Folder"
+  if (isFileEntry(entry)) return "File"
   if (entry.type === "symlink") return "Alias"
 
   return "Other"
@@ -2112,7 +2141,7 @@ function fileExtension(name: string) {
 }
 
 function formatSizeLabel(entry: FsEntry) {
-  if (entry.type === "directory") return ""
+  if (isDirectoryEntry(entry)) return ""
 
   return formatSize(entry.size)
 }

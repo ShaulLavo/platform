@@ -265,6 +265,7 @@ function entryFromStat(stat: FsStat): TreeEntry {
     path: stat.path,
     name: pathBasename(stat.path),
     type: stat.type,
+    targetType: stat.targetType,
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     birthtimeMs: stat.birthtimeMs,

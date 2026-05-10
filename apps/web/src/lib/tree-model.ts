@@ -1,4 +1,5 @@
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
+import { isDirectoryEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import { canonicalTreePath, toTreePath } from "@/lib/path-formatters"
 
@@ -199,16 +200,11 @@ function addFlattenedTreeEntries(
 
     const canonicalPath = canonicalTreePath(treePath)
     entriesByTreePath.set(canonicalPath, entry)
-    paths.push(entry.type === "directory" ? `${canonicalPath}/` : canonicalPath)
+    paths.push(isDirectoryEntry(entry) ? `${canonicalPath}/` : canonicalPath)
 
     if (!entry.children) continue
 
-    addFlattenedTreeEntries(
-      paths,
-      entry.children,
-      rootPath,
-      entriesByTreePath
-    )
+    addFlattenedTreeEntries(paths, entry.children, rootPath, entriesByTreePath)
   }
 }
 
@@ -291,7 +287,7 @@ function pathsFromEntries(entriesByTreePath: Map<string, TreeEntry>) {
   const paths: string[] = []
 
   for (const [treePath, entry] of entriesByTreePath) {
-    paths.push(entry.type === "directory" ? `${treePath}/` : treePath)
+    paths.push(isDirectoryEntry(entry) ? `${treePath}/` : treePath)
   }
 
   return paths

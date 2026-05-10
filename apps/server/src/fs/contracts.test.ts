@@ -35,6 +35,7 @@ describe("filesystem contracts", () => {
         name: "index.ts",
         path: "src/index.ts",
         size: 42,
+        targetType: "file",
         type: "file",
       })
     ).toEqual({
@@ -43,6 +44,7 @@ describe("filesystem contracts", () => {
       name: "index.ts",
       path: "src/index.ts",
       size: 42,
+      targetType: "file",
       type: "file",
     })
   })

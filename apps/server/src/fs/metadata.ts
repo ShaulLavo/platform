@@ -2,12 +2,13 @@ import { and, desc, eq, isNotNull, sql } from "drizzle-orm"
 import { closeMetadataDatabase, db, metadataDatabasePath } from "../db/client"
 import { migrateMetadataDatabase } from "../db/migrations"
 import { fsMetadata, type FsMetadataRow } from "../db/schema"
-import type { FsEntryType } from "./stat"
+import { effectiveEntryType, type FsEntryType } from "./stat"
 
 export type FsMetadataEntry = {
   path: string
   name: string
   type: FsEntryType
+  targetType?: FsEntryType
   size: number
   mtimeMs: number
   birthtimeMs: number
@@ -27,7 +28,7 @@ export class FsMetadataStore {
       .values({
         path: entry.path,
         name: entry.name,
-        entryType: entry.type,
+        entryType: effectiveEntryType(entry),
         size: entry.size,
         mtimeMs: entry.mtimeMs,
         birthtimeMs: entry.birthtimeMs,
@@ -40,7 +41,7 @@ export class FsMetadataStore {
         target: fsMetadata.path,
         set: {
           name: entry.name,
-          entryType: entry.type,
+          entryType: effectiveEntryType(entry),
           size: entry.size,
           mtimeMs: entry.mtimeMs,
           birthtimeMs: entry.birthtimeMs,

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { FsError, mapNodeError } from "./errors"
-import { assertParentRealPathInside, type WorkspacePaths } from "./path"
+import type { WorkspacePaths } from "./path"
 import type { CreateFileBody, CreateFolderBody } from "./contracts"
 
 export async function createFile(paths: WorkspacePaths, body: CreateFileBody) {
@@ -8,7 +8,6 @@ export async function createFile(paths: WorkspacePaths, body: CreateFileBody) {
 
   try {
     await assertNotRoot(target.relativePath)
-    await assertParentRealPathInside(paths, target.absolutePath)
     await writeFile(target.absolutePath, body.content ?? "", {
       encoding: "utf8",
       flag: body.overwrite ? "w" : "wx",
@@ -29,7 +28,6 @@ export async function createFolder(
 
   try {
     await assertNotRoot(target.relativePath)
-    await assertParentRealPathInside(paths, target.absolutePath)
     await mkdir(target.absolutePath, { recursive: body.recursive })
 
     return target.relativePath

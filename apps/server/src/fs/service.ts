@@ -2,7 +2,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import { createWorkspacePaths } from "./path"
 import { FileChangeHub } from "./watch"
-import { statPath } from "./stat"
+import { effectiveEntryType, statPath } from "./stat"
 import { readTree } from "./tree"
 import { getBlobFile, readTextFile } from "./read"
 import { writeTextFile } from "./write"
@@ -224,7 +224,8 @@ export class FileSystemService {
 
   async recordRecent(path: string) {
     const entry = await this.metadataEntry(path)
-    if (entry.type !== "directory") throw new FsError("NOT_A_DIRECTORY")
+    if (effectiveEntryType(entry) !== "directory")
+      throw new FsError("NOT_A_DIRECTORY")
 
     this.metadata.recordPicked(entry)
     return entry
@@ -245,7 +246,7 @@ export class FileSystemService {
   private async refreshMetadataEntry(entry: FsMetadataEntry) {
     try {
       const refreshed = await this.metadataEntry(entry.path)
-      if (refreshed.type !== "directory") return null
+      if (effectiveEntryType(refreshed) !== "directory") return null
       return refreshed
     } catch {
       return null
@@ -271,6 +272,7 @@ function entryFromStat(stat: FsStat): TreeEntry {
     path: stat.path,
     name: pathBasename(stat.path),
     type: stat.type,
+    targetType: stat.targetType,
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     birthtimeMs: stat.birthtimeMs,

@@ -1,6 +1,7 @@
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { errorMessage, fetchTree } from "@/lib/file-server"
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
+import { isDirectoryEntry } from "@/lib/file-system-types"
 import { idleState, type LoadState } from "@/lib/load-state"
 import { canonicalTreePath, toTreePath } from "@/lib/path-formatters"
 import { fileSystemKeys } from "@/lib/query-keys"
@@ -46,7 +47,7 @@ export function useWorkspaceTree(
   function loadTreeDirectory(entry: TreeEntry, treePath: string) {
     if (!rootFolder) return
     if (treeState.status !== "ready") return
-    if (entry.type !== "directory") return
+    if (!isDirectoryEntry(entry)) return
     if (!shouldLoadDirectory(treeState.data, treePath)) return
 
     const canonicalPath = canonicalTreePath(treePath)

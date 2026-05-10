@@ -30,6 +30,7 @@ export const treeEntrySchema = v.object({
   name: v.string(),
   path: pathSchema,
   type: entryTypeQueryValueSchema,
+  targetType: v.optional(entryTypeQueryValueSchema),
   size: v.number(),
   mtimeMs: v.number(),
   birthtimeMs: v.number(),
