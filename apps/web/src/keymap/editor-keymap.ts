@@ -1,0 +1,48 @@
+import type { EditorCommandId, EditorKeyBinding } from "@editor/core"
+
+import type {
+  EditorPlatformCommandId,
+  PlatformCommandId,
+  PlatformKeyBinding,
+} from "./types"
+
+const EDITOR_COMMAND_PREFIX = "editor."
+
+export function editorKeyBindingsFromPlatform(
+  bindings: readonly PlatformKeyBinding[]
+): readonly EditorKeyBinding[] {
+  return bindings.flatMap((binding) => {
+    const editorBinding = editorKeyBindingFromPlatform(binding)
+    return editorBinding ? [editorBinding] : []
+  })
+}
+
+export function editorKeyBindingFromPlatform(
+  binding: PlatformKeyBinding
+): EditorKeyBinding | null {
+  const command = editorCommandId(binding.command)
+  if (!command) return null
+
+  return {
+    command,
+    hotkey: binding.hotkey,
+    preventDefault: binding.preventDefault,
+    stopPropagation: binding.stopPropagation,
+  }
+}
+
+export function isEditorPlatformCommandId(
+  command: PlatformCommandId | null
+): command is EditorPlatformCommandId {
+  if (!command) return false
+
+  return command.startsWith(EDITOR_COMMAND_PREFIX)
+}
+
+function editorCommandId(
+  command: PlatformCommandId | null
+): EditorCommandId | null {
+  if (!isEditorPlatformCommandId(command)) return null
+
+  return command.slice(EDITOR_COMMAND_PREFIX.length) as EditorCommandId
+}

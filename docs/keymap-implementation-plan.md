@@ -143,10 +143,11 @@ type FocusPane = "editor" | "file-tree" | "git" | "global" | null
 ```
 
 The app owns the top-level keymap and registers app/workspace shortcuts through
-`@tanstack/react-hotkeys` or the current TanStack hotkeys equivalent. The editor
-accepts the editor slice as a prop and remains responsible for text-editing
-commands because it owns selection, document session, find state, and native
-input fallback.
+`@tanstack/react-hotkeys`. Add the React package to `apps/web` if it is not
+already installed. The editor accepts the editor slice as a prop and remains
+responsible for text-editing commands because it owns selection, document
+session, find state, and native input fallback. The lower-level editor-core
+adapter can keep using `@tanstack/hotkeys` internally.
 
 Near-term ownership:
 
@@ -541,8 +542,7 @@ Add app-level keymap registration with TanStack hotkeys:
 - read `activeArea` from `workspace-focus-state`
 - define default bindings for `global`, `file-tree`, `git`, and `editor`
 - filter active app bindings by focused pane
-- register active app bindings with `@tanstack/react-hotkeys` or the current
-  TanStack hotkeys package
+- register active app bindings with `@tanstack/react-hotkeys`
 - prefer `useHotkeys` for dynamic focused-pane binding lists, and reserve
   `useHotkeySequence` or `useHotkeySequences` for explicit multi-step shortcuts
 - keep app-level handlers out of the editor DOM target unless they are intended

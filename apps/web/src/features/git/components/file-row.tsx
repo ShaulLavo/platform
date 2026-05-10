@@ -40,7 +40,7 @@ export function FileRow({
 
   return (
     <div
-      className="group/row grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-none outline-none hover:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring/50"
+      className="group/row grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-4 outline-none hover:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring/50"
       role="button"
       tabIndex={0}
       onClick={handleOpen}
@@ -62,7 +62,7 @@ export function FileRow({
       <FileActions path={row.file.path} section={row.section} />
       <span
         className={cn(
-          "justify-self-end text-xs font-semibold",
+          "flex h-6 items-center justify-self-end pb-px text-xs font-semibold leading-none",
           status.className
         )}
         title={status.title}

@@ -195,13 +195,13 @@
 .editor-diff-view .editor-virtualized::selection,
 .editor-diff-view .editor-virtualized-row::selection,
 .editor-diff-view .editor-virtualized-row-chunk::selection {
-  background: color-mix(in srgb, var(--editor-diff-modified) 42%, transparent);
+  background: transparent;
   color: inherit;
 }
 
 .editor-diff-view .editor-virtualized-row,
 .editor-diff-view .editor-virtualized-row-chunk {
-  user-select: text;
+  user-select: none;
 }
 
 .editor-diff-row-addition {
@@ -239,6 +239,7 @@
 
 .editor-diff-gutter {
   align-items: center;
+  box-sizing: border-box;
   color: var(--editor-gutter-foreground, #71717a);
   display: inline-flex;
   font-variant-numeric: tabular-nums;

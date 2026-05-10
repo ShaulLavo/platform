@@ -3,6 +3,9 @@ import type { DiffRenderRow } from "./types";
 
 export type DiffGutterSide = "old" | "new" | "stacked";
 
+const MIN_LINE_NUMBER_DIGITS = 2;
+const GUTTER_RESERVED_WIDTH = 30;
+
 export function createDiffGutterContribution(
   side: DiffGutterSide,
   getRows: () => readonly DiffRenderRow[],
@@ -14,13 +17,26 @@ export function createDiffGutterContribution(
       return createDiffGutterCell(document);
     },
     width(context) {
-      const digits = Math.max(2, String(Math.max(1, context.lineCount)).length);
-      return Math.ceil(digits * context.metrics.characterWidth + 30);
+      const characters = maxLineNumberCharacters(side, getRows(), context.lineCount);
+      return Math.ceil(characters * context.metrics.characterWidth + GUTTER_RESERVED_WIDTH);
     },
     updateCell(element, context) {
       updateDiffGutterCell(element, context, getRows()[context.bufferRow], side);
     },
   };
+}
+
+function maxLineNumberCharacters(
+  side: DiffGutterSide,
+  rows: readonly DiffRenderRow[],
+  lineCount: number,
+): number {
+  let maxCharacters = String(Math.max(1, lineCount)).length;
+  for (const row of rows) {
+    maxCharacters = Math.max(maxCharacters, lineNumberForRow(row, side).length);
+  }
+
+  return Math.max(MIN_LINE_NUMBER_DIGITS, maxCharacters);
 }
 
 function createDiffGutterCell(document: Document): HTMLElement {

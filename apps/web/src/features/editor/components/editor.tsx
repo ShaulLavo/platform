@@ -24,9 +24,11 @@ import {
 } from "@/features/editor/hooks/use-scroll-persistence-plugin"
 import { useTypeScriptLspPlugin } from "@/features/editor/hooks/use-typescript-lsp-plugin"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+import type { EditorKeyBinding } from "@editor/core"
 
 type EditorProps = {
   document: CachedEditorDocument
+  keymapBindings: readonly EditorKeyBinding[]
   rootPath: string
   definitionTarget?: TypeScriptLspDefinitionTarget | null
   onDirtyChange?: (path: string, dirty: boolean) => void
@@ -42,6 +44,7 @@ type EditorProps = {
 export function Editor({
   definitionTarget,
   document: cachedDocument,
+  keymapBindings,
   rootPath,
   onDirtyChange,
   onOpenDefinition,
@@ -92,6 +95,10 @@ export function Editor({
       rowBackground: true,
     },
     document,
+    keymap: {
+      bindings: keymapBindings,
+      defaultBindings: false,
+    },
     onChange: (_state, change) => {
       if (!change || change.kind === "selection" || change.kind === "none")
         return

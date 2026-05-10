@@ -10,21 +10,31 @@ import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
+import {
+  defaultPlatformKeyBindings,
+  editorKeyBindingsFromPlatform,
+  useAppKeymap,
+  usePlatformCommandDispatch,
+} from "@/keymap"
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { writeWorkspaceCache } from "@/lib/workspace-cache"
-import { useEffect } from "react"
+import { HotkeysProvider } from "@tanstack/react-hotkeys"
+import { useEffect, useMemo } from "react"
 
 export function App() {
   return (
     <EditorStateProvider>
       <WorkspaceFocusProvider>
-        <AppContent />
+        <HotkeysProvider>
+          <AppContent />
+        </HotkeysProvider>
       </WorkspaceFocusProvider>
     </EditorStateProvider>
   )
 }
 
 function AppContent() {
+  const activeArea = useWorkspaceFocus((state) => state.activeArea)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const pickerOpen = useEditorWorkspaceState((state) => state.pickerOpen)
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
@@ -42,6 +52,17 @@ function AppContent() {
   const { loadTreeDirectory, resetTreeLoad, treeState } =
     useWorkspaceTree(rootFolder)
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
+  const keymapBindings = useMemo(defaultPlatformKeyBindings, [])
+  const editorKeyBindings = useMemo(
+    () => editorKeyBindingsFromPlatform(keymapBindings),
+    [keymapBindings]
+  )
+  const dispatchKeymapCommand = usePlatformCommandDispatch()
+  useAppKeymap({
+    bindings: keymapBindings,
+    dispatch: dispatchKeymapCommand,
+    focusedPane: activeArea,
+  })
   useOpenTabCache()
   useWorkspaceEvents(rootFolder)
 
@@ -76,6 +97,7 @@ function AppContent() {
       <div className="flex h-full min-h-0 flex-col">
         {rootFolder ? (
           <WorkspaceView
+            editorKeyBindings={editorKeyBindings}
             fileState={fileState}
             rootFolder={rootFolder}
             treeState={treeState}

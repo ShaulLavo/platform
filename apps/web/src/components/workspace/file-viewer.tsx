@@ -33,14 +33,17 @@ import type { FileResult } from "@/lib/file-system-types"
 import { fileSystemKeys } from "@/lib/query-keys"
 import type { LoadState } from "@/lib/load-state"
 import { parseMergeConflicts } from "@editor/core"
+import type { EditorKeyBinding } from "@editor/core"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 export function FileViewer({
+  editorKeyBindings,
   fileState,
   rootPath,
 }: {
+  editorKeyBindings: readonly EditorKeyBinding[]
   fileState: LoadState<FileResult>
   rootPath: string
 }) {
@@ -159,6 +162,7 @@ export function FileViewer({
           <FileViewerBody
             cachedDocument={visibleDocument}
             definitionTarget={definitionTarget}
+            editorKeyBindings={editorKeyBindings}
             fileState={fileState}
             rootPath={rootPath}
             onEditorDirtyChange={setCachedEditorDocumentDirty}
@@ -182,6 +186,7 @@ function FileViewerEmpty() {
 function FileViewerBody({
   cachedDocument,
   definitionTarget,
+  editorKeyBindings,
   fileState,
   rootPath,
   onEditorDirtyChange,
@@ -192,6 +197,7 @@ function FileViewerBody({
 }: {
   cachedDocument: CachedEditorDocument | null
   definitionTarget: TypeScriptLspDefinitionTarget | null
+  editorKeyBindings: readonly EditorKeyBinding[]
   fileState: LoadState<FileResult>
   rootPath: string
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
@@ -208,6 +214,7 @@ function FileViewerBody({
       <Editor
         definitionTarget={definitionTarget}
         document={cachedDocument}
+        keymapBindings={editorKeyBindings}
         rootPath={rootPath}
         onDirtyChange={onEditorDirtyChange}
         onScrollPositionChange={onEditorScrollPositionChange}
@@ -318,7 +325,10 @@ async function applyConflictEditorResolution(
     )
   }
 
-  const file = await fetchFile(conflict.remotePath, new AbortController().signal)
+  const file = await fetchFile(
+    conflict.remotePath,
+    new AbortController().signal
+  )
   replaceResolvedConflictFile(conflict.localPath, file, context)
   finishEditorResolvedConflict(conflict, context)
 }

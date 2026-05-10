@@ -34,6 +34,20 @@ type MountedPane = {
   syntaxSession?: { dispose(): void }
 }
 
+type PaneSelectionDrag = {
+  readonly anchorOffset: number
+  readonly getRows: () => readonly DiffRenderRow[]
+  readonly view: VirtualizedTextView
+  headOffset: number
+}
+
+type PaneSelection = {
+  readonly anchorOffset: number
+  readonly getRows: () => readonly DiffRenderRow[]
+  readonly view: VirtualizedTextView
+  headOffset: number
+}
+
 const DEFAULT_THEME = "github-dark"
 const WHEEL_LINE_DELTA = 40
 let nextDiffViewId = 0
@@ -53,6 +67,8 @@ export class DiffView {
   private expandedHunksByPath = new Map<string, Set<number>>()
   private disposeScrollSync: (() => void) | null = null
   private syncingScroll = false
+  private paneSelection: PaneSelection | null = null
+  private paneSelectionDrag: PaneSelectionDrag | null = null
 
   constructor(container: HTMLElement, options: DiffViewOptions = {}) {
     this.options = options
@@ -256,6 +272,7 @@ export class DiffView {
       selectionHighlightName: `${this.highlightPrefix}-${side}-selection`,
       tabSize: this.options.tabSize,
     })
+    view.scrollElement.tabIndex = -1
     view.setEditable(false)
     view.setText(joinRenderLines(rows))
     view.setRowDecorations(rowDecorations(rows))
@@ -279,9 +296,148 @@ export class DiffView {
     view: VirtualizedTextView,
     getRows: () => readonly DiffRenderRow[]
   ): () => void {
+    const onCopy = (event: ClipboardEvent) =>
+      this.handlePaneCopy(event, view, getRows)
     const onClick = (event: MouseEvent) => this.handlePaneClick(event, getRows)
+    const onMouseDown = (event: MouseEvent) =>
+      this.handlePaneMouseDown(event, view, getRows)
+    view.scrollElement.addEventListener("copy", onCopy)
     view.scrollElement.addEventListener("click", onClick)
-    return () => view.scrollElement.removeEventListener("click", onClick)
+    view.scrollElement.addEventListener("mousedown", onMouseDown)
+    return () => {
+      view.scrollElement.removeEventListener("copy", onCopy)
+      view.scrollElement.removeEventListener("click", onClick)
+      view.scrollElement.removeEventListener("mousedown", onMouseDown)
+    }
+  }
+
+  private handlePaneMouseDown(
+    event: MouseEvent,
+    view: VirtualizedTextView,
+    getRows: () => readonly DiffRenderRow[]
+  ): void {
+    if (event.button !== 0) return
+    if (event.detail !== 1) return
+    if (event.defaultPrevented) return
+
+    const offset = this.textOffsetFromPanePoint(
+      view,
+      event.clientX,
+      event.clientY
+    )
+    event.preventDefault()
+    view.scrollElement.focus({ preventScroll: true })
+    view.scrollElement.ownerDocument.getSelection()?.removeAllRanges()
+    this.clearPaneSelection(view)
+    this.paneSelectionDrag = {
+      anchorOffset: offset,
+      getRows,
+      headOffset: offset,
+      view,
+    }
+    this.setPaneSelection(view, getRows, offset, offset)
+    view.scrollElement.ownerDocument.addEventListener(
+      "mousemove",
+      this.updatePaneSelectionDrag
+    )
+    view.scrollElement.ownerDocument.addEventListener(
+      "mouseup",
+      this.finishPaneSelectionDrag
+    )
+  }
+
+  private updatePaneSelectionDrag = (event: MouseEvent): void => {
+    const drag = this.paneSelectionDrag
+    if (!drag) return
+
+    event.preventDefault()
+    drag.headOffset = this.textOffsetFromPanePoint(
+      drag.view,
+      event.clientX,
+      event.clientY
+    )
+    this.setPaneSelection(
+      drag.view,
+      drag.getRows,
+      drag.anchorOffset,
+      drag.headOffset
+    )
+  }
+
+  private finishPaneSelectionDrag = (event: MouseEvent): void => {
+    const drag = this.paneSelectionDrag
+    if (!drag) {
+      this.stopPaneSelectionDrag()
+      return
+    }
+
+    event.preventDefault()
+    drag.headOffset = this.textOffsetFromPanePoint(
+      drag.view,
+      event.clientX,
+      event.clientY
+    )
+    this.setPaneSelection(
+      drag.view,
+      drag.getRows,
+      drag.anchorOffset,
+      drag.headOffset
+    )
+    this.stopPaneSelectionDrag()
+  }
+
+  private stopPaneSelectionDrag(): void {
+    const drag = this.paneSelectionDrag
+    this.paneSelectionDrag = null
+    const document = drag?.view.scrollElement.ownerDocument
+    document?.removeEventListener("mousemove", this.updatePaneSelectionDrag)
+    document?.removeEventListener("mouseup", this.finishPaneSelectionDrag)
+  }
+
+  private setPaneSelection(
+    view: VirtualizedTextView,
+    getRows: () => readonly DiffRenderRow[],
+    anchorOffset: number,
+    headOffset: number
+  ): void {
+    view.setSelection(anchorOffset, headOffset)
+    this.paneSelection = { anchorOffset, getRows, headOffset, view }
+  }
+
+  private clearPaneSelection(except?: VirtualizedTextView): void {
+    const selection = this.paneSelection
+    if (!selection) return
+    if (selection.view === except) return
+
+    selection.view.clearSelection()
+    this.paneSelection = null
+  }
+
+  private handlePaneCopy(
+    event: ClipboardEvent,
+    view: VirtualizedTextView,
+    getRows: () => readonly DiffRenderRow[]
+  ): void {
+    const selection = this.paneSelection
+    if (!selection) return
+    if (selection.view !== view) return
+
+    const text = selectedPaneText(selection, getRows())
+    if (text.length === 0) return
+
+    event.preventDefault()
+    event.clipboardData?.setData("text/plain", text)
+  }
+
+  private textOffsetFromPanePoint(
+    view: VirtualizedTextView,
+    clientX: number,
+    clientY: number
+  ): number {
+    return (
+      view.textOffsetFromPoint(clientX, clientY) ??
+      view.textOffsetFromViewportPoint(clientX, clientY)
+    )
   }
 
   private handlePaneClick(
@@ -353,6 +509,7 @@ export class DiffView {
     rows: readonly DiffRenderRow[],
     file: DiffFile
   ): void {
+    this.clearPaneSelection()
     pane.rows = rows
     pane.view.setText(joinRenderLines(rows))
     if (pane.tokens) pane.view.setTokens(pane.tokens)
@@ -513,6 +670,8 @@ export class DiffView {
   }
 
   private disposePanes(): void {
+    this.stopPaneSelectionDrag()
+    this.clearPaneSelection()
     this.paneGroup?.dispose()
     this.paneGroup = null
     this.disposeScrollSync?.()
@@ -610,6 +769,17 @@ function toggleSetValue(set: Set<number>, value: number): void {
   if (set.delete(value)) return
 
   set.add(value)
+}
+
+function selectedPaneText(
+  selection: PaneSelection,
+  rows: readonly DiffRenderRow[]
+): string {
+  const start = Math.min(selection.anchorOffset, selection.headOffset)
+  const end = Math.max(selection.anchorOffset, selection.headOffset)
+  if (start === end) return ""
+
+  return joinRenderLines(rows).slice(start, end)
 }
 
 function normalizedWheelDelta(

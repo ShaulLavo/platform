@@ -16,6 +16,7 @@ import {
   treeStateLabel,
   type TreeModel,
 } from "@/lib/tree-model"
+import type { EditorKeyBinding } from "@editor/core"
 import {
   Tabs,
   TabsContent,
@@ -30,11 +31,13 @@ import {
 import { useMemo } from "react"
 
 export function WorkspaceView({
+  editorKeyBindings,
   fileState,
   rootFolder,
   treeState,
   onLoadDirectory,
 }: {
+  editorKeyBindings: readonly EditorKeyBinding[]
   fileState: LoadState<FileResult>
   rootFolder: PickedFsEntry
   treeState: LoadState<TreeModel>
@@ -118,7 +121,11 @@ export function WorkspaceView({
             className="h-full min-h-0 min-w-0 overflow-hidden"
             minSize="480px"
           >
-            <FileViewer fileState={fileState} rootPath={rootFolder.path} />
+            <FileViewer
+              editorKeyBindings={editorKeyBindings}
+              fileState={fileState}
+              rootPath={rootFolder.path}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
         {statusBarState && (

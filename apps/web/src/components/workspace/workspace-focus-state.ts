@@ -2,7 +2,12 @@ import { createContext, useContext } from "react"
 import { useStore } from "zustand"
 import { createStore, type StoreApi } from "zustand/vanilla"
 
-export type WorkspaceFocusArea = "editor" | "file-tree" | "global" | null
+export type WorkspaceFocusArea =
+  | "editor"
+  | "file-tree"
+  | "git"
+  | "global"
+  | null
 
 type WorkspaceFocusStoreState = {
   activeArea: WorkspaceFocusArea

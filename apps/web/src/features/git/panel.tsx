@@ -1,6 +1,7 @@
 import { cn } from "@workspace/ui/lib/utils"
 import { useMemo, useState, type ComponentProps, type ReactNode } from "react"
 
+import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { errorMessage } from "@/lib/file-server"
 import { useStatus } from "./hooks"
 import { StateContext, createGitStore, useGitState } from "./state"
@@ -39,6 +40,7 @@ function PanelContent({
   const repository = status.data?.repository ?? null
   const rows = useMemo(() => changeRows(files), [files])
   const panelOpen = useGitState((state) => state.panelOpen)
+  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
 
   if (status.isPending) {
     return <PanelShell className={className} label="Loading Git" />
@@ -62,9 +64,11 @@ function PanelContent({
         "flex h-full min-h-0 flex-col bg-background text-foreground",
         className
       )}
+      onFocusCapture={() => setFocusArea("git")}
+      onPointerDownCapture={() => setFocusArea("git")}
     >
       <Header repository={repository} rootPath={rootPath} />
-      {panelOpen && (
+      {panelOpen ? (
         <>
           <CommitControls
             branch={repository.branch ?? "HEAD"}
@@ -90,8 +94,8 @@ function PanelContent({
             )}
           </div>
         </>
-      )}
-      {!panelOpen && (
+      )
+      : (
         <div aria-hidden="true" className="min-h-0 flex-1 bg-background" />
       )}
     </section>

@@ -21,6 +21,7 @@ import {
 
 import type { EditorDiffViewMode } from "@/features/editor/utils/diff-view-mode"
 import { languageIdForFilePath } from "@/features/editor/utils/file-path"
+import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { useTheme } from "@/components/theme-context"
 import { errorMessage } from "@/lib/file-server"
 import { displayPath } from "@/lib/path-formatters"
@@ -131,6 +132,8 @@ const EditorDiffView = forwardRef<
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<DiffView | null>(null)
   const { theme } = useTheme()
+  const active = useWorkspaceFocus((state) => state.activeArea === "editor")
+  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const shikiTheme = resolvedShikiTheme(theme)
 
   useImperativeHandle(ref, () => diffViewHandle(viewRef), [])
@@ -166,7 +169,10 @@ const EditorDiffView = forwardRef<
   return (
     <div
       ref={hostRef}
-      className="flex h-full min-h-0 min-w-0 flex-1 bg-background text-foreground"
+      className="app-editor-host flex h-full min-h-0 min-w-0 flex-1 bg-background text-foreground"
+      data-editor-focus-active={active ? "true" : "false"}
+      onFocusCapture={() => setFocusArea("editor")}
+      onPointerDownCapture={() => setFocusArea("editor")}
       style={diffViewStyle}
     />
   )
