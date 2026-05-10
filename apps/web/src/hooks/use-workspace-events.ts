@@ -54,6 +54,8 @@ const FILE_REFRESH_RETRY_DELAY_MS = 80
 
 const FILE_REFRESH_RETRY_ATTEMPTS = 5
 
+const READY_ROOT_TREE_FRESH_MS = 10_000
+
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const conflictStore = useEditorConflictStoreApi()
   const queryClient = useQueryClient()
@@ -265,9 +267,7 @@ async function applyWorkspaceReady({
   signal: AbortSignal
 }) {
   invalidateGitState(queryClient)
-  await refreshTreeDirectory(queryClient, rootPath, rootPath, signal).catch(
-    () => null
-  )
+  await refreshReadyRootTreeDirectory(queryClient, rootPath, signal)
 
   await Promise.all(
     fileBackedOpenPaths(openFilePaths).map((path) =>
@@ -279,6 +279,41 @@ async function applyWorkspaceReady({
       ).catch(() => undefined)
     )
   )
+}
+
+async function refreshReadyRootTreeDirectory(
+  queryClient: ReturnType<typeof useQueryClient>,
+  rootPath: string,
+  signal: AbortSignal
+) {
+  if (!shouldRefreshReadyRootTree(queryClient, rootPath)) return
+
+  await refreshTreeDirectory(queryClient, rootPath, rootPath, signal).catch(
+    () => null
+  )
+}
+
+export function shouldRefreshReadyRootTree(
+  queryClient: {
+    getQueryState: (queryKey: readonly unknown[]) =>
+      | {
+          data?: unknown
+          dataUpdatedAt: number
+          fetchStatus: string
+          isInvalidated?: boolean
+        }
+      | undefined
+  },
+  rootPath: string,
+  now = Date.now()
+) {
+  const state = queryClient.getQueryState(fileSystemKeys.tree(rootPath))
+  if (!state) return false
+  if (state.fetchStatus === "fetching") return false
+  if (!state.data) return false
+  if (state.isInvalidated) return true
+
+  return now - state.dataUpdatedAt > READY_ROOT_TREE_FRESH_MS
 }
 
 async function refreshAffectedTreeDirectories(

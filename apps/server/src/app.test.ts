@@ -161,6 +161,35 @@ describe("fs rpc filesystem limits", () => {
     expect(linked).not.toHaveProperty("children")
   })
 
+  it("filters ignored tree entries and keeps directory-first sorting", async () => {
+    const root = await fixtureRoot()
+    await Promise.all([
+      mkdir(path.join(root, ".git"), { recursive: true }),
+      mkdir(path.join(root, "z-dir"), { recursive: true }),
+      mkdir(path.join(root, "a-dir"), { recursive: true }),
+      writeFile(path.join(root, "b.txt"), "ok"),
+      writeFile(path.join(root, "a.txt"), "ok"),
+    ])
+    const app = testApp(root)
+
+    const response = await app.handle(
+      new Request("http://local/fs/tree?path=&depth=1", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const payload = (await response.json()) as {
+      entries: Array<{ path: string }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(payload.entries.map((entry) => entry.path)).toEqual([
+      "a-dir",
+      "z-dir",
+      "a.txt",
+      "b.txt",
+    ])
+  })
+
   it("loads large directories through bounded concurrent stat reads", async () => {
     const root = await fixtureRoot()
     await Promise.all(

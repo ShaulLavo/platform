@@ -19,6 +19,8 @@ type OpenTabCacheContext = {
   queryClient: ReturnType<typeof useQueryClient>
 }
 
+const OPEN_TAB_CACHE_CONCURRENCY = 4
+
 export function useOpenTabCache() {
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const ensureCachedEditorDocument = useEditorDocumentState(
@@ -62,7 +64,19 @@ async function cacheOpenTabs(
   paths: readonly string[],
   context: OpenTabCacheContext
 ) {
-  await Promise.all(paths.map((path) => cacheOpenTab(path, context)))
+  let nextIndex = 0
+  const workerCount = Math.min(paths.length, OPEN_TAB_CACHE_CONCURRENCY)
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (context.isActive()) {
+        const path = paths[nextIndex]
+        nextIndex += 1
+        if (!path) return
+
+        await cacheOpenTab(path, context)
+      }
+    })
+  )
 }
 
 async function cacheOpenTab(path: string, context: OpenTabCacheContext) {

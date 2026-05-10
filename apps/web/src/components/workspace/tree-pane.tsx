@@ -33,16 +33,47 @@ import {
 
 export function TreePane({
   gitStatus,
-  model,
   onLoadDirectory,
   rootPath,
   state,
 }: {
   gitStatus?: readonly GitStatusEntry[]
-  model: TreeModel
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
   state: LoadState<TreeModel>
+}) {
+  if (state.status === "loading") return <TreeStatus label="Loading folder" />
+  if (state.status === "error") {
+    return (
+      <TreeStatus
+        icon={<WarningCircleIcon className="size-4" />}
+        label={state.message}
+      />
+    )
+  }
+  if (state.status !== "ready") return <TreeStatus label="No files" />
+  if (state.data.paths.length === 0) return <TreeStatus label="No files" />
+
+  return (
+    <ReadyTreePane
+      gitStatus={gitStatus}
+      model={state.data}
+      rootPath={rootPath}
+      onLoadDirectory={onLoadDirectory}
+    />
+  )
+}
+
+function ReadyTreePane({
+  gitStatus,
+  model,
+  onLoadDirectory,
+  rootPath,
+}: {
+  gitStatus?: readonly GitStatusEntry[]
+  model: TreeModel
+  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  rootPath: string
 }) {
   const selectedFilePath = useEditorWorkspaceState(
     (store) => store.selectedFilePath
@@ -50,6 +81,7 @@ export function TreePane({
   const { selectFile } = useEditorCommands()
   const setFocusArea = useWorkspaceFocus((store) => store.setFocusArea)
   const modelRef = useRef(model)
+  const pathsRef = useRef(model.paths)
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
     (currentTree: PierreFileTreeModel) => {
@@ -58,7 +90,7 @@ export function TreePane({
   )
 
   const initialSelectedPaths = selectedFilePath
-    ? [treePathForSelectedPath(model, rootPath, selectedFilePath)]
+    ? [treePathForSelectedPath(rootPath, selectedFilePath)]
     : undefined
   const { model: tree } = useFileTree({
     density: "compact",
@@ -92,15 +124,14 @@ export function TreePane({
   }, [gitStatus, tree])
 
   useEffect(() => {
-    tree.resetPaths(model.paths, {
-      initialExpandedPaths: expandedDirectoryPaths(model, tree),
-    })
+    syncTreePaths(tree, pathsRef.current, model.paths, model)
+    pathsRef.current = model.paths
     loadExpandedDirectoriesForCurrentModel(tree)
   }, [model, tree])
 
   useEffect(() => {
-    syncSelectedFilePath(tree, model, rootPath, selectedFilePath)
-  }, [model, rootPath, selectedFilePath, tree])
+    syncSelectedFilePath(tree, rootPath, selectedFilePath)
+  }, [rootPath, selectedFilePath, tree])
 
   useEffect(() => {
     return tree.subscribe(() => {
@@ -114,34 +145,13 @@ export function TreePane({
       onFocusCapture={() => setFocusArea("file-tree")}
       onPointerDownCapture={() => setFocusArea("file-tree")}
     >
-      {treePaneContent(state, model, tree)}
-    </div>
-  )
-}
-
-function treePaneContent(
-  state: LoadState<TreeModel>,
-  model: TreeModel,
-  tree: PierreFileTreeModel
-) {
-  if (state.status === "loading") return <TreeStatus label="Loading folder" />
-  if (state.status === "error") {
-    return (
-      <TreeStatus
-        icon={<WarningCircleIcon className="size-4" />}
-        label={state.message}
+      <PierreFileTree
+        aria-label="Folder tree"
+        className="block h-full"
+        model={tree}
+        style={treeStyle}
       />
-    )
-  }
-  if (model.paths.length === 0) return <TreeStatus label="No files" />
-
-  return (
-    <PierreFileTree
-      aria-label="Folder tree"
-      className="block h-full"
-      model={tree}
-      style={treeStyle}
-    />
+    </div>
   )
 }
 
@@ -158,13 +168,12 @@ function TreeStatus({ icon, label }: { icon?: ReactNode; label: string }) {
 
 function syncSelectedFilePath(
   tree: PierreFileTreeModel,
-  model: TreeModel,
   rootPath: string,
   selectedFilePath: string | null
 ) {
   if (!selectedFilePath) return clearTreeSelection(tree)
 
-  const treePath = treePathForSelectedPath(model, rootPath, selectedFilePath)
+  const treePath = treePathForSelectedPath(rootPath, selectedFilePath)
   if (!treePath) return clearTreeSelection(tree)
 
   const canonicalPath = canonicalTreePath(treePath)
@@ -181,6 +190,88 @@ function clearTreeSelection(tree: PierreFileTreeModel) {
   for (const selectedPath of tree.getSelectedPaths()) {
     tree.getItem(selectedPath)?.deselect()
   }
+}
+
+const INCREMENTAL_TREE_SYNC_LIMIT = 512
+
+type TreePathChanges = {
+  added: string[]
+  removed: string[]
+}
+
+function syncTreePaths(
+  tree: PierreFileTreeModel,
+  previousPaths: readonly string[],
+  nextPaths: readonly string[],
+  model: TreeModel
+) {
+  const changes = treePathChanges(previousPaths, nextPaths)
+  if (changes.added.length === 0 && changes.removed.length === 0) return
+
+  if (shouldResetTreePaths(changes)) {
+    tree.resetPaths(nextPaths, {
+      initialExpandedPaths: expandedDirectoryPaths(model, tree),
+    })
+    return
+  }
+
+  for (const path of topLevelRemovedPaths(changes.removed)) {
+    removeTreePath(tree, path)
+  }
+
+  for (const path of sortedTreePathsByDepth(changes.added)) {
+    tree.add(path)
+  }
+}
+
+function treePathChanges(
+  previousPaths: readonly string[],
+  nextPaths: readonly string[]
+): TreePathChanges {
+  const previousPathSet = new Set(previousPaths)
+  const nextPathSet = new Set(nextPaths)
+
+  return {
+    added: nextPaths.filter((path) => !previousPathSet.has(path)),
+    removed: previousPaths.filter((path) => !nextPathSet.has(path)),
+  }
+}
+
+function shouldResetTreePaths({ added, removed }: TreePathChanges) {
+  return added.length + removed.length > INCREMENTAL_TREE_SYNC_LIMIT
+}
+
+function topLevelRemovedPaths(paths: readonly string[]) {
+  const removedPathSet = new Set(paths)
+
+  return sortedTreePathsByDepth(paths).filter(
+    (path) => !hasRemovedAncestor(path, removedPathSet)
+  )
+}
+
+function hasRemovedAncestor(path: string, removedPathSet: ReadonlySet<string>) {
+  return ancestorDirectoryPaths(path).some((ancestorPath) =>
+    removedPathSet.has(ancestorPath)
+  )
+}
+
+function sortedTreePathsByDepth(paths: readonly string[]) {
+  return [...paths].sort(
+    (left, right) => treePathDepth(left) - treePathDepth(right)
+  )
+}
+
+function treePathDepth(path: string) {
+  return canonicalTreePath(path).split("/").filter(Boolean).length
+}
+
+function removeTreePath(tree: PierreFileTreeModel, path: string) {
+  if (path.endsWith("/")) {
+    tree.remove(path, { recursive: true })
+    return
+  }
+
+  tree.remove(path)
 }
 
 function expandKnownAncestorDirectories(

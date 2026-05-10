@@ -4,7 +4,39 @@ import {
   patchTreeEntryMetadata,
   replaceDirectoryLoad,
   treeModel,
+  treeModelWithDirectoryLoads,
 } from "@/lib/tree-model"
+
+describe("treeModelWithDirectoryLoads", () => {
+  it("merges selected-file ancestor directory loads into the initial model", () => {
+    const root = "repo"
+    const model = treeModelWithDirectoryLoads(
+      tree(root, [directory("repo/src"), file("repo/README.md")]),
+      root,
+      [
+        tree("repo/src", [
+          directory("repo/src/components"),
+          file("repo/src/index.ts"),
+        ]),
+        tree("repo/src/components", [file("repo/src/components/Button.tsx")]),
+      ]
+    )
+
+    expect(model.paths).toEqual([
+      "src/",
+      "README.md",
+      "src/components/",
+      "src/index.ts",
+      "src/components/Button.tsx",
+    ])
+    expect(model.loadedDirectoryPaths).toEqual(
+      new Set(["src", "src/components"])
+    )
+    expect(model.entriesByTreePath.get("src/components/Button.tsx")).toEqual(
+      file("repo/src/components/Button.tsx")
+    )
+  })
+})
 
 describe("replaceDirectoryLoad", () => {
   it("replaces root children and removes stale entries", () => {

@@ -11,11 +11,7 @@ import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
 import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import type { WorkspacePanelTab } from "@/lib/workspace-cache"
-import {
-  EMPTY_TREE_MODEL,
-  treeStateLabel,
-  type TreeModel,
-} from "@/lib/tree-model"
+import { treeStateLabel, type TreeModel } from "@/lib/tree-model"
 import type { EditorKeyBinding } from "@editor/core"
 import {
   Tabs,
@@ -50,7 +46,6 @@ export function WorkspaceView({
   const setWorkspacePanelTab = useEditorWorkspaceState(
     (state) => state.setWorkspacePanelTab
   )
-  const treeModel = treeState.status === "ready" ? treeState.data : null
 
   function handleWorkspacePanelTabChange(value: string) {
     if (!isWorkspacePanelTab(value)) return
@@ -103,7 +98,6 @@ export function WorkspaceView({
                 <TabsContent keepMounted value="files">
                   <WorkspaceTreePane
                     key={rootFolder.path}
-                    model={treeModel ?? EMPTY_TREE_MODEL}
                     rootPath={rootFolder.path}
                     state={treeState}
                     onLoadDirectory={onLoadDirectory}
@@ -143,12 +137,10 @@ function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
 }
 
 function WorkspaceTreePane({
-  model,
   rootPath,
   state,
   onLoadDirectory,
 }: {
-  model: TreeModel
   rootPath: string
   state: LoadState<TreeModel>
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
@@ -162,7 +154,6 @@ function WorkspaceTreePane({
   return (
     <TreePane
       gitStatus={gitStatusEntries}
-      model={model}
       rootPath={rootPath}
       state={state}
       onLoadDirectory={onLoadDirectory}

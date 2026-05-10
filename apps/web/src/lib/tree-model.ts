@@ -20,7 +20,8 @@ export const EMPTY_TREE_MODEL: TreeModel = {
 
 export function treeModel(result: TreeResult, rootPath: string): TreeModel {
   const entriesByTreePath = new Map<string, TreeEntry>()
-  const paths = flattenTreeEntries(result.entries, rootPath, entriesByTreePath)
+  const paths: string[] = []
+  addFlattenedTreeEntries(paths, result.entries, rootPath, entriesByTreePath)
 
   return {
     paths,
@@ -29,6 +30,39 @@ export function treeModel(result: TreeResult, rootPath: string): TreeModel {
     loadedDirectoryPaths: new Set(),
     loadingDirectoryPaths: new Set(),
   }
+}
+
+export function treeModelWithDirectoryLoads(
+  result: TreeResult,
+  rootPath: string,
+  directoryResults: readonly TreeResult[]
+): TreeModel {
+  return mergeDirectoryLoads(
+    treeModel(result, rootPath),
+    rootPath,
+    directoryResults
+  )
+}
+
+export function mergeDirectoryLoads(
+  model: TreeModel,
+  rootPath: string,
+  results: readonly TreeResult[]
+) {
+  if (results.length === 0) return model
+
+  const next = cloneTreeModel(model)
+  for (const result of results) {
+    applyDirectoryLoad(
+      next,
+      rootPath,
+      result,
+      directoryTreePathForResult(result.path, rootPath)
+    )
+  }
+  next.paths = pathsFromEntries(next.entriesByTreePath)
+
+  return next
 }
 
 export function shouldLoadDirectory(model: TreeModel, treePath: string) {
@@ -68,10 +102,7 @@ export function mergeDirectoryLoad(
   directoryTreePath: string
 ): TreeModel {
   const next = cloneTreeModel(model)
-  addEntriesToModel(next, result.entries, rootPath)
-  next.loadingDirectoryPaths.delete(directoryTreePath)
-  next.errorByDirectoryPath.delete(directoryTreePath)
-  next.loadedDirectoryPaths.add(directoryTreePath)
+  applyDirectoryLoad(next, rootPath, result, directoryTreePath)
   next.paths = pathsFromEntries(next.entriesByTreePath)
 
   return next
@@ -140,13 +171,9 @@ export function treePathForAbsolutePath(model: TreeModel, path: string) {
 }
 
 export function treePathForSelectedPath(
-  model: TreeModel,
   rootPath: string,
   selectedFilePath: string
 ) {
-  const existingPath = treePathForAbsolutePath(model, selectedFilePath)
-  if (existingPath !== selectedFilePath) return existingPath
-
   return toTreePath(selectedFilePath, rootPath)
 }
 
@@ -160,13 +187,12 @@ export function treeStateLabel(state: LoadState<TreeModel>) {
   return "Idle"
 }
 
-function flattenTreeEntries(
+function addFlattenedTreeEntries(
+  paths: string[],
   entries: TreeEntry[],
   rootPath: string,
   entriesByTreePath: Map<string, TreeEntry>
 ) {
-  const paths: string[] = []
-
   for (const entry of entries) {
     const treePath = toTreePath(entry.path, rootPath)
     if (!treePath) continue
@@ -177,12 +203,13 @@ function flattenTreeEntries(
 
     if (!entry.children) continue
 
-    paths.push(
-      ...flattenTreeEntries(entry.children, rootPath, entriesByTreePath)
+    addFlattenedTreeEntries(
+      paths,
+      entry.children,
+      rootPath,
+      entriesByTreePath
     )
   }
-
-  return paths
 }
 
 function addEntriesToModel(
@@ -201,6 +228,18 @@ function addEntriesToModel(
     model.loadedDirectoryPaths.add(canonicalPath)
     addEntriesToModel(model, entry.children, rootPath)
   }
+}
+
+function applyDirectoryLoad(
+  model: TreeModel,
+  rootPath: string,
+  result: TreeResult,
+  directoryTreePath: string
+) {
+  addEntriesToModel(model, result.entries, rootPath)
+  model.loadingDirectoryPaths.delete(directoryTreePath)
+  model.errorByDirectoryPath.delete(directoryTreePath)
+  model.loadedDirectoryPaths.add(directoryTreePath)
 }
 
 function removeDirectoryChildren(model: TreeModel, directoryTreePath: string) {

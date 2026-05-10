@@ -50,6 +50,8 @@ export type {
   GitTreeStatus,
 } from "./types"
 
+type GitRepositoryLocation = Omit<GitRepository, "info">
+
 export class GitService {
   private readonly paths: WorkspacePaths
 
@@ -63,7 +65,7 @@ export class GitService {
   }
 
   async status(input = ""): Promise<GitStatusResult> {
-    const repository = await this.resolveRepository(input)
+    const repository = await this.resolveRepositoryLocation(input)
     if (!repository) return { repository: null, files: [] }
 
     const args = [
@@ -76,13 +78,13 @@ export class GitService {
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
     return {
-      repository: repository.info,
+      repository: parseRepositoryInfo(result.stdout, repository.rootPath),
       files: parseStatus(result.stdout, repository.rootPath),
     }
   }
 
   async diff(input = "", staged = false): Promise<GitFileDiff[]> {
-    const repository = await this.resolveRepository(input)
+    const repository = await this.resolveRepositoryLocation(input)
     if (!repository) return []
 
     const pathspecs = await this.diffPathspecArgs(repository, staged)
@@ -108,7 +110,7 @@ export class GitService {
   }
 
   async diffBlob(query: GitBlobDiffQuery): Promise<GitFileDiff[]> {
-    const repository = await this.requiredRepository(
+    const repository = await this.requiredRepositoryLocation(
       query.path || query.oldPath || ""
     )
     const oldPath = query.oldPath ?? query.path
@@ -144,7 +146,7 @@ export class GitService {
   }
 
   async file(input: string, ref: string) {
-    const repository = await this.resolveRepository(input)
+    const repository = await this.resolveRepositoryLocation(input)
     if (!repository?.pathspec) throw new FsError("GIT_REPOSITORY_NOT_FOUND")
 
     const revisionPath = `${ref}:${repository.pathspec}`
@@ -241,13 +243,13 @@ export class GitService {
   }
 
   async checkout(body: GitCheckoutBody) {
-    const repository = await this.requiredRepository(body.path)
+    const repository = await this.requiredRepositoryLocation(body.path)
     await this.git(repository.rootAbsolutePath, ["checkout", body.branch])
     return this.status(repository.rootPath)
   }
 
   async createBranch(body: GitCreateBranchBody) {
-    const repository = await this.requiredRepository(body.path)
+    const repository = await this.requiredRepositoryLocation(body.path)
     const args = ["branch", body.branch]
     if (body.startPoint) args.push(body.startPoint)
 
@@ -278,7 +280,7 @@ export class GitService {
 
   private async resolveMutationTarget(body: GitPathsBody) {
     const paths = mutationPaths(body)
-    const repository = await this.requiredRepository(paths[0])
+    const repository = await this.requiredRepositoryLocation(paths[0])
     const pathspecs = paths.map(
       (input) =>
         this.pathspecForRepository(repository.rootDisplayAbsolutePath, input) ??
@@ -295,7 +297,28 @@ export class GitService {
     return repository
   }
 
+  private async requiredRepositoryLocation(input = "") {
+    const repository = await this.resolveRepositoryLocation(input)
+    if (!repository) throw new FsError("GIT_REPOSITORY_NOT_FOUND")
+
+    return repository
+  }
+
   private async resolveRepository(input = ""): Promise<GitRepository | null> {
+    const location = await this.resolveRepositoryLocation(input)
+    if (!location) return null
+
+    const info = await this.repositoryInfo(
+      location.rootAbsolutePath,
+      location.rootPath
+    )
+
+    return { ...location, info }
+  }
+
+  private async resolveRepositoryLocation(
+    input = ""
+  ): Promise<GitRepositoryLocation | null> {
     const resolved = this.paths.resolve(input)
     const cwd = await gitCwdForPath(resolved.absolutePath)
     const root = await this.git(
@@ -312,10 +335,8 @@ export class GitService {
     this.paths.assertInside(rootDisplayAbsolutePath)
     const rootPath = this.paths.toRelative(rootDisplayAbsolutePath)
     const pathspec = this.pathspecForRepository(rootDisplayAbsolutePath, input)
-    const info = await this.repositoryInfo(rootAbsolutePath, rootPath)
 
     return {
-      info,
       pathspec,
       rootAbsolutePath,
       rootDisplayAbsolutePath,
@@ -349,7 +370,7 @@ export class GitService {
   }
 
   private async diffPathspecArgs(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     staged: boolean
   ): Promise<string[]> {
     if (!repository.pathspec) return []
@@ -359,7 +380,7 @@ export class GitService {
   }
 
   private async relatedDiffPathspecs(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     staged: boolean
   ) {
     const pathspec = repository.pathspec
@@ -384,7 +405,7 @@ export class GitService {
   }
 
   private async withDiffContent(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     diff: GitFileDiff
   ): Promise<GitFileDiff> {
     const [oldObjectId, newObjectId, oldText, newText] = await Promise.all([
@@ -404,7 +425,7 @@ export class GitService {
   }
 
   private async untrackedDiffs(
-    repository: GitRepository
+    repository: GitRepositoryLocation
   ): Promise<GitFileDiff[]> {
     if (!repository.pathspec) return []
 
@@ -418,7 +439,7 @@ export class GitService {
     )
   }
 
-  private async untrackedFiles(repository: GitRepository) {
+  private async untrackedFiles(repository: GitRepositoryLocation) {
     if (!repository.pathspec) return []
 
     const result = await this.git(repository.rootAbsolutePath, [
@@ -433,7 +454,10 @@ export class GitService {
     return result.stdout.split("\0").filter(Boolean)
   }
 
-  private async noIndexDiff(repository: GitRepository, pathspec: string) {
+  private async noIndexDiff(
+    repository: GitRepositoryLocation,
+    pathspec: string
+  ) {
     const result = await this.git(
       repository.rootAbsolutePath,
       [
@@ -456,7 +480,7 @@ export class GitService {
   }
 
   private async diffSideContent(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     diff: GitFileDiff,
     side: "old" | "new"
   ) {
@@ -466,7 +490,7 @@ export class GitService {
   }
 
   private async diffSideObjectId(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     diff: GitFileDiff,
     side: "old" | "new"
   ) {
@@ -475,7 +499,10 @@ export class GitService {
     return this.newDiffObjectId(repository, diff)
   }
 
-  private async oldDiffContent(repository: GitRepository, diff: GitFileDiff) {
+  private async oldDiffContent(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff
+  ) {
     const path = repositoryRelativePath(
       repository.rootPath,
       diff.oldPath ?? diff.path
@@ -487,7 +514,10 @@ export class GitService {
     return this.gitText(repository, `:${path}`)
   }
 
-  private async oldDiffObjectId(repository: GitRepository, diff: GitFileDiff) {
+  private async oldDiffObjectId(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff
+  ) {
     const path = repositoryRelativePath(
       repository.rootPath,
       diff.oldPath ?? diff.path
@@ -499,7 +529,10 @@ export class GitService {
     return this.gitObjectId(repository, `:${path}`)
   }
 
-  private async newDiffContent(repository: GitRepository, diff: GitFileDiff) {
+  private async newDiffContent(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff
+  ) {
     const path = repositoryRelativePath(repository.rootPath, diff.path)
     if (!path) return ""
     if (diff.newFileMissing) return ""
@@ -508,7 +541,10 @@ export class GitService {
     return this.workingTreeText(repository, path)
   }
 
-  private async newDiffObjectId(repository: GitRepository, diff: GitFileDiff) {
+  private async newDiffObjectId(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff
+  ) {
     const path = repositoryRelativePath(repository.rootPath, diff.path)
     if (!path) return null
     if (diff.newFileMissing) return null
@@ -517,7 +553,10 @@ export class GitService {
     return this.writeWorkingTreeObject(repository, path)
   }
 
-  private async gitText(repository: GitRepository, revisionPath: string) {
+  private async gitText(
+    repository: GitRepositoryLocation,
+    revisionPath: string
+  ) {
     const result = await this.git(
       repository.rootAbsolutePath,
       ["show", revisionPath],
@@ -530,7 +569,10 @@ export class GitService {
     return result.stdout
   }
 
-  private async gitObjectId(repository: GitRepository, revisionPath: string) {
+  private async gitObjectId(
+    repository: GitRepositoryLocation,
+    revisionPath: string
+  ) {
     const result = await this.git(
       repository.rootAbsolutePath,
       ["rev-parse", revisionPath],
@@ -541,7 +583,10 @@ export class GitService {
     return result.stdout.trim() || null
   }
 
-  private async gitObjectText(repository: GitRepository, objectId: string) {
+  private async gitObjectText(
+    repository: GitRepositoryLocation,
+    objectId: string
+  ) {
     const result = await this.git(repository.rootAbsolutePath, [
       "cat-file",
       "-p",
@@ -551,7 +596,7 @@ export class GitService {
   }
 
   private async writeWorkingTreeObject(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     relativePath: string
   ) {
     const result = await this.git(repository.rootAbsolutePath, [
@@ -564,7 +609,7 @@ export class GitService {
   }
 
   private async textPatch(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     input: {
       newObjectId?: string
       newText: string
@@ -584,7 +629,7 @@ export class GitService {
   }
 
   private async temporaryFilePatch(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     directory: string,
     input: {
       newObjectId?: string
@@ -617,7 +662,7 @@ export class GitService {
   }
 
   private async workingTreeText(
-    repository: GitRepository,
+    repository: GitRepositoryLocation,
     relativePath: string
   ) {
     const absolutePath = path.join(
@@ -646,7 +691,7 @@ export class GitService {
     }
   }
 
-  private async commitMessageTarget(repository: GitRepository) {
+  private async commitMessageTarget(repository: GitRepositoryLocation) {
     const result = await this.git(repository.rootAbsolutePath, [
       "rev-parse",
       "--git-path",
@@ -660,7 +705,7 @@ export class GitService {
     return { absolutePath, path: this.paths.toRelative(absolutePath) }
   }
 
-  private async commitMessageTemplate(repository: GitRepository) {
+  private async commitMessageTemplate(repository: GitRepositoryLocation) {
     const result = await this.git(repository.rootAbsolutePath, [
       "status",
       "--short",

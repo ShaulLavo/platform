@@ -1,15 +1,15 @@
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { errorMessage, fetchTree } from "@/lib/file-server"
-import type { TreeEntry } from "@/lib/file-system-types"
+import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
 import { idleState, type LoadState } from "@/lib/load-state"
-import { canonicalTreePath } from "@/lib/path-formatters"
+import { canonicalTreePath, toTreePath } from "@/lib/path-formatters"
 import { fileSystemKeys } from "@/lib/query-keys"
 import {
   markDirectoryError,
   markDirectoryLoading,
   mergeDirectoryLoad,
   shouldLoadDirectory,
-  treeModel,
+  treeModelWithDirectoryLoads,
   type TreeModel,
 } from "@/lib/tree-model"
 import {
@@ -18,15 +18,22 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query"
 
-export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
+export function useWorkspaceTree(
+  rootFolder: PickedFsEntry | null,
+  selectedFilePath: string | null
+) {
   const queryClient = useQueryClient()
   const rootPath = rootFolder?.path ?? ""
   const rootTreeKey = fileSystemKeys.tree(rootPath)
   const query = useQuery({
     enabled: Boolean(rootFolder),
     queryFn: async ({ signal }) => {
-      const result = await fetchTree(rootPath, signal)
-      return treeModel(result, rootPath)
+      const result = await fetchInitialTree(rootPath, selectedFilePath, signal)
+      return treeModelWithDirectoryLoads(
+        result.root,
+        rootPath,
+        result.directories
+      )
     },
     queryKey: rootTreeKey,
   })
@@ -92,6 +99,67 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
     resetTreeLoad,
     treeState,
   }
+}
+
+export function selectedFileAncestorDirectoryPaths(
+  rootPath: string,
+  selectedFilePath: string | null
+) {
+  if (!selectedFilePath) return []
+  if (!isPathInWorkspace(selectedFilePath, rootPath)) return []
+
+  const treePath = canonicalTreePath(toTreePath(selectedFilePath, rootPath))
+  const segments = treePath.split("/").filter(Boolean)
+  if (segments.length <= 1) return []
+
+  return segments.slice(0, -1).map((_, index) => {
+    const directoryPath = segments.slice(0, index + 1).join("/")
+    if (!rootPath) return directoryPath
+
+    return `${rootPath}/${directoryPath}`
+  })
+}
+
+async function fetchInitialTree(
+  rootPath: string,
+  selectedFilePath: string | null,
+  signal: AbortSignal
+) {
+  const directoryPaths = selectedFileAncestorDirectoryPaths(
+    rootPath,
+    selectedFilePath
+  )
+  const root = fetchTree(rootPath, signal)
+  const directories = Promise.all(
+    directoryPaths.map((path) => fetchOptionalTree(path, signal))
+  )
+  const [rootResult, directoryResults] = await Promise.all([root, directories])
+
+  return {
+    directories: directoryResults.filter(isTreeResult),
+    root: rootResult,
+  }
+}
+
+async function fetchOptionalTree(path: string, signal: AbortSignal) {
+  try {
+    return await fetchTree(path, signal)
+  } catch (error) {
+    if (signal.aborted) throw error
+
+    return null
+  }
+}
+
+function isPathInWorkspace(path: string, rootPath: string) {
+  if (!rootPath) return true
+  if (path === rootPath) return true
+
+  return path.startsWith(`${rootPath}/`)
+}
+
+function isTreeResult(result: TreeResult | null): result is TreeResult {
+  return result !== null
 }
 
 function treeLoadState(query: UseQueryResult<TreeModel>): LoadState<TreeModel> {

@@ -197,7 +197,7 @@ function effectiveStatus(
 
 export function statusMatchesPathspec(
   file: GitFileStatus,
-  repository: GitRepository,
+  repository: Pick<GitRepository, "pathspec" | "rootPath">,
   staged: boolean
 ) {
   const status = staged ? file.index : file.worktree

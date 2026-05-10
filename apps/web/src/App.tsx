@@ -49,10 +49,12 @@ function AppContent() {
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
   const { pickRootFolder } = useEditorCommands()
-  const { loadTreeDirectory, resetTreeLoad, treeState } =
-    useWorkspaceTree(rootFolder)
+  const { loadTreeDirectory, resetTreeLoad, treeState } = useWorkspaceTree(
+    rootFolder,
+    selectedFilePath
+  )
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
-  const keymapBindings = useMemo(defaultPlatformKeyBindings, [])
+  const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
   const editorKeyBindings = useMemo(
     () => editorKeyBindingsFromPlatform(keymapBindings),
     [keymapBindings]

@@ -146,8 +146,8 @@ async function safeLstatInside(paths: WorkspacePaths, absolutePath: string) {
     const stats = await lstat(absolutePath)
     if (stats.isSymbolicLink()) return stats
 
-    await assertExistingRealPathInside(paths, absolutePath)
-    return await stat(absolutePath)
+    paths.assertInside(absolutePath)
+    return stats
   } catch {
     return null
   }
@@ -180,7 +180,9 @@ function compareTreeEntries(a: TreeEntry, b: TreeEntry) {
   if (a.type === "directory" && b.type !== "directory") return -1
   if (a.type !== "directory" && b.type === "directory") return 1
 
-  return a.name.localeCompare(b.name)
+  if (a.name < b.name) return -1
+  if (a.name > b.name) return 1
+  return 0
 }
 
 function matchingEntry(entry: TreeEntry, entryType?: EntryTypeFilter) {

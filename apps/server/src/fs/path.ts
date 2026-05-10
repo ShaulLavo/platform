@@ -17,6 +17,8 @@ export const treeIgnoredNames = defaultIgnoredNames.filter(
   (name) => name !== "node_modules"
 )
 
+const ignoredNameSetCache = new WeakMap<readonly string[], ReadonlySet<string>>()
+
 export type WorkspacePath = {
   absolutePath: string
   relativePath: string
@@ -74,10 +76,15 @@ export function isIgnoredPath(
   relativePath: string,
   ignoredNames: readonly string[] = defaultIgnoredNames
 ) {
-  const ignored = new Set<string>(ignoredNames)
-  const parts = toPosix(relativePath).split("/").filter(Boolean)
+  const ignored = ignoredNameSet(ignoredNames)
+  const parts = toPosix(relativePath).split("/")
 
-  return parts.some((part) => ignored.has(part))
+  for (const part of parts) {
+    if (!part) continue
+    if (ignored.has(part)) return true
+  }
+
+  return false
 }
 
 export function toPosix(input: string) {
@@ -107,4 +114,13 @@ function assertInside(root: string, candidate: string) {
   if (relative === "") return
   if (relative.startsWith("..")) throw new FsError("PATH_OUTSIDE_WORKSPACE")
   if (path.isAbsolute(relative)) throw new FsError("PATH_OUTSIDE_WORKSPACE")
+}
+
+function ignoredNameSet(ignoredNames: readonly string[]) {
+  const cached = ignoredNameSetCache.get(ignoredNames)
+  if (cached) return cached
+
+  const ignored = new Set(ignoredNames)
+  ignoredNameSetCache.set(ignoredNames, ignored)
+  return ignored
 }

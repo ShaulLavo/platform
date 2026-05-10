@@ -53,5 +53,11 @@ function isWorktreeStatus(status: FileStatus["worktree"]) {
 }
 
 function sortedStatusFiles(files: readonly FileStatus[]) {
-  return [...files].sort((left, right) => left.path.localeCompare(right.path))
+  return [...files].sort(compareStatusPaths)
+}
+
+function compareStatusPaths(left: FileStatus, right: FileStatus) {
+  if (left.path < right.path) return -1
+  if (left.path > right.path) return 1
+  return 0
 }
