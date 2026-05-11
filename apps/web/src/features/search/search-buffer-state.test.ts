@@ -510,4 +510,19 @@ describe("search buffer store", () => {
       status: "loading",
     })
   })
+
+  it("does not force a stale debounced search when the query is cleared", () => {
+    const store = createSearchBufferStore()
+    store.getState().prepareBuffer("repo")
+    store.getState().setQuery("repo", "n")
+    const before = store.getState().active?.searchRevision
+
+    store.getState().setQuery("repo", "")
+
+    expect(store.getState().active).toMatchObject({
+      query: "",
+      searchRevision: before,
+      status: "idle",
+    })
+  })
 })

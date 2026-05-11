@@ -73,16 +73,22 @@ References:
 
 ### 3. Replace In Files
 
-We do not have replace support in the search buffer yet. Model the flow against Zed project search first, then use VS Code’s mature replace model for edge cases and UI detail.
+Workspace search now has Zed-shaped replace support in the sidebar/search-buffer flow. Cached/open editor sessions are edited in memory and marked dirty; unopened clean files are patched through the existing file-write path with mtime checks.
 
-Remaining work:
+Status: Done for the Zed-first sidebar/search-buffer baseline.
 
-- Extend contracts with replace preview data.
-- Add replace string state to search buffers.
-- Add per-match, per-file, and replace-all actions.
-- Respect dirty buffers and conflict cases.
-- Preserve exact ranges across replace preview, open, and apply.
-- Add undo/rollback strategy or rely on existing file-write history if available.
+Completed:
+
+- Added replace text, visibility, status, and summary/error state to search buffers.
+- Added replace controls to the sidebar and search-buffer editor.
+- Added replace-next, per-match, per-file, and replace-all actions.
+- Added a client-side planner for literal and regex replacement, including capture groups.
+- Validates each search match against current file/session text before editing.
+- Applies cached/open-file replacements through editor document sessions and dirty tracking.
+- Applies unopened-file replacements through fetch, validated patching, and `/fs/write` with mtime checks.
+- Reruns the active search after successful replace so stale matches disappear.
+- Surfaces concise summaries for skipped matches, failed files, and partial replace results.
+- Added focused tests for replace planning, replace runner behavior, and replace state persistence.
 
 References:
 

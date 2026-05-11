@@ -248,7 +248,6 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     runningQuery: null,
     runningSearchQuery: null,
     runId: current.runId + 1,
-    searchRevision: current.searchRevision + 1,
     status: "idle" as const,
     totalCount: 0,
     truncated: false,
