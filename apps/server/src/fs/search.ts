@@ -183,14 +183,16 @@ async function* searchWithTools(
     return
   }
 
-  yield* searchNamesWithFd(paths, context, signal)
+  if (shouldSearchNames(context.options)) {
+    yield* searchNamesWithFd(paths, context, signal)
+  }
   if (!shouldSearchContent(context.options)) return
 
   yield* searchContentWithRg(paths, context, signal)
 }
 
 async function canUseTools(options: FindOptions) {
-  if (!(await commandExists("fd"))) return false
+  if (shouldSearchNames(options) && !(await commandExists("fd"))) return false
   if (!shouldSearchContent(options)) return true
 
   return commandExists("rg")
@@ -301,6 +303,10 @@ function shouldSearchContent(options: FindOptions) {
   if (options.entryType && options.entryType !== "file") return false
 
   return true
+}
+
+function shouldSearchNames(options: FindOptions) {
+  return options.includeNames !== false
 }
 
 async function nameMatchFromPath(
@@ -545,14 +551,16 @@ async function searchEntry(
   const entryStats = await safeEntryStats(absolutePath)
   if (!entryStats) return
 
-  addNameMatch(
-    relativePath,
-    name,
-    entryStats,
-    query,
-    matches,
-    options.entryType
-  )
+  if (shouldSearchNames(options)) {
+    addNameMatch(
+      relativePath,
+      name,
+      entryStats,
+      query,
+      matches,
+      options.entryType
+    )
+  }
   if (isDirectoryEntry(entryStats)) {
     if (!canSearchChildren(depth, options.maxDepth)) return
     await searchDirectory(

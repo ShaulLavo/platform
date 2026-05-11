@@ -6,6 +6,7 @@ export type WorkspaceSearchQuery = {
   caseSensitive?: boolean
   entryType?: EntryTypeFilter
   includeContent: boolean
+  includeNames?: boolean
   limit: number
   matchMode?: "literal"
   maxDepth?: number

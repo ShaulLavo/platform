@@ -6,6 +6,7 @@ import type {
 
 import {
   CompositeSearchProvider,
+  DiskSearchProvider,
   OpenBufferSearchProvider,
   type SearchProvider,
 } from "./search-providers"
@@ -96,6 +97,20 @@ describe("open buffer search provider", () => {
   })
 })
 
+describe("disk search provider", () => {
+  it("passes includeNames to the streaming search endpoint", async () => {
+    const restoreFetch = stubFetchWithSseDone()
+    const provider = new DiskSearchProvider()
+
+    try {
+      await collectEvents(provider.search({ ...QUERY, includeNames: false }))
+      expect(lastFetchUrl()?.searchParams.get("includeNames")).toBe("false")
+    } finally {
+      restoreFetch()
+    }
+  })
+})
+
 describe("composite search provider", () => {
   it("suppresses disk content matches for dirty paths while keeping filenames", async () => {
     const disk = new StaticSearchProvider([
@@ -170,4 +185,41 @@ async function collectEvents(events: AsyncIterable<WorkspaceSearchEvent>) {
   for await (const event of events) result.push(event)
 
   return result
+}
+
+let fetchedUrl: URL | null = null
+
+function lastFetchUrl() {
+  return fetchedUrl
+}
+
+function stubFetchWithSseDone() {
+  const originalFetch = globalThis.fetch
+  fetchedUrl = null
+  globalThis.fetch = async (input) => {
+    fetchedUrl = new URL(String(input))
+    return new Response(doneSse(), {
+      headers: { "content-type": "text/event-stream" },
+      status: 200,
+    })
+  }
+
+  return () => {
+    globalThis.fetch = originalFetch
+    fetchedUrl = null
+  }
+}
+
+function doneSse() {
+  return [
+    "event: done",
+    `data: ${JSON.stringify({
+      count: 0,
+      path: "repo",
+      query: "needle",
+      truncated: false,
+    })}`,
+    "",
+    "",
+  ].join("\n")
 }

@@ -19,7 +19,7 @@ afterEach(async () => {
 })
 
 describe("workspace disk search provider", () => {
-  it("finds filename and content matches with disk source metadata", async () => {
+  it("finds filename and content matches by default with disk source metadata", async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, "src"), { recursive: true })
     await writeFile(
@@ -52,6 +52,30 @@ describe("workspace disk search provider", () => {
         source: "disk",
       })
     )
+  })
+
+  it("can search content without returning filename matches", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "src"), { recursive: true })
+    await writeFile(path.join(root, "src", "needle-name.ts"), "no match here")
+    await writeFile(path.join(root, "src", "content.ts"), "needle content")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "content",
+        path: "src/content.ts",
+        source: "disk",
+      }),
+    ])
   })
 
   it("emits exact content ranges for each match on a line", async () => {

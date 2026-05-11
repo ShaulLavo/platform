@@ -23,6 +23,7 @@ describe("filesystem contracts", () => {
   it("parses find queries with defaults", () => {
     expect(v.parse(findQuerySchema, { query: "button" })).toEqual({
       includeContent: false,
+      includeNames: true,
       limit: 50,
       path: "",
       query: "button",

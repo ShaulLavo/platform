@@ -51,7 +51,7 @@ export function SearchResultsView({
     return (
       <SearchEmptyState
         className={className}
-        description="Search text and filenames in the selected workspace."
+        description="Search text in the selected workspace."
         title="Search workspace"
       />
     )

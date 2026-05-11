@@ -201,6 +201,9 @@ function workspaceSearchUrl(query: WorkspaceSearchQuery) {
   const url = new URL("/fs/find/events", fsServerUrl)
   url.searchParams.set("entryType", query.entryType ?? "file")
   url.searchParams.set("includeContent", String(query.includeContent))
+  if (query.includeNames !== undefined) {
+    url.searchParams.set("includeNames", String(query.includeNames))
+  }
   url.searchParams.set("limit", String(query.limit))
   url.searchParams.set("path", query.path)
   url.searchParams.set("query", query.query)

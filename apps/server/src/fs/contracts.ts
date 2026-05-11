@@ -54,6 +54,7 @@ export const findQuerySchema = v.object({
   query: v.string(),
   limit: v.optional(limitQueryValueSchema, "50"),
   includeContent: v.optional(booleanQueryValueSchema, "false"),
+  includeNames: v.optional(booleanQueryValueSchema, "true"),
   entryType: v.optional(entryTypeQueryValueSchema),
   maxDepth: v.optional(depthQueryValueSchema),
 })

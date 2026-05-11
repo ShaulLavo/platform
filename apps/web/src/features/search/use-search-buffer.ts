@@ -195,6 +195,7 @@ function workspaceSearchQuery(
     caseSensitive: false,
     entryType: "file",
     includeContent: true,
+    includeNames: false,
     limit: SEARCH_LIMIT,
     matchMode: "literal",
     path: rootPath,
