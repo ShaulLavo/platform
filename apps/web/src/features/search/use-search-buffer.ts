@@ -187,7 +187,7 @@ function createSearchEventBatcher(runId: number, store: SearchBufferStoreApi) {
   }
 }
 
-function workspaceSearchQuery(
+export function workspaceSearchQuery(
   rootPath: string,
   query: string
 ): WorkspaceSearchQuery {

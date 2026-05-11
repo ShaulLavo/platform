@@ -285,8 +285,10 @@ function rgArgs(context: FindContext) {
 
   if (context.options.maxDepth !== undefined)
     args.push("--max-depth", String(context.options.maxDepth))
-  for (const ignored of defaultIgnoredNames)
+  for (const ignored of defaultIgnoredNames) {
     args.push("--glob", `!${ignored}/**`)
+    args.push("--glob", `!**/${ignored}/**`)
+  }
 
   args.push("--regexp", context.query, context.root.absolutePath)
   return args

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it, mock } from "bun:test"
 
 import {
   DiskWorkspaceSearchProvider,
@@ -144,6 +144,41 @@ describe("workspace disk search provider", () => {
         path: "match.txt",
       })
     )
+  })
+
+  it("does not ask ripgrep to follow broken symlinks in nested ignored directories", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "apps/web/node_modules/pkg"), {
+      recursive: true,
+    })
+    await mkdir(path.join(root, "src"), { recursive: true })
+    await writeFile(path.join(root, "src/match.txt"), "needle")
+    await symlink(
+      path.join(root, "apps/web/node_modules/missing"),
+      path.join(root, "apps/web/node_modules/pkg/broken")
+    )
+    const originalWarn = console.warn
+    console.warn = mock()
+
+    try {
+      const result = await findInWorkspace(createWorkspacePaths(root), {
+        includeContent: true,
+        limit: 20,
+        maxContentBytes: 1_000_000,
+        path: "",
+        query: "needle",
+      })
+
+      expect(result.matches).toContainEqual(
+        expect.objectContaining({
+          kind: "content",
+          path: "src/match.txt",
+        })
+      )
+      expect(console.warn).not.toHaveBeenCalled()
+    } finally {
+      console.warn = originalWarn
+    }
   })
 
   it("reports truncation when the limit is reached", async () => {

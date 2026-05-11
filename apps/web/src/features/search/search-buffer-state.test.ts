@@ -234,4 +234,62 @@ describe("search buffer store", () => {
       searchResultItems(searchGroupsForSnapshot(store.getState().active))
     ).toEqual([expect.objectContaining({ type: "name" })])
   })
+
+  it("keeps filename hits out of content group counts", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      includeContent: true,
+      includeNames: true,
+      limit: 20,
+      path: "repo",
+      query: "needle",
+    })
+
+    store.getState().appendEvents(runId, [
+      {
+        match: {
+          kind: "name",
+          path: "repo/src/needle.ts",
+          source: "disk",
+          type: "file",
+        },
+        type: "match",
+      },
+      {
+        match: {
+          column: 1,
+          endColumn: 7,
+          kind: "content",
+          line: 1,
+          path: "repo/src/needle.ts",
+          source: "disk",
+          type: "file",
+        },
+        type: "match",
+      },
+    ])
+
+    const groups = searchGroupsForSnapshot(store.getState().active)
+    const items = searchResultItems(groups)
+
+    expect(groups).toEqual([
+      expect.objectContaining({
+        count: 1,
+        matches: [
+          expect.objectContaining({ kind: "name" }),
+          expect.objectContaining({ kind: "content" }),
+        ],
+      }),
+    ])
+    expect(items).toEqual([
+      expect.objectContaining({
+        group: expect.objectContaining({ count: 1 }),
+        type: "group",
+      }),
+      expect.objectContaining({
+        match: expect.objectContaining({ kind: "content" }),
+        type: "match",
+      }),
+    ])
+  })
 })

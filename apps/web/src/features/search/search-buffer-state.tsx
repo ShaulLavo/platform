@@ -304,7 +304,7 @@ function groupSearchMatches(
   for (const match of matches) {
     const group = groups.get(match.path)
     if (group) {
-      group.count += 1
+      group.count += contentMatchCount(match)
       group.matches.push(match)
       continue
     }
@@ -324,10 +324,14 @@ function searchFileGroup(
 ): WorkspaceSearchFileGroup {
   return {
     collapsed: collapsedPaths.has(match.path),
-    count: 1,
+    count: contentMatchCount(match),
     matches: [match],
     name: basename(match.path),
     path: match.path,
     pathLabel: toTreePath(match.path, rootPath),
   }
+}
+
+function contentMatchCount(match: WorkspaceSearchMatch) {
+  return match.kind === "content" ? 1 : 0
 }
