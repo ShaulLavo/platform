@@ -1,11 +1,15 @@
 export function HighlightedPreview({
   preview,
   query,
+  range,
 }: {
   preview: string
   query: string
+  range?: { end: number; start: number } | null
 }) {
-  const highlight = previewHighlight(preview, query)
+  const highlight = range
+    ? previewRangeHighlight(preview, range)
+    : previewHighlight(preview, query)
   if (!highlight) return <>{preview}</>
 
   return (
@@ -19,7 +23,24 @@ export function HighlightedPreview({
   )
 }
 
+function previewRangeHighlight(
+  preview: string,
+  range: { end: number; start: number }
+) {
+  if (range.start < 0 || range.end <= range.start) return null
+  if (range.start >= preview.length) return null
+
+  const end = Math.min(range.end, preview.length)
+  return {
+    after: preview.slice(end),
+    before: preview.slice(0, range.start),
+    match: preview.slice(range.start, end),
+  }
+}
+
 function previewHighlight(preview: string, query: string) {
+  if (!query) return null
+
   const normalizedPreview = preview.toLocaleLowerCase()
   const normalizedQuery = query.toLocaleLowerCase()
   const index = normalizedPreview.indexOf(normalizedQuery)

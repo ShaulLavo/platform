@@ -26,6 +26,8 @@ import type {
 } from "@workspace/contracts"
 
 export const SEARCH_LINE_BUFFER_BYTES = 65_536
+const SEARCH_PREVIEW_CONTEXT_CHARS = 80
+const SEARCH_PREVIEW_MAX_CHARS = 240
 
 export type FindOptions = WorkspaceSearchQuery & {
   maxContentBytes: number
@@ -237,10 +239,9 @@ async function* searchContentWithRg(
 ): AsyncGenerator<FindMatch> {
   const args = rgArgs(context)
 
-  for await (const line of runToolLines("rg", args, signal, [0, 1])) {
-    const match = await contentMatchFromJson(paths, context, line)
-    if (!match) continue
-    yield match
+  for await (const line of runToolLines("rg", args, signal, [0, 1], [2])) {
+    const matches = await contentMatchesFromJson(paths, context, line)
+    for (const match of matches) yield match
   }
 }
 
@@ -322,46 +323,44 @@ async function nameMatchFromPath(
   }
 }
 
-async function contentMatchFromJson(
+async function contentMatchesFromJson(
   paths: WorkspacePaths,
   context: FindContext,
   line: string
-): Promise<FindMatch | null> {
+): Promise<FindMatch[]> {
   const event = parseRgLine(line)
-  if (!event) return null
-  if (!isRgMatchEvent(event)) return null
+  if (!event) return []
+  if (!isRgMatchEvent(event)) return []
 
-  return contentMatchFromRgEvent(paths, context, event)
+  return contentMatchesFromRgEvent(paths, context, event)
 }
 
-async function contentMatchFromRgEvent(
+async function contentMatchesFromRgEvent(
   paths: WorkspacePaths,
   context: FindContext,
   event: RgMatchEvent
-): Promise<FindMatch | null> {
+): Promise<FindMatch[]> {
   const relativePath = safeRgRelativePath(paths, context, event.data.path.text)
-  if (!relativePath) return null
+  if (!relativePath) return []
 
   const absolutePath = paths.resolve(relativePath).absolutePath
   const entryStats = await safeEntryStats(absolutePath)
-  if (!entryStats) return null
-  if (!isFileEntry(entryStats)) return null
+  if (!entryStats) return []
+  if (!isFileEntry(entryStats)) return []
 
   const line = event.data.lines.text
-  const match = event.data.submatches[0]
-  if (!match) return null
+  if (event.data.submatches.length === 0) return []
 
-  return {
-    column: match.start + 1,
-    endColumn: match.end + 1,
-    kind: "content",
-    line: event.data.line_number,
-    path: relativePath,
-    preview: line.trim().slice(0, 240),
-    source: "disk",
-    targetType: entryStats.targetType,
-    type: entryStats.type,
-  }
+  return event.data.submatches.map((match) =>
+    contentMatch({
+      columnIndex: match.start,
+      endColumnIndex: match.end,
+      entry: entryStats,
+      line,
+      lineNumber: event.data.line_number,
+      relativePath,
+    })
+  )
 }
 
 function safeRgRelativePath(
@@ -407,14 +406,14 @@ async function* runToolLines(
   command: string,
   args: string[],
   signal: AbortSignal | undefined,
-  successCodes: number[]
+  successCodes: number[],
+  toleratedFailureCodes: readonly number[] = []
 ): AsyncGenerator<string> {
   const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] })
   const exit = waitForExit(child)
   const cleanup = attachAbort(signal, child)
+  const stderr = collectToolStderr(child)
   let completed = false
-
-  child.stderr?.resume()
 
   try {
     for await (const line of readLines(child.stdout)) yield line
@@ -426,8 +425,36 @@ async function* runToolLines(
 
   const code = await exit
   if (successCodes.includes(code)) return
+  if (signal?.aborted) return
+  if (toleratedFailureCodes.includes(code)) {
+    reportToolWarning(command, code, stderr())
+    return
+  }
 
-  throw new FsError("OPERATION_FAILED", `${command} exited with code ${code}`)
+  throw new FsError(
+    "OPERATION_FAILED",
+    toolErrorMessage(command, code, stderr())
+  )
+}
+
+function collectToolStderr(child: ReturnType<typeof spawn>) {
+  let stderr = ""
+  child.stderr?.on("data", (chunk) => {
+    stderr = `${stderr}${String(chunk)}`.slice(-4_000)
+  })
+
+  return () => stderr.trim()
+}
+
+function reportToolWarning(command: string, code: number, stderr: string) {
+  const detail = stderr ? `: ${stderr}` : ""
+  console.warn(`[fs/search] ${command} exited with code ${code}${detail}`)
+}
+
+function toolErrorMessage(command: string, code: number, stderr: string) {
+  if (!stderr) return `${command} exited with code ${code}`
+
+  return `${command} exited with code ${code}: ${stderr}`
 }
 
 function attachAbort(
@@ -601,7 +628,15 @@ async function addContentMatch(
       bytesRead += line.byteLength + line.terminatorLength
       if (bytesRead > maxContentBytes) break
 
-      addLineMatch(relativePath, entry, line.text, lineIndex, query, matches)
+      addLineMatch(
+        relativePath,
+        entry,
+        line.text,
+        lineIndex,
+        query,
+        matches,
+        limit
+      )
       lineIndex += 1
 
       if (matches.length >= limit) break
@@ -716,22 +751,71 @@ function addLineMatch(
   line: string,
   index: number,
   query: string,
-  matches: FindMatch[]
+  matches: FindMatch[],
+  limit: number
 ) {
-  const column = line.toLocaleLowerCase().indexOf(query)
-  if (column < 0) return
+  const normalizedLine = line.toLocaleLowerCase()
+  let column = normalizedLine.indexOf(query)
 
-  matches.push({
-    column: column + 1,
-    endColumn: column + query.length + 1,
+  while (column >= 0 && matches.length < limit) {
+    matches.push(
+      contentMatch({
+        columnIndex: column,
+        endColumnIndex: column + query.length,
+        entry,
+        line,
+        lineNumber: index + 1,
+        relativePath,
+      })
+    )
+    column = normalizedLine.indexOf(query, column + query.length)
+  }
+}
+
+function contentMatch({
+  columnIndex,
+  endColumnIndex,
+  entry,
+  line,
+  lineNumber,
+  relativePath,
+}: {
+  columnIndex: number
+  endColumnIndex: number
+  entry: FsEntryTypeCarrier
+  line: string
+  lineNumber: number
+  relativePath: string
+}): FindMatch {
+  const preview = searchPreview(line, columnIndex)
+
+  return {
+    column: columnIndex + 1,
+    endColumn: endColumnIndex + 1,
     kind: "content",
-    line: index + 1,
+    line: lineNumber,
     path: relativePath,
-    preview: line.trim().slice(0, 240),
+    preview: preview.text,
+    previewStartColumn: preview.startColumn,
     source: "disk",
     targetType: entry.targetType,
     type: entry.type,
-  })
+  }
+}
+
+function searchPreview(line: string, columnIndex: number) {
+  if (line.length <= SEARCH_PREVIEW_MAX_CHARS) {
+    return { startColumn: 0, text: line }
+  }
+
+  const latestStart = Math.max(0, line.length - SEARCH_PREVIEW_MAX_CHARS)
+  const preferredStart = Math.max(0, columnIndex - SEARCH_PREVIEW_CONTEXT_CHARS)
+  const startColumn = Math.min(preferredStart, latestStart)
+
+  return {
+    startColumn,
+    text: line.slice(startColumn, startColumn + SEARCH_PREVIEW_MAX_CHARS),
+  }
 }
 
 async function safeEntryStats(absolutePath: string) {

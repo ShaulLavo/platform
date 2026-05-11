@@ -26,6 +26,7 @@ export type DeleteCachedEditorDocumentResult = {
 }
 
 type EditorDocumentStoreState = {
+  dirtyContentRevision: number
   dirtyFilePaths: ReadonlySet<string>
   documents: Readonly<Record<string, CachedEditorDocument>>
   fallbackDocumentPath: string | null
@@ -50,6 +51,7 @@ type EditorDocumentStoreActions = {
   getCachedEditorDocument: (path: string) => CachedEditorDocument | null
   hasCachedEditorDocument: (path: string) => boolean
   markCachedEditorDocumentClean: (path: string, revision: number) => boolean
+  recordCachedEditorDocumentTextChange: (path: string) => void
   renameCachedEditorDocumentPath: (
     from: string,
     to: string,
@@ -90,12 +92,14 @@ export function useEditorDocumentState<T>(
 
 export function createEditorDocumentStore() {
   return createStore<EditorDocumentStore>()((set, get) => ({
+    dirtyContentRevision: 0,
     dirtyFilePaths: new Set(),
     documents: {},
     fallbackDocumentPath: null,
     scrollPositionByPath: {},
     clearCachedEditorDocuments: () =>
       set({
+        dirtyContentRevision: 0,
         dirtyFilePaths: new Set(),
         documents: {},
         fallbackDocumentPath: null,
@@ -218,6 +222,17 @@ export function createEditorDocumentStore() {
       }))
       return true
     },
+    recordCachedEditorDocumentTextChange: (path) =>
+      set((state) => {
+        const dirtyFilePaths =
+          updateDirtyFilePaths(state.dirtyFilePaths, path, true) ??
+          state.dirtyFilePaths
+
+        return {
+          dirtyContentRevision: state.dirtyContentRevision + 1,
+          dirtyFilePaths,
+        }
+      }),
     renameCachedEditorDocumentPath: (from, to, options) => {
       let wasDirty = false
       set((state) => {

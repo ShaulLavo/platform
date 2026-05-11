@@ -41,6 +41,59 @@ describe("open buffer search provider", () => {
     })
     expect(events.at(-1)).toMatchObject({ count: 1, type: "done" })
   })
+
+  it("emits every dirty editor match with exact ranges", async () => {
+    const provider = new OpenBufferSearchProvider([
+      {
+        path: "repo/src/app.ts",
+        text: "needle and needle",
+      },
+    ])
+
+    const matches = (await collectEvents(provider.search(QUERY))).filter(
+      (event) => event.type === "match"
+    )
+
+    expect(matches).toEqual([
+      {
+        match: expect.objectContaining({
+          column: 1,
+          endColumn: 7,
+          source: "open-buffer",
+        }),
+        type: "match",
+      },
+      {
+        match: expect.objectContaining({
+          column: 12,
+          endColumn: 18,
+          source: "open-buffer",
+        }),
+        type: "match",
+      },
+    ])
+  })
+
+  it("keeps dirty long-line previews anchored around the match", async () => {
+    const provider = new OpenBufferSearchProvider([
+      {
+        path: "repo/src/app.ts",
+        text: `${"x".repeat(320)}needle`,
+      },
+    ])
+
+    const events = await collectEvents(provider.search(QUERY))
+
+    expect(events).toContainEqual({
+      match: expect.objectContaining({
+        column: 321,
+        endColumn: 327,
+        preview: expect.stringContaining("needle"),
+        previewStartColumn: expect.any(Number),
+      }),
+      type: "match",
+    })
+  })
 })
 
 describe("composite search provider", () => {

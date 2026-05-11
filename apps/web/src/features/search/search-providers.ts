@@ -9,6 +9,9 @@ import type {
 import { fsServerUrl } from "@/lib/fs-client"
 import { parseSseStream, type ParsedSseEvent } from "@/lib/sse"
 
+const SEARCH_PREVIEW_CONTEXT_CHARS = 80
+const SEARCH_PREVIEW_MAX_CHARS = 240
+
 export type SearchProvider = {
   search(
     query: WorkspaceSearchQuery,
@@ -27,8 +30,10 @@ export class DiskSearchProvider implements SearchProvider {
     signal?: AbortSignal
   ): AsyncGenerator<WorkspaceSearchEvent> {
     const response = await fetch(workspaceSearchUrl(query), { signal })
-    if (!response.ok) throw new Error(`Search failed with status ${response.status}.`)
-    if (!response.body) throw new Error("Search response did not include a body.")
+    if (!response.ok)
+      throw new Error(`Search failed with status ${response.status}.`)
+    if (!response.body)
+      throw new Error("Search response did not include a body.")
 
     for await (const event of parseSseStream(response.body)) {
       if (signal?.aborted) return
@@ -265,13 +270,32 @@ function openBufferMatches(
   const lines = document.text.split(/\r\n|\r|\n/u)
 
   for (const [index, line] of lines.entries()) {
-    const column = normalizeSearchText(line).indexOf(normalizedQuery)
-    if (column < 0) continue
-
-    matches.push(openBufferMatch(document.path, line, index, column, query.query))
+    for (const column of lineMatchColumns(line, normalizedQuery)) {
+      matches.push(
+        openBufferMatch(document.path, line, index, column, query.query)
+      )
+    }
   }
 
   return matches
+}
+
+function lineMatchColumns(line: string, normalizedQuery: string) {
+  const columns: number[] = []
+  if (!normalizedQuery) return columns
+
+  const normalizedLine = normalizeSearchText(line)
+  let column = normalizedLine.indexOf(normalizedQuery)
+
+  while (column >= 0) {
+    columns.push(column)
+    column = normalizedLine.indexOf(
+      normalizedQuery,
+      column + normalizedQuery.length
+    )
+  }
+
+  return columns
 }
 
 function openBufferMatch(
@@ -281,15 +305,33 @@ function openBufferMatch(
   column: number,
   query: string
 ): WorkspaceSearchMatch {
+  const preview = searchPreview(line, column)
+
   return {
     column: column + 1,
     endColumn: column + query.length + 1,
     kind: "content",
     line: lineIndex + 1,
     path,
-    preview: line.trim().slice(0, 240),
+    preview: preview.text,
+    previewStartColumn: preview.startColumn,
     source: "open-buffer",
     type: "file",
+  }
+}
+
+function searchPreview(line: string, columnIndex: number) {
+  if (line.length <= SEARCH_PREVIEW_MAX_CHARS) {
+    return { startColumn: 0, text: line }
+  }
+
+  const latestStart = Math.max(0, line.length - SEARCH_PREVIEW_MAX_CHARS)
+  const preferredStart = Math.max(0, columnIndex - SEARCH_PREVIEW_CONTEXT_CHARS)
+  const startColumn = Math.min(preferredStart, latestStart)
+
+  return {
+    startColumn,
+    text: line.slice(startColumn, startColumn + SEARCH_PREVIEW_MAX_CHARS),
   }
 }
 
@@ -316,6 +358,7 @@ function isWorkspaceSearchMatch(match: unknown): match is WorkspaceSearchMatch {
   if (!isOptionalNumber(match.line)) return false
   if (!isOptionalNumber(match.column)) return false
   if (!isOptionalNumber(match.endColumn)) return false
+  if (!isOptionalNumber(match.previewStartColumn)) return false
 
   return isOptionalString(match.preview)
 }

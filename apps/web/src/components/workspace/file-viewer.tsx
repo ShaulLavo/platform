@@ -68,6 +68,9 @@ export function FileViewer({
   const setCachedEditorDocumentDirty = useEditorDocumentState(
     (state) => state.setCachedEditorDocumentDirty
   )
+  const recordCachedEditorDocumentTextChange = useEditorDocumentState(
+    (state) => state.recordCachedEditorDocumentTextChange
+  )
   const forceReplaceCachedEditorDocument = useEditorDocumentState(
     (state) => state.forceReplaceCachedEditorDocument
   )
@@ -88,6 +91,13 @@ export function FileViewer({
     forceReplaceCachedEditorDocument,
     renameCachedEditorDocument,
   })
+  const handleEditorTextChange = useCallback(
+    (path: string, text: string) => {
+      recordCachedEditorDocumentTextChange(path)
+      resolveConflictEditorDocument(path, text)
+    },
+    [recordCachedEditorDocumentTextChange, resolveConflictEditorDocument]
+  )
   const selectedDiff = useMemo(
     () => parseDiffDocumentId(selectedFilePath),
     [selectedFilePath]
@@ -178,7 +188,7 @@ export function FileViewer({
             onEditorDirtyChange={setCachedEditorDocumentDirty}
             onEditorScrollPositionChange={setCachedEditorDocumentScrollPosition}
             onEditorStatusChange={setStatusBarState}
-            onEditorTextChange={resolveConflictEditorDocument}
+            onEditorTextChange={handleEditorTextChange}
             onOpenDefinition={openDefinition}
           />
         )

@@ -20,6 +20,7 @@ export type WorkspaceSearchMatch = {
   line?: number
   path: string
   preview?: string
+  previewStartColumn?: number
   source: WorkspaceSearchSource
   targetType?: EntryTypeFilter
   type: EntryTypeFilter

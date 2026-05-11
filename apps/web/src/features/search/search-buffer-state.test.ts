@@ -4,6 +4,7 @@ import {
   createSearchBufferStore,
   searchGroupsForSnapshot,
 } from "./search-buffer-state"
+import { searchResultItems } from "./search-result-items"
 
 describe("search buffer store", () => {
   it("tracks loading, matches, completion, and grouping", () => {
@@ -168,5 +169,69 @@ describe("search buffer store", () => {
       status: "loading",
       totalCount: 1,
     })
+  })
+
+  it("appends batched events and can collapse file groups", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      path: "repo",
+      query: "needle",
+    })
+
+    store.getState().appendEvents(runId, [
+      {
+        match: {
+          kind: "content",
+          path: "repo/src/app.ts",
+          source: "disk",
+          type: "file",
+        },
+        type: "match",
+      },
+      {
+        match: {
+          kind: "content",
+          path: "repo/src/app.ts",
+          source: "disk",
+          type: "file",
+        },
+        type: "match",
+      },
+    ])
+    store.getState().toggleGroup("repo/src/app.ts")
+
+    expect(searchGroupsForSnapshot(store.getState().active)).toEqual([
+      expect.objectContaining({
+        collapsed: true,
+        count: 2,
+        path: "repo/src/app.ts",
+      }),
+    ])
+  })
+
+  it("renders filename-only hits as one virtual row", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      path: "repo",
+      query: "needle",
+    })
+
+    store.getState().appendEvent(runId, {
+      match: {
+        kind: "name",
+        path: "repo/src/needle.ts",
+        source: "disk",
+        type: "file",
+      },
+      type: "match",
+    })
+
+    expect(
+      searchResultItems(searchGroupsForSnapshot(store.getState().active))
+    ).toEqual([expect.objectContaining({ type: "name" })])
   })
 })

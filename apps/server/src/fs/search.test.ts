@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "bun:test"
@@ -22,7 +22,10 @@ describe("workspace disk search provider", () => {
   it("finds filename and content matches with disk source metadata", async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, "src"), { recursive: true })
-    await writeFile(path.join(root, "src", "button.ts"), "export const Button = 1")
+    await writeFile(
+      path.join(root, "src", "button.ts"),
+      "export const Button = 1"
+    )
     await writeFile(path.join(root, "src", "other.ts"), "button content")
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
@@ -47,6 +50,74 @@ describe("workspace disk search provider", () => {
         kind: "content",
         path: "src/other.ts",
         source: "disk",
+      })
+    )
+  })
+
+  it("emits exact content ranges for each match on a line", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "many.ts"), "needle and needle")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    const contentMatches = result.matches.filter(
+      (match) => match.kind === "content" && match.path === "many.ts"
+    )
+
+    expect(contentMatches).toEqual([
+      expect.objectContaining({ column: 1, endColumn: 7 }),
+      expect.objectContaining({ column: 12, endColumn: 18 }),
+    ])
+  })
+
+  it("keeps long-line previews anchored around the match", async () => {
+    const root = await fixtureRoot()
+    await writeFile(
+      path.join(root, "long.ts"),
+      `${"x".repeat(320)}needle${"y".repeat(20)}`
+    )
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toContainEqual(
+      expect.objectContaining({
+        column: 321,
+        endColumn: 327,
+        preview: expect.stringContaining("needle"),
+        previewStartColumn: expect.any(Number),
+      })
+    )
+  })
+
+  it("keeps partial rg results when ripgrep exits with a nonfatal filesystem error", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "match.txt"), "needle")
+    await symlink(".", path.join(root, "loop"))
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toContainEqual(
+      expect.objectContaining({
+        kind: "content",
+        path: "match.txt",
       })
     )
   })

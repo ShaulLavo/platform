@@ -70,6 +70,7 @@ export const workspaceSearchMatchSchema = v.object({
   line: v.optional(v.number()),
   path: pathSchema,
   preview: v.optional(v.string()),
+  previewStartColumn: v.optional(v.number()),
   source: workspaceSearchSourceSchema,
   targetType: v.optional(entryTypeQueryValueSchema),
   type: entryTypeQueryValueSchema,

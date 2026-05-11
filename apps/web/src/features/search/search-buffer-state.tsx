@@ -13,6 +13,8 @@ import { searchBufferDocumentId } from "@/features/search/search-buffer-document
 export type SearchBufferStatus = "idle" | "loading" | "ready" | "error"
 
 export type WorkspaceSearchFileGroup = {
+  collapsed: boolean
+  count: number
   matches: WorkspaceSearchMatch[]
   name: string
   path: string
@@ -20,6 +22,7 @@ export type WorkspaceSearchFileGroup = {
 }
 
 export type SearchBufferSnapshot = {
+  collapsedPaths: readonly string[]
   error: string | null
   id: string
   matches: readonly WorkspaceSearchMatch[]
@@ -39,11 +42,13 @@ type SearchBufferStoreState = {
 
 type SearchBufferStoreActions = {
   appendEvent: (runId: number, event: WorkspaceSearchEvent) => void
+  appendEvents: (runId: number, events: readonly WorkspaceSearchEvent[]) => void
   failSearch: (runId: number, error: string) => void
   prepareBuffer: (rootPath: string) => SearchBufferSnapshot
   resetBuffer: (rootPath: string) => void
   setQuery: (rootPath: string, query: string) => void
   startSearch: (query: WorkspaceSearchQuery) => number
+  toggleGroup: (path: string) => void
 }
 
 export type SearchBufferStore = SearchBufferStoreState &
@@ -76,6 +81,8 @@ export function createSearchBufferStore() {
     active: null,
     appendEvent: (runId, event) =>
       set((state) => appendSearchEvent(state, runId, event)),
+    appendEvents: (runId, events) =>
+      set((state) => appendSearchEvents(state, runId, events)),
     failSearch: (runId, error) =>
       set((state) => failSearchBuffer(state, runId, error)),
     prepareBuffer: (rootPath) => {
@@ -97,6 +104,10 @@ export function createSearchBufferStore() {
       set({ active: loadingSearchBuffer(query, runId, current) })
       return runId
     },
+    toggleGroup: (path) =>
+      set((state) => ({
+        active: toggleSearchGroup(state.active, path),
+      })),
   }))
 }
 
@@ -107,7 +118,8 @@ function querySearchBuffer(
 ) {
   if (!query) return emptySearchBuffer(rootPath)
 
-  const base = current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
+  const base =
+    current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
   const queryChanged = base.query !== query
   return {
     ...base,
@@ -122,7 +134,24 @@ function querySearchBuffer(
 export function searchGroupsForSnapshot(snapshot: SearchBufferSnapshot | null) {
   if (!snapshot) return []
 
-  return groupSearchMatches(snapshot.matches, snapshot.rootPath)
+  return groupSearchMatches(
+    snapshot.matches,
+    snapshot.rootPath,
+    snapshot.collapsedPaths
+  )
+}
+
+function appendSearchEvents(
+  state: SearchBufferStoreState,
+  runId: number,
+  events: readonly WorkspaceSearchEvent[]
+): SearchBufferStoreState {
+  let next = state
+  for (const event of events) {
+    next = appendSearchEvent(next, runId, event)
+  }
+
+  return next
 }
 
 function appendSearchEvent(
@@ -190,6 +219,7 @@ function activeRun(snapshot: SearchBufferSnapshot | null, runId: number) {
 
 function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
   return {
+    collapsedPaths: [],
     error: null,
     id: searchBufferDocumentId(rootPath),
     matches: [],
@@ -212,6 +242,7 @@ function loadingSearchBuffer(
   const previous = current?.rootPath === query.path ? current : null
 
   return {
+    collapsedPaths: previous?.collapsedPaths ?? [],
     error: null,
     id: searchBufferDocumentId(query.path),
     matches: previous?.matches ?? [],
@@ -243,30 +274,57 @@ function doneMatches(active: SearchBufferSnapshot, query: string) {
   return []
 }
 
+function toggleSearchGroup(
+  snapshot: SearchBufferSnapshot | null,
+  path: string
+) {
+  if (!snapshot) return null
+
+  const collapsedPaths = new Set(snapshot.collapsedPaths)
+  if (collapsedPaths.has(path)) {
+    collapsedPaths.delete(path)
+  } else {
+    collapsedPaths.add(path)
+  }
+
+  return {
+    ...snapshot,
+    collapsedPaths: [...collapsedPaths],
+  }
+}
+
 function groupSearchMatches(
   matches: readonly WorkspaceSearchMatch[],
-  rootPath: string
+  rootPath: string,
+  collapsedPaths: readonly string[]
 ) {
   const groups = new Map<string, WorkspaceSearchFileGroup>()
+  const collapsed = new Set(collapsedPaths)
 
   for (const match of matches) {
     const group = groups.get(match.path)
     if (group) {
+      group.count += 1
       group.matches.push(match)
       continue
     }
 
-    groups.set(match.path, searchFileGroup(match, rootPath))
+    groups.set(match.path, searchFileGroup(match, rootPath, collapsed))
   }
 
-  return [...groups.values()].sort((a, b) => a.pathLabel.localeCompare(b.pathLabel))
+  return [...groups.values()].sort((a, b) =>
+    a.pathLabel.localeCompare(b.pathLabel)
+  )
 }
 
 function searchFileGroup(
   match: WorkspaceSearchMatch,
-  rootPath: string
+  rootPath: string,
+  collapsedPaths: ReadonlySet<string>
 ): WorkspaceSearchFileGroup {
   return {
+    collapsed: collapsedPaths.has(match.path),
+    count: 1,
     matches: [match],
     name: basename(match.path),
     path: match.path,

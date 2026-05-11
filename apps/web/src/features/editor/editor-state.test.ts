@@ -122,6 +122,17 @@ describe("editor document store", () => {
     expect(store.getState().dirtyFilePaths.has("src/file.ts")).toBe(false)
   })
 
+  it("records dirty text changes even after the path is already dirty", () => {
+    const store = createEditorDocumentStore()
+    store.getState().ensureCachedEditorDocument(file("src/file.ts", "local"))
+
+    store.getState().recordCachedEditorDocumentTextChange("src/file.ts")
+    store.getState().recordCachedEditorDocumentTextChange("src/file.ts")
+
+    expect(store.getState().dirtyContentRevision).toBe(2)
+    expect(store.getState().dirtyFilePaths.has("src/file.ts")).toBe(true)
+  })
+
   it("preserves the session when a forced refresh has matching content", () => {
     const store = createEditorDocumentStore()
     const original = store
