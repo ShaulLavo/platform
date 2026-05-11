@@ -15,7 +15,7 @@ import type {
 type PlatformName = ReturnType<typeof detectPlatform>
 
 type DefaultBindingSpec = {
-  readonly command: PlatformCommandId
+  readonly command: PlatformCommandId | null
   readonly hotkey: RegisterableHotkey
   readonly pane?: PlatformKeyBinding["pane"]
   readonly platforms?: readonly PlatformName[]
@@ -43,7 +43,7 @@ function bindingForPlatform(
       command: spec.command,
       hotkey: spec.hotkey,
       keys: normalizeRegisterableHotkey(spec.hotkey, platform),
-      meta: commandHotkeyMeta(spec.command),
+      meta: spec.command ? commandHotkeyMeta(spec.command) : undefined,
       pane: spec.pane ?? "any",
       preventDefault: spec.preventDefault,
       source: "default",
@@ -79,6 +79,20 @@ function editorBinding(
   return { command, hotkey, pane: "editor", vscodeCommandId, ...options }
 }
 
+function noOpBinding(
+  hotkey: RegisterableHotkey,
+  options: Omit<DefaultBindingSpec, "command" | "hotkey">
+): DefaultBindingSpec {
+  return {
+    command: null,
+    hotkey,
+    pane: "any",
+    preventDefault: true,
+    stopPropagation: true,
+    ...options,
+  }
+}
+
 const defaultBindingSpecs = [
   workspaceBinding("Mod+Shift+P", "workspace.showCommandPalette", {
     preventDefault: true,
@@ -95,50 +109,46 @@ const defaultBindingSpecs = [
     stopPropagation: true,
     vscodeCommandId: "workbench.action.quickOpen",
   }),
-  workspaceBinding("Control+Tab", "workspace.quickOpenPreviousEditor", {
-    preventDefault: true,
+  // TODO(electron): Bind these desktop/window-level VS Code defaults once
+  // Platform can own shortcuts outside the browser sandbox.
+  noOpBinding("Control+Tab", {
     vscodeCommandId: "workbench.action.quickOpenPreviousEditor",
   }),
-  workspaceBinding("Control+Q", "workspace.quickOpenView", {
-    preventDefault: true,
+  noOpBinding("Control+Q", {
     vscodeCommandId: "workbench.action.quickOpenView",
   }),
   workspaceBinding("Mod+Shift+O", "workspace.gotoSymbol", {
     preventDefault: true,
     vscodeCommandId: "workbench.action.gotoSymbol",
   }),
+  noOpBinding("Mod+Alt+Tab", {
+    platforms: ["mac"],
+    vscodeCommandId: "workbench.action.showAllEditors",
+  }),
   workspaceBinding("Mod+S", "workspace.saveFile", {
     preventDefault: true,
     vscodeCommandId: "workbench.action.files.save",
   }),
-  workspaceBinding("Mod+Shift+T", "workspace.reopenClosedEditor", {
-    preventDefault: true,
+  noOpBinding("Mod+Shift+T", {
     vscodeCommandId: "workbench.action.reopenClosedEditor",
   }),
   workspaceBinding("Mod+B", "workspace.toggleSidebarVisibility", {
     preventDefault: true,
     vscodeCommandId: "workbench.action.toggleSidebarVisibility",
   }),
-  workspaceBinding("Mod+J", "workspace.togglePanel", {
-    preventDefault: true,
+  noOpBinding("Mod+J", {
     vscodeCommandId: "workbench.action.togglePanel",
   }),
-  workspaceBinding("Mod+1", "workspace.focusFileTree"),
-  workspaceBinding("Mod+2", "workspace.focusEditor"),
-  workspaceBinding("Mod+3", "workspace.focusGit"),
-  workspaceBinding("Mod+1", "workspace.focusFirstEditorGroup", {
-    pane: "editor",
+  noOpBinding("Mod+1", {
     vscodeCommandId: "workbench.action.focusFirstEditorGroup",
   }),
-  workspaceBinding("Mod+2", "workspace.focusSecondEditorGroup", {
-    pane: "editor",
+  noOpBinding("Mod+2", {
     vscodeCommandId: "workbench.action.focusSecondEditorGroup",
   }),
-  workspaceBinding("Mod+3", "workspace.focusThirdEditorGroup", {
-    pane: "editor",
+  noOpBinding("Mod+3", {
     vscodeCommandId: "workbench.action.focusThirdEditorGroup",
   }),
-  workspaceBinding("Mod+W", "workspace.closeCurrentTab", {
+  noOpBinding("Mod+W", {
     vscodeCommandId: "workbench.action.closeActiveEditor",
   }),
   workspaceBinding("Mod+Shift+D", "workspace.toggleDiffViewMode"),
@@ -247,6 +257,141 @@ const defaultBindingSpecs = [
     "Mod+D",
     "editor.addNextOccurrence",
     "editor.action.addSelectionToNextFindMatch"
+  ),
+
+  editorBinding("Alt+Backspace", "editor.deleteWordLeft", "deleteWordLeft", {
+    platforms: ["mac"],
+  }),
+  editorBinding("Mod+Backspace", "editor.deleteWordLeft", "deleteWordLeft", {
+    platforms: ["windows", "linux"],
+  }),
+  editorBinding("Alt+Delete", "editor.deleteWordRight", "deleteWordRight", {
+    platforms: ["mac"],
+  }),
+  editorBinding("Mod+Delete", "editor.deleteWordRight", "deleteWordRight", {
+    platforms: ["windows", "linux"],
+  }),
+  editorBinding(
+    "Mod+Shift+K",
+    "editor.editor.action.deleteLines",
+    "editor.action.deleteLines"
+  ),
+  editorBinding(
+    "Alt+Shift+ArrowUp",
+    "editor.editor.action.copyLinesUpAction",
+    "editor.action.copyLinesUpAction",
+    { platforms: ["mac", "windows"] }
+  ),
+  editorBinding(
+    "Alt+Shift+ArrowDown",
+    "editor.editor.action.copyLinesDownAction",
+    "editor.action.copyLinesDownAction",
+    { platforms: ["mac", "windows"] }
+  ),
+  editorBinding(
+    "Mod+Alt+Shift+ArrowUp",
+    "editor.editor.action.copyLinesUpAction",
+    "editor.action.copyLinesUpAction",
+    { platforms: ["linux"] }
+  ),
+  editorBinding(
+    "Mod+Alt+Shift+ArrowDown",
+    "editor.editor.action.copyLinesDownAction",
+    "editor.action.copyLinesDownAction",
+    { platforms: ["linux"] }
+  ),
+  editorBinding(
+    "Alt+ArrowUp",
+    "editor.editor.action.moveLinesUpAction",
+    "editor.action.moveLinesUpAction"
+  ),
+  editorBinding(
+    "Alt+ArrowDown",
+    "editor.editor.action.moveLinesDownAction",
+    "editor.action.moveLinesDownAction"
+  ),
+  editorBinding(
+    "Mod+Shift+Enter",
+    "editor.editor.action.insertLineBefore",
+    "editor.action.insertLineBefore"
+  ),
+  editorBinding(
+    "Mod+Enter",
+    "editor.editor.action.insertLineAfter",
+    "editor.action.insertLineAfter"
+  ),
+  editorBinding(
+    "Mod+/",
+    "editor.editor.action.commentLine",
+    "editor.action.commentLine"
+  ),
+  editorBinding(
+    "Alt+Shift+A",
+    "editor.editor.action.blockComment",
+    "editor.action.blockComment",
+    { platforms: ["mac", "windows"] }
+  ),
+  editorBinding(
+    "Mod+Shift+A",
+    "editor.editor.action.blockComment",
+    "editor.action.blockComment",
+    { platforms: ["linux"] }
+  ),
+  editorBinding(
+    "Mod+]",
+    "editor.editor.action.indentLines",
+    "editor.action.indentLines"
+  ),
+  editorBinding(
+    "Mod+[",
+    "editor.editor.action.outdentLines",
+    "editor.action.outdentLines"
+  ),
+  editorBinding(
+    "Mod+Alt+ArrowUp",
+    "editor.editor.action.insertCursorAbove",
+    "editor.action.insertCursorAbove",
+    { platforms: ["mac", "windows"] }
+  ),
+  editorBinding(
+    "Mod+Alt+ArrowDown",
+    "editor.editor.action.insertCursorBelow",
+    "editor.action.insertCursorBelow",
+    { platforms: ["mac", "windows"] }
+  ),
+  editorBinding(
+    "Alt+Shift+ArrowUp",
+    "editor.editor.action.insertCursorAbove",
+    "editor.action.insertCursorAbove",
+    { platforms: ["linux"] }
+  ),
+  editorBinding(
+    "Alt+Shift+ArrowDown",
+    "editor.editor.action.insertCursorBelow",
+    "editor.action.insertCursorBelow",
+    { platforms: ["linux"] }
+  ),
+  editorBinding(
+    "Mod+Shift+ArrowUp",
+    "editor.editor.action.insertCursorAbove",
+    "editor.action.insertCursorAbove",
+    { platforms: ["linux"] }
+  ),
+  editorBinding(
+    "Mod+Shift+ArrowDown",
+    "editor.editor.action.insertCursorBelow",
+    "editor.action.insertCursorBelow",
+    { platforms: ["linux"] }
+  ),
+  editorBinding(
+    "Mod+Shift+L",
+    "editor.editor.action.selectHighlights",
+    "editor.action.selectHighlights"
+  ),
+  editorBinding(
+    "Mod+F2",
+    "editor.editor.action.changeAll",
+    "editor.action.changeAll"
   ),
 
   editorBinding("Backspace", "editor.deleteBackward", "deleteLeft"),
@@ -417,9 +562,8 @@ const defaultBindingSpecs = [
     "cursorBottomSelect",
     { platforms: ["windows", "linux"] }
   ),
-  editorBinding(
-    "F12",
-    "editor.goToDefinition",
-    "editor.action.revealDefinition"
-  ),
+  noOpBinding("F12", {
+    pane: "editor",
+    vscodeCommandId: "editor.action.revealDefinition",
+  }),
 ] satisfies readonly DefaultBindingSpec[]

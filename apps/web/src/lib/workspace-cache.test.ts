@@ -107,6 +107,24 @@ describe("workspace cache", () => {
       workspacePanelTab: "files",
     })
   })
+
+  it("persists the search panel tab", () => {
+    const rootFolder = pickedDirectory("/repo")
+
+    writeWorkspaceCache({
+      diffViewMode: "split",
+      editorHistory: [],
+      gitPanelOpen: true,
+      openFilePaths: [],
+      recentlyClosedEditorPaths: [],
+      rootFolder,
+      selectedFilePath: null,
+      sidebarVisible: true,
+      workspacePanelTab: "search",
+    })
+
+    expect(readWorkspaceCache().workspacePanelTab).toBe("search")
+  })
 })
 
 function snapshotDiff(path: string): FileDiff {

@@ -58,6 +58,17 @@ describe("editorKeyBindingFromPlatform", () => {
     })
   })
 
+  it("keeps VS Code-shaped editor command ids after the platform prefix", () => {
+    const mapped = editorKeyBindingFromPlatform(
+      binding("Mod+/", "editor.editor.action.commentLine", "editor")
+    )
+
+    expect(mapped).toMatchObject({
+      command: "editor.action.commentLine",
+      hotkey: "Mod+/",
+    })
+  })
+
   it("rejects non-editor commands", () => {
     expect(
       editorKeyBindingFromPlatform(
@@ -102,6 +113,15 @@ describe("command registry", () => {
       })
     }
   })
+
+  it("exposes requested VS Code editor command aliases", () => {
+    for (const [command, vscodeCommandId] of requestedEditorAliases) {
+      expect(platformCommandSpec(command)).toMatchObject({
+        category: "Editor",
+        vscodeCommandIds: [vscodeCommandId],
+      })
+    }
+  })
 })
 
 describe("defaultPlatformKeyBindings", () => {
@@ -122,6 +142,41 @@ describe("defaultPlatformKeyBindings", () => {
     )
   })
 
+  it("reserves browser-hostile desktop defaults as no-ops", () => {
+    expect(defaultPlatformKeyBindings("mac")).toContainEqual(
+      expect.objectContaining({
+        command: null,
+        keys: "Mod+Alt+Tab",
+        preventDefault: true,
+        stopPropagation: true,
+        vscodeCommandId: "workbench.action.showAllEditors",
+      })
+    )
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: null,
+        hotkey: "Control+Tab",
+        keys: "Mod+Tab",
+        vscodeCommandId: "workbench.action.quickOpenPreviousEditor",
+      })
+    )
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: null,
+        keys: "Mod+W",
+        vscodeCommandId: "workbench.action.closeActiveEditor",
+      })
+    )
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: null,
+        keys: "F12",
+        pane: "editor",
+        vscodeCommandId: "editor.action.revealDefinition",
+      })
+    )
+  })
+
   it("uses VS Code platform-specific replace shortcuts", () => {
     expect(defaultPlatformKeyBindings("mac")).toContainEqual(
       expect.objectContaining({
@@ -137,14 +192,68 @@ describe("defaultPlatformKeyBindings", () => {
     )
   })
 
-  it("uses editor-scoped group focus bindings without removing global focus bindings", () => {
+  it("does not bind browser tab switching keys to pane focus commands", () => {
     const bindings = defaultPlatformKeyBindings("linux")
 
-    expect(commands(appKeyBindingsForPane(bindings, "global"))).toContain(
+    expect(commands(appKeyBindingsForPane(bindings, "global"))).not.toContain(
       "workspace.focusFileTree"
     )
-    expect(commands(appKeyBindingsForPane(bindings, "editor"))).toContain(
+    expect(commands(appKeyBindingsForPane(bindings, "editor"))).not.toContain(
       "workspace.focusFirstEditorGroup"
+    )
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: null,
+        keys: "Mod+1",
+        vscodeCommandId: "workbench.action.focusFirstEditorGroup",
+      })
+    )
+  })
+
+  it("uses VS Code default bindings for implemented edit actions", () => {
+    const bindings = defaultPlatformKeyBindings("mac")
+
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: "editor.deleteWordLeft",
+        keys: "Alt+Backspace",
+        vscodeCommandId: "deleteWordLeft",
+      })
+    )
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: "editor.editor.action.commentLine",
+        keys: "Mod+/",
+        vscodeCommandId: "editor.action.commentLine",
+      })
+    )
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: "editor.editor.action.selectHighlights",
+        keys: "Mod+Shift+L",
+        vscodeCommandId: "editor.action.selectHighlights",
+      })
+    )
+  })
+
+  it("uses VS Code platform-specific edit bindings", () => {
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: "editor.editor.action.copyLinesUpAction",
+        keys: "Mod+Alt+Shift+ArrowUp",
+      })
+    )
+    expect(defaultPlatformKeyBindings("windows")).toContainEqual(
+      expect.objectContaining({
+        command: "editor.editor.action.copyLinesUpAction",
+        keys: "Alt+Shift+ArrowUp",
+      })
+    )
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: "editor.editor.action.insertCursorAbove",
+        keys: "Mod+Shift+ArrowUp",
+      })
     )
   })
 })
@@ -173,6 +282,36 @@ const requestedWorkspaceAliases = [
   ],
   ["workspace.focusThirdEditorGroup", "workbench.action.focusThirdEditorGroup"],
   ["workspace.splitEditor", "workbench.action.splitEditor"],
+] as const satisfies readonly (readonly [PlatformCommandId, string])[]
+
+const requestedEditorAliases = [
+  ["editor.deleteWordLeft", "deleteWordLeft"],
+  ["editor.deleteWordRight", "deleteWordRight"],
+  ["editor.editor.action.deleteLines", "editor.action.deleteLines"],
+  ["editor.editor.action.copyLinesUpAction", "editor.action.copyLinesUpAction"],
+  [
+    "editor.editor.action.copyLinesDownAction",
+    "editor.action.copyLinesDownAction",
+  ],
+  ["editor.editor.action.moveLinesUpAction", "editor.action.moveLinesUpAction"],
+  [
+    "editor.editor.action.moveLinesDownAction",
+    "editor.action.moveLinesDownAction",
+  ],
+  ["editor.editor.action.insertLineBefore", "editor.action.insertLineBefore"],
+  ["editor.editor.action.insertLineAfter", "editor.action.insertLineAfter"],
+  ["editor.editor.action.commentLine", "editor.action.commentLine"],
+  ["editor.editor.action.blockComment", "editor.action.blockComment"],
+  ["editor.editor.action.indentLines", "editor.action.indentLines"],
+  ["editor.editor.action.outdentLines", "editor.action.outdentLines"],
+  ["editor.editor.action.insertCursorAbove", "editor.action.insertCursorAbove"],
+  ["editor.editor.action.insertCursorBelow", "editor.action.insertCursorBelow"],
+  ["editor.editor.action.selectHighlights", "editor.action.selectHighlights"],
+  ["editor.editor.action.changeAll", "editor.action.changeAll"],
+  [
+    "editor.editor.action.moveSelectionToNextFindMatch",
+    "editor.action.moveSelectionToNextFindMatch",
+  ],
 ] as const satisfies readonly (readonly [PlatformCommandId, string])[]
 
 function binding(

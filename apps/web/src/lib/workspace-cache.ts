@@ -55,7 +55,7 @@ type WorkspaceCachePayloadV5 = {
   workspacePanelTab: WorkspacePanelTab
 }
 
-export type WorkspacePanelTab = "files" | "git"
+export type WorkspacePanelTab = "files" | "git" | "search"
 
 const pickedDirectorySchema = v.object({
   birthtimeMs: v.number(),
@@ -78,7 +78,11 @@ const rootFolderSchema = v.nullable(
   v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema])
 )
 const selectedFilePathSchema = v.nullable(v.string())
-const workspacePanelTabSchema = v.union([v.literal("files"), v.literal("git")])
+const workspacePanelTabSchema = v.union([
+  v.literal("files"),
+  v.literal("git"),
+  v.literal("search"),
+])
 const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)
 const v1Schema = v.object({
   rootFolder: rootFolderSchema,

@@ -4,7 +4,8 @@ import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspac
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { FileViewer } from "@/components/workspace/file-viewer"
 import { TreePane } from "@/components/workspace/tree-pane"
-import { FolderIcon, GitBranchIcon } from "@phosphor-icons/react"
+import { WorkspaceSearchPane } from "@/components/workspace/workspace-search-pane"
+import { FolderIcon, GitBranchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
 import { Panel as GitPanel } from "@/features/git/panel"
 import { useStatus } from "@/features/git/hooks"
 import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
@@ -90,10 +91,14 @@ export function WorkspaceView({
                     orientation="horizontal"
                     onValueChange={handleWorkspacePanelTabChange}
                   >
-                    <TabsList className="grid w-full grid-cols-2">
+                    <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="files">
                         <FolderIcon />
                         Files
+                      </TabsTrigger>
+                      <TabsTrigger value="search">
+                        <MagnifyingGlassIcon />
+                        Search
                       </TabsTrigger>
                       <TabsTrigger value="git">
                         <GitBranchIcon />
@@ -107,6 +112,9 @@ export function WorkspaceView({
                         state={treeState}
                         onLoadDirectory={onLoadDirectory}
                       />
+                    </TabsContent>
+                    <TabsContent keepMounted value="search">
+                      <WorkspaceSearchPane rootPath={rootFolder.path} />
                     </TabsContent>
                     <TabsContent keepMounted value="git">
                       <GitPanel rootPath={rootFolder.path} />
@@ -140,7 +148,7 @@ export function WorkspaceView({
 }
 
 function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
-  return value === "files" || value === "git"
+  return value === "files" || value === "git" || value === "search"
 }
 
 function WorkspaceTreePane({

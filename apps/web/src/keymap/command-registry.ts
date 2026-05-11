@@ -183,6 +183,58 @@ export const editorCommandSpecs = [
   editorCommand("clearSecondarySelections", "Clear secondary selections", [
     "removeSecondaryCursors",
   ]),
+  editorCommand("deleteWordLeft", "Delete word left", ["deleteWordLeft"]),
+  editorCommand("deleteWordRight", "Delete word right", ["deleteWordRight"]),
+  editorCommand("editor.action.deleteLines", "Delete line", [
+    "editor.action.deleteLines",
+  ]),
+  editorCommand("editor.action.copyLinesUpAction", "Copy line up", [
+    "editor.action.copyLinesUpAction",
+  ]),
+  editorCommand("editor.action.copyLinesDownAction", "Copy line down", [
+    "editor.action.copyLinesDownAction",
+  ]),
+  editorCommand("editor.action.moveLinesUpAction", "Move line up", [
+    "editor.action.moveLinesUpAction",
+  ]),
+  editorCommand("editor.action.moveLinesDownAction", "Move line down", [
+    "editor.action.moveLinesDownAction",
+  ]),
+  editorCommand("editor.action.insertLineBefore", "Insert line above", [
+    "editor.action.insertLineBefore",
+  ]),
+  editorCommand("editor.action.insertLineAfter", "Insert line below", [
+    "editor.action.insertLineAfter",
+  ]),
+  editorCommand("editor.action.commentLine", "Toggle line comment", [
+    "editor.action.commentLine",
+  ]),
+  editorCommand("editor.action.blockComment", "Toggle block comment", [
+    "editor.action.blockComment",
+  ]),
+  editorCommand("editor.action.indentLines", "Indent line", [
+    "editor.action.indentLines",
+  ]),
+  editorCommand("editor.action.outdentLines", "Outdent line", [
+    "editor.action.outdentLines",
+  ]),
+  editorCommand("editor.action.insertCursorAbove", "Add cursor above", [
+    "editor.action.insertCursorAbove",
+  ]),
+  editorCommand("editor.action.insertCursorBelow", "Add cursor below", [
+    "editor.action.insertCursorBelow",
+  ]),
+  editorCommand("editor.action.selectHighlights", "Select all occurrences", [
+    "editor.action.selectHighlights",
+  ]),
+  editorCommand("editor.action.changeAll", "Change all occurrences", [
+    "editor.action.changeAll",
+  ]),
+  editorCommand(
+    "editor.action.moveSelectionToNextFindMatch",
+    "Move last selection to next find match",
+    ["editor.action.moveSelectionToNextFindMatch"]
+  ),
   editorCommand("deleteBackward", "Delete backward", ["deleteLeft"]),
   editorCommand("deleteForward", "Delete forward", ["deleteRight"]),
   editorCommand("indentSelection", "Indent selection", ["tab"]),

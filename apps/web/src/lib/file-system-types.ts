@@ -26,7 +26,10 @@ export type StatResult = Omit<FsEntry, "children" | "name">
 
 export type FindMatch = {
   kind: "name" | "content"
+  column?: number
+  line?: number
   path: string
+  preview?: string
   type: EntryTypeFilter
   targetType?: EntryTypeFilter
   searchScope?: SearchScope
