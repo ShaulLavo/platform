@@ -122,6 +122,177 @@ describe("search buffer store", () => {
     })
   })
 
+  it("keeps previous results visible while search options change", () => {
+    const store = createSearchBufferStore()
+    const firstRunId = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      matchMode: "literal",
+      path: "repo",
+      query: "needle",
+    })
+    store.getState().appendEvent(firstRunId, {
+      match: {
+        kind: "content",
+        path: "repo/first.ts",
+        source: "disk",
+        type: "file",
+      },
+      type: "match",
+    })
+    store.getState().appendEvent(firstRunId, {
+      count: 1,
+      path: "repo",
+      query: "needle",
+      truncated: false,
+      type: "done",
+    })
+
+    store.getState().setSearchOptions("repo", { matchMode: "regex" })
+
+    expect(store.getState().active).toMatchObject({
+      matches: [expect.objectContaining({ path: "repo/first.ts" })],
+      matchMode: "regex",
+      resultsQuery: "needle",
+      status: "loading",
+    })
+  })
+
+  it("preserves selected search options when a new run starts", () => {
+    const store = createSearchBufferStore()
+
+    store.getState().setQuery("repo", "needle")
+    store.getState().setSearchOptions("repo", {
+      caseSensitive: true,
+      excludeGlobText: "*.test.ts",
+      filtersVisible: true,
+      includeGlobText: "src/**/*.ts",
+      matchMode: "regex",
+      wholeWord: true,
+    })
+    store.getState().startSearch({
+      caseSensitive: true,
+      excludeGlobs: ["*.test.ts"],
+      includeContent: true,
+      includeGlobs: ["src/**/*.ts"],
+      limit: 20,
+      matchMode: "regex",
+      path: "repo",
+      query: "needle",
+      wholeWord: true,
+    })
+
+    expect(store.getState().active).toMatchObject({
+      caseSensitive: true,
+      excludeGlobText: "*.test.ts",
+      filtersVisible: true,
+      includeGlobText: "src/**/*.ts",
+      matchMode: "regex",
+      status: "loading",
+      wholeWord: true,
+    })
+  })
+
+  it("preserves selected search options when the query is cleared", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      caseSensitive: true,
+      excludeGlobs: ["*.test.ts"],
+      includeContent: true,
+      includeGlobs: ["src/**/*.ts"],
+      limit: 20,
+      matchMode: "regex",
+      path: "repo",
+      query: "needle",
+      wholeWord: true,
+    })
+
+    store.getState().appendEvent(runId, {
+      match: {
+        kind: "content",
+        path: "repo/src/app.ts",
+        source: "disk",
+        type: "file",
+      },
+      type: "match",
+    })
+    store.getState().setSearchOptions("repo", {
+      caseSensitive: true,
+      excludeGlobText: "*.test.ts",
+      filtersVisible: true,
+      includeGlobText: "src/**/*.ts",
+      matchMode: "regex",
+      wholeWord: true,
+    })
+    store.getState().setQuery("repo", "")
+
+    expect(store.getState().active).toMatchObject({
+      caseSensitive: true,
+      excludeGlobText: "*.test.ts",
+      filtersVisible: true,
+      includeGlobText: "src/**/*.ts",
+      matches: [],
+      matchMode: "regex",
+      query: "",
+      resultsQuery: "",
+      status: "idle",
+      totalCount: 0,
+      wholeWord: true,
+    })
+  })
+
+  it("replaces previous results when options changed for the same query", () => {
+    const store = createSearchBufferStore()
+    const firstRunId = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      matchMode: "literal",
+      path: "repo",
+      query: "needle",
+    })
+    store.getState().appendEvent(firstRunId, {
+      match: {
+        kind: "content",
+        path: "repo/literal.ts",
+        source: "disk",
+        type: "file",
+      },
+      type: "match",
+    })
+    store.getState().appendEvent(firstRunId, {
+      count: 1,
+      path: "repo",
+      query: "needle",
+      truncated: false,
+      type: "done",
+    })
+
+    store.getState().setSearchOptions("repo", { matchMode: "regex" })
+    const secondRunId = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      matchMode: "regex",
+      path: "repo",
+      query: "needle",
+    })
+    store.getState().appendEvent(secondRunId, {
+      match: {
+        kind: "content",
+        path: "repo/regex.ts",
+        source: "disk",
+        type: "file",
+      },
+      type: "match",
+    })
+
+    expect(store.getState().active).toMatchObject({
+      matches: [expect.objectContaining({ path: "repo/regex.ts" })],
+      resultsQuery: "needle",
+      resultsSearchQuery: expect.objectContaining({ matchMode: "regex" }),
+      status: "loading",
+    })
+  })
+
   it("replaces previous results when the next query returns its first match", () => {
     const store = createSearchBufferStore()
     const firstRunId = store.getState().startSearch({

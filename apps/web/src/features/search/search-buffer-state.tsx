@@ -1,6 +1,7 @@
 import type {
   WorkspaceSearchEvent,
   WorkspaceSearchMatch,
+  WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
 } from "@workspace/contracts"
 import { createContext, useContext } from "react"
@@ -12,6 +13,18 @@ import { searchBufferDocumentId } from "@/features/search/search-buffer-document
 
 export type SearchBufferStatus = "idle" | "loading" | "ready" | "error"
 
+export type SearchBufferOptionPatch = Partial<
+  Pick<
+    SearchBufferSnapshot,
+    | "caseSensitive"
+    | "excludeGlobText"
+    | "filtersVisible"
+    | "includeGlobText"
+    | "matchMode"
+    | "wholeWord"
+  >
+>
+
 export type WorkspaceSearchFileGroup = {
   collapsed: boolean
   count: number
@@ -22,18 +35,26 @@ export type WorkspaceSearchFileGroup = {
 }
 
 export type SearchBufferSnapshot = {
+  caseSensitive: boolean
   collapsedPaths: readonly string[]
   error: string | null
+  excludeGlobText: string
+  filtersVisible: boolean
   id: string
+  includeGlobText: string
+  matchMode: WorkspaceSearchMatchMode
   matches: readonly WorkspaceSearchMatch[]
   query: string
   resultsQuery: string
+  resultsSearchQuery: WorkspaceSearchQuery | null
   rootPath: string
   runningQuery: string | null
+  runningSearchQuery: WorkspaceSearchQuery | null
   runId: number
   status: SearchBufferStatus
   totalCount: number
   truncated: boolean
+  wholeWord: boolean
 }
 
 type SearchBufferStoreState = {
@@ -46,6 +67,10 @@ type SearchBufferStoreActions = {
   failSearch: (runId: number, error: string) => void
   prepareBuffer: (rootPath: string) => SearchBufferSnapshot
   resetBuffer: (rootPath: string) => void
+  setSearchOptions: (
+    rootPath: string,
+    options: SearchBufferOptionPatch
+  ) => void
   setQuery: (rootPath: string, query: string) => void
   startSearch: (query: WorkspaceSearchQuery) => number
   toggleGroup: (path: string) => void
@@ -94,6 +119,10 @@ export function createSearchBufferStore() {
       return next
     },
     resetBuffer: (rootPath) => set({ active: emptySearchBuffer(rootPath) }),
+    setSearchOptions: (rootPath, options) =>
+      set((state) => ({
+        active: optionSearchBuffer(state.active, rootPath, options),
+      })),
     setQuery: (rootPath, query) =>
       set((state) => ({
         active: querySearchBuffer(state.active, rootPath, query),
@@ -111,15 +140,35 @@ export function createSearchBufferStore() {
   }))
 }
 
+function optionSearchBuffer(
+  current: SearchBufferSnapshot | null,
+  rootPath: string,
+  options: SearchBufferOptionPatch
+) {
+  const base =
+    current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
+  const next = { ...base, ...options, error: null }
+  if (!searchOptionsChanged(base, next)) return base
+  if (!next.query) return next
+
+  return {
+    ...next,
+    runId: base.runId + 1,
+    runningQuery: null,
+    runningSearchQuery: null,
+    status: "loading" as const,
+  }
+}
+
 function querySearchBuffer(
   current: SearchBufferSnapshot | null,
   rootPath: string,
   query: string
 ) {
-  if (!query) return emptySearchBuffer(rootPath)
-
   const base =
     current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
+  if (!query) return clearedSearchBuffer(base)
+
   const queryChanged = base.query !== query
   return {
     ...base,
@@ -127,7 +176,25 @@ function querySearchBuffer(
     query,
     runId: queryChanged ? base.runId + 1 : base.runId,
     runningQuery: queryChanged ? null : base.runningQuery,
+    runningSearchQuery: queryChanged ? null : base.runningSearchQuery,
     status: queryChanged ? "loading" : base.status,
+  }
+}
+
+function clearedSearchBuffer(current: SearchBufferSnapshot) {
+  return {
+    ...current,
+    error: null,
+    matches: [],
+    query: "",
+    resultsQuery: "",
+    resultsSearchQuery: null,
+    runningQuery: null,
+    runningSearchQuery: null,
+    runId: current.runId + 1,
+    status: "idle" as const,
+    totalCount: 0,
+    truncated: false,
   }
 }
 
@@ -163,11 +230,13 @@ function appendSearchEvent(
   if (!active) return state
   if (event.type === "match") {
     const matches = nextSearchMatches(active, event.match)
+    const runningSearchQuery = active.runningSearchQuery
     return {
       active: {
         ...active,
         matches,
         resultsQuery: active.runningQuery ?? active.resultsQuery,
+        resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
         status: "loading",
         totalCount: matches.length,
         truncated: false,
@@ -176,12 +245,15 @@ function appendSearchEvent(
   }
   if (event.type === "done") {
     const query = active.runningQuery ?? event.query
+    const searchQuery = active.runningSearchQuery
     return {
       active: {
         ...active,
-        matches: doneMatches(active, query),
+        matches: doneMatches(active, searchQuery),
         resultsQuery: query,
+        resultsSearchQuery: searchQuery,
         runningQuery: null,
+        runningSearchQuery: null,
         status: "ready",
         totalCount: event.count,
         truncated: event.truncated,
@@ -205,6 +277,7 @@ function failSearchBuffer(
       ...active,
       error,
       runningQuery: null,
+      runningSearchQuery: null,
       status: "error",
     },
   }
@@ -219,18 +292,26 @@ function activeRun(snapshot: SearchBufferSnapshot | null, runId: number) {
 
 function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
   return {
+    caseSensitive: false,
     collapsedPaths: [],
     error: null,
+    excludeGlobText: "",
+    filtersVisible: false,
     id: searchBufferDocumentId(rootPath),
+    includeGlobText: "",
+    matchMode: "literal",
     matches: [],
     query: "",
     resultsQuery: "",
+    resultsSearchQuery: null,
     rootPath,
     runningQuery: null,
+    runningSearchQuery: null,
     runId: 0,
     status: "idle",
     totalCount: 0,
     truncated: false,
+    wholeWord: false,
   }
 }
 
@@ -242,36 +323,106 @@ function loadingSearchBuffer(
   const previous = current?.rootPath === query.path ? current : null
 
   return {
+    caseSensitive: query.caseSensitive ?? previous?.caseSensitive ?? false,
     collapsedPaths: previous?.collapsedPaths ?? [],
     error: null,
+    excludeGlobText:
+      previous?.excludeGlobText ?? globTextForQuery(query.excludeGlobs),
+    filtersVisible:
+      previous?.filtersVisible ?? hasWorkspaceSearchGlobs(query),
     id: searchBufferDocumentId(query.path),
+    includeGlobText:
+      previous?.includeGlobText ?? globTextForQuery(query.includeGlobs),
+    matchMode: query.matchMode ?? previous?.matchMode ?? "literal",
     matches: previous?.matches ?? [],
     query: query.query,
     resultsQuery: previous?.resultsQuery ?? "",
+    resultsSearchQuery: previous?.resultsSearchQuery ?? null,
     rootPath: query.path,
     runningQuery: query.query,
+    runningSearchQuery: query,
     runId,
     status: "loading",
     totalCount: previous?.totalCount ?? 0,
     truncated: previous?.truncated ?? false,
+    wholeWord: query.wholeWord ?? previous?.wholeWord ?? false,
   }
+}
+
+function hasWorkspaceSearchGlobs(query: WorkspaceSearchQuery) {
+  if ((query.includeGlobs?.length ?? 0) > 0) return true
+
+  return (query.excludeGlobs?.length ?? 0) > 0
+}
+
+function globTextForQuery(globs: readonly string[] | undefined) {
+  return globs?.join(", ") ?? ""
 }
 
 function nextSearchMatches(
   active: SearchBufferSnapshot,
   match: WorkspaceSearchMatch
 ) {
-  if (active.resultsQuery === active.runningQuery) {
+  if (sameWorkspaceSearchQuery(active.resultsSearchQuery, active.runningSearchQuery)) {
     return [...active.matches, match]
   }
 
   return [match]
 }
 
-function doneMatches(active: SearchBufferSnapshot, query: string) {
-  if (active.resultsQuery === query) return active.matches
+function doneMatches(
+  active: SearchBufferSnapshot,
+  query: WorkspaceSearchQuery | null
+) {
+  if (sameWorkspaceSearchQuery(active.resultsSearchQuery, query)) {
+    return active.matches
+  }
 
   return []
+}
+
+function searchOptionsChanged(
+  current: SearchBufferSnapshot,
+  next: SearchBufferSnapshot
+) {
+  if (current.caseSensitive !== next.caseSensitive) return true
+  if (current.excludeGlobText !== next.excludeGlobText) return true
+  if (current.filtersVisible !== next.filtersVisible) return true
+  if (current.includeGlobText !== next.includeGlobText) return true
+  if (current.matchMode !== next.matchMode) return true
+
+  return current.wholeWord !== next.wholeWord
+}
+
+function sameWorkspaceSearchQuery(
+  left: WorkspaceSearchQuery | null,
+  right: WorkspaceSearchQuery | null
+) {
+  if (!left || !right) return left === right
+  if (left.caseSensitive !== right.caseSensitive) return false
+  if (left.entryType !== right.entryType) return false
+  if (left.includeContent !== right.includeContent) return false
+  if (left.includeNames !== right.includeNames) return false
+  if (left.limit !== right.limit) return false
+  if (left.matchMode !== right.matchMode) return false
+  if (left.maxDepth !== right.maxDepth) return false
+  if (left.path !== right.path) return false
+  if (left.query !== right.query) return false
+  if (left.wholeWord !== right.wholeWord) return false
+  if (!sameStringList(left.includeGlobs, right.includeGlobs)) return false
+
+  return sameStringList(left.excludeGlobs, right.excludeGlobs)
+}
+
+function sameStringList(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined
+) {
+  const leftList = left ?? []
+  const rightList = right ?? []
+  if (leftList.length !== rightList.length) return false
+
+  return leftList.every((value, index) => value === rightList[index])
 }
 
 function toggleSearchGroup(

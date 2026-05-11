@@ -1,17 +1,21 @@
 import type { EntryTypeFilter } from "./tree-entry"
 
 export type WorkspaceSearchSource = "disk" | "open-buffer"
+export type WorkspaceSearchMatchMode = "literal" | "regex"
 
 export type WorkspaceSearchQuery = {
   caseSensitive?: boolean
   entryType?: EntryTypeFilter
+  excludeGlobs?: readonly string[]
   includeContent: boolean
+  includeGlobs?: readonly string[]
   includeNames?: boolean
   limit: number
-  matchMode?: "literal"
+  matchMode?: WorkspaceSearchMatchMode
   maxDepth?: number
   path: string
   query: string
+  wholeWord?: boolean
 }
 
 export type WorkspaceSearchMatch = {

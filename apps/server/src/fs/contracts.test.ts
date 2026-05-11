@@ -22,11 +22,33 @@ describe("filesystem contracts", () => {
 
   it("parses find queries with defaults", () => {
     expect(v.parse(findQuerySchema, { query: "button" })).toEqual({
+      caseSensitive: false,
       includeContent: false,
       includeNames: true,
       limit: 50,
+      matchMode: "literal",
       path: "",
       query: "button",
+      wholeWord: false,
+    })
+  })
+
+  it("parses search mode and glob query values", () => {
+    expect(
+      v.parse(findQuerySchema, {
+        caseSensitive: "1",
+        excludeGlobs: "*.test.ts",
+        includeGlobs: ["src/**/*.ts", "tests/{unit,integration}/**/*.ts"],
+        matchMode: "regex",
+        query: "button",
+        wholeWord: "true",
+      })
+    ).toMatchObject({
+      caseSensitive: true,
+      excludeGlobs: ["*.test.ts"],
+      includeGlobs: ["src/**/*.ts", "tests/{unit,integration}/**/*.ts"],
+      matchMode: "regex",
+      wholeWord: true,
     })
   })
 

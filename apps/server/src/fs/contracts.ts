@@ -1,11 +1,14 @@
-import type {
-  EntryTypeFilter as ContractsEntryTypeFilter,
-  TreeEntry as ContractsTreeEntry,
-  WatchClientMessage as ContractsWatchClientMessage,
-  WatchServerMessage as ContractsWatchServerMessage,
-  WorkspaceSearchDoneEvent as ContractsWorkspaceSearchDoneEvent,
-  WorkspaceSearchEvent as ContractsWorkspaceSearchEvent,
-  WorkspaceSearchMatch as ContractsWorkspaceSearchMatch,
+import {
+  workspaceSearchGlobPatterns,
+  type EntryTypeFilter as ContractsEntryTypeFilter,
+  type TreeEntry as ContractsTreeEntry,
+  type WatchClientMessage as ContractsWatchClientMessage,
+  type WatchServerMessage as ContractsWatchServerMessage,
+  type WorkspaceSearchDoneEvent as ContractsWorkspaceSearchDoneEvent,
+  type WorkspaceSearchEvent as ContractsWorkspaceSearchEvent,
+  type WorkspaceSearchMatchMode as ContractsWorkspaceSearchMatchMode,
+  type WorkspaceSearchMatch as ContractsWorkspaceSearchMatch,
+  type WorkspaceSearchQuery as ContractsWorkspaceSearchQuery,
 } from "@workspace/contracts"
 import * as v from "valibot"
 
@@ -27,6 +30,14 @@ export const booleanQueryValueSchema = v.pipe(
     v.literal("0"),
   ]),
   v.transform((value) => value === "true" || value === "1")
+)
+export const matchModeQueryValueSchema = v.union([
+  v.literal("literal"),
+  v.literal("regex"),
+])
+export const globQueryValueSchema = v.pipe(
+  v.union([v.string(), v.array(v.string())]),
+  v.transform((value) => workspaceSearchGlobPatterns(value))
 )
 
 export const treeEntrySchema = v.object({
@@ -53,10 +64,15 @@ export const findQuerySchema = v.object({
   path: v.optional(pathSchema, ""),
   query: v.string(),
   limit: v.optional(limitQueryValueSchema, "50"),
+  caseSensitive: v.optional(booleanQueryValueSchema, "false"),
+  excludeGlobs: v.optional(globQueryValueSchema),
   includeContent: v.optional(booleanQueryValueSchema, "false"),
+  includeGlobs: v.optional(globQueryValueSchema),
   includeNames: v.optional(booleanQueryValueSchema, "true"),
   entryType: v.optional(entryTypeQueryValueSchema),
+  matchMode: v.optional(matchModeQueryValueSchema, "literal"),
   maxDepth: v.optional(depthQueryValueSchema),
+  wholeWord: v.optional(booleanQueryValueSchema, "false"),
 })
 
 export const workspaceSearchSourceSchema = v.union([
@@ -269,6 +285,19 @@ export const _assertWorkspaceSearchEventParity: Assert<
     v.InferOutput<typeof workspaceSearchEventSchema>,
     ContractsWorkspaceSearchEvent
   >
+> = true
+
+export const _assertWorkspaceSearchMatchModeParity: Assert<
+  Equals<v.InferOutput<typeof matchModeQueryValueSchema>, ContractsWorkspaceSearchMatchMode>
+> = true
+
+export const _assertFindQueryWorkspaceSearchParity: Assert<
+  Omit<v.InferOutput<typeof findQuerySchema>, "maxDepth"> extends Omit<
+    ContractsWorkspaceSearchQuery,
+    "maxDepth"
+  >
+    ? true
+    : false
 > = true
 
 function integerQueryValueSchema(defaultValue: string, max: number) {

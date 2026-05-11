@@ -48,17 +48,19 @@ References:
 
 ### 2. First-Class Search Modes
 
-V1 is still literal, case-insensitive search. This is behind the Zed project search baseline, with VS Code as the secondary comparison point.
+Workspace search now has first-class search options in the shared contract and in the sidebar/search-buffer flow.
 
-Remaining work:
+Status: Done for the Zed-first sidebar/search-buffer baseline.
 
-- Add case-sensitive toggle.
-- Add regex toggle.
-- Add whole-word toggle.
-- Add include/exclude glob fields.
-- Make provider contract carry these options, not UI-local state.
-- Ensure `/fs/find` and `/fs/find/events` stay backward compatible.
-- Add server-side translation into `rg`/`fd` flags and client-side open-buffer parity.
+Completed:
+
+- Added case-sensitive, regex, and whole-word options.
+- Added include/exclude glob fields behind a compact filter toggle.
+- Extended `WorkspaceSearchQuery` so providers receive the search mode and glob options.
+- Kept `/fs/find` and `/fs/find/events` backward compatible with defaults for older callers.
+- Added server-side `rg`/`fd` option translation and matching fallback support.
+- Added dirty open-buffer parity using the shared matcher.
+- Added focused tests for disk search, endpoint query parsing, URL serialization, open-buffer parity, and search-buffer option state.
 
 References:
 

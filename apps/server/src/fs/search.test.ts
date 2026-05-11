@@ -125,6 +125,101 @@ describe("workspace disk search provider", () => {
     )
   })
 
+  it("respects case-sensitive content search", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "case.ts"), "needle Needle")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      caseSensitive: true,
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        column: 1,
+        endColumn: 7,
+        path: "case.ts",
+      }),
+    ])
+  })
+
+  it("supports regex content search", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "regex.ts"), "needle useful unused")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      matchMode: "regex",
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "usef\\w+",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        column: 8,
+        endColumn: 14,
+        path: "regex.ts",
+      }),
+    ])
+  })
+
+  it("supports whole-word content search", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "words.ts"), "needle needleness xneedle")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+      wholeWord: true,
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        column: 1,
+        endColumn: 7,
+        path: "words.ts",
+      }),
+    ])
+  })
+
+  it("filters content search with include and exclude globs", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "src"), { recursive: true })
+    await mkdir(path.join(root, "tests"), { recursive: true })
+    await writeFile(path.join(root, "src", "match.ts"), "needle")
+    await writeFile(path.join(root, "src", "skip.test.ts"), "needle")
+    await writeFile(path.join(root, "tests", "match.ts"), "needle")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      excludeGlobs: ["*.test.ts"],
+      includeContent: true,
+      includeGlobs: ["src/*.ts"],
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        path: "src/match.ts",
+      }),
+    ])
+  })
+
   it("keeps partial rg results when ripgrep exits with a nonfatal filesystem error", async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, "match.txt"), "needle")

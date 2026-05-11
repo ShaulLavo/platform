@@ -19,10 +19,12 @@ import {
   type FsEntryTypeCarrier,
 } from "./stat"
 import type { EntryTypeFilter } from "./contracts"
-import type {
-  WorkspaceSearchDoneEvent,
-  WorkspaceSearchMatch,
-  WorkspaceSearchQuery,
+import {
+  createWorkspaceSearchMatcher,
+  type WorkspaceSearchMatcher,
+  type WorkspaceSearchDoneEvent,
+  type WorkspaceSearchMatch,
+  type WorkspaceSearchQuery,
 } from "@workspace/contracts"
 
 export const SEARCH_LINE_BUFFER_BYTES = 65_536
@@ -61,7 +63,7 @@ type FindContext = {
     relativePath: string
   }
   query: string
-  normalizedQuery: string
+  matcher: WorkspaceSearchMatcher
   options: FindOptions
 }
 
@@ -152,9 +154,8 @@ async function createFindContext(
   options: FindOptions
 ): Promise<FindContext> {
   const root = paths.resolve(options.path)
-  const normalizedQuery = options.query.toLocaleLowerCase()
 
-  if (!normalizedQuery) throw new FsError("INVALID_PATH", "query is required")
+  if (!options.query) throw new FsError("INVALID_PATH", "query is required")
 
   try {
     const stats = await stat(root.absolutePath)
@@ -162,7 +163,7 @@ async function createFindContext(
 
     return {
       query: options.query,
-      normalizedQuery,
+      matcher: createWorkspaceSearchMatcher(options),
       options,
       root,
     }
@@ -227,6 +228,7 @@ async function* searchNamesWithFd(
     const match = await nameMatchFromPath(
       paths,
       relativePath,
+      context,
       context.options.entryType
     )
     if (!match) continue
@@ -251,14 +253,17 @@ function fdArgs(context: FindContext) {
   const args = [
     "--base-directory",
     context.root.absolutePath,
-    "--fixed-strings",
     "--follow",
-    "--ignore-case",
     "--hidden",
     "--no-ignore",
     "--path-separator",
     "/",
   ]
+
+  if (searchMatchMode(context.options) === "literal") {
+    args.push("--fixed-strings")
+  }
+  if (!context.options.caseSensitive) args.push("--ignore-case")
 
   const type = fdType(context.options.entryType)
   if (type) args.push("--type", type)
@@ -274,14 +279,18 @@ function fdArgs(context: FindContext) {
 function rgArgs(context: FindContext) {
   const args = [
     "--json",
-    "--fixed-strings",
     "--follow",
-    "--ignore-case",
     "--hidden",
     "--no-ignore",
     "--max-filesize",
     String(context.options.maxContentBytes),
   ]
+
+  if (searchMatchMode(context.options) === "literal") {
+    args.push("--fixed-strings")
+  }
+  if (!context.options.caseSensitive) args.push("--ignore-case")
+  if (context.options.wholeWord) args.push("--word-regexp")
 
   if (context.options.maxDepth !== undefined)
     args.push("--max-depth", String(context.options.maxDepth))
@@ -289,9 +298,40 @@ function rgArgs(context: FindContext) {
     args.push("--glob", `!${ignored}/**`)
     args.push("--glob", `!**/${ignored}/**`)
   }
+  for (const glob of includeGlobArgs(context.options.includeGlobs)) {
+    args.push("--glob", glob)
+  }
+  for (const glob of excludeGlobArgs(context.options.excludeGlobs)) {
+    args.push("--glob", glob)
+  }
 
   args.push("--regexp", context.query, context.root.absolutePath)
   return args
+}
+
+function searchMatchMode(options: FindOptions) {
+  return options.matchMode ?? "literal"
+}
+
+function includeGlobArgs(globs: readonly string[] | undefined) {
+  return expandedGlobArgs(globs, "")
+}
+
+function excludeGlobArgs(globs: readonly string[] | undefined) {
+  return expandedGlobArgs(globs, "!")
+}
+
+function expandedGlobArgs(globs: readonly string[] | undefined, prefix: string) {
+  if (!globs) return []
+
+  return globs.flatMap((glob) => globArgs(glob, prefix))
+}
+
+function globArgs(glob: string, prefix: string) {
+  if (glob.startsWith("**/")) return [`${prefix}${glob}`]
+  if (glob.includes("/")) return [`${prefix}${glob}`, `${prefix}**/${glob}`]
+
+  return [`${prefix}${glob}`, `${prefix}**/${glob}`]
 }
 
 function fdType(entryType?: EntryTypeFilter) {
@@ -314,6 +354,7 @@ function shouldSearchNames(options: FindOptions) {
 async function nameMatchFromPath(
   paths: WorkspacePaths,
   relativePath: string,
+  context: FindContext,
   entryType?: EntryTypeFilter
 ): Promise<FindMatch | null> {
   const absolutePath = paths.resolve(relativePath).absolutePath
@@ -321,6 +362,10 @@ async function nameMatchFromPath(
   if (!entryStats) return null
 
   if (!matchesEntryType(entryStats, entryType)) return null
+  if (!context.matcher.pathMatches(globMatchPath(context, relativePath)))
+    return null
+  if (context.matcher.lineMatches(path.basename(relativePath)).length === 0)
+    return null
 
   return {
     kind: "name",
@@ -350,6 +395,8 @@ async function contentMatchesFromRgEvent(
 ): Promise<FindMatch[]> {
   const relativePath = safeRgRelativePath(paths, context, event.data.path.text)
   if (!relativePath) return []
+  if (!context.matcher.pathMatches(globMatchPath(context, relativePath)))
+    return []
 
   const absolutePath = paths.resolve(relativePath).absolutePath
   const entryStats = await safeEntryStats(absolutePath)
@@ -503,7 +550,7 @@ async function* searchWithFallback(context: FindContext) {
   await searchDirectory(
     context.root.absolutePath,
     context.root.relativePath,
-    context.normalizedQuery,
+    context,
     context.options,
     matches,
     1
@@ -515,7 +562,7 @@ async function* searchWithFallback(context: FindContext) {
 async function searchDirectory(
   absoluteDirectory: string,
   relativeDirectory: string,
-  query: string,
+  context: FindContext,
   options: FindOptions,
   matches: FindMatch[],
   depth: number
@@ -529,7 +576,7 @@ async function searchDirectory(
       absoluteDirectory,
       relativeDirectory,
       dirent.name,
-      query,
+      context,
       options,
       matches,
       depth
@@ -541,7 +588,7 @@ async function searchEntry(
   absoluteDirectory: string,
   relativeDirectory: string,
   name: string,
-  query: string,
+  context: FindContext,
   options: FindOptions,
   matches: FindMatch[],
   depth: number
@@ -558,7 +605,7 @@ async function searchEntry(
       relativePath,
       name,
       entryStats,
-      query,
+      context,
       matches,
       options.entryType
     )
@@ -568,7 +615,7 @@ async function searchEntry(
     await searchDirectory(
       absolutePath,
       relativePath,
-      query,
+      context,
       options,
       matches,
       depth + 1
@@ -577,6 +624,7 @@ async function searchEntry(
   }
 
   if (!matchesEntryType(entryStats, options.entryType)) return
+  if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return
   if (!options.includeContent) return
   if (!isFileEntry(entryStats)) return
   if (entryStats.targetStats.size > options.maxContentBytes) return
@@ -585,7 +633,7 @@ async function searchEntry(
     absolutePath,
     relativePath,
     entryStats,
-    query,
+    context,
     matches,
     options.limit,
     options.maxContentBytes
@@ -602,12 +650,13 @@ function addNameMatch(
   relativePath: string,
   name: string,
   entry: FsEntryTypeCarrier,
-  query: string,
+  context: FindContext,
   matches: FindMatch[],
   entryType?: EntryTypeFilter
 ) {
   if (!matchesEntryType(entry, entryType)) return
-  if (!name.toLocaleLowerCase().includes(query)) return
+  if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return
+  if (context.matcher.lineMatches(name).length === 0) return
 
   matches.push({
     kind: "name",
@@ -622,7 +671,7 @@ async function addContentMatch(
   absolutePath: string,
   relativePath: string,
   entry: FsEntryTypeCarrier,
-  query: string,
+  context: FindContext,
   matches: FindMatch[],
   limit: number,
   maxContentBytes: number
@@ -643,7 +692,7 @@ async function addContentMatch(
         entry,
         line.text,
         lineIndex,
-        query,
+        context.matcher,
         matches,
         limit
       )
@@ -760,25 +809,22 @@ function addLineMatch(
   entry: FsEntryTypeCarrier,
   line: string,
   index: number,
-  query: string,
+  matcher: WorkspaceSearchMatcher,
   matches: FindMatch[],
   limit: number
 ) {
-  const normalizedLine = line.toLocaleLowerCase()
-  let column = normalizedLine.indexOf(query)
-
-  while (column >= 0 && matches.length < limit) {
+  for (const match of matcher.lineMatches(line)) {
+    if (matches.length >= limit) return
     matches.push(
       contentMatch({
-        columnIndex: column,
-        endColumnIndex: column + query.length,
+        columnIndex: match.start,
+        endColumnIndex: match.end,
         entry,
         line,
         lineNumber: index + 1,
         relativePath,
       })
     )
-    column = normalizedLine.indexOf(query, column + query.length)
   }
 }
 
@@ -846,6 +892,16 @@ function resultPath(rootRelativePath: string, output: string) {
   if (!rootRelativePath) return toPosix(cleanOutput)
 
   return toPosix(path.join(rootRelativePath, cleanOutput))
+}
+
+function globMatchPath(context: FindContext, relativePath: string) {
+  if (!context.root.relativePath) return relativePath
+  if (relativePath === context.root.relativePath) return ""
+
+  const prefix = `${context.root.relativePath}/`
+  if (!relativePath.startsWith(prefix)) return relativePath
+
+  return relativePath.slice(prefix.length)
 }
 
 type RgEvent =

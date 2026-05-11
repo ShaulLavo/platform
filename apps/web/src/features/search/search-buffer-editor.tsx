@@ -4,12 +4,23 @@ import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { openWorkspaceSearchMatch } from "@/features/search/open-search-match"
 import { SearchResultsView } from "@/features/search/search-results-view"
 import { SearchSummary } from "@/features/search/search-summary"
+import {
+  SearchFilterFields,
+  SearchModeButtons,
+} from "@/features/search/search-controls"
 import { useSearchBuffer } from "@/features/search/use-search-buffer"
 import { Input } from "@workspace/ui/components/input"
 
 export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
-  const { groups, query, resultsQuery, setQuery, snapshot } =
-    useSearchBuffer(rootPath)
+  const {
+    groups,
+    query,
+    resultsQuery,
+    searchOptions,
+    setQuery,
+    setSearchOptions,
+    snapshot,
+  } = useSearchBuffer(rootPath)
   const commands = useEditorCommands()
 
   return (
@@ -17,18 +28,27 @@ export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
       <div className="border-b bg-muted/20 px-3 py-2">
         <div className="relative max-w-2xl">
           <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            aria-label="Search workspace"
-            autoCapitalize="off"
-            autoCorrect="off"
-            className="h-8 pr-2 pl-8 text-xs"
-            placeholder="Search workspace"
-            spellCheck={false}
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
+            <Input
+              aria-label="Search workspace"
+              autoCapitalize="off"
+              autoCorrect="off"
+              className="h-8 pr-28 pl-8 text-xs"
+              placeholder="Search workspace"
+              spellCheck={false}
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <SearchModeButtons
+              className="absolute top-1/2 right-1 -translate-y-1/2"
+              options={searchOptions}
+              onOptionsChange={setSearchOptions}
+            />
+          </div>
+        <SearchFilterFields
+          options={searchOptions}
+          onOptionsChange={setSearchOptions}
+        />
         <SearchSummary query={query.trim()} snapshot={snapshot} />
       </div>
       <SearchResultsView

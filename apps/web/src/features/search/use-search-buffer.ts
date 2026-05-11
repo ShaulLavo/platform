@@ -1,7 +1,9 @@
 import type {
   WorkspaceSearchEvent,
+  WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
 } from "@workspace/contracts"
+import { workspaceSearchGlobPatterns } from "@workspace/contracts"
 import { useEffect, useMemo, useState } from "react"
 
 import {
@@ -12,6 +14,7 @@ import {
 import {
   type SearchBufferStoreApi,
   searchGroupsForSnapshot,
+  type SearchBufferOptionPatch,
   useSearchBufferState,
   useSearchBufferStoreApi,
 } from "@/features/search/search-buffer-state"
@@ -28,6 +31,15 @@ const SEARCH_BATCH_SIZE = 50
 const SEARCH_BATCH_MS = 24
 const SEARCH_LIMIT = 200
 
+export type WorkspaceSearchQueryOptions = {
+  caseSensitive: boolean
+  excludeGlobText: string
+  filtersVisible: boolean
+  includeGlobText: string
+  matchMode: WorkspaceSearchMatchMode
+  wholeWord: boolean
+}
+
 export function useSearchBuffer(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
   const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
@@ -37,6 +49,7 @@ export function useSearchBuffer(rootPath: string) {
   )
   const store = useSearchBufferStoreApi()
   const query = activeSnapshot?.query ?? ""
+  const searchOptions = searchOptionsForSnapshot(activeSnapshot)
 
   usePrepareSearchBuffer(rootPath)
 
@@ -44,19 +57,37 @@ export function useSearchBuffer(rootPath: string) {
     groups,
     query,
     resultsQuery: activeSnapshot?.resultsQuery || query.trim(),
+    resultsSearchQuery: activeSnapshot?.resultsSearchQuery,
+    searchOptions,
     setQuery: (nextQuery: string) =>
       store.getState().setQuery(rootPath, nextQuery),
+    setSearchOptions: (options: SearchBufferOptionPatch) =>
+      store.getState().setSearchOptions(rootPath, options),
     snapshot: activeSnapshot,
   }
 }
 
 export function useSearchBufferRuntime(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
-  const query = snapshot?.rootPath === rootPath ? snapshot.query : ""
+  const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
+  const query = activeSnapshot?.query ?? ""
+  const searchOptions = searchOptionsForSnapshot(activeSnapshot)
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS).trim()
+  const debouncedIncludeGlobText = useDebouncedValue(
+    searchOptions.includeGlobText,
+    SEARCH_DEBOUNCE_MS
+  )
+  const debouncedExcludeGlobText = useDebouncedValue(
+    searchOptions.excludeGlobText,
+    SEARCH_DEBOUNCE_MS
+  )
 
   usePrepareSearchBuffer(rootPath)
-  useRunSearchBuffer(rootPath, debouncedQuery)
+  useRunSearchBuffer(rootPath, debouncedQuery, {
+    ...searchOptions,
+    excludeGlobText: debouncedExcludeGlobText,
+    includeGlobText: debouncedIncludeGlobText,
+  })
 }
 
 function usePrepareSearchBuffer(rootPath: string) {
@@ -67,7 +98,19 @@ function usePrepareSearchBuffer(rootPath: string) {
   }, [rootPath, store])
 }
 
-function useRunSearchBuffer(rootPath: string, query: string) {
+function useRunSearchBuffer(
+  rootPath: string,
+  query: string,
+  searchOptions: WorkspaceSearchQueryOptions
+) {
+  const {
+    caseSensitive,
+    excludeGlobText,
+    filtersVisible,
+    includeGlobText,
+    matchMode,
+    wholeWord,
+  } = searchOptions
   const store = useSearchBufferStoreApi()
   const documentStore = useEditorDocumentStoreApi()
   const documents = useEditorDocumentState((state) => state.documents)
@@ -94,7 +137,14 @@ function useRunSearchBuffer(rootPath: string, query: string) {
     if (!query) return
 
     const controller = new AbortController()
-    const searchQuery = workspaceSearchQuery(rootPath, query)
+    const searchQuery = workspaceSearchQuery(rootPath, query, {
+      caseSensitive,
+      excludeGlobText,
+      filtersVisible,
+      includeGlobText,
+      matchMode,
+      wholeWord,
+    })
     const dirtyDocuments = dirtySearchDocuments(
       documentStore.getState().documents,
       dirtyFilePaths,
@@ -112,6 +162,12 @@ function useRunSearchBuffer(rootPath: string, query: string) {
     documentStore,
     query,
     rootPath,
+    caseSensitive,
+    excludeGlobText,
+    filtersVisible,
+    includeGlobText,
+    matchMode,
+    wholeWord,
     store,
   ])
 }
@@ -189,17 +245,47 @@ function createSearchEventBatcher(runId: number, store: SearchBufferStoreApi) {
 
 export function workspaceSearchQuery(
   rootPath: string,
-  query: string
+  query: string,
+  options: Partial<WorkspaceSearchQueryOptions> = {}
 ): WorkspaceSearchQuery {
+  const filtersVisible = options.filtersVisible === true
+
   return {
-    caseSensitive: false,
+    caseSensitive: options.caseSensitive === true,
+    excludeGlobs: filtersVisible
+      ? workspaceSearchGlobPatterns(options.excludeGlobText)
+      : [],
     entryType: "file",
     includeContent: true,
+    includeGlobs: filtersVisible
+      ? workspaceSearchGlobPatterns(options.includeGlobText)
+      : [],
     includeNames: false,
     limit: SEARCH_LIMIT,
-    matchMode: "literal",
+    matchMode: options.matchMode ?? "literal",
     path: rootPath,
     query,
+    wholeWord: options.wholeWord === true,
+  }
+}
+
+function searchOptionsForSnapshot(
+  snapshot: {
+    caseSensitive: boolean
+    excludeGlobText: string
+    filtersVisible: boolean
+    includeGlobText: string
+    matchMode: WorkspaceSearchMatchMode
+    wholeWord: boolean
+  } | null
+): WorkspaceSearchQueryOptions {
+  return {
+    caseSensitive: snapshot?.caseSensitive ?? false,
+    excludeGlobText: snapshot?.excludeGlobText ?? "",
+    filtersVisible: snapshot?.filtersVisible ?? false,
+    includeGlobText: snapshot?.includeGlobText ?? "",
+    matchMode: snapshot?.matchMode ?? "literal",
+    wholeWord: snapshot?.wholeWord ?? false,
   }
 }
 

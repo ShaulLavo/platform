@@ -95,6 +95,68 @@ describe("open buffer search provider", () => {
       type: "match",
     })
   })
+
+  it("matches dirty editor text with case, regex, and whole-word options", async () => {
+    const provider = new OpenBufferSearchProvider([
+      {
+        path: "repo/src/app.ts",
+        text: "needle Needle needleness",
+      },
+    ])
+
+    const caseMatches = await contentEvents(
+      provider.search({ ...QUERY, caseSensitive: true, query: "Needle" })
+    )
+    const regexMatches = await contentEvents(
+      provider.search({
+        ...QUERY,
+        caseSensitive: true,
+        matchMode: "regex",
+        query: "Need\\w+",
+      })
+    )
+    const wholeWordMatches = await contentEvents(
+      provider.search({ ...QUERY, query: "needle", wholeWord: true })
+    )
+
+    expect(caseMatches).toEqual([
+      expect.objectContaining({ column: 8, endColumn: 14 }),
+    ])
+    expect(regexMatches).toEqual([
+      expect.objectContaining({ column: 8, endColumn: 14 }),
+    ])
+    expect(wholeWordMatches).toEqual([
+      expect.objectContaining({ column: 1, endColumn: 7 }),
+      expect.objectContaining({ column: 8, endColumn: 14 }),
+    ])
+  })
+
+  it("filters dirty editor matches with include and exclude globs", async () => {
+    const provider = new OpenBufferSearchProvider([
+      {
+        path: "repo/src/app.ts",
+        text: "needle",
+      },
+      {
+        path: "repo/src/app.test.ts",
+        text: "needle",
+      },
+      {
+        path: "repo/docs/app.ts",
+        text: "needle",
+      },
+    ])
+
+    const matches = await contentEvents(
+      provider.search({
+        ...QUERY,
+        excludeGlobs: ["*.test.ts"],
+        includeGlobs: ["src/*.ts"],
+      })
+    )
+
+    expect(matches).toEqual([expect.objectContaining({ path: "repo/src/app.ts" })])
+  })
 })
 
 describe("disk search provider", () => {
@@ -105,6 +167,33 @@ describe("disk search provider", () => {
     try {
       await collectEvents(provider.search({ ...QUERY, includeNames: false }))
       expect(lastFetchUrl()?.searchParams.get("includeNames")).toBe("false")
+    } finally {
+      restoreFetch()
+    }
+  })
+
+  it("passes search mode options to the streaming search endpoint", async () => {
+    const restoreFetch = stubFetchWithSseDone()
+    const provider = new DiskSearchProvider()
+
+    try {
+      await collectEvents(
+        provider.search({
+          ...QUERY,
+          caseSensitive: true,
+          excludeGlobs: ["*.test.ts"],
+          includeGlobs: ["src/**/*.ts"],
+          matchMode: "regex",
+          wholeWord: true,
+        })
+      )
+      const params = lastFetchUrl()?.searchParams
+
+      expect(params?.get("caseSensitive")).toBe("true")
+      expect(params?.get("matchMode")).toBe("regex")
+      expect(params?.get("wholeWord")).toBe("true")
+      expect(params?.getAll("includeGlobs")).toEqual(["src/**/*.ts"])
+      expect(params?.getAll("excludeGlobs")).toEqual(["*.test.ts"])
     } finally {
       restoreFetch()
     }
@@ -185,6 +274,12 @@ async function collectEvents(events: AsyncIterable<WorkspaceSearchEvent>) {
   for await (const event of events) result.push(event)
 
   return result
+}
+
+async function contentEvents(events: AsyncIterable<WorkspaceSearchEvent>) {
+  return (await collectEvents(events))
+    .filter((event) => event.type === "match")
+    .map((event) => event.match)
 }
 
 let fetchedUrl: URL | null = null

@@ -1,9 +1,12 @@
-import type {
-  EntryTypeFilter,
-  WorkspaceSearchDoneEvent,
-  WorkspaceSearchEvent,
-  WorkspaceSearchMatch,
-  WorkspaceSearchQuery,
+import {
+  createWorkspaceSearchMatcher,
+  type EntryTypeFilter,
+  type WorkspaceSearchMatcher,
+  type WorkspaceSearchTextMatch,
+  type WorkspaceSearchDoneEvent,
+  type WorkspaceSearchEvent,
+  type WorkspaceSearchMatch,
+  type WorkspaceSearchQuery,
 } from "@workspace/contracts"
 
 import { fsServerUrl } from "@/lib/fs-client"
@@ -56,12 +59,13 @@ export class OpenBufferSearchProvider implements SearchProvider {
   ): AsyncGenerator<WorkspaceSearchEvent> {
     let count = 0
     let truncated = false
+    const matcher = createWorkspaceSearchMatcher(query)
 
     for (const document of this.documents) {
       if (signal?.aborted) return
-      if (!canSearchOpenBuffer(document, query)) continue
+      if (!canSearchOpenBuffer(document, query, matcher)) continue
 
-      for (const match of openBufferMatches(document, query)) {
+      for (const match of openBufferMatches(document, matcher)) {
         if (count >= query.limit) {
           truncated = true
           break
@@ -207,6 +211,15 @@ function workspaceSearchUrl(query: WorkspaceSearchQuery) {
   url.searchParams.set("limit", String(query.limit))
   url.searchParams.set("path", query.path)
   url.searchParams.set("query", query.query)
+  url.searchParams.set("caseSensitive", String(query.caseSensitive === true))
+  url.searchParams.set("matchMode", query.matchMode ?? "literal")
+  url.searchParams.set("wholeWord", String(query.wholeWord === true))
+  for (const glob of query.includeGlobs ?? []) {
+    url.searchParams.append("includeGlobs", glob)
+  }
+  for (const glob of query.excludeGlobs ?? []) {
+    url.searchParams.append("excludeGlobs", glob)
+  }
   if (query.maxDepth !== undefined) {
     url.searchParams.set("maxDepth", String(query.maxDepth))
   }
@@ -266,53 +279,31 @@ function doneEvent(
 
 function openBufferMatches(
   document: OpenBufferSearchDocument,
-  query: WorkspaceSearchQuery
+  matcher: WorkspaceSearchMatcher
 ) {
   const matches: WorkspaceSearchMatch[] = []
-  const normalizedQuery = normalizeSearchText(query.query)
   const lines = document.text.split(/\r\n|\r|\n/u)
 
   for (const [index, line] of lines.entries()) {
-    for (const column of lineMatchColumns(line, normalizedQuery)) {
-      matches.push(
-        openBufferMatch(document.path, line, index, column, query.query)
-      )
+    for (const match of matcher.lineMatches(line)) {
+      matches.push(openBufferMatch(document.path, line, index, match))
     }
   }
 
   return matches
 }
 
-function lineMatchColumns(line: string, normalizedQuery: string) {
-  const columns: number[] = []
-  if (!normalizedQuery) return columns
-
-  const normalizedLine = normalizeSearchText(line)
-  let column = normalizedLine.indexOf(normalizedQuery)
-
-  while (column >= 0) {
-    columns.push(column)
-    column = normalizedLine.indexOf(
-      normalizedQuery,
-      column + normalizedQuery.length
-    )
-  }
-
-  return columns
-}
-
 function openBufferMatch(
   path: string,
   line: string,
   lineIndex: number,
-  column: number,
-  query: string
+  match: WorkspaceSearchTextMatch
 ): WorkspaceSearchMatch {
-  const preview = searchPreview(line, column)
+  const preview = searchPreview(line, match.start)
 
   return {
-    column: column + 1,
-    endColumn: column + query.length + 1,
+    column: match.start + 1,
+    endColumn: match.end + 1,
     kind: "content",
     line: lineIndex + 1,
     path,
@@ -340,15 +331,16 @@ function searchPreview(line: string, columnIndex: number) {
 
 function canSearchOpenBuffer(
   document: OpenBufferSearchDocument,
-  query: WorkspaceSearchQuery
+  query: WorkspaceSearchQuery,
+  matcher: WorkspaceSearchMatcher
 ) {
   if (!query.includeContent) return false
   if (query.entryType && query.entryType !== "file") return false
   if (!isPathInWorkspace(document.path, query.path)) return false
+  if (!matcher.pathMatches(globMatchPath(query.path, document.path)))
+    return false
 
-  return normalizeSearchText(document.text).includes(
-    normalizeSearchText(query.query)
-  )
+  return true
 }
 
 function isWorkspaceSearchMatch(match: unknown): match is WorkspaceSearchMatch {
@@ -424,15 +416,21 @@ function propertyString(data: Record<string, unknown>, key: string) {
   return typeof data[key] === "string" ? data[key] : ""
 }
 
-function normalizeSearchText(value: string) {
-  return value.toLocaleLowerCase()
-}
-
 function isPathInWorkspace(path: string, rootPath: string) {
   if (!rootPath) return true
   if (path === rootPath) return true
 
   return path.startsWith(`${rootPath}/`)
+}
+
+function globMatchPath(rootPath: string, path: string) {
+  if (!rootPath) return path
+  if (path === rootPath) return ""
+
+  const prefix = `${rootPath}/`
+  if (!path.startsWith(prefix)) return path
+
+  return path.slice(prefix.length)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
