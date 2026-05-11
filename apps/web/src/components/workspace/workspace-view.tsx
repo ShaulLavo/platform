@@ -1,4 +1,5 @@
 import { EditorStatusBar } from "@/features/editor/components/editor-status-bar"
+import type { RequestCloseTab } from "@/features/editor/hooks/use-dirty-tab-close"
 import { useEditorUiState } from "@/features/editor/state/editor-ui-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import type { PickedFsEntry } from "@/lib/file-system-types"
@@ -34,12 +35,14 @@ export function WorkspaceView({
   rootFolder,
   treeState,
   onLoadDirectory,
+  onRequestCloseTab,
 }: {
   editorKeyBindings: readonly EditorKeyBinding[]
   fileState: LoadState<FileResult>
   rootFolder: PickedFsEntry
   treeState: LoadState<TreeModel>
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  onRequestCloseTab: RequestCloseTab
 }) {
   const statusBarState = useEditorUiState((state) => state.statusBarState)
   const sidebarVisible = useEditorWorkspaceState(
@@ -136,6 +139,7 @@ export function WorkspaceView({
               editorKeyBindings={editorKeyBindings}
               fileState={fileState}
               rootPath={rootFolder.path}
+              onRequestCloseTab={onRequestCloseTab}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

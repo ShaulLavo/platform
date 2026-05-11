@@ -16,6 +16,7 @@ import type { EditorStatusBarState } from "@/features/editor/components/editor-s
 import { useEditorUiState } from "@/features/editor/state/editor-ui-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
+import type { RequestCloseTab } from "@/features/editor/hooks/use-dirty-tab-close"
 import {
   GitDiffViewer,
   type GitDiffViewerHandle,
@@ -44,10 +45,12 @@ export function FileViewer({
   editorKeyBindings,
   fileState,
   rootPath,
+  onRequestCloseTab,
 }: {
   editorKeyBindings: readonly EditorKeyBinding[]
   fileState: LoadState<FileResult>
   rootPath: string
+  onRequestCloseTab: RequestCloseTab
 }) {
   const definitionTarget = useEditorUiState((state) => state.definitionTarget)
   const diffViewerRef = useRef<GitDiffViewerHandle | null>(null)
@@ -162,6 +165,7 @@ export function FileViewer({
         diffViewMode={selectedDiff ? diffViewMode : null}
         rootPath={rootPath}
         onDiffViewModeChange={setDiffViewMode}
+        onRequestCloseTab={onRequestCloseTab}
         onRevealNextChange={handleRevealNextChange}
         onRevealPreviousChange={handleRevealPreviousChange}
       />

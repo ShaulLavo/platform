@@ -37,6 +37,7 @@ import {
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorConflictState } from "@/features/editor/state/editor-conflict-state"
 import { useEditorDocumentState } from "@/features/editor/state/editor-document-state"
+import type { RequestCloseTab } from "@/features/editor/hooks/use-dirty-tab-close"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import {
@@ -103,6 +104,7 @@ type ChromeVisualTabsState = {
 export function EditorTabBar({
   diffViewMode = null,
   onDiffViewModeChange,
+  onRequestCloseTab,
   onRevealNextChange,
   onRevealPreviousChange,
   rootPath,
@@ -110,6 +112,7 @@ export function EditorTabBar({
 }: {
   diffViewMode?: EditorDiffViewMode | null
   onDiffViewModeChange?: (mode: EditorDiffViewMode) => void
+  onRequestCloseTab: RequestCloseTab
   onRevealNextChange?: () => void
   onRevealPreviousChange?: () => void
   rootPath: string
@@ -124,7 +127,7 @@ export function EditorTabBar({
   )
   const selectedDiff = parseDiffDocumentId(selectedFilePath)
   const conflicts = useEditorConflictState((state) => state.conflicts)
-  const { closeTab, selectFile } = useEditorCommands()
+  const { selectFile } = useEditorCommands()
   const requestEditorFocus = useWorkspaceFocus(
     (state) => state.requestEditorFocus
   )
@@ -188,7 +191,7 @@ export function EditorTabBar({
             selectedTabRef={selectedTabRef}
             tabListRef={tabListRef}
             tabs={visualTabs}
-            onClose={closeTab}
+            onClose={onRequestCloseTab}
             onSelect={handleSelectTab}
           />
         ) : (
@@ -196,7 +199,7 @@ export function EditorTabBar({
             selectedTabRef={selectedTabRef}
             tabSizing={tabSizing}
             tabs={editorTabs}
-            onClose={closeTab}
+            onClose={onRequestCloseTab}
             onSelect={handleSelectTab}
           />
         )}
@@ -225,7 +228,7 @@ function LegacyEditorTabList({
   selectedTabRef: RefObject<HTMLDivElement | null>
   tabSizing: Exclude<EditorTabSizing, "chrome">
   tabs: readonly EditorTabModel[]
-  onClose: (path: string) => void
+  onClose: RequestCloseTab
   onSelect: (path: string) => void
 }) {
   return (
@@ -318,7 +321,7 @@ function ChromeEditorTabList({
   selectedTabRef: RefObject<HTMLDivElement | null>
   tabListRef: RefObject<HTMLDivElement | null>
   tabs: readonly ChromeVisualTab[]
-  onClose: (path: string) => void
+  onClose: RequestCloseTab
   onSelect: (path: string) => void
 }) {
   const activePath = activeChromeTabPath(tabs)
@@ -354,14 +357,15 @@ function ChromeEditorTabList({
   }, [closeModeSpacerWidth])
 
   function handleClose(path: string, width: number | null) {
+    const closed = onClose(path)
+    if (!closed) return
+
     const nextSpacerWidth = nextCloseModeSpacerWidth(
       closeModeSpacerWidth,
       layout,
       width
     )
     setCloseModeSpacerWidth(nextSpacerWidth)
-
-    onClose(path)
   }
 
   return (

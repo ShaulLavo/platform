@@ -1,6 +1,12 @@
 import type { WorkspaceSearchMatch } from "@workspace/contracts"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { useMemo, useRef } from "react"
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react"
 
 import { SearchFileGroupHeader } from "@/features/search/search-file-group"
 import type {
@@ -23,21 +29,39 @@ import {
 } from "@/features/search/search-status-states"
 import { cn } from "@workspace/ui/lib/utils"
 
+const SEARCH_PREVIEW_MAX_CHARACTERS = 96
+const SEARCH_PREVIEW_MIN_CHARACTERS = 16
+const SEARCH_RESULT_CHARACTER_WIDTH = 7
+const SEARCH_RESULT_ROW_CHROME_WIDTH = 84
+const SEARCH_RESULT_REPLACE_WIDTH = 62
+
 export function SearchResultsView({
   className,
   groups,
+  canReplace,
   query,
+  replaceVisible,
   snapshot,
   onOpenMatch,
+  onReplaceGroup,
+  onReplaceMatch,
 }: {
   className?: string
   groups: readonly WorkspaceSearchFileGroup[]
+  canReplace?: boolean
   query: string
+  replaceVisible?: boolean
   snapshot: SearchBufferSnapshot | null
   onOpenMatch: (match: WorkspaceSearchMatch) => void
+  onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
+  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
+  const previewMaxLength = useSearchPreviewMaxLength(
+    parentRef,
+    replaceVisible
+  )
   const items = useMemo(() => searchResultItems(groups), [groups])
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search results virtualization layer.
   const virtualizer = useVirtualizer({
@@ -65,7 +89,10 @@ export function SearchResultsView({
 
   return (
     <div
-      className={cn("app-scrollbar-thin min-h-0 overflow-auto", className)}
+      className={cn(
+        "app-scrollbar-thin min-h-0 overflow-x-hidden overflow-y-auto",
+        className
+      )}
       ref={parentRef}
     >
       <div
@@ -87,8 +114,13 @@ export function SearchResultsView({
               <SearchResultRow
                 item={item}
                 nextItem={items[virtualItem.index + 1]}
+                canReplace={canReplace}
+                previewMaxLength={previewMaxLength}
                 query={query}
+                replaceVisible={replaceVisible}
                 onOpenMatch={onOpenMatch}
+                onReplaceGroup={onReplaceGroup}
+                onReplaceMatch={onReplaceMatch}
                 onToggleGroup={toggleGroup}
               />
             </div>
@@ -102,14 +134,24 @@ export function SearchResultsView({
 function SearchResultRow({
   item,
   nextItem,
+  canReplace,
+  previewMaxLength,
   query,
+  replaceVisible,
   onOpenMatch,
+  onReplaceGroup,
+  onReplaceMatch,
   onToggleGroup,
 }: {
   item: SearchResultItem
   nextItem?: SearchResultItem
+  canReplace?: boolean
+  previewMaxLength?: number
   query: string
+  replaceVisible?: boolean
   onOpenMatch: (match: WorkspaceSearchMatch) => void
+  onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
+  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
   onToggleGroup: (path: string) => void
 }) {
   if (item.type === "group") {
@@ -119,7 +161,10 @@ function SearchResultRow({
           "rounded-t-md border bg-background",
           item.group.collapsed && "rounded-b-md"
         )}
+        canReplace={canReplace}
         group={item.group}
+        replaceVisible={replaceVisible}
+        onReplace={onReplaceGroup}
         onToggle={onToggleGroup}
       />
     )
@@ -129,6 +174,7 @@ function SearchResultRow({
       <SearchNameMatchRow
         className="rounded-md border bg-background"
         match={item.match}
+        previewMaxLength={previewMaxLength}
         query={query}
         onOpenMatch={onOpenMatch}
       />
@@ -141,9 +187,13 @@ function SearchResultRow({
         "border-x border-b bg-background",
         isLastGroupMatch(item, nextItem) && "rounded-b-md"
       )}
+      canReplace={canReplace}
       match={item.match}
+      previewMaxLength={previewMaxLength}
+      replaceVisible={replaceVisible}
       query={query}
       onOpenMatch={onOpenMatch}
+      onReplaceMatch={onReplaceMatch}
     />
   )
 }
@@ -178,4 +228,60 @@ function searchResultItemKey(item: SearchResultItem) {
     match.column ?? 0,
     match.endColumn ?? 0,
   ].join(":")
+}
+
+function useSearchPreviewMaxLength(
+  ref: RefObject<HTMLDivElement | null>,
+  replaceVisible: boolean | undefined
+) {
+  const width = useElementWidth(ref)
+
+  return useMemo(
+    () => searchPreviewMaxLength(width, replaceVisible),
+    [replaceVisible, width]
+  )
+}
+
+function useElementWidth<TElement extends HTMLElement>(
+  ref: RefObject<TElement | null>
+) {
+  const [width, setWidth] = useState<number | null>(null)
+
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+
+    function updateWidth() {
+      setWidth(element?.clientWidth ?? null)
+    }
+
+    updateWidth()
+
+    if (!("ResizeObserver" in window)) return
+
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(element)
+
+    return () => observer.disconnect()
+  }, [ref])
+
+  return width
+}
+
+function searchPreviewMaxLength(
+  width: number | null,
+  replaceVisible: boolean | undefined
+) {
+  if (width === null) return undefined
+
+  const replaceWidth = replaceVisible ? SEARCH_RESULT_REPLACE_WIDTH : 0
+  const availableWidth = width - SEARCH_RESULT_ROW_CHROME_WIDTH - replaceWidth
+  const visibleCharacters = Math.floor(
+    availableWidth / SEARCH_RESULT_CHARACTER_WIDTH
+  )
+
+  return Math.min(
+    SEARCH_PREVIEW_MAX_CHARACTERS,
+    Math.max(SEARCH_PREVIEW_MIN_CHARACTERS, visibleCharacters)
+  )
 }

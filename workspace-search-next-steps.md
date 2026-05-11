@@ -60,6 +60,7 @@ Completed:
 - Kept `/fs/find` and `/fs/find/events` backward compatible with defaults for older callers.
 - Added server-side `rg`/`fd` option translation and matching fallback support.
 - Added dirty open-buffer parity using the shared matcher.
+- Kept search mode selections stable through reruns and cleared query text.
 - Added focused tests for disk search, endpoint query parsing, URL serialization, open-buffer parity, and search-buffer option state.
 
 References:

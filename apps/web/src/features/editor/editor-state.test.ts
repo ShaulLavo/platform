@@ -267,6 +267,29 @@ describe("editor commands", () => {
     expect(documentStore.getState().getCachedEditorDocument("src/a.ts")).toBe(
       null
     )
+    expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([])
+  })
+
+  it("discards dirty tabs from user close and tracks them as recently closed", () => {
+    const { commands, documentStore, workspaceStore } = setupStores(
+      workspaceState(["src/a.ts", "src/b.ts"], "src/a.ts")
+    )
+    documentStore.getState().ensureCachedEditorDocument(file("src/a.ts", "a"))
+    documentStore.getState().setCachedEditorDocumentDirty("src/a.ts", true)
+
+    const result = commands.discardAndCloseTab("src/a.ts")
+
+    expect(result.wasDirty).toBe(true)
+    expect(workspaceStore.getState().openFilePaths).toEqual(["src/b.ts"])
+    expect(workspaceStore.getState().selectedFilePath).toBe("src/b.ts")
+    expect(workspaceStore.getState().editorHistory).toEqual([])
+    expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([
+      "src/a.ts",
+    ])
+    expect(documentStore.getState().getCachedEditorDocument("src/a.ts")).toBe(
+      null
+    )
+    expect(documentStore.getState().dirtyFilePaths.has("src/a.ts")).toBe(false)
   })
 
   it("tracks closed editors and reopens the last closed tab", () => {

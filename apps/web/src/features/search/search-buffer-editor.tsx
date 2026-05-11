@@ -7,27 +7,36 @@ import { SearchSummary } from "@/features/search/search-summary"
 import {
   SearchFilterFields,
   SearchModeButtons,
+  SearchReplaceFields,
+  SearchReplaceToggleButton,
 } from "@/features/search/search-controls"
 import { useSearchBuffer } from "@/features/search/use-search-buffer"
+import { useWorkspaceSearchReplace } from "@/features/search/use-search-replace"
 import { Input } from "@workspace/ui/components/input"
 
 export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
   const {
     groups,
     query,
+    replaceText,
+    replaceVisible,
     resultsQuery,
     searchOptions,
     setQuery,
+    setReplaceText,
+    setReplaceVisible,
     setSearchOptions,
     snapshot,
   } = useSearchBuffer(rootPath)
+  const replace = useWorkspaceSearchReplace(rootPath)
   const commands = useEditorCommands()
 
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background">
       <div className="border-b bg-muted/20 px-3 py-2">
-        <div className="relative max-w-2xl">
-          <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="flex max-w-2xl items-center gap-1.5">
+          <div className="relative min-w-0 flex-1">
+            <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="Search workspace"
               autoCapitalize="off"
@@ -45,20 +54,38 @@ export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
               onOptionsChange={setSearchOptions}
             />
           </div>
+          <SearchReplaceToggleButton
+            active={replaceVisible}
+            onToggle={setReplaceVisible}
+          />
+        </div>
         <SearchFilterFields
           options={searchOptions}
           onOptionsChange={setSearchOptions}
+        />
+        <SearchReplaceFields
+          canReplace={replace.canReplace}
+          replaceText={replaceText}
+          replaceVisible={replaceVisible}
+          replacing={snapshot?.replaceStatus === "running"}
+          onReplaceAll={replace.replaceAll}
+          onReplaceNext={replace.replaceNext}
+          onReplaceTextChange={setReplaceText}
         />
         <SearchSummary query={query.trim()} snapshot={snapshot} />
       </div>
       <SearchResultsView
         className="bg-muted/10"
+        canReplace={replace.canReplace}
         groups={groups}
         query={resultsQuery}
+        replaceVisible={replaceVisible}
         snapshot={snapshot}
         onOpenMatch={(match) =>
           openWorkspaceSearchMatch(match, resultsQuery, commands)
         }
+        onReplaceGroup={replace.replaceGroup}
+        onReplaceMatch={replace.replaceMatch}
       />
     </section>
   )

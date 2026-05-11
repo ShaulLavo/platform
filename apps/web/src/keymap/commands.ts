@@ -4,24 +4,24 @@ import {
   useWorkspaceFocus,
   type WorkspaceFocusArea,
 } from "@/components/workspace/workspace-focus-state"
+import type { RequestCloseTab } from "@/features/editor/hooks/use-dirty-tab-close"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import {
   useEditorDocumentStoreApi,
-  type CachedEditorDocument,
-  type EditorDocumentStore,
   type EditorDocumentStoreApi,
 } from "@/features/editor/state/editor-document-state"
+import {
+  fileBackedEditorPath,
+  saveAllEditorDocuments,
+  saveSelectedEditorDocument,
+} from "@/features/editor/editor-save"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from "@/features/editor/utils/diff-view-mode"
-import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
-import { parseDiffDocumentId } from "@/features/git/diff-document"
-import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
-import { fetchFile, writeFileContent } from "@/lib/file-server"
-import type { FileResult } from "@/lib/file-system-types"
+import { fetchFile } from "@/lib/file-server"
 import { fileSystemKeys } from "@/lib/query-keys"
 import type { WorkspacePanelTab } from "@/lib/workspace-cache"
 import { useQueryClient, type QueryClient } from "@tanstack/react-query"
@@ -34,13 +34,13 @@ import type { PlatformCommandId, WorkspaceCommandId } from "./types"
 import type { PlatformCommandDispatch } from "./use-app-keymap"
 
 type WorkspaceCommandContext = {
-  readonly closeTab: (path: string) => void
   readonly diffViewMode: EditorDiffViewMode
   readonly documentStore: EditorDocumentStoreApi
   readonly gitPanelOpen: boolean
   readonly openPicker: () => void
   readonly queryClient: QueryClient
   readonly reopenClosedEditor: () => boolean
+  readonly requestCloseTab: RequestCloseTab
   readonly requestEditorFocus: () => void
   readonly selectedFilePath: string | null
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
@@ -58,8 +58,10 @@ type WorkspaceCommandHandler = (
 ) => boolean | void
 
 export function usePlatformCommandDispatch({
+  requestCloseTab,
   showCommandPalette = noop,
 }: {
+  readonly requestCloseTab?: RequestCloseTab
   readonly showCommandPalette?: (initialSearch?: string) => void
 } = {}): PlatformCommandDispatch {
   const documentStore = useEditorDocumentStoreApi()
@@ -94,6 +96,14 @@ export function usePlatformCommandDispatch({
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const { closeTab, reopenClosedEditor, selectPreviousEditor } =
     useEditorCommands()
+  const fallbackRequestCloseTab = useCallback<RequestCloseTab>(
+    (path) => {
+      closeTab(path)
+      return true
+    },
+    [closeTab]
+  )
+  const resolvedRequestCloseTab = requestCloseTab ?? fallbackRequestCloseTab
 
   return useCallback(
     (command: PlatformCommandId, event?: KeyboardEvent) => {
@@ -103,13 +113,13 @@ export function usePlatformCommandDispatch({
       if (!workspaceCommand) return false
 
       return dispatchWorkspaceCommand(workspaceCommand, {
-        closeTab,
         diffViewMode,
         documentStore,
         gitPanelOpen,
         openPicker,
         queryClient,
         reopenClosedEditor,
+        requestCloseTab: resolvedRequestCloseTab,
         requestEditorFocus,
         selectedFilePath,
         setDiffViewMode,
@@ -123,7 +133,6 @@ export function usePlatformCommandDispatch({
       })
     },
     [
-      closeTab,
       diffViewMode,
       documentStore,
       dispatchEditorCommand,
@@ -131,6 +140,7 @@ export function usePlatformCommandDispatch({
       openPicker,
       queryClient,
       reopenClosedEditor,
+      resolvedRequestCloseTab,
       requestEditorFocus,
       selectedFilePath,
       setDiffViewMode,
@@ -157,8 +167,8 @@ const workspaceCommandHandlers: Record<
   WorkspaceCommandId,
   WorkspaceCommandHandler
 > = {
-  "workspace.closeCurrentTab": ({ closeTab, selectedFilePath }) =>
-    closeSelectedTab(selectedFilePath, closeTab),
+  "workspace.closeCurrentTab": ({ requestCloseTab, selectedFilePath }) =>
+    closeSelectedTab(selectedFilePath, requestCloseTab),
   "workspace.focusEditor": ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
@@ -196,7 +206,7 @@ const workspaceCommandHandlers: Record<
     return true
   },
   "workspace.gotoSymbol": ({ selectedFilePath, showCommandPalette }) => {
-    if (!fileBackedPath(selectedFilePath)) return false
+    if (!fileBackedEditorPath(selectedFilePath)) return false
 
     showCommandPalette("@")
     return true
@@ -279,11 +289,11 @@ const workspaceCommandHandlers: Record<
 
 function closeSelectedTab(
   selectedFilePath: string | null,
-  closeTab: (path: string) => void
+  requestCloseTab: RequestCloseTab
 ) {
   if (!selectedFilePath) return false
 
-  closeTab(selectedFilePath)
+  requestCloseTab(selectedFilePath)
   return true
 }
 
@@ -291,61 +301,10 @@ function runFileLifecycle(
   selectedFilePath: string | null,
   operation: () => Promise<boolean>
 ) {
-  if (!fileBackedPath(selectedFilePath)) return false
+  if (!fileBackedEditorPath(selectedFilePath)) return false
 
   void operation().catch(reportCommandError)
   return true
-}
-
-async function saveSelectedEditorDocument(
-  documentStore: EditorDocumentStoreApi,
-  queryClient: QueryClient,
-  selectedFilePath: string | null
-) {
-  const path = fileBackedPath(selectedFilePath)
-  if (!path) return false
-
-  const state = documentStore.getState()
-  const document = state.getCachedEditorDocument(path)
-  if (!document) return false
-  if (!isDirtyCachedDocument(state, path)) return true
-
-  await saveCachedEditorDocument(documentStore, queryClient, document)
-  return true
-}
-
-async function saveAllEditorDocuments(
-  documentStore: EditorDocumentStoreApi,
-  queryClient: QueryClient
-) {
-  const state = documentStore.getState()
-  const dirtyDocuments = Object.values(state.documents).filter(
-    (document) =>
-      fileBackedPath(document.path) &&
-      isDirtyCachedDocument(state, document.path)
-  )
-
-  for (const document of dirtyDocuments) {
-    await saveCachedEditorDocument(documentStore, queryClient, document)
-  }
-}
-
-async function saveCachedEditorDocument(
-  documentStore: EditorDocumentStoreApi,
-  queryClient: QueryClient,
-  document: CachedEditorDocument
-) {
-  const content = document.session.getText()
-  const entry = await writeFileContent(
-    document.path,
-    content,
-    document.revision
-  )
-  const file = fileResultForSavedDocument(document.path, content, entry)
-  documentStore
-    .getState()
-    .markCachedEditorDocumentClean(document.path, entry.mtimeMs)
-  queryClient.setQueryData(fileSystemKeys.file(document.path), file)
 }
 
 async function revertSelectedEditorDocument(
@@ -353,42 +312,13 @@ async function revertSelectedEditorDocument(
   queryClient: QueryClient,
   selectedFilePath: string | null
 ) {
-  const path = fileBackedPath(selectedFilePath)
+  const path = fileBackedEditorPath(selectedFilePath)
   if (!path) return false
 
   const file = await fetchFile(path, new AbortController().signal)
   queryClient.setQueryData(fileSystemKeys.file(path), file)
   documentStore.getState().forceReplaceCachedEditorDocument(file, path)
   return true
-}
-
-function fileResultForSavedDocument(
-  path: string,
-  content: string,
-  entry: { readonly mtimeMs: number; readonly size: number }
-): FileResult {
-  return {
-    content,
-    mtimeMs: entry.mtimeMs,
-    path,
-    size: entry.size,
-  }
-}
-
-function isDirtyCachedDocument(state: EditorDocumentStore, path: string) {
-  return (
-    state.dirtyFilePaths.has(path) ||
-    state.documents[path]?.session.isDirty() === true
-  )
-}
-
-function fileBackedPath(path: string | null) {
-  if (!path) return null
-  if (parseDiffDocumentId(path)) return null
-  if (parseConflictDiffDocumentId(path)) return null
-  if (parseSearchBufferDocumentId(path)) return null
-
-  return path
 }
 
 function reportCommandError(error: unknown) {

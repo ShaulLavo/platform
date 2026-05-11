@@ -11,8 +11,20 @@ export function SearchSummary({
 }) {
   if (!query) return <SearchSummaryText>Find in files</SearchSummaryText>
   if (!snapshot) return <SearchSummaryText>Find in files</SearchSummaryText>
+  if (snapshot.replaceStatus === "running")
+    return <SearchSummaryText>Replacing</SearchSummaryText>
+  if (snapshot.replaceStatus === "error")
+    return (
+      <SearchSummaryText>
+        {snapshot.replaceMessage ?? "Replace failed"}
+      </SearchSummaryText>
+    )
+  if (snapshot.replaceStatus === "success" && snapshot.replaceMessage)
+    return <SearchSummaryText>{snapshot.replaceMessage}</SearchSummaryText>
   if (snapshot.status === "error")
-    return <SearchSummaryText>{snapshot.error ?? "Search failed"}</SearchSummaryText>
+    return (
+      <SearchSummaryText>{snapshot.error ?? "Search failed"}</SearchSummaryText>
+    )
   if (snapshot.status === "idle")
     return <SearchSummaryText>Searching</SearchSummaryText>
   if (snapshot.status === "loading" && snapshot.matches.length === 0) {

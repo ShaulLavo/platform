@@ -1,5 +1,6 @@
 import { EmptyWorkspace } from "@/components/empty-workspace"
 import { CommandPalette } from "@/components/command-palette"
+import { useDirtyTabCloseRequest } from "@/features/editor/hooks/use-dirty-tab-close"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorStateProvider } from "@/features/editor/editor-state-provider"
@@ -65,6 +66,7 @@ function AppContent() {
     selectedFilePath
   )
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
+  const { dirtyTabCloseDialog, requestCloseTab } = useDirtyTabCloseRequest()
   const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
   const editorKeyBindings = useMemo(
     () => editorKeyBindingsFromPlatform(keymapBindings),
@@ -75,6 +77,7 @@ function AppContent() {
     setCommandPaletteOpen(true)
   }, [])
   const dispatchKeymapCommand = usePlatformCommandDispatch({
+    requestCloseTab,
     showCommandPalette,
   })
   useAppKeymap({
@@ -129,6 +132,7 @@ function AppContent() {
             rootFolder={rootFolder}
             treeState={treeState}
             onLoadDirectory={loadTreeDirectory}
+            onRequestCloseTab={requestCloseTab}
           />
         ) : (
           <EmptyWorkspace onChooseFolder={openPicker} />
@@ -153,6 +157,7 @@ function AppContent() {
         search={commandPaletteSearch}
         treeState={treeState}
       />
+      {dirtyTabCloseDialog}
     </main>
   )
 }

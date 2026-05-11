@@ -58,9 +58,15 @@ export function useSearchBuffer(rootPath: string) {
     query,
     resultsQuery: activeSnapshot?.resultsQuery || query.trim(),
     resultsSearchQuery: activeSnapshot?.resultsSearchQuery,
+    replaceText: activeSnapshot?.replaceText ?? "",
+    replaceVisible: activeSnapshot?.replaceVisible ?? false,
     searchOptions,
     setQuery: (nextQuery: string) =>
       store.getState().setQuery(rootPath, nextQuery),
+    setReplaceText: (replaceText: string) =>
+      store.getState().setReplaceText(rootPath, replaceText),
+    setReplaceVisible: (replaceVisible: boolean) =>
+      store.getState().setReplaceVisible(rootPath, replaceVisible),
     setSearchOptions: (options: SearchBufferOptionPatch) =>
       store.getState().setSearchOptions(rootPath, options),
     snapshot: activeSnapshot,
@@ -71,6 +77,7 @@ export function useSearchBufferRuntime(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
   const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
   const query = activeSnapshot?.query ?? ""
+  const searchRevision = activeSnapshot?.searchRevision ?? 0
   const searchOptions = searchOptionsForSnapshot(activeSnapshot)
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS).trim()
   const debouncedIncludeGlobText = useDebouncedValue(
@@ -83,7 +90,7 @@ export function useSearchBufferRuntime(rootPath: string) {
   )
 
   usePrepareSearchBuffer(rootPath)
-  useRunSearchBuffer(rootPath, debouncedQuery, {
+  useRunSearchBuffer(rootPath, debouncedQuery, searchRevision, {
     ...searchOptions,
     excludeGlobText: debouncedExcludeGlobText,
     includeGlobText: debouncedIncludeGlobText,
@@ -101,6 +108,7 @@ function usePrepareSearchBuffer(rootPath: string) {
 function useRunSearchBuffer(
   rootPath: string,
   query: string,
+  searchRevision: number,
   searchOptions: WorkspaceSearchQueryOptions
 ) {
   const {
@@ -162,6 +170,7 @@ function useRunSearchBuffer(
     documentStore,
     query,
     rootPath,
+    searchRevision,
     caseSensitive,
     excludeGlobText,
     filtersVisible,

@@ -463,4 +463,51 @@ describe("search buffer store", () => {
       }),
     ])
   })
+
+  it("persists replace state across reruns and clears replace status on query changes", () => {
+    const store = createSearchBufferStore()
+
+    store.getState().prepareBuffer("repo")
+    store.getState().setReplaceVisible("repo", true)
+    store.getState().setReplaceText("repo", "pin")
+    store.getState().finishReplace("repo", "1 match replaced.")
+    store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      path: "repo",
+      query: "needle",
+    })
+
+    expect(store.getState().active).toMatchObject({
+      replaceMessage: "1 match replaced.",
+      replaceStatus: "success",
+      replaceText: "pin",
+      replaceVisible: true,
+    })
+
+    store.getState().setQuery("repo", "other")
+
+    expect(store.getState().active).toMatchObject({
+      query: "other",
+      replaceMessage: null,
+      replaceStatus: "idle",
+      replaceText: "pin",
+      replaceVisible: true,
+    })
+  })
+
+  it("requests a search refresh for the current query", () => {
+    const store = createSearchBufferStore()
+    store.getState().prepareBuffer("repo")
+    store.getState().setQuery("repo", "needle")
+    const before = store.getState().active?.searchRevision
+
+    store.getState().requestSearchRefresh("repo")
+
+    expect(store.getState().active).toMatchObject({
+      query: "needle",
+      searchRevision: (before ?? 0) + 1,
+      status: "loading",
+    })
+  })
 })

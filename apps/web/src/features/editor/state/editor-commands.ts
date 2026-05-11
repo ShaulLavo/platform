@@ -28,6 +28,7 @@ import { useMemo } from "react"
 
 export type EditorCommands = {
   closeTab: (path: string) => void
+  discardAndCloseTab: (path: string) => { wasDirty: boolean }
   discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
   openDefinition: (target: TypeScriptLspDefinitionTarget) => boolean
   pickRootFolder: (rootFolder: PickedFsEntry) => void
@@ -62,6 +63,10 @@ export function createEditorCommands({
 }): EditorCommands {
   return {
     closeTab: (path) => closeTab(path, workspaceStore, documentStore, uiStore),
+    discardAndCloseTab: (path) =>
+      discardCachedEditorDocument(path, workspaceStore, documentStore, uiStore, {
+        trackRecentlyClosed: true,
+      }),
     discardCachedEditorDocument: (path) =>
       discardCachedEditorDocument(path, workspaceStore, documentStore, uiStore),
     openDefinition: (target) =>
@@ -193,7 +198,8 @@ function discardCachedEditorDocument(
   path: string,
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
-  uiStore: EditorUiStoreApi
+  uiStore: EditorUiStoreApi,
+  options: { trackRecentlyClosed?: boolean } = {}
 ) {
   const workspace = workspaceStore.getState()
   const result = documentStore.getState().deleteCachedEditorDocument(path, {
@@ -212,6 +218,12 @@ function discardCachedEditorDocument(
   workspaceStore.setState({
     editorHistory: editorHistoryForClosedPath(workspace.editorHistory, path),
     openFilePaths,
+    recentlyClosedEditorPaths: options.trackRecentlyClosed
+      ? recentlyClosedEditorPathsForClose(
+          workspace.recentlyClosedEditorPaths,
+          path
+        )
+      : workspace.recentlyClosedEditorPaths,
     selectedFilePath,
   })
 

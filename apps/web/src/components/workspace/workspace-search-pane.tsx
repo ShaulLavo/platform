@@ -1,7 +1,4 @@
-import {
-  ArrowSquareOutIcon,
-  MagnifyingGlassIcon,
-} from "@phosphor-icons/react"
+import { ArrowSquareOutIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
 import type { ChangeEvent } from "react"
 
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
@@ -13,7 +10,10 @@ import { useSearchBuffer } from "@/features/search/use-search-buffer"
 import {
   SearchFilterFields,
   SearchModeButtons,
+  SearchReplaceFields,
+  SearchReplaceToggleButton,
 } from "@/features/search/search-controls"
+import { useWorkspaceSearchReplace } from "@/features/search/use-search-replace"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 
@@ -21,12 +21,17 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
   const {
     groups,
     query,
+    replaceText,
+    replaceVisible,
     resultsQuery,
     searchOptions,
     setQuery,
+    setReplaceText,
+    setReplaceVisible,
     setSearchOptions,
     snapshot,
   } = useSearchBuffer(rootPath)
+  const replace = useWorkspaceSearchReplace(rootPath)
   const commands = useEditorCommands()
   const trimmedQuery = query.trim()
 
@@ -61,6 +66,10 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
               onOptionsChange={setSearchOptions}
             />
           </div>
+          <SearchReplaceToggleButton
+            active={replaceVisible}
+            onToggle={setReplaceVisible}
+          />
           <Button
             aria-label="Open search results in editor"
             className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
@@ -77,15 +86,28 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
           options={searchOptions}
           onOptionsChange={setSearchOptions}
         />
+        <SearchReplaceFields
+          canReplace={replace.canReplace}
+          replaceText={replaceText}
+          replaceVisible={replaceVisible}
+          replacing={snapshot?.replaceStatus === "running"}
+          onReplaceAll={replace.replaceAll}
+          onReplaceNext={replace.replaceNext}
+          onReplaceTextChange={setReplaceText}
+        />
         <SearchSummary query={trimmedQuery} snapshot={snapshot} />
       </div>
       <SearchResultsView
+        canReplace={replace.canReplace}
         groups={groups}
         query={resultsQuery}
+        replaceVisible={replaceVisible}
         snapshot={snapshot}
         onOpenMatch={(match) =>
           openWorkspaceSearchMatch(match, resultsQuery, commands)
         }
+        onReplaceGroup={replace.replaceGroup}
+        onReplaceMatch={replace.replaceMatch}
       />
     </section>
   )

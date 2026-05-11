@@ -12,6 +12,7 @@ import { basename, toTreePath } from "@/lib/path-formatters"
 import { searchBufferDocumentId } from "@/features/search/search-buffer-document"
 
 export type SearchBufferStatus = "idle" | "loading" | "ready" | "error"
+export type SearchReplaceStatus = "idle" | "running" | "success" | "error"
 
 export type SearchBufferOptionPatch = Partial<
   Pick<
@@ -45,12 +46,17 @@ export type SearchBufferSnapshot = {
   matchMode: WorkspaceSearchMatchMode
   matches: readonly WorkspaceSearchMatch[]
   query: string
+  replaceMessage: string | null
+  replaceStatus: SearchReplaceStatus
+  replaceText: string
+  replaceVisible: boolean
   resultsQuery: string
   resultsSearchQuery: WorkspaceSearchQuery | null
   rootPath: string
   runningQuery: string | null
   runningSearchQuery: WorkspaceSearchQuery | null
   runId: number
+  searchRevision: number
   status: SearchBufferStatus
   totalCount: number
   truncated: boolean
@@ -65,13 +71,16 @@ type SearchBufferStoreActions = {
   appendEvent: (runId: number, event: WorkspaceSearchEvent) => void
   appendEvents: (runId: number, events: readonly WorkspaceSearchEvent[]) => void
   failSearch: (runId: number, error: string) => void
+  failReplace: (rootPath: string, error: string) => void
+  finishReplace: (rootPath: string, message: string) => void
   prepareBuffer: (rootPath: string) => SearchBufferSnapshot
   resetBuffer: (rootPath: string) => void
-  setSearchOptions: (
-    rootPath: string,
-    options: SearchBufferOptionPatch
-  ) => void
+  requestSearchRefresh: (rootPath: string) => void
+  setSearchOptions: (rootPath: string, options: SearchBufferOptionPatch) => void
   setQuery: (rootPath: string, query: string) => void
+  setReplaceText: (rootPath: string, replaceText: string) => void
+  setReplaceVisible: (rootPath: string, replaceVisible: boolean) => void
+  startReplace: (rootPath: string) => void
   startSearch: (query: WorkspaceSearchQuery) => number
   toggleGroup: (path: string) => void
 }
@@ -110,6 +119,20 @@ export function createSearchBufferStore() {
       set((state) => appendSearchEvents(state, runId, events)),
     failSearch: (runId, error) =>
       set((state) => failSearchBuffer(state, runId, error)),
+    failReplace: (rootPath, error) =>
+      set((state) => ({
+        active: replaceSearchBuffer(state.active, rootPath, {
+          replaceMessage: error,
+          replaceStatus: "error",
+        }),
+      })),
+    finishReplace: (rootPath, message) =>
+      set((state) => ({
+        active: replaceSearchBuffer(state.active, rootPath, {
+          replaceMessage: message,
+          replaceStatus: "success",
+        }),
+      })),
     prepareBuffer: (rootPath) => {
       const current = get().active
       if (current?.rootPath === rootPath) return current
@@ -119,6 +142,10 @@ export function createSearchBufferStore() {
       return next
     },
     resetBuffer: (rootPath) => set({ active: emptySearchBuffer(rootPath) }),
+    requestSearchRefresh: (rootPath) =>
+      set((state) => ({
+        active: refreshSearchBuffer(state.active, rootPath),
+      })),
     setSearchOptions: (rootPath, options) =>
       set((state) => ({
         active: optionSearchBuffer(state.active, rootPath, options),
@@ -126,6 +153,29 @@ export function createSearchBufferStore() {
     setQuery: (rootPath, query) =>
       set((state) => ({
         active: querySearchBuffer(state.active, rootPath, query),
+      })),
+    setReplaceText: (rootPath, replaceText) =>
+      set((state) => ({
+        active: replaceSearchBuffer(state.active, rootPath, {
+          replaceMessage: null,
+          replaceStatus: "idle",
+          replaceText,
+        }),
+      })),
+    setReplaceVisible: (rootPath, replaceVisible) =>
+      set((state) => ({
+        active: replaceSearchBuffer(state.active, rootPath, {
+          replaceMessage: null,
+          replaceStatus: "idle",
+          replaceVisible,
+        }),
+      })),
+    startReplace: (rootPath) =>
+      set((state) => ({
+        active: replaceSearchBuffer(state.active, rootPath, {
+          replaceMessage: null,
+          replaceStatus: "running",
+        }),
       })),
     startSearch: (query) => {
       const current = get().active
@@ -153,6 +203,8 @@ function optionSearchBuffer(
 
   return {
     ...next,
+    replaceMessage: null,
+    replaceStatus: "idle" as const,
     runId: base.runId + 1,
     runningQuery: null,
     runningSearchQuery: null,
@@ -174,6 +226,8 @@ function querySearchBuffer(
     ...base,
     error: null,
     query,
+    replaceMessage: null,
+    replaceStatus: "idle" as const,
     runId: queryChanged ? base.runId + 1 : base.runId,
     runningQuery: queryChanged ? null : base.runningQuery,
     runningSearchQuery: queryChanged ? null : base.runningSearchQuery,
@@ -187,11 +241,14 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     error: null,
     matches: [],
     query: "",
+    replaceMessage: null,
+    replaceStatus: "idle" as const,
     resultsQuery: "",
     resultsSearchQuery: null,
     runningQuery: null,
     runningSearchQuery: null,
     runId: current.runId + 1,
+    searchRevision: current.searchRevision + 1,
     status: "idle" as const,
     totalCount: 0,
     truncated: false,
@@ -283,6 +340,44 @@ function failSearchBuffer(
   }
 }
 
+function replaceSearchBuffer(
+  snapshot: SearchBufferSnapshot | null,
+  rootPath: string,
+  patch: Partial<
+    Pick<
+      SearchBufferSnapshot,
+      "replaceMessage" | "replaceStatus" | "replaceText" | "replaceVisible"
+    >
+  >
+) {
+  if (!snapshot) return null
+  if (snapshot.rootPath !== rootPath) return snapshot
+
+  return {
+    ...snapshot,
+    ...patch,
+  }
+}
+
+function refreshSearchBuffer(
+  snapshot: SearchBufferSnapshot | null,
+  rootPath: string
+) {
+  if (!snapshot) return null
+  if (snapshot.rootPath !== rootPath) return snapshot
+  if (!snapshot.query.trim()) return snapshot
+
+  return {
+    ...snapshot,
+    error: null,
+    runId: snapshot.runId + 1,
+    runningQuery: null,
+    runningSearchQuery: null,
+    searchRevision: snapshot.searchRevision + 1,
+    status: "loading" as const,
+  }
+}
+
 function activeRun(snapshot: SearchBufferSnapshot | null, runId: number) {
   if (!snapshot) return null
   if (snapshot.runId !== runId) return null
@@ -302,12 +397,17 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     matchMode: "literal",
     matches: [],
     query: "",
+    replaceMessage: null,
+    replaceStatus: "idle",
+    replaceText: "",
+    replaceVisible: false,
     resultsQuery: "",
     resultsSearchQuery: null,
     rootPath,
     runningQuery: null,
     runningSearchQuery: null,
     runId: 0,
+    searchRevision: 0,
     status: "idle",
     totalCount: 0,
     truncated: false,
@@ -328,20 +428,24 @@ function loadingSearchBuffer(
     error: null,
     excludeGlobText:
       previous?.excludeGlobText ?? globTextForQuery(query.excludeGlobs),
-    filtersVisible:
-      previous?.filtersVisible ?? hasWorkspaceSearchGlobs(query),
+    filtersVisible: previous?.filtersVisible ?? hasWorkspaceSearchGlobs(query),
     id: searchBufferDocumentId(query.path),
     includeGlobText:
       previous?.includeGlobText ?? globTextForQuery(query.includeGlobs),
     matchMode: query.matchMode ?? previous?.matchMode ?? "literal",
     matches: previous?.matches ?? [],
     query: query.query,
+    replaceMessage: previous?.replaceMessage ?? null,
+    replaceStatus: previous?.replaceStatus ?? "idle",
+    replaceText: previous?.replaceText ?? "",
+    replaceVisible: previous?.replaceVisible ?? false,
     resultsQuery: previous?.resultsQuery ?? "",
     resultsSearchQuery: previous?.resultsSearchQuery ?? null,
     rootPath: query.path,
     runningQuery: query.query,
     runningSearchQuery: query,
     runId,
+    searchRevision: previous?.searchRevision ?? 0,
     status: "loading",
     totalCount: previous?.totalCount ?? 0,
     truncated: previous?.truncated ?? false,
@@ -363,7 +467,12 @@ function nextSearchMatches(
   active: SearchBufferSnapshot,
   match: WorkspaceSearchMatch
 ) {
-  if (sameWorkspaceSearchQuery(active.resultsSearchQuery, active.runningSearchQuery)) {
+  if (
+    sameWorkspaceSearchQuery(
+      active.resultsSearchQuery,
+      active.runningSearchQuery
+    )
+  ) {
     return [...active.matches, match]
   }
 

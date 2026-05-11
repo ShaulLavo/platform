@@ -37,4 +37,26 @@ describe("search match row display text", () => {
     expect(display.text).toContain("needle")
     expect(display.range).toEqual({ end: 33, start: 27 })
   })
+
+  it("keeps content ranges visible in narrow result panes", () => {
+    const display = searchMatchDisplay(
+      {
+        column: 321,
+        endColumn: 327,
+        kind: "content",
+        line: 1,
+        path: "repo/src/app.ts",
+        preview: `${"x".repeat(80)}needle${"y".repeat(80)}`,
+        previewStartColumn: 240,
+        source: "disk",
+        type: "file",
+      },
+      "needle",
+      { maxLength: 20 }
+    )
+
+    expect(display.text).toContain("needle")
+    expect(display.text.length).toBeLessThanOrEqual(20)
+    expect(display.range).toEqual({ end: 11, start: 5 })
+  })
 })

@@ -5,17 +5,28 @@ export type SearchMatchDisplay = {
   text: string
 }
 
+export type SearchMatchDisplayOptions = {
+  maxLength?: number
+}
+
+const DEFAULT_SEARCH_DISPLAY_LENGTH = 96
+const DEFAULT_SEARCH_LEADING_CONTEXT = 24
+const MIN_SEARCH_DISPLAY_LENGTH = 16
+const SEARCH_ELLIPSIS = "..."
+
 export function searchMatchDisplay(
   match: WorkspaceSearchMatch,
-  query: string
+  query: string,
+  options: SearchMatchDisplayOptions = {}
 ): SearchMatchDisplay {
-  if (match.kind === "name") return searchQueryDisplay(match.path, query)
+  if (match.kind === "name")
+    return searchQueryDisplay(match.path, query, options)
 
   const preview = searchMatchPreview(match)
   const range = searchMatchPreviewRange(match, preview)
-  if (range) return searchRangeDisplay(preview, range)
+  if (range) return searchRangeDisplay(preview, range, options)
 
-  return searchQueryDisplay(preview, query)
+  return searchQueryDisplay(preview, query, options)
 }
 
 function searchMatchPreview(match: WorkspaceSearchMatch) {
@@ -35,11 +46,15 @@ function searchMatchPreviewRange(match: WorkspaceSearchMatch, preview: string) {
   return { end: Math.min(end, preview.length), start }
 }
 
-function searchQueryDisplay(text: string, query: string) {
+function searchQueryDisplay(
+  text: string,
+  query: string,
+  options: SearchMatchDisplayOptions
+) {
   const range = queryRange(text, query)
   if (!range) return { text }
 
-  return searchRangeDisplay(text, range)
+  return searchRangeDisplay(text, range, options)
 }
 
 function queryRange(text: string, query: string) {
@@ -56,11 +71,12 @@ function queryRange(text: string, query: string) {
 
 function searchRangeDisplay(
   text: string,
-  range: { end: number; start: number }
+  range: { end: number; start: number },
+  options: SearchMatchDisplayOptions
 ) {
-  const window = searchDisplayWindow(text, range)
-  const prefix = window.start > 0 ? "..." : ""
-  const suffix = window.end < text.length ? "..." : ""
+  const window = searchDisplayWindow(text, range, options.maxLength)
+  const prefix = window.start > 0 ? SEARCH_ELLIPSIS : ""
+  const suffix = window.end < text.length ? SEARCH_ELLIPSIS : ""
   const windowText = text.slice(window.start, window.end)
 
   return {
@@ -74,19 +90,77 @@ function searchRangeDisplay(
 
 function searchDisplayWindow(
   text: string,
+  range: { end: number; start: number },
+  maxLength: number | undefined
+) {
+  const displayLength = normalizedDisplayLength(maxLength, range)
+  if (text.length <= displayLength) return { end: text.length, start: 0 }
+
+  const windowLength = searchWindowLength(displayLength, range, text.length)
+  const leadingContext = searchLeadingContext(windowLength, range)
+  const initialStart = Math.max(0, range.start - leadingContext)
+  const start = searchWindowStart(initialStart, range, windowLength)
+
+  return {
+    end: Math.min(text.length, start + windowLength),
+    start,
+  }
+}
+
+function normalizedDisplayLength(
+  maxLength: number | undefined,
   range: { end: number; start: number }
 ) {
-  const maxLength = 96
-  const leadingContext = 24
-  if (text.length <= maxLength) return { end: text.length, start: 0 }
+  const requestedLength =
+    maxLength === undefined || !Number.isFinite(maxLength)
+      ? DEFAULT_SEARCH_DISPLAY_LENGTH
+      : maxLength
+  const matchLength = searchRangeLength(range)
+  const minimumLength = matchLength + SEARCH_ELLIPSIS.length * 2
 
-  const start = Math.max(0, range.start - leadingContext)
-  const end = Math.min(text.length, start + maxLength)
-  if (range.end <= end) return { end, start }
+  return Math.max(
+    MIN_SEARCH_DISPLAY_LENGTH,
+    minimumLength,
+    Math.floor(requestedLength)
+  )
+}
 
-  const shiftedStart = Math.max(0, range.end - maxLength)
-  return {
-    end: Math.min(text.length, shiftedStart + maxLength),
-    start: shiftedStart,
-  }
+function searchWindowLength(
+  displayLength: number,
+  range: { end: number; start: number },
+  textLength: number
+) {
+  const prefixLength = range.start > 0 ? SEARCH_ELLIPSIS.length : 0
+  const suffixLength = range.end < textLength ? SEARCH_ELLIPSIS.length : 0
+
+  return Math.max(
+    searchRangeLength(range),
+    displayLength - prefixLength - suffixLength
+  )
+}
+
+function searchLeadingContext(
+  windowLength: number,
+  range: { end: number; start: number }
+) {
+  const contextLength = Math.max(0, windowLength - searchRangeLength(range))
+
+  return Math.min(
+    DEFAULT_SEARCH_LEADING_CONTEXT,
+    Math.floor(contextLength * 0.35)
+  )
+}
+
+function searchWindowStart(
+  initialStart: number,
+  range: { end: number; start: number },
+  windowLength: number
+) {
+  if (range.end <= initialStart + windowLength) return initialStart
+
+  return Math.max(0, range.end - windowLength)
+}
+
+function searchRangeLength(range: { end: number; start: number }) {
+  return Math.max(0, range.end - range.start)
 }

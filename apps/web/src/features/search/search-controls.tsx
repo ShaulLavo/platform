@@ -6,9 +6,7 @@ import {
 } from "@phosphor-icons/react"
 import type { ChangeEvent, ReactNode } from "react"
 
-import type {
-  SearchBufferOptionPatch,
-} from "@/features/search/search-buffer-state"
+import type { SearchBufferOptionPatch } from "@/features/search/search-buffer-state"
 import type { WorkspaceSearchQueryOptions } from "@/features/search/use-search-buffer"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -109,6 +107,87 @@ export function SearchFilterFields({
         value={options.excludeGlobText}
         onChange={handleExcludeChange}
       />
+    </div>
+  )
+}
+
+export function SearchReplaceToggleButton({
+  active,
+  onToggle,
+}: {
+  active: boolean
+  onToggle: (active: boolean) => void
+}) {
+  return (
+    <Button
+      aria-pressed={active}
+      className="h-8 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+      size="sm"
+      title="Toggle replace"
+      type="button"
+      variant="ghost"
+      onClick={() => onToggle(!active)}
+    >
+      Replace
+    </Button>
+  )
+}
+
+export function SearchReplaceFields({
+  canReplace,
+  replaceText,
+  replaceVisible,
+  replacing,
+  onReplaceAll,
+  onReplaceNext,
+  onReplaceTextChange,
+}: {
+  canReplace: boolean
+  replaceText: string
+  replaceVisible: boolean
+  replacing: boolean
+  onReplaceAll: () => void
+  onReplaceNext: () => void
+  onReplaceTextChange: (replaceText: string) => void
+}) {
+  if (!replaceVisible) return null
+
+  function handleReplaceTextChange(event: ChangeEvent<HTMLInputElement>) {
+    onReplaceTextChange(event.target.value)
+  }
+
+  return (
+    <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5">
+      <Input
+        aria-label="Replace in workspace"
+        autoCapitalize="off"
+        autoCorrect="off"
+        className="h-7 text-[11px]"
+        placeholder="replace"
+        spellCheck={false}
+        value={replaceText}
+        onChange={handleReplaceTextChange}
+      />
+      <Button
+        className="h-7 px-2 text-[11px]"
+        disabled={!canReplace || replacing}
+        size="sm"
+        type="button"
+        variant="outline"
+        onClick={onReplaceNext}
+      >
+        Next
+      </Button>
+      <Button
+        className="h-7 px-2 text-[11px]"
+        disabled={!canReplace || replacing}
+        size="sm"
+        type="button"
+        variant="outline"
+        onClick={onReplaceAll}
+      >
+        All
+      </Button>
     </div>
   )
 }
