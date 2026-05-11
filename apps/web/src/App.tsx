@@ -1,4 +1,5 @@
 import { EmptyWorkspace } from "@/components/empty-workspace"
+import { CommandPalette } from "@/components/command-palette"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorStateProvider } from "@/features/editor/editor-state-provider"
@@ -19,7 +20,7 @@ import {
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { writeWorkspaceCache } from "@/lib/workspace-cache"
 import { HotkeysProvider } from "@tanstack/react-hotkeys"
-import { useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 export function App() {
   return (
@@ -49,6 +50,8 @@ function AppContent() {
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
   const { pickRootFolder } = useEditorCommands()
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [commandPaletteSearch, setCommandPaletteSearch] = useState("")
   const { loadTreeDirectory, resetTreeLoad, treeState } = useWorkspaceTree(
     rootFolder,
     selectedFilePath
@@ -59,7 +62,13 @@ function AppContent() {
     () => editorKeyBindingsFromPlatform(keymapBindings),
     [keymapBindings]
   )
-  const dispatchKeymapCommand = usePlatformCommandDispatch()
+  const showCommandPalette = useCallback((initialSearch = "") => {
+    setCommandPaletteSearch(initialSearch)
+    setCommandPaletteOpen(true)
+  }, [])
+  const dispatchKeymapCommand = usePlatformCommandDispatch({
+    showCommandPalette,
+  })
   useAppKeymap({
     bindings: keymapBindings,
     dispatch: dispatchKeymapCommand,
@@ -119,6 +128,15 @@ function AppContent() {
           value={rootFolder}
         />
       )}
+      <CommandPalette
+        bindings={keymapBindings}
+        dispatch={dispatchKeymapCommand}
+        onOpenChange={setCommandPaletteOpen}
+        onSearchChange={setCommandPaletteSearch}
+        open={commandPaletteOpen}
+        search={commandPaletteSearch}
+        treeState={treeState}
+      />
     </main>
   )
 }

@@ -18,7 +18,7 @@ const APP_HOTKEY_OPTIONS = {
 
 export type PlatformCommandDispatch = (
   command: PlatformCommandId,
-  event: KeyboardEvent
+  event?: KeyboardEvent
 ) => boolean | void
 
 export function useAppKeymap({

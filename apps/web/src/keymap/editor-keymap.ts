@@ -20,7 +20,7 @@ export function editorKeyBindingsFromPlatform(
 export function editorKeyBindingFromPlatform(
   binding: PlatformKeyBinding
 ): EditorKeyBinding | null {
-  const command = editorCommandId(binding.command)
+  const command = editorCommandIdFromPlatform(binding.command)
   if (!command) return null
 
   return {
@@ -39,7 +39,7 @@ export function isEditorPlatformCommandId(
   return command.startsWith(EDITOR_COMMAND_PREFIX)
 }
 
-function editorCommandId(
+export function editorCommandIdFromPlatform(
   command: PlatformCommandId | null
 ): EditorCommandId | null {
   if (!isEditorPlatformCommandId(command)) return null

@@ -8,6 +8,7 @@ export {
 } from "./command-registry"
 export { defaultPlatformKeyBindings } from "./default-bindings"
 export {
+  editorCommandIdFromPlatform,
   editorKeyBindingFromPlatform,
   editorKeyBindingsFromPlatform,
   isEditorPlatformCommandId,

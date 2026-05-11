@@ -58,6 +58,9 @@ export function Editor({
   const editorFocusRequestId = useWorkspaceFocus((state) =>
     state.consumeEditorFocusRequest()
   )
+  const setActiveEditorCommandDispatch = useWorkspaceFocus(
+    (state) => state.setActiveEditorCommandDispatch
+  )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
   const { typeScriptDiagnostics, typeScriptLsp, typeScriptStatus } =
@@ -169,6 +172,12 @@ export function Editor({
 
     controller.commands.focus()
   }, [controller, editorFocusRequestId])
+
+  useEffect(() => {
+    setActiveEditorCommandDispatch(controller.commands.dispatchCommand)
+
+    return () => setActiveEditorCommandDispatch(null)
+  }, [controller, setActiveEditorCommandDispatch])
 
   useCommitMessageEditorFocus({
     document: cachedDocument,

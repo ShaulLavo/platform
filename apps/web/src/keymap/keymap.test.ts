@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { activePlatformKeyBindings } from "./active-bindings"
 import { commandHotkeyMeta, platformCommandSpec } from "./command-registry"
+import { defaultPlatformKeyBindings } from "./default-bindings"
 import { editorKeyBindingFromPlatform } from "./editor-keymap"
 import { appKeyBindingsForPane } from "./use-app-keymap"
 import type { PlatformCommandId, PlatformKeyBinding } from "./types"
@@ -74,11 +75,57 @@ describe("command registry", () => {
     })
   })
 
+  it("exposes the command palette opener", () => {
+    expect(platformCommandSpec("workspace.showCommandPalette")).toMatchObject({
+      category: "Workspace",
+      title: "Show command palette",
+    })
+    expect(platformCommandSpec("workspace.showQuickAccess")).toMatchObject({
+      category: "Workspace",
+      title: "Quick Open",
+    })
+  })
+
   it("exposes editor command metadata", () => {
     expect(platformCommandSpec("editor.find")).toMatchObject({
       category: "Editor",
       title: "Find",
+      vscodeCommandIds: ["actions.find"],
     })
+  })
+})
+
+describe("defaultPlatformKeyBindings", () => {
+  it("uses VS Code command aliases for supported defaults", () => {
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: "workspace.showCommandPalette",
+        keys: "Mod+Shift+P",
+        vscodeCommandId: "workbench.action.showCommands",
+      })
+    )
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: "workspace.showQuickAccess",
+        keys: "Mod+P",
+        vscodeCommandId: "workbench.action.quickOpen",
+      })
+    )
+  })
+
+  it("uses VS Code platform-specific replace shortcuts", () => {
+    expect(defaultPlatformKeyBindings("mac")).toContainEqual(
+      expect.objectContaining({
+        command: "editor.findReplace",
+        keys: "Mod+Alt+F",
+      })
+    )
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: "editor.findReplace",
+        keys: "Mod+H",
+      })
+    )
   })
 })
 
@@ -89,7 +136,7 @@ function binding(
 ): PlatformKeyBinding {
   return {
     command,
-    hotkey: keys,
+    hotkey: keys as PlatformKeyBinding["hotkey"],
     keys,
     pane,
     source: "default",

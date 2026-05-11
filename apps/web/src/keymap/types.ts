@@ -5,6 +5,8 @@ import type { HotkeyMeta, RegisterableHotkey } from "@tanstack/react-hotkeys"
 export type KeyBindingSource = "default"
 
 export type WorkspaceCommandId =
+  | "workspace.showQuickAccess"
+  | "workspace.showCommandPalette"
   | "workspace.openFilePicker"
   | "workspace.focusEditor"
   | "workspace.focusFileTree"
@@ -22,6 +24,7 @@ export type PlatformKeyBinding = {
   readonly command: PlatformCommandId | null
   readonly pane?: WorkspaceFocusArea | "any"
   readonly source: KeyBindingSource
+  readonly vscodeCommandId?: string
   readonly preventDefault?: boolean
   readonly stopPropagation?: boolean
   readonly meta?: HotkeyMeta

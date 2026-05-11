@@ -12,7 +12,10 @@ import {
 } from "@/features/editor/utils/diff-view-mode"
 import type { WorkspacePanelTab } from "@/lib/workspace-cache"
 
-import { isEditorPlatformCommandId } from "./editor-keymap"
+import {
+  editorCommandIdFromPlatform,
+  isEditorPlatformCommandId,
+} from "./editor-keymap"
 import type { PlatformCommandId, WorkspaceCommandId } from "./types"
 import type { PlatformCommandDispatch } from "./use-app-keymap"
 
@@ -25,13 +28,18 @@ type WorkspaceCommandContext = {
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: WorkspaceFocusArea) => void
   readonly setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
+  readonly showCommandPalette: (initialSearch?: string) => void
 }
 
 type WorkspaceCommandHandler = (
   context: WorkspaceCommandContext
 ) => boolean | void
 
-export function usePlatformCommandDispatch(): PlatformCommandDispatch {
+export function usePlatformCommandDispatch({
+  showCommandPalette = noop,
+}: {
+  readonly showCommandPalette?: (initialSearch?: string) => void
+} = {}): PlatformCommandDispatch {
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const selectedFilePath = useEditorWorkspaceState(
@@ -46,14 +54,20 @@ export function usePlatformCommandDispatch(): PlatformCommandDispatch {
   const requestEditorFocus = useWorkspaceFocus(
     (state) => state.requestEditorFocus
   )
+  const dispatchEditorCommand = useWorkspaceFocus(
+    (state) => state.dispatchEditorCommand
+  )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const { closeTab } = useEditorCommands()
 
   return useCallback(
-    (command: PlatformCommandId) => {
-      if (isEditorPlatformCommandId(command)) return false
+    (command: PlatformCommandId, event?: KeyboardEvent) => {
+      const editorCommand = editorCommandIdFromPlatform(command)
+      if (editorCommand) return dispatchEditorCommand(editorCommand, { event })
+      const workspaceCommand = workspaceCommandIdFromPlatform(command)
+      if (!workspaceCommand) return false
 
-      return dispatchWorkspaceCommand(command, {
+      return dispatchWorkspaceCommand(workspaceCommand, {
         closeTab,
         diffViewMode,
         openPicker,
@@ -62,17 +76,20 @@ export function usePlatformCommandDispatch(): PlatformCommandDispatch {
         setDiffViewMode,
         setFocusArea,
         setWorkspacePanelTab,
+        showCommandPalette,
       })
     },
     [
       closeTab,
       diffViewMode,
+      dispatchEditorCommand,
       openPicker,
       requestEditorFocus,
       selectedFilePath,
       setDiffViewMode,
       setFocusArea,
       setWorkspacePanelTab,
+      showCommandPalette,
     ]
   )
 }
@@ -109,6 +126,14 @@ const workspaceCommandHandlers: Record<
     openPicker()
     return true
   },
+  "workspace.showCommandPalette": ({ showCommandPalette }) => {
+    showCommandPalette(">")
+    return true
+  },
+  "workspace.showQuickAccess": ({ showCommandPalette }) => {
+    showCommandPalette("")
+    return true
+  },
   "workspace.toggleDiffViewMode": ({ diffViewMode, setDiffViewMode }) => {
     setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
     return true
@@ -124,3 +149,13 @@ function closeSelectedTab(
   closeTab(selectedFilePath)
   return true
 }
+
+function workspaceCommandIdFromPlatform(
+  command: PlatformCommandId
+): WorkspaceCommandId | null {
+  if (isEditorPlatformCommandId(command)) return null
+
+  return command
+}
+
+function noop() {}

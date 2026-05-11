@@ -11,14 +11,28 @@ export type CommandSpec<Id extends PlatformCommandId = PlatformCommandId> = {
   readonly title: string
   readonly category: string
   readonly description?: string
+  readonly vscodeCommandIds?: readonly string[]
   readonly argsSchema?: unknown
 }
 
 export const workspaceCommandSpecs = [
   workspaceCommand(
+    "workspace.showQuickAccess",
+    "Quick Open",
+    "Search workspace files and quick actions.",
+    ["workbench.action.quickOpen"]
+  ),
+  workspaceCommand(
+    "workspace.showCommandPalette",
+    "Show command palette",
+    "Search and run workspace or editor commands.",
+    ["workbench.action.showCommands"]
+  ),
+  workspaceCommand(
     "workspace.openFilePicker",
     "Open file picker",
-    "Open the workspace file picker."
+    "Open the workspace file picker.",
+    ["workbench.action.quickOpen"]
   ),
   workspaceCommand(
     "workspace.focusEditor",
@@ -38,7 +52,8 @@ export const workspaceCommandSpecs = [
   workspaceCommand(
     "workspace.closeCurrentTab",
     "Close current tab",
-    "Close the selected editor tab."
+    "Close the selected editor tab.",
+    ["workbench.action.closeActiveEditor"]
   ),
   workspaceCommand(
     "workspace.toggleDiffViewMode",
@@ -48,53 +63,99 @@ export const workspaceCommandSpecs = [
 ] satisfies readonly CommandSpec<WorkspaceCommandId>[]
 
 export const editorCommandSpecs = [
-  editorCommand("undo", "Undo"),
-  editorCommand("redo", "Redo"),
-  editorCommand("find", "Find"),
-  editorCommand("findReplace", "Find and replace"),
-  editorCommand("findNext", "Find next"),
-  editorCommand("findPrevious", "Find previous"),
-  editorCommand("goToDefinition", "Go to definition"),
-  editorCommand("closeFind", "Close find"),
-  editorCommand("toggleFindCaseSensitive", "Toggle case sensitive find"),
-  editorCommand("toggleFindWholeWord", "Toggle whole word find"),
-  editorCommand("toggleFindRegex", "Toggle regex find"),
-  editorCommand("toggleFindInSelection", "Toggle find in selection"),
-  editorCommand("togglePreserveCase", "Toggle preserve case"),
-  editorCommand("replaceOne", "Replace"),
-  editorCommand("replaceAll", "Replace all"),
-  editorCommand("selectAllMatches", "Select all matches"),
-  editorCommand("selectAll", "Select all"),
-  editorCommand("addNextOccurrence", "Add next occurrence"),
-  editorCommand("clearSecondarySelections", "Clear secondary selections"),
-  editorCommand("deleteBackward", "Delete backward"),
-  editorCommand("deleteForward", "Delete forward"),
-  editorCommand("indentSelection", "Indent selection"),
-  editorCommand("outdentSelection", "Outdent selection"),
-  editorCommand("cursorLeft", "Move cursor left"),
-  editorCommand("cursorRight", "Move cursor right"),
-  editorCommand("cursorUp", "Move cursor up"),
-  editorCommand("cursorDown", "Move cursor down"),
-  editorCommand("selectLeft", "Select left"),
-  editorCommand("selectRight", "Select right"),
-  editorCommand("selectUp", "Select up"),
-  editorCommand("selectDown", "Select down"),
-  editorCommand("cursorWordLeft", "Move cursor word left"),
-  editorCommand("cursorWordRight", "Move cursor word right"),
-  editorCommand("selectWordLeft", "Select word left"),
-  editorCommand("selectWordRight", "Select word right"),
-  editorCommand("cursorLineStart", "Move cursor to line start"),
-  editorCommand("cursorLineEnd", "Move cursor to line end"),
-  editorCommand("selectLineStart", "Select to line start"),
-  editorCommand("selectLineEnd", "Select to line end"),
-  editorCommand("cursorPageUp", "Move cursor page up"),
-  editorCommand("cursorPageDown", "Move cursor page down"),
-  editorCommand("selectPageUp", "Select page up"),
-  editorCommand("selectPageDown", "Select page down"),
-  editorCommand("cursorDocumentStart", "Move cursor to document start"),
-  editorCommand("cursorDocumentEnd", "Move cursor to document end"),
-  editorCommand("selectDocumentStart", "Select to document start"),
-  editorCommand("selectDocumentEnd", "Select to document end"),
+  editorCommand("undo", "Undo", ["undo"]),
+  editorCommand("redo", "Redo", ["redo"]),
+  editorCommand("find", "Find", ["actions.find"]),
+  editorCommand("findReplace", "Find and replace", [
+    "editor.action.startFindReplaceAction",
+  ]),
+  editorCommand("findNext", "Find next", ["editor.action.nextMatchFindAction"]),
+  editorCommand("findPrevious", "Find previous", [
+    "editor.action.previousMatchFindAction",
+  ]),
+  editorCommand("goToDefinition", "Go to definition", [
+    "editor.action.revealDefinition",
+  ]),
+  editorCommand("closeFind", "Close find", ["closeFindWidget"]),
+  editorCommand("toggleFindCaseSensitive", "Toggle case sensitive find", [
+    "toggleFindCaseSensitive",
+  ]),
+  editorCommand("toggleFindWholeWord", "Toggle whole word find", [
+    "toggleFindWholeWord",
+  ]),
+  editorCommand("toggleFindRegex", "Toggle regex find", ["toggleFindRegex"]),
+  editorCommand("toggleFindInSelection", "Toggle find in selection", [
+    "toggleSearchScope",
+  ]),
+  editorCommand("togglePreserveCase", "Toggle preserve case", [
+    "togglePreserveCase",
+  ]),
+  editorCommand("replaceOne", "Replace", ["editor.action.replaceOne"]),
+  editorCommand("replaceAll", "Replace all", ["editor.action.replaceAll"]),
+  editorCommand("selectAllMatches", "Select all matches", [
+    "editor.action.selectAllMatches",
+  ]),
+  editorCommand("selectAll", "Select all", ["editor.action.selectAll"]),
+  editorCommand("addNextOccurrence", "Add next occurrence", [
+    "editor.action.addSelectionToNextFindMatch",
+  ]),
+  editorCommand("clearSecondarySelections", "Clear secondary selections", [
+    "removeSecondaryCursors",
+  ]),
+  editorCommand("deleteBackward", "Delete backward", ["deleteLeft"]),
+  editorCommand("deleteForward", "Delete forward", ["deleteRight"]),
+  editorCommand("indentSelection", "Indent selection", ["tab"]),
+  editorCommand("outdentSelection", "Outdent selection", ["outdent"]),
+  editorCommand("cursorLeft", "Move cursor left", ["cursorLeft"]),
+  editorCommand("cursorRight", "Move cursor right", ["cursorRight"]),
+  editorCommand("cursorUp", "Move cursor up", ["cursorUp"]),
+  editorCommand("cursorDown", "Move cursor down", ["cursorDown"]),
+  editorCommand("selectLeft", "Select left", ["cursorLeftSelect"]),
+  editorCommand("selectRight", "Select right", ["cursorRightSelect"]),
+  editorCommand("selectUp", "Select up", ["cursorUpSelect"]),
+  editorCommand("selectDown", "Select down", ["cursorDownSelect"]),
+  editorCommand("cursorWordLeft", "Move cursor word left", ["cursorWordLeft"]),
+  editorCommand("cursorWordRight", "Move cursor word right", [
+    "cursorWordRight",
+    "cursorWordEndRight",
+  ]),
+  editorCommand("selectWordLeft", "Select word left", ["cursorWordLeftSelect"]),
+  editorCommand("selectWordRight", "Select word right", [
+    "cursorWordRightSelect",
+    "cursorWordEndRightSelect",
+  ]),
+  editorCommand("cursorLineStart", "Move cursor to line start", [
+    "cursorHome",
+    "cursorLineStart",
+  ]),
+  editorCommand("cursorLineEnd", "Move cursor to line end", [
+    "cursorEnd",
+    "cursorLineEnd",
+  ]),
+  editorCommand("selectLineStart", "Select to line start", [
+    "cursorHomeSelect",
+    "cursorLineStartSelect",
+  ]),
+  editorCommand("selectLineEnd", "Select to line end", [
+    "cursorEndSelect",
+    "cursorLineEndSelect",
+  ]),
+  editorCommand("cursorPageUp", "Move cursor page up", ["cursorPageUp"]),
+  editorCommand("cursorPageDown", "Move cursor page down", ["cursorPageDown"]),
+  editorCommand("selectPageUp", "Select page up", ["cursorPageUpSelect"]),
+  editorCommand("selectPageDown", "Select page down", ["cursorPageDownSelect"]),
+  editorCommand("cursorDocumentStart", "Move cursor to document start", [
+    "cursorTop",
+  ]),
+  editorCommand("cursorDocumentEnd", "Move cursor to document end", [
+    "cursorBottom",
+  ]),
+  editorCommand("selectDocumentStart", "Select to document start", [
+    "cursorTopSelect",
+  ]),
+  editorCommand("selectDocumentEnd", "Select to document end", [
+    "cursorBottomSelect",
+  ]),
 ] satisfies readonly CommandSpec<EditorPlatformCommandId>[]
 
 export const platformCommandSpecs = [
@@ -126,14 +187,16 @@ const platformCommandSpecById = new Map(
 function workspaceCommand(
   id: WorkspaceCommandId,
   title: string,
-  description: string
+  description: string,
+  vscodeCommandIds: readonly string[] = []
 ): CommandSpec<WorkspaceCommandId> {
-  return { category: "Workspace", description, id, title }
+  return { category: "Workspace", description, id, title, vscodeCommandIds }
 }
 
 function editorCommand(
   id: EditorCommandId,
-  title: string
+  title: string,
+  vscodeCommandIds: readonly string[] = []
 ): CommandSpec<EditorPlatformCommandId> {
-  return { category: "Editor", id: `editor.${id}`, title }
+  return { category: "Editor", id: `editor.${id}`, title, vscodeCommandIds }
 }
