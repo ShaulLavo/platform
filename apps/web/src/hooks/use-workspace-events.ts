@@ -29,7 +29,10 @@ import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { fileSystemKeys, gitKeys } from "@/lib/query-keys"
 import { parseSseStream } from "@/lib/sse"
 import { toTreePath } from "@/lib/path-formatters"
-import { affectedOpenFileRefreshPaths } from "@/lib/workspace-event-model"
+import {
+  affectedOpenFileRefreshPaths,
+  isLikelyTemporarySavePath,
+} from "@/lib/workspace-event-model"
 import {
   patchTreeEntryMetadata,
   replaceDirectoryLoad,
@@ -477,6 +480,11 @@ async function refreshChangedOpenFile(
 ) {
   const file = await fetchFileWithRetry(path, signal)
   queryClient.setQueryData(fileSystemKeys.file(path), file)
+  if (cachedDocumentMatchesFile(path, file, conflictContext)) {
+    forceReplaceCachedEditorDocument(file)
+    return
+  }
+
   if (isDirtyCachedDocument(path, dirtyFilePaths, conflictContext)) {
     notifyFilesystemConflict(
       changedConflict(path, file, conflictContext),
@@ -487,6 +495,16 @@ async function refreshChangedOpenFile(
 
   const result = forceReplaceCachedEditorDocument(file)
   if (result.wasDirty) notifyDirtyOverwrite(path)
+}
+
+function cachedDocumentMatchesFile(
+  path: string,
+  file: FileResult,
+  context: ConflictContext
+) {
+  return (
+    context.getCachedEditorDocument(path)?.session.getText() === file.content
+  )
 }
 
 async function refreshCleanOpenFile(
@@ -876,7 +894,7 @@ function shouldRefreshDirectory(
   return model.loadedDirectoryPaths.has(treePath)
 }
 
-function affectedDirectoryPaths(
+export function affectedDirectoryPaths(
   events: readonly FilesystemEvent[],
   rootPath: string
 ) {
@@ -884,6 +902,7 @@ function affectedDirectoryPaths(
 
   for (const event of events) {
     if (event.type === "changed") continue
+    if (isLikelyTemporarySavePath(event.path)) continue
 
     directories.add(parentPath(event.path, rootPath))
     if (event.type === "renamed")

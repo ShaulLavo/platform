@@ -86,6 +86,10 @@ const selectedFileCommands = new Set<PlatformCommandId>([
   "workspace.saveFile",
 ])
 
+const hiddenCommandPaletteCommands = new Set<PlatformCommandId>([
+  "workspace.showCommandPalette",
+])
+
 const viewPaletteItems: readonly ViewPaletteItem[] = [
   {
     command: "workspace.focusFileTree",
@@ -551,10 +555,12 @@ function commandPaletteItems(
   specs: readonly CommandSpec[],
   bindings: readonly PlatformKeyBinding[]
 ): readonly CommandPaletteItem[] {
-  return specs.map((spec) => ({
-    shortcut: commandShortcut(spec.id, bindings),
-    spec,
-  }))
+  return specs
+    .filter((spec) => !hiddenCommandPaletteCommands.has(spec.id))
+    .map((spec) => ({
+      shortcut: commandShortcut(spec.id, bindings),
+      spec,
+    }))
 }
 
 function groupedCommandItems(

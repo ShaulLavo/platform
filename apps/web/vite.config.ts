@@ -2,13 +2,15 @@ import { existsSync, realpathSync } from "node:fs"
 import path from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig, type Plugin } from "vite"
+import { consumeAppSave } from "../server/src/fs/app-save-marker"
 
 const workspaceRoot = path.resolve(__dirname, "../..")
 const editorSourceRoot = resolveEditorSourceRoot(workspaceRoot)
 
 export default defineConfig({
   plugins: [
+    platformSelfSaveHmrPlugin(),
     react({
       babel: {
         plugins: ["babel-plugin-react-compiler"],
@@ -34,6 +36,21 @@ export default defineConfig({
     format: "es",
   },
 })
+
+function platformSelfSaveHmrPlugin(): Plugin {
+  return {
+    name: "platform-self-save-hmr",
+    apply: "serve",
+    hotUpdate: {
+      order: "pre",
+      handler({ file }) {
+        if (!consumeAppSave(file)) return
+
+        return []
+      },
+    },
+  }
+}
 
 function resolveEditorSourceRoot(root: string) {
   const envRoot = process.env.EDITOR_SOURCE_ROOT

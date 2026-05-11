@@ -84,7 +84,6 @@ export function Editor({
     () => ({
       documentId: cachedDocument.path,
       languageId: languageIdForFilePath(cachedDocument.path),
-      revision: cachedDocument.revision,
       scrollPosition: cachedDocument.scrollPosition,
       session: cachedDocument.session,
       text: cachedDocument.session.getText(),

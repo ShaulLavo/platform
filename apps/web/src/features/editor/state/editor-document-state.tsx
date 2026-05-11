@@ -170,19 +170,29 @@ export function createEditorDocumentStore() {
       set((state) => {
         const cached = state.documents[file.path]
         wasDirty = isDirtyPath(state, file.path)
+        const document = replacementCachedEditorDocument(file, cached)
+        const dirtyFilePaths =
+          removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
+          state.dirtyFilePaths
+        const fallbackDocumentPath =
+          selectedFilePath === file.path
+            ? file.path
+            : state.fallbackDocumentPath
+        if (
+          !wasDirty &&
+          document === cached &&
+          dirtyFilePaths === state.dirtyFilePaths &&
+          fallbackDocumentPath === state.fallbackDocumentPath
+        )
+          return state
 
         return {
-          documents: {
-            ...state.documents,
-            [file.path]: freshCachedEditorDocument(file, cached),
-          },
-          dirtyFilePaths:
-            removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
-            state.dirtyFilePaths,
-          fallbackDocumentPath:
-            selectedFilePath === file.path
-              ? file.path
-              : state.fallbackDocumentPath,
+          documents:
+            document === cached
+              ? state.documents
+              : { ...state.documents, [file.path]: document },
+          dirtyFilePaths,
+          fallbackDocumentPath,
         }
       })
       return { wasDirty }
@@ -285,6 +295,23 @@ function freshCachedEditorDocument(
     revision: file.mtimeMs,
     scrollPosition: scrollPosition ?? cached?.scrollPosition,
     session,
+  }
+}
+
+function replacementCachedEditorDocument(
+  file: FileResult,
+  cached: CachedEditorDocument | undefined
+): CachedEditorDocument {
+  if (!cached) return freshCachedEditorDocument(file, cached)
+  if (cached.session.getText() !== file.content)
+    return freshCachedEditorDocument(file, cached)
+
+  cached.session.markClean()
+  if (cached.revision === file.mtimeMs) return cached
+
+  return {
+    ...cached,
+    revision: file.mtimeMs,
   }
 }
 

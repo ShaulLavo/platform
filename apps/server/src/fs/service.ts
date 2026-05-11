@@ -6,6 +6,7 @@ import { effectiveEntryType, statPath } from "./stat"
 import { readTree } from "./tree"
 import { getBlobFile, readTextFile } from "./read"
 import { writeTextFile } from "./write"
+import { forgetAppSave, recordAppSave } from "./app-save-marker"
 import { createFile, createFolder } from "./create"
 import { renamePath } from "./rename"
 import { deletePath } from "./delete"
@@ -137,7 +138,17 @@ export class FileSystemService {
   }
 
   async write(body: WriteBody) {
-    const path = await writeTextFile(this.paths, body)
+    const target = this.paths.resolve(body.path)
+    recordAppSave(target.absolutePath)
+
+    let path: string
+    try {
+      path = await writeTextFile(this.paths, body)
+    } catch (error) {
+      forgetAppSave(target.absolutePath)
+      throw error
+    }
+
     const entry = await this.statEntry(path)
     this.changes.emit({ type: "changed", path, entry })
 

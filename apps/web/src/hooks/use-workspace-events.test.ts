@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import { fileSystemKeys } from "@/lib/query-keys"
-import { shouldRefreshReadyRootTree } from "@/hooks/use-workspace-events"
+import {
+  affectedDirectoryPaths,
+  shouldRefreshReadyRootTree,
+} from "@/hooks/use-workspace-events"
 import { affectedOpenFileRefreshPaths } from "@/lib/workspace-event-model"
 
 describe("shouldRefreshReadyRootTree", () => {
@@ -81,6 +84,29 @@ describe("affectedOpenFileRefreshPaths", () => {
     )
 
     expect(paths).toEqual(["repo/a.ts", "repo/b.ts"])
+  })
+})
+
+describe("affectedDirectoryPaths", () => {
+  it("does not refresh tree directories for temporary save files", () => {
+    const paths = affectedDirectoryPaths(
+      [
+        { type: "created", path: "repo/.a.ts.uuid.tmp" },
+        { type: "deleted", path: "repo/.a.ts.uuid.tmp" },
+      ],
+      "repo"
+    )
+
+    expect([...paths]).toEqual([])
+  })
+
+  it("refreshes tree directories for real created files", () => {
+    const paths = affectedDirectoryPaths(
+      [{ type: "created", path: "repo/src/new.ts" }],
+      "repo"
+    )
+
+    expect([...paths]).toEqual(["repo/src"])
   })
 })
 

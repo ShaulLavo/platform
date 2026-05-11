@@ -341,10 +341,10 @@ async function saveCachedEditorDocument(
     document.revision
   )
   const file = fileResultForSavedDocument(document.path, content, entry)
-  queryClient.setQueryData(fileSystemKeys.file(document.path), file)
   documentStore
     .getState()
     .markCachedEditorDocumentClean(document.path, entry.mtimeMs)
+  queryClient.setQueryData(fileSystemKeys.file(document.path), file)
 }
 
 async function revertSelectedEditorDocument(

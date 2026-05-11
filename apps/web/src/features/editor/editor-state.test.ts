@@ -121,6 +121,48 @@ describe("editor document store", () => {
     expect(saved?.session.isDirty()).toBe(false)
     expect(store.getState().dirtyFilePaths.has("src/file.ts")).toBe(false)
   })
+
+  it("preserves the session when a forced refresh has matching content", () => {
+    const store = createEditorDocumentStore()
+    const original = store
+      .getState()
+      .ensureCachedEditorDocument(file("src/file.ts", "local"))
+    original.session.applyText(" edit")
+    store.getState().setCachedEditorDocumentDirty("src/file.ts", true)
+
+    const result = store
+      .getState()
+      .forceReplaceCachedEditorDocument(file("src/file.ts", "local edit", 2))
+    const refreshed = store.getState().getCachedEditorDocument("src/file.ts")
+
+    expect(result.wasDirty).toBe(true)
+    expect(refreshed?.session).toBe(original.session)
+    expect(refreshed?.revision).toBe(2)
+    expect(refreshed?.session.isDirty()).toBe(false)
+    expect(store.getState().dirtyFilePaths.has("src/file.ts")).toBe(false)
+  })
+
+  it("skips forced refresh updates when content and revision already match", () => {
+    const store = createEditorDocumentStore()
+    const original = store
+      .getState()
+      .ensureCachedEditorDocument(file("src/file.ts", "local", 2))
+    let documentUpdates = 0
+    const unsubscribe = store.subscribe((state, previousState) => {
+      if (state.documents !== previousState.documents) documentUpdates += 1
+    })
+
+    const result = store
+      .getState()
+      .forceReplaceCachedEditorDocument(file("src/file.ts", "local", 2))
+    unsubscribe()
+
+    expect(result.wasDirty).toBe(false)
+    expect(documentUpdates).toBe(0)
+    expect(store.getState().getCachedEditorDocument("src/file.ts")).toBe(
+      original
+    )
+  })
 })
 
 describe("editor conflict store", () => {

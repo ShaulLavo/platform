@@ -66,7 +66,7 @@ function shouldRefreshFallbackPath(
   return affectedDirectories.has(directory)
 }
 
-function isLikelyTemporarySavePath(path: string) {
+export function isLikelyTemporarySavePath(path: string) {
   const name = path.split("/").at(-1) ?? path
   if (name.endsWith("~")) return true
   if (name.startsWith(".") && name.includes(".tmp")) return true
