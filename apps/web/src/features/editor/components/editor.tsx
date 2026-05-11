@@ -113,10 +113,14 @@ export function Editor({
   })
   const editorInstance = controller.useEditorInstance()
   const editorState = controller.useState()
-  const selection = selectionForDefinition(
-    cachedDocument.path,
-    document.text,
-    definitionTarget
+  const selection = useMemo(
+    () =>
+      selectionForDefinition(
+        cachedDocument.path,
+        document.text,
+        definitionTarget
+      ),
+    [cachedDocument.path, definitionTarget, document.text]
   )
 
   useEditorStatusBarState({

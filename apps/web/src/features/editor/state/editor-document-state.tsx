@@ -49,6 +49,7 @@ type EditorDocumentStoreActions = {
   ) => { wasDirty: boolean }
   getCachedEditorDocument: (path: string) => CachedEditorDocument | null
   hasCachedEditorDocument: (path: string) => boolean
+  markCachedEditorDocumentClean: (path: string, revision: number) => boolean
   renameCachedEditorDocumentPath: (
     from: string,
     to: string,
@@ -191,6 +192,22 @@ export function createEditorDocumentStore() {
       return cachedDocumentWithScroll(state, path)
     },
     hasCachedEditorDocument: (path) => get().documents[path] !== undefined,
+    markCachedEditorDocumentClean: (path, revision) => {
+      const cached = get().documents[path]
+      if (!cached) return false
+
+      cached.session.markClean()
+      set((state) => ({
+        documents: {
+          ...state.documents,
+          [path]: { ...cached, revision },
+        },
+        dirtyFilePaths:
+          removeDirtyFilePath(state.dirtyFilePaths, path) ??
+          state.dirtyFilePaths,
+      }))
+      return true
+    },
     renameCachedEditorDocumentPath: (from, to, options) => {
       let wasDirty = false
       set((state) => {
@@ -237,6 +254,10 @@ export function createEditorDocumentStore() {
     setCachedEditorDocumentScrollPosition: (path, scrollPosition) => {
       set((state) => {
         if (!state.documents[path]) return state
+        if (
+          scrollPositionsEqual(state.scrollPositionByPath[path], scrollPosition)
+        )
+          return state
 
         return {
           scrollPositionByPath: {
@@ -297,6 +318,15 @@ function cachedDocumentWithScroll(
   if (document.scrollPosition === scrollPosition) return document
 
   return { ...document, scrollPosition }
+}
+
+function scrollPositionsEqual(
+  current: EditorScrollPosition | undefined,
+  next: EditorScrollPosition
+) {
+  if (!current) return false
+
+  return current.left === next.left && current.top === next.top
 }
 
 function omitKey<T>(

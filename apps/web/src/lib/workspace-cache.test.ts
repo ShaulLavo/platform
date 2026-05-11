@@ -27,17 +27,25 @@ describe("workspace cache", () => {
 
     writeWorkspaceCache({
       diffViewMode: "stacked",
+      editorHistory: [diffPath, "/repo/src/readme.md"],
+      gitPanelOpen: false,
       openFilePaths: ["/repo/src/readme.md", diffPath],
+      recentlyClosedEditorPaths: ["/repo/src/closed.ts"],
       rootFolder,
       selectedFilePath: diffPath,
+      sidebarVisible: false,
       workspacePanelTab: "git",
     })
 
     expect(readWorkspaceCache()).toEqual({
       diffViewMode: "stacked",
+      editorHistory: [diffPath, "/repo/src/readme.md"],
+      gitPanelOpen: false,
       openFilePaths: ["/repo/src/readme.md", diffPath],
+      recentlyClosedEditorPaths: ["/repo/src/closed.ts"],
       rootFolder,
       selectedFilePath: diffPath,
+      sidebarVisible: false,
       workspacePanelTab: "git",
     })
   })
@@ -48,17 +56,25 @@ describe("workspace cache", () => {
 
     writeWorkspaceCache({
       diffViewMode: "split",
+      editorHistory: [diffPath],
+      gitPanelOpen: true,
       openFilePaths: [diffPath],
+      recentlyClosedEditorPaths: ["/other/src/closed.ts"],
       rootFolder,
       selectedFilePath: diffPath,
+      sidebarVisible: true,
       workspacePanelTab: "git",
     })
 
     expect(readWorkspaceCache()).toEqual({
       diffViewMode: "split",
+      editorHistory: [],
+      gitPanelOpen: true,
       openFilePaths: [],
+      recentlyClosedEditorPaths: [],
       rootFolder,
       selectedFilePath: null,
+      sidebarVisible: true,
       workspacePanelTab: "git",
     })
   })
@@ -69,17 +85,25 @@ describe("workspace cache", () => {
 
     writeWorkspaceCache({
       diffViewMode: "split",
+      editorHistory: [conflictPath, "/repo/src/readme.md"],
+      gitPanelOpen: true,
       openFilePaths: ["/repo/src/readme.md", conflictPath],
+      recentlyClosedEditorPaths: [conflictPath],
       rootFolder,
       selectedFilePath: conflictPath,
+      sidebarVisible: true,
       workspacePanelTab: "files",
     })
 
     expect(readWorkspaceCache()).toEqual({
       diffViewMode: "split",
+      editorHistory: ["/repo/src/readme.md"],
+      gitPanelOpen: true,
       openFilePaths: ["/repo/src/readme.md"],
+      recentlyClosedEditorPaths: [],
       rootFolder,
       selectedFilePath: null,
+      sidebarVisible: true,
       workspacePanelTab: "files",
     })
   })

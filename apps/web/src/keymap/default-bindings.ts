@@ -62,7 +62,7 @@ function specMatchesPlatform(spec: DefaultBindingSpec, platform: PlatformName) {
 function workspaceBinding(
   hotkey: RegisterableHotkey,
   command: WorkspaceCommandId,
-  options: Omit<DefaultBindingSpec, "command" | "hotkey" | "pane"> = {}
+  options: Omit<DefaultBindingSpec, "command" | "hotkey"> = {}
 ): DefaultBindingSpec {
   return { command, hotkey, pane: "any", ...options }
 }
@@ -95,9 +95,49 @@ const defaultBindingSpecs = [
     stopPropagation: true,
     vscodeCommandId: "workbench.action.quickOpen",
   }),
+  workspaceBinding("Control+Tab", "workspace.quickOpenPreviousEditor", {
+    preventDefault: true,
+    vscodeCommandId: "workbench.action.quickOpenPreviousEditor",
+  }),
+  workspaceBinding("Control+Q", "workspace.quickOpenView", {
+    preventDefault: true,
+    vscodeCommandId: "workbench.action.quickOpenView",
+  }),
+  workspaceBinding("Mod+Shift+O", "workspace.gotoSymbol", {
+    preventDefault: true,
+    vscodeCommandId: "workbench.action.gotoSymbol",
+  }),
+  workspaceBinding("Mod+S", "workspace.saveFile", {
+    preventDefault: true,
+    vscodeCommandId: "workbench.action.files.save",
+  }),
+  workspaceBinding("Mod+Shift+T", "workspace.reopenClosedEditor", {
+    preventDefault: true,
+    vscodeCommandId: "workbench.action.reopenClosedEditor",
+  }),
+  workspaceBinding("Mod+B", "workspace.toggleSidebarVisibility", {
+    preventDefault: true,
+    vscodeCommandId: "workbench.action.toggleSidebarVisibility",
+  }),
+  workspaceBinding("Mod+J", "workspace.togglePanel", {
+    preventDefault: true,
+    vscodeCommandId: "workbench.action.togglePanel",
+  }),
   workspaceBinding("Mod+1", "workspace.focusFileTree"),
   workspaceBinding("Mod+2", "workspace.focusEditor"),
   workspaceBinding("Mod+3", "workspace.focusGit"),
+  workspaceBinding("Mod+1", "workspace.focusFirstEditorGroup", {
+    pane: "editor",
+    vscodeCommandId: "workbench.action.focusFirstEditorGroup",
+  }),
+  workspaceBinding("Mod+2", "workspace.focusSecondEditorGroup", {
+    pane: "editor",
+    vscodeCommandId: "workbench.action.focusSecondEditorGroup",
+  }),
+  workspaceBinding("Mod+3", "workspace.focusThirdEditorGroup", {
+    pane: "editor",
+    vscodeCommandId: "workbench.action.focusThirdEditorGroup",
+  }),
   workspaceBinding("Mod+W", "workspace.closeCurrentTab", {
     vscodeCommandId: "workbench.action.closeActiveEditor",
   }),

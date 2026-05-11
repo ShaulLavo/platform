@@ -4,8 +4,14 @@ import {
   type EditorDocumentStoreApi,
 } from "@/features/editor/state/editor-document-state"
 import {
+  editorHistoryForClosedPath,
+  editorHistoryForRenamedPath,
+  editorHistoryForSelection,
   nextSelectedFilePath,
   openFilePathList,
+  previousOpenEditorPath,
+  recentlyClosedEditorPathsForClose,
+  recentlyClosedEditorPathsForReopen,
   renameOpenFilePath,
 } from "@/features/editor/state/editor-tab-paths"
 import {
@@ -25,11 +31,13 @@ export type EditorCommands = {
   discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
   openDefinition: (target: TypeScriptLspDefinitionTarget) => boolean
   pickRootFolder: (rootFolder: PickedFsEntry) => void
+  reopenClosedEditor: () => boolean
   renameCachedEditorDocument: (
     from: string,
     to: string
   ) => { wasDirty: boolean }
   selectFile: (path: string | null) => void
+  selectPreviousEditor: () => boolean
 }
 
 export function useEditorCommands() {
@@ -60,6 +68,8 @@ export function createEditorCommands({
       openDefinition(target, workspaceStore, documentStore, uiStore),
     pickRootFolder: (rootFolder) =>
       pickRootFolder(rootFolder, workspaceStore, documentStore, uiStore),
+    reopenClosedEditor: () =>
+      reopenClosedEditor(workspaceStore, documentStore, uiStore),
     renameCachedEditorDocument: (from, to) =>
       renameCachedEditorDocument(
         from,
@@ -70,6 +80,8 @@ export function createEditorCommands({
       ),
     selectFile: (path) =>
       selectFile(path, workspaceStore, documentStore, uiStore),
+    selectPreviousEditor: () =>
+      selectPreviousEditor(workspaceStore, documentStore, uiStore),
   }
 }
 
@@ -89,6 +101,10 @@ function selectFile(
   documentStore.setState({ fallbackDocumentPath })
   uiStore.getState().setStatusBarState(null)
   workspaceStore.setState({
+    editorHistory: editorHistoryForSelection(
+      workspace.editorHistory,
+      selectedFilePath
+    ),
     openFilePaths: selectedFilePath
       ? openFilePathList(workspace.openFilePaths, selectedFilePath)
       : workspace.openFilePaths,
@@ -115,11 +131,16 @@ function openDefinition(
     definitionTarget,
     statusBarState: null,
   })
+  const openFilePaths = openFilePathList(
+    workspace.openFilePaths,
+    definitionTarget.path
+  )
   workspaceStore.setState({
-    openFilePaths: openFilePathList(
-      workspace.openFilePaths,
+    editorHistory: editorHistoryForSelection(
+      workspace.editorHistory,
       definitionTarget.path
     ),
+    openFilePaths,
     selectedFilePath: definitionTarget.path,
   })
 
@@ -157,7 +178,15 @@ function closeTab(
 
   updateUiForClosedPath(path, selectedFilePath, workspace, uiStore)
   updateFallbackForClosedPath(path, selectedFilePath, documentStore)
-  workspaceStore.setState({ openFilePaths, selectedFilePath })
+  workspaceStore.setState({
+    editorHistory: editorHistoryForClosedPath(workspace.editorHistory, path),
+    openFilePaths,
+    recentlyClosedEditorPaths: recentlyClosedEditorPathsForClose(
+      workspace.recentlyClosedEditorPaths,
+      path
+    ),
+    selectedFilePath,
+  })
 }
 
 function discardCachedEditorDocument(
@@ -180,9 +209,49 @@ function discardCachedEditorDocument(
 
   updateUiForClosedPath(path, selectedFilePath, workspace, uiStore)
   updateFallbackForClosedPath(path, selectedFilePath, documentStore)
-  workspaceStore.setState({ openFilePaths, selectedFilePath })
+  workspaceStore.setState({
+    editorHistory: editorHistoryForClosedPath(workspace.editorHistory, path),
+    openFilePaths,
+    selectedFilePath,
+  })
 
   return { wasDirty: result.wasDirty }
+}
+
+function reopenClosedEditor(
+  workspaceStore: EditorWorkspaceStoreApi,
+  documentStore: EditorDocumentStoreApi,
+  uiStore: EditorUiStoreApi
+) {
+  const workspace = workspaceStore.getState()
+  const path = workspace.recentlyClosedEditorPaths[0]
+  if (!path) return false
+
+  selectFile(path, workspaceStore, documentStore, uiStore)
+  workspaceStore.setState((state) => ({
+    recentlyClosedEditorPaths: recentlyClosedEditorPathsForReopen(
+      state.recentlyClosedEditorPaths,
+      path
+    ),
+  }))
+  return true
+}
+
+function selectPreviousEditor(
+  workspaceStore: EditorWorkspaceStoreApi,
+  documentStore: EditorDocumentStoreApi,
+  uiStore: EditorUiStoreApi
+) {
+  const workspace = workspaceStore.getState()
+  const path = previousOpenEditorPath(
+    workspace.editorHistory,
+    workspace.openFilePaths,
+    workspace.selectedFilePath
+  )
+  if (!path) return false
+
+  selectFile(path, workspaceStore, documentStore, uiStore)
+  return true
 }
 
 function renameCachedEditorDocument(
@@ -199,7 +268,17 @@ function renameCachedEditorDocument(
       bumpVersion: workspace.openFilePaths.includes(from),
     })
   workspaceStore.setState({
+    editorHistory: editorHistoryForRenamedPath(
+      workspace.editorHistory,
+      from,
+      to
+    ),
     openFilePaths: renameOpenFilePath(workspace.openFilePaths, from, to),
+    recentlyClosedEditorPaths: editorHistoryForRenamedPath(
+      workspace.recentlyClosedEditorPaths,
+      from,
+      to
+    ),
     selectedFilePath:
       workspace.selectedFilePath === from ? to : workspace.selectedFilePath,
   })

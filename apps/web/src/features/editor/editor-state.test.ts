@@ -78,6 +78,49 @@ describe("editor document store", () => {
       store.getState().getCachedEditorDocument("src/file.ts")?.scrollPosition
     ).toEqual({ left: 10, top: 20 })
   })
+
+  it("skips unchanged scroll position updates", () => {
+    const store = createEditorDocumentStore()
+    store.getState().ensureCachedEditorDocument(file("src/file.ts", "local"))
+    let updates = 0
+    const unsubscribe = store.subscribe((state, previousState) => {
+      if (state.scrollPositionByPath !== previousState.scrollPositionByPath) {
+        updates += 1
+      }
+    })
+
+    store.getState().setCachedEditorDocumentScrollPosition("src/file.ts", {
+      left: 10,
+      top: 20,
+    })
+    store.getState().setCachedEditorDocumentScrollPosition("src/file.ts", {
+      left: 10,
+      top: 20,
+    })
+    unsubscribe()
+
+    expect(updates).toBe(1)
+  })
+
+  it("marks cached documents clean after saving without replacing the session", () => {
+    const store = createEditorDocumentStore()
+    const original = store
+      .getState()
+      .ensureCachedEditorDocument(file("src/file.ts", "local"))
+    original.session.applyText("saved")
+    store.getState().setCachedEditorDocumentDirty("src/file.ts", true)
+
+    const result = store
+      .getState()
+      .markCachedEditorDocumentClean("src/file.ts", 2)
+    const saved = store.getState().getCachedEditorDocument("src/file.ts")
+
+    expect(result).toBe(true)
+    expect(saved?.session).toBe(original.session)
+    expect(saved?.revision).toBe(2)
+    expect(saved?.session.isDirty()).toBe(false)
+    expect(store.getState().dirtyFilePaths.has("src/file.ts")).toBe(false)
+  })
 })
 
 describe("editor conflict store", () => {
@@ -125,6 +168,10 @@ describe("editor commands", () => {
       "src/b.ts",
     ])
     expect(workspaceStore.getState().selectedFilePath).toBe("src/b.ts")
+    expect(workspaceStore.getState().editorHistory).toEqual([
+      "src/b.ts",
+      "src/a.ts",
+    ])
     expect(documentStore.getState().fallbackDocumentPath).toBe("src/a.ts")
     expect(uiStore.getState().statusBarState).toBe(null)
   })
@@ -144,6 +191,10 @@ describe("editor commands", () => {
       "src/target.ts",
     ])
     expect(workspaceStore.getState().selectedFilePath).toBe("src/target.ts")
+    expect(workspaceStore.getState().editorHistory).toEqual([
+      "src/target.ts",
+      "src/a.ts",
+    ])
     expect(documentStore.getState().fallbackDocumentPath).toBe("src/a.ts")
   })
 
@@ -159,9 +210,47 @@ describe("editor commands", () => {
     expect(result.wasDirty).toBe(true)
     expect(workspaceStore.getState().openFilePaths).toEqual(["src/b.ts"])
     expect(workspaceStore.getState().selectedFilePath).toBe("src/b.ts")
+    expect(workspaceStore.getState().editorHistory).toEqual([])
     expect(documentStore.getState().getCachedEditorDocument("src/a.ts")).toBe(
       null
     )
+  })
+
+  it("tracks closed editors and reopens the last closed tab", () => {
+    const { commands, workspaceStore } = setupStores(
+      workspaceState(["src/a.ts", "src/b.ts"], "src/a.ts")
+    )
+
+    commands.closeTab("src/a.ts")
+
+    expect(workspaceStore.getState().openFilePaths).toEqual(["src/b.ts"])
+    expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([
+      "src/a.ts",
+    ])
+
+    const reopened = commands.reopenClosedEditor()
+
+    expect(reopened).toBe(true)
+    expect(workspaceStore.getState().openFilePaths).toEqual([
+      "src/b.ts",
+      "src/a.ts",
+    ])
+    expect(workspaceStore.getState().selectedFilePath).toBe("src/a.ts")
+    expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([])
+  })
+
+  it("selects the previous editor from editor history", () => {
+    const { commands, workspaceStore } = setupStores(
+      workspaceState(["src/a.ts", "src/b.ts"], "src/b.ts")
+    )
+    workspaceStore.setState({
+      editorHistory: ["src/b.ts", "src/a.ts"],
+    })
+
+    const selected = commands.selectPreviousEditor()
+
+    expect(selected).toBe(true)
+    expect(workspaceStore.getState().selectedFilePath).toBe("src/a.ts")
   })
 
   it("renames tabs, cached documents, dirty markers, and definition target", () => {
@@ -180,6 +269,7 @@ describe("editor commands", () => {
     expect(result.wasDirty).toBe(true)
     expect(workspaceStore.getState().openFilePaths).toEqual(["src/new.ts"])
     expect(workspaceStore.getState().selectedFilePath).toBe("src/new.ts")
+    expect(workspaceStore.getState().editorHistory).toEqual(["src/new.ts"])
     expect(documentStore.getState().dirtyFilePaths.has("src/old.ts")).toBe(
       false
     )
@@ -202,6 +292,10 @@ describe("editor commands", () => {
     expect(workspaceStore.getState().rootFolder?.path).toBe("/repo")
     expect(workspaceStore.getState().openFilePaths).toEqual([])
     expect(workspaceStore.getState().selectedFilePath).toBe(null)
+    expect(workspaceStore.getState().editorHistory).toEqual([])
+    expect(workspaceStore.getState().gitPanelOpen).toBe(true)
+    expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([])
+    expect(workspaceStore.getState().sidebarVisible).toBe(true)
     expect(workspaceStore.getState().workspacePanelTab).toBe("files")
     expect(documentStore.getState().dirtyFilePaths).toEqual(new Set())
     expect(documentStore.getState().fallbackDocumentPath).toBe(null)
@@ -228,9 +322,13 @@ function workspaceState(
 ): CachedWorkspaceState {
   return {
     diffViewMode: "split",
+    editorHistory: selectedFilePath ? [selectedFilePath] : [],
+    gitPanelOpen: true,
     openFilePaths,
+    recentlyClosedEditorPaths: [],
     rootFolder: rootFolder(""),
     selectedFilePath,
+    sidebarVisible: true,
     workspacePanelTab: "files",
   }
 }

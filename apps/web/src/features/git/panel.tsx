@@ -2,9 +2,10 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useMemo, useState, type ComponentProps, type ReactNode } from "react"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { errorMessage } from "@/lib/file-server"
 import { useStatus } from "./hooks"
-import { StateContext, createGitStore, useGitState } from "./state"
+import { StateContext, createGitStore } from "./state"
 import type { FileStatus } from "./types"
 import { changeRows } from "./utils"
 import { ChangeGroup } from "./components/change-group"
@@ -39,7 +40,7 @@ function PanelContent({
   const files = status.data?.files ?? EMPTY_FILES
   const repository = status.data?.repository ?? null
   const rows = useMemo(() => changeRows(files), [files])
-  const panelOpen = useGitState((state) => state.panelOpen)
+  const panelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
 
   if (status.isPending) {
@@ -94,8 +95,7 @@ function PanelContent({
             )}
           </div>
         </>
-      )
-      : (
+      ) : (
         <div aria-hidden="true" className="min-h-0 flex-1 bg-background" />
       )}
     </section>

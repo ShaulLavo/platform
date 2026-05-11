@@ -31,6 +31,7 @@ type WorkspaceCachePayload =
       workspacePanelTab: WorkspacePanelTab
     }
   | WorkspaceCachePayloadV4
+  | WorkspaceCachePayloadV5
 
 type WorkspaceCachePayloadV4 = {
   diffViewMode: EditorDiffViewMode
@@ -38,6 +39,19 @@ type WorkspaceCachePayloadV4 = {
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
   version: 4
+  workspacePanelTab: WorkspacePanelTab
+}
+
+type WorkspaceCachePayloadV5 = {
+  diffViewMode: EditorDiffViewMode
+  editorHistory: string[]
+  gitPanelOpen: boolean
+  openFilePaths: string[]
+  recentlyClosedEditorPaths: string[]
+  rootFolder: PickedFsEntry | null
+  selectedFilePath: string | null
+  sidebarVisible: boolean
+  version: 5
   workspacePanelTab: WorkspacePanelTab
 }
 
@@ -92,18 +106,35 @@ const v4Schema = v.object({
   version: v.literal(4),
   workspacePanelTab: workspacePanelTabSchema,
 })
+const v5Schema = v.object({
+  diffViewMode: diffViewModeSchema,
+  editorHistory: v.array(v.string()),
+  gitPanelOpen: v.boolean(),
+  openFilePaths: v.array(v.string()),
+  recentlyClosedEditorPaths: v.array(v.string()),
+  rootFolder: rootFolderSchema,
+  selectedFilePath: selectedFilePathSchema,
+  sidebarVisible: v.boolean(),
+  version: v.literal(5),
+  workspacePanelTab: workspacePanelTabSchema,
+})
 const workspaceCachePayloadSchema = v.variant("version", [
   v1Schema,
   v2Schema,
   v3Schema,
   v4Schema,
+  v5Schema,
 ])
 
 export type CachedWorkspaceState = {
   diffViewMode: EditorDiffViewMode
+  editorHistory: string[]
+  gitPanelOpen: boolean
   openFilePaths: string[]
+  recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
+  sidebarVisible: boolean
   workspacePanelTab: WorkspacePanelTab
 }
 
@@ -120,21 +151,32 @@ export function writeWorkspaceCache({
   selectedFilePath,
   workspacePanelTab,
   diffViewMode,
+  editorHistory,
+  gitPanelOpen,
+  recentlyClosedEditorPaths,
+  sidebarVisible,
 }: CachedWorkspaceState) {
   if (!canUseLocalStorage()) return
 
   try {
     const selectedPath = selectedPathForWorkspace(rootFolder, selectedFilePath)
-    const payload: WorkspaceCachePayloadV4 = {
+    const payload: WorkspaceCachePayloadV5 = {
       diffViewMode,
+      editorHistory: workspacePathsForCache(rootFolder, editorHistory),
+      gitPanelOpen,
       openFilePaths: openPathsForWorkspace(
         rootFolder,
         openFilePaths,
         selectedPath
       ),
+      recentlyClosedEditorPaths: workspacePathsForCache(
+        rootFolder,
+        recentlyClosedEditorPaths
+      ),
       rootFolder,
       selectedFilePath: selectedPath,
-      version: 4,
+      sidebarVisible,
+      version: 5,
       workspacePanelTab,
     }
 
@@ -192,20 +234,35 @@ function workspaceStateFromPayload(
 
   return {
     diffViewMode:
-      payload.version === 4 ? payload.diffViewMode : DEFAULT_DIFF_VIEW_MODE,
+      payload.version >= 4 ? payload.diffViewMode : DEFAULT_DIFF_VIEW_MODE,
+    editorHistory: workspacePathsForCache(
+      payload.rootFolder,
+      payload.version === 5
+        ? payload.editorHistory
+        : selectedFilePathForArray(selectedFilePath)
+    ),
+    gitPanelOpen: payload.version === 5 ? payload.gitPanelOpen : true,
     openFilePaths: openPathsForWorkspace(
       payload.rootFolder,
       payloadOpenPaths,
       selectedFilePath
     ),
+    recentlyClosedEditorPaths:
+      payload.version === 5
+        ? workspacePathsForCache(
+            payload.rootFolder,
+            payload.recentlyClosedEditorPaths
+          )
+        : [],
     rootFolder: payload.rootFolder,
     selectedFilePath,
+    sidebarVisible: payload.version === 5 ? payload.sidebarVisible : true,
     workspacePanelTab: workspacePanelTabFromPayload(payload),
   }
 }
 
 function workspacePanelTabFromPayload(payload: WorkspaceCachePayload) {
-  if (payload.version === 3 || payload.version === 4) {
+  if (payload.version === 3 || payload.version === 4 || payload.version === 5) {
     return payload.workspacePanelTab
   }
 
@@ -236,14 +293,20 @@ function openPathsForWorkspace(
   openFilePaths: readonly string[],
   selectedFilePath: string | null
 ) {
-  const validPaths = openFilePaths.filter((path) =>
-    pathForWorkspace(rootFolder, path)
-  )
-  const uniquePaths = [...new Set(validPaths)]
+  const uniquePaths = workspacePathsForCache(rootFolder, openFilePaths)
   if (!selectedFilePath) return uniquePaths
   if (uniquePaths.includes(selectedFilePath)) return uniquePaths
 
   return [...uniquePaths, selectedFilePath]
+}
+
+function workspacePathsForCache(
+  rootFolder: PickedFsEntry | null,
+  paths: readonly string[]
+) {
+  return [
+    ...new Set(paths.filter((path) => pathForWorkspace(rootFolder, path))),
+  ]
 }
 
 function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
@@ -276,9 +339,13 @@ function selectedFilePathForArray(selectedFilePath: string | null) {
 function emptyWorkspaceState(): CachedWorkspaceState {
   return {
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
+    editorHistory: [],
+    gitPanelOpen: true,
     openFilePaths: [],
+    recentlyClosedEditorPaths: [],
     rootFolder: null,
     selectedFilePath: null,
+    sidebarVisible: true,
     workspacePanelTab: "files",
   }
 }

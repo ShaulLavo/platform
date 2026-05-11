@@ -78,23 +78,6 @@ or runtime behavior needed to bind it safely.
 
 ## Workspace Commands
 
-- File and command navigation:
-  - `workbench.action.quickOpenPreviousEditor`
-  - `workbench.action.quickOpenView`
-  - `workbench.action.gotoSymbol`
-  - `workbench.action.showAllEditors`
-- File lifecycle:
-  - `workbench.action.files.save`
-  - `workbench.action.files.saveAll`
-  - `workbench.action.files.revert`
-  - `workbench.action.reopenClosedEditor`
-- Layout and focus:
-  - `workbench.action.toggleSidebarVisibility`
-  - `workbench.action.togglePanel`
-  - `workbench.action.focusFirstEditorGroup`
-  - `workbench.action.focusSecondEditorGroup`
-  - `workbench.action.focusThirdEditorGroup`
-  - `workbench.action.splitEditor`
 - Views:
   - `workbench.view.explorer`
   - `workbench.view.scm`

@@ -35,6 +35,87 @@ export const workspaceCommandSpecs = [
     ["workbench.action.quickOpen"]
   ),
   workspaceCommand(
+    "workspace.quickOpenPreviousEditor",
+    "Quick open previous editor",
+    "Switch to the previously active editor.",
+    ["workbench.action.quickOpenPreviousEditor"]
+  ),
+  workspaceCommand(
+    "workspace.quickOpenView",
+    "Open view",
+    "Search and focus workspace views.",
+    ["workbench.action.quickOpenView"]
+  ),
+  workspaceCommand(
+    "workspace.gotoSymbol",
+    "Go to symbol in editor",
+    "Search symbols in the active editor.",
+    ["workbench.action.gotoSymbol"]
+  ),
+  workspaceCommand(
+    "workspace.showAllEditors",
+    "Show all editors",
+    "Search open editor tabs.",
+    ["workbench.action.showAllEditors"]
+  ),
+  workspaceCommand("workspace.saveFile", "Save", "Save the active editor.", [
+    "workbench.action.files.save",
+  ]),
+  workspaceCommand(
+    "workspace.saveAllFiles",
+    "Save all",
+    "Save all dirty editors.",
+    ["workbench.action.files.saveAll"]
+  ),
+  workspaceCommand(
+    "workspace.revertFile",
+    "Revert file",
+    "Reload the active editor from disk.",
+    ["workbench.action.files.revert"]
+  ),
+  workspaceCommand(
+    "workspace.reopenClosedEditor",
+    "Reopen closed editor",
+    "Reopen the most recently closed editor tab.",
+    ["workbench.action.reopenClosedEditor"]
+  ),
+  workspaceCommand(
+    "workspace.toggleSidebarVisibility",
+    "Toggle sidebar visibility",
+    "Show or hide the workspace sidebar.",
+    ["workbench.action.toggleSidebarVisibility"]
+  ),
+  workspaceCommand(
+    "workspace.togglePanel",
+    "Toggle panel",
+    "Show or hide the active workspace panel.",
+    ["workbench.action.togglePanel"]
+  ),
+  workspaceCommand(
+    "workspace.focusFirstEditorGroup",
+    "Focus first editor group",
+    "Focus the primary editor group.",
+    ["workbench.action.focusFirstEditorGroup"]
+  ),
+  workspaceCommand(
+    "workspace.focusSecondEditorGroup",
+    "Focus second editor group",
+    "Focus the current editor group in single-group mode.",
+    ["workbench.action.focusSecondEditorGroup"]
+  ),
+  workspaceCommand(
+    "workspace.focusThirdEditorGroup",
+    "Focus third editor group",
+    "Focus the current editor group in single-group mode.",
+    ["workbench.action.focusThirdEditorGroup"]
+  ),
+  workspaceCommand(
+    "workspace.splitEditor",
+    "Split editor",
+    "Focus the current editor in single-group mode.",
+    ["workbench.action.splitEditor"]
+  ),
+  workspaceCommand(
     "workspace.focusEditor",
     "Focus editor",
     "Move keyboard focus to the editor."

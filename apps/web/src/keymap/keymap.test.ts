@@ -93,6 +93,15 @@ describe("command registry", () => {
       vscodeCommandIds: ["actions.find"],
     })
   })
+
+  it("exposes requested VS Code workspace command aliases", () => {
+    for (const [command, vscodeCommandId] of requestedWorkspaceAliases) {
+      expect(platformCommandSpec(command)).toMatchObject({
+        category: "Workspace",
+        vscodeCommandIds: [vscodeCommandId],
+      })
+    }
+  })
 })
 
 describe("defaultPlatformKeyBindings", () => {
@@ -127,7 +136,44 @@ describe("defaultPlatformKeyBindings", () => {
       })
     )
   })
+
+  it("uses editor-scoped group focus bindings without removing global focus bindings", () => {
+    const bindings = defaultPlatformKeyBindings("linux")
+
+    expect(commands(appKeyBindingsForPane(bindings, "global"))).toContain(
+      "workspace.focusFileTree"
+    )
+    expect(commands(appKeyBindingsForPane(bindings, "editor"))).toContain(
+      "workspace.focusFirstEditorGroup"
+    )
+  })
 })
+
+const requestedWorkspaceAliases = [
+  [
+    "workspace.quickOpenPreviousEditor",
+    "workbench.action.quickOpenPreviousEditor",
+  ],
+  ["workspace.quickOpenView", "workbench.action.quickOpenView"],
+  ["workspace.gotoSymbol", "workbench.action.gotoSymbol"],
+  ["workspace.showAllEditors", "workbench.action.showAllEditors"],
+  ["workspace.saveFile", "workbench.action.files.save"],
+  ["workspace.saveAllFiles", "workbench.action.files.saveAll"],
+  ["workspace.revertFile", "workbench.action.files.revert"],
+  ["workspace.reopenClosedEditor", "workbench.action.reopenClosedEditor"],
+  [
+    "workspace.toggleSidebarVisibility",
+    "workbench.action.toggleSidebarVisibility",
+  ],
+  ["workspace.togglePanel", "workbench.action.togglePanel"],
+  ["workspace.focusFirstEditorGroup", "workbench.action.focusFirstEditorGroup"],
+  [
+    "workspace.focusSecondEditorGroup",
+    "workbench.action.focusSecondEditorGroup",
+  ],
+  ["workspace.focusThirdEditorGroup", "workbench.action.focusThirdEditorGroup"],
+  ["workspace.splitEditor", "workbench.action.splitEditor"],
+] as const satisfies readonly (readonly [PlatformCommandId, string])[]
 
 function binding(
   keys: string,

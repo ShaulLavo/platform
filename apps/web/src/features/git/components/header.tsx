@@ -12,7 +12,7 @@ import {
   usePullRemoteMutation,
   usePushRemoteMutation,
 } from "../hooks"
-import { useGitState } from "../state"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import type { RepositoryInfo } from "../types"
 import { aheadBehindLabel } from "../utils"
 import { ToolbarButton } from "./toolbar-button"
@@ -24,8 +24,8 @@ export function Header({
   repository: RepositoryInfo
   rootPath: string
 }) {
-  const open = useGitState((state) => state.panelOpen)
-  const setPanelOpen = useGitState((state) => state.setPanelOpen)
+  const open = useEditorWorkspaceState((state) => state.gitPanelOpen)
+  const setPanelOpen = useEditorWorkspaceState((state) => state.setGitPanelOpen)
 
   return (
     <header className="flex h-9 shrink-0 items-center gap-1 border-b px-2">

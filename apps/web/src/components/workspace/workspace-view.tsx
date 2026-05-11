@@ -40,6 +40,9 @@ export function WorkspaceView({
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
 }) {
   const statusBarState = useEditorUiState((state) => state.statusBarState)
+  const sidebarVisible = useEditorWorkspaceState(
+    (state) => state.sidebarVisible
+  )
   const workspacePanelTab = useEditorWorkspaceState(
     (state) => state.workspacePanelTab
   )
@@ -60,56 +63,60 @@ export function WorkspaceView({
           className="min-h-0 flex-1"
           orientation="horizontal"
         >
-          <ResizablePanel
-            id="workspace-sidebar"
-            className="min-h-0"
-            defaultSize="320px"
-            minSize="240px"
-            maxSize="50%"
-            groupResizeBehavior="preserve-pixel-size"
-          >
-            <aside className="flex h-full min-h-0 flex-col">
-              <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-medium">
-                    {rootFolder.name}
-                  </div>
-                  <div className="truncate text-[11px] text-muted-foreground">
-                    {treeStateLabel(treeState)}
-                  </div>
-                </div>
-              </div>
-              <Tabs
-                className="min-h-0 flex-1"
-                value={workspacePanelTab}
-                orientation="horizontal"
-                onValueChange={handleWorkspacePanelTabChange}
+          {sidebarVisible && (
+            <>
+              <ResizablePanel
+                id="workspace-sidebar"
+                className="min-h-0"
+                defaultSize="320px"
+                minSize="240px"
+                maxSize="50%"
+                groupResizeBehavior="preserve-pixel-size"
               >
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="files">
-                    <FolderIcon />
-                    Files
-                  </TabsTrigger>
-                  <TabsTrigger value="git">
-                    <GitBranchIcon />
-                    Git
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent keepMounted value="files">
-                  <WorkspaceTreePane
-                    key={rootFolder.path}
-                    rootPath={rootFolder.path}
-                    state={treeState}
-                    onLoadDirectory={onLoadDirectory}
-                  />
-                </TabsContent>
-                <TabsContent keepMounted value="git">
-                  <GitPanel rootPath={rootFolder.path} />
-                </TabsContent>
-              </Tabs>
-            </aside>
-          </ResizablePanel>
-          <ResizableHandle withHandle />
+                <aside className="flex h-full min-h-0 flex-col">
+                  <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-medium">
+                        {rootFolder.name}
+                      </div>
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {treeStateLabel(treeState)}
+                      </div>
+                    </div>
+                  </div>
+                  <Tabs
+                    className="min-h-0 flex-1"
+                    value={workspacePanelTab}
+                    orientation="horizontal"
+                    onValueChange={handleWorkspacePanelTabChange}
+                  >
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="files">
+                        <FolderIcon />
+                        Files
+                      </TabsTrigger>
+                      <TabsTrigger value="git">
+                        <GitBranchIcon />
+                        Git
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent keepMounted value="files">
+                      <WorkspaceTreePane
+                        key={rootFolder.path}
+                        rootPath={rootFolder.path}
+                        state={treeState}
+                        onLoadDirectory={onLoadDirectory}
+                      />
+                    </TabsContent>
+                    <TabsContent keepMounted value="git">
+                      <GitPanel rootPath={rootFolder.path} />
+                    </TabsContent>
+                  </Tabs>
+                </aside>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+            </>
+          )}
           <ResizablePanel
             id="workspace-editor"
             className="h-full min-h-0 min-w-0 overflow-hidden"

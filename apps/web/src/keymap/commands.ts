@@ -5,12 +5,25 @@ import {
   type WorkspaceFocusArea,
 } from "@/components/workspace/workspace-focus-state"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import {
+  useEditorDocumentStoreApi,
+  type CachedEditorDocument,
+  type EditorDocumentStore,
+  type EditorDocumentStoreApi,
+} from "@/features/editor/state/editor-document-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from "@/features/editor/utils/diff-view-mode"
+import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
+import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { reportError, toClientError } from "@/lib/client-error-taxonomy"
+import { fetchFile, writeFileContent } from "@/lib/file-server"
+import type { FileResult } from "@/lib/file-system-types"
+import { fileSystemKeys } from "@/lib/query-keys"
 import type { WorkspacePanelTab } from "@/lib/workspace-cache"
+import { useQueryClient, type QueryClient } from "@tanstack/react-query"
 
 import {
   editorCommandIdFromPlatform,
@@ -22,13 +35,21 @@ import type { PlatformCommandDispatch } from "./use-app-keymap"
 type WorkspaceCommandContext = {
   readonly closeTab: (path: string) => void
   readonly diffViewMode: EditorDiffViewMode
+  readonly documentStore: EditorDocumentStoreApi
+  readonly gitPanelOpen: boolean
   readonly openPicker: () => void
+  readonly queryClient: QueryClient
+  readonly reopenClosedEditor: () => boolean
   readonly requestEditorFocus: () => void
   readonly selectedFilePath: string | null
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: WorkspaceFocusArea) => void
+  readonly setGitPanelOpen: (open: boolean) => void
+  readonly setSidebarVisible: (visible: boolean) => void
   readonly setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
   readonly showCommandPalette: (initialSearch?: string) => void
+  readonly sidebarVisible: boolean
+  readonly selectPreviousEditor: () => boolean
 }
 
 type WorkspaceCommandHandler = (
@@ -40,13 +61,25 @@ export function usePlatformCommandDispatch({
 }: {
   readonly showCommandPalette?: (initialSearch?: string) => void
 } = {}): PlatformCommandDispatch {
+  const documentStore = useEditorDocumentStoreApi()
+  const queryClient = useQueryClient()
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
+  const gitPanelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const selectedFilePath = useEditorWorkspaceState(
     (state) => state.selectedFilePath
   )
+  const sidebarVisible = useEditorWorkspaceState(
+    (state) => state.sidebarVisible
+  )
   const setDiffViewMode = useEditorWorkspaceState(
     (state) => state.setDiffViewMode
+  )
+  const setGitPanelOpen = useEditorWorkspaceState(
+    (state) => state.setGitPanelOpen
+  )
+  const setSidebarVisible = useEditorWorkspaceState(
+    (state) => state.setSidebarVisible
   )
   const setWorkspacePanelTab = useEditorWorkspaceState(
     (state) => state.setWorkspacePanelTab
@@ -58,7 +91,8 @@ export function usePlatformCommandDispatch({
     (state) => state.dispatchEditorCommand
   )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const { closeTab } = useEditorCommands()
+  const { closeTab, reopenClosedEditor, selectPreviousEditor } =
+    useEditorCommands()
 
   return useCallback(
     (command: PlatformCommandId, event?: KeyboardEvent) => {
@@ -70,26 +104,42 @@ export function usePlatformCommandDispatch({
       return dispatchWorkspaceCommand(workspaceCommand, {
         closeTab,
         diffViewMode,
+        documentStore,
+        gitPanelOpen,
         openPicker,
+        queryClient,
+        reopenClosedEditor,
         requestEditorFocus,
         selectedFilePath,
         setDiffViewMode,
         setFocusArea,
+        setGitPanelOpen,
+        setSidebarVisible,
         setWorkspacePanelTab,
         showCommandPalette,
+        sidebarVisible,
+        selectPreviousEditor,
       })
     },
     [
       closeTab,
       diffViewMode,
+      documentStore,
       dispatchEditorCommand,
+      gitPanelOpen,
       openPicker,
+      queryClient,
+      reopenClosedEditor,
       requestEditorFocus,
       selectedFilePath,
       setDiffViewMode,
       setFocusArea,
+      setGitPanelOpen,
+      setSidebarVisible,
       setWorkspacePanelTab,
       showCommandPalette,
+      sidebarVisible,
+      selectPreviousEditor,
     ]
   )
 }
@@ -112,18 +162,80 @@ const workspaceCommandHandlers: Record<
     requestEditorFocus()
     return true
   },
-  "workspace.focusFileTree": ({ setFocusArea, setWorkspacePanelTab }) => {
+  "workspace.focusFirstEditorGroup": ({ requestEditorFocus }) => {
+    requestEditorFocus()
+    return true
+  },
+  "workspace.focusSecondEditorGroup": ({ requestEditorFocus }) => {
+    requestEditorFocus()
+    return true
+  },
+  "workspace.focusThirdEditorGroup": ({ requestEditorFocus }) => {
+    requestEditorFocus()
+    return true
+  },
+  "workspace.focusFileTree": ({
+    setFocusArea,
+    setSidebarVisible,
+    setWorkspacePanelTab,
+  }) => {
+    setSidebarVisible(true)
     setWorkspacePanelTab("files")
     setFocusArea("file-tree")
     return true
   },
-  "workspace.focusGit": ({ setFocusArea, setWorkspacePanelTab }) => {
+  "workspace.focusGit": ({
+    setFocusArea,
+    setSidebarVisible,
+    setWorkspacePanelTab,
+  }) => {
+    setSidebarVisible(true)
     setWorkspacePanelTab("git")
     setFocusArea("git")
     return true
   },
+  "workspace.gotoSymbol": ({ selectedFilePath, showCommandPalette }) => {
+    if (!fileBackedPath(selectedFilePath)) return false
+
+    showCommandPalette("@")
+    return true
+  },
   "workspace.openFilePicker": ({ openPicker }) => {
     openPicker()
+    return true
+  },
+  "workspace.quickOpenPreviousEditor": ({
+    requestEditorFocus,
+    selectPreviousEditor,
+  }) => {
+    const selected = selectPreviousEditor()
+    if (!selected) return false
+
+    requestEditorFocus()
+    return true
+  },
+  "workspace.quickOpenView": ({ showCommandPalette }) => {
+    showCommandPalette("view ")
+    return true
+  },
+  "workspace.reopenClosedEditor": ({ reopenClosedEditor }) =>
+    reopenClosedEditor(),
+  "workspace.revertFile": ({ documentStore, queryClient, selectedFilePath }) =>
+    runFileLifecycle(selectedFilePath, () =>
+      revertSelectedEditorDocument(documentStore, queryClient, selectedFilePath)
+    ),
+  "workspace.saveAllFiles": ({ documentStore, queryClient }) => {
+    void saveAllEditorDocuments(documentStore, queryClient).catch(
+      reportCommandError
+    )
+    return true
+  },
+  "workspace.saveFile": ({ documentStore, queryClient, selectedFilePath }) =>
+    runFileLifecycle(selectedFilePath, () =>
+      saveSelectedEditorDocument(documentStore, queryClient, selectedFilePath)
+    ),
+  "workspace.showAllEditors": ({ showCommandPalette }) => {
+    showCommandPalette("edt ")
     return true
   },
   "workspace.showCommandPalette": ({ showCommandPalette }) => {
@@ -134,8 +246,32 @@ const workspaceCommandHandlers: Record<
     showCommandPalette("")
     return true
   },
+  "workspace.splitEditor": ({ requestEditorFocus }) => {
+    requestEditorFocus()
+    return true
+  },
   "workspace.toggleDiffViewMode": ({ diffViewMode, setDiffViewMode }) => {
     setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
+    return true
+  },
+  "workspace.togglePanel": ({
+    gitPanelOpen,
+    setFocusArea,
+    setGitPanelOpen,
+    setSidebarVisible,
+    setWorkspacePanelTab,
+  }) => {
+    setSidebarVisible(true)
+    setWorkspacePanelTab("git")
+    setGitPanelOpen(!gitPanelOpen)
+    setFocusArea("git")
+    return true
+  },
+  "workspace.toggleSidebarVisibility": ({
+    setSidebarVisible,
+    sidebarVisible,
+  }) => {
+    setSidebarVisible(!sidebarVisible)
     return true
   },
 }
@@ -148,6 +284,113 @@ function closeSelectedTab(
 
   closeTab(selectedFilePath)
   return true
+}
+
+function runFileLifecycle(
+  selectedFilePath: string | null,
+  operation: () => Promise<boolean>
+) {
+  if (!fileBackedPath(selectedFilePath)) return false
+
+  void operation().catch(reportCommandError)
+  return true
+}
+
+async function saveSelectedEditorDocument(
+  documentStore: EditorDocumentStoreApi,
+  queryClient: QueryClient,
+  selectedFilePath: string | null
+) {
+  const path = fileBackedPath(selectedFilePath)
+  if (!path) return false
+
+  const state = documentStore.getState()
+  const document = state.getCachedEditorDocument(path)
+  if (!document) return false
+  if (!isDirtyCachedDocument(state, path)) return true
+
+  await saveCachedEditorDocument(documentStore, queryClient, document)
+  return true
+}
+
+async function saveAllEditorDocuments(
+  documentStore: EditorDocumentStoreApi,
+  queryClient: QueryClient
+) {
+  const state = documentStore.getState()
+  const dirtyDocuments = Object.values(state.documents).filter(
+    (document) =>
+      fileBackedPath(document.path) &&
+      isDirtyCachedDocument(state, document.path)
+  )
+
+  for (const document of dirtyDocuments) {
+    await saveCachedEditorDocument(documentStore, queryClient, document)
+  }
+}
+
+async function saveCachedEditorDocument(
+  documentStore: EditorDocumentStoreApi,
+  queryClient: QueryClient,
+  document: CachedEditorDocument
+) {
+  const content = document.session.getText()
+  const entry = await writeFileContent(
+    document.path,
+    content,
+    document.revision
+  )
+  const file = fileResultForSavedDocument(document.path, content, entry)
+  queryClient.setQueryData(fileSystemKeys.file(document.path), file)
+  documentStore
+    .getState()
+    .markCachedEditorDocumentClean(document.path, entry.mtimeMs)
+}
+
+async function revertSelectedEditorDocument(
+  documentStore: EditorDocumentStoreApi,
+  queryClient: QueryClient,
+  selectedFilePath: string | null
+) {
+  const path = fileBackedPath(selectedFilePath)
+  if (!path) return false
+
+  const file = await fetchFile(path, new AbortController().signal)
+  queryClient.setQueryData(fileSystemKeys.file(path), file)
+  documentStore.getState().forceReplaceCachedEditorDocument(file, path)
+  return true
+}
+
+function fileResultForSavedDocument(
+  path: string,
+  content: string,
+  entry: { readonly mtimeMs: number; readonly size: number }
+): FileResult {
+  return {
+    content,
+    mtimeMs: entry.mtimeMs,
+    path,
+    size: entry.size,
+  }
+}
+
+function isDirtyCachedDocument(state: EditorDocumentStore, path: string) {
+  return (
+    state.dirtyFilePaths.has(path) ||
+    state.documents[path]?.session.isDirty() === true
+  )
+}
+
+function fileBackedPath(path: string | null) {
+  if (!path) return null
+  if (parseDiffDocumentId(path)) return null
+  if (parseConflictDiffDocumentId(path)) return null
+
+  return path
+}
+
+function reportCommandError(error: unknown) {
+  reportError(toClientError(error))
 }
 
 function workspaceCommandIdFromPlatform(

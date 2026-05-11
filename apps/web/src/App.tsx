@@ -43,7 +43,15 @@ function AppContent() {
     (state) => state.selectedFilePath
   )
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
+  const editorHistory = useEditorWorkspaceState((state) => state.editorHistory)
+  const gitPanelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
+  const recentlyClosedEditorPaths = useEditorWorkspaceState(
+    (state) => state.recentlyClosedEditorPaths
+  )
+  const sidebarVisible = useEditorWorkspaceState(
+    (state) => state.sidebarVisible
+  )
   const workspacePanelTab = useEditorWorkspaceState(
     (state) => state.workspacePanelTab
   )
@@ -81,15 +89,23 @@ function AppContent() {
     writeWorkspaceCache({
       openFilePaths,
       diffViewMode,
+      editorHistory,
+      gitPanelOpen,
+      recentlyClosedEditorPaths,
       rootFolder,
       selectedFilePath,
+      sidebarVisible,
       workspacePanelTab,
     })
   }, [
     diffViewMode,
+    editorHistory,
+    gitPanelOpen,
     openFilePaths,
+    recentlyClosedEditorPaths,
     rootFolder,
     selectedFilePath,
+    sidebarVisible,
     workspacePanelTab,
   ])
 
