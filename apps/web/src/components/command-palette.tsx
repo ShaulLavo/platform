@@ -19,6 +19,7 @@ import { useCallback, useMemo } from "react"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorDocumentState } from "@/features/editor/state/editor-document-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
+import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import {
   fetchDocumentSymbols,
   type FlatDocumentSymbol,
@@ -147,13 +148,14 @@ export function CommandPalette({
     () => editorPaletteItems(openFilePaths, selectedFilePath),
     [openFilePaths, selectedFilePath]
   )
+  const selectedFileBackedPath = fileBackedPath(selectedFilePath)
   const symbolsEnabled =
-    mode === "symbols" && Boolean(rootFolder && selectedFilePath)
+    mode === "symbols" && Boolean(rootFolder && selectedFileBackedPath)
   const symbolQuery = useQuery({
     enabled: symbolsEnabled,
     queryFn: ({ signal }) =>
       fetchDocumentSymbols({
-        path: selectedFilePath ?? "",
+        path: selectedFileBackedPath ?? "",
         rootPath: rootFolder?.path ?? "",
         signal,
         text: selectedDocumentText,
@@ -161,7 +163,7 @@ export function CommandPalette({
     queryKey: [
       "document-symbols",
       rootFolder?.path ?? "",
-      selectedFilePath ?? "",
+      selectedFileBackedPath ?? "",
       selectedDocumentText ?? "",
     ],
   })
@@ -634,10 +636,17 @@ function isCommandDisabled(
   if (command === "workspace.showCommandPalette") return false
   if (command === "workspace.openFilePicker") return false
   if (!hasWorkspace) return true
-  if (selectedFileCommands.has(command)) return !selectedFilePath
-  if (isEditorPlatformCommandId(command)) return !selectedFilePath
+  if (selectedFileCommands.has(command)) return !fileBackedPath(selectedFilePath)
+  if (isEditorPlatformCommandId(command)) return !fileBackedPath(selectedFilePath)
 
   return false
+}
+
+function fileBackedPath(path: string | null) {
+  if (!path) return null
+  if (parseSearchBufferDocumentId(path)) return null
+
+  return path
 }
 
 function CommandCategoryIcon({ category }: { readonly category: string }) {

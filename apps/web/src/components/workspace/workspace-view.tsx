@@ -6,6 +6,7 @@ import { FileViewer } from "@/components/workspace/file-viewer"
 import { TreePane } from "@/components/workspace/tree-pane"
 import { WorkspaceSearchPane } from "@/components/workspace/workspace-search-pane"
 import { FolderIcon, GitBranchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
+import { useSearchBufferRuntime } from "@/features/search/use-search-buffer"
 import { Panel as GitPanel } from "@/features/git/panel"
 import { useStatus } from "@/features/git/hooks"
 import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
@@ -50,6 +51,7 @@ export function WorkspaceView({
   const setWorkspacePanelTab = useEditorWorkspaceState(
     (state) => state.setWorkspacePanelTab
   )
+  useSearchBufferRuntime(rootFolder.path)
 
   function handleWorkspacePanelTabChange(value: string) {
     if (!isWorkspacePanelTab(value)) return

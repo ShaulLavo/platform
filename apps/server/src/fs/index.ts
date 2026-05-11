@@ -31,6 +31,10 @@ export {
   treeQuerySchema,
   watchClientMessageSchema,
   watchServerMessageSchema,
+  workspaceSearchDoneEventSchema,
+  workspaceSearchEventSchema,
+  workspaceSearchMatchSchema,
+  workspaceSearchSourceSchema,
   writeBodySchema,
 } from "./contracts"
 export * from "./errors"

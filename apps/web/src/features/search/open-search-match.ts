@@ -1,0 +1,61 @@
+import type { WorkspaceSearchMatch } from "@workspace/contracts"
+import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+
+import type { EditorCommands } from "@/features/editor/state/editor-commands"
+
+export function openWorkspaceSearchMatch(
+  match: WorkspaceSearchMatch,
+  query: string,
+  commands: Pick<EditorCommands, "openDefinition" | "selectFile">
+) {
+  if (!isContentLocation(match)) {
+    commands.selectFile(match.path)
+    return
+  }
+
+  commands.openDefinition(searchDefinitionTarget(match, query))
+}
+
+function isContentLocation(
+  match: WorkspaceSearchMatch
+): match is WorkspaceSearchMatch & { column: number; line: number } {
+  if (match.kind !== "content") return false
+  if (typeof match.line !== "number") return false
+
+  return typeof match.column === "number"
+}
+
+function searchDefinitionTarget(
+  match: WorkspaceSearchMatch & { column: number; line: number },
+  query: string
+): TypeScriptLspDefinitionTarget {
+  const line = Math.max(0, match.line - 1)
+  const character = Math.max(0, match.column - 1)
+  const endCharacter = searchEndCharacter(match, query, character)
+
+  return {
+    path: match.path,
+    range: {
+      end: { character: endCharacter, line },
+      start: { character, line },
+    },
+    uri: fileUriForPath(match.path),
+  }
+}
+
+function searchEndCharacter(
+  match: WorkspaceSearchMatch & { column: number; line: number },
+  query: string,
+  character: number
+) {
+  if (typeof match.endColumn === "number") {
+    return Math.max(character + 1, match.endColumn - 1)
+  }
+
+  return character + Math.max(1, query.length)
+}
+
+function fileUriForPath(path: string) {
+  const normalized = path.replace(/^\/+/, "")
+  return `file:///${normalized.split("/").map(encodeURIComponent).join("/")}`
+}

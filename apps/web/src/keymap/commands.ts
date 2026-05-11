@@ -18,6 +18,7 @@ import {
 } from "@/features/editor/utils/diff-view-mode"
 import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
 import { fetchFile, writeFileContent } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
@@ -385,6 +386,7 @@ function fileBackedPath(path: string | null) {
   if (!path) return null
   if (parseDiffDocumentId(path)) return null
   if (parseConflictDiffDocumentId(path)) return null
+  if (parseSearchBufferDocumentId(path)) return null
 
   return path
 }

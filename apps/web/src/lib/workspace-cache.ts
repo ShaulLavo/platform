@@ -6,6 +6,7 @@ import {
 } from "@/features/editor/utils/diff-view-mode"
 import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
 import * as v from "valibot"
 
@@ -280,6 +281,7 @@ function selectedPathForWorkspace(
   if (!rootFolder) return null
   if (!selectedFilePath) return null
   if (parseConflictDiffDocumentId(selectedFilePath)) return null
+  if (parseSearchBufferDocumentId(selectedFilePath)) return null
   if (
     isPathInWorkspace(
       backingPathForWorkspace(selectedFilePath),
@@ -316,12 +318,14 @@ function workspacePathsForCache(
 function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
   if (!rootFolder) return false
   if (parseConflictDiffDocumentId(path)) return false
+  if (parseSearchBufferDocumentId(path)) return false
 
   return isPathInWorkspace(backingPathForWorkspace(path), rootFolder.path)
 }
 
 function backingPathForWorkspace(path: string) {
   if (parseConflictDiffDocumentId(path)) return ""
+  if (parseSearchBufferDocumentId(path)) return ""
 
   const diff = parseDiffDocumentId(path)
   if (diff) return diff.path

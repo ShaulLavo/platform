@@ -3,6 +3,9 @@ import type {
   TreeEntry as ContractsTreeEntry,
   WatchClientMessage as ContractsWatchClientMessage,
   WatchServerMessage as ContractsWatchServerMessage,
+  WorkspaceSearchDoneEvent as ContractsWorkspaceSearchDoneEvent,
+  WorkspaceSearchEvent as ContractsWorkspaceSearchEvent,
+  WorkspaceSearchMatch as ContractsWorkspaceSearchMatch,
 } from "@workspace/contracts"
 import * as v from "valibot"
 
@@ -54,6 +57,44 @@ export const findQuerySchema = v.object({
   entryType: v.optional(entryTypeQueryValueSchema),
   maxDepth: v.optional(depthQueryValueSchema),
 })
+
+export const workspaceSearchSourceSchema = v.union([
+  v.literal("disk"),
+  v.literal("open-buffer"),
+])
+
+export const workspaceSearchMatchSchema = v.object({
+  column: v.optional(v.number()),
+  endColumn: v.optional(v.number()),
+  kind: v.union([v.literal("name"), v.literal("content")]),
+  line: v.optional(v.number()),
+  path: pathSchema,
+  preview: v.optional(v.string()),
+  source: workspaceSearchSourceSchema,
+  targetType: v.optional(entryTypeQueryValueSchema),
+  type: entryTypeQueryValueSchema,
+})
+
+export const workspaceSearchDoneEventSchema = v.object({
+  count: v.number(),
+  path: pathSchema,
+  query: v.string(),
+  truncated: v.boolean(),
+  type: v.literal("done"),
+})
+
+export const workspaceSearchEventSchema = v.variant("type", [
+  v.object({
+    match: workspaceSearchMatchSchema,
+    type: v.literal("match"),
+  }),
+  workspaceSearchDoneEventSchema,
+  v.object({
+    code: v.string(),
+    message: v.string(),
+    type: v.literal("error"),
+  }),
+])
 
 export const eventsQuerySchema = v.object({
   path: v.optional(pathSchema),
@@ -204,6 +245,27 @@ export const _assertWatchServerMessageParity: Assert<
   Equals<
     v.InferOutput<typeof watchServerMessageSchema>,
     ContractsWatchServerMessage
+  >
+> = true
+
+export const _assertWorkspaceSearchMatchParity: Assert<
+  Equals<
+    v.InferOutput<typeof workspaceSearchMatchSchema>,
+    ContractsWorkspaceSearchMatch
+  >
+> = true
+
+export const _assertWorkspaceSearchDoneEventParity: Assert<
+  Equals<
+    v.InferOutput<typeof workspaceSearchDoneEventSchema>,
+    ContractsWorkspaceSearchDoneEvent
+  >
+> = true
+
+export const _assertWorkspaceSearchEventParity: Assert<
+  Equals<
+    v.InferOutput<typeof workspaceSearchEventSchema>,
+    ContractsWorkspaceSearchEvent
   >
 > = true
 

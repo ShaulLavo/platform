@@ -1959,12 +1959,17 @@ function isFindMatch(match: unknown): match is FindMatch {
   if (!match || typeof match !== "object") return false
   if (!("kind" in match) || match.kind !== "name") return false
   if (!("path" in match) || typeof match.path !== "string") return false
+  if (!("source" in match) || !isFindMatchSource(match.source)) return false
   if (!("type" in match) || !isFsEntryType(match.type)) return false
   if ("targetType" in match && !isOptionalFsEntryType(match.targetType)) {
     return false
   }
 
   return true
+}
+
+function isFindMatchSource(source: unknown) {
+  return source === "disk" || source === "open-buffer"
 }
 
 function isOptionalFsEntryType(type: unknown): type is FsEntryType | undefined {

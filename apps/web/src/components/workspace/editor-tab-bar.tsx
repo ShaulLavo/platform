@@ -45,6 +45,11 @@ import {
   diffDocumentTitle,
   parseDiffDocumentId,
 } from "@/features/git/diff-document"
+import {
+  parseSearchBufferDocumentId,
+  searchBufferDocumentLabel,
+  searchBufferDocumentTitle,
+} from "@/features/search/search-buffer-document"
 import { useStatus } from "@/features/git/hooks"
 import {
   gitStatusSymbol,
@@ -942,6 +947,8 @@ function iconName(
   conflicts: Readonly<Record<string, { remotePath: string }>>
 ) {
   const diff = parseDiffDocumentId(path)
+  const searchBuffer = parseSearchBufferDocumentId(path)
+  if (searchBuffer) return "search.txt"
   if (diff) return basename(diff.path)
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return basename(conflict.remotePath)
@@ -955,6 +962,7 @@ function tabName(
   conflicts: Readonly<Record<string, { remotePath: string }>>
 ) {
   if (parseDiffDocumentId(path)) return diffDocumentLabel(path)
+  if (parseSearchBufferDocumentId(path)) return searchBufferDocumentLabel()
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return conflictDiffDocumentLabel(conflict.remotePath)
   if (parseConflictDiffDocumentId(path)) return "Conflict"
@@ -967,6 +975,8 @@ function tabTitle(
   conflicts: Readonly<Record<string, { remotePath: string }>>
 ) {
   if (parseDiffDocumentId(path)) return diffDocumentTitle(path)
+  const searchBuffer = parseSearchBufferDocumentId(path)
+  if (searchBuffer) return searchBufferDocumentTitle(searchBuffer.rootPath)
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return conflictDiffDocumentTitle(conflict.remotePath)
   if (parseConflictDiffDocumentId(path)) return "Filesystem conflict editor"
@@ -980,6 +990,7 @@ function tabDiffStatus(
   rootPath: string
 ) {
   if (parseConflictDiffDocumentId(path)) return null
+  if (parseSearchBufferDocumentId(path)) return null
 
   const diff = parseDiffDocumentId(path)
   if (!diff) return null

@@ -6,6 +6,8 @@ import {
   findQuerySchema,
   treeEntrySchema,
   treeQuerySchema,
+  workspaceSearchEventSchema,
+  workspaceSearchMatchSchema,
 } from "./contracts"
 
 describe("filesystem contracts", () => {
@@ -46,6 +48,30 @@ describe("filesystem contracts", () => {
       size: 42,
       targetType: "file",
       type: "file",
+    })
+  })
+
+  it("validates shared workspace search event shapes", () => {
+    const match = {
+      column: 7,
+      endColumn: 13,
+      kind: "content",
+      line: 3,
+      path: "src/app.ts",
+      preview: "const result = search()",
+      source: "disk",
+      type: "file",
+    } as const
+
+    expect(v.parse(workspaceSearchMatchSchema, match)).toEqual(match)
+    expect(
+      v.parse(workspaceSearchEventSchema, {
+        match,
+        type: "match",
+      })
+    ).toEqual({
+      match,
+      type: "match",
     })
   })
 })

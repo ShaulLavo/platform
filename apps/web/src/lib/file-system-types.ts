@@ -1,6 +1,7 @@
 import type {
   EntryTypeFilter,
   TreeEntry as ContractsTreeEntry,
+  WorkspaceSearchMatch,
 } from "@workspace/contracts"
 
 export type { FileResult } from "@workspace/contracts"
@@ -24,14 +25,7 @@ export type TreeResult = {
 
 export type StatResult = Omit<FsEntry, "children" | "name">
 
-export type FindMatch = {
-  kind: "name" | "content"
-  column?: number
-  line?: number
-  path: string
-  preview?: string
-  type: EntryTypeFilter
-  targetType?: EntryTypeFilter
+export type FindMatch = WorkspaceSearchMatch & {
   searchScope?: SearchScope
 }
 

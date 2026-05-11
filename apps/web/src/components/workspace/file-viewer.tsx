@@ -22,6 +22,8 @@ import {
 } from "@/features/git/components/diff-viewer"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { useDiffDocumentDiff } from "@/features/git/hooks"
+import { SearchBufferEditor } from "@/features/search/search-buffer-editor"
+import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
 import {
   createFileContent,
@@ -94,8 +96,14 @@ export function FileViewer({
     () => parseConflictDiffDocumentId(selectedFilePath),
     [selectedFilePath]
   )
+  const selectedSearchBuffer = useMemo(
+    () => parseSearchBufferDocumentId(selectedFilePath),
+    [selectedFilePath]
+  )
   const selectedFile =
-    selectedDiff || selectedConflictDiff ? null : readyFile(fileState)
+    selectedDiff || selectedConflictDiff || selectedSearchBuffer
+      ? null
+      : readyFile(fileState)
   const selectedDiffQuery = useDiffDocumentDiff(selectedDiff)
   const selectedCachedDocument = selectedFilePath
     ? documentWithScroll(documents[selectedFilePath], scrollPositionByPath)
@@ -158,6 +166,8 @@ export function FileViewer({
             path={selectedDiff.path}
             ref={diffViewerRef}
           />
+        ) : selectedSearchBuffer ? (
+          <SearchBufferEditor rootPath={selectedSearchBuffer.rootPath} />
         ) : (
           <FileViewerBody
             cachedDocument={visibleDocument}

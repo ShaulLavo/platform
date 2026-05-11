@@ -16,32 +16,22 @@ import {
   isFileEntry,
   matchesEntryType,
   readEntryStats,
-  type FsEntryType,
   type FsEntryTypeCarrier,
 } from "./stat"
 import type { EntryTypeFilter } from "./contracts"
+import type {
+  WorkspaceSearchDoneEvent,
+  WorkspaceSearchMatch,
+  WorkspaceSearchQuery,
+} from "@workspace/contracts"
 
 export const SEARCH_LINE_BUFFER_BYTES = 65_536
 
-export type FindOptions = {
-  query: string
-  path: string
-  limit: number
-  includeContent: boolean
-  entryType?: EntryTypeFilter
-  maxDepth?: number
+export type FindOptions = WorkspaceSearchQuery & {
   maxContentBytes: number
 }
 
-export type FindMatch = {
-  kind: "name" | "content"
-  path: string
-  type: FsEntryType
-  targetType?: FsEntryType
-  line?: number
-  column?: number
-  preview?: string
-}
+export type FindMatch = WorkspaceSearchMatch
 
 export type FindResult = {
   query: string
@@ -54,13 +44,14 @@ export type FindStreamEvent =
       type: "match"
       match: FindMatch
     }
-  | {
-      type: "done"
-      query: string
-      path: string
-      count: number
-      truncated: boolean
-    }
+  | WorkspaceSearchDoneEvent
+
+export type SearchProvider = {
+  search(
+    query: FindOptions,
+    signal?: AbortSignal
+  ): AsyncIterable<FindStreamEvent>
+}
 
 type FindContext = {
   root: {
@@ -78,6 +69,18 @@ type SearchState = {
 }
 
 const commandAvailability = new Map<string, Promise<boolean>>()
+
+export class DiskWorkspaceSearchProvider implements SearchProvider {
+  private paths: WorkspacePaths
+
+  constructor(paths: WorkspacePaths) {
+    this.paths = paths
+  }
+
+  search(query: FindOptions, signal?: AbortSignal) {
+    return searchWorkspaceWithDiskTools(this.paths, query, signal)
+  }
+}
 
 export async function findInWorkspace(
   paths: WorkspacePaths,
@@ -107,6 +110,18 @@ export async function* findInWorkspaceStream(
   options: FindOptions,
   signal?: AbortSignal
 ): AsyncGenerator<FindStreamEvent> {
+  const provider = new DiskWorkspaceSearchProvider(paths)
+
+  yield* provider.search(options, signal)
+}
+
+async function* searchWorkspaceWithDiskTools(
+  paths: WorkspacePaths,
+  options: FindOptions,
+  signal?: AbortSignal
+): AsyncGenerator<FindStreamEvent> {
+  if (signal?.aborted) return
+
   const context = await createFindContext(paths, options)
   const matches = searchWithTools(paths, context, signal)
   const state: SearchState = { count: 0, truncated: false }
@@ -122,11 +137,11 @@ export async function* findInWorkspaceStream(
   }
 
   yield {
-    type: "done",
-    query: context.query,
-    path: context.root.relativePath,
     count: state.count,
+    path: context.root.relativePath,
+    query: context.query,
     truncated: state.truncated,
+    type: "done",
   }
 }
 
@@ -301,6 +316,7 @@ async function nameMatchFromPath(
   return {
     kind: "name",
     path: relativePath,
+    source: "disk",
     targetType: entryStats.targetType,
     type: entryStats.type,
   }
@@ -336,13 +352,15 @@ async function contentMatchFromRgEvent(
   if (!match) return null
 
   return {
+    column: match.start + 1,
+    endColumn: match.end + 1,
     kind: "content",
+    line: event.data.line_number,
     path: relativePath,
+    preview: line.trim().slice(0, 240),
+    source: "disk",
     targetType: entryStats.targetType,
     type: entryStats.type,
-    line: event.data.line_number,
-    column: match.start + 1,
-    preview: line.trim().slice(0, 240),
   }
 }
 
@@ -557,6 +575,7 @@ function addNameMatch(
   matches.push({
     kind: "name",
     path: relativePath,
+    source: "disk",
     targetType: entry.targetType,
     type: entry.type,
   })
@@ -703,13 +722,15 @@ function addLineMatch(
   if (column < 0) return
 
   matches.push({
+    column: column + 1,
+    endColumn: column + query.length + 1,
     kind: "content",
+    line: index + 1,
     path: relativePath,
+    preview: line.trim().slice(0, 240),
+    source: "disk",
     targetType: entry.targetType,
     type: entry.type,
-    line: index + 1,
-    column: column + 1,
-    preview: line.trim().slice(0, 240),
   })
 }
 
@@ -751,6 +772,7 @@ type RgMatchEvent = {
     }
     line_number: number
     submatches: Array<{
+      end: number
       start: number
     }>
   }

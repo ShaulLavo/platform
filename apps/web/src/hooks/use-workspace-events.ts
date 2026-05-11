@@ -26,6 +26,7 @@ import {
 import type { FileResult } from "@/lib/file-system-types"
 import { fsServerUrl } from "@/lib/fs-client"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { fileSystemKeys, gitKeys } from "@/lib/query-keys"
 import { parseSseStream } from "@/lib/sse"
 import { toTreePath } from "@/lib/path-formatters"
@@ -448,7 +449,10 @@ async function refreshAffectedOpenFiles({
 
 function fileBackedOpenPaths(openFilePaths: readonly string[]) {
   return openFilePaths.filter(
-    (path) => !parseDiffDocumentId(path) && !parseConflictDiffDocumentId(path)
+    (path) =>
+      !parseDiffDocumentId(path) &&
+      !parseConflictDiffDocumentId(path) &&
+      !parseSearchBufferDocumentId(path)
   )
 }
 

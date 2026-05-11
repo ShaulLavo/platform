@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { conflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { diffDocumentId } from "@/features/git/diff-document"
+import { searchBufferDocumentId } from "@/features/search/search-buffer-document"
 import type { FileDiff } from "@/features/git/types"
 import { readWorkspaceCache, writeWorkspaceCache } from "@/lib/workspace-cache"
 
@@ -124,6 +125,30 @@ describe("workspace cache", () => {
     })
 
     expect(readWorkspaceCache().workspacePanelTab).toBe("search")
+  })
+
+  it("does not persist transient search buffer tabs", () => {
+    const rootFolder = pickedDirectory("/repo")
+    const searchPath = searchBufferDocumentId("/repo")
+
+    writeWorkspaceCache({
+      diffViewMode: "split",
+      editorHistory: [searchPath],
+      gitPanelOpen: true,
+      openFilePaths: ["/repo/src/readme.md", searchPath],
+      recentlyClosedEditorPaths: [searchPath],
+      rootFolder,
+      selectedFilePath: searchPath,
+      sidebarVisible: true,
+      workspacePanelTab: "search",
+    })
+
+    expect(readWorkspaceCache()).toMatchObject({
+      editorHistory: [],
+      openFilePaths: ["/repo/src/readme.md"],
+      recentlyClosedEditorPaths: [],
+      selectedFilePath: null,
+    })
   })
 })
 

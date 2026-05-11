@@ -8,6 +8,7 @@ import {
 import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
+import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import type { FileResult } from "@/lib/file-system-types"
 import { fetchFile } from "@/lib/file-server"
 import { fileSystemKeys } from "@/lib/query-keys"
@@ -36,6 +37,7 @@ export function useOpenTabCache() {
       (path) =>
         !parseDiffDocumentId(path) &&
         !parseConflictDiffDocumentId(path) &&
+        !parseSearchBufferDocumentId(path) &&
         !getCachedEditorDocument(path)
     )
     if (!paths.length) return

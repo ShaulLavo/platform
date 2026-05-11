@@ -288,6 +288,57 @@ describe("fs rpc filesystem limits", () => {
   })
 })
 
+describe("fs rpc search", () => {
+  it("keeps /fs/find JSON compatibility", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "search-target.ts"), "needle")
+    const app = testApp(root)
+
+    const response = await app.handle(
+      new Request("http://local/fs/find?query=needle&includeContent=true", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const payload = (await response.json()) as {
+      matches: Array<{ path: string; source: string }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(payload.matches).toContainEqual(
+      expect.objectContaining({
+        path: "search-target.ts",
+        source: "disk",
+      })
+    )
+  })
+
+  it("keeps /fs/find/events stream compatibility", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "stream-target.ts"), "needle")
+    const app = testApp(root)
+    const stream = await app.handle(
+      new Request(
+        "http://local/fs/find/events?query=needle&includeContent=true",
+        {
+          headers: trustedOriginHeaders(),
+        }
+      )
+    )
+    const events = createSseReader(stream)
+    const match = await events.next()
+    const done = await events.next()
+
+    expect(match).toMatchObject({
+      match: {
+        path: "stream-target.ts",
+        source: "disk",
+      },
+    })
+    expect(done).toMatchObject({ count: 1, truncated: false })
+    await events.close()
+  })
+})
+
 describe("fs rpc events", () => {
   it("delivers child path changes to parent path subscriptions", async () => {
     const root = await fixtureRoot()
