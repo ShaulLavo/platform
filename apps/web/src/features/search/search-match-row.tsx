@@ -1,5 +1,8 @@
 import { FileTextIcon } from "@phosphor-icons/react"
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
+import type {
+  WorkspaceSearchMatch,
+  WorkspaceSearchQuery,
+} from "@workspace/contracts"
 import {
   useLayoutEffect,
   useMemo,
@@ -10,6 +13,7 @@ import {
 
 import { searchMatchDisplay } from "@/features/search/search-match-display"
 import { HighlightedPreview } from "@/features/search/search-highlight"
+import { workspaceSearchReplacementPreview } from "@/features/search/search-replace"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -22,6 +26,8 @@ export function SearchMatchRow({
   canReplace,
   match,
   previewMaxLength,
+  replaceQuery,
+  replaceText,
   replaceVisible,
   query,
   onOpenMatch,
@@ -32,6 +38,8 @@ export function SearchMatchRow({
   canReplace?: boolean
   match: WorkspaceSearchMatch
   previewMaxLength?: number
+  replaceQuery: WorkspaceSearchQuery | null
+  replaceText: string
   replaceVisible?: boolean
   query: string
   onOpenMatch: (match: WorkspaceSearchMatch) => void
@@ -46,12 +54,21 @@ export function SearchMatchRow({
   const display = searchMatchDisplay(match, query, {
     maxLength: matchPreviewMaxLength(match, measuredPreviewMaxLength),
   })
+  const replacementPreview =
+    replaceVisible && replaceQuery
+      ? workspaceSearchReplacementPreview({
+          match,
+          query: replaceQuery,
+          replaceText,
+        })
+      : null
 
   return (
     <div
       className={cn(
         "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs",
-        active && "bg-muted/60 ring-1 ring-ring/50",
+        active && "bg-muted/60",
+        !active && "hover:bg-muted/55",
         className
       )}
     >
@@ -73,10 +90,11 @@ export function SearchMatchRow({
               preview={display.text}
               query={query}
               range={display.range}
+              replacementText={replacementPreview?.text}
             />
           </span>
           {match.source === "open-buffer" ? (
-            <span className="shrink-0 rounded border px-1 text-[10px] leading-4 text-muted-foreground">
+            <span className="shrink-0 rounded bg-muted/50 px-1 text-[10px] leading-4 text-muted-foreground">
               unsaved
             </span>
           ) : null}
@@ -126,8 +144,9 @@ export function SearchNameMatchRow({
   return (
     <button
       className={cn(
-        "grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none hover:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring/50",
-        active && "bg-muted/60 ring-1 ring-ring/50",
+        "grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
+        active && "bg-muted/60",
+        !active && "hover:bg-muted/55",
         className
       )}
       tabIndex={-1}
@@ -142,7 +161,7 @@ export function SearchNameMatchRow({
           range={display.range}
         />
       </span>
-      <span className="rounded border px-1.5 text-[10px] leading-4 text-muted-foreground">
+      <span className="rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground">
         name
       </span>
     </button>

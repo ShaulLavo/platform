@@ -2,10 +2,12 @@ export function HighlightedPreview({
   preview,
   query,
   range,
+  replacementText,
 }: {
   preview: string
   query: string
   range?: { end: number; start: number } | null
+  replacementText?: string
 }) {
   const highlight = range
     ? previewRangeHighlight(preview, range)
@@ -14,6 +16,21 @@ export function HighlightedPreview({
     return (
       <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
         {preview}
+      </span>
+    )
+  }
+
+  if (replacementText !== undefined) {
+    return (
+      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+        {highlight.before}
+        <mark className="inline-block max-w-full overflow-hidden rounded-sm bg-red-500/15 px-0.5 text-ellipsis whitespace-nowrap text-red-950 line-through decoration-red-700/70 align-bottom dark:bg-red-500/20 dark:text-red-100">
+          {highlight.match}
+        </mark>
+        <mark className="ml-0.5 inline-block max-w-full overflow-hidden rounded-sm bg-emerald-500/15 px-0.5 text-ellipsis whitespace-nowrap text-emerald-950 align-bottom dark:bg-emerald-500/20 dark:text-emerald-100">
+          {replacementText}
+        </mark>
+        {highlight.after}
       </span>
     )
   }

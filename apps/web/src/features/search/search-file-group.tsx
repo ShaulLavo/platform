@@ -24,8 +24,9 @@ export function SearchFileGroupHeader({
   return (
     <div
       className={cn(
-        "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 border-b px-2 py-1.5 text-left",
-        active && "bg-muted/60 ring-1 ring-ring/50",
+        "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left",
+        active && "bg-muted/60",
+        !active && "hover:bg-muted/55",
         className
       )}
     >
@@ -51,7 +52,7 @@ export function SearchFileGroupHeader({
           </span>
         </span>
       </button>
-      <span className="rounded border px-1.5 text-[10px] leading-4 text-muted-foreground">
+      <span className="rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground">
         {group.count}
       </span>
       {replaceVisible ? (

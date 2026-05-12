@@ -93,11 +93,6 @@ export function SearchHistoryInput({
 
   return (
     <div className={cn("relative min-w-0", className)}>
-      {focused ? (
-        <div className="pointer-events-none absolute -top-8 left-3 z-20 rounded-md border border-border bg-popover px-2.5 py-1 text-xs font-medium text-popover-foreground shadow-sm">
-          {label}
-        </div>
-      ) : null}
       {leftAdornment}
       <Input
         aria-label={inputProps["aria-label"] ?? label}

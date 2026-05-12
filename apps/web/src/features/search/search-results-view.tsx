@@ -48,6 +48,7 @@ export function SearchResultsView({
   groups,
   canReplace,
   query,
+  replaceText,
   replaceVisible,
   snapshot,
   onOpenMatch,
@@ -58,6 +59,7 @@ export function SearchResultsView({
   groups: readonly WorkspaceSearchFileGroup[]
   canReplace?: boolean
   query: string
+  replaceText: string
   replaceVisible?: boolean
   snapshot: SearchBufferSnapshot | null
   onOpenMatch: (match: WorkspaceSearchMatch) => void
@@ -67,6 +69,8 @@ export function SearchResultsView({
   const treeId = useId()
   const parentRef = useRef<HTMLDivElement | null>(null)
   const activeResultId = snapshot?.activeResultId ?? null
+  const displayedResultsQuery = snapshot?.resultsSearchQuery?.query ?? null
+  const previousDisplayedResultsQueryRef = useRef<string | null>(null)
   const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
   const previewMaxLength = useSearchPreviewMaxLength(parentRef, replaceVisible)
@@ -83,12 +87,34 @@ export function SearchResultsView({
     overscan: 12,
   })
   const activeIndex = activeItem ? items.indexOf(activeItem) : -1
+  const activeIndexRef = useRef(activeIndex)
 
   useLayoutEffect(() => {
-    if (activeIndex < 0) return
+    activeIndexRef.current = activeIndex
+  }, [activeIndex])
 
-    virtualizer.scrollToIndex(activeIndex, { align: "auto" })
-  }, [activeIndex, virtualizer])
+  useLayoutEffect(() => {
+    if (!activeResultId) return
+
+    const currentActiveIndex = activeIndexRef.current
+    if (currentActiveIndex < 0) return
+
+    virtualizer.scrollToIndex(currentActiveIndex, { align: "auto" })
+  }, [activeResultId, virtualizer])
+
+  useLayoutEffect(() => {
+    if (displayedResultsQuery === null) return
+    if (previousDisplayedResultsQueryRef.current === displayedResultsQuery)
+      return
+
+    previousDisplayedResultsQueryRef.current = displayedResultsQuery
+    resetSearchResultScroll(parentRef, virtualizer)
+    const frame = window.requestAnimationFrame(() =>
+      resetSearchResultScroll(parentRef, virtualizer)
+    )
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [displayedResultsQuery, virtualizer])
 
   if (!snapshot || snapshot.status === "idle") {
     return (
@@ -157,10 +183,11 @@ export function SearchResultsView({
               <SearchResultRow
                 item={item}
                 active={item.id === activeResultId}
-                nextItem={items[virtualItem.index + 1]}
                 canReplace={canReplace}
                 previewMaxLength={previewMaxLength}
                 query={query}
+                replaceQuery={snapshot.resultsSearchQuery}
+                replaceText={replaceText}
                 replaceVisible={replaceVisible}
                 onOpenMatch={onOpenMatch}
                 onReplaceGroup={onReplaceGroup}
@@ -176,13 +203,23 @@ export function SearchResultsView({
   )
 }
 
+function resetSearchResultScroll(
+  ref: RefObject<HTMLDivElement | null>,
+  virtualizer: ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>
+) {
+  if (ref.current) ref.current.scrollTop = 0
+
+  virtualizer.scrollToOffset(0)
+}
+
 function SearchResultRow({
   active,
   item,
-  nextItem,
   canReplace,
   previewMaxLength,
   query,
+  replaceQuery,
+  replaceText,
   replaceVisible,
   onOpenMatch,
   onReplaceGroup,
@@ -192,10 +229,11 @@ function SearchResultRow({
 }: {
   active: boolean
   item: SearchResultItem
-  nextItem?: SearchResultItem
   canReplace?: boolean
   previewMaxLength?: number
   query: string
+  replaceQuery: SearchBufferSnapshot["resultsSearchQuery"]
+  replaceText: string
   replaceVisible?: boolean
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
@@ -207,10 +245,6 @@ function SearchResultRow({
     return (
       <SearchFileGroupHeader
         active={active}
-        className={cn(
-          "rounded-t-md border bg-background",
-          item.group.collapsed && "rounded-b-md"
-        )}
         canReplace={canReplace}
         group={item.group}
         replaceVisible={replaceVisible}
@@ -226,7 +260,6 @@ function SearchResultRow({
     return (
       <SearchNameMatchRow
         active={active}
-        className="rounded-md border bg-background"
         match={item.match}
         previewMaxLength={previewMaxLength}
         query={query}
@@ -239,32 +272,24 @@ function SearchResultRow({
   }
 
   return (
-    <SearchMatchRow
-      active={active}
-      className={cn(
-        "border-x border-b bg-background",
-        isLastGroupMatch(item, nextItem) && "rounded-b-md"
-      )}
-      canReplace={canReplace}
-      match={item.match}
-      previewMaxLength={previewMaxLength}
-      replaceVisible={replaceVisible}
-      query={query}
-      onOpenMatch={() => {
-        onSelectResult(item.id)
-        onOpenMatch(item.match)
-      }}
-      onReplaceMatch={onReplaceMatch}
-    />
+    <div className="ml-4 border-l">
+      <SearchMatchRow
+        active={active}
+        canReplace={canReplace}
+        match={item.match}
+        previewMaxLength={previewMaxLength}
+        replaceQuery={replaceQuery}
+        replaceText={replaceText}
+        replaceVisible={replaceVisible}
+        query={query}
+        onOpenMatch={() => {
+          onSelectResult(item.id)
+          onOpenMatch(item.match)
+        }}
+        onReplaceMatch={onReplaceMatch}
+      />
+    </div>
   )
-}
-
-function isLastGroupMatch(item: SearchResultItem, nextItem?: SearchResultItem) {
-  if (item.type !== "match") return false
-  if (!nextItem) return true
-  if (nextItem.type !== "match") return true
-
-  return nextItem.groupPath !== item.groupPath
 }
 
 function searchResultItemEstimate(item: SearchResultItem | undefined) {

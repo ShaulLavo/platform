@@ -6,6 +6,7 @@ import type {
 
 import {
   applyWorkspaceSearchReplaceEdits,
+  workspaceSearchReplacementPreview,
   workspaceSearchReplacePlan,
 } from "./search-replace"
 
@@ -17,6 +18,83 @@ const QUERY: WorkspaceSearchQuery = {
 }
 
 describe("workspace search replacement planner", () => {
+  it("previews literal replacements against the match preview", () => {
+    expect(
+      workspaceSearchReplacementPreview({
+        match: match({
+          column: 7,
+          endColumn: 13,
+          preview: "const needle = true",
+        }),
+        query: QUERY,
+        replaceText: "pin",
+      })
+    ).toEqual({
+      range: { end: 12, start: 6 },
+      text: "pin",
+    })
+  })
+
+  it("previews regex capture replacements against the match preview", () => {
+    expect(
+      workspaceSearchReplacementPreview({
+        match: match({
+          column: 8,
+          endColumn: 14,
+          preview: "needle useful unused",
+        }),
+        query: {
+          ...QUERY,
+          matchMode: "regex",
+          query: "use(\\w+)",
+        },
+        replaceText: "keep-$1",
+      })
+    ).toEqual({
+      range: { end: 13, start: 7 },
+      text: "keep-ful",
+    })
+  })
+
+  it("does not preview replacements that fail case-sensitive or whole-word validation", () => {
+    expect(
+      workspaceSearchReplacementPreview({
+        match: match({ column: 1, endColumn: 7, preview: "Needle" }),
+        query: { ...QUERY, caseSensitive: true },
+        replaceText: "pin",
+      })
+    ).toBeNull()
+    expect(
+      workspaceSearchReplacementPreview({
+        match: match({ column: 1, endColumn: 7, preview: "needlex" }),
+        query: { ...QUERY, wholeWord: true },
+        replaceText: "pin",
+      })
+    ).toBeNull()
+  })
+
+  it("does not preview stale or out-of-preview ranges", () => {
+    expect(
+      workspaceSearchReplacementPreview({
+        match: match({ column: 1, endColumn: 7, preview: "changed needle" }),
+        query: QUERY,
+        replaceText: "pin",
+      })
+    ).toBeNull()
+    expect(
+      workspaceSearchReplacementPreview({
+        match: match({
+          column: 1,
+          endColumn: 7,
+          preview: "needle",
+          previewStartColumn: 20,
+        }),
+        query: QUERY,
+        replaceText: "pin",
+      })
+    ).toBeNull()
+  })
+
   it("plans literal replacements for validated content ranges", () => {
     const plan = workspaceSearchReplacePlan({
       matches: [match({ column: 7, endColumn: 13 })],
@@ -152,10 +230,14 @@ function match({
   column,
   endColumn,
   line = 1,
+  preview,
+  previewStartColumn,
 }: {
   column: number
   endColumn: number
   line?: number
+  preview?: string
+  previewStartColumn?: number
 }): WorkspaceSearchMatch {
   return {
     column,
@@ -163,6 +245,8 @@ function match({
     kind: "content",
     line,
     path: "repo/src/app.ts",
+    preview,
+    previewStartColumn,
     source: "disk",
     type: "file",
   }

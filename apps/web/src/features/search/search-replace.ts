@@ -10,6 +10,19 @@ export type WorkspaceSearchReplacePlan = {
   skippedCount: number
 }
 
+export type WorkspaceSearchReplacementPreview = {
+  range: {
+    end: number
+    start: number
+  }
+  text: string
+}
+
+type WorkspaceSearchReplaceQuery = Pick<
+  WorkspaceSearchQuery,
+  "caseSensitive" | "matchMode" | "query" | "wholeWord"
+>
+
 type TextLineRange = {
   end: number
   start: number
@@ -72,10 +85,40 @@ export function applyWorkspaceSearchReplaceEdits(
   return next
 }
 
+export function workspaceSearchReplacementPreview({
+  match,
+  query,
+  replaceText,
+}: {
+  match: WorkspaceSearchMatch
+  query: WorkspaceSearchReplaceQuery
+  replaceText: string
+}): WorkspaceSearchReplacementPreview | null {
+  if (!replaceText) return null
+
+  const previewLine = replacementPreviewLine(match)
+  if (!previewLine) return null
+
+  const candidate = replacementMatchInLine(
+    previewLine.line,
+    previewLine.match,
+    query
+  )
+  if (!candidate) return null
+
+  return {
+    range: {
+      end: candidate.to,
+      start: candidate.from,
+    },
+    text: searchReplacementText(query, replaceText, candidate.captures),
+  }
+}
+
 function replacementForSearchMatch(
   text: string,
   match: WorkspaceSearchMatch,
-  query: WorkspaceSearchQuery,
+  query: WorkspaceSearchReplaceQuery,
   replaceText: string
 ): TextEdit | null {
   if (!isReplaceableSearchMatch(match)) return null
@@ -100,7 +143,7 @@ function replacementMatchInLine(
     endColumn: number
     line: number
   },
-  query: WorkspaceSearchQuery
+  query: WorkspaceSearchReplaceQuery
 ): ReplacementMatch | null {
   const from = match.column - 1
   const to = match.endColumn - 1
@@ -116,7 +159,7 @@ function literalReplacementMatch(
   line: string,
   from: number,
   to: number,
-  query: WorkspaceSearchQuery
+  query: WorkspaceSearchReplaceQuery
 ): ReplacementMatch | null {
   const candidate = line.slice(from, to)
   if (!sameSearchText(candidate, query.query, query.caseSensitive)) return null
@@ -129,7 +172,7 @@ function regexReplacementMatch(
   line: string,
   from: number,
   to: number,
-  query: WorkspaceSearchQuery
+  query: WorkspaceSearchReplaceQuery
 ): ReplacementMatch | null {
   const regex = searchRegex(query)
   if (!regex) return null
@@ -145,7 +188,7 @@ function regexReplacementMatch(
 }
 
 function searchReplacementText(
-  query: WorkspaceSearchQuery,
+  query: WorkspaceSearchReplaceQuery,
   replaceText: string,
   captures: readonly string[] | null
 ) {
@@ -246,7 +289,7 @@ function isExactRegexMatch(match: RegExpExecArray, from: number, to: number) {
   return match.index === from && match.index + match[0].length === to
 }
 
-function searchRegex(query: WorkspaceSearchQuery) {
+function searchRegex(query: WorkspaceSearchReplaceQuery) {
   try {
     return new RegExp(query.query, query.caseSensitive ? "gu" : "giu")
   } catch {
@@ -312,6 +355,30 @@ function isReplaceableSearchMatch(
   if (typeof match.endColumn !== "number") return false
 
   return typeof match.line === "number"
+}
+
+function replacementPreviewLine(match: WorkspaceSearchMatch) {
+  if (!isReplaceableSearchMatch(match)) return null
+  if (match.preview === undefined) return null
+
+  const from = match.column - 1 - (match.previewStartColumn ?? 0)
+  const to = match.endColumn - 1 - (match.previewStartColumn ?? 0)
+  if (from < 0 || to <= from) return null
+  if (to > match.preview.length) return null
+
+  return {
+    line: {
+      end: match.preview.length,
+      start: 0,
+      text: match.preview,
+    },
+    match: {
+      ...match,
+      column: from + 1,
+      endColumn: to + 1,
+      line: 1,
+    },
+  }
 }
 
 function mergeAdjacentEdits(edits: readonly TextEdit[]) {

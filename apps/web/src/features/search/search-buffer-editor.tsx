@@ -1,5 +1,3 @@
-import { MagnifyingGlassIcon } from "@phosphor-icons/react"
-
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { openWorkspaceSearchMatch } from "@/features/search/open-search-match"
 import { SearchHistoryInput } from "@/features/search/search-history-input"
@@ -42,11 +40,8 @@ export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
           <SearchHistoryInput
             aria-label="Search workspace"
             className="flex-1"
-            inputClassName="h-8 pr-28 pl-8 text-xs"
+            inputClassName="h-8 pr-28 text-xs"
             label="Search"
-            leftAdornment={
-              <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            }
             rightAdornment={
               <SearchModeButtons
                 className="absolute top-1/2 right-1 -translate-y-1/2"
@@ -87,6 +82,7 @@ export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
         canReplace={replace.canReplace}
         groups={groups}
         query={resultsQuery}
+        replaceText={replaceText}
         replaceVisible={replaceVisible}
         snapshot={snapshot}
         onOpenMatch={(match) =>
