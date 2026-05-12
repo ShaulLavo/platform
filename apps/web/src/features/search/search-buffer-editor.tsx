@@ -1,5 +1,5 @@
 import { Component, useMemo, type ReactNode } from "react"
-import type { EditorKeyBinding } from "@editor/core"
+import type { EditorKeymapLayer } from "@editor/core"
 
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { openWorkspaceSearchMatch } from "@/features/search/open-search-match"
@@ -22,10 +22,10 @@ import { useSearchBufferState } from "@/features/search/search-buffer-state"
 import { useWorkspaceSearchReplace } from "@/features/search/use-search-replace"
 
 export function SearchBufferEditor({
-  editorKeyBindings,
+  editorKeymapLayers,
   rootPath,
 }: {
-  editorKeyBindings: readonly EditorKeyBinding[]
+  editorKeymapLayers: readonly EditorKeymapLayer[]
   rootPath: string
 }) {
   const {
@@ -127,7 +127,7 @@ export function SearchBufferEditor({
             activeResultId={snapshot.activeResultId}
             document={searchDocument}
             documentId={snapshot.id}
-            keymapBindings={editorKeyBindings}
+            keymapLayers={editorKeymapLayers}
             onOpenTarget={handleOpenTarget}
             onSelectResult={selectResult}
           />

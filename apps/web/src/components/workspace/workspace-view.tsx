@@ -6,7 +6,11 @@ import type { PickedFsEntry } from "@/lib/file-system-types"
 import { FileViewer } from "@/components/workspace/file-viewer"
 import { TreePane } from "@/components/workspace/tree-pane"
 import { WorkspaceSearchPane } from "@/components/workspace/workspace-search-pane"
-import { FolderIcon, GitBranchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
+import {
+  FolderIcon,
+  GitBranchIcon,
+  MagnifyingGlassIcon,
+} from "@phosphor-icons/react"
 import { useSearchBufferRuntime } from "@/features/search/use-search-buffer"
 import { Panel as GitPanel } from "@/features/git/panel"
 import { useStatus } from "@/features/git/hooks"
@@ -15,7 +19,7 @@ import type { FileResult, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import type { WorkspacePanelTab } from "@/lib/workspace-cache"
 import { treeStateLabel, type TreeModel } from "@/lib/tree-model"
-import type { EditorKeyBinding } from "@editor/core"
+import type { EditorKeymapLayer } from "@editor/core"
 import {
   Tabs,
   TabsContent,
@@ -30,14 +34,14 @@ import {
 import { useMemo } from "react"
 
 export function WorkspaceView({
-  editorKeyBindings,
+  editorKeymapLayers,
   fileState,
   rootFolder,
   treeState,
   onLoadDirectory,
   onRequestCloseTab,
 }: {
-  editorKeyBindings: readonly EditorKeyBinding[]
+  editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
   rootFolder: PickedFsEntry
   treeState: LoadState<TreeModel>
@@ -136,7 +140,7 @@ export function WorkspaceView({
             minSize="480px"
           >
             <FileViewer
-              editorKeyBindings={editorKeyBindings}
+              editorKeymapLayers={editorKeymapLayers}
               fileState={fileState}
               rootPath={rootFolder.path}
               onRequestCloseTab={onRequestCloseTab}

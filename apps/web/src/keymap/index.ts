@@ -11,7 +11,9 @@ export {
   editorCommandIdFromPlatform,
   editorKeyBindingFromPlatform,
   editorKeyBindingsFromPlatform,
+  editorKeymapLayersFromPlatform,
   isEditorPlatformCommandId,
+  readonlyEditorKeymapLayers,
 } from "./editor-keymap"
 export { usePlatformCommandDispatch } from "./commands"
 export { appKeyBindingsForPane, useAppKeymap } from "./use-app-keymap"

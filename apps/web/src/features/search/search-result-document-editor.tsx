@@ -6,11 +6,11 @@ import { createLineGutterPlugin } from "@editor/gutters"
 import { useEditor } from "@editor/react"
 import { useEffect, useMemo, useRef, type KeyboardEvent } from "react"
 import type {
-  EditorCommandId,
-  EditorKeyBinding,
+  EditorKeymapLayer,
   EditorPlugin,
   EditorViewContributionContext,
 } from "@editor/core"
+import { readonlyEditorKeymapLayers } from "@/keymap"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { EditorFrame } from "@/features/editor/components/editor-frame"
@@ -28,37 +28,10 @@ type SearchResultDocumentEditorProps = {
   activeResultId: SearchResultId | null
   document: SearchResultDocument
   documentId: string
-  keymapBindings: readonly EditorKeyBinding[]
+  keymapLayers: readonly EditorKeymapLayer[]
   onOpenTarget: (target: SearchResultOpenTarget) => void
   onSelectResult: (id: SearchResultId | null) => void
 }
-
-const READONLY_EDIT_COMMANDS = new Set<EditorCommandId>([
-  "addNextOccurrence",
-  "deleteBackward",
-  "deleteForward",
-  "deleteWordLeft",
-  "deleteWordRight",
-  "editor.action.blockComment",
-  "editor.action.changeAll",
-  "editor.action.commentLine",
-  "editor.action.copyLinesDownAction",
-  "editor.action.copyLinesUpAction",
-  "editor.action.deleteLines",
-  "editor.action.indentLines",
-  "editor.action.insertLineAfter",
-  "editor.action.insertLineBefore",
-  "editor.action.moveLinesDownAction",
-  "editor.action.moveLinesUpAction",
-  "editor.action.outdentLines",
-  "findReplace",
-  "indentSelection",
-  "outdentSelection",
-  "redo",
-  "replaceAll",
-  "replaceOne",
-  "undo",
-])
 
 const SEARCH_HIGHLIGHT_STYLE = {
   backgroundColor: "rgba(250, 204, 21, 0.42)",
@@ -68,7 +41,7 @@ export function SearchResultDocumentEditor({
   activeResultId,
   document,
   documentId,
-  keymapBindings,
+  keymapLayers,
   onOpenTarget,
   onSelectResult,
 }: SearchResultDocumentEditorProps) {
@@ -88,9 +61,9 @@ export function SearchResultDocumentEditor({
     () => searchResultDocumentSelection(document, activeResultId),
     [activeResultId, document]
   )
-  const readonlyKeymapBindings = useMemo(
-    () => readonlySearchResultKeymapBindings(keymapBindings),
-    [keymapBindings]
+  const readonlyKeymapLayers = useMemo(
+    () => readonlyEditorKeymapLayers(keymapLayers),
+    [keymapLayers]
   )
   const plugins = useMemo(
     () => [
@@ -103,6 +76,7 @@ export function SearchResultDocumentEditor({
   const editorDocument = useMemo(
     () => ({
       documentId,
+      documentMode: "static" as const,
       revision: searchResultDocumentRevision(document),
       text: document.text,
     }),
@@ -115,9 +89,10 @@ export function SearchResultDocumentEditor({
       rowBackground: true,
     },
     document: editorDocument,
+    editability: "readonly",
     keymap: {
-      bindings: readonlyKeymapBindings,
       defaultBindings: false,
+      layers: readonlyKeymapLayers,
     },
     plugins,
     theme: editorThemeRefresh,
@@ -203,14 +178,6 @@ export function SearchResultDocumentEditor({
         onActivate={() => setFocusArea("editor")}
       />
     </div>
-  )
-}
-
-function readonlySearchResultKeymapBindings(
-  bindings: readonly EditorKeyBinding[]
-) {
-  return bindings.filter(
-    (binding) => !READONLY_EDIT_COMMANDS.has(binding.command)
   )
 }
 

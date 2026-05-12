@@ -36,18 +36,18 @@ import type { FileResult } from "@/lib/file-system-types"
 import { fileSystemKeys } from "@/lib/query-keys"
 import type { LoadState } from "@/lib/load-state"
 import { parseMergeConflicts } from "@editor/core"
-import type { EditorKeyBinding } from "@editor/core"
+import type { EditorKeymapLayer } from "@editor/core"
 import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 export function FileViewer({
-  editorKeyBindings,
+  editorKeymapLayers,
   fileState,
   rootPath,
   onRequestCloseTab,
 }: {
-  editorKeyBindings: readonly EditorKeyBinding[]
+  editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
   rootPath: string
   onRequestCloseTab: RequestCloseTab
@@ -183,14 +183,14 @@ export function FileViewer({
           />
         ) : selectedSearchBuffer ? (
           <SearchBufferEditor
-            editorKeyBindings={editorKeyBindings}
+            editorKeymapLayers={editorKeymapLayers}
             rootPath={selectedSearchBuffer.rootPath}
           />
         ) : (
           <FileViewerBody
             cachedDocument={visibleDocument}
             definitionTarget={definitionTarget}
-            editorKeyBindings={editorKeyBindings}
+            editorKeymapLayers={editorKeymapLayers}
             fileState={fileState}
             rootPath={rootPath}
             onEditorDirtyChange={setCachedEditorDocumentDirty}
@@ -214,7 +214,7 @@ function FileViewerEmpty() {
 function FileViewerBody({
   cachedDocument,
   definitionTarget,
-  editorKeyBindings,
+  editorKeymapLayers,
   fileState,
   rootPath,
   onEditorDirtyChange,
@@ -225,7 +225,7 @@ function FileViewerBody({
 }: {
   cachedDocument: CachedEditorDocument | null
   definitionTarget: TypeScriptLspDefinitionTarget | null
-  editorKeyBindings: readonly EditorKeyBinding[]
+  editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
   rootPath: string
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
@@ -242,7 +242,7 @@ function FileViewerBody({
       <Editor
         definitionTarget={definitionTarget}
         document={cachedDocument}
-        keymapBindings={editorKeyBindings}
+        keymapLayers={editorKeymapLayers}
         rootPath={rootPath}
         onDirtyChange={onEditorDirtyChange}
         onScrollPositionChange={onEditorScrollPositionChange}

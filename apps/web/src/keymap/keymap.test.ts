@@ -3,7 +3,11 @@ import { describe, expect, it } from "bun:test"
 import { activePlatformKeyBindings } from "./active-bindings"
 import { commandHotkeyMeta, platformCommandSpec } from "./command-registry"
 import { defaultPlatformKeyBindings } from "./default-bindings"
-import { editorKeyBindingFromPlatform } from "./editor-keymap"
+import {
+  editorKeyBindingFromPlatform,
+  editorKeymapLayersFromPlatform,
+  readonlyEditorKeymapLayers,
+} from "./editor-keymap"
 import { appKeyBindingsForPane } from "./use-app-keymap"
 import type { PlatformCommandId, PlatformKeyBinding } from "./types"
 
@@ -75,6 +79,42 @@ describe("editorKeyBindingFromPlatform", () => {
         binding("Mod+P", "workspace.openFilePicker", "any")
       )
     ).toBeNull()
+  })
+})
+
+describe("editor keymap layers", () => {
+  it("groups platform editor bindings into command-pack layers", () => {
+    const layers = editorKeymapLayersFromPlatform(
+      defaultPlatformKeyBindings("linux")
+    )
+
+    expect(layerCommands(layers, "platform.navigation")).toContain("cursorLeft")
+    expect(layerCommands(layers, "platform.selection")).toContain("selectAll")
+    expect(layerCommands(layers, "platform.text-editing")).toContain(
+      "deleteBackward"
+    )
+    expect(layerCommands(layers, "platform.advanced-editing")).toContain(
+      "editor.action.commentLine"
+    )
+    expect(layerCommands(layers, "platform.multi-cursor")).toContain(
+      "editor.action.insertCursorAbove"
+    )
+  })
+
+  it("keeps search result keymaps readonly-safe by command pack", () => {
+    const readonlyLayers = readonlyEditorKeymapLayers(
+      editorKeymapLayersFromPlatform(defaultPlatformKeyBindings("linux"))
+    )
+    const readonlyCommands = readonlyLayers.flatMap((layer) =>
+      layer.bindings.map((binding) => binding.command)
+    )
+
+    expect(readonlyCommands).toContain("cursorLeft")
+    expect(readonlyCommands).toContain("selectAll")
+    expect(readonlyCommands).toContain("find")
+    expect(readonlyCommands).not.toContain("deleteBackward")
+    expect(readonlyCommands).not.toContain("findReplace")
+    expect(readonlyCommands).not.toContain("editor.action.insertCursorAbove")
   })
 })
 
@@ -330,4 +370,15 @@ function binding(
 
 function commands(bindings: readonly PlatformKeyBinding[]) {
   return bindings.map((keyBinding) => keyBinding.command)
+}
+
+function layerCommands(
+  layers: ReturnType<typeof editorKeymapLayersFromPlatform>,
+  id: string
+) {
+  return (
+    layers
+      .find((layer) => layer.id === id)
+      ?.bindings.map((binding) => binding.command) ?? []
+  )
 }

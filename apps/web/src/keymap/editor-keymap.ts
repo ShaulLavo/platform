@@ -1,4 +1,13 @@
-import type { EditorCommandId, EditorKeyBinding } from "@editor/core"
+import {
+  defaultEditorCommandPacks,
+  editorKeymapLayersForBindings,
+  filterEditorKeymapLayersByCommandPacks,
+  readonlySafeEditorCommandPacks,
+  type EditorCommandId,
+  type EditorCommandPack,
+  type EditorKeyBinding,
+  type EditorKeymapLayer,
+} from "@editor/core"
 
 import type {
   EditorPlatformCommandId,
@@ -29,6 +38,26 @@ export function editorKeyBindingFromPlatform(
     preventDefault: binding.preventDefault,
     stopPropagation: binding.stopPropagation,
   }
+}
+
+export function editorKeymapLayersFromPlatform(
+  bindings: readonly PlatformKeyBinding[],
+  packs: readonly EditorCommandPack[] = defaultEditorCommandPacks
+): readonly EditorKeymapLayer[] {
+  return editorKeymapLayersForBindings(
+    editorKeyBindingsFromPlatform(bindings),
+    packs,
+    { idPrefix: "platform", source: "app" }
+  )
+}
+
+export function readonlyEditorKeymapLayers(
+  layers: readonly EditorKeymapLayer[]
+): readonly EditorKeymapLayer[] {
+  return filterEditorKeymapLayersByCommandPacks(
+    layers,
+    readonlySafeEditorCommandPacks
+  )
 }
 
 export function isEditorPlatformCommandId(

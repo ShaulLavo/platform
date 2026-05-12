@@ -14,7 +14,7 @@ import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
 import {
   defaultPlatformKeyBindings,
-  editorKeyBindingsFromPlatform,
+  editorKeymapLayersFromPlatform,
   useAppKeymap,
   usePlatformCommandDispatch,
 } from "@/keymap"
@@ -68,8 +68,8 @@ function AppContent() {
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
   const { dirtyTabCloseDialog, requestCloseTab } = useDirtyTabCloseRequest()
   const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
-  const editorKeyBindings = useMemo(
-    () => editorKeyBindingsFromPlatform(keymapBindings),
+  const editorKeymapLayers = useMemo(
+    () => editorKeymapLayersFromPlatform(keymapBindings),
     [keymapBindings]
   )
   const showCommandPalette = useCallback((initialSearch = "") => {
@@ -127,7 +127,7 @@ function AppContent() {
       <div className="flex h-full min-h-0 flex-col">
         {rootFolder ? (
           <WorkspaceView
-            editorKeyBindings={editorKeyBindings}
+            editorKeymapLayers={editorKeymapLayers}
             fileState={fileState}
             rootFolder={rootFolder}
             treeState={treeState}
