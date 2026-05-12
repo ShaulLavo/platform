@@ -255,8 +255,12 @@ function searchResultExcerpt(
     path: item.match.path,
     sourceMatch: item.match,
     startLine: searchResultExcerptStartLine(item.match),
-    text: display.text,
+    text: searchResultExcerptText(display.text),
   }
+}
+
+function searchResultExcerptText(text: string) {
+  return text.replace(/(?:\r\n|\r|\n)$/u, "")
 }
 
 function searchResultExcerptStartLine(match: WorkspaceSearchMatch) {

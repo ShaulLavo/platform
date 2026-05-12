@@ -843,7 +843,7 @@ function contentMatch({
   lineNumber: number
   relativePath: string
 }): FindMatch {
-  const preview = searchPreview(line, columnIndex)
+  const preview = searchPreview(searchContentLineText(line), columnIndex)
 
   return {
     column: columnIndex + 1,
@@ -857,6 +857,10 @@ function contentMatch({
     targetType: entry.targetType,
     type: entry.type,
   }
+}
+
+function searchContentLineText(line: string) {
+  return line.replace(/(?:\r\n|\r|\n)$/u, "")
 }
 
 function searchPreview(line: string, columnIndex: number) {

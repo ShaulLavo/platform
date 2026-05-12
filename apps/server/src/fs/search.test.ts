@@ -125,6 +125,30 @@ describe("workspace disk search provider", () => {
     )
   })
 
+  it("strips line terminators from content previews", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "line.ts"), "const needle = true\n")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+    const match = result.matches.find(
+      (candidate) => candidate.kind === "content"
+    )
+
+    expect(match).toMatchObject({
+      column: 7,
+      endColumn: 13,
+      path: "line.ts",
+      preview: "const needle = true",
+    })
+  })
+
   it("respects case-sensitive content search", async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, "case.ts"), "needle Needle")

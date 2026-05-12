@@ -86,6 +86,20 @@ describe("search result view model", () => {
     ).toBe("needle")
   })
 
+  it("keeps terminal preview line endings out of excerpt editor text", () => {
+    const match = contentMatch({
+      column: 14,
+      endColumn: 20,
+      line: 12,
+      preview: "export const needle = true\n",
+    })
+    const blocks = searchResultFileBlocks([fileGroup([match])], "needle")
+    const excerpt = blocks[0]?.excerpts[0]
+
+    expect(excerpt?.text).toBe("export const needle = true")
+    expect(excerpt?.matchRanges).toEqual([{ end: 19, start: 13 }])
+  })
+
   it("keeps collapsed group excerpts out of the virtual row model", () => {
     const firstMatch = contentMatch({
       column: 1,
