@@ -7,9 +7,16 @@ import {
   searchResultItems,
 } from "./search-result-items"
 import {
+  firstSearchResultExcerptId,
+  firstSearchResultVirtualRowId,
+  lastSearchResultVirtualRowId,
+  parentSearchResultFileId,
   searchResultExcerptById,
   searchResultFileBlocks,
   searchResultOpenTargetForId,
+  searchResultVirtualRowById,
+  searchResultVirtualRowId,
+  searchResultVirtualRowIdByOffset,
   searchResultVirtualRows,
 } from "./search-result-view-model"
 
@@ -120,6 +127,56 @@ describe("search result view model", () => {
       fileId: blocks[0]?.id,
       type: "excerpt",
     })
+  })
+
+  it("navigates virtual rows by file and excerpt ids", () => {
+    const firstMatch = contentMatch({
+      column: 1,
+      endColumn: 7,
+      line: 4,
+      preview: "needle",
+    })
+    const secondMatch = contentMatch({
+      column: 8,
+      endColumn: 14,
+      line: 5,
+      preview: "const needle = true",
+    })
+    const blocks = searchResultFileBlocks(
+      [fileGroup([firstMatch, secondMatch])],
+      "needle"
+    )
+    const rows = searchResultVirtualRows(blocks)
+    const fileId = blocks[0]?.id ?? null
+    const firstExcerptId = blocks[0]?.excerpts[0]?.id ?? null
+    const secondExcerptId = blocks[0]?.excerpts[1]?.id ?? null
+
+    expect(rows.map(searchResultVirtualRowId)).toEqual([
+      fileId,
+      firstExcerptId,
+      secondExcerptId,
+    ])
+    expect(firstSearchResultVirtualRowId(rows)).toBe(fileId)
+    expect(lastSearchResultVirtualRowId(rows)).toBe(secondExcerptId)
+    expect(firstSearchResultExcerptId(rows, fileId ?? "")).toBe(firstExcerptId)
+    expect(parentSearchResultFileId(rows, firstExcerptId)).toBe(fileId)
+    expect(searchResultVirtualRowById(rows, secondExcerptId)?.type).toBe(
+      "excerpt"
+    )
+    expect(
+      searchResultVirtualRowIdByOffset({
+        activeResultId: fileId,
+        offset: 1,
+        rows,
+      })
+    ).toBe(firstExcerptId)
+    expect(
+      searchResultVirtualRowIdByOffset({
+        activeResultId: firstExcerptId,
+        offset: -1,
+        rows,
+      })
+    ).toBe(fileId)
   })
 
   it("maps file and excerpt ids back to open targets", () => {

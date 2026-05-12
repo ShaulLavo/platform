@@ -274,6 +274,36 @@
     min-width: 0;
 }
 
+.search-result-excerpt-editor-host {
+    height: 28px;
+}
+
+.search-result-excerpt-editor-host .editor-virtualized {
+    --editor-background: transparent !important;
+    --editor-cursor-line-gutter-background: color-mix(
+        in oklch,
+        var(--muted) 58%,
+        transparent
+    );
+    --editor-cursor-line-row-background: color-mix(
+        in oklch,
+        var(--muted) 58%,
+        transparent
+    );
+    --editor-foreground: var(--foreground) !important;
+    --editor-gutter-background: transparent !important;
+    --editor-gutter-foreground: var(--muted-foreground) !important;
+    --editor-row-height: 22px;
+
+    background: transparent !important;
+    font-size: 12px;
+    overflow: hidden;
+}
+
+.search-result-excerpt-editor-host .editor-virtualized-gutter {
+    background: transparent;
+}
+
 [data-editor-focus-active="false"] .app-editor-host .editor-virtualized-caret-layer {
     display: none;
 }

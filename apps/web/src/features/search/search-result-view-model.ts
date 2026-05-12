@@ -83,6 +83,80 @@ export function searchResultVirtualRows(
   return rows
 }
 
+export function searchResultVirtualRowId(row: SearchResultVirtualRow) {
+  if (row.type === "file") return row.file.id
+
+  return row.excerpt.id
+}
+
+export function searchResultVirtualRowById(
+  rows: readonly SearchResultVirtualRow[],
+  id: SearchResultId | null
+) {
+  if (!id) return null
+
+  return rows.find((row) => searchResultVirtualRowId(row) === id) ?? null
+}
+
+export function searchResultVirtualRowIdByOffset({
+  activeResultId,
+  offset,
+  rows,
+}: {
+  activeResultId: SearchResultId | null
+  offset: number
+  rows: readonly SearchResultVirtualRow[]
+}) {
+  if (rows.length === 0) return null
+
+  const activeIndex = searchResultVirtualRowIndex(rows, activeResultId)
+  const fallback = offset >= 0 ? 0 : rows.length - 1
+  if (activeIndex < 0) return searchResultVirtualRowId(rows[fallback]!)
+
+  const nextIndex = clampIndex(activeIndex + offset, rows.length)
+  return searchResultVirtualRowId(rows[nextIndex]!)
+}
+
+export function firstSearchResultVirtualRowId(
+  rows: readonly SearchResultVirtualRow[]
+) {
+  const row = rows[0]
+  if (!row) return null
+
+  return searchResultVirtualRowId(row)
+}
+
+export function lastSearchResultVirtualRowId(
+  rows: readonly SearchResultVirtualRow[]
+) {
+  const row = rows.at(-1)
+  if (!row) return null
+
+  return searchResultVirtualRowId(row)
+}
+
+export function firstSearchResultExcerptId(
+  rows: readonly SearchResultVirtualRow[],
+  fileId: SearchResultId
+) {
+  const row = rows.find(
+    (candidate) => candidate.type === "excerpt" && candidate.fileId === fileId
+  )
+  if (row?.type !== "excerpt") return null
+
+  return row.excerpt.id
+}
+
+export function parentSearchResultFileId(
+  rows: readonly SearchResultVirtualRow[],
+  activeResultId: SearchResultId | null
+) {
+  const row = searchResultVirtualRowById(rows, activeResultId)
+  if (row?.type !== "excerpt") return null
+
+  return row.fileId
+}
+
 export function searchResultOpenTargetForId(
   blocks: readonly SearchResultFileBlock[],
   id: SearchResultId | null
@@ -212,4 +286,17 @@ function isSearchResultNameItem(
   item: SearchResultItem
 ): item is SearchResultNameItem {
   return item.type === "name"
+}
+
+function searchResultVirtualRowIndex(
+  rows: readonly SearchResultVirtualRow[],
+  id: SearchResultId | null
+) {
+  if (!id) return -1
+
+  return rows.findIndex((row) => searchResultVirtualRowId(row) === id)
+}
+
+function clampIndex(index: number, length: number) {
+  return Math.min(Math.max(index, 0), length - 1)
 }

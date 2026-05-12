@@ -426,6 +426,8 @@ Status: Done.
 
 ### Phase 5: Render Virtualized Excerpt Editors
 
+Status: Done.
+
 - Add `SearchResultEditorSurface`.
 - Add `SearchResultFileHeader`.
 - Add `SearchResultExcerptEditor`.
