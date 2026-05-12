@@ -1,4 +1,4 @@
-import { Component, useMemo, type ReactNode } from "react"
+import { Component, useCallback, useMemo, type ReactNode } from "react"
 import type { EditorKeymapLayer } from "@editor/core"
 
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
@@ -49,15 +49,16 @@ export function SearchBufferEditor({
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
   const replace = useWorkspaceSearchReplace(rootPath)
   const commands = useEditorCommands()
+  const resultCanReplace = replaceVisible ? replace.canReplace : false
 
-  function handleOpenTarget(target: SearchResultOpenTarget) {
+  const handleOpenTarget = useCallback((target: SearchResultOpenTarget) => {
     if (!target.match) {
       commands.selectFile(target.path)
       return
     }
 
     openWorkspaceSearchMatch(target.match, resultsQuery, commands)
-  }
+  }, [commands, resultsQuery])
 
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background">
@@ -107,7 +108,7 @@ export function SearchBufferEditor({
         <SearchResultDocumentBoundary
           fallback={
             <SearchResultDocumentFallback
-              canReplace={replace.canReplace}
+              canReplace={resultCanReplace}
               commands={commands}
               editorKeymapLayers={editorKeymapLayers}
               groups={groups}
@@ -125,12 +126,12 @@ export function SearchBufferEditor({
         >
           <SearchResultEditorSurface
             activeResultId={snapshot.activeResultId}
-            canReplace={replace.canReplace}
+            canReplace={resultCanReplace}
             groups={groups}
             keymapLayers={editorKeymapLayers}
             replaceVisible={replaceVisible}
             resultsQuery={resultsQuery}
-            snapshot={snapshot}
+            displayedResultsQuery={snapshot.resultsSearchQuery?.query ?? null}
             onOpenTarget={handleOpenTarget}
             onReplaceGroup={replace.replaceGroup}
             onReplaceMatch={replace.replaceMatch}
@@ -140,7 +141,7 @@ export function SearchBufferEditor({
         </SearchResultDocumentBoundary>
       ) : (
         <SearchBufferResultList
-          canReplace={replace.canReplace}
+          canReplace={resultCanReplace}
           commands={commands}
           groups={groups}
           replaceGroup={replace.replaceGroup}

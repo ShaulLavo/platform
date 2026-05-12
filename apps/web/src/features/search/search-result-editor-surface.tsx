@@ -19,6 +19,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -30,10 +31,7 @@ import {
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { createEditorSyntaxHighlightingPlugins } from "@/features/editor/editor-plugins"
 import { useEditorShikiTheme } from "@/features/editor/hooks/use-editor-shiki-theme"
-import type {
-  SearchBufferSnapshot,
-  WorkspaceSearchFileGroup,
-} from "@/features/search/search-buffer-state"
+import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
 import {
   colorForFileIcon,
   iconForEntry,
@@ -79,11 +77,11 @@ const ACTIVE_MATCH_STYLE = {
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
   canReplace?: boolean
+  displayedResultsQuery: string | null
   groups: readonly WorkspaceSearchFileGroup[]
   keymapLayers: readonly EditorKeymapLayer[]
   replaceVisible: boolean
   resultsQuery: string
-  snapshot: SearchBufferSnapshot
   onOpenTarget: (target: SearchResultOpenTarget) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
@@ -91,20 +89,20 @@ type SearchResultEditorSurfaceProps = {
   onToggleGroup: (path: string) => void
 }
 
-export function SearchResultEditorSurface({
+export const SearchResultEditorSurface = memo(({
   activeResultId,
   canReplace,
+  displayedResultsQuery,
   groups,
   keymapLayers,
   replaceVisible,
   resultsQuery,
-  snapshot,
   onOpenTarget,
   onReplaceGroup,
   onReplaceMatch,
   onSelectResult,
   onToggleGroup,
-}: SearchResultEditorSurfaceProps) {
+}: SearchResultEditorSurfaceProps) => {
   const treeId = useId()
   const parentRef = useRef<HTMLDivElement | null>(null)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
@@ -130,7 +128,6 @@ export function SearchResultEditorSurface({
     [activeResultId, rows]
   )
   const minLineDigits = useMemo(() => minLineDigitsByExcerpt(blocks), [blocks])
-  const displayedResultsQuery = snapshot.resultsSearchQuery?.query ?? null
   const previousDisplayedResultsQueryRef = useRef<string | null>(null)
   const activeIndexRef = useRef(activeIndex)
   const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
@@ -267,14 +264,9 @@ export function SearchResultEditorSurface({
                   replaceVisible={replaceVisible}
                   syntaxPlugins={syntaxPlugins}
                   canReplace={canReplace}
-                  onOpen={() =>
-                    onOpenTarget({
-                      match: row.excerpt.sourceMatch,
-                      path: row.excerpt.path,
-                    })
-                  }
-                  onReplace={() => onReplaceMatch?.(row.excerpt.sourceMatch)}
-                  onSelect={() => onSelectResult(row.excerpt.id)}
+                  onOpenTarget={onOpenTarget}
+                  onReplaceMatch={onReplaceMatch}
+                  onSelectResult={onSelectResult}
                 />
               )}
             </div>
@@ -283,7 +275,8 @@ export function SearchResultEditorSurface({
       </div>
     </div>
   )
-}
+})
+SearchResultEditorSurface.displayName = "SearchResultEditorSurface"
 
 function SearchResultFileHeader({
   active,
@@ -370,19 +363,7 @@ function SearchResultFileHeader({
   )
 }
 
-function SearchResultExcerptEditor({
-  active,
-  canReplace,
-  editorTheme,
-  excerpt,
-  keymapLayers,
-  minLineDigits,
-  replaceVisible,
-  syntaxPlugins,
-  onOpen,
-  onReplace,
-  onSelect,
-}: {
+type SearchResultExcerptEditorProps = {
   active: boolean
   canReplace?: boolean
   editorTheme: EditorTheme
@@ -391,10 +372,24 @@ function SearchResultExcerptEditor({
   minLineDigits: number
   replaceVisible: boolean
   syntaxPlugins: readonly EditorPlugin[]
-  onOpen: () => void
-  onReplace: () => void
-  onSelect: () => void
-}) {
+  onOpenTarget: (target: SearchResultOpenTarget) => void
+  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
+  onSelectResult: (id: SearchResultId | null) => void
+}
+
+const SearchResultExcerptEditor = memo(({
+  active,
+  canReplace,
+  editorTheme,
+  excerpt,
+  keymapLayers,
+  minLineDigits,
+  replaceVisible,
+  syntaxPlugins,
+  onOpenTarget,
+  onReplaceMatch,
+  onSelectResult,
+}: SearchResultExcerptEditorProps) => {
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const setActiveEditorCommandDispatch = useWorkspaceFocus(
     (state) => state.setActiveEditorCommandDispatch
@@ -459,16 +454,27 @@ function SearchResultExcerptEditor({
   }, [active, controller, excerpt.matchRanges])
 
   function handleActivate() {
-    onSelect()
+    onSelectResult(excerpt.id)
     setFocusArea("editor")
   }
 
   function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
-    if (openExcerptOnEnter(event, onOpen)) return
+    if (openExcerptOnEnter(event, handleOpen)) return
     if (!readonlyEditingKey(event)) return
 
     event.preventDefault()
     event.stopPropagation()
+  }
+
+  function handleOpen() {
+    onOpenTarget({
+      match: excerpt.sourceMatch,
+      path: excerpt.path,
+    })
+  }
+
+  function handleReplace() {
+    onReplaceMatch?.(excerpt.sourceMatch)
   }
 
   return (
@@ -484,7 +490,7 @@ function SearchResultExcerptEditor({
       onKeyDownCapture={handleKeyDownCapture}
       onPasteCapture={preventReadonlyInput}
       onPointerDownCapture={handleActivate}
-      onClick={onOpen}
+      onClick={handleOpen}
     >
       <EditorHost
         className="app-editor-host search-result-excerpt-editor-host"
@@ -501,7 +507,7 @@ function SearchResultExcerptEditor({
           variant="ghost"
           onClick={(event) => {
             event.stopPropagation()
-            onReplace()
+            handleReplace()
           }}
         >
           Replace
@@ -509,7 +515,8 @@ function SearchResultExcerptEditor({
       ) : null}
     </div>
   )
-}
+})
+SearchResultExcerptEditor.displayName = "SearchResultExcerptEditor"
 
 function useSearchResultSyntaxPlugins({
   resultKey,
@@ -745,13 +752,13 @@ function measureElement(element: Element) {
 }
 
 function scheduleSearchResultSyntaxEnable(callback: () => void) {
-  if ("requestIdleCallback" in window) {
+  if (typeof window.requestIdleCallback === "function") {
     const id = window.requestIdleCallback(callback, { timeout: 800 })
     return () => window.cancelIdleCallback(id)
   }
 
-  const id = window.setTimeout(callback, 120)
-  return () => window.clearTimeout(id)
+  const id = globalThis.setTimeout(callback, 120)
+  return () => globalThis.clearTimeout(id)
 }
 
 function openExcerptOnEnter(

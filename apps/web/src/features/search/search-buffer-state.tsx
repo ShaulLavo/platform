@@ -303,7 +303,12 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
   }
 }
 
-export function searchGroupsForSnapshot(snapshot: SearchBufferSnapshot | null) {
+export function searchGroupsForSnapshot(
+  snapshot: Pick<
+    SearchBufferSnapshot,
+    "collapsedPaths" | "matches" | "rootPath"
+  > | null
+) {
   if (!snapshot) return []
 
   return groupSearchMatches(

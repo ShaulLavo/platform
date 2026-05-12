@@ -4,7 +4,7 @@ import type {
   WorkspaceSearchQuery,
 } from "@workspace/contracts"
 import { workspaceSearchGlobPatterns } from "@workspace/contracts"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import {
   type CachedEditorDocument,
@@ -44,12 +44,60 @@ export function useSearchBuffer(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
   const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
   const groups = useMemo(
-    () => searchGroupsForSnapshot(activeSnapshot),
-    [activeSnapshot]
+    () =>
+      searchGroupsForSnapshot(
+        activeSnapshot
+          ? {
+              collapsedPaths: activeSnapshot.collapsedPaths,
+              matches: activeSnapshot.matches,
+              rootPath: activeSnapshot.rootPath,
+            }
+          : null
+      ),
+    [
+      activeSnapshot?.collapsedPaths,
+      activeSnapshot?.matches,
+      activeSnapshot?.rootPath,
+    ]
   )
   const store = useSearchBufferStoreApi()
   const query = activeSnapshot?.query ?? ""
   const searchOptions = searchOptionsForSnapshot(activeSnapshot)
+  const setQuery = useCallback(
+    (nextQuery: string) => store.getState().setQuery(rootPath, nextQuery),
+    [rootPath, store]
+  )
+  const setReplaceText = useCallback(
+    (replaceText: string) =>
+      store.getState().setReplaceText(rootPath, replaceText),
+    [rootPath, store]
+  )
+  const setReplaceVisible = useCallback(
+    (replaceVisible: boolean) =>
+      store.getState().setReplaceVisible(rootPath, replaceVisible),
+    [rootPath, store]
+  )
+  const setSearchOptions = useCallback(
+    (options: SearchBufferOptionPatch) =>
+      store.getState().setSearchOptions(rootPath, options),
+    [rootPath, store]
+  )
+  const selectNextQuery = useCallback(
+    () => store.getState().selectNextQuery(rootPath),
+    [rootPath, store]
+  )
+  const selectNextReplaceText = useCallback(
+    () => store.getState().selectNextReplaceText(rootPath),
+    [rootPath, store]
+  )
+  const selectPreviousQuery = useCallback(
+    () => store.getState().selectPreviousQuery(rootPath),
+    [rootPath, store]
+  )
+  const selectPreviousReplaceText = useCallback(
+    () => store.getState().selectPreviousReplaceText(rootPath),
+    [rootPath, store]
+  )
 
   usePrepareSearchBuffer(rootPath)
 
@@ -61,20 +109,14 @@ export function useSearchBuffer(rootPath: string) {
     replaceText: activeSnapshot?.replaceText ?? "",
     replaceVisible: activeSnapshot?.replaceVisible ?? false,
     searchOptions,
-    setQuery: (nextQuery: string) =>
-      store.getState().setQuery(rootPath, nextQuery),
-    setReplaceText: (replaceText: string) =>
-      store.getState().setReplaceText(rootPath, replaceText),
-    setReplaceVisible: (replaceVisible: boolean) =>
-      store.getState().setReplaceVisible(rootPath, replaceVisible),
-    setSearchOptions: (options: SearchBufferOptionPatch) =>
-      store.getState().setSearchOptions(rootPath, options),
-    selectNextQuery: () => store.getState().selectNextQuery(rootPath),
-    selectNextReplaceText: () =>
-      store.getState().selectNextReplaceText(rootPath),
-    selectPreviousQuery: () => store.getState().selectPreviousQuery(rootPath),
-    selectPreviousReplaceText: () =>
-      store.getState().selectPreviousReplaceText(rootPath),
+    setQuery,
+    setReplaceText,
+    setReplaceVisible,
+    setSearchOptions,
+    selectNextQuery,
+    selectNextReplaceText,
+    selectPreviousQuery,
+    selectPreviousReplaceText,
     snapshot: activeSnapshot,
   }
 }

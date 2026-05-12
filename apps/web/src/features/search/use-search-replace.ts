@@ -45,17 +45,29 @@ export function useWorkspaceSearchReplace(rootPath: string) {
     },
     [documentStore, queryClient, rootPath, store]
   )
+  const replaceAll = useCallback(
+    () => replaceMatches(activeSnapshot?.matches ?? []),
+    [activeSnapshot?.matches, replaceMatches]
+  )
+  const replaceGroup = useCallback(
+    (group: WorkspaceSearchFileGroup) => replaceMatches(group.matches),
+    [replaceMatches]
+  )
+  const replaceMatch = useCallback(
+    (match: WorkspaceSearchMatch) => replaceMatches([match]),
+    [replaceMatches]
+  )
+  const replaceNext = useCallback(() => {
+    const match = firstContentMatch(activeSnapshot?.matches ?? [])
+    if (match) replaceMatches([match])
+  }, [activeSnapshot?.matches, replaceMatches])
 
   return {
     canReplace: canReplace(activeSnapshot),
-    replaceAll: () => replaceMatches(activeSnapshot?.matches ?? []),
-    replaceGroup: (group: WorkspaceSearchFileGroup) =>
-      replaceMatches(group.matches),
-    replaceMatch: (match: WorkspaceSearchMatch) => replaceMatches([match]),
-    replaceNext: () => {
-      const match = firstContentMatch(activeSnapshot?.matches ?? [])
-      if (match) replaceMatches([match])
-    },
+    replaceAll,
+    replaceGroup,
+    replaceMatch,
+    replaceNext,
   }
 }
 
