@@ -603,6 +603,92 @@ describe("search buffer store", () => {
     })
   })
 
+  it("navigates replace text history with a restorable draft", () => {
+    const store = createSearchBufferStore()
+    store.getState().prepareBuffer("repo")
+    store.getState().setReplaceText("repo", "alpha")
+    store.getState().startReplace("repo")
+    store.getState().setReplaceText("repo", "beta")
+    store.getState().startReplace("repo")
+    store.getState().setReplaceText("repo", "draft")
+
+    store.getState().selectPreviousReplaceText("repo")
+    expect(store.getState().active).toMatchObject({
+      replaceHistoryCursor: 1,
+      replaceHistoryDraft: "draft",
+      replaceText: "beta",
+    })
+
+    store.getState().selectPreviousReplaceText("repo")
+    expect(store.getState().active).toMatchObject({
+      replaceHistoryCursor: 0,
+      replaceHistoryDraft: "draft",
+      replaceText: "alpha",
+    })
+
+    store.getState().selectPreviousReplaceText("repo")
+    expect(store.getState().active).toMatchObject({
+      replaceHistoryCursor: 0,
+      replaceHistoryDraft: "draft",
+      replaceText: "alpha",
+    })
+
+    store.getState().selectNextReplaceText("repo")
+    expect(store.getState().active).toMatchObject({
+      replaceHistoryCursor: 1,
+      replaceHistoryDraft: "draft",
+      replaceText: "beta",
+    })
+
+    store.getState().selectNextReplaceText("repo")
+    expect(store.getState().active).toMatchObject({
+      replaceHistoryCursor: null,
+      replaceHistoryDraft: null,
+      replaceText: "draft",
+    })
+  })
+
+  it("preserves replace history order while a historical replacement reruns", () => {
+    const store = createSearchBufferStore()
+    store.getState().prepareBuffer("repo")
+    store.getState().setReplaceText("repo", "alpha")
+    store.getState().startReplace("repo")
+    store.getState().setReplaceText("repo", "beta")
+    store.getState().startReplace("repo")
+    store.getState().selectPreviousReplaceText("repo")
+
+    store.getState().startReplace("repo")
+
+    expect(store.getState().active).toMatchObject({
+      replaceHistory: ["alpha", "beta"],
+      replaceHistoryCursor: 0,
+      replaceText: "alpha",
+    })
+
+    store.getState().selectNextReplaceText("repo")
+
+    expect(store.getState().active).toMatchObject({
+      replaceHistory: ["alpha", "beta"],
+      replaceHistoryCursor: 1,
+      replaceText: "beta",
+    })
+  })
+
+  it("preserves meaningful replacement whitespace in history", () => {
+    const store = createSearchBufferStore()
+    store.getState().prepareBuffer("repo")
+    store.getState().setReplaceText("repo", " beta ")
+    store.getState().startReplace("repo")
+    store.getState().setReplaceText("repo", "draft")
+
+    store.getState().selectPreviousReplaceText("repo")
+
+    expect(store.getState().active).toMatchObject({
+      replaceHistory: [" beta "],
+      replaceText: " beta ",
+    })
+  })
+
   it("keeps stable row ids while result batches append", () => {
     const store = createSearchBufferStore()
     const runId = store.getState().startSearch(searchQuery("needle"))

@@ -447,7 +447,9 @@ function startReplaceSearchBuffer(
     replaceHistoryCursor: historyNavigation
       ? snapshot.replaceHistoryCursor
       : null,
-    replaceHistoryDraft: historyNavigation ? snapshot.replaceHistoryDraft : null,
+    replaceHistoryDraft: historyNavigation
+      ? snapshot.replaceHistoryDraft
+      : null,
     replaceMessage: null,
     replaceStatus: "running" as const,
   }
@@ -539,8 +541,10 @@ function loadingSearchBuffer(
     matches: previous?.matches ?? [],
     query: query.query,
     queryHistory: searchHistoryForRun(previous, query.query),
-    queryHistoryCursor: historyNavigation ? previous.queryHistoryCursor : null,
-    queryHistoryDraft: historyNavigation ? previous.queryHistoryDraft : null,
+    queryHistoryCursor:
+      historyNavigation && previous ? previous.queryHistoryCursor : null,
+    queryHistoryDraft:
+      historyNavigation && previous ? previous.queryHistoryDraft : null,
     replaceHistory: previous?.replaceHistory ?? [],
     replaceHistoryCursor: previous?.replaceHistoryCursor ?? null,
     replaceHistoryDraft: previous?.replaceHistoryDraft ?? null,
@@ -670,7 +674,10 @@ function selectSearchHistoryQuery(
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
 
-  const selection = searchHistorySelection(queryHistoryState(snapshot), direction)
+  const selection = searchHistorySelection(
+    queryHistoryState(snapshot),
+    direction
+  )
   if (!selection) return snapshot
 
   return searchHistoryQueryBuffer(
@@ -780,10 +787,7 @@ function searchHistorySelection(
   }
 }
 
-function searchHistoryCursor(
-  state: SearchTextHistoryState,
-  direction: 1 | -1
-) {
+function searchHistoryCursor(state: SearchTextHistoryState, direction: 1 | -1) {
   if (state.history.length === 0) return null
   if (direction < 0) return previousSearchHistoryCursor(state)
 
@@ -848,7 +852,7 @@ function searchHistoryValue(
 function activeSearchHistoryNavigation(
   previous: SearchBufferSnapshot | null,
   query: string
-): previous is SearchBufferSnapshot {
+): boolean {
   if (!previous) return false
 
   return activeTextHistoryNavigation(queryHistoryState(previous), query)
@@ -874,7 +878,7 @@ function searchHistoryForRun(
   previous: SearchBufferSnapshot | null,
   query: string
 ) {
-  if (activeSearchHistoryNavigation(previous, query)) {
+  if (previous && activeSearchHistoryNavigation(previous, query)) {
     return previous.queryHistory
   }
 
@@ -884,11 +888,17 @@ function searchHistoryForRun(
 function replaceHistoryForRun(snapshot: SearchBufferSnapshot) {
   if (activeReplaceHistoryNavigation(snapshot)) return snapshot.replaceHistory
 
-  return nextSearchHistory(snapshot.replaceHistory, snapshot.replaceText)
+  return nextSearchHistory(snapshot.replaceHistory, snapshot.replaceText, {
+    trim: false,
+  })
 }
 
-function nextSearchHistory(history: readonly string[], query: string) {
-  const value = query.trim()
+function nextSearchHistory(
+  history: readonly string[],
+  text: string,
+  options: { trim?: boolean } = {}
+) {
+  const value = options.trim === false ? text : text.trim()
   if (!value) return history
   if (history.at(-1) === value) return history
 
