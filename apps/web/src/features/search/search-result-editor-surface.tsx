@@ -4,6 +4,8 @@ import "@editor/gutters/style.css"
 
 import { CaretRightIcon } from "@phosphor-icons/react"
 import type {
+  EditorGutterContribution,
+  EditorGutterRowContext,
   EditorKeymapLayer,
   EditorPlugin,
   EditorRangeDecoration,
@@ -11,7 +13,6 @@ import type {
   EditorTheme,
 } from "@editor/core"
 import { createEditorFindPlugin } from "@editor/find"
-import { createLineGutterPlugin } from "@editor/gutters"
 import { EditorHost, useEditor } from "@editor/react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import type { WorkspaceSearchMatch } from "@workspace/contracts"
@@ -26,6 +27,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type MouseEvent,
   type RefObject,
 } from "react"
 
@@ -43,13 +45,18 @@ import {
   firstSearchResultVirtualRowId,
   lastSearchResultVirtualRowId,
   parentSearchResultFileId,
+  searchResultFileDocument,
+  searchResultFileDocumentLineAtRow,
+  searchResultFileDocumentLineById,
   searchResultFileBlocks,
   searchResultOpenTargetForId,
   searchResultVirtualRowById,
+  searchResultVirtualRowContainsId,
   searchResultVirtualRowId,
   searchResultVirtualRowIdByOffset,
   searchResultVirtualRows,
-  type SearchResultExcerpt,
+  type SearchResultFileDocument,
+  type SearchResultFileDocumentLine,
   type SearchResultFileBlock,
   type SearchResultOpenTarget,
   type SearchResultRange,
@@ -61,9 +68,12 @@ import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 const FILE_ROW_ESTIMATE = 44
-const EXCERPT_ROW_ESTIMATE = 32
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
-const EXCERPT_EDITOR_HEIGHT = 28
+const FILE_RESULTS_EDITOR_MIN_HEIGHT = 28
+const FILE_RESULTS_ROW_VERTICAL_PADDING = 8
+const SOURCE_LINE_GUTTER_MIN_COLUMNS = 3
+const SOURCE_LINE_GUTTER_MIN_WIDTH = 26
+const SOURCE_LINE_GUTTER_PADDING_PX = 8
 
 const PASSIVE_MATCH_STYLE = {
   backgroundColor: "var(--search-result-match-background)",
@@ -132,10 +142,6 @@ export const SearchResultEditorSurface = memo(
       () => searchResultVirtualRowIndex(rows, activeResultId),
       [activeResultId, rows]
     )
-    const minLineDigits = useMemo(
-      () => minLineDigitsByExcerpt(blocks),
-      [blocks]
-    )
     const previousDisplayedResultsQueryRef = useRef<string | null>(null)
     const activeIndexRef = useRef(activeIndex)
     const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
@@ -183,7 +189,7 @@ export const SearchResultEditorSurface = memo(
     }, [displayedResultsQuery, virtualizer])
 
     useEffect(() => {
-      if (activeRow?.type === "excerpt") return
+      if (activeRow?.type === "file-results") return
 
       setActiveEditorCommandDispatch(null)
     }, [activeRow, setActiveEditorCommandDispatch])
@@ -232,7 +238,7 @@ export const SearchResultEditorSurface = memo(
             if (!row) return null
 
             const id = searchResultVirtualRowId(row)
-            const active = id === activeResultId
+            const active = searchResultVirtualRowContainsId(row, activeResultId)
 
             return (
               <div
@@ -247,7 +253,9 @@ export const SearchResultEditorSurface = memo(
                 style={{
                   transform: `translateY(${virtualItem.start + 6}px)`,
                 }}
-                onMouseDown={() => onSelectResult(id)}
+                onMouseDown={
+                  row.type === "file" ? () => onSelectResult(id) : undefined
+                }
               >
                 {row.type === "file" ? (
                   <SearchResultFileHeader
@@ -262,12 +270,12 @@ export const SearchResultEditorSurface = memo(
                     onToggle={() => onToggleGroup(row.file.path)}
                   />
                 ) : (
-                  <SearchResultExcerptEditor
+                  <SearchResultFileEditor
                     active={active}
-                    excerpt={row.excerpt}
+                    activeResultId={activeResultId}
                     editorTheme={editorThemeRefresh}
+                    file={row.file}
                     keymapLayers={readonlyKeymapLayers}
-                    minLineDigits={minLineDigits.get(row.excerpt.id) ?? 1}
                     replaceVisible={replaceVisible}
                     deferredPluginsReady={deferredPlugins.ready}
                     syntaxPlugins={deferredPlugins.syntaxPlugins}
@@ -373,13 +381,13 @@ function SearchResultFileHeader({
   )
 }
 
-type SearchResultExcerptEditorProps = {
+type SearchResultFileEditorProps = {
   active: boolean
+  activeResultId: SearchResultId | null
   canReplace?: boolean
   editorTheme: EditorTheme
-  excerpt: SearchResultExcerpt
+  file: SearchResultFileBlock
   keymapLayers: readonly EditorKeymapLayer[]
-  minLineDigits: number
   replaceVisible: boolean
   deferredPluginsReady: boolean
   syntaxPlugins: readonly EditorPlugin[]
@@ -389,14 +397,14 @@ type SearchResultExcerptEditorProps = {
   onSelectResult: (id: SearchResultId | null) => void
 }
 
-const SearchResultExcerptEditor = memo(
+const SearchResultFileEditor = memo(
   ({
     active,
+    activeResultId,
     canReplace,
     editorTheme,
-    excerpt,
+    file,
     keymapLayers,
-    minLineDigits,
     replaceVisible,
     deferredPluginsReady,
     syntaxPlugins,
@@ -404,44 +412,54 @@ const SearchResultExcerptEditor = memo(
     onOpenTarget,
     onReplaceMatch,
     onSelectResult,
-  }: SearchResultExcerptEditorProps) => {
+  }: SearchResultFileEditorProps) => {
     const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
     const setActiveEditorCommandDispatch = useWorkspaceFocus(
       (state) => state.setActiveEditorCommandDispatch
     )
+    const fileDocument = useMemo(() => searchResultFileDocument(file), [file])
     const document = useMemo(
       () => ({
-        documentId: searchResultExcerptDocumentId(excerpt),
+        documentId: searchResultFileDocumentId(file),
         documentMode: "static" as const,
-        languageId: excerpt.languageId,
-        revision: searchResultExcerptRevision(excerpt),
-        text: excerpt.text,
+        languageId: fileDocument.languageId,
+        revision: searchResultFileDocumentRevision(fileDocument),
+        text: fileDocument.text,
       }),
-      [excerpt]
+      [file, fileDocument]
     )
     const rangeDecorations = useMemo(
-      () => searchResultRangeDecorations(excerpt.matchRanges, active),
-      [active, excerpt.matchRanges]
+      () => searchResultFileRangeDecorations(fileDocument, activeResultId),
+      [activeResultId, fileDocument]
     )
-    const lineGutterPlugin = useMemo(
+    const sourceLineGutterPlugin = useMemo(
       () =>
-        createLineGutterPlugin({
-          minDigits: minLineDigits,
-          startLine: excerpt.startLine,
-        }),
-      [excerpt.startLine, minLineDigits]
+        createSearchResultSourceLineGutterPlugin(
+          fileDocument.lines,
+          fileBlockLineDigits(file)
+        ),
+      [file, fileDocument.lines]
     )
     const findPlugin = useMemo(
       () => (deferredPluginsReady ? createEditorFindPlugin() : null),
       [deferredPluginsReady]
     )
     const plugins = useMemo(
-      () => excerptEditorPlugins(lineGutterPlugin, syntaxPlugins, findPlugin),
-      [findPlugin, lineGutterPlugin, syntaxPlugins]
+      () =>
+        fileResultEditorPlugins(
+          sourceLineGutterPlugin,
+          syntaxPlugins,
+          findPlugin
+        ),
+      [findPlugin, sourceLineGutterPlugin, syntaxPlugins]
+    )
+    const editorStyle = useMemo(
+      () => searchResultFileEditorStyle(fileDocument),
+      [fileDocument]
     )
     const controller = useEditor({
       cursorLineHighlight: {
-        gutterBackground: ["line-gutter"],
+        gutterBackground: ["search-result-source-line-gutter"],
         gutterNumber: true,
         rowBackground: true,
       },
@@ -457,6 +475,7 @@ const SearchResultExcerptEditor = memo(
       storeSync: "none",
       theme: editorTheme,
     })
+    const editorState = controller.useState()
 
     useEffect(() => {
       if (!active) return
@@ -468,20 +487,46 @@ const SearchResultExcerptEditor = memo(
     useEffect(() => {
       if (!active) return
 
-      const range = excerpt.matchRanges[0]
-      if (!range) return
+      const line = searchResultFileDocumentLineById(
+        fileDocument,
+        activeResultId
+      )
+      if (!line) return
 
+      const range = searchResultFileDocumentLineSelection(line)
       controller.commands.setSelection(range.start, range.end, range.start)
-    }, [active, controller, excerpt.matchRanges])
+    }, [active, activeResultId, controller, fileDocument])
+
+    useEffect(() => {
+      if (!active) return
+      if (activeTextInputOutsideEditor()) return
+
+      const line = searchResultFileDocumentLineAtRow(
+        fileDocument,
+        editorState?.cursor.row
+      )
+      if (!line) return
+      if (line.id === activeResultId) return
+
+      onSelectResult(line.id)
+    }, [
+      active,
+      activeResultId,
+      editorState?.cursor.row,
+      fileDocument,
+      onSelectResult,
+    ])
 
     function handleActivate() {
       onEnableDeferredPlugins()
-      onSelectResult(excerpt.id)
+      onSelectResult(
+        currentSearchResultFileLine(fileDocument, controller)?.id ?? null
+      )
       setFocusArea("editor")
     }
 
     function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
-      if (openExcerptOnEnter(event, handleOpen)) return
+      if (openFileResultOnEnter(event, handleOpen)) return
       if (!readonlyEditingKey(event)) return
 
       event.preventDefault()
@@ -489,20 +534,31 @@ const SearchResultExcerptEditor = memo(
     }
 
     function handleOpen() {
+      const line = currentSearchResultFileLine(fileDocument, controller)
+      if (!line) return
+
       onOpenTarget({
-        match: excerpt.sourceMatch,
-        path: excerpt.path,
+        match: line.sourceMatch,
+        path: file.path,
       })
     }
 
     function handleReplace() {
-      onReplaceMatch?.(excerpt.sourceMatch)
+      const line = currentSearchResultFileLine(fileDocument, controller)
+      if (!line) return
+
+      onReplaceMatch?.(line.sourceMatch)
+    }
+
+    function handleReplaceClick(event: MouseEvent<HTMLButtonElement>) {
+      event.stopPropagation()
+      handleReplace()
     }
 
     return (
       <div
         className={cn(
-          "ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5",
+          "ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5",
           active && "border-l-yellow-500/80 bg-muted/60",
           !active && "hover:bg-muted/35"
         )}
@@ -515,22 +571,19 @@ const SearchResultExcerptEditor = memo(
         onClick={handleOpen}
       >
         <EditorHost
-          className="app-editor-host search-result-excerpt-editor-host"
+          className="app-editor-host search-result-file-editor-host"
           controller={controller}
-          style={searchResultExcerptEditorStyle}
+          style={editorStyle}
         />
         {replaceVisible ? (
           <Button
-            className="h-6 px-1.5 text-[10px]"
+            className="mt-0.5 h-6 px-1.5 text-[10px]"
             disabled={!canReplace}
             size="xs"
-            title="Replace this match"
+            title="Replace selected match"
             type="button"
             variant="ghost"
-            onClick={(event) => {
-              event.stopPropagation()
-              handleReplace()
-            }}
+            onClick={handleReplaceClick}
           >
             Replace
           </Button>
@@ -539,7 +592,7 @@ const SearchResultExcerptEditor = memo(
     )
   }
 )
-SearchResultExcerptEditor.displayName = "SearchResultExcerptEditor"
+SearchResultFileEditor.displayName = "SearchResultFileEditor"
 
 function useSearchResultDeferredPlugins({
   mode,
@@ -588,14 +641,14 @@ function useSearchResultDeferredPlugins({
   }
 }
 
-function excerptEditorPlugins(
-  lineGutterPlugin: EditorPlugin,
+function fileResultEditorPlugins(
+  sourceLineGutterPlugin: EditorPlugin,
   syntaxPlugins: readonly EditorPlugin[],
   findPlugin: EditorPlugin | null
 ) {
-  if (!findPlugin) return [lineGutterPlugin, ...syntaxPlugins]
+  if (!findPlugin) return [sourceLineGutterPlugin, ...syntaxPlugins]
 
-  return [lineGutterPlugin, ...syntaxPlugins, findPlugin]
+  return [sourceLineGutterPlugin, ...syntaxPlugins, findPlugin]
 }
 
 function handleSearchResultSurfaceKeyDown({
@@ -714,33 +767,36 @@ function resetSearchResultScroll(
   virtualizer.scrollToOffset(0)
 }
 
-function searchResultRangeDecorations(
-  ranges: readonly SearchResultRange[],
+function searchResultFileRangeDecorations(
+  document: SearchResultFileDocument,
+  activeResultId: SearchResultId | null
+) {
+  const decorations: EditorRangeDecoration[] = []
+  for (const line of document.lines) {
+    const active = line.id === activeResultId
+    for (const range of line.matchRanges) {
+      decorations.push(searchResultRangeDecoration(range, active))
+    }
+  }
+
+  return decorations
+}
+
+function searchResultRangeDecoration(
+  range: SearchResultRange,
   active: boolean
-): readonly EditorRangeDecoration[] {
+): EditorRangeDecoration {
   const className = active
     ? "search-result-match-active"
     : "search-result-match"
   const style = active ? ACTIVE_MATCH_STYLE : PASSIVE_MATCH_STYLE
 
-  return ranges.map((range) => ({
+  return {
     className,
     end: range.end,
     start: range.start,
     style,
-  }))
-}
-
-function minLineDigitsByExcerpt(blocks: readonly SearchResultFileBlock[]) {
-  const digits = new Map<SearchResultId, number>()
-  for (const block of blocks) {
-    const minDigits = fileBlockLineDigits(block)
-    for (const excerpt of block.excerpts) {
-      digits.set(excerpt.id, minDigits)
-    }
   }
-
-  return digits
 }
 
 function fileBlockLineDigits(block: SearchResultFileBlock) {
@@ -767,15 +823,17 @@ function searchResultVirtualRowIndex(
 ) {
   if (!id) return -1
 
-  return rows.findIndex((row) => searchResultVirtualRowId(row) === id)
+  return rows.findIndex((row) => searchResultVirtualRowContainsId(row, id))
 }
 
 function searchResultVirtualRowEstimate(
   row: SearchResultVirtualRow | undefined
 ) {
   if (row?.type === "file") return FILE_ROW_ESTIMATE
+  if (row?.type === "file-results")
+    return searchResultFileEditorRowHeight(row.file)
 
-  return EXCERPT_ROW_ESTIMATE
+  return FILE_RESULTS_EDITOR_MIN_HEIGHT
 }
 
 function searchResultVirtualRowKey(
@@ -804,7 +862,7 @@ function scheduleSearchResultSyntaxEnable(callback: () => void) {
   return () => globalThis.clearTimeout(id)
 }
 
-function openExcerptOnEnter(
+function openFileResultOnEnter(
   event: KeyboardEvent<HTMLDivElement>,
   onOpen: () => void
 ) {
@@ -835,13 +893,122 @@ function preventReadonlyInput(event: {
   event.stopPropagation()
 }
 
-function searchResultExcerptDocumentId(excerpt: SearchResultExcerpt) {
-  return `${excerpt.path}?searchResultExcerpt=${encodeURIComponent(excerpt.id)}`
+function currentSearchResultFileLine(
+  document: SearchResultFileDocument,
+  controller: { getState(): { cursor: { row: number } } | null }
+) {
+  const row = controller.getState()?.cursor.row
+
+  return (
+    searchResultFileDocumentLineAtRow(document, row) ??
+    document.lines[0] ??
+    null
+  )
 }
 
-function searchResultExcerptRevision(excerpt: SearchResultExcerpt) {
-  return `${excerpt.text.length}:${stableHash(excerpt.text)}:${languageKey(
-    excerpt.languageId
+function searchResultFileDocumentLineSelection(
+  line: SearchResultFileDocumentLine
+) {
+  const range = line.matchRanges[0]
+  if (range) return range
+
+  return {
+    end: line.end,
+    start: line.start,
+  }
+}
+
+function activeTextInputOutsideEditor() {
+  const element = globalThis.document?.activeElement
+  if (!(element instanceof HTMLElement)) return false
+  if (element.closest(".app-editor-host")) return false
+  if (element instanceof HTMLInputElement) return true
+  if (element instanceof HTMLTextAreaElement) return true
+
+  return element.isContentEditable
+}
+
+function createSearchResultSourceLineGutterPlugin(
+  lines: readonly SearchResultFileDocumentLine[],
+  minDigits: number
+): EditorPlugin {
+  const contribution = createSearchResultSourceLineGutterContribution(
+    lines,
+    minDigits
+  )
+
+  return {
+    name: "search-result-source-line-gutter",
+    activate(context) {
+      return context.registerGutterContribution(contribution)
+    },
+  }
+}
+
+function createSearchResultSourceLineGutterContribution(
+  lines: readonly SearchResultFileDocumentLine[],
+  minDigits: number
+): EditorGutterContribution {
+  return {
+    id: "search-result-source-line-gutter",
+    createCell(document) {
+      const element = document.createElement("span")
+      element.className = "editor-virtualized-gutter-label"
+      element.setAttribute("aria-hidden", "true")
+      return element
+    },
+    width(context) {
+      const columns = Math.max(SOURCE_LINE_GUTTER_MIN_COLUMNS, minDigits)
+
+      return Math.max(
+        SOURCE_LINE_GUTTER_MIN_WIDTH,
+        Math.ceil(
+          columns * context.metrics.characterWidth +
+            SOURCE_LINE_GUTTER_PADDING_PX
+        )
+      )
+    },
+    updateCell(element, row) {
+      updateSearchResultSourceLineGutterCell(element, row, lines)
+    },
+  }
+}
+
+function updateSearchResultSourceLineGutterCell(
+  element: HTMLElement,
+  row: EditorGutterRowContext,
+  lines: readonly SearchResultFileDocumentLine[]
+) {
+  const line = lines[row.bufferRow]
+  const hidden = !row.primaryText || !line
+  if (element.hidden !== hidden) element.hidden = hidden
+  element.classList.toggle(
+    "editor-virtualized-line-number-active",
+    Boolean(
+      row.primaryText && row.cursorLine && row.cursorLineHighlight.gutterNumber
+    )
+  )
+  if (!line) return
+
+  setSearchResultSourceLineGutterText(element, String(line.sourceLine))
+}
+
+function setSearchResultSourceLineGutterText(
+  element: HTMLElement,
+  value: string
+) {
+  if (element.textContent === value) return
+
+  element.textContent = value
+}
+
+function searchResultFileDocumentId(file: SearchResultFileBlock) {
+  return `${file.path}?searchResultFile=${encodeURIComponent(file.id)}`
+}
+
+function searchResultFileDocumentRevision(document: SearchResultFileDocument) {
+  return `${document.text.length}:${stableHash(document.text)}:${languageKey(
+    document.languageId
   )}`
 }
 
@@ -877,6 +1044,28 @@ function languageKey(languageId: EditorSyntaxLanguageId | null) {
   return languageId ?? "plain"
 }
 
+function searchResultFileEditorStyle(
+  document: SearchResultFileDocument
+): CSSProperties {
+  return {
+    height: searchResultFileEditorHeight(document.lines.length),
+  }
+}
+
+function searchResultFileEditorRowHeight(file: SearchResultFileBlock) {
+  return (
+    searchResultFileEditorHeight(file.excerpts.length) +
+    FILE_RESULTS_ROW_VERTICAL_PADDING
+  )
+}
+
+function searchResultFileEditorHeight(lineCount: number) {
+  return Math.max(
+    FILE_RESULTS_EDITOR_MIN_HEIGHT,
+    lineCount * EXCERPT_EDITOR_LINE_HEIGHT
+  )
+}
+
 function stableHash(value: string) {
   let hash = 0x811c9dc5
   for (let index = 0; index < value.length; index += 1) {
@@ -886,7 +1075,3 @@ function stableHash(value: string) {
 
   return (hash >>> 0).toString(36)
 }
-
-const searchResultExcerptEditorStyle = {
-  height: EXCERPT_EDITOR_HEIGHT,
-} satisfies CSSProperties

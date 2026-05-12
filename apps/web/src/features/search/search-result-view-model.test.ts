@@ -12,9 +12,13 @@ import {
   lastSearchResultVirtualRowId,
   parentSearchResultFileId,
   searchResultExcerptById,
+  searchResultFileDocument,
+  searchResultFileDocumentLineAtRow,
+  searchResultFileDocumentLineById,
   searchResultFileBlocks,
   searchResultOpenTargetForId,
   searchResultVirtualRowById,
+  searchResultVirtualRowContainsId,
   searchResultVirtualRowId,
   searchResultVirtualRowIdByOffset,
   searchResultVirtualRows,
@@ -124,7 +128,7 @@ describe("search result view model", () => {
     expect(rows).toEqual([{ file: blocks[0], type: "file" }])
   })
 
-  it("maps virtual rows to expanded file headers and excerpts", () => {
+  it("maps virtual rows to expanded file headers and one file results row", () => {
     const match = contentMatch({
       column: 1,
       endColumn: 7,
@@ -134,13 +138,9 @@ describe("search result view model", () => {
     const blocks = searchResultFileBlocks([fileGroup([match])], "needle")
     const rows = searchResultVirtualRows(blocks)
 
-    expect(rows.map((row) => row.type)).toEqual(["file", "excerpt"])
+    expect(rows.map((row) => row.type)).toEqual(["file", "file-results"])
     expect(rows[0]).toEqual({ file: blocks[0], type: "file" })
-    expect(rows[1]).toEqual({
-      excerpt: blocks[0]?.excerpts[0],
-      fileId: blocks[0]?.id,
-      type: "excerpt",
-    })
+    expect(rows[1]).toEqual({ file: blocks[0], type: "file-results" })
   })
 
   it("navigates virtual rows by file and excerpt ids", () => {
@@ -167,16 +167,19 @@ describe("search result view model", () => {
 
     expect(rows.map(searchResultVirtualRowId)).toEqual([
       fileId,
-      firstExcerptId,
-      secondExcerptId,
+      `${fileId}-results`,
     ])
     expect(firstSearchResultVirtualRowId(rows)).toBe(fileId)
     expect(lastSearchResultVirtualRowId(rows)).toBe(secondExcerptId)
     expect(firstSearchResultExcerptId(rows, fileId ?? "")).toBe(firstExcerptId)
     expect(parentSearchResultFileId(rows, firstExcerptId)).toBe(fileId)
-    expect(searchResultVirtualRowById(rows, secondExcerptId)?.type).toBe(
-      "excerpt"
-    )
+    const resultRow = searchResultVirtualRowById(rows, secondExcerptId)
+    expect(resultRow?.type).toBe("file-results")
+    expect(
+      resultRow
+        ? searchResultVirtualRowContainsId(resultRow, secondExcerptId)
+        : false
+    ).toBe(true)
     expect(
       searchResultVirtualRowIdByOffset({
         activeResultId: fileId,
@@ -191,6 +194,55 @@ describe("search result view model", () => {
         rows,
       })
     ).toBe(fileId)
+  })
+
+  it("builds one editor document per file from result lines", () => {
+    const firstMatch = contentMatch({
+      column: 14,
+      endColumn: 20,
+      line: 12,
+      preview: "export const needle = true",
+    })
+    const secondMatch = contentMatch({
+      column: 10,
+      endColumn: 16,
+      line: 128,
+      preview: "return needle",
+    })
+    const block = searchResultFileBlocks(
+      [fileGroup([firstMatch, secondMatch])],
+      "needle"
+    )[0]
+    const document = block ? searchResultFileDocument(block) : null
+    const firstLine = document
+      ? searchResultFileDocumentLineAtRow(document, 0)
+      : null
+    const secondLine = document
+      ? searchResultFileDocumentLineById(
+          document,
+          block?.excerpts[1]?.id ?? null
+        )
+      : null
+
+    expect(document?.text).toBe("export const needle = true\nreturn needle")
+    expect(firstLine).toEqual(
+      expect.objectContaining({
+        id: block?.excerpts[0]?.id,
+        row: 0,
+        sourceLine: 12,
+        start: 0,
+      })
+    )
+    expect(firstLine?.matchRanges).toEqual([{ end: 19, start: 13 }])
+    expect(secondLine).toEqual(
+      expect.objectContaining({
+        id: block?.excerpts[1]?.id,
+        row: 1,
+        sourceLine: 128,
+        start: "export const needle = true\n".length,
+      })
+    )
+    expect(secondLine?.matchRanges).toEqual([{ end: 40, start: 36 }])
   })
 
   it("maps file and excerpt ids back to open targets", () => {

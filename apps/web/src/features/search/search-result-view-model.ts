@@ -43,14 +43,30 @@ export type SearchResultVirtualRow =
       readonly type: "file"
     }
   | {
-      readonly excerpt: SearchResultExcerpt
-      readonly fileId: SearchResultId
-      readonly type: "excerpt"
+      readonly file: SearchResultFileBlock
+      readonly type: "file-results"
     }
 
 export type SearchResultOpenTarget = {
   readonly match: WorkspaceSearchMatch | null
   readonly path: string
+}
+
+export type SearchResultFileDocumentLine = {
+  readonly end: number
+  readonly id: SearchResultId
+  readonly matchRanges: readonly SearchResultRange[]
+  readonly row: number
+  readonly sourceLine: number
+  readonly sourceMatch: WorkspaceSearchMatch
+  readonly start: number
+}
+
+export type SearchResultFileDocument = {
+  readonly languageId: EditorSyntaxLanguageId | null
+  readonly lines: readonly SearchResultFileDocumentLine[]
+  readonly path: string
+  readonly text: string
 }
 
 export function searchResultFileBlocks(
@@ -74,10 +90,9 @@ export function searchResultVirtualRows(
   for (const block of blocks) {
     rows.push({ file: block, type: "file" })
     if (block.collapsed) continue
+    if (block.excerpts.length === 0) continue
 
-    for (const excerpt of block.excerpts) {
-      rows.push({ excerpt, fileId: block.id, type: "excerpt" })
-    }
+    rows.push({ file: block, type: "file-results" })
   }
 
   return rows
@@ -86,7 +101,17 @@ export function searchResultVirtualRows(
 export function searchResultVirtualRowId(row: SearchResultVirtualRow) {
   if (row.type === "file") return row.file.id
 
-  return row.excerpt.id
+  return searchResultFileResultsRowId(row.file.id)
+}
+
+export function searchResultVirtualRowContainsId(
+  row: SearchResultVirtualRow,
+  id: SearchResultId | null
+) {
+  if (!id) return false
+  if (row.type === "file") return row.file.id === id
+
+  return row.file.excerpts.some((excerpt) => excerpt.id === id)
 }
 
 export function searchResultVirtualRowById(
@@ -95,7 +120,7 @@ export function searchResultVirtualRowById(
 ) {
   if (!id) return null
 
-  return rows.find((row) => searchResultVirtualRowId(row) === id) ?? null
+  return rows.find((row) => searchResultVirtualRowContainsId(row, id)) ?? null
 }
 
 export function searchResultVirtualRowIdByOffset({
@@ -107,32 +132,31 @@ export function searchResultVirtualRowIdByOffset({
   offset: number
   rows: readonly SearchResultVirtualRow[]
 }) {
-  if (rows.length === 0) return null
+  const ids = searchResultSelectableIds(rows)
+  if (ids.length === 0) return null
 
-  const activeIndex = searchResultVirtualRowIndex(rows, activeResultId)
-  const fallback = offset >= 0 ? 0 : rows.length - 1
-  if (activeIndex < 0) return searchResultVirtualRowId(rows[fallback]!)
+  const activeIndex = ids.findIndex((id) => id === activeResultId)
+  const fallback = offset >= 0 ? 0 : ids.length - 1
+  if (activeIndex < 0) return ids[fallback] ?? null
 
-  const nextIndex = clampIndex(activeIndex + offset, rows.length)
-  return searchResultVirtualRowId(rows[nextIndex]!)
+  const nextIndex = clampIndex(activeIndex + offset, ids.length)
+  return ids[nextIndex] ?? null
 }
 
 export function firstSearchResultVirtualRowId(
   rows: readonly SearchResultVirtualRow[]
 ) {
-  const row = rows[0]
-  if (!row) return null
+  const ids = searchResultSelectableIds(rows)
 
-  return searchResultVirtualRowId(row)
+  return ids[0] ?? null
 }
 
 export function lastSearchResultVirtualRowId(
   rows: readonly SearchResultVirtualRow[]
 ) {
-  const row = rows.at(-1)
-  if (!row) return null
+  const ids = searchResultSelectableIds(rows)
 
-  return searchResultVirtualRowId(row)
+  return ids.at(-1) ?? null
 }
 
 export function firstSearchResultExcerptId(
@@ -140,11 +164,12 @@ export function firstSearchResultExcerptId(
   fileId: SearchResultId
 ) {
   const row = rows.find(
-    (candidate) => candidate.type === "excerpt" && candidate.fileId === fileId
+    (candidate) =>
+      candidate.type === "file-results" && candidate.file.id === fileId
   )
-  if (row?.type !== "excerpt") return null
+  if (row?.type !== "file-results") return null
 
-  return row.excerpt.id
+  return row.file.excerpts[0]?.id ?? null
 }
 
 export function parentSearchResultFileId(
@@ -152,9 +177,9 @@ export function parentSearchResultFileId(
   activeResultId: SearchResultId | null
 ) {
   const row = searchResultVirtualRowById(rows, activeResultId)
-  if (row?.type !== "excerpt") return null
+  if (row?.type !== "file-results") return null
 
-  return row.fileId
+  return row.file.id
 }
 
 export function searchResultOpenTargetForId(
@@ -187,6 +212,33 @@ export function searchResultExcerptById(
   }
 
   return null
+}
+
+export function searchResultFileDocument(
+  file: SearchResultFileBlock
+): SearchResultFileDocument {
+  const builder = createSearchResultFileDocumentBuilder(file)
+  for (const excerpt of file.excerpts) builder.addExcerpt(excerpt)
+
+  return builder.build()
+}
+
+export function searchResultFileDocumentLineAtRow(
+  document: SearchResultFileDocument,
+  row: number | undefined
+) {
+  if (row === undefined) return null
+
+  return document.lines[row] ?? null
+}
+
+export function searchResultFileDocumentLineById(
+  document: SearchResultFileDocument,
+  id: SearchResultId | null
+) {
+  if (!id) return null
+
+  return document.lines.find((line) => line.id === id) ?? null
 }
 
 function searchResultFileBlock(
@@ -292,15 +344,61 @@ function isSearchResultNameItem(
   return item.type === "name"
 }
 
-function searchResultVirtualRowIndex(
-  rows: readonly SearchResultVirtualRow[],
-  id: SearchResultId | null
-) {
-  if (!id) return -1
-
-  return rows.findIndex((row) => searchResultVirtualRowId(row) === id)
-}
-
 function clampIndex(index: number, length: number) {
   return Math.min(Math.max(index, 0), length - 1)
+}
+
+function searchResultSelectableIds(rows: readonly SearchResultVirtualRow[]) {
+  const ids: SearchResultId[] = []
+  for (const row of rows) {
+    if (row.type === "file") {
+      ids.push(row.file.id)
+      continue
+    }
+
+    for (const excerpt of row.file.excerpts) ids.push(excerpt.id)
+  }
+
+  return ids
+}
+
+function searchResultFileResultsRowId(fileId: SearchResultId) {
+  return `${fileId}-results`
+}
+
+function createSearchResultFileDocumentBuilder(file: SearchResultFileBlock) {
+  const lines: SearchResultFileDocumentLine[] = []
+  let text = ""
+
+  function addExcerpt(excerpt: SearchResultExcerpt) {
+    const start = text ? text.length + 1 : 0
+    const matchRanges = excerpt.matchRanges.map((range) => ({
+      end: start + range.end,
+      start: start + range.start,
+    }))
+
+    lines.push({
+      end: start + excerpt.text.length,
+      id: excerpt.id,
+      matchRanges,
+      row: lines.length,
+      sourceLine: excerpt.startLine,
+      sourceMatch: excerpt.sourceMatch,
+      start,
+    })
+
+    text = text ? `${text}\n${excerpt.text}` : excerpt.text
+  }
+
+  return {
+    addExcerpt,
+    build(): SearchResultFileDocument {
+      return {
+        languageId: file.languageId,
+        lines,
+        path: file.path,
+        text,
+      }
+    },
+  }
 }
