@@ -73,13 +73,13 @@ export function WorkspaceView({
             <>
               <ResizablePanel
                 id="workspace-sidebar"
-                className="min-h-0"
+                className="min-h-0 min-w-0 overflow-hidden"
                 defaultSize="320px"
                 minSize="240px"
                 maxSize="50%"
                 groupResizeBehavior="preserve-pixel-size"
               >
-                <aside className="flex h-full min-h-0 flex-col">
+                <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
                   <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
                     <div className="min-w-0">
                       <div className="truncate text-xs font-medium">

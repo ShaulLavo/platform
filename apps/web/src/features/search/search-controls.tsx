@@ -7,6 +7,7 @@ import {
 import type { ChangeEvent, ReactNode } from "react"
 
 import type { SearchBufferOptionPatch } from "@/features/search/search-buffer-state"
+import { SearchHistoryInput } from "@/features/search/search-history-input"
 import type { WorkspaceSearchQueryOptions } from "@/features/search/use-search-buffer"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -140,6 +141,8 @@ export function SearchReplaceFields({
   replacing,
   onReplaceAll,
   onReplaceNext,
+  onSelectNextHistory,
+  onSelectPreviousHistory,
   onReplaceTextChange,
 }: {
   canReplace: boolean
@@ -148,25 +151,22 @@ export function SearchReplaceFields({
   replacing: boolean
   onReplaceAll: () => void
   onReplaceNext: () => void
+  onSelectNextHistory: () => void
+  onSelectPreviousHistory: () => void
   onReplaceTextChange: (replaceText: string) => void
 }) {
   if (!replaceVisible) return null
 
-  function handleReplaceTextChange(event: ChangeEvent<HTMLInputElement>) {
-    onReplaceTextChange(event.target.value)
-  }
-
   return (
     <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5">
-      <Input
+      <SearchHistoryInput
         aria-label="Replace in workspace"
-        autoCapitalize="off"
-        autoCorrect="off"
-        className="h-7 text-[11px]"
-        placeholder="replace"
-        spellCheck={false}
+        inputClassName="h-7 text-[11px]"
+        label="Replace"
         value={replaceText}
-        onChange={handleReplaceTextChange}
+        onSelectNextHistory={onSelectNextHistory}
+        onSelectPreviousHistory={onSelectPreviousHistory}
+        onValueChange={onReplaceTextChange}
       />
       <Button
         className="h-7 px-2 text-[11px]"

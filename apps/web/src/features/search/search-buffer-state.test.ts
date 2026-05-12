@@ -1,10 +1,21 @@
 import { describe, expect, it } from "bun:test"
+import type { WorkspaceSearchMatch } from "@workspace/contracts"
 
 import {
   createSearchBufferStore,
   searchGroupsForSnapshot,
+  type SearchBufferSnapshot,
 } from "./search-buffer-state"
-import { searchResultItems } from "./search-result-items"
+import {
+  expandedSearchResultItems,
+  firstSearchResultChildId,
+  firstSearchResultId,
+  lastSearchResultId,
+  parentSearchResultId,
+  searchResultActiveMatchPosition,
+  searchResultIdByOffset,
+  searchResultItems,
+} from "./search-result-items"
 
 describe("search buffer store", () => {
   it("tracks loading, matches, completion, and grouping", () => {
@@ -525,4 +536,260 @@ describe("search buffer store", () => {
       status: "idle",
     })
   })
+
+  it("navigates search query history with a restorable draft", () => {
+    const store = createSearchBufferStore()
+    store.getState().startSearch(searchQuery("alpha"))
+    store.getState().startSearch(searchQuery("beta"))
+    store.getState().setQuery("repo", "draft")
+
+    store.getState().selectPreviousQuery("repo")
+    expect(store.getState().active).toMatchObject({
+      query: "beta",
+      queryHistoryCursor: 1,
+      queryHistoryDraft: "draft",
+      status: "loading",
+    })
+
+    store.getState().selectPreviousQuery("repo")
+    expect(store.getState().active).toMatchObject({
+      query: "alpha",
+      queryHistoryCursor: 0,
+      queryHistoryDraft: "draft",
+    })
+
+    store.getState().selectPreviousQuery("repo")
+    expect(store.getState().active).toMatchObject({
+      query: "alpha",
+      queryHistoryCursor: 0,
+      queryHistoryDraft: "draft",
+    })
+
+    store.getState().selectNextQuery("repo")
+    expect(store.getState().active).toMatchObject({
+      query: "beta",
+      queryHistoryCursor: 1,
+      queryHistoryDraft: "draft",
+    })
+
+    store.getState().selectNextQuery("repo")
+    expect(store.getState().active).toMatchObject({
+      query: "draft",
+      queryHistoryCursor: null,
+      queryHistoryDraft: null,
+    })
+  })
+
+  it("preserves history order while a historical query reruns", () => {
+    const store = createSearchBufferStore()
+    store.getState().startSearch(searchQuery("alpha"))
+    store.getState().startSearch(searchQuery("beta"))
+    store.getState().selectPreviousQuery("repo")
+
+    store.getState().startSearch(searchQuery("alpha"))
+
+    expect(store.getState().active).toMatchObject({
+      query: "alpha",
+      queryHistory: ["alpha", "beta"],
+      queryHistoryCursor: 0,
+    })
+
+    store.getState().selectNextQuery("repo")
+
+    expect(store.getState().active).toMatchObject({
+      query: "beta",
+      queryHistory: ["alpha", "beta"],
+      queryHistoryCursor: 1,
+    })
+  })
+
+  it("keeps stable row ids while result batches append", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+
+    store.getState().appendEvent(runId, {
+      match: contentMatch("repo/src/app.ts", 1, 2),
+      type: "match",
+    })
+    const firstItems = searchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    )
+    const firstMatchId = firstItems.find((item) => item.type === "match")?.id
+
+    store.getState().appendEvent(runId, {
+      match: contentMatch("repo/src/app.ts", 2, 4),
+      type: "match",
+    })
+    const nextItems = searchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    )
+
+    expect(nextItems.find((item) => item.type === "match")?.id).toBe(
+      firstMatchId
+    )
+  })
+
+  it("collapses and expands all content result groups", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/a.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/b.ts", 1, 1), type: "match" },
+    ])
+
+    store.getState().collapseAllGroups()
+
+    expect(searchGroupsForSnapshot(store.getState().active)).toEqual([
+      expect.objectContaining({ collapsed: true, path: "repo/src/a.ts" }),
+      expect.objectContaining({ collapsed: true, path: "repo/src/b.ts" }),
+    ])
+
+    store.getState().expandAllGroups()
+
+    expect(searchGroupsForSnapshot(store.getState().active)).toEqual([
+      expect.objectContaining({ collapsed: false, path: "repo/src/a.ts" }),
+      expect.objectContaining({ collapsed: false, path: "repo/src/b.ts" }),
+    ])
+  })
+
+  it("prunes collapsed paths that disappear after a rerun", () => {
+    const store = createSearchBufferStore()
+    const firstRunId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvents(firstRunId, [
+      { match: contentMatch("repo/src/a.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/b.ts", 1, 1), type: "match" },
+    ])
+    store.getState().appendEvent(firstRunId, doneEvent("needle", 2))
+    store.getState().collapseAllGroups()
+
+    const secondRunId = store.getState().startSearch(searchQuery("other"))
+    store.getState().appendEvent(secondRunId, {
+      match: contentMatch("repo/src/a.ts", 2, 1),
+      type: "match",
+    })
+    store.getState().appendEvent(secondRunId, doneEvent("other", 1))
+
+    expect(store.getState().active?.collapsedPaths).toEqual(["repo/src/a.ts"])
+  })
+
+  it("defaults active selection and wraps next and previous match selection", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/a.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/a.ts", 2, 1), type: "match" },
+      { match: contentMatch("repo/src/b.ts", 1, 1), type: "match" },
+    ])
+
+    expect(activeMatchPosition(store.getState().active)).toEqual({
+      index: 1,
+      total: 3,
+    })
+
+    store.getState().selectNextMatch()
+    expect(activeMatchPosition(store.getState().active)).toEqual({
+      index: 2,
+      total: 3,
+    })
+
+    store.getState().selectNextMatch()
+    store.getState().selectNextMatch()
+    expect(activeMatchPosition(store.getState().active)).toEqual({
+      index: 1,
+      total: 3,
+    })
+
+    store.getState().selectPreviousMatch()
+    expect(activeMatchPosition(store.getState().active)).toEqual({
+      index: 3,
+      total: 3,
+    })
+  })
+
+  it("expands a collapsed parent when selecting a hidden match", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/app.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/app.ts", 2, 1), type: "match" },
+    ])
+    store.getState().collapseAllGroups()
+
+    const hiddenMatch = expandedSearchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    ).find((item) => item.type === "match" && item.match.line === 2)
+    store.getState().selectResult(hiddenMatch?.id ?? null)
+
+    expect(searchGroupsForSnapshot(store.getState().active)).toEqual([
+      expect.objectContaining({ collapsed: false, path: "repo/src/app.ts" }),
+    ])
+    expect(store.getState().active?.activeResultId).toBe(hiddenMatch?.id)
+  })
+
+  it("provides bounded row movement helpers for tree keyboard navigation", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/app.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/app.ts", 2, 1), type: "match" },
+    ])
+
+    const items = searchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    )
+    const groupId = firstSearchResultId(items)
+    const childId = firstSearchResultChildId(items, groupId ?? "")
+
+    expect(
+      searchResultIdByOffset({ activeResultId: null, items, offset: 1 })
+    ).toBe(groupId)
+    expect(
+      searchResultIdByOffset({ activeResultId: groupId, items, offset: 1 })
+    ).toBe(childId)
+    expect(parentSearchResultId(items, childId ?? null)).toBe(groupId)
+    expect(lastSearchResultId(items)).toBe(items.at(-1)?.id)
+  })
 })
+
+function searchQuery(query: string) {
+  return {
+    includeContent: true,
+    limit: 20,
+    path: "repo",
+    query,
+  }
+}
+
+function contentMatch(
+  path: string,
+  line: number,
+  column: number
+): WorkspaceSearchMatch {
+  return {
+    column,
+    endColumn: column + 6,
+    kind: "content",
+    line,
+    path,
+    preview: "needle",
+    source: "disk",
+    type: "file",
+  }
+}
+
+function doneEvent(query: string, count: number) {
+  return {
+    count,
+    path: "repo",
+    query,
+    truncated: false,
+    type: "done" as const,
+  }
+}
+
+function activeMatchPosition(snapshot: SearchBufferSnapshot | null) {
+  return searchResultActiveMatchPosition(
+    expandedSearchResultItems(searchGroupsForSnapshot(snapshot)),
+    snapshot?.activeResultId ?? null
+  )
+}

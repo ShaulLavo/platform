@@ -2,9 +2,11 @@ import type { WorkspaceSearchMatch } from "@workspace/contracts"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   useLayoutEffect,
+  useId,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type RefObject,
 } from "react"
 
@@ -19,6 +21,12 @@ import {
   SearchNameMatchRow,
 } from "@/features/search/search-match-row"
 import {
+  firstSearchResultChildId,
+  firstSearchResultId,
+  lastSearchResultId,
+  parentSearchResultId,
+  searchResultIdByOffset,
+  searchResultItemById,
   searchResultItems,
   type SearchResultItem,
 } from "@/features/search/search-result-items"
@@ -56,13 +64,17 @@ export function SearchResultsView({
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
+  const treeId = useId()
   const parentRef = useRef<HTMLDivElement | null>(null)
+  const activeResultId = snapshot?.activeResultId ?? null
+  const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
-  const previewMaxLength = useSearchPreviewMaxLength(
-    parentRef,
-    replaceVisible
-  )
+  const previewMaxLength = useSearchPreviewMaxLength(parentRef, replaceVisible)
   const items = useMemo(() => searchResultItems(groups), [groups])
+  const activeItem = useMemo(
+    () => searchResultItemById(items, activeResultId),
+    [activeResultId, items]
+  )
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search results virtualization layer.
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -70,6 +82,13 @@ export function SearchResultsView({
     getScrollElement: () => parentRef.current,
     overscan: 12,
   })
+  const activeIndex = activeItem ? items.indexOf(activeItem) : -1
+
+  useLayoutEffect(() => {
+    if (activeIndex < 0) return
+
+    virtualizer.scrollToIndex(activeIndex, { align: "auto" })
+  }, [activeIndex, virtualizer])
 
   if (!snapshot || snapshot.status === "idle") {
     return (
@@ -94,6 +113,22 @@ export function SearchResultsView({
         className
       )}
       ref={parentRef}
+      role="tree"
+      tabIndex={0}
+      aria-activedescendant={
+        activeItem ? searchResultDomId(treeId, activeItem.id) : undefined
+      }
+      aria-label="Search results"
+      onKeyDown={(event) =>
+        handleSearchResultKeyDown({
+          activeResultId,
+          event,
+          items,
+          onOpenMatch,
+          onSelectResult: selectResult,
+          onToggleGroup: toggleGroup,
+        })
+      }
     >
       <div
         className="relative"
@@ -106,13 +141,22 @@ export function SearchResultsView({
           return (
             <div
               className="absolute right-1.5 left-1.5"
-              key={searchResultItemKey(item)}
+              id={searchResultDomId(treeId, item.id)}
+              key={item.id}
+              role="treeitem"
               style={{
                 transform: `translateY(${virtualItem.start + 6}px)`,
               }}
+              aria-expanded={
+                item.type === "group" ? !item.group.collapsed : undefined
+              }
+              aria-level={item.level}
+              aria-selected={item.id === activeResultId}
+              onMouseDown={() => selectResult(item.id)}
             >
               <SearchResultRow
                 item={item}
+                active={item.id === activeResultId}
                 nextItem={items[virtualItem.index + 1]}
                 canReplace={canReplace}
                 previewMaxLength={previewMaxLength}
@@ -121,6 +165,7 @@ export function SearchResultsView({
                 onOpenMatch={onOpenMatch}
                 onReplaceGroup={onReplaceGroup}
                 onReplaceMatch={onReplaceMatch}
+                onSelectResult={selectResult}
                 onToggleGroup={toggleGroup}
               />
             </div>
@@ -132,6 +177,7 @@ export function SearchResultsView({
 }
 
 function SearchResultRow({
+  active,
   item,
   nextItem,
   canReplace,
@@ -141,8 +187,10 @@ function SearchResultRow({
   onOpenMatch,
   onReplaceGroup,
   onReplaceMatch,
+  onSelectResult,
   onToggleGroup,
 }: {
+  active: boolean
   item: SearchResultItem
   nextItem?: SearchResultItem
   canReplace?: boolean
@@ -152,11 +200,13 @@ function SearchResultRow({
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
+  onSelectResult: (id: string | null) => void
   onToggleGroup: (path: string) => void
 }) {
   if (item.type === "group") {
     return (
       <SearchFileGroupHeader
+        active={active}
         className={cn(
           "rounded-t-md border bg-background",
           item.group.collapsed && "rounded-b-md"
@@ -165,24 +215,32 @@ function SearchResultRow({
         group={item.group}
         replaceVisible={replaceVisible}
         onReplace={onReplaceGroup}
-        onToggle={onToggleGroup}
+        onToggle={() => {
+          onSelectResult(item.id)
+          onToggleGroup(item.group.path)
+        }}
       />
     )
   }
   if (item.type === "name") {
     return (
       <SearchNameMatchRow
+        active={active}
         className="rounded-md border bg-background"
         match={item.match}
         previewMaxLength={previewMaxLength}
         query={query}
-        onOpenMatch={onOpenMatch}
+        onOpenMatch={() => {
+          onSelectResult(item.id)
+          onOpenMatch(item.match)
+        }}
       />
     )
   }
 
   return (
     <SearchMatchRow
+      active={active}
       className={cn(
         "border-x border-b bg-background",
         isLastGroupMatch(item, nextItem) && "rounded-b-md"
@@ -192,7 +250,10 @@ function SearchResultRow({
       previewMaxLength={previewMaxLength}
       replaceVisible={replaceVisible}
       query={query}
-      onOpenMatch={onOpenMatch}
+      onOpenMatch={() => {
+        onSelectResult(item.id)
+        onOpenMatch(item.match)
+      }}
       onReplaceMatch={onReplaceMatch}
     />
   )
@@ -210,24 +271,6 @@ function searchResultItemEstimate(item: SearchResultItem | undefined) {
   if (item?.type === "group") return 44
 
   return 30
-}
-
-function searchResultItemKey(item: SearchResultItem) {
-  if (item.type === "group") return `group:${item.group.path}`
-  if (item.type === "name")
-    return `name:${item.match.source}:${item.match.path}`
-
-  const match = item.match
-  return [
-    "match",
-    item.groupPath,
-    item.matchIndex,
-    match.kind,
-    match.source,
-    match.line ?? "name",
-    match.column ?? 0,
-    match.endColumn ?? 0,
-  ].join(":")
 }
 
 function useSearchPreviewMaxLength(
@@ -284,4 +327,123 @@ function searchPreviewMaxLength(
     SEARCH_PREVIEW_MAX_CHARACTERS,
     Math.max(SEARCH_PREVIEW_MIN_CHARACTERS, visibleCharacters)
   )
+}
+
+function handleSearchResultKeyDown({
+  activeResultId,
+  event,
+  items,
+  onOpenMatch,
+  onSelectResult,
+  onToggleGroup,
+}: {
+  activeResultId: string | null
+  event: KeyboardEvent<HTMLDivElement>
+  items: readonly SearchResultItem[]
+  onOpenMatch: (match: WorkspaceSearchMatch) => void
+  onSelectResult: (id: string | null) => void
+  onToggleGroup: (path: string) => void
+}) {
+  if (event.key === "ArrowDown") {
+    event.preventDefault()
+    onSelectResult(searchResultIdByOffset({ activeResultId, items, offset: 1 }))
+    return
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault()
+    onSelectResult(
+      searchResultIdByOffset({ activeResultId, items, offset: -1 })
+    )
+    return
+  }
+  if (event.key === "Home") {
+    event.preventDefault()
+    onSelectResult(firstSearchResultId(items))
+    return
+  }
+  if (event.key === "End") {
+    event.preventDefault()
+    onSelectResult(lastSearchResultId(items))
+    return
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault()
+    moveIntoSearchResultGroup(
+      items,
+      activeResultId,
+      onSelectResult,
+      onToggleGroup
+    )
+    return
+  }
+  if (event.key === "ArrowLeft") {
+    event.preventDefault()
+    moveOutOfSearchResultGroup(
+      items,
+      activeResultId,
+      onSelectResult,
+      onToggleGroup
+    )
+    return
+  }
+  if (event.key !== "Enter") return
+
+  event.preventDefault()
+  commitSearchResult(items, activeResultId, onOpenMatch, onToggleGroup)
+}
+
+function moveIntoSearchResultGroup(
+  items: readonly SearchResultItem[],
+  activeResultId: string | null,
+  onSelectResult: (id: string | null) => void,
+  onToggleGroup: (path: string) => void
+) {
+  const active = searchResultItemById(items, activeResultId)
+  if (active?.type !== "group") return
+
+  if (active.group.collapsed) {
+    onToggleGroup(active.group.path)
+    return
+  }
+
+  onSelectResult(firstSearchResultChildId(items, active.id) ?? active.id)
+}
+
+function moveOutOfSearchResultGroup(
+  items: readonly SearchResultItem[],
+  activeResultId: string | null,
+  onSelectResult: (id: string | null) => void,
+  onToggleGroup: (path: string) => void
+) {
+  const parentId = parentSearchResultId(items, activeResultId)
+  if (parentId) {
+    onSelectResult(parentId)
+    return
+  }
+
+  const active = searchResultItemById(items, activeResultId)
+  if (active?.type !== "group") return
+  if (active.group.collapsed) return
+
+  onToggleGroup(active.group.path)
+}
+
+function commitSearchResult(
+  items: readonly SearchResultItem[],
+  activeResultId: string | null,
+  onOpenMatch: (match: WorkspaceSearchMatch) => void,
+  onToggleGroup: (path: string) => void
+) {
+  const active = searchResultItemById(items, activeResultId)
+  if (!active) return
+  if (active.type === "group") {
+    onToggleGroup(active.group.path)
+    return
+  }
+
+  onOpenMatch(active.match)
+}
+
+function searchResultDomId(treeId: string, itemId: string) {
+  return `${treeId}-${itemId}`
 }

@@ -10,6 +10,15 @@ import { createStore, type StoreApi } from "zustand/vanilla"
 
 import { basename, toTreePath } from "@/lib/path-formatters"
 import { searchBufferDocumentId } from "@/features/search/search-buffer-document"
+import {
+  expandedSearchResultItems,
+  searchResultContentItems,
+  searchResultItemById,
+  visibleSearchResultId,
+  type SearchResultId,
+} from "@/features/search/search-result-items"
+
+const SEARCH_HISTORY_LIMIT = 50
 
 export type SearchBufferStatus = "idle" | "loading" | "ready" | "error"
 export type SearchReplaceStatus = "idle" | "running" | "success" | "error"
@@ -36,6 +45,7 @@ export type WorkspaceSearchFileGroup = {
 }
 
 export type SearchBufferSnapshot = {
+  activeResultId: SearchResultId | null
   caseSensitive: boolean
   collapsedPaths: readonly string[]
   error: string | null
@@ -46,6 +56,12 @@ export type SearchBufferSnapshot = {
   matchMode: WorkspaceSearchMatchMode
   matches: readonly WorkspaceSearchMatch[]
   query: string
+  queryHistory: readonly string[]
+  queryHistoryCursor: number | null
+  queryHistoryDraft: string | null
+  replaceHistory: readonly string[]
+  replaceHistoryCursor: number | null
+  replaceHistoryDraft: string | null
   replaceMessage: string | null
   replaceStatus: SearchReplaceStatus
   replaceText: string
@@ -70,6 +86,8 @@ type SearchBufferStoreState = {
 type SearchBufferStoreActions = {
   appendEvent: (runId: number, event: WorkspaceSearchEvent) => void
   appendEvents: (runId: number, events: readonly WorkspaceSearchEvent[]) => void
+  collapseAllGroups: () => void
+  expandAllGroups: () => void
   failSearch: (runId: number, error: string) => void
   failReplace: (rootPath: string, error: string) => void
   finishReplace: (rootPath: string, message: string) => void
@@ -80,6 +98,13 @@ type SearchBufferStoreActions = {
   setQuery: (rootPath: string, query: string) => void
   setReplaceText: (rootPath: string, replaceText: string) => void
   setReplaceVisible: (rootPath: string, replaceVisible: boolean) => void
+  selectNextQuery: (rootPath: string) => void
+  selectNextReplaceText: (rootPath: string) => void
+  selectNextMatch: () => void
+  selectPreviousQuery: (rootPath: string) => void
+  selectPreviousReplaceText: (rootPath: string) => void
+  selectPreviousMatch: () => void
+  selectResult: (id: SearchResultId | null) => void
   startReplace: (rootPath: string) => void
   startSearch: (query: WorkspaceSearchQuery) => number
   toggleGroup: (path: string) => void
@@ -117,6 +142,10 @@ export function createSearchBufferStore() {
       set((state) => appendSearchEvent(state, runId, event)),
     appendEvents: (runId, events) =>
       set((state) => appendSearchEvents(state, runId, events)),
+    collapseAllGroups: () =>
+      set((state) => ({ active: collapseSearchGroups(state.active) })),
+    expandAllGroups: () =>
+      set((state) => ({ active: expandSearchGroups(state.active) })),
     failSearch: (runId, error) =>
       set((state) => failSearchBuffer(state, runId, error)),
     failReplace: (rootPath, error) =>
@@ -156,11 +185,7 @@ export function createSearchBufferStore() {
       })),
     setReplaceText: (rootPath, replaceText) =>
       set((state) => ({
-        active: replaceSearchBuffer(state.active, rootPath, {
-          replaceMessage: null,
-          replaceStatus: "idle",
-          replaceText,
-        }),
+        active: replaceTextSearchBuffer(state.active, rootPath, replaceText),
       })),
     setReplaceVisible: (rootPath, replaceVisible) =>
       set((state) => ({
@@ -170,12 +195,31 @@ export function createSearchBufferStore() {
           replaceVisible,
         }),
       })),
+    selectNextQuery: (rootPath) =>
+      set((state) => ({
+        active: selectSearchHistoryQuery(state.active, rootPath, 1),
+      })),
+    selectNextReplaceText: (rootPath) =>
+      set((state) => ({
+        active: selectReplaceHistoryText(state.active, rootPath, 1),
+      })),
+    selectNextMatch: () =>
+      set((state) => ({ active: selectSearchMatch(state.active, 1) })),
+    selectPreviousQuery: (rootPath) =>
+      set((state) => ({
+        active: selectSearchHistoryQuery(state.active, rootPath, -1),
+      })),
+    selectPreviousReplaceText: (rootPath) =>
+      set((state) => ({
+        active: selectReplaceHistoryText(state.active, rootPath, -1),
+      })),
+    selectPreviousMatch: () =>
+      set((state) => ({ active: selectSearchMatch(state.active, -1) })),
+    selectResult: (id) =>
+      set((state) => ({ active: selectSearchResult(state.active, id) })),
     startReplace: (rootPath) =>
       set((state) => ({
-        active: replaceSearchBuffer(state.active, rootPath, {
-          replaceMessage: null,
-          replaceStatus: "running",
-        }),
+        active: startReplaceSearchBuffer(state.active, rootPath),
       })),
     startSearch: (query) => {
       const current = get().active
@@ -226,6 +270,8 @@ function querySearchBuffer(
     ...base,
     error: null,
     query,
+    queryHistoryCursor: null,
+    queryHistoryDraft: null,
     replaceMessage: null,
     replaceStatus: "idle" as const,
     runId: queryChanged ? base.runId + 1 : base.runId,
@@ -238,9 +284,12 @@ function querySearchBuffer(
 function clearedSearchBuffer(current: SearchBufferSnapshot) {
   return {
     ...current,
+    activeResultId: null,
     error: null,
     matches: [],
     query: "",
+    queryHistoryCursor: null,
+    queryHistoryDraft: null,
     replaceMessage: null,
     replaceStatus: "idle" as const,
     resultsQuery: "",
@@ -288,24 +337,30 @@ function appendSearchEvent(
     const matches = nextSearchMatches(active, event.match)
     const runningSearchQuery = active.runningSearchQuery
     return {
-      active: {
+      active: resolveActiveSearchResult({
         ...active,
         matches,
         resultsQuery: active.runningQuery ?? active.resultsQuery,
         resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
         status: "loading",
-        totalCount: matches.length,
+        totalCount: contentSearchMatchCount(matches),
         truncated: false,
-      },
+      }),
     }
   }
   if (event.type === "done") {
     const query = active.runningQuery ?? event.query
     const searchQuery = active.runningSearchQuery
+    const matches = doneMatches(active, searchQuery)
     return {
-      active: {
+      active: resolveActiveSearchResult({
         ...active,
-        matches: doneMatches(active, searchQuery),
+        collapsedPaths: prunedCollapsedPaths(
+          active.collapsedPaths,
+          matches,
+          active.rootPath
+        ),
+        matches,
         resultsQuery: query,
         resultsSearchQuery: searchQuery,
         runningQuery: null,
@@ -313,7 +368,7 @@ function appendSearchEvent(
         status: "ready",
         totalCount: event.count,
         truncated: event.truncated,
-      },
+      }),
     }
   }
 
@@ -345,7 +400,13 @@ function replaceSearchBuffer(
   patch: Partial<
     Pick<
       SearchBufferSnapshot,
-      "replaceMessage" | "replaceStatus" | "replaceText" | "replaceVisible"
+      | "replaceHistory"
+      | "replaceHistoryCursor"
+      | "replaceHistoryDraft"
+      | "replaceMessage"
+      | "replaceStatus"
+      | "replaceText"
+      | "replaceVisible"
     >
   >
 ) {
@@ -355,6 +416,40 @@ function replaceSearchBuffer(
   return {
     ...snapshot,
     ...patch,
+  }
+}
+
+function replaceTextSearchBuffer(
+  snapshot: SearchBufferSnapshot | null,
+  rootPath: string,
+  replaceText: string
+) {
+  return replaceSearchBuffer(snapshot, rootPath, {
+    replaceHistoryCursor: null,
+    replaceHistoryDraft: null,
+    replaceMessage: null,
+    replaceStatus: "idle",
+    replaceText,
+  })
+}
+
+function startReplaceSearchBuffer(
+  snapshot: SearchBufferSnapshot | null,
+  rootPath: string
+) {
+  if (!snapshot) return null
+  if (snapshot.rootPath !== rootPath) return snapshot
+
+  const historyNavigation = activeReplaceHistoryNavigation(snapshot)
+  return {
+    ...snapshot,
+    replaceHistory: replaceHistoryForRun(snapshot),
+    replaceHistoryCursor: historyNavigation
+      ? snapshot.replaceHistoryCursor
+      : null,
+    replaceHistoryDraft: historyNavigation ? snapshot.replaceHistoryDraft : null,
+    replaceMessage: null,
+    replaceStatus: "running" as const,
   }
 }
 
@@ -386,6 +481,7 @@ function activeRun(snapshot: SearchBufferSnapshot | null, runId: number) {
 
 function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
   return {
+    activeResultId: null,
     caseSensitive: false,
     collapsedPaths: [],
     error: null,
@@ -396,6 +492,12 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     matchMode: "literal",
     matches: [],
     query: "",
+    queryHistory: [],
+    queryHistoryCursor: null,
+    queryHistoryDraft: null,
+    replaceHistory: [],
+    replaceHistoryCursor: null,
+    replaceHistoryDraft: null,
     replaceMessage: null,
     replaceStatus: "idle",
     replaceText: "",
@@ -420,8 +522,10 @@ function loadingSearchBuffer(
   current: SearchBufferSnapshot | null
 ): SearchBufferSnapshot {
   const previous = current?.rootPath === query.path ? current : null
+  const historyNavigation = activeSearchHistoryNavigation(previous, query.query)
 
   return {
+    activeResultId: previous?.activeResultId ?? null,
     caseSensitive: query.caseSensitive ?? previous?.caseSensitive ?? false,
     collapsedPaths: previous?.collapsedPaths ?? [],
     error: null,
@@ -434,6 +538,12 @@ function loadingSearchBuffer(
     matchMode: query.matchMode ?? previous?.matchMode ?? "literal",
     matches: previous?.matches ?? [],
     query: query.query,
+    queryHistory: searchHistoryForRun(previous, query.query),
+    queryHistoryCursor: historyNavigation ? previous.queryHistoryCursor : null,
+    queryHistoryDraft: historyNavigation ? previous.queryHistoryDraft : null,
+    replaceHistory: previous?.replaceHistory ?? [],
+    replaceHistoryCursor: previous?.replaceHistoryCursor ?? null,
+    replaceHistoryDraft: previous?.replaceHistoryDraft ?? null,
     replaceMessage: previous?.replaceMessage ?? null,
     replaceStatus: previous?.replaceStatus ?? "idle",
     replaceText: previous?.replaceText ?? "",
@@ -546,10 +656,377 @@ function toggleSearchGroup(
     collapsedPaths.add(path)
   }
 
-  return {
+  return resolveActiveSearchResult({
     ...snapshot,
     collapsedPaths: [...collapsedPaths],
+  })
+}
+
+function selectSearchHistoryQuery(
+  snapshot: SearchBufferSnapshot | null,
+  rootPath: string,
+  direction: 1 | -1
+) {
+  if (!snapshot) return null
+  if (snapshot.rootPath !== rootPath) return snapshot
+
+  const selection = searchHistorySelection(queryHistoryState(snapshot), direction)
+  if (!selection) return snapshot
+
+  return searchHistoryQueryBuffer(
+    snapshot,
+    selection.value,
+    selection.cursor,
+    selection.draft
+  )
+}
+
+function selectReplaceHistoryText(
+  snapshot: SearchBufferSnapshot | null,
+  rootPath: string,
+  direction: 1 | -1
+) {
+  if (!snapshot) return null
+  if (snapshot.rootPath !== rootPath) return snapshot
+
+  const selection = searchHistorySelection(
+    replaceHistoryState(snapshot),
+    direction
+  )
+  if (!selection) return snapshot
+
+  return {
+    ...snapshot,
+    replaceHistoryCursor: selection.cursor,
+    replaceHistoryDraft: selection.draft,
+    replaceMessage: null,
+    replaceStatus: "idle" as const,
+    replaceText: selection.value,
   }
+}
+
+function searchHistoryQueryBuffer(
+  snapshot: SearchBufferSnapshot,
+  query: string,
+  cursor: number | null,
+  draft: string | null
+) {
+  if (!query) {
+    return {
+      ...clearedSearchBuffer(snapshot),
+      queryHistoryCursor: cursor,
+      queryHistoryDraft: draft,
+    }
+  }
+
+  const queryChanged = snapshot.query !== query
+  return {
+    ...snapshot,
+    error: null,
+    query,
+    queryHistoryCursor: cursor,
+    queryHistoryDraft: draft,
+    replaceMessage: null,
+    replaceStatus: "idle" as const,
+    runId: queryChanged ? snapshot.runId + 1 : snapshot.runId,
+    runningQuery: queryChanged ? null : snapshot.runningQuery,
+    runningSearchQuery: queryChanged ? null : snapshot.runningSearchQuery,
+    status: queryChanged ? "loading" : snapshot.status,
+  }
+}
+
+type SearchTextHistoryState = {
+  cursor: number | null
+  draft: string | null
+  history: readonly string[]
+  value: string
+}
+
+type SearchTextHistorySelection = {
+  cursor: number | null
+  draft: string | null
+  value: string
+}
+
+function queryHistoryState(snapshot: SearchBufferSnapshot) {
+  return {
+    cursor: snapshot.queryHistoryCursor,
+    draft: snapshot.queryHistoryDraft,
+    history: snapshot.queryHistory,
+    value: snapshot.query,
+  }
+}
+
+function replaceHistoryState(snapshot: SearchBufferSnapshot) {
+  return {
+    cursor: snapshot.replaceHistoryCursor,
+    draft: snapshot.replaceHistoryDraft,
+    history: snapshot.replaceHistory,
+    value: snapshot.replaceText,
+  }
+}
+
+function searchHistorySelection(
+  state: SearchTextHistoryState,
+  direction: 1 | -1
+): SearchTextHistorySelection | null {
+  const cursor = searchHistoryCursor(state, direction)
+  if (cursor === state.cursor) return null
+
+  return {
+    cursor,
+    draft: searchHistoryDraft(state, cursor),
+    value: searchHistoryValue(state, cursor),
+  }
+}
+
+function searchHistoryCursor(
+  state: SearchTextHistoryState,
+  direction: 1 | -1
+) {
+  if (state.history.length === 0) return null
+  if (direction < 0) return previousSearchHistoryCursor(state)
+
+  return nextSearchHistoryCursor(state)
+}
+
+function previousSearchHistoryCursor(state: SearchTextHistoryState) {
+  if (state.cursor !== null) {
+    return Math.max(0, state.cursor - 1)
+  }
+
+  const currentIndex = currentSearchHistoryIndex(state)
+  if (currentIndex > 0) return currentIndex - 1
+  if (currentIndex === 0) return 0
+
+  return state.history.length - 1
+}
+
+function nextSearchHistoryCursor(state: SearchTextHistoryState) {
+  if (state.cursor !== null) {
+    return nextSearchHistoryCursorFromActive(state)
+  }
+
+  const currentIndex = currentSearchHistoryIndex(state)
+  if (currentIndex < 0) return null
+  if (currentIndex >= state.history.length - 1) return null
+
+  return currentIndex + 1
+}
+
+function nextSearchHistoryCursorFromActive(state: SearchTextHistoryState) {
+  const cursor = state.cursor
+  if (cursor === null) return null
+  if (cursor >= state.history.length - 1) return null
+
+  return cursor + 1
+}
+
+function currentSearchHistoryIndex(state: SearchTextHistoryState) {
+  return state.history.lastIndexOf(state.value)
+}
+
+function searchHistoryDraft(
+  state: SearchTextHistoryState,
+  cursor: number | null
+) {
+  if (cursor === null) return null
+  if (state.cursor !== null) return state.draft
+
+  return state.value
+}
+
+function searchHistoryValue(
+  state: SearchTextHistoryState,
+  cursor: number | null
+) {
+  if (cursor === null) return state.draft ?? state.value
+
+  return state.history[cursor] ?? state.value
+}
+
+function activeSearchHistoryNavigation(
+  previous: SearchBufferSnapshot | null,
+  query: string
+): previous is SearchBufferSnapshot {
+  if (!previous) return false
+
+  return activeTextHistoryNavigation(queryHistoryState(previous), query)
+}
+
+function activeReplaceHistoryNavigation(snapshot: SearchBufferSnapshot) {
+  return activeTextHistoryNavigation(
+    replaceHistoryState(snapshot),
+    snapshot.replaceText
+  )
+}
+
+function activeTextHistoryNavigation(
+  state: SearchTextHistoryState,
+  value: string
+) {
+  if (state.cursor === null) return false
+
+  return state.value === value
+}
+
+function searchHistoryForRun(
+  previous: SearchBufferSnapshot | null,
+  query: string
+) {
+  if (activeSearchHistoryNavigation(previous, query)) {
+    return previous.queryHistory
+  }
+
+  return nextSearchHistory(previous?.queryHistory ?? [], query)
+}
+
+function replaceHistoryForRun(snapshot: SearchBufferSnapshot) {
+  if (activeReplaceHistoryNavigation(snapshot)) return snapshot.replaceHistory
+
+  return nextSearchHistory(snapshot.replaceHistory, snapshot.replaceText)
+}
+
+function nextSearchHistory(history: readonly string[], query: string) {
+  const value = query.trim()
+  if (!value) return history
+  if (history.at(-1) === value) return history
+
+  return [...history.filter((item) => item !== value), value].slice(
+    -SEARCH_HISTORY_LIMIT
+  )
+}
+
+function collapseSearchGroups(snapshot: SearchBufferSnapshot | null) {
+  if (!snapshot) return null
+
+  const collapsedPaths = groupSearchMatches(
+    snapshot.matches,
+    snapshot.rootPath,
+    snapshot.collapsedPaths
+  )
+    .filter((group) => group.count > 0)
+    .map((group) => group.path)
+
+  return resolveActiveSearchResult({
+    ...snapshot,
+    collapsedPaths,
+  })
+}
+
+function expandSearchGroups(snapshot: SearchBufferSnapshot | null) {
+  if (!snapshot) return null
+
+  return resolveActiveSearchResult({
+    ...snapshot,
+    collapsedPaths: [],
+  })
+}
+
+function selectSearchResult(
+  snapshot: SearchBufferSnapshot | null,
+  id: SearchResultId | null
+) {
+  if (!snapshot) return null
+
+  const groups = groupSearchMatches(
+    snapshot.matches,
+    snapshot.rootPath,
+    snapshot.collapsedPaths
+  )
+  const selected = searchResultItemById(expandedSearchResultItems(groups), id)
+  if (!selected) return resolveActiveSearchResult(snapshot)
+
+  const collapsedPaths =
+    selected.type === "match"
+      ? withoutPath(snapshot.collapsedPaths, selected.groupPath)
+      : snapshot.collapsedPaths
+
+  return resolveActiveSearchResult({
+    ...snapshot,
+    activeResultId: selected.id,
+    collapsedPaths,
+  })
+}
+
+function selectSearchMatch(
+  snapshot: SearchBufferSnapshot | null,
+  direction: 1 | -1
+) {
+  if (!snapshot) return null
+
+  const groups = groupSearchMatches(
+    snapshot.matches,
+    snapshot.rootPath,
+    snapshot.collapsedPaths
+  )
+  const matches = searchResultContentItems(expandedSearchResultItems(groups))
+  if (matches.length === 0) return resolveActiveSearchResult(snapshot)
+
+  const index = activeSearchMatchIndex(matches, snapshot.activeResultId)
+  const nextIndex = wrappedSearchMatchIndex(index, matches.length, direction)
+  const selected = matches[nextIndex]
+  if (!selected) return resolveActiveSearchResult(snapshot)
+
+  return resolveActiveSearchResult({
+    ...snapshot,
+    activeResultId: selected.id,
+    collapsedPaths: withoutPath(snapshot.collapsedPaths, selected.groupPath),
+  })
+}
+
+function resolveActiveSearchResult(snapshot: SearchBufferSnapshot) {
+  const groups = groupSearchMatches(
+    snapshot.matches,
+    snapshot.rootPath,
+    snapshot.collapsedPaths
+  )
+  const activeResultId = visibleSearchResultId(groups, snapshot.activeResultId)
+  if (activeResultId === snapshot.activeResultId) return snapshot
+
+  return {
+    ...snapshot,
+    activeResultId,
+  }
+}
+
+function activeSearchMatchIndex(
+  matches: ReturnType<typeof searchResultContentItems>,
+  activeResultId: SearchResultId | null
+) {
+  if (!activeResultId) return -1
+
+  return matches.findIndex((match) => match.id === activeResultId)
+}
+
+function wrappedSearchMatchIndex(
+  index: number,
+  length: number,
+  direction: 1 | -1
+) {
+  if (index < 0) return direction > 0 ? 0 : length - 1
+
+  return (index + direction + length) % length
+}
+
+function withoutPath(paths: readonly string[], path: string) {
+  return paths.filter((item) => item !== path)
+}
+
+function prunedCollapsedPaths(
+  collapsedPaths: readonly string[],
+  matches: readonly WorkspaceSearchMatch[],
+  rootPath: string
+) {
+  const presentPaths = new Set(
+    groupSearchMatches(matches, rootPath, []).map((group) => group.path)
+  )
+
+  return collapsedPaths.filter((path) => presentPaths.has(path))
+}
+
+function contentSearchMatchCount(matches: readonly WorkspaceSearchMatch[]) {
+  return matches.filter((match) => match.kind === "content").length
 }
 
 function groupSearchMatches(

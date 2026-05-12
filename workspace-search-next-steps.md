@@ -100,17 +100,21 @@ References:
 
 ### 4. Result Tree Semantics
 
-The current result list is grouped and virtualized, but it is not a full editor-grade tree. Match Zed’s result navigation and result-buffer behavior first; use VS Code’s tree model for additional accessibility, commands, and polish.
+Workspace search now has editor-grade result tree semantics for the grouped, virtualized React result list. It keeps Zed-shaped active match navigation and collapse behavior as the baseline, with VS Code-shaped ARIA tree semantics and row labels for accessibility.
 
-Remaining work:
+Status: Done for the Zed-first sidebar/search-buffer baseline.
 
-- Add collapse-all / expand-all.
-- Persist collapse state during reruns when the file path is still present.
-- Add active result selection and next/previous match commands.
-- Add keyboard focus model for rows.
-- Add ARIA roles for tree/treeitem semantics.
-- Add stable row IDs across rerenders and batching.
-- Add richer counts: total matches, file count, active match index.
+Completed:
+
+- Added stable result row IDs for file groups, content matches, and filename-only rows.
+- Added active result state shared by the sidebar and search-buffer editor.
+- Added collapse-all and expand-all result controls.
+- Preserved and pruned collapse state across reruns when file paths remain present.
+- Added previous/next match navigation with wrapping and collapsed-parent reveal.
+- Added local keyboard navigation for visible result rows.
+- Added ARIA `tree` / `treeitem` roles with level, selected, expanded, and active descendant state.
+- Added richer summary counts for total matches, file count, and active match index.
+- Added focused tests for row ID stability, collapse state, active selection, navigation wrapping, hidden-match reveal, and keyboard helper semantics.
 
 References:
 

@@ -10,16 +10,22 @@ export function HighlightedPreview({
   const highlight = range
     ? previewRangeHighlight(preview, range)
     : previewHighlight(preview, query)
-  if (!highlight) return <>{preview}</>
+  if (!highlight) {
+    return (
+      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+        {preview}
+      </span>
+    )
+  }
 
   return (
-    <>
+    <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
       {highlight.before}
-      <mark className="rounded-sm bg-yellow-200/80 px-0.5 text-yellow-950 dark:bg-yellow-500/30 dark:text-yellow-100">
+      <mark className="inline-block max-w-full overflow-hidden rounded-sm bg-yellow-200/80 px-0.5 text-ellipsis whitespace-nowrap text-yellow-950 align-bottom dark:bg-yellow-500/30 dark:text-yellow-100">
         {highlight.match}
       </mark>
       {highlight.after}
-    </>
+    </span>
   )
 }
 

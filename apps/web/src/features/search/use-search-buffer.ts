@@ -69,6 +69,12 @@ export function useSearchBuffer(rootPath: string) {
       store.getState().setReplaceVisible(rootPath, replaceVisible),
     setSearchOptions: (options: SearchBufferOptionPatch) =>
       store.getState().setSearchOptions(rootPath, options),
+    selectNextQuery: () => store.getState().selectNextQuery(rootPath),
+    selectNextReplaceText: () =>
+      store.getState().selectNextReplaceText(rootPath),
+    selectPreviousQuery: () => store.getState().selectPreviousQuery(rootPath),
+    selectPreviousReplaceText: () =>
+      store.getState().selectPreviousReplaceText(rootPath),
     snapshot: activeSnapshot,
   }
 }
