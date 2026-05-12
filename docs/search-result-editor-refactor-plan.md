@@ -399,6 +399,8 @@ Status: Done.
 
 ### Phase 2: Build The Structured Search View Model
 
+Status: Done.
+
 - Add `SearchResultFileBlock` and `SearchResultExcerpt` builders.
 - Preserve existing stable result IDs.
 - Build excerpts from current `WorkspaceSearchMatch.preview`.
