@@ -1,8 +1,16 @@
+import { Component, useMemo, type ReactNode } from "react"
+import type { EditorKeyBinding } from "@editor/core"
+
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { openWorkspaceSearchMatch } from "@/features/search/open-search-match"
 import { SearchHistoryInput } from "@/features/search/search-history-input"
 import { SearchResultsView } from "@/features/search/search-results-view"
 import { SearchSummary } from "@/features/search/search-summary"
+import { SearchResultDocumentEditor } from "@/features/search/search-result-document-editor"
+import {
+  searchResultDocument,
+  type SearchResultOpenTarget,
+} from "@/features/search/search-result-document"
 import {
   SearchFilterFields,
   SearchModeButtons,
@@ -10,9 +18,16 @@ import {
   SearchReplaceToggleButton,
 } from "@/features/search/search-controls"
 import { useSearchBuffer } from "@/features/search/use-search-buffer"
+import { useSearchBufferState } from "@/features/search/search-buffer-state"
 import { useWorkspaceSearchReplace } from "@/features/search/use-search-replace"
 
-export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
+export function SearchBufferEditor({
+  editorKeyBindings,
+  rootPath,
+}: {
+  editorKeyBindings: readonly EditorKeyBinding[]
+  rootPath: string
+}) {
   const {
     groups,
     query,
@@ -30,8 +45,22 @@ export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
     setSearchOptions,
     snapshot,
   } = useSearchBuffer(rootPath)
+  const selectResult = useSearchBufferState((state) => state.selectResult)
   const replace = useWorkspaceSearchReplace(rootPath)
   const commands = useEditorCommands()
+  const searchDocument = useMemo(
+    () => searchResultDocument(groups, resultsQuery),
+    [groups, resultsQuery]
+  )
+
+  function handleOpenTarget(target: SearchResultOpenTarget) {
+    if (!target.match) {
+      commands.selectFile(target.path)
+      return
+    }
+
+    openWorkspaceSearchMatch(target.match, resultsQuery, commands)
+  }
 
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background">
@@ -77,20 +106,123 @@ export function SearchBufferEditor({ rootPath }: { rootPath: string }) {
         />
         <SearchSummary query={query.trim()} snapshot={snapshot} />
       </div>
-      <SearchResultsView
-        className="bg-muted/10"
-        canReplace={replace.canReplace}
-        groups={groups}
-        query={resultsQuery}
-        replaceText={replaceText}
-        replaceVisible={replaceVisible}
-        snapshot={snapshot}
-        onOpenMatch={(match) =>
-          openWorkspaceSearchMatch(match, resultsQuery, commands)
-        }
-        onReplaceGroup={replace.replaceGroup}
-        onReplaceMatch={replace.replaceMatch}
-      />
+      {groups.length > 0 && snapshot ? (
+        <SearchResultDocumentBoundary
+          fallback={
+            <SearchBufferResultList
+              canReplace={replace.canReplace}
+              commands={commands}
+              groups={groups}
+              replaceGroup={replace.replaceGroup}
+              replaceMatch={replace.replaceMatch}
+              replaceText={replaceText}
+              replaceVisible={replaceVisible}
+              resultsQuery={resultsQuery}
+              snapshot={snapshot}
+            />
+          }
+          resetKey={`${snapshot.id}:${searchDocument.text.length}:${snapshot.runId}`}
+        >
+          <SearchResultDocumentEditor
+            activeResultId={snapshot.activeResultId}
+            document={searchDocument}
+            documentId={snapshot.id}
+            keymapBindings={editorKeyBindings}
+            onOpenTarget={handleOpenTarget}
+            onSelectResult={selectResult}
+          />
+        </SearchResultDocumentBoundary>
+      ) : (
+        <SearchBufferResultList
+          canReplace={replace.canReplace}
+          commands={commands}
+          groups={groups}
+          replaceGroup={replace.replaceGroup}
+          replaceMatch={replace.replaceMatch}
+          replaceText={replaceText}
+          replaceVisible={replaceVisible}
+          resultsQuery={resultsQuery}
+          snapshot={snapshot}
+        />
+      )}
     </section>
   )
+}
+
+function SearchBufferResultList({
+  canReplace,
+  commands,
+  groups,
+  replaceGroup,
+  replaceMatch,
+  replaceText,
+  replaceVisible,
+  resultsQuery,
+  snapshot,
+}: {
+  canReplace?: boolean
+  commands: Pick<
+    ReturnType<typeof useEditorCommands>,
+    "openDefinition" | "selectFile"
+  >
+  groups: ReturnType<typeof useSearchBuffer>["groups"]
+  replaceGroup: ReturnType<typeof useWorkspaceSearchReplace>["replaceGroup"]
+  replaceMatch: ReturnType<typeof useWorkspaceSearchReplace>["replaceMatch"]
+  replaceText: string
+  replaceVisible: boolean
+  resultsQuery: string
+  snapshot: ReturnType<typeof useSearchBuffer>["snapshot"]
+}) {
+  return (
+    <SearchResultsView
+      className="bg-muted/10"
+      canReplace={canReplace}
+      groups={groups}
+      query={resultsQuery}
+      replaceText={replaceText}
+      replaceVisible={replaceVisible}
+      snapshot={snapshot}
+      onOpenMatch={(match) =>
+        openWorkspaceSearchMatch(match, resultsQuery, commands)
+      }
+      onReplaceGroup={replaceGroup}
+      onReplaceMatch={replaceMatch}
+    />
+  )
+}
+
+class SearchResultDocumentBoundary extends Component<
+  {
+    children: ReactNode
+    fallback: ReactNode
+    resetKey: string
+  },
+  { failed: boolean; resetKey: string }
+> {
+  state = {
+    failed: false,
+    resetKey: this.props.resetKey,
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  static getDerivedStateFromProps(
+    props: { resetKey: string },
+    state: { failed: boolean; resetKey: string }
+  ) {
+    if (props.resetKey === state.resetKey) return null
+
+    return {
+      failed: false,
+      resetKey: props.resetKey,
+    }
+  }
+
+  render() {
+    if (this.state.failed) return this.props.fallback
+
+    return this.props.children
+  }
 }

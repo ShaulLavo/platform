@@ -129,11 +129,26 @@ References:
 
 Zed renders project search results as an editor-like multibuffer with excerpts. This is a primary Zed-parity item. Our virtual search buffer is editor-like only at the tab level.
 
+Product choice: keep the sidebar as the compact result tree, and render search-buffer tabs as readonly editor-backed virtual result documents.
+
+Status: Partially done for the Zed-first search-buffer tab baseline.
+
+Completed:
+
+- Search-buffer tabs render grouped results as readonly virtual editor documents when matches exist.
+- File headers and excerpt lines are generated from structured search state with source mappings back to paths and matches.
+- Active search result state syncs with the editor cursor and selection, including reveal of the current match.
+- Enter opens the source file or match for the current generated line.
+- Editor find and native selection/copy behavior are available inside result tabs.
+- Destructive edit keybindings and text input are blocked for the generated result document.
+
 Remaining work:
 
-- Decide whether search-buffer tabs should remain React list views or become real editor/multibuffer documents.
-- If staying React-based, add editor-like affordances: active row cursor, find-like next/previous, reveal current, and copy result lines.
-- If moving toward a real document, model file headers and excerpts as readonly virtual content with embedded ranges.
+- Use the structured result editor refactor plan as the canonical path for
+  replacing the current temporary mega-document renderer:
+  `/Users/shaul/Desktop/platform/docs/search-result-editor-refactor-plan.md`
+- Add richer multibuffer styling for file headers and excerpts if the plain text projection feels too flat.
+- Decide whether result tabs should be live views of the active search or saved snapshots.
 - Support multiple saved search result tabs if needed.
 
 References:

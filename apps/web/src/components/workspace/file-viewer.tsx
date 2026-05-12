@@ -143,7 +143,7 @@ export function FileViewer({
   }, [ensureCachedEditorDocument, selectedFile, selectedFilePath])
 
   useEffect(() => {
-    if (selectedDiff) {
+    if (selectedDiff || selectedSearchBuffer) {
       setStatusBarState(null)
       return
     }
@@ -154,6 +154,7 @@ export function FileViewer({
   }, [
     fileState.status,
     selectedDiff,
+    selectedSearchBuffer,
     selectedCachedDocument,
     selectedFilePath,
     setStatusBarState,
@@ -181,7 +182,10 @@ export function FileViewer({
             ref={diffViewerRef}
           />
         ) : selectedSearchBuffer ? (
-          <SearchBufferEditor rootPath={selectedSearchBuffer.rootPath} />
+          <SearchBufferEditor
+            editorKeyBindings={editorKeyBindings}
+            rootPath={selectedSearchBuffer.rootPath}
+          />
         ) : (
           <FileViewerBody
             cachedDocument={visibleDocument}
