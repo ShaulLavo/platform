@@ -19,6 +19,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useCallback,
   memo,
   useMemo,
   useRef,
@@ -63,7 +64,6 @@ const FILE_ROW_ESTIMATE = 44
 const EXCERPT_ROW_ESTIMATE = 32
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
 const EXCERPT_EDITOR_HEIGHT = 28
-const IMMEDIATE_SYNTAX_ROW_LIMIT = 240
 
 const PASSIVE_MATCH_STYLE = {
   backgroundColor: "var(--search-result-match-background)",
@@ -77,6 +77,7 @@ const ACTIVE_MATCH_STYLE = {
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
   canReplace?: boolean
+  deferredPluginMode?: SearchResultDeferredPluginMode
   displayedResultsQuery: string | null
   groups: readonly WorkspaceSearchFileGroup[]
   keymapLayers: readonly EditorKeymapLayer[]
@@ -89,193 +90,202 @@ type SearchResultEditorSurfaceProps = {
   onToggleGroup: (path: string) => void
 }
 
-export const SearchResultEditorSurface = memo(({
-  activeResultId,
-  canReplace,
-  displayedResultsQuery,
-  groups,
-  keymapLayers,
-  replaceVisible,
-  resultsQuery,
-  onOpenTarget,
-  onReplaceGroup,
-  onReplaceMatch,
-  onSelectResult,
-  onToggleGroup,
-}: SearchResultEditorSurfaceProps) => {
-  const treeId = useId()
-  const parentRef = useRef<HTMLDivElement | null>(null)
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const setActiveEditorCommandDispatch = useWorkspaceFocus(
-    (state) => state.setActiveEditorCommandDispatch
-  )
-  const readonlyKeymapLayers = useMemo(
-    () => readonlyEditorKeymapLayers(keymapLayers),
-    [keymapLayers]
-  )
-  const blocks = useMemo(
-    () => searchResultFileBlocks(groups, resultsQuery),
-    [groups, resultsQuery]
-  )
-  const rows = useMemo(() => searchResultVirtualRows(blocks), [blocks])
-  const groupByPath = useMemo(() => groupMap(groups), [groups])
-  const activeRow = useMemo(
-    () => searchResultVirtualRowById(rows, activeResultId),
-    [activeResultId, rows]
-  )
-  const activeIndex = useMemo(
-    () => searchResultVirtualRowIndex(rows, activeResultId),
-    [activeResultId, rows]
-  )
-  const minLineDigits = useMemo(() => minLineDigitsByExcerpt(blocks), [blocks])
-  const previousDisplayedResultsQueryRef = useRef<string | null>(null)
-  const activeIndexRef = useRef(activeIndex)
-  const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
-  const syntaxPlugins = useSearchResultSyntaxPlugins({
-    resultKey: displayedResultsQuery,
-    rowCount: rows.length,
-    shikiThemeResolver,
-  })
+type SearchResultDeferredPluginMode = "idle" | "immediate" | "manual"
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search result buffer virtualization layer.
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    estimateSize: (index) => searchResultVirtualRowEstimate(rows[index]),
-    getScrollElement: () => parentRef.current,
-    getItemKey: (index) => searchResultVirtualRowKey(rows[index], index),
-    measureElement,
-    overscan: 10,
-  })
-
-  useLayoutEffect(() => {
-    activeIndexRef.current = activeIndex
-  }, [activeIndex])
-
-  useLayoutEffect(() => {
-    if (!activeResultId) return
-
-    const currentActiveIndex = activeIndexRef.current
-    if (currentActiveIndex < 0) return
-
-    virtualizer.scrollToIndex(currentActiveIndex, { align: "auto" })
-  }, [activeResultId, virtualizer])
-
-  useLayoutEffect(() => {
-    if (displayedResultsQuery === null) return
-    if (previousDisplayedResultsQueryRef.current === displayedResultsQuery)
-      return
-
-    previousDisplayedResultsQueryRef.current = displayedResultsQuery
-    resetSearchResultScroll(parentRef, virtualizer)
-    const frame = window.requestAnimationFrame(() =>
-      resetSearchResultScroll(parentRef, virtualizer)
+export const SearchResultEditorSurface = memo(
+  ({
+    activeResultId,
+    canReplace,
+    deferredPluginMode = "idle",
+    displayedResultsQuery,
+    groups,
+    keymapLayers,
+    replaceVisible,
+    resultsQuery,
+    onOpenTarget,
+    onReplaceGroup,
+    onReplaceMatch,
+    onSelectResult,
+    onToggleGroup,
+  }: SearchResultEditorSurfaceProps) => {
+    const treeId = useId()
+    const parentRef = useRef<HTMLDivElement | null>(null)
+    const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+    const setActiveEditorCommandDispatch = useWorkspaceFocus(
+      (state) => state.setActiveEditorCommandDispatch
     )
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [displayedResultsQuery, virtualizer])
-
-  useEffect(() => {
-    if (activeRow?.type === "excerpt") return
-
-    setActiveEditorCommandDispatch(null)
-  }, [activeRow, setActiveEditorCommandDispatch])
-
-  function handleReplaceFile(path: string) {
-    const group = groupByPath.get(path)
-    if (!group) return
-
-    onReplaceGroup?.(group)
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    handleSearchResultSurfaceKeyDown({
-      activeResultId,
-      blocks,
-      event,
-      onOpenTarget,
-      onSelectResult,
-      onToggleGroup,
-      rows,
+    const readonlyKeymapLayers = useMemo(
+      () => readonlyEditorKeymapLayers(keymapLayers),
+      [keymapLayers]
+    )
+    const blocks = useMemo(
+      () => searchResultFileBlocks(groups, resultsQuery),
+      [groups, resultsQuery]
+    )
+    const rows = useMemo(() => searchResultVirtualRows(blocks), [blocks])
+    const groupByPath = useMemo(() => groupMap(groups), [groups])
+    const activeRow = useMemo(
+      () => searchResultVirtualRowById(rows, activeResultId),
+      [activeResultId, rows]
+    )
+    const activeIndex = useMemo(
+      () => searchResultVirtualRowIndex(rows, activeResultId),
+      [activeResultId, rows]
+    )
+    const minLineDigits = useMemo(
+      () => minLineDigitsByExcerpt(blocks),
+      [blocks]
+    )
+    const previousDisplayedResultsQueryRef = useRef<string | null>(null)
+    const activeIndexRef = useRef(activeIndex)
+    const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
+    const deferredPlugins = useSearchResultDeferredPlugins({
+      mode: deferredPluginMode,
+      resultKey: displayedResultsQuery,
+      rowCount: rows.length,
+      shikiThemeResolver,
     })
-  }
 
-  return (
-    <div
-      aria-activedescendant={
-        activeRow
-          ? searchResultDomId(treeId, searchResultVirtualRowId(activeRow))
-          : undefined
-      }
-      aria-label="Search result editor"
-      className="app-scrollbar-thin min-h-0 overflow-x-hidden overflow-y-auto bg-background"
-      ref={parentRef}
-      role="tree"
-      tabIndex={0}
-      onFocusCapture={() => setFocusArea("editor")}
-      onKeyDown={handleKeyDown}
-      onPointerDownCapture={() => setFocusArea("editor")}
-    >
+    // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search result buffer virtualization layer.
+    const virtualizer = useVirtualizer({
+      count: rows.length,
+      estimateSize: (index) => searchResultVirtualRowEstimate(rows[index]),
+      getScrollElement: () => parentRef.current,
+      getItemKey: (index) => searchResultVirtualRowKey(rows[index], index),
+      overscan: 10,
+    })
+
+    useLayoutEffect(() => {
+      activeIndexRef.current = activeIndex
+    }, [activeIndex])
+
+    useLayoutEffect(() => {
+      if (!activeResultId) return
+
+      const currentActiveIndex = activeIndexRef.current
+      if (currentActiveIndex < 0) return
+
+      virtualizer.scrollToIndex(currentActiveIndex, { align: "auto" })
+    }, [activeResultId, virtualizer])
+
+    useLayoutEffect(() => {
+      if (displayedResultsQuery === null) return
+      if (previousDisplayedResultsQueryRef.current === displayedResultsQuery)
+        return
+
+      previousDisplayedResultsQueryRef.current = displayedResultsQuery
+      resetSearchResultScroll(parentRef, virtualizer)
+      const frame = window.requestAnimationFrame(() =>
+        resetSearchResultScroll(parentRef, virtualizer)
+      )
+
+      return () => window.cancelAnimationFrame(frame)
+    }, [displayedResultsQuery, virtualizer])
+
+    useEffect(() => {
+      if (activeRow?.type === "excerpt") return
+
+      setActiveEditorCommandDispatch(null)
+    }, [activeRow, setActiveEditorCommandDispatch])
+
+    function handleReplaceFile(path: string) {
+      const group = groupByPath.get(path)
+      if (!group) return
+
+      onReplaceGroup?.(group)
+    }
+
+    function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+      handleSearchResultSurfaceKeyDown({
+        activeResultId,
+        blocks,
+        event,
+        onOpenTarget,
+        onSelectResult,
+        onToggleGroup,
+        rows,
+      })
+    }
+
+    return (
       <div
-        className="relative"
-        style={{ height: virtualizer.getTotalSize() + 12 }}
+        aria-activedescendant={
+          activeRow
+            ? searchResultDomId(treeId, searchResultVirtualRowId(activeRow))
+            : undefined
+        }
+        aria-label="Search result editor"
+        className="app-scrollbar-thin min-h-0 overflow-x-hidden overflow-y-auto bg-background"
+        ref={parentRef}
+        role="tree"
+        tabIndex={0}
+        onFocusCapture={() => setFocusArea("editor")}
+        onKeyDown={handleKeyDown}
+        onPointerDownCapture={() => setFocusArea("editor")}
       >
-        {virtualizer.getVirtualItems().map((virtualItem) => {
-          const row = rows[virtualItem.index]
-          if (!row) return null
+        <div
+          className="relative"
+          style={{ height: virtualizer.getTotalSize() + 12 }}
+        >
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const row = rows[virtualItem.index]
+            if (!row) return null
 
-          const id = searchResultVirtualRowId(row)
-          const active = id === activeResultId
+            const id = searchResultVirtualRowId(row)
+            const active = id === activeResultId
 
-          return (
-            <div
-              aria-expanded={searchResultVirtualRowExpanded(row)}
-              aria-level={row.type === "file" ? 1 : 2}
-              aria-selected={active}
-              className="absolute right-2 left-2"
-              data-index={virtualItem.index}
-              id={searchResultDomId(treeId, id)}
-              key={virtualItem.key}
-              ref={virtualizer.measureElement}
-              role="treeitem"
-              style={{
-                transform: `translateY(${virtualItem.start + 6}px)`,
-              }}
-              onMouseDown={() => onSelectResult(id)}
-            >
-              {row.type === "file" ? (
-                <SearchResultFileHeader
-                  active={active}
-                  canReplace={canReplace}
-                  file={row.file}
-                  replaceVisible={replaceVisible}
-                  onOpen={() =>
-                    onOpenTarget({ match: null, path: row.file.path })
-                  }
-                  onReplace={() => handleReplaceFile(row.file.path)}
-                  onToggle={() => onToggleGroup(row.file.path)}
-                />
-              ) : (
-                <SearchResultExcerptEditor
-                  active={active}
-                  excerpt={row.excerpt}
-                  editorTheme={editorThemeRefresh}
-                  keymapLayers={readonlyKeymapLayers}
-                  minLineDigits={minLineDigits.get(row.excerpt.id) ?? 1}
-                  replaceVisible={replaceVisible}
-                  syntaxPlugins={syntaxPlugins}
-                  canReplace={canReplace}
-                  onOpenTarget={onOpenTarget}
-                  onReplaceMatch={onReplaceMatch}
-                  onSelectResult={onSelectResult}
-                />
-              )}
-            </div>
-          )
-        })}
+            return (
+              <div
+                aria-expanded={searchResultVirtualRowExpanded(row)}
+                aria-level={row.type === "file" ? 1 : 2}
+                aria-selected={active}
+                className="absolute right-2 left-2"
+                data-index={virtualItem.index}
+                id={searchResultDomId(treeId, id)}
+                key={virtualItem.key}
+                role="treeitem"
+                style={{
+                  transform: `translateY(${virtualItem.start + 6}px)`,
+                }}
+                onMouseDown={() => onSelectResult(id)}
+              >
+                {row.type === "file" ? (
+                  <SearchResultFileHeader
+                    active={active}
+                    canReplace={canReplace}
+                    file={row.file}
+                    replaceVisible={replaceVisible}
+                    onOpen={() =>
+                      onOpenTarget({ match: null, path: row.file.path })
+                    }
+                    onReplace={() => handleReplaceFile(row.file.path)}
+                    onToggle={() => onToggleGroup(row.file.path)}
+                  />
+                ) : (
+                  <SearchResultExcerptEditor
+                    active={active}
+                    excerpt={row.excerpt}
+                    editorTheme={editorThemeRefresh}
+                    keymapLayers={readonlyKeymapLayers}
+                    minLineDigits={minLineDigits.get(row.excerpt.id) ?? 1}
+                    replaceVisible={replaceVisible}
+                    deferredPluginsReady={deferredPlugins.ready}
+                    syntaxPlugins={deferredPlugins.syntaxPlugins}
+                    canReplace={canReplace}
+                    onEnableDeferredPlugins={deferredPlugins.enable}
+                    onOpenTarget={onOpenTarget}
+                    onReplaceMatch={onReplaceMatch}
+                    onSelectResult={onSelectResult}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
-    </div>
-  )
-})
+    )
+  }
+)
 SearchResultEditorSurface.displayName = "SearchResultEditorSurface"
 
 function SearchResultFileHeader({
@@ -371,184 +381,221 @@ type SearchResultExcerptEditorProps = {
   keymapLayers: readonly EditorKeymapLayer[]
   minLineDigits: number
   replaceVisible: boolean
+  deferredPluginsReady: boolean
   syntaxPlugins: readonly EditorPlugin[]
+  onEnableDeferredPlugins: () => void
   onOpenTarget: (target: SearchResultOpenTarget) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
   onSelectResult: (id: SearchResultId | null) => void
 }
 
-const SearchResultExcerptEditor = memo(({
-  active,
-  canReplace,
-  editorTheme,
-  excerpt,
-  keymapLayers,
-  minLineDigits,
-  replaceVisible,
-  syntaxPlugins,
-  onOpenTarget,
-  onReplaceMatch,
-  onSelectResult,
-}: SearchResultExcerptEditorProps) => {
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const setActiveEditorCommandDispatch = useWorkspaceFocus(
-    (state) => state.setActiveEditorCommandDispatch
-  )
-  const document = useMemo(
-    () => ({
-      documentId: searchResultExcerptDocumentId(excerpt),
-      documentMode: "static" as const,
-      languageId: excerpt.languageId,
-      revision: searchResultExcerptRevision(excerpt),
-      text: excerpt.text,
-    }),
-    [excerpt]
-  )
-  const rangeDecorations = useMemo(
-    () => searchResultRangeDecorations(excerpt.matchRanges, active),
-    [active, excerpt.matchRanges]
-  )
-  const plugins = useMemo(
-    () => [
-      ...syntaxPlugins,
-      createLineGutterPlugin({
-        minDigits: minLineDigits,
-        startLine: excerpt.startLine,
+const SearchResultExcerptEditor = memo(
+  ({
+    active,
+    canReplace,
+    editorTheme,
+    excerpt,
+    keymapLayers,
+    minLineDigits,
+    replaceVisible,
+    deferredPluginsReady,
+    syntaxPlugins,
+    onEnableDeferredPlugins,
+    onOpenTarget,
+    onReplaceMatch,
+    onSelectResult,
+  }: SearchResultExcerptEditorProps) => {
+    const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+    const setActiveEditorCommandDispatch = useWorkspaceFocus(
+      (state) => state.setActiveEditorCommandDispatch
+    )
+    const document = useMemo(
+      () => ({
+        documentId: searchResultExcerptDocumentId(excerpt),
+        documentMode: "static" as const,
+        languageId: excerpt.languageId,
+        revision: searchResultExcerptRevision(excerpt),
+        text: excerpt.text,
       }),
-      createEditorFindPlugin(),
-    ],
-    [excerpt.startLine, minLineDigits, syntaxPlugins]
-  )
-  const controller = useEditor({
-    cursorLineHighlight: {
-      gutterBackground: ["line-gutter"],
-      gutterNumber: true,
-      rowBackground: true,
-    },
-    document,
-    editability: "readonly",
-    keymap: {
-      defaultBindings: false,
-      layers: keymapLayers,
-    },
-    lineHeight: EXCERPT_EDITOR_LINE_HEIGHT,
-    plugins,
-    rangeDecorations,
-    theme: editorTheme,
-  })
-
-  useEffect(() => {
-    if (!active) return
-
-    setActiveEditorCommandDispatch(controller.commands.dispatchCommand)
-    return () => setActiveEditorCommandDispatch(null)
-  }, [active, controller, setActiveEditorCommandDispatch])
-
-  useEffect(() => {
-    if (!active) return
-
-    const range = excerpt.matchRanges[0]
-    if (!range) return
-
-    controller.commands.setSelection(range.start, range.end, range.start)
-  }, [active, controller, excerpt.matchRanges])
-
-  function handleActivate() {
-    onSelectResult(excerpt.id)
-    setFocusArea("editor")
-  }
-
-  function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
-    if (openExcerptOnEnter(event, handleOpen)) return
-    if (!readonlyEditingKey(event)) return
-
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
-  function handleOpen() {
-    onOpenTarget({
-      match: excerpt.sourceMatch,
-      path: excerpt.path,
+      [excerpt]
+    )
+    const rangeDecorations = useMemo(
+      () => searchResultRangeDecorations(excerpt.matchRanges, active),
+      [active, excerpt.matchRanges]
+    )
+    const lineGutterPlugin = useMemo(
+      () =>
+        createLineGutterPlugin({
+          minDigits: minLineDigits,
+          startLine: excerpt.startLine,
+        }),
+      [excerpt.startLine, minLineDigits]
+    )
+    const findPlugin = useMemo(
+      () => (deferredPluginsReady ? createEditorFindPlugin() : null),
+      [deferredPluginsReady]
+    )
+    const plugins = useMemo(
+      () => excerptEditorPlugins(lineGutterPlugin, syntaxPlugins, findPlugin),
+      [findPlugin, lineGutterPlugin, syntaxPlugins]
+    )
+    const controller = useEditor({
+      cursorLineHighlight: {
+        gutterBackground: ["line-gutter"],
+        gutterNumber: true,
+        rowBackground: true,
+      },
+      document,
+      editability: "readonly",
+      keymap: {
+        defaultBindings: false,
+        layers: keymapLayers,
+      },
+      lineHeight: EXCERPT_EDITOR_LINE_HEIGHT,
+      plugins,
+      rangeDecorations,
+      storeSync: "none",
+      theme: editorTheme,
     })
-  }
 
-  function handleReplace() {
-    onReplaceMatch?.(excerpt.sourceMatch)
-  }
+    useEffect(() => {
+      if (!active) return
 
-  return (
-    <div
-      className={cn(
-        "ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5",
-        active && "border-l-yellow-500/80 bg-muted/60",
-        !active && "hover:bg-muted/35"
-      )}
-      onBeforeInputCapture={preventReadonlyInput}
-      onDropCapture={preventReadonlyInput}
-      onFocusCapture={handleActivate}
-      onKeyDownCapture={handleKeyDownCapture}
-      onPasteCapture={preventReadonlyInput}
-      onPointerDownCapture={handleActivate}
-      onClick={handleOpen}
-    >
-      <EditorHost
-        className="app-editor-host search-result-excerpt-editor-host"
-        controller={controller}
-        style={searchResultExcerptEditorStyle}
-      />
-      {replaceVisible ? (
-        <Button
-          className="h-6 px-1.5 text-[10px]"
-          disabled={!canReplace}
-          size="xs"
-          title="Replace this match"
-          type="button"
-          variant="ghost"
-          onClick={(event) => {
-            event.stopPropagation()
-            handleReplace()
-          }}
-        >
-          Replace
-        </Button>
-      ) : null}
-    </div>
-  )
-})
+      setActiveEditorCommandDispatch(controller.commands.dispatchCommand)
+      return () => setActiveEditorCommandDispatch(null)
+    }, [active, controller, setActiveEditorCommandDispatch])
+
+    useEffect(() => {
+      if (!active) return
+
+      const range = excerpt.matchRanges[0]
+      if (!range) return
+
+      controller.commands.setSelection(range.start, range.end, range.start)
+    }, [active, controller, excerpt.matchRanges])
+
+    function handleActivate() {
+      onEnableDeferredPlugins()
+      onSelectResult(excerpt.id)
+      setFocusArea("editor")
+    }
+
+    function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
+      if (openExcerptOnEnter(event, handleOpen)) return
+      if (!readonlyEditingKey(event)) return
+
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    function handleOpen() {
+      onOpenTarget({
+        match: excerpt.sourceMatch,
+        path: excerpt.path,
+      })
+    }
+
+    function handleReplace() {
+      onReplaceMatch?.(excerpt.sourceMatch)
+    }
+
+    return (
+      <div
+        className={cn(
+          "ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5",
+          active && "border-l-yellow-500/80 bg-muted/60",
+          !active && "hover:bg-muted/35"
+        )}
+        onBeforeInputCapture={preventReadonlyInput}
+        onDropCapture={preventReadonlyInput}
+        onFocusCapture={handleActivate}
+        onKeyDownCapture={handleKeyDownCapture}
+        onPasteCapture={preventReadonlyInput}
+        onPointerDownCapture={handleActivate}
+        onClick={handleOpen}
+      >
+        <EditorHost
+          className="app-editor-host search-result-excerpt-editor-host"
+          controller={controller}
+          style={searchResultExcerptEditorStyle}
+        />
+        {replaceVisible ? (
+          <Button
+            className="h-6 px-1.5 text-[10px]"
+            disabled={!canReplace}
+            size="xs"
+            title="Replace this match"
+            type="button"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation()
+              handleReplace()
+            }}
+          >
+            Replace
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
+)
 SearchResultExcerptEditor.displayName = "SearchResultExcerptEditor"
 
-function useSearchResultSyntaxPlugins({
+function useSearchResultDeferredPlugins({
+  mode,
   resultKey,
   rowCount,
   shikiThemeResolver,
 }: {
+  mode: SearchResultDeferredPluginMode
   resultKey: string | null
   rowCount: number
   shikiThemeResolver: () => string
 }) {
   const deferKey = `${resultKey ?? ""}:${rowCount}`
-  const shouldDefer = rowCount > IMMEDIATE_SYNTAX_ROW_LIMIT
   const [deferredSyntax, setDeferredSyntax] = useState({
     key: "",
     ready: false,
   })
-  const syntaxReady =
-    !shouldDefer || (deferredSyntax.key === deferKey && deferredSyntax.ready)
+  const ready =
+    mode === "immediate" ||
+    (deferredSyntax.key === deferKey && deferredSyntax.ready)
+  const enable = useCallback(() => {
+    setDeferredSyntax((current) => {
+      if (current.key === deferKey && current.ready) return current
+
+      return { key: deferKey, ready: true }
+    })
+  }, [deferKey])
 
   useEffect(() => {
-    if (!shouldDefer) return
+    if (mode !== "idle") return
+    if (ready) return
 
-    return scheduleSearchResultSyntaxEnable(() =>
-      setDeferredSyntax({ key: deferKey, ready: true })
-    )
-  }, [deferKey, shouldDefer])
+    return scheduleSearchResultSyntaxEnable(enable)
+  }, [enable, mode, ready])
 
-  return useMemo(() => {
-    if (!syntaxReady) return []
+  const syntaxPlugins = useMemo(() => {
+    if (!ready) return []
 
     return createEditorSyntaxHighlightingPlugins(shikiThemeResolver)
-  }, [shikiThemeResolver, syntaxReady])
+  }, [ready, shikiThemeResolver])
+
+  return {
+    enable,
+    ready,
+    syntaxPlugins,
+  }
+}
+
+function excerptEditorPlugins(
+  lineGutterPlugin: EditorPlugin,
+  syntaxPlugins: readonly EditorPlugin[],
+  findPlugin: EditorPlugin | null
+) {
+  if (!findPlugin) return [lineGutterPlugin, ...syntaxPlugins]
+
+  return [lineGutterPlugin, ...syntaxPlugins, findPlugin]
 }
 
 function handleSearchResultSurfaceKeyDown({
@@ -745,10 +792,6 @@ function searchResultVirtualRowExpanded(row: SearchResultVirtualRow) {
   if (row.file.excerpts.length === 0) return undefined
 
   return !row.file.collapsed
-}
-
-function measureElement(element: Element) {
-  return element.getBoundingClientRect().height
 }
 
 function scheduleSearchResultSyntaxEnable(callback: () => void) {
