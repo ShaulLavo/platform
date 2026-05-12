@@ -23,6 +23,7 @@ import {
   CHROME_TAB_HEIGHT,
   CHROME_TAB_INACTIVE_MIN_WIDTH,
   CHROME_TAB_STANDARD_WIDTH,
+  CHROME_TAB_TRAILING_SLOT_WIDTH,
   chromeTabLayout,
 } from "@/components/workspace/chrome-tab-layout"
 import {
@@ -76,7 +77,9 @@ export type EditorTabSizing = "chrome" | "fit" | "fixed" | "shrink"
 const DEFAULT_EDITOR_TAB_SIZING: EditorTabSizing = "chrome"
 const CHROME_TAB_GROW_DELAY_MS = 1200
 const CHROME_TAB_TRANSITION =
-  "flex-basis 160ms cubic-bezier(0.2, 0, 0, 1), max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)"
+  "flex-basis 160ms cubic-bezier(0.2, 0, 0, 1), margin-left 160ms cubic-bezier(0.2, 0, 0, 1), max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)"
+const CHROME_TAB_SLOT_TRANSITION =
+  "max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)"
 
 type EditorTabModel = {
   active: boolean
@@ -327,6 +330,21 @@ function ChromeEditorTabList({
   const activePath = activeChromeTabPath(tabs)
   const measuredAvailableWidth = useElementWidth(tabListRef)
   const [closeModeSpacerWidth, setCloseModeSpacerWidth] = useState(0)
+  const [hoveredChromeTabPath, setHoveredChromeTabPath] = useState<
+    string | null
+  >(null)
+  const [focusedChromeTabPath, setFocusedChromeTabPath] = useState<
+    string | null
+  >(null)
+  const trailingSlotWidths = useMemo(
+    () =>
+      chromeTrailingSlotWidths(
+        tabs,
+        hoveredChromeTabPath,
+        focusedChromeTabPath
+      ),
+    [focusedChromeTabPath, hoveredChromeTabPath, tabs]
+  )
   const availableWidth =
     measuredAvailableWidth === null
       ? null
@@ -338,6 +356,7 @@ function ChromeEditorTabList({
           activeIndex: tabs.findIndex((visualTab) => visualTab.tab.active),
           availableWidth,
           tabCount: tabs.length,
+          trailingSlotWidths,
         })
   const overlap = layout?.overlap ?? 0
   const spacerStyle = chromeCloseSpacerStyle(closeModeSpacerWidth)
@@ -368,17 +387,46 @@ function ChromeEditorTabList({
     setCloseModeSpacerWidth(nextSpacerWidth)
   }
 
+  function handleChromeTabFocusChange(path: string, focused: boolean) {
+    if (focused) {
+      setFocusedChromeTabPath(path)
+      return
+    }
+
+    setFocusedChromeTabPath((current) => (current === path ? null : current))
+  }
+
+  function handleChromeTabHoverChange(path: string, hovered: boolean) {
+    if (hovered) {
+      setHoveredChromeTabPath(path)
+      return
+    }
+
+    setHoveredChromeTabPath((current) => (current === path ? null : current))
+  }
+
   return (
     <div className="flex min-w-full items-end overflow-visible">
       {tabs.map((visualTab, index) => {
+        const hoveredOrFocused = chromeVisualTabHoveredOrFocused(
+          visualTab,
+          hoveredChromeTabPath,
+          focusedChromeTabPath
+        )
+
         return (
           <ChromeEditorTab
+            hoveredOrFocused={hoveredOrFocused}
             index={index}
+            layoutWidth={layout?.tabs[index]?.width ?? null}
             key={visualTab.tab.path}
             overlap={overlap}
             tabRef={visualTab.tab.active ? selectedTabRef : undefined}
+            trailingSlotWidth={trailingSlotWidths[index] ?? 0}
             visualTab={visualTab}
             onClose={handleClose}
+            onFocusChange={handleChromeTabFocusChange}
+            onHoverChange={handleChromeTabHoverChange}
             onSelect={onSelect}
           />
         )
@@ -393,22 +441,38 @@ function ChromeEditorTabList({
 }
 
 function ChromeEditorTab({
+  hoveredOrFocused,
   index,
+  layoutWidth,
   overlap,
   tabRef,
+  trailingSlotWidth,
   visualTab,
   onClose,
+  onFocusChange,
+  onHoverChange,
   onSelect,
 }: {
+  hoveredOrFocused: boolean
   index: number
+  layoutWidth: number | null
   overlap: number
   tabRef?: RefObject<HTMLDivElement | null>
+  trailingSlotWidth: number
   visualTab: ChromeVisualTab
   onClose: (path: string, width: number | null) => void
+  onFocusChange: (path: string, focused: boolean) => void
+  onHoverChange: (path: string, hovered: boolean) => void
   onSelect: (path: string) => void
 }) {
   const tab = visualTab.tab
-  const tabStyle = chromeTabStyle(visualTab, index, overlap)
+  const tabStyle = chromeTabStyle(
+    visualTab,
+    index,
+    overlap,
+    layoutWidth,
+    trailingSlotWidth
+  )
 
   return (
     <div
@@ -418,12 +482,22 @@ function ChromeEditorTab({
         tab.active &&
           "z-30 border-border bg-background text-foreground shadow-none"
       )}
+      data-chrome-tab-root=""
+      onBlurCapture={(event) => {
+        if (elementContainsTarget(event.currentTarget, event.relatedTarget))
+          return
+
+        onFocusChange(tab.path, false)
+      }}
+      onFocusCapture={() => onFocusChange(tab.path, true)}
+      onPointerEnter={() => onHoverChange(tab.path, true)}
+      onPointerLeave={() => onHoverChange(tab.path, false)}
       ref={tabRef}
       style={tabStyle}
     >
       <button
         aria-selected={tab.active}
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-3 text-left transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 pr-1.5 pl-3 text-left transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
         onClick={() => onSelect(tab.path)}
         role="tab"
         title={tab.title}
@@ -436,46 +510,60 @@ function ChromeEditorTab({
         />
         <ChromeTabTitle tab={tab} />
       </button>
-      <ChromeTabCloseButton tab={tab} onClose={onClose} />
+      <ChromeTabTrailingSlot
+        hoveredOrFocused={hoveredOrFocused}
+        tab={tab}
+        width={trailingSlotWidth}
+        onClose={onClose}
+      />
     </div>
   )
 }
 
-function ChromeTabCloseButton({
+function ChromeTabTrailingSlot({
+  hoveredOrFocused,
   tab,
+  width,
   onClose,
 }: {
+  hoveredOrFocused: boolean
   tab: EditorTabModel
+  width: number
   onClose: (path: string, width: number | null) => void
 }) {
-  return (
-    <button
-      aria-label={`Close ${tab.name}`}
-      className={cn(
-        "group/close absolute top-1/2 right-1 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded-[5px] text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
-        tab.dirty
-          ? "opacity-100"
-          : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-      )}
-      onClick={(event) => {
-        event.stopPropagation()
-        const width =
-          event.currentTarget.parentElement?.getBoundingClientRect().width ??
-          null
+  const showCloseIcon = chromeTabShowsCloseIcon(tab, hoveredOrFocused)
+  const showDirtyIndicator = chromeTabShowsDirtyIndicator(tab, hoveredOrFocused)
 
-        onClose(tab.path, width)
-      }}
-      title={`Close ${tab.name}`}
-      type="button"
+  return (
+    <div
+      className="relative flex h-full shrink-0 items-center justify-center overflow-hidden"
+      style={chromeTabTrailingSlotStyle(width)}
     >
-      <XIcon className="size-3 opacity-0 transition-opacity group-hover:opacity-70 group-focus-visible/close:opacity-70" />
+      <button
+        aria-label={`Close ${tab.name}`}
+        className={cn(
+          "group/close flex size-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-[background-color,color,opacity] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
+          showCloseIcon ? "opacity-100" : "pointer-events-none opacity-0"
+        )}
+        onClick={(event) => {
+          event.stopPropagation()
+          onClose(tab.path, chromeTabRootWidth(event.currentTarget))
+        }}
+        title={`Close ${tab.name}`}
+        type="button"
+      >
+        <XIcon className="size-3 opacity-70" />
+      </button>
       {tab.dirty ? (
         <span
           aria-hidden="true"
-          className="absolute size-2 rounded-full bg-amber-500 transition-opacity group-hover:opacity-0 group-focus-visible/close:opacity-0"
+          className={cn(
+            "pointer-events-none absolute size-2 rounded-full bg-amber-500 transition-opacity",
+            showDirtyIndicator ? "opacity-100" : "opacity-0"
+          )}
         />
       ) : null}
-    </button>
+    </div>
   )
 }
 
@@ -682,6 +770,56 @@ function activeChromeTabPath(visualTabs: readonly ChromeVisualTab[]) {
   return visualTabs.find((visualTab) => visualTab.tab.active)?.tab.path ?? null
 }
 
+function chromeTrailingSlotWidths(
+  visualTabs: readonly ChromeVisualTab[],
+  hoveredPath: string | null,
+  focusedPath: string | null
+) {
+  return visualTabs.map((visualTab) => {
+    const hoveredOrFocused = chromeVisualTabHoveredOrFocused(
+      visualTab,
+      hoveredPath,
+      focusedPath
+    )
+    if (!chromeTabHasTrailingSlot(visualTab.tab, hoveredOrFocused)) return 0
+
+    return CHROME_TAB_TRAILING_SLOT_WIDTH
+  })
+}
+
+function chromeVisualTabHoveredOrFocused(
+  visualTab: ChromeVisualTab,
+  hoveredPath: string | null,
+  focusedPath: string | null
+) {
+  const path = visualTab.tab.path
+
+  return path === hoveredPath || path === focusedPath
+}
+
+function chromeTabHasTrailingSlot(
+  tab: EditorTabModel,
+  hoveredOrFocused: boolean
+) {
+  return tab.active || tab.dirty || hoveredOrFocused
+}
+
+function chromeTabShowsCloseIcon(
+  tab: EditorTabModel,
+  hoveredOrFocused: boolean
+) {
+  if (tab.dirty) return hoveredOrFocused
+
+  return tab.active || hoveredOrFocused
+}
+
+function chromeTabShowsDirtyIndicator(
+  tab: EditorTabModel,
+  hoveredOrFocused: boolean
+) {
+  return tab.dirty && !hoveredOrFocused
+}
+
 function chromeCloseSpacerStyle(width: number) {
   return {
     flex: `0 0 ${width}px`,
@@ -689,6 +827,28 @@ function chromeCloseSpacerStyle(width: number) {
     minWidth: width,
     width,
   } as CSSProperties
+}
+
+function chromeTabTrailingSlotStyle(width: number) {
+  return {
+    maxWidth: width,
+    minWidth: width,
+    transition: CHROME_TAB_SLOT_TRANSITION,
+    width,
+  } as CSSProperties
+}
+
+function chromeTabRootWidth(element: HTMLElement) {
+  return (
+    element.closest("[data-chrome-tab-root]")?.getBoundingClientRect().width ??
+    null
+  )
+}
+
+function elementContainsTarget(element: HTMLElement, target: EventTarget | null) {
+  if (!(target instanceof Node)) return false
+
+  return element.contains(target)
 }
 
 function nextCloseModeSpacerWidth(
@@ -707,23 +867,26 @@ function nextCloseModeSpacerWidth(
 function chromeTabStyle(
   visualTab: ChromeVisualTab,
   index: number,
-  overlap: number
+  overlap: number,
+  layoutWidth: number | null,
+  trailingSlotWidth: number
 ) {
   const tab = visualTab.tab
   const fixedWidth = closingOrOpeningTabWidth(visualTab)
+  const targetWidth = fixedWidth ?? layoutWidth
   const minWidth = tab.active
-    ? CHROME_TAB_ACTIVE_MIN_WIDTH
-    : CHROME_TAB_INACTIVE_MIN_WIDTH
+    ? CHROME_TAB_ACTIVE_MIN_WIDTH + trailingSlotWidth
+    : CHROME_TAB_INACTIVE_MIN_WIDTH + trailingSlotWidth
 
   return {
     "--chrome-tab-z": tab.active ? 30 : 1,
-    flex: fixedWidth === null ? "1 1 0px" : `0 0 ${fixedWidth}px`,
+    flex: targetWidth === null ? "1 1 0px" : `0 0 ${targetWidth}px`,
     height: CHROME_TAB_HEIGHT,
     marginLeft: index === 0 ? 0 : -overlap,
-    maxWidth: fixedWidth ?? CHROME_TAB_STANDARD_WIDTH,
-    minWidth: fixedWidth ?? minWidth,
+    maxWidth: targetWidth ?? CHROME_TAB_STANDARD_WIDTH + trailingSlotWidth,
+    minWidth: targetWidth ?? minWidth,
     transition: CHROME_TAB_TRANSITION,
-    width: fixedWidth ?? "auto",
+    width: targetWidth ?? "auto",
   } as CSSProperties
 }
 

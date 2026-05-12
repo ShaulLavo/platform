@@ -23,26 +23,7 @@ export function createCriticalEditorPlugins(
   shikiTheme: string | (() => string)
 ): readonly EditorPlugin[] {
   return [
-    javaScript({ jsx: true }),
-    typeScript({ tsx: true }),
-    html(),
-    css(),
-    json(),
-    markdown(),
-    createShikiHighlighterPlugin({
-      theme: shikiTheme,
-      preloadLanguages: [
-        "css",
-        "diff",
-        "html",
-        "javascript",
-        "json",
-        "markdown",
-        "tsx",
-        "typescript",
-      ],
-      preloadThemes: ["github-dark", "github-light"],
-    }),
+    ...createEditorSyntaxHighlightingPlugins(shikiTheme),
     createLineGutterPlugin(),
     createFoldGutterPlugin({
       width: 16,
@@ -79,6 +60,24 @@ export function createEditorPlugins(
   return createCriticalEditorPlugins(typeScriptLsp, shikiTheme)
 }
 
+export function createEditorSyntaxHighlightingPlugins(
+  shikiTheme: string | (() => string)
+): readonly EditorPlugin[] {
+  return [
+    javaScript({ jsx: true }),
+    typeScript({ tsx: true }),
+    html(),
+    css(),
+    json(),
+    markdown(),
+    createShikiHighlighterPlugin({
+      theme: shikiTheme,
+      preloadLanguages: SHIKI_PRELOAD_LANGUAGES,
+      preloadThemes: SHIKI_PRELOAD_THEMES,
+    }),
+  ]
+}
+
 async function loadPlugin(
   name: string,
   load: () => Promise<EditorPlugin>
@@ -103,3 +102,16 @@ function createFoldChevronIcon({
   svg.append(path)
   return svg
 }
+
+const SHIKI_PRELOAD_LANGUAGES = [
+  "css",
+  "diff",
+  "html",
+  "javascript",
+  "json",
+  "markdown",
+  "tsx",
+  "typescript",
+] as const
+
+const SHIKI_PRELOAD_THEMES = ["github-dark", "github-light"] as const

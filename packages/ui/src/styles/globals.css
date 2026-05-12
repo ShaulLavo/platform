@@ -133,6 +133,17 @@
     --trees-file-icon-color-yml: #d52c36;
     --trees-file-icon-color-zig: #d47628;
     --trees-file-icon-color-zip: #d47628;
+    --search-result-match-background: color-mix(
+        in oklch,
+        oklch(0.86 0.17 91) 42%,
+        transparent
+    );
+    --search-result-match-active-background: color-mix(
+        in oklch,
+        oklch(0.82 0.18 86) 68%,
+        transparent
+    );
+    --search-result-match-active-decoration: oklch(0.58 0.16 74);
 }
 
 .dark {
@@ -216,6 +227,25 @@
     --trees-file-icon-color-yml: #ff6762;
     --trees-file-icon-color-zig: #ffa359;
     --trees-file-icon-color-zip: #ffa359;
+    --search-result-match-background: color-mix(
+        in oklch,
+        oklch(0.84 0.17 91) 36%,
+        transparent
+    );
+    --search-result-match-active-background: color-mix(
+        in oklch,
+        oklch(0.88 0.18 92) 56%,
+        transparent
+    );
+    --search-result-match-active-decoration: oklch(0.93 0.18 95);
+}
+
+@media (forced-colors: active) {
+    :root {
+        --search-result-match-background: Highlight;
+        --search-result-match-active-background: Highlight;
+        --search-result-match-active-decoration: HighlightText;
+    }
 }
 
 @layer base {
@@ -302,6 +332,10 @@
 
 .search-result-excerpt-editor-host .editor-virtualized-gutter {
     background: transparent;
+}
+
+.search-result-excerpt-editor-host .editor-virtualized-caret-layer {
+    display: none;
 }
 
 [data-editor-focus-active="false"] .app-editor-host .editor-virtualized-caret-layer {

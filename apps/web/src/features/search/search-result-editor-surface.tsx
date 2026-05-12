@@ -2,11 +2,13 @@ import "@editor/core/style.css"
 import "@editor/find/style.css"
 import "@editor/gutters/style.css"
 
-import { CaretRightIcon, FileTextIcon } from "@phosphor-icons/react"
+import { CaretRightIcon } from "@phosphor-icons/react"
 import type {
   EditorKeymapLayer,
+  EditorPlugin,
   EditorRangeDecoration,
   EditorSyntaxLanguageId,
+  EditorTheme,
 } from "@editor/core"
 import { createEditorFindPlugin } from "@editor/find"
 import { createLineGutterPlugin } from "@editor/gutters"
@@ -19,17 +21,24 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type KeyboardEvent,
   type RefObject,
 } from "react"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+import { createEditorSyntaxHighlightingPlugins } from "@/features/editor/editor-plugins"
 import { useEditorShikiTheme } from "@/features/editor/hooks/use-editor-shiki-theme"
 import type {
   SearchBufferSnapshot,
   WorkspaceSearchFileGroup,
 } from "@/features/search/search-buffer-state"
+import {
+  colorForFileIcon,
+  iconForEntry,
+  type ResolvedFileIcon,
+} from "@/lib/file-icons"
 import {
   firstSearchResultExcerptId,
   firstSearchResultVirtualRowId,
@@ -56,14 +65,16 @@ const FILE_ROW_ESTIMATE = 44
 const EXCERPT_ROW_ESTIMATE = 32
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
 const EXCERPT_EDITOR_HEIGHT = 28
+const IMMEDIATE_SYNTAX_ROW_LIMIT = 240
 
 const PASSIVE_MATCH_STYLE = {
-  backgroundColor: "rgba(250, 204, 21, 0.38)",
-}
+  backgroundColor: "var(--search-result-match-background)",
+} satisfies Partial<CSSStyleDeclaration>
 
 const ACTIVE_MATCH_STYLE = {
-  backgroundColor: "rgba(250, 204, 21, 0.68)",
-}
+  backgroundColor: "var(--search-result-match-active-background)",
+  textDecoration: "underline 1px var(--search-result-match-active-decoration)",
+} satisfies Partial<CSSStyleDeclaration>
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
@@ -122,6 +133,12 @@ export function SearchResultEditorSurface({
   const displayedResultsQuery = snapshot.resultsSearchQuery?.query ?? null
   const previousDisplayedResultsQueryRef = useRef<string | null>(null)
   const activeIndexRef = useRef(activeIndex)
+  const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
+  const syntaxPlugins = useSearchResultSyntaxPlugins({
+    resultKey: displayedResultsQuery,
+    rowCount: rows.length,
+    shikiThemeResolver,
+  })
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search result buffer virtualization layer.
   const virtualizer = useVirtualizer({
@@ -244,9 +261,11 @@ export function SearchResultEditorSurface({
                 <SearchResultExcerptEditor
                   active={active}
                   excerpt={row.excerpt}
+                  editorTheme={editorThemeRefresh}
                   keymapLayers={readonlyKeymapLayers}
                   minLineDigits={minLineDigits.get(row.excerpt.id) ?? 1}
                   replaceVisible={replaceVisible}
+                  syntaxPlugins={syntaxPlugins}
                   canReplace={canReplace}
                   onOpen={() =>
                     onOpenTarget({
@@ -283,11 +302,15 @@ function SearchResultFileHeader({
   onReplace: () => void
   onToggle: () => void
 }) {
+  const name = fileName(file.path)
+  const icon = useMemo(() => iconForEntry({ name, type: "file" }), [name])
+
   return (
     <div
       className={cn(
-        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-1.5 border-l border-transparent px-2 py-1.5 text-left",
-        active && "border-l-yellow-500/70 bg-muted/65",
+        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-1.5 text-left",
+        active &&
+          "border-l-yellow-500/80 bg-muted/70 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--border)_55%,transparent)]",
         !active && "hover:bg-muted/45"
       )}
     >
@@ -315,17 +338,19 @@ function SearchResultFileHeader({
         type="button"
         onClick={onOpen}
       >
-        <FileTextIcon className="size-3.5 text-muted-foreground" />
+        <span
+          aria-hidden="true"
+          className="size-4"
+          style={fileIconStyle(icon)}
+        />
         <span className="min-w-0">
-          <span className="block truncate text-xs font-medium">
-            {fileName(file.path)}
-          </span>
+          <span className="block truncate text-xs font-medium">{name}</span>
           <span className="block truncate text-[11px] text-muted-foreground">
             {file.pathLabel}
           </span>
         </span>
       </button>
-      <span className="rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground">
+      <span className="rounded-sm bg-muted/55 px-1.5 text-[10px] leading-4 text-muted-foreground">
         {matchCountLabel(file.matchCount)}
       </span>
       {replaceVisible ? (
@@ -348,20 +373,24 @@ function SearchResultFileHeader({
 function SearchResultExcerptEditor({
   active,
   canReplace,
+  editorTheme,
   excerpt,
   keymapLayers,
   minLineDigits,
   replaceVisible,
+  syntaxPlugins,
   onOpen,
   onReplace,
   onSelect,
 }: {
   active: boolean
   canReplace?: boolean
+  editorTheme: EditorTheme
   excerpt: SearchResultExcerpt
   keymapLayers: readonly EditorKeymapLayer[]
   minLineDigits: number
   replaceVisible: boolean
+  syntaxPlugins: readonly EditorPlugin[]
   onOpen: () => void
   onReplace: () => void
   onSelect: () => void
@@ -370,10 +399,9 @@ function SearchResultExcerptEditor({
   const setActiveEditorCommandDispatch = useWorkspaceFocus(
     (state) => state.setActiveEditorCommandDispatch
   )
-  const { editorThemeRefresh } = useEditorShikiTheme()
   const document = useMemo(
     () => ({
-      documentId: `search-result-excerpt:${excerpt.id}`,
+      documentId: searchResultExcerptDocumentId(excerpt),
       documentMode: "static" as const,
       languageId: excerpt.languageId,
       revision: searchResultExcerptRevision(excerpt),
@@ -387,13 +415,14 @@ function SearchResultExcerptEditor({
   )
   const plugins = useMemo(
     () => [
+      ...syntaxPlugins,
       createLineGutterPlugin({
         minDigits: minLineDigits,
         startLine: excerpt.startLine,
       }),
       createEditorFindPlugin(),
     ],
-    [excerpt.startLine, minLineDigits]
+    [excerpt.startLine, minLineDigits, syntaxPlugins]
   )
   const controller = useEditor({
     cursorLineHighlight: {
@@ -410,7 +439,7 @@ function SearchResultExcerptEditor({
     lineHeight: EXCERPT_EDITOR_LINE_HEIGHT,
     plugins,
     rangeDecorations,
-    theme: editorThemeRefresh,
+    theme: editorTheme,
   })
 
   useEffect(() => {
@@ -445,8 +474,8 @@ function SearchResultExcerptEditor({
   return (
     <div
       className={cn(
-        "ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 border-l px-2 py-0.5",
-        active && "border-l-yellow-500/70 bg-muted/55",
+        "ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5",
+        active && "border-l-yellow-500/80 bg-muted/60",
         !active && "hover:bg-muted/35"
       )}
       onBeforeInputCapture={preventReadonlyInput}
@@ -480,6 +509,39 @@ function SearchResultExcerptEditor({
       ) : null}
     </div>
   )
+}
+
+function useSearchResultSyntaxPlugins({
+  resultKey,
+  rowCount,
+  shikiThemeResolver,
+}: {
+  resultKey: string | null
+  rowCount: number
+  shikiThemeResolver: () => string
+}) {
+  const deferKey = `${resultKey ?? ""}:${rowCount}`
+  const shouldDefer = rowCount > IMMEDIATE_SYNTAX_ROW_LIMIT
+  const [deferredSyntax, setDeferredSyntax] = useState({
+    key: "",
+    ready: false,
+  })
+  const syntaxReady =
+    !shouldDefer || (deferredSyntax.key === deferKey && deferredSyntax.ready)
+
+  useEffect(() => {
+    if (!shouldDefer) return
+
+    return scheduleSearchResultSyntaxEnable(() =>
+      setDeferredSyntax({ key: deferKey, ready: true })
+    )
+  }, [deferKey, shouldDefer])
+
+  return useMemo(() => {
+    if (!syntaxReady) return []
+
+    return createEditorSyntaxHighlightingPlugins(shikiThemeResolver)
+  }, [shikiThemeResolver, syntaxReady])
 }
 
 function handleSearchResultSurfaceKeyDown({
@@ -682,6 +744,16 @@ function measureElement(element: Element) {
   return element.getBoundingClientRect().height
 }
 
+function scheduleSearchResultSyntaxEnable(callback: () => void) {
+  if ("requestIdleCallback" in window) {
+    const id = window.requestIdleCallback(callback, { timeout: 800 })
+    return () => window.cancelIdleCallback(id)
+  }
+
+  const id = window.setTimeout(callback, 120)
+  return () => window.clearTimeout(id)
+}
+
 function openExcerptOnEnter(
   event: KeyboardEvent<HTMLDivElement>,
   onOpen: () => void
@@ -713,6 +785,10 @@ function preventReadonlyInput(event: {
   event.stopPropagation()
 }
 
+function searchResultExcerptDocumentId(excerpt: SearchResultExcerpt) {
+  return `${excerpt.path}?searchResultExcerpt=${encodeURIComponent(excerpt.id)}`
+}
+
 function searchResultExcerptRevision(excerpt: SearchResultExcerpt) {
   return `${excerpt.text.length}:${stableHash(excerpt.text)}:${languageKey(
     excerpt.languageId
@@ -731,6 +807,16 @@ function matchCountLabel(count: number) {
 
 function fileName(path: string) {
   return path.split("/").at(-1) || path
+}
+
+function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
+  const mask = `url(${icon.src}) center / contain no-repeat`
+
+  return {
+    backgroundColor: colorForFileIcon(icon),
+    mask,
+    WebkitMask: mask,
+  }
 }
 
 function decimalDigitCount(value: number) {

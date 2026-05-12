@@ -439,12 +439,15 @@ Status: Done.
 
 ### Phase 6: Syntax Highlighting And Polish
 
-- Pass language ids into excerpt editors.
-- Reuse the existing syntax highlight plugin.
-- Defer syntax work for large result sets if needed.
-- Tune file header and excerpt spacing against Zed.
-- Add high-contrast-safe highlight classes.
-- Add visual smoke tests for dense result sets.
+Status: In progress.
+
+- Pass language ids into excerpt editors. Done.
+- Reuse the existing syntax highlight plugin. Done.
+- Defer syntax work for large result sets if needed. Done.
+- Tune file header and excerpt spacing against Zed. Done.
+- Add high-contrast-safe highlight classes. Done.
+- Add visual smoke tests for dense result sets. Pending: no app-level visual
+  smoke harness exists yet.
 
 ### Phase 7: Richer Provider Excerpts
 
