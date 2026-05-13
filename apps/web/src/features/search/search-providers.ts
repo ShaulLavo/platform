@@ -50,7 +50,7 @@ export class OpenBufferSearchProvider implements SearchProvider {
   private documents: readonly OpenBufferSearchDocument[]
 
   constructor(documents: readonly OpenBufferSearchDocument[]) {
-    this.documents = documents
+    this.documents = [...documents].sort((a, b) => a.path.localeCompare(b.path))
   }
 
   async *search(

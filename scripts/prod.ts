@@ -1,0 +1,249 @@
+import { existsSync } from "node:fs"
+import path from "node:path"
+
+type Mode = "all" | "build" | "start"
+type ChildProcess = ReturnType<typeof Bun.spawn>
+
+type ProdConfig = {
+  allowedOrigins: string
+  buildEnv: Record<string, string | undefined>
+  fsServerUrl: string
+  serverEnv: Record<string, string | undefined>
+  serverHost: string
+  serverPort: number
+  webEnv: Record<string, string | undefined>
+  webHost: string
+  webPort: number
+  webUrl: string
+}
+
+const root = path.resolve(import.meta.dirname, "..")
+
+try {
+  await main()
+} catch (error) {
+  console.error(errorMessage(error))
+  process.exit(1)
+}
+
+async function main() {
+  const mode = parseMode(Bun.argv[2])
+  const config = readProdConfig()
+
+  if (mode === "build") {
+    await buildProd(config)
+    return
+  }
+
+  if (mode === "start") {
+    await startProd(config)
+    return
+  }
+
+  await buildProd(config)
+  await startProd(config)
+}
+
+async function buildProd(config: ProdConfig) {
+  printBuildSummary(config)
+  const code = await runCommand(
+    "build",
+    ["bun", "run", "turbo", "build"],
+    root,
+    config.buildEnv
+  )
+  if (code === 0) return
+
+  process.exit(code)
+}
+
+async function startProd(config: ProdConfig) {
+  ensureBuildArtifact("server", "apps/server/dist/index.js")
+  ensureBuildArtifact("client", "apps/web/dist/index.html")
+  printStartSummary(config)
+
+  const children = [
+    spawnProcess(
+      "server",
+      ["bun", "apps/server/dist/index.js"],
+      root,
+      config.serverEnv
+    ),
+    spawnProcess(
+      "client",
+      [
+        "bun",
+        "run",
+        "--cwd",
+        path.join(root, "apps/web"),
+        "preview",
+        "--host",
+        config.webHost,
+        "--port",
+        String(config.webPort),
+        "--strictPort",
+      ],
+      root,
+      config.webEnv
+    ),
+  ]
+
+  installSignalHandlers(children)
+  const exitCode = await Promise.race(children.map(waitForExit))
+  await stopProcesses(children)
+  process.exit(exitCode)
+}
+
+function readProdConfig(): ProdConfig {
+  const serverHost = Bun.env.FS_HOST ?? Bun.env.HOST ?? "127.0.0.1"
+  const webHost = Bun.env.WEB_HOST ?? "127.0.0.1"
+  const serverPort = portFromEnv("PORT", 3001)
+  const webPort = portFromEnv("WEB_PORT", 3000)
+  const fsServerUrl =
+    Bun.env.VITE_FS_SERVER_URL ?? `http://${urlHost(serverHost)}:${serverPort}`
+  const webUrl = `http://${urlHost(webHost)}:${webPort}`
+  const allowedOrigins =
+    Bun.env.FS_ALLOWED_ORIGINS ?? defaultAllowedOrigins(webHost, webPort)
+
+  const buildEnv = {
+    ...Bun.env,
+    BUN_ENV: "production",
+    NODE_ENV: "production",
+    VITE_FS_SERVER_URL: fsServerUrl,
+  }
+
+  return {
+    allowedOrigins,
+    buildEnv,
+    fsServerUrl,
+    serverEnv: {
+      ...buildEnv,
+      FS_ALLOWED_ORIGINS: allowedOrigins,
+      PORT: String(serverPort),
+    },
+    serverHost,
+    serverPort,
+    webEnv: buildEnv,
+    webHost,
+    webPort,
+    webUrl,
+  }
+}
+
+function parseMode(value: string | undefined): Mode {
+  if (!value) return "all"
+  if (value === "all" || value === "build" || value === "start") return value
+
+  throw new Error(
+    `Unknown production mode "${value}". Use build, start, or all.`
+  )
+}
+
+function portFromEnv(name: "PORT" | "WEB_PORT", fallback: number) {
+  const value = Bun.env[name]
+  if (!value) return fallback
+
+  const port = Number(value)
+  if (Number.isInteger(port) && port > 0 && port < 65536) return port
+
+  throw new Error(`${name} must be an integer between 1 and 65535.`)
+}
+
+function defaultAllowedOrigins(webHost: string, webPort: number) {
+  return unique([
+    `http://localhost:${webPort}`,
+    `http://127.0.0.1:${webPort}`,
+    `http://${urlHost(webHost)}:${webPort}`,
+  ]).join(",")
+}
+
+function unique(values: string[]) {
+  return Array.from(new Set(values))
+}
+
+function urlHost(host: string) {
+  if (host.includes(":") && !host.startsWith("[")) return `[${host}]`
+
+  return host
+}
+
+function ensureBuildArtifact(label: string, relativePath: string) {
+  const artifactPath = path.join(root, relativePath)
+  if (existsSync(artifactPath)) return
+
+  throw new Error(
+    `Missing ${label} production artifact at ${relativePath}. ` +
+      "Run `bun run build` first, or use `bun run prod`."
+  )
+}
+
+function printBuildSummary(config: ProdConfig) {
+  console.log("[prod] Building production artifacts")
+  console.log(`[prod] Client API URL: ${config.fsServerUrl}`)
+}
+
+function printStartSummary(config: ProdConfig) {
+  console.log("[prod] Starting production app")
+  console.log(`[prod] Client: ${config.webUrl}`)
+  console.log(
+    `[prod] Server: http://${urlHost(config.serverHost)}:${config.serverPort}`
+  )
+  console.log(`[prod] Server allowed origins: ${config.allowedOrigins}`)
+}
+
+function spawnProcess(
+  name: string,
+  command: string[],
+  cwd: string,
+  env: Record<string, string | undefined>
+) {
+  console.log(`[prod] ${name}: ${command.join(" ")}`)
+  return Bun.spawn({
+    cmd: command,
+    cwd,
+    env,
+    stderr: "inherit",
+    stdout: "inherit",
+  })
+}
+
+async function runCommand(
+  name: string,
+  command: string[],
+  cwd: string,
+  env: Record<string, string | undefined>
+) {
+  const child = spawnProcess(name, command, cwd, env)
+  return await child.exited
+}
+
+async function waitForExit(child: ChildProcess) {
+  return await child.exited
+}
+
+function installSignalHandlers(children: ChildProcess[]) {
+  let stopping = false
+  const stop = () => {
+    if (stopping) return
+
+    stopping = true
+    void stopProcesses(children)
+  }
+
+  process.on("SIGINT", stop)
+  process.on("SIGTERM", stop)
+}
+
+async function stopProcesses(children: ChildProcess[]) {
+  for (const child of children) {
+    child.kill()
+  }
+
+  await Promise.allSettled(children.map(waitForExit))
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return String(error)
+}

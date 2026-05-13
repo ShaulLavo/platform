@@ -13,6 +13,8 @@ import {
 } from "@/features/editor/state/editor-document-state"
 import {
   type SearchBufferStoreApi,
+  type SearchBufferSnapshot,
+  sameWorkspaceSearchQuery,
   searchGroupsForSnapshot,
   type SearchBufferOptionPatch,
   useSearchBufferState,
@@ -23,6 +25,7 @@ import {
   DiskSearchProvider,
   OpenBufferSearchProvider,
   type OpenBufferSearchDocument,
+  type SearchProvider,
 } from "@/features/search/search-providers"
 
 const SEARCH_DEBOUNCE_MS = 180
@@ -203,9 +206,15 @@ function useRunSearchBuffer(
       rootPath
     )
     const provider = workspaceSearchProvider(dirtyDocuments)
+    const deferInitialOpenBufferMatches = shouldDeferInitialOpenBufferMatches(
+      store.getState().active,
+      searchQuery
+    )
     const runId = store.getState().startSearch(searchQuery)
 
-    void runSearch(provider, searchQuery, runId, store, controller.signal)
+    void runSearch(provider, searchQuery, runId, store, controller.signal, {
+      deferInitialOpenBufferMatches,
+    })
 
     return () => controller.abort()
   }, [
@@ -225,14 +234,22 @@ function useRunSearchBuffer(
   ])
 }
 
-async function runSearch(
-  provider: CompositeSearchProvider,
+type SearchRunOptions = {
+  deferInitialOpenBufferMatches?: boolean
+}
+
+export async function runSearch(
+  provider: SearchProvider,
   query: WorkspaceSearchQuery,
   runId: number,
   store: SearchBufferStoreApi,
-  signal: AbortSignal
+  signal: AbortSignal,
+  options: SearchRunOptions = {}
 ) {
-  const batcher = createSearchEventBatcher(runId, store)
+  const batcher = createFirstPaintSearchEventBatcher(
+    createSearchEventBatcher(runId, store),
+    options.deferInitialOpenBufferMatches === true
+  )
 
   try {
     for await (const event of provider.search(query, signal)) {
@@ -242,20 +259,92 @@ async function runSearch(
         continue
       }
 
+      if (event.type === "error") {
+        batcher.fail()
+        store.getState().appendEvent(runId, event)
+        continue
+      }
+
       batcher.flush()
       store.getState().appendEvent(runId, event)
     }
   } catch (error) {
     if (isAbortError(error)) return
 
-    batcher.flush()
+    batcher.fail()
     store.getState().failSearch(runId, errorMessage(error))
   } finally {
     batcher.dispose()
   }
 }
 
-function createSearchEventBatcher(runId: number, store: SearchBufferStoreApi) {
+type SearchEventBatcher = {
+  dispose(): void
+  flush(): void
+  push(event: WorkspaceSearchEvent): void
+  pushMany(events: readonly WorkspaceSearchEvent[]): void
+}
+
+export function createFirstPaintSearchEventBatcher(
+  batcher: SearchEventBatcher,
+  deferInitialOpenBufferMatches: boolean
+) {
+  let buffered: WorkspaceSearchEvent[] = []
+  let open = !deferInitialOpenBufferMatches
+
+  function releaseBuffered(event?: WorkspaceSearchEvent) {
+    if (open) {
+      if (event) batcher.push(event)
+      return
+    }
+
+    open = true
+    const events = event ? buffered.concat(event) : buffered
+    buffered = []
+    if (events.length === 0) return
+
+    batcher.pushMany(events)
+  }
+
+  return {
+    dispose() {
+      buffered = []
+      batcher.dispose()
+    },
+    fail() {
+      if (open) batcher.flush()
+      buffered = []
+      open = true
+    },
+    flush() {
+      releaseBuffered()
+      batcher.flush()
+    },
+    push(event: WorkspaceSearchEvent) {
+      if (open) {
+        batcher.push(event)
+        return
+      }
+
+      if (isOpenBufferMatchEvent(event)) {
+        buffered.push(event)
+        return
+      }
+
+      releaseBuffered(event)
+      batcher.flush()
+    },
+  }
+}
+
+function isOpenBufferMatchEvent(event: WorkspaceSearchEvent) {
+  return event.type === "match" && event.match.source === "open-buffer"
+}
+
+function createSearchEventBatcher(
+  runId: number,
+  store: SearchBufferStoreApi
+): SearchEventBatcher {
   let pending: WorkspaceSearchEvent[] = []
   let timer: number | null = null
 
@@ -281,19 +370,40 @@ function createSearchEventBatcher(runId: number, store: SearchBufferStoreApi) {
     timer = window.setTimeout(flush, SEARCH_BATCH_MS)
   }
 
+  function pushMany(events: readonly WorkspaceSearchEvent[]) {
+    pending.push(...events)
+    if (pending.length >= SEARCH_BATCH_SIZE) {
+      flush()
+      return
+    }
+
+    scheduleFlush()
+  }
+
+  function dispose() {
+    pending = []
+    clearTimer()
+  }
+
   return {
-    dispose: clearTimer,
+    dispose,
     flush,
     push(event: WorkspaceSearchEvent) {
-      pending.push(event)
-      if (pending.length >= SEARCH_BATCH_SIZE) {
-        flush()
-        return
-      }
-
-      scheduleFlush()
+      pushMany([event])
     },
+    pushMany,
   }
+}
+
+function shouldDeferInitialOpenBufferMatches(
+  snapshot: SearchBufferSnapshot | null,
+  query: WorkspaceSearchQuery
+) {
+  if (!snapshot) return false
+  if (snapshot.rootPath !== query.path) return false
+  if (snapshot.matches.length === 0) return false
+
+  return !sameWorkspaceSearchQuery(snapshot.resultsSearchQuery, query)
 }
 
 export function workspaceSearchQuery(
@@ -371,7 +481,7 @@ function dirtySearchDocuments(
     })
   }
 
-  return dirtyDocuments
+  return dirtyDocuments.sort((a, b) => a.path.localeCompare(b.path))
 }
 
 function dirtySearchContentKey(

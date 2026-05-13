@@ -155,7 +155,29 @@ describe("open buffer search provider", () => {
       })
     )
 
-    expect(matches).toEqual([expect.objectContaining({ path: "repo/src/app.ts" })])
+    expect(matches).toEqual([
+      expect.objectContaining({ path: "repo/src/app.ts" }),
+    ])
+  })
+
+  it("emits dirty editor matches in stable path order", async () => {
+    const provider = new OpenBufferSearchProvider([
+      {
+        path: "repo/src/z.ts",
+        text: "needle",
+      },
+      {
+        path: "repo/src/a.ts",
+        text: "needle",
+      },
+    ])
+
+    const matches = await contentEvents(provider.search(QUERY))
+
+    expect(matches.map((match) => match.path)).toEqual([
+      "repo/src/a.ts",
+      "repo/src/z.ts",
+    ])
   })
 })
 
@@ -291,13 +313,17 @@ function lastFetchUrl() {
 function stubFetchWithSseDone() {
   const originalFetch = globalThis.fetch
   fetchedUrl = null
-  globalThis.fetch = async (input) => {
+  const fetchStub = async (...args: Parameters<typeof fetch>) => {
+    const [input] = args
     fetchedUrl = new URL(String(input))
     return new Response(doneSse(), {
       headers: { "content-type": "text/event-stream" },
       status: 200,
     })
   }
+  globalThis.fetch = Object.assign(fetchStub, {
+    preconnect: originalFetch.preconnect,
+  }) as typeof fetch
 
   return () => {
     globalThis.fetch = originalFetch

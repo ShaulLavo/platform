@@ -238,8 +238,7 @@ function workspaceStateFromPayload(
       : payload.openFilePaths
 
   return {
-    diffViewMode:
-      payload.version >= 4 ? payload.diffViewMode : DEFAULT_DIFF_VIEW_MODE,
+    diffViewMode: diffViewModeFromPayload(payload),
     editorHistory: workspacePathsForCache(
       payload.rootFolder,
       payload.version === 5
@@ -264,6 +263,13 @@ function workspaceStateFromPayload(
     sidebarVisible: payload.version === 5 ? payload.sidebarVisible : true,
     workspacePanelTab: workspacePanelTabFromPayload(payload),
   }
+}
+
+function diffViewModeFromPayload(payload: WorkspaceCachePayload) {
+  if (payload.version === 4 || payload.version === 5)
+    return payload.diffViewMode
+
+  return DEFAULT_DIFF_VIEW_MODE
 }
 
 function workspacePanelTabFromPayload(payload: WorkspaceCachePayload) {

@@ -16,7 +16,10 @@ import {
 } from "@/features/search/search-replace-runner"
 import { fetchFile, writeFileContent } from "@/lib/file-server"
 import { fileSystemKeys } from "@/lib/query-keys"
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
+import type {
+  WorkspaceSearchMatch,
+  WorkspaceSearchQuery,
+} from "@workspace/contracts"
 
 export function useWorkspaceSearchReplace(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
@@ -127,7 +130,13 @@ async function runReplace({
   }
 }
 
-function canReplace(snapshot: SearchBufferSnapshot | null) {
+type ReplaceableSearchBufferSnapshot = SearchBufferSnapshot & {
+  resultsSearchQuery: WorkspaceSearchQuery
+}
+
+function canReplace(
+  snapshot: SearchBufferSnapshot | null
+): snapshot is ReplaceableSearchBufferSnapshot {
   if (!snapshot) return false
   if (!snapshot.resultsSearchQuery) return false
   if (snapshot.replaceStatus === "running") return false

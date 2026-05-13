@@ -897,7 +897,7 @@ describe("search buffer store", () => {
       searchGroupsForSnapshot(store.getState().active)
     )
     const groupId = firstSearchResultId(items)
-    const childId = firstSearchResultChildId(items, groupId ?? "")
+    const childId = firstSearchResultChildId(items, groupId ?? "") ?? null
 
     expect(
       searchResultIdByOffset({ activeResultId: null, items, offset: 1 })
@@ -906,7 +906,7 @@ describe("search buffer store", () => {
       searchResultIdByOffset({ activeResultId: groupId, items, offset: 1 })
     ).toBe(childId)
     expect(parentSearchResultId(items, childId ?? null)).toBe(groupId)
-    expect(lastSearchResultId(items)).toBe(items.at(-1)?.id)
+    expect(lastSearchResultId(items)).toBe(items.at(-1)?.id ?? null)
   })
 })
 

@@ -58,7 +58,7 @@ describe("git api", () => {
 
   it("passes read query params and abort signals through to the RPC client", async () => {
     const signal = new AbortController().signal
-    const status = { files: [], branch: "main", ahead: 0, behind: 0 }
+    const status = { files: [], repository: repositoryInfo() }
     statusGet.mockResolvedValueOnce({ data: status })
 
     await expect(api.fetchStatus("repo", signal)).resolves.toBe(status)
@@ -70,13 +70,15 @@ describe("git api", () => {
   })
 
   it("uses the server bulk path body for path mutations", async () => {
-    const status = { files: [], branch: "main", ahead: 0, behind: 0 }
+    const status = { files: [], repository: repositoryInfo() }
     stagePost.mockResolvedValueOnce({ data: status })
     unstagePost.mockResolvedValueOnce({ data: status })
     discardPost.mockResolvedValueOnce({ data: status })
 
     await expect(api.stagePath("src/a.ts")).resolves.toBe(status)
-    await expect(api.unstagePaths(["src/a.ts", "src/b.ts"])).resolves.toBe(status)
+    await expect(api.unstagePaths(["src/a.ts", "src/b.ts"])).resolves.toBe(
+      status
+    )
     await expect(api.discardPath("src/c.ts")).resolves.toBe(status)
 
     expect(stagePost).toHaveBeenCalledWith({ paths: ["src/a.ts"] })
@@ -97,7 +99,7 @@ describe("git api", () => {
   })
 
   it("keeps branch and remote mutation payloads explicit", async () => {
-    const branches = { branches: [] }
+    const branches = { branches: [], repository: repositoryInfo() }
     const output = { output: "done" }
     createBranchPost.mockResolvedValueOnce({ data: branches })
     fetchPost.mockResolvedValueOnce({ data: output })
@@ -113,3 +115,13 @@ describe("git api", () => {
     expect(fetchPost).toHaveBeenCalledWith({ path: "repo" })
   })
 })
+
+function repositoryInfo() {
+  return {
+    ahead: 0,
+    behind: 0,
+    branch: "main",
+    commit: "abc123",
+    path: "repo",
+  }
+}

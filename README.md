@@ -24,6 +24,9 @@ The UI package should stay reusable and app-agnostic. React is provided by consu
 ```bash
 bun install
 bun run dev
+bun run build
+bun run start
+bun run prod
 bun run typecheck
 bun run test
 bun run lint

@@ -152,7 +152,6 @@ export function SearchResultsView({
           event,
           items,
           onOpenMatch,
-          onOpenFile,
           onSelectResult: selectResult,
           onToggleGroup: toggleGroup,
         })
@@ -191,6 +190,7 @@ export function SearchResultsView({
                 replaceQuery={snapshot.resultsSearchQuery}
                 replaceText={replaceText}
                 replaceVisible={replaceVisible}
+                onOpenFile={onOpenFile}
                 onOpenMatch={onOpenMatch}
                 onReplaceGroup={onReplaceGroup}
                 onReplaceMatch={onReplaceMatch}
@@ -265,9 +265,7 @@ function SearchResultRow({
         group={item.group}
         replaceVisible={replaceVisible}
         onReplace={onReplaceGroup}
-        onOpen={
-          onOpenFile ? () => onOpenFile(item.group.path) : undefined
-        }
+        onOpen={onOpenFile ? () => onOpenFile(item.group.path) : undefined}
         onToggle={() => {
           onSelectResult(item.id)
           onToggleGroup(item.group.path)

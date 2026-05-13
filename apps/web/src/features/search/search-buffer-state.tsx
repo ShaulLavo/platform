@@ -665,7 +665,7 @@ function searchOptionsChanged(
   return current.wholeWord !== next.wholeWord
 }
 
-function sameWorkspaceSearchQuery(
+export function sameWorkspaceSearchQuery(
   left: WorkspaceSearchQuery | null,
   right: WorkspaceSearchQuery | null
 ) {

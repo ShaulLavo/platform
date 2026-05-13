@@ -256,6 +256,7 @@ function normalizeTrailingSlotWidths(
 }
 
 function safeTrailingSlotWidth(width: number | undefined) {
+  if (typeof width !== "number") return 0
   if (!Number.isFinite(width)) return 0
 
   return Math.max(0, Math.floor(width))

@@ -3,9 +3,11 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "turbo build",
+    "build": "bun scripts/prod.ts build",
     "dev": "turbo dev",
     "lint": "turbo lint",
+    "prod": "bun scripts/prod.ts",
+    "start": "bun scripts/prod.ts start",
     "format": "turbo format",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
