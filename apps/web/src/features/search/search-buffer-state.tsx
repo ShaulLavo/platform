@@ -72,6 +72,7 @@ export type SearchBufferSnapshot = {
   resultsQuery: string
   resultsSearchQuery: WorkspaceSearchQuery | null
   rootPath: string
+  runningMatches: readonly WorkspaceSearchMatch[]
   runningQuery: string | null
   runningSearchQuery: WorkspaceSearchQuery | null
   runId: number
@@ -255,6 +256,7 @@ function optionSearchBuffer(
     replaceMessage: null,
     replaceStatus: "idle" as const,
     runId: base.runId + 1,
+    runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
     status: "loading" as const,
@@ -280,6 +282,7 @@ function querySearchBuffer(
     replaceMessage: null,
     replaceStatus: "idle" as const,
     runId: queryChanged ? base.runId + 1 : base.runId,
+    runningMatches: queryChanged ? [] : base.runningMatches,
     runningQuery: queryChanged ? null : base.runningQuery,
     runningSearchQuery: queryChanged ? null : base.runningSearchQuery,
     status: queryChanged ? "loading" : base.status,
@@ -300,6 +303,7 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     replaceStatus: "idle" as const,
     resultsQuery: "",
     resultsSearchQuery: null,
+    runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
     runId: current.runId + 1,
@@ -364,6 +368,7 @@ function appendSearchEvent(
         matches,
         resultsQuery: query,
         resultsSearchQuery: searchQuery,
+        runningMatches: [],
         runningQuery: null,
         runningSearchQuery: null,
         status: "ready",
@@ -390,21 +395,37 @@ function appendSearchMatches(
     active.resultsSearchQuery,
     active.runningSearchQuery
   )
-  const matches = nextSearchMatches(active, incomingMatches, appendingToResults)
-  const groups = nextSearchGroups(active, incomingMatches, appendingToResults)
+  const preservingPreviousResults = shouldPreservePreviousResults(active)
+  const runningMatches = active.runningMatches.concat(incomingMatches)
+  const matches = nextSearchMatches({
+    active,
+    appendingToResults,
+    preservingPreviousResults,
+    runningMatches,
+  })
+  const groups = nextSearchGroups({
+    active,
+    appendingToResults,
+    incomingMatches,
+    matches,
+    preservingPreviousResults,
+  })
   const runningSearchQuery = active.runningSearchQuery
   const next = {
     ...active,
     groups,
     matches,
-    resultsQuery: active.runningQuery ?? active.resultsQuery,
-    resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
+    resultsQuery: preservingPreviousResults
+      ? active.resultsQuery
+      : (active.runningQuery ?? active.resultsQuery),
+    resultsSearchQuery: preservingPreviousResults
+      ? active.resultsSearchQuery
+      : (runningSearchQuery ?? active.resultsSearchQuery),
+    runningMatches,
     status: "loading" as const,
-    totalCount: nextContentSearchMatchCount(
-      active,
-      incomingMatches,
-      appendingToResults
-    ),
+    totalCount: preservingPreviousResults
+      ? active.totalCount
+      : contentSearchMatchCount(runningMatches),
     truncated: false,
   }
 
@@ -428,6 +449,7 @@ function failSearchBuffer(
     active: {
       ...active,
       error,
+      runningMatches: [],
       runningQuery: null,
       runningSearchQuery: null,
       status: "error",
@@ -508,6 +530,7 @@ function refreshSearchBuffer(
     ...snapshot,
     error: null,
     runId: snapshot.runId + 1,
+    runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
     searchRevision: snapshot.searchRevision + 1,
@@ -549,6 +572,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     resultsQuery: "",
     resultsSearchQuery: null,
     rootPath,
+    runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
     runId: 0,
@@ -598,6 +622,7 @@ function loadingSearchBuffer(
     resultsQuery: previous?.resultsQuery ?? "",
     resultsSearchQuery: previous?.resultsSearchQuery ?? null,
     rootPath: query.path,
+    runningMatches: [],
     runningQuery: query.query,
     runningSearchQuery: query,
     runId,
@@ -619,27 +644,41 @@ function globTextForQuery(globs: readonly string[] | undefined) {
   return globs?.join(", ") ?? ""
 }
 
-function nextSearchMatches(
-  active: SearchBufferSnapshot,
-  matches: readonly WorkspaceSearchMatch[],
+function nextSearchMatches({
+  active,
+  appendingToResults,
+  preservingPreviousResults,
+  runningMatches,
+}: {
+  active: SearchBufferSnapshot
   appendingToResults: boolean
-) {
-  if (appendingToResults) {
-    return active.matches.concat(matches)
-  }
+  preservingPreviousResults: boolean
+  runningMatches: readonly WorkspaceSearchMatch[]
+}) {
+  if (preservingPreviousResults) return active.matches
+  if (appendingToResults) return runningMatches
 
-  return matches.slice()
+  return runningMatches.slice()
 }
 
-function nextSearchGroups(
-  active: SearchBufferSnapshot,
-  matches: readonly WorkspaceSearchMatch[],
+function nextSearchGroups({
+  active,
+  appendingToResults,
+  incomingMatches,
+  matches,
+  preservingPreviousResults,
+}: {
+  active: SearchBufferSnapshot
   appendingToResults: boolean
-) {
+  incomingMatches: readonly WorkspaceSearchMatch[]
+  matches: readonly WorkspaceSearchMatch[]
+  preservingPreviousResults: boolean
+}) {
+  if (preservingPreviousResults) return active.groups
   if (appendingToResults) {
     return appendSearchGroups(
       active.groups,
-      matches,
+      incomingMatches,
       active.rootPath,
       active.collapsedPaths
     )
@@ -648,21 +687,13 @@ function nextSearchGroups(
   return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
 }
 
-function nextContentSearchMatchCount(
-  active: SearchBufferSnapshot,
-  matches: readonly WorkspaceSearchMatch[],
-  appendingToResults: boolean
-) {
-  const incomingCount = contentSearchMatchCount(matches)
-  if (appendingToResults) return active.totalCount + incomingCount
-
-  return incomingCount
-}
-
 function doneMatches(
   active: SearchBufferSnapshot,
   query: WorkspaceSearchQuery | null
 ) {
+  if (sameWorkspaceSearchQuery(active.runningSearchQuery, query)) {
+    return active.runningMatches
+  }
   if (sameWorkspaceSearchQuery(active.resultsSearchQuery, query)) {
     return active.matches
   }
@@ -677,6 +708,24 @@ function doneGroups(
   if (matches === active.matches) return active.groups
 
   return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
+}
+
+function shouldPreservePreviousResults(active: SearchBufferSnapshot) {
+  if (active.matches.length === 0) return false
+  if (!active.resultsSearchQuery) return false
+  if (!active.runningSearchQuery) return false
+  if (
+    !sameWorkspaceSearchScope(
+      active.resultsSearchQuery,
+      active.runningSearchQuery
+    )
+  )
+    return false
+
+  return relatedSearchText(
+    active.resultsSearchQuery.query,
+    active.runningSearchQuery.query
+  )
 }
 
 function searchOptionsChanged(
@@ -710,6 +759,31 @@ export function sameWorkspaceSearchQuery(
   if (!sameStringList(left.includeGlobs, right.includeGlobs)) return false
 
   return sameStringList(left.excludeGlobs, right.excludeGlobs)
+}
+
+function sameWorkspaceSearchScope(
+  left: WorkspaceSearchQuery,
+  right: WorkspaceSearchQuery
+) {
+  if (left.caseSensitive !== right.caseSensitive) return false
+  if (left.entryType !== right.entryType) return false
+  if (left.includeContent !== right.includeContent) return false
+  if (left.includeNames !== right.includeNames) return false
+  if (left.limit !== right.limit) return false
+  if (left.matchMode !== right.matchMode) return false
+  if (left.maxDepth !== right.maxDepth) return false
+  if (left.path !== right.path) return false
+  if (left.wholeWord !== right.wholeWord) return false
+  if (!sameStringList(left.includeGlobs, right.includeGlobs)) return false
+
+  return sameStringList(left.excludeGlobs, right.excludeGlobs)
+}
+
+function relatedSearchText(left: string, right: string) {
+  if (!left || !right) return false
+  if (left === right) return false
+
+  return left.startsWith(right) || right.startsWith(left)
 }
 
 function sameStringList(

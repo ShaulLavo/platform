@@ -22,6 +22,9 @@ const SEARCH_QUERY = "needle"
 const TOTAL_RESULTS = 200
 const FILE_COUNT = 10
 const MATCHES_PER_FILE = TOTAL_RESULTS / FILE_COUNT
+const STREAM_INITIAL_MATCHES_PER_FILE = 1
+const STREAM_MATCH_BATCH_SIZE = 3
+const STREAM_BATCH_DELAY_MS = 80
 const PERF_START = performance.now()
 const editorMountStats = {
   count: 0,
@@ -40,6 +43,7 @@ type SearchPerfVariant = {
   readonly collapsed: boolean
   readonly deferredMode: SearchPerfDeferredMode
   readonly replaceVisible: boolean
+  readonly streaming: boolean
   readonly theme: "dark" | "light"
 }
 
@@ -60,7 +64,10 @@ export function SearchResultEditorSurfacePerfFixture() {
   const variant = useMemo(() => readSearchPerfVariant(), [])
   const fixtureRef = useRef<HTMLDivElement | null>(null)
   const longestTaskRef = useRef(0)
-  const [groups, setGroups] = useState(() => createSearchPerfGroups(variant))
+  const [streaming, setStreaming] = useState(variant.streaming)
+  const [groups, setGroups] = useState(() =>
+    createSearchPerfGroups(variant, searchPerfInitialMatchesPerFile(variant))
+  )
   const rows = useMemo(
     () => searchResultVirtualRows(searchResultFileBlocks(groups, SEARCH_QUERY)),
     [groups]
@@ -73,6 +80,15 @@ export function SearchResultEditorSurfacePerfFixture() {
   )
 
   useEffect(() => applyPerfTheme(variant.theme), [variant.theme])
+
+  useEffect(() => {
+    if (!variant.streaming) return undefined
+
+    return runSearchPerfStreamingSample((matchesPerFile) => {
+      setGroups(createSearchPerfGroups(variant, matchesPerFile))
+      setStreaming(matchesPerFile < MATCHES_PER_FILE)
+    })
+  }, [variant])
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -123,10 +139,11 @@ export function SearchResultEditorSurfacePerfFixture() {
       <SearchResultEditorSurface
         activeResultId={activeResultId}
         canReplace={variant.replaceVisible}
-        deferredPluginMode={variant.deferredMode}
+        deferredPluginMode={streaming ? "manual" : variant.deferredMode}
         displayedResultsQuery={SEARCH_QUERY}
         groups={groups}
         keymapLayers={EMPTY_KEYMAP_LAYERS}
+        prewarmEditorPool={!streaming}
         replaceVisible={variant.replaceVisible}
         resultsQuery={SEARCH_QUERY}
         onOpenTarget={handleOpenTarget}
@@ -197,6 +214,7 @@ function readSearchPerfVariant(): SearchPerfVariant {
     collapsed: params.get("collapsed") === "1",
     deferredMode: searchPerfDeferredMode(params.get("syntax")),
     replaceVisible: params.get("replace") === "visible",
+    streaming: params.get("stream") === "1",
     theme: params.get("theme") === "light" ? "light" : "dark",
   }
 }
@@ -209,11 +227,12 @@ function searchPerfDeferredMode(value: string | null): SearchPerfDeferredMode {
 }
 
 function createSearchPerfGroups(
-  variant: SearchPerfVariant
+  variant: SearchPerfVariant,
+  matchesPerFile = MATCHES_PER_FILE
 ): WorkspaceSearchFileGroup[] {
   return Array.from({ length: FILE_COUNT }, (_, fileIndex) => {
     const path = `/perf/project/src/module-${fileIndex}/search-fixture-${fileIndex}.tsx`
-    const matches = Array.from({ length: MATCHES_PER_FILE }, (_, matchIndex) =>
+    const matches = Array.from({ length: matchesPerFile }, (_, matchIndex) =>
       createSearchPerfMatch(path, fileIndex, matchIndex)
     )
 
@@ -226,6 +245,12 @@ function createSearchPerfGroups(
       pathLabel: path,
     }
   })
+}
+
+function searchPerfInitialMatchesPerFile(variant: SearchPerfVariant) {
+  if (!variant.streaming) return MATCHES_PER_FILE
+
+  return STREAM_INITIAL_MATCHES_PER_FILE
 }
 
 function createSearchPerfMatch(
@@ -338,6 +363,25 @@ function runSearchPerfScrollSample(
   return () => window.cancelAnimationFrame(frame)
 }
 
+function runSearchPerfStreamingSample(
+  onBatch: (matchesPerFile: number) => void
+) {
+  let matchesPerFile = STREAM_INITIAL_MATCHES_PER_FILE
+  const interval = globalThis.setInterval(() => {
+    matchesPerFile = Math.min(
+      MATCHES_PER_FILE,
+      matchesPerFile + STREAM_MATCH_BATCH_SIZE
+    )
+    onBatch(matchesPerFile)
+
+    if (matchesPerFile >= MATCHES_PER_FILE) {
+      globalThis.clearInterval(interval)
+    }
+  }, STREAM_BATCH_DELAY_MS)
+
+  return () => globalThis.clearInterval(interval)
+}
+
 function applyPerfTheme(theme: "dark" | "light") {
   document.documentElement.classList.remove("dark", "light")
   document.documentElement.classList.add(theme)
@@ -346,8 +390,9 @@ function applyPerfTheme(theme: "dark" | "light") {
 function variantLabel(variant: SearchPerfVariant) {
   const replace = variant.replaceVisible ? "replace" : "hidden"
   const collapsed = variant.collapsed ? "collapsed" : "expanded"
+  const stream = variant.streaming ? "stream" : "static"
 
-  return `${variant.deferredMode}/${replace}/${collapsed}/${variant.theme}`
+  return `${variant.deferredMode}/${replace}/${collapsed}/${stream}/${variant.theme}`
 }
 
 function formatMs(value: number | null) {

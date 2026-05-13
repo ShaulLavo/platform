@@ -90,6 +90,36 @@ describe("search result view model", () => {
     ).toBe("needle")
   })
 
+  it("keeps row and excerpt ids stable when the query changes at the same location", () => {
+    const firstMatch = contentMatch({
+      column: 1,
+      endColumn: 2,
+      line: 12,
+      preview: "const value = true",
+    })
+    const nextMatch = contentMatch({
+      column: 1,
+      endColumn: 3,
+      line: 12,
+      preview: "const value = true",
+    })
+    const firstGroup = fileGroup([firstMatch])
+    const nextGroup = fileGroup([nextMatch])
+    const firstItems = searchResultItems([firstGroup])
+    const nextItems = searchResultItems([nextGroup])
+    const firstBlocks = searchResultFileBlocks([firstGroup], "c")
+    const nextBlocks = searchResultFileBlocks([nextGroup], "co")
+
+    expect(nextItems.map((item) => item.id)).toEqual(
+      firstItems.map((item) => item.id)
+    )
+    expect(nextBlocks[0]?.id).toBe(firstBlocks[0]?.id)
+    expect(nextBlocks[0]?.excerpts[0]?.id).toBe(firstBlocks[0]?.excerpts[0]?.id)
+    expect(nextBlocks[0]?.excerpts[0]?.matchRanges).toEqual([
+      { end: 2, start: 0 },
+    ])
+  })
+
   it("keeps terminal preview line endings out of excerpt editor text", () => {
     const match = contentMatch({
       column: 14,

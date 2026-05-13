@@ -32,7 +32,7 @@ const STABLE_HASH_CACHE_LIMIT = 4096
 const STABLE_HASH_OFFSET = 0x811c9dc5
 const STABLE_HASH_PRIME = 0x01000193
 const stableHashCache = new Map<string, string>()
-const searchMatchIdentityHashCache = new WeakMap<WorkspaceSearchMatch, string>()
+const searchMatchLocationHashCache = new WeakMap<WorkspaceSearchMatch, string>()
 
 export function searchResultItems(groups: readonly WorkspaceSearchFileGroup[]) {
   const items: SearchResultItem[] = []
@@ -74,14 +74,14 @@ function appendGroupItems(
 
   const duplicateCounts = new Map<string, number>()
   contentMatches.forEach((match, matchIndex) => {
-    const identityHash = searchMatchIdentityHash(match)
-    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identityHash)
+    const locationHash = searchMatchLocationHash(match)
+    const duplicateIndex = nextDuplicateIndex(duplicateCounts, locationHash)
     items.push({
       groupId,
       groupPath: group.path,
       id: searchResultMatchIdForIdentityHash(
         group.path,
-        identityHash,
+        locationHash,
         duplicateIndex
       ),
       level: 2,
@@ -258,7 +258,7 @@ function searchResultGroupId(path: string) {
 }
 
 function searchResultNameId(path: string, match: WorkspaceSearchMatch) {
-  return searchResultMatchDomId("name", path, searchMatchIdentityHash(match), 0)
+  return searchResultMatchDomId("name", path, searchMatchLocationHash(match), 0)
 }
 
 function searchResultMatchId(
@@ -268,7 +268,7 @@ function searchResultMatchId(
 ) {
   return searchResultMatchIdForIdentityHash(
     path,
-    searchMatchIdentityHash(match),
+    searchMatchLocationHash(match),
     duplicateIndex
   )
 }
@@ -300,17 +300,17 @@ function searchResultMatchDomId(
   return `${searchResultDomPrefix(prefix)}${stableHash(path)}-${identityHash}${duplicateSuffix}`
 }
 
-function searchMatchIdentityHash(match: WorkspaceSearchMatch) {
-  const cached = searchMatchIdentityHashCache.get(match)
+function searchMatchLocationHash(match: WorkspaceSearchMatch) {
+  const cached = searchMatchLocationHashCache.get(match)
   if (cached) return cached
 
-  const identityHash = hashSearchMatchIdentity(match)
-  searchMatchIdentityHashCache.set(match, identityHash)
+  const locationHash = hashSearchMatchLocation(match)
+  searchMatchLocationHashCache.set(match, locationHash)
 
-  return identityHash
+  return locationHash
 }
 
-function hashSearchMatchIdentity(match: WorkspaceSearchMatch) {
+function hashSearchMatchLocation(match: WorkspaceSearchMatch) {
   let hash = STABLE_HASH_OFFSET
   hash = updateStableHash(hash, match.kind)
   hash = updateStableHashCode(hash, 0)
@@ -325,12 +325,6 @@ function hashSearchMatchIdentity(match: WorkspaceSearchMatch) {
   hash = updateStableHash(hash, match.line)
   hash = updateStableHashCode(hash, 0)
   hash = updateStableHash(hash, match.column)
-  hash = updateStableHashCode(hash, 0)
-  hash = updateStableHash(hash, match.endColumn)
-  hash = updateStableHashCode(hash, 0)
-  hash = updateStableHash(hash, match.previewStartColumn)
-  hash = updateStableHashCode(hash, 0)
-  hash = updateStableHash(hash, match.preview)
 
   return stableHashResult(hash)
 }
@@ -470,11 +464,11 @@ function contentResultIdIsPresent(
   for (const match of group.matches) {
     if (match.kind !== "content") continue
 
-    const identityHash = searchMatchIdentityHash(match)
-    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identityHash)
+    const locationHash = searchMatchLocationHash(match)
+    const duplicateIndex = nextDuplicateIndex(duplicateCounts, locationHash)
     const matchId = searchResultMatchIdForIdentityHash(
       group.path,
-      identityHash,
+      locationHash,
       duplicateIndex
     )
     if (matchId === id) return true

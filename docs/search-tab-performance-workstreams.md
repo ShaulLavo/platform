@@ -61,6 +61,7 @@ Files:
 
 - `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-editor.tsx`
 - `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.tsx`
+- `/Users/shaul/Desktop/Editor/packages/react/src/index.ts`
 - `/Users/shaul/Desktop/Editor/packages/editor/src/editor/Editor.ts`
 - `/Users/shaul/Desktop/Editor/packages/editor/src/plugins.ts`
 - `/Users/shaul/Desktop/Editor/packages/editor/src/virtualization/virtualizedTextViewRows.ts`
@@ -71,11 +72,13 @@ Current behavior:
 - The surface builds file blocks, virtual rows, editor pool slots, editor documents, range decorations, line gutters, find plugins, and optional syntax plugins.
 - Pool slots keep hidden editor instances mounted.
 - When the same file receives more streamed matches, the file block/editor document can be recreated, which can reload syntax/search highlights for excerpts that were already rendered.
+- `SearchResultFileEditor` gives `EditorHost` a document revision based on generated excerpt text. When TS-heavy result text changes on every query or streamed append, `@editor/react` treats it as a new document revision and calls `openDocument`, which tears down and recreates syntax/highlighter sessions.
 
 Trace evidence:
 
 - CPU profile repeatedly points at React layout effects, `Editor.setPlugins`, `syncPlugins`, `setGutterContributions`, row reconcile/remove, and editor text metrics.
 - `SearchResultEditorSurface`, `SearchResultDocumentBoundary`, `SearchResultFileEditorPoolSlot`, and `SearchResultFileEditor` appear repeatedly in React profiler markers.
+- TS-heavy result sets are worse than Markdown-heavy result sets because TypeScript syntax/highlight sessions are more expensive to rebuild, so the full reload is more visible on every keystroke.
 
 ### 3. Per-Row Width Measurement Adds Layout Pressure
 
@@ -178,12 +181,12 @@ Owner write scope:
 
 Tasks:
 
-1. Investigate storing grouped results or a path index in search state instead of deriving all groups from `matches` on every render.
-2. Preserve existing group object references when a streamed batch appends to other files.
-3. Preserve the existing group object and existing match object identities when a streamed batch appends more matches to the same file.
-4. Avoid deeply equal but referentially new `matches` arrays for unchanged file groups.
-5. Expose enough stable per-file identity that the result editor can distinguish "same file with appended excerpts" from "new file/document".
-6. Keep collapse pruning, active result resolution, replace actions, and navigation semantics intact.
+1. [x] Investigate storing grouped results or a path index in search state instead of deriving all groups from `matches` on every render.
+2. [x] Preserve existing group object references when a streamed batch appends to other files.
+3. [x] Preserve the existing group object and existing match object identities when a streamed batch appends more matches to the same file.
+4. [x] Avoid deeply equal but referentially new `matches` arrays for unchanged file groups.
+5. [x] Expose enough stable per-file identity that the result editor can distinguish "same file with appended excerpts" from "new file/document".
+6. [x] Keep collapse pruning, active result resolution, replace actions, and navigation semantics intact.
 
 Acceptance criteria:
 
@@ -209,11 +212,11 @@ Owner write scope:
 
 Tasks:
 
-1. Decide whether search tabs should render the lightweight `SearchResultsView` while status is `loading`, then switch to `SearchResultEditorSurface` when ready.
+1. [x] Decide whether search tabs should render the lightweight `SearchResultsView` while status is `loading`, then switch to `SearchResultEditorSurface` when ready. Decision: keep search tabs on the editor-backed `SearchResultEditorSurface` while loading.
 2. Alternatively, keep `SearchResultEditorSurface` mounted but render file headers and plain preview rows until the result set is stable.
-3. Remove `snapshot.matches.length` from `SearchResultDocumentBoundary` reset keys if it causes avoidable boundary churn during streaming.
-4. Defer editor pool slot creation until results are ready or until the user focuses/selects a result.
-5. Add perf fixture coverage for loading-state result streaming.
+3. [x] Remove `snapshot.matches.length` from `SearchResultDocumentBoundary` reset keys if it causes avoidable boundary churn during streaming.
+4. [x] Defer spare hidden editor pool slot creation until results are ready while keeping visible result editors mounted.
+5. [x] Add perf fixture coverage for loading-state result streaming.
 
 Acceptance criteria:
 
@@ -259,6 +262,42 @@ Risks:
 
 - Editor-core changes can affect unrelated editor surfaces.
 - Keep editor-core changes small and covered by tests or targeted manual verification.
+
+### Workstream H: Same-File Incremental Editor Updates
+
+Goal: stop treating same-file search result excerpt changes as full editor document reloads.
+
+Owner write scope:
+
+- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.tsx`
+- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-view-model.ts`
+- `/Users/shaul/Desktop/Editor/packages/react/src/index.ts`
+- `/Users/shaul/Desktop/Editor/packages/editor/src/editor/Editor.ts`
+- `/Users/shaul/Desktop/Editor/packages/tree-sitter/src/session.ts`
+
+Tasks:
+
+1. Confirm the reload path: `SearchResultFileEditor` changes `document.revision`, `@editor/react` recomputes `documentKey`, then `syncDocument` calls `editor.openDocument`.
+2. Keep the same editor document/session alive when the path/language/document identity is unchanged and only the generated excerpt text changes.
+3. Prefer an incremental text update path that lets tree-sitter apply edits instead of disposing the syntax session.
+4. Keep document identity stable by file path and result mode; do not include match count or generated text hash in the identity.
+5. Treat query changes and same-file appended matches differently:
+   - Same file plus appended excerpts should update the existing session incrementally.
+   - Different file/language should still open a new document.
+6. Add a TS-heavy perf fixture where the query changes repeatedly and results remain mostly in the same `.ts` files.
+
+Acceptance criteria:
+
+- Typing through a TS-heavy search no longer fully reloads syntax/highlights for every visible same-file result editor.
+- Existing TS excerpts keep syntax/search highlights when new matches append to the same file.
+- Tree-sitter uses `applyChange`/incremental edit for same-document result updates where possible.
+- Markdown behavior stays at least as good as today.
+- No normal editor document sync regression.
+
+Risks:
+
+- The React editor adapter currently keys controlled documents by `documentId`, `documentMode`, `revision`, and session identity. Changing this needs care so normal file editors still refresh correctly.
+- Search result documents are generated readonly documents, so they may need a dedicated "controlled generated document can update incrementally" path rather than changing all editor sync semantics.
 
 ### Workstream E: Remove Per-Row Layout Measurement
 
@@ -375,12 +414,14 @@ Parallel round 2:
 
 - Person 1: Workstream B after Workstream A decides batch semantics
 - Person 2: Workstream D after Workstream C identifies which editor work remains during loading
-- Person 3: Re-profile and compare before/after traces
+- Person 3: Workstream H, using TS-heavy searches as the primary benchmark
+- Person 4: Re-profile and compare before/after traces
 
 Coordination points:
 
 - Workstreams A and B both touch search state update behavior.
 - Workstreams C and D both touch the structured editor surface.
+- Workstreams D and H both touch syntax/highlight lifecycle; H owns document/session reload behavior, D owns plugin/gutter lifecycle.
 - Workstream F should define the measurement format before other streams report wins.
 - Workstream G should not change event contracts without talking to A and B.
 
@@ -408,6 +449,7 @@ Run after each workstream:
 6. Open a result into the editor.
 7. Run replace-next and replace-all smoke checks if the touched code can affect replace.
 8. Capture a new trace or at least record dropped frames and long tasks.
+9. Repeat the typing scenario with a TS-heavy result set and confirm visible highlights do not fully reload on every keystroke.
 
 Likely test commands:
 

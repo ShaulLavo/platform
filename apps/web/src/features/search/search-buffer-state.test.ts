@@ -375,6 +375,49 @@ describe("search buffer store", () => {
     })
   })
 
+  it("keeps previous visible rows while a related query streams partial batches", () => {
+    const store = createSearchBufferStore()
+    const firstRunId = store.getState().startSearch(searchQuery("c"))
+    const firstMatch = contentMatch("repo/src/app.ts", 1, 1)
+    const secondMatch = contentMatch("repo/src/app.ts", 2, 1)
+    store
+      .getState()
+      .appendEvents(firstRunId, [
+        { match: firstMatch, type: "match" },
+        { match: secondMatch, type: "match" },
+        doneEvent("c", 2),
+      ])
+
+    const previousGroups = searchGroupsForSnapshot(store.getState().active)
+    const previousIds = searchResultItems(previousGroups).map((item) => item.id)
+    const secondRunId = store.getState().startSearch(searchQuery("co"))
+    store.getState().appendEvent(secondRunId, {
+      match: { ...firstMatch, endColumn: 3, preview: "const value" },
+      type: "match",
+    })
+
+    const streamingGroups = searchGroupsForSnapshot(store.getState().active)
+    expect(streamingGroups).toBe(previousGroups)
+    expect(searchResultItems(streamingGroups).map((item) => item.id)).toEqual(
+      previousIds
+    )
+
+    store.getState().appendEvent(secondRunId, {
+      match: { ...secondMatch, endColumn: 3, preview: "const value" },
+      type: "match",
+    })
+    expect(searchGroupsForSnapshot(store.getState().active)).toBe(
+      previousGroups
+    )
+
+    store.getState().appendEvent(secondRunId, doneEvent("co", 2))
+    const readyGroups = searchGroupsForSnapshot(store.getState().active)
+    expect(readyGroups).not.toBe(previousGroups)
+    expect(searchResultItems(readyGroups).map((item) => item.id)).toEqual(
+      previousIds
+    )
+  })
+
   it("appends batched events and can collapse file groups", () => {
     const store = createSearchBufferStore()
     const runId = store.getState().startSearch({

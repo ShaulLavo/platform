@@ -128,6 +128,7 @@ type SearchResultEditorSurfaceProps = {
   displayedResultsQuery: string | null
   groups: readonly WorkspaceSearchFileGroup[]
   keymapLayers: readonly EditorKeymapLayer[]
+  prewarmEditorPool?: boolean
   replaceVisible: boolean
   resultsQuery: string
   onOpenTarget: (target: SearchResultOpenTarget) => void
@@ -147,6 +148,7 @@ export const SearchResultEditorSurface = memo(
     displayedResultsQuery,
     groups,
     keymapLayers,
+    prewarmEditorPool = true,
     replaceVisible,
     resultsQuery,
     onOpenTarget,
@@ -211,7 +213,8 @@ export const SearchResultEditorSurface = memo(
       [renderedVirtualItems]
     )
     const fileEditorPoolSize = searchResultFileEditorPoolSize(
-      fileResultItems.length
+      fileResultItems.length,
+      prewarmEditorPool
     )
     const fileEditorPoolItems = useMemo(
       () =>
@@ -1219,8 +1222,12 @@ function searchResultFileEditorPoolItems(
   return Array.from({ length: poolSize }, (_, index) => items[index] ?? null)
 }
 
-function searchResultFileEditorPoolSize(visibleCount: number) {
+function searchResultFileEditorPoolSize(
+  visibleCount: number,
+  prewarmEditorPool: boolean
+) {
   if (visibleCount === 0) return 0
+  if (!prewarmEditorPool) return visibleCount
 
   return Math.max(SEARCH_RESULT_FILE_EDITOR_POOL_MIN_SIZE, visibleCount)
 }

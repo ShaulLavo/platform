@@ -51,14 +51,17 @@ export function SearchBufferEditor({
   const commands = useEditorCommands()
   const resultCanReplace = replaceVisible ? replace.canReplace : false
 
-  const handleOpenTarget = useCallback((target: SearchResultOpenTarget) => {
-    if (!target.match) {
-      commands.selectFile(target.path)
-      return
-    }
+  const handleOpenTarget = useCallback(
+    (target: SearchResultOpenTarget) => {
+      if (!target.match) {
+        commands.selectFile(target.path)
+        return
+      }
 
-    openWorkspaceSearchMatch(target.match, resultsQuery, commands)
-  }, [commands, resultsQuery])
+      openWorkspaceSearchMatch(target.match, resultsQuery, commands)
+    },
+    [commands, resultsQuery]
+  )
 
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background">
@@ -122,13 +125,17 @@ export function SearchBufferEditor({
               onSelectResult={selectResult}
             />
           }
-          resetKey={`${snapshot.id}:structured:${snapshot.matches.length}:${snapshot.runId}`}
+          resetKey={`${snapshot.id}:structured:${snapshot.runId}`}
         >
           <SearchResultEditorSurface
             activeResultId={snapshot.activeResultId}
             canReplace={resultCanReplace}
+            deferredPluginMode={
+              snapshot.status === "loading" ? "manual" : "idle"
+            }
             groups={groups}
             keymapLayers={editorKeymapLayers}
+            prewarmEditorPool={snapshot.status !== "loading"}
             replaceVisible={replaceVisible}
             resultsQuery={resultsQuery}
             displayedResultsQuery={snapshot.resultsSearchQuery?.query ?? null}
