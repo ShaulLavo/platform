@@ -4,8 +4,6 @@ import "@editor/gutters/style.css"
 
 import { CaretRightIcon } from "@phosphor-icons/react"
 import type {
-  EditorGutterContribution,
-  EditorGutterRowContext,
   EditorKeymapLayer,
   EditorPlugin,
   EditorRangeDecoration,
@@ -13,6 +11,7 @@ import type {
   EditorTheme,
 } from "@editor/core"
 import { createEditorFindPlugin } from "@editor/find"
+import { createLineGutterPlugin } from "@editor/gutters"
 import { EditorHost, useEditor } from "@editor/react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import type { WorkspaceSearchMatch } from "@workspace/contracts"
@@ -69,11 +68,9 @@ import { cn } from "@workspace/ui/lib/utils"
 
 const FILE_ROW_ESTIMATE = 44
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
+const SEARCH_RESULT_FILE_EDITOR_ROW_GAP = 6
 const FILE_RESULTS_EDITOR_MIN_HEIGHT = 28
 const FILE_RESULTS_ROW_VERTICAL_PADDING = 8
-const SOURCE_LINE_GUTTER_MIN_COLUMNS = 3
-const SOURCE_LINE_GUTTER_MIN_WIDTH = 26
-const SOURCE_LINE_GUTTER_PADDING_PX = 8
 
 const PASSIVE_MATCH_STYLE = {
   backgroundColor: "var(--search-result-match-background)",
@@ -434,10 +431,10 @@ const SearchResultFileEditor = memo(
     )
     const sourceLineGutterPlugin = useMemo(
       () =>
-        createSearchResultSourceLineGutterPlugin(
-          fileDocument.lines,
-          fileBlockLineDigits(file)
-        ),
+        createLineGutterPlugin({
+          labelForRow: (row) => fileDocument.lines[row.bufferRow]?.sourceLine,
+          minDigits: fileBlockLineDigits(file),
+        }),
       [file, fileDocument.lines]
     )
     const findPlugin = useMemo(
@@ -459,7 +456,7 @@ const SearchResultFileEditor = memo(
     )
     const controller = useEditor({
       cursorLineHighlight: {
-        gutterBackground: ["search-result-source-line-gutter"],
+        gutterBackground: ["line-gutter"],
         gutterNumber: true,
         rowBackground: true,
       },
@@ -472,6 +469,7 @@ const SearchResultFileEditor = memo(
       lineHeight: EXCERPT_EDITOR_LINE_HEIGHT,
       plugins,
       rangeDecorations,
+      rowGap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
       storeSync: "none",
       theme: editorTheme,
     })
@@ -928,80 +926,6 @@ function activeTextInputOutsideEditor() {
   return element.isContentEditable
 }
 
-function createSearchResultSourceLineGutterPlugin(
-  lines: readonly SearchResultFileDocumentLine[],
-  minDigits: number
-): EditorPlugin {
-  const contribution = createSearchResultSourceLineGutterContribution(
-    lines,
-    minDigits
-  )
-
-  return {
-    name: "search-result-source-line-gutter",
-    activate(context) {
-      return context.registerGutterContribution(contribution)
-    },
-  }
-}
-
-function createSearchResultSourceLineGutterContribution(
-  lines: readonly SearchResultFileDocumentLine[],
-  minDigits: number
-): EditorGutterContribution {
-  return {
-    id: "search-result-source-line-gutter",
-    createCell(document) {
-      const element = document.createElement("span")
-      element.className = "editor-virtualized-gutter-label"
-      element.setAttribute("aria-hidden", "true")
-      return element
-    },
-    width(context) {
-      const columns = Math.max(SOURCE_LINE_GUTTER_MIN_COLUMNS, minDigits)
-
-      return Math.max(
-        SOURCE_LINE_GUTTER_MIN_WIDTH,
-        Math.ceil(
-          columns * context.metrics.characterWidth +
-            SOURCE_LINE_GUTTER_PADDING_PX
-        )
-      )
-    },
-    updateCell(element, row) {
-      updateSearchResultSourceLineGutterCell(element, row, lines)
-    },
-  }
-}
-
-function updateSearchResultSourceLineGutterCell(
-  element: HTMLElement,
-  row: EditorGutterRowContext,
-  lines: readonly SearchResultFileDocumentLine[]
-) {
-  const line = lines[row.bufferRow]
-  const hidden = !row.primaryText || !line
-  if (element.hidden !== hidden) element.hidden = hidden
-  element.classList.toggle(
-    "editor-virtualized-line-number-active",
-    Boolean(
-      row.primaryText && row.cursorLine && row.cursorLineHighlight.gutterNumber
-    )
-  )
-  if (!line) return
-
-  setSearchResultSourceLineGutterText(element, String(line.sourceLine))
-}
-
-function setSearchResultSourceLineGutterText(
-  element: HTMLElement,
-  value: string
-) {
-  if (element.textContent === value) return
-
-  element.textContent = value
-}
-
 function searchResultFileDocumentId(file: SearchResultFileBlock) {
   return `${file.path}?searchResultFile=${encodeURIComponent(file.id)}`
 }
@@ -1060,9 +984,11 @@ function searchResultFileEditorRowHeight(file: SearchResultFileBlock) {
 }
 
 function searchResultFileEditorHeight(lineCount: number) {
+  const rowGaps = Math.max(0, lineCount - 1) * SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+
   return Math.max(
     FILE_RESULTS_EDITOR_MIN_HEIGHT,
-    lineCount * EXCERPT_EDITOR_LINE_HEIGHT
+    lineCount * EXCERPT_EDITOR_LINE_HEIGHT + rowGaps
   )
 }
 

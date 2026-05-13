@@ -308,7 +308,8 @@
     height: 28px;
 }
 
-.search-result-excerpt-editor-host .editor-virtualized {
+.search-result-excerpt-editor-host .editor-virtualized,
+.search-result-file-editor-host .editor-virtualized {
     --editor-background: transparent !important;
     --editor-cursor-line-gutter-background: color-mix(
         in oklch,
@@ -330,11 +331,13 @@
     overflow: hidden;
 }
 
-.search-result-excerpt-editor-host .editor-virtualized-gutter {
+.search-result-excerpt-editor-host .editor-virtualized-gutter,
+.search-result-file-editor-host .editor-virtualized-gutter {
     background: transparent;
 }
 
-.search-result-excerpt-editor-host .editor-virtualized-caret-layer {
+.search-result-excerpt-editor-host .editor-virtualized-caret-layer,
+.search-result-file-editor-host .editor-virtualized-caret-layer {
     display: none;
 }
 
