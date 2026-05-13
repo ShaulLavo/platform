@@ -18,14 +18,20 @@ import {
   createSearchBufferStore,
   SearchBufferStateContext,
 } from "@/features/search/search-buffer-state"
+import { readWorkspaceCache } from "@/lib/workspace-cache"
 import { useState, type ReactNode } from "react"
 
 export function EditorStateProvider({ children }: { children: ReactNode }) {
+  const [workspaceCache] = useState(readWorkspaceCache)
   const [conflictStore] = useState(createEditorConflictStore)
   const [documentStore] = useState(createEditorDocumentStore)
-  const [searchBufferStore] = useState(createSearchBufferStore)
+  const [searchBufferStore] = useState(() =>
+    createSearchBufferStore(workspaceCache.searchBuffer)
+  )
   const [uiStore] = useState(createEditorUiStore)
-  const [workspaceStore] = useState(createEditorWorkspaceStore)
+  const [workspaceStore] = useState(() =>
+    createEditorWorkspaceStore(workspaceCache)
+  )
 
   return (
     <EditorWorkspaceStateContext.Provider value={workspaceStore}>

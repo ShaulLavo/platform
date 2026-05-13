@@ -237,6 +237,8 @@ Goal: reduce editor-core work for readonly search result excerpts.
 Owner write scope:
 
 - `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.tsx`
+- `/Users/shaul/Desktop/Editor/packages/editor/src/editor/Editor.ts`
+- `/Users/shaul/Desktop/Editor/packages/editor/src/editor/pluginLifecycle.test.ts`
 - `/Users/shaul/Desktop/Editor/packages/editor/src/plugins.ts`
 - `/Users/shaul/Desktop/Editor/packages/editor/src/virtualization/virtualizedTextViewRows.ts`
 - `/Users/shaul/Desktop/Editor/packages/gutters/src/lineGutter.ts`
@@ -246,10 +248,10 @@ Tasks:
 1. [x] Audit why `setPlugins`, `syncPlugins`, `setGutterContributions`, and gutter row removal run so often. Initial finding: streamed appends recreated the search source-line gutter plugin because its row label closure captured each rebuilt file document; `syncText` also sent full-document replacement edits to editor sessions.
 2. [x] Ensure plugin arrays and gutter plugin instances stay stable when file identity and options are unchanged.
 3. [x] Preserve syntax highlight sessions for the same file/language when streamed batches only append new excerpts.
-4. Update range decorations incrementally where possible so existing match highlights are not torn down and recreated.
-5. Consider a cheaper source-line display path for search result excerpts that does not use full gutter plugin lifecycle.
-6. Keep syntax and find plugins disabled until idle, ready, or explicit editor focus.
-7. Reduce hidden editor pool slot churn.
+4. [x] Update range decorations incrementally where possible so existing match highlights are not torn down and recreated. `Editor.applyRangeDecorations` now diffs semantic highlight groups and clears only stale names, so appended/moved same-style highlights update the existing registry entry.
+5. [x] Consider a cheaper source-line display path for search result excerpts that does not use full gutter plugin lifecycle. Decision: keep the visible source-line gutter for selection/open fidelity, but remove gutter, range decoration, syntax, and find plugin work from hidden pool slots until they become visible.
+6. [x] Keep syntax and find plugins disabled until idle, ready, or explicit editor focus. Loading search surfaces use manual deferred mode; visible editors can enable plugins on focus/pointer activation, and hidden slots remain plain document prewarms.
+7. [x] Reduce hidden editor pool slot churn. Hidden slots now prewarm only the document/editor host and avoid range highlight, gutter, syntax, and find plugin churn while offscreen.
 
 Acceptance criteria:
 

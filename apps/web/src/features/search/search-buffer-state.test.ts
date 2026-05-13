@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import type { WorkspaceSearchMatch } from "@workspace/contracts"
 
 import {
+  cachedSearchBufferState,
   createSearchBufferStore,
   searchGroupsForSnapshot,
   type SearchBufferSnapshot,
@@ -55,6 +56,54 @@ describe("search buffer store", () => {
     expect(searchGroupsForSnapshot(snapshot)).toEqual([
       expect.objectContaining({
         name: "app.ts",
+        path: "repo/src/app.ts",
+      }),
+    ])
+  })
+
+  it("hydrates a cached search buffer snapshot", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      caseSensitive: true,
+      excludeGlobs: ["*.test.ts"],
+      includeContent: true,
+      includeGlobs: ["src/**/*.ts"],
+      limit: 20,
+      matchMode: "regex",
+      path: "repo",
+      query: "needle",
+      wholeWord: true,
+    })
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/app.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/app.ts", 2, 3), type: "match" },
+    ])
+    store.getState().appendEvent(runId, doneEvent("needle", 2))
+    store.getState().setReplaceVisible("repo", true)
+    store.getState().setReplaceText("repo", "pin")
+    store.getState().collapseAllGroups()
+
+    const cached = cachedSearchBufferState(store.getState().active)
+    const restored = createSearchBufferStore(cached)
+
+    expect(restored.getState().active).toMatchObject({
+      caseSensitive: true,
+      excludeGlobText: "*.test.ts",
+      filtersVisible: true,
+      includeGlobText: "src/**/*.ts",
+      matchMode: "regex",
+      query: "needle",
+      replaceText: "pin",
+      replaceVisible: true,
+      resultsQuery: "needle",
+      status: "ready",
+      totalCount: 2,
+      wholeWord: true,
+    })
+    expect(searchGroupsForSnapshot(restored.getState().active)).toEqual([
+      expect.objectContaining({
+        collapsed: true,
+        count: 2,
         path: "repo/src/app.ts",
       }),
     ])

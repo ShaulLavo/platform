@@ -8,6 +8,7 @@ import { createContext, useContext } from "react"
 import { useStore } from "zustand"
 import { createStore, type StoreApi } from "zustand/vanilla"
 
+import type { CachedSearchBufferState } from "@/lib/workspace-cache"
 import { basename, toTreePath } from "@/lib/path-formatters"
 import { searchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { compareSearchPaths } from "@/features/search/search-sort"
@@ -143,9 +144,13 @@ export function useSearchBufferState<T>(
   return useStore(useSearchBufferStoreApi(), selector)
 }
 
-export function createSearchBufferStore() {
+export function createSearchBufferStore(
+  cachedActive: CachedSearchBufferState | null = null
+) {
+  const active = searchBufferSnapshotFromCache(cachedActive)
+
   return createStore<SearchBufferStore>()((set, get) => ({
-    active: null,
+    active,
     appendEvent: (runId, event) =>
       set((state) => appendSearchEvent(state, runId, event)),
     appendEvents: (runId, events) =>
@@ -240,6 +245,86 @@ export function createSearchBufferStore() {
         active: toggleSearchGroup(state.active, path),
       })),
   }))
+}
+
+export function cachedSearchBufferState(
+  snapshot: SearchBufferSnapshot | null
+): CachedSearchBufferState | null {
+  if (!snapshot) return null
+
+  return {
+    activeResultId: snapshot.activeResultId,
+    caseSensitive: snapshot.caseSensitive,
+    collapsedPaths: [...snapshot.collapsedPaths],
+    excludeGlobText: snapshot.excludeGlobText,
+    filtersVisible: snapshot.filtersVisible,
+    includeGlobText: snapshot.includeGlobText,
+    matchMode: snapshot.matchMode,
+    matches: [...snapshot.matches],
+    query: snapshot.query,
+    queryHistory: [...snapshot.queryHistory],
+    replaceHistory: [...snapshot.replaceHistory],
+    replaceText: snapshot.replaceText,
+    replaceVisible: snapshot.replaceVisible,
+    resultsQuery: snapshot.resultsQuery,
+    resultsSearchQuery: snapshot.resultsSearchQuery,
+    rootPath: snapshot.rootPath,
+    totalCount: snapshot.totalCount,
+    truncated: snapshot.truncated,
+    wholeWord: snapshot.wholeWord,
+  }
+}
+
+function searchBufferSnapshotFromCache(
+  cached: CachedSearchBufferState | null
+): SearchBufferSnapshot | null {
+  if (!cached) return null
+
+  const groups = groupSearchMatches(
+    cached.matches,
+    cached.rootPath,
+    cached.collapsedPaths
+  )
+  const collapsedPaths = prunedCollapsedPaths(cached.collapsedPaths, groups)
+
+  return resolveActiveSearchResult({
+    activeResultId: cached.activeResultId,
+    caseSensitive: cached.caseSensitive,
+    collapsedPaths,
+    error: null,
+    excludeGlobText: cached.excludeGlobText,
+    filtersVisible: cached.filtersVisible,
+    groups: searchGroupsWithCollapsedPaths(groups, collapsedPaths),
+    id: searchBufferDocumentId(cached.rootPath),
+    includeGlobText: cached.includeGlobText,
+    matchMode: cached.matchMode,
+    matches: cached.matches,
+    query: cached.query,
+    queryHistory: cached.queryHistory,
+    queryHistoryCursor: null,
+    queryHistoryDraft: null,
+    replaceHistory: cached.replaceHistory,
+    replaceHistoryCursor: null,
+    replaceHistoryDraft: null,
+    replaceMessage: null,
+    replaceStatus: "idle",
+    replaceText: cached.replaceText,
+    replaceVisible: cached.replaceVisible,
+    pendingResultIds: [],
+    resultsQuery: cached.resultsQuery,
+    resultsSearchQuery: cached.resultsSearchQuery,
+    rootPath: cached.rootPath,
+    runningMatches: [],
+    runningQuery: null,
+    runningSearchQuery: null,
+    runId: 0,
+    searchRevision: 0,
+    status: cached.query ? "ready" : "idle",
+    streamBaseMatches: [],
+    totalCount: cached.totalCount,
+    truncated: cached.truncated,
+    wholeWord: cached.wholeWord,
+  })
 }
 
 function optionSearchBuffer(

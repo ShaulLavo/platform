@@ -33,6 +33,7 @@ describe("workspace cache", () => {
       openFilePaths: ["/repo/src/readme.md", diffPath],
       recentlyClosedEditorPaths: ["/repo/src/closed.ts"],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: diffPath,
       sidebarVisible: false,
       workspacePanelTab: "git",
@@ -45,6 +46,7 @@ describe("workspace cache", () => {
       openFilePaths: ["/repo/src/readme.md", diffPath],
       recentlyClosedEditorPaths: ["/repo/src/closed.ts"],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: diffPath,
       sidebarVisible: false,
       workspacePanelTab: "git",
@@ -62,6 +64,7 @@ describe("workspace cache", () => {
       openFilePaths: [diffPath],
       recentlyClosedEditorPaths: ["/other/src/closed.ts"],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: diffPath,
       sidebarVisible: true,
       workspacePanelTab: "git",
@@ -74,6 +77,7 @@ describe("workspace cache", () => {
       openFilePaths: [],
       recentlyClosedEditorPaths: [],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: null,
       sidebarVisible: true,
       workspacePanelTab: "git",
@@ -91,6 +95,7 @@ describe("workspace cache", () => {
       openFilePaths: ["/repo/src/readme.md", conflictPath],
       recentlyClosedEditorPaths: [conflictPath],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: conflictPath,
       sidebarVisible: true,
       workspacePanelTab: "files",
@@ -103,6 +108,7 @@ describe("workspace cache", () => {
       openFilePaths: ["/repo/src/readme.md"],
       recentlyClosedEditorPaths: [],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: null,
       sidebarVisible: true,
       workspacePanelTab: "files",
@@ -119,6 +125,7 @@ describe("workspace cache", () => {
       openFilePaths: [],
       recentlyClosedEditorPaths: [],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: null,
       sidebarVisible: true,
       workspacePanelTab: "search",
@@ -127,7 +134,7 @@ describe("workspace cache", () => {
     expect(readWorkspaceCache().workspacePanelTab).toBe("search")
   })
 
-  it("does not persist transient search buffer tabs", () => {
+  it("persists search buffer tabs", () => {
     const rootFolder = pickedDirectory("/repo")
     const searchPath = searchBufferDocumentId("/repo")
 
@@ -138,16 +145,115 @@ describe("workspace cache", () => {
       openFilePaths: ["/repo/src/readme.md", searchPath],
       recentlyClosedEditorPaths: [searchPath],
       rootFolder,
+      searchBuffer: null,
       selectedFilePath: searchPath,
       sidebarVisible: true,
       workspacePanelTab: "search",
     })
 
     expect(readWorkspaceCache()).toMatchObject({
+      editorHistory: [searchPath],
+      openFilePaths: ["/repo/src/readme.md", searchPath],
+      recentlyClosedEditorPaths: [searchPath],
+      selectedFilePath: searchPath,
+    })
+  })
+
+  it("persists cached search buffer state for the active workspace", () => {
+    const rootFolder = pickedDirectory("/repo")
+    const searchBuffer = {
+      activeResultId: "search-result-match-a",
+      caseSensitive: true,
+      collapsedPaths: ["/repo/src/app.ts"],
+      excludeGlobText: "*.test.ts",
+      filtersVisible: true,
+      includeGlobText: "src/**/*.ts",
+      matchMode: "regex" as const,
+      matches: [
+        {
+          column: 5,
+          kind: "content" as const,
+          line: 2,
+          path: "/repo/src/app.ts",
+          preview: "const needle = true",
+          source: "disk" as const,
+          type: "file" as const,
+        },
+      ],
+      query: "needle",
+      queryHistory: ["needle"],
+      replaceHistory: ["pin"],
+      replaceText: "pin",
+      replaceVisible: true,
+      resultsQuery: "needle",
+      resultsSearchQuery: {
+        caseSensitive: true,
+        excludeGlobs: ["*.test.ts"],
+        includeContent: true,
+        includeGlobs: ["src/**/*.ts"],
+        limit: 200,
+        matchMode: "regex" as const,
+        path: "/repo",
+        query: "needle",
+      },
+      rootPath: "/repo",
+      totalCount: 1,
+      truncated: false,
+      wholeWord: false,
+    }
+
+    writeWorkspaceCache({
+      diffViewMode: "split",
       editorHistory: [],
-      openFilePaths: ["/repo/src/readme.md"],
+      gitPanelOpen: true,
+      openFilePaths: [],
       recentlyClosedEditorPaths: [],
+      rootFolder,
+      searchBuffer,
       selectedFilePath: null,
+      sidebarVisible: true,
+      workspacePanelTab: "search",
+    })
+
+    expect(readWorkspaceCache().searchBuffer).toEqual(searchBuffer)
+  })
+
+  it("drops cached search buffer state for a different workspace", () => {
+    writeWorkspaceCache({
+      diffViewMode: "split",
+      editorHistory: [],
+      gitPanelOpen: true,
+      openFilePaths: [],
+      recentlyClosedEditorPaths: [],
+      rootFolder: pickedDirectory("/repo"),
+      searchBuffer: {
+        activeResultId: null,
+        caseSensitive: false,
+        collapsedPaths: [],
+        excludeGlobText: "",
+        filtersVisible: false,
+        includeGlobText: "",
+        matchMode: "literal",
+        matches: [],
+        query: "needle",
+        queryHistory: [],
+        replaceHistory: [],
+        replaceText: "",
+        replaceVisible: false,
+        resultsQuery: "",
+        resultsSearchQuery: null,
+        rootPath: "/other",
+        totalCount: 0,
+        truncated: false,
+        wholeWord: false,
+      },
+      selectedFilePath: null,
+      sidebarVisible: true,
+      workspacePanelTab: "search",
+    })
+
+    expect(readWorkspaceCache()).toMatchObject({
+      searchBuffer: null,
     })
   })
 })

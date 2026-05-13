@@ -4,6 +4,10 @@ import { useDirtyTabCloseRequest } from "@/features/editor/hooks/use-dirty-tab-c
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorStateProvider } from "@/features/editor/editor-state-provider"
+import {
+  cachedSearchBufferState,
+  useSearchBufferState,
+} from "@/features/search/search-buffer-state"
 import { FilePickerDialog } from "@/components/file-picker-dialog"
 import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
@@ -56,6 +60,7 @@ function AppContent() {
   const workspacePanelTab = useEditorWorkspaceState(
     (state) => state.workspacePanelTab
   )
+  const activeSearchBuffer = useSearchBufferState((state) => state.active)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
   const { pickRootFolder } = useEditorCommands()
@@ -68,6 +73,10 @@ function AppContent() {
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
   const { dirtyTabCloseDialog, requestCloseTab } = useDirtyTabCloseRequest()
   const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
+  const searchBuffer = useMemo(
+    () => cachedSearchBufferState(activeSearchBuffer),
+    [activeSearchBuffer]
+  )
   const editorKeymapLayers = useMemo(
     () => editorKeymapLayersFromPlatform(keymapBindings),
     [keymapBindings]
@@ -96,6 +105,7 @@ function AppContent() {
       gitPanelOpen,
       recentlyClosedEditorPaths,
       rootFolder,
+      searchBuffer,
       selectedFilePath,
       sidebarVisible,
       workspacePanelTab,
@@ -107,6 +117,7 @@ function AppContent() {
     openFilePaths,
     recentlyClosedEditorPaths,
     rootFolder,
+    searchBuffer,
     selectedFilePath,
     sidebarVisible,
     workspacePanelTab,

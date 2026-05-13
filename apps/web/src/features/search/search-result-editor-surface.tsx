@@ -117,6 +117,8 @@ const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
   gutterNumber: false,
   rowBackground: false,
 } as const
+const EMPTY_EDITOR_PLUGINS: readonly EditorPlugin[] = []
+const EMPTY_RANGE_DECORATIONS: readonly EditorRangeDecoration[] = []
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
@@ -526,6 +528,7 @@ function SearchResultFileEditorPoolSlot({
         keymapLayers={keymapLayers}
         replaceVisible={replaceVisible}
         syntaxPlugins={syntaxPlugins}
+        visible={visible}
         onEnableDeferredPlugins={onEnableDeferredPlugins}
         onOpenTarget={onOpenTarget}
         onReplaceMatch={onReplaceMatch}
@@ -545,6 +548,7 @@ type SearchResultFileEditorProps = {
   replaceVisible: boolean
   deferredPluginsReady: boolean
   syntaxPlugins: readonly EditorPlugin[]
+  visible: boolean
   onEnableDeferredPlugins: () => void
   onOpenTarget: (target: SearchResultOpenTarget) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
@@ -562,6 +566,7 @@ const SearchResultFileEditor = memo(
     replaceVisible,
     deferredPluginsReady,
     syntaxPlugins,
+    visible,
     onEnableDeferredPlugins,
     onOpenTarget,
     onReplaceMatch,
@@ -575,11 +580,16 @@ const SearchResultFileEditor = memo(
     const sourceLineLabelsKey = useId()
     const sourceLineDigits = fileBlockLineDigits(file)
     useLayoutEffect(() => {
+      if (!visible) {
+        searchResultSourceLineLabels.delete(sourceLineLabelsKey)
+        return
+      }
+
       searchResultSourceLineLabels.set(sourceLineLabelsKey, fileDocument.lines)
       return () => {
         searchResultSourceLineLabels.delete(sourceLineLabelsKey)
       }
-    }, [fileDocument.lines, sourceLineLabelsKey])
+    }, [fileDocument.lines, sourceLineLabelsKey, visible])
     const sourceLineForRow = useCallback(
       (row: EditorGutterRowContext) =>
         searchResultSourceLineLabelForRow(sourceLineLabelsKey, row),
@@ -596,29 +606,39 @@ const SearchResultFileEditor = memo(
       [file, fileDocument]
     )
     const rangeDecorations = useMemo(
-      () => searchResultFileRangeDecorations(fileDocument, activeResultId),
-      [activeResultId, fileDocument]
+      () =>
+        visible
+          ? searchResultFileRangeDecorations(fileDocument, activeResultId)
+          : EMPTY_RANGE_DECORATIONS,
+      [activeResultId, fileDocument, visible]
     )
     const sourceLineGutterPlugin = useMemo(
-      () =>
-        createLineGutterPlugin({
+      () => {
+        if (!visible) return null
+
+        return createLineGutterPlugin({
           labelForRow: sourceLineForRow,
           minDigits: sourceLineDigits,
-        }),
-      [sourceLineDigits, sourceLineForRow]
+        })
+      },
+      [sourceLineDigits, sourceLineForRow, visible]
     )
     const findPlugin = useMemo(
-      () => (deferredPluginsReady ? createEditorFindPlugin() : null),
-      [deferredPluginsReady]
+      () =>
+        visible && deferredPluginsReady ? createEditorFindPlugin() : null,
+      [deferredPluginsReady, visible]
     )
+    const effectiveSyntaxPlugins = visible
+      ? syntaxPlugins
+      : EMPTY_EDITOR_PLUGINS
     const plugins = useMemo(
       () =>
         fileResultEditorPlugins(
           sourceLineGutterPlugin,
-          syntaxPlugins,
+          effectiveSyntaxPlugins,
           findPlugin
         ),
-      [findPlugin, sourceLineGutterPlugin, syntaxPlugins]
+      [effectiveSyntaxPlugins, findPlugin, sourceLineGutterPlugin]
     )
     const editorStyle = useMemo(
       () => searchResultFileEditorStyle(fileDocument),
@@ -805,13 +825,19 @@ function useSearchResultDeferredPlugins({
 }
 
 function fileResultEditorPlugins(
-  sourceLineGutterPlugin: EditorPlugin,
+  sourceLineGutterPlugin: EditorPlugin | null,
   syntaxPlugins: readonly EditorPlugin[],
   findPlugin: EditorPlugin | null
 ) {
-  if (!findPlugin) return [sourceLineGutterPlugin, ...syntaxPlugins]
+  if (!sourceLineGutterPlugin && syntaxPlugins.length === 0 && !findPlugin)
+    return EMPTY_EDITOR_PLUGINS
 
-  return [sourceLineGutterPlugin, ...syntaxPlugins, findPlugin]
+  const sourceLinePlugins = sourceLineGutterPlugin
+    ? [sourceLineGutterPlugin]
+    : EMPTY_EDITOR_PLUGINS
+  if (!findPlugin) return [...sourceLinePlugins, ...syntaxPlugins]
+
+  return [...sourceLinePlugins, ...syntaxPlugins, findPlugin]
 }
 
 function handleSearchResultSurfaceKeyDown({
