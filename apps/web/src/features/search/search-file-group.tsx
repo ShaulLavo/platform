@@ -1,10 +1,15 @@
 import {
   ArrowSquareOutIcon,
   CaretRightIcon,
-  FileTextIcon,
 } from "@phosphor-icons/react"
+import type { CSSProperties } from "react"
 
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
+import {
+  colorForFileIcon,
+  iconForEntry,
+  type ResolvedFileIcon,
+} from "@/lib/file-icons"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -27,6 +32,8 @@ export function SearchFileGroupHeader({
   onReplace?: (group: WorkspaceSearchFileGroup) => void
   onToggle: (path: string) => void
 }) {
+  const icon = iconForEntry({ name: group.name, type: "file" })
+
   return (
     <div
       className={cn(
@@ -48,7 +55,11 @@ export function SearchFileGroupHeader({
             !group.collapsed && "rotate-90"
           )}
         />
-        <FileTextIcon className="size-3.5 text-muted-foreground" />
+        <span
+          aria-hidden="true"
+          className="size-4"
+          style={fileIconStyle(icon)}
+        />
         <span className="min-w-0">
           <span className="block truncate text-xs font-medium">
             {group.name}
@@ -88,4 +99,14 @@ export function SearchFileGroupHeader({
       ) : null}
     </div>
   )
+}
+
+function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
+  const mask = `url(${icon.src}) center / contain no-repeat`
+
+  return {
+    backgroundColor: colorForFileIcon(icon),
+    mask,
+    WebkitMask: mask,
+  }
 }

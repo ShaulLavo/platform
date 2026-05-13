@@ -36,7 +36,6 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
   } = useSearchBuffer(rootPath)
   const replace = useWorkspaceSearchReplace(rootPath)
   const commands = useEditorCommands()
-  const trimmedQuery = query.trim()
 
   function handleOpenBuffer() {
     commands.selectFile(searchBufferDocumentId(rootPath))
@@ -95,7 +94,7 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
           onSelectPreviousHistory={selectPreviousReplaceText}
           onReplaceTextChange={setReplaceText}
         />
-        <SearchSummary query={trimmedQuery} snapshot={snapshot} />
+        <SearchSummary query={query} snapshot={snapshot} />
       </div>
       <SearchResultsView
         canReplace={replace.canReplace}

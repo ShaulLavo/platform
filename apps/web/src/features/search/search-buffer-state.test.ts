@@ -523,6 +523,21 @@ describe("search buffer store", () => {
     })
   })
 
+  it("requests a search refresh for a whitespace-only query", () => {
+    const store = createSearchBufferStore()
+    store.getState().prepareBuffer("repo")
+    store.getState().setQuery("repo", "  ")
+    const before = store.getState().active?.searchRevision
+
+    store.getState().requestSearchRefresh("repo")
+
+    expect(store.getState().active).toMatchObject({
+      query: "  ",
+      searchRevision: (before ?? 0) + 1,
+      status: "loading",
+    })
+  })
+
   it("does not force a stale debounced search when the query is cleared", () => {
     const store = createSearchBufferStore()
     store.getState().prepareBuffer("repo")
@@ -535,6 +550,19 @@ describe("search buffer store", () => {
       query: "",
       searchRevision: before,
       status: "idle",
+    })
+  })
+
+  it("preserves meaningful search query whitespace in history", () => {
+    const store = createSearchBufferStore()
+    store.getState().startSearch(searchQuery(" beta "))
+    store.getState().setQuery("repo", "draft")
+
+    store.getState().selectPreviousQuery("repo")
+
+    expect(store.getState().active).toMatchObject({
+      query: " beta ",
+      queryHistory: [" beta "],
     })
   })
 

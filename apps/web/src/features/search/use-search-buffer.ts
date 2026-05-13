@@ -30,8 +30,9 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 180
 const DIRTY_BUFFER_DEBOUNCE_MS = 220
-const SEARCH_BATCH_SIZE = 50
-const SEARCH_BATCH_MS = 24
+const SEARCH_FIRST_BATCH_DELAY_MS = 0
+const SEARCH_STEADY_BATCH_DELAY_MS = 48
+const SEARCH_FRAME_FALLBACK_MS = 16
 const SEARCH_LIMIT = 200
 
 export type WorkspaceSearchQueryOptions = {
@@ -103,7 +104,7 @@ export function useSearchBuffer(rootPath: string) {
   return {
     groups,
     query,
-    resultsQuery: activeSnapshot?.resultsQuery || query.trim(),
+    resultsQuery: activeSnapshot?.resultsQuery || query,
     resultsSearchQuery: activeSnapshot?.resultsSearchQuery,
     replaceText: activeSnapshot?.replaceText ?? "",
     replaceVisible: activeSnapshot?.replaceVisible ?? false,
@@ -126,7 +127,7 @@ export function useSearchBufferRuntime(rootPath: string) {
   const query = activeSnapshot?.query ?? ""
   const searchRevision = activeSnapshot?.searchRevision ?? 0
   const searchOptions = searchOptionsForSnapshot(activeSnapshot)
-  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS).trim()
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS)
   const debouncedIncludeGlobText = useDebouncedValue(
     searchOptions.includeGlobText,
     SEARCH_DEBOUNCE_MS
@@ -346,13 +347,28 @@ function createSearchEventBatcher(
   store: SearchBufferStoreApi
 ): SearchEventBatcher {
   let pending: WorkspaceSearchEvent[] = []
-  let timer: number | null = null
+  let delayTimer: ReturnType<typeof setTimeout> | null = null
+  let cancelFrame: (() => void) | null = null
+  let flushedOnce = false
+  let disposed = false
 
-  function clearTimer() {
-    if (timer === null) return
+  function clearDelayTimer() {
+    if (delayTimer === null) return
 
-    window.clearTimeout(timer)
-    timer = null
+    globalThis.clearTimeout(delayTimer)
+    delayTimer = null
+  }
+
+  function clearFrame() {
+    if (!cancelFrame) return
+
+    cancelFrame()
+    cancelFrame = null
+  }
+
+  function clearScheduledFlush() {
+    clearDelayTimer()
+    clearFrame()
   }
 
   function flush() {
@@ -360,29 +376,48 @@ function createSearchEventBatcher(
 
     const events = pending
     pending = []
-    clearTimer()
+    flushedOnce = true
+    clearScheduledFlush()
     store.getState().appendEvents(runId, events)
   }
 
-  function scheduleFlush() {
-    if (timer !== null) return
+  function scheduleFrameFlush() {
+    if (disposed) return
+    if (cancelFrame) return
 
-    timer = window.setTimeout(flush, SEARCH_BATCH_MS)
+    cancelFrame = scheduleSearchBatchFrame(() => {
+      cancelFrame = null
+      flush()
+    })
+  }
+
+  function scheduleFlush() {
+    if (disposed) return
+    if (cancelFrame || delayTimer !== null) return
+
+    const delay = flushedOnce
+      ? SEARCH_STEADY_BATCH_DELAY_MS
+      : SEARCH_FIRST_BATCH_DELAY_MS
+    if (delay === 0) {
+      scheduleFrameFlush()
+      return
+    }
+
+    delayTimer = globalThis.setTimeout(() => {
+      delayTimer = null
+      scheduleFrameFlush()
+    }, delay)
   }
 
   function pushMany(events: readonly WorkspaceSearchEvent[]) {
     pending.push(...events)
-    if (pending.length >= SEARCH_BATCH_SIZE) {
-      flush()
-      return
-    }
-
     scheduleFlush()
   }
 
   function dispose() {
+    disposed = true
     pending = []
-    clearTimer()
+    clearScheduledFlush()
   }
 
   return {
@@ -393,6 +428,16 @@ function createSearchEventBatcher(
     },
     pushMany,
   }
+}
+
+function scheduleSearchBatchFrame(callback: () => void) {
+  if (typeof window !== "undefined" && window.requestAnimationFrame) {
+    const frame = window.requestAnimationFrame(callback)
+    return () => window.cancelAnimationFrame(frame)
+  }
+
+  const timer = globalThis.setTimeout(callback, SEARCH_FRAME_FALLBACK_MS)
+  return () => globalThis.clearTimeout(timer)
 }
 
 function shouldDeferInitialOpenBufferMatches(

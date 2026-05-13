@@ -70,6 +70,7 @@ Current behavior:
 - Search tabs switch to `SearchResultEditorSurface` as soon as groups exist.
 - The surface builds file blocks, virtual rows, editor pool slots, editor documents, range decorations, line gutters, find plugins, and optional syntax plugins.
 - Pool slots keep hidden editor instances mounted.
+- When the same file receives more streamed matches, the file block/editor document can be recreated, which can reload syntax/search highlights for excerpts that were already rendered.
 
 Trace evidence:
 
@@ -147,7 +148,7 @@ Owner write scope:
 
 Tasks:
 
-1. Replace fixed `50 events / 24ms` flushing with frame-aware or adaptive batching.
+1. [x] Replace fixed `50 events / 24ms` flushing with frame-aware or adaptive batching.
 2. Consider flushing at most once per animation frame while loading.
 3. Flush immediately for terminal events (`done`, `error`) after pending matches are appended.
 4. Keep first-results latency reasonable, possibly with a small first batch and larger later batches.
@@ -179,13 +180,15 @@ Tasks:
 
 1. Investigate storing grouped results or a path index in search state instead of deriving all groups from `matches` on every render.
 2. Preserve existing group object references when a streamed batch appends to other files.
-3. Preserve match object identity when results are unchanged.
+3. Preserve the existing group object and existing match object identities when a streamed batch appends more matches to the same file.
 4. Avoid deeply equal but referentially new `matches` arrays for unchanged file groups.
-5. Keep collapse pruning, active result resolution, replace actions, and navigation semantics intact.
+5. Expose enough stable per-file identity that the result editor can distinguish "same file with appended excerpts" from "new file/document".
+6. Keep collapse pruning, active result resolution, replace actions, and navigation semantics intact.
 
 Acceptance criteria:
 
 - Appending matches to one file does not replace every existing group object.
+- Appending matches to one file keeps already-rendered matches for that file referentially stable.
 - React profiler no longer reports broad deeply-equal `groups[*].matches` churn.
 - Existing result navigation and collapse tests pass.
 
@@ -239,13 +242,16 @@ Tasks:
 
 1. Audit why `setPlugins`, `syncPlugins`, `setGutterContributions`, and gutter row removal run so often.
 2. Ensure plugin arrays and gutter plugin instances stay stable when file identity and options are unchanged.
-3. Consider a cheaper source-line display path for search result excerpts that does not use full gutter plugin lifecycle.
-4. Keep syntax and find plugins disabled until idle, ready, or explicit editor focus.
-5. Reduce hidden editor pool slot churn.
+3. Preserve syntax highlight sessions for the same file/language when streamed batches only append new excerpts.
+4. Update range decorations incrementally where possible so existing match highlights are not torn down and recreated.
+5. Consider a cheaper source-line display path for search result excerpts that does not use full gutter plugin lifecycle.
+6. Keep syntax and find plugins disabled until idle, ready, or explicit editor focus.
+7. Reduce hidden editor pool slot churn.
 
 Acceptance criteria:
 
 - Profiling shows less time in `Editor.setPlugins`, `syncPlugins`, gutter contribution updates, and row removal.
+- When `rg` yields additional matches for the same file, existing rendered excerpts keep their syntax/search highlights and only new excerpt rows do incremental work.
 - Search result excerpt selection/open behavior remains correct.
 - No regressions in normal editor tabs.
 

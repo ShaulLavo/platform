@@ -75,6 +75,28 @@ describe("open buffer search provider", () => {
     ])
   })
 
+  it("treats query spaces as part of the dirty editor search text", async () => {
+    const provider = new OpenBufferSearchProvider([
+      {
+        path: "repo/src/app.ts",
+        text: "needle here\nneedle  here",
+      },
+    ])
+
+    const matches = await contentEvents(
+      provider.search({ ...QUERY, query: "needle  " })
+    )
+
+    expect(matches).toEqual([
+      expect.objectContaining({
+        column: 1,
+        endColumn: 9,
+        line: 2,
+        source: "open-buffer",
+      }),
+    ])
+  })
+
   it("keeps dirty long-line previews anchored around the match", async () => {
     const provider = new OpenBufferSearchProvider([
       {
@@ -216,6 +238,19 @@ describe("disk search provider", () => {
       expect(params?.get("wholeWord")).toBe("true")
       expect(params?.getAll("includeGlobs")).toEqual(["src/**/*.ts"])
       expect(params?.getAll("excludeGlobs")).toEqual(["*.test.ts"])
+    } finally {
+      restoreFetch()
+    }
+  })
+
+  it("passes query whitespace to the streaming search endpoint", async () => {
+    const restoreFetch = stubFetchWithSseDone()
+    const provider = new DiskSearchProvider()
+
+    try {
+      await collectEvents(provider.search({ ...QUERY, query: " needle " }))
+
+      expect(lastFetchUrl()?.searchParams.get("query")).toBe(" needle ")
     } finally {
       restoreFetch()
     }

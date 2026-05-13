@@ -100,6 +100,28 @@ describe("workspace disk search provider", () => {
     ])
   })
 
+  it("treats query spaces as part of the content search text", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "spaces.ts"), "needle here\nneedlehere")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle ",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        column: 1,
+        endColumn: 8,
+        path: "spaces.ts",
+      }),
+    ])
+  })
+
   it("keeps long-line previews anchored around the match", async () => {
     const root = await fixtureRoot()
     await writeFile(

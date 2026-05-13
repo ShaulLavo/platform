@@ -102,7 +102,7 @@ export function SearchBufferEditor({
           onSelectPreviousHistory={selectPreviousReplaceText}
           onReplaceTextChange={setReplaceText}
         />
-        <SearchSummary query={query.trim()} snapshot={snapshot} />
+        <SearchSummary query={query} snapshot={snapshot} />
       </div>
       {groups.length > 0 && snapshot ? (
         <SearchResultDocumentBoundary

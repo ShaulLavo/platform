@@ -503,7 +503,7 @@ function refreshSearchBuffer(
 ) {
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
-  if (!snapshot.query.trim()) return snapshot
+  if (!snapshot.query) return snapshot
 
   return {
     ...snapshot,
@@ -931,7 +931,9 @@ function searchHistoryForRun(
     return previous.queryHistory
   }
 
-  return nextSearchHistory(previous?.queryHistory ?? [], query)
+  return nextSearchHistory(previous?.queryHistory ?? [], query, {
+    trim: false,
+  })
 }
 
 function replaceHistoryForRun(snapshot: SearchBufferSnapshot) {

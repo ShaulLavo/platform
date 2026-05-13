@@ -33,6 +33,12 @@ describe("filesystem contracts", () => {
     })
   })
 
+  it("preserves whitespace in find query text", () => {
+    expect(v.parse(findQuerySchema, { query: "  " })).toMatchObject({
+      query: "  ",
+    })
+  })
+
   it("parses search mode and glob query values", () => {
     expect(
       v.parse(findQuerySchema, {
