@@ -30,7 +30,6 @@ export function SearchMatchRow({
   replaceText,
   replaceVisible,
   query,
-  onOpenMatch,
   onReplaceMatch,
 }: {
   active?: boolean
@@ -42,7 +41,6 @@ export function SearchMatchRow({
   replaceText: string
   replaceVisible?: boolean
   query: string
-  onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
   const previewRef = useRef<HTMLSpanElement | null>(null)
@@ -68,16 +66,10 @@ export function SearchMatchRow({
       className={cn(
         "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs",
         active && "bg-muted/60",
-        !active && "hover:bg-muted/55",
         className
       )}
     >
-      <button
-        className="grid w-full min-w-0 grid-cols-[42px_minmax(0,1fr)] gap-2 text-left outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50"
-        tabIndex={-1}
-        type="button"
-        onClick={() => onOpenMatch(match)}
-      >
+      <div className="grid w-full min-w-0 grid-cols-[42px_minmax(0,1fr)] gap-2 text-left">
         <span className="text-right text-[11px] text-muted-foreground tabular-nums">
           {location}
         </span>
@@ -99,7 +91,7 @@ export function SearchMatchRow({
             </span>
           ) : null}
         </span>
-      </button>
+      </div>
       {replaceVisible ? (
         <Button
           className="h-6 px-1.5 text-[10px]"

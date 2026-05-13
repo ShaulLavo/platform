@@ -78,6 +78,40 @@ describe("search result virtual list", () => {
     ).toBe(86)
   })
 
+  it("scrolls to a target inside an oversized row", () => {
+    const metrics = createSearchResultVirtualListMetrics([
+      { key: "header", size: 40 },
+      { key: "results", size: 400 },
+    ])
+
+    expect(
+      scrollTopForSearchResultVirtualListItem(
+        metrics,
+        1,
+        { height: 100, top: 0 },
+        {
+          itemOffset: 6,
+          targetOffset: 4,
+          targetSize: 22,
+          totalPadding: 12,
+        }
+      )
+    ).toBe(0)
+    expect(
+      scrollTopForSearchResultVirtualListItem(
+        metrics,
+        1,
+        { height: 100, top: 0 },
+        {
+          itemOffset: 6,
+          targetOffset: 228,
+          targetSize: 22,
+          totalPadding: 12,
+        }
+      )
+    ).toBe(196)
+  })
+
   it("clamps scroll offsets to the scrollable range", () => {
     expect(clampSearchResultVirtualListScrollTop(-20, 160, 80)).toBe(0)
     expect(clampSearchResultVirtualListScrollTop(120, 160, 80)).toBe(80)

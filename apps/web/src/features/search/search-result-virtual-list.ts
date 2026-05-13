@@ -25,6 +25,8 @@ export type SearchResultVirtualListOverscan = {
 
 export type SearchResultVirtualListScrollOptions = {
   readonly itemOffset?: number
+  readonly targetOffset?: number
+  readonly targetSize?: number
   readonly totalPadding?: number
 }
 
@@ -85,25 +87,45 @@ export function scrollTopForSearchResultVirtualListItem(
   if (!item) return null
 
   const height = Math.max(0, viewport.height)
-  const itemBottom = item.start + item.size + (options.itemOffset ?? 0)
+  const target = searchResultVirtualListItemTarget(item, options)
   const viewportBottom = viewport.top + height
 
-  if (item.start < viewport.top) {
+  if (target.start < viewport.top) {
     return clampSearchResultVirtualListScrollTop(
-      item.start,
+      target.start,
       metrics.totalSize + (options.totalPadding ?? 0),
       height
     )
   }
-  if (itemBottom > viewportBottom) {
+  if (target.end > viewportBottom) {
     return clampSearchResultVirtualListScrollTop(
-      itemBottom - height,
+      target.end - height,
       metrics.totalSize + (options.totalPadding ?? 0),
       height
     )
   }
 
   return viewport.top
+}
+
+function searchResultVirtualListItemTarget(
+  item: SearchResultVirtualListItem,
+  options: SearchResultVirtualListScrollOptions
+) {
+  if (options.targetOffset === undefined) {
+    return {
+      end: item.start + item.size + (options.itemOffset ?? 0),
+      start: item.start,
+    }
+  }
+
+  const targetSize = options.targetSize ?? item.size
+  const targetStart = item.start + options.targetOffset
+
+  return {
+    end: targetStart + targetSize + (options.itemOffset ?? 0),
+    start: targetStart,
+  }
 }
 
 export function clampSearchResultVirtualListScrollTop(

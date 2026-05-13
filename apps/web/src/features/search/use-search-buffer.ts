@@ -54,11 +54,7 @@ export function useSearchBuffer(rootPath: string) {
             }
           : null
       ),
-    [
-      activeSnapshot?.collapsedPaths,
-      activeSnapshot?.matches,
-      activeSnapshot?.rootPath,
-    ]
+    [activeSnapshot]
   )
   const store = useSearchBufferStoreApi()
   const query = activeSnapshot?.query ?? ""

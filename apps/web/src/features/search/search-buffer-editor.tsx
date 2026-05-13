@@ -253,6 +253,7 @@ function SearchBufferResultList({
       replaceText={replaceText}
       replaceVisible={replaceVisible}
       snapshot={snapshot}
+      onOpenFile={(path) => commands.selectFile(path)}
       onOpenMatch={(match) =>
         openWorkspaceSearchMatch(match, resultsQuery, commands)
       }

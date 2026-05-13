@@ -15,7 +15,6 @@ import {
   firstSearchResultVirtualRowId,
   searchResultFileBlocks,
   searchResultVirtualRows,
-  type SearchResultOpenTarget,
 } from "@/features/search/search-result-view-model"
 import type { SearchResultId } from "@/features/search/search-result-items"
 
@@ -57,8 +56,8 @@ type SearchPerfMetrics = {
 
 const EMPTY_KEYMAP_LAYERS: readonly EditorKeymapLayer[] = []
 
-function SearchResultEditorSurfacePerfFixture() {
-  const variant = useMemo(readSearchPerfVariant, [])
+export function SearchResultEditorSurfacePerfFixture() {
+  const variant = useMemo(() => readSearchPerfVariant(), [])
   const fixtureRef = useRef<HTMLDivElement | null>(null)
   const longestTaskRef = useRef(0)
   const [groups, setGroups] = useState(() => createSearchPerfGroups(variant))
@@ -70,7 +69,7 @@ function SearchResultEditorSurfacePerfFixture() {
     () => firstVisibleSearchResultId(groups)
   )
   const [metrics, setMetrics] = useState<SearchPerfMetrics>(() =>
-    currentSearchPerfMetrics(fixtureRef.current, longestTaskRef.current)
+    currentSearchPerfMetrics(null, 0)
   )
 
   useEffect(() => applyPerfTheme(variant.theme), [variant.theme])
@@ -140,7 +139,7 @@ function SearchResultEditorSurfacePerfFixture() {
   )
 }
 
-function SearchPerfHeader({
+export function SearchPerfHeader({
   metrics,
   variant,
 }: {
@@ -181,7 +180,7 @@ function SearchPerfHeader({
   )
 }
 
-function PerfMetric({ label, value }: { label: string; value: string }) {
+export function PerfMetric({ label, value }: { label: string; value: string }) {
   return (
     <>
       <dt>{label}</dt>
@@ -305,6 +304,7 @@ function runSearchPerfScrollSample(
   const scroller = root?.querySelector<HTMLElement>('[role="tree"]')
   if (!scroller) return undefined
 
+  const scrollerElement = scroller
   const start = performance.now()
   const durationMs = 1200
   let frame = 0
@@ -320,9 +320,9 @@ function runSearchPerfScrollSample(
     const progress = Math.min(1, (now - start) / durationMs)
     const maxScrollTop = Math.max(
       0,
-      scroller.scrollHeight - scroller.clientHeight
+      scrollerElement.scrollHeight - scrollerElement.clientHeight
     )
-    scroller.scrollTop = progress * maxScrollTop
+    scrollerElement.scrollTop = progress * maxScrollTop
 
     if (progress < 1) {
       frame = window.requestAnimationFrame(step)
@@ -355,15 +355,15 @@ function formatMs(value: number | null) {
   return `${value.toFixed(1)}ms`
 }
 
-function handleOpenTarget(_target: SearchResultOpenTarget) {
+function handleOpenTarget() {
   return undefined
 }
 
-function handleReplaceGroup(_group: WorkspaceSearchFileGroup) {
+function handleReplaceGroup() {
   return undefined
 }
 
-function handleReplaceMatch(_match: WorkspaceSearchMatch) {
+function handleReplaceMatch() {
   return undefined
 }
 

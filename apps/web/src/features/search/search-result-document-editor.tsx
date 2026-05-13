@@ -36,6 +36,13 @@ type SearchResultDocumentEditorProps = {
 const SEARCH_HIGHLIGHT_STYLE = {
   backgroundColor: "rgba(250, 204, 21, 0.42)",
 }
+const SEARCH_RESULT_DOCUMENT_ROW_GAP = 6
+
+const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
+  gutterBackground: false,
+  gutterNumber: false,
+  rowBackground: false,
+} as const
 
 export function SearchResultDocumentEditor({
   activeResultId,
@@ -83,11 +90,7 @@ export function SearchResultDocumentEditor({
     [document, documentId]
   )
   const controller = useEditor({
-    cursorLineHighlight: {
-      gutterBackground: ["line-gutter"],
-      gutterNumber: true,
-      rowBackground: true,
-    },
+    cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
     document: editorDocument,
     editability: "readonly",
     keymap: {
@@ -95,6 +98,7 @@ export function SearchResultDocumentEditor({
       layers: readonlyKeymapLayers,
     },
     plugins,
+    rowGap: SEARCH_RESULT_DOCUMENT_ROW_GAP,
     theme: editorThemeRefresh,
   })
   const editorState = controller.useState()
@@ -113,11 +117,9 @@ export function SearchResultDocumentEditor({
     if (!selection) return
     if (activeTextInputOutsideEditor()) return
 
-    controller.commands.setSelection(
-      selection.start,
-      selection.end,
-      selection.start
-    )
+    controller.commands.setSelection(selection.start, selection.end, {
+      reveal: false,
+    })
   }, [controller, selection])
 
   useEffect(() => {

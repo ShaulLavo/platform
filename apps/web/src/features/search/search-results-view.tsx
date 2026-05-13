@@ -52,6 +52,7 @@ export function SearchResultsView({
   replaceVisible,
   snapshot,
   onOpenMatch,
+  onOpenFile,
   onReplaceGroup,
   onReplaceMatch,
 }: {
@@ -62,6 +63,7 @@ export function SearchResultsView({
   replaceText: string
   replaceVisible?: boolean
   snapshot: SearchBufferSnapshot | null
+  onOpenFile?: (path: string) => void
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
@@ -88,19 +90,18 @@ export function SearchResultsView({
   })
   const activeIndex = activeItem ? items.indexOf(activeItem) : -1
   const activeIndexRef = useRef(activeIndex)
+  const virtualizerRef = useRef(virtualizer)
 
   useLayoutEffect(() => {
     activeIndexRef.current = activeIndex
-  }, [activeIndex])
+    virtualizerRef.current = virtualizer
+  }, [activeIndex, virtualizer])
 
   useLayoutEffect(() => {
     if (!activeResultId) return
 
-    const currentActiveIndex = activeIndexRef.current
-    if (currentActiveIndex < 0) return
-
-    virtualizer.scrollToIndex(currentActiveIndex, { align: "auto" })
-  }, [activeResultId, virtualizer])
+    scrollActiveSearchResultIntoView(activeIndexRef, virtualizerRef)
+  }, [activeResultId])
 
   useLayoutEffect(() => {
     if (displayedResultsQuery === null) return
@@ -151,6 +152,7 @@ export function SearchResultsView({
           event,
           items,
           onOpenMatch,
+          onOpenFile,
           onSelectResult: selectResult,
           onToggleGroup: toggleGroup,
         })
@@ -212,6 +214,18 @@ function resetSearchResultScroll(
   virtualizer.scrollToOffset(0)
 }
 
+function scrollActiveSearchResultIntoView(
+  activeIndexRef: RefObject<number>,
+  virtualizerRef: RefObject<
+    ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>
+  >
+) {
+  const currentActiveIndex = activeIndexRef.current
+  if (currentActiveIndex < 0) return
+
+  virtualizerRef.current.scrollToIndex(currentActiveIndex, { align: "auto" })
+}
+
 function SearchResultRow({
   active,
   item,
@@ -222,6 +236,7 @@ function SearchResultRow({
   replaceText,
   replaceVisible,
   onOpenMatch,
+  onOpenFile,
   onReplaceGroup,
   onReplaceMatch,
   onSelectResult,
@@ -235,6 +250,7 @@ function SearchResultRow({
   replaceQuery: SearchBufferSnapshot["resultsSearchQuery"]
   replaceText: string
   replaceVisible?: boolean
+  onOpenFile?: (path: string) => void
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
@@ -249,6 +265,9 @@ function SearchResultRow({
         group={item.group}
         replaceVisible={replaceVisible}
         onReplace={onReplaceGroup}
+        onOpen={
+          onOpenFile ? () => onOpenFile(item.group.path) : undefined
+        }
         onToggle={() => {
           onSelectResult(item.id)
           onToggleGroup(item.group.path)
@@ -282,10 +301,6 @@ function SearchResultRow({
         replaceText={replaceText}
         replaceVisible={replaceVisible}
         query={query}
-        onOpenMatch={() => {
-          onSelectResult(item.id)
-          onOpenMatch(item.match)
-        }}
         onReplaceMatch={onReplaceMatch}
       />
     </div>

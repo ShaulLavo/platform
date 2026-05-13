@@ -2,7 +2,7 @@ import "@editor/core/style.css"
 import "@editor/find/style.css"
 import "@editor/gutters/style.css"
 
-import { CaretRightIcon } from "@phosphor-icons/react"
+import { ArrowSquareOutIcon, CaretRightIcon } from "@phosphor-icons/react"
 import type {
   EditorKeymapLayer,
   EditorPlugin,
@@ -97,6 +97,12 @@ const ACTIVE_MATCH_STYLE = {
   textDecoration: "underline 1px var(--search-result-match-active-decoration)",
 } satisfies Partial<CSSStyleDeclaration>
 
+const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
+  gutterBackground: false,
+  gutterNumber: false,
+  rowBackground: false,
+} as const
+
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
   canReplace?: boolean
@@ -155,8 +161,14 @@ export const SearchResultEditorSurface = memo(
       () => searchResultVirtualRowIndex(rows, activeResultId),
       [activeResultId, rows]
     )
+    const activeScrollTarget = useMemo(
+      () => searchResultVirtualRowScrollTarget(activeRow, activeResultId),
+      [activeResultId, activeRow]
+    )
+    const suppressNextActiveRevealRef = useRef(false)
     const previousDisplayedResultsQueryRef = useRef<string | null>(null)
     const activeIndexRef = useRef(activeIndex)
+    const activeScrollTargetRef = useRef(activeScrollTarget)
     const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
     const deferredPlugins = useSearchResultDeferredPlugins({
       mode: deferredPluginMode,
@@ -172,19 +184,36 @@ export const SearchResultEditorSurface = memo(
       scrollToOffset,
       totalSize: virtualTotalSize,
     } = useSearchResultEditorVirtualizer(rows, parentRef)
+    const scrollToIndexRef = useRef(scrollToIndex)
+    const selectResultWithoutReveal = useCallback(
+      (id: SearchResultId | null) => {
+        if (id === activeResultId) return
+
+        suppressNextActiveRevealRef.current = true
+        onSelectResult(id)
+      },
+      [activeResultId, onSelectResult]
+    )
 
     useLayoutEffect(() => {
       activeIndexRef.current = activeIndex
-    }, [activeIndex])
+      activeScrollTargetRef.current = activeScrollTarget
+      scrollToIndexRef.current = scrollToIndex
+    }, [activeIndex, activeScrollTarget, scrollToIndex])
 
     useLayoutEffect(() => {
       if (!activeResultId) return
+      if (suppressNextActiveRevealRef.current) {
+        suppressNextActiveRevealRef.current = false
+        return
+      }
 
-      const currentActiveIndex = activeIndexRef.current
-      if (currentActiveIndex < 0) return
-
-      scrollToIndex(currentActiveIndex)
-    }, [activeResultId, scrollToIndex])
+      scrollActiveSearchResultIntoView({
+        activeIndexRef,
+        activeScrollTargetRef,
+        scrollToIndexRef,
+      })
+    }, [activeResultId])
 
     useLayoutEffect(() => {
       if (displayedResultsQuery === null) return
@@ -296,7 +325,7 @@ export const SearchResultEditorSurface = memo(
                     onEnableDeferredPlugins={deferredPlugins.enable}
                     onOpenTarget={onOpenTarget}
                     onReplaceMatch={onReplaceMatch}
-                    onSelectResult={onSelectResult}
+                    onSelectResultWithoutReveal={selectResultWithoutReveal}
                   />
                 )}
               </div>
@@ -332,9 +361,9 @@ function SearchResultFileHeader({
   return (
     <div
       className={cn(
-        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-1.5 text-left",
+        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-1.5 text-left",
         active &&
-          "border-l-yellow-500/80 bg-muted/70 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--border)_55%,transparent)]",
+          "bg-muted/70 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--border)_55%,transparent)]",
         !active && "hover:bg-muted/45"
       )}
     >
@@ -355,12 +384,9 @@ function SearchResultFileHeader({
           )}
         />
       </button>
-      <button
-        className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)] items-center gap-1.5 text-left outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50"
-        tabIndex={-1}
+      <div
+        className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)] items-center gap-1.5 text-left"
         title={file.path}
-        type="button"
-        onClick={onOpen}
       >
         <span
           aria-hidden="true"
@@ -373,10 +399,20 @@ function SearchResultFileHeader({
             {file.pathLabel}
           </span>
         </span>
-      </button>
+      </div>
       <span className="rounded-sm bg-muted/55 px-1.5 text-[10px] leading-4 text-muted-foreground">
         {matchCountLabel(file.matchCount)}
       </span>
+      <Button
+        aria-label="Open file"
+        size="icon-xs"
+        title="Open file"
+        type="button"
+        variant="ghost"
+        onClick={onOpen}
+      >
+        <ArrowSquareOutIcon className="size-3.5" />
+      </Button>
       {replaceVisible ? (
         <Button
           className="h-6 px-1.5 text-[10px]"
@@ -407,7 +443,7 @@ type SearchResultFileEditorProps = {
   onEnableDeferredPlugins: () => void
   onOpenTarget: (target: SearchResultOpenTarget) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-  onSelectResult: (id: SearchResultId | null) => void
+  onSelectResultWithoutReveal: (id: SearchResultId | null) => void
 }
 
 const SearchResultFileEditor = memo(
@@ -424,7 +460,7 @@ const SearchResultFileEditor = memo(
     onEnableDeferredPlugins,
     onOpenTarget,
     onReplaceMatch,
-    onSelectResult,
+    onSelectResultWithoutReveal,
   }: SearchResultFileEditorProps) => {
     const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
     const setActiveEditorCommandDispatch = useWorkspaceFocus(
@@ -471,11 +507,7 @@ const SearchResultFileEditor = memo(
       [fileDocument]
     )
     const controller = useEditor({
-      cursorLineHighlight: {
-        gutterBackground: ["line-gutter"],
-        gutterNumber: true,
-        rowBackground: true,
-      },
+      cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
       document,
       editability: "readonly",
       keymap: {
@@ -489,7 +521,8 @@ const SearchResultFileEditor = memo(
       storeSync: "none",
       theme: editorTheme,
     })
-    const editorState = controller.useState()
+    const pendingActivationFrameRef = useRef<number | null>(null)
+    const skipNextActiveSelectionRef = useRef(false)
 
     useEffect(() => {
       if (!active) return
@@ -498,8 +531,21 @@ const SearchResultFileEditor = memo(
       return () => setActiveEditorCommandDispatch(null)
     }, [active, controller, setActiveEditorCommandDispatch])
 
+    useEffect(
+      () => () => {
+        if (pendingActivationFrameRef.current === null) return
+
+        window.cancelAnimationFrame(pendingActivationFrameRef.current)
+      },
+      []
+    )
+
     useEffect(() => {
       if (!active) return
+      if (skipNextActiveSelectionRef.current) {
+        skipNextActiveSelectionRef.current = false
+        return
+      }
 
       const line = searchResultFileDocumentLineById(
         fileDocument,
@@ -508,35 +554,29 @@ const SearchResultFileEditor = memo(
       if (!line) return
 
       const range = searchResultFileDocumentLineSelection(line)
-      controller.commands.setSelection(range.start, range.end, range.start)
+      controller.commands.setSelection(range.start, range.end, {
+        reveal: false,
+      })
     }, [active, activeResultId, controller, fileDocument])
-
-    useEffect(() => {
-      if (!active) return
-      if (activeTextInputOutsideEditor()) return
-
-      const line = searchResultFileDocumentLineAtRow(
-        fileDocument,
-        editorState?.cursor.row
-      )
-      if (!line) return
-      if (line.id === activeResultId) return
-
-      onSelectResult(line.id)
-    }, [
-      active,
-      activeResultId,
-      editorState?.cursor.row,
-      fileDocument,
-      onSelectResult,
-    ])
 
     function handleActivate() {
       onEnableDeferredPlugins()
-      onSelectResult(
-        currentSearchResultFileLine(fileDocument, controller)?.id ?? null
-      )
       setFocusArea("editor")
+    }
+
+    function handlePointerUp() {
+      if (active) return
+
+      if (pendingActivationFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingActivationFrameRef.current)
+      }
+      pendingActivationFrameRef.current = window.requestAnimationFrame(() => {
+        pendingActivationFrameRef.current = null
+        skipNextActiveSelectionRef.current = true
+        onSelectResultWithoutReveal(
+          currentSearchResultFileLine(fileDocument, controller)?.id ?? null
+        )
+      })
     }
 
     function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
@@ -573,8 +613,7 @@ const SearchResultFileEditor = memo(
       <div
         className={cn(
           "ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5",
-          active && "border-l-yellow-500/80 bg-muted/60",
-          !active && "hover:bg-muted/35"
+          active && "bg-muted/60"
         )}
         onBeforeInputCapture={preventReadonlyInput}
         onDropCapture={preventReadonlyInput}
@@ -582,7 +621,7 @@ const SearchResultFileEditor = memo(
         onKeyDownCapture={handleKeyDownCapture}
         onPasteCapture={preventReadonlyInput}
         onPointerDownCapture={handleActivate}
-        onClick={handleOpen}
+        onPointerUpCapture={handlePointerUp}
       >
         <EditorHost
           className="app-editor-host search-result-file-editor-host"
@@ -776,8 +815,33 @@ type SearchResultEditorVirtualizer = {
   readonly items: SearchResultVirtualListMetrics["items"]
   readonly totalSize: number
   readonly onScroll: (event: UIEvent<HTMLDivElement>) => void
-  readonly scrollToIndex: (index: number) => void
+  readonly scrollToIndex: SearchResultEditorScrollToIndex
   readonly scrollToOffset: (offset: number) => void
+}
+
+type SearchResultEditorScrollToIndex = (
+  index: number,
+  target?: SearchResultVirtualRowScrollTarget | null
+) => void
+
+type SearchResultVirtualRowScrollTarget = {
+  readonly offset: number
+  readonly size: number
+}
+
+function scrollActiveSearchResultIntoView({
+  activeIndexRef,
+  activeScrollTargetRef,
+  scrollToIndexRef,
+}: {
+  activeIndexRef: RefObject<number>
+  activeScrollTargetRef: RefObject<SearchResultVirtualRowScrollTarget | null>
+  scrollToIndexRef: RefObject<SearchResultEditorScrollToIndex>
+}) {
+  const currentActiveIndex = activeIndexRef.current
+  if (currentActiveIndex < 0) return
+
+  scrollToIndexRef.current(currentActiveIndex, activeScrollTargetRef.current)
 }
 
 function useSearchResultEditorVirtualizer(
@@ -871,7 +935,7 @@ function useSearchResultEditorVirtualizer(
     [metrics.totalSize, parentRef, updateViewportTop]
   )
   const scrollToIndex = useCallback(
-    (index: number) => {
+    (index: number, target?: SearchResultVirtualRowScrollTarget | null) => {
       const element = parentRef.current
       if (!element) return
       if (viewportHeight <= 0) return
@@ -882,6 +946,8 @@ function useSearchResultEditorVirtualizer(
         viewportRef.current,
         {
           itemOffset: SEARCH_RESULT_VIRTUAL_ROW_OFFSET,
+          targetOffset: target?.offset,
+          targetSize: target?.size,
           totalPadding: SEARCH_RESULT_VIRTUAL_PADDING,
         }
       )
@@ -973,6 +1039,36 @@ function searchResultVirtualRowIndex(
   if (!id) return -1
 
   return rows.findIndex((row) => searchResultVirtualRowContainsId(row, id))
+}
+
+function searchResultVirtualRowScrollTarget(
+  row: SearchResultVirtualRow | null,
+  activeResultId: SearchResultId | null
+): SearchResultVirtualRowScrollTarget | null {
+  if (!row) return null
+  if (row.type === "file") {
+    return {
+      offset: 0,
+      size: FILE_ROW_ESTIMATE,
+    }
+  }
+  if (!activeResultId) return null
+
+  const index = row.file.excerpts.findIndex(
+    (excerpt) => excerpt.id === activeResultId
+  )
+  if (index < 0) return null
+
+  return {
+    offset: searchResultFileExcerptOffset(index),
+    size: EXCERPT_EDITOR_LINE_HEIGHT,
+  }
+}
+
+function searchResultFileExcerptOffset(index: number) {
+  const rowStep = EXCERPT_EDITOR_LINE_HEIGHT + SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+
+  return FILE_RESULTS_ROW_VERTICAL_PADDING / 2 + index * rowStep
 }
 
 function searchResultVirtualRowEstimate(
@@ -1090,16 +1186,6 @@ function searchResultFileDocumentLineSelection(
     end: line.end,
     start: line.start,
   }
-}
-
-function activeTextInputOutsideEditor() {
-  const element = globalThis.document?.activeElement
-  if (!(element instanceof HTMLElement)) return false
-  if (element.closest(".app-editor-host")) return false
-  if (element instanceof HTMLInputElement) return true
-  if (element instanceof HTMLTextAreaElement) return true
-
-  return element.isContentEditable
 }
 
 function searchResultFileDocumentId(file: SearchResultFileBlock) {
