@@ -243,9 +243,9 @@ Owner write scope:
 
 Tasks:
 
-1. Audit why `setPlugins`, `syncPlugins`, `setGutterContributions`, and gutter row removal run so often.
-2. Ensure plugin arrays and gutter plugin instances stay stable when file identity and options are unchanged.
-3. Preserve syntax highlight sessions for the same file/language when streamed batches only append new excerpts.
+1. [x] Audit why `setPlugins`, `syncPlugins`, `setGutterContributions`, and gutter row removal run so often. Initial finding: streamed appends recreated the search source-line gutter plugin because its row label closure captured each rebuilt file document; `syncText` also sent full-document replacement edits to editor sessions.
+2. [x] Ensure plugin arrays and gutter plugin instances stay stable when file identity and options are unchanged.
+3. [x] Preserve syntax highlight sessions for the same file/language when streamed batches only append new excerpts.
 4. Update range decorations incrementally where possible so existing match highlights are not torn down and recreated.
 5. Consider a cheaper source-line display path for search result excerpts that does not use full gutter plugin lifecycle.
 6. Keep syntax and find plugins disabled until idle, ready, or explicit editor focus.

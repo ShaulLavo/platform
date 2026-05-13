@@ -6,8 +6,8 @@ import { ArrowSquareOutIcon, CaretRightIcon } from "@phosphor-icons/react"
 import type {
   EditorKeymapLayer,
   EditorPlugin,
+  EditorGutterRowContext,
   EditorRangeDecoration,
-  EditorSyntaxLanguageId,
   EditorTheme,
 } from "@editor/core"
 import { createEditorFindPlugin } from "@editor/find"
@@ -137,6 +137,11 @@ type SearchResultEditorSurfaceProps = {
 }
 
 type SearchResultDeferredPluginMode = "idle" | "immediate" | "manual"
+
+const searchResultSourceLineLabels = new Map<
+  string,
+  readonly SearchResultFileDocumentLine[]
+>()
 
 export const SearchResultEditorSurface = memo(
   ({
@@ -567,12 +572,24 @@ const SearchResultFileEditor = memo(
       (state) => state.setActiveEditorCommandDispatch
     )
     const fileDocument = useMemo(() => searchResultFileDocument(file), [file])
+    const sourceLineLabelsKey = useId()
+    const sourceLineDigits = fileBlockLineDigits(file)
+    useLayoutEffect(() => {
+      searchResultSourceLineLabels.set(sourceLineLabelsKey, fileDocument.lines)
+      return () => {
+        searchResultSourceLineLabels.delete(sourceLineLabelsKey)
+      }
+    }, [fileDocument.lines, sourceLineLabelsKey])
+    const sourceLineForRow = useCallback(
+      (row: EditorGutterRowContext) =>
+        searchResultSourceLineLabelForRow(sourceLineLabelsKey, row),
+      [sourceLineLabelsKey]
+    )
     const document = useMemo(
       () => ({
         documentId: searchResultFileDocumentId(file),
         documentMode: "static" as const,
         languageId: fileDocument.languageId,
-        revision: searchResultFileDocumentRevision(fileDocument),
         text: fileDocument.text,
         textSyncMode: "incremental" as const,
       }),
@@ -585,10 +602,10 @@ const SearchResultFileEditor = memo(
     const sourceLineGutterPlugin = useMemo(
       () =>
         createLineGutterPlugin({
-          labelForRow: (row) => fileDocument.lines[row.bufferRow]?.sourceLine,
-          minDigits: fileBlockLineDigits(file),
+          labelForRow: sourceLineForRow,
+          minDigits: sourceLineDigits,
         }),
-      [file, fileDocument.lines]
+      [sourceLineDigits, sourceLineForRow]
     )
     const findPlugin = useMemo(
       () => (deferredPluginsReady ? createEditorFindPlugin() : null),
@@ -1484,13 +1501,14 @@ function searchResultFileDocumentLineSelection(
 }
 
 function searchResultFileDocumentId(file: SearchResultFileBlock) {
-  return `${file.path}?searchResultFile=${encodeURIComponent(file.id)}`
+  return `search-result-file:${file.path}`
 }
 
-function searchResultFileDocumentRevision(document: SearchResultFileDocument) {
-  return `${document.text.length}:${stableHash(document.text)}:${languageKey(
-    document.languageId
-  )}`
+function searchResultSourceLineLabelForRow(
+  key: string,
+  row: EditorGutterRowContext
+) {
+  return searchResultSourceLineLabels.get(key)?.[row.bufferRow]?.sourceLine
 }
 
 function searchResultDomId(treeId: string, itemId: string) {
@@ -1521,10 +1539,6 @@ function decimalDigitCount(value: number) {
   return String(Math.max(1, Math.floor(value))).length
 }
 
-function languageKey(languageId: EditorSyntaxLanguageId | null) {
-  return languageId ?? "plain"
-}
-
 function searchResultFileEditorStyle(
   document: SearchResultFileDocument
 ): CSSProperties {
@@ -1547,14 +1561,4 @@ function searchResultFileEditorHeight(lineCount: number) {
     FILE_RESULTS_EDITOR_MIN_HEIGHT,
     lineCount * EXCERPT_EDITOR_LINE_HEIGHT + rowGaps
   )
-}
-
-function stableHash(value: string) {
-  let hash = 0x811c9dc5
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
-  }
-
-  return (hash >>> 0).toString(36)
 }
