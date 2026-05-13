@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import "@workspace/ui/globals.css"
 
+import { ThemeProvider } from "@/components/theme-provider"
 import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
 import { SearchResultEditorSurface } from "@/features/search/search-result-editor-surface"
@@ -367,7 +368,9 @@ function handleReplaceMatch(_match: WorkspaceSearchMatch) {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <WorkspaceFocusProvider>
-    <SearchResultEditorSurfacePerfFixture />
-  </WorkspaceFocusProvider>
+  <ThemeProvider defaultTheme="dark" storageKey="search-result-perf-theme">
+    <WorkspaceFocusProvider>
+      <SearchResultEditorSurfacePerfFixture />
+    </WorkspaceFocusProvider>
+  </ThemeProvider>
 )
