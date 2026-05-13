@@ -37,6 +37,7 @@ import {
   type PlatformKeyBinding,
 } from "@/keymap"
 import { useQuery } from "@tanstack/react-query"
+import { fuzzyRankScore } from "@workspace/contracts"
 
 type CommandPaletteProps = {
   readonly bindings: readonly PlatformKeyBinding[]
@@ -636,8 +637,10 @@ function isCommandDisabled(
   if (command === "workspace.showCommandPalette") return false
   if (command === "workspace.openFilePicker") return false
   if (!hasWorkspace) return true
-  if (selectedFileCommands.has(command)) return !fileBackedPath(selectedFilePath)
-  if (isEditorPlatformCommandId(command)) return !fileBackedPath(selectedFilePath)
+  if (selectedFileCommands.has(command))
+    return !fileBackedPath(selectedFilePath)
+  if (isEditorPlatformCommandId(command))
+    return !fileBackedPath(selectedFilePath)
 
   return false
 }
@@ -681,25 +684,21 @@ function quickAccessFilter(
   search: string,
   keywords?: readonly string[]
 ) {
-  const query = quickAccessQuery(search).toLowerCase()
+  const query = quickAccessQuery(search)
   if (!query) return 1
 
-  const haystack = [value, ...(keywords ?? [])].join(" ").toLowerCase()
-  if (haystack.includes(query)) return 1
-
-  return fuzzyIncludes(haystack, query) ? 0.5 : 0
+  return fuzzyRankScore(quickAccessRankTarget(value, keywords), query)
 }
 
-function fuzzyIncludes(value: string, query: string) {
-  let queryIndex = 0
-  for (const character of value) {
-    if (character !== query[queryIndex]) continue
+function quickAccessRankTarget(
+  value: string,
+  keywords: readonly string[] | undefined
+) {
+  const label = keywords?.[0] ?? value
+  const path = keywords?.[1] ?? value
+  const extraKeywords = [value, ...(keywords?.slice(2) ?? [])]
 
-    queryIndex += 1
-    if (queryIndex === query.length) return true
-  }
-
-  return false
+  return { label, keywords: extraKeywords, path }
 }
 
 function emptyLabelForMode(mode: ReturnType<typeof quickAccessMode>) {

@@ -43,6 +43,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query"
+import { compareFuzzyRankedTargets } from "@workspace/contracts"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -1774,11 +1775,11 @@ async function streamFindEntries(
     signal,
     SEARCH_SCOPE_TIMEOUT_MS,
     () => {
-      onEntries(fallbackEntries(matches))
+      onEntries(fallbackEntries(matches, query))
     }
   )
 
-  return hydrateMatches(matches, signal)
+  return hydrateMatches(matches, query, signal)
 }
 
 async function streamFindScope(
@@ -1834,7 +1835,11 @@ function appendFindMatch(
   return true
 }
 
-async function hydrateMatches(matches: FindMatch[], signal: AbortSignal) {
+async function hydrateMatches(
+  matches: FindMatch[],
+  query: string,
+  signal: AbortSignal
+) {
   const folders = unique(matches.map((match) => parentPath(match.path)))
   const entriesByPath = new Map<string, FsEntry>()
 
@@ -1847,7 +1852,7 @@ async function hydrateMatches(matches: FindMatch[], signal: AbortSignal) {
 
   return matches
     .map((match) => hydratedEntry(match, entriesByPath))
-    .sort(compareEntries)
+    .sort(compareSearchEntries(query))
 }
 
 function hydratedEntry(match: FindMatch, entriesByPath: Map<string, FsEntry>) {
@@ -1943,8 +1948,8 @@ function cleanupSearchSignal(signal: AbortSignal) {
   searchSignalCleanup.delete(signal)
 }
 
-function fallbackEntries(matches: FindMatch[]) {
-  return matches.map(fallbackEntry).sort(compareEntries)
+function fallbackEntries(matches: FindMatch[], query: string) {
+  return matches.map(fallbackEntry).sort(compareSearchEntries(query))
 }
 
 function findEventMatch(data: unknown): FindMatch | null {
@@ -2103,6 +2108,19 @@ function compareEntries(a: FsEntry, b: FsEntry) {
   if (aType !== "directory" && bType === "directory") return 1
 
   return a.name.localeCompare(b.name)
+}
+
+function compareSearchEntries(query: string) {
+  return (a: FsEntry, b: FsEntry) =>
+    compareFuzzyRankedTargets(entryRankTarget(a), entryRankTarget(b), query) ||
+    compareEntries(a, b)
+}
+
+function entryRankTarget(entry: FsEntry) {
+  return {
+    label: entry.name,
+    path: entry.path,
+  }
 }
 
 function tileTone(entry: FsEntry, selected: boolean) {

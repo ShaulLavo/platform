@@ -319,6 +319,49 @@ describe("workspace disk search provider", () => {
     expect(done).toMatchObject({ count: 1, truncated: true })
   })
 
+  it("ranks filename matches before applying the result limit", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "deep"), { recursive: true })
+    await writeFile(path.join(root, "deep", "zz-search-result.ts"), "")
+    await writeFile(path.join(root, "search.ts"), "")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: false,
+      limit: 1,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "search",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "name",
+        path: "search.ts",
+      }),
+    ])
+  })
+
+  it("uses a deterministic path tie-breaker for equal filename matches", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "a"), { recursive: true })
+    await mkdir(path.join(root, "b"), { recursive: true })
+    await writeFile(path.join(root, "b", "search.ts"), "")
+    await writeFile(path.join(root, "a", "search.ts"), "")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "search",
+    })
+
+    expect(result.matches.map((match) => match.path)).toEqual([
+      "a/search.ts",
+      "b/search.ts",
+    ])
+  })
+
   it("returns no events when aborted before search starts", async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, "alpha.txt"), "needle")

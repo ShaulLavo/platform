@@ -15,5 +15,13 @@ export {
   type WorkspaceSearchMatcher,
   type WorkspaceSearchTextMatch,
 } from "./workspace-search-match"
+export {
+  compareFuzzyRankedTargets,
+  compareFuzzyRanks,
+  fuzzyRank,
+  fuzzyRankScore,
+  type FuzzyRank,
+  type FuzzyRankTarget,
+} from "./fuzzy-rank"
 export type { ErrorCategory } from "./error-category"
 export { isRecord } from "./is-record"

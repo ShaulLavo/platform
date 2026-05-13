@@ -20,6 +20,7 @@ import {
 } from "./stat"
 import type { EntryTypeFilter } from "./contracts"
 import {
+  compareFuzzyRankedTargets,
   createWorkspaceSearchMatcher,
   type WorkspaceSearchMatcher,
   type WorkspaceSearchDoneEvent,
@@ -222,6 +223,7 @@ async function* searchNamesWithFd(
   signal?: AbortSignal
 ): AsyncGenerator<FindMatch> {
   const args = fdArgs(context)
+  const matches: FindMatch[] = []
 
   for await (const line of runToolLines("fd", args, signal, [0])) {
     const relativePath = resultPath(context.root.relativePath, line)
@@ -232,7 +234,32 @@ async function* searchNamesWithFd(
       context.options.entryType
     )
     if (!match) continue
+    matches.push(match)
+  }
+
+  if (signal?.aborted) return
+
+  for (const match of rankedNameMatches(matches, context.query)) {
     yield match
+  }
+}
+
+function rankedNameMatches(matches: readonly FindMatch[], query: string) {
+  return matches
+    .slice()
+    .sort((left, right) =>
+      compareFuzzyRankedTargets(
+        searchRankTarget(left.path),
+        searchRankTarget(right.path),
+        query
+      )
+    )
+}
+
+function searchRankTarget(pathname: string) {
+  return {
+    label: path.basename(pathname),
+    path: pathname,
   }
 }
 
@@ -321,7 +348,10 @@ function excludeGlobArgs(globs: readonly string[] | undefined) {
   return expandedGlobArgs(globs, "!")
 }
 
-function expandedGlobArgs(globs: readonly string[] | undefined, prefix: string) {
+function expandedGlobArgs(
+  globs: readonly string[] | undefined,
+  prefix: string
+) {
   if (!globs) return []
 
   return globs.flatMap((glob) => globArgs(glob, prefix))
@@ -364,8 +394,7 @@ async function nameMatchFromPath(
   if (!matchesEntryType(entryStats, entryType)) return null
   if (!context.matcher.pathMatches(globMatchPath(context, relativePath)))
     return null
-  if (context.matcher.lineMatches(path.basename(relativePath)).length === 0)
-    return null
+  if (!nameSearchMatches(context, relativePath)) return null
 
   return {
     kind: "name",
@@ -656,7 +685,7 @@ function addNameMatch(
 ) {
   if (!matchesEntryType(entry, entryType)) return
   if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return
-  if (context.matcher.lineMatches(name).length === 0) return
+  if (!nameSearchMatches(context, relativePath, name)) return
 
   matches.push({
     kind: "name",
@@ -665,6 +694,18 @@ function addNameMatch(
     targetType: entry.targetType,
     type: entry.type,
   })
+}
+
+function nameSearchMatches(
+  context: FindContext,
+  relativePath: string,
+  name = path.basename(relativePath)
+) {
+  if (context.matcher.lineMatches(name).length > 0) return true
+
+  return (
+    context.matcher.lineMatches(globMatchPath(context, relativePath)).length > 0
+  )
 }
 
 async function addContentMatch(
