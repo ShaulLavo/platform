@@ -13,7 +13,6 @@ import type {
 import { createEditorFindPlugin } from "@editor/find"
 import { createLineGutterPlugin } from "@editor/gutters"
 import { EditorHost, useEditor } from "@editor/react"
-import { useVirtualizer } from "@tanstack/react-virtual"
 import type { WorkspaceSearchMatch } from "@workspace/contracts"
 import {
   useEffect,
@@ -28,6 +27,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type RefObject,
+  type UIEvent,
 } from "react"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
@@ -62,6 +62,14 @@ import {
   type SearchResultVirtualRow,
 } from "@/features/search/search-result-view-model"
 import type { SearchResultId } from "@/features/search/search-result-items"
+import {
+  clampSearchResultVirtualListScrollTop,
+  createSearchResultVirtualListMetrics,
+  scrollTopForSearchResultVirtualListItem,
+  visibleSearchResultVirtualListItems,
+  type SearchResultVirtualListMetrics,
+  type SearchResultVirtualListViewport,
+} from "@/features/search/search-result-virtual-list"
 import { readonlyEditorKeymapLayers } from "@/keymap"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -69,6 +77,14 @@ import { cn } from "@workspace/ui/lib/utils"
 const FILE_ROW_ESTIMATE = 44
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
 const SEARCH_RESULT_FILE_EDITOR_ROW_GAP = 6
+const SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT = 8
+const SEARCH_RESULT_VIRTUAL_MIN_OVERSCAN = 320
+const SEARCH_RESULT_VIRTUAL_PADDING = 12
+const SEARCH_RESULT_VIRTUAL_ROW_OFFSET = 6
+const INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT = {
+  height: 0,
+  top: 0,
+} satisfies SearchResultVirtualListViewport
 const FILE_RESULTS_EDITOR_MIN_HEIGHT = 28
 const FILE_RESULTS_ROW_VERTICAL_PADDING = 8
 
@@ -149,14 +165,13 @@ export const SearchResultEditorSurface = memo(
       shikiThemeResolver,
     })
 
-    // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search result buffer virtualization layer.
-    const virtualizer = useVirtualizer({
-      count: rows.length,
-      estimateSize: (index) => searchResultVirtualRowEstimate(rows[index]),
-      getScrollElement: () => parentRef.current,
-      getItemKey: (index) => searchResultVirtualRowKey(rows[index], index),
-      overscan: 10,
-    })
+    const {
+      items: virtualItems,
+      onScroll: handleVirtualScroll,
+      scrollToIndex,
+      scrollToOffset,
+      totalSize: virtualTotalSize,
+    } = useSearchResultEditorVirtualizer(rows, parentRef)
 
     useLayoutEffect(() => {
       activeIndexRef.current = activeIndex
@@ -168,8 +183,8 @@ export const SearchResultEditorSurface = memo(
       const currentActiveIndex = activeIndexRef.current
       if (currentActiveIndex < 0) return
 
-      virtualizer.scrollToIndex(currentActiveIndex, { align: "auto" })
-    }, [activeResultId, virtualizer])
+      scrollToIndex(currentActiveIndex)
+    }, [activeResultId, scrollToIndex])
 
     useLayoutEffect(() => {
       if (displayedResultsQuery === null) return
@@ -177,13 +192,13 @@ export const SearchResultEditorSurface = memo(
         return
 
       previousDisplayedResultsQueryRef.current = displayedResultsQuery
-      resetSearchResultScroll(parentRef, virtualizer)
+      resetSearchResultScroll(parentRef, scrollToOffset)
       const frame = window.requestAnimationFrame(() =>
-        resetSearchResultScroll(parentRef, virtualizer)
+        resetSearchResultScroll(parentRef, scrollToOffset)
       )
 
       return () => window.cancelAnimationFrame(frame)
-    }, [displayedResultsQuery, virtualizer])
+    }, [displayedResultsQuery, scrollToOffset])
 
     useEffect(() => {
       if (activeRow?.type === "file-results") return
@@ -225,12 +240,13 @@ export const SearchResultEditorSurface = memo(
         onFocusCapture={() => setFocusArea("editor")}
         onKeyDown={handleKeyDown}
         onPointerDownCapture={() => setFocusArea("editor")}
+        onScroll={handleVirtualScroll}
       >
         <div
           className="relative"
-          style={{ height: virtualizer.getTotalSize() + 12 }}
+          style={{ height: virtualTotalSize + SEARCH_RESULT_VIRTUAL_PADDING }}
         >
-          {virtualizer.getVirtualItems().map((virtualItem) => {
+          {virtualItems.map((virtualItem) => {
             const row = rows[virtualItem.index]
             if (!row) return null
 
@@ -248,7 +264,7 @@ export const SearchResultEditorSurface = memo(
                 key={virtualItem.key}
                 role="treeitem"
                 style={{
-                  transform: `translateY(${virtualItem.start + 6}px)`,
+                  transform: `translateY(${virtualItem.start + SEARCH_RESULT_VIRTUAL_ROW_OFFSET}px)`,
                 }}
                 onMouseDown={
                   row.type === "file" ? () => onSelectResult(id) : undefined
@@ -756,13 +772,148 @@ function moveOutOfSearchResultFile(
   onToggleGroup(active.file.path)
 }
 
+type SearchResultEditorVirtualizer = {
+  readonly items: SearchResultVirtualListMetrics["items"]
+  readonly totalSize: number
+  readonly onScroll: (event: UIEvent<HTMLDivElement>) => void
+  readonly scrollToIndex: (index: number) => void
+  readonly scrollToOffset: (offset: number) => void
+}
+
+function useSearchResultEditorVirtualizer(
+  rows: readonly SearchResultVirtualRow[],
+  parentRef: RefObject<HTMLDivElement | null>
+): SearchResultEditorVirtualizer {
+  const viewportRef = useRef<SearchResultVirtualListViewport>(
+    INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT
+  )
+  const [viewport, setViewport] = useState<SearchResultVirtualListViewport>(
+    INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT
+  )
+  const itemInputs = useMemo(() => searchResultVirtualRowInputs(rows), [rows])
+  const metrics = useMemo(
+    () => createSearchResultVirtualListMetrics(itemInputs),
+    [itemInputs]
+  )
+  const items = useMemo(
+    () =>
+      visibleSearchResultVirtualListItems(metrics, viewport, {
+        fallbackCount: SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT,
+        overscan: searchResultVirtualOverscan(viewport.height),
+      }),
+    [metrics, viewport]
+  )
+  const viewportHeight = viewport.height
+  const updateViewport = useCallback(
+    (next: SearchResultVirtualListViewport) => {
+      viewportRef.current = next
+      setViewport((current) =>
+        equalSearchResultVirtualViewport(current, next) ? current : next
+      )
+    },
+    []
+  )
+  const updateViewportHeight = useCallback(
+    (height: number) => {
+      updateViewport({
+        height,
+        top: viewportRef.current.top,
+      })
+    },
+    [updateViewport]
+  )
+  const updateViewportTop = useCallback(
+    (top: number) => {
+      updateViewport({
+        height: viewportRef.current.height,
+        top,
+      })
+    },
+    [updateViewport]
+  )
+
+  useEffect(() => {
+    const element = parentRef.current
+    if (!element) return
+
+    updateViewportTop(element.scrollTop)
+  }, [metrics.totalSize, parentRef, updateViewportTop])
+
+  useEffect(() => {
+    const element = parentRef.current
+    if (!element) return
+    if (typeof ResizeObserver === "undefined") return
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+
+      updateViewportHeight(searchResultVirtualViewportHeight(entry))
+    })
+    observer.observe(element)
+
+    return () => observer.disconnect()
+  }, [parentRef, updateViewportHeight])
+
+  const scrollToOffset = useCallback(
+    (offset: number) => {
+      const element = parentRef.current
+      if (!element) return
+
+      const top = clampSearchResultVirtualListScrollTop(
+        offset,
+        metrics.totalSize + SEARCH_RESULT_VIRTUAL_PADDING,
+        viewportRef.current.height
+      )
+      element.scrollTop = top
+      updateViewportTop(top)
+    },
+    [metrics.totalSize, parentRef, updateViewportTop]
+  )
+  const scrollToIndex = useCallback(
+    (index: number) => {
+      const element = parentRef.current
+      if (!element) return
+      if (viewportHeight <= 0) return
+
+      const nextTop = scrollTopForSearchResultVirtualListItem(
+        metrics,
+        index,
+        viewportRef.current,
+        {
+          itemOffset: SEARCH_RESULT_VIRTUAL_ROW_OFFSET,
+          totalPadding: SEARCH_RESULT_VIRTUAL_PADDING,
+        }
+      )
+      if (nextTop === null) return
+
+      element.scrollTop = nextTop
+      updateViewportTop(nextTop)
+    },
+    [metrics, parentRef, updateViewportTop, viewportHeight]
+  )
+  const onScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) =>
+      updateViewportTop(event.currentTarget.scrollTop),
+    [updateViewportTop]
+  )
+
+  return {
+    items,
+    onScroll,
+    scrollToIndex,
+    scrollToOffset,
+    totalSize: metrics.totalSize,
+  }
+}
+
 function resetSearchResultScroll(
   ref: RefObject<HTMLDivElement | null>,
-  virtualizer: ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>
+  scrollToOffset: (offset: number) => void
 ) {
   if (ref.current) ref.current.scrollTop = 0
 
-  virtualizer.scrollToOffset(0)
+  scrollToOffset(0)
 }
 
 function searchResultFileRangeDecorations(
@@ -838,9 +989,34 @@ function searchResultVirtualRowKey(
   row: SearchResultVirtualRow | undefined,
   index: number
 ) {
-  if (!row) return index
+  if (!row) return `missing:${index}`
 
   return searchResultVirtualRowId(row)
+}
+
+function searchResultVirtualRowInputs(rows: readonly SearchResultVirtualRow[]) {
+  return rows.map((row, index) => ({
+    key: searchResultVirtualRowKey(row, index),
+    size: searchResultVirtualRowEstimate(row),
+  }))
+}
+
+function searchResultVirtualOverscan(viewportHeight: number) {
+  return Math.max(
+    SEARCH_RESULT_VIRTUAL_MIN_OVERSCAN,
+    Math.floor(viewportHeight * 0.5)
+  )
+}
+
+function equalSearchResultVirtualViewport(
+  current: SearchResultVirtualListViewport,
+  next: SearchResultVirtualListViewport
+) {
+  return current.height === next.height && current.top === next.top
+}
+
+function searchResultVirtualViewportHeight(entry: ResizeObserverEntry) {
+  return Math.max(0, Math.floor(entry.contentRect.height))
 }
 
 function searchResultVirtualRowExpanded(row: SearchResultVirtualRow) {

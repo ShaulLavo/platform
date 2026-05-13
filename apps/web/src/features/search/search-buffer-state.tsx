@@ -324,11 +324,20 @@ function appendSearchEvents(
   events: readonly WorkspaceSearchEvent[]
 ): SearchBufferStoreState {
   let next = state
+  let matches: WorkspaceSearchMatch[] = []
+
   for (const event of events) {
+    if (event.type === "match") {
+      matches.push(event.match)
+      continue
+    }
+
+    next = appendSearchMatches(next, runId, matches)
+    matches = []
     next = appendSearchEvent(next, runId, event)
   }
 
-  return next
+  return appendSearchMatches(next, runId, matches)
 }
 
 function appendSearchEvent(
@@ -336,23 +345,12 @@ function appendSearchEvent(
   runId: number,
   event: WorkspaceSearchEvent
 ): SearchBufferStoreState {
+  if (event.type === "match") {
+    return appendSearchMatches(state, runId, [event.match])
+  }
+
   const active = activeRun(state.active, runId)
   if (!active) return state
-  if (event.type === "match") {
-    const matches = nextSearchMatches(active, event.match)
-    const runningSearchQuery = active.runningSearchQuery
-    return {
-      active: resolveActiveSearchResult({
-        ...active,
-        matches,
-        resultsQuery: active.runningQuery ?? active.resultsQuery,
-        resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
-        status: "loading",
-        totalCount: contentSearchMatchCount(matches),
-        truncated: false,
-      }),
-    }
-  }
   if (event.type === "done") {
     const query = active.runningQuery ?? event.query
     const searchQuery = active.runningSearchQuery
@@ -378,6 +376,31 @@ function appendSearchEvent(
   }
 
   return failSearchBuffer(state, runId, event.message)
+}
+
+function appendSearchMatches(
+  state: SearchBufferStoreState,
+  runId: number,
+  incomingMatches: readonly WorkspaceSearchMatch[]
+): SearchBufferStoreState {
+  if (incomingMatches.length === 0) return state
+
+  const active = activeRun(state.active, runId)
+  if (!active) return state
+
+  const matches = nextSearchMatches(active, incomingMatches)
+  const runningSearchQuery = active.runningSearchQuery
+  return {
+    active: resolveActiveSearchResult({
+      ...active,
+      matches,
+      resultsQuery: active.runningQuery ?? active.resultsQuery,
+      resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
+      status: "loading",
+      totalCount: contentSearchMatchCount(matches),
+      truncated: false,
+    }),
+  }
 }
 
 function failSearchBuffer(
@@ -583,7 +606,7 @@ function globTextForQuery(globs: readonly string[] | undefined) {
 
 function nextSearchMatches(
   active: SearchBufferSnapshot,
-  match: WorkspaceSearchMatch
+  matches: readonly WorkspaceSearchMatch[]
 ) {
   if (
     sameWorkspaceSearchQuery(
@@ -591,10 +614,10 @@ function nextSearchMatches(
       active.runningSearchQuery
     )
   ) {
-    return [...active.matches, match]
+    return [...active.matches, ...matches]
   }
 
-  return [match]
+  return [...matches]
 }
 
 function doneMatches(

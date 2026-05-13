@@ -738,6 +738,43 @@ describe("search buffer store", () => {
     ])
   })
 
+  it("maps the active match to its parent when a group collapses", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/app.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/app.ts", 2, 1), type: "match" },
+    ])
+
+    const expandedItems = expandedSearchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    )
+    const selected = expandedItems.find(
+      (item) => item.type === "match" && item.match.line === 2
+    )
+    const parentId = parentSearchResultId(expandedItems, selected?.id ?? null)
+    store.getState().selectResult(selected?.id ?? null)
+    store.getState().toggleGroup("repo/src/app.ts")
+
+    expect(store.getState().active?.activeResultId).toBe(parentId)
+  })
+
+  it("keeps duplicate content result ids distinct", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/app.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/app.ts", 1, 1), type: "match" },
+    ])
+
+    const matches = expandedSearchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    ).filter((item) => item.type === "match")
+
+    expect(matches).toHaveLength(2)
+    expect(matches[0]?.id).not.toBe(matches[1]?.id)
+  })
+
   it("prunes collapsed paths that disappear after a rerun", () => {
     const store = createSearchBufferStore()
     const firstRunId = store.getState().startSearch(searchQuery("needle"))

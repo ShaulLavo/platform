@@ -28,6 +28,10 @@ export type SearchResultItem =
       type: "match"
     }
 
+const STABLE_HASH_CACHE_LIMIT = 4096
+const stableHashCache = new Map<string, string>()
+const searchMatchIdentityCache = new WeakMap<WorkspaceSearchMatch, string>()
+
 export function searchResultItems(groups: readonly WorkspaceSearchFileGroup[]) {
   const items: SearchResultItem[] = []
 
@@ -71,12 +75,15 @@ function appendGroupItems(
   const duplicateCounts = new Map<string, number>()
   contentMatches.forEach((match, matchIndex) => {
     const identity = searchMatchIdentity(match)
-    const duplicateIndex = duplicateCounts.get(identity) ?? 0
-    duplicateCounts.set(identity, duplicateIndex + 1)
+    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identity)
     items.push({
       groupId,
       groupPath: group.path,
-      id: searchResultMatchId(group.path, match, duplicateIndex),
+      id: searchResultMatchIdForIdentity(
+        group.path,
+        identity,
+        duplicateIndex
+      ),
       level: 2,
       match,
       matchIndex,
@@ -103,11 +110,16 @@ export function searchResultItemById(
 export function firstSelectableSearchResultId(
   groups: readonly WorkspaceSearchFileGroup[]
 ) {
-  const visibleItems = searchResultItems(groups)
-  const visibleMatch = visibleItems.find(isSelectableSearchResultItem)
-  if (visibleMatch) return visibleMatch.id
+  let firstVisibleId: SearchResultId | null = null
 
-  return visibleItems[0]?.id ?? null
+  for (const group of groups) {
+    firstVisibleId ??= firstVisibleGroupResultId(group)
+
+    const selectableId = firstSelectableGroupResultId(group)
+    if (selectableId) return selectableId
+  }
+
+  return firstVisibleId
 }
 
 export function visibleSearchResultId(
@@ -116,11 +128,10 @@ export function visibleSearchResultId(
 ) {
   if (!id) return firstSelectableSearchResultId(groups)
 
-  const visibleItems = searchResultItems(groups)
-  if (searchResultItemById(visibleItems, id)) return id
+  if (searchResultIdIsVisible(groups, id)) return id
 
-  const hiddenItem = searchResultItemById(expandedSearchResultItems(groups), id)
-  if (hiddenItem?.type === "match") return hiddenItem.groupId
+  const parentId = hiddenSearchResultParentId(groups, id)
+  if (parentId) return parentId
 
   return firstSelectableSearchResultId(groups)
 }
@@ -207,10 +218,6 @@ function expandedGroup(group: WorkspaceSearchFileGroup) {
   }
 }
 
-function isSelectableSearchResultItem(item: SearchResultItem) {
-  return item.type === "match" || item.type === "name"
-}
-
 function isContentSearchResultItem(
   item: SearchResultItem
 ): item is Extract<SearchResultItem, { type: "match" }> {
@@ -243,9 +250,21 @@ function searchResultMatchId(
   match: WorkspaceSearchMatch,
   duplicateIndex: number
 ) {
+  return searchResultMatchIdForIdentity(
+    path,
+    searchMatchIdentity(match),
+    duplicateIndex
+  )
+}
+
+function searchResultMatchIdForIdentity(
+  path: string,
+  identity: string,
+  duplicateIndex: number
+) {
   return searchResultDomId(
     "match",
-    `${path}\0${searchMatchIdentity(match)}\0${duplicateIndex}`
+    `${path}\0${identity}\0${duplicateIndex}`
   )
 }
 
@@ -254,7 +273,10 @@ function searchResultDomId(prefix: string, value: string) {
 }
 
 function searchMatchIdentity(match: WorkspaceSearchMatch) {
-  return [
+  const cached = searchMatchIdentityCache.get(match)
+  if (cached) return cached
+
+  const identity = [
     match.kind,
     match.source,
     match.type,
@@ -266,14 +288,147 @@ function searchMatchIdentity(match: WorkspaceSearchMatch) {
     match.previewStartColumn ?? "",
     match.preview ?? "",
   ].join("\0")
+  searchMatchIdentityCache.set(match, identity)
+
+  return identity
 }
 
 function stableHash(value: string) {
+  const cached = stableHashCache.get(value)
+  if (cached) return cached
+
   let hash = 0x811c9dc5
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index)
     hash = Math.imul(hash, 0x01000193)
   }
 
-  return (hash >>> 0).toString(36)
+  const result = (hash >>> 0).toString(36)
+  stableHashCache.set(value, result)
+  trimStableHashCache()
+
+  return result
+}
+
+function trimStableHashCache() {
+  if (stableHashCache.size <= STABLE_HASH_CACHE_LIMIT) return
+
+  const firstKey = stableHashCache.keys().next().value
+  if (firstKey === undefined) return
+
+  stableHashCache.delete(firstKey)
+}
+
+function firstVisibleGroupResultId(
+  group: WorkspaceSearchFileGroup
+): SearchResultId | null {
+  if (firstContentMatch(group)) return searchResultGroupId(group.path)
+
+  const match = group.matches[0]
+  if (!match) return null
+
+  return searchResultNameId(group.path, match)
+}
+
+function firstSelectableGroupResultId(
+  group: WorkspaceSearchFileGroup
+): SearchResultId | null {
+  const match = firstContentMatch(group)
+  if (!match) return firstNameResultId(group)
+  if (group.collapsed) return null
+
+  return searchResultMatchId(group.path, match, 0)
+}
+
+function firstNameResultId(
+  group: WorkspaceSearchFileGroup
+): SearchResultId | null {
+  if (firstContentMatch(group)) return null
+
+  const match = group.matches[0]
+  if (!match) return null
+
+  return searchResultNameId(group.path, match)
+}
+
+function firstContentMatch(group: WorkspaceSearchFileGroup) {
+  return group.matches.find((match) => match.kind === "content") ?? null
+}
+
+function searchResultIdIsVisible(
+  groups: readonly WorkspaceSearchFileGroup[],
+  id: SearchResultId
+) {
+  for (const group of groups) {
+    if (groupResultIdIsVisible(group, id)) return true
+  }
+
+  return false
+}
+
+function groupResultIdIsVisible(
+  group: WorkspaceSearchFileGroup,
+  id: SearchResultId
+) {
+  const firstContent = firstContentMatch(group)
+  if (!firstContent) return nameResultIdIsVisible(group, id)
+  if (searchResultGroupId(group.path) === id) return true
+  if (group.collapsed) return false
+
+  return contentResultIdIsPresent(group, id)
+}
+
+function nameResultIdIsVisible(
+  group: WorkspaceSearchFileGroup,
+  id: SearchResultId
+) {
+  const match = group.matches[0]
+  if (!match) return false
+
+  return searchResultNameId(group.path, match) === id
+}
+
+function hiddenSearchResultParentId(
+  groups: readonly WorkspaceSearchFileGroup[],
+  id: SearchResultId
+) {
+  for (const group of groups) {
+    if (!contentResultIdIsPresent(group, id)) continue
+
+    return searchResultGroupId(group.path)
+  }
+
+  return null
+}
+
+function contentResultIdIsPresent(
+  group: WorkspaceSearchFileGroup,
+  id: SearchResultId
+) {
+  const duplicateCounts = new Map<string, number>()
+
+  for (const match of group.matches) {
+    if (match.kind !== "content") continue
+
+    const identity = searchMatchIdentity(match)
+    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identity)
+    const matchId = searchResultMatchIdForIdentity(
+      group.path,
+      identity,
+      duplicateIndex
+    )
+    if (matchId === id) return true
+  }
+
+  return false
+}
+
+function nextDuplicateIndex(
+  duplicateCounts: Map<string, number>,
+  identity: string
+) {
+  const duplicateIndex = duplicateCounts.get(identity) ?? 0
+  duplicateCounts.set(identity, duplicateIndex + 1)
+
+  return duplicateIndex
 }
