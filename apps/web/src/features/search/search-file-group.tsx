@@ -1,7 +1,4 @@
-import {
-  ArrowSquareOutIcon,
-  CaretRightIcon,
-} from "@phosphor-icons/react"
+import { ArrowSquareOutIcon, CaretRightIcon } from "@phosphor-icons/react"
 import type { CSSProperties } from "react"
 
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
@@ -18,6 +15,7 @@ export function SearchFileGroupHeader({
   className,
   canReplace,
   group,
+  pending,
   replaceVisible,
   onOpen,
   onReplace,
@@ -27,6 +25,7 @@ export function SearchFileGroupHeader({
   className?: string
   canReplace?: boolean
   group: WorkspaceSearchFileGroup
+  pending?: boolean
   replaceVisible?: boolean
   onOpen?: () => void
   onReplace?: (group: WorkspaceSearchFileGroup) => void
@@ -39,6 +38,7 @@ export function SearchFileGroupHeader({
       className={cn(
         "grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left",
         active && "bg-muted/60",
+        pending && "opacity-55",
         !active && "hover:bg-muted/55",
         className
       )}

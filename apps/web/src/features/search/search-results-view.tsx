@@ -76,7 +76,11 @@ export function SearchResultsView({
   const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
   const previewMaxLength = useSearchPreviewMaxLength(parentRef, replaceVisible)
-  const items = useMemo(() => searchResultItems(groups), [groups])
+  const pendingResultIds = snapshot?.pendingResultIds
+  const items = useMemo(
+    () => searchResultItems(groups, { pendingResultIds }),
+    [groups, pendingResultIds]
+  )
   const activeItem = useMemo(
     () => searchResultItemById(items, activeResultId),
     [activeResultId, items]
@@ -263,6 +267,7 @@ function SearchResultRow({
         active={active}
         canReplace={canReplace}
         group={item.group}
+        pending={item.pending}
         replaceVisible={replaceVisible}
         onReplace={onReplaceGroup}
         onOpen={onOpenFile ? () => onOpenFile(item.group.path) : undefined}
@@ -278,6 +283,7 @@ function SearchResultRow({
       <SearchNameMatchRow
         active={active}
         match={item.match}
+        pending={item.pending}
         previewMaxLength={previewMaxLength}
         query={query}
         onOpenMatch={() => {
@@ -294,6 +300,7 @@ function SearchResultRow({
         active={active}
         canReplace={canReplace}
         match={item.match}
+        pending={item.pending}
         previewMaxLength={previewMaxLength}
         replaceQuery={replaceQuery}
         replaceText={replaceText}

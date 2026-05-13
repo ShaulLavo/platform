@@ -9,6 +9,7 @@ export type SearchResultItem =
       group: WorkspaceSearchFileGroup
       id: SearchResultId
       level: 1
+      pending: boolean
       type: "group"
     }
   | {
@@ -16,6 +17,7 @@ export type SearchResultItem =
       id: SearchResultId
       level: 1
       match: WorkspaceSearchMatch
+      pending: boolean
       type: "name"
     }
   | {
@@ -25,8 +27,13 @@ export type SearchResultItem =
       level: 2
       match: WorkspaceSearchMatch
       matchIndex: number
+      pending: boolean
       type: "match"
     }
+
+export type SearchResultItemOptions = {
+  pendingResultIds?: readonly SearchResultId[] | ReadonlySet<SearchResultId>
+}
 
 const STABLE_HASH_CACHE_LIMIT = 4096
 const STABLE_HASH_OFFSET = 0x811c9dc5
@@ -34,11 +41,15 @@ const STABLE_HASH_PRIME = 0x01000193
 const stableHashCache = new Map<string, string>()
 const searchMatchLocationHashCache = new WeakMap<WorkspaceSearchMatch, string>()
 
-export function searchResultItems(groups: readonly WorkspaceSearchFileGroup[]) {
+export function searchResultItems(
+  groups: readonly WorkspaceSearchFileGroup[],
+  options: SearchResultItemOptions = {}
+) {
   const items: SearchResultItem[] = []
+  const pendingIds = pendingResultIdSet(options.pendingResultIds)
 
   for (const group of groups) {
-    appendGroupItems(items, group)
+    appendGroupItems(items, group, pendingIds)
   }
 
   return items
@@ -46,50 +57,81 @@ export function searchResultItems(groups: readonly WorkspaceSearchFileGroup[]) {
 
 function appendGroupItems(
   items: SearchResultItem[],
-  group: WorkspaceSearchFileGroup
+  group: WorkspaceSearchFileGroup,
+  pendingIds: ReadonlySet<SearchResultId> | null
 ) {
   const groupId = searchResultGroupId(group.path)
   const contentMatches = contentSearchMatches(group)
   if (contentMatches.length === 0) {
     const match = group.matches[0]
     if (match) {
+      const id = searchResultNameId(group.path, match)
       items.push({
         group,
-        id: searchResultNameId(group.path, match),
+        id,
         level: 1,
         match,
+        pending: pendingResultIdHas(pendingIds, id),
         type: "name",
       })
     }
     return
   }
 
+  const matchItems = searchContentResultItems(
+    group,
+    groupId,
+    contentMatches,
+    pendingIds
+  )
   items.push({
     group: contentGroup(group, contentMatches),
     id: groupId,
     level: 1,
+    pending: matchItems.length > 0 && matchItems.every((item) => item.pending),
     type: "group",
   })
   if (group.collapsed) return
 
+  items.push(...matchItems)
+}
+
+function searchContentResultItems(
+  group: WorkspaceSearchFileGroup,
+  groupId: SearchResultId,
+  contentMatches: readonly WorkspaceSearchMatch[],
+  pendingIds: ReadonlySet<SearchResultId> | null
+) {
+  const items: Extract<SearchResultItem, { type: "match" }>[] = []
   const duplicateCounts = new Map<string, number>()
-  contentMatches.forEach((match, matchIndex) => {
+  for (
+    let matchIndex = 0;
+    matchIndex < contentMatches.length;
+    matchIndex += 1
+  ) {
+    const match = contentMatches[matchIndex]
+    if (!match) continue
+
     const locationHash = searchMatchLocationHash(match)
     const duplicateIndex = nextDuplicateIndex(duplicateCounts, locationHash)
+    const id = searchResultMatchIdForIdentityHash(
+      group.path,
+      locationHash,
+      duplicateIndex
+    )
     items.push({
       groupId,
       groupPath: group.path,
-      id: searchResultMatchIdForIdentityHash(
-        group.path,
-        locationHash,
-        duplicateIndex
-      ),
+      id,
       level: 2,
       match,
       matchIndex,
+      pending: pendingResultIdHas(pendingIds, id),
       type: "match",
     })
-  })
+  }
+
+  return items
 }
 
 function contentSearchMatches(group: WorkspaceSearchFileGroup) {
@@ -99,9 +141,10 @@ function contentSearchMatches(group: WorkspaceSearchFileGroup) {
 }
 
 export function expandedSearchResultItems(
-  groups: readonly WorkspaceSearchFileGroup[]
+  groups: readonly WorkspaceSearchFileGroup[],
+  options: SearchResultItemOptions = {}
 ) {
-  return searchResultItems(groups.map(expandedGroup))
+  return searchResultItems(groups.map(expandedGroup), options)
 }
 
 export function searchResultItemById(
@@ -362,6 +405,24 @@ function updateStableHashCode(hash: number, code: number) {
 
 function stableHashResult(hash: number) {
   return (hash >>> 0).toString(36)
+}
+
+function pendingResultIdSet(
+  pendingResultIds: SearchResultItemOptions["pendingResultIds"]
+) {
+  if (!pendingResultIds) return null
+  if (pendingResultIds instanceof Set) return pendingResultIds
+
+  return new Set(pendingResultIds)
+}
+
+function pendingResultIdHas(
+  pendingResultIds: ReadonlySet<SearchResultId> | null,
+  id: SearchResultId
+) {
+  if (!pendingResultIds) return false
+
+  return pendingResultIds.has(id)
 }
 
 function trimStableHashCache() {

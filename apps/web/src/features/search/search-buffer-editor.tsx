@@ -135,6 +135,7 @@ export function SearchBufferEditor({
             }
             groups={groups}
             keymapLayers={editorKeymapLayers}
+            pendingResultIds={snapshot.pendingResultIds}
             prewarmEditorPool={snapshot.status !== "loading"}
             replaceVisible={replaceVisible}
             resultsQuery={resultsQuery}

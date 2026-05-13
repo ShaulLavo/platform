@@ -91,6 +91,12 @@ function searchSummaryModel(
   if (snapshot.status === "loading" && snapshot.matches.length === 0) {
     return emptySummary("Searching")
   }
+  if (snapshot.status === "loading" && snapshot.pendingResultIds.length > 0) {
+    return summaryWithControls(
+      `${snapshot.totalCount.toLocaleString()} updated · Searching`,
+      snapshot
+    )
+  }
 
   const resultText = searchResultCountText(snapshot)
   if (snapshot.status === "loading") {

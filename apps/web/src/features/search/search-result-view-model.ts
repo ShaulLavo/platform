@@ -7,6 +7,7 @@ import { searchMatchDisplay } from "@/features/search/search-match-display"
 import {
   expandedSearchResultItems,
   type SearchResultId,
+  type SearchResultItemOptions,
   type SearchResultItem,
 } from "@/features/search/search-result-items"
 
@@ -23,6 +24,7 @@ export type SearchResultFileBlock = {
   readonly id: SearchResultId
   readonly languageId: EditorSyntaxLanguageId | null
   readonly matchCount: number
+  readonly pending: boolean
   readonly path: string
   readonly pathLabel: string
 }
@@ -31,6 +33,7 @@ export type SearchResultExcerpt = {
   readonly id: SearchResultId
   readonly languageId: EditorSyntaxLanguageId | null
   readonly matchRanges: readonly SearchResultRange[]
+  readonly pending: boolean
   readonly path: string
   readonly sourceMatch: WorkspaceSearchMatch
   readonly startLine: number
@@ -56,6 +59,7 @@ export type SearchResultFileDocumentLine = {
   readonly end: number
   readonly id: SearchResultId
   readonly matchRanges: readonly SearchResultRange[]
+  readonly pending: boolean
   readonly row: number
   readonly sourceLine: number
   readonly sourceMatch: WorkspaceSearchMatch
@@ -71,11 +75,12 @@ export type SearchResultFileDocument = {
 
 export function searchResultFileBlocks(
   groups: readonly WorkspaceSearchFileGroup[],
-  query: string
+  query: string,
+  options: SearchResultItemOptions = {}
 ) {
   const blocks: SearchResultFileBlock[] = []
   for (const group of groups) {
-    const block = searchResultFileBlock(group, query)
+    const block = searchResultFileBlock(group, query, options)
     if (!block) continue
     blocks.push(block)
   }
@@ -243,9 +248,10 @@ export function searchResultFileDocumentLineById(
 
 function searchResultFileBlock(
   group: WorkspaceSearchFileGroup,
-  query: string
+  query: string,
+  options: SearchResultItemOptions
 ): SearchResultFileBlock | null {
-  const items = expandedSearchResultItems([group])
+  const items = expandedSearchResultItems([group], options)
   const matchItems = items.filter(isSearchResultMatchItem)
   if (matchItems.length > 0) {
     return contentSearchResultFileBlock(group, items, matchItems, query)
@@ -272,6 +278,7 @@ function contentSearchResultFileBlock(
     id: groupItem.id,
     languageId: languageIdForFilePath(groupItem.group.path),
     matchCount: matchItems.length,
+    pending: groupItem.pending,
     path: groupItem.group.path,
     pathLabel: groupItem.group.pathLabel,
   }
@@ -287,6 +294,7 @@ function nameSearchResultFileBlock(
     id: item.id,
     languageId: languageIdForFilePath(group.path),
     matchCount: 1,
+    pending: item.pending,
     path: group.path,
     pathLabel: group.pathLabel,
   }
@@ -304,6 +312,7 @@ function searchResultExcerpt(
     id: item.id,
     languageId: languageIdForFilePath(item.match.path),
     matchRanges: display.range ? [display.range] : [],
+    pending: item.pending,
     path: item.match.path,
     sourceMatch: item.match,
     startLine: searchResultExcerptStartLine(item.match),
@@ -381,6 +390,7 @@ function createSearchResultFileDocumentBuilder(file: SearchResultFileBlock) {
       end: start + excerpt.text.length,
       id: excerpt.id,
       matchRanges,
+      pending: excerpt.pending,
       row: lines.length,
       sourceLine: excerpt.startLine,
       sourceMatch: excerpt.sourceMatch,

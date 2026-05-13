@@ -36,6 +36,10 @@ import { createEditorSyntaxHighlightingPlugins } from "@/features/editor/editor-
 import { useEditorShikiTheme } from "@/features/editor/hooks/use-editor-shiki-theme"
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
 import {
+  nextSearchResultFileEditorPoolKeys,
+  searchResultFileEditorPoolKeysEqual,
+} from "@/features/search/search-result-editor-pool"
+import {
   colorForFileIcon,
   iconForEntry,
   type ResolvedFileIcon,
@@ -79,7 +83,6 @@ const FILE_ROW_ESTIMATE = 44
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
 const SEARCH_RESULT_FILE_EDITOR_ROW_GAP = 6
 const SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT = 8
-const SEARCH_RESULT_FILE_EDITOR_POOL_MIN_SIZE = 4
 const SEARCH_RESULT_VIRTUAL_MIN_OVERSCAN = 320
 const SEARCH_RESULT_VIRTUAL_PADDING = 12
 const SEARCH_RESULT_VIRTUAL_ROW_OFFSET = 6
@@ -99,6 +102,10 @@ const ACTIVE_MATCH_STYLE = {
   textDecoration: "underline 1px var(--search-result-match-active-decoration)",
 } satisfies Partial<CSSStyleDeclaration>
 
+const PENDING_MATCH_STYLE = {
+  opacity: "0.55",
+} satisfies Partial<CSSStyleDeclaration>
+
 const SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE = {
   pointerEvents: "none",
   transform: "translateY(-100000px)",
@@ -111,16 +118,6 @@ const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
   rowBackground: false,
 } as const
 
-const EMPTY_SEARCH_RESULT_FILE_BLOCK = {
-  collapsed: false,
-  excerpts: [],
-  id: "empty-search-result-file",
-  languageId: null,
-  matchCount: 0,
-  path: "",
-  pathLabel: "",
-} satisfies SearchResultFileBlock
-
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
   canReplace?: boolean
@@ -128,6 +125,7 @@ type SearchResultEditorSurfaceProps = {
   displayedResultsQuery: string | null
   groups: readonly WorkspaceSearchFileGroup[]
   keymapLayers: readonly EditorKeymapLayer[]
+  pendingResultIds?: readonly SearchResultId[]
   prewarmEditorPool?: boolean
   replaceVisible: boolean
   resultsQuery: string
@@ -148,6 +146,7 @@ export const SearchResultEditorSurface = memo(
     displayedResultsQuery,
     groups,
     keymapLayers,
+    pendingResultIds,
     prewarmEditorPool = true,
     replaceVisible,
     resultsQuery,
@@ -168,8 +167,8 @@ export const SearchResultEditorSurface = memo(
       [keymapLayers]
     )
     const blocks = useMemo(
-      () => searchResultFileBlocks(groups, resultsQuery),
-      [groups, resultsQuery]
+      () => searchResultFileBlocks(groups, resultsQuery, { pendingResultIds }),
+      [groups, pendingResultIds, resultsQuery]
     )
     const rows = useMemo(() => searchResultVirtualRows(blocks), [blocks])
     const groupByPath = useMemo(() => groupMap(groups), [groups])
@@ -212,14 +211,9 @@ export const SearchResultEditorSurface = memo(
       () => renderedVirtualItems.filter(isSearchResultRenderedFileResultItem),
       [renderedVirtualItems]
     )
-    const fileEditorPoolSize = searchResultFileEditorPoolSize(
-      fileResultItems.length,
+    const fileEditorPoolEntries = useSearchResultFileEditorPoolEntries(
+      fileResultItems,
       prewarmEditorPool
-    )
-    const fileEditorPoolItems = useMemo(
-      () =>
-        searchResultFileEditorPoolItems(fileResultItems, fileEditorPoolSize),
-      [fileEditorPoolSize, fileResultItems]
     )
     const scrollToIndexRef = useRef(scrollToIndex)
     const selectResultWithoutReveal = useCallback(
@@ -335,6 +329,7 @@ export const SearchResultEditorSurface = memo(
                   active={active}
                   canReplace={canReplace}
                   file={row.file}
+                  pending={row.file.pending}
                   replaceVisible={replaceVisible}
                   onOpen={() =>
                     onOpenTarget({ match: null, path: row.file.path })
@@ -345,14 +340,14 @@ export const SearchResultEditorSurface = memo(
               </div>
             )
           })}
-          {fileEditorPoolItems.map((item, index) => (
+          {fileEditorPoolEntries.map((entry) => (
             <SearchResultFileEditorPoolSlot
               activeResultId={activeResultId}
               canReplace={canReplace}
               deferredPluginsReady={deferredPlugins.ready}
               editorTheme={editorThemeRefresh}
-              item={item}
-              key={`file-results-pool:${index}`}
+              entry={entry}
+              key={`file-results-pool:${entry.key}`}
               keymapLayers={readonlyKeymapLayers}
               replaceVisible={replaceVisible}
               syntaxPlugins={deferredPlugins.syntaxPlugins}
@@ -374,6 +369,7 @@ function SearchResultFileHeader({
   active,
   canReplace,
   file,
+  pending,
   replaceVisible,
   onOpen,
   onReplace,
@@ -382,6 +378,7 @@ function SearchResultFileHeader({
   active: boolean
   canReplace?: boolean
   file: SearchResultFileBlock
+  pending?: boolean
   replaceVisible: boolean
   onOpen: () => void
   onReplace: () => void
@@ -396,6 +393,7 @@ function SearchResultFileHeader({
         "grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-1.5 text-left",
         active &&
           "bg-muted/70 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--border)_55%,transparent)]",
+        pending && "opacity-55",
         !active && "hover:bg-muted/45"
       )}
     >
@@ -467,7 +465,7 @@ function SearchResultFileEditorPoolSlot({
   canReplace,
   deferredPluginsReady,
   editorTheme,
-  item,
+  entry,
   keymapLayers,
   replaceVisible,
   syntaxPlugins,
@@ -481,7 +479,7 @@ function SearchResultFileEditorPoolSlot({
   canReplace?: boolean
   deferredPluginsReady: boolean
   editorTheme: EditorTheme
-  item: SearchResultRenderedFileResultItem | null
+  entry: SearchResultFileEditorPoolEntry
   keymapLayers: readonly EditorKeymapLayer[]
   replaceVisible: boolean
   syntaxPlugins: readonly EditorPlugin[]
@@ -491,13 +489,12 @@ function SearchResultFileEditorPoolSlot({
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
   onSelectResultWithoutReveal: (id: SearchResultId | null) => void
 }) {
-  const visible = item !== null
-  const row = item?.row ?? null
-  const file = row?.file ?? EMPTY_SEARCH_RESULT_FILE_BLOCK
-  const id = row ? searchResultVirtualRowId(row) : null
-  const active = row
-    ? searchResultVirtualRowContainsId(row, activeResultId)
-    : false
+  const { item, visible } = entry
+  const row = item.row
+  const file = row.file
+  const id = searchResultVirtualRowId(row)
+  const active =
+    visible && searchResultVirtualRowContainsId(row, activeResultId)
 
   return (
     <div
@@ -505,7 +502,7 @@ function SearchResultFileEditorPoolSlot({
       aria-level={visible ? 2 : undefined}
       aria-selected={visible ? active : undefined}
       className="absolute right-2 left-2"
-      data-index={item?.virtualItem.index}
+      data-index={visible ? item.virtualItem.index : undefined}
       id={id && visible ? searchResultDomId(treeId, id) : undefined}
       role={visible ? "treeitem" : undefined}
       style={
@@ -577,6 +574,7 @@ const SearchResultFileEditor = memo(
         languageId: fileDocument.languageId,
         revision: searchResultFileDocumentRevision(fileDocument),
         text: fileDocument.text,
+        textSyncMode: "incremental" as const,
       }),
       [file, fileDocument]
     )
@@ -924,6 +922,20 @@ type SearchResultRenderedFileResultItem = SearchResultRenderedVirtualItem & {
   readonly row: Extract<SearchResultVirtualRow, { type: "file-results" }>
 }
 
+type SearchResultFileEditorPoolEntry = {
+  readonly item: SearchResultRenderedFileResultItem
+  readonly key: SearchResultId
+  readonly visible: boolean
+}
+
+type SearchResultFileEditorPoolState = {
+  readonly items: ReadonlyMap<
+    SearchResultId,
+    SearchResultRenderedFileResultItem
+  >
+  readonly keys: readonly SearchResultId[]
+}
+
 type SearchResultEditorScrollToIndex = (
   index: number,
   target?: SearchResultVirtualRowScrollTarget | null
@@ -1093,6 +1105,8 @@ function searchResultFileRangeDecorations(
 ) {
   const decorations: EditorRangeDecoration[] = []
   for (const line of document.lines) {
+    if (line.pending) decorations.push(searchResultPendingDecoration(line))
+
     const active = line.id === activeResultId
     for (const range of line.matchRanges) {
       decorations.push(searchResultRangeDecoration(range, active))
@@ -1100,6 +1114,17 @@ function searchResultFileRangeDecorations(
   }
 
   return decorations
+}
+
+function searchResultPendingDecoration(
+  line: SearchResultFileDocumentLine
+): EditorRangeDecoration {
+  return {
+    className: "search-result-match-pending",
+    end: line.end,
+    start: line.start,
+    style: PENDING_MATCH_STYLE,
+  }
 }
 
 function searchResultRangeDecoration(
@@ -1215,21 +1240,129 @@ function searchResultRenderedVirtualItems(
   return renderedItems
 }
 
-function searchResultFileEditorPoolItems(
-  items: readonly SearchResultRenderedFileResultItem[],
-  poolSize: number
-) {
-  return Array.from({ length: poolSize }, (_, index) => items[index] ?? null)
-}
-
-function searchResultFileEditorPoolSize(
-  visibleCount: number,
+function useSearchResultFileEditorPoolEntries(
+  visibleItems: readonly SearchResultRenderedFileResultItem[],
   prewarmEditorPool: boolean
 ) {
-  if (visibleCount === 0) return 0
-  if (!prewarmEditorPool) return visibleCount
+  const [poolState, setPoolState] = useState<SearchResultFileEditorPoolState>({
+    items: new Map(),
+    keys: [],
+  })
+  const visibleKeys = useMemo(
+    () => visibleItems.map(searchResultFileEditorPoolItemKey),
+    [visibleItems]
+  )
+  const poolKeys = useMemo(
+    () =>
+      nextSearchResultFileEditorPoolKeys(
+        poolState.keys,
+        visibleKeys,
+        prewarmEditorPool
+      ),
+    [poolState.keys, prewarmEditorPool, visibleKeys]
+  )
 
-  return Math.max(SEARCH_RESULT_FILE_EDITOR_POOL_MIN_SIZE, visibleCount)
+  useLayoutEffect(() => {
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+
+      setPoolState((current) => {
+        const next = nextSearchResultFileEditorPoolKeys(
+          current.keys,
+          visibleKeys,
+          prewarmEditorPool
+        )
+        const items = new Map(current.items)
+        const itemsChanged = syncSearchResultFileEditorPoolCache(
+          items,
+          next,
+          visibleItems
+        )
+        if (
+          !itemsChanged &&
+          searchResultFileEditorPoolKeysEqual(current.keys, next)
+        )
+          return current
+
+        return { items, keys: next }
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [prewarmEditorPool, visibleItems, visibleKeys])
+
+  return useMemo(
+    () =>
+      searchResultFileEditorPoolEntries(
+        poolKeys,
+        visibleItems,
+        poolState.items
+      ),
+    [poolKeys, poolState.items, visibleItems]
+  )
+}
+
+function searchResultFileEditorPoolEntries(
+  poolKeys: readonly SearchResultId[],
+  visibleItems: readonly SearchResultRenderedFileResultItem[],
+  cachedItems: ReadonlyMap<SearchResultId, SearchResultRenderedFileResultItem>
+): SearchResultFileEditorPoolEntry[] {
+  const visibleByKey = new Map<
+    SearchResultId,
+    SearchResultRenderedFileResultItem
+  >()
+  for (const item of visibleItems) {
+    visibleByKey.set(searchResultFileEditorPoolItemKey(item), item)
+  }
+
+  const entries: SearchResultFileEditorPoolEntry[] = []
+  for (const key of poolKeys) {
+    const visibleItem = visibleByKey.get(key)
+    const item = visibleItem ?? cachedItems.get(key)
+    if (!item) continue
+
+    entries.push({
+      item,
+      key,
+      visible: visibleItem !== undefined,
+    })
+  }
+
+  return entries
+}
+
+function searchResultFileEditorPoolItemKey(
+  item: SearchResultRenderedFileResultItem
+) {
+  return item.row.file.id
+}
+
+function syncSearchResultFileEditorPoolCache(
+  cache: Map<SearchResultId, SearchResultRenderedFileResultItem>,
+  poolKeys: readonly SearchResultId[],
+  visibleItems: readonly SearchResultRenderedFileResultItem[]
+) {
+  let changed = false
+  for (const item of visibleItems) {
+    const key = searchResultFileEditorPoolItemKey(item)
+    if (cache.get(key) === item) continue
+
+    changed = true
+    cache.set(key, item)
+  }
+
+  const poolKeySet = new Set(poolKeys)
+  for (const key of cache.keys()) {
+    if (poolKeySet.has(key)) continue
+
+    changed = true
+    cache.delete(key)
+  }
+
+  return changed
 }
 
 function isSearchResultRenderedFileResultItem(

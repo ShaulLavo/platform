@@ -397,18 +397,40 @@ describe("search buffer store", () => {
     })
 
     const streamingGroups = searchGroupsForSnapshot(store.getState().active)
-    expect(streamingGroups).toBe(previousGroups)
-    expect(searchResultItems(streamingGroups).map((item) => item.id)).toEqual(
-      previousIds
-    )
+    const streamingItems = searchResultItems(streamingGroups, {
+      pendingResultIds: store.getState().active?.pendingResultIds,
+    })
+    expect(streamingItems.map((item) => item.id)).toEqual(previousIds)
+    expect(
+      streamingItems
+        .filter((item) => item.type === "match")
+        .map((item) => item.pending)
+    ).toEqual([false, true])
+    expect(store.getState().active).toMatchObject({
+      resultsQuery: "co",
+      totalCount: 1,
+    })
 
     store.getState().appendEvent(secondRunId, {
       match: { ...secondMatch, endColumn: 3, preview: "const value" },
       type: "match",
     })
-    expect(searchGroupsForSnapshot(store.getState().active)).toBe(
-      previousGroups
+    const fullyConfirmedItems = searchResultItems(
+      searchGroupsForSnapshot(store.getState().active),
+      {
+        pendingResultIds: store.getState().active?.pendingResultIds,
+      }
     )
+    expect(fullyConfirmedItems.map((item) => item.id)).toEqual(previousIds)
+    expect(
+      fullyConfirmedItems
+        .filter((item) => item.type === "match")
+        .map((item) => item.pending)
+    ).toEqual([false, false])
+    expect(store.getState().active).toMatchObject({
+      pendingResultIds: [],
+      totalCount: 2,
+    })
 
     store.getState().appendEvent(secondRunId, doneEvent("co", 2))
     const readyGroups = searchGroupsForSnapshot(store.getState().active)
@@ -416,6 +438,48 @@ describe("search buffer store", () => {
     expect(searchResultItems(readyGroups).map((item) => item.id)).toEqual(
       previousIds
     )
+  })
+
+  it("prunes unconfirmed pending rows when related streaming finishes", () => {
+    const store = createSearchBufferStore()
+    const firstRunId = store.getState().startSearch(searchQuery("c"))
+    const firstMatch = contentMatch("repo/src/app.ts", 1, 1)
+    const secondMatch = contentMatch("repo/src/app.ts", 2, 1)
+    store
+      .getState()
+      .appendEvents(firstRunId, [
+        { match: firstMatch, type: "match" },
+        { match: secondMatch, type: "match" },
+        doneEvent("c", 2),
+      ])
+
+    const previousGroups = searchGroupsForSnapshot(store.getState().active)
+    const previousMatchIds = searchResultItems(previousGroups)
+      .filter((item) => item.type === "match")
+      .map((item) => item.id)
+    const secondRunId = store.getState().startSearch(searchQuery("co"))
+    store.getState().appendEvent(secondRunId, {
+      match: { ...firstMatch, endColumn: 3, preview: "const value" },
+      type: "match",
+    })
+
+    expect(store.getState().active?.pendingResultIds).toContain(
+      previousMatchIds[1]
+    )
+
+    store.getState().appendEvent(secondRunId, doneEvent("co", 1))
+    const readyMatchIds = searchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    )
+      .filter((item) => item.type === "match")
+      .map((item) => item.id)
+
+    expect(readyMatchIds).toEqual([previousMatchIds[0]])
+    expect(store.getState().active).toMatchObject({
+      pendingResultIds: [],
+      status: "ready",
+      totalCount: 1,
+    })
   })
 
   it("appends batched events and can collapse file groups", () => {

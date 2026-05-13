@@ -90,6 +90,27 @@ describe("search result view model", () => {
     ).toBe("needle")
   })
 
+  it("flows pending result state into file blocks, excerpts, and document lines", () => {
+    const match = contentMatch({
+      column: 14,
+      endColumn: 20,
+      line: 12,
+      preview: "export const needle = true",
+    })
+    const group = fileGroup([match])
+    const matchId = expandedSearchResultItems([group]).find(
+      (item) => item.type === "match"
+    )?.id
+    const blocks = searchResultFileBlocks([group], "needle", {
+      pendingResultIds: matchId ? [matchId] : [],
+    })
+    const document = blocks[0] ? searchResultFileDocument(blocks[0]) : null
+
+    expect(blocks[0]?.pending).toBe(true)
+    expect(blocks[0]?.excerpts[0]?.pending).toBe(true)
+    expect(document?.lines[0]?.pending).toBe(true)
+  })
+
   it("keeps row and excerpt ids stable when the query changes at the same location", () => {
     const firstMatch = contentMatch({
       column: 1,

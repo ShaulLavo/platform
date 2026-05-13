@@ -25,6 +25,7 @@ export function SearchMatchRow({
   className,
   canReplace,
   match,
+  pending,
   previewMaxLength,
   replaceQuery,
   replaceText,
@@ -36,6 +37,7 @@ export function SearchMatchRow({
   className?: string
   canReplace?: boolean
   match: WorkspaceSearchMatch
+  pending?: boolean
   previewMaxLength?: number
   replaceQuery: WorkspaceSearchQuery | null
   replaceText: string
@@ -66,6 +68,7 @@ export function SearchMatchRow({
       className={cn(
         "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs",
         active && "bg-muted/60",
+        pending && "opacity-55",
         className
       )}
     >
@@ -113,6 +116,7 @@ export function SearchNameMatchRow({
   active,
   className,
   match,
+  pending,
   previewMaxLength,
   query,
   onOpenMatch,
@@ -120,6 +124,7 @@ export function SearchNameMatchRow({
   active?: boolean
   className?: string
   match: WorkspaceSearchMatch
+  pending?: boolean
   previewMaxLength?: number
   query: string
   onOpenMatch: (match: WorkspaceSearchMatch) => void
@@ -138,6 +143,7 @@ export function SearchNameMatchRow({
       className={cn(
         "grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
         active && "bg-muted/60",
+        pending && "opacity-55",
         !active && "hover:bg-muted/55",
         className
       )}

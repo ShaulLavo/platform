@@ -72,12 +72,14 @@ export type SearchBufferSnapshot = {
   resultsQuery: string
   resultsSearchQuery: WorkspaceSearchQuery | null
   rootPath: string
+  pendingResultIds: readonly SearchResultId[]
   runningMatches: readonly WorkspaceSearchMatch[]
   runningQuery: string | null
   runningSearchQuery: WorkspaceSearchQuery | null
   runId: number
   searchRevision: number
   status: SearchBufferStatus
+  streamBaseMatches: readonly WorkspaceSearchMatch[]
   totalCount: number
   truncated: boolean
   wholeWord: boolean
@@ -255,10 +257,12 @@ function optionSearchBuffer(
     ...next,
     replaceMessage: null,
     replaceStatus: "idle" as const,
+    pendingResultIds: [],
     runId: base.runId + 1,
     runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
+    streamBaseMatches: [],
     status: "loading" as const,
   }
 }
@@ -281,11 +285,13 @@ function querySearchBuffer(
     queryHistoryDraft: null,
     replaceMessage: null,
     replaceStatus: "idle" as const,
+    pendingResultIds: queryChanged ? [] : base.pendingResultIds,
     runId: queryChanged ? base.runId + 1 : base.runId,
     runningMatches: queryChanged ? [] : base.runningMatches,
     runningQuery: queryChanged ? null : base.runningQuery,
     runningSearchQuery: queryChanged ? null : base.runningSearchQuery,
     status: queryChanged ? "loading" : base.status,
+    streamBaseMatches: queryChanged ? [] : base.streamBaseMatches,
   }
 }
 
@@ -301,6 +307,7 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     queryHistoryDraft: null,
     replaceMessage: null,
     replaceStatus: "idle" as const,
+    pendingResultIds: [],
     resultsQuery: "",
     resultsSearchQuery: null,
     runningMatches: [],
@@ -308,6 +315,7 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     runningSearchQuery: null,
     runId: current.runId + 1,
     status: "idle" as const,
+    streamBaseMatches: [],
     totalCount: 0,
     truncated: false,
   }
@@ -366,12 +374,14 @@ function appendSearchEvent(
         collapsedPaths,
         groups: searchGroupsWithCollapsedPaths(groups, collapsedPaths),
         matches,
+        pendingResultIds: [],
         resultsQuery: query,
         resultsSearchQuery: searchQuery,
         runningMatches: [],
         runningQuery: null,
         runningSearchQuery: null,
         status: "ready",
+        streamBaseMatches: [],
         totalCount: event.count,
         truncated: event.truncated,
       }),
@@ -395,12 +405,11 @@ function appendSearchMatches(
     active.resultsSearchQuery,
     active.runningSearchQuery
   )
-  const preservingPreviousResults = shouldPreservePreviousResults(active)
   const runningMatches = active.runningMatches.concat(incomingMatches)
+  const reconciliation = reconcileSearchStream(active, runningMatches)
   const matches = nextSearchMatches({
-    active,
     appendingToResults,
-    preservingPreviousResults,
+    reconciliation,
     runningMatches,
   })
   const groups = nextSearchGroups({
@@ -408,24 +417,19 @@ function appendSearchMatches(
     appendingToResults,
     incomingMatches,
     matches,
-    preservingPreviousResults,
+    reconciliation,
   })
   const runningSearchQuery = active.runningSearchQuery
   const next = {
     ...active,
     groups,
     matches,
-    resultsQuery: preservingPreviousResults
-      ? active.resultsQuery
-      : (active.runningQuery ?? active.resultsQuery),
-    resultsSearchQuery: preservingPreviousResults
-      ? active.resultsSearchQuery
-      : (runningSearchQuery ?? active.resultsSearchQuery),
+    pendingResultIds: reconciliation?.pendingResultIds ?? [],
+    resultsQuery: active.runningQuery ?? active.resultsQuery,
+    resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
     runningMatches,
     status: "loading" as const,
-    totalCount: preservingPreviousResults
-      ? active.totalCount
-      : contentSearchMatchCount(runningMatches),
+    totalCount: contentSearchMatchCount(runningMatches),
     truncated: false,
   }
 
@@ -449,10 +453,12 @@ function failSearchBuffer(
     active: {
       ...active,
       error,
+      pendingResultIds: [],
       runningMatches: [],
       runningQuery: null,
       runningSearchQuery: null,
       status: "error",
+      streamBaseMatches: [],
     },
   }
 }
@@ -529,12 +535,14 @@ function refreshSearchBuffer(
   return {
     ...snapshot,
     error: null,
+    pendingResultIds: [],
     runId: snapshot.runId + 1,
     runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
     searchRevision: snapshot.searchRevision + 1,
     status: "loading" as const,
+    streamBaseMatches: [],
   }
 }
 
@@ -569,6 +577,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     replaceStatus: "idle",
     replaceText: "",
     replaceVisible: false,
+    pendingResultIds: [],
     resultsQuery: "",
     resultsSearchQuery: null,
     rootPath,
@@ -578,6 +587,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     runId: 0,
     searchRevision: 0,
     status: "idle",
+    streamBaseMatches: [],
     totalCount: 0,
     truncated: false,
     wholeWord: false,
@@ -591,6 +601,7 @@ function loadingSearchBuffer(
 ): SearchBufferSnapshot {
   const previous = current?.rootPath === query.path ? current : null
   const historyNavigation = activeSearchHistoryNavigation(previous, query.query)
+  const streamBaseMatches = streamBaseMatchesForSearch(previous, query)
 
   return {
     activeResultId: previous?.activeResultId ?? null,
@@ -619,6 +630,11 @@ function loadingSearchBuffer(
     replaceStatus: previous?.replaceStatus ?? "idle",
     replaceText: previous?.replaceText ?? "",
     replaceVisible: previous?.replaceVisible ?? false,
+    pendingResultIds: pendingResultIdsForMatches(
+      streamBaseMatches,
+      query.path,
+      previous?.collapsedPaths ?? []
+    ),
     resultsQuery: previous?.resultsQuery ?? "",
     resultsSearchQuery: previous?.resultsSearchQuery ?? null,
     rootPath: query.path,
@@ -628,7 +644,8 @@ function loadingSearchBuffer(
     runId,
     searchRevision: previous?.searchRevision ?? 0,
     status: "loading",
-    totalCount: previous?.totalCount ?? 0,
+    streamBaseMatches,
+    totalCount: streamBaseMatches.length > 0 ? 0 : (previous?.totalCount ?? 0),
     truncated: previous?.truncated ?? false,
     wholeWord: query.wholeWord ?? previous?.wholeWord ?? false,
   }
@@ -645,17 +662,15 @@ function globTextForQuery(globs: readonly string[] | undefined) {
 }
 
 function nextSearchMatches({
-  active,
   appendingToResults,
-  preservingPreviousResults,
+  reconciliation,
   runningMatches,
 }: {
-  active: SearchBufferSnapshot
   appendingToResults: boolean
-  preservingPreviousResults: boolean
+  reconciliation: SearchStreamReconciliation | null
   runningMatches: readonly WorkspaceSearchMatch[]
 }) {
-  if (preservingPreviousResults) return active.matches
+  if (reconciliation) return reconciliation.matches
   if (appendingToResults) return runningMatches
 
   return runningMatches.slice()
@@ -666,15 +681,17 @@ function nextSearchGroups({
   appendingToResults,
   incomingMatches,
   matches,
-  preservingPreviousResults,
+  reconciliation,
 }: {
   active: SearchBufferSnapshot
   appendingToResults: boolean
   incomingMatches: readonly WorkspaceSearchMatch[]
   matches: readonly WorkspaceSearchMatch[]
-  preservingPreviousResults: boolean
+  reconciliation: SearchStreamReconciliation | null
 }) {
-  if (preservingPreviousResults) return active.groups
+  if (reconciliation) {
+    return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
+  }
   if (appendingToResults) {
     return appendSearchGroups(
       active.groups,
@@ -710,22 +727,101 @@ function doneGroups(
   return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
 }
 
-function shouldPreservePreviousResults(active: SearchBufferSnapshot) {
-  if (active.matches.length === 0) return false
-  if (!active.resultsSearchQuery) return false
-  if (!active.runningSearchQuery) return false
-  if (
-    !sameWorkspaceSearchScope(
-      active.resultsSearchQuery,
-      active.runningSearchQuery
-    )
-  )
-    return false
+type SearchStreamReconciliation = {
+  matches: readonly WorkspaceSearchMatch[]
+  pendingResultIds: readonly SearchResultId[]
+}
 
-  return relatedSearchText(
-    active.resultsSearchQuery.query,
-    active.runningSearchQuery.query
+function reconcileSearchStream(
+  active: SearchBufferSnapshot,
+  runningMatches: readonly WorkspaceSearchMatch[]
+): SearchStreamReconciliation | null {
+  if (!shouldReconcileSearchStream(active)) return null
+
+  const runningItems = resultMatchItemsForMatches(
+    runningMatches,
+    active.rootPath,
+    active.collapsedPaths
   )
+  const runningById = new Map(runningItems.map((item) => [item.id, item.match]))
+  const usedRunningIds = new Set<SearchResultId>()
+  const pendingResultIds: SearchResultId[] = []
+  const matches: WorkspaceSearchMatch[] = []
+
+  for (const baseItem of resultMatchItemsForMatches(
+    active.streamBaseMatches,
+    active.rootPath,
+    active.collapsedPaths
+  )) {
+    const runningMatch = runningById.get(baseItem.id)
+    if (runningMatch) {
+      matches.push(runningMatch)
+      usedRunningIds.add(baseItem.id)
+      continue
+    }
+
+    matches.push(baseItem.match)
+    pendingResultIds.push(baseItem.id)
+  }
+
+  for (const runningItem of runningItems) {
+    if (usedRunningIds.has(runningItem.id)) continue
+
+    matches.push(runningItem.match)
+  }
+
+  return { matches, pendingResultIds }
+}
+
+function shouldReconcileSearchStream(active: SearchBufferSnapshot) {
+  if (active.streamBaseMatches.length === 0) return false
+
+  return active.runningSearchQuery !== null
+}
+
+function streamBaseMatchesForSearch(
+  previous: SearchBufferSnapshot | null,
+  query: WorkspaceSearchQuery
+) {
+  if (!previous) return []
+  if (!previous.resultsSearchQuery) return []
+  if (previous.matches.length === 0) return []
+  if (!sameWorkspaceSearchScope(previous.resultsSearchQuery, query)) return []
+  if (!relatedSearchText(previous.resultsSearchQuery.query, query.query))
+    return []
+
+  return previous.matches
+}
+
+function pendingResultIdsForMatches(
+  matches: readonly WorkspaceSearchMatch[],
+  rootPath: string,
+  collapsedPaths: readonly string[]
+) {
+  if (matches.length === 0) return []
+
+  return resultMatchItemsForMatches(matches, rootPath, collapsedPaths).map(
+    (item) => item.id
+  )
+}
+
+function resultMatchItemsForMatches(
+  matches: readonly WorkspaceSearchMatch[],
+  rootPath: string,
+  collapsedPaths: readonly string[]
+) {
+  return expandedSearchResultItems(
+    groupSearchMatches(matches, rootPath, collapsedPaths)
+  ).filter(isSearchResultMatchOrNameItem)
+}
+
+function isSearchResultMatchOrNameItem(
+  item: ReturnType<typeof expandedSearchResultItems>[number]
+): item is Extract<
+  ReturnType<typeof expandedSearchResultItems>[number],
+  { type: "match" | "name" }
+> {
+  return item.type === "match" || item.type === "name"
 }
 
 function searchOptionsChanged(
