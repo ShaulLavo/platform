@@ -10,6 +10,7 @@ import { createStore, type StoreApi } from "zustand/vanilla"
 
 import { basename, toTreePath } from "@/lib/path-formatters"
 import { searchBufferDocumentId } from "@/features/search/search-buffer-document"
+import { compareSearchPaths } from "@/features/search/search-sort"
 import {
   expandedSearchResultItems,
   searchResultContentItems,
@@ -1153,7 +1154,7 @@ function groupSearchMatches(
   }
 
   return [...groups.values()].sort((a, b) =>
-    a.pathLabel.localeCompare(b.pathLabel)
+    compareSearchPaths(a.pathLabel, b.pathLabel)
   )
 }
 

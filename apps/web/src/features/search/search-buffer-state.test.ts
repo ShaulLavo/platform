@@ -60,6 +60,27 @@ describe("search buffer store", () => {
     ])
   })
 
+  it("sorts file groups with VS Code-style path and filename ordering", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+
+    store.getState().appendEvents(runId, [
+      { match: contentMatch("repo/src/file-10.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/src/file-2.ts", 1, 1), type: "match" },
+      { match: contentMatch("repo/docs/file-1.ts", 1, 1), type: "match" },
+    ])
+
+    expect(
+      searchGroupsForSnapshot(store.getState().active).map(
+        (group) => group.path
+      )
+    ).toEqual([
+      "repo/docs/file-1.ts",
+      "repo/src/file-2.ts",
+      "repo/src/file-10.ts",
+    ])
+  })
+
   it("ignores stale events from previous runs", () => {
     const store = createSearchBufferStore()
     const staleRunId = store.getState().startSearch({

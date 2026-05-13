@@ -11,6 +11,7 @@ import {
 
 import { fsServerUrl } from "@/lib/fs-client"
 import { parseSseStream, type ParsedSseEvent } from "@/lib/sse"
+import { compareSearchPaths } from "@/features/search/search-sort"
 
 const SEARCH_PREVIEW_CONTEXT_CHARS = 80
 const SEARCH_PREVIEW_MAX_CHARS = 240
@@ -50,7 +51,9 @@ export class OpenBufferSearchProvider implements SearchProvider {
   private documents: readonly OpenBufferSearchDocument[]
 
   constructor(documents: readonly OpenBufferSearchDocument[]) {
-    this.documents = [...documents].sort((a, b) => a.path.localeCompare(b.path))
+    this.documents = [...documents].sort((a, b) =>
+      compareSearchPaths(a.path, b.path)
+    )
   }
 
   async *search(

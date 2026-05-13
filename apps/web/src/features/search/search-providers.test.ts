@@ -185,11 +185,11 @@ describe("open buffer search provider", () => {
   it("emits dirty editor matches in stable path order", async () => {
     const provider = new OpenBufferSearchProvider([
       {
-        path: "repo/src/z.ts",
+        path: "repo/src/file-10.ts",
         text: "needle",
       },
       {
-        path: "repo/src/a.ts",
+        path: "repo/src/file-2.ts",
         text: "needle",
       },
     ])
@@ -197,8 +197,8 @@ describe("open buffer search provider", () => {
     const matches = await contentEvents(provider.search(QUERY))
 
     expect(matches.map((match) => match.path)).toEqual([
-      "repo/src/a.ts",
-      "repo/src/z.ts",
+      "repo/src/file-2.ts",
+      "repo/src/file-10.ts",
     ])
   })
 })

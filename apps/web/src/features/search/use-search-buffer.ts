@@ -27,6 +27,7 @@ import {
   type OpenBufferSearchDocument,
   type SearchProvider,
 } from "@/features/search/search-providers"
+import { compareSearchPaths } from "@/features/search/search-sort"
 
 const SEARCH_DEBOUNCE_MS = 180
 const DIRTY_BUFFER_DEBOUNCE_MS = 220
@@ -526,7 +527,7 @@ function dirtySearchDocuments(
     })
   }
 
-  return dirtyDocuments.sort((a, b) => a.path.localeCompare(b.path))
+  return dirtyDocuments.sort((a, b) => compareSearchPaths(a.path, b.path))
 }
 
 function dirtySearchContentKey(
@@ -538,7 +539,7 @@ function dirtySearchContentKey(
   void revision
 
   return [...dirtySearchDocuments(documents, dirtyFilePaths, rootPath)]
-    .sort((a, b) => a.path.localeCompare(b.path))
+    .sort((a, b) => compareSearchPaths(a.path, b.path))
     .map((document) => `${document.path}\0${document.text}`)
     .join("\0")
 }
