@@ -53,6 +53,7 @@ export type SearchBufferSnapshot = {
   error: string | null
   excludeGlobText: string
   filtersVisible: boolean
+  groups: readonly WorkspaceSearchFileGroup[]
   id: string
   includeGlobText: string
   matchMode: WorkspaceSearchMatchMode
@@ -116,6 +117,8 @@ export type SearchBufferStore = SearchBufferStoreState &
   SearchBufferStoreActions
 
 export type SearchBufferStoreApi = StoreApi<SearchBufferStore>
+
+const EMPTY_SEARCH_GROUPS: readonly WorkspaceSearchFileGroup[] = []
 
 export const SearchBufferStateContext =
   createContext<SearchBufferStoreApi | null>(null)
@@ -288,6 +291,7 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     ...current,
     activeResultId: null,
     error: null,
+    groups: EMPTY_SEARCH_GROUPS,
     matches: [],
     query: "",
     queryHistoryCursor: null,
@@ -306,18 +310,11 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
 }
 
 export function searchGroupsForSnapshot(
-  snapshot: Pick<
-    SearchBufferSnapshot,
-    "collapsedPaths" | "matches" | "rootPath"
-  > | null
+  snapshot: Pick<SearchBufferSnapshot, "groups"> | null
 ) {
-  if (!snapshot) return []
+  if (!snapshot) return EMPTY_SEARCH_GROUPS
 
-  return groupSearchMatches(
-    snapshot.matches,
-    snapshot.rootPath,
-    snapshot.collapsedPaths
-  )
+  return snapshot.groups
 }
 
 function appendSearchEvents(
@@ -357,14 +354,13 @@ function appendSearchEvent(
     const query = active.runningQuery ?? event.query
     const searchQuery = active.runningSearchQuery
     const matches = doneMatches(active, searchQuery)
+    const groups = doneGroups(active, matches)
+    const collapsedPaths = prunedCollapsedPaths(active.collapsedPaths, groups)
     return {
       active: resolveActiveSearchResult({
         ...active,
-        collapsedPaths: prunedCollapsedPaths(
-          active.collapsedPaths,
-          matches,
-          active.rootPath
-        ),
+        collapsedPaths,
+        groups: searchGroupsWithCollapsedPaths(groups, collapsedPaths),
         matches,
         resultsQuery: query,
         resultsSearchQuery: searchQuery,
@@ -395,9 +391,11 @@ function appendSearchMatches(
     active.runningSearchQuery
   )
   const matches = nextSearchMatches(active, incomingMatches, appendingToResults)
+  const groups = nextSearchGroups(active, incomingMatches, appendingToResults)
   const runningSearchQuery = active.runningSearchQuery
   const next = {
     ...active,
+    groups,
     matches,
     resultsQuery: active.runningQuery ?? active.resultsQuery,
     resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
@@ -532,6 +530,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     error: null,
     excludeGlobText: "",
     filtersVisible: false,
+    groups: EMPTY_SEARCH_GROUPS,
     id: searchBufferDocumentId(rootPath),
     includeGlobText: "",
     matchMode: "literal",
@@ -577,6 +576,7 @@ function loadingSearchBuffer(
     excludeGlobText:
       previous?.excludeGlobText ?? globTextForQuery(query.excludeGlobs),
     filtersVisible: previous?.filtersVisible ?? hasWorkspaceSearchGlobs(query),
+    groups: previous?.groups ?? EMPTY_SEARCH_GROUPS,
     id: searchBufferDocumentId(query.path),
     includeGlobText:
       previous?.includeGlobText ?? globTextForQuery(query.includeGlobs),
@@ -631,6 +631,23 @@ function nextSearchMatches(
   return matches.slice()
 }
 
+function nextSearchGroups(
+  active: SearchBufferSnapshot,
+  matches: readonly WorkspaceSearchMatch[],
+  appendingToResults: boolean
+) {
+  if (appendingToResults) {
+    return appendSearchGroups(
+      active.groups,
+      matches,
+      active.rootPath,
+      active.collapsedPaths
+    )
+  }
+
+  return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
+}
+
 function nextContentSearchMatchCount(
   active: SearchBufferSnapshot,
   matches: readonly WorkspaceSearchMatch[],
@@ -651,6 +668,15 @@ function doneMatches(
   }
 
   return []
+}
+
+function doneGroups(
+  active: SearchBufferSnapshot,
+  matches: readonly WorkspaceSearchMatch[]
+) {
+  if (matches === active.matches) return active.groups
+
+  return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
 }
 
 function searchOptionsChanged(
@@ -709,10 +735,12 @@ function toggleSearchGroup(
   } else {
     collapsedPaths.add(path)
   }
+  const collapsedPathList = [...collapsedPaths]
 
   return resolveActiveSearchResult({
     ...snapshot,
-    collapsedPaths: [...collapsedPaths],
+    collapsedPaths: collapsedPathList,
+    groups: searchGroupsWithCollapsedPaths(snapshot.groups, collapsedPathList),
   })
 }
 
@@ -962,17 +990,14 @@ function nextSearchHistory(
 function collapseSearchGroups(snapshot: SearchBufferSnapshot | null) {
   if (!snapshot) return null
 
-  const collapsedPaths = groupSearchMatches(
-    snapshot.matches,
-    snapshot.rootPath,
-    snapshot.collapsedPaths
-  )
+  const collapsedPaths = snapshot.groups
     .filter((group) => group.count > 0)
     .map((group) => group.path)
 
   return resolveActiveSearchResult({
     ...snapshot,
     collapsedPaths,
+    groups: searchGroupsWithCollapsedPaths(snapshot.groups, collapsedPaths),
   })
 }
 
@@ -982,6 +1007,7 @@ function expandSearchGroups(snapshot: SearchBufferSnapshot | null) {
   return resolveActiveSearchResult({
     ...snapshot,
     collapsedPaths: [],
+    groups: searchGroupsWithCollapsedPaths(snapshot.groups, []),
   })
 }
 
@@ -991,11 +1017,7 @@ function selectSearchResult(
 ) {
   if (!snapshot) return null
 
-  const groups = groupSearchMatches(
-    snapshot.matches,
-    snapshot.rootPath,
-    snapshot.collapsedPaths
-  )
+  const groups = snapshot.groups
   const selected = searchResultItemById(expandedSearchResultItems(groups), id)
   if (!selected) return resolveActiveSearchResult(snapshot)
 
@@ -1008,6 +1030,7 @@ function selectSearchResult(
     ...snapshot,
     activeResultId: selected.id,
     collapsedPaths,
+    groups: searchGroupsWithCollapsedPaths(groups, collapsedPaths),
   })
 }
 
@@ -1017,11 +1040,7 @@ function selectSearchMatch(
 ) {
   if (!snapshot) return null
 
-  const groups = groupSearchMatches(
-    snapshot.matches,
-    snapshot.rootPath,
-    snapshot.collapsedPaths
-  )
+  const groups = snapshot.groups
   const matches = searchResultContentItems(expandedSearchResultItems(groups))
   if (matches.length === 0) return resolveActiveSearchResult(snapshot)
 
@@ -1030,20 +1049,23 @@ function selectSearchMatch(
   const selected = matches[nextIndex]
   if (!selected) return resolveActiveSearchResult(snapshot)
 
+  const collapsedPaths = withoutPath(
+    snapshot.collapsedPaths,
+    selected.groupPath
+  )
   return resolveActiveSearchResult({
     ...snapshot,
     activeResultId: selected.id,
-    collapsedPaths: withoutPath(snapshot.collapsedPaths, selected.groupPath),
+    collapsedPaths,
+    groups: searchGroupsWithCollapsedPaths(groups, collapsedPaths),
   })
 }
 
 function resolveActiveSearchResult(snapshot: SearchBufferSnapshot) {
-  const groups = groupSearchMatches(
-    snapshot.matches,
-    snapshot.rootPath,
-    snapshot.collapsedPaths
+  const activeResultId = visibleSearchResultId(
+    snapshot.groups,
+    snapshot.activeResultId
   )
-  const activeResultId = visibleSearchResultId(groups, snapshot.activeResultId)
   if (activeResultId === snapshot.activeResultId) return snapshot
 
   return {
@@ -1106,12 +1128,9 @@ function withoutPath(paths: readonly string[], path: string) {
 
 function prunedCollapsedPaths(
   collapsedPaths: readonly string[],
-  matches: readonly WorkspaceSearchMatch[],
-  rootPath: string
+  groups: readonly WorkspaceSearchFileGroup[]
 ) {
-  const presentPaths = new Set(
-    groupSearchMatches(matches, rootPath, []).map((group) => group.path)
-  )
+  const presentPaths = new Set(groups.map((group) => group.path))
 
   return collapsedPaths.filter((path) => presentPaths.has(path))
 }
@@ -1139,38 +1158,129 @@ function groupSearchMatches(
   rootPath: string,
   collapsedPaths: readonly string[]
 ) {
-  const groups = new Map<string, WorkspaceSearchFileGroup>()
-  const collapsed = new Set(collapsedPaths)
+  if (matches.length === 0) return EMPTY_SEARCH_GROUPS
+
+  const groupMatches = new Map<string, WorkspaceSearchMatch[]>()
 
   for (const match of matches) {
-    const group = groups.get(match.path)
-    if (group) {
-      group.count += contentMatchCount(match)
-      group.matches.push(match)
+    const pathMatches = groupMatches.get(match.path)
+    if (pathMatches) {
+      pathMatches.push(match)
       continue
     }
 
-    groups.set(match.path, searchFileGroup(match, rootPath, collapsed))
+    groupMatches.set(match.path, [match])
   }
 
-  return [...groups.values()].sort((a, b) =>
-    compareSearchPaths(a.pathLabel, b.pathLabel)
+  const collapsed = new Set(collapsedPaths)
+  return sortedSearchGroups(
+    [...groupMatches.values()].map((pathMatches) =>
+      searchFileGroup(pathMatches, rootPath, collapsed)
+    )
   )
 }
 
 function searchFileGroup(
-  match: WorkspaceSearchMatch,
+  matches: readonly WorkspaceSearchMatch[],
   rootPath: string,
   collapsedPaths: ReadonlySet<string>
 ): WorkspaceSearchFileGroup {
-  return {
-    collapsed: collapsedPaths.has(match.path),
-    count: contentMatchCount(match),
-    matches: [match],
-    name: basename(match.path),
-    path: match.path,
-    pathLabel: toTreePath(match.path, rootPath),
+  const firstMatch = matches[0]
+  if (!firstMatch) {
+    throw new Error("Cannot create a search file group without matches.")
   }
+
+  return {
+    collapsed: collapsedPaths.has(firstMatch.path),
+    count: contentSearchMatchCount(matches),
+    matches: matches.slice(),
+    name: basename(firstMatch.path),
+    path: firstMatch.path,
+    pathLabel: toTreePath(firstMatch.path, rootPath),
+  }
+}
+
+function appendSearchGroups(
+  groups: readonly WorkspaceSearchFileGroup[],
+  matches: readonly WorkspaceSearchMatch[],
+  rootPath: string,
+  collapsedPaths: readonly string[]
+) {
+  if (matches.length === 0) return groups
+  if (groups.length === 0) {
+    return groupSearchMatches(matches, rootPath, collapsedPaths)
+  }
+
+  const groupsByPath = new Map(groups.map((group) => [group.path, group]))
+  const matchesByPath = searchMatchesByPath(matches)
+  const collapsed = new Set(collapsedPaths)
+
+  for (const [path, pathMatches] of matchesByPath) {
+    const group = groupsByPath.get(path)
+    const nextGroup = group
+      ? appendedSearchFileGroup(group, pathMatches, collapsed)
+      : searchFileGroup(pathMatches, rootPath, collapsed)
+    groupsByPath.set(path, nextGroup)
+  }
+
+  return sortedSearchGroups([...groupsByPath.values()])
+}
+
+function searchMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
+  const matchesByPath = new Map<string, WorkspaceSearchMatch[]>()
+
+  for (const match of matches) {
+    const pathMatches = matchesByPath.get(match.path)
+    if (pathMatches) {
+      pathMatches.push(match)
+      continue
+    }
+
+    matchesByPath.set(match.path, [match])
+  }
+
+  return matchesByPath
+}
+
+function appendedSearchFileGroup(
+  group: WorkspaceSearchFileGroup,
+  matches: readonly WorkspaceSearchMatch[],
+  collapsedPaths: ReadonlySet<string>
+): WorkspaceSearchFileGroup {
+  return {
+    ...group,
+    collapsed: collapsedPaths.has(group.path),
+    count: group.count + contentSearchMatchCount(matches),
+    matches: group.matches.concat(matches),
+  }
+}
+
+function searchGroupsWithCollapsedPaths(
+  groups: readonly WorkspaceSearchFileGroup[],
+  collapsedPaths: readonly string[]
+) {
+  if (groups.length === 0) return groups
+
+  const collapsed = new Set(collapsedPaths)
+  let changed = false
+  const nextGroups = groups.map((group) => {
+    const nextCollapsed = collapsed.has(group.path)
+    if (nextCollapsed === group.collapsed) return group
+
+    changed = true
+    return {
+      ...group,
+      collapsed: nextCollapsed,
+    }
+  })
+
+  if (!changed) return groups
+
+  return nextGroups
+}
+
+function sortedSearchGroups(groups: WorkspaceSearchFileGroup[]) {
+  return groups.sort((a, b) => compareSearchPaths(a.pathLabel, b.pathLabel))
 }
 
 function contentMatchCount(match: WorkspaceSearchMatch) {

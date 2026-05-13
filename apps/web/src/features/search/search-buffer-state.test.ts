@@ -765,6 +765,54 @@ describe("search buffer store", () => {
     )
   })
 
+  it("keeps unchanged file groups referentially stable while batches append", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    const firstMatch = contentMatch("repo/src/a.ts", 1, 1)
+    const secondMatch = contentMatch("repo/src/b.ts", 1, 1)
+    store.getState().appendEvents(runId, [
+      { match: firstMatch, type: "match" },
+      { match: secondMatch, type: "match" },
+    ])
+
+    const firstGroups = searchGroupsForSnapshot(store.getState().active)
+    const firstGroup = groupByPath(firstGroups, "repo/src/a.ts")
+    const secondGroup = groupByPath(firstGroups, "repo/src/b.ts")
+    const secondGroupFirstMatch = secondGroup?.matches[0]
+
+    store.getState().appendEvent(runId, {
+      match: contentMatch("repo/src/b.ts", 2, 1),
+      type: "match",
+    })
+
+    const nextGroups = searchGroupsForSnapshot(store.getState().active)
+    expect(groupByPath(nextGroups, "repo/src/a.ts")).toBe(firstGroup)
+    expect(groupByPath(nextGroups, "repo/src/b.ts")).not.toBe(secondGroup)
+    expect(groupByPath(nextGroups, "repo/src/b.ts")?.matches[0]).toBe(
+      secondGroupFirstMatch
+    )
+  })
+
+  it("returns stored group references instead of rebuilding derived groups", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvent(runId, {
+      match: contentMatch("repo/src/app.ts", 1, 1),
+      type: "match",
+    })
+
+    const groups = searchGroupsForSnapshot(store.getState().active)
+    const items = searchResultItems(groups)
+    const firstItem = items[0]
+
+    expect(searchGroupsForSnapshot(store.getState().active)).toBe(groups)
+    expect(firstItem?.type).toBe("group")
+    if (firstItem?.type !== "group") {
+      throw new Error("Expected a grouped content search result.")
+    }
+    expect(firstItem.group).toBe(groups[0])
+  })
+
   it("collapses and expands all content result groups", () => {
     const store = createSearchBufferStore()
     const runId = store.getState().startSearch(searchQuery("needle"))
@@ -1000,4 +1048,11 @@ function activeMatchPosition(snapshot: SearchBufferSnapshot | null) {
     expandedSearchResultItems(searchGroupsForSnapshot(snapshot)),
     snapshot?.activeResultId ?? null
   )
+}
+
+function groupByPath(
+  groups: ReturnType<typeof searchGroupsForSnapshot>,
+  path: string
+) {
+  return groups.find((group) => group.path === path)
 }

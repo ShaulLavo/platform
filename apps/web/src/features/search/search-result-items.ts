@@ -49,9 +49,7 @@ function appendGroupItems(
   group: WorkspaceSearchFileGroup
 ) {
   const groupId = searchResultGroupId(group.path)
-  const contentMatches = group.matches.filter(
-    (match) => match.kind === "content"
-  )
+  const contentMatches = contentSearchMatches(group)
   if (contentMatches.length === 0) {
     const match = group.matches[0]
     if (match) {
@@ -92,6 +90,12 @@ function appendGroupItems(
       type: "match",
     })
   })
+}
+
+function contentSearchMatches(group: WorkspaceSearchFileGroup) {
+  if (group.count === group.matches.length) return group.matches
+
+  return group.matches.filter((match) => match.kind === "content")
 }
 
 export function expandedSearchResultItems(
@@ -210,6 +214,10 @@ function contentGroup(
   group: WorkspaceSearchFileGroup,
   matches: WorkspaceSearchMatch[]
 ) {
+  if (matches === group.matches && matches.length === group.count) {
+    return group
+  }
+
   return {
     ...group,
     count: matches.length,
@@ -218,6 +226,8 @@ function contentGroup(
 }
 
 function expandedGroup(group: WorkspaceSearchFileGroup) {
+  if (!group.collapsed) return group
+
   return {
     ...group,
     collapsed: false,

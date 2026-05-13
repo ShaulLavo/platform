@@ -324,8 +324,9 @@ function rgArgs(context: FindContext) {
   if (context.options.maxDepth !== undefined)
     args.push("--max-depth", String(context.options.maxDepth))
   for (const ignored of defaultIgnoredNames) {
-    args.push("--glob", `!${ignored}/**`)
-    args.push("--glob", `!**/${ignored}/**`)
+    for (const glob of ignoredDirectoryGlobArgs(ignored)) {
+      args.push("--glob", glob)
+    }
   }
   for (const glob of includeGlobArgs(context.options.includeGlobs)) {
     args.push("--glob", glob)
@@ -364,6 +365,10 @@ function globArgs(glob: string, prefix: string) {
   if (glob.includes("/")) return [`${prefix}${glob}`, `${prefix}**/${glob}`]
 
   return [`${prefix}${glob}`, `${prefix}**/${glob}`]
+}
+
+function ignoredDirectoryGlobArgs(name: string) {
+  return [`!${name}`, `!${name}/**`, `!**/${name}`, `!**/${name}/**`]
 }
 
 function fdType(entryType?: EntryTypeFilter) {

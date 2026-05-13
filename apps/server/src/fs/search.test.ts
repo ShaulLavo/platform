@@ -287,13 +287,17 @@ describe("workspace disk search provider", () => {
     )
   })
 
-  it("does not ask ripgrep to follow broken symlinks in nested ignored directories", async () => {
+  it("does not ask ripgrep to follow broken symlinks in ignored directories", async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, "apps/web/node_modules/pkg"), {
       recursive: true,
     })
     await mkdir(path.join(root, "src"), { recursive: true })
     await writeFile(path.join(root, "src/match.txt"), "needle")
+    await symlink(
+      path.join(root, "apps/web/node_modules/missing"),
+      path.join(root, "apps/web/node_modules/broken")
+    )
     await symlink(
       path.join(root, "apps/web/node_modules/missing"),
       path.join(root, "apps/web/node_modules/pkg/broken")

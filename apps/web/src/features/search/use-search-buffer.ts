@@ -48,19 +48,7 @@ export type WorkspaceSearchQueryOptions = {
 export function useSearchBuffer(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
   const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
-  const groups = useMemo(
-    () =>
-      searchGroupsForSnapshot(
-        activeSnapshot
-          ? {
-              collapsedPaths: activeSnapshot.collapsedPaths,
-              matches: activeSnapshot.matches,
-              rootPath: activeSnapshot.rootPath,
-            }
-          : null
-      ),
-    [activeSnapshot]
-  )
+  const groups = searchGroupsForSnapshot(activeSnapshot)
   const store = useSearchBufferStoreApi()
   const query = activeSnapshot?.query ?? ""
   const searchOptions = searchOptionsForSnapshot(activeSnapshot)
