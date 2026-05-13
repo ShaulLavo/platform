@@ -29,8 +29,10 @@ export type SearchResultItem =
     }
 
 const STABLE_HASH_CACHE_LIMIT = 4096
+const STABLE_HASH_OFFSET = 0x811c9dc5
+const STABLE_HASH_PRIME = 0x01000193
 const stableHashCache = new Map<string, string>()
-const searchMatchIdentityCache = new WeakMap<WorkspaceSearchMatch, string>()
+const searchMatchIdentityHashCache = new WeakMap<WorkspaceSearchMatch, string>()
 
 export function searchResultItems(groups: readonly WorkspaceSearchFileGroup[]) {
   const items: SearchResultItem[] = []
@@ -74,14 +76,14 @@ function appendGroupItems(
 
   const duplicateCounts = new Map<string, number>()
   contentMatches.forEach((match, matchIndex) => {
-    const identity = searchMatchIdentity(match)
-    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identity)
+    const identityHash = searchMatchIdentityHash(match)
+    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identityHash)
     items.push({
       groupId,
       groupPath: group.path,
-      id: searchResultMatchIdForIdentity(
+      id: searchResultMatchIdForIdentityHash(
         group.path,
-        identity,
+        identityHash,
         duplicateIndex
       ),
       level: 2,
@@ -246,7 +248,7 @@ function searchResultGroupId(path: string) {
 }
 
 function searchResultNameId(path: string, match: WorkspaceSearchMatch) {
-  return searchResultDomId("name", `${path}\0${searchMatchIdentity(match)}`)
+  return searchResultMatchDomId("name", path, searchMatchIdentityHash(match), 0)
 }
 
 function searchResultMatchId(
@@ -254,22 +256,19 @@ function searchResultMatchId(
   match: WorkspaceSearchMatch,
   duplicateIndex: number
 ) {
-  return searchResultMatchIdForIdentity(
+  return searchResultMatchIdForIdentityHash(
     path,
-    searchMatchIdentity(match),
+    searchMatchIdentityHash(match),
     duplicateIndex
   )
 }
 
-function searchResultMatchIdForIdentity(
+function searchResultMatchIdForIdentityHash(
   path: string,
-  identity: string,
+  identityHash: string,
   duplicateIndex: number
 ) {
-  return searchResultDomId(
-    "match",
-    `${path}\0${identity}\0${duplicateIndex}`
-  )
+  return searchResultMatchDomId("match", path, identityHash, duplicateIndex)
 }
 
 function searchResultDomId(prefix: string, value: string) {
@@ -280,42 +279,85 @@ function searchResultDomPrefix(prefix: string) {
   return `search-result-${prefix}-`
 }
 
-function searchMatchIdentity(match: WorkspaceSearchMatch) {
-  const cached = searchMatchIdentityCache.get(match)
+function searchResultMatchDomId(
+  prefix: string,
+  path: string,
+  identityHash: string,
+  duplicateIndex: number
+) {
+  const duplicateSuffix = duplicateIndex === 0 ? "" : `-${duplicateIndex}`
+
+  return `${searchResultDomPrefix(prefix)}${stableHash(path)}-${identityHash}${duplicateSuffix}`
+}
+
+function searchMatchIdentityHash(match: WorkspaceSearchMatch) {
+  const cached = searchMatchIdentityHashCache.get(match)
   if (cached) return cached
 
-  const identity = [
-    match.kind,
-    match.source,
-    match.type,
-    match.targetType ?? "",
-    match.path,
-    match.line ?? "",
-    match.column ?? "",
-    match.endColumn ?? "",
-    match.previewStartColumn ?? "",
-    match.preview ?? "",
-  ].join("\0")
-  searchMatchIdentityCache.set(match, identity)
+  const identityHash = hashSearchMatchIdentity(match)
+  searchMatchIdentityHashCache.set(match, identityHash)
 
-  return identity
+  return identityHash
+}
+
+function hashSearchMatchIdentity(match: WorkspaceSearchMatch) {
+  let hash = STABLE_HASH_OFFSET
+  hash = updateStableHash(hash, match.kind)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.source)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.type)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.targetType)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.path)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.line)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.column)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.endColumn)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.previewStartColumn)
+  hash = updateStableHashCode(hash, 0)
+  hash = updateStableHash(hash, match.preview)
+
+  return stableHashResult(hash)
 }
 
 function stableHash(value: string) {
   const cached = stableHashCache.get(value)
   if (cached) return cached
 
-  let hash = 0x811c9dc5
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
-  }
-
-  const result = (hash >>> 0).toString(36)
+  const result = stableHashResult(updateStableHash(STABLE_HASH_OFFSET, value))
   stableHashCache.set(value, result)
   trimStableHashCache()
 
   return result
+}
+
+function updateStableHash(
+  hash: number,
+  value: number | string | null | undefined
+) {
+  if (value === null || value === undefined || value === "") return hash
+
+  const text = String(value)
+  for (let index = 0; index < text.length; index += 1) {
+    hash = updateStableHashCode(hash, text.charCodeAt(index))
+  }
+
+  return hash
+}
+
+function updateStableHashCode(hash: number, code: number) {
+  hash ^= code
+
+  return Math.imul(hash, STABLE_HASH_PRIME)
+}
+
+function stableHashResult(hash: number) {
+  return (hash >>> 0).toString(36)
 }
 
 function trimStableHashCache() {
@@ -418,11 +460,11 @@ function contentResultIdIsPresent(
   for (const match of group.matches) {
     if (match.kind !== "content") continue
 
-    const identity = searchMatchIdentity(match)
-    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identity)
-    const matchId = searchResultMatchIdForIdentity(
+    const identityHash = searchMatchIdentityHash(match)
+    const duplicateIndex = nextDuplicateIndex(duplicateCounts, identityHash)
+    const matchId = searchResultMatchIdForIdentityHash(
       group.path,
-      identity,
+      identityHash,
       duplicateIndex
     )
     if (matchId === id) return true
