@@ -311,6 +311,8 @@ function rgArgs(context: FindContext) {
     "--no-ignore",
     "--max-filesize",
     String(context.options.maxContentBytes),
+    "--sort",
+    "path",
   ]
 
   if (searchMatchMode(context.options) === "literal") {
@@ -599,7 +601,7 @@ async function searchDirectory(
   if (matches.length >= options.limit) return
 
   const dirents = await readdir(absoluteDirectory, { withFileTypes: true })
-  for (const dirent of dirents) {
+  for (const dirent of sortedDirents(dirents)) {
     if (matches.length >= options.limit) return
     await searchEntry(
       absoluteDirectory,
@@ -611,6 +613,10 @@ async function searchDirectory(
       depth
     )
   }
+}
+
+function sortedDirents<T extends { name: string }>(dirents: T[]) {
+  return dirents.sort((left, right) => left.name.localeCompare(right.name))
 }
 
 async function searchEntry(

@@ -319,6 +319,29 @@ describe("workspace disk search provider", () => {
     expect(done).toMatchObject({ count: 1, truncated: true })
   })
 
+  it("ranks content matches by path before applying the result limit", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "src"), { recursive: true })
+    await writeFile(path.join(root, "src", "z.ts"), "needle")
+    await writeFile(path.join(root, "src", "a.ts"), "needle")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 1,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "content",
+        path: "src/a.ts",
+      }),
+    ])
+  })
+
   it("ranks filename matches before applying the result limit", async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, "deep"), { recursive: true })
