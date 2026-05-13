@@ -26,6 +26,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
   type RefObject,
   type UIEvent,
 } from "react"
@@ -78,6 +79,7 @@ const FILE_ROW_ESTIMATE = 44
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
 const SEARCH_RESULT_FILE_EDITOR_ROW_GAP = 6
 const SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT = 8
+const SEARCH_RESULT_FILE_EDITOR_POOL_MIN_SIZE = 4
 const SEARCH_RESULT_VIRTUAL_MIN_OVERSCAN = 320
 const SEARCH_RESULT_VIRTUAL_PADDING = 12
 const SEARCH_RESULT_VIRTUAL_ROW_OFFSET = 6
@@ -97,11 +99,27 @@ const ACTIVE_MATCH_STYLE = {
   textDecoration: "underline 1px var(--search-result-match-active-decoration)",
 } satisfies Partial<CSSStyleDeclaration>
 
+const SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE = {
+  pointerEvents: "none",
+  transform: "translateY(-100000px)",
+  visibility: "hidden",
+} satisfies CSSProperties
+
 const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
   gutterBackground: false,
   gutterNumber: false,
   rowBackground: false,
 } as const
+
+const EMPTY_SEARCH_RESULT_FILE_BLOCK = {
+  collapsed: false,
+  excerpts: [],
+  id: "empty-search-result-file",
+  languageId: null,
+  matchCount: 0,
+  path: "",
+  pathLabel: "",
+} satisfies SearchResultFileBlock
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
@@ -184,6 +202,22 @@ export const SearchResultEditorSurface = memo(
       scrollToOffset,
       totalSize: virtualTotalSize,
     } = useSearchResultEditorVirtualizer(rows, parentRef)
+    const renderedVirtualItems = useMemo(
+      () => searchResultRenderedVirtualItems(virtualItems, rows),
+      [rows, virtualItems]
+    )
+    const fileResultItems = useMemo(
+      () => renderedVirtualItems.filter(isSearchResultRenderedFileResultItem),
+      [renderedVirtualItems]
+    )
+    const fileEditorPoolSize = searchResultFileEditorPoolSize(
+      fileResultItems.length
+    )
+    const fileEditorPoolItems = useMemo(
+      () =>
+        searchResultFileEditorPoolItems(fileResultItems, fileEditorPoolSize),
+      [fileEditorPoolSize, fileResultItems]
+    )
     const scrollToIndexRef = useRef(scrollToIndex)
     const selectResultWithoutReveal = useCallback(
       (id: SearchResultId | null) => {
@@ -275,9 +309,8 @@ export const SearchResultEditorSurface = memo(
           className="relative"
           style={{ height: virtualTotalSize + SEARCH_RESULT_VIRTUAL_PADDING }}
         >
-          {virtualItems.map((virtualItem) => {
-            const row = rows[virtualItem.index]
-            if (!row) return null
+          {renderedVirtualItems.map(({ renderKey, row, virtualItem }) => {
+            if (row.type !== "file") return null
 
             const id = searchResultVirtualRowId(row)
             const active = searchResultVirtualRowContainsId(row, activeResultId)
@@ -285,52 +318,48 @@ export const SearchResultEditorSurface = memo(
             return (
               <div
                 aria-expanded={searchResultVirtualRowExpanded(row)}
-                aria-level={row.type === "file" ? 1 : 2}
+                aria-level={1}
                 aria-selected={active}
                 className="absolute right-2 left-2"
                 data-index={virtualItem.index}
                 id={searchResultDomId(treeId, id)}
-                key={virtualItem.key}
+                key={renderKey}
                 role="treeitem"
-                style={{
-                  transform: `translateY(${virtualItem.start + SEARCH_RESULT_VIRTUAL_ROW_OFFSET}px)`,
-                }}
-                onMouseDown={
-                  row.type === "file" ? () => onSelectResult(id) : undefined
-                }
+                style={searchResultVirtualRowStyle(virtualItem)}
+                onMouseDown={() => onSelectResult(id)}
               >
-                {row.type === "file" ? (
-                  <SearchResultFileHeader
-                    active={active}
-                    canReplace={canReplace}
-                    file={row.file}
-                    replaceVisible={replaceVisible}
-                    onOpen={() =>
-                      onOpenTarget({ match: null, path: row.file.path })
-                    }
-                    onReplace={() => handleReplaceFile(row.file.path)}
-                    onToggle={() => onToggleGroup(row.file.path)}
-                  />
-                ) : (
-                  <SearchResultFileEditor
-                    active={active}
-                    activeResultId={activeResultId}
-                    editorTheme={editorThemeRefresh}
-                    file={row.file}
-                    keymapLayers={readonlyKeymapLayers}
-                    replaceVisible={replaceVisible}
-                    deferredPluginsReady={deferredPlugins.ready}
-                    syntaxPlugins={deferredPlugins.syntaxPlugins}
-                    canReplace={canReplace}
-                    onEnableDeferredPlugins={deferredPlugins.enable}
-                    onOpenTarget={onOpenTarget}
-                    onReplaceMatch={onReplaceMatch}
-                    onSelectResultWithoutReveal={selectResultWithoutReveal}
-                  />
-                )}
+                <SearchResultFileHeader
+                  active={active}
+                  canReplace={canReplace}
+                  file={row.file}
+                  replaceVisible={replaceVisible}
+                  onOpen={() =>
+                    onOpenTarget({ match: null, path: row.file.path })
+                  }
+                  onReplace={() => handleReplaceFile(row.file.path)}
+                  onToggle={() => onToggleGroup(row.file.path)}
+                />
               </div>
             )
           })}
+          {fileEditorPoolItems.map((item, index) => (
+            <SearchResultFileEditorPoolSlot
+              activeResultId={activeResultId}
+              canReplace={canReplace}
+              deferredPluginsReady={deferredPlugins.ready}
+              editorTheme={editorThemeRefresh}
+              item={item}
+              key={`file-results-pool:${index}`}
+              keymapLayers={readonlyKeymapLayers}
+              replaceVisible={replaceVisible}
+              syntaxPlugins={deferredPlugins.syntaxPlugins}
+              treeId={treeId}
+              onEnableDeferredPlugins={deferredPlugins.enable}
+              onOpenTarget={onOpenTarget}
+              onReplaceMatch={onReplaceMatch}
+              onSelectResultWithoutReveal={selectResultWithoutReveal}
+            />
+          ))}
         </div>
       </div>
     )
@@ -430,6 +459,77 @@ function SearchResultFileHeader({
   )
 }
 
+function SearchResultFileEditorPoolSlot({
+  activeResultId,
+  canReplace,
+  deferredPluginsReady,
+  editorTheme,
+  item,
+  keymapLayers,
+  replaceVisible,
+  syntaxPlugins,
+  treeId,
+  onEnableDeferredPlugins,
+  onOpenTarget,
+  onReplaceMatch,
+  onSelectResultWithoutReveal,
+}: {
+  activeResultId: SearchResultId | null
+  canReplace?: boolean
+  deferredPluginsReady: boolean
+  editorTheme: EditorTheme
+  item: SearchResultRenderedFileResultItem | null
+  keymapLayers: readonly EditorKeymapLayer[]
+  replaceVisible: boolean
+  syntaxPlugins: readonly EditorPlugin[]
+  treeId: string
+  onEnableDeferredPlugins: () => void
+  onOpenTarget: (target: SearchResultOpenTarget) => void
+  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
+  onSelectResultWithoutReveal: (id: SearchResultId | null) => void
+}) {
+  const visible = item !== null
+  const row = item?.row ?? null
+  const file = row?.file ?? EMPTY_SEARCH_RESULT_FILE_BLOCK
+  const id = row ? searchResultVirtualRowId(row) : null
+  const active = row
+    ? searchResultVirtualRowContainsId(row, activeResultId)
+    : false
+
+  return (
+    <div
+      aria-hidden={visible ? undefined : true}
+      aria-level={visible ? 2 : undefined}
+      aria-selected={visible ? active : undefined}
+      className="absolute right-2 left-2"
+      data-index={item?.virtualItem.index}
+      id={id && visible ? searchResultDomId(treeId, id) : undefined}
+      role={visible ? "treeitem" : undefined}
+      style={
+        visible
+          ? searchResultVirtualRowStyle(item.virtualItem)
+          : SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE
+      }
+    >
+      <SearchResultFileEditor
+        active={active}
+        activeResultId={activeResultId}
+        canReplace={canReplace}
+        deferredPluginsReady={deferredPluginsReady}
+        editorTheme={editorTheme}
+        file={file}
+        keymapLayers={keymapLayers}
+        replaceVisible={replaceVisible}
+        syntaxPlugins={syntaxPlugins}
+        onEnableDeferredPlugins={onEnableDeferredPlugins}
+        onOpenTarget={onOpenTarget}
+        onReplaceMatch={onReplaceMatch}
+        onSelectResultWithoutReveal={onSelectResultWithoutReveal}
+      />
+    </div>
+  )
+}
+
 type SearchResultFileEditorProps = {
   active: boolean
   activeResultId: SearchResultId | null
@@ -522,7 +622,6 @@ const SearchResultFileEditor = memo(
       theme: editorTheme,
     })
     const pendingActivationFrameRef = useRef<number | null>(null)
-    const skipNextActiveSelectionRef = useRef(false)
 
     useEffect(() => {
       if (!active) return
@@ -542,10 +641,6 @@ const SearchResultFileEditor = memo(
 
     useEffect(() => {
       if (!active) return
-      if (skipNextActiveSelectionRef.current) {
-        skipNextActiveSelectionRef.current = false
-        return
-      }
 
       const line = searchResultFileDocumentLineById(
         fileDocument,
@@ -564,18 +659,15 @@ const SearchResultFileEditor = memo(
       setFocusArea("editor")
     }
 
-    function handlePointerUp() {
-      if (active) return
+    function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+      if (isSearchResultEditorActionTarget(event.target)) return
 
       if (pendingActivationFrameRef.current !== null) {
         window.cancelAnimationFrame(pendingActivationFrameRef.current)
       }
       pendingActivationFrameRef.current = window.requestAnimationFrame(() => {
         pendingActivationFrameRef.current = null
-        skipNextActiveSelectionRef.current = true
-        onSelectResultWithoutReveal(
-          currentSearchResultFileLine(fileDocument, controller)?.id ?? null
-        )
+        onSelectResultWithoutReveal(file.id)
       })
     }
 
@@ -817,6 +909,16 @@ type SearchResultEditorVirtualizer = {
   readonly onScroll: (event: UIEvent<HTMLDivElement>) => void
   readonly scrollToIndex: SearchResultEditorScrollToIndex
   readonly scrollToOffset: (offset: number) => void
+}
+
+type SearchResultRenderedVirtualItem = {
+  readonly renderKey: string
+  readonly row: SearchResultVirtualRow
+  readonly virtualItem: SearchResultVirtualListMetrics["items"][number]
+}
+
+type SearchResultRenderedFileResultItem = SearchResultRenderedVirtualItem & {
+  readonly row: Extract<SearchResultVirtualRow, { type: "file-results" }>
 }
 
 type SearchResultEditorScrollToIndex = (
@@ -1090,6 +1192,53 @@ function searchResultVirtualRowKey(
   return searchResultVirtualRowId(row)
 }
 
+function searchResultRenderedVirtualItems(
+  virtualItems: SearchResultVirtualListMetrics["items"],
+  rows: readonly SearchResultVirtualRow[]
+): SearchResultRenderedVirtualItem[] {
+  const renderedItems: SearchResultRenderedVirtualItem[] = []
+
+  for (const virtualItem of virtualItems) {
+    const row = rows[virtualItem.index]
+    if (!row) continue
+
+    renderedItems.push({
+      renderKey: virtualItem.key,
+      row,
+      virtualItem,
+    })
+  }
+
+  return renderedItems
+}
+
+function searchResultFileEditorPoolItems(
+  items: readonly SearchResultRenderedFileResultItem[],
+  poolSize: number
+) {
+  return Array.from({ length: poolSize }, (_, index) => items[index] ?? null)
+}
+
+function searchResultFileEditorPoolSize(visibleCount: number) {
+  if (visibleCount === 0) return 0
+
+  return Math.max(SEARCH_RESULT_FILE_EDITOR_POOL_MIN_SIZE, visibleCount)
+}
+
+function isSearchResultRenderedFileResultItem(
+  item: SearchResultRenderedVirtualItem
+): item is SearchResultRenderedFileResultItem {
+  return item.row.type === "file-results"
+}
+
+function searchResultVirtualRowStyle(
+  virtualItem: SearchResultVirtualListMetrics["items"][number]
+): CSSProperties {
+  return {
+    transform: `translateY(${virtualItem.start + SEARCH_RESULT_VIRTUAL_ROW_OFFSET}px)`,
+  }
+}
+
 function searchResultVirtualRowInputs(rows: readonly SearchResultVirtualRow[]) {
   return rows.map((row, index) => ({
     key: searchResultVirtualRowKey(row, index),
@@ -1161,6 +1310,12 @@ function preventReadonlyInput(event: {
 }) {
   event.preventDefault()
   event.stopPropagation()
+}
+
+function isSearchResultEditorActionTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false
+
+  return target.closest("button") !== null
 }
 
 function currentSearchResultFileLine(

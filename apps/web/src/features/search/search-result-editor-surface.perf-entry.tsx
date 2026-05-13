@@ -276,7 +276,8 @@ function currentSearchPerfMetrics(
     scrollSampleMs: null,
     totalEditorMountMs: editorMountStats.totalMs,
     visibleEditorHosts:
-      root?.querySelectorAll(".editor-virtualized").length ?? 0,
+      root?.querySelectorAll('[role="treeitem"] .editor-virtualized').length ??
+      0,
   }
 }
 
