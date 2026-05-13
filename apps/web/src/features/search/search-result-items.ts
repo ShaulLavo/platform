@@ -182,6 +182,10 @@ export function lastSearchResultId(items: readonly SearchResultItem[]) {
   return items.at(-1)?.id ?? null
 }
 
+export function searchResultIdIsName(id: SearchResultId) {
+  return id.startsWith(searchResultDomPrefix("name"))
+}
+
 export function firstSearchResultChildId(
   items: readonly SearchResultItem[],
   groupId: SearchResultId
@@ -269,7 +273,11 @@ function searchResultMatchIdForIdentity(
 }
 
 function searchResultDomId(prefix: string, value: string) {
-  return `search-result-${prefix}-${stableHash(value)}`
+  return `${searchResultDomPrefix(prefix)}${stableHash(value)}`
+}
+
+function searchResultDomPrefix(prefix: string) {
+  return `search-result-${prefix}-`
 }
 
 function searchMatchIdentity(match: WorkspaceSearchMatch) {

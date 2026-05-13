@@ -13,6 +13,7 @@ import {
   lastSearchResultId,
   parentSearchResultId,
   searchResultActiveMatchPosition,
+  searchResultItemById,
   searchResultIdByOffset,
   searchResultItems,
 } from "./search-result-items"
@@ -773,6 +774,41 @@ describe("search buffer store", () => {
 
     expect(matches).toHaveLength(2)
     expect(matches[0]?.id).not.toBe(matches[1]?.id)
+  })
+
+  it("remaps an active filename hit when content arrives for the same file", () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      includeContent: true,
+      includeNames: true,
+      limit: 20,
+      path: "repo",
+      query: "needle",
+    })
+
+    store.getState().appendEvent(runId, {
+      match: {
+        kind: "name",
+        path: "repo/src/needle.ts",
+        source: "disk",
+        type: "file",
+      },
+      type: "match",
+    })
+    store.getState().appendEvent(runId, {
+      match: contentMatch("repo/src/needle.ts", 1, 1),
+      type: "match",
+    })
+
+    const items = searchResultItems(
+      searchGroupsForSnapshot(store.getState().active)
+    )
+    const activeItem = searchResultItemById(
+      items,
+      store.getState().active?.activeResultId ?? null
+    )
+
+    expect(activeItem?.type).toBe("match")
   })
 
   it("prunes collapsed paths that disappear after a rerun", () => {

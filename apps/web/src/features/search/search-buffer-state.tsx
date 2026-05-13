@@ -13,6 +13,7 @@ import { searchBufferDocumentId } from "@/features/search/search-buffer-document
 import {
   expandedSearchResultItems,
   searchResultContentItems,
+  searchResultIdIsName,
   searchResultItemById,
   visibleSearchResultId,
   type SearchResultId,
@@ -388,17 +389,30 @@ function appendSearchMatches(
   const active = activeRun(state.active, runId)
   if (!active) return state
 
-  const matches = nextSearchMatches(active, incomingMatches)
+  const appendingToResults = sameWorkspaceSearchQuery(
+    active.resultsSearchQuery,
+    active.runningSearchQuery
+  )
+  const matches = nextSearchMatches(active, incomingMatches, appendingToResults)
   const runningSearchQuery = active.runningSearchQuery
+  const next = {
+    ...active,
+    matches,
+    resultsQuery: active.runningQuery ?? active.resultsQuery,
+    resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
+    status: "loading" as const,
+    totalCount: nextContentSearchMatchCount(
+      active,
+      incomingMatches,
+      appendingToResults
+    ),
+    truncated: false,
+  }
+
   return {
-    active: resolveActiveSearchResult({
-      ...active,
-      matches,
-      resultsQuery: active.runningQuery ?? active.resultsQuery,
-      resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
-      status: "loading",
-      totalCount: contentSearchMatchCount(matches),
-      truncated: false,
+    active: resolveAppendedSearchResult(active, next, {
+      appendingToResults,
+      incomingMatches,
     }),
   }
 }
@@ -606,18 +620,25 @@ function globTextForQuery(globs: readonly string[] | undefined) {
 
 function nextSearchMatches(
   active: SearchBufferSnapshot,
-  matches: readonly WorkspaceSearchMatch[]
+  matches: readonly WorkspaceSearchMatch[],
+  appendingToResults: boolean
 ) {
-  if (
-    sameWorkspaceSearchQuery(
-      active.resultsSearchQuery,
-      active.runningSearchQuery
-    )
-  ) {
-    return [...active.matches, ...matches]
+  if (appendingToResults) {
+    return active.matches.concat(matches)
   }
 
-  return [...matches]
+  return matches.slice()
+}
+
+function nextContentSearchMatchCount(
+  active: SearchBufferSnapshot,
+  matches: readonly WorkspaceSearchMatch[],
+  appendingToResults: boolean
+) {
+  const incomingCount = contentSearchMatchCount(matches)
+  if (appendingToResults) return active.totalCount + incomingCount
+
+  return incomingCount
 }
 
 function doneMatches(
@@ -1028,6 +1049,35 @@ function resolveActiveSearchResult(snapshot: SearchBufferSnapshot) {
   }
 }
 
+function resolveAppendedSearchResult(
+  previous: SearchBufferSnapshot,
+  next: SearchBufferSnapshot,
+  options: {
+    appendingToResults: boolean
+    incomingMatches: readonly WorkspaceSearchMatch[]
+  }
+) {
+  if (!canKeepActiveResult(previous, options)) {
+    return resolveActiveSearchResult(next)
+  }
+
+  return next
+}
+
+function canKeepActiveResult(
+  previous: SearchBufferSnapshot,
+  options: {
+    appendingToResults: boolean
+    incomingMatches: readonly WorkspaceSearchMatch[]
+  }
+) {
+  if (!previous.activeResultId) return false
+  if (!options.appendingToResults) return false
+  if (!searchResultIdIsName(previous.activeResultId)) return true
+
+  return !hasContentSearchMatch(options.incomingMatches)
+}
+
 function activeSearchMatchIndex(
   matches: ReturnType<typeof searchResultContentItems>,
   activeResultId: SearchResultId | null
@@ -1064,7 +1114,21 @@ function prunedCollapsedPaths(
 }
 
 function contentSearchMatchCount(matches: readonly WorkspaceSearchMatch[]) {
-  return matches.filter((match) => match.kind === "content").length
+  let count = 0
+
+  for (const match of matches) {
+    count += contentMatchCount(match)
+  }
+
+  return count
+}
+
+function hasContentSearchMatch(matches: readonly WorkspaceSearchMatch[]) {
+  for (const match of matches) {
+    if (match.kind === "content") return true
+  }
+
+  return false
 }
 
 function groupSearchMatches(
