@@ -6,14 +6,14 @@ Add a core editor primitive for rendering structured UI attached to editor
 text without replacing the editor as the source of truth for text, selection,
 copy, cursor movement, find, and virtualization.
 
-The first product use case is search result tabs, where file headers and file
-actions should live inside one editor-backed result document owned by a search
-plugin. The longer-term use case is notebook-style editing, where a cell can
-own toolbars, run buttons, metadata, and output panels around a text range.
+The first product use case is search result tabs, where platform search can use
+one editor-backed generated document and attach file headers/actions through
+blocks. The longer-term use case is notebook-style editing, where a cell can own
+toolbars, run buttons, metadata, and output panels around a text range.
 
-The search migration goal is not to add one more renderer. It is to delete the
-platform-owned search result rendering stack and replace it with a plugin that
-uses the editor block primitive.
+The editor must stay agnostic. It should not know about search, notebooks, or
+any other product surface. It should only expose generic document, block,
+surface, sizing, lifecycle, and command primitives that consumers compose.
 
 ## Non-Goals
 
@@ -23,7 +23,8 @@ uses the editor block primitive.
 - Do not make raw unsanitized HTML the primary public API.
 - Do not add search-only editor APIs.
 - Do not keep the current complex search-tab renderer as a long-term fallback.
-- Do not keep two search result rendering systems alive after the plugin ships.
+- Do not keep two search result rendering systems alive after the block-based
+  search consumer ships.
 
 Replacing a text row with arbitrary HTML can be added later as an escape hatch,
 but it should not drive the core model. If a row is no longer text, editor
@@ -54,7 +55,7 @@ export type EditorBlockAnchor =
     }
 ```
 
-The editor owns the layout slots. Plugins own the DOM mounted inside those
+The editor owns the layout slots. Consumers own the DOM mounted inside those
 slots.
 
 ## Surface Sizes
@@ -181,9 +182,9 @@ Replacing a row with HTML is intentionally excluded from the primary API. If a
 future use case requires it, it should be added as a separate escape hatch with
 explicit text fallback and editor behavior rules.
 
-## Plugin API
+## Block Provider API
 
-Add a plugin contribution for editor blocks:
+Add a generic block provider contribution for editor blocks:
 
 ```ts
 export type EditorPluginContext = {
@@ -208,45 +209,31 @@ The editor should recompute blocks when:
 - a provider explicitly invalidates
 - measured block size changes
 
-## Search Rendering Plugin Boundary
+## Consumer-Owned Rendering Boundary
 
-Search result rendering should move out of `platform` and into a dedicated
-plugin. Platform should keep the search service, search state, replace runner,
-workspace commands, and contracts needed to describe results. The plugin should
-own the visible search UI.
+Editor core should provide primitives, not product renderers. Consumers should
+own their generated document text, block data, rendered DOM, command handlers,
+and state mapping.
 
-The plugin should receive a narrow host API:
-
-```ts
-export type SearchRenderingPluginInput = {
-  readonly groups: readonly WorkspaceSearchFileGroup[]
-  readonly query: string
-  readonly replaceText: string
-  readonly replaceVisible: boolean
-  readonly activeResultId: SearchResultId | null
-  readonly pendingResultIds: readonly SearchResultId[]
-  readonly canReplace: boolean
-  openFile(path: string): void
-  openMatch(match: WorkspaceSearchMatch): void
-  selectResult(id: SearchResultId | null): void
-  toggleGroup(path: string): void
-  replaceGroup(group: WorkspaceSearchFileGroup): void
-  replaceMatch(match: WorkspaceSearchMatch): void
-}
-```
-
-The plugin should produce editor-facing contributions:
+For search, platform remains the consumer. It keeps the search service, search
+state, replace runner, workspace commands, and result contracts. The search
+surface should use the generic editor block APIs to produce:
 
 - one readonly generated result document
-- editor block providers for file headers and later richer controls
+- block providers for file headers and later richer controls
 - range highlights for passive and active matches
 - command handlers for open result, collapse, expand, and replace
-- optional sidebar/list renderers if the plugin boundary expands to cover the
-  search sidebar too
 
-Platform should not know whether search results are rendered with block
-surfaces, React components, or future notebook-like widgets. It should only host
-the plugin and route commands/data into it.
+For notebooks, a notebook consumer can use the same APIs to produce:
+
+- one editor document containing code cell text
+- top surfaces for cell toolbars
+- left surfaces for run/status rails
+- bottom surfaces for output panels
+- notebook-specific commands and focus routing
+
+The important boundary is generic: editor core knows how to mount block
+surfaces around text, but never knows what those surfaces mean.
 
 ## Search Rendering Cleanup Target
 
@@ -254,7 +241,7 @@ The final migration must remove the current search rendering stack from
 platform. This includes the complex virtual multi-editor path, the single-doc
 fallback, and stale tests/fixtures that only exist for those renderers.
 
-Delete or move into the plugin:
+Delete or replace with the block-based search consumer:
 
 - `apps/web/src/features/search/search-result-editor-surface.tsx`
 - `apps/web/src/features/search/search-result-document-editor.tsx`
@@ -272,17 +259,18 @@ Also clean up:
 - imports and exports that only served the removed renderers
 - obsolete CSS classes and CSS custom properties
 - obsolete docs that describe the multi-editor search-tab renderer as current
-- stale performance plans that no longer apply after the plugin migration
+- stale performance plans that no longer apply after the block-based renderer
+  ships
 - workspace cache or tab metadata that assumes a platform-owned search renderer
 
 The end state should have no hidden "just in case" search result renderer in
-platform. If the plugin fails to load, the product should show a clear plugin
-load failure state rather than silently falling back to the old renderer.
+platform. If block-based rendering fails, the product should show a clear
+rendering failure state rather than silently falling back to the old renderer.
 
 ## Search Result Use Case
 
-The search plugin can move search tabs from many editor instances to one
-readonly generated document:
+Platform search can move search tabs from many editor instances to one readonly
+generated document:
 
 - generated text contains file header lines and match lines
 - file headers attach `top` surfaces or dedicated line-adjacent header surfaces
@@ -350,72 +338,95 @@ Blocks can contain focusable controls. The editor needs clear rules:
 - Escape from a block should return focus to the editor
 - block controls should be able to request editor focus
 - editor commands should keep working when focus remains inside the editor
-- notebook-specific keyboard routing should live in notebook plugins, not core
+- notebook-specific keyboard routing should live in notebook consumers, not core
 
 Search result headers should support mouse actions first. Keyboard navigation
 for block controls can be incremental once focus routing is stable.
 
 ## Implementation Phases
 
-### Phase 1: Core Fixed Blocks
+### Phase 1: Core Block API
 
 - Export editor block types from `@editor/core`.
 - Add `registerBlockProvider` to editor plugins.
+- Add block provider invalidation and recomputation.
+- Add block sorting, anchor validation, and lifecycle disposal rules.
+- Add tests for provider registration, invalidation, sorting, and disposal.
+
+### Phase 2: Fixed Vertical Surfaces
+
 - Add fixed-height `top` and `bottom` block rows to the virtualized layout.
-- Mount block DOM with lifecycle disposal.
-- Add tests for block sorting, row sizing, virtualization, and disposal.
+- Mount fixed vertical surface DOM with lifecycle disposal.
+- Preserve cursor movement, selection, copy, find, gutters, and range
+  highlights around vertical surfaces.
+- Add tests for vertical row sizing, virtualization, mounted row recycling, and
+  geometry.
 
-### Phase 2: Search Rendering Plugin Shell
-
-- Add a plugin package/boundary for search result rendering.
-- Move generated search result document construction into the plugin.
-- Route search data and commands from platform into the plugin through a narrow
-  host API.
-- Keep platform responsible for search execution, state, replace operations,
-  and workspace navigation only.
-
-### Phase 3: Search Headers
-
-- Build a search-result block provider.
-- Render file info headers as fixed-height top blocks.
-- Keep match rows as editor text.
-- Preserve open file, open match, active result, collapse, and replace actions.
-- Switch search tabs to the single-editor result document path.
-
-### Phase 4: Delete Platform Search Renderers
-
-- Delete the complex virtual multi-editor search result surface.
-- Delete the single-doc fallback renderer from platform.
-- Delete renderer-specific models, pools, virtual-list helpers, perf harnesses,
-  and tests that do not belong to the plugin.
-- Remove all imports from `SearchBufferEditor` to the deleted renderers.
-- Replace runtime fallback behavior with a plugin load failure state.
-- Run typecheck and focused search tests to verify no stale references remain.
-
-### Phase 5: Horizontal Surfaces
-
-- Add `left` and `right` surface layout.
-- Reserve lane widths beside anchored ranges.
-- Add tests for horizontal lane sizing and hit testing.
-
-### Phase 6: Measured Surfaces
-
-- Add measured size support with bounds.
-- Use `ResizeObserver` internally and debounce virtualization updates.
-- Clamp measured size to `minPx` and `maxPx`.
-- Add notebook-style output fixture tests.
-
-### Phase 7: React Adapter
+### Phase 3: React Blocks Adapter
 
 - Add `createReactEditorBlocksPlugin`.
 - Render surfaces through React portals.
 - Ensure unmount happens when rows virtualize away, blocks change, or editor
   disposes.
 
+### Phase 4: Horizontal Surfaces
+
+- Add `left` and `right` surface layout.
+- Reserve lane widths beside anchored ranges.
+- Preserve hit testing, selection, copy, gutters, and cursor behavior beside
+  horizontal lanes.
+- Add tests for horizontal lane sizing, hit testing, and geometry.
+
+### Phase 5: Measured Surfaces
+
+- Add measured size support with bounds.
+- Use `ResizeObserver` internally and debounce virtualization updates.
+- Clamp measured size to `minPx` and `maxPx`.
+- Add tests for measurement updates, row-size recalculation, clamping, and
+  mounted DOM recycling.
+
+### Phase 6: Generic Blocks Hardening
+
+- Verify fixed and measured surfaces together in the same document.
+- Verify top, bottom, left, and right surfaces can coexist on the same block.
+- Verify readonly and editable documents both work with blocks.
+- Add notebook-shaped fixtures to prove the API supports toolbar, run rail, and
+  output panel composition without notebook-specific editor APIs.
+- Run editor typecheck and focused editor tests.
+
+### Phase 7: Replace Platform Search Renderer
+
+- Replace search-buffer tabs with one readonly generated editor document that
+  uses generic block APIs for file headers and actions.
+- Keep platform responsible for search execution, state, replace operations,
+  and workspace navigation.
+- Implement file headers with path, count, icon, open action, collapse, and
+  replace group.
+- Implement match rows with source line labels, passive highlights, and active
+  highlights.
+- Implement open file and open match behavior.
+- Implement active result selection and keyboard navigation.
+- Implement replace all, replace file, replace next, and replace match actions.
+- Implement pending/loading, empty, error, and render-failure states.
+- Implement readonly selection, copy, and find behavior.
+- Run large-result benchmarks against the current renderer before deleting it.
+- Run typecheck and focused search/editor tests.
+
+### Phase 8: Delete Platform Search Renderers
+
+- Delete the complex virtual multi-editor search result surface.
+- Delete the single-doc fallback renderer from platform.
+- Delete renderer-specific models, pools, virtual-list helpers, perf harnesses,
+  and tests that do not belong to the block-based renderer.
+- Remove all imports from `SearchBufferEditor` to the deleted renderers.
+- Remove stale CSS, docs, workspace-cache assumptions, and search-tab
+  performance plans that only applied to the deleted renderer.
+- Run typecheck and focused search tests to verify no stale references remain.
+
 ## Acceptance Criteria
 
 - Search result tabs can render structured file headers inside one editor
-  document through the search rendering plugin.
+  document through the generic editor block APIs.
 - Blocks do not break cursor movement, selection, copy, find, or readonly mode.
 - Large search result sets avoid per-file editor instances.
 - Block DOM is mounted only for visible virtualized regions.
@@ -424,7 +435,7 @@ for block controls can be incremental once focus routing is stable.
   without new core primitives.
 - Platform no longer contains the old complex search-tab renderer.
 - Platform no longer contains the old single-doc fallback renderer.
-- Search result rendering has one owner: the plugin.
+- Search result rendering has one owner: the block-based search renderer.
 
 ## Open Questions
 
