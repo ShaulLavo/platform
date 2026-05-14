@@ -85,8 +85,13 @@ function searchSummaryModel(
     return emptySummary(snapshot.replaceMessage ?? "Replace failed")
   if (snapshot.replaceStatus === "success" && snapshot.replaceMessage)
     return summaryWithControls(snapshot.replaceMessage, snapshot)
-  if (snapshot.status === "error")
-    return emptySummary(snapshot.error ?? "Search failed")
+  if (snapshot.status === "error") {
+    const message = snapshot.error ?? "Search failed"
+    if (hasSearchResultGroups(snapshot))
+      return summaryWithControls(`${message} · Showing previous results`, snapshot)
+
+    return emptySummary(message)
+  }
   if (snapshot.status === "idle") return emptySummary("Searching")
   if (snapshot.status === "loading" && snapshot.matches.length === 0) {
     return emptySummary("Searching")
@@ -167,6 +172,10 @@ function summaryWithControls(text: string, snapshot: SearchBufferSnapshot) {
     showControls: groups.some((group) => group.count > 0),
     text: `${text}${activeText}`,
   }
+}
+
+function hasSearchResultGroups(snapshot: SearchBufferSnapshot) {
+  return searchGroupsForSnapshot(snapshot).some((group) => group.count > 0)
 }
 
 function searchResultCountText(snapshot: SearchBufferSnapshot) {

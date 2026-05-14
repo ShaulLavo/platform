@@ -70,7 +70,7 @@ export function createEditorSyntaxHighlightingPlugins(
     css(),
     json(),
     markdown(),
-    createShikiThemePlugin(shikiTheme),
+    // createShikiThemePlugin(shikiTheme),
   ];
 }
 

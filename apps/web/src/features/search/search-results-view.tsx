@@ -130,7 +130,7 @@ export function SearchResultsView({
       />
     )
   }
-  if (snapshot.status === "error") {
+  if (snapshot.status === "error" && groups.length === 0) {
     return <SearchErrorState className={className} message={snapshot.error} />
   }
   if (groups.length === 0) {

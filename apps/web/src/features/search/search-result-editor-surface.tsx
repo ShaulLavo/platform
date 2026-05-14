@@ -83,7 +83,15 @@ const EXCERPT_EDITOR_LINE_HEIGHT = 22
 const EXCERPT_EDITOR_CHARACTER_WIDTH = 8
 const SEARCH_RESULT_FILE_EDITOR_ROW_GAP = 6
 const SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT = 8
-const SEARCH_RESULT_VIRTUAL_MIN_OVERSCAN = 320
+const SEARCH_RESULT_VIRTUAL_BASE_MIN_OVERSCAN = 640
+const SEARCH_RESULT_VIRTUAL_BASE_OVERSCAN_RATIO = 1
+const SEARCH_RESULT_VIRTUAL_FAST_MIN_OVERSCAN = 1_400
+const SEARCH_RESULT_VIRTUAL_FAST_OVERSCAN_RATIO = 1.75
+const SEARCH_RESULT_VIRTUAL_FLING_MIN_OVERSCAN = 2_600
+const SEARCH_RESULT_VIRTUAL_FLING_OVERSCAN_RATIO = 3
+const SEARCH_RESULT_VIRTUAL_FAST_SCROLL_PX_PER_MS = 1.2
+const SEARCH_RESULT_VIRTUAL_FLING_SCROLL_PX_PER_MS = 4
+const SEARCH_RESULT_VIRTUAL_OVERSCAN_IDLE_DELAY_MS = 180
 const SEARCH_RESULT_VIRTUAL_PADDING = 12
 const SEARCH_RESULT_VIRTUAL_ROW_OFFSET = 6
 const INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT = {
@@ -988,6 +996,13 @@ type SearchResultFileEditorPoolState = {
   readonly keys: readonly SearchResultId[]
 }
 
+type SearchResultVirtualOverscanLevel = 0 | 1 | 2
+
+type SearchResultVirtualScrollSample = {
+  readonly time: number
+  readonly top: number
+}
+
 type SearchResultEditorScrollToIndex = (
   index: number,
   target?: SearchResultVirtualRowScrollTarget | null
@@ -1020,23 +1035,70 @@ function useSearchResultEditorVirtualizer(
   const viewportRef = useRef<SearchResultVirtualListViewport>(
     INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT
   )
+  const scrollSampleRef = useRef<SearchResultVirtualScrollSample | null>(null)
+  const scrollOverscanLevelRef = useRef<SearchResultVirtualOverscanLevel>(0)
+  const overscanIdleTimeoutRef = useRef<number | null>(null)
   const [viewport, setViewport] = useState<SearchResultVirtualListViewport>(
     INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT
   )
+  const [scrollOverscanLevel, setScrollOverscanLevelState] =
+    useState<SearchResultVirtualOverscanLevel>(0)
   const itemInputs = useMemo(() => searchResultVirtualRowInputs(rows), [rows])
   const metrics = useMemo(
     () => createSearchResultVirtualListMetrics(itemInputs),
     [itemInputs]
   )
+  const overscan = useMemo(
+    () => searchResultVirtualOverscan(viewport.height, scrollOverscanLevel),
+    [scrollOverscanLevel, viewport.height]
+  )
   const items = useMemo(
     () =>
       visibleSearchResultVirtualListItems(metrics, viewport, {
         fallbackCount: SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT,
-        overscan: searchResultVirtualOverscan(viewport.height),
+        overscan,
       }),
-    [metrics, viewport]
+    [metrics, overscan, viewport]
   )
   const viewportHeight = viewport.height
+  const setScrollOverscanLevel = useCallback(
+    (level: SearchResultVirtualOverscanLevel) => {
+      if (scrollOverscanLevelRef.current === level) return
+
+      scrollOverscanLevelRef.current = level
+      setScrollOverscanLevelState(level)
+    },
+    []
+  )
+  const resetScrollOverscanLevelSoon = useCallback(() => {
+    if (overscanIdleTimeoutRef.current !== null) {
+      window.clearTimeout(overscanIdleTimeoutRef.current)
+    }
+
+    overscanIdleTimeoutRef.current = window.setTimeout(() => {
+      overscanIdleTimeoutRef.current = null
+      setScrollOverscanLevel(0)
+    }, SEARCH_RESULT_VIRTUAL_OVERSCAN_IDLE_DELAY_MS)
+  }, [setScrollOverscanLevel])
+  const updateScrollOverscanLevel = useCallback(
+    (top: number) => {
+      const time = performance.now()
+      const previous = scrollSampleRef.current
+      scrollSampleRef.current = { time, top }
+      resetScrollOverscanLevelSoon()
+      if (!previous) return
+
+      const elapsed = time - previous.time
+      if (elapsed <= 0) return
+
+      const velocity = Math.abs(top - previous.top) / elapsed
+      const level = searchResultVirtualOverscanLevel(velocity)
+      if (level <= scrollOverscanLevelRef.current) return
+
+      setScrollOverscanLevel(level)
+    },
+    [resetScrollOverscanLevelSoon, setScrollOverscanLevel]
+  )
   const updateViewport = useCallback(
     (next: SearchResultVirtualListViewport) => {
       viewportRef.current = next
@@ -1057,12 +1119,22 @@ function useSearchResultEditorVirtualizer(
   )
   const updateViewportTop = useCallback(
     (top: number) => {
+      updateScrollOverscanLevel(top)
       updateViewport({
         height: viewportRef.current.height,
         top,
       })
     },
-    [updateViewport]
+    [updateScrollOverscanLevel, updateViewport]
+  )
+
+  useEffect(
+    () => () => {
+      if (overscanIdleTimeoutRef.current === null) return
+
+      window.clearTimeout(overscanIdleTimeoutRef.current)
+    },
+    []
   )
 
   useEffect(() => {
@@ -1439,11 +1511,37 @@ function searchResultVirtualRowInputs(rows: readonly SearchResultVirtualRow[]) {
   }))
 }
 
-function searchResultVirtualOverscan(viewportHeight: number) {
+function searchResultVirtualOverscan(
+  viewportHeight: number,
+  level: SearchResultVirtualOverscanLevel
+) {
+  const height = Math.max(0, viewportHeight)
+  if (level === 2) {
+    return Math.max(
+      SEARCH_RESULT_VIRTUAL_FLING_MIN_OVERSCAN,
+      Math.floor(height * SEARCH_RESULT_VIRTUAL_FLING_OVERSCAN_RATIO)
+    )
+  }
+  if (level === 1) {
+    return Math.max(
+      SEARCH_RESULT_VIRTUAL_FAST_MIN_OVERSCAN,
+      Math.floor(height * SEARCH_RESULT_VIRTUAL_FAST_OVERSCAN_RATIO)
+    )
+  }
+
   return Math.max(
-    SEARCH_RESULT_VIRTUAL_MIN_OVERSCAN,
-    Math.floor(viewportHeight * 0.5)
+    SEARCH_RESULT_VIRTUAL_BASE_MIN_OVERSCAN,
+    Math.floor(height * SEARCH_RESULT_VIRTUAL_BASE_OVERSCAN_RATIO)
   )
+}
+
+function searchResultVirtualOverscanLevel(
+  velocityPxPerMs: number
+): SearchResultVirtualOverscanLevel {
+  if (velocityPxPerMs >= SEARCH_RESULT_VIRTUAL_FLING_SCROLL_PX_PER_MS) return 2
+  if (velocityPxPerMs >= SEARCH_RESULT_VIRTUAL_FAST_SCROLL_PX_PER_MS) return 1
+
+  return 0
 }
 
 function equalSearchResultVirtualViewport(
