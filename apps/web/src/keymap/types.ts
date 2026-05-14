@@ -27,6 +27,10 @@ export type WorkspaceCommandId =
   | "workspace.focusGit"
   | "workspace.closeCurrentTab"
   | "workspace.toggleDiffViewMode"
+  | "workspace.selectColorMode"
+  | "workspace.setLightTheme"
+  | "workspace.setDarkTheme"
+  | "workspace.setSystemTheme"
 
 export type EditorPlatformCommandId = `editor.${EditorCommandId}`
 

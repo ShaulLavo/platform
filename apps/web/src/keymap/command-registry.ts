@@ -141,6 +141,26 @@ export const workspaceCommandSpecs = [
     "Toggle diff view mode",
     "Switch the active diff viewer between split and unified modes."
   ),
+  appearanceCommand(
+    "workspace.selectColorMode",
+    "Choose color mode",
+    "Pick light, dark, or system color mode."
+  ),
+  appearanceCommand(
+    "workspace.setDarkTheme",
+    "Dark color mode",
+    "Use dark color mode."
+  ),
+  appearanceCommand(
+    "workspace.setLightTheme",
+    "Light color mode",
+    "Use light color mode."
+  ),
+  appearanceCommand(
+    "workspace.setSystemTheme",
+    "System color mode",
+    "Follow the system color mode."
+  ),
 ] satisfies readonly CommandSpec<WorkspaceCommandId>[]
 
 export const editorCommandSpecs = [
@@ -324,6 +344,14 @@ function workspaceCommand(
   vscodeCommandIds: readonly string[] = []
 ): CommandSpec<WorkspaceCommandId> {
   return { category: "Workspace", description, id, title, vscodeCommandIds }
+}
+
+function appearanceCommand(
+  id: WorkspaceCommandId,
+  title: string,
+  description: string
+): CommandSpec<WorkspaceCommandId> {
+  return { category: "Appearance", description, id, title }
 }
 
 function editorCommand(

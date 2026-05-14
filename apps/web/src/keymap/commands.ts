@@ -4,6 +4,7 @@ import {
   useWorkspaceFocus,
   type WorkspaceFocusArea,
 } from "@/components/workspace/workspace-focus-state"
+import { useTheme, type Theme } from "@/components/theme-context"
 import type { RequestCloseTab } from "@/features/editor/hooks/use-dirty-tab-close"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import {
@@ -47,6 +48,7 @@ type WorkspaceCommandContext = {
   readonly setFocusArea: (area: WorkspaceFocusArea) => void
   readonly setGitPanelOpen: (open: boolean) => void
   readonly setSidebarVisible: (visible: boolean) => void
+  readonly setTheme: (theme: Theme) => void
   readonly setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly sidebarVisible: boolean
@@ -75,6 +77,7 @@ export function usePlatformCommandDispatch({
   const sidebarVisible = useEditorWorkspaceState(
     (state) => state.sidebarVisible
   )
+  const { setTheme } = useTheme()
   const setDiffViewMode = useEditorWorkspaceState(
     (state) => state.setDiffViewMode
   )
@@ -126,6 +129,7 @@ export function usePlatformCommandDispatch({
         setFocusArea,
         setGitPanelOpen,
         setSidebarVisible,
+        setTheme,
         setWorkspacePanelTab,
         showCommandPalette,
         sidebarVisible,
@@ -147,6 +151,7 @@ export function usePlatformCommandDispatch({
       setFocusArea,
       setGitPanelOpen,
       setSidebarVisible,
+      setTheme,
       setWorkspacePanelTab,
       showCommandPalette,
       sidebarVisible,
@@ -255,6 +260,22 @@ const workspaceCommandHandlers: Record<
   },
   "workspace.showQuickAccess": ({ showCommandPalette }) => {
     showCommandPalette("")
+    return true
+  },
+  "workspace.selectColorMode": ({ showCommandPalette }) => {
+    showCommandPalette("color ")
+    return true
+  },
+  "workspace.setDarkTheme": ({ setTheme }) => {
+    setTheme("dark")
+    return true
+  },
+  "workspace.setLightTheme": ({ setTheme }) => {
+    setTheme("light")
+    return true
+  },
+  "workspace.setSystemTheme": ({ setTheme }) => {
+    setTheme("system")
     return true
   },
   "workspace.splitEditor": ({ requestEditorFocus }) => {

@@ -16,6 +16,7 @@ import {
 } from "@phosphor-icons/react"
 import { useCallback, useMemo } from "react"
 
+import { useTheme, type Theme } from "@/components/theme-context"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorDocumentState } from "@/features/editor/state/editor-document-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
@@ -66,6 +67,14 @@ type ViewPaletteItem = {
   readonly value: string
 }
 
+type ColorModePaletteItem = {
+  readonly command: PlatformCommandId
+  readonly description: string
+  readonly mode: Theme
+  readonly title: string
+  readonly value: string
+}
+
 type EditorPaletteItem = {
   readonly active: boolean
   readonly name: string
@@ -76,6 +85,7 @@ type EditorPaletteItem = {
 const paletteModeCommands = new Set<PlatformCommandId>([
   "workspace.gotoSymbol",
   "workspace.quickOpenView",
+  "workspace.selectColorMode",
   "workspace.showAllEditors",
   "workspace.showCommandPalette",
   "workspace.showQuickAccess",
@@ -89,6 +99,18 @@ const selectedFileCommands = new Set<PlatformCommandId>([
 ])
 
 const hiddenCommandPaletteCommands = new Set<PlatformCommandId>([
+  "workspace.setDarkTheme",
+  "workspace.setLightTheme",
+  "workspace.setSystemTheme",
+  "workspace.showCommandPalette",
+])
+
+const workspaceOptionalCommands = new Set<PlatformCommandId>([
+  "workspace.openFilePicker",
+  "workspace.selectColorMode",
+  "workspace.setDarkTheme",
+  "workspace.setLightTheme",
+  "workspace.setSystemTheme",
   "workspace.showCommandPalette",
 ])
 
@@ -119,6 +141,30 @@ const viewPaletteItems: readonly ViewPaletteItem[] = [
   },
 ]
 
+const colorModePaletteItems: readonly ColorModePaletteItem[] = [
+  {
+    command: "workspace.setLightTheme",
+    description: "Use light color mode.",
+    mode: "light",
+    title: "Light",
+    value: "color-mode:light",
+  },
+  {
+    command: "workspace.setDarkTheme",
+    description: "Use dark color mode.",
+    mode: "dark",
+    title: "Dark",
+    value: "color-mode:dark",
+  },
+  {
+    command: "workspace.setSystemTheme",
+    description: "Follow the system color mode.",
+    mode: "system",
+    title: "System",
+    value: "color-mode:system",
+  },
+]
+
 export function CommandPalette({
   bindings,
   dispatch,
@@ -128,6 +174,7 @@ export function CommandPalette({
   search,
   treeState,
 }: CommandPaletteProps) {
+  const { theme } = useTheme()
   const hasWorkspace = useEditorWorkspaceState((state) => !!state.rootFolder)
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
@@ -225,6 +272,8 @@ export function CommandPalette({
           />
         ) : mode === "views" ? (
           <ViewGroups hasWorkspace={hasWorkspace} onSelect={runCommand} />
+        ) : mode === "colorMode" ? (
+          <ColorModeGroups currentTheme={theme} onSelect={runCommand} />
         ) : mode === "editors" ? (
           <EditorGroups items={editorItems} onSelect={openFile} />
         ) : mode === "symbols" ? (
@@ -242,6 +291,7 @@ export function CommandPalette({
             onShowEditors={() => onSearchChange("edt ")}
             onShowSymbols={() => onSearchChange("@")}
             onShowCommands={() => onSearchChange(">")}
+            onShowColorMode={() => onSearchChange("color ")}
             onShowViews={() => onSearchChange("view ")}
           />
         )}
@@ -291,6 +341,7 @@ function QuickOpenGroups({
   onShowEditors,
   onShowSymbols,
   onShowCommands,
+  onShowColorMode,
   onShowViews,
 }: {
   readonly files: readonly FilePaletteItem[]
@@ -300,6 +351,7 @@ function QuickOpenGroups({
   readonly onShowEditors: () => void
   readonly onShowSymbols: () => void
   readonly onShowCommands: () => void
+  readonly onShowColorMode: () => void
   readonly onShowViews: () => void
 }) {
   return (
@@ -318,6 +370,13 @@ function QuickOpenGroups({
           title="Open View"
           value="quick-action:views"
           onSelect={onShowViews}
+        />
+        <QuickActionItem
+          description="Pick light, dark, or system color mode."
+          shortcut="color"
+          title="Choose Color Mode"
+          value="quick-action:color-mode"
+          onSelect={onShowColorMode}
         />
         <QuickActionItem
           description="Search open editor tabs."
@@ -352,6 +411,38 @@ function QuickOpenGroups({
         </CommandGroup>
       )}
     </>
+  )
+}
+
+function ColorModeGroups({
+  currentTheme,
+  onSelect,
+}: {
+  readonly currentTheme: Theme
+  readonly onSelect: (command: PlatformCommandId) => void
+}) {
+  return (
+    <CommandGroup heading="Color Mode">
+      {colorModePaletteItems.map((item) => (
+        <CommandItem
+          key={item.value}
+          keywords={[item.title, item.description, item.command]}
+          value={item.value}
+          onSelect={() => onSelect(item.command)}
+        >
+          <CommandIcon className="text-muted-foreground" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">{item.title}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">
+              {item.description}
+            </span>
+          </span>
+          {item.mode === currentTheme && (
+            <CommandShortcut>active</CommandShortcut>
+          )}
+        </CommandItem>
+      ))}
+    </CommandGroup>
   )
 }
 
@@ -634,8 +725,7 @@ function isCommandDisabled(
   hasWorkspace: boolean,
   selectedFilePath: string | null
 ) {
-  if (command === "workspace.showCommandPalette") return false
-  if (command === "workspace.openFilePicker") return false
+  if (workspaceOptionalCommands.has(command)) return false
   if (!hasWorkspace) return true
   if (selectedFileCommands.has(command))
     return !fileBackedPath(selectedFilePath)
@@ -665,6 +755,7 @@ function CommandCategoryIcon({ category }: { readonly category: string }) {
 
 function quickAccessMode(search: string) {
   if (search.startsWith("view ")) return "views"
+  if (search.startsWith("color ")) return "colorMode"
   if (search.startsWith("edt ")) return "editors"
   if (search.startsWith("@")) return "symbols"
   return search.startsWith(">") ? "commands" : "files"
@@ -672,6 +763,7 @@ function quickAccessMode(search: string) {
 
 function quickAccessQuery(search: string) {
   if (search.startsWith("view ")) return search.slice(5).trimStart()
+  if (search.startsWith("color ")) return search.slice(6).trimStart()
   if (search.startsWith("edt ")) return search.slice(4).trimStart()
   if (search.startsWith("@")) return search.slice(1).trimStart()
   if (!search.startsWith(">")) return search
@@ -704,6 +796,7 @@ function quickAccessRankTarget(
 function emptyLabelForMode(mode: ReturnType<typeof quickAccessMode>) {
   if (mode === "commands") return "No matching commands"
   if (mode === "views") return "No matching views"
+  if (mode === "colorMode") return "No matching color modes"
   if (mode === "editors") return "No open editors"
   if (mode === "symbols") return "No matching symbols"
 
@@ -713,6 +806,7 @@ function emptyLabelForMode(mode: ReturnType<typeof quickAccessMode>) {
 function placeholderForMode(mode: ReturnType<typeof quickAccessMode>) {
   if (mode === "commands") return "Search commands..."
   if (mode === "views") return "Search views..."
+  if (mode === "colorMode") return "Choose color mode..."
   if (mode === "editors") return "Search open editors..."
   if (mode === "symbols") return "Search symbols in the active editor..."
 

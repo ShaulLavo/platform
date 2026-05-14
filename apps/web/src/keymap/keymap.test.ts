@@ -145,6 +145,29 @@ describe("command registry", () => {
     })
   })
 
+  it("exposes appearance commands for the command palette", () => {
+    expect(platformCommandSpec("workspace.selectColorMode")).toMatchObject({
+      category: "Appearance",
+      description: "Pick light, dark, or system color mode.",
+      title: "Choose color mode",
+    })
+    expect(platformCommandSpec("workspace.setLightTheme")).toMatchObject({
+      category: "Appearance",
+      description: "Use light color mode.",
+      title: "Light color mode",
+    })
+    expect(platformCommandSpec("workspace.setDarkTheme")).toMatchObject({
+      category: "Appearance",
+      description: "Use dark color mode.",
+      title: "Dark color mode",
+    })
+    expect(platformCommandSpec("workspace.setSystemTheme")).toMatchObject({
+      category: "Appearance",
+      description: "Follow the system color mode.",
+      title: "System color mode",
+    })
+  })
+
   it("exposes requested VS Code workspace command aliases", () => {
     for (const [command, vscodeCommandId] of requestedWorkspaceAliases) {
       expect(platformCommandSpec(command)).toMatchObject({
