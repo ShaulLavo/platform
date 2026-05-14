@@ -1,33 +1,45 @@
+import { createMergeConflictPlugin, type EditorPlugin } from "@editor/core"
+import { createShikiHighlighterPlugin } from "@editor/core/shiki"
+import { createEditorFindPlugin } from "@editor/find"
+import { createFoldGutterPlugin, createLineGutterPlugin } from "@editor/gutters"
+import type { FoldGutterIconContext } from "@editor/gutters"
+import { CaretDownIcon } from "@phosphor-icons/react/ssr"
 import {
-  createMergeConflictPlugin,
-  type EditorHighlighterProvider,
-  type EditorPlugin,
-} from "@editor/core";
-import { createEditorFindPlugin } from "@editor/find";
-import { createFoldGutterPlugin, createLineGutterPlugin } from "@editor/gutters";
-import type { FoldGutterIconContext } from "@editor/gutters";
-import { loadShikiTheme } from "@editor/core/shiki";
-import { CaretDownIcon } from "@phosphor-icons/react/ssr";
-import { css, html, javaScript, json, markdown, typeScript } from "@editor/tree-sitter-languages";
-import type { TypeScriptLspPlugin } from "@editor/typescript-lsp";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { reportError, toClientError } from "@/lib/client-error-taxonomy";
+  css,
+  html,
+  javaScript,
+  json,
+  markdown,
+  typeScript,
+} from "@editor/tree-sitter-languages"
+import type { TypeScriptLspPlugin } from "@editor/typescript-lsp"
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
+import { reportError, toClientError } from "@/lib/client-error-taxonomy"
 
 const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
   createElement(CaretDownIcon, {
     className: "app-fold-chevron",
     size: 12,
     weight: "bold",
-  }),
-);
+  })
+)
+
+export type EditorSyntaxHighlightingOptions =
+  | {
+      readonly highlighter?: "tree-sitter"
+    }
+  | {
+      readonly highlighter: "shiki"
+      readonly shikiTheme: string | (() => string)
+    }
 
 export function createCriticalEditorPlugins(
   typeScriptLsp: TypeScriptLspPlugin,
-  shikiTheme: string | (() => string),
+  syntaxOptions: EditorSyntaxHighlightingOptions = {}
 ): readonly EditorPlugin[] {
   return [
-    ...createEditorSyntaxHighlightingPlugins(shikiTheme),
+    ...createEditorSyntaxHighlightingPlugins(syntaxOptions),
     createLineGutterPlugin(),
     createFoldGutterPlugin({
       width: 16,
@@ -37,85 +49,74 @@ export function createCriticalEditorPlugins(
     createEditorFindPlugin(),
     createMergeConflictPlugin(),
     typeScriptLsp,
-  ];
+  ]
 }
 
-export async function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
+export async function loadNonCriticalEditorPlugins(): Promise<
+  readonly EditorPlugin[]
+> {
   const plugins = await Promise.all([
     loadPlugin("@editor/scope-lines", () =>
-      import("@editor/scope-lines").then((module) => module.createScopeLinesPlugin()),
+      import("@editor/scope-lines").then((module) =>
+        module.createScopeLinesPlugin()
+      )
     ),
     loadPlugin("@editor/minimap", () =>
-      import("@editor/minimap").then((module) => module.createMinimapPlugin()),
+      import("@editor/minimap").then((module) => module.createMinimapPlugin())
     ),
-  ]);
+  ])
 
-  return plugins.filter((plugin): plugin is EditorPlugin => plugin !== null);
+  return plugins.filter((plugin): plugin is EditorPlugin => plugin !== null)
 }
 
 export function createEditorPlugins(
   typeScriptLsp: TypeScriptLspPlugin,
-  shikiTheme: string | (() => string),
+  syntaxOptions: EditorSyntaxHighlightingOptions = {}
 ): readonly EditorPlugin[] {
-  return createCriticalEditorPlugins(typeScriptLsp, shikiTheme);
+  return createCriticalEditorPlugins(typeScriptLsp, syntaxOptions)
 }
 
 export function createEditorSyntaxHighlightingPlugins(
-  shikiTheme: string | (() => string),
+  options: EditorSyntaxHighlightingOptions = {}
 ): readonly EditorPlugin[] {
-  return [
+  const treeSitterPlugins = [
     javaScript({ jsx: true }),
     typeScript({ tsx: true }),
     html(),
     css(),
     json(),
     markdown(),
-    // createShikiThemePlugin(shikiTheme),
-  ];
-}
+  ]
 
-function createShikiThemePlugin(shikiTheme: string | (() => string)): EditorPlugin {
-  const provider = createShikiThemeProvider(shikiTheme);
+  if (options.highlighter !== "shiki") return treeSitterPlugins
 
-  return {
-    name: "shiki-theme",
-    activate: (context) => context.registerHighlighter(provider),
-  };
-}
-
-function createShikiThemeProvider(shikiTheme: string | (() => string)): EditorHighlighterProvider {
-  return {
-    // Load Shiki colors without creating a Shiki token session.
-    createSession: () => null,
-    loadTheme: () =>
-      loadShikiTheme({
-        theme: resolveShikiTheme(shikiTheme),
-        themes: SHIKI_PRELOAD_THEMES,
-      }),
-  };
-}
-
-function resolveShikiTheme(shikiTheme: string | (() => string)): string {
-  if (typeof shikiTheme === "function") return shikiTheme();
-  return shikiTheme;
+  return [
+    ...treeSitterPlugins,
+    createShikiHighlighterPlugin({
+      preloadThemes: SHIKI_PRELOAD_THEMES,
+      theme: options.shikiTheme,
+    }),
+  ]
 }
 
 async function loadPlugin(
   name: string,
-  load: () => Promise<EditorPlugin>,
+  load: () => Promise<EditorPlugin>
 ): Promise<EditorPlugin | null> {
   try {
-    return await load();
+    return await load()
   } catch (error) {
-    reportError(toClientError({ code: "OPERATION_FAILED", name, error }));
-    return null;
+    reportError(toClientError({ code: "OPERATION_FAILED", name, error }))
+    return null
   }
 }
 
-function createFoldChevronIcon({ document }: FoldGutterIconContext): SVGSVGElement {
-  const template = document.createElement("template");
-  template.innerHTML = FOLD_CHEVRON_ICON_MARKUP;
-  return template.content.firstElementChild as SVGSVGElement;
+function createFoldChevronIcon({
+  document,
+}: FoldGutterIconContext): SVGSVGElement {
+  const template = document.createElement("template")
+  template.innerHTML = FOLD_CHEVRON_ICON_MARKUP
+  return template.content.firstElementChild as SVGSVGElement
 }
 
-const SHIKI_PRELOAD_THEMES = ["github-dark", "github-light"] as const;
+const SHIKI_PRELOAD_THEMES = ["github-dark", "github-light"] as const

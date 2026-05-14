@@ -32,7 +32,7 @@ import {
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { createEditorSyntaxHighlightingPlugins } from "@/features/editor/editor-plugins"
-import { useEditorShikiTheme } from "@/features/editor/hooks/use-editor-shiki-theme"
+import { useEditorColorTheme } from "@/features/editor/hooks/use-editor-color-theme"
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
 import {
   nextSearchResultFileEditorPoolKeys,
@@ -205,12 +205,11 @@ export const SearchResultEditorSurface = memo(
     const previousDisplayedResultsQueryRef = useRef<string | null>(null)
     const activeIndexRef = useRef(activeIndex)
     const activeScrollTargetRef = useRef(activeScrollTarget)
-    const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
+    const { editorTheme } = useEditorColorTheme()
     const deferredPlugins = useSearchResultDeferredPlugins({
       mode: deferredPluginMode,
       resultKey: displayedResultsQuery,
       rowCount: rows.length,
-      shikiThemeResolver,
     })
 
     const {
@@ -362,7 +361,7 @@ export const SearchResultEditorSurface = memo(
               activeResultId={activeResultId}
               canReplace={canReplace}
               deferredPluginsReady={deferredPlugins.ready}
-              editorTheme={editorThemeRefresh}
+              editorTheme={editorTheme}
               entry={entry}
               key={`file-results-pool:${entry.key}`}
               keymapLayers={readonlyKeymapLayers}
@@ -803,12 +802,10 @@ function useSearchResultDeferredPlugins({
   mode,
   resultKey,
   rowCount,
-  shikiThemeResolver,
 }: {
   mode: SearchResultDeferredPluginMode
   resultKey: string | null
   rowCount: number
-  shikiThemeResolver: () => string
 }) {
   const deferKey = `${resultKey ?? ""}:${rowCount}`
   const [deferredSyntax, setDeferredSyntax] = useState({
@@ -836,8 +833,8 @@ function useSearchResultDeferredPlugins({
   const syntaxPlugins = useMemo(() => {
     if (!ready) return []
 
-    return createEditorSyntaxHighlightingPlugins(shikiThemeResolver)
-  }, [ready, shikiThemeResolver])
+    return createEditorSyntaxHighlightingPlugins()
+  }, [ready])
 
   return {
     enable,

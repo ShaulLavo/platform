@@ -489,6 +489,43 @@ describe("search buffer store", () => {
     )
   })
 
+  it("reconciles same-query refreshes without duplicating visible rows", () => {
+    const store = createSearchBufferStore()
+    const firstRunId = store.getState().startSearch(searchQuery("needle"))
+    const firstMatch = contentMatch("repo/src/app.ts", 1, 1)
+    const secondMatch = contentMatch("repo/src/app.ts", 2, 1)
+    store.getState().appendEvents(firstRunId, [
+      { match: firstMatch, type: "match" },
+      { match: secondMatch, type: "match" },
+      doneEvent("needle", 2),
+    ])
+
+    const previousGroups = searchGroupsForSnapshot(store.getState().active)
+    const previousIds = searchResultItems(previousGroups).map((item) => item.id)
+    const secondRunId = store.getState().startSearch(searchQuery("needle"))
+    store.getState().appendEvent(secondRunId, {
+      match: { ...firstMatch },
+      type: "match",
+    })
+
+    const streamingItems = searchResultItems(
+      searchGroupsForSnapshot(store.getState().active),
+      {
+        pendingResultIds: store.getState().active?.pendingResultIds,
+      }
+    )
+
+    expect(streamingItems.map((item) => item.id)).toEqual(previousIds)
+    expect(streamingItems.filter((item) => item.type === "match")).toHaveLength(
+      2
+    )
+    expect(
+      streamingItems
+        .filter((item) => item.type === "match")
+        .map((item) => item.pending)
+    ).toEqual([false, true])
+  })
+
   it("prunes unconfirmed pending rows when related streaming finishes", () => {
     const store = createSearchBufferStore()
     const firstRunId = store.getState().startSearch(searchQuery("c"))

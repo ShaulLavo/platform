@@ -16,7 +16,7 @@ import { languageIdForFilePath } from "@/features/editor/utils/file-path"
 import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
 import type { CachedEditorDocument } from "@/features/editor/state/editor-document-state"
 import { useCommitMessageEditorFocus } from "@/features/editor/hooks/use-commit-message-editor-focus"
-import { useEditorShikiTheme } from "@/features/editor/hooks/use-editor-shiki-theme"
+import { useEditorColorTheme } from "@/features/editor/hooks/use-editor-color-theme"
 import { useEditorStatusBarState } from "@/features/editor/hooks/use-editor-status-bar-state"
 import {
   scrollPositionFromSnapshot,
@@ -62,9 +62,12 @@ export function Editor({
     (state) => state.setActiveEditorCommandDispatch
   )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const { editorThemeRefresh, shikiThemeResolver } = useEditorShikiTheme()
+  const { editorTheme } = useEditorColorTheme()
   const { typeScriptDiagnostics, typeScriptLsp, typeScriptStatus } =
-    useTypeScriptLspPlugin({ rootPath, onOpenDefinition })
+    useTypeScriptLspPlugin({
+      rootPath,
+      onOpenDefinition,
+    })
   const scrollPersistencePlugin = useScrollPersistencePlugin({
     document: cachedDocument,
     onScrollPositionChange,
@@ -73,8 +76,8 @@ export function Editor({
     readonly ReturnType<typeof createCriticalEditorPlugins>[number][]
   >([])
   const criticalPlugins = useMemo(
-    () => createCriticalEditorPlugins(typeScriptLsp, shikiThemeResolver),
-    [shikiThemeResolver, typeScriptLsp]
+    () => createCriticalEditorPlugins(typeScriptLsp),
+    [typeScriptLsp]
   )
   const plugins = useMemo(
     () => [...criticalPlugins, ...nonCriticalPlugins, scrollPersistencePlugin],
@@ -108,7 +111,7 @@ export function Editor({
       onTextChange?.(cachedDocument.path, cachedDocument.session.getText())
     },
     plugins,
-    theme: editorThemeRefresh,
+    theme: editorTheme,
   })
   const editorInstance = controller.useEditorInstance()
   const editorState = controller.useState()

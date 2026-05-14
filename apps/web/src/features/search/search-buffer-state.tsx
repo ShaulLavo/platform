@@ -962,9 +962,8 @@ function sameWorkspaceSearchScope(
 
 function relatedSearchText(left: string, right: string) {
   if (!left || !right) return false
-  if (left === right) return false
 
-  return left.startsWith(right) || right.startsWith(left)
+  return left === right || left.startsWith(right) || right.startsWith(left)
 }
 
 function sameStringList(

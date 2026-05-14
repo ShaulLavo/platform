@@ -14,7 +14,7 @@ import { readonlyEditorKeymapLayers } from "@/keymap"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { EditorFrame } from "@/features/editor/components/editor-frame"
-import { useEditorShikiTheme } from "@/features/editor/hooks/use-editor-shiki-theme"
+import { useEditorColorTheme } from "@/features/editor/hooks/use-editor-color-theme"
 import {
   searchResultDocumentItemIdAtRow,
   searchResultDocumentSelection,
@@ -62,7 +62,7 @@ export function SearchResultDocumentEditor({
     (state) => state.setActiveEditorCommandDispatch
   )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const { editorThemeRefresh } = useEditorShikiTheme()
+  const { editorTheme } = useEditorColorTheme()
   const lastEditorFocusRequestId = useRef(editorFocusRequestId)
   const selection = useMemo(
     () => searchResultDocumentSelection(document, activeResultId),
@@ -99,7 +99,7 @@ export function SearchResultDocumentEditor({
     },
     plugins,
     rowGap: SEARCH_RESULT_DOCUMENT_ROW_GAP,
-    theme: editorThemeRefresh,
+    theme: editorTheme,
   })
   const editorState = controller.useState()
 
