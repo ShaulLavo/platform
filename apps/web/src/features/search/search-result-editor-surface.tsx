@@ -634,6 +634,7 @@ const SearchResultFileEditor = memo(
       plugins,
       rangeDecorations,
       rowGap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
+      selectionSyncMode: "none",
       storeSync: "none",
       textMetrics: SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS,
       theme: editorTheme,

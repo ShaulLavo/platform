@@ -30,6 +30,7 @@ const editorMountStats = {
   count: 0,
   totalMs: 0,
 }
+const nativeSelectionStats = installNativeSelectionPerfProbe()
 
 observeEditorMountTiming((durationMs) => {
   editorMountStats.count += 1
@@ -52,10 +53,19 @@ type SearchPerfMetrics = {
   readonly initialRenderMs: number | null
   readonly longestFrameMs: number | null
   readonly longestTaskMs: number
+  readonly nativeAddRangeCount: number
   readonly scrollFrames: number
   readonly scrollSampleMs: number | null
   readonly totalEditorMountMs: number
   readonly visibleEditorHosts: number
+}
+
+type NativeSelectionPerfStats = {
+  addRangeCount: number
+}
+
+type SearchPerfSelectionWindow = Window & {
+  __searchResultEditorSelectionProbe?: NativeSelectionPerfStats
 }
 
 const EMPTY_KEYMAP_LAYERS: readonly EditorKeymapLayer[] = []
@@ -168,7 +178,7 @@ export function SearchPerfHeader({
       <div className="min-w-0 truncate font-medium">
         Search result editor perf fixture
       </div>
-      <dl className="grid grid-cols-[repeat(8,auto)] gap-x-3 gap-y-1 text-muted-foreground">
+      <dl className="grid grid-cols-[repeat(9,auto)] gap-x-3 gap-y-1 text-muted-foreground">
         <PerfMetric label="variant" value={variantLabel(variant)} />
         <PerfMetric
           label="first paint"
@@ -182,6 +192,10 @@ export function SearchPerfHeader({
         <PerfMetric
           label="visible hosts"
           value={String(metrics.visibleEditorHosts)}
+        />
+        <PerfMetric
+          label="addRange"
+          value={String(metrics.nativeAddRangeCount)}
         />
         <PerfMetric label="long task" value={formatMs(metrics.longestTaskMs)} />
         <PerfMetric
@@ -298,6 +312,7 @@ function currentSearchPerfMetrics(
     initialRenderMs: performance.now() - PERF_START,
     longestFrameMs: null,
     longestTaskMs,
+    nativeAddRangeCount: nativeSelectionStats.addRangeCount,
     scrollFrames: 0,
     scrollSampleMs: null,
     totalEditorMountMs: editorMountStats.totalMs,
@@ -305,6 +320,24 @@ function currentSearchPerfMetrics(
       root?.querySelectorAll('[role="treeitem"] .editor-virtualized').length ??
       0,
   }
+}
+
+function installNativeSelectionPerfProbe(): NativeSelectionPerfStats {
+  const perfWindow = window as SearchPerfSelectionWindow
+  if (perfWindow.__searchResultEditorSelectionProbe)
+    return perfWindow.__searchResultEditorSelectionProbe
+
+  const stats = { addRangeCount: 0 }
+  const nativeAddRange = Selection.prototype.addRange
+  Selection.prototype.addRange = function addRange(
+    this: Selection,
+    range: Range
+  ): void {
+    stats.addRangeCount += 1
+    nativeAddRange.call(this, range)
+  }
+  perfWindow.__searchResultEditorSelectionProbe = stats
+  return stats
 }
 
 function observeLongTasks(onLongTask: (durationMs: number) => void) {
