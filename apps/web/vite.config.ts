@@ -10,6 +10,7 @@ const editorSourceRoot = resolveEditorSourceRoot(workspaceRoot)
 
 export default defineConfig({
   plugins: [
+    disableReactDevtoolsInProductionPlugin(),
     platformSelfSaveHmrPlugin(),
     react({
       babel: {
@@ -36,6 +37,53 @@ export default defineConfig({
     format: "es",
   },
 })
+
+const DISABLE_REACT_DEVTOOLS_SCRIPT = `
+;(() => {
+  let hook = globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__
+
+  const disabledHook = (nextHook) => {
+    if (!nextHook || typeof nextHook !== "object") {
+      return { isDisabled: true }
+    }
+
+    nextHook.isDisabled = true
+    return nextHook
+  }
+
+  try {
+    Object.defineProperty(globalThis, "__REACT_DEVTOOLS_GLOBAL_HOOK__", {
+      configurable: true,
+      get() {
+        return hook
+      },
+      set(nextHook) {
+        hook = disabledHook(nextHook)
+      },
+    })
+    hook = disabledHook(hook)
+  } catch {
+    hook = disabledHook(hook)
+    globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook
+  }
+})()
+`.trim()
+
+function disableReactDevtoolsInProductionPlugin(): Plugin {
+  return {
+    name: "platform-disable-react-devtools-production",
+    apply: "build",
+    transformIndexHtml() {
+      return [
+        {
+          tag: "script",
+          children: DISABLE_REACT_DEVTOOLS_SCRIPT,
+          injectTo: "head-prepend",
+        },
+      ]
+    },
+  }
+}
 
 function platformSelfSaveHmrPlugin(): Plugin {
   return {

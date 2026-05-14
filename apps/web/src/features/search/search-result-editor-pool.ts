@@ -1,6 +1,6 @@
 import type { SearchResultId } from "@/features/search/search-result-items"
 
-export const SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE = 4
+export const SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE = 1
 
 export function nextSearchResultFileEditorPoolKeys(
   currentKeys: readonly SearchResultId[],

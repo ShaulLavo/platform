@@ -107,9 +107,9 @@ const PENDING_MATCH_STYLE = {
 } satisfies Partial<CSSStyleDeclaration>
 
 const SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE = {
+  contain: "layout paint style",
+  display: "none",
   pointerEvents: "none",
-  transform: "translateY(-100000px)",
-  visibility: "hidden",
 } satisfies CSSProperties
 
 const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
@@ -1427,6 +1427,7 @@ function searchResultVirtualRowStyle(
   virtualItem: SearchResultVirtualListMetrics["items"][number]
 ): CSSProperties {
   return {
+    contain: "layout paint style",
     transform: `translateY(${virtualItem.start + SEARCH_RESULT_VIRTUAL_ROW_OFFSET}px)`,
   }
 }

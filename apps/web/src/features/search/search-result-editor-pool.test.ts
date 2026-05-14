@@ -10,7 +10,7 @@ describe("search result editor pool", () => {
         ["file:c", "file:f"],
         true
       )
-    ).toEqual(["file:a", "file:b", "file:c", "file:d", "file:e", "file:f"])
+    ).toEqual(["file:a", "file:c", "file:f"])
   })
 
   it("drops hidden file slots while prewarming is disabled", () => {
@@ -30,6 +30,6 @@ describe("search result editor pool", () => {
         ["file:g"],
         true
       )
-    ).toEqual(["file:a", "file:b", "file:c", "file:d", "file:g"])
+    ).toEqual(["file:a", "file:g"])
   })
 })
