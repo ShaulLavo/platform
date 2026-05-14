@@ -411,6 +411,7 @@ for block controls can be incremental once focus routing is stable.
 - Implement readonly selection, copy, and find behavior.
 - Run large-result benchmarks against the current renderer before deleting it.
 - Run typecheck and focused search/editor tests.
+- Make sure it looks exactly 1 to 1 the same as it looked before!
 
 ### Phase 8: Delete Platform Search Renderers
 
