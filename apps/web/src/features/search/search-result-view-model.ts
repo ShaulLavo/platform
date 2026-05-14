@@ -73,14 +73,31 @@ export type SearchResultFileDocument = {
   readonly text: string
 }
 
+type SearchResultFileBlockCacheEntry = {
+  readonly block: SearchResultFileBlock | null
+  readonly pendingIdsKey: string
+  readonly query: string
+}
+
+const searchResultFileBlockCache = new WeakMap<
+  WorkspaceSearchFileGroup,
+  SearchResultFileBlockCacheEntry
+>()
+
 export function searchResultFileBlocks(
   groups: readonly WorkspaceSearchFileGroup[],
   query: string,
   options: SearchResultItemOptions = {}
 ) {
   const blocks: SearchResultFileBlock[] = []
+  const pendingIdsKey = searchResultPendingIdsCacheKey(options.pendingResultIds)
   for (const group of groups) {
-    const block = searchResultFileBlock(group, query, options)
+    const block = cachedSearchResultFileBlock(
+      group,
+      query,
+      options,
+      pendingIdsKey
+    )
     if (!block) continue
     blocks.push(block)
   }
@@ -261,6 +278,43 @@ function searchResultFileBlock(
   if (!nameItem) return null
 
   return nameSearchResultFileBlock(group, nameItem)
+}
+
+function cachedSearchResultFileBlock(
+  group: WorkspaceSearchFileGroup,
+  query: string,
+  options: SearchResultItemOptions,
+  pendingIdsKey: string
+): SearchResultFileBlock | null {
+  const cached = searchResultFileBlockCache.get(group)
+  if (cached?.query === query && cached.pendingIdsKey === pendingIdsKey) {
+    return cached.block
+  }
+
+  const block = searchResultFileBlock(group, query, options)
+  searchResultFileBlockCache.set(group, {
+    block,
+    pendingIdsKey,
+    query,
+  })
+  return block
+}
+
+function searchResultPendingIdsCacheKey(
+  pendingResultIds: SearchResultItemOptions["pendingResultIds"]
+) {
+  if (!pendingResultIds) return ""
+
+  const ids = Array.isArray(pendingResultIds)
+    ? pendingResultIds
+    : [...pendingResultIds]
+  if (ids.length === 0) return ""
+
+  return [...ids].sort().map(searchResultPendingIdCachePart).join("")
+}
+
+function searchResultPendingIdCachePart(id: SearchResultId) {
+  return `${id.length}:${id};`
 }
 
 function contentSearchResultFileBlock(

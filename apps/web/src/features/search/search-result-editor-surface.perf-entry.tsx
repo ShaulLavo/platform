@@ -139,7 +139,7 @@ export function SearchResultEditorSurfacePerfFixture() {
       <SearchResultEditorSurface
         activeResultId={activeResultId}
         canReplace={variant.replaceVisible}
-        deferredPluginMode={streaming ? "manual" : variant.deferredMode}
+        deferredPluginMode={variant.deferredMode}
         displayedResultsQuery={SEARCH_QUERY}
         groups={groups}
         keymapLayers={EMPTY_KEYMAP_LAYERS}
@@ -222,8 +222,9 @@ function readSearchPerfVariant(): SearchPerfVariant {
 function searchPerfDeferredMode(value: string | null): SearchPerfDeferredMode {
   if (value === "immediate") return "immediate"
   if (value === "manual") return "manual"
+  if (value === "idle") return "idle"
 
-  return "idle"
+  return "immediate"
 }
 
 function createSearchPerfGroups(

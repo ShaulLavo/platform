@@ -3,14 +3,14 @@ import { describe, expect, it } from "bun:test"
 import { nextSearchResultFileEditorPoolKeys } from "./search-result-editor-pool"
 
 describe("search result editor pool", () => {
-  it("keeps visible file slots keyed by file id and retains recent hidden files", () => {
+  it("keeps visible file slots keyed by file id and preserves current slot order", () => {
     expect(
       nextSearchResultFileEditorPoolKeys(
         ["file:a", "file:b", "file:c", "file:d", "file:e"],
         ["file:c", "file:f"],
         true
       )
-    ).toEqual(["file:c", "file:f", "file:a", "file:b", "file:d", "file:e"])
+    ).toEqual(["file:a", "file:b", "file:c", "file:d", "file:e", "file:f"])
   })
 
   it("drops hidden file slots while prewarming is disabled", () => {
@@ -30,6 +30,6 @@ describe("search result editor pool", () => {
         ["file:g"],
         true
       )
-    ).toEqual(["file:g", "file:a", "file:b", "file:c", "file:d"])
+    ).toEqual(["file:a", "file:b", "file:c", "file:d", "file:g"])
   })
 })

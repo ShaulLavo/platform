@@ -130,9 +130,7 @@ export function SearchBufferEditor({
           <SearchResultEditorSurface
             activeResultId={snapshot.activeResultId}
             canReplace={resultCanReplace}
-            deferredPluginMode={
-              snapshot.status === "loading" ? "manual" : "idle"
-            }
+            deferredPluginMode="immediate"
             groups={groups}
             keymapLayers={editorKeymapLayers}
             pendingResultIds={snapshot.pendingResultIds}

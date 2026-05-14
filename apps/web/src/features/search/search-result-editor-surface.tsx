@@ -1,17 +1,16 @@
 import "@editor/core/style.css"
 import "@editor/find/style.css"
-import "@editor/gutters/style.css"
 
 import { ArrowSquareOutIcon, CaretRightIcon } from "@phosphor-icons/react"
 import type {
+  BrowserTextMetrics,
   EditorKeymapLayer,
+  EditorKeymapOptions,
   EditorPlugin,
-  EditorGutterRowContext,
   EditorRangeDecoration,
   EditorTheme,
 } from "@editor/core"
 import { createEditorFindPlugin } from "@editor/find"
-import { createLineGutterPlugin } from "@editor/gutters"
 import { EditorHost, useEditor } from "@editor/react"
 import type { WorkspaceSearchMatch } from "@workspace/contracts"
 import {
@@ -81,6 +80,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 const FILE_ROW_ESTIMATE = 44
 const EXCERPT_EDITOR_LINE_HEIGHT = 22
+const EXCERPT_EDITOR_CHARACTER_WIDTH = 8
 const SEARCH_RESULT_FILE_EDITOR_ROW_GAP = 6
 const SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT = 8
 const SEARCH_RESULT_VIRTUAL_MIN_OVERSCAN = 320
@@ -119,6 +119,13 @@ const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
 } as const
 const EMPTY_EDITOR_PLUGINS: readonly EditorPlugin[] = []
 const EMPTY_RANGE_DECORATIONS: readonly EditorRangeDecoration[] = []
+const SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS = {
+  characterWidth: EXCERPT_EDITOR_CHARACTER_WIDTH,
+  rowHeight: EXCERPT_EDITOR_LINE_HEIGHT,
+} satisfies BrowserTextMetrics
+const SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP = {
+  enabled: false,
+} satisfies EditorKeymapOptions
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
@@ -140,16 +147,11 @@ type SearchResultEditorSurfaceProps = {
 
 type SearchResultDeferredPluginMode = "idle" | "immediate" | "manual"
 
-const searchResultSourceLineLabels = new Map<
-  string,
-  readonly SearchResultFileDocumentLine[]
->()
-
 export const SearchResultEditorSurface = memo(
   ({
     activeResultId,
     canReplace,
-    deferredPluginMode = "idle",
+    deferredPluginMode = "immediate",
     displayedResultsQuery,
     groups,
     keymapLayers,
@@ -520,7 +522,7 @@ function SearchResultFileEditorPoolSlot({
     >
       <SearchResultFileEditor
         active={active}
-        activeResultId={activeResultId}
+        activeResultId={active ? activeResultId : null}
         canReplace={canReplace}
         deferredPluginsReady={deferredPluginsReady}
         editorTheme={editorTheme}
@@ -577,24 +579,7 @@ const SearchResultFileEditor = memo(
       (state) => state.setActiveEditorCommandDispatch
     )
     const fileDocument = useMemo(() => searchResultFileDocument(file), [file])
-    const sourceLineLabelsKey = useId()
     const sourceLineDigits = fileBlockLineDigits(file)
-    useLayoutEffect(() => {
-      if (!visible) {
-        searchResultSourceLineLabels.delete(sourceLineLabelsKey)
-        return
-      }
-
-      searchResultSourceLineLabels.set(sourceLineLabelsKey, fileDocument.lines)
-      return () => {
-        searchResultSourceLineLabels.delete(sourceLineLabelsKey)
-      }
-    }, [fileDocument.lines, sourceLineLabelsKey, visible])
-    const sourceLineForRow = useCallback(
-      (row: EditorGutterRowContext) =>
-        searchResultSourceLineLabelForRow(sourceLineLabelsKey, row),
-      [sourceLineLabelsKey]
-    )
     const document = useMemo(
       () => ({
         documentId: searchResultFileDocumentId(file),
@@ -612,33 +597,29 @@ const SearchResultFileEditor = memo(
           : EMPTY_RANGE_DECORATIONS,
       [activeResultId, fileDocument, visible]
     )
-    const sourceLineGutterPlugin = useMemo(
-      () => {
-        if (!visible) return null
+    const findPlugin = useMemo(() => {
+      if (!active) return null
+      if (!visible) return null
+      if (!deferredPluginsReady) return null
 
-        return createLineGutterPlugin({
-          labelForRow: sourceLineForRow,
-          minDigits: sourceLineDigits,
-        })
-      },
-      [sourceLineDigits, sourceLineForRow, visible]
-    )
-    const findPlugin = useMemo(
-      () =>
-        visible && deferredPluginsReady ? createEditorFindPlugin() : null,
-      [deferredPluginsReady, visible]
-    )
+      return createEditorFindPlugin()
+    }, [active, deferredPluginsReady, visible])
     const effectiveSyntaxPlugins = visible
       ? syntaxPlugins
       : EMPTY_EDITOR_PLUGINS
     const plugins = useMemo(
+      () => fileResultEditorPlugins(effectiveSyntaxPlugins, findPlugin),
+      [effectiveSyntaxPlugins, findPlugin]
+    )
+    const editorKeymap = useMemo(
       () =>
-        fileResultEditorPlugins(
-          sourceLineGutterPlugin,
-          effectiveSyntaxPlugins,
-          findPlugin
-        ),
-      [effectiveSyntaxPlugins, findPlugin, sourceLineGutterPlugin]
+        active
+          ? ({
+              defaultBindings: false,
+              layers: keymapLayers,
+            } satisfies EditorKeymapOptions)
+          : SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP,
+      [active, keymapLayers]
     )
     const editorStyle = useMemo(
       () => searchResultFileEditorStyle(fileDocument),
@@ -648,15 +629,13 @@ const SearchResultFileEditor = memo(
       cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
       document,
       editability: "readonly",
-      keymap: {
-        defaultBindings: false,
-        layers: keymapLayers,
-      },
+      keymap: editorKeymap,
       lineHeight: EXCERPT_EDITOR_LINE_HEIGHT,
       plugins,
       rangeDecorations,
       rowGap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
       storeSync: "none",
+      textMetrics: SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS,
       theme: editorTheme,
     })
     const pendingActivationFrameRef = useRef<number | null>(null)
@@ -753,11 +732,17 @@ const SearchResultFileEditor = memo(
         onPointerDownCapture={handleActivate}
         onPointerUpCapture={handlePointerUp}
       >
-        <EditorHost
-          className="app-editor-host search-result-file-editor-host"
-          controller={controller}
-          style={editorStyle}
-        />
+        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start">
+          <SearchResultSourceLineGutter
+            document={fileDocument}
+            minDigits={sourceLineDigits}
+          />
+          <EditorHost
+            className="app-editor-host search-result-file-editor-host min-w-0"
+            controller={controller}
+            style={editorStyle}
+          />
+        </div>
         {replaceVisible ? (
           <Button
             className="mt-0.5 h-6 px-1.5 text-[10px]"
@@ -776,6 +761,34 @@ const SearchResultFileEditor = memo(
   }
 )
 SearchResultFileEditor.displayName = "SearchResultFileEditor"
+
+function SearchResultSourceLineGutter({
+  document,
+  minDigits,
+}: {
+  document: SearchResultFileDocument
+  minDigits: number
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      className="box-border grid shrink-0 overflow-hidden pr-2 text-right font-mono text-[13px] text-muted-foreground select-none"
+      style={searchResultSourceLineGutterStyle(
+        document.lines.length,
+        minDigits
+      )}
+    >
+      {document.lines.map((line) => (
+        <span
+          className="block overflow-hidden leading-[22px] tabular-nums"
+          key={line.id}
+        >
+          {line.sourceLine}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 function useSearchResultDeferredPlugins({
   mode,
@@ -825,19 +838,14 @@ function useSearchResultDeferredPlugins({
 }
 
 function fileResultEditorPlugins(
-  sourceLineGutterPlugin: EditorPlugin | null,
   syntaxPlugins: readonly EditorPlugin[],
   findPlugin: EditorPlugin | null
 ) {
-  if (!sourceLineGutterPlugin && syntaxPlugins.length === 0 && !findPlugin)
-    return EMPTY_EDITOR_PLUGINS
+  if (syntaxPlugins.length === 0 && !findPlugin) return EMPTY_EDITOR_PLUGINS
 
-  const sourceLinePlugins = sourceLineGutterPlugin
-    ? [sourceLineGutterPlugin]
-    : EMPTY_EDITOR_PLUGINS
-  if (!findPlugin) return [...sourceLinePlugins, ...syntaxPlugins]
+  if (!findPlugin) return [...syntaxPlugins]
 
-  return [...sourceLinePlugins, ...syntaxPlugins, findPlugin]
+  return [...syntaxPlugins, findPlugin]
 }
 
 function handleSearchResultSurfaceKeyDown({
@@ -1530,13 +1538,6 @@ function searchResultFileDocumentId(file: SearchResultFileBlock) {
   return `search-result-file:${file.path}`
 }
 
-function searchResultSourceLineLabelForRow(
-  key: string,
-  row: EditorGutterRowContext
-) {
-  return searchResultSourceLineLabels.get(key)?.[row.bufferRow]?.sourceLine
-}
-
 function searchResultDomId(treeId: string, itemId: string) {
   return `${treeId}-${itemId}`
 }
@@ -1570,6 +1571,19 @@ function searchResultFileEditorStyle(
 ): CSSProperties {
   return {
     height: searchResultFileEditorHeight(document.lines.length),
+  }
+}
+
+function searchResultSourceLineGutterStyle(
+  lineCount: number,
+  minDigits: number
+): CSSProperties {
+  return {
+    gap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
+    gridTemplateRows: `repeat(${lineCount}, ${EXCERPT_EDITOR_LINE_HEIGHT}px)`,
+    height: searchResultFileEditorHeight(lineCount),
+    minWidth: 26,
+    width: `calc(${Math.max(3, minDigits)}ch + 8px)`,
   }
 }
 

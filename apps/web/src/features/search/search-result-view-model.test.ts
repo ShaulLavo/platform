@@ -179,6 +179,41 @@ describe("search result view model", () => {
     expect(rows).toEqual([{ file: blocks[0], type: "file" }])
   })
 
+  it("reuses unchanged file blocks across adjacent collapse updates", () => {
+    const firstGroup = fileGroup([
+      contentMatch({
+        column: 1,
+        endColumn: 7,
+        line: 4,
+        preview: "needle",
+      }),
+    ])
+    const secondGroup = fileGroup(
+      [
+        contentMatch({
+          column: 8,
+          endColumn: 14,
+          line: 5,
+          path: "/repo/src/other.ts",
+          preview: "const needle = true",
+        }),
+      ],
+      "src/other.ts"
+    )
+    const firstBlocks = searchResultFileBlocks(
+      [firstGroup, secondGroup],
+      "needle"
+    )
+    const nextBlocks = searchResultFileBlocks(
+      [{ ...firstGroup, collapsed: true }, secondGroup],
+      "needle"
+    )
+
+    expect(nextBlocks[0]).not.toBe(firstBlocks[0])
+    expect(nextBlocks[0]?.collapsed).toBe(true)
+    expect(nextBlocks[1]).toBe(firstBlocks[1])
+  })
+
   it("maps virtual rows to expanded file headers and one file results row", () => {
     const match = contentMatch({
       column: 1,
@@ -356,7 +391,11 @@ describe("search result view model", () => {
 })
 
 function contentMatch(
-  patch: Pick<WorkspaceSearchMatch, "column" | "endColumn" | "line" | "preview">
+  patch: Pick<
+    WorkspaceSearchMatch,
+    "column" | "endColumn" | "line" | "preview"
+  > &
+    Partial<Pick<WorkspaceSearchMatch, "path">>
 ): WorkspaceSearchMatch {
   return {
     kind: "content",

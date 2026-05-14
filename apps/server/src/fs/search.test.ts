@@ -266,6 +266,73 @@ describe("workspace disk search provider", () => {
     ])
   })
 
+  it("respects project gitignore files for content search", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "ignored"), { recursive: true })
+    await mkdir(path.join(root, "src"), { recursive: true })
+    await writeFile(path.join(root, ".gitignore"), "ignored/\n")
+    await writeFile(path.join(root, "ignored", "skip.txt"), "needle")
+    await writeFile(path.join(root, "src", "match.txt"), "needle")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "content",
+        path: "src/match.txt",
+      }),
+    ])
+  })
+
+  it("does not search content when the requested root is gitignored", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "ignored"), { recursive: true })
+    await writeFile(path.join(root, ".gitignore"), "ignored/\n")
+    await writeFile(path.join(root, "ignored", "skip.txt"), "needle")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "ignored",
+      query: "needle",
+    })
+
+    expect(result.matches).toEqual([])
+  })
+
+  it("respects project gitignore files for filename search", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "ignored"), { recursive: true })
+    await mkdir(path.join(root, "src"), { recursive: true })
+    await writeFile(path.join(root, ".gitignore"), "ignored/\n")
+    await writeFile(path.join(root, "ignored", "needle.txt"), "")
+    await writeFile(path.join(root, "src", "needle.txt"), "")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "needle",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "name",
+        path: "src/needle.txt",
+      }),
+    ])
+  })
+
   it("keeps partial rg results when ripgrep exits with a nonfatal filesystem error", async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, "match.txt"), "needle")

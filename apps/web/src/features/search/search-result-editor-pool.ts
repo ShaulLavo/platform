@@ -12,12 +12,22 @@ export function nextSearchResultFileEditorPoolKeys(
     return currentKeys.slice(0, SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE)
 
   const visibleKeySet = new Set(visibleKeys)
-  const maxCount =
-    visibleKeys.length + SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE
-  const nextKeys = [...visibleKeys]
+  const nextKeys: SearchResultId[] = []
+  let retainedHiddenCount = 0
   for (const key of currentKeys) {
-    if (visibleKeySet.has(key)) continue
-    if (nextKeys.length >= maxCount) break
+    if (visibleKeySet.has(key)) {
+      nextKeys.push(key)
+      continue
+    }
+    if (retainedHiddenCount >= SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE)
+      continue
+
+    retainedHiddenCount += 1
+    nextKeys.push(key)
+  }
+  const nextKeySet = new Set(nextKeys)
+  for (const key of visibleKeys) {
+    if (nextKeySet.has(key)) continue
 
     nextKeys.push(key)
   }

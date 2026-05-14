@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { createReadStream } from "node:fs"
-import { readdir, stat } from "node:fs/promises"
+import { readFile, readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import type { Readable } from "node:stream"
 import { FsError, mapNodeError } from "./errors"
@@ -66,11 +66,22 @@ type FindContext = {
   query: string
   matcher: WorkspaceSearchMatcher
   options: FindOptions
+  gitIgnore: GitIgnoreMatcher
 }
 
 type SearchState = {
   count: number
   truncated: boolean
+}
+
+type GitIgnoreRule = {
+  anchored: boolean
+  negated: boolean
+  pattern: string
+}
+
+type GitIgnoreMatcher = {
+  ignores(relativePath: string): boolean
 }
 
 const commandAvailability = new Map<string, Promise<boolean>>()
@@ -164,6 +175,7 @@ async function createFindContext(
 
     return {
       query: options.query,
+      gitIgnore: await workspaceGitIgnoreMatcher(paths),
       matcher: createWorkspaceSearchMatcher(options),
       options,
       root,
@@ -179,6 +191,8 @@ async function* searchWithTools(
   context: FindContext,
   signal?: AbortSignal
 ): AsyncGenerator<FindMatch> {
+  if (isIgnoredSearchPath(context, context.root.relativePath)) return
+
   if (!(await canUseTools(context.options))) {
     // TODO: remove this fallback after fd/rg installation or tool discovery is guaranteed.
     yield* searchWithFallback(context)
@@ -282,7 +296,7 @@ function fdArgs(context: FindContext) {
     context.root.absolutePath,
     "--follow",
     "--hidden",
-    "--no-ignore",
+    "--no-require-git",
     "--path-separator",
     "/",
   ]
@@ -308,7 +322,7 @@ function rgArgs(context: FindContext) {
     "--json",
     "--follow",
     "--hidden",
-    "--no-ignore",
+    "--no-require-git",
     "--max-filesize",
     String(context.options.maxContentBytes),
     "--sort",
@@ -369,6 +383,139 @@ function globArgs(glob: string, prefix: string) {
 
 function ignoredDirectoryGlobArgs(name: string) {
   return [`!${name}`, `!${name}/**`, `!**/${name}`, `!**/${name}/**`]
+}
+
+async function workspaceGitIgnoreMatcher(
+  paths: WorkspacePaths
+): Promise<GitIgnoreMatcher> {
+  const rules = await workspaceGitIgnoreRules(paths.workspaceRoot)
+
+  return {
+    ignores(relativePath) {
+      return gitIgnoreRulesIgnorePath(rules, relativePath)
+    },
+  }
+}
+
+async function workspaceGitIgnoreRules(root: string) {
+  try {
+    const contents = await readFile(path.join(root, ".gitignore"), "utf8")
+    return contents.split(/\r?\n/u).flatMap(gitIgnoreRuleFromLine)
+  } catch (error) {
+    if (isMissingFileError(error)) return []
+    throw error
+  }
+}
+
+function isMissingFileError(error: unknown) {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  )
+}
+
+function gitIgnoreRuleFromLine(line: string): GitIgnoreRule[] {
+  const text = line.trim()
+  if (!text) return []
+  if (text.startsWith("#")) return []
+
+  const negated = text.startsWith("!")
+  const rawPattern = negated ? text.slice(1) : text
+  const pattern = gitIgnoreRulePattern(rawPattern)
+  if (!pattern) return []
+
+  return [
+    {
+      anchored: rawPattern.startsWith("/"),
+      negated,
+      pattern,
+    },
+  ]
+}
+
+function gitIgnoreRulePattern(pattern: string) {
+  const withoutAnchor = pattern.replace(/^\/+/u, "")
+  const withoutTrailingSlash = withoutAnchor.replace(/\/+$/u, "")
+  if (!withoutTrailingSlash) return null
+
+  return toPosix(withoutTrailingSlash)
+}
+
+function gitIgnoreRulesIgnorePath(
+  rules: readonly GitIgnoreRule[],
+  relativePath: string
+) {
+  const normalized = toPosix(relativePath).replace(/^\/+/u, "")
+  if (!normalized) return false
+
+  let ignored = false
+  for (const rule of rules) {
+    if (!gitIgnoreRuleMatches(rule, normalized)) continue
+    ignored = !rule.negated
+  }
+
+  return ignored
+}
+
+function gitIgnoreRuleMatches(rule: GitIgnoreRule, relativePath: string) {
+  if (rule.anchored || rule.pattern.includes("/")) {
+    return pathOrAncestorMatchesGlob(relativePath, rule.pattern)
+  }
+
+  return relativePath
+    .split("/")
+    .some((segment) => globPatternMatches(segment, rule.pattern))
+}
+
+function pathOrAncestorMatchesGlob(relativePath: string, pattern: string) {
+  const parts = relativePath.split("/")
+
+  for (let index = parts.length; index > 0; index -= 1) {
+    const candidate = parts.slice(0, index).join("/")
+    if (globPatternMatches(candidate, pattern)) return true
+  }
+
+  return false
+}
+
+function globPatternMatches(value: string, pattern: string) {
+  return new RegExp(`^${globToRegExp(pattern)}$`, "u").test(value)
+}
+
+function globToRegExp(pattern: string) {
+  let source = ""
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index]
+    if (character === "*" && pattern[index + 1] === "*") {
+      source += ".*"
+      index += 1
+      continue
+    }
+    if (character === "*") {
+      source += "[^/]*"
+      continue
+    }
+    if (character === "?") {
+      source += "[^/]"
+      continue
+    }
+    source += escapeRegExp(character)
+  }
+
+  return source
+}
+
+function escapeRegExp(character: string) {
+  return /[\\^$.*+?()[\]{}|]/u.test(character) ? `\\${character}` : character
+}
+
+function isIgnoredSearchPath(context: FindContext, relativePath: string) {
+  if (!relativePath) return false
+  if (isIgnoredPath(relativePath)) return true
+
+  return context.gitIgnore.ignores(relativePath)
 }
 
 function fdType(entryType?: EntryTypeFilter) {
@@ -634,7 +781,7 @@ async function searchEntry(
   depth: number
 ) {
   const relativePath = joinRelative(relativeDirectory, name)
-  if (isIgnoredPath(relativePath)) return
+  if (isIgnoredSearchPath(context, relativePath)) return
 
   const absolutePath = path.join(absoluteDirectory, name)
   const entryStats = await safeEntryStats(absolutePath)
