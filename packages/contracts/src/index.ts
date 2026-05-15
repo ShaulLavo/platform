@@ -1,6 +1,18 @@
 export type { EntryTypeFilter, TreeEntry } from "./tree-entry"
 export type { FileResult } from "./file-result"
 export type { WatchClientMessage, WatchServerMessage } from "./watch-events"
+export {
+  normalizeTerminalCols,
+  normalizeTerminalRows,
+  parseTerminalClientMessage,
+  parseTerminalServerMessage,
+  TERMINAL_MAX_COLS,
+  TERMINAL_MAX_ROWS,
+  TERMINAL_MIN_COLS,
+  TERMINAL_MIN_ROWS,
+  type TerminalClientMessage,
+  type TerminalServerMessage,
+} from "./terminal"
 export type {
   WorkspaceSearchDoneEvent,
   WorkspaceSearchEvent,

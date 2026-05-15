@@ -21,12 +21,13 @@
   "dependencies": {
     "@elysia/eden": "^1.4.10",
     "@elysiajs/cors": "^1.4.2",
+    "@lydell/node-pty": "1.1.0",
     "@workspace/contracts": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "typescript": "^5.9.3",
-    "vscode-languageserver-protocol": "^3.17.5",
-    "valibot": "^1.4.0"
+    "valibot": "^1.4.0",
+    "vscode-languageserver-protocol": "^3.17.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

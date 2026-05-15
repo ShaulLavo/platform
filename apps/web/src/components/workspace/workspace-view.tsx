@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react"
 import { useSearchBufferRuntime } from "@/features/search/use-search-buffer"
 import { Panel as GitPanel } from "@/features/git/panel"
+import { TerminalPanel } from "@/features/terminal/terminal-panel"
 import { useStatus } from "@/features/git/hooks"
 import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
 import type { FileResult, TreeEntry } from "@/lib/file-system-types"
@@ -148,12 +149,35 @@ export function WorkspaceView({
               className="h-full min-h-0 min-w-0 overflow-hidden"
               minSize="480px"
             >
-              <FileViewer
-                editorKeymapLayers={editorKeymapLayers}
-                fileState={fileState}
-                rootPath={rootFolder.path}
-                onRequestCloseTab={onRequestCloseTab}
-              />
+              <ResizablePanelGroup
+                className="min-h-0 min-w-0"
+                orientation="vertical"
+              >
+                <ResizablePanel
+                  id="workspace-editor-surface"
+                  className="min-h-0 min-w-0 overflow-hidden"
+                  defaultSize="70%"
+                  minSize="240px"
+                >
+                  <FileViewer
+                    editorKeymapLayers={editorKeymapLayers}
+                    fileState={fileState}
+                    rootPath={rootFolder.path}
+                    onRequestCloseTab={onRequestCloseTab}
+                  />
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  id="workspace-terminal"
+                  className="min-h-0 min-w-0 overflow-hidden"
+                  defaultSize="30%"
+                  minSize="160px"
+                  maxSize="65%"
+                  groupResizeBehavior="preserve-pixel-size"
+                >
+                  <TerminalPanel rootPath={rootFolder.path} />
+                </ResizablePanel>
+              </ResizablePanelGroup>
             </ResizablePanel>
           </ResizablePanelGroup>
         </Tabs>

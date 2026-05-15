@@ -66,6 +66,14 @@ export async function ensureFolderPath(path: string) {
   return response.data as TreeEntry
 }
 
+export async function movePath(from: string, to: string) {
+  const response = await fsClient.fs.move.post({ from, to })
+
+  if (response.error) throw response.error
+
+  return response.data as TreeEntry
+}
+
 export function errorMessage(error: unknown) {
   return clientErrorMessage(error)
 }

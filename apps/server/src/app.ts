@@ -39,14 +39,26 @@ import type { FindStreamEvent } from "./fs/search"
 import { parseWatchInputs } from "./fs/watch"
 import { GitService } from "./git/service"
 import { typeScriptLspRoutes } from "./lsp/typescript/routes"
+import {
+  TerminalService,
+  type TerminalPtyFactory,
+} from "./terminal/service"
 
 export type AppOptions = FileSystemServiceOptions & {
   auth?: AuthOptions
+  terminal?: {
+    env?: NodeJS.ProcessEnv
+    ptyFactory?: TerminalPtyFactory
+  }
 }
 
 export function createApp(options: AppOptions) {
   const fs = new FileSystemService(options)
   const git = new GitService(fs.paths)
+  const terminal = new TerminalService({
+    paths: fs.paths,
+    ...options.terminal,
+  })
   const auth = createAuthConfig(options.auth)
 
   return new Elysia({ name: "fs-rpc" })
@@ -85,6 +97,7 @@ export function createApp(options: AppOptions) {
       ...fs.info(),
     }))
     .ws("/lsp/typescript", typeScriptLspRoutes(fs, auth))
+    .ws("/terminal", terminal.routes(auth))
     .group("/git", (app) =>
       app
         .get("/repo", ({ query }) => git.repo(query.path), {
@@ -214,6 +227,7 @@ export function createApp(options: AppOptions) {
         })
     )
     .onStop(() => {
+      terminal.dispose()
       fs.close()
     })
 }

@@ -1,0 +1,206 @@
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { afterEach, describe, expect, it } from "bun:test"
+import {
+  TERMINAL_MAX_COLS,
+  TERMINAL_MIN_ROWS,
+  type TerminalServerMessage,
+} from "@workspace/contracts"
+
+import { createAuthConfig } from "../auth"
+import { createWorkspacePaths } from "../fs/path"
+import {
+  TerminalService,
+  type TerminalPtyExitEvent,
+  type TerminalPtyFactory,
+} from "./service"
+
+const TRUSTED_ORIGIN = "http://localhost:5173"
+const roots: string[] = []
+
+afterEach(async () => {
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
+  )
+})
+
+describe("terminal service", () => {
+  it("spawns the user shell in the resolved workspace cwd", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "project"))
+    const pty = createFakePtyFactory()
+    const service = testService(root, {
+      env: { SHELL: "/bin/zsh" },
+      ptyFactory: pty.factory,
+    })
+    const ws = fakeSocket("project")
+
+    service.routes(auth()).open(ws)
+
+    expect(pty.spawns).toEqual([
+      expect.objectContaining({
+        cwd: path.join(root, "project"),
+        shell: "/bin/zsh",
+      }),
+    ])
+    expect(ws.messages[0]).toEqual({
+      cwd: path.join(root, "project"),
+      shell: "/bin/zsh",
+      type: "ready",
+    })
+  })
+
+  it("falls back from bash to sh when no user shell is available", async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory({
+      failShells: new Set(["bash"]),
+    })
+    const service = testService(root, {
+      env: {},
+      ptyFactory: pty.factory,
+    })
+    const ws = fakeSocket("")
+
+    service.routes(auth()).open(ws)
+
+    expect(pty.spawns.map((spawn) => spawn.shell)).toEqual(["bash", "sh"])
+    expect(ws.messages[0]).toMatchObject({ shell: "sh", type: "ready" })
+  })
+
+  it("ignores malformed messages and normalizes resize bounds", async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const ws = fakeSocket("")
+
+    routes.open(ws)
+    routes.message(ws, { type: "input", data: "pwd\r" })
+    routes.message(ws, { type: "input", data: 1 })
+    routes.message(ws, "{")
+    routes.message(ws, {
+      cols: TERMINAL_MAX_COLS + 100,
+      rows: TERMINAL_MIN_ROWS - 100,
+      type: "resize",
+    })
+
+    expect(pty.ptys[0]?.writes).toEqual(["pwd\r"])
+    expect(pty.ptys[0]?.resizes).toEqual([
+      [TERMINAL_MAX_COLS, TERMINAL_MIN_ROWS],
+    ])
+  })
+
+  it("kills PTYs on socket close and service disposal", async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const first = fakeSocket("")
+    const second = fakeSocket("")
+
+    routes.open(first)
+    routes.open(second)
+    routes.close(first)
+    service.dispose()
+
+    expect(pty.ptys.map((ptyProcess) => ptyProcess.killed)).toEqual([
+      true,
+      true,
+    ])
+  })
+})
+
+function testService(
+  root: string,
+  options: {
+    env?: NodeJS.ProcessEnv
+    ptyFactory?: TerminalPtyFactory
+  } = {}
+) {
+  return new TerminalService({
+    paths: createWorkspacePaths(root),
+    ...options,
+  })
+}
+
+async function fixtureRoot() {
+  const root = await mkdtemp(path.join(tmpdir(), "platform-terminal-"))
+  roots.push(root)
+  return root
+}
+
+function auth() {
+  return createAuthConfig({ allowedOrigins: [TRUSTED_ORIGIN] })
+}
+
+function fakeSocket(root: string) {
+  const messages: TerminalServerMessage[] = []
+  const raw = {}
+  return {
+    closed: false,
+    data: {
+      headers: { origin: TRUSTED_ORIGIN },
+      query: { root },
+    },
+    messages,
+    raw,
+    close() {
+      this.closed = true
+    },
+    send(message: string) {
+      messages.push(JSON.parse(message) as TerminalServerMessage)
+    },
+  }
+}
+
+function createFakePtyFactory({
+  failShells = new Set<string>(),
+}: {
+  failShells?: ReadonlySet<string>
+} = {}) {
+  const ptys: FakePty[] = []
+  const spawns: Parameters<TerminalPtyFactory>[0][] = []
+  const factory: TerminalPtyFactory = (options) => {
+    spawns.push(options)
+    if (failShells.has(options.shell)) throw new Error("missing shell")
+
+    const pty = new FakePty()
+    ptys.push(pty)
+    return pty
+  }
+
+  return { factory, ptys, spawns }
+}
+
+class FakePty {
+  killed = false
+  readonly resizes: Array<[number, number]> = []
+  readonly writes: string[] = []
+  private readonly dataListeners = new Set<(data: string) => void>()
+  private readonly exitListeners = new Set<
+    (event: TerminalPtyExitEvent) => void
+  >()
+
+  kill() {
+    this.killed = true
+  }
+
+  onData(listener: (data: string) => void) {
+    this.dataListeners.add(listener)
+    return { dispose: () => this.dataListeners.delete(listener) }
+  }
+
+  onExit(listener: (event: TerminalPtyExitEvent) => void) {
+    this.exitListeners.add(listener)
+    return { dispose: () => this.exitListeners.delete(listener) }
+  }
+
+  resize(cols: number, rows: number) {
+    this.resizes.push([cols, rows])
+  }
+
+  write(data: string) {
+    this.writes.push(data)
+  }
+}

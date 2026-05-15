@@ -11,6 +11,11 @@ export type TreeModel = {
   loadingDirectoryPaths: Set<string>
 }
 
+export type TreePathMove = {
+  fromTreePath: string
+  toTreePath: string
+}
+
 export const EMPTY_TREE_MODEL: TreeModel = {
   paths: [],
   entriesByTreePath: new Map(),
@@ -142,6 +147,20 @@ export function patchTreeEntryMetadata(
     children: current.children,
   })
   return next
+}
+
+export function moveTreeModelPaths(
+  model: TreeModel,
+  rootPath: string,
+  moves: readonly TreePathMove[]
+): TreeModel {
+  const normalizedMoves = normalizedTreePathMoves(moves)
+  if (normalizedMoves.length === 0) return model
+
+  return normalizedMoves.reduce(
+    (currentModel, move) => moveTreeModelPath(currentModel, rootPath, move),
+    model
+  )
 }
 
 export function selectedTreeEntry(
@@ -291,4 +310,148 @@ function pathsFromEntries(entriesByTreePath: Map<string, TreeEntry>) {
   }
 
   return paths
+}
+
+function normalizedTreePathMoves(moves: readonly TreePathMove[]) {
+  const normalizedMoves: TreePathMove[] = []
+
+  for (const move of moves) {
+    const fromTreePath = canonicalTreePath(move.fromTreePath)
+    const toTreePath = canonicalTreePath(move.toTreePath)
+    if (!fromTreePath) continue
+    if (!toTreePath) continue
+    if (fromTreePath === toTreePath) continue
+
+    normalizedMoves.push({ fromTreePath, toTreePath })
+  }
+
+  return normalizedMoves
+}
+
+function moveTreeModelPath(
+  model: TreeModel,
+  rootPath: string,
+  move: TreePathMove
+): TreeModel {
+  if (!model.entriesByTreePath.has(move.fromTreePath)) return model
+
+  const next = cloneTreeModel(model)
+  const fromPath = workspacePathForTreePath(rootPath, move.fromTreePath)
+  const toPath = workspacePathForTreePath(rootPath, move.toTreePath)
+
+  next.entriesByTreePath = moveTreeEntries(
+    next.entriesByTreePath,
+    move,
+    fromPath,
+    toPath
+  )
+  next.loadedDirectoryPaths = moveTreePathSet(next.loadedDirectoryPaths, move)
+  next.loadingDirectoryPaths = moveTreePathSet(next.loadingDirectoryPaths, move)
+  next.errorByDirectoryPath = moveTreePathMap(next.errorByDirectoryPath, move)
+  next.paths = moveTreePathList(next.paths, move)
+
+  return next
+}
+
+function moveTreeEntries(
+  entries: ReadonlyMap<string, TreeEntry>,
+  move: TreePathMove,
+  fromPath: string,
+  toPath: string
+) {
+  const nextEntries = new Map<string, TreeEntry>()
+
+  for (const [treePath, entry] of entries) {
+    const nextTreePath = movedTreePath(treePath, move)
+    if (!nextTreePath) {
+      nextEntries.set(treePath, entry)
+      continue
+    }
+
+    nextEntries.set(nextTreePath, moveTreeEntry(entry, fromPath, toPath))
+  }
+
+  return nextEntries
+}
+
+function moveTreePathSet(paths: ReadonlySet<string>, move: TreePathMove) {
+  const nextPaths = new Set<string>()
+
+  for (const path of paths) {
+    nextPaths.add(movedTreePath(path, move) ?? path)
+  }
+
+  return nextPaths
+}
+
+function moveTreePathMap<T>(paths: ReadonlyMap<string, T>, move: TreePathMove) {
+  const nextPaths = new Map<string, T>()
+
+  for (const [path, value] of paths) {
+    nextPaths.set(movedTreePath(path, move) ?? path, value)
+  }
+
+  return nextPaths
+}
+
+function moveTreePathList(paths: readonly string[], move: TreePathMove) {
+  const nextPaths: string[] = []
+  const seenPaths = new Set<string>()
+
+  for (const path of paths) {
+    const nextPath = movedTreeListPath(path, move)
+    if (seenPaths.has(nextPath)) continue
+
+    seenPaths.add(nextPath)
+    nextPaths.push(nextPath)
+  }
+
+  return nextPaths
+}
+
+function movedTreeListPath(path: string, move: TreePathMove) {
+  const nextPath = movedTreePath(path, move)
+  if (!nextPath) return path
+  if (!path.endsWith("/")) return nextPath
+
+  return `${nextPath}/`
+}
+
+function movedTreePath(path: string, move: TreePathMove) {
+  const treePath = canonicalTreePath(path)
+  if (treePath === move.fromTreePath) return move.toTreePath
+  if (!treePath.startsWith(`${move.fromTreePath}/`)) return null
+
+  return `${move.toTreePath}${treePath.slice(move.fromTreePath.length)}`
+}
+
+function moveTreeEntry(
+  entry: TreeEntry,
+  fromPath: string,
+  toPath: string
+): TreeEntry {
+  const nextPath = movedWorkspacePath(entry.path, fromPath, toPath)
+  const children = entry.children?.map((child) =>
+    moveTreeEntry(child, fromPath, toPath)
+  )
+  if (!children && nextPath === entry.path) return entry
+  if (!children) return { ...entry, path: nextPath }
+
+  return { ...entry, children, path: nextPath }
+}
+
+function movedWorkspacePath(path: string, fromPath: string, toPath: string) {
+  if (path === fromPath) return toPath
+  if (!path.startsWith(`${fromPath}/`)) return path
+
+  return `${toPath}${path.slice(fromPath.length)}`
+}
+
+function workspacePathForTreePath(rootPath: string, treePath: string) {
+  const canonicalRootPath = canonicalTreePath(rootPath)
+  const canonicalPath = canonicalTreePath(treePath)
+  if (!canonicalRootPath) return canonicalPath
+  if (!canonicalPath) return canonicalRootPath
+
+  return `${canonicalRootPath}/${canonicalPath}`
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
 import {
+  moveTreeModelPaths,
   patchTreeEntryMetadata,
   replaceDirectoryLoad,
   treeModel,
@@ -111,6 +112,93 @@ describe("patchTreeEntryMetadata", () => {
     const next = patchTreeEntryMetadata(model, "repo", file("repo/missing.ts"))
 
     expect(next).toBe(model)
+  })
+})
+
+describe("moveTreeModelPaths", () => {
+  it("moves a loaded file entry and preserves sibling entries", () => {
+    const root = "repo"
+    const model = treeModel(
+      tree(root, [
+        directory("repo/src"),
+        directory("repo/tests"),
+        file("repo/src/button.ts"),
+      ]),
+      root
+    )
+    const next = moveTreeModelPaths(model, root, [
+      { fromTreePath: "src/button.ts", toTreePath: "tests/button.ts" },
+    ])
+
+    expect(next.paths).toEqual(["src/", "tests/", "tests/button.ts"])
+    expect(next.entriesByTreePath.has("src/button.ts")).toBe(false)
+    expect(next.entriesByTreePath.get("tests/button.ts")).toEqual(
+      file("repo/tests/button.ts")
+    )
+    expect(next.entriesByTreePath.has("src")).toBe(true)
+  })
+
+  it("moves loaded directory descendants and directory load state", () => {
+    const root = "repo"
+    const model = treeModel(
+      tree(root, [
+        directory("repo/src", [
+          directory("repo/src/components", [
+            file("repo/src/components/Button.tsx"),
+          ]),
+        ]),
+        directory("repo/packages"),
+      ]),
+      root
+    )
+
+    model.loadedDirectoryPaths.add("src")
+    model.loadedDirectoryPaths.add("src/components")
+    model.loadingDirectoryPaths.add("src/components/pending")
+    model.errorByDirectoryPath.set("src/components/broken", "Could not load")
+
+    const next = moveTreeModelPaths(model, root, [
+      { fromTreePath: "src/components", toTreePath: "packages/components" },
+    ])
+
+    expect(next.paths).toEqual([
+      "src/",
+      "packages/components/",
+      "packages/components/Button.tsx",
+      "packages/",
+    ])
+    expect(next.entriesByTreePath.has("src/components")).toBe(false)
+    expect(next.entriesByTreePath.has("src/components/Button.tsx")).toBe(false)
+    expect(next.entriesByTreePath.get("packages/components")).toMatchObject({
+      path: "repo/packages/components",
+      type: "directory",
+    })
+    expect(
+      next.entriesByTreePath.get("packages/components/Button.tsx")
+    ).toMatchObject({
+      path: "repo/packages/components/Button.tsx",
+      type: "file",
+    })
+    expect(next.loadedDirectoryPaths).toEqual(
+      new Set(["src", "packages/components"])
+    )
+    expect(next.loadingDirectoryPaths).toEqual(
+      new Set(["packages/components/pending"])
+    )
+    expect(next.errorByDirectoryPath).toEqual(
+      new Map([["packages/components/broken", "Could not load"]])
+    )
+  })
+
+  it("ignores no-op and unknown moves", () => {
+    const model = treeModel(tree("repo", [file("repo/a.ts")]), "repo")
+
+    expect(
+      moveTreeModelPaths(model, "repo", [
+        { fromTreePath: "a.ts", toTreePath: "a.ts" },
+        { fromTreePath: "missing.ts", toTreePath: "b.ts" },
+      ])
+    ).toBe(model)
   })
 })
 

@@ -32,6 +32,7 @@
     "@tanstack/react-virtual": "3.13.24",
     "@workspace/contracts": "workspace:*",
     "@workspace/ui": "workspace:*",
+    "ghostty-web": "^0.4.0",
     "react": "^19.2.4",
     "react-animated-counter": "^1.9.0",
     "react-dom": "^19.2.4",

@@ -8,6 +8,7 @@ export type WorkspaceFocusArea =
   | "file-tree"
   | "git"
   | "global"
+  | "terminal"
   | null
 
 type WorkspaceFocusStoreState = {
