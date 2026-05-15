@@ -1,4 +1,4 @@
-import { FileTextIcon } from "@phosphor-icons/react"
+import { ArrowSquareOutIcon, FileTextIcon } from "@phosphor-icons/react"
 import type {
   WorkspaceSearchMatch,
   WorkspaceSearchQuery,
@@ -25,24 +25,24 @@ export function SearchMatchRow({
   className,
   canReplace,
   match,
-  pending,
   previewMaxLength,
   replaceQuery,
   replaceText,
   replaceVisible,
   query,
+  onOpenMatch,
   onReplaceMatch,
 }: {
   active?: boolean
   className?: string
   canReplace?: boolean
   match: WorkspaceSearchMatch
-  pending?: boolean
   previewMaxLength?: number
   replaceQuery: WorkspaceSearchQuery | null
   replaceText: string
   replaceVisible?: boolean
   query: string
+  onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
   const previewRef = useRef<HTMLSpanElement | null>(null)
@@ -66,9 +66,8 @@ export function SearchMatchRow({
   return (
     <div
       className={cn(
-        "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs",
+        "group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs",
         active && "bg-muted/60",
-        pending && "opacity-55",
         className
       )}
     >
@@ -95,19 +94,35 @@ export function SearchMatchRow({
           ) : null}
         </span>
       </div>
-      {replaceVisible ? (
+      <div className="flex shrink-0 items-center gap-0.5">
         <Button
-          className="h-6 px-1.5 text-[10px]"
-          disabled={!canReplace}
-          size="xs"
-          title="Replace this match"
+          aria-label={searchMatchOpenLabel(match)}
+          className={cn(
+            "pointer-events-none opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100",
+            active && "pointer-events-auto opacity-100"
+          )}
+          size="icon-xs"
+          title={searchMatchOpenLabel(match)}
           type="button"
           variant="ghost"
-          onClick={() => onReplaceMatch?.(match)}
+          onClick={() => onOpenMatch(match)}
         >
-          Replace
+          <ArrowSquareOutIcon className="size-3.5" />
         </Button>
-      ) : null}
+        {replaceVisible ? (
+          <Button
+            className="h-6 px-1.5 text-[10px]"
+            disabled={!canReplace}
+            size="xs"
+            title="Replace this match"
+            type="button"
+            variant="ghost"
+            onClick={() => onReplaceMatch?.(match)}
+          >
+            Replace
+          </Button>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -116,7 +131,6 @@ export function SearchNameMatchRow({
   active,
   className,
   match,
-  pending,
   previewMaxLength,
   query,
   onOpenMatch,
@@ -124,7 +138,6 @@ export function SearchNameMatchRow({
   active?: boolean
   className?: string
   match: WorkspaceSearchMatch
-  pending?: boolean
   previewMaxLength?: number
   query: string
   onOpenMatch: (match: WorkspaceSearchMatch) => void
@@ -143,7 +156,6 @@ export function SearchNameMatchRow({
       className={cn(
         "grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
         active && "bg-muted/60",
-        pending && "opacity-55",
         !active && "hover:bg-muted/55",
         className
       )}
@@ -171,6 +183,14 @@ function searchMatchLocation(match: WorkspaceSearchMatch) {
   if (match.line === undefined) return "match"
 
   return String(match.line)
+}
+
+function searchMatchOpenLabel(match: WorkspaceSearchMatch) {
+  if (typeof match.line !== "number") return "Open result"
+  if (typeof match.column !== "number")
+    return `Open result at line ${match.line}`
+
+  return `Open result at line ${match.line}, column ${match.column}`
 }
 
 function matchPreviewMaxLength(

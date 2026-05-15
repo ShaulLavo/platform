@@ -52,7 +52,6 @@ export function SearchResultsView({
   replaceVisible,
   snapshot,
   onOpenMatch,
-  onOpenFile,
   onReplaceGroup,
   onReplaceMatch,
 }: {
@@ -63,7 +62,6 @@ export function SearchResultsView({
   replaceText: string
   replaceVisible?: boolean
   snapshot: SearchBufferSnapshot | null
-  onOpenFile?: (path: string) => void
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
@@ -76,11 +74,7 @@ export function SearchResultsView({
   const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
   const previewMaxLength = useSearchPreviewMaxLength(parentRef, replaceVisible)
-  const pendingResultIds = snapshot?.pendingResultIds
-  const items = useMemo(
-    () => searchResultItems(groups, { pendingResultIds }),
-    [groups, pendingResultIds]
-  )
+  const items = useMemo(() => searchResultItems(groups), [groups])
   const activeItem = useMemo(
     () => searchResultItemById(items, activeResultId),
     [activeResultId, items]
@@ -194,7 +188,6 @@ export function SearchResultsView({
                 replaceQuery={snapshot.resultsSearchQuery}
                 replaceText={replaceText}
                 replaceVisible={replaceVisible}
-                onOpenFile={onOpenFile}
                 onOpenMatch={onOpenMatch}
                 onReplaceGroup={onReplaceGroup}
                 onReplaceMatch={onReplaceMatch}
@@ -240,7 +233,6 @@ function SearchResultRow({
   replaceText,
   replaceVisible,
   onOpenMatch,
-  onOpenFile,
   onReplaceGroup,
   onReplaceMatch,
   onSelectResult,
@@ -254,7 +246,6 @@ function SearchResultRow({
   replaceQuery: SearchBufferSnapshot["resultsSearchQuery"]
   replaceText: string
   replaceVisible?: boolean
-  onOpenFile?: (path: string) => void
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
@@ -267,10 +258,8 @@ function SearchResultRow({
         active={active}
         canReplace={canReplace}
         group={item.group}
-        pending={item.pending}
         replaceVisible={replaceVisible}
         onReplace={onReplaceGroup}
-        onOpen={onOpenFile ? () => onOpenFile(item.group.path) : undefined}
         onToggle={() => {
           onSelectResult(item.id)
           onToggleGroup(item.group.path)
@@ -283,7 +272,6 @@ function SearchResultRow({
       <SearchNameMatchRow
         active={active}
         match={item.match}
-        pending={item.pending}
         previewMaxLength={previewMaxLength}
         query={query}
         onOpenMatch={() => {
@@ -300,12 +288,15 @@ function SearchResultRow({
         active={active}
         canReplace={canReplace}
         match={item.match}
-        pending={item.pending}
         previewMaxLength={previewMaxLength}
         replaceQuery={replaceQuery}
         replaceText={replaceText}
         replaceVisible={replaceVisible}
         query={query}
+        onOpenMatch={() => {
+          onSelectResult(item.id)
+          onOpenMatch(item.match)
+        }}
         onReplaceMatch={onReplaceMatch}
       />
     </div>

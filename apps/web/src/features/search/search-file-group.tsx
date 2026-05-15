@@ -1,4 +1,4 @@
-import { ArrowSquareOutIcon, CaretRightIcon } from "@phosphor-icons/react"
+import { CaretRightIcon } from "@phosphor-icons/react"
 import type { CSSProperties } from "react"
 
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
@@ -15,9 +15,7 @@ export function SearchFileGroupHeader({
   className,
   canReplace,
   group,
-  pending,
   replaceVisible,
-  onOpen,
   onReplace,
   onToggle,
 }: {
@@ -25,9 +23,7 @@ export function SearchFileGroupHeader({
   className?: string
   canReplace?: boolean
   group: WorkspaceSearchFileGroup
-  pending?: boolean
   replaceVisible?: boolean
-  onOpen?: () => void
   onReplace?: (group: WorkspaceSearchFileGroup) => void
   onToggle: (path: string) => void
 }) {
@@ -36,9 +32,8 @@ export function SearchFileGroupHeader({
   return (
     <div
       className={cn(
-        "grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left",
+        "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left",
         active && "bg-muted/60",
-        pending && "opacity-55",
         !active && "hover:bg-muted/55",
         className
       )}
@@ -72,18 +67,6 @@ export function SearchFileGroupHeader({
       <span className="rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground">
         {group.count}
       </span>
-      {onOpen ? (
-        <Button
-          aria-label="Open file"
-          size="icon-xs"
-          title="Open file"
-          type="button"
-          variant="ghost"
-          onClick={onOpen}
-        >
-          <ArrowSquareOutIcon className="size-3.5" />
-        </Button>
-      ) : null}
       {replaceVisible ? (
         <Button
           className="h-6 px-1.5 text-[10px]"

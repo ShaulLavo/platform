@@ -133,7 +133,6 @@ export function SearchBufferEditor({
             deferredPluginMode="immediate"
             groups={groups}
             keymapLayers={editorKeymapLayers}
-            pendingResultIds={snapshot.pendingResultIds}
             prewarmEditorPool={snapshot.status !== "loading"}
             replaceVisible={replaceVisible}
             resultsQuery={resultsQuery}
@@ -259,7 +258,6 @@ function SearchBufferResultList({
       replaceText={replaceText}
       replaceVisible={replaceVisible}
       snapshot={snapshot}
-      onOpenFile={(path) => commands.selectFile(path)}
       onOpenMatch={(match) =>
         openWorkspaceSearchMatch(match, resultsQuery, commands)
       }

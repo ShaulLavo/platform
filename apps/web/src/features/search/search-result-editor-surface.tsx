@@ -110,10 +110,6 @@ const ACTIVE_MATCH_STYLE = {
   textDecoration: "underline 1px var(--search-result-match-active-decoration)",
 } satisfies Partial<CSSStyleDeclaration>
 
-const PENDING_MATCH_STYLE = {
-  opacity: "0.55",
-} satisfies Partial<CSSStyleDeclaration>
-
 const SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE = {
   contain: "layout paint style",
   display: "none",
@@ -142,7 +138,6 @@ type SearchResultEditorSurfaceProps = {
   displayedResultsQuery: string | null
   groups: readonly WorkspaceSearchFileGroup[]
   keymapLayers: readonly EditorKeymapLayer[]
-  pendingResultIds?: readonly SearchResultId[]
   prewarmEditorPool?: boolean
   replaceVisible: boolean
   resultsQuery: string
@@ -163,7 +158,6 @@ export const SearchResultEditorSurface = memo(
     displayedResultsQuery,
     groups,
     keymapLayers,
-    pendingResultIds,
     prewarmEditorPool = true,
     replaceVisible,
     resultsQuery,
@@ -184,8 +178,8 @@ export const SearchResultEditorSurface = memo(
       [keymapLayers]
     )
     const blocks = useMemo(
-      () => searchResultFileBlocks(groups, resultsQuery, { pendingResultIds }),
-      [groups, pendingResultIds, resultsQuery]
+      () => searchResultFileBlocks(groups, resultsQuery),
+      [groups, resultsQuery]
     )
     const rows = useMemo(() => searchResultVirtualRows(blocks), [blocks])
     const groupByPath = useMemo(() => groupMap(groups), [groups])
@@ -345,11 +339,7 @@ export const SearchResultEditorSurface = memo(
                   active={active}
                   canReplace={canReplace}
                   file={row.file}
-                  pending={row.file.pending}
                   replaceVisible={replaceVisible}
-                  onOpen={() =>
-                    onOpenTarget({ match: null, path: row.file.path })
-                  }
                   onReplace={() => handleReplaceFile(row.file.path)}
                   onToggle={() => onToggleGroup(row.file.path)}
                 />
@@ -385,18 +375,14 @@ function SearchResultFileHeader({
   active,
   canReplace,
   file,
-  pending,
   replaceVisible,
-  onOpen,
   onReplace,
   onToggle,
 }: {
   active: boolean
   canReplace?: boolean
   file: SearchResultFileBlock
-  pending?: boolean
   replaceVisible: boolean
-  onOpen: () => void
   onReplace: () => void
   onToggle: () => void
 }) {
@@ -406,10 +392,9 @@ function SearchResultFileHeader({
   return (
     <div
       className={cn(
-        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-1.5 text-left",
+        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-1.5 text-left",
         active &&
           "bg-muted/70 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--border)_55%,transparent)]",
-        pending && "opacity-55",
         !active && "hover:bg-muted/45"
       )}
     >
@@ -449,16 +434,6 @@ function SearchResultFileHeader({
       <span className="rounded-sm bg-muted/55 px-1.5 text-[10px] leading-4 text-muted-foreground">
         {matchCountLabel(file.matchCount)}
       </span>
-      <Button
-        aria-label="Open file"
-        size="icon-xs"
-        title="Open file"
-        type="button"
-        variant="ghost"
-        onClick={onOpen}
-      >
-        <ArrowSquareOutIcon className="size-3.5" />
-      </Button>
       {replaceVisible ? (
         <Button
           className="h-6 px-1.5 text-[10px]"
@@ -632,6 +607,9 @@ const SearchResultFileEditor = memo(
       () => searchResultFileEditorStyle(fileDocument),
       [fileDocument]
     )
+    const [hoveredLineId, setHoveredLineId] = useState<SearchResultId | null>(
+      null
+    )
     const controller = useEditor({
       cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
       document,
@@ -696,6 +674,19 @@ const SearchResultFileEditor = memo(
       })
     }
 
+    function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+      const lineId = searchResultFileLineIdAtClientY(
+        fileDocument,
+        event.currentTarget,
+        event.clientY
+      )
+      setHoveredLineId((current) => (current === lineId ? current : lineId))
+    }
+
+    function handlePointerLeave() {
+      setHoveredLineId(null)
+    }
+
     function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
       if (openFileResultOnEnter(event, handleOpen)) return
       if (!readonlyEditingKey(event)) return
@@ -714,16 +705,17 @@ const SearchResultFileEditor = memo(
       })
     }
 
-    function handleReplace() {
-      const line = currentSearchResultFileLine(fileDocument, controller)
-      if (!line) return
-
-      onReplaceMatch?.(line.sourceMatch)
+    function handleOpenLine(line: SearchResultFileDocumentLine) {
+      onSelectResultWithoutReveal(line.id)
+      onOpenTarget({
+        match: line.sourceMatch,
+        path: file.path,
+      })
     }
 
-    function handleReplaceClick(event: MouseEvent<HTMLButtonElement>) {
-      event.stopPropagation()
-      handleReplace()
+    function handleReplaceLine(line: SearchResultFileDocumentLine) {
+      onSelectResultWithoutReveal(line.id)
+      onReplaceMatch?.(line.sourceMatch)
     }
 
     return (
@@ -737,6 +729,8 @@ const SearchResultFileEditor = memo(
         onFocusCapture={handleActivate}
         onKeyDownCapture={handleKeyDownCapture}
         onPasteCapture={preventReadonlyInput}
+        onPointerLeave={handlePointerLeave}
+        onPointerMoveCapture={handlePointerMove}
         onPointerDownCapture={handleActivate}
         onPointerUpCapture={handlePointerUp}
       >
@@ -751,24 +745,115 @@ const SearchResultFileEditor = memo(
             style={editorStyle}
           />
         </div>
-        {replaceVisible ? (
-          <Button
-            className="mt-0.5 h-6 px-1.5 text-[10px]"
-            disabled={!canReplace}
-            size="xs"
-            title="Replace selected match"
-            type="button"
-            variant="ghost"
-            onClick={handleReplaceClick}
-          >
-            Replace
-          </Button>
-        ) : null}
+        <SearchResultFileLineActions
+          activeResultId={activeResultId}
+          canReplace={canReplace}
+          document={fileDocument}
+          hoveredLineId={hoveredLineId}
+          replaceVisible={replaceVisible}
+          onOpenLine={handleOpenLine}
+          onReplaceLine={handleReplaceLine}
+        />
       </div>
     )
   }
 )
 SearchResultFileEditor.displayName = "SearchResultFileEditor"
+
+function SearchResultFileLineActions({
+  activeResultId,
+  canReplace,
+  document,
+  hoveredLineId,
+  replaceVisible,
+  onOpenLine,
+  onReplaceLine,
+}: {
+  activeResultId: SearchResultId | null
+  canReplace?: boolean
+  document: SearchResultFileDocument
+  hoveredLineId: SearchResultId | null
+  replaceVisible: boolean
+  onOpenLine: (line: SearchResultFileDocumentLine) => void
+  onReplaceLine: (line: SearchResultFileDocumentLine) => void
+}) {
+  return (
+    <div
+      className="grid shrink-0"
+      style={searchResultLineActionsStyle(document.lines.length)}
+    >
+      {document.lines.map((line) => (
+        <SearchResultFileLineActionRow
+          active={line.id === activeResultId || line.id === hoveredLineId}
+          canReplace={canReplace}
+          key={line.id}
+          line={line}
+          replaceVisible={replaceVisible}
+          onOpenLine={onOpenLine}
+          onReplaceLine={onReplaceLine}
+        />
+      ))}
+    </div>
+  )
+}
+
+function SearchResultFileLineActionRow({
+  active,
+  canReplace,
+  line,
+  replaceVisible,
+  onOpenLine,
+  onReplaceLine,
+}: {
+  active: boolean
+  canReplace?: boolean
+  line: SearchResultFileDocumentLine
+  replaceVisible: boolean
+  onOpenLine: (line: SearchResultFileDocumentLine) => void
+  onReplaceLine: (line: SearchResultFileDocumentLine) => void
+}) {
+  function handleOpenClick(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    onOpenLine(line)
+  }
+
+  function handleReplaceClick(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    onReplaceLine(line)
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-0.5">
+      <Button
+        aria-label={searchResultLineOpenLabel(line)}
+        className={searchResultLineActionClassName(active)}
+        size="icon-xs"
+        title={searchResultLineOpenLabel(line)}
+        type="button"
+        variant="ghost"
+        onClick={handleOpenClick}
+      >
+        <ArrowSquareOutIcon className="size-3.5" />
+      </Button>
+      {replaceVisible ? (
+        <Button
+          className={cn(
+            "h-5 px-1.5 text-[10px]",
+            searchResultLineActionClassName(active)
+          )}
+          disabled={!canReplace}
+          size="xs"
+          title="Replace this match"
+          type="button"
+          variant="ghost"
+          onClick={handleReplaceClick}
+        >
+          Replace
+        </Button>
+      ) : null}
+    </div>
+  )
+}
 
 function SearchResultSourceLineGutter({
   document,
@@ -1226,8 +1311,6 @@ function searchResultFileRangeDecorations(
 ) {
   const decorations: EditorRangeDecoration[] = []
   for (const line of document.lines) {
-    if (line.pending) decorations.push(searchResultPendingDecoration(line))
-
     const active = line.id === activeResultId
     for (const range of line.matchRanges) {
       decorations.push(searchResultRangeDecoration(range, active))
@@ -1235,17 +1318,6 @@ function searchResultFileRangeDecorations(
   }
 
   return decorations
-}
-
-function searchResultPendingDecoration(
-  line: SearchResultFileDocumentLine
-): EditorRangeDecoration {
-  return {
-    className: "search-result-match-pending",
-    end: line.end,
-    start: line.start,
-    style: PENDING_MATCH_STYLE,
-  }
 }
 
 function searchResultRangeDecoration(
@@ -1606,6 +1678,33 @@ function isSearchResultEditorActionTarget(target: EventTarget | null) {
   return target.closest("button") !== null
 }
 
+function searchResultFileLineIdAtClientY(
+  document: SearchResultFileDocument,
+  element: HTMLElement,
+  clientY: number
+) {
+  const rect = element.getBoundingClientRect()
+  const style = getComputedStyle(element)
+  const offsetY = clientY - rect.top - Number.parseFloat(style.paddingTop)
+
+  return searchResultFileLineIdAtOffsetY(document, offsetY)
+}
+
+function searchResultFileLineIdAtOffsetY(
+  document: SearchResultFileDocument,
+  offsetY: number
+) {
+  if (offsetY < 0) return null
+
+  const rowStride =
+    EXCERPT_EDITOR_LINE_HEIGHT + SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+  const row = Math.floor(offsetY / rowStride)
+  const rowTop = row * rowStride
+  if (offsetY > rowTop + EXCERPT_EDITOR_LINE_HEIGHT) return null
+
+  return document.lines[row]?.id ?? null
+}
+
 function currentSearchResultFileLine(
   document: SearchResultFileDocument,
   controller: { getState(): { cursor: { row: number } } | null }
@@ -1633,6 +1732,21 @@ function searchResultFileDocumentLineSelection(
 
 function searchResultFileDocumentId(file: SearchResultFileBlock) {
   return `search-result-file:${file.path}`
+}
+
+function searchResultLineOpenLabel(line: SearchResultFileDocumentLine) {
+  const match = line.sourceMatch
+  if (typeof match.column !== "number")
+    return `Open result at line ${line.sourceLine}`
+
+  return `Open result at line ${line.sourceLine}, column ${match.column}`
+}
+
+function searchResultLineActionClassName(active: boolean) {
+  return cn(
+    "pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
+    active && "pointer-events-auto opacity-100"
+  )
 }
 
 function searchResultDomId(treeId: string, itemId: string) {
@@ -1681,6 +1795,14 @@ function searchResultSourceLineGutterStyle(
     height: searchResultFileEditorHeight(lineCount),
     minWidth: 26,
     width: `calc(${Math.max(3, minDigits)}ch + 8px)`,
+  }
+}
+
+function searchResultLineActionsStyle(lineCount: number): CSSProperties {
+  return {
+    gap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
+    gridTemplateRows: `repeat(${lineCount}, ${EXCERPT_EDITOR_LINE_HEIGHT}px)`,
+    height: searchResultFileEditorHeight(lineCount),
   }
 }
 
