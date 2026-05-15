@@ -38,6 +38,7 @@ import { FileSystemService, type FileSystemServiceOptions } from "./fs/service"
 import type { FindStreamEvent } from "./fs/search"
 import { parseWatchInputs } from "./fs/watch"
 import { GitService } from "./git/service"
+import { lspRoutes } from "./lsp/routes"
 import { typeScriptLspRoutes } from "./lsp/typescript/routes"
 import {
   TerminalService,
@@ -96,6 +97,7 @@ export function createApp(options: AppOptions) {
       authMode: auth.mode,
       ...fs.info(),
     }))
+    .ws("/lsp", lspRoutes(fs, auth))
     .ws("/lsp/typescript", typeScriptLspRoutes(fs, auth))
     .ws("/terminal", terminal.routes(auth))
     .group("/git", (app) =>

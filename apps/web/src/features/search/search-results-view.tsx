@@ -31,8 +31,8 @@ import {
   type SearchResultItem,
 } from "@/features/search/search-result-items"
 import {
-  SearchEmptyState,
   SearchErrorState,
+  SearchIdleState,
   SearchPendingOrEmpty,
 } from "@/features/search/search-status-states"
 import { cn } from "@workspace/ui/lib/utils"
@@ -116,13 +116,7 @@ export function SearchResultsView({
   }, [displayedResultsQuery, virtualizer])
 
   if (!snapshot || snapshot.status === "idle") {
-    return (
-      <SearchEmptyState
-        className={className}
-        description="Search text in the selected workspace."
-        title="Search workspace"
-      />
-    )
+    return <SearchIdleState className={className} />
   }
   if (snapshot.status === "error" && groups.length === 0) {
     return <SearchErrorState className={className} message={snapshot.error} />

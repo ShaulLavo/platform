@@ -27,6 +27,7 @@ import { writeWorkspaceCache } from "@/lib/workspace-cache"
 import { HotkeysProvider } from "@tanstack/react-hotkeys"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
+
 export function App() {
   return (
     <EditorStateProvider>

@@ -33,6 +33,10 @@ export function SearchPendingOrEmpty({
   )
 }
 
+export function SearchIdleState({ className }: { className?: string }) {
+  return <div className={cn("min-h-0", className)} />
+}
+
 export function SearchEmptyState({
   className,
   description,

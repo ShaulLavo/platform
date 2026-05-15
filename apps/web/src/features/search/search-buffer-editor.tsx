@@ -8,8 +8,8 @@ import { SearchSummary } from "@/features/search/search-summary"
 import { SearchResultEditorSurface } from "@/features/search/search-result-editor-surface"
 import type { SearchResultOpenTarget } from "@/features/search/search-result-view-model"
 import {
-  SearchEmptyState,
   SearchErrorState,
+  SearchIdleState,
   SearchPendingOrEmpty,
 } from "@/features/search/search-status-states"
 import {
@@ -138,12 +138,7 @@ function SearchBufferStatusState({
   snapshot: ReturnType<typeof useSearchBuffer>["snapshot"]
 }) {
   if (!snapshot || snapshot.status === "idle") {
-    return (
-      <SearchEmptyState
-        description="Search text in the selected workspace."
-        title="Search workspace"
-      />
-    )
+    return <SearchIdleState />
   }
   if (snapshot.status === "error") {
     return <SearchErrorState message={snapshot.error} />
