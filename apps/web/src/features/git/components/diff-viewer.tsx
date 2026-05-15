@@ -20,9 +20,10 @@ import {
 } from "react"
 
 import type { EditorDiffViewMode } from "@/features/editor/utils/diff-view-mode"
+import { createEditorDiffSyntaxBackend } from "@/features/editor/editor-plugins"
 import { languageIdForFilePath } from "@/features/editor/utils/file-path"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
-import { useTheme } from "@/components/theme-context"
+import { useEditorColorTheme } from "@/features/editor/hooks/use-editor-color-theme"
 import { errorMessage } from "@/lib/file-server"
 import { displayPath } from "@/lib/path-formatters"
 import type { DiffHunk as GitDiffHunk, FileDiff, LineChange } from "../types"
@@ -131,10 +132,13 @@ const EditorDiffView = forwardRef<
 >(function EditorDiffView({ file, mode }, ref) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<DiffView | null>(null)
-  const { theme } = useTheme()
+  const { editorTheme } = useEditorColorTheme()
   const active = useWorkspaceFocus((state) => state.activeArea === "editor")
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const shikiTheme = resolvedShikiTheme(theme)
+  const syntaxBackend = useMemo(
+    () => createEditorDiffSyntaxBackend(),
+    []
+  )
 
   useImperativeHandle(ref, () => diffViewHandle(viewRef), [])
 
@@ -148,7 +152,8 @@ const EditorDiffView = forwardRef<
       splitPane: {
         createHandle: createGitDiffSplitHandle,
       },
-      theme: shikiTheme,
+      syntaxBackend,
+      theme: editorTheme,
     })
     viewRef.current = view
 
@@ -156,15 +161,15 @@ const EditorDiffView = forwardRef<
       view.dispose()
       viewRef.current = null
     }
-  }, [shikiTheme])
+  }, [editorTheme, syntaxBackend])
 
   useLayoutEffect(() => {
     viewRef.current?.setMode(mode)
-  }, [mode, shikiTheme])
+  }, [editorTheme, mode, syntaxBackend])
 
   useLayoutEffect(() => {
     viewRef.current?.setFiles([file])
-  }, [file, shikiTheme])
+  }, [editorTheme, file, syntaxBackend])
 
   return (
     <div
@@ -310,14 +315,4 @@ function textLines(text: string | undefined) {
   if (text.length === 0) return []
 
   return text.split("\n")
-}
-
-function resolvedShikiTheme(theme: "dark" | "light" | "system") {
-  if (theme === "dark") return "github-dark"
-  if (theme === "light") return "github-light"
-  if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-    return "github-dark"
-  }
-
-  return "github-light"
 }

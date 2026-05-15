@@ -1,7 +1,16 @@
-import { useEffectEvent, useEffect, useState, type ReactNode } from "react"
-import { ThemeProviderContext, type Theme } from "./theme-context"
-
-type ResolvedTheme = "dark" | "light"
+import {
+  useCallback,
+  useEffectEvent,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
+import {
+  ThemeProviderContext,
+  type ResolvedTheme,
+  type Theme,
+} from "./theme-context"
 
 type ThemeProviderProps = {
   children: ReactNode
@@ -29,6 +38,11 @@ function getSystemTheme(): ResolvedTheme {
   return "light"
 }
 
+function resolvedThemeFor(theme: Theme): ResolvedTheme {
+  if (theme === "system") return getSystemTheme()
+  return theme
+}
+
 function disableTransitionsTemporarily() {
   const style = document.createElement("style")
   style.appendChild(
@@ -48,9 +62,11 @@ function disableTransitionsTemporarily() {
   }
 }
 
-function applyTheme(nextTheme: Theme, disableTransitionOnChange: boolean) {
+function applyResolvedTheme(
+  resolvedTheme: ResolvedTheme,
+  disableTransitionOnChange: boolean
+) {
   const root = document.documentElement
-  const resolvedTheme = nextTheme === "system" ? getSystemTheme() : nextTheme
   const restoreTransitions = disableTransitionOnChange
     ? disableTransitionsTemporarily()
     : null
@@ -63,6 +79,13 @@ function applyTheme(nextTheme: Theme, disableTransitionOnChange: boolean) {
   }
 }
 
+function storedTheme(storageKey: string, defaultTheme: Theme): Theme {
+  const storedTheme = localStorage.getItem(storageKey)
+  if (isTheme(storedTheme)) return storedTheme
+
+  return defaultTheme
+}
+
 export function ThemeProvider({
   children,
   defaultTheme = "system",
@@ -70,22 +93,26 @@ export function ThemeProvider({
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(storageKey)
-    if (isTheme(storedTheme)) {
-      return storedTheme
-    }
+  const [theme, setThemeState] = useState<Theme>(() =>
+    storedTheme(storageKey, defaultTheme)
+  )
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
+    resolvedThemeFor(storedTheme(storageKey, defaultTheme))
+  )
 
-    return defaultTheme
-  })
-
-  function setTheme(nextTheme: Theme) {
-    localStorage.setItem(storageKey, nextTheme)
-    setThemeState(nextTheme)
-  }
+  const setTheme = useCallback(
+    (nextTheme: Theme) => {
+      localStorage.setItem(storageKey, nextTheme)
+      setThemeState(nextTheme)
+      setResolvedTheme(resolvedThemeFor(nextTheme))
+    },
+    [storageKey]
+  )
 
   const syncThemeClass = useEffectEvent(() => {
-    applyTheme(theme, disableTransitionOnChange)
+    const nextResolvedTheme = resolvedThemeFor(theme)
+    applyResolvedTheme(nextResolvedTheme, disableTransitionOnChange)
+    setResolvedTheme(nextResolvedTheme)
   })
 
   const syncThemeFromStorage = useEffectEvent((event: StorageEvent) => {
@@ -99,14 +126,16 @@ export function ThemeProvider({
 
     if (isTheme(event.newValue)) {
       setThemeState(event.newValue)
+      setResolvedTheme(resolvedThemeFor(event.newValue))
       return
     }
 
     setThemeState(defaultTheme)
+    setResolvedTheme(resolvedThemeFor(defaultTheme))
   })
 
   useEffect(() => {
-    applyTheme(theme, disableTransitionOnChange)
+    applyResolvedTheme(resolvedTheme, disableTransitionOnChange)
 
     if (theme !== "system") {
       return undefined
@@ -120,7 +149,7 @@ export function ThemeProvider({
     return () => {
       mediaQuery.removeEventListener("change", handleChange)
     }
-  }, [disableTransitionOnChange, theme])
+  }, [disableTransitionOnChange, resolvedTheme, theme])
 
   useEffect(() => {
     window.addEventListener("storage", syncThemeFromStorage)
@@ -130,10 +159,14 @@ export function ThemeProvider({
     }
   }, [])
 
-  const value = {
-    theme,
-    setTheme,
-  }
+  const value = useMemo(
+    () => ({
+      resolvedTheme,
+      theme,
+      setTheme,
+    }),
+    [resolvedTheme, setTheme, theme]
+  )
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>

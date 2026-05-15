@@ -1,10 +1,17 @@
-import { createMergeConflictPlugin, type EditorPlugin } from "@editor/core"
+import {
+  createMergeConflictPlugin,
+  type EditorPlugin,
+  type EditorSyntaxProvider,
+} from "@editor/core"
 import { createShikiHighlighterPlugin } from "@editor/core/shiki"
+import type { DiffSyntaxBackend } from "@editor/diff"
 import { createEditorFindPlugin } from "@editor/find"
 import { createFoldGutterPlugin, createLineGutterPlugin } from "@editor/gutters"
 import type { FoldGutterIconContext } from "@editor/gutters"
+import { createTreeSitterSyntaxProvider } from "@editor/tree-sitter"
 import { CaretDownIcon } from "@phosphor-icons/react/ssr"
 import {
+  TREE_SITTER_LANGUAGE_CONTRIBUTIONS,
   css,
   html,
   javaScript,
@@ -24,6 +31,8 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
     weight: "bold",
   })
 )
+
+let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 
 export type EditorSyntaxHighlightingOptions =
   | {
@@ -97,6 +106,34 @@ export function createEditorSyntaxHighlightingPlugins(
       theme: options.shikiTheme,
     }),
   ]
+}
+
+export function createEditorDiffSyntaxBackend(
+  options: EditorSyntaxHighlightingOptions = {}
+): DiffSyntaxBackend {
+  if (options.highlighter === "shiki") {
+    return {
+      kind: "shiki",
+      shikiTheme: options.shikiTheme,
+    }
+  }
+
+  return {
+    kind: "tree-sitter",
+    provider: editorTreeSitterSyntaxProvider(),
+  }
+}
+
+function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {
+  if (treeSitterSyntaxProvider) return treeSitterSyntaxProvider
+
+  const provider = createTreeSitterSyntaxProvider()
+  for (const contribution of TREE_SITTER_LANGUAGE_CONTRIBUTIONS) {
+    provider.registerLanguage(contribution, { replace: true })
+  }
+
+  treeSitterSyntaxProvider = provider
+  return provider
 }
 
 async function loadPlugin(

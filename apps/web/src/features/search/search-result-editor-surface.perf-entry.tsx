@@ -8,6 +8,7 @@ import "@workspace/ui/globals.css"
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
+import { EditorColorThemeProvider } from "@/features/editor/hooks/use-editor-color-theme"
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
 import { SearchResultEditorSurface } from "@/features/search/search-result-editor-surface"
 import {
@@ -449,8 +450,10 @@ function handleReplaceMatch() {
 
 createRoot(document.getElementById("root")!).render(
   <ThemeProvider defaultTheme="dark" storageKey="search-result-perf-theme">
-    <WorkspaceFocusProvider>
-      <SearchResultEditorSurfacePerfFixture />
-    </WorkspaceFocusProvider>
+    <EditorColorThemeProvider>
+      <WorkspaceFocusProvider>
+        <SearchResultEditorSurfacePerfFixture />
+      </WorkspaceFocusProvider>
+    </EditorColorThemeProvider>
   </ThemeProvider>
 )

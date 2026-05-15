@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useState } from "react"
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
 import type { EditorTheme } from "@editor/core"
 import { loadShikiTheme } from "@editor/core/shiki"
 
@@ -8,6 +17,16 @@ export type EditorColorMode = "dark" | "light"
 export type EditorThemePalette = "tree-sitter" | "shiki"
 
 type ShikiThemeName = "github-dark" | "github-light"
+type EditorColorThemeState = {
+  readonly colorMode: EditorColorMode
+  readonly editorTheme: EditorTheme
+  readonly shikiTheme: ShikiThemeName
+  readonly shikiThemeResolver: () => ShikiThemeName
+}
+
+const EditorColorThemeContext = createContext<
+  EditorColorThemeState | undefined
+>(undefined)
 
 const SHIKI_PRELOAD_THEMES = ["github-dark", "github-light"] as const
 
@@ -130,15 +149,36 @@ const fallbackShikiEditorThemeByColorMode = {
   },
 } satisfies Record<EditorColorMode, EditorTheme>
 
+export function EditorColorThemeProvider({
+  children,
+}: {
+  readonly children: ReactNode
+}) {
+  const { resolvedTheme } = useTheme()
+  const colorMode = resolvedTheme
+  const editorTheme = treeSitterEditorThemeByColorMode[colorMode]
+  const shikiTheme = shikiThemeByColorMode[colorMode]
+  const shikiThemeResolver = useCallback(() => shikiTheme, [shikiTheme])
+  const value = useMemo(
+    () => ({
+      colorMode,
+      editorTheme,
+      shikiTheme,
+      shikiThemeResolver,
+    }),
+    [colorMode, editorTheme, shikiTheme, shikiThemeResolver]
+  )
+
+  return createElement(EditorColorThemeContext.Provider, { value }, children)
+}
+
 export function useEditorColorTheme({
   palette = "tree-sitter",
 }: {
   readonly palette?: EditorThemePalette
 } = {}) {
-  const { theme } = useTheme()
-  const colorMode = useResolvedTheme(theme)
-  const shikiTheme = shikiThemeByColorMode[colorMode]
-  const shikiThemeResolver = useCallback(() => shikiTheme, [shikiTheme])
+  const colorTheme = useEditorColorThemeState()
+  const { colorMode, shikiTheme } = colorTheme
   const [shikiEditorThemes, setShikiEditorThemes] = useState<
     Partial<Record<ShikiThemeName, EditorTheme>>
   >({})
@@ -168,55 +208,45 @@ export function useEditorColorTheme({
     colorMode,
     editorTheme: editorThemeForPalette({
       colorMode,
+      editorTheme: colorTheme.editorTheme,
       palette,
       shikiEditorThemes,
       shikiTheme,
     }),
     shikiTheme,
-    shikiThemeResolver,
+    shikiThemeResolver: colorTheme.shikiThemeResolver,
   }
+}
+
+function useEditorColorThemeState() {
+  const context = useContext(EditorColorThemeContext)
+
+  if (context === undefined) {
+    throw new Error(
+      "useEditorColorTheme must be used within an EditorColorThemeProvider"
+    )
+  }
+
+  return context
 }
 
 function editorThemeForPalette({
   colorMode,
+  editorTheme,
   palette,
   shikiEditorThemes,
   shikiTheme,
 }: {
   readonly colorMode: EditorColorMode
+  readonly editorTheme: EditorTheme
   readonly palette: EditorThemePalette
   readonly shikiEditorThemes: Partial<Record<ShikiThemeName, EditorTheme>>
   readonly shikiTheme: ShikiThemeName
 }): EditorTheme {
-  if (palette === "tree-sitter")
-    return treeSitterEditorThemeByColorMode[colorMode]
+  if (palette === "tree-sitter") return editorTheme
 
   return (
     shikiEditorThemes[shikiTheme] ??
     fallbackShikiEditorThemeByColorMode[colorMode]
   )
-}
-
-function useResolvedTheme(theme: "dark" | "light" | "system") {
-  const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() =>
-    systemThemePreference()
-  )
-
-  useEffect(() => {
-    if (theme !== "system") return
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    const handleChange = () => setSystemTheme(systemThemePreference())
-
-    mediaQuery.addEventListener("change", handleChange)
-    return () => mediaQuery.removeEventListener("change", handleChange)
-  }, [theme])
-
-  if (theme === "system") return systemTheme
-  return theme
-}
-
-function systemThemePreference(): "dark" | "light" {
-  if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark"
-  return "light"
 }
