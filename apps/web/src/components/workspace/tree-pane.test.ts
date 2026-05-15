@@ -8,6 +8,7 @@ import type {
 import {
   loadExpandedDirectories,
   syncTreePaneState,
+  visibleTreeItemCount,
 } from "@/components/workspace/tree-pane-state"
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
 import { mergeDirectoryLoad, treeModel } from "@/lib/tree-model"
@@ -173,6 +174,74 @@ describe("syncTreePaneState", () => {
 
       expect(focusChanges).toEqual(["src/components/"])
       expect(fileTree.getFocusedPath()).toBe("src/components/")
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+})
+
+describe("visibleTreeItemCount", () => {
+  it("counts expanded tree rows instead of every loaded path", () => {
+    const root = "repo"
+    const initialModel = mergeDirectoryLoad(
+      treeModel(tree(root, [directory("repo/src")]), root),
+      root,
+      tree("repo/src", [
+        directory("repo/src/components"),
+        file("repo/src/index.ts"),
+      ]),
+      "src"
+    )
+    const model = mergeDirectoryLoad(
+      initialModel,
+      root,
+      tree("repo/src/components", [file("repo/src/components/Button.tsx")]),
+      "src/components"
+    )
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: "closed",
+      paths: model.paths,
+    })
+
+    try {
+      expect(visibleTreeItemCount(fileTree, model)).toBe(1)
+
+      getDirectory(fileTree, "src/").expand()
+      expect(visibleTreeItemCount(fileTree, model)).toBe(3)
+
+      getDirectory(fileTree, "src/components/").expand()
+      expect(visibleTreeItemCount(fileTree, model)).toBe(4)
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it("counts a flattened directory chain as one visible row", () => {
+    const root = "repo"
+    const initialModel = mergeDirectoryLoad(
+      treeModel(tree(root, [directory("repo/docs")]), root),
+      root,
+      tree("repo/docs", [directory("repo/docs/guide")]),
+      "docs"
+    )
+    const model = mergeDirectoryLoad(
+      initialModel,
+      root,
+      tree("repo/docs/guide", [file("repo/docs/guide/intro.md")]),
+      "docs/guide"
+    )
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: "closed",
+      paths: model.paths,
+    })
+
+    try {
+      expect(visibleTreeItemCount(fileTree, model)).toBe(1)
+
+      getDirectory(fileTree, "docs/guide/").expand()
+      expect(visibleTreeItemCount(fileTree, model)).toBe(2)
     } finally {
       fileTree.cleanUp()
     }

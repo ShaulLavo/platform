@@ -50,6 +50,20 @@ export function loadExpandedDirectories(
   }
 }
 
+export function visibleTreeItemCount(
+  tree: PierreFileTreeModel,
+  model: TreeModel
+) {
+  const childrenByParent = treeChildrenByParentPath(model)
+
+  return visibleChildrenCount({
+    childrenByParent,
+    model,
+    parentPath: "",
+    tree,
+  })
+}
+
 function syncSelectedFilePath(
   tree: PierreFileTreeModel,
   rootPath: string,
@@ -74,6 +88,115 @@ function clearTreeSelection(tree: PierreFileTreeModel) {
   for (const selectedPath of tree.getSelectedPaths()) {
     tree.getItem(selectedPath)?.deselect()
   }
+}
+
+type TreeChild = {
+  entry: TreeEntry
+  treePath: string
+}
+
+type VisibleChildrenCountOptions = {
+  childrenByParent: ReadonlyMap<string, readonly TreeChild[]>
+  model: TreeModel
+  parentPath: string
+  tree: PierreFileTreeModel
+}
+
+function visibleChildrenCount({
+  childrenByParent,
+  model,
+  parentPath,
+  tree,
+}: VisibleChildrenCountOptions) {
+  let count = 0
+
+  for (const child of childrenByParent.get(parentPath) ?? []) {
+    count += visibleChildCount({ child, childrenByParent, model, tree })
+  }
+
+  return count
+}
+
+function visibleChildCount({
+  child,
+  childrenByParent,
+  model,
+  tree,
+}: Omit<VisibleChildrenCountOptions, "parentPath"> & { child: TreeChild }) {
+  if (!isDirectoryEntry(child.entry)) return 1
+
+  const terminalPath = flattenedTerminalDirectoryPath(
+    child.treePath,
+    childrenByParent,
+    model
+  )
+  if (!isTreeDirectoryExpanded(tree, terminalPath)) return 1
+
+  return (
+    1 +
+    visibleChildrenCount({
+      childrenByParent,
+      model,
+      parentPath: terminalPath,
+      tree,
+    })
+  )
+}
+
+function treeChildrenByParentPath(model: TreeModel) {
+  const childrenByParent = new Map<string, TreeChild[]>()
+
+  for (const [treePath, entry] of model.entriesByTreePath) {
+    const parentPath = parentTreePath(treePath)
+    const children = childrenByParent.get(parentPath) ?? []
+    children.push({ entry, treePath })
+    childrenByParent.set(parentPath, children)
+  }
+
+  return childrenByParent
+}
+
+function parentTreePath(treePath: string) {
+  const path = canonicalTreePath(treePath)
+  const index = path.lastIndexOf("/")
+  if (index < 0) return ""
+
+  return path.slice(0, index)
+}
+
+function flattenedTerminalDirectoryPath(
+  treePath: string,
+  childrenByParent: ReadonlyMap<string, readonly TreeChild[]>,
+  model: TreeModel
+) {
+  let currentPath = canonicalTreePath(treePath)
+
+  while (true) {
+    const nextPath = flattenedChildDirectoryPath(
+      currentPath,
+      childrenByParent,
+      model
+    )
+    if (!nextPath) return currentPath
+
+    currentPath = nextPath
+  }
+}
+
+function flattenedChildDirectoryPath(
+  treePath: string,
+  childrenByParent: ReadonlyMap<string, readonly TreeChild[]>,
+  model: TreeModel
+) {
+  const children = childrenByParent.get(treePath)
+  if (children?.length !== 1) return null
+
+  const child = children[0]
+  if (!child) return null
+  if (!isDirectoryEntry(child.entry)) return null
+  if (!model.entriesByTreePath.has(child.treePath)) return null
+
+  return child.treePath
 }
 
 const INCREMENTAL_TREE_SYNC_LIMIT = 512

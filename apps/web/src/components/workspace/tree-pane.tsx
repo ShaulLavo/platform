@@ -9,6 +9,7 @@ import { CircleNotchIcon, WarningCircleIcon } from "@phosphor-icons/react"
 import {
   loadExpandedDirectories,
   syncTreePaneState,
+  visibleTreeItemCount,
 } from "@/components/workspace/tree-pane-state"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
@@ -35,11 +36,13 @@ import {
 
 export function TreePane({
   gitStatus,
+  onVisibleItemCountChange,
   onLoadDirectory,
   rootPath,
   state,
 }: {
   gitStatus?: readonly GitStatusEntry[]
+  onVisibleItemCountChange?: (count: number) => void
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
   state: LoadState<TreeModel>
@@ -61,6 +64,7 @@ export function TreePane({
       gitStatus={gitStatus}
       model={state.data}
       rootPath={rootPath}
+      onVisibleItemCountChange={onVisibleItemCountChange}
       onLoadDirectory={onLoadDirectory}
     />
   )
@@ -69,11 +73,13 @@ export function TreePane({
 function ReadyTreePane({
   gitStatus,
   model,
+  onVisibleItemCountChange,
   onLoadDirectory,
   rootPath,
 }: {
   gitStatus?: readonly GitStatusEntry[]
   model: TreeModel
+  onVisibleItemCountChange?: (count: number) => void
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
 }) {
@@ -88,6 +94,13 @@ function ReadyTreePane({
   const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
     (currentTree: PierreFileTreeModel) => {
       loadExpandedDirectories(currentTree, model, onLoadDirectory)
+    }
+  )
+  const publishVisibleItemCount = useEffectEvent(
+    (currentTree: PierreFileTreeModel) => {
+      onVisibleItemCountChange?.(
+        visibleTreeItemCount(currentTree, modelRef.current)
+      )
     }
   )
 
@@ -134,11 +147,13 @@ function ReadyTreePane({
       selectedFilePath,
       tree,
     })
+    publishVisibleItemCount(tree)
   }, [model, rootPath, selectedFilePath, tree])
 
   useEffect(() => {
     return tree.subscribe(() => {
       loadExpandedDirectoriesForCurrentModel(tree)
+      publishVisibleItemCount(tree)
     })
   }, [tree])
 
