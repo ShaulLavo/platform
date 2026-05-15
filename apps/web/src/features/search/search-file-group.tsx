@@ -2,6 +2,7 @@ import { CaretRightIcon } from "@phosphor-icons/react"
 import type { CSSProperties } from "react"
 
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
+import { SearchAnimatedNumber } from "@/features/search/search-animated-number"
 import {
   colorForFileIcon,
   iconForEntry,
@@ -65,7 +66,7 @@ export function SearchFileGroupHeader({
         </span>
       </button>
       <span className="rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground">
-        {group.count}
+        <SearchAnimatedNumber fontSize="10px" value={group.count} />
       </span>
       {replaceVisible ? (
         <Button

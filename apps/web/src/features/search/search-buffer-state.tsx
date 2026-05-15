@@ -730,7 +730,7 @@ function loadingSearchBuffer(
     searchRevision: previous?.searchRevision ?? 0,
     status: "loading",
     streamBaseMatches,
-    totalCount: streamBaseMatches.length > 0 ? 0 : (previous?.totalCount ?? 0),
+    totalCount: previous?.totalCount ?? 0,
     truncated: previous?.truncated ?? false,
     wholeWord: query.wholeWord ?? previous?.wholeWord ?? false,
   }

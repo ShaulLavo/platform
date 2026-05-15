@@ -1,16 +1,17 @@
-import { Component, useCallback, useMemo, type ReactNode } from "react"
+import { useCallback } from "react"
 import type { EditorKeymapLayer } from "@editor/core"
 
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { openWorkspaceSearchMatch } from "@/features/search/open-search-match"
 import { SearchHistoryInput } from "@/features/search/search-history-input"
-import { SearchResultsView } from "@/features/search/search-results-view"
 import { SearchSummary } from "@/features/search/search-summary"
-import { SearchResultDocumentEditor } from "@/features/search/search-result-document-editor"
 import { SearchResultEditorSurface } from "@/features/search/search-result-editor-surface"
-import { searchResultDocument } from "@/features/search/search-result-document"
-import type { SearchResultId } from "@/features/search/search-result-items"
 import type { SearchResultOpenTarget } from "@/features/search/search-result-view-model"
+import {
+  SearchEmptyState,
+  SearchErrorState,
+  SearchPendingOrEmpty,
+} from "@/features/search/search-status-states"
 import {
   SearchFilterFields,
   SearchModeButtons,
@@ -108,197 +109,45 @@ export function SearchBufferEditor({
         <SearchSummary query={query} snapshot={snapshot} />
       </div>
       {groups.length > 0 && snapshot ? (
-        <SearchResultDocumentBoundary
-          fallback={
-            <SearchResultDocumentFallback
-              canReplace={resultCanReplace}
-              commands={commands}
-              editorKeymapLayers={editorKeymapLayers}
-              groups={groups}
-              replaceGroup={replace.replaceGroup}
-              replaceMatch={replace.replaceMatch}
-              replaceText={replaceText}
-              replaceVisible={replaceVisible}
-              resultsQuery={resultsQuery}
-              snapshot={snapshot}
-              onOpenTarget={handleOpenTarget}
-              onSelectResult={selectResult}
-            />
-          }
-          resetKey={`${snapshot.id}:structured:${snapshot.runId}`}
-        >
-          <SearchResultEditorSurface
-            activeResultId={snapshot.activeResultId}
-            canReplace={resultCanReplace}
-            deferredPluginMode="immediate"
-            groups={groups}
-            keymapLayers={editorKeymapLayers}
-            prewarmEditorPool={snapshot.status !== "loading"}
-            replaceVisible={replaceVisible}
-            resultsQuery={resultsQuery}
-            displayedResultsQuery={snapshot.resultsSearchQuery?.query ?? null}
-            onOpenTarget={handleOpenTarget}
-            onReplaceGroup={replace.replaceGroup}
-            onReplaceMatch={replace.replaceMatch}
-            onSelectResult={selectResult}
-            onToggleGroup={toggleGroup}
-          />
-        </SearchResultDocumentBoundary>
-      ) : (
-        <SearchBufferResultList
+        <SearchResultEditorSurface
+          activeResultId={snapshot.activeResultId}
           canReplace={resultCanReplace}
-          commands={commands}
+          deferredPluginMode="immediate"
           groups={groups}
-          replaceGroup={replace.replaceGroup}
-          replaceMatch={replace.replaceMatch}
-          replaceText={replaceText}
+          keymapLayers={editorKeymapLayers}
+          prewarmEditorPool={snapshot.status !== "loading"}
           replaceVisible={replaceVisible}
           resultsQuery={resultsQuery}
-          snapshot={snapshot}
+          displayedResultsQuery={snapshot.resultsSearchQuery?.query ?? null}
+          onOpenTarget={handleOpenTarget}
+          onReplaceGroup={replace.replaceGroup}
+          onReplaceMatch={replace.replaceMatch}
+          onSelectResult={selectResult}
+          onToggleGroup={toggleGroup}
         />
+      ) : (
+        <SearchBufferStatusState snapshot={snapshot} />
       )}
     </section>
   )
 }
 
-function SearchResultDocumentFallback({
-  canReplace,
-  commands,
-  editorKeymapLayers,
-  groups,
-  replaceGroup,
-  replaceMatch,
-  replaceText,
-  replaceVisible,
-  resultsQuery,
-  snapshot,
-  onOpenTarget,
-  onSelectResult,
-}: {
-  canReplace?: boolean
-  commands: Pick<
-    ReturnType<typeof useEditorCommands>,
-    "openDefinition" | "selectFile"
-  >
-  editorKeymapLayers: readonly EditorKeymapLayer[]
-  groups: ReturnType<typeof useSearchBuffer>["groups"]
-  replaceGroup: ReturnType<typeof useWorkspaceSearchReplace>["replaceGroup"]
-  replaceMatch: ReturnType<typeof useWorkspaceSearchReplace>["replaceMatch"]
-  replaceText: string
-  replaceVisible: boolean
-  resultsQuery: string
-  snapshot: NonNullable<ReturnType<typeof useSearchBuffer>["snapshot"]>
-  onOpenTarget: (target: SearchResultOpenTarget) => void
-  onSelectResult: (id: SearchResultId | null) => void
-}) {
-  const searchDocument = useMemo(
-    () => searchResultDocument(groups, resultsQuery),
-    [groups, resultsQuery]
-  )
-
-  return (
-    <SearchResultDocumentBoundary
-      fallback={
-        <SearchBufferResultList
-          canReplace={canReplace}
-          commands={commands}
-          groups={groups}
-          replaceGroup={replaceGroup}
-          replaceMatch={replaceMatch}
-          replaceText={replaceText}
-          replaceVisible={replaceVisible}
-          resultsQuery={resultsQuery}
-          snapshot={snapshot}
-        />
-      }
-      resetKey={`${snapshot.id}:${searchDocument.text.length}:${snapshot.runId}`}
-    >
-      <SearchResultDocumentEditor
-        activeResultId={snapshot.activeResultId}
-        document={searchDocument}
-        documentId={snapshot.id}
-        keymapLayers={editorKeymapLayers}
-        onOpenTarget={onOpenTarget}
-        onSelectResult={onSelectResult}
-      />
-    </SearchResultDocumentBoundary>
-  )
-}
-
-function SearchBufferResultList({
-  canReplace,
-  commands,
-  groups,
-  replaceGroup,
-  replaceMatch,
-  replaceText,
-  replaceVisible,
-  resultsQuery,
+function SearchBufferStatusState({
   snapshot,
 }: {
-  canReplace?: boolean
-  commands: Pick<
-    ReturnType<typeof useEditorCommands>,
-    "openDefinition" | "selectFile"
-  >
-  groups: ReturnType<typeof useSearchBuffer>["groups"]
-  replaceGroup: ReturnType<typeof useWorkspaceSearchReplace>["replaceGroup"]
-  replaceMatch: ReturnType<typeof useWorkspaceSearchReplace>["replaceMatch"]
-  replaceText: string
-  replaceVisible: boolean
-  resultsQuery: string
   snapshot: ReturnType<typeof useSearchBuffer>["snapshot"]
 }) {
-  return (
-    <SearchResultsView
-      className="bg-muted/10"
-      canReplace={canReplace}
-      groups={groups}
-      query={resultsQuery}
-      replaceText={replaceText}
-      replaceVisible={replaceVisible}
-      snapshot={snapshot}
-      onOpenMatch={(match) =>
-        openWorkspaceSearchMatch(match, resultsQuery, commands)
-      }
-      onReplaceGroup={replaceGroup}
-      onReplaceMatch={replaceMatch}
-    />
-  )
-}
-
-class SearchResultDocumentBoundary extends Component<
-  {
-    children: ReactNode
-    fallback: ReactNode
-    resetKey: string
-  },
-  { failed: boolean; resetKey: string }
-> {
-  state = {
-    failed: false,
-    resetKey: this.props.resetKey,
+  if (!snapshot || snapshot.status === "idle") {
+    return (
+      <SearchEmptyState
+        description="Search text in the selected workspace."
+        title="Search workspace"
+      />
+    )
+  }
+  if (snapshot.status === "error") {
+    return <SearchErrorState message={snapshot.error} />
   }
 
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-
-  static getDerivedStateFromProps(
-    props: { resetKey: string },
-    state: { failed: boolean; resetKey: string }
-  ) {
-    if (props.resetKey === state.resetKey) return null
-
-    return {
-      failed: false,
-      resetKey: props.resetKey,
-    }
-  }
-
-  render() {
-    if (this.state.failed) return this.props.fallback
-
-    return this.props.children
-  }
+  return <SearchPendingOrEmpty snapshot={snapshot} />
 }

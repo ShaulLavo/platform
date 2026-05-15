@@ -147,11 +147,9 @@ export function WorkspaceView({
             />
           </ResizablePanel>
         </ResizablePanelGroup>
-        {statusBarState && (
-          <div className="min-w-0">
-            <EditorStatusBar {...statusBarState} />
-          </div>
-        )}
+        <div className="min-w-0">
+          <EditorStatusBar status={statusBarState} />
+        </div>
       </div>
     </div>
   )

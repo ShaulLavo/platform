@@ -440,6 +440,11 @@ describe("search buffer store", () => {
     const previousGroups = searchGroupsForSnapshot(store.getState().active)
     const previousIds = searchResultItems(previousGroups).map((item) => item.id)
     const secondRunId = store.getState().startSearch(searchQuery("co"))
+    expect(store.getState().active).toMatchObject({
+      status: "loading",
+      totalCount: 2,
+    })
+
     store.getState().appendEvent(secondRunId, {
       match: { ...firstMatch, endColumn: 3, preview: "const value" },
       type: "match",
@@ -494,11 +499,13 @@ describe("search buffer store", () => {
     const firstRunId = store.getState().startSearch(searchQuery("needle"))
     const firstMatch = contentMatch("repo/src/app.ts", 1, 1)
     const secondMatch = contentMatch("repo/src/app.ts", 2, 1)
-    store.getState().appendEvents(firstRunId, [
-      { match: firstMatch, type: "match" },
-      { match: secondMatch, type: "match" },
-      doneEvent("needle", 2),
-    ])
+    store
+      .getState()
+      .appendEvents(firstRunId, [
+        { match: firstMatch, type: "match" },
+        { match: secondMatch, type: "match" },
+        doneEvent("needle", 2),
+      ])
 
     const previousGroups = searchGroupsForSnapshot(store.getState().active)
     const previousIds = searchResultItems(previousGroups).map((item) => item.id)

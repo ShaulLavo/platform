@@ -3,6 +3,7 @@ import type {
   TypeScriptLspDiagnosticSummary,
   TypeScriptLspStatus,
 } from "@editor/typescript-lsp"
+import { AnimatedCounter } from "react-animated-counter"
 
 import {
   formatHistoryStatus,
@@ -10,7 +11,7 @@ import {
   formatTypeScriptLspStatus,
 } from "@/features/editor/utils/status-formatters"
 
-type EditorStatusBarProps = {
+export type EditorStatusBarState = {
   charCount: number
   filePath: string
   state: EditorState | null
@@ -18,7 +19,19 @@ type EditorStatusBarProps = {
   typeScriptStatus: TypeScriptLspStatus
 }
 
-export type EditorStatusBarState = EditorStatusBarProps
+type EditorStatusBarProps = {
+  status: EditorStatusBarState | null
+}
+
+const STATUS_COUNTER_CONTAINER_STYLES = {
+  display: "inline-flex",
+  margin: 0,
+} as const
+
+const STATUS_COUNTER_DIGIT_STYLES = {
+  fontVariantNumeric: "tabular-nums",
+  fontWeight: 500,
+} as const
 
 function CounterMetric({
   includeCommas = false,
@@ -37,9 +50,17 @@ function CounterMetric({
       aria-label={`${value.toLocaleString()} ${label}`}
     >
       {labelPosition === "before" && <span>{label}</span>}
-      <span className="font-medium tabular-nums">
-        {includeCommas ? value.toLocaleString() : value}
-      </span>
+      <AnimatedCounter
+        color="currentColor"
+        containerStyles={STATUS_COUNTER_CONTAINER_STYLES}
+        decrementColor="currentColor"
+        digitStyles={STATUS_COUNTER_DIGIT_STYLES}
+        fontSize="11px"
+        includeCommas={includeCommas}
+        includeDecimals={false}
+        incrementColor="currentColor"
+        value={value}
+      />
       {labelPosition === "after" && <span>{label}</span>}
     </div>
   )
@@ -56,30 +77,42 @@ function CursorStatus({ state }: { state: EditorState | null }) {
   )
 }
 
-export function EditorStatusBar({
-  charCount,
-  filePath,
-  state,
-  typeScriptDiagnostics,
-  typeScriptStatus,
-}: EditorStatusBarProps) {
+export function EditorStatusBar({ status }: EditorStatusBarProps) {
   return (
-    <div className="flex min-h-7 items-center gap-4 overflow-hidden border-t bg-background px-3 py-1 font-sans text-[11px] whitespace-nowrap text-muted-foreground">
+    <div
+      className="flex min-h-7 items-center gap-4 overflow-hidden border-t bg-background px-3 py-1 font-sans text-[11px] whitespace-nowrap text-muted-foreground"
+      aria-label="Status bar"
+    >
+      {status ? <EditorStatusBarContent status={status} /> : null}
+    </div>
+  )
+}
+
+function EditorStatusBarContent({
+  status,
+}: {
+  status: EditorStatusBarState
+}) {
+  return (
+    <>
       <span className="max-w-[40%] min-w-0 truncate text-foreground">
-        {state?.documentId ? filePath : "No file"}
+        {status.state?.documentId ? status.filePath : "No file"}
       </span>
-      <CursorStatus state={state} />
+      <CursorStatus state={status.state} />
       <CounterMetric
         includeCommas
         label="chars"
         labelPosition="after"
-        value={charCount}
+        value={status.charCount}
       />
-      <span>{formatSyntaxStatus(state)}</span>
+      <span>{formatSyntaxStatus(status.state)}</span>
       <span>
-        {formatTypeScriptLspStatus(typeScriptStatus, typeScriptDiagnostics)}
+        {formatTypeScriptLspStatus(
+          status.typeScriptStatus,
+          status.typeScriptDiagnostics
+        )}
       </span>
-      <span>{formatHistoryStatus(state)}</span>
-    </div>
+      <span>{formatHistoryStatus(status.state)}</span>
+    </>
   )
 }

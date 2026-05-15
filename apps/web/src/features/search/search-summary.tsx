@@ -16,6 +16,7 @@ import {
   searchResultActiveMatchPosition,
   searchResultContentItems,
 } from "@/features/search/search-result-items"
+import { SearchAnimatedNumber } from "@/features/search/search-animated-number"
 import { Button } from "@workspace/ui/components/button"
 
 export function SearchSummary({
@@ -37,7 +38,9 @@ export function SearchSummary({
 
   return (
     <div className="mt-2 flex min-h-5 items-center gap-2 px-1 text-[11px] text-muted-foreground">
-      <SearchSummaryText>{summary.text}</SearchSummaryText>
+      <SearchSummaryText title={summary.title}>
+        {summary.content}
+      </SearchSummaryText>
       {summary.showControls ? (
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           <SearchSummaryButton
@@ -88,7 +91,10 @@ function searchSummaryModel(
   if (snapshot.status === "error") {
     const message = snapshot.error ?? "Search failed"
     if (hasSearchResultGroups(snapshot))
-      return summaryWithControls(`${message} · Showing previous results`, snapshot)
+      return summaryWithControls(
+        `${message} · Showing previous results`,
+        snapshot
+      )
 
     return emptySummary(message)
   }
@@ -96,24 +102,25 @@ function searchSummaryModel(
   if (snapshot.status === "loading" && snapshot.matches.length === 0) {
     return emptySummary("Searching")
   }
-  if (snapshot.status === "loading" && snapshot.pendingResultIds.length > 0) {
-    return summaryWithControls(
-      `${snapshot.totalCount.toLocaleString()} updated · Searching`,
-      snapshot
-    )
-  }
-
-  const resultText = searchResultCountText(snapshot)
+  const result = searchResultCount(snapshot)
   if (snapshot.status === "loading") {
-    return summaryWithControls(`${resultText} · Searching`, snapshot)
+    return summaryWithControls(result.content, snapshot, result.title, {
+      trailingText: "Searching",
+    })
   }
 
-  return summaryWithControls(resultText, snapshot)
+  return summaryWithControls(result.content, snapshot, result.title)
 }
 
-function SearchSummaryText({ children }: { children: ReactNode }) {
+function SearchSummaryText({
+  children,
+  title,
+}: {
+  children: ReactNode
+  title: string
+}) {
   return (
-    <div className="min-w-0 flex-1 truncate" title={String(children)}>
+    <div className="min-w-0 flex-1 truncate" title={title}>
       {children}
     </div>
   )
@@ -151,26 +158,55 @@ function emptySummary(text: string) {
     canCollapse: false,
     canExpand: false,
     canNavigate: false,
+    content: text,
     showControls: false,
-    text,
+    title: text,
   }
 }
 
-function summaryWithControls(text: string, snapshot: SearchBufferSnapshot) {
+function summaryWithControls(
+  content: ReactNode,
+  snapshot: SearchBufferSnapshot,
+  title = String(content),
+  options: { trailingText?: string } = {}
+) {
   const groups = searchGroupsForSnapshot(snapshot)
   const expandedItems = expandedSearchResultItems(groups)
   const active = searchResultActiveMatchPosition(
     expandedItems,
     snapshot.activeResultId
   )
-  const activeText = active ? ` · ${active.index}/${active.total}` : ""
+  const activeContent = active ? (
+    <>
+      {" "}
+      <span aria-hidden="true">·</span>{" "}
+      <SearchAnimatedNumber value={active.index} />
+      /
+      <SearchAnimatedNumber value={active.total} />
+    </>
+  ) : null
+  const activeTitle = active ? ` · ${active.index}/${active.total}` : ""
+  const trailingContent = options.trailingText ? (
+    <>
+      {" "}
+      <span aria-hidden="true">·</span> {options.trailingText}
+    </>
+  ) : null
+  const trailingTitle = options.trailingText ? ` · ${options.trailingText}` : ""
 
   return {
     canCollapse: groups.some((group) => group.count > 0 && !group.collapsed),
     canExpand: groups.some((group) => group.count > 0 && group.collapsed),
     canNavigate: searchResultContentItems(expandedItems).length > 0,
+    content: (
+      <>
+        {content}
+        {activeContent}
+        {trailingContent}
+      </>
+    ),
     showControls: groups.some((group) => group.count > 0),
-    text: `${text}${activeText}`,
+    title: `${title}${activeTitle}${trailingTitle}`,
   }
 }
 
@@ -178,16 +214,34 @@ function hasSearchResultGroups(snapshot: SearchBufferSnapshot) {
   return searchGroupsForSnapshot(snapshot).some((group) => group.count > 0)
 }
 
-function searchResultCountText(snapshot: SearchBufferSnapshot) {
+function searchResultCount(snapshot: SearchBufferSnapshot) {
   const groups = searchGroupsForSnapshot(snapshot)
   const fileCount = groups.filter((group) => group.count > 0).length
-  const files = `${fileCount.toLocaleString()} ${fileNoun(fileCount)}`
-  const count = snapshot.totalCount.toLocaleString()
-  const matches = snapshot.truncated
-    ? `${count} shown, limit reached`
-    : `${count} ${matchNoun(snapshot.totalCount)}`
+  const matchTitle = snapshot.totalCount.toLocaleString()
+  const fileTitle = fileCount.toLocaleString()
+  const matchSummary = snapshot.truncated ? (
+    <>
+      <SearchAnimatedNumber value={snapshot.totalCount} /> shown, limit reached
+    </>
+  ) : (
+    <>
+      <SearchAnimatedNumber value={snapshot.totalCount} />{" "}
+      {matchNoun(snapshot.totalCount)}
+    </>
+  )
+  const titleMatches = snapshot.truncated
+    ? `${matchTitle} shown, limit reached`
+    : `${matchTitle} ${matchNoun(snapshot.totalCount)}`
 
-  return `${matches} in ${files}`
+  return {
+    content: (
+      <>
+        {matchSummary} in <SearchAnimatedNumber value={fileCount} />{" "}
+        {fileNoun(fileCount)}
+      </>
+    ),
+    title: `${titleMatches} in ${fileTitle} ${fileNoun(fileCount)}`,
+  }
 }
 
 function matchNoun(count: number) {
