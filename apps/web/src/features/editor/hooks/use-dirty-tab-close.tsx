@@ -13,37 +13,58 @@ import { useEditorWorkspaceStoreApi } from "@/features/editor/state/editor-works
 import { errorMessage } from "@/lib/file-server"
 
 export type RequestCloseTab = (path: string) => boolean
+export type RequestCloseTabs = (paths: readonly string[]) => boolean
 
 export function useDirtyTabCloseRequest() {
   const documentStore = useEditorDocumentStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const queryClient = useQueryClient()
   const { closeTab, discardAndCloseTab } = useEditorCommands()
-  const [pendingPath, setPendingPath] = useState<string | null>(null)
+  const [pendingPaths, setPendingPaths] = useState<readonly string[]>([])
+  const pendingPath = pendingPaths[0] ?? null
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const canSavePendingPath = fileBackedEditorPath(pendingPath) !== null
 
   const clearPendingClose = useCallback(() => {
-    setPendingPath(null)
+    setPendingPaths([])
     setSaveError(null)
   }, [])
 
-  const requestCloseTab = useCallback<RequestCloseTab>(
-    (path) => {
-      if (!workspaceStore.getState().openFilePaths.includes(path)) return false
+  const advancePendingClose = useCallback(() => {
+    setPendingPaths((paths) => paths.slice(1))
+    setSaveError(null)
+  }, [])
 
+  const requestCloseTabs = useCallback<RequestCloseTabs>(
+    (paths) => {
+      if (pendingPaths.length > 0) return false
+
+      const openPaths = uniqueOpenPaths(paths, workspaceStore.getState())
+      if (openPaths.length === 0) return false
       const state = documentStore.getState()
-      if (!isDirtyCachedEditorDocument(state, path)) {
+
+      const dirtyPaths: string[] = []
+      for (const path of openPaths) {
+        if (isDirtyCachedEditorDocument(state, path)) {
+          dirtyPaths.push(path)
+          continue
+        }
+
         closeTab(path)
-        return true
       }
 
-      setPendingPath(path)
+      setPendingPaths(dirtyPaths)
       setSaveError(null)
-      return false
+
+      return dirtyPaths.length === 0
     },
-    [closeTab, documentStore, workspaceStore]
+    [closeTab, documentStore, pendingPaths.length, workspaceStore]
+  )
+
+  const requestCloseTab = useCallback<RequestCloseTab>(
+    (path) => requestCloseTabs([path]),
+    [requestCloseTabs]
   )
 
   const handleOpenChange = useCallback(
@@ -66,14 +87,14 @@ export function useDirtyTabCloseRequest() {
     if (!pendingPath) return
     if (saving) return
     if (!workspaceStore.getState().openFilePaths.includes(pendingPath)) {
-      clearPendingClose()
+      advancePendingClose()
       return
     }
 
     discardAndCloseTab(pendingPath)
-    clearPendingClose()
+    advancePendingClose()
   }, [
-    clearPendingClose,
+    advancePendingClose,
     discardAndCloseTab,
     pendingPath,
     saving,
@@ -85,7 +106,7 @@ export function useDirtyTabCloseRequest() {
     if (saving) return
 
     void saveAndClosePendingTab(pendingPath, {
-      clearPendingClose,
+      advancePendingClose,
       closeTab,
       documentStore,
       queryClient,
@@ -94,7 +115,7 @@ export function useDirtyTabCloseRequest() {
       workspaceStore,
     })
   }, [
-    clearPendingClose,
+    advancePendingClose,
     closeTab,
     documentStore,
     pendingPath,
@@ -118,6 +139,7 @@ export function useDirtyTabCloseRequest() {
       />
     ),
     requestCloseTab,
+    requestCloseTabs,
   }
 }
 
@@ -130,7 +152,7 @@ async function saveAndClosePendingTab(
 
   try {
     if (!context.workspaceStore.getState().openFilePaths.includes(path)) {
-      context.clearPendingClose()
+      context.advancePendingClose()
       return
     }
 
@@ -145,7 +167,7 @@ async function saveAndClosePendingTab(
     }
 
     context.closeTab(path)
-    context.clearPendingClose()
+    context.advancePendingClose()
   } catch (error: unknown) {
     context.setSaveError(errorMessage(error))
   } finally {
@@ -154,11 +176,20 @@ async function saveAndClosePendingTab(
 }
 
 type SaveAndCloseContext = {
-  clearPendingClose: () => void
+  advancePendingClose: () => void
   closeTab: (path: string) => void
   documentStore: ReturnType<typeof useEditorDocumentStoreApi>
   queryClient: ReturnType<typeof useQueryClient>
   setSaveError: (error: string | null) => void
   setSaving: (saving: boolean) => void
   workspaceStore: ReturnType<typeof useEditorWorkspaceStoreApi>
+}
+
+function uniqueOpenPaths(
+  paths: readonly string[],
+  workspace: { openFilePaths: readonly string[] }
+) {
+  const openPaths = new Set(workspace.openFilePaths)
+
+  return [...new Set(paths)].filter((path) => openPaths.has(path))
 }

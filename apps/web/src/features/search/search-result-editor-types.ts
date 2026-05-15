@@ -1,6 +1,7 @@
 import type { SearchResultId } from "@/features/search/search-result-items"
 import type { SearchResultVirtualRow } from "@/features/search/search-result-view-model"
 import type { SearchResultVirtualListMetrics } from "@/features/search/search-result-virtual-list"
+import type { UIEvent } from "react"
 
 export type SearchResultDeferredPluginMode = "idle" | "immediate" | "manual"
 

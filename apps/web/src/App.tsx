@@ -27,7 +27,6 @@ import { writeWorkspaceCache } from "@/lib/workspace-cache"
 import { HotkeysProvider } from "@tanstack/react-hotkeys"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
-
 export function App() {
   return (
     <EditorStateProvider>
@@ -72,7 +71,8 @@ function AppContent() {
     selectedFilePath
   )
   const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
-  const { dirtyTabCloseDialog, requestCloseTab } = useDirtyTabCloseRequest()
+  const { dirtyTabCloseDialog, requestCloseTab, requestCloseTabs } =
+    useDirtyTabCloseRequest()
   const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
   const searchBuffer = useMemo(
     () => cachedSearchBufferState(activeSearchBuffer),
@@ -145,6 +145,7 @@ function AppContent() {
             treeState={treeState}
             onLoadDirectory={loadTreeDirectory}
             onRequestCloseTab={requestCloseTab}
+            onRequestCloseTabs={requestCloseTabs}
           />
         ) : (
           <EmptyWorkspace onChooseFolder={openPicker} />

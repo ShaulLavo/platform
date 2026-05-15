@@ -1,5 +1,5 @@
 import type { EditorRangeDecoration } from "@editor/core"
-import type { CSSProperties, RefObject } from "react"
+import type { CSSProperties, KeyboardEvent, RefObject } from "react"
 
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
 import type { SearchResultId } from "@/features/search/search-result-items"
