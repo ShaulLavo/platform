@@ -27,6 +27,27 @@ export function renameOpenFilePath(
   return [...new Set(renamed)]
 }
 
+export function reorderOpenFilePath(
+  paths: readonly string[],
+  path: string,
+  targetIndex: number
+) {
+  const sourceIndex = paths.indexOf(path)
+  if (sourceIndex === -1) return [...paths]
+
+  const remainingPaths = paths.filter((candidate) => candidate !== path)
+  const insertIndex = boundedOpenFilePathInsertIndex(
+    targetIndex,
+    remainingPaths.length
+  )
+
+  return [
+    ...remainingPaths.slice(0, insertIndex),
+    path,
+    ...remainingPaths.slice(insertIndex),
+  ]
+}
+
 const MAX_EDITOR_HISTORY = 50
 
 export function editorHistoryForSelection(
@@ -85,4 +106,11 @@ export function previousOpenEditorPath(
 
 function uniqueRecentPaths(paths: readonly string[]) {
   return [...new Set(paths)].slice(0, MAX_EDITOR_HISTORY)
+}
+
+function boundedOpenFilePathInsertIndex(index: number, pathCount: number) {
+  if (!Number.isFinite(index)) return pathCount
+
+  const integerIndex = Math.trunc(index)
+  return Math.min(pathCount, Math.max(0, integerIndex))
 }

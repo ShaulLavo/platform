@@ -12,6 +12,7 @@ import {
   nextSelectedFilePath,
   openFilePathList,
   renameOpenFilePath,
+  reorderOpenFilePath,
 } from "@/features/editor/state/editor-tab-paths"
 import { createEditorUiStore } from "@/features/editor/state/editor-ui-state"
 import { createEditorWorkspaceStore } from "@/features/editor/state/editor-workspace-state"
@@ -32,6 +33,40 @@ describe("editor path utilities", () => {
     expect(
       renameOpenFilePath(["src/a.ts", "src/b.ts"], "src/a.ts", "src/b.ts")
     ).toEqual(["src/b.ts"])
+  })
+
+  it("reorders open tab paths by target index after removal", () => {
+    const paths = ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"]
+
+    expect(reorderOpenFilePath(paths, "src/c.ts", 1)).toEqual([
+      "src/a.ts",
+      "src/c.ts",
+      "src/b.ts",
+      "src/d.ts",
+    ])
+    expect(reorderOpenFilePath(paths, "src/b.ts", 2)).toEqual([
+      "src/a.ts",
+      "src/c.ts",
+      "src/b.ts",
+      "src/d.ts",
+    ])
+    expect(reorderOpenFilePath(paths, "src/d.ts", 0)).toEqual([
+      "src/d.ts",
+      "src/a.ts",
+      "src/b.ts",
+      "src/c.ts",
+    ])
+    expect(reorderOpenFilePath(paths, "src/a.ts", 3)).toEqual([
+      "src/b.ts",
+      "src/c.ts",
+      "src/d.ts",
+      "src/a.ts",
+    ])
+    expect(reorderOpenFilePath(paths, "src/b.ts", 1)).toEqual(paths)
+    expect(reorderOpenFilePath(paths, "src/missing.ts", 1)).toEqual(paths)
+    expect(reorderOpenFilePath(["src/a.ts"], "src/a.ts", 0)).toEqual([
+      "src/a.ts",
+    ])
   })
 
   it("updates dirty path sets without unnecessary replacements", () => {
@@ -327,6 +362,40 @@ describe("editor commands", () => {
 
     expect(selected).toBe(true)
     expect(workspaceStore.getState().selectedFilePath).toBe("src/a.ts")
+  })
+
+  it("reorders tabs without touching editor selection metadata", () => {
+    const { commands, documentStore, workspaceStore } = setupStores(
+      workspaceState(["src/a.ts", "src/b.ts", "src/c.ts"], "src/b.ts")
+    )
+    documentStore.getState().ensureCachedEditorDocument(file("src/a.ts", "a"))
+    documentStore.getState().setCachedEditorDocumentDirty("src/a.ts", true)
+    workspaceStore.setState({
+      editorHistory: ["src/b.ts", "src/a.ts"],
+      recentlyClosedEditorPaths: ["src/old.ts"],
+    })
+
+    const reordered = commands.reorderTab("src/a.ts", 2)
+    const noop = commands.reorderTab("src/b.ts", 0)
+    const missing = commands.reorderTab("src/missing.ts", 1)
+
+    expect(reordered).toBe(true)
+    expect(noop).toBe(false)
+    expect(missing).toBe(false)
+    expect(workspaceStore.getState().openFilePaths).toEqual([
+      "src/b.ts",
+      "src/c.ts",
+      "src/a.ts",
+    ])
+    expect(workspaceStore.getState().selectedFilePath).toBe("src/b.ts")
+    expect(workspaceStore.getState().editorHistory).toEqual([
+      "src/b.ts",
+      "src/a.ts",
+    ])
+    expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([
+      "src/old.ts",
+    ])
+    expect(documentStore.getState().dirtyFilePaths.has("src/a.ts")).toBe(true)
   })
 
   it("renames tabs, cached documents, dirty markers, and definition target", () => {

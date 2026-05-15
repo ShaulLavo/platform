@@ -13,6 +13,7 @@ import {
   recentlyClosedEditorPathsForClose,
   recentlyClosedEditorPathsForReopen,
   renameOpenFilePath,
+  reorderOpenFilePath,
 } from "@/features/editor/state/editor-tab-paths"
 import {
   useEditorUiStoreApi,
@@ -37,6 +38,7 @@ export type EditorCommands = {
     from: string,
     to: string
   ) => { wasDirty: boolean }
+  reorderTab: (path: string, targetIndex: number) => boolean
   selectFile: (path: string | null) => void
   selectPreviousEditor: () => boolean
 }
@@ -64,9 +66,15 @@ export function createEditorCommands({
   return {
     closeTab: (path) => closeTab(path, workspaceStore, documentStore, uiStore),
     discardAndCloseTab: (path) =>
-      discardCachedEditorDocument(path, workspaceStore, documentStore, uiStore, {
-        trackRecentlyClosed: true,
-      }),
+      discardCachedEditorDocument(
+        path,
+        workspaceStore,
+        documentStore,
+        uiStore,
+        {
+          trackRecentlyClosed: true,
+        }
+      ),
     discardCachedEditorDocument: (path) =>
       discardCachedEditorDocument(path, workspaceStore, documentStore, uiStore),
     openDefinition: (target) =>
@@ -83,6 +91,8 @@ export function createEditorCommands({
         documentStore,
         uiStore
       ),
+    reorderTab: (path, targetIndex) =>
+      reorderTab(path, targetIndex, workspaceStore),
     selectFile: (path) =>
       selectFile(path, workspaceStore, documentStore, uiStore),
     selectPreviousEditor: () =>
@@ -299,6 +309,25 @@ function renameCachedEditorDocument(
   return result
 }
 
+function reorderTab(
+  path: string,
+  targetIndex: number,
+  workspaceStore: EditorWorkspaceStoreApi
+) {
+  const workspace = workspaceStore.getState()
+  if (!workspace.openFilePaths.includes(path)) return false
+
+  const openFilePaths = reorderOpenFilePath(
+    workspace.openFilePaths,
+    path,
+    targetIndex
+  )
+  if (sameOpenFilePaths(workspace.openFilePaths, openFilePaths)) return false
+
+  workspaceStore.setState({ openFilePaths })
+  return true
+}
+
 function updateUiForClosedPath(
   path: string,
   selectedFilePath: string | null,
@@ -326,4 +355,10 @@ function updateFallbackForClosedPath(
       null
     )
   )
+}
+
+function sameOpenFilePaths(left: readonly string[], right: readonly string[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((path, index) => path === right[index])
 }

@@ -1,4 +1,3 @@
-import * as pty from "@lydell/node-pty"
 import {
   isRecord,
   parseTerminalClientMessage,
@@ -38,6 +37,11 @@ export type TerminalPtySpawnOptions = {
 export type TerminalPtyFactory = (
   options: TerminalPtySpawnOptions
 ) => TerminalPty
+
+type TerminalBridgeMessage =
+  | { type: "output"; data: string }
+  | { type: "exit"; exitCode: number | null }
+  | { type: "error"; message: string }
 
 export type TerminalServiceOptions = {
   env?: NodeJS.ProcessEnv
@@ -344,12 +348,12 @@ function defaultTerminalPtyFactory({
   rows,
   shell,
 }: TerminalPtySpawnOptions): TerminalPty {
-  return pty.spawn(shell, [], {
+  return new NodePtyBridge({
     cols,
     cwd,
     env,
-    name: "xterm-256color",
     rows,
+    shell,
   })
 }
 
@@ -363,3 +367,303 @@ function terminalSpawnErrorMessage(error: unknown) {
 function isString(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0
 }
+
+function killSignal(signal: string | undefined): NodeJS.Signals | undefined {
+  if (!signal) return undefined
+
+  return signal as NodeJS.Signals
+}
+
+class NodePtyBridge implements TerminalPty {
+  readonly #child
+  readonly #dataListeners = new Set<(data: string) => void>()
+  readonly #encoder = new TextEncoder()
+  readonly #exitListeners = new Set<(event: TerminalPtyExitEvent) => void>()
+  readonly #stdin: Bun.FileSink
+  #exitEmitted = false
+  #writeQueue = Promise.resolve()
+
+  constructor(options: TerminalPtySpawnOptions) {
+    this.#child = Bun.spawn(["node", "--eval", NODE_PTY_BRIDGE_SCRIPT], {
+      env: {
+        ...options.env,
+        NODE_PTY_BRIDGE_MODULE: resolveNodePtyModule(),
+      },
+      stderr: "pipe",
+      stdin: "pipe",
+      stdout: "pipe",
+    })
+    this.#stdin = this.#child.stdin
+    this.#startReaders()
+    this.#sendCommand({ type: "start", ...options })
+  }
+
+  kill(signal?: string) {
+    this.#sendCommand({ signal, type: "kill" })
+    setTimeout(() => {
+      if (this.#exitEmitted) return
+
+      this.#child.kill(killSignal(signal))
+    }, 250)
+  }
+
+  onData(listener: (data: string) => void): TerminalPtyDisposable {
+    this.#dataListeners.add(listener)
+    return { dispose: () => this.#dataListeners.delete(listener) }
+  }
+
+  onExit(listener: (event: TerminalPtyExitEvent) => void) {
+    this.#exitListeners.add(listener)
+    return { dispose: () => this.#exitListeners.delete(listener) }
+  }
+
+  resize(cols: number, rows: number) {
+    this.#sendCommand({ cols, rows, type: "resize" })
+  }
+
+  write(data: string) {
+    this.#sendCommand({ data, type: "input" })
+  }
+
+  #startReaders() {
+    void readBridgeMessages(this.#child.stdout, (message) =>
+      this.#handleBridgeMessage(message)
+    )
+    void readBridgeStderr(this.#child.stderr, (data) => this.#emitData(data))
+    void this.#child.exited.then((exitCode) => this.#emitExit(exitCode))
+  }
+
+  #handleBridgeMessage(message: TerminalBridgeMessage) {
+    if (message.type === "output") {
+      this.#emitData(message.data)
+      return
+    }
+    if (message.type === "exit") {
+      this.#emitExit(message.exitCode)
+      return
+    }
+
+    this.#emitData(`\r\n${message.message}\r\n`)
+  }
+
+  #sendCommand(command: Record<string, unknown>) {
+    const chunk = this.#encoder.encode(`${JSON.stringify(command)}\n`)
+    this.#writeQueue = this.#writeQueue
+      .then(() => this.#stdin.write(chunk))
+      .then(() => this.#stdin.flush())
+      .then(noop, noop)
+  }
+
+  #emitData(data: string) {
+    for (const listener of this.#dataListeners) {
+      listener(data)
+    }
+  }
+
+  #emitExit(exitCode: number | null) {
+    if (this.#exitEmitted) return
+
+    this.#exitEmitted = true
+    const normalizedExitCode = exitCode ?? 0
+    for (const listener of this.#exitListeners) {
+      listener({ exitCode: normalizedExitCode })
+    }
+  }
+}
+
+async function readBridgeMessages(
+  stream: ReadableStream<Uint8Array>,
+  onMessage: (message: TerminalBridgeMessage) => void
+) {
+  let buffered = ""
+  const decoder = new TextDecoder()
+  const reader = stream.getReader()
+
+  try {
+    while (true) {
+      const result = await reader.read()
+      if (result.done) break
+
+      buffered = readBridgeMessageChunk(
+        buffered + decoder.decode(result.value, { stream: true }),
+        onMessage
+      )
+    }
+
+    readBridgeMessageChunk(buffered + decoder.decode(), onMessage)
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+async function readBridgeStderr(
+  stream: ReadableStream<Uint8Array>,
+  onData: (data: string) => void
+) {
+  const decoder = new TextDecoder()
+  const reader = stream.getReader()
+
+  try {
+    while (true) {
+      const result = await reader.read()
+      if (result.done) break
+
+      onData(decoder.decode(result.value, { stream: true }))
+    }
+
+    const final = decoder.decode()
+    if (final) onData(final)
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+function readBridgeMessageChunk(
+  chunk: string,
+  onMessage: (message: TerminalBridgeMessage) => void
+) {
+  let buffered = chunk
+  let newlineIndex = buffered.indexOf("\n")
+
+  while (newlineIndex >= 0) {
+    const raw = buffered.slice(0, newlineIndex)
+    buffered = buffered.slice(newlineIndex + 1)
+    const message = parseBridgeMessage(raw)
+    if (message) onMessage(message)
+    newlineIndex = buffered.indexOf("\n")
+  }
+
+  return buffered
+}
+
+function parseBridgeMessage(raw: string): TerminalBridgeMessage | null {
+  if (!raw) return null
+
+  try {
+    return bridgeMessageFromValue(JSON.parse(raw) as unknown)
+  } catch {
+    return null
+  }
+}
+
+function bridgeMessageFromValue(value: unknown): TerminalBridgeMessage | null {
+  if (!isRecord(value)) return null
+  if (value.type === "output" && typeof value.data === "string") {
+    return { type: "output", data: value.data }
+  }
+  if (value.type === "error" && typeof value.message === "string") {
+    return { type: "error", message: value.message }
+  }
+  if (value.type !== "exit") return null
+  if (value.exitCode !== null && typeof value.exitCode !== "number")
+    return null
+
+  return { type: "exit", exitCode: value.exitCode }
+}
+
+function resolveNodePtyModule() {
+  return Bun.resolveSync("@lydell/node-pty", import.meta.path)
+}
+
+function noop() {}
+
+const NODE_PTY_BRIDGE_SCRIPT = String.raw`
+const modulePath = process.env.NODE_PTY_BRIDGE_MODULE;
+if (!modulePath) {
+  send({ type: "error", message: "missing node-pty module path" });
+  process.exit(1);
+}
+
+const pty = require(modulePath);
+let ptyProcess = null;
+let buffered = "";
+
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffered += chunk;
+  let newlineIndex = buffered.indexOf("\n");
+
+  while (newlineIndex >= 0) {
+    const raw = buffered.slice(0, newlineIndex);
+    buffered = buffered.slice(newlineIndex + 1);
+    handleRawCommand(raw);
+    newlineIndex = buffered.indexOf("\n");
+  }
+});
+process.stdin.on("end", shutdown);
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+function handleRawCommand(raw) {
+  if (!raw) return;
+
+  try {
+    handleCommand(JSON.parse(raw));
+  } catch (error) {
+    send({ type: "error", message: errorMessage(error) });
+  }
+}
+
+function handleCommand(command) {
+  if (!command || typeof command !== "object") return;
+  if (command.type === "start") {
+    start(command);
+    return;
+  }
+  if (!ptyProcess) return;
+  if (command.type === "input" && typeof command.data === "string") {
+    ptyProcess.write(command.data);
+    return;
+  }
+  if (
+    command.type === "resize" &&
+    Number.isFinite(command.cols) &&
+    Number.isFinite(command.rows)
+  ) {
+    ptyProcess.resize(command.cols, command.rows);
+    return;
+  }
+  if (command.type === "kill") {
+    shutdown();
+  }
+}
+
+function start(command) {
+  ptyProcess = pty.spawn(command.shell, [], {
+    cols: command.cols,
+    cwd: command.cwd,
+    env: command.env,
+    name: "xterm-256color",
+    rows: command.rows,
+  });
+  ptyProcess.onData((data) => send({ type: "output", data }));
+  ptyProcess.onExit((event) => {
+    send({
+      type: "exit",
+      exitCode: Number.isFinite(event.exitCode) ? event.exitCode : null,
+    });
+    process.exit(0);
+  });
+}
+
+function shutdown() {
+  if (!ptyProcess) {
+    process.exit(0);
+    return;
+  }
+
+  try {
+    ptyProcess.kill();
+  } catch {
+    process.exit(0);
+  }
+}
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\n");
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : "terminal bridge failed";
+}
+`

@@ -109,6 +109,33 @@ describe("terminal service", () => {
       true,
     ])
   })
+
+  it("streams output through the default Node-backed PTY bridge", async () => {
+    const root = await fixtureRoot()
+    const service = testService(root, {
+      env: {
+        HOME: root,
+        PATH: process.env.PATH,
+        SHELL: "sh",
+      },
+    })
+    const routes = service.routes(auth())
+    const ws = fakeSocket("")
+
+    routes.open(ws)
+    routes.message(ws, {
+      data: "printf platform-terminal-ready\\n\nexit\n",
+      type: "input",
+    })
+
+    await waitForTerminalOutput(ws.messages, "platform-terminal-ready")
+    routes.close(ws)
+    service.dispose()
+
+    expect(terminalOutputText(ws.messages)).toContain(
+      "platform-terminal-ready"
+    )
+  })
 })
 
 function testService(
@@ -171,6 +198,27 @@ function createFakePtyFactory({
   }
 
   return { factory, ptys, spawns }
+}
+
+async function waitForTerminalOutput(
+  messages: readonly TerminalServerMessage[],
+  text: string
+) {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    if (terminalOutputText(messages).includes(text)) return
+
+    await Bun.sleep(25)
+  }
+
+  throw new Error(`Timed out waiting for terminal output: ${text}`)
+}
+
+function terminalOutputText(messages: readonly TerminalServerMessage[]) {
+  return messages
+    .filter((message) => message.type === "output")
+    .map((message) => message.data)
+    .join("")
 }
 
 class FakePty {
