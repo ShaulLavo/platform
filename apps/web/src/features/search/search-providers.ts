@@ -357,6 +357,9 @@ function isWorkspaceSearchMatch(match: unknown): match is WorkspaceSearchMatch {
   if (!isOptionalNumber(match.column)) return false
   if (!isOptionalNumber(match.endColumn)) return false
   if (!isOptionalNumber(match.previewStartColumn)) return false
+  if (!isOptionalNumber(match.size)) return false
+  if (!isOptionalNumber(match.mtimeMs)) return false
+  if (!isOptionalNumber(match.birthtimeMs)) return false
 
   return isOptionalString(match.preview)
 }

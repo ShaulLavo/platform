@@ -16,7 +16,7 @@ import {
   isFileEntry,
   matchesEntryType,
   readEntryStats,
-  type FsEntryTypeCarrier,
+  type FsEntryStats,
 } from "./stat"
 import type { EntryTypeFilter } from "./contracts"
 import {
@@ -551,6 +551,7 @@ async function nameMatchFromPath(
   if (!nameSearchMatches(context, relativePath)) return null
 
   return {
+    ...searchMatchMetadata(entryStats),
     kind: "name",
     path: relativePath,
     source: "disk",
@@ -836,7 +837,7 @@ function canSearchChildren(depth: number, maxDepth?: number) {
 function addNameMatch(
   relativePath: string,
   name: string,
-  entry: FsEntryTypeCarrier,
+  entry: FsEntryStats,
   context: FindContext,
   matches: FindMatch[],
   entryType?: EntryTypeFilter
@@ -846,6 +847,7 @@ function addNameMatch(
   if (!nameSearchMatches(context, relativePath, name)) return
 
   matches.push({
+    ...searchMatchMetadata(entry),
     kind: "name",
     path: relativePath,
     source: "disk",
@@ -869,7 +871,7 @@ function nameSearchMatches(
 async function addContentMatch(
   absolutePath: string,
   relativePath: string,
-  entry: FsEntryTypeCarrier,
+  entry: FsEntryStats,
   context: FindContext,
   matches: FindMatch[],
   limit: number,
@@ -1005,7 +1007,7 @@ async function* streamLines(
 
 function addLineMatch(
   relativePath: string,
-  entry: FsEntryTypeCarrier,
+  entry: FsEntryStats,
   line: string,
   index: number,
   matcher: WorkspaceSearchMatcher,
@@ -1037,7 +1039,7 @@ function contentMatch({
 }: {
   columnIndex: number
   endColumnIndex: number
-  entry: FsEntryTypeCarrier
+  entry: FsEntryStats
   line: string
   lineNumber: number
   relativePath: string
@@ -1045,6 +1047,7 @@ function contentMatch({
   const preview = searchPreview(searchContentLineText(line), columnIndex)
 
   return {
+    ...searchMatchMetadata(entry),
     column: columnIndex + 1,
     endColumn: endColumnIndex + 1,
     kind: "content",
@@ -1055,6 +1058,14 @@ function contentMatch({
     source: "disk",
     targetType: entry.targetType,
     type: entry.type,
+  }
+}
+
+function searchMatchMetadata(entry: FsEntryStats) {
+  return {
+    birthtimeMs: Number(entry.targetStats.birthtimeMs),
+    mtimeMs: Number(entry.targetStats.mtimeMs),
+    size: Number(entry.targetStats.size),
   }
 }
 

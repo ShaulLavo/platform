@@ -142,13 +142,16 @@ const workspaceSearchSourceSchema = v.union([
   v.literal("open-buffer"),
 ])
 const workspaceSearchMatchSchema = v.object({
+  birthtimeMs: v.optional(v.number()),
   column: v.optional(v.number()),
   endColumn: v.optional(v.number()),
   kind: v.union([v.literal("name"), v.literal("content")]),
   line: v.optional(v.number()),
+  mtimeMs: v.optional(v.number()),
   path: v.string(),
   preview: v.optional(v.string()),
   previewStartColumn: v.optional(v.number()),
+  size: v.optional(v.number()),
   source: workspaceSearchSourceSchema,
   targetType: v.optional(entryTypeSchema),
   type: entryTypeSchema,

@@ -19,13 +19,16 @@ export type WorkspaceSearchQuery = {
 }
 
 export type WorkspaceSearchMatch = {
+  birthtimeMs?: number
   column?: number
   endColumn?: number
   kind: "name" | "content"
   line?: number
+  mtimeMs?: number
   path: string
   preview?: string
   previewStartColumn?: number
+  size?: number
   source: WorkspaceSearchSource
   targetType?: EntryTypeFilter
   type: EntryTypeFilter

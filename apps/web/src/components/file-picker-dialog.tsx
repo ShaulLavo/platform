@@ -1779,7 +1779,9 @@ async function streamFindEntries(
     }
   )
 
-  return hydrateMatches(matches, query, signal)
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError")
+
+  return fallbackEntries(matches, query)
 }
 
 async function streamFindScope(
@@ -1835,40 +1837,16 @@ function appendFindMatch(
   return true
 }
 
-async function hydrateMatches(
-  matches: FindMatch[],
-  query: string,
-  signal: AbortSignal
-) {
-  const folders = unique(matches.map((match) => parentPath(match.path)))
-  const entriesByPath = new Map<string, FsEntry>()
-
-  await Promise.all(
-    folders.map(async (folder) => {
-      const entries = await fetchTreeEntries(folder, signal)
-      for (const entry of entries) entriesByPath.set(entry.path, entry)
-    })
-  )
-
-  return matches
-    .map((match) => hydratedEntry(match, entriesByPath))
-    .sort(compareSearchEntries(query))
-}
-
-function hydratedEntry(match: FindMatch, entriesByPath: Map<string, FsEntry>) {
-  const entry = entriesByPath.get(match.path) ?? fallbackEntry(match)
-  return { ...entry, searchScope: match.searchScope }
-}
-
 function fallbackEntry(match: FindMatch): FsEntry {
   return {
+    birthtimeMs: match.birthtimeMs ?? 0,
+    mtimeMs: match.mtimeMs ?? 0,
     name: basename(match.path),
     path: match.path,
-    type: match.type,
-    size: 0,
-    mtimeMs: 0,
-    birthtimeMs: 0,
     searchScope: match.searchScope,
+    size: match.size ?? 0,
+    targetType: match.targetType,
+    type: match.type,
   }
 }
 
@@ -1969,6 +1947,11 @@ function isFindMatch(match: unknown): match is FindMatch {
   if ("targetType" in match && !isOptionalFsEntryType(match.targetType)) {
     return false
   }
+  if ("size" in match && !isOptionalNumber(match.size)) return false
+  if ("mtimeMs" in match && !isOptionalNumber(match.mtimeMs)) return false
+  if ("birthtimeMs" in match && !isOptionalNumber(match.birthtimeMs)) {
+    return false
+  }
 
   return true
 }
@@ -1990,6 +1973,12 @@ function isFsEntryType(type: unknown): type is FsEntryType {
     type === "symlink" ||
     type === "other"
   )
+}
+
+function isOptionalNumber(value: unknown) {
+  if (value === undefined) return true
+
+  return typeof value === "number"
 }
 
 function findEventError(data: unknown) {
@@ -2185,10 +2174,6 @@ function formatModified(mtimeMs: number) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(mtimeMs))
-}
-
-function unique(values: string[]) {
-  return Array.from(new Set(values))
 }
 
 function errorMessage(error: unknown) {

@@ -337,6 +337,35 @@ describe("fs rpc search", () => {
     expect(done).toMatchObject({ count: 1, truncated: false })
     await events.close()
   })
+
+  it("streams name matches with file metadata", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "metadata-target.ts"), "needle")
+    const app = testApp(root)
+    const stream = await app.handle(
+      new Request(
+        "http://local/fs/find/events?query=metadata&includeContent=false",
+        {
+          headers: trustedOriginHeaders(),
+        }
+      )
+    )
+    const events = createSseReader(stream)
+    const match = await events.next()
+
+    expect(match).toMatchObject({
+      match: {
+        birthtimeMs: expect.any(Number),
+        kind: "name",
+        mtimeMs: expect.any(Number),
+        path: "metadata-target.ts",
+        size: 6,
+        source: "disk",
+        type: "file",
+      },
+    })
+    await events.close()
+  })
 })
 
 describe("fs rpc events", () => {

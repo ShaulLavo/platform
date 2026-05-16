@@ -26,6 +26,7 @@ export type DeleteCachedEditorDocumentResult = {
 }
 
 type EditorDocumentStoreState = {
+  documentContentRevisions: Readonly<Record<string, string>>
   dirtyContentRevision: number
   dirtyFilePaths: ReadonlySet<string>
   documents: Readonly<Record<string, CachedEditorDocument>>
@@ -92,6 +93,7 @@ export function useEditorDocumentState<T>(
 
 export function createEditorDocumentStore() {
   return createStore<EditorDocumentStore>()((set, get) => ({
+    documentContentRevisions: {},
     dirtyContentRevision: 0,
     dirtyFilePaths: new Set(),
     documents: {},
@@ -99,6 +101,7 @@ export function createEditorDocumentStore() {
     scrollPositionByPath: {},
     clearCachedEditorDocuments: () =>
       set({
+        documentContentRevisions: {},
         dirtyContentRevision: 0,
         dirtyFilePaths: new Set(),
         documents: {},
@@ -125,6 +128,10 @@ export function createEditorDocumentStore() {
         if (!shouldBumpVersion) return { dirtyFilePaths }
 
         return {
+          documentContentRevisions: omitKey(
+            state.documentContentRevisions,
+            path
+          ),
           documents: omitKey(state.documents, path),
           dirtyFilePaths,
           scrollPositionByPath: omitKey(state.scrollPositionByPath, path),
@@ -144,6 +151,10 @@ export function createEditorDocumentStore() {
         state.scrollPositionByPath[file.path]
       )
       set((state) => ({
+        documentContentRevisions: {
+          ...state.documentContentRevisions,
+          [file.path]: contentRevisionForText(file.content),
+        },
         documents: { ...state.documents, [file.path]: document },
         dirtyFilePaths:
           removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
@@ -161,6 +172,7 @@ export function createEditorDocumentStore() {
       if (cached.session.isDirty()) return false
 
       set((state) => ({
+        documentContentRevisions: omitKey(state.documentContentRevisions, path),
         documents: omitKey(state.documents, path),
         dirtyFilePaths:
           removeDirtyFilePath(state.dirtyFilePaths, path) ??
@@ -175,6 +187,11 @@ export function createEditorDocumentStore() {
         const cached = state.documents[file.path]
         wasDirty = isDirtyPath(state, file.path)
         const document = replacementCachedEditorDocument(file, cached)
+        const contentRevision = replacementContentRevision(
+          file,
+          cached,
+          state.documentContentRevisions[file.path]
+        )
         const dirtyFilePaths =
           removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
           state.dirtyFilePaths
@@ -185,12 +202,20 @@ export function createEditorDocumentStore() {
         if (
           !wasDirty &&
           document === cached &&
+          contentRevision === state.documentContentRevisions[file.path] &&
           dirtyFilePaths === state.dirtyFilePaths &&
           fallbackDocumentPath === state.fallbackDocumentPath
         )
           return state
 
         return {
+          documentContentRevisions:
+            contentRevision === state.documentContentRevisions[file.path]
+              ? state.documentContentRevisions
+              : {
+                  ...state.documentContentRevisions,
+                  [file.path]: contentRevision,
+                },
           documents:
             document === cached
               ? state.documents
@@ -212,6 +237,13 @@ export function createEditorDocumentStore() {
 
       cached.session.markClean()
       set((state) => ({
+        documentContentRevisions:
+          path in state.documentContentRevisions
+            ? state.documentContentRevisions
+            : {
+                ...state.documentContentRevisions,
+                [path]: contentRevisionForText(cached.session.getText()),
+              },
         documents: {
           ...state.documents,
           [path]: { ...cached, revision },
@@ -224,11 +256,22 @@ export function createEditorDocumentStore() {
     },
     recordCachedEditorDocumentTextChange: (path) =>
       set((state) => {
+        const contentRevision = editedContentRevision(
+          state.dirtyContentRevision + 1
+        )
         const dirtyFilePaths =
           updateDirtyFilePaths(state.dirtyFilePaths, path, true) ??
           state.dirtyFilePaths
+        const documentContentRevisions =
+          path in state.documents
+            ? {
+                ...state.documentContentRevisions,
+                [path]: contentRevision,
+              }
+            : state.documentContentRevisions
 
         return {
+          documentContentRevisions,
           dirtyContentRevision: state.dirtyContentRevision + 1,
           dirtyFilePaths,
         }
@@ -242,6 +285,11 @@ export function createEditorDocumentStore() {
         const shouldMove = document || options?.bumpVersion === true || wasDirty
         if (!shouldMove) {
           return {
+            documentContentRevisions: moveValue(
+              state.documentContentRevisions,
+              from,
+              to
+            ),
             dirtyFilePaths: renameDirtyFilePath(state.dirtyFilePaths, from, to),
             fallbackDocumentPath:
               state.fallbackDocumentPath === from
@@ -251,6 +299,11 @@ export function createEditorDocumentStore() {
         }
 
         return {
+          documentContentRevisions: moveValue(
+            state.documentContentRevisions,
+            from,
+            to
+          ),
           documents: moveCachedEditorDocument(state.documents, from, to),
           dirtyFilePaths: renameDirtyFilePath(state.dirtyFilePaths, from, to),
           fallbackDocumentPath:
@@ -330,6 +383,19 @@ function replacementCachedEditorDocument(
   }
 }
 
+function replacementContentRevision(
+  file: FileResult,
+  cached: CachedEditorDocument | undefined,
+  current: string | undefined
+) {
+  if (!cached) return contentRevisionForText(file.content)
+  if (cached.session.getText() !== file.content)
+    return contentRevisionForText(file.content)
+  if (!cached.session.isDirty() && current) return current
+
+  return contentRevisionForText(file.content)
+}
+
 function isDirtyPath(state: EditorDocumentStoreState, path: string) {
   return (
     state.dirtyFilePaths.has(path) ||
@@ -369,6 +435,21 @@ function scrollPositionsEqual(
   if (!current) return false
 
   return current.left === next.left && current.top === next.top
+}
+
+function contentRevisionForText(text: string) {
+  let hash = 0x811c9dc5
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return `h:${text.length.toString(36)}:${(hash >>> 0).toString(36)}`
+}
+
+function editedContentRevision(revision: number) {
+  return `e:${revision.toString(36)}`
 }
 
 function omitKey<T>(

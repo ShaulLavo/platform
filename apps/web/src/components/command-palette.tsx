@@ -28,6 +28,7 @@ import {
 import { isFileEntry, type TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import { basename, displayPath } from "@/lib/path-formatters"
+import { documentSymbolKeys } from "@/lib/query-keys"
 import type { TreeModel } from "@/lib/tree-model"
 import {
   isEditorPlatformCommandId,
@@ -181,8 +182,14 @@ export function CommandPalette({
   const selectedFilePath = useEditorWorkspaceState(
     (state) => state.selectedFilePath
   )
-  const documents = useEditorDocumentState((state) => state.documents)
-  const selectedDocument = selectedFilePath ? documents[selectedFilePath] : null
+  const selectedDocument = useEditorDocumentState((state) =>
+    selectedFilePath ? state.documents[selectedFilePath] : null
+  )
+  const selectedDocumentContentRevision = useEditorDocumentState((state) =>
+    selectedFilePath
+      ? (state.documentContentRevisions[selectedFilePath] ?? null)
+      : null
+  )
   const selectedDocumentText = selectedDocument?.session.getText() ?? null
   const { openDefinition, selectFile } = useEditorCommands()
   const mode = quickAccessMode(search)
@@ -208,12 +215,11 @@ export function CommandPalette({
         signal,
         text: selectedDocumentText,
       }),
-    queryKey: [
-      "document-symbols",
+    queryKey: documentSymbolKeys.document(
       rootFolder?.path ?? "",
       selectedFileBackedPath ?? "",
-      selectedDocumentText ?? "",
-    ],
+      selectedDocumentContentRevision ?? "disk"
+    ),
   })
   const runCommand = useCallback(
     (command: PlatformCommandId) => {

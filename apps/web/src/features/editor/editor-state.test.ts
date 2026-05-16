@@ -160,12 +160,58 @@ describe("editor document store", () => {
   it("records dirty text changes even after the path is already dirty", () => {
     const store = createEditorDocumentStore()
     store.getState().ensureCachedEditorDocument(file("src/file.ts", "local"))
+    const initialRevision =
+      store.getState().documentContentRevisions["src/file.ts"]
 
     store.getState().recordCachedEditorDocumentTextChange("src/file.ts")
+    const firstEditRevision =
+      store.getState().documentContentRevisions["src/file.ts"]
     store.getState().recordCachedEditorDocumentTextChange("src/file.ts")
 
     expect(store.getState().dirtyContentRevision).toBe(2)
     expect(store.getState().dirtyFilePaths.has("src/file.ts")).toBe(true)
+    expect(firstEditRevision).not.toBe(initialRevision)
+    expect(store.getState().documentContentRevisions["src/file.ts"]).not.toBe(
+      firstEditRevision
+    )
+  })
+
+  it("tracks content revisions by cached document path", () => {
+    const store = createEditorDocumentStore()
+    store.getState().ensureCachedEditorDocument(file("src/a.ts", "a"))
+    store.getState().ensureCachedEditorDocument(file("src/b.ts", "b"))
+    const aRevision = store.getState().documentContentRevisions["src/a.ts"]
+    const bRevision = store.getState().documentContentRevisions["src/b.ts"]
+
+    store.getState().recordCachedEditorDocumentTextChange("src/a.ts")
+
+    expect(store.getState().documentContentRevisions["src/a.ts"]).not.toBe(
+      aRevision
+    )
+    expect(store.getState().documentContentRevisions["src/b.ts"]).toBe(
+      bRevision
+    )
+  })
+
+  it("moves and clears cached document content revisions", () => {
+    const store = createEditorDocumentStore()
+    store.getState().ensureCachedEditorDocument(file("src/old.ts", "a"))
+    const revision = store.getState().documentContentRevisions["src/old.ts"]
+
+    store.getState().renameCachedEditorDocumentPath("src/old.ts", "src/new.ts")
+    expect(store.getState().documentContentRevisions["src/new.ts"]).toBe(
+      revision
+    )
+
+    store.getState().deleteCachedEditorDocument("src/new.ts")
+
+    expect(store.getState().documentContentRevisions["src/old.ts"]).toBe(
+      undefined
+    )
+    expect(store.getState().documentContentRevisions["src/new.ts"]).toBe(
+      undefined
+    )
+    expect(revision).toEqual(expect.any(String))
   })
 
   it("preserves the session when a forced refresh has matching content", () => {
