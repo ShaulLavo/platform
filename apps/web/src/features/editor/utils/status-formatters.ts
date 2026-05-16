@@ -1,8 +1,8 @@
 import type { EditorState } from "@editor/core"
 import type {
-  TypeScriptLspDiagnosticSummary,
-  TypeScriptLspStatus,
-} from "@editor/typescript-lsp"
+  LanguageServerDiagnosticSummary,
+  LanguageServerStatus,
+} from "@editor/language-server"
 
 export function formatSyntaxStatus(state: EditorState | null) {
   if (!state?.documentId) return "Plain text"
@@ -21,14 +21,14 @@ export function formatHistoryStatus(state: EditorState | null) {
   }`
 }
 
-export function formatTypeScriptLspStatus(
-  status: TypeScriptLspStatus,
-  summary: TypeScriptLspDiagnosticSummary | null
+export function formatLanguageServerStatus(
+  status: LanguageServerStatus,
+  summary: LanguageServerDiagnosticSummary | null
 ) {
   if (status === "idle") return ""
-  if (status === "loading") return "TS LSP loading"
-  if (status === "error") return "TS LSP error"
-  if (!summary || summary.counts.total === 0) return "TS LSP ready"
+  if (status === "loading") return "LSP loading"
+  if (status === "error") return "LSP error"
+  if (!summary || summary.counts.total === 0) return "LSP ready"
 
   const parts = [
     countLabel(summary.counts.error, "error"),
@@ -36,7 +36,7 @@ export function formatTypeScriptLspStatus(
     countLabel(summary.counts.information, "info"),
     countLabel(summary.counts.hint, "hint"),
   ].filter(Boolean)
-  return `TS ${parts.join(", ")}`
+  return `LSP ${parts.join(", ")}`
 }
 
 function countLabel(count: number, label: string) {

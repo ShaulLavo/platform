@@ -19,7 +19,7 @@ import {
   markdown,
   typeScript,
 } from "@editor/tree-sitter-languages"
-import type { TypeScriptLspPlugin } from "@editor/typescript-lsp"
+import type { LanguageServerPlugin } from "@editor/language-server"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
@@ -44,7 +44,13 @@ export type EditorSyntaxHighlightingOptions =
     }
 
 export function createCriticalEditorPlugins(
-  typeScriptLsp: TypeScriptLspPlugin,
+  languageServer: LanguageServerPlugin,
+  syntaxOptions: EditorSyntaxHighlightingOptions = {}
+): readonly EditorPlugin[] {
+  return [...createCriticalEditorCorePlugins(syntaxOptions), languageServer]
+}
+
+export function createCriticalEditorCorePlugins(
   syntaxOptions: EditorSyntaxHighlightingOptions = {}
 ): readonly EditorPlugin[] {
   return [
@@ -57,7 +63,6 @@ export function createCriticalEditorPlugins(
     }),
     createEditorFindPlugin(),
     createMergeConflictPlugin(),
-    typeScriptLsp,
   ]
 }
 
@@ -79,10 +84,10 @@ export async function loadNonCriticalEditorPlugins(): Promise<
 }
 
 export function createEditorPlugins(
-  typeScriptLsp: TypeScriptLspPlugin,
+  languageServer: LanguageServerPlugin,
   syntaxOptions: EditorSyntaxHighlightingOptions = {}
 ): readonly EditorPlugin[] {
-  return createCriticalEditorPlugins(typeScriptLsp, syntaxOptions)
+  return createCriticalEditorPlugins(languageServer, syntaxOptions)
 }
 
 export function createEditorSyntaxHighlightingPlugins(

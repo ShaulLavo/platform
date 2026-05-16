@@ -177,6 +177,9 @@ export const editorCommandSpecs = [
   editorCommand("goToDefinition", "Go to definition", [
     "editor.action.revealDefinition",
   ]),
+  editorCommand("editor.action.goToReferences", "Find references", [
+    "editor.action.goToReferences",
+  ]),
   editorCommand("closeFind", "Close find", ["closeFindWidget"]),
   editorCommand("toggleFindCaseSensitive", "Toggle case sensitive find", [
     "toggleFindCaseSensitive",

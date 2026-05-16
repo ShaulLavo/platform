@@ -99,6 +99,9 @@ describe("editor keymap layers", () => {
     expect(layerCommands(layers, "platform.multi-cursor")).toContain(
       "editor.action.insertCursorAbove"
     )
+    expect(layerCommands(layers, "platform.lsp-navigation")).toContain(
+      "editor.action.goToReferences"
+    )
   })
 
   it("keeps search result keymaps readonly-safe by command pack", () => {
@@ -238,6 +241,14 @@ describe("defaultPlatformKeyBindings", () => {
         vscodeCommandId: "editor.action.revealDefinition",
       })
     )
+    expect(defaultPlatformKeyBindings("linux")).toContainEqual(
+      expect.objectContaining({
+        command: "editor.editor.action.goToReferences",
+        keys: "Shift+F12",
+        pane: "editor",
+        vscodeCommandId: "editor.action.goToReferences",
+      })
+    )
   })
 
   it("uses VS Code platform-specific replace shortcuts", () => {
@@ -348,6 +359,7 @@ const requestedWorkspaceAliases = [
 ] as const satisfies readonly (readonly [PlatformCommandId, string])[]
 
 const requestedEditorAliases = [
+  ["editor.editor.action.goToReferences", "editor.action.goToReferences"],
   ["editor.deleteWordLeft", "deleteWordLeft"],
   ["editor.deleteWordRight", "deleteWordRight"],
   ["editor.editor.action.deleteLines", "editor.action.deleteLines"],

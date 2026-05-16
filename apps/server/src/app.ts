@@ -38,8 +38,7 @@ import { FileSystemService, type FileSystemServiceOptions } from "./fs/service"
 import type { FindStreamEvent } from "./fs/search"
 import { parseWatchInputs } from "./fs/watch"
 import { GitService } from "./git/service"
-import { lspRoutes } from "./lsp/routes"
-import { typeScriptLspRoutes } from "./lsp/typescript/routes"
+import { lspMatchQuerySchema, lspRouteMatch, lspRoutes } from "./lsp/routes"
 import {
   TerminalService,
   type TerminalPtyFactory,
@@ -99,8 +98,10 @@ export function createApp(options: AppOptions) {
       authMode: auth.mode,
       ...fs.info(),
     }))
+    .get("/lsp/match", ({ query }) => lspRouteMatch(fs.paths, query), {
+      query: lspMatchQuerySchema,
+    })
     .ws("/lsp", lspRoutes(fs, auth))
-    .ws("/lsp/typescript", typeScriptLspRoutes(fs, auth))
     .ws("/terminal", terminal.routes(auth))
     .group("/git", (app) =>
       app

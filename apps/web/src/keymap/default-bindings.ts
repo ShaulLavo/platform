@@ -566,4 +566,10 @@ const defaultBindingSpecs = [
     pane: "editor",
     vscodeCommandId: "editor.action.revealDefinition",
   }),
+  editorBinding(
+    "Shift+F12",
+    "editor.editor.action.goToReferences",
+    "editor.action.goToReferences",
+    { preventDefault: true }
+  ),
 ] satisfies readonly DefaultBindingSpec[]

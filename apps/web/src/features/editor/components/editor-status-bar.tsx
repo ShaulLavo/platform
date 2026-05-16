@@ -1,22 +1,22 @@
 import type { EditorState } from "@editor/core"
 import type {
-  TypeScriptLspDiagnosticSummary,
-  TypeScriptLspStatus,
-} from "@editor/typescript-lsp"
+  LanguageServerDiagnosticSummary,
+  LanguageServerStatus,
+} from "@editor/language-server"
 import { AnimatedCounter } from "react-animated-counter"
 
 import {
   formatHistoryStatus,
   formatSyntaxStatus,
-  formatTypeScriptLspStatus,
+  formatLanguageServerStatus,
 } from "@/features/editor/utils/status-formatters"
 
 export type EditorStatusBarState = {
   charCount: number
   filePath: string
   state: EditorState | null
-  typeScriptDiagnostics: TypeScriptLspDiagnosticSummary | null
-  typeScriptStatus: TypeScriptLspStatus
+  languageServerDiagnostics: LanguageServerDiagnosticSummary | null
+  languageServerStatus: LanguageServerStatus
 }
 
 type EditorStatusBarProps = {
@@ -107,9 +107,9 @@ function EditorStatusBarContent({
       />
       <span>{formatSyntaxStatus(status.state)}</span>
       <span>
-        {formatTypeScriptLspStatus(
-          status.typeScriptStatus,
-          status.typeScriptDiagnostics
+        {formatLanguageServerStatus(
+          status.languageServerStatus,
+          status.languageServerDiagnostics
         )}
       </span>
       <span>{formatHistoryStatus(status.state)}</span>

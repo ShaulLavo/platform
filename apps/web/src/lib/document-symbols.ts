@@ -38,9 +38,15 @@ export async function fetchDocumentSymbols({
   signal?: AbortSignal
   text?: string | null
 }): Promise<readonly FlatDocumentSymbol[]> {
-  if (!supportsTypeScriptSymbols(path)) return []
-
-  const symbols = await requestDocumentSymbols({ path, rootPath, signal, text })
+  const symbols = await requestDocumentSymbols({
+    path,
+    rootPath,
+    signal,
+    text,
+  }).catch((error: unknown) => {
+    if (signal?.aborted) throw error
+    return []
+  })
   return flattenDocumentSymbols(symbols)
 }
 
@@ -61,7 +67,7 @@ function requestDocumentSymbols({
       return
     }
 
-    const socket = new WebSocket(typeScriptLspRoute(rootPath))
+    const socket = new WebSocket(languageServerRoute(rootPath, path))
     const requestId = 1
     let settled = false
 
@@ -194,15 +200,12 @@ function parseJsonRpcResponse(value: unknown): JsonRpcResponse | null {
   }
 }
 
-function supportsTypeScriptSymbols(path: string) {
-  return /\.[cm]?[jt]sx?$/u.test(path)
-}
-
-function typeScriptLspRoute(rootPath: string) {
-  const url = new URL("/lsp/typescript", fsServerUrl)
+function languageServerRoute(rootPath: string, path: string) {
+  const url = new URL("/lsp", fsServerUrl)
   if (url.protocol === "http:") url.protocol = "ws:"
   if (url.protocol === "https:") url.protocol = "wss:"
   url.searchParams.set("root", rootPath)
+  url.searchParams.set("path", path)
   return url
 }
 

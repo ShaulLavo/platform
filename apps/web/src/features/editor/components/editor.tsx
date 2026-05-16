@@ -3,12 +3,15 @@ import "@editor/find/style.css"
 import "@editor/minimap/style.css"
 import { useEditor } from "@editor/react"
 import "@editor/scope-lines/style.css"
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import type {
+  LanguageServerDefinitionTarget,
+  LanguageServerReferencesResult,
+} from "@editor/language-server"
 import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 
 import { EditorFrame } from "@/features/editor/components/editor-frame"
 import {
-  createCriticalEditorPlugins,
+  createCriticalEditorCorePlugins,
   loadNonCriticalEditorPlugins,
 } from "@/features/editor/editor-plugins"
 import { selectionForDefinition } from "@/features/editor/utils/editor-position"
@@ -22,7 +25,7 @@ import {
   scrollPositionFromSnapshot,
   useScrollPersistencePlugin,
 } from "@/features/editor/hooks/use-scroll-persistence-plugin"
-import { useTypeScriptLspPlugin } from "@/features/editor/hooks/use-typescript-lsp-plugin"
+import { useLanguageServerPlugin } from "@/features/editor/hooks/use-lsp-plugin"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import type { EditorKeymapLayer } from "@editor/core"
 
@@ -30,9 +33,10 @@ type EditorProps = {
   document: CachedEditorDocument
   keymapLayers: readonly EditorKeymapLayer[]
   rootPath: string
-  definitionTarget?: TypeScriptLspDefinitionTarget | null
+  definitionTarget?: LanguageServerDefinitionTarget | null
   onDirtyChange?: (path: string, dirty: boolean) => void
-  onOpenDefinition?: (target: TypeScriptLspDefinitionTarget) => void | boolean
+  onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
+  onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
   onScrollPositionChange?: (
     path: string,
     scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
@@ -48,6 +52,7 @@ export function Editor({
   rootPath,
   onDirtyChange,
   onOpenDefinition,
+  onOpenReferences,
   onScrollPositionChange,
   onStatusChange,
   onTextChange,
@@ -63,25 +68,37 @@ export function Editor({
   )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const { editorTheme } = useEditorColorTheme()
-  const { typeScriptDiagnostics, typeScriptLsp, typeScriptStatus } =
-    useTypeScriptLspPlugin({
+  const { languageServerDiagnostics, languageServer, languageServerStatus } =
+    useLanguageServerPlugin({
+      filePath: cachedDocument.path,
       rootPath,
       onOpenDefinition,
+      onOpenReferences,
     })
   const scrollPersistencePlugin = useScrollPersistencePlugin({
     document: cachedDocument,
     onScrollPositionChange,
   })
   const [nonCriticalPlugins, setNonCriticalPlugins] = useState<
-    readonly ReturnType<typeof createCriticalEditorPlugins>[number][]
+    readonly ReturnType<typeof createCriticalEditorCorePlugins>[number][]
   >([])
-  const criticalPlugins = useMemo(
-    () => createCriticalEditorPlugins(typeScriptLsp),
-    [typeScriptLsp]
+  const criticalEditorCorePlugins = useMemo(
+    () => createCriticalEditorCorePlugins(),
+    []
   )
   const plugins = useMemo(
-    () => [...criticalPlugins, ...nonCriticalPlugins, scrollPersistencePlugin],
-    [criticalPlugins, nonCriticalPlugins, scrollPersistencePlugin]
+    () => [
+      ...criticalEditorCorePlugins,
+      languageServer,
+      ...nonCriticalPlugins,
+      scrollPersistencePlugin,
+    ],
+    [
+      criticalEditorCorePlugins,
+      languageServer,
+      nonCriticalPlugins,
+      scrollPersistencePlugin,
+    ]
   )
   const document = useMemo(
     () => ({
@@ -130,8 +147,8 @@ export function Editor({
     filePath: cachedDocument.path,
     onChange: onStatusChange,
     state: editorState,
-    typeScriptDiagnostics,
-    typeScriptStatus,
+    languageServerDiagnostics,
+    languageServerStatus,
   })
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import type { WorkspaceSearchMatch } from "@workspace/contracts"
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import type { LanguageServerDefinitionTarget } from "@editor/language-server"
 
 import type { EditorCommands } from "@/features/editor/state/editor-commands"
 
@@ -28,7 +28,7 @@ function isContentLocation(
 function searchDefinitionTarget(
   match: WorkspaceSearchMatch & { column: number; line: number },
   query: string
-): TypeScriptLspDefinitionTarget {
+): LanguageServerDefinitionTarget {
   const line = Math.max(0, match.line - 1)
   const character = Math.max(0, match.column - 1)
   const endCharacter = searchEndCharacter(match, query, character)

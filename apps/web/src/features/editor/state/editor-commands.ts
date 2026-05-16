@@ -24,14 +24,14 @@ import {
   type EditorWorkspaceStoreApi,
 } from "@/features/editor/state/editor-workspace-state"
 import type { PickedFsEntry } from "@/lib/file-system-types"
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import type { LanguageServerDefinitionTarget } from "@editor/language-server"
 import { useMemo } from "react"
 
 export type EditorCommands = {
   closeTab: (path: string) => void
   discardAndCloseTab: (path: string) => { wasDirty: boolean }
   discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
-  openDefinition: (target: TypeScriptLspDefinitionTarget) => boolean
+  openDefinition: (target: LanguageServerDefinitionTarget) => boolean
   pickRootFolder: (rootFolder: PickedFsEntry) => void
   reopenClosedEditor: () => boolean
   renameCachedEditorDocument: (
@@ -128,7 +128,7 @@ function selectFile(
 }
 
 function openDefinition(
-  definitionTarget: TypeScriptLspDefinitionTarget,
+  definitionTarget: LanguageServerDefinitionTarget,
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi
@@ -305,6 +305,7 @@ function renameCachedEditorDocument(
       workspace.selectedFilePath === from ? to : workspace.selectedFilePath,
   })
   uiStore.getState().renameDefinitionTargetPath(from, to)
+  uiStore.getState().renameLanguageServerReferencesPath(from, to)
 
   return result
 }

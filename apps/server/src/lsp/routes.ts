@@ -1,12 +1,37 @@
 import { isRecord } from "@workspace/contracts"
+import * as v from "valibot"
 
 import { authenticateWebSocketData, type AuthConfig } from "../auth"
+import { pathSchema } from "../fs/contracts"
 import type { WorkspacePaths } from "../fs/path"
 import { matchLspServer } from "./registry"
 import { LspProxySession } from "./proxy-session"
 
 type LspRouteFileSystem = {
   readonly paths: WorkspacePaths
+}
+
+export const lspMatchQuerySchema = v.object({
+  path: pathSchema,
+  root: v.optional(pathSchema, ""),
+  server: v.optional(v.string()),
+})
+
+export async function lspRouteMatch(
+  paths: WorkspacePaths,
+  query: v.InferOutput<typeof lspMatchQuerySchema>
+) {
+  const match = await resolveLspRouteMatch(paths, {
+    path: query.path,
+    root: query.root,
+    serverId: query.server ?? null,
+  })
+  if (!match) return null
+
+  return {
+    root: match.root,
+    serverId: match.server.id,
+  }
 }
 
 export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
@@ -21,7 +46,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
         return
       }
 
-      const match = await routeMatch(fs.paths, socket)
+      const match = await resolveLspRouteMatch(fs.paths, socket)
       if (!match) {
         socket.close()
         return
@@ -56,19 +81,25 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
   }
 }
 
-async function routeMatch(paths: WorkspacePaths, socket: LspWebSocket) {
+async function resolveLspRouteMatch(paths: WorkspacePaths, input: LspRouteMatchInput) {
   try {
-    const file = socket.path ? paths.resolve(socket.path) : null
+    const file = input.path ? paths.resolve(input.path) : null
     if (!file) return null
 
     return matchLspServer({
       filePath: file.absolutePath,
-      serverId: socket.serverId,
-      workspaceRoot: paths.resolve(socket.root).absolutePath,
+      serverId: input.serverId,
+      workspaceRoot: paths.resolve(input.root).absolutePath,
     })
   } catch {
     return null
   }
+}
+
+type LspRouteMatchInput = {
+  readonly path: string
+  readonly root: string
+  readonly serverId: string | null
 }
 
 type LspWebSocket = {

@@ -4,7 +4,7 @@ import type { EditorStatusBarState } from "@/features/editor/components/editor-s
 import {
   formatHistoryStatus,
   formatSyntaxStatus,
-  formatTypeScriptLspStatus,
+  formatLanguageServerStatus,
 } from "@/features/editor/utils/status-formatters"
 
 type UseEditorStatusBarStateOptions = EditorStatusBarState & {
@@ -36,9 +36,9 @@ function editorStatusBarStateKey(status: EditorStatusBarState) {
     : ""
   const syntax = formatSyntaxStatus(status.state)
   const history = formatHistoryStatus(status.state)
-  const typeScript = formatTypeScriptLspStatus(
-    status.typeScriptStatus,
-    status.typeScriptDiagnostics
+  const languageServer = formatLanguageServerStatus(
+    status.languageServerStatus,
+    status.languageServerDiagnostics
   )
 
   return [
@@ -47,6 +47,6 @@ function editorStatusBarStateKey(status: EditorStatusBarState) {
     cursor,
     syntax,
     history,
-    typeScript,
+    languageServer,
   ].join("\u0000")
 }

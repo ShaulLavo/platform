@@ -16,7 +16,7 @@ export function EditorFrame({
 }: EditorFrameProps) {
   return (
     <div
-      className="flex h-full w-full min-w-0 flex-1 bg-background"
+      className="flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-background"
       data-editor-focus-active={active ? "true" : "false"}
       onFocusCapture={onActivate}
       onPointerDownCapture={onActivate}

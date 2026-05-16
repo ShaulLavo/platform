@@ -1,9 +1,9 @@
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import type { LanguageServerDefinitionTarget } from "@editor/language-server"
 
 export function selectionForDefinition(
   filePath: string,
   text: string,
-  target: TypeScriptLspDefinitionTarget | null | undefined
+  target: LanguageServerDefinitionTarget | null | undefined
 ) {
   if (!target) return null
   if (target.path !== filePath) return null
@@ -29,7 +29,7 @@ export function rowStartOffset(text: string, row: number) {
 
 function offsetForPosition(
   text: string,
-  position: TypeScriptLspDefinitionTarget["range"]["start"]
+  position: LanguageServerDefinitionTarget["range"]["start"]
 ) {
   let line = 0
   let lineStart = 0

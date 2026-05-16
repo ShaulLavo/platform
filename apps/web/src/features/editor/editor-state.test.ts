@@ -18,7 +18,10 @@ import { createEditorUiStore } from "@/features/editor/state/editor-ui-state"
 import { createEditorWorkspaceStore } from "@/features/editor/state/editor-workspace-state"
 import type { FileResult } from "@/lib/file-system-types"
 import type { CachedWorkspaceState } from "@/lib/workspace-cache"
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import type {
+  LanguageServerDefinitionTarget,
+  LanguageServerReferencesResult,
+} from "@editor/language-server"
 
 describe("editor path utilities", () => {
   it("adds, selects, and renames open tab paths", () => {
@@ -444,13 +447,16 @@ describe("editor commands", () => {
     expect(documentStore.getState().dirtyFilePaths.has("src/a.ts")).toBe(true)
   })
 
-  it("renames tabs, cached documents, dirty markers, and definition target", () => {
+  it("renames tabs, cached documents, dirty markers, and LSP targets", () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(["src/old.ts"], "src/old.ts")
     )
     documentStore.getState().ensureCachedEditorDocument(file("src/old.ts", "a"))
     documentStore.getState().setCachedEditorDocumentDirty("src/old.ts", true)
     uiStore.getState().setDefinitionTarget(definitionTarget("src/old.ts"))
+    uiStore
+      .getState()
+      .setLanguageServerReferences(referencesResult("src/old.ts"))
 
     const result = commands.renameCachedEditorDocument(
       "src/old.ts",
@@ -469,6 +475,9 @@ describe("editor commands", () => {
       documentStore.getState().getCachedEditorDocument("src/new.ts")?.path
     ).toBe("src/new.ts")
     expect(uiStore.getState().definitionTarget?.path).toBe("src/new.ts")
+    expect(
+      uiStore.getState().languageServerReferences?.targets[0]?.path
+    ).toBe("src/new.ts")
   })
 
   it("resets workspace, document, and ui state for a picked root folder", () => {
@@ -477,6 +486,9 @@ describe("editor commands", () => {
     )
     documentStore.getState().ensureCachedEditorDocument(file("src/a.ts", "a"))
     uiStore.getState().setDefinitionTarget(definitionTarget("src/a.ts"))
+    uiStore
+      .getState()
+      .setLanguageServerReferences(referencesResult("src/a.ts"))
 
     commands.pickRootFolder(rootFolder("/repo"))
 
@@ -491,6 +503,7 @@ describe("editor commands", () => {
     expect(documentStore.getState().dirtyFilePaths).toEqual(new Set())
     expect(documentStore.getState().fallbackDocumentPath).toBe(null)
     expect(uiStore.getState().definitionTarget).toBe(null)
+    expect(uiStore.getState().languageServerReferences).toBe(null)
   })
 })
 
@@ -544,13 +557,20 @@ function file(path: string, content: string, mtimeMs = 1): FileResult {
   }
 }
 
-function definitionTarget(path: string): TypeScriptLspDefinitionTarget {
+function definitionTarget(path: string): LanguageServerDefinitionTarget {
   return {
     path,
     range: {
       end: { character: 1, line: 1 },
       start: { character: 0, line: 1 },
     },
+    uri: `file://${path}`,
+  }
+}
+
+function referencesResult(path: string): LanguageServerReferencesResult {
+  return {
+    targets: [definitionTarget(path)],
     uri: `file://${path}`,
   }
 }

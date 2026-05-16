@@ -2,6 +2,7 @@ import { WarningCircleIcon } from "@phosphor-icons/react"
 import { useCallback, useEffect, useMemo, useRef } from "react"
 
 import { Editor } from "@/features/editor/components/editor"
+import { LanguageServerReferencesPane } from "@/features/editor/components/language-server-references-pane"
 import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import {
@@ -40,7 +41,10 @@ import { fileSystemKeys } from "@/lib/query-keys"
 import type { LoadState } from "@/lib/load-state"
 import { parseMergeConflicts } from "@editor/core"
 import type { EditorKeymapLayer } from "@editor/core"
-import type { TypeScriptLspDefinitionTarget } from "@editor/typescript-lsp"
+import type {
+  LanguageServerDefinitionTarget,
+  LanguageServerReferencesResult,
+} from "@editor/language-server"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
@@ -58,6 +62,9 @@ export function FileViewer({
   onRequestCloseTabs: RequestCloseTabs
 }) {
   const definitionTarget = useEditorUiState((state) => state.definitionTarget)
+  const languageServerReferences = useEditorUiState(
+    (state) => state.languageServerReferences
+  )
   const diffViewerRef = useRef<GitDiffViewerHandle | null>(null)
   const documents = useEditorDocumentState((state) => state.documents)
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
@@ -88,6 +95,9 @@ export function FileViewer({
   const setDiffViewMode = useEditorWorkspaceState(
     (state) => state.setDiffViewMode
   )
+  const setLanguageServerReferences = useEditorUiState(
+    (state) => state.setLanguageServerReferences
+  )
   const setStatusBarState = useEditorUiState((state) => state.setStatusBarState)
   const {
     discardCachedEditorDocument,
@@ -105,6 +115,13 @@ export function FileViewer({
       resolveConflictEditorDocument(path, text)
     },
     [recordCachedEditorDocumentTextChange, resolveConflictEditorDocument]
+  )
+  const handleOpenReferences = useCallback(
+    (result: LanguageServerReferencesResult) => {
+      setLanguageServerReferences(result)
+      return true
+    },
+    [setLanguageServerReferences]
   )
   const selectedDiff = useMemo(
     () => parseDiffDocumentId(selectedFilePath),
@@ -198,12 +215,16 @@ export function FileViewer({
             definitionTarget={definitionTarget}
             editorKeymapLayers={editorKeymapLayers}
             fileState={fileState}
+            languageServerReferences={languageServerReferences}
+            openDocuments={documents}
             rootPath={rootPath}
             onEditorDirtyChange={setCachedEditorDocumentDirty}
             onEditorScrollPositionChange={setCachedEditorDocumentScrollPosition}
             onEditorStatusChange={setStatusBarState}
             onEditorTextChange={handleEditorTextChange}
             onOpenDefinition={openDefinition}
+            onOpenReferences={handleOpenReferences}
+            onReferencesClose={() => setLanguageServerReferences(null)}
           />
         )
       ) : (
@@ -222,17 +243,23 @@ function FileViewerBody({
   definitionTarget,
   editorKeymapLayers,
   fileState,
+  languageServerReferences,
+  openDocuments,
   rootPath,
   onEditorDirtyChange,
   onEditorScrollPositionChange,
   onEditorStatusChange,
   onEditorTextChange,
   onOpenDefinition,
+  onOpenReferences,
+  onReferencesClose,
 }: {
   cachedDocument: CachedEditorDocument | null
-  definitionTarget: TypeScriptLspDefinitionTarget | null
+  definitionTarget: LanguageServerDefinitionTarget | null
   editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
+  languageServerReferences: LanguageServerReferencesResult | null
+  openDocuments: Readonly<Record<string, CachedEditorDocument>>
   rootPath: string
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
   onEditorScrollPositionChange: (
@@ -241,21 +268,41 @@ function FileViewerBody({
   ) => void
   onEditorStatusChange: (status: EditorStatusBarState | null) => void
   onEditorTextChange?: (path: string, text: string) => void
-  onOpenDefinition: (target: TypeScriptLspDefinitionTarget) => void | boolean
+  onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
+  onOpenReferences: (result: LanguageServerReferencesResult) => void | boolean
+  onReferencesClose: () => void
 }) {
   if (cachedDocument) {
     return (
-      <Editor
-        definitionTarget={definitionTarget}
-        document={cachedDocument}
-        keymapLayers={editorKeymapLayers}
-        rootPath={rootPath}
-        onDirtyChange={onEditorDirtyChange}
-        onScrollPositionChange={onEditorScrollPositionChange}
-        onStatusChange={onEditorStatusChange}
-        onTextChange={onEditorTextChange}
-        onOpenDefinition={onOpenDefinition}
-      />
+      <div
+        className={
+          languageServerReferences
+            ? "grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(260px,340px)] grid-rows-[minmax(0,1fr)] overflow-hidden"
+            : "grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden"
+        }
+      >
+        <Editor
+          definitionTarget={definitionTarget}
+          document={cachedDocument}
+          keymapLayers={editorKeymapLayers}
+          rootPath={rootPath}
+          onDirtyChange={onEditorDirtyChange}
+          onScrollPositionChange={onEditorScrollPositionChange}
+          onStatusChange={onEditorStatusChange}
+          onTextChange={onEditorTextChange}
+          onOpenDefinition={onOpenDefinition}
+          onOpenReferences={onOpenReferences}
+        />
+        {languageServerReferences ? (
+          <LanguageServerReferencesPane
+            documents={openDocuments}
+            references={languageServerReferences}
+            rootPath={rootPath}
+            onClose={onReferencesClose}
+            onOpenReference={onOpenDefinition}
+          />
+        ) : null}
+      </div>
     )
   }
 
