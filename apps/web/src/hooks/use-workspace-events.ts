@@ -1,14 +1,9 @@
 import type { PickedFsEntry } from "@/lib/file-system-types"
-import { FilesystemConflictToast } from "@/features/editor/components/filesystem-conflict-toast"
-import {
-  conflictDiffDocumentId,
-  parseConflictDiffDocumentId,
-} from "@/features/editor/conflict-diff-document"
+import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import {
   useEditorConflictStoreApi,
   type EditorConflictStoreApi,
-  type FilesystemConflict,
 } from "@/features/editor/state/editor-conflict-state"
 import {
   useEditorDocumentState,
@@ -16,13 +11,7 @@ import {
 } from "@/features/editor/state/editor-document-state"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
-import {
-  createFileContent,
-  ensureFolderPath,
-  fetchFile,
-  fetchTree,
-  writeFileContent,
-} from "@/lib/file-server"
+import { fetchFile, fetchTree } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
 import { fsServerUrl } from "@/lib/fs-client"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
@@ -31,21 +20,35 @@ import { fileSystemKeys, gitKeys } from "@/lib/query-keys"
 import { parseSseStream } from "@/lib/sse"
 import { toTreePath } from "@/lib/path-formatters"
 import {
-  affectedOpenFileRefreshPaths,
-  isLikelyTemporarySavePath,
+  planFetchedOpenFileRefresh,
+  planWorkspaceFilesystemEvents,
+  planWorkspaceReady,
+  type WorkspaceEventPlan,
+  type WorkspaceFetchedOpenFileOperation,
+  type WorkspaceOpenFileOperation,
+  type WorkspaceOpenFileSnapshot,
+  type WorkspaceTreeOperation,
 } from "@/lib/workspace-event-model"
+import {
+  dismissFilesystemConflicts,
+  notifyChangedFilesystemConflict,
+  notifyDeletedFilesystemConflict,
+  notifyRenamedFilesystemConflict,
+  type WorkspaceConflictContext,
+} from "@/hooks/workspace-event-conflict-adapter"
 import {
   patchTreeEntryMetadata,
   replaceDirectoryLoad,
   type TreeModel,
 } from "@/lib/tree-model"
 import { useQueryClient } from "@tanstack/react-query"
-import { createMergeConflictDocumentText } from "@editor/core"
-import { createElement, useEffect, useEffectEvent } from "react"
+import { useEffect, useEffectEvent } from "react"
 import { toast } from "sonner"
-import type { WatchServerMessage } from "@workspace/contracts"
+import type { TreeEntry, WatchServerMessage } from "@workspace/contracts"
 
 export type { WatchServerMessage }
+
+export { affectedDirectoryPaths } from "@/lib/workspace-event-model"
 
 export type FilesystemEvent = Extract<
   WatchServerMessage,
@@ -78,7 +81,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     (state) => state.selectedFilePath
   )
   const {
-    closeTab,
     discardCachedEditorDocument,
     renameCachedEditorDocument,
     selectFile,
@@ -93,7 +95,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       currentRootPath: string
     ) => {
       void applyWorkspaceEvents({
-        closeTab,
         conflictStore,
         discardCachedEditorDocument,
         dirtyFilePaths,
@@ -116,15 +117,18 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   )
   const applyReady = useEffectEvent(
     (signal: AbortSignal, currentRootPath: string) => {
-      const refreshPaths = openFilePaths.filter(
-        (path) => !dirtyFilePaths.has(path)
-      )
-
       void applyWorkspaceReady({
+        conflictStore,
+        discardCachedEditorDocument,
+        dirtyFilePaths,
+        ensureCachedEditorDocument,
         forceReplaceCachedEditorDocument: forceReplaceSelectedDocument,
-        openFilePaths: refreshPaths,
+        getCachedEditorDocument,
+        openFilePaths,
         queryClient,
+        renameCachedEditorDocument,
         rootPath: currentRootPath,
+        selectFile,
         signal,
       }).catch((error: unknown) => {
         if (signal.aborted) return
@@ -178,7 +182,6 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
 }
 
 async function applyWorkspaceEvents({
-  closeTab,
   conflictStore,
   discardCachedEditorDocument,
   dirtyFilePaths,
@@ -193,7 +196,6 @@ async function applyWorkspaceEvents({
   selectFile,
   signal,
 }: {
-  closeTab: (path: string) => void
   conflictStore: EditorConflictStoreApi
   discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
   dirtyFilePaths: ReadonlySet<string>
@@ -211,19 +213,24 @@ async function applyWorkspaceEvents({
   selectFile: (path: string | null) => void
   signal: AbortSignal
 }) {
-  invalidateGitState(queryClient)
-  patchChangedTreeEntries(queryClient, rootPath, events)
-  await refreshAffectedTreeDirectories(queryClient, rootPath, events, signal)
-  await refreshAffectedOpenFiles({
-    closeTab,
+  const plan = planWorkspaceFilesystemEvents({
+    events,
+    openFiles: openFileSnapshots(
+      openFilePaths,
+      dirtyFilePaths,
+      getCachedEditorDocument
+    ),
+    rootPath,
+  })
+
+  await applyWorkspaceEventPlan({
     conflictStore,
     discardCachedEditorDocument,
     dirtyFilePaths,
     ensureCachedEditorDocument,
-    events,
     forceReplaceCachedEditorDocument,
     getCachedEditorDocument,
-    openFilePaths,
+    plan,
     queryClient,
     renameCachedEditorDocument,
     rootPath,
@@ -232,14 +239,150 @@ async function applyWorkspaceEvents({
   })
 }
 
+function invalidateGitState(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: gitKeys.all })
+}
+
+async function applyWorkspaceReady({
+  conflictStore,
+  discardCachedEditorDocument,
+  dirtyFilePaths,
+  ensureCachedEditorDocument,
+  forceReplaceCachedEditorDocument,
+  getCachedEditorDocument,
+  openFilePaths,
+  queryClient,
+  renameCachedEditorDocument,
+  rootPath,
+  selectFile,
+  signal,
+}: {
+  conflictStore: EditorConflictStoreApi
+  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
+  dirtyFilePaths: ReadonlySet<string>
+  ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
+  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
+  openFilePaths: readonly string[]
+  queryClient: ReturnType<typeof useQueryClient>
+  renameCachedEditorDocument: (
+    from: string,
+    to: string
+  ) => { wasDirty: boolean }
+  rootPath: string
+  selectFile: (path: string | null) => void
+  signal: AbortSignal
+}) {
+  const plan = planWorkspaceReady({
+    openFiles: openFileSnapshots(
+      openFilePaths,
+      dirtyFilePaths,
+      getCachedEditorDocument
+    ),
+    rootPath,
+  })
+
+  await applyWorkspaceEventPlan({
+    conflictStore,
+    discardCachedEditorDocument,
+    dirtyFilePaths,
+    ensureCachedEditorDocument,
+    forceReplaceCachedEditorDocument,
+    getCachedEditorDocument,
+    ignoreOpenFileRefreshErrors: true,
+    plan,
+    queryClient,
+    renameCachedEditorDocument,
+    rootPath,
+    selectFile,
+    signal,
+  })
+}
+
+async function applyWorkspaceEventPlan({
+  conflictStore,
+  discardCachedEditorDocument,
+  dirtyFilePaths,
+  ensureCachedEditorDocument,
+  forceReplaceCachedEditorDocument,
+  getCachedEditorDocument,
+  ignoreOpenFileRefreshErrors = false,
+  plan,
+  queryClient,
+  renameCachedEditorDocument,
+  rootPath,
+  selectFile,
+  signal,
+}: {
+  conflictStore: EditorConflictStoreApi
+  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
+  dirtyFilePaths: ReadonlySet<string>
+  ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
+  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
+  ignoreOpenFileRefreshErrors?: boolean
+  plan: WorkspaceEventPlan
+  queryClient: ReturnType<typeof useQueryClient>
+  renameCachedEditorDocument: (
+    from: string,
+    to: string
+  ) => { wasDirty: boolean }
+  rootPath: string
+  selectFile: (path: string | null) => void
+  signal: AbortSignal
+}) {
+  const conflictContext: WorkspaceConflictContext = {
+    conflictStore,
+    discardCachedEditorDocument,
+    ensureCachedEditorDocument,
+    fetchFile: fetchFileWithRetry,
+    forceReplaceCachedEditorDocument,
+    getCachedEditorDocument,
+    queryClient,
+    renameCachedEditorDocument,
+    selectFile,
+  }
+
+  if (plan.shouldInvalidateGitState) invalidateGitState(queryClient)
+
+  await applyTreeOperations(queryClient, rootPath, plan.treeOperations, signal)
+  await applyOpenFileOperations({
+    conflictContext,
+    dirtyFilePaths,
+    forceReplaceCachedEditorDocument,
+    ignoreRefreshErrors: ignoreOpenFileRefreshErrors,
+    operations: plan.openFileOperations,
+    queryClient,
+    signal,
+  })
+}
+
+async function applyTreeOperations(
+  queryClient: ReturnType<typeof useQueryClient>,
+  rootPath: string,
+  operations: readonly WorkspaceTreeOperation[],
+  signal: AbortSignal
+) {
+  for (const operation of operations) {
+    if (operation.type !== "patch-changed-tree-entries") continue
+
+    patchChangedTreeEntries(queryClient, rootPath, operation.entries)
+  }
+
+  await Promise.all(
+    operations.map((operation) =>
+      applyTreeRefreshOperation(queryClient, rootPath, operation, signal).catch(
+        () => null
+      )
+    )
+  )
+}
+
 function patchChangedTreeEntries(
   queryClient: ReturnType<typeof useQueryClient>,
   rootPath: string,
-  events: readonly FilesystemEvent[]
+  entries: readonly TreeEntry[]
 ) {
-  const entries = events.flatMap((event) =>
-    event.type === "changed" && event.entry ? [event.entry] : []
-  )
   if (!entries.length) return
 
   const rootTreeKey = fileSystemKeys.tree(rootPath)
@@ -253,48 +396,20 @@ function patchChangedTreeEntries(
   })
 }
 
-function invalidateGitState(queryClient: ReturnType<typeof useQueryClient>) {
-  void queryClient.invalidateQueries({ queryKey: gitKeys.all })
-}
-
-async function applyWorkspaceReady({
-  forceReplaceCachedEditorDocument,
-  openFilePaths,
-  queryClient,
-  rootPath,
-  signal,
-}: {
-  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
-  openFilePaths: readonly string[]
-  queryClient: ReturnType<typeof useQueryClient>
-  rootPath: string
-  signal: AbortSignal
-}) {
-  invalidateGitState(queryClient)
-  await refreshReadyRootTreeDirectory(queryClient, rootPath, signal)
-
-  await Promise.all(
-    fileBackedOpenPaths(openFilePaths).map((path) =>
-      refreshCleanOpenFile(
-        queryClient,
-        path,
-        forceReplaceCachedEditorDocument,
-        signal
-      ).catch(() => undefined)
-    )
-  )
-}
-
-async function refreshReadyRootTreeDirectory(
+async function applyTreeRefreshOperation(
   queryClient: ReturnType<typeof useQueryClient>,
   rootPath: string,
+  operation: WorkspaceTreeOperation,
   signal: AbortSignal
 ) {
+  if (operation.type === "refresh-tree-directory") {
+    await refreshTreeDirectory(queryClient, rootPath, operation.path, signal)
+    return
+  }
+  if (operation.type !== "refresh-ready-root-tree") return
   if (!shouldRefreshReadyRootTree(queryClient, rootPath)) return
 
-  await refreshTreeDirectory(queryClient, rootPath, rootPath, signal).catch(
-    () => null
-  )
+  await refreshTreeDirectory(queryClient, rootPath, operation.path, signal)
 }
 
 export function shouldRefreshReadyRootTree(
@@ -320,23 +435,6 @@ export function shouldRefreshReadyRootTree(
   return now - state.dataUpdatedAt > READY_ROOT_TREE_FRESH_MS
 }
 
-async function refreshAffectedTreeDirectories(
-  queryClient: ReturnType<typeof useQueryClient>,
-  rootPath: string,
-  events: readonly FilesystemEvent[],
-  signal: AbortSignal
-) {
-  const directories = affectedDirectoryPaths(events, rootPath)
-
-  await Promise.all(
-    [...directories].map((path) =>
-      refreshTreeDirectory(queryClient, rootPath, path, signal).catch(
-        () => null
-      )
-    )
-  )
-}
-
 async function refreshTreeDirectory(
   queryClient: ReturnType<typeof useQueryClient>,
   rootPath: string,
@@ -356,94 +454,39 @@ async function refreshTreeDirectory(
   })
 }
 
-async function refreshAffectedOpenFiles({
-  closeTab,
-  conflictStore,
-  discardCachedEditorDocument,
+async function applyOpenFileOperations({
+  conflictContext,
   dirtyFilePaths,
-  ensureCachedEditorDocument,
-  events,
   forceReplaceCachedEditorDocument,
-  getCachedEditorDocument,
-  openFilePaths,
+  ignoreRefreshErrors,
+  operations,
   queryClient,
-  renameCachedEditorDocument,
-  rootPath,
-  selectFile,
   signal,
 }: {
-  closeTab: (path: string) => void
-  conflictStore: EditorConflictStoreApi
-  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
+  conflictContext: WorkspaceConflictContext
   dirtyFilePaths: ReadonlySet<string>
-  ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
-  events: readonly FilesystemEvent[]
   forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
-  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
-  openFilePaths: readonly string[]
+  ignoreRefreshErrors: boolean
+  operations: readonly WorkspaceOpenFileOperation[]
   queryClient: ReturnType<typeof useQueryClient>
-  renameCachedEditorDocument: (
-    from: string,
-    to: string
-  ) => { wasDirty: boolean }
-  rootPath: string
-  selectFile: (path: string | null) => void
   signal: AbortSignal
 }) {
-  const conflictContext: ConflictContext = {
-    closeTab,
-    conflictStore,
-    discardCachedEditorDocument,
-    ensureCachedEditorDocument,
-    forceReplaceCachedEditorDocument,
-    getCachedEditorDocument,
-    queryClient,
-    renameCachedEditorDocument,
-    selectFile,
-  }
-  const recreatedPaths = recreatedOpenFilePaths(events)
-  const fileBackedPaths = fileBackedOpenPaths(openFilePaths)
-  const refreshPaths = affectedOpenFileRefreshPaths(
-    events,
-    fileBackedPaths,
-    recreatedPaths,
-    rootPath
-  )
-  for (const event of events) {
-    if (event.type === "deleted") {
-      if (recreatedPaths.has(event.path)) continue
-
-      discardDeletedOpenFiles(
-        event.path,
-        fileBackedPaths,
-        dirtyFilePaths,
+  for (const operation of operations) {
+    try {
+      await applyOpenFileOperation({
         conflictContext,
-        discardCachedEditorDocument,
-        queryClient
-      )
-      continue
+        dirtyFilePaths,
+        forceReplaceCachedEditorDocument,
+        operation,
+        queryClient,
+        signal,
+      })
+    } catch (error) {
+      if (ignoreRefreshErrors && operation.type === "refresh-open-file")
+        continue
+
+      throw error
     }
-    if (event.type !== "renamed") continue
-
-    await renameOpenFiles(
-      event,
-      fileBackedPaths,
-      dirtyFilePaths,
-      conflictContext,
-      renameCachedEditorDocument,
-      queryClient
-    )
-  }
-
-  for (const path of refreshPaths) {
-    await refreshChangedOpenFile(
-      queryClient,
-      path,
-      forceReplaceCachedEditorDocument,
-      dirtyFilePaths,
-      conflictContext,
-      signal
-    )
   }
 }
 
@@ -456,72 +499,160 @@ function fileBackedOpenPaths(openFilePaths: readonly string[]) {
   )
 }
 
-function recreatedOpenFilePaths(events: readonly FilesystemEvent[]) {
-  const deletedPaths = new Set<string>()
-  const recreatedPaths = new Set<string>()
-
-  for (const event of events) {
-    if (event.type === "deleted") {
-      deletedPaths.add(event.path)
-      continue
-    }
-    if (event.type !== "created" && event.type !== "changed") continue
-    if (!deletedPaths.has(event.path)) continue
-
-    recreatedPaths.add(event.path)
-  }
-
-  return recreatedPaths
+function openFileSnapshots(
+  openFilePaths: readonly string[],
+  dirtyFilePaths: ReadonlySet<string>,
+  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
+): WorkspaceOpenFileSnapshot[] {
+  return fileBackedOpenPaths(openFilePaths).map((path) => ({
+    isDirty: isDirtyOpenFilePath(path, dirtyFilePaths, getCachedEditorDocument),
+    path,
+  }))
 }
 
-async function refreshChangedOpenFile(
-  queryClient: ReturnType<typeof useQueryClient>,
+function isDirtyOpenFilePath(
   path: string,
-  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean },
   dirtyFilePaths: ReadonlySet<string>,
-  conflictContext: ConflictContext,
-  signal: AbortSignal
+  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
 ) {
-  const file = await fetchFileWithRetry(path, signal)
-  queryClient.setQueryData(fileSystemKeys.file(path), file)
-  if (cachedDocumentMatchesFile(path, file, conflictContext)) {
-    forceReplaceCachedEditorDocument(file)
+  return (
+    dirtyFilePaths.has(path) ||
+    getCachedEditorDocument(path)?.session.isDirty() === true
+  )
+}
+
+async function applyOpenFileOperation({
+  conflictContext,
+  dirtyFilePaths,
+  forceReplaceCachedEditorDocument,
+  operation,
+  queryClient,
+  signal,
+}: {
+  conflictContext: WorkspaceConflictContext
+  dirtyFilePaths: ReadonlySet<string>
+  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  operation: WorkspaceOpenFileOperation
+  queryClient: ReturnType<typeof useQueryClient>
+  signal: AbortSignal
+}) {
+  if (operation.type === "discard-open-file") {
+    applyDiscardOpenFileOperation(operation.path, conflictContext)
     return
   }
-
-  if (isDirtyCachedDocument(path, dirtyFilePaths, conflictContext)) {
-    notifyFilesystemConflict(
-      changedConflict(path, file, conflictContext),
+  if (operation.type === "rename-open-file") {
+    applyRenameOpenFileOperation(operation.from, operation.to, conflictContext)
+    return
+  }
+  if (operation.type === "deleted-conflict") {
+    applyDeletedConflictOperation(operation.path, conflictContext)
+    return
+  }
+  if (operation.type === "renamed-conflict") {
+    await applyRenamedConflictOperation(
+      operation.localPath,
+      operation.remotePath,
       conflictContext
     )
     return
   }
 
-  const result = forceReplaceCachedEditorDocument(file)
-  if (result.wasDirty) notifyDirtyOverwrite(path)
+  await applyRefreshOpenFileOperation({
+    conflictContext,
+    dirtyFilePaths,
+    forceReplaceCachedEditorDocument,
+    path: operation.path,
+    queryClient,
+    signal,
+  })
 }
 
-function cachedDocumentMatchesFile(
-  path: string,
-  file: FileResult,
-  context: ConflictContext
-) {
-  return (
-    context.getCachedEditorDocument(path)?.session.getText() === file.content
+async function applyRefreshOpenFileOperation({
+  conflictContext,
+  dirtyFilePaths,
+  forceReplaceCachedEditorDocument,
+  path,
+  queryClient,
+  signal,
+}: {
+  conflictContext: WorkspaceConflictContext
+  dirtyFilePaths: ReadonlySet<string>
+  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  path: string
+  queryClient: ReturnType<typeof useQueryClient>
+  signal: AbortSignal
+}) {
+  const file = await fetchFileWithRetry(path, signal)
+  queryClient.setQueryData(fileSystemKeys.file(path), file)
+  const operation = planFetchedOpenFileRefresh({
+    cachedText: cachedDocumentText(path, conflictContext),
+    isDirty: isDirtyCachedDocument(path, dirtyFilePaths, conflictContext),
+    path,
+    remoteText: file.content,
+  })
+  applyFetchedOpenFileOperation(
+    operation,
+    file,
+    forceReplaceCachedEditorDocument,
+    conflictContext
   )
 }
 
-async function refreshCleanOpenFile(
-  queryClient: ReturnType<typeof useQueryClient>,
-  path: string,
+function applyFetchedOpenFileOperation(
+  operation: WorkspaceFetchedOpenFileOperation,
+  file: FileResult,
   forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean },
-  signal: AbortSignal
+  context: WorkspaceConflictContext
 ) {
-  const file = await fetchFileWithRetry(path, signal)
-  queryClient.setQueryData(fileSystemKeys.file(path), file)
+  if (operation.type === "changed-conflict") {
+    notifyChangedFilesystemConflict(operation.path, file, context)
+    return
+  }
 
   const result = forceReplaceCachedEditorDocument(file)
+  if (result.wasDirty && operation.notifyDirtyOverwrite)
+    notifyDirtyOverwrite(operation.path)
+}
+
+function applyDiscardOpenFileOperation(
+  path: string,
+  context: WorkspaceConflictContext
+) {
+  const result = context.discardCachedEditorDocument(path)
+  context.queryClient.removeQueries({
+    exact: true,
+    queryKey: fileSystemKeys.file(path),
+  })
   if (result.wasDirty) notifyDirtyOverwrite(path)
+}
+
+function applyRenameOpenFileOperation(
+  from: string,
+  to: string,
+  context: WorkspaceConflictContext
+) {
+  const result = context.renameCachedEditorDocument(from, to)
+  moveFileQueryData(context.queryClient, from, to)
+  if (result.wasDirty) notifyDirtyOverwrite(from)
+}
+
+function applyDeletedConflictOperation(
+  path: string,
+  context: WorkspaceConflictContext
+) {
+  notifyDeletedFilesystemConflict(path, context)
+}
+
+async function applyRenamedConflictOperation(
+  localPath: string,
+  remotePath: string,
+  context: WorkspaceConflictContext
+) {
+  await notifyRenamedFilesystemConflict(localPath, remotePath, context)
+}
+
+function cachedDocumentText(path: string, context: WorkspaceConflictContext) {
+  return context.getCachedEditorDocument(path)?.session.getText() ?? null
 }
 
 async function fetchFileWithRetry(path: string, signal: AbortSignal) {
@@ -540,336 +671,15 @@ async function fetchFileWithRetry(path: string, signal: AbortSignal) {
   throw lastError
 }
 
-type ConflictContext = {
-  closeTab: (path: string) => void
-  conflictStore: EditorConflictStoreApi
-  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
-  ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
-  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
-  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
-  queryClient: ReturnType<typeof useQueryClient>
-  renameCachedEditorDocument: (
-    from: string,
-    to: string
-  ) => { wasDirty: boolean }
-  selectFile: (path: string | null) => void
-}
-
-let nextConflictId = 0
-
 function isDirtyCachedDocument(
   path: string,
   dirtyFilePaths: ReadonlySet<string>,
-  context: ConflictContext
+  context: WorkspaceConflictContext
 ) {
   return (
     dirtyFilePaths.has(path) ||
     context.getCachedEditorDocument(path)?.session.isDirty() === true
   )
-}
-
-function changedConflict(
-  path: string,
-  remoteFile: FileResult,
-  context: ConflictContext
-): FilesystemConflict {
-  return {
-    eventType: "changed",
-    id: createConflictId(),
-    localPath: path,
-    localText: localConflictText(path, context),
-    remoteMtimeMs: remoteFile.mtimeMs,
-    remotePath: path,
-    remoteSize: remoteFile.size,
-    remoteText: remoteFile.content,
-  }
-}
-
-function deletedConflict(
-  path: string,
-  context: ConflictContext
-): FilesystemConflict {
-  return {
-    eventType: "deleted",
-    id: createConflictId(),
-    localPath: path,
-    localText: localConflictText(path, context),
-    remoteMtimeMs: null,
-    remotePath: path,
-    remoteSize: null,
-    remoteText: null,
-  }
-}
-
-async function notifyRenamedFilesystemConflict(
-  localPath: string,
-  remotePath: string,
-  context: ConflictContext
-) {
-  const remoteFile = await fetchFileWithRetry(
-    remotePath,
-    new AbortController().signal
-  )
-  notifyFilesystemConflict(
-    {
-      eventType: "renamed",
-      id: createConflictId(),
-      localPath,
-      localText: localConflictText(localPath, context),
-      remoteMtimeMs: remoteFile.mtimeMs,
-      remotePath,
-      remoteSize: remoteFile.size,
-      remoteText: remoteFile.content,
-    },
-    context
-  )
-}
-
-function notifyFilesystemConflict(
-  conflict: FilesystemConflict,
-  context: ConflictContext
-) {
-  const current = matchingConflict(conflict, context)
-  const next = current ? refreshedConflict(current, conflict) : conflict
-  context.conflictStore.getState().addConflict(next)
-  if (current?.toastId) return
-
-  const toastId = toast.custom(
-    () =>
-      createElement(FilesystemConflictToast, {
-        conflict: next,
-        onOpenDiff: () => openConflictDiff(next.id, context),
-        onOverrideLocal: () => void resolveConflict(next.id, "local", context),
-        onOverrideRemote: () =>
-          void resolveConflict(next.id, "remote", context),
-      }),
-    { dismissible: false, duration: Infinity }
-  )
-  context.conflictStore.getState().updateConflict(next.id, { toastId })
-}
-
-function matchingConflict(
-  conflict: FilesystemConflict,
-  context: ConflictContext
-) {
-  const conflicts = Object.values(context.conflictStore.getState().conflicts)
-  return conflicts.find(
-    (current) =>
-      current.eventType === conflict.eventType &&
-      current.localPath === conflict.localPath &&
-      current.remotePath === conflict.remotePath
-  )
-}
-
-function refreshedConflict(
-  current: FilesystemConflict,
-  next: FilesystemConflict
-): FilesystemConflict {
-  return {
-    ...next,
-    diffDocumentId: current.diffDocumentId,
-    id: current.id,
-    toastId: current.toastId,
-  }
-}
-
-function openConflictDiff(id: string, context: ConflictContext) {
-  const conflict = context.conflictStore.getState().conflicts[id]
-  if (!conflict) return
-
-  const documentId = conflict.diffDocumentId ?? conflictDiffDocumentId(id)
-  ensureConflictEditorDocument(documentId, conflict, context)
-  context.conflictStore
-    .getState()
-    .updateConflict(id, { diffDocumentId: documentId })
-  context.selectFile(documentId)
-}
-
-function ensureConflictEditorDocument(
-  documentId: string,
-  conflict: FilesystemConflict,
-  context: ConflictContext
-) {
-  if (context.getCachedEditorDocument(documentId)) return
-
-  const content = createMergeConflictDocumentText(conflict)
-  context.ensureCachedEditorDocument({
-    content,
-    mtimeMs: Date.now(),
-    path: documentId,
-    size: content.length,
-  })
-}
-
-async function resolveConflict(
-  id: string,
-  resolution: "local" | "remote",
-  context: ConflictContext
-) {
-  const conflict = context.conflictStore.getState().conflicts[id]
-  if (!conflict) return
-
-  try {
-    if (resolution === "local") await applyLocalConflict(conflict, context)
-    if (resolution === "remote") await applyRemoteConflict(conflict, context)
-    finishConflict(conflict, context)
-  } catch (error) {
-    reportError(toClientError(error))
-  }
-}
-
-async function applyLocalConflict(
-  conflict: FilesystemConflict,
-  context: ConflictContext
-) {
-  if (conflict.eventType === "deleted") {
-    await restoreDeletedLocalConflict(conflict)
-  } else {
-    await writeFileContent(
-      conflict.remotePath,
-      conflict.localText,
-      conflict.remoteMtimeMs
-    )
-  }
-
-  const file = await fetchFileWithRetry(
-    conflict.remotePath,
-    new AbortController().signal
-  )
-  replaceResolvedEditorFile(conflict.localPath, file, context)
-}
-
-async function restoreDeletedLocalConflict(conflict: FilesystemConflict) {
-  await ensureFolderPath(parentPath(conflict.remotePath, ""))
-  await createFileContent(conflict.remotePath, conflict.localText)
-}
-
-async function applyRemoteConflict(
-  conflict: FilesystemConflict,
-  context: ConflictContext
-) {
-  if (conflict.remoteText === null) {
-    discardResolvedEditorFile(conflict.localPath, context)
-    return
-  }
-
-  replaceResolvedEditorFile(
-    conflict.localPath,
-    remoteFileResult(conflict),
-    context
-  )
-}
-
-function replaceResolvedEditorFile(
-  localPath: string,
-  file: FileResult,
-  context: ConflictContext
-) {
-  if (localPath !== file.path) {
-    context.renameCachedEditorDocument(localPath, file.path)
-    moveFileQueryData(context.queryClient, localPath, file.path)
-  }
-
-  context.queryClient.setQueryData(fileSystemKeys.file(file.path), file)
-  context.forceReplaceCachedEditorDocument(file)
-}
-
-function discardResolvedEditorFile(path: string, context: ConflictContext) {
-  context.discardCachedEditorDocument(path)
-  context.queryClient.removeQueries({
-    exact: true,
-    queryKey: fileSystemKeys.file(path),
-  })
-}
-
-function finishConflict(
-  conflict: FilesystemConflict,
-  context: ConflictContext
-) {
-  if (conflict.diffDocumentId) {
-    context.discardCachedEditorDocument(conflict.diffDocumentId)
-  }
-  if (conflict.toastId) toast.dismiss(conflict.toastId)
-
-  context.conflictStore.getState().removeConflict(conflict.id)
-}
-
-function dismissFilesystemConflicts(conflictStore: EditorConflictStoreApi) {
-  for (const conflict of Object.values(conflictStore.getState().conflicts)) {
-    if (conflict.toastId) toast.dismiss(conflict.toastId)
-  }
-
-  conflictStore.getState().clearConflicts()
-}
-
-function remoteFileResult(conflict: FilesystemConflict): FileResult {
-  return {
-    content: conflict.remoteText ?? "",
-    mtimeMs: conflict.remoteMtimeMs ?? Date.now(),
-    path: conflict.remotePath,
-    size: conflict.remoteSize ?? conflict.remoteText?.length ?? 0,
-  }
-}
-
-function localConflictText(path: string, context: ConflictContext) {
-  return context.getCachedEditorDocument(path)?.session.getText() ?? ""
-}
-
-function createConflictId() {
-  nextConflictId += 1
-  return `${Date.now().toString(36)}-${nextConflictId.toString(36)}`
-}
-
-function discardDeletedOpenFiles(
-  path: string,
-  openFilePaths: readonly string[],
-  dirtyFilePaths: ReadonlySet<string>,
-  conflictContext: ConflictContext,
-  discardCachedEditorDocument: (path: string) => { wasDirty: boolean },
-  queryClient: ReturnType<typeof useQueryClient>
-) {
-  for (const openPath of openFilePaths) {
-    if (!isSameOrChildPath(openPath, path)) continue
-    if (isDirtyCachedDocument(openPath, dirtyFilePaths, conflictContext)) {
-      notifyFilesystemConflict(
-        deletedConflict(openPath, conflictContext),
-        conflictContext
-      )
-      continue
-    }
-
-    const result = discardCachedEditorDocument(openPath)
-    queryClient.removeQueries({
-      exact: true,
-      queryKey: fileSystemKeys.file(openPath),
-    })
-    if (result.wasDirty) notifyDirtyOverwrite(openPath)
-  }
-}
-
-async function renameOpenFiles(
-  event: Extract<FilesystemEvent, { type: "renamed" }>,
-  openFilePaths: readonly string[],
-  dirtyFilePaths: ReadonlySet<string>,
-  conflictContext: ConflictContext,
-  renameCachedEditorDocument: (
-    from: string,
-    to: string
-  ) => { wasDirty: boolean },
-  queryClient: ReturnType<typeof useQueryClient>
-) {
-  for (const openPath of openFilePaths) {
-    const nextPath = renamedPath(openPath, event.oldPath, event.path)
-    if (!nextPath) continue
-    if (isDirtyCachedDocument(openPath, dirtyFilePaths, conflictContext)) {
-      await notifyRenamedFilesystemConflict(openPath, nextPath, conflictContext)
-      continue
-    }
-
-    const result = renameCachedEditorDocument(openPath, nextPath)
-    moveFileQueryData(queryClient, openPath, nextPath)
-    if (result.wasDirty) notifyDirtyOverwrite(openPath)
-  }
 }
 
 function moveFileQueryData(
@@ -896,33 +706,6 @@ function shouldRefreshDirectory(
 
   const treePath = toTreePath(path, rootPath)
   return model.loadedDirectoryPaths.has(treePath)
-}
-
-export function affectedDirectoryPaths(
-  events: readonly FilesystemEvent[],
-  rootPath: string
-) {
-  const directories = new Set<string>()
-
-  for (const event of events) {
-    if (event.type === "changed") continue
-    if (isLikelyTemporarySavePath(event.path)) continue
-
-    directories.add(parentPath(event.path, rootPath))
-    if (event.type === "renamed")
-      directories.add(parentPath(event.oldPath, rootPath))
-  }
-
-  return directories
-}
-
-function parentPath(path: string, rootPath: string) {
-  if (path === rootPath) return rootPath
-
-  const index = path.lastIndexOf("/")
-  if (index < 0) return rootPath
-
-  return path.slice(0, index)
 }
 
 async function streamWorkspaceEvents(
@@ -1024,17 +807,6 @@ function createEventQueue(onFlush: (events: FilesystemEvent[]) => void) {
   }
 }
 
-function renamedPath(path: string, from: string, to: string) {
-  if (path === from) return to
-  if (!path.startsWith(`${from}/`)) return null
-
-  return `${to}${path.slice(from.length)}`
-}
-
-function isSameOrChildPath(path: string, parent: string) {
-  return path === parent || path.startsWith(`${parent}/`)
-}
-
 function notifyDirtyOverwrite(path: string) {
   // TODO(conflicts): Replace overwrite behavior with conflict resolution state/view.
   toast.error("Local edits were overwritten", {
@@ -1044,14 +816,19 @@ function notifyDirtyOverwrite(path: string) {
 
 function delay(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(resolve, ms)
-    signal.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timeout)
-        reject(new DOMException("Aborted", "AbortError"))
-      },
-      { once: true }
-    )
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"))
+      return
+    }
+
+    const onAbort = () => {
+      window.clearTimeout(timeout)
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener("abort", onAbort, { once: true })
   })
 }

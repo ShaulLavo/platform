@@ -17,7 +17,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type DragEvent as ReactDragEvent,
   type RefObject,
   type ReactNode,
 } from "react"
@@ -32,9 +31,19 @@ import {
   chromeTabLayout,
 } from "@/components/workspace/chrome-tab-layout"
 import {
-  editorTabDropIndex,
-  type EditorTabDropTargetBounds,
-} from "@/components/workspace/editor-tab-dnd"
+  editorTabCloseTargetPaths,
+  type EditorTabCloseTargetKind,
+} from "@/components/workspace/editor-tab-close-targets"
+import {
+  useChromeVisualTabs,
+  type ChromeVisualTab,
+} from "@/components/workspace/use-chrome-visual-tabs"
+import {
+  editorTabInsertionEdge,
+  useEditorTabDrag,
+  type EditorTabDragController,
+  type EditorTabInsertionEdge,
+} from "@/components/workspace/use-editor-tab-drag"
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
@@ -100,11 +109,6 @@ const CHROME_TAB_TRANSITION =
   "flex-basis 160ms cubic-bezier(0.2, 0, 0, 1), margin-left 160ms cubic-bezier(0.2, 0, 0, 1), max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)"
 const CHROME_TAB_SLOT_TRANSITION =
   "max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)"
-const EDITOR_TAB_DRAG_KIND = "platform/editor-tab"
-const EDITOR_TAB_DRAG_MIME = "application/x-platform-editor-tab"
-const EDITOR_TAB_PANE_ID = "main"
-const EDITOR_TAB_DRAG_AUTO_SCROLL_EDGE_PX = 36
-const EDITOR_TAB_DRAG_AUTO_SCROLL_STEP_PX = 14
 
 type EditorTabModel = {
   active: boolean
@@ -119,50 +123,7 @@ type EditorTabModel = {
   title: string
 }
 
-type ChromeVisualTabPhase = "opening" | "present"
-
-type ChromeVisualTab = {
-  phase: ChromeVisualTabPhase
-  tab: EditorTabModel
-}
-
-type ChromeVisualTabsState = {
-  sourceTabs: readonly EditorTabModel[]
-  visualTabs: readonly ChromeVisualTab[]
-}
-
-type EditorTabDragState = {
-  path: string
-  sourceIndex: number
-  targetIndex: number | null
-}
-
-type EditorTabInsertionEdge = "before" | "after" | null
-
-type EditorTabDragController = {
-  draggedPath: string | null
-  state: EditorTabDragState | null
-  onDragEnd: () => void
-  onDragStart: (event: ReactDragEvent<HTMLElement>, path: string) => void
-}
-
-type EditorTabDragPayload = {
-  kind: typeof EDITOR_TAB_DRAG_KIND
-  paneId: typeof EDITOR_TAB_PANE_ID
-  path: string
-}
-
-export type EditorTabCloseTargetKind =
-  | "close"
-  | "closeAll"
-  | "closeOthers"
-  | "closeSaved"
-  | "closeToRight"
-
-export type EditorTabCloseTarget = {
-  dirty: boolean
-  path: string
-}
+type EditorChromeVisualTab = ChromeVisualTab<EditorTabModel>
 
 export function EditorTabBar({
   diffViewMode = null,
@@ -219,7 +180,11 @@ export function EditorTabBar({
       selectedFilePath,
     ]
   )
-  const visualTabs = useChromeVisualTabs(editorTabs, tabSizing === "chrome")
+  const visualTabs = useChromeVisualTabs(
+    editorTabs,
+    tabSizing === "chrome",
+    sameEditorTabModel
+  )
   const tabDrag = useEditorTabDrag({
     tabs: editorTabs,
     tabListRef,
@@ -422,7 +387,7 @@ function ChromeEditorTabList({
   drag: EditorTabDragController
   selectedTabRef: RefObject<HTMLDivElement | null>
   tabListRef: RefObject<HTMLDivElement | null>
-  tabs: readonly ChromeVisualTab[]
+  tabs: readonly EditorChromeVisualTab[]
   onClose: RequestCloseTab
   onCloseTabs: RequestCloseTabs
   onSelect: (path: string) => void
@@ -583,11 +548,11 @@ function ChromeEditorTab({
   tabs: readonly EditorTabModel[]
   tabRef?: RefObject<HTMLDivElement | null>
   trailingSlotWidth: number
-  visualTab: ChromeVisualTab
+  visualTab: EditorChromeVisualTab
   onClose: (path: string, width: number | null) => void
   onCloseTabs: RequestCloseTabs
   onDragEnd: () => void
-  onDragStart: (event: ReactDragEvent<HTMLElement>, path: string) => void
+  onDragStart: EditorTabDragController["onDragStart"]
   onFocusChange: (path: string, focused: boolean) => void
   onHoverChange: (path: string, hovered: boolean) => void
   onSelect: (path: string) => void
@@ -807,28 +772,6 @@ function EditorTabContextMenuContent({
   )
 }
 
-export function editorTabCloseTargetPaths(
-  tabs: readonly EditorTabCloseTarget[],
-  targetPath: string,
-  kind: EditorTabCloseTargetKind
-) {
-  const targetIndex = tabs.findIndex((tab) => tab.path === targetPath)
-  if (targetIndex === -1) return []
-
-  if (kind === "close") return [targetPath]
-  if (kind === "closeOthers") {
-    return tabs.filter((tab) => tab.path !== targetPath).map((tab) => tab.path)
-  }
-  if (kind === "closeToRight") {
-    return tabs.slice(targetIndex + 1).map((tab) => tab.path)
-  }
-  if (kind === "closeSaved") {
-    return tabs.filter((tab) => !tab.dirty).map((tab) => tab.path)
-  }
-
-  return tabs.map((tab) => tab.path)
-}
-
 async function copyTextToClipboard(text: string, label: string) {
   if (!navigator.clipboard?.writeText) {
     toast.error("Clipboard is unavailable")
@@ -841,211 +784,6 @@ async function copyTextToClipboard(text: string, label: string) {
   } catch (error) {
     console.error(error)
     toast.error(`Could not copy ${label}`)
-  }
-}
-
-function useEditorTabDrag({
-  tabs,
-  tabListRef,
-  onReorder,
-}: {
-  tabs: readonly EditorTabModel[]
-  tabListRef: RefObject<HTMLDivElement | null>
-  onReorder: (path: string, targetIndex: number) => boolean
-}): EditorTabDragController {
-  const [state, setState] = useState<EditorTabDragState | null>(null)
-  const stateRef = useRef<EditorTabDragState | null>(null)
-  const autoScrollFrameRef = useRef<number | null>(null)
-  const documentDragCleanupRef = useRef<(() => void) | null>(null)
-  const dragClientXRef = useRef<number | null>(null)
-  const dragImageCleanupRef = useRef<(() => void) | null>(null)
-
-  useEffect(
-    () => () => {
-      documentDragCleanupRef.current?.()
-      documentDragCleanupRef.current = null
-      dragImageCleanupRef.current?.()
-      dragImageCleanupRef.current = null
-      dragClientXRef.current = null
-      cancelEditorTabDragAutoScroll(autoScrollFrameRef)
-    },
-    []
-  )
-
-  function setDragState(nextState: EditorTabDragState | null) {
-    stateRef.current = nextState
-    setState(nextState)
-  }
-
-  function syncDragTarget(clientX: number) {
-    const current = stateRef.current
-    if (!current) return
-
-    const targetIndex = editorTabDropIndex(
-      editorTabDropTargetBounds(tabListRef.current),
-      clientX,
-      current.path
-    )
-    if (current.targetIndex === targetIndex) return
-
-    setDragState({ ...current, targetIndex })
-  }
-
-  function clearDrag() {
-    setDragState(null)
-    documentDragCleanupRef.current?.()
-    documentDragCleanupRef.current = null
-    dragImageCleanupRef.current?.()
-    dragImageCleanupRef.current = null
-    dragClientXRef.current = null
-    cancelEditorTabDragAutoScroll(autoScrollFrameRef)
-  }
-
-  function commitDrag(current: EditorTabDragState) {
-    if (current.targetIndex === null) return
-
-    onReorder(current.path, current.targetIndex)
-  }
-
-  function runAutoScroll() {
-    autoScrollFrameRef.current = null
-    const scrollElement = tabListRef.current
-    const clientX = dragClientXRef.current
-    if (!stateRef.current) return
-    if (!scrollElement) return
-    if (clientX === null) return
-
-    const delta = editorTabDragAutoScrollDelta(
-      scrollElement.getBoundingClientRect(),
-      clientX
-    )
-    if (delta !== 0) scrollElement.scrollLeft += delta
-
-    syncDragTarget(clientX)
-    if (delta === 0) return
-
-    autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll)
-  }
-
-  function scheduleAutoScroll(clientX: number) {
-    dragClientXRef.current = clientX
-    if (autoScrollFrameRef.current !== null) return
-
-    autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll)
-  }
-
-  function startDocumentDragListeners() {
-    documentDragCleanupRef.current?.()
-
-    document.addEventListener("dragover", handleDocumentDragOver, {
-      capture: true,
-      passive: false,
-    })
-    document.addEventListener("drop", handleDocumentDrop, {
-      capture: true,
-      passive: false,
-    })
-    document.addEventListener("dragend", handleDocumentDragEnd, true)
-
-    documentDragCleanupRef.current = () => {
-      document.removeEventListener("dragover", handleDocumentDragOver, true)
-      document.removeEventListener("drop", handleDocumentDrop, true)
-      document.removeEventListener("dragend", handleDocumentDragEnd, true)
-    }
-  }
-
-  function handleDocumentDragOver(event: globalThis.DragEvent) {
-    if (!stateRef.current) return
-
-    if (!editorTabDragPointInsideTabList(tabListRef.current, event)) {
-      setDragTargetIndex(null)
-      cancelEditorTabDragAutoScroll(autoScrollFrameRef)
-      dragClientXRef.current = null
-      return
-    }
-
-    event.preventDefault()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
-
-    syncDragTarget(event.clientX)
-    scheduleAutoScroll(event.clientX)
-  }
-
-  function handleDocumentDrop(event: globalThis.DragEvent) {
-    const current = stateRef.current
-    if (!current) return
-
-    if (!editorTabDragPointInsideTabList(tabListRef.current, event)) {
-      clearDrag()
-      return
-    }
-
-    event.preventDefault()
-    event.stopPropagation()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
-
-    if (!dropPayloadMatchesActiveTab(event.dataTransfer, current.path)) {
-      clearDrag()
-      return
-    }
-
-    syncDragTarget(event.clientX)
-    const next = stateRef.current
-    if (next) commitDrag(next)
-
-    clearDrag()
-  }
-
-  function handleDocumentDragEnd() {
-    clearDrag()
-  }
-
-  function handleDragStart(event: ReactDragEvent<HTMLElement>, path: string) {
-    if (isEditorTabDragBlockedTarget(event.target)) {
-      event.preventDefault()
-      return
-    }
-
-    const sourceIndex = tabs.findIndex((tab) => tab.path === path)
-    if (sourceIndex === -1) {
-      event.preventDefault()
-      return
-    }
-
-    clearDrag()
-    setDragState({
-      path,
-      sourceIndex,
-      targetIndex: sourceIndex,
-    })
-
-    event.dataTransfer.effectAllowed = "move"
-    event.dataTransfer.dropEffect = "move"
-    writeEditorTabDragPayload(event.dataTransfer, path)
-    dragImageCleanupRef.current = mountEditorTabDragImage(event)
-    startDocumentDragListeners()
-    syncDragTarget(event.clientX)
-    scheduleAutoScroll(event.clientX)
-  }
-
-  function handleDragEnd() {
-    const current = stateRef.current
-    if (current) clearDrag()
-  }
-
-  function setDragTargetIndex(targetIndex: number | null) {
-    const current = stateRef.current
-    if (!current) return
-    if (current.targetIndex === targetIndex) return
-
-    setDragState({ ...current, targetIndex })
-  }
-
-  return {
-    draggedPath: state?.path ?? null,
-    state,
-    onDragEnd: handleDragEnd,
-    onDragStart: handleDragStart,
   }
 }
 
@@ -1075,181 +813,6 @@ function useElementWidth<TElement extends HTMLElement>(
   return width
 }
 
-function editorTabDropTargetBounds(
-  tabList: HTMLElement | null
-): readonly EditorTabDropTargetBounds[] {
-  if (!tabList) return []
-
-  return Array.from(
-    tabList.querySelectorAll<HTMLElement>("[data-editor-tab-path]")
-  )
-    .map(editorTabDropTargetBound)
-    .filter(isEditorTabDropTargetBound)
-}
-
-function editorTabDropTargetBound(
-  element: HTMLElement
-): EditorTabDropTargetBounds | null {
-  const path = element.dataset.editorTabPath
-  if (!path) return null
-
-  const rect = element.getBoundingClientRect()
-  return {
-    left: rect.left,
-    path,
-    right: rect.right,
-  }
-}
-
-function isEditorTabDropTargetBound(
-  bound: EditorTabDropTargetBounds | null
-): bound is EditorTabDropTargetBounds {
-  return bound !== null
-}
-
-function editorTabDragPointInsideTabList(
-  tabList: HTMLElement | null,
-  event: Pick<globalThis.DragEvent, "clientX" | "clientY">
-) {
-  if (!tabList) return false
-
-  const rect = tabList.getBoundingClientRect()
-  return (
-    event.clientX >= rect.left &&
-    event.clientX <= rect.right &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom
-  )
-}
-
-function writeEditorTabDragPayload(dataTransfer: DataTransfer, path: string) {
-  const payload: EditorTabDragPayload = {
-    kind: EDITOR_TAB_DRAG_KIND,
-    paneId: EDITOR_TAB_PANE_ID,
-    path,
-  }
-
-  setEditorTabDragData(
-    dataTransfer,
-    EDITOR_TAB_DRAG_MIME,
-    JSON.stringify(payload)
-  )
-  setEditorTabDragData(dataTransfer, "text/plain", path)
-}
-
-function setEditorTabDragData(
-  dataTransfer: DataTransfer,
-  format: string,
-  value: string
-) {
-  try {
-    dataTransfer.setData(format, value)
-  } catch {
-    // Some browser/test shims reject custom MIME writes; text/plain remains a fallback.
-  }
-}
-
-function dropPayloadMatchesActiveTab(
-  dataTransfer: DataTransfer | null,
-  path: string
-) {
-  const result = readEditorTabDragPayload(dataTransfer)
-  if (result.status === "missing") return true
-  if (result.status === "invalid") return false
-
-  return result.payload.path === path
-}
-
-function readEditorTabDragPayload(
-  dataTransfer: DataTransfer | null
-):
-  | { status: "missing" }
-  | { status: "invalid" }
-  | { payload: EditorTabDragPayload; status: "valid" } {
-  if (!dataTransfer) return { status: "missing" }
-
-  const hasPayloadType = dataTransferHasType(dataTransfer, EDITOR_TAB_DRAG_MIME)
-  const raw = dataTransfer.getData(EDITOR_TAB_DRAG_MIME)
-  if (!raw)
-    return hasPayloadType ? { status: "invalid" } : { status: "missing" }
-
-  try {
-    const value: unknown = JSON.parse(raw)
-    if (!isEditorTabDragPayload(value)) return { status: "invalid" }
-
-    return { payload: value, status: "valid" }
-  } catch {
-    return { status: "invalid" }
-  }
-}
-
-function dataTransferHasType(dataTransfer: DataTransfer, type: string) {
-  return Array.from(dataTransfer.types).includes(type)
-}
-
-function isEditorTabDragPayload(value: unknown): value is EditorTabDragPayload {
-  if (!value || typeof value !== "object") return false
-
-  const payload = value as Partial<Record<keyof EditorTabDragPayload, unknown>>
-  return (
-    payload.kind === EDITOR_TAB_DRAG_KIND &&
-    payload.paneId === EDITOR_TAB_PANE_ID &&
-    typeof payload.path === "string" &&
-    payload.path.length > 0
-  )
-}
-
-function mountEditorTabDragImage(event: ReactDragEvent<HTMLElement>) {
-  const source = editorTabDragImageSource(event.currentTarget)
-  const rect = source.getBoundingClientRect()
-  const clone = source.cloneNode(true) as HTMLElement
-  clone.style.position = "fixed"
-  clone.style.top = "-1000px"
-  clone.style.left = "-1000px"
-  clone.style.width = `${rect.width}px`
-  clone.style.height = `${rect.height}px`
-  clone.style.pointerEvents = "none"
-  clone.style.opacity = "0.92"
-
-  document.body.appendChild(clone)
-  event.dataTransfer.setDragImage(
-    clone,
-    Math.max(0, event.clientX - rect.left),
-    Math.max(0, event.clientY - rect.top)
-  )
-
-  return () => clone.remove()
-}
-
-function editorTabDragImageSource(element: HTMLElement) {
-  return element.closest<HTMLElement>("[data-editor-tab-path]") ?? element
-}
-
-function editorTabInsertionEdge(
-  tabs: readonly EditorTabModel[],
-  tab: EditorTabModel,
-  dragState: EditorTabDragState | null
-): EditorTabInsertionEdge {
-  if (!dragState) return null
-  if (dragState.targetIndex === null) return null
-
-  const targets = tabs.filter((candidate) => candidate.path !== dragState.path)
-  if (targets.length === 0) return null
-
-  const targetIndex = boundedTabDropIndex(dragState.targetIndex, targets.length)
-  if (targetIndex === targets.length) {
-    return targets.at(-1)?.path === tab.path ? "after" : null
-  }
-
-  return targets[targetIndex]?.path === tab.path ? "before" : null
-}
-
-function boundedTabDropIndex(index: number, targetCount: number) {
-  if (!Number.isFinite(index)) return targetCount
-
-  return Math.min(targetCount, Math.max(0, Math.trunc(index)))
-}
-
 function tabDragClassName(
   insertionEdge: EditorTabInsertionEdge,
   dragged: boolean
@@ -1264,123 +827,12 @@ function tabDragClassName(
   )
 }
 
-function editorTabDragAutoScrollDelta(rect: DOMRect, clientX: number) {
-  if (clientX < rect.left + EDITOR_TAB_DRAG_AUTO_SCROLL_EDGE_PX) {
-    return -EDITOR_TAB_DRAG_AUTO_SCROLL_STEP_PX
-  }
-  if (clientX > rect.right - EDITOR_TAB_DRAG_AUTO_SCROLL_EDGE_PX) {
-    return EDITOR_TAB_DRAG_AUTO_SCROLL_STEP_PX
-  }
-
-  return 0
-}
-
-function cancelEditorTabDragAutoScroll(frameRef: { current: number | null }) {
-  if (frameRef.current === null) return
-
-  window.cancelAnimationFrame(frameRef.current)
-  frameRef.current = null
-}
-
-function isEditorTabDragBlockedTarget(target: EventTarget | null) {
-  if (!(target instanceof Element)) return false
-
-  return Boolean(target.closest("[data-editor-tab-drag-blocker]"))
-}
-
-function useChromeVisualTabs(
-  tabs: readonly EditorTabModel[],
-  enabled: boolean
-) {
-  const [state, setState] = useState<ChromeVisualTabsState>(() => ({
-    sourceTabs: tabs,
-    visualTabs: tabs.map(presentChromeVisualTab),
-  }))
-  let visualTabs = state.visualTabs
-  if (enabled && state.sourceTabs !== tabs) {
-    visualTabs = syncChromeVisualTabs(state.visualTabs, tabs)
-    setState({ sourceTabs: tabs, visualTabs })
-  }
-
-  const openingKey = chromeVisualTabPhaseKey(visualTabs, "opening")
-
-  useLayoutEffect(() => {
-    if (!enabled) return
-    if (!openingKey) return
-
-    const frame = requestAnimationFrame(() => {
-      setState((current) => ({
-        ...current,
-        visualTabs: openingChromeVisualTabs(current.visualTabs),
-      }))
-    })
-
-    return () => cancelAnimationFrame(frame)
-  }, [enabled, openingKey])
-
-  if (!enabled) return []
-
-  return visualTabs
-}
-
-function syncChromeVisualTabs(
-  current: readonly ChromeVisualTab[],
-  tabs: readonly EditorTabModel[]
-) {
-  if (current.length === 0) return tabs.map(presentChromeVisualTab)
-
-  const currentByPath = new Map(
-    current.map((visualTab) => [visualTab.tab.path, visualTab])
-  )
-  const next = tabs.map((tab) => {
-    const visualTab = currentByPath.get(tab.path)
-    if (!visualTab) return { phase: "opening" as const, tab }
-
-    return nextChromeVisualTab(visualTab, tab)
-  })
-
-  if (sameChromeVisualTabs(current, next)) return current
-
-  return next
-}
-
-function nextChromeVisualTab(
-  visualTab: ChromeVisualTab,
-  openTab: EditorTabModel
-): ChromeVisualTab {
-  if (visualTab.phase === "opening") return { phase: "opening", tab: openTab }
-
-  return { phase: "present", tab: openTab }
-}
-
-function presentChromeVisualTab(tab: EditorTabModel): ChromeVisualTab {
-  return { phase: "present", tab }
-}
-
-function openingChromeVisualTabs(current: readonly ChromeVisualTab[]) {
-  return current.map((visualTab) => {
-    if (visualTab.phase !== "opening") return visualTab
-
-    return { ...visualTab, phase: "present" as const }
-  })
-}
-
-function chromeVisualTabPhaseKey(
-  visualTabs: readonly ChromeVisualTab[],
-  phase: ChromeVisualTabPhase
-) {
-  return visualTabs
-    .filter((visualTab) => visualTab.phase === phase)
-    .map((visualTab) => visualTab.tab.path)
-    .join("\0")
-}
-
-function activeChromeTabPath(visualTabs: readonly ChromeVisualTab[]) {
+function activeChromeTabPath(visualTabs: readonly EditorChromeVisualTab[]) {
   return visualTabs.find((visualTab) => visualTab.tab.active)?.tab.path ?? null
 }
 
 function chromeTrailingSlotWidths(
-  visualTabs: readonly ChromeVisualTab[],
+  visualTabs: readonly EditorChromeVisualTab[],
   hoveredPath: string | null,
   focusedPath: string | null
 ) {
@@ -1397,7 +849,7 @@ function chromeTrailingSlotWidths(
 }
 
 function chromeVisualTabHoveredOrFocused(
-  visualTab: ChromeVisualTab,
+  visualTab: EditorChromeVisualTab,
   hoveredPath: string | null,
   focusedPath: string | null
 ) {
@@ -1477,7 +929,7 @@ function nextCloseModeSpacerWidth(
 }
 
 function chromeTabStyle(
-  visualTab: ChromeVisualTab,
+  visualTab: EditorChromeVisualTab,
   index: number,
   overlap: number,
   layoutWidth: number | null,
@@ -1502,31 +954,10 @@ function chromeTabStyle(
   } as CSSProperties
 }
 
-function closingOrOpeningTabWidth(visualTab: ChromeVisualTab) {
+function closingOrOpeningTabWidth(visualTab: EditorChromeVisualTab) {
   if (visualTab.phase === "opening") return CHROME_TAB_CLOSED_WIDTH
 
   return null
-}
-
-function sameChromeVisualTabs(
-  left: readonly ChromeVisualTab[],
-  right: readonly ChromeVisualTab[]
-) {
-  if (left.length !== right.length) return false
-
-  return left.every((visualTab, index) =>
-    sameChromeVisualTab(visualTab, right[index])
-  )
-}
-
-function sameChromeVisualTab(
-  left: ChromeVisualTab,
-  right: ChromeVisualTab | undefined
-) {
-  if (!right) return false
-  if (left.phase !== right.phase) return false
-
-  return sameEditorTabModel(left.tab, right.tab)
 }
 
 function sameEditorTabModel(left: EditorTabModel, right: EditorTabModel) {
