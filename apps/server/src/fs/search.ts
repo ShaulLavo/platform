@@ -1,42 +1,42 @@
-import { spawn } from "node:child_process"
-import { createReadStream } from "node:fs"
-import { readFile, readdir, stat } from "node:fs/promises"
+import { stat } from "node:fs/promises"
 import path from "node:path"
-import type { Readable } from "node:stream"
-import { FsError, mapNodeError } from "./errors"
-import {
-  defaultIgnoredNames,
-  isIgnoredPath,
-  toPosix,
-  type WorkspacePaths,
-} from "./path"
-import {
-  assertDirectory,
-  isDirectoryEntry,
-  isFileEntry,
-  matchesEntryType,
-  readEntryStats,
-  type FsEntryStats,
-} from "./stat"
-import type { EntryTypeFilter } from "./contracts"
+
 import {
   compareFuzzyRankedTargets,
   createWorkspaceSearchMatcher,
-  type WorkspaceSearchMatcher,
   type WorkspaceSearchDoneEvent,
-  type WorkspaceSearchMatch,
-  type WorkspaceSearchQuery,
 } from "@workspace/contracts"
 
-export const SEARCH_LINE_BUFFER_BYTES = 65_536
-const SEARCH_PREVIEW_CONTEXT_CHARS = 80
-const SEARCH_PREVIEW_MAX_CHARS = 240
+import { FsError, mapNodeError } from "./errors"
+import { defaultIgnoredNames, type WorkspacePaths } from "./path"
+import { searchWithFallback } from "./search-fallback"
+import { workspaceGitIgnoreMatcher } from "./search-gitignore"
+import { parseRgMatchLine, type RgMatchEvent } from "./search-rg-parser"
+import {
+  contentMatch,
+  globMatchPath,
+  isIgnoredSearchPath,
+  nameSearchMatches,
+  resultPath,
+  safeEntryStats,
+  searchMatchMetadata,
+  searchMatchMode,
+  shouldSearchContent,
+  shouldSearchNames,
+  type FindContext,
+  type FindMatch,
+  type FindOptions,
+} from "./search-shared"
+import { canUseSearchTools, runToolLines } from "./search-tool-runner"
+import {
+  assertDirectory,
+  isFileEntry,
+  matchesEntryType,
+} from "./stat"
+import type { EntryTypeFilter } from "./contracts"
 
-export type FindOptions = WorkspaceSearchQuery & {
-  maxContentBytes: number
-}
-
-export type FindMatch = WorkspaceSearchMatch
+export { SEARCH_LINE_BUFFER_BYTES } from "./search-line-decoder"
+export type { FindMatch, FindOptions } from "./search-shared"
 
 export type FindResult = {
   query: string
@@ -58,33 +58,10 @@ export type SearchProvider = {
   ): AsyncIterable<FindStreamEvent>
 }
 
-type FindContext = {
-  root: {
-    absolutePath: string
-    relativePath: string
-  }
-  query: string
-  matcher: WorkspaceSearchMatcher
-  options: FindOptions
-  gitIgnore: GitIgnoreMatcher
-}
-
 type SearchState = {
   count: number
   truncated: boolean
 }
-
-type GitIgnoreRule = {
-  anchored: boolean
-  negated: boolean
-  pattern: string
-}
-
-type GitIgnoreMatcher = {
-  ignores(relativePath: string): boolean
-}
-
-const commandAvailability = new Map<string, Promise<boolean>>()
 
 export class DiskWorkspaceSearchProvider implements SearchProvider {
   private paths: WorkspacePaths
@@ -208,26 +185,9 @@ async function* searchWithTools(
 }
 
 async function canUseTools(options: FindOptions) {
-  if (shouldSearchNames(options) && !(await commandExists("fd"))) return false
-  if (!shouldSearchContent(options)) return true
-
-  return commandExists("rg")
-}
-
-function commandExists(command: string) {
-  const existing = commandAvailability.get(command)
-  if (existing) return existing
-
-  const availability = checkCommand(command)
-  commandAvailability.set(command, availability)
-  return availability
-}
-
-function checkCommand(command: string) {
-  return new Promise<boolean>((resolve) => {
-    const child = spawn(command, ["--version"], { stdio: "ignore" })
-    child.once("error", () => resolve(false))
-    child.once("close", (code) => resolve(code === 0))
+  return canUseSearchTools({
+    content: shouldSearchContent(options),
+    names: shouldSearchNames(options),
   })
 }
 
@@ -353,10 +313,6 @@ function rgArgs(context: FindContext) {
   return args
 }
 
-function searchMatchMode(options: FindOptions) {
-  return options.matchMode ?? "literal"
-}
-
 function includeGlobArgs(globs: readonly string[] | undefined) {
   return expandedGlobArgs(globs, "")
 }
@@ -385,154 +341,10 @@ function ignoredDirectoryGlobArgs(name: string) {
   return [`!${name}`, `!${name}/**`, `!**/${name}`, `!**/${name}/**`]
 }
 
-async function workspaceGitIgnoreMatcher(
-  paths: WorkspacePaths
-): Promise<GitIgnoreMatcher> {
-  const rules = await workspaceGitIgnoreRules(paths.workspaceRoot)
-
-  return {
-    ignores(relativePath) {
-      return gitIgnoreRulesIgnorePath(rules, relativePath)
-    },
-  }
-}
-
-async function workspaceGitIgnoreRules(root: string) {
-  try {
-    const contents = await readFile(path.join(root, ".gitignore"), "utf8")
-    return contents.split(/\r?\n/u).flatMap(gitIgnoreRuleFromLine)
-  } catch (error) {
-    if (isMissingFileError(error)) return []
-    throw error
-  }
-}
-
-function isMissingFileError(error: unknown) {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  )
-}
-
-function gitIgnoreRuleFromLine(line: string): GitIgnoreRule[] {
-  const text = line.trim()
-  if (!text) return []
-  if (text.startsWith("#")) return []
-
-  const negated = text.startsWith("!")
-  const rawPattern = negated ? text.slice(1) : text
-  const pattern = gitIgnoreRulePattern(rawPattern)
-  if (!pattern) return []
-
-  return [
-    {
-      anchored: rawPattern.startsWith("/"),
-      negated,
-      pattern,
-    },
-  ]
-}
-
-function gitIgnoreRulePattern(pattern: string) {
-  const withoutAnchor = pattern.replace(/^\/+/u, "")
-  const withoutTrailingSlash = withoutAnchor.replace(/\/+$/u, "")
-  if (!withoutTrailingSlash) return null
-
-  return toPosix(withoutTrailingSlash)
-}
-
-function gitIgnoreRulesIgnorePath(
-  rules: readonly GitIgnoreRule[],
-  relativePath: string
-) {
-  const normalized = toPosix(relativePath).replace(/^\/+/u, "")
-  if (!normalized) return false
-
-  let ignored = false
-  for (const rule of rules) {
-    if (!gitIgnoreRuleMatches(rule, normalized)) continue
-    ignored = !rule.negated
-  }
-
-  return ignored
-}
-
-function gitIgnoreRuleMatches(rule: GitIgnoreRule, relativePath: string) {
-  if (rule.anchored || rule.pattern.includes("/")) {
-    return pathOrAncestorMatchesGlob(relativePath, rule.pattern)
-  }
-
-  return relativePath
-    .split("/")
-    .some((segment) => globPatternMatches(segment, rule.pattern))
-}
-
-function pathOrAncestorMatchesGlob(relativePath: string, pattern: string) {
-  const parts = relativePath.split("/")
-
-  for (let index = parts.length; index > 0; index -= 1) {
-    const candidate = parts.slice(0, index).join("/")
-    if (globPatternMatches(candidate, pattern)) return true
-  }
-
-  return false
-}
-
-function globPatternMatches(value: string, pattern: string) {
-  return new RegExp(`^${globToRegExp(pattern)}$`, "u").test(value)
-}
-
-function globToRegExp(pattern: string) {
-  let source = ""
-
-  for (let index = 0; index < pattern.length; index += 1) {
-    const character = pattern[index]
-    if (character === "*" && pattern[index + 1] === "*") {
-      source += ".*"
-      index += 1
-      continue
-    }
-    if (character === "*") {
-      source += "[^/]*"
-      continue
-    }
-    if (character === "?") {
-      source += "[^/]"
-      continue
-    }
-    source += escapeRegExp(character)
-  }
-
-  return source
-}
-
-function escapeRegExp(character: string) {
-  return /[\\^$.*+?()[\]{}|]/u.test(character) ? `\\${character}` : character
-}
-
-function isIgnoredSearchPath(context: FindContext, relativePath: string) {
-  if (!relativePath) return false
-  if (isIgnoredPath(relativePath)) return true
-
-  return context.gitIgnore.ignores(relativePath)
-}
-
 function fdType(entryType?: EntryTypeFilter) {
   if (entryType === "symlink") return "symlink"
 
   return null
-}
-
-function shouldSearchContent(options: FindOptions) {
-  if (!options.includeContent) return false
-  if (options.entryType && options.entryType !== "file") return false
-
-  return true
-}
-
-function shouldSearchNames(options: FindOptions) {
-  return options.includeNames !== false
 }
 
 async function nameMatchFromPath(
@@ -565,9 +377,8 @@ async function contentMatchesFromJson(
   context: FindContext,
   line: string
 ): Promise<FindMatch[]> {
-  const event = parseRgLine(line)
+  const event = parseRgMatchLine(line)
   if (!event) return []
-  if (!isRgMatchEvent(event)) return []
 
   return contentMatchesFromRgEvent(paths, context, event)
 }
@@ -624,520 +435,4 @@ function rgRelativePath(
     : path.join(context.root.absolutePath, input)
 
   return paths.toRelative(path.resolve(absolutePath))
-}
-
-function parseRgLine(line: string): RgEvent | null {
-  try {
-    return JSON.parse(line) as RgEvent
-  } catch {
-    return null
-  }
-}
-
-function isRgMatchEvent(event: RgEvent): event is RgMatchEvent {
-  if (event.type !== "match") return false
-  if (!event.data || typeof event.data !== "object") return false
-
-  return "path" in event.data && "lines" in event.data
-}
-
-async function* runToolLines(
-  command: string,
-  args: string[],
-  signal: AbortSignal | undefined,
-  successCodes: number[],
-  toleratedFailureCodes: readonly number[] = []
-): AsyncGenerator<string> {
-  const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] })
-  const exit = waitForExit(child)
-  const cleanup = attachAbort(signal, child)
-  const stderr = collectToolStderr(child)
-  let completed = false
-
-  try {
-    for await (const line of readLines(child.stdout)) yield line
-    completed = true
-  } finally {
-    cleanup()
-    if (!completed) child.kill()
-  }
-
-  const code = await exit
-  if (successCodes.includes(code)) return
-  if (signal?.aborted) return
-  if (toleratedFailureCodes.includes(code)) {
-    reportToolWarning(command, code, stderr())
-    return
-  }
-
-  throw new FsError(
-    "OPERATION_FAILED",
-    toolErrorMessage(command, code, stderr())
-  )
-}
-
-function collectToolStderr(child: ReturnType<typeof spawn>) {
-  let stderr = ""
-  child.stderr?.on("data", (chunk) => {
-    stderr = `${stderr}${String(chunk)}`.slice(-4_000)
-  })
-
-  return () => stderr.trim()
-}
-
-function reportToolWarning(command: string, code: number, stderr: string) {
-  const detail = stderr ? `: ${stderr}` : ""
-  console.warn(`[fs/search] ${command} exited with code ${code}${detail}`)
-}
-
-function toolErrorMessage(command: string, code: number, stderr: string) {
-  if (!stderr) return `${command} exited with code ${code}`
-
-  return `${command} exited with code ${code}: ${stderr}`
-}
-
-function attachAbort(
-  signal: AbortSignal | undefined,
-  child: ReturnType<typeof spawn>
-) {
-  if (!signal) return () => {}
-
-  const abort = () => child.kill()
-  signal.addEventListener("abort", abort, { once: true })
-  return () => signal.removeEventListener("abort", abort)
-}
-
-function waitForExit(child: ReturnType<typeof spawn>) {
-  return new Promise<number>((resolve, reject) => {
-    child.once("error", reject)
-    child.once("close", (code) => resolve(code ?? 0))
-  })
-}
-
-async function* readLines(
-  stream: NodeJS.ReadableStream | null
-): AsyncGenerator<string> {
-  if (!stream) return
-
-  let buffered = ""
-  for await (const chunk of stream) {
-    const lines = (buffered + String(chunk)).split(/\r?\n/)
-    buffered = lines.pop() ?? ""
-    for (const line of lines) yield line
-  }
-
-  if (buffered) yield buffered
-}
-
-async function* searchWithFallback(context: FindContext) {
-  const matches: FindMatch[] = []
-  await searchDirectory(
-    context.root.absolutePath,
-    context.root.relativePath,
-    context,
-    context.options,
-    matches,
-    1
-  )
-
-  for (const match of matches) yield match
-}
-
-async function searchDirectory(
-  absoluteDirectory: string,
-  relativeDirectory: string,
-  context: FindContext,
-  options: FindOptions,
-  matches: FindMatch[],
-  depth: number
-) {
-  if (matches.length >= options.limit) return
-
-  const dirents = await readdir(absoluteDirectory, { withFileTypes: true })
-  for (const dirent of sortedDirents(dirents)) {
-    if (matches.length >= options.limit) return
-    await searchEntry(
-      absoluteDirectory,
-      relativeDirectory,
-      dirent.name,
-      context,
-      options,
-      matches,
-      depth
-    )
-  }
-}
-
-function sortedDirents<T extends { name: string }>(dirents: T[]) {
-  return dirents.sort((left, right) => left.name.localeCompare(right.name))
-}
-
-async function searchEntry(
-  absoluteDirectory: string,
-  relativeDirectory: string,
-  name: string,
-  context: FindContext,
-  options: FindOptions,
-  matches: FindMatch[],
-  depth: number
-) {
-  const relativePath = joinRelative(relativeDirectory, name)
-  if (isIgnoredSearchPath(context, relativePath)) return
-
-  const absolutePath = path.join(absoluteDirectory, name)
-  const entryStats = await safeEntryStats(absolutePath)
-  if (!entryStats) return
-
-  if (shouldSearchNames(options)) {
-    addNameMatch(
-      relativePath,
-      name,
-      entryStats,
-      context,
-      matches,
-      options.entryType
-    )
-  }
-  if (isDirectoryEntry(entryStats)) {
-    if (!canSearchChildren(depth, options.maxDepth)) return
-    await searchDirectory(
-      absolutePath,
-      relativePath,
-      context,
-      options,
-      matches,
-      depth + 1
-    )
-    return
-  }
-
-  if (!matchesEntryType(entryStats, options.entryType)) return
-  if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return
-  if (!options.includeContent) return
-  if (!isFileEntry(entryStats)) return
-  if (entryStats.targetStats.size > options.maxContentBytes) return
-
-  await addContentMatch(
-    absolutePath,
-    relativePath,
-    entryStats,
-    context,
-    matches,
-    options.limit,
-    options.maxContentBytes
-  )
-}
-
-function canSearchChildren(depth: number, maxDepth?: number) {
-  if (maxDepth === undefined) return true
-
-  return depth < maxDepth
-}
-
-function addNameMatch(
-  relativePath: string,
-  name: string,
-  entry: FsEntryStats,
-  context: FindContext,
-  matches: FindMatch[],
-  entryType?: EntryTypeFilter
-) {
-  if (!matchesEntryType(entry, entryType)) return
-  if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return
-  if (!nameSearchMatches(context, relativePath, name)) return
-
-  matches.push({
-    ...searchMatchMetadata(entry),
-    kind: "name",
-    path: relativePath,
-    source: "disk",
-    targetType: entry.targetType,
-    type: entry.type,
-  })
-}
-
-function nameSearchMatches(
-  context: FindContext,
-  relativePath: string,
-  name = path.basename(relativePath)
-) {
-  if (context.matcher.lineMatches(name).length > 0) return true
-
-  return (
-    context.matcher.lineMatches(globMatchPath(context, relativePath)).length > 0
-  )
-}
-
-async function addContentMatch(
-  absolutePath: string,
-  relativePath: string,
-  entry: FsEntryStats,
-  context: FindContext,
-  matches: FindMatch[],
-  limit: number,
-  maxContentBytes: number
-) {
-  const stream = createReadStream(absolutePath, {
-    highWaterMark: SEARCH_LINE_BUFFER_BYTES,
-  })
-  let bytesRead = 0
-  let lineIndex = 0
-
-  try {
-    for await (const line of streamLines(stream, SEARCH_LINE_BUFFER_BYTES)) {
-      bytesRead += line.byteLength + line.terminatorLength
-      if (bytesRead > maxContentBytes) break
-
-      addLineMatch(
-        relativePath,
-        entry,
-        line.text,
-        lineIndex,
-        context.matcher,
-        matches,
-        limit
-      )
-      lineIndex += 1
-
-      if (matches.length >= limit) break
-    }
-  } catch (error) {
-    reportSearchContentError(relativePath, error)
-  } finally {
-    stream.destroy()
-  }
-}
-
-function reportSearchContentError(relativePath: string, error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
-  console.error(`[fs/search] skipped ${relativePath}: ${message}`)
-}
-
-type StreamedLine = {
-  text: string
-  byteLength: number
-  terminatorLength: number
-}
-
-const LINE_FEED = 0x0a
-const CARRIAGE_RETURN = 0x0d
-
-async function* streamLines(
-  stream: Readable,
-  maxLineBytes: number
-): AsyncGenerator<StreamedLine> {
-  const decoder = new TextDecoder("utf-8")
-  let pending: Buffer = Buffer.alloc(0)
-
-  for await (const chunk of stream) {
-    let remaining = chunk as Buffer
-
-    while (remaining.length > 0) {
-      const lfIndex = remaining.indexOf(LINE_FEED)
-
-      if (lfIndex === -1) {
-        const room = maxLineBytes - pending.length
-
-        if (remaining.length <= room) {
-          pending =
-            pending.length === 0
-              ? remaining
-              : Buffer.concat([pending, remaining])
-          break
-        }
-
-        if (room > 0) {
-          pending =
-            pending.length === 0
-              ? remaining.subarray(0, room)
-              : Buffer.concat([pending, remaining.subarray(0, room)])
-        }
-
-        yield {
-          text: decoder.decode(pending),
-          byteLength: pending.length,
-          terminatorLength: 0,
-        }
-        pending = Buffer.alloc(0)
-        remaining = remaining.subarray(room)
-        continue
-      }
-
-      const hasPendingCr =
-        lfIndex === 0 &&
-        pending.length > 0 &&
-        pending[pending.length - 1] === CARRIAGE_RETURN
-      const hasChunkCr =
-        lfIndex > 0 && remaining[lfIndex - 1] === CARRIAGE_RETURN
-
-      let lineBytes: Buffer
-      if (hasChunkCr) {
-        lineBytes =
-          pending.length === 0
-            ? remaining.subarray(0, lfIndex - 1)
-            : Buffer.concat([pending, remaining.subarray(0, lfIndex - 1)])
-      } else if (hasPendingCr) {
-        lineBytes = pending.subarray(0, pending.length - 1)
-      } else {
-        lineBytes =
-          pending.length === 0
-            ? remaining.subarray(0, lfIndex)
-            : Buffer.concat([pending, remaining.subarray(0, lfIndex)])
-      }
-
-      yield {
-        text: decoder.decode(lineBytes),
-        byteLength: lineBytes.length,
-        terminatorLength: hasChunkCr || hasPendingCr ? 2 : 1,
-      }
-
-      pending = Buffer.alloc(0)
-      remaining = remaining.subarray(lfIndex + 1)
-    }
-  }
-
-  if (pending.length > 0) {
-    yield {
-      text: decoder.decode(pending),
-      byteLength: pending.length,
-      terminatorLength: 0,
-    }
-  }
-}
-
-function addLineMatch(
-  relativePath: string,
-  entry: FsEntryStats,
-  line: string,
-  index: number,
-  matcher: WorkspaceSearchMatcher,
-  matches: FindMatch[],
-  limit: number
-) {
-  for (const match of matcher.lineMatches(line)) {
-    if (matches.length >= limit) return
-    matches.push(
-      contentMatch({
-        columnIndex: match.start,
-        endColumnIndex: match.end,
-        entry,
-        line,
-        lineNumber: index + 1,
-        relativePath,
-      })
-    )
-  }
-}
-
-function contentMatch({
-  columnIndex,
-  endColumnIndex,
-  entry,
-  line,
-  lineNumber,
-  relativePath,
-}: {
-  columnIndex: number
-  endColumnIndex: number
-  entry: FsEntryStats
-  line: string
-  lineNumber: number
-  relativePath: string
-}): FindMatch {
-  const preview = searchPreview(searchContentLineText(line), columnIndex)
-
-  return {
-    ...searchMatchMetadata(entry),
-    column: columnIndex + 1,
-    endColumn: endColumnIndex + 1,
-    kind: "content",
-    line: lineNumber,
-    path: relativePath,
-    preview: preview.text,
-    previewStartColumn: preview.startColumn,
-    source: "disk",
-    targetType: entry.targetType,
-    type: entry.type,
-  }
-}
-
-function searchMatchMetadata(entry: FsEntryStats) {
-  return {
-    birthtimeMs: Number(entry.targetStats.birthtimeMs),
-    mtimeMs: Number(entry.targetStats.mtimeMs),
-    size: Number(entry.targetStats.size),
-  }
-}
-
-function searchContentLineText(line: string) {
-  return line.replace(/(?:\r\n|\r|\n)$/u, "")
-}
-
-function searchPreview(line: string, columnIndex: number) {
-  if (line.length <= SEARCH_PREVIEW_MAX_CHARS) {
-    return { startColumn: 0, text: line }
-  }
-
-  const latestStart = Math.max(0, line.length - SEARCH_PREVIEW_MAX_CHARS)
-  const preferredStart = Math.max(0, columnIndex - SEARCH_PREVIEW_CONTEXT_CHARS)
-  const startColumn = Math.min(preferredStart, latestStart)
-
-  return {
-    startColumn,
-    text: line.slice(startColumn, startColumn + SEARCH_PREVIEW_MAX_CHARS),
-  }
-}
-
-async function safeEntryStats(absolutePath: string) {
-  try {
-    return await readEntryStats(absolutePath)
-  } catch {
-    return null
-  }
-}
-
-function joinRelative(parent: string, child: string) {
-  if (!parent) return child
-  return toPosix(path.join(parent, child))
-}
-
-function resultPath(rootRelativePath: string, output: string) {
-  const cleanOutput = output.replace(/^\.\//, "").replace(/\/$/, "")
-  if (!rootRelativePath) return toPosix(cleanOutput)
-
-  return toPosix(path.join(rootRelativePath, cleanOutput))
-}
-
-function globMatchPath(context: FindContext, relativePath: string) {
-  if (!context.root.relativePath) return relativePath
-  if (relativePath === context.root.relativePath) return ""
-
-  const prefix = `${context.root.relativePath}/`
-  if (!relativePath.startsWith(prefix)) return relativePath
-
-  return relativePath.slice(prefix.length)
-}
-
-type RgEvent =
-  | RgMatchEvent
-  | {
-      type: string
-      data?: unknown
-    }
-
-type RgMatchEvent = {
-  type: "match"
-  data: {
-    path: {
-      text: string
-    }
-    lines: {
-      text: string
-    }
-    line_number: number
-    submatches: Array<{
-      end: number
-      start: number
-    }>
-  }
 }

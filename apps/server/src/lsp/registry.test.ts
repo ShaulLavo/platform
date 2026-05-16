@@ -3,12 +3,18 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "bun:test"
 
+import {
+  pinnedLspRuntimeManifest,
+  type PinnedLspRuntimeManifestEntry,
+} from "./installer-manifest"
 import { lspServersForEnvironment, matchLspServer } from "./registry"
 
 const roots: string[] = []
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
+  )
 })
 
 describe("LSP server registry", () => {
@@ -17,48 +23,52 @@ describe("LSP server registry", () => {
       .map((server) => server.id)
       .toSorted()
 
-    expect(ids).toEqual([
-      "astro",
-      "bash",
-      "biome",
-      "clangd",
-      "clojure-lsp",
-      "csharp",
-      "dart",
-      "deno",
-      "dockerfile",
-      "elixir-ls",
-      "eslint",
-      "fsharp",
-      "gleam",
-      "gopls",
-      "haskell-language-server",
-      "jdtls",
-      "julials",
-      "kotlin-ls",
-      "lua-ls",
-      "nixd",
-      "ocaml-lsp",
-      "oxlint",
-      "php intelephense",
-      "prisma",
-      "pyright",
-      "ruby-lsp",
-      "rust",
-      "sourcekit-lsp",
-      "svelte",
-      "terraform",
-      "texlab",
-      "tinymist",
-      "typescript",
-      "vue",
-      "yaml-ls",
-      "zls",
-    ].toSorted())
+    expect(ids).toEqual(
+      [
+        "astro",
+        "bash",
+        "biome",
+        "clangd",
+        "clojure-lsp",
+        "csharp",
+        "dart",
+        "deno",
+        "dockerfile",
+        "elixir-ls",
+        "eslint",
+        "fsharp",
+        "gleam",
+        "gopls",
+        "haskell-language-server",
+        "jdtls",
+        "julials",
+        "kotlin-ls",
+        "lua-ls",
+        "nixd",
+        "ocaml-lsp",
+        "oxlint",
+        "php intelephense",
+        "prisma",
+        "pyright",
+        "ruby-lsp",
+        "rust",
+        "sourcekit-lsp",
+        "svelte",
+        "terraform",
+        "texlab",
+        "tinymist",
+        "typescript",
+        "vue",
+        "yaml-ls",
+        "zls",
+      ].toSorted()
+    )
   })
 
   it("switches python support to ty when enabled", () => {
-    const ids = lspServersForEnvironment({ FS_EXPERIMENTAL_LSP_TY: "true" }).map((server) => server.id)
+    const ids = lspServersForEnvironment({
+      FS_EXPERIMENTAL_LSP_TY: "true",
+    }).map((server) => server.id)
 
     expect(ids).toContain("ty")
     expect(ids).not.toContain("pyright")
@@ -131,6 +141,24 @@ describe("LSP server registry", () => {
         id: "custom-lsp",
       })
     )
+  })
+
+  it("pins runtime release downloads with checksums", () => {
+    const manifest: Record<string, PinnedLspRuntimeManifestEntry> =
+      pinnedLspRuntimeManifest
+    for (const entry of Object.values(manifest)) {
+      for (const platform of Object.values(entry.platforms)) {
+        if (!platform) continue
+
+        for (const asset of Object.values(platform)) {
+          if (!asset) continue
+
+          expect(asset.url).toContain(`/releases/download/${entry.version}/`)
+          expect(asset.url).not.toContain("/latest")
+          expect(asset.sha256).toMatch(/^[a-f0-9]{64}$/u)
+        }
+      }
+    }
   })
 })
 

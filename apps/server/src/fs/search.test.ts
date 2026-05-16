@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import { Readable } from "node:stream"
 import { afterEach, describe, expect, it, mock } from "bun:test"
 
 import {
@@ -9,6 +10,7 @@ import {
   findInWorkspaceStream,
 } from "./search"
 import { createWorkspacePaths } from "./path"
+import { readLines } from "./search-line-decoder"
 
 const roots: string[] = []
 
@@ -499,6 +501,21 @@ describe("workspace disk search provider", () => {
     )
 
     expect(events).toEqual([])
+  })
+})
+
+describe("search line decoder", () => {
+  it("preserves utf-8 characters split across stream chunks", async () => {
+    const bytes = Buffer.from("café\nemoji 😀\n")
+    const chunks = [
+      bytes.subarray(0, 4),
+      bytes.subarray(4, 13),
+      bytes.subarray(13),
+    ]
+
+    const lines = await collectEvents(readLines(Readable.from(chunks)))
+
+    expect(lines).toEqual(["café", "emoji 😀"])
   })
 })
 
