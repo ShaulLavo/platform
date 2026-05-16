@@ -9,7 +9,6 @@ import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
 import type {
-  WorkspaceSearchMatch,
   WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
 } from "@workspace/contracts"
@@ -86,7 +85,6 @@ export type CachedSearchBufferState = {
   filtersVisible: boolean
   includeGlobText: string
   matchMode: WorkspaceSearchMatchMode
-  matches: WorkspaceSearchMatch[]
   query: string
   queryHistory: string[]
   replaceHistory: string[]
@@ -137,25 +135,6 @@ const workspaceSearchMatchModeSchema = v.union([
   v.literal("literal"),
   v.literal("regex"),
 ])
-const workspaceSearchSourceSchema = v.union([
-  v.literal("disk"),
-  v.literal("open-buffer"),
-])
-const workspaceSearchMatchSchema = v.object({
-  birthtimeMs: v.optional(v.number()),
-  column: v.optional(v.number()),
-  endColumn: v.optional(v.number()),
-  kind: v.union([v.literal("name"), v.literal("content")]),
-  line: v.optional(v.number()),
-  mtimeMs: v.optional(v.number()),
-  path: v.string(),
-  preview: v.optional(v.string()),
-  previewStartColumn: v.optional(v.number()),
-  size: v.optional(v.number()),
-  source: workspaceSearchSourceSchema,
-  targetType: v.optional(entryTypeSchema),
-  type: entryTypeSchema,
-})
 const workspaceSearchQuerySchema = v.object({
   caseSensitive: v.optional(v.boolean()),
   entryType: v.optional(entryTypeSchema),
@@ -170,7 +149,7 @@ const workspaceSearchQuerySchema = v.object({
   query: v.string(),
   wholeWord: v.optional(v.boolean()),
 })
-const cachedSearchBufferStateSchema = v.object({
+const cachedSearchBufferStateSchema = v.strictObject({
   activeResultId: selectedFilePathSchema,
   caseSensitive: v.boolean(),
   collapsedPaths: v.array(v.string()),
@@ -178,7 +157,6 @@ const cachedSearchBufferStateSchema = v.object({
   filtersVisible: v.boolean(),
   includeGlobText: v.string(),
   matchMode: workspaceSearchMatchModeSchema,
-  matches: v.array(workspaceSearchMatchSchema),
   query: v.string(),
   queryHistory: v.array(v.string()),
   replaceHistory: v.array(v.string()),

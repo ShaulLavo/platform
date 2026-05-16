@@ -4,14 +4,11 @@ import { useDirtyTabCloseRequest } from "@/features/editor/hooks/use-dirty-tab-c
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { EditorStateProvider } from "@/features/editor/editor-state-provider"
-import {
-  cachedSearchBufferState,
-  useSearchBufferState,
-} from "@/features/search/search-buffer-state"
 import { FilePickerDialog } from "@/components/file-picker-dialog"
 import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { useOpenTabCache } from "@/hooks/use-open-tab-cache"
+import { useWorkspaceCachePersistence } from "@/hooks/use-workspace-cache-persistence"
 import { WorkspaceView } from "@/components/workspace/workspace-view"
 import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
@@ -23,9 +20,8 @@ import {
   usePlatformCommandDispatch,
 } from "@/keymap"
 import type { PickedFsEntry } from "@/lib/file-system-types"
-import { writeWorkspaceCache } from "@/lib/workspace-cache"
 import { HotkeysProvider } from "@tanstack/react-hotkeys"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 
 export function App() {
   return (
@@ -47,20 +43,6 @@ function AppContent() {
   const selectedFilePath = useEditorWorkspaceState(
     (state) => state.selectedFilePath
   )
-  const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
-  const editorHistory = useEditorWorkspaceState((state) => state.editorHistory)
-  const gitPanelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
-  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
-  const recentlyClosedEditorPaths = useEditorWorkspaceState(
-    (state) => state.recentlyClosedEditorPaths
-  )
-  const sidebarVisible = useEditorWorkspaceState(
-    (state) => state.sidebarVisible
-  )
-  const workspacePanelTab = useEditorWorkspaceState(
-    (state) => state.workspacePanelTab
-  )
-  const activeSearchBuffer = useSearchBufferState((state) => state.active)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
   const { pickRootFolder } = useEditorCommands()
@@ -74,10 +56,6 @@ function AppContent() {
   const { dirtyTabCloseDialog, requestCloseTab, requestCloseTabs } =
     useDirtyTabCloseRequest()
   const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
-  const searchBuffer = useMemo(
-    () => cachedSearchBufferState(activeSearchBuffer),
-    [activeSearchBuffer]
-  )
   const editorKeymapLayers = useMemo(
     () => editorKeymapLayersFromPlatform(keymapBindings),
     [keymapBindings]
@@ -96,33 +74,8 @@ function AppContent() {
     focusedPane: activeArea,
   })
   useOpenTabCache()
+  useWorkspaceCachePersistence()
   useWorkspaceEvents(rootFolder)
-
-  useEffect(() => {
-    writeWorkspaceCache({
-      openFilePaths,
-      diffViewMode,
-      editorHistory,
-      gitPanelOpen,
-      recentlyClosedEditorPaths,
-      rootFolder,
-      searchBuffer,
-      selectedFilePath,
-      sidebarVisible,
-      workspacePanelTab,
-    })
-  }, [
-    diffViewMode,
-    editorHistory,
-    gitPanelOpen,
-    openFilePaths,
-    recentlyClosedEditorPaths,
-    rootFolder,
-    searchBuffer,
-    selectedFilePath,
-    sidebarVisible,
-    workspacePanelTab,
-  ])
 
   function handlePick(entry: PickedFsEntry) {
     resetFileLoad()

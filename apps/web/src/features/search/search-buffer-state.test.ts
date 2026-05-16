@@ -61,7 +61,7 @@ describe("search buffer store", () => {
     ])
   })
 
-  it("hydrates a cached search buffer snapshot", () => {
+  it("hydrates cached search buffer metadata", () => {
     const store = createSearchBufferStore()
     const runId = store.getState().startSearch({
       caseSensitive: true,
@@ -86,6 +86,7 @@ describe("search buffer store", () => {
     const cached = cachedSearchBufferState(store.getState().active)
     const restored = createSearchBufferStore(cached)
 
+    expect(cached && "matches" in cached).toBe(false)
     expect(restored.getState().active).toMatchObject({
       caseSensitive: true,
       excludeGlobText: "*.test.ts",
@@ -96,17 +97,11 @@ describe("search buffer store", () => {
       replaceText: "pin",
       replaceVisible: true,
       resultsQuery: "needle",
-      status: "ready",
+      status: "loading",
       totalCount: 2,
       wholeWord: true,
     })
-    expect(searchGroupsForSnapshot(restored.getState().active)).toEqual([
-      expect.objectContaining({
-        collapsed: true,
-        count: 2,
-        path: "repo/src/app.ts",
-      }),
-    ])
+    expect(searchGroupsForSnapshot(restored.getState().active)).toEqual([])
   })
 
   it("sorts file groups with VS Code-style path and filename ordering", () => {

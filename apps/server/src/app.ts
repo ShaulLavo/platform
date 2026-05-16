@@ -55,7 +55,9 @@ export type AppOptions = FileSystemServiceOptions & {
 
 export function createApp(options: AppOptions) {
   const fs = new FileSystemService(options)
-  const git = new GitService(fs.paths)
+  const git = new GitService(fs.paths, {
+    maxTextFileBytes: fs.info().maxTextFileBytes,
+  })
   const terminal = new TerminalService({
     paths: fs.paths,
     ...options.terminal,

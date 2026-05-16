@@ -252,26 +252,45 @@ export function cachedSearchBufferState(
 ): CachedSearchBufferState | null {
   if (!snapshot) return null
 
+  const resultMetadata = cachedSearchResultMetadata(snapshot)
+
   return {
-    activeResultId: snapshot.activeResultId,
+    activeResultId: null,
     caseSensitive: snapshot.caseSensitive,
     collapsedPaths: [...snapshot.collapsedPaths],
     excludeGlobText: snapshot.excludeGlobText,
     filtersVisible: snapshot.filtersVisible,
     includeGlobText: snapshot.includeGlobText,
     matchMode: snapshot.matchMode,
-    matches: [...snapshot.matches],
     query: snapshot.query,
     queryHistory: [...snapshot.queryHistory],
     replaceHistory: [...snapshot.replaceHistory],
     replaceText: snapshot.replaceText,
     replaceVisible: snapshot.replaceVisible,
+    resultsQuery: resultMetadata.resultsQuery,
+    resultsSearchQuery: resultMetadata.resultsSearchQuery,
+    rootPath: snapshot.rootPath,
+    totalCount: resultMetadata.totalCount,
+    truncated: resultMetadata.truncated,
+    wholeWord: snapshot.wholeWord,
+  }
+}
+
+function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
+  if (snapshot.status !== "ready") {
+    return {
+      resultsQuery: "",
+      resultsSearchQuery: null,
+      totalCount: 0,
+      truncated: false,
+    }
+  }
+
+  return {
     resultsQuery: snapshot.resultsQuery,
     resultsSearchQuery: snapshot.resultsSearchQuery,
-    rootPath: snapshot.rootPath,
     totalCount: snapshot.totalCount,
     truncated: snapshot.truncated,
-    wholeWord: snapshot.wholeWord,
   }
 }
 
@@ -280,25 +299,18 @@ function searchBufferSnapshotFromCache(
 ): SearchBufferSnapshot | null {
   if (!cached) return null
 
-  const groups = groupSearchMatches(
-    cached.matches,
-    cached.rootPath,
-    cached.collapsedPaths
-  )
-  const collapsedPaths = prunedCollapsedPaths(cached.collapsedPaths, groups)
-
   return resolveActiveSearchResult({
     activeResultId: cached.activeResultId,
     caseSensitive: cached.caseSensitive,
-    collapsedPaths,
+    collapsedPaths: cached.collapsedPaths,
     error: null,
     excludeGlobText: cached.excludeGlobText,
     filtersVisible: cached.filtersVisible,
-    groups: searchGroupsWithCollapsedPaths(groups, collapsedPaths),
+    groups: EMPTY_SEARCH_GROUPS,
     id: searchBufferDocumentId(cached.rootPath),
     includeGlobText: cached.includeGlobText,
     matchMode: cached.matchMode,
-    matches: cached.matches,
+    matches: [],
     query: cached.query,
     queryHistory: cached.queryHistory,
     queryHistoryCursor: null,
@@ -319,12 +331,20 @@ function searchBufferSnapshotFromCache(
     runningSearchQuery: null,
     runId: 0,
     searchRevision: 0,
-    status: cached.query ? "ready" : "idle",
+    status: cachedSearchBufferStatus(cached),
     streamBaseMatches: [],
     totalCount: cached.totalCount,
     truncated: cached.truncated,
     wholeWord: cached.wholeWord,
   })
+}
+
+function cachedSearchBufferStatus(cached: CachedSearchBufferState) {
+  if (!cached.query) return "idle"
+  if (!cached.resultsQuery) return "loading"
+  if (cached.totalCount > 0) return "loading"
+
+  return "ready"
 }
 
 function optionSearchBuffer(

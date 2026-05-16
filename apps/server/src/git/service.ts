@@ -1,5 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { FsError } from "../fs/errors"
 import type { WorkspacePaths } from "../fs/path"
@@ -52,11 +51,29 @@ export type {
 
 type GitRepositoryLocation = Omit<GitRepository, "info">
 
+type GitServiceOptions = {
+  diffConcurrency?: number
+  maxTextFileBytes?: number
+}
+
+const DEFAULT_DIFF_CONCURRENCY = 4
+const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
+
 export class GitService {
   private readonly paths: WorkspacePaths
+  private readonly diffConcurrency: number
+  private readonly maxTextFileBytes: number
 
-  constructor(paths: WorkspacePaths) {
+  constructor(paths: WorkspacePaths, options: GitServiceOptions = {}) {
     this.paths = paths
+    this.diffConcurrency = positiveInteger(
+      options.diffConcurrency,
+      DEFAULT_DIFF_CONCURRENCY
+    )
+    this.maxTextFileBytes = positiveInteger(
+      options.maxTextFileBytes,
+      DEFAULT_MAX_TEXT_FILE_BYTES
+    )
   }
 
   async repo(input = "") {
@@ -104,8 +121,8 @@ export class GitService {
       result.stdout || staged
         ? parseDiff(result.stdout, repository.rootPath, staged)
         : await this.untrackedDiffs(repository)
-    return Promise.all(
-      diffs.map((diff) => this.withDiffContent(repository, diff))
+    return mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
+      this.withDiffSnapshotRefs(repository, diff)
     )
   }
 
@@ -114,20 +131,7 @@ export class GitService {
       query.path || query.oldPath || ""
     )
     const oldPath = query.oldPath ?? query.path
-    const [oldText, newText] = await Promise.all([
-      query.oldObjectId
-        ? this.gitObjectText(repository, query.oldObjectId)
-        : "",
-      query.newObjectId
-        ? this.gitObjectText(repository, query.newObjectId)
-        : "",
-    ])
-    const rawPatch = await this.textPatch(repository, {
-      newObjectId: query.newObjectId,
-      newText,
-      oldObjectId: query.oldObjectId,
-      oldText,
-    })
+    const rawPatch = await this.blobPatch(repository, query)
     const patch = rewriteBlobPatchPaths(rawPatch, {
       newObjectId: query.newObjectId,
       oldObjectId: query.oldObjectId,
@@ -136,13 +140,9 @@ export class GitService {
     })
     const diffs = parseDiff(patch, repository.rootPath, false)
 
-    return diffs.map((diff) => ({
-      ...diff,
-      newObjectId: query.newObjectId,
-      newText,
-      oldObjectId: query.oldObjectId,
-      oldText,
-    }))
+    return mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
+      this.withBlobDiffContent(repository, diff, query)
+    )
   }
 
   async file(input: string, ref: string) {
@@ -404,23 +404,61 @@ export class GitService {
     ].filter((pathspec) => pathspec.length > 0)
   }
 
-  private async withDiffContent(
+  private async withDiffSnapshotRefs(
     repository: GitRepositoryLocation,
     diff: GitFileDiff
   ): Promise<GitFileDiff> {
-    const [oldObjectId, newObjectId, oldText, newText] = await Promise.all([
+    if (isBinaryDiff(diff)) return diff
+    if (await this.isDiffTooLarge(repository, diff)) return diff
+
+    const [oldObjectId, newObjectId] = await Promise.all([
       this.diffSideObjectId(repository, diff, "old"),
       this.diffSideObjectId(repository, diff, "new"),
-      this.diffSideContent(repository, diff, "old"),
-      this.diffSideContent(repository, diff, "new"),
     ])
 
     return {
       ...diff,
       newObjectId: newObjectId ?? undefined,
-      newText,
       oldObjectId: oldObjectId ?? undefined,
+    }
+  }
+
+  private async withBlobDiffContent(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff,
+    query: GitBlobDiffQuery
+  ): Promise<GitFileDiff> {
+    if (isBinaryDiff(diff)) return this.withBlobObjectIds(diff, query)
+    if (await this.isBlobDiffTooLarge(repository, query)) {
+      return this.withBlobObjectIds(diff, query)
+    }
+
+    const [oldText, newText] = await Promise.all([
+      query.oldObjectId
+        ? this.gitObjectText(repository, query.oldObjectId)
+        : "",
+      query.newObjectId
+        ? this.gitObjectText(repository, query.newObjectId)
+        : "",
+    ])
+
+    return {
+      ...diff,
+      newObjectId: query.newObjectId,
+      newText,
+      oldObjectId: query.oldObjectId,
       oldText,
+    }
+  }
+
+  private withBlobObjectIds(
+    diff: GitFileDiff,
+    query: GitBlobDiffQuery
+  ): GitFileDiff {
+    return {
+      ...diff,
+      newObjectId: query.newObjectId,
+      oldObjectId: query.oldObjectId,
     }
   }
 
@@ -430,8 +468,15 @@ export class GitService {
     if (!repository.pathspec) return []
 
     const files = await this.untrackedFiles(repository)
-    const outputs = await Promise.all(
-      files.map((file) => this.noIndexDiff(repository, file))
+    const diffableFiles = await mapWithConcurrency(
+      files,
+      this.diffConcurrency,
+      async (file) => this.diffableUntrackedFile(repository, file)
+    )
+    const outputs = await mapWithConcurrency(
+      diffableFiles.filter(isString),
+      this.diffConcurrency,
+      async (file) => this.noIndexDiff(repository, file)
     )
 
     return outputs.flatMap((output) =>
@@ -452,6 +497,17 @@ export class GitService {
     ])
 
     return result.stdout.split("\0").filter(Boolean)
+  }
+
+  private async diffableUntrackedFile(
+    repository: GitRepositoryLocation,
+    pathspec: string
+  ) {
+    const size = await this.workingTreeSize(repository, pathspec)
+    if (size === null) return null
+    if (size > this.maxTextFileBytes) return null
+
+    return pathspec
   }
 
   private async noIndexDiff(
@@ -479,16 +535,6 @@ export class GitService {
     throw new FsError("GIT_COMMAND_FAILED", gitErrorMessage(result))
   }
 
-  private async diffSideContent(
-    repository: GitRepositoryLocation,
-    diff: GitFileDiff,
-    side: "old" | "new"
-  ) {
-    if (side === "old") return this.oldDiffContent(repository, diff)
-
-    return this.newDiffContent(repository, diff)
-  }
-
   private async diffSideObjectId(
     repository: GitRepositoryLocation,
     diff: GitFileDiff,
@@ -497,21 +543,6 @@ export class GitService {
     if (side === "old") return this.oldDiffObjectId(repository, diff)
 
     return this.newDiffObjectId(repository, diff)
-  }
-
-  private async oldDiffContent(
-    repository: GitRepositoryLocation,
-    diff: GitFileDiff
-  ) {
-    const path = repositoryRelativePath(
-      repository.rootPath,
-      diff.oldPath ?? diff.path
-    )
-    if (!path) return ""
-    if (diff.oldFileMissing) return ""
-    if (diff.staged) return this.gitText(repository, `HEAD:${path}`)
-
-    return this.gitText(repository, `:${path}`)
   }
 
   private async oldDiffObjectId(
@@ -529,18 +560,6 @@ export class GitService {
     return this.gitObjectId(repository, `:${path}`)
   }
 
-  private async newDiffContent(
-    repository: GitRepositoryLocation,
-    diff: GitFileDiff
-  ) {
-    const path = repositoryRelativePath(repository.rootPath, diff.path)
-    if (!path) return ""
-    if (diff.newFileMissing) return ""
-    if (diff.staged) return this.gitText(repository, `:${path}`)
-
-    return this.workingTreeText(repository, path)
-  }
-
   private async newDiffObjectId(
     repository: GitRepositoryLocation,
     diff: GitFileDiff
@@ -553,20 +572,19 @@ export class GitService {
     return this.writeWorkingTreeObject(repository, path)
   }
 
-  private async gitText(
+  private async isDiffTooLarge(
     repository: GitRepositoryLocation,
-    revisionPath: string
-  ) {
-    const result = await this.git(
-      repository.rootAbsolutePath,
-      ["show", revisionPath],
-      {
-        allowFailure: true,
-      }
-    )
-    if (result.exitCode !== 0) return ""
+    diff: GitFileDiff
+  ): Promise<boolean> {
+    const [oldSize, newSize] = await Promise.all([
+      this.diffSideSize(repository, diff, "old"),
+      this.diffSideSize(repository, diff, "new"),
+    ])
 
-    return result.stdout
+    return (
+      isTooLarge(oldSize, this.maxTextFileBytes) ||
+      isTooLarge(newSize, this.maxTextFileBytes)
+    )
   }
 
   private async gitObjectId(
@@ -583,6 +601,76 @@ export class GitService {
     return result.stdout.trim() || null
   }
 
+  private async diffSideSize(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff,
+    side: "old" | "new"
+  ) {
+    if (side === "old") return this.oldDiffSize(repository, diff)
+
+    return this.newDiffSize(repository, diff)
+  }
+
+  private async oldDiffSize(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff
+  ) {
+    const path = repositoryRelativePath(
+      repository.rootPath,
+      diff.oldPath ?? diff.path
+    )
+    if (!path) return null
+    if (diff.oldFileMissing) return null
+    if (diff.staged) return this.gitObjectSize(repository, `HEAD:${path}`)
+
+    return this.gitObjectSize(repository, `:${path}`)
+  }
+
+  private async newDiffSize(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff
+  ) {
+    const path = repositoryRelativePath(repository.rootPath, diff.path)
+    if (!path) return null
+    if (diff.newFileMissing) return null
+    if (diff.staged) return this.gitObjectSize(repository, `:${path}`)
+
+    return this.workingTreeSize(repository, path)
+  }
+
+  private async gitObjectSize(
+    repository: GitRepositoryLocation,
+    revisionPath: string
+  ) {
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      ["cat-file", "-s", revisionPath],
+      { allowFailure: true }
+    )
+    if (result.exitCode !== 0) return null
+
+    const size = Number(result.stdout.trim())
+    return Number.isSafeInteger(size) ? size : null
+  }
+
+  private async workingTreeSize(
+    repository: GitRepositoryLocation,
+    relativePath: string
+  ) {
+    const absolutePath = path.join(
+      repository.rootDisplayAbsolutePath,
+      relativePath
+    )
+    this.paths.assertInside(absolutePath)
+
+    try {
+      const stats = await stat(absolutePath)
+      return stats.isFile() ? stats.size : null
+    } catch {
+      return null
+    }
+  }
+
   private async gitObjectText(
     repository: GitRepositoryLocation,
     objectId: string
@@ -593,6 +681,61 @@ export class GitService {
       objectId,
     ])
     return result.stdout
+  }
+
+  private async isBlobDiffTooLarge(
+    repository: GitRepositoryLocation,
+    query: GitBlobDiffQuery
+  ) {
+    const [oldSize, newSize] = await Promise.all([
+      query.oldObjectId
+        ? this.gitObjectSize(repository, query.oldObjectId)
+        : null,
+      query.newObjectId
+        ? this.gitObjectSize(repository, query.newObjectId)
+        : null,
+    ])
+
+    return (
+      isTooLarge(oldSize, this.maxTextFileBytes) ||
+      isTooLarge(newSize, this.maxTextFileBytes)
+    )
+  }
+
+  private async blobPatch(
+    repository: GitRepositoryLocation,
+    query: GitBlobDiffQuery
+  ) {
+    const [oldObjectId, newObjectId] = await Promise.all([
+      query.oldObjectId ?? this.emptyBlobObjectId(repository),
+      query.newObjectId ?? this.emptyBlobObjectId(repository),
+    ])
+    if (oldObjectId === newObjectId) return ""
+
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      [
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--unified=3",
+        oldObjectId,
+        newObjectId,
+      ],
+      { allowFailure: true }
+    )
+    if (result.exitCode <= 1) return result.stdout
+
+    throw new FsError("GIT_COMMAND_FAILED", gitErrorMessage(result))
+  }
+
+  private async emptyBlobObjectId(repository: GitRepositoryLocation) {
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      ["hash-object", "-w", "--stdin"],
+      { input: "" }
+    )
+    return result.stdout.trim()
   }
 
   private async writeWorkingTreeObject(
@@ -606,76 +749,6 @@ export class GitService {
       relativePath,
     ])
     return result.stdout.trim() || null
-  }
-
-  private async textPatch(
-    repository: GitRepositoryLocation,
-    input: {
-      newObjectId?: string
-      newText: string
-      oldObjectId?: string
-      oldText: string
-    }
-  ) {
-    if (!input.oldObjectId && !input.newObjectId) return ""
-
-    const directory = await mkdtemp(path.join(tmpdir(), "platform-git-diff-"))
-
-    try {
-      return await this.temporaryFilePatch(repository, directory, input)
-    } finally {
-      await rm(directory, { force: true, recursive: true })
-    }
-  }
-
-  private async temporaryFilePatch(
-    repository: GitRepositoryLocation,
-    directory: string,
-    input: {
-      newObjectId?: string
-      newText: string
-      oldObjectId?: string
-      oldText: string
-    }
-  ) {
-    const oldPath = path.join(directory, "old")
-    const newPath = path.join(directory, "new")
-    if (input.oldObjectId) await writeFile(oldPath, input.oldText, "utf8")
-    if (input.newObjectId) await writeFile(newPath, input.newText, "utf8")
-
-    const result = await this.git(
-      repository.rootAbsolutePath,
-      [
-        "diff",
-        "--no-index",
-        "--no-color",
-        "--no-ext-diff",
-        "--unified=3",
-        input.oldObjectId ? oldPath : "/dev/null",
-        input.newObjectId ? newPath : "/dev/null",
-      ],
-      { allowFailure: true }
-    )
-    if (result.exitCode <= 1) return result.stdout
-
-    throw new FsError("GIT_COMMAND_FAILED", gitErrorMessage(result))
-  }
-
-  private async workingTreeText(
-    repository: GitRepositoryLocation,
-    relativePath: string
-  ) {
-    const absolutePath = path.join(
-      repository.rootDisplayAbsolutePath,
-      relativePath
-    )
-    this.paths.assertInside(absolutePath)
-
-    try {
-      return await readFile(absolutePath, "utf8")
-    } catch {
-      return ""
-    }
   }
 
   private async openCommitMessage(
@@ -740,4 +813,46 @@ export class GitService {
 
     throw new FsError("GIT_COMMAND_FAILED", gitErrorMessage(result))
   }
+}
+
+async function mapWithConcurrency<T, U>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<U>
+) {
+  const results = new Array<U>(items.length)
+  let nextIndex = 0
+  const workerCount = Math.min(concurrency, items.length)
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      results[index] = await mapper(items[index], index)
+    }
+  })
+
+  await Promise.all(workers)
+  return results
+}
+
+function positiveInteger(value: number | undefined, fallback: number) {
+  if (value === undefined) return fallback
+  if (!Number.isInteger(value) || value < 1) return fallback
+
+  return value
+}
+
+function isBinaryDiff(diff: GitFileDiff) {
+  return (
+    diff.patch.includes("\nBinary files ") ||
+    diff.patch.includes("\nGIT binary patch")
+  )
+}
+
+function isTooLarge(size: number | null, maxBytes: number) {
+  return size !== null && size > maxBytes
+}
+
+function isString(value: string | null): value is string {
+  return typeof value === "string"
 }

@@ -549,7 +549,8 @@ describe("git rpc", () => {
       expect.objectContaining({ path: "tracked.txt", status: "modified" })
     )
     expect(diff.status).toBe(200)
-    expect(await diff.json()).toMatchObject([
+    const diffPayload = (await diff.json()) as GitDiffTestPayload
+    expect(diffPayload).toMatchObject([
       {
         path: "tracked.txt",
         staged: false,
@@ -563,8 +564,14 @@ describe("git rpc", () => {
         ],
       },
     ])
+    expect(diffPayload[0].oldObjectId).toEqual(expect.any(String))
+    expect(diffPayload[0].newObjectId).toEqual(expect.any(String))
+    expect(diffPayload[0].oldText).toBeUndefined()
+    expect(diffPayload[0].newText).toBeUndefined()
     expect(untrackedDiff.status).toBe(200)
-    expect(await untrackedDiff.json()).toMatchObject([
+    const untrackedDiffPayload =
+      (await untrackedDiff.json()) as GitDiffTestPayload
+    expect(untrackedDiffPayload).toMatchObject([
       {
         oldFileMissing: true,
         path: "new.txt",
@@ -576,6 +583,8 @@ describe("git rpc", () => {
         ],
       },
     ])
+    expect(untrackedDiffPayload[0].oldText).toBeUndefined()
+    expect(untrackedDiffPayload[0].newText).toBeUndefined()
     expect(staged.status).toBe(200)
     const stagedPayload = (await staged.json()) as GitStatusTestPayload
     expect(stagedPayload.files).toContainEqual(
@@ -621,6 +630,8 @@ describe("git rpc", () => {
       {
         newObjectId: snapshot.newObjectId,
         oldObjectId: snapshot.oldObjectId,
+        newText: "after\n",
+        oldText: "before\n",
         path: "tracked.txt",
         hunks: [
           {
@@ -632,6 +643,92 @@ describe("git rpc", () => {
         ],
       },
     ])
+  })
+
+  it("skips snapshot refs for binary and large live diffs", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "binary.dat"), new Uint8Array([0, 1, 2]))
+    await writeFile(path.join(root, "large.txt"), "one\n")
+    await runGit(root, ["add", "binary.dat", "large.txt"])
+    await runGit(root, ["commit", "-m", "initial"])
+    await writeFile(path.join(root, "binary.dat"), new Uint8Array([0, 1, 3]))
+    await writeFile(path.join(root, "large.txt"), "larger\n")
+    const app = testApp(root, { maxTextFileBytes: 5 })
+
+    const binary = await app.handle(
+      new Request("http://local/git/diff?path=binary.dat", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const large = await app.handle(
+      new Request("http://local/git/diff?path=large.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(binary.status).toBe(200)
+    const [binaryDiff] = (await binary.json()) as GitDiffTestPayload
+    expect(binaryDiff.path).toBe("binary.dat")
+    expect(binaryDiff.hunks).toEqual([])
+    expect(binaryDiff.oldObjectId).toBeUndefined()
+    expect(binaryDiff.newObjectId).toBeUndefined()
+    expect(binaryDiff.oldText).toBeUndefined()
+    expect(binaryDiff.newText).toBeUndefined()
+
+    expect(large.status).toBe(200)
+    const [largeDiff] = (await large.json()) as GitDiffTestPayload
+    expect(largeDiff.path).toBe("large.txt")
+    expect(largeDiff.hunks.length).toBeGreaterThan(0)
+    expect(largeDiff.oldObjectId).toBeUndefined()
+    expect(largeDiff.newObjectId).toBeUndefined()
+    expect(largeDiff.oldText).toBeUndefined()
+    expect(largeDiff.newText).toBeUndefined()
+  })
+
+  it("skips untracked files above the text diff limit", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "large.txt"), "larger\n")
+    const app = testApp(root, { maxTextFileBytes: 5 })
+
+    const response = await app.handle(
+      new Request("http://local/git/diff?path=large.txt", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual([])
+  })
+
+  it("omits blob text when the opened snapshot exceeds the text limit", async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, "old.txt"), "one\n")
+    await writeFile(path.join(root, "new.txt"), "larger\n")
+    const oldObject = await runGit(root, ["hash-object", "-w", "old.txt"])
+    const newObject = await runGit(root, ["hash-object", "-w", "new.txt"])
+    const params = new URLSearchParams({
+      newObjectId: newObject.stdout.trim(),
+      oldObjectId: oldObject.stdout.trim(),
+      path: "large.txt",
+    })
+    const app = testApp(root, { maxTextFileBytes: 5 })
+
+    const response = await app.handle(
+      new Request(`http://local/git/diff/blob?${params}`, {
+        headers: trustedOriginHeaders(),
+      })
+    )
+
+    expect(response.status).toBe(200)
+    const [diff] = (await response.json()) as GitDiffTestPayload
+    expect(diff.hunks.length).toBeGreaterThan(0)
+    expect(diff.oldObjectId).toBe(oldObject.stdout.trim())
+    expect(diff.newObjectId).toBe(newObject.stdout.trim())
+    expect(diff.oldText).toBeUndefined()
+    expect(diff.newText).toBeUndefined()
   })
 
   it("renders unstaged blob snapshots after the worktree changes again", async () => {
@@ -766,8 +863,11 @@ type GitStatusTestPayload = {
 }
 
 type GitDiffTestPayload = Array<{
+  hunks: Array<Record<string, unknown>>
   newObjectId?: string
+  newText?: string
   oldObjectId?: string
+  oldText?: string
   oldPath?: string
   path: string
 }>

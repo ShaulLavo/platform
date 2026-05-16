@@ -58,4 +58,21 @@ describe("git diff document ids", () => {
     })
     expect(diffDocumentLabel(worktree)).toBe("app.ts")
   })
+
+  it("falls back to legacy ids when a diff has no snapshot objects", () => {
+    const diff: FileDiff = {
+      hunks: [],
+      patch: "",
+      path: "/repo/src/large.bin",
+      staged: false,
+    }
+
+    const id = diffDocumentId(diff)
+
+    expect(parseDiffDocumentId(id)).toMatchObject({
+      kind: "legacy",
+      path: "/repo/src/large.bin",
+      staged: false,
+    })
+  })
 })

@@ -159,27 +159,16 @@ describe("workspace cache", () => {
     })
   })
 
-  it("persists cached search buffer state for the active workspace", () => {
+  it("persists cached search buffer metadata for the active workspace", () => {
     const rootFolder = pickedDirectory("/repo")
     const searchBuffer = {
-      activeResultId: "search-result-match-a",
+      activeResultId: null,
       caseSensitive: true,
       collapsedPaths: ["/repo/src/app.ts"],
       excludeGlobText: "*.test.ts",
       filtersVisible: true,
       includeGlobText: "src/**/*.ts",
       matchMode: "regex" as const,
-      matches: [
-        {
-          column: 5,
-          kind: "content" as const,
-          line: 2,
-          path: "/repo/src/app.ts",
-          preview: "const needle = true",
-          source: "disk" as const,
-          type: "file" as const,
-        },
-      ],
       query: "needle",
       queryHistory: ["needle"],
       replaceHistory: ["pin"],
@@ -218,6 +207,66 @@ describe("workspace cache", () => {
     expect(readWorkspaceCache().searchBuffer).toEqual(searchBuffer)
   })
 
+  it("drops cache payloads with legacy cached search matches", () => {
+    const rootFolder = pickedDirectory("/repo")
+    const searchBuffer = {
+      activeResultId: "search-result-match-a",
+      caseSensitive: false,
+      collapsedPaths: [],
+      excludeGlobText: "",
+      filtersVisible: false,
+      includeGlobText: "",
+      matchMode: "literal" as const,
+      matches: [
+        {
+          kind: "content" as const,
+          path: "/repo/src/app.ts",
+          source: "disk" as const,
+          type: "file" as const,
+        },
+      ],
+      query: "needle",
+      queryHistory: ["needle"],
+      replaceHistory: [],
+      replaceText: "",
+      replaceVisible: false,
+      resultsQuery: "needle",
+      resultsSearchQuery: {
+        includeContent: true,
+        limit: 200,
+        path: "/repo",
+        query: "needle",
+      },
+      rootPath: "/repo",
+      totalCount: 1,
+      truncated: false,
+      wholeWord: false,
+    }
+
+    STORE.set(
+      "platform.workspace-state.v1",
+      JSON.stringify({
+        diffViewMode: "split",
+        editorHistory: [],
+        gitPanelOpen: true,
+        openFilePaths: [],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer,
+        selectedFilePath: null,
+        sidebarVisible: true,
+        version: 6,
+        workspacePanelTab: "search",
+      })
+    )
+
+    expect(readWorkspaceCache()).toMatchObject({
+      rootFolder: null,
+      searchBuffer: null,
+    })
+    expect(STORE.has("platform.workspace-state.v1")).toBe(false)
+  })
+
   it("drops cached search buffer state for a different workspace", () => {
     writeWorkspaceCache({
       diffViewMode: "split",
@@ -234,7 +283,6 @@ describe("workspace cache", () => {
         filtersVisible: false,
         includeGlobText: "",
         matchMode: "literal",
-        matches: [],
         query: "needle",
         queryHistory: [],
         replaceHistory: [],

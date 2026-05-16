@@ -23,7 +23,12 @@ export function useOpenDiffDocument() {
     }
 
     const documentId = diffDocumentId(diff)
-    queryClient.setQueryData(gitKeys.blobDiff(blobDiffQuery(diff)), [diff])
+    const query = blobDiffQuery(diff)
+    if (canFetchBlobDiff(query)) {
+      const queryKey = gitKeys.blobDiff(query)
+      queryClient.setQueryData(queryKey, [diff])
+      await queryClient.invalidateQueries({ queryKey })
+    }
     selectFile(documentId)
   }
 
@@ -47,4 +52,8 @@ function blobDiffQuery(diff: FileDiff) {
     oldPath: diff.oldPath,
     path: diff.path,
   }
+}
+
+function canFetchBlobDiff(query: ReturnType<typeof blobDiffQuery>) {
+  return Boolean(query.oldObjectId || query.newObjectId)
 }

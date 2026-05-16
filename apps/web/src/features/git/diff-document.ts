@@ -91,6 +91,10 @@ function legacyDiffDocumentId(path: string, staged: boolean) {
 }
 
 function snapshotDiffDocumentId(diff: FileDiff) {
+  if (!diff.oldObjectId && !diff.newObjectId) {
+    return legacyDiffDocumentId(diff.path, diff.staged)
+  }
+
   const payload: SnapshotPayload = {
     newObjectId: diff.newObjectId,
     oldObjectId: diff.oldObjectId,
