@@ -312,6 +312,60 @@ describe("composite search provider", () => {
       },
     ])
   })
+
+  it("does not count suppressed dirty disk matches against the composite limit", async () => {
+    const disk = new QueryLimitedSearchProvider([
+      {
+        match: {
+          kind: "content",
+          path: "repo/src/dirty.ts",
+          source: "disk",
+          type: "file",
+        },
+        type: "match",
+      },
+      {
+        match: {
+          kind: "content",
+          path: "repo/src/other.ts",
+          source: "disk",
+          type: "file",
+        },
+        type: "match",
+      },
+      {
+        count: 2,
+        path: "repo",
+        query: "needle",
+        truncated: false,
+        type: "done",
+      },
+    ])
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(["repo/src/dirty.ts"]),
+      openBuffers: new OpenBufferSearchProvider([
+        {
+          path: "repo/src/dirty.ts",
+          text: "needle from dirty editor",
+        },
+      ]),
+    })
+
+    const events = await collectEvents(provider.search({ ...QUERY, limit: 2 }))
+    const matches = events
+      .filter((event) => event.type === "match")
+      .map((event) => event.match)
+
+    expect(matches).toEqual([
+      expect.objectContaining({
+        path: "repo/src/dirty.ts",
+        source: "open-buffer",
+      }),
+      expect.objectContaining({ path: "repo/src/other.ts", source: "disk" }),
+    ])
+    expect(events.at(-1)).toMatchObject({ count: 2, type: "done" })
+  })
 })
 
 class StaticSearchProvider implements SearchProvider {
@@ -323,6 +377,27 @@ class StaticSearchProvider implements SearchProvider {
 
   async *search(): AsyncGenerator<WorkspaceSearchEvent> {
     for (const event of this.events) yield event
+  }
+}
+
+class QueryLimitedSearchProvider implements SearchProvider {
+  private events: readonly WorkspaceSearchEvent[]
+
+  constructor(events: readonly WorkspaceSearchEvent[]) {
+    this.events = events
+  }
+
+  async *search(
+    query: WorkspaceSearchQuery
+  ): AsyncGenerator<WorkspaceSearchEvent> {
+    let count = 0
+
+    for (const event of this.events) {
+      if (event.type === "match" && count >= query.limit) return
+      if (event.type === "match") count += 1
+
+      yield event
+    }
   }
 }
 

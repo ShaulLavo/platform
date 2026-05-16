@@ -112,12 +112,12 @@ export class CompositeSearchProvider implements SearchProvider {
 
     yield* this.searchOpenBuffers(query, state, signal)
     if (shouldStopCompositeSearch(query, state, signal)) {
-      yield doneEvent(query, state.count, true)
+      yield doneEvent(query, state.emittedCount, true)
       return
     }
 
     yield* this.searchDisk(query, state, signal)
-    yield doneEvent(query, state.count, state.truncated)
+    yield doneEvent(query, state.emittedCount, state.truncated)
   }
 
   private async *searchOpenBuffers(
@@ -127,7 +127,7 @@ export class CompositeSearchProvider implements SearchProvider {
   ) {
     for await (const event of this.openBuffers.search(query, signal)) {
       if (appendCompositeEvent(event, state, query.limit)) yield event
-      if (state.count >= query.limit) return
+      if (state.emittedCount >= query.limit) return
     }
   }
 
@@ -136,27 +136,24 @@ export class CompositeSearchProvider implements SearchProvider {
     state: CompositeSearchState,
     signal?: AbortSignal
   ) {
-    const diskQuery = { ...query, limit: query.limit - state.count }
+    const diskQuery = { ...query, limit: query.limit }
 
     for await (const event of this.disk.search(diskQuery, signal)) {
-      if (!shouldEmitDiskEvent(event, this.openBufferPaths)) {
-        trackCompositeEvent(event, state)
-        continue
-      }
+      if (!shouldEmitDiskEvent(event, this.openBufferPaths)) continue
 
       if (appendCompositeEvent(event, state, query.limit)) yield event
-      if (state.count >= query.limit) return
+      if (state.emittedCount >= query.limit) return
     }
   }
 }
 
 type CompositeSearchState = {
-  count: number
+  emittedCount: number
   truncated: boolean
 }
 
 function createCompositeState(): CompositeSearchState {
-  return { count: 0, truncated: false }
+  return { emittedCount: 0, truncated: false }
 }
 
 function shouldStopCompositeSearch(
@@ -166,7 +163,7 @@ function shouldStopCompositeSearch(
 ) {
   if (signal?.aborted) return true
 
-  return state.count >= query.limit
+  return state.emittedCount >= query.limit
 }
 
 function appendCompositeEvent(
@@ -174,23 +171,14 @@ function appendCompositeEvent(
   state: CompositeSearchState,
   limit: number
 ) {
-  trackCompositeEvent(event, state)
-  if (event.type !== "match") return false
-  if (state.count > limit) return false
-
-  return true
-}
-
-function trackCompositeEvent(
-  event: WorkspaceSearchEvent,
-  state: CompositeSearchState
-) {
   if (event.type === "done") {
     state.truncated = state.truncated || event.truncated
-    return
+    return false
   }
 
-  if (event.type === "match") state.count += 1
+  if (state.emittedCount >= limit) return false
+  state.emittedCount += 1
+  return true
 }
 
 function shouldEmitDiskEvent(
