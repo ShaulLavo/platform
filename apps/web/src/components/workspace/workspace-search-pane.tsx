@@ -43,16 +43,17 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
 
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-      <div className="border-b bg-muted/20 p-2">
-        <div className="flex items-center gap-1.5">
+      <div className="border-b bg-muted/20 p-1.5">
+        <div className="flex items-center gap-1">
           <SearchHistoryInput
             aria-label="Search workspace"
             className="flex-1"
-            inputClassName="h-8 pr-28 text-xs"
+            inputClassName="h-7 px-2 pr-[5.5rem] text-[11px]"
             label="Search"
             rightAdornment={
               <SearchModeButtons
-                className="absolute top-1/2 right-1 -translate-y-1/2"
+                buttonClassName="size-5"
+                className="absolute top-1/2 right-0.5 -translate-y-1/2 gap-0"
                 options={searchOptions}
                 onOptionsChange={setSearchOptions}
               />
@@ -65,11 +66,12 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
           />
           <SearchReplaceToggleButton
             active={replaceVisible}
+            className="h-7 px-1.5"
             onToggle={setReplaceVisible}
           />
           <Button
             aria-label="Open search results in editor"
-            className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
             size="icon-sm"
             title="Open search results in editor"
             type="button"
@@ -80,11 +82,16 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
           </Button>
         </div>
         <SearchFilterFields
+          className="mt-1.5 gap-1"
+          inputClassName="h-6 px-1.5 text-[11px]"
           options={searchOptions}
           onOptionsChange={setSearchOptions}
         />
         <SearchReplaceFields
+          buttonClassName="h-6 px-1.5 text-[10px]"
           canReplace={replace.canReplace}
+          className="mt-1.5 gap-1"
+          inputClassName="h-6 px-1.5 text-[11px]"
           replaceText={replaceText}
           replaceVisible={replaceVisible}
           replacing={snapshot?.replaceStatus === "running"}
@@ -94,10 +101,16 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
           onSelectPreviousHistory={selectPreviousReplaceText}
           onReplaceTextChange={setReplaceText}
         />
-        <SearchSummary query={query} snapshot={snapshot} />
+        <SearchSummary
+          buttonClassName="size-[18px]"
+          className="mt-1 min-h-4 gap-1 px-0 text-[10px]"
+          query={query}
+          snapshot={snapshot}
+        />
       </div>
       <SearchResultsView
         canReplace={replace.canReplace}
+        compact
         groups={groups}
         query={resultsQuery}
         replaceText={replaceText}

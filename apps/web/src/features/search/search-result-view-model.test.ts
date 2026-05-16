@@ -155,6 +155,28 @@ describe("search result view model", () => {
     expect(excerpt?.matchRanges).toEqual([{ end: 19, start: 13 }])
   })
 
+  it("trims leading spaces and tabs from excerpt editor text", () => {
+    const match = contentMatch({
+      column: 11,
+      endColumn: 17,
+      line: 12,
+      preview: "\t  export needle",
+    })
+    const blocks = searchResultFileBlocks([fileGroup([match])], "needle")
+    const excerpt = blocks[0]?.excerpts[0]
+
+    expect(excerpt?.text).toBe("export needle")
+    expect(excerpt?.matchRanges).toEqual([{ end: 13, start: 7 }])
+    expect(
+      excerpt
+        ? excerpt.text.slice(
+            excerpt.matchRanges[0]?.start,
+            excerpt.matchRanges[0]?.end
+          )
+        : null
+    ).toBe("needle")
+  })
+
   it("keeps collapsed group excerpts out of the virtual row model", () => {
     const firstMatch = contentMatch({
       column: 1,

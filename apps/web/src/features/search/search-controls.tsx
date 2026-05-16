@@ -19,10 +19,12 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 
 export function SearchModeButtons({
+  buttonClassName,
   className,
   options,
   onOptionsChange,
 }: {
+  buttonClassName?: string
   className?: string
   options: WorkspaceSearchQueryOptions
   onOptionsChange: (options: SearchBufferOptionPatch) => void
@@ -31,6 +33,7 @@ export function SearchModeButtons({
     <div className={cn("flex items-center gap-0.5", className)}>
       <SearchToggleButton
         active={options.caseSensitive}
+        className={buttonClassName}
         label="Match case"
         onClick={() =>
           onOptionsChange({ caseSensitive: !options.caseSensitive })
@@ -40,6 +43,7 @@ export function SearchModeButtons({
       </SearchToggleButton>
       <SearchToggleButton
         active={options.wholeWord}
+        className={buttonClassName}
         label="Match whole word"
         onClick={() => onOptionsChange({ wholeWord: !options.wholeWord })}
       >
@@ -47,6 +51,7 @@ export function SearchModeButtons({
       </SearchToggleButton>
       <SearchToggleButton
         active={options.matchMode === "regex"}
+        className={buttonClassName}
         label="Use regular expression"
         onClick={() =>
           onOptionsChange({
@@ -58,6 +63,7 @@ export function SearchModeButtons({
       </SearchToggleButton>
       <SearchToggleButton
         active={options.filtersVisible}
+        className={buttonClassName}
         label="Include and exclude files"
         onClick={() =>
           onOptionsChange({ filtersVisible: !options.filtersVisible })
@@ -70,9 +76,13 @@ export function SearchModeButtons({
 }
 
 export function SearchFilterFields({
+  className,
+  inputClassName,
   options,
   onOptionsChange,
 }: {
+  className?: string
+  inputClassName?: string
   options: WorkspaceSearchQueryOptions
   onOptionsChange: (options: SearchBufferOptionPatch) => void
 }) {
@@ -87,12 +97,12 @@ export function SearchFilterFields({
   }
 
   return (
-    <div className="mt-2 grid grid-cols-2 gap-1.5">
+    <div className={cn("mt-2 grid grid-cols-2 gap-1.5", className)}>
       <Input
         aria-label="Files to include"
         autoCapitalize="off"
         autoCorrect="off"
-        className="h-7 text-[11px]"
+        className={cn("h-7 text-[11px]", inputClassName)}
         placeholder="include"
         spellCheck={false}
         value={options.includeGlobText}
@@ -102,7 +112,7 @@ export function SearchFilterFields({
         aria-label="Files to exclude"
         autoCapitalize="off"
         autoCorrect="off"
-        className="h-7 text-[11px]"
+        className={cn("h-7 text-[11px]", inputClassName)}
         placeholder="exclude"
         spellCheck={false}
         value={options.excludeGlobText}
@@ -114,15 +124,20 @@ export function SearchFilterFields({
 
 export function SearchReplaceToggleButton({
   active,
+  className,
   onToggle,
 }: {
   active: boolean
+  className?: string
   onToggle: (active: boolean) => void
 }) {
   return (
     <Button
       aria-pressed={active}
-      className="h-8 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+      className={cn(
+        "h-8 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
+        className
+      )}
       size="sm"
       title="Toggle replace"
       type="button"
@@ -135,7 +150,10 @@ export function SearchReplaceToggleButton({
 }
 
 export function SearchReplaceFields({
+  buttonClassName,
   canReplace,
+  className,
+  inputClassName,
   replaceText,
   replaceVisible,
   replacing,
@@ -145,7 +163,10 @@ export function SearchReplaceFields({
   onSelectPreviousHistory,
   onReplaceTextChange,
 }: {
+  buttonClassName?: string
   canReplace: boolean
+  className?: string
+  inputClassName?: string
   replaceText: string
   replaceVisible: boolean
   replacing: boolean
@@ -158,10 +179,15 @@ export function SearchReplaceFields({
   if (!replaceVisible) return null
 
   return (
-    <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5">
+    <div
+      className={cn(
+        "mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-1.5",
+        className
+      )}
+    >
       <SearchHistoryInput
         aria-label="Replace in workspace"
-        inputClassName="h-7 text-[11px]"
+        inputClassName={cn("h-7 text-[11px]", inputClassName)}
         label="Replace"
         value={replaceText}
         onSelectNextHistory={onSelectNextHistory}
@@ -169,7 +195,7 @@ export function SearchReplaceFields({
         onValueChange={onReplaceTextChange}
       />
       <Button
-        className="h-7 px-2 text-[11px]"
+        className={cn("h-7 px-2 text-[11px]", buttonClassName)}
         disabled={!canReplace || replacing}
         size="sm"
         type="button"
@@ -179,7 +205,7 @@ export function SearchReplaceFields({
         Next
       </Button>
       <Button
-        className="h-7 px-2 text-[11px]"
+        className={cn("h-7 px-2 text-[11px]", buttonClassName)}
         disabled={!canReplace || replacing}
         size="sm"
         type="button"
@@ -195,11 +221,13 @@ export function SearchReplaceFields({
 function SearchToggleButton({
   active,
   children,
+  className,
   label,
   onClick,
 }: {
   active: boolean
   children: ReactNode
+  className?: string
   label: string
   onClick: () => void
 }) {
@@ -211,7 +239,8 @@ function SearchToggleButton({
             aria-label={label}
             aria-pressed={active}
             className={cn(
-              "size-6 text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+              "size-6 text-muted-foreground hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground",
+              className
             )}
             size="icon-xs"
             title={label}

@@ -15,6 +15,7 @@ export function SearchFileGroupHeader({
   active,
   className,
   canReplace,
+  compact,
   group,
   replaceVisible,
   onReplace,
@@ -23,6 +24,7 @@ export function SearchFileGroupHeader({
   active?: boolean
   className?: string
   canReplace?: boolean
+  compact?: boolean
   group: WorkspaceSearchFileGroup
   replaceVisible?: boolean
   onReplace?: (group: WorkspaceSearchFileGroup) => void
@@ -34,13 +36,18 @@ export function SearchFileGroupHeader({
     <div
       className={cn(
         "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left",
+        compact && "h-6 gap-1 overflow-hidden px-1.5 py-0",
         active && "bg-muted/60",
         !active && "hover:bg-muted/55",
         className
       )}
     >
       <button
-        className="grid min-w-0 grid-cols-[16px_16px_minmax(0,1fr)] items-center gap-1.5 text-left outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50"
+        className={cn(
+          "grid min-w-0 grid-cols-[16px_16px_minmax(0,1fr)] items-center gap-1.5 text-left outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
+          compact &&
+            "h-full grid-cols-[14px_14px_minmax(0,1fr)] gap-1 overflow-hidden"
+        )}
         tabIndex={-1}
         type="button"
         onClick={() => onToggle(group.path)}
@@ -48,24 +55,23 @@ export function SearchFileGroupHeader({
         <CaretRightIcon
           className={cn(
             "size-3.5 text-muted-foreground transition-transform",
+            compact && "size-3",
             !group.collapsed && "rotate-90"
           )}
         />
         <span
           aria-hidden="true"
-          className="size-4"
+          className={cn("size-4", compact && "size-3.5")}
           style={fileIconStyle(icon)}
         />
-        <span className="min-w-0">
-          <span className="block truncate text-xs font-medium">
-            {group.name}
-          </span>
-          <span className="block truncate text-[11px] text-muted-foreground">
-            {group.pathLabel}
-          </span>
-        </span>
+        <SearchFileGroupTitle compact={compact} group={group} />
       </button>
-      <span className="rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground">
+      <span
+        className={cn(
+          "rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground",
+          compact && "h-4 px-1 leading-4"
+        )}
+      >
         <SearchAnimatedNumber fontSize="10px" value={group.count} />
       </span>
       {replaceVisible ? (
@@ -82,6 +88,36 @@ export function SearchFileGroupHeader({
         </Button>
       ) : null}
     </div>
+  )
+}
+
+function SearchFileGroupTitle({
+  compact,
+  group,
+}: {
+  compact: boolean | undefined
+  group: WorkspaceSearchFileGroup
+}) {
+  if (compact) {
+    return (
+      <span className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap">
+        <span className="max-w-[55%] min-w-0 shrink-0 truncate text-xs leading-4 font-medium">
+          {group.name}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-muted-foreground">
+          {group.pathLabel}
+        </span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="min-w-0">
+      <span className="block truncate text-xs font-medium">{group.name}</span>
+      <span className="block truncate text-[11px] text-muted-foreground">
+        {group.pathLabel}
+      </span>
+    </span>
   )
 }
 

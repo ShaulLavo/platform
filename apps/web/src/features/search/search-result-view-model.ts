@@ -3,7 +3,10 @@ import type { WorkspaceSearchMatch } from "@workspace/contracts"
 
 import { languageIdForFilePath } from "@/features/editor/utils/file-path"
 import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
-import { searchMatchDisplay } from "@/features/search/search-match-display"
+import {
+  searchMatchDisplay,
+  type SearchMatchDisplay,
+} from "@/features/search/search-match-display"
 import {
   expandedSearchResultItems,
   type SearchResultId,
@@ -358,9 +361,11 @@ function searchResultExcerpt(
   item: SearchResultMatchItem,
   query: string
 ): SearchResultExcerpt {
-  const display = searchMatchDisplay(item.match, query, {
-    maxLength: SEARCH_RESULT_EXCERPT_MAX_LENGTH,
-  })
+  const display = searchResultExcerptDisplay(
+    searchMatchDisplay(item.match, query, {
+      maxLength: SEARCH_RESULT_EXCERPT_MAX_LENGTH,
+    })
+  )
 
   return {
     id: item.id,
@@ -374,8 +379,39 @@ function searchResultExcerpt(
   }
 }
 
+function searchResultExcerptDisplay(display: SearchMatchDisplay) {
+  const text = searchResultExcerptText(display.text)
+  const leadingIndentLength = searchResultLeadingIndentLength(text)
+  if (leadingIndentLength === 0) return { range: display.range, text }
+
+  const trimmedText = text.slice(leadingIndentLength)
+  const range = searchResultTrimmedRange(display.range, leadingIndentLength)
+  if (!range) return { text: trimmedText }
+
+  return { range, text: trimmedText }
+}
+
 function searchResultExcerptText(text: string) {
   return text.replace(/(?:\r\n|\r|\n)$/u, "")
+}
+
+function searchResultLeadingIndentLength(text: string) {
+  const match = /^[\t ]+/u.exec(text)
+
+  return match?.[0].length ?? 0
+}
+
+function searchResultTrimmedRange(
+  range: SearchResultRange | undefined,
+  leadingIndentLength: number
+) {
+  if (!range) return undefined
+  if (range.end <= leadingIndentLength) return undefined
+
+  return {
+    end: range.end - leadingIndentLength,
+    start: Math.max(0, range.start - leadingIndentLength),
+  }
 }
 
 function searchResultExcerptStartLine(match: WorkspaceSearchMatch) {

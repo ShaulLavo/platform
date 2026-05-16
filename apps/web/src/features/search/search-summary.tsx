@@ -18,11 +18,16 @@ import {
 } from "@/features/search/search-result-items"
 import { SearchAnimatedNumber } from "@/features/search/search-animated-number"
 import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 export function SearchSummary({
+  buttonClassName,
+  className,
   query,
   snapshot,
 }: {
+  buttonClassName?: string
+  className?: string
   query: string
   snapshot: SearchBufferSnapshot | null
 }) {
@@ -37,13 +42,19 @@ export function SearchSummary({
   const summary = searchSummaryModel(query, snapshot)
 
   return (
-    <div className="mt-2 flex min-h-5 items-center gap-2 px-1 text-[11px] text-muted-foreground">
+    <div
+      className={cn(
+        "mt-2 flex min-h-5 items-center gap-2 px-1 text-[11px] text-muted-foreground",
+        className
+      )}
+    >
       <SearchSummaryText title={summary.title}>
         {summary.content}
       </SearchSummaryText>
       {summary.showControls ? (
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           <SearchSummaryButton
+            className={buttonClassName}
             disabled={!summary.canExpand}
             label="Expand all search results"
             onClick={expandAllGroups}
@@ -51,6 +62,7 @@ export function SearchSummary({
             <ArrowsOutLineVerticalIcon className="size-3.5" />
           </SearchSummaryButton>
           <SearchSummaryButton
+            className={buttonClassName}
             disabled={!summary.canCollapse}
             label="Collapse all search results"
             onClick={collapseAllGroups}
@@ -58,6 +70,7 @@ export function SearchSummary({
             <ArrowsInLineVerticalIcon className="size-3.5" />
           </SearchSummaryButton>
           <SearchSummaryButton
+            className={buttonClassName}
             disabled={!summary.canNavigate}
             label="Previous match"
             onClick={selectPreviousMatch}
@@ -65,6 +78,7 @@ export function SearchSummary({
             <CaretUpIcon className="size-3.5" />
           </SearchSummaryButton>
           <SearchSummaryButton
+            className={buttonClassName}
             disabled={!summary.canNavigate}
             label="Next match"
             onClick={selectNextMatch}
@@ -128,11 +142,13 @@ function SearchSummaryText({
 
 function SearchSummaryButton({
   children,
+  className,
   disabled,
   label,
   onClick,
 }: {
   children: ReactNode
+  className?: string
   disabled: boolean
   label: string
   onClick: () => void
@@ -140,7 +156,10 @@ function SearchSummaryButton({
   return (
     <Button
       aria-label={label}
-      className="size-5 text-muted-foreground hover:text-foreground"
+      className={cn(
+        "size-5 text-muted-foreground hover:text-foreground",
+        className
+      )}
       disabled={disabled}
       size="icon-xs"
       title={label}

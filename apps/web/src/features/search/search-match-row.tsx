@@ -24,6 +24,7 @@ export function SearchMatchRow({
   active,
   className,
   canReplace,
+  compact,
   match,
   previewMaxLength,
   replaceQuery,
@@ -36,6 +37,7 @@ export function SearchMatchRow({
   active?: boolean
   className?: string
   canReplace?: boolean
+  compact?: boolean
   match: WorkspaceSearchMatch
   previewMaxLength?: number
   replaceQuery: WorkspaceSearchQuery | null
@@ -67,17 +69,31 @@ export function SearchMatchRow({
     <div
       className={cn(
         "group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs",
+        compact && "h-6 gap-1 px-1.5 py-0",
         active && "bg-muted/60",
         className
       )}
     >
-      <div className="grid w-full min-w-0 grid-cols-[42px_minmax(0,1fr)] gap-2 text-left">
+      <div
+        className={cn(
+          "grid w-full min-w-0 grid-cols-[42px_minmax(0,1fr)] gap-2 text-left",
+          compact && "grid-cols-[34px_minmax(0,1fr)] gap-1.5"
+        )}
+      >
         <span className="text-right text-[11px] text-muted-foreground tabular-nums">
           {location}
         </span>
-        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+        <span
+          className={cn(
+            "flex min-w-0 items-center gap-2 overflow-hidden",
+            compact && "gap-1.5"
+          )}
+        >
           <span
-            className="block min-w-0 flex-1 truncate font-mono text-[11px] leading-5"
+            className={cn(
+              "block min-w-0 flex-1 truncate font-mono text-[11px] leading-5",
+              compact && "leading-4"
+            )}
             ref={previewRef}
           >
             <HighlightedPreview
@@ -94,11 +110,12 @@ export function SearchMatchRow({
           ) : null}
         </span>
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex h-full shrink-0 items-center gap-0.5">
         <Button
           aria-label={searchMatchOpenLabel(match)}
           className={cn(
             "pointer-events-none opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100",
+            compact && "size-5",
             active && "pointer-events-auto opacity-100"
           )}
           size="icon-xs"
@@ -111,7 +128,7 @@ export function SearchMatchRow({
         </Button>
         {replaceVisible ? (
           <Button
-            className="h-6 px-1.5 text-[10px]"
+            className={cn("h-6 px-1.5 text-[10px]", compact && "h-5 px-1")}
             disabled={!canReplace}
             size="xs"
             title="Replace this match"
@@ -130,6 +147,7 @@ export function SearchMatchRow({
 export function SearchNameMatchRow({
   active,
   className,
+  compact,
   match,
   previewMaxLength,
   query,
@@ -137,6 +155,7 @@ export function SearchNameMatchRow({
 }: {
   active?: boolean
   className?: string
+  compact?: boolean
   match: WorkspaceSearchMatch
   previewMaxLength?: number
   query: string
@@ -155,6 +174,7 @@ export function SearchNameMatchRow({
     <button
       className={cn(
         "grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
+        compact && "h-6 grid-cols-[14px_minmax(0,1fr)_auto] gap-1 px-1.5 py-0",
         active && "bg-muted/60",
         !active && "hover:bg-muted/55",
         className
@@ -163,7 +183,9 @@ export function SearchNameMatchRow({
       type="button"
       onClick={() => onOpenMatch(match)}
     >
-      <FileTextIcon className="size-3.5 text-muted-foreground" />
+      <FileTextIcon
+        className={cn("size-3.5 text-muted-foreground", compact && "size-3")}
+      />
       <span className="block min-w-0 truncate text-xs" ref={previewRef}>
         <HighlightedPreview
           preview={display.text}
@@ -171,7 +193,12 @@ export function SearchNameMatchRow({
           range={display.range}
         />
       </span>
-      <span className="rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground">
+      <span
+        className={cn(
+          "rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground",
+          compact && "px-1"
+        )}
+      >
         name
       </span>
     </button>

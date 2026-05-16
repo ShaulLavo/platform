@@ -45,6 +45,7 @@ const SEARCH_RESULT_REPLACE_WIDTH = 62
 
 export function SearchResultsView({
   className,
+  compact,
   groups,
   canReplace,
   query,
@@ -56,6 +57,7 @@ export function SearchResultsView({
   onReplaceMatch,
 }: {
   className?: string
+  compact?: boolean
   groups: readonly WorkspaceSearchFileGroup[]
   canReplace?: boolean
   query: string
@@ -82,7 +84,9 @@ export function SearchResultsView({
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search results virtualization layer.
   const virtualizer = useVirtualizer({
     count: items.length,
-    estimateSize: (index) => searchResultItemEstimate(items[index]),
+    estimateSize: (index) => searchResultItemEstimate(items[index], compact),
+    getItemKey: (index) =>
+      `${compact ? "compact" : "default"}:${items[index]?.id ?? index}`,
     getScrollElement: () => parentRef.current,
     overscan: 12,
   })
@@ -151,7 +155,9 @@ export function SearchResultsView({
     >
       <div
         className="relative"
-        style={{ height: virtualizer.getTotalSize() + 12 }}
+        style={{
+          height: virtualizer.getTotalSize() + resultListPadding(compact) * 2,
+        }}
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {
           const item = items[virtualItem.index]
@@ -159,12 +165,18 @@ export function SearchResultsView({
 
           return (
             <div
-              className="absolute right-1.5 left-1.5"
+              className={cn(
+                "absolute right-1.5 left-1.5",
+                compact && "right-1 left-1"
+              )}
               id={searchResultDomId(treeId, item.id)}
               key={item.id}
               role="treeitem"
               style={{
-                transform: `translateY(${virtualItem.start + 6}px)`,
+                height: virtualItem.size,
+                transform: `translateY(${
+                  virtualItem.start + resultListPadding(compact)
+                }px)`,
               }}
               aria-expanded={
                 item.type === "group" ? !item.group.collapsed : undefined
@@ -177,6 +189,7 @@ export function SearchResultsView({
                 item={item}
                 active={item.id === activeResultId}
                 canReplace={canReplace}
+                compact={compact}
                 previewMaxLength={previewMaxLength}
                 query={query}
                 replaceQuery={snapshot.resultsSearchQuery}
@@ -221,6 +234,7 @@ function SearchResultRow({
   active,
   item,
   canReplace,
+  compact,
   previewMaxLength,
   query,
   replaceQuery,
@@ -235,6 +249,7 @@ function SearchResultRow({
   active: boolean
   item: SearchResultItem
   canReplace?: boolean
+  compact?: boolean
   previewMaxLength?: number
   query: string
   replaceQuery: SearchBufferSnapshot["resultsSearchQuery"]
@@ -251,6 +266,7 @@ function SearchResultRow({
       <SearchFileGroupHeader
         active={active}
         canReplace={canReplace}
+        compact={compact}
         group={item.group}
         replaceVisible={replaceVisible}
         onReplace={onReplaceGroup}
@@ -265,6 +281,7 @@ function SearchResultRow({
     return (
       <SearchNameMatchRow
         active={active}
+        compact={compact}
         match={item.match}
         previewMaxLength={previewMaxLength}
         query={query}
@@ -277,10 +294,11 @@ function SearchResultRow({
   }
 
   return (
-    <div className="ml-4 border-l">
+    <div className={cn("ml-4 border-l", compact && "ml-3")}>
       <SearchMatchRow
         active={active}
         canReplace={canReplace}
+        compact={compact}
         match={item.match}
         previewMaxLength={previewMaxLength}
         replaceQuery={replaceQuery}
@@ -297,10 +315,17 @@ function SearchResultRow({
   )
 }
 
-function searchResultItemEstimate(item: SearchResultItem | undefined) {
-  if (item?.type === "group") return 44
+function searchResultItemEstimate(
+  item: SearchResultItem | undefined,
+  compact: boolean | undefined
+) {
+  if (item?.type === "group") return compact ? 24 : 44
 
-  return 30
+  return compact ? 24 : 30
+}
+
+function resultListPadding(compact: boolean | undefined) {
+  return compact ? 4 : 6
 }
 
 function useSearchPreviewMaxLength(
