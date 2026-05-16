@@ -480,6 +480,30 @@ describe("workspace disk search provider", () => {
     ])
   })
 
+  it("returns symlink name matches when filtering by symlink type", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "target.ts"), "")
+    await symlink("target.ts", path.join(root, "search-link.ts"))
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      entryType: "symlink",
+      includeContent: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "search",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "name",
+        path: "search-link.ts",
+        targetType: "file",
+        type: "symlink",
+      }),
+    ])
+  })
+
   it("returns no events when aborted before search starts", async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, "alpha.txt"), "needle")

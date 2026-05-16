@@ -28,11 +28,7 @@ import {
   type FindOptions,
 } from "./search-shared"
 import { canUseSearchTools, runToolLines } from "./search-tool-runner"
-import {
-  assertDirectory,
-  isFileEntry,
-  matchesEntryType,
-} from "./stat"
+import { assertDirectory, isFileEntry, matchesEntryType } from "./stat"
 import type { EntryTypeFilter } from "./contracts"
 
 export { SEARCH_LINE_BUFFER_BYTES } from "./search-line-decoder"
@@ -63,6 +59,30 @@ type SearchState = {
   truncated: boolean
 }
 
+type SearchRuntimeOptions = {
+  streamNameMatchesEarly: boolean
+}
+
+type NameCandidateRanker = {
+  candidates: string[]
+  capacity: number
+  query: string
+}
+
+const NAME_SEARCH_RANK_BUFFER_MULTIPLIER = 4
+const NAME_SEARCH_MIN_RANK_BUFFER = 32
+const NAME_SEARCH_MAX_RANK_BUFFER = 1_000
+const NAME_SEARCH_EARLY_SCAN_COUNT = 64
+const NAME_SEARCH_EARLY_SCAN_INTERVAL = 32
+
+const exactSearchRuntimeOptions: SearchRuntimeOptions = {
+  streamNameMatchesEarly: false,
+}
+
+const streamingSearchRuntimeOptions: SearchRuntimeOptions = {
+  streamNameMatchesEarly: true,
+}
+
 export class DiskWorkspaceSearchProvider implements SearchProvider {
   private paths: WorkspacePaths
 
@@ -82,7 +102,14 @@ export async function findInWorkspace(
   const matches: FindMatch[] = []
   let resultPath = options.path
 
-  for await (const event of findInWorkspaceStream(paths, options)) {
+  const events = searchWorkspaceWithDiskTools(
+    paths,
+    options,
+    undefined,
+    exactSearchRuntimeOptions
+  )
+
+  for await (const event of events) {
     if (event.type === "done") {
       resultPath = event.path
       continue
@@ -111,12 +138,13 @@ export async function* findInWorkspaceStream(
 async function* searchWorkspaceWithDiskTools(
   paths: WorkspacePaths,
   options: FindOptions,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  runtime: SearchRuntimeOptions = streamingSearchRuntimeOptions
 ): AsyncGenerator<FindStreamEvent> {
   if (signal?.aborted) return
 
   const context = await createFindContext(paths, options)
-  const matches = searchWithTools(paths, context, signal)
+  const matches = searchWithTools(paths, context, signal, runtime)
   const state: SearchState = { count: 0, truncated: false }
 
   for await (const match of matches) {
@@ -166,7 +194,8 @@ async function createFindContext(
 async function* searchWithTools(
   paths: WorkspacePaths,
   context: FindContext,
-  signal?: AbortSignal
+  signal: AbortSignal | undefined,
+  runtime: SearchRuntimeOptions
 ): AsyncGenerator<FindMatch> {
   if (isIgnoredSearchPath(context, context.root.relativePath)) return
 
@@ -177,7 +206,7 @@ async function* searchWithTools(
   }
 
   if (shouldSearchNames(context.options)) {
-    yield* searchNamesWithFd(paths, context, signal)
+    yield* searchNamesWithFd(paths, context, signal, runtime)
   }
   if (!shouldSearchContent(context.options)) return
 
@@ -194,40 +223,185 @@ async function canUseTools(options: FindOptions) {
 async function* searchNamesWithFd(
   paths: WorkspacePaths,
   context: FindContext,
-  signal?: AbortSignal
+  signal: AbortSignal | undefined,
+  runtime: SearchRuntimeOptions
 ): AsyncGenerator<FindMatch> {
   const args = fdArgs(context)
-  const matches: FindMatch[] = []
+  const ranker = createNameCandidateRanker(
+    context.query,
+    nameRankCapacity(context.options.limit)
+  )
+  const emittedPaths = new Set<string>()
+  let scannedCount = 0
+  let nextEarlyScanCount = NAME_SEARCH_EARLY_SCAN_COUNT
 
   for await (const line of runToolLines("fd", args, signal, [0])) {
     const relativePath = resultPath(context.root.relativePath, line)
-    const match = await nameMatchFromPath(
+    scannedCount += 1
+
+    if (!nameCandidateMatchesContext(context, relativePath)) continue
+
+    addNameCandidate(ranker, relativePath)
+
+    if (
+      !shouldYieldEarlyNameMatch(
+        runtime,
+        ranker,
+        scannedCount,
+        nextEarlyScanCount
+      )
+    ) {
+      continue
+    }
+
+    nextEarlyScanCount = scannedCount + NAME_SEARCH_EARLY_SCAN_INTERVAL
+
+    const match = await takeRankedNameMatch(
       paths,
-      relativePath,
       context,
-      context.options.entryType
+      ranker,
+      emittedPaths
     )
     if (!match) continue
-    matches.push(match)
+
+    yield match
   }
 
   if (signal?.aborted) return
 
-  for (const match of rankedNameMatches(matches, context.query)) {
+  for await (const match of takeRankedNameMatches(
+    paths,
+    context,
+    ranker,
+    emittedPaths,
+    context.options.limit + 1
+  )) {
     yield match
   }
 }
 
-function rankedNameMatches(matches: readonly FindMatch[], query: string) {
-  return matches
-    .slice()
-    .sort((left, right) =>
-      compareFuzzyRankedTargets(
-        searchRankTarget(left.path),
-        searchRankTarget(right.path),
-        query
-      )
+function nameCandidateMatchesContext(
+  context: FindContext,
+  relativePath: string
+) {
+  if (!context.matcher.pathMatches(globMatchPath(context, relativePath)))
+    return false
+
+  return nameSearchMatches(context, relativePath)
+}
+
+function createNameCandidateRanker(
+  query: string,
+  capacity: number
+): NameCandidateRanker {
+  return {
+    candidates: [],
+    capacity,
+    query,
+  }
+}
+
+function nameRankCapacity(limit: number) {
+  const scaledLimit = limit * NAME_SEARCH_RANK_BUFFER_MULTIPLIER
+  const bufferedLimit = Math.max(scaledLimit, NAME_SEARCH_MIN_RANK_BUFFER)
+
+  return Math.min(bufferedLimit, NAME_SEARCH_MAX_RANK_BUFFER)
+}
+
+function addNameCandidate(ranker: NameCandidateRanker, relativePath: string) {
+  if (ranker.capacity <= 0) return
+
+  const index = nameCandidateInsertionIndex(ranker, relativePath)
+  if (index >= ranker.capacity) return
+
+  ranker.candidates.splice(index, 0, relativePath)
+  if (ranker.candidates.length > ranker.capacity) ranker.candidates.pop()
+}
+
+function nameCandidateInsertionIndex(
+  ranker: NameCandidateRanker,
+  relativePath: string
+) {
+  let low = 0
+  let high = ranker.candidates.length
+
+  while (low < high) {
+    const index = Math.floor((low + high) / 2)
+    const candidate = ranker.candidates[index] ?? ""
+
+    if (compareNameCandidates(relativePath, candidate, ranker.query) < 0) {
+      high = index
+      continue
+    }
+
+    low = index + 1
+  }
+
+  return low
+}
+
+function compareNameCandidates(left: string, right: string, query: string) {
+  return compareFuzzyRankedTargets(
+    searchRankTarget(left),
+    searchRankTarget(right),
+    query
+  )
+}
+
+function shouldYieldEarlyNameMatch(
+  runtime: SearchRuntimeOptions,
+  ranker: NameCandidateRanker,
+  scannedCount: number,
+  nextEarlyScanCount: number
+) {
+  if (!runtime.streamNameMatchesEarly) return false
+  if (ranker.candidates.length === 0) return false
+
+  return scannedCount >= nextEarlyScanCount
+}
+
+async function* takeRankedNameMatches(
+  paths: WorkspacePaths,
+  context: FindContext,
+  ranker: NameCandidateRanker,
+  emittedPaths: Set<string>,
+  limit: number
+): AsyncGenerator<FindMatch> {
+  let count = 0
+
+  while (count < limit) {
+    const match = await takeRankedNameMatch(
+      paths,
+      context,
+      ranker,
+      emittedPaths
     )
+    if (!match) return
+
+    count += 1
+    yield match
+  }
+}
+
+async function takeRankedNameMatch(
+  paths: WorkspacePaths,
+  context: FindContext,
+  ranker: NameCandidateRanker,
+  emittedPaths: Set<string>
+) {
+  while (ranker.candidates.length > 0) {
+    const relativePath = ranker.candidates.shift()
+    if (!relativePath) return null
+    if (emittedPaths.has(relativePath)) continue
+
+    const match = await nameMatchFromPath(paths, relativePath, context)
+    if (!match) continue
+
+    emittedPaths.add(match.path)
+    return match
+  }
+
+  return null
 }
 
 function searchRankTarget(pathname: string) {
@@ -254,20 +428,22 @@ function fdArgs(context: FindContext) {
   const args = [
     "--base-directory",
     context.root.absolutePath,
-    "--follow",
     "--hidden",
     "--no-require-git",
     "--path-separator",
     "/",
   ]
 
+  if (shouldFollowFdResults(context.options.entryType)) args.push("--follow")
+
   if (searchMatchMode(context.options) === "literal") {
     args.push("--fixed-strings")
   }
   if (!context.options.caseSensitive) args.push("--ignore-case")
 
-  const type = fdType(context.options.entryType)
-  if (type) args.push("--type", type)
+  for (const type of fdTypes(context.options.entryType)) {
+    args.push("--type", type)
+  }
   if (context.options.maxDepth !== undefined)
     args.push("--max-depth", String(context.options.maxDepth))
 
@@ -341,26 +517,30 @@ function ignoredDirectoryGlobArgs(name: string) {
   return [`!${name}`, `!${name}/**`, `!**/${name}`, `!**/${name}/**`]
 }
 
-function fdType(entryType?: EntryTypeFilter) {
-  if (entryType === "symlink") return "symlink"
+function shouldFollowFdResults(entryType?: EntryTypeFilter) {
+  return entryType !== "symlink"
+}
 
-  return null
+function fdTypes(entryType?: EntryTypeFilter) {
+  if (entryType === "file") return ["file"]
+  if (entryType === "directory") return ["directory"]
+  if (entryType === "symlink") return ["symlink"]
+  if (entryType === "other")
+    return ["socket", "pipe", "block-device", "char-device"]
+
+  return []
 }
 
 async function nameMatchFromPath(
   paths: WorkspacePaths,
   relativePath: string,
-  context: FindContext,
-  entryType?: EntryTypeFilter
+  context: FindContext
 ): Promise<FindMatch | null> {
   const absolutePath = paths.resolve(relativePath).absolutePath
   const entryStats = await safeEntryStats(absolutePath)
   if (!entryStats) return null
 
-  if (!matchesEntryType(entryStats, entryType)) return null
-  if (!context.matcher.pathMatches(globMatchPath(context, relativePath)))
-    return null
-  if (!nameSearchMatches(context, relativePath)) return null
+  if (!matchesEntryType(entryStats, context.options.entryType)) return null
 
   return {
     ...searchMatchMetadata(entryStats),
