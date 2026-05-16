@@ -4,7 +4,7 @@ import type {
   WorkspaceSearchQuery,
 } from "@workspace/contracts"
 import { workspaceSearchGlobPatterns } from "@workspace/contracts"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 import {
   type CachedEditorDocument,
@@ -158,23 +158,17 @@ function useRunSearchBuffer(
   } = searchOptions
   const store = useSearchBufferStoreApi()
   const documentStore = useEditorDocumentStoreApi()
-  const documents = useEditorDocumentState((state) => state.documents)
-  const dirtyContentRevision = useEditorDocumentState(
-    (state) => state.dirtyContentRevision
+  const dirtyRevisionKey = useEditorDocumentState((state) =>
+    dirtySearchRevisionKey(
+      state.documents,
+      state.dirtyFilePaths,
+      state.documentContentRevisions,
+      rootPath,
+      state.dirtyContentRevision
+    )
   )
-  const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
-  const dirtyContentKey = useMemo(
-    () =>
-      dirtySearchContentKey(
-        documents,
-        dirtyFilePaths,
-        rootPath,
-        dirtyContentRevision
-      ),
-    [dirtyContentRevision, dirtyFilePaths, documents, rootPath]
-  )
-  const debouncedDirtyContentKey = useDebouncedValue(
-    dirtyContentKey,
+  const debouncedDirtyRevisionKey = useDebouncedValue(
+    dirtyRevisionKey,
     DIRTY_BUFFER_DEBOUNCE_MS
   )
 
@@ -190,9 +184,10 @@ function useRunSearchBuffer(
       matchMode,
       wholeWord,
     })
+    const documentState = documentStore.getState()
     const dirtyDocuments = dirtySearchDocuments(
-      documentStore.getState().documents,
-      dirtyFilePaths,
+      documentState.documents,
+      documentState.dirtyFilePaths,
       rootPath
     )
     const provider = workspaceSearchProvider(dirtyDocuments)
@@ -208,8 +203,7 @@ function useRunSearchBuffer(
 
     return () => controller.abort()
   }, [
-    debouncedDirtyContentKey,
-    dirtyFilePaths,
+    debouncedDirtyRevisionKey,
     documentStore,
     query,
     rootPath,
@@ -518,18 +512,50 @@ function dirtySearchDocuments(
   return dirtyDocuments.sort((a, b) => compareSearchPaths(a.path, b.path))
 }
 
-function dirtySearchContentKey(
+export function dirtySearchRevisionKey(
   documents: Readonly<Record<string, CachedEditorDocument>>,
   dirtyFilePaths: ReadonlySet<string>,
+  contentRevisions: Readonly<Record<string, string>>,
   rootPath: string,
   revision: number
 ) {
-  void revision
+  const parts = [revision.toString()]
+  const paths = [...dirtyFilePaths]
+    .filter((path) => isPathInWorkspace(path, rootPath))
+    .sort(compareSearchPaths)
 
-  return [...dirtySearchDocuments(documents, dirtyFilePaths, rootPath)]
-    .sort((a, b) => compareSearchPaths(a.path, b.path))
-    .map((document) => `${document.path}\0${document.text}`)
-    .join("\0")
+  for (const path of paths) {
+    const document = documents[path]
+    if (!document) {
+      parts.push(path, "", "", "")
+      continue
+    }
+
+    parts.push(
+      path,
+      document.revision.toString(),
+      contentRevisions[path] ?? "",
+      dirtySearchSessionKey(document.session)
+    )
+  }
+
+  return parts.join("\0")
+}
+
+const dirtySearchSessionKeys = new WeakMap<
+  CachedEditorDocument["session"],
+  number
+>()
+let nextDirtySearchSessionKey = 1
+
+function dirtySearchSessionKey(session: CachedEditorDocument["session"]) {
+  const existing = dirtySearchSessionKeys.get(session)
+  if (existing !== undefined) return existing.toString()
+
+  const key = nextDirtySearchSessionKey
+  nextDirtySearchSessionKey += 1
+  dirtySearchSessionKeys.set(session, key)
+  return key.toString()
 }
 
 function isPathInWorkspace(path: string, rootPath: string) {
