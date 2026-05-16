@@ -205,12 +205,12 @@ describe("editor document store", () => {
 
     store.getState().deleteCachedEditorDocument("src/new.ts")
 
-    expect(store.getState().documentContentRevisions["src/old.ts"]).toBe(
-      undefined
-    )
-    expect(store.getState().documentContentRevisions["src/new.ts"]).toBe(
-      undefined
-    )
+    expect(
+      store.getState().documentContentRevisions["src/old.ts"]
+    ).toBeUndefined()
+    expect(
+      store.getState().documentContentRevisions["src/new.ts"]
+    ).toBeUndefined()
     expect(revision).toEqual(expect.any(String))
   })
 

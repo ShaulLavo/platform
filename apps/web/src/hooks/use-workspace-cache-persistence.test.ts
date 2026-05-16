@@ -122,7 +122,7 @@ function pickedDirectory(path: string): PickedFsEntry {
 
 function deferredTimers() {
   let callback: (() => void) | null = null
-  const timer = 1 as ReturnType<typeof setTimeout>
+  const timer = 1 as unknown as ReturnType<typeof setTimeout>
 
   return {
     clearTimeout() {
