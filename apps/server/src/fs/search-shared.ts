@@ -5,6 +5,7 @@ import type {
   WorkspaceSearchMatch,
   WorkspaceSearchQuery,
 } from "@workspace/contracts"
+import { fuzzyRank } from "@workspace/contracts"
 
 import { isIgnoredPath, toPosix } from "./path"
 import { readEntryStats, type FsEntryStats } from "./stat"
@@ -35,6 +36,7 @@ export function searchMatchMode(options: FindOptions) {
 }
 
 export function shouldSearchContent(options: FindOptions) {
+  if (searchMatchMode(options) === "fuzzy") return false
   if (!options.includeContent) return false
   if (options.entryType && options.entryType !== "file") return false
 
@@ -60,11 +62,32 @@ export function nameSearchMatches(
   relativePath: string,
   name = path.basename(relativePath)
 ) {
+  if (searchMatchMode(context.options) === "fuzzy")
+    return (
+      fuzzyRank(
+        nameSearchRankTarget(context, relativePath, name),
+        context.query
+      ) !== null
+    )
+
   if (context.matcher.lineMatches(name).length > 0) return true
 
   return (
     context.matcher.lineMatches(globMatchPath(context, relativePath)).length > 0
   )
+}
+
+export function nameSearchRankTarget(
+  context: FindContext,
+  relativePath: string,
+  name = path.basename(relativePath)
+) {
+  const matchPath = globMatchPath(context, relativePath)
+
+  return {
+    label: name,
+    path: matchPath || relativePath,
+  }
 }
 
 export function contentMatch({

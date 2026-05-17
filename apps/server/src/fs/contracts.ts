@@ -9,36 +9,32 @@ import {
   type WorkspaceSearchMatchMode as ContractsWorkspaceSearchMatchMode,
   type WorkspaceSearchMatch as ContractsWorkspaceSearchMatch,
   type WorkspaceSearchQuery as ContractsWorkspaceSearchQuery,
-} from "@workspace/contracts"
-import * as v from "valibot"
+} from "@workspace/contracts";
+import * as v from "valibot";
 
-export const pathSchema = v.pipe(v.string(), v.maxLength(4096))
-export const depthQueryValueSchema = integerQueryValueSchema("1", 10)
-export const limitQueryValueSchema = integerQueryValueSchema("50", 200)
-export const recentLimitQueryValueSchema = integerQueryValueSchema("20", 50)
+export const pathSchema = v.pipe(v.string(), v.maxLength(4096));
+export const depthQueryValueSchema = integerQueryValueSchema("1", 10);
+export const limitQueryValueSchema = integerQueryValueSchema("50", 200);
+export const recentLimitQueryValueSchema = integerQueryValueSchema("20", 50);
 export const entryTypeQueryValueSchema = v.union([
   v.literal("file"),
   v.literal("directory"),
   v.literal("symlink"),
   v.literal("other"),
-])
+]);
 export const booleanQueryValueSchema = v.pipe(
-  v.union([
-    v.literal("true"),
-    v.literal("false"),
-    v.literal("1"),
-    v.literal("0"),
-  ]),
-  v.transform((value) => value === "true" || value === "1")
-)
+  v.union([v.literal("true"), v.literal("false"), v.literal("1"), v.literal("0")]),
+  v.transform((value) => value === "true" || value === "1"),
+);
 export const matchModeQueryValueSchema = v.union([
   v.literal("literal"),
   v.literal("regex"),
-])
+  v.literal("fuzzy"),
+]);
 export const globQueryValueSchema = v.pipe(
   v.union([v.string(), v.array(v.string())]),
-  v.transform((value) => workspaceSearchGlobPatterns(value))
-)
+  v.transform((value) => workspaceSearchGlobPatterns(value)),
+);
 
 export const treeEntrySchema = v.object({
   name: v.string(),
@@ -48,17 +44,17 @@ export const treeEntrySchema = v.object({
   size: v.number(),
   mtimeMs: v.number(),
   birthtimeMs: v.number(),
-})
+});
 
 export const pathQuerySchema = v.object({
   path: v.optional(pathSchema, ""),
-})
+});
 
 export const treeQuerySchema = v.object({
   path: v.optional(pathSchema, ""),
   depth: v.optional(depthQueryValueSchema, "1"),
   entryType: v.optional(entryTypeQueryValueSchema),
-})
+});
 
 export const findQuerySchema = v.object({
   path: v.optional(pathSchema, ""),
@@ -73,12 +69,9 @@ export const findQuerySchema = v.object({
   matchMode: v.optional(matchModeQueryValueSchema, "literal"),
   maxDepth: v.optional(depthQueryValueSchema),
   wholeWord: v.optional(booleanQueryValueSchema, "false"),
-})
+});
 
-export const workspaceSearchSourceSchema = v.union([
-  v.literal("disk"),
-  v.literal("open-buffer"),
-])
+export const workspaceSearchSourceSchema = v.union([v.literal("disk"), v.literal("open-buffer")]);
 
 export const workspaceSearchMatchSchema = v.object({
   birthtimeMs: v.optional(v.number()),
@@ -94,7 +87,7 @@ export const workspaceSearchMatchSchema = v.object({
   source: workspaceSearchSourceSchema,
   targetType: v.optional(entryTypeQueryValueSchema),
   type: entryTypeQueryValueSchema,
-})
+});
 
 export const workspaceSearchDoneEventSchema = v.object({
   count: v.number(),
@@ -102,7 +95,7 @@ export const workspaceSearchDoneEventSchema = v.object({
   query: v.string(),
   truncated: v.boolean(),
   type: v.literal("done"),
-})
+});
 
 export const workspaceSearchEventSchema = v.variant("type", [
   v.object({
@@ -115,55 +108,55 @@ export const workspaceSearchEventSchema = v.variant("type", [
     message: v.string(),
     type: v.literal("error"),
   }),
-])
+]);
 
 export const eventsQuerySchema = v.object({
   path: v.optional(pathSchema),
   paths: v.optional(v.union([v.string(), v.array(pathSchema)])),
-})
+});
 
 export const recentsQuerySchema = v.object({
   limit: v.optional(recentLimitQueryValueSchema, "20"),
-})
+});
 
 export const recordRecentBodySchema = v.object({
   path: pathSchema,
-})
+});
 
 export const writeBodySchema = v.object({
   path: pathSchema,
   content: v.string(),
   expectedMtimeMs: v.optional(v.number()),
-})
+});
 
 export const createFileBodySchema = v.object({
   path: pathSchema,
   content: v.optional(v.string()),
   overwrite: v.optional(v.boolean()),
-})
+});
 
 export const createFolderBodySchema = v.object({
   path: pathSchema,
   recursive: v.optional(v.boolean()),
-})
+});
 
 export const renameBodySchema = v.object({
   from: pathSchema,
   to: pathSchema,
   overwrite: v.optional(v.boolean()),
-})
+});
 
 export const copyBodySchema = v.object({
   from: pathSchema,
   to: pathSchema,
   overwrite: v.optional(v.boolean()),
   recursive: v.optional(v.boolean()),
-})
+});
 
 export const deleteBodySchema = v.object({
   path: pathSchema,
   recursive: v.optional(v.boolean()),
-})
+});
 
 export const watchClientMessageSchema = v.variant("type", [
   v.object({
@@ -177,7 +170,7 @@ export const watchClientMessageSchema = v.variant("type", [
   v.object({
     type: v.literal("ping"),
   }),
-])
+]);
 
 export const watchServerMessageSchema = v.variant("type", [
   v.object({
@@ -220,79 +213,58 @@ export const watchServerMessageSchema = v.variant("type", [
     code: v.string(),
     message: v.string(),
   }),
-])
+]);
 
-export type WriteBody = v.InferOutput<typeof writeBodySchema>
-export type CreateFileBody = v.InferOutput<typeof createFileBodySchema>
-export type CreateFolderBody = v.InferOutput<typeof createFolderBodySchema>
-export type RenameBody = v.InferOutput<typeof renameBodySchema>
-export type CopyBody = v.InferOutput<typeof copyBodySchema>
-export type DeleteBody = v.InferOutput<typeof deleteBodySchema>
-export type RecordRecentBody = v.InferOutput<typeof recordRecentBodySchema>
+export type WriteBody = v.InferOutput<typeof writeBodySchema>;
+export type CreateFileBody = v.InferOutput<typeof createFileBodySchema>;
+export type CreateFolderBody = v.InferOutput<typeof createFolderBodySchema>;
+export type RenameBody = v.InferOutput<typeof renameBodySchema>;
+export type CopyBody = v.InferOutput<typeof copyBodySchema>;
+export type DeleteBody = v.InferOutput<typeof deleteBodySchema>;
+export type RecordRecentBody = v.InferOutput<typeof recordRecentBodySchema>;
 
 export type {
   EntryTypeFilter,
   TreeEntry,
   WatchClientMessage,
   WatchServerMessage,
-} from "@workspace/contracts"
+} from "@workspace/contracts";
 
 type Equals<A, B> =
-  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
-    ? true
-    : false
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
-type Assert<T extends true> = T
+type Assert<T extends true> = T;
 
 export const _assertEntryTypeFilterParity: Assert<
-  Equals<
-    v.InferOutput<typeof entryTypeQueryValueSchema>,
-    ContractsEntryTypeFilter
-  >
-> = true
+  Equals<v.InferOutput<typeof entryTypeQueryValueSchema>, ContractsEntryTypeFilter>
+> = true;
 
 export const _assertTreeEntryParity: Assert<
   Equals<v.InferOutput<typeof treeEntrySchema>, ContractsTreeEntry>
-> = true
+> = true;
 
 export const _assertWatchClientMessageParity: Assert<
-  Equals<
-    v.InferOutput<typeof watchClientMessageSchema>,
-    ContractsWatchClientMessage
-  >
-> = true
+  Equals<v.InferOutput<typeof watchClientMessageSchema>, ContractsWatchClientMessage>
+> = true;
 
 export const _assertWatchServerMessageParity: Assert<
-  Equals<
-    v.InferOutput<typeof watchServerMessageSchema>,
-    ContractsWatchServerMessage
-  >
-> = true
+  Equals<v.InferOutput<typeof watchServerMessageSchema>, ContractsWatchServerMessage>
+> = true;
 
 export const _assertWorkspaceSearchMatchParity: Assert<
-  Equals<
-    v.InferOutput<typeof workspaceSearchMatchSchema>,
-    ContractsWorkspaceSearchMatch
-  >
-> = true
+  Equals<v.InferOutput<typeof workspaceSearchMatchSchema>, ContractsWorkspaceSearchMatch>
+> = true;
 
 export const _assertWorkspaceSearchDoneEventParity: Assert<
-  Equals<
-    v.InferOutput<typeof workspaceSearchDoneEventSchema>,
-    ContractsWorkspaceSearchDoneEvent
-  >
-> = true
+  Equals<v.InferOutput<typeof workspaceSearchDoneEventSchema>, ContractsWorkspaceSearchDoneEvent>
+> = true;
 
 export const _assertWorkspaceSearchEventParity: Assert<
-  Equals<
-    v.InferOutput<typeof workspaceSearchEventSchema>,
-    ContractsWorkspaceSearchEvent
-  >
-> = true
-
+  Equals<v.InferOutput<typeof workspaceSearchEventSchema>, ContractsWorkspaceSearchEvent>
+> = true;
 export const _assertWorkspaceSearchMatchModeParity: Assert<
   Equals<v.InferOutput<typeof matchModeQueryValueSchema>, ContractsWorkspaceSearchMatchMode>
-> = true
+> = true;
 
 export const _assertFindQueryWorkspaceSearchParity: Assert<
   Omit<v.InferOutput<typeof findQuerySchema>, "maxDepth"> extends Omit<
@@ -301,7 +273,7 @@ export const _assertFindQueryWorkspaceSearchParity: Assert<
   >
     ? true
     : false
-> = true
+> = true;
 
 function integerQueryValueSchema(defaultValue: string, max: number) {
   return v.pipe(
@@ -310,6 +282,6 @@ function integerQueryValueSchema(defaultValue: string, max: number) {
     v.integer(),
     v.minValue(1),
     v.toMaxValue(max),
-    v.transform((value) => value || Number(defaultValue))
-  )
+    v.transform((value) => value || Number(defaultValue)),
+  );
 }

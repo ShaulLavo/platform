@@ -1,7 +1,7 @@
 import type { EntryTypeFilter } from "./tree-entry"
 
 export type WorkspaceSearchSource = "disk" | "open-buffer"
-export type WorkspaceSearchMatchMode = "literal" | "regex"
+export type WorkspaceSearchMatchMode = "literal" | "regex" | "fuzzy"
 
 export type WorkspaceSearchQuery = {
   caseSensitive?: boolean

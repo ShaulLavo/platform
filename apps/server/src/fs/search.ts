@@ -17,6 +17,7 @@ import {
   globMatchPath,
   isIgnoredSearchPath,
   nameSearchMatches,
+  nameSearchRankTarget,
   resultPath,
   safeEntryStats,
   searchMatchMetadata,
@@ -66,6 +67,7 @@ type SearchRuntimeOptions = {
 type NameCandidateRanker = {
   candidates: string[]
   capacity: number
+  context: FindContext
   query: string
 }
 
@@ -228,7 +230,7 @@ async function* searchNamesWithFd(
 ): AsyncGenerator<FindMatch> {
   const args = fdArgs(context)
   const ranker = createNameCandidateRanker(
-    context.query,
+    context,
     nameRankCapacity(context.options.limit)
   )
   const emittedPaths = new Set<string>()
@@ -291,13 +293,14 @@ function nameCandidateMatchesContext(
 }
 
 function createNameCandidateRanker(
-  query: string,
+  context: FindContext,
   capacity: number
 ): NameCandidateRanker {
   return {
     candidates: [],
     capacity,
-    query,
+    context,
+    query: context.query,
   }
 }
 
@@ -329,7 +332,7 @@ function nameCandidateInsertionIndex(
     const index = Math.floor((low + high) / 2)
     const candidate = ranker.candidates[index] ?? ""
 
-    if (compareNameCandidates(relativePath, candidate, ranker.query) < 0) {
+    if (compareNameCandidates(ranker, relativePath, candidate) < 0) {
       high = index
       continue
     }
@@ -340,11 +343,15 @@ function nameCandidateInsertionIndex(
   return low
 }
 
-function compareNameCandidates(left: string, right: string, query: string) {
+function compareNameCandidates(
+  ranker: NameCandidateRanker,
+  left: string,
+  right: string
+) {
   return compareFuzzyRankedTargets(
-    searchRankTarget(left),
-    searchRankTarget(right),
-    query
+    nameSearchRankTarget(ranker.context, left),
+    nameSearchRankTarget(ranker.context, right),
+    ranker.query
   )
 }
 
@@ -404,13 +411,6 @@ async function takeRankedNameMatch(
   return null
 }
 
-function searchRankTarget(pathname: string) {
-  return {
-    label: path.basename(pathname),
-    path: pathname,
-  }
-}
-
 async function* searchContentWithRg(
   paths: WorkspacePaths,
   context: FindContext,
@@ -449,7 +449,7 @@ function fdArgs(context: FindContext) {
 
   for (const ignored of defaultIgnoredNames) args.push("--exclude", ignored)
 
-  args.push(context.query)
+  if (searchMatchMode(context.options) !== "fuzzy") args.push(context.query)
   return args
 }
 

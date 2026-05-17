@@ -4,7 +4,7 @@ import {
 } from "@workspace/contracts"
 import { cn } from "@workspace/ui/lib/utils"
 import { FitAddon, init, Terminal, type IDisposable } from "ghostty-web"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
@@ -13,13 +13,6 @@ import {
   sendTerminalClientMessage,
   terminalSocketUrl,
 } from "./terminal-socket"
-
-type TerminalConnectionStatus =
-  | "closed"
-  | "connected"
-  | "connecting"
-  | "error"
-  | "initializing"
 
 type TerminalDimensions = {
   cols: number
@@ -62,9 +55,6 @@ export function TerminalPanel({
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const [detail, setDetail] = useState("Starting")
-  const [status, setStatus] =
-    useState<TerminalConnectionStatus>("initializing")
 
   useEffect(() => {
     const host = hostRef.current
@@ -73,8 +63,6 @@ export function TerminalPanel({
     return mountTerminal({
       host,
       rootPath,
-      setDetail,
-      setStatus,
     })
   }, [rootPath])
 
@@ -82,13 +70,12 @@ export function TerminalPanel({
     <section
       aria-label="Terminal"
       className={cn(
-        "grid h-full min-h-0 min-w-0 grid-rows-[32px_minmax(0,1fr)] overflow-hidden bg-[#101214] text-[#d7dde5]",
+        "grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-[#101214] text-[#d7dde5]",
         className
       )}
       onFocusCapture={() => setFocusArea("terminal")}
       onPointerDownCapture={() => setFocusArea("terminal")}
     >
-      <TerminalPanelHeader detail={detail} status={status} />
       <div
         className="min-h-0 min-w-0 overflow-hidden bg-[#101214] px-2 py-1 font-mono"
         ref={hostRef}
@@ -97,45 +84,12 @@ export function TerminalPanel({
   )
 }
 
-function TerminalPanelHeader({
-  detail,
-  status,
-}: {
-  detail: string
-  status: TerminalConnectionStatus
-}) {
-  return (
-    <div className="flex min-w-0 items-center justify-between border-b border-white/10 bg-[#15181c] px-3 text-[11px]">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="font-medium tracking-normal text-[#f4f7fb]">
-          Terminal
-        </span>
-        <span className="truncate text-[#9aa6b2]">{detail}</span>
-      </div>
-      <span className="flex shrink-0 items-center gap-1.5 text-[#9aa6b2]">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "size-1.5 rounded-full",
-            terminalStatusDotClassName(status)
-          )}
-        />
-        {terminalStatusLabel(status)}
-      </span>
-    </div>
-  )
-}
-
 function mountTerminal({
   host,
   rootPath,
-  setDetail,
-  setStatus,
 }: {
   host: HTMLDivElement
   rootPath: string
-  setDetail: (detail: string) => void
-  setStatus: (status: TerminalConnectionStatus) => void
 }) {
   let cancelled = false
   let dataDisposable: IDisposable | null = null
@@ -144,9 +98,6 @@ function mountTerminal({
   let socket: WebSocket | null = null
   let terminal: Terminal | null = null
   let terminalDimensions: TerminalDimensions | null = null
-
-  setStatus("initializing")
-  setDetail("Loading")
 
   void initializeGhostty()
     .then(() => {
@@ -171,16 +122,12 @@ function mountTerminal({
         getTerminalDimensions: () => terminalDimensions,
         isCancelled: () => cancelled,
         rootPath,
-        setDetail,
-        setStatus,
         terminal,
       })
     })
     .catch((error: unknown) => {
       if (cancelled) return
 
-      setStatus("error")
-      setDetail("Could not load")
       reportError(toClientError(error))
     })
 
@@ -199,26 +146,18 @@ function connectTerminalSocket({
   getTerminalDimensions,
   isCancelled,
   rootPath,
-  setDetail,
-  setStatus,
   terminal,
 }: {
   getTerminalDimensions: () => TerminalDimensions | null
   isCancelled: () => boolean
   rootPath: string
-  setDetail: (detail: string) => void
-  setStatus: (status: TerminalConnectionStatus) => void
   terminal: Terminal
 }) {
   const socket = new WebSocket(terminalSocketUrl(rootPath))
-  setStatus("connecting")
-  setDetail("Connecting")
 
   socket.addEventListener("open", () => {
     if (isCancelled()) return
 
-    setStatus("connected")
-    setDetail("Connected")
     sendTerminalResize(socket, getTerminalDimensions())
   })
   socket.addEventListener("message", (event) => {
@@ -229,22 +168,8 @@ function connectTerminalSocket({
 
     handleTerminalServerMessage({
       message,
-      setDetail,
-      setStatus,
       terminal,
     })
-  })
-  socket.addEventListener("error", () => {
-    if (isCancelled()) return
-
-    setStatus("error")
-    setDetail("Socket error")
-  })
-  socket.addEventListener("close", () => {
-    if (isCancelled()) return
-
-    setStatus("closed")
-    setDetail("Closed")
   })
 
   return socket
@@ -252,13 +177,9 @@ function connectTerminalSocket({
 
 function handleTerminalServerMessage({
   message,
-  setDetail,
-  setStatus,
   terminal,
 }: {
   message: TerminalServerMessage
-  setDetail: (detail: string) => void
-  setStatus: (status: TerminalConnectionStatus) => void
   terminal: Terminal
 }) {
   if (message.type === "output") {
@@ -266,20 +187,14 @@ function handleTerminalServerMessage({
     return
   }
   if (message.type === "ready") {
-    setStatus("connected")
-    setDetail(shellDetail(message.shell, message.cwd))
     return
   }
   if (message.type === "exit") {
-    setStatus("closed")
-    setDetail(exitDetail(message.exitCode))
     terminal.writeln("")
     terminal.writeln(exitDetail(message.exitCode))
     return
   }
 
-  setStatus("error")
-  setDetail(message.message)
   terminal.writeln("")
   terminal.writeln(message.message)
 }
@@ -330,33 +245,8 @@ function closeTerminalSocket(socket: WebSocket | null) {
   socket.close()
 }
 
-function shellDetail(shell: string, cwd: string) {
-  return `${shellName(shell)} in ${cwd}`
-}
-
-function shellName(shell: string) {
-  return shell.split("/").filter(Boolean).at(-1) ?? shell
-}
-
 function exitDetail(exitCode: number | null) {
   if (exitCode === null) return "Process exited"
 
   return `Process exited ${exitCode}`
-}
-
-function terminalStatusDotClassName(status: TerminalConnectionStatus) {
-  if (status === "connected") return "bg-[#5fd38d]"
-  if (status === "error") return "bg-[#ff5f57]"
-  if (status === "closed") return "bg-[#6d7682]"
-
-  return "bg-[#f3c969]"
-}
-
-function terminalStatusLabel(status: TerminalConnectionStatus) {
-  if (status === "initializing") return "Loading"
-  if (status === "connecting") return "Connecting"
-  if (status === "connected") return "Ready"
-  if (status === "error") return "Error"
-
-  return "Closed"
 }

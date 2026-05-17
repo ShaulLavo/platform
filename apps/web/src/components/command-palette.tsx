@@ -14,7 +14,7 @@ import {
   TerminalWindowIcon,
   TextTIcon,
 } from "@phosphor-icons/react"
-import { useCallback, useMemo } from "react"
+import { useCallback, useLayoutEffect, useMemo, useState } from "react"
 
 import { useTheme, type Theme } from "@/components/theme-context"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
@@ -25,10 +25,11 @@ import {
   fetchDocumentSymbols,
   type FlatDocumentSymbol,
 } from "@/lib/document-symbols"
+import { fetchQuickOpenFiles } from "@/lib/file-server"
 import { isFileEntry, type TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
-import { basename, displayPath } from "@/lib/path-formatters"
-import { documentSymbolKeys } from "@/lib/query-keys"
+import { basename, displayPath, toTreePath } from "@/lib/path-formatters"
+import { documentSymbolKeys, fileSystemKeys } from "@/lib/query-keys"
 import type { TreeModel } from "@/lib/tree-model"
 import {
   isEditorPlatformCommandId,
@@ -38,7 +39,7 @@ import {
   type PlatformCommandId,
   type PlatformKeyBinding,
 } from "@/keymap"
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { fuzzyRankScore } from "@workspace/contracts"
 
 type CommandPaletteProps = {
@@ -192,7 +193,12 @@ export function CommandPalette({
   )
   const selectedDocumentText = selectedDocument?.session.getText() ?? null
   const { openDefinition, selectFile } = useEditorCommands()
+  const [selectedFileItemValue, setSelectedFileItemValue] = useState<
+    string | null
+  >(null)
   const mode = quickAccessMode(search)
+  const query = quickAccessQuery(search)
+  const fileQuery = query.trim()
   const items = useMemo(
     () => commandPaletteItems(platformCommandSpecs, bindings),
     [bindings]
@@ -203,6 +209,42 @@ export function CommandPalette({
     () => editorPaletteItems(openFilePaths, selectedFilePath),
     [openFilePaths, selectedFilePath]
   )
+  const fileSearchEnabled =
+    open && mode === "files" && Boolean(rootFolder && fileQuery)
+  const fileSearchQuery = useQuery({
+    enabled: fileSearchEnabled,
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) =>
+      fetchQuickOpenFiles({
+        path: rootFolder?.path ?? "",
+        query: fileQuery,
+        signal,
+      }),
+    queryKey: fileSystemKeys.quickOpenFiles(rootFolder?.path ?? "", fileQuery),
+    staleTime: 5_000,
+  })
+  const searchedFileItems = useMemo(
+    () =>
+      searchFilePaletteItems(
+        fileSearchQuery.data ?? [],
+        rootFolder?.path ?? ""
+      ),
+    [fileSearchQuery.data, rootFolder?.path]
+  )
+  const visibleFileItems = fileSearchEnabled ? searchedFileItems : fileItems
+  const selectedCommandValue =
+    mode === "files"
+      ? selectedFileCommandValue(selectedFileItemValue, visibleFileItems)
+      : undefined
+
+  useLayoutEffect(() => {
+    if (!open || mode !== "files") return
+
+    document
+      .querySelector<HTMLElement>('[data-slot="command-list"]')
+      ?.scrollTo({ top: 0 })
+  }, [fileQuery, fileSearchQuery.data, mode, open])
+
   const selectedFileBackedPath = fileBackedPath(selectedFilePath)
   const symbolsEnabled =
     mode === "symbols" && Boolean(rootFolder && selectedFileBackedPath)
@@ -233,6 +275,24 @@ export function CommandPalette({
     },
     [dispatch, hasWorkspace, onOpenChange, selectedFilePath]
   )
+  const handleCommandValueChange = useCallback(
+    (value: string) => {
+      if (mode !== "files") return
+
+      setSelectedFileItemValue(value)
+    },
+    [mode, setSelectedFileItemValue]
+  )
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      if (quickAccessMode(value) === "files") {
+        setSelectedFileItemValue(null)
+      }
+
+      onSearchChange(value)
+    },
+    [onSearchChange, setSelectedFileItemValue]
+  )
   const openFile = useCallback(
     (path: string) => {
       selectFile(path)
@@ -258,14 +318,20 @@ export function CommandPalette({
 
   return (
     <CommandDialog
-      commandProps={{ filter: quickAccessFilter, loop: true }}
+      commandProps={{
+        filter: quickAccessFilter,
+        loop: true,
+        onValueChange: handleCommandValueChange,
+        shouldFilter: mode !== "files",
+        value: selectedCommandValue,
+      }}
       open={open}
       onOpenChange={onOpenChange}
     >
       <CommandInput
         placeholder={placeholderForMode(mode)}
         value={search}
-        onValueChange={onSearchChange}
+        onValueChange={handleSearchChange}
       />
       <CommandList>
         <CommandEmpty>{emptyLabelForMode(mode)}</CommandEmpty>
@@ -290,15 +356,11 @@ export function CommandPalette({
           />
         ) : (
           <QuickOpenGroups
-            files={fileItems}
+            files={visibleFileItems}
             hasWorkspace={hasWorkspace}
-            onCommandSelect={runCommand}
+            query={fileQuery}
+            searchError={fileSearchQuery.isError}
             onFileSelect={openFile}
-            onShowEditors={() => onSearchChange("edt ")}
-            onShowSymbols={() => onSearchChange("@")}
-            onShowCommands={() => onSearchChange(">")}
-            onShowColorMode={() => onSearchChange("color ")}
-            onShowViews={() => onSearchChange("view ")}
           />
         )}
       </CommandList>
@@ -342,81 +404,38 @@ function CommandGroups({
 function QuickOpenGroups({
   files,
   hasWorkspace,
-  onCommandSelect,
+  query,
+  searchError,
   onFileSelect,
-  onShowEditors,
-  onShowSymbols,
-  onShowCommands,
-  onShowColorMode,
-  onShowViews,
 }: {
   readonly files: readonly FilePaletteItem[]
   readonly hasWorkspace: boolean
-  readonly onCommandSelect: (command: PlatformCommandId) => void
+  readonly query: string
+  readonly searchError: boolean
   readonly onFileSelect: (path: string) => void
-  readonly onShowEditors: () => void
-  readonly onShowSymbols: () => void
-  readonly onShowCommands: () => void
-  readonly onShowColorMode: () => void
-  readonly onShowViews: () => void
 }) {
+  if (!hasWorkspace) {
+    return null
+  }
+
   return (
-    <>
-      <CommandGroup heading="Quick Access">
-        <QuickActionItem
-          description="Search and run commands."
-          shortcut=">"
-          title="Show and Run Commands"
-          value="quick-action:commands"
-          onSelect={onShowCommands}
-        />
-        <QuickActionItem
-          description="Search workspace views."
-          shortcut="view"
-          title="Open View"
-          value="quick-action:views"
-          onSelect={onShowViews}
-        />
-        <QuickActionItem
-          description="Pick light, dark, or system color mode."
-          shortcut="color"
-          title="Choose Color Mode"
-          value="quick-action:color-mode"
-          onSelect={onShowColorMode}
-        />
-        <QuickActionItem
-          description="Search open editor tabs."
-          shortcut="edt"
-          title="Show All Editors"
-          value="quick-action:editors"
-          onSelect={onShowEditors}
-        />
-        <QuickActionItem
-          description="Search symbols in the active editor."
-          shortcut="@"
-          title="Go to Symbol in Editor"
-          value="quick-action:symbols"
-          onSelect={onShowSymbols}
-        />
-        <QuickActionItem
-          description="Choose a workspace folder."
-          title="Open file picker"
-          value="quick-action:open-file-picker"
-          onSelect={() => onCommandSelect("workspace.openFilePicker")}
-        />
-      </CommandGroup>
-      {hasWorkspace && files.length > 0 && (
-        <CommandGroup heading="Files">
-          {files.map((item) => (
-            <FilePaletteRow
-              item={item}
-              key={item.entry.path}
-              onSelect={onFileSelect}
-            />
-          ))}
-        </CommandGroup>
+    <CommandGroup heading="Files">
+      {searchError && (
+        <CommandItem disabled keywords={[query]} value={`files:error:${query}`}>
+          <FileIcon className="text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">
+            File search failed
+          </span>
+        </CommandItem>
       )}
-    </>
+      {files.map((item) => (
+        <FilePaletteRow
+          item={item}
+          key={item.entry.path}
+          onSelect={onFileSelect}
+        />
+      ))}
+    </CommandGroup>
   )
 }
 
@@ -606,7 +625,7 @@ function FilePaletteRow({
   return (
     <CommandItem
       keywords={[item.entry.name, item.entry.path, item.pathLabel]}
-      value={`file:${item.entry.path}`}
+      value={fileItemValue(item)}
       onSelect={() => onSelect(item.entry.path)}
     >
       <FileIcon className="text-muted-foreground" />
@@ -616,37 +635,6 @@ function FilePaletteRow({
           {item.pathLabel}
         </span>
       </span>
-    </CommandItem>
-  )
-}
-
-function QuickActionItem({
-  description,
-  shortcut,
-  title,
-  value,
-  onSelect,
-}: {
-  readonly description: string
-  readonly shortcut?: string
-  readonly title: string
-  readonly value: string
-  readonly onSelect: () => void
-}) {
-  return (
-    <CommandItem
-      keywords={[title, description, value]}
-      value={value}
-      onSelect={onSelect}
-    >
-      <TerminalWindowIcon className="text-muted-foreground" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{title}</span>
-        <span className="block truncate text-[11px] text-muted-foreground">
-          {description}
-        </span>
-      </span>
-      {shortcut && <CommandShortcut>{shortcut}</CommandShortcut>}
     </CommandItem>
   )
 }
@@ -691,6 +679,48 @@ function filePaletteItems(
 
     return [{ entry, pathLabel: treePath }]
   })
+}
+
+function searchFilePaletteItems(
+  matches: readonly {
+    birthtimeMs?: number
+    mtimeMs?: number
+    path: string
+    size?: number
+    targetType?: TreeEntry["targetType"]
+    type: TreeEntry["type"]
+  }[],
+  rootPath: string
+): readonly FilePaletteItem[] {
+  return matches.map((match) => ({
+    entry: {
+      birthtimeMs: match.birthtimeMs ?? 0,
+      mtimeMs: match.mtimeMs ?? 0,
+      name: basename(match.path),
+      path: match.path,
+      size: match.size ?? 0,
+      targetType: match.targetType,
+      type: match.type,
+    },
+    pathLabel: toTreePath(match.path, rootPath),
+  }))
+}
+
+function selectedFileCommandValue(
+  selectedValue: string | null,
+  items: readonly FilePaletteItem[]
+) {
+  const firstValue = items[0] ? fileItemValue(items[0]) : undefined
+  if (!selectedValue) return firstValue
+  if (items.some((item) => fileItemValue(item) === selectedValue)) {
+    return selectedValue
+  }
+
+  return firstValue
+}
+
+function fileItemValue(item: FilePaletteItem) {
+  return `file:${item.entry.path}`
 }
 
 function editorPaletteItems(
@@ -806,7 +836,7 @@ function emptyLabelForMode(mode: ReturnType<typeof quickAccessMode>) {
   if (mode === "editors") return "No open editors"
   if (mode === "symbols") return "No matching symbols"
 
-  return "No matching files or quick actions"
+  return "No matching files"
 }
 
 function placeholderForMode(mode: ReturnType<typeof quickAccessMode>) {
@@ -816,7 +846,7 @@ function placeholderForMode(mode: ReturnType<typeof quickAccessMode>) {
   if (mode === "editors") return "Search open editors..."
   if (mode === "symbols") return "Search symbols in the active editor..."
 
-  return "Search files or type > to run commands..."
+  return "Search files or type > for commands..."
 }
 
 function commandKeepsPaletteOpen(command: PlatformCommandId) {

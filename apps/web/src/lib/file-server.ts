@@ -1,5 +1,10 @@
 import { fsClient } from "@/lib/fs-client"
-import type { FileResult, TreeEntry, TreeResult } from "@/lib/file-system-types"
+import type {
+  FileResult,
+  FindMatch,
+  TreeEntry,
+  TreeResult,
+} from "@/lib/file-system-types"
 import {
   errorMessage as clientErrorMessage,
   toClientError,
@@ -27,6 +32,33 @@ export async function fetchFile(path: string, signal: AbortSignal) {
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
   return response.data as FileResult
+}
+
+export async function fetchQuickOpenFiles({
+  path,
+  query,
+  signal,
+}: {
+  path: string
+  query: string
+  signal: AbortSignal
+}) {
+  const response = await fsClient.fs.find.get({
+    query: {
+      entryType: "file",
+      includeContent: false,
+      includeNames: true,
+      limit: 200,
+      matchMode: "fuzzy",
+      path,
+      query,
+    },
+    fetch: { signal },
+  })
+
+  if (response.error) throw new Error(rpcErrorMessage(response.error))
+
+  return response.data.matches as FindMatch[]
 }
 
 export async function writeFileContent(

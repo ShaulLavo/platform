@@ -134,6 +134,7 @@ const entryTypeSchema = v.union([
 const workspaceSearchMatchModeSchema = v.union([
   v.literal("literal"),
   v.literal("regex"),
+  v.literal("fuzzy"),
 ])
 const workspaceSearchQuerySchema = v.object({
   caseSensitive: v.optional(v.boolean()),

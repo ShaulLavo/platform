@@ -459,6 +459,68 @@ describe("workspace disk search provider", () => {
     ])
   })
 
+  it("supports fuzzy filename quick-open matches across workspace paths", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "apps/web/src/components"), {
+      recursive: true,
+    })
+    await mkdir(path.join(root, "apps/web/src/lib"), {
+      recursive: true,
+    })
+    await writeFile(
+      path.join(root, "apps/web/src/components/command-palette.tsx"),
+      ""
+    )
+    await writeFile(path.join(root, "apps/web/src/lib/client.ts"), "")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: false,
+      limit: 20,
+      matchMode: "fuzzy",
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "cmdp",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "name",
+        path: "apps/web/src/components/command-palette.tsx",
+      }),
+    ])
+  })
+
+  it("supports fuzzy filename quick-open queries split across directories", async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, "apps/web/src/components"), {
+      recursive: true,
+    })
+    await mkdir(path.join(root, "apps/server/src"), {
+      recursive: true,
+    })
+    await writeFile(
+      path.join(root, "apps/web/src/components/command-palette.tsx"),
+      ""
+    )
+    await writeFile(path.join(root, "apps/server/src/command.ts"), "")
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: false,
+      limit: 20,
+      matchMode: "fuzzy",
+      maxContentBytes: 1_000_000,
+      path: "",
+      query: "components palette",
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        kind: "name",
+        path: "apps/web/src/components/command-palette.tsx",
+      }),
+    ])
+  })
+
   it("uses a deterministic path tie-breaker for equal filename matches", async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, "a"), { recursive: true })
