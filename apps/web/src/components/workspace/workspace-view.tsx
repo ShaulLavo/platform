@@ -19,7 +19,7 @@ import { Panel as GitPanel } from "@/features/git/panel"
 import { TerminalPanel } from "@/features/terminal/terminal-panel"
 import { useStatus } from "@/features/git/hooks"
 import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
-import type { FileResult, TreeEntry } from "@/lib/file-system-types"
+import type { TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
 import type { WorkspacePanelTab } from "@/lib/workspace-cache"
 import type { TreeModel } from "@/lib/tree-model"
@@ -43,7 +43,6 @@ const COLLAPSED_PANEL_SIZE_PX = 1
 
 export function WorkspaceView({
   editorKeymapLayers,
-  fileState,
   rootFolder,
   treeState,
   onLoadDirectory,
@@ -51,7 +50,6 @@ export function WorkspaceView({
   onRequestCloseTabs,
 }: {
   editorKeymapLayers: readonly EditorKeymapLayer[]
-  fileState: LoadState<FileResult>
   rootFolder: PickedFsEntry
   treeState: LoadState<TreeModel>
   onLoadDirectory: (entry: TreeEntry, treePath: string) => void
@@ -148,10 +146,7 @@ export function WorkspaceView({
           <PersistedResizablePanelGroup
             className="min-h-0 flex-1"
             orientation="horizontal"
-            storageKey={workspaceResizableStorageKey(
-              rootFolder.path,
-              "main"
-            )}
+            storageKey={workspaceResizableStorageKey(rootFolder.path, "main")}
           >
             <ResizablePanel
               id="workspace-sidebar"
@@ -214,7 +209,6 @@ export function WorkspaceView({
                 >
                   <FileViewer
                     editorKeymapLayers={editorKeymapLayers}
-                    fileState={fileState}
                     rootPath={rootFolder.path}
                     onRequestCloseTab={onRequestCloseTab}
                     onRequestCloseTabs={onRequestCloseTabs}

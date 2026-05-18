@@ -127,6 +127,7 @@ function cachedWorkspaceState(
   return {
     diffViewMode: state.diffViewMode,
     editorHistory: state.editorHistory,
+    editorPaneLayout: state.editorPaneLayout,
     gitPanelOpen: state.gitPanelOpen,
     openFilePaths: state.openFilePaths,
     recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,

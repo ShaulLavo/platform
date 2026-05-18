@@ -8,12 +8,14 @@ import {
   createDocumentSession,
   type DocumentSession,
   type EditorScrollPosition,
+  type TextEdit,
 } from "@editor/core"
 import { createContext, useContext } from "react"
 import { useStore } from "zustand"
 import { createStore, type StoreApi } from "zustand/vanilla"
 
 export type CachedEditorDocument = {
+  contentRevision: string
   path: string
   revision: number
   scrollPosition?: EditorScrollPosition
@@ -32,6 +34,8 @@ type EditorDocumentStoreState = {
   documents: Readonly<Record<string, CachedEditorDocument>>
   fallbackDocumentPath: string | null
   scrollPositionByPath: Readonly<Record<string, EditorScrollPosition>>
+  scrollPositionByTabId: Readonly<Record<string, EditorScrollPosition>>
+  tabDocuments: Readonly<Record<string, CachedEditorDocument>>
 }
 
 type EditorDocumentStoreActions = {
@@ -45,14 +49,27 @@ type EditorDocumentStoreActions = {
     selectedFilePath?: string | null
   ) => CachedEditorDocument
   evictCleanCachedEditorDocument: (path: string) => boolean
+  evictCleanCachedEditorTabDocument: (tabId: string) => boolean
   forceReplaceCachedEditorDocument: (
     file: FileResult,
     selectedFilePath?: string | null
   ) => { wasDirty: boolean }
   getCachedEditorDocument: (path: string) => CachedEditorDocument | null
+  getCachedEditorTabDocument: (tabId: string) => CachedEditorDocument | null
   hasCachedEditorDocument: (path: string) => boolean
+  ensureCachedEditorTabDocument: (
+    tabId: string,
+    file: FileResult
+  ) => CachedEditorDocument
   markCachedEditorDocumentClean: (path: string, revision: number) => boolean
-  recordCachedEditorDocumentTextChange: (path: string) => void
+  recordCachedEditorDocumentTextChange: (
+    path: string,
+    options?: {
+      sourceTabId?: string
+      text?: string
+      edits?: readonly TextEdit[]
+    }
+  ) => void
   renameCachedEditorDocumentPath: (
     from: string,
     to: string,
@@ -61,6 +78,10 @@ type EditorDocumentStoreActions = {
   setCachedEditorDocumentDirty: (path: string, dirty: boolean) => void
   setCachedEditorDocumentScrollPosition: (
     path: string,
+    scrollPosition: EditorScrollPosition
+  ) => void
+  setCachedEditorTabDocumentScrollPosition: (
+    tabId: string,
     scrollPosition: EditorScrollPosition
   ) => void
   setFallbackDocumentPath: (path: string | null) => void
@@ -99,6 +120,8 @@ export function createEditorDocumentStore() {
     documents: {},
     fallbackDocumentPath: null,
     scrollPositionByPath: {},
+    scrollPositionByTabId: {},
+    tabDocuments: {},
     clearCachedEditorDocuments: () =>
       set({
         documentContentRevisions: {},
@@ -107,6 +130,8 @@ export function createEditorDocumentStore() {
         documents: {},
         fallbackDocumentPath: null,
         scrollPositionByPath: {},
+        scrollPositionByTabId: {},
+        tabDocuments: {},
       }),
     deleteCachedEditorDocument: (path, options) => {
       let result: DeleteCachedEditorDocumentResult = {
@@ -135,6 +160,12 @@ export function createEditorDocumentStore() {
           documents: omitKey(state.documents, path),
           dirtyFilePaths,
           scrollPositionByPath: omitKey(state.scrollPositionByPath, path),
+          scrollPositionByTabId: omitTabPathValues(
+            state.scrollPositionByTabId,
+            state.tabDocuments,
+            path
+          ),
+          tabDocuments: omitTabDocumentsForPath(state.tabDocuments, path),
         }
       })
       return result
@@ -166,6 +197,34 @@ export function createEditorDocumentStore() {
       }))
       return document
     },
+    ensureCachedEditorTabDocument: (tabId, file) => {
+      const canonical = get().ensureCachedEditorDocument(file)
+      const tabDocument = get().tabDocuments[tabId]
+      if (
+        tabDocument?.path === file.path &&
+        (tabDocument.session.isDirty() ||
+          tabDocument.contentRevision === canonical.contentRevision)
+      ) {
+        return cachedTabDocumentWithScroll(get(), tabId) ?? tabDocument
+      }
+
+      const document = {
+        ...freshCachedEditorDocument(
+          {
+            ...file,
+            content: canonical.session.getText(),
+            mtimeMs: canonical.revision,
+          },
+          undefined,
+          get().scrollPositionByTabId[tabId]
+        ),
+        contentRevision: canonical.contentRevision,
+      }
+      set((state) => ({
+        tabDocuments: { ...state.tabDocuments, [tabId]: document },
+      }))
+      return document
+    },
     evictCleanCachedEditorDocument: (path) => {
       const cached = get().documents[path]
       if (!cached) return false
@@ -178,6 +237,23 @@ export function createEditorDocumentStore() {
           removeDirtyFilePath(state.dirtyFilePaths, path) ??
           state.dirtyFilePaths,
         scrollPositionByPath: omitKey(state.scrollPositionByPath, path),
+        scrollPositionByTabId: omitTabPathValues(
+          state.scrollPositionByTabId,
+          state.tabDocuments,
+          path
+        ),
+        tabDocuments: omitTabDocumentsForPath(state.tabDocuments, path),
+      }))
+      return true
+    },
+    evictCleanCachedEditorTabDocument: (tabId) => {
+      const cached = get().tabDocuments[tabId]
+      if (!cached) return false
+      if (cached.session.isDirty()) return false
+
+      set((state) => ({
+        scrollPositionByTabId: omitKey(state.scrollPositionByTabId, tabId),
+        tabDocuments: omitKey(state.tabDocuments, tabId),
       }))
       return true
     },
@@ -192,19 +268,29 @@ export function createEditorDocumentStore() {
           cached,
           state.documentContentRevisions[file.path]
         )
+        const nextDocument =
+          document.contentRevision === contentRevision
+            ? document
+            : { ...document, contentRevision }
         const dirtyFilePaths =
           removeDirtyFilePath(state.dirtyFilePaths, file.path) ??
           state.dirtyFilePaths
+        const tabDocuments = replaceTabDocumentsForPath(
+          state.tabDocuments,
+          file,
+          contentRevision
+        )
         const fallbackDocumentPath =
           selectedFilePath === file.path
             ? file.path
             : state.fallbackDocumentPath
         if (
           !wasDirty &&
-          document === cached &&
+          nextDocument === cached &&
           contentRevision === state.documentContentRevisions[file.path] &&
           dirtyFilePaths === state.dirtyFilePaths &&
-          fallbackDocumentPath === state.fallbackDocumentPath
+          fallbackDocumentPath === state.fallbackDocumentPath &&
+          tabDocuments === state.tabDocuments
         )
           return state
 
@@ -217,11 +303,12 @@ export function createEditorDocumentStore() {
                   [file.path]: contentRevision,
                 },
           documents:
-            document === cached
+            nextDocument === cached
               ? state.documents
-              : { ...state.documents, [file.path]: document },
+              : { ...state.documents, [file.path]: nextDocument },
           dirtyFilePaths,
           fallbackDocumentPath,
+          tabDocuments,
         }
       })
       return { wasDirty }
@@ -230,38 +317,58 @@ export function createEditorDocumentStore() {
       const state = get()
       return cachedDocumentWithScroll(state, path)
     },
+    getCachedEditorTabDocument: (tabId) =>
+      cachedTabDocumentWithScroll(get(), tabId),
     hasCachedEditorDocument: (path) => get().documents[path] !== undefined,
     markCachedEditorDocumentClean: (path, revision) => {
       const cached = get().documents[path]
       if (!cached) return false
 
       cached.session.markClean()
+      const contentRevision = contentRevisionForText(cached.session.getText())
       set((state) => ({
         documentContentRevisions:
           path in state.documentContentRevisions
-            ? state.documentContentRevisions
+            ? {
+                ...state.documentContentRevisions,
+                [path]: contentRevision,
+              }
             : {
                 ...state.documentContentRevisions,
-                [path]: contentRevisionForText(cached.session.getText()),
+                [path]: contentRevision,
               },
         documents: {
           ...state.documents,
-          [path]: { ...cached, revision },
+          [path]: { ...cached, contentRevision, revision },
         },
         dirtyFilePaths:
           removeDirtyFilePath(state.dirtyFilePaths, path) ??
           state.dirtyFilePaths,
+        tabDocuments: markTabDocumentsCleanForPath(
+          state.tabDocuments,
+          path,
+          revision,
+          contentRevision
+        ),
       }))
       return true
     },
-    recordCachedEditorDocumentTextChange: (path) =>
+    recordCachedEditorDocumentTextChange: (path, options = {}) =>
       set((state) => {
         const contentRevision = editedContentRevision(
           state.dirtyContentRevision + 1
         )
+        const text = changedDocumentText(state, path, options)
         const dirtyFilePaths =
           updateDirtyFilePaths(state.dirtyFilePaths, path, true) ??
           state.dirtyFilePaths
+        const documents = recordCanonicalTextChange(
+          state.documents,
+          path,
+          text,
+          contentRevision,
+          options.edits
+        )
         const documentContentRevisions =
           path in state.documents
             ? {
@@ -272,8 +379,17 @@ export function createEditorDocumentStore() {
 
         return {
           documentContentRevisions,
+          documents,
           dirtyContentRevision: state.dirtyContentRevision + 1,
           dirtyFilePaths,
+          tabDocuments: syncTabDocumentsForPath(
+            state.tabDocuments,
+            path,
+            options.sourceTabId ?? null,
+            text,
+            contentRevision,
+            options.edits
+          ),
         }
       }),
     renameCachedEditorDocumentPath: (from, to, options) => {
@@ -295,6 +411,7 @@ export function createEditorDocumentStore() {
               state.fallbackDocumentPath === from
                 ? to
                 : state.fallbackDocumentPath,
+            tabDocuments: renameTabDocumentsPath(state.tabDocuments, from, to),
           }
         }
 
@@ -314,6 +431,7 @@ export function createEditorDocumentStore() {
             scrollPosition === undefined
               ? state.scrollPositionByPath
               : moveValue(state.scrollPositionByPath, from, to),
+          tabDocuments: renameTabDocumentsPath(state.tabDocuments, from, to),
         }
       })
       return { wasDirty }
@@ -331,16 +449,45 @@ export function createEditorDocumentStore() {
       }),
     setCachedEditorDocumentScrollPosition: (path, scrollPosition) => {
       set((state) => {
-        if (!state.documents[path]) return state
+        const document = state.documents[path]
+        if (!document) return state
         if (
           scrollPositionsEqual(state.scrollPositionByPath[path], scrollPosition)
         )
           return state
 
         return {
+          documents: {
+            ...state.documents,
+            [path]: { ...document, scrollPosition },
+          },
           scrollPositionByPath: {
             ...state.scrollPositionByPath,
             [path]: scrollPosition,
+          },
+        }
+      })
+    },
+    setCachedEditorTabDocumentScrollPosition: (tabId, scrollPosition) => {
+      set((state) => {
+        const document = state.tabDocuments[tabId]
+        if (!document) return state
+        if (
+          scrollPositionsEqual(
+            state.scrollPositionByTabId[tabId],
+            scrollPosition
+          )
+        )
+          return state
+
+        return {
+          scrollPositionByTabId: {
+            ...state.scrollPositionByTabId,
+            [tabId]: scrollPosition,
+          },
+          tabDocuments: {
+            ...state.tabDocuments,
+            [tabId]: { ...document, scrollPosition },
           },
         }
       })
@@ -359,6 +506,7 @@ function freshCachedEditorDocument(
   session.markClean()
 
   return {
+    contentRevision: contentRevisionForText(file.content),
     path: file.path,
     revision: file.mtimeMs,
     scrollPosition: scrollPosition ?? cached?.scrollPosition,
@@ -396,10 +544,147 @@ function replacementContentRevision(
   return contentRevisionForText(file.content)
 }
 
+function changedDocumentText(
+  state: EditorDocumentStoreState,
+  path: string,
+  options: { sourceTabId?: string; text?: string }
+) {
+  if (options.text !== undefined) return options.text
+
+  const sourceDocument = options.sourceTabId
+    ? state.tabDocuments[options.sourceTabId]
+    : null
+  if (sourceDocument?.path === path) return sourceDocument.session.getText()
+
+  return state.documents[path]?.session.getText() ?? ""
+}
+
+function recordCanonicalTextChange(
+  documents: Readonly<Record<string, CachedEditorDocument>>,
+  path: string,
+  text: string,
+  contentRevision: string,
+  edits: readonly TextEdit[] | undefined
+) {
+  const document = documents[path]
+  if (!document) return documents
+
+  syncSessionText(document.session, text, edits)
+  return {
+    ...documents,
+    [path]: {
+      ...document,
+      contentRevision,
+    },
+  }
+}
+
+function syncTabDocumentsForPath(
+  tabDocuments: Readonly<Record<string, CachedEditorDocument>>,
+  path: string,
+  sourceTabId: string | null,
+  text: string,
+  contentRevision: string,
+  edits: readonly TextEdit[] | undefined
+) {
+  let changed = false
+  const nextEntries = Object.entries(tabDocuments).map(([tabId, document]) => {
+    if (document.path !== path) return [tabId, document] as const
+
+    if (tabId !== sourceTabId) {
+      syncSessionText(document.session, text, edits)
+    }
+
+    changed = true
+    return [tabId, { ...document, contentRevision }] as const
+  })
+  if (!changed) return tabDocuments
+
+  return Object.fromEntries(nextEntries) as Readonly<
+    Record<string, CachedEditorDocument>
+  >
+}
+
+function replaceTabDocumentsForPath(
+  tabDocuments: Readonly<Record<string, CachedEditorDocument>>,
+  file: FileResult,
+  contentRevision: string
+) {
+  let changed = false
+  const nextEntries = Object.entries(tabDocuments).map(([tabId, document]) => {
+    if (document.path !== file.path) return [tabId, document] as const
+
+    syncSessionText(document.session, file.content)
+    document.session.markClean()
+    changed = true
+    return [
+      tabId,
+      {
+        ...document,
+        contentRevision,
+        revision: file.mtimeMs,
+      },
+    ] as const
+  })
+  if (!changed) return tabDocuments
+
+  return Object.fromEntries(nextEntries) as Readonly<
+    Record<string, CachedEditorDocument>
+  >
+}
+
+function markTabDocumentsCleanForPath(
+  tabDocuments: Readonly<Record<string, CachedEditorDocument>>,
+  path: string,
+  revision: number,
+  contentRevision: string
+) {
+  let changed = false
+  const nextEntries = Object.entries(tabDocuments).map(([tabId, document]) => {
+    if (document.path !== path) return [tabId, document] as const
+
+    document.session.markClean()
+    changed = true
+    return [tabId, { ...document, contentRevision, revision }] as const
+  })
+  if (!changed) return tabDocuments
+
+  return Object.fromEntries(nextEntries) as Readonly<
+    Record<string, CachedEditorDocument>
+  >
+}
+
+function syncSessionText(
+  session: DocumentSession,
+  text: string,
+  edits?: readonly TextEdit[]
+) {
+  if (session.getText() === text) return
+
+  if (edits?.length) {
+    session.applyEdits(edits, { history: "skip" })
+    if (session.getText() === text) return
+  }
+
+  session.applyEdits([fullDocumentTextEdit(session, text)], {
+    history: "skip",
+  })
+}
+
+function fullDocumentTextEdit(session: DocumentSession, text: string) {
+  return {
+    from: 0,
+    text,
+    to: session.getSnapshot().length,
+  }
+}
+
 function isDirtyPath(state: EditorDocumentStoreState, path: string) {
-  return (
-    state.dirtyFilePaths.has(path) ||
-    state.documents[path]?.session.isDirty() === true
+  if (state.dirtyFilePaths.has(path)) return true
+  if (state.documents[path]?.session.isDirty() === true) return true
+
+  return Object.values(state.tabDocuments).some(
+    (document) => document.path === path && document.session.isDirty()
   )
 }
 
@@ -414,18 +699,37 @@ function moveCachedEditorDocument(
   return { ...omitKey(documents, from), [to]: { ...cached, path: to } }
 }
 
+function renameTabDocumentsPath(
+  tabDocuments: Readonly<Record<string, CachedEditorDocument>>,
+  from: string,
+  to: string
+) {
+  let changed = false
+  const nextEntries = Object.entries(tabDocuments).map(([tabId, document]) => {
+    if (document.path !== from) return [tabId, document] as const
+
+    changed = true
+    return [tabId, { ...document, path: to }] as const
+  })
+  if (!changed) return tabDocuments
+
+  return Object.fromEntries(nextEntries) as Readonly<
+    Record<string, CachedEditorDocument>
+  >
+}
+
 function cachedDocumentWithScroll(
   state: EditorDocumentStoreState,
   path: string
 ): CachedEditorDocument | null {
-  const document = state.documents[path]
-  if (!document) return null
+  return state.documents[path] ?? null
+}
 
-  const scrollPosition = state.scrollPositionByPath[path]
-  if (scrollPosition === undefined) return document
-  if (document.scrollPosition === scrollPosition) return document
-
-  return { ...document, scrollPosition }
+function cachedTabDocumentWithScroll(
+  state: EditorDocumentStoreState,
+  tabId: string
+): CachedEditorDocument | null {
+  return state.tabDocuments[tabId] ?? null
 }
 
 function scrollPositionsEqual(
@@ -472,4 +776,27 @@ function moveValue<T>(
   if (value === undefined) return record
 
   return { ...omitKey(record, from), [to]: value }
+}
+
+function omitTabDocumentsForPath(
+  tabDocuments: Readonly<Record<string, CachedEditorDocument>>,
+  path: string
+) {
+  return Object.fromEntries(
+    Object.entries(tabDocuments).filter(
+      ([, document]) => document.path !== path
+    )
+  ) as Readonly<Record<string, CachedEditorDocument>>
+}
+
+function omitTabPathValues<T>(
+  record: Readonly<Record<string, T>>,
+  tabDocuments: Readonly<Record<string, CachedEditorDocument>>,
+  path: string
+) {
+  return Object.fromEntries(
+    Object.entries(record).filter(
+      ([tabId]) => tabDocuments[tabId]?.path !== path
+    )
+  ) as Readonly<Record<string, T>>
 }

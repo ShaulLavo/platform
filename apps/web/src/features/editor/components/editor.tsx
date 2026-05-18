@@ -27,12 +27,14 @@ import {
 } from "@/features/editor/hooks/use-scroll-persistence-plugin"
 import { useLanguageServerPlugin } from "@/features/editor/hooks/use-lsp-plugin"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
-import type { EditorKeymapLayer } from "@editor/core"
+import type { DocumentSessionChange, EditorKeymapLayer } from "@editor/core"
 
 type EditorProps = {
+  active: boolean
   document: CachedEditorDocument
   keymapLayers: readonly EditorKeymapLayer[]
   rootPath: string
+  tabId: string
   definitionTarget?: LanguageServerDefinitionTarget | null
   onDirtyChange?: (path: string, dirty: boolean) => void
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
@@ -42,14 +44,21 @@ type EditorProps = {
     scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
   ) => void
   onStatusChange?: (status: EditorStatusBarState) => void
-  onTextChange?: (path: string, text: string) => void
+  onTextChange?: (
+    tabId: string,
+    path: string,
+    text: string,
+    change: DocumentSessionChange
+  ) => void
 }
 
 export function Editor({
+  active,
   definitionTarget,
   document: cachedDocument,
   keymapLayers,
   rootPath,
+  tabId,
   onDirtyChange,
   onOpenDefinition,
   onOpenReferences,
@@ -58,7 +67,7 @@ export function Editor({
   onTextChange,
 }: EditorProps) {
   const editorActive = useWorkspaceFocus(
-    (state) => state.activeArea === "editor"
+    (state) => state.activeArea === "editor" && active
   )
   const editorFocusRequestId = useWorkspaceFocus((state) =>
     state.consumeEditorFocusRequest()
@@ -70,6 +79,7 @@ export function Editor({
   const { editorTheme } = useEditorColorTheme()
   const { languageServerDiagnostics, languageServer, languageServerStatus } =
     useLanguageServerPlugin({
+      enabled: active,
       filePath: cachedDocument.path,
       rootPath,
       onOpenDefinition,
@@ -104,6 +114,7 @@ export function Editor({
     () => ({
       documentId: cachedDocument.path,
       languageId: languageIdForFilePath(cachedDocument.path),
+      revision: cachedDocument.contentRevision,
       scrollPosition: cachedDocument.scrollPosition,
       session: cachedDocument.session,
       text: cachedDocument.session.getText(),
@@ -125,7 +136,12 @@ export function Editor({
       if (!change || change.kind === "selection" || change.kind === "none")
         return
 
-      onTextChange?.(cachedDocument.path, cachedDocument.session.getText())
+      onTextChange?.(
+        tabId,
+        cachedDocument.path,
+        cachedDocument.session.getText(),
+        change
+      )
     },
     plugins,
     theme: editorTheme,
@@ -145,7 +161,7 @@ export function Editor({
   useEditorStatusBarState({
     charCount: editorState?.length ?? document.text.length,
     filePath: cachedDocument.path,
-    onChange: onStatusChange,
+    onChange: active ? onStatusChange : undefined,
     state: editorState,
     languageServerDiagnostics,
     languageServerStatus,
@@ -164,11 +180,13 @@ export function Editor({
   }, [])
 
   useEffect(() => {
+    if (!active) return
+
     onDirtyChange?.(
       cachedDocument.path,
       editorState?.isDirty ?? cachedDocument.session.isDirty()
     )
-  }, [cachedDocument, editorState?.isDirty, onDirtyChange])
+  }, [active, cachedDocument, editorState?.isDirty, onDirtyChange])
 
   useLayoutEffect(() => {
     return () => {
@@ -191,16 +209,19 @@ export function Editor({
   }, [controller, selection])
 
   useEffect(() => {
+    if (!active) return
     if (editorFocusRequestId === 0) return
 
     controller.commands.focus()
-  }, [controller, editorFocusRequestId])
+  }, [active, controller, editorFocusRequestId])
 
   useEffect(() => {
+    if (!active) return
+
     setActiveEditorCommandDispatch(controller.commands.dispatchCommand)
 
     return () => setActiveEditorCommandDispatch(null)
-  }, [controller, setActiveEditorCommandDispatch])
+  }, [active, controller, setActiveEditorCommandDispatch])
 
   useCommitMessageEditorFocus({
     document: cachedDocument,

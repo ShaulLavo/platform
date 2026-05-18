@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react"
 import { fsServerUrl } from "@/lib/fs-client"
 
 type UseLanguageServerPluginOptions = {
+  enabled?: boolean
   filePath: string
   rootPath: string
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
@@ -18,6 +19,7 @@ type UseLanguageServerPluginOptions = {
 }
 
 export function useLanguageServerPlugin({
+  enabled = true,
   filePath,
   rootPath,
   onOpenDefinition,
@@ -34,6 +36,11 @@ export function useLanguageServerPlugin({
   const match = matchState?.key === matchKey ? matchState.match : null
 
   useEffect(() => {
+    if (!enabled) {
+      setMatchState({ key: matchKey, match: null })
+      return
+    }
+
     const controller = new AbortController()
     fetch(languageServerMatchRoute(rootPath, filePath), {
       signal: controller.signal,
@@ -51,24 +58,21 @@ export function useLanguageServerPlugin({
       })
 
     return () => controller.abort()
-  }, [filePath, matchKey, rootPath])
+  }, [enabled, filePath, matchKey, rootPath])
 
-  const languageServer = useMemo(
-    () => {
-      if (!match) return idleLanguageServerPlugin
+  const languageServer = useMemo(() => {
+    if (!match) return idleLanguageServerPlugin
 
-      return createLanguageServerPlugin({
-        rootUri: fileUriForPath(rootPath),
-        webSocketRoute: languageServerRoute(rootPath, filePath, match.serverId),
-        onStatusChange: setLanguageServerStatus,
-        onDiagnostics: setLanguageServerDiagnostics,
-        onOpenDefinition,
-        onOpenReferences,
-        onError: () => undefined,
-      })
-    },
-    [filePath, match, onOpenDefinition, onOpenReferences, rootPath]
-  )
+    return createLanguageServerPlugin({
+      rootUri: fileUriForPath(rootPath),
+      webSocketRoute: languageServerRoute(rootPath, filePath, match.serverId),
+      onStatusChange: setLanguageServerStatus,
+      onDiagnostics: setLanguageServerDiagnostics,
+      onOpenDefinition,
+      onOpenReferences,
+      onError: () => undefined,
+    })
+  }, [filePath, match, onOpenDefinition, onOpenReferences, rootPath])
 
   return {
     languageServerDiagnostics: match ? languageServerDiagnostics : null,

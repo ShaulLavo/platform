@@ -7,6 +7,7 @@ import {
 import { useTheme, type Theme } from "@/components/theme-context"
 import type { RequestCloseTab } from "@/features/editor/hooks/use-dirty-tab-close"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import { activeEditorPaneTab } from "@/features/editor/state/editor-pane-state"
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
@@ -35,6 +36,7 @@ import type { PlatformCommandId, WorkspaceCommandId } from "./types"
 import type { PlatformCommandDispatch } from "./use-app-keymap"
 
 type WorkspaceCommandContext = {
+  readonly activeTabId: string | null
   readonly diffViewMode: EditorDiffViewMode
   readonly documentStore: EditorDocumentStoreApi
   readonly gitPanelOpen: boolean
@@ -53,6 +55,7 @@ type WorkspaceCommandContext = {
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly sidebarVisible: boolean
   readonly selectPreviousEditor: () => boolean
+  readonly splitTab: (tabId: string, direction: "horizontal") => boolean
 }
 
 type WorkspaceCommandHandler = (
@@ -73,6 +76,9 @@ export function usePlatformCommandDispatch({
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const selectedFilePath = useEditorWorkspaceState(
     (state) => state.selectedFilePath
+  )
+  const activeTabId = useEditorWorkspaceState(
+    (state) => activeEditorPaneTab(state.editorPaneLayout)?.id ?? null
   )
   const sidebarVisible = useEditorWorkspaceState(
     (state) => state.sidebarVisible
@@ -97,11 +103,11 @@ export function usePlatformCommandDispatch({
     (state) => state.dispatchEditorCommand
   )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const { closeTab, reopenClosedEditor, selectPreviousEditor } =
+  const { closeTab, reopenClosedEditor, selectPreviousEditor, splitTab } =
     useEditorCommands()
   const fallbackRequestCloseTab = useCallback<RequestCloseTab>(
-    (path) => {
-      closeTab(path)
+    (tabId) => {
+      closeTab(tabId)
       return true
     },
     [closeTab]
@@ -116,6 +122,7 @@ export function usePlatformCommandDispatch({
       if (!workspaceCommand) return false
 
       return dispatchWorkspaceCommand(workspaceCommand, {
+        activeTabId,
         diffViewMode,
         documentStore,
         gitPanelOpen,
@@ -134,9 +141,11 @@ export function usePlatformCommandDispatch({
         showCommandPalette,
         sidebarVisible,
         selectPreviousEditor,
+        splitTab,
       })
     },
     [
+      activeTabId,
       diffViewMode,
       documentStore,
       dispatchEditorCommand,
@@ -156,6 +165,7 @@ export function usePlatformCommandDispatch({
       showCommandPalette,
       sidebarVisible,
       selectPreviousEditor,
+      splitTab,
     ]
   )
 }
@@ -172,8 +182,8 @@ const workspaceCommandHandlers: Record<
   WorkspaceCommandId,
   WorkspaceCommandHandler
 > = {
-  "workspace.closeCurrentTab": ({ requestCloseTab, selectedFilePath }) =>
-    closeSelectedTab(selectedFilePath, requestCloseTab),
+  "workspace.closeCurrentTab": ({ activeTabId, requestCloseTab }) =>
+    closeSelectedTab(activeTabId, requestCloseTab),
   "workspace.focusEditor": ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
@@ -278,7 +288,10 @@ const workspaceCommandHandlers: Record<
     setTheme("system")
     return true
   },
-  "workspace.splitEditor": ({ requestEditorFocus }) => {
+  "workspace.splitEditor": ({ activeTabId, requestEditorFocus, splitTab }) => {
+    if (!activeTabId) return false
+    if (!splitTab(activeTabId, "horizontal")) return false
+
     requestEditorFocus()
     return true
   },
@@ -309,12 +322,12 @@ const workspaceCommandHandlers: Record<
 }
 
 function closeSelectedTab(
-  selectedFilePath: string | null,
+  activeTabId: string | null,
   requestCloseTab: RequestCloseTab
 ) {
-  if (!selectedFilePath) return false
+  if (!activeTabId) return false
 
-  requestCloseTab(selectedFilePath)
+  requestCloseTab(activeTabId)
   return true
 }
 

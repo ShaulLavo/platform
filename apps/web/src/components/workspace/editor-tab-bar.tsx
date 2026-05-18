@@ -31,7 +31,7 @@ import {
   chromeTabLayout,
 } from "@/components/workspace/chrome-tab-layout"
 import {
-  editorTabCloseTargetPaths,
+  editorTabCloseTargetIds,
   type EditorTabCloseTargetKind,
 } from "@/components/workspace/editor-tab-close-targets"
 import {
@@ -54,6 +54,12 @@ import {
   parseConflictDiffDocumentId,
 } from "@/features/editor/conflict-diff-document"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
+import {
+  activeTabForPane,
+  findEditorPane,
+  type EditorPaneSplitDirection,
+  type EditorPaneTab,
+} from "@/features/editor/state/editor-pane-state"
 import { useEditorConflictState } from "@/features/editor/state/editor-conflict-state"
 import { useEditorDocumentState } from "@/features/editor/state/editor-document-state"
 import type {
@@ -118,6 +124,7 @@ type EditorTabModel = {
   diffSuffix: string
   dirty: boolean
   icon: ResolvedFileIcon
+  id: string
   name: string
   path: string
   title: string
@@ -132,6 +139,7 @@ export function EditorTabBar({
   onRequestCloseTabs,
   onRevealNextChange,
   onRevealPreviousChange,
+  paneId,
   rootPath,
   tabSizing = DEFAULT_EDITOR_TAB_SIZING,
 }: {
@@ -141,19 +149,23 @@ export function EditorTabBar({
   onRequestCloseTabs: RequestCloseTabs
   onRevealNextChange?: () => void
   onRevealPreviousChange?: () => void
+  paneId: string
   rootPath: string
   tabSizing?: EditorTabSizing
 }) {
   const selectedTabRef = useRef<HTMLDivElement>(null)
   const tabListRef = useRef<HTMLDivElement>(null)
   const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
-  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
-  const selectedFilePath = useEditorWorkspaceState(
-    (state) => state.selectedFilePath
+  const editorPaneLayout = useEditorWorkspaceState(
+    (state) => state.editorPaneLayout
   )
+  const pane = findEditorPane(editorPaneLayout.root, paneId)
+  const selectedTab = pane ? activeTabForPane(pane) : null
+  const selectedFilePath = selectedTab?.path ?? null
   const selectedDiff = parseDiffDocumentId(selectedFilePath)
   const conflicts = useEditorConflictState((state) => state.conflicts)
-  const { reorderTab, selectFile } = useEditorCommands()
+  const { moveTabToPane, reorderTab, selectFile, selectTab, splitTab } =
+    useEditorCommands()
   const requestEditorFocus = useWorkspaceFocus(
     (state) => state.requestEditorFocus
   )
@@ -161,24 +173,17 @@ export function EditorTabBar({
   const gitFiles = gitStatus.data?.files ?? EMPTY_GIT_FILES
   const editorTabs = useMemo(
     () =>
-      openFilePaths.map((path) =>
+      (pane?.tabs ?? []).map((tab) =>
         editorTabModel({
           conflicts,
-          dirty: dirtyFilePaths.has(path),
+          dirty: dirtyFilePaths.has(tab.path),
           gitFiles,
-          path,
+          tab,
           rootPath,
-          selectedFilePath,
+          selectedTabId: selectedTab?.id ?? null,
         })
       ),
-    [
-      conflicts,
-      dirtyFilePaths,
-      gitFiles,
-      openFilePaths,
-      rootPath,
-      selectedFilePath,
-    ]
+    [conflicts, dirtyFilePaths, gitFiles, pane?.tabs, rootPath, selectedTab?.id]
   )
   const visualTabs = useChromeVisualTabs(
     editorTabs,
@@ -186,9 +191,12 @@ export function EditorTabBar({
     sameEditorTabModel
   )
   const tabDrag = useEditorTabDrag({
+    paneId,
     tabs: editorTabs,
+    onMoveToPane: (tabId, targetIndex) =>
+      moveTabToPane(tabId, paneId, targetIndex),
     tabListRef,
-    onReorder: reorderTab,
+    onReorder: (tabId, targetIndex) => reorderTab(paneId, tabId, targetIndex),
   })
 
   useLayoutEffect(() => {
@@ -198,9 +206,15 @@ export function EditorTabBar({
     scrollSelectedTabIntoView(tabListRef.current, selectedTabRef.current)
   }, [selectedFilePath, tabSizing])
 
-  if (openFilePaths.length === 0 && visualTabs.length === 0) return null
+  if (!pane) return null
+  if (pane.tabs.length === 0 && visualTabs.length === 0) return null
 
-  function handleSelectTab(path: string) {
+  function handleSelectTab(tab: EditorTabModel) {
+    selectTab(paneId, tab.id)
+    requestEditorFocus()
+  }
+
+  function handleOpenFile(path: string) {
     selectFile(path)
     requestEditorFocus()
   }
@@ -220,6 +234,9 @@ export function EditorTabBar({
         )}
         ref={tabListRef}
         role="tablist"
+        onDragLeave={tabDrag.onDragLeave}
+        onDragOver={tabDrag.onDragOver}
+        onDrop={tabDrag.onDrop}
       >
         {tabSizing === "chrome" ? (
           <ChromeEditorTabList
@@ -229,6 +246,7 @@ export function EditorTabBar({
             tabs={visualTabs}
             onClose={onRequestCloseTab}
             onCloseTabs={onRequestCloseTabs}
+            onSplit={splitTab}
             onSelect={handleSelectTab}
           />
         ) : (
@@ -239,6 +257,7 @@ export function EditorTabBar({
             tabs={editorTabs}
             onClose={onRequestCloseTab}
             onCloseTabs={onRequestCloseTabs}
+            onSplit={splitTab}
             onSelect={handleSelectTab}
           />
         )}
@@ -248,7 +267,7 @@ export function EditorTabBar({
           diffPath={selectedDiff.path}
           mode={diffViewMode}
           onModeChange={onDiffViewModeChange}
-          onOpenFile={handleSelectTab}
+          onOpenFile={handleOpenFile}
           onRevealNextChange={onRevealNextChange}
           onRevealPreviousChange={onRevealPreviousChange}
         />
@@ -264,6 +283,7 @@ function LegacyEditorTabList({
   tabs,
   onClose,
   onCloseTabs,
+  onSplit,
   onSelect,
 }: {
   drag: EditorTabDragController
@@ -272,7 +292,8 @@ function LegacyEditorTabList({
   tabs: readonly EditorTabModel[]
   onClose: RequestCloseTab
   onCloseTabs: RequestCloseTabs
-  onSelect: (path: string) => void
+  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
+  onSelect: (tab: EditorTabModel) => void
 }) {
   return (
     <div className="flex min-w-full flex-1 items-end">
@@ -281,19 +302,20 @@ function LegacyEditorTabList({
         const insertionEdge = editorTabInsertionEdge(tabs, tab, drag.state)
 
         return (
-          <ContextMenu key={tab.path}>
+          <ContextMenu key={tab.id}>
             <ContextMenuTrigger
               className={cn(
                 "group relative flex h-10 cursor-grab items-center border-r border-border bg-background/40 text-xs active:cursor-grabbing",
                 tabSizingClassName(tabSizing),
-                tabDragClassName(insertionEdge, drag.draggedPath === tab.path),
+                tabDragClassName(insertionEdge, drag.draggedTabId === tab.id),
                 tab.active &&
                   "border-t-2 border-t-foreground bg-background text-foreground"
               )}
+              data-editor-tab-id={tab.id}
               data-editor-tab-path={tab.path}
               draggable
               onDragEnd={drag.onDragEnd}
-              onDragStart={(event) => drag.onDragStart(event, tab.path)}
+              onDragStart={(event) => drag.onDragStart(event, tab)}
               ref={tab.active ? selectedTabRef : undefined}
             >
               <button
@@ -302,11 +324,11 @@ function LegacyEditorTabList({
                   "flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
                   tab.active && "text-foreground"
                 )}
-                onClick={() => onSelect(tab.path)}
+                onClick={() => onSelect(tab)}
                 onDragEnd={drag.onDragEnd}
                 onDragStart={(event) => {
                   event.stopPropagation()
-                  drag.onDragStart(event, tab.path)
+                  drag.onDragStart(event, tab)
                 }}
                 draggable
                 role="tab"
@@ -342,7 +364,7 @@ function LegacyEditorTabList({
                 )}
                 data-editor-tab-drag-blocker=""
                 draggable={false}
-                onClick={() => onClose(tab.path)}
+                onClick={() => onClose(tab.id)}
                 onDragStart={(event) => event.preventDefault()}
                 title={`Close ${tab.name}`}
                 type="button"
@@ -367,6 +389,7 @@ function LegacyEditorTabList({
               tab={tab}
               tabs={tabs}
               onCloseTabs={onCloseTabs}
+              onSplit={onSplit}
             />
           </ContextMenu>
         )
@@ -382,6 +405,7 @@ function ChromeEditorTabList({
   tabs,
   onClose,
   onCloseTabs,
+  onSplit,
   onSelect,
 }: {
   drag: EditorTabDragController
@@ -390,25 +414,22 @@ function ChromeEditorTabList({
   tabs: readonly EditorChromeVisualTab[]
   onClose: RequestCloseTab
   onCloseTabs: RequestCloseTabs
-  onSelect: (path: string) => void
+  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
+  onSelect: (tab: EditorTabModel) => void
 }) {
-  const activePath = activeChromeTabPath(tabs)
+  const activeTabId = activeChromeTabId(tabs)
   const measuredAvailableWidth = useElementWidth(tabListRef)
   const [closeModeSpacerWidth, setCloseModeSpacerWidth] = useState(0)
-  const [hoveredChromeTabPath, setHoveredChromeTabPath] = useState<
-    string | null
-  >(null)
-  const [focusedChromeTabPath, setFocusedChromeTabPath] = useState<
-    string | null
-  >(null)
+  const [hoveredChromeTabId, setHoveredChromeTabId] = useState<string | null>(
+    null
+  )
+  const [focusedChromeTabId, setFocusedChromeTabId] = useState<string | null>(
+    null
+  )
   const trailingSlotWidths = useMemo(
     () =>
-      chromeTrailingSlotWidths(
-        tabs,
-        hoveredChromeTabPath,
-        focusedChromeTabPath
-      ),
-    [focusedChromeTabPath, hoveredChromeTabPath, tabs]
+      chromeTrailingSlotWidths(tabs, hoveredChromeTabId, focusedChromeTabId),
+    [focusedChromeTabId, hoveredChromeTabId, tabs]
   )
   const availableWidth =
     measuredAvailableWidth === null
@@ -432,7 +453,7 @@ function ChromeEditorTabList({
 
   useLayoutEffect(() => {
     scrollSelectedTabIntoView(tabListRef.current, selectedTabRef.current)
-  }, [activePath, selectedTabRef, tabListRef, tabs.length])
+  }, [activeTabId, selectedTabRef, tabListRef, tabs.length])
 
   useEffect(() => {
     if (closeModeSpacerWidth <= 0) return
@@ -444,8 +465,8 @@ function ChromeEditorTabList({
     return () => window.clearTimeout(timeout)
   }, [closeModeSpacerWidth])
 
-  function handleClose(path: string, width: number | null) {
-    const closed = onClose(path)
+  function handleClose(tabId: string, width: number | null) {
+    const closed = onClose(tabId)
     if (!closed) return
 
     const nextSpacerWidth = nextCloseModeSpacerWidth(
@@ -456,22 +477,22 @@ function ChromeEditorTabList({
     setCloseModeSpacerWidth(nextSpacerWidth)
   }
 
-  function handleChromeTabFocusChange(path: string, focused: boolean) {
+  function handleChromeTabFocusChange(tabId: string, focused: boolean) {
     if (focused) {
-      setFocusedChromeTabPath(path)
+      setFocusedChromeTabId(tabId)
       return
     }
 
-    setFocusedChromeTabPath((current) => (current === path ? null : current))
+    setFocusedChromeTabId((current) => (current === tabId ? null : current))
   }
 
-  function handleChromeTabHoverChange(path: string, hovered: boolean) {
+  function handleChromeTabHoverChange(tabId: string, hovered: boolean) {
     if (hovered) {
-      setHoveredChromeTabPath(path)
+      setHoveredChromeTabId(tabId)
       return
     }
 
-    setHoveredChromeTabPath((current) => (current === path ? null : current))
+    setHoveredChromeTabId((current) => (current === tabId ? null : current))
   }
 
   return (
@@ -479,8 +500,8 @@ function ChromeEditorTabList({
       {tabs.map((visualTab, index) => {
         const hoveredOrFocused = chromeVisualTabHoveredOrFocused(
           visualTab,
-          hoveredChromeTabPath,
-          focusedChromeTabPath
+          hoveredChromeTabId,
+          focusedChromeTabId
         )
         const insertionEdge = editorTabInsertionEdge(
           tabModels,
@@ -490,12 +511,12 @@ function ChromeEditorTabList({
 
         return (
           <ChromeEditorTab
-            dragged={drag.draggedPath === visualTab.tab.path}
+            dragged={drag.draggedTabId === visualTab.tab.id}
             hoveredOrFocused={hoveredOrFocused}
             index={index}
             insertionEdge={insertionEdge}
             layoutWidth={layout?.tabs[index]?.width ?? null}
-            key={visualTab.tab.path}
+            key={visualTab.tab.id}
             overlap={overlap}
             tabs={tabModels}
             tabRef={visualTab.tab.active ? selectedTabRef : undefined}
@@ -503,6 +524,7 @@ function ChromeEditorTabList({
             visualTab={visualTab}
             onClose={handleClose}
             onCloseTabs={onCloseTabs}
+            onSplit={onSplit}
             onDragEnd={drag.onDragEnd}
             onDragStart={drag.onDragStart}
             onFocusChange={handleChromeTabFocusChange}
@@ -533,6 +555,7 @@ function ChromeEditorTab({
   visualTab,
   onClose,
   onCloseTabs,
+  onSplit,
   onDragEnd,
   onDragStart,
   onFocusChange,
@@ -551,11 +574,12 @@ function ChromeEditorTab({
   visualTab: EditorChromeVisualTab
   onClose: (path: string, width: number | null) => void
   onCloseTabs: RequestCloseTabs
+  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
   onDragEnd: () => void
   onDragStart: EditorTabDragController["onDragStart"]
-  onFocusChange: (path: string, focused: boolean) => void
-  onHoverChange: (path: string, hovered: boolean) => void
-  onSelect: (path: string) => void
+  onFocusChange: (tabId: string, focused: boolean) => void
+  onHoverChange: (tabId: string, hovered: boolean) => void
+  onSelect: (tab: EditorTabModel) => void
 }) {
   const tab = visualTab.tab
   const tabStyle = chromeTabStyle(
@@ -577,30 +601,31 @@ function ChromeEditorTab({
             "z-30 border-border bg-background text-foreground shadow-none"
         )}
         data-chrome-tab-root=""
+        data-editor-tab-id={tab.id}
         data-editor-tab-path={tab.path}
         draggable
         onBlurCapture={(event) => {
           if (elementContainsTarget(event.currentTarget, event.relatedTarget))
             return
 
-          onFocusChange(tab.path, false)
+          onFocusChange(tab.id, false)
         }}
         onDragEnd={onDragEnd}
-        onDragStart={(event) => onDragStart(event, tab.path)}
-        onFocusCapture={() => onFocusChange(tab.path, true)}
-        onPointerEnter={() => onHoverChange(tab.path, true)}
-        onPointerLeave={() => onHoverChange(tab.path, false)}
+        onDragStart={(event) => onDragStart(event, tab)}
+        onFocusCapture={() => onFocusChange(tab.id, true)}
+        onPointerEnter={() => onHoverChange(tab.id, true)}
+        onPointerLeave={() => onHoverChange(tab.id, false)}
         ref={tabRef}
         style={tabStyle}
       >
         <button
           aria-selected={tab.active}
           className="flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 pr-1.5 pl-3 text-left transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
-          onClick={() => onSelect(tab.path)}
+          onClick={() => onSelect(tab)}
           onDragEnd={onDragEnd}
           onDragStart={(event) => {
             event.stopPropagation()
-            onDragStart(event, tab.path)
+            onDragStart(event, tab)
           }}
           draggable
           role="tab"
@@ -625,6 +650,7 @@ function ChromeEditorTab({
         tab={tab}
         tabs={tabs}
         onCloseTabs={onCloseTabs}
+        onSplit={onSplit}
       />
     </ContextMenu>
   )
@@ -659,7 +685,7 @@ function ChromeTabTrailingSlot({
         draggable={false}
         onClick={(event) => {
           event.stopPropagation()
-          onClose(tab.path, chromeTabRootWidth(event.currentTarget))
+          onClose(tab.id, chromeTabRootWidth(event.currentTarget))
         }}
         onDragStart={(event) => event.preventDefault()}
         title={`Close ${tab.name}`}
@@ -704,16 +730,18 @@ function EditorTabContextMenuContent({
   tab,
   tabs,
   onCloseTabs,
+  onSplit,
 }: {
   tab: EditorTabModel
   tabs: readonly EditorTabModel[]
   onCloseTabs: RequestCloseTabs
+  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
 }) {
   function handleClose(kind: EditorTabCloseTargetKind) {
-    const paths = editorTabCloseTargetPaths(tabs, tab.path, kind)
-    if (paths.length === 0) return
+    const tabIds = editorTabCloseTargetIds(tabs, tab.id, kind)
+    if (tabIds.length === 0) return
 
-    onCloseTabs(paths)
+    onCloseTabs(tabIds)
   }
 
   function handleCopyPath(path: string, label: string) {
@@ -728,7 +756,7 @@ function EditorTabContextMenuContent({
       </ContextMenuItem>
       <ContextMenuItem
         disabled={
-          editorTabCloseTargetPaths(tabs, tab.path, "closeOthers").length === 0
+          editorTabCloseTargetIds(tabs, tab.id, "closeOthers").length === 0
         }
         onClick={() => handleClose("closeOthers")}
       >
@@ -737,7 +765,7 @@ function EditorTabContextMenuContent({
       </ContextMenuItem>
       <ContextMenuItem
         disabled={
-          editorTabCloseTargetPaths(tabs, tab.path, "closeToRight").length === 0
+          editorTabCloseTargetIds(tabs, tab.id, "closeToRight").length === 0
         }
         onClick={() => handleClose("closeToRight")}
       >
@@ -746,7 +774,7 @@ function EditorTabContextMenuContent({
       </ContextMenuItem>
       <ContextMenuItem
         disabled={
-          editorTabCloseTargetPaths(tabs, tab.path, "closeSaved").length === 0
+          editorTabCloseTargetIds(tabs, tab.id, "closeSaved").length === 0
         }
         onClick={() => handleClose("closeSaved")}
       >
@@ -756,6 +784,15 @@ function EditorTabContextMenuContent({
       <ContextMenuItem onClick={() => handleClose("closeAll")}>
         <XIcon />
         <span>Close All</span>
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onClick={() => onSplit(tab.id, "horizontal")}>
+        <ColumnsIcon />
+        <span>Split Right</span>
+      </ContextMenuItem>
+      <ContextMenuItem onClick={() => onSplit(tab.id, "vertical")}>
+        <RowsIcon />
+        <span>Split Down</span>
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onClick={() => handleCopyPath(tab.copyPath, "path")}>
@@ -827,20 +864,20 @@ function tabDragClassName(
   )
 }
 
-function activeChromeTabPath(visualTabs: readonly EditorChromeVisualTab[]) {
-  return visualTabs.find((visualTab) => visualTab.tab.active)?.tab.path ?? null
+function activeChromeTabId(visualTabs: readonly EditorChromeVisualTab[]) {
+  return visualTabs.find((visualTab) => visualTab.tab.active)?.tab.id ?? null
 }
 
 function chromeTrailingSlotWidths(
   visualTabs: readonly EditorChromeVisualTab[],
-  hoveredPath: string | null,
-  focusedPath: string | null
+  hoveredTabId: string | null,
+  focusedTabId: string | null
 ) {
   return visualTabs.map((visualTab) => {
     const hoveredOrFocused = chromeVisualTabHoveredOrFocused(
       visualTab,
-      hoveredPath,
-      focusedPath
+      hoveredTabId,
+      focusedTabId
     )
     if (!chromeTabHasTrailingSlot(visualTab.tab, hoveredOrFocused)) return 0
 
@@ -850,12 +887,12 @@ function chromeTrailingSlotWidths(
 
 function chromeVisualTabHoveredOrFocused(
   visualTab: EditorChromeVisualTab,
-  hoveredPath: string | null,
-  focusedPath: string | null
+  hoveredTabId: string | null,
+  focusedTabId: string | null
 ) {
-  const path = visualTab.tab.path
+  const tabId = visualTab.tab.id
 
-  return path === hoveredPath || path === focusedPath
+  return tabId === hoveredTabId || tabId === focusedTabId
 }
 
 function chromeTabHasTrailingSlot(
@@ -967,6 +1004,7 @@ function sameEditorTabModel(left: EditorTabModel, right: EditorTabModel) {
   if (left.dirty !== right.dirty) return false
   if (left.diffSuffix !== right.diffSuffix) return false
   if (left.icon.name !== right.icon.name) return false
+  if (left.id !== right.id) return false
   if (left.name !== right.name) return false
   if (left.path !== right.path) return false
   if (left.title !== right.title) return false
@@ -988,28 +1026,30 @@ function editorTabModel({
   conflicts,
   dirty,
   gitFiles,
-  path,
   rootPath,
-  selectedFilePath,
+  selectedTabId,
+  tab,
 }: {
   conflicts: Readonly<Record<string, { remotePath: string }>>
   dirty: boolean
   gitFiles: readonly FileStatus[]
-  path: string
   rootPath: string
-  selectedFilePath: string | null
+  selectedTabId: string | null
+  tab: EditorPaneTab
 }): EditorTabModel {
+  const path = tab.path
   const diffStatus = tabDiffStatus(path, gitFiles, rootPath)
   const diffHash = diffDocumentShortHash(path)
   const copyPath = tabCopyPath(path, conflicts)
 
   return {
-    active: path === selectedFilePath,
+    active: tab.id === selectedTabId,
     copyPath,
     copyRelativePath: tabRelativeCopyPath(copyPath, rootPath),
     diffStatus,
     diffSuffix: tabDiffSuffix(diffHash, diffStatus?.label),
     dirty,
+    id: tab.id,
     icon: iconForEntry({
       name: iconName(path, conflicts),
       type: "file",

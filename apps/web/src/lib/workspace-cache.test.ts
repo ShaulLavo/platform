@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
 import type { PickedFsEntry } from "@/lib/file-system-types"
 import { conflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
+import {
+  activeEditorPanePath,
+  editorPaneTabs,
+  type EditorPaneLayout,
+} from "@/features/editor/state/editor-pane-state"
 import { diffDocumentId } from "@/features/git/diff-document"
 import { searchBufferDocumentId } from "@/features/search/search-buffer-document"
 import type { FileDiff } from "@/features/git/types"
@@ -39,7 +44,9 @@ describe("workspace cache", () => {
       workspacePanelTab: "git",
     })
 
-    expect(readWorkspaceCache()).toEqual({
+    const cached = readWorkspaceCache()
+
+    expect(cached).toMatchObject({
       diffViewMode: "stacked",
       editorHistory: [diffPath, "/repo/src/readme.md"],
       gitPanelOpen: false,
@@ -51,6 +58,11 @@ describe("workspace cache", () => {
       sidebarVisible: false,
       workspacePanelTab: "git",
     })
+    expect(editorPanePaths(cached.editorPaneLayout)).toEqual([
+      "/repo/src/readme.md",
+      diffPath,
+    ])
+    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(diffPath)
   })
 
   it("filters git diff tabs when their backing file is outside the workspace", () => {
@@ -70,7 +82,9 @@ describe("workspace cache", () => {
       workspacePanelTab: "git",
     })
 
-    expect(readWorkspaceCache()).toEqual({
+    const cached = readWorkspaceCache()
+
+    expect(cached).toMatchObject({
       diffViewMode: "split",
       editorHistory: [],
       gitPanelOpen: true,
@@ -82,6 +96,8 @@ describe("workspace cache", () => {
       sidebarVisible: true,
       workspacePanelTab: "git",
     })
+    expect(editorPanePaths(cached.editorPaneLayout)).toEqual([])
+    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(null)
   })
 
   it("does not persist transient conflict diff tabs", () => {
@@ -101,7 +117,9 @@ describe("workspace cache", () => {
       workspacePanelTab: "files",
     })
 
-    expect(readWorkspaceCache()).toEqual({
+    const cached = readWorkspaceCache()
+
+    expect(cached).toMatchObject({
       diffViewMode: "split",
       editorHistory: ["/repo/src/readme.md"],
       gitPanelOpen: true,
@@ -109,10 +127,101 @@ describe("workspace cache", () => {
       recentlyClosedEditorPaths: [],
       rootFolder,
       searchBuffer: null,
-      selectedFilePath: null,
+      selectedFilePath: "/repo/src/readme.md",
       sidebarVisible: true,
       workspacePanelTab: "files",
     })
+    expect(editorPanePaths(cached.editorPaneLayout)).toEqual([
+      "/repo/src/readme.md",
+    ])
+    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(
+      "/repo/src/readme.md"
+    )
+  })
+
+  it("migrates v6 tabs into one persisted pane", () => {
+    const rootFolder = pickedDirectory("/repo")
+
+    STORE.set(
+      "platform.workspace-state.v1",
+      JSON.stringify({
+        diffViewMode: "split",
+        editorHistory: ["/repo/src/readme.md"],
+        gitPanelOpen: true,
+        openFilePaths: ["/repo/src/readme.md", "/repo/src/app.ts"],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer: null,
+        selectedFilePath: "/repo/src/app.ts",
+        sidebarVisible: true,
+        version: 6,
+        workspacePanelTab: "files",
+      })
+    )
+
+    const cached = readWorkspaceCache()
+
+    expect(cached.openFilePaths).toEqual([
+      "/repo/src/readme.md",
+      "/repo/src/app.ts",
+    ])
+    expect(editorPanePaths(cached.editorPaneLayout)).toEqual([
+      "/repo/src/readme.md",
+      "/repo/src/app.ts",
+    ])
+    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(
+      "/repo/src/app.ts"
+    )
+  })
+
+  it("persists pane split sizes in the workspace cache", () => {
+    const rootFolder = pickedDirectory("/repo")
+    const editorPaneLayout: EditorPaneLayout = {
+      activePaneId: "pane-b",
+      root: {
+        children: [
+          {
+            activeTabId: "tab-a",
+            id: "pane-a",
+            kind: "leaf",
+            tabs: [{ id: "tab-a", path: "/repo/src/a.ts" }],
+          },
+          {
+            activeTabId: "tab-b",
+            id: "pane-b",
+            kind: "leaf",
+            tabs: [{ id: "tab-b", path: "/repo/src/b.ts" }],
+          },
+        ],
+        direction: "horizontal",
+        id: "split-a",
+        kind: "split",
+        sizes: [30, 70],
+      },
+    }
+
+    writeWorkspaceCache({
+      diffViewMode: "split",
+      editorHistory: [],
+      editorPaneLayout,
+      gitPanelOpen: true,
+      openFilePaths: ["/repo/src/a.ts", "/repo/src/b.ts"],
+      recentlyClosedEditorPaths: [],
+      rootFolder,
+      searchBuffer: null,
+      selectedFilePath: "/repo/src/b.ts",
+      sidebarVisible: true,
+      workspacePanelTab: "files",
+    })
+
+    const cached = readWorkspaceCache()
+
+    expect(cached.editorPaneLayout.root).toMatchObject({
+      direction: "horizontal",
+      kind: "split",
+      sizes: [30, 70],
+    })
+    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe("/repo/src/b.ts")
   })
 
   it("persists the search panel tab", () => {
@@ -326,6 +435,10 @@ function pickedDirectory(path: string): PickedFsEntry {
     size: 1,
     type: "directory",
   }
+}
+
+function editorPanePaths(layout: EditorPaneLayout) {
+  return editorPaneTabs(layout.root).map((tab) => tab.path)
 }
 
 function fakeLocalStorage() {

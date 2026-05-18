@@ -5,6 +5,18 @@ import {
   type EditorDiffViewMode,
 } from "@/features/editor/utils/diff-view-mode"
 import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
+import {
+  activeEditorPanePath,
+  createEditorPaneLayoutForPaths,
+  editorPaneOpenPaths,
+  editorPaneTabs,
+  filterEditorPaneLayoutTabs,
+  normalizeEditorPaneLayout,
+  type EditorPaneLayout,
+  type EditorPaneNode,
+  type EditorPaneSplitDirection,
+  type EditorPaneTab,
+} from "@/features/editor/state/editor-pane-state"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
@@ -38,6 +50,7 @@ type WorkspaceCachePayload =
   | WorkspaceCachePayloadV4
   | WorkspaceCachePayloadV5
   | WorkspaceCachePayloadV6
+  | WorkspaceCachePayloadV7
 
 type WorkspaceCachePayloadV4 = {
   diffViewMode: EditorDiffViewMode
@@ -72,6 +85,19 @@ type WorkspaceCachePayloadV6 = {
   selectedFilePath: string | null
   sidebarVisible: boolean
   version: 6
+  workspacePanelTab: WorkspacePanelTab
+}
+
+type WorkspaceCachePayloadV7 = {
+  diffViewMode: EditorDiffViewMode
+  editorHistory: string[]
+  editorPaneLayout: EditorPaneLayout
+  gitPanelOpen: boolean
+  recentlyClosedEditorPaths: string[]
+  rootFolder: PickedFsEntry | null
+  searchBuffer: CachedSearchBufferState | null
+  sidebarVisible: boolean
+  version: 7
   workspacePanelTab: WorkspacePanelTab
 }
 
@@ -221,6 +247,21 @@ const v6Schema = v.object({
   version: v.literal(6),
   workspacePanelTab: workspacePanelTabSchema,
 })
+const editorPaneLayoutSchema = v.custom<EditorPaneLayout>(
+  isEditorPaneLayoutPayload
+)
+const v7Schema = v.object({
+  diffViewMode: diffViewModeSchema,
+  editorHistory: v.array(v.string()),
+  editorPaneLayout: editorPaneLayoutSchema,
+  gitPanelOpen: v.boolean(),
+  recentlyClosedEditorPaths: v.array(v.string()),
+  rootFolder: rootFolderSchema,
+  searchBuffer: v.nullable(cachedSearchBufferStateSchema),
+  sidebarVisible: v.boolean(),
+  version: v.literal(7),
+  workspacePanelTab: workspacePanelTabSchema,
+})
 const workspaceCachePayloadSchema = v.variant("version", [
   v1Schema,
   v2Schema,
@@ -228,11 +269,13 @@ const workspaceCachePayloadSchema = v.variant("version", [
   v4Schema,
   v5Schema,
   v6Schema,
+  v7Schema,
 ])
 
 export type CachedWorkspaceState = {
   diffViewMode: EditorDiffViewMode
   editorHistory: string[]
+  editorPaneLayout: EditorPaneLayout
   gitPanelOpen: boolean
   openFilePaths: string[]
   recentlyClosedEditorPaths: string[]
@@ -264,29 +307,35 @@ export function writeWorkspaceCache({
   recentlyClosedEditorPaths,
   sidebarVisible,
   searchBuffer,
-}: WorkspaceCacheState) {
+  editorPaneLayout,
+}:
+  | WorkspaceCacheState
+  | (Omit<WorkspaceCacheState, "editorPaneLayout"> & {
+      editorPaneLayout?: EditorPaneLayout
+    })) {
   if (!canUseLocalStorage()) return
 
   try {
-    const selectedPath = selectedPathForWorkspace(rootFolder, selectedFilePath)
-    const payload: WorkspaceCachePayloadV6 = {
+    const persistedPaneLayout = editorPaneLayoutForWorkspace(
+      rootFolder,
+      editorPaneLayout ??
+        createEditorPaneLayoutForPaths(openFilePaths, selectedFilePath),
+      openFilePaths,
+      selectedFilePath
+    )
+    const payload: WorkspaceCachePayloadV7 = {
       diffViewMode,
       editorHistory: workspacePathsForCache(rootFolder, editorHistory),
+      editorPaneLayout: persistedPaneLayout,
       gitPanelOpen,
-      openFilePaths: openPathsForWorkspace(
-        rootFolder,
-        openFilePaths,
-        selectedPath
-      ),
       recentlyClosedEditorPaths: workspacePathsForCache(
         rootFolder,
         recentlyClosedEditorPaths
       ),
       rootFolder,
       searchBuffer: searchBufferForWorkspace(rootFolder, searchBuffer),
-      selectedFilePath: selectedPath,
       sidebarVisible,
-      version: 6,
+      version: 7,
       workspacePanelTab,
     }
 
@@ -333,25 +382,32 @@ function parseCachePayload(value: string): WorkspaceCachePayload | null {
 function workspaceStateFromPayload(
   payload: WorkspaceCachePayload
 ): WorkspaceCacheState {
-  const selectedFilePath = selectedPathForWorkspace(
-    payload.rootFolder,
-    payload.selectedFilePath
-  )
+  const selectedFilePath = selectedPathFromPayload(payload)
   const payloadOpenPaths =
     payload.version === 1
       ? selectedFilePathForArray(selectedFilePath)
-      : payload.openFilePaths
+      : payload.version === 7
+        ? editorPaneOpenPaths(
+            editorPaneLayoutFromPayload(payload, selectedFilePath, [])
+          )
+        : payload.openFilePaths
+  const editorPaneLayout = editorPaneLayoutFromPayload(
+    payload,
+    selectedFilePath,
+    payloadOpenPaths
+  )
 
   return {
     diffViewMode: diffViewModeFromPayload(payload),
     editorHistory: workspacePathsForCache(
       payload.rootFolder,
-      payload.version === 5 || payload.version === 6
+      payload.version === 5 || payload.version === 6 || payload.version === 7
         ? payload.editorHistory
         : selectedFilePathForArray(selectedFilePath)
     ),
+    editorPaneLayout,
     gitPanelOpen:
-      payload.version === 5 || payload.version === 6
+      payload.version === 5 || payload.version === 6 || payload.version === 7
         ? payload.gitPanelOpen
         : true,
     openFilePaths: openPathsForWorkspace(
@@ -360,7 +416,7 @@ function workspaceStateFromPayload(
       selectedFilePath
     ),
     recentlyClosedEditorPaths:
-      payload.version === 5 || payload.version === 6
+      payload.version === 5 || payload.version === 6 || payload.version === 7
         ? workspacePathsForCache(
             payload.rootFolder,
             payload.recentlyClosedEditorPaths
@@ -368,9 +424,9 @@ function workspaceStateFromPayload(
         : [],
     rootFolder: payload.rootFolder,
     searchBuffer: searchBufferFromPayload(payload),
-    selectedFilePath,
+    selectedFilePath: activeEditorPanePath(editorPaneLayout),
     sidebarVisible:
-      payload.version === 5 || payload.version === 6
+      payload.version === 5 || payload.version === 6 || payload.version === 7
         ? payload.sidebarVisible
         : true,
     workspacePanelTab: workspacePanelTabFromPayload(payload),
@@ -378,7 +434,12 @@ function workspaceStateFromPayload(
 }
 
 function diffViewModeFromPayload(payload: WorkspaceCachePayload) {
-  if (payload.version === 4 || payload.version === 5 || payload.version === 6)
+  if (
+    payload.version === 4 ||
+    payload.version === 5 ||
+    payload.version === 6 ||
+    payload.version === 7
+  )
     return payload.diffViewMode
 
   return DEFAULT_DIFF_VIEW_MODE
@@ -389,7 +450,8 @@ function workspacePanelTabFromPayload(payload: WorkspaceCachePayload) {
     payload.version === 3 ||
     payload.version === 4 ||
     payload.version === 5 ||
-    payload.version === 6
+    payload.version === 6 ||
+    payload.version === 7
   ) {
     return payload.workspacePanelTab
   }
@@ -457,7 +519,7 @@ function backingPathForWorkspace(path: string) {
 }
 
 function searchBufferFromPayload(payload: WorkspaceCachePayload) {
-  if (payload.version !== 6) return null
+  if (payload.version !== 6 && payload.version !== 7) return null
 
   return searchBufferForWorkspace(payload.rootFolder, payload.searchBuffer)
 }
@@ -485,9 +547,12 @@ function selectedFilePathForArray(selectedFilePath: string | null) {
 }
 
 function emptyWorkspaceState(): WorkspaceCacheState {
+  const editorPaneLayout = createEditorPaneLayoutForPaths([], null)
+
   return {
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
+    editorPaneLayout,
     gitPanelOpen: true,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
@@ -501,4 +566,116 @@ function emptyWorkspaceState(): WorkspaceCacheState {
 
 function canUseLocalStorage() {
   return typeof localStorage !== "undefined"
+}
+
+function selectedPathFromPayload(payload: WorkspaceCachePayload) {
+  if (payload.version === 7) {
+    return activeEditorPanePath(
+      editorPaneLayoutForWorkspace(
+        payload.rootFolder,
+        payload.editorPaneLayout,
+        [],
+        null
+      )
+    )
+  }
+
+  return selectedPathForWorkspace(payload.rootFolder, payload.selectedFilePath)
+}
+
+function editorPaneLayoutFromPayload(
+  payload: WorkspaceCachePayload,
+  selectedFilePath: string | null,
+  openFilePaths: readonly string[]
+) {
+  if (payload.version === 7) {
+    return editorPaneLayoutForWorkspace(
+      payload.rootFolder,
+      payload.editorPaneLayout,
+      openFilePaths,
+      selectedFilePath
+    )
+  }
+
+  return createEditorPaneLayoutForPaths(openFilePaths, selectedFilePath)
+}
+
+function editorPaneLayoutForWorkspace(
+  rootFolder: PickedFsEntry | null,
+  layout: EditorPaneLayout,
+  fallbackOpenFilePaths: readonly string[],
+  fallbackSelectedFilePath: string | null
+) {
+  const normalized = normalizeEditorPaneLayout(layout)
+  const filtered = filterEditorPaneLayoutTabs(normalized, (tab) =>
+    pathForWorkspace(rootFolder, tab.path)
+  )
+  if (editorPaneTabs(filtered.root).length > 0) return filtered
+
+  const selectedFilePath = selectedPathForWorkspace(
+    rootFolder,
+    fallbackSelectedFilePath
+  )
+  return createEditorPaneLayoutForPaths(
+    openPathsForWorkspace(rootFolder, fallbackOpenFilePaths, selectedFilePath),
+    selectedFilePath
+  )
+}
+
+function isEditorPaneLayoutPayload(value: unknown): value is EditorPaneLayout {
+  if (!isRecord(value)) return false
+  if (typeof value.activePaneId !== "string") return false
+
+  return isEditorPaneNode(value.root)
+}
+
+function isEditorPaneNode(value: unknown): value is EditorPaneNode {
+  if (!isRecord(value)) return false
+  if (value.kind === "leaf") return isEditorPaneLeaf(value)
+  if (value.kind === "split") return isEditorPaneSplit(value)
+
+  return false
+}
+
+function isEditorPaneLeaf(value: Record<string, unknown>) {
+  if (typeof value.id !== "string") return false
+  if (value.activeTabId !== null && typeof value.activeTabId !== "string") {
+    return false
+  }
+  if (!Array.isArray(value.tabs)) return false
+
+  return value.tabs.every(isEditorPaneTab)
+}
+
+function isEditorPaneSplit(value: Record<string, unknown>) {
+  if (typeof value.id !== "string") return false
+  if (!isEditorPaneSplitDirection(value.direction)) return false
+  if (!Array.isArray(value.children)) return false
+  if (!Array.isArray(value.sizes)) return false
+  if (!value.sizes.every(isFiniteNumber)) return false
+
+  return value.children.every(isEditorPaneNode)
+}
+
+function isEditorPaneTab(value: unknown): value is EditorPaneTab {
+  if (!isRecord(value)) return false
+  if (typeof value.id !== "string") return false
+
+  return typeof value.path === "string"
+}
+
+function isEditorPaneSplitDirection(
+  value: unknown
+): value is EditorPaneSplitDirection {
+  return value === "horizontal" || value === "vertical"
+}
+
+function isFiniteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (!value) return false
+
+  return typeof value === "object"
 }

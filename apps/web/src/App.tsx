@@ -10,7 +10,6 @@ import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { useOpenTabCache } from "@/hooks/use-open-tab-cache"
 import { useWorkspaceCachePersistence } from "@/hooks/use-workspace-cache-persistence"
 import { WorkspaceView } from "@/components/workspace/workspace-view"
-import { useSelectedFile } from "@/hooks/use-selected-file"
 import { useWorkspaceEvents } from "@/hooks/use-workspace-events"
 import { useWorkspaceTree } from "@/hooks/use-workspace-tree"
 import {
@@ -52,7 +51,6 @@ function AppContent() {
     rootFolder,
     selectedFilePath
   )
-  const { fileState, resetFileLoad } = useSelectedFile(selectedFilePath)
   const { dirtyTabCloseDialog, requestCloseTab, requestCloseTabs } =
     useDirtyTabCloseRequest()
   const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
@@ -78,7 +76,6 @@ function AppContent() {
   useWorkspaceEvents(rootFolder)
 
   function handlePick(entry: PickedFsEntry) {
-    resetFileLoad()
     resetTreeLoad()
     pickRootFolder(entry)
   }
@@ -93,7 +90,6 @@ function AppContent() {
         {rootFolder ? (
           <WorkspaceView
             editorKeymapLayers={editorKeymapLayers}
-            fileState={fileState}
             rootFolder={rootFolder}
             treeState={treeState}
             onLoadDirectory={loadTreeDirectory}

@@ -3,6 +3,7 @@ import { useLayoutEffect, useReducer, type Reducer } from "react"
 export type ChromeVisualTabPhase = "opening" | "present"
 
 export type ChromeVisualTabSource = {
+  id?: string
   path: string
 }
 
@@ -98,11 +99,11 @@ export function syncChromeVisualTabs<TTab extends ChromeVisualTabSource>(
 ) {
   if (current.length === 0) return tabs.map(presentChromeVisualTab)
 
-  const currentByPath = new Map(
-    current.map((visualTab) => [visualTab.tab.path, visualTab])
+  const currentByKey = new Map(
+    current.map((visualTab) => [chromeVisualTabKey(visualTab.tab), visualTab])
   )
   const next = tabs.map((tab) => {
-    const visualTab = currentByPath.get(tab.path)
+    const visualTab = currentByKey.get(chromeVisualTabKey(tab))
     if (!visualTab) return { phase: "opening" as const, tab }
 
     return nextChromeVisualTab(visualTab, tab, areTabsEqual)
@@ -166,8 +167,12 @@ function chromeVisualTabPhaseKey<TTab extends ChromeVisualTabSource>(
 ) {
   return visualTabs
     .filter((visualTab) => visualTab.phase === phase)
-    .map((visualTab) => visualTab.tab.path)
+    .map((visualTab) => chromeVisualTabKey(visualTab.tab))
     .join("\0")
+}
+
+function chromeVisualTabKey(tab: ChromeVisualTabSource) {
+  return tab.id ?? tab.path
 }
 
 function sameChromeVisualTabs<TTab extends ChromeVisualTabSource>(
