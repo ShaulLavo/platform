@@ -31,12 +31,15 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import {
+  PersistedResizablePanelGroup,
   ResizableHandle,
   ResizablePanel,
-  ResizablePanelGroup,
 } from "@workspace/ui/components/resizable"
 import { cn } from "@workspace/ui/lib/utils"
-import { useMemo, useState, type ReactNode } from "react"
+import type { PanelImperativeHandle, PanelSize } from "react-resizable-panels"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+
+const COLLAPSED_PANEL_SIZE_PX = 1
 
 export function WorkspaceView({
   editorKeymapLayers,
@@ -68,6 +71,8 @@ export function WorkspaceView({
   const setWorkspacePanelTab = useEditorWorkspaceState(
     (state) => state.setWorkspacePanelTab
   )
+  const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null)
+  const [terminalCollapsed, setTerminalCollapsed] = useState(false)
   const [visibleTreeItemCount, setVisibleTreeItemCount] =
     useState<VisibleTreeItemCountSnapshot | null>(null)
   const currentVisibleTreeItemCount =
@@ -76,6 +81,18 @@ export function WorkspaceView({
       ? visibleTreeItemCount.count
       : null
   useSearchBufferRuntime(rootFolder.path)
+
+  useEffect(() => {
+    const sidebarPanel = sidebarPanelRef.current
+    if (!sidebarPanel) return
+
+    if (sidebarVisible) {
+      sidebarPanel.expand()
+      return
+    }
+
+    sidebarPanel.collapse()
+  }, [sidebarVisible])
 
   function handleWorkspacePanelTabChange(value: string) {
     if (!isWorkspacePanelTab(value)) return
@@ -94,6 +111,27 @@ export function WorkspaceView({
     setVisibleTreeItemCount({ count, rootPath: rootFolder.path })
   }
 
+  function handleSidebarResize(
+    size: PanelSize,
+    _id: string | number | undefined,
+    previousSize: PanelSize | undefined
+  ) {
+    if (!previousSize) return
+
+    const nextSidebarVisible = !isCollapsedPanelSize(size)
+    if (nextSidebarVisible === sidebarVisible) return
+
+    setSidebarVisible(nextSidebarVisible)
+  }
+
+  function handleTerminalResize(size: PanelSize) {
+    const nextCollapsed = isCollapsedPanelSize(size)
+
+    setTerminalCollapsed((current) =>
+      current === nextCollapsed ? current : nextCollapsed
+    )
+  }
+
   return (
     <div className="h-full min-h-0 flex-1 overflow-auto">
       <div className="flex h-full min-w-[1024px] flex-col">
@@ -107,56 +145,66 @@ export function WorkspaceView({
             currentVisible={sidebarVisible}
             onSelectTab={selectWorkspacePanelTab}
           />
-          <ResizablePanelGroup
+          <PersistedResizablePanelGroup
             className="min-h-0 flex-1"
             orientation="horizontal"
-          >
-            {sidebarVisible && (
-              <>
-                <ResizablePanel
-                  id="workspace-sidebar"
-                  className="min-h-0 min-w-0 overflow-hidden"
-                  defaultSize="320px"
-                  minSize="240px"
-                  maxSize="50%"
-                  groupResizeBehavior="preserve-pixel-size"
-                >
-                  <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-                    <WorkspaceSidebarHeader
-                      tab={workspacePanelTab}
-                      treeState={treeState}
-                      visibleTreeItemCount={currentVisibleTreeItemCount}
-                    />
-                    <TabsContent keepMounted value="files">
-                      <WorkspaceTreePane
-                        key={rootFolder.path}
-                        rootPath={rootFolder.path}
-                        state={treeState}
-                        onVisibleItemCountChange={
-                          handleVisibleTreeItemCountChange
-                        }
-                        onLoadDirectory={onLoadDirectory}
-                      />
-                    </TabsContent>
-                    <TabsContent keepMounted value="search">
-                      <WorkspaceSearchPane rootPath={rootFolder.path} />
-                    </TabsContent>
-                    <TabsContent keepMounted value="git">
-                      <GitPanel rootPath={rootFolder.path} />
-                    </TabsContent>
-                  </aside>
-                </ResizablePanel>
-                <ResizableHandle withHandle />
-              </>
+            storageKey={workspaceResizableStorageKey(
+              rootFolder.path,
+              "main"
             )}
+          >
+            <ResizablePanel
+              id="workspace-sidebar"
+              className="min-h-0 min-w-0 overflow-hidden"
+              collapsible
+              collapsedSize="0px"
+              defaultSize={sidebarVisible ? "320px" : "0px"}
+              minSize="240px"
+              maxSize="50%"
+              groupResizeBehavior="preserve-pixel-size"
+              panelRef={sidebarPanelRef}
+              onResize={handleSidebarResize}
+            >
+              <aside
+                aria-hidden={!sidebarVisible}
+                className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+                inert={!sidebarVisible}
+              >
+                <WorkspaceSidebarHeader
+                  tab={workspacePanelTab}
+                  treeState={treeState}
+                  visibleTreeItemCount={currentVisibleTreeItemCount}
+                />
+                <TabsContent keepMounted value="files">
+                  <WorkspaceTreePane
+                    key={rootFolder.path}
+                    rootPath={rootFolder.path}
+                    state={treeState}
+                    onVisibleItemCountChange={handleVisibleTreeItemCountChange}
+                    onLoadDirectory={onLoadDirectory}
+                  />
+                </TabsContent>
+                <TabsContent keepMounted value="search">
+                  <WorkspaceSearchPane rootPath={rootFolder.path} />
+                </TabsContent>
+                <TabsContent keepMounted value="git">
+                  <GitPanel rootPath={rootFolder.path} />
+                </TabsContent>
+              </aside>
+            </ResizablePanel>
+            <ResizableHandle aria-label="Resize workspace sidebar" withHandle />
             <ResizablePanel
               id="workspace-editor"
               className="h-full min-h-0 min-w-0 overflow-hidden"
               minSize="480px"
             >
-              <ResizablePanelGroup
+              <PersistedResizablePanelGroup
                 className="min-h-0 min-w-0"
                 orientation="vertical"
+                storageKey={workspaceResizableStorageKey(
+                  rootFolder.path,
+                  "editor"
+                )}
               >
                 <ResizablePanel
                   id="workspace-editor-surface"
@@ -172,20 +220,27 @@ export function WorkspaceView({
                     onRequestCloseTabs={onRequestCloseTabs}
                   />
                 </ResizablePanel>
-                <ResizableHandle withHandle />
+                <ResizableHandle aria-label="Resize terminal" withHandle />
                 <ResizablePanel
                   id="workspace-terminal"
                   className="min-h-0 min-w-0 overflow-hidden"
+                  collapsible
+                  collapsedSize="0px"
                   defaultSize="30%"
                   minSize="160px"
                   maxSize="65%"
                   groupResizeBehavior="preserve-pixel-size"
+                  onResize={handleTerminalResize}
                 >
-                  <TerminalPanel rootPath={rootFolder.path} />
+                  <TerminalPanel
+                    aria-hidden={terminalCollapsed}
+                    inert={terminalCollapsed}
+                    rootPath={rootFolder.path}
+                  />
                 </ResizablePanel>
-              </ResizablePanelGroup>
+              </PersistedResizablePanelGroup>
             </ResizablePanel>
-          </ResizablePanelGroup>
+          </PersistedResizablePanelGroup>
         </Tabs>
         <div className="min-w-0">
           <EditorStatusBar status={statusBarState} />
@@ -193,6 +248,14 @@ export function WorkspaceView({
       </div>
     </div>
   )
+}
+
+function isCollapsedPanelSize(size: PanelSize) {
+  return size.inPixels <= COLLAPSED_PANEL_SIZE_PX
+}
+
+function workspaceResizableStorageKey(rootPath: string, group: string) {
+  return `workspace:${rootPath}:${group}`
 }
 
 function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {

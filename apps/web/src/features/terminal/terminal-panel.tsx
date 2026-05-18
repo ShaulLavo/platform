@@ -4,7 +4,7 @@ import {
 } from "@workspace/contracts"
 import { cn } from "@workspace/ui/lib/utils"
 import { FitAddon, init, Terminal, type IDisposable } from "ghostty-web"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, type ComponentPropsWithoutRef } from "react"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
@@ -49,10 +49,8 @@ let ghosttyInitPromise: Promise<void> | null = null
 export function TerminalPanel({
   className,
   rootPath,
-}: {
-  className?: string
-  rootPath: string
-}) {
+  ...sectionProps
+}: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
 
@@ -69,6 +67,7 @@ export function TerminalPanel({
   return (
     <section
       aria-label="Terminal"
+      {...sectionProps}
       className={cn(
         "grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-[#101214] text-[#d7dde5]",
         className
@@ -82,6 +81,10 @@ export function TerminalPanel({
       />
     </section>
   )
+}
+
+type TerminalPanelProps = ComponentPropsWithoutRef<"section"> & {
+  rootPath: string
 }
 
 function mountTerminal({
