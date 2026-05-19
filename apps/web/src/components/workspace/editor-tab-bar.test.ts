@@ -89,20 +89,20 @@ describe("editorTabDragReducer", () => {
 describe("hasEditorTabDragPayload", () => {
   it("detects editor tab drags from the MIME type before drop data is readable", () => {
     expect(
-      hasEditorTabDragPayload({
-        types: [EDITOR_TAB_DRAG_MIME],
-      } as DataTransfer)
+      hasEditorTabDragPayload(dataTransferWithTypes([EDITOR_TAB_DRAG_MIME]))
     ).toBe(true)
   })
 
   it("ignores non-editor drags", () => {
-    expect(
-      hasEditorTabDragPayload({
-        types: ["text/plain"],
-      } as DataTransfer)
-    ).toBe(false)
+    expect(hasEditorTabDragPayload(dataTransferWithTypes(["text/plain"]))).toBe(
+      false
+    )
   })
 })
+
+function dataTransferWithTypes(types: string[]): DataTransfer {
+  return { types } as unknown as DataTransfer
+}
 
 describe("editorTabInsertionEdge", () => {
   it("marks the tab before the drop target", () => {

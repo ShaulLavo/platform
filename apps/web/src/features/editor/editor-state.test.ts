@@ -416,7 +416,7 @@ describe("editor document store", () => {
     const tabA = store
       .getState()
       .ensureCachedEditorTabDocument("tab-a", file("src/file.ts", "abc"))
-    const tabB = store
+    store
       .getState()
       .ensureCachedEditorTabDocument("tab-b", file("src/file.ts", "abc"))
 

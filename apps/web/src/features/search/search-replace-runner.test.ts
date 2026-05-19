@@ -145,6 +145,7 @@ function cachedDocument(path: string, text: string): CachedEditorDocument {
   session.markClean()
 
   return {
+    contentRevision: "h:test",
     path,
     revision: 100,
     session,

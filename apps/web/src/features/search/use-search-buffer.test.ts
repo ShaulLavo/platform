@@ -487,6 +487,7 @@ function cachedDocument(
   session = createDocumentSession("")
 ): CachedEditorDocument {
   return {
+    contentRevision: `h:test:${revision.toString(36)}`,
     path,
     revision,
     session,

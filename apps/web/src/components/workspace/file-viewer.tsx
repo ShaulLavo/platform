@@ -43,10 +43,7 @@ import {
   useEditorDocumentState,
 } from "@/features/editor/state/editor-document-state"
 import { useEditorUiState } from "@/features/editor/state/editor-ui-state"
-import {
-  editorWorkspaceSelectionForPaneLayout,
-  useEditorWorkspaceState,
-} from "@/features/editor/state/editor-workspace-state"
+import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import type {
   RequestCloseTab,
   RequestCloseTabs,

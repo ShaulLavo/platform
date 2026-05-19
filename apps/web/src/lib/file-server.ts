@@ -45,6 +45,7 @@ export async function fetchQuickOpenFiles({
 }) {
   const response = await fsClient.fs.find.get({
     query: {
+      caseSensitive: false,
       entryType: "file",
       includeContent: false,
       includeNames: true,
@@ -52,13 +53,14 @@ export async function fetchQuickOpenFiles({
       matchMode: "fuzzy",
       path,
       query,
+      wholeWord: false,
     },
     fetch: { signal },
   })
 
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
-  return response.data.matches as FindMatch[]
+  return (response.data as { matches: FindMatch[] }).matches
 }
 
 export async function writeFileContent(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { createEditorPaneLayoutForPaths } from "@/features/editor/state/editor-pane-state"
 import { createEditorWorkspaceStore } from "@/features/editor/state/editor-workspace-state"
 import { createSearchBufferStore } from "@/features/search/search-buffer-state"
 import type { PickedFsEntry } from "@/lib/file-system-types"
@@ -99,6 +100,7 @@ function cachedWorkspace(): CachedWorkspaceState {
   return {
     diffViewMode: "split",
     editorHistory: [],
+    editorPaneLayout: createEditorPaneLayoutForPaths([], null),
     gitPanelOpen: true,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],

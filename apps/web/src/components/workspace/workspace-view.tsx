@@ -34,9 +34,10 @@ import {
   PersistedResizablePanelGroup,
   ResizableHandle,
   ResizablePanel,
+  type PanelImperativeHandle,
+  type PanelSize,
 } from "@workspace/ui/components/resizable"
 import { cn } from "@workspace/ui/lib/utils"
-import type { PanelImperativeHandle, PanelSize } from "react-resizable-panels"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 const COLLAPSED_PANEL_SIZE_PX = 1
@@ -56,7 +57,6 @@ export function WorkspaceView({
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
 }) {
-  const statusBarState = useEditorUiState((state) => state.statusBarState)
   const sidebarVisible = useEditorWorkspaceState(
     (state) => state.sidebarVisible
   )
@@ -237,11 +237,17 @@ export function WorkspaceView({
           </PersistedResizablePanelGroup>
         </Tabs>
         <div className="min-w-0">
-          <EditorStatusBar status={statusBarState} />
+          <WorkspaceStatusBar />
         </div>
       </div>
     </div>
   )
+}
+
+function WorkspaceStatusBar() {
+  const statusBarState = useEditorUiState((state) => state.statusBarState)
+
+  return <EditorStatusBar status={statusBarState} />
 }
 
 function isCollapsedPanelSize(size: PanelSize) {

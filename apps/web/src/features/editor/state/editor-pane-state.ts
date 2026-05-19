@@ -598,14 +598,14 @@ function reorderTabs(
   tabs: readonly EditorPaneTab[],
   tabId: string,
   targetIndex: number
-) {
+): EditorPaneTab[] {
   const sourceIndex = tabs.findIndex((tab) => tab.id === tabId)
-  if (sourceIndex === -1) return tabs
+  if (sourceIndex === -1) return [...tabs]
 
   const nextTabs = tabs.filter((tab) => tab.id !== tabId)
   const index = Math.max(0, Math.min(nextTabs.length, Math.trunc(targetIndex)))
   const tab = tabs[sourceIndex]
-  if (!tab) return tabs
+  if (!tab) return [...tabs]
 
   nextTabs.splice(index, 0, tab)
   return nextTabs
