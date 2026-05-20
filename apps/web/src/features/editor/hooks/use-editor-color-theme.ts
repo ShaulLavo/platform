@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react"
 import type { EditorTheme } from "@editor/core"
-import { loadShikiTheme } from "@editor/core/shiki"
 
 import { useTheme } from "@/components/theme-context"
 
@@ -188,7 +187,10 @@ export function useEditorColorTheme({
 
     let active = true
 
-    loadShikiTheme({ theme: shikiTheme, themes: SHIKI_PRELOAD_THEMES })
+    import("@editor/core/shiki")
+      .then(({ loadShikiTheme }) =>
+        loadShikiTheme({ theme: shikiTheme, themes: SHIKI_PRELOAD_THEMES })
+      )
       .then((editorTheme) => {
         if (!active || !editorTheme) return
 

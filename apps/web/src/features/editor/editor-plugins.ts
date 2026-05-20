@@ -3,7 +3,6 @@ import {
   type EditorPlugin,
   type EditorSyntaxProvider,
 } from "@editor/core"
-import { createShikiHighlighterPlugin } from "@editor/core/shiki"
 import type { DiffSyntaxBackend } from "@editor/diff"
 import { createEditorFindPlugin } from "@editor/find"
 import { createFoldGutterPlugin, createLineGutterPlugin } from "@editor/gutters"
@@ -34,14 +33,9 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
 
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 
-export type EditorSyntaxHighlightingOptions =
-  | {
-      readonly highlighter?: "tree-sitter"
-    }
-  | {
-      readonly highlighter: "shiki"
-      readonly shikiTheme: string | (() => string)
-    }
+export type EditorSyntaxHighlightingOptions = {
+  readonly highlighter?: "tree-sitter"
+}
 
 export function createCriticalEditorPlugins(
   languageServer: LanguageServerPlugin,
@@ -91,9 +85,9 @@ export function createEditorPlugins(
 }
 
 export function createEditorSyntaxHighlightingPlugins(
-  options: EditorSyntaxHighlightingOptions = {}
+  _options: EditorSyntaxHighlightingOptions = {}
 ): readonly EditorPlugin[] {
-  const treeSitterPlugins = [
+  return [
     javaScript({ jsx: true }),
     typeScript({ tsx: true }),
     html(),
@@ -101,28 +95,11 @@ export function createEditorSyntaxHighlightingPlugins(
     json(),
     markdown(),
   ]
-
-  if (options.highlighter !== "shiki") return treeSitterPlugins
-
-  return [
-    ...treeSitterPlugins,
-    createShikiHighlighterPlugin({
-      preloadThemes: SHIKI_PRELOAD_THEMES,
-      theme: options.shikiTheme,
-    }),
-  ]
 }
 
 export function createEditorDiffSyntaxBackend(
-  options: EditorSyntaxHighlightingOptions = {}
+  _options: EditorSyntaxHighlightingOptions = {}
 ): DiffSyntaxBackend {
-  if (options.highlighter === "shiki") {
-    return {
-      kind: "shiki",
-      shikiTheme: options.shikiTheme,
-    }
-  }
-
   return {
     kind: "tree-sitter",
     provider: editorTreeSitterSyntaxProvider(),
@@ -160,5 +137,3 @@ function createFoldChevronIcon({
   template.innerHTML = FOLD_CHEVRON_ICON_MARKUP
   return template.content.firstElementChild as SVGSVGElement
 }
-
-const SHIKI_PRELOAD_THEMES = ["github-dark", "github-light"] as const
