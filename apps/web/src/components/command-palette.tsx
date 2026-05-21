@@ -191,7 +191,6 @@ export function CommandPalette({
       ? (state.documentContentRevisions[selectedFilePath] ?? null)
       : null
   )
-  const selectedDocumentText = selectedDocument?.session.getText() ?? null
   const { openDefinition, selectFile } = useEditorCommands()
   const [selectedFileItemValue, setSelectedFileItemValue] = useState<
     string | null
@@ -255,7 +254,7 @@ export function CommandPalette({
         path: selectedFileBackedPath ?? "",
         rootPath: rootFolder?.path ?? "",
         signal,
-        text: selectedDocumentText,
+        text: selectedDocument?.session.getText() ?? null,
       }),
     queryKey: documentSymbolKeys.document(
       rootFolder?.path ?? "",

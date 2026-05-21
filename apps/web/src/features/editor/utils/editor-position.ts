@@ -1,46 +1,104 @@
+import type { TextSnapshot } from "@editor/core"
 import type { LanguageServerDefinitionTarget } from "@editor/language-server"
 
 export function selectionForDefinition(
   filePath: string,
-  text: string,
+  textSnapshot: TextSnapshot,
   target: LanguageServerDefinitionTarget | null | undefined
 ) {
   if (!target) return null
   if (target.path !== filePath) return null
 
-  const anchor = offsetForPosition(text, target.range.start)
-  const head = offsetForPosition(text, target.range.end)
+  const anchor = offsetForPosition(textSnapshot, target.range.start)
+  const head = offsetForPosition(textSnapshot, target.range.end)
   return { anchor, head }
 }
 
-export function rowStartOffset(text: string, row: number) {
+export function rowStartOffset(textSnapshot: TextSnapshot, row: number) {
   if (row <= 0) return 0
 
-  let offset = 0
-  for (let index = 0; index < row; index += 1) {
-    const nextLine = text.indexOf("\n", offset)
-    if (nextLine === -1) return text.length
+  const state = { remainingRows: row, result: null as number | null }
+  textSnapshot.forEachTextChunk((text, start) => {
+    if (state.result !== null) return
 
-    offset = nextLine + 1
+    visitRowStartChunk(state, text, start)
+  })
+
+  return state.result ?? textSnapshot.length
+}
+
+export function textLineAt(textSnapshot: TextSnapshot, lineIndex: number) {
+  if (lineIndex < 0) return null
+
+  const state = {
+    remainingLines: lineIndex,
+    lineStart: 0,
+    result: null as string | null,
   }
+  textSnapshot.forEachTextChunk((text, start) => {
+    if (state.result !== null) return
 
-  return offset
+    visitLineChunk(state, textSnapshot, text, start)
+  })
+
+  if (state.result !== null) return state.result
+  if (state.remainingLines !== 0) return null
+
+  return textSnapshot.getTextInRange(state.lineStart)
 }
 
 function offsetForPosition(
-  text: string,
+  textSnapshot: TextSnapshot,
   position: LanguageServerDefinitionTarget["range"]["start"]
 ) {
-  let line = 0
-  let lineStart = 0
+  const lineStart = rowStartOffset(textSnapshot, position.line)
+  return Math.min(textSnapshot.length, lineStart + position.character)
+}
 
-  for (let index = 0; index < text.length; index += 1) {
-    if (line >= position.line) break
-    if (text[index] !== "\n") continue
-    line += 1
-    lineStart = index + 1
+function visitRowStartChunk(
+  state: { remainingRows: number; result: number | null },
+  text: string,
+  start: number
+) {
+  let offset = 0
+  while (offset < text.length) {
+    const nextLine = text.indexOf("\n", offset)
+    if (nextLine === -1) return
+
+    state.remainingRows -= 1
+    if (state.remainingRows === 0) {
+      state.result = start + nextLine + 1
+      return
+    }
+
+    offset = nextLine + 1
   }
+}
 
-  if (line < position.line) return text.length
-  return Math.min(text.length, lineStart + position.character)
+function visitLineChunk(
+  state: {
+    remainingLines: number
+    lineStart: number
+    result: string | null
+  },
+  textSnapshot: TextSnapshot,
+  text: string,
+  start: number
+) {
+  let offset = 0
+  while (offset < text.length) {
+    const nextLine = text.indexOf("\n", offset)
+    if (nextLine === -1) return
+
+    if (state.remainingLines === 0) {
+      state.result = textSnapshot
+        .getTextInRange(state.lineStart, start + nextLine)
+        .replace(/\r$/u, "")
+      return
+    }
+
+    state.remainingLines -= 1
+    state.lineStart = start + nextLine + 1
+    offset = nextLine + 1
+  }
 }

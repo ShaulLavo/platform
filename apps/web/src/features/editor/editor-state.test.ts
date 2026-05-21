@@ -411,7 +411,7 @@ describe("editor document store", () => {
     )
   })
 
-  it("syncs duplicate tab document text while preserving per-tab history and scroll", () => {
+  it("syncs duplicate tab document text from edits while preserving per-tab history and scroll", () => {
     const store = createEditorDocumentStore()
     const tabA = store
       .getState()
@@ -426,9 +426,8 @@ describe("editor document store", () => {
     })
     const change = tabA.session.applyText("!")
     store.getState().recordCachedEditorDocumentTextChange("src/file.ts", {
-      edits: change.edits,
+      change,
       sourceTabId: "tab-a",
-      text: tabA.session.getText(),
     })
 
     const syncedTabA = store.getState().getCachedEditorTabDocument("tab-a")
@@ -444,6 +443,27 @@ describe("editor document store", () => {
     expect(syncedTabA?.scrollPosition).toEqual({ left: 4, top: 8 })
     expect(syncedTabB?.scrollPosition).toBeUndefined()
     expect(store.getState().dirtyFilePaths.has("src/file.ts")).toBe(true)
+  })
+
+  it("syncs tab document text from canonical edits without replaying the source", () => {
+    const store = createEditorDocumentStore()
+    const canonical = store
+      .getState()
+      .ensureCachedEditorDocument(file("src/file.ts", "abc"))
+    store
+      .getState()
+      .ensureCachedEditorTabDocument("tab-a", file("src/file.ts", "abc"))
+
+    const change = canonical.session.applyText("!")
+    store.getState().recordCachedEditorDocumentTextChange("src/file.ts", {
+      edits: change.edits,
+      source: "canonical",
+    })
+
+    expect(canonical.session.getText()).toBe("abc!")
+    expect(
+      store.getState().getCachedEditorTabDocument("tab-a")?.session.getText()
+    ).toBe("abc!")
   })
 
   it("tracks content revisions by cached document path", () => {

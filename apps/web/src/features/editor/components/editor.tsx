@@ -47,7 +47,6 @@ type EditorProps = {
   onTextChange?: (
     tabId: string,
     path: string,
-    text: string,
     change: DocumentSessionChange
   ) => void
 }
@@ -117,7 +116,7 @@ export function Editor({
       revision: cachedDocument.contentRevision,
       scrollPosition: cachedDocument.scrollPosition,
       session: cachedDocument.session,
-      text: cachedDocument.session.getText(),
+      text: "",
     }),
     [cachedDocument]
   )
@@ -136,30 +135,27 @@ export function Editor({
       if (!change || change.kind === "selection" || change.kind === "none")
         return
 
-      onTextChange?.(
-        tabId,
-        cachedDocument.path,
-        cachedDocument.session.getText(),
-        change
-      )
+      onTextChange?.(tabId, cachedDocument.path, change)
     },
     plugins,
     theme: editorTheme,
   })
   const editorInstance = controller.useEditorInstance()
   const editorState = controller.useState()
+  const textSnapshot =
+    controller.useTextSnapshot() ?? cachedDocument.session.getTextSnapshot()
   const selection = useMemo(
     () =>
       selectionForDefinition(
         cachedDocument.path,
-        document.text,
+        textSnapshot,
         definitionTarget
       ),
-    [cachedDocument.path, definitionTarget, document.text]
+    [cachedDocument.path, definitionTarget, textSnapshot]
   )
 
   useEditorStatusBarState({
-    charCount: editorState?.length ?? document.text.length,
+    charCount: editorState?.length ?? textSnapshot.length,
     filePath: cachedDocument.path,
     onChange: active ? onStatusChange : undefined,
     state: editorState,

@@ -11,6 +11,7 @@ import type { CSSProperties } from "react"
 import { useMemo, useState } from "react"
 
 import type { CachedEditorDocument } from "@/features/editor/state/editor-document-state"
+import { textLineAt } from "@/features/editor/utils/editor-position"
 import { compareSearchPaths } from "@/features/search/search-sort"
 import { basename, toTreePath } from "@/lib/path-formatters"
 import {
@@ -225,8 +226,9 @@ function referencePreview(
   document: CachedEditorDocument | undefined,
   target: LanguageServerDefinitionTarget
 ) {
-  const text = document?.session.getText()
-  const line = text ? textLine(text, target.range.start.line) : null
+  const line = document
+    ? textLineAt(document.session.getTextSnapshot(), target.range.start.line)
+    : null
   const trimmed = line?.trim()
   if (trimmed) return trimmed
   if (line !== null) return "(blank line)"
@@ -234,13 +236,6 @@ function referencePreview(
   return `Line ${target.range.start.line + 1}, column ${
     target.range.start.character + 1
   }`
-}
-
-function textLine(text: string, lineIndex: number) {
-  if (lineIndex < 0) return null
-
-  const lines = text.split(/\r?\n/u)
-  return lines[lineIndex] ?? null
 }
 
 function toggledPathSet(paths: ReadonlySet<string>, path: string) {

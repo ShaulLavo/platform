@@ -6,6 +6,7 @@ import {
 import type { FileResult } from "@/lib/file-system-types"
 import {
   createDocumentSession,
+  type DocumentSessionChange,
   type DocumentSession,
   type EditorScrollPosition,
   type TextEdit,
@@ -65,8 +66,10 @@ type EditorDocumentStoreActions = {
   recordCachedEditorDocumentTextChange: (
     path: string,
     options?: {
+      source?: "canonical"
       sourceTabId?: string
       text?: string
+      change?: DocumentSessionChange
       edits?: readonly TextEdit[]
     }
   ) => void
@@ -358,16 +361,15 @@ export function createEditorDocumentStore() {
         const contentRevision = editedContentRevision(
           state.dirtyContentRevision + 1
         )
-        const text = changedDocumentText(state, path, options)
+        const sync = sessionSyncForTextChange(options)
         const dirtyFilePaths =
           updateDirtyFilePaths(state.dirtyFilePaths, path, true) ??
           state.dirtyFilePaths
         const documents = recordCanonicalTextChange(
           state.documents,
           path,
-          text,
           contentRevision,
-          options.edits
+          sync
         )
         const documentContentRevisions =
           path in state.documents
@@ -386,9 +388,8 @@ export function createEditorDocumentStore() {
             state.tabDocuments,
             path,
             options.sourceTabId ?? null,
-            text,
             contentRevision,
-            options.edits
+            sync
           ),
         }
       }),
@@ -544,32 +545,37 @@ function replacementContentRevision(
   return contentRevisionForText(file.content)
 }
 
-function changedDocumentText(
-  state: EditorDocumentStoreState,
-  path: string,
-  options: { sourceTabId?: string; text?: string }
-) {
-  if (options.text !== undefined) return options.text
+type SessionSync = {
+  readonly edits?: readonly TextEdit[]
+  readonly source?: "canonical"
+  readonly text?: string
+}
 
-  const sourceDocument = options.sourceTabId
-    ? state.tabDocuments[options.sourceTabId]
-    : null
-  if (sourceDocument?.path === path) return sourceDocument.session.getText()
-
-  return state.documents[path]?.session.getText() ?? ""
+function sessionSyncForTextChange(options: {
+  change?: DocumentSessionChange
+  edits?: readonly TextEdit[]
+  source?: "canonical"
+  text?: string
+}): SessionSync {
+  return {
+    edits: options.change?.edits ?? options.edits,
+    source: options.source,
+    text: options.text,
+  }
 }
 
 function recordCanonicalTextChange(
   documents: Readonly<Record<string, CachedEditorDocument>>,
   path: string,
-  text: string,
   contentRevision: string,
-  edits: readonly TextEdit[] | undefined
+  sync: SessionSync
 ) {
   const document = documents[path]
   if (!document) return documents
 
-  syncSessionText(document.session, text, edits)
+  if (sync.source !== "canonical") {
+    syncSessionChange(document.session, sync)
+  }
   return {
     ...documents,
     [path]: {
@@ -583,16 +589,15 @@ function syncTabDocumentsForPath(
   tabDocuments: Readonly<Record<string, CachedEditorDocument>>,
   path: string,
   sourceTabId: string | null,
-  text: string,
   contentRevision: string,
-  edits: readonly TextEdit[] | undefined
+  sync: SessionSync
 ) {
   let changed = false
   const nextEntries = Object.entries(tabDocuments).map(([tabId, document]) => {
     if (document.path !== path) return [tabId, document] as const
 
     if (tabId !== sourceTabId) {
-      syncSessionText(document.session, text, edits)
+      syncSessionChange(document.session, sync)
     }
 
     changed = true
@@ -603,6 +608,18 @@ function syncTabDocumentsForPath(
   return Object.fromEntries(nextEntries) as Readonly<
     Record<string, CachedEditorDocument>
   >
+}
+
+function syncSessionChange(session: DocumentSession, sync: SessionSync) {
+  if (sync.edits?.length) {
+    session.applyEdits(sync.edits, { history: "skip" })
+    if (sync.text === undefined) return
+    if (session.getText() === sync.text) return
+  }
+
+  if (sync.text === undefined) return
+
+  syncSessionText(session, sync.text)
 }
 
 function replaceTabDocumentsForPath(
@@ -654,17 +671,8 @@ function markTabDocumentsCleanForPath(
   >
 }
 
-function syncSessionText(
-  session: DocumentSession,
-  text: string,
-  edits?: readonly TextEdit[]
-) {
+function syncSessionText(session: DocumentSession, text: string) {
   if (session.getText() === text) return
-
-  if (edits?.length) {
-    session.applyEdits(edits, { history: "skip" })
-    if (session.getText() === text) return
-  }
 
   session.applyEdits([fullDocumentTextEdit(session, text)], {
     history: "skip",

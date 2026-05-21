@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MutableRefObject,
   type RefObject,
 } from "react"
 
@@ -73,8 +74,12 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@workspace/ui/components/resizable"
-import { parseMergeConflicts, type DocumentSessionChange } from "@editor/core"
-import type { EditorKeymapLayer } from "@editor/core"
+import {
+  parseMergeConflicts,
+  type DocumentSessionChange,
+  type EditorKeymapLayer,
+  type TextSnapshot,
+} from "@editor/core"
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
@@ -92,6 +97,7 @@ type EditorPaneSplitDropTarget = {
 const EDITOR_PANE_ROOT_EDGE_FRACTION = 0.28
 const EDITOR_PANE_ROOT_EDGE_MIN_PX = 96
 const EDITOR_PANE_ROOT_EDGE_MAX_PX = 180
+const CONFLICT_RESOLUTION_DEBOUNCE_MS = 250
 
 const EditorPaneDropContext = createContext<{
   dropTarget: EditorPaneSplitDropTarget | null
@@ -534,15 +540,13 @@ function EditorPaneTabBody({
     (
       sourceTabId: string,
       changedPath: string,
-      text: string,
       change: DocumentSessionChange
     ) => {
       recordCachedEditorDocumentTextChange(changedPath, {
-        edits: change.edits,
+        change,
         sourceTabId,
-        text,
       })
-      resolveConflictEditorDocument(changedPath, text)
+      resolveConflictEditorDocument(changedPath, change.textSnapshot)
     },
     [recordCachedEditorDocumentTextChange, resolveConflictEditorDocument]
   )
@@ -625,7 +629,6 @@ function FileViewerBody({
   onEditorTextChange?: (
     tabId: string,
     path: string,
-    text: string,
     change: DocumentSessionChange
   ) => void
   onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
@@ -854,32 +857,36 @@ function useConflictEditorResolution({
   const conflictStore = useEditorConflictStoreApi()
   const queryClient = useQueryClient()
   const resolvingConflictIds = useRef(new Set<string>())
+  const pendingResolutionTimeouts = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  )
+
+  useEffect(
+    () => () =>
+      clearConflictResolutionTimeouts(pendingResolutionTimeouts.current),
+    []
+  )
 
   return useCallback(
-    (path: string, text: string) => {
+    (path: string, textSnapshot: TextSnapshot) => {
       const conflictDiff = parseConflictDiffDocumentId(path)
       if (!conflictDiff) return
-      if (parseMergeConflicts(text).length > 0) return
 
-      const conflict =
-        conflictStore.getState().conflicts[conflictDiff.conflictId]
-      if (!conflict) return
-      if (resolvingConflictIds.current.has(conflict.id)) return
-
-      resolvingConflictIds.current.add(conflict.id)
-      void applyConflictEditorResolution(conflict, text, {
-        conflictStore,
-        discardCachedEditorDocument,
-        forceReplaceCachedEditorDocument,
-        queryClient,
-        renameCachedEditorDocument,
-      })
-        .catch((error: unknown) => {
-          reportError(toClientError(error))
-        })
-        .finally(() => {
-          resolvingConflictIds.current.delete(conflict.id)
-        })
+      replaceConflictResolutionTimeout(
+        pendingResolutionTimeouts.current,
+        path,
+        () => {
+          pendingResolutionTimeouts.current.delete(path)
+          resolveConflictEditorSnapshot(conflictDiff, textSnapshot, {
+            conflictStore,
+            discardCachedEditorDocument,
+            forceReplaceCachedEditorDocument,
+            queryClient,
+            renameCachedEditorDocument,
+            resolvingConflictIds,
+          })
+        }
+      )
     },
     [
       conflictStore,
@@ -889,6 +896,53 @@ function useConflictEditorResolution({
       renameCachedEditorDocument,
     ]
   )
+}
+
+function resolveConflictEditorSnapshot(
+  conflictDiff: NonNullable<ReturnType<typeof parseConflictDiffDocumentId>>,
+  textSnapshot: TextSnapshot,
+  context: ConflictEditorResolutionContext & {
+    resolvingConflictIds: MutableRefObject<Set<string>>
+  }
+) {
+  const text = textSnapshot.getText()
+  if (parseMergeConflicts(text).length > 0) return
+
+  const conflict =
+    context.conflictStore.getState().conflicts[conflictDiff.conflictId]
+  if (!conflict) return
+  if (context.resolvingConflictIds.current.has(conflict.id)) return
+
+  context.resolvingConflictIds.current.add(conflict.id)
+  void applyConflictEditorResolution(conflict, text, context)
+    .catch((error: unknown) => {
+      reportError(toClientError(error))
+    })
+    .finally(() => {
+      context.resolvingConflictIds.current.delete(conflict.id)
+    })
+}
+
+function replaceConflictResolutionTimeout(
+  timeouts: Map<string, ReturnType<typeof setTimeout>>,
+  path: string,
+  resolve: () => void
+) {
+  const current = timeouts.get(path)
+  if (current) clearTimeout(current)
+
+  const timeout = setTimeout(resolve, CONFLICT_RESOLUTION_DEBOUNCE_MS)
+  timeouts.set(path, timeout)
+}
+
+function clearConflictResolutionTimeouts(
+  timeouts: Map<string, ReturnType<typeof setTimeout>>
+) {
+  for (const timeout of timeouts.values()) {
+    clearTimeout(timeout)
+  }
+
+  timeouts.clear()
 }
 
 async function applyConflictEditorResolution(

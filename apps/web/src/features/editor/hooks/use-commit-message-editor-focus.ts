@@ -28,7 +28,7 @@ export function useCommitMessageEditorFocus({
     if (preparedPathRef.current === document.path) return
 
     preparedPathRef.current = document.path
-    const offset = rowStartOffset(document.session.getText(), 1)
+    const offset = rowStartOffset(document.session.getTextSnapshot(), 1)
     editorInstance.setSelection(offset, offset, offset)
     editorInstance.focus()
   }, [document.path, document.session, editorInstance])

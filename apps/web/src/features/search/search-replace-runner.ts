@@ -4,6 +4,7 @@ import type {
   WorkspaceSearchMatch,
   WorkspaceSearchQuery,
 } from "@workspace/contracts"
+import type { TextEdit } from "@editor/core"
 
 import {
   applyWorkspaceSearchReplaceEdits,
@@ -21,7 +22,10 @@ export type WorkspaceSearchReplaceContext = {
   cacheFile: (file: FileResult) => void
   fetchFile: (path: string, signal: AbortSignal) => Promise<FileResult>
   getCachedEditorDocument: (path: string) => CachedEditorDocument | null
-  recordCachedEditorDocumentTextChange: (path: string) => void
+  recordCachedEditorDocumentTextChange: (
+    path: string,
+    options?: { edits?: readonly TextEdit[]; source?: "canonical" }
+  ) => void
   signal: AbortSignal
   writeFileContent: (
     path: string,
@@ -131,7 +135,10 @@ function replaceCachedDocument(
   }
 
   document.session.applyEdits(plan.edits)
-  context.recordCachedEditorDocumentTextChange(document.path)
+  context.recordCachedEditorDocumentTextChange(document.path, {
+    edits: plan.edits,
+    source: "canonical",
+  })
 
   return {
     changed: true,
