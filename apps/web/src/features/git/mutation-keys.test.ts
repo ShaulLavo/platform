@@ -16,6 +16,12 @@ describe("mutationKeys", () => {
       "checkout",
       "repo",
     ])
+    expect(mutationKeys.sync("repo")).toEqual([
+      "git",
+      "mutation",
+      "sync",
+      "repo",
+    ])
   })
 
   it("keeps bulk path order in multi-path mutation keys", () => {

@@ -127,6 +127,13 @@ export async function pushRemote(path: string) {
   return unwrapGitResponse<{ output: string }>(response)
 }
 
+export async function syncRemote(path: string) {
+  const pull = await pullRemote(path)
+  const push = await pushRemote(path)
+
+  return { pull, push }
+}
+
 function unwrapGitResponse<T>(response: {
   data?: unknown
   error?: unknown

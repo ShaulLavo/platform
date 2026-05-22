@@ -114,6 +114,26 @@ describe("git api", () => {
     })
     expect(fetchPost).toHaveBeenCalledWith({ path: "repo" })
   })
+
+  it("syncs remote changes by pulling before pushing", async () => {
+    const calls: string[] = []
+    const pull = { output: "pulled" }
+    const push = { output: "pushed" }
+    pullPost.mockImplementationOnce(async () => {
+      calls.push("pull")
+      return { data: pull }
+    })
+    pushPost.mockImplementationOnce(async () => {
+      calls.push("push")
+      return { data: push }
+    })
+
+    await expect(api.syncRemote("repo")).resolves.toEqual({ pull, push })
+
+    expect(pullPost).toHaveBeenCalledWith({ path: "repo" })
+    expect(pushPost).toHaveBeenCalledWith({ path: "repo" })
+    expect(calls).toEqual(["pull", "push"])
+  })
 })
 
 function repositoryInfo() {

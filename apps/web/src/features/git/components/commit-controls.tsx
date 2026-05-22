@@ -1,20 +1,29 @@
-import { CheckIcon } from "@phosphor-icons/react"
+import { ArrowsClockwiseIcon, CheckIcon } from "@phosphor-icons/react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import type { KeyboardEvent } from "react"
 
-import { useCommitAction } from "../hooks"
+import { useCommitAction, useSyncChangesMutation } from "../hooks"
+import type { RepositoryInfo } from "../types"
+import { canSyncChanges, syncChangesLabel } from "../utils"
 
 export function CommitControls({
-  branch,
+  hasLocalChanges,
+  repository,
   rootPath,
 }: {
-  branch: string
+  hasLocalChanges: boolean
+  repository: RepositoryInfo
   rootPath: string
 }) {
   const commit = useCommitAction(rootPath)
+  const syncChanges = useSyncChangesMutation(rootPath)
+  const showSyncChanges = canSyncChanges(repository, hasLocalChanges)
+  const inputDisabled =
+    commit.isPending || syncChanges.isPending || showSyncChanges
 
   function handleCommitKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (showSyncChanges) return
     if (!event.metaKey && !event.ctrlKey) return
     if (event.key !== "Enter") return
 
@@ -29,25 +38,39 @@ export function CommitControls({
           <Input
             aria-label="Commit message"
             className="h-full border-0 bg-transparent px-2.5 text-xs font-medium shadow-none focus-visible:border-0 focus-visible:ring-0"
-            disabled={commit.isPending}
+            disabled={inputDisabled}
             onChange={(event) => commit.setMessage(event.currentTarget.value)}
             onKeyDown={handleCommitKeyDown}
-            placeholder={`Commit Changes (⌘↵ on "${branch}")`}
-            value={commit.message}
+            placeholder={`Commit Changes (⌘↵ on "${repository.branch ?? "HEAD"}")`}
+            value={showSyncChanges ? "" : commit.message}
           />
         </div>
       </div>
       <div className="shrink-0 px-2 pt-3">
-        <Button
-          className="h-8 w-full text-sm"
-          onClick={commit.submit}
-          type="button"
-          variant="default"
-        >
-          <CheckIcon className="size-4" />
-          Commit
-          <span className="text-primary-foreground/65">⌘↵</span>
-        </Button>
+        {showSyncChanges ? (
+          <Button
+            className="h-8 w-full text-sm"
+            disabled={syncChanges.isPending}
+            onClick={() => syncChanges.mutate()}
+            type="button"
+            variant="default"
+          >
+            <ArrowsClockwiseIcon className="size-4" />
+            {syncChangesLabel(repository)}
+          </Button>
+        ) : (
+          <Button
+            className="h-8 w-full text-sm"
+            disabled={commit.isPending}
+            onClick={commit.submit}
+            type="button"
+            variant="default"
+          >
+            <CheckIcon className="size-4" />
+            Commit
+            <span className="text-primary-foreground/65">⌘↵</span>
+          </Button>
+        )}
       </div>
     </>
   )

@@ -40,6 +40,7 @@ function PanelContent({
   const files = status.data?.files ?? EMPTY_FILES
   const repository = status.data?.repository ?? null
   const rows = useMemo(() => changeRows(files), [files])
+  const hasLocalChanges = rows.staged.length > 0 || rows.worktree.length > 0
   const panelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
 
@@ -72,7 +73,8 @@ function PanelContent({
       {panelOpen ? (
         <>
           <CommitControls
-            branch={repository.branch ?? "HEAD"}
+            hasLocalChanges={hasLocalChanges}
+            repository={repository}
             rootPath={rootPath}
           />
           <div className="app-scrollbar-thin min-h-0 flex-1 overflow-auto pt-2">
@@ -88,7 +90,7 @@ function PanelContent({
               rows={rows.worktree}
               section="worktree"
             />
-            {rows.staged.length === 0 && rows.worktree.length === 0 && (
+            {!hasLocalChanges && (
               <div className="px-7 py-4 text-xs text-muted-foreground">
                 Working tree clean
               </div>
