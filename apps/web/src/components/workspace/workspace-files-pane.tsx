@@ -3,16 +3,22 @@ import { useStatus } from "@/features/git/hooks"
 import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
 import type { TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
-import type { TreeModel } from "@/lib/tree-model"
+import type { DirectoryLoadOptions, TreeModel } from "@/lib/tree-model"
 import { useMemo } from "react"
 
 export function WorkspaceFilesPane({
   onLoadDirectory,
+  onPrefetchDirectory,
   onVisibleItemCountChange,
   rootPath,
   state,
 }: {
-  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  onLoadDirectory: (
+    entry: TreeEntry,
+    treePath: string,
+    options?: DirectoryLoadOptions
+  ) => void
+  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   onVisibleItemCountChange: (count: number) => void
   rootPath: string
   state: LoadState<TreeModel>
@@ -30,6 +36,7 @@ export function WorkspaceFilesPane({
       state={state}
       onVisibleItemCountChange={onVisibleItemCountChange}
       onLoadDirectory={onLoadDirectory}
+      onPrefetchDirectory={onPrefetchDirectory}
     />
   )
 }

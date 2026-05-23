@@ -4,6 +4,7 @@ import {
   moveTreeModelPaths,
   patchTreeEntryMetadata,
   replaceDirectoryLoad,
+  shouldLoadDirectory,
   treeModel,
   treeModelWithDirectoryLoads,
 } from "@/lib/tree-model"
@@ -83,6 +84,30 @@ describe("replaceDirectoryLoad", () => {
     expect(next.paths).toEqual(["src/", "README.md", "src/new.ts"])
     expect(next.entriesByTreePath.has("src/old.ts")).toBe(false)
     expect(next.entriesByTreePath.has("README.md")).toBe(true)
+  })
+})
+
+describe("shouldLoadDirectory", () => {
+  it("does not load loaded, loading, or errored directories by default", () => {
+    const loaded = treeModel(tree("repo", [directory("repo/src")]), "repo")
+    loaded.loadedDirectoryPaths.add("src")
+
+    const loading = treeModel(tree("repo", [directory("repo/src")]), "repo")
+    loading.loadingDirectoryPaths.add("src")
+
+    const errored = treeModel(tree("repo", [directory("repo/src")]), "repo")
+    errored.errorByDirectoryPath.set("src", "Could not load")
+
+    expect(shouldLoadDirectory(loaded, "src/")).toBe(false)
+    expect(shouldLoadDirectory(loading, "src/")).toBe(false)
+    expect(shouldLoadDirectory(errored, "src/")).toBe(false)
+  })
+
+  it("allows an errored directory to load for an explicit retry", () => {
+    const model = treeModel(tree("repo", [directory("repo/src")]), "repo")
+    model.errorByDirectoryPath.set("src", "Could not load")
+
+    expect(shouldLoadDirectory(model, "src/", { retry: true })).toBe(true)
   })
 })
 

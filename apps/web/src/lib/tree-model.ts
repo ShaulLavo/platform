@@ -16,6 +16,10 @@ export type TreePathMove = {
   toTreePath: string
 }
 
+export type DirectoryLoadOptions = {
+  retry?: boolean
+}
+
 export const EMPTY_TREE_MODEL: TreeModel = {
   paths: [],
   entriesByTreePath: new Map(),
@@ -71,10 +75,16 @@ export function mergeDirectoryLoads(
   return next
 }
 
-export function shouldLoadDirectory(model: TreeModel, treePath: string) {
+export function shouldLoadDirectory(
+  model: TreeModel,
+  treePath: string,
+  options: DirectoryLoadOptions = {}
+) {
   const canonicalPath = canonicalTreePath(treePath)
   if (model.loadedDirectoryPaths.has(canonicalPath)) return false
   if (model.loadingDirectoryPaths.has(canonicalPath)) return false
+  if (model.errorByDirectoryPath.has(canonicalPath) && !options.retry)
+    return false
 
   return true
 }

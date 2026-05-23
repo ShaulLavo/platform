@@ -47,10 +47,12 @@ function AppContent() {
   const { pickRootFolder } = useEditorCommands()
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandPaletteSearch, setCommandPaletteSearch] = useState("")
-  const { loadTreeDirectory, resetTreeLoad, treeState } = useWorkspaceTree(
-    rootFolder,
-    selectedFilePath
-  )
+  const {
+    loadTreeDirectory,
+    prefetchTreeDirectory,
+    resetTreeLoad,
+    treeState,
+  } = useWorkspaceTree(rootFolder, selectedFilePath)
   const { dirtyTabCloseDialog, requestCloseTab, requestCloseTabs } =
     useDirtyTabCloseRequest()
   const keymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
@@ -93,6 +95,7 @@ function AppContent() {
             rootFolder={rootFolder}
             treeState={treeState}
             onLoadDirectory={loadTreeDirectory}
+            onPrefetchDirectory={prefetchTreeDirectory}
             onRequestCloseTab={requestCloseTab}
             onRequestCloseTabs={requestCloseTabs}
           />

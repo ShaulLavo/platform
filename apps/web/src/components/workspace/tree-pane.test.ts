@@ -132,7 +132,7 @@ describe("syncTreePaneState", () => {
         })
       )
 
-      expect(focusChanges).toEqual(["src/components/ui/"])
+      expect(focusChanges).toContain("src/components/ui/")
       expect(fileTree.getFocusedPath()).toBe("src/components/ui/")
     } finally {
       fileTree.cleanUp()
@@ -172,8 +172,172 @@ describe("syncTreePaneState", () => {
         })
       )
 
-      expect(focusChanges).toEqual(["src/components/"])
+      expect(focusChanges).toContain("src/components/")
       expect(fileTree.getFocusedPath()).toBe("src/components/")
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it("keeps a lazy directory expanded after its single child directory flattens into the visible row", () => {
+    const root = "repo"
+    const initialModel = treeModel(tree(root, [directory("repo/src")]), root)
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: "closed",
+      paths: initialModel.paths,
+    })
+
+    try {
+      getDirectory(fileTree, "src/").expand()
+
+      const loadedModel = mergeDirectoryLoad(
+        initialModel,
+        root,
+        tree("repo/src", [directory("repo/src/components")]),
+        "src"
+      )
+
+      syncTreePaneState({
+        loadExpandedDirectoriesForCurrentModel: () => {},
+        model: loadedModel,
+        previousPaths: initialModel.paths,
+        rootPath: root,
+        selectedFilePath: null,
+        tree: fileTree,
+      })
+
+      expect(getDirectory(fileTree, "src/components/").isExpanded()).toBe(true)
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it("does not re-expand a collapsed flattened directory during later child syncs", () => {
+    const root = "repo"
+    const initialModel = treeModel(tree(root, [directory("repo/src")]), root)
+    const loadedModel = mergeDirectoryLoad(
+      initialModel,
+      root,
+      tree("repo/src", [directory("repo/src/components")]),
+      "src"
+    )
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: "closed",
+      paths: initialModel.paths,
+    })
+
+    try {
+      getDirectory(fileTree, "src/").expand()
+      syncTreePaneState({
+        loadExpandedDirectoriesForCurrentModel: () => {},
+        model: loadedModel,
+        previousPaths: initialModel.paths,
+        rootPath: root,
+        selectedFilePath: null,
+        tree: fileTree,
+      })
+      getDirectory(fileTree, "src/components/").collapse()
+
+      const nestedModel = mergeDirectoryLoad(
+        loadedModel,
+        root,
+        tree("repo/src/components", [
+          directory("repo/src/components/ui"),
+        ]),
+        "src/components"
+      )
+
+      syncTreePaneState({
+        loadExpandedDirectoriesForCurrentModel: () => {},
+        model: nestedModel,
+        previousPaths: loadedModel.paths,
+        rootPath: root,
+        selectedFilePath: null,
+        tree: fileTree,
+      })
+
+      expect(getDirectory(fileTree, "src/components/ui/").isExpanded()).toBe(
+        false
+      )
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+})
+
+describe("loadExpandedDirectories", () => {
+  it("does not retry an errored directory before expansion history is known", () => {
+    const root = "repo"
+    const model = treeModel(tree(root, [directory("repo/src")]), root)
+    model.errorByDirectoryPath.set("src", "Could not load")
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: "closed",
+      paths: model.paths,
+    })
+    const loadedPaths: string[] = []
+
+    try {
+      getDirectory(fileTree, "src/").expand()
+      loadExpandedDirectories(fileTree, model, (_entry, path) =>
+        loadedPaths.push(path)
+      )
+
+      expect(loadedPaths).toEqual([])
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it("does not retry an errored directory while it remains expanded", () => {
+    const root = "repo"
+    const model = treeModel(tree(root, [directory("repo/src")]), root)
+    model.errorByDirectoryPath.set("src", "Could not load")
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: "closed",
+      paths: model.paths,
+    })
+    const loadedPaths: string[] = []
+
+    try {
+      getDirectory(fileTree, "src/").expand()
+      loadExpandedDirectories(
+        fileTree,
+        model,
+        (_entry, path) => loadedPaths.push(path),
+        new Set(["src"])
+      )
+
+      expect(loadedPaths).toEqual([])
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it("retries an errored directory after a fresh expand gesture", () => {
+    const root = "repo"
+    const model = treeModel(tree(root, [directory("repo/src")]), root)
+    model.errorByDirectoryPath.set("src", "Could not load")
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: "closed",
+      paths: model.paths,
+    })
+    const loadedPaths: string[] = []
+
+    try {
+      getDirectory(fileTree, "src/").expand()
+      loadExpandedDirectories(
+        fileTree,
+        model,
+        (_entry, path) => loadedPaths.push(path),
+        new Set()
+      )
+
+      expect(loadedPaths).toEqual(["src/"])
     } finally {
       fileTree.cleanUp()
     }

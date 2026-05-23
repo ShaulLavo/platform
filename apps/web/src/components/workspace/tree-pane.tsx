@@ -13,6 +13,7 @@ import {
   syncTreePaneState,
   visibleTreeItemCount,
 } from "@/components/workspace/tree-pane-state"
+import { useFileTreeIntentPrefetch } from "@/components/workspace/use-file-tree-intent-prefetch"
 import { useEditorCommands } from "@/features/editor/state/editor-commands"
 import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
@@ -26,6 +27,7 @@ import { canonicalTreePath } from "@/lib/path-formatters"
 import { fileSystemKeys, gitKeys } from "@/lib/query-keys"
 import {
   entryForTreePath,
+  type DirectoryLoadOptions,
   moveTreeModelPaths,
   treePathForSelectedPath,
   type TreePathMove,
@@ -50,12 +52,18 @@ export function TreePane({
   gitStatus,
   onVisibleItemCountChange,
   onLoadDirectory,
+  onPrefetchDirectory,
   rootPath,
   state,
 }: {
   gitStatus?: readonly GitStatusEntry[]
   onVisibleItemCountChange?: (count: number) => void
-  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  onLoadDirectory: (
+    entry: TreeEntry,
+    treePath: string,
+    options?: DirectoryLoadOptions
+  ) => void
+  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
   state: LoadState<TreeModel>
 }) {
@@ -78,6 +86,7 @@ export function TreePane({
       rootPath={rootPath}
       onVisibleItemCountChange={onVisibleItemCountChange}
       onLoadDirectory={onLoadDirectory}
+      onPrefetchDirectory={onPrefetchDirectory}
     />
   )
 }
@@ -87,12 +96,18 @@ function ReadyTreePane({
   model,
   onVisibleItemCountChange,
   onLoadDirectory,
+  onPrefetchDirectory,
   rootPath,
 }: {
   gitStatus?: readonly GitStatusEntry[]
   model: TreeModel
   onVisibleItemCountChange?: (count: number) => void
-  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  onLoadDirectory: (
+    entry: TreeEntry,
+    treePath: string,
+    options?: DirectoryLoadOptions
+  ) => void
+  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
 }) {
   const selectedFilePath = useEditorWorkspaceState(
@@ -101,6 +116,9 @@ function ReadyTreePane({
   const { selectFile } = useEditorCommands()
   const setFocusArea = useWorkspaceFocus((store) => store.setFocusArea)
   const queryClient = useQueryClient()
+  const expandedDirectoryPathsRef = useRef<ReadonlySet<string> | undefined>(
+    undefined
+  )
   const modelRef = useRef(model)
   const movePendingRef = useRef(false)
   const pathsRef = useRef(model.paths)
@@ -141,7 +159,12 @@ function ReadyTreePane({
   })
   const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
     (currentTree: PierreFileTreeModel) => {
-      loadExpandedDirectories(currentTree, model, onLoadDirectory)
+      expandedDirectoryPathsRef.current = loadExpandedDirectories(
+        currentTree,
+        model,
+        onLoadDirectory,
+        expandedDirectoryPathsRef.current
+      )
     }
   )
   const publishVisibleItemCount = useEffectEvent(
@@ -186,6 +209,12 @@ function ReadyTreePane({
 
       selectFile(entry.path)
     },
+  })
+
+  useFileTreeIntentPrefetch({
+    model,
+    onPrefetchDirectory,
+    tree,
   })
 
   useLayoutEffect(() => {

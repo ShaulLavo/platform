@@ -8,6 +8,7 @@ import type { TreeEntry } from "@/lib/file-system-types"
 import { isDirectoryEntry } from "@/lib/file-system-types"
 import { canonicalTreePath } from "@/lib/path-formatters"
 import {
+  type DirectoryLoadOptions,
   shouldLoadDirectory,
   treePathForSelectedPath,
   type TreeModel,
@@ -38,16 +39,29 @@ export function syncTreePaneState({
 export function loadExpandedDirectories(
   tree: PierreFileTreeModel,
   model: TreeModel,
-  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  onLoadDirectory: (
+    entry: TreeEntry,
+    treePath: string,
+    options?: DirectoryLoadOptions
+  ) => void,
+  previousExpandedDirectoryPaths?: ReadonlySet<string>
 ) {
+  const expandedPaths = expandedDirectoryPathSet(model, tree)
+
   for (const [treePath, entry] of model.entriesByTreePath) {
     if (!isDirectoryEntry(entry)) continue
     const directoryTreePath = `${canonicalTreePath(treePath)}/`
-    if (!shouldLoadDirectory(model, directoryTreePath)) continue
-    if (!isTreeDirectoryExpanded(tree, directoryTreePath)) continue
+    const canonicalDirectoryPath = canonicalTreePath(directoryTreePath)
+    if (!expandedPaths.has(canonicalDirectoryPath)) continue
 
-    onLoadDirectory(entry, directoryTreePath)
+    const retry =
+      previousExpandedDirectoryPaths?.has(canonicalDirectoryPath) === false
+    if (!shouldLoadDirectory(model, directoryTreePath, { retry })) continue
+
+    onLoadDirectory(entry, directoryTreePath, { retry })
   }
+
+  return expandedPaths
 }
 
 export function visibleTreeItemCount(
@@ -214,6 +228,7 @@ function syncTreePaths(
 ) {
   const changes = treePathChanges(previousPaths, nextPaths)
   if (changes.added.length === 0 && changes.removed.length === 0) return
+  const expandedPathsBeforeSync = expandedDirectoryPathSet(model, tree)
 
   if (shouldResetTreePaths(changes)) {
     tree.resetPaths(nextPaths, {
@@ -229,6 +244,13 @@ function syncTreePaths(
   for (const path of sortedTreePathsByDepth(changes.added)) {
     tree.add(path)
   }
+
+  expandNewFlattenedDirectoryTerminals(
+    tree,
+    model,
+    changes.added,
+    expandedPathsBeforeSync
+  )
 }
 
 function treePathChanges(
@@ -314,15 +336,84 @@ function isOnlySelectedPath(tree: PierreFileTreeModel, treePath: string) {
 
 function expandedDirectoryPaths(model: TreeModel, tree: PierreFileTreeModel) {
   const paths: string[] = []
+  const expandedPaths = expandedDirectoryPathSet(model, tree)
+  const childrenByParent = treeChildrenByParentPath(model)
+
+  for (const treePath of expandedPaths) {
+    paths.push(`${treePath}/`)
+
+    const terminalPath = flattenedTerminalDirectoryPath(
+      treePath,
+      childrenByParent,
+      model
+    )
+    if (terminalPath === treePath) continue
+    if (parentTreePath(terminalPath) !== treePath) continue
+
+    paths.push(`${terminalPath}/`)
+  }
+
+  return paths
+}
+
+function expandedDirectoryPathSet(
+  model: TreeModel,
+  tree: PierreFileTreeModel
+) {
+  const paths = new Set<string>()
 
   for (const [treePath, entry] of model.entriesByTreePath) {
     if (!isDirectoryEntry(entry)) continue
     if (!isTreeDirectoryExpanded(tree, treePath)) continue
 
-    paths.push(`${treePath}/`)
+    paths.add(canonicalTreePath(treePath))
   }
 
   return paths
+}
+
+function expandNewFlattenedDirectoryTerminals(
+  tree: PierreFileTreeModel,
+  model: TreeModel,
+  addedPaths: readonly string[],
+  expandedPathsBeforeSync: ReadonlySet<string>
+) {
+  const addedDirectoryPaths = addedDirectoryPathSet(addedPaths)
+  if (addedDirectoryPaths.size === 0) return
+
+  const childrenByParent = treeChildrenByParentPath(model)
+  for (const expandedPath of expandedPathsBeforeSync) {
+    const terminalPath = flattenedTerminalDirectoryPath(
+      expandedPath,
+      childrenByParent,
+      model
+    )
+    if (terminalPath === expandedPath) continue
+    if (parentTreePath(terminalPath) !== expandedPath) continue
+    if (!addedDirectoryPaths.has(terminalPath)) continue
+
+    expandTreeDirectory(tree, terminalPath)
+  }
+}
+
+function addedDirectoryPathSet(paths: readonly string[]) {
+  const directoryPaths = new Set<string>()
+
+  for (const path of paths) {
+    if (!path.endsWith("/")) continue
+
+    directoryPaths.add(canonicalTreePath(path))
+  }
+
+  return directoryPaths
+}
+
+function expandTreeDirectory(tree: PierreFileTreeModel, treePath: string) {
+  const item = tree.getItem(`${treePath}/`) ?? tree.getItem(treePath)
+  if (!isTreeDirectoryHandle(item)) return
+  if (item.isExpanded()) return
+
+  item.expand()
 }
 
 function isTreeDirectoryExpanded(tree: PierreFileTreeModel, treePath: string) {

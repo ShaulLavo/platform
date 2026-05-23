@@ -3,7 +3,7 @@ import { WorkspaceSearchPane } from "@/components/workspace/workspace-search-pan
 import { Panel as GitPanel } from "@/features/git/panel"
 import type { TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
-import type { TreeModel } from "@/lib/tree-model"
+import type { DirectoryLoadOptions, TreeModel } from "@/lib/tree-model"
 import type { WorkspacePanelTab } from "@/lib/workspace-cache"
 import {
   workspacePanelTabTitle,
@@ -13,6 +13,7 @@ import { TabsContent } from "@workspace/ui/components/tabs"
 
 export function WorkspaceSidebar({
   onLoadDirectory,
+  onPrefetchDirectory,
   onVisibleItemCountChange,
   rootPath,
   sidebarVisible,
@@ -20,7 +21,12 @@ export function WorkspaceSidebar({
   treeState,
   visibleTreeItemCount,
 }: {
-  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  onLoadDirectory: (
+    entry: TreeEntry,
+    treePath: string,
+    options?: DirectoryLoadOptions
+  ) => void
+  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   onVisibleItemCountChange: (count: number) => void
   rootPath: string
   sidebarVisible: boolean
@@ -46,6 +52,7 @@ export function WorkspaceSidebar({
           state={treeState}
           onVisibleItemCountChange={onVisibleItemCountChange}
           onLoadDirectory={onLoadDirectory}
+          onPrefetchDirectory={onPrefetchDirectory}
         />
       </TabsContent>
       <TabsContent keepMounted value="search">

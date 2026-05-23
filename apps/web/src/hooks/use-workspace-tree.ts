@@ -2,10 +2,15 @@ import type { PickedFsEntry } from "@/lib/file-system-types"
 import { errorMessage, fetchTree } from "@/lib/file-server"
 import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
 import { isDirectoryEntry } from "@/lib/file-system-types"
+import {
+  FILE_TREE_PREFETCH_STALE_MS,
+  treeDirectoryPrefetchKey,
+} from "@/components/workspace/file-tree-prefetch"
 import { idleState, type LoadState } from "@/lib/load-state"
 import { canonicalTreePath, toTreePath } from "@/lib/path-formatters"
 import { fileSystemKeys } from "@/lib/query-keys"
 import {
+  type DirectoryLoadOptions,
   markDirectoryError,
   markDirectoryLoading,
   mergeDirectoryLoad,
@@ -44,17 +49,21 @@ export function useWorkspaceTree(
     queryClient.removeQueries({ queryKey: fileSystemKeys.trees() })
   }
 
-  function loadTreeDirectory(entry: TreeEntry, treePath: string) {
+  function loadTreeDirectory(
+    entry: TreeEntry,
+    treePath: string,
+    options: DirectoryLoadOptions = {}
+  ) {
     if (!rootFolder) return
     if (treeState.status !== "ready") return
     if (!isDirectoryEntry(entry)) return
-    if (!shouldLoadDirectory(treeState.data, treePath)) return
+    if (!shouldLoadDirectory(treeState.data, treePath, options)) return
 
     const canonicalPath = canonicalTreePath(treePath)
-    const directoryKey = fileSystemKeys.treeDirectory(
+    const directoryKey = treeDirectoryPrefetchKey(
       rootFolder.path,
       canonicalPath,
-      entry.path
+      entry
     )
 
     queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
@@ -67,6 +76,7 @@ export function useWorkspaceTree(
       .fetchQuery({
         queryFn: ({ signal }) => fetchTree(entry.path, signal),
         queryKey: directoryKey,
+        staleTime: FILE_TREE_PREFETCH_STALE_MS,
       })
       .then((result) =>
         queryClient.setQueryData(
@@ -95,8 +105,22 @@ export function useWorkspaceTree(
       })
   }
 
+  function prefetchTreeDirectory(entry: TreeEntry, treePath: string) {
+    if (!rootFolder) return
+    if (treeState.status !== "ready") return
+    if (!isDirectoryEntry(entry)) return
+    if (!shouldLoadDirectory(treeState.data, treePath)) return
+
+    void queryClient.prefetchQuery({
+      queryFn: ({ signal }) => fetchTree(entry.path, signal),
+      queryKey: treeDirectoryPrefetchKey(rootFolder.path, treePath, entry),
+      staleTime: FILE_TREE_PREFETCH_STALE_MS,
+    })
+  }
+
   return {
     loadTreeDirectory,
+    prefetchTreeDirectory,
     resetTreeLoad,
     treeState,
   }

@@ -11,7 +11,7 @@ import { workspaceResizableStorageKey } from "@/components/workspace/workspace-v
 import { TerminalPanel } from "@/features/terminal/terminal-panel"
 import type { PickedFsEntry, TreeEntry } from "@/lib/file-system-types"
 import type { LoadState } from "@/lib/load-state"
-import type { TreeModel } from "@/lib/tree-model"
+import type { DirectoryLoadOptions, TreeModel } from "@/lib/tree-model"
 import type { EditorKeymapLayer } from "@editor/core"
 import { Tabs } from "@workspace/ui/components/tabs"
 import {
@@ -24,7 +24,12 @@ type WorkspaceViewProps = {
   editorKeymapLayers: readonly EditorKeymapLayer[]
   rootFolder: PickedFsEntry
   treeState: LoadState<TreeModel>
-  onLoadDirectory: (entry: TreeEntry, treePath: string) => void
+  onLoadDirectory: (
+    entry: TreeEntry,
+    treePath: string,
+    options?: DirectoryLoadOptions
+  ) => void
+  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
 }
@@ -34,6 +39,7 @@ export function WorkspaceView({
   rootFolder,
   treeState,
   onLoadDirectory,
+  onPrefetchDirectory,
   onRequestCloseTab,
   onRequestCloseTabs,
 }: WorkspaceViewProps) {
@@ -92,6 +98,7 @@ export function WorkspaceView({
                 visibleTreeItemCount={currentVisibleTreeItemCount}
                 onVisibleItemCountChange={handleVisibleTreeItemCountChange}
                 onLoadDirectory={onLoadDirectory}
+                onPrefetchDirectory={onPrefetchDirectory}
               />
             </ResizablePanel>
             <ResizableHandle aria-label="Resize workspace sidebar" withHandle />
