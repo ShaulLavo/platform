@@ -231,9 +231,9 @@ export function createApp(options: AppOptions) {
           body: deleteBodySchema,
         })
     )
-    .onStop(() => {
+    .onStop(async () => {
       terminal.dispose()
-      fs.close()
+      await fs.close()
     })
 }
 

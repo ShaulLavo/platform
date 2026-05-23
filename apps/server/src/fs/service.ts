@@ -249,8 +249,8 @@ export class FileSystemService {
     return this.changes.stream(paths, signal)
   }
 
-  close() {
-    this.changes.close()
+  async close() {
+    await this.changes.close()
     this.metadata.close()
   }
 

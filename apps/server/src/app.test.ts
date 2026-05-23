@@ -503,6 +503,128 @@ describe("fs rpc events", () => {
     await expect(noEvent(events)).resolves.toBe(true)
     await events.close()
   })
+
+  it("reports external file creations from the native watcher", async () => {
+    const root = await fixtureRoot()
+    const app = testApp(root)
+    const stream = await app.handle(
+      new Request("http://local/fs/events", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    await writeFile(path.join(root, "external-create.txt"), "ok")
+    const event = await nextMatchingEvent(
+      events,
+      (candidate) =>
+        candidate.type === "created" &&
+        candidate.path === "external-create.txt"
+    )
+
+    expect(event).toMatchObject({
+      entry: {
+        name: "external-create.txt",
+        path: "external-create.txt",
+        size: 2,
+        type: "file",
+      },
+      path: "external-create.txt",
+      type: "created",
+    })
+    await events.close()
+  })
+
+  it("reports external file updates from the native watcher", async () => {
+    const root = await fixtureRoot()
+    const app = testApp(root)
+    const stream = await app.handle(
+      new Request("http://local/fs/events", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    await writeFile(path.join(root, "external-update.txt"), "before")
+    await nextMatchingEvent(
+      events,
+      (candidate) =>
+        candidate.type === "created" &&
+        candidate.path === "external-update.txt"
+    )
+
+    await writeFile(path.join(root, "external-update.txt"), "after")
+    const event = await nextMatchingEvent(
+      events,
+      (candidate) =>
+        candidate.type === "changed" &&
+        candidate.path === "external-update.txt"
+    )
+
+    expect(event).toMatchObject({
+      entry: {
+        name: "external-update.txt",
+        path: "external-update.txt",
+        size: 5,
+        type: "file",
+      },
+      path: "external-update.txt",
+      type: "changed",
+    })
+    await events.close()
+  })
+
+  it("reports external file deletions from the native watcher", async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, "external-delete.txt"), "ok")
+    const app = testApp(root)
+    const stream = await app.handle(
+      new Request("http://local/fs/events", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    await rm(path.join(root, "external-delete.txt"))
+    const event = await nextMatchingEvent(
+      events,
+      (candidate) =>
+        candidate.type === "deleted" &&
+        candidate.path === "external-delete.txt"
+    )
+
+    expect(event).toMatchObject({
+      path: "external-delete.txt",
+      type: "deleted",
+    })
+    expect(event).not.toHaveProperty("entry")
+    await events.close()
+  })
+
+  it("filters ignored external path changes out of event streams", async () => {
+    const root = await fixtureRoot()
+    const app = testApp(root)
+    const stream = await app.handle(
+      new Request("http://local/fs/events", {
+        headers: trustedOriginHeaders(),
+      })
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({ type: "ready" })
+
+    await mkdir(path.join(root, "node_modules"), { recursive: true })
+    await writeFile(path.join(root, "node_modules", "ignored.txt"), "ok")
+
+    await expect(noEvent(events, 500)).resolves.toBe(true)
+    await events.close()
+  })
 })
 
 describe("git rpc", () => {
@@ -990,10 +1112,31 @@ function parseSsePayload(raw: string) {
   return JSON.parse(data) as Record<string, unknown>
 }
 
-async function noEvent(events: ReturnType<typeof createSseReader>) {
+async function nextMatchingEvent(
+  events: ReturnType<typeof createSseReader>,
+  matches: (event: Record<string, unknown>) => boolean
+) {
+  const deadline = Date.now() + 2_500
+
+  while (Date.now() < deadline) {
+    const event = await Promise.race([
+      events.next(),
+      delay(Math.max(1, deadline - Date.now())).then(() => null),
+    ])
+    if (!event) break
+    if (matches(event)) return event
+  }
+
+  throw new Error("timed out waiting for matching filesystem event")
+}
+
+async function noEvent(
+  events: ReturnType<typeof createSseReader>,
+  timeoutMs = 50
+) {
   const result = await Promise.race([
     events.next().then(() => false),
-    delay(50).then(() => true),
+    delay(timeoutMs).then(() => true),
   ])
 
   return result
