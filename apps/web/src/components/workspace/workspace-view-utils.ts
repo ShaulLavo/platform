@@ -10,12 +10,28 @@ export type VisibleTreeItemCountSnapshot = {
   rootPath: string
 }
 
+type WorkspacePanelSelection = {
+  sidebarVisible: boolean
+  workspacePanelTab: WorkspacePanelTab
+}
+
 export function isCollapsedPanelSize(size: PanelSize) {
   return size.inPixels <= COLLAPSED_PANEL_SIZE_PX
 }
 
 export function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
   return value === "files" || value === "git" || value === "search"
+}
+
+export function workspacePanelSelectionForTabActivation(
+  current: WorkspacePanelSelection,
+  tab: WorkspacePanelTab
+): WorkspacePanelSelection {
+  if (current.sidebarVisible && current.workspacePanelTab === tab) {
+    return { ...current, sidebarVisible: false }
+  }
+
+  return { sidebarVisible: true, workspacePanelTab: tab }
 }
 
 export function workspacePanelTabTitle(tab: WorkspacePanelTab) {

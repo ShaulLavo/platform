@@ -4,6 +4,7 @@ import type { WorkspacePanelTab } from "@/lib/workspace-cache"
 import {
   isCollapsedPanelSize,
   isWorkspacePanelTab,
+  workspacePanelSelectionForTabActivation,
   type VisibleTreeItemCountSnapshot,
 } from "@/components/workspace/workspace-view-utils"
 import {
@@ -32,6 +33,7 @@ export function useWorkspaceViewState({
     (state) => state.setWorkspacePanelTab
   )
   const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null)
+  const terminalPanelRef = useRef<PanelImperativeHandle | null>(null)
   const [terminalCollapsed, setTerminalCollapsed] = useState(false)
   const [visibleTreeItemCount, setVisibleTreeItemCount] =
     useState<VisibleTreeItemCountSnapshot | null>(null)
@@ -61,10 +63,17 @@ export function useWorkspaceViewState({
   }
 
   function selectWorkspacePanelTab(tab: WorkspacePanelTab) {
-    setWorkspacePanelTab(tab)
-    if (sidebarVisible) return
+    const nextSelection = workspacePanelSelectionForTabActivation(
+      { sidebarVisible, workspacePanelTab },
+      tab
+    )
 
-    setSidebarVisible(true)
+    if (nextSelection.workspacePanelTab !== workspacePanelTab) {
+      setWorkspacePanelTab(nextSelection.workspacePanelTab)
+    }
+    if (nextSelection.sidebarVisible !== sidebarVisible) {
+      setSidebarVisible(nextSelection.sidebarVisible)
+    }
   }
 
   function handleVisibleTreeItemCountChange(count: number) {
@@ -92,16 +101,33 @@ export function useWorkspaceViewState({
     )
   }
 
+  function handleToggleTerminal() {
+    const nextCollapsed = !terminalCollapsed
+    const terminalPanel = terminalPanelRef.current
+
+    setTerminalCollapsed(nextCollapsed)
+    if (!terminalPanel) return
+
+    if (nextCollapsed) {
+      terminalPanel.collapse()
+      return
+    }
+
+    terminalPanel.expand()
+  }
+
   return {
     currentVisibleTreeItemCount,
     handleSidebarResize,
     handleTerminalResize,
+    handleToggleTerminal,
     handleVisibleTreeItemCountChange,
     handleWorkspacePanelTabChange,
     selectWorkspacePanelTab,
     sidebarPanelRef,
     sidebarVisible,
     terminalCollapsed,
+    terminalPanelRef,
     workspacePanelTab,
   }
 }

@@ -48,12 +48,14 @@ export function WorkspaceView({
     currentVisibleTreeItemCount,
     handleSidebarResize,
     handleTerminalResize,
+    handleToggleTerminal,
     handleVisibleTreeItemCountChange,
     handleWorkspacePanelTabChange,
     selectWorkspacePanelTab,
     sidebarPanelRef,
     sidebarVisible,
     terminalCollapsed,
+    terminalPanelRef,
     workspacePanelTab,
   } = useWorkspaceViewState({
     rootPath,
@@ -71,7 +73,9 @@ export function WorkspaceView({
         >
           <WorkspaceActivityBar
             currentVisible={sidebarVisible}
+            terminalCollapsed={terminalCollapsed}
             onSelectTab={selectWorkspacePanelTab}
+            onToggleTerminal={handleToggleTerminal}
           />
           <PersistedResizablePanelGroup
             className="min-h-0 flex-1"
@@ -135,6 +139,7 @@ export function WorkspaceView({
                   minSize="160px"
                   maxSize="65%"
                   groupResizeBehavior="preserve-pixel-size"
+                  panelRef={terminalPanelRef}
                   onResize={handleTerminalResize}
                 >
                   <TerminalPanel
