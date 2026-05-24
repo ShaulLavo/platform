@@ -86,7 +86,7 @@ function localBrowserOriginError(auth: AuthConfig, origin: string | null) {
 }
 
 function hasTrustedOrigin(auth: AuthConfig, origin: string | null) {
-  return !!origin && auth.allowedOrigins.includes(origin)
+  return Boolean(origin) && auth.allowedOrigins.includes(origin)
 }
 
 function sessionTokenError(auth: AuthConfig, authorization: string | null) {

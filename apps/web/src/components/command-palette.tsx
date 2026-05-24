@@ -169,7 +169,7 @@ export function CommandPalette({
   treeState,
 }: CommandPaletteProps) {
   const { theme } = useTheme()
-  const hasWorkspace = useEditorWorkspaceState((state) => !!state.rootFolder)
+  const hasWorkspace = useEditorWorkspaceState((state) => Boolean(state.rootFolder))
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)

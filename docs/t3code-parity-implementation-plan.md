@@ -1,8 +1,9 @@
-# T3Code Parity Implementation Plan
+# Platform Agent Architecture Plan
 
-This plan turns the T3Code reference into large implementation phases for
-Platform. The goal is "T3Code parity-ish": copy the architectural shape and the
-important chat/runtime behaviors, while keeping Platform's stack:
+This plan turns the T3Code reference into implementation phases for Platform.
+The goal is not full T3Code parity. The goal is a Platform-native agent/chat
+system that borrows T3Code's proven event/projection/runtime model where it
+solves real Platform problems, while keeping Platform's stack:
 
 - Bun
 - Elysia/Eden
@@ -13,9 +14,28 @@ important chat/runtime behaviors, while keeping Platform's stack:
 - TanStack Query
 - existing `@workspace/ui` shadcn/Base UI components
 
-We are not copying Effect as a backend requirement. We are copying the boundaries:
-event store, projections, shell/detail streams, provider sessions, checkpoints,
-and a normalized client projection cache.
+We are not copying Effect as a backend requirement, and we are not treating
+T3Code feature parity as the product target. We are copying the architecture
+spine that makes T3Code fast and recoverable:
+
+- append-only event log as durable truth
+- command receipts/idempotency
+- projection tables as the server read model
+- projector progress through `projection_state`
+- shell/detail snapshots and streams
+- sequence-based client recovery
+- provider sessions/runtime separation
+- normalized bounded client projection cache
+
+Product shape:
+
+- V1 is a side-panel chat inside the existing Platform workspace.
+- V1 still uses the real agent/chat core. The side panel must not own chat
+  concepts or create throwaway components.
+- V2 is a standalone agent app/workbench view, similar in spirit to T3Code,
+  Codex, or Claude Code.
+- V1 and V2 share contracts, transport, projection cache, runtime/session model,
+  and reusable chat UI components.
 
 Reference doc:
 
@@ -32,6 +52,31 @@ Current Platform anchors:
 - `apps/web/src/App.tsx`
 - `apps/web/src/lib/query-client.ts`
 - `packages/ui/src/components/*`
+
+External component reference:
+
+- `https://elements.ai-sdk.dev/`
+
+AI Elements strategy:
+
+- Use AI Elements as a component canvas/source reference for agent UI pieces.
+  The library is built on shadcn/ui conventions and installs component source
+  into the app, which makes it a good starting point for Platform-specific
+  customization.
+- Do not treat AI Elements behavior as authoritative when it diverges from the
+  T3Code architecture. T3Code remains the first reference for transcript
+  performance, projection-driven state, shell/detail subscriptions, recovery,
+  composer persistence, and runtime semantics.
+- Vendor/adapt only the components we need. Do not import a broad registry of
+  unused AI Elements pieces.
+- Reshape imported component code to Platform conventions, including one React
+  component per file and feature-specific utilities outside component files.
+- Prefer AI Elements markup, accessibility, and shadcn-compatible styling as the
+  starting point; replace the state and data flow with Platform/T3-style
+  projection data.
+- Example rule: if AI Elements `Conversation` uses `useStickToBottom` but the
+  T3-style transcript needs Legend List behavior, use Legend List and adapt the
+  AI Elements visual structure around it.
 
 ## Target Shape
 
@@ -53,10 +98,16 @@ flowchart TD
     STORE["normalized Zustand projection store"]
     DETA["thread detail subscription cache"]
     RQ["TanStack Query side reads"]
-    UI["left sidebar chat entry + panel"]
+    AIE["adapted AI Elements components"]
+    UI["shared agent UI components"]
+    SIDE["V1 side-panel chat view"]
+    APP["V2 standalone agent app"]
     DRAFT["composer draft persistence"]
   end
 
+  SIDE --> UI
+  APP --> UI
+  AIE --> UI
   UI --> CONN
   CONN --> API
   API --> CMD
@@ -77,12 +128,29 @@ flowchart TD
 
 Purpose:
 
-- Freeze the first parity target so we do not implement T3Code all at once.
+- Freeze the first Platform agent target so we do not implement T3Code all at
+  once.
 - Decide the first provider/runtime target.
 - Decide transport details.
+- Decide which T3Code architecture pieces are copied and which product features
+  are deferred.
+- Decide which AI Elements components are worth adapting for V1.
 
 Locked decisions:
 
+- T3Code parity is not the goal. Platform owns the product shape.
+- Frontend component sourcing: use AI Elements as a starting canvas where it
+  helps, but T3Code wins for behavior, data flow, performance, and recovery.
+- Event store: required in V1.
+- Server projections: required in V1. They are the fast read model over the
+  append-only log, not optional polish.
+- Client projection cache: Zustand in V1. TanStack DB is a later evaluation
+  after the T3-style store is proven in Platform.
+- TanStack Query: command/snapshot/request lifecycle and side reads, not the
+  durable chat transcript owner.
+- Recovery: design snapshots/events with sequence guards from the start.
+  Replay can be simplified in the first slice, but the contracts must not block
+  replay recovery later.
 - Transport: all-in on Eden. Use Eden for regular fetch-style commands and keep
   the stream layer under the same Eden/Elysia API boundary, using WebSocket and
   SSE where each fits best.
@@ -91,7 +159,10 @@ Locked decisions:
 - First runtime mode: full access first. Keep supervised mode in the contracts
   and data model so approvals/sandboxing can be added without reshaping threads.
 - First UI shape: add a chat symbol to the existing left sidebar/rail and render
-  chat as part of the left sidebar for now. Do not start with a right-side panel.
+  chat as part of the left sidebar for now. This side panel is a view over the
+  shared agent core/components.
+- Second UI shape: standalone agent app/workbench view using the same
+  contracts, projection cache, runtime, and UI primitives.
 - First persistence scope: one local backend environment. Remote environments
   come later.
 
@@ -101,6 +172,9 @@ Deliverables:
 - Codex-first provider/runtime assumptions for phase 7.
 - Full-access-first runtime mode contract with supervised placeholders.
 - Left-sidebar chat entry/panel UI target.
+- Standalone app reuse constraints for shared chat components.
+- AI Elements adoption map for V1 components, with divergence notes where
+  Platform follows T3Code behavior instead.
 - A short "not in v1" list.
 
 T3 source paths:
@@ -117,6 +191,8 @@ Purpose:
 
 - Add the durable backend data model that every later phase depends on.
 - Keep contracts in `packages/contracts` so web/server stay in sync.
+- Keep V1 narrow: define the full direction, but only implement the tables and
+  events needed for the first local Codex chat slice.
 
 Platform target paths:
 
@@ -168,6 +244,21 @@ Backend work:
   - `projection_pending_approvals`
   - `projection_state`
   - `provider_session_runtime`
+- Minimum V1 implemented subset:
+  - `orchestration_events`
+  - `orchestration_command_receipts`
+  - `projection_state`
+  - `projection_projects`
+  - `projection_threads`
+  - `projection_thread_messages`
+  - `projection_thread_activities`
+  - `projection_thread_sessions`
+  - `projection_turns`
+  - `provider_session_runtime`
+- Deferred tables until their product surfaces exist:
+  - `projection_pending_approvals`
+  - `projection_thread_proposed_plans`
+  - checkpoint/diff projection tables
 - Add indexes for:
   - events by sequence
   - events by aggregate
@@ -186,12 +277,15 @@ Tests:
 - Schema validation tests.
 - Migration/table creation tests.
 - Event serialization round-trip tests.
+- Projection table index tests for shell/detail lookup paths.
 
 Done when:
 
-- Server can create an empty DB with all orchestration tables.
+- Server can create an empty DB with the V1 orchestration tables.
 - Contracts compile in web and server.
 - Event/command schema tests pass.
+- The first slice tables can support shell snapshot, thread detail snapshot, and
+  event replay from sequence without scanning unrelated UI data.
 
 T3 source paths:
 
@@ -338,8 +432,10 @@ T3 source paths:
 
 Purpose:
 
-- Implement the T3Code-style client cache with Zustand.
+- Implement the T3Code-style client projection cache with Zustand.
 - Keep it in memory; backend remains truth.
+- Keep the cache shaped so a later TanStack DB evaluation is possible, but do
+  not block V1 on TanStack DB.
 
 Platform target paths:
 
@@ -362,6 +458,17 @@ Frontend work:
   - proposed plans
   - turn diff summaries
   - sidebar thread summaries
+- Minimum V1 implemented subset:
+  - projects
+  - thread shells
+  - thread IDs by project
+  - thread sessions
+  - thread turn states
+  - messages
+  - activities
+  - sidebar thread summaries
+- Defer proposed-plan, turn-diff, approval, and checkpoint slices until their
+  server projections and UI surfaces exist.
 - Add shell writer.
 - Add detail writer.
 - Add snapshot sync functions.
@@ -375,7 +482,7 @@ Frontend work:
 - Add ref-counted thread detail subscription cache:
   - 15 minute idle eviction
   - max 32 cached detail subscriptions
-  - protect running/pending threads
+  - protect running/pending/actionable threads
 - Add sidebar prewarm helper for first 10 visible threads.
 
 Backend work:
@@ -407,7 +514,10 @@ T3 source paths:
 
 Purpose:
 
-- Ship the first usable left-sidebar chat panel on top of the projection cache.
+- Ship the first usable left-sidebar chat panel on top of the shared agent
+  core, projection cache, and reusable chat components.
+- Treat the side panel as the first view into the real agent app, not as a
+  one-off implementation.
 
 Platform target paths:
 
@@ -421,21 +531,52 @@ Platform target paths:
 - `apps/web/src/components/workspace/workspace-view.tsx`
 - `apps/web/src/App.tsx`
 
+Candidate AI Elements source components:
+
+- `Conversation`, `ConversationContent`, `ConversationScrollButton`
+- `Message`, `MessageContent`, `MessageResponse`
+- `PromptInput`, `PromptInputTextarea`, `PromptInputSubmit`
+- later: `Tool`, `Task`, `Plan`, `Checkpoint`, `File Tree`, `Terminal`
+
 Frontend work:
 
+- Adapt selected AI Elements components into Platform-owned files and refactor
+  them to match local component/file organization.
+- Replace AI Elements conversation scrolling with the T3Code/Legend List
+  transcript model:
+  - virtualized transcript rows
+  - stable row identity
+  - maintain-scroll-at-end behavior
+  - explicit scroll-to-bottom affordance
+  - no full-detail subscription for inactive sidebar threads
 - Add a chat symbol/button to the existing left sidebar or side rail.
 - Render chat as a left-sidebar panel for now.
 - Keep the layout narrow and sidebar-native; defer right-side panel/split-pane
   layout work.
+- Keep components layout-aware so the same transcript, header, thread list, and
+  composer primitives can render in the future standalone app.
 - Add thread list from shell summaries.
 - Add create-thread flow.
 - Add active-thread view from detail selectors.
-- Add basic composer:
-  - textarea first
+- Add rich composer foundation with restrained V1 features:
+  - multiline textarea/editor base
   - send button
-  - stop button placeholder
-  - runtime mode selector placeholder
-  - model/provider placeholder
+  - stop/cancel placeholder
+  - disabled/loading states
+  - draft persistence boundary
+  - keyboard behavior
+  - layout slots for future context chips, attachments, runtime mode, and model
+    controls
+- Use AI Elements `PromptInput` as a visual/composition reference, but route
+  submit, draft, disabled, stop, and optimistic-send behavior through Platform
+  chat state and orchestration commands.
+- Hold back visible advanced composer features:
+  - no file mentions yet
+  - no slash commands yet
+  - no drag/drop attachments yet
+  - no inline autocomplete yet
+  - no full model picker inside the composer yet
+  - no selected-code context UI yet
 - Add basic timeline:
   - user messages
   - assistant messages
@@ -471,11 +612,20 @@ T3 source paths:
 - `references/t3code/apps/web/src/components/chat/MessagesTimeline.tsx`
 - `references/t3code/apps/web/src/components/chat/MessagesTimeline.logic.ts`
 
+AI Elements source references:
+
+- `https://elements.ai-sdk.dev/components/conversation`
+- `https://elements.ai-sdk.dev/components/message`
+- `https://elements.ai-sdk.dev/components/prompt-input`
+- `https://elements.ai-sdk.dev/examples/chatbot`
+
 ## Phase 6: Composer, Drafts, Attachments, Mentions
 
 Purpose:
 
-- Bring the composer closer to T3Code without blocking phase 5.
+- Expand the rich composer foundation after the first chat slice works.
+- Add advanced context and attachment features incrementally instead of making
+  them prerequisites for V1.
 
 Platform target paths:
 
@@ -489,6 +639,9 @@ Platform target paths:
 
 Frontend work:
 
+- Continue using AI Elements as the component canvas where it speeds up
+  implementation, but keep T3Code behavior as the source for composer lifecycle,
+  draft promotion, context staging, and runtime controls.
 - Add versioned draft store:
   - prompt
   - selected model/provider
@@ -498,6 +651,8 @@ Frontend work:
   - image attachment metadata
   - draft-to-thread promotion state
 - Add debounced local persistence with explicit flush on unload.
+- If not already completed in phase 5, finish base draft persistence for the
+  plain prompt and selected thread.
 - Add image paste/drop support.
 - Store pending image attachments as data URLs when needed.
 - Revoke object URLs.
@@ -522,7 +677,8 @@ Tests:
 
 Done when:
 
-- Composer survives reloads, handles attachments, and can stage project context.
+- Composer survives reloads, handles attachments, stages project context, and
+  still works in both side-panel and standalone layouts.
 
 T3 source paths:
 
@@ -907,8 +1063,10 @@ T3 source paths:
 
 Some work can run in parallel once phase 1 contracts exist:
 
-- Backend orchestration core and frontend side panel skeleton.
-- Provider registry and composer model picker.
+- Backend orchestration core and reusable frontend chat shell skeleton.
+- Side-panel view and standalone-app component constraints.
+- AI Elements component adaptation and T3Code divergence notes.
+- Provider registry and composer control slots.
 - Checkpoint store and changed-files UI.
 - Draft persistence and projection store selectors.
 - Git/workspace service caches and React Query side reads.
@@ -934,9 +1092,23 @@ The first useful end-to-end slice should be deliberately small:
 8. Codex provider emits assistant text. Automated tests may use a deterministic
    mock adapter for this same runtime interface.
 9. UI receives detail event and reconciles transcript.
+10. Refresh or reconnect and recover the same thread from server projections.
+11. Render the side-panel transcript through adapted AI Elements UI pieces while
+    preserving T3Code/Legend List transcript behavior.
 
 This proves the hardest architecture: backend truth, projections, streams, client
-cache, and side panel UI.
+cache, reusable chat components, and the side-panel view.
+
+Explicitly not in the first vertical slice:
+
+- file mentions
+- slash commands
+- drag/drop attachments
+- approvals/supervised mode UI
+- proposed plans
+- checkpoints/diffs/revert
+- remote environments
+- standalone app routing
 
 ## Risk Register
 
@@ -948,6 +1120,11 @@ High risks:
 - Persisting remote chat data locally and creating two sources of truth.
 - Adding provider-specific shortcuts before provider instance abstraction exists.
 - Under-testing replay/reconnect/revert paths.
+- Letting the V1 side panel create one-off chat components that cannot be reused
+  by the V2 standalone app.
+- Copying T3Code product scope instead of copying the proven architecture spine.
+- Accidentally inheriting AI Elements runtime behavior where it conflicts with
+  T3Code's projection, subscription, transcript, or recovery model.
 
 Mitigations:
 
@@ -957,10 +1134,16 @@ Mitigations:
   starts with Codex.
 - Keep remote mode after local mode.
 - Keep all caches bounded from the first implementation.
+- Build shared chat components first, then wrap them with the side-panel view.
+- Treat shell/detail projections, event sequence, and recovery as architecture
+  requirements, not optional enhancements.
+- Treat AI Elements as editable source material. Keep explicit divergence notes
+  whenever Platform replaces AI Elements behavior with T3Code behavior.
 
 ## Open Decisions
 
-- Whether composer v1 uses textarea plus external chips or Lexical immediately.
+- Whether the composer foundation remains textarea-based through V1 or moves to
+  Lexical when inline chips become necessary.
 - Whether hidden Git refs are acceptable for every workspace or should be
   opt-in.
 - Exact supervised-mode policy after full-access v1.
