@@ -1,11 +1,11 @@
-import { fsClient } from '@/lib/fs-client'
+import { client } from '@/lib/client'
 import type { FileResult, FindMatch, TreeEntry, TreeResult } from '@/lib/file-system-types'
 import { errorMessage as clientErrorMessage, toClientError } from '@/lib/client-error-taxonomy'
 
 const TREE_LOAD_DEPTH = 1
 
 export async function fetchTree(path: string, signal: AbortSignal) {
-  const response = await fsClient.fs.tree.get({
+  const response = await client.fs.tree.get({
     query: { depth: TREE_LOAD_DEPTH, path },
     fetch: { signal },
   })
@@ -16,7 +16,7 @@ export async function fetchTree(path: string, signal: AbortSignal) {
 }
 
 export async function fetchFile(path: string, signal: AbortSignal) {
-  const response = await fsClient.fs.read.get({
+  const response = await client.fs.read.get({
     query: { path },
     fetch: { signal },
   })
@@ -35,7 +35,7 @@ export async function fetchQuickOpenFiles({
   query: string
   signal: AbortSignal
 }) {
-  const response = await fsClient.fs.find.get({
+  const response = await client.fs.find.get({
     query: {
       caseSensitive: false,
       entryType: 'file',
@@ -64,7 +64,7 @@ export async function writeFileContent(
     expectedMtimeMs === undefined || expectedMtimeMs === null
       ? { content, path }
       : { content, expectedMtimeMs, path }
-  const response = await fsClient.fs.write.post(body)
+  const response = await client.fs.write.post(body)
 
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
@@ -72,7 +72,7 @@ export async function writeFileContent(
 }
 
 export async function createFileContent(path: string, content: string) {
-  const response = await fsClient.fs['create-file'].post({ content, path })
+  const response = await client.fs['create-file'].post({ content, path })
 
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
@@ -82,7 +82,7 @@ export async function createFileContent(path: string, content: string) {
 export async function ensureFolderPath(path: string) {
   if (!path) return null
 
-  const response = await fsClient.fs['create-folder'].post({
+  const response = await client.fs['create-folder'].post({
     path,
     recursive: true,
   })
@@ -93,7 +93,7 @@ export async function ensureFolderPath(path: string) {
 }
 
 export async function movePath(from: string, to: string) {
-  const response = await fsClient.fs.move.post({ from, to })
+  const response = await client.fs.move.post({ from, to })
 
   if (response.error) throw response.error
 

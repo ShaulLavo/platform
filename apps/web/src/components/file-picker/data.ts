@@ -1,4 +1,4 @@
-import { fsClient } from '@/lib/fs-client'
+import { client } from '@/lib/client'
 import type {
   FindMatch,
   FsEntry,
@@ -192,7 +192,7 @@ async function loadEntries(
 }
 
 async function fetchServerInfo(signal: AbortSignal) {
-  const response = await fsClient.health.get({
+  const response = await client.health.get({
     fetch: { signal },
   })
 
@@ -202,7 +202,7 @@ async function fetchServerInfo(signal: AbortSignal) {
 }
 
 async function fetchCurrentEntry(path: string, signal: AbortSignal) {
-  const response = await fsClient.fs.stat.get({
+  const response = await client.fs.stat.get({
     query: { path },
     fetch: { signal },
   })
@@ -221,7 +221,7 @@ async function fetchCurrentEntry(path: string, signal: AbortSignal) {
 }
 
 async function fetchTreeEntries(path: string, signal: AbortSignal) {
-  const response = await fsClient.fs.tree.get({
+  const response = await client.fs.tree.get({
     query: { depth: 1, path },
     fetch: { signal },
   })
@@ -231,7 +231,7 @@ async function fetchTreeEntries(path: string, signal: AbortSignal) {
 }
 
 async function fetchRecentEntries(signal: AbortSignal) {
-  const response = await fsClient.fs.recents.get({
+  const response = await client.fs.recents.get({
     query: { limit: RECENT_LIMIT },
     fetch: { signal },
   })
@@ -242,7 +242,7 @@ async function fetchRecentEntries(signal: AbortSignal) {
 }
 
 async function recordRecent(entry: PickedFsEntry) {
-  const response = await fsClient.fs.recents.post({ path: entry.path })
+  const response = await client.fs.recents.post({ path: entry.path })
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 }
 
@@ -343,7 +343,7 @@ async function* streamFindEvents(
   mode: FilePickerMode,
   signal: AbortSignal,
 ): AsyncGenerator<EdenSseEvent> {
-  const response = await fsClient.fs.find.events.get({
+  const response = await client.fs.find.events.get({
     query: {
       caseSensitive: false,
       entryType: searchEntryType(mode),

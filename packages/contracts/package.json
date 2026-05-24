@@ -15,7 +15,8 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "minimatch": "^10.2.5"
+    "minimatch": "^10.2.5",
+    "valibot": "^1.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

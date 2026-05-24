@@ -1,4 +1,4 @@
-import { fsClient } from '@/lib/fs-client'
+import { client } from '@/lib/client'
 
 export type EdenServerSocket = {
   readonly readyState?: number
@@ -28,7 +28,7 @@ type LanguageServerSocketOptions = {
 }
 
 export function connectTerminalSocket(rootPath: string): EdenServerSocket {
-  return adaptEdenSocket(fsClient.terminal.subscribe({ query: { root: rootPath } }))
+  return adaptEdenSocket(client.terminal.subscribe({ query: { root: rootPath } }))
 }
 
 export function connectLanguageServerSocket({
@@ -37,7 +37,7 @@ export function connectLanguageServerSocket({
   serverId,
 }: LanguageServerSocketOptions): EdenServerSocket {
   return adaptEdenSocket(
-    fsClient.lsp.subscribe({
+    client.lsp.subscribe({
       query: { path, root: rootPath, server: serverId ?? undefined },
     }),
   )

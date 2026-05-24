@@ -10,7 +10,7 @@ import {
 } from '@workspace/contracts'
 
 import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
-import { fsClient } from '@/lib/fs-client'
+import { client } from '@/lib/client'
 import { compareSearchPaths } from '@/features/search/search-sort'
 
 const SEARCH_PREVIEW_CONTEXT_CHARS = 80
@@ -30,7 +30,7 @@ export class DiskSearchProvider implements SearchProvider {
     query: WorkspaceSearchQuery,
     signal?: AbortSignal,
   ): AsyncGenerator<WorkspaceSearchEvent> {
-    const response = await fsClient.fs.find.events.get({
+    const response = await client.fs.find.events.get({
       query: {
         caseSensitive: query.caseSensitive === true,
         entryType: query.entryType ?? 'file',

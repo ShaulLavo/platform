@@ -13,7 +13,7 @@ import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspac
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
-import { fsClient } from '@/lib/fs-client'
+import { client } from '@/lib/client'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
@@ -643,7 +643,7 @@ async function streamWorkspaceEvents(
   signal: AbortSignal,
   onMessage: (message: WatchServerMessage) => void,
 ) {
-  const response = await fsClient.fs.events.get({
+  const response = await client.fs.events.get({
     query: { path: rootPath },
     fetch: { signal },
   })

@@ -14,8 +14,8 @@ const fetchPost = mock()
 const pullPost = mock()
 const pushPost = mock()
 
-mock.module('@/lib/fs-client', () => ({
-  fsClient: {
+mock.module('@/lib/client', () => ({
+  client: {
     git: {
       status: { get: statusGet },
       diff: { get: diffGet, blob: { get: blobDiffGet } },

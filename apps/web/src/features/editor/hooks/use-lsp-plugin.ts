@@ -8,7 +8,7 @@ import type {
 import { createLanguageServerPlugin } from '@editor/language-server/websocket'
 import { useEffect, useMemo, useState } from 'react'
 
-import { fsClient, fsServerUrl } from '@/lib/fs-client'
+import { client, serverUrl } from '@/lib/client'
 import { EdenLanguageServerWebSocket } from '@/lib/server-sockets'
 
 type UseLanguageServerPluginOptions = {
@@ -37,7 +37,7 @@ export function useLanguageServerPlugin({
     if (!enabled) return
 
     const controller = new AbortController()
-    fsClient.lsp.match
+    client.lsp.match
       .get({
         query: { path: filePath, root: rootPath },
         fetch: { signal: controller.signal },
@@ -103,7 +103,7 @@ function languageServerMatchKey(rootPath: string, filePath: string) {
 }
 
 function languageServerRoute(rootPath: string, filePath: string, serverId: string) {
-  const url = new URL('/lsp', fsServerUrl)
+  const url = new URL('/lsp', serverUrl)
   if (url.protocol === 'http:') url.protocol = 'ws:'
   if (url.protocol === 'https:') url.protocol = 'wss:'
   url.searchParams.set('root', rootPath)
