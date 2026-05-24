@@ -28,6 +28,7 @@ import {
   gitPathsBodySchema,
 } from './git/contracts'
 import { authGuard, createAuthConfig, isCorsOriginAllowed, type AuthOptions } from './auth'
+import { db as platformDb } from './db/client'
 import { errorPayload, FsError, isFsError } from './fs/errors'
 import { FileSystemService, type FileSystemServiceOptions } from './fs/service'
 import type { FindStreamEvent } from './fs/search'
@@ -40,6 +41,9 @@ import {
   recordRequestError,
   recordRequestContext,
 } from './observability'
+import { OrchestrationEngine } from './orchestration/engine'
+import type { OrchestrationDatabase } from './orchestration/event-store'
+import { orchestrationRoutes } from './orchestration/routes'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 
 export type AppOptions = FileSystemServiceOptions & {
@@ -47,6 +51,9 @@ export type AppOptions = FileSystemServiceOptions & {
   terminal?: {
     env?: NodeJS.ProcessEnv
     ptyFactory?: TerminalPtyFactory
+  }
+  orchestration?: {
+    database?: OrchestrationDatabase
   }
 }
 
@@ -59,6 +66,7 @@ export function createApp(options: AppOptions) {
     paths: fs.paths,
     ...options.terminal,
   })
+  const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb)
   const auth = createAuthConfig(options.auth)
 
   const app = new Elysia({ name: 'fs-rpc' })
@@ -85,6 +93,7 @@ export function createApp(options: AppOptions) {
     })
     .ws('/lsp', lspRoutes(fs, auth))
     .ws('/terminal', terminal.routes(auth))
+    .use(orchestrationRoutes(orchestration))
     .group('/git', (app) =>
       app
         .get('/repo', ({ query }) => git.repo(query.path), {
