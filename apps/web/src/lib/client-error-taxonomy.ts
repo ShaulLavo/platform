@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 import type { ErrorCategory } from '@workspace/contracts'
+import { reportClientError } from './client-error-reporting'
 
 export type { ErrorCategory }
 
@@ -84,10 +85,12 @@ export function errorMessage(input: unknown): string {
 }
 
 export function reportError(error: ClientError): void {
-  console.error('[client-error-taxonomy]', {
+  reportClientError({
+    area: 'client-error-taxonomy',
     category: error.category,
-    message: error.message,
     cause: error.cause,
+    message: error.message,
+    operation: 'report',
   })
 
   if (!shouldToastCategory(error.category)) return

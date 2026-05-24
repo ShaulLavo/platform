@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@workspace/ui/components/button'
+import { reportClientError } from '@/lib/client-error-reporting'
 import {
   Select,
   SelectContent,
@@ -231,7 +232,12 @@ export const highlightCode = (
     })
     // oxlint-disable-next-line eslint-plugin-promise(prefer-await-to-then), eslint-plugin-promise(prefer-await-to-callbacks)
     .catch((error) => {
-      console.error('Failed to highlight code:', error)
+      reportClientError({
+        area: 'code-block',
+        cause: error,
+        message: 'Failed to highlight code',
+        operation: 'highlight',
+      })
       subscribers.delete(tokensCacheKey)
     })
 

@@ -75,12 +75,17 @@ describe('observability runtime', () => {
 
     expect(response.status).toBe(404)
     await response.text()
-    expect(eventForPath(await flushedEvents(logDir), '/fs/read')).toMatchObject({
+    const event = eventForPath(await flushedEvents(logDir), '/fs/read')
+    const serialized = JSON.stringify(event)
+
+    expect(event).toMatchObject({
       error: {
         code: 'NOT_FOUND',
       },
       status: 404,
     })
+    expect(serialized).not.toContain(root)
+    expect(serialized).not.toContain(path.join(root, 'missing.txt'))
   })
 
   it('does not persist authorization secrets', async () => {

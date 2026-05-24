@@ -321,7 +321,8 @@ export class TerminalSession {
   }
 
   private recordSession() {
-    recordProcessInfo('terminal.session', {
+    const outcome = terminalOutcome(this.exitCode, this.errorMessage)
+    const context = {
       area: 'terminal',
       durationMs: elapsedMs(this.openedAt),
       errorMessage: this.errorMessage ? limitText(this.errorMessage, 500) : undefined,
@@ -329,14 +330,21 @@ export class TerminalSession {
       inputBytes: this.inputBytes,
       inputMessageCount: this.inputMessageCount,
       operation: 'session',
-      outcome: terminalOutcome(this.exitCode, this.errorMessage),
+      outcome,
       outputBytes: this.outputBytes,
       outputMessageCount: this.outputMessageCount,
       resizeCount: this.resizeCount,
       rootPath: this.rootPath,
       serverMessageCount: this.serverMessageCount,
       shell: this.shell,
-    })
+    }
+
+    if (outcome === 'failed' || outcome === 'error') {
+      recordProcessWarning('terminal.session', context)
+      return
+    }
+
+    recordProcessInfo('terminal.session', context)
   }
 }
 

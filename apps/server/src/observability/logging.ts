@@ -16,6 +16,17 @@ type OperationSummary = OperationContext & {
   status: 'error' | 'ok'
 }
 
+const redactedDiagnosticValue = '[redacted]'
+const sensitiveErrorFields = new Set([
+  'absolutePath',
+  'cwd',
+  'dest',
+  'destination',
+  'fileName',
+  'filename',
+  'path',
+])
+
 export async function observeRequestOperation<T>(
   context: OperationContext,
   operation: () => Promise<T>,
@@ -165,9 +176,75 @@ function summarizeResult<T>(
 }
 
 function errorForLogger(error: unknown) {
-  if (error instanceof Error) return error
+  if (error instanceof Error) return sanitizedErrorForLogger(error)
 
   return String(error)
+}
+
+function sanitizedErrorForLogger(error: Error) {
+  const cause = errorCause(error)
+  const clone = cause === undefined ? new Error(error.message) : new Error(error.message, {
+    cause: sanitizeErrorCause(cause),
+  })
+  clone.name = error.name
+  clone.stack = error.stack
+  copySafeErrorFields(error, clone)
+
+  return clone
+}
+
+function sanitizeErrorCause(cause: unknown, seen = new WeakSet<object>()): unknown {
+  if (cause instanceof Error) return sanitizeErrorObject(cause, seen)
+  if (Array.isArray(cause)) return cause.map((value) => sanitizeErrorCause(value, seen))
+  if (!isRecord(cause)) return cause
+  if (seen.has(cause)) return '[circular]'
+
+  seen.add(cause)
+  return sanitizeRecord(cause, seen)
+}
+
+function sanitizeErrorObject(error: Error, seen: WeakSet<object>) {
+  if (seen.has(error)) return '[circular]'
+
+  seen.add(error)
+  const cause = errorCause(error)
+  const summary: Record<string, unknown> = {
+    message: sanitizeErrorMessage(error.message),
+    name: error.name,
+  }
+  copySafeErrorFields(error, summary, seen)
+  if (cause !== undefined) summary.cause = sanitizeErrorCause(cause, seen)
+
+  return summary
+}
+
+function sanitizeRecord(record: Record<string, unknown>, seen: WeakSet<object>) {
+  const safe: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(record)) {
+    safe[key] = sensitiveErrorFields.has(key) ? redactedDiagnosticValue : sanitizeErrorCause(value, seen)
+  }
+
+  return safe
+}
+
+function copySafeErrorFields(
+  source: Error,
+  target: Record<string, unknown>,
+  seen = new WeakSet<object>(),
+) {
+  for (const [key, value] of Object.entries(source)) {
+    if (key === 'cause') continue
+    target[key] = sensitiveErrorFields.has(key) ? redactedDiagnosticValue : sanitizeErrorCause(value, seen)
+  }
+}
+
+function sanitizeErrorMessage(message: string) {
+  return message.replaceAll(/'[^']*'/g, `'${redactedDiagnosticValue}'`)
+}
+
+function errorCause(error: Error) {
+  return 'cause' in error ? error.cause : undefined
 }
 
 function safeDiagnosticContext(context: Record<string, unknown>) {

@@ -3,7 +3,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import type { LspServerMatch } from './registry'
 import { LspStdioMessageReader, writeLspStdioMessage } from './stdio-rpc'
-import { elapsedMs, limitText, recordProcessInfo } from '../observability'
+import { elapsedMs, limitText, recordProcessInfo, recordProcessWarning } from '../observability'
 
 type JsonRpcId = number | string | null
 
@@ -194,7 +194,7 @@ export class LspProxySession {
   }
 
   private recordSession(outcome: string) {
-    recordProcessInfo('lsp.session', {
+    const context = {
       area: 'lsp',
       clientBytes: this.clientBytes,
       clientMessageCount: this.clientMessageCount,
@@ -211,7 +211,14 @@ export class LspProxySession {
       stderrBytes: this.stderrBytes,
       stderrCount: this.stderrCount,
       stderrTail: this.stderrTail || undefined,
-    })
+    }
+
+    if (isFailedLspSession(outcome, this.exitCode, this.exitSignal)) {
+      recordProcessWarning('lsp.session', context)
+      return
+    }
+
+    recordProcessInfo('lsp.session', context)
   }
 }
 
@@ -249,4 +256,16 @@ function byteLength(value: string | ArrayBuffer | Uint8Array) {
   if (value instanceof ArrayBuffer) return value.byteLength
 
   return value.byteLength
+}
+
+function isFailedLspSession(
+  outcome: string,
+  exitCode: number | null,
+  exitSignal: NodeJS.Signals | null,
+) {
+  if (outcome === 'process_error') return true
+  if (outcome !== 'process_exit') return false
+  if (exitSignal) return true
+
+  return exitCode !== 0
 }

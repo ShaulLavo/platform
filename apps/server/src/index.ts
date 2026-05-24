@@ -1,7 +1,12 @@
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { createApp } from './app'
-import { initializeObservability, recordProcessInfo } from './observability'
+import {
+  flushObservability,
+  initializeObservability,
+  recordProcessInfo,
+  recordProcessWarning,
+} from './observability'
 
 const port = Number(Bun.env.PORT ?? 3001)
 const hostname = Bun.env.FS_HOST ?? Bun.env.HOST ?? '127.0.0.1'
@@ -34,8 +39,40 @@ export const app = createApp({
     workspaceRoot,
   })
 })
+installShutdownHandlers()
 
 export type App = typeof app
+
+function installShutdownHandlers() {
+  let stopping = false
+
+  const stop = (signal: NodeJS.Signals) => {
+    if (stopping) return
+
+    stopping = true
+    void stopServer(signal)
+  }
+
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
+}
+
+async function stopServer(signal: NodeJS.Signals) {
+  recordProcessInfo('server.stop', { signal })
+
+  try {
+    await app.stop()
+  } catch (error) {
+    recordProcessWarning('server.stop_failed', {
+      error: errorMessage(error),
+      signal,
+    })
+    await flushObservability()
+    process.exit(1)
+  }
+
+  process.exit(exitCodeForSignal(signal))
+}
 
 function allowedOriginsFromEnv(value: string | undefined) {
   if (!value) return undefined
@@ -58,4 +95,17 @@ function assertLoopbackHost(host: string) {
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return
 
   throw new Error('FS RPC server must bind to a loopback host')
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return String(error)
+}
+
+function exitCodeForSignal(signal: NodeJS.Signals) {
+  if (signal === 'SIGINT') return 130
+  if (signal === 'SIGTERM') return 143
+
+  return 0
 }
