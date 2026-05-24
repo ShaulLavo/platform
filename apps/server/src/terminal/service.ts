@@ -8,6 +8,7 @@ import {
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
 import { FsError, isFsError } from '../fs/errors'
 import type { WorkspacePaths } from '../fs/path'
+import { elapsedMs, limitText, recordProcessInfo, recordProcessWarning } from '../observability'
 
 export type TerminalPty = {
   kill(signal?: string): void
@@ -86,12 +87,24 @@ export class TerminalService {
     if (!socket) return
     const authError = authenticateWebSocketData(socket.data, auth)
     if (authError) {
+      recordProcessWarning('terminal.session.rejected', {
+        area: 'terminal',
+        errorCode: authError.code,
+        operation: 'open',
+        outcome: 'auth_failed',
+        status: authError.statusCode,
+      })
       socket.close()
       return
     }
 
     const root = this.resolveRoot(socket.root)
     if (!root) {
+      recordProcessWarning('terminal.session.rejected', {
+        area: 'terminal',
+        operation: 'open',
+        outcome: 'invalid_root',
+      })
       socket.close()
       return
     }
@@ -101,6 +114,7 @@ export class TerminalService {
       env: this.env,
       onDispose: (disposed) => this.sessions.delete(disposed),
       ptyFactory: this.ptyFactory,
+      rootPath: root.relativePath,
       send: socket.send,
     })
     this.sessions.add(session)
@@ -147,29 +161,43 @@ export class TerminalSession {
   private readonly env: NodeJS.ProcessEnv
   private readonly onDispose: (session: TerminalSession) => void
   private readonly ptyFactory: TerminalPtyFactory
+  private readonly rootPath: string
   private readonly send: (message: string) => void
   private dataDisposable: TerminalPtyDisposable | null = null
   private disposed = false
+  private errorMessage: string | null = null
   private exitDisposable: TerminalPtyDisposable | null = null
+  private exitCode: number | null = null
+  private inputBytes = 0
+  private inputMessageCount = 0
+  private openedAt = performance.now()
+  private outputBytes = 0
+  private outputMessageCount = 0
   private pty: TerminalPty | null = null
+  private resizeCount = 0
+  private serverMessageCount = 0
+  private shell: string | null = null
 
   constructor({
     cwd,
     env,
     onDispose,
     ptyFactory,
+    rootPath,
     send,
   }: {
     cwd: string
     env: NodeJS.ProcessEnv
     onDispose: (session: TerminalSession) => void
     ptyFactory: TerminalPtyFactory
+    rootPath: string
     send: (message: string) => void
   }) {
     this.cwd = cwd
     this.env = env
     this.onDispose = onDispose
     this.ptyFactory = ptyFactory
+    this.rootPath = rootPath
     this.send = send
   }
 
@@ -178,8 +206,10 @@ export class TerminalSession {
     if (!spawnResult) return false
 
     this.pty = spawnResult.pty
+    this.shell = spawnResult.shell
     this.dataDisposable = this.pty.onData((data) => this.sendMessage({ type: 'output', data }))
     this.exitDisposable = this.pty.onExit((event) => {
+      this.exitCode = event.exitCode
       this.sendMessage({ type: 'exit', exitCode: event.exitCode })
       this.dispose({ kill: false })
     })
@@ -196,6 +226,7 @@ export class TerminalSession {
 
     const parsed = parseTerminalClientMessage(message)
     if (!parsed) return
+    this.recordClientMessage(parsed)
     if (!this.pty) return
 
     handleTerminalClientMessage(this.pty, parsed)
@@ -208,6 +239,7 @@ export class TerminalSession {
     this.dataDisposable?.dispose()
     this.exitDisposable?.dispose()
     this.killPty(options.kill ?? true)
+    this.recordSession()
     this.onDispose(this)
   }
 
@@ -223,7 +255,7 @@ export class TerminalSession {
     }
 
     this.sendMessage({
-      message: terminalSpawnErrorMessage(lastError),
+      message: this.recordSpawnError(lastError),
       type: 'error',
     })
     return null
@@ -258,7 +290,53 @@ export class TerminalSession {
   }
 
   private sendMessage(message: TerminalServerMessage) {
+    this.recordServerMessage(message)
     this.send(JSON.stringify(message))
+  }
+
+  private recordClientMessage(message: TerminalClientMessage) {
+    if (message.type === 'input') {
+      this.inputBytes += Buffer.byteLength(message.data, 'utf8')
+      this.inputMessageCount += 1
+      return
+    }
+
+    this.resizeCount += 1
+  }
+
+  private recordServerMessage(message: TerminalServerMessage) {
+    this.serverMessageCount += 1
+    if (message.type === 'output') {
+      this.outputBytes += Buffer.byteLength(message.data, 'utf8')
+      this.outputMessageCount += 1
+      return
+    }
+    if (message.type === 'error') this.errorMessage = message.message
+  }
+
+  private recordSpawnError(error: unknown) {
+    const message = terminalSpawnErrorMessage(error)
+    this.errorMessage = message
+    return message
+  }
+
+  private recordSession() {
+    recordProcessInfo('terminal.session', {
+      area: 'terminal',
+      durationMs: elapsedMs(this.openedAt),
+      errorMessage: this.errorMessage ? limitText(this.errorMessage, 500) : undefined,
+      exitCode: this.exitCode,
+      inputBytes: this.inputBytes,
+      inputMessageCount: this.inputMessageCount,
+      operation: 'session',
+      outcome: terminalOutcome(this.exitCode, this.errorMessage),
+      outputBytes: this.outputBytes,
+      outputMessageCount: this.outputMessageCount,
+      resizeCount: this.resizeCount,
+      rootPath: this.rootPath,
+      serverMessageCount: this.serverMessageCount,
+      shell: this.shell,
+    })
   }
 }
 
@@ -355,6 +433,14 @@ function terminalSpawnErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
 
   return 'failed to start terminal'
+}
+
+function terminalOutcome(exitCode: number | null, errorMessage: string | null) {
+  if (errorMessage) return 'error'
+  if (exitCode === 0) return 'exited'
+  if (typeof exitCode === 'number') return 'failed'
+
+  return 'closed'
 }
 
 function isString(value: string | undefined): value is string {

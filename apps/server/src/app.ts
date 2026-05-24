@@ -34,6 +34,12 @@ import type { FindStreamEvent } from './fs/search'
 import { parseWatchInputs } from './fs/watch'
 import { GitService } from './git/service'
 import { lspMatchQuerySchema, lspRouteMatch, lspRoutes } from './lsp/routes'
+import {
+  applyObservability,
+  flushObservability,
+  recordRequestError,
+  recordRequestContext,
+} from './observability'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 
 export type AppOptions = FileSystemServiceOptions & {
@@ -55,7 +61,10 @@ export function createApp(options: AppOptions) {
   })
   const auth = createAuthConfig(options.auth)
 
-  return new Elysia({ name: 'fs-rpc' })
+  const app = new Elysia({ name: 'fs-rpc' })
+  applyObservability(app)
+
+  return app
     .use(
       cors({
         allowedHeaders: ['authorization', 'content-type'],
@@ -64,20 +73,7 @@ export function createApp(options: AppOptions) {
         origin: (request) => isCorsOriginAllowed(auth, request.headers.get('origin')),
       }),
     )
-    .onError(({ code, error, set }) => {
-      if (isFsError(error)) {
-        set.status = error.statusCode
-        return errorPayload(error)
-      }
-
-      if (code === 'VALIDATION') {
-        set.status = 400
-        return errorPayload(new FsError('INVALID_PATH', error.message))
-      }
-
-      set.status = 500
-      return errorPayload(new FsError('OPERATION_FAILED', undefined, error))
-    })
+    .onError(({ code, error, set }) => appErrorPayload(code, error, set))
     .onBeforeHandle(authGuard(auth))
     .get('/health', () => ({
       ok: true,
@@ -206,6 +202,7 @@ export function createApp(options: AppOptions) {
     .onStop(async () => {
       terminal.dispose()
       await fs.close()
+      await flushObservability()
     })
 }
 
@@ -260,4 +257,39 @@ function findEventData(event: FindStreamEvent) {
     count: event.count,
     truncated: event.truncated,
   }
+}
+
+function appErrorPayload(
+  code: unknown,
+  error: unknown,
+  set: {
+    status?: number | string
+  },
+) {
+  const fsError = errorForResponse(code, error)
+  set.status = fsError.statusCode
+  recordRequestContext({
+    errorCode: fsError.code,
+    status: fsError.statusCode,
+  })
+  recordRequestError(fsError, {
+    area: 'server',
+    operation: 'request_error',
+    status: fsError.statusCode,
+  })
+
+  return errorPayload(fsError)
+}
+
+function errorForResponse(code: unknown, error: unknown) {
+  if (isFsError(error)) return error
+  if (code === 'VALIDATION') return new FsError('INVALID_PATH', errorMessage(error))
+
+  return new FsError('OPERATION_FAILED', undefined, error)
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return String(error)
 }

@@ -30,6 +30,7 @@ import {
 } from './search-shared'
 import { canUseSearchTools, runToolLines } from './search-tool-runner'
 import { assertDirectory, isFileEntry, matchesEntryType } from './stat'
+import { recordRequestContext } from '../observability'
 import type { EntryTypeFilter } from './contracts'
 
 export { SEARCH_LINE_BUFFER_BYTES } from './search-line-decoder'
@@ -195,10 +196,12 @@ async function* searchWithTools(
 
   if (!(await canUseTools(context.options))) {
     // TODO: remove this fallback after fd/rg installation or tool discovery is guaranteed.
+    recordRequestContext({ search: { provider: 'fallback' } })
     yield* searchWithFallback(context)
     return
   }
 
+  recordRequestContext({ search: { provider: 'disk-tools' } })
   if (shouldSearchNames(context.options)) {
     yield* searchNamesWithFd(paths, context, signal, runtime)
   }

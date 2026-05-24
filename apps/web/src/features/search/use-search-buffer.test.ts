@@ -4,6 +4,7 @@ import type { WorkspaceSearchEvent } from '@workspace/contracts'
 
 import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
 import {
+  clientOnlyWorkspaceSearchProvider,
   createFirstPaintSearchEventBatcher,
   dirtySearchRevisionKey,
   runSearch,
@@ -147,6 +148,50 @@ describe('workspace search dirty revision key', () => {
         1,
       ),
     ).not.toBe(key)
+  })
+})
+
+describe('workspace search dirty buffer overlay', () => {
+  it('updates dirty file matches from open buffers without a disk provider', async () => {
+    const store = createSearchBufferStore()
+    const query = workspaceSearchQuery('repo', 'needle')
+    const initialRunId = store.getState().startSearch(query)
+
+    store
+      .getState()
+      .appendEvents(initialRunId, [
+        matchEvent('disk', 'repo/src/dirty.ts'),
+        matchEvent('disk', 'repo/src/other.ts'),
+      ])
+    store.getState().appendEvent(initialRunId, doneEvent(2))
+
+    const provider = clientOnlyWorkspaceSearchProvider(
+      store.getState().active,
+      [{ path: 'repo/src/dirty.ts', text: 'needle from unsaved buffer' }],
+      query,
+    )
+    expect(provider).not.toBeNull()
+
+    const overlayRunId = store.getState().startSearch(query)
+    await runSearch(provider!, query, overlayRunId, store, new AbortController().signal)
+
+    expect(store.getState().active?.matches).toMatchObject([
+      { path: 'repo/src/other.ts', source: 'disk' },
+      { path: 'repo/src/dirty.ts', source: 'open-buffer' },
+    ])
+  })
+
+  it('does not create a client-only overlay without ready matching disk results', () => {
+    const store = createSearchBufferStore()
+    const query = workspaceSearchQuery('repo', 'needle')
+
+    expect(
+      clientOnlyWorkspaceSearchProvider(
+        store.getState().active,
+        [{ path: 'repo/src/dirty.ts', text: 'needle' }],
+        query,
+      ),
+    ).toBeNull()
   })
 })
 

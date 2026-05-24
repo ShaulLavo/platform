@@ -24,6 +24,7 @@ dist
 
 # Debug
 npm-debug.log*
+.evlog/
 
 # Misc
 .DS_Store

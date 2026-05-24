@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { createApp } from './app'
+import { initializeObservability, recordProcessInfo } from './observability'
 
 const port = Number(Bun.env.PORT ?? 3001)
 const hostname = Bun.env.FS_HOST ?? Bun.env.HOST ?? '127.0.0.1'
@@ -14,6 +15,7 @@ const maxTextFileBytes = numberFromEnv(Bun.env.FS_DEV_MAX_TEXT_FILE_BYTES)
 const treeConcurrency = numberFromEnv(Bun.env.FS_TREE_CONCURRENCY)
 
 assertLoopbackHost(hostname)
+initializeObservability(Bun.env)
 
 export const app = createApp({
   auth: { allowedOrigins, sessionToken },
@@ -24,10 +26,13 @@ export const app = createApp({
   watch,
   workspaceRoot,
 }).listen({ hostname, port }, (server) => {
-  console.log(`FS RPC server listening at http://${server.hostname}:${server.port}`)
-  console.log(`Default browsing root: ${homeDirectory}`)
-  console.log(`Workspace root: ${workspaceRoot}`)
-  console.log(`System root: ${systemRoot}`)
+  recordProcessInfo('server.start', {
+    homeDirectory,
+    hostname: server.hostname,
+    port: server.port,
+    systemRoot,
+    workspaceRoot,
+  })
 })
 
 export type App = typeof app

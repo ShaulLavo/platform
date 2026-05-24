@@ -3,6 +3,7 @@ import path from 'node:path'
 import { FsError } from '../fs/errors'
 import type { WorkspacePaths } from '../fs/path'
 import { toPosix } from '../fs/path'
+import { elapsedMs, limitText, recordGitCommand, recordRequestContext } from '../observability'
 import { parseBranches } from './branches'
 import { commandOutput, gitErrorMessage, writeProcessInput } from './command'
 import { commitMessageTemplate } from './commit-message'
@@ -63,11 +64,13 @@ export class GitService {
   }
 
   async repo(input = '') {
+    recordGitServiceOperation('repo', input)
     const repository = await this.resolveRepository(input)
     return { repository: repository?.info ?? null }
   }
 
   async status(input = ''): Promise<GitStatusResult> {
+    recordGitServiceOperation('status', input)
     const repository = await this.resolveRepositoryLocation(input)
     if (!repository) return { repository: null, files: [] }
 
@@ -80,13 +83,16 @@ export class GitService {
       ...pathspecArgs(repository.pathspec),
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
-    return {
+    const status = {
       repository: parseRepositoryInfo(result.stdout, repository.rootPath),
       files: parseStatus(result.stdout, repository.rootPath),
     }
+    recordRequestContext({ git: { fileCount: status.files.length } })
+    return status
   }
 
   async diff(input = '', staged = false): Promise<GitFileDiff[]> {
+    recordGitServiceOperation('diff', input, { staged })
     const repository = await this.resolveRepositoryLocation(input)
     if (!repository) return []
 
@@ -107,12 +113,15 @@ export class GitService {
       result.stdout || staged
         ? parseDiff(result.stdout, repository.rootPath, staged)
         : await this.untrackedDiffs(repository)
-    return mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
+    const results = await mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
       this.withDiffSnapshotRefs(repository, diff),
     )
+    recordRequestContext({ git: { diffCount: results.length } })
+    return results
   }
 
   async diffBlob(query: GitBlobDiffQuery): Promise<GitFileDiff[]> {
+    recordGitServiceOperation('diff_blob', query.path || query.oldPath || '')
     const repository = await this.requiredRepositoryLocation(query.path || query.oldPath || '')
     const oldPath = query.oldPath ?? query.path
     const rawPatch = await this.blobPatch(repository, query)
@@ -124,12 +133,15 @@ export class GitService {
     })
     const diffs = parseDiff(patch, repository.rootPath, false)
 
-    return mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
+    const results = await mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
       this.withBlobDiffContent(repository, diff, query),
     )
+    recordRequestContext({ git: { diffCount: results.length } })
+    return results
   }
 
   async file(input: string, ref: string) {
+    recordGitServiceOperation('file', input)
     const repository = await this.resolveRepositoryLocation(input)
     if (!repository?.pathspec) throw new FsError('GIT_REPOSITORY_NOT_FOUND')
 
@@ -139,12 +151,18 @@ export class GitService {
   }
 
   async stage(body: GitPathsBody) {
+    recordGitServiceOperation('stage', body.paths[0] ?? '', {
+      pathCount: mutationPaths(body).length,
+    })
     const target = await this.resolveMutationTarget(body)
     await this.git(target.repository.rootAbsolutePath, ['add', '--all', '--', ...target.pathspecs])
     return this.status(target.repository.rootPath)
   }
 
   async unstage(body: GitPathsBody) {
+    recordGitServiceOperation('unstage', body.paths[0] ?? '', {
+      pathCount: mutationPaths(body).length,
+    })
     const target = await this.resolveMutationTarget(body)
     await this.git(target.repository.rootAbsolutePath, [
       'restore',
@@ -156,6 +174,9 @@ export class GitService {
   }
 
   async discard(body: GitPathsBody) {
+    recordGitServiceOperation('discard', body.paths[0] ?? '', {
+      pathCount: mutationPaths(body).length,
+    })
     const target = await this.resolveMutationTarget(body)
     const restore = await this.git(
       target.repository.rootAbsolutePath,
@@ -175,6 +196,11 @@ export class GitService {
   }
 
   async applyPatch(body: GitApplyPatchBody) {
+    recordGitServiceOperation('apply_patch', body.path, {
+      patchBytes: Buffer.byteLength(body.patch, 'utf8'),
+      reverse: body.reverse,
+      target: body.target,
+    })
     const repository = await this.requiredRepository(body.path)
     const args = ['apply', '--whitespace=nowarn']
     if (body.target === 'index') args.push('--cached')
@@ -185,6 +211,9 @@ export class GitService {
   }
 
   async commit(body: GitCommitBody) {
+    recordGitServiceOperation('commit', body.path, {
+      messageBytes: Buffer.byteLength(body.message, 'utf8'),
+    })
     const repository = await this.requiredRepository(body.path)
     const message = body.message.trim()
     if (!message) return this.openCommitMessage(repository)
@@ -198,24 +227,31 @@ export class GitService {
   }
 
   async branches(input = ''): Promise<GitBranchesResult> {
+    recordGitServiceOperation('branches', input)
     const repository = await this.resolveRepository(input)
     if (!repository) return { repository: null, branches: [] }
 
     const format = '%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(objectname:short)%00'
     const result = await this.git(repository.rootAbsolutePath, ['branch', '--format', format])
-    return {
+    const branches = {
       repository: repository.info,
       branches: parseBranches(result.stdout),
     }
+    recordRequestContext({ git: { branchCount: branches.branches.length } })
+    return branches
   }
 
   async checkout(body: GitCheckoutBody) {
+    recordGitServiceOperation('checkout', body.path)
     const repository = await this.requiredRepositoryLocation(body.path)
     await this.git(repository.rootAbsolutePath, ['checkout', body.branch])
     return this.status(repository.rootPath)
   }
 
   async createBranch(body: GitCreateBranchBody) {
+    recordGitServiceOperation('create_branch', body.path, {
+      checkout: body.checkout,
+    })
     const repository = await this.requiredRepositoryLocation(body.path)
     const args = ['branch', body.branch]
     if (body.startPoint) args.push(body.startPoint)
@@ -228,18 +264,21 @@ export class GitService {
   }
 
   async fetch(input = '') {
+    recordGitServiceOperation('fetch', input)
     const repository = await this.requiredRepository(input)
     const result = await this.git(repository.rootAbsolutePath, ['fetch'])
     return { output: commandOutput(result), repository: repository.info }
   }
 
   async pull(input = '') {
+    recordGitServiceOperation('pull', input)
     const repository = await this.requiredRepository(input)
     const result = await this.git(repository.rootAbsolutePath, ['pull'])
     return { output: commandOutput(result), repository: repository.info }
   }
 
   async push(input = '') {
+    recordGitServiceOperation('push', input)
     const repository = await this.requiredRepository(input)
     const result = await this.git(repository.rootAbsolutePath, ['push'])
     return { output: commandOutput(result), repository: repository.info }
@@ -656,6 +695,7 @@ export class GitService {
     args: readonly string[],
     options: { allowFailure?: boolean; input?: string } = {},
   ): Promise<GitCommandResult> {
+    const startedAt = performance.now()
     const process = Bun.spawn(['git', '-C', cwd].concat(args), {
       stderr: 'pipe',
       stdin: options.input === undefined ? 'ignore' : 'pipe',
@@ -672,6 +712,13 @@ export class GitService {
       process.exited,
     ])
     const result = { exitCode, stderr, stdout }
+    recordGitCommand({
+      action: gitAction(args),
+      allowFailure: options.allowFailure ?? false,
+      durationMs: elapsedMs(startedAt),
+      exitCode,
+      stderrTail: exitCode === 0 ? undefined : limitText(stderr, 500),
+    })
     if (options.allowFailure || exitCode === 0) return result
 
     throw new FsError('GIT_COMMAND_FAILED', gitErrorMessage(result))
@@ -715,4 +762,24 @@ function isTooLarge(size: number | null, maxBytes: number) {
 
 function isString(value: string | null): value is string {
   return typeof value === 'string'
+}
+
+function recordGitServiceOperation(
+  operation: string,
+  path = '',
+  fields: Record<string, unknown> = {},
+) {
+  recordRequestContext({
+    area: 'git',
+    git: {
+      operation,
+      path,
+      ...fields,
+    },
+    operation,
+  })
+}
+
+function gitAction(args: readonly string[]) {
+  return args[0] ?? 'unknown'
 }

@@ -6,6 +6,7 @@ import { pathSchema } from '../fs/contracts'
 import type { WorkspacePaths } from '../fs/path'
 import { matchLspServer } from './registry'
 import { LspProxySession } from './proxy-session'
+import { recordProcessWarning } from '../observability'
 
 type LspRouteFileSystem = {
   readonly paths: WorkspacePaths
@@ -41,19 +42,41 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
     async open(ws: unknown) {
       const socket = websocketObject(ws)
       if (!socket) return
-      if (authenticateWebSocketData(socket.data, auth)) {
+      const authError = authenticateWebSocketData(socket.data, auth)
+      if (authError) {
+        recordProcessWarning('lsp.session.rejected', {
+          area: 'lsp',
+          errorCode: authError.code,
+          operation: 'open',
+          outcome: 'auth_failed',
+          status: authError.statusCode,
+        })
         socket.close()
         return
       }
 
       const match = await resolveLspRouteMatch(fs.paths, socket)
       if (!match) {
+        recordProcessWarning('lsp.session.rejected', {
+          area: 'lsp',
+          operation: 'open',
+          outcome: 'no_server_match',
+          path: socket.path,
+          serverId: socket.serverId,
+        })
         socket.close()
         return
       }
 
-      const session = await LspProxySession.create(socket, match)
+      const session = await LspProxySession.create(socket, match, fs.paths.toRelative(match.root))
       if (!session) {
+        recordProcessWarning('lsp.session.rejected', {
+          area: 'lsp',
+          operation: 'open',
+          outcome: 'spawn_failed',
+          rootPath: fs.paths.toRelative(match.root),
+          serverId: match.server.id,
+        })
         socket.close()
         return
       }

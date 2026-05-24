@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 
 import { FsError } from './errors'
 import { collectDecodedStreamTail, readLines } from './search-line-decoder'
+import { elapsedMs, limitText, recordRequestContext, recordRequestWarning } from '../observability'
 
 type SearchToolRequirements = {
   content: boolean
@@ -24,14 +25,19 @@ export async function* runToolLines(
   successCodes: readonly number[],
   toleratedFailureCodes: readonly number[] = [],
 ): AsyncGenerator<string> {
+  const startedAt = performance.now()
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   const exit = waitForExit(child)
   const cleanup = attachAbort(signal, child)
   const stderr = collectDecodedStreamTail(child.stderr)
   let completed = false
+  let lineCount = 0
 
   try {
-    for await (const line of readLines(child.stdout)) yield line
+    for await (const line of readLines(child.stdout)) {
+      lineCount += 1
+      yield line
+    }
     completed = true
   } finally {
     cleanup()
@@ -39,6 +45,7 @@ export async function* runToolLines(
   }
 
   const code = await exit
+  recordSearchToolRun(command, code, lineCount, elapsedMs(startedAt), signal?.aborted ?? false)
   if (successCodes.includes(code)) return
   if (signal?.aborted) return
   if (toleratedFailureCodes.includes(code)) {
@@ -67,8 +74,13 @@ function checkCommand(command: string) {
 }
 
 function reportToolWarning(command: string, code: number, stderr: string) {
-  const detail = stderr ? `: ${stderr}` : ''
-  console.warn(`[fs/search] ${command} exited with code ${code}${detail}`)
+  recordRequestWarning('search tool exited with tolerated failure', {
+    area: 'search',
+    code,
+    command,
+    operation: 'tool',
+    stderrTail: stderr ? limitText(stderr, 500) : undefined,
+  })
 }
 
 function toolErrorMessage(command: string, code: number, stderr: string) {
@@ -89,5 +101,27 @@ function waitForExit(child: ReturnType<typeof spawn>) {
   return new Promise<number>((resolve, reject) => {
     child.once('error', reject)
     child.once('close', (code) => resolve(code ?? 0))
+  })
+}
+
+function recordSearchToolRun(
+  command: string,
+  exitCode: number,
+  lineCount: number,
+  durationMs: number,
+  aborted: boolean,
+) {
+  recordRequestContext({
+    search: {
+      tools: [
+        {
+          aborted,
+          command,
+          durationMs,
+          exitCode,
+          lineCount,
+        },
+      ],
+    },
   })
 }

@@ -1,5 +1,6 @@
 import type {
   WorkspaceSearchEvent,
+  WorkspaceSearchMatch,
   WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
 } from '@workspace/contracts'
@@ -149,16 +150,6 @@ function useRunSearchBuffer(
     searchOptions
   const store = useSearchBufferStoreApi()
   const documentStore = useEditorDocumentStoreApi()
-  const dirtyRevisionKey = useEditorDocumentState((state) =>
-    dirtySearchRevisionKey(
-      state.documents,
-      state.dirtyFilePaths,
-      state.documentContentRevisions,
-      rootPath,
-      state.dirtyContentRevision,
-    ),
-  )
-  const debouncedDirtyRevisionKey = useDebouncedValue(dirtyRevisionKey, DIRTY_BUFFER_DEBOUNCE_MS)
 
   useEffect(() => {
     if (!query) return
@@ -191,11 +182,77 @@ function useRunSearchBuffer(
 
     return () => controller.abort()
   }, [
-    debouncedDirtyRevisionKey,
     documentStore,
     query,
     rootPath,
     searchRevision,
+    caseSensitive,
+    excludeGlobText,
+    filtersVisible,
+    includeGlobText,
+    matchMode,
+    wholeWord,
+    store,
+  ])
+
+  useRunDirtySearchBufferOverlay(rootPath, query, searchOptions)
+}
+
+function useRunDirtySearchBufferOverlay(
+  rootPath: string,
+  query: string,
+  searchOptions: WorkspaceSearchQueryOptions,
+) {
+  const { caseSensitive, excludeGlobText, filtersVisible, includeGlobText, matchMode, wholeWord } =
+    searchOptions
+  const store = useSearchBufferStoreApi()
+  const documentStore = useEditorDocumentStoreApi()
+  const dirtyRevisionKey = useEditorDocumentState((state) =>
+    dirtySearchRevisionKey(
+      state.documents,
+      state.dirtyFilePaths,
+      state.documentContentRevisions,
+      rootPath,
+      state.dirtyContentRevision,
+    ),
+  )
+  const debouncedDirtyRevisionKey = useDebouncedValue(dirtyRevisionKey, DIRTY_BUFFER_DEBOUNCE_MS)
+
+  useEffect(() => {
+    if (!query) return
+
+    const searchQuery = workspaceSearchQuery(rootPath, query, {
+      caseSensitive,
+      excludeGlobText,
+      filtersVisible,
+      includeGlobText,
+      matchMode,
+      wholeWord,
+    })
+    const documentState = documentStore.getState()
+    const dirtyDocuments = dirtySearchDocuments(
+      documentState.documents,
+      documentState.dirtyFilePaths,
+      rootPath,
+    )
+    const provider = clientOnlyWorkspaceSearchProvider(
+      store.getState().active,
+      dirtyDocuments,
+      searchQuery,
+    )
+    if (!provider) return
+
+    const controller = new AbortController()
+    const runId = store.getState().startSearch(searchQuery)
+
+    void runSearch(provider, searchQuery, runId, store, controller.signal)
+
+    return () => controller.abort()
+  }, [
+    debouncedDirtyRevisionKey,
+    documentStore,
+    query,
+    rootPath,
     caseSensitive,
     excludeGlobText,
     filtersVisible,
@@ -465,6 +522,83 @@ function workspaceSearchProvider(documents: readonly OpenBufferSearchDocument[])
     openBufferPaths: new Set(documents.map((document) => document.path)),
     openBuffers: new OpenBufferSearchProvider(documents),
   })
+}
+
+export function clientOnlyWorkspaceSearchProvider(
+  snapshot: SearchBufferSnapshot | null,
+  documents: readonly OpenBufferSearchDocument[],
+  query: WorkspaceSearchQuery,
+): SearchProvider | null {
+  if (documents.length === 0) return null
+  if (!snapshot) return null
+  if (snapshot.status !== 'ready') return null
+  if (!sameWorkspaceSearchQuery(snapshot.resultsSearchQuery, query)) return null
+
+  return new ClientOnlyWorkspaceSearchProvider(snapshot.matches, documents)
+}
+
+class ClientOnlyWorkspaceSearchProvider implements SearchProvider {
+  private baseMatches: readonly WorkspaceSearchMatch[]
+  private documents: readonly OpenBufferSearchDocument[]
+
+  constructor(
+    baseMatches: readonly WorkspaceSearchMatch[],
+    documents: readonly OpenBufferSearchDocument[],
+  ) {
+    this.baseMatches = baseMatches
+    this.documents = documents
+  }
+
+  async *search(
+    query: WorkspaceSearchQuery,
+    signal?: AbortSignal,
+  ): AsyncGenerator<WorkspaceSearchEvent> {
+    const dirtyPaths = new Set(this.documents.map((document) => document.path))
+    const openBuffers = new OpenBufferSearchProvider(this.documents)
+    let count = 0
+    let truncated = false
+
+    for (const match of this.baseMatches) {
+      if (signal?.aborted) return
+      if (dirtyPaths.has(match.path)) continue
+      if (count >= query.limit) {
+        truncated = true
+        break
+      }
+
+      count += 1
+      yield { match, type: 'match' }
+    }
+
+    if (!truncated) {
+      for await (const event of openBuffers.search(query, signal)) {
+        if (signal?.aborted) return
+        if (event.type === 'done') {
+          truncated = truncated || event.truncated
+          continue
+        }
+        if (event.type !== 'match') {
+          yield event
+          continue
+        }
+        if (count >= query.limit) {
+          truncated = true
+          break
+        }
+
+        count += 1
+        yield event
+      }
+    }
+
+    yield {
+      count,
+      path: query.path,
+      query: query.query,
+      truncated,
+      type: 'done',
+    }
+  }
 }
 
 function dirtySearchDocuments(

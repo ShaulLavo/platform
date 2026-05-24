@@ -1,6 +1,7 @@
 import { isRecord } from '@workspace/contracts'
 
 import { errorPayload, FsError } from './fs/errors'
+import { recordRequestContext, recordRequestWarning } from './observability'
 
 export type AuthCapability = 'filesystem:read' | 'filesystem:write'
 
@@ -47,9 +48,22 @@ export function createAuthConfig(options: AuthOptions = {}): AuthConfig {
 export function authGuard(auth: AuthConfig) {
   return ({ request, set }: { request: Request; set: { status?: number | string } }) => {
     const error = authenticateRequest(request, auth)
-    if (!error) return undefined
+    if (!error) {
+      recordRequestContext({ auth: { mode: auth.mode, outcome: 'success' } })
+      return undefined
+    }
 
     set.status = error.statusCode
+    recordRequestWarning('auth rejected request', {
+      area: 'auth',
+      auth: {
+        errorCode: error.code,
+        mode: auth.mode,
+        outcome: 'denied',
+      },
+      operation: 'authenticate',
+      status: error.statusCode,
+    })
     return errorPayload(error)
   }
 }
@@ -86,7 +100,9 @@ function localBrowserOriginError(auth: AuthConfig, origin: string | null) {
 }
 
 function hasTrustedOrigin(auth: AuthConfig, origin: string | null) {
-  return Boolean(origin) && auth.allowedOrigins.includes(origin)
+  if (!origin) return false
+
+  return auth.allowedOrigins.includes(origin)
 }
 
 function sessionTokenError(auth: AuthConfig, authorization: string | null) {

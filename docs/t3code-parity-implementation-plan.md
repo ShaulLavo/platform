@@ -147,6 +147,13 @@ Purpose:
 Locked decisions:
 
 - T3Code parity is not the goal. Platform owns the product shape.
+- Phase 0 is documentation/spec work only. Do not add runtime code, migrations,
+  schemas, routes, or UI implementation in this phase.
+- V1 is local-only chat in the existing workspace. The first product surface is
+  a chat tab in the left workspace sidebar, not a standalone app and not a
+  remote environment.
+- Backend truth: the append-only event log is durable truth. Projection tables
+  are the server read model. The UI never owns durable transcript state.
 - Frontend component sourcing: use AI Elements as a starting canvas where it
   helps, but T3Code wins for behavior, data flow, performance, and recovery.
 - Event store: required in V1.
@@ -154,21 +161,24 @@ Locked decisions:
   append-only log, not optional polish.
 - Client projection cache: Zustand in V1. TanStack DB is a later evaluation
   after the T3-style store is proven in Platform.
-- TanStack Query: command/snapshot/request lifecycle and side reads, not the
-  durable chat transcript owner.
+- TanStack Query: command request lifecycle and side reads only, not the durable
+  chat transcript owner.
 - Recovery: design snapshots/events with sequence guards from the start.
   Replay can be simplified in the first slice, but the contracts must not block
   replay recovery later.
-- Transport: all-in on Eden. Use Eden for regular fetch-style commands and keep
-  the stream layer under the same Eden/Elysia API boundary, using WebSocket and
-  SSE where each fits best.
+- Transport: all-in on Eden/Elysia. Use Eden HTTP for command dispatch,
+  snapshots, and replay. Use Elysia/Eden WebSockets for shell/detail
+  subscriptions. Each stream sends one initial snapshot followed by
+  sequence-tagged updates.
 - First provider adapter: Codex first. Mocks are allowed for automated tests, but
-  the product path starts with Codex.
-- First runtime mode: full access first. Keep supervised mode in the contracts
-  and data model so approvals/sandboxing can be added without reshaping threads.
-- First UI shape: add a chat symbol to the existing left sidebar/rail and render
-  chat as part of the left sidebar for now. This side panel is a view over the
-  shared agent core/components.
+  the product path starts with Codex. The default driver kind is `codex`, and
+  the default provider instance ID is `codex`.
+- First runtime mode: `full-access`. Keep `approval-required` and
+  `auto-accept-edits` in contracts/data as supervised-mode placeholders, but do
+  not build supervised UI or enforcement in V1.
+- First UI shape: extend the existing workspace left rail with a chat symbol and
+  render chat as a left-sidebar tab. This side panel is a view over shared agent
+  core/components.
 - Second UI shape: standalone agent app/workbench view using the same
   contracts, projection cache, runtime, and UI primitives.
 - First persistence scope: one local backend environment. Remote environments
@@ -185,13 +195,195 @@ Deliverables:
   Platform follows T3Code behavior instead.
 - A short "not in v1" list.
 
+Phase 1 locked contract names:
+
+- Contract modules are Platform-owned Valibot/TypeScript modules under
+  `packages/contracts/src`: `chat-ids.ts`, `chat-model.ts`,
+  `orchestration-commands.ts`, `orchestration-events.ts`,
+  `orchestration-snapshots.ts`, and `orchestration-runtime.ts`.
+- Opaque ID schemas/types: `ProjectId`, `ThreadId`, `MessageId`, `TurnId`,
+  `CommandId`, `EventId`, `ProviderInstanceId`, `ApprovalRequestId`, and
+  `ProposedPlanId`.
+- Runtime/provider schemas:
+  - `RuntimeMode`: `full-access`, `approval-required`, `auto-accept-edits`.
+  - `InteractionMode`: `default`, `plan`.
+  - `ProviderDriverKind`: open slug; first built-in/default value is `codex`.
+  - `ProviderInstanceId`: open slug; first/default value is `codex`.
+  - `ModelSelection`: `{ providerInstanceId, model, options? }`.
+- Client-dispatchable commands for Phase 1 schemas:
+  - `project.create`
+  - `project.meta.update`
+  - `project.delete`
+  - `thread.create`
+  - `thread.meta.update`
+  - `thread.delete`
+  - `thread.archive`
+  - `thread.unarchive`
+  - `thread.runtime-mode.set`
+  - `thread.interaction-mode.set`
+  - `thread.turn.start`
+  - `thread.turn.interrupt`
+  - `thread.session.stop`
+  - `thread.approval.respond`
+  - `thread.user-input.respond`
+- Internal/runtime commands for Phase 1 schemas:
+  - `thread.session.set`
+  - `thread.message.assistant.delta`
+  - `thread.message.assistant.complete`
+  - `thread.activity.append`
+  - `thread.proposed-plan.upsert`
+  - `thread.turn.diff.complete`
+  - `thread.revert.complete`
+- Do not add separate client commands for proposed-plan accept/follow-up in
+  Phase 1. Later plan follow-up or implementation turns use
+  `thread.turn.start.sourceProposedPlan`; runtime plan materialization uses the
+  internal `thread.proposed-plan.upsert` command.
+- Domain events for Phase 1 schemas:
+  - `project.created`
+  - `project.meta-updated`
+  - `project.deleted`
+  - `thread.created`
+  - `thread.meta-updated`
+  - `thread.deleted`
+  - `thread.archived`
+  - `thread.unarchived`
+  - `thread.runtime-mode-set`
+  - `thread.interaction-mode-set`
+  - `thread.message-sent`
+  - `thread.turn-start-requested`
+  - `thread.turn-interrupt-requested`
+  - `thread.session-stop-requested`
+  - `thread.session-set`
+  - `thread.activity-appended`
+  - `thread.proposed-plan-upserted`
+  - `thread.turn-diff-completed`
+  - `thread.reverted`
+  - `thread.approval-response-requested`
+  - `thread.user-input-response-requested`
+- Turn status is projected from `thread.turn-start-requested`,
+  `thread.session-set`, runtime ingestion, and `projection_turns.state`. Do not
+  introduce separate `thread.turn-started`, `thread.turn-completed`, or
+  `thread.turn-failed` events in Phase 1.
+- Snapshot/stream/replay contract types:
+  - `OrchestrationShellSnapshot`
+  - `OrchestrationThreadDetailSnapshot`
+  - `OrchestrationShellStreamItem`
+  - `OrchestrationThreadStreamItem`
+  - `OrchestrationReplayEventsInput`
+  - `OrchestrationReplayEventsResult`
+  - `OrchestrationCommandReceipt`
+
+Phase 1 locked persistence scope:
+
+- Implement these tables first:
+  - `orchestration_events`
+  - `orchestration_command_receipts`
+  - `projection_state`
+  - `projection_projects`
+  - `projection_threads`
+  - `projection_thread_messages`
+  - `projection_thread_activities`
+  - `projection_thread_sessions`
+  - `projection_turns`
+  - `provider_session_runtime`
+- Include shell-summary columns on `projection_threads` from the first
+  migration: `latest_user_message_at`, `pending_approval_count`,
+  `pending_user_input_count`, and `has_actionable_proposed_plan`.
+- Include `runtime_mode`, `interaction_mode`, `model_selection_json`,
+  `archived_at`, and `deleted_at` on `projection_threads` from the first
+  migration.
+- Include `provider_instance_id` on `projection_thread_sessions` and
+  `provider_session_runtime` from the first migration.
+- Store command/event/snapshot payloads as canonical JSON matching the
+  contracts; do not parse command/event payloads with ad hoc string logic.
+- Defer these tables until their product surfaces exist:
+  - `projection_pending_approvals`
+  - `projection_thread_proposed_plans`
+  - checkpoint/diff projection tables
+
+Transport source map:
+
+- Add an Elysia group at `/orchestration`, mounted from `apps/server/src/app.ts`
+  through an orchestration routes module.
+- HTTP endpoints:
+  - `POST /orchestration/commands` dispatches one client command and returns
+    `{ sequence }`.
+  - `GET /orchestration/shell-snapshot` returns the shell snapshot.
+  - `GET /orchestration/thread-detail?threadId=...` returns one thread detail
+    snapshot.
+  - `POST /orchestration/replay` returns events after `afterSequence`, scoped by
+    optional aggregate/thread filters when provided.
+- WebSocket endpoints:
+  - `WS /orchestration/shell` sends `OrchestrationShellStreamItem`.
+  - `WS /orchestration/thread?threadId=...` sends
+    `OrchestrationThreadStreamItem`.
+- Streams must reject stale client state by sequence: clients ignore snapshots
+  or events older than the current scoped sequence.
+
+Left-sidebar UI source map:
+
+- Extend `WorkspacePanelTab` in `apps/web/src/lib/workspace-cache.ts` with
+  `chat`, and include it in the persisted tab schema.
+- Extend `isWorkspacePanelTab()` and `workspacePanelTabTitle()` in
+  `apps/web/src/components/workspace/workspace-view-utils.ts`.
+- Add a Phosphor `ChatCircleIcon` activity tab in
+  `apps/web/src/components/workspace/workspace-activity-bar.tsx`.
+- Add a `TabsContent` for `chat` in
+  `apps/web/src/components/workspace/workspace-sidebar.tsx`.
+- Keep workspace-specific shell components thin. Shared chat components must
+  live under `apps/web/src/features/chat/components/*` and must not import
+  workspace-only state except through the side-panel wrapper.
+
+AI Elements V1 adoption map:
+
+- `apps/web/src/components/ai-elements/conversation.tsx`: use the visual
+  container and scroll affordance as source material, but replace
+  `use-stick-to-bottom` with the T3-style virtualized transcript behavior before
+  product wiring. Do not wire `ConversationDownload` in V1.
+- `apps/web/src/components/ai-elements/message.tsx`: adapt user/assistant
+  message layout and action affordances, but replace `UIMessage` with Platform
+  projection message types and split exported components into separate files.
+- `apps/web/src/components/ai-elements/prompt-input.tsx`: use the composer
+  structure as visual source material, but replace registry-local text,
+  attachment, screenshot, and submit state with Platform composer draft state
+  and orchestration commands. Attachments and screenshots stay out of V1.
+- `Plan`, `Tool`, `Confirmation`, and `Reasoning` are inspect-later references
+  for approvals/plans/tool activity phases. Do not wire them into V1 until their
+  backend projections exist.
+- Imported AI Elements files are editable source material. Before product use,
+  reshape them to repository rules: one exported React component per component
+  file, hooks in dedicated hook files, and pure helpers/constants in utility
+  files.
+
+Not in V1:
+
+- remote environments
+- standalone agent workbench routing
+- supervised approvals UI/enforcement
+- file mentions
+- slash commands
+- drag/drop or image attachments
+- full model picker in the composer
+- proposed-plan implementation flow
+- checkpoints/diffs/revert
+- terminal context insertion
+- TanStack DB
+- locally persisted transcript data
+
 T3 source paths:
 
 - `docs/t3code-reference.md`
+- `references/t3code/packages/contracts/src/orchestration.ts`
+- `references/t3code/packages/contracts/src/providerInstance.ts`
+- `references/t3code/packages/contracts/src/providerRuntime.ts`
 - `references/t3code/apps/server/src/orchestration/Schemas.ts`
 - `references/t3code/apps/server/src/orchestration/decider.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
 - `references/t3code/apps/web/src/components/ChatView.tsx`
 - `references/t3code/apps/web/src/components/chat/ChatComposer.tsx`
+- `apps/web/src/components/ai-elements/conversation.tsx`
+- `apps/web/src/components/ai-elements/message.tsx`
+- `apps/web/src/components/ai-elements/prompt-input.tsx`
 
 ## Phase 1: Contracts And Persistence Foundation
 
@@ -219,40 +411,22 @@ Backend work:
   - `MessageId`
   - `TurnId`
   - `CommandId`
+  - `EventId`
   - `ProviderInstanceId`
   - `ApprovalRequestId`
   - `ProposedPlanId`
-- Add command schemas:
-  - project create/update/delete
-  - thread create/update/delete/archive
-  - thread turn start/interrupt
-  - approval respond
-  - user input respond
-  - proposed plan accept/follow-up
-- Add event schemas:
-  - project created/updated/deleted
-  - thread created/updated/deleted/reverted
-  - message sent
-  - activity appended
-  - session set
-  - turn started/completed/failed
-  - approval/user-input requested/resolved
-  - proposed plan upserted
-  - turn diff completed
-- Add SQLite/Drizzle tables:
-  - `orchestration_events`
-  - `orchestration_command_receipts`
-  - `projection_projects`
-  - `projection_threads`
-  - `projection_thread_messages`
-  - `projection_thread_activities`
-  - `projection_thread_sessions`
-  - `projection_thread_proposed_plans`
-  - `projection_turns`
-  - `projection_pending_approvals`
-  - `projection_state`
-  - `provider_session_runtime`
-- Minimum V1 implemented subset:
+- Add command schemas exactly as locked in Phase 0:
+  - client-dispatchable project/thread/session/approval/user-input commands
+  - internal runtime commands for session, assistant message, activity, proposed
+    plan, turn diff, and revert materialization
+  - no separate client proposed-plan accept/follow-up commands in Phase 1
+- Add event schemas exactly as locked in Phase 0:
+  - project lifecycle events
+  - thread lifecycle/meta/runtime/interaction events
+  - message, activity, session, proposed-plan, turn diff, revert,
+    approval-response, and user-input-response events
+  - no separate turn-started/turn-completed/turn-failed domain events
+- Add SQLite/Drizzle tables for the V1 implemented subset:
   - `orchestration_events`
   - `orchestration_command_receipts`
   - `projection_state`
@@ -274,7 +448,7 @@ Backend work:
   - messages by thread/created
   - activities by thread/created
   - sessions by provider session
-  - pending approvals by thread/request
+  - sessions by provider instance
 
 Frontend work:
 
@@ -1150,8 +1324,8 @@ Mitigations:
 
 ## Open Decisions
 
-- Whether the composer foundation remains textarea-based through V1 or moves to
-  Lexical when inline chips become necessary.
+- Whether to move from the V1 textarea composer foundation to Lexical when
+  inline chips become necessary after V1.
 - Whether hidden Git refs are acceptable for every workspace or should be
   opt-in.
 - Exact supervised-mode policy after full-access v1.

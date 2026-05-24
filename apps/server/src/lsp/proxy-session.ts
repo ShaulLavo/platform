@@ -3,6 +3,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import type { LspServerMatch } from './registry'
 import { LspStdioMessageReader, writeLspStdioMessage } from './stdio-rpc'
+import { elapsedMs, limitText, recordProcessInfo } from '../observability'
 
 type JsonRpcId = number | string | null
 
@@ -22,26 +23,40 @@ export class LspProxySession {
   private readonly match: LspServerMatch
   private readonly process: ChildProcessWithoutNullStreams
   private readonly reader: LspStdioMessageReader
+  private readonly rootPath: string
   private readonly socket: LspProxySocket
+  private clientBytes = 0
+  private clientMessageCount = 0
   private disposed = false
+  private exitCode: number | null = null
+  private exitSignal: NodeJS.Signals | null = null
+  private openedAt = performance.now()
+  private serverBytes = 0
+  private serverHandledRequestCount = 0
+  private serverMessageCount = 0
+  private stderrBytes = 0
+  private stderrCount = 0
+  private stderrTail = ''
 
   private constructor(
     socket: LspProxySocket,
     match: LspServerMatch,
     process: ChildProcessWithoutNullStreams,
+    rootPath: string,
   ) {
     this.match = match
     this.process = process
+    this.rootPath = rootPath
     this.socket = socket
     this.reader = new LspStdioMessageReader((message) => this.handleServerMessage(message))
     this.bindProcess()
   }
 
-  static async create(socket: LspProxySocket, match: LspServerMatch) {
+  static async create(socket: LspProxySocket, match: LspServerMatch, rootPath: string) {
     const handle = await match.server.spawn(match.root)
     if (!handle) return null
 
-    return new LspProxySession(socket, match, handle.process)
+    return new LspProxySession(socket, match, handle.process, rootPath)
   }
 
   async handleClientMessage(message: string | ArrayBuffer | Uint8Array) {
@@ -50,6 +65,8 @@ export class LspProxySession {
     const encoded = normalizeClientMessage(message)
     if (!encoded) return
 
+    this.clientBytes += byteLength(encoded)
+    this.clientMessageCount += 1
     writeLspStdioMessage(this.process.stdin, await this.prepareClientMessage(encoded))
   }
 
@@ -58,18 +75,28 @@ export class LspProxySession {
 
     this.disposed = true
     this.process.kill()
+    this.recordSession('disposed')
   }
 
   private bindProcess() {
     this.process.stdout.on('data', (chunk) => this.reader.push(chunk))
     this.process.stderr.on('data', (chunk) => this.logStderr(chunk))
-    this.process.once('exit', () => this.closeSocket())
-    this.process.once('error', () => this.closeSocket())
+    this.process.once('exit', (code, signal) => {
+      this.exitCode = code
+      this.exitSignal = signal
+      this.closeSocket('process_exit')
+    })
+    this.process.once('error', () => this.closeSocket('process_error'))
   }
 
   private handleServerMessage(message: string) {
+    this.serverBytes += Buffer.byteLength(message, 'utf8')
+    this.serverMessageCount += 1
     const parsed = parseJsonMessage(message)
-    if (isServerRequest(parsed) && this.handleServerRequest(parsed)) return
+    if (isServerRequest(parsed) && this.handleServerRequest(parsed)) {
+      this.serverHandledRequestCount += 1
+      return
+    }
 
     this.socket.send(message)
   }
@@ -149,10 +176,11 @@ export class LspProxySession {
     )
   }
 
-  private closeSocket() {
+  private closeSocket(outcome: string) {
     if (this.disposed) return
 
     this.disposed = true
+    this.recordSession(outcome)
     this.socket.close()
   }
 
@@ -160,7 +188,30 @@ export class LspProxySession {
     const text = Buffer.from(chunk).toString('utf8').trim()
     if (!text) return
 
-    console.warn(`[lsp:${this.match.server.id}] ${text}`)
+    this.stderrBytes += Buffer.byteLength(text, 'utf8')
+    this.stderrCount += 1
+    this.stderrTail = limitText(`${this.stderrTail}\n${text}`.trim(), 1_000)
+  }
+
+  private recordSession(outcome: string) {
+    recordProcessInfo('lsp.session', {
+      area: 'lsp',
+      clientBytes: this.clientBytes,
+      clientMessageCount: this.clientMessageCount,
+      durationMs: elapsedMs(this.openedAt),
+      exitCode: this.exitCode,
+      exitSignal: this.exitSignal,
+      operation: 'session',
+      outcome,
+      rootPath: this.rootPath,
+      serverBytes: this.serverBytes,
+      serverHandledRequestCount: this.serverHandledRequestCount,
+      serverId: this.match.server.id,
+      serverMessageCount: this.serverMessageCount,
+      stderrBytes: this.stderrBytes,
+      stderrCount: this.stderrCount,
+      stderrTail: this.stderrTail || undefined,
+    })
   }
 }
 
@@ -191,4 +242,11 @@ function isServerRequest(value: unknown): value is JsonRpcRequest {
 function fileUriForPath(filePath: string) {
   const normalized = filePath.replace(/^\/+/, '')
   return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
+}
+
+function byteLength(value: string | ArrayBuffer | Uint8Array) {
+  if (typeof value === 'string') return Buffer.byteLength(value, 'utf8')
+  if (value instanceof ArrayBuffer) return value.byteLength
+
+  return value.byteLength
 }

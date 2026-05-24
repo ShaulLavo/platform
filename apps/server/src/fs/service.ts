@@ -12,6 +12,15 @@ import { renamePath } from './rename'
 import { deletePath } from './delete'
 import { copyPath } from './copy'
 import {
+  elapsedMs,
+  errorSummary,
+  observeRequestOperation,
+  recordProcessWarning,
+  recordRequestContext,
+  recordRequestError,
+  recordStreamSummary,
+} from '../observability'
+import {
   findInWorkspace,
   findInWorkspaceStream,
   type FindOptions,
@@ -57,11 +66,11 @@ export function resolveMaxTextFileBytes(env: NodeJS.ProcessEnv = process.env): n
 
   const parsed = Number.parseInt(raw, 10)
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_TEXT_FILE_BYTES_UPPER_BOUND) {
-    console.error(
-      `[fs] Ignoring invalid MAX_TEXT_FILE_BYTES=${JSON.stringify(raw)}: ` +
-        `expected integer in [1, ${MAX_TEXT_FILE_BYTES_UPPER_BOUND}]. ` +
-        `Falling back to DEFAULT_MAX_TEXT_FILE_BYTES=${DEFAULT_MAX_TEXT_FILE_BYTES}.`,
-    )
+    recordProcessWarning('fs.invalid_max_text_file_bytes', {
+      fallback: DEFAULT_MAX_TEXT_FILE_BYTES,
+      max: MAX_TEXT_FILE_BYTES_UPPER_BOUND,
+      value: raw,
+    })
     return DEFAULT_MAX_TEXT_FILE_BYTES
   }
 
@@ -107,24 +116,55 @@ export class FileSystemService {
   }
 
   stat(path: string) {
-    return statPath(this.paths, path)
+    return observeRequestOperation(
+      { area: 'fs', operation: 'stat', path },
+      () => statPath(this.paths, path),
+      (result) => ({ entryType: result.type, size: result.size }),
+    )
   }
 
   tree(path: string, depth: number, entryType?: EntryTypeFilter) {
-    return readTree(this.paths, path, depth, entryType, {
-      concurrency: this.treeConcurrency,
-    })
+    return observeRequestOperation(
+      { area: 'fs', depth, entryType, operation: 'tree', path },
+      () =>
+        readTree(this.paths, path, depth, entryType, {
+          concurrency: this.treeConcurrency,
+        }),
+      (result) => ({ entryCount: result.entries.length }),
+    )
   }
 
   read(path: string) {
-    return readTextFile(this.paths, path, this.maxTextFileBytes)
+    return observeRequestOperation(
+      { area: 'fs', operation: 'read', path },
+      () => readTextFile(this.paths, path, this.maxTextFileBytes),
+      (result) => ({ size: result.size }),
+    )
   }
 
   blob(path: string) {
-    return getBlobFile(this.paths, path)
+    return observeRequestOperation(
+      { area: 'fs', operation: 'blob', path },
+      () => getBlobFile(this.paths, path),
+      (result) => ({ size: result.size }),
+    )
   }
 
   async write(body: WriteBody) {
+    return observeRequestOperation(
+      {
+        area: 'fs',
+        contentBytes: Buffer.byteLength(body.content, 'utf8'),
+        hasExpectedMtime: body.expectedMtimeMs !== undefined,
+        operation: 'write',
+        path: body.path,
+      },
+      () => this.writeObserved(body),
+      (result) => ({ entryType: result.type, size: result.size }),
+    )
+  }
+
+  private async writeObserved(body: WriteBody) {
     const target = this.paths.resolve(body.path)
     recordAppSave(target.absolutePath)
 
@@ -143,6 +183,19 @@ export class FileSystemService {
   }
 
   async createFile(body: CreateFileBody) {
+    return observeRequestOperation(
+      {
+        area: 'fs',
+        contentBytes: body.content ? Buffer.byteLength(body.content, 'utf8') : 0,
+        operation: 'create_file',
+        path: body.path,
+      },
+      () => this.createFileObserved(body),
+      (result) => ({ entryType: result.type, size: result.size }),
+    )
+  }
+
+  private async createFileObserved(body: CreateFileBody) {
     const path = await createFile(this.paths, body)
     const entry = await this.statEntry(path)
     this.changes.emit({ type: 'created', path, entry })
@@ -151,6 +204,19 @@ export class FileSystemService {
   }
 
   async createFolder(body: CreateFolderBody) {
+    return observeRequestOperation(
+      {
+        area: 'fs',
+        operation: 'create_folder',
+        path: body.path,
+        recursive: body.recursive,
+      },
+      () => this.createFolderObserved(body),
+      (result) => ({ entryType: result.type }),
+    )
+  }
+
+  private async createFolderObserved(body: CreateFolderBody) {
     const path = await createFolder(this.paths, body)
     const entry = await this.statEntry(path)
     this.changes.emit({ type: 'created', path, entry })
@@ -159,6 +225,19 @@ export class FileSystemService {
   }
 
   async rename(body: RenameBody) {
+    return observeRequestOperation(
+      {
+        area: 'fs',
+        from: body.from,
+        operation: 'rename',
+        path: body.to,
+      },
+      () => this.renameObserved(body),
+      (result) => ({ entryType: result.type, size: result.size }),
+    )
+  }
+
+  private async renameObserved(body: RenameBody) {
     const result = await renamePath(this.paths, body)
     const entry = await this.statEntry(result.to)
     this.changes.emit({
@@ -172,6 +251,19 @@ export class FileSystemService {
   }
 
   async copy(body: CopyBody) {
+    return observeRequestOperation(
+      {
+        area: 'fs',
+        from: body.from,
+        operation: 'copy',
+        path: body.to,
+      },
+      () => this.copyObserved(body),
+      (result) => ({ entryType: result.type, size: result.size }),
+    )
+  }
+
+  private async copyObserved(body: CopyBody) {
     const result = await copyPath(this.paths, body)
     const entry = await this.statEntry(result.to)
     this.changes.emit({ type: 'created', path: result.to, entry })
@@ -180,6 +272,14 @@ export class FileSystemService {
   }
 
   async delete(body: DeleteBody) {
+    return observeRequestOperation(
+      { area: 'fs', operation: 'delete', path: body.path },
+      () => this.deleteObserved(body),
+      (result) => ({ deleted: result.deleted }),
+    )
+  }
+
+  private async deleteObserved(body: DeleteBody) {
     const path = await deletePath(this.paths, body)
     this.changes.emit({ type: 'deleted', path })
 
@@ -187,27 +287,57 @@ export class FileSystemService {
   }
 
   find(options: FileSystemFindOptions) {
-    return findInWorkspace(this.paths, {
-      ...options,
-      maxContentBytes: this.maxSearchContentBytes,
-    })
+    return observeRequestOperation(
+      {
+        area: 'fs',
+        includeContent: options.includeContent,
+        includeNames: options.includeNames,
+        limit: options.limit,
+        matchMode: options.matchMode,
+        operation: 'find',
+        path: options.path,
+      },
+      () =>
+        findInWorkspace(this.paths, {
+          ...options,
+          maxContentBytes: this.maxSearchContentBytes,
+        }),
+      (result) => ({
+        matchCount: result.matches.length,
+        search: {
+          matchCount: result.matches.length,
+          queryLength: options.query.length,
+        },
+      }),
+    )
   }
 
-  findEvents(
+  async *findEvents(
     options: FileSystemFindOptions,
     signal?: AbortSignal,
   ): AsyncGenerator<FindStreamEvent> {
-    return findInWorkspaceStream(
-      this.paths,
-      {
-        ...options,
-        maxContentBytes: this.maxSearchContentBytes,
-      },
-      signal,
+    yield* observedFindEvents(
+      findInWorkspaceStream(
+        this.paths,
+        {
+          ...options,
+          maxContentBytes: this.maxSearchContentBytes,
+        },
+        signal,
+      ),
+      options,
     )
   }
 
   async recents(limit: number) {
+    return observeRequestOperation(
+      { area: 'fs', limit, operation: 'recents' },
+      () => this.recentsObserved(limit),
+      (result) => ({ entryCount: result.entries.length }),
+    )
+  }
+
+  private async recentsObserved(limit: number) {
     const rows = this.metadata.listRecentDirectories(limit)
     const entries: FsMetadataEntry[] = []
 
@@ -221,6 +351,14 @@ export class FileSystemService {
   }
 
   async recordRecent(path: string) {
+    return observeRequestOperation(
+      { area: 'fs', operation: 'record_recent', path },
+      () => this.recordRecentObserved(path),
+      (result) => ({ entryType: result.type }),
+    )
+  }
+
+  private async recordRecentObserved(path: string) {
     const entry = await this.metadataEntry(path)
     if (effectiveEntryType(entry) !== 'directory') throw new FsError('NOT_A_DIRECTORY')
 
@@ -228,8 +366,8 @@ export class FileSystemService {
     return entry
   }
 
-  events(paths: string[], signal?: AbortSignal): AsyncGenerator<WatchServerMessage> {
-    return this.changes.stream(paths, signal)
+  async *events(paths: string[], signal?: AbortSignal): AsyncGenerator<WatchServerMessage> {
+    yield* observedWatchEvents(this.changes.stream(paths, signal), paths)
   }
 
   async close() {
@@ -270,6 +408,156 @@ function entryFromStat(stat: FsStat): TreeEntry {
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     birthtimeMs: stat.birthtimeMs,
+  }
+}
+
+async function* observedFindEvents(
+  events: AsyncGenerator<FindStreamEvent>,
+  options: FileSystemFindOptions,
+) {
+  const startedAt = performance.now()
+  const state = {
+    completed: false,
+    matchCount: 0,
+    truncated: false,
+  }
+  recordRequestContext({
+    area: 'fs',
+    operation: 'find_events',
+    search: {
+      includeContent: options.includeContent,
+      includeNames: options.includeNames,
+      limit: options.limit,
+      matchMode: options.matchMode,
+      queryLength: options.query.length,
+    },
+  })
+
+  try {
+    for await (const event of events) {
+      updateFindState(state, event)
+      yield event
+    }
+  } catch (error) {
+    recordRequestError(error, findStreamSummary(options, startedAt, state, 'error'))
+    recordStreamSummary({
+      ...findStreamSummary(options, startedAt, state, 'error'),
+      error: errorSummary(error),
+    })
+    throw error
+  }
+
+  recordStreamSummary(findStreamSummary(options, startedAt, state, 'ok'))
+}
+
+async function* observedWatchEvents(
+  events: AsyncGenerator<WatchServerMessage>,
+  paths: readonly string[],
+) {
+  const startedAt = performance.now()
+  const state = {
+    deliveredCount: 0,
+    errorEventCount: 0,
+  }
+  recordRequestContext({
+    area: 'fs',
+    operation: 'watch_events',
+    watch: {
+      subscribedRootCount: paths.length || 1,
+    },
+  })
+
+  try {
+    for await (const event of events) {
+      updateWatchState(state, event)
+      yield event
+    }
+  } catch (error) {
+    recordRequestError(error, watchStreamSummary(paths, startedAt, state, 'error'))
+    recordStreamSummary({
+      ...watchStreamSummary(paths, startedAt, state, 'error'),
+      error: errorSummary(error),
+    })
+    throw error
+  }
+
+  recordStreamSummary(watchStreamSummary(paths, startedAt, state, 'ok'))
+}
+
+function updateFindState(
+  state: {
+    completed: boolean
+    matchCount: number
+    truncated: boolean
+  },
+  event: FindStreamEvent,
+) {
+  if (event.type === 'match') {
+    state.matchCount += 1
+    return
+  }
+
+  state.completed = true
+  state.matchCount = event.count
+  state.truncated = event.truncated
+}
+
+function updateWatchState(
+  state: {
+    deliveredCount: number
+    errorEventCount: number
+  },
+  event: WatchServerMessage,
+) {
+  state.deliveredCount += 1
+  if (event.type === 'error') state.errorEventCount += 1
+}
+
+function findStreamSummary(
+  options: FileSystemFindOptions,
+  startedAt: number,
+  state: {
+    completed: boolean
+    matchCount: number
+    truncated: boolean
+  },
+  status: 'error' | 'ok',
+) {
+  return {
+    area: 'fs',
+    completed: state.completed,
+    durationMs: elapsedMs(startedAt),
+    limit: options.limit,
+    matchCount: state.matchCount,
+    operation: 'find_events',
+    path: options.path,
+    search: {
+      matchCount: state.matchCount,
+      queryLength: options.query.length,
+      truncated: state.truncated,
+    },
+    status,
+    truncated: state.truncated,
+  }
+}
+
+function watchStreamSummary(
+  paths: readonly string[],
+  startedAt: number,
+  state: {
+    deliveredCount: number
+    errorEventCount: number
+  },
+  status: 'error' | 'ok',
+) {
+  return {
+    area: 'fs',
+    deliveredCount: state.deliveredCount,
+    durationMs: elapsedMs(startedAt),
+    errorEventCount: state.errorEventCount,
+    operation: 'watch_events',
+    status,
+    subscribedRootCount: paths.length || 1,
   }
 }
 

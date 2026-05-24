@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 
 import { DiskWorkspaceSearchProvider, findInWorkspace, findInWorkspaceStream } from './search'
 import { createWorkspacePaths } from './path'
@@ -357,28 +357,20 @@ describe('workspace disk search provider', () => {
       path.join(root, 'apps/web/node_modules/missing'),
       path.join(root, 'apps/web/node_modules/pkg/broken'),
     )
-    const originalWarn = console.warn
-    console.warn = mock()
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: '',
+      query: 'needle',
+    })
 
-    try {
-      const result = await findInWorkspace(createWorkspacePaths(root), {
-        includeContent: true,
-        limit: 20,
-        maxContentBytes: 1_000_000,
-        path: '',
-        query: 'needle',
-      })
-
-      expect(result.matches).toContainEqual(
-        expect.objectContaining({
-          kind: 'content',
-          path: 'src/match.txt',
-        }),
-      )
-      expect(console.warn).not.toHaveBeenCalled()
-    } finally {
-      console.warn = originalWarn
-    }
+    expect(result.matches).toContainEqual(
+      expect.objectContaining({
+        kind: 'content',
+        path: 'src/match.txt',
+      }),
+    )
   })
 
   it('reports truncation when the limit is reached', async () => {

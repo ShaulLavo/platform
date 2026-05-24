@@ -20,6 +20,7 @@ import {
   type FindOptions,
 } from './search-shared'
 import { isDirectoryEntry, isFileEntry, matchesEntryType, type FsEntryStats } from './stat'
+import { recordRequestWarning } from '../observability'
 
 export async function* searchWithFallback(context: FindContext) {
   const matches: FindMatch[] = []
@@ -192,7 +193,12 @@ async function addContentMatch(
 
 function reportSearchContentError(relativePath: string, error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
-  console.error(`[fs/search] skipped ${relativePath}: ${message}`)
+  recordRequestWarning('search fallback skipped file', {
+    area: 'search',
+    message,
+    operation: 'fallback_content',
+    path: relativePath,
+  })
 }
 
 function addLineMatch(
