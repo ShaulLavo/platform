@@ -1,4 +1,4 @@
-import { asc, eq, isNull } from 'drizzle-orm'
+import { asc, eq, isNull, sql } from 'drizzle-orm'
 import * as v from 'valibot'
 import {
   orchestrationShellSnapshotSchema,
@@ -21,6 +21,7 @@ import {
 import { db as defaultDb } from '../db/client'
 import {
   projectionProjects,
+  orchestrationEvents,
   projectionThreadActivities,
   projectionThreadMessages,
   projectionThreadSessions,
@@ -66,7 +67,7 @@ export class OrchestrationSnapshotQuery {
     return model
   }
 
-  shellSnapshot(sequence: number): OrchestrationShellSnapshot {
+  shellSnapshot(sequence?: number): OrchestrationShellSnapshot {
     const projects = this.database
       .select()
       .from(projectionProjects)
@@ -85,13 +86,13 @@ export class OrchestrationSnapshotQuery {
 
     return v.parse(orchestrationShellSnapshotSchema, {
       projects,
-      snapshotSequence: sequence,
+      snapshotSequence: sequence ?? this.currentSequence(),
       threads,
       updatedAt: new Date().toISOString(),
     })
   }
 
-  threadDetailSnapshot(threadId: string, sequence: number): OrchestrationThreadDetailSnapshot {
+  threadDetailSnapshot(threadId: string, sequence?: number): OrchestrationThreadDetailSnapshot {
     const row = this.database
       .select()
       .from(projectionThreads)
@@ -100,7 +101,7 @@ export class OrchestrationSnapshotQuery {
     if (!row) throw new Error(`Thread not found: ${threadId}`)
 
     return v.parse(orchestrationThreadDetailSnapshotSchema, {
-      snapshotSequence: sequence,
+      snapshotSequence: sequence ?? this.currentSequence(),
       thread: threadFromRow(
         row,
         this.threadMessages(threadId),
@@ -134,6 +135,15 @@ export class OrchestrationSnapshotQuery {
       .from(projectionThreadSessions)
       .where(eq(projectionThreadSessions.threadId, threadId))
       .get()
+  }
+
+  private currentSequence() {
+    return (
+      this.database
+        .select({ sequence: sql<number>`coalesce(max(${orchestrationEvents.sequence}), 0)` })
+        .from(orchestrationEvents)
+        .get()?.sequence ?? 0
+    )
   }
 }
 

@@ -8,6 +8,7 @@ import { OrchestrationProjectionPipeline } from './projection-pipeline'
 import { projectEvents } from './projector'
 import type { OrchestrationReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
+import { OrchestrationStreams, type OrchestrationStreamOptions } from './streams'
 
 export type OrchestrationDispatchResult = {
   deduped: boolean
@@ -21,6 +22,7 @@ export class OrchestrationEngine {
   private readonly eventStore: OrchestrationEventStore
   private readonly projectionPipeline: OrchestrationProjectionPipeline
   private readonly snapshotQuery: OrchestrationSnapshotQuery
+  private readonly streams: OrchestrationStreams
   private readModel: OrchestrationReadModel
 
   constructor(database: OrchestrationDatabase) {
@@ -29,6 +31,7 @@ export class OrchestrationEngine {
     this.receipts = new OrchestrationCommandReceipts(database)
     this.projectionPipeline = new OrchestrationProjectionPipeline(database, this.eventStore)
     this.snapshotQuery = new OrchestrationSnapshotQuery(database)
+    this.streams = new OrchestrationStreams(this.snapshotQuery)
     this.projectionPipeline.catchUp()
     this.readModel = this.snapshotQuery.fullReadModel(this.eventStore.currentSequence())
   }
@@ -56,6 +59,14 @@ export class OrchestrationEngine {
     return { events: this.eventStore.readAfter(input) }
   }
 
+  shellStream(options?: OrchestrationStreamOptions) {
+    return this.streams.shell(options)
+  }
+
+  threadDetailStream(threadId: string, options?: OrchestrationStreamOptions) {
+    return this.streams.threadDetail(threadId, options)
+  }
+
   readModelSnapshot() {
     return this.readModel
   }
@@ -76,6 +87,7 @@ export class OrchestrationEngine {
       this.projectionPipeline.applyEvents(events)
       this.readModel = projectEvents(events, this.readModel)
       const receipt = this.receipts.recordAccepted(command, events)
+      this.streams.publish(events)
 
       return {
         deduped: false,

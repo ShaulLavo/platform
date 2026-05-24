@@ -556,6 +556,17 @@ Purpose:
 
 - Expose the projection model to the frontend the T3Code way.
 
+Implementation status:
+
+- Done on 2026-05-24:
+  - backend SSE shell/detail streams over the Phase 2 projection model
+  - live stream fanout after accepted orchestration commands
+  - shell project/thread upsert/remove events derived from projection snapshots
+  - thread-detail event filtering for target-thread detail updates
+  - web typed orchestration command/snapshot/replay client helpers
+  - web shell/detail subscription helpers with stale sequence guards
+  - local chat environment facade for Phase 4/5 consumers
+
 Platform target paths:
 
 - `apps/server/src/orchestration/routes.ts`

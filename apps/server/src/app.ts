@@ -1,5 +1,5 @@
 import { cors } from '@elysiajs/cors'
-import { Elysia, sse } from 'elysia'
+import { Elysia } from 'elysia'
 import {
   copyBodySchema,
   createFileBodySchema,
@@ -13,7 +13,6 @@ import {
   renameBodySchema,
   treeQuerySchema,
   writeBodySchema,
-  type WatchServerMessage,
 } from './fs/contracts'
 import {
   gitApplyPatchBodySchema,
@@ -44,6 +43,7 @@ import {
 import { OrchestrationEngine } from './orchestration/engine'
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
+import { errorYieldingSse, toSse } from './sse'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 
 export type AppOptions = FileSystemServiceOptions & {
@@ -161,7 +161,12 @@ export function createApp(options: AppOptions) {
         })
         .get(
           '/find/events',
-          ({ query, request }) => toFindSse(fs.findEvents(query, request.signal)),
+          ({ query, request }) =>
+            errorYieldingSse(fs.findEvents(query, request.signal), {
+              data: findEventData,
+              errorData: findErrorData,
+              event: (event) => event.type,
+            }),
           {
             query: findQuerySchema,
           },
@@ -175,7 +180,9 @@ export function createApp(options: AppOptions) {
         .get(
           '/events',
           ({ query, request }) =>
-            toSse(fs.events(parseWatchInputs(query.path, query.paths), request.signal)),
+            toSse(fs.events(parseWatchInputs(query.path, query.paths), request.signal), {
+              event: (event) => event.type,
+            }),
           {
             query: eventsQuerySchema,
           },
@@ -231,32 +238,6 @@ async function fileResponse(result: BlobFile) {
   return new Response(file, { headers })
 }
 
-async function* toSse(events: AsyncGenerator<WatchServerMessage>) {
-  for await (const event of events) {
-    yield sse({
-      event: event.type,
-      data: event,
-    })
-  }
-}
-
-async function* toFindSse(events: AsyncGenerator<FindStreamEvent>) {
-  try {
-    for await (const event of events) {
-      yield sse({
-        event: event.type,
-        data: findEventData(event),
-      })
-    }
-  } catch (error) {
-    const fsError = isFsError(error) ? error : new FsError('OPERATION_FAILED', undefined, error)
-    yield sse({
-      event: 'error',
-      data: errorPayload(fsError),
-    })
-  }
-}
-
 function findEventData(event: FindStreamEvent) {
   if (event.type === 'match') return { match: event.match }
 
@@ -266,6 +247,12 @@ function findEventData(event: FindStreamEvent) {
     count: event.count,
     truncated: event.truncated,
   }
+}
+
+function findErrorData(error: unknown) {
+  const fsError = isFsError(error) ? error : new FsError('OPERATION_FAILED', undefined, error)
+
+  return errorPayload(fsError)
 }
 
 function appErrorPayload(

@@ -1,3 +1,5 @@
+import { isRecord } from '@workspace/contracts'
+
 export type FsErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN_ORIGIN'
@@ -138,14 +140,12 @@ function sanitizeCauseRecord(record: Record<string, unknown>, seen: WeakSet<obje
 
 function copyCauseFields(source: Error, target: Record<string, unknown>, seen: WeakSet<object>) {
   for (const [key, value] of Object.entries(source)) {
-    target[key] = sensitiveCauseFields.has(key) ? redactedDiagnosticValue : sanitizeCause(value, seen)
+    target[key] = sensitiveCauseFields.has(key)
+      ? redactedDiagnosticValue
+      : sanitizeCause(value, seen)
   }
 }
 
 function sanitizeCauseMessage(message: string) {
   return message.replaceAll(/'[^']*'/g, `'${redactedDiagnosticValue}'`)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }

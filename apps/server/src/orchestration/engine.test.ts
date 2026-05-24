@@ -155,6 +155,79 @@ describe('orchestration engine', () => {
     ])
     fixture.close()
   })
+
+  it('streams an initial shell snapshot and live shell projection events', async () => {
+    const fixture = createFixture()
+    const root = await fixtureRoot()
+    const app = createOrchestrationTestApp(root, fixture.database)
+    const stream = await app.handle(
+      new Request('http://local/orchestration/shell-stream', {
+        headers: trustedHeaders(),
+      }),
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({
+      kind: 'snapshot',
+      snapshot: { snapshotSequence: 0 },
+    })
+
+    const created = postCommand(app, projectCreateCommand())
+
+    expect(await events.next()).toMatchObject({
+      kind: 'project-upserted',
+      project: { id: 'project-1', title: 'Platform' },
+      sequence: 1,
+    })
+    await created
+    await events.close()
+    fixture.close()
+  })
+
+  it('streams detail events only for the subscribed thread', async () => {
+    const fixture = createFixture()
+    const root = await fixtureRoot()
+    const app = createOrchestrationTestApp(root, fixture.database)
+
+    await postCommand(app, projectCreateCommand())
+    await postCommand(app, threadCreateCommand())
+    await postCommand(app, threadCreateCommand('thread-2', 'cmd-thread-2-create'))
+
+    const stream = await app.handle(
+      new Request('http://local/orchestration/thread-detail-stream?threadId=thread-1', {
+        headers: trustedHeaders(),
+      }),
+    )
+    const events = createSseReader(stream)
+
+    expect(await events.next()).toMatchObject({
+      kind: 'snapshot',
+      snapshot: { snapshotSequence: 3 },
+    })
+
+    await postCommand(
+      app,
+      threadTurnStartCommand({
+        commandId: 'cmd-thread-2-turn',
+        messageId: 'message-2',
+        text: 'Ignore this thread',
+        threadId: 'thread-2',
+        turnId: 'turn-2',
+      }),
+    )
+    const targetTurn = postCommand(app, threadTurnStartCommand())
+
+    expect(await events.next()).toMatchObject({
+      event: {
+        payload: { messageId: 'message-1', text: 'Build the first slice', threadId: 'thread-1' },
+        type: 'thread.message-sent',
+      },
+      kind: 'event',
+    })
+    await targetTurn
+    await events.close()
+    fixture.close()
+  })
 })
 
 async function dispatchFirstThread(engine: OrchestrationEngine) {
@@ -175,37 +248,45 @@ function projectCreateCommand() {
   })
 }
 
-function threadCreateCommand() {
+function threadCreateCommand(threadId = 'thread-1', commandId = 'cmd-thread-create') {
   return command({
     branch: null,
-    commandId: 'cmd-thread-create',
+    commandId,
     createdAt: now,
     interactionMode: 'default',
     modelSelection,
     projectId: 'project-1',
     runtimeMode: 'full-access',
-    threadId: 'thread-1',
+    threadId,
     title: 'Phase 2',
     type: 'thread.create',
     worktreePath: null,
   })
 }
 
-function threadTurnStartCommand() {
+function threadTurnStartCommand(input: Partial<ThreadTurnStartFixture> = {}) {
   return command({
-    commandId: 'cmd-turn-start',
+    commandId: input.commandId ?? 'cmd-turn-start',
     createdAt: later,
     interactionMode: 'default',
     message: {
-      messageId: 'message-1',
+      messageId: input.messageId ?? 'message-1',
       role: 'user',
-      text: 'Build the first slice',
+      text: input.text ?? 'Build the first slice',
     },
     runtimeMode: 'full-access',
-    threadId: 'thread-1',
-    turnId: 'turn-1',
+    threadId: input.threadId ?? 'thread-1',
+    turnId: input.turnId ?? 'turn-1',
     type: 'thread.turn.start',
   })
+}
+
+type ThreadTurnStartFixture = {
+  commandId: string
+  messageId: string
+  text: string
+  threadId: string
+  turnId: string
 }
 
 function command(value: unknown) {
@@ -229,6 +310,18 @@ async function fixtureRoot() {
   roots.push(root)
 
   return root
+}
+
+function createOrchestrationTestApp(
+  root: string,
+  database: ReturnType<typeof createFixture>['database'],
+) {
+  return createApp({
+    auth: { allowedOrigins: ['http://localhost:5173'] },
+    orchestration: { database },
+    watch: false,
+    workspaceRoot: root,
+  })
 }
 
 async function postCommand(app: ReturnType<typeof createApp>, body: OrchestrationCommand) {
@@ -266,4 +359,51 @@ function trustedHeaders() {
     'content-type': 'application/json',
     origin: 'http://localhost:5173',
   }
+}
+
+function createSseReader(response: Response) {
+  if (!response.body) throw new Error('missing event stream body')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffered = ''
+
+  return {
+    close: () => reader.cancel(),
+    next: async () => {
+      while (true) {
+        const event = shiftSseEvent()
+        if (event) return event
+
+        const chunk = await reader.read()
+        if (chunk.done) throw new Error('event stream ended')
+        buffered += decodeSseChunk(decoder, chunk.value)
+      }
+    },
+  }
+
+  function shiftSseEvent() {
+    const separator = buffered.indexOf('\n\n')
+    if (separator < 0) return null
+
+    const raw = buffered.slice(0, separator)
+    buffered = buffered.slice(separator + 2)
+    return parseSsePayload(raw)
+  }
+}
+
+function decodeSseChunk(decoder: TextDecoder, value: unknown) {
+  if (typeof value === 'string') return value
+
+  return decoder.decode(value as BufferSource, { stream: true })
+}
+
+function parseSsePayload(raw: string) {
+  const data = raw
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n')
+
+  return JSON.parse(data) as Record<string, unknown>
 }
