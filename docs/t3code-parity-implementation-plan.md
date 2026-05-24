@@ -63,14 +63,22 @@ AI Elements strategy:
   The library is built on shadcn/ui conventions and installs component source
   into the app, which makes it a good starting point for Platform-specific
   customization.
+- Default workflow for agent UI work: inspect the relevant AI Elements source
+  first, adapt it into Platform-owned components, and then apply T3Code/Platform
+  behavior on top. Start from scratch only when AI Elements has no relevant
+  component or when adapting it would add more complexity than it removes.
 - Do not treat AI Elements behavior as authoritative when it diverges from the
   T3Code architecture. T3Code remains the first reference for transcript
   performance, projection-driven state, shell/detail subscriptions, recovery,
   composer persistence, and runtime semantics.
-- Vendor/adapt only the components we need. Do not import a broad registry of
-  unused AI Elements pieces.
+- Keep the full AI Elements registry installed locally so the source is ready
+  while building. Only wire product surfaces to components we intentionally
+  adapt for Platform.
 - Reshape imported component code to Platform conventions, including one React
   component per file and feature-specific utilities outside component files.
+- Keep AI Elements files editable and local. As we build, modify the copied
+  components directly instead of wrapping them indefinitely with workaround
+  layers.
 - Prefer AI Elements markup, accessibility, and shadcn-compatible styling as the
   starting point; replace the state and data flow with Platform/T3-style
   projection data.
