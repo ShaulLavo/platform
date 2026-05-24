@@ -43,7 +43,7 @@ import {
 import { OrchestrationEngine } from './orchestration/engine'
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
-import { errorYieldingSse, toSse } from './sse'
+import { toErrorYieldingSse, toSse } from './sse'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 
 export type AppOptions = FileSystemServiceOptions & {
@@ -162,7 +162,7 @@ export function createApp(options: AppOptions) {
         .get(
           '/find/events',
           ({ query, request }) =>
-            errorYieldingSse(fs.findEvents(query, request.signal), {
+            toErrorYieldingSse(fs.findEvents(query, request.signal), {
               data: findEventData,
               errorData: findErrorData,
               event: (event) => event.type,

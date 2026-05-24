@@ -18,7 +18,7 @@ export async function* toSse<T>(events: AsyncIterable<T>, options: SseEventOptio
   }
 }
 
-export async function* errorYieldingSse<T>(
+export async function* toErrorYieldingSse<T>(
   events: AsyncIterable<T>,
   options: ErrorSseEventOptions<T>,
 ) {
