@@ -98,7 +98,7 @@ type WorkspaceCachePayloadV7 = {
   workspacePanelTab: WorkspacePanelTab
 }
 
-export type WorkspacePanelTab = 'files' | 'git' | 'search'
+export type WorkspacePanelTab = 'chat' | 'files' | 'git' | 'search'
 
 export type CachedSearchBufferState = {
   activeResultId: string | null
@@ -140,7 +140,12 @@ const pickedSymlinkDirectorySchema = v.object({
 })
 const rootFolderSchema = v.nullable(v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema]))
 const selectedFilePathSchema = v.nullable(v.string())
-const workspacePanelTabSchema = v.union([v.literal('files'), v.literal('git'), v.literal('search')])
+const workspacePanelTabSchema = v.union([
+  v.literal('chat'),
+  v.literal('files'),
+  v.literal('git'),
+  v.literal('search'),
+])
 const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)
 const entryTypeSchema = v.union([
   v.literal('file'),

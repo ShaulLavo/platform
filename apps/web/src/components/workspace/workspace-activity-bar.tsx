@@ -1,6 +1,7 @@
 import type { WorkspacePanelTab } from '@/lib/workspace-cache'
 import { WorkspaceActivityButton } from '@/components/workspace/workspace-activity-button'
 import { WorkspaceActivityTab } from '@/components/workspace/workspace-activity-tab'
+import { ChatSidebarEntry } from '@/features/chat/components/chat-sidebar-entry'
 import { TabsList } from '@workspace/ui/components/tabs'
 import {
   FolderIcon,
@@ -50,6 +51,7 @@ export function WorkspaceActivityBar({
           currentVisible={currentVisible}
           onSelectTab={onSelectTab}
         />
+        <ChatSidebarEntry currentVisible={currentVisible} onSelectTab={onSelectTab} />
         <WorkspaceActivityButton
           active={!terminalCollapsed}
           icon={<TerminalWindowIcon className='size-5' />}

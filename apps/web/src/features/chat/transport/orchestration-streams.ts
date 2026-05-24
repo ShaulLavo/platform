@@ -20,7 +20,7 @@ export type OrchestrationStreamInput = {
 export async function* subscribeOrchestrationShell(input: OrchestrationStreamInput = {}) {
   const stream = openOrchestrationShellStream(input)
 
-  yield* guardOrchestrationStreamSequence(stream, input.afterSequence ?? -1)
+  yield* guardOrchestrationStreamSequence(stream, streamGuardSequence(input.afterSequence))
 }
 
 export async function* subscribeOrchestrationThreadDetail(
@@ -29,7 +29,11 @@ export async function* subscribeOrchestrationThreadDetail(
 ) {
   const stream = openOrchestrationThreadDetailStream(threadId, input)
 
-  yield* guardOrchestrationStreamSequence(stream, input.afterSequence ?? -1)
+  yield* guardOrchestrationStreamSequence(stream, streamGuardSequence(input.afterSequence))
+}
+
+function streamGuardSequence(afterSequence: number | undefined) {
+  return afterSequence === undefined ? -1 : afterSequence - 1
 }
 
 async function* openOrchestrationShellStream({

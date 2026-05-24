@@ -20,7 +20,7 @@ export function isCollapsedPanelSize(size: PanelSize) {
 }
 
 export function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
-  return value === 'files' || value === 'git' || value === 'search'
+  return value === 'chat' || value === 'files' || value === 'git' || value === 'search'
 }
 
 export function workspacePanelSelectionForTabActivation(
@@ -35,6 +35,7 @@ export function workspacePanelSelectionForTabActivation(
 }
 
 export function workspacePanelTabTitle(tab: WorkspacePanelTab) {
+  if (tab === 'chat') return 'Chat'
   if (tab === 'files') return 'Files'
   if (tab === 'search') return 'Search'
 

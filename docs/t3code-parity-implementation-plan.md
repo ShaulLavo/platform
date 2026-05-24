@@ -343,10 +343,9 @@ AI Elements V1 adoption map:
 - `apps/web/src/components/ai-elements/message.tsx`: adapt user/assistant
   message layout and action affordances, but replace `UIMessage` with Platform
   projection message types and split exported components into separate files.
-- `apps/web/src/components/ai-elements/prompt-input.tsx`: use the composer
-  structure as visual source material, but replace registry-local text,
-  attachment, screenshot, and submit state with Platform composer draft state
-  and orchestration commands. Attachments and screenshots stay out of V1.
+- `apps/web/src/components/ai-elements/prompt-input.tsx`: keep as registry
+  source material only. Product chat input follows T3Code's Lexical composer
+  path instead of wiring `PromptInput` directly.
 - `Plan`, `Tool`, `Confirmation`, and `Reasoning` are inspect-later references
   for approvals/plans/tool activity phases. Do not wire them into V1 until their
   backend projections exist.
@@ -630,6 +629,25 @@ Purpose:
 - Keep the cache shaped so a later TanStack DB evaluation is possible, but do
   not block V1 on TanStack DB.
 
+Implementation status:
+
+- Done on 2026-05-24:
+  - normalized web chat projection store with project, thread shell, session,
+    turn state, message, activity, proposed-plan, turn-diff, and sidebar summary
+    slices
+  - pure shell/detail snapshot writers and shell/detail event writers
+  - separate shell and thread-detail sequence guards so shell stream updates do
+    not suppress detail stream transcript events
+  - deterministic caps for message, activity, proposed-plan, and turn-diff
+    caches
+  - memoized selectors for projects, sidebar threads, thread shells, and
+    materialized thread detail
+  - ref-counted thread detail subscription cache with idle eviction, capacity
+    eviction, running/actionable thread protection, and sidebar prewarm helper
+  - focused tests for snapshot preservation, thread removal cleanup, detail
+    snapshot scoping, cache caps, stale sequence rejection, and subscription
+    eviction behavior
+
 Platform target paths:
 
 - `apps/web/src/features/chat/state/chat-projection-store.ts`
@@ -712,14 +730,64 @@ Purpose:
 - Treat the side panel as the first view into the real agent app, not as a
   one-off implementation.
 
+Implementation status:
+
+- Done on 2026-05-24:
+  - workspace activity-bar chat tab and persisted `chat` sidebar tab selection
+  - sidebar-native chat panel with shell subscription, project bootstrap,
+    automatic current-workspace thread creation, active-thread detail
+    subscription, and detail prewarming for visible history threads
+  - Platform command builders for workspace project creation, thread creation,
+    turn submission, interrupt, stable workspace project IDs, and compact thread
+    titles
+  - base composer draft persistence keyed by workspace/thread
+  - optimistic user messages with cleanup after backend projection events
+  - Lexical-based composer adapted from T3Code's `ComposerPromptEditor`
+    structure, plus AI Elements-inspired message rendering via local `Message`
+    pieces
+  - Legend List transcript virtualization with stable row identity,
+    maintain-scroll-at-end behavior, and explicit scroll-to-latest affordance
+  - no Phase 5 chat import path depends on `use-stick-to-bottom`
+  - stable Zustand selector snapshots for React 19/Zustand 5
+  - Eden SSE normalization for Date instances returned by the browser client
+  - zero-sequence stream bootstrap handling so an empty event store still marks
+    chat shell bootstrap complete
+  - focused tests for command builders, timeline item ordering/deduping, stream
+    sequence guards, SSE normalization, and existing projection subscription
+    behavior
+  - browser smoke test: opened the Chat tab, created a thread, sent
+    `Phase 5 smoke test`, and saw the backend-owned transcript update through
+    projection streams
+- Revised on 2026-05-24:
+  - removed the explicit side-panel "new thread" empty view and manual new
+    thread button
+  - opening the Chat tab now prepares a workspace chat automatically when the
+    current workspace has no chat thread
+  - removed the persistent thread panel in favor of top-bar New Chat and
+    History controls
+  - added a history dropdown and in-canvas Past Conversations list for switching
+    previous workspace chats
+  - removed Phase 5 product use of AI Elements `PromptInput`; composer input is
+    now Lexical while transcript virtualization remains Legend List
+- Deferred beyond Phase 5:
+  - provider/runtime assistant response execution, so a submitted turn can remain
+    in `Working` until Phase 7 wires the Codex runtime
+
 Platform target paths:
 
 - `apps/web/src/features/chat/components/chat-sidebar-entry.tsx`
 - `apps/web/src/features/chat/components/chat-side-panel.tsx`
-- `apps/web/src/features/chat/components/thread-list.tsx`
+- `apps/web/src/features/chat/components/chat-panel-header.tsx`
+- `apps/web/src/features/chat/components/chat-welcome-view.tsx`
+- `apps/web/src/features/chat/components/past-conversations.tsx`
+- `apps/web/src/features/chat/components/past-conversation-row.tsx`
 - `apps/web/src/features/chat/components/chat-view.tsx`
-- `apps/web/src/features/chat/components/chat-header.tsx`
 - `apps/web/src/features/chat/components/chat-composer.tsx`
+- `apps/web/src/features/chat/components/chat-composer-editor.tsx`
+- `apps/web/src/features/chat/components/chat-composer-draft-plugin.tsx`
+- `apps/web/src/features/chat/components/chat-composer-submit-plugin.tsx`
+- `apps/web/src/features/chat/components/chat-composer-actions.tsx`
+- `apps/web/src/features/chat/components/chat-composer-submit-button.tsx`
 - `apps/web/src/features/chat/components/messages-timeline.tsx`
 - `apps/web/src/components/workspace/workspace-view.tsx`
 - `apps/web/src/App.tsx`
@@ -728,7 +796,6 @@ Candidate AI Elements source components:
 
 - `Conversation`, `ConversationContent`, `ConversationScrollButton`
 - `Message`, `MessageContent`, `MessageResponse`
-- `PromptInput`, `PromptInputTextarea`, `PromptInputSubmit`
 - later: `Tool`, `Task`, `Plan`, `Checkpoint`, `File Tree`, `Terminal`
 
 Frontend work:
@@ -746,9 +813,9 @@ Frontend work:
 - Render chat as a left-sidebar panel for now.
 - Keep the layout narrow and sidebar-native; defer right-side panel/split-pane
   layout work.
-- Keep components layout-aware so the same transcript, header, thread list, and
+- Keep components layout-aware so the same transcript, header, history menu, and
   composer primitives can render in the future standalone app.
-- Add thread list from shell summaries.
+- Add history and past-conversation selection from shell summaries.
 - Add create-thread flow.
 - Add active-thread view from detail selectors.
 - Add rich composer foundation with restrained V1 features:
@@ -760,8 +827,8 @@ Frontend work:
   - keyboard behavior
   - layout slots for future context chips, attachments, runtime mode, and model
     controls
-- Use AI Elements `PromptInput` as a visual/composition reference, but route
-  submit, draft, disabled, stop, and optimistic-send behavior through Platform
+- Use T3Code's Lexical composer shape as the V1 input reference, with submit,
+  draft, disabled, stop, and optimistic-send behavior routed through Platform
   chat state and orchestration commands.
 - Hold back visible advanced composer features:
   - no file mentions yet
@@ -801,15 +868,15 @@ T3 source paths:
 
 - `references/t3code/apps/web/src/components/ChatView.tsx`
 - `references/t3code/apps/web/src/components/ChatView.logic.ts`
-- `references/t3code/apps/web/src/components/chat/ChatHeader.tsx`
 - `references/t3code/apps/web/src/components/chat/MessagesTimeline.tsx`
 - `references/t3code/apps/web/src/components/chat/MessagesTimeline.logic.ts`
+- `references/t3code/apps/web/src/components/ComposerPromptEditor.tsx`
+- `references/t3code/apps/web/src/components/chat/ChatComposer.tsx`
 
 AI Elements source references:
 
 - `https://elements.ai-sdk.dev/components/conversation`
 - `https://elements.ai-sdk.dev/components/message`
-- `https://elements.ai-sdk.dev/components/prompt-input`
 - `https://elements.ai-sdk.dev/examples/chatbot`
 
 ## Phase 6: Composer, Drafts, Attachments, Mentions

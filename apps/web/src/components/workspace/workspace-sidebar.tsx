@@ -1,5 +1,6 @@
 import { WorkspaceFilesPane } from '@/components/workspace/workspace-files-pane'
 import { WorkspaceSearchPane } from '@/components/workspace/workspace-search-pane'
+import { ChatSidePanel } from '@/features/chat/components/chat-side-panel'
 import { Panel as GitPanel } from '@/features/git/panel'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
@@ -36,11 +37,13 @@ export function WorkspaceSidebar({
       className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'
       inert={!sidebarVisible}
     >
-      <WorkspaceSidebarHeader
-        tab={tab}
-        treeState={treeState}
-        visibleTreeItemCount={visibleTreeItemCount}
-      />
+      {tab !== 'chat' ? (
+        <WorkspaceSidebarHeader
+          tab={tab}
+          treeState={treeState}
+          visibleTreeItemCount={visibleTreeItemCount}
+        />
+      ) : null}
       <TabsContent keepMounted value='files'>
         <WorkspaceFilesPane
           key={rootPath}
@@ -56,6 +59,9 @@ export function WorkspaceSidebar({
       </TabsContent>
       <TabsContent keepMounted value='git'>
         <GitPanel rootPath={rootPath} />
+      </TabsContent>
+      <TabsContent keepMounted value='chat'>
+        <ChatSidePanel rootPath={rootPath} />
       </TabsContent>
     </aside>
   )
