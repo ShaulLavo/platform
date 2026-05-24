@@ -9,8 +9,8 @@ import {
   type WorkspaceSearchQuery,
 } from "@workspace/contracts"
 
-import { fsServerUrl } from "@/lib/fs-client"
-import { parseSseStream, type ParsedSseEvent } from "@/lib/sse"
+import { parseEdenSseStream, type EdenSseEvent } from "@/lib/eden-events"
+import { fsClient } from "@/lib/fs-client"
 import { compareSearchPaths } from "@/features/search/search-sort"
 
 const SEARCH_PREVIEW_CONTEXT_CHARS = 80
@@ -33,13 +33,29 @@ export class DiskSearchProvider implements SearchProvider {
     query: WorkspaceSearchQuery,
     signal?: AbortSignal
   ): AsyncGenerator<WorkspaceSearchEvent> {
-    const response = await fetch(workspaceSearchUrl(query), { signal })
-    if (!response.ok)
+    const response = await fsClient.fs.find.events.get({
+      query: {
+        caseSensitive: query.caseSensitive === true,
+        entryType: query.entryType ?? "file",
+        excludeGlobs: query.excludeGlobs ? [...query.excludeGlobs] : undefined,
+        includeContent: query.includeContent === true,
+        includeGlobs: query.includeGlobs ? [...query.includeGlobs] : undefined,
+        includeNames: query.includeNames ?? true,
+        limit: query.limit,
+        matchMode: query.matchMode ?? "literal",
+        maxDepth: query.maxDepth,
+        path: query.path,
+        query: query.query,
+        wholeWord: query.wholeWord === true,
+      },
+      fetch: { signal },
+    })
+    if (response.error)
       throw new Error(`Search failed with status ${response.status}.`)
-    if (!response.body)
-      throw new Error("Search response did not include a body.")
+    if (!response.data)
+      throw new Error("Search response did not include a stream.")
 
-    for await (const event of parseSseStream(response.body)) {
+    for await (const event of parseEdenSseStream(response.data)) {
       if (signal?.aborted) return
 
       yield searchEventFromSse(event)
@@ -192,33 +208,7 @@ function shouldEmitDiskEvent(
   return !openBufferPaths.has(event.match.path)
 }
 
-function workspaceSearchUrl(query: WorkspaceSearchQuery) {
-  const url = new URL("/fs/find/events", fsServerUrl)
-  url.searchParams.set("entryType", query.entryType ?? "file")
-  url.searchParams.set("includeContent", String(query.includeContent))
-  if (query.includeNames !== undefined) {
-    url.searchParams.set("includeNames", String(query.includeNames))
-  }
-  url.searchParams.set("limit", String(query.limit))
-  url.searchParams.set("path", query.path)
-  url.searchParams.set("query", query.query)
-  url.searchParams.set("caseSensitive", String(query.caseSensitive === true))
-  url.searchParams.set("matchMode", query.matchMode ?? "literal")
-  url.searchParams.set("wholeWord", String(query.wholeWord === true))
-  for (const glob of query.includeGlobs ?? []) {
-    url.searchParams.append("includeGlobs", glob)
-  }
-  for (const glob of query.excludeGlobs ?? []) {
-    url.searchParams.append("excludeGlobs", glob)
-  }
-  if (query.maxDepth !== undefined) {
-    url.searchParams.set("maxDepth", String(query.maxDepth))
-  }
-
-  return url
-}
-
-function searchEventFromSse(event: ParsedSseEvent): WorkspaceSearchEvent {
+function searchEventFromSse(event: EdenSseEvent): WorkspaceSearchEvent {
   if (event.event === "match") return matchEvent(event.data)
   if (event.event === "done") return doneEventFromData(event.data)
   if (event.event === "error") throw new Error(searchEventError(event.data))

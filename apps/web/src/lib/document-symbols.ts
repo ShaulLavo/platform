@@ -1,4 +1,7 @@
-import { fsServerUrl } from "@/lib/fs-client"
+import {
+  connectLanguageServerSocket,
+  type EdenServerSocket,
+} from "@/lib/server-sockets"
 
 export type DocumentSymbolRange = {
   start: { line: number; character: number }
@@ -67,7 +70,7 @@ function requestDocumentSymbols({
       return
     }
 
-    const socket = new WebSocket(languageServerRoute(rootPath, path))
+    const socket = connectLanguageServerSocket({ path, rootPath })
     const requestId = 1
     let settled = false
 
@@ -95,7 +98,7 @@ function requestDocumentSymbols({
       )
     })
     socket.addEventListener("message", (event) => {
-      const response = parseJsonRpcResponse(event.data)
+      const response = parseJsonRpcResponse((event as MessageEvent).data)
       if (!response || response.id !== requestId) return
       if (response.error) {
         finish(() =>
@@ -116,7 +119,7 @@ function requestDocumentSymbols({
 }
 
 function sendOpenDocument(
-  socket: WebSocket,
+  socket: EdenServerSocket,
   path: string,
   text: string | null | undefined
 ) {
@@ -188,25 +191,15 @@ function isPosition(value: unknown) {
 }
 
 function parseJsonRpcResponse(value: unknown): JsonRpcResponse | null {
-  if (typeof value !== "string") return null
-
   try {
-    const parsed = JSON.parse(value) as unknown
+    const parsed =
+      typeof value === "string" ? (JSON.parse(value) as unknown) : value
     if (!parsed || typeof parsed !== "object") return null
 
     return parsed as JsonRpcResponse
   } catch {
     return null
   }
-}
-
-function languageServerRoute(rootPath: string, path: string) {
-  const url = new URL("/lsp", fsServerUrl)
-  if (url.protocol === "http:") url.protocol = "ws:"
-  if (url.protocol === "https:") url.protocol = "wss:"
-  url.searchParams.set("root", rootPath)
-  url.searchParams.set("path", path)
-  return url
 }
 
 function fileUriForPath(path: string) {

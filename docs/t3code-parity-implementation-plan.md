@@ -1,0 +1,969 @@
+# T3Code Parity Implementation Plan
+
+This plan turns the T3Code reference into large implementation phases for
+Platform. The goal is "T3Code parity-ish": copy the architectural shape and the
+important chat/runtime behaviors, while keeping Platform's stack:
+
+- Bun
+- Elysia/Eden
+- Drizzle
+- Valibot
+- React
+- Zustand
+- TanStack Query
+- existing `@workspace/ui` shadcn/Base UI components
+
+We are not copying Effect as a backend requirement. We are copying the boundaries:
+event store, projections, shell/detail streams, provider sessions, checkpoints,
+and a normalized client projection cache.
+
+Reference doc:
+
+- `docs/t3code-reference.md`
+
+Current Platform anchors:
+
+- `apps/server/src/app.ts`
+- `apps/server/src/db/schema.ts`
+- `apps/server/src/git/*`
+- `apps/server/src/fs/*`
+- `apps/server/src/terminal/*`
+- `packages/contracts/src/*`
+- `apps/web/src/App.tsx`
+- `apps/web/src/lib/query-client.ts`
+- `packages/ui/src/components/*`
+
+## Target Shape
+
+```mermaid
+flowchart TD
+  subgraph Server
+    API["Elysia/Eden HTTP + WS/SSE API"]
+    CMD["Serialized orchestration command runner"]
+    EV["orchestration_events"]
+    RC["command_receipts"]
+    PROJ["projection tables"]
+    SNAP["shell/detail snapshot queries"]
+    PRV["provider registry + sessions"]
+    GIT["Git/checkpoint/workspace services"]
+  end
+
+  subgraph Web
+    CONN["environment connection"]
+    STORE["normalized Zustand projection store"]
+    DETA["thread detail subscription cache"]
+    RQ["TanStack Query side reads"]
+    UI["left sidebar chat entry + panel"]
+    DRAFT["composer draft persistence"]
+  end
+
+  UI --> CONN
+  CONN --> API
+  API --> CMD
+  CMD --> EV
+  CMD --> PROJ
+  PROJ --> SNAP
+  SNAP --> API
+  API --> CONN
+  CONN --> STORE
+  DETA --> STORE
+  RQ --> API
+  PRV --> CMD
+  GIT --> CMD
+  DRAFT --> UI
+```
+
+## Phase 0: Scope Lock And Source Map
+
+Purpose:
+
+- Freeze the first parity target so we do not implement T3Code all at once.
+- Decide the first provider/runtime target.
+- Decide transport details.
+
+Locked decisions:
+
+- Transport: all-in on Eden. Use Eden for regular fetch-style commands and keep
+  the stream layer under the same Eden/Elysia API boundary, using WebSocket and
+  SSE where each fits best.
+- First provider adapter: Codex first. Mocks are allowed for automated tests, but
+  the product path starts with Codex.
+- First runtime mode: full access first. Keep supervised mode in the contracts
+  and data model so approvals/sandboxing can be added without reshaping threads.
+- First UI shape: add a chat symbol to the existing left sidebar/rail and render
+  chat as part of the left sidebar for now. Do not start with a right-side panel.
+- First persistence scope: one local backend environment. Remote environments
+  come later.
+
+Deliverables:
+
+- Finalized command/event/schema list for phase 1.
+- Codex-first provider/runtime assumptions for phase 7.
+- Full-access-first runtime mode contract with supervised placeholders.
+- Left-sidebar chat entry/panel UI target.
+- A short "not in v1" list.
+
+T3 source paths:
+
+- `docs/t3code-reference.md`
+- `references/t3code/apps/server/src/orchestration/Schemas.ts`
+- `references/t3code/apps/server/src/orchestration/decider.ts`
+- `references/t3code/apps/web/src/components/ChatView.tsx`
+- `references/t3code/apps/web/src/components/chat/ChatComposer.tsx`
+
+## Phase 1: Contracts And Persistence Foundation
+
+Purpose:
+
+- Add the durable backend data model that every later phase depends on.
+- Keep contracts in `packages/contracts` so web/server stay in sync.
+
+Platform target paths:
+
+- `packages/contracts/src/chat-*`
+- `packages/contracts/src/orchestration-*`
+- `apps/server/src/db/schema.ts`
+- `apps/server/src/db/migrations.ts`
+- `apps/server/src/orchestration/*`
+- `apps/server/src/persistence/*`
+
+Backend work:
+
+- Add branded IDs or opaque string types:
+  - `ProjectId`
+  - `ThreadId`
+  - `MessageId`
+  - `TurnId`
+  - `CommandId`
+  - `ProviderInstanceId`
+  - `ApprovalRequestId`
+  - `ProposedPlanId`
+- Add command schemas:
+  - project create/update/delete
+  - thread create/update/delete/archive
+  - thread turn start/interrupt
+  - approval respond
+  - user input respond
+  - proposed plan accept/follow-up
+- Add event schemas:
+  - project created/updated/deleted
+  - thread created/updated/deleted/reverted
+  - message sent
+  - activity appended
+  - session set
+  - turn started/completed/failed
+  - approval/user-input requested/resolved
+  - proposed plan upserted
+  - turn diff completed
+- Add SQLite/Drizzle tables:
+  - `orchestration_events`
+  - `orchestration_command_receipts`
+  - `projection_projects`
+  - `projection_threads`
+  - `projection_thread_messages`
+  - `projection_thread_activities`
+  - `projection_thread_sessions`
+  - `projection_thread_proposed_plans`
+  - `projection_turns`
+  - `projection_pending_approvals`
+  - `projection_state`
+  - `provider_session_runtime`
+- Add indexes for:
+  - events by sequence
+  - events by aggregate
+  - threads by project/deleted/created
+  - messages by thread/created
+  - activities by thread/created
+  - sessions by provider session
+  - pending approvals by thread/request
+
+Frontend work:
+
+- None beyond importing new contract types.
+
+Tests:
+
+- Schema validation tests.
+- Migration/table creation tests.
+- Event serialization round-trip tests.
+
+Done when:
+
+- Server can create an empty DB with all orchestration tables.
+- Contracts compile in web and server.
+- Event/command schema tests pass.
+
+T3 source paths:
+
+- `references/t3code/packages/contracts/src/*`
+- `references/t3code/apps/server/src/orchestration/Schemas.ts`
+- `references/t3code/apps/server/src/persistence/Migrations/001_OrchestrationEvents.ts`
+- `references/t3code/apps/server/src/persistence/Migrations/002_OrchestrationCommandReceipts.ts`
+- `references/t3code/apps/server/src/persistence/Migrations/004_ProviderSessionRuntime.ts`
+- `references/t3code/apps/server/src/persistence/Migrations/005_Projections.ts`
+- `references/t3code/apps/server/src/persistence/Migrations/013_ProjectionThreadProposedPlans.ts`
+- `references/t3code/apps/server/src/persistence/Migrations/023_ProjectionThreadShellSummary.ts`
+
+## Phase 2: Orchestration Core
+
+Purpose:
+
+- Build T3Code's backend truth model: command in, events out, projections update.
+
+Platform target paths:
+
+- `apps/server/src/orchestration/event-store.ts`
+- `apps/server/src/orchestration/command-receipts.ts`
+- `apps/server/src/orchestration/read-model.ts`
+- `apps/server/src/orchestration/projector.ts`
+- `apps/server/src/orchestration/decider.ts`
+- `apps/server/src/orchestration/engine.ts`
+- `apps/server/src/orchestration/projection-pipeline.ts`
+- `apps/server/src/orchestration/snapshot-query.ts`
+- `apps/server/src/orchestration/routes.ts`
+
+Backend work:
+
+- Implement append-only event store.
+- Implement command receipt dedupe.
+- Implement in-memory read model.
+- Implement pure projector over events.
+- Implement decider for minimal thread lifecycle:
+  - create project
+  - create thread
+  - start turn
+  - append user message
+  - set session state
+  - append assistant/runtime activity
+- Implement serialized command runner.
+- Implement durable projection pipeline.
+- Implement bootstrap:
+  - run projection catch-up
+  - load full snapshot into hot read model
+- Implement snapshot queries:
+  - full snapshot for engine bootstrap
+  - shell snapshot for sidebar
+  - thread detail snapshot by thread ID
+- Add sequence/version to snapshots and event batches.
+
+Frontend work:
+
+- None yet, except possibly a debug route/client to call the backend.
+
+Tests:
+
+- Command dedupe.
+- Decider emits expected events.
+- Projector rebuilds read model from events.
+- Projection pipeline persists expected rows.
+- Snapshot queries produce shell/detail shape.
+- Replay from event store yields same read model.
+
+Done when:
+
+- A server test can create a project/thread, dispatch a turn-start command, and
+  read back shell/detail snapshots.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts`
+- `references/t3code/apps/server/src/orchestration/decider.ts`
+- `references/t3code/apps/server/src/orchestration/projector.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProjectionPipeline.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts`
+- `references/t3code/apps/server/src/persistence/Layers/OrchestrationEventStore.ts`
+- `references/t3code/apps/server/src/persistence/Layers/OrchestrationCommandReceipts.ts`
+
+## Phase 3: Shell/Detail Transport
+
+Purpose:
+
+- Expose the projection model to the frontend the T3Code way.
+
+Platform target paths:
+
+- `apps/server/src/orchestration/routes.ts`
+- `apps/server/src/orchestration/streams.ts`
+- `apps/server/src/app.ts`
+- `apps/web/src/features/chat/transport/*`
+- `apps/web/src/features/chat/environment/*`
+
+Backend work:
+
+- Add Eden-backed command dispatch endpoint.
+- Add shell subscription:
+  - initial shell snapshot
+  - project/thread upsert/remove stream events
+- Add thread detail subscription:
+  - initial detail snapshot
+  - detail events scoped by thread ID
+- Convert domain events into shell events by querying projections.
+- Filter thread detail events to:
+  - message sent
+  - activity appended
+  - proposed plan upserted
+  - turn diff completed
+  - thread reverted
+  - session set
+- Add replay/resubscribe behavior for WebSocket streams.
+- Keep SSE available for one-way stream cases if it is simpler than a socket.
+
+Frontend work:
+
+- Add local environment connection abstraction.
+- Add typed Eden orchestration client.
+- Add reconnect behavior and stale sequence guards.
+
+Tests:
+
+- Shell stream emits initial snapshot.
+- Detail stream emits only target-thread events.
+- Out-of-order older snapshot/event is rejected client-side.
+- Reconnect can resubscribe and recover latest state.
+
+Done when:
+
+- A local Eden client can dispatch commands, subscribe to shell and one thread
+  detail stream, and see live events after dispatch.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/ws.ts`
+- `references/t3code/apps/web/src/rpc/wsRpcClient.ts`
+- `references/t3code/apps/web/src/rpc/wsTransport.ts`
+- `references/t3code/apps/web/src/environmentApi.ts`
+- `references/t3code/apps/web/src/environments/runtime/service.ts`
+
+## Phase 4: Frontend Projection Cache
+
+Purpose:
+
+- Implement the T3Code-style client cache with Zustand.
+- Keep it in memory; backend remains truth.
+
+Platform target paths:
+
+- `apps/web/src/features/chat/state/chat-projection-store.ts`
+- `apps/web/src/features/chat/state/chat-projection-selectors.ts`
+- `apps/web/src/features/chat/state/chat-projection-writers.ts`
+- `apps/web/src/features/chat/state/thread-detail-subscriptions.ts`
+- `apps/web/src/features/chat/state/chat-cache-constants.ts`
+
+Frontend work:
+
+- Add normalized store slices:
+  - projects
+  - thread shells
+  - thread IDs by project
+  - thread sessions
+  - thread turn states
+  - messages
+  - activities
+  - proposed plans
+  - turn diff summaries
+  - sidebar thread summaries
+- Add shell writer.
+- Add detail writer.
+- Add snapshot sync functions.
+- Add event apply functions.
+- Add sequence/version guards.
+- Add caps:
+  - 2,000 messages
+  - 500 checkpoints
+  - 200 proposed plans
+  - 500 activities
+- Add ref-counted thread detail subscription cache:
+  - 15 minute idle eviction
+  - max 32 cached detail subscriptions
+  - protect running/pending threads
+- Add sidebar prewarm helper for first 10 visible threads.
+
+Backend work:
+
+- Adjust snapshot/event shape as frontend needs become clear.
+
+Tests:
+
+- Shell snapshot preserves existing detail for still-present threads.
+- Deleted thread removes scoped state.
+- Detail snapshot updates only thread detail.
+- Caps trim arrays deterministically.
+- Detail subscription retain/release/eviction behavior.
+
+Done when:
+
+- Frontend can maintain chat state across shell/detail snapshots and live events
+  without React Query storing transcripts.
+
+T3 source paths:
+
+- `references/t3code/apps/web/src/store.ts`
+- `references/t3code/apps/web/src/storeSelectors.ts`
+- `references/t3code/apps/web/src/environments/runtime/service.ts`
+- `references/t3code/apps/web/src/components/Sidebar.logic.ts`
+- `references/t3code/apps/web/src/components/Sidebar.tsx`
+
+## Phase 5: Side Panel Chat V1
+
+Purpose:
+
+- Ship the first usable left-sidebar chat panel on top of the projection cache.
+
+Platform target paths:
+
+- `apps/web/src/features/chat/components/chat-sidebar-entry.tsx`
+- `apps/web/src/features/chat/components/chat-side-panel.tsx`
+- `apps/web/src/features/chat/components/thread-list.tsx`
+- `apps/web/src/features/chat/components/chat-view.tsx`
+- `apps/web/src/features/chat/components/chat-header.tsx`
+- `apps/web/src/features/chat/components/chat-composer.tsx`
+- `apps/web/src/features/chat/components/messages-timeline.tsx`
+- `apps/web/src/components/workspace/workspace-view.tsx`
+- `apps/web/src/App.tsx`
+
+Frontend work:
+
+- Add a chat symbol/button to the existing left sidebar or side rail.
+- Render chat as a left-sidebar panel for now.
+- Keep the layout narrow and sidebar-native; defer right-side panel/split-pane
+  layout work.
+- Add thread list from shell summaries.
+- Add create-thread flow.
+- Add active-thread view from detail selectors.
+- Add basic composer:
+  - textarea first
+  - send button
+  - stop button placeholder
+  - runtime mode selector placeholder
+  - model/provider placeholder
+- Add basic timeline:
+  - user messages
+  - assistant messages
+  - activities
+  - working state
+  - error state
+- Add optimistic user message.
+- Add failed-send restoration.
+- Add empty states and loading states.
+
+Backend work:
+
+- Support minimal commands needed by the UI.
+
+Tests:
+
+- Create thread from panel.
+- Send prompt.
+- See optimistic message.
+- Receive server message/event.
+- Failed send restores composer content.
+
+Done when:
+
+- User can click the chat symbol in the left sidebar, create a thread, send a
+  prompt, and see a backend-owned transcript update through projection streams.
+
+T3 source paths:
+
+- `references/t3code/apps/web/src/components/ChatView.tsx`
+- `references/t3code/apps/web/src/components/ChatView.logic.ts`
+- `references/t3code/apps/web/src/components/chat/ChatHeader.tsx`
+- `references/t3code/apps/web/src/components/chat/MessagesTimeline.tsx`
+- `references/t3code/apps/web/src/components/chat/MessagesTimeline.logic.ts`
+
+## Phase 6: Composer, Drafts, Attachments, Mentions
+
+Purpose:
+
+- Bring the composer closer to T3Code without blocking phase 5.
+
+Platform target paths:
+
+- `apps/web/src/features/chat/components/chat-composer.tsx`
+- `apps/web/src/features/chat/components/composer-command-menu.tsx`
+- `apps/web/src/features/chat/components/provider-model-picker.tsx`
+- `apps/web/src/features/chat/state/composer-draft-store.ts`
+- `apps/web/src/features/chat/lib/composer-logic.ts`
+- `apps/web/src/features/chat/lib/composer-attachments.ts`
+- `apps/web/src/features/chat/lib/project-entry-query.ts`
+
+Frontend work:
+
+- Add versioned draft store:
+  - prompt
+  - selected model/provider
+  - runtime mode
+  - interaction mode
+  - terminal contexts
+  - image attachment metadata
+  - draft-to-thread promotion state
+- Add debounced local persistence with explicit flush on unload.
+- Add image paste/drop support.
+- Store pending image attachments as data URLs when needed.
+- Revoke object URLs.
+- Add project file/folder mentions.
+- Add slash command menu.
+- Decide whether to stay textarea or move to Lexical:
+  - v1 can stay textarea with external chips
+  - Lexical can come when inline chips become necessary
+
+Backend work:
+
+- Add attachment materialization if server-side images are in scope.
+- Add filesystem/project search endpoint reuse if needed.
+
+Tests:
+
+- Draft persists and hydrates.
+- Draft clears after successful send.
+- Failed send restores prompt/images.
+- Attachment persistence handles storage failure.
+- Mentions resolve to stable paths.
+
+Done when:
+
+- Composer survives reloads, handles attachments, and can stage project context.
+
+T3 source paths:
+
+- `references/t3code/apps/web/src/composerDraftStore.ts`
+- `references/t3code/apps/web/src/components/chat/ChatComposer.tsx`
+- `references/t3code/apps/web/src/components/ComposerPromptEditor.tsx`
+- `references/t3code/apps/web/src/components/chat/ComposerCommandMenu.tsx`
+- `references/t3code/apps/web/src/components/chat/ProviderModelPicker.tsx`
+- `references/t3code/apps/web/src/components/composerInlineChip.ts`
+- `references/t3code/apps/web/src/lib/projectReactQuery.ts`
+
+## Phase 7: Provider Runtime V1
+
+Purpose:
+
+- Add the first real T3Code-shaped provider runtime, starting with Codex.
+
+Platform target paths:
+
+- `apps/server/src/provider/*`
+- `apps/server/src/provider/adapters/*`
+- `apps/server/src/orchestration/provider-runtime-ingestion.ts`
+- `apps/server/src/orchestration/provider-command-reactor.ts`
+- `apps/server/src/orchestration/runtime-receipts.ts`
+- `packages/contracts/src/provider-*`
+- `apps/web/src/features/chat/components/provider-model-picker.tsx`
+
+Backend work:
+
+- Add provider instance settings:
+  - driver kind
+  - provider instance ID
+  - display label
+  - auth/status
+  - model list
+  - traits/capabilities
+- Add provider status cache.
+- Add provider registry.
+- Add provider session runtime persistence.
+- Add Codex provider adapter first.
+- Add command reactor:
+  - start turn
+  - interrupt turn
+  - respond approval
+  - respond user input
+  - stop session
+- Add runtime ingestion:
+  - stream text deltas
+  - buffer assistant text
+  - append activities
+  - upsert proposed plans
+  - handle completion/failure
+- Add dedupe for provider turn-start keys.
+
+Frontend work:
+
+- Render provider status.
+- Render provider/model picker.
+- Lock provider selection for already-started threads when needed.
+- Surface provider errors in thread state.
+
+Tests:
+
+- Provider registry hydrates status.
+- Start turn creates provider session runtime.
+- Runtime deltas become message events.
+- Duplicate runtime events are deduped.
+- Interrupt and failure paths update projections.
+- Mock provider remains available only as a deterministic test harness.
+
+Done when:
+
+- Codex can run a full-access thread turn and stream assistant output into the
+  T3-style projection pipeline.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/provider/ProviderDriver.ts`
+- `references/t3code/apps/server/src/provider/providerStatusCache.ts`
+- `references/t3code/apps/server/src/provider/Layers/ProviderRegistry.ts`
+- `references/t3code/apps/server/src/provider/Layers/ProviderInstanceRegistryLive.ts`
+- `references/t3code/apps/server/src/provider/Layers/ProviderService.ts`
+- `references/t3code/apps/server/src/provider/Layers/ProviderSessionDirectory.ts`
+- `references/t3code/apps/server/src/persistence/Layers/ProviderSessionRuntime.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts`
+
+## Phase 8: Approvals, User Input, Plans
+
+Purpose:
+
+- Implement the stateful agent interaction paths that make T3Code more than a
+  basic chat box.
+
+Platform target paths:
+
+- `apps/server/src/orchestration/approval-*`
+- `apps/server/src/orchestration/proposed-plan-*`
+- `apps/web/src/features/chat/components/composer-pending-approval-panel.tsx`
+- `apps/web/src/features/chat/components/composer-pending-user-input-panel.tsx`
+- `apps/web/src/features/chat/components/proposed-plan-card.tsx`
+- `apps/web/src/features/chat/lib/session-logic.ts`
+
+Backend work:
+
+- Add pending approval projection behavior.
+- Add pending user input projection behavior.
+- Add proposed plan projection behavior.
+- Add commands:
+  - approval respond
+  - user input respond
+  - plan follow-up
+  - plan implement
+- Make pending states backend-owned facts.
+
+Frontend work:
+
+- Derive open approvals/user-input from activities/projections.
+- Change composer surface based on pending state.
+- Add approval action buttons.
+- Add user-input answer flow.
+- Add proposed plan card and follow-up CTA.
+- Add plan implementation path into a new or existing thread.
+
+Tests:
+
+- Pending approval appears after provider event.
+- Approval response dispatches command and clears pending state.
+- User input request blocks normal send and accepts response.
+- Proposed plan upserts and follow-up sends correct command.
+
+Done when:
+
+- Tool approval/user-input/plan loops are backend-owned and visible in chat UI.
+
+T3 source paths:
+
+- `references/t3code/apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx`
+- `references/t3code/apps/web/src/components/chat/ComposerPendingApprovalActions.tsx`
+- `references/t3code/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx`
+- `references/t3code/apps/web/src/components/chat/ComposerPlanFollowUpBanner.tsx`
+- `references/t3code/apps/web/src/components/chat/ProposedPlanCard.tsx`
+- `references/t3code/apps/server/src/orchestration/Layers/ProjectionPipeline.ts`
+- `references/t3code/apps/server/src/orchestration/decider.ts`
+
+## Phase 9: Checkpoints, Diffs, Revert, Git Integration
+
+Purpose:
+
+- Add the T3Code agent workflow around file changes.
+
+Platform target paths:
+
+- `apps/server/src/checkpointing/*`
+- `apps/server/src/orchestration/checkpoint-reactor.ts`
+- `apps/server/src/git/*`
+- `apps/web/src/features/chat/components/changed-files-tree.tsx`
+- `apps/web/src/features/chat/components/diff-sidebar.tsx`
+- `apps/web/src/features/chat/lib/checkpoint-diff-query.ts`
+
+Backend work:
+
+- Add hidden Git-ref checkpoint store.
+- Capture checkpoint at turn boundaries.
+- Add checkpoint projection into thread turn state.
+- Add checkpoint diff query by turn range.
+- Add full-thread diff query.
+- Add revert-to-checkpoint command.
+- Integrate with existing Platform Git service where possible.
+- Add Git status invalidation after checkpoint/revert operations.
+
+Frontend work:
+
+- Show changed files per assistant turn.
+- Show diff panel/sidebar.
+- Add revert-to-message/checkpoint action.
+- Cache checkpoint diffs with TanStack Query using infinite stale time for
+  immutable ranges.
+
+Tests:
+
+- Checkpoint captures workspace state.
+- Diff query returns expected patch.
+- Revert restores files.
+- Projection updates after revert.
+- UI requests and caches diff by stable key.
+
+Done when:
+
+- Agent turns have checkpoints, changed-file summaries, diff viewing, and revert.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/checkpointing/Layers/CheckpointStore.ts`
+- `references/t3code/apps/server/src/checkpointing/Layers/CheckpointDiffQuery.ts`
+- `references/t3code/apps/server/src/checkpointing/Utils.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/CheckpointReactor.ts`
+- `references/t3code/apps/web/src/lib/providerReactQuery.ts`
+- `references/t3code/apps/web/src/components/chat/ChangedFilesTree.tsx`
+- `references/t3code/apps/web/src/components/DiffWorkerPoolProvider.tsx`
+
+## Phase 10: Remote Mode And Auth
+
+Purpose:
+
+- Add T3Code-style saved remote environments after local mode is stable.
+
+Platform target paths:
+
+- `apps/server/src/auth/*`
+- `apps/server/src/environment/*`
+- `apps/web/src/features/environments/*`
+- `apps/web/src/features/chat/environment/*`
+
+Backend work:
+
+- Add bootstrap credential/session credential model.
+- Add bearer/session token auth for remote WebSocket/API.
+- Add server environment descriptor.
+- Add pairing flow if needed.
+- Scope events/snapshots by environment.
+
+Frontend work:
+
+- Add saved environment registry.
+- Persist remote environment metadata locally.
+- Store remote bearer token securely where possible.
+- Connect/disconnect/reconnect saved environments.
+- Show auth/connection state in UI.
+- Ensure client chat cache remains in-memory and hydrates from remote snapshots.
+
+Tests:
+
+- Add saved environment.
+- Persist and hydrate saved environment metadata.
+- Missing credential shows requires-auth state.
+- Remote shell/detail subscriptions hydrate after reconnect.
+
+Done when:
+
+- Platform can connect to a remote backend environment and hydrate chat via the
+  same shell/detail projection streams.
+
+T3 source paths:
+
+- `references/t3code/apps/web/src/environments/runtime/catalog.ts`
+- `references/t3code/apps/web/src/environments/runtime/service.ts`
+- `references/t3code/apps/web/src/environments/remote/api.ts`
+- `references/t3code/apps/server/src/auth/Layers/ServerAuth.ts`
+- `references/t3code/apps/server/src/auth/Layers/SessionCredentialService.ts`
+- `references/t3code/apps/server/src/auth/Layers/BootstrapCredentialService.ts`
+- `references/t3code/apps/server/src/auth/Layers/AuthControlPlane.ts`
+
+## Phase 11: Performance Caches And Hardening
+
+Purpose:
+
+- Add the bounded service caches and UI performance details that make T3Code
+  feel stable under real usage.
+
+Platform target paths:
+
+- `apps/server/src/cache/*`
+- `apps/server/src/workspace/*`
+- `apps/server/src/project/*`
+- `apps/web/src/features/chat/lib/markdown/*`
+- `apps/web/src/features/chat/components/messages-timeline.tsx`
+- `apps/web/src/features/chat/components/chat-markdown.tsx`
+
+Backend work:
+
+- Add small TTL/LRU helper.
+- Add SQLite prepared statement cache if useful with current DB layer.
+- Add provider status disk cache.
+- Add Git status 1s cache and remote polling while subscribed.
+- Add Git upstream fetch throttle.
+- Add workspace entry cache:
+  - 15s TTL
+  - max 4 workspace keys
+  - max 25k entries
+- Add repository identity cache:
+  - 512 entries
+  - 1 minute positive/negative TTL
+- Add keybinding/config cache if needed for agent commands.
+
+Frontend work:
+
+- Add markdown renderer with code/file link support.
+- Add markdown highlight LRU:
+  - 500 entries
+  - 50MB
+  - no caching streaming code blocks
+- Add virtualized message timeline if native scroll starts struggling.
+- Add diff worker pool if heavy diffs move to the client.
+- Add render profiling around streaming messages.
+
+Tests:
+
+- Cache invalidation tests.
+- Failure TTL tests for Git/workspace/repo identity.
+- Long-thread timeline render tests.
+- Markdown/file link tests.
+- Reconnect and replay tests.
+
+Done when:
+
+- Long threads, large workspaces, remote Git status, and streaming output do not
+  create obvious UI or backend churn.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/persistence/NodeSqliteClient.ts`
+- `references/t3code/apps/server/src/git/Layers/GitManager.ts`
+- `references/t3code/apps/server/src/git/Layers/GitCore.ts`
+- `references/t3code/apps/server/src/git/Layers/GitStatusBroadcaster.ts`
+- `references/t3code/apps/server/src/workspace/Layers/WorkspaceEntries.ts`
+- `references/t3code/apps/server/src/project/Layers/RepositoryIdentityResolver.ts`
+- `references/t3code/apps/web/src/components/ChatMarkdown.tsx`
+- `references/t3code/apps/web/src/lib/lruCache.ts`
+- `references/t3code/apps/web/src/components/chat/MessagesTimeline.tsx`
+
+## Phase 12: Observability, Tests, Migration Safety
+
+Purpose:
+
+- Make the new system debuggable enough to maintain.
+
+Platform target paths:
+
+- `apps/server/src/observability/*`
+- `apps/server/src/orchestration/*.test.ts`
+- `apps/web/src/features/chat/**/*.test.ts`
+- `apps/web/src/features/chat/**/*.browser.tsx`
+
+Backend work:
+
+- Add structured logs for command dispatch.
+- Add timings:
+  - command queue wait
+  - command duration
+  - projection duration
+  - provider turn duration
+  - stream subscriber count
+- Add replay/debug endpoint for local development if safe.
+- Add migration rollback/rebuild notes.
+- Add projection rebuild command for dev.
+
+Frontend work:
+
+- Add debug panel or dev-only logging for:
+  - active environment
+  - projection sequence
+  - active detail subscriptions
+  - current thread status
+- Add browser tests for major chat flows.
+
+Tests:
+
+- End-to-end local thread run.
+- Replay from empty projection tables.
+- Reconnect during stream.
+- Server restart during idle thread.
+- Provider failure during stream.
+- Approval/user input interruption.
+- Revert and checkpoint cleanup.
+
+Done when:
+
+- We can diagnose state bugs without guessing whether truth lives in UI,
+  projection tables, or event store.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/observability/*`
+- `references/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`
+- `references/t3code/apps/web/src/store.test.ts`
+- `references/t3code/apps/web/src/composerDraftStore.test.ts`
+- `references/t3code/apps/web/src/components/chat/MessagesTimeline.test.tsx`
+
+## Parallel Workstreams
+
+Some work can run in parallel once phase 1 contracts exist:
+
+- Backend orchestration core and frontend side panel skeleton.
+- Provider registry and composer model picker.
+- Checkpoint store and changed-files UI.
+- Draft persistence and projection store selectors.
+- Git/workspace service caches and React Query side reads.
+
+Do not parallelize these before the contracts settle:
+
+- decider command/event names
+- projection table schema
+- shell/detail snapshot shapes
+- provider session runtime shape
+
+## First Vertical Slice
+
+The first useful end-to-end slice should be deliberately small:
+
+1. Create project.
+2. Create thread.
+3. Subscribe to shell.
+4. Subscribe to thread detail.
+5. Send text prompt.
+6. Append optimistic user message.
+7. Backend records command/events/projections.
+8. Codex provider emits assistant text. Automated tests may use a deterministic
+   mock adapter for this same runtime interface.
+9. UI receives detail event and reconciles transcript.
+
+This proves the hardest architecture: backend truth, projections, streams, client
+cache, and side panel UI.
+
+## Risk Register
+
+High risks:
+
+- Building too much composer/provider UX before event/projection truth exists.
+- Letting React Query become the chat transcript cache.
+- Making the sidebar subscribe to full detail for every thread.
+- Persisting remote chat data locally and creating two sources of truth.
+- Adding provider-specific shortcuts before provider instance abstraction exists.
+- Under-testing replay/reconnect/revert paths.
+
+Mitigations:
+
+- Keep phase 1 and phase 2 narrow and test-heavy.
+- Add the projection store before fancy UI.
+- Use a mock provider only as a deterministic test harness; product runtime
+  starts with Codex.
+- Keep remote mode after local mode.
+- Keep all caches bounded from the first implementation.
+
+## Open Decisions
+
+- Whether composer v1 uses textarea plus external chips or Lexical immediately.
+- Whether hidden Git refs are acceptable for every workspace or should be
+  opt-in.
+- Exact supervised-mode policy after full-access v1.
+- How much auth is needed before remote mode.
+- Whether to add TanStack DB later for frontend projection collections after the
+  Zustand version is proven.

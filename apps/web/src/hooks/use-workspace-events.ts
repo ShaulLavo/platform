@@ -13,11 +13,11 @@ import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspac
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
 import { fetchFile, fetchTree } from "@/lib/file-server"
 import type { FileResult } from "@/lib/file-system-types"
-import { fsServerUrl } from "@/lib/fs-client"
+import { fsClient } from "@/lib/fs-client"
 import { parseDiffDocumentId } from "@/features/git/diff-document"
 import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
 import { fileSystemKeys, gitKeys } from "@/lib/query-keys"
-import { parseSseStream } from "@/lib/sse"
+import { parseEdenSseStream } from "@/lib/eden-events"
 import { toTreePath } from "@/lib/path-formatters"
 import {
   planFetchedOpenFileRefresh,
@@ -713,24 +713,21 @@ async function streamWorkspaceEvents(
   signal: AbortSignal,
   onMessage: (message: WatchServerMessage) => void
 ) {
-  const response = await fetch(workspaceEventsUrl(rootPath), { signal })
-  if (!response.ok)
+  const response = await fsClient.fs.events.get({
+    query: { path: rootPath },
+    fetch: { signal },
+  })
+  if (response.error)
     throw new Error(`File watcher failed with status ${response.status}`)
-  if (!response.body)
-    throw new Error("File watcher response did not include a body.")
+  if (!response.data)
+    throw new Error("File watcher response did not include a stream.")
 
-  for await (const event of parseSseStream(response.body)) {
+  for await (const event of parseEdenSseStream(response.data)) {
     const message = watchServerMessage(event.data)
     if (!message) continue
 
     onMessage(message)
   }
-}
-
-function workspaceEventsUrl(rootPath: string) {
-  const url = new URL("/fs/events", fsServerUrl)
-  url.searchParams.set("path", rootPath)
-  return url
 }
 
 function watchServerMessage(data: unknown): WatchServerMessage | null {

@@ -8,7 +8,8 @@ import type {
 import { createLanguageServerPlugin } from "@editor/language-server/websocket"
 import { useEffect, useMemo, useState } from "react"
 
-import { fsServerUrl } from "@/lib/fs-client"
+import { fsClient, fsServerUrl } from "@/lib/fs-client"
+import { EdenLanguageServerWebSocket } from "@/lib/server-sockets"
 
 type UseLanguageServerPluginOptions = {
   enabled?: boolean
@@ -33,22 +34,24 @@ export function useLanguageServerPlugin({
   const [matchState, setMatchState] = useState<LanguageServerMatchState | null>(
     null
   )
-  const match = matchState?.key === matchKey ? matchState.match : null
+  const match =
+    enabled && matchState?.key === matchKey ? matchState.match : null
 
   useEffect(() => {
-    if (!enabled) {
-      setMatchState({ key: matchKey, match: null })
-      return
-    }
+    if (!enabled) return
 
     const controller = new AbortController()
-    fetch(languageServerMatchRoute(rootPath, filePath), {
-      signal: controller.signal,
-    })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((value: unknown) => {
+    fsClient.lsp.match
+      .get({
+        query: { path: filePath, root: rootPath },
+        fetch: { signal: controller.signal },
+      })
+      .then((response) => {
         if (!controller.signal.aborted) {
-          setMatchState({ key: matchKey, match: languageServerMatch(value) })
+          setMatchState({
+            key: matchKey,
+            match: response.error ? null : languageServerMatch(response.data),
+          })
         }
       })
       .catch(() => {
@@ -66,6 +69,9 @@ export function useLanguageServerPlugin({
     return createLanguageServerPlugin({
       rootUri: fileUriForPath(rootPath),
       webSocketRoute: languageServerRoute(rootPath, filePath, match.serverId),
+      webSocketTransportOptions: {
+        WebSocketCtor: EdenLanguageServerWebSocket,
+      },
       onStatusChange: setLanguageServerStatus,
       onDiagnostics: setLanguageServerDiagnostics,
       onOpenDefinition,
@@ -98,13 +104,6 @@ const idleLanguageServerPlugin: LanguageServerPlugin = {
 
 function languageServerMatchKey(rootPath: string, filePath: string) {
   return `${rootPath}\u0000${filePath}`
-}
-
-function languageServerMatchRoute(rootPath: string, filePath: string) {
-  const url = new URL("/lsp/match", fsServerUrl)
-  url.searchParams.set("root", rootPath)
-  url.searchParams.set("path", filePath)
-  return url
 }
 
 function languageServerRoute(

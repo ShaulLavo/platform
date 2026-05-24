@@ -1,4 +1,4 @@
-import { fsClient, fsServerUrl } from "@/lib/fs-client"
+import { fsClient } from "@/lib/fs-client"
 import type {
   FindMatch,
   FsEntry,
@@ -12,7 +12,7 @@ import type {
 } from "@/lib/file-system-types"
 import { isDirectoryEntry } from "@/lib/file-system-types"
 import { filePickerKeys } from "@/lib/query-keys"
-import { parseSseStream, type ParsedSseEvent } from "@/lib/sse"
+import { parseEdenSseStream, type EdenSseEvent } from "@/lib/eden-events"
 import {
   useMutation,
   useQuery,
@@ -27,7 +27,6 @@ import {
   compareSearchEntries,
   errorMessage,
   loadingLoadState,
-  rawRpcErrorMessage,
   rpcErrorMessage,
   type DirectoryFsEntry,
   type FilePickerMode,
@@ -232,7 +231,13 @@ async function fetchServerInfo(signal: AbortSignal) {
 }
 
 async function fetchCurrentEntry(path: string, signal: AbortSignal) {
-  const entry = await fetchJson<StatResult>(fsUrl("/fs/stat", { path }), signal)
+  const response = await fsClient.fs.stat.get({
+    query: { path },
+    fetch: { signal },
+  })
+  if (response.error) throw new Error(rpcErrorMessage(response.error))
+
+  const entry = response.data as StatResult
   if (!isDirectoryEntry(entry)) {
     throw new Error("The current path is not a folder.")
   }
@@ -245,12 +250,13 @@ async function fetchCurrentEntry(path: string, signal: AbortSignal) {
 }
 
 async function fetchTreeEntries(path: string, signal: AbortSignal) {
-  const result = await fetchJson<TreeResult>(
-    fsUrl("/fs/tree", { depth: "1", path }),
-    signal
-  )
+  const response = await fsClient.fs.tree.get({
+    query: { depth: 1, path },
+    fetch: { signal },
+  })
+  if (response.error) throw new Error(rpcErrorMessage(response.error))
 
-  return result.entries
+  return (response.data as TreeResult).entries
 }
 
 async function fetchRecentEntries(signal: AbortSignal) {
@@ -336,7 +342,7 @@ async function streamFindScope(
 }
 
 function appendFindMatch(
-  event: ParsedSseEvent,
+  event: EdenSseEvent,
   matches: FindMatch[],
   seenPaths: Set<string>,
   scope: SearchScope
@@ -370,50 +376,33 @@ async function* streamFindEvents(
   query: string,
   mode: FilePickerMode,
   signal: AbortSignal
-): AsyncGenerator<ParsedSseEvent> {
-  const response = await fetch(findEventsUrl(path, query, mode), {
-    signal,
+): AsyncGenerator<EdenSseEvent> {
+  const response = await fsClient.fs.find.events.get({
+    query: {
+      caseSensitive: false,
+      entryType: searchEntryType(mode),
+      includeContent: false,
+      includeNames: true,
+      limit: SEARCH_LIMIT,
+      matchMode: "literal",
+      path,
+      query,
+      wholeWord: false,
+    },
+    fetch: { signal },
   })
-  if (!response.ok)
+  if (response.error)
     throw new Error(`Search failed with status ${response.status}`)
-  if (!response.body) throw new Error("Search response did not include a body.")
+  if (!response.data)
+    throw new Error("Search response did not include a stream.")
 
-  yield* parseSseStream(response.body)
-}
-
-function findEventsUrl(path: string, query: string, mode: FilePickerMode) {
-  return fsUrl("/fs/find/events", {
-    entryType: searchEntryType(mode),
-    includeContent: "false",
-    limit: String(SEARCH_LIMIT),
-    path,
-    query,
-  })
+  yield* parseEdenSseStream(response.data)
 }
 
 function searchEntryType(mode: FilePickerMode) {
   if (mode === "folder") return "directory"
 
   return undefined
-}
-
-async function fetchJson<T>(url: URL, signal: AbortSignal) {
-  const response = await fetch(url, { signal })
-  const payload = await response.json().catch(() => null)
-
-  if (!response.ok) throw new Error(rawRpcErrorMessage(payload))
-
-  return payload as T
-}
-
-function fsUrl(pathname: string, params: Record<string, string | undefined>) {
-  const url = new URL(pathname, fsServerUrl)
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined) continue
-    url.searchParams.set(key, value)
-  }
-
-  return url
 }
 
 function scopedSearchSignal(signal: AbortSignal, timeoutMs: number | null) {

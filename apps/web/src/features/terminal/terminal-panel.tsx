@@ -8,11 +8,12 @@ import { useEffect, useRef, type ComponentPropsWithoutRef } from "react"
 
 import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
 import { reportError, toClientError } from "@/lib/client-error-taxonomy"
-
 import {
-  sendTerminalClientMessage,
-  terminalSocketUrl,
-} from "./terminal-socket"
+  connectTerminalSocket,
+  type EdenServerSocket,
+} from "@/lib/server-sockets"
+
+import { sendTerminalClientMessage } from "./terminal-socket"
 
 type TerminalDimensions = {
   cols: number
@@ -98,7 +99,7 @@ function mountTerminal({
   let dataDisposable: IDisposable | null = null
   let fitAddon: FitAddon | null = null
   let resizeDisposable: IDisposable | null = null
-  let socket: WebSocket | null = null
+  let socket: EdenServerSocket | null = null
   let terminal: Terminal | null = null
   let terminalDimensions: TerminalDimensions | null = null
 
@@ -121,7 +122,7 @@ function mountTerminal({
         terminalDimensions = dimensions
         sendTerminalResize(socket, dimensions)
       })
-      socket = connectTerminalSocket({
+      socket = openTerminalSocket({
         getTerminalDimensions: () => terminalDimensions,
         isCancelled: () => cancelled,
         rootPath,
@@ -145,7 +146,7 @@ function mountTerminal({
   }
 }
 
-function connectTerminalSocket({
+function openTerminalSocket({
   getTerminalDimensions,
   isCancelled,
   rootPath,
@@ -156,7 +157,7 @@ function connectTerminalSocket({
   rootPath: string
   terminal: Terminal
 }) {
-  const socket = new WebSocket(terminalSocketUrl(rootPath))
+  const socket = connectTerminalSocket(rootPath)
 
   socket.addEventListener("open", () => {
     if (isCancelled()) return
@@ -166,7 +167,7 @@ function connectTerminalSocket({
   socket.addEventListener("message", (event) => {
     if (isCancelled()) return
 
-    const message = parseTerminalServerMessage(event.data)
+    const message = parseTerminalServerMessage((event as MessageEvent).data)
     if (!message) return
 
     handleTerminalServerMessage({
@@ -228,7 +229,7 @@ function initializeGhostty() {
 }
 
 function sendTerminalResize(
-  socket: WebSocket | null,
+  socket: EdenServerSocket | null,
   dimensions: TerminalDimensions | null
 ) {
   if (!dimensions) return false
@@ -240,10 +241,10 @@ function sendTerminalResize(
   })
 }
 
-function closeTerminalSocket(socket: WebSocket | null) {
+function closeTerminalSocket(socket: EdenServerSocket | null) {
   if (!socket) return
-  if (socket.readyState === WebSocket.CLOSED) return
-  if (socket.readyState === WebSocket.CLOSING) return
+  if (socket.readyState === 3) return
+  if (socket.readyState === 2) return
 
   socket.close()
 }

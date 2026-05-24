@@ -1,25 +1,18 @@
 import type { TerminalClientMessage } from "@workspace/contracts"
 
-import { fsServerUrl } from "@/lib/fs-client"
+import type { EdenServerSocket } from "@/lib/server-sockets"
 
-export function terminalSocketUrl(rootPath: string, serverUrl = fsServerUrl) {
-  const url = new URL("/terminal", serverUrl)
-  if (url.protocol === "http:") url.protocol = "ws:"
-  if (url.protocol === "https:") url.protocol = "wss:"
-  url.searchParams.set("root", rootPath)
-
-  return url.toString()
-}
+const WEB_SOCKET_OPEN = 1
 
 export function encodeTerminalClientMessage(message: TerminalClientMessage) {
   return JSON.stringify(message)
 }
 
 export function sendTerminalClientMessage(
-  socket: WebSocket | null,
+  socket: EdenServerSocket | null,
   message: TerminalClientMessage
 ) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return false
+  if (!socket || socket.readyState !== WEB_SOCKET_OPEN) return false
 
   socket.send(encodeTerminalClientMessage(message))
   return true

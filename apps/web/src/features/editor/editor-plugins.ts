@@ -87,6 +87,8 @@ export function createEditorPlugins(
 export function createEditorSyntaxHighlightingPlugins(
   _options: EditorSyntaxHighlightingOptions = {}
 ): readonly EditorPlugin[] {
+  void _options
+
   return [
     javaScript({ jsx: true }),
     typeScript({ tsx: true }),
@@ -100,6 +102,8 @@ export function createEditorSyntaxHighlightingPlugins(
 export function createEditorDiffSyntaxBackend(
   _options: EditorSyntaxHighlightingOptions = {}
 ): DiffSyntaxBackend {
+  void _options
+
   return {
     kind: "tree-sitter",
     provider: editorTreeSitterSyntaxProvider(),
