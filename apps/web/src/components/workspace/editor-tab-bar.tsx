@@ -79,6 +79,7 @@ import {
 import { useStatus } from '@/features/git/hooks'
 import { gitStatusSymbol, type GitSymbolSource } from '@/features/git/status-symbols'
 import type { FileStatus } from '@/features/git/types'
+import { reportClientError } from '@/lib/client-error-reporting'
 import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
 import { basename, displayPath } from '@/lib/path-formatters'
 import { Button } from '@workspace/ui/components/button'
@@ -758,7 +759,13 @@ async function copyTextToClipboard(text: string, label: string) {
     await navigator.clipboard.writeText(text)
     toast.success(`Copied ${label}`)
   } catch (error) {
-    console.error(error)
+    reportClientError({
+      area: 'editor-tabs',
+      cause: error,
+      context: { label },
+      message: `Could not copy ${label}`,
+      operation: 'copy-path',
+    })
     toast.error(`Could not copy ${label}`)
   }
 }

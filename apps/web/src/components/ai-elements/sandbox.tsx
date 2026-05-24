@@ -8,7 +8,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@workspace/ui/components/tabs'
 import { cn } from '@workspace/ui/lib/utils'
 import type { ToolUIPart } from 'ai'
-import { ChevronDownIcon, Code } from 'lucide-react'
+import { CaretDownIcon, CodeIcon as Code } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 
 import { getStatusBadge } from './tool'
@@ -39,7 +39,7 @@ export const SandboxHeader = ({ className, title, state, ...props }: SandboxHead
       <span className='text-sm font-medium'>{title}</span>
       {getStatusBadge(state)}
     </div>
-    <ChevronDownIcon className='text-muted-foreground size-4 transition-transform group-data-[state=open]:rotate-180' />
+    <CaretDownIcon className='text-muted-foreground size-4 transition-transform group-data-[state=open]:rotate-180' />
   </CollapsibleTrigger>
 )
 

@@ -10,7 +10,11 @@ import {
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronDownIcon, ExternalLinkIcon, MessageCircleIcon } from 'lucide-react'
+import {
+  CaretDownIcon,
+  ArrowSquareOutIcon as ExternalLinkIcon,
+  ChatCircleIcon as MessageCircleIcon,
+} from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { createContext, useContext, useMemo } from 'react'
 
@@ -211,7 +215,7 @@ export const OpenInTrigger = ({ children, ...props }: OpenInTriggerProps) => (
     {children ?? (
       <Button type='button' variant='outline'>
         Open in chat
-        <ChevronDownIcon className='size-4' />
+        <CaretDownIcon className='size-4' />
       </Button>
     )}
   </DropdownMenuTrigger>

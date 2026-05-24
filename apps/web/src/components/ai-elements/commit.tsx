@@ -8,7 +8,14 @@ import {
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
 import { cn } from '@workspace/ui/lib/utils'
-import { CheckIcon, CopyIcon, FileIcon, GitCommitIcon, MinusIcon, PlusIcon } from 'lucide-react'
+import {
+  CheckIcon,
+  CopyIcon,
+  FileIcon,
+  GitCommitIcon,
+  MinusIcon,
+  PlusIcon,
+} from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 

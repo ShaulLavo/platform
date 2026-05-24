@@ -13,6 +13,17 @@ export type FsErrorCode =
   | 'FILE_TOO_LARGE'
   | 'OPERATION_FAILED'
 
+const redactedDiagnosticValue = '[redacted]'
+const sensitiveCauseFields = new Set([
+  'absolutePath',
+  'cwd',
+  'dest',
+  'destination',
+  'fileName',
+  'filename',
+  'path',
+])
+
 const statusByCode: Record<FsErrorCode, number> = {
   UNAUTHORIZED: 401,
   FORBIDDEN_ORIGIN: 403,
@@ -55,7 +66,7 @@ export class FsError extends Error {
     this.name = 'FsError'
     this.code = code
     this.statusCode = statusByCode[code]
-    this.cause = cause
+    this.cause = sanitizeCause(cause)
   }
 }
 
@@ -89,4 +100,52 @@ function nodeErrorCode(error: unknown) {
 
   const code = error.code
   return typeof code === 'string' ? code : null
+}
+
+function sanitizeCause(cause: unknown, seen = new WeakSet<object>()): unknown {
+  if (cause === undefined) return undefined
+  if (cause instanceof Error) return sanitizeCauseError(cause, seen)
+  if (Array.isArray(cause)) return cause.map((value) => sanitizeCause(value, seen))
+  if (!isRecord(cause)) return cause
+  if (seen.has(cause)) return '[circular]'
+
+  seen.add(cause)
+  return sanitizeCauseRecord(cause, seen)
+}
+
+function sanitizeCauseError(error: Error, seen: WeakSet<object>) {
+  if (seen.has(error)) return '[circular]'
+
+  seen.add(error)
+  const summary: Record<string, unknown> = {
+    message: sanitizeCauseMessage(error.message),
+    name: error.name,
+  }
+  copyCauseFields(error, summary, seen)
+
+  return summary
+}
+
+function sanitizeCauseRecord(record: Record<string, unknown>, seen: WeakSet<object>) {
+  const safe: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(record)) {
+    safe[key] = sensitiveCauseFields.has(key) ? redactedDiagnosticValue : sanitizeCause(value, seen)
+  }
+
+  return safe
+}
+
+function copyCauseFields(source: Error, target: Record<string, unknown>, seen: WeakSet<object>) {
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = sensitiveCauseFields.has(key) ? redactedDiagnosticValue : sanitizeCause(value, seen)
+  }
+}
+
+function sanitizeCauseMessage(message: string) {
+  return message.replaceAll(/'[^']*'/g, `'${redactedDiagnosticValue}'`)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }

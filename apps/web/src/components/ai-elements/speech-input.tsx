@@ -3,7 +3,7 @@
 import { Button } from '@workspace/ui/components/button'
 import { Spinner } from '@workspace/ui/components/spinner'
 import { cn } from '@workspace/ui/lib/utils'
-import { MicIcon, SquareIcon } from 'lucide-react'
+import { MicrophoneIcon, SquareIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -305,7 +305,7 @@ export const SpeechInput = ({
       >
         {isProcessing && <Spinner />}
         {!isProcessing && isListening && <SquareIcon className='size-4' />}
-        {!(isProcessing || isListening) && <MicIcon className='size-4' />}
+        {!(isProcessing || isListening) && <MicrophoneIcon className='size-4' />}
       </Button>
     </div>
   )

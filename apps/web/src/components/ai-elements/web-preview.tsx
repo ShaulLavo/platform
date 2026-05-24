@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronDownIcon } from 'lucide-react'
+import { CaretDownIcon } from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 
@@ -221,7 +221,7 @@ export const WebPreviewConsole = ({
         }
       >
         Console
-        <ChevronDownIcon
+        <CaretDownIcon
           className={cn('h-4 w-4 transition-transform duration-200', consoleOpen && 'rotate-180')}
         />
       </CollapsibleTrigger>

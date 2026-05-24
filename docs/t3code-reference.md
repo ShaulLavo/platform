@@ -60,7 +60,7 @@ Frontend:
 | Small shared atoms | `@effect/atom-react` |
 | UI primitives | `@base-ui/react` |
 | UI style helpers | Tailwind v4, `class-variance-authority`, `tailwind-merge` |
-| Icons | `lucide-react` |
+| Icons | `@phosphor-icons/react` |
 | Composer editor | Lexical, `@lexical/react` |
 | Chat timeline | `@legendapp/list` |
 | Markdown | `react-markdown`, `remark-gfm` |

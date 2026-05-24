@@ -8,7 +8,7 @@ import {
   InputGroupText,
 } from '@workspace/ui/components/input-group'
 import { cn } from '@workspace/ui/lib/utils'
-import { CheckIcon, CopyIcon } from 'lucide-react'
+import { CheckIcon, CopyIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 

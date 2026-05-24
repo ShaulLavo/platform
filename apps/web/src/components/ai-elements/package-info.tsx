@@ -2,7 +2,7 @@
 
 import { Badge } from '@workspace/ui/components/badge'
 import { cn } from '@workspace/ui/lib/utils'
-import { ArrowRightIcon, MinusIcon, PackageIcon, PlusIcon } from 'lucide-react'
+import { ArrowRightIcon, MinusIcon, PackageIcon, PlusIcon } from '@phosphor-icons/react'
 import type { HTMLAttributes } from 'react'
 import { createContext, useContext, useMemo } from 'react'
 

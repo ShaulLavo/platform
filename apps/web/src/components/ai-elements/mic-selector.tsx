@@ -11,9 +11,10 @@ import {
 } from '@workspace/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@workspace/ui/components/popover'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronsUpDownIcon } from 'lucide-react'
+import { CaretUpDownIcon } from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { reportClientError } from '@/lib/client-error-reporting'
 
 const deviceIdRegex = /\(([\da-fA-F]{4}:[\da-fA-F]{4})\)$/
 
@@ -57,7 +58,12 @@ export const useAudioDevices = () => {
         caughtError instanceof Error ? caughtError.message : 'Failed to get audio devices'
 
       setError(message)
-      console.error('Error getting audio devices:', message)
+      reportClientError({
+        area: 'audio-devices',
+        cause: caughtError,
+        message,
+        operation: 'enumerate',
+      })
     } finally {
       setLoading(false)
     }
@@ -90,7 +96,12 @@ export const useAudioDevices = () => {
         caughtError instanceof Error ? caughtError.message : 'Failed to get audio devices'
 
       setError(message)
-      console.error('Error getting audio devices:', message)
+      reportClientError({
+        area: 'audio-devices',
+        cause: caughtError,
+        message,
+        operation: 'permission-enumerate',
+      })
     } finally {
       setLoading(false)
     }
@@ -211,7 +222,7 @@ export const MicSelectorTrigger = ({ children, ...props }: MicSelectorTriggerPro
   return (
     <PopoverTrigger render={<Button variant='outline' {...props} ref={ref} />}>
       {children}
-      <ChevronsUpDownIcon className='text-muted-foreground shrink-0' size={16} />
+      <CaretUpDownIcon className='text-muted-foreground shrink-0' size={16} />
     </PopoverTrigger>
   )
 }

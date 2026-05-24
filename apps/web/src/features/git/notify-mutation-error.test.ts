@@ -24,10 +24,11 @@ describe('notifyMutationError', () => {
       value: { error: { code: 'GIT_COMMAND_FAILED' } },
     })
 
-    expect(console.error).toHaveBeenCalledWith('[notify-mutation-error]', {
+    expect(console.error).toHaveBeenCalledWith('[client:git] mutation', {
       category: 'io_error',
-      message: 'The file server could not complete the filesystem operation.',
       cause: { value: { error: { code: 'GIT_COMMAND_FAILED' } } },
+      context: undefined,
+      message: 'The file server could not complete the filesystem operation.',
     })
     expect(toastError).toHaveBeenCalledWith('Git command failed', {
       description: 'The file server could not complete the filesystem operation.',

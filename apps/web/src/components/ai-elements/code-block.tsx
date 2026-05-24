@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@workspace/ui/components/select'
 import { cn } from '@workspace/ui/lib/utils'
-import { CheckIcon, CopyIcon } from 'lucide-react'
+import { CheckIcon, CopyIcon } from '@phosphor-icons/react'
 import type { ComponentProps, CSSProperties, HTMLAttributes } from 'react'
 import {
   createContext,

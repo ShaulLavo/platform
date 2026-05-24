@@ -6,7 +6,7 @@ import {
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronRightIcon, FileIcon, FolderIcon, FolderOpenIcon } from 'lucide-react'
+import { CaretRightIcon, FileIcon, FolderIcon, FolderOpenIcon } from '@phosphor-icons/react'
 import type { HTMLAttributes, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 
@@ -152,7 +152,7 @@ export const FileTreeFolder = ({
                 />
               }
             >
-              <ChevronRightIcon
+              <CaretRightIcon
                 className={cn(
                   'size-4 shrink-0 text-muted-foreground transition-transform',
                   isExpanded && 'rotate-90',

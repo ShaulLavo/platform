@@ -8,12 +8,12 @@ import {
 } from '@workspace/ui/components/collapsible'
 import { cn } from '@workspace/ui/lib/utils'
 import {
-  CheckCircle2Icon,
-  ChevronRightIcon,
-  CircleDotIcon,
+  CheckCircleIcon,
+  CaretRightIcon,
+  CircleNotchIcon as CircleDotIcon,
   CircleIcon,
   XCircleIcon,
-} from 'lucide-react'
+} from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 import { createContext, useContext, useMemo } from 'react'
 
@@ -85,7 +85,7 @@ export const TestResultsSummary = ({ className, children, ...props }: TestResult
             className='gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
             variant='secondary'
           >
-            <CheckCircle2Icon className='size-3' />
+            <CheckCircleIcon className='size-3' />
             {summary.passed} passed
           </Badge>
           {summary.failed > 0 && (
@@ -197,7 +197,7 @@ const statusStyles: Record<TestStatus, string> = {
 
 const statusIcons: Record<TestStatus, React.ReactNode> = {
   failed: <XCircleIcon className='size-4' />,
-  passed: <CheckCircle2Icon className='size-4' />,
+  passed: <CheckCircleIcon className='size-4' />,
   running: <CircleDotIcon className='size-4 animate-pulse' />,
   skipped: <CircleIcon className='size-4' />,
 }
@@ -236,7 +236,7 @@ export const TestSuiteName = ({ className, children, ...props }: TestSuiteNamePr
       )}
       {...props}
     >
-      <ChevronRightIcon className='text-muted-foreground size-4 shrink-0 transition-transform group-data-[state=open]:rotate-90' />
+      <CaretRightIcon className='text-muted-foreground size-4 shrink-0 transition-transform group-data-[state=open]:rotate-90' />
       <TestStatusIcon status={status} />
       <span className='text-sm font-medium'>{children ?? name}</span>
     </CollapsibleTrigger>

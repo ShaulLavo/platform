@@ -183,12 +183,11 @@ function errorForLogger(error: unknown) {
 
 function sanitizedErrorForLogger(error: Error) {
   const cause = errorCause(error)
-  const clone = cause === undefined ? new Error(error.message) : new Error(error.message, {
-    cause: sanitizeErrorCause(cause),
-  })
+  const clone = new Error(error.message)
   clone.name = error.name
   clone.stack = error.stack
-  copySafeErrorFields(error, clone)
+  copySafeErrorFields(error, clone as Error & Record<string, unknown>)
+  if (cause !== undefined) clone.cause = sanitizeErrorCause(cause)
 
   return clone
 }

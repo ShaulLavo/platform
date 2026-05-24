@@ -4,8 +4,8 @@ import { Button } from '@workspace/ui/components/button'
 import { Separator } from '@workspace/ui/components/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import type { LucideProps } from 'lucide-react'
-import { BookmarkIcon } from 'lucide-react'
+import type { IconProps } from '@phosphor-icons/react'
+import { BookmarkIcon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 
 export type CheckpointProps = HTMLAttributes<HTMLDivElement>
@@ -20,7 +20,7 @@ export const Checkpoint = ({ className, children, ...props }: CheckpointProps) =
   </div>
 )
 
-export type CheckpointIconProps = LucideProps
+export type CheckpointIconProps = IconProps
 
 export const CheckpointIcon = ({ className, children, ...props }: CheckpointIconProps) =>
   children ?? <BookmarkIcon className={cn('size-4 shrink-0', className)} {...props} />

@@ -9,7 +9,7 @@ import {
 import { Badge } from '@workspace/ui/components/badge'
 import { cn } from '@workspace/ui/lib/utils'
 import type { Tool } from 'ai'
-import { BotIcon } from 'lucide-react'
+import { RobotIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { memo } from 'react'
 
@@ -29,7 +29,7 @@ export type AgentHeaderProps = ComponentProps<'div'> & {
 export const AgentHeader = memo(({ className, name, model, ...props }: AgentHeaderProps) => (
   <div className={cn('flex w-full items-center justify-between gap-4 p-3', className)} {...props}>
     <div className='flex items-center gap-2'>
-      <BotIcon className='text-muted-foreground size-4' />
+      <RobotIcon className='text-muted-foreground size-4' />
       <span className='text-sm font-medium'>{name}</span>
       {model && (
         <Badge className='font-mono text-xs' variant='secondary'>

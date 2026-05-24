@@ -3,7 +3,7 @@
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import type { UIMessage } from 'ai'
-import { ArrowDownIcon, DownloadIcon } from 'lucide-react'
+import { ArrowDownIcon, DownloadIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { useCallback } from 'react'
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom'

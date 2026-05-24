@@ -17,16 +17,16 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@workspace/ui
 import { Spinner } from '@workspace/ui/components/spinner'
 import { cn } from '@workspace/ui/lib/utils'
 import {
-  CircleSmallIcon,
-  MarsIcon,
-  MarsStrokeIcon,
-  NonBinaryIcon,
+  DotOutlineIcon,
+  GenderMaleIcon as MarsIcon,
+  GenderNeuterIcon as MarsStrokeIcon,
+  GenderNonbinaryIcon as NonBinaryIcon,
   PauseIcon,
   PlayIcon,
-  TransgenderIcon,
-  VenusAndMarsIcon,
-  VenusIcon,
-} from 'lucide-react'
+  GenderTransgenderIcon as TransgenderIcon,
+  GenderIntersexIcon as VenusAndMarsIcon,
+  GenderFemaleIcon as VenusIcon,
+} from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
 
@@ -189,7 +189,7 @@ export const VoiceSelectorGender = ({
       break
     }
     default: {
-      icon = <CircleSmallIcon className='size-4' />
+      icon = <DotOutlineIcon className='size-4' />
     }
   }
 

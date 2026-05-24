@@ -8,11 +8,11 @@ import {
   FileTextIcon,
   GlobeIcon,
   ImageIcon,
-  Music2Icon,
+  MusicNotesIcon as Music2Icon,
   PaperclipIcon,
   VideoIcon,
   XIcon,
-} from 'lucide-react'
+} from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
 

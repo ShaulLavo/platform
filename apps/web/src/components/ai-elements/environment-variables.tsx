@@ -4,7 +4,7 @@ import { Badge } from '@workspace/ui/components/badge'
 import { Button } from '@workspace/ui/components/button'
 import { Switch } from '@workspace/ui/components/switch'
 import { cn } from '@workspace/ui/lib/utils'
-import { CheckIcon, CopyIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
+import { CheckIcon, CopyIcon, EyeIcon, EyeSlashIcon as EyeOffIcon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 

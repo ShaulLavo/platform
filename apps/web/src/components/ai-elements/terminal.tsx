@@ -3,7 +3,7 @@
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import Ansi from 'ansi-to-react'
-import { CheckIcon, CopyIcon, TerminalIcon, Trash2Icon } from 'lucide-react'
+import { CheckIcon, CopyIcon, TerminalIcon, TrashIcon as Trash2Icon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 

@@ -8,8 +8,8 @@ import {
   TooltipTrigger,
 } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
-import type { LucideIcon } from 'lucide-react'
-import { XIcon } from 'lucide-react'
+import type { Icon } from '@phosphor-icons/react'
+import { XIcon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 
 export type ArtifactProps = HTMLAttributes<HTMLDivElement>
@@ -75,7 +75,7 @@ export const ArtifactActions = ({ className, ...props }: ArtifactActionsProps) =
 export type ArtifactActionProps = ComponentProps<typeof Button> & {
   tooltip?: string
   label?: string
-  icon?: LucideIcon
+  icon?: Icon
 }
 
 export const ArtifactAction = ({

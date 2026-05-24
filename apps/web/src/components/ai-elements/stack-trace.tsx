@@ -8,7 +8,7 @@ import {
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
 import { cn } from '@workspace/ui/lib/utils'
-import { AlertTriangleIcon, CheckIcon, ChevronDownIcon, CopyIcon } from 'lucide-react'
+import { WarningIcon, CheckIcon, CaretDownIcon, CopyIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import {
   createContext,
@@ -231,7 +231,7 @@ export type StackTraceErrorProps = ComponentProps<'div'>
 
 export const StackTraceError = memo(({ className, children, ...props }: StackTraceErrorProps) => (
   <div className={cn('flex flex-1 items-center gap-2 overflow-hidden', className)} {...props}>
-    <AlertTriangleIcon className='text-destructive size-4 shrink-0' />
+    <WarningIcon className='text-destructive size-4 shrink-0' />
     {children}
   </div>
 ))
@@ -353,7 +353,7 @@ export const StackTraceExpandButton = memo(
 
     return (
       <div className={cn('flex size-7 items-center justify-center', className)} {...props}>
-        <ChevronDownIcon
+        <CaretDownIcon
           className={cn(
             'size-4 text-muted-foreground transition-transform',
             isOpen ? 'rotate-180' : 'rotate-0',

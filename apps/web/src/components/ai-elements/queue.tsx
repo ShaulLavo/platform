@@ -8,7 +8,7 @@ import {
 } from '@workspace/ui/components/collapsible'
 import { ScrollArea } from '@workspace/ui/components/scroll-area'
 import { cn } from '@workspace/ui/lib/utils'
-import { ChevronDownIcon, PaperclipIcon } from 'lucide-react'
+import { CaretDownIcon, PaperclipIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 
 export interface QueueMessagePart {
@@ -209,7 +209,7 @@ export const QueueSectionLabel = ({
   ...props
 }: QueueSectionLabelProps) => (
   <span className={cn('flex items-center gap-2', className)} {...props}>
-    <ChevronDownIcon className='size-4 transition-transform group-data-[state=closed]:-rotate-90' />
+    <CaretDownIcon className='size-4 transition-transform group-data-[state=closed]:-rotate-90' />
     {icon}
     <span>
       {count} {label}
