@@ -988,7 +988,7 @@ function testApp(
 }
 
 async function fixtureRoot() {
-  const root = await mkdtemp(path.join(tmpdir(), 'platform-fs-rpc-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'platform-'))
   roots.push(root)
   return root
 }

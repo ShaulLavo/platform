@@ -69,7 +69,7 @@ export function createApp(options: AppOptions) {
   const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb)
   const auth = createAuthConfig(options.auth)
 
-  const app = new Elysia({ name: 'fs-rpc' })
+  const app = new Elysia({ name: 'platform' })
   applyObservability(app)
 
   return app

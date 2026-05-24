@@ -50,7 +50,7 @@ export function observabilityConfigFromEnv(
     maxBufferSize: positiveInteger(env.FS_OBSERVABILITY_MAX_BUFFER_SIZE, DEFAULT_MAX_BUFFER_SIZE),
     maxFiles: positiveInteger(env.FS_OBSERVABILITY_MAX_FILES, DEFAULT_MAX_FILES),
     maxSizePerFile: positiveInteger(env.FS_OBSERVABILITY_MAX_SIZE_BYTES, DEFAULT_MAX_SIZE_PER_FILE),
-    service: env.FS_OBSERVABILITY_SERVICE?.trim() || 'fs-rpc',
+    service: env.FS_OBSERVABILITY_SERVICE?.trim() || 'platform',
     slowMs: positiveInteger(env.FS_OBSERVABILITY_SLOW_MS, DEFAULT_SLOW_MS),
   }
 }

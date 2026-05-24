@@ -71,7 +71,7 @@ export async function resetObservabilityForTests() {
     enabled: false,
     env: {
       environment: 'test',
-      service: 'fs-rpc',
+      service: 'platform',
     },
     silent: false,
   })
