@@ -1,24 +1,24 @@
-import type { ReactNode } from "react"
+import type { ReactNode } from 'react'
 import {
   ArrowsInLineVerticalIcon,
   ArrowsOutLineVerticalIcon,
   CaretDownIcon,
   CaretUpIcon,
-} from "@phosphor-icons/react"
+} from '@phosphor-icons/react'
 
 import {
   searchGroupsForSnapshot,
   type SearchBufferSnapshot,
   useSearchBufferState,
-} from "@/features/search/search-buffer-state"
+} from '@/features/search/search-buffer-state'
 import {
   expandedSearchResultItems,
   searchResultActiveMatchPosition,
   searchResultContentItems,
-} from "@/features/search/search-result-items"
-import { SearchAnimatedNumber } from "@/features/search/search-animated-number"
-import { Button } from "@workspace/ui/components/button"
-import { cn } from "@workspace/ui/lib/utils"
+} from '@/features/search/search-result-items'
+import { SearchAnimatedNumber } from '@/features/search/search-animated-number'
+import { Button } from '@workspace/ui/components/button'
+import { cn } from '@workspace/ui/lib/utils'
 
 export function SearchSummary({
   buttonClassName,
@@ -31,59 +31,53 @@ export function SearchSummary({
   query: string
   snapshot: SearchBufferSnapshot | null
 }) {
-  const collapseAllGroups = useSearchBufferState(
-    (state) => state.collapseAllGroups
-  )
+  const collapseAllGroups = useSearchBufferState((state) => state.collapseAllGroups)
   const expandAllGroups = useSearchBufferState((state) => state.expandAllGroups)
   const selectNextMatch = useSearchBufferState((state) => state.selectNextMatch)
-  const selectPreviousMatch = useSearchBufferState(
-    (state) => state.selectPreviousMatch
-  )
+  const selectPreviousMatch = useSearchBufferState((state) => state.selectPreviousMatch)
   const summary = searchSummaryModel(query, snapshot)
 
   return (
     <div
       className={cn(
-        "mt-2 flex min-h-5 items-center gap-2 px-1 text-[11px] text-muted-foreground",
-        className
+        'mt-2 flex min-h-5 items-center gap-2 px-1 text-[11px] text-muted-foreground',
+        className,
       )}
     >
-      <SearchSummaryText title={summary.title}>
-        {summary.content}
-      </SearchSummaryText>
+      <SearchSummaryText title={summary.title}>{summary.content}</SearchSummaryText>
       {summary.showControls ? (
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div className='ml-auto flex shrink-0 items-center gap-0.5'>
           <SearchSummaryButton
             className={buttonClassName}
             disabled={!summary.canExpand}
-            label="Expand all search results"
+            label='Expand all search results'
             onClick={expandAllGroups}
           >
-            <ArrowsOutLineVerticalIcon className="size-3.5" />
+            <ArrowsOutLineVerticalIcon className='size-3.5' />
           </SearchSummaryButton>
           <SearchSummaryButton
             className={buttonClassName}
             disabled={!summary.canCollapse}
-            label="Collapse all search results"
+            label='Collapse all search results'
             onClick={collapseAllGroups}
           >
-            <ArrowsInLineVerticalIcon className="size-3.5" />
+            <ArrowsInLineVerticalIcon className='size-3.5' />
           </SearchSummaryButton>
           <SearchSummaryButton
             className={buttonClassName}
             disabled={!summary.canNavigate}
-            label="Previous match"
+            label='Previous match'
             onClick={selectPreviousMatch}
           >
-            <CaretUpIcon className="size-3.5" />
+            <CaretUpIcon className='size-3.5' />
           </SearchSummaryButton>
           <SearchSummaryButton
             className={buttonClassName}
             disabled={!summary.canNavigate}
-            label="Next match"
+            label='Next match'
             onClick={selectNextMatch}
           >
-            <CaretDownIcon className="size-3.5" />
+            <CaretDownIcon className='size-3.5' />
           </SearchSummaryButton>
         </div>
       ) : null}
@@ -91,50 +85,38 @@ export function SearchSummary({
   )
 }
 
-function searchSummaryModel(
-  query: string,
-  snapshot: SearchBufferSnapshot | null
-) {
-  if (!query) return emptySummary("Find in files")
-  if (!snapshot) return emptySummary("Find in files")
-  if (snapshot.replaceStatus === "running") return emptySummary("Replacing")
-  if (snapshot.replaceStatus === "error")
-    return emptySummary(snapshot.replaceMessage ?? "Replace failed")
-  if (snapshot.replaceStatus === "success" && snapshot.replaceMessage)
+function searchSummaryModel(query: string, snapshot: SearchBufferSnapshot | null) {
+  if (!query) return emptySummary('Find in files')
+  if (!snapshot) return emptySummary('Find in files')
+  if (snapshot.replaceStatus === 'running') return emptySummary('Replacing')
+  if (snapshot.replaceStatus === 'error')
+    return emptySummary(snapshot.replaceMessage ?? 'Replace failed')
+  if (snapshot.replaceStatus === 'success' && snapshot.replaceMessage)
     return summaryWithControls(snapshot.replaceMessage, snapshot)
-  if (snapshot.status === "error") {
-    const message = snapshot.error ?? "Search failed"
+  if (snapshot.status === 'error') {
+    const message = snapshot.error ?? 'Search failed'
     if (hasSearchResultGroups(snapshot))
-      return summaryWithControls(
-        `${message} · Showing previous results`,
-        snapshot
-      )
+      return summaryWithControls(`${message} · Showing previous results`, snapshot)
 
     return emptySummary(message)
   }
-  if (snapshot.status === "idle") return emptySummary("Searching")
-  if (snapshot.status === "loading" && snapshot.matches.length === 0) {
-    return emptySummary("Searching")
+  if (snapshot.status === 'idle') return emptySummary('Searching')
+  if (snapshot.status === 'loading' && snapshot.matches.length === 0) {
+    return emptySummary('Searching')
   }
   const result = searchResultCount(snapshot)
-  if (snapshot.status === "loading") {
+  if (snapshot.status === 'loading') {
     return summaryWithControls(result.content, snapshot, result.title, {
-      trailingText: "Searching",
+      trailingText: 'Searching',
     })
   }
 
   return summaryWithControls(result.content, snapshot, result.title)
 }
 
-function SearchSummaryText({
-  children,
-  title,
-}: {
-  children: ReactNode
-  title: string
-}) {
+function SearchSummaryText({ children, title }: { children: ReactNode; title: string }) {
   return (
-    <div className="min-w-0 flex-1 truncate" title={title}>
+    <div className='min-w-0 flex-1 truncate' title={title}>
       {children}
     </div>
   )
@@ -156,15 +138,12 @@ function SearchSummaryButton({
   return (
     <Button
       aria-label={label}
-      className={cn(
-        "size-5 text-muted-foreground hover:text-foreground",
-        className
-      )}
+      className={cn('size-5 text-muted-foreground hover:text-foreground', className)}
       disabled={disabled}
-      size="icon-xs"
+      size='icon-xs'
       title={label}
-      type="button"
-      variant="ghost"
+      type='button'
+      variant='ghost'
       onClick={onClick}
     >
       {children}
@@ -187,31 +166,27 @@ function summaryWithControls(
   content: ReactNode,
   snapshot: SearchBufferSnapshot,
   title = String(content),
-  options: { trailingText?: string } = {}
+  options: { trailingText?: string } = {},
 ) {
   const groups = searchGroupsForSnapshot(snapshot)
   const expandedItems = expandedSearchResultItems(groups)
-  const active = searchResultActiveMatchPosition(
-    expandedItems,
-    snapshot.activeResultId
-  )
+  const active = searchResultActiveMatchPosition(expandedItems, snapshot.activeResultId)
   const activeContent = active ? (
     <>
-      {" "}
-      <span aria-hidden="true">·</span>{" "}
-      <SearchAnimatedNumber value={active.index} />
+      {' '}
+      <span aria-hidden='true'>·</span> <SearchAnimatedNumber value={active.index} />
       /
       <SearchAnimatedNumber value={active.total} />
     </>
   ) : null
-  const activeTitle = active ? ` · ${active.index}/${active.total}` : ""
+  const activeTitle = active ? ` · ${active.index}/${active.total}` : ''
   const trailingContent = options.trailingText ? (
     <>
-      {" "}
-      <span aria-hidden="true">·</span> {options.trailingText}
+      {' '}
+      <span aria-hidden='true'>·</span> {options.trailingText}
     </>
   ) : null
-  const trailingTitle = options.trailingText ? ` · ${options.trailingText}` : ""
+  const trailingTitle = options.trailingText ? ` · ${options.trailingText}` : ''
 
   return {
     canCollapse: groups.some((group) => group.count > 0 && !group.collapsed),
@@ -244,8 +219,7 @@ function searchResultCount(snapshot: SearchBufferSnapshot) {
     </>
   ) : (
     <>
-      <SearchAnimatedNumber value={snapshot.totalCount} />{" "}
-      {matchNoun(snapshot.totalCount)}
+      <SearchAnimatedNumber value={snapshot.totalCount} /> {matchNoun(snapshot.totalCount)}
     </>
   )
   const titleMatches = snapshot.truncated
@@ -255,8 +229,7 @@ function searchResultCount(snapshot: SearchBufferSnapshot) {
   return {
     content: (
       <>
-        {matchSummary} in <SearchAnimatedNumber value={fileCount} />{" "}
-        {fileNoun(fileCount)}
+        {matchSummary} in <SearchAnimatedNumber value={fileCount} /> {fileNoun(fileCount)}
       </>
     ),
     title: `${titleMatches} in ${fileTitle} ${fileNoun(fileCount)}`,
@@ -264,9 +237,9 @@ function searchResultCount(snapshot: SearchBufferSnapshot) {
 }
 
 function matchNoun(count: number) {
-  return count === 1 ? "match" : "matches"
+  return count === 1 ? 'match' : 'matches'
 }
 
 function fileNoun(count: number) {
-  return count === 1 ? "file" : "files"
+  return count === 1 ? 'file' : 'files'
 }

@@ -1,17 +1,11 @@
-export type TreeStatus =
-  | "added"
-  | "deleted"
-  | "ignored"
-  | "modified"
-  | "renamed"
-  | "untracked"
+export type TreeStatus = 'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked'
 
 export type FileStatus = {
   path: string
   oldPath?: string
-  index: TreeStatus | "unmodified" | "conflicted"
-  worktree: TreeStatus | "unmodified" | "conflicted"
-  status: TreeStatus | "conflicted"
+  index: TreeStatus | 'unmodified' | 'conflicted'
+  worktree: TreeStatus | 'unmodified' | 'conflicted'
+  status: TreeStatus | 'conflicted'
 }
 
 export type RepositoryInfo = {
@@ -28,7 +22,7 @@ export type StatusResult = {
 }
 
 export type LineChange = {
-  type: "added" | "deleted" | "context"
+  type: 'added' | 'deleted' | 'context'
   oldLine: number | null
   newLine: number | null
   text: string
@@ -72,17 +66,17 @@ export type BranchesResult = {
 
 export type CommitResult =
   | {
-      kind: "committed"
+      kind: 'committed'
       output: string
       repository: RepositoryInfo
     }
   | {
-      kind: "message-file"
+      kind: 'message-file'
       path: string
       repository: RepositoryInfo
     }
 
-export type PanelSection = "staged" | "worktree"
+export type PanelSection = 'staged' | 'worktree'
 
 export type BlobDiffRequest = {
   path: string
@@ -94,7 +88,7 @@ export type BlobDiffRequest = {
 export type ChangeRow = {
   file: FileStatus
   section: PanelSection
-  status: FileStatus["index"] | FileStatus["worktree"]
+  status: FileStatus['index'] | FileStatus['worktree']
 }
 
 export type StatusPresentation = {

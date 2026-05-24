@@ -1,16 +1,16 @@
-import { AnimatedCounter } from "react-animated-counter"
+import { AnimatedCounter } from 'react-animated-counter'
 
 const SEARCH_COUNTER_CONTAINER_STYLES = {
-  display: "inline-flex",
+  display: 'inline-flex',
   margin: 0,
 } as const
 
 const SEARCH_COUNTER_DIGIT_STYLES = {
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric: 'tabular-nums',
 } as const
 
 export function SearchAnimatedNumber({
-  fontSize = "11px",
+  fontSize = '11px',
   value,
 }: {
   fontSize?: string
@@ -18,16 +18,16 @@ export function SearchAnimatedNumber({
 }) {
   return (
     <span aria-label={value.toLocaleString()}>
-      <span aria-hidden="true">
+      <span aria-hidden='true'>
         <AnimatedCounter
-          color="currentColor"
+          color='currentColor'
           containerStyles={SEARCH_COUNTER_CONTAINER_STYLES}
-          decrementColor="currentColor"
+          decrementColor='currentColor'
           digitStyles={SEARCH_COUNTER_DIGIT_STYLES}
           fontSize={fontSize}
           includeCommas
           includeDecimals={false}
-          incrementColor="currentColor"
+          incrementColor='currentColor'
           value={value}
         />
       </span>

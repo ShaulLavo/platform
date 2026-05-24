@@ -1,8 +1,8 @@
-import { isRecord } from "@workspace/contracts"
-import type { ChildProcessWithoutNullStreams } from "node:child_process"
+import { isRecord } from '@workspace/contracts'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
-import type { LspServerMatch } from "./registry"
-import { LspStdioMessageReader, writeLspStdioMessage } from "./stdio-rpc"
+import type { LspServerMatch } from './registry'
+import { LspStdioMessageReader, writeLspStdioMessage } from './stdio-rpc'
 
 type JsonRpcId = number | string | null
 
@@ -28,7 +28,7 @@ export class LspProxySession {
   private constructor(
     socket: LspProxySocket,
     match: LspServerMatch,
-    process: ChildProcessWithoutNullStreams
+    process: ChildProcessWithoutNullStreams,
   ) {
     this.match = match
     this.process = process
@@ -61,10 +61,10 @@ export class LspProxySession {
   }
 
   private bindProcess() {
-    this.process.stdout.on("data", (chunk) => this.reader.push(chunk))
-    this.process.stderr.on("data", (chunk) => this.logStderr(chunk))
-    this.process.once("exit", () => this.closeSocket())
-    this.process.once("error", () => this.closeSocket())
+    this.process.stdout.on('data', (chunk) => this.reader.push(chunk))
+    this.process.stderr.on('data', (chunk) => this.logStderr(chunk))
+    this.process.once('exit', () => this.closeSocket())
+    this.process.once('error', () => this.closeSocket())
   }
 
   private handleServerMessage(message: string) {
@@ -77,7 +77,7 @@ export class LspProxySession {
   private async prepareClientMessage(message: string) {
     const parsed = parseJsonMessage(message)
     if (!isServerRequest(parsed)) return message
-    if (parsed.method !== "initialize") return message
+    if (parsed.method !== 'initialize') return message
 
     return JSON.stringify(await this.initializeRequest(parsed))
   }
@@ -109,11 +109,11 @@ export class LspProxySession {
   }
 
   private handleServerRequest(message: JsonRpcRequest) {
-    if (message.method === "workspace/configuration") {
+    if (message.method === 'workspace/configuration') {
       this.respond(message.id, [{}])
       return true
     }
-    if (message.method === "workspace/workspaceFolders") {
+    if (message.method === 'workspace/workspaceFolders') {
       this.respond(message.id, [
         {
           name: this.match.server.id,
@@ -122,15 +122,15 @@ export class LspProxySession {
       ])
       return true
     }
-    if (message.method === "window/workDoneProgress/create") {
+    if (message.method === 'window/workDoneProgress/create') {
       this.respond(message.id, null)
       return true
     }
-    if (message.method === "client/registerCapability") {
+    if (message.method === 'client/registerCapability') {
       this.respond(message.id, null)
       return true
     }
-    if (message.method === "client/unregisterCapability") {
+    if (message.method === 'client/unregisterCapability') {
       this.respond(message.id, null)
       return true
     }
@@ -143,9 +143,9 @@ export class LspProxySession {
       this.process.stdin,
       JSON.stringify({
         id,
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         result,
-      })
+      }),
     )
   }
 
@@ -157,7 +157,7 @@ export class LspProxySession {
   }
 
   private logStderr(chunk: Buffer | Uint8Array | string) {
-    const text = Buffer.from(chunk).toString("utf8").trim()
+    const text = Buffer.from(chunk).toString('utf8').trim()
     if (!text) return
 
     console.warn(`[lsp:${this.match.server.id}] ${text}`)
@@ -165,9 +165,9 @@ export class LspProxySession {
 }
 
 function normalizeClientMessage(message: string | ArrayBuffer | Uint8Array) {
-  if (typeof message === "string") return message
-  if (message instanceof ArrayBuffer) return Buffer.from(message).toString("utf8")
-  if (message instanceof Uint8Array) return Buffer.from(message).toString("utf8")
+  if (typeof message === 'string') return message
+  if (message instanceof ArrayBuffer) return Buffer.from(message).toString('utf8')
+  if (message instanceof Uint8Array) return Buffer.from(message).toString('utf8')
 
   return null
 }
@@ -182,13 +182,13 @@ function parseJsonMessage(message: string) {
 
 function isServerRequest(value: unknown): value is JsonRpcRequest {
   if (!isRecord(value)) return false
-  if (typeof value.method !== "string") return false
-  if (!("id" in value)) return false
+  if (typeof value.method !== 'string') return false
+  if (!('id' in value)) return false
 
-  return typeof value.id === "number" || typeof value.id === "string" || value.id === null
+  return typeof value.id === 'number' || typeof value.id === 'string' || value.id === null
 }
 
 function fileUriForPath(filePath: string) {
-  const normalized = filePath.replace(/^\/+/, "")
-  return `file:///${normalized.split("/").map(encodeURIComponent).join("/")}`
+  const normalized = filePath.replace(/^\/+/, '')
+  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }

@@ -1,18 +1,15 @@
-import ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
 import {
   documentText,
   lspPositionToOffset,
   rangeFromTextSpan,
   textDocumentPosition,
-} from "../shared/boundary"
-import type { SessionContext } from "../shared/context"
+} from '../shared/boundary'
+import type { SessionContext } from '../shared/context'
 
-export function handleHover(
-  ctx: SessionContext,
-  params: unknown
-): lsp.Hover | null {
+export function handleHover(ctx: SessionContext, params: unknown): lsp.Hover | null {
   const request = textDocumentPosition(ctx, params)
   if (!request) return null
 
@@ -34,23 +31,19 @@ function hoverFromQuickInfo(text: string, quickInfo: ts.QuickInfo): lsp.Hover {
 
   return {
     contents: {
-      kind: "markdown",
+      kind: 'markdown',
       value: hoverMarkdown(display, documentation, tags),
     },
     range: rangeFromTextSpan(text, quickInfo.textSpan),
   }
 }
 
-function hoverMarkdown(
-  display: string,
-  documentation: string,
-  tags: readonly string[]
-): string {
+function hoverMarkdown(display: string, documentation: string, tags: readonly string[]): string {
   const sections: string[] = []
-  if (display) sections.push(["```ts", display, "```"].join("\n"))
+  if (display) sections.push(['```ts', display, '```'].join('\n'))
   if (documentation) sections.push(documentation)
-  if (tags.length > 0) sections.push(tags.join("\n"))
-  return sections.join("\n\n")
+  if (tags.length > 0) sections.push(tags.join('\n'))
+  return sections.join('\n\n')
 }
 
 function tagText(tag: ts.JSDocTagInfo): string {

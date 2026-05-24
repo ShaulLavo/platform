@@ -1,21 +1,17 @@
-import { lstat, rm } from "node:fs/promises"
-import { FsError, mapNodeError } from "./errors"
-import type { WorkspacePaths } from "./path"
-import type { DeleteBody } from "./contracts"
+import { lstat, rm } from 'node:fs/promises'
+import { FsError, mapNodeError } from './errors'
+import type { WorkspacePaths } from './path'
+import type { DeleteBody } from './contracts'
 
 export async function deletePath(paths: WorkspacePaths, body: DeleteBody) {
   const target = paths.resolve(body.path)
 
   try {
-    if (!target.relativePath)
-      throw new FsError("INVALID_PATH", "cannot delete workspace root")
+    if (!target.relativePath) throw new FsError('INVALID_PATH', 'cannot delete workspace root')
 
     const stats = await lstat(target.absolutePath)
     if (stats.isDirectory() && !body.recursive)
-      throw new FsError(
-        "INVALID_PATH",
-        "directory delete requires recursive: true"
-      )
+      throw new FsError('INVALID_PATH', 'directory delete requires recursive: true')
 
     await rm(target.absolutePath, { recursive: body.recursive, force: false })
     return target.relativePath

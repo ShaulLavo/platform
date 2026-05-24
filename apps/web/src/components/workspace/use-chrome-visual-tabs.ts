@@ -1,6 +1,6 @@
-import { useLayoutEffect, useReducer, type Reducer } from "react"
+import { useLayoutEffect, useReducer, type Reducer } from 'react'
 
-export type ChromeVisualTabPhase = "opening" | "present"
+export type ChromeVisualTabPhase = 'opening' | 'present'
 
 export type ChromeVisualTabSource = {
   id?: string
@@ -19,44 +19,41 @@ export type ChromeVisualTabsState<TTab extends ChromeVisualTabSource> = {
 
 export type ChromeVisualTabEquality<TTab extends ChromeVisualTabSource> = (
   left: TTab,
-  right: TTab
+  right: TTab,
 ) => boolean
 
 export type ChromeVisualTabsAction<TTab extends ChromeVisualTabSource> =
   | {
       areTabsEqual: ChromeVisualTabEquality<TTab>
       tabs: readonly TTab[]
-      type: "sync-tabs"
+      type: 'sync-tabs'
     }
   | {
       openingKey: string
-      type: "finish-opening"
+      type: 'finish-opening'
     }
 
 export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
   tabs: readonly TTab[],
   enabled: boolean,
-  areTabsEqual: ChromeVisualTabEquality<TTab> = sameChromeVisualTabSource
+  areTabsEqual: ChromeVisualTabEquality<TTab> = sameChromeVisualTabSource,
 ) {
   const reducer: Reducer<
     ChromeVisualTabsState<TTab>,
     ChromeVisualTabsAction<TTab>
   > = chromeVisualTabsReducer
-  const [state, dispatch] = useReducer(
-    reducer,
-    initialChromeVisualTabsState(tabs)
-  )
+  const [state, dispatch] = useReducer(reducer, initialChromeVisualTabsState(tabs))
   const visualTabs =
     enabled && state.sourceTabs !== tabs
       ? syncChromeVisualTabs(state.visualTabs, tabs, areTabsEqual)
       : state.visualTabs
-  const openingKey = chromeVisualTabPhaseKey(visualTabs, "opening")
+  const openingKey = chromeVisualTabPhaseKey(visualTabs, 'opening')
 
   useLayoutEffect(() => {
     if (!enabled) return
     if (state.sourceTabs === tabs) return
 
-    dispatch({ areTabsEqual, tabs, type: "sync-tabs" })
+    dispatch({ areTabsEqual, tabs, type: 'sync-tabs' })
   }, [areTabsEqual, enabled, state.sourceTabs, tabs])
 
   useLayoutEffect(() => {
@@ -64,7 +61,7 @@ export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
     if (!openingKey) return
 
     const frame = requestAnimationFrame(() => {
-      dispatch({ openingKey, type: "finish-opening" })
+      dispatch({ openingKey, type: 'finish-opening' })
     })
 
     return () => cancelAnimationFrame(frame)
@@ -77,13 +74,13 @@ export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
 
 export function chromeVisualTabsReducer<TTab extends ChromeVisualTabSource>(
   state: ChromeVisualTabsState<TTab>,
-  action: ChromeVisualTabsAction<TTab>
+  action: ChromeVisualTabsAction<TTab>,
 ): ChromeVisualTabsState<TTab> {
-  if (action.type === "sync-tabs") {
+  if (action.type === 'sync-tabs') {
     return syncChromeVisualTabsState(state, action.tabs, action.areTabsEqual)
   }
 
-  const openingKey = chromeVisualTabPhaseKey(state.visualTabs, "opening")
+  const openingKey = chromeVisualTabPhaseKey(state.visualTabs, 'opening')
   if (openingKey !== action.openingKey) return state
 
   return {
@@ -95,16 +92,16 @@ export function chromeVisualTabsReducer<TTab extends ChromeVisualTabSource>(
 export function syncChromeVisualTabs<TTab extends ChromeVisualTabSource>(
   current: readonly ChromeVisualTab<TTab>[],
   tabs: readonly TTab[],
-  areTabsEqual: ChromeVisualTabEquality<TTab> = sameChromeVisualTabSource
+  areTabsEqual: ChromeVisualTabEquality<TTab> = sameChromeVisualTabSource,
 ) {
   if (current.length === 0) return tabs.map(presentChromeVisualTab)
 
   const currentByKey = new Map(
-    current.map((visualTab) => [chromeVisualTabKey(visualTab.tab), visualTab])
+    current.map((visualTab) => [chromeVisualTabKey(visualTab.tab), visualTab]),
   )
   const next = tabs.map((tab) => {
     const visualTab = currentByKey.get(chromeVisualTabKey(tab))
-    if (!visualTab) return { phase: "opening" as const, tab }
+    if (!visualTab) return { phase: 'opening' as const, tab }
 
     return nextChromeVisualTab(visualTab, tab, areTabsEqual)
   })
@@ -115,7 +112,7 @@ export function syncChromeVisualTabs<TTab extends ChromeVisualTabSource>(
 }
 
 function initialChromeVisualTabsState<TTab extends ChromeVisualTabSource>(
-  tabs: readonly TTab[]
+  tabs: readonly TTab[],
 ): ChromeVisualTabsState<TTab> {
   return {
     sourceTabs: tabs,
@@ -126,7 +123,7 @@ function initialChromeVisualTabsState<TTab extends ChromeVisualTabSource>(
 function syncChromeVisualTabsState<TTab extends ChromeVisualTabSource>(
   state: ChromeVisualTabsState<TTab>,
   tabs: readonly TTab[],
-  areTabsEqual: ChromeVisualTabEquality<TTab>
+  areTabsEqual: ChromeVisualTabEquality<TTab>,
 ): ChromeVisualTabsState<TTab> {
   const visualTabs = syncChromeVisualTabs(state.visualTabs, tabs, areTabsEqual)
   if (state.sourceTabs === tabs && state.visualTabs === visualTabs) return state
@@ -137,38 +134,38 @@ function syncChromeVisualTabsState<TTab extends ChromeVisualTabSource>(
 function nextChromeVisualTab<TTab extends ChromeVisualTabSource>(
   visualTab: ChromeVisualTab<TTab>,
   openTab: TTab,
-  areTabsEqual: ChromeVisualTabEquality<TTab>
+  areTabsEqual: ChromeVisualTabEquality<TTab>,
 ): ChromeVisualTab<TTab> {
   const tab = areTabsEqual(visualTab.tab, openTab) ? visualTab.tab : openTab
-  if (visualTab.phase === "opening") return { phase: "opening", tab }
+  if (visualTab.phase === 'opening') return { phase: 'opening', tab }
 
-  return { phase: "present", tab }
+  return { phase: 'present', tab }
 }
 
 function presentChromeVisualTab<TTab extends ChromeVisualTabSource>(
-  tab: TTab
+  tab: TTab,
 ): ChromeVisualTab<TTab> {
-  return { phase: "present", tab }
+  return { phase: 'present', tab }
 }
 
 function presentOpeningChromeVisualTabs<TTab extends ChromeVisualTabSource>(
-  current: readonly ChromeVisualTab<TTab>[]
+  current: readonly ChromeVisualTab<TTab>[],
 ) {
   return current.map((visualTab) => {
-    if (visualTab.phase !== "opening") return visualTab
+    if (visualTab.phase !== 'opening') return visualTab
 
-    return { ...visualTab, phase: "present" as const }
+    return { ...visualTab, phase: 'present' as const }
   })
 }
 
 function chromeVisualTabPhaseKey<TTab extends ChromeVisualTabSource>(
   visualTabs: readonly ChromeVisualTab<TTab>[],
-  phase: ChromeVisualTabPhase
+  phase: ChromeVisualTabPhase,
 ) {
   return visualTabs
     .filter((visualTab) => visualTab.phase === phase)
     .map((visualTab) => chromeVisualTabKey(visualTab.tab))
-    .join("\0")
+    .join('\0')
 }
 
 function chromeVisualTabKey(tab: ChromeVisualTabSource) {
@@ -178,19 +175,19 @@ function chromeVisualTabKey(tab: ChromeVisualTabSource) {
 function sameChromeVisualTabs<TTab extends ChromeVisualTabSource>(
   left: readonly ChromeVisualTab<TTab>[],
   right: readonly ChromeVisualTab<TTab>[],
-  areTabsEqual: ChromeVisualTabEquality<TTab>
+  areTabsEqual: ChromeVisualTabEquality<TTab>,
 ) {
   if (left.length !== right.length) return false
 
   return left.every((visualTab, index) =>
-    sameChromeVisualTab(visualTab, right[index], areTabsEqual)
+    sameChromeVisualTab(visualTab, right[index], areTabsEqual),
   )
 }
 
 function sameChromeVisualTab<TTab extends ChromeVisualTabSource>(
   left: ChromeVisualTab<TTab>,
   right: ChromeVisualTab<TTab> | undefined,
-  areTabsEqual: ChromeVisualTabEquality<TTab>
+  areTabsEqual: ChromeVisualTabEquality<TTab>,
 ) {
   if (!right) return false
   if (left.phase !== right.phase) return false
@@ -198,9 +195,6 @@ function sameChromeVisualTab<TTab extends ChromeVisualTabSource>(
   return areTabsEqual(left.tab, right.tab)
 }
 
-function sameChromeVisualTabSource<TTab extends ChromeVisualTabSource>(
-  left: TTab,
-  right: TTab
-) {
+function sameChromeVisualTabSource<TTab extends ChromeVisualTabSource>(left: TTab, right: TTab) {
   return Object.is(left, right)
 }

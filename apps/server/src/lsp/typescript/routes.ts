@@ -1,17 +1,14 @@
-import { isRecord } from "@workspace/contracts"
+import { isRecord } from '@workspace/contracts'
 
-import { TypeScriptLspSession } from "./session"
-import { authenticateWebSocketData, type AuthConfig } from "../../auth"
-import type { WorkspacePaths } from "../../fs/path"
+import { TypeScriptLspSession } from './session'
+import { authenticateWebSocketData, type AuthConfig } from '../../auth'
+import type { WorkspacePaths } from '../../fs/path'
 
 type TypeScriptLspFileSystem = {
   readonly paths: WorkspacePaths
 }
 
-export function typeScriptLspRoutes(
-  fs: TypeScriptLspFileSystem,
-  auth: AuthConfig
-) {
+export function typeScriptLspRoutes(fs: TypeScriptLspFileSystem, auth: AuthConfig) {
   const sessions = new WeakMap<object, TypeScriptLspSession>()
 
   return {
@@ -63,12 +60,12 @@ type LspWebSocket = {
 
 function websocketObject(value: unknown): LspWebSocket | null {
   if (!isRecord(value)) return null
-  if (typeof value.send !== "function") return null
+  if (typeof value.send !== 'function') return null
 
   const close = value.close
   const send = value.send
   return {
-    close: () => (typeof close === "function" ? close.call(value) : undefined),
+    close: () => (typeof close === 'function' ? close.call(value) : undefined),
     data: value.data,
     key: websocketKey(value),
     root: rootFromWebSocketData(value.data),
@@ -81,20 +78,19 @@ function websocketKey(value: Record<string, unknown>): object {
 }
 
 function rootFromWebSocketData(data: unknown) {
-  if (!isRecord(data)) return ""
-  if (isRecord(data.query) && typeof data.query.root === "string")
-    return data.query.root
-  if (typeof data.url !== "string") return ""
+  if (!isRecord(data)) return ''
+  if (isRecord(data.query) && typeof data.query.root === 'string') return data.query.root
+  if (typeof data.url !== 'string') return ''
 
   try {
-    return new URL(data.url).searchParams.get("root") ?? ""
+    return new URL(data.url).searchParams.get('root') ?? ''
   } catch {
-    return ""
+    return ''
   }
 }
 
 function lspMessage(value: unknown): string | ArrayBuffer | Uint8Array | null {
-  if (typeof value === "string") return value
+  if (typeof value === 'string') return value
   if (value instanceof ArrayBuffer) return value
   if (value instanceof Uint8Array) return value
   if (isRecord(value)) return JSON.stringify(value)

@@ -7,18 +7,14 @@ import {
   type EditorCommandPack,
   type EditorKeyBinding,
   type EditorKeymapLayer,
-} from "@editor/core"
+} from '@editor/core'
 
-import type {
-  EditorPlatformCommandId,
-  PlatformCommandId,
-  PlatformKeyBinding,
-} from "./types"
+import type { EditorPlatformCommandId, PlatformCommandId, PlatformKeyBinding } from './types'
 
-const EDITOR_COMMAND_PREFIX = "editor."
+const EDITOR_COMMAND_PREFIX = 'editor.'
 
 export function editorKeyBindingsFromPlatform(
-  bindings: readonly PlatformKeyBinding[]
+  bindings: readonly PlatformKeyBinding[],
 ): readonly EditorKeyBinding[] {
   return bindings.flatMap((binding) => {
     const editorBinding = editorKeyBindingFromPlatform(binding)
@@ -26,9 +22,7 @@ export function editorKeyBindingsFromPlatform(
   })
 }
 
-export function editorKeyBindingFromPlatform(
-  binding: PlatformKeyBinding
-): EditorKeyBinding | null {
+export function editorKeyBindingFromPlatform(binding: PlatformKeyBinding): EditorKeyBinding | null {
   const command = editorCommandIdFromPlatform(binding.command)
   if (!command) return null
 
@@ -42,26 +36,22 @@ export function editorKeyBindingFromPlatform(
 
 export function editorKeymapLayersFromPlatform(
   bindings: readonly PlatformKeyBinding[],
-  packs: readonly EditorCommandPack[] = defaultEditorCommandPacks
+  packs: readonly EditorCommandPack[] = defaultEditorCommandPacks,
 ): readonly EditorKeymapLayer[] {
-  return editorKeymapLayersForBindings(
-    editorKeyBindingsFromPlatform(bindings),
-    packs,
-    { idPrefix: "platform", source: "app" }
-  )
+  return editorKeymapLayersForBindings(editorKeyBindingsFromPlatform(bindings), packs, {
+    idPrefix: 'platform',
+    source: 'app',
+  })
 }
 
 export function readonlyEditorKeymapLayers(
-  layers: readonly EditorKeymapLayer[]
+  layers: readonly EditorKeymapLayer[],
 ): readonly EditorKeymapLayer[] {
-  return filterEditorKeymapLayersByCommandPacks(
-    layers,
-    readonlySafeEditorCommandPacks
-  )
+  return filterEditorKeymapLayersByCommandPacks(layers, readonlySafeEditorCommandPacks)
 }
 
 export function isEditorPlatformCommandId(
-  command: PlatformCommandId | null
+  command: PlatformCommandId | null,
 ): command is EditorPlatformCommandId {
   if (!command) return false
 
@@ -69,7 +59,7 @@ export function isEditorPlatformCommandId(
 }
 
 export function editorCommandIdFromPlatform(
-  command: PlatformCommandId | null
+  command: PlatformCommandId | null,
 ): EditorCommandId | null {
   if (!isEditorPlatformCommandId(command)) return null
 

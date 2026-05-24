@@ -1,4 +1,4 @@
-import { fsClient } from "@/lib/fs-client"
+import { fsClient } from '@/lib/fs-client'
 import type {
   FindMatch,
   FsEntry,
@@ -9,17 +9,12 @@ import type {
   ServerInfo,
   StatResult,
   TreeResult,
-} from "@/lib/file-system-types"
-import { isDirectoryEntry } from "@/lib/file-system-types"
-import { filePickerKeys } from "@/lib/query-keys"
-import { parseEdenSseStream, type EdenSseEvent } from "@/lib/eden-events"
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryResult,
-} from "@tanstack/react-query"
-import { useEffect, useEffectEvent } from "react"
+} from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
+import { filePickerKeys } from '@/lib/query-keys'
+import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useEffect, useEffectEvent } from 'react'
 
 import {
   ROOT_PATH,
@@ -31,7 +26,7 @@ import {
   type DirectoryFsEntry,
   type FilePickerMode,
   type LoadState,
-} from "./state"
+} from './state'
 
 type FindErrorEvent = {
   error?: {
@@ -53,7 +48,7 @@ const searchSignalCleanup = new WeakMap<AbortSignal, () => void>()
 export function useServerInfoForOpen(
   open: boolean,
   onReady: (info: ServerInfo) => void,
-  onClose: () => void
+  onClose: () => void,
 ) {
   const closeSession = useEffectEvent(onClose)
   const applyServerInfo = useEffectEvent(onReady)
@@ -96,40 +91,24 @@ export function useDirectoryLoad({
 }) {
   const queryClient = useQueryClient()
   const enabled = open && Boolean(serverInfo)
-  const queryKey = filePickerKeys.directory(
-    currentPath,
-    effectiveQuery,
-    mode,
-    reloadVersion
-  )
+  const queryKey = filePickerKeys.directory(currentPath, effectiveQuery, mode, reloadVersion)
   const query = useQuery<DirectoryLoadData>({
     enabled,
     placeholderData: (previousData) => previousData,
     queryFn: ({ signal }) =>
-      loadDirectoryData(
-        currentPath,
-        effectiveQuery,
-        mode,
-        signal,
-        (entries) => {
-          if (signal.aborted) return
+      loadDirectoryData(currentPath, effectiveQuery, mode, signal, (entries) => {
+        if (signal.aborted) return
 
-          queryClient.setQueryData(
-            queryKey,
-            (current: DirectoryLoadData | undefined) => ({
-              currentEntry: current?.currentEntry ?? null,
-              entries,
-            })
-          )
-        }
-      ),
+        queryClient.setQueryData(queryKey, (current: DirectoryLoadData | undefined) => ({
+          currentEntry: current?.currentEntry ?? null,
+          entries,
+        }))
+      }),
     queryKey,
   })
 
   return {
-    currentEntry: query.isPlaceholderData
-      ? null
-      : (query.data?.currentEntry ?? null),
+    currentEntry: query.isPlaceholderData ? null : (query.data?.currentEntry ?? null),
     loadState: directoryLoadState(query, enabled),
   }
 }
@@ -168,7 +147,7 @@ async function loadDirectoryData(
   query: string,
   mode: FilePickerMode,
   signal: AbortSignal,
-  onEntries: (entries: FsEntry[]) => void
+  onEntries: (entries: FsEntry[]) => void,
 ): Promise<DirectoryLoadData> {
   const [currentEntry, entries] = await Promise.all([
     fetchCurrentEntry(path, signal),
@@ -178,33 +157,25 @@ async function loadDirectoryData(
   return { currentEntry, entries }
 }
 
-function directoryLoadState(
-  query: UseQueryResult<DirectoryLoadData>,
-  enabled: boolean
-): LoadState {
-  if (!enabled) return { status: "loading" }
-  if (query.isError)
-    return { status: "error", message: errorMessage(query.error) }
+function directoryLoadState(query: UseQueryResult<DirectoryLoadData>, enabled: boolean): LoadState {
+  if (!enabled) return { status: 'loading' }
+  if (query.isError) return { status: 'error', message: errorMessage(query.error) }
   if (query.isPlaceholderData && query.data) {
-    return loadingLoadState({ status: "ready", entries: query.data.entries })
+    return loadingLoadState({ status: 'ready', entries: query.data.entries })
   }
-  if (query.data) return { status: "ready", entries: query.data.entries }
-  if (query.isPending) return { status: "loading" }
+  if (query.data) return { status: 'ready', entries: query.data.entries }
+  if (query.isPending) return { status: 'loading' }
 
-  return { status: "idle" }
+  return { status: 'idle' }
 }
 
-function entriesLoadState(
-  query: UseQueryResult<FsEntry[]>,
-  enabled: boolean
-): LoadState {
-  if (!enabled) return { status: "loading" }
-  if (query.data) return { status: "ready", entries: query.data }
-  if (query.isError)
-    return { status: "error", message: errorMessage(query.error) }
-  if (query.isPending) return { status: "loading" }
+function entriesLoadState(query: UseQueryResult<FsEntry[]>, enabled: boolean): LoadState {
+  if (!enabled) return { status: 'loading' }
+  if (query.data) return { status: 'ready', entries: query.data }
+  if (query.isError) return { status: 'error', message: errorMessage(query.error) }
+  if (query.isPending) return { status: 'loading' }
 
-  return { status: "idle" }
+  return { status: 'idle' }
 }
 
 async function loadEntries(
@@ -212,7 +183,7 @@ async function loadEntries(
   query: string,
   mode: FilePickerMode,
   signal: AbortSignal,
-  onEntries: (entries: FsEntry[]) => void
+  onEntries: (entries: FsEntry[]) => void,
 ) {
   const trimmedQuery = query.trim()
   if (!trimmedQuery) return fetchTreeEntries(path, signal)
@@ -239,7 +210,7 @@ async function fetchCurrentEntry(path: string, signal: AbortSignal) {
 
   const entry = response.data as StatResult
   if (!isDirectoryEntry(entry)) {
-    throw new Error("The current path is not a folder.")
+    throw new Error('The current path is not a folder.')
   }
 
   return {
@@ -280,11 +251,11 @@ async function streamFindEntries(
   query: string,
   mode: FilePickerMode,
   signal: AbortSignal,
-  onEntries: (entries: FsEntry[]) => void
+  onEntries: (entries: FsEntry[]) => void,
 ) {
   const matches: FindMatch[] = []
   const seenPaths = new Set<string>()
-  const scope = path === ROOT_PATH ? "system" : "current"
+  const scope = path === ROOT_PATH ? 'system' : 'current'
 
   await streamFindScope(
     path,
@@ -297,10 +268,10 @@ async function streamFindEntries(
     SEARCH_SCOPE_TIMEOUT_MS,
     () => {
       onEntries(fallbackEntries(matches, query))
-    }
+    },
   )
 
-  if (signal.aborted) throw new DOMException("Aborted", "AbortError")
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 
   return fallbackEntries(matches, query)
 }
@@ -314,24 +285,19 @@ async function streamFindScope(
   seenPaths: Set<string>,
   signal: AbortSignal,
   timeoutMs: number | null,
-  onMatch: () => void
+  onMatch: () => void,
 ) {
   const scopedSignal = scopedSearchSignal(signal, timeoutMs)
 
   try {
-    for await (const event of streamFindEvents(
-      path,
-      query,
-      mode,
-      scopedSignal
-    )) {
+    for await (const event of streamFindEvents(path, query, mode, scopedSignal)) {
       if (appendFindMatch(event, matches, seenPaths, scope)) {
         onMatch()
         continue
       }
 
-      if (event.event === "error") throw new Error(findEventError(event.data))
-      if (event.event === "done") return
+      if (event.event === 'error') throw new Error(findEventError(event.data))
+      if (event.event === 'done') return
     }
   } catch (error) {
     if (scopedSignal.aborted) return
@@ -345,9 +311,9 @@ function appendFindMatch(
   event: EdenSseEvent,
   matches: FindMatch[],
   seenPaths: Set<string>,
-  scope: SearchScope
+  scope: SearchScope,
 ) {
-  if (event.event !== "match") return false
+  if (event.event !== 'match') return false
 
   const match = findEventMatch(event.data)
   if (!match) return false
@@ -375,7 +341,7 @@ async function* streamFindEvents(
   path: string,
   query: string,
   mode: FilePickerMode,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): AsyncGenerator<EdenSseEvent> {
   const response = await fsClient.fs.find.events.get({
     query: {
@@ -384,23 +350,21 @@ async function* streamFindEvents(
       includeContent: false,
       includeNames: true,
       limit: SEARCH_LIMIT,
-      matchMode: "literal",
+      matchMode: 'literal',
       path,
       query,
       wholeWord: false,
     },
     fetch: { signal },
   })
-  if (response.error)
-    throw new Error(`Search failed with status ${response.status}`)
-  if (!response.data)
-    throw new Error("Search response did not include a stream.")
+  if (response.error) throw new Error(`Search failed with status ${response.status}`)
+  if (!response.data) throw new Error('Search response did not include a stream.')
 
   yield* parseEdenSseStream(response.data)
 }
 
 function searchEntryType(mode: FilePickerMode) {
-  if (mode === "folder") return "directory"
+  if (mode === 'folder') return 'directory'
 
   return undefined
 }
@@ -411,10 +375,10 @@ function scopedSearchSignal(signal: AbortSignal, timeoutMs: number | null) {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   const abort = () => controller.abort()
-  signal.addEventListener("abort", abort, { once: true })
+  signal.addEventListener('abort', abort, { once: true })
   searchSignalCleanup.set(controller.signal, () => {
     window.clearTimeout(timeout)
-    signal.removeEventListener("abort", abort)
+    signal.removeEventListener('abort', abort)
   })
 
   return controller.signal
@@ -433,25 +397,25 @@ function fallbackEntries(matches: FindMatch[], query: string) {
 }
 
 function findEventMatch(data: unknown): FindMatch | null {
-  if (!data || typeof data !== "object") return null
-  if (!("match" in data)) return null
+  if (!data || typeof data !== 'object') return null
+  if (!('match' in data)) return null
   if (!isFindMatch(data.match)) return null
 
   return data.match
 }
 
 function isFindMatch(match: unknown): match is FindMatch {
-  if (!match || typeof match !== "object") return false
-  if (!("kind" in match) || match.kind !== "name") return false
-  if (!("path" in match) || typeof match.path !== "string") return false
-  if (!("source" in match) || !isFindMatchSource(match.source)) return false
-  if (!("type" in match) || !isFsEntryType(match.type)) return false
-  if ("targetType" in match && !isOptionalFsEntryType(match.targetType)) {
+  if (!match || typeof match !== 'object') return false
+  if (!('kind' in match) || match.kind !== 'name') return false
+  if (!('path' in match) || typeof match.path !== 'string') return false
+  if (!('source' in match) || !isFindMatchSource(match.source)) return false
+  if (!('type' in match) || !isFsEntryType(match.type)) return false
+  if ('targetType' in match && !isOptionalFsEntryType(match.targetType)) {
     return false
   }
-  if ("size" in match && !isOptionalNumber(match.size)) return false
-  if ("mtimeMs" in match && !isOptionalNumber(match.mtimeMs)) return false
-  if ("birthtimeMs" in match && !isOptionalNumber(match.birthtimeMs)) {
+  if ('size' in match && !isOptionalNumber(match.size)) return false
+  if ('mtimeMs' in match && !isOptionalNumber(match.mtimeMs)) return false
+  if ('birthtimeMs' in match && !isOptionalNumber(match.birthtimeMs)) {
     return false
   }
 
@@ -459,7 +423,7 @@ function isFindMatch(match: unknown): match is FindMatch {
 }
 
 function isFindMatchSource(source: unknown) {
-  return source === "disk" || source === "open-buffer"
+  return source === 'disk' || source === 'open-buffer'
 }
 
 function isOptionalFsEntryType(type: unknown): type is FsEntryType | undefined {
@@ -469,23 +433,18 @@ function isOptionalFsEntryType(type: unknown): type is FsEntryType | undefined {
 }
 
 function isFsEntryType(type: unknown): type is FsEntryType {
-  return (
-    type === "file" ||
-    type === "directory" ||
-    type === "symlink" ||
-    type === "other"
-  )
+  return type === 'file' || type === 'directory' || type === 'symlink' || type === 'other'
 }
 
 function isOptionalNumber(value: unknown) {
   if (value === undefined) return true
 
-  return typeof value === "number"
+  return typeof value === 'number'
 }
 
 function findEventError(data: unknown) {
-  if (!data || typeof data !== "object") return "Search failed."
+  if (!data || typeof data !== 'object') return 'Search failed.'
 
   const payload = data as FindErrorEvent
-  return payload.error?.message ?? "Search failed."
+  return payload.error?.message ?? 'Search failed.'
 }

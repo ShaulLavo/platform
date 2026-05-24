@@ -1,11 +1,11 @@
-import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
+import type { EditorStatusBarState } from '@/features/editor/components/editor-status-bar'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from "@editor/language-server"
-import { createContext, useContext } from "react"
-import { useStore } from "zustand"
-import { createStore, type StoreApi } from "zustand/vanilla"
+} from '@editor/language-server'
+import { createContext, useContext } from 'react'
+import { useStore } from 'zustand'
+import { createStore, type StoreApi } from 'zustand/vanilla'
 
 type EditorUiStoreState = {
   definitionTarget: LanguageServerDefinitionTarget | null
@@ -19,9 +19,7 @@ type EditorUiStoreActions = {
   renameLanguageServerReferencesPath: (from: string, to: string) => void
   resetEditorUiState: () => void
   setDefinitionTarget: (target: LanguageServerDefinitionTarget | null) => void
-  setLanguageServerReferences: (
-    references: LanguageServerReferencesResult | null
-  ) => void
+  setLanguageServerReferences: (references: LanguageServerReferencesResult | null) => void
   setStatusBarState: (status: EditorStatusBarState | null) => void
 }
 
@@ -34,17 +32,13 @@ export const EditorUiStateContext = createContext<EditorUiStoreApi | null>(null)
 export function useEditorUiStoreApi() {
   const store = useContext(EditorUiStateContext)
   if (!store) {
-    throw new Error(
-      "useEditorUiStoreApi must be used within EditorStateProvider"
-    )
+    throw new Error('useEditorUiStoreApi must be used within EditorStateProvider')
   }
 
   return store
 }
 
-export function useEditorUiState<T>(
-  selector: (state: EditorUiStore) => T
-): T {
+export function useEditorUiState<T>(selector: (state: EditorUiStore) => T): T {
   return useStore(useEditorUiStoreApi(), selector)
 }
 
@@ -67,11 +61,7 @@ export function createEditorUiStore() {
       }),
     renameLanguageServerReferencesPath: (from, to) =>
       set((state) => {
-        const references = renamedLanguageServerReferences(
-          state.languageServerReferences,
-          from,
-          to
-        )
+        const references = renamedLanguageServerReferences(state.languageServerReferences, from, to)
         if (references === state.languageServerReferences) return state
 
         return { languageServerReferences: references }
@@ -83,8 +73,7 @@ export function createEditorUiStore() {
         statusBarState: null,
       }),
     setDefinitionTarget: (definitionTarget) => set({ definitionTarget }),
-    setLanguageServerReferences: (languageServerReferences) =>
-      set({ languageServerReferences }),
+    setLanguageServerReferences: (languageServerReferences) => set({ languageServerReferences }),
     setStatusBarState: (statusBarState) =>
       set((state) => {
         if (statusBarState === state.statusBarState) return state
@@ -97,7 +86,7 @@ export function createEditorUiStore() {
 function renamedLanguageServerReferences(
   references: LanguageServerReferencesResult | null,
   from: string,
-  to: string
+  to: string,
 ) {
   if (!references) return references
 

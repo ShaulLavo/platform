@@ -1,6 +1,6 @@
 const fileNameCollator = new Intl.Collator(undefined, {
   numeric: true,
-  sensitivity: "base",
+  sensitivity: 'base',
 })
 const PATH_COMPONENT_CACHE_LIMIT = 4096
 const PATH_PARTS_CACHE_LIMIT = 4096
@@ -24,8 +24,8 @@ export function compareSearchPaths(left: string, right: string) {
   const rightParts = pathParts(right)
 
   for (let index = 0; ; index += 1) {
-    const leftPart = leftParts[index] ?? ""
-    const rightPart = rightParts[index] ?? ""
+    const leftPart = leftParts[index] ?? ''
+    const rightPart = rightParts[index] ?? ''
     const leftIsFileName = index === leftParts.length - 1
     const rightIsFileName = index === rightParts.length - 1
 
@@ -73,14 +73,7 @@ function compareFastSearchFileNames(left: string, right: string) {
     if (isAsciiDigit(leftCode) && isAsciiDigit(rightCode)) {
       const leftEnd = asciiDigitRunEnd(left, leftIndex)
       const rightEnd = asciiDigitRunEnd(right, rightIndex)
-      const result = compareAsciiDigitRuns(
-        left,
-        leftIndex,
-        leftEnd,
-        right,
-        rightIndex,
-        rightEnd
-      )
+      const result = compareAsciiDigitRuns(left, leftIndex, leftEnd, right, rightIndex, rightEnd)
       if (result !== 0) return result
 
       leftIndex = leftEnd
@@ -146,18 +139,10 @@ function compareAsciiDigitRuns(
   leftEnd: number,
   right: string,
   rightStart: number,
-  rightEnd: number
+  rightEnd: number,
 ) {
-  const leftSignificantStart = firstSignificantDigitIndex(
-    left,
-    leftStart,
-    leftEnd
-  )
-  const rightSignificantStart = firstSignificantDigitIndex(
-    right,
-    rightStart,
-    rightEnd
-  )
+  const leftSignificantStart = firstSignificantDigitIndex(left, leftStart, leftEnd)
+  const rightSignificantStart = firstSignificantDigitIndex(right, rightStart, rightEnd)
   const leftLength = leftEnd - leftSignificantStart
   const rightLength = rightEnd - rightSignificantStart
   if (leftLength !== rightLength) return leftLength < rightLength ? -1 : 1
@@ -171,11 +156,7 @@ function compareAsciiDigitRuns(
   return 0
 }
 
-function firstSignificantDigitIndex(
-  value: string,
-  start: number,
-  end: number
-) {
+function firstSignificantDigitIndex(value: string, start: number, end: number) {
   let index = start
 
   while (index < end && value.charCodeAt(index) === ASCII_ZERO) {
@@ -216,12 +197,7 @@ function pathComponentLowerCase(value: string) {
   if (cached !== undefined) return cached
 
   const normalized = value.toLocaleLowerCase()
-  setBoundedCache(
-    pathComponentLowerCaseCache,
-    value,
-    normalized,
-    PATH_COMPONENT_CACHE_LIMIT
-  )
+  setBoundedCache(pathComponentLowerCaseCache, value, normalized, PATH_COMPONENT_CACHE_LIMIT)
 
   return normalized
 }
@@ -230,7 +206,7 @@ function pathParts(path: string) {
   const cached = pathPartsCache.get(path)
   if (cached !== undefined) return cached
 
-  const parts = path.split("/")
+  const parts = path.split('/')
   setBoundedCache(pathPartsCache, path, parts, PATH_PARTS_CACHE_LIMIT)
 
   return parts
@@ -248,16 +224,12 @@ function cachedFileNameComparison(left: string, right: string) {
   return null
 }
 
-function cacheFileNameComparison(
-  left: string,
-  right: string,
-  comparison: number
-) {
+function cacheFileNameComparison(left: string, right: string, comparison: number) {
   setBoundedCache(
     fileNameCompareCache,
     fileNameCompareCacheKey(left, right),
     comparison,
-    FILE_NAME_COMPARE_CACHE_LIMIT
+    FILE_NAME_COMPARE_CACHE_LIMIT,
   )
 }
 
@@ -296,12 +268,7 @@ function isAscii(code: number) {
   return code <= 127
 }
 
-function setBoundedCache<K, V>(
-  cache: Map<K, V>,
-  key: K,
-  value: V,
-  limit: number
-) {
+function setBoundedCache<K, V>(cache: Map<K, V>, key: K, value: V, limit: number) {
   if (cache.size >= limit) cache.clear()
 
   cache.set(key, value)

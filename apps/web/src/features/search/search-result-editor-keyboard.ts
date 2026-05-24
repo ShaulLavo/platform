@@ -1,6 +1,6 @@
-import type { KeyboardEvent } from "react"
+import type { KeyboardEvent } from 'react'
 
-import type { SearchResultId } from "@/features/search/search-result-items"
+import type { SearchResultId } from '@/features/search/search-result-items'
 import {
   firstSearchResultExcerptId,
   firstSearchResultVirtualRowId,
@@ -12,7 +12,7 @@ import {
   type SearchResultFileBlock,
   type SearchResultOpenTarget,
   type SearchResultVirtualRow,
-} from "@/features/search/search-result-view-model"
+} from '@/features/search/search-result-view-model'
 
 export function handleSearchResultSurfaceKeyDown({
   activeResultId,
@@ -31,51 +31,37 @@ export function handleSearchResultSurfaceKeyDown({
   onToggleGroup: (path: string) => void
   rows: readonly SearchResultVirtualRow[]
 }) {
-  if (event.key === "ArrowDown") {
+  if (event.key === 'ArrowDown') {
     event.preventDefault()
-    onSelectResult(
-      searchResultVirtualRowIdByOffset({ activeResultId, offset: 1, rows })
-    )
+    onSelectResult(searchResultVirtualRowIdByOffset({ activeResultId, offset: 1, rows }))
     return
   }
-  if (event.key === "ArrowUp") {
+  if (event.key === 'ArrowUp') {
     event.preventDefault()
-    onSelectResult(
-      searchResultVirtualRowIdByOffset({ activeResultId, offset: -1, rows })
-    )
+    onSelectResult(searchResultVirtualRowIdByOffset({ activeResultId, offset: -1, rows }))
     return
   }
-  if (event.key === "Home") {
+  if (event.key === 'Home') {
     event.preventDefault()
     onSelectResult(firstSearchResultVirtualRowId(rows))
     return
   }
-  if (event.key === "End") {
+  if (event.key === 'End') {
     event.preventDefault()
     onSelectResult(lastSearchResultVirtualRowId(rows))
     return
   }
-  if (event.key === "ArrowRight") {
+  if (event.key === 'ArrowRight') {
     event.preventDefault()
-    moveIntoSearchResultFile(
-      rows,
-      activeResultId,
-      onSelectResult,
-      onToggleGroup
-    )
+    moveIntoSearchResultFile(rows, activeResultId, onSelectResult, onToggleGroup)
     return
   }
-  if (event.key === "ArrowLeft") {
+  if (event.key === 'ArrowLeft') {
     event.preventDefault()
-    moveOutOfSearchResultFile(
-      rows,
-      activeResultId,
-      onSelectResult,
-      onToggleGroup
-    )
+    moveOutOfSearchResultFile(rows, activeResultId, onSelectResult, onToggleGroup)
     return
   }
-  if (event.key !== "Enter") return
+  if (event.key !== 'Enter') return
 
   event.preventDefault()
   const target = searchResultOpenTargetForId(blocks, activeResultId)
@@ -86,26 +72,24 @@ function moveIntoSearchResultFile(
   rows: readonly SearchResultVirtualRow[],
   activeResultId: SearchResultId | null,
   onSelectResult: (id: SearchResultId | null) => void,
-  onToggleGroup: (path: string) => void
+  onToggleGroup: (path: string) => void,
 ) {
   const active = searchResultVirtualRowById(rows, activeResultId)
-  if (active?.type !== "file") return
+  if (active?.type !== 'file') return
 
   if (active.file.collapsed) {
     onToggleGroup(active.file.path)
     return
   }
 
-  onSelectResult(
-    firstSearchResultExcerptId(rows, active.file.id) ?? active.file.id
-  )
+  onSelectResult(firstSearchResultExcerptId(rows, active.file.id) ?? active.file.id)
 }
 
 function moveOutOfSearchResultFile(
   rows: readonly SearchResultVirtualRow[],
   activeResultId: SearchResultId | null,
   onSelectResult: (id: SearchResultId | null) => void,
-  onToggleGroup: (path: string) => void
+  onToggleGroup: (path: string) => void,
 ) {
   const parentId = parentSearchResultFileId(rows, activeResultId)
   if (parentId) {
@@ -114,7 +98,7 @@ function moveOutOfSearchResultFile(
   }
 
   const active = searchResultVirtualRowById(rows, activeResultId)
-  if (active?.type !== "file") return
+  if (active?.type !== 'file') return
   if (active.file.collapsed) return
   if (active.file.excerpts.length === 0) return
 

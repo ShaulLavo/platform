@@ -1,18 +1,11 @@
-import { isRecord } from "@workspace/contracts"
-import ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import { isRecord } from '@workspace/contracts'
+import ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
-import {
-  documentText,
-  fileNameForUri,
-  rangeFromTextSpan,
-} from "../shared/boundary"
-import type { SessionContext } from "../shared/context"
+import { documentText, fileNameForUri, rangeFromTextSpan } from '../shared/boundary'
+import type { SessionContext } from '../shared/context'
 
-export function handleDocumentSymbol(
-  ctx: SessionContext,
-  params: unknown
-): lsp.DocumentSymbol[] {
+export function handleDocumentSymbol(ctx: SessionContext, params: unknown): lsp.DocumentSymbol[] {
   const document = textDocumentIdentifier(params)
   if (!document) return []
 
@@ -28,7 +21,7 @@ export function handleDocumentSymbol(
 
 function documentSymbol(
   item: ts.NavigationTree,
-  fallbackText: string
+  fallbackText: string,
 ): readonly lsp.DocumentSymbol[] {
   const span = item.spans[0]
   if (!span) return []
@@ -36,13 +29,11 @@ function documentSymbol(
   const range = rangeFromTextSpan(fallbackText, span)
   return [
     {
-      name: item.text || "<anonymous>",
+      name: item.text || '<anonymous>',
       kind: symbolKind(item.kind),
       range,
       selectionRange: range,
-      children: item.childItems?.flatMap((child) =>
-        documentSymbol(child, fallbackText)
-      ),
+      children: item.childItems?.flatMap((child) => documentSymbol(child, fallbackText)),
     },
   ]
 }
@@ -60,12 +51,10 @@ function symbolKind(kind: string): lsp.SymbolKind {
   return 13
 }
 
-function textDocumentIdentifier(
-  params: unknown
-): lsp.TextDocumentIdentifier | null {
+function textDocumentIdentifier(params: unknown): lsp.TextDocumentIdentifier | null {
   if (!isRecord(params)) return null
   if (!isRecord(params.textDocument)) return null
-  return typeof params.textDocument.uri === "string"
+  return typeof params.textDocument.uri === 'string'
     ? ({ uri: params.textDocument.uri } satisfies lsp.TextDocumentIdentifier)
     : null
 }

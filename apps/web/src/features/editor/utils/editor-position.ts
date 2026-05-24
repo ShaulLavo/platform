@@ -1,10 +1,10 @@
-import type { TextSnapshot } from "@editor/core"
-import type { LanguageServerDefinitionTarget } from "@editor/language-server"
+import type { TextSnapshot } from '@editor/core'
+import type { LanguageServerDefinitionTarget } from '@editor/language-server'
 
 export function selectionForDefinition(
   filePath: string,
   textSnapshot: TextSnapshot,
-  target: LanguageServerDefinitionTarget | null | undefined
+  target: LanguageServerDefinitionTarget | null | undefined,
 ) {
   if (!target) return null
   if (target.path !== filePath) return null
@@ -49,7 +49,7 @@ export function textLineAt(textSnapshot: TextSnapshot, lineIndex: number) {
 
 function offsetForPosition(
   textSnapshot: TextSnapshot,
-  position: LanguageServerDefinitionTarget["range"]["start"]
+  position: LanguageServerDefinitionTarget['range']['start'],
 ) {
   const lineStart = rowStartOffset(textSnapshot, position.line)
   return Math.min(textSnapshot.length, lineStart + position.character)
@@ -58,11 +58,11 @@ function offsetForPosition(
 function visitRowStartChunk(
   state: { remainingRows: number; result: number | null },
   text: string,
-  start: number
+  start: number,
 ) {
   let offset = 0
   while (offset < text.length) {
-    const nextLine = text.indexOf("\n", offset)
+    const nextLine = text.indexOf('\n', offset)
     if (nextLine === -1) return
 
     state.remainingRows -= 1
@@ -83,17 +83,17 @@ function visitLineChunk(
   },
   textSnapshot: TextSnapshot,
   text: string,
-  start: number
+  start: number,
 ) {
   let offset = 0
   while (offset < text.length) {
-    const nextLine = text.indexOf("\n", offset)
+    const nextLine = text.indexOf('\n', offset)
     if (nextLine === -1) return
 
     if (state.remainingLines === 0) {
       state.result = textSnapshot
         .getTextInRange(state.lineStart, start + nextLine)
-        .replace(/\r$/u, "")
+        .replace(/\r$/u, '')
       return
     }
 

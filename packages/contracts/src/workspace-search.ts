@@ -1,7 +1,7 @@
-import type { EntryTypeFilter } from "./tree-entry"
+import type { EntryTypeFilter } from './tree-entry'
 
-export type WorkspaceSearchSource = "disk" | "open-buffer"
-export type WorkspaceSearchMatchMode = "literal" | "regex" | "fuzzy"
+export type WorkspaceSearchSource = 'disk' | 'open-buffer'
+export type WorkspaceSearchMatchMode = 'literal' | 'regex' | 'fuzzy'
 
 export type WorkspaceSearchQuery = {
   caseSensitive?: boolean
@@ -22,7 +22,7 @@ export type WorkspaceSearchMatch = {
   birthtimeMs?: number
   column?: number
   endColumn?: number
-  kind: "name" | "content"
+  kind: 'name' | 'content'
   line?: number
   mtimeMs?: number
   path: string
@@ -39,17 +39,17 @@ export type WorkspaceSearchDoneEvent = {
   path: string
   query: string
   truncated: boolean
-  type: "done"
+  type: 'done'
 }
 
 export type WorkspaceSearchEvent =
   | {
       match: WorkspaceSearchMatch
-      type: "match"
+      type: 'match'
     }
   | WorkspaceSearchDoneEvent
   | {
       code: string
       message: string
-      type: "error"
+      type: 'error'
     }

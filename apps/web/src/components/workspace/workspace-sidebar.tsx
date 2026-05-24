@@ -1,15 +1,15 @@
-import { WorkspaceFilesPane } from "@/components/workspace/workspace-files-pane"
-import { WorkspaceSearchPane } from "@/components/workspace/workspace-search-pane"
-import { Panel as GitPanel } from "@/features/git/panel"
-import type { TreeEntry } from "@/lib/file-system-types"
-import type { LoadState } from "@/lib/load-state"
-import type { DirectoryLoadOptions, TreeModel } from "@/lib/tree-model"
-import type { WorkspacePanelTab } from "@/lib/workspace-cache"
+import { WorkspaceFilesPane } from '@/components/workspace/workspace-files-pane'
+import { WorkspaceSearchPane } from '@/components/workspace/workspace-search-pane'
+import { Panel as GitPanel } from '@/features/git/panel'
+import type { TreeEntry } from '@/lib/file-system-types'
+import type { LoadState } from '@/lib/load-state'
+import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
+import type { WorkspacePanelTab } from '@/lib/workspace-cache'
 import {
   workspacePanelTabTitle,
   workspaceTreeHeaderDetail,
-} from "@/components/workspace/workspace-view-utils"
-import { TabsContent } from "@workspace/ui/components/tabs"
+} from '@/components/workspace/workspace-view-utils'
+import { TabsContent } from '@workspace/ui/components/tabs'
 
 export function WorkspaceSidebar({
   onLoadDirectory,
@@ -21,11 +21,7 @@ export function WorkspaceSidebar({
   treeState,
   visibleTreeItemCount,
 }: {
-  onLoadDirectory: (
-    entry: TreeEntry,
-    treePath: string,
-    options?: DirectoryLoadOptions
-  ) => void
+  onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void
   onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   onVisibleItemCountChange: (count: number) => void
   rootPath: string
@@ -37,7 +33,7 @@ export function WorkspaceSidebar({
   return (
     <aside
       aria-hidden={!sidebarVisible}
-      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+      className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'
       inert={!sidebarVisible}
     >
       <WorkspaceSidebarHeader
@@ -45,7 +41,7 @@ export function WorkspaceSidebar({
         treeState={treeState}
         visibleTreeItemCount={visibleTreeItemCount}
       />
-      <TabsContent keepMounted value="files">
+      <TabsContent keepMounted value='files'>
         <WorkspaceFilesPane
           key={rootPath}
           rootPath={rootPath}
@@ -55,10 +51,10 @@ export function WorkspaceSidebar({
           onPrefetchDirectory={onPrefetchDirectory}
         />
       </TabsContent>
-      <TabsContent keepMounted value="search">
+      <TabsContent keepMounted value='search'>
         <WorkspaceSearchPane rootPath={rootPath} />
       </TabsContent>
-      <TabsContent keepMounted value="git">
+      <TabsContent keepMounted value='git'>
         <GitPanel rootPath={rootPath} />
       </TabsContent>
     </aside>
@@ -75,20 +71,13 @@ function WorkspaceSidebarHeader({
   visibleTreeItemCount: number | null
 }) {
   const title = workspacePanelTabTitle(tab)
-  const detail =
-    tab === "files"
-      ? workspaceTreeHeaderDetail(treeState, visibleTreeItemCount)
-      : null
+  const detail = tab === 'files' ? workspaceTreeHeaderDetail(treeState, visibleTreeItemCount) : null
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-      <div className="min-w-0">
-        <div className="truncate text-xs font-medium">{title}</div>
-        {detail && (
-          <div className="truncate text-[11px] text-muted-foreground">
-            {detail}
-          </div>
-        )}
+    <div className='flex h-10 shrink-0 items-center gap-2 border-b px-3'>
+      <div className='min-w-0'>
+        <div className='truncate text-xs font-medium'>{title}</div>
+        {detail && <div className='text-muted-foreground truncate text-[11px]'>{detail}</div>}
       </div>
     </div>
   )

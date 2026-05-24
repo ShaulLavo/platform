@@ -1,11 +1,11 @@
-import { isRecord } from "@workspace/contracts"
+import { isRecord } from '@workspace/contracts'
 
-import { errorPayload, FsError } from "./fs/errors"
+import { errorPayload, FsError } from './fs/errors'
 
-export type AuthCapability = "filesystem:read" | "filesystem:write"
+export type AuthCapability = 'filesystem:read' | 'filesystem:write'
 
 export type AuthPrincipal = {
-  kind: "local"
+  kind: 'local'
   capabilities: readonly AuthCapability[]
 }
 
@@ -16,42 +16,36 @@ export type AuthOptions = {
 
 export type AuthConfig = {
   allowedOrigins: readonly string[]
-  mode: "dev-origin" | "session-token"
+  mode: 'dev-origin' | 'session-token'
   principal: AuthPrincipal
   sessionToken?: string
 }
 
 const DEFAULT_ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://localhost:4173",
-  "http://127.0.0.1:4173",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
 ] as const
 
 export const localAuthPrincipal: AuthPrincipal = {
-  kind: "local",
-  capabilities: ["filesystem:read", "filesystem:write"],
+  kind: 'local',
+  capabilities: ['filesystem:read', 'filesystem:write'],
 }
 
 export function createAuthConfig(options: AuthOptions = {}): AuthConfig {
   return {
     allowedOrigins: options.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS,
-    mode: options.sessionToken ? "session-token" : "dev-origin",
+    mode: options.sessionToken ? 'session-token' : 'dev-origin',
     principal: localAuthPrincipal,
     sessionToken: options.sessionToken,
   }
 }
 
 export function authGuard(auth: AuthConfig) {
-  return ({
-    request,
-    set,
-  }: {
-    request: Request
-    set: { status?: number | string }
-  }) => {
+  return ({ request, set }: { request: Request; set: { status?: number | string } }) => {
     const error = authenticateRequest(request, auth)
     if (!error) return undefined
 
@@ -60,39 +54,21 @@ export function authGuard(auth: AuthConfig) {
   }
 }
 
-export function authenticateRequest(
-  request: Request,
-  auth: AuthConfig
-): FsError | null {
-  const originError = localBrowserOriginError(
-    auth,
-    request.headers.get("origin")
-  )
+export function authenticateRequest(request: Request, auth: AuthConfig): FsError | null {
+  const originError = localBrowserOriginError(auth, request.headers.get('origin'))
   if (originError) return originError
 
-  const tokenError = sessionTokenError(
-    auth,
-    request.headers.get("authorization")
-  )
+  const tokenError = sessionTokenError(auth, request.headers.get('authorization'))
   if (tokenError) return tokenError
 
   return null
 }
 
-export function authenticateWebSocketData(
-  data: unknown,
-  auth: AuthConfig
-): FsError | null {
-  const originError = localBrowserOriginError(
-    auth,
-    originFromWebSocketData(data)
-  )
+export function authenticateWebSocketData(data: unknown, auth: AuthConfig): FsError | null {
+  const originError = localBrowserOriginError(auth, originFromWebSocketData(data))
   if (originError) return originError
 
-  const tokenError = sessionTokenError(
-    auth,
-    authorizationFromWebSocketData(data)
-  )
+  const tokenError = sessionTokenError(auth, authorizationFromWebSocketData(data))
   if (tokenError) return tokenError
 
   return null
@@ -103,10 +79,10 @@ export function isCorsOriginAllowed(auth: AuthConfig, origin: string | null) {
 }
 
 function localBrowserOriginError(auth: AuthConfig, origin: string | null) {
-  if (!origin) return new FsError("UNAUTHORIZED")
+  if (!origin) return new FsError('UNAUTHORIZED')
   if (hasTrustedOrigin(auth, origin)) return null
 
-  return new FsError("FORBIDDEN_ORIGIN")
+  return new FsError('FORBIDDEN_ORIGIN')
 }
 
 function hasTrustedOrigin(auth: AuthConfig, origin: string | null) {
@@ -117,7 +93,7 @@ function sessionTokenError(auth: AuthConfig, authorization: string | null) {
   if (!auth.sessionToken) return null
   if (authorization === `Bearer ${auth.sessionToken}`) return null
 
-  return new FsError("UNAUTHORIZED", "missing or invalid session token")
+  return new FsError('UNAUTHORIZED', 'missing or invalid session token')
 }
 
 function originFromWebSocketData(data: unknown) {
@@ -125,7 +101,7 @@ function originFromWebSocketData(data: unknown) {
   if (!isRecord(data.headers)) return null
 
   const origin = data.headers.origin ?? data.headers.Origin
-  return typeof origin === "string" ? origin : null
+  return typeof origin === 'string' ? origin : null
 }
 
 function authorizationFromWebSocketData(data: unknown) {
@@ -142,20 +118,20 @@ function authorizationHeaderFromWebSocketData(data: unknown) {
   if (!isRecord(data.headers)) return null
 
   const authorization = data.headers.authorization ?? data.headers.Authorization
-  return typeof authorization === "string" ? authorization : null
+  return typeof authorization === 'string' ? authorization : null
 }
 
 function queryTokenFromWebSocketData(data: unknown) {
   if (!isRecord(data)) return null
   if (isRecord(data.query)) {
     const token = data.query.token ?? data.query.authToken
-    if (typeof token === "string") return token
+    if (typeof token === 'string') return token
   }
-  if (typeof data.url !== "string") return null
+  if (typeof data.url !== 'string') return null
 
   try {
     const url = new URL(data.url)
-    return url.searchParams.get("token") ?? url.searchParams.get("authToken")
+    return url.searchParams.get('token') ?? url.searchParams.get('authToken')
   } catch {
     return null
   }

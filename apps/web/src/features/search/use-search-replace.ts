@@ -1,25 +1,22 @@
-import { useQueryClient } from "@tanstack/react-query"
-import { useCallback, useRef } from "react"
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useRef } from 'react'
 
-import { useEditorDocumentStoreApi } from "@/features/editor/state/editor-document-state"
+import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
 import type {
   SearchBufferSnapshot,
   WorkspaceSearchFileGroup,
-} from "@/features/search/search-buffer-state"
+} from '@/features/search/search-buffer-state'
 import {
   useSearchBufferState,
   useSearchBufferStoreApi,
-} from "@/features/search/search-buffer-state"
+} from '@/features/search/search-buffer-state'
 import {
   replaceWorkspaceSearchMatches,
   workspaceSearchReplaceSummary,
-} from "@/features/search/search-replace-runner"
-import { fetchFile, writeFileContent } from "@/lib/file-server"
-import { fileSystemKeys } from "@/lib/query-keys"
-import type {
-  WorkspaceSearchMatch,
-  WorkspaceSearchQuery,
-} from "@workspace/contracts"
+} from '@/features/search/search-replace-runner'
+import { fetchFile, writeFileContent } from '@/lib/file-server'
+import { fileSystemKeys } from '@/lib/query-keys'
+import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
 export function useWorkspaceSearchReplace(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
@@ -46,19 +43,19 @@ export function useWorkspaceSearchReplace(rootPath: string) {
         if (controllerRef.current === controller) controllerRef.current = null
       })
     },
-    [documentStore, queryClient, rootPath, store]
+    [documentStore, queryClient, rootPath, store],
   )
   const replaceAll = useCallback(
     () => replaceMatches(activeSnapshot?.matches ?? []),
-    [activeSnapshot?.matches, replaceMatches]
+    [activeSnapshot?.matches, replaceMatches],
   )
   const replaceGroup = useCallback(
     (group: WorkspaceSearchFileGroup) => replaceMatches(group.matches),
-    [replaceMatches]
+    [replaceMatches],
   )
   const replaceMatch = useCallback(
     (match: WorkspaceSearchMatch) => replaceMatches([match]),
-    [replaceMatches]
+    [replaceMatches],
   )
   const replaceNext = useCallback(() => {
     const match = firstContentMatch(activeSnapshot?.matches ?? [])
@@ -95,7 +92,7 @@ async function runReplace({
   if (!canReplace(snapshot)) return
   if (snapshot.rootPath !== rootPath) return
 
-  const contentMatches = matches.filter((match) => match.kind === "content")
+  const contentMatches = matches.filter((match) => match.kind === 'content')
   if (contentMatches.length === 0) return
 
   store.getState().startReplace(rootPath)
@@ -103,11 +100,9 @@ async function runReplace({
   try {
     const result = await replaceWorkspaceSearchMatches({
       context: {
-        cacheFile: (file) =>
-          queryClient.setQueryData(fileSystemKeys.file(file.path), file),
+        cacheFile: (file) => queryClient.setQueryData(fileSystemKeys.file(file.path), file),
         fetchFile,
-        getCachedEditorDocument:
-          documentStore.getState().getCachedEditorDocument,
+        getCachedEditorDocument: documentStore.getState().getCachedEditorDocument,
         recordCachedEditorDocumentTextChange:
           documentStore.getState().recordCachedEditorDocumentTextChange,
         signal: controller.signal,
@@ -119,9 +114,7 @@ async function runReplace({
     })
     if (controller.signal.aborted) return
 
-    store
-      .getState()
-      .finishReplace(rootPath, workspaceSearchReplaceSummary(result))
+    store.getState().finishReplace(rootPath, workspaceSearchReplaceSummary(result))
     store.getState().requestSearchRefresh(rootPath)
   } catch (error) {
     if (controller.signal.aborted) return
@@ -135,22 +128,22 @@ type ReplaceableSearchBufferSnapshot = SearchBufferSnapshot & {
 }
 
 function canReplace(
-  snapshot: SearchBufferSnapshot | null
+  snapshot: SearchBufferSnapshot | null,
 ): snapshot is ReplaceableSearchBufferSnapshot {
   if (!snapshot) return false
   if (!snapshot.resultsSearchQuery) return false
-  if (snapshot.replaceStatus === "running") return false
-  if (snapshot.status === "loading") return false
+  if (snapshot.replaceStatus === 'running') return false
+  if (snapshot.status === 'loading') return false
 
   return firstContentMatch(snapshot.matches) !== null
 }
 
 function firstContentMatch(matches: readonly WorkspaceSearchMatch[]) {
-  return matches.find((match) => match.kind === "content") ?? null
+  return matches.find((match) => match.kind === 'content') ?? null
 }
 
 function replaceErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
 
-  return "Replace failed."
+  return 'Replace failed.'
 }

@@ -2,13 +2,13 @@ import type {
   EntryTypeFilter,
   TreeEntry as ContractsTreeEntry,
   WorkspaceSearchMatch,
-} from "@workspace/contracts"
+} from '@workspace/contracts'
 
-export type { FileResult } from "@workspace/contracts"
+export type { FileResult } from '@workspace/contracts'
 
 export type FsEntryType = EntryTypeFilter
 
-export type SearchScope = "current" | "system"
+export type SearchScope = 'current' | 'system'
 
 export type TreeEntry = ContractsTreeEntry & {
   children?: TreeEntry[]
@@ -23,7 +23,7 @@ export type TreeResult = {
   entries: FsEntry[]
 }
 
-export type StatResult = Omit<FsEntry, "children" | "name">
+export type StatResult = Omit<FsEntry, 'children' | 'name'>
 
 export type FindMatch = WorkspaceSearchMatch & {
   searchScope?: SearchScope
@@ -43,11 +43,11 @@ export type ServerInfo = {
 export type PickedFsEntry = FsEntry &
   (
     | {
-        type: "file" | "directory"
+        type: 'file' | 'directory'
       }
     | {
-        type: "symlink"
-        targetType: "file" | "directory"
+        type: 'symlink'
+        targetType: 'file' | 'directory'
       }
   )
 
@@ -56,16 +56,16 @@ export function effectiveEntryType(entry: EntryTypeCarrier): FsEntryType {
 }
 
 export function isDirectoryEntry(entry: EntryTypeCarrier) {
-  return effectiveEntryType(entry) === "directory"
+  return effectiveEntryType(entry) === 'directory'
 }
 
 export function isFileEntry(entry: EntryTypeCarrier) {
-  return effectiveEntryType(entry) === "file"
+  return effectiveEntryType(entry) === 'file'
 }
 
 export function isPickedFsEntry(entry: FsEntry): entry is PickedFsEntry {
   const type = effectiveEntryType(entry)
-  return type === "file" || type === "directory"
+  return type === 'file' || type === 'directory'
 }
 
 type EntryTypeCarrier = {

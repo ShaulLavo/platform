@@ -1,10 +1,5 @@
-import type {
-  ChangeRow,
-  FileStatus,
-  RepositoryInfo,
-  StatusPresentation,
-} from "./types"
-import { gitChangeSymbol } from "./status-symbols"
+import type { ChangeRow, FileStatus, RepositoryInfo, StatusPresentation } from './types'
+import { gitChangeSymbol } from './status-symbols'
 
 export function changeRows(files: readonly FileStatus[]) {
   const staged: ChangeRow[] = []
@@ -12,10 +7,10 @@ export function changeRows(files: readonly FileStatus[]) {
 
   for (const file of sortedStatusFiles(files)) {
     if (isStagedStatus(file.index)) {
-      staged.push({ file, section: "staged", status: file.index })
+      staged.push({ file, section: 'staged', status: file.index })
     }
     if (isWorktreeStatus(file.worktree)) {
-      worktree.push({ file, section: "worktree", status: file.worktree })
+      worktree.push({ file, section: 'worktree', status: file.worktree })
     }
   }
 
@@ -23,14 +18,14 @@ export function changeRows(files: readonly FileStatus[]) {
 }
 
 export function statusPresentation(
-  status: FileStatus["index"] | FileStatus["worktree"]
+  status: FileStatus['index'] | FileStatus['worktree'],
 ): StatusPresentation {
   return gitChangeSymbol(status)
 }
 
 export function parentPath(path: string) {
-  const index = path.lastIndexOf("/")
-  if (index < 0) return ""
+  const index = path.lastIndexOf('/')
+  if (index < 0) return ''
 
   return path.slice(0, index)
 }
@@ -39,15 +34,12 @@ export function aheadBehindLabel(repository: RepositoryInfo) {
   const parts: string[] = []
   if (repository.ahead > 0) parts.push(`↑${repository.ahead}`)
   if (repository.behind > 0) parts.push(`↓${repository.behind}`)
-  if (parts.length === 0) return ""
+  if (parts.length === 0) return ''
 
-  return parts.join(" ")
+  return parts.join(' ')
 }
 
-export function canSyncChanges(
-  repository: RepositoryInfo,
-  hasLocalChanges: boolean
-) {
+export function canSyncChanges(repository: RepositoryInfo, hasLocalChanges: boolean) {
   return !hasLocalChanges && repository.ahead > 0
 }
 
@@ -55,21 +47,21 @@ export function syncChangesLabel(repository: RepositoryInfo) {
   const parts: string[] = []
   if (repository.behind > 0) parts.push(`${repository.behind}↓`)
   if (repository.ahead > 0) parts.push(`${repository.ahead}↑`)
-  if (parts.length === 0) return "Sync Changes"
+  if (parts.length === 0) return 'Sync Changes'
 
-  return `Sync Changes ${parts.join(" ")}`
+  return `Sync Changes ${parts.join(' ')}`
 }
 
-function isStagedStatus(status: FileStatus["index"]) {
-  return status !== "unmodified" && status !== "untracked"
+function isStagedStatus(status: FileStatus['index']) {
+  return status !== 'unmodified' && status !== 'untracked'
 }
 
-function isWorktreeStatus(status: FileStatus["worktree"]) {
-  return status !== "unmodified"
+function isWorktreeStatus(status: FileStatus['worktree']) {
+  return status !== 'unmodified'
 }
 
 function sortedStatusFiles(files: readonly FileStatus[]) {
-  return [...files].sort(compareStatusPaths)
+  return files.toSorted(compareStatusPaths)
 }
 
 function compareStatusPaths(left: FileStatus, right: FileStatus) {

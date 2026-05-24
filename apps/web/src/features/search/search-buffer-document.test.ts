@@ -1,26 +1,26 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from 'bun:test'
 
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentId,
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
-} from "./search-buffer-document"
+} from './search-buffer-document'
 
-describe("search buffer document ids", () => {
-  it("round-trips root paths", () => {
-    const id = searchBufferDocumentId("Users/shaul/project")
+describe('search buffer document ids', () => {
+  it('round-trips root paths', () => {
+    const id = searchBufferDocumentId('Users/shaul/project')
 
     expect(parseSearchBufferDocumentId(id)).toEqual({
       id,
-      rootPath: "Users/shaul/project",
+      rootPath: 'Users/shaul/project',
     })
   })
 
-  it("formats tab labels and titles", () => {
-    expect(searchBufferDocumentLabel()).toBe("Search")
-    expect(searchBufferDocumentTitle("Users/shaul/project")).toBe(
-      "/Users/shaul/project search results"
+  it('formats tab labels and titles', () => {
+    expect(searchBufferDocumentLabel()).toBe('Search')
+    expect(searchBufferDocumentTitle('Users/shaul/project')).toBe(
+      '/Users/shaul/project search results',
     )
   })
 })

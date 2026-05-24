@@ -1,5 +1,5 @@
-import { lstat } from "node:fs/promises"
-import path from "node:path"
+import { lstat } from 'node:fs/promises'
+import path from 'node:path'
 
 export async function gitCwdForPath(absolutePath: string) {
   try {
@@ -13,8 +13,8 @@ export async function gitCwdForPath(absolutePath: string) {
 }
 
 export function lexicalRepositoryRoot(cwd: string, prefix: string) {
-  const segments = prefix.split("/").filter(Boolean)
+  const segments = prefix.split('/').filter(Boolean)
   if (segments.length === 0) return cwd
 
-  return path.resolve(cwd, ...segments.map(() => ".."))
+  return path.resolve(cwd, ...segments.map(() => '..'))
 }

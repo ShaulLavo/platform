@@ -1,16 +1,16 @@
-import { useEditorCommands } from "@/features/editor/state/editor-commands"
-import { gitKeys } from "@/lib/query-keys"
-import { useQueryClient } from "@tanstack/react-query"
-import { fetchDiff } from "../api"
-import { diffDocumentId } from "../diff-document"
-import type { ChangeRow, FileDiff } from "../types"
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { gitKeys } from '@/lib/query-keys'
+import { useQueryClient } from '@tanstack/react-query'
+import { fetchDiff } from '../api'
+import { diffDocumentId } from '../diff-document'
+import type { ChangeRow, FileDiff } from '../types'
 
 export function useOpenDiffDocument() {
   const queryClient = useQueryClient()
   const { selectFile } = useEditorCommands()
 
   async function openDiff(row: ChangeRow) {
-    const staged = row.section === "staged"
+    const staged = row.section === 'staged'
     const diffs = await queryClient.fetchQuery({
       queryFn: ({ signal }) => fetchDiff(row.file.path, staged, signal),
       queryKey: gitKeys.diff(row.file.path, staged),

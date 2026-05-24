@@ -1,19 +1,13 @@
-import {
-  parseTerminalServerMessage,
-  type TerminalServerMessage,
-} from "@workspace/contracts"
-import { cn } from "@workspace/ui/lib/utils"
-import { FitAddon, init, Terminal, type IDisposable } from "ghostty-web"
-import { useEffect, useRef, type ComponentPropsWithoutRef } from "react"
+import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspace/contracts'
+import { cn } from '@workspace/ui/lib/utils'
+import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
+import { useEffect, useRef, type ComponentPropsWithoutRef } from 'react'
 
-import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
-import { reportError, toClientError } from "@/lib/client-error-taxonomy"
-import {
-  connectTerminalSocket,
-  type EdenServerSocket,
-} from "@/lib/server-sockets"
+import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
-import { sendTerminalClientMessage } from "./terminal-socket"
+import { sendTerminalClientMessage } from './terminal-socket'
 
 type TerminalDimensions = {
   cols: number
@@ -21,37 +15,33 @@ type TerminalDimensions = {
 }
 
 const TERMINAL_THEME = {
-  background: "#101214",
-  foreground: "#d7dde5",
-  cursor: "#f4f7fb",
-  cursorAccent: "#101214",
-  selectionBackground: "#3d5368",
-  selectionForeground: "#ffffff",
-  black: "#15181c",
-  red: "#ff5f57",
-  green: "#5fd38d",
-  yellow: "#f3c969",
-  blue: "#6aa8ff",
-  magenta: "#d28bff",
-  cyan: "#5fd7e5",
-  white: "#d7dde5",
-  brightBlack: "#6d7682",
-  brightRed: "#ff8f87",
-  brightGreen: "#89e8af",
-  brightYellow: "#f7d98c",
-  brightBlue: "#93c1ff",
-  brightMagenta: "#e1b0ff",
-  brightCyan: "#8ce8f0",
-  brightWhite: "#ffffff",
+  background: '#101214',
+  foreground: '#d7dde5',
+  cursor: '#f4f7fb',
+  cursorAccent: '#101214',
+  selectionBackground: '#3d5368',
+  selectionForeground: '#ffffff',
+  black: '#15181c',
+  red: '#ff5f57',
+  green: '#5fd38d',
+  yellow: '#f3c969',
+  blue: '#6aa8ff',
+  magenta: '#d28bff',
+  cyan: '#5fd7e5',
+  white: '#d7dde5',
+  brightBlack: '#6d7682',
+  brightRed: '#ff8f87',
+  brightGreen: '#89e8af',
+  brightYellow: '#f7d98c',
+  brightBlue: '#93c1ff',
+  brightMagenta: '#e1b0ff',
+  brightCyan: '#8ce8f0',
+  brightWhite: '#ffffff',
 }
 
 let ghosttyInitPromise: Promise<void> | null = null
 
-export function TerminalPanel({
-  className,
-  rootPath,
-  ...sectionProps
-}: TerminalPanelProps) {
+export function TerminalPanel({ className, rootPath, ...sectionProps }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
 
@@ -67,34 +57,28 @@ export function TerminalPanel({
 
   return (
     <section
-      aria-label="Terminal"
+      aria-label='Terminal'
       {...sectionProps}
       className={cn(
-        "grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-[#101214] text-[#d7dde5]",
-        className
+        'grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-[#101214] text-[#d7dde5]',
+        className,
       )}
-      onFocusCapture={() => setFocusArea("terminal")}
-      onPointerDownCapture={() => setFocusArea("terminal")}
+      onFocusCapture={() => setFocusArea('terminal')}
+      onPointerDownCapture={() => setFocusArea('terminal')}
     >
       <div
-        className="min-h-0 min-w-0 overflow-hidden bg-[#101214] px-2 py-1 font-mono"
+        className='min-h-0 min-w-0 overflow-hidden bg-[#101214] px-2 py-1 font-mono'
         ref={hostRef}
       />
     </section>
   )
 }
 
-type TerminalPanelProps = ComponentPropsWithoutRef<"section"> & {
+type TerminalPanelProps = ComponentPropsWithoutRef<'section'> & {
   rootPath: string
 }
 
-function mountTerminal({
-  host,
-  rootPath,
-}: {
-  host: HTMLDivElement
-  rootPath: string
-}) {
+function mountTerminal({ host, rootPath }: { host: HTMLDivElement; rootPath: string }) {
   let cancelled = false
   let dataDisposable: IDisposable | null = null
   let fitAddon: FitAddon | null = null
@@ -116,7 +100,7 @@ function mountTerminal({
       fitAddon.observeResize()
       terminal.focus()
       dataDisposable = terminal.onData((data) =>
-        sendTerminalClientMessage(socket, { type: "input", data })
+        sendTerminalClientMessage(socket, { type: 'input', data }),
       )
       resizeDisposable = terminal.onResize((dimensions) => {
         terminalDimensions = dimensions
@@ -159,12 +143,12 @@ function openTerminalSocket({
 }) {
   const socket = connectTerminalSocket(rootPath)
 
-  socket.addEventListener("open", () => {
+  socket.addEventListener('open', () => {
     if (isCancelled()) return
 
     sendTerminalResize(socket, getTerminalDimensions())
   })
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener('message', (event) => {
     if (isCancelled()) return
 
     const message = parseTerminalServerMessage((event as MessageEvent).data)
@@ -186,29 +170,28 @@ function handleTerminalServerMessage({
   message: TerminalServerMessage
   terminal: Terminal
 }) {
-  if (message.type === "output") {
+  if (message.type === 'output') {
     terminal.write(message.data)
     return
   }
-  if (message.type === "ready") {
+  if (message.type === 'ready') {
     return
   }
-  if (message.type === "exit") {
-    terminal.writeln("")
+  if (message.type === 'exit') {
+    terminal.writeln('')
     terminal.writeln(exitDetail(message.exitCode))
     return
   }
 
-  terminal.writeln("")
+  terminal.writeln('')
   terminal.writeln(message.message)
 }
 
 function createTerminal() {
   return new Terminal({
     cursorBlink: true,
-    cursorStyle: "block",
-    fontFamily:
-      "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace",
+    cursorStyle: 'block',
+    fontFamily: "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace",
     fontSize: 12,
     scrollback: 10_000,
     smoothScrollDuration: 80,
@@ -230,14 +213,14 @@ function initializeGhostty() {
 
 function sendTerminalResize(
   socket: EdenServerSocket | null,
-  dimensions: TerminalDimensions | null
+  dimensions: TerminalDimensions | null,
 ) {
   if (!dimensions) return false
 
   return sendTerminalClientMessage(socket, {
     cols: dimensions.cols,
     rows: dimensions.rows,
-    type: "resize",
+    type: 'resize',
   })
 }
 
@@ -250,7 +233,7 @@ function closeTerminalSocket(socket: EdenServerSocket | null) {
 }
 
 function exitDetail(exitCode: number | null) {
-  if (exitCode === null) return "Process exited"
+  if (exitCode === null) return 'Process exited'
 
   return `Process exited ${exitCode}`
 }

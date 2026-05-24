@@ -2,6 +2,12 @@
   "name": "platform",
   "version": "0.0.1",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/contracts",
+    "packages/ui",
+    "../Editor/packages/*"
+  ],
   "scripts": {
     "build": "bun scripts/prod.ts build",
     "dev": "turbo dev",
@@ -9,26 +15,22 @@
     "prod": "bun scripts/prod.ts",
     "start": "bun scripts/prod.ts start",
     "format": "turbo format",
+    "format:check": "turbo format:check",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "verify:spelling": "bash scripts/verify-no-refrences.sh"
   },
   "devDependencies": {
-    "prettier": "^3.8.1",
-    "prettier-plugin-tailwindcss": "^0.7.2",
-    "turbo": "^2.8.17",
+    "@typescript/native-preview": "latest",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "turbo": "^2.9.2",
     "typescript": "5.9.3"
   },
-  "packageManager": "bun@1.3.10",
   "engines": {
     "node": ">=20"
   },
-  "workspaces": [
-    "apps/*",
-    "packages/contracts",
-    "packages/ui",
-    "../Editor/packages/*"
-  ],
+  "packageManager": "bun@1.3.10",
   "patchedDependencies": {
     "@pierre/trees@1.0.0-beta.3": "patches/@pierre%2Ftrees@1.0.0-beta.3.patch"
   }

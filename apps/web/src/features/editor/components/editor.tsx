@@ -1,33 +1,33 @@
-import "@editor/core/style.css"
-import "@editor/find/style.css"
-import "@editor/minimap/style.css"
-import { useEditor } from "@editor/react"
-import "@editor/scope-lines/style.css"
+import '@editor/core/style.css'
+import '@editor/find/style.css'
+import '@editor/minimap/style.css'
+import { useEditor } from '@editor/react'
+import '@editor/scope-lines/style.css'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from "@editor/language-server"
-import { useEffect, useLayoutEffect, useMemo, useState } from "react"
+} from '@editor/language-server'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 
-import { EditorFrame } from "@/features/editor/components/editor-frame"
+import { EditorFrame } from '@/features/editor/components/editor-frame'
 import {
   createCriticalEditorCorePlugins,
   loadNonCriticalEditorPlugins,
-} from "@/features/editor/editor-plugins"
-import { selectionForDefinition } from "@/features/editor/utils/editor-position"
-import { languageIdForFilePath } from "@/features/editor/utils/file-path"
-import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
-import type { CachedEditorDocument } from "@/features/editor/state/editor-document-state"
-import { useCommitMessageEditorFocus } from "@/features/editor/hooks/use-commit-message-editor-focus"
-import { useEditorColorTheme } from "@/features/editor/hooks/use-editor-color-theme"
-import { useEditorStatusBarState } from "@/features/editor/hooks/use-editor-status-bar-state"
+} from '@/features/editor/editor-plugins'
+import { selectionForDefinition } from '@/features/editor/utils/editor-position'
+import { languageIdForFilePath } from '@/features/editor/utils/file-path'
+import type { EditorStatusBarState } from '@/features/editor/components/editor-status-bar'
+import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
+import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import { useEditorStatusBarState } from '@/features/editor/hooks/use-editor-status-bar-state'
 import {
   scrollPositionFromSnapshot,
   useScrollPersistencePlugin,
-} from "@/features/editor/hooks/use-scroll-persistence-plugin"
-import { useLanguageServerPlugin } from "@/features/editor/hooks/use-lsp-plugin"
-import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
-import type { DocumentSessionChange, EditorKeymapLayer } from "@editor/core"
+} from '@/features/editor/hooks/use-scroll-persistence-plugin'
+import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
+import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import type { DocumentSessionChange, EditorKeymapLayer } from '@editor/core'
 
 type EditorProps = {
   active: boolean
@@ -41,14 +41,10 @@ type EditorProps = {
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
   onScrollPositionChange?: (
     path: string,
-    scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
+    scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
   ) => void
   onStatusChange?: (status: EditorStatusBarState) => void
-  onTextChange?: (
-    tabId: string,
-    path: string,
-    change: DocumentSessionChange
-  ) => void
+  onTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
 }
 
 export function Editor({
@@ -65,14 +61,10 @@ export function Editor({
   onStatusChange,
   onTextChange,
 }: EditorProps) {
-  const editorActive = useWorkspaceFocus(
-    (state) => state.activeArea === "editor" && active
-  )
-  const editorFocusRequestId = useWorkspaceFocus((state) =>
-    state.consumeEditorFocusRequest()
-  )
+  const editorActive = useWorkspaceFocus((state) => state.activeArea === 'editor' && active)
+  const editorFocusRequestId = useWorkspaceFocus((state) => state.consumeEditorFocusRequest())
   const setActiveEditorCommandDispatch = useWorkspaceFocus(
-    (state) => state.setActiveEditorCommandDispatch
+    (state) => state.setActiveEditorCommandDispatch,
   )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const { editorTheme } = useEditorColorTheme()
@@ -91,10 +83,7 @@ export function Editor({
   const [nonCriticalPlugins, setNonCriticalPlugins] = useState<
     readonly ReturnType<typeof createCriticalEditorCorePlugins>[number][]
   >([])
-  const criticalEditorCorePlugins = useMemo(
-    () => createCriticalEditorCorePlugins(),
-    []
-  )
+  const criticalEditorCorePlugins = useMemo(() => createCriticalEditorCorePlugins(), [])
   const plugins = useMemo(
     () => [
       ...criticalEditorCorePlugins,
@@ -102,12 +91,7 @@ export function Editor({
       ...nonCriticalPlugins,
       scrollPersistencePlugin,
     ],
-    [
-      criticalEditorCorePlugins,
-      languageServer,
-      nonCriticalPlugins,
-      scrollPersistencePlugin,
-    ]
+    [criticalEditorCorePlugins, languageServer, nonCriticalPlugins, scrollPersistencePlugin],
   )
   const document = useMemo(
     () => ({
@@ -116,14 +100,14 @@ export function Editor({
       revision: cachedDocument.contentRevision,
       scrollPosition: cachedDocument.scrollPosition,
       session: cachedDocument.session,
-      text: "",
+      text: '',
     }),
-    [cachedDocument]
+    [cachedDocument],
   )
   const controller = useEditor({
     cursorLineHighlight: {
       gutterNumber: true,
-      gutterBackground: ["fold-gutter"],
+      gutterBackground: ['fold-gutter'],
       rowBackground: true,
     },
     document,
@@ -132,8 +116,7 @@ export function Editor({
       layers: keymapLayers,
     },
     onChange: (_state, change) => {
-      if (!change || change.kind === "selection" || change.kind === "none")
-        return
+      if (!change || change.kind === 'selection' || change.kind === 'none') return
 
       onTextChange?.(tabId, cachedDocument.path, change)
     },
@@ -142,16 +125,10 @@ export function Editor({
   })
   const editorInstance = controller.useEditorInstance()
   const editorState = controller.useState()
-  const textSnapshot =
-    controller.useTextSnapshot() ?? cachedDocument.session.getTextSnapshot()
+  const textSnapshot = controller.useTextSnapshot() ?? cachedDocument.session.getTextSnapshot()
   const selection = useMemo(
-    () =>
-      selectionForDefinition(
-        cachedDocument.path,
-        textSnapshot,
-        definitionTarget
-      ),
-    [cachedDocument.path, definitionTarget, textSnapshot]
+    () => selectionForDefinition(cachedDocument.path, textSnapshot, definitionTarget),
+    [cachedDocument.path, definitionTarget, textSnapshot],
   )
 
   useEditorStatusBarState({
@@ -178,10 +155,7 @@ export function Editor({
   useEffect(() => {
     if (!active) return
 
-    onDirtyChange?.(
-      cachedDocument.path,
-      editorState?.isDirty ?? cachedDocument.session.isDirty()
-    )
+    onDirtyChange?.(cachedDocument.path, editorState?.isDirty ?? cachedDocument.session.isDirty())
   }, [active, cachedDocument, editorState?.isDirty, onDirtyChange])
 
   useLayoutEffect(() => {
@@ -197,11 +171,7 @@ export function Editor({
 
   useEffect(() => {
     if (!selection) return
-    controller.commands.setSelection(
-      selection.anchor,
-      selection.head,
-      selection.anchor
-    )
+    controller.commands.setSelection(selection.anchor, selection.head, selection.anchor)
   }, [controller, selection])
 
   useEffect(() => {
@@ -228,13 +198,13 @@ export function Editor({
     <EditorFrame
       active={editorActive}
       controller={controller}
-      onActivate={() => setFocusArea("editor")}
+      onActivate={() => setFocusArea('editor')}
     />
   )
 }
 
 function scheduleNonCriticalPluginLoad(load: () => void) {
-  if ("requestIdleCallback" in window) {
+  if ('requestIdleCallback' in window) {
     window.requestIdleCallback(load)
     return
   }

@@ -9,12 +9,10 @@ export function HighlightedPreview({
   range?: { end: number; start: number } | null
   replacementText?: string
 }) {
-  const highlight = range
-    ? previewRangeHighlight(preview, range)
-    : previewHighlight(preview, query)
+  const highlight = range ? previewRangeHighlight(preview, range) : previewHighlight(preview, query)
   if (!highlight) {
     return (
-      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+      <span className='block max-w-full overflow-hidden text-ellipsis whitespace-nowrap'>
         {preview}
       </span>
     )
@@ -22,12 +20,12 @@ export function HighlightedPreview({
 
   if (replacementText !== undefined) {
     return (
-      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+      <span className='block max-w-full overflow-hidden text-ellipsis whitespace-nowrap'>
         {highlight.before}
-        <mark className="inline-block max-w-full overflow-hidden rounded-sm bg-red-500/15 px-0.5 text-ellipsis whitespace-nowrap text-red-950 line-through decoration-red-700/70 align-bottom dark:bg-red-500/20 dark:text-red-100">
+        <mark className='inline-block max-w-full overflow-hidden rounded-sm bg-red-500/15 px-0.5 align-bottom text-ellipsis whitespace-nowrap text-red-950 line-through decoration-red-700/70 dark:bg-red-500/20 dark:text-red-100'>
           {highlight.match}
         </mark>
-        <mark className="ml-0.5 inline-block max-w-full overflow-hidden rounded-sm bg-emerald-500/15 px-0.5 text-ellipsis whitespace-nowrap text-emerald-950 align-bottom dark:bg-emerald-500/20 dark:text-emerald-100">
+        <mark className='ml-0.5 inline-block max-w-full overflow-hidden rounded-sm bg-emerald-500/15 px-0.5 align-bottom text-ellipsis whitespace-nowrap text-emerald-950 dark:bg-emerald-500/20 dark:text-emerald-100'>
           {replacementText}
         </mark>
         {highlight.after}
@@ -36,9 +34,9 @@ export function HighlightedPreview({
   }
 
   return (
-    <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+    <span className='block max-w-full overflow-hidden text-ellipsis whitespace-nowrap'>
       {highlight.before}
-      <mark className="inline-block max-w-full overflow-hidden rounded-sm bg-yellow-200/80 px-0.5 text-ellipsis whitespace-nowrap text-yellow-950 align-bottom dark:bg-yellow-500/30 dark:text-yellow-100">
+      <mark className='inline-block max-w-full overflow-hidden rounded-sm bg-yellow-200/80 px-0.5 align-bottom text-ellipsis whitespace-nowrap text-yellow-950 dark:bg-yellow-500/30 dark:text-yellow-100'>
         {highlight.match}
       </mark>
       {highlight.after}
@@ -46,10 +44,7 @@ export function HighlightedPreview({
   )
 }
 
-function previewRangeHighlight(
-  preview: string,
-  range: { end: number; start: number }
-) {
+function previewRangeHighlight(preview: string, range: { end: number; start: number }) {
   if (range.start < 0 || range.end <= range.start) return null
   if (range.start >= preview.length) return null
 

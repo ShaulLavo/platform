@@ -1,10 +1,10 @@
-import type { PickedFsEntry } from "@/lib/file-system-types"
+import type { PickedFsEntry } from '@/lib/file-system-types'
 import {
   DEFAULT_DIFF_VIEW_MODE,
   isEditorDiffViewMode,
   type EditorDiffViewMode,
-} from "@/features/editor/utils/diff-view-mode"
-import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
+} from '@/features/editor/utils/diff-view-mode'
+import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import {
   activeEditorPanePath,
   createEditorPaneLayoutForPaths,
@@ -16,17 +16,14 @@ import {
   type EditorPaneNode,
   type EditorPaneSplitDirection,
   type EditorPaneTab,
-} from "@/features/editor/state/editor-pane-state"
-import { parseDiffDocumentId } from "@/features/git/diff-document"
-import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
-import { reportError, toClientError } from "@/lib/client-error-taxonomy"
-import type {
-  WorkspaceSearchMatchMode,
-  WorkspaceSearchQuery,
-} from "@workspace/contracts"
-import * as v from "valibot"
+} from '@/features/editor/state/editor-pane-state'
+import { parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/contracts'
+import * as v from 'valibot'
 
-const CACHE_KEY = "platform.workspace-state.v1"
+const CACHE_KEY = 'platform.workspace-state.v1'
 
 type WorkspaceCachePayload =
   | {
@@ -101,7 +98,7 @@ type WorkspaceCachePayloadV7 = {
   workspacePanelTab: WorkspacePanelTab
 }
 
-export type WorkspacePanelTab = "files" | "git" | "search"
+export type WorkspacePanelTab = 'files' | 'git' | 'search'
 
 export type CachedSearchBufferState = {
   activeResultId: string | null
@@ -130,7 +127,7 @@ const pickedDirectorySchema = v.object({
   name: v.string(),
   path: v.string(),
   size: v.number(),
-  type: v.literal("directory"),
+  type: v.literal('directory'),
 })
 const pickedSymlinkDirectorySchema = v.object({
   birthtimeMs: v.number(),
@@ -138,29 +135,23 @@ const pickedSymlinkDirectorySchema = v.object({
   name: v.string(),
   path: v.string(),
   size: v.number(),
-  targetType: v.literal("directory"),
-  type: v.literal("symlink"),
+  targetType: v.literal('directory'),
+  type: v.literal('symlink'),
 })
-const rootFolderSchema = v.nullable(
-  v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema])
-)
+const rootFolderSchema = v.nullable(v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema]))
 const selectedFilePathSchema = v.nullable(v.string())
-const workspacePanelTabSchema = v.union([
-  v.literal("files"),
-  v.literal("git"),
-  v.literal("search"),
-])
+const workspacePanelTabSchema = v.union([v.literal('files'), v.literal('git'), v.literal('search')])
 const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)
 const entryTypeSchema = v.union([
-  v.literal("file"),
-  v.literal("directory"),
-  v.literal("symlink"),
-  v.literal("other"),
+  v.literal('file'),
+  v.literal('directory'),
+  v.literal('symlink'),
+  v.literal('other'),
 ])
 const workspaceSearchMatchModeSchema = v.union([
-  v.literal("literal"),
-  v.literal("regex"),
-  v.literal("fuzzy"),
+  v.literal('literal'),
+  v.literal('regex'),
+  v.literal('fuzzy'),
 ])
 const workspaceSearchQuerySchema = v.object({
   caseSensitive: v.optional(v.boolean()),
@@ -247,9 +238,7 @@ const v6Schema = v.object({
   version: v.literal(6),
   workspacePanelTab: workspacePanelTabSchema,
 })
-const editorPaneLayoutSchema = v.custom<EditorPaneLayout>(
-  isEditorPaneLayoutPayload
-)
+const editorPaneLayoutSchema = v.custom<EditorPaneLayout>(isEditorPaneLayoutPayload)
 const v7Schema = v.object({
   diffViewMode: diffViewModeSchema,
   editorHistory: v.array(v.string()),
@@ -262,7 +251,7 @@ const v7Schema = v.object({
   version: v.literal(7),
   workspacePanelTab: workspacePanelTabSchema,
 })
-const workspaceCachePayloadSchema = v.variant("version", [
+const workspaceCachePayloadSchema = v.variant('version', [
   v1Schema,
   v2Schema,
   v3Schema,
@@ -310,7 +299,7 @@ export function writeWorkspaceCache({
   editorPaneLayout,
 }:
   | WorkspaceCacheState
-  | (Omit<WorkspaceCacheState, "editorPaneLayout"> & {
+  | (Omit<WorkspaceCacheState, 'editorPaneLayout'> & {
       editorPaneLayout?: EditorPaneLayout
     })) {
   if (!canUseLocalStorage()) return
@@ -318,20 +307,16 @@ export function writeWorkspaceCache({
   try {
     const persistedPaneLayout = editorPaneLayoutForWorkspace(
       rootFolder,
-      editorPaneLayout ??
-        createEditorPaneLayoutForPaths(openFilePaths, selectedFilePath),
+      editorPaneLayout ?? createEditorPaneLayoutForPaths(openFilePaths, selectedFilePath),
       openFilePaths,
-      selectedFilePath
+      selectedFilePath,
     )
     const payload: WorkspaceCachePayloadV7 = {
       diffViewMode,
       editorHistory: workspacePathsForCache(rootFolder, editorHistory),
       editorPaneLayout: persistedPaneLayout,
       gitPanelOpen,
-      recentlyClosedEditorPaths: workspacePathsForCache(
-        rootFolder,
-        recentlyClosedEditorPaths
-      ),
+      recentlyClosedEditorPaths: workspacePathsForCache(rootFolder, recentlyClosedEditorPaths),
       rootFolder,
       searchBuffer: searchBufferForWorkspace(rootFolder, searchBuffer),
       sidebarVisible,
@@ -356,11 +341,11 @@ function readCachePayload() {
     if (payload) return payload
 
     localStorage.removeItem(CACHE_KEY)
-    reportError(toClientError({ code: "INVALID_PATH" }))
+    reportError(toClientError({ code: 'INVALID_PATH' }))
     return null
   } catch (error) {
     localStorage.removeItem(CACHE_KEY)
-    reportError(toClientError({ code: "OPERATION_FAILED", error }))
+    reportError(toClientError({ code: 'OPERATION_FAILED', error }))
     return null
   }
 }
@@ -379,23 +364,15 @@ function parseCachePayload(value: string): WorkspaceCachePayload | null {
   return result.output
 }
 
-function workspaceStateFromPayload(
-  payload: WorkspaceCachePayload
-): WorkspaceCacheState {
+function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCacheState {
   const selectedFilePath = selectedPathFromPayload(payload)
   const payloadOpenPaths =
     payload.version === 1
       ? selectedFilePathForArray(selectedFilePath)
       : payload.version === 7
-        ? editorPaneOpenPaths(
-            editorPaneLayoutFromPayload(payload, selectedFilePath, [])
-          )
+        ? editorPaneOpenPaths(editorPaneLayoutFromPayload(payload, selectedFilePath, []))
         : payload.openFilePaths
-  const editorPaneLayout = editorPaneLayoutFromPayload(
-    payload,
-    selectedFilePath,
-    payloadOpenPaths
-  )
+  const editorPaneLayout = editorPaneLayoutFromPayload(payload, selectedFilePath, payloadOpenPaths)
 
   return {
     diffViewMode: diffViewModeFromPayload(payload),
@@ -403,24 +380,17 @@ function workspaceStateFromPayload(
       payload.rootFolder,
       payload.version === 5 || payload.version === 6 || payload.version === 7
         ? payload.editorHistory
-        : selectedFilePathForArray(selectedFilePath)
+        : selectedFilePathForArray(selectedFilePath),
     ),
     editorPaneLayout,
     gitPanelOpen:
       payload.version === 5 || payload.version === 6 || payload.version === 7
         ? payload.gitPanelOpen
         : true,
-    openFilePaths: openPathsForWorkspace(
-      payload.rootFolder,
-      payloadOpenPaths,
-      selectedFilePath
-    ),
+    openFilePaths: openPathsForWorkspace(payload.rootFolder, payloadOpenPaths, selectedFilePath),
     recentlyClosedEditorPaths:
       payload.version === 5 || payload.version === 6 || payload.version === 7
-        ? workspacePathsForCache(
-            payload.rootFolder,
-            payload.recentlyClosedEditorPaths
-          )
+        ? workspacePathsForCache(payload.rootFolder, payload.recentlyClosedEditorPaths)
         : [],
     rootFolder: payload.rootFolder,
     searchBuffer: searchBufferFromPayload(payload),
@@ -456,22 +426,17 @@ function workspacePanelTabFromPayload(payload: WorkspaceCachePayload) {
     return payload.workspacePanelTab
   }
 
-  return "files"
+  return 'files'
 }
 
 function selectedPathForWorkspace(
   rootFolder: PickedFsEntry | null,
-  selectedFilePath: string | null
+  selectedFilePath: string | null,
 ) {
   if (!rootFolder) return null
   if (!selectedFilePath) return null
   if (parseConflictDiffDocumentId(selectedFilePath)) return null
-  if (
-    isPathInWorkspace(
-      backingPathForWorkspace(selectedFilePath),
-      rootFolder.path
-    )
-  ) {
+  if (isPathInWorkspace(backingPathForWorkspace(selectedFilePath), rootFolder.path)) {
     return selectedFilePath
   }
 
@@ -481,22 +446,17 @@ function selectedPathForWorkspace(
 function openPathsForWorkspace(
   rootFolder: PickedFsEntry | null,
   openFilePaths: readonly string[],
-  selectedFilePath: string | null
+  selectedFilePath: string | null,
 ) {
   const uniquePaths = workspacePathsForCache(rootFolder, openFilePaths)
   if (!selectedFilePath) return uniquePaths
   if (uniquePaths.includes(selectedFilePath)) return uniquePaths
 
-  return [...uniquePaths, selectedFilePath]
+  return uniquePaths.concat(selectedFilePath)
 }
 
-function workspacePathsForCache(
-  rootFolder: PickedFsEntry | null,
-  paths: readonly string[]
-) {
-  return [
-    ...new Set(paths.filter((path) => pathForWorkspace(rootFolder, path))),
-  ]
+function workspacePathsForCache(rootFolder: PickedFsEntry | null, paths: readonly string[]) {
+  return Array.from(new Set(paths.filter((path) => pathForWorkspace(rootFolder, path))))
 }
 
 function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
@@ -507,7 +467,7 @@ function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
 }
 
 function backingPathForWorkspace(path: string) {
-  if (parseConflictDiffDocumentId(path)) return ""
+  if (parseConflictDiffDocumentId(path)) return ''
 
   const diff = parseDiffDocumentId(path)
   if (diff) return diff.path
@@ -526,7 +486,7 @@ function searchBufferFromPayload(payload: WorkspaceCachePayload) {
 
 function searchBufferForWorkspace(
   rootFolder: PickedFsEntry | null,
-  searchBuffer: CachedSearchBufferState | null
+  searchBuffer: CachedSearchBufferState | null,
 ) {
   if (!rootFolder) return null
   if (!searchBuffer) return null
@@ -560,23 +520,18 @@ function emptyWorkspaceState(): WorkspaceCacheState {
     searchBuffer: null,
     selectedFilePath: null,
     sidebarVisible: true,
-    workspacePanelTab: "files",
+    workspacePanelTab: 'files',
   }
 }
 
 function canUseLocalStorage() {
-  return typeof localStorage !== "undefined"
+  return typeof localStorage !== 'undefined'
 }
 
 function selectedPathFromPayload(payload: WorkspaceCachePayload) {
   if (payload.version === 7) {
     return activeEditorPanePath(
-      editorPaneLayoutForWorkspace(
-        payload.rootFolder,
-        payload.editorPaneLayout,
-        [],
-        null
-      )
+      editorPaneLayoutForWorkspace(payload.rootFolder, payload.editorPaneLayout, [], null),
     )
   }
 
@@ -586,14 +541,14 @@ function selectedPathFromPayload(payload: WorkspaceCachePayload) {
 function editorPaneLayoutFromPayload(
   payload: WorkspaceCachePayload,
   selectedFilePath: string | null,
-  openFilePaths: readonly string[]
+  openFilePaths: readonly string[],
 ) {
   if (payload.version === 7) {
     return editorPaneLayoutForWorkspace(
       payload.rootFolder,
       payload.editorPaneLayout,
       openFilePaths,
-      selectedFilePath
+      selectedFilePath,
     )
   }
 
@@ -604,42 +559,39 @@ function editorPaneLayoutForWorkspace(
   rootFolder: PickedFsEntry | null,
   layout: EditorPaneLayout,
   fallbackOpenFilePaths: readonly string[],
-  fallbackSelectedFilePath: string | null
+  fallbackSelectedFilePath: string | null,
 ) {
   const normalized = normalizeEditorPaneLayout(layout)
   const filtered = filterEditorPaneLayoutTabs(normalized, (tab) =>
-    pathForWorkspace(rootFolder, tab.path)
+    pathForWorkspace(rootFolder, tab.path),
   )
   if (editorPaneTabs(filtered.root).length > 0) return filtered
 
-  const selectedFilePath = selectedPathForWorkspace(
-    rootFolder,
-    fallbackSelectedFilePath
-  )
+  const selectedFilePath = selectedPathForWorkspace(rootFolder, fallbackSelectedFilePath)
   return createEditorPaneLayoutForPaths(
     openPathsForWorkspace(rootFolder, fallbackOpenFilePaths, selectedFilePath),
-    selectedFilePath
+    selectedFilePath,
   )
 }
 
 function isEditorPaneLayoutPayload(value: unknown): value is EditorPaneLayout {
   if (!isRecord(value)) return false
-  if (typeof value.activePaneId !== "string") return false
+  if (typeof value.activePaneId !== 'string') return false
 
   return isEditorPaneNode(value.root)
 }
 
 function isEditorPaneNode(value: unknown): value is EditorPaneNode {
   if (!isRecord(value)) return false
-  if (value.kind === "leaf") return isEditorPaneLeaf(value)
-  if (value.kind === "split") return isEditorPaneSplit(value)
+  if (value.kind === 'leaf') return isEditorPaneLeaf(value)
+  if (value.kind === 'split') return isEditorPaneSplit(value)
 
   return false
 }
 
 function isEditorPaneLeaf(value: Record<string, unknown>) {
-  if (typeof value.id !== "string") return false
-  if (value.activeTabId !== null && typeof value.activeTabId !== "string") {
+  if (typeof value.id !== 'string') return false
+  if (value.activeTabId !== null && typeof value.activeTabId !== 'string') {
     return false
   }
   if (!Array.isArray(value.tabs)) return false
@@ -648,7 +600,7 @@ function isEditorPaneLeaf(value: Record<string, unknown>) {
 }
 
 function isEditorPaneSplit(value: Record<string, unknown>) {
-  if (typeof value.id !== "string") return false
+  if (typeof value.id !== 'string') return false
   if (!isEditorPaneSplitDirection(value.direction)) return false
   if (!Array.isArray(value.children)) return false
   if (!Array.isArray(value.sizes)) return false
@@ -659,23 +611,21 @@ function isEditorPaneSplit(value: Record<string, unknown>) {
 
 function isEditorPaneTab(value: unknown): value is EditorPaneTab {
   if (!isRecord(value)) return false
-  if (typeof value.id !== "string") return false
+  if (typeof value.id !== 'string') return false
 
-  return typeof value.path === "string"
+  return typeof value.path === 'string'
 }
 
-function isEditorPaneSplitDirection(
-  value: unknown
-): value is EditorPaneSplitDirection {
-  return value === "horizontal" || value === "vertical"
+function isEditorPaneSplitDirection(value: unknown): value is EditorPaneSplitDirection {
+  return value === 'horizontal' || value === 'vertical'
 }
 
 function isFiniteNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value)
+  return typeof value === 'number' && Number.isFinite(value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (!value) return false
 
-  return typeof value === "object"
+  return typeof value === 'object'
 }

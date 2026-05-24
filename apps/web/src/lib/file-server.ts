@@ -1,14 +1,6 @@
-import { fsClient } from "@/lib/fs-client"
-import type {
-  FileResult,
-  FindMatch,
-  TreeEntry,
-  TreeResult,
-} from "@/lib/file-system-types"
-import {
-  errorMessage as clientErrorMessage,
-  toClientError,
-} from "@/lib/client-error-taxonomy"
+import { fsClient } from '@/lib/fs-client'
+import type { FileResult, FindMatch, TreeEntry, TreeResult } from '@/lib/file-system-types'
+import { errorMessage as clientErrorMessage, toClientError } from '@/lib/client-error-taxonomy'
 
 const TREE_LOAD_DEPTH = 1
 
@@ -46,11 +38,11 @@ export async function fetchQuickOpenFiles({
   const response = await fsClient.fs.find.get({
     query: {
       caseSensitive: false,
-      entryType: "file",
+      entryType: 'file',
       includeContent: false,
       includeNames: true,
       limit: 200,
-      matchMode: "fuzzy",
+      matchMode: 'fuzzy',
       path,
       query,
       wholeWord: false,
@@ -66,7 +58,7 @@ export async function fetchQuickOpenFiles({
 export async function writeFileContent(
   path: string,
   content: string,
-  expectedMtimeMs?: number | null
+  expectedMtimeMs?: number | null,
 ) {
   const body =
     expectedMtimeMs === undefined || expectedMtimeMs === null
@@ -80,7 +72,7 @@ export async function writeFileContent(
 }
 
 export async function createFileContent(path: string, content: string) {
-  const response = await fsClient.fs["create-file"].post({ content, path })
+  const response = await fsClient.fs['create-file'].post({ content, path })
 
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
@@ -90,7 +82,7 @@ export async function createFileContent(path: string, content: string) {
 export async function ensureFolderPath(path: string) {
   if (!path) return null
 
-  const response = await fsClient.fs["create-folder"].post({
+  const response = await fsClient.fs['create-folder'].post({
     path,
     recursive: true,
   })

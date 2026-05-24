@@ -1,41 +1,46 @@
-import { existsSync } from "node:fs"
-import path from "node:path"
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 
-import { isRecord } from "@workspace/contracts"
-import ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import {
+  tsDiagnosticMessageText,
+  tsDiagnosticToLspDiagnostic,
+} from '@editor/typescript-lsp/ts-diagnostics'
+import type { PublishDiagnosticsNotificationParams } from '@editor/lsp/types'
+import { isRecord } from '@workspace/contracts'
+import ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
-import { handleCodeAction } from "./handlers/code-action"
-import { handleCompletion } from "./handlers/completion"
-import { handleDefinition } from "./handlers/definition"
-import { handleDidChange } from "./handlers/did-change"
-import { handleDidClose } from "./handlers/did-close"
-import { handleDidOpen } from "./handlers/did-open"
-import { handleDocumentSymbol } from "./handlers/document-symbol"
-import { handleHover } from "./handlers/hover"
-import { handleInitialize } from "./handlers/initialize"
-import { handlePrepareRename } from "./handlers/prepare-rename"
-import { handleReferences } from "./handlers/references"
-import { handleRename } from "./handlers/rename"
-import { handleSignatureHelp } from "./handlers/signature-help"
+import { handleCodeAction } from './handlers/code-action'
+import { handleCompletion } from './handlers/completion'
+import { handleDefinition } from './handlers/definition'
+import { handleDidChange } from './handlers/did-change'
+import { handleDidClose } from './handlers/did-close'
+import { handleDidOpen } from './handlers/did-open'
+import { handleDocumentSymbol } from './handlers/document-symbol'
+import { handleHover } from './handlers/hover'
+import { handleInitialize } from './handlers/initialize'
+import { handlePrepareRename } from './handlers/prepare-rename'
+import { handleReferences } from './handlers/references'
+import { handleRename } from './handlers/rename'
+import { handleSignatureHelp } from './handlers/signature-help'
 import {
   errorMessage,
   JSON_RPC_INTERNAL_ERROR,
   toResponseError,
   type JsonRpcError,
-} from "./shared/error"
+} from './shared/error'
 import {
   invalidateForFileContentChange,
   invalidateForProjectConfigChange,
   type InvalidationState,
-} from "./shared/invalidation"
-import { createScriptVersionRegistry, type ScriptVersionRegistry } from "./shared/script-versions"
-import type { OpenDocument, SessionContext } from "./shared/context"
+} from './shared/invalidation'
+import { createScriptVersionRegistry, type ScriptVersionRegistry } from './shared/script-versions'
+import type { OpenDocument, SessionContext } from './shared/context'
 
-const JSON_RPC_VERSION = "2.0"
+const JSON_RPC_VERSION = '2.0'
 const METHOD_NOT_FOUND = -32601
 const DEFAULT_DIAGNOSTIC_DELAY_MS = 150
-const TYPE_SCRIPT_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"])
+const TYPE_SCRIPT_EXTENSIONS = new Set(['.cts', '.mts', '.ts', '.tsx'])
 
 export type TypeScriptLspSessionOptions = {
   root: string
@@ -62,7 +67,7 @@ export class TypeScriptLspSession {
   private diagnosticDelayMs: number
   private service: ts.LanguageService | null = null
   private serviceFailed = false
-  private serviceFailureMessage = "TypeScript language service unavailable"
+  private serviceFailureMessage = 'TypeScript language service unavailable'
   private projectVersion = 0
   private shutdown = false
 
@@ -105,28 +110,31 @@ export class TypeScriptLspSession {
 
   private requestResult(message: lsp.RequestMessage): unknown {
     const ctx = this.context()
-    if (message.method === "initialize") return handleInitialize(ctx, message.params)
-    if (message.method === "shutdown") return this.shutdownResult()
-    if (message.method === "textDocument/hover") return handleHover(ctx, message.params)
-    if (message.method === "textDocument/definition") return handleDefinition(ctx, message.params)
-    if (message.method === "textDocument/completion") return handleCompletion(ctx, message.params)
-    if (message.method === "textDocument/signatureHelp") return handleSignatureHelp(ctx, message.params)
-    if (message.method === "textDocument/references") return handleReferences(ctx, message.params)
-    if (message.method === "textDocument/documentSymbol") return handleDocumentSymbol(ctx, message.params)
-    if (message.method === "textDocument/prepareRename") return handlePrepareRename(ctx, message.params)
-    if (message.method === "textDocument/rename") return handleRename(ctx, message.params)
-    if (message.method === "textDocument/codeAction") return handleCodeAction(ctx, message.params)
+    if (message.method === 'initialize') return handleInitialize(ctx, message.params)
+    if (message.method === 'shutdown') return this.shutdownResult()
+    if (message.method === 'textDocument/hover') return handleHover(ctx, message.params)
+    if (message.method === 'textDocument/definition') return handleDefinition(ctx, message.params)
+    if (message.method === 'textDocument/completion') return handleCompletion(ctx, message.params)
+    if (message.method === 'textDocument/signatureHelp')
+      return handleSignatureHelp(ctx, message.params)
+    if (message.method === 'textDocument/references') return handleReferences(ctx, message.params)
+    if (message.method === 'textDocument/documentSymbol')
+      return handleDocumentSymbol(ctx, message.params)
+    if (message.method === 'textDocument/prepareRename')
+      return handlePrepareRename(ctx, message.params)
+    if (message.method === 'textDocument/rename') return handleRename(ctx, message.params)
+    if (message.method === 'textDocument/codeAction') return handleCodeAction(ctx, message.params)
     throw rpcError(METHOD_NOT_FOUND, `Method not implemented: ${message.method}`)
   }
 
   private routeNotification(message: lsp.NotificationMessage): void {
     const ctx = this.context()
-    if (message.method === "initialized" || message.method === "$/cancelRequest") return
-    if (message.method === "editor/typescript/setWorkspaceFiles") return
-    if (message.method === "exit") return this.dispose()
-    if (message.method === "textDocument/didOpen") return handleDidOpen(ctx, message.params)
-    if (message.method === "textDocument/didChange") return handleDidChange(ctx, message.params)
-    if (message.method === "textDocument/didClose") return handleDidClose(ctx, message.params)
+    if (message.method === 'initialized' || message.method === '$/cancelRequest') return
+    if (message.method === 'editor/typescript/setWorkspaceFiles') return
+    if (message.method === 'exit') return this.dispose()
+    if (message.method === 'textDocument/didOpen') return handleDidOpen(ctx, message.params)
+    if (message.method === 'textDocument/didChange') return handleDidChange(ctx, message.params)
+    if (message.method === 'textDocument/didClose') return handleDidClose(ctx, message.params)
   }
 
   private context(): SessionContext {
@@ -141,8 +149,10 @@ export class TypeScriptLspSession {
       bumpScriptVersion: (fileName) => this.scriptVersions.bump(fileName),
       invalidateForFileContentChange: (fileName) =>
         invalidateForFileContentChange(this.invalidationState, fileName),
-      invalidateForProjectConfigChange: () => invalidateForProjectConfigChange(this.invalidationState),
-      postDiagnostics: (uri, version, diagnostics) => this.postDiagnostics(uri, version, diagnostics),
+      invalidateForProjectConfigChange: () =>
+        invalidateForProjectConfigChange(this.invalidationState),
+      postDiagnostics: (uri, version, diagnostics) =>
+        this.postDiagnostics(uri, version, diagnostics),
       postLogMessage: (error) => this.postLogMessage(error),
       postResponse: (id, result) => this.postResponse(id, result),
       postResponseError: (id, error) => this.postResponseError(id, error),
@@ -189,7 +199,11 @@ export class TypeScriptLspSession {
     if (!configFileName) return this.inferredProjectConfig()
     const parsed = this.parseProjectConfig(configFileName, true)
     if (!parsed) return this.inferredProjectConfig()
-    return { configFileName, compilerOptions: parsed.options, fileNames: this.rootFileNames(parsed.fileNames) }
+    return {
+      configFileName,
+      compilerOptions: parsed.options,
+      fileNames: this.rootFileNames(parsed.fileNames),
+    }
   }
 
   private inferredProjectConfig(): ProjectConfig {
@@ -203,7 +217,9 @@ export class TypeScriptLspSession {
   private rootFileNames(configFileNames: readonly string[]): readonly string[] {
     const files = new Set(configFileNames.map(normalizeNativePath))
     for (const document of this.documents.values()) files.add(document.fileName)
-    return [...files].filter((fileName) => isTypeScriptFileName(fileName) && isInsidePath(this.root, fileName))
+    return Array.from(files).filter(
+      (fileName) => isTypeScriptFileName(fileName) && isInsidePath(this.root, fileName),
+    )
   }
 
   private projectConfigFileName(): string | null {
@@ -211,7 +227,7 @@ export class TypeScriptLspSession {
       const config = this.configFileNameForDocument(document.fileName)
       if (config) return config
     }
-    const rootConfig = path.join(this.root, "tsconfig.json")
+    const rootConfig = path.join(this.root, 'tsconfig.json')
     return existsSync(rootConfig) ? normalizeNativePath(rootConfig) : null
   }
 
@@ -220,7 +236,9 @@ export class TypeScriptLspSession {
     if (!configFileName) return null
     const parsed = this.parseProjectConfig(configFileName, false)
     if (!parsed) return configFileName
-    return this.referencedConfigFileNameForDocument(parsed, configFileName, fileName) ?? configFileName
+    return (
+      this.referencedConfigFileNameForDocument(parsed, configFileName, fileName) ?? configFileName
+    )
   }
 
   private referencedConfigFileNameForDocument(
@@ -243,16 +261,24 @@ export class TypeScriptLspSession {
     return parsed.fileNames.some((candidate) => samePath(candidate, normalized))
   }
 
-  private parseProjectConfig(configFileName: string, report: boolean): ts.ParsedCommandLine | undefined {
-    const parsed = ts.getParsedCommandLineOfConfigFile(configFileName, this.compilerOptionsOverride, {
-      useCaseSensitiveFileNames: ts.sys.useCaseSensitiveFileNames,
-      getCurrentDirectory: () => this.root,
-      fileExists: (fileName) => this.fileExists(fileName),
-      readFile: (fileName) => this.readFile(fileName),
-      readDirectory: (rootDir, extensions, excludes, includes, depth) =>
-        this.readDirectory(rootDir, extensions, excludes, includes, depth),
-      onUnRecoverableConfigFileDiagnostic: (diagnostic) => this.reportConfigDiagnostics([diagnostic]),
-    })
+  private parseProjectConfig(
+    configFileName: string,
+    report: boolean,
+  ): ts.ParsedCommandLine | undefined {
+    const parsed = ts.getParsedCommandLineOfConfigFile(
+      configFileName,
+      this.compilerOptionsOverride,
+      {
+        useCaseSensitiveFileNames: ts.sys.useCaseSensitiveFileNames,
+        getCurrentDirectory: () => this.root,
+        fileExists: (fileName) => this.fileExists(fileName),
+        readFile: (fileName) => this.readFile(fileName),
+        readDirectory: (rootDir, extensions, excludes, includes, depth) =>
+          this.readDirectory(rootDir, extensions, excludes, includes, depth),
+        onUnRecoverableConfigFileDiagnostic: (diagnostic) =>
+          this.reportConfigDiagnostics([diagnostic]),
+      },
+    )
     if (report && parsed) this.reportConfigDiagnostics(parsed.errors)
     return parsed
   }
@@ -265,7 +291,7 @@ export class TypeScriptLspSession {
       getDirectories: (directoryName) => this.getDirectories(directoryName),
       getNewLine: () => ts.sys.newLine,
       getProjectVersion: () => String(this.projectVersion),
-      getScriptFileNames: () => [...config.fileNames],
+      getScriptFileNames: () => Array.from(config.fileNames),
       getScriptSnapshot: (fileName) => this.scriptSnapshot(fileName),
       getScriptVersion: (fileName) => this.scriptVersion(fileName),
       readDirectory: (rootDir, extensions, excludes, includes, depth) =>
@@ -345,7 +371,9 @@ export class TypeScriptLspSession {
 
   private scriptVersion(fileName: string): string {
     const normalized = normalizeNativePath(fileName)
-    return String(this.documentForFileName(normalized)?.version ?? this.scriptVersions.get(normalized))
+    return String(
+      this.documentForFileName(normalized)?.version ?? this.scriptVersions.get(normalized),
+    )
   }
 
   private documentForFileName(fileName: string): OpenDocument | null {
@@ -356,13 +384,15 @@ export class TypeScriptLspSession {
   }
 
   private sortedDocuments(): readonly OpenDocument[] {
-    return [...this.documents.values()].toSorted((left, right) => left.fileName.localeCompare(right.fileName))
+    return Array.from(this.documents.values()).toSorted((left, right) =>
+      left.fileName.localeCompare(right.fileName),
+    )
   }
 
   private nearestConfigFile(fileName: string): string | null {
     let directory = path.dirname(fileName)
     while (isInsidePath(this.root, directory)) {
-      const config = path.join(directory, "tsconfig.json")
+      const config = path.join(directory, 'tsconfig.json')
       if (existsSync(config)) return normalizeNativePath(config)
       if (samePath(directory, this.root)) return null
       directory = path.dirname(directory)
@@ -404,7 +434,10 @@ export class TypeScriptLspSession {
       ...service.getSemanticDiagnostics(fileName),
       ...service.getSuggestionDiagnostics(fileName),
     ].map((diagnostic) =>
-      tsDiagnosticToLspDiagnostic(diagnostic, this.readFile(diagnosticFileName(diagnostic, fileName)) ?? ""),
+      tsDiagnosticToLspDiagnostic(
+        diagnostic,
+        this.readFile(diagnosticFileName(diagnostic, fileName)) ?? '',
+      ),
     )
   }
 
@@ -428,34 +461,38 @@ export class TypeScriptLspSession {
   }
 
   private reportConfigDiagnostics(diagnostics: readonly ts.Diagnostic[]): void {
-    for (const diagnostic of diagnostics) this.postLogMessage(tsDiagnosticMessage(diagnostic))
+    for (const diagnostic of diagnostics) this.postLogMessage(tsDiagnosticMessageText(diagnostic))
   }
 
-  private postDiagnostics(uri: lsp.DocumentUri, version: number | null, diagnostics: readonly lsp.Diagnostic[]): void {
-    const params: lsp.PublishDiagnosticsParams = { uri, diagnostics: [...diagnostics] }
-    if (version !== null) params.version = version
-    this.postNotification("textDocument/publishDiagnostics", params)
+  private postDiagnostics(
+    uri: lsp.DocumentUri,
+    version: number | null,
+    diagnostics: readonly lsp.Diagnostic[],
+  ): void {
+    const params: PublishDiagnosticsNotificationParams =
+      version === null ? { uri, diagnostics } : { uri, version, diagnostics }
+    this.postNotification('textDocument/publishDiagnostics', params)
   }
 
-  private postResponse(id: lsp.RequestMessage["id"] | null, result: unknown): void {
+  private postResponse(id: lsp.RequestMessage['id'] | null, result: unknown): void {
     this.postMessage({ jsonrpc: JSON_RPC_VERSION, id, result })
   }
 
-  private postResponseError(id: lsp.RequestMessage["id"] | null, error: unknown): void {
+  private postResponseError(id: lsp.RequestMessage['id'] | null, error: unknown): void {
     this.postJsonRpcError(id, toResponseError(error))
   }
 
-  private postJsonRpcError(id: lsp.RequestMessage["id"] | null, error: JsonRpcError): void {
+  private postJsonRpcError(id: lsp.RequestMessage['id'] | null, error: JsonRpcError): void {
     this.postMessage({ jsonrpc: JSON_RPC_VERSION, id, error })
   }
 
   private postNotification(method: string, params: unknown): void {
-    if (this.shutdown && method !== "window/logMessage") return
+    if (this.shutdown && method !== 'window/logMessage') return
     this.postMessage({ jsonrpc: JSON_RPC_VERSION, method, params })
   }
 
   private postLogMessage(error: unknown): void {
-    this.postNotification("window/logMessage", { type: 2, message: errorMessage(error) })
+    this.postNotification('window/logMessage', { type: 2, message: errorMessage(error) })
   }
 
   private postMessage(message: unknown): void {
@@ -480,40 +517,8 @@ function defaultCompilerOptions(): ts.CompilerOptions {
   }
 }
 
-function tsDiagnosticToLspDiagnostic(diagnostic: ts.Diagnostic, text: string): lsp.Diagnostic {
-  return {
-    range: diagnosticRange(diagnostic, text),
-    severity: diagnosticSeverity(diagnostic.category),
-    code: diagnostic.code,
-    source: "typescript",
-    message: tsDiagnosticMessage(diagnostic),
-  }
-}
-
-function diagnosticRange(diagnostic: ts.Diagnostic, text: string): lsp.Range {
-  const start = diagnostic.start ?? 0
-  return rangeFromTextSpan(text, { start, length: diagnostic.length ?? 1 })
-}
-
-function diagnosticSeverity(category: ts.DiagnosticCategory): lsp.DiagnosticSeverity {
-  if (category === ts.DiagnosticCategory.Error) return 1
-  if (category === ts.DiagnosticCategory.Warning) return 2
-  if (category === ts.DiagnosticCategory.Suggestion) return 4
-  return 3
-}
-
 function diagnosticFileName(diagnostic: ts.Diagnostic, fallback: string): string {
   return diagnostic.file?.fileName ? normalizeNativePath(diagnostic.file.fileName) : fallback
-}
-
-function tsDiagnosticMessage(diagnostic: ts.Diagnostic): string {
-  return ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
-}
-
-function rangeFromTextSpan(text: string, span: ts.TextSpan): lsp.Range {
-  const start = clampOffset(span.start, text)
-  const end = clampOffset(span.start + span.length, text)
-  return { start: offsetToLspPosition(text, start), end: offsetToLspPosition(text, end) }
 }
 
 function offsetToLspPosition(text: string, offset: number): lsp.Position {
@@ -521,7 +526,7 @@ function offsetToLspPosition(text: string, offset: number): lsp.Position {
   let line = 0
   let lineStart = 0
   for (let index = 0; index < clamped; index += 1) {
-    if (text[index] !== "\n") continue
+    if (text[index] !== '\n') continue
     line += 1
     lineStart = index + 1
   }
@@ -533,7 +538,7 @@ function lspPositionToOffset(text: string, position: lsp.Position): number {
   let lineStart = 0
   for (let index = 0; index < text.length; index += 1) {
     if (line >= position.line) break
-    if (text[index] !== "\n") continue
+    if (text[index] !== '\n') continue
     line += 1
     lineStart = index + 1
   }
@@ -544,14 +549,17 @@ function clampOffset(offset: number, text: string): number {
   return Math.min(text.length, Math.max(0, offset))
 }
 
-function referencedConfigFileName(parentConfigFileName: string, reference: ts.ProjectReference): string {
+function referencedConfigFileName(
+  parentConfigFileName: string,
+  reference: ts.ProjectReference,
+): string {
   const basePath = path.resolve(path.dirname(parentConfigFileName), reference.path)
-  if (path.extname(basePath) === ".json") return normalizeNativePath(basePath)
-  return normalizeNativePath(path.join(basePath, "tsconfig.json"))
+  if (path.extname(basePath) === '.json') return normalizeNativePath(basePath)
+  return normalizeNativePath(path.join(basePath, 'tsconfig.json'))
 }
 
 function normalizeNativePath(input: string): string {
-  return path.resolve(input).split(path.sep).join("/")
+  return path.resolve(input).split(path.sep).join('/')
 }
 
 function samePath(left: string, right: string): boolean {
@@ -560,8 +568,8 @@ function samePath(left: string, right: string): boolean {
 
 function isInsidePath(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate)
-  if (relative === "") return true
-  if (relative.startsWith("..")) return false
+  if (relative === '') return true
+  if (relative.startsWith('..')) return false
   return !path.isAbsolute(relative)
 }
 
@@ -584,7 +592,7 @@ function parseIncomingMessage(data: string | ArrayBuffer | Uint8Array): unknown 
 }
 
 function incomingText(data: string | ArrayBuffer | Uint8Array): string | null {
-  if (typeof data === "string") return data
+  if (typeof data === 'string') return data
   if (data instanceof ArrayBuffer) return new TextDecoder().decode(data)
   if (data instanceof Uint8Array) return new TextDecoder().decode(data)
   return null
@@ -592,12 +600,12 @@ function incomingText(data: string | ArrayBuffer | Uint8Array): string | null {
 
 function isRequestMessage(message: unknown): message is lsp.RequestMessage {
   if (!isRecord(message)) return false
-  return "id" in message && typeof message.method === "string"
+  return 'id' in message && typeof message.method === 'string'
 }
 
 function isNotificationMessage(message: unknown): message is lsp.NotificationMessage {
   if (!isRecord(message)) return false
-  return !("id" in message) && typeof message.method === "string"
+  return !('id' in message) && typeof message.method === 'string'
 }
 
 function rpcError(code: number, message: string, data?: unknown): JsonRpcError {
@@ -616,7 +624,7 @@ export const testInternals = {
 function documentUriToFileNameForTest(uri: string): string | null {
   try {
     const url = new URL(uri)
-    if (url.protocol !== "file:") return null
+    if (url.protocol !== 'file:') return null
     return normalizeNativePath(decodeURIComponent(url.pathname))
   } catch {
     return null
@@ -626,9 +634,9 @@ function documentUriToFileNameForTest(uri: string): string | null {
 function documentUriToWorkspaceFileName(workspaceRoot: string, uri: string): string | null {
   try {
     const url = new URL(uri)
-    if (url.protocol !== "file:") return null
-    const relativePath = decodeURIComponent(url.pathname).replace(/^\/+/, "")
-    if (relativePath === "") return normalizeNativePath(workspaceRoot)
+    if (url.protocol !== 'file:') return null
+    const relativePath = decodeURIComponent(url.pathname).replace(/^\/+/, '')
+    if (relativePath === '') return normalizeNativePath(workspaceRoot)
     return normalizeNativePath(path.join(workspaceRoot, relativePath))
   } catch {
     return null
@@ -637,15 +645,15 @@ function documentUriToWorkspaceFileName(workspaceRoot: string, uri: string): str
 
 function fileNameToDocumentUri(fileName: string): lsp.DocumentUri {
   const normalized = normalizeNativePath(fileName)
-  return `file://${normalized.split("/").map(encodePathPart).join("/")}`
+  return `file://${normalized.split('/').map(encodePathPart).join('/')}`
 }
 
 function relativePathToDocumentUri(relativePath: string): lsp.DocumentUri {
-  const normalized = relativePath.split(path.sep).join("/").replace(/^\/+/, "")
-  return `file:///${normalized.split("/").map(encodeURIComponent).join("/")}`
+  const normalized = relativePath.split(path.sep).join('/').replace(/^\/+/, '')
+  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }
 
 function encodePathPart(part: string, index: number): string {
-  if (index === 0 && part === "") return ""
+  if (index === 0 && part === '') return ''
   return encodeURIComponent(part)
 }

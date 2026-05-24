@@ -1,10 +1,10 @@
-import type { TreeEntry } from "@workspace/contracts"
+import type { TreeEntry } from '@workspace/contracts'
 
 export type WorkspaceFilesystemEvent =
-  | { type: "created"; path: string; entry?: TreeEntry }
-  | { type: "changed"; path: string; entry?: TreeEntry }
-  | { type: "deleted"; path: string }
-  | { type: "renamed"; path: string; oldPath: string; entry?: TreeEntry }
+  | { type: 'created'; path: string; entry?: TreeEntry }
+  | { type: 'changed'; path: string; entry?: TreeEntry }
+  | { type: 'deleted'; path: string }
+  | { type: 'renamed'; path: string; oldPath: string; entry?: TreeEntry }
 
 export type WorkspaceOpenFileSnapshot = {
   isDirty: boolean
@@ -12,20 +12,20 @@ export type WorkspaceOpenFileSnapshot = {
 }
 
 export type WorkspaceTreeOperation =
-  | { type: "patch-changed-tree-entries"; entries: TreeEntry[] }
-  | { type: "refresh-ready-root-tree"; path: string }
-  | { type: "refresh-tree-directory"; path: string }
+  | { type: 'patch-changed-tree-entries'; entries: TreeEntry[] }
+  | { type: 'refresh-ready-root-tree'; path: string }
+  | { type: 'refresh-tree-directory'; path: string }
 
 export type WorkspaceOpenFileOperation =
-  | { type: "deleted-conflict"; path: string }
-  | { type: "discard-open-file"; path: string }
-  | { type: "refresh-open-file"; path: string }
-  | { type: "rename-open-file"; from: string; to: string }
-  | { type: "renamed-conflict"; localPath: string; remotePath: string }
+  | { type: 'deleted-conflict'; path: string }
+  | { type: 'discard-open-file'; path: string }
+  | { type: 'refresh-open-file'; path: string }
+  | { type: 'rename-open-file'; from: string; to: string }
+  | { type: 'renamed-conflict'; localPath: string; remotePath: string }
 
 export type WorkspaceFetchedOpenFileOperation =
-  | { type: "changed-conflict"; path: string }
-  | { type: "replace-open-file"; notifyDirtyOverwrite: boolean; path: string }
+  | { type: 'changed-conflict'; path: string }
+  | { type: 'replace-open-file'; notifyDirtyOverwrite: boolean; path: string }
 
 export type WorkspaceEventPlan = {
   openFileOperations: WorkspaceOpenFileOperation[]
@@ -45,12 +45,7 @@ export function planWorkspaceFilesystemEvents({
   const recreatedPaths = recreatedOpenFilePaths(events)
 
   return {
-    openFileOperations: planOpenFileOperations(
-      events,
-      openFiles,
-      recreatedPaths,
-      rootPath
-    ),
+    openFileOperations: planOpenFileOperations(events, openFiles, recreatedPaths, rootPath),
     shouldInvalidateGitState: events.length > 0,
     treeOperations: planTreeOperations(events, rootPath),
   }
@@ -65,10 +60,10 @@ export function planWorkspaceReady({
 }): WorkspaceEventPlan {
   return {
     openFileOperations: openFiles.flatMap((file) =>
-      file.isDirty ? [] : [{ type: "refresh-open-file", path: file.path }]
+      file.isDirty ? [] : [{ type: 'refresh-open-file', path: file.path }],
     ),
     shouldInvalidateGitState: true,
-    treeOperations: [{ type: "refresh-ready-root-tree", path: rootPath }],
+    treeOperations: [{ type: 'refresh-ready-root-tree', path: rootPath }],
   }
 }
 
@@ -84,63 +79,56 @@ export function planFetchedOpenFileRefresh({
   path: string
 }): WorkspaceFetchedOpenFileOperation {
   if (cachedText === remoteText)
-    return { notifyDirtyOverwrite: false, path, type: "replace-open-file" }
-  if (isDirty) return { type: "changed-conflict", path }
+    return { notifyDirtyOverwrite: false, path, type: 'replace-open-file' }
+  if (isDirty) return { type: 'changed-conflict', path }
 
-  return { notifyDirtyOverwrite: true, path, type: "replace-open-file" }
+  return { notifyDirtyOverwrite: true, path, type: 'replace-open-file' }
 }
 
 function planTreeOperations(
   events: readonly WorkspaceFilesystemEvent[],
-  rootPath: string
+  rootPath: string,
 ): WorkspaceTreeOperation[] {
   const entries = changedTreeEntries(events)
   const operations: WorkspaceTreeOperation[] = entries.length
-    ? [{ type: "patch-changed-tree-entries", entries }]
+    ? [{ type: 'patch-changed-tree-entries', entries }]
     : []
 
   for (const path of affectedDirectoryPaths(events, rootPath)) {
-    operations.push({ type: "refresh-tree-directory", path })
+    operations.push({ type: 'refresh-tree-directory', path })
   }
 
   return operations
 }
 
 function changedTreeEntries(events: readonly WorkspaceFilesystemEvent[]) {
-  return events.flatMap((event) =>
-    event.type === "changed" && event.entry ? [event.entry] : []
-  )
+  return events.flatMap((event) => (event.type === 'changed' && event.entry ? [event.entry] : []))
 }
 
 function planOpenFileOperations(
   events: readonly WorkspaceFilesystemEvent[],
   openFiles: readonly WorkspaceOpenFileSnapshot[],
   recreatedPaths: ReadonlySet<string>,
-  rootPath: string
+  rootPath: string,
 ): WorkspaceOpenFileOperation[] {
   const operations: WorkspaceOpenFileOperation[] = []
   const openFilePaths = openFiles.map((file) => file.path)
 
   for (const event of events) {
-    if (event.type === "deleted") {
+    if (event.type === 'deleted') {
       if (recreatedPaths.has(event.path)) continue
 
       operations.push(...planDeletedOpenFileOperations(event.path, openFiles))
       continue
     }
-    if (event.type !== "renamed") continue
+    if (event.type !== 'renamed') continue
 
     operations.push(...planRenamedOpenFileOperations(event, openFiles))
   }
 
-  const refreshPaths = affectedOpenFileRefreshPaths(
-    events,
-    openFilePaths,
-    recreatedPaths,
-    rootPath
-  )
+  const refreshPaths = affectedOpenFileRefreshPaths(events, openFilePaths, recreatedPaths, rootPath)
   for (const path of refreshPaths) {
-    operations.push({ type: "refresh-open-file", path })
+    operations.push({ type: 'refresh-open-file', path })
   }
 
   return operations
@@ -148,26 +136,26 @@ function planOpenFileOperations(
 
 function planDeletedOpenFileOperations(
   deletedPath: string,
-  openFiles: readonly WorkspaceOpenFileSnapshot[]
+  openFiles: readonly WorkspaceOpenFileSnapshot[],
 ): WorkspaceOpenFileOperation[] {
   const operations: WorkspaceOpenFileOperation[] = []
 
   for (const openFile of openFiles) {
     if (!isSameOrChildPath(openFile.path, deletedPath)) continue
     if (openFile.isDirty) {
-      operations.push({ type: "deleted-conflict", path: openFile.path })
+      operations.push({ type: 'deleted-conflict', path: openFile.path })
       continue
     }
 
-    operations.push({ type: "discard-open-file", path: openFile.path })
+    operations.push({ type: 'discard-open-file', path: openFile.path })
   }
 
   return operations
 }
 
 function planRenamedOpenFileOperations(
-  event: Extract<WorkspaceFilesystemEvent, { type: "renamed" }>,
-  openFiles: readonly WorkspaceOpenFileSnapshot[]
+  event: Extract<WorkspaceFilesystemEvent, { type: 'renamed' }>,
+  openFiles: readonly WorkspaceOpenFileSnapshot[],
 ): WorkspaceOpenFileOperation[] {
   const operations: WorkspaceOpenFileOperation[] = []
 
@@ -178,7 +166,7 @@ function planRenamedOpenFileOperations(
       operations.push({
         localPath: openFile.path,
         remotePath: nextPath,
-        type: "renamed-conflict",
+        type: 'renamed-conflict',
       })
       continue
     }
@@ -186,7 +174,7 @@ function planRenamedOpenFileOperations(
     operations.push({
       from: openFile.path,
       to: nextPath,
-      type: "rename-open-file",
+      type: 'rename-open-file',
     })
   }
 
@@ -197,7 +185,7 @@ export function affectedOpenFileRefreshPaths(
   events: readonly WorkspaceFilesystemEvent[],
   openFilePaths: readonly string[],
   recreatedPaths: ReadonlySet<string>,
-  rootPath: string
+  rootPath: string,
 ) {
   const affectedDirectories = new Set<string>()
   const deletedPaths = new Set<string>()
@@ -206,11 +194,11 @@ export function affectedOpenFileRefreshPaths(
   const openPathSet = new Set(openFilePaths)
 
   for (const event of events) {
-    if (event.type === "deleted") {
+    if (event.type === 'deleted') {
       deletedPaths.add(event.path)
       continue
     }
-    if (event.type === "renamed") continue
+    if (event.type === 'renamed') continue
     if (openPathSet.has(event.path)) {
       exactPaths.add(event.path)
       exactDirectories.add(parentPath(event.path, rootPath))
@@ -229,26 +217,25 @@ export function affectedOpenFileRefreshPaths(
       exactDirectories,
       deletedPaths,
       recreatedPaths,
-      exactPaths
-    )
+      exactPaths,
+    ),
   )
 
-  return [...exactPaths, ...fallbackPaths]
+  return Array.from(exactPaths).concat(fallbackPaths)
 }
 
 export function affectedDirectoryPaths(
   events: readonly WorkspaceFilesystemEvent[],
-  rootPath: string
+  rootPath: string,
 ) {
   const directories = new Set<string>()
 
   for (const event of events) {
-    if (event.type === "changed") continue
+    if (event.type === 'changed') continue
     if (isLikelyTemporarySavePath(event.path)) continue
 
     directories.add(parentPath(event.path, rootPath))
-    if (event.type === "renamed")
-      directories.add(parentPath(event.oldPath, rootPath))
+    if (event.type === 'renamed') directories.add(parentPath(event.oldPath, rootPath))
   }
 
   return directories
@@ -261,11 +248,10 @@ function shouldRefreshFallbackPath(
   exactDirectories: ReadonlySet<string>,
   deletedPaths: ReadonlySet<string>,
   recreatedPaths: ReadonlySet<string>,
-  exactPaths: ReadonlySet<string>
+  exactPaths: ReadonlySet<string>,
 ) {
   if (exactPaths.has(path)) return false
-  if (!recreatedPaths.has(path) && isWithinAnyPath(path, deletedPaths))
-    return false
+  if (!recreatedPaths.has(path) && isWithinAnyPath(path, deletedPaths)) return false
 
   const directory = parentPath(path, rootPath)
   if (exactDirectories.has(directory)) return false
@@ -274,13 +260,13 @@ function shouldRefreshFallbackPath(
 }
 
 export function isLikelyTemporarySavePath(path: string) {
-  const name = path.split("/").at(-1) ?? path
-  if (name.endsWith("~")) return true
-  if (name.startsWith(".") && name.includes(".tmp")) return true
-  if (name.endsWith(".tmp")) return true
-  if (name.endsWith(".swp")) return true
-  if (name.endsWith(".swx")) return true
-  if (name.endsWith(".part")) return true
+  const name = path.split('/').at(-1) ?? path
+  if (name.endsWith('~')) return true
+  if (name.startsWith('.') && name.includes('.tmp')) return true
+  if (name.endsWith('.tmp')) return true
+  if (name.endsWith('.swp')) return true
+  if (name.endsWith('.swx')) return true
+  if (name.endsWith('.part')) return true
 
   return false
 }
@@ -288,7 +274,7 @@ export function isLikelyTemporarySavePath(path: string) {
 function parentPath(path: string, rootPath: string) {
   if (path === rootPath) return rootPath
 
-  const index = path.lastIndexOf("/")
+  const index = path.lastIndexOf('/')
   if (index < 0) return rootPath
 
   return path.slice(0, index)
@@ -311,11 +297,11 @@ function recreatedOpenFilePaths(events: readonly WorkspaceFilesystemEvent[]) {
   const recreatedPaths = new Set<string>()
 
   for (const event of events) {
-    if (event.type === "deleted") {
+    if (event.type === 'deleted') {
       deletedPaths.add(event.path)
       continue
     }
-    if (event.type !== "created" && event.type !== "changed") continue
+    if (event.type !== 'created' && event.type !== 'changed') continue
     if (!deletedPaths.has(event.path)) continue
 
     recreatedPaths.add(event.path)

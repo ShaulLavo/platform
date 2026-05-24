@@ -1,17 +1,11 @@
-export type GitTreeStatus =
-  | "added"
-  | "deleted"
-  | "ignored"
-  | "modified"
-  | "renamed"
-  | "untracked"
+export type GitTreeStatus = 'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked'
 
 export type GitFileStatus = {
   path: string
   oldPath?: string
-  index: GitTreeStatus | "unmodified" | "conflicted"
-  worktree: GitTreeStatus | "unmodified" | "conflicted"
-  status: GitTreeStatus | "conflicted"
+  index: GitTreeStatus | 'unmodified' | 'conflicted'
+  worktree: GitTreeStatus | 'unmodified' | 'conflicted'
+  status: GitTreeStatus | 'conflicted'
 }
 
 export type GitRepositoryInfo = {
@@ -28,7 +22,7 @@ export type GitStatusResult = {
 }
 
 export type GitLineChange = {
-  type: "added" | "deleted" | "context"
+  type: 'added' | 'deleted' | 'context'
   oldLine: number | null
   newLine: number | null
   text: string
@@ -72,12 +66,12 @@ export type GitBranchesResult = {
 
 export type GitCommitResult =
   | {
-      kind: "committed"
+      kind: 'committed'
       output: string
       repository: GitRepositoryInfo
     }
   | {
-      kind: "message-file"
+      kind: 'message-file'
       path: string
       repository: GitRepositoryInfo
     }

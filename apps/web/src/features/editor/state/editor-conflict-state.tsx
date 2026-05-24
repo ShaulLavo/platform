@@ -1,8 +1,8 @@
-import { createContext, useContext } from "react"
-import { useStore } from "zustand"
-import { createStore, type StoreApi } from "zustand/vanilla"
+import { createContext, useContext } from 'react'
+import { useStore } from 'zustand'
+import { createStore, type StoreApi } from 'zustand/vanilla'
 
-export type FilesystemConflictEventType = "changed" | "deleted" | "renamed"
+export type FilesystemConflictEventType = 'changed' | 'deleted' | 'renamed'
 
 export type FilesystemConflict = {
   diffDocumentId?: string
@@ -27,32 +27,26 @@ type EditorConflictStoreActions = {
   removeConflict: (id: string) => void
   updateConflict: (
     id: string,
-    update: Partial<Pick<FilesystemConflict, "diffDocumentId" | "toastId">>
+    update: Partial<Pick<FilesystemConflict, 'diffDocumentId' | 'toastId'>>,
   ) => void
 }
 
-export type EditorConflictStore = EditorConflictStoreState &
-  EditorConflictStoreActions
+export type EditorConflictStore = EditorConflictStoreState & EditorConflictStoreActions
 
 export type EditorConflictStoreApi = StoreApi<EditorConflictStore>
 
-export const EditorConflictStateContext =
-  createContext<EditorConflictStoreApi | null>(null)
+export const EditorConflictStateContext = createContext<EditorConflictStoreApi | null>(null)
 
 export function useEditorConflictStoreApi() {
   const store = useContext(EditorConflictStateContext)
   if (!store) {
-    throw new Error(
-      "useEditorConflictStoreApi must be used within EditorStateProvider"
-    )
+    throw new Error('useEditorConflictStoreApi must be used within EditorStateProvider')
   }
 
   return store
 }
 
-export function useEditorConflictState<T>(
-  selector: (state: EditorConflictStore) => T
-): T {
+export function useEditorConflictState<T>(selector: (state: EditorConflictStore) => T): T {
   return useStore(useEditorConflictStoreApi(), selector)
 }
 
@@ -83,13 +77,10 @@ export function createEditorConflictStore() {
   }))
 }
 
-function omitKey<T>(
-  record: Readonly<Record<string, T>>,
-  key: string
-): Readonly<Record<string, T>> {
+function omitKey<T>(record: Readonly<Record<string, T>>, key: string): Readonly<Record<string, T>> {
   if (!(key in record)) return record
 
   return Object.fromEntries(
-    Object.entries(record).filter(([entryKey]) => entryKey !== key)
+    Object.entries(record).filter(([entryKey]) => entryKey !== key),
   ) as Readonly<Record<string, T>>
 }

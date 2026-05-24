@@ -1,39 +1,36 @@
-import { useCallback } from "react"
+import { useCallback } from 'react'
 
 import {
   useWorkspaceFocus,
   type WorkspaceFocusArea,
-} from "@/components/workspace/workspace-focus-state"
-import { useTheme, type Theme } from "@/components/theme-context"
-import type { RequestCloseTab } from "@/features/editor/hooks/use-dirty-tab-close"
-import { useEditorCommands } from "@/features/editor/state/editor-commands"
-import { activeEditorPaneTab } from "@/features/editor/state/editor-pane-state"
+} from '@/components/workspace/workspace-focus-state'
+import { useTheme, type Theme } from '@/components/theme-context'
+import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { activeEditorPaneTab } from '@/features/editor/state/editor-pane-state'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
-} from "@/features/editor/state/editor-document-state"
+} from '@/features/editor/state/editor-document-state'
 import {
   fileBackedEditorPath,
   saveAllEditorDocuments,
   saveSelectedEditorDocument,
-} from "@/features/editor/editor-save"
-import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
+} from '@/features/editor/editor-save'
+import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
-} from "@/features/editor/utils/diff-view-mode"
-import { reportError, toClientError } from "@/lib/client-error-taxonomy"
-import { fetchFile } from "@/lib/file-server"
-import { fileSystemKeys } from "@/lib/query-keys"
-import type { WorkspacePanelTab } from "@/lib/workspace-cache"
-import { useQueryClient, type QueryClient } from "@tanstack/react-query"
+} from '@/features/editor/utils/diff-view-mode'
+import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { fetchFile } from '@/lib/file-server'
+import { fileSystemKeys } from '@/lib/query-keys'
+import type { WorkspacePanelTab } from '@/lib/workspace-cache'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
-import {
-  editorCommandIdFromPlatform,
-  isEditorPlatformCommandId,
-} from "./editor-keymap"
-import type { PlatformCommandId, WorkspaceCommandId } from "./types"
-import type { PlatformCommandDispatch } from "./use-app-keymap"
+import { editorCommandIdFromPlatform, isEditorPlatformCommandId } from './editor-keymap'
+import type { PlatformCommandId, WorkspaceCommandId } from './types'
+import type { PlatformCommandDispatch } from './use-app-keymap'
 
 type WorkspaceCommandContext = {
   readonly activeTabId: string | null
@@ -55,12 +52,10 @@ type WorkspaceCommandContext = {
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly sidebarVisible: boolean
   readonly selectPreviousEditor: () => boolean
-  readonly splitTab: (tabId: string, direction: "horizontal") => boolean
+  readonly splitTab: (tabId: string, direction: 'horizontal') => boolean
 }
 
-type WorkspaceCommandHandler = (
-  context: WorkspaceCommandContext
-) => boolean | void
+type WorkspaceCommandHandler = (context: WorkspaceCommandContext) => boolean | void
 
 export function usePlatformCommandDispatch({
   requestCloseTab,
@@ -74,43 +69,26 @@ export function usePlatformCommandDispatch({
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
   const gitPanelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
-  const selectedFilePath = useEditorWorkspaceState(
-    (state) => state.selectedFilePath
-  )
+  const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
   const activeTabId = useEditorWorkspaceState(
-    (state) => activeEditorPaneTab(state.editorPaneLayout)?.id ?? null
+    (state) => activeEditorPaneTab(state.editorPaneLayout)?.id ?? null,
   )
-  const sidebarVisible = useEditorWorkspaceState(
-    (state) => state.sidebarVisible
-  )
+  const sidebarVisible = useEditorWorkspaceState((state) => state.sidebarVisible)
   const { setTheme } = useTheme()
-  const setDiffViewMode = useEditorWorkspaceState(
-    (state) => state.setDiffViewMode
-  )
-  const setGitPanelOpen = useEditorWorkspaceState(
-    (state) => state.setGitPanelOpen
-  )
-  const setSidebarVisible = useEditorWorkspaceState(
-    (state) => state.setSidebarVisible
-  )
-  const setWorkspacePanelTab = useEditorWorkspaceState(
-    (state) => state.setWorkspacePanelTab
-  )
-  const requestEditorFocus = useWorkspaceFocus(
-    (state) => state.requestEditorFocus
-  )
-  const dispatchEditorCommand = useWorkspaceFocus(
-    (state) => state.dispatchEditorCommand
-  )
+  const setDiffViewMode = useEditorWorkspaceState((state) => state.setDiffViewMode)
+  const setGitPanelOpen = useEditorWorkspaceState((state) => state.setGitPanelOpen)
+  const setSidebarVisible = useEditorWorkspaceState((state) => state.setSidebarVisible)
+  const setWorkspacePanelTab = useEditorWorkspaceState((state) => state.setWorkspacePanelTab)
+  const requestEditorFocus = useWorkspaceFocus((state) => state.requestEditorFocus)
+  const dispatchEditorCommand = useWorkspaceFocus((state) => state.dispatchEditorCommand)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const { closeTab, reopenClosedEditor, selectPreviousEditor, splitTab } =
-    useEditorCommands()
+  const { closeTab, reopenClosedEditor, selectPreviousEditor, splitTab } = useEditorCommands()
   const fallbackRequestCloseTab = useCallback<RequestCloseTab>(
     (tabId) => {
       closeTab(tabId)
       return true
     },
-    [closeTab]
+    [closeTab],
   )
   const resolvedRequestCloseTab = requestCloseTab ?? fallbackRequestCloseTab
 
@@ -166,140 +144,120 @@ export function usePlatformCommandDispatch({
       sidebarVisible,
       selectPreviousEditor,
       splitTab,
-    ]
+    ],
   )
 }
 
-function dispatchWorkspaceCommand(
-  command: WorkspaceCommandId,
-  context: WorkspaceCommandContext
-) {
+function dispatchWorkspaceCommand(command: WorkspaceCommandId, context: WorkspaceCommandContext) {
   const handler = workspaceCommandHandlers[command]
   return handler(context) ?? true
 }
 
-const workspaceCommandHandlers: Record<
-  WorkspaceCommandId,
-  WorkspaceCommandHandler
-> = {
-  "workspace.closeCurrentTab": ({ activeTabId, requestCloseTab }) =>
+const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandler> = {
+  'workspace.closeCurrentTab': ({ activeTabId, requestCloseTab }) =>
     closeSelectedTab(activeTabId, requestCloseTab),
-  "workspace.focusEditor": ({ requestEditorFocus }) => {
+  'workspace.focusEditor': ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
   },
-  "workspace.focusFirstEditorGroup": ({ requestEditorFocus }) => {
+  'workspace.focusFirstEditorGroup': ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
   },
-  "workspace.focusSecondEditorGroup": ({ requestEditorFocus }) => {
+  'workspace.focusSecondEditorGroup': ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
   },
-  "workspace.focusThirdEditorGroup": ({ requestEditorFocus }) => {
+  'workspace.focusThirdEditorGroup': ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
   },
-  "workspace.focusFileTree": ({
-    setFocusArea,
-    setSidebarVisible,
-    setWorkspacePanelTab,
-  }) => {
+  'workspace.focusFileTree': ({ setFocusArea, setSidebarVisible, setWorkspacePanelTab }) => {
     setSidebarVisible(true)
-    setWorkspacePanelTab("files")
-    setFocusArea("file-tree")
+    setWorkspacePanelTab('files')
+    setFocusArea('file-tree')
     return true
   },
-  "workspace.focusGit": ({
-    setFocusArea,
-    setSidebarVisible,
-    setWorkspacePanelTab,
-  }) => {
+  'workspace.focusGit': ({ setFocusArea, setSidebarVisible, setWorkspacePanelTab }) => {
     setSidebarVisible(true)
-    setWorkspacePanelTab("git")
-    setFocusArea("git")
+    setWorkspacePanelTab('git')
+    setFocusArea('git')
     return true
   },
-  "workspace.gotoSymbol": ({ selectedFilePath, showCommandPalette }) => {
+  'workspace.gotoSymbol': ({ selectedFilePath, showCommandPalette }) => {
     if (!fileBackedEditorPath(selectedFilePath)) return false
 
-    showCommandPalette("@")
+    showCommandPalette('@')
     return true
   },
-  "workspace.openFilePicker": ({ openPicker }) => {
+  'workspace.openFilePicker': ({ openPicker }) => {
     openPicker()
     return true
   },
-  "workspace.quickOpenPreviousEditor": ({
-    requestEditorFocus,
-    selectPreviousEditor,
-  }) => {
+  'workspace.quickOpenPreviousEditor': ({ requestEditorFocus, selectPreviousEditor }) => {
     const selected = selectPreviousEditor()
     if (!selected) return false
 
     requestEditorFocus()
     return true
   },
-  "workspace.quickOpenView": ({ showCommandPalette }) => {
-    showCommandPalette("view ")
+  'workspace.quickOpenView': ({ showCommandPalette }) => {
+    showCommandPalette('view ')
     return true
   },
-  "workspace.reopenClosedEditor": ({ reopenClosedEditor }) =>
-    reopenClosedEditor(),
-  "workspace.revertFile": ({ documentStore, queryClient, selectedFilePath }) =>
+  'workspace.reopenClosedEditor': ({ reopenClosedEditor }) => reopenClosedEditor(),
+  'workspace.revertFile': ({ documentStore, queryClient, selectedFilePath }) =>
     runFileLifecycle(selectedFilePath, () =>
-      revertSelectedEditorDocument(documentStore, queryClient, selectedFilePath)
+      revertSelectedEditorDocument(documentStore, queryClient, selectedFilePath),
     ),
-  "workspace.saveAllFiles": ({ documentStore, queryClient }) => {
-    void saveAllEditorDocuments(documentStore, queryClient).catch(
-      reportCommandError
-    )
+  'workspace.saveAllFiles': ({ documentStore, queryClient }) => {
+    void saveAllEditorDocuments(documentStore, queryClient).catch(reportCommandError)
     return true
   },
-  "workspace.saveFile": ({ documentStore, queryClient, selectedFilePath }) =>
+  'workspace.saveFile': ({ documentStore, queryClient, selectedFilePath }) =>
     runFileLifecycle(selectedFilePath, () =>
-      saveSelectedEditorDocument(documentStore, queryClient, selectedFilePath)
+      saveSelectedEditorDocument(documentStore, queryClient, selectedFilePath),
     ),
-  "workspace.showAllEditors": ({ showCommandPalette }) => {
-    showCommandPalette("edt ")
+  'workspace.showAllEditors': ({ showCommandPalette }) => {
+    showCommandPalette('edt ')
     return true
   },
-  "workspace.showCommandPalette": ({ showCommandPalette }) => {
-    showCommandPalette(">")
+  'workspace.showCommandPalette': ({ showCommandPalette }) => {
+    showCommandPalette('>')
     return true
   },
-  "workspace.showQuickAccess": ({ showCommandPalette }) => {
-    showCommandPalette("")
+  'workspace.showQuickAccess': ({ showCommandPalette }) => {
+    showCommandPalette('')
     return true
   },
-  "workspace.selectColorMode": ({ showCommandPalette }) => {
-    showCommandPalette("color ")
+  'workspace.selectColorMode': ({ showCommandPalette }) => {
+    showCommandPalette('color ')
     return true
   },
-  "workspace.setDarkTheme": ({ setTheme }) => {
-    setTheme("dark")
+  'workspace.setDarkTheme': ({ setTheme }) => {
+    setTheme('dark')
     return true
   },
-  "workspace.setLightTheme": ({ setTheme }) => {
-    setTheme("light")
+  'workspace.setLightTheme': ({ setTheme }) => {
+    setTheme('light')
     return true
   },
-  "workspace.setSystemTheme": ({ setTheme }) => {
-    setTheme("system")
+  'workspace.setSystemTheme': ({ setTheme }) => {
+    setTheme('system')
     return true
   },
-  "workspace.splitEditor": ({ activeTabId, requestEditorFocus, splitTab }) => {
+  'workspace.splitEditor': ({ activeTabId, requestEditorFocus, splitTab }) => {
     if (!activeTabId) return false
-    if (!splitTab(activeTabId, "horizontal")) return false
+    if (!splitTab(activeTabId, 'horizontal')) return false
 
     requestEditorFocus()
     return true
   },
-  "workspace.toggleDiffViewMode": ({ diffViewMode, setDiffViewMode }) => {
+  'workspace.toggleDiffViewMode': ({ diffViewMode, setDiffViewMode }) => {
     setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
     return true
   },
-  "workspace.togglePanel": ({
+  'workspace.togglePanel': ({
     gitPanelOpen,
     setFocusArea,
     setGitPanelOpen,
@@ -307,34 +265,25 @@ const workspaceCommandHandlers: Record<
     setWorkspacePanelTab,
   }) => {
     setSidebarVisible(true)
-    setWorkspacePanelTab("git")
+    setWorkspacePanelTab('git')
     setGitPanelOpen(!gitPanelOpen)
-    setFocusArea("git")
+    setFocusArea('git')
     return true
   },
-  "workspace.toggleSidebarVisibility": ({
-    setSidebarVisible,
-    sidebarVisible,
-  }) => {
+  'workspace.toggleSidebarVisibility': ({ setSidebarVisible, sidebarVisible }) => {
     setSidebarVisible(!sidebarVisible)
     return true
   },
 }
 
-function closeSelectedTab(
-  activeTabId: string | null,
-  requestCloseTab: RequestCloseTab
-) {
+function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCloseTab) {
   if (!activeTabId) return false
 
   requestCloseTab(activeTabId)
   return true
 }
 
-function runFileLifecycle(
-  selectedFilePath: string | null,
-  operation: () => Promise<boolean>
-) {
+function runFileLifecycle(selectedFilePath: string | null, operation: () => Promise<boolean>) {
   if (!fileBackedEditorPath(selectedFilePath)) return false
 
   void operation().catch(reportCommandError)
@@ -344,7 +293,7 @@ function runFileLifecycle(
 async function revertSelectedEditorDocument(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
-  selectedFilePath: string | null
+  selectedFilePath: string | null,
 ) {
   const path = fileBackedEditorPath(selectedFilePath)
   if (!path) return false
@@ -359,9 +308,7 @@ function reportCommandError(error: unknown) {
   reportError(toClientError(error))
 }
 
-function workspaceCommandIdFromPlatform(
-  command: PlatformCommandId
-): WorkspaceCommandId | null {
+function workspaceCommandIdFromPlatform(command: PlatformCommandId): WorkspaceCommandId | null {
   if (isEditorPlatformCommandId(command)) return null
 
   return command

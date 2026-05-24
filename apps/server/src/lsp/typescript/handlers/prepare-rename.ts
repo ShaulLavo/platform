@@ -1,16 +1,16 @@
-import type * as lsp from "vscode-languageserver-protocol"
+import type * as lsp from 'vscode-languageserver-protocol'
 
 import {
   documentText,
   lspPositionToOffset,
   rangeFromTextSpan,
   textDocumentPosition,
-} from "../shared/boundary"
-import type { SessionContext } from "../shared/context"
+} from '../shared/boundary'
+import type { SessionContext } from '../shared/context'
 
 export function handlePrepareRename(
   ctx: SessionContext,
-  params: unknown
+  params: unknown,
 ): lsp.Range | { range: lsp.Range; placeholder: string } | null {
   const request = textDocumentPosition(ctx, params)
   if (!request) return null
@@ -19,9 +19,7 @@ export function handlePrepareRename(
   if (text === null) return null
 
   const offset = lspPositionToOffset(text, request.position)
-  const info = ctx
-    .getLanguageService()
-    .getRenameInfo(request.fileName, offset, {})
+  const info = ctx.getLanguageService().getRenameInfo(request.fileName, offset, {})
   if (!info.canRename) return null
 
   return {

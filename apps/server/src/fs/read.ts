@@ -1,7 +1,7 @@
-import { readFile, stat } from "node:fs/promises"
-import { FsError, mapNodeError } from "./errors"
-import type { WorkspacePaths } from "./path"
-import { assertFile } from "./stat"
+import { readFile, stat } from 'node:fs/promises'
+import { FsError, mapNodeError } from './errors'
+import type { WorkspacePaths } from './path'
+import { assertFile } from './stat'
 
 export type ReadFileResult = {
   path: string
@@ -20,18 +20,18 @@ export type BlobFileResult = {
 export async function readTextFile(
   paths: WorkspacePaths,
   input: string,
-  maxBytes: number
+  maxBytes: number,
 ): Promise<ReadFileResult> {
   const target = paths.resolve(input)
 
   try {
     const stats = await stat(target.absolutePath)
     assertFile(stats)
-    if (stats.size > maxBytes) throw new FsError("FILE_TOO_LARGE")
+    if (stats.size > maxBytes) throw new FsError('FILE_TOO_LARGE')
 
     return {
       path: target.relativePath,
-      content: await readFile(target.absolutePath, "utf8"),
+      content: await readFile(target.absolutePath, 'utf8'),
       mtimeMs: stats.mtimeMs,
       size: stats.size,
     }
@@ -41,10 +41,7 @@ export async function readTextFile(
   }
 }
 
-export async function getBlobFile(
-  paths: WorkspacePaths,
-  input: string
-): Promise<BlobFileResult> {
+export async function getBlobFile(paths: WorkspacePaths, input: string): Promise<BlobFileResult> {
   const target = paths.resolve(input)
 
   try {

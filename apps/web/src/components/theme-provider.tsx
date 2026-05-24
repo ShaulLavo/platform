@@ -1,16 +1,5 @@
-import {
-  useCallback,
-  useEffectEvent,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react"
-import {
-  ThemeProviderContext,
-  type ResolvedTheme,
-  type Theme,
-} from "./theme-context"
+import { useCallback, useEffectEvent, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ThemeProviderContext, type ResolvedTheme, type Theme } from './theme-context'
 
 type ThemeProviderProps = {
   children: ReactNode
@@ -19,8 +8,8 @@ type ThemeProviderProps = {
   disableTransitionOnChange?: boolean
 }
 
-const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
-const THEME_VALUES: Theme[] = ["dark", "light", "system"]
+const COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)'
+const THEME_VALUES: Theme[] = ['dark', 'light', 'system']
 
 function isTheme(value: string | null): value is Theme {
   if (value === null) {
@@ -32,23 +21,23 @@ function isTheme(value: string | null): value is Theme {
 
 function getSystemTheme(): ResolvedTheme {
   if (window.matchMedia(COLOR_SCHEME_QUERY).matches) {
-    return "dark"
+    return 'dark'
   }
 
-  return "light"
+  return 'light'
 }
 
 function resolvedThemeFor(theme: Theme): ResolvedTheme {
-  if (theme === "system") return getSystemTheme()
+  if (theme === 'system') return getSystemTheme()
   return theme
 }
 
 function disableTransitionsTemporarily() {
-  const style = document.createElement("style")
+  const style = document.createElement('style')
   style.appendChild(
     document.createTextNode(
-      "*,*::before,*::after{-webkit-transition:none!important;transition:none!important}"
-    )
+      '*,*::before,*::after{-webkit-transition:none!important;transition:none!important}',
+    ),
   )
   document.head.appendChild(style)
 
@@ -62,16 +51,11 @@ function disableTransitionsTemporarily() {
   }
 }
 
-function applyResolvedTheme(
-  resolvedTheme: ResolvedTheme,
-  disableTransitionOnChange: boolean
-) {
+function applyResolvedTheme(resolvedTheme: ResolvedTheme, disableTransitionOnChange: boolean) {
   const root = document.documentElement
-  const restoreTransitions = disableTransitionOnChange
-    ? disableTransitionsTemporarily()
-    : null
+  const restoreTransitions = disableTransitionOnChange ? disableTransitionsTemporarily() : null
 
-  root.classList.remove("light", "dark")
+  root.classList.remove('light', 'dark')
   root.classList.add(resolvedTheme)
 
   if (restoreTransitions) {
@@ -88,16 +72,14 @@ function storedTheme(storageKey: string, defaultTheme: Theme): Theme {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
-  storageKey = "theme",
+  defaultTheme = 'system',
+  storageKey = 'theme',
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(() =>
-    storedTheme(storageKey, defaultTheme)
-  )
+  const [theme, setThemeState] = useState<Theme>(() => storedTheme(storageKey, defaultTheme))
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    resolvedThemeFor(storedTheme(storageKey, defaultTheme))
+    resolvedThemeFor(storedTheme(storageKey, defaultTheme)),
   )
 
   const setTheme = useCallback(
@@ -106,7 +88,7 @@ export function ThemeProvider({
       setThemeState(nextTheme)
       setResolvedTheme(resolvedThemeFor(nextTheme))
     },
-    [storageKey]
+    [storageKey],
   )
 
   const syncThemeClass = useEffectEvent(() => {
@@ -137,25 +119,25 @@ export function ThemeProvider({
   useEffect(() => {
     applyResolvedTheme(resolvedTheme, disableTransitionOnChange)
 
-    if (theme !== "system") {
+    if (theme !== 'system') {
       return undefined
     }
 
     const mediaQuery = window.matchMedia(COLOR_SCHEME_QUERY)
     const handleChange = () => syncThemeClass()
 
-    mediaQuery.addEventListener("change", handleChange)
+    mediaQuery.addEventListener('change', handleChange)
 
     return () => {
-      mediaQuery.removeEventListener("change", handleChange)
+      mediaQuery.removeEventListener('change', handleChange)
     }
   }, [disableTransitionOnChange, resolvedTheme, theme])
 
   useEffect(() => {
-    window.addEventListener("storage", syncThemeFromStorage)
+    window.addEventListener('storage', syncThemeFromStorage)
 
     return () => {
-      window.removeEventListener("storage", syncThemeFromStorage)
+      window.removeEventListener('storage', syncThemeFromStorage)
     }
   }, [])
 
@@ -165,7 +147,7 @@ export function ThemeProvider({
       theme,
       setTheme,
     }),
-    [resolvedTheme, setTheme, theme]
+    [resolvedTheme, setTheme, theme],
   )
 
   return (

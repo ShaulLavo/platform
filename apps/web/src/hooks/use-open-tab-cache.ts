@@ -1,17 +1,17 @@
-import { useEffect } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import {
   type CachedEditorDocument,
   useEditorDocumentState,
-} from "@/features/editor/state/editor-document-state"
-import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
-import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
-import { parseDiffDocumentId } from "@/features/git/diff-document"
-import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
-import type { FileResult } from "@/lib/file-system-types"
-import { fetchFile } from "@/lib/file-server"
-import { fileSystemKeys } from "@/lib/query-keys"
+} from '@/features/editor/state/editor-document-state'
+import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
+import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import type { FileResult } from '@/lib/file-system-types'
+import { fetchFile } from '@/lib/file-server'
+import { fileSystemKeys } from '@/lib/query-keys'
 
 type OpenTabCacheContext = {
   ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
@@ -25,11 +25,9 @@ const OPEN_TAB_CACHE_CONCURRENCY = 4
 export function useOpenTabCache() {
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const ensureCachedEditorDocument = useEditorDocumentState(
-    (state) => state.ensureCachedEditorDocument
+    (state) => state.ensureCachedEditorDocument,
   )
-  const getCachedEditorDocument = useEditorDocumentState(
-    (state) => state.getCachedEditorDocument
-  )
+  const getCachedEditorDocument = useEditorDocumentState((state) => state.getCachedEditorDocument)
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -38,7 +36,7 @@ export function useOpenTabCache() {
         !parseDiffDocumentId(path) &&
         !parseConflictDiffDocumentId(path) &&
         !parseSearchBufferDocumentId(path) &&
-        !getCachedEditorDocument(path)
+        !getCachedEditorDocument(path),
     )
     if (!paths.length) return
 
@@ -54,18 +52,10 @@ export function useOpenTabCache() {
     return () => {
       active = false
     }
-  }, [
-    ensureCachedEditorDocument,
-    getCachedEditorDocument,
-    openFilePaths,
-    queryClient,
-  ])
+  }, [ensureCachedEditorDocument, getCachedEditorDocument, openFilePaths, queryClient])
 }
 
-async function cacheOpenTabs(
-  paths: readonly string[],
-  context: OpenTabCacheContext
-) {
+async function cacheOpenTabs(paths: readonly string[], context: OpenTabCacheContext) {
   let nextIndex = 0
   const workerCount = Math.min(paths.length, OPEN_TAB_CACHE_CONCURRENCY)
   await Promise.all(
@@ -77,7 +67,7 @@ async function cacheOpenTabs(
 
         await cacheOpenTab(path, context)
       }
-    })
+    }),
   )
 }
 
@@ -94,7 +84,7 @@ async function cacheOpenFileTab(
     getCachedEditorDocument,
     isActive,
     queryClient,
-  }: OpenTabCacheContext
+  }: OpenTabCacheContext,
 ) {
   try {
     const file = await queryClient.ensureQueryData({

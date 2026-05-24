@@ -1,8 +1,8 @@
-import { createContext, useContext } from "react"
-import { useStore } from "zustand"
-import { createStore, type StoreApi as ZustandStoreApi } from "zustand/vanilla"
+import { createContext, useContext } from 'react'
+import { useStore } from 'zustand'
+import { createStore, type StoreApi as ZustandStoreApi } from 'zustand/vanilla'
 
-import type { PanelSection } from "./types"
+import type { PanelSection } from './types'
 
 type StoreState = {
   commitMessage: string
@@ -26,7 +26,7 @@ export const StateContext = createContext<GitStoreApi | null>(null)
 export function useGitState<T>(selector: (state: GitStore) => T): T {
   const store = useContext(StateContext)
   if (!store) {
-    throw new Error("useGitState must be used within GitStateProvider")
+    throw new Error('useGitState must be used within GitStateProvider')
   }
 
   return useStore(store, selector)
@@ -34,13 +34,13 @@ export function useGitState<T>(selector: (state: GitStore) => T): T {
 
 export function createGitStore() {
   return createStore<GitStore>()((set) => ({
-    commitMessage: "",
+    commitMessage: '',
     panelOpen: true,
     sectionOpen: {
       staged: true,
       worktree: true,
     },
-    resetCommitMessage: () => set({ commitMessage: "" }),
+    resetCommitMessage: () => set({ commitMessage: '' }),
     setCommitMessage: (commitMessage) => set({ commitMessage }),
     setPanelOpen: (panelOpen) => set({ panelOpen }),
     setSectionOpen: (section, open) =>

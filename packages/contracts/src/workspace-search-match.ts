@@ -1,6 +1,6 @@
-import { minimatch } from "minimatch"
+import { minimatch } from 'minimatch'
 
-import type { WorkspaceSearchQuery } from "./workspace-search"
+import type { WorkspaceSearchQuery } from './workspace-search'
 
 export type WorkspaceSearchTextMatch = {
   end: number
@@ -15,13 +15,8 @@ export type WorkspaceSearchMatcher = {
 export function createWorkspaceSearchMatcher(
   query: Pick<
     WorkspaceSearchQuery,
-    | "caseSensitive"
-    | "excludeGlobs"
-    | "includeGlobs"
-    | "matchMode"
-    | "query"
-    | "wholeWord"
-  >
+    'caseSensitive' | 'excludeGlobs' | 'includeGlobs' | 'matchMode' | 'query' | 'wholeWord'
+  >,
 ): WorkspaceSearchMatcher {
   const lineMatcher = createLineMatcher(query)
   const pathMatcher = createPathMatcher(query)
@@ -32,11 +27,9 @@ export function createWorkspaceSearchMatcher(
   }
 }
 
-export function workspaceSearchGlobPatterns(
-  value: readonly string[] | string | undefined
-) {
+export function workspaceSearchGlobPatterns(value: readonly string[] | string | undefined) {
   if (value === undefined) return []
-  if (typeof value === "string") return normalizedGlobPatterns([value])
+  if (typeof value === 'string') return normalizedGlobPatterns([value])
 
   return normalizedGlobPatterns(value)
 }
@@ -68,22 +61,22 @@ function splitGlobPatterns(text: string) {
       continue
     }
 
-    if (character === "\\") {
+    if (character === '\\') {
       escaped = true
       continue
     }
 
-    if (character === "{") {
+    if (character === '{') {
       braceDepth += 1
       continue
     }
 
-    if (character === "}") {
+    if (character === '}') {
       braceDepth = Math.max(0, braceDepth - 1)
       continue
     }
 
-    if (character !== "," || braceDepth > 0) continue
+    if (character !== ',' || braceDepth > 0) continue
     patterns.push(text.slice(patternStart, index))
     patternStart = index + 1
   }
@@ -93,22 +86,17 @@ function splitGlobPatterns(text: string) {
 }
 
 function createLineMatcher(
-  query: Pick<
-    WorkspaceSearchQuery,
-    "caseSensitive" | "matchMode" | "query" | "wholeWord"
-  >
+  query: Pick<WorkspaceSearchQuery, 'caseSensitive' | 'matchMode' | 'query' | 'wholeWord'>,
 ) {
-  if (query.matchMode === "regex") return createRegexLineMatcher(query)
+  if (query.matchMode === 'regex') return createRegexLineMatcher(query)
 
   return createLiteralLineMatcher(query)
 }
 
 function createLiteralLineMatcher(
-  query: Pick<WorkspaceSearchQuery, "caseSensitive" | "query" | "wholeWord">
+  query: Pick<WorkspaceSearchQuery, 'caseSensitive' | 'query' | 'wholeWord'>,
 ) {
-  const needle = query.caseSensitive
-    ? query.query
-    : query.query.toLocaleLowerCase()
+  const needle = query.caseSensitive ? query.query : query.query.toLocaleLowerCase()
 
   return (line: string) => literalLineMatches(line, needle, query)
 }
@@ -116,7 +104,7 @@ function createLiteralLineMatcher(
 function literalLineMatches(
   line: string,
   needle: string,
-  query: Pick<WorkspaceSearchQuery, "caseSensitive" | "query" | "wholeWord">
+  query: Pick<WorkspaceSearchQuery, 'caseSensitive' | 'query' | 'wholeWord'>,
 ) {
   const matches: WorkspaceSearchTextMatch[] = []
   if (!needle) return matches
@@ -136,7 +124,7 @@ function literalLineMatches(
 }
 
 function createRegexLineMatcher(
-  query: Pick<WorkspaceSearchQuery, "caseSensitive" | "query" | "wholeWord">
+  query: Pick<WorkspaceSearchQuery, 'caseSensitive' | 'query' | 'wholeWord'>,
 ) {
   const regex = compiledRegex(query)
   if (!regex) return () => []
@@ -144,22 +132,16 @@ function createRegexLineMatcher(
   return (line: string) => regexLineMatches(line, regex, query.wholeWord)
 }
 
-function compiledRegex(
-  query: Pick<WorkspaceSearchQuery, "caseSensitive" | "query">
-) {
+function compiledRegex(query: Pick<WorkspaceSearchQuery, 'caseSensitive' | 'query'>) {
   try {
-    const flags = query.caseSensitive ? "gu" : "giu"
+    const flags = query.caseSensitive ? 'gu' : 'giu'
     return new RegExp(query.query, flags)
   } catch {
     return null
   }
 }
 
-function regexLineMatches(
-  line: string,
-  regex: RegExp,
-  wholeWord?: boolean
-) {
+function regexLineMatches(line: string, regex: RegExp, wholeWord?: boolean) {
   const matches: WorkspaceSearchTextMatch[] = []
   regex.lastIndex = 0
 
@@ -185,25 +167,14 @@ function advancePastEmptyMatch(regex: RegExp, line: string) {
   regex.lastIndex = current + (codePoint && codePoint > 0xffff ? 2 : 1)
 }
 
-function isWholeWordMatch(
-  text: string,
-  start: number,
-  end: number,
-  wholeWord?: boolean
-) {
+function isWholeWordMatch(text: string, start: number, end: number, wholeWord?: boolean) {
   if (!wholeWord) return true
 
-  return (
-    isWordBoundary(text, start, "left") && isWordBoundary(text, end, "right")
-  )
+  return isWordBoundary(text, start, 'left') && isWordBoundary(text, end, 'right')
 }
 
-function isWordBoundary(
-  text: string,
-  offset: number,
-  side: "left" | "right"
-) {
-  if (side === "left") return !isWordCodePointBefore(text, offset)
+function isWordBoundary(text: string, offset: number, side: 'left' | 'right') {
+  if (side === 'left') return !isWordCodePointBefore(text, offset)
 
   return !isWordCodePointAt(text, offset)
 }
@@ -237,9 +208,7 @@ function isWordCodePointAt(text: string, offset: number) {
   return /^[\p{L}\p{N}_]$/u.test(String.fromCodePoint(codePoint))
 }
 
-function createPathMatcher(
-  query: Pick<WorkspaceSearchQuery, "excludeGlobs" | "includeGlobs">
-) {
+function createPathMatcher(query: Pick<WorkspaceSearchQuery, 'excludeGlobs' | 'includeGlobs'>) {
   const includeGlobs = workspaceSearchGlobPatterns(query.includeGlobs)
   const excludeGlobs = workspaceSearchGlobPatterns(query.excludeGlobs)
 
@@ -249,7 +218,7 @@ function createPathMatcher(
 function pathMatchesGlobs(
   path: string,
   includeGlobs: readonly string[],
-  excludeGlobs: readonly string[]
+  excludeGlobs: readonly string[],
 ) {
   if (excludeGlobs.some((pattern) => matchesGlob(path, pattern))) return false
   if (includeGlobs.length === 0) return true
@@ -260,7 +229,7 @@ function pathMatchesGlobs(
 function matchesGlob(path: string, pattern: string) {
   return minimatch(path, pattern, {
     dot: true,
-    matchBase: !pattern.includes("/"),
+    matchBase: !pattern.includes('/'),
     nonegate: true,
   })
 }

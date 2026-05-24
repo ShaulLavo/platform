@@ -2,17 +2,17 @@ import type {
   FileTree as PierreFileTreeModel,
   FileTreeDirectoryHandle,
   FileTreeItemHandle,
-} from "@pierre/trees"
+} from '@pierre/trees'
 
-import type { TreeEntry } from "@/lib/file-system-types"
-import { isDirectoryEntry } from "@/lib/file-system-types"
-import { canonicalTreePath } from "@/lib/path-formatters"
+import type { TreeEntry } from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
+import { canonicalTreePath } from '@/lib/path-formatters'
 import {
   type DirectoryLoadOptions,
   shouldLoadDirectory,
   treePathForSelectedPath,
   type TreeModel,
-} from "@/lib/tree-model"
+} from '@/lib/tree-model'
 
 export function syncTreePaneState({
   loadExpandedDirectoriesForCurrentModel,
@@ -39,12 +39,8 @@ export function syncTreePaneState({
 export function loadExpandedDirectories(
   tree: PierreFileTreeModel,
   model: TreeModel,
-  onLoadDirectory: (
-    entry: TreeEntry,
-    treePath: string,
-    options?: DirectoryLoadOptions
-  ) => void,
-  previousExpandedDirectoryPaths?: ReadonlySet<string>
+  onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void,
+  previousExpandedDirectoryPaths?: ReadonlySet<string>,
 ) {
   const expandedPaths = expandedDirectoryPathSet(model, tree)
 
@@ -54,8 +50,7 @@ export function loadExpandedDirectories(
     const canonicalDirectoryPath = canonicalTreePath(directoryTreePath)
     if (!expandedPaths.has(canonicalDirectoryPath)) continue
 
-    const retry =
-      previousExpandedDirectoryPaths?.has(canonicalDirectoryPath) === false
+    const retry = previousExpandedDirectoryPaths?.has(canonicalDirectoryPath) === false
     if (!shouldLoadDirectory(model, directoryTreePath, { retry })) continue
 
     onLoadDirectory(entry, directoryTreePath, { retry })
@@ -64,16 +59,13 @@ export function loadExpandedDirectories(
   return expandedPaths
 }
 
-export function visibleTreeItemCount(
-  tree: PierreFileTreeModel,
-  model: TreeModel
-) {
+export function visibleTreeItemCount(tree: PierreFileTreeModel, model: TreeModel) {
   const childrenByParent = treeChildrenByParentPath(model)
 
   return visibleChildrenCount({
     childrenByParent,
     model,
-    parentPath: "",
+    parentPath: '',
     tree,
   })
 }
@@ -81,7 +73,7 @@ export function visibleTreeItemCount(
 function syncSelectedFilePath(
   tree: PierreFileTreeModel,
   rootPath: string,
-  selectedFilePath: string | null
+  selectedFilePath: string | null,
 ) {
   if (!selectedFilePath) return clearTreeSelection(tree)
 
@@ -136,14 +128,10 @@ function visibleChildCount({
   childrenByParent,
   model,
   tree,
-}: Omit<VisibleChildrenCountOptions, "parentPath"> & { child: TreeChild }) {
+}: Omit<VisibleChildrenCountOptions, 'parentPath'> & { child: TreeChild }) {
   if (!isDirectoryEntry(child.entry)) return 1
 
-  const terminalPath = flattenedTerminalDirectoryPath(
-    child.treePath,
-    childrenByParent,
-    model
-  )
+  const terminalPath = flattenedTerminalDirectoryPath(child.treePath, childrenByParent, model)
   if (!isTreeDirectoryExpanded(tree, terminalPath)) return 1
 
   return (
@@ -172,8 +160,8 @@ function treeChildrenByParentPath(model: TreeModel) {
 
 function parentTreePath(treePath: string) {
   const path = canonicalTreePath(treePath)
-  const index = path.lastIndexOf("/")
-  if (index < 0) return ""
+  const index = path.lastIndexOf('/')
+  if (index < 0) return ''
 
   return path.slice(0, index)
 }
@@ -181,16 +169,12 @@ function parentTreePath(treePath: string) {
 function flattenedTerminalDirectoryPath(
   treePath: string,
   childrenByParent: ReadonlyMap<string, readonly TreeChild[]>,
-  model: TreeModel
+  model: TreeModel,
 ) {
   let currentPath = canonicalTreePath(treePath)
 
   while (true) {
-    const nextPath = flattenedChildDirectoryPath(
-      currentPath,
-      childrenByParent,
-      model
-    )
+    const nextPath = flattenedChildDirectoryPath(currentPath, childrenByParent, model)
     if (!nextPath) return currentPath
 
     currentPath = nextPath
@@ -200,7 +184,7 @@ function flattenedTerminalDirectoryPath(
 function flattenedChildDirectoryPath(
   treePath: string,
   childrenByParent: ReadonlyMap<string, readonly TreeChild[]>,
-  model: TreeModel
+  model: TreeModel,
 ) {
   const children = childrenByParent.get(treePath)
   if (children?.length !== 1) return null
@@ -224,7 +208,7 @@ function syncTreePaths(
   tree: PierreFileTreeModel,
   previousPaths: readonly string[],
   nextPaths: readonly string[],
-  model: TreeModel
+  model: TreeModel,
 ) {
   const changes = treePathChanges(previousPaths, nextPaths)
   if (changes.added.length === 0 && changes.removed.length === 0) return
@@ -245,17 +229,12 @@ function syncTreePaths(
     tree.add(path)
   }
 
-  expandNewFlattenedDirectoryTerminals(
-    tree,
-    model,
-    changes.added,
-    expandedPathsBeforeSync
-  )
+  expandNewFlattenedDirectoryTerminals(tree, model, changes.added, expandedPathsBeforeSync)
 }
 
 function treePathChanges(
   previousPaths: readonly string[],
-  nextPaths: readonly string[]
+  nextPaths: readonly string[],
 ): TreePathChanges {
   const previousPathSet = new Set(previousPaths)
   const nextPathSet = new Set(nextPaths)
@@ -273,29 +252,23 @@ function shouldResetTreePaths({ added, removed }: TreePathChanges) {
 function topLevelRemovedPaths(paths: readonly string[]) {
   const removedPathSet = new Set(paths)
 
-  return sortedTreePathsByDepth(paths).filter(
-    (path) => !hasRemovedAncestor(path, removedPathSet)
-  )
+  return sortedTreePathsByDepth(paths).filter((path) => !hasRemovedAncestor(path, removedPathSet))
 }
 
 function hasRemovedAncestor(path: string, removedPathSet: ReadonlySet<string>) {
-  return ancestorDirectoryPaths(path).some((ancestorPath) =>
-    removedPathSet.has(ancestorPath)
-  )
+  return ancestorDirectoryPaths(path).some((ancestorPath) => removedPathSet.has(ancestorPath))
 }
 
 function sortedTreePathsByDepth(paths: readonly string[]) {
-  return [...paths].sort(
-    (left, right) => treePathDepth(left) - treePathDepth(right)
-  )
+  return paths.toSorted((left, right) => treePathDepth(left) - treePathDepth(right))
 }
 
 function treePathDepth(path: string) {
-  return canonicalTreePath(path).split("/").filter(Boolean).length
+  return canonicalTreePath(path).split('/').filter(Boolean).length
 }
 
 function removeTreePath(tree: PierreFileTreeModel, path: string) {
-  if (path.endsWith("/")) {
+  if (path.endsWith('/')) {
     tree.remove(path, { recursive: true })
     return
   }
@@ -303,10 +276,7 @@ function removeTreePath(tree: PierreFileTreeModel, path: string) {
   tree.remove(path)
 }
 
-function expandKnownAncestorDirectories(
-  tree: PierreFileTreeModel,
-  treePath: string
-) {
+function expandKnownAncestorDirectories(tree: PierreFileTreeModel, treePath: string) {
   for (const directoryPath of ancestorDirectoryPaths(treePath)) {
     const item = tree.getItem(directoryPath)
     if (!isTreeDirectoryHandle(item)) continue
@@ -317,11 +287,11 @@ function expandKnownAncestorDirectories(
 }
 
 function ancestorDirectoryPaths(treePath: string) {
-  const segments = canonicalTreePath(treePath).split("/").filter(Boolean)
+  const segments = canonicalTreePath(treePath).split('/').filter(Boolean)
   const paths: string[] = []
 
   for (let index = 0; index < segments.length - 1; index += 1) {
-    paths.push(`${segments.slice(0, index + 1).join("/")}/`)
+    paths.push(`${segments.slice(0, index + 1).join('/')}/`)
   }
 
   return paths
@@ -331,7 +301,7 @@ function isOnlySelectedPath(tree: PierreFileTreeModel, treePath: string) {
   const selectedPaths = tree.getSelectedPaths()
   if (selectedPaths.length !== 1) return false
 
-  return canonicalTreePath(selectedPaths[0] ?? "") === treePath
+  return canonicalTreePath(selectedPaths[0] ?? '') === treePath
 }
 
 function expandedDirectoryPaths(model: TreeModel, tree: PierreFileTreeModel) {
@@ -342,11 +312,7 @@ function expandedDirectoryPaths(model: TreeModel, tree: PierreFileTreeModel) {
   for (const treePath of expandedPaths) {
     paths.push(`${treePath}/`)
 
-    const terminalPath = flattenedTerminalDirectoryPath(
-      treePath,
-      childrenByParent,
-      model
-    )
+    const terminalPath = flattenedTerminalDirectoryPath(treePath, childrenByParent, model)
     if (terminalPath === treePath) continue
     if (parentTreePath(terminalPath) !== treePath) continue
 
@@ -356,10 +322,7 @@ function expandedDirectoryPaths(model: TreeModel, tree: PierreFileTreeModel) {
   return paths
 }
 
-function expandedDirectoryPathSet(
-  model: TreeModel,
-  tree: PierreFileTreeModel
-) {
+function expandedDirectoryPathSet(model: TreeModel, tree: PierreFileTreeModel) {
   const paths = new Set<string>()
 
   for (const [treePath, entry] of model.entriesByTreePath) {
@@ -376,18 +339,14 @@ function expandNewFlattenedDirectoryTerminals(
   tree: PierreFileTreeModel,
   model: TreeModel,
   addedPaths: readonly string[],
-  expandedPathsBeforeSync: ReadonlySet<string>
+  expandedPathsBeforeSync: ReadonlySet<string>,
 ) {
   const addedDirectoryPaths = addedDirectoryPathSet(addedPaths)
   if (addedDirectoryPaths.size === 0) return
 
   const childrenByParent = treeChildrenByParentPath(model)
   for (const expandedPath of expandedPathsBeforeSync) {
-    const terminalPath = flattenedTerminalDirectoryPath(
-      expandedPath,
-      childrenByParent,
-      model
-    )
+    const terminalPath = flattenedTerminalDirectoryPath(expandedPath, childrenByParent, model)
     if (terminalPath === expandedPath) continue
     if (parentTreePath(terminalPath) !== expandedPath) continue
     if (!addedDirectoryPaths.has(terminalPath)) continue
@@ -400,7 +359,7 @@ function addedDirectoryPathSet(paths: readonly string[]) {
   const directoryPaths = new Set<string>()
 
   for (const path of paths) {
-    if (!path.endsWith("/")) continue
+    if (!path.endsWith('/')) continue
 
     directoryPaths.add(canonicalTreePath(path))
   }
@@ -423,8 +382,6 @@ function isTreeDirectoryExpanded(tree: PierreFileTreeModel, treePath: string) {
   return item.isExpanded()
 }
 
-function isTreeDirectoryHandle(
-  item: FileTreeItemHandle | null
-): item is FileTreeDirectoryHandle {
+function isTreeDirectoryHandle(item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle {
   return item?.isDirectory() === true
 }

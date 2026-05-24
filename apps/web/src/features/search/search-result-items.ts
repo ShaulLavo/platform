@@ -1,6 +1,6 @@
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
+import type { WorkspaceSearchMatch } from '@workspace/contracts'
 
-import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
+import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
 
 export type SearchResultId = string
 
@@ -10,7 +10,7 @@ export type SearchResultItem =
       id: SearchResultId
       level: 1
       pending: boolean
-      type: "group"
+      type: 'group'
     }
   | {
       group: WorkspaceSearchFileGroup
@@ -18,7 +18,7 @@ export type SearchResultItem =
       level: 1
       match: WorkspaceSearchMatch
       pending: boolean
-      type: "name"
+      type: 'name'
     }
   | {
       groupId: SearchResultId
@@ -28,7 +28,7 @@ export type SearchResultItem =
       match: WorkspaceSearchMatch
       matchIndex: number
       pending: boolean
-      type: "match"
+      type: 'match'
     }
 
 export type SearchResultItemOptions = {
@@ -43,7 +43,7 @@ const searchMatchLocationHashCache = new WeakMap<WorkspaceSearchMatch, string>()
 
 export function searchResultItems(
   groups: readonly WorkspaceSearchFileGroup[],
-  options: SearchResultItemOptions = {}
+  options: SearchResultItemOptions = {},
 ) {
   const items: SearchResultItem[] = []
   const pendingIds = pendingResultIdSet(options.pendingResultIds)
@@ -58,7 +58,7 @@ export function searchResultItems(
 function appendGroupItems(
   items: SearchResultItem[],
   group: WorkspaceSearchFileGroup,
-  pendingIds: ReadonlySet<SearchResultId> | null
+  pendingIds: ReadonlySet<SearchResultId> | null,
 ) {
   const groupId = searchResultGroupId(group.path)
   const contentMatches = contentSearchMatches(group)
@@ -72,24 +72,19 @@ function appendGroupItems(
         level: 1,
         match,
         pending: pendingResultIdHas(pendingIds, id),
-        type: "name",
+        type: 'name',
       })
     }
     return
   }
 
-  const matchItems = searchContentResultItems(
-    group,
-    groupId,
-    contentMatches,
-    pendingIds
-  )
+  const matchItems = searchContentResultItems(group, groupId, contentMatches, pendingIds)
   items.push({
     group: contentGroup(group, contentMatches),
     id: groupId,
     level: 1,
     pending: matchItems.length > 0 && matchItems.every((item) => item.pending),
-    type: "group",
+    type: 'group',
   })
   if (group.collapsed) return
 
@@ -100,25 +95,17 @@ function searchContentResultItems(
   group: WorkspaceSearchFileGroup,
   groupId: SearchResultId,
   contentMatches: readonly WorkspaceSearchMatch[],
-  pendingIds: ReadonlySet<SearchResultId> | null
+  pendingIds: ReadonlySet<SearchResultId> | null,
 ) {
-  const items: Extract<SearchResultItem, { type: "match" }>[] = []
+  const items: Extract<SearchResultItem, { type: 'match' }>[] = []
   const duplicateCounts = new Map<string, number>()
-  for (
-    let matchIndex = 0;
-    matchIndex < contentMatches.length;
-    matchIndex += 1
-  ) {
+  for (let matchIndex = 0; matchIndex < contentMatches.length; matchIndex += 1) {
     const match = contentMatches[matchIndex]
     if (!match) continue
 
     const locationHash = searchMatchLocationHash(match)
     const duplicateIndex = nextDuplicateIndex(duplicateCounts, locationHash)
-    const id = searchResultMatchIdForIdentityHash(
-      group.path,
-      locationHash,
-      duplicateIndex
-    )
+    const id = searchResultMatchIdForIdentityHash(group.path, locationHash, duplicateIndex)
     items.push({
       groupId,
       groupPath: group.path,
@@ -127,7 +114,7 @@ function searchContentResultItems(
       match,
       matchIndex,
       pending: pendingResultIdHas(pendingIds, id),
-      type: "match",
+      type: 'match',
     })
   }
 
@@ -137,28 +124,26 @@ function searchContentResultItems(
 function contentSearchMatches(group: WorkspaceSearchFileGroup) {
   if (group.count === group.matches.length) return group.matches
 
-  return group.matches.filter((match) => match.kind === "content")
+  return group.matches.filter((match) => match.kind === 'content')
 }
 
 export function expandedSearchResultItems(
   groups: readonly WorkspaceSearchFileGroup[],
-  options: SearchResultItemOptions = {}
+  options: SearchResultItemOptions = {},
 ) {
   return searchResultItems(groups.map(expandedGroup), options)
 }
 
 export function searchResultItemById(
   items: readonly SearchResultItem[],
-  id: SearchResultId | null
+  id: SearchResultId | null,
 ) {
   if (!id) return null
 
   return items.find((item) => item.id === id) ?? null
 }
 
-export function firstSelectableSearchResultId(
-  groups: readonly WorkspaceSearchFileGroup[]
-) {
+export function firstSelectableSearchResultId(groups: readonly WorkspaceSearchFileGroup[]) {
   let firstVisibleId: SearchResultId | null = null
 
   for (const group of groups) {
@@ -173,7 +158,7 @@ export function firstSelectableSearchResultId(
 
 export function visibleSearchResultId(
   groups: readonly WorkspaceSearchFileGroup[],
-  id: SearchResultId | null
+  id: SearchResultId | null,
 ) {
   if (!id) return firstSelectableSearchResultId(groups)
 
@@ -191,7 +176,7 @@ export function searchResultContentItems(items: readonly SearchResultItem[]) {
 
 export function searchResultActiveMatchPosition(
   items: readonly SearchResultItem[],
-  activeResultId: SearchResultId | null
+  activeResultId: SearchResultId | null,
 ) {
   const matches = searchResultContentItems(items)
   const index = matches.findIndex((item) => item.id === activeResultId)
@@ -232,31 +217,27 @@ export function lastSearchResultId(items: readonly SearchResultItem[]) {
 }
 
 export function searchResultIdIsName(id: SearchResultId) {
-  return id.startsWith(searchResultDomPrefix("name"))
+  return id.startsWith(searchResultDomPrefix('name'))
 }
 
 export function firstSearchResultChildId(
   items: readonly SearchResultItem[],
-  groupId: SearchResultId
+  groupId: SearchResultId,
 ) {
-  return items.find((item) => item.type === "match" && item.groupId === groupId)
-    ?.id
+  return items.find((item) => item.type === 'match' && item.groupId === groupId)?.id
 }
 
 export function parentSearchResultId(
   items: readonly SearchResultItem[],
-  activeResultId: SearchResultId | null
+  activeResultId: SearchResultId | null,
 ) {
   const active = searchResultItemById(items, activeResultId)
-  if (active?.type !== "match") return null
+  if (active?.type !== 'match') return null
 
   return active.groupId
 }
 
-function contentGroup(
-  group: WorkspaceSearchFileGroup,
-  matches: WorkspaceSearchMatch[]
-) {
+function contentGroup(group: WorkspaceSearchFileGroup, matches: WorkspaceSearchMatch[]) {
   if (matches === group.matches && matches.length === group.count) {
     return group
   }
@@ -278,15 +259,12 @@ function expandedGroup(group: WorkspaceSearchFileGroup) {
 }
 
 function isContentSearchResultItem(
-  item: SearchResultItem
-): item is Extract<SearchResultItem, { type: "match" }> {
-  return item.type === "match"
+  item: SearchResultItem,
+): item is Extract<SearchResultItem, { type: 'match' }> {
+  return item.type === 'match'
 }
 
-function searchResultIndex(
-  items: readonly SearchResultItem[],
-  id: SearchResultId | null
-) {
+function searchResultIndex(items: readonly SearchResultItem[], id: SearchResultId | null) {
   if (!id) return -1
 
   return items.findIndex((item) => item.id === id)
@@ -297,31 +275,23 @@ function clampIndex(index: number, length: number) {
 }
 
 function searchResultGroupId(path: string) {
-  return searchResultDomId("group", path)
+  return searchResultDomId('group', path)
 }
 
 function searchResultNameId(path: string, match: WorkspaceSearchMatch) {
-  return searchResultMatchDomId("name", path, searchMatchLocationHash(match), 0)
+  return searchResultMatchDomId('name', path, searchMatchLocationHash(match), 0)
 }
 
-function searchResultMatchId(
-  path: string,
-  match: WorkspaceSearchMatch,
-  duplicateIndex: number
-) {
-  return searchResultMatchIdForIdentityHash(
-    path,
-    searchMatchLocationHash(match),
-    duplicateIndex
-  )
+function searchResultMatchId(path: string, match: WorkspaceSearchMatch, duplicateIndex: number) {
+  return searchResultMatchIdForIdentityHash(path, searchMatchLocationHash(match), duplicateIndex)
 }
 
 function searchResultMatchIdForIdentityHash(
   path: string,
   identityHash: string,
-  duplicateIndex: number
+  duplicateIndex: number,
 ) {
-  return searchResultMatchDomId("match", path, identityHash, duplicateIndex)
+  return searchResultMatchDomId('match', path, identityHash, duplicateIndex)
 }
 
 function searchResultDomId(prefix: string, value: string) {
@@ -336,9 +306,9 @@ function searchResultMatchDomId(
   prefix: string,
   path: string,
   identityHash: string,
-  duplicateIndex: number
+  duplicateIndex: number,
 ) {
-  const duplicateSuffix = duplicateIndex === 0 ? "" : `-${duplicateIndex}`
+  const duplicateSuffix = duplicateIndex === 0 ? '' : `-${duplicateIndex}`
 
   return `${searchResultDomPrefix(prefix)}${stableHash(path)}-${identityHash}${duplicateSuffix}`
 }
@@ -383,11 +353,8 @@ function stableHash(value: string) {
   return result
 }
 
-function updateStableHash(
-  hash: number,
-  value: number | string | null | undefined
-) {
-  if (value === null || value === undefined || value === "") return hash
+function updateStableHash(hash: number, value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === '') return hash
 
   const text = String(value)
   for (let index = 0; index < text.length; index += 1) {
@@ -407,9 +374,7 @@ function stableHashResult(hash: number) {
   return (hash >>> 0).toString(36)
 }
 
-function pendingResultIdSet(
-  pendingResultIds: SearchResultItemOptions["pendingResultIds"]
-) {
+function pendingResultIdSet(pendingResultIds: SearchResultItemOptions['pendingResultIds']) {
   if (!pendingResultIds) return null
   if (pendingResultIds instanceof Set) return pendingResultIds
 
@@ -418,7 +383,7 @@ function pendingResultIdSet(
 
 function pendingResultIdHas(
   pendingResultIds: ReadonlySet<SearchResultId> | null,
-  id: SearchResultId
+  id: SearchResultId,
 ) {
   if (!pendingResultIds) return false
 
@@ -434,9 +399,7 @@ function trimStableHashCache() {
   stableHashCache.delete(firstKey)
 }
 
-function firstVisibleGroupResultId(
-  group: WorkspaceSearchFileGroup
-): SearchResultId | null {
+function firstVisibleGroupResultId(group: WorkspaceSearchFileGroup): SearchResultId | null {
   if (firstContentMatch(group)) return searchResultGroupId(group.path)
 
   const match = group.matches[0]
@@ -445,9 +408,7 @@ function firstVisibleGroupResultId(
   return searchResultNameId(group.path, match)
 }
 
-function firstSelectableGroupResultId(
-  group: WorkspaceSearchFileGroup
-): SearchResultId | null {
+function firstSelectableGroupResultId(group: WorkspaceSearchFileGroup): SearchResultId | null {
   const match = firstContentMatch(group)
   if (!match) return firstNameResultId(group)
   if (group.collapsed) return null
@@ -455,9 +416,7 @@ function firstSelectableGroupResultId(
   return searchResultMatchId(group.path, match, 0)
 }
 
-function firstNameResultId(
-  group: WorkspaceSearchFileGroup
-): SearchResultId | null {
+function firstNameResultId(group: WorkspaceSearchFileGroup): SearchResultId | null {
   if (firstContentMatch(group)) return null
 
   const match = group.matches[0]
@@ -467,13 +426,10 @@ function firstNameResultId(
 }
 
 function firstContentMatch(group: WorkspaceSearchFileGroup) {
-  return group.matches.find((match) => match.kind === "content") ?? null
+  return group.matches.find((match) => match.kind === 'content') ?? null
 }
 
-function searchResultIdIsVisible(
-  groups: readonly WorkspaceSearchFileGroup[],
-  id: SearchResultId
-) {
+function searchResultIdIsVisible(groups: readonly WorkspaceSearchFileGroup[], id: SearchResultId) {
   for (const group of groups) {
     if (groupResultIdIsVisible(group, id)) return true
   }
@@ -481,10 +437,7 @@ function searchResultIdIsVisible(
   return false
 }
 
-function groupResultIdIsVisible(
-  group: WorkspaceSearchFileGroup,
-  id: SearchResultId
-) {
+function groupResultIdIsVisible(group: WorkspaceSearchFileGroup, id: SearchResultId) {
   const firstContent = firstContentMatch(group)
   if (!firstContent) return nameResultIdIsVisible(group, id)
   if (searchResultGroupId(group.path) === id) return true
@@ -493,10 +446,7 @@ function groupResultIdIsVisible(
   return contentResultIdIsPresent(group, id)
 }
 
-function nameResultIdIsVisible(
-  group: WorkspaceSearchFileGroup,
-  id: SearchResultId
-) {
+function nameResultIdIsVisible(group: WorkspaceSearchFileGroup, id: SearchResultId) {
   const match = group.matches[0]
   if (!match) return false
 
@@ -505,7 +455,7 @@ function nameResultIdIsVisible(
 
 function hiddenSearchResultParentId(
   groups: readonly WorkspaceSearchFileGroup[],
-  id: SearchResultId
+  id: SearchResultId,
 ) {
   for (const group of groups) {
     if (!contentResultIdIsPresent(group, id)) continue
@@ -516,32 +466,22 @@ function hiddenSearchResultParentId(
   return null
 }
 
-function contentResultIdIsPresent(
-  group: WorkspaceSearchFileGroup,
-  id: SearchResultId
-) {
+function contentResultIdIsPresent(group: WorkspaceSearchFileGroup, id: SearchResultId) {
   const duplicateCounts = new Map<string, number>()
 
   for (const match of group.matches) {
-    if (match.kind !== "content") continue
+    if (match.kind !== 'content') continue
 
     const locationHash = searchMatchLocationHash(match)
     const duplicateIndex = nextDuplicateIndex(duplicateCounts, locationHash)
-    const matchId = searchResultMatchIdForIdentityHash(
-      group.path,
-      locationHash,
-      duplicateIndex
-    )
+    const matchId = searchResultMatchIdForIdentityHash(group.path, locationHash, duplicateIndex)
     if (matchId === id) return true
   }
 
   return false
 }
 
-function nextDuplicateIndex(
-  duplicateCounts: Map<string, number>,
-  identity: string
-) {
+function nextDuplicateIndex(duplicateCounts: Map<string, number>, identity: string) {
   const duplicateIndex = duplicateCounts.get(identity) ?? 0
   duplicateCounts.set(identity, duplicateIndex + 1)
 

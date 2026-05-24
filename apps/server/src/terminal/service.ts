@@ -3,11 +3,11 @@ import {
   parseTerminalClientMessage,
   type TerminalClientMessage,
   type TerminalServerMessage,
-} from "@workspace/contracts"
+} from '@workspace/contracts'
 
-import { authenticateWebSocketData, type AuthConfig } from "../auth"
-import { FsError, isFsError } from "../fs/errors"
-import type { WorkspacePaths } from "../fs/path"
+import { authenticateWebSocketData, type AuthConfig } from '../auth'
+import { FsError, isFsError } from '../fs/errors'
+import type { WorkspacePaths } from '../fs/path'
 
 export type TerminalPty = {
   kill(signal?: string): void
@@ -34,14 +34,12 @@ export type TerminalPtySpawnOptions = {
   shell: string
 }
 
-export type TerminalPtyFactory = (
-  options: TerminalPtySpawnOptions
-) => TerminalPty
+export type TerminalPtyFactory = (options: TerminalPtySpawnOptions) => TerminalPty
 
 type TerminalBridgeMessage =
-  | { type: "output"; data: string }
-  | { type: "exit"; exitCode: number | null }
-  | { type: "error"; message: string }
+  | { type: 'output'; data: string }
+  | { type: 'exit'; exitCode: number | null }
+  | { type: 'error'; message: string }
 
 export type TerminalServiceOptions = {
   env?: NodeJS.ProcessEnv
@@ -180,15 +178,13 @@ export class TerminalSession {
     if (!spawnResult) return false
 
     this.pty = spawnResult.pty
-    this.dataDisposable = this.pty.onData((data) =>
-      this.sendMessage({ type: "output", data })
-    )
+    this.dataDisposable = this.pty.onData((data) => this.sendMessage({ type: 'output', data }))
     this.exitDisposable = this.pty.onExit((event) => {
-      this.sendMessage({ type: "exit", exitCode: event.exitCode })
+      this.sendMessage({ type: 'exit', exitCode: event.exitCode })
       this.dispose({ kill: false })
     })
     this.sendMessage({
-      type: "ready",
+      type: 'ready',
       cwd: this.cwd,
       shell: spawnResult.shell,
     })
@@ -228,7 +224,7 @@ export class TerminalSession {
 
     this.sendMessage({
       message: terminalSpawnErrorMessage(lastError),
-      type: "error",
+      type: 'error',
     })
     return null
   }
@@ -278,12 +274,12 @@ type TerminalWebSocket = {
 
 function terminalWebSocketObject(value: unknown): TerminalWebSocket | null {
   if (!isRecord(value)) return null
-  if (typeof value.send !== "function") return null
+  if (typeof value.send !== 'function') return null
 
   const close = value.close
   const send = value.send
   return {
-    close: () => (typeof close === "function" ? close.call(value) : undefined),
+    close: () => (typeof close === 'function' ? close.call(value) : undefined),
     data: value.data,
     key: websocketKey(value),
     root: rootFromWebSocketData(value.data),
@@ -296,24 +292,21 @@ function websocketKey(value: Record<string, unknown>): object {
 }
 
 function rootFromWebSocketData(data: unknown) {
-  if (!isRecord(data)) return ""
-  if (isRecord(data.query) && typeof data.query.root === "string") {
+  if (!isRecord(data)) return ''
+  if (isRecord(data.query) && typeof data.query.root === 'string') {
     return data.query.root
   }
-  if (typeof data.url !== "string") return ""
+  if (typeof data.url !== 'string') return ''
 
   try {
-    return new URL(data.url).searchParams.get("root") ?? ""
+    return new URL(data.url).searchParams.get('root') ?? ''
   } catch {
-    return ""
+    return ''
   }
 }
 
-function handleTerminalClientMessage(
-  ptyProcess: TerminalPty,
-  message: TerminalClientMessage
-) {
-  if (message.type === "input") {
+function handleTerminalClientMessage(ptyProcess: TerminalPty, message: TerminalClientMessage) {
+  if (message.type === 'input') {
     ptyProcess.write(message.data)
     return
   }
@@ -322,22 +315,22 @@ function handleTerminalClientMessage(
 }
 
 function terminalShellCandidates(env: NodeJS.ProcessEnv) {
-  if (process.platform === "win32") {
-    return uniqueShells([env.SHELL, env.COMSPEC, "powershell.exe", "cmd.exe"])
+  if (process.platform === 'win32') {
+    return uniqueShells([env.SHELL, env.COMSPEC, 'powershell.exe', 'cmd.exe'])
   }
 
-  return uniqueShells([env.SHELL, "bash", "sh"])
+  return uniqueShells([env.SHELL, 'bash', 'sh'])
 }
 
 function uniqueShells(shells: Array<string | undefined>) {
-  return [...new Set(shells.map((shell) => shell?.trim()).filter(isString))]
+  return Array.from(new Set(shells.map((shell) => shell?.trim()).filter(isString)))
 }
 
 function terminalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     ...env,
-    COLORTERM: env.COLORTERM ?? "truecolor",
-    TERM: "xterm-256color",
+    COLORTERM: env.COLORTERM ?? 'truecolor',
+    TERM: 'xterm-256color',
   }
 }
 
@@ -361,11 +354,11 @@ function terminalSpawnErrorMessage(error: unknown) {
   if (error instanceof FsError) return error.message
   if (error instanceof Error) return error.message
 
-  return "failed to start terminal"
+  return 'failed to start terminal'
 }
 
 function isString(value: string | undefined): value is string {
-  return typeof value === "string" && value.length > 0
+  return typeof value === 'string' && value.length > 0
 }
 
 function killSignal(signal: string | undefined): NodeJS.Signals | undefined {
@@ -384,22 +377,22 @@ class NodePtyBridge implements TerminalPty {
   #writeQueue = Promise.resolve()
 
   constructor(options: TerminalPtySpawnOptions) {
-    this.#child = Bun.spawn(["node", "--eval", NODE_PTY_BRIDGE_SCRIPT], {
+    this.#child = Bun.spawn(['node', '--eval', NODE_PTY_BRIDGE_SCRIPT], {
       env: {
         ...options.env,
         NODE_PTY_BRIDGE_MODULE: resolveNodePtyModule(),
       },
-      stderr: "pipe",
-      stdin: "pipe",
-      stdout: "pipe",
+      stderr: 'pipe',
+      stdin: 'pipe',
+      stdout: 'pipe',
     })
     this.#stdin = this.#child.stdin
     this.#startReaders()
-    this.#sendCommand({ type: "start", ...options })
+    this.#sendCommand({ type: 'start', ...options })
   }
 
   kill(signal?: string) {
-    this.#sendCommand({ signal, type: "kill" })
+    this.#sendCommand({ signal, type: 'kill' })
     setTimeout(() => {
       if (this.#exitEmitted) return
 
@@ -418,27 +411,25 @@ class NodePtyBridge implements TerminalPty {
   }
 
   resize(cols: number, rows: number) {
-    this.#sendCommand({ cols, rows, type: "resize" })
+    this.#sendCommand({ cols, rows, type: 'resize' })
   }
 
   write(data: string) {
-    this.#sendCommand({ data, type: "input" })
+    this.#sendCommand({ data, type: 'input' })
   }
 
   #startReaders() {
-    void readBridgeMessages(this.#child.stdout, (message) =>
-      this.#handleBridgeMessage(message)
-    )
+    void readBridgeMessages(this.#child.stdout, (message) => this.#handleBridgeMessage(message))
     void readBridgeStderr(this.#child.stderr, (data) => this.#emitData(data))
     void this.#child.exited.then((exitCode) => this.#emitExit(exitCode))
   }
 
   #handleBridgeMessage(message: TerminalBridgeMessage) {
-    if (message.type === "output") {
+    if (message.type === 'output') {
       this.#emitData(message.data)
       return
     }
-    if (message.type === "exit") {
+    if (message.type === 'exit') {
       this.#emitExit(message.exitCode)
       return
     }
@@ -473,9 +464,9 @@ class NodePtyBridge implements TerminalPty {
 
 async function readBridgeMessages(
   stream: ReadableStream<Uint8Array>,
-  onMessage: (message: TerminalBridgeMessage) => void
+  onMessage: (message: TerminalBridgeMessage) => void,
 ) {
-  let buffered = ""
+  let buffered = ''
   const decoder = new TextDecoder()
   const reader = stream.getReader()
 
@@ -486,7 +477,7 @@ async function readBridgeMessages(
 
       buffered = readBridgeMessageChunk(
         buffered + decoder.decode(result.value, { stream: true }),
-        onMessage
+        onMessage,
       )
     }
 
@@ -498,7 +489,7 @@ async function readBridgeMessages(
 
 async function readBridgeStderr(
   stream: ReadableStream<Uint8Array>,
-  onData: (data: string) => void
+  onData: (data: string) => void,
 ) {
   const decoder = new TextDecoder()
   const reader = stream.getReader()
@@ -520,17 +511,17 @@ async function readBridgeStderr(
 
 function readBridgeMessageChunk(
   chunk: string,
-  onMessage: (message: TerminalBridgeMessage) => void
+  onMessage: (message: TerminalBridgeMessage) => void,
 ) {
   let buffered = chunk
-  let newlineIndex = buffered.indexOf("\n")
+  let newlineIndex = buffered.indexOf('\n')
 
   while (newlineIndex >= 0) {
     const raw = buffered.slice(0, newlineIndex)
     buffered = buffered.slice(newlineIndex + 1)
     const message = parseBridgeMessage(raw)
     if (message) onMessage(message)
-    newlineIndex = buffered.indexOf("\n")
+    newlineIndex = buffered.indexOf('\n')
   }
 
   return buffered
@@ -548,21 +539,20 @@ function parseBridgeMessage(raw: string): TerminalBridgeMessage | null {
 
 function bridgeMessageFromValue(value: unknown): TerminalBridgeMessage | null {
   if (!isRecord(value)) return null
-  if (value.type === "output" && typeof value.data === "string") {
-    return { type: "output", data: value.data }
+  if (value.type === 'output' && typeof value.data === 'string') {
+    return { type: 'output', data: value.data }
   }
-  if (value.type === "error" && typeof value.message === "string") {
-    return { type: "error", message: value.message }
+  if (value.type === 'error' && typeof value.message === 'string') {
+    return { type: 'error', message: value.message }
   }
-  if (value.type !== "exit") return null
-  if (value.exitCode !== null && typeof value.exitCode !== "number")
-    return null
+  if (value.type !== 'exit') return null
+  if (value.exitCode !== null && typeof value.exitCode !== 'number') return null
 
-  return { type: "exit", exitCode: value.exitCode }
+  return { type: 'exit', exitCode: value.exitCode }
 }
 
 function resolveNodePtyModule() {
-  return Bun.resolveSync("@lydell/node-pty", import.meta.path)
+  return Bun.resolveSync('@lydell/node-pty', import.meta.path)
 }
 
 function noop() {}

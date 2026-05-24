@@ -17,7 +17,7 @@ export type FuzzyRank = {
 
 type FieldRank = {
   exact: boolean
-  field: "keyword" | "label" | "path"
+  field: 'keyword' | 'label' | 'path'
   firstIndex: number
   score: number
   span: number
@@ -32,10 +32,7 @@ const WORD_BASE_SCORE = 7_000
 const SUBSTRING_BASE_SCORE = 6_000
 const FUZZY_BASE_SCORE = 1_000
 
-export function fuzzyRank(
-  target: FuzzyRankTarget,
-  query: string
-): FuzzyRank | null {
+export function fuzzyRank(target: FuzzyRankTarget, query: string): FuzzyRank | null {
   const pieces = queryPieces(query)
   if (pieces.length === 0) return emptyRank(target)
 
@@ -52,7 +49,7 @@ export function fuzzyRankScore(target: FuzzyRankTarget, query: string) {
 export function compareFuzzyRankedTargets(
   left: FuzzyRankTarget,
   right: FuzzyRankTarget,
-  query: string
+  query: string,
 ) {
   const leftRank = fuzzyRank(left, query)
   const rightRank = fuzzyRank(right, query)
@@ -87,10 +84,7 @@ function ranksForPieces(target: FuzzyRankTarget, pieces: readonly string[]) {
   return ranks
 }
 
-function combinedRank(
-  target: FuzzyRankTarget,
-  ranks: readonly FieldRank[]
-): FuzzyRank {
+function combinedRank(target: FuzzyRankTarget, ranks: readonly FieldRank[]): FuzzyRank {
   const firstIndex = Math.min(...ranks.map((rank) => rank.firstIndex))
   const span = ranks.reduce((total, rank) => total + rank.span, 0)
   const score = ranks.reduce((total, rank) => total + rank.score, 0)
@@ -99,7 +93,7 @@ function combinedRank(
     exact: ranks.some((rank) => rank.exact),
     firstIndex,
     labelLength: target.label.length,
-    labelMatched: ranks.some((rank) => rank.field === "label"),
+    labelMatched: ranks.some((rank) => rank.field === 'label'),
     pathLength: target.path?.length ?? target.label.length,
     score,
     span,
@@ -109,32 +103,25 @@ function combinedRank(
 
 function bestPieceRank(target: FuzzyRankTarget, piece: string) {
   const ranks = [
-    textFieldRank(target.label, piece, "label"),
-    target.path ? textFieldRank(target.path, piece, "path") : null,
+    textFieldRank(target.label, piece, 'label'),
+    target.path ? textFieldRank(target.path, piece, 'path') : null,
     bestKeywordRank(target.keywords, piece),
   ].filter(isFieldRank)
 
   return ranks.sort(compareFieldRanks)[0] ?? null
 }
 
-function bestKeywordRank(
-  keywords: readonly string[] | undefined,
-  piece: string
-) {
+function bestKeywordRank(keywords: readonly string[] | undefined, piece: string) {
   if (!keywords) return null
 
   const ranks = keywords
-    .map((keyword) => textFieldRank(keyword, piece, "keyword"))
+    .map((keyword) => textFieldRank(keyword, piece, 'keyword'))
     .filter(isFieldRank)
 
   return ranks.sort(compareFieldRanks)[0] ?? null
 }
 
-function textFieldRank(
-  text: string,
-  piece: string,
-  field: FieldRank["field"]
-): FieldRank | null {
+function textFieldRank(text: string, piece: string, field: FieldRank['field']): FieldRank | null {
   const normalized = text.toLocaleLowerCase()
   if (!normalized) return null
 
@@ -148,7 +135,7 @@ function contiguousRank(
   text: string,
   normalized: string,
   piece: string,
-  field: FieldRank["field"]
+  field: FieldRank['field'],
 ): FieldRank | null {
   const index = normalized.indexOf(piece)
   if (index < 0) return null
@@ -167,12 +154,7 @@ function contiguousRank(
   }
 }
 
-function contiguousBaseScore(
-  text: string,
-  piece: string,
-  index: number,
-  exact: boolean
-) {
+function contiguousBaseScore(text: string, piece: string, index: number, exact: boolean) {
   if (exact) return EXACT_BASE_SCORE
   if (index === 0) return PREFIX_BASE_SCORE
   if (wordBoundaryBefore(text, index)) return WORD_BASE_SCORE
@@ -184,7 +166,7 @@ function fuzzyFieldRank(
   text: string,
   normalized: string,
   piece: string,
-  field: FieldRank["field"]
+  field: FieldRank['field'],
 ): FieldRank | null {
   const positions = fuzzyPositions(normalized, piece)
   if (!positions) return null
@@ -195,11 +177,7 @@ function fuzzyFieldRank(
   const compactness = piece.length / Math.max(1, span)
   const boundaryBoost = wordBoundaryBefore(text, firstIndex) ? 150 : 0
   const score =
-    fieldBonus(field) +
-    FUZZY_BASE_SCORE +
-    compactness * 350 +
-    boundaryBoost -
-    firstIndex
+    fieldBonus(field) + FUZZY_BASE_SCORE + compactness * 350 + boundaryBoost - firstIndex
 
   return {
     exact: false,
@@ -225,9 +203,9 @@ function fuzzyPositions(text: string, piece: string) {
   return positions
 }
 
-function fieldBonus(field: FieldRank["field"]) {
-  if (field === "label") return LABEL_FIELD_BONUS
-  if (field === "path") return PATH_FIELD_BONUS
+function fieldBonus(field: FieldRank['field']) {
+  if (field === 'label') return LABEL_FIELD_BONUS
+  if (field === 'path') return PATH_FIELD_BONUS
 
   return KEYWORD_FIELD_BONUS
 }
@@ -235,7 +213,7 @@ function fieldBonus(field: FieldRank["field"]) {
 function wordBoundaryBefore(text: string, index: number) {
   if (index <= 0) return true
 
-  return /[./_\-\s]/u.test(text[index - 1] ?? "")
+  return /[./_\-\s]/u.test(text[index - 1] ?? '')
 }
 
 function queryPieces(query: string) {

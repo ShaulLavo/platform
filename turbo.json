@@ -15,7 +15,11 @@
       "inputs": ["scripts/verify-no-refrences.sh", "**/*", "!.kiro/specs/**"]
     },
     "format": {
-      "dependsOn": ["^format"]
+      "dependsOn": ["^format"],
+      "cache": false
+    },
+    "format:check": {
+      "dependsOn": ["^format:check"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]

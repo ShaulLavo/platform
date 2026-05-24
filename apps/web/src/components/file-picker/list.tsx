@@ -1,22 +1,16 @@
-import type { FsEntry } from "@/lib/file-system-types"
-import { isDirectoryEntry } from "@/lib/file-system-types"
+import type { FsEntry } from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
 import {
   ArrowClockwiseIcon,
   CircleNotchIcon,
   FolderOpenIcon,
   WarningCircleIcon,
-} from "@phosphor-icons/react"
-import { Button } from "@workspace/ui/components/button"
-import { cn } from "@workspace/ui/lib/utils"
-import {
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type UIEvent,
-} from "react"
+} from '@phosphor-icons/react'
+import { Button } from '@workspace/ui/components/button'
+import { cn } from '@workspace/ui/lib/utils'
+import { useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
 
-import { EntryPreviewTile, KindBadge } from "./entry-ui"
+import { EntryPreviewTile, KindBadge } from './entry-ui'
 import {
   displayPath,
   formatModified,
@@ -27,7 +21,7 @@ import {
   type FilePickerIconMode,
   type FilePickerMode,
   type LoadState,
-} from "./state"
+} from './state'
 
 export function ListHeader({
   isLoading,
@@ -37,14 +31,14 @@ export function ListHeader({
   isSearching: boolean
 }) {
   return (
-    <div className="grid h-8 grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 border-b bg-background/80 px-3 text-[11px] font-medium tracking-normal text-muted-foreground uppercase max-sm:grid-cols-[minmax(0,1fr)_68px]">
-      <div className="flex min-w-0 items-center gap-2">
-        <span>{isSearching ? "Matches" : "Name"}</span>
-        {isLoading && <CircleNotchIcon className="size-3 animate-spin" />}
+    <div className='bg-background/80 text-muted-foreground grid h-8 grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase max-sm:grid-cols-[minmax(0,1fr)_68px]'>
+      <div className='flex min-w-0 items-center gap-2'>
+        <span>{isSearching ? 'Matches' : 'Name'}</span>
+        {isLoading && <CircleNotchIcon className='size-3 animate-spin' />}
       </div>
-      <div className="max-sm:text-right">Kind</div>
-      <div className="max-sm:hidden">Modified</div>
-      <div className="text-right max-sm:hidden">Size</div>
+      <div className='max-sm:text-right'>Kind</div>
+      <div className='max-sm:hidden'>Modified</div>
+      <div className='text-right max-sm:hidden'>Size</div>
     </div>
   )
 }
@@ -74,19 +68,16 @@ export function FileList({
   onSelect: (entry: FsEntry) => void
   selectedPath: string | null
 }) {
-  const rows = useMemo(
-    () => fileListRows(entries, isSearching),
-    [entries, isSearching]
-  )
+  const rows = useMemo(() => fileListRows(entries, isSearching), [entries, isSearching])
   const scrollParentRef = useRef<HTMLDivElement>(null)
   const [viewport, setViewport] = useState({ height: 480, top: 0 })
   const rowMetrics = useMemo(() => fileListRowMetrics(rows), [rows])
   const virtualRows = useMemo(
     () => visibleFileListRows(rowMetrics, viewport),
-    [rowMetrics, viewport]
+    [rowMetrics, viewport],
   )
 
-  if (loadState.status === "error") {
+  if (loadState.status === 'error') {
     return <ErrorState message={loadState.message} onRetry={onRetry} />
   }
   if (entries.length === 0) {
@@ -96,14 +87,14 @@ export function FileList({
   return (
     <div
       ref={scrollParentRef}
-      className="min-h-0 overflow-auto"
+      className='min-h-0 overflow-auto'
       onScroll={handleFileListScroll(setViewport)}
     >
       <div
         aria-label={listLabel(mode)}
-        className="relative p-1.5 outline-none"
+        className='relative p-1.5 outline-none'
         onKeyDown={onKeyDown}
-        role="listbox"
+        role='listbox'
         style={{ height: rowMetrics.totalSize }}
         tabIndex={0}
       >
@@ -127,12 +118,12 @@ export function FileList({
 
 type FileListRow =
   | {
-      kind: "section"
+      kind: 'section'
       key: string
       label: string
     }
   | {
-      kind: "entry"
+      kind: 'entry'
       key: string
       entry: FsEntry
       showPath: boolean
@@ -173,11 +164,11 @@ function FileListVirtualRow({
 
   return (
     <div
-      className="absolute top-0 right-1.5 left-1.5"
+      className='absolute top-0 right-1.5 left-1.5'
       style={{ transform: `translateY(${virtualRow.start}px)` }}
     >
-      {row.kind === "section" ? (
-        <div className="px-2 py-1.5 text-[11px] font-medium tracking-normal text-muted-foreground uppercase">
+      {row.kind === 'section' ? (
+        <div className='text-muted-foreground px-2 py-1.5 text-[11px] font-medium tracking-normal uppercase'>
           {row.label}
         </div>
       ) : (
@@ -199,7 +190,7 @@ function FileListVirtualRow({
 function fileListRows(entries: FsEntry[], isSearching: boolean): FileListRow[] {
   if (!isSearching || !entries.some(hasSearchScope)) {
     return entries.map((entry) => ({
-      kind: "entry",
+      kind: 'entry',
       key: entry.path,
       entry,
       showPath: false,
@@ -211,22 +202,22 @@ function fileListRows(entries: FsEntry[], isSearching: boolean): FileListRow[] {
       ? []
       : [
           {
-            kind: "section",
+            kind: 'section',
             key: `section:${section.scope}`,
             label: section.label,
           },
           ...section.entries.map((entry) => ({
-            kind: "entry" as const,
+            kind: 'entry' as const,
             key: `${section.scope}:${entry.path}`,
             entry,
             showPath: true,
           })),
-        ]
+        ],
   )
 }
 
 function estimatedFileListRowSize(row: FileListRow | undefined) {
-  if (row?.kind === "section") return 28
+  if (row?.kind === 'section') return 28
 
   return 44
 }
@@ -255,22 +246,20 @@ function fileListRowMetrics(rows: readonly FileListRow[]): FileListRowMetrics {
 
 function visibleFileListRows(
   metrics: FileListRowMetrics,
-  viewport: { height: number; top: number }
+  viewport: { height: number; top: number },
 ) {
   const overscan = 12
   const start = Math.max(0, viewport.top - viewport.height)
   const end = viewport.top + viewport.height * 2
   const visible = metrics.items.filter(
-    (item) => item.start + item.size >= start && item.start <= end
+    (item) => item.start + item.size >= start && item.start <= end,
   )
   if (visible.length > 0) return visible
 
   return metrics.items.slice(0, overscan)
 }
 
-function handleFileListScroll(
-  setViewport: (viewport: { height: number; top: number }) => void
-) {
+function handleFileListScroll(setViewport: (viewport: { height: number; top: number }) => void) {
   return (event: UIEvent<HTMLDivElement>) => {
     setViewport({
       height: event.currentTarget.clientHeight,
@@ -280,20 +269,20 @@ function handleFileListScroll(
 }
 
 function hasSearchScope(entry: FsEntry) {
-  return entry.searchScope === "current" || entry.searchScope === "system"
+  return entry.searchScope === 'current' || entry.searchScope === 'system'
 }
 
 function searchResultSections(entries: FsEntry[]) {
   return [
     {
-      scope: "current" as const,
-      label: "Current folder",
-      entries: entries.filter((entry) => entry.searchScope === "current"),
+      scope: 'current' as const,
+      label: 'Current folder',
+      entries: entries.filter((entry) => entry.searchScope === 'current'),
     },
     {
-      scope: "system" as const,
-      label: "System-wide",
-      entries: entries.filter((entry) => entry.searchScope === "system"),
+      scope: 'system' as const,
+      label: 'System-wide',
+      entries: entries.filter((entry) => entry.searchScope === 'system'),
     },
   ]
 }
@@ -329,70 +318,52 @@ function FileRow({
       aria-disabled={!pickable}
       aria-selected={selected}
       className={cn(
-        "grid h-11 w-full grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 rounded-md px-1.5 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/50 max-sm:grid-cols-[minmax(0,1fr)_68px]",
-        "active:scale-[0.995] motion-reduce:active:scale-100",
-        selected &&
-          "bg-sky-50 text-sky-950 dark:bg-sky-950/35 dark:text-sky-100",
-        !selected && interactive && "hover:bg-muted/70",
-        !interactive && "cursor-not-allowed text-muted-foreground/60",
-        interactive && !pickable && "text-muted-foreground/75"
+        'grid h-11 w-full grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 rounded-md px-1.5 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/50 max-sm:grid-cols-[minmax(0,1fr)_68px]',
+        'active:scale-[0.995] motion-reduce:active:scale-100',
+        selected && 'bg-sky-50 text-sky-950 dark:bg-sky-950/35 dark:text-sky-100',
+        !selected && interactive && 'hover:bg-muted/70',
+        !interactive && 'cursor-not-allowed text-muted-foreground/60',
+        interactive && !pickable && 'text-muted-foreground/75',
       )}
       disabled={!interactive}
       onClick={() => onSelect(entry)}
       onDoubleClick={handleDoubleClick}
-      role="option"
-      type="button"
+      role='option'
+      type='button'
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <EntryPreviewTile
-          entry={entry}
-          iconMode={iconMode}
-          selected={selected}
-          size="sm"
-        />
-        <div className="min-w-0">
-          <div className="truncate font-medium">{entry.name}</div>
+      <div className='flex min-w-0 items-center gap-2'>
+        <EntryPreviewTile entry={entry} iconMode={iconMode} selected={selected} size='sm' />
+        <div className='min-w-0'>
+          <div className='truncate font-medium'>{entry.name}</div>
           <div
-            className={cn(
-              "truncate text-[11px] text-muted-foreground",
-              !showPath && "sm:hidden"
-            )}
+            className={cn('truncate text-[11px] text-muted-foreground', !showPath && 'sm:hidden')}
           >
             {displayPath(entry.path)}
           </div>
         </div>
       </div>
       <KindBadge entry={entry} />
-      <div className="truncate text-muted-foreground max-sm:hidden">
+      <div className='text-muted-foreground truncate max-sm:hidden'>
         {formatModified(entry.mtimeMs)}
       </div>
-      <div className="text-right text-muted-foreground tabular-nums max-sm:hidden">
+      <div className='text-muted-foreground text-right tabular-nums max-sm:hidden'>
         {formatSizeLabel(entry)}
       </div>
     </button>
   )
 }
 
-function ErrorState({
-  message,
-  onRetry,
-}: {
-  message: string
-  onRetry: () => void
-}) {
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex min-h-80 items-center justify-center p-6">
-      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        <WarningCircleIcon
-          className="size-8 text-destructive"
-          weight="duotone"
-        />
+    <div className='flex min-h-80 items-center justify-center p-6'>
+      <div className='flex max-w-sm flex-col items-center gap-3 text-center'>
+        <WarningCircleIcon className='text-destructive size-8' weight='duotone' />
         <div>
-          <div className="font-medium">Could not load this folder</div>
-          <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+          <div className='font-medium'>Could not load this folder</div>
+          <p className='text-muted-foreground mt-1 text-xs'>{message}</p>
         </div>
-        <Button onClick={onRetry} size="sm" type="button" variant="outline">
-          <ArrowClockwiseIcon data-icon="inline-start" />
+        <Button onClick={onRetry} size='sm' type='button' variant='outline'>
+          <ArrowClockwiseIcon data-icon='inline-start' />
           Retry
         </Button>
       </div>
@@ -404,17 +375,12 @@ function EmptyState({ mode }: { mode: FilePickerMode }) {
   const copy = pickerCopy(mode)
 
   return (
-    <div className="flex min-h-80 items-center justify-center p-6">
-      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        <FolderOpenIcon
-          className="size-8 text-muted-foreground"
-          weight="duotone"
-        />
+    <div className='flex min-h-80 items-center justify-center p-6'>
+      <div className='flex max-w-sm flex-col items-center gap-3 text-center'>
+        <FolderOpenIcon className='text-muted-foreground size-8' weight='duotone' />
         <div>
-          <div className="font-medium">Nothing here</div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {copy.emptyDescription}
-          </p>
+          <div className='font-medium'>Nothing here</div>
+          <p className='text-muted-foreground mt-1 text-xs'>{copy.emptyDescription}</p>
         </div>
       </div>
     </div>

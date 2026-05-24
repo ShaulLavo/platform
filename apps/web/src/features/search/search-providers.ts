@@ -7,20 +7,17 @@ import {
   type WorkspaceSearchEvent,
   type WorkspaceSearchMatch,
   type WorkspaceSearchQuery,
-} from "@workspace/contracts"
+} from '@workspace/contracts'
 
-import { parseEdenSseStream, type EdenSseEvent } from "@/lib/eden-events"
-import { fsClient } from "@/lib/fs-client"
-import { compareSearchPaths } from "@/features/search/search-sort"
+import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
+import { fsClient } from '@/lib/fs-client'
+import { compareSearchPaths } from '@/features/search/search-sort'
 
 const SEARCH_PREVIEW_CONTEXT_CHARS = 80
 const SEARCH_PREVIEW_MAX_CHARS = 240
 
 export type SearchProvider = {
-  search(
-    query: WorkspaceSearchQuery,
-    signal?: AbortSignal
-  ): AsyncIterable<WorkspaceSearchEvent>
+  search(query: WorkspaceSearchQuery, signal?: AbortSignal): AsyncIterable<WorkspaceSearchEvent>
 }
 
 export type OpenBufferSearchDocument = {
@@ -31,18 +28,18 @@ export type OpenBufferSearchDocument = {
 export class DiskSearchProvider implements SearchProvider {
   async *search(
     query: WorkspaceSearchQuery,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<WorkspaceSearchEvent> {
     const response = await fsClient.fs.find.events.get({
       query: {
         caseSensitive: query.caseSensitive === true,
-        entryType: query.entryType ?? "file",
-        excludeGlobs: query.excludeGlobs ? [...query.excludeGlobs] : undefined,
+        entryType: query.entryType ?? 'file',
+        excludeGlobs: query.excludeGlobs ? Array.from(query.excludeGlobs) : undefined,
         includeContent: query.includeContent === true,
-        includeGlobs: query.includeGlobs ? [...query.includeGlobs] : undefined,
+        includeGlobs: query.includeGlobs ? Array.from(query.includeGlobs) : undefined,
         includeNames: query.includeNames ?? true,
         limit: query.limit,
-        matchMode: query.matchMode ?? "literal",
+        matchMode: query.matchMode ?? 'literal',
         maxDepth: query.maxDepth,
         path: query.path,
         query: query.query,
@@ -50,10 +47,8 @@ export class DiskSearchProvider implements SearchProvider {
       },
       fetch: { signal },
     })
-    if (response.error)
-      throw new Error(`Search failed with status ${response.status}.`)
-    if (!response.data)
-      throw new Error("Search response did not include a stream.")
+    if (response.error) throw new Error(`Search failed with status ${response.status}.`)
+    if (!response.data) throw new Error('Search response did not include a stream.')
 
     for await (const event of parseEdenSseStream(response.data)) {
       if (signal?.aborted) return
@@ -67,14 +62,12 @@ export class OpenBufferSearchProvider implements SearchProvider {
   private documents: readonly OpenBufferSearchDocument[]
 
   constructor(documents: readonly OpenBufferSearchDocument[]) {
-    this.documents = [...documents].sort((a, b) =>
-      compareSearchPaths(a.path, b.path)
-    )
+    this.documents = documents.toSorted((a, b) => compareSearchPaths(a.path, b.path))
   }
 
   async *search(
     query: WorkspaceSearchQuery,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<WorkspaceSearchEvent> {
     let count = 0
     let truncated = false
@@ -91,7 +84,7 @@ export class OpenBufferSearchProvider implements SearchProvider {
         }
 
         count += 1
-        yield { match, type: "match" }
+        yield { match, type: 'match' }
       }
 
       if (truncated) break
@@ -122,7 +115,7 @@ export class CompositeSearchProvider implements SearchProvider {
 
   async *search(
     query: WorkspaceSearchQuery,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<WorkspaceSearchEvent> {
     const state = createCompositeState()
 
@@ -139,7 +132,7 @@ export class CompositeSearchProvider implements SearchProvider {
   private async *searchOpenBuffers(
     query: WorkspaceSearchQuery,
     state: CompositeSearchState,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ) {
     for await (const event of this.openBuffers.search(query, signal)) {
       if (appendCompositeEvent(event, state, query.limit)) yield event
@@ -150,7 +143,7 @@ export class CompositeSearchProvider implements SearchProvider {
   private async *searchDisk(
     query: WorkspaceSearchQuery,
     state: CompositeSearchState,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ) {
     const diskQuery = { ...query, limit: query.limit }
 
@@ -175,7 +168,7 @@ function createCompositeState(): CompositeSearchState {
 function shouldStopCompositeSearch(
   query: WorkspaceSearchQuery,
   state: CompositeSearchState,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ) {
   if (signal?.aborted) return true
 
@@ -185,9 +178,9 @@ function shouldStopCompositeSearch(
 function appendCompositeEvent(
   event: WorkspaceSearchEvent,
   state: CompositeSearchState,
-  limit: number
+  limit: number,
 ) {
-  if (event.type === "done") {
+  if (event.type === 'done') {
     state.truncated = state.truncated || event.truncated
     return false
   }
@@ -197,30 +190,27 @@ function appendCompositeEvent(
   return true
 }
 
-function shouldEmitDiskEvent(
-  event: WorkspaceSearchEvent,
-  openBufferPaths: ReadonlySet<string>
-) {
-  if (event.type !== "match") return true
-  if (event.match.kind !== "content") return true
-  if (event.match.source !== "disk") return true
+function shouldEmitDiskEvent(event: WorkspaceSearchEvent, openBufferPaths: ReadonlySet<string>) {
+  if (event.type !== 'match') return true
+  if (event.match.kind !== 'content') return true
+  if (event.match.source !== 'disk') return true
 
   return !openBufferPaths.has(event.match.path)
 }
 
 function searchEventFromSse(event: EdenSseEvent): WorkspaceSearchEvent {
-  if (event.event === "match") return matchEvent(event.data)
-  if (event.event === "done") return doneEventFromData(event.data)
-  if (event.event === "error") throw new Error(searchEventError(event.data))
+  if (event.event === 'match') return matchEvent(event.data)
+  if (event.event === 'done') return doneEventFromData(event.data)
+  if (event.event === 'error') throw new Error(searchEventError(event.data))
 
   throw new Error(`Unexpected search event: ${event.event}`)
 }
 
 function matchEvent(data: unknown): WorkspaceSearchEvent {
   const match = searchEventMatch(data)
-  if (!match) throw new Error("Search response included an invalid match.")
+  if (!match) throw new Error('Search response included an invalid match.')
 
-  return { match, type: "match" }
+  return { match, type: 'match' }
 }
 
 function searchEventMatch(data: unknown): WorkspaceSearchMatch | null {
@@ -232,36 +222,33 @@ function searchEventMatch(data: unknown): WorkspaceSearchMatch | null {
 
 function doneEventFromData(data: unknown): WorkspaceSearchDoneEvent {
   if (!isRecord(data)) {
-    return { count: 0, path: "", query: "", truncated: false, type: "done" }
+    return { count: 0, path: '', query: '', truncated: false, type: 'done' }
   }
 
   return {
-    count: propertyNumber(data, "count"),
-    path: propertyString(data, "path"),
-    query: propertyString(data, "query"),
-    truncated: propertyBoolean(data, "truncated"),
-    type: "done",
+    count: propertyNumber(data, 'count'),
+    path: propertyString(data, 'path'),
+    query: propertyString(data, 'query'),
+    truncated: propertyBoolean(data, 'truncated'),
+    type: 'done',
   }
 }
 
 function doneEvent(
   query: WorkspaceSearchQuery,
   count: number,
-  truncated: boolean
+  truncated: boolean,
 ): WorkspaceSearchDoneEvent {
   return {
     count,
     path: query.path,
     query: query.query,
     truncated,
-    type: "done",
+    type: 'done',
   }
 }
 
-function openBufferMatches(
-  document: OpenBufferSearchDocument,
-  matcher: WorkspaceSearchMatcher
-) {
+function openBufferMatches(document: OpenBufferSearchDocument, matcher: WorkspaceSearchMatcher) {
   const matches: WorkspaceSearchMatch[] = []
   const lines = document.text.split(/\r\n|\r|\n/u)
 
@@ -278,20 +265,20 @@ function openBufferMatch(
   path: string,
   line: string,
   lineIndex: number,
-  match: WorkspaceSearchTextMatch
+  match: WorkspaceSearchTextMatch,
 ): WorkspaceSearchMatch {
   const preview = searchPreview(line, match.start)
 
   return {
     column: match.start + 1,
     endColumn: match.end + 1,
-    kind: "content",
+    kind: 'content',
     line: lineIndex + 1,
     path,
     preview: preview.text,
     previewStartColumn: preview.startColumn,
-    source: "open-buffer",
-    type: "file",
+    source: 'open-buffer',
+    type: 'file',
   }
 }
 
@@ -313,13 +300,12 @@ function searchPreview(line: string, columnIndex: number) {
 function canSearchOpenBuffer(
   document: OpenBufferSearchDocument,
   query: WorkspaceSearchQuery,
-  matcher: WorkspaceSearchMatcher
+  matcher: WorkspaceSearchMatcher,
 ) {
   if (!query.includeContent) return false
-  if (query.entryType && query.entryType !== "file") return false
+  if (query.entryType && query.entryType !== 'file') return false
   if (!isPathInWorkspace(document.path, query.path)) return false
-  if (!matcher.pathMatches(globMatchPath(query.path, document.path)))
-    return false
+  if (!matcher.pathMatches(globMatchPath(query.path, document.path))) return false
 
   return true
 }
@@ -328,7 +314,7 @@ function isWorkspaceSearchMatch(match: unknown): match is WorkspaceSearchMatch {
   if (!isRecord(match)) return false
   if (!isSearchKind(match.kind)) return false
   if (!isSearchSource(match.source)) return false
-  if (typeof match.path !== "string") return false
+  if (typeof match.path !== 'string') return false
   if (!isEntryType(match.type)) return false
   if (!isOptionalEntryType(match.targetType)) return false
   if (!isOptionalNumber(match.line)) return false
@@ -343,53 +329,45 @@ function isWorkspaceSearchMatch(match: unknown): match is WorkspaceSearchMatch {
 }
 
 function isSearchKind(kind: unknown) {
-  return kind === "name" || kind === "content"
+  return kind === 'name' || kind === 'content'
 }
 
 function isSearchSource(source: unknown) {
-  return source === "disk" || source === "open-buffer"
+  return source === 'disk' || source === 'open-buffer'
 }
 
-function isOptionalEntryType(
-  type: unknown
-): type is EntryTypeFilter | undefined {
+function isOptionalEntryType(type: unknown): type is EntryTypeFilter | undefined {
   if (type === undefined) return true
 
   return isEntryType(type)
 }
 
 function isEntryType(type: unknown): type is EntryTypeFilter {
-  return (
-    type === "file" ||
-    type === "directory" ||
-    type === "symlink" ||
-    type === "other"
-  )
+  return type === 'file' || type === 'directory' || type === 'symlink' || type === 'other'
 }
 
 function isOptionalNumber(value: unknown) {
   if (value === undefined) return true
 
-  return typeof value === "number"
+  return typeof value === 'number'
 }
 
 function isOptionalString(value: unknown) {
   if (value === undefined) return true
 
-  return typeof value === "string"
+  return typeof value === 'string'
 }
 
 function searchEventError(data: unknown) {
-  if (!isRecord(data)) return "Search failed."
-  if (isRecord(data.error) && typeof data.error.message === "string")
-    return data.error.message
-  if (typeof data.message === "string") return data.message
+  if (!isRecord(data)) return 'Search failed.'
+  if (isRecord(data.error) && typeof data.error.message === 'string') return data.error.message
+  if (typeof data.message === 'string') return data.message
 
-  return "Search failed."
+  return 'Search failed.'
 }
 
 function propertyNumber(data: Record<string, unknown>, key: string) {
-  return typeof data[key] === "number" ? data[key] : 0
+  return typeof data[key] === 'number' ? data[key] : 0
 }
 
 function propertyBoolean(data: Record<string, unknown>, key: string) {
@@ -397,7 +375,7 @@ function propertyBoolean(data: Record<string, unknown>, key: string) {
 }
 
 function propertyString(data: Record<string, unknown>, key: string) {
-  return typeof data[key] === "string" ? data[key] : ""
+  return typeof data[key] === 'string' ? data[key] : ''
 }
 
 function isPathInWorkspace(path: string, rootPath: string) {
@@ -409,7 +387,7 @@ function isPathInWorkspace(path: string, rootPath: string) {
 
 function globMatchPath(rootPath: string, path: string) {
   if (!rootPath) return path
-  if (path === rootPath) return ""
+  if (path === rootPath) return ''
 
   const prefix = `${rootPath}/`
   if (!path.startsWith(prefix)) return path
@@ -418,5 +396,5 @@ function globMatchPath(rootPath: string, path: string) {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

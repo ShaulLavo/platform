@@ -1,16 +1,16 @@
-import { mkdir, writeFile } from "node:fs/promises"
-import { FsError, mapNodeError } from "./errors"
-import type { WorkspacePaths } from "./path"
-import type { CreateFileBody, CreateFolderBody } from "./contracts"
+import { mkdir, writeFile } from 'node:fs/promises'
+import { FsError, mapNodeError } from './errors'
+import type { WorkspacePaths } from './path'
+import type { CreateFileBody, CreateFolderBody } from './contracts'
 
 export async function createFile(paths: WorkspacePaths, body: CreateFileBody) {
   const target = paths.resolve(body.path)
 
   try {
     await assertNotRoot(target.relativePath)
-    await writeFile(target.absolutePath, body.content ?? "", {
-      encoding: "utf8",
-      flag: body.overwrite ? "w" : "wx",
+    await writeFile(target.absolutePath, body.content ?? '', {
+      encoding: 'utf8',
+      flag: body.overwrite ? 'w' : 'wx',
     })
 
     return target.relativePath
@@ -20,10 +20,7 @@ export async function createFile(paths: WorkspacePaths, body: CreateFileBody) {
   }
 }
 
-export async function createFolder(
-  paths: WorkspacePaths,
-  body: CreateFolderBody
-) {
+export async function createFolder(paths: WorkspacePaths, body: CreateFolderBody) {
   const target = paths.resolve(body.path)
 
   try {
@@ -39,8 +36,5 @@ export async function createFolder(
 
 async function assertNotRoot(relativePath: string) {
   if (relativePath) return
-  throw new FsError(
-    "INVALID_PATH",
-    "operation cannot target the workspace root"
-  )
+  throw new FsError('INVALID_PATH', 'operation cannot target the workspace root')
 }

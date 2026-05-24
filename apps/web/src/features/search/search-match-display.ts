@@ -1,4 +1,4 @@
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
+import type { WorkspaceSearchMatch } from '@workspace/contracts'
 
 export type SearchMatchDisplay = {
   range?: { end: number; start: number }
@@ -12,15 +12,14 @@ export type SearchMatchDisplayOptions = {
 const DEFAULT_SEARCH_DISPLAY_LENGTH = 96
 const DEFAULT_SEARCH_LEADING_CONTEXT = 24
 const MIN_SEARCH_DISPLAY_LENGTH = 16
-const SEARCH_ELLIPSIS = "..."
+const SEARCH_ELLIPSIS = '...'
 
 export function searchMatchDisplay(
   match: WorkspaceSearchMatch,
   query: string,
-  options: SearchMatchDisplayOptions = {}
+  options: SearchMatchDisplayOptions = {},
 ): SearchMatchDisplay {
-  if (match.kind === "name")
-    return searchQueryDisplay(match.path, query, options)
+  if (match.kind === 'name') return searchQueryDisplay(match.path, query, options)
 
   const preview = searchMatchPreview(match)
   const range = searchMatchPreviewRange(match, preview)
@@ -30,11 +29,11 @@ export function searchMatchDisplay(
 }
 
 function searchMatchPreview(match: WorkspaceSearchMatch) {
-  return match.preview || "Matched line"
+  return match.preview || 'Matched line'
 }
 
 function searchMatchPreviewRange(match: WorkspaceSearchMatch, preview: string) {
-  if (match.kind !== "content") return null
+  if (match.kind !== 'content') return null
   if (match.column === undefined || match.endColumn === undefined) return null
 
   const previewStart = match.previewStartColumn ?? 0
@@ -46,11 +45,7 @@ function searchMatchPreviewRange(match: WorkspaceSearchMatch, preview: string) {
   return { end: Math.min(end, preview.length), start }
 }
 
-function searchQueryDisplay(
-  text: string,
-  query: string,
-  options: SearchMatchDisplayOptions
-) {
+function searchQueryDisplay(text: string, query: string, options: SearchMatchDisplayOptions) {
   const range = queryRange(text, query)
   if (!range) return { text }
 
@@ -72,11 +67,11 @@ function queryRange(text: string, query: string) {
 function searchRangeDisplay(
   text: string,
   range: { end: number; start: number },
-  options: SearchMatchDisplayOptions
+  options: SearchMatchDisplayOptions,
 ) {
   const window = searchDisplayWindow(text, range, options.maxLength)
-  const prefix = window.start > 0 ? SEARCH_ELLIPSIS : ""
-  const suffix = window.end < text.length ? SEARCH_ELLIPSIS : ""
+  const prefix = window.start > 0 ? SEARCH_ELLIPSIS : ''
+  const suffix = window.end < text.length ? SEARCH_ELLIPSIS : ''
   const windowText = text.slice(window.start, window.end)
 
   return {
@@ -91,7 +86,7 @@ function searchRangeDisplay(
 function searchDisplayWindow(
   text: string,
   range: { end: number; start: number },
-  maxLength: number | undefined
+  maxLength: number | undefined,
 ) {
   const displayLength = normalizedDisplayLength(maxLength, range)
   if (text.length <= displayLength) return { end: text.length, start: 0 }
@@ -109,7 +104,7 @@ function searchDisplayWindow(
 
 function normalizedDisplayLength(
   maxLength: number | undefined,
-  range: { end: number; start: number }
+  range: { end: number; start: number },
 ) {
   const requestedLength =
     maxLength === undefined || !Number.isFinite(maxLength)
@@ -118,43 +113,30 @@ function normalizedDisplayLength(
   const matchLength = searchRangeLength(range)
   const minimumLength = matchLength + SEARCH_ELLIPSIS.length * 2
 
-  return Math.max(
-    MIN_SEARCH_DISPLAY_LENGTH,
-    minimumLength,
-    Math.floor(requestedLength)
-  )
+  return Math.max(MIN_SEARCH_DISPLAY_LENGTH, minimumLength, Math.floor(requestedLength))
 }
 
 function searchWindowLength(
   displayLength: number,
   range: { end: number; start: number },
-  textLength: number
+  textLength: number,
 ) {
   const prefixLength = range.start > 0 ? SEARCH_ELLIPSIS.length : 0
   const suffixLength = range.end < textLength ? SEARCH_ELLIPSIS.length : 0
 
-  return Math.max(
-    searchRangeLength(range),
-    displayLength - prefixLength - suffixLength
-  )
+  return Math.max(searchRangeLength(range), displayLength - prefixLength - suffixLength)
 }
 
-function searchLeadingContext(
-  windowLength: number,
-  range: { end: number; start: number }
-) {
+function searchLeadingContext(windowLength: number, range: { end: number; start: number }) {
   const contextLength = Math.max(0, windowLength - searchRangeLength(range))
 
-  return Math.min(
-    DEFAULT_SEARCH_LEADING_CONTEXT,
-    Math.floor(contextLength * 0.35)
-  )
+  return Math.min(DEFAULT_SEARCH_LEADING_CONTEXT, Math.floor(contextLength * 0.35))
 }
 
 function searchWindowStart(
   initialStart: number,
   range: { end: number; start: number },
-  windowLength: number
+  windowLength: number,
 ) {
   if (range.end <= initialStart + windowLength) return initialStart
 

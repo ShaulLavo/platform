@@ -1,24 +1,24 @@
-import { useMemo } from "react"
+import { useMemo } from 'react'
 import {
   useHotkeys,
   type UseHotkeyDefinition,
   type UseHotkeyOptions,
-} from "@tanstack/react-hotkeys"
+} from '@tanstack/react-hotkeys'
 
-import type { WorkspaceFocusArea } from "@/components/workspace/workspace-focus-state"
+import type { WorkspaceFocusArea } from '@/components/workspace/workspace-focus-state'
 
-import { activePlatformKeyBindings } from "./active-bindings"
-import { isEditorPlatformCommandId } from "./editor-keymap"
-import type { PlatformCommandId, PlatformKeyBinding } from "./types"
+import { activePlatformKeyBindings } from './active-bindings'
+import { isEditorPlatformCommandId } from './editor-keymap'
+import type { PlatformCommandId, PlatformKeyBinding } from './types'
 
 const APP_HOTKEY_OPTIONS = {
-  conflictBehavior: "replace",
-  eventType: "keydown",
+  conflictBehavior: 'replace',
+  eventType: 'keydown',
 } satisfies UseHotkeyOptions
 
 export type PlatformCommandDispatch = (
   command: PlatformCommandId,
-  event?: KeyboardEvent
+  event?: KeyboardEvent,
 ) => boolean | void
 
 export function useAppKeymap({
@@ -32,11 +32,11 @@ export function useAppKeymap({
 }) {
   const activeBindings = useMemo(
     () => appKeyBindingsForPane(bindings, focusedPane),
-    [bindings, focusedPane]
+    [bindings, focusedPane],
   )
   const definitions = useMemo(
     () => appHotkeyDefinitions(activeBindings, dispatch),
-    [activeBindings, dispatch]
+    [activeBindings, dispatch],
   )
 
   useHotkeys(definitions, APP_HOTKEY_OPTIONS)
@@ -44,11 +44,9 @@ export function useAppKeymap({
 
 export function appKeyBindingsForPane(
   bindings: readonly PlatformKeyBinding[],
-  focusedPane: WorkspaceFocusArea
+  focusedPane: WorkspaceFocusArea,
 ): readonly PlatformKeyBinding[] {
-  return activePlatformKeyBindings(bindings, focusedPane).filter(
-    isAppKeyBinding
-  )
+  return activePlatformKeyBindings(bindings, focusedPane).filter(isAppKeyBinding)
 }
 
 function isAppKeyBinding(binding: PlatformKeyBinding) {
@@ -57,7 +55,7 @@ function isAppKeyBinding(binding: PlatformKeyBinding) {
 
 function appHotkeyDefinitions(
   bindings: readonly PlatformKeyBinding[],
-  dispatch: PlatformCommandDispatch
+  dispatch: PlatformCommandDispatch,
 ): UseHotkeyDefinition[] {
   return bindings.map((binding) => ({
     callback: (event) => {

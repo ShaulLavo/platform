@@ -1,34 +1,34 @@
-import { describe, expect, it } from "bun:test"
-import type { LanguageServerDefinitionTarget } from "@editor/language-server"
+import { describe, expect, it } from 'bun:test'
+import type { LanguageServerDefinitionTarget } from '@editor/language-server'
 
-import { openWorkspaceSearchMatch } from "./open-search-match"
+import { openWorkspaceSearchMatch } from './open-search-match'
 
-describe("openWorkspaceSearchMatch", () => {
-  it("opens content matches at zero-based editor ranges", () => {
+describe('openWorkspaceSearchMatch', () => {
+  it('opens content matches at zero-based editor ranges', () => {
     let opened: LanguageServerDefinitionTarget | null = null
 
     openWorkspaceSearchMatch(
       {
         column: 7,
         endColumn: 13,
-        kind: "content",
+        kind: 'content',
         line: 3,
-        path: "repo/src/app.ts",
-        source: "disk",
-        type: "file",
+        path: 'repo/src/app.ts',
+        source: 'disk',
+        type: 'file',
       },
-      "needle",
+      'needle',
       {
         openDefinition: (target) => {
           opened = target
           return true
         },
         selectFile: () => {},
-      }
+      },
     )
 
     expect(opened).toMatchObject({
-      path: "repo/src/app.ts",
+      path: 'repo/src/app.ts',
       range: {
         end: { character: 12, line: 2 },
         start: { character: 6, line: 2 },

@@ -1,9 +1,9 @@
-import { useMutation } from "@tanstack/react-query"
+import { useMutation } from '@tanstack/react-query'
 
-import { pullRemote } from "../api"
-import { mutationKeys } from "../mutation-keys"
-import { notifyMutationError } from "../notify-mutation-error"
-import { useWorkspaceInvalidation } from "./use-workspace-invalidation"
+import { pullRemote } from '../api'
+import { mutationKeys } from '../mutation-keys'
+import { notifyMutationError } from '../notify-mutation-error'
+import { useWorkspaceInvalidation } from './use-workspace-invalidation'
 
 export function usePullRemoteMutation(rootPath: string) {
   const invalidate = useWorkspaceInvalidation()

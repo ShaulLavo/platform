@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef } from 'react'
 
-import type { CachedEditorDocument } from "@/features/editor/state/editor-document-state"
-import { rowStartOffset } from "@/features/editor/utils/editor-position"
+import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import { rowStartOffset } from '@/features/editor/utils/editor-position'
 
 type UseCommitMessageEditorFocusOptions = {
   document: CachedEditorDocument
@@ -35,5 +35,5 @@ export function useCommitMessageEditorFocus({
 }
 
 function isGitCommitMessagePath(path: string) {
-  return path.endsWith("/.git/COMMIT_EDITMSG") || path === ".git/COMMIT_EDITMSG"
+  return path.endsWith('/.git/COMMIT_EDITMSG') || path === '.git/COMMIT_EDITMSG'
 }

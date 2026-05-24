@@ -36,10 +36,7 @@ export function chromeTabLayout({
 }: ChromeTabLayoutInput): ChromeTabLayout {
   if (tabCount <= 0) return { overlap: 0, tabs: [], trackWidth: 0 }
 
-  const trailingSlotWidths = normalizeTrailingSlotWidths(
-    inputTrailingSlotWidths,
-    tabCount
-  )
+  const trailingSlotWidths = normalizeTrailingSlotWidths(inputTrailingSlotWidths, tabCount)
   const overlap = chromeTabOverlap({
     activeIndex,
     availableWidth,
@@ -81,33 +78,28 @@ function chromeTabWidths({
   if (effectiveWidth >= standardTotal) {
     return addTrailingSlotWidths(
       Array.from({ length: tabCount }, () => CHROME_TAB_STANDARD_WIDTH),
-      trailingSlotWidths
+      trailingSlotWidths,
     )
   }
 
-  const equalMinimumTotal =
-    CHROME_TAB_ACTIVE_MIN_WIDTH * tabCount + trailingSlotTotal
+  const equalMinimumTotal = CHROME_TAB_ACTIVE_MIN_WIDTH * tabCount + trailingSlotTotal
   if (effectiveWidth >= equalMinimumTotal) {
     return addTrailingSlotWidths(
       distributeWidth(effectiveContentWidth, tabCount),
-      trailingSlotWidths
+      trailingSlotWidths,
     )
   }
 
   const normalizedActiveIndex = normalizeActiveIndex(activeIndex, tabCount)
   if (normalizedActiveIndex === null) {
-    return inactiveOnlyWidths(
-      effectiveContentWidth,
-      tabCount,
-      trailingSlotWidths
-    )
+    return inactiveOnlyWidths(effectiveContentWidth, tabCount, trailingSlotWidths)
   }
 
   return activeMinimumWidths(
     effectiveContentWidth,
     tabCount,
     normalizedActiveIndex,
-    trailingSlotWidths
+    trailingSlotWidths,
   )
 }
 
@@ -120,15 +112,12 @@ function chromeTabOverlap({
   if (tabCount <= 1) return 0
 
   const safeAvailableWidth = safeTabAvailableWidth(availableWidth)
-  const normalizedTrailingSlotWidths = normalizeTrailingSlotWidths(
-    trailingSlotWidths,
-    tabCount
-  )
+  const normalizedTrailingSlotWidths = normalizeTrailingSlotWidths(trailingSlotWidths, tabCount)
   const normalizedActiveIndex = normalizeActiveIndex(activeIndex, tabCount)
   const minimumTotal = minimumTabTotalWidth(
     tabCount,
     normalizedActiveIndex,
-    normalizedTrailingSlotWidths
+    normalizedTrailingSlotWidths,
   )
   const overflow = minimumTotal - safeAvailableWidth
 
@@ -140,7 +129,7 @@ function chromeTabOverlap({
 function minimumTabTotalWidth(
   tabCount: number,
   activeIndex: number | null,
-  trailingSlotWidths: readonly number[]
+  trailingSlotWidths: readonly number[],
 ) {
   const trailingSlotTotal = totalTrailingSlotWidth(trailingSlotWidths)
   if (activeIndex === null) {
@@ -148,17 +137,11 @@ function minimumTabTotalWidth(
   }
 
   return (
-    CHROME_TAB_ACTIVE_MIN_WIDTH +
-    CHROME_TAB_INACTIVE_MIN_WIDTH * (tabCount - 1) +
-    trailingSlotTotal
+    CHROME_TAB_ACTIVE_MIN_WIDTH + CHROME_TAB_INACTIVE_MIN_WIDTH * (tabCount - 1) + trailingSlotTotal
   )
 }
 
-function effectiveTabWidth(
-  availableWidth: number,
-  tabCount: number,
-  overlap: number
-) {
+function effectiveTabWidth(availableWidth: number, tabCount: number, overlap: number) {
   const safeAvailableWidth = safeTabAvailableWidth(availableWidth)
 
   return safeAvailableWidth + overlap * (tabCount - 1)
@@ -174,26 +157,20 @@ function activeMinimumWidths(
   effectiveWidth: number,
   tabCount: number,
   activeIndex: number,
-  trailingSlotWidths: readonly number[]
+  trailingSlotWidths: readonly number[],
 ) {
-  const minimumTotal =
-    CHROME_TAB_ACTIVE_MIN_WIDTH + CHROME_TAB_INACTIVE_MIN_WIDTH * (tabCount - 1)
+  const minimumTotal = CHROME_TAB_ACTIVE_MIN_WIDTH + CHROME_TAB_INACTIVE_MIN_WIDTH * (tabCount - 1)
 
   if (effectiveWidth <= minimumTotal) {
     return addTrailingSlotWidths(
       Array.from({ length: tabCount }, (_value, index) =>
-        index === activeIndex
-          ? CHROME_TAB_ACTIVE_MIN_WIDTH
-          : CHROME_TAB_INACTIVE_MIN_WIDTH
+        index === activeIndex ? CHROME_TAB_ACTIVE_MIN_WIDTH : CHROME_TAB_INACTIVE_MIN_WIDTH,
       ),
-      trailingSlotWidths
+      trailingSlotWidths,
     )
   }
 
-  const inactiveWidths = distributeWidth(
-    effectiveWidth - CHROME_TAB_ACTIVE_MIN_WIDTH,
-    tabCount - 1
-  )
+  const inactiveWidths = distributeWidth(effectiveWidth - CHROME_TAB_ACTIVE_MIN_WIDTH, tabCount - 1)
   let inactiveIndex = 0
 
   const widths = Array.from({ length: tabCount }, (_value, index) => {
@@ -210,21 +187,21 @@ function activeMinimumWidths(
 function inactiveOnlyWidths(
   effectiveWidth: number,
   tabCount: number,
-  trailingSlotWidths: readonly number[]
+  trailingSlotWidths: readonly number[],
 ) {
   const minimumTotal = CHROME_TAB_INACTIVE_MIN_WIDTH * tabCount
   if (effectiveWidth <= minimumTotal) {
     return addTrailingSlotWidths(
       Array.from({ length: tabCount }, () => CHROME_TAB_INACTIVE_MIN_WIDTH),
-      trailingSlotWidths
+      trailingSlotWidths,
     )
   }
 
   return addTrailingSlotWidths(
     distributeWidth(effectiveWidth, tabCount).map((width) =>
-      Math.max(CHROME_TAB_INACTIVE_MIN_WIDTH, width)
+      Math.max(CHROME_TAB_INACTIVE_MIN_WIDTH, width),
     ),
-    trailingSlotWidths
+    trailingSlotWidths,
   )
 }
 
@@ -235,7 +212,7 @@ function distributeWidth(totalWidth: number, count: number) {
   const remainder = totalWidth - baseWidth * count
 
   return Array.from({ length: count }, (_value, index) =>
-    index < remainder ? baseWidth + 1 : baseWidth
+    index < remainder ? baseWidth + 1 : baseWidth,
   )
 }
 
@@ -246,17 +223,12 @@ function normalizeActiveIndex(activeIndex: number, tabCount: number) {
   return activeIndex
 }
 
-function normalizeTrailingSlotWidths(
-  widths: readonly number[],
-  tabCount: number
-) {
-  return Array.from({ length: tabCount }, (_value, index) =>
-    safeTrailingSlotWidth(widths[index])
-  )
+function normalizeTrailingSlotWidths(widths: readonly number[], tabCount: number) {
+  return Array.from({ length: tabCount }, (_value, index) => safeTrailingSlotWidth(widths[index]))
 }
 
 function safeTrailingSlotWidth(width: number | undefined) {
-  if (typeof width !== "number") return 0
+  if (typeof width !== 'number') return 0
   if (!Number.isFinite(width)) return 0
 
   return Math.max(0, Math.floor(width))
@@ -266,10 +238,7 @@ function totalTrailingSlotWidth(widths: readonly number[]) {
   return widths.reduce((total, width) => total + width, 0)
 }
 
-function addTrailingSlotWidths(
-  widths: readonly number[],
-  trailingSlotWidths: readonly number[]
-) {
+function addTrailingSlotWidths(widths: readonly number[], trailingSlotWidths: readonly number[]) {
   return widths.map((width, index) => width + (trailingSlotWidths[index] ?? 0))
 }
 

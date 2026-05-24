@@ -31,7 +31,7 @@ export type SearchResultVirtualListScrollOptions = {
 }
 
 export function createSearchResultVirtualListMetrics(
-  inputs: readonly SearchResultVirtualListItemInput[]
+  inputs: readonly SearchResultVirtualListItemInput[],
 ): SearchResultVirtualListMetrics {
   const items: SearchResultVirtualListItem[] = []
   let totalSize = 0
@@ -55,7 +55,7 @@ export function createSearchResultVirtualListMetrics(
 export function visibleSearchResultVirtualListItems(
   metrics: SearchResultVirtualListMetrics,
   viewport: SearchResultVirtualListViewport,
-  options: SearchResultVirtualListOverscan
+  options: SearchResultVirtualListOverscan,
 ) {
   const visible: SearchResultVirtualListItem[] = []
   const top = clampedViewportTop(metrics, viewport)
@@ -81,7 +81,7 @@ export function scrollTopForSearchResultVirtualListItem(
   metrics: SearchResultVirtualListMetrics,
   index: number,
   viewport: SearchResultVirtualListViewport,
-  options: SearchResultVirtualListScrollOptions = {}
+  options: SearchResultVirtualListScrollOptions = {},
 ) {
   const item = metrics.items[index]
   if (!item) return null
@@ -94,14 +94,14 @@ export function scrollTopForSearchResultVirtualListItem(
     return clampSearchResultVirtualListScrollTop(
       target.start,
       metrics.totalSize + (options.totalPadding ?? 0),
-      height
+      height,
     )
   }
   if (target.end > viewportBottom) {
     return clampSearchResultVirtualListScrollTop(
       target.end - height,
       metrics.totalSize + (options.totalPadding ?? 0),
-      height
+      height,
     )
   }
 
@@ -110,7 +110,7 @@ export function scrollTopForSearchResultVirtualListItem(
 
 function searchResultVirtualListItemTarget(
   item: SearchResultVirtualListItem,
-  options: SearchResultVirtualListScrollOptions
+  options: SearchResultVirtualListScrollOptions,
 ) {
   if (options.targetOffset === undefined) {
     return {
@@ -131,7 +131,7 @@ function searchResultVirtualListItemTarget(
 export function clampSearchResultVirtualListScrollTop(
   top: number,
   totalSize: number,
-  viewportHeight: number
+  viewportHeight: number,
 ) {
   const maxTop = Math.max(0, totalSize - Math.max(0, viewportHeight))
 
@@ -140,18 +140,14 @@ export function clampSearchResultVirtualListScrollTop(
 
 function clampedViewportTop(
   metrics: SearchResultVirtualListMetrics,
-  viewport: SearchResultVirtualListViewport
+  viewport: SearchResultVirtualListViewport,
 ) {
-  return clampSearchResultVirtualListScrollTop(
-    viewport.top,
-    metrics.totalSize,
-    viewport.height
-  )
+  return clampSearchResultVirtualListScrollTop(viewport.top, metrics.totalSize, viewport.height)
 }
 
 function firstSearchResultVirtualListItemIndex(
   items: readonly SearchResultVirtualListItem[],
-  offset: number
+  offset: number,
 ) {
   let low = 0
   let high = items.length

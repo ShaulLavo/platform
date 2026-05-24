@@ -1,6 +1,6 @@
-import type { WorkspaceFocusArea } from "@/components/workspace/workspace-focus-state"
+import type { WorkspaceFocusArea } from '@/components/workspace/workspace-focus-state'
 
-import type { PlatformKeyBinding } from "./types"
+import type { PlatformKeyBinding } from './types'
 
 type SelectedBinding = {
   readonly binding: PlatformKeyBinding
@@ -9,7 +9,7 @@ type SelectedBinding = {
 
 export function activePlatformKeyBindings(
   bindings: readonly PlatformKeyBinding[],
-  focusedPane: WorkspaceFocusArea
+  focusedPane: WorkspaceFocusArea,
 ): readonly PlatformKeyBinding[] {
   const selected = new Map<string, SelectedBinding>()
 
@@ -17,13 +17,13 @@ export function activePlatformKeyBindings(
     selectActiveBinding(selected, binding, focusedPane)
   }
 
-  return [...selected.values()].map(({ binding }) => binding)
+  return Array.from(selected.values(), ({ binding }) => binding)
 }
 
 function selectActiveBinding(
   selected: Map<string, SelectedBinding>,
   binding: PlatformKeyBinding,
-  focusedPane: WorkspaceFocusArea
+  focusedPane: WorkspaceFocusArea,
 ) {
   if (!bindingMatchesFocusedPane(binding, focusedPane)) return
 
@@ -34,22 +34,16 @@ function selectActiveBinding(
   selected.set(binding.keys, { binding, priority })
 }
 
-function bindingMatchesFocusedPane(
-  binding: PlatformKeyBinding,
-  focusedPane: WorkspaceFocusArea
-) {
+function bindingMatchesFocusedPane(binding: PlatformKeyBinding, focusedPane: WorkspaceFocusArea) {
   if (!binding.pane) return true
-  if (binding.pane === "any") return true
+  if (binding.pane === 'any') return true
 
   return binding.pane === focusedPane
 }
 
-function bindingPriority(
-  binding: PlatformKeyBinding,
-  focusedPane: WorkspaceFocusArea
-) {
+function bindingPriority(binding: PlatformKeyBinding, focusedPane: WorkspaceFocusArea) {
   if (focusedPane && binding.pane === focusedPane) return 2
-  if (!binding.pane || binding.pane === "any") return 1
+  if (!binding.pane || binding.pane === 'any') return 1
 
   return 0
 }

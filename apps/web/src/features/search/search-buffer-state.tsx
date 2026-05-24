@@ -3,15 +3,15 @@ import type {
   WorkspaceSearchMatch,
   WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
-} from "@workspace/contracts"
-import { createContext, useContext } from "react"
-import { useStore } from "zustand"
-import { createStore, type StoreApi } from "zustand/vanilla"
+} from '@workspace/contracts'
+import { createContext, useContext } from 'react'
+import { useStore } from 'zustand'
+import { createStore, type StoreApi } from 'zustand/vanilla'
 
-import type { CachedSearchBufferState } from "@/lib/workspace-cache"
-import { basename, toTreePath } from "@/lib/path-formatters"
-import { searchBufferDocumentId } from "@/features/search/search-buffer-document"
-import { compareSearchPaths } from "@/features/search/search-sort"
+import type { CachedSearchBufferState } from '@/lib/workspace-cache'
+import { basename, toTreePath } from '@/lib/path-formatters'
+import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { compareSearchPaths } from '@/features/search/search-sort'
 import {
   expandedSearchResultItems,
   searchResultContentItems,
@@ -19,22 +19,22 @@ import {
   searchResultItemById,
   visibleSearchResultId,
   type SearchResultId,
-} from "@/features/search/search-result-items"
+} from '@/features/search/search-result-items'
 
 const SEARCH_HISTORY_LIMIT = 50
 
-export type SearchBufferStatus = "idle" | "loading" | "ready" | "error"
-export type SearchReplaceStatus = "idle" | "running" | "success" | "error"
+export type SearchBufferStatus = 'idle' | 'loading' | 'ready' | 'error'
+export type SearchReplaceStatus = 'idle' | 'running' | 'success' | 'error'
 
 export type SearchBufferOptionPatch = Partial<
   Pick<
     SearchBufferSnapshot,
-    | "caseSensitive"
-    | "excludeGlobText"
-    | "filtersVisible"
-    | "includeGlobText"
-    | "matchMode"
-    | "wholeWord"
+    | 'caseSensitive'
+    | 'excludeGlobText'
+    | 'filtersVisible'
+    | 'includeGlobText'
+    | 'matchMode'
+    | 'wholeWord'
   >
 >
 
@@ -117,62 +117,49 @@ type SearchBufferStoreActions = {
   toggleGroup: (path: string) => void
 }
 
-export type SearchBufferStore = SearchBufferStoreState &
-  SearchBufferStoreActions
+export type SearchBufferStore = SearchBufferStoreState & SearchBufferStoreActions
 
 export type SearchBufferStoreApi = StoreApi<SearchBufferStore>
 
 const EMPTY_SEARCH_GROUPS: readonly WorkspaceSearchFileGroup[] = []
 
-export const SearchBufferStateContext =
-  createContext<SearchBufferStoreApi | null>(null)
+export const SearchBufferStateContext = createContext<SearchBufferStoreApi | null>(null)
 
 export function useSearchBufferStoreApi() {
   const store = useContext(SearchBufferStateContext)
   if (!store) {
-    throw new Error(
-      "useSearchBufferStoreApi must be used within SearchBufferStateContext"
-    )
+    throw new Error('useSearchBufferStoreApi must be used within SearchBufferStateContext')
   }
 
   return store
 }
 
-export function useSearchBufferState<T>(
-  selector: (state: SearchBufferStore) => T
-): T {
+export function useSearchBufferState<T>(selector: (state: SearchBufferStore) => T): T {
   return useStore(useSearchBufferStoreApi(), selector)
 }
 
-export function createSearchBufferStore(
-  cachedActive: CachedSearchBufferState | null = null
-) {
+export function createSearchBufferStore(cachedActive: CachedSearchBufferState | null = null) {
   const active = searchBufferSnapshotFromCache(cachedActive)
 
   return createStore<SearchBufferStore>()((set, get) => ({
     active,
-    appendEvent: (runId, event) =>
-      set((state) => appendSearchEvent(state, runId, event)),
-    appendEvents: (runId, events) =>
-      set((state) => appendSearchEvents(state, runId, events)),
-    collapseAllGroups: () =>
-      set((state) => ({ active: collapseSearchGroups(state.active) })),
-    expandAllGroups: () =>
-      set((state) => ({ active: expandSearchGroups(state.active) })),
-    failSearch: (runId, error) =>
-      set((state) => failSearchBuffer(state, runId, error)),
+    appendEvent: (runId, event) => set((state) => appendSearchEvent(state, runId, event)),
+    appendEvents: (runId, events) => set((state) => appendSearchEvents(state, runId, events)),
+    collapseAllGroups: () => set((state) => ({ active: collapseSearchGroups(state.active) })),
+    expandAllGroups: () => set((state) => ({ active: expandSearchGroups(state.active) })),
+    failSearch: (runId, error) => set((state) => failSearchBuffer(state, runId, error)),
     failReplace: (rootPath, error) =>
       set((state) => ({
         active: replaceSearchBuffer(state.active, rootPath, {
           replaceMessage: error,
-          replaceStatus: "error",
+          replaceStatus: 'error',
         }),
       })),
     finishReplace: (rootPath, message) =>
       set((state) => ({
         active: replaceSearchBuffer(state.active, rootPath, {
           replaceMessage: message,
-          replaceStatus: "success",
+          replaceStatus: 'success',
         }),
       })),
     prepareBuffer: (rootPath) => {
@@ -204,7 +191,7 @@ export function createSearchBufferStore(
       set((state) => ({
         active: replaceSearchBuffer(state.active, rootPath, {
           replaceMessage: null,
-          replaceStatus: "idle",
+          replaceStatus: 'idle',
           replaceVisible,
         }),
       })),
@@ -216,8 +203,7 @@ export function createSearchBufferStore(
       set((state) => ({
         active: selectReplaceHistoryText(state.active, rootPath, 1),
       })),
-    selectNextMatch: () =>
-      set((state) => ({ active: selectSearchMatch(state.active, 1) })),
+    selectNextMatch: () => set((state) => ({ active: selectSearchMatch(state.active, 1) })),
     selectPreviousQuery: (rootPath) =>
       set((state) => ({
         active: selectSearchHistoryQuery(state.active, rootPath, -1),
@@ -226,10 +212,8 @@ export function createSearchBufferStore(
       set((state) => ({
         active: selectReplaceHistoryText(state.active, rootPath, -1),
       })),
-    selectPreviousMatch: () =>
-      set((state) => ({ active: selectSearchMatch(state.active, -1) })),
-    selectResult: (id) =>
-      set((state) => ({ active: selectSearchResult(state.active, id) })),
+    selectPreviousMatch: () => set((state) => ({ active: selectSearchMatch(state.active, -1) })),
+    selectResult: (id) => set((state) => ({ active: selectSearchResult(state.active, id) })),
     startReplace: (rootPath) =>
       set((state) => ({
         active: startReplaceSearchBuffer(state.active, rootPath),
@@ -248,7 +232,7 @@ export function createSearchBufferStore(
 }
 
 export function cachedSearchBufferState(
-  snapshot: SearchBufferSnapshot | null
+  snapshot: SearchBufferSnapshot | null,
 ): CachedSearchBufferState | null {
   if (!snapshot) return null
 
@@ -257,14 +241,14 @@ export function cachedSearchBufferState(
   return {
     activeResultId: null,
     caseSensitive: snapshot.caseSensitive,
-    collapsedPaths: [...snapshot.collapsedPaths],
+    collapsedPaths: Array.from(snapshot.collapsedPaths),
     excludeGlobText: snapshot.excludeGlobText,
     filtersVisible: snapshot.filtersVisible,
     includeGlobText: snapshot.includeGlobText,
     matchMode: snapshot.matchMode,
     query: snapshot.query,
-    queryHistory: [...snapshot.queryHistory],
-    replaceHistory: [...snapshot.replaceHistory],
+    queryHistory: Array.from(snapshot.queryHistory),
+    replaceHistory: Array.from(snapshot.replaceHistory),
     replaceText: snapshot.replaceText,
     replaceVisible: snapshot.replaceVisible,
     resultsQuery: resultMetadata.resultsQuery,
@@ -277,9 +261,9 @@ export function cachedSearchBufferState(
 }
 
 function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
-  if (snapshot.status !== "ready") {
+  if (snapshot.status !== 'ready') {
     return {
-      resultsQuery: "",
+      resultsQuery: '',
       resultsSearchQuery: null,
       totalCount: 0,
       truncated: false,
@@ -295,7 +279,7 @@ function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
 }
 
 function searchBufferSnapshotFromCache(
-  cached: CachedSearchBufferState | null
+  cached: CachedSearchBufferState | null,
 ): SearchBufferSnapshot | null {
   if (!cached) return null
 
@@ -319,7 +303,7 @@ function searchBufferSnapshotFromCache(
     replaceHistoryCursor: null,
     replaceHistoryDraft: null,
     replaceMessage: null,
-    replaceStatus: "idle",
+    replaceStatus: 'idle',
     replaceText: cached.replaceText,
     replaceVisible: cached.replaceVisible,
     pendingResultIds: [],
@@ -340,20 +324,19 @@ function searchBufferSnapshotFromCache(
 }
 
 function cachedSearchBufferStatus(cached: CachedSearchBufferState) {
-  if (!cached.query) return "idle"
-  if (!cached.resultsQuery) return "loading"
-  if (cached.totalCount > 0) return "loading"
+  if (!cached.query) return 'idle'
+  if (!cached.resultsQuery) return 'loading'
+  if (cached.totalCount > 0) return 'loading'
 
-  return "ready"
+  return 'ready'
 }
 
 function optionSearchBuffer(
   current: SearchBufferSnapshot | null,
   rootPath: string,
-  options: SearchBufferOptionPatch
+  options: SearchBufferOptionPatch,
 ) {
-  const base =
-    current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
+  const base = current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
   const next = { ...base, ...options, error: null }
   if (!searchOptionsChanged(base, next)) return base
   if (!next.query) return next
@@ -361,24 +344,19 @@ function optionSearchBuffer(
   return {
     ...next,
     replaceMessage: null,
-    replaceStatus: "idle" as const,
+    replaceStatus: 'idle' as const,
     pendingResultIds: [],
     runId: base.runId + 1,
     runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
     streamBaseMatches: [],
-    status: "loading" as const,
+    status: 'loading' as const,
   }
 }
 
-function querySearchBuffer(
-  current: SearchBufferSnapshot | null,
-  rootPath: string,
-  query: string
-) {
-  const base =
-    current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
+function querySearchBuffer(current: SearchBufferSnapshot | null, rootPath: string, query: string) {
+  const base = current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
   if (!query) return clearedSearchBuffer(base)
 
   const queryChanged = base.query !== query
@@ -389,13 +367,13 @@ function querySearchBuffer(
     queryHistoryCursor: null,
     queryHistoryDraft: null,
     replaceMessage: null,
-    replaceStatus: "idle" as const,
+    replaceStatus: 'idle' as const,
     pendingResultIds: queryChanged ? [] : base.pendingResultIds,
     runId: queryChanged ? base.runId + 1 : base.runId,
     runningMatches: queryChanged ? [] : base.runningMatches,
     runningQuery: queryChanged ? null : base.runningQuery,
     runningSearchQuery: queryChanged ? null : base.runningSearchQuery,
-    status: queryChanged ? "loading" : base.status,
+    status: queryChanged ? 'loading' : base.status,
     streamBaseMatches: queryChanged ? [] : base.streamBaseMatches,
   }
 }
@@ -407,28 +385,26 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     error: null,
     groups: EMPTY_SEARCH_GROUPS,
     matches: [],
-    query: "",
+    query: '',
     queryHistoryCursor: null,
     queryHistoryDraft: null,
     replaceMessage: null,
-    replaceStatus: "idle" as const,
+    replaceStatus: 'idle' as const,
     pendingResultIds: [],
-    resultsQuery: "",
+    resultsQuery: '',
     resultsSearchQuery: null,
     runningMatches: [],
     runningQuery: null,
     runningSearchQuery: null,
     runId: current.runId + 1,
-    status: "idle" as const,
+    status: 'idle' as const,
     streamBaseMatches: [],
     totalCount: 0,
     truncated: false,
   }
 }
 
-export function searchGroupsForSnapshot(
-  snapshot: Pick<SearchBufferSnapshot, "groups"> | null
-) {
+export function searchGroupsForSnapshot(snapshot: Pick<SearchBufferSnapshot, 'groups'> | null) {
   if (!snapshot) return EMPTY_SEARCH_GROUPS
 
   return snapshot.groups
@@ -437,13 +413,13 @@ export function searchGroupsForSnapshot(
 function appendSearchEvents(
   state: SearchBufferStoreState,
   runId: number,
-  events: readonly WorkspaceSearchEvent[]
+  events: readonly WorkspaceSearchEvent[],
 ): SearchBufferStoreState {
   let next = state
   let matches: WorkspaceSearchMatch[] = []
 
   for (const event of events) {
-    if (event.type === "match") {
+    if (event.type === 'match') {
       matches.push(event.match)
       continue
     }
@@ -459,15 +435,15 @@ function appendSearchEvents(
 function appendSearchEvent(
   state: SearchBufferStoreState,
   runId: number,
-  event: WorkspaceSearchEvent
+  event: WorkspaceSearchEvent,
 ): SearchBufferStoreState {
-  if (event.type === "match") {
+  if (event.type === 'match') {
     return appendSearchMatches(state, runId, [event.match])
   }
 
   const active = activeRun(state.active, runId)
   if (!active) return state
-  if (event.type === "done") {
+  if (event.type === 'done') {
     const query = active.runningQuery ?? event.query
     const searchQuery = active.runningSearchQuery
     const matches = doneMatches(active, searchQuery)
@@ -485,7 +461,7 @@ function appendSearchEvent(
         runningMatches: [],
         runningQuery: null,
         runningSearchQuery: null,
-        status: "ready",
+        status: 'ready',
         streamBaseMatches: [],
         totalCount: event.count,
         truncated: event.truncated,
@@ -499,7 +475,7 @@ function appendSearchEvent(
 function appendSearchMatches(
   state: SearchBufferStoreState,
   runId: number,
-  incomingMatches: readonly WorkspaceSearchMatch[]
+  incomingMatches: readonly WorkspaceSearchMatch[],
 ): SearchBufferStoreState {
   if (incomingMatches.length === 0) return state
 
@@ -508,7 +484,7 @@ function appendSearchMatches(
 
   const appendingToResults = sameWorkspaceSearchQuery(
     active.resultsSearchQuery,
-    active.runningSearchQuery
+    active.runningSearchQuery,
   )
   const runningMatches = active.runningMatches.concat(incomingMatches)
   const reconciliation = reconcileSearchStream(active, runningMatches)
@@ -533,7 +509,7 @@ function appendSearchMatches(
     resultsQuery: active.runningQuery ?? active.resultsQuery,
     resultsSearchQuery: runningSearchQuery ?? active.resultsSearchQuery,
     runningMatches,
-    status: "loading" as const,
+    status: 'loading' as const,
     totalCount: contentSearchMatchCount(runningMatches),
     truncated: false,
   }
@@ -549,7 +525,7 @@ function appendSearchMatches(
 function failSearchBuffer(
   state: SearchBufferStoreState,
   runId: number,
-  error: string
+  error: string,
 ): SearchBufferStoreState {
   const active = activeRun(state.active, runId)
   if (!active) return state
@@ -562,7 +538,7 @@ function failSearchBuffer(
       runningMatches: [],
       runningQuery: null,
       runningSearchQuery: null,
-      status: "error",
+      status: 'error',
       streamBaseMatches: [],
     },
   }
@@ -574,15 +550,15 @@ function replaceSearchBuffer(
   patch: Partial<
     Pick<
       SearchBufferSnapshot,
-      | "replaceHistory"
-      | "replaceHistoryCursor"
-      | "replaceHistoryDraft"
-      | "replaceMessage"
-      | "replaceStatus"
-      | "replaceText"
-      | "replaceVisible"
+      | 'replaceHistory'
+      | 'replaceHistoryCursor'
+      | 'replaceHistoryDraft'
+      | 'replaceMessage'
+      | 'replaceStatus'
+      | 'replaceText'
+      | 'replaceVisible'
     >
-  >
+  >,
 ) {
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
@@ -596,21 +572,18 @@ function replaceSearchBuffer(
 function replaceTextSearchBuffer(
   snapshot: SearchBufferSnapshot | null,
   rootPath: string,
-  replaceText: string
+  replaceText: string,
 ) {
   return replaceSearchBuffer(snapshot, rootPath, {
     replaceHistoryCursor: null,
     replaceHistoryDraft: null,
     replaceMessage: null,
-    replaceStatus: "idle",
+    replaceStatus: 'idle',
     replaceText,
   })
 }
 
-function startReplaceSearchBuffer(
-  snapshot: SearchBufferSnapshot | null,
-  rootPath: string
-) {
+function startReplaceSearchBuffer(snapshot: SearchBufferSnapshot | null, rootPath: string) {
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
 
@@ -618,21 +591,14 @@ function startReplaceSearchBuffer(
   return {
     ...snapshot,
     replaceHistory: replaceHistoryForRun(snapshot),
-    replaceHistoryCursor: historyNavigation
-      ? snapshot.replaceHistoryCursor
-      : null,
-    replaceHistoryDraft: historyNavigation
-      ? snapshot.replaceHistoryDraft
-      : null,
+    replaceHistoryCursor: historyNavigation ? snapshot.replaceHistoryCursor : null,
+    replaceHistoryDraft: historyNavigation ? snapshot.replaceHistoryDraft : null,
     replaceMessage: null,
-    replaceStatus: "running" as const,
+    replaceStatus: 'running' as const,
   }
 }
 
-function refreshSearchBuffer(
-  snapshot: SearchBufferSnapshot | null,
-  rootPath: string
-) {
+function refreshSearchBuffer(snapshot: SearchBufferSnapshot | null, rootPath: string) {
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
   if (!snapshot.query) return snapshot
@@ -646,7 +612,7 @@ function refreshSearchBuffer(
     runningQuery: null,
     runningSearchQuery: null,
     searchRevision: snapshot.searchRevision + 1,
-    status: "loading" as const,
+    status: 'loading' as const,
     streamBaseMatches: [],
   }
 }
@@ -664,14 +630,14 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     caseSensitive: false,
     collapsedPaths: [],
     error: null,
-    excludeGlobText: "",
+    excludeGlobText: '',
     filtersVisible: false,
     groups: EMPTY_SEARCH_GROUPS,
     id: searchBufferDocumentId(rootPath),
-    includeGlobText: "",
-    matchMode: "literal",
+    includeGlobText: '',
+    matchMode: 'literal',
     matches: [],
-    query: "",
+    query: '',
     queryHistory: [],
     queryHistoryCursor: null,
     queryHistoryDraft: null,
@@ -679,11 +645,11 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     replaceHistoryCursor: null,
     replaceHistoryDraft: null,
     replaceMessage: null,
-    replaceStatus: "idle",
-    replaceText: "",
+    replaceStatus: 'idle',
+    replaceText: '',
     replaceVisible: false,
     pendingResultIds: [],
-    resultsQuery: "",
+    resultsQuery: '',
     resultsSearchQuery: null,
     rootPath,
     runningMatches: [],
@@ -691,7 +657,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     runningSearchQuery: null,
     runId: 0,
     searchRevision: 0,
-    status: "idle",
+    status: 'idle',
     streamBaseMatches: [],
     totalCount: 0,
     truncated: false,
@@ -702,7 +668,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
 function loadingSearchBuffer(
   query: WorkspaceSearchQuery,
   runId: number,
-  current: SearchBufferSnapshot | null
+  current: SearchBufferSnapshot | null,
 ): SearchBufferSnapshot {
   const previous = current?.rootPath === query.path ? current : null
   const historyNavigation = activeSearchHistoryNavigation(previous, query.query)
@@ -713,34 +679,30 @@ function loadingSearchBuffer(
     caseSensitive: query.caseSensitive ?? previous?.caseSensitive ?? false,
     collapsedPaths: previous?.collapsedPaths ?? [],
     error: null,
-    excludeGlobText:
-      previous?.excludeGlobText ?? globTextForQuery(query.excludeGlobs),
+    excludeGlobText: previous?.excludeGlobText ?? globTextForQuery(query.excludeGlobs),
     filtersVisible: previous?.filtersVisible ?? hasWorkspaceSearchGlobs(query),
     groups: previous?.groups ?? EMPTY_SEARCH_GROUPS,
     id: searchBufferDocumentId(query.path),
-    includeGlobText:
-      previous?.includeGlobText ?? globTextForQuery(query.includeGlobs),
-    matchMode: query.matchMode ?? previous?.matchMode ?? "literal",
+    includeGlobText: previous?.includeGlobText ?? globTextForQuery(query.includeGlobs),
+    matchMode: query.matchMode ?? previous?.matchMode ?? 'literal',
     matches: previous?.matches ?? [],
     query: query.query,
     queryHistory: searchHistoryForRun(previous, query.query),
-    queryHistoryCursor:
-      historyNavigation && previous ? previous.queryHistoryCursor : null,
-    queryHistoryDraft:
-      historyNavigation && previous ? previous.queryHistoryDraft : null,
+    queryHistoryCursor: historyNavigation && previous ? previous.queryHistoryCursor : null,
+    queryHistoryDraft: historyNavigation && previous ? previous.queryHistoryDraft : null,
     replaceHistory: previous?.replaceHistory ?? [],
     replaceHistoryCursor: previous?.replaceHistoryCursor ?? null,
     replaceHistoryDraft: previous?.replaceHistoryDraft ?? null,
     replaceMessage: previous?.replaceMessage ?? null,
-    replaceStatus: previous?.replaceStatus ?? "idle",
-    replaceText: previous?.replaceText ?? "",
+    replaceStatus: previous?.replaceStatus ?? 'idle',
+    replaceText: previous?.replaceText ?? '',
     replaceVisible: previous?.replaceVisible ?? false,
     pendingResultIds: pendingResultIdsForMatches(
       streamBaseMatches,
       query.path,
-      previous?.collapsedPaths ?? []
+      previous?.collapsedPaths ?? [],
     ),
-    resultsQuery: previous?.resultsQuery ?? "",
+    resultsQuery: previous?.resultsQuery ?? '',
     resultsSearchQuery: previous?.resultsSearchQuery ?? null,
     rootPath: query.path,
     runningMatches: [],
@@ -748,7 +710,7 @@ function loadingSearchBuffer(
     runningSearchQuery: query,
     runId,
     searchRevision: previous?.searchRevision ?? 0,
-    status: "loading",
+    status: 'loading',
     streamBaseMatches,
     totalCount: previous?.totalCount ?? 0,
     truncated: previous?.truncated ?? false,
@@ -763,7 +725,7 @@ function hasWorkspaceSearchGlobs(query: WorkspaceSearchQuery) {
 }
 
 function globTextForQuery(globs: readonly string[] | undefined) {
-  return globs?.join(", ") ?? ""
+  return globs?.join(', ') ?? ''
 }
 
 function nextSearchMatches({
@@ -802,17 +764,14 @@ function nextSearchGroups({
       active.groups,
       incomingMatches,
       active.rootPath,
-      active.collapsedPaths
+      active.collapsedPaths,
     )
   }
 
   return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
 }
 
-function doneMatches(
-  active: SearchBufferSnapshot,
-  query: WorkspaceSearchQuery | null
-) {
+function doneMatches(active: SearchBufferSnapshot, query: WorkspaceSearchQuery | null) {
   if (sameWorkspaceSearchQuery(active.runningSearchQuery, query)) {
     return active.runningMatches
   }
@@ -823,10 +782,7 @@ function doneMatches(
   return []
 }
 
-function doneGroups(
-  active: SearchBufferSnapshot,
-  matches: readonly WorkspaceSearchMatch[]
-) {
+function doneGroups(active: SearchBufferSnapshot, matches: readonly WorkspaceSearchMatch[]) {
   if (matches === active.matches) return active.groups
 
   return groupSearchMatches(matches, active.rootPath, active.collapsedPaths)
@@ -839,14 +795,14 @@ type SearchStreamReconciliation = {
 
 function reconcileSearchStream(
   active: SearchBufferSnapshot,
-  runningMatches: readonly WorkspaceSearchMatch[]
+  runningMatches: readonly WorkspaceSearchMatch[],
 ): SearchStreamReconciliation | null {
   if (!shouldReconcileSearchStream(active)) return null
 
   const runningItems = resultMatchItemsForMatches(
     runningMatches,
     active.rootPath,
-    active.collapsedPaths
+    active.collapsedPaths,
   )
   const runningById = new Map(runningItems.map((item) => [item.id, item.match]))
   const usedRunningIds = new Set<SearchResultId>()
@@ -856,7 +812,7 @@ function reconcileSearchStream(
   for (const baseItem of resultMatchItemsForMatches(
     active.streamBaseMatches,
     active.rootPath,
-    active.collapsedPaths
+    active.collapsedPaths,
   )) {
     const runningMatch = runningById.get(baseItem.id)
     if (runningMatch) {
@@ -886,14 +842,13 @@ function shouldReconcileSearchStream(active: SearchBufferSnapshot) {
 
 function streamBaseMatchesForSearch(
   previous: SearchBufferSnapshot | null,
-  query: WorkspaceSearchQuery
+  query: WorkspaceSearchQuery,
 ) {
   if (!previous) return []
   if (!previous.resultsSearchQuery) return []
   if (previous.matches.length === 0) return []
   if (!sameWorkspaceSearchScope(previous.resultsSearchQuery, query)) return []
-  if (!relatedSearchText(previous.resultsSearchQuery.query, query.query))
-    return []
+  if (!relatedSearchText(previous.resultsSearchQuery.query, query.query)) return []
 
   return previous.matches
 }
@@ -901,38 +856,33 @@ function streamBaseMatchesForSearch(
 function pendingResultIdsForMatches(
   matches: readonly WorkspaceSearchMatch[],
   rootPath: string,
-  collapsedPaths: readonly string[]
+  collapsedPaths: readonly string[],
 ) {
   if (matches.length === 0) return []
 
-  return resultMatchItemsForMatches(matches, rootPath, collapsedPaths).map(
-    (item) => item.id
-  )
+  return resultMatchItemsForMatches(matches, rootPath, collapsedPaths).map((item) => item.id)
 }
 
 function resultMatchItemsForMatches(
   matches: readonly WorkspaceSearchMatch[],
   rootPath: string,
-  collapsedPaths: readonly string[]
+  collapsedPaths: readonly string[],
 ) {
-  return expandedSearchResultItems(
-    groupSearchMatches(matches, rootPath, collapsedPaths)
-  ).filter(isSearchResultMatchOrNameItem)
+  return expandedSearchResultItems(groupSearchMatches(matches, rootPath, collapsedPaths)).filter(
+    isSearchResultMatchOrNameItem,
+  )
 }
 
 function isSearchResultMatchOrNameItem(
-  item: ReturnType<typeof expandedSearchResultItems>[number]
+  item: ReturnType<typeof expandedSearchResultItems>[number],
 ): item is Extract<
   ReturnType<typeof expandedSearchResultItems>[number],
-  { type: "match" | "name" }
+  { type: 'match' | 'name' }
 > {
-  return item.type === "match" || item.type === "name"
+  return item.type === 'match' || item.type === 'name'
 }
 
-function searchOptionsChanged(
-  current: SearchBufferSnapshot,
-  next: SearchBufferSnapshot
-) {
+function searchOptionsChanged(current: SearchBufferSnapshot, next: SearchBufferSnapshot) {
   if (current.caseSensitive !== next.caseSensitive) return true
   if (current.excludeGlobText !== next.excludeGlobText) return true
   if (current.filtersVisible !== next.filtersVisible) return true
@@ -944,7 +894,7 @@ function searchOptionsChanged(
 
 export function sameWorkspaceSearchQuery(
   left: WorkspaceSearchQuery | null,
-  right: WorkspaceSearchQuery | null
+  right: WorkspaceSearchQuery | null,
 ) {
   if (!left || !right) return left === right
   if (left.caseSensitive !== right.caseSensitive) return false
@@ -962,10 +912,7 @@ export function sameWorkspaceSearchQuery(
   return sameStringList(left.excludeGlobs, right.excludeGlobs)
 }
 
-function sameWorkspaceSearchScope(
-  left: WorkspaceSearchQuery,
-  right: WorkspaceSearchQuery
-) {
+function sameWorkspaceSearchScope(left: WorkspaceSearchQuery, right: WorkspaceSearchQuery) {
   if (left.caseSensitive !== right.caseSensitive) return false
   if (left.entryType !== right.entryType) return false
   if (left.includeContent !== right.includeContent) return false
@@ -986,10 +933,7 @@ function relatedSearchText(left: string, right: string) {
   return left === right || left.startsWith(right) || right.startsWith(left)
 }
 
-function sameStringList(
-  left: readonly string[] | undefined,
-  right: readonly string[] | undefined
-) {
+function sameStringList(left: readonly string[] | undefined, right: readonly string[] | undefined) {
   const leftList = left ?? []
   const rightList = right ?? []
   if (leftList.length !== rightList.length) return false
@@ -997,10 +941,7 @@ function sameStringList(
   return leftList.every((value, index) => value === rightList[index])
 }
 
-function toggleSearchGroup(
-  snapshot: SearchBufferSnapshot | null,
-  path: string
-) {
+function toggleSearchGroup(snapshot: SearchBufferSnapshot | null, path: string) {
   if (!snapshot) return null
 
   const collapsedPaths = new Set(snapshot.collapsedPaths)
@@ -1009,7 +950,7 @@ function toggleSearchGroup(
   } else {
     collapsedPaths.add(path)
   }
-  const collapsedPathList = [...collapsedPaths]
+  const collapsedPathList = Array.from(collapsedPaths)
 
   return resolveActiveSearchResult({
     ...snapshot,
@@ -1021,37 +962,26 @@ function toggleSearchGroup(
 function selectSearchHistoryQuery(
   snapshot: SearchBufferSnapshot | null,
   rootPath: string,
-  direction: 1 | -1
+  direction: 1 | -1,
 ) {
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
 
-  const selection = searchHistorySelection(
-    queryHistoryState(snapshot),
-    direction
-  )
+  const selection = searchHistorySelection(queryHistoryState(snapshot), direction)
   if (!selection) return snapshot
 
-  return searchHistoryQueryBuffer(
-    snapshot,
-    selection.value,
-    selection.cursor,
-    selection.draft
-  )
+  return searchHistoryQueryBuffer(snapshot, selection.value, selection.cursor, selection.draft)
 }
 
 function selectReplaceHistoryText(
   snapshot: SearchBufferSnapshot | null,
   rootPath: string,
-  direction: 1 | -1
+  direction: 1 | -1,
 ) {
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
 
-  const selection = searchHistorySelection(
-    replaceHistoryState(snapshot),
-    direction
-  )
+  const selection = searchHistorySelection(replaceHistoryState(snapshot), direction)
   if (!selection) return snapshot
 
   return {
@@ -1059,7 +989,7 @@ function selectReplaceHistoryText(
     replaceHistoryCursor: selection.cursor,
     replaceHistoryDraft: selection.draft,
     replaceMessage: null,
-    replaceStatus: "idle" as const,
+    replaceStatus: 'idle' as const,
     replaceText: selection.value,
   }
 }
@@ -1068,7 +998,7 @@ function searchHistoryQueryBuffer(
   snapshot: SearchBufferSnapshot,
   query: string,
   cursor: number | null,
-  draft: string | null
+  draft: string | null,
 ) {
   if (!query) {
     return {
@@ -1086,11 +1016,11 @@ function searchHistoryQueryBuffer(
     queryHistoryCursor: cursor,
     queryHistoryDraft: draft,
     replaceMessage: null,
-    replaceStatus: "idle" as const,
+    replaceStatus: 'idle' as const,
     runId: queryChanged ? snapshot.runId + 1 : snapshot.runId,
     runningQuery: queryChanged ? null : snapshot.runningQuery,
     runningSearchQuery: queryChanged ? null : snapshot.runningSearchQuery,
-    status: queryChanged ? "loading" : snapshot.status,
+    status: queryChanged ? 'loading' : snapshot.status,
   }
 }
 
@@ -1127,7 +1057,7 @@ function replaceHistoryState(snapshot: SearchBufferSnapshot) {
 
 function searchHistorySelection(
   state: SearchTextHistoryState,
-  direction: 1 | -1
+  direction: 1 | -1,
 ): SearchTextHistorySelection | null {
   const cursor = searchHistoryCursor(state, direction)
   if (cursor === state.cursor) return null
@@ -1182,20 +1112,14 @@ function currentSearchHistoryIndex(state: SearchTextHistoryState) {
   return state.history.lastIndexOf(state.value)
 }
 
-function searchHistoryDraft(
-  state: SearchTextHistoryState,
-  cursor: number | null
-) {
+function searchHistoryDraft(state: SearchTextHistoryState, cursor: number | null) {
   if (cursor === null) return null
   if (state.cursor !== null) return state.draft
 
   return state.value
 }
 
-function searchHistoryValue(
-  state: SearchTextHistoryState,
-  cursor: number | null
-) {
+function searchHistoryValue(state: SearchTextHistoryState, cursor: number | null) {
   if (cursor === null) return state.draft ?? state.value
 
   return state.history[cursor] ?? state.value
@@ -1203,7 +1127,7 @@ function searchHistoryValue(
 
 function activeSearchHistoryNavigation(
   previous: SearchBufferSnapshot | null,
-  query: string
+  query: string,
 ): boolean {
   if (!previous) return false
 
@@ -1211,25 +1135,16 @@ function activeSearchHistoryNavigation(
 }
 
 function activeReplaceHistoryNavigation(snapshot: SearchBufferSnapshot) {
-  return activeTextHistoryNavigation(
-    replaceHistoryState(snapshot),
-    snapshot.replaceText
-  )
+  return activeTextHistoryNavigation(replaceHistoryState(snapshot), snapshot.replaceText)
 }
 
-function activeTextHistoryNavigation(
-  state: SearchTextHistoryState,
-  value: string
-) {
+function activeTextHistoryNavigation(state: SearchTextHistoryState, value: string) {
   if (state.cursor === null) return false
 
   return state.value === value
 }
 
-function searchHistoryForRun(
-  previous: SearchBufferSnapshot | null,
-  query: string
-) {
+function searchHistoryForRun(previous: SearchBufferSnapshot | null, query: string) {
   if (previous && activeSearchHistoryNavigation(previous, query)) {
     return previous.queryHistory
   }
@@ -1250,15 +1165,16 @@ function replaceHistoryForRun(snapshot: SearchBufferSnapshot) {
 function nextSearchHistory(
   history: readonly string[],
   text: string,
-  options: { trim?: boolean } = {}
+  options: { trim?: boolean } = {},
 ) {
   const value = options.trim === false ? text : text.trim()
   if (!value) return history
   if (history.at(-1) === value) return history
 
-  return [...history.filter((item) => item !== value), value].slice(
-    -SEARCH_HISTORY_LIMIT
-  )
+  return history
+    .filter((item) => item !== value)
+    .concat(value)
+    .slice(-SEARCH_HISTORY_LIMIT)
 }
 
 function collapseSearchGroups(snapshot: SearchBufferSnapshot | null) {
@@ -1285,10 +1201,7 @@ function expandSearchGroups(snapshot: SearchBufferSnapshot | null) {
   })
 }
 
-function selectSearchResult(
-  snapshot: SearchBufferSnapshot | null,
-  id: SearchResultId | null
-) {
+function selectSearchResult(snapshot: SearchBufferSnapshot | null, id: SearchResultId | null) {
   if (!snapshot) return null
 
   const groups = snapshot.groups
@@ -1296,7 +1209,7 @@ function selectSearchResult(
   if (!selected) return resolveActiveSearchResult(snapshot)
 
   const collapsedPaths =
-    selected.type === "match"
+    selected.type === 'match'
       ? withoutPath(snapshot.collapsedPaths, selected.groupPath)
       : snapshot.collapsedPaths
 
@@ -1308,10 +1221,7 @@ function selectSearchResult(
   })
 }
 
-function selectSearchMatch(
-  snapshot: SearchBufferSnapshot | null,
-  direction: 1 | -1
-) {
+function selectSearchMatch(snapshot: SearchBufferSnapshot | null, direction: 1 | -1) {
   if (!snapshot) return null
 
   const groups = snapshot.groups
@@ -1323,10 +1233,7 @@ function selectSearchMatch(
   const selected = matches[nextIndex]
   if (!selected) return resolveActiveSearchResult(snapshot)
 
-  const collapsedPaths = withoutPath(
-    snapshot.collapsedPaths,
-    selected.groupPath
-  )
+  const collapsedPaths = withoutPath(snapshot.collapsedPaths, selected.groupPath)
   return resolveActiveSearchResult({
     ...snapshot,
     activeResultId: selected.id,
@@ -1336,10 +1243,7 @@ function selectSearchMatch(
 }
 
 function resolveActiveSearchResult(snapshot: SearchBufferSnapshot) {
-  const activeResultId = visibleSearchResultId(
-    snapshot.groups,
-    snapshot.activeResultId
-  )
+  const activeResultId = visibleSearchResultId(snapshot.groups, snapshot.activeResultId)
   if (activeResultId === snapshot.activeResultId) return snapshot
 
   return {
@@ -1354,7 +1258,7 @@ function resolveAppendedSearchResult(
   options: {
     appendingToResults: boolean
     incomingMatches: readonly WorkspaceSearchMatch[]
-  }
+  },
 ) {
   if (!canKeepActiveResult(previous, options)) {
     return resolveActiveSearchResult(next)
@@ -1368,7 +1272,7 @@ function canKeepActiveResult(
   options: {
     appendingToResults: boolean
     incomingMatches: readonly WorkspaceSearchMatch[]
-  }
+  },
 ) {
   if (!previous.activeResultId) return false
   if (!options.appendingToResults) return false
@@ -1379,18 +1283,14 @@ function canKeepActiveResult(
 
 function activeSearchMatchIndex(
   matches: ReturnType<typeof searchResultContentItems>,
-  activeResultId: SearchResultId | null
+  activeResultId: SearchResultId | null,
 ) {
   if (!activeResultId) return -1
 
   return matches.findIndex((match) => match.id === activeResultId)
 }
 
-function wrappedSearchMatchIndex(
-  index: number,
-  length: number,
-  direction: 1 | -1
-) {
+function wrappedSearchMatchIndex(index: number, length: number, direction: 1 | -1) {
   if (index < 0) return direction > 0 ? 0 : length - 1
 
   return (index + direction + length) % length
@@ -1402,7 +1302,7 @@ function withoutPath(paths: readonly string[], path: string) {
 
 function prunedCollapsedPaths(
   collapsedPaths: readonly string[],
-  groups: readonly WorkspaceSearchFileGroup[]
+  groups: readonly WorkspaceSearchFileGroup[],
 ) {
   const presentPaths = new Set(groups.map((group) => group.path))
 
@@ -1421,7 +1321,7 @@ function contentSearchMatchCount(matches: readonly WorkspaceSearchMatch[]) {
 
 function hasContentSearchMatch(matches: readonly WorkspaceSearchMatch[]) {
   for (const match of matches) {
-    if (match.kind === "content") return true
+    if (match.kind === 'content') return true
   }
 
   return false
@@ -1430,7 +1330,7 @@ function hasContentSearchMatch(matches: readonly WorkspaceSearchMatch[]) {
 function groupSearchMatches(
   matches: readonly WorkspaceSearchMatch[],
   rootPath: string,
-  collapsedPaths: readonly string[]
+  collapsedPaths: readonly string[],
 ) {
   if (matches.length === 0) return EMPTY_SEARCH_GROUPS
 
@@ -1448,20 +1348,20 @@ function groupSearchMatches(
 
   const collapsed = new Set(collapsedPaths)
   return sortedSearchGroups(
-    [...groupMatches.values()].map((pathMatches) =>
-      searchFileGroup(pathMatches, rootPath, collapsed)
-    )
+    Array.from(groupMatches.values()).map((pathMatches) =>
+      searchFileGroup(pathMatches, rootPath, collapsed),
+    ),
   )
 }
 
 function searchFileGroup(
   matches: readonly WorkspaceSearchMatch[],
   rootPath: string,
-  collapsedPaths: ReadonlySet<string>
+  collapsedPaths: ReadonlySet<string>,
 ): WorkspaceSearchFileGroup {
   const firstMatch = matches[0]
   if (!firstMatch) {
-    throw new Error("Cannot create a search file group without matches.")
+    throw new Error('Cannot create a search file group without matches.')
   }
 
   return {
@@ -1478,7 +1378,7 @@ function appendSearchGroups(
   groups: readonly WorkspaceSearchFileGroup[],
   matches: readonly WorkspaceSearchMatch[],
   rootPath: string,
-  collapsedPaths: readonly string[]
+  collapsedPaths: readonly string[],
 ) {
   if (matches.length === 0) return groups
   if (groups.length === 0) {
@@ -1497,7 +1397,7 @@ function appendSearchGroups(
     groupsByPath.set(path, nextGroup)
   }
 
-  return sortedSearchGroups([...groupsByPath.values()])
+  return sortedSearchGroups(Array.from(groupsByPath.values()))
 }
 
 function searchMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
@@ -1519,7 +1419,7 @@ function searchMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
 function appendedSearchFileGroup(
   group: WorkspaceSearchFileGroup,
   matches: readonly WorkspaceSearchMatch[],
-  collapsedPaths: ReadonlySet<string>
+  collapsedPaths: ReadonlySet<string>,
 ): WorkspaceSearchFileGroup {
   return {
     ...group,
@@ -1531,7 +1431,7 @@ function appendedSearchFileGroup(
 
 function searchGroupsWithCollapsedPaths(
   groups: readonly WorkspaceSearchFileGroup[],
-  collapsedPaths: readonly string[]
+  collapsedPaths: readonly string[],
 ) {
   if (groups.length === 0) return groups
 
@@ -1558,5 +1458,5 @@ function sortedSearchGroups(groups: WorkspaceSearchFileGroup[]) {
 }
 
 function contentMatchCount(match: WorkspaceSearchMatch) {
-  return match.kind === "content" ? 1 : 0
+  return match.kind === 'content' ? 1 : 0
 }

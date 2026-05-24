@@ -1,26 +1,14 @@
-import type {
-  ChangeEvent,
-  ComponentProps,
-  FocusEvent,
-  KeyboardEvent,
-  ReactNode,
-} from "react"
-import { useState } from "react"
+import type { ChangeEvent, ComponentProps, FocusEvent, KeyboardEvent, ReactNode } from 'react'
+import { useState } from 'react'
 
-import { Input } from "@workspace/ui/components/input"
-import { cn } from "@workspace/ui/lib/utils"
+import { Input } from '@workspace/ui/components/input'
+import { cn } from '@workspace/ui/lib/utils'
 
 type SearchHistoryInputProps = Omit<
-  ComponentProps<"input">,
-  | "aria-label"
-  | "className"
-  | "onBlur"
-  | "onChange"
-  | "onFocus"
-  | "placeholder"
-  | "value"
+  ComponentProps<'input'>,
+  'aria-label' | 'className' | 'onBlur' | 'onChange' | 'onFocus' | 'placeholder' | 'value'
 > & {
-  "aria-label"?: string
+  'aria-label'?: string
   className?: string
   inputClassName?: string
   label: string
@@ -36,15 +24,15 @@ type SearchHistoryInputProps = Omit<
 }
 
 export function SearchHistoryInput({
-  autoCapitalize = "off",
-  autoCorrect = "off",
+  autoCapitalize = 'off',
+  autoCorrect = 'off',
   className,
   inputClassName,
   label,
   leftAdornment,
   rightAdornment,
   spellCheck = false,
-  type = "text",
+  type = 'text',
   value,
   onBlur,
   onFocus,
@@ -79,12 +67,12 @@ export function SearchHistoryInput({
 
   function handleHistoryKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (searchInputHistoryModifier(event)) return false
-    if (event.key === "ArrowUp") {
+    if (event.key === 'ArrowUp') {
       event.preventDefault()
       onSelectPreviousHistory()
       return true
     }
-    if (event.key !== "ArrowDown") return false
+    if (event.key !== 'ArrowDown') return false
 
     event.preventDefault()
     onSelectNextHistory()
@@ -92,10 +80,10 @@ export function SearchHistoryInput({
   }
 
   return (
-    <div className={cn("relative min-w-0", className)}>
+    <div className={cn('relative min-w-0', className)}>
       {leftAdornment}
       <Input
-        aria-label={inputProps["aria-label"] ?? label}
+        aria-label={inputProps['aria-label'] ?? label}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
         className={inputClassName}

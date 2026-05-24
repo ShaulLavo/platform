@@ -1,5 +1,5 @@
-import type { PickedFsEntry } from "@/lib/file-system-types"
-import { isDirectoryEntry } from "@/lib/file-system-types"
+import type { PickedFsEntry } from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
 import {
   ArrowClockwiseIcon,
   ArrowLeftIcon,
@@ -7,8 +7,8 @@ import {
   CheckIcon,
   HardDrivesIcon,
   MagnifyingGlassIcon,
-} from "@phosphor-icons/react"
-import { Button } from "@workspace/ui/components/button"
+} from '@phosphor-icons/react'
+import { Button } from '@workspace/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -16,33 +16,20 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@workspace/ui/components/dialog"
-import { Input } from "@workspace/ui/components/input"
-import { Separator } from "@workspace/ui/components/separator"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@workspace/ui/components/tooltip"
-import {
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-  type ReactElement,
-} from "react"
+} from '@workspace/ui/components/dialog'
+import { Input } from '@workspace/ui/components/input'
+import { Separator } from '@workspace/ui/components/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
+import { useState, type ChangeEvent, type KeyboardEvent, type ReactElement } from 'react'
 import {
   useDirectoryLoad,
   useRecentEntries,
   useRecordRecentMutation,
   useServerInfoForOpen,
-} from "./file-picker/data"
-import { FileList, ListHeader } from "./file-picker/list"
-import {
-  MobileLocations,
-  PathBar,
-  PlacesSidebar,
-} from "./file-picker/navigation"
-import { PreviewPane, SelectedSummary } from "./file-picker/preview"
+} from './file-picker/data'
+import { FileList, ListHeader } from './file-picker/list'
+import { MobileLocations, PathBar, PlacesSidebar } from './file-picker/navigation'
+import { PreviewPane, SelectedSummary } from './file-picker/preview'
 import {
   ROOT_PATH,
   currentPickableEntry,
@@ -57,7 +44,7 @@ import {
   type FilePickerIconMode,
   type FilePickerMode,
   type LoadState,
-} from "./file-picker/state"
+} from './file-picker/state'
 
 type FilePickerDialogProps = {
   accept?: readonly string[]
@@ -73,8 +60,8 @@ export type { FilePickerIconMode, FilePickerMode }
 
 export function FilePickerDialog({
   accept,
-  iconMode = "default",
-  mode = "folder",
+  iconMode = 'default',
+  mode = 'folder',
   open,
   value,
   onOpenChange,
@@ -84,7 +71,7 @@ export function FilePickerDialog({
   const { serverInfo, serverInfoError } = useServerInfoForOpen(
     open,
     session.initializeOpenSession,
-    session.resetOpenSession
+    session.resetOpenSession,
   )
   const [reloadVersion, setReloadVersion] = useState(0)
   const recordRecentMutation = useRecordRecentMutation()
@@ -102,15 +89,14 @@ export function FilePickerDialog({
     serverInfo,
   })
   const loadState: LoadState = serverInfoError
-    ? { status: "error", message: errorMessage(serverInfoError) }
+    ? { status: 'error', message: errorMessage(serverInfoError) }
     : directoryLoadState
   const visibleEntries = loadStateEntries(loadState)
-  const isLoadingEntries = loadState.status === "loading"
+  const isLoadingEntries = loadState.status === 'loading'
   const isSearching = session.effectiveQuery.trim().length > 0
   const previewEntry = session.selectedEntry ?? currentEntry
   const selectedPickable =
-    toPickedEntry(session.selectedEntry, mode, accept) ??
-    currentPickableEntry(currentEntry, mode)
+    toPickedEntry(session.selectedEntry, mode, accept) ?? currentPickableEntry(currentEntry, mode)
   const homePath = serverInfo?.homePath ?? ROOT_PATH
   const copy = pickerCopy(mode)
 
@@ -123,24 +109,19 @@ export function FilePickerDialog({
   }
 
   function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "ArrowDown") return selectByOffset(event, 1)
-    if (event.key === "ArrowUp") return selectByOffset(event, -1)
-    if (event.key === "Enter") return commitFromKeyboard(event)
-    if (event.key === "ArrowRight") return enterDirectory(event)
-    if (event.key === "ArrowLeft" || event.key === "Backspace") {
+    if (event.key === 'ArrowDown') return selectByOffset(event, 1)
+    if (event.key === 'ArrowUp') return selectByOffset(event, -1)
+    if (event.key === 'Enter') return commitFromKeyboard(event)
+    if (event.key === 'ArrowRight') return enterDirectory(event)
+    if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
       return leaveDirectory(event)
     }
   }
 
-  function selectByOffset(
-    event: KeyboardEvent<HTMLDivElement>,
-    offset: number
-  ) {
+  function selectByOffset(event: KeyboardEvent<HTMLDivElement>, offset: number) {
     event.preventDefault()
 
-    const pickable = visibleEntries.filter((entry) =>
-      isPickableEntry(entry, mode, accept)
-    )
+    const pickable = visibleEntries.filter((entry) => isPickableEntry(entry, mode, accept))
     const nextEntry = entryByOffset(pickable, session.selectedEntry, offset)
     if (!nextEntry) return
 
@@ -188,73 +169,66 @@ export function FilePickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[min(760px,calc(100svh-2rem))] w-[min(1080px,calc(100vw-1.5rem))] max-w-none flex-col gap-0 overflow-hidden rounded-xl border bg-background p-0 text-sm shadow-2xl sm:max-w-none"
+        className='bg-background flex h-[min(760px,calc(100svh-2rem))] w-[min(1080px,calc(100vw-1.5rem))] max-w-none flex-col gap-0 overflow-hidden rounded-xl border p-0 text-sm shadow-2xl sm:max-w-none'
         showCloseButton={false}
       >
-        <div className="border-b bg-muted/35 px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <DialogHeader className="min-w-0 gap-1">
-              <DialogTitle className="flex items-center gap-2 text-sm">
-                <span className="flex size-7 items-center justify-center rounded-md border border-sky-200/70 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-300">
-                  <HardDrivesIcon weight="duotone" />
+        <div className='bg-muted/35 border-b px-4 py-3'>
+          <div className='flex items-center justify-between gap-3'>
+            <DialogHeader className='min-w-0 gap-1'>
+              <DialogTitle className='flex items-center gap-2 text-sm'>
+                <span className='flex size-7 items-center justify-center rounded-md border border-sky-200/70 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-300'>
+                  <HardDrivesIcon weight='duotone' />
                 </span>
                 {copy.title}
               </DialogTitle>
-              <DialogDescription>
-                Browsing your home directory.
-              </DialogDescription>
+              <DialogDescription>Browsing your home directory.</DialogDescription>
             </DialogHeader>
-            <div className="flex shrink-0 items-center gap-1">
-              <IconTooltip label="Back">
+            <div className='flex shrink-0 items-center gap-1'>
+              <IconTooltip label='Back'>
                 <Button
-                  aria-label="Back"
+                  aria-label='Back'
                   disabled={!session.canGoBack}
                   onClick={session.goBack}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
+                  size='icon-sm'
+                  type='button'
+                  variant='ghost'
                 >
                   <ArrowLeftIcon />
                 </Button>
               </IconTooltip>
-              <IconTooltip label="Up one folder">
+              <IconTooltip label='Up one folder'>
                 <Button
-                  aria-label="Up one folder"
+                  aria-label='Up one folder'
                   disabled={!session.canGoUp}
-                  onClick={() =>
-                    session.navigateTo(parentPath(session.currentPath))
-                  }
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
+                  onClick={() => session.navigateTo(parentPath(session.currentPath))}
+                  size='icon-sm'
+                  type='button'
+                  variant='ghost'
                 >
                   <ArrowUpIcon />
                 </Button>
               </IconTooltip>
-              <IconTooltip label="Refresh">
+              <IconTooltip label='Refresh'>
                 <Button
-                  aria-label="Refresh"
+                  aria-label='Refresh'
                   onClick={refresh}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
+                  size='icon-sm'
+                  type='button'
+                  variant='ghost'
                 >
                   <ArrowClockwiseIcon />
                 </Button>
               </IconTooltip>
             </div>
           </div>
-          <div className="mt-3 grid gap-2 lg:grid-cols-[170px_minmax(0,1fr)_240px]">
-            <div className="hidden lg:block" />
-            <PathBar
-              currentPath={session.currentPath}
-              onNavigate={session.navigateTo}
-            />
-            <div className="relative">
-              <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <div className='mt-3 grid gap-2 lg:grid-cols-[170px_minmax(0,1fr)_240px]'>
+            <div className='hidden lg:block' />
+            <PathBar currentPath={session.currentPath} onNavigate={session.navigateTo} />
+            <div className='relative'>
+              <MagnifyingGlassIcon className='text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2' />
               <Input
                 aria-label={copy.searchLabel}
-                className="h-8 pl-8"
+                className='h-8 pl-8'
                 onChange={handleSearchChange}
                 placeholder={copy.searchPlaceholder}
                 value={session.query}
@@ -269,18 +243,15 @@ export function FilePickerDialog({
           />
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[170px_minmax(0,1fr)_240px]">
+        <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[170px_minmax(0,1fr)_240px]'>
           <PlacesSidebar
             currentPath={session.currentPath}
             homePath={homePath}
             onNavigate={session.jumpTo}
             recentState={recentState}
           />
-          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-            <ListHeader
-              isLoading={isLoadingEntries}
-              isSearching={isSearching}
-            />
+          <div className='grid min-h-0 grid-rows-[auto_minmax(0,1fr)]'>
+            <ListHeader isLoading={isLoadingEntries} isSearching={isSearching} />
             <FileList
               entries={visibleEntries}
               accept={accept}
@@ -305,26 +276,14 @@ export function FilePickerDialog({
         </div>
 
         <Separator />
-        <DialogFooter className="grid grid-cols-1 gap-3 bg-muted/20 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-          <SelectedSummary
-            entry={selectedPickable}
-            iconMode={iconMode}
-            mode={mode}
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              onClick={() => onOpenChange(false)}
-              type="button"
-              variant="outline"
-            >
+        <DialogFooter className='bg-muted/20 grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center'>
+          <SelectedSummary entry={selectedPickable} iconMode={iconMode} mode={mode} />
+          <div className='flex justify-end gap-2'>
+            <Button onClick={() => onOpenChange(false)} type='button' variant='outline'>
               Cancel
             </Button>
-            <Button
-              disabled={!selectedPickable}
-              onClick={chooseSelected}
-              type="button"
-            >
-              <CheckIcon data-icon="inline-start" />
+            <Button disabled={!selectedPickable} onClick={chooseSelected} type='button'>
+              <CheckIcon data-icon='inline-start' />
               {copy.chooseLabel}
             </Button>
           </div>
@@ -334,13 +293,7 @@ export function FilePickerDialog({
   )
 }
 
-function IconTooltip({
-  children,
-  label,
-}: {
-  children: ReactElement
-  label: string
-}) {
+function IconTooltip({ children, label }: { children: ReactElement; label: string }) {
   return (
     <Tooltip>
       <TooltipTrigger render={children} />

@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process"
+import { spawn } from 'node:child_process'
 
-import { FsError } from "./errors"
-import { collectDecodedStreamTail, readLines } from "./search-line-decoder"
+import { FsError } from './errors'
+import { collectDecodedStreamTail, readLines } from './search-line-decoder'
 
 type SearchToolRequirements = {
   content: boolean
@@ -11,10 +11,10 @@ type SearchToolRequirements = {
 const commandAvailability = new Map<string, Promise<boolean>>()
 
 export async function canUseSearchTools(requirements: SearchToolRequirements) {
-  if (requirements.names && !(await commandExists("fd"))) return false
+  if (requirements.names && !(await commandExists('fd'))) return false
   if (!requirements.content) return true
 
-  return commandExists("rg")
+  return commandExists('rg')
 }
 
 export async function* runToolLines(
@@ -22,9 +22,9 @@ export async function* runToolLines(
   args: readonly string[],
   signal: AbortSignal | undefined,
   successCodes: readonly number[],
-  toleratedFailureCodes: readonly number[] = []
+  toleratedFailureCodes: readonly number[] = [],
 ): AsyncGenerator<string> {
-  const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] })
+  const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   const exit = waitForExit(child)
   const cleanup = attachAbort(signal, child)
   const stderr = collectDecodedStreamTail(child.stderr)
@@ -46,10 +46,7 @@ export async function* runToolLines(
     return
   }
 
-  throw new FsError(
-    "OPERATION_FAILED",
-    toolErrorMessage(command, code, stderr())
-  )
+  throw new FsError('OPERATION_FAILED', toolErrorMessage(command, code, stderr()))
 }
 
 function commandExists(command: string) {
@@ -63,14 +60,14 @@ function commandExists(command: string) {
 
 function checkCommand(command: string) {
   return new Promise<boolean>((resolve) => {
-    const child = spawn(command, ["--version"], { stdio: "ignore" })
-    child.once("error", () => resolve(false))
-    child.once("close", (code) => resolve(code === 0))
+    const child = spawn(command, ['--version'], { stdio: 'ignore' })
+    child.once('error', () => resolve(false))
+    child.once('close', (code) => resolve(code === 0))
   })
 }
 
 function reportToolWarning(command: string, code: number, stderr: string) {
-  const detail = stderr ? `: ${stderr}` : ""
+  const detail = stderr ? `: ${stderr}` : ''
   console.warn(`[fs/search] ${command} exited with code ${code}${detail}`)
 }
 
@@ -80,20 +77,17 @@ function toolErrorMessage(command: string, code: number, stderr: string) {
   return `${command} exited with code ${code}: ${stderr}`
 }
 
-function attachAbort(
-  signal: AbortSignal | undefined,
-  child: ReturnType<typeof spawn>
-) {
+function attachAbort(signal: AbortSignal | undefined, child: ReturnType<typeof spawn>) {
   if (!signal) return () => {}
 
   const abort = () => child.kill()
-  signal.addEventListener("abort", abort, { once: true })
-  return () => signal.removeEventListener("abort", abort)
+  signal.addEventListener('abort', abort, { once: true })
+  return () => signal.removeEventListener('abort', abort)
 }
 
 function waitForExit(child: ReturnType<typeof spawn>) {
   return new Promise<number>((resolve, reject) => {
-    child.once("error", reject)
-    child.once("close", (code) => resolve(code ?? 0))
+    child.once('error', reject)
+    child.once('close', (code) => resolve(code ?? 0))
   })
 }

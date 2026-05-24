@@ -15,10 +15,10 @@ function parseRgLine(line: string): RgEvent | null {
 }
 
 function isRgMatchEvent(event: RgEvent): event is RgMatchEvent {
-  if (event.type !== "match") return false
-  if (!event.data || typeof event.data !== "object") return false
+  if (event.type !== 'match') return false
+  if (!event.data || typeof event.data !== 'object') return false
 
-  return "path" in event.data && "lines" in event.data
+  return 'path' in event.data && 'lines' in event.data
 }
 
 type RgEvent =
@@ -29,7 +29,7 @@ type RgEvent =
     }
 
 export type RgMatchEvent = {
-  type: "match"
+  type: 'match'
   data: {
     path: {
       text: string

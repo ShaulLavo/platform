@@ -1,8 +1,8 @@
-import "@editor/core/style.css"
-import "@editor/find/style.css"
+import '@editor/core/style.css'
+import '@editor/find/style.css'
 
-import type { EditorKeymapLayer } from "@editor/core"
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
+import type { EditorKeymapLayer } from '@editor/core'
+import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {
   memo,
   useCallback,
@@ -12,14 +12,14 @@ import {
   useMemo,
   useRef,
   type KeyboardEvent,
-} from "react"
+} from 'react'
 
-import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
-import { useEditorColorTheme } from "@/features/editor/hooks/use-editor-color-theme"
-import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
-import { SEARCH_RESULT_VIRTUAL_PADDING } from "@/features/search/search-result-editor-constants"
-import { handleSearchResultSurfaceKeyDown } from "@/features/search/search-result-editor-keyboard"
-import type { SearchResultDeferredPluginMode } from "@/features/search/search-result-editor-types"
+import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
+import { SEARCH_RESULT_VIRTUAL_PADDING } from '@/features/search/search-result-editor-constants'
+import { handleSearchResultSurfaceKeyDown } from '@/features/search/search-result-editor-keyboard'
+import type { SearchResultDeferredPluginMode } from '@/features/search/search-result-editor-types'
 import {
   groupMap,
   isSearchResultRenderedFileResultItem,
@@ -32,21 +32,21 @@ import {
   searchResultVirtualRowIndex,
   searchResultVirtualRowScrollTarget,
   searchResultVirtualRowStyle,
-} from "@/features/search/search-result-editor-utils"
-import { SearchResultFileEditorPoolSlot } from "@/features/search/search-result-file-editor"
-import { SearchResultFileHeader } from "@/features/search/search-result-file-header"
-import type { SearchResultId } from "@/features/search/search-result-items"
+} from '@/features/search/search-result-editor-utils'
+import { SearchResultFileEditorPoolSlot } from '@/features/search/search-result-file-editor'
+import { SearchResultFileHeader } from '@/features/search/search-result-file-header'
+import type { SearchResultId } from '@/features/search/search-result-items'
 import {
   searchResultFileBlocks,
   searchResultVirtualRowById,
   searchResultVirtualRowId,
   searchResultVirtualRows,
   type SearchResultOpenTarget,
-} from "@/features/search/search-result-view-model"
-import { useSearchResultDeferredPlugins } from "@/features/search/use-search-result-deferred-plugins"
-import { useSearchResultEditorVirtualizer } from "@/features/search/use-search-result-editor-virtualizer"
-import { useSearchResultFileEditorPoolEntries } from "@/features/search/use-search-result-file-editor-pool-entries"
-import { readonlyEditorKeymapLayers } from "@/keymap"
+} from '@/features/search/search-result-view-model'
+import { useSearchResultDeferredPlugins } from '@/features/search/use-search-result-deferred-plugins'
+import { useSearchResultEditorVirtualizer } from '@/features/search/use-search-result-editor-virtualizer'
+import { useSearchResultFileEditorPoolEntries } from '@/features/search/use-search-result-file-editor-pool-entries'
+import { readonlyEditorKeymapLayers } from '@/keymap'
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
@@ -69,7 +69,7 @@ export const SearchResultEditorSurface = memo(
   ({
     activeResultId,
     canReplace,
-    deferredPluginMode = "immediate",
+    deferredPluginMode = 'immediate',
     displayedResultsQuery,
     groups,
     keymapLayers,
@@ -86,29 +86,29 @@ export const SearchResultEditorSurface = memo(
     const parentRef = useRef<HTMLDivElement | null>(null)
     const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
     const setActiveEditorCommandDispatch = useWorkspaceFocus(
-      (state) => state.setActiveEditorCommandDispatch
+      (state) => state.setActiveEditorCommandDispatch,
     )
     const readonlyKeymapLayers = useMemo(
       () => readonlyEditorKeymapLayers(keymapLayers),
-      [keymapLayers]
+      [keymapLayers],
     )
     const blocks = useMemo(
       () => searchResultFileBlocks(groups, resultsQuery),
-      [groups, resultsQuery]
+      [groups, resultsQuery],
     )
     const rows = useMemo(() => searchResultVirtualRows(blocks), [blocks])
     const groupByPath = useMemo(() => groupMap(groups), [groups])
     const activeRow = useMemo(
       () => searchResultVirtualRowById(rows, activeResultId),
-      [activeResultId, rows]
+      [activeResultId, rows],
     )
     const activeIndex = useMemo(
       () => searchResultVirtualRowIndex(rows, activeResultId),
-      [activeResultId, rows]
+      [activeResultId, rows],
     )
     const activeScrollTarget = useMemo(
       () => searchResultVirtualRowScrollTarget(activeRow, activeResultId),
-      [activeResultId, activeRow]
+      [activeResultId, activeRow],
     )
     const suppressNextActiveRevealRef = useRef(false)
     const previousDisplayedResultsQueryRef = useRef<string | null>(null)
@@ -130,15 +130,15 @@ export const SearchResultEditorSurface = memo(
     } = useSearchResultEditorVirtualizer(rows, parentRef)
     const renderedVirtualItems = useMemo(
       () => searchResultRenderedVirtualItems(virtualItems, rows),
-      [rows, virtualItems]
+      [rows, virtualItems],
     )
     const fileResultItems = useMemo(
       () => renderedVirtualItems.filter(isSearchResultRenderedFileResultItem),
-      [renderedVirtualItems]
+      [renderedVirtualItems],
     )
     const fileEditorPoolEntries = useSearchResultFileEditorPoolEntries(
       fileResultItems,
-      prewarmEditorPool
+      prewarmEditorPool,
     )
     const scrollToIndexRef = useRef(scrollToIndex)
     const selectResultWithoutReveal = useCallback(
@@ -148,7 +148,7 @@ export const SearchResultEditorSurface = memo(
         suppressNextActiveRevealRef.current = true
         onSelectResult(id)
       },
-      [activeResultId, onSelectResult]
+      [activeResultId, onSelectResult],
     )
 
     useLayoutEffect(() => {
@@ -173,20 +173,19 @@ export const SearchResultEditorSurface = memo(
 
     useLayoutEffect(() => {
       if (displayedResultsQuery === null) return
-      if (previousDisplayedResultsQueryRef.current === displayedResultsQuery)
-        return
+      if (previousDisplayedResultsQueryRef.current === displayedResultsQuery) return
 
       previousDisplayedResultsQueryRef.current = displayedResultsQuery
       resetSearchResultScroll(parentRef, scrollToOffset)
       const frame = window.requestAnimationFrame(() =>
-        resetSearchResultScroll(parentRef, scrollToOffset)
+        resetSearchResultScroll(parentRef, scrollToOffset),
       )
 
       return () => window.cancelAnimationFrame(frame)
     }, [displayedResultsQuery, scrollToOffset])
 
     useEffect(() => {
-      if (activeRow?.type === "file-results") return
+      if (activeRow?.type === 'file-results') return
 
       setActiveEditorCommandDispatch(null)
     }, [activeRow, setActiveEditorCommandDispatch])
@@ -213,26 +212,24 @@ export const SearchResultEditorSurface = memo(
     return (
       <div
         aria-activedescendant={
-          activeRow
-            ? searchResultDomId(treeId, searchResultVirtualRowId(activeRow))
-            : undefined
+          activeRow ? searchResultDomId(treeId, searchResultVirtualRowId(activeRow)) : undefined
         }
-        aria-label="Search result editor"
-        className="app-scrollbar-thin min-h-0 overflow-x-hidden overflow-y-auto bg-background"
+        aria-label='Search result editor'
+        className='app-scrollbar-thin bg-background min-h-0 overflow-x-hidden overflow-y-auto'
         ref={parentRef}
-        role="tree"
+        role='tree'
         tabIndex={0}
-        onFocusCapture={() => setFocusArea("editor")}
+        onFocusCapture={() => setFocusArea('editor')}
         onKeyDown={handleKeyDown}
-        onPointerDownCapture={() => setFocusArea("editor")}
+        onPointerDownCapture={() => setFocusArea('editor')}
         onScroll={handleVirtualScroll}
       >
         <div
-          className="relative"
+          className='relative'
           style={{ height: virtualTotalSize + SEARCH_RESULT_VIRTUAL_PADDING }}
         >
           {renderedVirtualItems.map(({ renderKey, row, virtualItem }) => {
-            if (row.type !== "file") return null
+            if (row.type !== 'file') return null
 
             const id = searchResultVirtualRowId(row)
             const active = searchResultFileContainsId(row.file, activeResultId)
@@ -242,11 +239,11 @@ export const SearchResultEditorSurface = memo(
                 aria-expanded={searchResultVirtualRowExpanded(row)}
                 aria-level={1}
                 aria-selected={active}
-                className="absolute right-2 left-2"
+                className='absolute right-2 left-2'
                 data-index={virtualItem.index}
                 id={searchResultDomId(treeId, id)}
                 key={renderKey}
-                role="treeitem"
+                role='treeitem'
                 style={searchResultVirtualRowStyle(virtualItem)}
                 onMouseDown={() => onSelectResult(id)}
               >
@@ -282,6 +279,6 @@ export const SearchResultEditorSurface = memo(
         </div>
       </div>
     )
-  }
+  },
 )
-SearchResultEditorSurface.displayName = "SearchResultEditorSurface"
+SearchResultEditorSurface.displayName = 'SearchResultEditorSurface'

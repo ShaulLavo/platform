@@ -1,9 +1,9 @@
-import type { Stats } from "node:fs"
-import { lstat, stat } from "node:fs/promises"
-import { FsError, mapNodeError } from "./errors"
-import type { WorkspacePaths } from "./path"
+import type { Stats } from 'node:fs'
+import { lstat, stat } from 'node:fs/promises'
+import { FsError, mapNodeError } from './errors'
+import type { WorkspacePaths } from './path'
 
-export type FsEntryType = "file" | "directory" | "symlink" | "other"
+export type FsEntryType = 'file' | 'directory' | 'symlink' | 'other'
 
 export type FsEntryTypeCarrier = {
   type: FsEntryType
@@ -26,10 +26,7 @@ export type FsEntryStats = {
   targetType?: FsEntryType
 }
 
-export async function statPath(
-  paths: WorkspacePaths,
-  input: string
-): Promise<FsStat> {
+export async function statPath(paths: WorkspacePaths, input: string): Promise<FsStat> {
   const target = paths.resolve(input)
 
   try {
@@ -89,11 +86,11 @@ export async function readEntryStats(absolutePath: string) {
 }
 
 export function typeFromStats(stats: Stats): FsEntryType {
-  if (stats.isFile()) return "file"
-  if (stats.isDirectory()) return "directory"
-  if (stats.isSymbolicLink()) return "symlink"
+  if (stats.isFile()) return 'file'
+  if (stats.isDirectory()) return 'directory'
+  if (stats.isSymbolicLink()) return 'symlink'
 
-  return "other"
+  return 'other'
 }
 
 export function effectiveEntryType(entry: FsEntryTypeCarrier): FsEntryType {
@@ -101,17 +98,14 @@ export function effectiveEntryType(entry: FsEntryTypeCarrier): FsEntryType {
 }
 
 export function isDirectoryEntry(entry: FsEntryTypeCarrier) {
-  return effectiveEntryType(entry) === "directory"
+  return effectiveEntryType(entry) === 'directory'
 }
 
 export function isFileEntry(entry: FsEntryTypeCarrier) {
-  return effectiveEntryType(entry) === "file"
+  return effectiveEntryType(entry) === 'file'
 }
 
-export function matchesEntryType(
-  entry: FsEntryTypeCarrier,
-  entryType?: FsEntryType
-) {
+export function matchesEntryType(entry: FsEntryTypeCarrier, entryType?: FsEntryType) {
   if (!entryType) return true
   if (entry.type === entryType) return true
 
@@ -120,12 +114,12 @@ export function matchesEntryType(
 
 export function assertFile(stats: Stats) {
   if (stats.isFile()) return
-  throw new FsError("NOT_A_FILE")
+  throw new FsError('NOT_A_FILE')
 }
 
 export function assertDirectory(stats: Stats) {
   if (stats.isDirectory()) return
-  throw new FsError("NOT_A_DIRECTORY")
+  throw new FsError('NOT_A_DIRECTORY')
 }
 
 async function statTargetOptional(absolutePath: string) {

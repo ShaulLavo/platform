@@ -2,13 +2,13 @@ import {
   createMergeConflictPlugin,
   type EditorPlugin,
   type EditorSyntaxProvider,
-} from "@editor/core"
-import type { DiffSyntaxBackend } from "@editor/diff"
-import { createEditorFindPlugin } from "@editor/find"
-import { createFoldGutterPlugin, createLineGutterPlugin } from "@editor/gutters"
-import type { FoldGutterIconContext } from "@editor/gutters"
-import { createTreeSitterSyntaxProvider } from "@editor/tree-sitter"
-import { CaretDownIcon } from "@phosphor-icons/react/ssr"
+} from '@editor/core'
+import type { DiffSyntaxBackend } from '@editor/diff'
+import { createEditorFindPlugin } from '@editor/find'
+import { createFoldGutterPlugin, createLineGutterPlugin } from '@editor/gutters'
+import type { FoldGutterIconContext } from '@editor/gutters'
+import { createTreeSitterSyntaxProvider } from '@editor/tree-sitter'
+import { CaretDownIcon } from '@phosphor-icons/react/ssr'
 import {
   TREE_SITTER_LANGUAGE_CONTRIBUTIONS,
   css,
@@ -17,35 +17,35 @@ import {
   json,
   markdown,
   typeScript,
-} from "@editor/tree-sitter-languages"
-import type { LanguageServerPlugin } from "@editor/language-server"
-import { createElement } from "react"
-import { renderToStaticMarkup } from "react-dom/server"
-import { reportError, toClientError } from "@/lib/client-error-taxonomy"
+} from '@editor/tree-sitter-languages'
+import type { LanguageServerPlugin } from '@editor/language-server'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 
 const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
   createElement(CaretDownIcon, {
-    className: "app-fold-chevron",
+    className: 'app-fold-chevron',
     size: 12,
-    weight: "bold",
-  })
+    weight: 'bold',
+  }),
 )
 
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 
 export type EditorSyntaxHighlightingOptions = {
-  readonly highlighter?: "tree-sitter"
+  readonly highlighter?: 'tree-sitter'
 }
 
 export function createCriticalEditorPlugins(
   languageServer: LanguageServerPlugin,
-  syntaxOptions: EditorSyntaxHighlightingOptions = {}
+  syntaxOptions: EditorSyntaxHighlightingOptions = {},
 ): readonly EditorPlugin[] {
-  return [...createCriticalEditorCorePlugins(syntaxOptions), languageServer]
+  return createCriticalEditorCorePlugins(syntaxOptions).concat(languageServer)
 }
 
 export function createCriticalEditorCorePlugins(
-  syntaxOptions: EditorSyntaxHighlightingOptions = {}
+  syntaxOptions: EditorSyntaxHighlightingOptions = {},
 ): readonly EditorPlugin[] {
   return [
     ...createEditorSyntaxHighlightingPlugins(syntaxOptions),
@@ -53,24 +53,20 @@ export function createCriticalEditorCorePlugins(
     createFoldGutterPlugin({
       width: 16,
       icon: createFoldChevronIcon,
-      iconClassName: "app-fold-gutter-icon",
+      iconClassName: 'app-fold-gutter-icon',
     }),
     createEditorFindPlugin(),
     createMergeConflictPlugin(),
   ]
 }
 
-export async function loadNonCriticalEditorPlugins(): Promise<
-  readonly EditorPlugin[]
-> {
+export async function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
   const plugins = await Promise.all([
-    loadPlugin("@editor/scope-lines", () =>
-      import("@editor/scope-lines").then((module) =>
-        module.createScopeLinesPlugin()
-      )
+    loadPlugin('@editor/scope-lines', () =>
+      import('@editor/scope-lines').then((module) => module.createScopeLinesPlugin()),
     ),
-    loadPlugin("@editor/minimap", () =>
-      import("@editor/minimap").then((module) => module.createMinimapPlugin())
+    loadPlugin('@editor/minimap', () =>
+      import('@editor/minimap').then((module) => module.createMinimapPlugin()),
     ),
   ])
 
@@ -79,33 +75,26 @@ export async function loadNonCriticalEditorPlugins(): Promise<
 
 export function createEditorPlugins(
   languageServer: LanguageServerPlugin,
-  syntaxOptions: EditorSyntaxHighlightingOptions = {}
+  syntaxOptions: EditorSyntaxHighlightingOptions = {},
 ): readonly EditorPlugin[] {
   return createCriticalEditorPlugins(languageServer, syntaxOptions)
 }
 
 export function createEditorSyntaxHighlightingPlugins(
-  _options: EditorSyntaxHighlightingOptions = {}
+  _options: EditorSyntaxHighlightingOptions = {},
 ): readonly EditorPlugin[] {
   void _options
 
-  return [
-    javaScript({ jsx: true }),
-    typeScript({ tsx: true }),
-    html(),
-    css(),
-    json(),
-    markdown(),
-  ]
+  return [javaScript({ jsx: true }), typeScript({ tsx: true }), html(), css(), json(), markdown()]
 }
 
 export function createEditorDiffSyntaxBackend(
-  _options: EditorSyntaxHighlightingOptions = {}
+  _options: EditorSyntaxHighlightingOptions = {},
 ): DiffSyntaxBackend {
   void _options
 
   return {
-    kind: "tree-sitter",
+    kind: 'tree-sitter',
     provider: editorTreeSitterSyntaxProvider(),
   }
 }
@@ -124,20 +113,18 @@ function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {
 
 async function loadPlugin(
   name: string,
-  load: () => Promise<EditorPlugin>
+  load: () => Promise<EditorPlugin>,
 ): Promise<EditorPlugin | null> {
   try {
     return await load()
   } catch (error) {
-    reportError(toClientError({ code: "OPERATION_FAILED", name, error }))
+    reportError(toClientError({ code: 'OPERATION_FAILED', name, error }))
     return null
   }
 }
 
-function createFoldChevronIcon({
-  document,
-}: FoldGutterIconContext): SVGSVGElement {
-  const template = document.createElement("template")
+function createFoldChevronIcon({ document }: FoldGutterIconContext): SVGSVGElement {
+  const template = document.createElement('template')
   template.innerHTML = FOLD_CHEVRON_ICON_MARKUP
   return template.content.firstElementChild as SVGSVGElement
 }

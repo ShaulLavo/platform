@@ -1,52 +1,44 @@
-import { fileMatchesAccept } from "@/lib/file-icons"
-import type {
-  FsEntry,
-  PickedFsEntry,
-  ServerInfo,
-} from "@/lib/file-system-types"
-import {
-  effectiveEntryType,
-  isDirectoryEntry,
-  isFileEntry,
-} from "@/lib/file-system-types"
-import { compareFuzzyRankedTargets } from "@workspace/contracts"
-import { cn } from "@workspace/ui/lib/utils"
-import { useEffect, useRef, useState } from "react"
+import { fileMatchesAccept } from '@/lib/file-icons'
+import type { FsEntry, PickedFsEntry, ServerInfo } from '@/lib/file-system-types'
+import { effectiveEntryType, isDirectoryEntry, isFileEntry } from '@/lib/file-system-types'
+import { compareFuzzyRankedTargets } from '@workspace/contracts'
+import { cn } from '@workspace/ui/lib/utils'
+import { useEffect, useRef, useState } from 'react'
 
 export type LoadState =
-  | { status: "idle" }
-  | { status: "loading"; entries?: FsEntry[] }
-  | { status: "ready"; entries: FsEntry[] }
-  | { status: "error"; message: string }
+  | { status: 'idle' }
+  | { status: 'loading'; entries?: FsEntry[] }
+  | { status: 'ready'; entries: FsEntry[] }
+  | { status: 'error'; message: string }
 
 export type DirectoryFsEntry = FsEntry &
   (
     | {
-        type: "directory"
+        type: 'directory'
       }
     | {
-        targetType: "directory"
-        type: "symlink"
+        targetType: 'directory'
+        type: 'symlink'
       }
   )
 
-export type FilePickerMode = "folder" | "file"
-export type FilePickerIconMode = "default" | "vscode"
+export type FilePickerMode = 'folder' | 'file'
+export type FilePickerIconMode = 'default' | 'vscode'
 
-export const ROOT_PATH = ""
+export const ROOT_PATH = ''
 
 const modifiedDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
+  dateStyle: 'medium',
+  timeStyle: 'short',
 })
 
 export function useFilePickerSession(value: PickedFsEntry | null) {
   const initializedOpenRef = useRef(false)
   const [currentPath, setCurrentPath] = useState(ROOT_PATH)
   const [history, setHistory] = useState<string[]>([])
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState('')
   const debouncedQuery = useDebouncedValue(query, 180)
-  const effectiveQuery = query.trim() ? debouncedQuery : ""
+  const effectiveQuery = query.trim() ? debouncedQuery : ''
   const [selectedEntry, setSelectedEntry] = useState<FsEntry | null>(value)
 
   function initializeOpenSession(info: ServerInfo) {
@@ -54,7 +46,7 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
 
     initializedOpenRef.current = true
     setHistory([])
-    setQuery("")
+    setQuery('')
     setSelectedEntry(value)
     setCurrentPath(initialPathForOpen(value, info.defaultPath ?? info.homePath))
   }
@@ -82,14 +74,14 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
     setHistory((items) => items.slice(0, -1))
     setCurrentPath(previous)
     setSelectedEntry(null)
-    setQuery("")
+    setQuery('')
   }
 
   function moveToPath(path: string, keepHistory: boolean) {
-    if (keepHistory) setHistory((items) => [...items, currentPath])
+    if (keepHistory) setHistory((items) => items.concat(currentPath))
     setCurrentPath(path)
     setSelectedEntry(null)
-    setQuery("")
+    setQuery('')
   }
 
   return {
@@ -110,45 +102,39 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
 }
 
 export function pickerCopy(mode: FilePickerMode) {
-  if (mode === "file") {
+  if (mode === 'file') {
     return {
-      title: "Choose file",
-      chooseLabel: "Choose file",
-      searchLabel: "Search files",
-      searchPlaceholder: "Search files",
-      emptyDescription: "This folder has no visible files or folders.",
-      emptyPreviewTitle: "Select a file",
-      noSelectionLabel: "No file selected",
+      title: 'Choose file',
+      chooseLabel: 'Choose file',
+      searchLabel: 'Search files',
+      searchPlaceholder: 'Search files',
+      emptyDescription: 'This folder has no visible files or folders.',
+      emptyPreviewTitle: 'Select a file',
+      noSelectionLabel: 'No file selected',
     }
   }
 
   return {
-    title: "Choose folder",
-    chooseLabel: "Choose folder",
-    searchLabel: "Search files and folders",
-    searchPlaceholder: "Search files and folders",
-    emptyDescription: "This folder has no visible files or folders.",
-    emptyPreviewTitle: "Select a folder",
-    noSelectionLabel: "No folder selected",
+    title: 'Choose folder',
+    chooseLabel: 'Choose folder',
+    searchLabel: 'Search files and folders',
+    searchPlaceholder: 'Search files and folders',
+    emptyDescription: 'This folder has no visible files or folders.',
+    emptyPreviewTitle: 'Select a folder',
+    noSelectionLabel: 'No folder selected',
   }
 }
 
 export function listLabel(mode: FilePickerMode) {
-  if (mode === "file") return "Files and folders"
+  if (mode === 'file') return 'Files and folders'
 
-  return "Folders and files"
+  return 'Folders and files'
 }
 
-export function entryByOffset(
-  entries: FsEntry[],
-  selectedEntry: FsEntry | null,
-  offset: number
-) {
+export function entryByOffset(entries: FsEntry[], selectedEntry: FsEntry | null, offset: number) {
   if (entries.length === 0) return null
 
-  const currentIndex = entries.findIndex(
-    (entry) => entry.path === selectedEntry?.path
-  )
+  const currentIndex = entries.findIndex((entry) => entry.path === selectedEntry?.path)
   const nextIndex = nextSelectionIndex(currentIndex, offset, entries.length)
   return entries[nextIndex] ?? null
 }
@@ -156,7 +142,7 @@ export function entryByOffset(
 export function toPickedEntry(
   entry: FsEntry | null,
   mode: FilePickerMode,
-  accept?: readonly string[]
+  accept?: readonly string[],
 ): PickedFsEntry | null {
   if (!entry) return null
   if (!isPickableEntry(entry, mode, accept)) return null
@@ -166,9 +152,9 @@ export function toPickedEntry(
 
 export function currentPickableEntry(
   entry: DirectoryFsEntry | null,
-  mode: FilePickerMode
+  mode: FilePickerMode,
 ): PickedFsEntry | null {
-  if (mode !== "folder") return null
+  if (mode !== 'folder') return null
 
   return entry
 }
@@ -176,29 +162,29 @@ export function currentPickableEntry(
 export function isPickableEntry(
   entry: FsEntry,
   mode: FilePickerMode,
-  accept?: readonly string[]
+  accept?: readonly string[],
 ): entry is PickedFsEntry {
-  if (mode === "folder") return isDirectoryEntry(entry)
+  if (mode === 'folder') return isDirectoryEntry(entry)
   if (!isFileEntry(entry)) return false
 
   return fileMatchesAccept(entry.name, accept)
 }
 
 export function parentPath(path: string) {
-  const parts = path.split("/").filter(Boolean)
+  const parts = path.split('/').filter(Boolean)
   parts.pop()
 
-  return parts.join("/")
+  return parts.join('/')
 }
 
 export function basename(path: string) {
-  const parts = path.split("/").filter(Boolean)
-  return parts.at(-1) ?? "Root"
+  const parts = path.split('/').filter(Boolean)
+  return parts.at(-1) ?? 'Root'
 }
 
 export function pathCrumbs(path: string) {
-  const parts = path.split("/").filter(Boolean)
-  const crumbs = [{ label: "Root", path: ROOT_PATH }]
+  const parts = path.split('/').filter(Boolean)
+  const crumbs = [{ label: 'Root', path: ROOT_PATH }]
   let current = ROOT_PATH
 
   for (const part of parts) {
@@ -209,10 +195,7 @@ export function pathCrumbs(path: string) {
   return crumbs
 }
 
-export function initialPathForOpen(
-  selectedValue: PickedFsEntry | null,
-  homePath: string
-) {
+export function initialPathForOpen(selectedValue: PickedFsEntry | null, homePath: string) {
   if (!selectedValue) return homePath
 
   return parentPath(selectedValue.path)
@@ -225,7 +208,7 @@ export function joinPaths(parent: string, child: string) {
 }
 
 export function displayPath(path: string) {
-  if (!path) return "/"
+  if (!path) return '/'
 
   return `/${path}`
 }
@@ -233,116 +216,111 @@ export function displayPath(path: string) {
 export function compareEntries(a: FsEntry, b: FsEntry) {
   const aType = effectiveEntryType(a)
   const bType = effectiveEntryType(b)
-  if (aType === "directory" && bType !== "directory") return -1
-  if (aType !== "directory" && bType === "directory") return 1
+  if (aType === 'directory' && bType !== 'directory') return -1
+  if (aType !== 'directory' && bType === 'directory') return 1
 
   return a.name.localeCompare(b.name)
 }
 
 export function compareSearchEntries(query: string) {
   return (a: FsEntry, b: FsEntry) =>
-    compareFuzzyRankedTargets(entryRankTarget(a), entryRankTarget(b), query) ||
-    compareEntries(a, b)
+    compareFuzzyRankedTargets(entryRankTarget(a), entryRankTarget(b), query) || compareEntries(a, b)
 }
 
 export function tileTone(entry: FsEntry, selected: boolean) {
   if (isDirectoryEntry(entry)) {
     return cn(
-      "border-amber-200/70 bg-amber-50 text-amber-600 dark:border-amber-900/70 dark:bg-amber-950/30",
-      selected && "border-amber-300 bg-amber-100 dark:border-amber-800"
+      'border-amber-200/70 bg-amber-50 text-amber-600 dark:border-amber-900/70 dark:bg-amber-950/30',
+      selected && 'border-amber-300 bg-amber-100 dark:border-amber-800',
     )
   }
 
   if (isFileEntry(entry)) {
     return cn(
-      "border-sky-200/70 bg-sky-50 text-sky-600 dark:border-sky-900/70 dark:bg-sky-950/30",
-      selected && "border-sky-300 bg-sky-100 dark:border-sky-800"
+      'border-sky-200/70 bg-sky-50 text-sky-600 dark:border-sky-900/70 dark:bg-sky-950/30',
+      selected && 'border-sky-300 bg-sky-100 dark:border-sky-800',
     )
   }
 
-  return "border-border bg-muted/30 text-muted-foreground"
+  return 'border-border bg-muted/30 text-muted-foreground'
 }
 
 export function kindLabel(entry: FsEntry) {
-  if (entry.type === "symlink" && entry.targetType === "directory") {
-    return "Alias folder"
+  if (entry.type === 'symlink' && entry.targetType === 'directory') {
+    return 'Alias folder'
   }
-  if (entry.type === "symlink" && entry.targetType === "file") {
-    return "Alias file"
+  if (entry.type === 'symlink' && entry.targetType === 'file') {
+    return 'Alias file'
   }
-  if (isDirectoryEntry(entry)) return "Folder"
-  if (isFileEntry(entry)) return "File"
-  if (entry.type === "symlink") return "Alias"
+  if (isDirectoryEntry(entry)) return 'Folder'
+  if (isFileEntry(entry)) return 'File'
+  if (entry.type === 'symlink') return 'Alias'
 
-  return "Other"
+  return 'Other'
 }
 
 export function fileExtension(name: string) {
-  const index = name.lastIndexOf(".")
-  if (index <= 0) return ""
-  if (index === name.length - 1) return ""
+  const index = name.lastIndexOf('.')
+  if (index <= 0) return ''
+  if (index === name.length - 1) return ''
 
   return name.slice(index + 1, index + 5)
 }
 
 export function formatSizeLabel(entry: FsEntry) {
-  if (isDirectoryEntry(entry)) return ""
+  if (isDirectoryEntry(entry)) return ''
 
   return formatSize(entry.size)
 }
 
 export function formatSize(size: number) {
-  if (size === 0) return "0 B"
+  if (size === 0) return '0 B'
 
-  const units = ["B", "KB", "MB", "GB"]
+  const units = ['B', 'KB', 'MB', 'GB']
   const exponent = Math.min(Math.floor(Math.log(size) / Math.log(1024)), 3)
   const value = size / 1024 ** exponent
   return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
 }
 
 export function formatModified(mtimeMs: number) {
-  if (mtimeMs <= 0) return "Unknown"
+  if (mtimeMs <= 0) return 'Unknown'
 
   return modifiedDateFormatter.format(new Date(mtimeMs))
 }
 
 export function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
-  return "The file server did not return a usable response."
+  return 'The file server did not return a usable response.'
 }
 
 export function rpcErrorMessage(error: unknown) {
   const value = errorValue(error)
   if (isErrorPayload(value)) return value.error.message
 
-  return "The file server rejected the request."
+  return 'The file server rejected the request.'
 }
 
 export function rawRpcErrorMessage(payload: unknown) {
   if (isErrorPayload(payload)) return payload.error.message
 
-  return "The file server rejected the request."
+  return 'The file server rejected the request.'
 }
 
 export function loadStateEntries(state: LoadState) {
-  if (state.status === "ready") return state.entries
-  if (state.status === "loading") return state.entries ?? []
+  if (state.status === 'ready') return state.entries
+  if (state.status === 'loading') return state.entries ?? []
 
   return []
 }
 
 export function loadingLoadState(previous: LoadState): LoadState {
   const entries = loadStateEntries(previous)
-  if (entries.length === 0) return { status: "loading" }
+  if (entries.length === 0) return { status: 'loading' }
 
-  return { status: "loading", entries }
+  return { status: 'loading', entries }
 }
 
-function nextSelectionIndex(
-  currentIndex: number,
-  offset: number,
-  length: number
-) {
+function nextSelectionIndex(currentIndex: number, offset: number, length: number) {
   if (currentIndex < 0 && offset > 0) return 0
   if (currentIndex < 0) return length - 1
 
@@ -357,21 +335,19 @@ function entryRankTarget(entry: FsEntry) {
 }
 
 function errorValue(error: unknown) {
-  if (!error || typeof error !== "object") return null
-  if (!("value" in error)) return null
+  if (!error || typeof error !== 'object') return null
+  if (!('value' in error)) return null
 
   return error.value
 }
 
-function isErrorPayload(
-  value: unknown
-): value is { error: { message: string } } {
-  if (!value || typeof value !== "object") return false
-  if (!("error" in value)) return false
+function isErrorPayload(value: unknown): value is { error: { message: string } } {
+  if (!value || typeof value !== 'object') return false
+  if (!('error' in value)) return false
 
   const error = value.error
-  if (!error || typeof error !== "object") return false
-  return "message" in error && typeof error.message === "string"
+  if (!error || typeof error !== 'object') return false
+  return 'message' in error && typeof error.message === 'string'
 }
 
 function useDebouncedValue(value: string, delay: number) {

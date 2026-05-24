@@ -1,21 +1,21 @@
-import { useCallback, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useCallback, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
-import { UnsavedChangesDialog } from "@/features/editor/components/unsaved-changes-dialog"
+import { UnsavedChangesDialog } from '@/features/editor/components/unsaved-changes-dialog'
 import {
   fileBackedEditorPath,
   isDirtyCachedEditorDocument,
   saveEditorDocumentByPath,
-} from "@/features/editor/editor-save"
-import { useEditorCommands } from "@/features/editor/state/editor-commands"
+} from '@/features/editor/editor-save'
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import {
   editorPanePathCounts,
   findEditorPaneTab,
   type EditorPaneLayout,
-} from "@/features/editor/state/editor-pane-state"
-import { useEditorDocumentStoreApi } from "@/features/editor/state/editor-document-state"
-import { useEditorWorkspaceStoreApi } from "@/features/editor/state/editor-workspace-state"
-import { errorMessage } from "@/lib/file-server"
+} from '@/features/editor/state/editor-pane-state'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import { errorMessage } from '@/lib/file-server'
 
 export type RequestCloseTab = (tabId: string) => boolean
 export type RequestCloseTabs = (tabIds: readonly string[]) => boolean
@@ -30,9 +30,7 @@ export function useDirtyTabCloseRequest() {
   const workspaceStore = useEditorWorkspaceStoreApi()
   const queryClient = useQueryClient()
   const { closeTab, discardAndCloseTab } = useEditorCommands()
-  const [pendingCloses, setPendingCloses] = useState<readonly PendingClose[]>(
-    []
-  )
+  const [pendingCloses, setPendingCloses] = useState<readonly PendingClose[]>([])
   const pendingClose = pendingCloses[0] ?? null
   const pendingPath = pendingClose?.path ?? null
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -63,8 +61,7 @@ export function useDirtyTabCloseRequest() {
 
       for (const tab of openTabs) {
         const dirty = isDirtyCachedEditorDocument(state, tab.path)
-        const closingLastPathTab =
-          closingPathCounts.get(tab.path) === openPathCounts.get(tab.path)
+        const closingLastPathTab = closingPathCounts.get(tab.path) === openPathCounts.get(tab.path)
         if (dirty && closingLastPathTab) {
           appendPendingClose(pending, tab.path, tab.id)
           continue
@@ -78,12 +75,12 @@ export function useDirtyTabCloseRequest() {
 
       return pending.length === 0
     },
-    [closeTab, documentStore, pendingCloses.length, workspaceStore]
+    [closeTab, documentStore, pendingCloses.length, workspaceStore],
   )
 
   const requestCloseTab = useCallback<RequestCloseTab>(
     (tabId) => requestCloseTabs([tabId]),
-    [requestCloseTabs]
+    [requestCloseTabs],
   )
 
   const handleOpenChange = useCallback(
@@ -93,7 +90,7 @@ export function useDirtyTabCloseRequest() {
 
       clearPendingClose()
     },
-    [clearPendingClose, saving]
+    [clearPendingClose, saving],
   )
 
   const handleCancel = useCallback(() => {
@@ -114,13 +111,7 @@ export function useDirtyTabCloseRequest() {
       discardAndCloseTab(tabId)
     }
     advancePendingClose()
-  }, [
-    advancePendingClose,
-    discardAndCloseTab,
-    pendingClose,
-    saving,
-    workspaceStore,
-  ])
+  }, [advancePendingClose, discardAndCloseTab, pendingClose, saving, workspaceStore])
 
   const handleSave = useCallback(() => {
     if (!pendingClose) return
@@ -164,10 +155,7 @@ export function useDirtyTabCloseRequest() {
   }
 }
 
-async function saveAndClosePendingTab(
-  pendingClose: PendingClose,
-  context: SaveAndCloseContext
-) {
+async function saveAndClosePendingTab(pendingClose: PendingClose, context: SaveAndCloseContext) {
   context.setSaving(true)
   context.setSaveError(null)
 
@@ -180,10 +168,10 @@ async function saveAndClosePendingTab(
     const saved = await saveEditorDocumentByPath(
       context.documentStore,
       context.queryClient,
-      pendingClose.path
+      pendingClose.path,
     )
     if (!saved) {
-      context.setSaveError("This tab could not be saved.")
+      context.setSaveError('This tab could not be saved.')
       return
     }
 
@@ -208,10 +196,7 @@ type SaveAndCloseContext = {
   workspaceStore: ReturnType<typeof useEditorWorkspaceStoreApi>
 }
 
-function openTabCloseTargets(
-  tabIds: readonly string[],
-  editorPaneLayout: EditorPaneLayout
-) {
+function openTabCloseTargets(tabIds: readonly string[], editorPaneLayout: EditorPaneLayout) {
   const seen = new Set<string>()
   const tabs: Array<{ id: string; path: string }> = []
 
@@ -235,11 +220,7 @@ function tabClosePathCounts(tabs: readonly { path: string }[]) {
   return counts
 }
 
-function appendPendingClose(
-  pending: PendingClose[],
-  path: string,
-  tabId: string
-) {
+function appendPendingClose(pending: PendingClose[], path: string, tabId: string) {
   const current = pending.find((close) => close.path === path)
   if (!current) {
     pending.push({ path, tabIds: [tabId] })
@@ -248,15 +229,15 @@ function appendPendingClose(
 
   pending.splice(pending.indexOf(current), 1, {
     path,
-    tabIds: [...current.tabIds, tabId],
+    tabIds: current.tabIds.concat(tabId),
   })
 }
 
 function pendingCloseIsOpen(
   pendingClose: PendingClose,
-  workspace: { editorPaneLayout: EditorPaneLayout }
+  workspace: { editorPaneLayout: EditorPaneLayout },
 ) {
   return pendingClose.tabIds.some((tabId) =>
-    Boolean(findEditorPaneTab(workspace.editorPaneLayout.root, tabId))
+    Boolean(findEditorPaneTab(workspace.editorPaneLayout.root, tabId)),
   )
 }

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { createEditorSyntaxHighlightingPlugins } from "@/features/editor/editor-plugins"
-import type { SearchResultDeferredPluginMode } from "@/features/search/search-result-editor-types"
+import { createEditorSyntaxHighlightingPlugins } from '@/features/editor/editor-plugins'
+import type { SearchResultDeferredPluginMode } from '@/features/search/search-result-editor-types'
 
 export function useSearchResultDeferredPlugins({
   mode,
@@ -12,14 +12,12 @@ export function useSearchResultDeferredPlugins({
   resultKey: string | null
   rowCount: number
 }) {
-  const deferKey = `${resultKey ?? ""}:${rowCount}`
+  const deferKey = `${resultKey ?? ''}:${rowCount}`
   const [deferredSyntax, setDeferredSyntax] = useState({
-    key: "",
+    key: '',
     ready: false,
   })
-  const ready =
-    mode === "immediate" ||
-    (deferredSyntax.key === deferKey && deferredSyntax.ready)
+  const ready = mode === 'immediate' || (deferredSyntax.key === deferKey && deferredSyntax.ready)
   const enable = useCallback(() => {
     setDeferredSyntax((current) => {
       if (current.key === deferKey && current.ready) return current
@@ -29,7 +27,7 @@ export function useSearchResultDeferredPlugins({
   }, [deferKey])
 
   useEffect(() => {
-    if (mode !== "idle") return
+    if (mode !== 'idle') return
     if (ready) return
 
     return scheduleSearchResultSyntaxEnable(enable)
@@ -49,7 +47,7 @@ export function useSearchResultDeferredPlugins({
 }
 
 function scheduleSearchResultSyntaxEnable(callback: () => void) {
-  if (typeof window.requestIdleCallback === "function") {
+  if (typeof window.requestIdleCallback === 'function') {
     const id = window.requestIdleCallback(callback, { timeout: 800 })
     return () => window.cancelIdleCallback(id)
   }

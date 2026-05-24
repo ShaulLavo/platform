@@ -1,8 +1,8 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm"
-import { closeMetadataDatabase, db, metadataDatabasePath } from "../db/client"
-import { migrateMetadataDatabase } from "../db/migrations"
-import { fsMetadata, type FsMetadataRow } from "../db/schema"
-import { effectiveEntryType, type FsEntryType } from "./stat"
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
+import { closeMetadataDatabase, db, metadataDatabasePath } from '../db/client'
+import { migrateMetadataDatabase } from '../db/migrations'
+import { fsMetadata, type FsMetadataRow } from '../db/schema'
+import { effectiveEntryType, type FsEntryType } from './stat'
 
 export type FsMetadataEntry = {
   path: string
@@ -57,12 +57,7 @@ export class FsMetadataStore {
     return db
       .select()
       .from(fsMetadata)
-      .where(
-        and(
-          eq(fsMetadata.entryType, "directory"),
-          isNotNull(fsMetadata.lastPickedAt)
-        )
-      )
+      .where(and(eq(fsMetadata.entryType, 'directory'), isNotNull(fsMetadata.lastPickedAt)))
       .orderBy(desc(fsMetadata.lastPickedAt))
       .limit(limit)
       .all()

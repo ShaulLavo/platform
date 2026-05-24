@@ -1,7 +1,7 @@
-import type { TreeEntry, TreeResult } from "@/lib/file-system-types"
-import { isDirectoryEntry } from "@/lib/file-system-types"
-import type { LoadState } from "@/lib/load-state"
-import { canonicalTreePath, toTreePath } from "@/lib/path-formatters"
+import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
+import type { LoadState } from '@/lib/load-state'
+import { canonicalTreePath, toTreePath } from '@/lib/path-formatters'
 
 export type TreeModel = {
   paths: string[]
@@ -45,30 +45,21 @@ export function treeModel(result: TreeResult, rootPath: string): TreeModel {
 export function treeModelWithDirectoryLoads(
   result: TreeResult,
   rootPath: string,
-  directoryResults: readonly TreeResult[]
+  directoryResults: readonly TreeResult[],
 ): TreeModel {
-  return mergeDirectoryLoads(
-    treeModel(result, rootPath),
-    rootPath,
-    directoryResults
-  )
+  return mergeDirectoryLoads(treeModel(result, rootPath), rootPath, directoryResults)
 }
 
 export function mergeDirectoryLoads(
   model: TreeModel,
   rootPath: string,
-  results: readonly TreeResult[]
+  results: readonly TreeResult[],
 ) {
   if (results.length === 0) return model
 
   const next = cloneTreeModel(model)
   for (const result of results) {
-    applyDirectoryLoad(
-      next,
-      rootPath,
-      result,
-      directoryTreePathForResult(result.path, rootPath)
-    )
+    applyDirectoryLoad(next, rootPath, result, directoryTreePathForResult(result.path, rootPath))
   }
   next.paths = pathsFromEntries(next.entriesByTreePath)
 
@@ -78,21 +69,17 @@ export function mergeDirectoryLoads(
 export function shouldLoadDirectory(
   model: TreeModel,
   treePath: string,
-  options: DirectoryLoadOptions = {}
+  options: DirectoryLoadOptions = {},
 ) {
   const canonicalPath = canonicalTreePath(treePath)
   if (model.loadedDirectoryPaths.has(canonicalPath)) return false
   if (model.loadingDirectoryPaths.has(canonicalPath)) return false
-  if (model.errorByDirectoryPath.has(canonicalPath) && !options.retry)
-    return false
+  if (model.errorByDirectoryPath.has(canonicalPath) && !options.retry) return false
 
   return true
 }
 
-export function markDirectoryLoading(
-  model: TreeModel,
-  directoryTreePath: string
-): TreeModel {
+export function markDirectoryLoading(model: TreeModel, directoryTreePath: string): TreeModel {
   const next = cloneTreeModel(model)
   next.errorByDirectoryPath.delete(directoryTreePath)
   next.loadingDirectoryPaths.add(directoryTreePath)
@@ -102,7 +89,7 @@ export function markDirectoryLoading(
 export function markDirectoryError(
   model: TreeModel,
   directoryTreePath: string,
-  message: string
+  message: string,
 ): TreeModel {
   const next = cloneTreeModel(model)
   next.loadingDirectoryPaths.delete(directoryTreePath)
@@ -115,7 +102,7 @@ export function mergeDirectoryLoad(
   model: TreeModel,
   rootPath: string,
   result: TreeResult,
-  directoryTreePath: string
+  directoryTreePath: string,
 ): TreeModel {
   const next = cloneTreeModel(model)
   applyDirectoryLoad(next, rootPath, result, directoryTreePath)
@@ -127,7 +114,7 @@ export function mergeDirectoryLoad(
 export function replaceDirectoryLoad(
   model: TreeModel,
   rootPath: string,
-  result: TreeResult
+  result: TreeResult,
 ): TreeModel {
   const directoryTreePath = directoryTreePathForResult(result.path, rootPath)
   const next = cloneTreeModel(model)
@@ -145,7 +132,7 @@ export function replaceDirectoryLoad(
 export function patchTreeEntryMetadata(
   model: TreeModel,
   rootPath: string,
-  entry: TreeEntry
+  entry: TreeEntry,
 ): TreeModel {
   const treePath = canonicalTreePath(toTreePath(entry.path, rootPath))
   const current = model.entriesByTreePath.get(treePath)
@@ -162,31 +149,28 @@ export function patchTreeEntryMetadata(
 export function moveTreeModelPaths(
   model: TreeModel,
   rootPath: string,
-  moves: readonly TreePathMove[]
+  moves: readonly TreePathMove[],
 ): TreeModel {
   const normalizedMoves = normalizedTreePathMoves(moves)
   if (normalizedMoves.length === 0) return model
 
   return normalizedMoves.reduce(
     (currentModel, move) => moveTreeModelPath(currentModel, rootPath, move),
-    model
+    model,
   )
 }
 
 export function selectedTreeEntry(
   state: LoadState<TreeModel>,
   rootPath: string | null,
-  selectedFilePath: string
+  selectedFilePath: string,
 ) {
-  if (state.status !== "ready" || !rootPath) return null
+  if (state.status !== 'ready' || !rootPath) return null
 
   return entryForTreePath(state.data, toTreePath(selectedFilePath, rootPath))
 }
 
-export function entryForTreePath(
-  model: TreeModel,
-  treePath: string | undefined
-) {
+export function entryForTreePath(model: TreeModel, treePath: string | undefined) {
   if (!treePath) return null
 
   return model.entriesByTreePath.get(canonicalTreePath(treePath)) ?? null
@@ -200,28 +184,25 @@ export function treePathForAbsolutePath(model: TreeModel, path: string) {
   return path
 }
 
-export function treePathForSelectedPath(
-  rootPath: string,
-  selectedFilePath: string
-) {
+export function treePathForSelectedPath(rootPath: string, selectedFilePath: string) {
   return toTreePath(selectedFilePath, rootPath)
 }
 
 export function treeStateLabel(state: LoadState<TreeModel>) {
-  if (state.status === "ready") {
+  if (state.status === 'ready') {
     return `${state.data.paths.length.toLocaleString()} items`
   }
-  if (state.status === "error") return "Could not load"
-  if (state.status === "loading") return "Loading"
+  if (state.status === 'error') return 'Could not load'
+  if (state.status === 'loading') return 'Loading'
 
-  return "Idle"
+  return 'Idle'
 }
 
 function addFlattenedTreeEntries(
   paths: string[],
   entries: TreeEntry[],
   rootPath: string,
-  entriesByTreePath: Map<string, TreeEntry>
+  entriesByTreePath: Map<string, TreeEntry>,
 ) {
   for (const entry of entries) {
     const treePath = toTreePath(entry.path, rootPath)
@@ -237,11 +218,7 @@ function addFlattenedTreeEntries(
   }
 }
 
-function addEntriesToModel(
-  model: TreeModel,
-  entries: TreeEntry[],
-  rootPath: string
-) {
+function addEntriesToModel(model: TreeModel, entries: TreeEntry[], rootPath: string) {
   for (const entry of entries) {
     const treePath = toTreePath(entry.path, rootPath)
     if (!treePath) continue
@@ -259,7 +236,7 @@ function applyDirectoryLoad(
   model: TreeModel,
   rootPath: string,
   result: TreeResult,
-  directoryTreePath: string
+  directoryTreePath: string,
 ) {
   addEntriesToModel(model, result.entries, rootPath)
   model.loadingDirectoryPaths.delete(directoryTreePath)
@@ -268,7 +245,7 @@ function applyDirectoryLoad(
 }
 
 function removeDirectoryChildren(model: TreeModel, directoryTreePath: string) {
-  for (const treePath of [...model.entriesByTreePath.keys()]) {
+  for (const treePath of Array.from(model.entriesByTreePath.keys())) {
     if (!isDirectoryChildPath(treePath, directoryTreePath)) continue
 
     model.entriesByTreePath.delete(treePath)
@@ -281,9 +258,9 @@ function removeDirectoryChildren(model: TreeModel, directoryTreePath: string) {
 
 function removeDirectoryState(
   state: Map<string, unknown> | Set<string>,
-  directoryTreePath: string
+  directoryTreePath: string,
 ) {
-  for (const treePath of [...state.keys()]) {
+  for (const treePath of Array.from(state.keys())) {
     if (!isDirectoryChildPath(treePath, directoryTreePath)) continue
 
     state.delete(treePath)
@@ -297,14 +274,14 @@ function isDirectoryChildPath(treePath: string, directoryTreePath: string) {
 }
 
 function directoryTreePathForResult(path: string, rootPath: string) {
-  if (path === rootPath) return ""
+  if (path === rootPath) return ''
 
   return canonicalTreePath(toTreePath(path, rootPath))
 }
 
 function cloneTreeModel(model: TreeModel): TreeModel {
   return {
-    paths: [...model.paths],
+    paths: Array.from(model.paths),
     entriesByTreePath: new Map(model.entriesByTreePath),
     errorByDirectoryPath: new Map(model.errorByDirectoryPath),
     loadedDirectoryPaths: new Set(model.loadedDirectoryPaths),
@@ -338,23 +315,14 @@ function normalizedTreePathMoves(moves: readonly TreePathMove[]) {
   return normalizedMoves
 }
 
-function moveTreeModelPath(
-  model: TreeModel,
-  rootPath: string,
-  move: TreePathMove
-): TreeModel {
+function moveTreeModelPath(model: TreeModel, rootPath: string, move: TreePathMove): TreeModel {
   if (!model.entriesByTreePath.has(move.fromTreePath)) return model
 
   const next = cloneTreeModel(model)
   const fromPath = workspacePathForTreePath(rootPath, move.fromTreePath)
   const toPath = workspacePathForTreePath(rootPath, move.toTreePath)
 
-  next.entriesByTreePath = moveTreeEntries(
-    next.entriesByTreePath,
-    move,
-    fromPath,
-    toPath
-  )
+  next.entriesByTreePath = moveTreeEntries(next.entriesByTreePath, move, fromPath, toPath)
   next.loadedDirectoryPaths = moveTreePathSet(next.loadedDirectoryPaths, move)
   next.loadingDirectoryPaths = moveTreePathSet(next.loadingDirectoryPaths, move)
   next.errorByDirectoryPath = moveTreePathMap(next.errorByDirectoryPath, move)
@@ -367,7 +335,7 @@ function moveTreeEntries(
   entries: ReadonlyMap<string, TreeEntry>,
   move: TreePathMove,
   fromPath: string,
-  toPath: string
+  toPath: string,
 ) {
   const nextEntries = new Map<string, TreeEntry>()
 
@@ -422,7 +390,7 @@ function moveTreePathList(paths: readonly string[], move: TreePathMove) {
 function movedTreeListPath(path: string, move: TreePathMove) {
   const nextPath = movedTreePath(path, move)
   if (!nextPath) return path
-  if (!path.endsWith("/")) return nextPath
+  if (!path.endsWith('/')) return nextPath
 
   return `${nextPath}/`
 }
@@ -435,15 +403,9 @@ function movedTreePath(path: string, move: TreePathMove) {
   return `${move.toTreePath}${treePath.slice(move.fromTreePath.length)}`
 }
 
-function moveTreeEntry(
-  entry: TreeEntry,
-  fromPath: string,
-  toPath: string
-): TreeEntry {
+function moveTreeEntry(entry: TreeEntry, fromPath: string, toPath: string): TreeEntry {
   const nextPath = movedWorkspacePath(entry.path, fromPath, toPath)
-  const children = entry.children?.map((child) =>
-    moveTreeEntry(child, fromPath, toPath)
-  )
+  const children = entry.children?.map((child) => moveTreeEntry(child, fromPath, toPath))
   if (!children && nextPath === entry.path) return entry
   if (!children) return { ...entry, path: nextPath }
 

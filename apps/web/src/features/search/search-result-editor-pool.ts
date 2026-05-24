@@ -1,11 +1,11 @@
-import type { SearchResultId } from "@/features/search/search-result-items"
+import type { SearchResultId } from '@/features/search/search-result-items'
 
 export const SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE = 1
 
 export function nextSearchResultFileEditorPoolKeys(
   currentKeys: readonly SearchResultId[],
   visibleKeys: readonly SearchResultId[],
-  prewarmEditorPool: boolean
+  prewarmEditorPool: boolean,
 ) {
   if (!prewarmEditorPool) return visibleKeys
   if (visibleKeys.length === 0)
@@ -19,8 +19,7 @@ export function nextSearchResultFileEditorPoolKeys(
       nextKeys.push(key)
       continue
     }
-    if (retainedHiddenCount >= SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE)
-      continue
+    if (retainedHiddenCount >= SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE) continue
 
     retainedHiddenCount += 1
     nextKeys.push(key)
@@ -37,7 +36,7 @@ export function nextSearchResultFileEditorPoolKeys(
 
 export function searchResultFileEditorPoolKeysEqual(
   left: readonly SearchResultId[],
-  right: readonly SearchResultId[]
+  right: readonly SearchResultId[],
 ) {
   if (left.length !== right.length) return false
 

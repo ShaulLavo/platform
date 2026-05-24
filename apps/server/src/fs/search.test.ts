@@ -1,99 +1,90 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import path from "node:path"
-import { Readable } from "node:stream"
-import { afterEach, describe, expect, it, mock } from "bun:test"
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { Readable } from 'node:stream'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-import {
-  DiskWorkspaceSearchProvider,
-  findInWorkspace,
-  findInWorkspaceStream,
-} from "./search"
-import { createWorkspacePaths } from "./path"
-import { readLines } from "./search-line-decoder"
+import { DiskWorkspaceSearchProvider, findInWorkspace, findInWorkspaceStream } from './search'
+import { createWorkspacePaths } from './path'
+import { readLines } from './search-line-decoder'
 
 const roots: string[] = []
 
 afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
-  )
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
-describe("workspace disk search provider", () => {
-  it("finds filename and content matches by default with disk source metadata", async () => {
+describe('workspace disk search provider', () => {
+  it('finds filename and content matches by default with disk source metadata', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "src"), { recursive: true })
-    await writeFile(
-      path.join(root, "src", "button.ts"),
-      "export const Button = 1"
-    )
-    await writeFile(path.join(root, "src", "other.ts"), "button content")
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'button.ts'), 'export const Button = 1')
+    await writeFile(path.join(root, 'src', 'other.ts'), 'button content')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "button",
+      path: '',
+      query: 'button',
     })
 
     expect(result.matches).toContainEqual(
       expect.objectContaining({
-        kind: "name",
-        path: "src/button.ts",
-        source: "disk",
-      })
+        kind: 'name',
+        path: 'src/button.ts',
+        source: 'disk',
+      }),
     )
     expect(result.matches).toContainEqual(
       expect.objectContaining({
         column: 1,
         endColumn: 7,
-        kind: "content",
-        path: "src/other.ts",
-        source: "disk",
-      })
+        kind: 'content',
+        path: 'src/other.ts',
+        source: 'disk',
+      }),
     )
   })
 
-  it("can search content without returning filename matches", async () => {
+  it('can search content without returning filename matches', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "src"), { recursive: true })
-    await writeFile(path.join(root, "src", "needle-name.ts"), "no match here")
-    await writeFile(path.join(root, "src", "content.ts"), "needle content")
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'needle-name.ts'), 'no match here')
+    await writeFile(path.join(root, 'src', 'content.ts'), 'needle content')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "content",
-        path: "src/content.ts",
-        source: "disk",
+        kind: 'content',
+        path: 'src/content.ts',
+        source: 'disk',
       }),
     ])
   })
 
-  it("emits exact content ranges for each match on a line", async () => {
+  it('emits exact content ranges for each match on a line', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "many.ts"), "needle and needle")
+    await writeFile(path.join(root, 'many.ts'), 'needle and needle')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     const contentMatches = result.matches.filter(
-      (match) => match.kind === "content" && match.path === "many.ts"
+      (match) => match.kind === 'content' && match.path === 'many.ts',
     )
 
     expect(contentMatches).toEqual([
@@ -102,80 +93,75 @@ describe("workspace disk search provider", () => {
     ])
   })
 
-  it("treats query spaces as part of the content search text", async () => {
+  it('treats query spaces as part of the content search text', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "spaces.ts"), "needle here\nneedlehere")
+    await writeFile(path.join(root, 'spaces.ts'), 'needle here\nneedlehere')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle ",
+      path: '',
+      query: 'needle ',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
         column: 1,
         endColumn: 8,
-        path: "spaces.ts",
+        path: 'spaces.ts',
       }),
     ])
   })
 
-  it("keeps long-line previews anchored around the match", async () => {
+  it('keeps long-line previews anchored around the match', async () => {
     const root = await fixtureRoot()
-    await writeFile(
-      path.join(root, "long.ts"),
-      `${"x".repeat(320)}needle${"y".repeat(20)}`
-    )
+    await writeFile(path.join(root, 'long.ts'), `${'x'.repeat(320)}needle${'y'.repeat(20)}`)
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toContainEqual(
       expect.objectContaining({
         column: 321,
         endColumn: 327,
-        preview: expect.stringContaining("needle"),
+        preview: expect.stringContaining('needle'),
         previewStartColumn: expect.any(Number),
-      })
+      }),
     )
   })
 
-  it("strips line terminators from content previews", async () => {
+  it('strips line terminators from content previews', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "line.ts"), "const needle = true\n")
+    await writeFile(path.join(root, 'line.ts'), 'const needle = true\n')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
-    const match = result.matches.find(
-      (candidate) => candidate.kind === "content"
-    )
+    const match = result.matches.find((candidate) => candidate.kind === 'content')
 
     expect(match).toMatchObject({
       column: 7,
       endColumn: 13,
-      path: "line.ts",
-      preview: "const needle = true",
+      path: 'line.ts',
+      preview: 'const needle = true',
     })
   })
 
-  it("respects case-sensitive content search", async () => {
+  it('respects case-sensitive content search', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "case.ts"), "needle Needle")
+    await writeFile(path.join(root, 'case.ts'), 'needle Needle')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       caseSensitive: true,
@@ -183,53 +169,53 @@ describe("workspace disk search provider", () => {
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
         column: 1,
         endColumn: 7,
-        path: "case.ts",
+        path: 'case.ts',
       }),
     ])
   })
 
-  it("supports regex content search", async () => {
+  it('supports regex content search', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "regex.ts"), "needle useful unused")
+    await writeFile(path.join(root, 'regex.ts'), 'needle useful unused')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 20,
-      matchMode: "regex",
+      matchMode: 'regex',
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "usef\\w+",
+      path: '',
+      query: 'usef\\w+',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
         column: 8,
         endColumn: 14,
-        path: "regex.ts",
+        path: 'regex.ts',
       }),
     ])
   })
 
-  it("supports whole-word content search", async () => {
+  it('supports whole-word content search', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "words.ts"), "needle needleness xneedle")
+    await writeFile(path.join(root, 'words.ts'), 'needle needleness xneedle')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
       wholeWord: true,
     })
 
@@ -237,139 +223,139 @@ describe("workspace disk search provider", () => {
       expect.objectContaining({
         column: 1,
         endColumn: 7,
-        path: "words.ts",
+        path: 'words.ts',
       }),
     ])
   })
 
-  it("filters content search with include and exclude globs", async () => {
+  it('filters content search with include and exclude globs', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "src"), { recursive: true })
-    await mkdir(path.join(root, "tests"), { recursive: true })
-    await writeFile(path.join(root, "src", "match.ts"), "needle")
-    await writeFile(path.join(root, "src", "skip.test.ts"), "needle")
-    await writeFile(path.join(root, "tests", "match.ts"), "needle")
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await mkdir(path.join(root, 'tests'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'match.ts'), 'needle')
+    await writeFile(path.join(root, 'src', 'skip.test.ts'), 'needle')
+    await writeFile(path.join(root, 'tests', 'match.ts'), 'needle')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
-      excludeGlobs: ["*.test.ts"],
+      excludeGlobs: ['*.test.ts'],
       includeContent: true,
-      includeGlobs: ["src/*.ts"],
+      includeGlobs: ['src/*.ts'],
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        path: "src/match.ts",
+        path: 'src/match.ts',
       }),
     ])
   })
 
-  it("respects project gitignore files for content search", async () => {
+  it('respects project gitignore files for content search', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "ignored"), { recursive: true })
-    await mkdir(path.join(root, "src"), { recursive: true })
-    await writeFile(path.join(root, ".gitignore"), "ignored/\n")
-    await writeFile(path.join(root, "ignored", "skip.txt"), "needle")
-    await writeFile(path.join(root, "src", "match.txt"), "needle")
+    await mkdir(path.join(root, 'ignored'), { recursive: true })
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
+    await writeFile(path.join(root, 'ignored', 'skip.txt'), 'needle')
+    await writeFile(path.join(root, 'src', 'match.txt'), 'needle')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "content",
-        path: "src/match.txt",
+        kind: 'content',
+        path: 'src/match.txt',
       }),
     ])
   })
 
-  it("does not search content when the requested root is gitignored", async () => {
+  it('does not search content when the requested root is gitignored', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "ignored"), { recursive: true })
-    await writeFile(path.join(root, ".gitignore"), "ignored/\n")
-    await writeFile(path.join(root, "ignored", "skip.txt"), "needle")
+    await mkdir(path.join(root, 'ignored'), { recursive: true })
+    await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
+    await writeFile(path.join(root, 'ignored', 'skip.txt'), 'needle')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "ignored",
-      query: "needle",
+      path: 'ignored',
+      query: 'needle',
     })
 
     expect(result.matches).toEqual([])
   })
 
-  it("respects project gitignore files for filename search", async () => {
+  it('respects project gitignore files for filename search', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "ignored"), { recursive: true })
-    await mkdir(path.join(root, "src"), { recursive: true })
-    await writeFile(path.join(root, ".gitignore"), "ignored/\n")
-    await writeFile(path.join(root, "ignored", "needle.txt"), "")
-    await writeFile(path.join(root, "src", "needle.txt"), "")
+    await mkdir(path.join(root, 'ignored'), { recursive: true })
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
+    await writeFile(path.join(root, 'ignored', 'needle.txt'), '')
+    await writeFile(path.join(root, 'src', 'needle.txt'), '')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "name",
-        path: "src/needle.txt",
+        kind: 'name',
+        path: 'src/needle.txt',
       }),
     ])
   })
 
-  it("keeps partial rg results when ripgrep exits with a nonfatal filesystem error", async () => {
+  it('keeps partial rg results when ripgrep exits with a nonfatal filesystem error', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "match.txt"), "needle")
-    await symlink(".", path.join(root, "loop"))
+    await writeFile(path.join(root, 'match.txt'), 'needle')
+    await symlink('.', path.join(root, 'loop'))
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toContainEqual(
       expect.objectContaining({
-        kind: "content",
-        path: "match.txt",
-      })
+        kind: 'content',
+        path: 'match.txt',
+      }),
     )
   })
 
-  it("does not ask ripgrep to follow broken symlinks in ignored directories", async () => {
+  it('does not ask ripgrep to follow broken symlinks in ignored directories', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "apps/web/node_modules/pkg"), {
+    await mkdir(path.join(root, 'apps/web/node_modules/pkg'), {
       recursive: true,
     })
-    await mkdir(path.join(root, "src"), { recursive: true })
-    await writeFile(path.join(root, "src/match.txt"), "needle")
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src/match.txt'), 'needle')
     await symlink(
-      path.join(root, "apps/web/node_modules/missing"),
-      path.join(root, "apps/web/node_modules/broken")
+      path.join(root, 'apps/web/node_modules/missing'),
+      path.join(root, 'apps/web/node_modules/broken'),
     )
     await symlink(
-      path.join(root, "apps/web/node_modules/missing"),
-      path.join(root, "apps/web/node_modules/pkg/broken")
+      path.join(root, 'apps/web/node_modules/missing'),
+      path.join(root, 'apps/web/node_modules/pkg/broken'),
     )
     const originalWarn = console.warn
     console.warn = mock()
@@ -379,15 +365,15 @@ describe("workspace disk search provider", () => {
         includeContent: true,
         limit: 20,
         maxContentBytes: 1_000_000,
-        path: "",
-        query: "needle",
+        path: '',
+        query: 'needle',
       })
 
       expect(result.matches).toContainEqual(
         expect.objectContaining({
-          kind: "content",
-          path: "src/match.txt",
-        })
+          kind: 'content',
+          path: 'src/match.txt',
+        }),
       )
       expect(console.warn).not.toHaveBeenCalled()
     } finally {
@@ -395,180 +381,171 @@ describe("workspace disk search provider", () => {
     }
   })
 
-  it("reports truncation when the limit is reached", async () => {
+  it('reports truncation when the limit is reached', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "alpha.txt"), "needle")
-    await writeFile(path.join(root, "beta.txt"), "needle")
+    await writeFile(path.join(root, 'alpha.txt'), 'needle')
+    await writeFile(path.join(root, 'beta.txt'), 'needle')
 
     const events = await collectEvents(
       findInWorkspaceStream(createWorkspacePaths(root), {
         includeContent: false,
         limit: 1,
         maxContentBytes: 1_000_000,
-        path: "",
-        query: "txt",
-      })
+        path: '',
+        query: 'txt',
+      }),
     )
-    const done = events.find((event) => event.type === "done")
+    const done = events.find((event) => event.type === 'done')
 
     expect(done).toMatchObject({ count: 1, truncated: true })
   })
 
-  it("ranks content matches by path before applying the result limit", async () => {
+  it('ranks content matches by path before applying the result limit', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "src"), { recursive: true })
-    await writeFile(path.join(root, "src", "z.ts"), "needle")
-    await writeFile(path.join(root, "src", "a.ts"), "needle")
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'z.ts'), 'needle')
+    await writeFile(path.join(root, 'src', 'a.ts'), 'needle')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: true,
       includeNames: false,
       limit: 1,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "needle",
+      path: '',
+      query: 'needle',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "content",
-        path: "src/a.ts",
+        kind: 'content',
+        path: 'src/a.ts',
       }),
     ])
   })
 
-  it("ranks filename matches before applying the result limit", async () => {
+  it('ranks filename matches before applying the result limit', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "deep"), { recursive: true })
-    await writeFile(path.join(root, "deep", "zz-search-result.ts"), "")
-    await writeFile(path.join(root, "search.ts"), "")
+    await mkdir(path.join(root, 'deep'), { recursive: true })
+    await writeFile(path.join(root, 'deep', 'zz-search-result.ts'), '')
+    await writeFile(path.join(root, 'search.ts'), '')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: false,
       limit: 1,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "search",
+      path: '',
+      query: 'search',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "name",
-        path: "search.ts",
+        kind: 'name',
+        path: 'search.ts',
       }),
     ])
   })
 
-  it("supports fuzzy filename quick-open matches across workspace paths", async () => {
+  it('supports fuzzy filename quick-open matches across workspace paths', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "apps/web/src/components"), {
+    await mkdir(path.join(root, 'apps/web/src/components'), {
       recursive: true,
     })
-    await mkdir(path.join(root, "apps/web/src/lib"), {
+    await mkdir(path.join(root, 'apps/web/src/lib'), {
       recursive: true,
     })
-    await writeFile(
-      path.join(root, "apps/web/src/components/command-palette.tsx"),
-      ""
-    )
-    await writeFile(path.join(root, "apps/web/src/lib/client.ts"), "")
+    await writeFile(path.join(root, 'apps/web/src/components/command-palette.tsx'), '')
+    await writeFile(path.join(root, 'apps/web/src/lib/client.ts'), '')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: false,
       limit: 20,
-      matchMode: "fuzzy",
+      matchMode: 'fuzzy',
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "cmdp",
+      path: '',
+      query: 'cmdp',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "name",
-        path: "apps/web/src/components/command-palette.tsx",
+        kind: 'name',
+        path: 'apps/web/src/components/command-palette.tsx',
       }),
     ])
   })
 
-  it("supports fuzzy filename quick-open queries split across directories", async () => {
+  it('supports fuzzy filename quick-open queries split across directories', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "apps/web/src/components"), {
+    await mkdir(path.join(root, 'apps/web/src/components'), {
       recursive: true,
     })
-    await mkdir(path.join(root, "apps/server/src"), {
+    await mkdir(path.join(root, 'apps/server/src'), {
       recursive: true,
     })
-    await writeFile(
-      path.join(root, "apps/web/src/components/command-palette.tsx"),
-      ""
-    )
-    await writeFile(path.join(root, "apps/server/src/command.ts"), "")
+    await writeFile(path.join(root, 'apps/web/src/components/command-palette.tsx'), '')
+    await writeFile(path.join(root, 'apps/server/src/command.ts'), '')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: false,
       limit: 20,
-      matchMode: "fuzzy",
+      matchMode: 'fuzzy',
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "components palette",
+      path: '',
+      query: 'components palette',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "name",
-        path: "apps/web/src/components/command-palette.tsx",
+        kind: 'name',
+        path: 'apps/web/src/components/command-palette.tsx',
       }),
     ])
   })
 
-  it("uses a deterministic path tie-breaker for equal filename matches", async () => {
+  it('uses a deterministic path tie-breaker for equal filename matches', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "a"), { recursive: true })
-    await mkdir(path.join(root, "b"), { recursive: true })
-    await writeFile(path.join(root, "b", "search.ts"), "")
-    await writeFile(path.join(root, "a", "search.ts"), "")
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await mkdir(path.join(root, 'b'), { recursive: true })
+    await writeFile(path.join(root, 'b', 'search.ts'), '')
+    await writeFile(path.join(root, 'a', 'search.ts'), '')
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
       includeContent: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "search",
+      path: '',
+      query: 'search',
     })
 
-    expect(result.matches.map((match) => match.path)).toEqual([
-      "a/search.ts",
-      "b/search.ts",
-    ])
+    expect(result.matches.map((match) => match.path)).toEqual(['a/search.ts', 'b/search.ts'])
   })
 
-  it("returns symlink name matches when filtering by symlink type", async () => {
+  it('returns symlink name matches when filtering by symlink type', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "target.ts"), "")
-    await symlink("target.ts", path.join(root, "search-link.ts"))
+    await writeFile(path.join(root, 'target.ts'), '')
+    await symlink('target.ts', path.join(root, 'search-link.ts'))
 
     const result = await findInWorkspace(createWorkspacePaths(root), {
-      entryType: "symlink",
+      entryType: 'symlink',
       includeContent: false,
       limit: 20,
       maxContentBytes: 1_000_000,
-      path: "",
-      query: "search",
+      path: '',
+      query: 'search',
     })
 
     expect(result.matches).toEqual([
       expect.objectContaining({
-        kind: "name",
-        path: "search-link.ts",
-        targetType: "file",
-        type: "symlink",
+        kind: 'name',
+        path: 'search-link.ts',
+        targetType: 'file',
+        type: 'symlink',
       }),
     ])
   })
 
-  it("returns no events when aborted before search starts", async () => {
+  it('returns no events when aborted before search starts', async () => {
     const root = await fixtureRoot()
-    await writeFile(path.join(root, "alpha.txt"), "needle")
+    await writeFile(path.join(root, 'alpha.txt'), 'needle')
     const controller = new AbortController()
     controller.abort()
     const provider = new DiskWorkspaceSearchProvider(createWorkspacePaths(root))
@@ -579,34 +556,30 @@ describe("workspace disk search provider", () => {
           includeContent: true,
           limit: 20,
           maxContentBytes: 1_000_000,
-          path: "",
-          query: "needle",
+          path: '',
+          query: 'needle',
         },
-        controller.signal
-      )
+        controller.signal,
+      ),
     )
 
     expect(events).toEqual([])
   })
 })
 
-describe("search line decoder", () => {
-  it("preserves utf-8 characters split across stream chunks", async () => {
-    const bytes = Buffer.from("café\nemoji 😀\n")
-    const chunks = [
-      bytes.subarray(0, 4),
-      bytes.subarray(4, 13),
-      bytes.subarray(13),
-    ]
+describe('search line decoder', () => {
+  it('preserves utf-8 characters split across stream chunks', async () => {
+    const bytes = Buffer.from('café\nemoji 😀\n')
+    const chunks = [bytes.subarray(0, 4), bytes.subarray(4, 13), bytes.subarray(13)]
 
     const lines = await collectEvents(readLines(Readable.from(chunks)))
 
-    expect(lines).toEqual(["café", "emoji 😀"])
+    expect(lines).toEqual(['café', 'emoji 😀'])
   })
 })
 
 async function fixtureRoot() {
-  const root = await mkdtemp(path.join(tmpdir(), "platform-search-"))
+  const root = await mkdtemp(path.join(tmpdir(), 'platform-search-'))
   roots.push(root)
   return root
 }

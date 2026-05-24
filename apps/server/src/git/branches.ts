@@ -1,7 +1,7 @@
-import type { GitBranch } from "./types"
+import type { GitBranch } from './types'
 
 export function parseBranches(output: string): GitBranch[] {
-  const fields = output.split("\0").filter(Boolean)
+  const fields = output.split('\0').filter(Boolean)
   const branches: GitBranch[] = []
 
   for (let index = 0; index < fields.length; index += 4) {
@@ -13,7 +13,7 @@ export function parseBranches(output: string): GitBranch[] {
 
     branches.push({
       commit,
-      current: marker === "*",
+      current: marker === '*',
       name,
       upstream: upstream || null,
     })

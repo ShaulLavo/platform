@@ -3,8 +3,8 @@ import {
   FloppyDiskIcon,
   TrashIcon,
   WarningCircleIcon,
-} from "@phosphor-icons/react"
-import { Button } from "@workspace/ui/components/button"
+} from '@phosphor-icons/react'
+import { Button } from '@workspace/ui/components/button'
 import {
   Dialog,
   DialogContent,
@@ -12,9 +12,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@workspace/ui/components/dialog"
+} from '@workspace/ui/components/dialog'
 
-import { basename } from "@/lib/path-formatters"
+import { basename } from '@/lib/path-formatters'
 
 type UnsavedChangesDialogProps = {
   canSave: boolean
@@ -39,7 +39,7 @@ export function UnsavedChangesDialog({
   onOpenChange,
   onSave,
 }: UnsavedChangesDialogProps) {
-  const name = path ? basename(path) : "this tab"
+  const name = path ? basename(path) : 'this tab'
   const description = canSave
     ? `Save changes to ${name} before closing?`
     : `${name} has unsaved changes that cannot be saved directly.`
@@ -47,7 +47,7 @@ export function UnsavedChangesDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[min(420px,calc(100vw-2rem))] max-w-none gap-4 rounded-lg border bg-background p-4 text-sm shadow-xl sm:max-w-none"
+        className='bg-background w-[min(420px,calc(100vw-2rem))] max-w-none gap-4 rounded-lg border p-4 text-sm shadow-xl sm:max-w-none'
         showCloseButton={false}
       >
         <DialogHeader>
@@ -55,46 +55,33 @@ export function UnsavedChangesDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {path ? (
-          <div className="truncate rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <div className='bg-muted/30 text-muted-foreground truncate rounded-md border px-3 py-2 text-xs'>
             {path}
           </div>
         ) : null}
         {error ? (
           <div
-            className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-            role="alert"
+            className='border-destructive/25 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border px-3 py-2 text-xs'
+            role='alert'
           >
-            <WarningCircleIcon className="mt-0.5 size-3.5 shrink-0" />
+            <WarningCircleIcon className='mt-0.5 size-3.5 shrink-0' />
             <span>{error}</span>
           </div>
         ) : null}
         <DialogFooter>
-          <Button
-            disabled={saving}
-            onClick={onCancel}
-            type="button"
-            variant="outline"
-          >
+          <Button disabled={saving} onClick={onCancel} type='button' variant='outline'>
             Cancel
           </Button>
-          <Button
-            disabled={saving}
-            onClick={onDiscard}
-            type="button"
-            variant="destructive"
-          >
-            <TrashIcon data-icon="inline-start" />
+          <Button disabled={saving} onClick={onDiscard} type='button' variant='destructive'>
+            <TrashIcon data-icon='inline-start' />
             Discard
           </Button>
           {canSave ? (
-            <Button disabled={saving} onClick={onSave} type="button">
+            <Button disabled={saving} onClick={onSave} type='button'>
               {saving ? (
-                <CircleNotchIcon
-                  className="animate-spin"
-                  data-icon="inline-start"
-                />
+                <CircleNotchIcon className='animate-spin' data-icon='inline-start' />
               ) : (
-                <FloppyDiskIcon data-icon="inline-start" />
+                <FloppyDiskIcon data-icon='inline-start' />
               )}
               Save
             </Button>

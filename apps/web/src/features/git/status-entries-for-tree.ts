@@ -1,11 +1,11 @@
-import type { GitStatusEntry } from "@pierre/trees"
+import type { GitStatusEntry } from '@pierre/trees'
 
-import { toTreePath } from "@/lib/path-formatters"
-import type { FileStatus, TreeStatus } from "./types"
+import { toTreePath } from '@/lib/path-formatters'
+import type { FileStatus, TreeStatus } from './types'
 
 export function statusEntriesForTree(
   files: readonly FileStatus[],
-  rootPath: string
+  rootPath: string,
 ): GitStatusEntry[] {
   const entries: GitStatusEntry[] = []
 
@@ -21,16 +21,14 @@ export function statusEntriesForTree(
 }
 
 function treePathForStatus(path: string, rootPath: string) {
-  if (path === rootPath) return ""
+  if (path === rootPath) return ''
   if (!path.startsWith(`${rootPath}/`)) return null
 
   return toTreePath(path, rootPath)
 }
 
-function fileTreeStatus(
-  status: TreeStatus | "conflicted"
-): GitStatusEntry["status"] | null {
-  if (status === "conflicted") return "modified"
+function fileTreeStatus(status: TreeStatus | 'conflicted'): GitStatusEntry['status'] | null {
+  if (status === 'conflicted') return 'modified'
 
   return status
 }

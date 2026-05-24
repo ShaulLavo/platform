@@ -1,17 +1,14 @@
-import { useSearchBufferRuntime } from "@/features/search/use-search-buffer"
-import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
-import type { WorkspacePanelTab } from "@/lib/workspace-cache"
+import { useSearchBufferRuntime } from '@/features/search/use-search-buffer'
+import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import type { WorkspacePanelTab } from '@/lib/workspace-cache'
 import {
   isCollapsedPanelSize,
   isWorkspacePanelTab,
   workspacePanelSelectionForTabActivation,
   type VisibleTreeItemCountSnapshot,
-} from "@/components/workspace/workspace-view-utils"
-import {
-  type PanelImperativeHandle,
-  type PanelSize,
-} from "@workspace/ui/components/resizable"
-import { useEffect, useRef, useState } from "react"
+} from '@/components/workspace/workspace-view-utils'
+import { type PanelImperativeHandle, type PanelSize } from '@workspace/ui/components/resizable'
+import { useEffect, useRef, useState } from 'react'
 
 export function useWorkspaceViewState({
   rootPath,
@@ -20,27 +17,17 @@ export function useWorkspaceViewState({
   rootPath: string
   treeReady: boolean
 }) {
-  const sidebarVisible = useEditorWorkspaceState(
-    (state) => state.sidebarVisible
-  )
-  const workspacePanelTab = useEditorWorkspaceState(
-    (state) => state.workspacePanelTab
-  )
-  const setSidebarVisible = useEditorWorkspaceState(
-    (state) => state.setSidebarVisible
-  )
-  const setWorkspacePanelTab = useEditorWorkspaceState(
-    (state) => state.setWorkspacePanelTab
-  )
+  const sidebarVisible = useEditorWorkspaceState((state) => state.sidebarVisible)
+  const workspacePanelTab = useEditorWorkspaceState((state) => state.workspacePanelTab)
+  const setSidebarVisible = useEditorWorkspaceState((state) => state.setSidebarVisible)
+  const setWorkspacePanelTab = useEditorWorkspaceState((state) => state.setWorkspacePanelTab)
   const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null)
   const terminalPanelRef = useRef<PanelImperativeHandle | null>(null)
   const [terminalCollapsed, setTerminalCollapsed] = useState(false)
   const [visibleTreeItemCount, setVisibleTreeItemCount] =
     useState<VisibleTreeItemCountSnapshot | null>(null)
   const currentVisibleTreeItemCount =
-    treeReady && visibleTreeItemCount?.rootPath === rootPath
-      ? visibleTreeItemCount.count
-      : null
+    treeReady && visibleTreeItemCount?.rootPath === rootPath ? visibleTreeItemCount.count : null
 
   useSearchBufferRuntime(rootPath)
 
@@ -65,7 +52,7 @@ export function useWorkspaceViewState({
   function selectWorkspacePanelTab(tab: WorkspacePanelTab) {
     const nextSelection = workspacePanelSelectionForTabActivation(
       { sidebarVisible, workspacePanelTab },
-      tab
+      tab,
     )
 
     if (nextSelection.workspacePanelTab !== workspacePanelTab) {
@@ -83,7 +70,7 @@ export function useWorkspaceViewState({
   function handleSidebarResize(
     size: PanelSize,
     _id: string | number | undefined,
-    previousSize: PanelSize | undefined
+    previousSize: PanelSize | undefined,
   ) {
     if (!previousSize) return
 
@@ -96,9 +83,7 @@ export function useWorkspaceViewState({
   function handleTerminalResize(size: PanelSize) {
     const nextCollapsed = isCollapsedPanelSize(size)
 
-    setTerminalCollapsed((current) =>
-      current === nextCollapsed ? current : nextCollapsed
-    )
+    setTerminalCollapsed((current) => (current === nextCollapsed ? current : nextCollapsed))
   }
 
   function handleToggleTerminal() {

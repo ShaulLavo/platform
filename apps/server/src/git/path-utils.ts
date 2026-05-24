@@ -1,16 +1,16 @@
-import { FsError } from "../fs/errors"
-import type { GitPathsBody } from "./contracts"
+import { FsError } from '../fs/errors'
+import type { GitPathsBody } from './contracts'
 
 export function mutationPaths(body: GitPathsBody) {
   if (body.paths.length > 0) return body.paths
 
-  throw new FsError("INVALID_PATH")
+  throw new FsError('INVALID_PATH')
 }
 
 export function pathspecArgs(pathspec: string | null) {
   if (!pathspec) return []
 
-  return ["--", pathspec]
+  return ['--', pathspec]
 }
 
 export function splitFields(record: string, count: number) {
@@ -18,8 +18,8 @@ export function splitFields(record: string, count: number) {
   let cursor = 0
 
   for (let field = 1; field < count; field += 1) {
-    const index = record.indexOf(" ", cursor)
-    if (index < 0) return [...fields, record.slice(cursor)]
+    const index = record.indexOf(' ', cursor)
+    if (index < 0) return fields.concat(record.slice(cursor))
 
     fields.push(record.slice(cursor, index))
     cursor = index + 1
@@ -38,7 +38,7 @@ export function joinPath(rootPath: string, childPath: string | undefined) {
 
 export function repositoryRelativePath(rootPath: string, filePath: string) {
   if (!rootPath) return filePath
-  if (filePath === rootPath) return ""
+  if (filePath === rootPath) return ''
 
   const prefix = `${rootPath}/`
   if (!filePath.startsWith(prefix)) return filePath
@@ -57,5 +57,5 @@ export function unquoteGitPath(value: string) {
 }
 
 export function ensureTrailingNewline(value: string) {
-  return value.endsWith("\n") ? value : `${value}\n`
+  return value.endsWith('\n') ? value : `${value}\n`
 }

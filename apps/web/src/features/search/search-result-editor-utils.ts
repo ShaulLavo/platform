@@ -1,8 +1,8 @@
-import type { EditorRangeDecoration } from "@editor/core"
-import type { CSSProperties, KeyboardEvent, RefObject } from "react"
+import type { EditorRangeDecoration } from '@editor/core'
+import type { CSSProperties, KeyboardEvent, RefObject } from 'react'
 
-import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
-import type { SearchResultId } from "@/features/search/search-result-items"
+import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
+import type { SearchResultId } from '@/features/search/search-result-items'
 import {
   searchResultFileDocumentLineAtRow,
   searchResultVirtualRowContainsId,
@@ -12,13 +12,13 @@ import {
   type SearchResultFileDocumentLine,
   type SearchResultRange,
   type SearchResultVirtualRow,
-} from "@/features/search/search-result-view-model"
+} from '@/features/search/search-result-view-model'
 import type {
   SearchResultVirtualListMetrics,
   SearchResultVirtualListViewport,
-} from "@/features/search/search-result-virtual-list"
-import { colorForFileIcon, type ResolvedFileIcon } from "@/lib/file-icons"
-import { cn } from "@workspace/ui/lib/utils"
+} from '@/features/search/search-result-virtual-list'
+import { colorForFileIcon, type ResolvedFileIcon } from '@/lib/file-icons'
+import { cn } from '@workspace/ui/lib/utils'
 
 import {
   EXCERPT_EDITOR_LINE_HEIGHT,
@@ -35,22 +35,22 @@ import {
   SEARCH_RESULT_VIRTUAL_FLING_OVERSCAN_RATIO,
   SEARCH_RESULT_VIRTUAL_FLING_SCROLL_PX_PER_MS,
   SEARCH_RESULT_VIRTUAL_ROW_OFFSET,
-} from "@/features/search/search-result-editor-constants"
+} from '@/features/search/search-result-editor-constants'
 import type {
   SearchResultEditorScrollToIndex,
   SearchResultRenderedFileResultItem,
   SearchResultRenderedVirtualItem,
   SearchResultVirtualOverscanLevel,
   SearchResultVirtualRowScrollTarget,
-} from "@/features/search/search-result-editor-types"
+} from '@/features/search/search-result-editor-types'
 
 const PASSIVE_MATCH_STYLE = {
-  backgroundColor: "var(--search-result-match-background)",
+  backgroundColor: 'var(--search-result-match-background)',
 } satisfies Partial<CSSStyleDeclaration>
 
 const ACTIVE_MATCH_STYLE = {
-  backgroundColor: "var(--search-result-match-active-background)",
-  textDecoration: "underline 1px var(--search-result-match-active-decoration)",
+  backgroundColor: 'var(--search-result-match-active-background)',
+  textDecoration: 'underline 1px var(--search-result-match-active-decoration)',
 } satisfies Partial<CSSStyleDeclaration>
 
 export function scrollActiveSearchResultIntoView({
@@ -70,7 +70,7 @@ export function scrollActiveSearchResultIntoView({
 
 export function resetSearchResultScroll(
   ref: RefObject<HTMLDivElement | null>,
-  scrollToOffset: (offset: number) => void
+  scrollToOffset: (offset: number) => void,
 ) {
   if (ref.current) ref.current.scrollTop = 0
 
@@ -79,7 +79,7 @@ export function resetSearchResultScroll(
 
 export function searchResultFileRangeDecorations(
   document: SearchResultFileDocument,
-  activeResultId: SearchResultId | null
+  activeResultId: SearchResultId | null,
 ) {
   const decorations: EditorRangeDecoration[] = []
   for (const line of document.lines) {
@@ -94,11 +94,9 @@ export function searchResultFileRangeDecorations(
 
 export function searchResultRangeDecoration(
   range: SearchResultRange,
-  active: boolean
+  active: boolean,
 ): EditorRangeDecoration {
-  const className = active
-    ? "search-result-match-active"
-    : "search-result-match"
+  const className = active ? 'search-result-match-active' : 'search-result-match'
   const style = active ? ACTIVE_MATCH_STYLE : PASSIVE_MATCH_STYLE
 
   return {
@@ -129,7 +127,7 @@ export function groupMap(groups: readonly WorkspaceSearchFileGroup[]) {
 
 export function searchResultVirtualRowIndex(
   rows: readonly SearchResultVirtualRow[],
-  id: SearchResultId | null
+  id: SearchResultId | null,
 ) {
   if (!id) return -1
 
@@ -138,10 +136,10 @@ export function searchResultVirtualRowIndex(
 
 export function searchResultVirtualRowScrollTarget(
   row: SearchResultVirtualRow | null,
-  activeResultId: SearchResultId | null
+  activeResultId: SearchResultId | null,
 ): SearchResultVirtualRowScrollTarget | null {
   if (!row) return null
-  if (row.type === "file") {
+  if (row.type === 'file') {
     return {
       offset: 0,
       size: FILE_ROW_ESTIMATE,
@@ -149,9 +147,7 @@ export function searchResultVirtualRowScrollTarget(
   }
   if (!activeResultId) return null
 
-  const index = row.file.excerpts.findIndex(
-    (excerpt) => excerpt.id === activeResultId
-  )
+  const index = row.file.excerpts.findIndex((excerpt) => excerpt.id === activeResultId)
   if (index < 0) return null
 
   return {
@@ -166,28 +162,22 @@ export function searchResultFileExcerptOffset(index: number) {
   return FILE_RESULTS_ROW_VERTICAL_PADDING / 2 + index * rowStep
 }
 
-export function searchResultVirtualRowEstimate(
-  row: SearchResultVirtualRow | undefined
-) {
-  if (row?.type === "file") return FILE_ROW_ESTIMATE
-  if (row?.type === "file-results")
-    return searchResultFileEditorRowHeight(row.file)
+export function searchResultVirtualRowEstimate(row: SearchResultVirtualRow | undefined) {
+  if (row?.type === 'file') return FILE_ROW_ESTIMATE
+  if (row?.type === 'file-results') return searchResultFileEditorRowHeight(row.file)
 
   return FILE_RESULTS_EDITOR_MIN_HEIGHT
 }
 
-export function searchResultVirtualRowKey(
-  row: SearchResultVirtualRow | undefined,
-  index: number
-) {
+export function searchResultVirtualRowKey(row: SearchResultVirtualRow | undefined, index: number) {
   if (!row) return `missing:${index}`
 
   return searchResultVirtualRowId(row)
 }
 
 export function searchResultRenderedVirtualItems(
-  virtualItems: SearchResultVirtualListMetrics["items"],
-  rows: readonly SearchResultVirtualRow[]
+  virtualItems: SearchResultVirtualListMetrics['items'],
+  rows: readonly SearchResultVirtualRow[],
 ): SearchResultRenderedVirtualItem[] {
   const renderedItems: SearchResultRenderedVirtualItem[] = []
 
@@ -206,23 +196,21 @@ export function searchResultRenderedVirtualItems(
 }
 
 export function isSearchResultRenderedFileResultItem(
-  item: SearchResultRenderedVirtualItem
+  item: SearchResultRenderedVirtualItem,
 ): item is SearchResultRenderedFileResultItem {
-  return item.row.type === "file-results"
+  return item.row.type === 'file-results'
 }
 
 export function searchResultVirtualRowStyle(
-  virtualItem: SearchResultVirtualListMetrics["items"][number]
+  virtualItem: SearchResultVirtualListMetrics['items'][number],
 ): CSSProperties {
   return {
-    contain: "layout paint style",
+    contain: 'layout paint style',
     transform: `translateY(${virtualItem.start + SEARCH_RESULT_VIRTUAL_ROW_OFFSET}px)`,
   }
 }
 
-export function searchResultVirtualRowInputs(
-  rows: readonly SearchResultVirtualRow[]
-) {
+export function searchResultVirtualRowInputs(rows: readonly SearchResultVirtualRow[]) {
   return rows.map((row, index) => ({
     key: searchResultVirtualRowKey(row, index),
     size: searchResultVirtualRowEstimate(row),
@@ -231,30 +219,30 @@ export function searchResultVirtualRowInputs(
 
 export function searchResultVirtualOverscan(
   viewportHeight: number,
-  level: SearchResultVirtualOverscanLevel
+  level: SearchResultVirtualOverscanLevel,
 ) {
   const height = Math.max(0, viewportHeight)
   if (level === 2) {
     return Math.max(
       SEARCH_RESULT_VIRTUAL_FLING_MIN_OVERSCAN,
-      Math.floor(height * SEARCH_RESULT_VIRTUAL_FLING_OVERSCAN_RATIO)
+      Math.floor(height * SEARCH_RESULT_VIRTUAL_FLING_OVERSCAN_RATIO),
     )
   }
   if (level === 1) {
     return Math.max(
       SEARCH_RESULT_VIRTUAL_FAST_MIN_OVERSCAN,
-      Math.floor(height * SEARCH_RESULT_VIRTUAL_FAST_OVERSCAN_RATIO)
+      Math.floor(height * SEARCH_RESULT_VIRTUAL_FAST_OVERSCAN_RATIO),
     )
   }
 
   return Math.max(
     SEARCH_RESULT_VIRTUAL_BASE_MIN_OVERSCAN,
-    Math.floor(height * SEARCH_RESULT_VIRTUAL_BASE_OVERSCAN_RATIO)
+    Math.floor(height * SEARCH_RESULT_VIRTUAL_BASE_OVERSCAN_RATIO),
   )
 }
 
 export function searchResultVirtualOverscanLevel(
-  velocityPxPerMs: number
+  velocityPxPerMs: number,
 ): SearchResultVirtualOverscanLevel {
   if (velocityPxPerMs >= SEARCH_RESULT_VIRTUAL_FLING_SCROLL_PX_PER_MS) return 2
   if (velocityPxPerMs >= SEARCH_RESULT_VIRTUAL_FAST_SCROLL_PX_PER_MS) return 1
@@ -264,7 +252,7 @@ export function searchResultVirtualOverscanLevel(
 
 export function equalSearchResultVirtualViewport(
   current: SearchResultVirtualListViewport,
-  next: SearchResultVirtualListViewport
+  next: SearchResultVirtualListViewport,
 ) {
   return current.height === next.height && current.top === next.top
 }
@@ -274,14 +262,14 @@ export function searchResultVirtualViewportHeight(entry: ResizeObserverEntry) {
 }
 
 export function searchResultVirtualRowExpanded(row: SearchResultVirtualRow) {
-  if (row.type !== "file") return undefined
+  if (row.type !== 'file') return undefined
   if (row.file.excerpts.length === 0) return undefined
 
   return !row.file.collapsed
 }
 
 export function scheduleSearchResultSyntaxEnable(callback: () => void) {
-  if (typeof window.requestIdleCallback === "function") {
+  if (typeof window.requestIdleCallback === 'function') {
     const id = window.requestIdleCallback(callback, { timeout: 800 })
     return () => window.cancelIdleCallback(id)
   }
@@ -290,13 +278,9 @@ export function scheduleSearchResultSyntaxEnable(callback: () => void) {
   return () => globalThis.clearTimeout(id)
 }
 
-export function openFileResultOnEnter(
-  event: KeyboardEvent<HTMLDivElement>,
-  onOpen: () => void
-) {
-  if (event.key !== "Enter") return false
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
-    return false
+export function openFileResultOnEnter(event: KeyboardEvent<HTMLDivElement>, onOpen: () => void) {
+  if (event.key !== 'Enter') return false
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false
 
   event.preventDefault()
   event.stopPropagation()
@@ -305,18 +289,15 @@ export function openFileResultOnEnter(
 }
 
 export function readonlyEditingKey(event: KeyboardEvent<HTMLDivElement>) {
-  if (event.key === "Backspace") return true
-  if (event.key === "Delete") return true
-  if (event.key === "Tab") return true
-  if (event.key !== "Enter") return false
+  if (event.key === 'Backspace') return true
+  if (event.key === 'Delete') return true
+  if (event.key === 'Tab') return true
+  if (event.key !== 'Enter') return false
 
   return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
 }
 
-export function preventReadonlyInput(event: {
-  preventDefault(): void
-  stopPropagation(): void
-}) {
+export function preventReadonlyInput(event: { preventDefault(): void; stopPropagation(): void }) {
   event.preventDefault()
   event.stopPropagation()
 }
@@ -324,13 +305,13 @@ export function preventReadonlyInput(event: {
 export function isSearchResultEditorActionTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false
 
-  return target.closest("button") !== null
+  return target.closest('button') !== null
 }
 
 export function searchResultFileLineIdAtClientY(
   document: SearchResultFileDocument,
   element: HTMLElement,
-  clientY: number
+  clientY: number,
 ) {
   const rect = element.getBoundingClientRect()
   const style = getComputedStyle(element)
@@ -341,12 +322,11 @@ export function searchResultFileLineIdAtClientY(
 
 export function searchResultFileLineIdAtOffsetY(
   document: SearchResultFileDocument,
-  offsetY: number
+  offsetY: number,
 ) {
   if (offsetY < 0) return null
 
-  const rowStride =
-    EXCERPT_EDITOR_LINE_HEIGHT + SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+  const rowStride = EXCERPT_EDITOR_LINE_HEIGHT + SEARCH_RESULT_FILE_EDITOR_ROW_GAP
   const row = Math.floor(offsetY / rowStride)
   const rowTop = row * rowStride
   if (offsetY > rowTop + EXCERPT_EDITOR_LINE_HEIGHT) return null
@@ -356,15 +336,11 @@ export function searchResultFileLineIdAtOffsetY(
 
 export function currentSearchResultFileLine(
   document: SearchResultFileDocument,
-  controller: { getState(): { cursor: { row: number } } | null }
+  controller: { getState(): { cursor: { row: number } } | null },
 ) {
   const row = controller.getState()?.cursor.row
 
-  return (
-    searchResultFileDocumentLineAtRow(document, row) ??
-    document.lines[0] ??
-    null
-  )
+  return searchResultFileDocumentLineAtRow(document, row) ?? document.lines[0] ?? null
 }
 
 export function searchResultFileDocumentId(file: SearchResultFileBlock) {
@@ -373,16 +349,15 @@ export function searchResultFileDocumentId(file: SearchResultFileBlock) {
 
 export function searchResultLineOpenLabel(line: SearchResultFileDocumentLine) {
   const match = line.sourceMatch
-  if (typeof match.column !== "number")
-    return `Open result at line ${line.sourceLine}`
+  if (typeof match.column !== 'number') return `Open result at line ${line.sourceLine}`
 
   return `Open result at line ${line.sourceLine}, column ${match.column}`
 }
 
 export function searchResultLineActionClassName(active: boolean) {
   return cn(
-    "pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
-    active && "pointer-events-auto opacity-100"
+    'pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100',
+    active && 'pointer-events-auto opacity-100',
   )
 }
 
@@ -390,10 +365,7 @@ export function searchResultDomId(treeId: string, itemId: string) {
   return `${treeId}-${itemId}`
 }
 
-export function searchResultFileContainsId(
-  file: SearchResultFileBlock,
-  id: SearchResultId | null
-) {
+export function searchResultFileContainsId(file: SearchResultFileBlock, id: SearchResultId | null) {
   if (!id) return false
   if (file.id === id) return true
 
@@ -401,11 +373,11 @@ export function searchResultFileContainsId(
 }
 
 export function matchNoun(count: number) {
-  return count === 1 ? "match" : "matches"
+  return count === 1 ? 'match' : 'matches'
 }
 
 export function fileName(path: string) {
-  return path.split("/").at(-1) || path
+  return path.split('/').at(-1) || path
 }
 
 export function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
@@ -422,9 +394,7 @@ export function decimalDigitCount(value: number) {
   return String(Math.max(1, Math.floor(value))).length
 }
 
-export function searchResultFileEditorStyle(
-  document: SearchResultFileDocument
-): CSSProperties {
+export function searchResultFileEditorStyle(document: SearchResultFileDocument): CSSProperties {
   return {
     height: searchResultFileEditorHeight(document.lines.length),
   }
@@ -432,7 +402,7 @@ export function searchResultFileEditorStyle(
 
 export function searchResultSourceLineGutterStyle(
   lineCount: number,
-  minDigits: number
+  minDigits: number,
 ): CSSProperties {
   return {
     gap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
@@ -452,17 +422,11 @@ export function searchResultLineActionsStyle(lineCount: number): CSSProperties {
 }
 
 export function searchResultFileEditorRowHeight(file: SearchResultFileBlock) {
-  return (
-    searchResultFileEditorHeight(file.excerpts.length) +
-    FILE_RESULTS_ROW_VERTICAL_PADDING
-  )
+  return searchResultFileEditorHeight(file.excerpts.length) + FILE_RESULTS_ROW_VERTICAL_PADDING
 }
 
 export function searchResultFileEditorHeight(lineCount: number) {
   const rowGaps = Math.max(0, lineCount - 1) * SEARCH_RESULT_FILE_EDITOR_ROW_GAP
 
-  return Math.max(
-    FILE_RESULTS_EDITOR_MIN_HEIGHT,
-    lineCount * EXCERPT_EDITOR_LINE_HEIGHT + rowGaps
-  )
+  return Math.max(FILE_RESULTS_EDITOR_MIN_HEIGHT, lineCount * EXCERPT_EDITOR_LINE_HEIGHT + rowGaps)
 }

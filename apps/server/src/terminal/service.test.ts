@@ -1,140 +1,127 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import path from "node:path"
-import { afterEach, describe, expect, it } from "bun:test"
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'bun:test'
 import {
   TERMINAL_MAX_COLS,
   TERMINAL_MIN_ROWS,
   type TerminalServerMessage,
-} from "@workspace/contracts"
+} from '@workspace/contracts'
 
-import { createAuthConfig } from "../auth"
-import { createWorkspacePaths } from "../fs/path"
-import {
-  TerminalService,
-  type TerminalPtyExitEvent,
-  type TerminalPtyFactory,
-} from "./service"
+import { createAuthConfig } from '../auth'
+import { createWorkspacePaths } from '../fs/path'
+import { TerminalService, type TerminalPtyExitEvent, type TerminalPtyFactory } from './service'
 
-const TRUSTED_ORIGIN = "http://localhost:5173"
+const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
 
 afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
-  )
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
-describe("terminal service", () => {
-  it("spawns the user shell in the resolved workspace cwd", async () => {
+describe('terminal service', () => {
+  it('spawns the user shell in the resolved workspace cwd', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, "project"))
+    await mkdir(path.join(root, 'project'))
     const pty = createFakePtyFactory()
     const service = testService(root, {
-      env: { SHELL: "/bin/zsh" },
+      env: { SHELL: '/bin/zsh' },
       ptyFactory: pty.factory,
     })
-    const ws = fakeSocket("project")
+    const ws = fakeSocket('project')
 
     service.routes(auth()).open(ws)
 
     expect(pty.spawns).toEqual([
       expect.objectContaining({
-        cwd: path.join(root, "project"),
-        shell: "/bin/zsh",
+        cwd: path.join(root, 'project'),
+        shell: '/bin/zsh',
       }),
     ])
     expect(ws.messages[0]).toEqual({
-      cwd: path.join(root, "project"),
-      shell: "/bin/zsh",
-      type: "ready",
+      cwd: path.join(root, 'project'),
+      shell: '/bin/zsh',
+      type: 'ready',
     })
   })
 
-  it("falls back from bash to sh when no user shell is available", async () => {
+  it('falls back from bash to sh when no user shell is available', async () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory({
-      failShells: new Set(["bash"]),
+      failShells: new Set(['bash']),
     })
     const service = testService(root, {
       env: {},
       ptyFactory: pty.factory,
     })
-    const ws = fakeSocket("")
+    const ws = fakeSocket('')
 
     service.routes(auth()).open(ws)
 
-    expect(pty.spawns.map((spawn) => spawn.shell)).toEqual(["bash", "sh"])
-    expect(ws.messages[0]).toMatchObject({ shell: "sh", type: "ready" })
+    expect(pty.spawns.map((spawn) => spawn.shell)).toEqual(['bash', 'sh'])
+    expect(ws.messages[0]).toMatchObject({ shell: 'sh', type: 'ready' })
   })
 
-  it("ignores malformed messages and normalizes resize bounds", async () => {
+  it('ignores malformed messages and normalizes resize bounds', async () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const ws = fakeSocket("")
+    const ws = fakeSocket('')
 
     routes.open(ws)
-    routes.message(ws, { type: "input", data: "pwd\r" })
-    routes.message(ws, { type: "input", data: 1 })
-    routes.message(ws, "{")
+    routes.message(ws, { type: 'input', data: 'pwd\r' })
+    routes.message(ws, { type: 'input', data: 1 })
+    routes.message(ws, '{')
     routes.message(ws, {
       cols: TERMINAL_MAX_COLS + 100,
       rows: TERMINAL_MIN_ROWS - 100,
-      type: "resize",
+      type: 'resize',
     })
 
-    expect(pty.ptys[0]?.writes).toEqual(["pwd\r"])
-    expect(pty.ptys[0]?.resizes).toEqual([
-      [TERMINAL_MAX_COLS, TERMINAL_MIN_ROWS],
-    ])
+    expect(pty.ptys[0]?.writes).toEqual(['pwd\r'])
+    expect(pty.ptys[0]?.resizes).toEqual([[TERMINAL_MAX_COLS, TERMINAL_MIN_ROWS]])
   })
 
-  it("kills PTYs on socket close and service disposal", async () => {
+  it('kills PTYs on socket close and service disposal', async () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const first = fakeSocket("")
-    const second = fakeSocket("")
+    const first = fakeSocket('')
+    const second = fakeSocket('')
 
     routes.open(first)
     routes.open(second)
     routes.close(first)
     service.dispose()
 
-    expect(pty.ptys.map((ptyProcess) => ptyProcess.killed)).toEqual([
-      true,
-      true,
-    ])
+    expect(pty.ptys.map((ptyProcess) => ptyProcess.killed)).toEqual([true, true])
   })
 
-  it("streams output through the default Node-backed PTY bridge", async () => {
+  it('streams output through the default Node-backed PTY bridge', async () => {
     const root = await fixtureRoot()
     const service = testService(root, {
       env: {
         HOME: root,
         PATH: process.env.PATH,
-        SHELL: "sh",
+        SHELL: 'sh',
       },
     })
     const routes = service.routes(auth())
-    const ws = fakeSocket("")
+    const ws = fakeSocket('')
 
     routes.open(ws)
     routes.message(ws, {
-      data: "printf platform-terminal-ready\\n\nexit\n",
-      type: "input",
+      data: 'printf platform-terminal-ready\\n\nexit\n',
+      type: 'input',
     })
 
-    await waitForTerminalOutput(ws.messages, "platform-terminal-ready")
+    await waitForTerminalOutput(ws.messages, 'platform-terminal-ready')
     routes.close(ws)
     service.dispose()
 
-    expect(terminalOutputText(ws.messages)).toContain(
-      "platform-terminal-ready"
-    )
+    expect(terminalOutputText(ws.messages)).toContain('platform-terminal-ready')
   })
 })
 
@@ -143,7 +130,7 @@ function testService(
   options: {
     env?: NodeJS.ProcessEnv
     ptyFactory?: TerminalPtyFactory
-  } = {}
+  } = {},
 ) {
   return new TerminalService({
     paths: createWorkspacePaths(root),
@@ -152,7 +139,7 @@ function testService(
 }
 
 async function fixtureRoot() {
-  const root = await mkdtemp(path.join(tmpdir(), "platform-terminal-"))
+  const root = await mkdtemp(path.join(tmpdir(), 'platform-terminal-'))
   roots.push(root)
   return root
 }
@@ -190,7 +177,7 @@ function createFakePtyFactory({
   const spawns: Parameters<TerminalPtyFactory>[0][] = []
   const factory: TerminalPtyFactory = (options) => {
     spawns.push(options)
-    if (failShells.has(options.shell)) throw new Error("missing shell")
+    if (failShells.has(options.shell)) throw new Error('missing shell')
 
     const pty = new FakePty()
     ptys.push(pty)
@@ -200,10 +187,7 @@ function createFakePtyFactory({
   return { factory, ptys, spawns }
 }
 
-async function waitForTerminalOutput(
-  messages: readonly TerminalServerMessage[],
-  text: string
-) {
+async function waitForTerminalOutput(messages: readonly TerminalServerMessage[], text: string) {
   const deadline = Date.now() + 5_000
   while (Date.now() < deadline) {
     if (terminalOutputText(messages).includes(text)) return
@@ -216,9 +200,9 @@ async function waitForTerminalOutput(
 
 function terminalOutputText(messages: readonly TerminalServerMessage[]) {
   return messages
-    .filter((message) => message.type === "output")
+    .filter((message) => message.type === 'output')
     .map((message) => message.data)
-    .join("")
+    .join('')
 }
 
 class FakePty {
@@ -226,9 +210,7 @@ class FakePty {
   readonly resizes: Array<[number, number]> = []
   readonly writes: string[] = []
   private readonly dataListeners = new Set<(data: string) => void>()
-  private readonly exitListeners = new Set<
-    (event: TerminalPtyExitEvent) => void
-  >()
+  private readonly exitListeners = new Set<(event: TerminalPtyExitEvent) => void>()
 
   kill() {
     this.killed = true

@@ -1,12 +1,7 @@
-import { readdir, stat } from "node:fs/promises"
-import path from "node:path"
-import { FsError, mapNodeError } from "./errors"
-import {
-  isIgnoredPath,
-  treeIgnoredNames,
-  toPosix,
-  type WorkspacePaths,
-} from "./path"
+import { readdir, stat } from 'node:fs/promises'
+import path from 'node:path'
+import { FsError, mapNodeError } from './errors'
+import { isIgnoredPath, treeIgnoredNames, toPosix, type WorkspacePaths } from './path'
 import {
   assertDirectory,
   effectiveEntryType,
@@ -14,8 +9,8 @@ import {
   matchesEntryType,
   readEntryStats,
   type FsEntryType,
-} from "./stat"
-import type { EntryTypeFilter } from "./contracts"
+} from './stat'
+import type { EntryTypeFilter } from './contracts'
 
 export type TreeEntry = {
   name: string
@@ -44,7 +39,7 @@ export async function readTree(
   input: string,
   depth = 1,
   entryType?: EntryTypeFilter,
-  options: TreeReadOptions = {}
+  options: TreeReadOptions = {},
 ): Promise<TreeResult> {
   const target = paths.resolve(input)
   const limit = createTaskLimiter(options.concurrency ?? 32)
@@ -61,7 +56,7 @@ export async function readTree(
         target.relativePath,
         depth,
         entryType,
-        limit
+        limit,
       ),
     }
   } catch (error) {
@@ -76,21 +71,13 @@ async function readEntries(
   relativeDirectory: string,
   depth: number,
   entryType: EntryTypeFilter | undefined,
-  limit: TaskLimiter
+  limit: TaskLimiter,
 ) {
   const dirents = await readdir(absoluteDirectory, { withFileTypes: true })
   const entries = await Promise.all(
     dirents.map((dirent) =>
-      readEntry(
-        paths,
-        absoluteDirectory,
-        relativeDirectory,
-        dirent.name,
-        depth,
-        entryType,
-        limit
-      )
-    )
+      readEntry(paths, absoluteDirectory, relativeDirectory, dirent.name, depth, entryType, limit),
+    ),
   )
 
   return entries.filter(isTreeEntry).sort(compareTreeEntries)
@@ -103,11 +90,9 @@ async function readEntry(
   name: string,
   depth: number,
   entryType: EntryTypeFilter | undefined,
-  limit: TaskLimiter
+  limit: TaskLimiter,
 ) {
-  const entry = await limit(() =>
-    readEntryMetadata(absoluteDirectory, relativeDirectory, name)
-  )
+  const entry = await limit(() => readEntryMetadata(absoluteDirectory, relativeDirectory, name))
   if (!entry) return null
 
   if (!isDirectoryEntry(entry)) return matchingEntry(entry, entryType)
@@ -119,7 +104,7 @@ async function readEntry(
     entry.path,
     depth - 1,
     entryType,
-    limit
+    limit,
   )
   return matchingEntry(entry, entryType)
 }
@@ -127,7 +112,7 @@ async function readEntry(
 async function readEntryMetadata(
   absoluteDirectory: string,
   relativeDirectory: string,
-  name: string
+  name: string,
 ): Promise<TreeEntry | null> {
   const relativePath = joinRelative(relativeDirectory, name)
   if (isIgnoredPath(relativePath, treeIgnoredNames)) return null
@@ -181,8 +166,8 @@ function joinRelative(parent: string, child: string) {
 function compareTreeEntries(a: TreeEntry, b: TreeEntry) {
   const aType = effectiveEntryType(a)
   const bType = effectiveEntryType(b)
-  if (aType === "directory" && bType !== "directory") return -1
-  if (aType !== "directory" && bType === "directory") return 1
+  if (aType === 'directory' && bType !== 'directory') return -1
+  if (aType !== 'directory' && bType === 'directory') return 1
 
   if (a.name < b.name) return -1
   if (a.name > b.name) return 1

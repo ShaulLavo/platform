@@ -1,13 +1,13 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from 'bun:test'
 
 import {
   CHROME_TAB_OVERLAP,
   CHROME_TAB_TRAILING_SLOT_WIDTH,
   chromeTabLayout,
-} from "@/components/workspace/chrome-tab-layout"
+} from '@/components/workspace/chrome-tab-layout'
 
-describe("chromeTabLayout", () => {
-  it("keeps normal tabs at standard width when there is room", () => {
+describe('chromeTabLayout', () => {
+  it('keeps normal tabs at standard width when there is room', () => {
     const layout = chromeTabLayout({
       activeIndex: 0,
       availableWidth: 800,
@@ -18,7 +18,7 @@ describe("chromeTabLayout", () => {
     expect(layout.tabs.map((tab) => tab.width)).toEqual([224, 224, 224])
   })
 
-  it("shrinks normal tabs evenly when space gets tighter", () => {
+  it('shrinks normal tabs evenly when space gets tighter', () => {
     const layout = chromeTabLayout({
       activeIndex: 0,
       availableWidth: 600,
@@ -30,7 +30,7 @@ describe("chromeTabLayout", () => {
     expect(layout.trackWidth).toBe(600)
   })
 
-  it("uses the full available strip until tabs reach standard width", () => {
+  it('uses the full available strip until tabs reach standard width', () => {
     const layout = chromeTabLayout({
       activeIndex: 0,
       availableWidth: 700,
@@ -42,7 +42,7 @@ describe("chromeTabLayout", () => {
     expect(layout.trackWidth).toBe(700)
   })
 
-  it("waits until minimum widths overflow before overlapping tabs", () => {
+  it('waits until minimum widths overflow before overlapping tabs', () => {
     const layout = chromeTabLayout({
       activeIndex: 3,
       availableWidth: 400,
@@ -50,13 +50,11 @@ describe("chromeTabLayout", () => {
     })
 
     expect(layout.overlap).toBe(0)
-    expect(layout.tabs.map((tab) => tab.width)).toEqual([
-      64, 64, 64, 80, 64, 64,
-    ])
+    expect(layout.tabs.map((tab) => tab.width)).toEqual([64, 64, 64, 80, 64, 64])
     expect(layout.trackWidth).toBe(400)
   })
 
-  it("overlaps tabs as a last resort when minimum widths barely overflow", () => {
+  it('overlaps tabs as a last resort when minimum widths barely overflow', () => {
     const layout = chromeTabLayout({
       activeIndex: 3,
       availableWidth: 360,
@@ -64,13 +62,11 @@ describe("chromeTabLayout", () => {
     })
 
     expect(layout.overlap).toBe(8)
-    expect(layout.tabs.map((tab) => tab.width)).toEqual([
-      64, 64, 64, 80, 64, 64,
-    ])
+    expect(layout.tabs.map((tab) => tab.width)).toEqual([64, 64, 64, 80, 64, 64])
     expect(layout.trackWidth).toBe(360)
   })
 
-  it("overflows with minimum widths when the strip cannot fit", () => {
+  it('overflows with minimum widths when the strip cannot fit', () => {
     const layout = chromeTabLayout({
       activeIndex: 0,
       availableWidth: 10,
@@ -82,7 +78,7 @@ describe("chromeTabLayout", () => {
     expect(layout.trackWidth).toBe(172)
   })
 
-  it("does not advance tabs by the max overlap when there is enough room", () => {
+  it('does not advance tabs by the max overlap when there is enough room', () => {
     const layout = chromeTabLayout({
       activeIndex: 0,
       availableWidth: 800,
@@ -94,7 +90,7 @@ describe("chromeTabLayout", () => {
     expect(layout.trackWidth).toBe(224 * 3)
   })
 
-  it("advances each tab by width minus the active overlap", () => {
+  it('advances each tab by width minus the active overlap', () => {
     const layout = chromeTabLayout({
       activeIndex: 3,
       availableWidth: 360,
@@ -105,7 +101,7 @@ describe("chromeTabLayout", () => {
     expect(layout.trackWidth).toBe(360)
   })
 
-  it("adds trailing slot width to standard tabs when there is room", () => {
+  it('adds trailing slot width to standard tabs when there is room', () => {
     const layout = chromeTabLayout({
       activeIndex: 0,
       availableWidth: 800,
@@ -118,7 +114,7 @@ describe("chromeTabLayout", () => {
     expect(layout.trackWidth).toBe(700)
   })
 
-  it("shrinks content while preserving a reserved trailing slot", () => {
+  it('shrinks content while preserving a reserved trailing slot', () => {
     const layout = chromeTabLayout({
       activeIndex: 0,
       availableWidth: 600,
@@ -131,7 +127,7 @@ describe("chromeTabLayout", () => {
     expect(layout.trackWidth).toBe(600)
   })
 
-  it("overlaps after minimum widths include trailing slots", () => {
+  it('overlaps after minimum widths include trailing slots', () => {
     const layout = chromeTabLayout({
       activeIndex: 3,
       availableWidth: 360,
@@ -140,9 +136,7 @@ describe("chromeTabLayout", () => {
     })
 
     expect(layout.overlap).toBeCloseTo(13.6)
-    expect(layout.tabs.map((tab) => tab.width)).toEqual([
-      64, 92, 64, 80, 64, 64,
-    ])
+    expect(layout.tabs.map((tab) => tab.width)).toEqual([64, 92, 64, 80, 64, 64])
     expect(layout.trackWidth).toBeCloseTo(360)
   })
 })

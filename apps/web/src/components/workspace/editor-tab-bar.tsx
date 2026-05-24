@@ -9,7 +9,7 @@ import {
   FloppyDiskIcon,
   RowsIcon,
   XIcon,
-} from "@phosphor-icons/react"
+} from '@phosphor-icons/react'
 import {
   useEffect,
   useLayoutEffect,
@@ -19,7 +19,7 @@ import {
   type CSSProperties,
   type RefObject,
   type ReactNode,
-} from "react"
+} from 'react'
 
 import {
   CHROME_TAB_ACTIVE_MIN_WIDTH,
@@ -29,92 +29,78 @@ import {
   CHROME_TAB_STANDARD_WIDTH,
   CHROME_TAB_TRAILING_SLOT_WIDTH,
   chromeTabLayout,
-} from "@/components/workspace/chrome-tab-layout"
+} from '@/components/workspace/chrome-tab-layout'
 import {
   editorTabCloseTargetIds,
   type EditorTabCloseTargetKind,
-} from "@/components/workspace/editor-tab-close-targets"
+} from '@/components/workspace/editor-tab-close-targets'
 import {
   useChromeVisualTabs,
   type ChromeVisualTab,
-} from "@/components/workspace/use-chrome-visual-tabs"
+} from '@/components/workspace/use-chrome-visual-tabs'
 import {
   editorTabInsertionEdge,
   useEditorTabDrag,
   type EditorTabDragController,
   type EditorTabInsertionEdge,
-} from "@/components/workspace/use-editor-tab-drag"
+} from '@/components/workspace/use-editor-tab-drag'
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
-} from "@/features/editor/utils/diff-view-mode"
+} from '@/features/editor/utils/diff-view-mode'
 import {
   conflictDiffDocumentLabel,
   conflictDiffDocumentTitle,
   parseConflictDiffDocumentId,
-} from "@/features/editor/conflict-diff-document"
-import { useEditorCommands } from "@/features/editor/state/editor-commands"
+} from '@/features/editor/conflict-diff-document'
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import {
   activeTabForPane,
   findEditorPane,
   type EditorPaneSplitDirection,
   type EditorPaneTab,
-} from "@/features/editor/state/editor-pane-state"
-import { useEditorConflictState } from "@/features/editor/state/editor-conflict-state"
-import { useEditorDocumentState } from "@/features/editor/state/editor-document-state"
-import type {
-  RequestCloseTab,
-  RequestCloseTabs,
-} from "@/features/editor/hooks/use-dirty-tab-close"
-import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
-import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+} from '@/features/editor/state/editor-pane-state'
+import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
+import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
+import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
+import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import {
   diffDocumentLabel,
   diffDocumentShortHash,
   diffDocumentTitle,
   parseDiffDocumentId,
-} from "@/features/git/diff-document"
+} from '@/features/git/diff-document'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
-} from "@/features/search/search-buffer-document"
-import { useStatus } from "@/features/git/hooks"
-import {
-  gitStatusSymbol,
-  type GitSymbolSource,
-} from "@/features/git/status-symbols"
-import type { FileStatus } from "@/features/git/types"
-import {
-  colorForFileIcon,
-  iconForEntry,
-  type ResolvedFileIcon,
-} from "@/lib/file-icons"
-import { basename, displayPath } from "@/lib/path-formatters"
-import { Button } from "@workspace/ui/components/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@workspace/ui/components/tooltip"
+} from '@/features/search/search-buffer-document'
+import { useStatus } from '@/features/git/hooks'
+import { gitStatusSymbol, type GitSymbolSource } from '@/features/git/status-symbols'
+import type { FileStatus } from '@/features/git/types'
+import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
+import { basename, displayPath } from '@/lib/path-formatters'
+import { Button } from '@workspace/ui/components/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@workspace/ui/components/context-menu"
-import { cn } from "@workspace/ui/lib/utils"
-import { toast } from "sonner"
+} from '@workspace/ui/components/context-menu'
+import { cn } from '@workspace/ui/lib/utils'
+import { toast } from 'sonner'
 
-export type EditorTabSizing = "chrome" | "fit" | "fixed" | "shrink"
+export type EditorTabSizing = 'chrome' | 'fit' | 'fixed' | 'shrink'
 
-const DEFAULT_EDITOR_TAB_SIZING: EditorTabSizing = "chrome"
+const DEFAULT_EDITOR_TAB_SIZING: EditorTabSizing = 'chrome'
 const CHROME_TAB_GROW_DELAY_MS = 1200
 const CHROME_TAB_TRANSITION =
-  "flex-basis 160ms cubic-bezier(0.2, 0, 0, 1), margin-left 160ms cubic-bezier(0.2, 0, 0, 1), max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)"
+  'flex-basis 160ms cubic-bezier(0.2, 0, 0, 1), margin-left 160ms cubic-bezier(0.2, 0, 0, 1), max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)'
 const CHROME_TAB_SLOT_TRANSITION =
-  "max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)"
+  'max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)'
 
 type EditorTabModel = {
   active: boolean
@@ -156,19 +142,14 @@ export function EditorTabBar({
   const selectedTabRef = useRef<HTMLDivElement>(null)
   const tabListRef = useRef<HTMLDivElement>(null)
   const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
-  const editorPaneLayout = useEditorWorkspaceState(
-    (state) => state.editorPaneLayout
-  )
+  const editorPaneLayout = useEditorWorkspaceState((state) => state.editorPaneLayout)
   const pane = findEditorPane(editorPaneLayout.root, paneId)
   const selectedTab = pane ? activeTabForPane(pane) : null
   const selectedFilePath = selectedTab?.path ?? null
   const selectedDiff = parseDiffDocumentId(selectedFilePath)
   const conflicts = useEditorConflictState((state) => state.conflicts)
-  const { moveTabToPane, reorderTab, selectFile, selectTab, splitTab } =
-    useEditorCommands()
-  const requestEditorFocus = useWorkspaceFocus(
-    (state) => state.requestEditorFocus
-  )
+  const { moveTabToPane, reorderTab, selectFile, selectTab, splitTab } = useEditorCommands()
+  const requestEditorFocus = useWorkspaceFocus((state) => state.requestEditorFocus)
   const gitStatus = useStatus(rootPath)
   const gitFiles = gitStatus.data?.files ?? EMPTY_GIT_FILES
   const editorTabs = useMemo(
@@ -181,26 +162,21 @@ export function EditorTabBar({
           tab,
           rootPath,
           selectedTabId: selectedTab?.id ?? null,
-        })
+        }),
       ),
-    [conflicts, dirtyFilePaths, gitFiles, pane?.tabs, rootPath, selectedTab?.id]
+    [conflicts, dirtyFilePaths, gitFiles, pane?.tabs, rootPath, selectedTab?.id],
   )
-  const visualTabs = useChromeVisualTabs(
-    editorTabs,
-    tabSizing === "chrome",
-    sameEditorTabModel
-  )
+  const visualTabs = useChromeVisualTabs(editorTabs, tabSizing === 'chrome', sameEditorTabModel)
   const tabDrag = useEditorTabDrag({
     paneId,
     tabs: editorTabs,
-    onMoveToPane: (tabId, targetIndex) =>
-      moveTabToPane(tabId, paneId, targetIndex),
+    onMoveToPane: (tabId, targetIndex) => moveTabToPane(tabId, paneId, targetIndex),
     tabListRef,
     onReorder: (tabId, targetIndex) => reorderTab(paneId, tabId, targetIndex),
   })
 
   useLayoutEffect(() => {
-    if (tabSizing === "chrome") return
+    if (tabSizing === 'chrome') return
     if (!selectedFilePath) return
 
     scrollSelectedTabIntoView(tabListRef.current, selectedTabRef.current)
@@ -221,24 +197,24 @@ export function EditorTabBar({
 
   return (
     <nav
-      aria-label="Open files"
+      aria-label='Open files'
       className={cn(
-        "flex min-w-0 shrink-0 border-b bg-muted/30",
-        tabSizing === "chrome" ? "h-[41px]" : "h-10"
+        'flex min-w-0 shrink-0 border-b bg-muted/30',
+        tabSizing === 'chrome' ? 'h-[41px]' : 'h-10',
       )}
     >
       <div
         className={cn(
-          "app-scrollbar-thin min-w-0 flex-1 overflow-x-auto",
-          tabSizing === "chrome" ? "relative overflow-y-hidden" : "flex"
+          'app-scrollbar-thin min-w-0 flex-1 overflow-x-auto',
+          tabSizing === 'chrome' ? 'relative overflow-y-hidden' : 'flex',
         )}
         ref={tabListRef}
-        role="tablist"
+        role='tablist'
         onDragLeave={tabDrag.onDragLeave}
         onDragOver={tabDrag.onDragOver}
         onDrop={tabDrag.onDrop}
       >
-        {tabSizing === "chrome" ? (
+        {tabSizing === 'chrome' ? (
           <ChromeEditorTabList
             selectedTabRef={selectedTabRef}
             tabListRef={tabListRef}
@@ -288,7 +264,7 @@ function LegacyEditorTabList({
 }: {
   drag: EditorTabDragController
   selectedTabRef: RefObject<HTMLDivElement | null>
-  tabSizing: Exclude<EditorTabSizing, "chrome">
+  tabSizing: Exclude<EditorTabSizing, 'chrome'>
   tabs: readonly EditorTabModel[]
   onClose: RequestCloseTab
   onCloseTabs: RequestCloseTabs
@@ -296,7 +272,7 @@ function LegacyEditorTabList({
   onSelect: (tab: EditorTabModel) => void
 }) {
   return (
-    <div className="flex min-w-full flex-1 items-end">
+    <div className='flex min-w-full flex-1 items-end'>
       {tabs.map((tab) => {
         const showCloseIcon = tab.active && !tab.dirty
         const insertionEdge = editorTabInsertionEdge(tabs, tab, drag.state)
@@ -305,11 +281,10 @@ function LegacyEditorTabList({
           <ContextMenu key={tab.id}>
             <ContextMenuTrigger
               className={cn(
-                "group relative flex h-10 cursor-grab items-center border-r border-border bg-background/40 text-xs active:cursor-grabbing",
+                'group relative flex h-10 cursor-grab items-center border-r border-border bg-background/40 text-xs active:cursor-grabbing',
                 tabSizingClassName(tabSizing),
                 tabDragClassName(insertionEdge, drag.draggedTabId === tab.id),
-                tab.active &&
-                  "border-t-2 border-t-foreground bg-background text-foreground"
+                tab.active && 'border-t-2 border-t-foreground bg-background text-foreground',
               )}
               data-editor-tab-id={tab.id}
               data-editor-tab-path={tab.path}
@@ -321,8 +296,8 @@ function LegacyEditorTabList({
               <button
                 aria-selected={tab.active}
                 className={cn(
-                  "flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
-                  tab.active && "text-foreground"
+                  'flex h-full min-w-0 flex-1 items-center gap-2 px-3 text-left text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
+                  tab.active && 'text-foreground',
                 )}
                 onClick={() => onSelect(tab)}
                 onDragEnd={drag.onDragEnd}
@@ -331,22 +306,22 @@ function LegacyEditorTabList({
                   drag.onDragStart(event, tab)
                 }}
                 draggable
-                role="tab"
+                role='tab'
                 title={tab.title}
-                type="button"
+                type='button'
               >
                 <span
-                  aria-hidden="true"
-                  className="size-3.5 shrink-0 object-contain"
+                  aria-hidden='true'
+                  className='size-3.5 shrink-0 object-contain'
                   style={fileIconStyle(tab.icon)}
                 />
-                <span className="truncate">{tab.name}</span>
+                <span className='truncate'>{tab.name}</span>
                 {tab.diffSuffix ? (
                   <span
-                    aria-hidden="true"
+                    aria-hidden='true'
                     className={cn(
-                      "shrink-0 text-xs leading-none font-semibold tabular-nums",
-                      tab.diffStatus?.className ?? "text-muted-foreground"
+                      'shrink-0 text-xs leading-none font-semibold tabular-nums',
+                      tab.diffStatus?.className ?? 'text-muted-foreground',
                     )}
                     title={tab.diffStatus?.title}
                   >
@@ -357,30 +332,30 @@ function LegacyEditorTabList({
               <button
                 aria-label={`Close ${tab.name}`}
                 className={cn(
-                  "group/close relative mr-1 flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
+                  'group/close relative mr-1 flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
                   showCloseIcon || tab.dirty
-                    ? "opacity-100"
-                    : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
                 )}
-                data-editor-tab-drag-blocker=""
+                data-editor-tab-drag-blocker=''
                 draggable={false}
                 onClick={() => onClose(tab.id)}
                 onDragStart={(event) => event.preventDefault()}
                 title={`Close ${tab.name}`}
-                type="button"
+                type='button'
               >
                 <XIcon
                   className={cn(
-                    "size-3 transition-opacity",
+                    'size-3 transition-opacity',
                     showCloseIcon
-                      ? "opacity-70"
-                      : "opacity-0 group-hover:opacity-70 group-focus-visible/close:opacity-70"
+                      ? 'opacity-70'
+                      : 'opacity-0 group-hover:opacity-70 group-focus-visible/close:opacity-70',
                   )}
                 />
                 {tab.dirty ? (
                   <span
-                    aria-hidden="true"
-                    className="absolute size-2 rounded-full bg-amber-500 transition-opacity group-hover:opacity-0 group-focus-visible/close:opacity-0"
+                    aria-hidden='true'
+                    className='absolute size-2 rounded-full bg-amber-500 transition-opacity group-hover:opacity-0 group-focus-visible/close:opacity-0'
                   />
                 ) : null}
               </button>
@@ -420,16 +395,11 @@ function ChromeEditorTabList({
   const activeTabId = activeChromeTabId(tabs)
   const measuredAvailableWidth = useElementWidth(tabListRef)
   const [closeModeSpacerWidth, setCloseModeSpacerWidth] = useState(0)
-  const [hoveredChromeTabId, setHoveredChromeTabId] = useState<string | null>(
-    null
-  )
-  const [focusedChromeTabId, setFocusedChromeTabId] = useState<string | null>(
-    null
-  )
+  const [hoveredChromeTabId, setHoveredChromeTabId] = useState<string | null>(null)
+  const [focusedChromeTabId, setFocusedChromeTabId] = useState<string | null>(null)
   const trailingSlotWidths = useMemo(
-    () =>
-      chromeTrailingSlotWidths(tabs, hoveredChromeTabId, focusedChromeTabId),
-    [focusedChromeTabId, hoveredChromeTabId, tabs]
+    () => chromeTrailingSlotWidths(tabs, hoveredChromeTabId, focusedChromeTabId),
+    [focusedChromeTabId, hoveredChromeTabId, tabs],
   )
   const availableWidth =
     measuredAvailableWidth === null
@@ -446,10 +416,7 @@ function ChromeEditorTabList({
         })
   const overlap = layout?.overlap ?? 0
   const spacerStyle = chromeCloseSpacerStyle(closeModeSpacerWidth)
-  const tabModels = useMemo(
-    () => tabs.map((visualTab) => visualTab.tab),
-    [tabs]
-  )
+  const tabModels = useMemo(() => tabs.map((visualTab) => visualTab.tab), [tabs])
 
   useLayoutEffect(() => {
     scrollSelectedTabIntoView(tabListRef.current, selectedTabRef.current)
@@ -469,11 +436,7 @@ function ChromeEditorTabList({
     const closed = onClose(tabId)
     if (!closed) return
 
-    const nextSpacerWidth = nextCloseModeSpacerWidth(
-      closeModeSpacerWidth,
-      layout,
-      width
-    )
+    const nextSpacerWidth = nextCloseModeSpacerWidth(closeModeSpacerWidth, layout, width)
     setCloseModeSpacerWidth(nextSpacerWidth)
   }
 
@@ -496,18 +459,14 @@ function ChromeEditorTabList({
   }
 
   return (
-    <div className="flex min-w-full items-end overflow-visible">
+    <div className='flex min-w-full items-end overflow-visible'>
       {tabs.map((visualTab, index) => {
         const hoveredOrFocused = chromeVisualTabHoveredOrFocused(
           visualTab,
           hoveredChromeTabId,
-          focusedChromeTabId
+          focusedChromeTabId,
         )
-        const insertionEdge = editorTabInsertionEdge(
-          tabModels,
-          visualTab.tab,
-          drag.state
-        )
+        const insertionEdge = editorTabInsertionEdge(tabModels, visualTab.tab, drag.state)
 
         return (
           <ChromeEditorTab
@@ -533,11 +492,7 @@ function ChromeEditorTabList({
           />
         )
       })}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none"
-        style={spacerStyle}
-      />
+      <div aria-hidden='true' className='pointer-events-none' style={spacerStyle} />
     </div>
   )
 }
@@ -576,37 +531,29 @@ function ChromeEditorTab({
   onCloseTabs: RequestCloseTabs
   onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
   onDragEnd: () => void
-  onDragStart: EditorTabDragController["onDragStart"]
+  onDragStart: EditorTabDragController['onDragStart']
   onFocusChange: (tabId: string, focused: boolean) => void
   onHoverChange: (tabId: string, hovered: boolean) => void
   onSelect: (tab: EditorTabModel) => void
 }) {
   const tab = visualTab.tab
-  const tabStyle = chromeTabStyle(
-    visualTab,
-    index,
-    overlap,
-    layoutWidth,
-    trailingSlotWidth
-  )
+  const tabStyle = chromeTabStyle(visualTab, index, overlap, layoutWidth, trailingSlotWidth)
 
   return (
     <ContextMenu>
       <ContextMenuTrigger
         className={cn(
-          "group group/chrome-tab relative flex cursor-grab items-center overflow-hidden border-x border-border/80 bg-muted/55 text-xs text-muted-foreground hover:z-20 hover:bg-background/70 active:cursor-grabbing",
-          "z-[var(--chrome-tab-z)]",
+          'group group/chrome-tab relative flex cursor-grab items-center overflow-hidden border-x border-border/80 bg-muted/55 text-xs text-muted-foreground hover:z-20 hover:bg-background/70 active:cursor-grabbing',
+          'z-[var(--chrome-tab-z)]',
           tabDragClassName(insertionEdge, dragged),
-          tab.active &&
-            "z-30 border-border bg-background text-foreground shadow-none"
+          tab.active && 'z-30 border-border bg-background text-foreground shadow-none',
         )}
-        data-chrome-tab-root=""
+        data-chrome-tab-root=''
         data-editor-tab-id={tab.id}
         data-editor-tab-path={tab.path}
         draggable
         onBlurCapture={(event) => {
-          if (elementContainsTarget(event.currentTarget, event.relatedTarget))
-            return
+          if (elementContainsTarget(event.currentTarget, event.relatedTarget)) return
 
           onFocusChange(tab.id, false)
         }}
@@ -620,7 +567,7 @@ function ChromeEditorTab({
       >
         <button
           aria-selected={tab.active}
-          className="flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 pr-1.5 pl-3 text-left transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+          className='focus-visible:ring-ring/50 flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 pr-1.5 pl-3 text-left transition-colors outline-none focus-visible:ring-1'
           onClick={() => onSelect(tab)}
           onDragEnd={onDragEnd}
           onDragStart={(event) => {
@@ -628,13 +575,13 @@ function ChromeEditorTab({
             onDragStart(event, tab)
           }}
           draggable
-          role="tab"
+          role='tab'
           title={tab.title}
-          type="button"
+          type='button'
         >
           <span
-            aria-hidden="true"
-            className="size-3.5 shrink-0 object-contain"
+            aria-hidden='true'
+            className='size-3.5 shrink-0 object-contain'
             style={fileIconStyle(tab.icon)}
           />
           <ChromeTabTitle tab={tab} />
@@ -672,16 +619,16 @@ function ChromeTabTrailingSlot({
 
   return (
     <div
-      className="relative flex h-full shrink-0 items-center justify-center overflow-hidden"
+      className='relative flex h-full shrink-0 items-center justify-center overflow-hidden'
       style={chromeTabTrailingSlotStyle(width)}
     >
       <button
         aria-label={`Close ${tab.name}`}
         className={cn(
-          "group/close flex size-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-[background-color,color,opacity] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50",
-          showCloseIcon ? "opacity-100" : "pointer-events-none opacity-0"
+          'group/close flex size-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-[background-color,color,opacity] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
+          showCloseIcon ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
-        data-editor-tab-drag-blocker=""
+        data-editor-tab-drag-blocker=''
         draggable={false}
         onClick={(event) => {
           event.stopPropagation()
@@ -689,16 +636,16 @@ function ChromeTabTrailingSlot({
         }}
         onDragStart={(event) => event.preventDefault()}
         title={`Close ${tab.name}`}
-        type="button"
+        type='button'
       >
-        <XIcon className="size-3 opacity-70" />
+        <XIcon className='size-3 opacity-70' />
       </button>
       {tab.dirty ? (
         <span
-          aria-hidden="true"
+          aria-hidden='true'
           className={cn(
-            "pointer-events-none absolute size-2 rounded-full bg-amber-500 transition-opacity",
-            showDirtyIndicator ? "opacity-100" : "opacity-0"
+            'pointer-events-none absolute size-2 rounded-full bg-amber-500 transition-opacity',
+            showDirtyIndicator ? 'opacity-100' : 'opacity-0',
           )}
         />
       ) : null}
@@ -708,14 +655,14 @@ function ChromeTabTrailingSlot({
 
 function ChromeTabTitle({ tab }: { tab: EditorTabModel }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-1 overflow-hidden whitespace-nowrap">
-      <span className="min-w-0 shrink truncate">{tab.name}</span>
+    <span className='flex min-w-0 items-baseline gap-1 overflow-hidden whitespace-nowrap'>
+      <span className='min-w-0 shrink truncate'>{tab.name}</span>
       {tab.diffSuffix ? (
         <span
-          aria-hidden="true"
+          aria-hidden='true'
           className={cn(
-            "shrink-0 text-xs leading-none font-semibold tabular-nums",
-            tab.diffStatus?.className ?? "text-muted-foreground"
+            'shrink-0 text-xs leading-none font-semibold tabular-nums',
+            tab.diffStatus?.className ?? 'text-muted-foreground',
           )}
           title={tab.diffStatus?.title}
         >
@@ -749,59 +696,51 @@ function EditorTabContextMenuContent({
   }
 
   return (
-    <ContextMenuContent className="w-52">
-      <ContextMenuItem onClick={() => handleClose("close")}>
+    <ContextMenuContent className='w-52'>
+      <ContextMenuItem onClick={() => handleClose('close')}>
         <XIcon />
         <span>Close</span>
       </ContextMenuItem>
       <ContextMenuItem
-        disabled={
-          editorTabCloseTargetIds(tabs, tab.id, "closeOthers").length === 0
-        }
-        onClick={() => handleClose("closeOthers")}
+        disabled={editorTabCloseTargetIds(tabs, tab.id, 'closeOthers').length === 0}
+        onClick={() => handleClose('closeOthers')}
       >
         <FilesIcon />
         <span>Close Others</span>
       </ContextMenuItem>
       <ContextMenuItem
-        disabled={
-          editorTabCloseTargetIds(tabs, tab.id, "closeToRight").length === 0
-        }
-        onClick={() => handleClose("closeToRight")}
+        disabled={editorTabCloseTargetIds(tabs, tab.id, 'closeToRight').length === 0}
+        onClick={() => handleClose('closeToRight')}
       >
         <ArrowRightIcon />
         <span>Close to the Right</span>
       </ContextMenuItem>
       <ContextMenuItem
-        disabled={
-          editorTabCloseTargetIds(tabs, tab.id, "closeSaved").length === 0
-        }
-        onClick={() => handleClose("closeSaved")}
+        disabled={editorTabCloseTargetIds(tabs, tab.id, 'closeSaved').length === 0}
+        onClick={() => handleClose('closeSaved')}
       >
         <FloppyDiskIcon />
         <span>Close Saved</span>
       </ContextMenuItem>
-      <ContextMenuItem onClick={() => handleClose("closeAll")}>
+      <ContextMenuItem onClick={() => handleClose('closeAll')}>
         <XIcon />
         <span>Close All</span>
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem onClick={() => onSplit(tab.id, "horizontal")}>
+      <ContextMenuItem onClick={() => onSplit(tab.id, 'horizontal')}>
         <ColumnsIcon />
         <span>Split Right</span>
       </ContextMenuItem>
-      <ContextMenuItem onClick={() => onSplit(tab.id, "vertical")}>
+      <ContextMenuItem onClick={() => onSplit(tab.id, 'vertical')}>
         <RowsIcon />
         <span>Split Down</span>
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem onClick={() => handleCopyPath(tab.copyPath, "path")}>
+      <ContextMenuItem onClick={() => handleCopyPath(tab.copyPath, 'path')}>
         <CopyIcon />
         <span>Copy Path</span>
       </ContextMenuItem>
-      <ContextMenuItem
-        onClick={() => handleCopyPath(tab.copyRelativePath, "relative path")}
-      >
+      <ContextMenuItem onClick={() => handleCopyPath(tab.copyRelativePath, 'relative path')}>
         <CopyIcon />
         <span>Copy Relative Path</span>
       </ContextMenuItem>
@@ -811,7 +750,7 @@ function EditorTabContextMenuContent({
 
 async function copyTextToClipboard(text: string, label: string) {
   if (!navigator.clipboard?.writeText) {
-    toast.error("Clipboard is unavailable")
+    toast.error('Clipboard is unavailable')
     return
   }
 
@@ -824,9 +763,7 @@ async function copyTextToClipboard(text: string, label: string) {
   }
 }
 
-function useElementWidth<TElement extends HTMLElement>(
-  ref: RefObject<TElement | null>
-) {
+function useElementWidth<TElement extends HTMLElement>(ref: RefObject<TElement | null>) {
   const [width, setWidth] = useState<number | null>(null)
 
   useLayoutEffect(() => {
@@ -839,7 +776,7 @@ function useElementWidth<TElement extends HTMLElement>(
 
     updateWidth()
 
-    if (!("ResizeObserver" in window)) return
+    if (!('ResizeObserver' in window)) return
 
     const observer = new ResizeObserver(updateWidth)
     observer.observe(element)
@@ -850,17 +787,14 @@ function useElementWidth<TElement extends HTMLElement>(
   return width
 }
 
-function tabDragClassName(
-  insertionEdge: EditorTabInsertionEdge,
-  dragged: boolean
-) {
+function tabDragClassName(insertionEdge: EditorTabInsertionEdge, dragged: boolean) {
   return cn(
-    "transition-opacity",
-    dragged && "opacity-45",
-    insertionEdge === "before" &&
+    'transition-opacity',
+    dragged && 'opacity-45',
+    insertionEdge === 'before' &&
       "before:pointer-events-none before:absolute before:top-1 before:bottom-1 before:left-0 before:z-40 before:w-0.5 before:rounded-full before:bg-ring before:content-['']",
-    insertionEdge === "after" &&
-      "after:pointer-events-none after:absolute after:top-1 after:right-0 after:bottom-1 after:z-40 after:w-0.5 after:rounded-full after:bg-ring after:content-['']"
+    insertionEdge === 'after' &&
+      "after:pointer-events-none after:absolute after:top-1 after:right-0 after:bottom-1 after:z-40 after:w-0.5 after:rounded-full after:bg-ring after:content-['']",
   )
 }
 
@@ -871,14 +805,10 @@ function activeChromeTabId(visualTabs: readonly EditorChromeVisualTab[]) {
 function chromeTrailingSlotWidths(
   visualTabs: readonly EditorChromeVisualTab[],
   hoveredTabId: string | null,
-  focusedTabId: string | null
+  focusedTabId: string | null,
 ) {
   return visualTabs.map((visualTab) => {
-    const hoveredOrFocused = chromeVisualTabHoveredOrFocused(
-      visualTab,
-      hoveredTabId,
-      focusedTabId
-    )
+    const hoveredOrFocused = chromeVisualTabHoveredOrFocused(visualTab, hoveredTabId, focusedTabId)
     if (!chromeTabHasTrailingSlot(visualTab.tab, hoveredOrFocused)) return 0
 
     return CHROME_TAB_TRAILING_SLOT_WIDTH
@@ -888,33 +818,24 @@ function chromeTrailingSlotWidths(
 function chromeVisualTabHoveredOrFocused(
   visualTab: EditorChromeVisualTab,
   hoveredTabId: string | null,
-  focusedTabId: string | null
+  focusedTabId: string | null,
 ) {
   const tabId = visualTab.tab.id
 
   return tabId === hoveredTabId || tabId === focusedTabId
 }
 
-function chromeTabHasTrailingSlot(
-  tab: EditorTabModel,
-  hoveredOrFocused: boolean
-) {
+function chromeTabHasTrailingSlot(tab: EditorTabModel, hoveredOrFocused: boolean) {
   return tab.active || tab.dirty || hoveredOrFocused
 }
 
-function chromeTabShowsCloseIcon(
-  tab: EditorTabModel,
-  hoveredOrFocused: boolean
-) {
+function chromeTabShowsCloseIcon(tab: EditorTabModel, hoveredOrFocused: boolean) {
   if (tab.dirty) return hoveredOrFocused
 
   return tab.active || hoveredOrFocused
 }
 
-function chromeTabShowsDirtyIndicator(
-  tab: EditorTabModel,
-  hoveredOrFocused: boolean
-) {
+function chromeTabShowsDirtyIndicator(tab: EditorTabModel, hoveredOrFocused: boolean) {
   return tab.dirty && !hoveredOrFocused
 }
 
@@ -937,16 +858,10 @@ function chromeTabTrailingSlotStyle(width: number) {
 }
 
 function chromeTabRootWidth(element: HTMLElement) {
-  return (
-    element.closest("[data-chrome-tab-root]")?.getBoundingClientRect().width ??
-    null
-  )
+  return element.closest('[data-chrome-tab-root]')?.getBoundingClientRect().width ?? null
 }
 
-function elementContainsTarget(
-  element: HTMLElement,
-  target: EventTarget | null
-) {
+function elementContainsTarget(element: HTMLElement, target: EventTarget | null) {
   if (!(target instanceof Node)) return false
 
   return element.contains(target)
@@ -955,7 +870,7 @@ function elementContainsTarget(
 function nextCloseModeSpacerWidth(
   currentSpacerWidth: number,
   layout: ReturnType<typeof chromeTabLayout> | null,
-  closedTabWidth: number | null
+  closedTabWidth: number | null,
 ) {
   if (closedTabWidth === null) return currentSpacerWidth
 
@@ -970,7 +885,7 @@ function chromeTabStyle(
   index: number,
   overlap: number,
   layoutWidth: number | null,
-  trailingSlotWidth: number
+  trailingSlotWidth: number,
 ) {
   const tab = visualTab.tab
   const fixedWidth = closingOrOpeningTabWidth(visualTab)
@@ -980,19 +895,19 @@ function chromeTabStyle(
     : CHROME_TAB_INACTIVE_MIN_WIDTH + trailingSlotWidth
 
   return {
-    "--chrome-tab-z": tab.active ? 30 : 1,
-    flex: targetWidth === null ? "1 1 0px" : `0 0 ${targetWidth}px`,
+    '--chrome-tab-z': tab.active ? 30 : 1,
+    flex: targetWidth === null ? '1 1 0px' : `0 0 ${targetWidth}px`,
     height: CHROME_TAB_HEIGHT,
     marginLeft: index === 0 ? 0 : -overlap,
     maxWidth: targetWidth ?? CHROME_TAB_STANDARD_WIDTH + trailingSlotWidth,
     minWidth: targetWidth ?? minWidth,
     transition: CHROME_TAB_TRANSITION,
-    width: targetWidth ?? "auto",
+    width: targetWidth ?? 'auto',
   } as CSSProperties
 }
 
 function closingOrOpeningTabWidth(visualTab: EditorChromeVisualTab) {
-  if (visualTab.phase === "opening") return CHROME_TAB_CLOSED_WIDTH
+  if (visualTab.phase === 'opening') return CHROME_TAB_CLOSED_WIDTH
 
   return null
 }
@@ -1014,7 +929,7 @@ function sameEditorTabModel(left: EditorTabModel, right: EditorTabModel) {
 
 function sameDiffStatus(
   left: ReturnType<typeof tabDiffStatus>,
-  right: ReturnType<typeof tabDiffStatus>
+  right: ReturnType<typeof tabDiffStatus>,
 ) {
   if (left?.className !== right?.className) return false
   if (left?.label !== right?.label) return false
@@ -1052,7 +967,7 @@ function editorTabModel({
     id: tab.id,
     icon: iconForEntry({
       name: iconName(path, conflicts),
-      type: "file",
+      type: 'file',
     }),
     name: tabName(path, conflicts),
     path,
@@ -1076,15 +991,9 @@ function DiffTabActions({
   onRevealPreviousChange?: () => void
 }) {
   return (
-    <div className="flex h-full shrink-0 items-center gap-0.5 border-l bg-background/40 px-1">
-      <RevealChangeButton
-        direction="previous"
-        onRevealChange={onRevealPreviousChange}
-      />
-      <RevealChangeButton
-        direction="next"
-        onRevealChange={onRevealNextChange}
-      />
+    <div className='bg-background/40 flex h-full shrink-0 items-center gap-0.5 border-l px-1'>
+      <RevealChangeButton direction='previous' onRevealChange={onRevealPreviousChange} />
+      <RevealChangeButton direction='next' onRevealChange={onRevealNextChange} />
       <OpenOriginalFileButton path={diffPath} onOpenFile={onOpenFile} />
       <DiffViewModeToggle mode={mode} onModeChange={onModeChange} />
     </div>
@@ -1095,19 +1004,15 @@ function RevealChangeButton({
   direction,
   onRevealChange,
 }: {
-  direction: "previous" | "next"
+  direction: 'previous' | 'next'
   onRevealChange?: () => void
 }) {
   const label = `${capitalize(direction)} change`
-  const Icon = direction === "previous" ? ArrowUpIcon : ArrowDownIcon
+  const Icon = direction === 'previous' ? ArrowUpIcon : ArrowDownIcon
 
   return (
-    <ToolbarIconButton
-      disabled={!onRevealChange}
-      label={label}
-      onClick={() => onRevealChange?.()}
-    >
-      <Icon className="size-3.5" />
+    <ToolbarIconButton disabled={!onRevealChange} label={label} onClick={() => onRevealChange?.()}>
+      <Icon className='size-3.5' />
     </ToolbarIconButton>
   )
 }
@@ -1127,7 +1032,7 @@ function OpenOriginalFileButton({
 
   return (
     <ToolbarIconButton label={label} onClick={handleClick}>
-      <FileIcon className="size-3.5" />
+      <FileIcon className='size-3.5' />
     </ToolbarIconButton>
   )
 }
@@ -1170,13 +1075,13 @@ function ToolbarIconButton({
         render={
           <Button
             aria-label={label}
-            className="size-7 text-muted-foreground hover:text-foreground"
+            className='text-muted-foreground hover:text-foreground size-7'
             disabled={disabled}
             onClick={onClick}
-            size="icon-sm"
+            size='icon-sm'
             title={label}
-            type="button"
-            variant="ghost"
+            type='button'
+            variant='ghost'
           >
             {children}
           </Button>
@@ -1192,57 +1097,45 @@ function capitalize(value: string) {
 }
 
 function DiffViewModeToggleIcon({ mode }: { mode: EditorDiffViewMode }) {
-  if (mode === "stacked") return <RowsIcon className="size-3.5" />
+  if (mode === 'stacked') return <RowsIcon className='size-3.5' />
 
-  return <ColumnsIcon className="size-3.5" />
+  return <ColumnsIcon className='size-3.5' />
 }
 
-function iconName(
-  path: string,
-  conflicts: Readonly<Record<string, { remotePath: string }>>
-) {
+function iconName(path: string, conflicts: Readonly<Record<string, { remotePath: string }>>) {
   const diff = parseDiffDocumentId(path)
   const searchBuffer = parseSearchBufferDocumentId(path)
-  if (searchBuffer) return "search.txt"
+  if (searchBuffer) return 'search.txt'
   if (diff) return basename(diff.path)
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return basename(conflict.remotePath)
-  if (parseConflictDiffDocumentId(path)) return "conflict.txt"
+  if (parseConflictDiffDocumentId(path)) return 'conflict.txt'
 
   return basename(path)
 }
 
-function tabName(
-  path: string,
-  conflicts: Readonly<Record<string, { remotePath: string }>>
-) {
+function tabName(path: string, conflicts: Readonly<Record<string, { remotePath: string }>>) {
   if (parseDiffDocumentId(path)) return diffDocumentLabel(path)
   if (parseSearchBufferDocumentId(path)) return searchBufferDocumentLabel()
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return conflictDiffDocumentLabel(conflict.remotePath)
-  if (parseConflictDiffDocumentId(path)) return "Conflict"
+  if (parseConflictDiffDocumentId(path)) return 'Conflict'
 
   return basename(path)
 }
 
-function tabTitle(
-  path: string,
-  conflicts: Readonly<Record<string, { remotePath: string }>>
-) {
+function tabTitle(path: string, conflicts: Readonly<Record<string, { remotePath: string }>>) {
   if (parseDiffDocumentId(path)) return diffDocumentTitle(path)
   const searchBuffer = parseSearchBufferDocumentId(path)
   if (searchBuffer) return searchBufferDocumentTitle(searchBuffer.rootPath)
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return conflictDiffDocumentTitle(conflict.remotePath)
-  if (parseConflictDiffDocumentId(path)) return "Filesystem conflict editor"
+  if (parseConflictDiffDocumentId(path)) return 'Filesystem conflict editor'
 
   return displayPath(path)
 }
 
-function tabCopyPath(
-  path: string,
-  conflicts: Readonly<Record<string, { remotePath: string }>>
-) {
+function tabCopyPath(path: string, conflicts: Readonly<Record<string, { remotePath: string }>>) {
   const diff = parseDiffDocumentId(path)
   if (diff) return diff.path
 
@@ -1268,16 +1161,12 @@ function tabRelativeCopyPath(path: string, rootPath: string) {
 }
 
 function normalizedCopyPath(path: string) {
-  if (path === "/") return path
+  if (path === '/') return path
 
-  return path.replace(/\/+$/u, "")
+  return path.replace(/\/+$/u, '')
 }
 
-function tabDiffStatus(
-  path: string,
-  files: readonly FileStatus[],
-  rootPath: string
-) {
+function tabDiffStatus(path: string, files: readonly FileStatus[], rootPath: string) {
   if (parseConflictDiffDocumentId(path)) return null
   if (parseSearchBufferDocumentId(path)) return null
 
@@ -1287,14 +1176,14 @@ function tabDiffStatus(
   const file = files.find((file) => diffStatusMatchesFile(diff, file, rootPath))
   const live = file ? liveSymbolForDiff(diff, file) : null
   if (live) return live
-  if (diff.kind !== "snapshot" || !diff.status) return null
+  if (diff.kind !== 'snapshot' || !diff.status) return null
 
-  return gitStatusSymbol(diff.status, "historical")
+  return gitStatusSymbol(diff.status, 'historical')
 }
 
 function conflictForDocument(
   path: string | null | undefined,
-  conflicts: Readonly<Record<string, { remotePath: string }>>
+  conflicts: Readonly<Record<string, { remotePath: string }>>,
 ) {
   const conflictDiff = parseConflictDiffDocumentId(path)
   if (!conflictDiff) return null
@@ -1303,7 +1192,7 @@ function conflictForDocument(
 }
 
 function tabDiffSuffix(hash: string, status: string | undefined) {
-  if (!hash) return ""
+  if (!hash) return ''
   if (!status) return `(${hash})`
 
   return `(${hash} ${status})`
@@ -1312,7 +1201,7 @@ function tabDiffSuffix(hash: string, status: string | undefined) {
 function diffStatusMatchesFile(
   diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>,
   file: FileStatus,
-  rootPath: string
+  rootPath: string,
 ) {
   return pathSetsOverlap(diffStatusPaths(diff), statusPaths(file), rootPath)
 }
@@ -1321,9 +1210,9 @@ const EMPTY_GIT_FILES: readonly FileStatus[] = []
 
 function liveSymbolForDiff(
   diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>,
-  file: FileStatus
+  file: FileStatus,
 ) {
-  const preferred = diff.kind === "snapshot" ? diff.source : undefined
+  const preferred = diff.kind === 'snapshot' ? diff.source : undefined
   const source = liveSymbolSource(file, preferred)
   if (!source) return null
 
@@ -1332,36 +1221,33 @@ function liveSymbolForDiff(
 
 function liveSymbolSource(
   file: FileStatus,
-  preferred: GitSymbolSource | undefined
+  preferred: GitSymbolSource | undefined,
 ): GitSymbolSource | null {
-  if (preferred === "staged" && isStagedStatus(file.index)) return "staged"
-  if (preferred === "worktree" && isWorktreeStatus(file.worktree))
-    return "worktree"
-  if (isStagedStatus(file.index)) return "staged"
-  if (isWorktreeStatus(file.worktree)) return "worktree"
+  if (preferred === 'staged' && isStagedStatus(file.index)) return 'staged'
+  if (preferred === 'worktree' && isWorktreeStatus(file.worktree)) return 'worktree'
+  if (isStagedStatus(file.index)) return 'staged'
+  if (isWorktreeStatus(file.worktree)) return 'worktree'
 
   return null
 }
 
 function statusForSymbolSource(file: FileStatus, source: GitSymbolSource) {
-  if (source === "staged") return file.index
-  if (source === "worktree") return file.worktree
+  if (source === 'staged') return file.index
+  if (source === 'worktree') return file.worktree
 
   return file.status
 }
 
-function isStagedStatus(status: FileStatus["index"]) {
-  return status !== "unmodified" && status !== "untracked"
+function isStagedStatus(status: FileStatus['index']) {
+  return status !== 'unmodified' && status !== 'untracked'
 }
 
-function isWorktreeStatus(status: FileStatus["worktree"]) {
-  return status !== "unmodified"
+function isWorktreeStatus(status: FileStatus['worktree']) {
+  return status !== 'unmodified'
 }
 
-function diffStatusPaths(
-  diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>
-) {
-  if (diff.kind === "legacy") return [diff.path]
+function diffStatusPaths(diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>) {
+  if (diff.kind === 'legacy') return [diff.path]
 
   return [diff.path, diff.query.oldPath].filter(isPresentPath)
 }
@@ -1374,19 +1260,11 @@ function isPresentPath(path: string | undefined): path is string {
   return Boolean(path)
 }
 
-function pathSetsOverlap(
-  left: readonly string[],
-  right: readonly string[],
-  rootPath: string
-) {
-  const normalizedRight = new Set(
-    right.flatMap((path) => comparablePaths(path, rootPath))
-  )
+function pathSetsOverlap(left: readonly string[], right: readonly string[], rootPath: string) {
+  const normalizedRight = new Set(right.flatMap((path) => comparablePaths(path, rootPath)))
 
   return left.some((path) =>
-    comparablePaths(path, rootPath).some((candidate) =>
-      normalizedRight.has(candidate)
-    )
+    comparablePaths(path, rootPath).some((candidate) => normalizedRight.has(candidate)),
   )
 }
 
@@ -1400,28 +1278,25 @@ function comparablePaths(path: string, rootPath: string) {
     paths.push(normalized.slice(rootPrefix.length))
   }
 
-  return [...new Set(paths.filter(Boolean))]
+  return Array.from(new Set(paths.filter(Boolean)))
 }
 
 function normalizePath(path: string) {
-  return path.replace(/\/+/gu, "/").replace(/\/$/u, "")
+  return path.replace(/\/+/gu, '/').replace(/\/$/u, '')
 }
 
 function stripLeadingSlash(path: string) {
-  return path.startsWith("/") ? path.slice(1) : path
+  return path.startsWith('/') ? path.slice(1) : path
 }
 
 function tabSizingClassName(tabSizing: EditorTabSizing) {
-  if (tabSizing === "fixed") return "min-w-[50px] max-w-40 flex-[1_0_0]"
-  if (tabSizing === "shrink") return "min-w-20 max-w-fit basis-0 grow"
+  if (tabSizing === 'fixed') return 'min-w-[50px] max-w-40 flex-[1_0_0]'
+  if (tabSizing === 'shrink') return 'min-w-20 max-w-fit basis-0 grow'
 
-  return "w-[120px] min-w-fit shrink-0"
+  return 'w-[120px] min-w-fit shrink-0'
 }
 
-function scrollSelectedTabIntoView(
-  tabList: HTMLElement | null,
-  selectedTab: HTMLElement | null
-) {
+function scrollSelectedTabIntoView(tabList: HTMLElement | null, selectedTab: HTMLElement | null) {
   if (!tabList || !selectedTab) return
 
   const tabListRect = tabList.getBoundingClientRect()

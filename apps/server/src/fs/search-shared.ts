@@ -1,15 +1,15 @@
-import path from "node:path"
+import path from 'node:path'
 
 import type {
   WorkspaceSearchMatcher,
   WorkspaceSearchMatch,
   WorkspaceSearchQuery,
-} from "@workspace/contracts"
-import { fuzzyRank } from "@workspace/contracts"
+} from '@workspace/contracts'
+import { fuzzyRank } from '@workspace/contracts'
 
-import { isIgnoredPath, toPosix } from "./path"
-import { readEntryStats, type FsEntryStats } from "./stat"
-import type { GitIgnoreMatcher } from "./search-gitignore"
+import { isIgnoredPath, toPosix } from './path'
+import { readEntryStats, type FsEntryStats } from './stat'
+import type { GitIgnoreMatcher } from './search-gitignore'
 
 const SEARCH_PREVIEW_CONTEXT_CHARS = 80
 const SEARCH_PREVIEW_MAX_CHARS = 240
@@ -32,13 +32,13 @@ export type FindContext = {
 }
 
 export function searchMatchMode(options: FindOptions) {
-  return options.matchMode ?? "literal"
+  return options.matchMode ?? 'literal'
 }
 
 export function shouldSearchContent(options: FindOptions) {
-  if (searchMatchMode(options) === "fuzzy") return false
+  if (searchMatchMode(options) === 'fuzzy') return false
   if (!options.includeContent) return false
-  if (options.entryType && options.entryType !== "file") return false
+  if (options.entryType && options.entryType !== 'file') return false
 
   return true
 }
@@ -47,10 +47,7 @@ export function shouldSearchNames(options: FindOptions) {
   return options.includeNames !== false
 }
 
-export function isIgnoredSearchPath(
-  context: FindContext,
-  relativePath: string
-) {
+export function isIgnoredSearchPath(context: FindContext, relativePath: string) {
   if (!relativePath) return false
   if (isIgnoredPath(relativePath)) return true
 
@@ -60,27 +57,20 @@ export function isIgnoredSearchPath(
 export function nameSearchMatches(
   context: FindContext,
   relativePath: string,
-  name = path.basename(relativePath)
+  name = path.basename(relativePath),
 ) {
-  if (searchMatchMode(context.options) === "fuzzy")
-    return (
-      fuzzyRank(
-        nameSearchRankTarget(context, relativePath, name),
-        context.query
-      ) !== null
-    )
+  if (searchMatchMode(context.options) === 'fuzzy')
+    return fuzzyRank(nameSearchRankTarget(context, relativePath, name), context.query) !== null
 
   if (context.matcher.lineMatches(name).length > 0) return true
 
-  return (
-    context.matcher.lineMatches(globMatchPath(context, relativePath)).length > 0
-  )
+  return context.matcher.lineMatches(globMatchPath(context, relativePath)).length > 0
 }
 
 export function nameSearchRankTarget(
   context: FindContext,
   relativePath: string,
-  name = path.basename(relativePath)
+  name = path.basename(relativePath),
 ) {
   const matchPath = globMatchPath(context, relativePath)
 
@@ -111,12 +101,12 @@ export function contentMatch({
     ...searchMatchMetadata(entry),
     column: columnIndex + 1,
     endColumn: endColumnIndex + 1,
-    kind: "content",
+    kind: 'content',
     line: lineNumber,
     path: relativePath,
     preview: preview.text,
     previewStartColumn: preview.startColumn,
-    source: "disk",
+    source: 'disk',
     targetType: entry.targetType,
     type: entry.type,
   }
@@ -144,7 +134,7 @@ export function joinRelative(parent: string, child: string) {
 }
 
 export function resultPath(rootRelativePath: string, output: string) {
-  const cleanOutput = output.replace(/^\.\//, "").replace(/\/$/, "")
+  const cleanOutput = output.replace(/^\.\//, '').replace(/\/$/, '')
   if (!rootRelativePath) return toPosix(cleanOutput)
 
   return toPosix(path.join(rootRelativePath, cleanOutput))
@@ -152,7 +142,7 @@ export function resultPath(rootRelativePath: string, output: string) {
 
 export function globMatchPath(context: FindContext, relativePath: string) {
   if (!context.root.relativePath) return relativePath
-  if (relativePath === context.root.relativePath) return ""
+  if (relativePath === context.root.relativePath) return ''
 
   const prefix = `${context.root.relativePath}/`
   if (!relativePath.startsWith(prefix)) return relativePath
@@ -161,7 +151,7 @@ export function globMatchPath(context: FindContext, relativePath: string) {
 }
 
 function searchContentLineText(line: string) {
-  return line.replace(/(?:\r\n|\r|\n)$/u, "")
+  return line.replace(/(?:\r\n|\r|\n)$/u, '')
 }
 
 function searchPreview(line: string, columnIndex: number) {

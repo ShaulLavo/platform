@@ -4,12 +4,12 @@ import type {
   LanguageServerPlugin,
   LanguageServerReferencesResult,
   LanguageServerStatus,
-} from "@editor/language-server"
-import { createLanguageServerPlugin } from "@editor/language-server/websocket"
-import { useEffect, useMemo, useState } from "react"
+} from '@editor/language-server'
+import { createLanguageServerPlugin } from '@editor/language-server/websocket'
+import { useEffect, useMemo, useState } from 'react'
 
-import { fsClient, fsServerUrl } from "@/lib/fs-client"
-import { EdenLanguageServerWebSocket } from "@/lib/server-sockets"
+import { fsClient, fsServerUrl } from '@/lib/fs-client'
+import { EdenLanguageServerWebSocket } from '@/lib/server-sockets'
 
 type UseLanguageServerPluginOptions = {
   enabled?: boolean
@@ -26,16 +26,12 @@ export function useLanguageServerPlugin({
   onOpenDefinition,
   onOpenReferences,
 }: UseLanguageServerPluginOptions) {
-  const [languageServerStatus, setLanguageServerStatus] =
-    useState<LanguageServerStatus>("idle")
+  const [languageServerStatus, setLanguageServerStatus] = useState<LanguageServerStatus>('idle')
   const [languageServerDiagnostics, setLanguageServerDiagnostics] =
     useState<LanguageServerDiagnosticSummary | null>(null)
   const matchKey = languageServerMatchKey(rootPath, filePath)
-  const [matchState, setMatchState] = useState<LanguageServerMatchState | null>(
-    null
-  )
-  const match =
-    enabled && matchState?.key === matchKey ? matchState.match : null
+  const [matchState, setMatchState] = useState<LanguageServerMatchState | null>(null)
+  const match = enabled && matchState?.key === matchKey ? matchState.match : null
 
   useEffect(() => {
     if (!enabled) return
@@ -83,7 +79,7 @@ export function useLanguageServerPlugin({
   return {
     languageServerDiagnostics: match ? languageServerDiagnostics : null,
     languageServer,
-    languageServerStatus: match ? languageServerStatus : "idle",
+    languageServerStatus: match ? languageServerStatus : 'idle',
   }
 }
 
@@ -98,7 +94,7 @@ type LanguageServerMatchState = {
 }
 
 const idleLanguageServerPlugin: LanguageServerPlugin = {
-  name: "editor.language-server.idle",
+  name: 'editor.language-server.idle',
   activate: () => [],
 }
 
@@ -106,31 +102,27 @@ function languageServerMatchKey(rootPath: string, filePath: string) {
   return `${rootPath}\u0000${filePath}`
 }
 
-function languageServerRoute(
-  rootPath: string,
-  filePath: string,
-  serverId: string
-) {
-  const url = new URL("/lsp", fsServerUrl)
-  if (url.protocol === "http:") url.protocol = "ws:"
-  if (url.protocol === "https:") url.protocol = "wss:"
-  url.searchParams.set("root", rootPath)
-  url.searchParams.set("path", filePath)
-  url.searchParams.set("server", serverId)
+function languageServerRoute(rootPath: string, filePath: string, serverId: string) {
+  const url = new URL('/lsp', fsServerUrl)
+  if (url.protocol === 'http:') url.protocol = 'ws:'
+  if (url.protocol === 'https:') url.protocol = 'wss:'
+  url.searchParams.set('root', rootPath)
+  url.searchParams.set('path', filePath)
+  url.searchParams.set('server', serverId)
   return url
 }
 
 function fileUriForPath(path: string) {
-  const normalized = path.replace(/^\/+/, "")
-  return `file:///${normalized.split("/").map(encodeURIComponent).join("/")}`
+  const normalized = path.replace(/^\/+/, '')
+  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }
 
 function languageServerMatch(value: unknown): LanguageServerMatch | null {
-  if (!value || typeof value !== "object") return null
+  if (!value || typeof value !== 'object') return null
 
   const match = value as Record<string, unknown>
-  if (typeof match.root !== "string") return null
-  if (typeof match.serverId !== "string") return null
+  if (typeof match.root !== 'string') return null
+  if (typeof match.serverId !== 'string') return null
 
   return { root: match.root, serverId: match.serverId }
 }

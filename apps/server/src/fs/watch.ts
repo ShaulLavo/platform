@@ -1,16 +1,11 @@
-import parcelWatcher from "@parcel/watcher"
-import { watch } from "node:fs"
-import { stat } from "node:fs/promises"
-import path from "node:path"
-import { FsError } from "./errors"
-import {
-  defaultIgnoredNames,
-  isIgnoredPath,
-  toPosix,
-  type WorkspacePaths,
-} from "./path"
-import { statPath, type FsStat } from "./stat"
-import type { TreeEntry, WatchServerMessage } from "./contracts"
+import parcelWatcher from '@parcel/watcher'
+import { watch } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import path from 'node:path'
+import { FsError } from './errors'
+import { defaultIgnoredNames, isIgnoredPath, toPosix, type WorkspacePaths } from './path'
+import { statPath, type FsStat } from './stat'
+import type { TreeEntry, WatchServerMessage } from './contracts'
 
 type Listener = (event: WatchServerMessage) => void
 type ParcelWatchEvent = parcelWatcher.Event
@@ -62,9 +57,7 @@ export class FileChangeHub {
   }
 
   async close() {
-    const releases = [...this.nativeWatchers.values()].map(
-      (entry) => entry.release
-    )
+    const releases = Array.from(this.nativeWatchers.values()).map((entry) => entry.release)
     this.nativeWatchers.clear()
     this.listeners.clear()
     await releaseWatchers(releases)
@@ -72,7 +65,7 @@ export class FileChangeHub {
 
   private async retainWatcher(
     relativeRoot: string,
-    onError: (event: WatchServerMessage) => void
+    onError: (event: WatchServerMessage) => void,
   ): Promise<WatchRelease> {
     if (!this.watchEnabled) {
       return noop
@@ -103,7 +96,7 @@ export class FileChangeHub {
 
   private async createWatcher(
     relativeRoot: string,
-    onError: (event: WatchServerMessage) => void
+    onError: (event: WatchServerMessage) => void,
   ): Promise<WatchRelease> {
     try {
       return await this.createParcelWatcher(relativeRoot, onError)
@@ -114,7 +107,7 @@ export class FileChangeHub {
 
   private async createParcelWatcher(
     relativeRoot: string,
-    onError: (event: WatchServerMessage) => void
+    onError: (event: WatchServerMessage) => void,
   ): Promise<WatchRelease> {
     const target = this.paths.resolve(relativeRoot)
     const subscription = await parcelWatcher.subscribe(
@@ -129,7 +122,7 @@ export class FileChangeHub {
           void this.handleParcelEvent(relativeRoot, event)
         }
       },
-      { ignore: watcherIgnoreGlobs }
+      { ignore: watcherIgnoreGlobs },
     )
 
     return () => subscription.unsubscribe()
@@ -137,22 +130,14 @@ export class FileChangeHub {
 
   private createNodeWatcher(
     relativeRoot: string,
-    onError: (event: WatchServerMessage) => void
+    onError: (event: WatchServerMessage) => void,
   ): WatchRelease {
     try {
       const target = this.paths.resolve(relativeRoot)
-      const watcher = watch(
-        target.absolutePath,
-        { recursive: true },
-        (event, filename) => {
-          void this.handleNodeEvent(
-            relativeRoot,
-            event,
-            filename?.toString() ?? ""
-          )
-        }
-      )
-      watcher.on("error", (error) => {
+      const watcher = watch(target.absolutePath, { recursive: true }, (event, filename) => {
+        void this.handleNodeEvent(relativeRoot, event, filename?.toString() ?? '')
+      })
+      watcher.on('error', (error) => {
         onError(watchError(error, relativeRoot))
       })
       return () => watcher.close()
@@ -162,43 +147,30 @@ export class FileChangeHub {
     }
   }
 
-  private async handleParcelEvent(
-    relativeRoot: string,
-    event: ParcelWatchEvent
-  ) {
+  private async handleParcelEvent(relativeRoot: string, event: ParcelWatchEvent) {
     const relativePath = parcelEventPath(this.paths, event.path)
     if (relativePath === null) return
     if (isStaleParcelRootCreate(relativeRoot, event, relativePath)) return
     if (isIgnoredPath(relativePath)) return
 
     const type = parcelEventType(event.type)
-    const entry =
-      type === "deleted"
-        ? undefined
-        : await nativeEventEntry(this.paths, relativePath)
+    const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
 
     this.broadcast(nativeWatchEvent(type, relativePath, entry))
   }
 
-  private async handleNodeEvent(
-    relativeRoot: string,
-    nativeEvent: string,
-    filename: string
-  ) {
+  private async handleNodeEvent(relativeRoot: string, nativeEvent: string, filename: string) {
     const relativePath = watchEventPath(relativeRoot, filename)
     if (isIgnoredPath(relativePath)) return
 
     const type = await nativeEventType(this.paths, relativePath, nativeEvent)
-    const entry =
-      type === "deleted"
-        ? undefined
-        : await nativeEventEntry(this.paths, relativePath)
+    const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
 
     this.broadcast(nativeWatchEvent(type, relativePath, entry))
   }
 
   private async *createStream(subscribed: Set<string>, signal?: AbortSignal) {
-    const queue: WatchServerMessage[] = [{ type: "ready", root: "" }]
+    const queue: WatchServerMessage[] = [{ type: 'ready', root: '' }]
     let wake: (() => void) | null = null
 
     const listener = (event: WatchServerMessage) => {
@@ -217,11 +189,11 @@ export class FileChangeHub {
     }
     let releases: WatchRelease[] = []
     this.listeners.add(listener)
-    signal?.addEventListener("abort", abort)
+    signal?.addEventListener('abort', abort)
 
     try {
       releases = await Promise.all(
-        [...subscribed].map((input) => this.retainWatcher(input, enqueue))
+        Array.from(subscribed).map((input) => this.retainWatcher(input, enqueue)),
       )
 
       while (!signal?.aborted) {
@@ -238,7 +210,7 @@ export class FileChangeHub {
     } finally {
       await releaseWatchers(releases)
       this.listeners.delete(listener)
-      signal?.removeEventListener("abort", abort)
+      signal?.removeEventListener('abort', abort)
     }
   }
 
@@ -248,10 +220,8 @@ export class FileChangeHub {
 }
 
 function subscribedPaths(paths: WorkspacePaths, inputs: string[]) {
-  const subscribed = new Set(
-    inputs.map((input) => paths.resolve(input).relativePath)
-  )
-  if (!subscribed.size) subscribed.add("")
+  const subscribed = new Set(inputs.map((input) => paths.resolve(input).relativePath))
+  if (!subscribed.size) subscribed.add('')
 
   return subscribed
 }
@@ -274,48 +244,45 @@ function parcelEventPath(paths: WorkspacePaths, absolutePath: string) {
 
 function relativePathInside(root: string, candidate: string) {
   const relative = path.relative(root, candidate)
-  if (relative === "") return ""
-  if (relative.startsWith("..")) return null
+  if (relative === '') return ''
+  if (relative.startsWith('..')) return null
   if (path.isAbsolute(relative)) return null
 
   return toPosix(relative)
 }
 
 function normalizeWatchFilename(filename: string) {
-  return toPosix(filename).replace(/^\/+/u, "")
+  return toPosix(filename).replace(/^\/+/u, '')
 }
 
-function parcelEventType(
-  type: ParcelWatchEvent["type"]
-): "created" | "changed" | "deleted" {
-  if (type === "create") return "created"
-  if (type === "update") return "changed"
+function parcelEventType(type: ParcelWatchEvent['type']): 'created' | 'changed' | 'deleted' {
+  if (type === 'create') return 'created'
+  if (type === 'update') return 'changed'
 
-  return "deleted"
+  return 'deleted'
 }
 
 function isStaleParcelRootCreate(
   relativeRoot: string,
   event: ParcelWatchEvent,
-  relativePath: string
+  relativePath: string,
 ) {
-  return event.type === "create" && relativePath === relativeRoot
+  return event.type === 'create' && relativePath === relativeRoot
 }
 
 function isFilesystemEvent(event: WatchServerMessage) {
   return (
-    event.type === "created" ||
-    event.type === "changed" ||
-    event.type === "deleted" ||
-    event.type === "renamed"
+    event.type === 'created' ||
+    event.type === 'changed' ||
+    event.type === 'deleted' ||
+    event.type === 'renamed'
   )
 }
 
 function shouldDeliver(event: WatchServerMessage, subscribed: Set<string>) {
   if (!isFilesystemEvent(event)) return true
   if (isSubscribedPath(event.path, subscribed)) return true
-  if (event.type === "renamed")
-    return isSubscribedPath(event.oldPath, subscribed)
+  if (event.type === 'renamed') return isSubscribedPath(event.oldPath, subscribed)
 
   return false
 }
@@ -333,20 +300,20 @@ function isSubscribedPath(relativePath: string, subscribed: Set<string>) {
 async function nativeEventType(
   paths: WorkspacePaths,
   relativePath: string,
-  nativeEvent: string
-): Promise<"created" | "changed" | "deleted"> {
-  if (nativeEvent === "change") return "changed"
+  nativeEvent: string,
+): Promise<'created' | 'changed' | 'deleted'> {
+  if (nativeEvent === 'change') return 'changed'
 
   const exists = await pathExists(paths, relativePath)
-  return exists ? "created" : "deleted"
+  return exists ? 'created' : 'deleted'
 }
 
 function nativeWatchEvent(
-  type: "created" | "changed" | "deleted",
+  type: 'created' | 'changed' | 'deleted',
   path: string,
-  entry: TreeEntry | undefined
+  entry: TreeEntry | undefined,
 ): WatchServerMessage {
-  if (type === "deleted") return { type, path }
+  if (type === 'deleted') return { type, path }
   if (!entry) return { type, path }
 
   return { type, path, entry }
@@ -364,7 +331,7 @@ async function pathExists(paths: WorkspacePaths, relativePath: string) {
 
 async function nativeEventEntry(
   paths: WorkspacePaths,
-  relativePath: string
+  relativePath: string,
 ): Promise<TreeEntry | undefined> {
   try {
     return entryFromStat(await statPath(paths, relativePath))
@@ -386,22 +353,22 @@ function entryFromStat(stat: FsStat): TreeEntry {
 }
 
 function pathBasename(input: string) {
-  const parts = input.split("/").filter(Boolean)
-  return parts.at(-1) ?? "Root"
+  const parts = input.split('/').filter(Boolean)
+  return parts.at(-1) ?? 'Root'
 }
 
 function watchError(error: unknown, path: string): WatchServerMessage {
   return {
-    type: "error",
-    code: "WATCH_FAILED",
-    message: `failed to watch ${path || "/"}: ${errorMessage(error)}`,
+    type: 'error',
+    code: 'WATCH_FAILED',
+    message: `failed to watch ${path || '/'}: ${errorMessage(error)}`,
   }
 }
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
 
-  return "native filesystem watcher failed"
+  return 'native filesystem watcher failed'
 }
 
 async function releaseWatchers(releases: WatchRelease[]) {
@@ -418,16 +385,12 @@ async function releaseWatcher(release: WatchRelease) {
 
 function noop() {}
 
-export function parseWatchInputs(
-  pathInput?: string,
-  pathsInput?: string | string[]
-) {
-  const inputs = [pathInput, ...pathInputs(pathsInput)]
-  const trimmed = inputs.map((input) => input?.trim() ?? "").filter(Boolean)
+export function parseWatchInputs(pathInput?: string, pathsInput?: string | string[]) {
+  const inputs = [pathInput].concat(pathInputs(pathsInput))
+  const trimmed = inputs.map((input) => input?.trim() ?? '').filter(Boolean)
 
   if (!trimmed.length) return []
-  if (trimmed.some((input) => input.includes(path.delimiter)))
-    throw new FsError("INVALID_PATH")
+  if (trimmed.some((input) => input.includes(path.delimiter))) throw new FsError('INVALID_PATH')
 
   return trimmed
 }
@@ -436,5 +399,5 @@ function pathInputs(input?: string | string[]) {
   if (!input) return []
   if (Array.isArray(input)) return input
 
-  return input.split(",")
+  return input.split(',')
 }

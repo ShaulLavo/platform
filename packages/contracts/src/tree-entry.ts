@@ -1,4 +1,4 @@
-export type EntryTypeFilter = "file" | "directory" | "symlink" | "other"
+export type EntryTypeFilter = 'file' | 'directory' | 'symlink' | 'other'
 
 export type TreeEntry = {
   name: string

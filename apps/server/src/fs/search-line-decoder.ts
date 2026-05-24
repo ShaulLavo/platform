@@ -1,5 +1,5 @@
-import type { Readable } from "node:stream"
-import { StringDecoder } from "node:string_decoder"
+import type { Readable } from 'node:stream'
+import { StringDecoder } from 'node:string_decoder'
 
 export const SEARCH_LINE_BUFFER_BYTES = 65_536
 
@@ -17,18 +17,16 @@ type LineByteState = {
 const LINE_FEED = 0x0a
 const CARRIAGE_RETURN = 0x0d
 
-export async function* readLines(
-  stream: NodeJS.ReadableStream | null
-): AsyncGenerator<string> {
+export async function* readLines(stream: NodeJS.ReadableStream | null): AsyncGenerator<string> {
   if (!stream) return
 
-  const decoder = new StringDecoder("utf8")
-  let buffered = ""
+  const decoder = new StringDecoder('utf8')
+  let buffered = ''
 
   for await (const chunk of stream) {
     buffered += decodeChunk(decoder, chunk)
     const lines = buffered.split(/\r?\n/u)
-    buffered = lines.pop() ?? ""
+    buffered = lines.pop() ?? ''
 
     for (const line of lines) yield line
   }
@@ -39,7 +37,7 @@ export async function* readLines(
 
 export async function* streamLines(
   stream: Readable,
-  maxLineBytes: number
+  maxLineBytes: number,
 ): AsyncGenerator<StreamedLine> {
   const state: LineByteState = {
     maxLineBytes,
@@ -55,10 +53,10 @@ export async function* streamLines(
 
 export function collectDecodedStreamTail(
   stream: NodeJS.ReadableStream | null | undefined,
-  maxLength = 4_000
+  maxLength = 4_000,
 ) {
-  const decoder = new StringDecoder("utf8")
-  let tail = ""
+  const decoder = new StringDecoder('utf8')
+  let tail = ''
   let ended = false
 
   const finish = () => {
@@ -67,11 +65,11 @@ export function collectDecodedStreamTail(
     tail = appendTail(tail, decoder.end(), maxLength)
   }
 
-  stream?.on("data", (chunk) => {
+  stream?.on('data', (chunk) => {
     tail = appendTail(tail, decodeChunk(decoder, chunk), maxLength)
   })
-  stream?.once("end", finish)
-  stream?.once("close", finish)
+  stream?.once('end', finish)
+  stream?.once('close', finish)
 
   return () => {
     finish()
@@ -79,10 +77,7 @@ export function collectDecodedStreamTail(
   }
 }
 
-function* streamChunkLines(
-  state: LineByteState,
-  chunk: Buffer
-): Generator<StreamedLine> {
+function* streamChunkLines(state: LineByteState, chunk: Buffer): Generator<StreamedLine> {
   let remaining = chunk
 
   while (remaining.length > 0) {
@@ -102,7 +97,7 @@ function* streamChunkLines(
 
 function consumeChunkWithoutLineFeed(
   state: LineByteState,
-  chunk: Buffer
+  chunk: Buffer,
 ): { line: StreamedLine | null; remaining: Buffer } {
   const room = state.maxLineBytes - state.pending.length
 
@@ -124,23 +119,13 @@ function consumeChunkWithoutLineFeed(
   }
 }
 
-function consumeChunkThroughLineFeed(
-  state: LineByteState,
-  chunk: Buffer,
-  lfIndex: number
-) {
+function consumeChunkThroughLineFeed(state: LineByteState, chunk: Buffer, lfIndex: number) {
   const hasPendingCr =
     lfIndex === 0 &&
     state.pending.length > 0 &&
     state.pending[state.pending.length - 1] === CARRIAGE_RETURN
   const hasChunkCr = lfIndex > 0 && chunk[lfIndex - 1] === CARRIAGE_RETURN
-  const lineBytes = lineBytesBeforeFeed(
-    state.pending,
-    chunk,
-    lfIndex,
-    hasChunkCr,
-    hasPendingCr
-  )
+  const lineBytes = lineBytesBeforeFeed(state.pending, chunk, lfIndex, hasChunkCr, hasPendingCr)
 
   state.pending = Buffer.alloc(0)
 
@@ -152,7 +137,7 @@ function lineBytesBeforeFeed(
   chunk: Buffer,
   lfIndex: number,
   hasChunkCr: boolean,
-  hasPendingCr: boolean
+  hasPendingCr: boolean,
 ) {
   if (hasChunkCr) return appendPending(pending, chunk.subarray(0, lfIndex - 1))
   if (hasPendingCr) return pending.subarray(0, pending.length - 1)
@@ -180,7 +165,7 @@ function appendTail(tail: string, text: string, maxLength: number) {
 }
 
 function decodeBuffer(buffer: Buffer) {
-  const decoder = new StringDecoder("utf8")
+  const decoder = new StringDecoder('utf8')
   return decoder.write(buffer) + decoder.end()
 }
 
@@ -190,7 +175,7 @@ function decodeChunk(decoder: StringDecoder, chunk: unknown) {
 
 function toBuffer(chunk: unknown) {
   if (Buffer.isBuffer(chunk)) return chunk
-  if (typeof chunk === "string") return Buffer.from(chunk)
+  if (typeof chunk === 'string') return Buffer.from(chunk)
   if (chunk instanceof Uint8Array) return Buffer.from(chunk)
 
   return Buffer.from(`${chunk}`)

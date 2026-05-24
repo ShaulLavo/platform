@@ -6,7 +6,7 @@ import {
   useState,
   type RefObject,
   type UIEvent,
-} from "react"
+} from 'react'
 
 import {
   INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT,
@@ -14,52 +14,49 @@ import {
   SEARCH_RESULT_VIRTUAL_OVERSCAN_IDLE_DELAY_MS,
   SEARCH_RESULT_VIRTUAL_PADDING,
   SEARCH_RESULT_VIRTUAL_ROW_OFFSET,
-} from "@/features/search/search-result-editor-constants"
+} from '@/features/search/search-result-editor-constants'
 import type {
   SearchResultEditorVirtualizer,
   SearchResultVirtualOverscanLevel,
   SearchResultVirtualRowScrollTarget,
   SearchResultVirtualScrollSample,
-} from "@/features/search/search-result-editor-types"
+} from '@/features/search/search-result-editor-types'
 import {
   equalSearchResultVirtualViewport,
   searchResultVirtualOverscan,
   searchResultVirtualOverscanLevel,
   searchResultVirtualRowInputs,
   searchResultVirtualViewportHeight,
-} from "@/features/search/search-result-editor-utils"
-import type { SearchResultVirtualRow } from "@/features/search/search-result-view-model"
+} from '@/features/search/search-result-editor-utils'
+import type { SearchResultVirtualRow } from '@/features/search/search-result-view-model'
 import {
   clampSearchResultVirtualListScrollTop,
   createSearchResultVirtualListMetrics,
   scrollTopForSearchResultVirtualListItem,
   visibleSearchResultVirtualListItems,
   type SearchResultVirtualListViewport,
-} from "@/features/search/search-result-virtual-list"
+} from '@/features/search/search-result-virtual-list'
 
 export function useSearchResultEditorVirtualizer(
   rows: readonly SearchResultVirtualRow[],
-  parentRef: RefObject<HTMLDivElement | null>
+  parentRef: RefObject<HTMLDivElement | null>,
 ): SearchResultEditorVirtualizer {
   const viewportRef = useRef<SearchResultVirtualListViewport>(
-    INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT
+    INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT,
   )
   const scrollSampleRef = useRef<SearchResultVirtualScrollSample | null>(null)
   const scrollOverscanLevelRef = useRef<SearchResultVirtualOverscanLevel>(0)
   const overscanIdleTimeoutRef = useRef<number | null>(null)
   const [viewport, setViewport] = useState<SearchResultVirtualListViewport>(
-    INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT
+    INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT,
   )
   const [scrollOverscanLevel, setScrollOverscanLevelState] =
     useState<SearchResultVirtualOverscanLevel>(0)
   const itemInputs = useMemo(() => searchResultVirtualRowInputs(rows), [rows])
-  const metrics = useMemo(
-    () => createSearchResultVirtualListMetrics(itemInputs),
-    [itemInputs]
-  )
+  const metrics = useMemo(() => createSearchResultVirtualListMetrics(itemInputs), [itemInputs])
   const overscan = useMemo(
     () => searchResultVirtualOverscan(viewport.height, scrollOverscanLevel),
-    [scrollOverscanLevel, viewport.height]
+    [scrollOverscanLevel, viewport.height],
   )
   const items = useMemo(
     () =>
@@ -67,18 +64,15 @@ export function useSearchResultEditorVirtualizer(
         fallbackCount: SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT,
         overscan,
       }),
-    [metrics, overscan, viewport]
+    [metrics, overscan, viewport],
   )
   const viewportHeight = viewport.height
-  const setScrollOverscanLevel = useCallback(
-    (level: SearchResultVirtualOverscanLevel) => {
-      if (scrollOverscanLevelRef.current === level) return
+  const setScrollOverscanLevel = useCallback((level: SearchResultVirtualOverscanLevel) => {
+    if (scrollOverscanLevelRef.current === level) return
 
-      scrollOverscanLevelRef.current = level
-      setScrollOverscanLevelState(level)
-    },
-    []
-  )
+    scrollOverscanLevelRef.current = level
+    setScrollOverscanLevelState(level)
+  }, [])
   const resetScrollOverscanLevelSoon = useCallback(() => {
     if (overscanIdleTimeoutRef.current !== null) {
       window.clearTimeout(overscanIdleTimeoutRef.current)
@@ -106,17 +100,12 @@ export function useSearchResultEditorVirtualizer(
 
       setScrollOverscanLevel(level)
     },
-    [resetScrollOverscanLevelSoon, setScrollOverscanLevel]
+    [resetScrollOverscanLevelSoon, setScrollOverscanLevel],
   )
-  const updateViewport = useCallback(
-    (next: SearchResultVirtualListViewport) => {
-      viewportRef.current = next
-      setViewport((current) =>
-        equalSearchResultVirtualViewport(current, next) ? current : next
-      )
-    },
-    []
-  )
+  const updateViewport = useCallback((next: SearchResultVirtualListViewport) => {
+    viewportRef.current = next
+    setViewport((current) => (equalSearchResultVirtualViewport(current, next) ? current : next))
+  }, [])
   const updateViewportHeight = useCallback(
     (height: number) => {
       updateViewport({
@@ -124,7 +113,7 @@ export function useSearchResultEditorVirtualizer(
         top: viewportRef.current.top,
       })
     },
-    [updateViewport]
+    [updateViewport],
   )
   const updateViewportTop = useCallback(
     (top: number) => {
@@ -134,7 +123,7 @@ export function useSearchResultEditorVirtualizer(
         top,
       })
     },
-    [updateScrollOverscanLevel, updateViewport]
+    [updateScrollOverscanLevel, updateViewport],
   )
 
   useEffect(
@@ -143,7 +132,7 @@ export function useSearchResultEditorVirtualizer(
 
       window.clearTimeout(overscanIdleTimeoutRef.current)
     },
-    []
+    [],
   )
 
   useEffect(() => {
@@ -156,7 +145,7 @@ export function useSearchResultEditorVirtualizer(
   useEffect(() => {
     const element = parentRef.current
     if (!element) return
-    if (typeof ResizeObserver === "undefined") return
+    if (typeof ResizeObserver === 'undefined') return
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
@@ -177,12 +166,12 @@ export function useSearchResultEditorVirtualizer(
       const top = clampSearchResultVirtualListScrollTop(
         offset,
         metrics.totalSize + SEARCH_RESULT_VIRTUAL_PADDING,
-        viewportRef.current.height
+        viewportRef.current.height,
       )
       element.scrollTop = top
       updateViewportTop(top)
     },
-    [metrics.totalSize, parentRef, updateViewportTop]
+    [metrics.totalSize, parentRef, updateViewportTop],
   )
   const scrollToIndex = useCallback(
     (index: number, target?: SearchResultVirtualRowScrollTarget | null) => {
@@ -190,28 +179,22 @@ export function useSearchResultEditorVirtualizer(
       if (!element) return
       if (viewportHeight <= 0) return
 
-      const nextTop = scrollTopForSearchResultVirtualListItem(
-        metrics,
-        index,
-        viewportRef.current,
-        {
-          itemOffset: SEARCH_RESULT_VIRTUAL_ROW_OFFSET,
-          targetOffset: target?.offset,
-          targetSize: target?.size,
-          totalPadding: SEARCH_RESULT_VIRTUAL_PADDING,
-        }
-      )
+      const nextTop = scrollTopForSearchResultVirtualListItem(metrics, index, viewportRef.current, {
+        itemOffset: SEARCH_RESULT_VIRTUAL_ROW_OFFSET,
+        targetOffset: target?.offset,
+        targetSize: target?.size,
+        totalPadding: SEARCH_RESULT_VIRTUAL_PADDING,
+      })
       if (nextTop === null) return
 
       element.scrollTop = nextTop
       updateViewportTop(nextTop)
     },
-    [metrics, parentRef, updateViewportTop, viewportHeight]
+    [metrics, parentRef, updateViewportTop, viewportHeight],
   )
   const onScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) =>
-      updateViewportTop(event.currentTarget.scrollTop),
-    [updateViewportTop]
+    (event: UIEvent<HTMLDivElement>) => updateViewportTop(event.currentTarget.scrollTop),
+    [updateViewportTop],
   )
 
   return {

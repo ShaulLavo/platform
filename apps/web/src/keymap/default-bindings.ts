@@ -2,22 +2,22 @@ import {
   detectPlatform,
   normalizeRegisterableHotkey,
   type RegisterableHotkey,
-} from "@tanstack/react-hotkeys"
+} from '@tanstack/react-hotkeys'
 
-import { commandHotkeyMeta } from "./command-registry"
+import { commandHotkeyMeta } from './command-registry'
 import type {
   EditorPlatformCommandId,
   PlatformCommandId,
   PlatformKeyBinding,
   WorkspaceCommandId,
-} from "./types"
+} from './types'
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
 type DefaultBindingSpec = {
   readonly command: PlatformCommandId | null
   readonly hotkey: RegisterableHotkey
-  readonly pane?: PlatformKeyBinding["pane"]
+  readonly pane?: PlatformKeyBinding['pane']
   readonly platforms?: readonly PlatformName[]
   readonly preventDefault?: boolean
   readonly stopPropagation?: boolean
@@ -25,16 +25,14 @@ type DefaultBindingSpec = {
 }
 
 export function defaultPlatformKeyBindings(
-  platform: PlatformName = detectPlatform()
+  platform: PlatformName = detectPlatform(),
 ): readonly PlatformKeyBinding[] {
-  return defaultBindingSpecs.flatMap((spec) =>
-    bindingForPlatform(spec, platform)
-  )
+  return defaultBindingSpecs.flatMap((spec) => bindingForPlatform(spec, platform))
 }
 
 function bindingForPlatform(
   spec: DefaultBindingSpec,
-  platform: PlatformName
+  platform: PlatformName,
 ): readonly PlatformKeyBinding[] {
   if (!specMatchesPlatform(spec, platform)) return []
 
@@ -44,9 +42,9 @@ function bindingForPlatform(
       hotkey: spec.hotkey,
       keys: normalizeRegisterableHotkey(spec.hotkey, platform),
       meta: spec.command ? commandHotkeyMeta(spec.command) : undefined,
-      pane: spec.pane ?? "any",
+      pane: spec.pane ?? 'any',
       preventDefault: spec.preventDefault,
-      source: "default",
+      source: 'default',
       stopPropagation: spec.stopPropagation,
       vscodeCommandId: spec.vscodeCommandId,
     },
@@ -62,31 +60,28 @@ function specMatchesPlatform(spec: DefaultBindingSpec, platform: PlatformName) {
 function workspaceBinding(
   hotkey: RegisterableHotkey,
   command: WorkspaceCommandId,
-  options: Omit<DefaultBindingSpec, "command" | "hotkey"> = {}
+  options: Omit<DefaultBindingSpec, 'command' | 'hotkey'> = {},
 ): DefaultBindingSpec {
-  return { command, hotkey, pane: "any", ...options }
+  return { command, hotkey, pane: 'any', ...options }
 }
 
 function editorBinding(
   hotkey: RegisterableHotkey,
   command: EditorPlatformCommandId,
   vscodeCommandId: string,
-  options: Omit<
-    DefaultBindingSpec,
-    "command" | "hotkey" | "pane" | "vscodeCommandId"
-  > = {}
+  options: Omit<DefaultBindingSpec, 'command' | 'hotkey' | 'pane' | 'vscodeCommandId'> = {},
 ): DefaultBindingSpec {
-  return { command, hotkey, pane: "editor", vscodeCommandId, ...options }
+  return { command, hotkey, pane: 'editor', vscodeCommandId, ...options }
 }
 
 function noOpBinding(
   hotkey: RegisterableHotkey,
-  options: Omit<DefaultBindingSpec, "command" | "hotkey">
+  options: Omit<DefaultBindingSpec, 'command' | 'hotkey'>,
 ): DefaultBindingSpec {
   return {
     command: null,
     hotkey,
-    pane: "any",
+    pane: 'any',
     preventDefault: true,
     stopPropagation: true,
     ...options,
@@ -94,482 +89,356 @@ function noOpBinding(
 }
 
 const defaultBindingSpecs = [
-  workspaceBinding("Mod+Shift+P", "workspace.showCommandPalette", {
+  workspaceBinding('Mod+Shift+P', 'workspace.showCommandPalette', {
     preventDefault: true,
     stopPropagation: true,
-    vscodeCommandId: "workbench.action.showCommands",
+    vscodeCommandId: 'workbench.action.showCommands',
   }),
-  workspaceBinding("F1", "workspace.showCommandPalette", {
+  workspaceBinding('F1', 'workspace.showCommandPalette', {
     preventDefault: true,
     stopPropagation: true,
-    vscodeCommandId: "workbench.action.showCommands",
+    vscodeCommandId: 'workbench.action.showCommands',
   }),
-  workspaceBinding("Mod+P", "workspace.showQuickAccess", {
+  workspaceBinding('Mod+P', 'workspace.showQuickAccess', {
     preventDefault: true,
     stopPropagation: true,
-    vscodeCommandId: "workbench.action.quickOpen",
+    vscodeCommandId: 'workbench.action.quickOpen',
   }),
   // TODO(electron): Bind these desktop/window-level VS Code defaults once
   // Platform can own shortcuts outside the browser sandbox.
-  noOpBinding("Control+Tab", {
-    vscodeCommandId: "workbench.action.quickOpenPreviousEditor",
+  noOpBinding('Control+Tab', {
+    vscodeCommandId: 'workbench.action.quickOpenPreviousEditor',
   }),
-  noOpBinding("Control+Q", {
-    vscodeCommandId: "workbench.action.quickOpenView",
+  noOpBinding('Control+Q', {
+    vscodeCommandId: 'workbench.action.quickOpenView',
   }),
-  workspaceBinding("Mod+Shift+O", "workspace.gotoSymbol", {
+  workspaceBinding('Mod+Shift+O', 'workspace.gotoSymbol', {
     preventDefault: true,
-    vscodeCommandId: "workbench.action.gotoSymbol",
+    vscodeCommandId: 'workbench.action.gotoSymbol',
   }),
-  noOpBinding("Mod+Alt+Tab", {
-    platforms: ["mac"],
-    vscodeCommandId: "workbench.action.showAllEditors",
+  noOpBinding('Mod+Alt+Tab', {
+    platforms: ['mac'],
+    vscodeCommandId: 'workbench.action.showAllEditors',
   }),
-  workspaceBinding("Mod+S", "workspace.saveFile", {
+  workspaceBinding('Mod+S', 'workspace.saveFile', {
     preventDefault: true,
-    vscodeCommandId: "workbench.action.files.save",
+    vscodeCommandId: 'workbench.action.files.save',
   }),
-  noOpBinding("Mod+Shift+T", {
-    vscodeCommandId: "workbench.action.reopenClosedEditor",
+  noOpBinding('Mod+Shift+T', {
+    vscodeCommandId: 'workbench.action.reopenClosedEditor',
   }),
-  workspaceBinding("Mod+B", "workspace.toggleSidebarVisibility", {
+  workspaceBinding('Mod+B', 'workspace.toggleSidebarVisibility', {
     preventDefault: true,
-    vscodeCommandId: "workbench.action.toggleSidebarVisibility",
+    vscodeCommandId: 'workbench.action.toggleSidebarVisibility',
   }),
-  noOpBinding("Mod+J", {
-    vscodeCommandId: "workbench.action.togglePanel",
+  noOpBinding('Mod+J', {
+    vscodeCommandId: 'workbench.action.togglePanel',
   }),
-  noOpBinding("Mod+1", {
-    vscodeCommandId: "workbench.action.focusFirstEditorGroup",
+  noOpBinding('Mod+1', {
+    vscodeCommandId: 'workbench.action.focusFirstEditorGroup',
   }),
-  noOpBinding("Mod+2", {
-    vscodeCommandId: "workbench.action.focusSecondEditorGroup",
+  noOpBinding('Mod+2', {
+    vscodeCommandId: 'workbench.action.focusSecondEditorGroup',
   }),
-  noOpBinding("Mod+3", {
-    vscodeCommandId: "workbench.action.focusThirdEditorGroup",
+  noOpBinding('Mod+3', {
+    vscodeCommandId: 'workbench.action.focusThirdEditorGroup',
   }),
-  noOpBinding("Mod+W", {
-    vscodeCommandId: "workbench.action.closeActiveEditor",
+  noOpBinding('Mod+W', {
+    vscodeCommandId: 'workbench.action.closeActiveEditor',
   }),
-  workspaceBinding("Mod+Shift+D", "workspace.toggleDiffViewMode"),
+  workspaceBinding('Mod+Shift+D', 'workspace.toggleDiffViewMode'),
 
-  editorBinding("Mod+Z", "editor.undo", "undo"),
-  editorBinding("Mod+Shift+Z", "editor.redo", "redo"),
-  editorBinding("Control+Y", "editor.redo", "redo", {
-    platforms: ["windows", "linux"],
+  editorBinding('Mod+Z', 'editor.undo', 'undo'),
+  editorBinding('Mod+Shift+Z', 'editor.redo', 'redo'),
+  editorBinding('Control+Y', 'editor.redo', 'redo', {
+    platforms: ['windows', 'linux'],
   }),
-  editorBinding("Mod+A", "editor.selectAll", "editor.action.selectAll"),
+  editorBinding('Mod+A', 'editor.selectAll', 'editor.action.selectAll'),
 
-  editorBinding("Mod+F", "editor.find", "actions.find"),
-  editorBinding(
-    "Mod+H",
-    "editor.findReplace",
-    "editor.action.startFindReplaceAction",
-    { platforms: ["windows", "linux"] }
-  ),
-  editorBinding(
-    "Mod+Alt+F",
-    "editor.findReplace",
-    "editor.action.startFindReplaceAction",
-    { platforms: ["mac"] }
-  ),
-  editorBinding("F3", "editor.findNext", "editor.action.nextMatchFindAction"),
-  editorBinding(
-    "Mod+G",
-    "editor.findNext",
-    "editor.action.nextMatchFindAction",
-    {
-      platforms: ["mac"],
-    }
-  ),
-  editorBinding(
-    "Shift+F3",
-    "editor.findPrevious",
-    "editor.action.previousMatchFindAction"
-  ),
-  editorBinding(
-    "Mod+Shift+G",
-    "editor.findPrevious",
-    "editor.action.previousMatchFindAction",
-    { platforms: ["mac"] }
-  ),
-  editorBinding("Escape", "editor.closeFind", "closeFindWidget"),
-  editorBinding("Shift+Escape", "editor.closeFind", "closeFindWidget"),
-  editorBinding(
-    "Alt+C",
-    "editor.toggleFindCaseSensitive",
-    "toggleFindCaseSensitive",
-    { platforms: ["windows", "linux"] }
-  ),
-  editorBinding(
-    "Mod+Alt+C",
-    "editor.toggleFindCaseSensitive",
-    "toggleFindCaseSensitive",
-    { platforms: ["mac"] }
-  ),
-  editorBinding("Alt+W", "editor.toggleFindWholeWord", "toggleFindWholeWord", {
-    platforms: ["windows", "linux"],
+  editorBinding('Mod+F', 'editor.find', 'actions.find'),
+  editorBinding('Mod+H', 'editor.findReplace', 'editor.action.startFindReplaceAction', {
+    platforms: ['windows', 'linux'],
   }),
-  editorBinding(
-    "Mod+Alt+W",
-    "editor.toggleFindWholeWord",
-    "toggleFindWholeWord",
-    { platforms: ["mac"] }
-  ),
-  editorBinding("Alt+R", "editor.toggleFindRegex", "toggleFindRegex", {
-    platforms: ["windows", "linux"],
+  editorBinding('Mod+Alt+F', 'editor.findReplace', 'editor.action.startFindReplaceAction', {
+    platforms: ['mac'],
   }),
-  editorBinding("Mod+Alt+R", "editor.toggleFindRegex", "toggleFindRegex", {
-    platforms: ["mac"],
+  editorBinding('F3', 'editor.findNext', 'editor.action.nextMatchFindAction'),
+  editorBinding('Mod+G', 'editor.findNext', 'editor.action.nextMatchFindAction', {
+    platforms: ['mac'],
   }),
-  editorBinding("Alt+L", "editor.toggleFindInSelection", "toggleSearchScope", {
-    platforms: ["windows", "linux"],
+  editorBinding('Shift+F3', 'editor.findPrevious', 'editor.action.previousMatchFindAction'),
+  editorBinding('Mod+Shift+G', 'editor.findPrevious', 'editor.action.previousMatchFindAction', {
+    platforms: ['mac'],
   }),
-  editorBinding(
-    "Mod+Alt+L",
-    "editor.toggleFindInSelection",
-    "toggleSearchScope",
-    { platforms: ["mac"] }
-  ),
-  editorBinding("Alt+P", "editor.togglePreserveCase", "togglePreserveCase", {
-    platforms: ["windows", "linux"],
+  editorBinding('Escape', 'editor.closeFind', 'closeFindWidget'),
+  editorBinding('Shift+Escape', 'editor.closeFind', 'closeFindWidget'),
+  editorBinding('Alt+C', 'editor.toggleFindCaseSensitive', 'toggleFindCaseSensitive', {
+    platforms: ['windows', 'linux'],
   }),
-  editorBinding(
-    "Mod+Alt+P",
-    "editor.togglePreserveCase",
-    "togglePreserveCase",
-    {
-      platforms: ["mac"],
-    }
-  ),
-  editorBinding("Mod+Shift+1", "editor.replaceOne", "editor.action.replaceOne"),
-  editorBinding(
-    "Mod+Alt+Enter",
-    "editor.replaceAll",
-    "editor.action.replaceAll"
-  ),
-  editorBinding(
-    "Alt+Enter",
-    "editor.selectAllMatches",
-    "editor.action.selectAllMatches"
-  ),
-  editorBinding(
-    "Mod+D",
-    "editor.addNextOccurrence",
-    "editor.action.addSelectionToNextFindMatch"
-  ),
+  editorBinding('Mod+Alt+C', 'editor.toggleFindCaseSensitive', 'toggleFindCaseSensitive', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Alt+W', 'editor.toggleFindWholeWord', 'toggleFindWholeWord', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Mod+Alt+W', 'editor.toggleFindWholeWord', 'toggleFindWholeWord', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Alt+R', 'editor.toggleFindRegex', 'toggleFindRegex', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Mod+Alt+R', 'editor.toggleFindRegex', 'toggleFindRegex', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Alt+L', 'editor.toggleFindInSelection', 'toggleSearchScope', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Mod+Alt+L', 'editor.toggleFindInSelection', 'toggleSearchScope', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Alt+P', 'editor.togglePreserveCase', 'togglePreserveCase', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Mod+Alt+P', 'editor.togglePreserveCase', 'togglePreserveCase', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Mod+Shift+1', 'editor.replaceOne', 'editor.action.replaceOne'),
+  editorBinding('Mod+Alt+Enter', 'editor.replaceAll', 'editor.action.replaceAll'),
+  editorBinding('Alt+Enter', 'editor.selectAllMatches', 'editor.action.selectAllMatches'),
+  editorBinding('Mod+D', 'editor.addNextOccurrence', 'editor.action.addSelectionToNextFindMatch'),
 
-  editorBinding("Alt+Backspace", "editor.deleteWordLeft", "deleteWordLeft", {
-    platforms: ["mac"],
+  editorBinding('Alt+Backspace', 'editor.deleteWordLeft', 'deleteWordLeft', {
+    platforms: ['mac'],
   }),
-  editorBinding("Mod+Backspace", "editor.deleteWordLeft", "deleteWordLeft", {
-    platforms: ["windows", "linux"],
+  editorBinding('Mod+Backspace', 'editor.deleteWordLeft', 'deleteWordLeft', {
+    platforms: ['windows', 'linux'],
   }),
-  editorBinding("Alt+Delete", "editor.deleteWordRight", "deleteWordRight", {
-    platforms: ["mac"],
+  editorBinding('Alt+Delete', 'editor.deleteWordRight', 'deleteWordRight', {
+    platforms: ['mac'],
   }),
-  editorBinding("Mod+Delete", "editor.deleteWordRight", "deleteWordRight", {
-    platforms: ["windows", "linux"],
+  editorBinding('Mod+Delete', 'editor.deleteWordRight', 'deleteWordRight', {
+    platforms: ['windows', 'linux'],
   }),
+  editorBinding('Mod+Shift+K', 'editor.editor.action.deleteLines', 'editor.action.deleteLines'),
   editorBinding(
-    "Mod+Shift+K",
-    "editor.editor.action.deleteLines",
-    "editor.action.deleteLines"
+    'Alt+Shift+ArrowUp',
+    'editor.editor.action.copyLinesUpAction',
+    'editor.action.copyLinesUpAction',
+    { platforms: ['mac', 'windows'] },
   ),
   editorBinding(
-    "Alt+Shift+ArrowUp",
-    "editor.editor.action.copyLinesUpAction",
-    "editor.action.copyLinesUpAction",
-    { platforms: ["mac", "windows"] }
+    'Alt+Shift+ArrowDown',
+    'editor.editor.action.copyLinesDownAction',
+    'editor.action.copyLinesDownAction',
+    { platforms: ['mac', 'windows'] },
   ),
   editorBinding(
-    "Alt+Shift+ArrowDown",
-    "editor.editor.action.copyLinesDownAction",
-    "editor.action.copyLinesDownAction",
-    { platforms: ["mac", "windows"] }
+    'Mod+Alt+Shift+ArrowUp',
+    'editor.editor.action.copyLinesUpAction',
+    'editor.action.copyLinesUpAction',
+    { platforms: ['linux'] },
   ),
   editorBinding(
-    "Mod+Alt+Shift+ArrowUp",
-    "editor.editor.action.copyLinesUpAction",
-    "editor.action.copyLinesUpAction",
-    { platforms: ["linux"] }
+    'Mod+Alt+Shift+ArrowDown',
+    'editor.editor.action.copyLinesDownAction',
+    'editor.action.copyLinesDownAction',
+    { platforms: ['linux'] },
   ),
   editorBinding(
-    "Mod+Alt+Shift+ArrowDown",
-    "editor.editor.action.copyLinesDownAction",
-    "editor.action.copyLinesDownAction",
-    { platforms: ["linux"] }
+    'Alt+ArrowUp',
+    'editor.editor.action.moveLinesUpAction',
+    'editor.action.moveLinesUpAction',
   ),
   editorBinding(
-    "Alt+ArrowUp",
-    "editor.editor.action.moveLinesUpAction",
-    "editor.action.moveLinesUpAction"
+    'Alt+ArrowDown',
+    'editor.editor.action.moveLinesDownAction',
+    'editor.action.moveLinesDownAction',
   ),
   editorBinding(
-    "Alt+ArrowDown",
-    "editor.editor.action.moveLinesDownAction",
-    "editor.action.moveLinesDownAction"
+    'Mod+Shift+Enter',
+    'editor.editor.action.insertLineBefore',
+    'editor.action.insertLineBefore',
   ),
   editorBinding(
-    "Mod+Shift+Enter",
-    "editor.editor.action.insertLineBefore",
-    "editor.action.insertLineBefore"
+    'Mod+Enter',
+    'editor.editor.action.insertLineAfter',
+    'editor.action.insertLineAfter',
+  ),
+  editorBinding('Mod+/', 'editor.editor.action.commentLine', 'editor.action.commentLine'),
+  editorBinding('Alt+Shift+A', 'editor.editor.action.blockComment', 'editor.action.blockComment', {
+    platforms: ['mac', 'windows'],
+  }),
+  editorBinding('Mod+Shift+A', 'editor.editor.action.blockComment', 'editor.action.blockComment', {
+    platforms: ['linux'],
+  }),
+  editorBinding('Mod+]', 'editor.editor.action.indentLines', 'editor.action.indentLines'),
+  editorBinding('Mod+[', 'editor.editor.action.outdentLines', 'editor.action.outdentLines'),
+  editorBinding(
+    'Mod+Alt+ArrowUp',
+    'editor.editor.action.insertCursorAbove',
+    'editor.action.insertCursorAbove',
+    { platforms: ['mac', 'windows'] },
   ),
   editorBinding(
-    "Mod+Enter",
-    "editor.editor.action.insertLineAfter",
-    "editor.action.insertLineAfter"
+    'Mod+Alt+ArrowDown',
+    'editor.editor.action.insertCursorBelow',
+    'editor.action.insertCursorBelow',
+    { platforms: ['mac', 'windows'] },
   ),
   editorBinding(
-    "Mod+/",
-    "editor.editor.action.commentLine",
-    "editor.action.commentLine"
+    'Alt+Shift+ArrowUp',
+    'editor.editor.action.insertCursorAbove',
+    'editor.action.insertCursorAbove',
+    { platforms: ['linux'] },
   ),
   editorBinding(
-    "Alt+Shift+A",
-    "editor.editor.action.blockComment",
-    "editor.action.blockComment",
-    { platforms: ["mac", "windows"] }
+    'Alt+Shift+ArrowDown',
+    'editor.editor.action.insertCursorBelow',
+    'editor.action.insertCursorBelow',
+    { platforms: ['linux'] },
   ),
   editorBinding(
-    "Mod+Shift+A",
-    "editor.editor.action.blockComment",
-    "editor.action.blockComment",
-    { platforms: ["linux"] }
+    'Mod+Shift+ArrowUp',
+    'editor.editor.action.insertCursorAbove',
+    'editor.action.insertCursorAbove',
+    { platforms: ['linux'] },
   ),
   editorBinding(
-    "Mod+]",
-    "editor.editor.action.indentLines",
-    "editor.action.indentLines"
+    'Mod+Shift+ArrowDown',
+    'editor.editor.action.insertCursorBelow',
+    'editor.action.insertCursorBelow',
+    { platforms: ['linux'] },
   ),
   editorBinding(
-    "Mod+[",
-    "editor.editor.action.outdentLines",
-    "editor.action.outdentLines"
+    'Mod+Shift+L',
+    'editor.editor.action.selectHighlights',
+    'editor.action.selectHighlights',
   ),
-  editorBinding(
-    "Mod+Alt+ArrowUp",
-    "editor.editor.action.insertCursorAbove",
-    "editor.action.insertCursorAbove",
-    { platforms: ["mac", "windows"] }
-  ),
-  editorBinding(
-    "Mod+Alt+ArrowDown",
-    "editor.editor.action.insertCursorBelow",
-    "editor.action.insertCursorBelow",
-    { platforms: ["mac", "windows"] }
-  ),
-  editorBinding(
-    "Alt+Shift+ArrowUp",
-    "editor.editor.action.insertCursorAbove",
-    "editor.action.insertCursorAbove",
-    { platforms: ["linux"] }
-  ),
-  editorBinding(
-    "Alt+Shift+ArrowDown",
-    "editor.editor.action.insertCursorBelow",
-    "editor.action.insertCursorBelow",
-    { platforms: ["linux"] }
-  ),
-  editorBinding(
-    "Mod+Shift+ArrowUp",
-    "editor.editor.action.insertCursorAbove",
-    "editor.action.insertCursorAbove",
-    { platforms: ["linux"] }
-  ),
-  editorBinding(
-    "Mod+Shift+ArrowDown",
-    "editor.editor.action.insertCursorBelow",
-    "editor.action.insertCursorBelow",
-    { platforms: ["linux"] }
-  ),
-  editorBinding(
-    "Mod+Shift+L",
-    "editor.editor.action.selectHighlights",
-    "editor.action.selectHighlights"
-  ),
-  editorBinding(
-    "Mod+F2",
-    "editor.editor.action.changeAll",
-    "editor.action.changeAll"
-  ),
+  editorBinding('Mod+F2', 'editor.editor.action.changeAll', 'editor.action.changeAll'),
 
-  editorBinding("Backspace", "editor.deleteBackward", "deleteLeft"),
-  editorBinding("Shift+Backspace", "editor.deleteBackward", "deleteLeft"),
-  editorBinding("Control+H", "editor.deleteBackward", "deleteLeft", {
-    platforms: ["mac"],
+  editorBinding('Backspace', 'editor.deleteBackward', 'deleteLeft'),
+  editorBinding('Shift+Backspace', 'editor.deleteBackward', 'deleteLeft'),
+  editorBinding('Control+H', 'editor.deleteBackward', 'deleteLeft', {
+    platforms: ['mac'],
   }),
-  editorBinding("Delete", "editor.deleteForward", "deleteRight"),
-  editorBinding("Control+D", "editor.deleteForward", "deleteRight", {
-    platforms: ["mac"],
+  editorBinding('Delete', 'editor.deleteForward', 'deleteRight'),
+  editorBinding('Control+D', 'editor.deleteForward', 'deleteRight', {
+    platforms: ['mac'],
   }),
-  editorBinding("Tab", "editor.indentSelection", "tab"),
-  editorBinding("Shift+Tab", "editor.outdentSelection", "outdent"),
+  editorBinding('Tab', 'editor.indentSelection', 'tab'),
+  editorBinding('Shift+Tab', 'editor.outdentSelection', 'outdent'),
 
-  editorBinding("ArrowLeft", "editor.cursorLeft", "cursorLeft"),
-  editorBinding("Control+B", "editor.cursorLeft", "cursorLeft", {
-    platforms: ["mac"],
+  editorBinding('ArrowLeft', 'editor.cursorLeft', 'cursorLeft'),
+  editorBinding('Control+B', 'editor.cursorLeft', 'cursorLeft', {
+    platforms: ['mac'],
   }),
-  editorBinding("ArrowRight", "editor.cursorRight", "cursorRight"),
-  editorBinding("Control+F", "editor.cursorRight", "cursorRight", {
-    platforms: ["mac"],
+  editorBinding('ArrowRight', 'editor.cursorRight', 'cursorRight'),
+  editorBinding('Control+F', 'editor.cursorRight', 'cursorRight', {
+    platforms: ['mac'],
   }),
-  editorBinding("ArrowUp", "editor.cursorUp", "cursorUp"),
-  editorBinding("Control+P", "editor.cursorUp", "cursorUp", {
-    platforms: ["mac"],
+  editorBinding('ArrowUp', 'editor.cursorUp', 'cursorUp'),
+  editorBinding('Control+P', 'editor.cursorUp', 'cursorUp', {
+    platforms: ['mac'],
   }),
-  editorBinding("ArrowDown", "editor.cursorDown", "cursorDown"),
-  editorBinding("Control+N", "editor.cursorDown", "cursorDown", {
-    platforms: ["mac"],
+  editorBinding('ArrowDown', 'editor.cursorDown', 'cursorDown'),
+  editorBinding('Control+N', 'editor.cursorDown', 'cursorDown', {
+    platforms: ['mac'],
   }),
-  editorBinding("Shift+ArrowLeft", "editor.selectLeft", "cursorLeftSelect"),
-  editorBinding("Shift+ArrowRight", "editor.selectRight", "cursorRightSelect"),
-  editorBinding("Shift+ArrowUp", "editor.selectUp", "cursorUpSelect"),
-  editorBinding("Shift+ArrowDown", "editor.selectDown", "cursorDownSelect"),
-  editorBinding("PageUp", "editor.cursorPageUp", "cursorPageUp"),
-  editorBinding("PageDown", "editor.cursorPageDown", "cursorPageDown"),
-  editorBinding("Shift+PageUp", "editor.selectPageUp", "cursorPageUpSelect"),
-  editorBinding(
-    "Shift+PageDown",
-    "editor.selectPageDown",
-    "cursorPageDownSelect"
-  ),
+  editorBinding('Shift+ArrowLeft', 'editor.selectLeft', 'cursorLeftSelect'),
+  editorBinding('Shift+ArrowRight', 'editor.selectRight', 'cursorRightSelect'),
+  editorBinding('Shift+ArrowUp', 'editor.selectUp', 'cursorUpSelect'),
+  editorBinding('Shift+ArrowDown', 'editor.selectDown', 'cursorDownSelect'),
+  editorBinding('PageUp', 'editor.cursorPageUp', 'cursorPageUp'),
+  editorBinding('PageDown', 'editor.cursorPageDown', 'cursorPageDown'),
+  editorBinding('Shift+PageUp', 'editor.selectPageUp', 'cursorPageUpSelect'),
+  editorBinding('Shift+PageDown', 'editor.selectPageDown', 'cursorPageDownSelect'),
 
-  editorBinding("Alt+ArrowLeft", "editor.cursorWordLeft", "cursorWordLeft", {
-    platforms: ["mac"],
+  editorBinding('Alt+ArrowLeft', 'editor.cursorWordLeft', 'cursorWordLeft', {
+    platforms: ['mac'],
   }),
-  editorBinding(
-    "Control+ArrowLeft",
-    "editor.cursorWordLeft",
-    "cursorWordLeft",
-    {
-      platforms: ["windows", "linux"],
-    }
-  ),
-  editorBinding(
-    "Alt+ArrowRight",
-    "editor.cursorWordRight",
-    "cursorWordEndRight",
-    {
-      platforms: ["mac"],
-    }
-  ),
-  editorBinding(
-    "Control+ArrowRight",
-    "editor.cursorWordRight",
-    "cursorWordEndRight",
-    { platforms: ["windows", "linux"] }
-  ),
-  editorBinding(
-    "Alt+Shift+ArrowLeft",
-    "editor.selectWordLeft",
-    "cursorWordLeftSelect",
-    { platforms: ["mac"] }
-  ),
-  editorBinding(
-    "Control+Shift+ArrowLeft",
-    "editor.selectWordLeft",
-    "cursorWordLeftSelect",
-    { platforms: ["windows", "linux"] }
-  ),
-  editorBinding(
-    "Alt+Shift+ArrowRight",
-    "editor.selectWordRight",
-    "cursorWordEndRightSelect",
-    { platforms: ["mac"] }
-  ),
-  editorBinding(
-    "Control+Shift+ArrowRight",
-    "editor.selectWordRight",
-    "cursorWordEndRightSelect",
-    { platforms: ["windows", "linux"] }
-  ),
+  editorBinding('Control+ArrowLeft', 'editor.cursorWordLeft', 'cursorWordLeft', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Alt+ArrowRight', 'editor.cursorWordRight', 'cursorWordEndRight', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+ArrowRight', 'editor.cursorWordRight', 'cursorWordEndRight', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Alt+Shift+ArrowLeft', 'editor.selectWordLeft', 'cursorWordLeftSelect', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+Shift+ArrowLeft', 'editor.selectWordLeft', 'cursorWordLeftSelect', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Alt+Shift+ArrowRight', 'editor.selectWordRight', 'cursorWordEndRightSelect', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+Shift+ArrowRight', 'editor.selectWordRight', 'cursorWordEndRightSelect', {
+    platforms: ['windows', 'linux'],
+  }),
 
-  editorBinding("Home", "editor.cursorLineStart", "cursorHome"),
-  editorBinding("End", "editor.cursorLineEnd", "cursorEnd"),
-  editorBinding("Shift+Home", "editor.selectLineStart", "cursorHomeSelect"),
-  editorBinding("Shift+End", "editor.selectLineEnd", "cursorEndSelect"),
-  editorBinding("Mod+ArrowLeft", "editor.cursorLineStart", "cursorHome", {
-    platforms: ["mac"],
+  editorBinding('Home', 'editor.cursorLineStart', 'cursorHome'),
+  editorBinding('End', 'editor.cursorLineEnd', 'cursorEnd'),
+  editorBinding('Shift+Home', 'editor.selectLineStart', 'cursorHomeSelect'),
+  editorBinding('Shift+End', 'editor.selectLineEnd', 'cursorEndSelect'),
+  editorBinding('Mod+ArrowLeft', 'editor.cursorLineStart', 'cursorHome', {
+    platforms: ['mac'],
   }),
-  editorBinding("Mod+ArrowRight", "editor.cursorLineEnd", "cursorEnd", {
-    platforms: ["mac"],
+  editorBinding('Mod+ArrowRight', 'editor.cursorLineEnd', 'cursorEnd', {
+    platforms: ['mac'],
   }),
-  editorBinding(
-    "Mod+Shift+ArrowLeft",
-    "editor.selectLineStart",
-    "cursorHomeSelect",
-    { platforms: ["mac"] }
-  ),
-  editorBinding(
-    "Mod+Shift+ArrowRight",
-    "editor.selectLineEnd",
-    "cursorEndSelect",
-    { platforms: ["mac"] }
-  ),
-  editorBinding("Control+A", "editor.cursorLineStart", "cursorLineStart", {
-    platforms: ["mac"],
+  editorBinding('Mod+Shift+ArrowLeft', 'editor.selectLineStart', 'cursorHomeSelect', {
+    platforms: ['mac'],
   }),
-  editorBinding("Control+E", "editor.cursorLineEnd", "cursorLineEnd", {
-    platforms: ["mac"],
+  editorBinding('Mod+Shift+ArrowRight', 'editor.selectLineEnd', 'cursorEndSelect', {
+    platforms: ['mac'],
   }),
-  editorBinding(
-    "Control+Shift+A",
-    "editor.selectLineStart",
-    "cursorLineStartSelect",
-    { platforms: ["mac"] }
-  ),
-  editorBinding(
-    "Control+Shift+E",
-    "editor.selectLineEnd",
-    "cursorLineEndSelect",
-    { platforms: ["mac"] }
-  ),
+  editorBinding('Control+A', 'editor.cursorLineStart', 'cursorLineStart', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+E', 'editor.cursorLineEnd', 'cursorLineEnd', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+Shift+A', 'editor.selectLineStart', 'cursorLineStartSelect', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+Shift+E', 'editor.selectLineEnd', 'cursorLineEndSelect', {
+    platforms: ['mac'],
+  }),
 
-  editorBinding("Mod+ArrowUp", "editor.cursorDocumentStart", "cursorTop", {
-    platforms: ["mac"],
+  editorBinding('Mod+ArrowUp', 'editor.cursorDocumentStart', 'cursorTop', {
+    platforms: ['mac'],
   }),
-  editorBinding("Mod+ArrowDown", "editor.cursorDocumentEnd", "cursorBottom", {
-    platforms: ["mac"],
+  editorBinding('Mod+ArrowDown', 'editor.cursorDocumentEnd', 'cursorBottom', {
+    platforms: ['mac'],
   }),
-  editorBinding("Control+Home", "editor.cursorDocumentStart", "cursorTop", {
-    platforms: ["windows", "linux"],
+  editorBinding('Control+Home', 'editor.cursorDocumentStart', 'cursorTop', {
+    platforms: ['windows', 'linux'],
   }),
-  editorBinding("Control+End", "editor.cursorDocumentEnd", "cursorBottom", {
-    platforms: ["windows", "linux"],
+  editorBinding('Control+End', 'editor.cursorDocumentEnd', 'cursorBottom', {
+    platforms: ['windows', 'linux'],
   }),
-  editorBinding(
-    "Mod+Shift+ArrowUp",
-    "editor.selectDocumentStart",
-    "cursorTopSelect",
-    { platforms: ["mac"] }
-  ),
-  editorBinding(
-    "Mod+Shift+ArrowDown",
-    "editor.selectDocumentEnd",
-    "cursorBottomSelect",
-    { platforms: ["mac"] }
-  ),
-  editorBinding(
-    "Control+Shift+Home",
-    "editor.selectDocumentStart",
-    "cursorTopSelect",
-    { platforms: ["windows", "linux"] }
-  ),
-  editorBinding(
-    "Control+Shift+End",
-    "editor.selectDocumentEnd",
-    "cursorBottomSelect",
-    { platforms: ["windows", "linux"] }
-  ),
-  noOpBinding("F12", {
-    pane: "editor",
-    vscodeCommandId: "editor.action.revealDefinition",
+  editorBinding('Mod+Shift+ArrowUp', 'editor.selectDocumentStart', 'cursorTopSelect', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Mod+Shift+ArrowDown', 'editor.selectDocumentEnd', 'cursorBottomSelect', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+Shift+Home', 'editor.selectDocumentStart', 'cursorTopSelect', {
+    platforms: ['windows', 'linux'],
+  }),
+  editorBinding('Control+Shift+End', 'editor.selectDocumentEnd', 'cursorBottomSelect', {
+    platforms: ['windows', 'linux'],
+  }),
+  noOpBinding('F12', {
+    pane: 'editor',
+    vscodeCommandId: 'editor.action.revealDefinition',
   }),
   editorBinding(
-    "Shift+F12",
-    "editor.editor.action.goToReferences",
-    "editor.action.goToReferences",
-    { preventDefault: true }
+    'Shift+F12',
+    'editor.editor.action.goToReferences',
+    'editor.action.goToReferences',
+    { preventDefault: true },
   ),
 ] satisfies readonly DefaultBindingSpec[]

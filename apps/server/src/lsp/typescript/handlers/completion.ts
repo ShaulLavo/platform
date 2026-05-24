@@ -1,17 +1,10 @@
-import ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
-import {
-  documentText,
-  lspPositionToOffset,
-  textDocumentPosition,
-} from "../shared/boundary"
-import type { SessionContext } from "../shared/context"
+import { documentText, lspPositionToOffset, textDocumentPosition } from '../shared/boundary'
+import type { SessionContext } from '../shared/context'
 
-export function handleCompletion(
-  ctx: SessionContext,
-  params: unknown
-): lsp.CompletionList {
+export function handleCompletion(ctx: SessionContext, params: unknown): lsp.CompletionList {
   const request = textDocumentPosition(ctx, params)
   if (!request) return completionList([])
 
@@ -19,21 +12,17 @@ export function handleCompletion(
   if (text === null) return completionList([])
 
   const offset = lspPositionToOffset(text, request.position)
-  const completions = ctx
-    .getLanguageService()
-    .getCompletionsAtPosition(request.fileName, offset, {
-      includeCompletionsForModuleExports: true,
-      includeCompletionsWithInsertText: true,
-    })
+  const completions = ctx.getLanguageService().getCompletionsAtPosition(request.fileName, offset, {
+    includeCompletionsForModuleExports: true,
+    includeCompletionsWithInsertText: true,
+  })
   if (!completions) return completionList([])
 
   return completionList(completions.entries.map(completionItem))
 }
 
-function completionList(
-  items: readonly lsp.CompletionItem[]
-): lsp.CompletionList {
-  return { isIncomplete: false, items: [...items] }
+function completionList(items: readonly lsp.CompletionItem[]): lsp.CompletionList {
+  return { isIncomplete: false, items: Array.from(items) }
 }
 
 function completionItem(entry: ts.CompletionEntry): lsp.CompletionItem {
@@ -42,9 +31,7 @@ function completionItem(entry: ts.CompletionEntry): lsp.CompletionItem {
     kind: completionItemKind(entry.kind),
     sortText: entry.sortText,
     insertText: entry.insertText,
-    detail: entry.sourceDisplay
-      ? ts.displayPartsToString(entry.sourceDisplay)
-      : undefined,
+    detail: entry.sourceDisplay ? ts.displayPartsToString(entry.sourceDisplay) : undefined,
   }
 }
 

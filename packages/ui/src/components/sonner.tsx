@@ -1,17 +1,17 @@
-import type { CSSProperties } from "react"
-import { Toaster as Sonner, type ToasterProps } from "sonner"
+import type { CSSProperties } from 'react'
+import { Toaster as Sonner, type ToasterProps } from 'sonner'
 
-import { cn } from "@workspace/ui/lib/utils"
+import { cn } from '@workspace/ui/lib/utils'
 
 type ToastThemeStyle = CSSProperties & Record<`--${string}`, string>
 
 const toastThemeStyle = {
-  "--normal-bg": "var(--popover)",
-  "--normal-border": "var(--border)",
-  "--normal-border-hover": "var(--border)",
-  "--normal-bg-hover": "var(--muted)",
-  "--normal-text": "var(--popover-foreground)",
-  "--border-radius": "var(--radius-md)",
+  '--normal-bg': 'var(--popover)',
+  '--normal-border': 'var(--border)',
+  '--normal-border-hover': 'var(--border)',
+  '--normal-bg-hover': 'var(--muted)',
+  '--normal-text': 'var(--popover-foreground)',
+  '--border-radius': 'var(--radius-md)',
 } satisfies ToastThemeStyle
 
 export function Toaster({
@@ -19,7 +19,7 @@ export function Toaster({
   closeButton = true,
   richColors = true,
   style,
-  theme = "system",
+  theme = 'system',
   toastOptions,
   ...props
 }: ToasterProps) {
@@ -28,7 +28,7 @@ export function Toaster({
   return (
     <Sonner
       closeButton={closeButton}
-      className={cn("toaster group", className)}
+      className={cn('toaster group', className)}
       richColors={richColors}
       style={{ ...toastThemeStyle, ...style }}
       theme={theme}
@@ -36,7 +36,7 @@ export function Toaster({
         ...toastOptions,
         classNames: {
           ...classNames,
-          error: cn("border-destructive/40", classNames?.error),
+          error: cn('border-destructive/40', classNames?.error),
         },
       }}
       {...props}

@@ -1,4 +1,4 @@
-import { fsClient } from "@/lib/fs-client"
+import { fsClient } from '@/lib/fs-client'
 
 export type EdenServerSocket = {
   readonly readyState?: number
@@ -7,12 +7,12 @@ export type EdenServerSocket = {
   addEventListener(
     type: keyof WebSocketEventMap,
     handler: EventListener,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void
   removeEventListener(
     type: keyof WebSocketEventMap,
     handler: EventListener,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ): void
 }
 
@@ -28,9 +28,7 @@ type LanguageServerSocketOptions = {
 }
 
 export function connectTerminalSocket(rootPath: string): EdenServerSocket {
-  return adaptEdenSocket(
-    fsClient.terminal.subscribe({ query: { root: rootPath } })
-  )
+  return adaptEdenSocket(fsClient.terminal.subscribe({ query: { root: rootPath } }))
 }
 
 export function connectLanguageServerSocket({
@@ -41,7 +39,7 @@ export function connectLanguageServerSocket({
   return adaptEdenSocket(
     fsClient.lsp.subscribe({
       query: { path, root: rootPath, server: serverId ?? undefined },
-    })
+    }),
   )
 }
 
@@ -68,7 +66,7 @@ export class EdenLanguageServerWebSocket implements EdenServerSocket {
   addEventListener(
     type: keyof WebSocketEventMap,
     handler: EventListener,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ) {
     this.#socket.addEventListener(type, handler, options)
   }
@@ -76,7 +74,7 @@ export class EdenLanguageServerWebSocket implements EdenServerSocket {
   removeEventListener(
     type: keyof WebSocketEventMap,
     handler: EventListener,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ) {
     this.#socket.removeEventListener(type, handler, options)
   }
@@ -106,8 +104,8 @@ function languageServerSocketOptions(url: string | URL) {
   const parsed = new URL(url.toString())
 
   return {
-    path: parsed.searchParams.get("path") ?? "",
-    rootPath: parsed.searchParams.get("root") ?? "",
-    serverId: parsed.searchParams.get("server"),
+    path: parsed.searchParams.get('path') ?? '',
+    rootPath: parsed.searchParams.get('root') ?? '',
+    serverId: parsed.searchParams.get('server'),
   }
 }

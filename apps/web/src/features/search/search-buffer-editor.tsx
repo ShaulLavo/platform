@@ -1,26 +1,26 @@
-import { useCallback } from "react"
-import type { EditorKeymapLayer } from "@editor/core"
+import { useCallback } from 'react'
+import type { EditorKeymapLayer } from '@editor/core'
 
-import { useEditorCommands } from "@/features/editor/state/editor-commands"
-import { openWorkspaceSearchMatch } from "@/features/search/open-search-match"
-import { SearchHistoryInput } from "@/features/search/search-history-input"
-import { SearchSummary } from "@/features/search/search-summary"
-import { SearchResultEditorSurface } from "@/features/search/search-result-editor-surface"
-import type { SearchResultOpenTarget } from "@/features/search/search-result-view-model"
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { openWorkspaceSearchMatch } from '@/features/search/open-search-match'
+import { SearchHistoryInput } from '@/features/search/search-history-input'
+import { SearchSummary } from '@/features/search/search-summary'
+import { SearchResultEditorSurface } from '@/features/search/search-result-editor-surface'
+import type { SearchResultOpenTarget } from '@/features/search/search-result-view-model'
 import {
   SearchErrorState,
   SearchIdleState,
   SearchPendingOrEmpty,
-} from "@/features/search/search-status-states"
+} from '@/features/search/search-status-states'
 import {
   SearchFilterFields,
   SearchModeButtons,
   SearchReplaceFields,
   SearchReplaceToggleButton,
-} from "@/features/search/search-controls"
-import { useSearchBuffer } from "@/features/search/use-search-buffer"
-import { useSearchBufferState } from "@/features/search/search-buffer-state"
-import { useWorkspaceSearchReplace } from "@/features/search/use-search-replace"
+} from '@/features/search/search-controls'
+import { useSearchBuffer } from '@/features/search/use-search-buffer'
+import { useSearchBufferState } from '@/features/search/search-buffer-state'
+import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
 
 export function SearchBufferEditor({
   editorKeymapLayers,
@@ -61,45 +61,39 @@ export function SearchBufferEditor({
 
       openWorkspaceSearchMatch(target.match, resultsQuery, commands)
     },
-    [commands, resultsQuery]
+    [commands, resultsQuery],
   )
 
   return (
-    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background">
-      <div className="border-b bg-muted/20 px-3 py-2">
-        <div className="flex max-w-2xl items-center gap-1.5">
+    <section className='bg-background grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]'>
+      <div className='bg-muted/20 border-b px-3 py-2'>
+        <div className='flex max-w-2xl items-center gap-1.5'>
           <SearchHistoryInput
-            aria-label="Search workspace"
-            className="flex-1"
-            inputClassName="h-8 pr-28 text-xs"
-            label="Search"
+            aria-label='Search workspace'
+            className='flex-1'
+            inputClassName='h-8 pr-28 text-xs'
+            label='Search'
             rightAdornment={
               <SearchModeButtons
-                className="absolute top-1/2 right-1 -translate-y-1/2"
+                className='absolute top-1/2 right-1 -translate-y-1/2'
                 options={searchOptions}
                 onOptionsChange={setSearchOptions}
               />
             }
-            type="search"
+            type='search'
             value={query}
             onSelectNextHistory={selectNextQuery}
             onSelectPreviousHistory={selectPreviousQuery}
             onValueChange={setQuery}
           />
-          <SearchReplaceToggleButton
-            active={replaceVisible}
-            onToggle={setReplaceVisible}
-          />
+          <SearchReplaceToggleButton active={replaceVisible} onToggle={setReplaceVisible} />
         </div>
-        <SearchFilterFields
-          options={searchOptions}
-          onOptionsChange={setSearchOptions}
-        />
+        <SearchFilterFields options={searchOptions} onOptionsChange={setSearchOptions} />
         <SearchReplaceFields
           canReplace={replace.canReplace}
           replaceText={replaceText}
           replaceVisible={replaceVisible}
-          replacing={snapshot?.replaceStatus === "running"}
+          replacing={snapshot?.replaceStatus === 'running'}
           onReplaceAll={replace.replaceAll}
           onReplaceNext={replace.replaceNext}
           onSelectNextHistory={selectNextReplaceText}
@@ -112,10 +106,10 @@ export function SearchBufferEditor({
         <SearchResultEditorSurface
           activeResultId={snapshot.activeResultId}
           canReplace={resultCanReplace}
-          deferredPluginMode="immediate"
+          deferredPluginMode='immediate'
           groups={groups}
           keymapLayers={editorKeymapLayers}
-          prewarmEditorPool={snapshot.status !== "loading"}
+          prewarmEditorPool={snapshot.status !== 'loading'}
           replaceVisible={replaceVisible}
           resultsQuery={resultsQuery}
           displayedResultsQuery={snapshot.resultsSearchQuery?.query ?? null}
@@ -135,12 +129,12 @@ export function SearchBufferEditor({
 function SearchBufferStatusState({
   snapshot,
 }: {
-  snapshot: ReturnType<typeof useSearchBuffer>["snapshot"]
+  snapshot: ReturnType<typeof useSearchBuffer>['snapshot']
 }) {
-  if (!snapshot || snapshot.status === "idle") {
+  if (!snapshot || snapshot.status === 'idle') {
     return <SearchIdleState />
   }
-  if (snapshot.status === "error") {
+  if (snapshot.status === 'error') {
     return <SearchErrorState message={snapshot.error} />
   }
 

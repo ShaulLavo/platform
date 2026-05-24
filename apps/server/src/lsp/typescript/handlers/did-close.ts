@@ -1,8 +1,7 @@
-import { isRecord } from "@workspace/contracts"
-import type * as lsp from "vscode-languageserver-protocol"
+import { isRecord } from '@workspace/contracts'
+import type * as lsp from 'vscode-languageserver-protocol'
 
-import type { SessionContext } from "../shared/context"
-
+import type { SessionContext } from '../shared/context'
 
 export function handleDidClose(ctx: SessionContext, params: unknown): void {
   const uri = didCloseUri(params)
@@ -26,7 +25,7 @@ function didCloseUri(params: unknown): lsp.DocumentUri | null {
 function textDocumentIdentifier(params: unknown): lsp.TextDocumentIdentifier | null {
   if (!isRecord(params)) return null
   if (!isRecord(params.textDocument)) return null
-  return typeof params.textDocument.uri === "string"
+  return typeof params.textDocument.uri === 'string'
     ? ({ uri: params.textDocument.uri } satisfies lsp.TextDocumentIdentifier)
     : null
 }

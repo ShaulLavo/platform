@@ -1,26 +1,31 @@
 {
   "name": "@workspace/contracts",
   "version": "0.0.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "build": "tsgo --noEmit",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "typecheck": "tsgo --noEmit"
+  },
   "dependencies": {
     "minimatch": "^10.2.5"
   },
-  "scripts": {
-    "build": "tsc --noEmit",
-    "lint": "eslint",
-    "format": "prettier --write \"**/*.ts\"",
-    "typecheck": "tsc --noEmit"
-  },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@types/bun": "^1.3.13",
+    "@typescript/native-preview": "latest",
     "eslint": "^9.39.2",
     "fast-check": "^4.6.0",
     "globals": "^17.2.0",
+    "oxfmt": "latest",
+    "oxlint": "latest",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0"
   }

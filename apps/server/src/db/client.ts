@@ -6,8 +6,7 @@ import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as schema from './schema'
 
 export const metadataDatabasePath =
-	Bun.env.FS_METADATA_DB ??
-	path.join(homedir(), '.platform-file-picker', 'fs-metadata.sqlite')
+  Bun.env.FS_METADATA_DB ?? path.join(homedir(), '.platform-file-picker', 'fs-metadata.sqlite')
 
 ensureDatabaseDirectory(metadataDatabasePath)
 
@@ -17,11 +16,11 @@ sqlite.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;')
 export const db = drizzle({ client: sqlite, schema })
 
 export function closeMetadataDatabase() {
-	sqlite.close()
+  sqlite.close()
 }
 
 function ensureDatabaseDirectory(databasePath: string) {
-	if (databasePath === ':memory:') return
+  if (databasePath === ':memory:') return
 
-	mkdirSync(path.dirname(databasePath), { recursive: true })
+  mkdirSync(path.dirname(databasePath), { recursive: true })
 }

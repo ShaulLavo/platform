@@ -8,7 +8,7 @@ export type EditorTabDropTargetBounds = {
 export function editorTabDropIndex(
   bounds: readonly EditorTabDropTargetBounds[],
   clientX: number,
-  draggedTabId: string
+  draggedTabId: string,
 ) {
   const targets = bounds.filter((bound) => bound.id !== draggedTabId)
   for (let index = 0; index < targets.length; index += 1) {

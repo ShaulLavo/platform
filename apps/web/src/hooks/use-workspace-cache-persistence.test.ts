@@ -1,17 +1,14 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from 'bun:test'
 
-import { createEditorPaneLayoutForPaths } from "@/features/editor/state/editor-pane-state"
-import { createEditorWorkspaceStore } from "@/features/editor/state/editor-workspace-state"
-import { createSearchBufferStore } from "@/features/search/search-buffer-state"
-import type { PickedFsEntry } from "@/lib/file-system-types"
-import type {
-  CachedWorkspaceState,
-  WorkspaceCacheState,
-} from "@/lib/workspace-cache"
-import { subscribeWorkspaceCachePersistence } from "@/hooks/use-workspace-cache-persistence"
+import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
+import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
+import { createSearchBufferStore } from '@/features/search/search-buffer-state'
+import type { PickedFsEntry } from '@/lib/file-system-types'
+import type { CachedWorkspaceState, WorkspaceCacheState } from '@/lib/workspace-cache'
+import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 
-describe("workspace cache persistence", () => {
-  it("does not persist every streaming search match batch", () => {
+describe('workspace cache persistence', () => {
+  it('does not persist every streaming search match batch', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
     const timers = deferredTimers()
@@ -26,27 +23,27 @@ describe("workspace cache persistence", () => {
     const runId = searchStore.getState().startSearch({
       includeContent: true,
       limit: 20,
-      path: "/repo",
-      query: "needle",
+      path: '/repo',
+      query: 'needle',
     })
 
     expect(timers.hasPending()).toBe(true)
     timers.flush()
     expect(writes.at(-1)?.searchBuffer).toMatchObject({
-      query: "needle",
-      resultsQuery: "",
+      query: 'needle',
+      resultsQuery: '',
       totalCount: 0,
     })
 
     searchStore.getState().appendEvents(runId, [
       {
         match: {
-          kind: "content",
-          path: "/repo/src/app.ts",
-          source: "disk",
-          type: "file",
+          kind: 'content',
+          path: '/repo/src/app.ts',
+          source: 'disk',
+          type: 'file',
         },
-        type: "match",
+        type: 'match',
       },
     ])
 
@@ -54,18 +51,18 @@ describe("workspace cache persistence", () => {
 
     searchStore.getState().appendEvent(runId, {
       count: 1,
-      path: "/repo",
-      query: "needle",
+      path: '/repo',
+      query: 'needle',
       truncated: false,
-      type: "done",
+      type: 'done',
     })
 
     expect(timers.hasPending()).toBe(true)
     timers.flush()
     expect(writes).toHaveLength(2)
     expect(writes.at(-1)?.searchBuffer).toMatchObject({
-      query: "needle",
-      resultsQuery: "needle",
+      query: 'needle',
+      resultsQuery: 'needle',
       totalCount: 1,
       truncated: false,
     })
@@ -74,7 +71,7 @@ describe("workspace cache persistence", () => {
     unsubscribe()
   })
 
-  it("ignores transient workspace picker state", () => {
+  it('ignores transient workspace picker state', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
     const timers = deferredTimers()
@@ -98,16 +95,16 @@ describe("workspace cache persistence", () => {
 
 function cachedWorkspace(): CachedWorkspaceState {
   return {
-    diffViewMode: "split",
+    diffViewMode: 'split',
     editorHistory: [],
     editorPaneLayout: createEditorPaneLayoutForPaths([], null),
     gitPanelOpen: true,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
-    rootFolder: pickedDirectory("/repo"),
+    rootFolder: pickedDirectory('/repo'),
     selectedFilePath: null,
     sidebarVisible: true,
-    workspacePanelTab: "files",
+    workspacePanelTab: 'files',
   }
 }
 
@@ -115,10 +112,10 @@ function pickedDirectory(path: string): PickedFsEntry {
   return {
     birthtimeMs: 1,
     mtimeMs: 1,
-    name: "repo",
+    name: 'repo',
     path,
     size: 1,
-    type: "directory",
+    type: 'directory',
   }
 }
 
@@ -149,5 +146,5 @@ function hasCachedMatches(state: WorkspaceCacheState | undefined) {
   const searchBuffer = state?.searchBuffer
   if (!searchBuffer) return false
 
-  return "matches" in searchBuffer
+  return 'matches' in searchBuffer
 }

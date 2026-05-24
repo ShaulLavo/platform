@@ -1,12 +1,12 @@
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
-import type { LanguageServerDefinitionTarget } from "@editor/language-server"
+import type { WorkspaceSearchMatch } from '@workspace/contracts'
+import type { LanguageServerDefinitionTarget } from '@editor/language-server'
 
-import type { EditorCommands } from "@/features/editor/state/editor-commands"
+import type { EditorCommands } from '@/features/editor/state/editor-commands'
 
 export function openWorkspaceSearchMatch(
   match: WorkspaceSearchMatch,
   query: string,
-  commands: Pick<EditorCommands, "openDefinition" | "selectFile">
+  commands: Pick<EditorCommands, 'openDefinition' | 'selectFile'>,
 ) {
   if (!isContentLocation(match)) {
     commands.selectFile(match.path)
@@ -17,17 +17,17 @@ export function openWorkspaceSearchMatch(
 }
 
 function isContentLocation(
-  match: WorkspaceSearchMatch
+  match: WorkspaceSearchMatch,
 ): match is WorkspaceSearchMatch & { column: number; line: number } {
-  if (match.kind !== "content") return false
-  if (typeof match.line !== "number") return false
+  if (match.kind !== 'content') return false
+  if (typeof match.line !== 'number') return false
 
-  return typeof match.column === "number"
+  return typeof match.column === 'number'
 }
 
 function searchDefinitionTarget(
   match: WorkspaceSearchMatch & { column: number; line: number },
-  query: string
+  query: string,
 ): LanguageServerDefinitionTarget {
   const line = Math.max(0, match.line - 1)
   const character = Math.max(0, match.column - 1)
@@ -46,9 +46,9 @@ function searchDefinitionTarget(
 function searchEndCharacter(
   match: WorkspaceSearchMatch & { column: number; line: number },
   query: string,
-  character: number
+  character: number,
 ) {
-  if (typeof match.endColumn === "number") {
+  if (typeof match.endColumn === 'number') {
     return Math.max(character + 1, match.endColumn - 1)
   }
 
@@ -56,6 +56,6 @@ function searchEndCharacter(
 }
 
 function fileUriForPath(path: string) {
-  const normalized = path.replace(/^\/+/, "")
-  return `file:///${normalized.split("/").map(encodeURIComponent).join("/")}`
+  const normalized = path.replace(/^\/+/, '')
+  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }

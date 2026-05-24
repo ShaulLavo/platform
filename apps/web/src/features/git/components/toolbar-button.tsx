@@ -1,5 +1,5 @@
-import { Button } from "@workspace/ui/components/button"
-import type { ReactNode } from "react"
+import { Button } from '@workspace/ui/components/button'
+import type { ReactNode } from 'react'
 
 export function ToolbarButton({
   children,
@@ -15,13 +15,13 @@ export function ToolbarButton({
   return (
     <Button
       aria-label={label}
-      className="relative size-6 text-muted-foreground hover:text-foreground"
+      className='text-muted-foreground hover:text-foreground relative size-6'
       disabled={disabled}
       onClick={onClick}
-      size="icon-xs"
+      size='icon-xs'
       title={label}
-      type="button"
-      variant="ghost"
+      type='button'
+      variant='ghost'
     >
       {children}
     </Button>

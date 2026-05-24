@@ -1,6 +1,6 @@
-import type { Writable } from "node:stream"
+import type { Writable } from 'node:stream'
 
-const HEADER_SEPARATOR = "\r\n\r\n"
+const HEADER_SEPARATOR = '\r\n\r\n'
 const HEADER_SEPARATOR_BYTES = Buffer.byteLength(HEADER_SEPARATOR)
 
 export class LspStdioMessageReader {
@@ -29,7 +29,7 @@ export class LspStdioMessageReader {
     const headerEnd = this.buffer.indexOf(HEADER_SEPARATOR)
     if (headerEnd === -1) return null
 
-    const headers = this.buffer.subarray(0, headerEnd).toString("ascii")
+    const headers = this.buffer.subarray(0, headerEnd).toString('ascii')
     const contentLength = contentLengthFromHeaders(headers)
     const bodyStart = headerEnd + HEADER_SEPARATOR_BYTES
     if (contentLength === null) {
@@ -40,14 +40,14 @@ export class LspStdioMessageReader {
     const bodyEnd = bodyStart + contentLength
     if (this.buffer.length < bodyEnd) return null
 
-    const message = this.buffer.subarray(bodyStart, bodyEnd).toString("utf8")
+    const message = this.buffer.subarray(bodyStart, bodyEnd).toString('utf8')
     this.buffer = this.buffer.subarray(bodyEnd)
     return message
   }
 }
 
 export function encodeLspStdioMessage(message: string) {
-  return `Content-Length: ${Buffer.byteLength(message, "utf8")}\r\n\r\n${message}`
+  return `Content-Length: ${Buffer.byteLength(message, 'utf8')}\r\n\r\n${message}`
 }
 
 export function writeLspStdioMessage(stream: Writable, message: string) {
@@ -55,11 +55,11 @@ export function writeLspStdioMessage(stream: Writable, message: string) {
 }
 
 function contentLengthFromHeaders(headers: string) {
-  for (const line of headers.split("\r\n")) {
+  for (const line of headers.split('\r\n')) {
     const match = /^Content-Length:\s*(\d+)$/iu.exec(line)
     if (!match) continue
 
-    return Number.parseInt(match[1] ?? "", 10)
+    return Number.parseInt(match[1] ?? '', 10)
   }
 
   return null

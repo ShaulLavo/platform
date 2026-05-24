@@ -1,9 +1,9 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from 'bun:test'
 
-import { encodeLspStdioMessage, LspStdioMessageReader } from "./stdio-rpc"
+import { encodeLspStdioMessage, LspStdioMessageReader } from './stdio-rpc'
 
-describe("LSP stdio framing", () => {
-  it("decodes complete framed messages", () => {
+describe('LSP stdio framing', () => {
+  it('decodes complete framed messages', () => {
     const messages: string[] = []
     const reader = new LspStdioMessageReader((message) => messages.push(message))
 
@@ -12,7 +12,7 @@ describe("LSP stdio framing", () => {
     expect(messages).toEqual(['{"jsonrpc":"2.0","method":"initialized"}'])
   })
 
-  it("buffers partial messages and drains multiple frames", () => {
+  it('buffers partial messages and drains multiple frames', () => {
     const messages: string[] = []
     const reader = new LspStdioMessageReader((message) => messages.push(message))
     const first = encodeLspStdioMessage('{"id":1,"result":null}')

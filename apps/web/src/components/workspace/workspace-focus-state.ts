@@ -1,15 +1,9 @@
-import type { EditorCommandContext, EditorCommandId } from "@editor/core"
-import { createContext, useContext } from "react"
-import { useStore } from "zustand"
-import { createStore, type StoreApi } from "zustand/vanilla"
+import type { EditorCommandContext, EditorCommandId } from '@editor/core'
+import { createContext, useContext } from 'react'
+import { useStore } from 'zustand'
+import { createStore, type StoreApi } from 'zustand/vanilla'
 
-export type WorkspaceFocusArea =
-  | "editor"
-  | "file-tree"
-  | "git"
-  | "global"
-  | "terminal"
-  | null
+export type WorkspaceFocusArea = 'editor' | 'file-tree' | 'git' | 'global' | 'terminal' | null
 
 type WorkspaceFocusStoreState = {
   activeArea: WorkspaceFocusArea
@@ -20,14 +14,9 @@ type WorkspaceFocusStoreState = {
 type WorkspaceFocusStoreActions = {
   clearFocusArea: (area?: WorkspaceFocusArea) => void
   consumeEditorFocusRequest: () => number
-  dispatchEditorCommand: (
-    command: EditorCommandId,
-    context?: EditorCommandContext
-  ) => boolean
+  dispatchEditorCommand: (command: EditorCommandId, context?: EditorCommandContext) => boolean
   requestEditorFocus: () => void
-  setActiveEditorCommandDispatch: (
-    dispatch: EditorCommandDispatch | null
-  ) => void
+  setActiveEditorCommandDispatch: (dispatch: EditorCommandDispatch | null) => void
   setFocusArea: (area: WorkspaceFocusArea) => void
 }
 
@@ -35,22 +24,15 @@ type WorkspaceFocusStore = WorkspaceFocusStoreState & WorkspaceFocusStoreActions
 
 type WorkspaceFocusStoreApi = StoreApi<WorkspaceFocusStore>
 
-type EditorCommandDispatch = (
-  command: EditorCommandId,
-  context?: EditorCommandContext
-) => boolean
+type EditorCommandDispatch = (command: EditorCommandId, context?: EditorCommandContext) => boolean
 
 const WorkspaceFocusContext = createContext<WorkspaceFocusStoreApi | null>(null)
 export { WorkspaceFocusContext }
 
-export function useWorkspaceFocus<T>(
-  selector: (state: WorkspaceFocusStore) => T
-): T {
+export function useWorkspaceFocus<T>(selector: (state: WorkspaceFocusStore) => T): T {
   const store = useContext(WorkspaceFocusContext)
   if (!store) {
-    throw new Error(
-      "useWorkspaceFocus must be used within WorkspaceFocusProvider"
-    )
+    throw new Error('useWorkspaceFocus must be used within WorkspaceFocusProvider')
   }
 
   return useStore(store, selector)
@@ -73,7 +55,7 @@ export function createWorkspaceFocusStore() {
       get().activeEditorCommandDispatch?.(command, context) ?? false,
     requestEditorFocus: () =>
       set((state) => ({
-        activeArea: "editor",
+        activeArea: 'editor',
         editorFocusRequestId: state.editorFocusRequestId + 1,
       })),
     setActiveEditorCommandDispatch: (activeEditorCommandDispatch) =>

@@ -1,5 +1,5 @@
-import { ensureTrailingNewline, joinPath, unquoteGitPath } from "./path-utils"
-import type { GitDiffHunk, GitFileDiff, GitLineChange } from "./types"
+import { ensureTrailingNewline, joinPath, unquoteGitPath } from './path-utils'
+import type { GitDiffHunk, GitFileDiff, GitLineChange } from './types'
 
 const HUNK_HEADER_PATTERN =
   /^@@ -(?<oldStart>\d+)(?:,(?<oldLines>\d+))? \+(?<newStart>\d+)(?:,(?<newLines>\d+))? @@/
@@ -10,7 +10,7 @@ export function parseDiff(output: string, rootPath: string, staged: boolean) {
   let hunk: MutableGitDiffHunk | null = null
 
   for (const line of diffLines(output)) {
-    if (line.startsWith("diff --git ")) {
+    if (line.startsWith('diff --git ')) {
       current = startDiffFile(diffs, rootPath, staged, line)
       hunk = null
       continue
@@ -19,7 +19,7 @@ export function parseDiff(output: string, rootPath: string, staged: boolean) {
 
     current.lines.push(line)
     applyDiffMetadata(current, rootPath, line)
-    if (line.startsWith("@@ ")) {
+    if (line.startsWith('@@ ')) {
       hunk = startDiffHunk(current, line)
       continue
     }
@@ -31,20 +31,14 @@ export function parseDiff(output: string, rootPath: string, staged: boolean) {
   return diffs.map(finalizeDiff)
 }
 
-function applyDiffMetadata(
-  current: MutableGitFileDiff,
-  rootPath: string,
-  line: string
-) {
-  if (line.startsWith("rename from "))
-    current.oldPath = joinPath(rootPath, line.slice(12))
-  if (line.startsWith("rename to "))
-    current.path = joinPath(rootPath, line.slice(10))
-  if (line === "--- /dev/null") current.oldFileMissing = true
-  if (line.startsWith("--- ")) current.oldPath = diffPath(rootPath, line, "a/")
-  if (line === "+++ /dev/null") current.newFileMissing = true
-  if (line.startsWith("+++ ")) {
-    current.path = diffPath(rootPath, line, "b/") ?? current.path
+function applyDiffMetadata(current: MutableGitFileDiff, rootPath: string, line: string) {
+  if (line.startsWith('rename from ')) current.oldPath = joinPath(rootPath, line.slice(12))
+  if (line.startsWith('rename to ')) current.path = joinPath(rootPath, line.slice(10))
+  if (line === '--- /dev/null') current.oldFileMissing = true
+  if (line.startsWith('--- ')) current.oldPath = diffPath(rootPath, line, 'a/')
+  if (line === '+++ /dev/null') current.newFileMissing = true
+  if (line.startsWith('+++ ')) {
+    current.path = diffPath(rootPath, line, 'b/') ?? current.path
   }
 }
 
@@ -54,7 +48,7 @@ function finalizeDiff(diff: MutableGitFileDiff): GitFileDiff {
     newFileMissing: diff.newFileMissing,
     oldFileMissing: diff.oldFileMissing,
     oldPath: diff.oldPath === diff.path ? undefined : diff.oldPath,
-    patch: ensureTrailingNewline(diff.lines.join("\n")),
+    patch: ensureTrailingNewline(diff.lines.join('\n')),
     path: diff.path,
     staged: diff.staged,
   }
@@ -62,9 +56,9 @@ function finalizeDiff(diff: MutableGitFileDiff): GitFileDiff {
 
 function diffLines(output: string) {
   if (!output) return []
-  if (!output.endsWith("\n")) return output.split("\n")
+  if (!output.endsWith('\n')) return output.split('\n')
 
-  return output.slice(0, -1).split("\n")
+  return output.slice(0, -1).split('\n')
 }
 
 type MutableGitFileDiff = {
@@ -77,7 +71,7 @@ type MutableGitFileDiff = {
   hunks: MutableGitDiffHunk[]
 }
 
-type MutableGitDiffHunk = Omit<GitDiffHunk, "patch"> & {
+type MutableGitDiffHunk = Omit<GitDiffHunk, 'patch'> & {
   lines: string[]
   oldLine: number
   newLine: number
@@ -87,7 +81,7 @@ function startDiffFile(
   diffs: MutableGitFileDiff[],
   rootPath: string,
   staged: boolean,
-  line: string
+  line: string,
 ) {
   const path = diffGitPath(line)
   const diff = {
@@ -125,10 +119,10 @@ function startDiffHunk(current: MutableGitFileDiff, line: string) {
 
 function applyDiffLine(hunk: MutableGitDiffHunk, line: string) {
   hunk.lines.push(line)
-  if (line.startsWith("\\ No newline")) return
+  if (line.startsWith('\\ No newline')) return
 
   const type = diffLineType(line)
-  if (type === "added") {
+  if (type === 'added') {
     hunk.changes.push({
       newLine: hunk.newLine,
       oldLine: null,
@@ -138,7 +132,7 @@ function applyDiffLine(hunk: MutableGitDiffHunk, line: string) {
     hunk.newLine += 1
     return
   }
-  if (type === "deleted") {
+  if (type === 'deleted') {
     hunk.changes.push({
       newLine: null,
       oldLine: hunk.oldLine,
@@ -167,15 +161,15 @@ function finalizeHunk(hunk: MutableGitDiffHunk): GitDiffHunk {
     newStart: hunk.newStart,
     oldLines: hunk.oldLines,
     oldStart: hunk.oldStart,
-    patch: ensureTrailingNewline(hunk.lines.join("\n")),
+    patch: ensureTrailingNewline(hunk.lines.join('\n')),
   }
 }
 
-function diffLineType(line: string): GitLineChange["type"] {
-  if (line.startsWith("+")) return "added"
-  if (line.startsWith("-")) return "deleted"
+function diffLineType(line: string): GitLineChange['type'] {
+  if (line.startsWith('+')) return 'added'
+  if (line.startsWith('-')) return 'deleted'
 
-  return "context"
+  return 'context'
 }
 
 export function rewriteBlobPatchPaths(
@@ -185,17 +179,17 @@ export function rewriteBlobPatchPaths(
     oldObjectId?: string
     oldPath: string
     path: string
-  }
+  },
 ) {
   const oldPath = `a/${input.oldPath}`
   const newPath = `b/${input.path}`
   const lines = diffLines(patch).map((line) =>
-    rewriteBlobPatchLine(line, { ...input, newPath, oldPath })
+    rewriteBlobPatchLine(line, { ...input, newPath, oldPath }),
   )
 
-  if (lines.length === 0) return ""
+  if (lines.length === 0) return ''
 
-  return ensureTrailingNewline(lines.join("\n"))
+  return ensureTrailingNewline(lines.join('\n'))
 }
 
 function rewriteBlobPatchLine(
@@ -206,16 +200,16 @@ function rewriteBlobPatchLine(
     oldObjectId?: string
     oldPath: string
     path: string
-  }
+  },
 ) {
-  if (line.startsWith("diff --git ")) {
+  if (line.startsWith('diff --git ')) {
     return `diff --git ${input.oldPath} ${input.newPath}`
   }
-  if (line.startsWith("--- ")) {
-    return input.oldObjectId ? `--- ${input.oldPath}` : "--- /dev/null"
+  if (line.startsWith('--- ')) {
+    return input.oldObjectId ? `--- ${input.oldPath}` : '--- /dev/null'
   }
-  if (line.startsWith("+++ ")) {
-    return input.newObjectId ? `+++ ${input.newPath}` : "+++ /dev/null"
+  if (line.startsWith('+++ ')) {
+    return input.newObjectId ? `+++ ${input.newPath}` : '+++ /dev/null'
   }
 
   return line
@@ -223,12 +217,12 @@ function rewriteBlobPatchLine(
 
 function diffGitPath(line: string) {
   const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line)
-  return unquoteGitPath(match?.[2] ?? "")
+  return unquoteGitPath(match?.[2] ?? '')
 }
 
-function diffPath(rootPath: string, line: string, prefix: "a/" | "b/") {
+function diffPath(rootPath: string, line: string, prefix: 'a/' | 'b/') {
   const value = line.slice(4)
-  if (value === "/dev/null") return undefined
+  if (value === '/dev/null') return undefined
   if (!value.startsWith(prefix)) return undefined
 
   return joinPath(rootPath, unquoteGitPath(value.slice(2)))

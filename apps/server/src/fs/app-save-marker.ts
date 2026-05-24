@@ -1,12 +1,6 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs"
-import { homedir } from "node:os"
-import path from "node:path"
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import path from 'node:path'
 
 const DEFAULT_TTL_MS = 10_000
 const MAX_MARKERS = 512
@@ -22,25 +16,18 @@ type AppSaveMarkerOptions = {
   ttlMs?: number
 }
 
-export function appSaveMarkerFilePath(
-  env: NodeJS.ProcessEnv = process.env
-): string {
+export function appSaveMarkerFilePath(env: NodeJS.ProcessEnv = process.env): string {
   return (
     env.PLATFORM_APP_SAVE_MARKER_FILE ??
-    path.join(homedir(), ".platform-file-picker", "app-save-markers.json")
+    path.join(homedir(), '.platform-file-picker', 'app-save-markers.json')
   )
 }
 
-export function recordAppSave(
-  absolutePath: string,
-  options: AppSaveMarkerOptions = {}
-): boolean {
+export function recordAppSave(absolutePath: string, options: AppSaveMarkerOptions = {}): boolean {
   try {
     const marker = markerPath(options)
     const now = options.now ?? Date.now()
-    const ledger = cappedLedger(
-      pruneLedger(readLedger(marker), now, ttlMs(options))
-    )
+    const ledger = cappedLedger(pruneLedger(readLedger(marker), now, ttlMs(options)))
     ledger.savedAtByPath[normalizeMarkerPath(absolutePath)] = now
     writeLedger(marker, ledger)
     return true
@@ -49,10 +36,7 @@ export function recordAppSave(
   }
 }
 
-export function consumeAppSave(
-  absolutePath: string,
-  options: AppSaveMarkerOptions = {}
-): boolean {
+export function consumeAppSave(absolutePath: string, options: AppSaveMarkerOptions = {}): boolean {
   try {
     const marker = markerPath(options)
     if (!existsSync(marker)) {
@@ -60,11 +44,7 @@ export function consumeAppSave(
     }
 
     const normalizedPath = normalizeMarkerPath(absolutePath)
-    const ledger = pruneLedger(
-      readLedger(marker),
-      options.now ?? Date.now(),
-      ttlMs(options)
-    )
+    const ledger = pruneLedger(readLedger(marker), options.now ?? Date.now(), ttlMs(options))
 
     if (ledger.savedAtByPath[normalizedPath] === undefined) {
       writeLedger(marker, ledger)
@@ -79,10 +59,7 @@ export function consumeAppSave(
   }
 }
 
-export function forgetAppSave(
-  absolutePath: string,
-  options: AppSaveMarkerOptions = {}
-): void {
+export function forgetAppSave(absolutePath: string, options: AppSaveMarkerOptions = {}): void {
   try {
     const marker = markerPath(options)
     if (!existsSync(marker)) {
@@ -114,12 +91,12 @@ function readLedger(markerPath: string): AppSaveLedger {
     return emptyLedger()
   }
 
-  const parsed = JSON.parse(readFileSync(markerPath, "utf8")) as unknown
+  const parsed = JSON.parse(readFileSync(markerPath, 'utf8')) as unknown
   return parseLedger(parsed) ?? emptyLedger()
 }
 
 function parseLedger(value: unknown): AppSaveLedger | undefined {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return undefined
   }
 
@@ -129,21 +106,14 @@ function parseLedger(value: unknown): AppSaveLedger | undefined {
   }
 
   const entries = Object.entries(ledger.savedAtByPath).filter(
-    ([savedPath, savedAt]) =>
-      savedPath.length > 0 && typeof savedAt === "number"
+    ([savedPath, savedAt]) => savedPath.length > 0 && typeof savedAt === 'number',
   )
   return { version: 1, savedAtByPath: Object.fromEntries(entries) }
 }
 
-function pruneLedger(
-  ledger: AppSaveLedger,
-  now: number,
-  ttlMs: number
-): AppSaveLedger {
+function pruneLedger(ledger: AppSaveLedger, now: number, ttlMs: number): AppSaveLedger {
   const savedAtByPath = Object.fromEntries(
-    Object.entries(ledger.savedAtByPath).filter(
-      ([, savedAt]) => now - savedAt <= ttlMs
-    )
+    Object.entries(ledger.savedAtByPath).filter(([, savedAt]) => now - savedAt <= ttlMs),
   )
   return { version: 1, savedAtByPath }
 }
@@ -155,7 +125,7 @@ function cappedLedger(ledger: AppSaveLedger): AppSaveLedger {
   }
 
   const savedAtByPath = Object.fromEntries(
-    entries.sort(([, left], [, right]) => right - left).slice(0, MAX_MARKERS)
+    entries.sort(([, left], [, right]) => right - left).slice(0, MAX_MARKERS),
   )
   return { version: 1, savedAtByPath }
 }
@@ -163,7 +133,7 @@ function cappedLedger(ledger: AppSaveLedger): AppSaveLedger {
 function writeLedger(markerPath: string, ledger: AppSaveLedger): void {
   mkdirSync(path.dirname(markerPath), { recursive: true })
   const temporaryPath = `${markerPath}.${process.pid}.${Date.now()}.tmp`
-  writeFileSync(temporaryPath, JSON.stringify(ledger), "utf8")
+  writeFileSync(temporaryPath, JSON.stringify(ledger), 'utf8')
   renameSync(temporaryPath, markerPath)
 }
 

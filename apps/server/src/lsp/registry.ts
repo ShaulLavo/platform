@@ -1,6 +1,6 @@
-import { access, readdir } from "node:fs/promises"
-import path from "node:path"
-import type { ChildProcessWithoutNullStreams } from "node:child_process"
+import { access, readdir } from 'node:fs/promises'
+import path from 'node:path'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import {
   spawnBiome,
@@ -21,8 +21,8 @@ import {
   spawnTinymist,
   spawnTy,
   spawnZls,
-} from "./installers"
-import { fileExtension } from "./language"
+} from './installers'
+import { fileExtension } from './language'
 
 export type LspServerHandle = {
   readonly process: ChildProcessWithoutNullStreams
@@ -31,14 +31,9 @@ export type LspServerHandle = {
 export type LspServerDefinition = {
   readonly id: string
   readonly extensions: readonly string[]
-  readonly root: (
-    filePath: string,
-    workspaceRoot: string
-  ) => Promise<string | null>
+  readonly root: (filePath: string, workspaceRoot: string) => Promise<string | null>
   readonly spawn: (root: string) => Promise<LspServerHandle | null>
-  readonly initializationOptions?: (
-    root: string
-  ) => Promise<Record<string, unknown> | undefined>
+  readonly initializationOptions?: (root: string) => Promise<Record<string, unknown> | undefined>
 }
 
 export type LspServerMatch = {
@@ -58,48 +53,31 @@ type LspConfig = Record<
 >
 
 const useTyForPython = truthy(process.env.FS_EXPERIMENTAL_LSP_TY)
-const serverPriority = [
-  "deno",
-  "typescript",
-  "vue",
-  "eslint",
-  "oxlint",
-  "biome",
-] as const
+const serverPriority = ['deno', 'typescript', 'vue', 'eslint', 'oxlint', 'biome'] as const
 
 const jsProjectMarkers = [
-  "package-lock.json",
-  "bun.lockb",
-  "bun.lock",
-  "pnpm-lock.yaml",
-  "yarn.lock",
-  "package.json",
+  'package-lock.json',
+  'bun.lockb',
+  'bun.lock',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'package.json',
 ] as const
 
-const tsExtensions = [
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".mts",
-  ".cts",
-] as const
+const tsExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'] as const
 
 export const lspServers: readonly LspServerDefinition[] = [
   {
-    id: "astro",
-    extensions: [".astro"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
+    id: 'astro',
+    extensions: ['.astro'],
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
     spawn: (root) =>
-      spawnNodePackageBin("@astrojs/language-server", "astro-ls", ["--stdio"], {
+      spawnNodePackageBin('@astrojs/language-server', 'astro-ls', ['--stdio'], {
         cwd: root,
       }),
     initializationOptions: async (root) => {
       const tsserver = await findUp(path.resolve(root), root, [
-        "node_modules/typescript/lib/tsserver.js",
+        'node_modules/typescript/lib/tsserver.js',
       ])
       if (!tsserver) return undefined
 
@@ -107,380 +85,298 @@ export const lspServers: readonly LspServerDefinition[] = [
     },
   },
   {
-    id: "bash",
-    extensions: [".sh", ".bash", ".zsh", ".ksh"],
+    id: 'bash',
+    extensions: ['.sh', '.bash', '.zsh', '.ksh'],
     root: async (_filePath, workspaceRoot) => workspaceRoot,
     spawn: (root) =>
-      spawnNodePackageBin(
-        "bash-language-server",
-        "bash-language-server",
-        ["start"],
-        { cwd: root }
-      ),
+      spawnNodePackageBin('bash-language-server', 'bash-language-server', ['start'], { cwd: root }),
   },
   {
-    id: "clangd",
-    extensions: [
-      ".c",
-      ".cpp",
-      ".cc",
-      ".cxx",
-      ".c++",
-      ".h",
-      ".hpp",
-      ".hh",
-      ".hxx",
-      ".h++",
-    ],
+    id: 'clangd',
+    extensions: ['.c', '.cpp', '.cc', '.cxx', '.c++', '.h', '.hpp', '.hh', '.hxx', '.h++'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        "compile_commands.json",
-        "compile_flags.txt",
-        ".clangd",
-        "CMakeLists.txt",
-        "Makefile",
+        'compile_commands.json',
+        'compile_flags.txt',
+        '.clangd',
+        'CMakeLists.txt',
+        'Makefile',
       ]),
     spawn: (root) => spawnClangd(root),
   },
   {
-    id: "clojure-lsp",
-    extensions: [".clj", ".cljs", ".cljc", ".edn"],
+    id: 'clojure-lsp',
+    extensions: ['.clj', '.cljs', '.cljc', '.edn'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        "deps.edn",
-        "project.clj",
-        "shadow-cljs.edn",
-        "bb.edn",
-        "build.boot",
+        'deps.edn',
+        'project.clj',
+        'shadow-cljs.edn',
+        'bb.edn',
+        'build.boot',
       ]),
-    spawn: (root) => spawnCommand(["clojure-lsp", "listen"], { cwd: root }),
+    spawn: (root) => spawnCommand(['clojure-lsp', 'listen'], { cwd: root }),
   },
   {
-    id: "csharp",
-    extensions: [".cs"],
+    id: 'csharp',
+    extensions: ['.cs'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        ".slnx",
-        ".sln",
-        ".csproj",
-        "global.json",
-      ]),
-    spawn: (root) => spawnDotnetTool("csharp-ls", "csharp-ls", root),
+      nearestRoot(filePath, workspaceRoot, ['.slnx', '.sln', '.csproj', 'global.json']),
+    spawn: (root) => spawnDotnetTool('csharp-ls', 'csharp-ls', root),
   },
   {
-    id: "dart",
-    extensions: [".dart"],
+    id: 'dart',
+    extensions: ['.dart'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        "pubspec.yaml",
-        "analysis_options.yaml",
-      ]),
-    spawn: (root) =>
-      spawnCommand(["dart", "language-server", "--lsp"], { cwd: root }),
+      nearestRoot(filePath, workspaceRoot, ['pubspec.yaml', 'analysis_options.yaml']),
+    spawn: (root) => spawnCommand(['dart', 'language-server', '--lsp'], { cwd: root }),
   },
   {
-    id: "deno",
-    extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs"],
+    id: 'deno',
+    extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ["deno.json", "deno.jsonc"], {
+      nearestRoot(filePath, workspaceRoot, ['deno.json', 'deno.jsonc'], {
         fallback: false,
       }),
-    spawn: (root) => spawnCommand(["deno", "lsp"], { cwd: root }),
+    spawn: (root) => spawnCommand(['deno', 'lsp'], { cwd: root }),
   },
   {
-    id: "dockerfile",
-    extensions: [".dockerfile", "Dockerfile"],
+    id: 'dockerfile',
+    extensions: ['.dockerfile', 'Dockerfile'],
     root: async (_filePath, workspaceRoot) => workspaceRoot,
     spawn: (root) =>
-      spawnNodePackageBin(
-        "dockerfile-language-server-nodejs",
-        "docker-langserver",
-        ["--stdio"],
-        { cwd: root }
-      ),
+      spawnNodePackageBin('dockerfile-language-server-nodejs', 'docker-langserver', ['--stdio'], {
+        cwd: root,
+      }),
   },
   {
-    id: "elixir-ls",
-    extensions: [".ex", ".exs"],
+    id: 'elixir-ls',
+    extensions: ['.ex', '.exs'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ["mix.exs", "mix.lock"]),
+      nearestRoot(filePath, workspaceRoot, ['mix.exs', 'mix.lock']),
     spawn: (root) => spawnElixirLs(root),
   },
   {
-    id: "eslint",
-    extensions: [...tsExtensions, ".vue"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
+    id: 'eslint',
+    extensions: Array.from<string>(tsExtensions).concat('.vue'),
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
     spawn: (root) =>
       spawnNodePackageBin(
-        "vscode-langservers-extracted",
-        "vscode-eslint-language-server",
-        ["--stdio"],
+        'vscode-langservers-extracted',
+        'vscode-eslint-language-server',
+        ['--stdio'],
         {
           cwd: root,
-        }
+        },
       ),
   },
   {
-    id: "fsharp",
-    extensions: [".fs", ".fsi", ".fsx", ".fsscript"],
+    id: 'fsharp',
+    extensions: ['.fs', '.fsi', '.fsx', '.fsscript'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        ".slnx",
-        ".sln",
-        ".fsproj",
-        "global.json",
-      ]),
-    spawn: (root) => spawnDotnetTool("fsautocomplete", "fsautocomplete", root),
+      nearestRoot(filePath, workspaceRoot, ['.slnx', '.sln', '.fsproj', 'global.json']),
+    spawn: (root) => spawnDotnetTool('fsautocomplete', 'fsautocomplete', root),
   },
   {
-    id: "gleam",
-    extensions: [".gleam"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ["gleam.toml"]),
-    spawn: (root) => spawnCommand(["gleam", "lsp"], { cwd: root }),
+    id: 'gleam',
+    extensions: ['.gleam'],
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, ['gleam.toml']),
+    spawn: (root) => spawnCommand(['gleam', 'lsp'], { cwd: root }),
   },
   {
-    id: "gopls",
-    extensions: [".go"],
+    id: 'gopls',
+    extensions: ['.go'],
     root: async (filePath, workspaceRoot) =>
-      (await nearestRoot(filePath, workspaceRoot, ["go.work"], {
+      (await nearestRoot(filePath, workspaceRoot, ['go.work'], {
         fallback: false,
-      })) ?? nearestRoot(filePath, workspaceRoot, ["go.mod", "go.sum"]),
-    spawn: (root) =>
-      spawnGoTool("gopls", "golang.org/x/tools/gopls@latest", root),
+      })) ?? nearestRoot(filePath, workspaceRoot, ['go.mod', 'go.sum']),
+    spawn: (root) => spawnGoTool('gopls', 'golang.org/x/tools/gopls@latest', root),
   },
   {
-    id: "haskell-language-server",
-    extensions: [".hs", ".lhs"],
+    id: 'haskell-language-server',
+    extensions: ['.hs', '.lhs'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        "stack.yaml",
-        "cabal.project",
-        "hie.yaml",
-        "*.cabal",
-      ]),
-    spawn: (root) =>
-      spawnCommand(["haskell-language-server-wrapper", "--lsp"], { cwd: root }),
+      nearestRoot(filePath, workspaceRoot, ['stack.yaml', 'cabal.project', 'hie.yaml', '*.cabal']),
+    spawn: (root) => spawnCommand(['haskell-language-server-wrapper', '--lsp'], { cwd: root }),
   },
   {
-    id: "jdtls",
-    extensions: [".java"],
+    id: 'jdtls',
+    extensions: ['.java'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        "pom.xml",
-        "build.gradle",
-        "build.gradle.kts",
-        ".project",
-        ".classpath",
-        "settings.gradle",
-        "settings.gradle.kts",
-        "gradlew",
-        "gradlew.bat",
+        'pom.xml',
+        'build.gradle',
+        'build.gradle.kts',
+        '.project',
+        '.classpath',
+        'settings.gradle',
+        'settings.gradle.kts',
+        'gradlew',
+        'gradlew.bat',
       ]),
     spawn: (root) => spawnJdtls(root),
   },
   {
-    id: "julials",
-    extensions: [".jl"],
+    id: 'julials',
+    extensions: ['.jl'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        "Project.toml",
-        "Manifest.toml",
-        "*.jl",
-      ]),
+      nearestRoot(filePath, workspaceRoot, ['Project.toml', 'Manifest.toml', '*.jl']),
     spawn: (root) =>
       spawnCommand(
         [
-          "julia",
-          "--startup-file=no",
-          "--history-file=no",
-          "-e",
-          "using LanguageServer; runserver()",
+          'julia',
+          '--startup-file=no',
+          '--history-file=no',
+          '-e',
+          'using LanguageServer; runserver()',
         ],
         {
           cwd: root,
-        }
+        },
       ),
   },
   {
-    id: "kotlin-ls",
-    extensions: [".kt", ".kts"],
+    id: 'kotlin-ls',
+    extensions: ['.kt', '.kts'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        "settings.gradle.kts",
-        "settings.gradle",
-        "gradlew",
-        "gradlew.bat",
-        "build.gradle.kts",
-        "build.gradle",
-        "pom.xml",
+        'settings.gradle.kts',
+        'settings.gradle',
+        'gradlew',
+        'gradlew.bat',
+        'build.gradle.kts',
+        'build.gradle',
+        'pom.xml',
       ]),
     spawn: (root) => spawnKotlinLs(root),
   },
   {
-    id: "lua-ls",
-    extensions: [".lua"],
+    id: 'lua-ls',
+    extensions: ['.lua'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        ".luarc.json",
-        ".luarc.jsonc",
-        ".luacheckrc",
-        ".stylua.toml",
-        "stylua.toml",
-        "selene.toml",
-        "selene.yml",
+        '.luarc.json',
+        '.luarc.jsonc',
+        '.luacheckrc',
+        '.stylua.toml',
+        'stylua.toml',
+        'selene.toml',
+        'selene.yml',
       ]),
     spawn: (root) => spawnLuaLs(root),
   },
   {
-    id: "nixd",
-    extensions: [".nix"],
+    id: 'nixd',
+    extensions: ['.nix'],
     root: async (filePath, workspaceRoot) =>
-      (await nearestRoot(filePath, workspaceRoot, ["flake.nix"], {
+      (await nearestRoot(filePath, workspaceRoot, ['flake.nix'], {
         fallback: false,
       })) ?? workspaceRoot,
-    spawn: (root) => spawnCommand(["nixd"], { cwd: root }),
+    spawn: (root) => spawnCommand(['nixd'], { cwd: root }),
   },
   {
-    id: "ocaml-lsp",
-    extensions: [".ml", ".mli"],
+    id: 'ocaml-lsp',
+    extensions: ['.ml', '.mli'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        "dune-project",
-        "dune-workspace",
-        ".merlin",
-        "opam",
-      ]),
-    spawn: (root) => spawnCommand(["ocamllsp"], { cwd: root }),
+      nearestRoot(filePath, workspaceRoot, ['dune-project', 'dune-workspace', '.merlin', 'opam']),
+    spawn: (root) => spawnCommand(['ocamllsp'], { cwd: root }),
   },
   {
-    id: "oxlint",
-    extensions: [...tsExtensions, ".vue", ".astro", ".svelte"],
+    id: 'oxlint',
+    extensions: Array.from<string>(tsExtensions).concat('.vue', '.astro', '.svelte'),
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        ".oxlintrc.json",
-        ...jsProjectMarkers,
-      ]),
+      nearestRoot(filePath, workspaceRoot, ['.oxlintrc.json', ...jsProjectMarkers]),
     spawn: (root) => spawnOxlint(root),
   },
   {
-    id: "biome",
+    id: 'biome',
     extensions: [
       ...tsExtensions,
-      ".json",
-      ".jsonc",
-      ".vue",
-      ".astro",
-      ".svelte",
-      ".css",
-      ".graphql",
-      ".gql",
-      ".html",
+      '.json',
+      '.jsonc',
+      '.vue',
+      '.astro',
+      '.svelte',
+      '.css',
+      '.graphql',
+      '.gql',
+      '.html',
     ],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        "biome.json",
-        "biome.jsonc",
-        ...jsProjectMarkers,
-      ]),
+      nearestRoot(filePath, workspaceRoot, ['biome.json', 'biome.jsonc', ...jsProjectMarkers]),
     spawn: (root) => spawnBiome(root),
   },
   {
-    id: "php intelephense",
-    extensions: [".php"],
+    id: 'php intelephense',
+    extensions: ['.php'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        "composer.json",
-        "composer.lock",
-        ".php-version",
-      ]),
+      nearestRoot(filePath, workspaceRoot, ['composer.json', 'composer.lock', '.php-version']),
     spawn: (root) =>
-      spawnNodePackageBin("intelephense", "intelephense", ["--stdio"], {
+      spawnNodePackageBin('intelephense', 'intelephense', ['--stdio'], {
         cwd: root,
       }),
     initializationOptions: async () => ({ telemetry: { enabled: false } }),
   },
   {
-    id: "prisma",
-    extensions: [".prisma"],
+    id: 'prisma',
+    extensions: ['.prisma'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(
-        filePath,
-        workspaceRoot,
-        ["schema.prisma", "prisma/schema.prisma", "prisma"],
-        {
-          exclude: ["package.json"],
-        }
-      ),
-    spawn: (root) => spawnCommand(["prisma", "language-server"], { cwd: root }),
+      nearestRoot(filePath, workspaceRoot, ['schema.prisma', 'prisma/schema.prisma', 'prisma'], {
+        exclude: ['package.json'],
+      }),
+    spawn: (root) => spawnCommand(['prisma', 'language-server'], { cwd: root }),
   },
   {
-    id: "pyright",
-    extensions: [".py", ".pyi"],
+    id: 'pyright',
+    extensions: ['.py', '.pyi'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        "pyproject.toml",
-        "setup.py",
-        "setup.cfg",
-        "requirements.txt",
-        "Pipfile",
-        "pyrightconfig.json",
+        'pyproject.toml',
+        'setup.py',
+        'setup.cfg',
+        'requirements.txt',
+        'Pipfile',
+        'pyrightconfig.json',
       ]),
     spawn: (root) =>
-      spawnNodePackageBin("pyright", "pyright-langserver", ["--stdio"], {
+      spawnNodePackageBin('pyright', 'pyright-langserver', ['--stdio'], {
         cwd: root,
       }),
     initializationOptions: pythonInitializationOptions,
   },
   {
-    id: "ruby-lsp",
-    extensions: [".rb", ".rake", ".gemspec", ".ru"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ["Gemfile"]),
-    spawn: (root) => spawnGemTool("rubocop", "rubocop", ["--lsp"], root),
+    id: 'ruby-lsp',
+    extensions: ['.rb', '.rake', '.gemspec', '.ru'],
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, ['Gemfile']),
+    spawn: (root) => spawnGemTool('rubocop', 'rubocop', ['--lsp'], root),
   },
   {
-    id: "rust",
-    extensions: [".rs"],
+    id: 'rust',
+    extensions: ['.rs'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ["Cargo.toml", "Cargo.lock"]),
-    spawn: (root) => spawnCommand(["rust-analyzer"], { cwd: root }),
+      nearestRoot(filePath, workspaceRoot, ['Cargo.toml', 'Cargo.lock']),
+    spawn: (root) => spawnCommand(['rust-analyzer'], { cwd: root }),
   },
   {
-    id: "sourcekit-lsp",
-    extensions: [".swift", ".objc", ".objcpp"],
+    id: 'sourcekit-lsp',
+    extensions: ['.swift', '.objc', '.objcpp'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        "Package.swift",
-        "*.xcodeproj",
-        "*.xcworkspace",
-      ]),
+      nearestRoot(filePath, workspaceRoot, ['Package.swift', '*.xcodeproj', '*.xcworkspace']),
     spawn: (root) => spawnSourceKit(root),
   },
   {
-    id: "svelte",
-    extensions: [".svelte"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
+    id: 'svelte',
+    extensions: ['.svelte'],
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
     spawn: (root) =>
-      spawnNodePackageBin(
-        "svelte-language-server",
-        "svelteserver",
-        ["--stdio"],
-        { cwd: root }
-      ),
+      spawnNodePackageBin('svelte-language-server', 'svelteserver', ['--stdio'], { cwd: root }),
     initializationOptions: async () => ({}),
   },
   {
-    id: "terraform",
-    extensions: [".tf", ".tfvars"],
+    id: 'terraform',
+    extensions: ['.tf', '.tfvars'],
     root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, [
-        ".terraform.lock.hcl",
-        "terraform.tfstate",
-        "*.tf",
-      ]),
+      nearestRoot(filePath, workspaceRoot, ['.terraform.lock.hcl', 'terraform.tfstate', '*.tf']),
     spawn: (root) => spawnTerraformLs(root),
     initializationOptions: async () => ({
       experimentalFeatures: {
@@ -490,59 +386,53 @@ export const lspServers: readonly LspServerDefinition[] = [
     }),
   },
   {
-    id: "texlab",
-    extensions: [".tex", ".bib"],
+    id: 'texlab',
+    extensions: ['.tex', '.bib'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        ".latexmkrc",
-        "latexmkrc",
-        ".texlabroot",
-        "texlabroot",
+        '.latexmkrc',
+        'latexmkrc',
+        '.texlabroot',
+        'texlabroot',
       ]),
     spawn: (root) => spawnTexlab(root),
   },
   {
-    id: "tinymist",
-    extensions: [".typ", ".typc"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ["typst.toml"]),
+    id: 'tinymist',
+    extensions: ['.typ', '.typc'],
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, ['typst.toml']),
     spawn: (root) => spawnTinymist(root),
   },
   {
-    id: "ty",
-    extensions: [".py", ".pyi"],
+    id: 'ty',
+    extensions: ['.py', '.pyi'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, [
-        "pyproject.toml",
-        "ty.toml",
-        "setup.py",
-        "setup.cfg",
-        "requirements.txt",
-        "Pipfile",
-        "pyrightconfig.json",
+        'pyproject.toml',
+        'ty.toml',
+        'setup.py',
+        'setup.cfg',
+        'requirements.txt',
+        'Pipfile',
+        'pyrightconfig.json',
       ]),
     spawn: (root) => spawnTy(root),
     initializationOptions: pythonInitializationOptions,
   },
   {
-    id: "typescript",
+    id: 'typescript',
     extensions: tsExtensions,
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, jsProjectMarkers, {
-        exclude: ["deno.json", "deno.jsonc"],
+        exclude: ['deno.json', 'deno.jsonc'],
       }),
     spawn: (root) =>
-      spawnNodePackageBin(
-        "typescript-language-server",
-        "typescript-language-server",
-        ["--stdio"],
-        {
-          cwd: root,
-        }
-      ),
+      spawnNodePackageBin('typescript-language-server', 'typescript-language-server', ['--stdio'], {
+        cwd: root,
+      }),
     initializationOptions: async (root) => {
       const tsserver = await findUp(path.resolve(root), root, [
-        "node_modules/typescript/lib/tsserver.js",
+        'node_modules/typescript/lib/tsserver.js',
       ])
       if (!tsserver) return undefined
 
@@ -550,36 +440,28 @@ export const lspServers: readonly LspServerDefinition[] = [
     },
   },
   {
-    id: "vue",
-    extensions: [".vue"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
+    id: 'vue',
+    extensions: ['.vue'],
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
     spawn: (root) =>
-      spawnNodePackageBin(
-        "@vue/language-server",
-        "vue-language-server",
-        ["--stdio"],
-        { cwd: root }
-      ),
+      spawnNodePackageBin('@vue/language-server', 'vue-language-server', ['--stdio'], {
+        cwd: root,
+      }),
     initializationOptions: async () => ({}),
   },
   {
-    id: "yaml-ls",
-    extensions: [".yaml", ".yml"],
+    id: 'yaml-ls',
+    extensions: ['.yaml', '.yml'],
     root: async (_filePath, workspaceRoot) => workspaceRoot,
     spawn: (root) =>
-      spawnNodePackageBin(
-        "yaml-language-server",
-        "yaml-language-server",
-        ["--stdio"],
-        { cwd: root }
-      ),
+      spawnNodePackageBin('yaml-language-server', 'yaml-language-server', ['--stdio'], {
+        cwd: root,
+      }),
   },
   {
-    id: "zls",
-    extensions: [".zig", ".zon"],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ["build.zig"]),
+    id: 'zls',
+    extensions: ['.zig', '.zon'],
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, ['build.zig']),
     spawn: (root) => spawnZls(root),
   },
 ]
@@ -622,14 +504,14 @@ export function lspServersForEnvironment(env: NodeJS.ProcessEnv = process.env) {
     servers.set(id, configuredServer(id, config, existing))
   }
 
-  return [...servers.values()]
+  return Array.from(servers.values())
 }
 
 function experimentalFilteredServers(env: NodeJS.ProcessEnv) {
   const tyEnabled = truthy(env.FS_EXPERIMENTAL_LSP_TY) || useTyForPython
-  if (tyEnabled) return lspServers.filter((server) => server.id !== "pyright")
+  if (tyEnabled) return lspServers.filter((server) => server.id !== 'pyright')
 
-  return lspServers.filter((server) => server.id !== "ty")
+  return lspServers.filter((server) => server.id !== 'ty')
 }
 
 async function nearestRoot(
@@ -639,13 +521,9 @@ async function nearestRoot(
   options: {
     readonly exclude?: readonly string[]
     readonly fallback?: boolean
-  } = {}
+  } = {},
 ) {
-  const excluded = await findUp(
-    path.dirname(filePath),
-    workspaceRoot,
-    options.exclude ?? []
-  )
+  const excluded = await findUp(path.dirname(filePath), workspaceRoot, options.exclude ?? [])
   if (excluded) return null
 
   const marker = await findUp(path.dirname(filePath), workspaceRoot, markers)
@@ -671,10 +549,7 @@ async function findUp(start: string, stop: string, markers: readonly string[]) {
   return null
 }
 
-async function firstExistingMarker(
-  directory: string,
-  markers: readonly string[]
-) {
+async function firstExistingMarker(directory: string, markers: readonly string[]) {
   for (const marker of markers) {
     const candidate = await existingMarker(directory, marker)
     if (!candidate) continue
@@ -686,7 +561,7 @@ async function firstExistingMarker(
 }
 
 async function existingMarker(directory: string, marker: string) {
-  if (!marker.includes("*")) {
+  if (!marker.includes('*')) {
     const candidate = path.join(directory, marker)
     return (await exists(candidate)) ? candidate : null
   }
@@ -700,7 +575,7 @@ async function existingMarker(directory: string, marker: string) {
 function configuredServer(
   id: string,
   config: LspConfig[string],
-  existing: LspServerDefinition | undefined
+  existing: LspServerDefinition | undefined,
 ): LspServerDefinition {
   const command = config.command
   if (!command) {
@@ -729,7 +604,7 @@ function configuredServer(
 
 function configuredInitialization(
   config: LspConfig[string],
-  existing: LspServerDefinition | undefined
+  existing: LspServerDefinition | undefined,
 ) {
   if (!config.initialization) return existing?.initializationOptions
 
@@ -748,7 +623,7 @@ function lspConfigFromEnvironment(env: NodeJS.ProcessEnv): LspConfig | null {
 }
 
 function lspConfigFromValue(value: unknown): LspConfig | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
 
   const result: LspConfig = {}
   for (const [id, config] of Object.entries(value)) {
@@ -762,7 +637,7 @@ function lspConfigFromValue(value: unknown): LspConfig | null {
 }
 
 function lspServerConfigFromValue(value: unknown): LspConfig[string] | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
 
   const record = value as Record<string, unknown>
   return {
@@ -777,10 +652,10 @@ function lspServerConfigFromValue(value: unknown): LspConfig[string] | null {
 async function pythonInitializationOptions(root: string) {
   const pythonPath = await firstExistingPath(
     virtualEnvironmentPaths(root).map((venvPath) =>
-      process.platform === "win32"
-        ? path.join(venvPath, "Scripts", "python.exe")
-        : path.join(venvPath, "bin", "python")
-    )
+      process.platform === 'win32'
+        ? path.join(venvPath, 'Scripts', 'python.exe')
+        : path.join(venvPath, 'bin', 'python'),
+    ),
   )
   if (!pythonPath) return undefined
 
@@ -790,17 +665,14 @@ async function pythonInitializationOptions(root: string) {
 function serverMatches(
   server: LspServerDefinition,
   extension: string,
-  serverId: string | null | undefined
+  serverId: string | null | undefined,
 ) {
   if (serverId && server.id !== serverId) return false
 
   return server.extensions.includes(extension)
 }
 
-function compareServerPriority(
-  left: LspServerDefinition,
-  right: LspServerDefinition
-) {
+function compareServerPriority(left: LspServerDefinition, right: LspServerDefinition) {
   return serverPriorityIndex(left.id) - serverPriorityIndex(right.id)
 }
 
@@ -829,42 +701,37 @@ async function exists(candidate: string) {
 }
 
 function virtualEnvironmentPaths(root: string) {
-  return [
-    process.env.VIRTUAL_ENV,
-    path.join(root, ".venv"),
-    path.join(root, "venv"),
-  ].filter((item): item is string => Boolean(item))
+  return [process.env.VIRTUAL_ENV, path.join(root, '.venv'), path.join(root, 'venv')].filter(
+    (item): item is string => Boolean(item),
+  )
 }
 
 function isInsideOrEqual(root: string, candidate: string) {
   const relative = path.relative(root, candidate)
-  if (relative === "") return true
-  if (relative.startsWith("..")) return false
+  if (relative === '') return true
+  if (relative.startsWith('..')) return false
 
   return !path.isAbsolute(relative)
 }
 
 function globMarkerRegex(marker: string) {
-  const escaped = marker.replace(/[.+?^${}()|[\]\\]/gu, "\\$&")
-  return new RegExp(`^${escaped.replaceAll("\\*", ".*")}$`, "u")
+  const escaped = marker.replace(/[.+?^${}()|[\]\\]/gu, '\\$&')
+  return new RegExp(`^${escaped.replaceAll('\\*', '.*')}$`, 'u')
 }
 
 function stringArray(value: unknown) {
   if (!Array.isArray(value)) return undefined
-  const strings = value.filter(
-    (item): item is string => typeof item === "string"
-  )
+  const strings = value.filter((item): item is string => typeof item === 'string')
 
   return strings.length === value.length ? strings : undefined
 }
 
 function stringRecord(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
 
   const result: Record<string, string> = {}
   for (const [key, item] of Object.entries(value)) {
-    if (typeof item !== "string") return undefined
+    if (typeof item !== 'string') return undefined
 
     result[key] = item
   }
@@ -873,8 +740,7 @@ function stringRecord(value: unknown) {
 }
 
 function unknownRecord(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
 
   return value as Record<string, unknown>
 }
@@ -882,5 +748,5 @@ function unknownRecord(value: unknown) {
 function truthy(value: string | undefined) {
   if (!value) return false
 
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase())
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
 }

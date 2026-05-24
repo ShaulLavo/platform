@@ -1,5 +1,5 @@
-import type ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import type ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
 export type OpenDocument = {
   uri: lsp.DocumentUri
@@ -23,11 +23,11 @@ export type SessionContext = {
   postDiagnostics(
     uri: lsp.DocumentUri,
     version: number | null,
-    diagnostics: readonly lsp.Diagnostic[]
+    diagnostics: readonly lsp.Diagnostic[],
   ): void
   postLogMessage(error: unknown): void
-  postResponse(id: lsp.RequestMessage["id"] | null, result: unknown): void
-  postResponseError(id: lsp.RequestMessage["id"] | null, error: unknown): void
+  postResponse(id: lsp.RequestMessage['id'] | null, result: unknown): void
+  postResponseError(id: lsp.RequestMessage['id'] | null, error: unknown): void
   readonly compilerOptionsOverride: ts.CompilerOptions
   applyInitializationOptions(options: {
     compilerOptions?: ts.CompilerOptions

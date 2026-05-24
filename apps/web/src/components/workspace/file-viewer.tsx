@@ -1,4 +1,4 @@
-import { WarningCircleIcon } from "@phosphor-icons/react"
+import { WarningCircleIcon } from '@phosphor-icons/react'
 import {
   createContext,
   useCallback,
@@ -10,18 +10,18 @@ import {
   type CSSProperties,
   type MutableRefObject,
   type RefObject,
-} from "react"
+} from 'react'
 
-import { EditorTabBar } from "@/components/workspace/editor-tab-bar"
+import { EditorTabBar } from '@/components/workspace/editor-tab-bar'
 import {
   hasEditorTabDragPayload,
   readEditorTabDragPayload,
-} from "@/components/workspace/use-editor-tab-drag"
-import { Editor } from "@/features/editor/components/editor"
-import { LanguageServerReferencesPane } from "@/features/editor/components/language-server-references-pane"
-import { parseConflictDiffDocumentId } from "@/features/editor/conflict-diff-document"
-import type { EditorStatusBarState } from "@/features/editor/components/editor-status-bar"
-import { useEditorCommands } from "@/features/editor/state/editor-commands"
+} from '@/components/workspace/use-editor-tab-drag'
+import { Editor } from '@/features/editor/components/editor'
+import { LanguageServerReferencesPane } from '@/features/editor/components/language-server-references-pane'
+import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
+import type { EditorStatusBarState } from '@/features/editor/components/editor-status-bar'
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import {
   activeTabForPane,
   canSplitEditorPaneAtPane,
@@ -34,60 +34,49 @@ import {
   type EditorPaneNode,
   type EditorPaneSplit,
   type EditorPaneSplitScope,
-} from "@/features/editor/state/editor-pane-state"
+} from '@/features/editor/state/editor-pane-state'
 import {
   useEditorConflictStoreApi,
   type FilesystemConflict,
-} from "@/features/editor/state/editor-conflict-state"
+} from '@/features/editor/state/editor-conflict-state'
 import {
   type CachedEditorDocument,
   useEditorDocumentState,
-} from "@/features/editor/state/editor-document-state"
-import { useEditorUiState } from "@/features/editor/state/editor-ui-state"
-import { useEditorWorkspaceState } from "@/features/editor/state/editor-workspace-state"
-import type {
-  RequestCloseTab,
-  RequestCloseTabs,
-} from "@/features/editor/hooks/use-dirty-tab-close"
-import {
-  GitDiffViewer,
-  type GitDiffViewerHandle,
-} from "@/features/git/components/diff-viewer"
-import { parseDiffDocumentId } from "@/features/git/diff-document"
-import { useDiffDocumentDiff } from "@/features/git/hooks"
-import { SearchBufferEditor } from "@/features/search/search-buffer-editor"
-import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
-import { useSelectedFile } from "@/hooks/use-selected-file"
-import { reportError, toClientError } from "@/lib/client-error-taxonomy"
-import {
-  createFileContent,
-  ensureFolderPath,
-  fetchFile,
-  writeFileContent,
-} from "@/lib/file-server"
-import type { FileResult } from "@/lib/file-system-types"
-import { fileSystemKeys } from "@/lib/query-keys"
-import type { LoadState } from "@/lib/load-state"
-import { cn } from "@workspace/ui/lib/utils"
+} from '@/features/editor/state/editor-document-state'
+import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
+import { GitDiffViewer, type GitDiffViewerHandle } from '@/features/git/components/diff-viewer'
+import { parseDiffDocumentId } from '@/features/git/diff-document'
+import { useDiffDocumentDiff } from '@/features/git/hooks'
+import { SearchBufferEditor } from '@/features/search/search-buffer-editor'
+import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { useSelectedFile } from '@/hooks/use-selected-file'
+import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { createFileContent, ensureFolderPath, fetchFile, writeFileContent } from '@/lib/file-server'
+import type { FileResult } from '@/lib/file-system-types'
+import { fileSystemKeys } from '@/lib/query-keys'
+import type { LoadState } from '@/lib/load-state'
+import { cn } from '@workspace/ui/lib/utils'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from "@workspace/ui/components/resizable"
+} from '@workspace/ui/components/resizable'
 import {
   parseMergeConflicts,
   type DocumentSessionChange,
   type EditorKeymapLayer,
   type TextSnapshot,
-} from "@editor/core"
+} from '@editor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from "@editor/language-server"
-import { useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+} from '@editor/language-server'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
-type EditorPaneSplitDropZone = Exclude<EditorPaneDropZone, "center">
+type EditorPaneSplitDropZone = Exclude<EditorPaneDropZone, 'center'>
 type EditorPaneSplitDropTarget = {
   paneId: string
   scope: EditorPaneSplitScope
@@ -116,21 +105,13 @@ export function FileViewer({
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
 }) {
-  const editorPaneLayout = useEditorWorkspaceState(
-    (state) => state.editorPaneLayout
-  )
-  const [dropTarget, setDropTarget] =
-    useState<EditorPaneSplitDropTarget | null>(null)
+  const editorPaneLayout = useEditorWorkspaceState((state) => state.editorPaneLayout)
+  const [dropTarget, setDropTarget] = useState<EditorPaneSplitDropTarget | null>(null)
   const surfaceRef = useRef<HTMLElement | null>(null)
 
   return (
-    <EditorPaneDropContext.Provider
-      value={{ dropTarget, setDropTarget, surfaceRef }}
-    >
-      <section
-        className="relative h-full min-h-0 overflow-hidden"
-        ref={surfaceRef}
-      >
+    <EditorPaneDropContext.Provider value={{ dropTarget, setDropTarget, surfaceRef }}>
+      <section className='relative h-full min-h-0 overflow-hidden' ref={surfaceRef}>
         <EditorPaneNodeView
           editorKeymapLayers={editorKeymapLayers}
           node={editorPaneLayout.root}
@@ -138,9 +119,7 @@ export function FileViewer({
           onRequestCloseTab={onRequestCloseTab}
           onRequestCloseTabs={onRequestCloseTabs}
         />
-        <EditorPaneDropOverlay
-          target={dropTarget?.scope === "root" ? dropTarget : null}
-        />
+        <EditorPaneDropOverlay target={dropTarget?.scope === 'root' ? dropTarget : null} />
       </section>
     </EditorPaneDropContext.Provider>
   )
@@ -159,7 +138,7 @@ function EditorPaneNodeView({
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
 }) {
-  if (node.kind === "leaf") {
+  if (node.kind === 'leaf') {
     return (
       <EditorPaneLeafView
         editorKeymapLayers={editorKeymapLayers}
@@ -195,23 +174,17 @@ function EditorPaneSplitView({
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
 }) {
-  const setEditorPaneLayout = useEditorWorkspaceState(
-    (state) => state.setEditorPaneLayout
-  )
-  const editorPaneLayout = useEditorWorkspaceState(
-    (state) => state.editorPaneLayout
-  )
+  const setEditorPaneLayout = useEditorWorkspaceState((state) => state.setEditorPaneLayout)
+  const editorPaneLayout = useEditorWorkspaceState((state) => state.editorPaneLayout)
 
   function handleLayoutChanged(layout: Record<string, number>) {
     const sizes = node.children.map((child) => layout[child.id] ?? 0)
-    setEditorPaneLayout(
-      updateEditorPaneSplitSizes(editorPaneLayout, node.id, sizes)
-    )
+    setEditorPaneLayout(updateEditorPaneSplitSizes(editorPaneLayout, node.id, sizes))
   }
 
   return (
     <ResizablePanelGroup
-      className="min-h-0 min-w-0"
+      className='min-h-0 min-w-0'
       orientation={node.direction}
       onLayoutChanged={handleLayoutChanged}
     >
@@ -250,14 +223,12 @@ function EditorPaneSplitChild({
 }) {
   return (
     <>
-      {index > 0 ? (
-        <ResizableHandle aria-label="Resize editor pane" withHandle />
-      ) : null}
+      {index > 0 ? <ResizableHandle aria-label='Resize editor pane' withHandle /> : null}
       <ResizablePanel
         id={child.id}
-        className="min-h-0 min-w-0 overflow-hidden"
+        className='min-h-0 min-w-0 overflow-hidden'
         defaultSize={`${node.sizes[index] ?? 100 / node.children.length}%`}
-        minSize="180px"
+        minSize='180px'
       >
         <EditorPaneNodeView
           editorKeymapLayers={editorKeymapLayers}
@@ -284,30 +255,21 @@ function EditorPaneLeafView({
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
 }) {
-  const editorPaneLayout = useEditorWorkspaceState(
-    (state) => state.editorPaneLayout
-  )
+  const editorPaneLayout = useEditorWorkspaceState((state) => state.editorPaneLayout)
   const activePaneId = editorPaneLayout.activePaneId
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
-  const setDiffViewMode = useEditorWorkspaceState(
-    (state) => state.setDiffViewMode
-  )
+  const setDiffViewMode = useEditorWorkspaceState((state) => state.setDiffViewMode)
   const editorTabCount = useEditorWorkspaceState(
-    (state) => editorPaneTabs(state.editorPaneLayout.root).length
+    (state) => editorPaneTabs(state.editorPaneLayout.root).length,
   )
   const { moveTabToSplit, setActivePane } = useEditorCommands()
   const { dropTarget, setDropTarget, surfaceRef } = useEditorPaneDropContext()
   const active = activePaneId === pane.id
   const tab = activeTabForPane(pane)
   const selectedPath = tab?.path ?? null
-  const selectedDiff = useMemo(
-    () => parseDiffDocumentId(selectedPath),
-    [selectedPath]
-  )
+  const selectedDiff = useMemo(() => parseDiffDocumentId(selectedPath), [selectedPath])
   const paneDropTarget =
-    dropTarget?.scope === "pane" && dropTarget.paneId === pane.id
-      ? dropTarget
-      : null
+    dropTarget?.scope === 'pane' && dropTarget.paneId === pane.id ? dropTarget : null
 
   function handleRevealPreviousChange() {
     diffViewerRef.current?.revealPreviousHunk({ wrap: true })
@@ -347,7 +309,7 @@ function EditorPaneLeafView({
     }
 
     event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
+    event.dataTransfer.dropEffect = 'move'
     setDropTarget(target)
   }
 
@@ -370,24 +332,19 @@ function EditorPaneLeafView({
         paneId: pane.id,
         surfaceElement: surfaceRef.current,
       })
-    if (payload.status !== "valid" || !target) return
+    if (payload.status !== 'valid' || !target) return
 
     event.preventDefault()
     event.stopPropagation()
-    moveTabToSplit(
-      payload.payload.tabId,
-      target.paneId,
-      target.zone,
-      target.scope
-    )
+    moveTabToSplit(payload.payload.tabId, target.paneId, target.zone, target.scope)
     setDropTarget(null)
   }
 
   return (
     <section
       className={cn(
-        "relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-border/70 bg-background",
-        active && "ring-1 ring-ring/30 ring-inset"
+        'relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-border/70 bg-background',
+        active && 'ring-1 ring-ring/30 ring-inset',
       )}
       data-editor-pane-id={pane.id}
       onDragLeaveCapture={handleDragLeave}
@@ -437,7 +394,7 @@ function EditorPaneLeafView({
 function useEditorPaneDropContext() {
   const context = useContext(EditorPaneDropContext)
   if (!context) {
-    throw new Error("useEditorPaneDropContext must be used within FileViewer")
+    throw new Error('useEditorPaneDropContext must be used within FileViewer')
   }
 
   return context
@@ -462,56 +419,40 @@ function EditorPaneTabBody({
   rootPath: string
   tabId: string
 }) {
-  const selectedSearchBuffer = useMemo(
-    () => parseSearchBufferDocumentId(path),
-    [path]
-  )
-  const selectedConflictDiff = useMemo(
-    () => parseConflictDiffDocumentId(path),
-    [path]
-  )
-  const { fileState } = useSelectedFile(
-    selectedSearchBuffer || selectedConflictDiff ? null : path
-  )
+  const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
+  const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
+  const { fileState } = useSelectedFile(selectedSearchBuffer || selectedConflictDiff ? null : path)
   const documents = useEditorDocumentState((state) => state.documents)
   const selectedCachedDocument = useEditorDocumentState((state) =>
-    state.getCachedEditorTabDocument(tabId)
+    state.getCachedEditorTabDocument(tabId),
   )
   const ensureCachedEditorTabDocument = useEditorDocumentState(
-    (state) => state.ensureCachedEditorTabDocument
+    (state) => state.ensureCachedEditorTabDocument,
   )
   const setCachedEditorDocumentDirty = useEditorDocumentState(
-    (state) => state.setCachedEditorDocumentDirty
+    (state) => state.setCachedEditorDocumentDirty,
   )
   const recordCachedEditorDocumentTextChange = useEditorDocumentState(
-    (state) => state.recordCachedEditorDocumentTextChange
+    (state) => state.recordCachedEditorDocumentTextChange,
   )
   const forceReplaceCachedEditorDocument = useEditorDocumentState(
-    (state) => state.forceReplaceCachedEditorDocument
+    (state) => state.forceReplaceCachedEditorDocument,
   )
   const setCachedEditorTabDocumentScrollPosition = useEditorDocumentState(
-    (state) => state.setCachedEditorTabDocumentScrollPosition
+    (state) => state.setCachedEditorTabDocumentScrollPosition,
   )
   const definitionTarget = useEditorUiState((state) => state.definitionTarget)
-  const languageServerReferences = useEditorUiState(
-    (state) => state.languageServerReferences
-  )
-  const setLanguageServerReferences = useEditorUiState(
-    (state) => state.setLanguageServerReferences
-  )
+  const languageServerReferences = useEditorUiState((state) => state.languageServerReferences)
+  const setLanguageServerReferences = useEditorUiState((state) => state.setLanguageServerReferences)
   const setStatusBarState = useEditorUiState((state) => state.setStatusBarState)
-  const {
-    discardCachedEditorDocument,
-    openDefinition,
-    renameCachedEditorDocument,
-  } = useEditorCommands()
+  const { discardCachedEditorDocument, openDefinition, renameCachedEditorDocument } =
+    useEditorCommands()
   const resolveConflictEditorDocument = useConflictEditorResolution({
     discardCachedEditorDocument,
     forceReplaceCachedEditorDocument,
     renameCachedEditorDocument,
   })
-  const selectedFile =
-    selectedConflictDiff || selectedSearchBuffer ? null : readyFile(fileState)
+  const selectedFile = selectedConflictDiff || selectedSearchBuffer ? null : readyFile(fileState)
 
   useEffect(() => {
     if (!selectedFile) return
@@ -525,37 +466,27 @@ function EditorPaneTabBody({
       return
     }
     if (path && selectedCachedDocument) return
-    if (path && fileState.status === "ready") return
+    if (path && fileState.status === 'ready') return
 
     setStatusBarState(null)
-  }, [
-    fileState.status,
-    path,
-    selectedCachedDocument,
-    selectedSearchBuffer,
-    setStatusBarState,
-  ])
+  }, [fileState.status, path, selectedCachedDocument, selectedSearchBuffer, setStatusBarState])
 
   const handleEditorTextChange = useCallback(
-    (
-      sourceTabId: string,
-      changedPath: string,
-      change: DocumentSessionChange
-    ) => {
+    (sourceTabId: string, changedPath: string, change: DocumentSessionChange) => {
       recordCachedEditorDocumentTextChange(changedPath, {
         change,
         sourceTabId,
       })
       resolveConflictEditorDocument(changedPath, change.textSnapshot)
     },
-    [recordCachedEditorDocumentTextChange, resolveConflictEditorDocument]
+    [recordCachedEditorDocumentTextChange, resolveConflictEditorDocument],
   )
   const handleOpenReferences = useCallback(
     (result: LanguageServerReferencesResult) => {
       setLanguageServerReferences(result)
       return true
     },
-    [setLanguageServerReferences]
+    [setLanguageServerReferences],
   )
 
   if (selectedSearchBuffer) {
@@ -590,7 +521,7 @@ function EditorPaneTabBody({
 }
 
 function FileViewerEmpty() {
-  return <section className="min-h-[320px]" />
+  return <section className='min-h-[320px]' />
 }
 
 function FileViewerBody({
@@ -623,14 +554,10 @@ function FileViewerBody({
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
   onEditorScrollPositionChange: (
     tabId: string,
-    scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
+    scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
   ) => void
   onEditorStatusChange: (status: EditorStatusBarState | null) => void
-  onEditorTextChange?: (
-    tabId: string,
-    path: string,
-    change: DocumentSessionChange
-  ) => void
+  onEditorTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
   onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences: (result: LanguageServerReferencesResult) => void | boolean
   onReferencesClose: () => void
@@ -640,8 +567,8 @@ function FileViewerBody({
       <div
         className={
           languageServerReferences
-            ? "grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(260px,340px)] grid-rows-[minmax(0,1fr)] overflow-hidden"
-            : "grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden"
+            ? 'grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(260px,340px)] grid-rows-[minmax(0,1fr)] overflow-hidden'
+            : 'grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden'
         }
       >
         <Editor
@@ -673,10 +600,10 @@ function FileViewerBody({
     )
   }
 
-  if (fileState.status === "error") {
+  if (fileState.status === 'error') {
     return (
-      <div className="flex min-h-0 items-center justify-center p-6 text-xs text-muted-foreground">
-        <WarningCircleIcon className="mr-2 size-4" />
+      <div className='text-muted-foreground flex min-h-0 items-center justify-center p-6 text-xs'>
+        <WarningCircleIcon className='mr-2 size-4' />
         {fileState.message}
       </div>
     )
@@ -685,21 +612,17 @@ function FileViewerBody({
   return null
 }
 
-function EditorPaneDropOverlay({
-  target,
-}: {
-  target: EditorPaneSplitDropTarget | null
-}) {
+function EditorPaneDropOverlay({ target }: { target: EditorPaneSplitDropTarget | null }) {
   if (!target) return null
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-40 bg-background/10"
+      className='bg-background/10 pointer-events-none absolute inset-0 z-40'
       data-editor-pane-drop-preview={target.zone}
       data-editor-pane-drop-scope={target.scope}
     >
       <div
-        className="absolute rounded-sm border border-ring/80 bg-ring/20 shadow-[inset_0_0_0_1px_hsl(var(--ring)/0.28)]"
+        className='border-ring/80 bg-ring/20 absolute rounded-sm border shadow-[inset_0_0_0_1px_hsl(var(--ring)/0.28)]'
         style={dropZonePreviewStyle(target.zone)}
       />
     </div>
@@ -709,7 +632,7 @@ function EditorPaneDropOverlay({
 function dropZonePreviewStyle(zone: EditorPaneSplitDropZone): CSSProperties {
   const inset = 8
 
-  if (zone === "left") {
+  if (zone === 'left') {
     return {
       bottom: inset,
       left: inset,
@@ -717,7 +640,7 @@ function dropZonePreviewStyle(zone: EditorPaneSplitDropZone): CSSProperties {
       width: `calc(50% - ${inset}px)`,
     }
   }
-  if (zone === "right") {
+  if (zone === 'right') {
     return {
       bottom: inset,
       right: inset,
@@ -725,7 +648,7 @@ function dropZonePreviewStyle(zone: EditorPaneSplitDropZone): CSSProperties {
       width: `calc(50% - ${inset}px)`,
     }
   }
-  if (zone === "top") {
+  if (zone === 'top') {
     return {
       height: `calc(50% - ${inset}px)`,
       left: inset,
@@ -744,7 +667,7 @@ function dropZonePreviewStyle(zone: EditorPaneSplitDropZone): CSSProperties {
 
 function editorPaneDropZone(
   element: HTMLElement,
-  event: Pick<React.DragEvent<HTMLElement>, "clientX" | "clientY">
+  event: Pick<React.DragEvent<HTMLElement>, 'clientX' | 'clientY'>,
 ): EditorPaneSplitDropZone {
   const rect = element.getBoundingClientRect()
   const x = normalizedPointerOffset(event.clientX, rect.left, rect.width)
@@ -753,14 +676,14 @@ function editorPaneDropZone(
     distance: number
     zone: EditorPaneSplitDropZone
   }> = [
-    { distance: x, zone: "left" },
-    { distance: 1 - x, zone: "right" },
-    { distance: y, zone: "top" },
-    { distance: 1 - y, zone: "bottom" },
+    { distance: x, zone: 'left' },
+    { distance: 1 - x, zone: 'right' },
+    { distance: y, zone: 'top' },
+    { distance: 1 - y, zone: 'bottom' },
   ]
   distances.sort((left, right) => left.distance - right.distance)
 
-  return distances[0]?.zone ?? "right"
+  return distances[0]?.zone ?? 'right'
 }
 
 function editorPaneDropTarget({
@@ -770,20 +693,18 @@ function editorPaneDropTarget({
   paneId,
   surfaceElement,
 }: {
-  event: Pick<React.DragEvent<HTMLElement>, "clientX" | "clientY">
+  event: Pick<React.DragEvent<HTMLElement>, 'clientX' | 'clientY'>
   layout: EditorPaneLayout
   paneElement: HTMLElement
   paneId: string
   surfaceElement: HTMLElement | null
 }): EditorPaneSplitDropTarget | null {
-  const rootZone = surfaceElement
-    ? editorPaneRootEdgeDropZone(surfaceElement, event)
-    : null
+  const rootZone = surfaceElement ? editorPaneRootEdgeDropZone(surfaceElement, event) : null
 
   if (rootZone && canSplitEditorPaneAtRoot(layout)) {
     return {
       paneId,
-      scope: "root",
+      scope: 'root',
       zone: rootZone,
     }
   }
@@ -792,14 +713,14 @@ function editorPaneDropTarget({
 
   return {
     paneId,
-    scope: "pane",
+    scope: 'pane',
     zone: editorPaneDropZone(paneElement, event),
   }
 }
 
 function editorPaneRootEdgeDropZone(
   element: HTMLElement,
-  event: Pick<React.DragEvent<HTMLElement>, "clientX" | "clientY">
+  event: Pick<React.DragEvent<HTMLElement>, 'clientX' | 'clientY'>,
 ): EditorPaneSplitDropZone | null {
   const rect = element.getBoundingClientRect()
   const threshold = editorPaneRootEdgeThreshold(rect)
@@ -807,10 +728,10 @@ function editorPaneRootEdgeDropZone(
     distance: number
     zone: EditorPaneSplitDropZone
   }> = [
-    { distance: Math.max(0, event.clientX - rect.left), zone: "left" },
-    { distance: Math.max(0, rect.right - event.clientX), zone: "right" },
-    { distance: Math.max(0, event.clientY - rect.top), zone: "top" },
-    { distance: Math.max(0, rect.bottom - event.clientY), zone: "bottom" },
+    { distance: Math.max(0, event.clientX - rect.left), zone: 'left' },
+    { distance: Math.max(0, rect.right - event.clientX), zone: 'right' },
+    { distance: Math.max(0, event.clientY - rect.top), zone: 'top' },
+    { distance: Math.max(0, rect.bottom - event.clientY), zone: 'bottom' },
   ]
   distances.sort((left, right) => left.distance - right.distance)
 
@@ -825,8 +746,8 @@ function editorPaneRootEdgeThreshold(rect: DOMRect) {
     EDITOR_PANE_ROOT_EDGE_MAX_PX,
     Math.max(
       EDITOR_PANE_ROOT_EDGE_MIN_PX,
-      Math.min(rect.width, rect.height) * EDITOR_PANE_ROOT_EDGE_FRACTION
-    )
+      Math.min(rect.width, rect.height) * EDITOR_PANE_ROOT_EDGE_FRACTION,
+    ),
   )
 }
 
@@ -837,7 +758,7 @@ function normalizedPointerOffset(value: number, start: number, size: number) {
 }
 
 function readyFile(fileState: LoadState<FileResult>) {
-  if (fileState.status !== "ready") return null
+  if (fileState.status !== 'ready') return null
 
   return fileState.data
 }
@@ -849,44 +770,31 @@ function useConflictEditorResolution({
 }: {
   discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
   forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
-  renameCachedEditorDocument: (
-    from: string,
-    to: string
-  ) => { wasDirty: boolean }
+  renameCachedEditorDocument: (from: string, to: string) => { wasDirty: boolean }
 }) {
   const conflictStore = useEditorConflictStoreApi()
   const queryClient = useQueryClient()
   const resolvingConflictIds = useRef(new Set<string>())
-  const pendingResolutionTimeouts = useRef(
-    new Map<string, ReturnType<typeof setTimeout>>()
-  )
+  const pendingResolutionTimeouts = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
-  useEffect(
-    () => () =>
-      clearConflictResolutionTimeouts(pendingResolutionTimeouts.current),
-    []
-  )
+  useEffect(() => () => clearConflictResolutionTimeouts(pendingResolutionTimeouts.current), [])
 
   return useCallback(
     (path: string, textSnapshot: TextSnapshot) => {
       const conflictDiff = parseConflictDiffDocumentId(path)
       if (!conflictDiff) return
 
-      replaceConflictResolutionTimeout(
-        pendingResolutionTimeouts.current,
-        path,
-        () => {
-          pendingResolutionTimeouts.current.delete(path)
-          resolveConflictEditorSnapshot(conflictDiff, textSnapshot, {
-            conflictStore,
-            discardCachedEditorDocument,
-            forceReplaceCachedEditorDocument,
-            queryClient,
-            renameCachedEditorDocument,
-            resolvingConflictIds,
-          })
-        }
-      )
+      replaceConflictResolutionTimeout(pendingResolutionTimeouts.current, path, () => {
+        pendingResolutionTimeouts.current.delete(path)
+        resolveConflictEditorSnapshot(conflictDiff, textSnapshot, {
+          conflictStore,
+          discardCachedEditorDocument,
+          forceReplaceCachedEditorDocument,
+          queryClient,
+          renameCachedEditorDocument,
+          resolvingConflictIds,
+        })
+      })
     },
     [
       conflictStore,
@@ -894,7 +802,7 @@ function useConflictEditorResolution({
       forceReplaceCachedEditorDocument,
       queryClient,
       renameCachedEditorDocument,
-    ]
+    ],
   )
 }
 
@@ -903,13 +811,12 @@ function resolveConflictEditorSnapshot(
   textSnapshot: TextSnapshot,
   context: ConflictEditorResolutionContext & {
     resolvingConflictIds: MutableRefObject<Set<string>>
-  }
+  },
 ) {
   const text = textSnapshot.getText()
   if (parseMergeConflicts(text).length > 0) return
 
-  const conflict =
-    context.conflictStore.getState().conflicts[conflictDiff.conflictId]
+  const conflict = context.conflictStore.getState().conflicts[conflictDiff.conflictId]
   if (!conflict) return
   if (context.resolvingConflictIds.current.has(conflict.id)) return
 
@@ -926,7 +833,7 @@ function resolveConflictEditorSnapshot(
 function replaceConflictResolutionTimeout(
   timeouts: Map<string, ReturnType<typeof setTimeout>>,
   path: string,
-  resolve: () => void
+  resolve: () => void,
 ) {
   const current = timeouts.get(path)
   if (current) clearTimeout(current)
@@ -935,9 +842,7 @@ function replaceConflictResolutionTimeout(
   timeouts.set(path, timeout)
 }
 
-function clearConflictResolutionTimeouts(
-  timeouts: Map<string, ReturnType<typeof setTimeout>>
-) {
+function clearConflictResolutionTimeouts(timeouts: Map<string, ReturnType<typeof setTimeout>>) {
   for (const timeout of timeouts.values()) {
     clearTimeout(timeout)
   }
@@ -948,23 +853,16 @@ function clearConflictResolutionTimeouts(
 async function applyConflictEditorResolution(
   conflict: FilesystemConflict,
   resolvedText: string,
-  context: ConflictEditorResolutionContext
+  context: ConflictEditorResolutionContext,
 ) {
-  if (conflict.eventType === "deleted") {
+  if (conflict.eventType === 'deleted') {
     await ensureFolderPath(parentPath(conflict.remotePath))
     await createFileContent(conflict.remotePath, resolvedText)
   } else {
-    await writeFileContent(
-      conflict.remotePath,
-      resolvedText,
-      conflict.remoteMtimeMs
-    )
+    await writeFileContent(conflict.remotePath, resolvedText, conflict.remoteMtimeMs)
   }
 
-  const file = await fetchFile(
-    conflict.remotePath,
-    new AbortController().signal
-  )
+  const file = await fetchFile(conflict.remotePath, new AbortController().signal)
   replaceResolvedConflictFile(conflict.localPath, file, context)
   finishEditorResolvedConflict(conflict, context)
 }
@@ -974,16 +872,13 @@ type ConflictEditorResolutionContext = {
   discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
   forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
   queryClient: ReturnType<typeof useQueryClient>
-  renameCachedEditorDocument: (
-    from: string,
-    to: string
-  ) => { wasDirty: boolean }
+  renameCachedEditorDocument: (from: string, to: string) => { wasDirty: boolean }
 }
 
 function replaceResolvedConflictFile(
   localPath: string,
   file: FileResult,
-  context: ConflictEditorResolutionContext
+  context: ConflictEditorResolutionContext,
 ) {
   if (localPath !== file.path) {
     context.renameCachedEditorDocument(localPath, file.path)
@@ -996,7 +891,7 @@ function replaceResolvedConflictFile(
 
 function finishEditorResolvedConflict(
   conflict: FilesystemConflict,
-  context: ConflictEditorResolutionContext
+  context: ConflictEditorResolutionContext,
 ) {
   if (conflict.diffDocumentId) {
     context.discardCachedEditorDocument(conflict.diffDocumentId)
@@ -1009,7 +904,7 @@ function finishEditorResolvedConflict(
 function moveFileQueryData(
   queryClient: ReturnType<typeof useQueryClient>,
   from: string,
-  to: string
+  to: string,
 ) {
   const file = queryClient.getQueryData<FileResult>(fileSystemKeys.file(from))
   queryClient.removeQueries({
@@ -1022,8 +917,8 @@ function moveFileQueryData(
 }
 
 function parentPath(path: string) {
-  const index = path.lastIndexOf("/")
-  if (index < 0) return ""
+  const index = path.lastIndexOf('/')
+  if (index < 0) return ''
 
   return path.slice(0, index)
 }

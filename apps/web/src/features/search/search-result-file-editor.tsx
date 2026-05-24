@@ -1,13 +1,13 @@
-import { ArrowSquareOutIcon } from "@phosphor-icons/react"
+import { ArrowSquareOutIcon } from '@phosphor-icons/react'
 import type {
   EditorKeymapLayer,
   EditorKeymapOptions,
   EditorPlugin,
   EditorTheme,
-} from "@editor/core"
-import { createEditorFindPlugin } from "@editor/find"
-import { EditorHost, useEditor } from "@editor/react"
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
+} from '@editor/core'
+import { createEditorFindPlugin } from '@editor/find'
+import { EditorHost, useEditor } from '@editor/react'
+import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {
   memo,
   useEffect,
@@ -17,9 +17,9 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
-} from "react"
+} from 'react'
 
-import { useWorkspaceFocus } from "@/components/workspace/workspace-focus-state"
+import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import {
   EMPTY_EDITOR_PLUGINS,
   EMPTY_RANGE_DECORATIONS,
@@ -29,8 +29,8 @@ import {
   SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
   SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS,
   SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP,
-} from "@/features/search/search-result-editor-constants"
-import type { SearchResultFileEditorPoolEntry } from "@/features/search/search-result-editor-types"
+} from '@/features/search/search-result-editor-constants'
+import type { SearchResultFileEditorPoolEntry } from '@/features/search/search-result-editor-types'
 import {
   currentSearchResultFileLine,
   fileBlockLineDigits,
@@ -49,8 +49,8 @@ import {
   searchResultLineOpenLabel,
   searchResultSourceLineGutterStyle,
   searchResultVirtualRowStyle,
-} from "@/features/search/search-result-editor-utils"
-import type { SearchResultId } from "@/features/search/search-result-items"
+} from '@/features/search/search-result-editor-utils'
+import type { SearchResultId } from '@/features/search/search-result-items'
 import {
   searchResultFileDocument,
   searchResultVirtualRowId,
@@ -58,9 +58,9 @@ import {
   type SearchResultFileDocument,
   type SearchResultFileDocumentLine,
   type SearchResultOpenTarget,
-} from "@/features/search/search-result-view-model"
-import { Button } from "@workspace/ui/components/button"
-import { cn } from "@workspace/ui/lib/utils"
+} from '@/features/search/search-result-view-model'
+import { Button } from '@workspace/ui/components/button'
+import { cn } from '@workspace/ui/lib/utils'
 
 export function SearchResultFileEditorPoolSlot({
   activeResultId,
@@ -102,10 +102,10 @@ export function SearchResultFileEditorPoolSlot({
       aria-hidden={visible ? undefined : true}
       aria-level={visible ? 2 : undefined}
       aria-selected={visible ? active : undefined}
-      className="absolute right-2 left-2"
+      className='absolute right-2 left-2'
       data-index={visible ? item.virtualItem.index : undefined}
       id={id && visible ? searchResultDomId(treeId, id) : undefined}
-      role={visible ? "treeitem" : undefined}
+      role={visible ? 'treeitem' : undefined}
       style={
         visible
           ? searchResultVirtualRowStyle(item.virtualItem)
@@ -168,26 +168,26 @@ const SearchResultFileEditor = memo(
   }: SearchResultFileEditorProps) => {
     const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
     const setActiveEditorCommandDispatch = useWorkspaceFocus(
-      (state) => state.setActiveEditorCommandDispatch
+      (state) => state.setActiveEditorCommandDispatch,
     )
     const fileDocument = useMemo(() => searchResultFileDocument(file), [file])
     const sourceLineDigits = fileBlockLineDigits(file)
     const document = useMemo(
       () => ({
         documentId: searchResultFileDocumentId(file),
-        documentMode: "static" as const,
+        documentMode: 'static' as const,
         languageId: fileDocument.languageId,
         text: fileDocument.text,
-        textSyncMode: "incremental" as const,
+        textSyncMode: 'incremental' as const,
       }),
-      [file, fileDocument]
+      [file, fileDocument],
     )
     const rangeDecorations = useMemo(
       () =>
         visible
           ? searchResultFileRangeDecorations(fileDocument, activeResultId)
           : EMPTY_RANGE_DECORATIONS,
-      [activeResultId, fileDocument, visible]
+      [activeResultId, fileDocument, visible],
     )
     const findPlugin = useMemo(() => {
       if (!active) return null
@@ -196,12 +196,10 @@ const SearchResultFileEditor = memo(
 
       return createEditorFindPlugin()
     }, [active, deferredPluginsReady, visible])
-    const effectiveSyntaxPlugins = visible
-      ? syntaxPlugins
-      : EMPTY_EDITOR_PLUGINS
+    const effectiveSyntaxPlugins = visible ? syntaxPlugins : EMPTY_EDITOR_PLUGINS
     const plugins = useMemo(
       () => fileResultEditorPlugins(effectiveSyntaxPlugins, findPlugin),
-      [effectiveSyntaxPlugins, findPlugin]
+      [effectiveSyntaxPlugins, findPlugin],
     )
     const editorKeymap = useMemo(
       () =>
@@ -211,26 +209,21 @@ const SearchResultFileEditor = memo(
               layers: keymapLayers,
             } satisfies EditorKeymapOptions)
           : SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP,
-      [active, keymapLayers]
+      [active, keymapLayers],
     )
-    const editorStyle = useMemo(
-      () => searchResultFileEditorStyle(fileDocument),
-      [fileDocument]
-    )
-    const [hoveredLineId, setHoveredLineId] = useState<SearchResultId | null>(
-      null
-    )
+    const editorStyle = useMemo(() => searchResultFileEditorStyle(fileDocument), [fileDocument])
+    const [hoveredLineId, setHoveredLineId] = useState<SearchResultId | null>(null)
     const controller = useEditor({
       cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
       document,
-      editability: "readonly",
+      editability: 'readonly',
       keymap: editorKeymap,
       lineHeight: EXCERPT_EDITOR_LINE_HEIGHT,
       plugins,
       rangeDecorations,
       rowGap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
-      selectionSyncMode: "none",
-      storeSync: "none",
+      selectionSyncMode: 'none',
+      storeSync: 'none',
       textMetrics: SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS,
       theme: editorTheme,
     })
@@ -249,23 +242,19 @@ const SearchResultFileEditor = memo(
 
         window.cancelAnimationFrame(pendingActivationFrameRef.current)
       },
-      []
+      [],
     )
 
     function handleActivate() {
       onEnableDeferredPlugins()
-      setFocusArea("editor")
+      setFocusArea('editor')
     }
 
     function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
       if (isSearchResultEditorActionTarget(event.target)) return
 
       const nextResultId =
-        searchResultFileLineIdAtClientY(
-          fileDocument,
-          event.currentTarget,
-          event.clientY
-        ) ?? file.id
+        searchResultFileLineIdAtClientY(fileDocument, event.currentTarget, event.clientY) ?? file.id
       if (pendingActivationFrameRef.current !== null) {
         window.cancelAnimationFrame(pendingActivationFrameRef.current)
       }
@@ -279,7 +268,7 @@ const SearchResultFileEditor = memo(
       const lineId = searchResultFileLineIdAtClientY(
         fileDocument,
         event.currentTarget,
-        event.clientY
+        event.clientY,
       )
       setHoveredLineId((current) => (current === lineId ? current : lineId))
     }
@@ -321,7 +310,7 @@ const SearchResultFileEditor = memo(
 
     return (
       <div
-        className="ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5"
+        className='ml-5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-1.5 rounded-sm border-l border-transparent px-2 py-0.5'
         onBeforeInputCapture={preventReadonlyInput}
         onDropCapture={preventReadonlyInput}
         onFocusCapture={handleActivate}
@@ -332,13 +321,10 @@ const SearchResultFileEditor = memo(
         onPointerDownCapture={handleActivate}
         onPointerUpCapture={handlePointerUp}
       >
-        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start">
-          <SearchResultSourceLineGutter
-            document={fileDocument}
-            minDigits={sourceLineDigits}
-          />
+        <div className='grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start'>
+          <SearchResultSourceLineGutter document={fileDocument} minDigits={sourceLineDigits} />
           <EditorHost
-            className="app-editor-host search-result-file-editor-host min-w-0"
+            className='app-editor-host search-result-file-editor-host min-w-0'
             controller={controller}
             style={editorStyle}
           />
@@ -354,9 +340,9 @@ const SearchResultFileEditor = memo(
         />
       </div>
     )
-  }
+  },
 )
-SearchResultFileEditor.displayName = "SearchResultFileEditor"
+SearchResultFileEditor.displayName = 'SearchResultFileEditor'
 
 function SearchResultFileLineActions({
   activeResultId,
@@ -376,10 +362,7 @@ function SearchResultFileLineActions({
   onReplaceLine: (line: SearchResultFileDocumentLine) => void
 }) {
   return (
-    <div
-      className="grid shrink-0"
-      style={searchResultLineActionsStyle(document.lines.length)}
-    >
+    <div className='grid shrink-0' style={searchResultLineActionsStyle(document.lines.length)}>
       {document.lines.map((line) => (
         <SearchResultFileLineActionRow
           active={line.id === activeResultId || line.id === hoveredLineId}
@@ -421,29 +404,26 @@ function SearchResultFileLineActionRow({
   }
 
   return (
-    <div className="flex items-center justify-end gap-0.5">
+    <div className='flex items-center justify-end gap-0.5'>
       <Button
         aria-label={searchResultLineOpenLabel(line)}
         className={searchResultLineActionClassName(active)}
-        size="icon-xs"
+        size='icon-xs'
         title={searchResultLineOpenLabel(line)}
-        type="button"
-        variant="ghost"
+        type='button'
+        variant='ghost'
         onClick={handleOpenClick}
       >
-        <ArrowSquareOutIcon className="size-3.5" />
+        <ArrowSquareOutIcon className='size-3.5' />
       </Button>
       {replaceVisible ? (
         <Button
-          className={cn(
-            "h-5 px-1.5 text-[10px]",
-            searchResultLineActionClassName(active)
-          )}
+          className={cn('h-5 px-1.5 text-[10px]', searchResultLineActionClassName(active))}
           disabled={!canReplace}
-          size="xs"
-          title="Replace this match"
-          type="button"
-          variant="ghost"
+          size='xs'
+          title='Replace this match'
+          type='button'
+          variant='ghost'
           onClick={handleReplaceClick}
         >
           Replace
@@ -462,18 +442,12 @@ function SearchResultSourceLineGutter({
 }) {
   return (
     <div
-      aria-hidden="true"
-      className="box-border grid shrink-0 overflow-hidden pr-2 text-right font-mono text-[13px] text-muted-foreground select-none"
-      style={searchResultSourceLineGutterStyle(
-        document.lines.length,
-        minDigits
-      )}
+      aria-hidden='true'
+      className='text-muted-foreground box-border grid shrink-0 overflow-hidden pr-2 text-right font-mono text-[13px] select-none'
+      style={searchResultSourceLineGutterStyle(document.lines.length, minDigits)}
     >
       {document.lines.map((line) => (
-        <span
-          className="block overflow-hidden leading-[22px] tabular-nums"
-          key={line.id}
-        >
+        <span className='block overflow-hidden leading-[22px] tabular-nums' key={line.id}>
           {line.sourceLine}
         </span>
       ))}
@@ -483,11 +457,11 @@ function SearchResultSourceLineGutter({
 
 function fileResultEditorPlugins(
   syntaxPlugins: readonly EditorPlugin[],
-  findPlugin: EditorPlugin | null
+  findPlugin: EditorPlugin | null,
 ) {
   if (syntaxPlugins.length === 0 && !findPlugin) return EMPTY_EDITOR_PLUGINS
 
-  if (!findPlugin) return [...syntaxPlugins]
+  if (!findPlugin) return Array.from(syntaxPlugins)
 
-  return [...syntaxPlugins, findPlugin]
+  return syntaxPlugins.concat(findPlugin)
 }

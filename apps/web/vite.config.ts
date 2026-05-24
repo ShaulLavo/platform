@@ -1,11 +1,11 @@
-import { existsSync, realpathSync } from "node:fs"
-import path from "node:path"
-import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react"
-import { defineConfig, type Plugin } from "vite"
-import { consumeAppSave } from "../server/src/fs/app-save-marker"
+import { existsSync, realpathSync } from 'node:fs'
+import path from 'node:path'
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig, type Plugin } from 'vite'
+import { consumeAppSave } from '../server/src/fs/app-save-marker'
 
-const workspaceRoot = path.resolve(__dirname, "../..")
+const workspaceRoot = path.resolve(__dirname, '../..')
 const editorSourceRoot = resolveEditorSourceRoot(workspaceRoot)
 
 export default defineConfig({
@@ -14,19 +14,19 @@ export default defineConfig({
     platformSelfSaveHmrPlugin(),
     react({
       babel: {
-        plugins: ["babel-plugin-react-compiler"],
+        plugins: ['babel-plugin-react-compiler'],
       },
     }),
     tailwindcss(),
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      '@': path.resolve(__dirname, './src'),
     },
-    dedupe: ["react", "react-dom"],
+    dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
-    exclude: ["@pierre/trees", "@pierre/trees/react"],
+    exclude: ['@pierre/trees', '@pierre/trees/react'],
   },
   server: {
     fs: {
@@ -34,7 +34,7 @@ export default defineConfig({
     },
   },
   worker: {
-    format: "es",
+    format: 'es',
   },
 })
 
@@ -71,14 +71,14 @@ const DISABLE_REACT_DEVTOOLS_SCRIPT = `
 
 function disableReactDevtoolsInProductionPlugin(): Plugin {
   return {
-    name: "platform-disable-react-devtools-production",
-    apply: "build",
+    name: 'platform-disable-react-devtools-production',
+    apply: 'build',
     transformIndexHtml() {
       return [
         {
-          tag: "script",
+          tag: 'script',
           children: DISABLE_REACT_DEVTOOLS_SCRIPT,
-          injectTo: "head-prepend",
+          injectTo: 'head-prepend',
         },
       ]
     },
@@ -87,10 +87,10 @@ function disableReactDevtoolsInProductionPlugin(): Plugin {
 
 function platformSelfSaveHmrPlugin(): Plugin {
   return {
-    name: "platform-self-save-hmr",
-    apply: "serve",
+    name: 'platform-self-save-hmr',
+    apply: 'serve',
     hotUpdate: {
-      order: "pre",
+      order: 'pre',
       handler({ file }) {
         if (!consumeAppSave(file)) return
 
@@ -104,12 +104,10 @@ function resolveEditorSourceRoot(root: string) {
   const envRoot = process.env.EDITOR_SOURCE_ROOT
   if (envRoot) return path.resolve(envRoot)
 
-  const linkedPackageSource = realpathIfExists(
-    path.join(root, "packages/editor-core/src")
-  )
+  const linkedPackageSource = realpathIfExists(path.join(root, 'packages/editor-core/src'))
   if (!linkedPackageSource) return null
 
-  return path.resolve(linkedPackageSource, "../../..")
+  return path.resolve(linkedPackageSource, '../../..')
 }
 
 function realpathIfExists(input: string) {
@@ -121,5 +119,5 @@ function uniquePaths(paths: Array<string | null>) {
 }
 
 function isString(value: string | null): value is string {
-  return typeof value === "string"
+  return typeof value === 'string'
 }

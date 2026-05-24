@@ -1,7 +1,7 @@
-import { useEditorCommands } from "@/features/editor/state/editor-commands"
-import { useGitState } from "../state"
-import { useCommitMutation } from "./use-commit-mutation"
-import { useCommitPending } from "./use-commit-pending"
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { useGitState } from '../state'
+import { useCommitMutation } from './use-commit-mutation'
+import { useCommitPending } from './use-commit-pending'
 
 export function useCommitAction(rootPath: string) {
   const { discardCachedEditorDocument, selectFile } = useEditorCommands()
@@ -17,7 +17,7 @@ export function useCommitAction(rootPath: string) {
 
     commit.mutate(trimmedMessage, {
       onSuccess: (result) => {
-        if (result.kind === "message-file") {
+        if (result.kind === 'message-file') {
           discardCachedEditorDocument(result.path)
           // TODO: when save is implemented, saving COMMIT_EDITMSG should complete or abort the git commit.
           selectFile(result.path)

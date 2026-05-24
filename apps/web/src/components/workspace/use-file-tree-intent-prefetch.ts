@@ -1,22 +1,19 @@
-import type { FileTree as PierreFileTreeModel } from "@pierre/trees"
-import { ForesightManager } from "js.foresight"
-import { useEffect, useEffectEvent, useLayoutEffect, useRef } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import type { FileTree as PierreFileTreeModel } from '@pierre/trees'
+import { ForesightManager } from 'js.foresight'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import {
   canPrefetchFileEntry,
   fileTreeRowElements,
   fileTreeRowPath,
   FILE_TREE_PREFETCH_STALE_MS,
-} from "@/components/workspace/file-tree-prefetch"
-import { fetchFile } from "@/lib/file-server"
-import type { TreeEntry } from "@/lib/file-system-types"
-import { isDirectoryEntry } from "@/lib/file-system-types"
-import { fileSystemKeys } from "@/lib/query-keys"
-import {
-  entryForTreePath,
-  type TreeModel,
-} from "@/lib/tree-model"
+} from '@/components/workspace/file-tree-prefetch'
+import { fetchFile } from '@/lib/file-server'
+import type { TreeEntry } from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
+import { fileSystemKeys } from '@/lib/query-keys'
+import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
 
 type FileTreeIntentPrefetchOptions = {
   model: TreeModel
@@ -52,14 +49,12 @@ export function useFileTreeIntentPrefetch({
     })
   })
 
-  const syncRegistrations = useEffectEvent(
-    (registrations: Map<HTMLElement, string>) => {
-      syncForesightRegistrations(tree, registrations, prefetchTreePath)
-    }
-  )
+  const syncRegistrations = useEffectEvent((registrations: Map<HTMLElement, string>) => {
+    syncForesightRegistrations(tree, registrations, prefetchTreePath)
+  })
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (typeof window === 'undefined') return
 
     const registrations = new Map<HTMLElement, string>()
     let observer: MutationObserver | null = null
@@ -83,7 +78,7 @@ export function useFileTreeIntentPrefetch({
 function syncForesightRegistrations(
   tree: PierreFileTreeModel,
   registrations: Map<HTMLElement, string>,
-  onIntent: (treePath: string) => void
+  onIntent: (treePath: string) => void,
 ) {
   const shadowRoot = tree.getFileTreeContainer()?.shadowRoot
   if (!shadowRoot) {
@@ -102,7 +97,7 @@ function syncForesightRegistrations(
 function registerElementPath(
   element: HTMLElement,
   registrations: Map<HTMLElement, string>,
-  onIntent: (treePath: string) => void
+  onIntent: (treePath: string) => void,
 ) {
   const treePath = fileTreeRowPath(element)
   if (!treePath) {
@@ -126,7 +121,7 @@ function registerElementPath(
 
 function unregisterRemovedElements(
   registrations: Map<HTMLElement, string>,
-  currentElements: ReadonlySet<HTMLElement>
+  currentElements: ReadonlySet<HTMLElement>,
 ) {
   for (const element of registrations.keys()) {
     if (currentElements.has(element)) continue
@@ -141,28 +136,22 @@ function unregisterAll(registrations: Map<HTMLElement, string>) {
   }
 }
 
-function unregisterElement(
-  element: HTMLElement,
-  registrations: Map<HTMLElement, string>
-) {
+function unregisterElement(element: HTMLElement, registrations: Map<HTMLElement, string>) {
   registrations.delete(element)
   if (!ForesightManager.isInitiated) return
 
   ForesightManager.instance.unregister(element)
 }
 
-function observeTreeRows(
-  tree: PierreFileTreeModel,
-  onChange: () => void
-): MutationObserver | null {
-  if (typeof MutationObserver === "undefined") return null
+function observeTreeRows(tree: PierreFileTreeModel, onChange: () => void): MutationObserver | null {
+  if (typeof MutationObserver === 'undefined') return null
 
   const shadowRoot = tree.getFileTreeContainer()?.shadowRoot
   if (!shadowRoot) return null
 
   const observer = new MutationObserver(onChange)
   observer.observe(shadowRoot, {
-    attributeFilter: ["data-item-path"],
+    attributeFilter: ['data-item-path'],
     attributes: true,
     childList: true,
     subtree: true,

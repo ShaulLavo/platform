@@ -1,11 +1,11 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from 'bun:test'
 
-import { encodeTerminalClientMessage } from "./terminal-socket"
+import { encodeTerminalClientMessage } from './terminal-socket'
 
-describe("terminal socket client", () => {
-  it("encodes client protocol messages", () => {
-    expect(
-      encodeTerminalClientMessage({ type: "resize", cols: 120, rows: 32 })
-    ).toBe('{"type":"resize","cols":120,"rows":32}')
+describe('terminal socket client', () => {
+  it('encodes client protocol messages', () => {
+    expect(encodeTerminalClientMessage({ type: 'resize', cols: 120, rows: 32 })).toBe(
+      '{"type":"resize","cols":120,"rows":32}',
+    )
   })
 })

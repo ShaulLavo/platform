@@ -1,25 +1,25 @@
-import type { EditorKeymapLayer } from "@editor/core"
-import { observeEditorMountTiming } from "@editor/core"
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
-import { createRoot } from "react-dom/client"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { EditorKeymapLayer } from '@editor/core'
+import { observeEditorMountTiming } from '@editor/core'
+import type { WorkspaceSearchMatch } from '@workspace/contracts'
+import { createRoot } from 'react-dom/client'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import "@workspace/ui/globals.css"
+import '@workspace/ui/globals.css'
 
-import { ThemeProvider } from "@/components/theme-provider"
-import { WorkspaceFocusProvider } from "@/components/workspace/workspace-focus-provider"
-import { EditorColorThemeProvider } from "@/features/editor/hooks/use-editor-color-theme"
-import type { WorkspaceSearchFileGroup } from "@/features/search/search-buffer-state"
-import { SearchResultEditorSurface } from "@/features/search/search-result-editor-surface"
+import { ThemeProvider } from '@/components/theme-provider'
+import { WorkspaceFocusProvider } from '@/components/workspace/workspace-focus-provider'
+import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
+import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
+import { SearchResultEditorSurface } from '@/features/search/search-result-editor-surface'
 import {
   firstSearchResultExcerptId,
   firstSearchResultVirtualRowId,
   searchResultFileBlocks,
   searchResultVirtualRows,
-} from "@/features/search/search-result-view-model"
-import type { SearchResultId } from "@/features/search/search-result-items"
+} from '@/features/search/search-result-view-model'
+import type { SearchResultId } from '@/features/search/search-result-items'
 
-const SEARCH_QUERY = "needle"
+const SEARCH_QUERY = 'needle'
 const TOTAL_RESULTS = 200
 const FILE_COUNT = 10
 const MATCHES_PER_FILE = TOTAL_RESULTS / FILE_COUNT
@@ -38,7 +38,7 @@ observeEditorMountTiming((durationMs) => {
   editorMountStats.totalMs += durationMs
 })
 
-type SearchPerfDeferredMode = "idle" | "immediate" | "manual"
+type SearchPerfDeferredMode = 'idle' | 'immediate' | 'manual'
 
 type SearchPerfVariant = {
   readonly autoScroll: boolean
@@ -46,7 +46,7 @@ type SearchPerfVariant = {
   readonly deferredMode: SearchPerfDeferredMode
   readonly replaceVisible: boolean
   readonly streaming: boolean
-  readonly theme: "dark" | "light"
+  readonly theme: 'dark' | 'light'
 }
 
 type SearchPerfMetrics = {
@@ -77,18 +77,16 @@ export function SearchResultEditorSurfacePerfFixture() {
   const longestTaskRef = useRef(0)
   const [streaming, setStreaming] = useState(variant.streaming)
   const [groups, setGroups] = useState(() =>
-    createSearchPerfGroups(variant, searchPerfInitialMatchesPerFile(variant))
+    createSearchPerfGroups(variant, searchPerfInitialMatchesPerFile(variant)),
   )
   const rows = useMemo(
     () => searchResultVirtualRows(searchResultFileBlocks(groups, SEARCH_QUERY)),
-    [groups]
+    [groups],
   )
-  const [activeResultId, setActiveResultId] = useState<SearchResultId | null>(
-    () => firstVisibleSearchResultId(groups)
+  const [activeResultId, setActiveResultId] = useState<SearchResultId | null>(() =>
+    firstVisibleSearchResultId(groups),
   )
-  const [metrics, setMetrics] = useState<SearchPerfMetrics>(() =>
-    currentSearchPerfMetrics(null, 0)
-  )
+  const [metrics, setMetrics] = useState<SearchPerfMetrics>(() => currentSearchPerfMetrics(null, 0))
 
   useEffect(() => applyPerfTheme(variant.theme), [variant.theme])
 
@@ -103,9 +101,7 @@ export function SearchResultEditorSurfacePerfFixture() {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      setMetrics(
-        currentSearchPerfMetrics(fixtureRef.current, longestTaskRef.current)
-      )
+      setMetrics(currentSearchPerfMetrics(fixtureRef.current, longestTaskRef.current))
     })
 
     return () => window.cancelAnimationFrame(frame)
@@ -114,9 +110,7 @@ export function SearchResultEditorSurfacePerfFixture() {
   useEffect(() => {
     return observeLongTasks((durationMs) => {
       longestTaskRef.current = Math.max(longestTaskRef.current, durationMs)
-      setMetrics(
-        currentSearchPerfMetrics(fixtureRef.current, longestTaskRef.current)
-      )
+      setMetrics(currentSearchPerfMetrics(fixtureRef.current, longestTaskRef.current))
     })
   }, [])
 
@@ -136,14 +130,14 @@ export function SearchResultEditorSurfacePerfFixture() {
   const handleToggleGroup = useCallback((path: string) => {
     setGroups((current) =>
       current.map((group) =>
-        group.path === path ? { ...group, collapsed: !group.collapsed } : group
-      )
+        group.path === path ? { ...group, collapsed: !group.collapsed } : group,
+      ),
     )
   }, [])
 
   return (
     <div
-      className="grid h-svh min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background text-foreground"
+      className='bg-background text-foreground grid h-svh min-h-0 grid-rows-[auto_minmax(0,1fr)]'
       ref={fixtureRef}
     >
       <SearchPerfHeader metrics={metrics} variant={variant} />
@@ -175,38 +169,18 @@ export function SearchPerfHeader({
   variant: SearchPerfVariant
 }) {
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-b bg-muted/25 px-3 py-2 text-xs">
-      <div className="min-w-0 truncate font-medium">
-        Search result editor perf fixture
-      </div>
-      <dl className="grid grid-cols-[repeat(9,auto)] gap-x-3 gap-y-1 text-muted-foreground">
-        <PerfMetric label="variant" value={variantLabel(variant)} />
-        <PerfMetric
-          label="first paint"
-          value={formatMs(metrics.initialRenderMs)}
-        />
-        <PerfMetric label="editors" value={String(metrics.editorMountCount)} />
-        <PerfMetric
-          label="mount total"
-          value={formatMs(metrics.totalEditorMountMs)}
-        />
-        <PerfMetric
-          label="visible hosts"
-          value={String(metrics.visibleEditorHosts)}
-        />
-        <PerfMetric
-          label="addRange"
-          value={String(metrics.nativeAddRangeCount)}
-        />
-        <PerfMetric label="long task" value={formatMs(metrics.longestTaskMs)} />
-        <PerfMetric
-          label="scroll frames"
-          value={String(metrics.scrollFrames)}
-        />
-        <PerfMetric
-          label="longest frame"
-          value={formatMs(metrics.longestFrameMs)}
-        />
+    <div className='bg-muted/25 grid grid-cols-[1fr_auto] items-center gap-4 border-b px-3 py-2 text-xs'>
+      <div className='min-w-0 truncate font-medium'>Search result editor perf fixture</div>
+      <dl className='text-muted-foreground grid grid-cols-[repeat(9,auto)] gap-x-3 gap-y-1'>
+        <PerfMetric label='variant' value={variantLabel(variant)} />
+        <PerfMetric label='first paint' value={formatMs(metrics.initialRenderMs)} />
+        <PerfMetric label='editors' value={String(metrics.editorMountCount)} />
+        <PerfMetric label='mount total' value={formatMs(metrics.totalEditorMountMs)} />
+        <PerfMetric label='visible hosts' value={String(metrics.visibleEditorHosts)} />
+        <PerfMetric label='addRange' value={String(metrics.nativeAddRangeCount)} />
+        <PerfMetric label='long task' value={formatMs(metrics.longestTaskMs)} />
+        <PerfMetric label='scroll frames' value={String(metrics.scrollFrames)} />
+        <PerfMetric label='longest frame' value={formatMs(metrics.longestFrameMs)} />
       </dl>
     </div>
   )
@@ -216,7 +190,7 @@ export function PerfMetric({ label, value }: { label: string; value: string }) {
   return (
     <>
       <dt>{label}</dt>
-      <dd className="font-mono text-foreground tabular-nums">{value}</dd>
+      <dd className='text-foreground font-mono tabular-nums'>{value}</dd>
     </>
   )
 }
@@ -225,31 +199,31 @@ function readSearchPerfVariant(): SearchPerfVariant {
   const params = new URLSearchParams(window.location.search)
 
   return {
-    autoScroll: params.get("scroll") !== "0",
-    collapsed: params.get("collapsed") === "1",
-    deferredMode: searchPerfDeferredMode(params.get("syntax")),
-    replaceVisible: params.get("replace") === "visible",
-    streaming: params.get("stream") === "1",
-    theme: params.get("theme") === "light" ? "light" : "dark",
+    autoScroll: params.get('scroll') !== '0',
+    collapsed: params.get('collapsed') === '1',
+    deferredMode: searchPerfDeferredMode(params.get('syntax')),
+    replaceVisible: params.get('replace') === 'visible',
+    streaming: params.get('stream') === '1',
+    theme: params.get('theme') === 'light' ? 'light' : 'dark',
   }
 }
 
 function searchPerfDeferredMode(value: string | null): SearchPerfDeferredMode {
-  if (value === "immediate") return "immediate"
-  if (value === "manual") return "manual"
-  if (value === "idle") return "idle"
+  if (value === 'immediate') return 'immediate'
+  if (value === 'manual') return 'manual'
+  if (value === 'idle') return 'idle'
 
-  return "immediate"
+  return 'immediate'
 }
 
 function createSearchPerfGroups(
   variant: SearchPerfVariant,
-  matchesPerFile = MATCHES_PER_FILE
+  matchesPerFile = MATCHES_PER_FILE,
 ): WorkspaceSearchFileGroup[] {
   return Array.from({ length: FILE_COUNT }, (_, fileIndex) => {
     const path = `/perf/project/src/module-${fileIndex}/search-fixture-${fileIndex}.tsx`
     const matches = Array.from({ length: matchesPerFile }, (_, matchIndex) =>
-      createSearchPerfMatch(path, fileIndex, matchIndex)
+      createSearchPerfMatch(path, fileIndex, matchIndex),
     )
 
     return {
@@ -272,7 +246,7 @@ function searchPerfInitialMatchesPerFile(variant: SearchPerfVariant) {
 function createSearchPerfMatch(
   path: string,
   fileIndex: number,
-  matchIndex: number
+  matchIndex: number,
 ): WorkspaceSearchMatch {
   const prefix = `const result${matchIndex} = computeSearchRow(${fileIndex}, `
   const suffix = `) // preview data ${matchIndex}`
@@ -282,22 +256,20 @@ function createSearchPerfMatch(
   return {
     column: startColumn,
     endColumn: startColumn + SEARCH_QUERY.length,
-    kind: "content",
+    kind: 'content',
     line: matchIndex * 3 + 1,
     path,
     preview,
     previewStartColumn: 0,
-    source: matchIndex % 7 === 0 ? "open-buffer" : "disk",
-    type: "file",
+    source: matchIndex % 7 === 0 ? 'open-buffer' : 'disk',
+    type: 'file',
   }
 }
 
 function firstVisibleSearchResultId(
-  groups: readonly WorkspaceSearchFileGroup[]
+  groups: readonly WorkspaceSearchFileGroup[],
 ): SearchResultId | null {
-  const rows = searchResultVirtualRows(
-    searchResultFileBlocks(groups, SEARCH_QUERY)
-  )
+  const rows = searchResultVirtualRows(searchResultFileBlocks(groups, SEARCH_QUERY))
   const firstRowId = firstSearchResultVirtualRowId(rows)
   if (!firstRowId) return null
 
@@ -306,7 +278,7 @@ function firstVisibleSearchResultId(
 
 function currentSearchPerfMetrics(
   root: HTMLElement | null,
-  longestTaskMs: number
+  longestTaskMs: number,
 ): SearchPerfMetrics {
   return {
     editorMountCount: editorMountStats.count,
@@ -317,9 +289,7 @@ function currentSearchPerfMetrics(
     scrollFrames: 0,
     scrollSampleMs: null,
     totalEditorMountMs: editorMountStats.totalMs,
-    visibleEditorHosts:
-      root?.querySelectorAll('[role="treeitem"] .editor-virtualized').length ??
-      0,
+    visibleEditorHosts: root?.querySelectorAll('[role="treeitem"] .editor-virtualized').length ?? 0,
   }
 }
 
@@ -330,10 +300,7 @@ function installNativeSelectionPerfProbe(): NativeSelectionPerfStats {
 
   const stats = { addRangeCount: 0 }
   const nativeAddRange = Selection.prototype.addRange
-  Selection.prototype.addRange = function addRange(
-    this: Selection,
-    range: Range
-  ): void {
+  Selection.prototype.addRange = function addRange(this: Selection, range: Range): void {
     stats.addRangeCount += 1
     nativeAddRange.call(this, range)
   }
@@ -342,14 +309,14 @@ function installNativeSelectionPerfProbe(): NativeSelectionPerfStats {
 }
 
 function observeLongTasks(onLongTask: (durationMs: number) => void) {
-  if (!PerformanceObserver.supportedEntryTypes.includes("longtask")) {
+  if (!PerformanceObserver.supportedEntryTypes.includes('longtask')) {
     return undefined
   }
 
   const observer = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) onLongTask(entry.duration)
   })
-  observer.observe({ type: "longtask", buffered: true })
+  observer.observe({ type: 'longtask', buffered: true })
 
   return () => observer.disconnect()
 }
@@ -360,7 +327,7 @@ function runSearchPerfScrollSample(
     readonly durationMs: number
     readonly frames: number
     readonly longestFrameMs: number
-  }) => void
+  }) => void,
 ) {
   const scroller = root?.querySelector<HTMLElement>('[role="tree"]')
   if (!scroller) return undefined
@@ -379,10 +346,7 @@ function runSearchPerfScrollSample(
     frames += 1
 
     const progress = Math.min(1, (now - start) / durationMs)
-    const maxScrollTop = Math.max(
-      0,
-      scrollerElement.scrollHeight - scrollerElement.clientHeight
-    )
+    const maxScrollTop = Math.max(0, scrollerElement.scrollHeight - scrollerElement.clientHeight)
     scrollerElement.scrollTop = progress * maxScrollTop
 
     if (progress < 1) {
@@ -398,15 +362,10 @@ function runSearchPerfScrollSample(
   return () => window.cancelAnimationFrame(frame)
 }
 
-function runSearchPerfStreamingSample(
-  onBatch: (matchesPerFile: number) => void
-) {
+function runSearchPerfStreamingSample(onBatch: (matchesPerFile: number) => void) {
   let matchesPerFile = STREAM_INITIAL_MATCHES_PER_FILE
   const interval = globalThis.setInterval(() => {
-    matchesPerFile = Math.min(
-      MATCHES_PER_FILE,
-      matchesPerFile + STREAM_MATCH_BATCH_SIZE
-    )
+    matchesPerFile = Math.min(MATCHES_PER_FILE, matchesPerFile + STREAM_MATCH_BATCH_SIZE)
     onBatch(matchesPerFile)
 
     if (matchesPerFile >= MATCHES_PER_FILE) {
@@ -417,21 +376,21 @@ function runSearchPerfStreamingSample(
   return () => globalThis.clearInterval(interval)
 }
 
-function applyPerfTheme(theme: "dark" | "light") {
-  document.documentElement.classList.remove("dark", "light")
+function applyPerfTheme(theme: 'dark' | 'light') {
+  document.documentElement.classList.remove('dark', 'light')
   document.documentElement.classList.add(theme)
 }
 
 function variantLabel(variant: SearchPerfVariant) {
-  const replace = variant.replaceVisible ? "replace" : "hidden"
-  const collapsed = variant.collapsed ? "collapsed" : "expanded"
-  const stream = variant.streaming ? "stream" : "static"
+  const replace = variant.replaceVisible ? 'replace' : 'hidden'
+  const collapsed = variant.collapsed ? 'collapsed' : 'expanded'
+  const stream = variant.streaming ? 'stream' : 'static'
 
   return `${variant.deferredMode}/${replace}/${collapsed}/${stream}/${variant.theme}`
 }
 
 function formatMs(value: number | null) {
-  if (value === null) return "-"
+  if (value === null) return '-'
 
   return `${value.toFixed(1)}ms`
 }
@@ -448,12 +407,12 @@ function handleReplaceMatch() {
   return undefined
 }
 
-createRoot(document.getElementById("root")!).render(
-  <ThemeProvider defaultTheme="dark" storageKey="search-result-perf-theme">
+createRoot(document.getElementById('root')!).render(
+  <ThemeProvider defaultTheme='dark' storageKey='search-result-perf-theme'>
     <EditorColorThemeProvider>
       <WorkspaceFocusProvider>
         <SearchResultEditorSurfacePerfFixture />
       </WorkspaceFocusProvider>
     </EditorColorThemeProvider>
-  </ThemeProvider>
+  </ThemeProvider>,
 )

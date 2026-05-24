@@ -1,4 +1,4 @@
-import { statSync } from "node:fs"
+import { statSync } from 'node:fs'
 
 export class ScriptVersionRegistry {
   private readonly versions = new Map<string, number>()
@@ -22,17 +22,11 @@ export function createScriptVersionRegistry(): ScriptVersionRegistry {
   return new ScriptVersionRegistry()
 }
 
-export function scriptVersion(
-  registry: ScriptVersionRegistry,
-  fileName: string
-): string {
+export function scriptVersion(registry: ScriptVersionRegistry, fileName: string): string {
   return registry.get(fileName)
 }
 
-export function bumpScriptVersion(
-  registry: ScriptVersionRegistry,
-  fileName: string
-): void {
+export function bumpScriptVersion(registry: ScriptVersionRegistry, fileName: string): void {
   registry.bump(fileName)
 }
 

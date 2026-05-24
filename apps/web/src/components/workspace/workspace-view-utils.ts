@@ -1,7 +1,7 @@
-import type { LoadState } from "@/lib/load-state"
-import type { WorkspacePanelTab } from "@/lib/workspace-cache"
-import type { TreeModel } from "@/lib/tree-model"
-import type { PanelSize } from "@workspace/ui/components/resizable"
+import type { LoadState } from '@/lib/load-state'
+import type { WorkspacePanelTab } from '@/lib/workspace-cache'
+import type { TreeModel } from '@/lib/tree-model'
+import type { PanelSize } from '@workspace/ui/components/resizable'
 
 const COLLAPSED_PANEL_SIZE_PX = 1
 
@@ -20,12 +20,12 @@ export function isCollapsedPanelSize(size: PanelSize) {
 }
 
 export function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
-  return value === "files" || value === "git" || value === "search"
+  return value === 'files' || value === 'git' || value === 'search'
 }
 
 export function workspacePanelSelectionForTabActivation(
   current: WorkspacePanelSelection,
-  tab: WorkspacePanelTab
+  tab: WorkspacePanelTab,
 ): WorkspacePanelSelection {
   if (current.sidebarVisible && current.workspacePanelTab === tab) {
     return { ...current, sidebarVisible: false }
@@ -35,10 +35,10 @@ export function workspacePanelSelectionForTabActivation(
 }
 
 export function workspacePanelTabTitle(tab: WorkspacePanelTab) {
-  if (tab === "files") return "Files"
-  if (tab === "search") return "Search"
+  if (tab === 'files') return 'Files'
+  if (tab === 'search') return 'Search'
 
-  return "Git"
+  return 'Git'
 }
 
 export function workspaceResizableStorageKey(rootPath: string, group: string) {
@@ -47,19 +47,19 @@ export function workspaceResizableStorageKey(rootPath: string, group: string) {
 
 export function workspaceTreeHeaderDetail(
   state: LoadState<TreeModel>,
-  visibleTreeItemCount: number | null
+  visibleTreeItemCount: number | null,
 ) {
-  if (state.status === "ready" && visibleTreeItemCount !== null) {
+  if (state.status === 'ready' && visibleTreeItemCount !== null) {
     return visibleTreeItemCountLabel(visibleTreeItemCount)
   }
-  if (state.status === "error") return "Could not load"
-  if (state.status === "loading") return "Loading"
+  if (state.status === 'error') return 'Could not load'
+  if (state.status === 'loading') return 'Loading'
 
   return null
 }
 
 function visibleTreeItemCountLabel(count: number) {
-  const noun = count === 1 ? "item" : "items"
+  const noun = count === 1 ? 'item' : 'items'
 
   return `${count.toLocaleString()} visible ${noun}`
 }

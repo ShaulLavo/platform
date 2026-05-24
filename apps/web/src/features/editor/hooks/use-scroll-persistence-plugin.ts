@@ -1,17 +1,13 @@
-import type {
-  EditorPlugin,
-  EditorScrollPosition,
-  EditorViewSnapshot,
-} from "@editor/core"
-import { useLayoutEffect, useMemo, useRef, type RefObject } from "react"
+import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@editor/core'
+import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
-import type { CachedEditorDocument } from "@/features/editor/state/editor-document-state"
+import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
 
 type UseScrollPersistencePluginOptions = {
   document: CachedEditorDocument
   onScrollPositionChange?: (
     path: string,
-    scrollPosition: NonNullable<CachedEditorDocument["scrollPosition"]>
+    scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
   ) => void
 }
 
@@ -38,15 +34,12 @@ export function useScrollPersistencePlugin({
 
   return useMemo<EditorPlugin>(
     () => ({
-      name: "platform-scroll-persistence",
+      name: 'platform-scroll-persistence',
       activate: (context) =>
         context.registerViewContribution({
           createContribution: ({ scrollElement }) => {
-            const persister = createScrollPositionPersister(
-              stateRef,
-              scrollElement
-            )
-            scrollElement.addEventListener("scroll", persister.handleScroll, {
+            const persister = createScrollPositionPersister(stateRef, scrollElement)
+            scrollElement.addEventListener('scroll', persister.handleScroll, {
               passive: true,
             })
 
@@ -55,23 +48,19 @@ export function useScrollPersistencePlugin({
                 persistSnapshotScrollPosition(
                   stateRef.current,
                   snapshot,
-                  persister.activeDocumentChanged
+                  persister.activeDocumentChanged,
                 ),
-              dispose: () =>
-                scrollElement.removeEventListener(
-                  "scroll",
-                  persister.handleScroll
-                ),
+              dispose: () => scrollElement.removeEventListener('scroll', persister.handleScroll),
             }
           },
         }),
     }),
-    []
+    [],
   )
 }
 
 export function scrollPositionFromSnapshot(
-  snapshot: EditorViewSnapshot | null
+  snapshot: EditorViewSnapshot | null,
 ): EditorScrollPosition | null {
   if (!snapshot) return null
 
@@ -83,10 +72,10 @@ export function scrollPositionFromSnapshot(
 
 function createScrollPositionPersister(
   stateRef: RefObject<ScrollPersistenceState>,
-  scrollElement: HTMLElement
+  scrollElement: HTMLElement,
 ) {
   let activePath = stateRef.current.path
-  let lastPath = ""
+  let lastPath = ''
   let lastLeft = -1
   let lastTop = -1
 
@@ -115,7 +104,7 @@ function createScrollPositionPersister(
 function persistSnapshotScrollPosition(
   state: ScrollPersistenceState,
   snapshot: EditorViewSnapshot,
-  activeDocumentChanged: (path: string) => void
+  activeDocumentChanged: (path: string) => void,
 ) {
   const path = snapshot.documentId ?? state.path
   activeDocumentChanged(path)

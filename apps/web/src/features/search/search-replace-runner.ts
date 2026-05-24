@@ -1,15 +1,12 @@
-import type { CachedEditorDocument } from "@/features/editor/state/editor-document-state"
-import type { FileResult, TreeEntry } from "@/lib/file-system-types"
-import type {
-  WorkspaceSearchMatch,
-  WorkspaceSearchQuery,
-} from "@workspace/contracts"
-import type { TextEdit } from "@editor/core"
+import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { FileResult, TreeEntry } from '@/lib/file-system-types'
+import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
+import type { TextEdit } from '@editor/core'
 
 import {
   applyWorkspaceSearchReplaceEdits,
   workspaceSearchReplacePlan,
-} from "@/features/search/search-replace"
+} from '@/features/search/search-replace'
 
 export type WorkspaceSearchReplaceResult = {
   changedFiles: number
@@ -24,14 +21,14 @@ export type WorkspaceSearchReplaceContext = {
   getCachedEditorDocument: (path: string) => CachedEditorDocument | null
   recordCachedEditorDocumentTextChange: (
     path: string,
-    options?: { edits?: readonly TextEdit[]; source?: "canonical" }
+    options?: { edits?: readonly TextEdit[]; source?: 'canonical' },
   ) => void
   signal: AbortSignal
   writeFileContent: (
     path: string,
     content: string,
-    expectedMtimeMs?: number | null
-  ) => Promise<Pick<TreeEntry, "mtimeMs" | "size">>
+    expectedMtimeMs?: number | null,
+  ) => Promise<Pick<TreeEntry, 'mtimeMs' | 'size'>>
 }
 
 type PathReplaceResult = {
@@ -69,20 +66,16 @@ export async function replaceWorkspaceSearchMatches({
   return result
 }
 
-export function workspaceSearchReplaceSummary(
-  result: WorkspaceSearchReplaceResult
-) {
+export function workspaceSearchReplaceSummary(result: WorkspaceSearchReplaceResult) {
   const replaced = `${result.replacedMatches.toLocaleString()} ${matchNoun(
-    result.replacedMatches
+    result.replacedMatches,
   )} replaced`
   const skipped =
-    result.skippedMatches > 0
-      ? `, ${result.skippedMatches.toLocaleString()} skipped`
-      : ""
+    result.skippedMatches > 0 ? `, ${result.skippedMatches.toLocaleString()} skipped` : ''
   const failed =
     result.failedFiles > 0
       ? `, ${result.failedFiles.toLocaleString()} ${fileNoun(result.failedFiles)} failed`
-      : ""
+      : ''
 
   return `${replaced}${skipped}${failed}.`
 }
@@ -122,7 +115,7 @@ function replaceCachedDocument(
   matches: readonly WorkspaceSearchMatch[],
   query: WorkspaceSearchQuery,
   replaceText: string,
-  context: WorkspaceSearchReplaceContext
+  context: WorkspaceSearchReplaceContext,
 ): PathReplaceResult {
   const plan = workspaceSearchReplacePlan({
     matches,
@@ -137,7 +130,7 @@ function replaceCachedDocument(
   document.session.applyEdits(plan.edits)
   context.recordCachedEditorDocumentTextChange(document.path, {
     edits: plan.edits,
-    source: "canonical",
+    source: 'canonical',
   })
 
   return {
@@ -153,16 +146,10 @@ async function replaceDiskFile(
   matches: readonly WorkspaceSearchMatch[],
   query: WorkspaceSearchQuery,
   replaceText: string,
-  context: WorkspaceSearchReplaceContext
+  context: WorkspaceSearchReplaceContext,
 ): Promise<PathReplaceResult> {
   try {
-    return await replaceDiskFileChecked(
-      path,
-      matches,
-      query,
-      replaceText,
-      context
-    )
+    return await replaceDiskFileChecked(path, matches, query, replaceText, context)
   } catch {
     return {
       changed: false,
@@ -178,7 +165,7 @@ async function replaceDiskFileChecked(
   matches: readonly WorkspaceSearchMatch[],
   query: WorkspaceSearchQuery,
   replaceText: string,
-  context: WorkspaceSearchReplaceContext
+  context: WorkspaceSearchReplaceContext,
 ): Promise<PathReplaceResult> {
   const file = await context.fetchFile(path, context.signal)
   const plan = workspaceSearchReplacePlan({
@@ -212,10 +199,7 @@ function skippedPathResult(skippedMatches: number): PathReplaceResult {
   }
 }
 
-function appendPathResult(
-  result: WorkspaceSearchReplaceResult,
-  pathResult: PathReplaceResult
-) {
+function appendPathResult(result: WorkspaceSearchReplaceResult, pathResult: PathReplaceResult) {
   if (pathResult.changed) result.changedFiles += 1
   if (pathResult.failed) result.failedFiles += 1
   result.replacedMatches += pathResult.replacedMatches
@@ -226,7 +210,7 @@ function contentMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
   const groups = new Map<string, WorkspaceSearchMatch[]>()
 
   for (const match of matches) {
-    if (match.kind !== "content") continue
+    if (match.kind !== 'content') continue
 
     const group = groups.get(match.path)
     if (group) {
@@ -243,7 +227,7 @@ function contentMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
 function fileResultForReplacedContent(
   file: FileResult,
   content: string,
-  entry: Pick<TreeEntry, "mtimeMs" | "size">
+  entry: Pick<TreeEntry, 'mtimeMs' | 'size'>,
 ): FileResult {
   return {
     ...file,
@@ -254,9 +238,9 @@ function fileResultForReplacedContent(
 }
 
 function matchNoun(count: number) {
-  return count === 1 ? "match" : "matches"
+  return count === 1 ? 'match' : 'matches'
 }
 
 function fileNoun(count: number) {
-  return count === 1 ? "file" : "files"
+  return count === 1 ? 'file' : 'files'
 }

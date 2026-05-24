@@ -1,12 +1,6 @@
-import { rpcErrorMessage } from "@/lib/file-server"
-import { fsClient } from "@/lib/fs-client"
-import type {
-  BranchesResult,
-  BlobDiffRequest,
-  CommitResult,
-  FileDiff,
-  StatusResult,
-} from "./types"
+import { rpcErrorMessage } from '@/lib/file-server'
+import { fsClient } from '@/lib/fs-client'
+import type { BranchesResult, BlobDiffRequest, CommitResult, FileDiff, StatusResult } from './types'
 
 export async function fetchStatus(path: string, signal?: AbortSignal) {
   const response = await fsClient.git.status.get({
@@ -17,11 +11,7 @@ export async function fetchStatus(path: string, signal?: AbortSignal) {
   return unwrapGitResponse<StatusResult>(response)
 }
 
-export async function fetchDiff(
-  path: string,
-  staged: boolean,
-  signal?: AbortSignal
-) {
+export async function fetchDiff(path: string, staged: boolean, signal?: AbortSignal) {
   const response = await fsClient.git.diff.get({
     query: { path, staged },
     fetch: { signal },
@@ -30,10 +20,7 @@ export async function fetchDiff(
   return unwrapGitResponse<FileDiff[]>(response)
 }
 
-export async function fetchBlobDiff(
-  query: BlobDiffRequest,
-  signal?: AbortSignal
-) {
+export async function fetchBlobDiff(query: BlobDiffRequest, signal?: AbortSignal) {
   const response = await fsClient.git.diff.blob.get({
     query,
     fetch: { signal },
@@ -58,7 +45,7 @@ export async function stagePath(path: string) {
 }
 
 export async function stagePaths(paths: readonly string[]) {
-  const response = await fsClient.git.stage.post({ paths: [...paths] })
+  const response = await fsClient.git.stage.post({ paths: Array.from(paths) })
 
   return unwrapGitResponse<StatusResult>(response)
 }
@@ -70,7 +57,7 @@ export async function unstagePath(path: string) {
 }
 
 export async function unstagePaths(paths: readonly string[]) {
-  const response = await fsClient.git.unstage.post({ paths: [...paths] })
+  const response = await fsClient.git.unstage.post({ paths: Array.from(paths) })
 
   return unwrapGitResponse<StatusResult>(response)
 }
@@ -82,7 +69,7 @@ export async function discardPath(path: string) {
 }
 
 export async function discardPaths(paths: readonly string[]) {
-  const response = await fsClient.git.discard.post({ paths: [...paths] })
+  const response = await fsClient.git.discard.post({ paths: Array.from(paths) })
 
   return unwrapGitResponse<StatusResult>(response)
 }
@@ -100,7 +87,7 @@ export async function checkoutBranch(path: string, branch: string) {
 }
 
 export async function createBranch(path: string, branch: string) {
-  const response = await fsClient.git["create-branch"].post({
+  const response = await fsClient.git['create-branch'].post({
     branch,
     checkout: true,
     path,
@@ -134,10 +121,7 @@ export async function syncRemote(path: string) {
   return { pull, push }
 }
 
-function unwrapGitResponse<T>(response: {
-  data?: unknown
-  error?: unknown
-}): T {
+function unwrapGitResponse<T>(response: { data?: unknown; error?: unknown }): T {
   if (response.error) throw new Error(rpcErrorMessage(response.error))
 
   return response.data as T

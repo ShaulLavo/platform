@@ -2,15 +2,15 @@ import type {
   WorkspaceSearchEvent,
   WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
-} from "@workspace/contracts"
-import { workspaceSearchGlobPatterns } from "@workspace/contracts"
-import { useCallback, useEffect, useState } from "react"
+} from '@workspace/contracts'
+import { workspaceSearchGlobPatterns } from '@workspace/contracts'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   type CachedEditorDocument,
   useEditorDocumentStoreApi,
   useEditorDocumentState,
-} from "@/features/editor/state/editor-document-state"
+} from '@/features/editor/state/editor-document-state'
 import {
   type SearchBufferStoreApi,
   type SearchBufferSnapshot,
@@ -19,15 +19,15 @@ import {
   type SearchBufferOptionPatch,
   useSearchBufferState,
   useSearchBufferStoreApi,
-} from "@/features/search/search-buffer-state"
+} from '@/features/search/search-buffer-state'
 import {
   CompositeSearchProvider,
   DiskSearchProvider,
   OpenBufferSearchProvider,
   type OpenBufferSearchDocument,
   type SearchProvider,
-} from "@/features/search/search-providers"
-import { compareSearchPaths } from "@/features/search/search-sort"
+} from '@/features/search/search-providers'
+import { compareSearchPaths } from '@/features/search/search-sort'
 
 const SEARCH_DEBOUNCE_MS = 180
 const DIRTY_BUFFER_DEBOUNCE_MS = 220
@@ -50,42 +50,39 @@ export function useSearchBuffer(rootPath: string) {
   const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
   const groups = searchGroupsForSnapshot(activeSnapshot)
   const store = useSearchBufferStoreApi()
-  const query = activeSnapshot?.query ?? ""
+  const query = activeSnapshot?.query ?? ''
   const searchOptions = searchOptionsForSnapshot(activeSnapshot)
   const setQuery = useCallback(
     (nextQuery: string) => store.getState().setQuery(rootPath, nextQuery),
-    [rootPath, store]
+    [rootPath, store],
   )
   const setReplaceText = useCallback(
-    (replaceText: string) =>
-      store.getState().setReplaceText(rootPath, replaceText),
-    [rootPath, store]
+    (replaceText: string) => store.getState().setReplaceText(rootPath, replaceText),
+    [rootPath, store],
   )
   const setReplaceVisible = useCallback(
-    (replaceVisible: boolean) =>
-      store.getState().setReplaceVisible(rootPath, replaceVisible),
-    [rootPath, store]
+    (replaceVisible: boolean) => store.getState().setReplaceVisible(rootPath, replaceVisible),
+    [rootPath, store],
   )
   const setSearchOptions = useCallback(
-    (options: SearchBufferOptionPatch) =>
-      store.getState().setSearchOptions(rootPath, options),
-    [rootPath, store]
+    (options: SearchBufferOptionPatch) => store.getState().setSearchOptions(rootPath, options),
+    [rootPath, store],
   )
   const selectNextQuery = useCallback(
     () => store.getState().selectNextQuery(rootPath),
-    [rootPath, store]
+    [rootPath, store],
   )
   const selectNextReplaceText = useCallback(
     () => store.getState().selectNextReplaceText(rootPath),
-    [rootPath, store]
+    [rootPath, store],
   )
   const selectPreviousQuery = useCallback(
     () => store.getState().selectPreviousQuery(rootPath),
-    [rootPath, store]
+    [rootPath, store],
   )
   const selectPreviousReplaceText = useCallback(
     () => store.getState().selectPreviousReplaceText(rootPath),
-    [rootPath, store]
+    [rootPath, store],
   )
 
   usePrepareSearchBuffer(rootPath)
@@ -95,7 +92,7 @@ export function useSearchBuffer(rootPath: string) {
     query,
     resultsQuery: activeSnapshot?.resultsQuery || query,
     resultsSearchQuery: activeSnapshot?.resultsSearchQuery,
-    replaceText: activeSnapshot?.replaceText ?? "",
+    replaceText: activeSnapshot?.replaceText ?? '',
     replaceVisible: activeSnapshot?.replaceVisible ?? false,
     searchOptions,
     setQuery,
@@ -113,17 +110,17 @@ export function useSearchBuffer(rootPath: string) {
 export function useSearchBufferRuntime(rootPath: string) {
   const snapshot = useSearchBufferState((state) => state.active)
   const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
-  const query = activeSnapshot?.query ?? ""
+  const query = activeSnapshot?.query ?? ''
   const searchRevision = activeSnapshot?.searchRevision ?? 0
   const searchOptions = searchOptionsForSnapshot(activeSnapshot)
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS)
   const debouncedIncludeGlobText = useDebouncedValue(
     searchOptions.includeGlobText,
-    SEARCH_DEBOUNCE_MS
+    SEARCH_DEBOUNCE_MS,
   )
   const debouncedExcludeGlobText = useDebouncedValue(
     searchOptions.excludeGlobText,
-    SEARCH_DEBOUNCE_MS
+    SEARCH_DEBOUNCE_MS,
   )
 
   usePrepareSearchBuffer(rootPath)
@@ -146,16 +143,10 @@ function useRunSearchBuffer(
   rootPath: string,
   query: string,
   searchRevision: number,
-  searchOptions: WorkspaceSearchQueryOptions
+  searchOptions: WorkspaceSearchQueryOptions,
 ) {
-  const {
-    caseSensitive,
-    excludeGlobText,
-    filtersVisible,
-    includeGlobText,
-    matchMode,
-    wholeWord,
-  } = searchOptions
+  const { caseSensitive, excludeGlobText, filtersVisible, includeGlobText, matchMode, wholeWord } =
+    searchOptions
   const store = useSearchBufferStoreApi()
   const documentStore = useEditorDocumentStoreApi()
   const dirtyRevisionKey = useEditorDocumentState((state) =>
@@ -164,13 +155,10 @@ function useRunSearchBuffer(
       state.dirtyFilePaths,
       state.documentContentRevisions,
       rootPath,
-      state.dirtyContentRevision
-    )
+      state.dirtyContentRevision,
+    ),
   )
-  const debouncedDirtyRevisionKey = useDebouncedValue(
-    dirtyRevisionKey,
-    DIRTY_BUFFER_DEBOUNCE_MS
-  )
+  const debouncedDirtyRevisionKey = useDebouncedValue(dirtyRevisionKey, DIRTY_BUFFER_DEBOUNCE_MS)
 
   useEffect(() => {
     if (!query) return
@@ -188,12 +176,12 @@ function useRunSearchBuffer(
     const dirtyDocuments = dirtySearchDocuments(
       documentState.documents,
       documentState.dirtyFilePaths,
-      rootPath
+      rootPath,
     )
     const provider = workspaceSearchProvider(dirtyDocuments)
     const deferInitialOpenBufferMatches = shouldDeferInitialOpenBufferMatches(
       store.getState().active,
-      searchQuery
+      searchQuery,
     )
     const runId = store.getState().startSearch(searchQuery)
 
@@ -228,22 +216,22 @@ export async function runSearch(
   runId: number,
   store: SearchBufferStoreApi,
   signal: AbortSignal,
-  options: SearchRunOptions = {}
+  options: SearchRunOptions = {},
 ) {
   const batcher = createFirstPaintSearchEventBatcher(
     createSearchEventBatcher(runId, store),
-    options.deferInitialOpenBufferMatches === true
+    options.deferInitialOpenBufferMatches === true,
   )
 
   try {
     for await (const event of provider.search(query, signal)) {
       if (signal.aborted) return
-      if (event.type === "match") {
+      if (event.type === 'match') {
         batcher.push(event)
         continue
       }
 
-      if (event.type === "error") {
+      if (event.type === 'error') {
         batcher.fail()
         store.getState().appendEvent(runId, event)
         continue
@@ -271,7 +259,7 @@ type SearchEventBatcher = {
 
 export function createFirstPaintSearchEventBatcher(
   batcher: SearchEventBatcher,
-  deferInitialOpenBufferMatches: boolean
+  deferInitialOpenBufferMatches: boolean,
 ) {
   let buffered: WorkspaceSearchEvent[] = []
   let open = !deferInitialOpenBufferMatches
@@ -322,13 +310,10 @@ export function createFirstPaintSearchEventBatcher(
 }
 
 function isOpenBufferMatchEvent(event: WorkspaceSearchEvent) {
-  return event.type === "match" && event.match.source === "open-buffer"
+  return event.type === 'match' && event.match.source === 'open-buffer'
 }
 
-function createSearchEventBatcher(
-  runId: number,
-  store: SearchBufferStoreApi
-): SearchEventBatcher {
+function createSearchEventBatcher(runId: number, store: SearchBufferStoreApi): SearchEventBatcher {
   let pending: WorkspaceSearchEvent[] = []
   let delayTimer: ReturnType<typeof setTimeout> | null = null
   let cancelFrame: (() => void) | null = null
@@ -378,9 +363,7 @@ function createSearchEventBatcher(
     if (disposed) return
     if (cancelFrame || delayTimer !== null) return
 
-    const delay = flushedOnce
-      ? SEARCH_STEADY_BATCH_DELAY_MS
-      : SEARCH_FIRST_BATCH_DELAY_MS
+    const delay = flushedOnce ? SEARCH_STEADY_BATCH_DELAY_MS : SEARCH_FIRST_BATCH_DELAY_MS
     if (delay === 0) {
       scheduleFrameFlush()
       return
@@ -414,7 +397,7 @@ function createSearchEventBatcher(
 }
 
 function scheduleSearchBatchFrame(callback: () => void) {
-  if (typeof window !== "undefined" && window.requestAnimationFrame) {
+  if (typeof window !== 'undefined' && window.requestAnimationFrame) {
     const frame = window.requestAnimationFrame(callback)
     return () => window.cancelAnimationFrame(frame)
   }
@@ -425,7 +408,7 @@ function scheduleSearchBatchFrame(callback: () => void) {
 
 function shouldDeferInitialOpenBufferMatches(
   snapshot: SearchBufferSnapshot | null,
-  query: WorkspaceSearchQuery
+  query: WorkspaceSearchQuery,
 ) {
   if (!snapshot) return false
   if (snapshot.rootPath !== query.path) return false
@@ -437,23 +420,19 @@ function shouldDeferInitialOpenBufferMatches(
 export function workspaceSearchQuery(
   rootPath: string,
   query: string,
-  options: Partial<WorkspaceSearchQueryOptions> = {}
+  options: Partial<WorkspaceSearchQueryOptions> = {},
 ): WorkspaceSearchQuery {
   const filtersVisible = options.filtersVisible === true
 
   return {
     caseSensitive: options.caseSensitive === true,
-    excludeGlobs: filtersVisible
-      ? workspaceSearchGlobPatterns(options.excludeGlobText)
-      : [],
-    entryType: "file",
+    excludeGlobs: filtersVisible ? workspaceSearchGlobPatterns(options.excludeGlobText) : [],
+    entryType: 'file',
     includeContent: true,
-    includeGlobs: filtersVisible
-      ? workspaceSearchGlobPatterns(options.includeGlobText)
-      : [],
+    includeGlobs: filtersVisible ? workspaceSearchGlobPatterns(options.includeGlobText) : [],
     includeNames: false,
     limit: SEARCH_LIMIT,
-    matchMode: options.matchMode ?? "literal",
+    matchMode: options.matchMode ?? 'literal',
     path: rootPath,
     query,
     wholeWord: options.wholeWord === true,
@@ -468,21 +447,19 @@ function searchOptionsForSnapshot(
     includeGlobText: string
     matchMode: WorkspaceSearchMatchMode
     wholeWord: boolean
-  } | null
+  } | null,
 ): WorkspaceSearchQueryOptions {
   return {
     caseSensitive: snapshot?.caseSensitive ?? false,
-    excludeGlobText: snapshot?.excludeGlobText ?? "",
+    excludeGlobText: snapshot?.excludeGlobText ?? '',
     filtersVisible: snapshot?.filtersVisible ?? false,
-    includeGlobText: snapshot?.includeGlobText ?? "",
-    matchMode: snapshot?.matchMode ?? "literal",
+    includeGlobText: snapshot?.includeGlobText ?? '',
+    matchMode: snapshot?.matchMode ?? 'literal',
     wholeWord: snapshot?.wholeWord ?? false,
   }
 }
 
-function workspaceSearchProvider(
-  documents: readonly OpenBufferSearchDocument[]
-) {
+function workspaceSearchProvider(documents: readonly OpenBufferSearchDocument[]) {
   return new CompositeSearchProvider({
     disk: new DiskSearchProvider(),
     openBufferPaths: new Set(documents.map((document) => document.path)),
@@ -493,7 +470,7 @@ function workspaceSearchProvider(
 function dirtySearchDocuments(
   documents: Readonly<Record<string, CachedEditorDocument>>,
   dirtyFilePaths: ReadonlySet<string>,
-  rootPath: string
+  rootPath: string,
 ) {
   const dirtyDocuments: OpenBufferSearchDocument[] = []
 
@@ -517,38 +494,35 @@ export function dirtySearchRevisionKey(
   dirtyFilePaths: ReadonlySet<string>,
   contentRevisions: Readonly<Record<string, string>>,
   rootPath: string,
-  revision: number
+  revision: number,
 ) {
   const parts = [revision.toString()]
-  const paths = [...dirtyFilePaths]
+  const paths = Array.from(dirtyFilePaths)
     .filter((path) => isPathInWorkspace(path, rootPath))
-    .sort(compareSearchPaths)
+    .toSorted(compareSearchPaths)
 
   for (const path of paths) {
     const document = documents[path]
     if (!document) {
-      parts.push(path, "", "", "")
+      parts.push(path, '', '', '')
       continue
     }
 
     parts.push(
       path,
       document.revision.toString(),
-      contentRevisions[path] ?? "",
-      dirtySearchSessionKey(document.session)
+      contentRevisions[path] ?? '',
+      dirtySearchSessionKey(document.session),
     )
   }
 
-  return parts.join("\0")
+  return parts.join('\0')
 }
 
-const dirtySearchSessionKeys = new WeakMap<
-  CachedEditorDocument["session"],
-  number
->()
+const dirtySearchSessionKeys = new WeakMap<CachedEditorDocument['session'], number>()
 let nextDirtySearchSessionKey = 1
 
-function dirtySearchSessionKey(session: CachedEditorDocument["session"]) {
+function dirtySearchSessionKey(session: CachedEditorDocument['session']) {
   const existing = dirtySearchSessionKeys.get(session)
   if (existing !== undefined) return existing.toString()
 
@@ -578,14 +552,14 @@ function useDebouncedValue(value: string, delay: number) {
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
-  if (typeof error === "string") return error
+  if (typeof error === 'string') return error
 
-  return "Search failed."
+  return 'Search failed.'
 }
 
 function isAbortError(error: unknown) {
-  if (!error || typeof error !== "object") return false
-  if (!("name" in error)) return false
+  if (!error || typeof error !== 'object') return false
+  if (!('name' in error)) return false
 
-  return error.name === "AbortError"
+  return error.name === 'AbortError'
 }

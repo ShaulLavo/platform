@@ -1,21 +1,21 @@
-import { useEffect } from "react"
+import { useEffect } from 'react'
 
 import {
   type EditorWorkspaceStore,
   type EditorWorkspaceStoreApi,
   useEditorWorkspaceStoreApi,
-} from "@/features/editor/state/editor-workspace-state"
+} from '@/features/editor/state/editor-workspace-state'
 import {
   cachedSearchBufferState,
   type SearchBufferStore,
   type SearchBufferStoreApi,
   useSearchBufferStoreApi,
-} from "@/features/search/search-buffer-state"
+} from '@/features/search/search-buffer-state'
 import {
   type CachedWorkspaceState,
   type WorkspaceCacheState,
   writeWorkspaceCache,
-} from "@/lib/workspace-cache"
+} from '@/lib/workspace-cache'
 
 const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
@@ -40,7 +40,7 @@ export function useWorkspaceCachePersistence() {
         searchStore,
         workspaceStore,
       }),
-    [searchStore, workspaceStore]
+    [searchStore, workspaceStore],
   )
 }
 
@@ -60,12 +60,7 @@ export function subscribeWorkspaceCachePersistence({
   function persistNow() {
     if (disposed) return
 
-    writeCache(
-      workspaceCacheStateForStores(
-        workspaceStore.getState(),
-        searchStore.getState()
-      )
-    )
+    writeCache(workspaceCacheStateForStores(workspaceStore.getState(), searchStore.getState()))
   }
 
   function scheduleWrite() {
@@ -113,7 +108,7 @@ export function subscribeWorkspaceCachePersistence({
 
 export function workspaceCacheStateForStores(
   workspaceState: EditorWorkspaceStore,
-  searchState: SearchBufferStore
+  searchState: SearchBufferStore,
 ): WorkspaceCacheState {
   return {
     ...cachedWorkspaceState(workspaceState),
@@ -121,9 +116,7 @@ export function workspaceCacheStateForStores(
   }
 }
 
-function cachedWorkspaceState(
-  state: EditorWorkspaceStore
-): CachedWorkspaceState {
+function cachedWorkspaceState(state: EditorWorkspaceStore): CachedWorkspaceState {
   return {
     diffViewMode: state.diffViewMode,
     editorHistory: state.editorHistory,
@@ -147,20 +140,20 @@ function searchPersistenceKey(state: SearchBufferStore) {
 }
 
 function addLifecycleFlush(flush: () => void) {
-  if (typeof window === "undefined") return noop
+  if (typeof window === 'undefined') return noop
 
-  window.addEventListener("pagehide", flush)
-  document.addEventListener("visibilitychange", flushHiddenDocument)
+  window.addEventListener('pagehide', flush)
+  document.addEventListener('visibilitychange', flushHiddenDocument)
 
   function flushHiddenDocument() {
-    if (document.visibilityState !== "hidden") return
+    if (document.visibilityState !== 'hidden') return
 
     flush()
   }
 
   return () => {
-    window.removeEventListener("pagehide", flush)
-    document.removeEventListener("visibilitychange", flushHiddenDocument)
+    window.removeEventListener('pagehide', flush)
+    document.removeEventListener('visibilitychange', flushHiddenDocument)
   }
 }
 

@@ -1,22 +1,20 @@
-import {
-  parseConflictDiffDocumentId,
-} from "@/features/editor/conflict-diff-document"
+import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import {
   type CachedEditorDocument,
   type EditorDocumentStore,
   type EditorDocumentStoreApi,
-} from "@/features/editor/state/editor-document-state"
-import { parseDiffDocumentId } from "@/features/git/diff-document"
-import { parseSearchBufferDocumentId } from "@/features/search/search-buffer-document"
-import { writeFileContent } from "@/lib/file-server"
-import type { FileResult } from "@/lib/file-system-types"
-import { fileSystemKeys } from "@/lib/query-keys"
-import type { QueryClient } from "@tanstack/react-query"
+} from '@/features/editor/state/editor-document-state'
+import { parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { writeFileContent } from '@/lib/file-server'
+import type { FileResult } from '@/lib/file-system-types'
+import { fileSystemKeys } from '@/lib/query-keys'
+import type { QueryClient } from '@tanstack/react-query'
 
 export async function saveSelectedEditorDocument(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
-  selectedFilePath: string | null
+  selectedFilePath: string | null,
 ) {
   const path = fileBackedEditorPath(selectedFilePath)
   if (!path) return false
@@ -27,7 +25,7 @@ export async function saveSelectedEditorDocument(
 export async function saveEditorDocumentByPath(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
-  path: string
+  path: string,
 ) {
   if (!fileBackedEditorPath(path)) return false
 
@@ -42,11 +40,11 @@ export async function saveEditorDocumentByPath(
 
 export async function saveAllEditorDocuments(
   documentStore: EditorDocumentStoreApi,
-  queryClient: QueryClient
+  queryClient: QueryClient,
 ) {
   const state = documentStore.getState()
   const dirtyDocuments = Object.values(state.documents).filter((document) =>
-    shouldSaveDocument(state, document)
+    shouldSaveDocument(state, document),
   )
 
   for (const document of dirtyDocuments) {
@@ -57,29 +55,20 @@ export async function saveAllEditorDocuments(
 export async function saveCachedEditorDocument(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
-  document: CachedEditorDocument
+  document: CachedEditorDocument,
 ) {
   const content = document.session.getText()
-  const entry = await writeFileContent(
-    document.path,
-    content,
-    document.revision
-  )
+  const entry = await writeFileContent(document.path, content, document.revision)
   const file = fileResultForSavedDocument(document.path, content, entry)
-  documentStore
-    .getState()
-    .markCachedEditorDocumentClean(document.path, entry.mtimeMs)
+  documentStore.getState().markCachedEditorDocumentClean(document.path, entry.mtimeMs)
   queryClient.setQueryData(fileSystemKeys.file(document.path), file)
 }
 
 export function isDirtyCachedEditorDocument(
-  state: Pick<EditorDocumentStore, "dirtyFilePaths" | "documents">,
-  path: string
+  state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'documents'>,
+  path: string,
 ) {
-  return (
-    state.dirtyFilePaths.has(path) ||
-    state.documents[path]?.session.isDirty() === true
-  )
+  return state.dirtyFilePaths.has(path) || state.documents[path]?.session.isDirty() === true
 }
 
 export function fileBackedEditorPath(path: string | null | undefined) {
@@ -92,8 +81,8 @@ export function fileBackedEditorPath(path: string | null | undefined) {
 }
 
 function shouldSaveDocument(
-  state: Pick<EditorDocumentStore, "dirtyFilePaths" | "documents">,
-  document: CachedEditorDocument
+  state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'documents'>,
+  document: CachedEditorDocument,
 ) {
   if (!fileBackedEditorPath(document.path)) return false
 
@@ -103,7 +92,7 @@ function shouldSaveDocument(
 function fileResultForSavedDocument(
   path: string,
   content: string,
-  entry: { readonly mtimeMs: number; readonly size: number }
+  entry: { readonly mtimeMs: number; readonly size: number },
 ): FileResult {
   return {
     content,

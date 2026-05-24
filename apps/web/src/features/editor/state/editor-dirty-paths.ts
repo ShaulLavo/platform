@@ -1,8 +1,4 @@
-export function updateDirtyFilePaths(
-  paths: ReadonlySet<string>,
-  path: string,
-  dirty: boolean
-) {
+export function updateDirtyFilePaths(paths: ReadonlySet<string>, path: string, dirty: boolean) {
   if (dirty && paths.has(path)) return null
   if (!dirty && !paths.has(path)) return null
 
@@ -20,11 +16,7 @@ export function removeDirtyFilePath(paths: ReadonlySet<string>, path: string) {
   return updateDirtyFilePaths(paths, path, false)
 }
 
-export function renameDirtyFilePath(
-  paths: ReadonlySet<string>,
-  from: string,
-  to: string
-) {
+export function renameDirtyFilePath(paths: ReadonlySet<string>, from: string, to: string) {
   if (!paths.has(from)) return paths
 
   const nextPaths = new Set(paths)

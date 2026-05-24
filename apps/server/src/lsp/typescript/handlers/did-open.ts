@@ -1,12 +1,12 @@
-import path from "node:path"
+import path from 'node:path'
 
-import { isRecord } from "@workspace/contracts"
-import type * as lsp from "vscode-languageserver-protocol"
+import { isRecord } from '@workspace/contracts'
+import type * as lsp from 'vscode-languageserver-protocol'
 
-import { fileNameForUri } from "../shared/boundary"
-import type { SessionContext } from "../shared/context"
+import { fileNameForUri } from '../shared/boundary'
+import type { SessionContext } from '../shared/context'
 
-const TYPE_SCRIPT_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"])
+const TYPE_SCRIPT_EXTENSIONS = new Set(['.cts', '.mts', '.ts', '.tsx'])
 
 export function handleDidOpen(ctx: SessionContext, params: unknown): void {
   const textDocument = textDocumentItem(params)
@@ -33,10 +33,10 @@ function textDocumentItem(params: unknown): lsp.TextDocumentItem | null {
   if (!isRecord(params.textDocument)) return null
 
   const textDocument = params.textDocument
-  if (typeof textDocument.uri !== "string") return null
-  if (typeof textDocument.languageId !== "string") return null
-  if (typeof textDocument.version !== "number") return null
-  if (typeof textDocument.text !== "string") return null
+  if (typeof textDocument.uri !== 'string') return null
+  if (typeof textDocument.languageId !== 'string') return null
+  if (typeof textDocument.version !== 'number') return null
+  if (typeof textDocument.text !== 'string') return null
   return textDocument as unknown as lsp.TextDocumentItem
 }
 

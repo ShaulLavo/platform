@@ -1,6 +1,6 @@
-import { isRecord } from "@workspace/contracts"
-import ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import { isRecord } from '@workspace/contracts'
+import ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
 import {
   documentText,
@@ -10,12 +10,12 @@ import {
   lspPositionToOffset,
   normalizeNativePath,
   rangeFromTextSpan,
-} from "../shared/boundary"
-import type { SessionContext } from "../shared/context"
+} from '../shared/boundary'
+import type { SessionContext } from '../shared/context'
 
 export function handleCodeAction(
   ctx: SessionContext,
-  params: unknown
+  params: unknown,
 ): readonly (lsp.Command | lsp.CodeAction)[] {
   const request = codeActionParams(params)
   if (!request) return []
@@ -34,15 +34,13 @@ export function handleCodeAction(
   const fixes = ctx
     .getLanguageService()
     .getCodeFixesAtPosition(fileName, start, end, errorCodes, {}, {})
-  return fixes.flatMap((fix) =>
-    codeActionFromFix(ctx, fix, request.diagnostics)
-  )
+  return fixes.flatMap((fix) => codeActionFromFix(ctx, fix, request.diagnostics))
 }
 
 function codeActionFromFix(
   ctx: SessionContext,
   fix: ts.CodeFixAction,
-  diagnostics: readonly lsp.Diagnostic[]
+  diagnostics: readonly lsp.Diagnostic[],
 ): readonly lsp.CodeAction[] {
   const edit = workspaceEditFromFileTextChanges(ctx, fix.changes)
   if (!edit) return []
@@ -50,8 +48,8 @@ function codeActionFromFix(
   return [
     {
       title: fix.description,
-      kind: "quickfix",
-      diagnostics: [...diagnostics],
+      kind: 'quickfix',
+      diagnostics: Array.from(diagnostics),
       edit,
     },
   ]
@@ -59,7 +57,7 @@ function codeActionFromFix(
 
 function workspaceEditFromFileTextChanges(
   ctx: SessionContext,
-  changes: readonly ts.FileTextChanges[]
+  changes: readonly ts.FileTextChanges[],
 ): lsp.WorkspaceEdit | null {
   const result: Record<lsp.DocumentUri, lsp.TextEdit[]> = {}
   for (const change of changes) appendFileTextChanges(ctx, result, change)
@@ -70,7 +68,7 @@ function workspaceEditFromFileTextChanges(
 function appendFileTextChanges(
   ctx: SessionContext,
   changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
-  fileChange: ts.FileTextChanges
+  fileChange: ts.FileTextChanges,
 ): void {
   for (const textChange of fileChange.textChanges) {
     appendTextChange(ctx, changes, fileChange.fileName, textChange)
@@ -81,7 +79,7 @@ function appendTextChange(
   ctx: SessionContext,
   changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
   fileName: string,
-  textChange: ts.TextChange
+  textChange: ts.TextChange,
 ): void {
   const normalized = normalizeNativePath(fileName)
   if (!isInsidePath(ctx.root, normalized)) return
@@ -107,7 +105,7 @@ function codeActionParams(params: unknown): {
   if (!isRecord(params.textDocument)) return null
   if (!isRecord(params.range)) return null
   if (!isRecord(params.context)) return null
-  if (typeof params.textDocument.uri !== "string") return null
+  if (typeof params.textDocument.uri !== 'string') return null
   if (!isLspRange(params.range)) return null
   if (!Array.isArray(params.context.diagnostics)) return null
 
@@ -121,15 +119,15 @@ function codeActionParams(params: unknown): {
 function isLspRange(value: Record<string, unknown>): value is lsp.Range {
   if (!isRecord(value.start)) return false
   if (!isRecord(value.end)) return false
-  if (typeof value.start.line !== "number") return false
-  if (typeof value.start.character !== "number") return false
-  if (typeof value.end.line !== "number") return false
-  return typeof value.end.character === "number"
+  if (typeof value.start.line !== 'number') return false
+  if (typeof value.start.character !== 'number') return false
+  if (typeof value.end.line !== 'number') return false
+  return typeof value.end.character === 'number'
 }
 
 function diagnosticCode(diagnostic: lsp.Diagnostic): readonly number[] {
-  if (typeof diagnostic.code === "number") return [diagnostic.code]
-  if (typeof diagnostic.code !== "string") return []
+  if (typeof diagnostic.code === 'number') return [diagnostic.code]
+  if (typeof diagnostic.code !== 'string') return []
   const parsed = Number(diagnostic.code)
   return Number.isInteger(parsed) ? [parsed] : []
 }

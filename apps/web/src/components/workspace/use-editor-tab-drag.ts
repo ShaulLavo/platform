@@ -4,15 +4,15 @@ import {
   useRef,
   type DragEvent as ReactDragEvent,
   type RefObject,
-} from "react"
+} from 'react'
 
 import {
   editorTabDropIndex,
   type EditorTabDropTargetBounds,
-} from "@/components/workspace/editor-tab-dnd"
+} from '@/components/workspace/editor-tab-dnd'
 
-export const EDITOR_TAB_DRAG_KIND = "platform/editor-tab"
-export const EDITOR_TAB_DRAG_MIME = "application/x-platform-editor-tab"
+export const EDITOR_TAB_DRAG_KIND = 'platform/editor-tab'
+export const EDITOR_TAB_DRAG_MIME = 'application/x-platform-editor-tab'
 const EDITOR_TAB_DRAG_AUTO_SCROLL_EDGE_PX = 36
 const EDITOR_TAB_DRAG_AUTO_SCROLL_STEP_PX = 14
 
@@ -29,7 +29,7 @@ export type EditorTabDragState = {
   targetIndex: number | null
 }
 
-export type EditorTabInsertionEdge = "before" | "after" | null
+export type EditorTabInsertionEdge = 'before' | 'after' | null
 
 export type EditorTabDragController = {
   draggedTabId: string | null
@@ -37,10 +37,7 @@ export type EditorTabDragController = {
   onDragEnd: () => void
   onDragLeave: (event: ReactDragEvent<HTMLElement>) => void
   onDragOver: (event: ReactDragEvent<HTMLElement>) => void
-  onDragStart: (
-    event: ReactDragEvent<HTMLElement>,
-    tab: EditorTabDragItem
-  ) => void
+  onDragStart: (event: ReactDragEvent<HTMLElement>, tab: EditorTabDragItem) => void
   onDrop: (event: ReactDragEvent<HTMLElement>) => void
 }
 
@@ -50,10 +47,10 @@ export type EditorTabDragAction =
       path: string
       sourceIndex: number
       tabId: string
-      type: "start"
+      type: 'start'
     }
-  | { targetIndex: number | null; type: "target" }
-  | { type: "clear" }
+  | { targetIndex: number | null; type: 'target' }
+  | { type: 'clear' }
 
 export type EditorTabDragPayload = {
   kind: typeof EDITOR_TAB_DRAG_KIND
@@ -108,7 +105,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
       dragClientXRef.current = null
       cancelEditorTabDragAutoScroll(autoScrollFrameRef)
     },
-    []
+    [],
   )
 
   function dispatchDrag(action: EditorTabDragAction) {
@@ -125,16 +122,16 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     const targetIndex = editorTabDropIndex(
       editorTabDropTargetBounds(tabListRef.current),
       clientX,
-      current.tabId
+      current.tabId,
     )
     if (current.targetIndex === targetIndex) return
 
-    dispatchDrag({ targetIndex, type: "target" })
+    dispatchDrag({ targetIndex, type: 'target' })
   }
 
   function clearDrag() {
     const currentTabId = stateRef.current?.tabId ?? null
-    dispatchDrag({ type: "clear" })
+    dispatchDrag({ type: 'clear' })
     documentDragCleanupRef.current?.()
     documentDragCleanupRef.current = null
     dragImageCleanupRef.current?.()
@@ -164,10 +161,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     if (!scrollElement) return
     if (clientX === null) return
 
-    const delta = editorTabDragAutoScrollDelta(
-      scrollElement.getBoundingClientRect(),
-      clientX
-    )
+    const delta = editorTabDragAutoScrollDelta(scrollElement.getBoundingClientRect(), clientX)
     if (delta !== 0) scrollElement.scrollLeft += delta
 
     syncDragTarget(clientX)
@@ -186,20 +180,20 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
   function startDocumentDragListeners() {
     if (documentDragCleanupRef.current) return
 
-    document.addEventListener("dragover", handleDocumentDragOver, {
+    document.addEventListener('dragover', handleDocumentDragOver, {
       capture: true,
       passive: false,
     })
-    document.addEventListener("drop", handleDocumentDrop, {
+    document.addEventListener('drop', handleDocumentDrop, {
       capture: true,
       passive: false,
     })
-    document.addEventListener("dragend", handleDocumentDragEnd, true)
+    document.addEventListener('dragend', handleDocumentDragEnd, true)
 
     documentDragCleanupRef.current = () => {
-      document.removeEventListener("dragover", handleDocumentDragOver, true)
-      document.removeEventListener("drop", handleDocumentDrop, true)
-      document.removeEventListener("dragend", handleDocumentDragEnd, true)
+      document.removeEventListener('dragover', handleDocumentDragOver, true)
+      document.removeEventListener('drop', handleDocumentDrop, true)
+      document.removeEventListener('dragend', handleDocumentDragEnd, true)
     }
   }
 
@@ -217,7 +211,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
           ? tabs.findIndex((candidate) => candidate.id === payload.tabId)
           : -1,
       tabId: payload.tabId,
-      type: "start",
+      type: 'start',
     })
   }
 
@@ -228,7 +222,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     if (!payload) return
 
     event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
+    event.dataTransfer.dropEffect = 'move'
 
     ensureDragStateFromPayload(payload)
     syncDragTarget(event.clientX)
@@ -241,11 +235,11 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
 
     event.preventDefault()
     event.stopPropagation()
-    event.dataTransfer.dropEffect = "move"
+    event.dataTransfer.dropEffect = 'move'
 
     if (!stateRef.current) {
       const payload = readEditorTabDragPayload(event.dataTransfer)
-      if (payload.status === "valid") ensureDragStateFromPayload(payload.payload)
+      if (payload.status === 'valid') ensureDragStateFromPayload(payload.payload)
     }
 
     const current = stateRef.current
@@ -266,7 +260,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     if (elementContainsTarget(event.currentTarget, event.relatedTarget)) return
 
     if (ownsDragRef.current) {
-      dispatchDrag({ targetIndex: null, type: "target" })
+      dispatchDrag({ targetIndex: null, type: 'target' })
       cancelEditorTabDragAutoScroll(autoScrollFrameRef)
       dragClientXRef.current = null
       return
@@ -279,14 +273,14 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     if (!stateRef.current) return
 
     if (!editorTabDragPointInsideTabList(tabListRef.current, event)) {
-      dispatchDrag({ targetIndex: null, type: "target" })
+      dispatchDrag({ targetIndex: null, type: 'target' })
       cancelEditorTabDragAutoScroll(autoScrollFrameRef)
       dragClientXRef.current = null
       return
     }
 
     event.preventDefault()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
 
     syncDragTarget(event.clientX)
     scheduleAutoScroll(event.clientX)
@@ -303,7 +297,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
 
     event.preventDefault()
     event.stopPropagation()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
 
     if (!dropPayloadMatchesActiveTab(event.dataTransfer, current.tabId)) {
       clearDrag()
@@ -321,10 +315,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     clearDrag()
   }
 
-  function handleDragStart(
-    event: ReactDragEvent<HTMLElement>,
-    tab: EditorTabDragItem
-  ) {
+  function handleDragStart(event: ReactDragEvent<HTMLElement>, tab: EditorTabDragItem) {
     if (isEditorTabDragBlockedTarget(event.target)) {
       event.preventDefault()
       return
@@ -342,11 +333,11 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
       path: tab.path,
       sourceIndex,
       tabId: tab.id,
-      type: "start",
+      type: 'start',
     })
 
-    event.dataTransfer.effectAllowed = "move"
-    event.dataTransfer.dropEffect = "move"
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.dropEffect = 'move'
     writeEditorTabDragPayload(event.dataTransfer, {
       paneId,
       path: tab.path,
@@ -383,11 +374,11 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
 
 export function editorTabDragReducer(
   state: EditorTabDragState | null,
-  action: EditorTabDragAction
+  action: EditorTabDragAction,
 ): EditorTabDragState | null {
-  if (action.type === "clear") return null
+  if (action.type === 'clear') return null
 
-  if (action.type === "start") {
+  if (action.type === 'start') {
     return {
       path: action.path,
       paneId: action.paneId,
@@ -406,7 +397,7 @@ export function editorTabDragReducer(
 export function editorTabInsertionEdge<TTab extends EditorTabDragItem>(
   tabs: readonly TTab[],
   tab: TTab,
-  dragState: EditorTabDragState | null
+  dragState: EditorTabDragState | null,
 ): EditorTabInsertionEdge {
   if (!dragState) return null
   if (dragState.targetIndex === null) return null
@@ -417,15 +408,15 @@ export function editorTabInsertionEdge<TTab extends EditorTabDragItem>(
 
   const targetIndex = boundedTabDropIndex(dragState.targetIndex, targets.length)
   if (targetIndex === targets.length) {
-    return targets.at(-1)?.id === tab.id ? "after" : null
+    return targets.at(-1)?.id === tab.id ? 'after' : null
   }
 
-  return targets[targetIndex]?.id === tab.id ? "before" : null
+  return targets[targetIndex]?.id === tab.id ? 'before' : null
 }
 
 function isDraggingInOriginalSlot<TTab extends EditorTabDragItem>(
   tabs: readonly TTab[],
-  dragState: EditorTabDragState
+  dragState: EditorTabDragState,
 ) {
   if (dragState.sourceIndex < 0) return false
   if (dragState.targetIndex !== dragState.sourceIndex) return false
@@ -440,20 +431,16 @@ function boundedTabDropIndex(index: number, targetCount: number) {
 }
 
 function editorTabDropTargetBounds(
-  tabList: HTMLElement | null
+  tabList: HTMLElement | null,
 ): readonly EditorTabDropTargetBounds[] {
   if (!tabList) return []
 
-  return Array.from(
-    tabList.querySelectorAll<HTMLElement>("[data-editor-tab-id]")
-  )
+  return Array.from(tabList.querySelectorAll<HTMLElement>('[data-editor-tab-id]'))
     .map(editorTabDropTargetBound)
     .filter(isEditorTabDropTargetBound)
 }
 
-function editorTabDropTargetBound(
-  element: HTMLElement
-): EditorTabDropTargetBounds | null {
+function editorTabDropTargetBound(element: HTMLElement): EditorTabDropTargetBounds | null {
   const path = element.dataset.editorTabPath
   const id = element.dataset.editorTabId
   if (!path) return null
@@ -469,14 +456,14 @@ function editorTabDropTargetBound(
 }
 
 function isEditorTabDropTargetBound(
-  bound: EditorTabDropTargetBounds | null
+  bound: EditorTabDropTargetBounds | null,
 ): bound is EditorTabDropTargetBounds {
   return bound !== null
 }
 
 function editorTabDragPointInsideTabList(
   tabList: HTMLElement | null,
-  event: Pick<globalThis.DragEvent, "clientX" | "clientY">
+  event: Pick<globalThis.DragEvent, 'clientX' | 'clientY'>,
 ) {
   if (!tabList) return false
 
@@ -499,7 +486,7 @@ function writeEditorTabDragPayload(
     paneId: string
     path: string
     tabId: string
-  }
+  },
 ) {
   const payload: EditorTabDragPayload = {
     kind: EDITOR_TAB_DRAG_KIND,
@@ -508,19 +495,11 @@ function writeEditorTabDragPayload(
     tabId,
   }
 
-  setEditorTabDragData(
-    dataTransfer,
-    EDITOR_TAB_DRAG_MIME,
-    JSON.stringify(payload)
-  )
-  setEditorTabDragData(dataTransfer, "text/plain", path)
+  setEditorTabDragData(dataTransfer, EDITOR_TAB_DRAG_MIME, JSON.stringify(payload))
+  setEditorTabDragData(dataTransfer, 'text/plain', path)
 }
 
-function setEditorTabDragData(
-  dataTransfer: DataTransfer,
-  format: string,
-  value: string
-) {
+function setEditorTabDragData(dataTransfer: DataTransfer, format: string, value: string) {
   try {
     dataTransfer.setData(format, value)
   } catch {
@@ -528,59 +507,47 @@ function setEditorTabDragData(
   }
 }
 
-function dropPayloadMatchesActiveTab(
-  dataTransfer: DataTransfer | null,
-  tabId: string
-) {
+function dropPayloadMatchesActiveTab(dataTransfer: DataTransfer | null, tabId: string) {
   const result = readEditorTabDragPayload(dataTransfer)
-  if (result.status === "missing") return true
-  if (result.status === "invalid") return false
+  if (result.status === 'missing') return true
+  if (result.status === 'invalid') return false
 
   return result.payload.tabId === tabId
 }
 
 export function readEditorTabDragPayload(
-  dataTransfer: DataTransfer | null
+  dataTransfer: DataTransfer | null,
 ):
-  | { status: "missing" }
-  | { status: "invalid" }
-  | { payload: EditorTabDragPayload; status: "valid" } {
-  if (!dataTransfer) return { status: "missing" }
+  | { status: 'missing' }
+  | { status: 'invalid' }
+  | { payload: EditorTabDragPayload; status: 'valid' } {
+  if (!dataTransfer) return { status: 'missing' }
 
   const hasPayloadType = dataTransferHasType(dataTransfer, EDITOR_TAB_DRAG_MIME)
   const raw = dataTransfer.getData(EDITOR_TAB_DRAG_MIME)
-  if (!raw)
-    return hasPayloadType ? { status: "invalid" } : { status: "missing" }
+  if (!raw) return hasPayloadType ? { status: 'invalid' } : { status: 'missing' }
 
   try {
     const value: unknown = JSON.parse(raw)
-    if (!isEditorTabDragPayload(value)) return { status: "invalid" }
+    if (!isEditorTabDragPayload(value)) return { status: 'invalid' }
 
-    return { payload: value, status: "valid" }
+    return { payload: value, status: 'valid' }
   } catch {
-    return { status: "invalid" }
+    return { status: 'invalid' }
   }
 }
 
-export function hasEditorTabDragPayload(
-  dataTransfer: Pick<DataTransfer, "types"> | null
-) {
+export function hasEditorTabDragPayload(dataTransfer: Pick<DataTransfer, 'types'> | null) {
   return dataTransferHasType(dataTransfer, EDITOR_TAB_DRAG_MIME)
 }
 
-function dataTransferHasType(
-  dataTransfer: Pick<DataTransfer, "types"> | null,
-  type: string
-) {
+function dataTransferHasType(dataTransfer: Pick<DataTransfer, 'types'> | null, type: string) {
   if (!dataTransfer) return false
 
   return Array.from(dataTransfer.types).includes(type)
 }
 
-function clearActiveEditorTabDragPayload(
-  tabId: string | null,
-  ownsDrag: boolean
-) {
+function clearActiveEditorTabDragPayload(tabId: string | null, ownsDrag: boolean) {
   if (!ownsDrag) return
   if (tabId && activeEditorTabDragPayload?.tabId !== tabId) return
 
@@ -588,16 +555,16 @@ function clearActiveEditorTabDragPayload(
 }
 
 function isEditorTabDragPayload(value: unknown): value is EditorTabDragPayload {
-  if (!value || typeof value !== "object") return false
+  if (!value || typeof value !== 'object') return false
 
   const payload = value as Partial<Record<keyof EditorTabDragPayload, unknown>>
   return (
     payload.kind === EDITOR_TAB_DRAG_KIND &&
-    typeof payload.paneId === "string" &&
+    typeof payload.paneId === 'string' &&
     payload.paneId.length > 0 &&
-    typeof payload.path === "string" &&
+    typeof payload.path === 'string' &&
     payload.path.length > 0 &&
-    typeof payload.tabId === "string" &&
+    typeof payload.tabId === 'string' &&
     payload.tabId.length > 0
   )
 }
@@ -606,26 +573,26 @@ function mountEditorTabDragImage(event: ReactDragEvent<HTMLElement>) {
   const source = editorTabDragImageSource(event.currentTarget)
   const rect = source.getBoundingClientRect()
   const clone = source.cloneNode(true) as HTMLElement
-  clone.style.position = "fixed"
-  clone.style.top = "-1000px"
-  clone.style.left = "-1000px"
+  clone.style.position = 'fixed'
+  clone.style.top = '-1000px'
+  clone.style.left = '-1000px'
   clone.style.width = `${rect.width}px`
   clone.style.height = `${rect.height}px`
-  clone.style.pointerEvents = "none"
-  clone.style.opacity = "0.92"
+  clone.style.pointerEvents = 'none'
+  clone.style.opacity = '0.92'
 
   document.body.appendChild(clone)
   event.dataTransfer.setDragImage(
     clone,
     Math.max(0, event.clientX - rect.left),
-    Math.max(0, event.clientY - rect.top)
+    Math.max(0, event.clientY - rect.top),
   )
 
   return () => clone.remove()
 }
 
 function editorTabDragImageSource(element: HTMLElement) {
-  return element.closest<HTMLElement>("[data-editor-tab-id]") ?? element
+  return element.closest<HTMLElement>('[data-editor-tab-id]') ?? element
 }
 
 function editorTabDragAutoScrollDelta(rect: DOMRect, clientX: number) {
@@ -649,13 +616,10 @@ function cancelEditorTabDragAutoScroll(frameRef: { current: number | null }) {
 function isEditorTabDragBlockedTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false
 
-  return Boolean(target.closest("[data-editor-tab-drag-blocker]"))
+  return Boolean(target.closest('[data-editor-tab-drag-blocker]'))
 }
 
-function elementContainsTarget(
-  element: HTMLElement,
-  target: EventTarget | null
-) {
+function elementContainsTarget(element: HTMLElement, target: EventTarget | null) {
   if (!(target instanceof Node)) return false
 
   return element.contains(target)

@@ -1,7 +1,7 @@
 export function fallbackDocumentPathForSelection(
   hasCachedDocument: (path: string) => boolean,
   selectedFilePath: string | null,
-  fallbackDocumentPath: string | null
+  fallbackDocumentPath: string | null,
 ) {
   if (selectedFilePath && hasCachedDocument(selectedFilePath)) {
     return selectedFilePath

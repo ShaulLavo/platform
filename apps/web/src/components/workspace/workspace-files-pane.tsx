@@ -1,10 +1,10 @@
-import { TreePane } from "@/components/workspace/tree-pane"
-import { useStatus } from "@/features/git/hooks"
-import { statusEntriesForTree } from "@/features/git/status-entries-for-tree"
-import type { TreeEntry } from "@/lib/file-system-types"
-import type { LoadState } from "@/lib/load-state"
-import type { DirectoryLoadOptions, TreeModel } from "@/lib/tree-model"
-import { useMemo } from "react"
+import { TreePane } from '@/components/workspace/tree-pane'
+import { useStatus } from '@/features/git/hooks'
+import { statusEntriesForTree } from '@/features/git/status-entries-for-tree'
+import type { TreeEntry } from '@/lib/file-system-types'
+import type { LoadState } from '@/lib/load-state'
+import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
+import { useMemo } from 'react'
 
 export function WorkspaceFilesPane({
   onLoadDirectory,
@@ -13,11 +13,7 @@ export function WorkspaceFilesPane({
   rootPath,
   state,
 }: {
-  onLoadDirectory: (
-    entry: TreeEntry,
-    treePath: string,
-    options?: DirectoryLoadOptions
-  ) => void
+  onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void
   onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   onVisibleItemCountChange: (count: number) => void
   rootPath: string
@@ -26,7 +22,7 @@ export function WorkspaceFilesPane({
   const gitStatus = useStatus(rootPath)
   const gitStatusEntries = useMemo(
     () => statusEntriesForTree(gitStatus.data?.files ?? [], rootPath),
-    [gitStatus.data?.files, rootPath]
+    [gitStatus.data?.files, rootPath],
   )
 
   return (

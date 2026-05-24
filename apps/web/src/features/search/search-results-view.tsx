@@ -1,5 +1,5 @@
-import type { WorkspaceSearchMatch } from "@workspace/contracts"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import type { WorkspaceSearchMatch } from '@workspace/contracts'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   useLayoutEffect,
   useId,
@@ -8,18 +8,15 @@ import {
   useState,
   type KeyboardEvent,
   type RefObject,
-} from "react"
+} from 'react'
 
-import { SearchFileGroupHeader } from "@/features/search/search-file-group"
+import { SearchFileGroupHeader } from '@/features/search/search-file-group'
 import type {
   SearchBufferSnapshot,
   WorkspaceSearchFileGroup,
-} from "@/features/search/search-buffer-state"
-import { useSearchBufferState } from "@/features/search/search-buffer-state"
-import {
-  SearchMatchRow,
-  SearchNameMatchRow,
-} from "@/features/search/search-match-row"
+} from '@/features/search/search-buffer-state'
+import { useSearchBufferState } from '@/features/search/search-buffer-state'
+import { SearchMatchRow, SearchNameMatchRow } from '@/features/search/search-match-row'
 import {
   firstSearchResultChildId,
   firstSearchResultId,
@@ -29,13 +26,13 @@ import {
   searchResultItemById,
   searchResultItems,
   type SearchResultItem,
-} from "@/features/search/search-result-items"
+} from '@/features/search/search-result-items'
 import {
   SearchErrorState,
   SearchIdleState,
   SearchPendingOrEmpty,
-} from "@/features/search/search-status-states"
-import { cn } from "@workspace/ui/lib/utils"
+} from '@/features/search/search-status-states'
+import { cn } from '@workspace/ui/lib/utils'
 
 const SEARCH_PREVIEW_MAX_CHARACTERS = 96
 const SEARCH_PREVIEW_MIN_CHARACTERS = 16
@@ -79,14 +76,13 @@ export function SearchResultsView({
   const items = useMemo(() => searchResultItems(groups), [groups])
   const activeItem = useMemo(
     () => searchResultItemById(items, activeResultId),
-    [activeResultId, items]
+    [activeResultId, items],
   )
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the search results virtualization layer.
   const virtualizer = useVirtualizer({
     count: items.length,
     estimateSize: (index) => searchResultItemEstimate(items[index], compact),
-    getItemKey: (index) =>
-      `${compact ? "compact" : "default"}:${items[index]?.id ?? index}`,
+    getItemKey: (index) => `${compact ? 'compact' : 'default'}:${items[index]?.id ?? index}`,
     getScrollElement: () => parentRef.current,
     overscan: 12,
   })
@@ -107,22 +103,21 @@ export function SearchResultsView({
 
   useLayoutEffect(() => {
     if (displayedResultsQuery === null) return
-    if (previousDisplayedResultsQueryRef.current === displayedResultsQuery)
-      return
+    if (previousDisplayedResultsQueryRef.current === displayedResultsQuery) return
 
     previousDisplayedResultsQueryRef.current = displayedResultsQuery
     resetSearchResultScroll(parentRef, virtualizer)
     const frame = window.requestAnimationFrame(() =>
-      resetSearchResultScroll(parentRef, virtualizer)
+      resetSearchResultScroll(parentRef, virtualizer),
     )
 
     return () => window.cancelAnimationFrame(frame)
   }, [displayedResultsQuery, virtualizer])
 
-  if (!snapshot || snapshot.status === "idle") {
+  if (!snapshot || snapshot.status === 'idle') {
     return <SearchIdleState className={className} />
   }
-  if (snapshot.status === "error" && groups.length === 0) {
+  if (snapshot.status === 'error' && groups.length === 0) {
     return <SearchErrorState className={className} message={snapshot.error} />
   }
   if (groups.length === 0) {
@@ -131,17 +126,12 @@ export function SearchResultsView({
 
   return (
     <div
-      className={cn(
-        "app-scrollbar-thin min-h-0 overflow-x-hidden overflow-y-auto",
-        className
-      )}
+      className={cn('app-scrollbar-thin min-h-0 overflow-x-hidden overflow-y-auto', className)}
       ref={parentRef}
-      role="tree"
+      role='tree'
       tabIndex={0}
-      aria-activedescendant={
-        activeItem ? searchResultDomId(treeId, activeItem.id) : undefined
-      }
-      aria-label="Search results"
+      aria-activedescendant={activeItem ? searchResultDomId(treeId, activeItem.id) : undefined}
+      aria-label='Search results'
       onKeyDown={(event) =>
         handleSearchResultKeyDown({
           activeResultId,
@@ -154,7 +144,7 @@ export function SearchResultsView({
       }
     >
       <div
-        className="relative"
+        className='relative'
         style={{
           height: virtualizer.getTotalSize() + resultListPadding(compact) * 2,
         }}
@@ -165,22 +155,15 @@ export function SearchResultsView({
 
           return (
             <div
-              className={cn(
-                "absolute right-1.5 left-1.5",
-                compact && "right-1 left-1"
-              )}
+              className={cn('absolute right-1.5 left-1.5', compact && 'right-1 left-1')}
               id={searchResultDomId(treeId, item.id)}
               key={item.id}
-              role="treeitem"
+              role='treeitem'
               style={{
                 height: virtualItem.size,
-                transform: `translateY(${
-                  virtualItem.start + resultListPadding(compact)
-                }px)`,
+                transform: `translateY(${virtualItem.start + resultListPadding(compact)}px)`,
               }}
-              aria-expanded={
-                item.type === "group" ? !item.group.collapsed : undefined
-              }
+              aria-expanded={item.type === 'group' ? !item.group.collapsed : undefined}
               aria-level={item.level}
               aria-selected={item.id === activeResultId}
               onMouseDown={() => selectResult(item.id)}
@@ -211,7 +194,7 @@ export function SearchResultsView({
 
 function resetSearchResultScroll(
   ref: RefObject<HTMLDivElement | null>,
-  virtualizer: ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>
+  virtualizer: ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>,
 ) {
   if (ref.current) ref.current.scrollTop = 0
 
@@ -220,14 +203,12 @@ function resetSearchResultScroll(
 
 function scrollActiveSearchResultIntoView(
   activeIndexRef: RefObject<number>,
-  virtualizerRef: RefObject<
-    ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>
-  >
+  virtualizerRef: RefObject<ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>>,
 ) {
   const currentActiveIndex = activeIndexRef.current
   if (currentActiveIndex < 0) return
 
-  virtualizerRef.current.scrollToIndex(currentActiveIndex, { align: "auto" })
+  virtualizerRef.current.scrollToIndex(currentActiveIndex, { align: 'auto' })
 }
 
 function SearchResultRow({
@@ -252,7 +233,7 @@ function SearchResultRow({
   compact?: boolean
   previewMaxLength?: number
   query: string
-  replaceQuery: SearchBufferSnapshot["resultsSearchQuery"]
+  replaceQuery: SearchBufferSnapshot['resultsSearchQuery']
   replaceText: string
   replaceVisible?: boolean
   onOpenMatch: (match: WorkspaceSearchMatch) => void
@@ -261,7 +242,7 @@ function SearchResultRow({
   onSelectResult: (id: string | null) => void
   onToggleGroup: (path: string) => void
 }) {
-  if (item.type === "group") {
+  if (item.type === 'group') {
     return (
       <SearchFileGroupHeader
         active={active}
@@ -277,7 +258,7 @@ function SearchResultRow({
       />
     )
   }
-  if (item.type === "name") {
+  if (item.type === 'name') {
     return (
       <SearchNameMatchRow
         active={active}
@@ -294,7 +275,7 @@ function SearchResultRow({
   }
 
   return (
-    <div className={cn("ml-4 border-l", compact && "ml-3")}>
+    <div className={cn('ml-4 border-l', compact && 'ml-3')}>
       <SearchMatchRow
         active={active}
         canReplace={canReplace}
@@ -317,9 +298,9 @@ function SearchResultRow({
 
 function searchResultItemEstimate(
   item: SearchResultItem | undefined,
-  compact: boolean | undefined
+  compact: boolean | undefined,
 ) {
-  if (item?.type === "group") return compact ? 24 : 44
+  if (item?.type === 'group') return compact ? 24 : 44
 
   return compact ? 24 : 30
 }
@@ -330,19 +311,14 @@ function resultListPadding(compact: boolean | undefined) {
 
 function useSearchPreviewMaxLength(
   ref: RefObject<HTMLDivElement | null>,
-  replaceVisible: boolean | undefined
+  replaceVisible: boolean | undefined,
 ) {
   const width = useElementWidth(ref)
 
-  return useMemo(
-    () => searchPreviewMaxLength(width, replaceVisible),
-    [replaceVisible, width]
-  )
+  return useMemo(() => searchPreviewMaxLength(width, replaceVisible), [replaceVisible, width])
 }
 
-function useElementWidth<TElement extends HTMLElement>(
-  ref: RefObject<TElement | null>
-) {
+function useElementWidth<TElement extends HTMLElement>(ref: RefObject<TElement | null>) {
   const [width, setWidth] = useState<number | null>(null)
 
   useLayoutEffect(() => {
@@ -355,7 +331,7 @@ function useElementWidth<TElement extends HTMLElement>(
 
     updateWidth()
 
-    if (!("ResizeObserver" in window)) return
+    if (!('ResizeObserver' in window)) return
 
     const observer = new ResizeObserver(updateWidth)
     observer.observe(element)
@@ -366,21 +342,16 @@ function useElementWidth<TElement extends HTMLElement>(
   return width
 }
 
-function searchPreviewMaxLength(
-  width: number | null,
-  replaceVisible: boolean | undefined
-) {
+function searchPreviewMaxLength(width: number | null, replaceVisible: boolean | undefined) {
   if (width === null) return undefined
 
   const replaceWidth = replaceVisible ? SEARCH_RESULT_REPLACE_WIDTH : 0
   const availableWidth = width - SEARCH_RESULT_ROW_CHROME_WIDTH - replaceWidth
-  const visibleCharacters = Math.floor(
-    availableWidth / SEARCH_RESULT_CHARACTER_WIDTH
-  )
+  const visibleCharacters = Math.floor(availableWidth / SEARCH_RESULT_CHARACTER_WIDTH)
 
   return Math.min(
     SEARCH_PREVIEW_MAX_CHARACTERS,
-    Math.max(SEARCH_PREVIEW_MIN_CHARACTERS, visibleCharacters)
+    Math.max(SEARCH_PREVIEW_MIN_CHARACTERS, visibleCharacters),
   )
 }
 
@@ -399,49 +370,37 @@ function handleSearchResultKeyDown({
   onSelectResult: (id: string | null) => void
   onToggleGroup: (path: string) => void
 }) {
-  if (event.key === "ArrowDown") {
+  if (event.key === 'ArrowDown') {
     event.preventDefault()
     onSelectResult(searchResultIdByOffset({ activeResultId, items, offset: 1 }))
     return
   }
-  if (event.key === "ArrowUp") {
+  if (event.key === 'ArrowUp') {
     event.preventDefault()
-    onSelectResult(
-      searchResultIdByOffset({ activeResultId, items, offset: -1 })
-    )
+    onSelectResult(searchResultIdByOffset({ activeResultId, items, offset: -1 }))
     return
   }
-  if (event.key === "Home") {
+  if (event.key === 'Home') {
     event.preventDefault()
     onSelectResult(firstSearchResultId(items))
     return
   }
-  if (event.key === "End") {
+  if (event.key === 'End') {
     event.preventDefault()
     onSelectResult(lastSearchResultId(items))
     return
   }
-  if (event.key === "ArrowRight") {
+  if (event.key === 'ArrowRight') {
     event.preventDefault()
-    moveIntoSearchResultGroup(
-      items,
-      activeResultId,
-      onSelectResult,
-      onToggleGroup
-    )
+    moveIntoSearchResultGroup(items, activeResultId, onSelectResult, onToggleGroup)
     return
   }
-  if (event.key === "ArrowLeft") {
+  if (event.key === 'ArrowLeft') {
     event.preventDefault()
-    moveOutOfSearchResultGroup(
-      items,
-      activeResultId,
-      onSelectResult,
-      onToggleGroup
-    )
+    moveOutOfSearchResultGroup(items, activeResultId, onSelectResult, onToggleGroup)
     return
   }
-  if (event.key !== "Enter") return
+  if (event.key !== 'Enter') return
 
   event.preventDefault()
   commitSearchResult(items, activeResultId, onOpenMatch, onToggleGroup)
@@ -451,10 +410,10 @@ function moveIntoSearchResultGroup(
   items: readonly SearchResultItem[],
   activeResultId: string | null,
   onSelectResult: (id: string | null) => void,
-  onToggleGroup: (path: string) => void
+  onToggleGroup: (path: string) => void,
 ) {
   const active = searchResultItemById(items, activeResultId)
-  if (active?.type !== "group") return
+  if (active?.type !== 'group') return
 
   if (active.group.collapsed) {
     onToggleGroup(active.group.path)
@@ -468,7 +427,7 @@ function moveOutOfSearchResultGroup(
   items: readonly SearchResultItem[],
   activeResultId: string | null,
   onSelectResult: (id: string | null) => void,
-  onToggleGroup: (path: string) => void
+  onToggleGroup: (path: string) => void,
 ) {
   const parentId = parentSearchResultId(items, activeResultId)
   if (parentId) {
@@ -477,7 +436,7 @@ function moveOutOfSearchResultGroup(
   }
 
   const active = searchResultItemById(items, activeResultId)
-  if (active?.type !== "group") return
+  if (active?.type !== 'group') return
   if (active.group.collapsed) return
 
   onToggleGroup(active.group.path)
@@ -487,11 +446,11 @@ function commitSearchResult(
   items: readonly SearchResultItem[],
   activeResultId: string | null,
   onOpenMatch: (match: WorkspaceSearchMatch) => void,
-  onToggleGroup: (path: string) => void
+  onToggleGroup: (path: string) => void,
 ) {
   const active = searchResultItemById(items, activeResultId)
   if (!active) return
-  if (active.type === "group") {
+  if (active.type === 'group') {
     onToggleGroup(active.group.path)
     return
   }

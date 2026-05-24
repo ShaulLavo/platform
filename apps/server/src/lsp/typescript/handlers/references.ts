@@ -1,5 +1,5 @@
-import ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
 import {
   documentText,
@@ -9,13 +9,10 @@ import {
   normalizeNativePath,
   rangeFromTextSpan,
   textDocumentPosition,
-} from "../shared/boundary"
-import type { SessionContext } from "../shared/context"
+} from '../shared/boundary'
+import type { SessionContext } from '../shared/context'
 
-export function handleReferences(
-  ctx: SessionContext,
-  params: unknown
-): lsp.Location[] {
+export function handleReferences(ctx: SessionContext, params: unknown): lsp.Location[] {
   const request = textDocumentPosition(ctx, params)
   if (!request) return []
 
@@ -24,18 +21,16 @@ export function handleReferences(
 
   const offset = lspPositionToOffset(text, request.position)
   const references =
-    ctx
-      .getLanguageService()
-      .getReferencesAtPosition(request.fileName, offset) ?? []
+    ctx.getLanguageService().getReferencesAtPosition(request.fileName, offset) ?? []
   return references.flatMap((reference) =>
-    locationForTextSpan(ctx, reference.fileName, reference.textSpan)
+    locationForTextSpan(ctx, reference.fileName, reference.textSpan),
   )
 }
 
 function locationForTextSpan(
   ctx: SessionContext,
   fileName: string,
-  span: ts.TextSpan
+  span: ts.TextSpan,
 ): readonly lsp.Location[] {
   const normalized = normalizeNativePath(fileName)
   if (!isInsidePath(ctx.root, normalized)) return []

@@ -1,29 +1,25 @@
-import { homedir } from "node:os"
-import path from "node:path"
-import { createWorkspacePaths } from "./path"
-import { FileChangeHub } from "./watch"
-import { effectiveEntryType, statPath } from "./stat"
-import { readTree } from "./tree"
-import { getBlobFile, readTextFile } from "./read"
-import { writeTextFile } from "./write"
-import { forgetAppSave, recordAppSave } from "./app-save-marker"
-import { createFile, createFolder } from "./create"
-import { renamePath } from "./rename"
-import { deletePath } from "./delete"
-import { copyPath } from "./copy"
+import { homedir } from 'node:os'
+import path from 'node:path'
+import { createWorkspacePaths } from './path'
+import { FileChangeHub } from './watch'
+import { effectiveEntryType, statPath } from './stat'
+import { readTree } from './tree'
+import { getBlobFile, readTextFile } from './read'
+import { writeTextFile } from './write'
+import { forgetAppSave, recordAppSave } from './app-save-marker'
+import { createFile, createFolder } from './create'
+import { renamePath } from './rename'
+import { deletePath } from './delete'
+import { copyPath } from './copy'
 import {
   findInWorkspace,
   findInWorkspaceStream,
   type FindOptions,
   type FindStreamEvent,
-} from "./search"
-import { FsError } from "./errors"
-import {
-  FsMetadataStore,
-  metadataRowToEntry,
-  type FsMetadataEntry,
-} from "./metadata"
-import type { FsStat } from "./stat"
+} from './search'
+import { FsError } from './errors'
+import { FsMetadataStore, metadataRowToEntry, type FsMetadataEntry } from './metadata'
+import type { FsStat } from './stat'
 import type {
   CopyBody,
   CreateFileBody,
@@ -34,10 +30,10 @@ import type {
   TreeEntry,
   WatchServerMessage,
   WriteBody,
-} from "./contracts"
+} from './contracts'
 
-export type FileSystemInfo = ReturnType<FileSystemService["info"]>
-export type FileSystemFindOptions = Omit<FindOptions, "maxContentBytes">
+export type FileSystemInfo = ReturnType<FileSystemService['info']>
+export type FileSystemFindOptions = Omit<FindOptions, 'maxContentBytes'>
 
 export type FileSystemServiceOptions = {
   workspaceRoot?: string
@@ -55,22 +51,16 @@ export const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
 
 const MAX_TEXT_FILE_BYTES_UPPER_BOUND = 2_147_483_647
 
-export function resolveMaxTextFileBytes(
-  env: NodeJS.ProcessEnv = process.env
-): number {
+export function resolveMaxTextFileBytes(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.MAX_TEXT_FILE_BYTES
   if (raw === undefined) return DEFAULT_MAX_TEXT_FILE_BYTES
 
   const parsed = Number.parseInt(raw, 10)
-  if (
-    !Number.isInteger(parsed) ||
-    parsed < 1 ||
-    parsed > MAX_TEXT_FILE_BYTES_UPPER_BOUND
-  ) {
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_TEXT_FILE_BYTES_UPPER_BOUND) {
     console.error(
       `[fs] Ignoring invalid MAX_TEXT_FILE_BYTES=${JSON.stringify(raw)}: ` +
         `expected integer in [1, ${MAX_TEXT_FILE_BYTES_UPPER_BOUND}]. ` +
-        `Falling back to DEFAULT_MAX_TEXT_FILE_BYTES=${DEFAULT_MAX_TEXT_FILE_BYTES}.`
+        `Falling back to DEFAULT_MAX_TEXT_FILE_BYTES=${DEFAULT_MAX_TEXT_FILE_BYTES}.`,
     )
     return DEFAULT_MAX_TEXT_FILE_BYTES
   }
@@ -91,16 +81,13 @@ export class FileSystemService {
 
   constructor(options: FileSystemServiceOptions = {}) {
     const homeDirectory = options.homeDirectory ?? homedir()
-    this.systemRoot = path.resolve(
-      options.systemRoot ?? path.parse(homeDirectory).root
-    )
+    this.systemRoot = path.resolve(options.systemRoot ?? path.parse(homeDirectory).root)
     this.paths = createWorkspacePaths(options.workspaceRoot ?? this.systemRoot)
     this.homePath = resolveHomePath(this.paths, homeDirectory)
     this.defaultPath = this.homePath
     this.metadata = new FsMetadataStore()
     this.maxSearchContentBytes = options.maxSearchContentBytes ?? 1024 * 1024
-    this.maxTextFileBytes =
-      options.maxTextFileBytes ?? resolveMaxTextFileBytes()
+    this.maxTextFileBytes = options.maxTextFileBytes ?? resolveMaxTextFileBytes()
     this.treeConcurrency = options.treeConcurrency ?? DEFAULT_TREE_CONCURRENCY
     this.changes = new FileChangeHub(this.paths, {
       enabled: options.watch ?? true,
@@ -150,7 +137,7 @@ export class FileSystemService {
     }
 
     const entry = await this.statEntry(path)
-    this.changes.emit({ type: "changed", path, entry })
+    this.changes.emit({ type: 'changed', path, entry })
 
     return this.stat(path)
   }
@@ -158,7 +145,7 @@ export class FileSystemService {
   async createFile(body: CreateFileBody) {
     const path = await createFile(this.paths, body)
     const entry = await this.statEntry(path)
-    this.changes.emit({ type: "created", path, entry })
+    this.changes.emit({ type: 'created', path, entry })
 
     return this.stat(path)
   }
@@ -166,7 +153,7 @@ export class FileSystemService {
   async createFolder(body: CreateFolderBody) {
     const path = await createFolder(this.paths, body)
     const entry = await this.statEntry(path)
-    this.changes.emit({ type: "created", path, entry })
+    this.changes.emit({ type: 'created', path, entry })
 
     return this.stat(path)
   }
@@ -176,7 +163,7 @@ export class FileSystemService {
     const entry = await this.statEntry(result.to)
     this.changes.emit({
       entry,
-      type: "renamed",
+      type: 'renamed',
       oldPath: result.from,
       path: result.to,
     })
@@ -187,14 +174,14 @@ export class FileSystemService {
   async copy(body: CopyBody) {
     const result = await copyPath(this.paths, body)
     const entry = await this.statEntry(result.to)
-    this.changes.emit({ type: "created", path: result.to, entry })
+    this.changes.emit({ type: 'created', path: result.to, entry })
 
     return this.stat(result.to)
   }
 
   async delete(body: DeleteBody) {
     const path = await deletePath(this.paths, body)
-    this.changes.emit({ type: "deleted", path })
+    this.changes.emit({ type: 'deleted', path })
 
     return { path, deleted: true as const }
   }
@@ -208,7 +195,7 @@ export class FileSystemService {
 
   findEvents(
     options: FileSystemFindOptions,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<FindStreamEvent> {
     return findInWorkspaceStream(
       this.paths,
@@ -216,7 +203,7 @@ export class FileSystemService {
         ...options,
         maxContentBytes: this.maxSearchContentBytes,
       },
-      signal
+      signal,
     )
   }
 
@@ -235,17 +222,13 @@ export class FileSystemService {
 
   async recordRecent(path: string) {
     const entry = await this.metadataEntry(path)
-    if (effectiveEntryType(entry) !== "directory")
-      throw new FsError("NOT_A_DIRECTORY")
+    if (effectiveEntryType(entry) !== 'directory') throw new FsError('NOT_A_DIRECTORY')
 
     this.metadata.recordPicked(entry)
     return entry
   }
 
-  events(
-    paths: string[],
-    signal?: AbortSignal
-  ): AsyncGenerator<WatchServerMessage> {
+  events(paths: string[], signal?: AbortSignal): AsyncGenerator<WatchServerMessage> {
     return this.changes.stream(paths, signal)
   }
 
@@ -257,7 +240,7 @@ export class FileSystemService {
   private async refreshMetadataEntry(entry: FsMetadataEntry) {
     try {
       const refreshed = await this.metadataEntry(entry.path)
-      if (effectiveEntryType(refreshed) !== "directory") return null
+      if (effectiveEntryType(refreshed) !== 'directory') return null
       return refreshed
     } catch {
       return null
@@ -290,21 +273,18 @@ function entryFromStat(stat: FsStat): TreeEntry {
   }
 }
 
-function resolveHomePath(
-  paths: ReturnType<typeof createWorkspacePaths>,
-  homeDirectory: string
-) {
+function resolveHomePath(paths: ReturnType<typeof createWorkspacePaths>, homeDirectory: string) {
   const absoluteHome = path.resolve(homeDirectory)
 
   try {
     paths.assertInside(absoluteHome)
     return paths.toRelative(absoluteHome)
   } catch {
-    return ""
+    return ''
   }
 }
 
 function pathBasename(input: string) {
-  const parts = input.split("/").filter(Boolean)
-  return parts.at(-1) ?? "Root"
+  const parts = input.split('/').filter(Boolean)
+  return parts.at(-1) ?? 'Root'
 }

@@ -1,21 +1,19 @@
-import path from "node:path"
-import { realpathSync } from "node:fs"
-import { realpath } from "node:fs/promises"
-import { FsError } from "./errors"
+import path from 'node:path'
+import { realpathSync } from 'node:fs'
+import { realpath } from 'node:fs/promises'
+import { FsError } from './errors'
 
 export const defaultIgnoredNames = [
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  ".cache",
-  "coverage",
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  '.cache',
+  'coverage',
 ] as const
 
-export const treeIgnoredNames = defaultIgnoredNames.filter(
-  (name) => name !== "node_modules"
-)
+export const treeIgnoredNames = defaultIgnoredNames.filter((name) => name !== 'node_modules')
 
 const ignoredNameSetCache = new WeakMap<readonly string[], ReadonlySet<string>>()
 
@@ -33,7 +31,7 @@ export function createWorkspacePaths(workspaceRootInput = process.cwd()) {
   return {
     workspaceRoot,
     workspaceRootReal,
-    resolve(input = ""): WorkspacePath {
+    resolve(input = ''): WorkspacePath {
       const relativePath = normalizeClientPath(input)
       const absolutePath = path.resolve(workspaceRoot, relativePath)
       assertInside(workspaceRoot, absolutePath)
@@ -53,20 +51,14 @@ export function createWorkspacePaths(workspaceRootInput = process.cwd()) {
   }
 }
 
-export async function assertExistingRealPathInside(
-  paths: WorkspacePaths,
-  absolutePath: string
-) {
+export async function assertExistingRealPathInside(paths: WorkspacePaths, absolutePath: string) {
   const resolved = await realpath(absolutePath)
   paths.assertRealInside(resolved)
 
   return resolved
 }
 
-export async function assertParentRealPathInside(
-  paths: WorkspacePaths,
-  absolutePath: string
-) {
+export async function assertParentRealPathInside(paths: WorkspacePaths, absolutePath: string) {
   const parent = path.dirname(absolutePath)
   const resolved = await realpath(parent)
   paths.assertRealInside(resolved)
@@ -74,10 +66,10 @@ export async function assertParentRealPathInside(
 
 export function isIgnoredPath(
   relativePath: string,
-  ignoredNames: readonly string[] = defaultIgnoredNames
+  ignoredNames: readonly string[] = defaultIgnoredNames,
 ) {
   const ignored = ignoredNameSet(ignoredNames)
-  const parts = toPosix(relativePath).split("/")
+  const parts = toPosix(relativePath).split('/')
 
   for (const part of parts) {
     if (!part) continue
@@ -88,32 +80,32 @@ export function isIgnoredPath(
 }
 
 export function toPosix(input: string) {
-  return input.split(path.sep).join("/")
+  return input.split(path.sep).join('/')
 }
 
 function normalizeClientPath(input: string) {
   assertClientPathShape(input)
 
-  const normalized = path.posix.normalize(input || ".")
-  if (normalized === ".") return ""
-  if (normalized === "..") throw new FsError("PATH_OUTSIDE_WORKSPACE")
-  if (normalized.startsWith("../")) throw new FsError("PATH_OUTSIDE_WORKSPACE")
+  const normalized = path.posix.normalize(input || '.')
+  if (normalized === '.') return ''
+  if (normalized === '..') throw new FsError('PATH_OUTSIDE_WORKSPACE')
+  if (normalized.startsWith('../')) throw new FsError('PATH_OUTSIDE_WORKSPACE')
 
   return normalized
 }
 
 function assertClientPathShape(input: string) {
-  if (input.includes("\0")) throw new FsError("INVALID_PATH")
-  if (input.includes("\\")) throw new FsError("INVALID_PATH")
-  if (path.posix.isAbsolute(input)) throw new FsError("PATH_OUTSIDE_WORKSPACE")
-  if (/^[a-zA-Z]:/.test(input)) throw new FsError("PATH_OUTSIDE_WORKSPACE")
+  if (input.includes('\0')) throw new FsError('INVALID_PATH')
+  if (input.includes('\\')) throw new FsError('INVALID_PATH')
+  if (path.posix.isAbsolute(input)) throw new FsError('PATH_OUTSIDE_WORKSPACE')
+  if (/^[a-zA-Z]:/.test(input)) throw new FsError('PATH_OUTSIDE_WORKSPACE')
 }
 
 function assertInside(root: string, candidate: string) {
   const relative = path.relative(root, candidate)
-  if (relative === "") return
-  if (relative.startsWith("..")) throw new FsError("PATH_OUTSIDE_WORKSPACE")
-  if (path.isAbsolute(relative)) throw new FsError("PATH_OUTSIDE_WORKSPACE")
+  if (relative === '') return
+  if (relative.startsWith('..')) throw new FsError('PATH_OUTSIDE_WORKSPACE')
+  if (path.isAbsolute(relative)) throw new FsError('PATH_OUTSIDE_WORKSPACE')
 }
 
 function ignoredNameSet(ignoredNames: readonly string[]) {

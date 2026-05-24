@@ -23,13 +23,11 @@ export default defineConfig([
         'error',
         {
           selector: 'FunctionDeclaration[id.name="isRecord"]',
-          message:
-            'Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.',
+          message: 'Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.',
         },
         {
           selector: 'VariableDeclarator[id.name="isRecord"]',
-          message:
-            'Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.',
+          message: 'Do not redefine `isRecord`. Import it from `@workspace/contracts` instead.',
         },
       ],
     },

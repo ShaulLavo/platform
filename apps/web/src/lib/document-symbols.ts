@@ -1,7 +1,4 @@
-import {
-  connectLanguageServerSocket,
-  type EdenServerSocket,
-} from "@/lib/server-sockets"
+import { connectLanguageServerSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 export type DocumentSymbolRange = {
   start: { line: number; character: number }
@@ -66,7 +63,7 @@ function requestDocumentSymbols({
 }) {
   return new Promise<readonly DocumentSymbol[]>((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new Error("Document symbol request aborted"))
+      reject(new Error('Document symbol request aborted'))
       return
     }
 
@@ -78,57 +75,50 @@ function requestDocumentSymbols({
       if (settled) return
 
       settled = true
-      signal?.removeEventListener("abort", abort)
+      signal?.removeEventListener('abort', abort)
       socket.close()
       callback()
     }
-    const abort = () =>
-      finish(() => reject(new Error("Document symbol request aborted")))
+    const abort = () => finish(() => reject(new Error('Document symbol request aborted')))
 
-    signal?.addEventListener("abort", abort, { once: true })
-    socket.addEventListener("open", () => {
+    signal?.addEventListener('abort', abort, { once: true })
+    socket.addEventListener('open', () => {
       sendOpenDocument(socket, path, text)
       socket.send(
         JSON.stringify({
           id: requestId,
-          jsonrpc: "2.0",
-          method: "textDocument/documentSymbol",
+          jsonrpc: '2.0',
+          method: 'textDocument/documentSymbol',
           params: { textDocument: { uri: fileUriForPath(path) } },
-        })
+        }),
       )
     })
-    socket.addEventListener("message", (event) => {
+    socket.addEventListener('message', (event) => {
       const response = parseJsonRpcResponse((event as MessageEvent).data)
       if (!response || response.id !== requestId) return
       if (response.error) {
-        finish(() =>
-          reject(new Error(response.error?.message ?? "Document symbol failed"))
-        )
+        finish(() => reject(new Error(response.error?.message ?? 'Document symbol failed')))
         return
       }
 
       finish(() => resolve(documentSymbolsFromResult(response.result)))
     })
-    socket.addEventListener("error", () =>
-      finish(() => reject(new Error("Document symbol socket failed")))
+    socket.addEventListener('error', () =>
+      finish(() => reject(new Error('Document symbol socket failed'))),
     )
-    socket.addEventListener("close", () =>
-      finish(() => reject(new Error("Document symbol socket closed")))
+    socket.addEventListener('close', () =>
+      finish(() => reject(new Error('Document symbol socket closed'))),
     )
   })
 }
 
-function sendOpenDocument(
-  socket: EdenServerSocket,
-  path: string,
-  text: string | null | undefined
-) {
+function sendOpenDocument(socket: EdenServerSocket, path: string, text: string | null | undefined) {
   if (text === null || text === undefined) return
 
   socket.send(
     JSON.stringify({
-      jsonrpc: "2.0",
-      method: "textDocument/didOpen",
+      jsonrpc: '2.0',
+      method: 'textDocument/didOpen',
       params: {
         textDocument: {
           languageId: languageIdForPath(path),
@@ -137,13 +127,13 @@ function sendOpenDocument(
           version: 1,
         },
       },
-    })
+    }),
   )
 }
 
 function flattenDocumentSymbols(
   symbols: readonly DocumentSymbol[],
-  containerName: string | null = null
+  containerName: string | null = null,
 ): readonly FlatDocumentSymbol[] {
   return symbols.flatMap((symbol) => [
     {
@@ -168,33 +158,31 @@ function documentSymbolsFromResult(result: unknown): readonly DocumentSymbol[] {
 }
 
 function isDocumentSymbol(value: unknown): value is DocumentSymbol {
-  if (!value || typeof value !== "object") return false
-  if (!("name" in value) || typeof value.name !== "string") return false
-  if (!("kind" in value) || typeof value.kind !== "number") return false
-  if (!("range" in value) || !isRange(value.range)) return false
-  if (!("selectionRange" in value) || !isRange(value.selectionRange))
-    return false
+  if (!value || typeof value !== 'object') return false
+  if (!('name' in value) || typeof value.name !== 'string') return false
+  if (!('kind' in value) || typeof value.kind !== 'number') return false
+  if (!('range' in value) || !isRange(value.range)) return false
+  if (!('selectionRange' in value) || !isRange(value.selectionRange)) return false
 
-  return !("children" in value) || Array.isArray(value.children)
+  return !('children' in value) || Array.isArray(value.children)
 }
 
 function isRange(value: unknown): value is DocumentSymbolRange {
-  if (!value || typeof value !== "object") return false
-  if (!("start" in value) || !isPosition(value.start)) return false
-  return "end" in value && isPosition(value.end)
+  if (!value || typeof value !== 'object') return false
+  if (!('start' in value) || !isPosition(value.start)) return false
+  return 'end' in value && isPosition(value.end)
 }
 
 function isPosition(value: unknown) {
-  if (!value || typeof value !== "object") return false
-  if (!("line" in value) || typeof value.line !== "number") return false
-  return "character" in value && typeof value.character === "number"
+  if (!value || typeof value !== 'object') return false
+  if (!('line' in value) || typeof value.line !== 'number') return false
+  return 'character' in value && typeof value.character === 'number'
 }
 
 function parseJsonRpcResponse(value: unknown): JsonRpcResponse | null {
   try {
-    const parsed =
-      typeof value === "string" ? (JSON.parse(value) as unknown) : value
-    if (!parsed || typeof parsed !== "object") return null
+    const parsed = typeof value === 'string' ? (JSON.parse(value) as unknown) : value
+    if (!parsed || typeof parsed !== 'object') return null
 
     return parsed as JsonRpcResponse
   } catch {
@@ -203,15 +191,14 @@ function parseJsonRpcResponse(value: unknown): JsonRpcResponse | null {
 }
 
 function fileUriForPath(path: string) {
-  const normalized = path.replace(/^\/+/, "")
-  return `file:///${normalized.split("/").map(encodeURIComponent).join("/")}`
+  const normalized = path.replace(/^\/+/, '')
+  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }
 
 function languageIdForPath(path: string) {
-  if (path.endsWith(".tsx")) return "typescriptreact"
-  if (path.endsWith(".jsx")) return "javascriptreact"
-  if (path.endsWith(".js") || path.endsWith(".mjs") || path.endsWith(".cjs"))
-    return "javascript"
+  if (path.endsWith('.tsx')) return 'typescriptreact'
+  if (path.endsWith('.jsx')) return 'javascriptreact'
+  if (path.endsWith('.js') || path.endsWith('.mjs') || path.endsWith('.cjs')) return 'javascript'
 
-  return "typescript"
+  return 'typescript'
 }

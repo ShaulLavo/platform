@@ -1,10 +1,5 @@
-import {
-  ArrowBendUpLeftIcon,
-  FilePlusIcon,
-  MinusIcon,
-  PlusIcon,
-} from "@phosphor-icons/react"
-import type { ReactNode } from "react"
+import { ArrowBendUpLeftIcon, FilePlusIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react'
+import type { ReactNode } from 'react'
 
 import {
   useDiscardPathsMutation,
@@ -12,9 +7,9 @@ import {
   useOpenDiffDocument,
   useStagePathsMutation,
   useUnstagePathsMutation,
-} from "../hooks"
-import type { ChangeRow, PanelSection } from "../types"
-import { RowActionButton } from "./row-action-button"
+} from '../hooks'
+import type { ChangeRow, PanelSection } from '../types'
+import { RowActionButton } from './row-action-button'
 
 export function GroupActions({
   rows,
@@ -25,7 +20,7 @@ export function GroupActions({
 }) {
   const paths = rows.map((row) => row.file.path)
 
-  if (section === "staged") {
+  if (section === 'staged') {
     return <StagedGroupActions paths={paths} rows={rows} />
   }
 
@@ -46,7 +41,7 @@ function WorktreeGroupActions({
     <ActionCluster>
       <RowActionButton
         disabled={discard.isPending}
-        label="Discard all changes"
+        label='Discard all changes'
         onClick={() => discard.mutate()}
       >
         <ArrowBendUpLeftIcon />
@@ -54,7 +49,7 @@ function WorktreeGroupActions({
       <OpenAllDiffsButton rows={rows} />
       <RowActionButton
         disabled={stage.isPending}
-        label="Stage all changes"
+        label='Stage all changes'
         onClick={() => stage.mutate()}
       >
         <PlusIcon />
@@ -77,7 +72,7 @@ function StagedGroupActions({
     <ActionCluster>
       <RowActionButton
         disabled={discard.isPending}
-        label="Discard all staged changes"
+        label='Discard all staged changes'
         onClick={() => discard.mutate()}
       >
         <ArrowBendUpLeftIcon />
@@ -85,7 +80,7 @@ function StagedGroupActions({
       <OpenAllDiffsButton rows={rows} />
       <RowActionButton
         disabled={unstage.isPending}
-        label="Unstage all changes"
+        label='Unstage all changes'
         onClick={() => unstage.mutate()}
       >
         <MinusIcon />
@@ -98,11 +93,7 @@ function OpenAllDiffsButton({ rows }: { rows: readonly ChangeRow[] }) {
   const { openDiffs } = useOpenDiffDocument()
 
   return (
-    <RowActionButton
-      disabled={false}
-      label="Open all diffs"
-      onClick={() => void openDiffs(rows)}
-    >
+    <RowActionButton disabled={false} label='Open all diffs' onClick={() => void openDiffs(rows)}>
       <FilePlusIcon />
     </RowActionButton>
   )
@@ -110,7 +101,7 @@ function OpenAllDiffsButton({ rows }: { rows: readonly ChangeRow[] }) {
 
 function ActionCluster({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-none flex opacity-0 transition-opacity group-hover/group:pointer-events-auto group-hover/group:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+    <div className='pointer-events-none flex opacity-0 transition-opacity group-hover/group:pointer-events-auto group-hover/group:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100'>
       {children}
     </div>
   )

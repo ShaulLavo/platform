@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm"
-import { db } from "./client"
+import { sql } from 'drizzle-orm'
+import { db } from './client'
 
 export function migrateMetadataDatabase() {
   db.run(sql`

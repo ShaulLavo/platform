@@ -1,8 +1,5 @@
-import type { TextEdit } from "@editor/core"
-import type {
-  WorkspaceSearchMatch,
-  WorkspaceSearchQuery,
-} from "@workspace/contracts"
+import type { TextEdit } from '@editor/core'
+import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
 export type WorkspaceSearchReplacePlan = {
   appliedCount: number
@@ -20,7 +17,7 @@ export type WorkspaceSearchReplacementPreview = {
 
 type WorkspaceSearchReplaceQuery = Pick<
   WorkspaceSearchQuery,
-  "caseSensitive" | "matchMode" | "query" | "wholeWord"
+  'caseSensitive' | 'matchMode' | 'query' | 'wholeWord'
 >
 
 type TextLineRange = {
@@ -50,12 +47,7 @@ export function workspaceSearchReplacePlan({
   let skippedCount = 0
 
   for (const match of matches) {
-    const replacement = replacementForSearchMatch(
-      text,
-      match,
-      query,
-      replaceText
-    )
+    const replacement = replacementForSearchMatch(text, match, query, replaceText)
     if (!replacement) {
       skippedCount += 1
       continue
@@ -71,12 +63,9 @@ export function workspaceSearchReplacePlan({
   }
 }
 
-export function applyWorkspaceSearchReplaceEdits(
-  text: string,
-  edits: readonly TextEdit[]
-) {
+export function applyWorkspaceSearchReplaceEdits(text: string, edits: readonly TextEdit[]) {
   let next = text
-  const sorted = [...edits].sort(compareEditsDescending)
+  const sorted = edits.toSorted(compareEditsDescending)
 
   for (const edit of sorted) {
     next = `${next.slice(0, edit.from)}${edit.text}${next.slice(edit.to)}`
@@ -99,11 +88,7 @@ export function workspaceSearchReplacementPreview({
   const previewLine = replacementPreviewLine(match)
   if (!previewLine) return null
 
-  const candidate = replacementMatchInLine(
-    previewLine.line,
-    previewLine.match,
-    query
-  )
+  const candidate = replacementMatchInLine(previewLine.line, previewLine.match, query)
   if (!candidate) return null
 
   return {
@@ -119,7 +104,7 @@ function replacementForSearchMatch(
   text: string,
   match: WorkspaceSearchMatch,
   query: WorkspaceSearchReplaceQuery,
-  replaceText: string
+  replaceText: string,
 ): TextEdit | null {
   if (!isReplaceableSearchMatch(match)) return null
 
@@ -143,14 +128,13 @@ function replacementMatchInLine(
     endColumn: number
     line: number
   },
-  query: WorkspaceSearchReplaceQuery
+  query: WorkspaceSearchReplaceQuery,
 ): ReplacementMatch | null {
   const from = match.column - 1
   const to = match.endColumn - 1
   if (from < 0 || to <= from) return null
   if (to > line.text.length) return null
-  if (query.matchMode === "regex")
-    return regexReplacementMatch(line.text, from, to, query)
+  if (query.matchMode === 'regex') return regexReplacementMatch(line.text, from, to, query)
 
   return literalReplacementMatch(line.text, from, to, query)
 }
@@ -159,7 +143,7 @@ function literalReplacementMatch(
   line: string,
   from: number,
   to: number,
-  query: WorkspaceSearchReplaceQuery
+  query: WorkspaceSearchReplaceQuery,
 ): ReplacementMatch | null {
   const candidate = line.slice(from, to)
   if (!sameSearchText(candidate, query.query, query.caseSensitive)) return null
@@ -172,7 +156,7 @@ function regexReplacementMatch(
   line: string,
   from: number,
   to: number,
-  query: WorkspaceSearchReplaceQuery
+  query: WorkspaceSearchReplaceQuery,
 ): ReplacementMatch | null {
   const regex = searchRegex(query)
   if (!regex) return null
@@ -181,7 +165,7 @@ function regexReplacementMatch(
     if (!isExactRegexMatch(match, from, to)) continue
     if (!isWholeWordMatch(line, from, to, query.wholeWord)) return null
 
-    return { captures: [...match], from, to }
+    return { captures: Array.from(match), from, to }
   }
 
   return null
@@ -190,18 +174,15 @@ function regexReplacementMatch(
 function searchReplacementText(
   query: WorkspaceSearchReplaceQuery,
   replaceText: string,
-  captures: readonly string[] | null
+  captures: readonly string[] | null,
 ) {
-  if (query.matchMode !== "regex") return replaceText
+  if (query.matchMode !== 'regex') return replaceText
 
   return regexReplacementText(replaceText, captures)
 }
 
-function regexReplacementText(
-  replaceText: string,
-  captures: readonly string[] | null
-) {
-  let result = ""
+function regexReplacementText(replaceText: string, captures: readonly string[] | null) {
+  let result = ''
 
   for (let index = 0; index < replaceText.length; index += 1) {
     const escaped = replacementEscapeAt(replaceText, index)
@@ -225,27 +206,22 @@ function regexReplacementText(
 }
 
 function replacementEscapeAt(source: string, index: number) {
-  if (source[index] !== "\\") return null
+  if (source[index] !== '\\') return null
 
   const next = source[index + 1]
-  if (next === "n") return { nextIndex: index + 1, value: "\n" }
-  if (next === "t") return { nextIndex: index + 1, value: "\t" }
-  if (next === "\\") return { nextIndex: index + 1, value: "\\" }
+  if (next === 'n') return { nextIndex: index + 1, value: '\n' }
+  if (next === 't') return { nextIndex: index + 1, value: '\t' }
+  if (next === '\\') return { nextIndex: index + 1, value: '\\' }
 
   return null
 }
 
-function replacementCaptureAt(
-  source: string,
-  index: number,
-  captures: readonly string[] | null
-) {
-  if (source[index] !== "$") return null
+function replacementCaptureAt(source: string, index: number, captures: readonly string[] | null) {
+  if (source[index] !== '$') return null
 
   const next = source[index + 1]
-  if (next === "$") return { nextIndex: index + 1, value: "$" }
-  if (next === "&" || next === "0")
-    return { nextIndex: index + 1, value: captures?.[0] ?? "" }
+  if (next === '$') return { nextIndex: index + 1, value: '$' }
+  if (next === '&' || next === '0') return { nextIndex: index + 1, value: captures?.[0] ?? '' }
 
   return numberedReplacementCaptureAt(source, index, captures)
 }
@@ -253,22 +229,21 @@ function replacementCaptureAt(
 function numberedReplacementCaptureAt(
   source: string,
   index: number,
-  captures: readonly string[] | null
+  captures: readonly string[] | null,
 ) {
   const first = source[index + 1]
-  if (!first || !isDigit(first) || first === "0") return null
+  if (!first || !isDigit(first) || first === '0') return null
 
   const second = source[index + 2]
-  const twoDigit =
-    second && isDigit(second) ? Number(`${first}${second}`) : null
+  const twoDigit = second && isDigit(second) ? Number(`${first}${second}`) : null
   if (twoDigit !== null && captures?.[twoDigit] !== undefined) {
-    return { nextIndex: index + 2, value: captures[twoDigit] ?? "" }
+    return { nextIndex: index + 2, value: captures[twoDigit] ?? '' }
   }
 
   const oneDigit = Number(first)
   if (captures?.[oneDigit] === undefined) return null
 
-  return { nextIndex: index + 1, value: captures[oneDigit] ?? "" }
+  return { nextIndex: index + 1, value: captures[oneDigit] ?? '' }
 }
 
 function regexMatches(line: string, regex: RegExp) {
@@ -291,7 +266,7 @@ function isExactRegexMatch(match: RegExpExecArray, from: number, to: number) {
 
 function searchRegex(query: WorkspaceSearchReplaceQuery) {
   try {
-    return new RegExp(query.query, query.caseSensitive ? "gu" : "giu")
+    return new RegExp(query.query, query.caseSensitive ? 'gu' : 'giu')
   } catch {
     return null
   }
@@ -303,11 +278,7 @@ function advancePastEmptyMatch(regex: RegExp, text: string) {
   regex.lastIndex = current + (codePoint && codePoint > 0xffff ? 2 : 1)
 }
 
-function sameSearchText(
-  candidate: string,
-  query: string,
-  caseSensitive?: boolean
-) {
+function sameSearchText(candidate: string, query: string, caseSensitive?: boolean) {
   if (caseSensitive) return candidate === query
 
   return candidate.toLocaleLowerCase() === query.toLocaleLowerCase()
@@ -319,9 +290,9 @@ function textLineRange(text: string, row: number): TextLineRange | null {
   const start = rowStartOffset(text, row)
   if (start > text.length) return null
 
-  const newline = text.indexOf("\n", start)
+  const newline = text.indexOf('\n', start)
   const rawEnd = newline === -1 ? text.length : newline
-  const end = rawEnd > start && text[rawEnd - 1] === "\r" ? rawEnd - 1 : rawEnd
+  const end = rawEnd > start && text[rawEnd - 1] === '\r' ? rawEnd - 1 : rawEnd
 
   return {
     end,
@@ -334,7 +305,7 @@ function rowStartOffset(text: string, row: number) {
   let offset = 0
 
   for (let index = 0; index < row; index += 1) {
-    const nextLine = text.indexOf("\n", offset)
+    const nextLine = text.indexOf('\n', offset)
     if (nextLine === -1) return text.length + 1
 
     offset = nextLine + 1
@@ -343,18 +314,16 @@ function rowStartOffset(text: string, row: number) {
   return offset
 }
 
-function isReplaceableSearchMatch(
-  match: WorkspaceSearchMatch
-): match is WorkspaceSearchMatch & {
+function isReplaceableSearchMatch(match: WorkspaceSearchMatch): match is WorkspaceSearchMatch & {
   column: number
   endColumn: number
   line: number
 } {
-  if (match.kind !== "content") return false
-  if (typeof match.column !== "number") return false
-  if (typeof match.endColumn !== "number") return false
+  if (match.kind !== 'content') return false
+  if (typeof match.column !== 'number') return false
+  if (typeof match.endColumn !== 'number') return false
 
-  return typeof match.line === "number"
+  return typeof match.line === 'number'
 }
 
 function replacementPreviewLine(match: WorkspaceSearchMatch) {
@@ -382,7 +351,7 @@ function replacementPreviewLine(match: WorkspaceSearchMatch) {
 }
 
 function mergeAdjacentEdits(edits: readonly TextEdit[]) {
-  const sorted = [...edits].sort(compareEditsAscending)
+  const sorted = edits.toSorted(compareEditsAscending)
   const merged: TextEdit[] = []
 
   for (const edit of sorted) {
@@ -414,21 +383,14 @@ function compareEditsDescending(left: TextEdit, right: TextEdit) {
   return right.from - left.from || right.to - left.to
 }
 
-function isWholeWordMatch(
-  text: string,
-  start: number,
-  end: number,
-  wholeWord?: boolean
-) {
+function isWholeWordMatch(text: string, start: number, end: number, wholeWord?: boolean) {
   if (!wholeWord) return true
 
-  return (
-    isWordBoundary(text, start, "left") && isWordBoundary(text, end, "right")
-  )
+  return isWordBoundary(text, start, 'left') && isWordBoundary(text, end, 'right')
 }
 
-function isWordBoundary(text: string, offset: number, side: "left" | "right") {
-  if (side === "left") return !isWordCodePointBefore(text, offset)
+function isWordBoundary(text: string, offset: number, side: 'left' | 'right') {
+  if (side === 'left') return !isWordCodePointBefore(text, offset)
 
   return !isWordCodePointAt(text, offset)
 }

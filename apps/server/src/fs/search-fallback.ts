@@ -1,11 +1,11 @@
-import { createReadStream } from "node:fs"
-import { readdir } from "node:fs/promises"
-import path from "node:path"
+import { createReadStream } from 'node:fs'
+import { readdir } from 'node:fs/promises'
+import path from 'node:path'
 
-import type { WorkspaceSearchMatcher } from "@workspace/contracts"
+import type { WorkspaceSearchMatcher } from '@workspace/contracts'
 
-import type { EntryTypeFilter } from "./contracts"
-import { SEARCH_LINE_BUFFER_BYTES, streamLines } from "./search-line-decoder"
+import type { EntryTypeFilter } from './contracts'
+import { SEARCH_LINE_BUFFER_BYTES, streamLines } from './search-line-decoder'
 import {
   contentMatch,
   globMatchPath,
@@ -18,13 +18,8 @@ import {
   type FindContext,
   type FindMatch,
   type FindOptions,
-} from "./search-shared"
-import {
-  isDirectoryEntry,
-  isFileEntry,
-  matchesEntryType,
-  type FsEntryStats,
-} from "./stat"
+} from './search-shared'
+import { isDirectoryEntry, isFileEntry, matchesEntryType, type FsEntryStats } from './stat'
 
 export async function* searchWithFallback(context: FindContext) {
   const matches: FindMatch[] = []
@@ -34,7 +29,7 @@ export async function* searchWithFallback(context: FindContext) {
     context,
     context.options,
     matches,
-    1
+    1,
   )
 
   for (const match of matches) yield match
@@ -46,7 +41,7 @@ async function searchDirectory(
   context: FindContext,
   options: FindOptions,
   matches: FindMatch[],
-  depth: number
+  depth: number,
 ) {
   if (matches.length >= options.limit) return
 
@@ -60,7 +55,7 @@ async function searchDirectory(
       context,
       options,
       matches,
-      depth
+      depth,
     )
   }
 }
@@ -76,7 +71,7 @@ async function searchEntry(
   context: FindContext,
   options: FindOptions,
   matches: FindMatch[],
-  depth: number
+  depth: number,
 ) {
   const relativePath = joinRelative(relativeDirectory, name)
   if (isIgnoredSearchPath(context, relativePath)) return
@@ -86,25 +81,11 @@ async function searchEntry(
   if (!entryStats) return
 
   if (shouldSearchNames(options)) {
-    addNameMatch(
-      relativePath,
-      name,
-      entryStats,
-      context,
-      matches,
-      options.entryType
-    )
+    addNameMatch(relativePath, name, entryStats, context, matches, options.entryType)
   }
 
   if (isDirectoryEntry(entryStats)) {
-    await searchChildDirectory(
-      absolutePath,
-      relativePath,
-      context,
-      options,
-      matches,
-      depth
-    )
+    await searchChildDirectory(absolutePath, relativePath, context, options, matches, depth)
     return
   }
 
@@ -117,7 +98,7 @@ async function searchEntry(
     context.matcher,
     matches,
     options.limit,
-    options.maxContentBytes
+    options.maxContentBytes,
   )
 }
 
@@ -127,18 +108,11 @@ async function searchChildDirectory(
   context: FindContext,
   options: FindOptions,
   matches: FindMatch[],
-  depth: number
+  depth: number,
 ) {
   if (!canSearchChildren(depth, options.maxDepth)) return
 
-  await searchDirectory(
-    absolutePath,
-    relativePath,
-    context,
-    options,
-    matches,
-    depth + 1
-  )
+  await searchDirectory(absolutePath, relativePath, context, options, matches, depth + 1)
 }
 
 function canSearchChildren(depth: number, maxDepth?: number) {
@@ -151,11 +125,10 @@ function canSearchFileContent(
   relativePath: string,
   entryStats: FsEntryStats,
   context: FindContext,
-  options: FindOptions
+  options: FindOptions,
 ) {
   if (!matchesEntryType(entryStats, options.entryType)) return false
-  if (!context.matcher.pathMatches(globMatchPath(context, relativePath)))
-    return false
+  if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return false
   if (!options.includeContent) return false
   if (!isFileEntry(entryStats)) return false
   if (entryStats.targetStats.size > options.maxContentBytes) return false
@@ -169,7 +142,7 @@ function addNameMatch(
   entry: FsEntryStats,
   context: FindContext,
   matches: FindMatch[],
-  entryType?: EntryTypeFilter
+  entryType?: EntryTypeFilter,
 ) {
   if (!matchesEntryType(entry, entryType)) return
   if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return
@@ -177,9 +150,9 @@ function addNameMatch(
 
   matches.push({
     ...searchMatchMetadata(entry),
-    kind: "name",
+    kind: 'name',
     path: relativePath,
-    source: "disk",
+    source: 'disk',
     targetType: entry.targetType,
     type: entry.type,
   })
@@ -192,7 +165,7 @@ async function addContentMatch(
   matcher: WorkspaceSearchMatcher,
   matches: FindMatch[],
   limit: number,
-  maxContentBytes: number
+  maxContentBytes: number,
 ) {
   const stream = createReadStream(absolutePath, {
     highWaterMark: SEARCH_LINE_BUFFER_BYTES,
@@ -229,7 +202,7 @@ function addLineMatch(
   index: number,
   matcher: WorkspaceSearchMatcher,
   matches: FindMatch[],
-  limit: number
+  limit: number,
 ) {
   for (const match of matcher.lineMatches(line)) {
     if (matches.length >= limit) return
@@ -241,7 +214,7 @@ function addLineMatch(
         line,
         lineNumber: index + 1,
         relativePath,
-      })
+      }),
     )
   }
 }

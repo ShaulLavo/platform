@@ -1,12 +1,10 @@
-import { isRecord } from "@workspace/contracts"
-import ts from "typescript"
-import type * as lsp from "vscode-languageserver-protocol"
+import { isRecord } from '@workspace/contracts'
+import ts from 'typescript'
+import type * as lsp from 'vscode-languageserver-protocol'
 
-import type { SessionContext } from "../shared/context"
-
+import type { SessionContext } from '../shared/context'
 
 const TEXT_DOCUMENT_SYNC_INCREMENTAL = 2
-
 
 export function handleInitialize(ctx: SessionContext, params: unknown): lsp.InitializeResult {
   const options = initializationOptions(params)
@@ -26,12 +24,12 @@ export function handleInitialize(ctx: SessionContext, params: unknown): lsp.Init
       hoverProvider: true,
       definitionProvider: true,
       completionProvider: {
-        triggerCharacters: [".", '"', "'", "`", "/", "@", "<"],
+        triggerCharacters: ['.', '"', "'", '`', '/', '@', '<'],
         resolveProvider: false,
       },
       signatureHelpProvider: {
-        triggerCharacters: ["(", ",", "<"],
-        retriggerCharacters: [")"],
+        triggerCharacters: ['(', ',', '<'],
+        retriggerCharacters: [')'],
       },
       referencesProvider: true,
       documentSymbolProvider: true,
@@ -41,12 +39,11 @@ export function handleInitialize(ctx: SessionContext, params: unknown): lsp.Init
       codeActionProvider: true,
     },
     serverInfo: {
-      name: "platform-typescript-lsp",
+      name: 'platform-typescript-lsp',
       version: ts.version,
     },
   }
 }
-
 
 function initializationOptions(params: unknown): {
   compilerOptions?: ts.CompilerOptions
@@ -61,6 +58,6 @@ function initializationOptions(params: unknown): {
       ? (options.compilerOptions as ts.CompilerOptions)
       : undefined,
     diagnosticDelayMs:
-      typeof options.diagnosticDelayMs === "number" ? options.diagnosticDelayMs : undefined,
+      typeof options.diagnosticDelayMs === 'number' ? options.diagnosticDelayMs : undefined,
   }
 }

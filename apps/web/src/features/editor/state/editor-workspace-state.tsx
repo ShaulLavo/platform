@@ -1,20 +1,17 @@
-import type { PickedFsEntry } from "@/lib/file-system-types"
-import type { EditorDiffViewMode } from "@/features/editor/utils/diff-view-mode"
+import type { PickedFsEntry } from '@/lib/file-system-types'
+import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import {
   activeEditorPanePath,
   createEditorPaneLayoutForPaths,
   editorPaneOpenPaths,
   normalizeEditorPaneLayout,
   type EditorPaneLayout,
-} from "@/features/editor/state/editor-pane-state"
-import type {
-  CachedWorkspaceState,
-  WorkspacePanelTab,
-} from "@/lib/workspace-cache"
-import { readWorkspaceCache } from "@/lib/workspace-cache"
-import { createContext, useContext } from "react"
-import { useStore } from "zustand"
-import { createStore, type StoreApi } from "zustand/vanilla"
+} from '@/features/editor/state/editor-pane-state'
+import type { CachedWorkspaceState, WorkspacePanelTab } from '@/lib/workspace-cache'
+import { readWorkspaceCache } from '@/lib/workspace-cache'
+import { createContext, useContext } from 'react'
+import { useStore } from 'zustand'
+import { createStore, type StoreApi } from 'zustand/vanilla'
 
 type EditorWorkspaceStoreState = CachedWorkspaceState & {
   pickerOpen: boolean
@@ -35,33 +32,27 @@ type EditorWorkspaceStoreActions = {
   setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
 }
 
-export type EditorWorkspaceStore = EditorWorkspaceStoreState &
-  EditorWorkspaceStoreActions
+export type EditorWorkspaceStore = EditorWorkspaceStoreState & EditorWorkspaceStoreActions
 
 export type EditorWorkspaceStoreApi = StoreApi<EditorWorkspaceStore>
 
-export const EditorWorkspaceStateContext =
-  createContext<EditorWorkspaceStoreApi | null>(null)
+export const EditorWorkspaceStateContext = createContext<EditorWorkspaceStoreApi | null>(null)
 
 export function useEditorWorkspaceStoreApi() {
   const store = useContext(EditorWorkspaceStateContext)
   if (!store) {
-    throw new Error(
-      "useEditorWorkspaceStoreApi must be used within EditorStateProvider"
-    )
+    throw new Error('useEditorWorkspaceStoreApi must be used within EditorStateProvider')
   }
 
   return store
 }
 
-export function useEditorWorkspaceState<T>(
-  selector: (state: EditorWorkspaceStore) => T
-): T {
+export function useEditorWorkspaceState<T>(selector: (state: EditorWorkspaceStore) => T): T {
   return useStore(useEditorWorkspaceStoreApi(), selector)
 }
 
 export function createEditorWorkspaceStore(
-  initialState: CachedWorkspaceState = readWorkspaceCache()
+  initialState: CachedWorkspaceState = readWorkspaceCache(),
 ) {
   return createStore<EditorWorkspaceStore>()((set) => ({
     diffViewMode: initialState.diffViewMode,
@@ -88,7 +79,7 @@ export function createEditorWorkspaceStore(
         rootFolder,
         selectedFilePath: null,
         sidebarVisible: true,
-        workspacePanelTab: "files",
+        workspacePanelTab: 'files',
       })),
     setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
     setEditorPaneLayout: (editorPaneLayout) =>
@@ -100,40 +91,34 @@ export function createEditorWorkspaceStore(
         editorWorkspaceSelectionForPaneLayout(
           createEditorPaneLayoutForPaths(
             pathsWithSelectedPath(openFilePaths, state.selectedFilePath),
-            state.selectedFilePath
-          )
-        )
+            state.selectedFilePath,
+          ),
+        ),
       ),
     setPickerOpen: (pickerOpen) => set({ pickerOpen }),
-    setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) =>
-      set({ recentlyClosedEditorPaths }),
+    setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) => set({ recentlyClosedEditorPaths }),
     setSelectedFilePath: (selectedFilePath) =>
       set((state) =>
         editorWorkspaceSelectionForPaneLayout(
           createEditorPaneLayoutForPaths(
             pathsWithSelectedPath(state.openFilePaths, selectedFilePath),
-            selectedFilePath
-          )
-        )
+            selectedFilePath,
+          ),
+        ),
       ),
     setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
     setWorkspacePanelTab: (workspacePanelTab) => set({ workspacePanelTab }),
   }))
 }
 
-function pathsWithSelectedPath(
-  openFilePaths: readonly string[],
-  selectedFilePath: string | null
-) {
-  if (!selectedFilePath) return [...openFilePaths]
-  if (openFilePaths.includes(selectedFilePath)) return [...openFilePaths]
+function pathsWithSelectedPath(openFilePaths: readonly string[], selectedFilePath: string | null) {
+  if (!selectedFilePath) return openFilePaths
+  if (openFilePaths.includes(selectedFilePath)) return openFilePaths
 
-  return [...openFilePaths, selectedFilePath]
+  return openFilePaths.concat(selectedFilePath)
 }
 
-export function editorWorkspaceSelectionForPaneLayout(
-  editorPaneLayout: EditorPaneLayout
-) {
+export function editorWorkspaceSelectionForPaneLayout(editorPaneLayout: EditorPaneLayout) {
   const normalized = normalizeEditorPaneLayout(editorPaneLayout)
   return {
     editorPaneLayout: normalized,
