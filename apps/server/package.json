@@ -30,7 +30,6 @@
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "evlog": "^2.17.0",
-    "fast-ulid": "^1.2.2",
     "typescript": "^5.9.3",
     "valibot": "^1.4.0",
     "vscode-languageserver-protocol": "^3.17.5"

@@ -1,6 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import { lstat, realpath, rm, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { ulid } from 'fast-ulid'
 import { FsError, mapNodeError } from './errors'
 import type { WorkspacePaths } from './path'
 import { assertFile } from './stat'
@@ -61,7 +61,10 @@ async function statOptional(absolutePath: string) {
 }
 
 function temporaryPath(absolutePath: string) {
-  return path.join(path.dirname(absolutePath), `.${path.basename(absolutePath)}.${ulid()}.tmp`)
+  return path.join(
+    path.dirname(absolutePath),
+    `.${path.basename(absolutePath)}.${randomUUID()}.tmp`,
+  )
 }
 
 async function removeTempFile(tempPath: string | null) {

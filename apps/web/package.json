@@ -40,7 +40,6 @@
     "@workspace/contracts": "workspace:*",
     "@workspace/ui": "workspace:*",
     "evlog": "^2.17.0",
-    "fast-ulid": "^1.2.2",
     "ghostty-web": "^0.4.0",
     "js.foresight": "^3.5.0",
     "lexical": "^0.41.0",
