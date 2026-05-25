@@ -1,4 +1,5 @@
 export type ObservabilityEnvironment = 'development' | 'production' | 'test'
+export type ObservabilityPostHogMode = 'events' | 'logs'
 
 export type ObservabilityConfig = {
   batchIntervalMs: number
@@ -13,6 +14,14 @@ export type ObservabilityConfig = {
   maxBufferSize: number
   maxFiles: number
   maxSizePerFile: number
+  postHogApiKey: string
+  postHogDistinctId: string | undefined
+  postHogEnabled: boolean
+  postHogEventName: string
+  postHogHost: string
+  postHogMode: ObservabilityPostHogMode
+  postHogRetries: number
+  postHogTimeoutMs: number
   service: string
   slowMs: number
 }
@@ -25,33 +34,69 @@ const DEFAULT_LOG_DIR = '.evlog/logs'
 const DEFAULT_MAX_BUFFER_SIZE = 1_000
 const DEFAULT_MAX_FILES = 14
 const DEFAULT_MAX_SIZE_PER_FILE = 10_485_760
+const DEFAULT_POSTHOG_EVENT_NAME = 'platform_log'
+const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com'
+const DEFAULT_POSTHOG_RETRIES = 2
+const DEFAULT_POSTHOG_TIMEOUT_MS = 5_000
 const DEFAULT_SLOW_MS = 500
 
 export function observabilityConfigFromEnv(
   env: ObservabilityEnv = process.env,
 ): ObservabilityConfig {
   const environment = observabilityEnvironment(env)
-  const enabled = booleanFromEnv(env.FS_OBSERVABILITY_ENABLED) ?? environment !== 'test'
+  const enabled = booleanFromEnv(observabilityEnv(env, 'ENABLED')) ?? environment !== 'test'
+  const postHogApiKey = stringFromEnv(
+    observabilityEnv(env, 'POSTHOG_API_KEY'),
+    env.POSTHOG_API_KEY,
+    env.NUXT_POSTHOG_API_KEY,
+  )
   const production = environment === 'production'
 
   return {
     batchIntervalMs: positiveInteger(
-      env.FS_OBSERVABILITY_BATCH_INTERVAL_MS,
+      observabilityEnv(env, 'BATCH_INTERVAL_MS'),
       DEFAULT_BATCH_INTERVAL_MS,
     ),
-    batchSize: positiveInteger(env.FS_OBSERVABILITY_BATCH_SIZE, DEFAULT_BATCH_SIZE),
-    consoleEnabled: booleanFromEnv(env.FS_OBSERVABILITY_CONSOLE) ?? !production,
+    batchSize: positiveInteger(observabilityEnv(env, 'BATCH_SIZE'), DEFAULT_BATCH_SIZE),
+    consoleEnabled: booleanFromEnv(observabilityEnv(env, 'CONSOLE')) ?? !production,
     debugSampleRate: production ? 0 : 100,
     enabled,
     environment,
-    filePretty: booleanFromEnv(env.FS_OBSERVABILITY_FILE_PRETTY) ?? false,
-    infoSampleRate: percentage(env.FS_OBSERVABILITY_INFO_SAMPLE_RATE, production ? 25 : 100),
-    logDir: env.FS_OBSERVABILITY_DIR?.trim() || DEFAULT_LOG_DIR,
-    maxBufferSize: positiveInteger(env.FS_OBSERVABILITY_MAX_BUFFER_SIZE, DEFAULT_MAX_BUFFER_SIZE),
-    maxFiles: positiveInteger(env.FS_OBSERVABILITY_MAX_FILES, DEFAULT_MAX_FILES),
-    maxSizePerFile: positiveInteger(env.FS_OBSERVABILITY_MAX_SIZE_BYTES, DEFAULT_MAX_SIZE_PER_FILE),
-    service: env.FS_OBSERVABILITY_SERVICE?.trim() || 'platform',
-    slowMs: positiveInteger(env.FS_OBSERVABILITY_SLOW_MS, DEFAULT_SLOW_MS),
+    filePretty: booleanFromEnv(observabilityEnv(env, 'FILE_PRETTY')) ?? false,
+    infoSampleRate: percentage(observabilityEnv(env, 'INFO_SAMPLE_RATE'), production ? 25 : 100),
+    logDir: observabilityEnv(env, 'DIR')?.trim() || DEFAULT_LOG_DIR,
+    maxBufferSize: positiveInteger(
+      observabilityEnv(env, 'MAX_BUFFER_SIZE'),
+      DEFAULT_MAX_BUFFER_SIZE,
+    ),
+    maxFiles: positiveInteger(observabilityEnv(env, 'MAX_FILES'), DEFAULT_MAX_FILES),
+    maxSizePerFile: positiveInteger(
+      observabilityEnv(env, 'MAX_SIZE_BYTES'),
+      DEFAULT_MAX_SIZE_PER_FILE,
+    ),
+    postHogApiKey,
+    postHogDistinctId: optionalStringFromEnv(observabilityEnv(env, 'POSTHOG_DISTINCT_ID')),
+    postHogEnabled:
+      booleanFromEnv(observabilityEnv(env, 'POSTHOG_ENABLED')) ?? Boolean(postHogApiKey),
+    postHogEventName:
+      stringFromEnv(observabilityEnv(env, 'POSTHOG_EVENT_NAME')) || DEFAULT_POSTHOG_EVENT_NAME,
+    postHogHost:
+      stringFromEnv(
+        observabilityEnv(env, 'POSTHOG_HOST'),
+        env.POSTHOG_HOST,
+        env.NUXT_POSTHOG_HOST,
+      ) || DEFAULT_POSTHOG_HOST,
+    postHogMode: postHogMode(observabilityEnv(env, 'POSTHOG_MODE')),
+    postHogRetries: nonNegativeInteger(
+      observabilityEnv(env, 'POSTHOG_RETRIES'),
+      DEFAULT_POSTHOG_RETRIES,
+    ),
+    postHogTimeoutMs: positiveInteger(
+      observabilityEnv(env, 'POSTHOG_TIMEOUT_MS'),
+      DEFAULT_POSTHOG_TIMEOUT_MS,
+    ),
+    service: observabilityEnv(env, 'SERVICE')?.trim() || 'platform',
+    slowMs: positiveInteger(observabilityEnv(env, 'SLOW_MS'), DEFAULT_SLOW_MS),
   }
 }
 
@@ -72,11 +117,38 @@ function booleanFromEnv(value: string | undefined) {
   return undefined
 }
 
+function observabilityEnv(env: ObservabilityEnv, key: string) {
+  return env[`OBSERVABILITY_${key}`]
+}
+
+function stringFromEnv(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const trimmed = value?.trim()
+    if (trimmed) return trimmed
+  }
+
+  return ''
+}
+
+function optionalStringFromEnv(...values: Array<string | undefined>) {
+  const value = stringFromEnv(...values)
+  return value || undefined
+}
+
 function positiveInteger(value: string | undefined, fallback: number) {
   if (value === undefined) return fallback
 
   const parsed = Number.parseInt(value, 10)
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback
+
+  return parsed
+}
+
+function nonNegativeInteger(value: string | undefined, fallback: number) {
+  if (value === undefined) return fallback
+
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed < 0) return fallback
 
   return parsed
 }
@@ -88,4 +160,10 @@ function percentage(value: string | undefined, fallback: number) {
   if (!Number.isFinite(parsed)) return fallback
 
   return Math.max(0, Math.min(100, parsed))
+}
+
+function postHogMode(value: string | undefined): ObservabilityPostHogMode {
+  if (value?.trim().toLowerCase() === 'events') return 'events'
+
+  return 'logs'
 }

@@ -8,6 +8,8 @@ import {
 import type { OrchestrationEngine } from './engine'
 import { toSse } from '../sse'
 
+const ORCHESTRATION_STREAM_HEARTBEAT_MS = 15_000
+
 const threadDetailQuerySchema = v.object({
   threadId: threadIdSchema,
 })
@@ -38,6 +40,7 @@ export function orchestrationRoutes(engine: OrchestrationEngine) {
             engine.shellStream({ afterSequence: query.afterSequence, signal: request.signal }),
             {
               event: (event) => event.kind,
+              heartbeatMs: ORCHESTRATION_STREAM_HEARTBEAT_MS,
             },
           ),
         {
@@ -54,6 +57,7 @@ export function orchestrationRoutes(engine: OrchestrationEngine) {
             }),
             {
               event: (event) => event.kind,
+              heartbeatMs: ORCHESTRATION_STREAM_HEARTBEAT_MS,
             },
           ),
         {

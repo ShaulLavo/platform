@@ -4,7 +4,7 @@ import type { App } from 'server'
 
 const defaultServerUrl = 'http://localhost:3001'
 
-export const serverUrl = import.meta.env.VITE_FS_SERVER_URL ?? defaultServerUrl
+export const serverUrl = import.meta.env.VITE_SERVER_URL ?? defaultServerUrl
 
 export const client = treaty<App>(serverUrl)
 

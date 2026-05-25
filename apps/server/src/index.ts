@@ -14,7 +14,7 @@ const homeDirectory = homedir()
 const systemRoot = Bun.env.FS_SYSTEM_ROOT ?? path.parse(homeDirectory).root
 const workspaceRoot = Bun.env.FS_WORKSPACE_ROOT ?? systemRoot
 const watch = Bun.env.FS_WATCH !== 'false'
-const allowedOrigins = allowedOriginsFromEnv(Bun.env.FS_ALLOWED_ORIGINS)
+const allowedOrigins = allowedOriginsFromEnv(Bun.env.SERVER_ALLOWED_ORIGINS)
 const sessionToken = Bun.env.FS_SESSION_TOKEN
 const maxTextFileBytes = numberFromEnv(Bun.env.FS_DEV_MAX_TEXT_FILE_BYTES)
 const treeConcurrency = numberFromEnv(Bun.env.FS_TREE_CONCURRENCY)

@@ -13,6 +13,8 @@ import { parseEdenSseStream } from '@/lib/eden-events'
 import { rpcErrorMessage } from '@/lib/file-server'
 import { guardOrchestrationStreamSequence } from './orchestration-sequence'
 
+const ORCHESTRATION_STREAM_HEARTBEAT_EVENT = 'heartbeat'
+
 export type OrchestrationStreamInput = {
   afterSequence?: number
   signal?: AbortSignal
@@ -54,6 +56,8 @@ async function* openOrchestrationShellStream({
     logOrchestrationStream('orchestration.shell_stream.open', afterSequence, startedAt)
 
     for await (const event of parseEdenSseStream(response.data)) {
+      if (isOrchestrationHeartbeatEvent(event)) continue
+
       yield v.parse(orchestrationShellStreamItemSchema, event.data)
     }
   } catch (error) {
@@ -90,6 +94,8 @@ async function* openOrchestrationThreadDetailStream(
     )
 
     for await (const event of parseEdenSseStream(response.data)) {
+      if (isOrchestrationHeartbeatEvent(event)) continue
+
       yield v.parse(orchestrationThreadStreamItemSchema, event.data)
     }
   } catch (error) {
@@ -138,4 +144,8 @@ function streamErrorSummary(error: unknown) {
 
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100
+}
+
+function isOrchestrationHeartbeatEvent(event: { event: string }) {
+  return event.event === ORCHESTRATION_STREAM_HEARTBEAT_EVENT
 }

@@ -4,15 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsgo && vite build",
-    "start": "vite preview",
+    "dev": "bun --env-file=../../.env vite",
+    "build": "tsgo && bun --env-file=../../.env vite build",
+    "start": "bun --env-file=../../.env vite preview",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "test": "bun test",
     "typecheck": "tsgo --noEmit",
-    "preview": "vite preview"
+    "preview": "bun --env-file=../../.env vite preview"
   },
   "dependencies": {
     "@editor/core": "workspace:*",

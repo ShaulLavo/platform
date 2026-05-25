@@ -132,6 +132,25 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
+  it('keeps shell snapshot timestamps stable when projection is unchanged', async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+
+    const emptyFirst = engine.shellSnapshot()
+    const emptySecond = engine.shellSnapshot()
+
+    expect(emptySecond.updatedAt).toBe(emptyFirst.updatedAt)
+
+    await engine.dispatch(projectCreateCommand())
+
+    const projectedFirst = engine.shellSnapshot()
+    const projectedSecond = engine.shellSnapshot()
+
+    expect(projectedFirst.updatedAt).toBe(now)
+    expect(projectedSecond.updatedAt).toBe(projectedFirst.updatedAt)
+    fixture.close()
+  })
+
   it('catches projections up after events were already appended', () => {
     const fixture = createFixture()
     const store = new OrchestrationEventStore(fixture.database)

@@ -89,7 +89,7 @@ export class OrchestrationSnapshotQuery {
       projects,
       snapshotSequence: this.currentSequence(),
       threads,
-      updatedAt: new Date().toISOString(),
+      updatedAt: latestShellSnapshotUpdatedAt(projects, threads),
     })
   }
 
@@ -170,6 +170,35 @@ function projectToShell(project: OrchestrationProject) {
     updatedAt: project.updatedAt,
     workspaceRoot: project.workspaceRoot,
   }
+}
+
+type ShellSnapshotTimestampSource = {
+  session?: { updatedAt: string } | null
+  updatedAt: string
+}
+
+function latestShellSnapshotUpdatedAt(
+  projects: ShellSnapshotTimestampSource[],
+  threads: ShellSnapshotTimestampSource[],
+) {
+  let updatedAt = new Date(0).toISOString()
+
+  for (const project of projects) {
+    updatedAt = latestTimestamp(updatedAt, project.updatedAt)
+  }
+  for (const thread of threads) {
+    updatedAt = latestTimestamp(updatedAt, thread.updatedAt)
+    updatedAt = latestTimestamp(updatedAt, thread.session?.updatedAt)
+  }
+
+  return updatedAt
+}
+
+function latestTimestamp(current: string, candidate: string | null | undefined) {
+  if (!candidate) return current
+  if (candidate <= current) return current
+
+  return candidate
 }
 
 function shellThreadFromRow(row: ProjectionThreadRow, session?: ProjectionThreadSessionRow) {

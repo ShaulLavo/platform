@@ -9,9 +9,9 @@
     }
   },
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "server": "bun src/index.ts",
-    "start": "NODE_ENV=production bun dist/index.js",
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "server": "bun --env-file=../../.env src/index.ts",
+    "start": "NODE_ENV=production bun --env-file=../../.env dist/index.js",
     "build": "tsgo --noEmit && bun build src/index.ts --target bun --outdir dist --external @parcel/watcher",
     "test": "bun test",
     "lint": "oxlint .",

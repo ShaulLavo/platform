@@ -58,12 +58,66 @@ describe('observability runtime', () => {
     })
   })
 
+  it('fans persisted request events out to PostHog when configured', async () => {
+    const fetchRecorder = installFetchRecorder()
+
+    try {
+      const root = await fixtureRoot()
+      const logDir = await fixtureRoot()
+      initializeObservability(
+        testObservabilityEnv(logDir, {
+          OBSERVABILITY_POSTHOG_API_KEY: 'phc_test',
+          OBSERVABILITY_POSTHOG_DISTINCT_ID: 'platform-test',
+          OBSERVABILITY_POSTHOG_EVENT_NAME: 'platform_test_log',
+          OBSERVABILITY_POSTHOG_HOST: 'https://posthog.test',
+          OBSERVABILITY_POSTHOG_MODE: 'events',
+        }),
+      )
+      const app = testApp(root)
+
+      const response = await app.handle(
+        new Request('http://local/fs/tree?path=&depth=1', {
+          headers: trustedOriginHeaders(),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      await response.text()
+      const event = eventForPath(await flushedEvents(logDir), '/fs/tree')
+      const request = onlyPostHogRequest(fetchRecorder.requests)
+      const payload = JSON.parse(request.body)
+
+      expect(event).toMatchObject({
+        path: '/fs/tree',
+        source: 'be',
+        status: 200,
+      })
+      expect(request.url).toBe('https://posthog.test/batch/')
+      expect(payload).toMatchObject({
+        api_key: 'phc_test',
+        batch: [
+          {
+            distinct_id: 'platform-test',
+            event: 'platform_test_log',
+            properties: expect.objectContaining({
+              path: '/fs/tree',
+              service: 'platform',
+              source: 'be',
+            }),
+          },
+        ],
+      })
+    } finally {
+      fetchRecorder.restore()
+    }
+  })
+
   it('keeps failed requests even when info sampling is disabled', async () => {
     const root = await fixtureRoot()
     const logDir = await fixtureRoot()
     initializeObservability(
       testObservabilityEnv(logDir, {
-        FS_OBSERVABILITY_INFO_SAMPLE_RATE: '0',
+        OBSERVABILITY_INFO_SAMPLE_RATE: '0',
       }),
     )
     const app = testApp(root)
@@ -225,10 +279,10 @@ function testApp(root: string, options: { sessionToken?: string } = {}) {
 
 function testObservabilityEnv(logDir: string, overrides: Record<string, string> = {}) {
   return {
-    FS_OBSERVABILITY_CONSOLE: 'false',
-    FS_OBSERVABILITY_DIR: logDir,
-    FS_OBSERVABILITY_ENABLED: 'true',
-    FS_OBSERVABILITY_INFO_SAMPLE_RATE: '100',
+    OBSERVABILITY_CONSOLE: 'false',
+    OBSERVABILITY_DIR: logDir,
+    OBSERVABILITY_ENABLED: 'true',
+    OBSERVABILITY_INFO_SAMPLE_RATE: '100',
     NODE_ENV: 'production',
     ...overrides,
   }
@@ -309,4 +363,49 @@ async function runGit(root: string, args: readonly string[]) {
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+type FetchRecorder = {
+  requests: RecordedFetchRequest[]
+  restore: () => void
+}
+
+type RecordedFetchRequest = {
+  body: string
+  url: string
+}
+
+function installFetchRecorder(): FetchRecorder {
+  const originalFetch = globalThis.fetch
+  const requests: RecordedFetchRequest[] = []
+
+  globalThis.fetch = (async (input, init) => {
+    requests.push({
+      body: fetchBody(init),
+      url: fetchUrl(input),
+    })
+    return new Response('{}', { status: 200 })
+  }) as typeof fetch
+
+  return {
+    requests,
+    restore: () => {
+      globalThis.fetch = originalFetch
+    },
+  }
+}
+
+function onlyPostHogRequest(requests: readonly RecordedFetchRequest[]) {
+  expect(requests).toHaveLength(1)
+  return requests[0]
+}
+
+function fetchBody(init: RequestInit | undefined) {
+  return typeof init?.body === 'string' ? init.body : ''
+}
+
+function fetchUrl(input: RequestInfo | URL) {
+  if (input instanceof Request) return input.url
+
+  return String(input)
 }
