@@ -6,5 +6,5 @@ import { isObservabilityActive } from './runtime'
 export function applyObservability(app: Elysia) {
   if (!isObservabilityActive()) return
 
-  app.use(evlog())
+  app.use(evlog({ exclude: ['/_log/ingest'] }))
 }

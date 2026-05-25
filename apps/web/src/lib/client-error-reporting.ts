@@ -1,3 +1,5 @@
+import { logClientEvent } from './client-logging'
+
 type ClientErrorReport = {
   area: string
   operation: string
@@ -22,7 +24,19 @@ const sensitiveFields = new Set([
 ])
 
 export function reportClientError(report: ClientErrorReport): void {
-  console.error(`[client:${report.area}] ${report.operation}`, safeClientErrorReport(report))
+  const safeReport = safeClientErrorReport(report)
+
+  console.error(`[client:${report.area}] ${report.operation}`, safeReport)
+  logClientEvent({
+    action: 'client.error',
+    area: report.area,
+    category: report.category,
+    cause: safeReport.cause,
+    context: safeReport.context,
+    level: 'error',
+    message: report.message,
+    operation: report.operation,
+  })
 }
 
 function safeClientErrorReport(report: ClientErrorReport) {
@@ -59,7 +73,9 @@ function sanitizeRecord(record: Record<string, unknown>, seen: WeakSet<object>) 
   const safe: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(record)) {
-    safe[key] = sensitiveFields.has(key) ? redactedDiagnosticValue : sanitizeDiagnosticValue(value, seen)
+    safe[key] = sensitiveFields.has(key)
+      ? redactedDiagnosticValue
+      : sanitizeDiagnosticValue(value, seen)
   }
 
   return safe

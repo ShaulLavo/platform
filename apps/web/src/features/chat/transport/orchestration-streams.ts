@@ -8,6 +8,7 @@ import {
 import * as v from 'valibot'
 
 import { client } from '@/lib/client'
+import { logClientEvent } from '@/lib/client-logging'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { rpcErrorMessage } from '@/lib/file-server'
 import { guardOrchestrationStreamSequence } from './orchestration-sequence'
@@ -40,15 +41,27 @@ async function* openOrchestrationShellStream({
   afterSequence = 0,
   signal,
 }: OrchestrationStreamInput): AsyncGenerator<OrchestrationShellStreamItem> {
-  const response = await client.orchestration['shell-stream'].get({
-    fetch: { signal },
-    query: { afterSequence },
-  })
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
-  if (!response.data) throw new Error('Shell stream response did not include a stream.')
+  const startedAt = performance.now()
 
-  for await (const event of parseEdenSseStream(response.data)) {
-    yield v.parse(orchestrationShellStreamItemSchema, event.data)
+  try {
+    const response = await client.orchestration['shell-stream'].get({
+      fetch: { signal },
+      query: { afterSequence },
+    })
+    if (response.error) throw new Error(rpcErrorMessage(response.error))
+    if (!response.data) throw new Error('Shell stream response did not include a stream.')
+
+    logOrchestrationStream('orchestration.shell_stream.open', afterSequence, startedAt)
+
+    for await (const event of parseEdenSseStream(response.data)) {
+      yield v.parse(orchestrationShellStreamItemSchema, event.data)
+    }
+  } catch (error) {
+    if (!signal?.aborted) {
+      logOrchestrationStream('orchestration.shell_stream.error', afterSequence, startedAt, error)
+    }
+
+    throw error
   }
 }
 
@@ -56,14 +69,73 @@ async function* openOrchestrationThreadDetailStream(
   threadId: ThreadId,
   { afterSequence = 0, signal }: OrchestrationStreamInput,
 ): AsyncGenerator<OrchestrationThreadStreamItem> {
-  const response = await client.orchestration['thread-detail-stream'].get({
-    fetch: { signal },
-    query: { afterSequence, threadId },
-  })
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
-  if (!response.data) throw new Error('Thread detail stream response did not include a stream.')
+  const startedAt = performance.now()
 
-  for await (const event of parseEdenSseStream(response.data)) {
-    yield v.parse(orchestrationThreadStreamItemSchema, event.data)
+  try {
+    const response = await client.orchestration['thread-detail-stream'].get({
+      fetch: { signal },
+      query: { afterSequence, threadId },
+    })
+    if (response.error) throw new Error(rpcErrorMessage(response.error))
+    if (!response.data) throw new Error('Thread detail stream response did not include a stream.')
+
+    logOrchestrationStream(
+      'orchestration.thread_stream.open',
+      afterSequence,
+      startedAt,
+      undefined,
+      {
+        threadId,
+      },
+    )
+
+    for await (const event of parseEdenSseStream(response.data)) {
+      yield v.parse(orchestrationThreadStreamItemSchema, event.data)
+    }
+  } catch (error) {
+    if (!signal?.aborted) {
+      logOrchestrationStream('orchestration.thread_stream.error', afterSequence, startedAt, error, {
+        threadId,
+      })
+    }
+
+    throw error
   }
+}
+
+function logOrchestrationStream(
+  action: string,
+  afterSequence: number,
+  startedAt: number,
+  error?: unknown,
+  context: Record<string, unknown> = {},
+) {
+  logClientEvent({
+    action,
+    afterSequence,
+    area: 'orchestration',
+    durationMs: elapsedMs(startedAt),
+    error: error === undefined ? undefined : streamErrorSummary(error),
+    level: error === undefined ? 'info' : 'warn',
+    outcome: error === undefined ? 'ok' : 'error',
+    ...context,
+  })
+}
+
+function streamErrorSummary(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+    }
+  }
+
+  return {
+    message: String(error),
+    name: typeof error,
+  }
+}
+
+function elapsedMs(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100
 }

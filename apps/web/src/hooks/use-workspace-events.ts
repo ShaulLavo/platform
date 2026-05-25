@@ -11,6 +11,7 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { logClientEvent } from '@/lib/client-logging'
 import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
@@ -127,13 +128,31 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
 
     const controller = new AbortController()
     const queue = createEventQueue((events) => applyEvents(events, controller.signal, rootPath))
+    logClientEvent({
+      action: 'workspace.events.subscribe',
+      area: 'workspace-events',
+      path: rootPath,
+    })
 
     void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
       if (message.type === 'ready') {
+        logClientEvent({
+          action: 'workspace.events.ready',
+          area: 'workspace-events',
+          path: rootPath,
+        })
         applyReady(controller.signal, rootPath)
         return
       }
       if (message.type === 'error') {
+        logClientEvent({
+          action: 'workspace.events.error',
+          area: 'workspace-events',
+          code: message.code,
+          level: 'warn',
+          message: message.message,
+          path: rootPath,
+        })
         reportError(toClientError(message))
         return
       }
@@ -155,6 +174,11 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     return () => {
       controller.abort()
       queue.clear()
+      logClientEvent({
+        action: 'workspace.events.unsubscribe',
+        area: 'workspace-events',
+        path: rootPath,
+      })
     }
   }, [rootPath])
 
@@ -197,6 +221,8 @@ async function applyWorkspaceEvents({
     openFiles: openFileSnapshots(openFilePaths, dirtyFilePaths, getCachedEditorDocument),
     rootPath,
   })
+  logWorkspaceEventBatch(rootPath, events)
+  logWorkspaceEventPlan('workspace.events.plan', rootPath, plan)
 
   await applyWorkspaceEventPlan({
     conflictStore,
@@ -216,6 +242,39 @@ async function applyWorkspaceEvents({
 
 function invalidateGitState(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: gitKeys.all })
+}
+
+function logWorkspaceEventBatch(rootPath: string, events: readonly FilesystemEvent[]) {
+  if (!events.length) return
+
+  logClientEvent({
+    action: 'workspace.events.batch',
+    area: 'workspace-events',
+    eventCount: events.length,
+    eventTypes: filesystemEventCounts(events),
+    path: rootPath,
+  })
+}
+
+function logWorkspaceEventPlan(action: string, rootPath: string, plan: WorkspaceEventPlan) {
+  logClientEvent({
+    action,
+    area: 'workspace-events',
+    invalidatesGitState: plan.shouldInvalidateGitState,
+    openFileOperationCount: plan.openFileOperations.length,
+    path: rootPath,
+    treeOperationCount: plan.treeOperations.length,
+  })
+}
+
+function filesystemEventCounts(events: readonly FilesystemEvent[]) {
+  const counts: Record<string, number> = {}
+
+  for (const event of events) {
+    counts[event.type] = (counts[event.type] ?? 0) + 1
+  }
+
+  return counts
 }
 
 async function applyWorkspaceReady({
@@ -249,6 +308,7 @@ async function applyWorkspaceReady({
     openFiles: openFileSnapshots(openFilePaths, dirtyFilePaths, getCachedEditorDocument),
     rootPath,
   })
+  logWorkspaceEventPlan('workspace.events.ready_plan', rootPath, plan)
 
   await applyWorkspaceEventPlan({
     conflictStore,

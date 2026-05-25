@@ -23,6 +23,7 @@ import {
   type EditorDiffViewMode,
 } from '@/features/editor/utils/diff-view-mode'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { logClientEvent } from '@/lib/client-logging'
 import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { fetchFile } from '@/lib/file-server'
 import type { WorkspacePanelTab } from '@/lib/workspace-cache'
@@ -150,7 +151,15 @@ export function usePlatformCommandDispatch({
 
 function dispatchWorkspaceCommand(command: WorkspaceCommandId, context: WorkspaceCommandContext) {
   const handler = workspaceCommandHandlers[command]
-  return handler(context) ?? true
+  const handled = handler(context) ?? true
+
+  logClientEvent({
+    action: 'workspace.command',
+    area: 'command',
+    command,
+    handled,
+  })
+  return handled
 }
 
 const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandler> = {

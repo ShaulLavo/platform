@@ -53,6 +53,7 @@ describe('observability runtime', () => {
         ],
       },
       method: 'GET',
+      source: 'be',
       status: 200,
     })
   })
@@ -109,6 +110,52 @@ describe('observability runtime', () => {
     const text = await readLogText(logDir)
     expect(text).not.toContain(token)
     expect(text.toLowerCase()).not.toContain('authorization')
+  })
+
+  it('persists client logs in the shared file drain with a frontend source marker', async () => {
+    const root = await fixtureRoot()
+    const logDir = await fixtureRoot()
+    initializeObservability(testObservabilityEnv(logDir))
+    const app = testApp(root)
+
+    const response = await app.handle(
+      new Request('http://local/_log/ingest', {
+        body: JSON.stringify({
+          action: 'client.test',
+          area: 'test',
+          content: 'SECRET_CLIENT_CONTENT',
+          level: 'info',
+          path: 'src/app.ts',
+          service: 'platform-web',
+          timestamp: new Date().toISOString(),
+        }),
+        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(204)
+    await response.text()
+    const events = await flushedEvents(logDir)
+    const event = eventForAction(events, 'client.test')
+    const serialized = JSON.stringify(events)
+
+    expect(event).toMatchObject({
+      action: 'client.test',
+      area: 'test',
+      client: {
+        service: 'platform-web',
+        timestamp: expect.any(String),
+      },
+      ingest: {
+        method: 'POST',
+        path: '/_log/ingest',
+      },
+      service: 'platform',
+      source: 'fe',
+    })
+    expect(events.map((candidate) => candidate.path)).not.toContain('/_log/ingest')
+    expect(serialized).not.toContain('SECRET_CLIENT_CONTENT')
   })
 
   it('records git and search summaries without persisting payload contents', async () => {
@@ -219,6 +266,13 @@ async function readEvents(logDir: string) {
 function eventForPath(events: readonly WideEvent[], path: string) {
   const event = events.find((candidate) => candidate.path === path)
   if (!event) throw new Error(`missing observability event for ${path}`)
+
+  return event as WideEvent & Record<string, unknown>
+}
+
+function eventForAction(events: readonly WideEvent[], action: string) {
+  const event = events.find((candidate) => candidate.action === action)
+  if (!event) throw new Error(`missing observability event for ${action}`)
 
   return event as WideEvent & Record<string, unknown>
 }

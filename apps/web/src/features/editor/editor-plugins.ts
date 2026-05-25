@@ -1,5 +1,7 @@
 import {
+  createEditorLoggingPlugin,
   createMergeConflictPlugin,
+  type EditorLogEvent,
   type EditorPlugin,
   type EditorSyntaxProvider,
 } from '@editor/core'
@@ -22,6 +24,7 @@ import type { LanguageServerPlugin } from '@editor/language-server'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { logClientEvent } from '@/lib/client-logging'
 
 const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
   createElement(CaretDownIcon, {
@@ -32,6 +35,9 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
 )
 
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
+const PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN = createEditorLoggingPlugin(logEditorEventToConsole, {
+  name: 'platform.editor-logging',
+})
 
 export type EditorSyntaxHighlightingOptions = {
   readonly highlighter?: 'tree-sitter'
@@ -57,6 +63,7 @@ export function createCriticalEditorCorePlugins(
     }),
     createEditorFindPlugin(),
     createMergeConflictPlugin(),
+    createPlatformEditorConsoleLoggingPlugin(),
   ]
 }
 
@@ -127,4 +134,16 @@ function createFoldChevronIcon({ document }: FoldGutterIconContext): SVGSVGEleme
   const template = document.createElement('template')
   template.innerHTML = FOLD_CHEVRON_ICON_MARKUP
   return template.content.firstElementChild as SVGSVGElement
+}
+
+export function createPlatformEditorConsoleLoggingPlugin(): EditorPlugin {
+  return PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN
+}
+
+function logEditorEventToConsole(event: EditorLogEvent): void {
+  console.log('[editor]', event.action, event)
+  logClientEvent({
+    ...event,
+    area: 'editor',
+  })
 }

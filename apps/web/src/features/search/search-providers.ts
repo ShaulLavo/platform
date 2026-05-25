@@ -11,6 +11,7 @@ import {
 
 import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
 import { client } from '@/lib/client'
+import { logClientEvent } from '@/lib/client-logging'
 import { compareSearchPaths } from '@/features/search/search-sort'
 
 const SEARCH_PREVIEW_CONTEXT_CHARS = 80
@@ -118,15 +119,24 @@ export class CompositeSearchProvider implements SearchProvider {
     signal?: AbortSignal,
   ): AsyncGenerator<WorkspaceSearchEvent> {
     const state = createCompositeState()
+    const startedAt = performance.now()
 
-    yield* this.searchOpenBuffers(query, state, signal)
-    if (shouldStopCompositeSearch(query, state, signal)) {
-      yield doneEvent(query, state.emittedCount, true)
-      return
+    try {
+      yield* this.searchOpenBuffers(query, state, signal)
+      if (shouldStopCompositeSearch(query, state, signal)) {
+        logSearchCompleted(query, state, true, startedAt)
+        yield doneEvent(query, state.emittedCount, true)
+        return
+      }
+
+      yield* this.searchDisk(query, state, signal)
+      logSearchCompleted(query, state, state.truncated, startedAt)
+      yield doneEvent(query, state.emittedCount, state.truncated)
+    } catch (error) {
+      if (!signal?.aborted) logSearchFailed(query, error, startedAt)
+
+      throw error
     }
-
-    yield* this.searchDisk(query, state, signal)
-    yield doneEvent(query, state.emittedCount, state.truncated)
   }
 
   private async *searchOpenBuffers(
@@ -163,6 +173,61 @@ type CompositeSearchState = {
 
 function createCompositeState(): CompositeSearchState {
   return { emittedCount: 0, truncated: false }
+}
+
+function logSearchCompleted(
+  query: WorkspaceSearchQuery,
+  state: CompositeSearchState,
+  truncated: boolean,
+  startedAt: number,
+) {
+  logClientEvent({
+    ...searchLogContext(query, startedAt),
+    action: 'search.query',
+    matchCount: state.emittedCount,
+    outcome: 'ok',
+    truncated,
+  })
+}
+
+function logSearchFailed(query: WorkspaceSearchQuery, error: unknown, startedAt: number) {
+  logClientEvent({
+    ...searchLogContext(query, startedAt),
+    action: 'search.query',
+    error: searchErrorSummary(error),
+    level: 'warn',
+    outcome: 'error',
+  })
+}
+
+function searchLogContext(query: WorkspaceSearchQuery, startedAt: number) {
+  return {
+    area: 'search',
+    durationMs: elapsedMs(startedAt),
+    includeContent: query.includeContent === true,
+    includeNames: query.includeNames ?? true,
+    matchMode: query.matchMode ?? 'literal',
+    path: query.path,
+    queryLength: query.query.length,
+  }
+}
+
+function searchErrorSummary(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+    }
+  }
+
+  return {
+    message: String(error),
+    name: typeof error,
+  }
+}
+
+function elapsedMs(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100
 }
 
 function shouldStopCompositeSearch(

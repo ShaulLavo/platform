@@ -11,6 +11,7 @@ import { lspMatchQuerySchema, lspRouteMatch, lspRoutes } from './lsp/routes'
 import {
   applyObservability,
   flushObservability,
+  observabilityRoutes,
   recordRequestError,
   recordRequestContext,
 } from './observability'
@@ -53,6 +54,7 @@ export function createApp(options: AppOptions) {
     )
     .onError(({ code, error, set }) => appErrorPayload(code, error, set))
     .onBeforeHandle(authGuard(auth))
+    .use(observabilityRoutes())
     .get('/health', () => ({
       ok: true,
       authMode: auth.mode,

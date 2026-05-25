@@ -1,4 +1,4 @@
-import { initLogger, log, type DrainContext } from 'evlog'
+import { definePlugin, initLogger, log, type DrainContext } from 'evlog'
 import { createFsDrain } from 'evlog/fs'
 import { createDrainPipeline, type PipelineDrainFn } from 'evlog/pipeline'
 
@@ -47,6 +47,7 @@ export function initializeObservability(env: ObservabilityEnv = process.env) {
     },
     silent: !config.consoleEnabled,
     stringify: true,
+    plugins: [serverSourcePlugin],
   })
 
   runtime = { config, drain }
@@ -131,6 +132,7 @@ function createFileDrain(config: ObservabilityConfig) {
 
 function shouldPersistEvent(context: DrainContext) {
   if (isRoutineHealthEvent(context)) return false
+  if (isRoutineClientLogIngestEvent(context)) return false
 
   return true
 }
@@ -142,6 +144,23 @@ function isRoutineHealthEvent(context: DrainContext) {
 
   return event.status < 400
 }
+
+function isRoutineClientLogIngestEvent(context: DrainContext) {
+  const event = context.event as Record<string, unknown>
+  if (event.path !== '/_log/ingest') return false
+  if (typeof event.status !== 'number') return false
+
+  return event.status < 400
+}
+
+const serverSourcePlugin = definePlugin({
+  name: 'platform.server-source',
+  enrich({ event }) {
+    if (typeof event.source === 'string') return
+
+    event.source = 'be'
+  },
+})
 
 function writeDiagnostic(message: string) {
   process.stderr.write(`${message}\n`)
