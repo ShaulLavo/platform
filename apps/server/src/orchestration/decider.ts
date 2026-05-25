@@ -4,6 +4,7 @@ import {
   eventIdSchema,
   type OrchestrationCommand,
 } from './schemas'
+import { ulid } from 'fast-ulid'
 import * as v from 'valibot'
 import type { PendingOrchestrationEvent } from './event-store'
 import { requireProject, requireThread, type OrchestrationReadModel } from './read-model'
@@ -247,7 +248,7 @@ function event<Type extends PendingOrchestrationEvent['type']>(
     causationEventId: null,
     commandId: command.commandId,
     correlationId: command.commandId,
-    eventId: v.parse(eventIdSchema, `event-${crypto.randomUUID()}`),
+    eventId: v.parse(eventIdSchema, `event-${ulid()}`),
     metadata: {},
     occurredAt: eventTimestamp(command),
     payload,

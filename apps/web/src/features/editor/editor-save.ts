@@ -57,7 +57,7 @@ export async function saveCachedEditorDocument(
   queryClient: QueryClient,
   document: CachedEditorDocument,
 ) {
-  const content = document.session.getText()
+  const content = document.session.materializeFullText()
   const entry = await writeFileContent(document.path, content, document.revision)
   const file = fileResultForSavedDocument(document.path, content, entry)
   documentStore.getState().markCachedEditorDocumentClean(document.path, entry.mtimeMs)

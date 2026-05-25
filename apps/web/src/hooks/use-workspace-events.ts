@@ -587,7 +587,7 @@ async function applyRenamedConflictOperation(
 }
 
 function cachedDocumentText(path: string, context: WorkspaceConflictContext) {
-  return context.getCachedEditorDocument(path)?.session.getText() ?? null
+  return context.getCachedEditorDocument(path)?.session.materializeFullText() ?? null
 }
 
 async function fetchFileWithRetry(path: string, signal: AbortSignal) {

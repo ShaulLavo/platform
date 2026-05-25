@@ -3,6 +3,11 @@ import {
   renameDirtyFilePath,
   updateDirtyFilePaths,
 } from '@/features/editor/state/editor-dirty-paths'
+import {
+  contentRevisionForText,
+  contentRevisionForTextSnapshot,
+  textSnapshotEqualsText,
+} from '@/features/editor/utils/text-snapshot'
 import type { FileResult } from '@/lib/file-system-types'
 import {
   createDocumentSession,
@@ -197,7 +202,7 @@ export function createEditorDocumentStore() {
         ...freshCachedEditorDocument(
           {
             ...file,
-            content: canonical.session.getText(),
+            content: tabDocumentContent(canonical, file.content),
             mtimeMs: canonical.revision,
           },
           undefined,
@@ -298,7 +303,7 @@ export function createEditorDocumentStore() {
       if (!cached) return false
 
       cached.session.markClean()
-      const contentRevision = contentRevisionForText(cached.session.getText())
+      const contentRevision = contentRevisionForTextSnapshot(cached.session.getTextSnapshot())
       set((state) => ({
         documentContentRevisions:
           path in state.documentContentRevisions
@@ -449,12 +454,20 @@ function freshCachedEditorDocument(
   }
 }
 
+function tabDocumentContent(canonical: CachedEditorDocument, fileContent: string) {
+  if (!canonical.session.isDirty()) return fileContent
+
+  return canonical.session.materializeFullText()
+}
+
 function replacementCachedEditorDocument(
   file: FileResult,
   cached: CachedEditorDocument | undefined,
 ): CachedEditorDocument {
   if (!cached) return freshCachedEditorDocument(file, cached)
-  if (cached.session.getText() !== file.content) return freshCachedEditorDocument(file, cached)
+  if (!textSnapshotEqualsText(cached.session.getTextSnapshot(), file.content)) {
+    return freshCachedEditorDocument(file, cached)
+  }
 
   cached.session.markClean()
   if (cached.revision === file.mtimeMs) return cached
@@ -471,7 +484,9 @@ function replacementContentRevision(
   current: string | undefined,
 ) {
   if (!cached) return contentRevisionForText(file.content)
-  if (cached.session.getText() !== file.content) return contentRevisionForText(file.content)
+  if (!textSnapshotEqualsText(cached.session.getTextSnapshot(), file.content)) {
+    return contentRevisionForText(file.content)
+  }
   if (!cached.session.isDirty() && current) return current
 
   return contentRevisionForText(file.content)
@@ -544,7 +559,7 @@ function syncSessionChange(session: DocumentSession, sync: SessionSync) {
   if (sync.edits?.length) {
     session.applyEdits(sync.edits, { history: 'skip' })
     if (sync.text === undefined) return
-    if (session.getText() === sync.text) return
+    if (textSnapshotEqualsText(session.getTextSnapshot(), sync.text)) return
   }
 
   if (sync.text === undefined) return
@@ -598,7 +613,7 @@ function markTabDocumentsCleanForPath(
 }
 
 function syncSessionText(session: DocumentSession, text: string) {
-  if (session.getText() === text) return
+  if (textSnapshotEqualsText(session.getTextSnapshot(), text)) return
 
   session.applyEdits([fullDocumentTextEdit(session, text)], {
     history: 'skip',
@@ -671,17 +686,6 @@ function scrollPositionsEqual(
   if (!current) return false
 
   return current.left === next.left && current.top === next.top
-}
-
-function contentRevisionForText(text: string) {
-  let hash = 0x811c9dc5
-
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
-  }
-
-  return `h:${text.length.toString(36)}:${(hash >>> 0).toString(36)}`
 }
 
 function editedContentRevision(revision: number) {

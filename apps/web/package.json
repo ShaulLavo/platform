@@ -39,6 +39,7 @@
     "@tanstack/react-virtual": "3.13.24",
     "@workspace/contracts": "workspace:*",
     "@workspace/ui": "workspace:*",
+    "fast-ulid": "^1.2.1",
     "ghostty-web": "^0.4.0",
     "js.foresight": "^3.5.0",
     "lexical": "^0.41.0",

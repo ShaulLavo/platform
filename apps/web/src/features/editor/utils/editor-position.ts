@@ -44,7 +44,7 @@ export function textLineAt(textSnapshot: TextSnapshot, lineIndex: number) {
   if (state.result !== null) return state.result
   if (state.remainingLines !== 0) return null
 
-  return textSnapshot.getTextInRange(state.lineStart)
+  return textSnapshot.readRange(state.lineStart, textSnapshot.length)
 }
 
 function offsetForPosition(
@@ -91,9 +91,7 @@ function visitLineChunk(
     if (nextLine === -1) return
 
     if (state.remainingLines === 0) {
-      state.result = textSnapshot
-        .getTextInRange(state.lineStart, start + nextLine)
-        .replace(/\r$/u, '')
+      state.result = textSnapshot.readRange(state.lineStart, start + nextLine).replace(/\r$/u, '')
       return
     }
 

@@ -227,7 +227,9 @@ export function CommandPalette({
         path: selectedFileBackedPath ?? '',
         rootPath: rootFolder?.path ?? '',
         signal,
-        text: selectedDocument?.session.getText() ?? null,
+        text: selectedDocument?.session.isDirty()
+          ? selectedDocument.session.materializeFullText()
+          : null,
       }),
     queryKey: documentSymbolKeys.document(
       rootFolder?.path ?? '',

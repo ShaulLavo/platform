@@ -22,6 +22,7 @@ import {
   type ThreadTurnStartCommand,
   type TurnId,
 } from '@workspace/contracts'
+import { ulid } from 'fast-ulid'
 import * as v from 'valibot'
 
 const DEFAULT_CODEX_MODEL = 'gpt-5.5'
@@ -228,19 +229,19 @@ export function threadTitleFromPrompt(prompt: string) {
 }
 
 export function createCommandId(): CommandId {
-  return v.parse(commandIdSchema, `command-${crypto.randomUUID()}`)
+  return v.parse(commandIdSchema, `command-${ulid()}`)
 }
 
 function createThreadId(): ThreadId {
-  return v.parse(threadIdSchema, `thread-${crypto.randomUUID()}`)
+  return v.parse(threadIdSchema, `thread-${ulid()}`)
 }
 
 function createMessageId(): MessageId {
-  return v.parse(messageIdSchema, `message-${crypto.randomUUID()}`)
+  return v.parse(messageIdSchema, `message-${ulid()}`)
 }
 
 function createTurnId(): TurnId {
-  return v.parse(turnIdSchema, `turn-${crypto.randomUUID()}`)
+  return v.parse(turnIdSchema, `turn-${ulid()}`)
 }
 
 function cleanThreadTitle(value: string | undefined) {

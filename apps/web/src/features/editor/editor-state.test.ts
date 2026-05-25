@@ -270,7 +270,7 @@ describe('editor document store', () => {
     const replaced = store.getState().getCachedEditorDocument('src/file.ts')
 
     expect(result.wasDirty).toBe(true)
-    expect(replaced?.session.getText()).toBe('remote')
+    expect(replaced?.session.materializeFullText()).toBe('remote')
     expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(false)
   })
 
@@ -361,14 +361,28 @@ describe('editor document store', () => {
     const syncedTabA = store.getState().getCachedEditorTabDocument('tab-a')
     const syncedTabB = store.getState().getCachedEditorTabDocument('tab-b')
 
-    expect(store.getState().getCachedEditorDocument('src/file.ts')?.session.getText()).toBe('abc!')
-    expect(syncedTabA?.session.getText()).toBe('abc!')
-    expect(syncedTabB?.session.getText()).toBe('abc!')
+    expect(
+      store.getState().getCachedEditorDocument('src/file.ts')?.session.materializeFullText(),
+    ).toBe('abc!')
+    expect(syncedTabA?.session.materializeFullText()).toBe('abc!')
+    expect(syncedTabB?.session.materializeFullText()).toBe('abc!')
     expect(syncedTabA?.session.canUndo()).toBe(true)
     expect(syncedTabB?.session.canUndo()).toBe(false)
     expect(syncedTabA?.scrollPosition).toEqual({ left: 4, top: 8 })
     expect(syncedTabB?.scrollPosition).toBeUndefined()
     expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(true)
+  })
+
+  it('creates clean tab sessions without materializing canonical text', () => {
+    const store = createEditorDocumentStore()
+    const canonical = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'abc'))
+    canonical.session.materializeFullText = () => {
+      throw new Error('clean tab session should use file content')
+    }
+
+    const tab = store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
+
+    expect(tab.session.getTextSnapshot().readRange(0, tab.session.getSnapshot().length)).toBe('abc')
   })
 
   it('syncs tab document text from canonical edits without replaying the source', () => {
@@ -382,8 +396,10 @@ describe('editor document store', () => {
       source: 'canonical',
     })
 
-    expect(canonical.session.getText()).toBe('abc!')
-    expect(store.getState().getCachedEditorTabDocument('tab-a')?.session.getText()).toBe('abc!')
+    expect(canonical.session.materializeFullText()).toBe('abc!')
+    expect(
+      store.getState().getCachedEditorTabDocument('tab-a')?.session.materializeFullText(),
+    ).toBe('abc!')
   })
 
   it('tracks content revisions by cached document path', () => {

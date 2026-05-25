@@ -121,7 +121,7 @@ function replaceCachedDocument(
     matches,
     query,
     replaceText,
-    text: document.session.getText(),
+    text: document.session.getTextSnapshot(),
   })
   if (plan.edits.length === 0) {
     return skippedPathResult(plan.skippedCount)

@@ -252,7 +252,7 @@ function remoteFileResult(conflict: FilesystemConflict): FileResult {
 }
 
 function localConflictText(path: string, context: WorkspaceConflictContext) {
-  return context.getCachedEditorDocument(path)?.session.getText() ?? ''
+  return context.getCachedEditorDocument(path)?.session.materializeFullText() ?? ''
 }
 
 function createConflictId() {

@@ -226,8 +226,8 @@ describe('affectedDirectoryPaths', () => {
   it('does not refresh tree directories for temporary save files', () => {
     const paths = affectedDirectoryPaths(
       [
-        { type: 'created', path: 'repo/.a.ts.uuid.tmp' },
-        { type: 'deleted', path: 'repo/.a.ts.uuid.tmp' },
+        { type: 'created', path: 'repo/.a.ts.ulid.tmp' },
+        { type: 'deleted', path: 'repo/.a.ts.ulid.tmp' },
       ],
       'repo',
     )

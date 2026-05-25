@@ -1,4 +1,6 @@
+import { textSnapshotLineRange } from '@/features/editor/utils/text-snapshot'
 import type { TextEdit } from '@editor/core'
+import type { TextSnapshot } from '@editor/core'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
 export type WorkspaceSearchReplacePlan = {
@@ -26,6 +28,8 @@ type TextLineRange = {
   text: string
 }
 
+type SearchReplaceText = string | TextSnapshot
+
 type ReplacementMatch = {
   captures: readonly string[] | null
   from: number
@@ -41,7 +45,7 @@ export function workspaceSearchReplacePlan({
   matches: readonly WorkspaceSearchMatch[]
   query: WorkspaceSearchQuery
   replaceText: string
-  text: string
+  text: SearchReplaceText
 }): WorkspaceSearchReplacePlan {
   const edits: TextEdit[] = []
   let skippedCount = 0
@@ -101,7 +105,7 @@ export function workspaceSearchReplacementPreview({
 }
 
 function replacementForSearchMatch(
-  text: string,
+  text: SearchReplaceText,
   match: WorkspaceSearchMatch,
   query: WorkspaceSearchReplaceQuery,
   replaceText: string,
@@ -284,7 +288,8 @@ function sameSearchText(candidate: string, query: string, caseSensitive?: boolea
   return candidate.toLocaleLowerCase() === query.toLocaleLowerCase()
 }
 
-function textLineRange(text: string, row: number): TextLineRange | null {
+function textLineRange(text: SearchReplaceText, row: number): TextLineRange | null {
+  if (typeof text !== 'string') return textSnapshotLineRange(text, row)
   if (row < 0) return null
 
   const start = rowStartOffset(text, row)

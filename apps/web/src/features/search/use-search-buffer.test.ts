@@ -70,7 +70,7 @@ describe('workspace search buffer query', () => {
 describe('workspace search dirty revision key', () => {
   it('tracks dirty document revisions without reading document text', () => {
     const dirtySession = createDocumentSession('local dirty text')
-    dirtySession.getText = () => {
+    dirtySession.materializeFullText = () => {
       throw new Error('dirty key should not read document text')
     }
 

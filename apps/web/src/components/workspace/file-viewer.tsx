@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MutableRefObject,
   type RefObject,
 } from 'react'
 
@@ -810,10 +809,10 @@ function resolveConflictEditorSnapshot(
   conflictDiff: NonNullable<ReturnType<typeof parseConflictDiffDocumentId>>,
   textSnapshot: TextSnapshot,
   context: ConflictEditorResolutionContext & {
-    resolvingConflictIds: MutableRefObject<Set<string>>
+    resolvingConflictIds: RefObject<Set<string>>
   },
 ) {
-  const text = textSnapshot.getText()
+  const text = textSnapshot.materializeFullText()
   if (parseMergeConflicts(text).length > 0) return
 
   const conflict = context.conflictStore.getState().conflicts[conflictDiff.conflictId]

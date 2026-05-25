@@ -616,7 +616,7 @@ function dirtySearchDocuments(
 
     dirtyDocuments.push({
       path,
-      text: document.session.getText(),
+      text: document.session.materializeFullText(),
     })
   }
 

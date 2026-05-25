@@ -20,6 +20,9 @@ const QUERY: WorkspaceSearchQuery = {
 describe('workspace search replacement runner', () => {
   it('applies replacements to cached editor memory and marks it dirty', async () => {
     const document = cachedDocument('repo/src/app.ts', 'needle')
+    document.session.materializeFullText = () => {
+      throw new Error('cached replacement should not materialize full text')
+    }
     const dirtyPaths: string[] = []
     const result = await replaceWorkspaceSearchMatches({
       context: testContext({
@@ -31,7 +34,9 @@ describe('workspace search replacement runner', () => {
       replaceText: 'pin',
     })
 
-    expect(document.session.getText()).toBe('pin')
+    expect(
+      document.session.getTextSnapshot().readRange(0, document.session.getSnapshot().length),
+    ).toBe('pin')
     expect(document.session.isDirty()).toBe(true)
     expect(dirtyPaths).toEqual([document.path])
     expect(result).toEqual({
