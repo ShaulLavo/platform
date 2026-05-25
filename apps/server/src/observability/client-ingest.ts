@@ -41,23 +41,49 @@ const sensitiveFields = new Set([
 ])
 
 export function recordClientLog(payload: unknown, request: Request): ClientLogIngestResult {
-  const event = clientLogEvent(payload, request)
-  if (!event) return { ok: false, message: 'Invalid client log payload.' }
+  const events = clientLogEvents(payload, request)
+  if (!events) return { ok: false, message: 'Invalid client log payload.' }
 
-  emitClientLog(event.level, event.fields)
+  for (const event of events) {
+    emitClientLog(event.level, event.fields)
+  }
+
   return { ok: true }
 }
 
-function clientLogEvent(payload: unknown, request: Request): ClientLogEvent | null {
-  if (!isRecord(payload)) return null
+function clientLogEvents(payload: unknown, request: Request): ClientLogEvent[] | null {
+  const payloads = clientLogPayloads(payload)
+  if (!payloads) return null
 
-  const level = clientLogLevel(payload.level)
-  const timestamp = clientLogTimestamp(payload.timestamp)
+  const events: ClientLogEvent[] = []
+  for (const item of payloads) {
+    const event = clientLogEvent(item, request)
+    if (!event) return null
+
+    events.push(event)
+  }
+
+  return events
+}
+
+function clientLogPayloads(payload: unknown) {
+  if (Array.isArray(payload)) return payload
+  if (isRecord(payload)) return [payload]
+
+  return null
+}
+
+function clientLogEvent(payload: unknown, request: Request): ClientLogEvent | null {
+  const eventPayload = clientEventPayload(payload)
+  if (!isRecord(eventPayload)) return null
+
+  const level = clientLogLevel(eventPayload.level)
+  const timestamp = clientLogTimestamp(eventPayload.timestamp)
   if (!level || !timestamp) return null
 
   const config = observabilityConfig()
-  const safePayload = clientFields(sanitizeClientPayload(payload))
-  const clientService = stringField(payload.service) ?? `${config.service}-web`
+  const safePayload = clientFields(sanitizeClientPayload(eventPayload))
+  const clientService = stringField(eventPayload.service) ?? `${config.service}-web`
 
   return {
     level,
@@ -71,7 +97,7 @@ function clientLogEvent(payload: unknown, request: Request): ClientLogEvent | nu
         method: request.method,
         path: new URL(request.url).pathname,
       },
-      source: 'fe',
+      source: 'client',
     },
   }
 }
@@ -83,6 +109,19 @@ type ClientLogEvent = {
 
 function emitClientLog(level: LogLevel, fields: Record<string, unknown>) {
   log[level](fields)
+}
+
+function clientEventPayload(payload: unknown) {
+  if (!isRecord(payload)) return payload
+  if (isDrainContextPayload(payload)) return payload.event
+
+  return payload
+}
+
+function isDrainContextPayload(payload: Record<string, unknown>) {
+  if (!isRecord(payload.event)) return false
+
+  return clientLogLevel(payload.event.level) !== null
 }
 
 function clientLogLevel(value: unknown): LogLevel | null {
@@ -168,8 +207,12 @@ function sanitizeError(error: Error, depth: number, seen: WeakSet<object>) {
   seen.add(error)
   return {
     cause: sanitizeDiagnosticValue(error.cause, depth + 1, seen),
+    code: errorStringField(error, 'code'),
+    fix: errorStringField(error, 'fix'),
     message: limitString(error.message),
     name: error.name,
+    status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
+    why: errorStringField(error, 'why'),
   }
 }
 
@@ -202,4 +245,18 @@ function limitString(value: string) {
 
 function stringField(value: unknown) {
   return typeof value === 'string' && value.trim() ? limitString(value.trim()) : null
+}
+
+function errorStringField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as unknown as Record<string, unknown>)[field]
+  return typeof value === 'string' ? limitString(value) : undefined
+}
+
+function errorNumberField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as unknown as Record<string, unknown>)[field]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }

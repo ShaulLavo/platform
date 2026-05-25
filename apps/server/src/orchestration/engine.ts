@@ -1,5 +1,6 @@
 import * as v from 'valibot'
 import { migrateOrchestrationDatabase } from '../db/migrations'
+import { orchestrationErrors } from '../observability'
 import { clientOrchestrationCommandSchema, type OrchestrationCommand } from './schemas'
 import { OrchestrationCommandReceipts } from './command-receipts'
 import { decideOrchestrationCommand } from './decider'
@@ -140,5 +141,9 @@ function dedupedDispatchResult(
 function previouslyRejectedCommandError(
   receipt: NonNullable<ReturnType<OrchestrationCommandReceipts['find']>>,
 ) {
-  return new Error(receipt.error ?? `Command previously rejected: ${receipt.commandId}`)
+  return orchestrationErrors.COMMAND_PREVIOUSLY_REJECTED({
+    commandId: receipt.commandId,
+    internal: { storedError: receipt.error },
+    message: receipt.error ?? undefined,
+  })
 }

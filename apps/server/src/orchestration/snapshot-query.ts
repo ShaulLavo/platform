@@ -1,5 +1,6 @@
 import { asc, eq, isNull } from 'drizzle-orm'
 import * as v from 'valibot'
+import { orchestrationErrors } from '../observability'
 import {
   orchestrationShellSnapshotSchema,
   orchestrationMessageSchema,
@@ -99,7 +100,7 @@ export class OrchestrationSnapshotQuery {
       .from(projectionThreads)
       .where(eq(projectionThreads.threadId, threadId))
       .get()
-    if (!row) throw new Error(`Thread not found: ${threadId}`)
+    if (!row) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId })
 
     return v.parse(orchestrationThreadDetailSnapshotSchema, {
       snapshotSequence: this.currentSequence(),

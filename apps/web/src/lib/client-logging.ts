@@ -1,8 +1,9 @@
-import { initLog, log } from 'evlog/client'
+import { initLogger, log as evlog, type LogLevel } from 'evlog'
+import { createHttpLogDrain } from 'evlog/http'
 
 import { serverUrl } from './client'
 
-export type ClientLogLevel = 'debug' | 'error' | 'info' | 'warn'
+export type ClientLogLevel = LogLevel
 
 export type ClientLogEvent = {
   readonly action: string
@@ -10,6 +11,13 @@ export type ClientLogEvent = {
   readonly level?: ClientLogLevel
   readonly [key: string]: unknown
 }
+
+type ClientLogInput = Record<string, unknown>
+type ClientLogMethod = {
+  (event: ClientLogInput): void
+  (tag: string, message: string): void
+}
+type ClientLogApi = Record<ClientLogLevel, ClientLogMethod>
 
 const serviceName = 'platform-web'
 const ingestPath = '/_log/ingest'
@@ -38,31 +46,37 @@ const sensitiveFields = new Set([
 
 let initialized = false
 
+export const log: ClientLogApi = {
+  debug: createClientLogMethod('debug'),
+  error: createClientLogMethod('error'),
+  info: createClientLogMethod('info'),
+  warn: createClientLogMethod('warn'),
+}
+
 export function initializeClientLogging() {
   if (initialized) return
 
   initialized = true
-  initLog({
-    console: import.meta.env.DEV,
-    enabled: clientLoggingEnabled(),
-    minLevel: clientLogMinLevel(),
-    pretty: import.meta.env.DEV,
-    service: serviceName,
-    transport: {
-      enabled: true,
+  const drain = createHttpLogDrain({
+    drain: {
+      credentials: 'omit',
       endpoint: logIngestEndpoint(),
     },
   })
-}
 
-export function logClientEvent({ level = 'info', ...event }: ClientLogEvent): void {
-  if (!clientLoggingEnabled()) return
-
-  try {
-    log[level](safeClientEvent(event))
-  } catch {
-    // Logging must never affect user-facing app flows.
-  }
+  initLogger({
+    drain,
+    enabled: clientLoggingEnabled(),
+    env: {
+      environment: import.meta.env.MODE,
+      service: serviceName,
+    },
+    minLevel: clientLogMinLevel(),
+    pretty: import.meta.env.DEV,
+    redact: true,
+    silent: !import.meta.env.DEV,
+    stringify: true,
+  })
 }
 
 export async function observeClientOperation<T>(
@@ -71,11 +85,12 @@ export async function observeClientOperation<T>(
   summarize?: (result: T) => Record<string, unknown>,
 ): Promise<T> {
   const startedAt = performance.now()
+  const { level, ...baseEvent } = event
 
   try {
     const result = await operation()
-    logClientEvent({
-      ...event,
+    log.info({
+      ...baseEvent,
       durationMs: elapsedMs(startedAt),
       outcome: 'ok',
       ...summarizeResult(summarize, result),
@@ -83,16 +98,36 @@ export async function observeClientOperation<T>(
     return result
   } catch (error) {
     if (!isAbortError(error)) {
-      logClientEvent({
-        ...event,
+      log[failedOperationLevel(level)]({
+        ...baseEvent,
         durationMs: elapsedMs(startedAt),
         error: errorSummary(error),
-        level: failedOperationLevel(event.level),
         outcome: 'error',
       })
     }
 
     throw error
+  }
+}
+
+function createClientLogMethod(level: ClientLogLevel): ClientLogMethod {
+  return ((tagOrEvent: ClientLogInput | string, message?: string) => {
+    if (typeof tagOrEvent === 'string') {
+      emitClientLog(level, { message, tag: tagOrEvent })
+      return
+    }
+
+    emitClientLog(level, tagOrEvent)
+  }) as ClientLogMethod
+}
+
+function emitClientLog(level: ClientLogLevel, event: ClientLogInput): void {
+  if (!clientLoggingEnabled()) return
+
+  try {
+    evlog[level](safeClientEvent(event))
+  } catch {
+    // Logging must never affect user-facing app flows.
   }
 }
 

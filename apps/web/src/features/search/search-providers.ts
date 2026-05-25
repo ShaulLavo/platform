@@ -11,7 +11,8 @@ import {
 
 import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
 import { client } from '@/lib/client'
-import { logClientEvent } from '@/lib/client-logging'
+import { log } from '@/lib/client-logging'
+import { clientErrors } from '@/lib/structured-errors'
 import { compareSearchPaths } from '@/features/search/search-sort'
 
 const SEARCH_PREVIEW_CONTEXT_CHARS = 80
@@ -48,8 +49,8 @@ export class DiskSearchProvider implements SearchProvider {
       },
       fetch: { signal },
     })
-    if (response.error) throw new Error(`Search failed with status ${response.status}.`)
-    if (!response.data) throw new Error('Search response did not include a stream.')
+    if (response.error) throw clientErrors.SEARCH_FAILED({ status: response.status })
+    if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'Search' })
 
     for await (const event of parseEdenSseStream(response.data)) {
       if (signal?.aborted) return
@@ -181,7 +182,7 @@ function logSearchCompleted(
   truncated: boolean,
   startedAt: number,
 ) {
-  logClientEvent({
+  log.info({
     ...searchLogContext(query, startedAt),
     action: 'search.query',
     matchCount: state.emittedCount,
@@ -191,11 +192,10 @@ function logSearchCompleted(
 }
 
 function logSearchFailed(query: WorkspaceSearchQuery, error: unknown, startedAt: number) {
-  logClientEvent({
+  log.warn({
     ...searchLogContext(query, startedAt),
     action: 'search.query',
     error: searchErrorSummary(error),
-    level: 'warn',
     outcome: 'error',
   })
 }
@@ -215,8 +215,10 @@ function searchLogContext(query: WorkspaceSearchQuery, startedAt: number) {
 function searchErrorSummary(error: unknown) {
   if (error instanceof Error) {
     return {
+      code: errorStringField(error, 'code'),
       message: error.message,
       name: error.name,
+      status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
     }
   }
 
@@ -228,6 +230,20 @@ function searchErrorSummary(error: unknown) {
 
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100
+}
+
+function errorStringField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value : undefined
+}
+
+function errorNumberField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function shouldStopCompositeSearch(
@@ -266,14 +282,15 @@ function shouldEmitDiskEvent(event: WorkspaceSearchEvent, openBufferPaths: Reado
 function searchEventFromSse(event: EdenSseEvent): WorkspaceSearchEvent {
   if (event.event === 'match') return matchEvent(event.data)
   if (event.event === 'done') return doneEventFromData(event.data)
-  if (event.event === 'error') throw new Error(searchEventError(event.data))
+  if (event.event === 'error')
+    throw clientErrors.SEARCH_EVENT_ERROR({ message: searchEventError(event.data) })
 
-  throw new Error(`Unexpected search event: ${event.event}`)
+  throw clientErrors.UNEXPECTED_SEARCH_EVENT({ event: event.event })
 }
 
 function matchEvent(data: unknown): WorkspaceSearchEvent {
   const match = searchEventMatch(data)
-  if (!match) throw new Error('Search response included an invalid match.')
+  if (!match) throw clientErrors.SEARCH_MATCH_INVALID()
 
   return { match, type: 'match' }
 }

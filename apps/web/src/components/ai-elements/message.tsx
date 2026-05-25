@@ -16,6 +16,7 @@ import { mermaid } from '@streamdown/mermaid'
 import type { UIMessage } from 'ai'
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes, ReactElement } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 
@@ -109,7 +110,9 @@ const useMessageBranch = () => {
   const context = useContext(MessageBranchContext)
 
   if (!context) {
-    throw new Error('MessageBranch components must be used within MessageBranch')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'MessageBranch components must be used within MessageBranch',
+    })
   }
 
   return context

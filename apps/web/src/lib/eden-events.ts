@@ -1,3 +1,5 @@
+import { clientErrors } from './structured-errors'
+
 export type EdenSseEvent = {
   event: string
   data: unknown
@@ -5,7 +7,7 @@ export type EdenSseEvent = {
 
 export async function* parseEdenSseStream(stream: unknown): AsyncGenerator<EdenSseEvent> {
   if (!isAsyncIterable(stream)) {
-    throw new Error('Eden response did not include an SSE stream.')
+    throw clientErrors.EDEN_STREAM_MISSING({ label: 'Eden' })
   }
 
   for await (const chunk of stream) {

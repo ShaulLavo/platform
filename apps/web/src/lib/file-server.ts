@@ -1,7 +1,11 @@
 import { client } from '@/lib/client'
 import type { FileResult, FindMatch, TreeEntry, TreeResult } from '@/lib/file-system-types'
-import { errorMessage as clientErrorMessage, toClientError } from '@/lib/client-error-taxonomy'
+import { errorMessage as clientErrorMessage } from '@/lib/client-error-taxonomy'
 import { observeClientOperation } from '@/lib/client-logging'
+import {
+  createRpcError,
+  rpcErrorMessage as structuredRpcErrorMessage,
+} from '@/lib/structured-errors'
 
 const TREE_LOAD_DEPTH = 1
 
@@ -14,7 +18,7 @@ export async function fetchTree(path: string, signal: AbortSignal) {
         fetch: { signal },
       })
 
-      if (response.error) throw new Error(rpcErrorMessage(response.error))
+      if (response.error) throw createRpcError(response.error)
 
       return response.data as TreeResult
     },
@@ -31,7 +35,7 @@ export async function fetchFile(path: string, signal: AbortSignal) {
         fetch: { signal },
       })
 
-      if (response.error) throw new Error(rpcErrorMessage(response.error))
+      if (response.error) throw createRpcError(response.error)
 
       return response.data as FileResult
     },
@@ -71,7 +75,7 @@ export async function fetchQuickOpenFiles({
         fetch: { signal },
       })
 
-      if (response.error) throw new Error(rpcErrorMessage(response.error))
+      if (response.error) throw createRpcError(response.error)
 
       return (response.data as { matches: FindMatch[] }).matches
     },
@@ -99,7 +103,7 @@ export async function writeFileContent(
           : { content, expectedMtimeMs, path }
       const response = await client.fs.write.post(body)
 
-      if (response.error) throw new Error(rpcErrorMessage(response.error))
+      if (response.error) throw createRpcError(response.error)
 
       return response.data as TreeEntry
     },
@@ -118,7 +122,7 @@ export async function createFileContent(path: string, content: string) {
     async () => {
       const response = await client.fs['create-file'].post({ content, path })
 
-      if (response.error) throw new Error(rpcErrorMessage(response.error))
+      if (response.error) throw createRpcError(response.error)
 
       return response.data as TreeEntry
     },
@@ -137,7 +141,7 @@ export async function ensureFolderPath(path: string) {
         recursive: true,
       })
 
-      if (response.error) throw new Error(rpcErrorMessage(response.error))
+      if (response.error) throw createRpcError(response.error)
 
       return response.data as TreeEntry
     },
@@ -164,5 +168,5 @@ export function errorMessage(error: unknown) {
 }
 
 export function rpcErrorMessage(error: unknown) {
-  return toClientError(error).message
+  return structuredRpcErrorMessage(error)
 }

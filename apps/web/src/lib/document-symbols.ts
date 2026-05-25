@@ -1,4 +1,5 @@
 import { connectLanguageServerSocket, type EdenServerSocket } from '@/lib/server-sockets'
+import { clientErrors } from '@/lib/structured-errors'
 
 export type DocumentSymbolRange = {
   start: { line: number; character: number }
@@ -63,7 +64,7 @@ function requestDocumentSymbols({
 }) {
   return new Promise<readonly DocumentSymbol[]>((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new Error('Document symbol request aborted'))
+      reject(clientErrors.DOCUMENT_SYMBOL_ABORTED())
       return
     }
 
@@ -79,7 +80,7 @@ function requestDocumentSymbols({
       socket.close()
       callback()
     }
-    const abort = () => finish(() => reject(new Error('Document symbol request aborted')))
+    const abort = () => finish(() => reject(clientErrors.DOCUMENT_SYMBOL_ABORTED()))
 
     signal?.addEventListener('abort', abort, { once: true })
     socket.addEventListener('open', () => {
@@ -97,17 +98,23 @@ function requestDocumentSymbols({
       const response = parseJsonRpcResponse((event as MessageEvent).data)
       if (!response || response.id !== requestId) return
       if (response.error) {
-        finish(() => reject(new Error(response.error?.message ?? 'Document symbol failed')))
+        finish(() =>
+          reject(
+            clientErrors.DOCUMENT_SYMBOL_FAILED({
+              message: response.error?.message ?? undefined,
+            }),
+          ),
+        )
         return
       }
 
       finish(() => resolve(documentSymbolsFromResult(response.result)))
     })
     socket.addEventListener('error', () =>
-      finish(() => reject(new Error('Document symbol socket failed'))),
+      finish(() => reject(clientErrors.DOCUMENT_SYMBOL_SOCKET_FAILED())),
     )
     socket.addEventListener('close', () =>
-      finish(() => reject(new Error('Document symbol socket closed'))),
+      finish(() => reject(clientErrors.DOCUMENT_SYMBOL_SOCKET_CLOSED())),
     )
   })
 }

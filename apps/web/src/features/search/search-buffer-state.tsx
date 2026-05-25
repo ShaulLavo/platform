@@ -10,6 +10,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla'
 
 import type { CachedSearchBufferState } from '@/lib/workspace-cache'
 import { basename, toTreePath } from '@/lib/path-formatters'
+import { clientErrors } from '@/lib/structured-errors'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { compareSearchPaths } from '@/features/search/search-sort'
 import {
@@ -128,7 +129,9 @@ export const SearchBufferStateContext = createContext<SearchBufferStoreApi | nul
 export function useSearchBufferStoreApi() {
   const store = useContext(SearchBufferStateContext)
   if (!store) {
-    throw new Error('useSearchBufferStoreApi must be used within SearchBufferStateContext')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useSearchBufferStoreApi must be used within SearchBufferStateContext',
+    })
   }
 
   return store
@@ -1361,7 +1364,9 @@ function searchFileGroup(
 ): WorkspaceSearchFileGroup {
   const firstMatch = matches[0]
   if (!firstMatch) {
-    throw new Error('Cannot create a search file group without matches.')
+    throw clientErrors.INVALID_OPTION({
+      message: 'Cannot create a search file group without matches.',
+    })
   }
 
   return {

@@ -13,6 +13,7 @@ import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
 import { BrainIcon, CaretDownIcon } from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 import {
   createContext,
   memo,
@@ -39,7 +40,9 @@ const ReasoningContext = createContext<ReasoningContextValue | null>(null)
 export const useReasoning = () => {
   const context = useContext(ReasoningContext)
   if (!context) {
-    throw new Error('Reasoning components must be used within Reasoning')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'Reasoning components must be used within Reasoning',
+    })
   }
   return context
 }

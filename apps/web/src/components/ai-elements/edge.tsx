@@ -6,6 +6,7 @@ import {
   Position,
   useInternalNode,
 } from '@xyflow/react'
+import { clientErrors } from '@/lib/structured-errors'
 
 const Temporary = ({
   id,
@@ -73,7 +74,9 @@ const getHandleCoordsByPosition = (node: InternalNode<Node>, handlePosition: Pos
       break
     }
     default: {
-      throw new Error(`Invalid handle position: ${handlePosition}`)
+      throw clientErrors.INVALID_OPTION({
+        message: `Invalid handle position: ${handlePosition}`,
+      })
     }
   }
 

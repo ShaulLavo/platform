@@ -1,4 +1,4 @@
-import { logClientEvent } from './client-logging'
+import { log } from './client-logging'
 
 type ClientErrorReport = {
   area: string
@@ -26,14 +26,12 @@ const sensitiveFields = new Set([
 export function reportClientError(report: ClientErrorReport): void {
   const safeReport = safeClientErrorReport(report)
 
-  console.error(`[client:${report.area}] ${report.operation}`, safeReport)
-  logClientEvent({
+  log.error({
     action: 'client.error',
     area: report.area,
     category: report.category,
     cause: safeReport.cause,
     context: safeReport.context,
-    level: 'error',
     message: report.message,
     operation: report.operation,
   })
@@ -64,8 +62,12 @@ function sanitizeError(error: Error, seen: WeakSet<object>) {
   seen.add(error)
   return {
     cause: sanitizeDiagnosticValue(error.cause, seen),
+    code: errorStringField(error, 'code'),
+    fix: errorStringField(error, 'fix'),
     message: error.message,
     name: error.name,
+    status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
+    why: errorStringField(error, 'why'),
   }
 }
 
@@ -83,4 +85,18 @@ function sanitizeRecord(record: Record<string, unknown>, seen: WeakSet<object>) 
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function errorStringField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value : undefined
+}
+
+function errorNumberField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }

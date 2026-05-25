@@ -56,6 +56,7 @@ import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { createFileContent, ensureFolderPath, fetchFile, writeFileContent } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
+import { clientErrors } from '@/lib/structured-errors'
 import type { LoadState } from '@/lib/load-state'
 import { cn } from '@workspace/ui/lib/utils'
 import {
@@ -394,7 +395,9 @@ function EditorPaneLeafView({
 function useEditorPaneDropContext() {
   const context = useContext(EditorPaneDropContext)
   if (!context) {
-    throw new Error('useEditorPaneDropContext must be used within FileViewer')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useEditorPaneDropContext must be used within FileViewer',
+    })
   }
 
   return context

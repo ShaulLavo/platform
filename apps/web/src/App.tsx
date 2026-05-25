@@ -19,7 +19,7 @@ import {
   usePlatformCommandDispatch,
 } from '@/keymap'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import { logClientEvent } from '@/lib/client-logging'
+import { log } from '@/lib/client-logging'
 import { HotkeysProvider } from '@tanstack/react-hotkeys'
 import { useCallback, useMemo, useState } from 'react'
 
@@ -76,7 +76,7 @@ function AppContent() {
   function handlePick(entry: PickedFsEntry) {
     resetTreeLoad()
     pickRootFolder(entry)
-    logClientEvent({
+    log.info({
       action: 'workspace.root_selected',
       area: 'workspace',
       entryType: entry.type,

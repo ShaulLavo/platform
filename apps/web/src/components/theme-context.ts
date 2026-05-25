@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 export type Theme = 'dark' | 'light' | 'system'
 export type ResolvedTheme = 'dark' | 'light'
@@ -15,7 +16,9 @@ export function useTheme() {
   const context = useContext(ThemeProviderContext)
 
   if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useTheme must be used within a ThemeProvider',
+    })
   }
 
   return context

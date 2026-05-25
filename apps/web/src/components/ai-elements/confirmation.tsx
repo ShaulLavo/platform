@@ -6,6 +6,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import type { ToolUIPart } from 'ai'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, useContext, useMemo } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 type ToolUIPartApproval =
   | {
@@ -46,7 +47,9 @@ const useConfirmation = () => {
   const context = useContext(ConfirmationContext)
 
   if (!context) {
-    throw new Error('Confirmation components must be used within Confirmation')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'Confirmation components must be used within Confirmation',
+    })
   }
 
   return context

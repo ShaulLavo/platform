@@ -16,6 +16,7 @@ import {
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@workspace/ui/components/dialog'
 import { Spinner } from '@workspace/ui/components/spinner'
 import { cn } from '@workspace/ui/lib/utils'
+import { clientErrors } from '@/lib/structured-errors'
 import {
   DotOutlineIcon,
   GenderMaleIcon as MarsIcon,
@@ -42,7 +43,9 @@ const VoiceSelectorContext = createContext<VoiceSelectorContextValue | null>(nul
 export const useVoiceSelector = () => {
   const context = useContext(VoiceSelectorContext)
   if (!context) {
-    throw new Error('VoiceSelector components must be used within VoiceSelector')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'VoiceSelector components must be used within VoiceSelector',
+    })
   }
   return context
 }

@@ -18,6 +18,7 @@ import {
 } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 export type CommitProps = ComponentProps<typeof Collapsible>
 
@@ -176,7 +177,7 @@ export const CommitCopyButton = ({
 
   const copyToClipboard = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
-      onError?.(new Error('Clipboard API not available'))
+      onError?.(clientErrors.CLIPBOARD_UNAVAILABLE())
       return
     }
 

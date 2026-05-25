@@ -7,6 +7,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { CheckIcon, CopyIcon, EyeIcon, EyeSlashIcon as EyeOffIcon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 interface EnvironmentVariablesContextType {
   showValues: boolean
@@ -245,7 +246,7 @@ export const EnvironmentVariableCopyButton = ({
 
   const copyToClipboard = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
-      onError?.(new Error('Clipboard API not available'))
+      onError?.(clientErrors.CLIPBOARD_UNAVAILABLE())
       return
     }
 

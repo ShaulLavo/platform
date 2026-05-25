@@ -11,7 +11,7 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { logClientEvent } from '@/lib/client-logging'
+import { log } from '@/lib/client-logging'
 import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
@@ -21,6 +21,7 @@ import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-doc
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { toTreePath } from '@/lib/path-formatters'
+import { clientErrors } from '@/lib/structured-errors'
 import {
   planFetchedOpenFileRefresh,
   planWorkspaceFilesystemEvents,
@@ -128,7 +129,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
 
     const controller = new AbortController()
     const queue = createEventQueue((events) => applyEvents(events, controller.signal, rootPath))
-    logClientEvent({
+    log.info({
       action: 'workspace.events.subscribe',
       area: 'workspace-events',
       path: rootPath,
@@ -136,7 +137,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
 
     void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
       if (message.type === 'ready') {
-        logClientEvent({
+        log.info({
           action: 'workspace.events.ready',
           area: 'workspace-events',
           path: rootPath,
@@ -145,11 +146,10 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         return
       }
       if (message.type === 'error') {
-        logClientEvent({
+        log.warn({
           action: 'workspace.events.error',
           area: 'workspace-events',
           code: message.code,
-          level: 'warn',
           message: message.message,
           path: rootPath,
         })
@@ -174,7 +174,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     return () => {
       controller.abort()
       queue.clear()
-      logClientEvent({
+      log.info({
         action: 'workspace.events.unsubscribe',
         area: 'workspace-events',
         path: rootPath,
@@ -247,7 +247,7 @@ function invalidateGitState(queryClient: ReturnType<typeof useQueryClient>) {
 function logWorkspaceEventBatch(rootPath: string, events: readonly FilesystemEvent[]) {
   if (!events.length) return
 
-  logClientEvent({
+  log.info({
     action: 'workspace.events.batch',
     area: 'workspace-events',
     eventCount: events.length,
@@ -257,7 +257,7 @@ function logWorkspaceEventBatch(rootPath: string, events: readonly FilesystemEve
 }
 
 function logWorkspaceEventPlan(action: string, rootPath: string, plan: WorkspaceEventPlan) {
-  logClientEvent({
+  log.info({
     action,
     area: 'workspace-events',
     invalidatesGitState: plan.shouldInvalidateGitState,
@@ -708,8 +708,8 @@ async function streamWorkspaceEvents(
     query: { path: rootPath },
     fetch: { signal },
   })
-  if (response.error) throw new Error(`File watcher failed with status ${response.status}`)
-  if (!response.data) throw new Error('File watcher response did not include a stream.')
+  if (response.error) throw clientErrors.WATCH_FAILED({ status: response.status })
+  if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'File watcher' })
 
   for await (const event of parseEdenSseStream(response.data)) {
     const message = watchServerMessage(event.data)

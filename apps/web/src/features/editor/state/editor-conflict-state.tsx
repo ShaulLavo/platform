@@ -2,6 +2,8 @@ import { createContext, useContext } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
+import { clientErrors } from '@/lib/structured-errors'
+
 export type FilesystemConflictEventType = 'changed' | 'deleted' | 'renamed'
 
 export type FilesystemConflict = {
@@ -40,7 +42,9 @@ export const EditorConflictStateContext = createContext<EditorConflictStoreApi |
 export function useEditorConflictStoreApi() {
   const store = useContext(EditorConflictStateContext)
   if (!store) {
-    throw new Error('useEditorConflictStoreApi must be used within EditorStateProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useEditorConflictStoreApi must be used within EditorStateProvider',
+    })
   }
 
   return store

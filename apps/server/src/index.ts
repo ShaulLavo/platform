@@ -6,6 +6,7 @@ import {
   initializeObservability,
   recordProcessInfo,
   recordProcessWarning,
+  serverErrors,
 } from './observability'
 
 const port = Number(Bun.env.PORT ?? 3001)
@@ -94,7 +95,7 @@ function numberFromEnv(value: string | undefined) {
 function assertLoopbackHost(host: string) {
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return
 
-  throw new Error('FS RPC server must bind to a loopback host')
+  throw serverErrors.LOOPBACK_HOST_REQUIRED()
 }
 
 function errorMessage(error: unknown) {

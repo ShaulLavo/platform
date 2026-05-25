@@ -8,9 +8,9 @@ import {
 import * as v from 'valibot'
 
 import { client } from '@/lib/client'
-import { logClientEvent } from '@/lib/client-logging'
+import { log } from '@/lib/client-logging'
 import { parseEdenSseStream } from '@/lib/eden-events'
-import { rpcErrorMessage } from '@/lib/file-server'
+import { clientErrors, createRpcError } from '@/lib/structured-errors'
 import { guardOrchestrationStreamSequence } from './orchestration-sequence'
 
 const ORCHESTRATION_STREAM_HEARTBEAT_EVENT = 'heartbeat'
@@ -50,8 +50,8 @@ async function* openOrchestrationShellStream({
       fetch: { signal },
       query: { afterSequence },
     })
-    if (response.error) throw new Error(rpcErrorMessage(response.error))
-    if (!response.data) throw new Error('Shell stream response did not include a stream.')
+    if (response.error) throw createRpcError(response.error)
+    if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'Shell stream' })
 
     logOrchestrationStream('orchestration.shell_stream.open', afterSequence, startedAt)
 
@@ -80,8 +80,8 @@ async function* openOrchestrationThreadDetailStream(
       fetch: { signal },
       query: { afterSequence, threadId },
     })
-    if (response.error) throw new Error(rpcErrorMessage(response.error))
-    if (!response.data) throw new Error('Thread detail stream response did not include a stream.')
+    if (response.error) throw createRpcError(response.error)
+    if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'Thread detail stream' })
 
     logOrchestrationStream(
       'orchestration.thread_stream.open',
@@ -116,13 +116,12 @@ function logOrchestrationStream(
   error?: unknown,
   context: Record<string, unknown> = {},
 ) {
-  logClientEvent({
+  log[error === undefined ? 'info' : 'warn']({
     action,
     afterSequence,
     area: 'orchestration',
     durationMs: elapsedMs(startedAt),
     error: error === undefined ? undefined : streamErrorSummary(error),
-    level: error === undefined ? 'info' : 'warn',
     outcome: error === undefined ? 'ok' : 'error',
     ...context,
   })
@@ -131,8 +130,10 @@ function logOrchestrationStream(
 function streamErrorSummary(error: unknown) {
   if (error instanceof Error) {
     return {
+      code: errorStringField(error, 'code'),
       message: error.message,
       name: error.name,
+      status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
     }
   }
 
@@ -144,6 +145,20 @@ function streamErrorSummary(error: unknown) {
 
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100
+}
+
+function errorStringField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value : undefined
+}
+
+function errorNumberField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function isOrchestrationHeartbeatEvent(event: { event: string }) {

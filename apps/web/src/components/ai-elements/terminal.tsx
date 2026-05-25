@@ -6,6 +6,7 @@ import Ansi from 'ansi-to-react'
 import { CheckIcon, CopyIcon, TerminalIcon, TrashIcon as Trash2Icon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 interface TerminalContextType {
   output: string
@@ -87,7 +88,7 @@ export const TerminalCopyButton = ({
 
   const copyToClipboard = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
-      onError?.(new Error('Clipboard API not available'))
+      onError?.(clientErrors.CLIPBOARD_UNAVAILABLE())
       return
     }
 

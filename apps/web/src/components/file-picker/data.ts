@@ -13,6 +13,7 @@ import type {
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { filePickerKeys } from '@/lib/query-keys'
 import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
+import { clientErrors, createRpcError } from '@/lib/structured-errors'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { useEffect, useEffectEvent } from 'react'
 
@@ -22,7 +23,6 @@ import {
   compareSearchEntries,
   errorMessage,
   loadingLoadState,
-  rpcErrorMessage,
   type DirectoryFsEntry,
   type FilePickerMode,
   type LoadState,
@@ -196,7 +196,7 @@ async function fetchServerInfo(signal: AbortSignal) {
     fetch: { signal },
   })
 
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
+  if (response.error) throw createRpcError(response.error)
 
   return response.data as ServerInfo
 }
@@ -206,11 +206,11 @@ async function fetchCurrentEntry(path: string, signal: AbortSignal) {
     query: { path },
     fetch: { signal },
   })
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
+  if (response.error) throw createRpcError(response.error)
 
   const entry = response.data as StatResult
   if (!isDirectoryEntry(entry)) {
-    throw new Error('The current path is not a folder.')
+    throw clientErrors.CURRENT_PATH_NOT_FOLDER()
   }
 
   return {
@@ -225,7 +225,7 @@ async function fetchTreeEntries(path: string, signal: AbortSignal) {
     query: { depth: 1, path },
     fetch: { signal },
   })
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
+  if (response.error) throw createRpcError(response.error)
 
   return (response.data as TreeResult).entries
 }
@@ -236,14 +236,14 @@ async function fetchRecentEntries(signal: AbortSignal) {
     fetch: { signal },
   })
 
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
+  if (response.error) throw createRpcError(response.error)
 
   return (response.data as RecentResult).entries
 }
 
 async function recordRecent(entry: PickedFsEntry) {
   const response = await client.fs.recents.post({ path: entry.path })
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
+  if (response.error) throw createRpcError(response.error)
 }
 
 async function streamFindEntries(
@@ -296,7 +296,8 @@ async function streamFindScope(
         continue
       }
 
-      if (event.event === 'error') throw new Error(findEventError(event.data))
+      if (event.event === 'error')
+        throw clientErrors.SEARCH_EVENT_ERROR({ message: findEventError(event.data) })
       if (event.event === 'done') return
     }
   } catch (error) {
@@ -357,8 +358,8 @@ async function* streamFindEvents(
     },
     fetch: { signal },
   })
-  if (response.error) throw new Error(`Search failed with status ${response.status}`)
-  if (!response.data) throw new Error('Search response did not include a stream.')
+  if (response.error) throw clientErrors.SEARCH_FAILED({ status: response.status })
+  if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'Search' })
 
   yield* parseEdenSseStream(response.data)
 }

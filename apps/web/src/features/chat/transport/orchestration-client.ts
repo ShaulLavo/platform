@@ -8,7 +8,7 @@ import type {
 } from '@workspace/contracts'
 
 import { client } from '@/lib/client'
-import { rpcErrorMessage } from '@/lib/file-server'
+import { createRpcError } from '@/lib/structured-errors'
 
 export async function dispatchOrchestrationCommand(command: ClientOrchestrationCommand) {
   const response = await client.orchestration.commands.post(command)
@@ -43,7 +43,7 @@ export async function replayOrchestrationEvents(input: OrchestrationReplayEvents
 }
 
 export function unwrapOrchestrationResponse<T>(response: { data?: unknown; error?: unknown }): T {
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
+  if (response.error) throw createRpcError(response.error)
 
   return response.data as T
 }

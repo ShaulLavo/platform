@@ -9,6 +9,7 @@ import {
 } from '@/features/editor/state/editor-pane-state'
 import type { CachedWorkspaceState, WorkspacePanelTab } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
+import { clientErrors } from '@/lib/structured-errors'
 import { createContext, useContext } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
@@ -41,7 +42,9 @@ export const EditorWorkspaceStateContext = createContext<EditorWorkspaceStoreApi
 export function useEditorWorkspaceStoreApi() {
   const store = useContext(EditorWorkspaceStateContext)
   if (!store) {
-    throw new Error('useEditorWorkspaceStoreApi must be used within EditorStateProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useEditorWorkspaceStoreApi must be used within EditorStateProvider',
+    })
   }
 
   return store

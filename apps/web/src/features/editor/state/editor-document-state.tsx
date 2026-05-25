@@ -3,6 +3,7 @@ import {
   renameDirtyFilePath,
   updateDirtyFilePaths,
 } from '@/features/editor/state/editor-dirty-paths'
+import { clientErrors } from '@/lib/structured-errors'
 import {
   contentRevisionForText,
   contentRevisionForTextSnapshot,
@@ -101,7 +102,9 @@ export const EditorDocumentStateContext = createContext<EditorDocumentStoreApi |
 export function useEditorDocumentStoreApi() {
   const store = useContext(EditorDocumentStateContext)
   if (!store) {
-    throw new Error('useEditorDocumentStoreApi must be used within EditorStateProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useEditorDocumentStoreApi must be used within EditorStateProvider',
+    })
   }
 
   return store

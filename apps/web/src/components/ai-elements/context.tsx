@@ -8,6 +8,7 @@ import type { LanguageModelUsage } from 'ai'
 import type { ComponentProps } from 'react'
 import { createContext, useContext, useMemo } from 'react'
 import { getUsage } from 'tokenlens'
+import { clientErrors } from '@/lib/structured-errors'
 
 const PERCENT_MAX = 100
 const ICON_RADIUS = 10
@@ -30,7 +31,9 @@ const useContextValue = () => {
   const context = useContext(ContextContext)
 
   if (!context) {
-    throw new Error('Context components must be used within Context')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'Context components must be used within Context',
+    })
   }
 
   return context

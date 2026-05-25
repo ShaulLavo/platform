@@ -3,6 +3,7 @@ import type { RequestLogger } from 'evlog'
 import { useLogger } from 'evlog/elysia'
 
 import { isObservabilityActive, recordProcessWarning } from './runtime'
+import { createStructuredError } from './structured-errors'
 
 export type OperationContext = {
   area: string
@@ -124,8 +125,11 @@ export function errorSummary(error: unknown) {
   if (error instanceof Error) {
     return {
       code: errorCode(error),
+      fix: errorStringField(error, 'fix'),
       message: limitText(error.message, 500),
       name: error.name,
+      status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
+      why: errorStringField(error, 'why'),
     }
   }
 
@@ -183,10 +187,13 @@ function errorForLogger(error: unknown) {
 
 function sanitizedErrorForLogger(error: Error) {
   const cause = errorCause(error)
-  const clone = new Error(error.message)
+  const clone = createStructuredError({
+    code: errorCode(error),
+    message: error.message,
+  })
   clone.name = error.name
   clone.stack = error.stack
-  copySafeErrorFields(error, clone as Error & Record<string, unknown>)
+  copySafeErrorFields(error, clone as unknown as Error & Record<string, unknown>)
   if (cause !== undefined) clone.cause = sanitizeErrorCause(cause)
 
   return clone
@@ -221,7 +228,9 @@ function sanitizeRecord(record: Record<string, unknown>, seen: WeakSet<object>) 
   const safe: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(record)) {
-    safe[key] = sensitiveErrorFields.has(key) ? redactedDiagnosticValue : sanitizeErrorCause(value, seen)
+    safe[key] = sensitiveErrorFields.has(key)
+      ? redactedDiagnosticValue
+      : sanitizeErrorCause(value, seen)
   }
 
   return safe
@@ -234,7 +243,9 @@ function copySafeErrorFields(
 ) {
   for (const [key, value] of Object.entries(source)) {
     if (key === 'cause') continue
-    target[key] = sensitiveErrorFields.has(key) ? redactedDiagnosticValue : sanitizeErrorCause(value, seen)
+    target[key] = sensitiveErrorFields.has(key)
+      ? redactedDiagnosticValue
+      : sanitizeErrorCause(value, seen)
   }
 }
 
@@ -261,6 +272,20 @@ function errorCode(error: Error) {
 
   const code = error.code
   return typeof code === 'string' ? code : undefined
+}
+
+function errorStringField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as unknown as Record<string, unknown>)[field]
+  return typeof value === 'string' ? limitText(value, 500) : undefined
+}
+
+function errorNumberField(error: Error, field: string) {
+  if (!(field in error)) return undefined
+
+  const value = (error as unknown as Record<string, unknown>)[field]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function gitContext(logger: RequestLogger<Record<string, unknown>>) {

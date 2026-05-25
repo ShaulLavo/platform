@@ -2,6 +2,7 @@
 
 import { Button } from '@workspace/ui/components/button'
 import { reportClientError } from '@/lib/client-error-reporting'
+import { clientErrors } from '@/lib/structured-errors'
 import {
   Select,
   SelectContent,
@@ -451,7 +452,7 @@ export const CodeBlockCopyButton = ({
 
   const copyToClipboard = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
-      onError?.(new Error('Clipboard API not available'))
+      onError?.(clientErrors.CLIPBOARD_UNAVAILABLE())
       return
     }
 

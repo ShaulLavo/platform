@@ -4,6 +4,7 @@ import useEmblaCarousel, { type UseEmblaCarouselType } from 'embla-carousel-reac
 import { cn } from '@workspace/ui/lib/utils'
 import { Button } from '@workspace/ui/components/button'
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
+import { uiErrors } from '@workspace/ui/lib/structured-errors'
 
 type CarouselApi = UseEmblaCarouselType[1]
 type UseCarouselParameters = Parameters<typeof useEmblaCarousel>
@@ -32,7 +33,9 @@ function useCarousel() {
   const context = React.useContext(CarouselContext)
 
   if (!context) {
-    throw new Error('useCarousel must be used within a <Carousel />')
+    throw uiErrors.CONTEXT_MISSING({
+      message: 'useCarousel must be used within a <Carousel />',
+    })
   }
 
   return context

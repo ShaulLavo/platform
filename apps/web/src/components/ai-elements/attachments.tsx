@@ -15,6 +15,7 @@ import {
 } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 // ============================================================================
 // Types
@@ -125,7 +126,9 @@ export const useAttachmentsContext = () =>
 export const useAttachmentContext = () => {
   const ctx = useContext(AttachmentContext)
   if (!ctx) {
-    throw new Error('Attachment components must be used within <Attachment>')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'Attachment components must be used within <Attachment>',
+    })
   }
   return ctx
 }

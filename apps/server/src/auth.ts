@@ -47,7 +47,9 @@ export function createAuthConfig(options: AuthOptions = {}): AuthConfig {
 
 export function authGuard(auth: AuthConfig) {
   return ({ request, set }: { request: Request; set: { status?: number | string } }) => {
-    const error = authenticateRequest(request, auth)
+    const error = authenticateRequest(request, auth, {
+      allowMissingSessionToken: isClientLogIngestRequest(request),
+    })
     if (!error) {
       recordRequestContext({ auth: { mode: auth.mode, outcome: 'success' } })
       return undefined
@@ -68,9 +70,14 @@ export function authGuard(auth: AuthConfig) {
   }
 }
 
-export function authenticateRequest(request: Request, auth: AuthConfig): FsError | null {
+export function authenticateRequest(
+  request: Request,
+  auth: AuthConfig,
+  options: { allowMissingSessionToken?: boolean } = {},
+): FsError | null {
   const originError = localBrowserOriginError(auth, request.headers.get('origin'))
   if (originError) return originError
+  if (options.allowMissingSessionToken) return null
 
   const tokenError = sessionTokenError(auth, request.headers.get('authorization'))
   if (tokenError) return tokenError
@@ -110,6 +117,12 @@ function sessionTokenError(auth: AuthConfig, authorization: string | null) {
   if (authorization === `Bearer ${auth.sessionToken}`) return null
 
   return new FsError('UNAUTHORIZED', 'missing or invalid session token')
+}
+
+function isClientLogIngestRequest(request: Request) {
+  if (request.method !== 'POST') return false
+
+  return new URL(request.url).pathname === '/_log/ingest'
 }
 
 function originFromWebSocketData(data: unknown) {

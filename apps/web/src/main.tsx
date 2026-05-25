@@ -7,12 +7,12 @@ import { App } from './App.tsx'
 import { ThemeAwareToaster } from '@/components/theme-aware-toaster.tsx'
 import { ThemeProvider } from '@/components/theme-provider.tsx'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme.ts'
-import { initializeClientLogging, logClientEvent } from '@/lib/client-logging.ts'
+import { initializeClientLogging, log } from '@/lib/client-logging.ts'
 import { queryClient } from '@/lib/query-client.ts'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
 initializeClientLogging()
-logClientEvent({
+log.info({
   action: 'app.bootstrap',
   area: 'app',
   mode: import.meta.env.MODE,

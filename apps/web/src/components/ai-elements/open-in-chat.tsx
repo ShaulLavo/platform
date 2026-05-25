@@ -16,6 +16,7 @@ import {
   ChatCircleIcon as MessageCircleIcon,
 } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 import { createContext, useContext, useMemo } from 'react'
 
 const providers = {
@@ -171,7 +172,9 @@ const OpenInContext = createContext<{ query: string } | undefined>(undefined)
 const useOpenInContext = () => {
   const context = useContext(OpenInContext)
   if (!context) {
-    throw new Error('OpenIn components must be used within an OpenIn provider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'OpenIn components must be used within an OpenIn provider',
+    })
   }
   return context
 }

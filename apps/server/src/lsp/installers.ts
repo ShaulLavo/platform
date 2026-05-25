@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 
+import { lspErrors } from '../observability'
 import {
   pinnedLspRuntimeManifest,
   type PinnedLspRuntimeId,
@@ -323,7 +324,11 @@ async function ensureNodePackage(packageName: string) {
     cwd: nodePackageRoot,
     env: { ...process.env, BUN_BE_BUN: '1' },
   })
-  if (exit !== 0) throw new Error(`Failed to install ${packageName}`)
+  if (exit !== 0)
+    throw lspErrors.PACKAGE_INSTALL_FAILED({
+      internal: { exitCode: exit },
+      packageName,
+    })
 }
 
 async function ensurePackageJson() {

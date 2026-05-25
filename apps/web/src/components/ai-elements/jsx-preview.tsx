@@ -15,6 +15,7 @@ import {
 } from 'react'
 import type { TProps as JsxParserProps } from 'react-jsx-parser'
 import JsxParser from 'react-jsx-parser'
+import { clientErrors } from '@/lib/structured-errors'
 
 interface JSXPreviewContextValue {
   jsx: string
@@ -35,7 +36,9 @@ const TAG_REGEX = /<\/?([a-zA-Z][a-zA-Z0-9]*)\s*([^>]*?)(\/)?>/
 export const useJSXPreview = () => {
   const context = useContext(JSXPreviewContext)
   if (!context) {
-    throw new Error('JSXPreview components must be used within JSXPreview')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'JSXPreview components must be used within JSXPreview',
+    })
   }
   return context
 }

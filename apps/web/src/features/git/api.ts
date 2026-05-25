@@ -1,6 +1,6 @@
-import { rpcErrorMessage } from '@/lib/file-server'
 import { client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
+import { createRpcError } from '@/lib/structured-errors'
 import type { BranchesResult, BlobDiffRequest, CommitResult, FileDiff, StatusResult } from './types'
 
 export async function fetchStatus(path: string, signal?: AbortSignal) {
@@ -197,7 +197,7 @@ export async function syncRemote(path: string) {
 }
 
 function unwrapGitResponse<T>(response: { data?: unknown; error?: unknown }): T {
-  if (response.error) throw new Error(rpcErrorMessage(response.error))
+  if (response.error) throw createRpcError(response.error)
 
   return response.data as T
 }

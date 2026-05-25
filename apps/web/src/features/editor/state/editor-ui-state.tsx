@@ -7,6 +7,8 @@ import { createContext, useContext } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
+import { clientErrors } from '@/lib/structured-errors'
+
 type EditorUiStoreState = {
   definitionTarget: LanguageServerDefinitionTarget | null
   languageServerReferences: LanguageServerReferencesResult | null
@@ -32,7 +34,9 @@ export const EditorUiStateContext = createContext<EditorUiStoreApi | null>(null)
 export function useEditorUiStoreApi() {
   const store = useContext(EditorUiStateContext)
   if (!store) {
-    throw new Error('useEditorUiStoreApi must be used within EditorStateProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useEditorUiStoreApi must be used within EditorStateProvider',
+    })
   }
 
   return store

@@ -24,7 +24,7 @@ import type { LanguageServerPlugin } from '@editor/language-server'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { logClientEvent } from '@/lib/client-logging'
+import { log } from '@/lib/client-logging'
 
 const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
   createElement(CaretDownIcon, {
@@ -141,8 +141,7 @@ export function createPlatformEditorConsoleLoggingPlugin(): EditorPlugin {
 }
 
 function logEditorEventToConsole(event: EditorLogEvent): void {
-  console.log('[editor]', event.action, event)
-  logClientEvent({
+  log.info({
     ...event,
     area: 'editor',
   })

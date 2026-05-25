@@ -166,7 +166,7 @@ describe('observability runtime', () => {
     expect(text.toLowerCase()).not.toContain('authorization')
   })
 
-  it('persists client logs in the shared file drain with a frontend source marker', async () => {
+  it('persists client logs in the shared file drain with a client source marker', async () => {
     const root = await fixtureRoot()
     const logDir = await fixtureRoot()
     initializeObservability(testObservabilityEnv(logDir))
@@ -206,10 +206,53 @@ describe('observability runtime', () => {
         path: '/_log/ingest',
       },
       service: 'platform',
-      source: 'fe',
+      source: 'client',
     })
     expect(events.map((candidate) => candidate.path)).not.toContain('/_log/ingest')
     expect(serialized).not.toContain('SECRET_CLIENT_CONTENT')
+  })
+
+  it('accepts batched client drain payloads without a session token', async () => {
+    const root = await fixtureRoot()
+    const logDir = await fixtureRoot()
+    initializeObservability(testObservabilityEnv(logDir))
+    const app = testApp(root, { sessionToken: 'secret-session-token' })
+
+    const response = await app.handle(
+      new Request('http://local/_log/ingest', {
+        body: JSON.stringify([
+          {
+            event: {
+              action: 'client.batch',
+              area: 'test',
+              level: 'warn',
+              service: 'platform-web',
+              timestamp: new Date().toISOString(),
+            },
+          },
+        ]),
+        headers: trustedOriginHeaders({
+          'content-type': 'application/json',
+          'x-evlog-source': 'client',
+        }),
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(204)
+    await response.text()
+    const event = eventForAction(await flushedEvents(logDir), 'client.batch')
+
+    expect(event).toMatchObject({
+      action: 'client.batch',
+      area: 'test',
+      client: {
+        service: 'platform-web',
+        timestamp: expect.any(String),
+      },
+      level: 'warn',
+      source: 'client',
+    })
   })
 
   it('records git and search summaries without persisting payload contents', async () => {

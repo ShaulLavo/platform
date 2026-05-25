@@ -65,6 +65,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 // ============================================================================
 // Helpers
@@ -113,7 +114,7 @@ const captureScreenshot = async (): Promise<File | null> => {
       // oxlint-disable-next-line eslint-plugin-unicorn(prefer-add-event-listener)
       video.onloadedmetadata = () => resolve()
       // oxlint-disable-next-line eslint-plugin-unicorn(prefer-add-event-listener)
-      video.onerror = () => reject(new Error('Failed to load screen stream'))
+      video.onerror = () => reject(clientErrors.SCREEN_STREAM_LOAD_FAILED())
     })
 
     await video.play()
@@ -195,9 +196,10 @@ const ProviderAttachmentsContext = createContext<AttachmentsContext | null>(null
 export const usePromptInputController = () => {
   const ctx = useContext(PromptInputController)
   if (!ctx) {
-    throw new Error(
-      'Wrap your component inside <PromptInputProvider> to use usePromptInputController().',
-    )
+    throw clientErrors.CONTEXT_MISSING({
+      message:
+        'Wrap your component inside <PromptInputProvider> to use usePromptInputController().',
+    })
   }
   return ctx
 }
@@ -208,9 +210,9 @@ const useOptionalPromptInputController = () => useContext(PromptInputController)
 export const useProviderAttachments = () => {
   const ctx = useContext(ProviderAttachmentsContext)
   if (!ctx) {
-    throw new Error(
-      'Wrap your component inside <PromptInputProvider> to use useProviderAttachments().',
-    )
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'Wrap your component inside <PromptInputProvider> to use useProviderAttachments().',
+    })
   }
   return ctx
 }
@@ -355,9 +357,9 @@ export const usePromptInputAttachments = () => {
   const local = useContext(LocalAttachmentsContext)
   const context = local ?? provider
   if (!context) {
-    throw new Error(
-      'usePromptInputAttachments must be used within a PromptInput or PromptInputProvider',
-    )
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'usePromptInputAttachments must be used within a PromptInput or PromptInputProvider',
+    })
   }
   return context
 }
@@ -378,9 +380,10 @@ export const LocalReferencedSourcesContext = createContext<ReferencedSourcesCont
 export const usePromptInputReferencedSources = () => {
   const ctx = useContext(LocalReferencedSourcesContext)
   if (!ctx) {
-    throw new Error(
-      'usePromptInputReferencedSources must be used within a LocalReferencedSourcesContext.Provider',
-    )
+    throw clientErrors.CONTEXT_MISSING({
+      message:
+        'usePromptInputReferencedSources must be used within a LocalReferencedSourcesContext.Provider',
+    })
   }
   return ctx
 }

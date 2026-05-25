@@ -5,6 +5,7 @@ import {
   type OrchestrationCommand,
 } from './schemas'
 import * as v from 'valibot'
+import { orchestrationErrors } from '../observability'
 import type { PendingOrchestrationEvent } from './event-store'
 import { requireProject, requireThread, type OrchestrationReadModel } from './read-model'
 
@@ -158,7 +159,7 @@ function projectCreated(
   model: OrchestrationReadModel,
 ) {
   if (model.projects.has(command.projectId))
-    throw new Error(`Project already exists: ${command.projectId}`)
+    throw orchestrationErrors.PROJECT_ALREADY_EXISTS({ projectId: command.projectId })
 
   return one(command, 'project.created', {
     createdAt: command.createdAt,
@@ -176,7 +177,7 @@ function threadCreated(
 ) {
   requireProject(model, command.projectId)
   if (model.threads.has(command.threadId))
-    throw new Error(`Thread already exists: ${command.threadId}`)
+    throw orchestrationErrors.THREAD_ALREADY_EXISTS({ threadId: command.threadId })
 
   return one(command, 'thread.created', {
     branch: command.branch,

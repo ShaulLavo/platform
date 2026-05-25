@@ -11,6 +11,7 @@ import {
 import type { EditorTheme } from '@editor/core'
 
 import { useTheme } from '@/components/theme-context'
+import { clientErrors } from '@/lib/structured-errors'
 
 export type EditorColorMode = 'dark' | 'light'
 export type EditorThemePalette = 'tree-sitter' | 'shiki'
@@ -218,7 +219,9 @@ function useEditorColorThemeState() {
   const context = useContext(EditorColorThemeContext)
 
   if (context === undefined) {
-    throw new Error('useEditorColorTheme must be used within an EditorColorThemeProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useEditorColorTheme must be used within an EditorColorThemeProvider',
+    })
   }
 
   return context

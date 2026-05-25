@@ -5,6 +5,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import type { Experimental_TranscriptionResult as TranscriptionResult } from 'ai'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 type TranscriptionSegment = TranscriptionResult['segments'][number]
 
@@ -20,7 +21,9 @@ const TranscriptionContext = createContext<TranscriptionContextValue | null>(nul
 const useTranscription = () => {
   const context = useContext(TranscriptionContext)
   if (!context) {
-    throw new Error('Transcription components must be used within Transcription')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'Transcription components must be used within Transcription',
+    })
   }
   return context
 }

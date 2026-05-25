@@ -2,6 +2,7 @@ import type { EditorCommandContext, EditorCommandId } from '@editor/core'
 import { createContext, useContext } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
+import { clientErrors } from '@/lib/structured-errors'
 
 export type WorkspaceFocusArea = 'editor' | 'file-tree' | 'git' | 'global' | 'terminal' | null
 
@@ -32,7 +33,9 @@ export { WorkspaceFocusContext }
 export function useWorkspaceFocus<T>(selector: (state: WorkspaceFocusStore) => T): T {
   const store = useContext(WorkspaceFocusContext)
   if (!store) {
-    throw new Error('useWorkspaceFocus must be used within WorkspaceFocusProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useWorkspaceFocus must be used within WorkspaceFocusProvider',
+    })
   }
 
   return useStore(store, selector)

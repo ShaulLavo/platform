@@ -1,4 +1,5 @@
 import { isRecord } from '@workspace/contracts'
+import { EvlogError } from 'evlog'
 
 export type FsErrorCode =
   | 'UNAUTHORIZED'
@@ -58,17 +59,18 @@ const messageByCode: Record<FsErrorCode, string> = {
   OPERATION_FAILED: 'filesystem operation failed',
 }
 
-export class FsError extends Error {
-  readonly code: FsErrorCode
-  readonly statusCode: number
-  override readonly cause?: unknown
+export class FsError extends EvlogError {
+  declare readonly code: FsErrorCode
 
   constructor(code: FsErrorCode, message = messageByCode[code], cause?: unknown) {
-    super(message)
+    super({
+      cause: sanitizeCause(cause) as Error | undefined,
+      code,
+      internal: cause === undefined ? undefined : { cause: sanitizeCause(cause) },
+      message,
+      status: statusByCode[code],
+    })
     this.name = 'FsError'
-    this.code = code
-    this.statusCode = statusByCode[code]
-    this.cause = sanitizeCause(cause)
   }
 }
 

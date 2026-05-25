@@ -11,9 +11,10 @@ import { lspMatchQuerySchema, lspRouteMatch, lspRoutes } from './lsp/routes'
 import {
   applyObservability,
   flushObservability,
+  isEvlogError,
   observabilityRoutes,
-  recordRequestError,
   recordRequestContext,
+  recordRequestError,
 } from './observability'
 import { OrchestrationEngine } from './orchestration/engine'
 import type { OrchestrationDatabase } from './orchestration/event-store'
@@ -46,7 +47,7 @@ export function createApp(options: AppOptions) {
   return app
     .use(
       cors({
-        allowedHeaders: ['authorization', 'content-type'],
+        allowedHeaders: ['authorization', 'content-type', 'x-evlog-source'],
         exposeHeaders: ['content-length', 'content-type', 'x-fs-mtime-ms', 'x-fs-path'],
         methods: ['GET', 'POST', 'OPTIONS'],
         origin: (request) => isCorsOriginAllowed(auth, request.headers.get('origin')),
@@ -84,26 +85,38 @@ function appErrorPayload(
     status?: number | string
   },
 ) {
-  const fsError = errorForResponse(code, error)
-  set.status = fsError.statusCode
+  const responseError = errorForResponse(code, error)
+  set.status = responseError.statusCode
   recordRequestContext({
-    errorCode: fsError.code,
-    status: fsError.statusCode,
+    errorCode: responseError.code,
+    status: responseError.statusCode,
   })
-  recordRequestError(fsError, {
+  recordRequestError(responseError, {
     area: 'server',
     operation: 'request_error',
-    status: fsError.statusCode,
+    status: responseError.statusCode,
   })
 
-  return errorPayload(fsError)
+  return responseErrorPayload(responseError)
 }
 
 function errorForResponse(code: unknown, error: unknown) {
   if (isFsError(error)) return error
+  if (isEvlogError(error)) return error
   if (code === 'VALIDATION') return new FsError('INVALID_PATH', errorMessage(error))
 
   return new FsError('OPERATION_FAILED', undefined, error)
+}
+
+function responseErrorPayload(error: { code?: string; message: string; statusCode: number }) {
+  if (isFsError(error)) return errorPayload(error)
+
+  return {
+    error: {
+      code: error.code ?? 'OPERATION_FAILED',
+      message: error.message,
+    },
+  }
 }
 
 function errorMessage(error: unknown) {

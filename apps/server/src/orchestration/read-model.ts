@@ -4,6 +4,7 @@ import type {
   OrchestrationSession,
   OrchestrationThread,
 } from '@workspace/contracts'
+import { orchestrationErrors } from '../observability'
 
 export type OrchestrationProjectedThread = OrchestrationThread & {
   hasActionableProposedPlan: boolean
@@ -38,14 +39,14 @@ export function cloneReadModel(model: OrchestrationReadModel): OrchestrationRead
 
 export function requireProject(model: OrchestrationReadModel, projectId: string) {
   const project = model.projects.get(projectId)
-  if (!project || project.deletedAt) throw new Error(`Project not found: ${projectId}`)
+  if (!project || project.deletedAt) throw orchestrationErrors.PROJECT_NOT_FOUND({ projectId })
 
   return project
 }
 
 export function requireThread(model: OrchestrationReadModel, threadId: string) {
   const thread = model.threads.get(threadId)
-  if (!thread || thread.deletedAt) throw new Error(`Thread not found: ${threadId}`)
+  if (!thread || thread.deletedAt) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId })
 
   return thread
 }

@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi as ZustandStoreApi } from 'zustand/vanilla'
 
+import { clientErrors } from '@/lib/structured-errors'
 import type { PanelSection } from './types'
 
 type StoreState = {
@@ -26,7 +27,9 @@ export const StateContext = createContext<GitStoreApi | null>(null)
 export function useGitState<T>(selector: (state: GitStore) => T): T {
   const store = useContext(StateContext)
   if (!store) {
-    throw new Error('useGitState must be used within GitStateProvider')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'useGitState must be used within GitStateProvider',
+    })
   }
 
   return useStore(store, selector)

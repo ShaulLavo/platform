@@ -11,6 +11,7 @@ import {
 } from '@rive-app/react-webgl2'
 import type { FC, ReactNode } from 'react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 // Delays Rive initialization by one frame so that React Strict Mode's
 // immediate unmount cycle never creates a WebGL2 context. Only the
@@ -184,7 +185,9 @@ export const Persona: FC<PersonaProps> = memo(
     const source = sources[variant]
 
     if (!source) {
-      throw new Error(`Invalid variant: ${variant}`)
+      throw clientErrors.INVALID_OPTION({
+        message: `Invalid variant: ${variant}`,
+      })
     }
 
     // Stabilize callbacks to prevent useRive from reinitializing

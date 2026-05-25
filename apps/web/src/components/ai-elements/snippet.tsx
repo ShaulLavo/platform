@@ -11,6 +11,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { CheckIcon, CopyIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { clientErrors } from '@/lib/structured-errors'
 
 interface SnippetContextType {
   code: string
@@ -81,7 +82,7 @@ export const SnippetCopyButton = ({
 
   const copyToClipboard = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
-      onError?.(new Error('Clipboard API not available'))
+      onError?.(clientErrors.CLIPBOARD_UNAVAILABLE())
       return
     }
 

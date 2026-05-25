@@ -16,6 +16,7 @@ import {
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
 import { cn } from '@workspace/ui/lib/utils'
+import { clientErrors } from '@/lib/structured-errors'
 import { CaretUpDownIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { createContext, useContext, useMemo } from 'react'
@@ -31,7 +32,9 @@ const PlanContext = createContext<PlanContextValue | null>(null)
 const usePlan = () => {
   const context = useContext(PlanContext)
   if (!context) {
-    throw new Error('Plan components must be used within Plan')
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'Plan components must be used within Plan',
+    })
   }
   return context
 }
