@@ -587,6 +587,8 @@ describe('fs rpc events', () => {
 
     await mkdir(path.join(root, 'node_modules'), { recursive: true })
     await writeFile(path.join(root, 'node_modules', 'ignored.txt'), 'ok')
+    await mkdir(path.join(root, '.evlog', 'logs'), { recursive: true })
+    await writeFile(path.join(root, '.evlog', 'logs', '2026-05-25.jsonl'), '{}\n')
 
     await expect(noEvent(events, 500)).resolves.toBe(true)
     await events.close()

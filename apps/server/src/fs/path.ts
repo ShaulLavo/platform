@@ -6,6 +6,7 @@ import { FsError } from './errors'
 export const defaultIgnoredNames = [
   'node_modules',
   '.git',
+  '.evlog',
   'dist',
   'build',
   '.next',

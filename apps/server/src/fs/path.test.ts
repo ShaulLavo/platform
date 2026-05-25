@@ -29,6 +29,7 @@ describe('workspace paths', () => {
 
   it('detects ignored path segments and converts platform separators', () => {
     expect(isIgnoredPath('src/node_modules/pkg/index.js')).toBe(true)
+    expect(isIgnoredPath('apps/server/.evlog/logs/2026-05-25.jsonl')).toBe(true)
     expect(isIgnoredPath('src/components/button.tsx')).toBe(false)
     expect(toPosix(['src', 'file.ts'].join(path.sep))).toBe('src/file.ts')
   })
