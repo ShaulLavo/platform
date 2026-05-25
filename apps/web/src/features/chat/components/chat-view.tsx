@@ -137,10 +137,10 @@ export function ChatView({
       <ChatComposer
         busy={busy}
         disabled={stopping}
+        draftKey={thread.id}
         error={sendError}
         modelLabel={formatChatModelLabel(thread.modelSelection)}
         rootPath={rootPath}
-        threadId={thread.id}
         onStop={handleStop}
         onSubmit={handleSend}
       />

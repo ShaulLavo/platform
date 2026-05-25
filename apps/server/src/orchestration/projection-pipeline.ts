@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { OrchestrationEvent } from './schemas'
 import { db as defaultDb } from '../db/client'
 import {
@@ -13,7 +13,7 @@ import {
 import type { OrchestrationDatabase } from './event-store'
 import { OrchestrationEventStore } from './event-store'
 
-const PROJECTOR_NAME = 'orchestration'
+export const ORCHESTRATION_PROJECTOR_NAME = 'orchestration'
 
 export class OrchestrationProjectionPipeline {
   private readonly database: OrchestrationDatabase
@@ -46,7 +46,7 @@ export class OrchestrationProjectionPipeline {
       this.database
         .select()
         .from(projectionState)
-        .where(eq(projectionState.projector, PROJECTOR_NAME))
+        .where(eq(projectionState.projector, ORCHESTRATION_PROJECTOR_NAME))
         .get()?.lastAppliedSequence ?? 0
     )
   }
@@ -136,8 +136,9 @@ export class OrchestrationProjectionPipeline {
         this.completeTurn(
           event.payload.threadId,
           event.payload.turnId,
-          'completed',
+          event.payload.status === 'error' ? 'error' : 'completed',
           event.payload.completedAt,
+          event.payload.assistantMessageId,
         )
         return
       case 'thread.session-stop-requested':
@@ -250,11 +251,42 @@ export class OrchestrationProjectionPipeline {
       })
       .run()
 
-    if (event.payload.role !== 'user') return
+    this.updateThreadForMessage(event)
+  }
 
-    this.updateThread(event.payload.threadId, {
-      latestUserMessageAt: event.payload.createdAt,
-      updatedAt: event.payload.updatedAt,
+  private updateThreadForMessage(
+    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+  ) {
+    if (event.payload.role === 'user') {
+      this.updateThread(event.payload.threadId, {
+        latestUserMessageAt: event.payload.createdAt,
+        updatedAt: event.payload.updatedAt,
+      })
+      return
+    }
+
+    this.updateThread(event.payload.threadId, { updatedAt: event.payload.updatedAt })
+    this.updateAssistantTurn(event)
+  }
+
+  private updateAssistantTurn(
+    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+  ) {
+    if (event.payload.role !== 'assistant') return
+    if (!event.payload.turnId) return
+
+    const turn = this.selectTurn(event.payload.threadId, event.payload.turnId)
+    const state = assistantTurnState(turn?.state, event.payload.streaming)
+    const completedAt = assistantTurnCompletedAt(turn?.completedAt, event)
+    const startedAt = turn?.startedAt ?? event.payload.createdAt
+    const requestedAt = turn?.requestedAt ?? event.payload.createdAt
+
+    this.upsertAssistantTurn(event, { completedAt, requestedAt, startedAt, state })
+    this.updateThreadLatestTurnForAssistantMessage(event, {
+      completedAt,
+      requestedAt,
+      startedAt,
+      state,
     })
   }
 
@@ -353,15 +385,20 @@ export class OrchestrationProjectionPipeline {
   private completeTurn(
     threadId: string,
     turnId: string | undefined,
-    state: 'completed' | 'interrupted',
+    state: 'completed' | 'interrupted' | 'error',
     completedAt: string,
+    assistantMessageId?: string | null,
   ) {
     if (!turnId) return
 
+    const turn = this.selectTurn(threadId, turnId)
+    const nextAssistantMessageId =
+      assistantMessageId === undefined ? (turn?.assistantMessageId ?? null) : assistantMessageId
+
     this.database
       .update(projectionTurns)
-      .set({ completedAt, state })
-      .where(eq(projectionTurns.turnId, turnId))
+      .set({ assistantMessageId: nextAssistantMessageId, completedAt, state })
+      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.turnId, turnId)))
       .run()
     const row = this.database
       .select()
@@ -371,8 +408,94 @@ export class OrchestrationProjectionPipeline {
     const current = row?.latestTurnJson ? (JSON.parse(row.latestTurnJson) as object) : {}
 
     this.updateThread(threadId, {
-      latestTurnJson: JSON.stringify({ ...current, completedAt, state, turnId }),
+      latestTurnJson: JSON.stringify({
+        ...current,
+        assistantMessageId: nextAssistantMessageId,
+        completedAt,
+        state,
+        turnId,
+      }),
       updatedAt: completedAt,
+    })
+  }
+
+  private selectTurn(threadId: string, turnId: string) {
+    return this.database
+      .select()
+      .from(projectionTurns)
+      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.turnId, turnId)))
+      .get()
+  }
+
+  private upsertAssistantTurn(
+    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+    turn: {
+      completedAt: string | null
+      requestedAt: string
+      startedAt: string
+      state: 'running' | 'completed' | 'interrupted' | 'error'
+    },
+  ) {
+    const turnId = event.payload.turnId
+    if (!turnId) return
+
+    this.database
+      .insert(projectionTurns)
+      .values({
+        assistantMessageId: event.payload.messageId,
+        completedAt: turn.completedAt,
+        requestedAt: turn.requestedAt,
+        sourceProposedPlanJson: null,
+        startedAt: turn.startedAt,
+        state: turn.state,
+        threadId: event.payload.threadId,
+        turnId,
+        userMessageId: null,
+      })
+      .onConflictDoUpdate({
+        target: [projectionTurns.threadId, projectionTurns.turnId],
+        set: {
+          assistantMessageId: event.payload.messageId,
+          completedAt: turn.completedAt,
+          requestedAt: turn.requestedAt,
+          startedAt: turn.startedAt,
+          state: turn.state,
+        },
+      })
+      .run()
+  }
+
+  private updateThreadLatestTurnForAssistantMessage(
+    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+    turn: {
+      completedAt: string | null
+      requestedAt: string
+      startedAt: string
+      state: 'running' | 'completed' | 'interrupted' | 'error'
+    },
+  ) {
+    const row = this.database
+      .select()
+      .from(projectionThreads)
+      .where(eq(projectionThreads.threadId, event.payload.threadId))
+      .get()
+    const current = row?.latestTurnJson
+      ? (JSON.parse(row.latestTurnJson) as { turnId?: string })
+      : null
+    if (current?.turnId && current.turnId !== event.payload.turnId) return
+
+    this.updateThread(event.payload.threadId, {
+      latestTurnId: event.payload.turnId,
+      latestTurnJson: JSON.stringify({
+        ...current,
+        assistantMessageId: event.payload.messageId,
+        completedAt: turn.completedAt,
+        requestedAt: turn.requestedAt,
+        startedAt: turn.startedAt,
+        state: turn.state,
+        turnId: event.payload.turnId,
+      }),
+      updatedAt: event.payload.updatedAt,
     })
   }
 
@@ -407,7 +530,7 @@ export class OrchestrationProjectionPipeline {
       .insert(projectionState)
       .values({
         lastAppliedSequence: sequence,
-        projector: PROJECTOR_NAME,
+        projector: ORCHESTRATION_PROJECTOR_NAME,
         updatedAt,
       })
       .onConflictDoUpdate({
@@ -437,4 +560,23 @@ function jsonOrUndefined(value: unknown) {
   if (value === undefined) return undefined
 
   return JSON.stringify(value)
+}
+
+function assistantTurnState(
+  current: 'running' | 'completed' | 'interrupted' | 'error' | undefined,
+  streaming: boolean,
+) {
+  if (streaming) return current ?? 'running'
+  if (current === 'interrupted' || current === 'error') return current
+
+  return 'completed'
+}
+
+function assistantTurnCompletedAt(
+  current: string | null | undefined,
+  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+) {
+  if (event.payload.streaming) return current ?? null
+
+  return current ?? event.payload.updatedAt
 }

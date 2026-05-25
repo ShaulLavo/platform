@@ -16,13 +16,15 @@ import { projectEvents } from './projector'
 import { createEmptyReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
 import {
-  clientOrchestrationCommandSchema,
+  orchestrationCommandSchema,
   type OrchestrationCommand,
   type OrchestrationReplayEventsResult,
 } from './schemas'
 
 const now = '2026-05-24T00:00:00.000Z'
 const later = '2026-05-24T00:01:00.000Z'
+const assistantStarted = '2026-05-24T00:02:00.000Z'
+const assistantCompleted = '2026-05-24T00:03:00.000Z'
 const modelSelection = {
   providerInstanceId: 'codex',
   model: 'gpt-5-codex',
@@ -45,6 +47,50 @@ describe('orchestration engine', () => {
     expect(first).toMatchObject({ deduped: false, sequence: 1 })
     expect(duplicate).toMatchObject({ deduped: true, sequence: 1 })
     expect(replay.events).toHaveLength(1)
+    fixture.close()
+  })
+
+  it('rejects duplicate commands with previously rejected receipts', async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+
+    await expect(engine.dispatch(threadCreateCommand())).rejects.toThrow('Project not found')
+    await expect(engine.dispatch(threadCreateCommand())).rejects.toThrow('Project not found')
+
+    expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(0)
+    fixture.close()
+  })
+
+  it('rolls back events and projections when command commit fails', async () => {
+    const fixture = createFixture()
+    fixture.sqlite.exec(`
+      CREATE TRIGGER fail_projection_project_insert
+      BEFORE INSERT ON projection_projects
+      BEGIN
+        SELECT RAISE(ABORT, 'projection failed');
+      END;
+    `)
+    const engine = new OrchestrationEngine(fixture.database)
+
+    await expect(
+      engine.dispatch(
+        projectCreateCommand({
+          commandId: 'cmd-project-create-fails',
+          projectId: 'project-fails',
+        }),
+      ),
+    ).rejects.toThrow('projection failed')
+
+    const receipts = fixture.database.select().from(schema.orchestrationCommandReceipts).all()
+
+    expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(0)
+    expect(receipts).toMatchObject([
+      {
+        commandId: 'cmd-project-create-fails',
+        resultSequence: null,
+        status: 'rejected',
+      },
+    ])
     fixture.close()
   })
 
@@ -111,14 +157,46 @@ describe('orchestration engine', () => {
         type: 'project.created',
       },
     ] as PendingOrchestrationEvent[])
+    const snapshots = new OrchestrationSnapshotQuery(fixture.database)
+    const staleSnapshot = snapshots.shellSnapshot()
     const pipeline = new OrchestrationProjectionPipeline(fixture.database, store)
     const applied = pipeline.catchUp()
-    const snapshot = new OrchestrationSnapshotQuery(fixture.database).shellSnapshot(
-      project[0]!.sequence,
-    )
+    const snapshot = snapshots.shellSnapshot()
 
+    expect(staleSnapshot.snapshotSequence).toBe(0)
     expect(applied).toHaveLength(1)
+    expect(snapshot.snapshotSequence).toBe(project[0]!.sequence)
     expect(snapshot.projects[0]?.id as string).toBe('project-1')
+    fixture.close()
+  })
+
+  it('settles assistant message completion in projections and the read model', async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+
+    await dispatchFirstThread(engine)
+    await engine.dispatch(assistantDeltaCommand())
+    await engine.dispatch(assistantCompleteCommand())
+    const detail = engine.threadDetailSnapshot('thread-1')
+    const modelThread = engine.readModelSnapshot().threads.get('thread-1')
+    const assistantMessage = detail.thread.messages.find((message) => message.id === 'message-2')
+
+    expect(assistantMessage).toMatchObject({
+      role: 'assistant',
+      streaming: false,
+      text: 'Done',
+    })
+    expect(detail.thread.latestTurn).toMatchObject({
+      assistantMessageId: 'message-2',
+      completedAt: assistantCompleted,
+      state: 'completed',
+      turnId: 'turn-1',
+    })
+    expect(modelThread?.latestTurn).toMatchObject({
+      assistantMessageId: 'message-2',
+      completedAt: assistantCompleted,
+      state: 'completed',
+    })
     fixture.close()
   })
 
@@ -236,16 +314,21 @@ async function dispatchFirstThread(engine: OrchestrationEngine) {
   await engine.dispatch(threadTurnStartCommand())
 }
 
-function projectCreateCommand() {
+function projectCreateCommand(input: Partial<ProjectCreateFixture> = {}) {
   return command({
-    commandId: 'cmd-project-create',
+    commandId: input.commandId ?? 'cmd-project-create',
     createdAt: now,
     defaultModelSelection: null,
-    projectId: 'project-1',
+    projectId: input.projectId ?? 'project-1',
     title: 'Platform',
     type: 'project.create',
     workspaceRoot: '/workspace',
   })
+}
+
+type ProjectCreateFixture = {
+  commandId: string
+  projectId: string
 }
 
 function threadCreateCommand(threadId = 'thread-1', commandId = 'cmd-thread-create') {
@@ -281,6 +364,29 @@ function threadTurnStartCommand(input: Partial<ThreadTurnStartFixture> = {}) {
   })
 }
 
+function assistantDeltaCommand() {
+  return command({
+    commandId: 'cmd-assistant-delta',
+    createdAt: assistantStarted,
+    delta: 'Done',
+    messageId: 'message-2',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    type: 'thread.message.assistant.delta',
+  })
+}
+
+function assistantCompleteCommand() {
+  return command({
+    commandId: 'cmd-assistant-complete',
+    completedAt: assistantCompleted,
+    messageId: 'message-2',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    type: 'thread.message.assistant.complete',
+  })
+}
+
 type ThreadTurnStartFixture = {
   commandId: string
   messageId: string
@@ -290,7 +396,7 @@ type ThreadTurnStartFixture = {
 }
 
 function command(value: unknown) {
-  return v.parse(clientOrchestrationCommandSchema, value) as OrchestrationCommand
+  return v.parse(orchestrationCommandSchema, value) as OrchestrationCommand
 }
 
 function createFixture() {
@@ -301,6 +407,7 @@ function createFixture() {
   return {
     close: () => sqlite.close(),
     database,
+    sqlite,
   }
 }
 

@@ -13,7 +13,7 @@ import {
 } from './chat-cache-constants'
 import { useChatProjectionStore, type ChatProjectionStore } from './chat-projection-store'
 
-type TimeoutHandle = ReturnType<typeof setTimeout>
+type TimeoutHandle = number | ReturnType<typeof setTimeout>
 
 type ChatProjectionStoreAccess = {
   getState: () => ChatProjectionStore

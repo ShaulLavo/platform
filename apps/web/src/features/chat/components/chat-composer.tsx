@@ -1,6 +1,5 @@
 import { LexicalComposer, type InitialConfigType } from '@lexical/react/LexicalComposer'
 import { WrenchIcon } from '@phosphor-icons/react'
-import type { ThreadId } from '@workspace/contracts'
 import { useCallback, useMemo, useState } from 'react'
 
 import { useChatComposerDraft } from '../hooks/use-chat-composer-draft'
@@ -11,24 +10,24 @@ import { ChatComposerEditor } from './chat-composer-editor'
 export function ChatComposer({
   busy,
   disabled,
+  draftKey,
   error,
   modelLabel,
   onStop,
   onSubmit,
   rootPath,
-  threadId,
 }: {
   busy: boolean
   disabled: boolean
+  draftKey: string
   error: string | null
   modelLabel: string
   onStop: () => void
   onSubmit: (text: string) => Promise<boolean>
   rootPath: string
-  threadId: ThreadId
 }) {
-  const composerKey = `${rootPath}:${threadId}`
-  const { clearDraft, draft, setDraft } = useChatComposerDraft({ rootPath, threadId })
+  const composerKey = `${rootPath}:${draftKey}`
+  const { clearDraft, draft, setDraft } = useChatComposerDraft({ draftKey, rootPath })
   const [submitting, setSubmitting] = useState(false)
   const sendDisabled = disabled || submitting || !draft.trim()
   const statusLabel = error ?? (busy ? 'Working' : null)

@@ -1,4 +1,4 @@
-import { asc, eq, isNull, sql } from 'drizzle-orm'
+import { asc, eq, isNull } from 'drizzle-orm'
 import * as v from 'valibot'
 import {
   orchestrationShellSnapshotSchema,
@@ -21,7 +21,7 @@ import {
 import { db as defaultDb } from '../db/client'
 import {
   projectionProjects,
-  orchestrationEvents,
+  projectionState,
   projectionThreadActivities,
   projectionThreadMessages,
   projectionThreadSessions,
@@ -34,6 +34,7 @@ import {
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 import { createEmptyReadModel, type OrchestrationReadModel } from './read-model'
+import { ORCHESTRATION_PROJECTOR_NAME } from './projection-pipeline'
 
 export class OrchestrationSnapshotQuery {
   private readonly database: OrchestrationDatabase
@@ -42,7 +43,7 @@ export class OrchestrationSnapshotQuery {
     this.database = database
   }
 
-  fullReadModel(sequence: number): OrchestrationReadModel {
+  fullReadModel(sequence = this.currentSequence()): OrchestrationReadModel {
     const model = createEmptyReadModel(sequence)
 
     for (const row of this.database.select().from(projectionProjects).all()) {
@@ -67,7 +68,7 @@ export class OrchestrationSnapshotQuery {
     return model
   }
 
-  shellSnapshot(sequence?: number): OrchestrationShellSnapshot {
+  shellSnapshot(): OrchestrationShellSnapshot {
     const projects = this.database
       .select()
       .from(projectionProjects)
@@ -86,13 +87,13 @@ export class OrchestrationSnapshotQuery {
 
     return v.parse(orchestrationShellSnapshotSchema, {
       projects,
-      snapshotSequence: sequence ?? this.currentSequence(),
+      snapshotSequence: this.currentSequence(),
       threads,
       updatedAt: new Date().toISOString(),
     })
   }
 
-  threadDetailSnapshot(threadId: string, sequence?: number): OrchestrationThreadDetailSnapshot {
+  threadDetailSnapshot(threadId: string): OrchestrationThreadDetailSnapshot {
     const row = this.database
       .select()
       .from(projectionThreads)
@@ -101,7 +102,7 @@ export class OrchestrationSnapshotQuery {
     if (!row) throw new Error(`Thread not found: ${threadId}`)
 
     return v.parse(orchestrationThreadDetailSnapshotSchema, {
-      snapshotSequence: sequence ?? this.currentSequence(),
+      snapshotSequence: this.currentSequence(),
       thread: threadFromRow(
         row,
         this.threadMessages(threadId),
@@ -140,8 +141,9 @@ export class OrchestrationSnapshotQuery {
   private currentSequence() {
     return (
       this.database
-        .select({ sequence: sql<number>`coalesce(max(${orchestrationEvents.sequence}), 0)` })
-        .from(orchestrationEvents)
+        .select({ sequence: projectionState.lastAppliedSequence })
+        .from(projectionState)
+        .where(eq(projectionState.projector, ORCHESTRATION_PROJECTOR_NAME))
         .get()?.sequence ?? 0
     )
   }

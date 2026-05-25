@@ -160,7 +160,7 @@ export class OrchestrationStreams {
   }
 
   private projectUpsert(event: OrchestrationEvent): OrchestrationShellStreamItem | null {
-    const snapshot = this.snapshots.shellSnapshot(event.sequence)
+    const snapshot = this.snapshots.shellSnapshot()
     const project = snapshot.projects.find((candidate) => candidate.id === event.aggregateId)
     if (!project) return null
 
@@ -172,7 +172,7 @@ export class OrchestrationStreams {
   }
 
   private threadUpsert(event: OrchestrationEvent): OrchestrationShellStreamItem | null {
-    const snapshot = this.snapshots.shellSnapshot(event.sequence)
+    const snapshot = this.snapshots.shellSnapshot()
     const thread = snapshot.threads.find((candidate) => candidate.id === event.aggregateId)
     if (!thread) return null
 

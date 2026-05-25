@@ -1,4 +1,3 @@
-import type { ThreadId } from '@workspace/contracts'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
@@ -14,29 +13,29 @@ type ChatComposerDraftState = {
 }
 
 export function useChatComposerDraft({
+  draftKey,
   rootPath,
-  threadId,
 }: {
+  draftKey: string | null
   rootPath: string
-  threadId: ThreadId | null
 }) {
-  const key = currentDraftKey(rootPath, threadId)
+  const key = currentDraftKey(rootPath, draftKey)
   const [state, setState] = useState<ChatComposerDraftState>(() => ({
-    draft: readChatDraft(rootPath, threadId),
+    draft: readChatDraft(rootPath, draftKey),
     key,
   }))
-  const draft = state.key === key ? state.draft : readChatDraft(rootPath, threadId)
+  const draft = state.key === key ? state.draft : readChatDraft(rootPath, draftKey)
 
   useEffect(() => {
     setState({
-      draft: readChatDraft(rootPath, threadId),
+      draft: readChatDraft(rootPath, draftKey),
       key,
     })
-  }, [key, rootPath, threadId])
+  }, [draftKey, key, rootPath])
 
   useEffect(() => {
-    writeChatDraft(rootPath, threadId, draft)
-  }, [draft, rootPath, threadId])
+    writeChatDraft(rootPath, draftKey, draft)
+  }, [draft, draftKey, rootPath])
 
   const setDraft = useCallback(
     (draft: string) => {
@@ -53,8 +52,8 @@ export function useChatComposerDraft({
       draft: '',
       key,
     })
-    clearChatDraft(rootPath, threadId)
-  }, [key, rootPath, threadId])
+    clearChatDraft(rootPath, draftKey)
+  }, [draftKey, key, rootPath])
 
   return {
     clearDraft,
@@ -63,8 +62,8 @@ export function useChatComposerDraft({
   }
 }
 
-function currentDraftKey(rootPath: string, threadId: ThreadId | null) {
-  if (!threadId) return null
+function currentDraftKey(rootPath: string, draftKey: string | null) {
+  if (!draftKey) return null
 
-  return chatDraftStorageKey(rootPath, threadId)
+  return chatDraftStorageKey(rootPath, draftKey)
 }

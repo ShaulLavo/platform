@@ -142,7 +142,7 @@ function createFakeEnvironment() {
       starts.push({ afterSequence: input.afterSequence, threadId })
 
       await new Promise<void>((resolve) => {
-        input.signal?.addEventListener('abort', resolve, { once: true })
+        input.signal?.addEventListener('abort', () => resolve(), { once: true })
       })
 
       aborts.push(threadId)
@@ -162,7 +162,7 @@ function createManualTimers() {
   const timers = new Map<number, () => void>()
 
   return {
-    clear: (handle: ReturnType<typeof setTimeout>) => {
+    clear: (handle: number | ReturnType<typeof setTimeout>) => {
       timers.delete(handle as unknown as number)
     },
     runAll: () => {
@@ -178,7 +178,7 @@ function createManualTimers() {
       nextId += 1
       timers.set(handle, callback)
 
-      return handle as unknown as ReturnType<typeof setTimeout>
+      return handle
     },
     size: () => timers.size,
   }

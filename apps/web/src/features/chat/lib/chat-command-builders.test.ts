@@ -9,6 +9,7 @@ import {
 import * as v from 'valibot'
 
 import {
+  createDraftThreadSubmission,
   createThreadInterruptCommand,
   createTurnSubmission,
   createWorkspaceProjectCommand,
@@ -49,8 +50,23 @@ describe('chat command builders', () => {
 
     expect(submission.command.type).toBe('thread.turn.start')
     expect(submission.command.message.messageId).toBe(submission.optimisticMessage.id)
-    expect(submission.command.turnId).toBe(submission.optimisticMessage.turnId)
+    expect(submission.optimisticMessage.turnId).toBe(submission.command.turnId)
     expect(submission.optimisticMessage.text).toBe('Explain the workspace')
+  })
+
+  it('builds a draft thread submission with one thread id and a prompt title', () => {
+    const projectId = workspaceProjectId('/Users/test/workspace/platform')
+    const submission = createDraftThreadSubmission({
+      createdAt: '2026-05-24T12:00:00.000Z',
+      projectId,
+      rootPath: '/Users/test/workspace/platform',
+      text: 'Fix the draft thread flow',
+    })
+
+    expect(submission.threadCommand.type).toBe('thread.create')
+    expect(submission.threadCommand.threadId).toBe(submission.turnCommand.threadId)
+    expect(submission.threadCommand.title).toBe('Fix the draft thread flow')
+    expect(submission.turnCommand.message.messageId).toBe(submission.optimisticMessage.id)
   })
 
   it('keeps interrupt commands scoped to the active thread and turn', () => {

@@ -1,24 +1,22 @@
-import type { ThreadId } from '@workspace/contracts'
-
 const CHAT_DRAFT_KEY_PREFIX = 'platform.chat-draft.v1'
 
-export function readChatDraft(rootPath: string, threadId: ThreadId | null) {
-  if (!threadId) return ''
+export function readChatDraft(rootPath: string, draftKey: string | null) {
+  if (!draftKey) return ''
   if (!canUseLocalStorage()) return ''
 
   try {
-    return localStorage.getItem(chatDraftStorageKey(rootPath, threadId)) ?? ''
+    return localStorage.getItem(chatDraftStorageKey(rootPath, draftKey)) ?? ''
   } catch {
     return ''
   }
 }
 
-export function writeChatDraft(rootPath: string, threadId: ThreadId | null, value: string) {
-  if (!threadId) return
+export function writeChatDraft(rootPath: string, draftKey: string | null, value: string) {
+  if (!draftKey) return
   if (!canUseLocalStorage()) return
 
   try {
-    const key = chatDraftStorageKey(rootPath, threadId)
+    const key = chatDraftStorageKey(rootPath, draftKey)
     if (value.trim()) {
       localStorage.setItem(key, value)
       return
@@ -30,19 +28,19 @@ export function writeChatDraft(rootPath: string, threadId: ThreadId | null, valu
   }
 }
 
-export function clearChatDraft(rootPath: string, threadId: ThreadId | null) {
-  if (!threadId) return
+export function clearChatDraft(rootPath: string, draftKey: string | null) {
+  if (!draftKey) return
   if (!canUseLocalStorage()) return
 
   try {
-    localStorage.removeItem(chatDraftStorageKey(rootPath, threadId))
+    localStorage.removeItem(chatDraftStorageKey(rootPath, draftKey))
   } catch {
     // Draft persistence is best-effort.
   }
 }
 
-export function chatDraftStorageKey(rootPath: string, threadId: ThreadId) {
-  return `${CHAT_DRAFT_KEY_PREFIX}:${encodeURIComponent(rootPath)}:${threadId}`
+export function chatDraftStorageKey(rootPath: string, draftKey: string) {
+  return `${CHAT_DRAFT_KEY_PREFIX}:${encodeURIComponent(rootPath)}:${draftKey}`
 }
 
 function canUseLocalStorage() {

@@ -16,6 +16,7 @@ import {
   type ProjectId,
   type RuntimeMode,
   type ThreadCreateCommand,
+  type ThreadDeleteCommand,
   type ThreadId,
   type ThreadTurnInterruptCommand,
   type ThreadTurnStartCommand,
@@ -28,6 +29,12 @@ const THREAD_TITLE_MAX_LENGTH = 48
 
 export type ChatTurnSubmission = {
   command: ThreadTurnStartCommand
+  optimisticMessage: OrchestrationMessage
+}
+
+export type DraftThreadSubmission = {
+  threadCommand: ThreadCreateCommand
+  turnCommand: ThreadTurnStartCommand
   optimisticMessage: OrchestrationMessage
 }
 
@@ -123,6 +130,60 @@ export function createTurnSubmission({
       turnId,
       updatedAt: createdAt,
     },
+  }
+}
+
+export function createDraftThreadSubmission({
+  createdAt,
+  interactionMode = DEFAULT_INTERACTION_MODE,
+  modelSelection = defaultChatModelSelection(),
+  projectId,
+  rootPath,
+  runtimeMode = DEFAULT_RUNTIME_MODE,
+  text,
+}: {
+  createdAt: string
+  interactionMode?: InteractionMode
+  modelSelection?: ModelSelection
+  projectId: ProjectId
+  rootPath: string
+  runtimeMode?: RuntimeMode
+  text: string
+}): DraftThreadSubmission {
+  const threadCommand = createThreadCommand({
+    createdAt,
+    projectId,
+    rootPath,
+    title: threadTitleFromPrompt(text),
+  })
+  const submission = createTurnSubmission({
+    createdAt,
+    interactionMode,
+    modelSelection,
+    runtimeMode,
+    text,
+    threadId: threadCommand.threadId,
+  })
+
+  return {
+    optimisticMessage: submission.optimisticMessage,
+    threadCommand,
+    turnCommand: submission.command,
+  }
+}
+
+export function createThreadDeleteCommand({
+  deletedAt,
+  threadId,
+}: {
+  deletedAt: string
+  threadId: ThreadId
+}): ThreadDeleteCommand {
+  return {
+    commandId: createCommandId(),
+    deletedAt,
+    threadId,
+    type: 'thread.delete',
   }
 }
 

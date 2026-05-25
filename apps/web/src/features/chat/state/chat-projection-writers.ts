@@ -5,6 +5,7 @@ import {
   type OrchestrationLatestTurn,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
+  type OrchestrationProposedPlan,
   type OrchestrationSession,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
@@ -33,6 +34,8 @@ import type {
 } from './chat-projection-store'
 
 const EMPTY_THREAD_IDS: ThreadId[] = []
+type ThreadOrchestrationEvent = Extract<OrchestrationEvent, { type: `thread.${string}` }>
+type ProjectOrchestrationEvent = Extract<OrchestrationEvent, { type: `project.${string}` }>
 
 export function syncChatProjectionShellSnapshot(
   state: ChatProjectionState,
@@ -130,11 +133,15 @@ export function applyChatProjectionEvent(
   state: ChatProjectionState,
   event: OrchestrationEvent,
 ): ChatProjectionState {
-  if (event.aggregateKind === 'thread') {
+  if (isThreadOrchestrationEvent(event)) {
     return applyThreadEventWithSequenceGuard(state, event)
   }
 
   return applyProjectEvent(state, event)
+}
+
+function isThreadOrchestrationEvent(event: OrchestrationEvent): event is ThreadOrchestrationEvent {
+  return event.type.startsWith('thread.')
 }
 
 function shouldApplyShellSnapshot(
@@ -204,7 +211,7 @@ function applyFreshShellStreamItem(
 
 function applyProjectEvent(
   state: ChatProjectionState,
-  event: OrchestrationEvent,
+  event: ProjectOrchestrationEvent,
 ): ChatProjectionState {
   switch (event.type) {
     case 'project.created':
@@ -232,9 +239,9 @@ function applyProjectEvent(
 
 function applyThreadEventWithSequenceGuard(
   state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { aggregateKind: 'thread' }>,
+  event: ThreadOrchestrationEvent,
 ): ChatProjectionState {
-  const threadId = event.aggregateId as ThreadId
+  const threadId = event.payload.threadId
   if (!shouldApplyThreadSequence(state, threadId, event.sequence)) return state
 
   const nextState = applyFreshThreadEvent(state, event)
@@ -244,7 +251,7 @@ function applyThreadEventWithSequenceGuard(
 
 function applyFreshThreadEvent(
   state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { aggregateKind: 'thread' }>,
+  event: ThreadOrchestrationEvent,
 ): ChatProjectionState {
   switch (event.type) {
     case 'thread.created':
@@ -331,11 +338,9 @@ function patchProject(
 function removeProject(state: ChatProjectionState, projectId: ProjectId): ChatProjectionState {
   if (!state.projectById[projectId]) return state
 
-  const { [projectId]: _removedProject, ...projectById } = state.projectById
-
   return {
     ...state,
-    projectById: projectById as Record<ProjectId, OrchestrationProjectShell>,
+    projectById: removeRecordKey(state.projectById, projectId),
     projectIds: removeId(state.projectIds, projectId),
   }
 }
@@ -382,7 +387,7 @@ function writeThreadDetailState(
   thread: OrchestrationThread,
 ): ChatProjectionState {
   const previousShell = state.threadShellById[thread.id]
-  let nextState = ensureThreadRegistered(
+  const nextState = ensureThreadRegistered(
     state,
     thread.id,
     thread.projectId,
@@ -477,7 +482,7 @@ function applyThreadTurnStartRequestedEvent(
     turnId: event.payload.turnId,
   }
 
-  let nextState = patchThreadShellAndSummary(state, event.payload.threadId, {
+  const nextState = patchThreadShellAndSummary(state, event.payload.threadId, {
     interactionMode: event.payload.interactionMode,
     modelSelection: event.payload.modelSelection,
     runtimeMode: event.payload.runtimeMode,
@@ -520,7 +525,7 @@ function applyThreadSessionSetEvent(
   state: ChatProjectionState,
   event: Extract<OrchestrationEvent, { type: 'thread.session-set' }>,
 ): ChatProjectionState {
-  let nextState = writeThreadSession(state, event.payload.threadId, event.payload.session)
+  const nextState = writeThreadSession(state, event.payload.threadId, event.payload.session)
 
   if (event.payload.session.status !== 'running') return nextState
   if (event.payload.session.activeTurnId === null) return nextState
@@ -567,7 +572,7 @@ function applyThreadMessageSentEvent(
     new Set(nextIds),
   )
 
-  return patchThreadShellAndSummary(
+  const nextState = patchThreadShell(
     {
       ...state,
       messageByThreadId: {
@@ -584,6 +589,8 @@ function applyThreadMessageSentEvent(
       updatedAt: event.payload.updatedAt,
     },
   )
+
+  return writeAssistantMessageTurnState(nextState, event)
 }
 
 function applyThreadActivityAppendedEvent(
@@ -596,15 +603,15 @@ function applyThreadActivityAppendedEvent(
   }
   const threadId = event.payload.threadId
   const currentById = state.activityByThreadId[threadId] ?? {}
-  const activities = Object.values({
+  const activities = recordValues<OrchestrationThreadActivity>({
     ...currentById,
     [activity.id]: activity,
-  }).toSorted(compareActivities)
+  }).sort(compareActivities)
   const cappedActivities = activities.slice(-CHAT_ACTIVITY_CACHE_LIMIT)
   const nextIds = cappedActivities.map((entry) => entry.id)
 
   return {
-    ...patchThreadShellAndSummary(state, threadId, { updatedAt: activity.createdAt }),
+    ...patchThreadShell(state, threadId, { updatedAt: activity.createdAt }),
     activityByThreadId: {
       ...state.activityByThreadId,
       [threadId]: recordById(cappedActivities, (entry) => entry.id),
@@ -622,7 +629,7 @@ function applyThreadProposedPlanUpsertedEvent(
 ): ChatProjectionState {
   const threadId = event.payload.threadId
   const currentById = state.proposedPlanByThreadId[threadId] ?? {}
-  const plans = Object.values({
+  const plans = recordValues<OrchestrationProposedPlan>({
     ...currentById,
     [event.payload.proposedPlan.id]: event.payload.proposedPlan,
   })
@@ -633,7 +640,7 @@ function applyThreadProposedPlanUpsertedEvent(
     .slice(-CHAT_PROPOSED_PLAN_CACHE_LIMIT)
 
   return {
-    ...patchThreadShellAndSummary(state, threadId, {
+    ...patchThreadShell(state, threadId, {
       updatedAt: event.payload.proposedPlan.updatedAt,
     }),
     proposedPlanByThreadId: {
@@ -662,14 +669,14 @@ function applyThreadTurnDiffCompletedEvent(
   }
   const threadId = event.payload.threadId
   const currentById = state.turnDiffSummaryByThreadId[threadId] ?? {}
-  const summaries = Object.values({
+  const summaries = recordValues<ChatTurnDiffSummary>({
     ...currentById,
     [summary.turnId]: summary,
   })
     .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount)
     .slice(-CHAT_CHECKPOINT_CACHE_LIMIT)
   const nextState = {
-    ...patchThreadShellAndSummary(state, threadId, { updatedAt: event.payload.completedAt }),
+    ...patchThreadShell(state, threadId, { updatedAt: event.payload.completedAt }),
     turnDiffIdsByThreadId: {
       ...state.turnDiffIdsByThreadId,
       [threadId]: summaries.map((entry) => entry.turnId),
@@ -714,7 +721,7 @@ function applyThreadRevertedEvent(
   )
 
   return {
-    ...patchThreadShellAndSummary(state, threadId, { updatedAt: event.payload.revertedAt }),
+    ...patchThreadShell(state, threadId, { updatedAt: event.payload.revertedAt }),
     activityByThreadId: {
       ...state.activityByThreadId,
       [threadId]: recordById(activities, (entry) => entry.id),
@@ -755,19 +762,8 @@ function writeThreadSession(
   threadId: ThreadId,
   session: OrchestrationSession | null,
 ): ChatProjectionState {
-  const summary = state.sidebarThreadSummaryById[threadId]
-
   return {
     ...state,
-    sidebarThreadSummaryById: summary
-      ? {
-          ...state.sidebarThreadSummaryById,
-          [threadId]: {
-            ...summary,
-            session,
-          },
-        }
-      : state.sidebarThreadSummaryById,
     threadSessionById: {
       ...state.threadSessionById,
       [threadId]: session,
@@ -780,19 +776,8 @@ function writeThreadTurnState(
   threadId: ThreadId,
   turnState: ChatProjectionThreadTurnState,
 ): ChatProjectionState {
-  const summary = state.sidebarThreadSummaryById[threadId]
-
   return {
     ...state,
-    sidebarThreadSummaryById: summary
-      ? {
-          ...state.sidebarThreadSummaryById,
-          [threadId]: {
-            ...summary,
-            latestTurn: turnState.latestTurn,
-          },
-        }
-      : state.sidebarThreadSummaryById,
     threadTurnStateById: {
       ...state.threadTurnStateById,
       [threadId]: turnState,
@@ -800,19 +785,41 @@ function writeThreadTurnState(
   }
 }
 
+function writeAssistantMessageTurnState(
+  state: ChatProjectionState,
+  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+): ChatProjectionState {
+  if (event.payload.role !== 'assistant') return state
+  if (!event.payload.turnId) return state
+
+  const threadId = event.payload.threadId
+  const current = state.threadTurnStateById[threadId]
+  const latestTurn = current?.latestTurn
+  if (latestTurn?.turnId && latestTurn.turnId !== event.payload.turnId) return state
+
+  return writeThreadTurnState(state, threadId, {
+    latestTurn: {
+      assistantMessageId: event.payload.messageId,
+      completedAt: event.payload.streaming
+        ? (latestTurn?.completedAt ?? null)
+        : (latestTurn?.completedAt ?? event.payload.updatedAt),
+      requestedAt: latestTurn?.requestedAt ?? event.payload.createdAt,
+      sourceProposedPlan: latestTurn?.sourceProposedPlan,
+      startedAt: latestTurn?.startedAt ?? event.payload.createdAt,
+      state: assistantMessageLatestTurnState(latestTurn?.state, event.payload.streaming),
+      turnId: event.payload.turnId,
+    },
+    pendingSourceProposedPlan: current?.pendingSourceProposedPlan,
+  })
+}
+
 function patchThreadShellAndSummary(
   state: ChatProjectionState,
   threadId: ThreadId,
   patch: Partial<ChatProjectionThreadShell>,
 ): ChatProjectionState {
-  const shell = state.threadShellById[threadId]
+  const nextState = patchThreadShell(state, threadId, patch)
   const summary = state.sidebarThreadSummaryById[threadId]
-  const nextShellById = shell
-    ? {
-        ...state.threadShellById,
-        [threadId]: compactUpdate(shell, patch),
-      }
-    : state.threadShellById
   const nextSummaryById = summary
     ? {
         ...state.sidebarThreadSummaryById,
@@ -820,16 +827,31 @@ function patchThreadShellAndSummary(
       }
     : state.sidebarThreadSummaryById
 
-  if (
-    nextShellById === state.threadShellById &&
-    nextSummaryById === state.sidebarThreadSummaryById
-  ) {
-    return state
+  if (nextSummaryById === state.sidebarThreadSummaryById) return nextState
+
+  return {
+    ...nextState,
+    sidebarThreadSummaryById: nextSummaryById,
   }
+}
+
+function patchThreadShell(
+  state: ChatProjectionState,
+  threadId: ThreadId,
+  patch: Partial<ChatProjectionThreadShell>,
+): ChatProjectionState {
+  const shell = state.threadShellById[threadId]
+  const nextShellById = shell
+    ? {
+        ...state.threadShellById,
+        [threadId]: compactUpdate(shell, patch),
+      }
+    : state.threadShellById
+
+  if (nextShellById === state.threadShellById) return state
 
   return {
     ...state,
-    sidebarThreadSummaryById: nextSummaryById,
     threadShellById: nextShellById,
   }
 }
@@ -840,7 +862,7 @@ function ensureThreadRegistered(
   nextProjectId: ProjectId,
   previousProjectId: ProjectId | undefined,
 ): ChatProjectionState {
-  let nextState = state.threadIds.includes(threadId)
+  const nextState = state.threadIds.includes(threadId)
     ? state
     : {
         ...state,
@@ -891,45 +913,23 @@ function ensureProjectThreadId(
 }
 
 function removeThreadState(state: ChatProjectionState, threadId: ThreadId): ChatProjectionState {
-  const { [threadId]: _removedActivityIds, ...activityIdsByThreadId } = state.activityIdsByThreadId
-  const { [threadId]: _removedActivities, ...activityByThreadId } = state.activityByThreadId
-  const { [threadId]: _removedDetailSequence, ...threadDetailSequenceById } =
-    state.threadDetailSequenceById
-  const { [threadId]: _removedMessageIds, ...messageIdsByThreadId } = state.messageIdsByThreadId
-  const { [threadId]: _removedMessages, ...messageByThreadId } = state.messageByThreadId
-  const { [threadId]: _removedPlanIds, ...proposedPlanIdsByThreadId } =
-    state.proposedPlanIdsByThreadId
-  const { [threadId]: _removedPlans, ...proposedPlanByThreadId } = state.proposedPlanByThreadId
-  const { [threadId]: _removedSidebar, ...sidebarThreadSummaryById } =
-    state.sidebarThreadSummaryById
-  const { [threadId]: _removedSession, ...threadSessionById } = state.threadSessionById
-  const { [threadId]: _removedShell, ...threadShellById } = state.threadShellById
-  const { [threadId]: _removedTurnState, ...threadTurnStateById } = state.threadTurnStateById
-  const { [threadId]: _removedTurnDiffIds, ...turnDiffIdsByThreadId } = state.turnDiffIdsByThreadId
-  const { [threadId]: _removedTurnDiffs, ...turnDiffSummaryByThreadId } =
-    state.turnDiffSummaryByThreadId
-
   return {
     ...state,
-    activityByThreadId: activityByThreadId as ChatProjectionState['activityByThreadId'],
-    activityIdsByThreadId: activityIdsByThreadId as ChatProjectionState['activityIdsByThreadId'],
-    messageByThreadId: messageByThreadId as ChatProjectionState['messageByThreadId'],
-    messageIdsByThreadId: messageIdsByThreadId as ChatProjectionState['messageIdsByThreadId'],
-    proposedPlanByThreadId: proposedPlanByThreadId as ChatProjectionState['proposedPlanByThreadId'],
-    proposedPlanIdsByThreadId:
-      proposedPlanIdsByThreadId as ChatProjectionState['proposedPlanIdsByThreadId'],
-    sidebarThreadSummaryById:
-      sidebarThreadSummaryById as ChatProjectionState['sidebarThreadSummaryById'],
-    threadDetailSequenceById:
-      threadDetailSequenceById as ChatProjectionState['threadDetailSequenceById'],
+    activityByThreadId: removeRecordKey(state.activityByThreadId, threadId),
+    activityIdsByThreadId: removeRecordKey(state.activityIdsByThreadId, threadId),
+    messageByThreadId: removeRecordKey(state.messageByThreadId, threadId),
+    messageIdsByThreadId: removeRecordKey(state.messageIdsByThreadId, threadId),
+    proposedPlanByThreadId: removeRecordKey(state.proposedPlanByThreadId, threadId),
+    proposedPlanIdsByThreadId: removeRecordKey(state.proposedPlanIdsByThreadId, threadId),
+    sidebarThreadSummaryById: removeRecordKey(state.sidebarThreadSummaryById, threadId),
+    threadDetailSequenceById: removeRecordKey(state.threadDetailSequenceById, threadId),
     threadIds: removeId(state.threadIds, threadId),
     threadIdsByProjectId: removeThreadFromAllProjectIndexes(state.threadIdsByProjectId, threadId),
-    threadSessionById: threadSessionById as ChatProjectionState['threadSessionById'],
-    threadShellById: threadShellById as ChatProjectionState['threadShellById'],
-    threadTurnStateById: threadTurnStateById as ChatProjectionState['threadTurnStateById'],
-    turnDiffIdsByThreadId: turnDiffIdsByThreadId as ChatProjectionState['turnDiffIdsByThreadId'],
-    turnDiffSummaryByThreadId:
-      turnDiffSummaryByThreadId as ChatProjectionState['turnDiffSummaryByThreadId'],
+    threadSessionById: removeRecordKey(state.threadSessionById, threadId),
+    threadShellById: removeRecordKey(state.threadShellById, threadId),
+    threadTurnStateById: removeRecordKey(state.threadTurnStateById, threadId),
+    turnDiffIdsByThreadId: removeRecordKey(state.turnDiffIdsByThreadId, threadId),
+    turnDiffSummaryByThreadId: removeRecordKey(state.turnDiffSummaryByThreadId, threadId),
   }
 }
 
@@ -1117,9 +1117,7 @@ function removeProjectThreadId(
     }
   }
 
-  const { [projectId]: _removedProjectThreads, ...rest } = record
-
-  return rest as Record<ProjectId, ThreadId[]>
+  return removeRecordKey(record, projectId)
 }
 
 function removeThreadFromAllProjectIndexes(
@@ -1165,6 +1163,22 @@ function retainRecordKeys<TKey extends string, TValue>(
       keys.has(key as TKey) ? [[key, value] as const] : [],
     ),
   ) as Record<TKey, TValue>
+}
+
+function recordValues<TValue>(record: object): TValue[] {
+  return Object.values(record) as TValue[]
+}
+
+function removeRecordKey<TKey extends string, TValue>(
+  record: Record<TKey, TValue>,
+  key: TKey,
+): Record<TKey, TValue> {
+  if (!(key in record)) return record
+
+  const nextRecord = { ...record }
+  delete nextRecord[key]
+
+  return nextRecord
 }
 
 function recordById<TValue, TKey extends string>(
@@ -1213,6 +1227,16 @@ function compareActivities(left: OrchestrationThreadActivity, right: Orchestrati
 function checkpointStatusToLatestTurnState(status: ChatTurnDiffSummary['status']) {
   if (status === 'error') return 'error'
   if (status === 'missing') return 'interrupted'
+
+  return 'completed'
+}
+
+function assistantMessageLatestTurnState(
+  current: OrchestrationLatestTurn['state'] | undefined,
+  streaming: boolean,
+) {
+  if (streaming) return current ?? 'running'
+  if (current === 'interrupted' || current === 'error') return current
 
   return 'completed'
 }

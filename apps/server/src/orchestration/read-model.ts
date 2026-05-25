@@ -65,6 +65,7 @@ export function setLatestTurnState(
   thread: OrchestrationProjectedThread,
   state: OrchestrationLatestTurn['state'],
   timestamp: string,
+  assistantMessageId = thread.latestTurn?.assistantMessageId ?? null,
 ) {
   if (!thread.latestTurn) return thread
 
@@ -72,6 +73,7 @@ export function setLatestTurnState(
     ...thread,
     latestTurn: {
       ...thread.latestTurn,
+      assistantMessageId,
       completedAt: state === 'running' ? thread.latestTurn.completedAt : timestamp,
       state,
     },

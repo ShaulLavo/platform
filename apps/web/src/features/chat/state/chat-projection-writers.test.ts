@@ -3,10 +3,13 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
+  commandIdSchema,
   eventIdSchema,
   messageIdSchema,
   projectIdSchema,
   threadIdSchema,
+  turnIdSchema,
+  type OrchestrationEvent,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type OrchestrationThread,
@@ -18,6 +21,7 @@ import * as v from 'valibot'
 import { CHAT_ACTIVITY_CACHE_LIMIT, CHAT_MESSAGE_CACHE_LIMIT } from './chat-cache-constants'
 import { createInitialChatProjectionState } from './chat-projection-store'
 import {
+  applyChatProjectionEvent,
   applyChatProjectionShellStreamItem,
   syncChatProjectionShellSnapshot,
   syncChatProjectionThreadDetailSnapshot,
@@ -167,6 +171,43 @@ describe('chat projection writers', () => {
     expect(state.threadShellById[threadId]?.title).toBe('new thread')
     expect(state.messageIdsByThreadId[threadId]).toEqual([parseMessageId('message-6')])
   })
+
+  it('keeps sidebar summaries shell-owned while detail events update local turn state', () => {
+    const threadId = parseThreadId('thread-1')
+    const turnId = parseTurnId('turn-1')
+    let state = createInitialChatProjectionState()
+
+    state = syncChatProjectionShellSnapshot(state, {
+      projects: [makeProject()],
+      snapshotSequence: 1,
+      threads: [
+        makeThreadShell({
+          id: threadId,
+          latestTurn: {
+            assistantMessageId: null,
+            completedAt: null,
+            requestedAt: timestamp(1),
+            startedAt: null,
+            state: 'running',
+            turnId,
+          },
+          updatedAt: timestamp(1),
+        }),
+      ],
+      updatedAt: timestamp(1),
+    })
+
+    const summaryBefore = state.sidebarThreadSummaryById[threadId]
+    state = applyChatProjectionEvent(state, assistantCompleteEvent(threadId, turnId))
+
+    expect(state.sidebarThreadSummaryById[threadId]).toBe(summaryBefore)
+    expect(state.threadTurnStateById[threadId]?.latestTurn).toMatchObject({
+      assistantMessageId: parseMessageId('message-assistant'),
+      completedAt: timestamp(4),
+      state: 'completed',
+      turnId,
+    })
+  })
 })
 
 function makeProject(
@@ -255,6 +296,36 @@ function makeActivity(
   }
 }
 
+function assistantCompleteEvent(
+  threadId: ReturnType<typeof parseThreadId>,
+  turnId: ReturnType<typeof parseTurnId>,
+): OrchestrationEvent {
+  return {
+    actorKind: 'provider',
+    aggregateId: threadId,
+    aggregateKind: 'thread',
+    causationEventId: null,
+    commandId: parseCommandId('command-assistant-complete'),
+    correlationId: parseCommandId('command-assistant-complete'),
+    eventId: parseEventId('event-assistant-complete'),
+    metadata: {},
+    occurredAt: timestamp(4),
+    payload: {
+      attachments: [],
+      createdAt: timestamp(4),
+      messageId: parseMessageId('message-assistant'),
+      role: 'assistant',
+      streaming: false,
+      text: '',
+      threadId,
+      turnId,
+      updatedAt: timestamp(4),
+    },
+    sequence: 2,
+    type: 'thread.message-sent',
+  }
+}
+
 function parseProjectId(value: string) {
   return v.parse(projectIdSchema, value)
 }
@@ -269,6 +340,14 @@ function parseMessageId(value: string) {
 
 function parseEventId(value: string) {
   return v.parse(eventIdSchema, value)
+}
+
+function parseCommandId(value: string) {
+  return v.parse(commandIdSchema, value)
+}
+
+function parseTurnId(value: string) {
+  return v.parse(turnIdSchema, value)
 }
 
 function timestamp(index: number) {

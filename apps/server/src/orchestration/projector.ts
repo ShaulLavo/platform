@@ -8,6 +8,8 @@ import {
   type OrchestrationReadModel,
 } from './read-model'
 
+type LatestTurnState = NonNullable<OrchestrationProjectedThread['latestTurn']>['state']
+
 export function projectEvents(events: OrchestrationEvent[], base = createEmptyReadModel()) {
   let model = cloneReadModel(base)
 
@@ -124,7 +126,12 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       return
     case 'thread.turn-diff-completed':
       updateThread(model, event.payload.threadId, (thread) =>
-        setLatestTurnState(thread, 'completed', event.payload.completedAt),
+        setLatestTurnState(
+          thread,
+          event.payload.status === 'error' ? 'error' : 'completed',
+          event.payload.completedAt,
+          event.payload.assistantMessageId,
+        ),
       )
       return
     case 'thread.session-stop-requested':
@@ -201,6 +208,7 @@ function upsertMessage(
       ...thread,
       latestUserMessageAt:
         event.payload.role === 'user' ? event.payload.createdAt : thread.latestUserMessageAt,
+      latestTurn: latestTurnAfterMessage(thread.latestTurn, event),
       messages,
       updatedAt: event.payload.updatedAt,
     }
@@ -238,6 +246,41 @@ function messageFromEvent(event: Extract<OrchestrationEvent, { type: 'thread.mes
     turnId: event.payload.turnId,
     updatedAt: event.payload.updatedAt,
   } satisfies OrchestrationMessage
+}
+
+function latestTurnAfterMessage(
+  latestTurn: OrchestrationProjectedThread['latestTurn'],
+  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+) {
+  if (event.payload.role !== 'assistant') return latestTurn
+  if (!event.payload.turnId) return latestTurn
+  if (latestTurn?.turnId && latestTurn.turnId !== event.payload.turnId) return latestTurn
+
+  const base = latestTurn ?? {
+    assistantMessageId: null,
+    completedAt: null,
+    requestedAt: event.payload.createdAt,
+    startedAt: null,
+    state: 'running' as const,
+    turnId: event.payload.turnId,
+  }
+
+  return {
+    ...base,
+    assistantMessageId: event.payload.messageId,
+    completedAt: event.payload.streaming
+      ? base.completedAt
+      : (base.completedAt ?? event.payload.updatedAt),
+    startedAt: base.startedAt ?? event.payload.createdAt,
+    state: assistantMessageTurnState(base.state, event.payload.streaming),
+  }
+}
+
+function assistantMessageTurnState(current: LatestTurnState, streaming: boolean) {
+  if (streaming) return current
+  if (current === 'interrupted' || current === 'error') return current
+
+  return 'completed'
 }
 
 function updateProjectValue(
