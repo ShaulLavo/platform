@@ -213,6 +213,7 @@ function isDrainAdapter(adapter: DrainAdapter | null): adapter is DrainAdapter {
 function shouldPersistEvent(context: DrainContext) {
   if (isRoutineHealthEvent(context)) return false
   if (isRoutineClientLogIngestEvent(context)) return false
+  if (isRoutineLogDashboardEvent(context)) return false
 
   return true
 }
@@ -228,6 +229,15 @@ function isRoutineHealthEvent(context: DrainContext) {
 function isRoutineClientLogIngestEvent(context: DrainContext) {
   const event = context.event as Record<string, unknown>
   if (event.path !== '/_log/ingest') return false
+  if (typeof event.status !== 'number') return false
+
+  return event.status < 400
+}
+
+function isRoutineLogDashboardEvent(context: DrainContext) {
+  const event = context.event as Record<string, unknown>
+  if (typeof event.path !== 'string') return false
+  if (!event.path.startsWith('/_log/dashboard')) return false
   if (typeof event.status !== 'number') return false
 
   return event.status < 400

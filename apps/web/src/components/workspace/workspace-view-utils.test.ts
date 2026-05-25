@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 
-import { workspacePanelSelectionForTabActivation } from '@/components/workspace/workspace-view-utils'
+import {
+  isWorkspacePanelTab,
+  workspacePanelSelectionForTabActivation,
+  workspacePanelTabTitle,
+} from '@/components/workspace/workspace-view-utils'
 
 describe('workspacePanelSelectionForTabActivation', () => {
   it('collapses the sidebar when activating the visible active tab', () => {
@@ -25,9 +29,9 @@ describe('workspacePanelSelectionForTabActivation', () => {
     expect(
       workspacePanelSelectionForTabActivation(
         { sidebarVisible: true, workspacePanelTab: 'files' },
-        'git',
+        'logs',
       ),
-    ).toEqual({ sidebarVisible: true, workspacePanelTab: 'git' })
+    ).toEqual({ sidebarVisible: true, workspacePanelTab: 'logs' })
   })
 
   it('switches tabs and expands the hidden sidebar', () => {
@@ -37,5 +41,10 @@ describe('workspacePanelSelectionForTabActivation', () => {
         'search',
       ),
     ).toEqual({ sidebarVisible: true, workspacePanelTab: 'search' })
+  })
+
+  it('recognizes the logs workspace panel tab', () => {
+    expect(isWorkspacePanelTab('logs')).toBe(true)
+    expect(workspacePanelTabTitle('logs')).toBe('Logs')
   })
 })

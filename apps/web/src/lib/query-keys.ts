@@ -40,3 +40,10 @@ export const documentSymbolKeys = {
   document: (rootPath: string, path: string, contentRevision: string) =>
     [...documentSymbolKeys.all, rootPath, path, contentRevision] as const,
 }
+
+export const logsKeys = {
+  all: ['logs'] as const,
+  detail: (id: string) => [...logsKeys.all, 'detail', id] as const,
+  events: (filters: unknown) => [...logsKeys.all, 'events', filters] as const,
+  summary: (filters: unknown) => [...logsKeys.all, 'summary', filters] as const,
+}

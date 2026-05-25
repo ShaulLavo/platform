@@ -3,12 +3,12 @@ import { describe, expect, it } from 'bun:test'
 import { createWorkspaceFocusStore } from './workspace-focus-state'
 
 describe('createWorkspaceFocusStore', () => {
-  it('accepts git as a focused area', () => {
+  it('accepts logs as a focused area', () => {
     const store = createWorkspaceFocusStore()
 
-    store.getState().setFocusArea('git')
+    store.getState().setFocusArea('logs')
 
-    expect(store.getState().activeArea).toBe('git')
+    expect(store.getState().activeArea).toBe('logs')
   })
 
   it('preserves existing clear semantics', () => {

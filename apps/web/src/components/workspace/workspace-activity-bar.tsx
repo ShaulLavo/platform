@@ -7,6 +7,7 @@ import {
   FolderIcon,
   GitBranchIcon,
   MagnifyingGlassIcon,
+  PulseIcon,
   TerminalWindowIcon,
 } from '@phosphor-icons/react'
 
@@ -51,9 +52,17 @@ export function WorkspaceActivityBar({
           currentVisible={currentVisible}
           onSelectTab={onSelectTab}
         />
+        <WorkspaceActivityTab
+          icon={<PulseIcon className='size-5' />}
+          label='Logs'
+          value='logs'
+          currentVisible={currentVisible}
+          onSelectTab={onSelectTab}
+        />
         <ChatSidebarEntry currentVisible={currentVisible} onSelectTab={onSelectTab} />
         <WorkspaceActivityButton
-          active={!terminalCollapsed}
+          controls='workspace-terminal'
+          expanded={!terminalCollapsed}
           icon={<TerminalWindowIcon className='size-5' />}
           label='Terminal'
           onClick={onToggleTerminal}

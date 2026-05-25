@@ -1,27 +1,26 @@
 import { Button } from '@workspace/ui/components/button'
-import { cn } from '@workspace/ui/lib/utils'
 import type { ReactNode } from 'react'
 
 export function WorkspaceActivityButton({
-  active,
+  controls,
+  expanded,
   icon,
   label,
   onClick,
 }: {
-  active: boolean
+  controls?: string
+  expanded?: boolean
   icon: ReactNode
   label: string
   onClick: () => void
 }) {
   return (
     <Button
+      aria-controls={controls}
+      aria-expanded={expanded}
       aria-label={label}
-      aria-pressed={active}
-      className={cn(
-        'h-10 w-full rounded-md px-0 text-muted-foreground hover:bg-muted/50',
-        active && 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground',
-      )}
-      size='icon-lg'
+      className='size-8 rounded-md p-0 text-muted-foreground hover:bg-muted/50 aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-muted/50 aria-expanded:hover:text-foreground'
+      size='icon'
       title={label}
       type='button'
       variant='ghost'

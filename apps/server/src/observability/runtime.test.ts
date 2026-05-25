@@ -212,6 +212,25 @@ describe('observability runtime', () => {
     expect(serialized).not.toContain('SECRET_CLIENT_CONTENT')
   })
 
+  it('does not persist successful dashboard reads', async () => {
+    const root = await fixtureRoot()
+    const logDir = await fixtureRoot()
+    initializeObservability(testObservabilityEnv(logDir))
+    const app = testApp(root)
+
+    const response = await app.handle(
+      new Request('http://local/_log/dashboard/events', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await response.text()
+    const events = await flushedEvents(logDir)
+
+    expect(events.map((event) => event.path)).not.toContain('/_log/dashboard/events')
+  })
+
   it('accepts batched client drain payloads without a session token', async () => {
     const root = await fixtureRoot()
     const logDir = await fixtureRoot()

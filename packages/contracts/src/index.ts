@@ -212,3 +212,23 @@ export {
   type OrchestrationThreadShell,
   type OrchestrationThreadStreamItem,
 } from './orchestration-snapshots'
+export {
+  logDashboardBreakdownItemSchema,
+  logDashboardFiltersSchema,
+  logDashboardLevelSchema,
+  logDashboardSummarySchema,
+  logDashboardTimelineBucketSchema,
+  logEventDetailSchema,
+  logEventsResultSchema,
+  logEventSummarySchema,
+  logLiveStreamItemSchema,
+  type LogDashboardBreakdownItem,
+  type LogDashboardFilters,
+  type LogDashboardLevel,
+  type LogDashboardSummary,
+  type LogDashboardTimelineBucket,
+  type LogEventDetail,
+  type LogEventsResult,
+  type LogEventSummary,
+  type LogLiveStreamItem,
+} from './log-dashboard'

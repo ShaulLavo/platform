@@ -2,6 +2,7 @@ import { WorkspaceFilesPane } from '@/components/workspace/workspace-files-pane'
 import { WorkspaceSearchPane } from '@/components/workspace/workspace-search-pane'
 import { ChatSidePanel } from '@/features/chat/components/chat-side-panel'
 import { Panel as GitPanel } from '@/features/git/panel'
+import { LogsPanel } from '@/features/logs/panel'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
@@ -31,6 +32,8 @@ export function WorkspaceSidebar({
   treeState: LoadState<TreeModel>
   visibleTreeItemCount: number | null
 }) {
+  const logsActive = sidebarVisible && tab === 'logs'
+
   return (
     <aside
       aria-hidden={!sidebarVisible}
@@ -59,6 +62,9 @@ export function WorkspaceSidebar({
       </TabsContent>
       <TabsContent keepMounted value='git'>
         <GitPanel rootPath={rootPath} />
+      </TabsContent>
+      <TabsContent keepMounted value='logs'>
+        <LogsPanel active={logsActive} />
       </TabsContent>
       <TabsContent keepMounted value='chat'>
         <ChatSidePanel rootPath={rootPath} />

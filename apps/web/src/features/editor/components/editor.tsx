@@ -27,7 +27,7 @@ import {
 } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
-import type { DocumentSessionChange, EditorKeymapLayer } from '@editor/core'
+import type { DocumentSessionChange, EditorKeymapLayer, EditorKeymapOptions } from '@editor/core'
 
 type EditorProps = {
   active: boolean
@@ -104,6 +104,14 @@ export function Editor({
     }),
     [cachedDocument],
   )
+  const editorKeymap = useMemo(
+    () =>
+      ({
+        defaultBindings: false,
+        layers: keymapLayers,
+      }) satisfies EditorKeymapOptions,
+    [keymapLayers],
+  )
   const controller = useEditor({
     cursorLineHighlight: {
       gutterNumber: true,
@@ -111,10 +119,7 @@ export function Editor({
       rowBackground: true,
     },
     document,
-    keymap: {
-      defaultBindings: false,
-      layers: keymapLayers,
-    },
+    keymap: editorKeymap,
     onChange: (_state, change) => {
       if (!change || change.kind === 'selection' || change.kind === 'none') return
 

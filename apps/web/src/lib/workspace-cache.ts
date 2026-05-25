@@ -98,7 +98,7 @@ type WorkspaceCachePayloadV7 = {
   workspacePanelTab: WorkspacePanelTab
 }
 
-export type WorkspacePanelTab = 'chat' | 'files' | 'git' | 'search'
+export type WorkspacePanelTab = 'chat' | 'files' | 'git' | 'logs' | 'search'
 
 export type CachedSearchBufferState = {
   activeResultId: string | null
@@ -144,6 +144,7 @@ const workspacePanelTabSchema = v.union([
   v.literal('chat'),
   v.literal('files'),
   v.literal('git'),
+  v.literal('logs'),
   v.literal('search'),
 ])
 const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)

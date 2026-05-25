@@ -162,6 +162,29 @@ describe('workspace cache', () => {
     expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/app.ts')
   })
 
+  it('migrates v6 logs panel tab state', () => {
+    const rootFolder = pickedDirectory('/repo')
+
+    STORE.set(
+      'platform.workspace-state.v1',
+      JSON.stringify({
+        diffViewMode: 'split',
+        editorHistory: [],
+        gitPanelOpen: true,
+        openFilePaths: [],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer: null,
+        selectedFilePath: null,
+        sidebarVisible: true,
+        version: 6,
+        workspacePanelTab: 'logs',
+      }),
+    )
+
+    expect(readWorkspaceCache().workspacePanelTab).toBe('logs')
+  })
+
   it('persists pane split sizes in the workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const editorPaneLayout: EditorPaneLayout = {
@@ -229,6 +252,25 @@ describe('workspace cache', () => {
     })
 
     expect(readWorkspaceCache().workspacePanelTab).toBe('search')
+  })
+
+  it('persists the logs panel tab', () => {
+    const rootFolder = pickedDirectory('/repo')
+
+    writeWorkspaceCache({
+      diffViewMode: 'split',
+      editorHistory: [],
+      gitPanelOpen: true,
+      openFilePaths: [],
+      recentlyClosedEditorPaths: [],
+      rootFolder,
+      searchBuffer: null,
+      selectedFilePath: null,
+      sidebarVisible: true,
+      workspacePanelTab: 'logs',
+    })
+
+    expect(readWorkspaceCache().workspacePanelTab).toBe('logs')
   })
 
   it('persists search buffer tabs', () => {
