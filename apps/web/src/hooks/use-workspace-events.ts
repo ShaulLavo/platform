@@ -11,6 +11,7 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { client } from '@/lib/client'
@@ -534,7 +535,7 @@ async function applyRefreshOpenFileOperation({
   signal: AbortSignal
 }) {
   const file = await fetchFileWithRetry(path, signal)
-  queryClient.setQueryData(fileSystemKeys.file(path), file)
+  setFileContentQueryData(queryClient, file)
   const operation = planFetchedOpenFileRefresh({
     cachedText: cachedDocumentText(path, conflictContext),
     isDirty: isDirtyCachedDocument(path, dirtyFilePaths, conflictContext),
@@ -628,7 +629,7 @@ function moveFileQueryData(
   })
   if (!file) return
 
-  queryClient.setQueryData(fileSystemKeys.file(to), { ...file, path: to })
+  setFileContentQueryData(queryClient, { ...file, path: to })
 }
 
 function shouldRefreshDirectory(model: TreeModel, rootPath: string, path: string) {

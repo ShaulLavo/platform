@@ -23,8 +23,8 @@ import {
   type EditorDiffViewMode,
 } from '@/features/editor/utils/diff-view-mode'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { fetchFile } from '@/lib/file-server'
-import { fileSystemKeys } from '@/lib/query-keys'
 import type { WorkspacePanelTab } from '@/lib/workspace-cache'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
@@ -299,7 +299,7 @@ async function revertSelectedEditorDocument(
   if (!path) return false
 
   const file = await fetchFile(path, new AbortController().signal)
-  queryClient.setQueryData(fileSystemKeys.file(path), file)
+  setFileContentQueryData(queryClient, file)
   documentStore.getState().forceReplaceCachedEditorDocument(file, path)
   return true
 }

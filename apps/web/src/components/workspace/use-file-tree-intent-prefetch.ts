@@ -10,10 +10,10 @@ import {
   FILE_TREE_PREFETCH_STALE_MS,
 } from '@/components/workspace/file-tree-prefetch'
 import { createAnimationFrameScheduler } from '@/components/workspace/intent-prefetch-scheduler'
+import { fileContentQueryOptions } from '@/lib/file-query-cache'
 import { fetchFile } from '@/lib/file-server'
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
-import { fileSystemKeys } from '@/lib/query-keys'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
 
 type FileTreeIntentPrefetchOptions = {
@@ -44,8 +44,8 @@ export function useFileTreeIntentPrefetch({
     if (!canPrefetchFileEntry(entry)) return
 
     void queryClient.prefetchQuery({
+      ...fileContentQueryOptions(entry.path),
       queryFn: ({ signal }) => fetchFile(entry.path, signal),
-      queryKey: fileSystemKeys.file(entry.path),
       staleTime: FILE_TREE_PREFETCH_STALE_MS,
     })
   })

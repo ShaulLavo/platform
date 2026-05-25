@@ -10,8 +10,8 @@ import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspac
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileResult } from '@/lib/file-system-types'
+import { fileContentQueryOptions } from '@/lib/file-query-cache'
 import { fetchFile } from '@/lib/file-server'
-import { fileSystemKeys } from '@/lib/query-keys'
 
 type OpenTabCacheContext = {
   ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
@@ -88,8 +88,8 @@ async function cacheOpenFileTab(
 ) {
   try {
     const file = await queryClient.ensureQueryData({
+      ...fileContentQueryOptions(path),
       queryFn: ({ signal }) => fetchFile(path, signal),
-      queryKey: fileSystemKeys.file(path),
     })
     if (!isActive()) return
     if (getCachedEditorDocument(path)) return

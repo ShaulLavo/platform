@@ -14,8 +14,8 @@ import {
   replaceWorkspaceSearchMatches,
   workspaceSearchReplaceSummary,
 } from '@/features/search/search-replace-runner'
+import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { fetchFile, writeFileContent } from '@/lib/file-server'
-import { fileSystemKeys } from '@/lib/query-keys'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
 export function useWorkspaceSearchReplace(rootPath: string) {
@@ -100,7 +100,7 @@ async function runReplace({
   try {
     const result = await replaceWorkspaceSearchMatches({
       context: {
-        cacheFile: (file) => queryClient.setQueryData(fileSystemKeys.file(file.path), file),
+        cacheFile: (file) => setFileContentQueryData(queryClient, file),
         fetchFile,
         getCachedEditorDocument: documentStore.getState().getCachedEditorDocument,
         recordCachedEditorDocumentTextChange:

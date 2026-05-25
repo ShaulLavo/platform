@@ -6,6 +6,7 @@ import type {
 } from '@/features/editor/state/editor-conflict-state'
 import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { createFileContent, ensureFolderPath, writeFileContent } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
@@ -221,7 +222,7 @@ function replaceResolvedEditorFile(
     moveFileQueryData(context.queryClient, localPath, file.path)
   }
 
-  context.queryClient.setQueryData(fileSystemKeys.file(file.path), file)
+  setFileContentQueryData(context.queryClient, file)
   context.forceReplaceCachedEditorDocument(file)
 }
 
@@ -268,7 +269,7 @@ function moveFileQueryData(queryClient: QueryClient, from: string, to: string) {
   })
   if (!file) return
 
-  queryClient.setQueryData(fileSystemKeys.file(to), { ...file, path: to })
+  setFileContentQueryData(queryClient, { ...file, path: to })
 }
 
 function parentPath(path: string, rootPath: string) {

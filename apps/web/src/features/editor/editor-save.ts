@@ -6,9 +6,9 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { writeFileContent } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
-import { fileSystemKeys } from '@/lib/query-keys'
 import type { QueryClient } from '@tanstack/react-query'
 
 export async function saveSelectedEditorDocument(
@@ -61,7 +61,7 @@ export async function saveCachedEditorDocument(
   const entry = await writeFileContent(document.path, content, document.revision)
   const file = fileResultForSavedDocument(document.path, content, entry)
   documentStore.getState().markCachedEditorDocumentClean(document.path, entry.mtimeMs)
-  queryClient.setQueryData(fileSystemKeys.file(document.path), file)
+  setFileContentQueryData(queryClient, file)
 }
 
 export function isDirtyCachedEditorDocument(

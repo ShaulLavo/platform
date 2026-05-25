@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 
+import { installFileContentQueryCachePolicy } from '@/lib/file-query-cache'
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -9,3 +11,5 @@ export const queryClient = new QueryClient({
     },
   },
 })
+
+installFileContentQueryCachePolicy(queryClient)

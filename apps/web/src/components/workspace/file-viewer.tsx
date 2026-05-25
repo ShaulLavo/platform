@@ -52,6 +52,7 @@ import { SearchBufferEditor } from '@/features/search/search-buffer-editor'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { createFileContent, ensureFolderPath, fetchFile, writeFileContent } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
@@ -884,7 +885,7 @@ function replaceResolvedConflictFile(
     moveFileQueryData(context.queryClient, localPath, file.path)
   }
 
-  context.queryClient.setQueryData(fileSystemKeys.file(file.path), file)
+  setFileContentQueryData(context.queryClient, file)
   context.forceReplaceCachedEditorDocument(file)
 }
 
@@ -912,7 +913,7 @@ function moveFileQueryData(
   })
   if (!file) return
 
-  queryClient.setQueryData(fileSystemKeys.file(to), { ...file, path: to })
+  setFileContentQueryData(queryClient, { ...file, path: to })
 }
 
 function parentPath(path: string) {
