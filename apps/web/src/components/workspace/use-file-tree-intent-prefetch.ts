@@ -9,6 +9,7 @@ import {
   fileTreeRowPath,
   FILE_TREE_PREFETCH_STALE_MS,
 } from '@/components/workspace/file-tree-prefetch'
+import { createAnimationFrameScheduler } from '@/components/workspace/intent-prefetch-scheduler'
 import { fetchFile } from '@/lib/file-server'
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
@@ -157,26 +158,4 @@ function observeTreeRows(tree: PierreFileTreeModel, onChange: () => void): Mutat
     subtree: true,
   })
   return observer
-}
-
-function createAnimationFrameScheduler(callback: () => void) {
-  let frame: number | null = null
-
-  function request() {
-    if (frame !== null) return
-
-    frame = window.requestAnimationFrame(() => {
-      frame = null
-      callback()
-    })
-  }
-
-  function cancel() {
-    if (frame === null) return
-
-    window.cancelAnimationFrame(frame)
-    frame = null
-  }
-
-  return { cancel, request }
 }

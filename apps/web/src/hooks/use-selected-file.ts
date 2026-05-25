@@ -1,15 +1,13 @@
 import { errorMessage, fetchFile } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { parseDiffDocumentId } from '@/features/git/diff-document'
-import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { idleState, type LoadState } from '@/lib/load-state'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 export function useSelectedFile(selectedFilePath: string | null) {
   const queryClient = useQueryClient()
-  const filePath = filePathForRequest(selectedFilePath)
+  const filePath = fileBackedDocumentPath(selectedFilePath)
   const query = useQuery<FileResult>({
     enabled: Boolean(filePath),
     placeholderData: (previousFile) => previousFile,
@@ -28,15 +26,6 @@ export function useSelectedFile(selectedFilePath: string | null) {
   }
 
   return { fileState, resetFileLoad }
-}
-
-function filePathForRequest(selectedFilePath: string | null) {
-  if (!selectedFilePath) return null
-  if (parseDiffDocumentId(selectedFilePath)) return null
-  if (parseConflictDiffDocumentId(selectedFilePath)) return null
-  if (parseSearchBufferDocumentId(selectedFilePath)) return null
-
-  return selectedFilePath
 }
 
 export function fileLoadState(

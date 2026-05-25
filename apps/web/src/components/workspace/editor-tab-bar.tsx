@@ -34,6 +34,7 @@ import {
   editorTabCloseTargetIds,
   type EditorTabCloseTargetKind,
 } from '@/components/workspace/editor-tab-close-targets'
+import { useEditorTabIntentPrefetch } from '@/components/workspace/use-editor-tab-intent-prefetch'
 import {
   useChromeVisualTabs,
   type ChromeVisualTab,
@@ -168,6 +169,7 @@ export function EditorTabBar({
     [conflicts, dirtyFilePaths, gitFiles, pane?.tabs, rootPath, selectedTab?.id],
   )
   const visualTabs = useChromeVisualTabs(editorTabs, tabSizing === 'chrome', sameEditorTabModel)
+  const tabPrefetchEnabled = Boolean(pane && (pane.tabs.length > 0 || visualTabs.length > 0))
   const tabDrag = useEditorTabDrag({
     paneId,
     tabs: editorTabs,
@@ -182,6 +184,11 @@ export function EditorTabBar({
 
     scrollSelectedTabIntoView(tabListRef.current, selectedTabRef.current)
   }, [selectedFilePath, tabSizing])
+  useEditorTabIntentPrefetch({
+    enabled: tabPrefetchEnabled,
+    tabListRef,
+    tabs: editorTabs,
+  })
 
   if (!pane) return null
   if (pane.tabs.length === 0 && visualTabs.length === 0) return null
