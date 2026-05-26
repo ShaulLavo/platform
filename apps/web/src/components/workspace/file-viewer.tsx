@@ -19,7 +19,7 @@ import {
 import { Editor } from '@/features/editor/components/editor'
 import { LanguageServerReferencesPane } from '@/features/editor/components/language-server-references-pane'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import type { EditorStatusBarState } from '@/features/editor/components/editor-status-bar'
+import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import {
   activeTabForPane,
@@ -447,7 +447,8 @@ function EditorPaneTabBody({
   const definitionTarget = useEditorUiState((state) => state.definitionTarget)
   const languageServerReferences = useEditorUiState((state) => state.languageServerReferences)
   const setLanguageServerReferences = useEditorUiState((state) => state.setLanguageServerReferences)
-  const setStatusBarState = useEditorUiState((state) => state.setStatusBarState)
+  const clearStatusBarSource = useEditorUiState((state) => state.clearStatusBarSource)
+  const setStatusBarSource = useEditorUiState((state) => state.setStatusBarSource)
   const { discardCachedEditorDocument, openDefinition, renameCachedEditorDocument } =
     useEditorCommands()
   const resolveConflictEditorDocument = useConflictEditorResolution({
@@ -464,15 +465,23 @@ function EditorPaneTabBody({
   }, [ensureCachedEditorTabDocument, selectedFile, tabId])
 
   useEffect(() => {
+    if (!active) return
     if (selectedSearchBuffer) {
-      setStatusBarState(null)
+      clearStatusBarSource()
       return
     }
     if (path && selectedCachedDocument) return
     if (path && fileState.status === 'ready') return
 
-    setStatusBarState(null)
-  }, [fileState.status, path, selectedCachedDocument, selectedSearchBuffer, setStatusBarState])
+    clearStatusBarSource()
+  }, [
+    active,
+    clearStatusBarSource,
+    fileState.status,
+    path,
+    selectedCachedDocument,
+    selectedSearchBuffer,
+  ])
 
   const handleEditorTextChange = useCallback(
     (sourceTabId: string, changedPath: string, change: DocumentSessionChange) => {
@@ -514,7 +523,8 @@ function EditorPaneTabBody({
       tabId={tabId}
       onEditorDirtyChange={setCachedEditorDocumentDirty}
       onEditorScrollPositionChange={setCachedEditorTabDocumentScrollPosition}
-      onEditorStatusChange={setStatusBarState}
+      onEditorStatusSourceChange={setStatusBarSource}
+      onEditorStatusSourceClear={clearStatusBarSource}
       onEditorTextChange={handleEditorTextChange}
       onOpenDefinition={openDefinition}
       onOpenReferences={handleOpenReferences}
@@ -539,7 +549,8 @@ function FileViewerBody({
   tabId,
   onEditorDirtyChange,
   onEditorScrollPositionChange,
-  onEditorStatusChange,
+  onEditorStatusSourceChange,
+  onEditorStatusSourceClear,
   onEditorTextChange,
   onOpenDefinition,
   onOpenReferences,
@@ -559,7 +570,8 @@ function FileViewerBody({
     tabId: string,
     scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
   ) => void
-  onEditorStatusChange: (status: EditorStatusBarState | null) => void
+  onEditorStatusSourceChange: (source: EditorStatusBarSource | null) => void
+  onEditorStatusSourceClear: (source?: EditorStatusBarSource['controller']) => void
   onEditorTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
   onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences: (result: LanguageServerReferencesResult) => void | boolean
@@ -585,7 +597,8 @@ function FileViewerBody({
           onScrollPositionChange={(_path, scrollPosition) =>
             onEditorScrollPositionChange(tabId, scrollPosition)
           }
-          onStatusChange={onEditorStatusChange}
+          onStatusSourceChange={onEditorStatusSourceChange}
+          onStatusSourceClear={onEditorStatusSourceClear}
           onTextChange={onEditorTextChange}
           onOpenDefinition={onOpenDefinition}
           onOpenReferences={onOpenReferences}

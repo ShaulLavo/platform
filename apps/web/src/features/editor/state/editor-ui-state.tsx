@@ -1,8 +1,12 @@
-import type { EditorStatusBarState } from '@/features/editor/components/editor-status-bar'
+import {
+  editorStatusBarSourcesEqual,
+  type EditorStatusBarSource,
+} from '@/features/editor/state/editor-status-bar-source'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
 } from '@editor/language-server'
+import type { ReactEditorController } from '@editor/react'
 import { createContext, useContext } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
@@ -12,17 +16,18 @@ import { clientErrors } from '@/lib/structured-errors'
 type EditorUiStoreState = {
   definitionTarget: LanguageServerDefinitionTarget | null
   languageServerReferences: LanguageServerReferencesResult | null
-  statusBarState: EditorStatusBarState | null
+  statusBarSource: EditorStatusBarSource | null
 }
 
 type EditorUiStoreActions = {
   clearDefinitionTargetForPath: (path: string) => void
+  clearStatusBarSource: (controller?: ReactEditorController) => void
   renameDefinitionTargetPath: (from: string, to: string) => void
   renameLanguageServerReferencesPath: (from: string, to: string) => void
   resetEditorUiState: () => void
   setDefinitionTarget: (target: LanguageServerDefinitionTarget | null) => void
   setLanguageServerReferences: (references: LanguageServerReferencesResult | null) => void
-  setStatusBarState: (status: EditorStatusBarState | null) => void
+  setStatusBarSource: (source: EditorStatusBarSource | null) => void
 }
 
 export type EditorUiStore = EditorUiStoreState & EditorUiStoreActions
@@ -50,12 +55,19 @@ export function createEditorUiStore() {
   return createStore<EditorUiStore>()((set) => ({
     definitionTarget: null,
     languageServerReferences: null,
-    statusBarState: null,
+    statusBarSource: null,
     clearDefinitionTargetForPath: (path) =>
       set((state) => {
         if (state.definitionTarget?.path !== path) return state
 
         return { definitionTarget: null }
+      }),
+    clearStatusBarSource: (controller) =>
+      set((state) => {
+        if (!state.statusBarSource) return state
+        if (controller && state.statusBarSource.controller !== controller) return state
+
+        return { statusBarSource: null }
       }),
     renameDefinitionTargetPath: (from, to) =>
       set((state) => {
@@ -74,15 +86,15 @@ export function createEditorUiStore() {
       set({
         definitionTarget: null,
         languageServerReferences: null,
-        statusBarState: null,
+        statusBarSource: null,
       }),
     setDefinitionTarget: (definitionTarget) => set({ definitionTarget }),
     setLanguageServerReferences: (languageServerReferences) => set({ languageServerReferences }),
-    setStatusBarState: (statusBarState) =>
+    setStatusBarSource: (statusBarSource) =>
       set((state) => {
-        if (statusBarState === state.statusBarState) return state
+        if (editorStatusBarSourcesEqual(statusBarSource, state.statusBarSource)) return state
 
-        return { statusBarState }
+        return { statusBarSource }
       }),
   }))
 }

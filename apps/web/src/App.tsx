@@ -1,5 +1,6 @@
 import { EmptyWorkspace } from '@/components/empty-workspace'
 import { CommandPalette } from '@/components/command-palette'
+import { AppKeymapController } from '@/components/app-keymap-controller'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
@@ -15,13 +16,12 @@ import { useWorkspaceTree } from '@/hooks/use-workspace-tree'
 import {
   defaultPlatformKeyBindings,
   editorKeymapLayersFromPlatform,
-  useAppKeymap,
   usePlatformCommandDispatch,
 } from '@/keymap'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { log } from '@/lib/client-logging'
 import { HotkeysProvider } from '@tanstack/react-hotkeys'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type FocusEvent, type PointerEvent } from 'react'
 
 export function App() {
   return (
@@ -36,7 +36,6 @@ export function App() {
 }
 
 function AppContent() {
-  const activeArea = useWorkspaceFocus((state) => state.activeArea)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const pickerOpen = useEditorWorkspaceState((state) => state.pickerOpen)
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
@@ -64,14 +63,25 @@ function AppContent() {
     requestCloseTab,
     showCommandPalette,
   })
-  useAppKeymap({
-    bindings: keymapBindings,
-    dispatch: dispatchKeymapCommand,
-    focusedPane: activeArea,
-  })
   useOpenTabCache()
   useWorkspaceCachePersistence()
   useWorkspaceEvents(rootFolder)
+  const handleGlobalFocusCapture = useCallback(
+    (event: FocusEvent<HTMLElement>) => {
+      if (!eventTargetsCurrentElement(event)) return
+
+      setFocusArea('global')
+    },
+    [setFocusArea],
+  )
+  const handleGlobalPointerDownCapture = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      if (!eventTargetsCurrentElement(event)) return
+
+      setFocusArea('global')
+    },
+    [setFocusArea],
+  )
 
   function handlePick(entry: PickedFsEntry) {
     resetTreeLoad()
@@ -87,9 +97,10 @@ function AppContent() {
   return (
     <main
       className='bg-background text-foreground h-svh overflow-hidden'
-      onFocusCapture={() => setFocusArea('global')}
-      onPointerDownCapture={() => setFocusArea('global')}
+      onFocusCapture={handleGlobalFocusCapture}
+      onPointerDownCapture={handleGlobalPointerDownCapture}
     >
+      <AppKeymapController bindings={keymapBindings} dispatch={dispatchKeymapCommand} />
       <div className='flex h-full min-h-0 flex-col'>
         {rootFolder ? (
           <WorkspaceView
@@ -127,4 +138,11 @@ function AppContent() {
       {dirtyTabCloseDialog}
     </main>
   )
+}
+
+function eventTargetsCurrentElement(event: {
+  currentTarget: EventTarget
+  target: EventTarget | null
+}) {
+  return event.currentTarget === event.target
 }

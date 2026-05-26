@@ -127,7 +127,7 @@ function selectFile(
       document.fallbackDocumentPath,
     ),
   })
-  uiStore.getState().setStatusBarState(null)
+  uiStore.getState().clearStatusBarSource()
 
   const editorPaneLayout = openEditorPathInActivePane(workspace.editorPaneLayout, selectedFilePath)
   workspaceStore.setState({
@@ -145,7 +145,7 @@ function openDefinition(
   selectFile(definitionTarget.path, workspaceStore, documentStore, uiStore)
   uiStore.setState({
     definitionTarget,
-    statusBarState: null,
+    statusBarSource: null,
   })
 
   return true
@@ -332,7 +332,7 @@ function selectTab(
       document.fallbackDocumentPath,
     ),
   })
-  uiStore.getState().setStatusBarState(null)
+  uiStore.getState().clearStatusBarSource()
   workspaceStore.setState({
     ...editorWorkspaceSelectionForPaneLayout(editorPaneLayout),
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
@@ -410,7 +410,7 @@ function updateUiForClosedPath(
   }
   if (path === selectedFilePath) return
 
-  uiStore.getState().setStatusBarState(null)
+  uiStore.getState().clearStatusBarSource()
 }
 
 function updateFallbackForClosedPath(

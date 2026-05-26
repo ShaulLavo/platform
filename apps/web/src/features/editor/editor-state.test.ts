@@ -503,7 +503,7 @@ describe('editor commands', () => {
       workspaceState(['src/a.ts'], 'src/a.ts'),
     )
     documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
-    uiStore.setState({ statusBarState: {} as never })
+    uiStore.setState({ statusBarSource: {} as never })
 
     commands.selectFile('src/b.ts')
 
@@ -511,7 +511,7 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().selectedFilePath).toBe('src/b.ts')
     expect(workspaceStore.getState().editorHistory).toEqual(['src/b.ts', 'src/a.ts'])
     expect(documentStore.getState().fallbackDocumentPath).toBe('src/a.ts')
-    expect(uiStore.getState().statusBarState).toBe(null)
+    expect(uiStore.getState().statusBarSource).toBe(null)
   })
 
   it('opens definitions through workspace, document, and ui stores', () => {

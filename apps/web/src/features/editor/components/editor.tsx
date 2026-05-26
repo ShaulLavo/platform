@@ -1,7 +1,7 @@
 import '@editor/core/style.css'
 import '@editor/find/style.css'
 import '@editor/minimap/style.css'
-import { useEditor } from '@editor/react'
+import { useEditor, useEditorSelector } from '@editor/react'
 import '@editor/scope-lines/style.css'
 import type {
   LanguageServerDefinitionTarget,
@@ -16,11 +16,11 @@ import {
 } from '@/features/editor/editor-plugins'
 import { selectionForDefinition } from '@/features/editor/utils/editor-position'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
-import type { EditorStatusBarState } from '@/features/editor/components/editor-status-bar'
+import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
+import { selectEditorDirty } from '@/features/editor/state/editor-store-selectors'
 import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
 import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
-import { useEditorStatusBarState } from '@/features/editor/hooks/use-editor-status-bar-state'
 import {
   scrollPositionFromSnapshot,
   useScrollPersistencePlugin,
@@ -43,7 +43,8 @@ type EditorProps = {
     path: string,
     scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
   ) => void
-  onStatusChange?: (status: EditorStatusBarState) => void
+  onStatusSourceChange?: (source: EditorStatusBarSource) => void
+  onStatusSourceClear?: (controller: EditorStatusBarSource['controller']) => void
   onTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
 }
 
@@ -58,7 +59,8 @@ export function Editor({
   onOpenDefinition,
   onOpenReferences,
   onScrollPositionChange,
-  onStatusChange,
+  onStatusSourceChange,
+  onStatusSourceClear,
   onTextChange,
 }: EditorProps) {
   const editorActive = useWorkspaceFocus((state) => state.activeArea === 'editor' && active)
@@ -129,21 +131,12 @@ export function Editor({
     theme: editorTheme,
   })
   const editorInstance = controller.useEditorInstance()
-  const editorState = controller.useState()
+  const editorDirty = useEditorSelector(controller, selectEditorDirty)
   const textSnapshot = controller.useTextSnapshot() ?? cachedDocument.session.getTextSnapshot()
   const selection = useMemo(
     () => selectionForDefinition(cachedDocument.path, textSnapshot, definitionTarget),
     [cachedDocument.path, definitionTarget, textSnapshot],
   )
-
-  useEditorStatusBarState({
-    charCount: editorState?.length ?? textSnapshot.length,
-    filePath: cachedDocument.path,
-    onChange: active ? onStatusChange : undefined,
-    state: editorState,
-    languageServerDiagnostics,
-    languageServerStatus,
-  })
 
   useEffect(() => {
     let active = true
@@ -160,8 +153,29 @@ export function Editor({
   useEffect(() => {
     if (!active) return
 
-    onDirtyChange?.(cachedDocument.path, editorState?.isDirty ?? cachedDocument.session.isDirty())
-  }, [active, cachedDocument, editorState?.isDirty, onDirtyChange])
+    onDirtyChange?.(cachedDocument.path, editorDirty ?? cachedDocument.session.isDirty())
+  }, [active, cachedDocument.path, cachedDocument.session, editorDirty, onDirtyChange])
+
+  useEffect(() => {
+    if (!active) return
+
+    onStatusSourceChange?.({
+      controller,
+      filePath: cachedDocument.path,
+      languageServerDiagnostics,
+      languageServerStatus,
+    })
+
+    return () => onStatusSourceClear?.(controller)
+  }, [
+    active,
+    cachedDocument.path,
+    controller,
+    languageServerDiagnostics,
+    languageServerStatus,
+    onStatusSourceChange,
+    onStatusSourceClear,
+  ])
 
   useLayoutEffect(() => {
     return () => {
