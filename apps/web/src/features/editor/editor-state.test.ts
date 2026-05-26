@@ -19,6 +19,7 @@ import {
   moveEditorPaneTabToSplit,
   normalizeEditorPaneLayout,
   openEditorPathInActivePane,
+  selectEditorPaneTab,
   setActiveEditorPane,
   splitEditorPaneTab,
   updateEditorPaneSplitSizes,
@@ -95,6 +96,21 @@ describe('editor path utilities', () => {
 })
 
 describe('editor pane state', () => {
+  it('keeps pane layout identity for repeated no-op pane updates', () => {
+    let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts'], 'src/a.ts')
+    layout = splitEditorPaneTab(layout, tabIdForPathInLayout(layout, 'src/a.ts'), 'horizontal')
+
+    const activePane = editorPaneLeaves(layout.root).find((pane) =>
+      pane.tabs.some((tab) => tab.path === 'src/a.ts'),
+    )
+    if (!activePane) throw new Error('Missing active pane')
+
+    expect(setActiveEditorPane(layout, activePane.id)).toBe(layout)
+    expect(selectEditorPaneTab(layout, activePane.id, activePane.activeTabId ?? '')).toBe(layout)
+    expect(updateEditorPaneSplitSizes(layout, layout.root.id, [50, 50])).toBe(layout)
+    expect(normalizeEditorPaneLayout(layout)).toBe(layout)
+  })
+
   it('splits tabs into panes, persists sizes, and collapses emptied panes', () => {
     let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts'], 'src/a.ts')
     const aTabId = tabIdForPathInLayout(layout, 'src/a.ts')

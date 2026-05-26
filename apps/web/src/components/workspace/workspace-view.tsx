@@ -16,6 +16,7 @@ import {
   ResizableHandle,
   ResizablePanel,
 } from '@workspace/ui/components/resizable'
+import { memo } from 'react'
 
 type WorkspaceViewProps = {
   editorKeymapLayers: readonly EditorKeymapLayer[]
@@ -27,7 +28,7 @@ type WorkspaceViewProps = {
   onRequestCloseTabs: RequestCloseTabs
 }
 
-export function WorkspaceView({
+export const WorkspaceView = memo(function WorkspaceView({
   editorKeymapLayers,
   rootFolder,
   treeState,
@@ -156,4 +157,4 @@ export function WorkspaceView({
       </div>
     </div>
   )
-}
+})

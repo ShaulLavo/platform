@@ -19,6 +19,7 @@ import {
   type TreeModel,
 } from '@/lib/tree-model'
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useCallback, useMemo } from 'react'
 
 export function useWorkspaceTree(
   rootFolder: PickedFsEntry | null,
@@ -26,7 +27,7 @@ export function useWorkspaceTree(
 ) {
   const queryClient = useQueryClient()
   const rootPath = rootFolder?.path ?? ''
-  const rootTreeKey = fileSystemKeys.tree(rootPath)
+  const rootTreeKey = useMemo(() => fileSystemKeys.tree(rootPath), [rootPath])
   const query = useQuery({
     enabled: Boolean(rootFolder),
     queryFn: async ({ signal }) => {
@@ -35,65 +36,70 @@ export function useWorkspaceTree(
     },
     queryKey: rootTreeKey,
   })
-  const treeState = rootFolder ? treeLoadState(query) : idleState
+  const treeState = useMemo(
+    () => (rootFolder ? treeLoadState(query) : idleState),
+    [query.data, query.error, query.isError, query.isPending, rootFolder],
+  )
 
-  function resetTreeLoad() {
+  const resetTreeLoad = useCallback(() => {
     queryClient.removeQueries({ queryKey: fileSystemKeys.trees() })
-  }
+  }, [queryClient])
 
-  function loadTreeDirectory(
-    entry: TreeEntry,
-    treePath: string,
-    options: DirectoryLoadOptions = {},
-  ) {
-    if (!rootFolder) return
-    if (treeState.status !== 'ready') return
-    if (!isDirectoryEntry(entry)) return
-    if (!shouldLoadDirectory(treeState.data, treePath, options)) return
+  const loadTreeDirectory = useCallback(
+    (entry: TreeEntry, treePath: string, options: DirectoryLoadOptions = {}) => {
+      if (!rootFolder) return
+      if (treeState.status !== 'ready') return
+      if (!isDirectoryEntry(entry)) return
+      if (!shouldLoadDirectory(treeState.data, treePath, options)) return
 
-    const canonicalPath = canonicalTreePath(treePath)
-    const directoryKey = treeDirectoryPrefetchKey(rootFolder.path, canonicalPath, entry)
+      const canonicalPath = canonicalTreePath(treePath)
+      const directoryKey = treeDirectoryPrefetchKey(rootFolder.path, canonicalPath, entry)
 
-    queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
-      if (!model) return model
+      queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
+        if (!model) return model
 
-      return markDirectoryLoading(model, canonicalPath)
-    })
+        return markDirectoryLoading(model, canonicalPath)
+      })
 
-    void queryClient
-      .fetchQuery({
+      void queryClient
+        .fetchQuery({
+          queryFn: ({ signal }) => fetchTree(entry.path, signal),
+          queryKey: directoryKey,
+          staleTime: FILE_TREE_PREFETCH_STALE_MS,
+        })
+        .then((result) =>
+          queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
+            if (!model) return model
+
+            return mergeDirectoryLoad(model, rootFolder.path, result, canonicalPath)
+          }),
+        )
+        .catch((error: unknown) => {
+          queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
+            if (!model) return model
+
+            return markDirectoryError(model, canonicalPath, errorMessage(error))
+          })
+        })
+    },
+    [queryClient, rootFolder, rootTreeKey, treeState],
+  )
+
+  const prefetchTreeDirectory = useCallback(
+    (entry: TreeEntry, treePath: string) => {
+      if (!rootFolder) return
+      if (treeState.status !== 'ready') return
+      if (!isDirectoryEntry(entry)) return
+      if (!shouldLoadDirectory(treeState.data, treePath)) return
+
+      void queryClient.prefetchQuery({
         queryFn: ({ signal }) => fetchTree(entry.path, signal),
-        queryKey: directoryKey,
+        queryKey: treeDirectoryPrefetchKey(rootFolder.path, treePath, entry),
         staleTime: FILE_TREE_PREFETCH_STALE_MS,
       })
-      .then((result) =>
-        queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
-          if (!model) return model
-
-          return mergeDirectoryLoad(model, rootFolder.path, result, canonicalPath)
-        }),
-      )
-      .catch((error: unknown) => {
-        queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
-          if (!model) return model
-
-          return markDirectoryError(model, canonicalPath, errorMessage(error))
-        })
-      })
-  }
-
-  function prefetchTreeDirectory(entry: TreeEntry, treePath: string) {
-    if (!rootFolder) return
-    if (treeState.status !== 'ready') return
-    if (!isDirectoryEntry(entry)) return
-    if (!shouldLoadDirectory(treeState.data, treePath)) return
-
-    void queryClient.prefetchQuery({
-      queryFn: ({ signal }) => fetchTree(entry.path, signal),
-      queryKey: treeDirectoryPrefetchKey(rootFolder.path, treePath, entry),
-      staleTime: FILE_TREE_PREFETCH_STALE_MS,
-    })
-  }
+    },
+    [queryClient, rootFolder, treeState],
+  )
 
   return {
     loadTreeDirectory,

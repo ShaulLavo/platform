@@ -151,6 +151,7 @@ export function selectEditorPaneTab(
 ): EditorPaneLayout {
   const pane = findEditorPane(layout.root, paneId)
   if (!pane?.tabs.some((tab) => tab.id === tabId)) return layout
+  if (layout.activePaneId === paneId && pane.activeTabId === tabId) return layout
 
   return normalizeEditorPaneLayout({
     activePaneId: paneId,
@@ -162,6 +163,7 @@ export function selectEditorPaneTab(
 }
 
 export function setActiveEditorPane(layout: EditorPaneLayout, paneId: string): EditorPaneLayout {
+  if (layout.activePaneId === paneId) return layout
   if (!findEditorPane(layout.root, paneId)) return layout
 
   return {
@@ -341,11 +343,17 @@ export function updateEditorPaneSplitSizes(
   splitId: string,
   sizes: readonly number[],
 ): EditorPaneLayout {
+  const split = findEditorPaneSplit(layout.root, splitId)
+  if (!split) return layout
+
+  const normalizedSizes = normalizeSizes(sizes, split.children.length)
+  if (samePanelSizes(split.sizes, normalizedSizes)) return layout
+
   return {
     ...layout,
     root: updateEditorPaneSplit(layout.root, splitId, (split) => ({
       ...split,
-      sizes: normalizeSizes(sizes, split.children.length),
+      sizes: normalizedSizes,
     })),
   }
 }
@@ -354,6 +362,7 @@ export function normalizeEditorPaneLayout(layout: EditorPaneLayout): EditorPaneL
   const normalizedRoot = normalizeEditorPaneNode(layout.root)
   const root = dedupeEditorPaneIds(normalizedRoot ?? createEditorPaneLeaf([]))
   const activePaneId = normalizedActivePaneId(root, layout.activePaneId)
+  if (activePaneId === layout.activePaneId && root === layout.root) return layout
 
   return {
     activePaneId,
@@ -430,9 +439,16 @@ function dedupeEditorPaneNodeIds(
     return dedupeEditorPaneLeafIds(node, id, usedTabIds)
   }
 
+  const children = node.children.map((child) =>
+    dedupeEditorPaneNodeIds(child, usedNodeIds, usedTabIds),
+  )
+  if (id === node.id && children.every((child, index) => child === node.children[index])) {
+    return node
+  }
+
   return {
     ...node,
-    children: node.children.map((child) => dedupeEditorPaneNodeIds(child, usedNodeIds, usedTabIds)),
+    children,
     id,
   }
 }
@@ -456,6 +472,9 @@ function dedupeEditorPaneLeafIds(
 
   if (!tabs.some((tab) => tab.id === activeTabId)) {
     activeTabId = tabs.at(0)?.id ?? null
+  }
+  if (id === pane.id && activeTabId === pane.activeTabId && sameTabReferences(pane.tabs, tabs)) {
+    return pane
   }
 
   return {
@@ -494,6 +513,18 @@ function firstEditorPane(node: EditorPaneNode): EditorPaneLeaf | null {
   for (const child of node.children) {
     const pane = firstEditorPane(child)
     if (pane) return pane
+  }
+
+  return null
+}
+
+function findEditorPaneSplit(node: EditorPaneNode, splitId: string): EditorPaneSplit | null {
+  if (node.kind === 'leaf') return null
+  if (node.id === splitId) return node
+
+  for (const child of node.children) {
+    const split = findEditorPaneSplit(child, splitId)
+    if (split) return split
   }
 
   return null
@@ -571,6 +602,12 @@ function sameTabOrder(left: readonly EditorPaneTab[], right: readonly EditorPane
   if (left.length !== right.length) return false
 
   return left.every((tab, index) => tab.id === right[index]?.id)
+}
+
+function sameTabReferences(left: readonly EditorPaneTab[], right: readonly EditorPaneTab[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((tab, index) => tab === right[index])
 }
 
 function removeTabsFromEditorPaneNode(
@@ -687,11 +724,15 @@ function normalizeEditorPaneNode(node: EditorPaneNode, depth = 0): EditorPaneNod
   const children = normalizedSplitChildren(node, depth)
   if (children.length === 0) return null
   if (children.length === 1) return children[0] ?? null
+  const sizes = normalizeSizes(node.sizes, children.length)
+  if (sameNodeReferences(node.children, children) && samePanelSizes(node.sizes, sizes)) {
+    return node
+  }
 
   return {
     ...node,
     children,
-    sizes: normalizeSizes(node.sizes, children.length),
+    sizes,
   }
 }
 
@@ -736,6 +777,18 @@ function normalizeSizes(sizes: readonly number[], count: number) {
   if (total <= 0) return equalSizes(count)
 
   return sizes.map((size) => (finitePanelSize(size) / total) * 100)
+}
+
+function sameNodeReferences(left: readonly EditorPaneNode[], right: readonly EditorPaneNode[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((node, index) => node === right[index])
+}
+
+function samePanelSizes(left: readonly number[], right: readonly number[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((size, index) => Math.abs(size - (right[index] ?? 0)) < 0.0001)
 }
 
 function finitePanelSize(size: number) {
