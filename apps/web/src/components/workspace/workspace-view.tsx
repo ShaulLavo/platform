@@ -60,7 +60,7 @@ export function WorkspaceView({
     <div className='h-full min-h-0 flex-1 overflow-auto'>
       <div className='flex h-full min-w-[1024px] flex-col'>
         <Tabs
-          className='min-h-0 flex-1 flex-row'
+          className='min-h-0 flex-1 flex-row gap-0'
           value={selectedWorkspacePanelTab}
           orientation='vertical'
           onValueChange={handleWorkspacePanelTabChange}
@@ -99,7 +99,11 @@ export function WorkspaceView({
                 onPrefetchDirectory={onPrefetchDirectory}
               />
             </ResizablePanel>
-            <ResizableHandle aria-label='Resize workspace sidebar' withHandle />
+            <ResizableHandle
+              aria-label='Resize workspace sidebar'
+              className={sidebarVisible ? undefined : '-mr-px'}
+              withHandle
+            />
             <ResizablePanel
               id='workspace-editor'
               className='h-full min-h-0 min-w-0 overflow-hidden'
