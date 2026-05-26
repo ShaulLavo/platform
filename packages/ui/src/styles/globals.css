@@ -49,6 +49,8 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
   --font-mono: 'JetBrains Mono Variable', monospace;
+  --animate-accordion-down: app-accordion-down 150ms ease-out;
+  --animate-accordion-up: app-accordion-up 150ms ease-out;
 }
 
 :root {
@@ -375,5 +377,25 @@
 
   to {
     transform: rotate(0deg);
+  }
+}
+
+@keyframes app-accordion-down {
+  from {
+    height: 0;
+  }
+
+  to {
+    height: var(--accordion-panel-height);
+  }
+}
+
+@keyframes app-accordion-up {
+  from {
+    height: var(--accordion-panel-height);
+  }
+
+  to {
+    height: 0;
   }
 }

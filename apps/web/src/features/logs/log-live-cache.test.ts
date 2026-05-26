@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import type { LogEventSummary, LogEventsResult } from '@workspace/contracts'
+import type { LogEventDetail, LogEventSummary, LogEventsResult } from '@workspace/contracts'
 
 import { mergeLiveLogEvent, mergeLiveLogEvents } from './log-live-cache'
 
@@ -23,7 +23,7 @@ describe('mergeLiveLogEvent', () => {
 
   it('caps the retained live event window', () => {
     const current = result([event({ id: 'a' }), event({ id: 'b' })])
-    const next = mergeLiveLogEvent(current, event({ id: 'c' }), 2)
+    const next = mergeLiveLogEvent(current, event({ id: 'c' }), { maxEvents: 2 })
 
     expect(next?.events.map((candidate) => candidate.id)).toEqual(['c', 'a'])
     expect(next?.nextCursor).toBe('cursor-1')
@@ -55,10 +55,30 @@ describe('mergeLiveLogEvents', () => {
     expect(next?.events.map((candidate) => candidate.id)).toEqual(['new', 'old'])
     expect(next?.total).toBe(2)
   })
+
+  it('keeps raw details aligned with retained rows', () => {
+    const current = result([event({ id: 'a' }), event({ id: 'b' })], {
+      a: detail(event({ id: 'a' }), { retained: 'a' }),
+      b: detail(event({ id: 'b' }), { retained: 'b' }),
+    })
+    const liveEvent = event({ id: 'c' })
+    const next = mergeLiveLogEvent(current, liveEvent, {
+      detail: detail(liveEvent, { live: true }),
+      maxEvents: 2,
+    })
+
+    expect(Object.keys(next?.detailsById ?? {}).sort()).toEqual(['a', 'c'])
+    expect(next?.detailsById.c?.rawJson).toEqual({ live: true })
+    expect(next?.detailsById.b).toBeUndefined()
+  })
 })
 
-function result(events: LogEventSummary[]): LogEventsResult {
+function result(
+  events: LogEventSummary[],
+  detailsById: Record<string, LogEventDetail> = {},
+): LogEventsResult {
   return {
+    detailsById,
     events,
     nextCursor: 'cursor-1',
     total: events.length,
@@ -89,4 +109,8 @@ function event(overrides: Partial<LogEventSummary>): LogEventSummary {
     timestamp: '2026-05-25T10:00:00.000Z',
     ...overrides,
   }
+}
+
+function detail(event: LogEventSummary, rawJson: Record<string, unknown>): LogEventDetail {
+  return { event, rawJson }
 }

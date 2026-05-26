@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { logsKeys } from '@/lib/query-keys'
@@ -10,7 +10,6 @@ import {
 } from './log-filter-params'
 import { logFilterQuery, logToolbarOptionFilters } from './log-filter-params'
 import { useLogSummary } from './use-log-summary'
-import { LogsDetail } from './logs-detail'
 import { LogsEventListContainer } from './logs-event-list-container'
 import { LogsTimeline } from './logs-timeline'
 import { LogsToolbar } from './log-toolbar'
@@ -19,11 +18,11 @@ type LogsPanelProps = {
   active: boolean
 }
 
-export function LogsPanel({ active }: LogsPanelProps) {
+export const LogsPanel = memo(function LogsPanel({ active }: LogsPanelProps) {
   const queryClient = useQueryClient()
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const [filtersState, setFiltersState] = useState<LogsFilterState>(defaultLogsFilterState)
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [inspectedEventId, setInspectedEventId] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now)
   const filters = useMemo(() => logDashboardFilters(filtersState, now), [filtersState, now])
   const queryFilters = useMemo(() => logFilterQuery(filters), [filters])
@@ -33,7 +32,7 @@ export function LogsPanel({ active }: LogsPanelProps) {
   const optionSummary = useLogSummary(optionFilters, active)
 
   useEffect(() => {
-    setSelectedEventId(null)
+    setInspectedEventId(null)
   }, [queryFilters])
 
   function handleRefresh() {
@@ -42,6 +41,10 @@ export function LogsPanel({ active }: LogsPanelProps) {
     void queryClient.invalidateQueries({ queryKey: logsKeys.summary(queryFilters) })
     void queryClient.invalidateQueries({ queryKey: logsKeys.summary(optionQueryFilters) })
   }
+
+  const handleInspectEvent = useCallback((eventId: string | null) => {
+    setInspectedEventId(eventId)
+  }, [])
 
   return (
     <section
@@ -66,10 +69,9 @@ export function LogsPanel({ active }: LogsPanelProps) {
       <LogsEventListContainer
         active={active}
         filters={filters}
-        selectedEventId={selectedEventId}
-        onSelectEvent={setSelectedEventId}
+        inspectedEventId={inspectedEventId}
+        onInspectEvent={handleInspectEvent}
       />
-      <LogsDetail active={active} eventId={selectedEventId} />
     </section>
   )
-}
+})

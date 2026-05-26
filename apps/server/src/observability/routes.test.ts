@@ -38,6 +38,7 @@ describe('observability dashboard routes', () => {
     const summary = await app.handle(request('/_log/dashboard/summary?slowMs=500'))
     const events = await app.handle(request('/_log/dashboard/events?levels=warn&limit=1'))
     const eventPage = (await events.json()) as {
+      detailsById: Record<string, { rawJson: Record<string, unknown> }>
       events: Array<{ id: string }>
       total: number
     }
@@ -51,6 +52,7 @@ describe('observability dashboard routes', () => {
     })
     expect(events.status).toBe(200)
     expect(eventPage.total).toBe(1)
+    expect(eventPage.detailsById[eventPage.events[0].id]?.rawJson).toMatchObject({ area: 'git' })
     expect(detail.status).toBe(200)
     expect(await detail.json()).toMatchObject({
       event: { action: 'git.status', level: 'warn' },

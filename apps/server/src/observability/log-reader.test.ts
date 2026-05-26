@@ -95,6 +95,7 @@ describe('log reader', () => {
     expect(summary.areas).toContainEqual({ count: 1, value: 'git' })
     expect(page.events).toHaveLength(1)
     expect(page.events[0]).toMatchObject({ action: 'git.status', level: 'warn' })
+    expect(page.detailsById[page.events[0].id]?.rawJson).toMatchObject({ area: 'git' })
     expect(page.nextCursor).toBe(null)
   })
 
@@ -117,6 +118,30 @@ describe('log reader', () => {
     expect(detail?.rawJson).toMatchObject({
       action: 'orchestration.thread_stream.error',
       threadId: 'thread-1',
+    })
+  })
+
+  it('serves raw details from recently read history without another filesystem hit', async () => {
+    const dir = await fixtureLogDir()
+    await writeLogEvents(dir, [
+      {
+        action: 'cached.detail',
+        area: 'logs',
+        level: 'info',
+        source: 'be',
+        timestamp: '2026-05-25T10:03:00.000Z',
+      },
+    ])
+    const logs = new LogReaderService({ dir })
+    const page = await logs.events()
+
+    await rm(logFilePath(dir))
+
+    const detail = await logs.event(page.events[0].id)
+
+    expect(detail?.rawJson).toMatchObject({
+      action: 'cached.detail',
+      area: 'logs',
     })
   })
 
@@ -171,6 +196,12 @@ describe('log reader', () => {
       event: {
         action: 'app.bootstrap',
         area: 'app',
+      },
+      detail: {
+        rawJson: {
+          action: 'app.bootstrap',
+          area: 'app',
+        },
       },
       kind: 'event',
     })

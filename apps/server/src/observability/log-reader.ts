@@ -42,10 +42,12 @@ const maxEventLimit = 1_000
 const defaultSlowMs = 500
 const timelineBucketCount = 48
 const maxBreakdownItems = 12
+const maxDetailCacheEvents = 5_000
 const validLevels: ReadonlySet<string> = new Set(['debug', 'error', 'info', 'warn'])
 
 export class LogReaderService {
   private readonly dir: string
+  private readonly detailCache = new Map<string, NormalizedLogEvent>()
 
   constructor(options: { dir?: string } = {}) {
     this.dir = options.dir ?? observabilityConfig().logDir
@@ -62,10 +64,12 @@ export class LogReaderService {
     const offset = cursorOffset(input.cursor)
     const events = await this.filteredEvents(input)
     const sorted = sortNewest(events)
-    const page = sorted.slice(offset, offset + limit).map((event) => event.summary)
-    const nextOffset = offset + page.length
+    const pageEvents = sorted.slice(offset, offset + limit)
+    const page = pageEvents.map((event) => event.summary)
+    const nextOffset = offset + pageEvents.length
 
     return {
+      detailsById: eventDetailsById(pageEvents),
       events: page,
       nextCursor: nextOffset < sorted.length ? String(nextOffset) : null,
       total: sorted.length,
@@ -73,12 +77,16 @@ export class LogReaderService {
   }
 
   async event(id: string, filters: LogDashboardFilters = {}): Promise<LogEventDetail | null> {
+    const cached = this.detailCache.get(id)
+    if (cached && matchesEventFilters(cached, filters)) return eventDetail(cached)
+
     for await (const rawEvent of readFsLogs(readOptions(this.dir, filters))) {
       const event = normalizeLogEvent(rawEvent)
-      if (!matchesFilters(event, filters)) continue
+      this.rememberEvent(event)
+      if (!matchesEventFilters(event, filters)) continue
       if (event.summary.id !== id) continue
 
-      return { event: event.summary, rawJson: event.rawJson }
+      return eventDetail(event)
     }
 
     return null
@@ -96,7 +104,8 @@ export class LogReaderService {
       const event = normalizeLogEvent(rawEvent)
       if (!matchesFilters(event, input)) continue
 
-      yield { event: event.summary, kind: 'event' }
+      this.rememberEvent(event)
+      yield { detail: eventDetail(event), event: event.summary, kind: 'event' }
     }
   }
 
@@ -105,12 +114,25 @@ export class LogReaderService {
 
     for await (const rawEvent of readFsLogs(readOptions(this.dir, filters))) {
       const event = normalizeLogEvent(rawEvent)
+      this.rememberEvent(event)
       if (!matchesFilters(event, filters)) continue
 
       events.push(event)
     }
 
     return events
+  }
+
+  private rememberEvent(event: NormalizedLogEvent) {
+    this.detailCache.delete(event.summary.id)
+    this.detailCache.set(event.summary.id, event)
+
+    while (this.detailCache.size > maxDetailCacheEvents) {
+      const oldestId = this.detailCache.keys().next().value
+      if (!oldestId) return
+
+      this.detailCache.delete(oldestId)
+    }
   }
 }
 
@@ -158,6 +180,38 @@ function matchesFilters(event: NormalizedLogEvent, filters: LogDashboardFilters)
   if (!matchesSearch(event, filters.search)) return false
 
   return true
+}
+
+function matchesEventFilters(event: NormalizedLogEvent, filters: LogDashboardFilters) {
+  if (!matchesReadFilters(event, filters)) return false
+
+  return matchesFilters(event, filters)
+}
+
+function matchesReadFilters(event: NormalizedLogEvent, filters: LogDashboardFilters) {
+  if (filters.levels?.length && !filters.levels.includes(event.summary.level)) return false
+
+  const timestamp = timestampMs(event.summary)
+  const since = timestampFromFilter(filters.since)
+  const until = timestampFromFilter(filters.until)
+  if (since !== undefined && timestamp < since) return false
+  if (until !== undefined && timestamp > until) return false
+
+  return true
+}
+
+function eventDetail(event: NormalizedLogEvent): LogEventDetail {
+  return { event: event.summary, rawJson: event.rawJson }
+}
+
+function eventDetailsById(events: readonly NormalizedLogEvent[]) {
+  const detailsById: Record<string, LogEventDetail> = {}
+
+  for (const event of events) {
+    detailsById[event.summary.id] = eventDetail(event)
+  }
+
+  return detailsById
 }
 
 function includesNullable(values: readonly string[] | undefined, value: string | null) {

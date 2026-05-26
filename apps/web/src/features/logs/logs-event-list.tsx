@@ -1,23 +1,34 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { LogEventSummary } from '@workspace/contracts'
+import type { LogEventDetailsById, LogEventSummary } from '@workspace/contracts'
 import { useRef } from 'react'
 
+import { logRowCollapsedHeightPx } from './log-row-layout'
 import { LogsEventRow } from './logs-event-row'
 
 type LogsEventListProps = {
+  detailsById: LogEventDetailsById
   events: readonly LogEventSummary[]
-  selectedId: string | null
-  onSelectEvent: (id: string) => void
+  inspectedEventId: string | null
+  onInspectEvent: (eventId: string | null) => void
 }
 
-export function LogsEventList({ events, selectedId, onSelectEvent }: LogsEventListProps) {
+export function LogsEventList({
+  detailsById,
+  events,
+  inspectedEventId,
+  onInspectEvent,
+}: LogsEventListProps) {
   const parentRef = useRef<HTMLDivElement | null>(null)
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is the logs row virtualization layer.
   const virtualizer = useVirtualizer({
     count: events.length,
-    estimateSize: () => 54,
+    estimateSize: () => logRowCollapsedHeightPx,
     getItemKey: (index) => events[index]?.id ?? index,
     getScrollElement: () => parentRef.current,
+    measureElement:
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : (element) => element.getBoundingClientRect().height,
     overscan: 12,
   })
 
@@ -38,12 +49,14 @@ export function LogsEventList({ events, selectedId, onSelectEvent }: LogsEventLi
 
           return (
             <LogsEventRow
+              detail={detailsById[event.id] ?? null}
               event={event}
-              height={virtualRow.size}
+              expanded={inspectedEventId === event.id}
+              index={virtualRow.index}
               key={event.id}
-              selected={selectedId === event.id}
+              ref={virtualizer.measureElement}
               start={virtualRow.start}
-              onSelectEvent={onSelectEvent}
+              onInspectEvent={onInspectEvent}
             />
           )
         })}

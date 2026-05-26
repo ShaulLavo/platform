@@ -1,13 +1,11 @@
-import type { LogEventSummary } from '@workspace/contracts'
-
 type CancelLiveEventFlush = () => void
 type ScheduleLiveEventFlush = (flush: () => void) => CancelLiveEventFlush
 
-export function createLiveEventBatcher(
-  onFlush: (events: readonly LogEventSummary[]) => void,
+export function createLiveEventBatcher<TItem>(
+  onFlush: (events: readonly TItem[]) => void,
   scheduleFlush: ScheduleLiveEventFlush = scheduleLiveEventFlush,
 ) {
-  let events: LogEventSummary[] = []
+  let events: TItem[] = []
   let cancelFlush: CancelLiveEventFlush | null = null
 
   function flush() {
@@ -25,7 +23,7 @@ export function createLiveEventBatcher(
       cancelFlush = null
       events = []
     },
-    push(event: LogEventSummary) {
+    push(event: TItem) {
       events.push(event)
       if (cancelFlush) return
 

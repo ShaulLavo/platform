@@ -6,7 +6,7 @@ import { logsKeys } from '@/lib/query-keys'
 import { subscribeLogEvents } from './api'
 import { createLiveEventBatcher } from './log-live-batcher'
 import { logFilterQuery } from './log-filter-params'
-import { mergeLiveLogEvents } from './log-live-cache'
+import { mergeLiveLogItems } from './log-live-cache'
 
 export function useLogLive(filters: LogDashboardFilters, enabled: boolean) {
   const queryClient = useQueryClient()
@@ -18,14 +18,14 @@ export function useLogLive(filters: LogDashboardFilters, enabled: boolean) {
     const controller = new AbortController()
     const batcher = createLiveEventBatcher((events) => {
       queryClient.setQueryData<LogEventsResult>(logsKeys.events(queryFilters), (current) =>
-        mergeLiveLogEvents(current, events),
+        mergeLiveLogItems(current, events),
       )
     })
 
     void runLogLiveStream(filters, controller.signal, (item) => {
       if (item.kind !== 'event') return
 
-      batcher.push(item.event)
+      batcher.push(item)
     })
 
     return () => {

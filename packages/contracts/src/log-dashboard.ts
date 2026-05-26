@@ -41,6 +41,8 @@ export const logEventDetailSchema = v.object({
   rawJson: v.record(v.string(), v.unknown()),
 })
 
+export const logEventDetailsByIdSchema = v.record(v.string(), logEventDetailSchema)
+
 export const logDashboardBreakdownItemSchema = v.object({
   count: nonNegativeIntegerSchema,
   value: v.string(),
@@ -72,6 +74,7 @@ export const logDashboardSummarySchema = v.object({
 })
 
 export const logEventsResultSchema = v.object({
+  detailsById: logEventDetailsByIdSchema,
   events: v.array(logEventSummarySchema),
   nextCursor: v.nullable(v.string()),
   total: nonNegativeIntegerSchema,
@@ -79,6 +82,7 @@ export const logEventsResultSchema = v.object({
 
 export const logLiveStreamItemSchema = v.variant('kind', [
   v.object({
+    detail: logEventDetailSchema,
     event: logEventSummarySchema,
     kind: v.literal('event'),
   }),
@@ -88,6 +92,7 @@ export type LogDashboardLevel = v.InferOutput<typeof logDashboardLevelSchema>
 export type LogDashboardFilters = v.InferOutput<typeof logDashboardFiltersSchema>
 export type LogEventSummary = v.InferOutput<typeof logEventSummarySchema>
 export type LogEventDetail = v.InferOutput<typeof logEventDetailSchema>
+export type LogEventDetailsById = v.InferOutput<typeof logEventDetailsByIdSchema>
 export type LogDashboardBreakdownItem = v.InferOutput<typeof logDashboardBreakdownItemSchema>
 export type LogDashboardTimelineBucket = v.InferOutput<typeof logDashboardTimelineBucketSchema>
 export type LogDashboardSummary = v.InferOutput<typeof logDashboardSummarySchema>

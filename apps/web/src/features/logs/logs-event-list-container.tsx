@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import type { LogDashboardFilters } from '@workspace/contracts'
+import type { LogDashboardFilters, LogEventDetailsById } from '@workspace/contracts'
 
 import { useLogEvents } from './use-log-events'
 import { useLogLive } from './use-log-live'
@@ -8,28 +7,20 @@ import { LogsEventList } from './logs-event-list'
 type LogsEventListContainerProps = {
   active: boolean
   filters: LogDashboardFilters
-  selectedEventId: string | null
-  onSelectEvent: (id: string | null) => void
+  inspectedEventId: string | null
+  onInspectEvent: (eventId: string | null) => void
 }
+
+const emptyDetailsById: LogEventDetailsById = Object.freeze({})
 
 export function LogsEventListContainer({
   active,
   filters,
-  selectedEventId,
-  onSelectEvent,
+  inspectedEventId,
+  onInspectEvent,
 }: LogsEventListContainerProps) {
   const events = useLogEvents(filters, active)
   useLogLive(filters, active)
-
-  useEffect(() => {
-    if (!active) return
-    if (selectedEventId) return
-
-    const firstEventId = events.data?.events[0]?.id
-    if (!firstEventId) return
-
-    onSelectEvent(firstEventId)
-  }, [active, events.data?.events, onSelectEvent, selectedEventId])
 
   return (
     <>
@@ -39,9 +30,10 @@ export function LogsEventListContainer({
         </div>
       ) : null}
       <LogsEventList
+        detailsById={events.data?.detailsById ?? emptyDetailsById}
         events={events.data?.events ?? []}
-        selectedId={selectedEventId}
-        onSelectEvent={onSelectEvent}
+        inspectedEventId={inspectedEventId}
+        onInspectEvent={onInspectEvent}
       />
     </>
   )

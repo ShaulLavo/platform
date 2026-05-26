@@ -54,13 +54,14 @@ export function WorkspaceView({
     rootPath,
     treeReady: treeState.status === 'ready',
   })
+  const selectedWorkspacePanelTab = sidebarVisible ? workspacePanelTab : ''
 
   return (
     <div className='h-full min-h-0 flex-1 overflow-auto'>
       <div className='flex h-full min-w-[1024px] flex-col'>
         <Tabs
           className='min-h-0 flex-1 flex-row'
-          value={workspacePanelTab}
+          value={selectedWorkspacePanelTab}
           orientation='vertical'
           onValueChange={handleWorkspacePanelTabChange}
         >

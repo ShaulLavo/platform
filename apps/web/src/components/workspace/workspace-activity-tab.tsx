@@ -23,7 +23,7 @@ export function WorkspaceActivityTab({
         'size-8 flex-none flex-col rounded-md p-0 text-muted-foreground hover:bg-muted/50 data-active:shadow-none group-data-vertical/tabs:w-8 group-data-vertical/tabs:justify-center group-data-vertical/tabs:py-0',
         currentVisible
           ? 'data-active:bg-accent data-active:text-accent-foreground'
-          : 'data-active:bg-transparent data-active:text-muted-foreground',
+          : 'data-active:border-transparent data-active:bg-transparent data-active:text-muted-foreground dark:data-active:border-transparent dark:data-active:bg-transparent dark:data-active:text-muted-foreground',
       )}
       title={label}
       value={value}

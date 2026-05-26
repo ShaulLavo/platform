@@ -13,6 +13,8 @@ import {
 } from '@/components/workspace/workspace-view-utils'
 import { TabsContent } from '@workspace/ui/components/tabs'
 
+const sidebarTabPanelClassName = 'min-h-0 min-w-0 overflow-hidden'
+
 export function WorkspaceSidebar({
   onLoadDirectory,
   onPrefetchDirectory,
@@ -32,7 +34,7 @@ export function WorkspaceSidebar({
   treeState: LoadState<TreeModel>
   visibleTreeItemCount: number | null
 }) {
-  const logsActive = sidebarVisible && tab === 'logs'
+  const logsActive = tab === 'logs'
 
   return (
     <aside
@@ -47,7 +49,13 @@ export function WorkspaceSidebar({
           visibleTreeItemCount={visibleTreeItemCount}
         />
       ) : null}
-      <TabsContent keepMounted value='files'>
+      <TabsContent
+        className={sidebarTabPanelClassName}
+        hidden={tab !== 'files'}
+        inert={tab !== 'files'}
+        keepMounted
+        value='files'
+      >
         <WorkspaceFilesPane
           key={rootPath}
           rootPath={rootPath}
@@ -57,16 +65,40 @@ export function WorkspaceSidebar({
           onPrefetchDirectory={onPrefetchDirectory}
         />
       </TabsContent>
-      <TabsContent keepMounted value='search'>
+      <TabsContent
+        className={sidebarTabPanelClassName}
+        hidden={tab !== 'search'}
+        inert={tab !== 'search'}
+        keepMounted
+        value='search'
+      >
         <WorkspaceSearchPane rootPath={rootPath} />
       </TabsContent>
-      <TabsContent keepMounted value='git'>
+      <TabsContent
+        className={sidebarTabPanelClassName}
+        hidden={tab !== 'git'}
+        inert={tab !== 'git'}
+        keepMounted
+        value='git'
+      >
         <GitPanel rootPath={rootPath} />
       </TabsContent>
-      <TabsContent keepMounted value='logs'>
+      <TabsContent
+        className={sidebarTabPanelClassName}
+        hidden={tab !== 'logs'}
+        inert={tab !== 'logs'}
+        keepMounted
+        value='logs'
+      >
         <LogsPanel active={logsActive} />
       </TabsContent>
-      <TabsContent keepMounted value='chat'>
+      <TabsContent
+        className={sidebarTabPanelClassName}
+        hidden={tab !== 'chat'}
+        inert={tab !== 'chat'}
+        keepMounted
+        value='chat'
+      >
         <ChatSidePanel rootPath={rootPath} />
       </TabsContent>
     </aside>

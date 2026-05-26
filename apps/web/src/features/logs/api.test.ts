@@ -78,32 +78,38 @@ describe('logs api', () => {
   })
 
   it('normalizes Eden Date values in event result timestamps', async () => {
+    const event = {
+      action: 'git.status',
+      area: 'git',
+      durationMs: null,
+      environment: null,
+      errorCode: null,
+      errorMessage: null,
+      errorName: null,
+      id: 'event-1',
+      level: 'info',
+      message: null,
+      method: null,
+      operation: null,
+      outcome: null,
+      path: null,
+      requestId: null,
+      service: null,
+      source: 'client',
+      status: null,
+      threadId: null,
+      timestamp: new Date('2026-05-25T10:02:00.000Z'),
+    } as const
+
     eventsGet.mockResolvedValueOnce({
       data: {
-        events: [
-          {
-            action: 'git.status',
-            area: 'git',
-            durationMs: null,
-            environment: null,
-            errorCode: null,
-            errorMessage: null,
-            errorName: null,
-            id: 'event-1',
-            level: 'info',
-            message: null,
-            method: null,
-            operation: null,
-            outcome: null,
-            path: null,
-            requestId: null,
-            service: null,
-            source: 'client',
-            status: null,
-            threadId: null,
-            timestamp: new Date('2026-05-25T10:02:00.000Z'),
+        detailsById: {
+          'event-1': {
+            event,
+            rawJson: { action: 'git.status' },
           },
-        ],
+        },
+        events: [event],
         nextCursor: null,
         total: 1,
       },
@@ -112,5 +118,6 @@ describe('logs api', () => {
     const result = await api.fetchLogEvents({})
 
     expect(result.events[0].timestamp).toBe('2026-05-25T10:02:00.000Z')
+    expect(result.detailsById['event-1']?.event.timestamp).toBe('2026-05-25T10:02:00.000Z')
   })
 })
