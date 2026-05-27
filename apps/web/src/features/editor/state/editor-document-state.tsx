@@ -406,11 +406,9 @@ export function createEditorDocumentStore() {
         if (!document) return state
         if (scrollPositionsEqual(state.scrollPositionByPath[path], scrollPosition)) return state
 
+        updateCachedEditorDocumentScrollPosition(document, scrollPosition)
+
         return {
-          documents: {
-            ...state.documents,
-            [path]: { ...document, scrollPosition },
-          },
           scrollPositionByPath: {
             ...state.scrollPositionByPath,
             [path]: scrollPosition,
@@ -424,14 +422,12 @@ export function createEditorDocumentStore() {
         if (!document) return state
         if (scrollPositionsEqual(state.scrollPositionByTabId[tabId], scrollPosition)) return state
 
+        updateCachedEditorDocumentScrollPosition(document, scrollPosition)
+
         return {
           scrollPositionByTabId: {
             ...state.scrollPositionByTabId,
             [tabId]: scrollPosition,
-          },
-          tabDocuments: {
-            ...state.tabDocuments,
-            [tabId]: { ...document, scrollPosition },
           },
         }
       })
@@ -690,6 +686,13 @@ function scrollPositionsEqual(
   if (!current) return false
 
   return current.left === next.left && current.top === next.top
+}
+
+function updateCachedEditorDocumentScrollPosition(
+  document: CachedEditorDocument,
+  scrollPosition: EditorScrollPosition,
+) {
+  document.scrollPosition = scrollPosition
 }
 
 function editedContentRevision(revision: number) {

@@ -292,16 +292,37 @@ describe('editor document store', () => {
 
   it('tracks scroll position on cached documents', () => {
     const store = createEditorDocumentStore()
-    store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
+    const document = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
 
     store.getState().setCachedEditorDocumentScrollPosition('src/file.ts', {
       left: 10,
       top: 20,
     })
 
-    expect(store.getState().getCachedEditorDocument('src/file.ts')?.scrollPosition).toEqual({
+    const scrolledDocument = store.getState().getCachedEditorDocument('src/file.ts')
+    expect(scrolledDocument).toBe(document)
+    expect(scrolledDocument?.scrollPosition).toEqual({
       left: 10,
       top: 20,
+    })
+  })
+
+  it('tracks scroll position on cached tab documents without replacing the document', () => {
+    const store = createEditorDocumentStore()
+    const document = store
+      .getState()
+      .ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'local'))
+
+    store.getState().setCachedEditorTabDocumentScrollPosition('tab-a', {
+      left: 12,
+      top: 24,
+    })
+
+    const scrolledDocument = store.getState().getCachedEditorTabDocument('tab-a')
+    expect(scrolledDocument).toBe(document)
+    expect(scrolledDocument?.scrollPosition).toEqual({
+      left: 12,
+      top: 24,
     })
   })
 
