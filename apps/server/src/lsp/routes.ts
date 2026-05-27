@@ -5,7 +5,7 @@ import { authenticateWebSocketData, type AuthConfig } from '../auth'
 import { pathSchema } from '../fs/contracts'
 import type { WorkspacePaths } from '../fs/path'
 import { matchLspServer } from './registry'
-import { LspProxySession } from './proxy-session'
+import { LspProxySession, type LspProxyClientSession } from './proxy-session'
 import { recordProcessWarning } from '../observability'
 
 type LspRouteFileSystem = {
@@ -117,7 +117,7 @@ type PendingLspSession = {
   readonly messages: LspClientMessage[]
   closed: boolean
   flushing: boolean
-  session: LspProxySession | null
+  session: LspProxyClientSession | null
   dispose(): void
 }
 
@@ -147,7 +147,7 @@ function rejectPendingLspSession(
   sessions.delete(socket.key)
 }
 
-function attachPendingLspSession(pending: PendingLspSession, session: LspProxySession) {
+function attachPendingLspSession(pending: PendingLspSession, session: LspProxyClientSession) {
   if (pending.closed) {
     session.dispose()
     return
