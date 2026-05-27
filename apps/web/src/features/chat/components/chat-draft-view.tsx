@@ -1,8 +1,10 @@
-import type {
-  CommandId,
-  OrchestrationMessage,
-  OrchestrationProjectShell,
-  ThreadId,
+import {
+  DEFAULT_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
+  type CommandId,
+  type OrchestrationMessage,
+  type OrchestrationProjectShell,
+  type ThreadId,
 } from '@workspace/contracts'
 import { useCallback, useMemo, useState } from 'react'
 
@@ -12,9 +14,8 @@ import {
   createThreadDeleteCommand,
   defaultChatModelSelection,
 } from '../lib/chat-command-builders'
-import { formatChatModelLabel } from '../lib/chat-formatters'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
-import { ChatInput } from './chat-input'
+import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatWelcomeView } from './chat-welcome-view'
 
 const DRAFT_CHAT_KEY = 'draft'
@@ -39,17 +40,26 @@ export function ChatDraftView({
   )
   const handleStop = useCallback(() => undefined, [])
   const handleSend = useCallback(
-    async (text: string) => {
+    async ({
+      attachments,
+      interactionMode,
+      modelSelection,
+      runtimeMode,
+      text,
+    }: ChatInputSubmitPayload) => {
       if (!project) {
         setSendError('Workspace chat is still preparing.')
         return false
       }
 
       const submission = createDraftThreadSubmission({
+        attachments,
         createdAt: new Date().toISOString(),
+        interactionMode,
         modelSelection,
         projectId: project.id,
         rootPath,
+        runtimeMode,
         text,
       })
       const result = await dispatchDraftSubmission(environment, submission)
@@ -62,7 +72,7 @@ export function ChatDraftView({
       onThreadCreated(submission.threadCommand.threadId)
       return true
     },
-    [environment, modelSelection, onThreadCreated, project, rootPath],
+    [environment, onThreadCreated, project, rootPath],
   )
 
   return (
@@ -73,8 +83,10 @@ export function ChatDraftView({
         disabled={disabled || !project}
         draftKey={DRAFT_CHAT_KEY}
         error={sendError}
-        modelLabel={formatChatModelLabel(modelSelection)}
+        interactionMode={DEFAULT_INTERACTION_MODE}
+        modelSelection={modelSelection}
         rootPath={rootPath}
+        runtimeMode={DEFAULT_RUNTIME_MODE}
         onStop={handleStop}
         onSubmit={handleSend}
       />

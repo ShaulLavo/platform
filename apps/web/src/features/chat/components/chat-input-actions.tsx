@@ -1,10 +1,11 @@
-import { AtIcon, CaretDownIcon, CodeIcon, MicrophoneIcon, PlusIcon } from '@phosphor-icons/react'
+import { AtIcon, CodeIcon, MicrophoneIcon, PlusIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
 import type { RefObject } from 'react'
 
 import { ChatInputSubmitButton } from './chat-input-submit-button'
+import { ProviderModelPicker } from './provider-model-picker'
 
 const inputToolButtons = [
   { Icon: PlusIcon, label: 'Add context', narrow: true },
@@ -82,16 +83,7 @@ export function ChatInputActions({
         ) : null}
       </div>
       <div className='flex min-w-0 shrink-0 items-center justify-end gap-1.5'>
-        <button
-          className='text-muted-foreground hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex h-7 max-w-36 items-center gap-1 truncate rounded-md px-2 text-xs transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50'
-          disabled={disabled}
-          title={modelLabel}
-          type='button'
-        >
-          <span className='truncate'>{modelLabel}</span>
-          <CaretDownIcon className='size-3 shrink-0' />
-          {busy ? <span className='size-1.5 shrink-0 rounded-full bg-emerald-400' /> : null}
-        </button>
+        <ProviderModelPicker busy={busy} disabled={disabled} modelLabel={modelLabel} />
         <Tooltip>
           <TooltipTrigger
             render={

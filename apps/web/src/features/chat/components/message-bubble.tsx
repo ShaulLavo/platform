@@ -18,6 +18,7 @@ export function MessageBubble({
 }) {
   const user = message.role === 'user'
   const optimistic = 'optimistic' in message
+  const attachments = message.attachments ?? []
 
   return (
     <div
@@ -45,6 +46,21 @@ export function MessageBubble({
             {message.text}
           </Streamdown>
         )}
+        {attachments.length > 0 ? (
+          <div className='mt-2 flex flex-wrap gap-1.5'>
+            {attachments.map((attachment) => (
+              <span
+                className={cn(
+                  'rounded border px-1.5 py-0.5 text-[10px]',
+                  user ? 'border-white/25 text-white/80' : 'border-border text-muted-foreground',
+                )}
+                key={attachment.id}
+              >
+                {attachment.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div
           className={cn(
             'mt-1 text-[10px] tabular-nums',

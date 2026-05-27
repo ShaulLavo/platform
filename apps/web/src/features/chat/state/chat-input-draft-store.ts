@@ -1,0 +1,401 @@
+import type {
+  ChatAttachment,
+  InteractionMode,
+  ModelSelection,
+  RuntimeMode,
+  ThreadId,
+} from '@workspace/contracts'
+import { create } from 'zustand'
+
+import {
+  chatInputDraftStorageId,
+  emptyPersistedChatInputDrafts,
+  readPersistedChatInputDrafts,
+  writePersistedChatInputDrafts,
+  type PersistedChatInputDraft,
+  type PersistedChatInputDraftStorage,
+} from '../lib/chat-draft-storage'
+
+const CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS = 300
+const CHAT_INPUT_DRAFT_PERSISTENCE_ERROR = 'Chat draft could not be saved locally.'
+
+export type ChatInputDraftTarget = {
+  draftKey: string | null
+  rootPath: string
+}
+
+export type ChatInputImageAttachment = ChatAttachment & {
+  dataUrl: string
+  previewUrl: string
+}
+
+export type ChatInputTerminalContext = {
+  id: string
+  label: string
+  value: string
+}
+
+export type ChatInputDraftPromotion = {
+  promotedThreadId?: ThreadId
+  status: 'idle' | 'promoting' | 'promoted'
+  threadId?: ThreadId
+  updatedAt: string
+}
+
+export type ChatInputDraft = {
+  draftPromotion: ChatInputDraftPromotion | null
+  images: ChatInputImageAttachment[]
+  interactionMode: InteractionMode | null
+  modelSelection: ModelSelection | null
+  prompt: string
+  runtimeMode: RuntimeMode | null
+  terminalContexts: ChatInputTerminalContext[]
+  updatedAt: string | null
+}
+
+type ChatInputDraftState = {
+  draftsByKey: Record<string, ChatInputDraft>
+  persistenceError: string | null
+}
+
+type ChatInputDraftActions = {
+  addImages: (target: ChatInputDraftTarget, images: readonly ChatInputImageAttachment[]) => void
+  clearDraft: (target: ChatInputDraftTarget) => void
+  flush: () => boolean
+  getDraft: (target: ChatInputDraftTarget) => ChatInputDraft
+  markDraftPromotion: (
+    target: ChatInputDraftTarget,
+    promotion: Omit<ChatInputDraftPromotion, 'updatedAt'>,
+  ) => void
+  removeImage: (target: ChatInputDraftTarget, imageId: string) => void
+  setInteractionMode: (
+    target: ChatInputDraftTarget,
+    interactionMode: InteractionMode | null,
+  ) => void
+  setModelSelection: (target: ChatInputDraftTarget, modelSelection: ModelSelection | null) => void
+  setPrompt: (target: ChatInputDraftTarget, prompt: string) => void
+  setRuntimeMode: (target: ChatInputDraftTarget, runtimeMode: RuntimeMode | null) => void
+  setTerminalContexts: (
+    target: ChatInputDraftTarget,
+    terminalContexts: readonly ChatInputTerminalContext[],
+  ) => void
+}
+
+export type ChatInputDraftStore = ChatInputDraftState & ChatInputDraftActions
+
+const EMPTY_IMAGES: ChatInputImageAttachment[] = []
+const EMPTY_TERMINAL_CONTEXTS: ChatInputTerminalContext[] = []
+const EMPTY_CHAT_INPUT_DRAFT: ChatInputDraft = {
+  draftPromotion: null,
+  images: EMPTY_IMAGES,
+  interactionMode: null,
+  modelSelection: null,
+  prompt: '',
+  runtimeMode: null,
+  terminalContexts: EMPTY_TERMINAL_CONTEXTS,
+  updatedAt: null,
+}
+
+let draftPersistTimeout: ReturnType<typeof setTimeout> | null = null
+
+export const useChatInputDraftStore = create<ChatInputDraftStore>((set, get) => ({
+  ...createInitialChatInputDraftState(),
+  addImages: (target, images) => {
+    set((state) => updateDraftForTarget(state, target, (draft) => addImagesToDraft(draft, images)))
+    scheduleChatInputDraftStorageFlush()
+  },
+  clearDraft: (target) => {
+    set((state) => removeDraftForTarget(state, target))
+    scheduleChatInputDraftStorageFlush()
+  },
+  flush: () => flushChatInputDraftStorage(),
+  getDraft: (target) => chatInputDraftForTarget(get(), target),
+  markDraftPromotion: (target, promotion) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) =>
+        withDraftPatch(draft, {
+          draftPromotion: {
+            ...promotion,
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      ),
+    )
+    scheduleChatInputDraftStorageFlush()
+  },
+  removeImage: (target, imageId) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) => removeImageFromDraft(draft, imageId)),
+    )
+    scheduleChatInputDraftStorageFlush()
+  },
+  setInteractionMode: (target, interactionMode) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { interactionMode })),
+    )
+    scheduleChatInputDraftStorageFlush()
+  },
+  setModelSelection: (target, modelSelection) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { modelSelection })),
+    )
+    scheduleChatInputDraftStorageFlush()
+  },
+  setPrompt: (target, prompt) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { prompt })),
+    )
+    scheduleChatInputDraftStorageFlush()
+  },
+  setRuntimeMode: (target, runtimeMode) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { runtimeMode })),
+    )
+    scheduleChatInputDraftStorageFlush()
+  },
+  setTerminalContexts: (target, terminalContexts) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) =>
+        withDraftPatch(draft, { terminalContexts: Array.from(terminalContexts) }),
+      ),
+    )
+    scheduleChatInputDraftStorageFlush()
+  },
+}))
+
+export function selectChatInputDraftImages(
+  state: ChatInputDraftStore,
+  target: ChatInputDraftTarget,
+) {
+  return chatInputDraftForTarget(state, target).images
+}
+
+export function readChatInputDraftPrompt(target: ChatInputDraftTarget) {
+  return useChatInputDraftStore.getState().getDraft(target).prompt
+}
+
+export function flushChatInputDraftStorage() {
+  clearScheduledChatInputDraftStorageFlush()
+
+  try {
+    writePersistedChatInputDrafts(persistedStorageFromState(useChatInputDraftStore.getState()))
+    clearDraftPersistenceError()
+    return true
+  } catch {
+    useChatInputDraftStore.setState({ persistenceError: CHAT_INPUT_DRAFT_PERSISTENCE_ERROR })
+    return false
+  }
+}
+
+export function hydrateChatInputDraftStoreFromStorage() {
+  useChatInputDraftStore.setState(createInitialChatInputDraftState())
+}
+
+export function resetChatInputDraftStore() {
+  clearScheduledChatInputDraftStorageFlush()
+  useChatInputDraftStore.setState({
+    draftsByKey: {},
+    persistenceError: null,
+  })
+}
+
+function createInitialChatInputDraftState(): ChatInputDraftState {
+  return {
+    draftsByKey: hydrateDrafts(readPersistedChatInputDrafts()),
+    persistenceError: null,
+  }
+}
+
+function chatInputDraftForTarget(
+  state: Pick<ChatInputDraftState, 'draftsByKey'>,
+  target: ChatInputDraftTarget,
+) {
+  const draftId = chatInputDraftStorageId(target.rootPath, target.draftKey)
+  if (!draftId) return EMPTY_CHAT_INPUT_DRAFT
+
+  return state.draftsByKey[draftId] ?? EMPTY_CHAT_INPUT_DRAFT
+}
+
+function updateDraftForTarget(
+  state: ChatInputDraftState,
+  target: ChatInputDraftTarget,
+  update: (draft: ChatInputDraft) => ChatInputDraft,
+): ChatInputDraftState {
+  const draftId = chatInputDraftStorageId(target.rootPath, target.draftKey)
+  if (!draftId) return state
+
+  const draft = state.draftsByKey[draftId] ?? EMPTY_CHAT_INPUT_DRAFT
+  const nextDraft = update(draft)
+  if (nextDraft === draft) return state
+  if (isEmptyChatInputDraft(nextDraft)) return removeDraftById(state, draftId)
+
+  return {
+    ...state,
+    draftsByKey: {
+      ...state.draftsByKey,
+      [draftId]: nextDraft,
+    },
+  }
+}
+
+function removeDraftForTarget(
+  state: ChatInputDraftState,
+  target: ChatInputDraftTarget,
+): ChatInputDraftState {
+  const draftId = chatInputDraftStorageId(target.rootPath, target.draftKey)
+  if (!draftId) return state
+
+  return removeDraftById(state, draftId)
+}
+
+function removeDraftById(state: ChatInputDraftState, draftId: string): ChatInputDraftState {
+  if (!state.draftsByKey[draftId]) return state
+
+  const { [draftId]: _removed, ...draftsByKey } = state.draftsByKey
+  return {
+    ...state,
+    draftsByKey,
+  }
+}
+
+function withDraftPatch(draft: ChatInputDraft, patch: Partial<ChatInputDraft>): ChatInputDraft {
+  const nextDraft = {
+    ...draft,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  }
+
+  return draftsEqual(draft, nextDraft) ? draft : nextDraft
+}
+
+function addImagesToDraft(
+  draft: ChatInputDraft,
+  images: readonly ChatInputImageAttachment[],
+): ChatInputDraft {
+  if (images.length === 0) return draft
+
+  return withDraftPatch(draft, {
+    images: draft.images.concat(images),
+  })
+}
+
+function removeImageFromDraft(draft: ChatInputDraft, imageId: string): ChatInputDraft {
+  const images = draft.images.filter((image) => image.id !== imageId)
+  if (images.length === draft.images.length) return draft
+
+  return withDraftPatch(draft, { images })
+}
+
+function isEmptyChatInputDraft(draft: ChatInputDraft) {
+  if (draft.prompt.trim()) return false
+  if (draft.images.length > 0) return false
+  if (draft.terminalContexts.length > 0) return false
+  if (draft.modelSelection) return false
+  if (draft.runtimeMode) return false
+  if (draft.interactionMode) return false
+
+  return !draft.draftPromotion
+}
+
+function draftsEqual(left: ChatInputDraft, right: ChatInputDraft) {
+  return (
+    left.prompt === right.prompt &&
+    left.images === right.images &&
+    left.terminalContexts === right.terminalContexts &&
+    left.modelSelection === right.modelSelection &&
+    left.runtimeMode === right.runtimeMode &&
+    left.interactionMode === right.interactionMode &&
+    left.draftPromotion === right.draftPromotion
+  )
+}
+
+function scheduleChatInputDraftStorageFlush() {
+  clearScheduledChatInputDraftStorageFlush()
+  draftPersistTimeout = setTimeout(
+    () => flushChatInputDraftStorage(),
+    CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS,
+  )
+}
+
+function clearScheduledChatInputDraftStorageFlush() {
+  if (!draftPersistTimeout) return
+
+  clearTimeout(draftPersistTimeout)
+  draftPersistTimeout = null
+}
+
+function clearDraftPersistenceError() {
+  if (!useChatInputDraftStore.getState().persistenceError) return
+
+  useChatInputDraftStore.setState({ persistenceError: null })
+}
+
+function hydrateDrafts(storage: PersistedChatInputDraftStorage) {
+  return Object.fromEntries(
+    Object.entries(storage.draftsByKey).map(([draftId, draft]) => [draftId, hydrateDraft(draft)]),
+  )
+}
+
+function hydrateDraft(draft: PersistedChatInputDraft): ChatInputDraft {
+  return {
+    draftPromotion: draft.draftPromotion as ChatInputDraftPromotion | null,
+    images: draft.images.map(hydrateImage),
+    interactionMode: draft.interactionMode,
+    modelSelection: draft.modelSelection,
+    prompt: draft.prompt,
+    runtimeMode: draft.runtimeMode,
+    terminalContexts: draft.terminalContexts,
+    updatedAt: draft.updatedAt,
+  }
+}
+
+function hydrateImage(image: PersistedChatInputDraft['images'][number]): ChatInputImageAttachment {
+  return {
+    ...image,
+    previewUrl: image.dataUrl,
+  }
+}
+
+function persistedStorageFromState(state: ChatInputDraftState): PersistedChatInputDraftStorage {
+  const storage = emptyPersistedChatInputDrafts()
+
+  for (const [draftId, draft] of Object.entries(state.draftsByKey)) {
+    if (isEmptyChatInputDraft(draft)) continue
+
+    storage.draftsByKey[draftId] = persistedDraft(draft)
+  }
+
+  return storage
+}
+
+function persistedDraft(draft: ChatInputDraft): PersistedChatInputDraft {
+  return {
+    draftPromotion: draft.draftPromotion,
+    images: draft.images.map(persistedImage),
+    interactionMode: draft.interactionMode,
+    modelSelection: draft.modelSelection,
+    prompt: draft.prompt,
+    runtimeMode: draft.runtimeMode,
+    terminalContexts: draft.terminalContexts,
+    updatedAt: draft.updatedAt,
+  }
+}
+
+function persistedImage(
+  image: ChatInputImageAttachment,
+): PersistedChatInputDraft['images'][number] {
+  return {
+    dataUrl: image.dataUrl,
+    id: image.id,
+    mimeType: image.mimeType,
+    name: image.name,
+    sizeBytes: image.sizeBytes,
+    type: image.type,
+  }
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('beforeunload', () => {
+    flushChatInputDraftStorage()
+  })
+}

@@ -3,8 +3,10 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import type { LexicalEditor } from 'lexical'
-import type { RefObject } from 'react'
+import { useCallback, type ClipboardEvent, type DragEvent, type RefObject } from 'react'
 
+import { imageFilesFromClipboard, imageFilesFromTransfer } from '../lib/chat-input-attachments'
+import type { ChatInputTrigger } from '../lib/chat-input-logic'
 import { ChatInputDraftPlugin } from './chat-input-draft-plugin'
 import { ChatInputSubmitPlugin } from './chat-input-submit-plugin'
 
@@ -12,23 +14,61 @@ export function ChatInputEditor({
   busy,
   disabled,
   draftKey,
+  hasAttachments,
+  onCommandMenuCommit,
+  onCommandMenuMove,
   onEditorReady,
+  onImageFiles,
   onSubmitRequest,
+  onTriggerChange,
   placeholder,
   rootPath,
   sendButtonRef,
   submitting,
+  trigger,
 }: {
   busy: boolean
   disabled: boolean
   draftKey: string
+  hasAttachments: boolean
+  onCommandMenuCommit: () => boolean
+  onCommandMenuMove: (offset: number) => boolean
   onEditorReady: (editor: LexicalEditor | null) => void
+  onImageFiles: (files: readonly File[]) => void
   onSubmitRequest: () => Promise<boolean>
+  onTriggerChange: (trigger: ChatInputTrigger | null) => void
   placeholder: string
   rootPath: string
   sendButtonRef: RefObject<HTMLButtonElement | null>
   submitting: boolean
+  trigger: ChatInputTrigger | null
 }) {
+  const handleDragOver = useCallback((event: DragEvent<HTMLElement>) => {
+    if (!event.dataTransfer.types.includes('Files')) return
+
+    event.preventDefault()
+  }, [])
+  const handleDrop = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      const files = imageFilesFromTransfer(event.dataTransfer)
+      if (files.length === 0) return
+
+      event.preventDefault()
+      onImageFiles(files)
+    },
+    [onImageFiles],
+  )
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLElement>) => {
+      const files = imageFilesFromClipboard(event.clipboardData)
+      if (files.length === 0) return
+
+      event.preventDefault()
+      onImageFiles(files)
+    },
+    [onImageFiles],
+  )
+
   return (
     <div className='relative px-4 pt-4 pb-2'>
       <PlainTextPlugin
@@ -39,6 +79,9 @@ export function ChatInputEditor({
             className='app-scrollbar-thin text-foreground block max-h-48 min-h-20 w-full overflow-y-auto bg-transparent text-sm leading-6 break-words whitespace-pre-wrap outline-none'
             data-testid='chat-input-editor'
             placeholder={<span />}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onPaste={handlePaste}
           />
         }
         ErrorBoundary={LexicalErrorBoundary}
@@ -52,12 +95,20 @@ export function ChatInputEditor({
         busy={busy}
         disabled={disabled}
         draftKey={draftKey}
+        hasAttachments={hasAttachments}
         rootPath={rootPath}
         sendButtonRef={sendButtonRef}
         submitting={submitting}
         onEditorReady={onEditorReady}
+        onTriggerChange={onTriggerChange}
       />
-      <ChatInputSubmitPlugin disabled={disabled} onSubmitRequest={onSubmitRequest} />
+      <ChatInputSubmitPlugin
+        commandMenuOpen={trigger !== null}
+        disabled={disabled}
+        onCommandMenuCommit={onCommandMenuCommit}
+        onCommandMenuMove={onCommandMenuMove}
+        onSubmitRequest={onSubmitRequest}
+      />
       <HistoryPlugin />
     </div>
   )

@@ -40,6 +40,15 @@ describe('chat command builders', () => {
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
     }
     const submission = createTurnSubmission({
+      attachments: [
+        {
+          id: 'image-1',
+          mimeType: 'image/png',
+          name: 'screenshot.png',
+          sizeBytes: 12,
+          type: 'image',
+        },
+      ],
       createdAt: '2026-05-24T12:00:00.000Z',
       interactionMode: DEFAULT_INTERACTION_MODE,
       modelSelection,
@@ -52,6 +61,7 @@ describe('chat command builders', () => {
     expect(submission.command.message.messageId).toBe(submission.optimisticMessage.id)
     expect(submission.optimisticMessage.turnId).toBe(submission.command.turnId)
     expect(submission.optimisticMessage.text).toBe('Explain the workspace')
+    expect(submission.command.message.attachments).toEqual(submission.optimisticMessage.attachments)
   })
 
   it('builds a draft thread submission with one thread id and a prompt title', () => {

@@ -1,15 +1,19 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
-import { $getRoot, type EditorState, type LexicalEditor } from 'lexical'
+import type { EditorState, LexicalEditor } from 'lexical'
 import { useCallback, useEffect, type RefObject } from 'react'
 
-import { writeChatDraft } from '../lib/chat-draft-storage'
+import { detectChatInputTrigger, type ChatInputTrigger } from '../lib/chat-input-logic'
+import { $readChatInputTextSnapshot } from '../lib/chat-input-editor-actions'
+import { useChatInputDraftStore } from '../state/chat-input-draft-store'
 
 export function ChatInputDraftPlugin({
   busy,
   disabled,
   draftKey,
+  hasAttachments,
   onEditorReady,
+  onTriggerChange,
   rootPath,
   sendButtonRef,
   submitting,
@@ -17,22 +21,26 @@ export function ChatInputDraftPlugin({
   busy: boolean
   disabled: boolean
   draftKey: string
+  hasAttachments: boolean
   onEditorReady: (editor: LexicalEditor | null) => void
+  onTriggerChange: (trigger: ChatInputTrigger | null) => void
   rootPath: string
   sendButtonRef: RefObject<HTMLButtonElement | null>
   submitting: boolean
 }) {
   const [editor] = useLexicalComposerContext()
+  const setPrompt = useChatInputDraftStore((store) => store.setPrompt)
   const updateSendButton = useCallback(
     (text: string) => {
       updateSendButtonDisabled(sendButtonRef.current, {
         busy,
         disabled,
+        hasAttachments,
         submitting,
         text,
       })
     },
-    [busy, disabled, sendButtonRef, submitting],
+    [busy, disabled, hasAttachments, sendButtonRef, submitting],
   )
 
   useEffect(() => {
@@ -51,12 +59,13 @@ export function ChatInputDraftPlugin({
   const handleChange = useCallback(
     (editorState: EditorState) => {
       editorState.read(() => {
-        const text = $getRoot().getTextContent()
-        writeChatDraft(rootPath, draftKey, text)
+        const { cursor, text } = $readChatInputTextSnapshot()
+        setPrompt({ draftKey, rootPath }, text)
+        onTriggerChange(detectChatInputTrigger(text, cursor))
         updateSendButton(text)
       })
     },
-    [draftKey, rootPath, updateSendButton],
+    [draftKey, onTriggerChange, rootPath, setPrompt, updateSendButton],
   )
 
   return <OnChangePlugin ignoreSelectionChange onChange={handleChange} />
@@ -65,7 +74,7 @@ export function ChatInputDraftPlugin({
 function readCurrentEditorText(editor: LexicalEditor) {
   let text = ''
   editor.getEditorState().read(() => {
-    text = $getRoot().getTextContent()
+    text = $readChatInputTextSnapshot().text
   })
 
   return text
@@ -76,16 +85,18 @@ function updateSendButtonDisabled(
   {
     busy,
     disabled,
+    hasAttachments,
     submitting,
     text,
   }: {
     busy: boolean
     disabled: boolean
+    hasAttachments: boolean
     submitting: boolean
     text: string
   },
 ) {
   if (!button) return
 
-  button.disabled = busy ? disabled : disabled || submitting || !text.trim()
+  button.disabled = busy ? disabled : disabled || submitting || (!hasAttachments && !text.trim())
 }

@@ -53,38 +53,26 @@ Current Platform anchors:
 - `apps/web/src/lib/query-client.ts`
 - `packages/ui/src/components/*`
 
-External component reference:
+External UI references:
 
-- `https://elements.ai-sdk.dev/`
+- `https://tanstack.com/virtual/latest/docs/chat`
 
-AI Elements strategy:
+Chat UI strategy:
 
-- Use AI Elements as a component canvas/source reference for agent UI pieces.
-  The library is built on shadcn/ui conventions and installs component source
-  into the app, which makes it a good starting point for Platform-specific
-  customization.
-- Default workflow for agent UI work: inspect the relevant AI Elements source
-  first, adapt it into Platform-owned components, and then apply T3Code/Platform
-  behavior on top. Start from scratch only when AI Elements has no relevant
-  component or when adapting it would add more complexity than it removes.
-- Do not treat AI Elements behavior as authoritative when it diverges from the
-  T3Code architecture. T3Code remains the first reference for transcript
-  performance, projection-driven state, shell/detail subscriptions, recovery,
-  composer persistence, and runtime semantics.
-- Keep the full AI Elements registry installed locally so the source is ready
-  while building. Only wire product surfaces to components we intentionally
-  adapt for Platform.
-- Reshape imported component code to Platform conventions, including one React
-  component per file and feature-specific utilities outside component files.
-- Keep AI Elements files editable and local. As we build, modify the copied
-  components directly instead of wrapping them indefinitely with workaround
-  layers.
-- Prefer AI Elements markup, accessibility, and shadcn-compatible styling as the
-  starting point; replace the state and data flow with Platform/T3-style
-  projection data.
-- Example rule: if AI Elements `Conversation` uses `useStickToBottom` but the
-  T3-style transcript needs Legend List behavior, use Legend List and adapt the
-  AI Elements visual structure around it.
+- Do not use external chat UI registries in Platform chat. The previous local
+  registry was removed and product chat surfaces must be Platform-owned
+  components.
+- Use T3Code for architecture, runtime semantics, projection-driven state,
+  shell/detail subscriptions, recovery, and rich input behavior.
+- Use TanStack Virtual for the transcript. The chat timeline keeps normal item
+  order, stable item keys, dynamic row measurement, pinned-to-end behavior, and
+  an explicit scroll-to-latest affordance.
+- Use Lexical for chat input. The input must not be controlled by React state
+  while the user types; React state is allowed only for coarse UI state such as
+  submitting/disabled/busy.
+- Keep workspace-specific shell components thin. Shared chat components live
+  under `apps/web/src/features/chat/components/*` and stay reusable for a later
+  standalone agent app.
 
 ## Target Shape
 
@@ -106,16 +94,16 @@ flowchart TD
     STORE["normalized Zustand projection store"]
     DETA["thread detail subscription cache"]
     RQ["TanStack Query side reads"]
-    AIE["adapted AI Elements components"]
+    VIRT["TanStack Virtual transcript"]
     UI["shared agent UI components"]
     SIDE["V1 side-panel chat view"]
     APP["V2 standalone agent app"]
-    DRAFT["composer draft persistence"]
+    DRAFT["input draft persistence"]
   end
 
   SIDE --> UI
   APP --> UI
-  AIE --> UI
+  VIRT --> UI
   UI --> CONN
   CONN --> API
   API --> CMD
@@ -142,7 +130,7 @@ Purpose:
 - Decide transport details.
 - Decide which T3Code architecture pieces are copied and which product features
   are deferred.
-- Decide which AI Elements components are worth adapting for V1.
+- Decide which Platform-owned chat UI primitives are needed for V1.
 
 Locked decisions:
 
@@ -154,8 +142,8 @@ Locked decisions:
   remote environment.
 - Backend truth: the append-only event log is durable truth. Projection tables
   are the server read model. The UI never owns durable transcript state.
-- Frontend component sourcing: use AI Elements as a starting canvas where it
-  helps, but T3Code wins for behavior, data flow, performance, and recovery.
+- Frontend component sourcing: Platform-owned components only. Do not use
+  external chat UI registries in V1 chat.
 - Event store: required in V1.
 - Server projections: required in V1. They are the fast read model over the
   append-only log, not optional polish.
@@ -183,6 +171,10 @@ Locked decisions:
   contracts, projection cache, runtime, and UI primitives.
 - First persistence scope: one local backend environment. Remote environments
   come later.
+- V1 transcript implementation: TanStack Virtual, not Legend List and not
+  `use-stick-to-bottom`.
+- V1 input implementation: Lexical, named `ChatInput`, with uncontrolled text
+  editing and draft persistence outside React keystroke state.
 
 Deliverables:
 
@@ -191,8 +183,8 @@ Deliverables:
 - Full-access-first runtime mode contract with supervised placeholders.
 - Left-sidebar chat entry/panel UI target.
 - Standalone app reuse constraints for shared chat components.
-- AI Elements adoption map for V1 components, with divergence notes where
-  Platform follows T3Code behavior instead.
+- Platform-owned chat UI map for transcript, messages, header/history, and
+  input.
 - A short "not in v1" list.
 
 Phase 1 locked contract names:
@@ -334,25 +326,22 @@ Left-sidebar UI source map:
   live under `apps/web/src/features/chat/components/*` and must not import
   workspace-only state except through the side-panel wrapper.
 
-AI Elements V1 adoption map:
+V1 chat UI implementation map:
 
-- `apps/web/src/components/ai-elements/conversation.tsx`: use the visual
-  container and scroll affordance as source material, but replace
-  `use-stick-to-bottom` with the T3-style virtualized transcript behavior before
-  product wiring. Do not wire `ConversationDownload` in V1.
-- `apps/web/src/components/ai-elements/message.tsx`: adapt user/assistant
-  message layout and action affordances, but replace `UIMessage` with Platform
-  projection message types and split exported components into separate files.
-- `apps/web/src/components/ai-elements/prompt-input.tsx`: keep as registry
-  source material only. Product chat input follows T3Code's Lexical composer
-  path instead of wiring `PromptInput` directly.
-- `Plan`, `Tool`, `Confirmation`, and `Reasoning` are inspect-later references
-  for approvals/plans/tool activity phases. Do not wire them into V1 until their
-  backend projections exist.
-- Imported AI Elements files are editable source material. Before product use,
-  reshape them to repository rules: one exported React component per component
-  file, hooks in dedicated hook files, and pure helpers/constants in utility
-  files.
+- `apps/web/src/features/chat/components/messages-timeline.tsx`: TanStack
+  Virtual transcript with stable row identity, measured dynamic heights,
+  pinned-to-end behavior, and explicit scroll-to-latest.
+- `apps/web/src/features/chat/components/message-bubble.tsx`: Platform-owned
+  message rendering backed by projection message types and Streamdown markdown
+  for assistant text.
+- `apps/web/src/features/chat/components/chat-input*.tsx`: Lexical input with
+  submit, disabled, stop, draft, and optimistic-send behavior routed through
+  Platform chat state and orchestration commands.
+- `apps/web/src/features/chat/components/chat-panel-header.tsx`: top-bar New
+  Chat and History controls. Do not reintroduce the old in-canvas past
+  conversation list.
+- Future plan/tool/approval UI must be Platform-owned and projection-backed.
+  Add it only when the matching backend projections exist.
 
 Not in V1:
 
@@ -362,14 +351,14 @@ Not in V1:
 - file mentions
 - slash commands
 - drag/drop or image attachments
-- full model picker in the composer
+- full model picker in the input
 - proposed-plan implementation flow
 - checkpoints/diffs/revert
 - terminal context insertion
 - TanStack DB
 - locally persisted transcript data
 
-T3 source paths:
+Source paths and external refs:
 
 - `docs/t3code-reference.md`
 - `references/t3code/packages/contracts/src/orchestration.ts`
@@ -380,9 +369,7 @@ T3 source paths:
 - `references/t3code/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
 - `references/t3code/apps/web/src/components/ChatView.tsx`
 - `references/t3code/apps/web/src/components/chat/ChatComposer.tsx`
-- `apps/web/src/components/ai-elements/conversation.tsx`
-- `apps/web/src/components/ai-elements/message.tsx`
-- `apps/web/src/components/ai-elements/prompt-input.tsx`
+- `https://tanstack.com/virtual/latest/docs/chat`
 
 ## Phase 1: Contracts And Persistence Foundation
 
@@ -740,12 +727,11 @@ Implementation status:
   - Platform command builders for workspace project creation, thread creation,
     turn submission, interrupt, stable workspace project IDs, and compact thread
     titles
-  - base composer draft persistence keyed by workspace/thread
+  - base input draft persistence keyed by workspace/thread
   - optimistic user messages with cleanup after backend projection events
-  - Lexical-based composer adapted from T3Code's `ComposerPromptEditor`
-    structure, plus AI Elements-inspired message rendering via local `Message`
-    pieces
-  - Legend List transcript virtualization with stable row identity,
+  - Lexical-based input adapted from T3Code's rich editor structure, plus
+    Platform-owned message rendering
+  - TanStack Virtual transcript virtualization with stable row identity,
     maintain-scroll-at-end behavior, and explicit scroll-to-latest affordance
   - no Phase 5 chat import path depends on `use-stick-to-bottom`
   - stable Zustand selector snapshots for React 19/Zustand 5
@@ -765,10 +751,22 @@ Implementation status:
     current workspace has no chat thread
   - removed the persistent thread panel in favor of top-bar New Chat and
     History controls
-  - added a history dropdown and in-canvas Past Conversations list for switching
-    previous workspace chats
-  - removed Phase 5 product use of AI Elements `PromptInput`; composer input is
-    now Lexical while transcript virtualization remains Legend List
+  - added a history dropdown for switching previous workspace chats
+  - removed Phase 5 product use of the external prompt input component; chat
+    input is now Lexical while transcript virtualization remains TanStack
+    Virtual
+- Revised on 2026-05-27:
+  - rewrote the side-panel chat UI from scratch as Platform-owned components
+  - removed the previous external UI registry and all product chat use of it
+  - removed `@legendapp/list` and all `LegendList` transcript usage
+  - removed the in-canvas past conversation list; history now lives in the
+    header dropdown
+  - renamed local chat input files and symbols from `composer` to `input`
+  - kept Lexical and made typing/focus avoid controlled React text state
+  - changed local draft storage from `platform.chat-draft.v1` to
+    `platform.chat-input-draft.v1`, intentionally ignoring old drafts
+  - narrow input layout hides attach-code, mention, and slash-command controls
+    while keeping add-context, model, voice, and send/stop in one row
 - Deferred beyond Phase 5:
   - provider/runtime assistant response execution, so a submitted turn can remain
     in `Working` until Phase 7 wires the Codex runtime
@@ -779,31 +777,31 @@ Platform target paths:
 - `apps/web/src/features/chat/components/chat-side-panel.tsx`
 - `apps/web/src/features/chat/components/chat-panel-header.tsx`
 - `apps/web/src/features/chat/components/chat-welcome-view.tsx`
-- `apps/web/src/features/chat/components/past-conversations.tsx`
-- `apps/web/src/features/chat/components/past-conversation-row.tsx`
 - `apps/web/src/features/chat/components/chat-view.tsx`
-- `apps/web/src/features/chat/components/chat-composer.tsx`
-- `apps/web/src/features/chat/components/chat-composer-editor.tsx`
-- `apps/web/src/features/chat/components/chat-composer-draft-plugin.tsx`
-- `apps/web/src/features/chat/components/chat-composer-submit-plugin.tsx`
-- `apps/web/src/features/chat/components/chat-composer-actions.tsx`
-- `apps/web/src/features/chat/components/chat-composer-submit-button.tsx`
+- `apps/web/src/features/chat/components/chat-input.tsx`
+- `apps/web/src/features/chat/components/chat-input-editor.tsx`
+- `apps/web/src/features/chat/components/chat-input-draft-plugin.tsx`
+- `apps/web/src/features/chat/components/chat-input-submit-plugin.tsx`
+- `apps/web/src/features/chat/components/chat-input-actions.tsx`
+- `apps/web/src/features/chat/components/chat-input-submit-button.tsx`
 - `apps/web/src/features/chat/components/messages-timeline.tsx`
+- `apps/web/src/features/chat/lib/chat-draft-storage.ts`
+- `apps/web/src/features/chat/lib/chat-input-editor-actions.ts`
 - `apps/web/src/components/workspace/workspace-view.tsx`
 - `apps/web/src/App.tsx`
 
-Candidate AI Elements source components:
+Chat UI implementation references:
 
-- `Conversation`, `ConversationContent`, `ConversationScrollButton`
-- `Message`, `MessageContent`, `MessageResponse`
-- later: `Tool`, `Task`, `Plan`, `Checkpoint`, `File Tree`, `Terminal`
+- T3Code ChatView and rich editor behavior
+- TanStack Virtual chat docs
+- Platform projection store selectors and orchestration command builders
 
 Frontend work:
 
-- Adapt selected AI Elements components into Platform-owned files and refactor
-  them to match local component/file organization.
-- Replace AI Elements conversation scrolling with the T3Code/Legend List
-  transcript model:
+- Build Platform-owned chat components that match local component/file
+  organization.
+- Replace any native scroll or third-party list shortcut with the TanStack
+  Virtual transcript model:
   - virtualized transcript rows
   - stable row identity
   - maintain-scroll-at-end behavior
@@ -814,12 +812,12 @@ Frontend work:
 - Keep the layout narrow and sidebar-native; defer right-side panel/split-pane
   layout work.
 - Keep components layout-aware so the same transcript, header, history menu, and
-  composer primitives can render in the future standalone app.
-- Add history and past-conversation selection from shell summaries.
+  input primitives can render in the future standalone app.
+- Add header history selection from shell summaries.
 - Add create-thread flow.
 - Add active-thread view from detail selectors.
-- Add rich composer foundation with restrained V1 features:
-  - multiline textarea/editor base
+- Add rich input foundation with restrained V1 features:
+  - Lexical plaintext editor base
   - send button
   - stop/cancel placeholder
   - disabled/loading states
@@ -827,15 +825,15 @@ Frontend work:
   - keyboard behavior
   - layout slots for future context chips, attachments, runtime mode, and model
     controls
-- Use T3Code's Lexical composer shape as the V1 input reference, with submit,
+- Use T3Code's Lexical input behavior as the V1 input reference, with submit,
   draft, disabled, stop, and optimistic-send behavior routed through Platform
   chat state and orchestration commands.
-- Hold back visible advanced composer features:
+- Hold back visible advanced input features:
   - no file mentions yet
   - no slash commands yet
   - no drag/drop attachments yet
   - no inline autocomplete yet
-  - no full model picker inside the composer yet
+  - no full model picker inside the input yet
   - no selected-code context UI yet
 - Add basic timeline:
   - user messages
@@ -857,14 +855,14 @@ Tests:
 - Send prompt.
 - See optimistic message.
 - Receive server message/event.
-- Failed send restores composer content.
+- Failed send restores input content.
 
 Done when:
 
 - User can click the chat symbol in the left sidebar, create a thread, send a
   prompt, and see a backend-owned transcript update through projection streams.
 
-T3 source paths:
+Source paths and external refs:
 
 - `references/t3code/apps/web/src/components/ChatView.tsx`
 - `references/t3code/apps/web/src/components/ChatView.logic.ts`
@@ -872,36 +870,32 @@ T3 source paths:
 - `references/t3code/apps/web/src/components/chat/MessagesTimeline.logic.ts`
 - `references/t3code/apps/web/src/components/ComposerPromptEditor.tsx`
 - `references/t3code/apps/web/src/components/chat/ChatComposer.tsx`
+- `https://tanstack.com/virtual/latest/docs/chat`
 
-AI Elements source references:
-
-- `https://elements.ai-sdk.dev/components/conversation`
-- `https://elements.ai-sdk.dev/components/message`
-- `https://elements.ai-sdk.dev/examples/chatbot`
-
-## Phase 6: Composer, Drafts, Attachments, Mentions
+## Phase 6: Input, Drafts, Attachments, Mentions
 
 Purpose:
 
-- Expand the rich composer foundation after the first chat slice works.
+- Expand the rich input foundation after the first chat slice works.
 - Add advanced context and attachment features incrementally instead of making
   them prerequisites for V1.
 
 Platform target paths:
 
-- `apps/web/src/features/chat/components/chat-composer.tsx`
-- `apps/web/src/features/chat/components/composer-command-menu.tsx`
+- `apps/web/src/features/chat/components/chat-input.tsx`
+- `apps/web/src/features/chat/components/chat-input-command-menu.tsx`
 - `apps/web/src/features/chat/components/provider-model-picker.tsx`
-- `apps/web/src/features/chat/state/composer-draft-store.ts`
-- `apps/web/src/features/chat/lib/composer-logic.ts`
-- `apps/web/src/features/chat/lib/composer-attachments.ts`
+- `apps/web/src/features/chat/state/chat-input-draft-store.ts`
+- `apps/web/src/features/chat/lib/chat-draft-storage.ts`
+- `apps/web/src/features/chat/lib/chat-input-editor-actions.ts`
+- `apps/web/src/features/chat/lib/chat-input-logic.ts`
+- `apps/web/src/features/chat/lib/chat-input-attachments.ts`
 - `apps/web/src/features/chat/lib/project-entry-query.ts`
 
 Frontend work:
 
-- Continue using AI Elements as the component canvas where it speeds up
-  implementation, but keep T3Code behavior as the source for composer lifecycle,
-  draft promotion, context staging, and runtime controls.
+- Keep all input UI Platform-owned. T3Code remains the source for input
+  lifecycle, draft promotion, context staging, and runtime controls.
 - Add versioned draft store:
   - prompt
   - selected model/provider
@@ -918,9 +912,9 @@ Frontend work:
 - Revoke object URLs.
 - Add project file/folder mentions.
 - Add slash command menu.
-- Decide whether to stay textarea or move to Lexical:
-  - v1 can stay textarea with external chips
-  - Lexical can come when inline chips become necessary
+- Keep Lexical as the input editor. Capture mention/slash trigger state through
+  Lexical listeners, but do not mirror the whole editor value into React state
+  on every keystroke.
 
 Backend work:
 
@@ -937,7 +931,7 @@ Tests:
 
 Done when:
 
-- Composer survives reloads, handles attachments, stages project context, and
+- Input survives reloads, handles attachments, stages project context, and
   still works in both side-panel and standalone layouts.
 
 T3 source paths:
@@ -1037,8 +1031,8 @@ Platform target paths:
 
 - `apps/server/src/orchestration/approval-*`
 - `apps/server/src/orchestration/proposed-plan-*`
-- `apps/web/src/features/chat/components/composer-pending-approval-panel.tsx`
-- `apps/web/src/features/chat/components/composer-pending-user-input-panel.tsx`
+- `apps/web/src/features/chat/components/input-pending-approval-panel.tsx`
+- `apps/web/src/features/chat/components/input-pending-user-input-panel.tsx`
 - `apps/web/src/features/chat/components/proposed-plan-card.tsx`
 - `apps/web/src/features/chat/lib/session-logic.ts`
 
@@ -1057,7 +1051,7 @@ Backend work:
 Frontend work:
 
 - Derive open approvals/user-input from activities/projections.
-- Change composer surface based on pending state.
+- Change input surface based on pending state.
 - Add approval action buttons.
 - Add user-input answer flow.
 - Add proposed plan card and follow-up CTA.
@@ -1231,7 +1225,8 @@ Frontend work:
   - 500 entries
   - 50MB
   - no caching streaming code blocks
-- Add virtualized message timeline if native scroll starts struggling.
+- Harden the TanStack Virtual message timeline for very long threads and
+  streaming row-height changes.
 - Add diff worker pool if heavy diffs move to the client.
 - Add render profiling around streaming messages.
 
@@ -1325,8 +1320,8 @@ Some work can run in parallel once phase 1 contracts exist:
 
 - Backend orchestration core and reusable frontend chat shell skeleton.
 - Side-panel view and standalone-app component constraints.
-- AI Elements component adaptation and T3Code divergence notes.
-- Provider registry and composer control slots.
+- Platform-owned chat UI refinement and T3Code divergence notes.
+- Provider registry and input control slots.
 - Checkpoint store and changed-files UI.
 - Draft persistence and projection store selectors.
 - Git/workspace service caches and React Query side reads.
@@ -1353,8 +1348,8 @@ The first useful end-to-end slice should be deliberately small:
    mock adapter for this same runtime interface.
 9. UI receives detail event and reconciles transcript.
 10. Refresh or reconnect and recover the same thread from server projections.
-11. Render the side-panel transcript through adapted AI Elements UI pieces while
-    preserving T3Code/Legend List transcript behavior.
+11. Render the side-panel transcript through Platform-owned message UI while
+    preserving T3Code/TanStack Virtual transcript behavior.
 
 This proves the hardest architecture: backend truth, projections, streams, client
 cache, reusable chat components, and the side-panel view.
@@ -1374,7 +1369,7 @@ Explicitly not in the first vertical slice:
 
 High risks:
 
-- Building too much composer/provider UX before event/projection truth exists.
+- Building too much input/provider UX before event/projection truth exists.
 - Letting React Query become the chat transcript cache.
 - Making the sidebar subscribe to full detail for every thread.
 - Persisting remote chat data locally and creating two sources of truth.
@@ -1383,8 +1378,8 @@ High risks:
 - Letting the V1 side panel create one-off chat components that cannot be reused
   by the V2 standalone app.
 - Copying T3Code product scope instead of copying the proven architecture spine.
-- Accidentally inheriting AI Elements runtime behavior where it conflicts with
-  T3Code's projection, subscription, transcript, or recovery model.
+- Accidentally importing external component runtime behavior where it conflicts
+  with T3Code's projection, subscription, transcript, or recovery model.
 
 Mitigations:
 
@@ -1397,13 +1392,13 @@ Mitigations:
 - Build shared chat components first, then wrap them with the side-panel view.
 - Treat shell/detail projections, event sequence, and recovery as architecture
   requirements, not optional enhancements.
-- Treat AI Elements as editable source material. Keep explicit divergence notes
-  whenever Platform replaces AI Elements behavior with T3Code behavior.
+- Keep chat UI Platform-owned. Keep explicit divergence notes whenever Platform
+  replaces external component behavior with T3Code behavior.
 
 ## Open Decisions
 
-- Whether to move from the V1 textarea composer foundation to Lexical when
-  inline chips become necessary after V1.
+- Exact Lexical trigger strategy for `@` mentions and `/` commands without
+  controlled React text state.
 - Whether hidden Git refs are acceptable for every workspace or should be
   opt-in.
 - Exact supervised-mode policy after full-access v1.

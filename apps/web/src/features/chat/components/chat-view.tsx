@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { createThreadInterruptCommand, createTurnSubmission } from '../lib/chat-command-builders'
-import { formatChatModelLabel } from '../lib/chat-formatters'
 import { isChatThreadBusy } from '../lib/chat-thread-status'
 import { createChatThreadSelector } from '../state/chat-projection-selectors'
 import {
@@ -12,7 +11,7 @@ import {
 } from '../state/chat-optimistic-store'
 import { useChatProjectionStore } from '../state/chat-projection-store'
 import { retainThreadDetailSubscription } from '../state/thread-detail-subscriptions'
-import { ChatInput } from './chat-input'
+import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { MessagesTimeline } from './messages-timeline'
 
 export function ChatView({
@@ -71,14 +70,21 @@ export function ChatView({
     )
   }
 
-  async function handleSend(text: string) {
+  async function handleSend({
+    attachments,
+    interactionMode,
+    modelSelection,
+    runtimeMode,
+    text,
+  }: ChatInputSubmitPayload) {
     if (!thread) return false
 
     const submission = createTurnSubmission({
+      attachments,
       createdAt: new Date().toISOString(),
-      interactionMode: thread.interactionMode,
-      modelSelection: thread.modelSelection,
-      runtimeMode: thread.runtimeMode,
+      interactionMode,
+      modelSelection,
+      runtimeMode,
       text,
       threadId: thread.id,
     })
@@ -126,8 +132,10 @@ export function ChatView({
         disabled={stopping}
         draftKey={thread.id}
         error={sendError}
-        modelLabel={formatChatModelLabel(thread.modelSelection)}
+        interactionMode={thread.interactionMode}
+        modelSelection={thread.modelSelection}
         rootPath={rootPath}
+        runtimeMode={thread.runtimeMode}
         onStop={handleStop}
         onSubmit={handleSend}
       />

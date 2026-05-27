@@ -8,6 +8,7 @@ import {
   threadIdSchema,
   turnIdSchema,
   type CommandId,
+  type ChatAttachment,
   type InteractionMode,
   type MessageId,
   type ModelSelection,
@@ -83,6 +84,7 @@ export function createThreadCommand({
 }
 
 export function createTurnSubmission({
+  attachments = [],
   createdAt,
   interactionMode,
   modelSelection,
@@ -90,6 +92,7 @@ export function createTurnSubmission({
   text,
   threadId,
 }: {
+  attachments?: ChatAttachment[]
   createdAt: string
   interactionMode: InteractionMode
   modelSelection: ModelSelection
@@ -107,7 +110,7 @@ export function createTurnSubmission({
       createdAt,
       interactionMode,
       message: {
-        attachments: [],
+        attachments,
         messageId,
         role: 'user',
         text,
@@ -120,7 +123,7 @@ export function createTurnSubmission({
       type: 'thread.turn.start',
     },
     optimisticMessage: {
-      attachments: [],
+      attachments,
       createdAt,
       id: messageId,
       role: 'user',
@@ -134,6 +137,7 @@ export function createTurnSubmission({
 }
 
 export function createDraftThreadSubmission({
+  attachments = [],
   createdAt,
   interactionMode = DEFAULT_INTERACTION_MODE,
   modelSelection = defaultChatModelSelection(),
@@ -142,6 +146,7 @@ export function createDraftThreadSubmission({
   runtimeMode = DEFAULT_RUNTIME_MODE,
   text,
 }: {
+  attachments?: ChatAttachment[]
   createdAt: string
   interactionMode?: InteractionMode
   modelSelection?: ModelSelection
@@ -157,6 +162,7 @@ export function createDraftThreadSubmission({
     title: threadTitleFromPrompt(text),
   })
   const submission = createTurnSubmission({
+    attachments,
     createdAt,
     interactionMode,
     modelSelection,
