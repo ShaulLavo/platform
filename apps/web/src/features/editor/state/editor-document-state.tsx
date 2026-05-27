@@ -17,7 +17,7 @@ import {
   type EditorScrollPosition,
   type TextEdit,
 } from '@editor/core'
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -100,7 +100,7 @@ export type EditorDocumentStoreApi = StoreApi<EditorDocumentStore>
 export const EditorDocumentStateContext = createContext<EditorDocumentStoreApi | null>(null)
 
 export function useEditorDocumentStoreApi() {
-  const store = useContext(EditorDocumentStateContext)
+  const store = use(EditorDocumentStateContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useEditorDocumentStoreApi must be used within EditorStateProvider',

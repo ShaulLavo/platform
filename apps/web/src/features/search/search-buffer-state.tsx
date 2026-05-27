@@ -4,7 +4,7 @@ import type {
   WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
 } from '@workspace/contracts'
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -127,7 +127,7 @@ const EMPTY_SEARCH_GROUPS: readonly WorkspaceSearchFileGroup[] = []
 export const SearchBufferStateContext = createContext<SearchBufferStoreApi | null>(null)
 
 export function useSearchBufferStoreApi() {
-  const store = useContext(SearchBufferStateContext)
+  const store = use(SearchBufferStateContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useSearchBufferStoreApi must be used within SearchBufferStateContext',

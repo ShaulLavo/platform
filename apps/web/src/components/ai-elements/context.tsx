@@ -6,7 +6,7 @@ import { Progress } from '@workspace/ui/components/progress'
 import { cn } from '@workspace/ui/lib/utils'
 import type { LanguageModelUsage } from 'ai'
 import type { ComponentProps } from 'react'
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, use, useMemo } from 'react'
 import { getUsage } from 'tokenlens'
 import { clientErrors } from '@/lib/structured-errors'
 
@@ -28,7 +28,7 @@ interface ContextSchema {
 const ContextContext = createContext<ContextSchema | null>(null)
 
 const useContextValue = () => {
-  const context = useContext(ContextContext)
+  const context = use(ContextContext)
 
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({

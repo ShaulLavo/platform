@@ -17,7 +17,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { CaretDownIcon } from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, use, useMemo, useState } from 'react'
 
 export interface WebPreviewContextValue {
   url: string
@@ -29,7 +29,7 @@ export interface WebPreviewContextValue {
 const WebPreviewContext = createContext<WebPreviewContextValue | null>(null)
 
 const useWebPreview = () => {
-  const context = useContext(WebPreviewContext)
+  const context = use(WebPreviewContext)
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'WebPreview components must be used within a WebPreview',

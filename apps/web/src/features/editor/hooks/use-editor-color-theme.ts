@@ -2,7 +2,7 @@ import {
   createContext,
   createElement,
   useCallback,
-  useContext,
+  use,
   useEffect,
   useMemo,
   useState,
@@ -216,7 +216,7 @@ export function useEditorColorTheme({
 }
 
 function useEditorColorThemeState() {
-  const context = useContext(EditorColorThemeContext)
+  const context = use(EditorColorThemeContext)
 
   if (context === undefined) {
     throw clientErrors.CONTEXT_MISSING({

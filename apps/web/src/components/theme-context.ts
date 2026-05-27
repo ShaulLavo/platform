@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
 
 export type Theme = 'dark' | 'light' | 'system'
@@ -13,7 +13,7 @@ type ThemeProviderState = {
 export const ThemeProviderContext = createContext<ThemeProviderState | undefined>(undefined)
 
 export function useTheme() {
-  const context = useContext(ThemeProviderContext)
+  const context = use(ThemeProviderContext)
 
   if (context === undefined) {
     throw clientErrors.CONTEXT_MISSING({

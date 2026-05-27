@@ -17,7 +17,7 @@ import {
 } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, use, useMemo } from 'react'
 
 const providers = {
   chatgpt: {
@@ -170,7 +170,7 @@ const providers = {
 const OpenInContext = createContext<{ query: string } | undefined>(undefined)
 
 const useOpenInContext = () => {
-  const context = useContext(OpenInContext)
+  const context = use(OpenInContext)
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'OpenIn components must be used within an OpenIn provider',

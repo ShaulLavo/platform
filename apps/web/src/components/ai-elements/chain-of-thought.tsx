@@ -11,7 +11,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import type { Icon } from '@phosphor-icons/react'
 import { BrainIcon, CaretDownIcon, DotIcon } from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
-import { createContext, memo, useContext, useMemo } from 'react'
+import { createContext, memo, use, useMemo } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
 
 interface ChainOfThoughtContextValue {
@@ -22,7 +22,7 @@ interface ChainOfThoughtContextValue {
 const ChainOfThoughtContext = createContext<ChainOfThoughtContextValue | null>(null)
 
 const useChainOfThought = () => {
-  const context = useContext(ChainOfThoughtContext)
+  const context = use(ChainOfThoughtContext)
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'ChainOfThought components must be used within ChainOfThought',

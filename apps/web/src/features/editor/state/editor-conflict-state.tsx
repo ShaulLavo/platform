@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -40,7 +40,7 @@ export type EditorConflictStoreApi = StoreApi<EditorConflictStore>
 export const EditorConflictStateContext = createContext<EditorConflictStoreApi | null>(null)
 
 export function useEditorConflictStoreApi() {
-  const store = useContext(EditorConflictStateContext)
+  const store = use(EditorConflictStateContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useEditorConflictStoreApi must be used within EditorStateProvider',

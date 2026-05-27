@@ -1,11 +1,11 @@
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/language-server'
 import type { ReactEditorController } from '@editor/react'
+
+import type { EditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
 
 export type EditorStatusBarSource = {
   controller: ReactEditorController
   filePath: string
-  languageServerDiagnostics: LanguageServerDiagnosticSummary | null
-  languageServerStatus: LanguageServerStatus
+  languageServerStatusSource: EditorLanguageServerStatusSource
 }
 
 export function editorStatusBarSourcesEqual(
@@ -18,7 +18,6 @@ export function editorStatusBarSourcesEqual(
   return (
     left.controller === right.controller &&
     left.filePath === right.filePath &&
-    left.languageServerDiagnostics === right.languageServerDiagnostics &&
-    left.languageServerStatus === right.languageServerStatus
+    left.languageServerStatusSource === right.languageServerStatusSource
   )
 }

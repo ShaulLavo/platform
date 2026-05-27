@@ -2,7 +2,7 @@ import { WarningCircleIcon } from '@phosphor-icons/react'
 import {
   createContext,
   useCallback,
-  useContext,
+  use,
   useEffect,
   memo,
   useMemo,
@@ -394,7 +394,7 @@ function EditorPaneLeafView({
 }
 
 function useEditorPaneDropContext() {
-  const context = useContext(EditorPaneDropContext)
+  const context = use(EditorPaneDropContext)
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useEditorPaneDropContext must be used within FileViewer',

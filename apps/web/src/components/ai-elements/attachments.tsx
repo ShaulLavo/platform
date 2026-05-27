@@ -14,7 +14,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes, ReactNode } from 'react'
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useCallback, use, useMemo } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
 
 // ============================================================================
@@ -121,10 +121,10 @@ const AttachmentContext = createContext<AttachmentContextValue | null>(null)
 // ============================================================================
 
 export const useAttachmentsContext = () =>
-  useContext(AttachmentsContext) ?? { variant: 'grid' as const }
+  use(AttachmentsContext) ?? { variant: 'grid' as const }
 
 export const useAttachmentContext = () => {
-  const ctx = useContext(AttachmentContext)
+  const ctx = use(AttachmentContext)
   if (!ctx) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'Attachment components must be used within <Attachment>',

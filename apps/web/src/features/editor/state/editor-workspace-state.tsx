@@ -10,7 +10,7 @@ import {
 import type { CachedWorkspaceState, WorkspacePanelTab } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -47,7 +47,7 @@ type WorkspacePanelSelection = Pick<
 >
 
 export function useEditorWorkspaceStoreApi() {
-  const store = useContext(EditorWorkspaceStateContext)
+  const store = use(EditorWorkspaceStateContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useEditorWorkspaceStoreApi must be used within EditorStateProvider',

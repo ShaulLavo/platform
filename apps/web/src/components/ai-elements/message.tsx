@@ -17,7 +17,7 @@ import type { UIMessage } from 'ai'
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes, ReactElement } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, memo, useCallback, use, useEffect, useMemo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -107,7 +107,7 @@ interface MessageBranchContextType {
 const MessageBranchContext = createContext<MessageBranchContextType | null>(null)
 
 const useMessageBranch = () => {
-  const context = useContext(MessageBranchContext)
+  const context = use(MessageBranchContext)
 
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({

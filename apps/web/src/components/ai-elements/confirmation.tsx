@@ -5,7 +5,7 @@ import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import type { ToolUIPart } from 'ai'
 import type { ComponentProps, ReactNode } from 'react'
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, use, useMemo } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
 
 type ToolUIPartApproval =
@@ -44,7 +44,7 @@ interface ConfirmationContextValue {
 const ConfirmationContext = createContext<ConfirmationContextValue | null>(null)
 
 const useConfirmation = () => {
-  const context = useContext(ConfirmationContext)
+  const context = use(ConfirmationContext)
 
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({

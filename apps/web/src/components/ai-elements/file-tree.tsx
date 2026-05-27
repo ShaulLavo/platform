@@ -8,7 +8,7 @@ import {
 import { cn } from '@workspace/ui/lib/utils'
 import { CaretRightIcon, FileIcon, FolderIcon, FolderOpenIcon } from '@phosphor-icons/react'
 import type { HTMLAttributes, ReactNode } from 'react'
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, use, useMemo, useState } from 'react'
 
 interface FileTreeContextType {
   expandedPaths: Set<string>
@@ -120,7 +120,7 @@ export const FileTreeFolder = ({
   children,
   ...props
 }: FileTreeFolderProps) => {
-  const { expandedPaths, togglePath, selectedPath, onSelect } = useContext(FileTreeContext)
+  const { expandedPaths, togglePath, selectedPath, onSelect } = use(FileTreeContext)
   const isExpanded = expandedPaths.has(path)
   const isSelected = selectedPath === path
 
@@ -207,7 +207,7 @@ export const FileTreeFile = ({
   children,
   ...props
 }: FileTreeFileProps) => {
-  const { selectedPath, onSelect } = useContext(FileTreeContext)
+  const { selectedPath, onSelect } = use(FileTreeContext)
   const isSelected = selectedPath === path
 
   const handleClick = useCallback(() => {

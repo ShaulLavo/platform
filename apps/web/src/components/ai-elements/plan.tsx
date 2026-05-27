@@ -19,7 +19,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { clientErrors } from '@/lib/structured-errors'
 import { CaretUpDownIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, use, useMemo } from 'react'
 
 import { Shimmer } from './shimmer'
 
@@ -30,7 +30,7 @@ interface PlanContextValue {
 const PlanContext = createContext<PlanContextValue | null>(null)
 
 const usePlan = () => {
-  const context = useContext(PlanContext)
+  const context = use(PlanContext)
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'Plan components must be used within Plan',

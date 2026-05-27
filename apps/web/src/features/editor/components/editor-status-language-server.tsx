@@ -1,15 +1,13 @@
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/language-server'
-
+import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
+import type { EditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
 import { formatLanguageServerStatus } from '@/features/editor/utils/status-formatters'
 
 type EditorStatusLanguageServerProps = {
-  diagnostics: LanguageServerDiagnosticSummary | null
-  status: LanguageServerStatus
+  source: EditorLanguageServerStatusSource
 }
 
-export function EditorStatusLanguageServer({
-  diagnostics,
-  status,
-}: EditorStatusLanguageServerProps) {
+export function EditorStatusLanguageServer({ source }: EditorStatusLanguageServerProps) {
+  const { diagnostics, status } = useEditorLanguageServerStatus(source)
+
   return <span>{formatLanguageServerStatus(status, diagnostics)}</span>
 }

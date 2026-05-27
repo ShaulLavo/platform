@@ -10,7 +10,7 @@ import {
 import { cn } from '@workspace/ui/lib/utils'
 import { CheckIcon, CopyIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, use, useEffect, useMemo, useRef, useState } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
 
 interface SnippetContextType {
@@ -50,7 +50,7 @@ export const SnippetText = ({ className, ...props }: SnippetTextProps) => (
 export type SnippetInputProps = Omit<ComponentProps<typeof InputGroupInput>, 'readOnly' | 'value'>
 
 export const SnippetInput = ({ className, ...props }: SnippetInputProps) => {
-  const { code } = useContext(SnippetContext)
+  const { code } = use(SnippetContext)
 
   return (
     <InputGroupInput
@@ -78,7 +78,7 @@ export const SnippetCopyButton = ({
 }: SnippetCopyButtonProps) => {
   const [isCopied, setIsCopied] = useState(false)
   const timeoutRef = useRef<number>(0)
-  const { code } = useContext(SnippetContext)
+  const { code } = use(SnippetContext)
 
   const copyToClipboard = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {

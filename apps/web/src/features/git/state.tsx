@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi as ZustandStoreApi } from 'zustand/vanilla'
 
@@ -25,7 +25,7 @@ export type GitStoreApi = ZustandStoreApi<GitStore>
 export const StateContext = createContext<GitStoreApi | null>(null)
 
 export function useGitState<T>(selector: (state: GitStore) => T): T {
-  const store = useContext(StateContext)
+  const store = use(StateContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useGitState must be used within GitStateProvider',

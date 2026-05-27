@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@workspace/ui/component
 import { cn } from '@workspace/ui/lib/utils'
 import { CaretUpDownIcon } from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, use, useEffect, useMemo, useRef, useState } from 'react'
 import { reportClientError } from '@/lib/client-error-reporting'
 
 const deviceIdRegex = /\(([\da-fA-F]{4}:[\da-fA-F]{4})\)$/
@@ -195,7 +195,7 @@ export const MicSelector = ({
 export type MicSelectorTriggerProps = ComponentProps<typeof Button>
 
 export const MicSelectorTrigger = ({ children, ...props }: MicSelectorTriggerProps) => {
-  const { setWidth } = useContext(MicSelectorContext)
+  const { setWidth } = use(MicSelectorContext)
   const ref = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -236,7 +236,7 @@ export const MicSelectorContent = ({
   popoverOptions,
   ...props
 }: MicSelectorContentProps) => {
-  const { width, onValueChange, value } = useContext(MicSelectorContext)
+  const { width, onValueChange, value } = use(MicSelectorContext)
 
   return (
     <PopoverContent className={cn('p-0', className)} style={{ width }} {...popoverOptions}>
@@ -260,7 +260,7 @@ export type MicSelectorListProps = Omit<ComponentProps<typeof CommandList>, 'chi
 }
 
 export const MicSelectorList = ({ children, ...props }: MicSelectorListProps) => {
-  const { data } = useContext(MicSelectorContext)
+  const { data } = use(MicSelectorContext)
 
   return <CommandList {...props}>{children(data)}</CommandList>
 }
@@ -275,7 +275,7 @@ export const MicSelectorEmpty = ({
 export type MicSelectorItemProps = ComponentProps<typeof CommandItem>
 
 export const MicSelectorItem = (props: MicSelectorItemProps) => {
-  const { onValueChange, onOpenChange } = useContext(MicSelectorContext)
+  const { onValueChange, onOpenChange } = use(MicSelectorContext)
 
   const handleSelect = useCallback(
     (currentValue: string) => {
@@ -317,7 +317,7 @@ export const MicSelectorLabel = ({ device, className, ...props }: MicSelectorLab
 export type MicSelectorValueProps = ComponentProps<'span'>
 
 export const MicSelectorValue = ({ className, ...props }: MicSelectorValueProps) => {
-  const { data, value } = useContext(MicSelectorContext)
+  const { data, value } = use(MicSelectorContext)
   const currentDevice = data.find((d) => d.deviceId === value)
 
   if (!currentDevice) {

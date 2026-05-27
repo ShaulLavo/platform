@@ -29,7 +29,7 @@ import {
   GenderFemaleIcon as VenusIcon,
 } from '@phosphor-icons/react'
 import type { ComponentProps, ReactNode } from 'react'
-import { createContext, useCallback, useContext, useMemo } from 'react'
+import { createContext, useCallback, use, useMemo } from 'react'
 
 interface VoiceSelectorContextValue {
   value: string | undefined
@@ -41,7 +41,7 @@ interface VoiceSelectorContextValue {
 const VoiceSelectorContext = createContext<VoiceSelectorContextValue | null>(null)
 
 export const useVoiceSelector = () => {
-  const context = useContext(VoiceSelectorContext)
+  const context = use(VoiceSelectorContext)
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'VoiceSelector components must be used within VoiceSelector',

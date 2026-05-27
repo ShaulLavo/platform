@@ -69,14 +69,13 @@ export function Editor({
   )
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const { editorTheme } = useEditorColorTheme()
-  const { languageServerDiagnostics, languageServer, languageServerStatus } =
-    useLanguageServerPlugin({
-      enabled: active,
-      filePath: cachedDocument.path,
-      rootPath,
-      onOpenDefinition,
-      onOpenReferences,
-    })
+  const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
+    enabled: active,
+    filePath: cachedDocument.path,
+    rootPath,
+    onOpenDefinition,
+    onOpenReferences,
+  })
   const scrollPersistencePlugin = useScrollPersistencePlugin({
     document: cachedDocument,
     onScrollPositionChange,
@@ -161,20 +160,19 @@ export function Editor({
     onStatusSourceChange?.({
       controller,
       filePath: cachedDocument.path,
-      languageServerDiagnostics,
-      languageServerStatus,
+      languageServerStatusSource,
     })
+  }, [active, cachedDocument.path, controller, languageServerStatusSource, onStatusSourceChange])
 
+  useEffect(() => {
+    if (active) return
+
+    onStatusSourceClear?.(controller)
+  }, [active, controller, onStatusSourceClear])
+
+  useEffect(() => {
     return () => onStatusSourceClear?.(controller)
-  }, [
-    active,
-    cachedDocument.path,
-    controller,
-    languageServerDiagnostics,
-    languageServerStatus,
-    onStatusSourceChange,
-    onStatusSourceClear,
-  ])
+  }, [controller, onStatusSourceClear])
 
   useLayoutEffect(() => {
     return () => {

@@ -5,7 +5,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import Ansi from 'ansi-to-react'
 import { CheckIcon, CopyIcon, TerminalIcon, TrashIcon as Trash2Icon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, use, useEffect, useMemo, useRef, useState } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
 
 interface TerminalContextType {
@@ -47,7 +47,7 @@ export const TerminalTitle = ({ className, children, ...props }: TerminalTitlePr
 export type TerminalStatusProps = HTMLAttributes<HTMLDivElement>
 
 export const TerminalStatus = ({ className, children, ...props }: TerminalStatusProps) => {
-  const { isStreaming } = useContext(TerminalContext)
+  const { isStreaming } = use(TerminalContext)
 
   if (!isStreaming) {
     return null
@@ -84,7 +84,7 @@ export const TerminalCopyButton = ({
 }: TerminalCopyButtonProps) => {
   const [isCopied, setIsCopied] = useState(false)
   const timeoutRef = useRef<number>(0)
-  const { output } = useContext(TerminalContext)
+  const { output } = use(TerminalContext)
 
   const copyToClipboard = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
@@ -134,7 +134,7 @@ export const TerminalClearButton = ({
   className,
   ...props
 }: TerminalClearButtonProps) => {
-  const { onClear } = useContext(TerminalContext)
+  const { onClear } = use(TerminalContext)
 
   if (!onClear) {
     return null
@@ -159,7 +159,7 @@ export const TerminalClearButton = ({
 export type TerminalContentProps = HTMLAttributes<HTMLDivElement>
 
 export const TerminalContent = ({ className, children, ...props }: TerminalContentProps) => {
-  const { output, isStreaming, autoScroll } = useContext(TerminalContext)
+  const { output, isStreaming, autoScroll } = use(TerminalContext)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

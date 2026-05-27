@@ -15,7 +15,7 @@ import {
   createContext,
   memo,
   useCallback,
-  useContext,
+  use,
   useEffect,
   useMemo,
   useRef,
@@ -55,7 +55,7 @@ interface StackTraceContextValue {
 const StackTraceContext = createContext<StackTraceContextValue | null>(null)
 
 const useStackTrace = () => {
-  const context = useContext(StackTraceContext)
+  const context = use(StackTraceContext)
   if (!context) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'StackTrace components must be used within StackTrace',

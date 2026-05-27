@@ -15,7 +15,7 @@ import {
   XCircleIcon,
 } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, use, useMemo } from 'react'
 
 type TestStatus = 'passed' | 'failed' | 'skipped' | 'running'
 
@@ -55,7 +55,7 @@ export const TestResultsDuration = ({
   children,
   ...props
 }: TestResultsDurationProps) => {
-  const { summary } = useContext(TestResultsContext)
+  const { summary } = use(TestResultsContext)
 
   if (!summary?.duration) {
     return null
@@ -71,7 +71,7 @@ export const TestResultsDuration = ({
 export type TestResultsSummaryProps = HTMLAttributes<HTMLDivElement>
 
 export const TestResultsSummary = ({ className, children, ...props }: TestResultsSummaryProps) => {
-  const { summary } = useContext(TestResultsContext)
+  const { summary } = use(TestResultsContext)
 
   if (!summary) {
     return null
@@ -141,7 +141,7 @@ export const TestResultsProgress = ({
   children,
   ...props
 }: TestResultsProgressProps) => {
-  const { summary } = useContext(TestResultsContext)
+  const { summary } = use(TestResultsContext)
 
   if (!summary) {
     return null
@@ -226,7 +226,7 @@ export const TestSuite = ({ name, status, className, children, ...props }: TestS
 export type TestSuiteNameProps = ComponentProps<typeof CollapsibleTrigger>
 
 export const TestSuiteName = ({ className, children, ...props }: TestSuiteNameProps) => {
-  const { name, status } = useContext(TestSuiteContext)
+  const { name, status } = use(TestSuiteContext)
 
   return (
     <CollapsibleTrigger
@@ -292,7 +292,7 @@ const TestContext = createContext<TestContextType>({
 export type TestNameProps = HTMLAttributes<HTMLSpanElement>
 
 export const TestName = ({ className, children, ...props }: TestNameProps) => {
-  const { name } = useContext(TestContext)
+  const { name } = use(TestContext)
 
   return (
     <span className={cn('flex-1', className)} {...props}>
@@ -304,7 +304,7 @@ export const TestName = ({ className, children, ...props }: TestNameProps) => {
 export type TestDurationProps = HTMLAttributes<HTMLSpanElement>
 
 export const TestDuration = ({ className, children, ...props }: TestDurationProps) => {
-  const { duration } = useContext(TestContext)
+  const { duration } = use(TestContext)
 
   if (duration === undefined) {
     return null
@@ -320,7 +320,7 @@ export const TestDuration = ({ className, children, ...props }: TestDurationProp
 export type TestStatusProps = HTMLAttributes<HTMLSpanElement>
 
 export const TestStatus = ({ className, children, ...props }: TestStatusProps) => {
-  const { status } = useContext(TestContext)
+  const { status } = use(TestContext)
 
   return (
     <span className={cn('shrink-0', statusStyles[status], className)} {...props}>

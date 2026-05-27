@@ -6,7 +6,7 @@ import { Switch } from '@workspace/ui/components/switch'
 import { cn } from '@workspace/ui/lib/utils'
 import { CheckIcon, CopyIcon, EyeIcon, EyeSlashIcon as EyeOffIcon } from '@phosphor-icons/react'
 import type { ComponentProps, HTMLAttributes } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, use, useEffect, useMemo, useRef, useState } from 'react'
 import { clientErrors } from '@/lib/structured-errors'
 
 interface EnvironmentVariablesContextType {
@@ -89,7 +89,7 @@ export const EnvironmentVariablesToggle = ({
   className,
   ...props
 }: EnvironmentVariablesToggleProps) => {
-  const { showValues, setShowValues } = useContext(EnvironmentVariablesContext)
+  const { showValues, setShowValues } = use(EnvironmentVariablesContext)
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -147,7 +147,7 @@ export const EnvironmentVariableName = ({
   children,
   ...props
 }: EnvironmentVariableNameProps) => {
-  const { name } = useContext(EnvironmentVariableContext)
+  const { name } = use(EnvironmentVariableContext)
 
   return (
     <span className={cn('font-mono text-sm', className)} {...props}>
@@ -163,8 +163,8 @@ export const EnvironmentVariableValue = ({
   children,
   ...props
 }: EnvironmentVariableValueProps) => {
-  const { value } = useContext(EnvironmentVariableContext)
-  const { showValues } = useContext(EnvironmentVariablesContext)
+  const { value } = use(EnvironmentVariableContext)
+  const { showValues } = use(EnvironmentVariablesContext)
 
   const displayValue = showValues ? value : '•'.repeat(Math.min(value.length, 20))
 
@@ -233,7 +233,7 @@ export const EnvironmentVariableCopyButton = ({
 }: EnvironmentVariableCopyButtonProps) => {
   const [isCopied, setIsCopied] = useState(false)
   const timeoutRef = useRef<number>(0)
-  const { name, value } = useContext(EnvironmentVariableContext)
+  const { name, value } = use(EnvironmentVariableContext)
 
   const getTextToCopy = useCallback((): string => {
     const formatMap = {

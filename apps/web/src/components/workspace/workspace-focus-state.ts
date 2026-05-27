@@ -1,5 +1,5 @@
 import type { EditorCommandContext, EditorCommandId } from '@editor/core'
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { clientErrors } from '@/lib/structured-errors'
@@ -38,7 +38,7 @@ const WorkspaceFocusContext = createContext<WorkspaceFocusStoreApi | null>(null)
 export { WorkspaceFocusContext }
 
 export function useWorkspaceFocus<T>(selector: (state: WorkspaceFocusStore) => T): T {
-  const store = useContext(WorkspaceFocusContext)
+  const store = use(WorkspaceFocusContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useWorkspaceFocus must be used within WorkspaceFocusProvider',

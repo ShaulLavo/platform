@@ -17,10 +17,7 @@ export function EditorStatusBarContent({ source }: EditorStatusBarContentProps) 
       <EditorStatusCursor controller={source.controller} />
       <EditorStatusCharCount controller={source.controller} />
       <EditorStatusSyntax controller={source.controller} />
-      <EditorStatusLanguageServer
-        diagnostics={source.languageServerDiagnostics}
-        status={source.languageServerStatus}
-      />
+      <EditorStatusLanguageServer source={source.languageServerStatusSource} />
       <EditorStatusHistory controller={source.controller} />
     </>
   )

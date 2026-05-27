@@ -4,7 +4,7 @@ import { type PanelImperativeHandle, type PanelSize } from '@workspace/ui/compon
 import {
   createContext,
   createElement,
-  useContext,
+  use,
   useRef,
   type RefObject,
   type ReactNode,
@@ -95,7 +95,7 @@ function createWorkspaceTerminalStore() {
 }
 
 function useWorkspaceTerminalStoreApi() {
-  const store = useContext(WorkspaceTerminalStateContext)
+  const store = use(WorkspaceTerminalStateContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useWorkspaceTerminalState must be used within WorkspaceTerminalStateProvider',

@@ -7,7 +7,7 @@ import type {
   LanguageServerReferencesResult,
 } from '@editor/language-server'
 import type { ReactEditorController } from '@editor/react'
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -37,7 +37,7 @@ export type EditorUiStoreApi = StoreApi<EditorUiStore>
 export const EditorUiStateContext = createContext<EditorUiStoreApi | null>(null)
 
 export function useEditorUiStoreApi() {
-  const store = useContext(EditorUiStateContext)
+  const store = use(EditorUiStateContext)
   if (!store) {
     throw clientErrors.CONTEXT_MISSING({
       message: 'useEditorUiStoreApi must be used within EditorStateProvider',

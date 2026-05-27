@@ -8,6 +8,7 @@ import {
   renameDirtyFilePath,
   updateDirtyFilePaths,
 } from '@/features/editor/state/editor-dirty-paths'
+import { createEditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
 import {
   activeEditorPanePath,
   closeEditorPaneTabs,
@@ -528,6 +529,31 @@ describe('editor document store', () => {
     expect(result.wasDirty).toBe(false)
     expect(documentUpdates).toBe(0)
     expect(store.getState().getCachedEditorDocument('src/file.ts')).toBe(original)
+  })
+})
+
+describe('editor language server status source', () => {
+  it('notifies subscribers only when status snapshots change', () => {
+    const source = createEditorLanguageServerStatusSource()
+    let notifications = 0
+    const unsubscribe = source.subscribe(() => {
+      notifications += 1
+    })
+
+    expect(source.getSnapshot()).toEqual({ diagnostics: null, status: 'idle' })
+
+    source.setSnapshot({ diagnostics: null, status: 'loading' })
+    source.setStatus('loading')
+    source.setDiagnostics(null)
+
+    expect(notifications).toBe(1)
+    expect(source.getSnapshot()).toEqual({ diagnostics: null, status: 'loading' })
+
+    source.reset()
+    unsubscribe()
+    source.setStatus('loading')
+
+    expect(notifications).toBe(2)
   })
 })
 
