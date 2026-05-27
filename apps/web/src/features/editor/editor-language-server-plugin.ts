@@ -1,4 +1,3 @@
-import type { EditorDisposable, EditorPlugin, EditorPluginContext } from '@editor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerPlugin,
@@ -7,19 +6,20 @@ import type {
 import { createLanguageServerPlugin } from '@editor/language-server/websocket'
 
 import type { EditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
-import { client, serverUrl } from '@/lib/client'
+import { serverUrl } from '@/lib/client'
 import { EdenLanguageServerWebSocket } from '@/lib/server-sockets'
 
 type MatchedLanguageServerPluginOptions = {
   enabled: boolean
   filePath: string
+  match: LanguageServerMatch | null
   rootPath: string
   statusSource: EditorLanguageServerStatusSource
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
 }
 
-type LanguageServerMatch = {
+export type LanguageServerMatch = {
   readonly root: string
   readonly serverId: string
 }
@@ -27,117 +27,38 @@ type LanguageServerMatch = {
 export function createMatchedLanguageServerPlugin({
   enabled,
   filePath,
+  match,
   rootPath,
   statusSource,
   onOpenDefinition,
   onOpenReferences,
 }: MatchedLanguageServerPluginOptions): LanguageServerPlugin {
+  if (!enabled || !match) return createIdleLanguageServerPlugin(statusSource)
+
+  return createLanguageServerPlugin({
+    rootUri: fileUriForPath(rootPath),
+    webSocketRoute: languageServerRoute(rootPath, filePath, match.serverId),
+    webSocketTransportOptions: {
+      WebSocketCtor: EdenLanguageServerWebSocket,
+    },
+    onStatusChange: statusSource.setStatus,
+    onDiagnostics: statusSource.setDiagnostics,
+    onOpenDefinition,
+    onOpenReferences,
+    onError: () => statusSource.setStatus('error'),
+  })
+}
+
+function createIdleLanguageServerPlugin(
+  statusSource: EditorLanguageServerStatusSource,
+): LanguageServerPlugin {
   return {
-    name: 'platform.language-server.match',
-    activate: (context) => {
-      if (!enabled) {
-        statusSource.reset()
-        return []
-      }
-
-      let disposed = false
-      let languageServerDisposable: EditorDisposable | null = null
-      const abortController = new AbortController()
+    name: 'editor.language-server.idle',
+    activate: () => {
       statusSource.reset()
-
-      client.lsp.match
-        .get({
-          query: { path: filePath, root: rootPath },
-          fetch: { signal: abortController.signal },
-        })
-        .then((response) => {
-          if (disposed || abortController.signal.aborted) return
-
-          languageServerDisposable = activateMatchedLanguageServerPlugin(context, response, {
-            filePath,
-            rootPath,
-            statusSource,
-            onOpenDefinition,
-            onOpenReferences,
-          })
-        })
-        .catch(() => {
-          if (disposed || abortController.signal.aborted) return
-
-          statusSource.reset()
-        })
-
-      return {
-        dispose: () => {
-          disposed = true
-          abortController.abort()
-          languageServerDisposable?.dispose()
-          statusSource.reset()
-        },
-      }
+      return []
     },
   }
-}
-
-function activateMatchedLanguageServerPlugin(
-  context: EditorPluginContext,
-  response: Awaited<ReturnType<typeof client.lsp.match.get>>,
-  options: Omit<MatchedLanguageServerPluginOptions, 'enabled'>,
-): EditorDisposable | null {
-  const match = response.error ? null : languageServerMatch(response.data)
-  if (!match) {
-    options.statusSource.reset()
-    return null
-  }
-
-  return activateLanguageServerPlugin(
-    context,
-    createLanguageServerPlugin({
-      rootUri: fileUriForPath(options.rootPath),
-      webSocketRoute: languageServerRoute(options.rootPath, options.filePath, match.serverId),
-      webSocketTransportOptions: {
-        WebSocketCtor: EdenLanguageServerWebSocket,
-      },
-      onStatusChange: options.statusSource.setStatus,
-      onDiagnostics: options.statusSource.setDiagnostics,
-      onOpenDefinition: options.onOpenDefinition,
-      onOpenReferences: options.onOpenReferences,
-      onError: () => options.statusSource.setStatus('error'),
-    }),
-    options.statusSource,
-  )
-}
-
-function activateLanguageServerPlugin(
-  context: EditorPluginContext,
-  plugin: LanguageServerPlugin,
-  statusSource: EditorLanguageServerStatusSource,
-): EditorDisposable {
-  try {
-    return disposableFromActivationResult(plugin.activate(context))
-  } catch {
-    statusSource.setStatus('error')
-    return emptyDisposable
-  }
-}
-
-function disposableFromActivationResult(
-  result: ReturnType<EditorPlugin['activate']>,
-): EditorDisposable {
-  if (!result) return emptyDisposable
-  if (Array.isArray(result)) {
-    return {
-      dispose: () => {
-        for (const disposable of result) disposable.dispose()
-      },
-    }
-  }
-
-  return result
-}
-
-const emptyDisposable: EditorDisposable = {
-  dispose: () => undefined,
 }
 
 function languageServerRoute(rootPath: string, filePath: string, serverId: string) {
@@ -155,7 +76,7 @@ function fileUriForPath(path: string) {
   return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }
 
-function languageServerMatch(value: unknown): LanguageServerMatch | null {
+export function languageServerMatch(value: unknown): LanguageServerMatch | null {
   if (!value || typeof value !== 'object') return null
 
   const match = value as Record<string, unknown>
