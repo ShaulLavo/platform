@@ -337,11 +337,11 @@ export const PromptInputProvider = ({
   )
 
   return (
-    <PromptInputController.Provider value={controller}>
-      <ProviderAttachmentsContext.Provider value={attachments}>
+    <PromptInputController value={controller}>
+      <ProviderAttachmentsContext value={attachments}>
         {children}
-      </ProviderAttachmentsContext.Provider>
-    </PromptInputController.Provider>
+      </ProviderAttachmentsContext>
+    </PromptInputController>
   )
 }
 
@@ -382,7 +382,7 @@ export const usePromptInputReferencedSources = () => {
   if (!ctx) {
     throw clientErrors.CONTEXT_MISSING({
       message:
-        'usePromptInputReferencedSources must be used within a LocalReferencedSourcesContext.Provider',
+        'usePromptInputReferencedSources must be used within a LocalReferencedSourcesContext',
     })
   }
   return ctx
@@ -873,16 +873,16 @@ export const PromptInput = ({
   )
 
   const withReferencedSources = (
-    <LocalReferencedSourcesContext.Provider value={refsCtx}>
+    <LocalReferencedSourcesContext value={refsCtx}>
       {inner}
-    </LocalReferencedSourcesContext.Provider>
+    </LocalReferencedSourcesContext>
   )
 
   // Always provide LocalAttachmentsContext so children get validated add function
   return (
-    <LocalAttachmentsContext.Provider value={attachmentsCtx}>
+    <LocalAttachmentsContext value={attachmentsCtx}>
       {withReferencedSources}
-    </LocalAttachmentsContext.Provider>
+    </LocalAttachmentsContext>
   )
 }
 

@@ -51,11 +51,11 @@ export const EnvironmentVariables = ({
   const contextValue = useMemo(() => ({ setShowValues, showValues }), [setShowValues, showValues])
 
   return (
-    <EnvironmentVariablesContext.Provider value={contextValue}>
+    <EnvironmentVariablesContext value={contextValue}>
       <div className={cn('rounded-lg border bg-background', className)} {...props}>
         {children}
       </div>
-    </EnvironmentVariablesContext.Provider>
+    </EnvironmentVariablesContext>
   )
 }
 
@@ -197,7 +197,7 @@ export const EnvironmentVariable = ({
   const envVarContextValue = useMemo(() => ({ name, value }), [name, value])
 
   return (
-    <EnvironmentVariableContext.Provider value={envVarContextValue}>
+    <EnvironmentVariableContext value={envVarContextValue}>
       <div
         className={cn('flex items-center justify-between gap-4 px-4 py-3', className)}
         {...props}
@@ -211,7 +211,7 @@ export const EnvironmentVariable = ({
           </>
         )}
       </div>
-    </EnvironmentVariableContext.Provider>
+    </EnvironmentVariableContext>
   )
 }
 

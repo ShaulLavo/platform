@@ -131,7 +131,7 @@ export const PackageInfo = ({
   )
 
   return (
-    <PackageInfoContext.Provider value={contextValue}>
+    <PackageInfoContext value={contextValue}>
       <div className={cn('rounded-lg border bg-background p-4', className)} {...props}>
         {children ?? (
           <>
@@ -143,7 +143,7 @@ export const PackageInfo = ({
           </>
         )}
       </div>
-    </PackageInfoContext.Provider>
+    </PackageInfoContext>
   )
 }
 

@@ -176,11 +176,11 @@ export const JSXPreview = memo(
     )
 
     return (
-      <JSXPreviewContext.Provider value={contextValue}>
+      <JSXPreviewContext value={contextValue}>
         <div className={cn('relative', className)} {...props}>
           {children}
         </div>
-      </JSXPreviewContext.Provider>
+      </JSXPreviewContext>
     )
   },
 )

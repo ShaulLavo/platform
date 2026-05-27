@@ -191,7 +191,7 @@ export const StackTrace = memo(
     )
 
     return (
-      <StackTraceContext.Provider value={contextValue}>
+      <StackTraceContext value={contextValue}>
         <div
           className={cn(
             'not-prose w-full overflow-hidden rounded-lg border bg-background font-mono text-sm',
@@ -201,7 +201,7 @@ export const StackTrace = memo(
         >
           {children}
         </div>
-      </StackTraceContext.Provider>
+      </StackTraceContext>
     )
   },
 )

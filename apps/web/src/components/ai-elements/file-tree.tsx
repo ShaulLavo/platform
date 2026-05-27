@@ -68,7 +68,7 @@ export const FileTree = ({
   )
 
   return (
-    <FileTreeContext.Provider value={contextValue}>
+    <FileTreeContext value={contextValue}>
       <div
         className={cn('rounded-lg border bg-background font-mono text-sm', className)}
         role='tree'
@@ -76,7 +76,7 @@ export const FileTree = ({
       >
         <div className='p-2'>{children}</div>
       </div>
-    </FileTreeContext.Provider>
+    </FileTreeContext>
   )
 }
 
@@ -135,7 +135,7 @@ export const FileTreeFolder = ({
   const folderContextValue = useMemo(() => ({ isExpanded, name, path }), [isExpanded, name, path])
 
   return (
-    <FileTreeFolderContext.Provider value={folderContextValue}>
+    <FileTreeFolderContext value={folderContextValue}>
       <Collapsible onOpenChange={handleOpenChange} open={isExpanded}>
         <div className={cn('', className)} role='treeitem' tabIndex={0} {...props}>
           <div
@@ -179,7 +179,7 @@ export const FileTreeFolder = ({
           </CollapsibleContent>
         </div>
       </Collapsible>
-    </FileTreeFolderContext.Provider>
+    </FileTreeFolderContext>
   )
 }
 
@@ -226,7 +226,7 @@ export const FileTreeFile = ({
   const fileContextValue = useMemo(() => ({ name, path }), [name, path])
 
   return (
-    <FileTreeFileContext.Provider value={fileContextValue}>
+    <FileTreeFileContext value={fileContextValue}>
       <div
         className={cn(
           'flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-muted/50',
@@ -250,7 +250,7 @@ export const FileTreeFile = ({
           </>
         )}
       </div>
-    </FileTreeFileContext.Provider>
+    </FileTreeFileContext>
   )
 }
 

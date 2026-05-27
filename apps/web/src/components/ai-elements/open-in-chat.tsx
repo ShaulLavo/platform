@@ -187,9 +187,9 @@ export const OpenIn = ({ query, ...props }: OpenInProps) => {
   const contextValue = useMemo(() => ({ query }), [query])
 
   return (
-    <OpenInContext.Provider value={contextValue}>
+    <OpenInContext value={contextValue}>
       <DropdownMenu {...props} />
-    </OpenInContext.Provider>
+    </OpenInContext>
   )
 }
 

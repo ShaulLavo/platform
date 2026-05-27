@@ -72,11 +72,11 @@ export const InlineCitationCarousel = ({
   const [api, setApi] = useState<CarouselApi>()
 
   return (
-    <CarouselApiContext.Provider value={api}>
+    <CarouselApiContext value={api}>
       <Carousel className={cn('w-full', className)} setApi={setApi} {...props}>
         {children}
       </Carousel>
-    </CarouselApiContext.Provider>
+    </CarouselApiContext>
   )
 }
 

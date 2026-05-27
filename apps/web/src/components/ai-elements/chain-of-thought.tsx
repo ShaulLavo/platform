@@ -55,11 +55,11 @@ export const ChainOfThought = memo(
     const chainOfThoughtContext = useMemo(() => ({ isOpen, setIsOpen }), [isOpen, setIsOpen])
 
     return (
-      <ChainOfThoughtContext.Provider value={chainOfThoughtContext}>
+      <ChainOfThoughtContext value={chainOfThoughtContext}>
         <div className={cn('not-prose w-full space-y-4', className)} {...props}>
           {children}
         </div>
-      </ChainOfThoughtContext.Provider>
+      </ChainOfThoughtContext>
     )
   },
 )

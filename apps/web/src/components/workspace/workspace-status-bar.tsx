@@ -1,5 +1,6 @@
 import { EditorStatusBar } from '@/features/editor/components/editor-status-bar'
+import { memo } from 'react'
 
-export function WorkspaceStatusBar() {
+export const WorkspaceStatusBar = memo(function WorkspaceStatusBar() {
   return <EditorStatusBar />
-}
+})

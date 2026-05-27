@@ -29,11 +29,11 @@ export const Snippet = ({ code, className, children, ...props }: SnippetProps) =
   const contextValue = useMemo(() => ({ code }), [code])
 
   return (
-    <SnippetContext.Provider value={contextValue}>
+    <SnippetContext value={contextValue}>
       <InputGroup className={cn('font-mono', className)} {...props}>
         {children}
       </InputGroup>
-    </SnippetContext.Provider>
+    </SnippetContext>
   )
 }
 

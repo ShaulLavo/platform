@@ -112,7 +112,7 @@ export const FileViewer = memo(function FileViewer({
   const surfaceRef = useRef<HTMLElement | null>(null)
 
   return (
-    <EditorPaneDropContext.Provider value={{ dropTarget, setDropTarget, surfaceRef }}>
+    <EditorPaneDropContext value={{ dropTarget, setDropTarget, surfaceRef }}>
       <section className='relative h-full min-h-0 overflow-hidden' ref={surfaceRef}>
         <EditorPaneNodeView
           editorKeymapLayers={editorKeymapLayers}
@@ -123,7 +123,7 @@ export const FileViewer = memo(function FileViewer({
         />
         <EditorPaneDropOverlay target={dropTarget?.scope === 'root' ? dropTarget : null} />
       </section>
-    </EditorPaneDropContext.Provider>
+    </EditorPaneDropContext>
   )
 })
 
@@ -270,6 +270,7 @@ function EditorPaneLeafView({
   const tab = activeTabForPane(pane)
   const selectedPath = tab?.path ?? null
   const selectedDiff = useMemo(() => parseDiffDocumentId(selectedPath), [selectedPath])
+  const clearStatusBarSource = useEditorUiState((state) => state.clearStatusBarSource)
   const paneDropTarget =
     dropTarget?.scope === 'pane' && dropTarget.paneId === pane.id ? dropTarget : null
 
@@ -283,6 +284,13 @@ function EditorPaneLeafView({
 
   const diffViewerRef = useRef<GitDiffViewerHandle | null>(null)
   const selectedDiffQuery = useDiffDocumentDiff(selectedDiff)
+
+  useEffect(() => {
+    if (!active) return
+    if (tab && !selectedDiff) return
+
+    clearStatusBarSource()
+  }, [active, clearStatusBarSource, selectedDiff, tab])
 
   function handleDragOver(event: React.DragEvent<HTMLElement>) {
     if (eventTargetsEditorTabBar(event)) {
@@ -523,7 +531,6 @@ function EditorPaneTabBody({
       onEditorDirtyChange={setCachedEditorDocumentDirty}
       onEditorScrollPositionChange={setCachedEditorTabDocumentScrollPosition}
       onEditorStatusSourceChange={setStatusBarSource}
-      onEditorStatusSourceClear={clearStatusBarSource}
       onEditorTextChange={handleEditorTextChange}
       onOpenDefinition={openDefinition}
       onOpenReferences={handleOpenReferences}
@@ -548,7 +555,6 @@ function FileViewerBody({
   onEditorDirtyChange,
   onEditorScrollPositionChange,
   onEditorStatusSourceChange,
-  onEditorStatusSourceClear,
   onEditorTextChange,
   onOpenDefinition,
   onOpenReferences,
@@ -568,7 +574,6 @@ function FileViewerBody({
     scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
   ) => void
   onEditorStatusSourceChange: (source: EditorStatusBarSource | null) => void
-  onEditorStatusSourceClear: (source?: EditorStatusBarSource['controller']) => void
   onEditorTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
   onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences: (result: LanguageServerReferencesResult) => void | boolean
@@ -595,7 +600,6 @@ function FileViewerBody({
             onEditorScrollPositionChange(tabId, scrollPosition)
           }
           onStatusSourceChange={onEditorStatusSourceChange}
-          onStatusSourceClear={onEditorStatusSourceClear}
           onTextChange={onEditorTextChange}
           onOpenDefinition={onOpenDefinition}
           onOpenReferences={onOpenReferences}

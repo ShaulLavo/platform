@@ -97,14 +97,14 @@ export function createEditorCommands({
     openDefinition: (target) => openDefinition(target, workspaceStore, documentStore, uiStore),
     pickRootFolder: (rootFolder) =>
       pickRootFolder(rootFolder, workspaceStore, documentStore, uiStore),
-    reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore, uiStore),
+    reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
     renameCachedEditorDocument: (from, to) =>
       renameCachedEditorDocument(from, to, workspaceStore, documentStore, uiStore),
     reorderTab: (paneId, tabId, targetIndex) =>
       reorderTab(paneId, tabId, targetIndex, workspaceStore),
-    selectFile: (path) => selectFile(path, workspaceStore, documentStore, uiStore),
-    selectPreviousEditor: () => selectPreviousEditor(workspaceStore, documentStore, uiStore),
-    selectTab: (paneId, tabId) => selectTab(paneId, tabId, workspaceStore, documentStore, uiStore),
+    selectFile: (path) => selectFile(path, workspaceStore, documentStore),
+    selectPreviousEditor: () => selectPreviousEditor(workspaceStore, documentStore),
+    selectTab: (paneId, tabId) => selectTab(paneId, tabId, workspaceStore, documentStore),
     setActivePane: (paneId) => setActivePane(paneId, workspaceStore),
     splitTab: (tabId, direction) => splitTab(tabId, direction, workspaceStore),
   }
@@ -114,7 +114,6 @@ function selectFile(
   selectedFilePath: string | null,
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
-  uiStore: EditorUiStoreApi,
 ) {
   if (!selectedFilePath) return
 
@@ -127,7 +126,6 @@ function selectFile(
       document.fallbackDocumentPath,
     ),
   })
-  uiStore.getState().clearStatusBarSource()
 
   const editorPaneLayout = openEditorPathInActivePane(workspace.editorPaneLayout, selectedFilePath)
   workspaceStore.setState({
@@ -142,7 +140,7 @@ function openDefinition(
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
 ) {
-  selectFile(definitionTarget.path, workspaceStore, documentStore, uiStore)
+  selectFile(definitionTarget.path, workspaceStore, documentStore)
   uiStore.setState({
     definitionTarget,
     statusBarSource: null,
@@ -234,13 +232,12 @@ function discardCachedEditorDocument(
 function reopenClosedEditor(
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
-  uiStore: EditorUiStoreApi,
 ) {
   const workspace = workspaceStore.getState()
   const path = workspace.recentlyClosedEditorPaths[0]
   if (!path) return false
 
-  selectFile(path, workspaceStore, documentStore, uiStore)
+  selectFile(path, workspaceStore, documentStore)
   workspaceStore.setState((state) => ({
     recentlyClosedEditorPaths: recentlyClosedEditorPathsForReopen(
       state.recentlyClosedEditorPaths,
@@ -253,7 +250,6 @@ function reopenClosedEditor(
 function selectPreviousEditor(
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
-  uiStore: EditorUiStoreApi,
 ) {
   const workspace = workspaceStore.getState()
   const path = previousOpenEditorPath(
@@ -263,7 +259,7 @@ function selectPreviousEditor(
   )
   if (!path) return false
 
-  selectFile(path, workspaceStore, documentStore, uiStore)
+  selectFile(path, workspaceStore, documentStore)
   return true
 }
 
@@ -318,7 +314,6 @@ function selectTab(
   tabId: string,
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
-  uiStore: EditorUiStoreApi,
 ) {
   const workspace = workspaceStore.getState()
   const editorPaneLayout = selectEditorPaneTab(workspace.editorPaneLayout, paneId, tabId)
@@ -332,7 +327,6 @@ function selectTab(
       document.fallbackDocumentPath,
     ),
   })
-  uiStore.getState().clearStatusBarSource()
   workspaceStore.setState({
     ...editorWorkspaceSelectionForPaneLayout(editorPaneLayout),
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),

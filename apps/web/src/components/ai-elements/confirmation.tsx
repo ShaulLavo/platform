@@ -68,9 +68,9 @@ export const Confirmation = ({ className, approval, state, ...props }: Confirmat
   }
 
   return (
-    <ConfirmationContext.Provider value={contextValue}>
+    <ConfirmationContext value={contextValue}>
       <Alert className={cn('flex flex-col gap-2', className)} {...props} />
-    </ConfirmationContext.Provider>
+    </ConfirmationContext>
   )
 }
 

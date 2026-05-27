@@ -186,9 +186,9 @@ export const MicSelector = ({
   )
 
   return (
-    <MicSelectorContext.Provider value={contextValue}>
+    <MicSelectorContext value={contextValue}>
       <Popover {...props} onOpenChange={onOpenChange} open={open} />
-    </MicSelectorContext.Provider>
+    </MicSelectorContext>
   )
 }
 

@@ -423,12 +423,12 @@ export const CodeBlock = ({
   const contextValue = useMemo(() => ({ code }), [code])
 
   return (
-    <CodeBlockContext.Provider value={contextValue}>
+    <CodeBlockContext value={contextValue}>
       <CodeBlockContainer className={className} language={language} {...props}>
         {children}
         <CodeBlockContent code={code} language={language} showLineNumbers={showLineNumbers} />
       </CodeBlockContainer>
-    </CodeBlockContext.Provider>
+    </CodeBlockContext>
   )
 }
 

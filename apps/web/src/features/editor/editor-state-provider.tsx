@@ -27,16 +27,16 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
   const [workspaceStore] = useState(() => createEditorWorkspaceStore(workspaceCache))
 
   return (
-    <EditorWorkspaceStateContext.Provider value={workspaceStore}>
-      <EditorConflictStateContext.Provider value={conflictStore}>
-        <EditorDocumentStateContext.Provider value={documentStore}>
-          <SearchBufferStateContext.Provider value={searchBufferStore}>
-            <EditorUiStateContext.Provider value={uiStore}>
+    <EditorWorkspaceStateContext value={workspaceStore}>
+      <EditorConflictStateContext value={conflictStore}>
+        <EditorDocumentStateContext value={documentStore}>
+          <SearchBufferStateContext value={searchBufferStore}>
+            <EditorUiStateContext value={uiStore}>
               {children}
-            </EditorUiStateContext.Provider>
-          </SearchBufferStateContext.Provider>
-        </EditorDocumentStateContext.Provider>
-      </EditorConflictStateContext.Provider>
-    </EditorWorkspaceStateContext.Provider>
+            </EditorUiStateContext>
+          </SearchBufferStateContext>
+        </EditorDocumentStateContext>
+      </EditorConflictStateContext>
+    </EditorWorkspaceStateContext>
   )
 }

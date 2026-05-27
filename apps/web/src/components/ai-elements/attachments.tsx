@@ -150,7 +150,7 @@ export const Attachments = ({
   const contextValue = useMemo(() => ({ variant }), [variant])
 
   return (
-    <AttachmentsContext.Provider value={contextValue}>
+    <AttachmentsContext value={contextValue}>
       <div
         className={cn(
           'flex items-start',
@@ -162,7 +162,7 @@ export const Attachments = ({
       >
         {children}
       </div>
-    </AttachmentsContext.Provider>
+    </AttachmentsContext>
   )
 }
 
@@ -185,7 +185,7 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
   )
 
   return (
-    <AttachmentContext.Provider value={contextValue}>
+    <AttachmentContext value={contextValue}>
       <div
         className={cn(
           'group relative',
@@ -206,7 +206,7 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
       >
         {children}
       </div>
-    </AttachmentContext.Provider>
+    </AttachmentContext>
   )
 }
 

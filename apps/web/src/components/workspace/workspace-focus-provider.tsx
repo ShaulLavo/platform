@@ -7,5 +7,5 @@ import { useState, type ReactNode } from 'react'
 export function WorkspaceFocusProvider({ children }: { children: ReactNode }) {
   const [store] = useState(createWorkspaceFocusStore)
 
-  return <WorkspaceFocusContext.Provider value={store}>{children}</WorkspaceFocusContext.Provider>
+  return <WorkspaceFocusContext value={store}>{children}</WorkspaceFocusContext>
 }

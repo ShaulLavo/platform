@@ -588,12 +588,13 @@ describe('editor conflict store', () => {
 })
 
 describe('editor commands', () => {
-  it('selects files, opens tabs, clears status, and records fallbacks', () => {
+  it('selects files, opens tabs, preserves status, and records fallbacks', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts'], 'src/a.ts'),
     )
     documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
-    uiStore.setState({ statusBarSource: {} as never })
+    const statusBarSource = {} as never
+    uiStore.setState({ statusBarSource })
 
     commands.selectFile('src/b.ts')
 
@@ -601,7 +602,7 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().selectedFilePath).toBe('src/b.ts')
     expect(workspaceStore.getState().editorHistory).toEqual(['src/b.ts', 'src/a.ts'])
     expect(documentStore.getState().fallbackDocumentPath).toBe('src/a.ts')
-    expect(uiStore.getState().statusBarSource).toBe(null)
+    expect(uiStore.getState().statusBarSource).toBe(statusBarSource)
   })
 
   it('opens definitions through workspace, document, and ui stores', () => {

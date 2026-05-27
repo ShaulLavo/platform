@@ -369,7 +369,7 @@ export const SchemaDisplay = ({
   )
 
   return (
-    <SchemaDisplayContext.Provider value={contextValue}>
+    <SchemaDisplayContext value={contextValue}>
       <div className={cn('overflow-hidden rounded-lg border bg-background', className)} {...props}>
         {children ?? (
           <>
@@ -388,7 +388,7 @@ export const SchemaDisplay = ({
           </>
         )}
       </div>
-    </SchemaDisplayContext.Provider>
+    </SchemaDisplayContext>
   )
 }
 

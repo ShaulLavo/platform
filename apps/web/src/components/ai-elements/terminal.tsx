@@ -208,7 +208,7 @@ export const Terminal = ({
   )
 
   return (
-    <TerminalContext.Provider value={contextValue}>
+    <TerminalContext value={contextValue}>
       <div
         className={cn(
           'flex flex-col overflow-hidden rounded-lg border bg-zinc-950 text-zinc-100',
@@ -232,6 +232,6 @@ export const Terminal = ({
           </>
         )}
       </div>
-    </TerminalContext.Provider>
+    </TerminalContext>
   )
 }

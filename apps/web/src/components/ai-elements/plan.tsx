@@ -47,7 +47,7 @@ export const Plan = ({ className, isStreaming = false, children, ...props }: Pla
   const contextValue = useMemo(() => ({ isStreaming }), [isStreaming])
 
   return (
-    <PlanContext.Provider value={contextValue}>
+    <PlanContext value={contextValue}>
       <Collapsible
         data-slot='plan'
         {...props}
@@ -55,7 +55,7 @@ export const Plan = ({ className, isStreaming = false, children, ...props }: Pla
       >
         {children}
       </Collapsible>
-    </PlanContext.Provider>
+    </PlanContext>
   )
 }
 

@@ -72,14 +72,14 @@ export const WebPreview = ({
   )
 
   return (
-    <WebPreviewContext.Provider value={contextValue}>
+    <WebPreviewContext value={contextValue}>
       <div
         className={cn('flex size-full flex-col rounded-lg border bg-card', className)}
         {...props}
       >
         {children}
       </div>
-    </WebPreviewContext.Provider>
+    </WebPreviewContext>
   )
 }
 

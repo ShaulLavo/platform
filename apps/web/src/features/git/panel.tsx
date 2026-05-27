@@ -29,7 +29,7 @@ export const Panel = memo(function Panel({
 function StateProvider({ children }: { children: ReactNode }) {
   const [store] = useState(createGitStore)
 
-  return <StateContext.Provider value={store}>{children}</StateContext.Provider>
+  return <StateContext value={store}>{children}</StateContext>
 }
 
 function PanelContent({ className, rootPath }: ComponentProps<'section'> & { rootPath: string }) {

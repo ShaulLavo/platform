@@ -1,7 +1,8 @@
 import { EditorStatusBarContent } from '@/features/editor/components/editor-status-bar-content'
 import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
+import { memo } from 'react'
 
-export function EditorStatusBar() {
+export const EditorStatusBar = memo(function EditorStatusBar() {
   const source = useEditorUiState((state) => state.statusBarSource)
 
   return (
@@ -12,4 +13,4 @@ export function EditorStatusBar() {
       {source ? <EditorStatusBarContent source={source} /> : null}
     </div>
   )
-}
+})

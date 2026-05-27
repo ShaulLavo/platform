@@ -84,11 +84,11 @@ export const VoiceSelector = ({
   )
 
   return (
-    <VoiceSelectorContext.Provider value={voiceSelectorContext}>
+    <VoiceSelectorContext value={voiceSelectorContext}>
       <Dialog onOpenChange={setOpen} open={open} {...props}>
         {children}
       </Dialog>
-    </VoiceSelectorContext.Provider>
+    </VoiceSelectorContext>
   )
 }
 

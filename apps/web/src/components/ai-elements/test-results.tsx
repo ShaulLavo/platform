@@ -120,7 +120,7 @@ export const TestResults = ({ summary, className, children, ...props }: TestResu
   const contextValue = useMemo(() => ({ summary }), [summary])
 
   return (
-    <TestResultsContext.Provider value={contextValue}>
+    <TestResultsContext value={contextValue}>
       <div className={cn('rounded-lg border bg-background', className)} {...props}>
         {children ??
           (summary && (
@@ -130,7 +130,7 @@ export const TestResults = ({ summary, className, children, ...props }: TestResu
             </TestResultsHeader>
           ))}
       </div>
-    </TestResultsContext.Provider>
+    </TestResultsContext>
   )
 }
 
@@ -215,11 +215,11 @@ export const TestSuite = ({ name, status, className, children, ...props }: TestS
   const contextValue = useMemo(() => ({ name, status }), [name, status])
 
   return (
-    <TestSuiteContext.Provider value={contextValue}>
+    <TestSuiteContext value={contextValue}>
       <Collapsible className={cn('rounded-lg border', className)} {...props}>
         {children}
       </Collapsible>
-    </TestSuiteContext.Provider>
+    </TestSuiteContext>
   )
 }
 
@@ -339,7 +339,7 @@ export const Test = ({ name, status, duration, className, children, ...props }: 
   const contextValue = useMemo(() => ({ duration, name, status }), [duration, name, status])
 
   return (
-    <TestContext.Provider value={contextValue}>
+    <TestContext value={contextValue}>
       <div className={cn('flex items-center gap-2 px-4 py-2 text-sm', className)} {...props}>
         {children ?? (
           <>
@@ -349,7 +349,7 @@ export const Test = ({ name, status, duration, className, children, ...props }: 
           </>
         )}
       </div>
-    </TestContext.Provider>
+    </TestContext>
   )
 }
 

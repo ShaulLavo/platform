@@ -163,7 +163,7 @@ export function EditorColorThemeProvider({ children }: { readonly children: Reac
     [colorMode, editorTheme, shikiTheme, shikiThemeResolver],
   )
 
-  return createElement(EditorColorThemeContext.Provider, { value }, children)
+  return createElement(EditorColorThemeContext, { value }, children)
 }
 
 export function useEditorColorTheme({

@@ -43,7 +43,6 @@ type EditorProps = {
     scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
   ) => void
   onStatusSourceChange?: (source: EditorStatusBarSource) => void
-  onStatusSourceClear?: (controller: EditorStatusBarSource['controller']) => void
   onTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
 }
 
@@ -59,7 +58,6 @@ export function Editor({
   onOpenReferences,
   onScrollPositionChange,
   onStatusSourceChange,
-  onStatusSourceClear,
   onTextChange,
 }: EditorProps) {
   const editorActive = useWorkspaceFocus((state) => state.activeArea === 'editor' && active)
@@ -163,16 +161,6 @@ export function Editor({
       languageServerStatusSource,
     })
   }, [active, cachedDocument.path, controller, languageServerStatusSource, onStatusSourceChange])
-
-  useEffect(() => {
-    if (active) return
-
-    onStatusSourceClear?.(controller)
-  }, [active, controller, onStatusSourceClear])
-
-  useEffect(() => {
-    return () => onStatusSourceClear?.(controller)
-  }, [controller, onStatusSourceClear])
 
   useLayoutEffect(() => {
     return () => {

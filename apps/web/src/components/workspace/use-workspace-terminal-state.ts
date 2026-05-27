@@ -34,7 +34,7 @@ export function WorkspaceTerminalStateProvider({ children }: { children: ReactNo
   storeRef.current ??= createWorkspaceTerminalStore()
 
   return createElement(
-    WorkspaceTerminalStateContext.Provider,
+    WorkspaceTerminalStateContext,
     { value: storeRef.current },
     children,
   )

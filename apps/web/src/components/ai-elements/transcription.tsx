@@ -55,7 +55,7 @@ export const Transcription = ({
   )
 
   return (
-    <TranscriptionContext.Provider value={contextValue}>
+    <TranscriptionContext value={contextValue}>
       <div
         className={cn('flex flex-wrap gap-1 text-sm leading-relaxed', className)}
         data-slot='transcription'
@@ -65,7 +65,7 @@ export const Transcription = ({
           .filter((segment) => segment.text.trim())
           .map((segment, index) => children(segment, index))}
       </div>
-    </TranscriptionContext.Provider>
+    </TranscriptionContext>
   )
 }
 

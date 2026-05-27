@@ -163,9 +163,9 @@ export const MessageBranch = ({
   )
 
   return (
-    <MessageBranchContext.Provider value={contextValue}>
+    <MessageBranchContext value={contextValue}>
       <div className={cn('grid w-full gap-2 [&>div]:pb-0', className)} {...props} />
-    </MessageBranchContext.Provider>
+    </MessageBranchContext>
   )
 }
 
