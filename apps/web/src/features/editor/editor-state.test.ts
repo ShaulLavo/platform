@@ -361,14 +361,18 @@ describe('editor document store', () => {
 
   it('syncs duplicate tab document text from edits while preserving per-tab history and scroll', () => {
     const store = createEditorDocumentStore()
-    const tabA = store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
+    store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
     store.getState().ensureCachedEditorTabDocument('tab-b', file('src/file.ts', 'abc'))
 
     store.getState().setCachedEditorTabDocumentScrollPosition('tab-a', {
       left: 4,
       top: 8,
     })
-    const change = tabA.session.applyText('!')
+    const sourceTab = store.getState().getCachedEditorTabDocument('tab-a')
+    const siblingTab = store.getState().getCachedEditorTabDocument('tab-b')
+    if (!sourceTab || !siblingTab) throw new Error('Missing cached tab documents')
+
+    const change = sourceTab.session.applyText('!')
     store.getState().recordCachedEditorDocumentTextChange('src/file.ts', {
       change,
       sourceTabId: 'tab-a',
@@ -386,7 +390,30 @@ describe('editor document store', () => {
     expect(syncedTabB?.session.canUndo()).toBe(false)
     expect(syncedTabA?.scrollPosition).toEqual({ left: 4, top: 8 })
     expect(syncedTabB?.scrollPosition).toBeUndefined()
+    expect(syncedTabA).toBe(sourceTab)
+    expect(syncedTabB).not.toBe(siblingTab)
     expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(true)
+  })
+
+  it('keeps the source tab document identity for single-tab local edits', () => {
+    const store = createEditorDocumentStore()
+    const tab = store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
+    let tabDocumentUpdates = 0
+    const unsubscribe = store.subscribe((state, previousState) => {
+      if (state.tabDocuments !== previousState.tabDocuments) {
+        tabDocumentUpdates += 1
+      }
+    })
+
+    const change = tab.session.applyText('!')
+    store.getState().recordCachedEditorDocumentTextChange('src/file.ts', {
+      change,
+      sourceTabId: 'tab-a',
+    })
+    unsubscribe()
+
+    expect(store.getState().getCachedEditorTabDocument('tab-a')).toBe(tab)
+    expect(tabDocumentUpdates).toBe(0)
   })
 
   it('creates clean tab sessions without materializing canonical text', () => {
@@ -683,6 +710,57 @@ describe('editor commands', () => {
     expect(documentStore.getState().fallbackDocumentPath).toBe(null)
     expect(uiStore.getState().definitionTarget).toBe(null)
     expect(uiStore.getState().languageServerReferences).toBe(null)
+  })
+
+  it('coalesces workspace panel selection updates', () => {
+    const store = createEditorWorkspaceStore(workspaceState([], null))
+    let panelUpdates = 0
+    const unsubscribe = store.subscribe((state, previousState) => {
+      if (
+        state.sidebarVisible !== previousState.sidebarVisible ||
+        state.workspacePanelTab !== previousState.workspacePanelTab
+      ) {
+        panelUpdates += 1
+      }
+    })
+
+    store.getState().setWorkspacePanelSelection({
+      sidebarVisible: true,
+      workspacePanelTab: 'files',
+    })
+    store.getState().setWorkspacePanelSelection({
+      sidebarVisible: true,
+      workspacePanelTab: 'search',
+    })
+    store.getState().setWorkspacePanelSelection({
+      sidebarVisible: true,
+      workspacePanelTab: 'search',
+    })
+    unsubscribe()
+
+    expect(panelUpdates).toBe(1)
+  })
+
+  it('activates workspace panel tabs without duplicate updates', () => {
+    const store = createEditorWorkspaceStore(workspaceState([], null))
+    let panelUpdates = 0
+    const unsubscribe = store.subscribe((state, previousState) => {
+      if (
+        state.sidebarVisible !== previousState.sidebarVisible ||
+        state.workspacePanelTab !== previousState.workspacePanelTab
+      ) {
+        panelUpdates += 1
+      }
+    })
+
+    store.getState().activateWorkspacePanelTab('files')
+    store.getState().activateWorkspacePanelTab('files')
+    store.getState().activateWorkspacePanelTab('search')
+    unsubscribe()
+
+    expect(store.getState().sidebarVisible).toBe(true)
+    expect(store.getState().workspacePanelTab).toBe('search')
+    expect(panelUpdates).toBe(3)
   })
 })
 

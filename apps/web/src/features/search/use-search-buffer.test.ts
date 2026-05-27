@@ -82,13 +82,23 @@ describe('workspace search dirty revision key', () => {
       new Set(['outside/file.ts', 'repo/src/dirty.ts']),
       { 'repo/src/dirty.ts': 'e:4' },
       'repo',
-      9,
     )
     const parts = key.split('\0')
 
-    expect(parts.slice(0, 4)).toEqual(['9', 'repo/src/dirty.ts', '7', 'e:4'])
-    expect(parts[4]).toEqual(expect.any(String))
+    expect(parts.slice(0, 3)).toEqual(['repo/src/dirty.ts', '7', 'e:4'])
+    expect(parts[3]).toEqual(expect.any(String))
     expect(key).not.toContain('local dirty text')
+  })
+
+  it('does not change for dirty paths outside the workspace', () => {
+    expect(
+      dirtySearchRevisionKey(
+        { 'outside/file.ts': cachedDocument('outside/file.ts', 1) },
+        new Set(['outside/file.ts']),
+        { 'outside/file.ts': 'e:1' },
+        'repo',
+      ),
+    ).toBe('')
   })
 
   it('changes for dirty content, file, path, and session revisions', () => {
@@ -98,7 +108,6 @@ describe('workspace search dirty revision key', () => {
       new Set(['repo/src/a.ts']),
       { 'repo/src/a.ts': 'e:1' },
       'repo',
-      1,
     )
 
     expect(
@@ -107,7 +116,6 @@ describe('workspace search dirty revision key', () => {
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:1' },
         'repo',
-        1,
       ),
     ).toBe(key)
     expect(
@@ -116,7 +124,6 @@ describe('workspace search dirty revision key', () => {
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:2' },
         'repo',
-        2,
       ),
     ).not.toBe(key)
     expect(
@@ -125,7 +132,6 @@ describe('workspace search dirty revision key', () => {
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:1' },
         'repo',
-        1,
       ),
     ).not.toBe(key)
     expect(
@@ -136,7 +142,6 @@ describe('workspace search dirty revision key', () => {
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:1' },
         'repo',
-        1,
       ),
     ).not.toBe(key)
     expect(
@@ -145,7 +150,6 @@ describe('workspace search dirty revision key', () => {
         new Set(['repo/src/b.ts']),
         { 'repo/src/b.ts': 'e:1' },
         'repo',
-        1,
       ),
     ).not.toBe(key)
   })

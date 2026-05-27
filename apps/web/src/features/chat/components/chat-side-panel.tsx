@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { memo, useCallback, useEffect, useMemo } from 'react'
 
 import { useActiveChatThreadId } from '../hooks/use-active-chat-thread-id'
 import { useChatShellSubscription } from '../hooks/use-chat-shell-subscription'
@@ -13,7 +13,7 @@ import { ChatPanelStatus } from './chat-panel-status'
 import { ChatDraftView } from './chat-draft-view'
 import { ChatView } from './chat-view'
 
-export function ChatSidePanel({ rootPath }: { rootPath: string }) {
+export const ChatSidePanel = memo(function ChatSidePanel({ rootPath }: { rootPath: string }) {
   const environment = useMemo(() => createLocalChatEnvironment(), [])
   const shell = useChatShellSubscription(environment)
   const projectState = useWorkspaceChatProject({ environment, rootPath })
@@ -77,4 +77,4 @@ export function ChatSidePanel({ rootPath }: { rootPath: string }) {
       />
     </div>
   )
-}
+})

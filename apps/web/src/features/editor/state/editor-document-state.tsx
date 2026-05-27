@@ -548,10 +548,11 @@ function syncTabDocumentsForPath(
 
     if (tabId !== sourceTabId) {
       syncSessionChange(document.session, sync)
+      changed = true
+      return [tabId, { ...document, contentRevision }] as const
     }
 
-    changed = true
-    return [tabId, { ...document, contentRevision }] as const
+    return [tabId, document] as const
   })
   if (!changed) return tabDocuments
 

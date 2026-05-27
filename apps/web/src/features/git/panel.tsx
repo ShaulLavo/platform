@@ -1,5 +1,5 @@
 import { cn } from '@workspace/ui/lib/utils'
-import { useMemo, useState, type ComponentProps, type ReactNode } from 'react'
+import { memo, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
@@ -15,13 +15,16 @@ import { PanelShell } from './components/panel-shell'
 
 const EMPTY_FILES: readonly FileStatus[] = []
 
-export function Panel({ className, rootPath }: ComponentProps<'section'> & { rootPath: string }) {
+export const Panel = memo(function Panel({
+  className,
+  rootPath,
+}: ComponentProps<'section'> & { rootPath: string }) {
   return (
     <StateProvider>
       <PanelContent className={className} rootPath={rootPath} />
     </StateProvider>
   )
-}
+})
 
 function StateProvider({ children }: { children: ReactNode }) {
   const [store] = useState(createGitStore)

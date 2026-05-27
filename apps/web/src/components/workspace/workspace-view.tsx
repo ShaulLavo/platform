@@ -1,16 +1,15 @@
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { FileViewer } from '@/components/workspace/file-viewer'
+import { useWorkspaceTerminalState } from '@/components/workspace/use-workspace-terminal-state'
 import { WorkspaceActivityBar } from '@/components/workspace/workspace-activity-bar'
-import { WorkspaceSidebar } from '@/components/workspace/workspace-sidebar'
+import { WorkspaceSidebarResizablePanel } from '@/components/workspace/workspace-sidebar-resizable-panel'
 import { WorkspaceStatusBar } from '@/components/workspace/workspace-status-bar'
-import { useWorkspaceViewState } from '@/components/workspace/use-workspace-view-state'
 import { workspaceResizableStorageKey } from '@/components/workspace/workspace-view-utils'
 import { TerminalPanel } from '@/features/terminal/terminal-panel'
 import type { PickedFsEntry, TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
 import type { EditorKeymapLayer } from '@editor/core'
-import { Tabs } from '@workspace/ui/components/tabs'
 import {
   PersistedResizablePanelGroup,
   ResizableHandle,
@@ -38,38 +37,15 @@ export const WorkspaceView = memo(function WorkspaceView({
   onRequestCloseTabs,
 }: WorkspaceViewProps) {
   const rootPath = rootFolder.path
-  const {
-    currentVisibleTreeItemCount,
-    handleSidebarResize,
-    handleTerminalResize,
-    handleToggleTerminal,
-    handleVisibleTreeItemCountChange,
-    handleWorkspacePanelTabChange,
-    selectWorkspacePanelTab,
-    sidebarPanelRef,
-    sidebarVisible,
-    terminalCollapsed,
-    terminalPanelRef,
-    workspacePanelTab,
-  } = useWorkspaceViewState({
-    rootPath,
-    treeReady: treeState.status === 'ready',
-  })
-  const selectedWorkspacePanelTab = sidebarVisible ? workspacePanelTab : ''
+  const { handleTerminalResize, handleToggleTerminal, terminalCollapsed, terminalPanelRef } =
+    useWorkspaceTerminalState()
 
   return (
     <div className='h-full min-h-0 flex-1 overflow-auto'>
       <div className='flex h-full min-w-[1024px] flex-col'>
-        <Tabs
-          className='min-h-0 flex-1 flex-row gap-0'
-          value={selectedWorkspacePanelTab}
-          orientation='vertical'
-          onValueChange={handleWorkspacePanelTabChange}
-        >
+        <div className='flex min-h-0 flex-1 flex-row gap-0'>
           <WorkspaceActivityBar
-            currentVisible={sidebarVisible}
             terminalCollapsed={terminalCollapsed}
-            onSelectTab={selectWorkspacePanelTab}
             onToggleTerminal={handleToggleTerminal}
           />
           <PersistedResizablePanelGroup
@@ -77,33 +53,12 @@ export const WorkspaceView = memo(function WorkspaceView({
             orientation='horizontal'
             storageKey={workspaceResizableStorageKey(rootPath, 'main')}
           >
-            <ResizablePanel
-              id='workspace-sidebar'
-              className='min-h-0 min-w-0 overflow-hidden'
-              collapsible
-              collapsedSize='0px'
-              defaultSize={sidebarVisible ? '320px' : '0px'}
-              minSize='240px'
-              maxSize='50%'
-              groupResizeBehavior='preserve-pixel-size'
-              panelRef={sidebarPanelRef}
-              onResize={handleSidebarResize}
-            >
-              <WorkspaceSidebar
-                rootPath={rootPath}
-                sidebarVisible={sidebarVisible}
-                tab={workspacePanelTab}
-                treeState={treeState}
-                visibleTreeItemCount={currentVisibleTreeItemCount}
-                onVisibleItemCountChange={handleVisibleTreeItemCountChange}
-                onLoadDirectory={onLoadDirectory}
-                onPrefetchDirectory={onPrefetchDirectory}
-              />
-            </ResizablePanel>
-            <ResizableHandle
-              aria-label='Resize workspace sidebar'
-              className={sidebarVisible ? undefined : '-mr-px'}
-              withHandle
+            <WorkspaceSidebarResizablePanel
+              rootPath={rootPath}
+              treeReady={treeState.status === 'ready'}
+              treeState={treeState}
+              onLoadDirectory={onLoadDirectory}
+              onPrefetchDirectory={onPrefetchDirectory}
             />
             <ResizablePanel
               id='workspace-editor'
@@ -150,7 +105,7 @@ export const WorkspaceView = memo(function WorkspaceView({
               </PersistedResizablePanelGroup>
             </ResizablePanel>
           </PersistedResizablePanelGroup>
-        </Tabs>
+        </div>
         <div className='min-w-0'>
           <WorkspaceStatusBar />
         </div>

@@ -49,6 +49,14 @@ export function workspacePanelTabTitle(tab: WorkspacePanelTab) {
   return 'Git'
 }
 
+export function workspaceActivityButtonId(tab: WorkspacePanelTab) {
+  return `workspace-activity-${tab}`
+}
+
+export function workspaceSidebarPanelId(tab: WorkspacePanelTab) {
+  return `workspace-sidebar-panel-${tab}`
+}
+
 export function workspaceResizableStorageKey(rootPath: string, group: string) {
   return `workspace:${rootPath}:${group}`
 }

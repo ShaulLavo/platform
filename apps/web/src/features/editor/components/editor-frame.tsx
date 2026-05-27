@@ -1,5 +1,5 @@
 import { EditorHost } from '@editor/react'
-import type { ComponentProps, ReactNode } from 'react'
+import { memo, type ComponentProps, type ReactNode } from 'react'
 
 type EditorFrameProps = {
   active: boolean
@@ -8,7 +8,12 @@ type EditorFrameProps = {
   children?: ReactNode
 }
 
-export function EditorFrame({ active, controller, onActivate, children }: EditorFrameProps) {
+export const EditorFrame = memo(function EditorFrame({
+  active,
+  controller,
+  onActivate,
+  children,
+}: EditorFrameProps) {
   return (
     <div
       className='bg-background flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden'
@@ -20,4 +25,4 @@ export function EditorFrame({ active, controller, onActivate, children }: Editor
       {children}
     </div>
   )
-}
+})

@@ -19,6 +19,7 @@ type EditorWorkspaceStoreState = CachedWorkspaceState & {
 }
 
 type EditorWorkspaceStoreActions = {
+  activateWorkspacePanelTab: (tab: WorkspacePanelTab) => void
   openPicker: () => void
   resetForRootFolder: (rootFolder: PickedFsEntry) => void
   setDiffViewMode: (mode: EditorDiffViewMode) => void
@@ -30,6 +31,7 @@ type EditorWorkspaceStoreActions = {
   setRecentlyClosedEditorPaths: (paths: string[]) => void
   setSelectedFilePath: (path: string | null) => void
   setSidebarVisible: (visible: boolean) => void
+  setWorkspacePanelSelection: (selection: WorkspacePanelSelection) => void
   setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
 }
 
@@ -38,6 +40,11 @@ export type EditorWorkspaceStore = EditorWorkspaceStoreState & EditorWorkspaceSt
 export type EditorWorkspaceStoreApi = StoreApi<EditorWorkspaceStore>
 
 export const EditorWorkspaceStateContext = createContext<EditorWorkspaceStoreApi | null>(null)
+
+type WorkspacePanelSelection = Pick<
+  EditorWorkspaceStoreState,
+  'sidebarVisible' | 'workspacePanelTab'
+>
 
 export function useEditorWorkspaceStoreApi() {
   const store = useContext(EditorWorkspaceStateContext)
@@ -69,6 +76,8 @@ export function createEditorWorkspaceStore(
     selectedFilePath: initialState.selectedFilePath,
     sidebarVisible: initialState.sidebarVisible,
     workspacePanelTab: initialState.workspacePanelTab,
+    activateWorkspacePanelTab: (workspacePanelTab) =>
+      set((state) => workspacePanelSelectionForTabActivation(state, workspacePanelTab)),
     openPicker: () => set({ pickerOpen: true }),
     resetForRootFolder: (rootFolder) =>
       set((state) => ({
@@ -109,9 +118,40 @@ export function createEditorWorkspaceStore(
           ),
         ),
       ),
-    setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
-    setWorkspacePanelTab: (workspacePanelTab) => set({ workspacePanelTab }),
+    setSidebarVisible: (sidebarVisible) =>
+      set((state) => {
+        if (state.sidebarVisible === sidebarVisible) return state
+
+        return { sidebarVisible }
+      }),
+    setWorkspacePanelSelection: (selection) =>
+      set((state) => {
+        if (
+          state.sidebarVisible === selection.sidebarVisible &&
+          state.workspacePanelTab === selection.workspacePanelTab
+        )
+          return state
+
+        return selection
+      }),
+    setWorkspacePanelTab: (workspacePanelTab) =>
+      set((state) => {
+        if (state.workspacePanelTab === workspacePanelTab) return state
+
+        return { workspacePanelTab }
+      }),
   }))
+}
+
+function workspacePanelSelectionForTabActivation(
+  current: WorkspacePanelSelection,
+  workspacePanelTab: WorkspacePanelTab,
+): WorkspacePanelSelection {
+  if (current.sidebarVisible && current.workspacePanelTab === workspacePanelTab) {
+    return { ...current, sidebarVisible: false }
+  }
+
+  return { sidebarVisible: true, workspacePanelTab }
 }
 
 function pathsWithSelectedPath(openFilePaths: readonly string[], selectedFilePath: string | null) {

@@ -5,6 +5,7 @@ import { fileContentQueryOptions } from '@/lib/file-query-cache'
 import { idleState, type LoadState } from '@/lib/load-state'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 export function useSelectedFile(selectedFilePath: string | null) {
   const queryClient = useQueryClient()
@@ -15,7 +16,10 @@ export function useSelectedFile(selectedFilePath: string | null) {
     placeholderData: (previousFile) => previousFile,
     queryFn: ({ signal }) => fetchFile(filePath ?? '', signal),
   })
-  const fileState = filePath ? fileLoadState(query, filePath) : idleState
+  const fileState = useMemo(
+    () => (filePath ? fileLoadState(query, filePath) : idleState),
+    [filePath, query.data, query.error, query.isError, query.isPending],
+  )
 
   function resetFileLoad() {
     if (!filePath) return

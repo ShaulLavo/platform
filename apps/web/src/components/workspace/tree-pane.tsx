@@ -38,13 +38,14 @@ import {
   useEffectEvent,
   useEffect,
   useLayoutEffect,
+  memo,
   useMemo,
   useRef,
   type CSSProperties,
   type ReactNode,
 } from 'react'
 
-export function TreePane({
+export const TreePane = memo(function TreePane({
   gitStatus,
   onVisibleItemCountChange,
   onLoadDirectory,
@@ -76,7 +77,7 @@ export function TreePane({
       onPrefetchDirectory={onPrefetchDirectory}
     />
   )
-}
+})
 
 function ReadyTreePane({
   gitStatus,

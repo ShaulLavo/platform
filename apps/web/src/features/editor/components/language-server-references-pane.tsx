@@ -6,7 +6,11 @@ import type {
 import type { CSSProperties } from 'react'
 import { useMemo, useState } from 'react'
 
-import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import {
+  useEditorDocumentState,
+  useEditorDocumentStoreApi,
+  type CachedEditorDocument,
+} from '@/features/editor/state/editor-document-state'
 import { textLineAt } from '@/features/editor/utils/editor-position'
 import { compareSearchPaths } from '@/features/search/search-sort'
 import { basename, toTreePath } from '@/lib/path-formatters'
@@ -15,7 +19,6 @@ import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
 type LanguageServerReferencesPaneProps = {
-  readonly documents: Readonly<Record<string, CachedEditorDocument>>
   readonly references: LanguageServerReferencesResult
   readonly rootPath: string
   onClose(): void
@@ -30,12 +33,19 @@ type ReferenceGroup = {
 }
 
 export function LanguageServerReferencesPane({
-  documents,
   references,
   rootPath,
   onClose,
   onOpenReference,
 }: LanguageServerReferencesPaneProps) {
+  const documentStore = useEditorDocumentStoreApi()
+  const documentRevisionKey = useEditorDocumentState((state) =>
+    referenceDocumentsRevisionKey(state.documents, references.targets),
+  )
+  const documents = useMemo(
+    () => referenceDocumentsByPath(documentStore.getState().documents, references.targets),
+    [documentRevisionKey, documentStore, references.targets],
+  )
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(() => new Set())
   const groups = useMemo(
     () => referenceGroups(references.targets, rootPath),
@@ -214,6 +224,39 @@ function referencePreview(
   if (line !== null) return '(blank line)'
 
   return `Line ${target.range.start.line + 1}, column ${target.range.start.character + 1}`
+}
+
+function referenceDocumentsRevisionKey(
+  documents: Readonly<Record<string, CachedEditorDocument>>,
+  targets: readonly LanguageServerDefinitionTarget[],
+) {
+  let key = ''
+  const seen = new Set<string>()
+
+  for (const target of targets) {
+    if (seen.has(target.path)) continue
+
+    seen.add(target.path)
+    const document = documents[target.path]
+    key += `${target.path}\u0000${document?.contentRevision ?? ''}\u0000${document?.revision ?? ''}\u0001`
+  }
+
+  return key
+}
+
+function referenceDocumentsByPath(
+  documents: Readonly<Record<string, CachedEditorDocument>>,
+  targets: readonly LanguageServerDefinitionTarget[],
+) {
+  const result: Record<string, CachedEditorDocument | undefined> = {}
+
+  for (const target of targets) {
+    if (target.path in result) continue
+
+    result[target.path] = documents[target.path]
+  }
+
+  return result
 }
 
 function toggledPathSet(paths: ReadonlySet<string>, path: string) {

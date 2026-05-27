@@ -4,9 +4,9 @@ import { statusEntriesForTree } from '@/features/git/status-entries-for-tree'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 
-export function WorkspaceFilesPane({
+export const WorkspaceFilesPane = memo(function WorkspaceFilesPane({
   onLoadDirectory,
   onPrefetchDirectory,
   onVisibleItemCountChange,
@@ -35,4 +35,4 @@ export function WorkspaceFilesPane({
       onPrefetchDirectory={onPrefetchDirectory}
     />
   )
-}
+})

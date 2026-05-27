@@ -108,8 +108,8 @@ export function useSearchBuffer(rootPath: string) {
   }
 }
 
-export function useSearchBufferRuntime(rootPath: string) {
-  const snapshot = useSearchBufferState((state) => state.active)
+export function useSearchBufferRuntime(rootPath: string, enabled = true) {
+  const snapshot = useSearchBufferState((state) => (enabled ? state.active : null))
   const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
   const query = activeSnapshot?.query ?? ''
   const searchRevision = activeSnapshot?.searchRevision ?? 0
@@ -124,20 +124,22 @@ export function useSearchBufferRuntime(rootPath: string) {
     SEARCH_DEBOUNCE_MS,
   )
 
-  usePrepareSearchBuffer(rootPath)
-  useRunSearchBuffer(rootPath, debouncedQuery, searchRevision, {
+  usePrepareSearchBuffer(rootPath, enabled)
+  useRunSearchBuffer(rootPath, enabled ? debouncedQuery : '', searchRevision, {
     ...searchOptions,
     excludeGlobText: debouncedExcludeGlobText,
     includeGlobText: debouncedIncludeGlobText,
   })
 }
 
-function usePrepareSearchBuffer(rootPath: string) {
+function usePrepareSearchBuffer(rootPath: string, enabled: boolean) {
   const store = useSearchBufferStoreApi()
 
   useEffect(() => {
+    if (!enabled) return
+
     store.getState().prepareBuffer(rootPath)
-  }, [rootPath, store])
+  }, [enabled, rootPath, store])
 }
 
 function useRunSearchBuffer(
@@ -208,13 +210,14 @@ function useRunDirtySearchBufferOverlay(
   const store = useSearchBufferStoreApi()
   const documentStore = useEditorDocumentStoreApi()
   const dirtyRevisionKey = useEditorDocumentState((state) =>
-    dirtySearchRevisionKey(
-      state.documents,
-      state.dirtyFilePaths,
-      state.documentContentRevisions,
-      rootPath,
-      state.dirtyContentRevision,
-    ),
+    query
+      ? dirtySearchRevisionKey(
+          state.documents,
+          state.dirtyFilePaths,
+          state.documentContentRevisions,
+          rootPath,
+        )
+      : '',
   )
   const debouncedDirtyRevisionKey = useDebouncedValue(dirtyRevisionKey, DIRTY_BUFFER_DEBOUNCE_MS)
 
@@ -628,9 +631,8 @@ export function dirtySearchRevisionKey(
   dirtyFilePaths: ReadonlySet<string>,
   contentRevisions: Readonly<Record<string, string>>,
   rootPath: string,
-  revision: number,
 ) {
-  const parts = [revision.toString()]
+  const parts: string[] = []
   const paths = Array.from(dirtyFilePaths)
     .filter((path) => isPathInWorkspace(path, rootPath))
     .toSorted(compareSearchPaths)

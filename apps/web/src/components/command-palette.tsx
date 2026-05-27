@@ -13,7 +13,10 @@ import { useCallback, useLayoutEffect, useMemo, useState } from 'react'
 
 import { useTheme, type Theme } from '@/components/theme-context'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
+import {
+  useEditorDocumentState,
+  useEditorDocumentStoreApi,
+} from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { fetchDocumentSymbols, type FlatDocumentSymbol } from '@/lib/document-symbols'
@@ -173,12 +176,7 @@ export function CommandPalette({
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
-  const selectedDocument = useEditorDocumentState((state) =>
-    selectedFilePath ? state.documents[selectedFilePath] : null,
-  )
-  const selectedDocumentContentRevision = useEditorDocumentState((state) =>
-    selectedFilePath ? (state.documentContentRevisions[selectedFilePath] ?? null) : null,
-  )
+  const documentStore = useEditorDocumentStoreApi()
   const { openDefinition, selectFile } = useEditorCommands()
   const [selectedFileItemValue, setSelectedFileItemValue] = useState<string | null>(null)
   const mode = quickAccessMode(search)
@@ -220,17 +218,27 @@ export function CommandPalette({
 
   const selectedFileBackedPath = fileBackedPath(selectedFilePath)
   const symbolsEnabled = mode === 'symbols' && Boolean(rootFolder && selectedFileBackedPath)
+  const selectedDocumentContentRevision = useEditorDocumentState((state) =>
+    symbolsEnabled && selectedFileBackedPath
+      ? (state.documentContentRevisions[selectedFileBackedPath] ?? null)
+      : null,
+  )
   const symbolQuery = useQuery({
     enabled: symbolsEnabled,
-    queryFn: ({ signal }) =>
-      fetchDocumentSymbols({
+    queryFn: ({ signal }) => {
+      const selectedDocument = selectedFileBackedPath
+        ? documentStore.getState().documents[selectedFileBackedPath]
+        : null
+
+      return fetchDocumentSymbols({
         path: selectedFileBackedPath ?? '',
         rootPath: rootFolder?.path ?? '',
         signal,
         text: selectedDocument?.session.isDirty()
           ? selectedDocument.session.materializeFullText()
           : null,
-      }),
+      })
+    },
     queryKey: documentSymbolKeys.document(
       rootFolder?.path ?? '',
       selectedFileBackedPath ?? '',

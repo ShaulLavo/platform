@@ -6,10 +6,10 @@ import {
   type EditorConflictStoreApi,
 } from '@/features/editor/state/editor-conflict-state'
 import {
-  useEditorDocumentState,
+  useEditorDocumentStoreApi,
   type CachedEditorDocument,
 } from '@/features/editor/state/editor-document-state'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { setFileContentQueryData } from '@/lib/file-query-cache'
@@ -64,33 +64,29 @@ const READY_ROOT_TREE_FRESH_MS = 10_000
 
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const conflictStore = useEditorConflictStoreApi()
+  const documentStore = useEditorDocumentStoreApi()
   const queryClient = useQueryClient()
-  const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
-  const forceReplaceCachedEditorDocument = useEditorDocumentState(
-    (state) => state.forceReplaceCachedEditorDocument,
-  )
-  const getCachedEditorDocument = useEditorDocumentState((state) => state.getCachedEditorDocument)
-  const ensureCachedEditorDocument = useEditorDocumentState(
-    (state) => state.ensureCachedEditorDocument,
-  )
-  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
-  const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
+  const workspaceStore = useEditorWorkspaceStoreApi()
   const { discardCachedEditorDocument, renameCachedEditorDocument, selectFile } =
     useEditorCommands()
   const rootPath = rootFolder?.path ?? null
-  const forceReplaceSelectedDocument = (file: FileResult) =>
-    forceReplaceCachedEditorDocument(file, selectedFilePath)
   const applyEvents = useEffectEvent(
     (events: FilesystemEvent[], signal: AbortSignal, currentRootPath: string) => {
+      const documentState = documentStore.getState()
+      const workspaceState = workspaceStore.getState()
+
       void applyWorkspaceEvents({
         conflictStore,
         discardCachedEditorDocument,
-        dirtyFilePaths,
-        ensureCachedEditorDocument,
+        dirtyFilePaths: documentState.dirtyFilePaths,
+        ensureCachedEditorDocument: documentState.ensureCachedEditorDocument,
         events,
-        forceReplaceCachedEditorDocument: forceReplaceSelectedDocument,
-        getCachedEditorDocument,
-        openFilePaths,
+        forceReplaceCachedEditorDocument: (file) =>
+          documentStore
+            .getState()
+            .forceReplaceCachedEditorDocument(file, workspaceStore.getState().selectedFilePath),
+        getCachedEditorDocument: documentState.getCachedEditorDocument,
+        openFilePaths: workspaceState.openFilePaths,
         queryClient,
         renameCachedEditorDocument,
         rootPath: currentRootPath,
@@ -104,14 +100,20 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     },
   )
   const applyReady = useEffectEvent((signal: AbortSignal, currentRootPath: string) => {
+    const documentState = documentStore.getState()
+    const workspaceState = workspaceStore.getState()
+
     void applyWorkspaceReady({
       conflictStore,
       discardCachedEditorDocument,
-      dirtyFilePaths,
-      ensureCachedEditorDocument,
-      forceReplaceCachedEditorDocument: forceReplaceSelectedDocument,
-      getCachedEditorDocument,
-      openFilePaths,
+      dirtyFilePaths: documentState.dirtyFilePaths,
+      ensureCachedEditorDocument: documentState.ensureCachedEditorDocument,
+      forceReplaceCachedEditorDocument: (file) =>
+        documentStore
+          .getState()
+          .forceReplaceCachedEditorDocument(file, workspaceStore.getState().selectedFilePath),
+      getCachedEditorDocument: documentState.getCachedEditorDocument,
+      openFilePaths: workspaceState.openFilePaths,
       queryClient,
       renameCachedEditorDocument,
       rootPath: currentRootPath,

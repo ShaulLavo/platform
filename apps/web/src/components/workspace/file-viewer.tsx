@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -95,7 +96,7 @@ const EditorPaneDropContext = createContext<{
   surfaceRef: RefObject<HTMLElement | null>
 } | null>(null)
 
-export function FileViewer({
+export const FileViewer = memo(function FileViewer({
   editorKeymapLayers,
   rootPath,
   onRequestCloseTab,
@@ -124,7 +125,7 @@ export function FileViewer({
       </section>
     </EditorPaneDropContext.Provider>
   )
-}
+})
 
 function EditorPaneNodeView({
   editorKeymapLayers,
@@ -425,7 +426,6 @@ function EditorPaneTabBody({
   const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
   const { fileState } = useSelectedFile(selectedSearchBuffer || selectedConflictDiff ? null : path)
-  const documents = useEditorDocumentState((state) => state.documents)
   const selectedCachedDocument = useEditorDocumentState((state) =>
     state.getCachedEditorTabDocument(tabId),
   )
@@ -518,7 +518,6 @@ function EditorPaneTabBody({
       editorKeymapLayers={editorKeymapLayers}
       fileState={fileState}
       languageServerReferences={active ? languageServerReferences : null}
-      openDocuments={documents}
       rootPath={rootPath}
       tabId={tabId}
       onEditorDirtyChange={setCachedEditorDocumentDirty}
@@ -544,7 +543,6 @@ function FileViewerBody({
   editorKeymapLayers,
   fileState,
   languageServerReferences,
-  openDocuments,
   rootPath,
   tabId,
   onEditorDirtyChange,
@@ -562,7 +560,6 @@ function FileViewerBody({
   editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
   languageServerReferences: LanguageServerReferencesResult | null
-  openDocuments: Readonly<Record<string, CachedEditorDocument>>
   rootPath: string
   tabId: string
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
@@ -605,7 +602,6 @@ function FileViewerBody({
         />
         {languageServerReferences ? (
           <LanguageServerReferencesPane
-            documents={openDocuments}
             references={languageServerReferences}
             rootPath={rootPath}
             onClose={onReferencesClose}

@@ -1,13 +1,13 @@
 import '@editor/core/style.css'
 import '@editor/find/style.css'
 import '@editor/minimap/style.css'
-import { useEditor, useEditorSelector } from '@editor/react'
+import { useEditor } from '@editor/react'
 import '@editor/scope-lines/style.css'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
 } from '@editor/language-server'
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 
 import { EditorFrame } from '@/features/editor/components/editor-frame'
 import {
@@ -17,7 +17,6 @@ import {
 import { selectionForDefinition } from '@/features/editor/utils/editor-position'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
 import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
-import { selectEditorDirty } from '@/features/editor/state/editor-store-selectors'
 import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
 import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
@@ -122,20 +121,26 @@ export function Editor({
     },
     document,
     keymap: editorKeymap,
-    onChange: (_state, change) => {
+    onChange: (state, change) => {
       if (!change || change.kind === 'selection' || change.kind === 'none') return
 
       onTextChange?.(tabId, cachedDocument.path, change)
+      onDirtyChange?.(cachedDocument.path, state.isDirty)
     },
     plugins,
     theme: editorTheme,
   })
   const editorInstance = controller.useEditorInstance()
-  const editorDirty = useEditorSelector(controller, selectEditorDirty)
-  const textSnapshot = controller.useTextSnapshot() ?? cachedDocument.session.getTextSnapshot()
   const selection = useMemo(
-    () => selectionForDefinition(cachedDocument.path, textSnapshot, definitionTarget),
-    [cachedDocument.path, definitionTarget, textSnapshot],
+    () =>
+      definitionTarget
+        ? selectionForDefinition(
+            cachedDocument.path,
+            cachedDocument.session.getTextSnapshot(),
+            definitionTarget,
+          )
+        : null,
+    [cachedDocument.path, cachedDocument.session, definitionTarget],
   )
 
   useEffect(() => {
@@ -149,12 +154,6 @@ export function Editor({
       active = false
     }
   }, [])
-
-  useEffect(() => {
-    if (!active) return
-
-    onDirtyChange?.(cachedDocument.path, editorDirty ?? cachedDocument.session.isDirty())
-  }, [active, cachedDocument.path, cachedDocument.session, editorDirty, onDirtyChange])
 
   useEffect(() => {
     if (!active) return
@@ -213,13 +212,14 @@ export function Editor({
     editorInstance,
   })
 
-  return (
-    <EditorFrame
-      active={editorActive}
-      controller={controller}
-      onActivate={() => setFocusArea('editor')}
-    />
+  const handleActivate = useCallback(
+    function handleActivate() {
+      setFocusArea('editor')
+    },
+    [setFocusArea],
   )
+
+  return <EditorFrame active={editorActive} controller={controller} onActivate={handleActivate} />
 }
 
 function scheduleNonCriticalPluginLoad(load: () => void) {

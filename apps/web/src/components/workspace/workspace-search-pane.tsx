@@ -1,4 +1,5 @@
 import { ArrowSquareOutIcon } from '@phosphor-icons/react'
+import { memo } from 'react'
 
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { openWorkspaceSearchMatch } from '@/features/search/open-search-match'
@@ -6,7 +7,7 @@ import { SearchHistoryInput } from '@/features/search/search-history-input'
 import { SearchResultsView } from '@/features/search/search-results-view'
 import { SearchSummary } from '@/features/search/search-summary'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
-import { useSearchBuffer } from '@/features/search/use-search-buffer'
+import { useSearchBuffer, useSearchBufferRuntime } from '@/features/search/use-search-buffer'
 import {
   SearchFilterFields,
   SearchModeButtons,
@@ -16,7 +17,15 @@ import {
 import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
 import { Button } from '@workspace/ui/components/button'
 
-export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
+export const WorkspaceSearchPane = memo(function WorkspaceSearchPane({
+  active,
+  rootPath,
+}: {
+  active: boolean
+  rootPath: string
+}) {
+  useSearchBufferRuntime(rootPath, active)
+
   const {
     groups,
     query,
@@ -122,4 +131,4 @@ export function WorkspaceSearchPane({ rootPath }: { rootPath: string }) {
       />
     </section>
   )
-}
+})

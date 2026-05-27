@@ -1,8 +1,6 @@
-import type { WorkspacePanelTab } from '@/lib/workspace-cache'
 import { WorkspaceActivityButton } from '@/components/workspace/workspace-activity-button'
 import { WorkspaceActivityTab } from '@/components/workspace/workspace-activity-tab'
 import { ChatSidebarEntry } from '@/features/chat/components/chat-sidebar-entry'
-import { TabsList } from '@workspace/ui/components/tabs'
 import {
   FolderIcon,
   GitBranchIcon,
@@ -10,15 +8,12 @@ import {
   PulseIcon,
   TerminalWindowIcon,
 } from '@phosphor-icons/react'
+import { memo } from 'react'
 
-export function WorkspaceActivityBar({
-  currentVisible,
-  onSelectTab,
+export const WorkspaceActivityBar = memo(function WorkspaceActivityBar({
   onToggleTerminal,
   terminalCollapsed,
 }: {
-  currentVisible: boolean
-  onSelectTab: (tab: WorkspacePanelTab) => void
   onToggleTerminal: () => void
   terminalCollapsed: boolean
 }) {
@@ -27,39 +22,24 @@ export function WorkspaceActivityBar({
       aria-label='Workspace activity'
       className='border-border bg-background flex h-full w-10 flex-col items-stretch gap-1 border-r px-1 py-2'
     >
-      <TabsList
+      <div
+        role='group'
         aria-label='Workspace panels'
-        className='h-auto w-full flex-col items-stretch justify-start gap-1 border-0 bg-transparent p-0'
+        className='flex h-auto w-full flex-col items-stretch justify-start gap-1 border-0 bg-transparent p-0'
       >
         <WorkspaceActivityTab
           icon={<FolderIcon className='size-5' />}
           label='Files'
           value='files'
-          currentVisible={currentVisible}
-          onSelectTab={onSelectTab}
         />
         <WorkspaceActivityTab
           icon={<MagnifyingGlassIcon className='size-5' />}
           label='Search'
           value='search'
-          currentVisible={currentVisible}
-          onSelectTab={onSelectTab}
         />
-        <WorkspaceActivityTab
-          icon={<GitBranchIcon className='size-5' />}
-          label='Git'
-          value='git'
-          currentVisible={currentVisible}
-          onSelectTab={onSelectTab}
-        />
-        <WorkspaceActivityTab
-          icon={<PulseIcon className='size-5' />}
-          label='Logs'
-          value='logs'
-          currentVisible={currentVisible}
-          onSelectTab={onSelectTab}
-        />
-        <ChatSidebarEntry currentVisible={currentVisible} onSelectTab={onSelectTab} />
+        <WorkspaceActivityTab icon={<GitBranchIcon className='size-5' />} label='Git' value='git' />
+        <WorkspaceActivityTab icon={<PulseIcon className='size-5' />} label='Logs' value='logs' />
+        <ChatSidebarEntry />
         <WorkspaceActivityButton
           controls='workspace-terminal'
           expanded={!terminalCollapsed}
@@ -67,7 +47,7 @@ export function WorkspaceActivityBar({
           label='Terminal'
           onClick={onToggleTerminal}
         />
-      </TabsList>
+      </div>
     </nav>
   )
-}
+})
