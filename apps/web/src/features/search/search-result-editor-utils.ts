@@ -354,10 +354,9 @@ export function searchResultLineOpenLabel(line: SearchResultFileDocumentLine) {
   return `Open result at line ${line.sourceLine}, column ${match.column}`
 }
 
-export function searchResultLineActionClassName(active: boolean) {
+export function searchResultLineActionClassName() {
   return cn(
-    'pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100',
-    active && 'pointer-events-auto opacity-100',
+    'pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-data-[hovered=true]/search-result-line-action-row:pointer-events-auto group-data-[hovered=true]/search-result-line-action-row:opacity-100',
   )
 }
 

@@ -109,30 +109,46 @@ export function useSearchBuffer(rootPath: string) {
 }
 
 export function useSearchBufferRuntime(rootPath: string, enabled = true) {
-  const snapshot = useSearchBufferState((state) => (enabled ? state.active : null))
-  const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
-  const query = activeSnapshot?.query ?? ''
-  const searchRevision = activeSnapshot?.searchRevision ?? 0
-  const searchOptions = searchOptionsForSnapshot(activeSnapshot)
+  const caseSensitive = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.caseSensitive : false,
+  )
+  const excludeGlobText = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.excludeGlobText : '',
+  )
+  const filtersVisible = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.filtersVisible : false,
+  )
+  const includeGlobText = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.includeGlobText : '',
+  )
+  const matchMode = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.matchMode : 'literal',
+  )
+  const query = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.query : '',
+  )
+  const searchRevision = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.searchRevision : 0,
+  )
+  const wholeWord = useSearchBufferState((state) =>
+    enabled && state.active?.rootPath === rootPath ? state.active.wholeWord : false,
+  )
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS)
-  const debouncedIncludeGlobText = useDebouncedValue(
-    searchOptions.includeGlobText,
-    SEARCH_DEBOUNCE_MS,
-  )
-  const debouncedExcludeGlobText = useDebouncedValue(
-    searchOptions.excludeGlobText,
-    SEARCH_DEBOUNCE_MS,
-  )
+  const debouncedIncludeGlobText = useDebouncedValue(includeGlobText, SEARCH_DEBOUNCE_MS)
+  const debouncedExcludeGlobText = useDebouncedValue(excludeGlobText, SEARCH_DEBOUNCE_MS)
 
   usePrepareSearchBuffer(rootPath, enabled)
   useRunSearchBuffer(rootPath, enabled ? debouncedQuery : '', searchRevision, {
-    ...searchOptions,
+    caseSensitive,
     excludeGlobText: debouncedExcludeGlobText,
+    filtersVisible,
     includeGlobText: debouncedIncludeGlobText,
+    matchMode,
+    wholeWord,
   })
 }
 
-function usePrepareSearchBuffer(rootPath: string, enabled: boolean) {
+function usePrepareSearchBuffer(rootPath: string, enabled = true) {
   const store = useSearchBufferStoreApi()
 
   useEffect(() => {

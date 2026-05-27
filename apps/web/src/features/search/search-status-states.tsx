@@ -1,17 +1,17 @@
 import { CircleNotchIcon, MagnifyingGlassIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import type { SearchBufferSnapshot } from '@/features/search/search-buffer-state'
+import type { SearchBufferStatus } from '@/features/search/search-buffer-state'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function SearchPendingOrEmpty({
   className,
-  snapshot,
+  status,
 }: {
   className?: string
-  snapshot: SearchBufferSnapshot
+  status: SearchBufferStatus
 }) {
-  if (snapshot.status === 'loading') {
+  if (status === 'loading') {
     return (
       <SearchCenteredState className={className}>
         <CircleNotchIcon className='size-4 animate-spin' />

@@ -195,6 +195,31 @@ describe('search buffer store', () => {
     })
   })
 
+  it('keeps snapshot references stable for no-op text updates', () => {
+    const store = createSearchBufferStore()
+    store.getState().prepareBuffer('repo')
+    store.getState().setQuery('repo', 'needle')
+    const querySnapshot = store.getState().active
+
+    store.getState().setQuery('repo', 'needle')
+
+    expect(store.getState().active).toBe(querySnapshot)
+
+    store.getState().setReplaceText('repo', 'pin')
+    const replaceTextSnapshot = store.getState().active
+
+    store.getState().setReplaceText('repo', 'pin')
+
+    expect(store.getState().active).toBe(replaceTextSnapshot)
+
+    store.getState().setReplaceVisible('repo', true)
+    const replaceVisibleSnapshot = store.getState().active
+
+    store.getState().setReplaceVisible('repo', true)
+
+    expect(store.getState().active).toBe(replaceVisibleSnapshot)
+  })
+
   it('keeps previous results visible while search options change', () => {
     const store = createSearchBufferStore()
     const firstRunId = store.getState().startSearch({

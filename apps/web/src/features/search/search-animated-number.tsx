@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { AnimatedCounter } from 'react-animated-counter'
 
 const SEARCH_COUNTER_CONTAINER_STYLES = {
@@ -9,7 +10,7 @@ const SEARCH_COUNTER_DIGIT_STYLES = {
   fontVariantNumeric: 'tabular-nums',
 } as const
 
-export function SearchAnimatedNumber({
+export const SearchAnimatedNumber = memo(function SearchAnimatedNumber({
   fontSize = '11px',
   value,
 }: {
@@ -33,4 +34,4 @@ export function SearchAnimatedNumber({
       </span>
     </span>
   )
-}
+})

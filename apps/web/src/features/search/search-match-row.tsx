@@ -1,6 +1,6 @@
 import { ArrowSquareOutIcon, FileTextIcon } from '@phosphor-icons/react'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { memo } from 'react'
 
 import { searchMatchDisplay } from '@/features/search/search-match-display'
 import { HighlightedPreview } from '@/features/search/search-highlight'
@@ -8,10 +8,7 @@ import { workspaceSearchReplacementPreview } from '@/features/search/search-repl
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-const SEARCH_PREVIEW_CHARACTER_WIDTH = 7
-const SEARCH_PREVIEW_MIN_CHARACTERS = 8
-
-export function SearchMatchRow({
+export const SearchMatchRow = memo(function SearchMatchRow({
   active,
   className,
   canReplace,
@@ -38,11 +35,9 @@ export function SearchMatchRow({
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
-  const previewRef = useRef<HTMLSpanElement | null>(null)
   const location = searchMatchLocation(match)
-  const measuredPreviewMaxLength = useMeasuredPreviewMaxLength(previewRef, previewMaxLength)
   const display = searchMatchDisplay(match, query, {
-    maxLength: matchPreviewMaxLength(match, measuredPreviewMaxLength),
+    maxLength: matchPreviewMaxLength(match, previewMaxLength),
   })
   const replacementPreview =
     replaceVisible && replaceQuery
@@ -79,7 +74,6 @@ export function SearchMatchRow({
               'block min-w-0 flex-1 truncate font-mono text-[11px] leading-5',
               compact && 'leading-4',
             )}
-            ref={previewRef}
           >
             <HighlightedPreview
               preview={display.text}
@@ -127,9 +121,9 @@ export function SearchMatchRow({
       </div>
     </div>
   )
-}
+})
 
-export function SearchNameMatchRow({
+export const SearchNameMatchRow = memo(function SearchNameMatchRow({
   active,
   className,
   compact,
@@ -146,10 +140,8 @@ export function SearchNameMatchRow({
   query: string
   onOpenMatch: (match: WorkspaceSearchMatch) => void
 }) {
-  const previewRef = useRef<HTMLSpanElement | null>(null)
-  const measuredPreviewMaxLength = useMeasuredPreviewMaxLength(previewRef, previewMaxLength)
   const display = searchMatchDisplay(match, query, {
-    maxLength: measuredPreviewMaxLength,
+    maxLength: previewMaxLength,
   })
 
   return (
@@ -166,7 +158,7 @@ export function SearchNameMatchRow({
       onClick={() => onOpenMatch(match)}
     >
       <FileTextIcon className={cn('size-3.5 text-muted-foreground', compact && 'size-3')} />
-      <span className='block min-w-0 truncate text-xs' ref={previewRef}>
+      <span className='block min-w-0 truncate text-xs'>
         <HighlightedPreview preview={display.text} query={query} range={display.range} />
       </span>
       <span
@@ -179,7 +171,7 @@ export function SearchNameMatchRow({
       </span>
     </button>
   )
-}
+})
 
 function searchMatchLocation(match: WorkspaceSearchMatch) {
   if (match.kind === 'name') return 'name'
@@ -200,49 +192,4 @@ function matchPreviewMaxLength(match: WorkspaceSearchMatch, previewMaxLength: nu
   if (previewMaxLength === undefined) return undefined
 
   return Math.max(12, previewMaxLength - 8)
-}
-
-function useMeasuredPreviewMaxLength(
-  ref: RefObject<HTMLSpanElement | null>,
-  fallback: number | undefined,
-) {
-  const width = useElementWidth(ref)
-
-  return useMemo(() => measuredPreviewMaxLength(width, fallback), [fallback, width])
-}
-
-function useElementWidth<TElement extends HTMLElement>(ref: RefObject<TElement | null>) {
-  const [width, setWidth] = useState<number | null>(null)
-
-  useLayoutEffect(() => {
-    const element = ref.current
-    if (!element) return
-
-    function updateWidth() {
-      setWidth(element?.clientWidth ?? null)
-    }
-
-    updateWidth()
-
-    if (!('ResizeObserver' in window)) return
-
-    const observer = new ResizeObserver(updateWidth)
-    observer.observe(element)
-
-    return () => observer.disconnect()
-  }, [ref])
-
-  return width
-}
-
-function measuredPreviewMaxLength(width: number | null, fallback: number | undefined) {
-  if (width === null) return fallback
-
-  const measured = Math.max(
-    SEARCH_PREVIEW_MIN_CHARACTERS,
-    Math.floor(width / SEARCH_PREVIEW_CHARACTER_WIDTH),
-  )
-  if (fallback === undefined) return measured
-
-  return Math.min(fallback, measured)
 }

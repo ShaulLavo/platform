@@ -1,6 +1,7 @@
-import type { WorkspaceSearchMatch } from '@workspace/contracts'
+import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
+  memo,
   useLayoutEffect,
   useId,
   useMemo,
@@ -12,7 +13,7 @@ import {
 
 import { SearchFileGroupHeader } from '@/features/search/search-file-group'
 import type {
-  SearchBufferSnapshot,
+  SearchBufferStatus,
   WorkspaceSearchFileGroup,
 } from '@/features/search/search-buffer-state'
 import { useSearchBufferState } from '@/features/search/search-buffer-state'
@@ -26,6 +27,7 @@ import {
   searchResultItemById,
   searchResultItems,
   type SearchResultItem,
+  type SearchResultId,
 } from '@/features/search/search-result-items'
 import {
   SearchErrorState,
@@ -41,34 +43,39 @@ const SEARCH_RESULT_ROW_CHROME_WIDTH = 84
 const SEARCH_RESULT_REPLACE_WIDTH = 62
 
 export function SearchResultsView({
+  activeResultId,
   className,
   compact,
   groups,
   canReplace,
+  error,
   query,
   replaceText,
   replaceVisible,
-  snapshot,
+  resultsSearchQuery,
+  status,
   onOpenMatch,
   onReplaceGroup,
   onReplaceMatch,
 }: {
+  activeResultId: SearchResultId | null
   className?: string
   compact?: boolean
   groups: readonly WorkspaceSearchFileGroup[]
   canReplace?: boolean
+  error: string | null
   query: string
   replaceText: string
   replaceVisible?: boolean
-  snapshot: SearchBufferSnapshot | null
+  resultsSearchQuery: WorkspaceSearchQuery | null
+  status: SearchBufferStatus
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
   const treeId = useId()
   const parentRef = useRef<HTMLDivElement | null>(null)
-  const activeResultId = snapshot?.activeResultId ?? null
-  const displayedResultsQuery = snapshot?.resultsSearchQuery?.query ?? null
+  const displayedResultsQuery = resultsSearchQuery?.query ?? null
   const previousDisplayedResultsQueryRef = useRef<string | null>(null)
   const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
@@ -114,14 +121,14 @@ export function SearchResultsView({
     return () => window.cancelAnimationFrame(frame)
   }, [displayedResultsQuery, virtualizer])
 
-  if (!snapshot || snapshot.status === 'idle') {
+  if (status === 'idle') {
     return <SearchIdleState className={className} />
   }
-  if (snapshot.status === 'error' && groups.length === 0) {
-    return <SearchErrorState className={className} message={snapshot.error} />
+  if (status === 'error' && groups.length === 0) {
+    return <SearchErrorState className={className} message={error} />
   }
   if (groups.length === 0) {
-    return <SearchPendingOrEmpty className={className} snapshot={snapshot} />
+    return <SearchPendingOrEmpty className={className} status={status} />
   }
 
   return (
@@ -175,7 +182,7 @@ export function SearchResultsView({
                 compact={compact}
                 previewMaxLength={previewMaxLength}
                 query={query}
-                replaceQuery={snapshot.resultsSearchQuery}
+                replaceQuery={resultsSearchQuery}
                 replaceText={replaceText}
                 replaceVisible={replaceVisible}
                 onOpenMatch={onOpenMatch}
@@ -211,7 +218,7 @@ function scrollActiveSearchResultIntoView(
   virtualizerRef.current.scrollToIndex(currentActiveIndex, { align: 'auto' })
 }
 
-function SearchResultRow({
+const SearchResultRow = memo(function SearchResultRow({
   active,
   item,
   canReplace,
@@ -233,7 +240,7 @@ function SearchResultRow({
   compact?: boolean
   previewMaxLength?: number
   query: string
-  replaceQuery: SearchBufferSnapshot['resultsSearchQuery']
+  replaceQuery: WorkspaceSearchQuery | null
   replaceText: string
   replaceVisible?: boolean
   onOpenMatch: (match: WorkspaceSearchMatch) => void
@@ -294,7 +301,7 @@ function SearchResultRow({
       />
     </div>
   )
-}
+})
 
 function searchResultItemEstimate(
   item: SearchResultItem | undefined,

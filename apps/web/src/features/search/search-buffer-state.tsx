@@ -360,9 +360,11 @@ function optionSearchBuffer(
 
 function querySearchBuffer(current: SearchBufferSnapshot | null, rootPath: string, query: string) {
   const base = current?.rootPath === rootPath ? current : emptySearchBuffer(rootPath)
-  if (!query) return clearedSearchBuffer(base)
+  if (!query) return base.query ? clearedSearchBuffer(base) : base
 
   const queryChanged = base.query !== query
+  if (!queryChanged) return base
+
   return {
     ...base,
     error: null,
@@ -565,11 +567,23 @@ function replaceSearchBuffer(
 ) {
   if (!snapshot) return null
   if (snapshot.rootPath !== rootPath) return snapshot
+  if (!searchBufferPatchChanged(snapshot, patch)) return snapshot
 
   return {
     ...snapshot,
     ...patch,
   }
+}
+
+function searchBufferPatchChanged<TSnapshot extends SearchBufferSnapshot>(
+  snapshot: TSnapshot,
+  patch: Partial<TSnapshot>,
+) {
+  for (const key in patch) {
+    if (snapshot[key] !== patch[key]) return true
+  }
+
+  return false
 }
 
 function replaceTextSearchBuffer(

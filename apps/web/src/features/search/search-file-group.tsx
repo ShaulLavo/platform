@@ -1,4 +1,5 @@
 import { CaretRightIcon } from '@phosphor-icons/react'
+import { memo } from 'react'
 import type { CSSProperties } from 'react'
 
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
@@ -7,7 +8,7 @@ import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/fil
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export function SearchFileGroupHeader({
+export const SearchFileGroupHeader = memo(function SearchFileGroupHeader({
   active,
   className,
   canReplace,
@@ -84,7 +85,7 @@ export function SearchFileGroupHeader({
       ) : null}
     </div>
   )
-}
+})
 
 function SearchFileGroupTitle({
   compact,

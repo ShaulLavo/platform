@@ -13,10 +13,10 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  type RefObject,
 } from 'react'
 
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
@@ -213,7 +213,6 @@ const SearchResultFileEditor = memo(
       [active, keymapLayers],
     )
     const editorStyle = useMemo(() => searchResultFileEditorStyle(fileDocument), [fileDocument])
-    const [hoveredLineId, setHoveredLineId] = useState<SearchResultId | null>(null)
     const controller = useEditor({
       cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
       document,
@@ -229,6 +228,8 @@ const SearchResultFileEditor = memo(
       theme: editorTheme,
     })
     const pendingActivationFrameRef = useRef<number | null>(null)
+    const lineActionRowsRef = useRef(new Map<SearchResultId, HTMLDivElement>())
+    const hoveredLineActionRowRef = useRef<HTMLDivElement | null>(null)
 
     useEffect(() => {
       if (!active) return
@@ -242,6 +243,13 @@ const SearchResultFileEditor = memo(
         if (pendingActivationFrameRef.current === null) return
 
         window.cancelAnimationFrame(pendingActivationFrameRef.current)
+      },
+      [],
+    )
+
+    useEffect(
+      () => () => {
+        setHoveredLineActionRow(null)
       },
       [],
     )
@@ -271,11 +279,20 @@ const SearchResultFileEditor = memo(
         event.currentTarget,
         event.clientY,
       )
-      setHoveredLineId((current) => (current === lineId ? current : lineId))
+      setHoveredLineActionRow(lineId)
     }
 
     function handlePointerLeave() {
-      setHoveredLineId(null)
+      setHoveredLineActionRow(null)
+    }
+
+    function setHoveredLineActionRow(lineId: SearchResultId | null) {
+      const nextRow = lineId ? (lineActionRowsRef.current.get(lineId) ?? null) : null
+      if (hoveredLineActionRowRef.current === nextRow) return
+
+      hoveredLineActionRowRef.current?.removeAttribute('data-hovered')
+      hoveredLineActionRowRef.current = nextRow
+      nextRow?.setAttribute('data-hovered', 'true')
     }
 
     function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
@@ -331,10 +348,9 @@ const SearchResultFileEditor = memo(
           />
         </div>
         <SearchResultFileLineActions
-          activeResultId={activeResultId}
           canReplace={canReplace}
           document={fileDocument}
-          hoveredLineId={hoveredLineId}
+          lineActionRowsRef={lineActionRowsRef}
           replaceVisible={replaceVisible}
           onOpenLine={handleOpenLine}
           onReplaceLine={handleReplaceLine}
@@ -346,18 +362,16 @@ const SearchResultFileEditor = memo(
 SearchResultFileEditor.displayName = 'SearchResultFileEditor'
 
 function SearchResultFileLineActions({
-  activeResultId,
   canReplace,
   document,
-  hoveredLineId,
+  lineActionRowsRef,
   replaceVisible,
   onOpenLine,
   onReplaceLine,
 }: {
-  activeResultId: SearchResultId | null
   canReplace?: boolean
   document: SearchResultFileDocument
-  hoveredLineId: SearchResultId | null
+  lineActionRowsRef: RefObject<Map<SearchResultId, HTMLDivElement>>
   replaceVisible: boolean
   onOpenLine: (line: SearchResultFileDocumentLine) => void
   onReplaceLine: (line: SearchResultFileDocumentLine) => void
@@ -366,10 +380,10 @@ function SearchResultFileLineActions({
     <div className='grid shrink-0' style={searchResultLineActionsStyle(document.lines.length)}>
       {document.lines.map((line) => (
         <SearchResultFileLineActionRow
-          active={line.id === activeResultId || line.id === hoveredLineId}
           canReplace={canReplace}
           key={line.id}
           line={line}
+          lineActionRowsRef={lineActionRowsRef}
           replaceVisible={replaceVisible}
           onOpenLine={onOpenLine}
           onReplaceLine={onReplaceLine}
@@ -380,20 +394,35 @@ function SearchResultFileLineActions({
 }
 
 function SearchResultFileLineActionRow({
-  active,
   canReplace,
   line,
+  lineActionRowsRef,
   replaceVisible,
   onOpenLine,
   onReplaceLine,
 }: {
-  active: boolean
   canReplace?: boolean
   line: SearchResultFileDocumentLine
+  lineActionRowsRef: RefObject<Map<SearchResultId, HTMLDivElement>>
   replaceVisible: boolean
   onOpenLine: (line: SearchResultFileDocumentLine) => void
   onReplaceLine: (line: SearchResultFileDocumentLine) => void
 }) {
+  const rowRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const row = rowRef.current
+    if (!row) return
+
+    lineActionRowsRef.current.set(line.id, row)
+
+    return () => {
+      if (lineActionRowsRef.current.get(line.id) === row) {
+        lineActionRowsRef.current.delete(line.id)
+      }
+    }
+  }, [line.id, lineActionRowsRef])
+
   function handleOpenClick(event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
     onOpenLine(line)
@@ -405,10 +434,13 @@ function SearchResultFileLineActionRow({
   }
 
   return (
-    <div className='flex items-center justify-end gap-0.5'>
+    <div
+      className='group/search-result-line-action-row flex items-center justify-end gap-0.5'
+      ref={rowRef}
+    >
       <Button
         aria-label={searchResultLineOpenLabel(line)}
-        className={searchResultLineActionClassName(active)}
+        className={searchResultLineActionClassName()}
         size='icon-xs'
         title={searchResultLineOpenLabel(line)}
         type='button'
@@ -419,7 +451,7 @@ function SearchResultFileLineActionRow({
       </Button>
       {replaceVisible ? (
         <Button
-          className={cn('h-5 px-1.5 text-[10px]', searchResultLineActionClassName(active))}
+          className={cn('h-5 px-1.5 text-[10px]', searchResultLineActionClassName())}
           disabled={!canReplace}
           size='xs'
           title='Replace this match'

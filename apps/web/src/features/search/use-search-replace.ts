@@ -18,9 +18,13 @@ import { setFileContentQueryData } from '@/lib/file-query-cache'
 import { fetchFile, writeFileContent } from '@/lib/file-server'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
-export function useWorkspaceSearchReplace(rootPath: string) {
-  const snapshot = useSearchBufferState((state) => state.active)
-  const activeSnapshot = snapshot?.rootPath === rootPath ? snapshot : null
+export function useWorkspaceSearchReplace(rootPath: string, enabled = true) {
+  const canReplaceValue = useSearchBufferState((state) => {
+    if (!enabled) return false
+    if (state.active?.rootPath !== rootPath) return false
+
+    return canReplace(state.active)
+  })
   const store = useSearchBufferStoreApi()
   const documentStore = useEditorDocumentStoreApi()
   const queryClient = useQueryClient()
@@ -45,10 +49,12 @@ export function useWorkspaceSearchReplace(rootPath: string) {
     },
     [documentStore, queryClient, rootPath, store],
   )
-  const replaceAll = useCallback(
-    () => replaceMatches(activeSnapshot?.matches ?? []),
-    [activeSnapshot?.matches, replaceMatches],
-  )
+  const replaceAll = useCallback(() => {
+    const snapshot = store.getState().active
+    if (snapshot?.rootPath !== rootPath) return
+
+    replaceMatches(snapshot.matches)
+  }, [replaceMatches, rootPath, store])
   const replaceGroup = useCallback(
     (group: WorkspaceSearchFileGroup) => replaceMatches(group.matches),
     [replaceMatches],
@@ -58,12 +64,15 @@ export function useWorkspaceSearchReplace(rootPath: string) {
     [replaceMatches],
   )
   const replaceNext = useCallback(() => {
-    const match = firstContentMatch(activeSnapshot?.matches ?? [])
+    const snapshot = store.getState().active
+    if (snapshot?.rootPath !== rootPath) return
+
+    const match = firstContentMatch(snapshot.matches)
     if (match) replaceMatches([match])
-  }, [activeSnapshot?.matches, replaceMatches])
+  }, [replaceMatches, rootPath, store])
 
   return {
-    canReplace: canReplace(activeSnapshot),
+    canReplace: canReplaceValue,
     replaceAll,
     replaceGroup,
     replaceMatch,
