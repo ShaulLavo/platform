@@ -10,25 +10,18 @@ import {
   createOptimisticMessagesForThreadSelector,
   useChatOptimisticStore,
 } from '../state/chat-optimistic-store'
-import {
-  useChatProjectionStore,
-  type ChatSidebarThreadSummary,
-} from '../state/chat-projection-store'
+import { useChatProjectionStore } from '../state/chat-projection-store'
 import { retainThreadDetailSubscription } from '../state/thread-detail-subscriptions'
-import { ChatComposer } from './chat-composer'
+import { ChatInput } from './chat-input'
 import { MessagesTimeline } from './messages-timeline'
 
 export function ChatView({
   activeThreadId,
   environment,
-  onSelectThread,
-  pastThreads,
   rootPath,
 }: {
   activeThreadId: ThreadId | null
   environment: ChatEnvironment
-  onSelectThread: (threadId: ThreadId) => void
-  pastThreads: readonly ChatSidebarThreadSummary[]
   rootPath: string
 }) {
   const threadSelector = useMemo(() => createChatThreadSelector(activeThreadId), [activeThreadId])
@@ -127,14 +120,8 @@ export function ChatView({
 
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
-      <MessagesTimeline
-        activeThreadId={activeThreadId}
-        optimisticMessages={optimisticMessages}
-        pastThreads={pastThreads}
-        thread={thread}
-        onSelectThread={onSelectThread}
-      />
-      <ChatComposer
+      <MessagesTimeline optimisticMessages={optimisticMessages} thread={thread} />
+      <ChatInput
         busy={busy}
         disabled={stopping}
         draftKey={thread.id}

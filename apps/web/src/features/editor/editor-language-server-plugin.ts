@@ -1,7 +1,9 @@
 import type {
+  LanguageServerDiagnosticSummary,
   LanguageServerDefinitionTarget,
   LanguageServerPlugin,
   LanguageServerReferencesResult,
+  LanguageServerStatus,
 } from '@editor/language-server'
 import { createLanguageServerPlugin } from '@editor/language-server/websocket'
 
@@ -35,14 +37,17 @@ export function createMatchedLanguageServerPlugin({
 }: MatchedLanguageServerPluginOptions): LanguageServerPlugin {
   if (!enabled || !match) return createIdleLanguageServerPlugin(statusSource)
 
+  const readiness = createLanguageServerReadiness(statusSource)
+
   return createLanguageServerPlugin({
     rootUri: fileUriForPath(rootPath),
     webSocketRoute: languageServerRoute(rootPath, filePath, match.serverId),
     webSocketTransportOptions: {
       WebSocketCtor: EdenLanguageServerWebSocket,
     },
-    onStatusChange: statusSource.setStatus,
-    onDiagnostics: statusSource.setDiagnostics,
+    onStatusChange: readiness.setStatus,
+    onDiagnostics: readiness.setDiagnostics,
+    onInteractiveReady: readiness.setInteractiveReady,
     onOpenDefinition,
     onOpenReferences,
     onError: () => statusSource.setStatus('error'),
@@ -57,6 +62,47 @@ function createIdleLanguageServerPlugin(
     activate: () => {
       statusSource.reset()
       return []
+    },
+  }
+}
+
+function createLanguageServerReadiness(statusSource: EditorLanguageServerStatusSource) {
+  let connected = false
+  let usable = false
+
+  return {
+    setStatus: (status: LanguageServerStatus) => {
+      if (status === 'idle') {
+        connected = false
+        usable = false
+        statusSource.reset()
+        return
+      }
+      if (status === 'loading') {
+        connected = false
+        usable = false
+        statusSource.setSnapshot({ diagnostics: null, status: 'loading' })
+        return
+      }
+      if (status === 'ready') {
+        connected = true
+        statusSource.setStatus(usable ? 'ready' : 'loading')
+        return
+      }
+
+      connected = false
+      statusSource.setStatus(status)
+    },
+    setDiagnostics: (diagnostics: LanguageServerDiagnosticSummary) => {
+      usable = true
+      statusSource.setSnapshot({
+        diagnostics,
+        status: connected ? 'ready' : statusSource.getSnapshot().status,
+      })
+    },
+    setInteractiveReady: () => {
+      usable = true
+      if (connected) statusSource.setStatus('ready')
     },
   }
 }

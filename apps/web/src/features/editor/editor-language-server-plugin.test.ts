@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/language-server'
 
-import type { EditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
+import type {
+  EditorLanguageServerStatusSnapshot,
+  EditorLanguageServerStatusSource,
+} from '@/features/editor/state/editor-language-server-status-source'
 
 type MockLanguageServerPluginOptions = {
+  readonly onDiagnostics?: (summary: LanguageServerDiagnosticSummary) => void
+  readonly onInteractiveReady?: () => void
+  readonly onStatusChange?: (status: LanguageServerStatus) => void
   readonly rootUri?: string | null
   readonly webSocketRoute: string | URL
 }
@@ -73,6 +80,48 @@ describe('createMatchedLanguageServerPlugin', () => {
     expect(route.searchParams.get('path')).toBe('/repo/src/a.ts')
     expect(route.searchParams.get('server')).toBe('typescript')
   })
+
+  it('keeps status loading until the document is usable', () => {
+    const source = statusSource()
+    createMatchedLanguageServerPlugin({
+      enabled: true,
+      filePath: '/repo/src/a.ts',
+      match: { root: '/repo', serverId: 'typescript' },
+      rootPath: '/repo',
+      statusSource: source,
+    })
+
+    const options = createdLanguageServerPlugins[0]
+    options.onStatusChange?.('loading')
+    options.onStatusChange?.('ready')
+
+    expect(source.snapshot.status).toBe('loading')
+
+    options.onInteractiveReady?.()
+
+    expect(source.snapshot.status).toBe('ready')
+  })
+
+  it('also marks ready when diagnostics arrive first', () => {
+    const source = statusSource()
+    createMatchedLanguageServerPlugin({
+      enabled: true,
+      filePath: '/repo/src/a.ts',
+      match: { root: '/repo', serverId: 'typescript' },
+      rootPath: '/repo',
+      statusSource: source,
+    })
+
+    const options = createdLanguageServerPlugins[0]
+    options.onStatusChange?.('loading')
+    options.onStatusChange?.('ready')
+
+    expect(source.snapshot.status).toBe('loading')
+
+    options.onDiagnostics?.(diagnosticSummary('/repo/src/a.ts'))
+
+    expect(source.snapshot.status).toBe('ready')
+  })
 })
 
 describe('languageServerMatch', () => {
@@ -92,21 +141,48 @@ describe('languageServerMatch', () => {
 
 type TestStatusSource = EditorLanguageServerStatusSource & {
   readonly resetCount: number
+  readonly snapshot: EditorLanguageServerStatusSnapshot
 }
 
 function statusSource(): TestStatusSource {
   let resetCount = 0
+  let snapshot: EditorLanguageServerStatusSnapshot = { diagnostics: null, status: 'idle' }
   return {
-    getSnapshot: () => ({ diagnostics: null, status: 'idle' }),
+    get snapshot() {
+      return snapshot
+    },
+    getSnapshot: () => snapshot,
     get resetCount() {
       return resetCount
     },
     reset: () => {
       resetCount += 1
+      snapshot = { diagnostics: null, status: 'idle' }
     },
-    setDiagnostics: () => undefined,
-    setSnapshot: () => undefined,
-    setStatus: () => undefined,
+    setDiagnostics: (diagnostics) => {
+      snapshot = { ...snapshot, diagnostics }
+    },
+    setSnapshot: (next) => {
+      snapshot = next
+    },
+    setStatus: (status) => {
+      snapshot = { ...snapshot, status }
+    },
     subscribe: () => () => undefined,
+  }
+}
+
+function diagnosticSummary(uri: string): LanguageServerDiagnosticSummary {
+  return {
+    counts: {
+      error: 0,
+      hint: 0,
+      information: 0,
+      total: 0,
+      warning: 0,
+    },
+    diagnostics: [],
+    uri,
+    version: 1,
   }
 }

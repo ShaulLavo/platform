@@ -27,10 +27,6 @@ export const ChatSidePanel = memo(function ChatSidePanel({ rootPath }: { rootPat
   )
   const threadIds = useMemo(() => threads.map((thread) => thread.id), [threads])
   const { activeThreadId, selectDraftThread, setActiveThreadId } = useActiveChatThreadId(threadIds)
-  const pastThreads = useMemo(
-    () => threads.filter((thread) => thread.id !== activeThreadId),
-    [activeThreadId, threads],
-  )
   const disabled = !projectState.project || projectState.status !== 'ready'
 
   useEffect(() => {
@@ -42,7 +38,7 @@ export const ChatSidePanel = memo(function ChatSidePanel({ rootPath }: { rootPat
   }, [selectDraftThread])
 
   return (
-    <div className='bg-background flex h-full min-h-0 flex-col'>
+    <div className='from-muted/35 via-background to-background flex h-full min-h-0 flex-col bg-linear-to-b'>
       <ChatPanelHeader
         activeThreadId={activeThreadId}
         creating={false}
@@ -52,21 +48,13 @@ export const ChatSidePanel = memo(function ChatSidePanel({ rootPath }: { rootPat
         onSelectThread={setActiveThreadId}
       />
       {activeThreadId ? (
-        <ChatView
-          activeThreadId={activeThreadId}
-          environment={environment}
-          pastThreads={pastThreads}
-          rootPath={rootPath}
-          onSelectThread={setActiveThreadId}
-        />
+        <ChatView activeThreadId={activeThreadId} environment={environment} rootPath={rootPath} />
       ) : (
         <ChatDraftView
           disabled={disabled}
           environment={environment}
-          pastThreads={pastThreads}
           project={projectState.project}
           rootPath={rootPath}
-          onSelectThread={setActiveThreadId}
           onThreadCreated={setActiveThreadId}
         />
       )}

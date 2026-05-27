@@ -1,4 +1,4 @@
-const CHAT_DRAFT_KEY_PREFIX = 'platform.chat-draft.v1'
+const CHAT_DRAFT_KEY_PREFIX = 'platform.chat-input-draft.v1'
 
 export function readChatDraft(rootPath: string, draftKey: string | null) {
   if (!draftKey) return ''

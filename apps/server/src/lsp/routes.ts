@@ -36,14 +36,19 @@ export async function lspRouteMatch(
 }
 
 export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
-  const sessions = new WeakMap<object, LspProxySession>()
+  const sessions = new WeakMap<object, PendingLspSession>()
 
   return {
     async open(ws: unknown) {
       const socket = websocketObject(ws)
       if (!socket) return
+
+      const pending = createPendingLspSession()
+      sessions.set(socket.key, pending)
+
       const authError = authenticateWebSocketData(socket.data, auth)
       if (authError) {
+        rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {
           area: 'lsp',
           errorCode: authError.code,
@@ -57,6 +62,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
 
       const match = await resolveLspRouteMatch(fs.paths, socket)
       if (!match) {
+        rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {
           area: 'lsp',
           operation: 'open',
@@ -70,6 +76,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
 
       const session = await LspProxySession.create(socket, match, fs.paths.toRelative(match.root))
       if (!session) {
+        rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {
           area: 'lsp',
           operation: 'open',
@@ -81,7 +88,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
         return
       }
 
-      sessions.set(socket.key, session)
+      attachPendingLspSession(pending, session)
     },
     message(ws: unknown, message: unknown) {
       const socket = websocketObject(ws)
@@ -92,7 +99,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
       const encoded = lspMessage(message)
       if (!encoded) return
 
-      session.handleClientMessage(encoded)
+      queueLspClientMessage(session, encoded)
     },
     close(ws: unknown) {
       const socket = websocketObject(ws)
@@ -102,6 +109,78 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
       sessions.delete(socket.key)
     },
   }
+}
+
+type LspClientMessage = string | ArrayBuffer | Uint8Array
+
+type PendingLspSession = {
+  readonly messages: LspClientMessage[]
+  closed: boolean
+  flushing: boolean
+  session: LspProxySession | null
+  dispose(): void
+}
+
+function createPendingLspSession(): PendingLspSession {
+  const pending: PendingLspSession = {
+    messages: [],
+    closed: false,
+    flushing: false,
+    session: null,
+    dispose: () => {
+      pending.closed = true
+      pending.messages.length = 0
+      pending.session?.dispose()
+      pending.session = null
+    },
+  }
+
+  return pending
+}
+
+function rejectPendingLspSession(
+  sessions: WeakMap<object, PendingLspSession>,
+  socket: LspWebSocket,
+  pending: PendingLspSession,
+) {
+  pending.dispose()
+  sessions.delete(socket.key)
+}
+
+function attachPendingLspSession(pending: PendingLspSession, session: LspProxySession) {
+  if (pending.closed) {
+    session.dispose()
+    return
+  }
+
+  pending.session = session
+  flushPendingLspSession(pending)
+}
+
+function queueLspClientMessage(pending: PendingLspSession, message: LspClientMessage) {
+  if (pending.closed) return
+
+  pending.messages.push(message)
+  flushPendingLspSession(pending)
+}
+
+function flushPendingLspSession(pending: PendingLspSession) {
+  if (pending.flushing) return
+  if (pending.closed) return
+  if (!pending.session) return
+
+  pending.flushing = true
+  void flushPendingLspMessages(pending)
+}
+
+async function flushPendingLspMessages(pending: PendingLspSession) {
+  while (!pending.closed && pending.session && pending.messages.length > 0) {
+    const message = pending.messages.shift()
+    if (message) await pending.session.handleClientMessage(message)
+  }
+
+  pending.flushing = false
+  if (pending.messages.length > 0) flushPendingLspSession(pending)
 }
 
 async function resolveLspRouteMatch(paths: WorkspacePaths, input: LspRouteMatchInput) {

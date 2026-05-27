@@ -1,9 +1,15 @@
 import type { OrchestrationMessage } from '@workspace/contracts'
-import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
+import { cjk } from '@streamdown/cjk'
+import { code } from '@streamdown/code'
+import { math } from '@streamdown/math'
+import { mermaid } from '@streamdown/mermaid'
 import { cn } from '@workspace/ui/lib/utils'
+import { Streamdown } from 'streamdown'
 
 import { formatChatTimestamp } from '../lib/chat-formatters'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
+
+const streamdownPlugins = { cjk, code, math, mermaid }
 
 export function MessageBubble({
   message,
@@ -14,32 +20,40 @@ export function MessageBubble({
   const optimistic = 'optimistic' in message
 
   return (
-    <Message
-      className={cn('max-w-full px-0', optimistic && 'opacity-70')}
-      from={user ? 'user' : 'assistant'}
+    <div
+      className={cn(
+        'flex w-full min-w-0',
+        user ? 'justify-end' : 'justify-start',
+        optimistic && 'opacity-70',
+      )}
     >
-      <MessageContent
+      <article
         className={cn(
-          'max-w-[88%] rounded-md border px-3 py-2 text-sm leading-5',
+          'min-w-0 max-w-[88%] rounded-md border px-3 py-2 text-sm leading-5 shadow-sm',
           user
-            ? 'border-primary/15 bg-primary text-primary-foreground group-[.is-user]:rounded-md group-[.is-user]:bg-primary group-[.is-user]:px-3 group-[.is-user]:py-2 group-[.is-user]:text-primary-foreground'
-            : 'border-border bg-muted/35 text-foreground',
+            ? 'border-blue-500/30 bg-blue-600 text-white'
+            : 'border-border/70 bg-background/75 text-foreground',
         )}
       >
         {user ? (
           <div className='break-words whitespace-pre-wrap'>{message.text}</div>
         ) : (
-          <MessageResponse>{message.text}</MessageResponse>
+          <Streamdown
+            className='min-w-0 break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'
+            plugins={streamdownPlugins}
+          >
+            {message.text}
+          </Streamdown>
         )}
         <div
           className={cn(
             'mt-1 text-[10px] tabular-nums',
-            user ? 'text-primary-foreground/70' : 'text-muted-foreground',
+            user ? 'text-white/70' : 'text-muted-foreground',
           )}
         >
           {optimistic ? 'Sending' : formatChatTimestamp(message.updatedAt)}
         </div>
-      </MessageContent>
-    </Message>
+      </article>
+    </div>
   )
 }

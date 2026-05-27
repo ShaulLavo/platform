@@ -14,8 +14,7 @@ import {
 } from '../lib/chat-command-builders'
 import { formatChatModelLabel } from '../lib/chat-formatters'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
-import type { ChatSidebarThreadSummary } from '../state/chat-projection-store'
-import { ChatComposer } from './chat-composer'
+import { ChatInput } from './chat-input'
 import { ChatWelcomeView } from './chat-welcome-view'
 
 const DRAFT_CHAT_KEY = 'draft'
@@ -23,17 +22,13 @@ const DRAFT_CHAT_KEY = 'draft'
 export function ChatDraftView({
   disabled,
   environment,
-  onSelectThread,
   onThreadCreated,
-  pastThreads,
   project,
   rootPath,
 }: {
   disabled: boolean
   environment: ChatEnvironment
-  onSelectThread: (threadId: ThreadId) => void
   onThreadCreated: (threadId: ThreadId) => void
-  pastThreads: readonly ChatSidebarThreadSummary[]
   project: OrchestrationProjectShell | null
   rootPath: string
 }) {
@@ -72,12 +67,8 @@ export function ChatDraftView({
 
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
-      <ChatWelcomeView
-        activeThreadId={null}
-        pastThreads={pastThreads}
-        onSelectThread={onSelectThread}
-      />
-      <ChatComposer
+      <ChatWelcomeView />
+      <ChatInput
         busy={false}
         disabled={disabled || !project}
         draftKey={DRAFT_CHAT_KEY}
@@ -133,7 +124,7 @@ async function cleanupCreatedThread(
       }),
     )
   } catch {
-    // Best-effort cleanup; preserve the original send error for the composer.
+    // Best-effort cleanup; preserve the original send error for the input.
   }
 }
 

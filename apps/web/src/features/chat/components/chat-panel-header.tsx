@@ -1,5 +1,6 @@
 import type { ThreadId } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
+import { cn } from '@workspace/ui/lib/utils'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,12 +28,20 @@ export function ChatPanelHeader({
   threads: readonly ChatSidebarThreadSummary[]
 }) {
   const historyDisabled = threads.length === 0
+  const activeThread = threads.find((thread) => thread.id === activeThreadId)
 
   return (
-    <header className='border-border/80 flex h-12 shrink-0 items-center justify-end border-b px-3'>
+    <header className='border-border/70 bg-background/80 flex h-12 shrink-0 items-center justify-between border-b px-3 backdrop-blur'>
+      <div className='min-w-0 pr-3'>
+        <div className='truncate text-sm font-semibold'>Chat</div>
+        {activeThread ? (
+          <div className='text-muted-foreground truncate text-[11px]'>{activeThread.title}</div>
+        ) : null}
+      </div>
       <div className='flex items-center gap-1'>
         <Button
           aria-label='New chat'
+          className='rounded-md'
           disabled={disabled || creating}
           size='icon-sm'
           title='New chat'
@@ -53,6 +62,7 @@ export function ChatPanelHeader({
             render={
               <Button
                 aria-label='Conversation history'
+                className='rounded-md'
                 disabled={historyDisabled}
                 size='icon-sm'
                 title='Conversation history'
@@ -66,7 +76,10 @@ export function ChatPanelHeader({
           <DropdownMenuContent align='end' className='bg-popover/98 w-72 rounded-md p-1'>
             {threads.map((thread) => (
               <DropdownMenuItem
-                className='grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-sm px-2.5 py-2.5'
+                className={cn(
+                  'grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-md px-2.5 py-2.5',
+                  thread.id === activeThreadId && 'bg-muted/70',
+                )}
                 key={thread.id}
                 onClick={() => onSelectThread(thread.id)}
               >
