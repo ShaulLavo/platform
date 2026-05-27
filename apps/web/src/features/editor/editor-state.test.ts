@@ -688,6 +688,39 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().selectedFilePath).toBe('src/a.ts')
   })
 
+  it('keeps open path references stable when selecting an existing tab', () => {
+    const { commands, workspaceStore } = setupStores(
+      workspaceState(['src/a.ts', 'src/b.ts'], 'src/a.ts'),
+    )
+    const openFilePaths = workspaceStore.getState().openFilePaths
+
+    commands.selectTab(activePaneId(workspaceStore), tabIdForPath(workspaceStore, 'src/b.ts'))
+
+    expect(workspaceStore.getState().selectedFilePath).toBe('src/b.ts')
+    expect(workspaceStore.getState().openFilePaths).toBe(openFilePaths)
+  })
+
+  it('does not update stores when selecting the active tab', () => {
+    const { commands, documentStore, workspaceStore } = setupStores(
+      workspaceState(['src/a.ts', 'src/b.ts'], 'src/a.ts'),
+    )
+    let documentUpdates = 0
+    let workspaceUpdates = 0
+    const unsubscribeDocument = documentStore.subscribe(() => {
+      documentUpdates += 1
+    })
+    const unsubscribeWorkspace = workspaceStore.subscribe(() => {
+      workspaceUpdates += 1
+    })
+
+    commands.selectTab(activePaneId(workspaceStore), tabIdForPath(workspaceStore, 'src/a.ts'))
+    unsubscribeDocument()
+    unsubscribeWorkspace()
+
+    expect(documentUpdates).toBe(0)
+    expect(workspaceUpdates).toBe(0)
+  })
+
   it('reorders tabs without touching editor selection metadata', () => {
     const { commands, documentStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts', 'src/b.ts', 'src/c.ts'], 'src/b.ts'),

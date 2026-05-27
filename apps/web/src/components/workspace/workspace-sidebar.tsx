@@ -75,7 +75,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
         inert={activeTab !== 'search'}
         role='tabpanel'
       >
-        <WorkspaceSearchPane active={activeTab === 'search'} rootPath={rootPath} />
+        <WorkspaceSearchPane rootPath={rootPath} />
       </div>
       <div
         id={workspaceSidebarPanelId('git')}

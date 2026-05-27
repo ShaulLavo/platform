@@ -17,7 +17,7 @@ import {
   saveAllEditorDocuments,
   saveSelectedEditorDocument,
 } from '@/features/editor/editor-save'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
@@ -67,19 +67,8 @@ export function usePlatformCommandDispatch({
 } = {}): PlatformCommandDispatch {
   const documentStore = useEditorDocumentStoreApi()
   const queryClient = useQueryClient()
-  const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
-  const gitPanelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
-  const openPicker = useEditorWorkspaceState((state) => state.openPicker)
-  const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
-  const activeTabId = useEditorWorkspaceState(
-    (state) => activeEditorPaneTab(state.editorPaneLayout)?.id ?? null,
-  )
-  const sidebarVisible = useEditorWorkspaceState((state) => state.sidebarVisible)
+  const workspaceStore = useEditorWorkspaceStoreApi()
   const { setTheme } = useTheme()
-  const setDiffViewMode = useEditorWorkspaceState((state) => state.setDiffViewMode)
-  const setGitPanelOpen = useEditorWorkspaceState((state) => state.setGitPanelOpen)
-  const setSidebarVisible = useEditorWorkspaceState((state) => state.setSidebarVisible)
-  const setWorkspacePanelTab = useEditorWorkspaceState((state) => state.setWorkspacePanelTab)
   const requestEditorFocus = useWorkspaceFocus((state) => state.requestEditorFocus)
   const dispatchEditorCommand = useWorkspaceFocus((state) => state.dispatchEditorCommand)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
@@ -100,51 +89,43 @@ export function usePlatformCommandDispatch({
       const workspaceCommand = workspaceCommandIdFromPlatform(command)
       if (!workspaceCommand) return false
 
+      const workspace = workspaceStore.getState()
       return dispatchWorkspaceCommand(workspaceCommand, {
-        activeTabId,
-        diffViewMode,
+        activeTabId: activeEditorPaneTab(workspace.editorPaneLayout)?.id ?? null,
+        diffViewMode: workspace.diffViewMode,
         documentStore,
-        gitPanelOpen,
-        openPicker,
+        gitPanelOpen: workspace.gitPanelOpen,
+        openPicker: workspace.openPicker,
         queryClient,
         reopenClosedEditor,
         requestCloseTab: resolvedRequestCloseTab,
         requestEditorFocus,
-        selectedFilePath,
-        setDiffViewMode,
+        selectedFilePath: workspace.selectedFilePath,
+        setDiffViewMode: workspace.setDiffViewMode,
         setFocusArea,
-        setGitPanelOpen,
-        setSidebarVisible,
+        setGitPanelOpen: workspace.setGitPanelOpen,
+        setSidebarVisible: workspace.setSidebarVisible,
         setTheme,
-        setWorkspacePanelTab,
+        setWorkspacePanelTab: workspace.setWorkspacePanelTab,
         showCommandPalette,
-        sidebarVisible,
+        sidebarVisible: workspace.sidebarVisible,
         selectPreviousEditor,
         splitTab,
       })
     },
     [
-      activeTabId,
-      diffViewMode,
       documentStore,
       dispatchEditorCommand,
-      gitPanelOpen,
-      openPicker,
       queryClient,
       reopenClosedEditor,
       resolvedRequestCloseTab,
       requestEditorFocus,
-      selectedFilePath,
-      setDiffViewMode,
       setFocusArea,
-      setGitPanelOpen,
-      setSidebarVisible,
       setTheme,
-      setWorkspacePanelTab,
       showCommandPalette,
-      sidebarVisible,
       selectPreviousEditor,
       splitTab,
+      workspaceStore,
     ],
   )
 }

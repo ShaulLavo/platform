@@ -984,6 +984,27 @@ describe('search buffer store', () => {
     expect(groupByPath(nextGroups, 'repo/src/b.ts')?.matches[0]).toBe(secondGroupFirstMatch)
   })
 
+  it('keeps streamed result groups stable when the search finishes', () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch(searchQuery('needle'))
+
+    store.getState().appendEvent(runId, {
+      match: contentMatch('repo/src/app.ts', 1, 1),
+      type: 'match',
+    })
+    const streamingGroups = searchGroupsForSnapshot(store.getState().active)
+    const streamingMatches = store.getState().active?.matches
+
+    store.getState().appendEvent(runId, doneEvent('needle', 1))
+
+    expect(searchGroupsForSnapshot(store.getState().active)).toBe(streamingGroups)
+    expect(store.getState().active?.matches).toBe(streamingMatches)
+    expect(store.getState().active).toMatchObject({
+      status: 'ready',
+      totalCount: 1,
+    })
+  })
+
   it('returns stored group references instead of rebuilding derived groups', () => {
     const store = createSearchBufferStore()
     const runId = store.getState().startSearch(searchQuery('needle'))

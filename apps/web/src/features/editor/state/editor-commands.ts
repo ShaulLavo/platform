@@ -33,6 +33,7 @@ import { useEditorUiStoreApi, type EditorUiStoreApi } from '@/features/editor/st
 import {
   editorWorkspaceSelectionForPaneLayout,
   useEditorWorkspaceStoreApi,
+  type EditorWorkspaceStore,
   type EditorWorkspaceStoreApi,
 } from '@/features/editor/state/editor-workspace-state'
 import type { PickedFsEntry } from '@/lib/file-system-types'
@@ -119,6 +120,9 @@ function selectFile(
 
   const workspace = workspaceStore.getState()
   const document = documentStore.getState()
+  const editorPaneLayout = openEditorPathInActivePane(workspace.editorPaneLayout, selectedFilePath)
+  if (editorPaneLayout === workspace.editorPaneLayout) return
+
   documentStore.setState({
     fallbackDocumentPath: fallbackDocumentPathForSelection(
       document.hasCachedEditorDocument,
@@ -126,10 +130,8 @@ function selectFile(
       document.fallbackDocumentPath,
     ),
   })
-
-  const editorPaneLayout = openEditorPathInActivePane(workspace.editorPaneLayout, selectedFilePath)
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayout(editorPaneLayout),
+    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
   })
 }
@@ -192,7 +194,7 @@ function closeTab(
   updateUiForClosedPath(path, selectedFilePath, remainingCount, uiStore)
   updateFallbackForClosedPath(path, selectedFilePath, documentStore)
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayout(nextLayout),
+    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, nextLayout),
     editorHistory:
       remainingCount === 0
         ? editorHistoryForClosedPath(workspace.editorHistory, path)
@@ -222,7 +224,7 @@ function discardCachedEditorDocument(
   updateUiForClosedPath(path, selectedFilePath, 0, uiStore)
   updateFallbackForClosedPath(path, selectedFilePath, documentStore)
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayout(nextLayout),
+    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, nextLayout),
     editorHistory: editorHistoryForClosedPath(workspace.editorHistory, path),
   })
 
@@ -276,7 +278,7 @@ function renameCachedEditorDocument(
   })
   const editorPaneLayout = renameEditorPanePath(workspace.editorPaneLayout, from, to)
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayout(editorPaneLayout),
+    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
     editorHistory: editorHistoryForRenamedPath(workspace.editorHistory, from, to),
     recentlyClosedEditorPaths: editorHistoryForRenamedPath(
       workspace.recentlyClosedEditorPaths,
@@ -305,7 +307,9 @@ function reorderTab(
   )
   if (editorPaneLayout === workspace.editorPaneLayout) return false
 
-  workspaceStore.setState(editorWorkspaceSelectionForPaneLayout(editorPaneLayout))
+  workspaceStore.setState(
+    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+  )
   return true
 }
 
@@ -317,6 +321,8 @@ function selectTab(
 ) {
   const workspace = workspaceStore.getState()
   const editorPaneLayout = selectEditorPaneTab(workspace.editorPaneLayout, paneId, tabId)
+  if (editorPaneLayout === workspace.editorPaneLayout) return
+
   const selectedFilePath = activeEditorPanePath(editorPaneLayout)
   const document = documentStore.getState()
 
@@ -328,7 +334,7 @@ function selectTab(
     ),
   })
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayout(editorPaneLayout),
+    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
   })
 }
@@ -338,7 +344,9 @@ function setActivePane(paneId: string, workspaceStore: EditorWorkspaceStoreApi) 
   const editorPaneLayout = setActiveEditorPane(workspace.editorPaneLayout, paneId)
   if (editorPaneLayout === workspace.editorPaneLayout) return
 
-  workspaceStore.setState(editorWorkspaceSelectionForPaneLayout(editorPaneLayout))
+  workspaceStore.setState(
+    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+  )
 }
 
 function splitTab(
@@ -350,7 +358,9 @@ function splitTab(
   const editorPaneLayout = splitEditorPaneTab(workspace.editorPaneLayout, tabId, direction)
   if (editorPaneLayout === workspace.editorPaneLayout) return false
 
-  workspaceStore.setState(editorWorkspaceSelectionForPaneLayout(editorPaneLayout))
+  workspaceStore.setState(
+    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+  )
   return true
 }
 
@@ -369,7 +379,9 @@ function moveTabToPane(
   )
   if (editorPaneLayout === workspace.editorPaneLayout) return false
 
-  workspaceStore.setState(editorWorkspaceSelectionForPaneLayout(editorPaneLayout))
+  workspaceStore.setState(
+    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+  )
   return true
 }
 
@@ -389,8 +401,19 @@ function moveTabToSplit(
   })
   if (editorPaneLayout === workspace.editorPaneLayout) return false
 
-  workspaceStore.setState(editorWorkspaceSelectionForPaneLayout(editorPaneLayout))
+  workspaceStore.setState(
+    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+  )
   return true
+}
+
+function editorWorkspaceSelectionForPaneLayoutForState(
+  workspace: EditorWorkspaceStore,
+  editorPaneLayout: Parameters<typeof editorWorkspaceSelectionForPaneLayout>[0],
+) {
+  return editorWorkspaceSelectionForPaneLayout(editorPaneLayout, {
+    currentOpenFilePaths: workspace.openFilePaths,
+  })
 }
 
 function updateUiForClosedPath(

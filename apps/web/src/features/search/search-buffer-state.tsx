@@ -757,7 +757,7 @@ function nextSearchMatches({
   if (reconciliation) return reconciliation.matches
   if (appendingToResults) return runningMatches
 
-  return runningMatches.slice()
+  return runningMatches
 }
 
 function nextSearchGroups({

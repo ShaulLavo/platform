@@ -1,10 +1,7 @@
-import { useLayoutEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, type RefObject } from 'react'
 
 import type { SearchResultId } from '@/features/search/search-result-items'
-import {
-  nextSearchResultFileEditorPoolKeys,
-  searchResultFileEditorPoolKeysEqual,
-} from '@/features/search/search-result-editor-pool'
+import { nextSearchResultFileEditorPoolKeys } from '@/features/search/search-result-editor-pool'
 import type {
   SearchResultFileEditorPoolEntry,
   SearchResultFileEditorPoolState,
@@ -15,7 +12,7 @@ export function useSearchResultFileEditorPoolEntries(
   visibleItems: readonly SearchResultRenderedFileResultItem[],
   prewarmEditorPool: boolean,
 ) {
-  const [poolState, setPoolState] = useState<SearchResultFileEditorPoolState>({
+  const poolStateRef = useRef<SearchResultFileEditorPoolState>({
     items: new Map(),
     keys: [],
   })
@@ -23,39 +20,36 @@ export function useSearchResultFileEditorPoolEntries(
     () => visibleItems.map(searchResultFileEditorPoolItemKey),
     [visibleItems],
   )
-  const poolKeys = useMemo(
-    () => nextSearchResultFileEditorPoolKeys(poolState.keys, visibleKeys, prewarmEditorPool),
-    [poolState.keys, prewarmEditorPool, visibleKeys],
-  )
-
-  useLayoutEffect(() => {
-    let cancelled = false
-    queueMicrotask(() => {
-      if (cancelled) return
-
-      setPoolState((current) => {
-        const next = nextSearchResultFileEditorPoolKeys(
-          current.keys,
-          visibleKeys,
-          prewarmEditorPool,
-        )
-        const items = new Map(current.items)
-        const itemsChanged = syncSearchResultFileEditorPoolCache(items, next, visibleItems)
-        if (!itemsChanged && searchResultFileEditorPoolKeysEqual(current.keys, next)) return current
-
-        return { items, keys: next }
-      })
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [prewarmEditorPool, visibleItems, visibleKeys])
 
   return useMemo(
-    () => searchResultFileEditorPoolEntries(poolKeys, visibleItems, poolState.items),
-    [poolKeys, poolState.items, visibleItems],
+    () =>
+      syncedSearchResultFileEditorPoolEntries(
+        poolStateRef,
+        visibleItems,
+        visibleKeys,
+        prewarmEditorPool,
+      ),
+    [prewarmEditorPool, visibleItems, visibleKeys],
   )
+}
+
+function syncedSearchResultFileEditorPoolEntries(
+  poolStateRef: RefObject<SearchResultFileEditorPoolState>,
+  visibleItems: readonly SearchResultRenderedFileResultItem[],
+  visibleKeys: readonly SearchResultId[],
+  prewarmEditorPool: boolean,
+) {
+  const poolState = poolStateRef.current
+  const poolKeys = nextSearchResultFileEditorPoolKeys(
+    poolState.keys,
+    visibleKeys,
+    prewarmEditorPool,
+  )
+  const items = new Map(poolState.items)
+  syncSearchResultFileEditorPoolCache(items, poolKeys, visibleItems)
+  poolStateRef.current = { items, keys: poolKeys }
+
+  return searchResultFileEditorPoolEntries(poolKeys, visibleItems, items)
 }
 
 function searchResultFileEditorPoolEntries(

@@ -2,6 +2,7 @@ import type { PickedFsEntry } from '@/lib/file-system-types'
 import { errorMessage, fetchTree } from '@/lib/file-server'
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import {
   FILE_TREE_PREFETCH_STALE_MS,
   treeDirectoryPrefetchKey,
@@ -21,16 +22,15 @@ import {
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 
-export function useWorkspaceTree(
-  rootFolder: PickedFsEntry | null,
-  selectedFilePath: string | null,
-) {
+export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
   const queryClient = useQueryClient()
+  const workspaceStore = useEditorWorkspaceStoreApi()
   const rootPath = rootFolder?.path ?? ''
   const rootTreeKey = useMemo(() => fileSystemKeys.tree(rootPath), [rootPath])
   const query = useQuery({
     enabled: Boolean(rootFolder),
     queryFn: async ({ signal }) => {
+      const selectedFilePath = workspaceStore.getState().selectedFilePath
       const result = await fetchInitialTree(rootPath, selectedFilePath, signal)
       return treeModelWithDirectoryLoads(result.root, rootPath, result.directories)
     },

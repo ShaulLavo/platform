@@ -2,6 +2,7 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { FileViewer } from '@/components/workspace/file-viewer'
 import { WorkspaceTerminalStateProvider } from '@/components/workspace/use-workspace-terminal-state'
 import { WorkspaceActivityBar } from '@/components/workspace/workspace-activity-bar'
+import { WorkspaceSearchRuntime } from '@/components/workspace/workspace-search-runtime'
 import { WorkspaceSidebarResizablePanel } from '@/components/workspace/workspace-sidebar-resizable-panel'
 import { WorkspaceStatusBar } from '@/components/workspace/workspace-status-bar'
 import { WorkspaceTerminalResizablePanel } from '@/components/workspace/workspace-terminal-resizable-panel'
@@ -40,6 +41,7 @@ export const WorkspaceView = memo(function WorkspaceView({
 
   return (
     <WorkspaceTerminalStateProvider>
+      <WorkspaceSearchRuntime rootPath={rootPath} />
       <div className='h-full min-h-0 flex-1 overflow-auto'>
         <div className='flex h-full min-w-[1024px] flex-col'>
           <div className='flex min-h-0 flex-1 flex-row gap-0'>

@@ -11,6 +11,7 @@ import {
   workspaceSearchQuery,
 } from './use-search-buffer'
 import { createSearchBufferStore, type SearchBufferStoreApi } from './search-buffer-state'
+import { shouldStartWorkspaceSearch } from './search-run-state'
 
 describe('workspace search buffer query', () => {
   it('uses content-only workspace search by default', () => {
@@ -152,6 +153,61 @@ describe('workspace search dirty revision key', () => {
         'repo',
       ),
     ).not.toBe(key)
+  })
+})
+
+describe('workspace search run state', () => {
+  it('reuses ready results for the same query', () => {
+    const store = createSearchBufferStore()
+    const query = workspaceSearchQuery('repo', 'needle')
+    const runId = store.getState().startSearch(query)
+
+    store.getState().appendEvent(runId, doneEvent(0))
+
+    expect(shouldStartWorkspaceSearch(store.getState().active, query)).toBe(false)
+  })
+
+  it('starts when ready results only came from cache', () => {
+    const query = workspaceSearchQuery('repo', 'needle')
+    const store = createSearchBufferStore({
+      activeResultId: null,
+      caseSensitive: false,
+      collapsedPaths: [],
+      excludeGlobText: '',
+      filtersVisible: false,
+      includeGlobText: '',
+      matchMode: 'literal',
+      query: 'needle',
+      queryHistory: [],
+      replaceHistory: [],
+      replaceText: '',
+      replaceVisible: false,
+      resultsQuery: 'needle',
+      resultsSearchQuery: query,
+      rootPath: 'repo',
+      totalCount: 0,
+      truncated: false,
+      wholeWord: false,
+    })
+
+    expect(store.getState().active?.status).toBe('ready')
+    expect(shouldStartWorkspaceSearch(store.getState().active, query)).toBe(true)
+  })
+
+  it('starts when the query changes or the current results need refresh', () => {
+    const store = createSearchBufferStore()
+    const query = workspaceSearchQuery('repo', 'needle')
+    const runId = store.getState().startSearch(query)
+
+    store.getState().appendEvent(runId, doneEvent(0))
+
+    expect(
+      shouldStartWorkspaceSearch(store.getState().active, workspaceSearchQuery('repo', 'other')),
+    ).toBe(true)
+
+    store.getState().requestSearchRefresh('repo')
+
+    expect(shouldStartWorkspaceSearch(store.getState().active, query)).toBe(true)
   })
 })
 
@@ -305,11 +361,12 @@ describe('workspace search event batching', () => {
 
     const batches = appendedEventBatches(recorder.calls)
     expect(batches).toHaveLength(1)
-    expect(batches[0]).toHaveLength(200)
-    expect(appendedSingleEvents(recorder.calls)).toEqual([done])
+    expect(batches[0]).toHaveLength(201)
+    expect(batches[0]?.at(-1)).toBe(done)
+    expect(appendedSingleEvents(recorder.calls)).toEqual([])
   })
 
-  it('flushes pending matches before appending done', async () => {
+  it('flushes pending matches and done in one store update', async () => {
     const recorder = createRecordingSearchStore()
     const query = workspaceSearchQuery('repo', 'needle')
     const match = matchEvent('disk', 'repo/src/app.ts')
@@ -323,10 +380,7 @@ describe('workspace search event batching', () => {
 
     await runSearch(provider, query, 1, recorder.store, new AbortController().signal)
 
-    expect(recorder.calls).toEqual([
-      { events: [match], runId: 1, type: 'appendEvents' },
-      { event: done, runId: 1, type: 'appendEvent' },
-    ])
+    expect(recorder.calls).toEqual([{ events: [match, done], runId: 1, type: 'appendEvents' }])
   })
 
   it('drops scheduled match batches when a run is aborted', async () => {

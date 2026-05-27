@@ -95,7 +95,11 @@ export function createEditorWorkspaceStore(
       })),
     setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
     setEditorPaneLayout: (editorPaneLayout) =>
-      set(editorWorkspaceSelectionForPaneLayout(editorPaneLayout)),
+      set((state) =>
+        editorWorkspaceSelectionForPaneLayout(editorPaneLayout, {
+          currentOpenFilePaths: state.openFilePaths,
+        }),
+      ),
     setEditorHistory: (editorHistory) => set({ editorHistory }),
     setGitPanelOpen: (gitPanelOpen) => set({ gitPanelOpen }),
     setOpenFilePaths: (openFilePaths) =>
@@ -105,6 +109,7 @@ export function createEditorWorkspaceStore(
             pathsWithSelectedPath(openFilePaths, state.selectedFilePath),
             state.selectedFilePath,
           ),
+          { currentOpenFilePaths: state.openFilePaths },
         ),
       ),
     setPickerOpen: (pickerOpen) => set({ pickerOpen }),
@@ -116,6 +121,7 @@ export function createEditorWorkspaceStore(
             pathsWithSelectedPath(state.openFilePaths, selectedFilePath),
             selectedFilePath,
           ),
+          { currentOpenFilePaths: state.openFilePaths },
         ),
       ),
     setSidebarVisible: (sidebarVisible) =>
@@ -161,11 +167,32 @@ function pathsWithSelectedPath(openFilePaths: readonly string[], selectedFilePat
   return openFilePaths.concat(selectedFilePath)
 }
 
-export function editorWorkspaceSelectionForPaneLayout(editorPaneLayout: EditorPaneLayout) {
+export function editorWorkspaceSelectionForPaneLayout(
+  editorPaneLayout: EditorPaneLayout,
+  options: { currentOpenFilePaths?: string[] } = {},
+) {
   const normalized = normalizeEditorPaneLayout(editorPaneLayout)
+  const openFilePaths = stableOpenFilePaths(
+    options.currentOpenFilePaths,
+    editorPaneOpenPaths(normalized),
+  )
+
   return {
     editorPaneLayout: normalized,
-    openFilePaths: editorPaneOpenPaths(normalized),
+    openFilePaths,
     selectedFilePath: activeEditorPanePath(normalized),
   }
+}
+
+function stableOpenFilePaths(current: string[] | undefined, next: string[]) {
+  if (!current) return next
+  if (!sameOpenFilePaths(current, next)) return next
+
+  return current
+}
+
+function sameOpenFilePaths(left: readonly string[], right: readonly string[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((path, index) => path === right[index])
 }

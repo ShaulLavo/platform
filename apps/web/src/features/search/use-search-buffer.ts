@@ -12,6 +12,7 @@ import {
   useEditorDocumentStoreApi,
   useEditorDocumentState,
 } from '@/features/editor/state/editor-document-state'
+import { shouldStartWorkspaceSearch } from '@/features/search/search-run-state'
 import {
   type SearchBufferStoreApi,
   type SearchBufferSnapshot,
@@ -181,6 +182,9 @@ function useRunSearchBuffer(
       matchMode,
       wholeWord,
     })
+    const activeSnapshot = store.getState().active
+    if (!shouldStartWorkspaceSearch(activeSnapshot, searchQuery)) return
+
     const documentState = documentStore.getState()
     const dirtyDocuments = dirtySearchDocuments(
       documentState.documents,
@@ -189,7 +193,7 @@ function useRunSearchBuffer(
     )
     const provider = workspaceSearchProvider(dirtyDocuments)
     const deferInitialOpenBufferMatches = shouldDeferInitialOpenBufferMatches(
-      store.getState().active,
+      activeSnapshot,
       searchQuery,
     )
     const runId = store.getState().startSearch(searchQuery)
@@ -313,8 +317,8 @@ export async function runSearch(
         continue
       }
 
+      batcher.push(event)
       batcher.flush()
-      store.getState().appendEvent(runId, event)
     }
   } catch (error) {
     if (isAbortError(error)) return

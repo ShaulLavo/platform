@@ -7,12 +7,12 @@ import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
 } from '@editor/language-server'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
 
 import { EditorFrame } from '@/features/editor/components/editor-frame'
 import {
   createCriticalEditorCorePlugins,
-  loadNonCriticalEditorPlugins,
+  createNonCriticalEditorPluginsLoaderPlugin,
 } from '@/features/editor/editor-plugins'
 import { selectionForDefinition } from '@/features/editor/utils/editor-position'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
@@ -78,18 +78,16 @@ export function Editor({
     document: cachedDocument,
     onScrollPositionChange,
   })
-  const [nonCriticalPlugins, setNonCriticalPlugins] = useState<
-    readonly ReturnType<typeof createCriticalEditorCorePlugins>[number][]
-  >([])
   const criticalEditorCorePlugins = useMemo(() => createCriticalEditorCorePlugins(), [])
+  const nonCriticalEditorPlugins = useMemo(() => createNonCriticalEditorPluginsLoaderPlugin(), [])
   const plugins = useMemo(
     () => [
       ...criticalEditorCorePlugins,
       languageServer,
-      ...nonCriticalPlugins,
+      nonCriticalEditorPlugins,
       scrollPersistencePlugin,
     ],
-    [criticalEditorCorePlugins, languageServer, nonCriticalPlugins, scrollPersistencePlugin],
+    [criticalEditorCorePlugins, languageServer, nonCriticalEditorPlugins, scrollPersistencePlugin],
   )
   const document = useMemo(
     () => ({
@@ -127,7 +125,6 @@ export function Editor({
     plugins,
     theme: editorTheme,
   })
-  const editorInstance = controller.useEditorInstance()
   const selection = useMemo(
     () =>
       definitionTarget
@@ -139,18 +136,6 @@ export function Editor({
         : null,
     [cachedDocument.path, cachedDocument.session, definitionTarget],
   )
-
-  useEffect(() => {
-    let active = true
-    scheduleNonCriticalPluginLoad(async () => {
-      const loaded = await loadNonCriticalEditorPlugins()
-      if (active) setNonCriticalPlugins(loaded)
-    })
-
-    return () => {
-      active = false
-    }
-  }, [])
 
   useEffect(() => {
     if (!active) return
@@ -194,8 +179,8 @@ export function Editor({
   }, [active, controller, setActiveEditorCommandDispatch])
 
   useCommitMessageEditorFocus({
+    controller,
     document: cachedDocument,
-    editorInstance,
   })
 
   const handleActivate = useCallback(
@@ -206,13 +191,4 @@ export function Editor({
   )
 
   return <EditorFrame active={editorActive} controller={controller} onActivate={handleActivate} />
-}
-
-function scheduleNonCriticalPluginLoad(load: () => void) {
-  if ('requestIdleCallback' in window) {
-    window.requestIdleCallback(load)
-    return
-  }
-
-  queueMicrotask(load)
 }

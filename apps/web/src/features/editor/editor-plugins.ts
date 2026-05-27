@@ -1,6 +1,7 @@
 import {
   createEditorLoggingPlugin,
   createMergeConflictPlugin,
+  type EditorDisposable,
   type EditorLogEvent,
   type EditorPlugin,
   type EditorSyntaxProvider,
@@ -38,6 +39,8 @@ let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 const PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN = createEditorLoggingPlugin(logEditorEventToConsole, {
   name: 'platform.editor-logging',
 })
+let nonCriticalEditorPlugins: readonly EditorPlugin[] | null = null
+let nonCriticalEditorPluginsPromise: Promise<readonly EditorPlugin[]> | null = null
 
 export type EditorSyntaxHighlightingOptions = {
   readonly highlighter?: 'tree-sitter'
@@ -67,17 +70,94 @@ export function createCriticalEditorCorePlugins(
   ]
 }
 
-export async function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
-  const plugins = await Promise.all([
+export function createNonCriticalEditorPluginsLoaderPlugin(): EditorPlugin {
+  return {
+    name: 'platform.non-critical-editor-plugins',
+    activate: (context) => {
+      let disposed = false
+      const disposables: EditorDisposable[] = []
+
+      scheduleNonCriticalPluginLoad(async () => {
+        const plugins = await loadNonCriticalEditorPlugins()
+        if (disposed) return
+
+        for (const plugin of plugins) {
+          const disposable = activateLoadedEditorPlugin(plugin, context)
+          if (disposable) disposables.push(disposable)
+        }
+      })
+
+      return {
+        dispose: () => {
+          disposed = true
+          disposeAll(disposables)
+        },
+      }
+    },
+  }
+}
+
+export function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
+  if (nonCriticalEditorPlugins) return Promise.resolve(nonCriticalEditorPlugins)
+  if (nonCriticalEditorPluginsPromise) return nonCriticalEditorPluginsPromise
+
+  nonCriticalEditorPluginsPromise = Promise.all([
     loadPlugin('@editor/scope-lines', () =>
       import('@editor/scope-lines').then((module) => module.createScopeLinesPlugin()),
     ),
     loadPlugin('@editor/minimap', () =>
       import('@editor/minimap').then((module) => module.createMinimapPlugin()),
     ),
-  ])
+  ]).then((plugins) => {
+    nonCriticalEditorPlugins = plugins.filter((plugin): plugin is EditorPlugin => plugin !== null)
+    return nonCriticalEditorPlugins
+  })
 
-  return plugins.filter((plugin): plugin is EditorPlugin => plugin !== null)
+  return nonCriticalEditorPluginsPromise
+}
+
+function scheduleNonCriticalPluginLoad(load: () => void) {
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    window.requestIdleCallback(load)
+    return
+  }
+
+  queueMicrotask(load)
+}
+
+function activateLoadedEditorPlugin(
+  plugin: EditorPlugin,
+  context: Parameters<EditorPlugin['activate']>[0],
+): EditorDisposable | null {
+  try {
+    return disposableFromActivationResult(plugin.activate(context))
+  } catch (error) {
+    reportError(
+      toClientError({ code: 'OPERATION_FAILED', name: plugin.name ?? 'editor-plugin', error }),
+    )
+    return null
+  }
+}
+
+function disposableFromActivationResult(
+  result: ReturnType<EditorPlugin['activate']>,
+): EditorDisposable | null {
+  if (!result) return null
+  if (!isEditorDisposableArray(result)) return result
+
+  return {
+    dispose: () => disposeAll(result),
+  }
+}
+
+function isEditorDisposableArray(
+  result: ReturnType<EditorPlugin['activate']>,
+): result is readonly EditorDisposable[] {
+  return Array.isArray(result)
+}
+
+function disposeAll(disposables: readonly EditorDisposable[]) {
+  for (const disposable of disposables) disposable.dispose()
 }
 
 export function createEditorPlugins(
