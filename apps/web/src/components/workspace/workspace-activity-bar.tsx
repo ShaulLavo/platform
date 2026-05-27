@@ -1,5 +1,9 @@
 import { WorkspaceActivityButton } from '@/components/workspace/workspace-activity-button'
 import { WorkspaceActivityTab } from '@/components/workspace/workspace-activity-tab'
+import {
+  useWorkspaceTerminalCollapsed,
+  useWorkspaceTerminalToggle,
+} from '@/components/workspace/use-workspace-terminal-state'
 import { ChatSidebarEntry } from '@/features/chat/components/chat-sidebar-entry'
 import {
   FolderIcon,
@@ -10,13 +14,7 @@ import {
 } from '@phosphor-icons/react'
 import { memo } from 'react'
 
-export const WorkspaceActivityBar = memo(function WorkspaceActivityBar({
-  onToggleTerminal,
-  terminalCollapsed,
-}: {
-  onToggleTerminal: () => void
-  terminalCollapsed: boolean
-}) {
+export const WorkspaceActivityBar = memo(function WorkspaceActivityBar() {
   return (
     <nav
       aria-label='Workspace activity'
@@ -40,14 +38,23 @@ export const WorkspaceActivityBar = memo(function WorkspaceActivityBar({
         <WorkspaceActivityTab icon={<GitBranchIcon className='size-5' />} label='Git' value='git' />
         <WorkspaceActivityTab icon={<PulseIcon className='size-5' />} label='Logs' value='logs' />
         <ChatSidebarEntry />
-        <WorkspaceActivityButton
-          controls='workspace-terminal'
-          expanded={!terminalCollapsed}
-          icon={<TerminalWindowIcon className='size-5' />}
-          label='Terminal'
-          onClick={onToggleTerminal}
-        />
+        <WorkspaceTerminalActivityButton />
       </div>
     </nav>
+  )
+})
+
+const WorkspaceTerminalActivityButton = memo(function WorkspaceTerminalActivityButton() {
+  const terminalCollapsed = useWorkspaceTerminalCollapsed()
+  const toggleTerminal = useWorkspaceTerminalToggle()
+
+  return (
+    <WorkspaceActivityButton
+      controls='workspace-terminal'
+      expanded={!terminalCollapsed}
+      icon={<TerminalWindowIcon className='size-5' />}
+      label='Terminal'
+      onClick={toggleTerminal}
+    />
   )
 })
