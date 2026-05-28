@@ -10,7 +10,13 @@ import {
   type TurnId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
-import type { ProviderAdapter, ProviderRuntimeSink, ProviderTurnInput } from '../types'
+import type {
+  ProviderAdapter,
+  ProviderAdapterSession,
+  ProviderRuntimeSink,
+  ProviderThreadSnapshot,
+  ProviderTurnInput,
+} from '../types'
 import {
   providerTurnSummary,
   recordChatPipelineInfo,
@@ -30,6 +36,14 @@ const BENIGN_CODEX_STDERR_ERROR_SNIPPETS = [
   'state db missing rollout path for thread',
   'state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back',
 ]
+const CODEX_REASONING_EFFORTS = new Set(['minimal', 'low', 'medium', 'high'])
+
+const CODEX_ADAPTER_CAPABILITIES = {
+  readThread: true,
+  rollbackThread: true,
+  sessionModelSwitch: 'in-session',
+  stopAll: true,
+} satisfies ProviderAdapter['capabilities']
 
 type JsonRpcId = number | string
 type JsonRpcMessage = {
@@ -50,8 +64,18 @@ type ActiveCodexTurn = {
   sink: ProviderRuntimeSink
 }
 
+type CodexModelOptions = {
+  effort?: string
+  serviceTier?: 'fast'
+}
+
+type CodexTurnInputItem =
+  | { text: string; text_elements: unknown[]; type: 'text' }
+  | { type: 'image'; url: string }
+
 export class CodexProviderAdapter implements ProviderAdapter {
   readonly adapterKey = DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
+  readonly capabilities = CODEX_ADAPTER_CAPABILITIES
   readonly driverKind = DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
   private readonly sessions = new Map<ThreadId, CodexAppServerSession>()
 
@@ -95,6 +119,28 @@ export class CodexProviderAdapter implements ProviderAdapter {
     }
   }
 
+  async listSessions() {
+    return Array.from(this.sessions.values())
+      .filter((session) => session.isActive())
+      .map((session) => session.snapshot())
+  }
+
+  async hasSession({ threadId }: { threadId: ThreadId }) {
+    return Boolean(this.sessions.get(threadId)?.isActive())
+  }
+
+  async readThread({ threadId }: { threadId: ThreadId }) {
+    return this.requireSession(threadId, 'thread/read').readThread()
+  }
+
+  async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
+    if (!Number.isInteger(numTurns) || numTurns < 1) {
+      throw new Error('Codex thread rollback requires numTurns to be an integer >= 1.')
+    }
+
+    return this.requireSession(threadId, 'thread/rollback').rollbackThread(numTurns)
+  }
+
   async startTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
     recordChatPipelineInfo('chat.pipeline.codex_adapter.start_turn.start', {
       ...providerTurnSummary(input),
@@ -124,6 +170,17 @@ export class CodexProviderAdapter implements ProviderAdapter {
     await session.close()
   }
 
+  async stopAll() {
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.stop_all', {
+      sessionCount: this.sessions.size,
+    })
+    const sessions = Array.from(this.sessions.values())
+    this.sessions.clear()
+    for (const session of sessions) {
+      await session.close()
+    }
+  }
+
   async respondApproval() {
     throw new Error('Codex app-server approval responses are not wired to Platform UI yet.')
   }
@@ -136,6 +193,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const existing = this.sessions.get(input.thread.id)
     const cwd = normalizeCodexCwd(input.cwd)
     const model = normalizeCodexModel(input.modelSelection.model)
+    const modelOptions = codexModelOptions(input)
     if (existing?.matches({ cwd, model, runtimeMode: input.runtimeMode })) {
       recordChatPipelineInfo('chat.pipeline.codex_adapter.session.reuse', {
         model,
@@ -164,6 +222,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const session = await CodexAppServerSession.start({
       cwd,
       model,
+      modelOptions,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       threadId: input.thread.id,
@@ -176,6 +235,13 @@ export class CodexProviderAdapter implements ProviderAdapter {
     })
 
     return session
+  }
+
+  private requireSession(threadId: ThreadId, operation: string) {
+    const session = this.sessions.get(threadId)
+    if (session?.isActive()) return session
+
+    throw new Error(`Codex ${operation} requires an active session for thread ${threadId}.`)
   }
 }
 
@@ -192,6 +258,7 @@ class CodexAppServerSession {
   private readonly turns = new Map<string, ActiveCodexTurn>()
   private activeProviderTurnId: string | null = null
   private pendingTurn: ActiveCodexTurn | null = null
+  private status: ProviderAdapterSession['status'] = 'ready'
 
   private constructor(input: {
     client: CodexAppServerRpcClient
@@ -216,6 +283,7 @@ class CodexAppServerSession {
   static async start(input: {
     cwd: string
     model: string
+    modelOptions: CodexModelOptions
     providerInstanceId: ProviderTurnInput['providerInstanceId']
     runtimeMode: RuntimeMode
     threadId: ThreadId
@@ -261,6 +329,42 @@ class CodexAppServerSession {
     if (this.model !== input.model) return false
 
     return this.runtimeMode === input.runtimeMode
+  }
+
+  isActive() {
+    return !this.client.isClosed() && this.status !== 'stopped'
+  }
+
+  snapshot(): ProviderAdapterSession {
+    return {
+      cwd: this.cwd,
+      model: this.model,
+      providerInstanceId: this.providerInstanceId,
+      providerSessionId: this.providerSessionId,
+      providerThreadId: this.providerThreadId,
+      runtimeMode: this.runtimeMode,
+      status: this.status,
+      threadId: this.threadId,
+    }
+  }
+
+  async readThread(): Promise<ProviderThreadSnapshot> {
+    const response = await this.client.request('thread/read', {
+      includeTurns: true,
+      threadId: this.providerThreadId,
+    })
+
+    return providerThreadSnapshot(this.threadId, response)
+  }
+
+  async rollbackThread(numTurns: number): Promise<ProviderThreadSnapshot> {
+    const response = await this.client.request('thread/rollback', {
+      numTurns,
+      threadId: this.providerThreadId,
+    })
+    this.status = 'ready'
+
+    return providerThreadSnapshot(this.threadId, response)
   }
 
   async sendTurn({
@@ -313,6 +417,7 @@ class CodexAppServerSession {
         threadId: this.threadId,
         turnId: input.turnId,
       })
+      this.status = 'error'
       throw error
     }
 
@@ -353,6 +458,7 @@ class CodexAppServerSession {
       providerSessionId: this.providerSessionId,
       threadId: this.threadId,
     })
+    this.status = 'stopped'
     this.rejectAllTurns(new Error('Codex session stopped.'))
     this.client.close()
   }
@@ -571,6 +677,7 @@ class CodexAppServerSession {
     status: 'running' | 'ready',
     turnId: TurnId | null,
   ) {
+    this.status = status
     await sink.ingest({
       createdAt: new Date().toISOString(),
       eventId: runtimeEventId('codex-session'),
@@ -629,6 +736,7 @@ class CodexAppServerSession {
     this.turns.delete(providerTurnId)
     this.canonicalTurnByProviderTurnId.delete(providerTurnId)
     if (this.activeProviderTurnId === providerTurnId) this.activeProviderTurnId = null
+    this.status = 'error'
     turn.reject(new Error(message))
   }
 
@@ -894,7 +1002,12 @@ function activeCodexTurn(input: {
   }
 }
 
-function threadStartParams(input: { cwd: string; model: string; runtimeMode: RuntimeMode }) {
+function threadStartParams(input: {
+  cwd: string
+  model: string
+  modelOptions: CodexModelOptions
+  runtimeMode: RuntimeMode
+}) {
   const runtime = runtimeModeToThreadConfig(input.runtimeMode)
 
   return {
@@ -904,19 +1017,97 @@ function threadStartParams(input: { cwd: string; model: string; runtimeMode: Run
     model: input.model,
     persistExtendedHistory: false,
     sandbox: runtime.sandbox,
+    ...(input.modelOptions.serviceTier ? { serviceTier: input.modelOptions.serviceTier } : {}),
   }
 }
 
 function turnStartParams(session: CodexAppServerSession, input: ProviderTurnInput) {
   const runtime = runtimeModeToThreadConfig(input.runtimeMode)
+  const modelOptions = codexModelOptions(input)
 
   return {
     approvalPolicy: runtime.approvalPolicy,
-    input: [{ text: input.messageText, text_elements: [], type: 'text' }],
+    input: codexTurnInput(input),
     model: normalizeCodexModel(input.modelSelection.model),
     sandboxPolicy: runtime.sandboxPolicy,
+    ...(modelOptions.effort ? { effort: modelOptions.effort } : {}),
+    ...(modelOptions.serviceTier ? { serviceTier: modelOptions.serviceTier } : {}),
     threadId: session.providerThreadIdForTurn(),
   }
+}
+
+function codexTurnInput(input: ProviderTurnInput): CodexTurnInputItem[] {
+  const items: CodexTurnInputItem[] = []
+  if (input.messageText.length > 0 || input.attachments.length === 0) {
+    items.push(codexTextInput(input))
+  }
+
+  for (const attachment of input.attachments) {
+    const image = codexImageInput(attachment)
+    if (image) items.push(image)
+  }
+
+  return items.length > 0 ? items : [codexTextInput(input)]
+}
+
+function codexTextInput(input: ProviderTurnInput): CodexTurnInputItem {
+  return {
+    text: input.messageText,
+    text_elements: codexTextElements(input),
+    type: 'text',
+  }
+}
+
+function codexImageInput(value: unknown): CodexTurnInputItem | null {
+  const attachment = asRecord(value)
+  if (stringField(attachment, 'type') !== 'image') return null
+
+  const url = stringField(attachment, 'dataUrl') ?? stringField(attachment, 'url')
+  return url ? { type: 'image', url } : null
+}
+
+function codexTextElements(input: ProviderTurnInput) {
+  const value = asRecord(input).textElements
+  return Array.isArray(value) ? value : []
+}
+
+function codexModelOptions(input: ProviderTurnInput): CodexModelOptions {
+  if (input.modelSelection.providerInstanceId !== input.providerInstanceId) return {}
+
+  const effort = codexReasoningEffort(input.modelSelection.options)
+  const serviceTier =
+    modelOptionValue(input.modelSelection.options, 'fastMode') === true ? 'fast' : undefined
+
+  return {
+    ...(effort ? { effort } : {}),
+    ...(serviceTier ? { serviceTier } : {}),
+  }
+}
+
+function codexReasoningEffort(options: ProviderTurnInput['modelSelection']['options']) {
+  const value = modelOptionValue(options, 'reasoningEffort') ?? modelOptionValue(options, 'effort')
+  if (typeof value !== 'string') return undefined
+
+  return CODEX_REASONING_EFFORTS.has(value) ? value : undefined
+}
+
+function modelOptionValue(
+  options: ProviderTurnInput['modelSelection']['options'],
+  key: string,
+): unknown {
+  if (!options) return undefined
+  if (Array.isArray(options)) return modelOptionArrayValue(options, key)
+
+  return asRecord(options)[key]
+}
+
+function modelOptionArrayValue(options: unknown[], key: string) {
+  for (const option of options) {
+    const record = asRecord(option)
+    if (record.id === key) return record.value
+  }
+
+  return undefined
 }
 
 function runtimeModeToThreadConfig(runtimeMode: RuntimeMode) {
@@ -1024,6 +1215,28 @@ function readTurnIdFromTurnResponse(response: unknown) {
   return turnId
 }
 
+function providerThreadSnapshot(threadId: ThreadId, response: unknown): ProviderThreadSnapshot {
+  const thread = asRecord(asRecord(response).thread)
+  const providerThreadId = stringField(thread, 'id') ?? stringField(thread, 'threadId') ?? undefined
+  const rawTurns = thread.turns
+  const turns = Array.isArray(rawTurns) ? rawTurns.map(providerThreadTurn).filter(isPresent) : []
+
+  return {
+    ...(providerThreadId ? { providerThreadId } : {}),
+    threadId,
+    turns,
+  }
+}
+
+function providerThreadTurn(value: unknown) {
+  const turn = asRecord(value)
+  const id = stringField(turn, 'id') ?? stringField(turn, 'turnId')
+  if (!id) return null
+
+  const items = Array.isArray(turn.items) ? turn.items : []
+  return { id, items }
+}
+
 function parseJsonRpcMessage(line: string): JsonRpcMessage {
   try {
     return JSON.parse(line) as JsonRpcMessage
@@ -1114,6 +1327,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 function stringField(record: Record<string, unknown>, key: string) {
   const value = record[key]
   return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function isPresent<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined
 }
 
 function classifyCodexStderrLine(rawLine: string) {

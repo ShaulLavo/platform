@@ -1287,6 +1287,26 @@ Purpose:
 - Bring the Codex adapter surface closer to T3Code's Codex adapter while keeping
   the Platform implementation Bun/Elysia-native.
 
+Implementation status:
+
+- Done on 2026-05-28:
+  - provider adapter contract now includes capabilities, active session listing,
+    session detection, provider-thread read, provider-thread rollback, and
+    stop-all operations
+  - Codex adapter reports T3-style capabilities, tracks active app-server
+    sessions, lists/detects sessions, and stops all active sessions
+  - Codex adapter reads and rolls back app-server provider threads through
+    `thread/read` and `thread/rollback`, with explicit errors when no active
+    session exists
+  - Codex `turn/start` now passes image data URLs when present on attachment
+    payloads, preserves text elements when available, and forwards Codex model
+    options for reasoning effort and fast mode
+  - full-access continues to map to `approvalPolicy: never` and
+    `danger-full-access`, while supervised modes remain contract placeholders
+  - focused Codex adapter coverage verifies capabilities, session inventory,
+    stop-all, image/options payloads, read/rollback, missing-session errors, and
+    existing early turn notification correlation/stderr tolerance
+
 Platform target paths:
 
 - `apps/server/src/provider/adapters/codex.ts`
@@ -1336,6 +1356,89 @@ T3 source paths:
 
 - `references/t3code/apps/server/src/provider/Services/ProviderAdapter.ts`
 - `references/t3code/apps/server/src/provider/Services/CodexAdapter.ts`
+
+## Phase 7D.1: Generated Codex Valibot Protocol Schemas
+
+Purpose:
+
+- Replace ad hoc Codex app-server payload probing with generated TypeScript
+  types and Valibot runtime schemas.
+- Keep Platform's Codex adapter Bun/Elysia-native and Valibot-based; do not
+  import T3Code's Effect protocol package into product code.
+- Pin the upstream Codex protocol source so adapter behavior is reproducible and
+  protocol changes are reviewed as generated diffs.
+
+Platform target paths:
+
+- `apps/server/src/provider/adapters/codex-protocol/generate.ts`
+- `apps/server/src/provider/adapters/codex-protocol/generated/*`
+- `apps/server/src/provider/adapters/codex-protocol/index.ts`
+- `apps/server/src/provider/adapters/codex.ts`
+- `apps/server/src/provider/adapters/codex.test.ts`
+
+Backend work:
+
+- Add a generator that downloads Codex app-server JSON schemas from
+  `openai/codex/codex-rs/app-server-protocol` at a pinned upstream commit.
+- Generate Valibot schemas and TypeScript types for the request/response and
+  notification subset Platform uses first:
+  - `initialize`
+  - `account/read`
+  - `model/list`
+  - `thread/start`
+  - `turn/start`
+  - `turn/interrupt`
+  - `thread/read`
+  - `thread/rollback`
+  - `thread/started`
+  - `turn/started`
+  - `item/agentMessage/delta`
+  - `turn/completed`
+  - `error`
+- Generate method maps:
+  - `CodexClientRequestParamsByMethod`
+  - `CodexClientRequestResultByMethod`
+  - `CodexServerNotificationParamsByMethod`
+- Type `CodexAppServerRpcClient.request()` by method name and validate decoded
+  responses before returning them.
+- Type notification dispatch by method name and validate decoded notification
+  params before adapter handlers consume them.
+- Replace Codex adapter `asRecord` parsing for generated protocol shapes with
+  generated schemas and typed helper functions.
+- Keep structural guards only at the true JSON boundary and for Platform-owned
+  transitional payloads that are not yet in contracts, such as attachment
+  `dataUrl`.
+- Add a generator check script that fails when generated files are stale.
+
+Tests:
+
+- Generator fixture test maps representative JSON schema features to Valibot
+  schemas and method maps.
+- Codex RPC client validates responses and rejects malformed app-server
+  payloads with explicit protocol errors.
+- Codex notification handlers ignore or surface malformed notifications through
+  typed protocol errors instead of unchecked record reads.
+- Existing Codex adapter fake app-server tests pass against the typed request
+  method.
+- Generated files are deterministic for the pinned upstream commit.
+
+Done when:
+
+- The Codex adapter no longer uses ad hoc `asRecord` parsing for app-server
+  request results or notifications covered by the generated subset.
+- Updating the upstream protocol pin produces reviewable generated Valibot/type
+  diffs.
+- The app-server protocol boundary is both compile-time typed and runtime
+  validated.
+
+T3 source paths:
+
+- `references/t3code/packages/effect-codex-app-server/scripts/generate.ts`
+- `references/t3code/packages/effect-codex-app-server/src/_generated/schema.gen.ts`
+- `references/t3code/packages/effect-codex-app-server/src/_generated/meta.gen.ts`
+- `references/t3code/packages/effect-codex-app-server/src/_generated/namespaces.gen.ts`
+- `references/t3code/packages/effect-codex-app-server/src/rpc.ts`
+- `references/t3code/apps/server/src/provider/Layers/CodexSessionRuntime.ts`
 
 ## Phase 7E: Chat UI Runtime State And Streaming Parity
 

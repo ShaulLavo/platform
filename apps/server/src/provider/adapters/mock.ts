@@ -1,6 +1,7 @@
 import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
   type ProviderApprovalDecision,
+  type ProviderInstanceId,
   type ProviderSnapshot,
   type ProviderUserInputAnswers,
   type ApprovalRequestId,
@@ -20,6 +21,12 @@ type MockProviderAdapterOptions = {
 
 export class MockProviderAdapter implements ProviderAdapter {
   readonly adapterKey = DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
+  readonly capabilities = {
+    readThread: true,
+    rollbackThread: true,
+    sessionModelSwitch: 'in-session',
+    stopAll: true,
+  } satisfies ProviderAdapter['capabilities']
   readonly driverKind = DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
   readonly approvalResponses: Array<{
     decision: ProviderApprovalDecision
@@ -33,6 +40,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     requestId: ApprovalRequestId
     threadId: ThreadId
   }> = []
+  private readonly sessions = new Map<ThreadId, ProviderTurnInput>()
   private readonly approvalError: string | null
   private readonly beforeComplete: (() => Promise<void> | void) | null
   private readonly interruptError: string | null
@@ -73,6 +81,7 @@ export class MockProviderAdapter implements ProviderAdapter {
 
   async startTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
     this.startedTurns.push(input)
+    this.sessions.set(input.thread.id, input)
     if (this.shouldFail) throw new Error('Mock provider failed')
     await Promise.resolve(this.beforeComplete?.())
 
@@ -96,6 +105,38 @@ export class MockProviderAdapter implements ProviderAdapter {
     })
   }
 
+  async listSessions() {
+    return Array.from(this.sessions.values()).map((input) => ({
+      cwd: input.cwd,
+      model: input.modelSelection.model,
+      providerInstanceId: input.providerInstanceId as ProviderInstanceId,
+      providerSessionId: `mock:${input.thread.id}`,
+      providerThreadId: `mock-thread:${input.thread.id}`,
+      runtimeMode: input.runtimeMode,
+      status: 'ready' as const,
+      threadId: input.thread.id,
+    }))
+  }
+
+  async hasSession({ threadId }: { threadId: ThreadId }) {
+    return this.sessions.has(threadId)
+  }
+
+  async readThread({ threadId }: { threadId: ThreadId }) {
+    if (!this.sessions.has(threadId))
+      throw new Error(`Mock provider session not found: ${threadId}`)
+
+    return { providerThreadId: `mock-thread:${threadId}`, threadId, turns: [] }
+  }
+
+  async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
+    if (!Number.isInteger(numTurns) || numTurns < 1) {
+      throw new Error('Mock provider rollback requires numTurns >= 1.')
+    }
+
+    return this.readThread({ threadId })
+  }
+
   async interruptTurn({ threadId }: { threadId: ThreadId }) {
     if (this.interruptError) throw new Error(this.interruptError)
 
@@ -105,7 +146,12 @@ export class MockProviderAdapter implements ProviderAdapter {
   async stopSession({ threadId }: { threadId: ThreadId }) {
     if (this.stopError) throw new Error(this.stopError)
 
+    this.sessions.delete(threadId)
     this.interruptedThreads.push(threadId)
+  }
+
+  async stopAll() {
+    this.sessions.clear()
   }
 
   async respondApproval(input: {

@@ -53,6 +53,10 @@ function assertStartParams(message) {
     fail(message.id, 'sandbox mismatch');
     return false;
   }
+  if (message.params.serviceTier !== undefined && message.params.serviceTier !== 'fast') {
+    fail(message.id, 'thread service tier mismatch');
+    return false;
+  }
   return true;
 }
 
@@ -67,6 +71,27 @@ function assertTurnParams(message) {
   }
   if (message.params.sandboxPolicy?.type !== 'dangerFullAccess') {
     fail(message.id, 'turn sandbox policy mismatch');
+    return false;
+  }
+  if (message.params.serviceTier !== undefined && message.params.serviceTier !== 'fast') {
+    fail(message.id, 'turn service tier mismatch');
+    return false;
+  }
+
+  const input = Array.isArray(message.params.input) ? message.params.input : [];
+  const image = input.find((item) => item.type === 'image');
+  if (!image) return true;
+
+  if (image.url !== 'data:image/png;base64,abc') {
+    fail(message.id, 'image data URL was not passed to Codex');
+    return false;
+  }
+  if (message.params.effort !== 'high') {
+    fail(message.id, 'reasoning effort mismatch');
+    return false;
+  }
+  if (message.params.serviceTier !== 'fast') {
+    fail(message.id, 'fast mode mismatch');
     return false;
   }
   return true;
@@ -127,6 +152,34 @@ function handle(message) {
     send({ id: message.id, result: {} });
     return;
   }
+  if (message.method === 'thread/read') {
+    send({
+      id: message.id,
+      result: {
+        thread: {
+          id: 'provider-thread-1',
+          turns: [{ id: 'provider-turn-1', items: [{ type: 'agentMessage', text: 'hello' }] }],
+        },
+      },
+    });
+    return;
+  }
+  if (message.method === 'thread/rollback') {
+    if (message.params.numTurns !== 1) {
+      fail(message.id, 'rollback numTurns mismatch');
+      return;
+    }
+    send({
+      id: message.id,
+      result: {
+        thread: {
+          id: 'provider-thread-1',
+          turns: [],
+        },
+      },
+    });
+    return;
+  }
   fail(message.id, 'unsupported method: ' + message.method);
 }
 
@@ -151,14 +204,33 @@ describe('CodexProviderAdapter', () => {
           events.push(event)
         },
       })
+      const sessions = await adapter.listSessions()
+      const hasSession = await adapter.hasSession({ threadId: input.thread.id })
       await adapter.stopSession({ threadId: input.thread.id })
+      const hasSessionAfterStop = await adapter.hasSession({ threadId: input.thread.id })
 
+      expect(adapter.capabilities).toEqual({
+        readThread: true,
+        rollbackThread: true,
+        sessionModelSwitch: 'in-session',
+        stopAll: true,
+      })
       expect(snapshot).toMatchObject({
         installed: true,
         status: 'ready',
         version: '9.9.9',
       })
       expect(snapshot.models[0]).toMatchObject({ slug: 'gpt-5.5' })
+      expect(hasSession).toBe(true)
+      expect(hasSessionAfterStop).toBe(false)
+      expect(sessions).toContainEqual(
+        expect.objectContaining({
+          model: 'gpt-5.5',
+          providerThreadId: 'provider-thread-1',
+          status: 'ready',
+          threadId: input.thread.id,
+        }),
+      )
       expect(events).toContainEqual(
         expect.objectContaining({
           delta: 'Hello from app-server',
@@ -183,6 +255,86 @@ describe('CodexProviderAdapter', () => {
         }),
       )
     })
+  })
+
+  it('passes image data URLs and Codex model options to turn/start', async () => {
+    await withFakeCodex(async () => {
+      const adapter = new CodexProviderAdapter()
+      const input = providerTurnInput()
+      input.attachments = [
+        {
+          dataUrl: 'data:image/png;base64,abc',
+          id: 'image-1',
+          mimeType: 'image/png',
+          name: 'screenshot.png',
+          sizeBytes: 3,
+          type: 'image',
+        } as ProviderTurnInput['attachments'][number],
+      ]
+      input.modelSelection = {
+        model: 'gpt-5.5',
+        options: {
+          fastMode: true,
+          reasoningEffort: 'high',
+        },
+        providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID as ProviderInstanceId,
+      }
+
+      await adapter.startTurn(input, {
+        ingest: async () => {},
+      })
+      await adapter.stopAll()
+
+      expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(false)
+    })
+  })
+
+  it('reads and rolls back active provider threads', async () => {
+    await withFakeCodex(async () => {
+      const adapter = new CodexProviderAdapter()
+      const input = providerTurnInput()
+
+      await adapter.startTurn(input, {
+        ingest: async () => {},
+      })
+      const snapshot = await adapter.readThread({ threadId: input.thread.id })
+      const rolledBack = await adapter.rollbackThread({
+        numTurns: 1,
+        threadId: input.thread.id,
+      })
+      await adapter.stopAll()
+
+      expect(snapshot).toEqual({
+        providerThreadId: 'provider-thread-1',
+        threadId: input.thread.id,
+        turns: [
+          {
+            id: 'provider-turn-1',
+            items: [{ type: 'agentMessage', text: 'hello' }],
+          },
+        ],
+      })
+      expect(rolledBack).toEqual({
+        providerThreadId: 'provider-thread-1',
+        threadId: input.thread.id,
+        turns: [],
+      })
+    })
+  })
+
+  it('fails read and rollback requests without an active session', async () => {
+    const adapter = new CodexProviderAdapter()
+    const input = providerTurnInput()
+
+    await expect(adapter.readThread({ threadId: input.thread.id })).rejects.toThrow(
+      'Codex thread/read requires an active session',
+    )
+    await expect(
+      adapter.rollbackThread({ numTurns: 1, threadId: input.thread.id }),
+    ).rejects.toThrow('Codex thread/rollback requires an active session')
+    await expect(
+      adapter.rollbackThread({ numTurns: 0, threadId: input.thread.id }),
+    ).rejects.toThrow('Codex thread rollback requires numTurns')
   })
 })
 

@@ -280,13 +280,51 @@ export type ProviderRuntimeSink = {
   ingest: (event: ProviderRuntimeEvent) => Promise<void>
 }
 
+export type ProviderAdapterCapabilities = {
+  readThread: boolean
+  rollbackThread: boolean
+  sessionModelSwitch: 'in-session' | 'unsupported'
+  stopAll: boolean
+}
+
+export type ProviderAdapterSession = {
+  cwd: string
+  model: string
+  providerInstanceId: ProviderInstanceId
+  providerSessionId: string
+  providerThreadId?: string
+  runtimeMode: RuntimeMode
+  status: ProviderRuntimeSessionState
+  threadId: ThreadId
+}
+
+export type ProviderThreadTurnSnapshot = {
+  id: string
+  items: unknown[]
+}
+
+export type ProviderThreadSnapshot = {
+  providerThreadId?: string
+  threadId: ThreadId
+  turns: ProviderThreadTurnSnapshot[]
+}
+
 export type ProviderAdapter = {
   adapterKey: string
+  capabilities: ProviderAdapterCapabilities
   driverKind: ProviderDriverKind
+  hasSession: (input: { threadId: ThreadId }) => Promise<boolean>
   interruptTurn: (input: ProviderTurnControlInput) => Promise<void>
+  listSessions: () => Promise<ProviderAdapterSession[]>
+  readThread: (input: { threadId: ThreadId }) => Promise<ProviderThreadSnapshot>
   respondApproval: (input: ProviderApprovalResponseInput) => Promise<void>
   respondUserInput: (input: ProviderUserInputResponseInput) => Promise<void>
+  rollbackThread: (input: {
+    numTurns: number
+    threadId: ThreadId
+  }) => Promise<ProviderThreadSnapshot>
   snapshot: () => Promise<ProviderSnapshot>
   startTurn: (input: ProviderTurnInput, sink: ProviderRuntimeSink) => Promise<void>
+  stopAll: () => Promise<void>
   stopSession: (input: { threadId: ThreadId }) => Promise<void>
 }
