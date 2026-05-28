@@ -156,7 +156,7 @@ export const projectionThreadActivities = sqliteTable(
     activityId: text('activity_id').primaryKey(),
     threadId: text('thread_id').notNull(),
     turnId: text('turn_id'),
-    tone: text('tone', { enum: ['info', 'tool', 'approval', 'error'] }).notNull(),
+    tone: text('tone', { enum: ['info', 'tool', 'thinking', 'approval', 'error'] }).notNull(),
     kind: text('kind').notNull(),
     summary: text('summary').notNull(),
     payloadJson: text('payload_json').notNull(),

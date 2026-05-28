@@ -73,6 +73,24 @@ type ActiveCodexTurn = {
   sink: ProviderRuntimeSink
 }
 
+type CodexReasoningState = {
+  contentParts: Map<number, string>
+  itemId: string
+  lastEmittedSummary: string | null
+  providerTurnId: string
+  sink: ProviderRuntimeSink
+  summaryParts: Map<number, string>
+  threadId: ThreadId
+  turnId: TurnId
+}
+
+type CodexReasoningItem = {
+  content?: unknown
+  id: string
+  summary?: unknown
+  type: 'reasoning'
+}
+
 type CodexModelOptions = {
   effort?: CodexReasoningEffort
   serviceTier?: 'fast'
@@ -264,6 +282,7 @@ class CodexAppServerSession {
   private readonly providerInstanceId: ProviderTurnInput['providerInstanceId']
   private readonly providerSessionId: string
   private readonly providerThreadId: string
+  private readonly reasoningItems = new Map<string, CodexReasoningState>()
   private readonly runtimeMode: RuntimeMode
   private readonly threadId: ThreadId
   private readonly turns = new Map<string, ActiveCodexTurn>()
@@ -491,6 +510,8 @@ class CodexAppServerSession {
   private async handleNotification(message: JsonRpcMessage) {
     if (!message.method) return
 
+    if (await this.handleManualNotification(message.method, message.params)) return
+
     const notification = codexServerNotification(message.method, message.params)
     if (!notification) return
 
@@ -508,6 +529,113 @@ class CodexAppServerSession {
         this.handleErrorNotification(notification.params)
         return
     }
+  }
+
+  private async handleManualNotification(method: string, params: unknown) {
+    switch (method) {
+      case 'item/started':
+        return this.handleItemStartedNotification(params)
+      case 'item/completed':
+        return this.handleItemCompletedNotification(params)
+      case 'item/reasoning/summaryPartAdded':
+        this.handleReasoningSummaryPartAddedNotification(params)
+        return true
+      case 'item/reasoning/summaryTextDelta':
+        await this.handleReasoningSummaryTextDeltaNotification(params)
+        return true
+      case 'item/reasoning/textDelta':
+        await this.handleReasoningTextDeltaNotification(params)
+        return true
+      default:
+        return false
+    }
+  }
+
+  private async handleItemStartedNotification(params: unknown) {
+    const item = notificationItem(params)
+    if (!isReasoningItem(item)) return false
+
+    const context = codexItemNotificationContext(params, 'startedAtMs')
+    if (!context) return true
+
+    const turn = this.turnForProviderTurnId(context.providerTurnId)
+    if (!turn) {
+      this.recordMissingReasoningTurn(context.providerTurnId, 'item_started')
+      return true
+    }
+
+    const state = this.getOrCreateReasoningState(context.providerTurnId, item.id, turn)
+    await this.emitReasoningProgress({
+      createdAt: context.createdAt,
+      eventId: reasoningRuntimeEventId('start', context.providerTurnId, item.id),
+      state,
+      summary: 'Thinking',
+      updateLastEmitted: false,
+    })
+    return true
+  }
+
+  private async handleItemCompletedNotification(params: unknown) {
+    const item = notificationItem(params)
+    if (!isReasoningItem(item)) return false
+
+    const context = codexItemNotificationContext(params, 'completedAtMs')
+    if (!context) return true
+
+    const turn = this.turnForProviderTurnId(context.providerTurnId)
+    if (!turn) {
+      this.recordMissingReasoningTurn(context.providerTurnId, 'item_completed')
+      return true
+    }
+
+    await this.emitCompletedReasoningItem(context.providerTurnId, item, turn, context.createdAt)
+    return true
+  }
+
+  private handleReasoningSummaryPartAddedNotification(params: unknown) {
+    const context = codexReasoningPartContext(params)
+    if (!context) return
+
+    const turn = this.turnForProviderTurnId(context.providerTurnId)
+    if (!turn) {
+      this.recordMissingReasoningTurn(context.providerTurnId, 'summary_part_added')
+      return
+    }
+
+    const state = this.getOrCreateReasoningState(context.providerTurnId, context.itemId, turn)
+    if (!state.summaryParts.has(context.summaryIndex)) {
+      state.summaryParts.set(context.summaryIndex, '')
+    }
+  }
+
+  private async handleReasoningSummaryTextDeltaNotification(params: unknown) {
+    const context = codexReasoningDeltaContext(params)
+    if (!context) return
+
+    const turn = this.turnForProviderTurnId(context.providerTurnId)
+    if (!turn) {
+      this.recordMissingReasoningTurn(context.providerTurnId, 'summary_text_delta')
+      return
+    }
+
+    const state = this.getOrCreateReasoningState(context.providerTurnId, context.itemId, turn)
+    appendReasoningPart(state.summaryParts, context.summaryIndex, context.delta)
+    await this.emitBufferedReasoningProgress(state, context.createdAt)
+  }
+
+  private async handleReasoningTextDeltaNotification(params: unknown) {
+    const context = codexReasoningDeltaContext(params, 'contentIndex')
+    if (!context) return
+
+    const turn = this.turnForProviderTurnId(context.providerTurnId)
+    if (!turn) {
+      this.recordMissingReasoningTurn(context.providerTurnId, 'text_delta')
+      return
+    }
+
+    const state = this.getOrCreateReasoningState(context.providerTurnId, context.itemId, turn)
+    appendReasoningPart(state.contentParts, context.contentIndex, context.delta)
+    await this.emitBufferedReasoningProgress(state, context.createdAt)
   }
 
   private async handleAgentMessageDelta(
@@ -589,6 +717,7 @@ class CodexAppServerSession {
       threadId: this.threadId,
       turnId: activeTurn.canonicalTurnId,
     })
+    await this.emitReasoningItemsFromTurn(params.turn, activeTurn)
     if (params.turn.status === 'completed') {
       await this.completeTurn(params.turn.id, activeTurn)
       return
@@ -641,6 +770,7 @@ class CodexAppServerSession {
     const activeTurn = this.turns.get(providerTurnId)
     if (!activeTurn) return
     if (response.turn.status === 'inProgress') return
+    await this.emitReasoningItemsFromTurn(response.turn, activeTurn)
     if (response.turn.status === 'completed') {
       await this.completeTurn(providerTurnId, activeTurn)
       return
@@ -747,6 +877,7 @@ class CodexAppServerSession {
   private rejectTurn(providerTurnId: string, turn: ActiveCodexTurn, message: string) {
     this.turns.delete(providerTurnId)
     this.canonicalTurnByProviderTurnId.delete(providerTurnId)
+    this.clearReasoningForProviderTurn(providerTurnId)
     if (this.activeProviderTurnId === providerTurnId) this.activeProviderTurnId = null
     this.status = 'error'
     turn.reject(new Error(message))
@@ -755,8 +886,115 @@ class CodexAppServerSession {
   private resolveTurn(providerTurnId: string, turn: ActiveCodexTurn) {
     this.turns.delete(providerTurnId)
     this.canonicalTurnByProviderTurnId.delete(providerTurnId)
+    this.clearReasoningForProviderTurn(providerTurnId)
     if (this.activeProviderTurnId === providerTurnId) this.activeProviderTurnId = null
     turn.resolve()
+  }
+
+  private getOrCreateReasoningState(providerTurnId: string, itemId: string, turn: ActiveCodexTurn) {
+    const key = reasoningStateKey(providerTurnId, itemId)
+    const existing = this.reasoningItems.get(key)
+    if (existing) return existing
+
+    const state: CodexReasoningState = {
+      contentParts: new Map(),
+      itemId,
+      lastEmittedSummary: null,
+      providerTurnId,
+      sink: turn.sink,
+      summaryParts: new Map(),
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+    }
+    this.reasoningItems.set(key, state)
+
+    return state
+  }
+
+  private async emitBufferedReasoningProgress(state: CodexReasoningState, createdAt: string) {
+    const summary = reasoningStateSummary(state)
+    if (!summary) return
+    if (!shouldEmitReasoningSummary(state.lastEmittedSummary, summary)) return
+
+    await this.emitReasoningProgress({
+      createdAt,
+      eventId: runtimeEventId('codex-reasoning-progress'),
+      state,
+      summary,
+      updateLastEmitted: true,
+    })
+  }
+
+  private async emitCompletedReasoningItem(
+    providerTurnId: string,
+    item: CodexReasoningItem,
+    turn: ActiveCodexTurn,
+    createdAt: string,
+  ) {
+    const state = this.getOrCreateReasoningState(providerTurnId, item.id, turn)
+    const summary = reasoningItemSummary(item) ?? reasoningStateSummary(state)
+    if (!summary) return
+    if (summary === state.lastEmittedSummary) return
+
+    await this.emitReasoningProgress({
+      createdAt,
+      eventId: reasoningRuntimeEventId('complete', providerTurnId, item.id),
+      state,
+      summary,
+      updateLastEmitted: true,
+    })
+  }
+
+  private async emitReasoningItemsFromTurn(
+    turnValue: {
+      readonly completedAt?: number | null
+      readonly id: string
+      readonly items: readonly unknown[]
+    },
+    activeTurn: ActiveCodexTurn,
+  ) {
+    const createdAt = isoFromUnixMs(turnValue.completedAt) ?? new Date().toISOString()
+    for (const item of turnValue.items) {
+      if (!isReasoningItem(item)) continue
+      await this.emitCompletedReasoningItem(turnValue.id, item, activeTurn, createdAt)
+    }
+  }
+
+  private async emitReasoningProgress(input: {
+    createdAt: string
+    eventId: string
+    state: CodexReasoningState
+    summary: string
+    updateLastEmitted: boolean
+  }) {
+    if (input.updateLastEmitted) input.state.lastEmittedSummary = input.summary
+    await input.state.sink.ingest({
+      createdAt: input.createdAt,
+      eventId: input.eventId,
+      payload: {
+        description: input.summary,
+        summary: input.summary,
+        taskId: `reasoning:${input.state.itemId}`,
+      },
+      threadId: input.state.threadId,
+      turnId: input.state.turnId,
+      type: 'task.progress',
+    })
+  }
+
+  private recordMissingReasoningTurn(providerTurnId: string, stage: string) {
+    recordChatPipelineWarning('chat.pipeline.codex_session.reasoning.missing_turn', {
+      providerTurnId,
+      stage,
+      threadId: this.threadId,
+    })
+  }
+
+  private clearReasoningForProviderTurn(providerTurnId: string) {
+    for (const key of this.reasoningItems.keys()) {
+      if (!key.startsWith(`${providerTurnId}:`)) continue
+      this.reasoningItems.delete(key)
+    }
   }
 }
 
@@ -1338,6 +1576,135 @@ function errorNotificationMessage(error: unknown) {
   return message ?? turnErrorMessage(asRecord(error))
 }
 
+function notificationItem(params: unknown) {
+  return asRecord(params).item
+}
+
+function isReasoningItem(value: unknown): value is CodexReasoningItem {
+  const record = asRecord(value)
+  if (stringField(record, 'type') !== 'reasoning') return false
+
+  return Boolean(stringField(record, 'id'))
+}
+
+function codexItemNotificationContext(
+  params: unknown,
+  timestampKey: 'completedAtMs' | 'startedAtMs',
+) {
+  const record = asRecord(params)
+  const providerTurnId = stringField(record, 'turnId')
+  if (!providerTurnId) return null
+
+  return {
+    createdAt: isoFromUnixMs(numberField(record, timestampKey)) ?? new Date().toISOString(),
+    providerTurnId,
+  }
+}
+
+function codexReasoningPartContext(params: unknown) {
+  const record = asRecord(params)
+  const itemId = stringField(record, 'itemId')
+  const providerTurnId = stringField(record, 'turnId')
+  const summaryIndex = numberField(record, 'summaryIndex')
+  if (!itemId || !providerTurnId || summaryIndex === null) return null
+
+  return { itemId, providerTurnId, summaryIndex }
+}
+
+function codexReasoningDeltaContext(
+  params: unknown,
+  indexKey: 'contentIndex' | 'summaryIndex' = 'summaryIndex',
+) {
+  const record = asRecord(params)
+  const baseContext = codexReasoningPartContext({
+    itemId: record.itemId,
+    summaryIndex: record[indexKey],
+    turnId: record.turnId,
+  })
+  const delta = stringField(record, 'delta')
+  if (!baseContext || !delta) return null
+
+  return {
+    ...baseContext,
+    contentIndex: indexKey === 'contentIndex' ? baseContext.summaryIndex : 0,
+    createdAt: new Date().toISOString(),
+    delta,
+    summaryIndex: indexKey === 'summaryIndex' ? baseContext.summaryIndex : 0,
+  }
+}
+
+function appendReasoningPart(parts: Map<number, string>, index: number, delta: string) {
+  parts.set(index, `${parts.get(index) ?? ''}${delta}`)
+}
+
+function reasoningStateSummary(state: CodexReasoningState) {
+  return reasoningPartsText(state.summaryParts) ?? reasoningPartsText(state.contentParts)
+}
+
+function reasoningPartsText(parts: Map<number, string>) {
+  const text = Array.from(parts.entries())
+    .toSorted(([left], [right]) => left - right)
+    .map(([, part]) => part.trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .trim()
+
+  return text.length > 0 ? text : null
+}
+
+function reasoningItemSummary(item: CodexReasoningItem) {
+  return (
+    normalizeReasoningText(stringArrayValue(item.summary)) ??
+    normalizeReasoningText(stringArrayValue(item.content))
+  )
+}
+
+function normalizeReasoningText(values: readonly string[]) {
+  const text = values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .trim()
+
+  return text.length > 0 ? text : null
+}
+
+function stringArrayValue(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
+function shouldEmitReasoningSummary(lastSummary: string | null, nextSummary: string) {
+  if (nextSummary === lastSummary) return false
+  if (!lastSummary) return nextSummary.length >= 48 || hasReasoningBoundary(nextSummary)
+
+  return nextSummary.length - lastSummary.length >= 80 || hasReasoningBoundary(nextSummary)
+}
+
+function hasReasoningBoundary(value: string) {
+  return /[.!?:\n]$/.test(value.trim())
+}
+
+function reasoningRuntimeEventId(
+  kind: 'complete' | 'start',
+  providerTurnId: string,
+  itemId: string,
+) {
+  return `codex-reasoning-${kind}:${providerTurnId}:${itemId}`
+}
+
+function reasoningStateKey(providerTurnId: string, itemId: string) {
+  return `${providerTurnId}:${itemId}`
+}
+
+function isoFromUnixMs(value: number | null | undefined) {
+  if (typeof value !== 'number') return null
+  if (!Number.isFinite(value)) return null
+
+  return new Date(value).toISOString()
+}
+
 function providerErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
 
@@ -1353,6 +1720,11 @@ function asRecord(value: unknown): Record<string, unknown> {
 function stringField(record: Record<string, unknown>, key: string) {
   const value = record[key]
   return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function numberField(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function isPresent<T>(value: T | null | undefined): value is T {

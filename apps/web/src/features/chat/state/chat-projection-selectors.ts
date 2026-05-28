@@ -36,6 +36,7 @@ const threadCache = new WeakMap<
     messages: ChatThread['messages']
     proposedPlans: ChatThread['proposedPlans']
     session: ChatThread['session']
+    summary: ChatSidebarThreadSummary | undefined
     thread: ChatThread
     turnDiffSummaries: ChatThread['turnDiffSummaries']
     turnState: ChatProjectionThreadTurnState | undefined
@@ -81,6 +82,7 @@ export function selectChatThreadById(
   const proposedPlans = selectChatProposedPlansForThread(state, threadId)
   const turnDiffSummaries = selectChatTurnDiffSummariesForThread(state, threadId)
   const latestTurn = latestTurnForSession(turnState?.latestTurn ?? null, session)
+  const summary = state.sidebarThreadSummaryById[threadId]
   const cached = threadCache.get(shell)
 
   if (
@@ -89,6 +91,7 @@ export function selectChatThreadById(
     cached.messages === messages &&
     cached.proposedPlans === proposedPlans &&
     cached.session === session &&
+    cached.summary === summary &&
     cached.turnDiffSummaries === turnDiffSummaries &&
     cached.turnState === turnState
   ) {
@@ -98,9 +101,13 @@ export function selectChatThreadById(
   const thread: ChatThread = {
     ...shell,
     activities,
+    hasActionableProposedPlan: summary?.hasActionableProposedPlan ?? proposedPlans.length > 0,
     latestTurn,
+    latestUserMessageAt: summary?.latestUserMessageAt ?? null,
     messages,
+    pendingApprovalCount: summary?.pendingApprovalCount ?? 0,
     pendingSourceProposedPlan: turnState?.pendingSourceProposedPlan,
+    pendingUserInputCount: summary?.pendingUserInputCount ?? 0,
     proposedPlans,
     session,
     turnDiffSummaries,
@@ -111,6 +118,7 @@ export function selectChatThreadById(
     messages,
     proposedPlans,
     session,
+    summary,
     thread,
     turnDiffSummaries,
     turnState,

@@ -1,0 +1,87 @@
+import { useQuery } from '@tanstack/react-query'
+import { Alert, AlertDescription, AlertTitle } from '@workspace/ui/components/alert'
+import { cn } from '@workspace/ui/lib/utils'
+import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { useMemo } from 'react'
+
+import {
+  chatRuntimeAlerts,
+  type ChatCommandState,
+  type ChatRuntimeAlertTone,
+} from '../lib/chat-runtime-state'
+import { providerListQueryOptions } from '../lib/provider-query'
+import type { ChatThread } from '../state/chat-projection-store'
+
+export function ChatRuntimeStatus({
+  commandFailure,
+  interruptPending,
+  sendPending,
+  stopPending,
+  thread,
+}: ChatCommandState & {
+  thread: ChatThread
+}) {
+  const providersQuery = useQuery(providerListQueryOptions())
+  const provider = providersQuery.data?.providers.find(
+    (candidate) => candidate.providerInstanceId === thread.modelSelection.providerInstanceId,
+  )
+  const providerError = providersQuery.error ? errorMessage(providersQuery.error) : null
+  const commandState = useMemo(
+    () => ({ commandFailure, interruptPending, sendPending, stopPending }),
+    [commandFailure, interruptPending, sendPending, stopPending],
+  )
+  const alerts = useMemo(
+    () =>
+      chatRuntimeAlerts({
+        commandState,
+        provider,
+        providerError,
+        providerLoading: providersQuery.isLoading,
+        thread,
+      }),
+    [commandState, provider, providerError, providersQuery.isLoading, thread],
+  )
+
+  if (alerts.length === 0) return null
+
+  return (
+    <div aria-label='Runtime notices' className='shrink-0 px-3 pt-3' role='status'>
+      <div className='mx-auto max-w-3xl space-y-2'>
+        {alerts.map((alert) => {
+          const Icon = alert.tone === 'busy' ? CircleNotchIcon : WarningCircleIcon
+
+          return (
+            <Alert
+              className={cn(runtimeAlertClass(alert.tone), 'rounded-md')}
+              key={alert.id}
+              variant={alert.tone === 'error' ? 'destructive' : 'default'}
+            >
+              <Icon className={cn('size-4', alert.tone === 'busy' && 'animate-spin')} />
+              <AlertTitle>{alert.title}</AlertTitle>
+              {alert.detail ? (
+                <AlertDescription className='line-clamp-3' title={alert.detail}>
+                  {alert.detail}
+                </AlertDescription>
+              ) : null}
+            </Alert>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function runtimeAlertClass(tone: ChatRuntimeAlertTone) {
+  if (tone === 'warning') {
+    return 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+  }
+  if (tone === 'busy') return 'border-border/70 bg-card text-muted-foreground'
+
+  return null
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return 'Provider request failed.'
+}

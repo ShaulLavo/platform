@@ -118,7 +118,7 @@ export type ProviderRuntimeEvent =
       payload?: unknown
       summary: string
       threadId: ThreadId
-      tone: 'info' | 'tool' | 'approval' | 'error'
+      tone: 'info' | 'tool' | 'thinking' | 'approval' | 'error'
       turnId: TurnId | null
       type: 'activity.append'
     }

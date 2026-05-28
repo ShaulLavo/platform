@@ -31,7 +31,36 @@ afterEach(() => {
 })
 
 describe('MessageBubble browser rendering', () => {
-  it('keeps assistant code highlighting after streaming chunk updates', async () => {
+  it('renders incomplete streamed code without highlight tokens', async () => {
+    const container = document.createElement('main')
+    container.style.width = '720px'
+    document.body.append(container)
+    root = createRoot(container)
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <EditorColorThemeProvider>
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                streaming: true,
+                text: 'Streaming code:\n\n```html\n<!doctype html>\n<html',
+              }}
+            />
+          </EditorColorThemeProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    await vi.waitFor(() => {
+      expect(streamdownCodeBlock()?.dataset.incomplete).toBe('true')
+      expect(streamdownCodeText()).toContain('<!doctype html>')
+      expect(streamdownTokenSpans()).toHaveLength(0)
+    })
+  })
+
+  it('keeps assistant code highlighting after streaming completion', async () => {
     localStorage.removeItem(THEME_STORAGE_KEY)
     const container = document.createElement('main')
     container.style.width = '720px'
@@ -96,6 +125,7 @@ const streamingAssistantChunks = [
 
 function StreamingMessageBubble() {
   const [text, setText] = useState(streamingAssistantChunks[0])
+  const [streaming, setStreaming] = useState(true)
 
   useEffect(() => {
     const timers = streamingAssistantChunks.slice(1).map((chunk, index) =>
@@ -103,13 +133,18 @@ function StreamingMessageBubble() {
         setText((currentText) => `${currentText}${chunk}`)
       }, index + 1),
     )
+    const completeTimer = window.setTimeout(
+      () => setStreaming(false),
+      streamingAssistantChunks.length + 2,
+    )
 
     return () => {
       for (const timer of timers) window.clearTimeout(timer)
+      window.clearTimeout(completeTimer)
     }
   }, [])
 
-  return <MessageBubble message={{ ...assistantCodeMessage, text }} />
+  return <MessageBubble message={{ ...assistantCodeMessage, streaming, text }} />
 }
 
 const assistantCodeMessage = {
@@ -145,10 +180,17 @@ function streamdownCodeText() {
 }
 
 function streamdownCodeBlockStyle() {
-  const codeBlock = document.querySelector('[data-streamdown="code-block"]')
+  const codeBlock = streamdownCodeBlock()
   if (!(codeBlock instanceof HTMLElement)) return null
 
   return getComputedStyle(codeBlock)
+}
+
+function streamdownCodeBlock() {
+  const codeBlock = document.querySelector('[data-streamdown="code-block"]')
+  if (!(codeBlock instanceof HTMLElement)) return null
+
+  return codeBlock
 }
 
 function streamdownCodeBlockBodyStyle() {

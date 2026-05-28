@@ -86,6 +86,23 @@ export function formatChatDateLabel(value: string) {
   }).format(date)
 }
 
+export function formatWorkingTimer(startIso: string, endIso: string) {
+  const startedAtMs = Date.parse(startIso)
+  const endedAtMs = Date.parse(endIso)
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) return null
+
+  const elapsedSeconds = Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000))
+  if (elapsedSeconds < 60) return `${elapsedSeconds}s`
+
+  const hours = Math.floor(elapsedSeconds / 3600)
+  const minutes = Math.floor((elapsedSeconds % 3600) / 60)
+  const seconds = elapsedSeconds % 60
+
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
+
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+}
+
 export function latestTurnLabel(latestTurn: OrchestrationLatestTurn | null) {
   if (!latestTurn) return 'Idle'
   if (latestTurn.state === 'running') return 'Working'
@@ -111,6 +128,7 @@ export function activityToneClass(tone: OrchestrationThreadActivityTone) {
   if (tone === 'error') return 'border-destructive/30 bg-destructive/10 text-destructive'
   if (tone === 'approval')
     return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  if (tone === 'thinking') return 'border-border bg-muted/20 text-muted-foreground'
   if (tone === 'tool') return 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300'
 
   return 'border-border bg-muted/35 text-muted-foreground'

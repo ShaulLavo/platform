@@ -259,6 +259,77 @@ describe('chat projection writers', () => {
       turnId,
     })
   })
+
+  it('projects streamed assistant deltas before completion without duplicating text', () => {
+    const threadId = parseThreadId('thread-1')
+    const turnId = parseTurnId('turn-1')
+    const messageId = parseMessageId('message-assistant')
+    let state = createInitialChatProjectionState()
+
+    state = syncChatProjectionShellSnapshot(state, {
+      projects: [makeProject()],
+      snapshotSequence: 1,
+      threads: [
+        makeThreadShell({
+          id: threadId,
+          latestTurn: {
+            assistantMessageId: null,
+            completedAt: null,
+            requestedAt: timestamp(1),
+            startedAt: timestamp(1),
+            state: 'running',
+            turnId,
+          },
+          updatedAt: timestamp(1),
+        }),
+      ],
+      updatedAt: timestamp(1),
+    })
+    state = applyChatProjectionEvent(
+      state,
+      assistantMessageEvent({
+        messageId,
+        sequence: 2,
+        streaming: true,
+        text: 'Hello ',
+        threadId,
+        turnId,
+      }),
+    )
+    state = applyChatProjectionEvent(
+      state,
+      assistantMessageEvent({
+        messageId,
+        sequence: 3,
+        streaming: true,
+        text: 'world',
+        threadId,
+        turnId,
+      }),
+    )
+    state = applyChatProjectionEvent(
+      state,
+      assistantMessageEvent({
+        messageId,
+        sequence: 4,
+        streaming: false,
+        text: '',
+        threadId,
+        turnId,
+      }),
+    )
+
+    expect(state.messageByThreadId[threadId]?.[messageId]).toMatchObject({
+      streaming: false,
+      text: 'Hello world',
+    })
+    expect(state.threadTurnStateById[threadId]?.latestTurn).toMatchObject({
+      assistantMessageId: messageId,
+      completedAt: timestamp(4),
+      state: 'completed',
+      turnId,
+    })
+  })
 })
 
 function makeProject(
@@ -375,6 +446,47 @@ function assistantCompleteEvent(
       updatedAt: timestamp(4),
     },
     sequence: 2,
+    type: 'thread.message-sent',
+  }
+}
+
+function assistantMessageEvent({
+  messageId,
+  sequence,
+  streaming,
+  text,
+  threadId,
+  turnId,
+}: {
+  messageId: ReturnType<typeof parseMessageId>
+  sequence: number
+  streaming: boolean
+  text: string
+  threadId: ReturnType<typeof parseThreadId>
+  turnId: ReturnType<typeof parseTurnId>
+}): OrchestrationEvent {
+  return {
+    actorKind: 'provider',
+    aggregateId: threadId,
+    aggregateKind: 'thread',
+    causationEventId: null,
+    commandId: parseCommandId(`command-assistant-${sequence}`),
+    correlationId: parseCommandId(`command-assistant-${sequence}`),
+    eventId: parseEventId(`event-assistant-${sequence}`),
+    metadata: {},
+    occurredAt: timestamp(sequence),
+    payload: {
+      attachments: [],
+      createdAt: timestamp(sequence),
+      messageId,
+      role: 'assistant',
+      streaming,
+      text,
+      threadId,
+      turnId,
+      updatedAt: timestamp(sequence),
+    },
+    sequence,
     type: 'thread.message-sent',
   }
 }

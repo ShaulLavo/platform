@@ -22,6 +22,7 @@ import {
 import { useChatProjectionStore } from '../state/chat-projection-store'
 import { retainThreadDetailSubscription } from '../state/thread-detail-subscriptions'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
+import { ChatRuntimeStatus } from './chat-runtime-status'
 import { MessagesTimeline } from './messages-timeline'
 
 export function ChatView({
@@ -41,7 +42,8 @@ export function ChatView({
   const thread = useChatProjectionStore(threadSelector)
   const optimisticMessages = useChatOptimisticStore(optimisticMessagesSelector)
   const [sendError, setSendError] = useState<string | null>(null)
-  const [stopping, setStopping] = useState(false)
+  const [interrupting, setInterrupting] = useState(false)
+  const [sending, setSending] = useState(false)
   const busy = isChatThreadBusy(thread)
 
   useEffect(() => {
@@ -120,6 +122,7 @@ export function ChatView({
       }),
     })
     setSendError(null)
+    setSending(true)
     try {
       logChatPipelineInfo('chat.command.dispatch.start', chatCommandSummary(submission.command))
       const result = await environment.dispatchCommand(submission.command)
@@ -144,13 +147,15 @@ export function ChatView({
       })
       setSendError(chatViewErrorMessage(error))
       return false
+    } finally {
+      setSending(false)
     }
   }
 
   async function handleStop() {
     if (!thread) return
 
-    setStopping(true)
+    setInterrupting(true)
     try {
       const command = createThreadInterruptCommand({
         createdAt: new Date().toISOString(),
@@ -168,18 +173,26 @@ export function ChatView({
       })
       setSendError(chatViewErrorMessage(error))
     } finally {
-      setStopping(false)
+      setInterrupting(false)
     }
   }
 
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
+      <ChatRuntimeStatus
+        commandFailure={sendError}
+        interruptPending={interrupting}
+        sendPending={sending}
+        stopPending={false}
+        thread={thread}
+      />
       <MessagesTimeline optimisticMessages={optimisticMessages} thread={thread} />
       <ChatInput
         busy={busy}
-        disabled={stopping}
+        commandStatusLabel={interrupting ? 'Interrupting' : null}
+        disabled={interrupting}
         draftKey={thread.id}
-        error={sendError ?? thread.session?.lastError ?? null}
+        error={null}
         interactionMode={thread.interactionMode}
         modelSelection={thread.modelSelection}
         modelSelectionLocked={thread.messages.length > 0 || thread.latestTurn !== null}

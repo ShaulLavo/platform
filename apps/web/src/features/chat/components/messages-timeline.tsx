@@ -31,8 +31,15 @@ export function MessagesTimeline({
         latestTurn: thread.latestTurn,
         messages: thread.messages,
         optimisticMessages,
+        proposedPlans: thread.proposedPlans,
       }),
-    [optimisticMessages, thread.activities, thread.latestTurn, thread.messages],
+    [
+      optimisticMessages,
+      thread.activities,
+      thread.latestTurn,
+      thread.messages,
+      thread.proposedPlans,
+    ],
   )
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -78,7 +85,7 @@ export function MessagesTimeline({
     <div className='relative min-h-0 flex-1'>
       <div
         aria-label='Messages'
-        className='app-scrollbar-thin h-full overflow-x-hidden overflow-y-auto px-3 py-4'
+        className='app-scrollbar-thin h-full overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-5'
         ref={scrollElementRef}
         role='log'
         onScroll={handleScroll}

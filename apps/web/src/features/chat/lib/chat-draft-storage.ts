@@ -47,7 +47,6 @@ const persistedChatInputDraftStorageSchema = v.object({
   version: v.literal(CHAT_INPUT_DRAFT_STORAGE_VERSION),
 })
 
-export type PersistedChatInputImageAttachment = v.InferOutput<typeof persistedImageAttachmentSchema>
 export type PersistedChatInputDraft = v.InferOutput<typeof persistedChatInputDraftSchema>
 export type PersistedChatInputDraftStorage = v.InferOutput<
   typeof persistedChatInputDraftStorageSchema
@@ -80,12 +79,6 @@ export function writePersistedChatInputDrafts(storage: PersistedChatInputDraftSt
   if (!canUseLocalStorage()) return
 
   localStorage.setItem(CHAT_INPUT_DRAFT_STORAGE_KEY, JSON.stringify(storage))
-}
-
-export function removePersistedChatInputDrafts() {
-  if (!canUseLocalStorage()) return
-
-  localStorage.removeItem(CHAT_INPUT_DRAFT_STORAGE_KEY)
 }
 
 export function emptyPersistedChatInputDrafts(): PersistedChatInputDraftStorage {

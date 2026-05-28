@@ -51,6 +51,7 @@ export type ChatInputSubmitPayload = {
 
 export function ChatInput({
   busy,
+  commandStatusLabel,
   disabled,
   draftKey,
   error,
@@ -63,6 +64,7 @@ export function ChatInput({
   runtimeMode,
 }: {
   busy: boolean
+  commandStatusLabel?: string | null
   disabled: boolean
   draftKey: string
   error: string | null
@@ -105,7 +107,8 @@ export function ChatInput({
   const hasAttachments = images.length > 0
   const activeModelSelection = draftModelSelection ?? modelSelection
   const sendDisabled = disabled || submitting || (!hasAttachments && !initialDraft.trim())
-  const statusLabel = attachmentError ?? error ?? (busy ? 'Working' : null)
+  const statusLabel =
+    attachmentError ?? error ?? (submitting ? 'Sending' : (commandStatusLabel ?? busyLabel(busy)))
   const projectEntriesQuery = useQuery(
     projectEntrySearchQueryOptions({
       enabled: trigger?.kind === 'mention',
@@ -318,4 +321,8 @@ export function ChatInput({
       </form>
     </div>
   )
+}
+
+function busyLabel(busy: boolean) {
+  return busy ? 'Working' : null
 }

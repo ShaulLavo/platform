@@ -55,6 +55,7 @@ export const orchestrationMessageSchema = v.object({
 export const orchestrationThreadActivityToneSchema = v.picklist([
   'info',
   'tool',
+  'thinking',
   'approval',
   'error',
 ])

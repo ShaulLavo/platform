@@ -1509,7 +1509,9 @@ Frontend work:
   - user input requested and resolved
   - tool started, updated, completed, failed, and declined where payloads expose
     status
-  - task started, progress, completed, failed, and stopped
+  - task started, thinking/progress, completed, failed, and stopped
+  - Codex `item/reasoning/*` notifications normalized into visible thinking
+    rows
   - runtime warning and runtime error
   - context compaction and context-window/token updates
 - Add projected proposed-plan UI states:

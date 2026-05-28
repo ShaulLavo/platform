@@ -88,9 +88,13 @@ export type ChatTurnDiffSummary = {
 
 export type ChatThread = ChatProjectionThreadShell & {
   activities: OrchestrationThreadActivity[]
+  hasActionableProposedPlan: boolean
   latestTurn: OrchestrationLatestTurn | null
+  latestUserMessageAt: string | null
   messages: OrchestrationMessage[]
+  pendingApprovalCount: number
   pendingSourceProposedPlan?: OrchestrationLatestTurn['sourceProposedPlan']
+  pendingUserInputCount: number
   proposedPlans: OrchestrationProposedPlan[]
   session: OrchestrationSession | null
   turnDiffSummaries: ChatTurnDiffSummary[]

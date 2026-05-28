@@ -73,6 +73,56 @@ function fakeModel() {
   };
 }
 
+function sendReasoningEvents() {
+  send({
+    method: 'item/started',
+    params: {
+      threadId: 'provider-thread-1',
+      turnId: 'provider-turn-1',
+      startedAtMs: 1770000000000,
+      item: {
+        id: 'reasoning-1',
+        type: 'reasoning',
+        summary: [],
+        content: [],
+      },
+    },
+  });
+  send({
+    method: 'item/reasoning/summaryPartAdded',
+    params: {
+      threadId: 'provider-thread-1',
+      turnId: 'provider-turn-1',
+      itemId: 'reasoning-1',
+      summaryIndex: 0,
+    },
+  });
+  send({
+    method: 'item/reasoning/summaryTextDelta',
+    params: {
+      threadId: 'provider-thread-1',
+      turnId: 'provider-turn-1',
+      itemId: 'reasoning-1',
+      delta: 'Inspecting the repo.',
+      summaryIndex: 0,
+    },
+  });
+  send({
+    method: 'item/completed',
+    params: {
+      threadId: 'provider-thread-1',
+      turnId: 'provider-turn-1',
+      completedAtMs: 1770000001000,
+      item: {
+        id: 'reasoning-1',
+        type: 'reasoning',
+        summary: ['Inspecting the repo.'],
+        content: [],
+      },
+    },
+  });
+}
+
 function assertStartParams(message) {
   if (message.params.cwd !== '/Users/shaul/Desktop/platform') {
     fail(message.id, 'cwd was not normalized');
@@ -193,6 +243,9 @@ function handle(message) {
       method: 'turn/started',
       params: { threadId: 'provider-thread-1', turn: fakeTurn('inProgress') },
     });
+    if (mode === 'reasoning-events') {
+      sendReasoningEvents();
+    }
     if (mode === 'malformed-delta') {
       send({
         method: 'item/agentMessage/delta',
@@ -356,6 +409,48 @@ describe('CodexProviderAdapter', () => {
 
       expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(false)
     })
+  })
+
+  it('streams Codex reasoning notifications as thinking progress', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const events: ProviderRuntimeEvent[] = []
+        const input = providerTurnInput()
+
+        await adapter.startTurn(input, {
+          ingest: async (event) => {
+            events.push(event)
+          },
+        })
+        await adapter.stopAll()
+
+        const progressEvents = events.filter((event) => event.type === 'task.progress')
+        expect(progressEvents).toEqual([
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              description: 'Thinking',
+              summary: 'Thinking',
+              taskId: 'reasoning:reasoning-1',
+            }),
+            threadId: input.thread.id,
+            turnId: input.turnId,
+            type: 'task.progress',
+          }),
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              description: 'Inspecting the repo.',
+              summary: 'Inspecting the repo.',
+              taskId: 'reasoning:reasoning-1',
+            }),
+            threadId: input.thread.id,
+            turnId: input.turnId,
+            type: 'task.progress',
+          }),
+        ])
+      },
+      { mode: 'reasoning-events' },
+    )
   })
 
   it('reads and rolls back active provider threads', async () => {

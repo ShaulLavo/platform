@@ -185,6 +185,74 @@ describe('provider runtime ingestion', () => {
       },
     ])
   })
+
+  it('normalizes task progress into thinking activities', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest({
+      createdAt: now,
+      eventId: 'task-progress-1',
+      payload: {
+        description: 'Looking through the repo',
+        summary: 'Searching for API endpoints',
+        taskId: 'task-1',
+      },
+      threadId,
+      turnId,
+      type: 'task.progress',
+    })
+
+    expect(dispatched).toMatchObject([
+      {
+        activity: {
+          kind: 'task.progress',
+          payload: {
+            detail: 'Searching for API endpoints',
+            summary: 'Searching for API endpoints',
+          },
+          summary: 'Thinking',
+          tone: 'thinking',
+        },
+        type: 'thread.activity.append',
+      },
+    ])
+  })
+
+  it('normalizes reasoning content deltas into thinking activities', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest({
+      createdAt: now,
+      eventId: 'reasoning-delta-1',
+      itemId: 'reasoning-1',
+      payload: {
+        delta: 'Inspecting the repo.',
+        streamKind: 'reasoning_summary_text',
+        summaryIndex: 0,
+      },
+      threadId,
+      turnId,
+      type: 'content.delta',
+    })
+
+    expect(dispatched).toMatchObject([
+      {
+        activity: {
+          kind: 'task.progress',
+          payload: {
+            detail: 'Inspecting the repo.',
+            streamKind: 'reasoning_summary_text',
+            summary: 'Inspecting the repo.',
+            summaryIndex: 0,
+            taskId: 'reasoning-1',
+          },
+          summary: 'Thinking',
+          tone: 'thinking',
+        },
+        type: 'thread.activity.append',
+      },
+    ])
+  })
 })
 
 function fixture(options: ConstructorParameters<typeof ProviderRuntimeIngestion>[1] = {}) {

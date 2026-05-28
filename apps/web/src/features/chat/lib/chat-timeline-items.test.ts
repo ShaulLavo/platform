@@ -3,10 +3,12 @@ import {
   commandIdSchema,
   eventIdSchema,
   messageIdSchema,
+  proposedPlanIdSchema,
   threadIdSchema,
   turnIdSchema,
   type OrchestrationLatestTurn,
   type OrchestrationMessage,
+  type OrchestrationProposedPlan,
   type OrchestrationThreadActivity,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -31,12 +33,14 @@ describe('chat timeline items', () => {
       latestTurn,
       messages: [message('message-1', threadId, timestamp(1), 'user')],
       optimisticMessages: [optimisticMessage('message-2', threadId, timestamp(2), turnId)],
+      proposedPlans: [proposedPlan('plan-1', threadId, timestamp(5), turnId)],
     })
 
     expect(items.map((item) => item.id)).toEqual([
       'message:message-1',
       'message:message-2',
-      'activity:event-1',
+      'activity-group:event-1',
+      'proposed-plan:plan-1',
       'working:turn-1',
     ])
   })
@@ -50,9 +54,66 @@ describe('chat timeline items', () => {
       latestTurn: null,
       messages: [message('message-1', threadId, timestamp(2), 'user')],
       optimisticMessages: [resolved],
+      proposedPlans: [],
     })
 
     expect(items.map((item) => item.id)).toEqual(['message:message-1'])
+  })
+
+  it('uses proposed-plan ids as stable replay keys', () => {
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const turnId = v.parse(turnIdSchema, 'turn-1')
+    const items = chatTimelineItems({
+      activities: [],
+      latestTurn: null,
+      messages: [],
+      optimisticMessages: [],
+      proposedPlans: [proposedPlan('plan-1', threadId, timestamp(1), turnId)],
+    })
+
+    expect(items.map((item) => item.id)).toEqual(['proposed-plan:plan-1'])
+  })
+
+  it('keeps T3 chronological tie order across messages, plans, and work', () => {
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const turnId = v.parse(turnIdSchema, 'turn-1')
+    const sameTime = timestamp(1)
+    const items = chatTimelineItems({
+      activities: [activity('event-1', threadId, sameTime, turnId)],
+      latestTurn: null,
+      messages: [message('message-1', threadId, sameTime, 'assistant')],
+      optimisticMessages: [],
+      proposedPlans: [proposedPlan('plan-1', threadId, sameTime, turnId, timestamp(2))],
+    })
+
+    expect(items.map((item) => item.id)).toEqual([
+      'message:message-1',
+      'proposed-plan:plan-1',
+      'activity-group:event-1',
+    ])
+    expect(items[1]?.timestamp).toBe(sameTime)
+  })
+
+  it('groups only consecutive activities after chronological ordering', () => {
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const turnId = v.parse(turnIdSchema, 'turn-1')
+    const items = chatTimelineItems({
+      activities: [
+        activity('event-1', threadId, timestamp(2), turnId),
+        activity('event-2', threadId, timestamp(4), turnId),
+      ],
+      latestTurn: null,
+      messages: [message('message-1', threadId, timestamp(1), 'user')],
+      optimisticMessages: [],
+      proposedPlans: [proposedPlan('plan-1', threadId, timestamp(3), turnId)],
+    })
+
+    expect(items.map((item) => item.id)).toEqual([
+      'message:message-1',
+      'activity-group:event-1',
+      'proposed-plan:plan-1',
+      'activity-group:event-2',
+    ])
   })
 })
 
@@ -104,6 +165,23 @@ function activity(
     threadId,
     tone: 'tool',
     turnId,
+  }
+}
+
+function proposedPlan(
+  id: string,
+  threadId: ReturnType<typeof parseThreadId>,
+  createdAt: string,
+  turnId: ReturnType<typeof parseTurnId>,
+  updatedAt = createdAt,
+): OrchestrationProposedPlan {
+  return {
+    createdAt,
+    id: v.parse(proposedPlanIdSchema, id),
+    planMarkdown: '- Do the work',
+    threadId,
+    turnId,
+    updatedAt,
   }
 }
 

@@ -542,6 +542,8 @@ function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationTh
   switch (event.type) {
     case 'activity.append':
       return [activityFromLegacyEvent(event)]
+    case 'content.delta':
+      return reasoningContentDeltaActivity(event)
     case 'item.started':
       return toolActivity(event, 'tool.started', `${event.payload.title ?? 'Tool'} started`)
     case 'item.updated':
@@ -660,13 +662,33 @@ function taskStartedActivity(event: Extract<ProviderRuntimeEvent, { type: 'task.
 }
 
 function taskProgressActivity(event: Extract<ProviderRuntimeEvent, { type: 'task.progress' }>) {
-  return baseActivity(event, 'info', 'task.progress', 'Reasoning update', {
+  return baseActivity(event, 'thinking', 'task.progress', 'Thinking', {
     detail: truncateDetail(event.payload.summary ?? event.payload.description),
     lastToolName: event.payload.lastToolName,
     summary: truncateDetail(event.payload.summary),
     taskId: event.payload.taskId,
     usage: event.payload.usage,
   })
+}
+
+function reasoningContentDeltaActivity(
+  event: Extract<ProviderRuntimeEvent, { type: 'content.delta' }>,
+) {
+  if (!isReasoningStreamKind(event.payload.streamKind)) return []
+
+  const summary = truncateDetail(event.payload.delta)
+  if (!summary) return []
+
+  return [
+    baseActivity(event, 'thinking', 'task.progress', 'Thinking', {
+      contentIndex: event.payload.contentIndex,
+      detail: summary,
+      streamKind: event.payload.streamKind,
+      summary,
+      summaryIndex: event.payload.summaryIndex,
+      taskId: event.itemId ?? event.eventId,
+    }),
+  ]
 }
 
 function taskCompletedActivity(event: Extract<ProviderRuntimeEvent, { type: 'task.completed' }>) {
@@ -726,6 +748,10 @@ function tokenUsageActivity(
       event.payload.usage,
     ),
   ]
+}
+
+function isReasoningStreamKind(streamKind: string) {
+  return streamKind === 'reasoning_summary_text' || streamKind === 'reasoning_text'
 }
 
 function baseActivity(
