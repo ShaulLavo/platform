@@ -1368,6 +1368,27 @@ Purpose:
 - Pin the upstream Codex protocol source so adapter behavior is reproducible and
   protocol changes are reviewed as generated diffs.
 
+Implementation status:
+
+- Done on 2026-05-28:
+  - added a pinned Codex app-server protocol generator for the Platform-used
+    request, response, and notification subset, with deterministic formatted
+    Valibot/type output and a stale-file check script
+  - generated `CodexClientRequestParamsByMethod`,
+    `CodexClientRequestResultByMethod`, and
+    `CodexServerNotificationParamsByMethod` maps from the pinned upstream
+    protocol metadata
+  - typed `CodexAppServerRpcClient.request()` by method name and validate
+    request params plus decoded responses before adapter code consumes them
+  - validate generated server notifications before dispatching to Codex adapter
+    handlers
+  - replaced app-server response/notification `asRecord` reads in the covered
+    Codex adapter paths with generated protocol types
+  - kept structural guards for the JSON-RPC envelope and Platform-owned
+    transitional payloads such as image attachment `dataUrl`
+  - added generator fixture coverage, malformed response/notification coverage,
+    deterministic generated-file checking, and typed fake app-server coverage
+
 Platform target paths:
 
 - `apps/server/src/provider/adapters/codex-protocol/generate.ts`

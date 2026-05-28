@@ -36,6 +36,43 @@ function fail(id, message) {
   send({ id, error: { message } });
 }
 
+function fakeThread(turns = []) {
+  return {
+    cliVersion: '9.9.9',
+    createdAt: 0,
+    cwd: '/Users/shaul/Desktop/platform',
+    ephemeral: false,
+    id: 'provider-thread-1',
+    modelProvider: 'openai',
+    preview: 'Say hello',
+    source: 'appServer',
+    status: { type: 'idle' },
+    turns,
+    updatedAt: 0,
+  };
+}
+
+function fakeTurn(status = 'completed', items = []) {
+  return {
+    id: 'provider-turn-1',
+    items,
+    status,
+  };
+}
+
+function fakeModel() {
+  return {
+    defaultReasoningEffort: 'medium',
+    description: 'Fake Codex model',
+    displayName: 'GPT-5.5',
+    hidden: false,
+    id: 'gpt-5.5',
+    isDefault: true,
+    model: 'gpt-5.5',
+    supportedReasoningEfforts: [],
+  };
+}
+
 function assertStartParams(message) {
   if (message.params.cwd !== '/Users/shaul/Desktop/platform') {
     fail(message.id, 'cwd was not normalized');
@@ -98,31 +135,55 @@ function assertTurnParams(message) {
 }
 
 function handle(message) {
+  const mode = process.env.PLATFORM_FAKE_CODEX_MODE;
   if (message.method === 'initialize') {
-    send({ id: message.id, result: { userAgent: 'Codex Desktop/9.9.9 fake-test' } });
+    send({
+      id: message.id,
+      result: {
+        codexHome: '/Users/shaul/.codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+        userAgent: 'Codex Desktop/9.9.9 fake-test',
+      },
+    });
     return;
   }
   if (message.method === 'initialized') {
     return;
   }
   if (message.method === 'account/read') {
-    send({ id: message.id, result: { account: { type: 'chatgpt' }, requiresOpenaiAuth: false } });
+    send({ id: message.id, result: { account: { type: 'apiKey' }, requiresOpenaiAuth: false } });
     return;
   }
   if (message.method === 'model/list') {
     send({
       id: message.id,
-      result: { data: [{ model: 'gpt-5.5', displayName: 'GPT-5.5' }], nextCursor: null },
+      result: { data: [fakeModel()], nextCursor: null },
     });
     return;
   }
   if (message.method === 'thread/start') {
     if (!assertStartParams(message)) return;
+    if (mode === 'malformed-thread-start') {
+      send({ id: message.id, result: { thread: {} } });
+      return;
+    }
     send({
       method: 'thread/started',
-      params: { thread: { id: 'provider-thread-1' } },
+      params: { thread: fakeThread() },
     });
-    send({ id: message.id, result: { thread: { id: 'provider-thread-1' } } });
+    send({
+      id: message.id,
+      result: {
+        approvalPolicy: 'never',
+        approvalsReviewer: 'user',
+        cwd: '/Users/shaul/Desktop/platform',
+        model: 'gpt-5.5',
+        modelProvider: 'openai',
+        sandbox: { type: 'dangerFullAccess' },
+        thread: fakeThread(),
+      },
+    });
     return;
   }
   if (message.method === 'turn/start') {
@@ -130,8 +191,20 @@ function handle(message) {
     process.stderr.write('2026-05-28T00:00:00Z INFO codex: harmless diagnostic\\n');
     send({
       method: 'turn/started',
-      params: { threadId: 'provider-thread-1', turn: { id: 'provider-turn-1', status: 'inProgress' } },
+      params: { threadId: 'provider-thread-1', turn: fakeTurn('inProgress') },
     });
+    if (mode === 'malformed-delta') {
+      send({
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'provider-thread-1',
+          itemId: 'item-1',
+          delta: 'broken',
+        },
+      });
+      send({ id: message.id, result: { turn: fakeTurn('inProgress') } });
+      return;
+    }
     send({
       method: 'item/agentMessage/delta',
       params: {
@@ -143,9 +216,9 @@ function handle(message) {
     });
     send({
       method: 'turn/completed',
-      params: { threadId: 'provider-thread-1', turn: { id: 'provider-turn-1', status: 'completed' } },
+      params: { threadId: 'provider-thread-1', turn: fakeTurn('completed') },
     });
-    send({ id: message.id, result: { turn: { id: 'provider-turn-1', status: 'completed' } } });
+    send({ id: message.id, result: { turn: fakeTurn('completed') } });
     return;
   }
   if (message.method === 'turn/interrupt') {
@@ -156,10 +229,9 @@ function handle(message) {
     send({
       id: message.id,
       result: {
-        thread: {
-          id: 'provider-thread-1',
-          turns: [{ id: 'provider-turn-1', items: [{ type: 'agentMessage', text: 'hello' }] }],
-        },
+        thread: fakeThread([
+          fakeTurn('completed', [{ id: 'item-1', type: 'agentMessage', text: 'hello' }]),
+        ]),
       },
     });
     return;
@@ -172,10 +244,7 @@ function handle(message) {
     send({
       id: message.id,
       result: {
-        thread: {
-          id: 'provider-thread-1',
-          turns: [],
-        },
+        thread: fakeThread(),
       },
     });
     return;
@@ -310,7 +379,7 @@ describe('CodexProviderAdapter', () => {
         turns: [
           {
             id: 'provider-turn-1',
-            items: [{ type: 'agentMessage', text: 'hello' }],
+            items: [{ id: 'item-1', type: 'agentMessage', text: 'hello' }],
           },
         ],
       })
@@ -336,20 +405,58 @@ describe('CodexProviderAdapter', () => {
       adapter.rollbackThread({ numTurns: 0, threadId: input.thread.id }),
     ).rejects.toThrow('Codex thread rollback requires numTurns')
   })
+
+  it('rejects malformed app-server responses with protocol errors', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const input = providerTurnInput()
+
+        await expect(
+          adapter.startTurn(input, {
+            ingest: async () => {},
+          }),
+        ).rejects.toThrow('Codex app-server protocol error for thread/start response')
+      },
+      { mode: 'malformed-thread-start' },
+    )
+  })
+
+  it('rejects malformed app-server notifications with protocol errors', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const input = providerTurnInput()
+
+        await expect(
+          adapter.startTurn(input, {
+            ingest: async () => {},
+          }),
+        ).rejects.toThrow(
+          'Codex app-server protocol error for item/agentMessage/delta notification',
+        )
+        await adapter.stopAll()
+      },
+      { mode: 'malformed-delta' },
+    )
+  })
 })
 
-async function withFakeCodex(run: () => Promise<void>) {
+async function withFakeCodex(run: () => Promise<void>, options: { readonly mode?: string } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'platform-fake-codex-'))
   const binaryPath = path.join(directory, 'codex')
   const previousBinary = process.env.PLATFORM_CODEX_BINARY
+  const previousMode = process.env.PLATFORM_FAKE_CODEX_MODE
   await writeFile(binaryPath, fakeCodexScript)
   await chmod(binaryPath, 0o755)
   process.env.PLATFORM_CODEX_BINARY = binaryPath
+  if (options.mode) process.env.PLATFORM_FAKE_CODEX_MODE = options.mode
 
   try {
     await run()
   } finally {
     restoreCodexBinary(previousBinary)
+    restoreFakeCodexMode(previousMode)
     await rm(directory, { force: true, recursive: true })
   }
 }
@@ -410,4 +517,13 @@ function restoreCodexBinary(previousBinary: string | undefined) {
   }
 
   process.env.PLATFORM_CODEX_BINARY = previousBinary
+}
+
+function restoreFakeCodexMode(previousMode: string | undefined) {
+  if (previousMode === undefined) {
+    delete process.env.PLATFORM_FAKE_CODEX_MODE
+    return
+  }
+
+  process.env.PLATFORM_FAKE_CODEX_MODE = previousMode
 }

@@ -22,6 +22,15 @@ import {
   recordChatPipelineInfo,
   recordChatPipelineWarning,
 } from '../../orchestration/orchestration-logging'
+import {
+  codexServerNotification,
+  parseCodexClientRequestParams,
+  parseCodexClientRequestResult,
+  type CodexClientRequestMethod,
+  type CodexClientRequestParamsByMethod,
+  type CodexClientRequestResultByMethod,
+  type CodexServerNotificationParamsByMethod,
+} from './codex-protocol'
 
 const DEFAULT_CODEX_BINARY = 'codex'
 const DEFAULT_CODEX_MODEL = 'gpt-5.5'
@@ -36,7 +45,7 @@ const BENIGN_CODEX_STDERR_ERROR_SNIPPETS = [
   'state db missing rollout path for thread',
   'state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back',
 ]
-const CODEX_REASONING_EFFORTS = new Set(['minimal', 'low', 'medium', 'high'])
+const CODEX_REASONING_EFFORTS = new Set<CodexReasoningEffort>(['minimal', 'low', 'medium', 'high'])
 
 const CODEX_ADAPTER_CAPABILITIES = {
   readThread: true,
@@ -49,7 +58,7 @@ type JsonRpcId = number | string
 type JsonRpcMessage = {
   error?: { code?: number; message?: string } | unknown
   id?: JsonRpcId
-  method?: string
+  method?: CodexClientRequestMethod | string
   params?: unknown
   result?: unknown
 }
@@ -65,9 +74,11 @@ type ActiveCodexTurn = {
 }
 
 type CodexModelOptions = {
-  effort?: string
+  effort?: CodexReasoningEffort
   serviceTier?: 'fast'
 }
+
+type CodexReasoningEffort = NonNullable<CodexClientRequestParamsByMethod['turn/start']['effort']>
 
 type CodexTurnInputItem =
   | { text: string; text_elements: unknown[]; type: 'text' }
@@ -478,54 +489,58 @@ class CodexAppServerSession {
   }
 
   private async handleNotification(message: JsonRpcMessage) {
-    switch (message.method) {
+    if (!message.method) return
+
+    const notification = codexServerNotification(message.method, message.params)
+    if (!notification) return
+
+    switch (notification.method) {
       case 'turn/started':
-        this.handleTurnStarted(message.params)
+        this.handleTurnStarted(notification.params)
         return
       case 'item/agentMessage/delta':
-        await this.handleAgentMessageDelta(message.params)
+        await this.handleAgentMessageDelta(notification.params)
         return
       case 'turn/completed':
-        await this.handleTurnCompleted(message.params)
+        await this.handleTurnCompleted(notification.params)
         return
       case 'error':
-        this.handleErrorNotification(message.params)
+        this.handleErrorNotification(notification.params)
         return
     }
   }
 
-  private async handleAgentMessageDelta(params: unknown) {
-    const payload = asRecord(params)
-    const delta = stringField(payload, 'delta')
-    const providerTurnId = stringField(payload, 'turnId')
-    if (!delta || !providerTurnId) {
+  private async handleAgentMessageDelta(
+    params: CodexServerNotificationParamsByMethod['item/agentMessage/delta'],
+  ) {
+    if (!params.delta || !params.turnId) {
       recordChatPipelineWarning('chat.pipeline.codex_session.delta.ignored', {
-        deltaLength: delta?.length ?? 0,
-        hasProviderTurnId: Boolean(providerTurnId),
+        deltaLength: params.delta.length,
+        hasProviderTurnId: Boolean(params.turnId),
         threadId: this.threadId,
       })
       return
     }
 
-    const turn = this.turnForProviderTurnId(providerTurnId)
+    const turn = this.turnForProviderTurnId(params.turnId)
     if (!turn) {
       recordChatPipelineWarning('chat.pipeline.codex_session.delta.missing_turn', {
-        providerTurnId,
+        providerTurnId: params.turnId,
         threadId: this.threadId,
       })
       return
     }
 
     recordChatPipelineInfo('chat.pipeline.codex_session.delta.ingest', {
-      deltaLength: delta.length,
+      deltaLength: params.delta.length,
       messageId: turn.messageId,
-      providerTurnId,
+      providerTurnId: params.turnId,
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
     })
     await turn.sink.ingest({
       createdAt: new Date().toISOString(),
-      delta,
+      delta: params.delta,
       eventId: runtimeEventId('codex-assistant-delta'),
       messageId: turn.messageId,
       threadId: this.threadId,
@@ -534,9 +549,8 @@ class CodexAppServerSession {
     })
   }
 
-  private handleTurnStarted(params: unknown) {
-    const providerTurnId = stringField(asRecord(asRecord(params).turn), 'id')
-    if (!providerTurnId) {
+  private handleTurnStarted(params: CodexServerNotificationParamsByMethod['turn/started']) {
+    if (!params.turn.id) {
       recordChatPipelineWarning('chat.pipeline.codex_session.turn_started.ignored', {
         threadId: this.threadId,
       })
@@ -544,64 +558,61 @@ class CodexAppServerSession {
     }
 
     recordChatPipelineInfo('chat.pipeline.codex_session.turn_started', {
-      providerTurnId,
+      providerTurnId: params.turn.id,
       threadId: this.threadId,
     })
-    this.attachPendingTurn(providerTurnId)
+    this.attachPendingTurn(params.turn.id)
   }
 
-  private async handleTurnCompleted(params: unknown) {
-    const turn = asRecord(asRecord(params).turn)
-    const providerTurnId = stringField(turn, 'id')
-    if (!providerTurnId) {
+  private async handleTurnCompleted(
+    params: CodexServerNotificationParamsByMethod['turn/completed'],
+  ) {
+    if (!params.turn.id) {
       recordChatPipelineWarning('chat.pipeline.codex_session.turn_completed.ignored', {
         threadId: this.threadId,
       })
       return
     }
 
-    const activeTurn = this.turnForProviderTurnId(providerTurnId)
+    const activeTurn = this.turnForProviderTurnId(params.turn.id)
     if (!activeTurn) {
       recordChatPipelineWarning('chat.pipeline.codex_session.turn_completed.missing_turn', {
-        providerTurnId,
+        providerTurnId: params.turn.id,
         threadId: this.threadId,
       })
       return
     }
 
-    const status = stringField(turn, 'status')
     recordChatPipelineInfo('chat.pipeline.codex_session.turn_completed', {
-      providerTurnId,
-      status,
+      providerTurnId: params.turn.id,
+      status: params.turn.status,
       threadId: this.threadId,
       turnId: activeTurn.canonicalTurnId,
     })
-    if (status === 'completed') {
-      await this.completeTurn(providerTurnId, activeTurn)
+    if (params.turn.status === 'completed') {
+      await this.completeTurn(params.turn.id, activeTurn)
       return
     }
-    if (status === 'interrupted') {
+    if (params.turn.status === 'interrupted') {
       await this.ingestSession(activeTurn.sink, 'ready', null)
-      this.resolveTurn(providerTurnId, activeTurn)
+      this.resolveTurn(params.turn.id, activeTurn)
       return
     }
 
-    this.rejectTurn(providerTurnId, activeTurn, turnErrorMessage(turn))
+    this.rejectTurn(params.turn.id, activeTurn, turnErrorMessage(params.turn))
   }
 
-  private handleErrorNotification(params: unknown) {
-    const payload = asRecord(params)
-    if (payload.willRetry === true) return
+  private handleErrorNotification(params: CodexServerNotificationParamsByMethod['error']) {
+    if (params.willRetry === true) return
 
-    const providerTurnId = stringField(payload, 'turnId')
-    const message = errorNotificationMessage(payload.error)
-    if (!providerTurnId) {
+    const message = errorNotificationMessage(params.error)
+    if (!params.turnId) {
       this.rejectActiveTurn(new Error(message))
       return
     }
 
-    const turn = this.turnForProviderTurnId(providerTurnId)
-    if (turn) this.rejectTurn(providerTurnId, turn, message)
+    const turn = this.turnForProviderTurnId(params.turnId)
+    if (turn) this.rejectTurn(params.turnId, turn, message)
   }
 
   private async completeTurn(providerTurnId: string, turn: ActiveCodexTurn) {
@@ -623,23 +634,24 @@ class CodexAppServerSession {
     this.resolveTurn(providerTurnId, turn)
   }
 
-  private async settleIfTurnAlreadyTerminal(response: unknown, providerTurnId: string) {
-    const turn = asRecord(asRecord(response).turn)
-    const status = stringField(turn, 'status')
+  private async settleIfTurnAlreadyTerminal(
+    response: CodexClientRequestResultByMethod['turn/start'],
+    providerTurnId: string,
+  ) {
     const activeTurn = this.turns.get(providerTurnId)
     if (!activeTurn) return
-    if (status === 'inProgress') return
-    if (status === 'completed') {
+    if (response.turn.status === 'inProgress') return
+    if (response.turn.status === 'completed') {
       await this.completeTurn(providerTurnId, activeTurn)
       return
     }
-    if (status === 'interrupted') {
+    if (response.turn.status === 'interrupted') {
       await this.ingestSession(activeTurn.sink, 'ready', null)
       this.resolveTurn(providerTurnId, activeTurn)
       return
     }
 
-    this.rejectTurn(providerTurnId, activeTurn, turnErrorMessage(turn))
+    this.rejectTurn(providerTurnId, activeTurn, turnErrorMessage(response.turn))
   }
 
   private attachProviderTurn(providerTurnId: string, turn: ActiveCodexTurn) {
@@ -753,6 +765,7 @@ class CodexAppServerRpcClient {
   private readonly pending = new Map<
     string,
     {
+      method: CodexClientRequestMethod
       reject: (error: Error) => void
       resolve: (value: unknown) => void
       timer: ReturnType<typeof setTimeout>
@@ -790,20 +803,30 @@ class CodexAppServerRpcClient {
     return this.closed
   }
 
-  request(method: string, params: unknown, timeoutMs = REQUEST_TIMEOUT_MS) {
+  request<Method extends CodexClientRequestMethod>(
+    method: Method,
+    params: CodexClientRequestParamsByMethod[Method],
+    timeoutMs = REQUEST_TIMEOUT_MS,
+  ): Promise<CodexClientRequestResultByMethod[Method]> {
     if (this.closed) return Promise.reject(new Error('Codex app-server is closed.'))
 
     const id = this.nextId
     this.nextId += 1
-    const promise = new Promise<unknown>((resolve, reject) => {
+    const parsedParams = parseCodexClientRequestParams(method, params)
+    const promise = new Promise<CodexClientRequestResultByMethod[Method]>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(String(id))
         reject(new Error(`Codex app-server request timed out: ${method}`))
       }, timeoutMs)
-      this.pending.set(String(id), { reject, resolve, timer })
+      this.pending.set(String(id), {
+        method,
+        reject,
+        resolve: resolve as (value: unknown) => void,
+        timer,
+      })
     })
     try {
-      this.write({ id, method, params })
+      this.write({ id, method, params: parsedParams })
     } catch (error) {
       this.rejectRequest(id, error)
     }
@@ -884,7 +907,11 @@ class CodexAppServerRpcClient {
       return
     }
 
-    pending.resolve(message.result)
+    try {
+      pending.resolve(parseCodexClientRequestResult(pending.method, message.result))
+    } catch (error) {
+      pending.reject(new Error(providerErrorMessage(error)))
+    }
   }
 
   private handleStderrLine(line: string) {
@@ -960,13 +987,11 @@ async function requestCodexModels(client: CodexAppServerRpcClient) {
   let cursor: string | null = null
 
   do {
-    const response = await client.request(
-      'model/list',
-      cursor ? { cursor } : {},
-      PROVIDER_PROBE_TIMEOUT_MS,
-    )
+    const response: CodexClientRequestResultByMethod['model/list'] = cursor
+      ? await client.request('model/list', { cursor }, PROVIDER_PROBE_TIMEOUT_MS)
+      : await client.request('model/list', {}, PROVIDER_PROBE_TIMEOUT_MS)
     models.push(...modelsFromCodexModelListPage(response))
-    cursor = stringField(asRecord(response), 'nextCursor')
+    cursor = response.nextCursor ?? null
   } while (cursor)
 
   return models.length > 0 ? models : fallbackModels()
@@ -1007,7 +1032,7 @@ function threadStartParams(input: {
   model: string
   modelOptions: CodexModelOptions
   runtimeMode: RuntimeMode
-}) {
+}): CodexClientRequestParamsByMethod['thread/start'] {
   const runtime = runtimeModeToThreadConfig(input.runtimeMode)
 
   return {
@@ -1018,10 +1043,13 @@ function threadStartParams(input: {
     persistExtendedHistory: false,
     sandbox: runtime.sandbox,
     ...(input.modelOptions.serviceTier ? { serviceTier: input.modelOptions.serviceTier } : {}),
-  }
+  } as CodexClientRequestParamsByMethod['thread/start']
 }
 
-function turnStartParams(session: CodexAppServerSession, input: ProviderTurnInput) {
+function turnStartParams(
+  session: CodexAppServerSession,
+  input: ProviderTurnInput,
+): CodexClientRequestParamsByMethod['turn/start'] {
   const runtime = runtimeModeToThreadConfig(input.runtimeMode)
   const modelOptions = codexModelOptions(input)
 
@@ -1033,7 +1061,7 @@ function turnStartParams(session: CodexAppServerSession, input: ProviderTurnInpu
     ...(modelOptions.effort ? { effort: modelOptions.effort } : {}),
     ...(modelOptions.serviceTier ? { serviceTier: modelOptions.serviceTier } : {}),
     threadId: session.providerThreadIdForTurn(),
-  }
+  } as CodexClientRequestParamsByMethod['turn/start']
 }
 
 function codexTurnInput(input: ProviderTurnInput): CodexTurnInputItem[] {
@@ -1084,11 +1112,17 @@ function codexModelOptions(input: ProviderTurnInput): CodexModelOptions {
   }
 }
 
-function codexReasoningEffort(options: ProviderTurnInput['modelSelection']['options']) {
+function codexReasoningEffort(
+  options: ProviderTurnInput['modelSelection']['options'],
+): CodexReasoningEffort | undefined {
   const value = modelOptionValue(options, 'reasoningEffort') ?? modelOptionValue(options, 'effort')
   if (typeof value !== 'string') return undefined
 
-  return CODEX_REASONING_EFFORTS.has(value) ? value : undefined
+  return isCodexReasoningEffort(value) ? value : undefined
+}
+
+function isCodexReasoningEffort(value: string): value is CodexReasoningEffort {
+  return CODEX_REASONING_EFFORTS.has(value as CodexReasoningEffort)
 }
 
 function modelOptionValue(
@@ -1139,22 +1173,23 @@ function runtimeModeToThreadConfig(runtimeMode: RuntimeMode) {
   }
 }
 
-function accountProbeStatus(value: unknown): Pick<ProviderSnapshot, 'auth' | 'message' | 'status'> {
-  const account = asRecord(asRecord(value).account)
-  if (Object.keys(account).length > 0) {
-    const email = stringField(account, 'email')
-    const type = stringField(account, 'type')
+function accountProbeStatus(
+  value: CodexClientRequestResultByMethod['account/read'],
+): Pick<ProviderSnapshot, 'auth' | 'message' | 'status'> {
+  const account = value.account
+  if (account) {
+    const email = account.type === 'chatgpt' ? account.email : null
 
     return {
       auth: {
         status: 'authenticated',
         ...(email ? { email } : {}),
-        ...(type ? { type } : {}),
+        type: account.type,
       },
       status: 'ready',
     }
   }
-  if (asRecord(value).requiresOpenaiAuth === true) {
+  if (value.requiresOpenaiAuth) {
     return {
       auth: { status: 'unauthenticated' },
       message: 'Codex CLI is not authenticated. Run `codex login` and try again.',
@@ -1165,20 +1200,20 @@ function accountProbeStatus(value: unknown): Pick<ProviderSnapshot, 'auth' | 'me
   return { auth: { status: 'unknown' }, status: 'ready' }
 }
 
-function modelsFromCodexModelListPage(value: unknown): ProviderModel[] {
-  const data = asRecord(value).data
-  if (!Array.isArray(data)) return []
-
-  const models = data.map(modelFromCodexModel).filter((model) => model !== null)
+function modelsFromCodexModelListPage(
+  value: CodexClientRequestResultByMethod['model/list'],
+): ProviderModel[] {
+  const models = value.data.map(modelFromCodexModel).filter(isPresent)
   return models.length > 0 ? models : []
 }
 
-function modelFromCodexModel(value: unknown): ProviderModel | null {
-  const model = asRecord(value)
-  const slug = stringField(model, 'model') ?? stringField(model, 'id')
+function modelFromCodexModel(
+  value: CodexClientRequestResultByMethod['model/list']['data'][number],
+) {
+  const slug = value.model || value.id
   if (!slug) return null
 
-  const name = stringField(model, 'displayName') ?? slug
+  const name = value.displayName || slug
   return {
     capabilities: null,
     isCustom: false,
@@ -1200,41 +1235,31 @@ function fallbackModels(): ProviderModel[] {
   ]
 }
 
-function readThreadIdFromThreadResponse(response: unknown) {
-  const threadId = stringField(asRecord(asRecord(response).thread), 'id')
-  if (!threadId)
-    throw new Error('Codex app-server thread/start response did not include thread.id.')
-
-  return threadId
+function readThreadIdFromThreadResponse(
+  response: CodexClientRequestResultByMethod['thread/start'],
+) {
+  return response.thread.id
 }
 
-function readTurnIdFromTurnResponse(response: unknown) {
-  const turnId = stringField(asRecord(asRecord(response).turn), 'id')
-  if (!turnId) throw new Error('Codex app-server turn/start response did not include turn.id.')
-
-  return turnId
+function readTurnIdFromTurnResponse(response: CodexClientRequestResultByMethod['turn/start']) {
+  return response.turn.id
 }
 
-function providerThreadSnapshot(threadId: ThreadId, response: unknown): ProviderThreadSnapshot {
-  const thread = asRecord(asRecord(response).thread)
-  const providerThreadId = stringField(thread, 'id') ?? stringField(thread, 'threadId') ?? undefined
-  const rawTurns = thread.turns
-  const turns = Array.isArray(rawTurns) ? rawTurns.map(providerThreadTurn).filter(isPresent) : []
-
+function providerThreadSnapshot(
+  threadId: ThreadId,
+  response:
+    | CodexClientRequestResultByMethod['thread/read']
+    | CodexClientRequestResultByMethod['thread/rollback'],
+): ProviderThreadSnapshot {
   return {
-    ...(providerThreadId ? { providerThreadId } : {}),
+    providerThreadId: response.thread.id,
     threadId,
-    turns,
+    turns: response.thread.turns.map(providerThreadTurn),
   }
 }
 
-function providerThreadTurn(value: unknown) {
-  const turn = asRecord(value)
-  const id = stringField(turn, 'id') ?? stringField(turn, 'turnId')
-  if (!id) return null
-
-  const items = Array.isArray(turn.items) ? turn.items : []
-  return { id, items }
+function providerThreadTurn(value: { readonly id: string; readonly items: readonly unknown[] }) {
+  return { id: value.id, items: [...value.items] }
 }
 
 function parseJsonRpcMessage(line: string): JsonRpcMessage {
@@ -1260,8 +1285,8 @@ function codexBinary() {
   return process.env.PLATFORM_CODEX_BINARY ?? DEFAULT_CODEX_BINARY
 }
 
-function codexVersionFromInitialize(response: unknown) {
-  const userAgent = stringField(asRecord(response), 'userAgent')
+function codexVersionFromInitialize(response: CodexClientRequestResultByMethod['initialize']) {
+  const userAgent = response.userAgent
   if (!userAgent) return null
 
   return userAgent.match(/\/([^\s]+)/)?.[1] ?? userAgent
@@ -1302,9 +1327,10 @@ function normalizeCodexCwd(cwd: string) {
   return path.resolve(cwd)
 }
 
-function turnErrorMessage(turn: Record<string, unknown>) {
-  const errorMessage = stringField(asRecord(turn.error), 'message')
-  return errorMessage ?? stringField(turn, 'message') ?? 'Codex turn failed.'
+function turnErrorMessage(turn: unknown) {
+  const record = asRecord(turn)
+  const errorMessage = stringField(asRecord(record.error), 'message')
+  return errorMessage ?? stringField(record, 'message') ?? 'Codex turn failed.'
 }
 
 function errorNotificationMessage(error: unknown) {
