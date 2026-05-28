@@ -1,8 +1,11 @@
 import type {
+  InteractionMode,
+  ModelSelection,
   ProviderInstanceId,
   ProviderSnapshot,
   RuntimeMode,
   ThreadId,
+  TurnId,
 } from '@workspace/contracts'
 import { DEFAULT_RUNTIME_MODE } from '@workspace/contracts'
 import type {
@@ -46,6 +49,29 @@ export type ProviderStartSessionInput = {
   threadId: ThreadId
 }
 
+export type ProviderSessionRuntimePayload = {
+  activeTurnId?: TurnId | null
+  cwd?: string
+  interactionMode?: InteractionMode
+  lastError?: string | null
+  lastRuntimeEvent?: string
+  modelSelection?: ModelSelection
+  runtimeMode?: RuntimeMode
+}
+
+export type ProviderEnsureSessionInput = {
+  providerInstanceId: ProviderInstanceId
+  runtimeMode: RuntimeMode
+  runtimePayload: ProviderSessionRuntimePayload
+  status?: 'starting' | 'running'
+  threadId: ThreadId
+}
+
+export type ProviderEnsureSessionResult = {
+  binding: ProviderRuntimeBindingWithMetadata
+  reused: boolean
+}
+
 export type ProviderRuntimeEventListener = (event: ProviderRuntimeEvent) => Promise<void> | void
 
 export class ProviderService {
@@ -85,9 +111,43 @@ export class ProviderService {
     return binding
   }
 
+  ensureSession(input: ProviderEnsureSessionInput): ProviderEnsureSessionResult {
+    recordChatPipelineInfo('chat.pipeline.provider_service.ensure_session.start', {
+      model: input.runtimePayload.modelSelection?.model,
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      threadId: input.threadId,
+    })
+    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    const existing = this.sessionDirectory.getBinding(input.threadId)
+    const reused = canReuseProviderBinding(existing, input, adapter)
+    const reusedBinding = reused ? existing : null
+    const binding = this.sessionDirectory.upsert({
+      adapterKey: adapter.adapterKey,
+      providerDriverKind: adapter.driverKind,
+      providerInstanceId: input.providerInstanceId,
+      providerSessionId: reusedBinding?.providerSessionId ?? null,
+      resumeCursor: reusedBinding?.resumeCursor ?? null,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: input.runtimePayload,
+      status: input.status ?? reusedBinding?.status ?? 'starting',
+      threadId: input.threadId,
+    })
+
+    recordChatPipelineInfo('chat.pipeline.provider_service.ensure_session.complete', {
+      ...providerBindingSummary(binding),
+      reused,
+    })
+
+    return { binding, reused }
+  }
+
   async sendTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
     const startedAt = performance.now()
-    recordChatPipelineInfo('chat.pipeline.provider_service.send_turn.start', providerTurnSummary(input))
+    recordChatPipelineInfo(
+      'chat.pipeline.provider_service.send_turn.start',
+      providerTurnSummary(input),
+    )
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
 
     try {
@@ -333,6 +393,58 @@ function bindingForUpsert(binding: ProviderRuntimeBindingWithMetadata) {
 
 function isActiveBinding(binding: ProviderRuntimeBindingWithMetadata) {
   return binding.status === 'starting' || binding.status === 'running'
+}
+
+function canReuseProviderBinding(
+  binding: ProviderRuntimeBindingWithMetadata | null,
+  input: ProviderEnsureSessionInput,
+  adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+) {
+  if (!binding) return false
+  if (!isActiveBinding(binding)) return false
+  if (binding.adapterKey !== adapter.adapterKey) return false
+  if (binding.providerDriverKind !== adapter.driverKind) return false
+  if (binding.providerInstanceId !== input.providerInstanceId) return false
+  if (binding.runtimeMode !== input.runtimeMode) return false
+
+  const payload = runtimePayloadRecord(binding.runtimePayload)
+  if (payload.cwd !== input.runtimePayload.cwd) return false
+  if (payload.runtimeMode && payload.runtimeMode !== input.runtimeMode) return false
+
+  return modelSelectionsEqual(payload.modelSelection, input.runtimePayload.modelSelection)
+}
+
+function runtimePayloadRecord(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value
+
+  return {}
+}
+
+function modelSelectionsEqual(left: unknown, right: ModelSelection | undefined) {
+  if (!right) return false
+  if (!isModelSelectionLike(left)) return false
+  if (left.providerInstanceId !== right.providerInstanceId) return false
+  if (left.model !== right.model) return false
+
+  return jsonEqual(left.options ?? null, right.options ?? null)
+}
+
+function isModelSelectionLike(value: unknown): value is ModelSelection {
+  if (!isRecord(value)) return false
+  if (typeof value.providerInstanceId !== 'string') return false
+
+  return typeof value.model === 'string'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null) return false
+  if (typeof value !== 'object') return false
+
+  return !Array.isArray(value)
+}
+
+function jsonEqual(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 function providerErrorMessage(error: unknown) {

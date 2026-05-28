@@ -803,7 +803,7 @@ function writeTurnFailureState(
   state: ChatProjectionState,
   activity: OrchestrationThreadActivity,
 ): ChatProjectionState {
-  if (activity.kind !== 'provider.turn.failed') return state
+  if (!isProviderTurnFailureActivity(activity.kind)) return state
   if (!activity.turnId) return state
 
   const turnState = state.threadTurnStateById[activity.threadId]
@@ -820,6 +820,10 @@ function writeTurnFailureState(
       state: 'error',
     },
   })
+}
+
+function isProviderTurnFailureActivity(kind: string) {
+  return kind === 'provider.turn.start.failed' || kind === 'provider.turn.failed'
 }
 
 function writeAssistantMessageTurnState(

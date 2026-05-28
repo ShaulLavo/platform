@@ -288,7 +288,7 @@ function latestTurnAfterActivity(
   latestTurn: OrchestrationProjectedThread['latestTurn'],
   event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
 ) {
-  if (event.payload.activity.kind !== 'provider.turn.failed') return latestTurn
+  if (!isProviderTurnFailureActivity(event.payload.activity.kind)) return latestTurn
   if (!latestTurn) return latestTurn
   if (event.payload.activity.turnId !== latestTurn.turnId) return latestTurn
 
@@ -297,6 +297,10 @@ function latestTurnAfterActivity(
     completedAt: event.payload.activity.createdAt,
     state: 'error' as const,
   }
+}
+
+function isProviderTurnFailureActivity(kind: string) {
+  return kind === 'provider.turn.start.failed' || kind === 'provider.turn.failed'
 }
 
 function updateProjectValue(

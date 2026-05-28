@@ -395,9 +395,9 @@ function providerFailureActivityEvent(
     occurredAt: timestamp(5),
     payload: {
       activity: makeActivity(5, threadId, {
-        kind: 'provider.turn.failed',
+        kind: 'provider.turn.start.failed',
         payload: { detail: 'failed' },
-        summary: 'Provider turn failed',
+        summary: 'Provider turn start failed',
         tone: 'error',
         turnId,
       }),

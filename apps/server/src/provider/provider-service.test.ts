@@ -19,6 +19,42 @@ import { ProviderSessionDirectory } from './provider-session-directory'
 import type { ProviderRuntimeEvent, ProviderTurnInput } from './types'
 
 describe('ProviderService', () => {
+  it('reuses compatible session bindings and resets incompatible ones', () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const input = providerTurnInput()
+    const first = service.ensureSession({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: providerSessionPayload(input),
+      threadId: input.thread.id,
+    })
+    const reused = service.ensureSession({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: { ...providerSessionPayload(input), activeTurnId: input.turnId },
+      threadId: input.thread.id,
+    })
+    const reset = service.ensureSession({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: {
+        ...providerSessionPayload(input),
+        cwd: '/other-workspace',
+      },
+      threadId: input.thread.id,
+    })
+
+    expect(first).toMatchObject({ reused: false })
+    expect(reused).toMatchObject({ reused: true })
+    expect(reset).toMatchObject({ binding: { providerSessionId: null }, reused: false })
+    fixture.close()
+  })
+
   it('routes provider turns and controls through the registered Codex adapter', async () => {
     const fixture = createFixture()
     const adapter = new MockProviderAdapter({ responseText: 'Service response' })
@@ -119,6 +155,16 @@ function providerTurnInput(): ProviderTurnInput {
       worktreePath: '/workspace',
     },
     turnId,
+  }
+}
+
+function providerSessionPayload(input: ProviderTurnInput) {
+  return {
+    activeTurnId: null,
+    cwd: input.cwd,
+    interactionMode: input.interactionMode,
+    modelSelection: input.modelSelection,
+    runtimeMode: input.runtimeMode,
   }
 }
 

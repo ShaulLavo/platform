@@ -1212,6 +1212,25 @@ Purpose:
 - Bring command reaction behavior in line with T3Code's provider intent worker
   while keeping the product provider set Codex-only.
 
+Implementation status:
+
+- Done on 2026-05-28:
+  - drainable provider intent worker plus drain coverage for in-flight provider
+    actions
+  - runtime-mode-set intent filtering for active provider sessions
+  - turn-start dedupe upgraded to capacity `10_000` plus `30 minute` TTL
+  - per-thread model selection preservation during provider command handling
+  - provider session ensure behavior over `ProviderSessionDirectory`, including
+    active-session reuse and binding reset when cwd/model/runtime changes
+  - stale approval and user-input response handling as recoverable error
+    activities
+  - operation-specific provider failure activity kinds for turn start,
+    interrupt, approval response, user-input response, and session stop
+  - server and client projection compatibility for the new turn-start failure
+    activity kind
+  - title generation remains out of scope because Platform does not currently
+    have a `title-*` generation service wired into the agent runtime
+
 Platform target paths:
 
 - `apps/server/src/orchestration/provider-command-reactor.ts`

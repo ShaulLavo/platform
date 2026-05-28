@@ -8,6 +8,16 @@ import {
 } from '@workspace/contracts'
 import type { ProviderAdapter, ProviderRuntimeSink, ProviderTurnInput } from '../types'
 
+type MockProviderAdapterOptions = {
+  approvalError?: string
+  beforeComplete?: () => Promise<void> | void
+  interruptError?: string
+  responseText?: string
+  shouldFail?: boolean
+  stopError?: string
+  userInputError?: string
+}
+
 export class MockProviderAdapter implements ProviderAdapter {
   readonly adapterKey = DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
   readonly driverKind = DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
@@ -23,12 +33,22 @@ export class MockProviderAdapter implements ProviderAdapter {
     requestId: ApprovalRequestId
     threadId: ThreadId
   }> = []
+  private readonly approvalError: string | null
+  private readonly beforeComplete: (() => Promise<void> | void) | null
+  private readonly interruptError: string | null
   private readonly responseText: string
   private readonly shouldFail: boolean
+  private readonly stopError: string | null
+  private readonly userInputError: string | null
 
-  constructor(options: { responseText?: string; shouldFail?: boolean } = {}) {
+  constructor(options: MockProviderAdapterOptions = {}) {
+    this.approvalError = options.approvalError ?? null
+    this.beforeComplete = options.beforeComplete ?? null
+    this.interruptError = options.interruptError ?? null
     this.responseText = options.responseText ?? 'Mock response'
     this.shouldFail = options.shouldFail ?? false
+    this.stopError = options.stopError ?? null
+    this.userInputError = options.userInputError ?? null
   }
 
   async snapshot(): Promise<ProviderSnapshot> {
@@ -54,6 +74,7 @@ export class MockProviderAdapter implements ProviderAdapter {
   async startTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
     this.startedTurns.push(input)
     if (this.shouldFail) throw new Error('Mock provider failed')
+    await Promise.resolve(this.beforeComplete?.())
 
     const messageId = `assistant:${input.turnId}`
     await sink.ingest({
@@ -76,10 +97,14 @@ export class MockProviderAdapter implements ProviderAdapter {
   }
 
   async interruptTurn({ threadId }: { threadId: ThreadId }) {
+    if (this.interruptError) throw new Error(this.interruptError)
+
     this.interruptedThreads.push(threadId)
   }
 
   async stopSession({ threadId }: { threadId: ThreadId }) {
+    if (this.stopError) throw new Error(this.stopError)
+
     this.interruptedThreads.push(threadId)
   }
 
@@ -88,6 +113,8 @@ export class MockProviderAdapter implements ProviderAdapter {
     requestId: ApprovalRequestId
     threadId: ThreadId
   }) {
+    if (this.approvalError) throw new Error(this.approvalError)
+
     this.approvalResponses.push(input)
   }
 
@@ -96,6 +123,8 @@ export class MockProviderAdapter implements ProviderAdapter {
     requestId: ApprovalRequestId
     threadId: ThreadId
   }) {
+    if (this.userInputError) throw new Error(this.userInputError)
+
     this.userInputResponses.push(input)
   }
 }

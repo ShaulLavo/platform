@@ -404,7 +404,7 @@ export class OrchestrationProjectionPipeline {
   private updateTurnForActivity(
     event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
   ) {
-    if (event.payload.activity.kind !== 'provider.turn.failed') return
+    if (!isProviderTurnFailureActivity(event.payload.activity.kind)) return
     if (!event.payload.activity.turnId) return
 
     this.completeTurn(
@@ -603,6 +603,10 @@ function assistantTurnState(
   if (current === 'interrupted' || current === 'error') return current
 
   return 'completed'
+}
+
+function isProviderTurnFailureActivity(kind: string) {
+  return kind === 'provider.turn.start.failed' || kind === 'provider.turn.failed'
 }
 
 function assistantTurnCompletedAt(

@@ -8,6 +8,7 @@ import type {
 } from '@workspace/contracts'
 import type { LexicalEditor } from 'lexical'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cn } from '@workspace/ui/lib/utils'
 
 import {
   $setChatInputText,
@@ -98,6 +99,7 @@ export function ChatInput({
   const initialDraft = useMemo(() => readChatInputDraftPrompt(draftTarget), [draftTarget])
   const [activeCommandItemId, setActiveCommandItemId] = useState<string | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [editorFocused, setEditorFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [trigger, setTrigger] = useState<ChatInputTrigger | null>(null)
   const hasAttachments = images.length > 0
@@ -135,6 +137,12 @@ export function ChatInput({
 
     setActiveCommandItemId(commandMenuItems[0]?.id ?? null)
   }, [activeCommandItemId, commandMenuItems])
+
+  useEffect(() => {
+    if (!disabled && !submitting) return
+
+    setEditorFocused(false)
+  }, [disabled, submitting])
 
   const handleEditorReady = useCallback((editor: LexicalEditor | null) => {
     editorRef.current = editor
@@ -264,7 +272,12 @@ export function ChatInput({
           />
         ) : null}
         <LexicalComposer initialConfig={initialConfig} key={inputKey}>
-          <div className='border-border/80 bg-background/90 overflow-hidden rounded-md border shadow-[0_16px_42px_color-mix(in_oklch,var(--foreground)_7%,transparent)] backdrop-blur transition-[border-color,box-shadow] focus-within:border-blue-500/70 focus-within:ring-2 focus-within:ring-blue-500/20'>
+          <div
+            className={cn(
+              'border-border/80 bg-background/90 overflow-hidden rounded-md border shadow-[0_16px_42px_color-mix(in_oklch,var(--foreground)_7%,transparent)] backdrop-blur transition-[border-color,box-shadow]',
+              editorFocused && 'border-blue-500/70 ring-2 ring-blue-500/20',
+            )}
+          >
             <ChatInputEditor
               busy={busy}
               disabled={disabled || submitting}
@@ -278,6 +291,7 @@ export function ChatInput({
               onCommandMenuCommit={handleCommandMenuCommit}
               onCommandMenuMove={handleCommandMenuMove}
               onEditorReady={handleEditorReady}
+              onFocusChange={setEditorFocused}
               onImageFiles={handleImageFiles}
               onSubmitRequest={handleSubmit}
               onTriggerChange={setTrigger}

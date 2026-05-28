@@ -18,15 +18,19 @@ import { OrchestrationEventStore } from './event-store'
 import type { PendingOrchestrationEvent } from './event-store'
 import { OrchestrationEngine } from './engine'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
+import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
 import { projectEvents } from './projector'
 import { createEmptyReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
 import { MockProviderAdapter } from '../provider/adapters/mock'
 import { ProviderRegistry } from '../provider/registry'
+import { ProviderService } from '../provider/provider-service'
+import { ProviderSessionDirectory } from '../provider/provider-session-directory'
 import {
   orchestrationCommandSchema,
   type OrchestrationCommand,
+  type OrchestrationEvent,
   type OrchestrationReplayEventsResult,
 } from './schemas'
 
@@ -507,8 +511,52 @@ describe('orchestration engine', () => {
       status: 'error',
     })
     expect(detail.thread.activities).toContainEqual(
-      expect.objectContaining({ kind: 'provider.turn.failed', tone: 'error' }),
+      expect.objectContaining({ kind: 'provider.turn.start.failed', tone: 'error' }),
     )
+    fixture.close()
+  })
+
+  it('expires provider turn-start dedupe keys after the reactor TTL', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const engine = new OrchestrationEngine(fixture.database)
+    let nowMs = Date.parse(now)
+    const reactor = createStandaloneProviderReactor(fixture, engine, adapter, () => nowMs)
+
+    await dispatchFirstThread(engine)
+    const event = firstTurnStartEvent(engine)
+    reactor.handleEvents([event])
+    await reactor.drain()
+    reactor.handleEvents([event])
+    await reactor.drain()
+    nowMs += 31 * 60 * 1000
+    reactor.handleEvents([event])
+    await reactor.drain()
+
+    expect(adapter.startedTurns).toHaveLength(2)
+    fixture.close()
+  })
+
+  it('waits for in-flight provider actions when draining the runtime', async () => {
+    let releaseProviderTurn = () => {}
+    const providerTurnGate = new Promise<void>((resolve) => {
+      releaseProviderTurn = resolve
+    })
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({ beforeComplete: () => providerTurnGate })
+    const engine = createRuntimeEngine(fixture, adapter)
+    let drained = false
+
+    await dispatchFirstThread(engine)
+    const idle = engine.providerRuntimeIdle().then(() => {
+      drained = true
+    })
+    await Promise.resolve()
+
+    expect(drained).toBe(false)
+    releaseProviderTurn()
+    await idle
+    expect(drained).toBe(true)
     fixture.close()
   })
 
@@ -535,6 +583,51 @@ describe('orchestration engine', () => {
     expect(detail.thread.latestTurn).toMatchObject({ state: 'interrupted', turnId: 'turn-1' })
     expect(detail.thread.session).toMatchObject({ status: 'interrupted' })
     fixture.close()
+  })
+
+  it('projects interrupt and stop provider failures with operation-specific kinds', async () => {
+    const interruptFixture = createFixture()
+    const interruptAdapter = new MockProviderAdapter({ interruptError: 'interrupt failed' })
+    const interruptEngine = createRuntimeEngine(interruptFixture, interruptAdapter)
+
+    await dispatchFirstThread(interruptEngine)
+    await interruptEngine.providerRuntimeIdle()
+    await interruptEngine.dispatch(
+      command({
+        commandId: 'cmd-turn-interrupt',
+        createdAt: assistantCompleted,
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        type: 'thread.turn.interrupt',
+      }),
+    )
+    await interruptEngine.providerRuntimeIdle()
+
+    expect(interruptEngine.threadDetailSnapshot('thread-1').thread.activities).toContainEqual(
+      expect.objectContaining({ kind: 'provider.turn.interrupt.failed', tone: 'error' }),
+    )
+    interruptFixture.close()
+
+    const stopFixture = createFixture()
+    const stopAdapter = new MockProviderAdapter({ stopError: 'stop failed' })
+    const stopEngine = createRuntimeEngine(stopFixture, stopAdapter)
+
+    await dispatchFirstThread(stopEngine)
+    await stopEngine.providerRuntimeIdle()
+    await stopEngine.dispatch(
+      command({
+        commandId: 'cmd-session-stop',
+        createdAt: assistantCompleted,
+        threadId: 'thread-1',
+        type: 'thread.session.stop',
+      }),
+    )
+    await stopEngine.providerRuntimeIdle()
+
+    expect(stopEngine.threadDetailSnapshot('thread-1').thread.activities).toContainEqual(
+      expect.objectContaining({ kind: 'provider.session.stop.failed', tone: 'error' }),
+    )
+    stopFixture.close()
   })
 
   it('routes approval and user-input responses to the active provider adapter', async () => {
@@ -579,6 +672,61 @@ describe('orchestration engine', () => {
       requestId: userInputRequestId,
       threadId,
     })
+    fixture.close()
+  })
+
+  it('projects stale approval and user-input responses as recoverable activities', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({
+      approvalError: 'unknown pending approval request: approval-1',
+      userInputError: 'unknown pending user-input request: user-input-1',
+    })
+    const engine = createRuntimeEngine(fixture, adapter)
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const approvalRequestId = v.parse(approvalRequestIdSchema, 'approval-1')
+    const userInputRequestId = v.parse(approvalRequestIdSchema, 'user-input-1')
+
+    await dispatchFirstThread(engine)
+    await engine.providerRuntimeIdle()
+    await engine.dispatch(
+      command({
+        commandId: 'cmd-stale-approval-respond',
+        createdAt: assistantCompleted,
+        decision: 'accept',
+        requestId: approvalRequestId,
+        threadId,
+        type: 'thread.approval.respond',
+      }),
+    )
+    await engine.dispatch(
+      command({
+        answers: { value: 'continue' },
+        commandId: 'cmd-stale-user-input-respond',
+        createdAt: assistantCompleted,
+        requestId: userInputRequestId,
+        threadId,
+        type: 'thread.user-input.respond',
+      }),
+    )
+    await engine.providerRuntimeIdle()
+
+    const activities = engine.threadDetailSnapshot('thread-1').thread.activities
+    expect(activities).toContainEqual(
+      expect.objectContaining({
+        kind: 'provider.approval.respond.failed',
+        payload: expect.objectContaining({
+          detail: expect.stringContaining('Stale pending approval request: approval-1'),
+        }),
+      }),
+    )
+    expect(activities).toContainEqual(
+      expect.objectContaining({
+        kind: 'provider.user-input.respond.failed',
+        payload: expect.objectContaining({
+          detail: expect.stringContaining('Stale pending user-input request: user-input-1'),
+        }),
+      }),
+    )
     fixture.close()
   })
 })
@@ -708,6 +856,41 @@ function createRuntimeEngine(
   return new OrchestrationEngine(fixture.database, {
     providerRuntime: { registry: new ProviderRegistry([adapter]) },
   })
+}
+
+function createStandaloneProviderReactor(
+  fixture: ReturnType<typeof createFixture>,
+  engine: OrchestrationEngine,
+  adapter: MockProviderAdapter,
+  now: () => number,
+) {
+  const providerService = new ProviderService({
+    adapterRegistry: new ProviderRegistry([adapter]),
+    sessionDirectory: new ProviderSessionDirectory(fixture.database),
+  })
+  const ingestion = new ProviderRuntimeIngestion(async (command) => {
+    await engine.dispatch(command)
+  })
+
+  return new ProviderCommandReactor({
+    getReadModel: () => engine.readModelSnapshot(),
+    ingestion,
+    now,
+    providerService,
+  })
+}
+
+function firstTurnStartEvent(engine: OrchestrationEngine) {
+  const event = engine.replay({ afterSequence: 0 }).events.find(isThreadTurnStartRequestedEvent)
+  if (!event) throw new Error('missing turn start event')
+
+  return event
+}
+
+function isThreadTurnStartRequestedEvent(
+  event: OrchestrationEvent,
+): event is Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }> {
+  return event.type === 'thread.turn-start-requested'
 }
 
 async function fixtureRoot() {
