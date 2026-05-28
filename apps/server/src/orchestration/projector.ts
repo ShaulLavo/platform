@@ -83,6 +83,7 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       updateThread(model, event.payload.threadId, (thread) => ({
         ...thread,
         activities: [...thread.activities, { ...event.payload.activity, sequence: event.sequence }],
+        latestTurn: latestTurnAfterActivity(thread.latestTurn, event),
         updatedAt: event.payload.activity.createdAt,
       }))
       return
@@ -281,6 +282,21 @@ function assistantMessageTurnState(current: LatestTurnState, streaming: boolean)
   if (current === 'interrupted' || current === 'error') return current
 
   return 'completed'
+}
+
+function latestTurnAfterActivity(
+  latestTurn: OrchestrationProjectedThread['latestTurn'],
+  event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+) {
+  if (event.payload.activity.kind !== 'provider.turn.failed') return latestTurn
+  if (!latestTurn) return latestTurn
+  if (event.payload.activity.turnId !== latestTurn.turnId) return latestTurn
+
+  return {
+    ...latestTurn,
+    completedAt: event.payload.activity.createdAt,
+    state: 'error' as const,
+  }
 }
 
 function updateProjectValue(

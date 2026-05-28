@@ -19,6 +19,8 @@ import {
 import { OrchestrationEngine } from './orchestration/engine'
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
+import { createDefaultProviderRegistry, type ProviderRegistry } from './provider/registry'
+import { providerRoutes } from './provider/routes'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 
 export type AppOptions = FileSystemServiceOptions & {
@@ -29,6 +31,8 @@ export type AppOptions = FileSystemServiceOptions & {
   }
   orchestration?: {
     database?: OrchestrationDatabase
+    providerRegistry?: ProviderRegistry
+    providerRuntime?: boolean
   }
 }
 
@@ -38,7 +42,13 @@ export function createApp(options: AppOptions) {
     maxTextFileBytes: fs.info().maxTextFileBytes,
   })
   const terminal = new TerminalService(Object.assign({ paths: fs.paths }, options.terminal))
-  const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb)
+  const providerRegistry =
+    options.orchestration?.providerRegistry ?? createDefaultProviderRegistry()
+  const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb, {
+    providerRuntime: options.orchestration?.providerRuntime
+      ? { registry: providerRegistry }
+      : false,
+  })
   const auth = createAuthConfig(options.auth)
 
   const app = new Elysia({ name: 'platform' })
@@ -66,6 +76,7 @@ export function createApp(options: AppOptions) {
     })
     .ws('/lsp', lspRoutes(fs, auth))
     .ws('/terminal', terminal.routes(auth))
+    .use(providerRoutes(providerRegistry))
     .use(orchestrationRoutes(orchestration))
     .use(gitRoutes(git))
     .use(fsRoutes(fs))

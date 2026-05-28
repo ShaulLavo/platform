@@ -21,7 +21,7 @@ import {
   markdown,
   typeScript,
 } from '@editor/tree-sitter-languages'
-import type { LanguageServerPlugin } from '@editor/language-server'
+import type { LanguageServerPlugin } from '@editor/lsp-plugin'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'

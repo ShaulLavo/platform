@@ -208,6 +208,39 @@ describe('chat projection writers', () => {
       turnId,
     })
   })
+
+  it('marks live provider turn failures as terminal in local turn state', () => {
+    const threadId = parseThreadId('thread-1')
+    const turnId = parseTurnId('turn-1')
+    let state = createInitialChatProjectionState()
+
+    state = syncChatProjectionShellSnapshot(state, {
+      projects: [makeProject()],
+      snapshotSequence: 1,
+      threads: [
+        makeThreadShell({
+          id: threadId,
+          latestTurn: {
+            assistantMessageId: null,
+            completedAt: null,
+            requestedAt: timestamp(1),
+            startedAt: null,
+            state: 'running',
+            turnId,
+          },
+          updatedAt: timestamp(1),
+        }),
+      ],
+      updatedAt: timestamp(1),
+    })
+    state = applyChatProjectionEvent(state, providerFailureActivityEvent(threadId, turnId))
+
+    expect(state.threadTurnStateById[threadId]?.latestTurn).toMatchObject({
+      completedAt: timestamp(5),
+      state: 'error',
+      turnId,
+    })
+  })
 })
 
 function makeProject(
@@ -282,6 +315,7 @@ function makeMessage(
 function makeActivity(
   index: number,
   threadId: ReturnType<typeof parseThreadId>,
+  overrides: Partial<OrchestrationThreadActivity> = {},
 ): OrchestrationThreadActivity {
   return {
     createdAt: timestamp(index),
@@ -293,6 +327,7 @@ function makeActivity(
     threadId,
     tone: 'tool',
     turnId: null,
+    ...overrides,
   }
 }
 
@@ -323,6 +358,35 @@ function assistantCompleteEvent(
     },
     sequence: 2,
     type: 'thread.message-sent',
+  }
+}
+
+function providerFailureActivityEvent(
+  threadId: ReturnType<typeof parseThreadId>,
+  turnId: ReturnType<typeof parseTurnId>,
+): OrchestrationEvent {
+  return {
+    actorKind: 'provider',
+    aggregateId: threadId,
+    aggregateKind: 'thread',
+    causationEventId: null,
+    commandId: parseCommandId('command-provider-failure'),
+    correlationId: parseCommandId('command-provider-failure'),
+    eventId: parseEventId('event-provider-failure'),
+    metadata: {},
+    occurredAt: timestamp(5),
+    payload: {
+      activity: makeActivity(5, threadId, {
+        kind: 'provider.turn.failed',
+        payload: { detail: 'failed' },
+        summary: 'Provider turn failed',
+        tone: 'error',
+        turnId,
+      }),
+      threadId,
+    },
+    sequence: 3,
+    type: 'thread.activity-appended',
   }
 }
 

@@ -1,8 +1,10 @@
 import type {
   EventId,
   MessageId,
+  OrchestrationLatestTurn,
   OrchestrationThreadActivity,
   OrchestrationProjectShell,
+  OrchestrationSession,
   ProjectId,
   ProposedPlanId,
   ThreadId,
@@ -78,6 +80,7 @@ export function selectChatThreadById(
   const activities = selectChatActivitiesForThread(state, threadId)
   const proposedPlans = selectChatProposedPlansForThread(state, threadId)
   const turnDiffSummaries = selectChatTurnDiffSummariesForThread(state, threadId)
+  const latestTurn = latestTurnForSession(turnState?.latestTurn ?? null, session)
   const cached = threadCache.get(shell)
 
   if (
@@ -95,7 +98,7 @@ export function selectChatThreadById(
   const thread: ChatThread = {
     ...shell,
     activities,
-    latestTurn: turnState?.latestTurn ?? null,
+    latestTurn,
     messages,
     pendingSourceProposedPlan: turnState?.pendingSourceProposedPlan,
     proposedPlans,
@@ -114,6 +117,35 @@ export function selectChatThreadById(
   })
 
   return thread
+}
+
+function latestTurnForSession(
+  latestTurn: OrchestrationLatestTurn | null,
+  session: OrchestrationSession | null,
+) {
+  if (!latestTurn) return null
+  if (latestTurn.state !== 'running') return latestTurn
+  if (!session) return latestTurn
+  if (session.activeTurnId && session.activeTurnId !== latestTurn.turnId) return latestTurn
+  if (session.status === 'error') return terminalLatestTurn(latestTurn, session.updatedAt, 'error')
+  if (session.status === 'interrupted' || session.status === 'stopped') {
+    return terminalLatestTurn(latestTurn, session.updatedAt, 'interrupted')
+  }
+
+  return latestTurn
+}
+
+function terminalLatestTurn(
+  latestTurn: OrchestrationLatestTurn,
+  completedAt: string,
+  state: 'error' | 'interrupted',
+): OrchestrationLatestTurn {
+  return {
+    ...latestTurn,
+    completedAt: latestTurn.completedAt ?? completedAt,
+    startedAt: latestTurn.startedAt ?? completedAt,
+    state,
+  }
 }
 
 export function selectChatMessagesForThread(state: ChatProjectionState, threadId: ThreadId) {

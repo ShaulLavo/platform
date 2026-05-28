@@ -93,6 +93,7 @@ export class OrchestrationProjectionPipeline {
         return
       case 'thread.activity-appended':
         this.insertActivity(event)
+        this.updateTurnForActivity(event)
         return
       case 'thread.deleted':
         this.updateThread(event.payload.threadId, {
@@ -269,9 +270,7 @@ export class OrchestrationProjectionPipeline {
     this.updateAssistantTurn(event)
   }
 
-  private updateAssistantTurn(
-    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
-  ) {
+  private updateAssistantTurn(event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>) {
     if (event.payload.role !== 'assistant') return
     if (!event.payload.turnId) return
 
@@ -380,6 +379,20 @@ export class OrchestrationProjectionPipeline {
       })
       .onConflictDoNothing()
       .run()
+  }
+
+  private updateTurnForActivity(
+    event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+  ) {
+    if (event.payload.activity.kind !== 'provider.turn.failed') return
+    if (!event.payload.activity.turnId) return
+
+    this.completeTurn(
+      event.payload.threadId,
+      event.payload.activity.turnId,
+      'error',
+      event.payload.activity.createdAt,
+    )
   }
 
   private completeTurn(

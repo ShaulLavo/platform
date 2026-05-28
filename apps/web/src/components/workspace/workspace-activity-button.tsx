@@ -19,7 +19,7 @@ export function WorkspaceActivityButton({
       aria-controls={controls}
       aria-expanded={expanded}
       aria-label={label}
-      className='size-8 rounded-md p-0 text-muted-foreground hover:bg-muted/50 aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-muted/50 aria-expanded:hover:text-foreground'
+      className='text-muted-foreground hover:bg-muted/50 aria-expanded:text-muted-foreground aria-expanded:hover:bg-muted/50 aria-expanded:hover:text-foreground size-8 rounded-md p-0 aria-expanded:bg-transparent'
       size='icon'
       title={label}
       type='button'

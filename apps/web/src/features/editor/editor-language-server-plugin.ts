@@ -4,8 +4,8 @@ import type {
   LanguageServerPlugin,
   LanguageServerReferencesResult,
   LanguageServerStatus,
-} from '@editor/language-server'
-import { createLanguageServerPlugin } from '@editor/language-server/websocket'
+} from '@editor/lsp-plugin'
+import { createLanguageServerPlugin } from '@editor/lsp-plugin/websocket'
 
 import type { EditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
 import { serverUrl } from '@/lib/client'

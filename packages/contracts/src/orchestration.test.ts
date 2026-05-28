@@ -2,10 +2,12 @@ import { describe, expect, it } from 'bun:test'
 import * as v from 'valibot'
 import {
   clientOrchestrationCommandSchema,
+  DEFAULT_CODEX_PROVIDER_SETTINGS,
   modelSelectionSchema,
   orchestrationCommandReceiptSchema,
   orchestrationEventSchema,
   orchestrationEventTypes,
+  providerListResultSchema,
   orchestrationReplayEventsInputSchema,
   orchestrationShellSnapshotSchema,
   threadTurnStartCommandSchema,
@@ -29,6 +31,34 @@ describe('orchestration contracts', () => {
         model: 'gpt-5-codex',
       } as unknown),
     ).toThrow()
+  })
+
+  it('validates Phase 7 provider snapshots with open driver and instance ids', () => {
+    const parsed = v.parse(providerListResultSchema, {
+      providers: [
+        {
+          ...DEFAULT_CODEX_PROVIDER_SETTINGS,
+          auth: { status: 'unknown' },
+          checkedAt: now,
+          installed: true,
+          models: [
+            {
+              capabilities: null,
+              isCustom: false,
+              name: 'GPT-5.5',
+              shortName: 'GPT-5.5',
+              slug: 'gpt-5.5',
+            },
+          ],
+          status: 'ready',
+          version: 'codex-cli 0.130.0',
+        },
+      ],
+    })
+
+    expect(parsed.providers[0]?.providerInstanceId as string).toBe('codex')
+    expect(parsed.providers[0]?.driverKind as string).toBe('codex')
+    expect(parsed.providers[0]?.traits.supportsStreaming).toBe(true)
   })
 
   it('validates Phase 1 client commands and defaults empty attachments', () => {

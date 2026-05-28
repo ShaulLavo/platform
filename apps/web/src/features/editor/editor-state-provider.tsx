@@ -31,9 +31,7 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
       <EditorConflictStateContext value={conflictStore}>
         <EditorDocumentStateContext value={documentStore}>
           <SearchBufferStateContext value={searchBufferStore}>
-            <EditorUiStateContext value={uiStore}>
-              {children}
-            </EditorUiStateContext>
+            <EditorUiStateContext value={uiStore}>{children}</EditorUiStateContext>
           </SearchBufferStateContext>
         </EditorDocumentStateContext>
       </EditorConflictStateContext>

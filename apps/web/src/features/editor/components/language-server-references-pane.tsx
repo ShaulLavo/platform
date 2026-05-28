@@ -2,7 +2,7 @@ import { CaretRightIcon, FileCodeIcon, XIcon } from '@phosphor-icons/react'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/language-server'
+} from '@editor/lsp-plugin'
 import type { CSSProperties } from 'react'
 import { useMemo, useState } from 'react'
 

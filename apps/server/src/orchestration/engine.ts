@@ -6,6 +6,10 @@ import { OrchestrationCommandReceipts } from './command-receipts'
 import { decideOrchestrationCommand } from './decider'
 import { OrchestrationEventStore, type OrchestrationDatabase } from './event-store'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
+import { ProviderCommandReactor } from './provider-command-reactor'
+import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
+import { ProviderRuntimeReceipts } from './runtime-receipts'
+import { createDefaultProviderRegistry, type ProviderRegistry } from '../provider/registry'
 import { projectEvents } from './projector'
 import type { OrchestrationReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
@@ -17,17 +21,22 @@ export type OrchestrationDispatchResult = {
   sequence: number
 }
 
+export type OrchestrationEngineOptions = {
+  providerRuntime?: boolean | { registry?: ProviderRegistry }
+}
+
 export class OrchestrationEngine {
   private queue = Promise.resolve()
   private readonly database: OrchestrationDatabase
   private readonly receipts: OrchestrationCommandReceipts
   private readonly eventStore: OrchestrationEventStore
   private readonly projectionPipeline: OrchestrationProjectionPipeline
+  private readonly providerCommandReactor: ProviderCommandReactor | null
   private readonly snapshotQuery: OrchestrationSnapshotQuery
   private readonly streams: OrchestrationStreams
   private readModel: OrchestrationReadModel
 
-  constructor(database: OrchestrationDatabase) {
+  constructor(database: OrchestrationDatabase, options: OrchestrationEngineOptions = {}) {
     this.database = database
     migrateOrchestrationDatabase(database)
     this.eventStore = new OrchestrationEventStore(database)
@@ -37,6 +46,7 @@ export class OrchestrationEngine {
     this.streams = new OrchestrationStreams(this.snapshotQuery)
     this.projectionPipeline.catchUp()
     this.readModel = this.snapshotQuery.fullReadModel()
+    this.providerCommandReactor = this.createProviderCommandReactor(options)
   }
 
   dispatchClientCommand(command: unknown) {
@@ -74,6 +84,10 @@ export class OrchestrationEngine {
     return this.readModel
   }
 
+  providerRuntimeIdle() {
+    return this.providerCommandReactor?.drain() ?? Promise.resolve()
+  }
+
   private dispatchNow(command: OrchestrationCommand): OrchestrationDispatchResult {
     const existing = this.receipts.find(command.commandId)
     if (existing) {
@@ -85,6 +99,7 @@ export class OrchestrationEngine {
     const committed = this.commitNewCommand(command)
     this.readModel = projectEvents(committed.events, this.readModel)
     this.streams.publish(committed.events)
+    this.providerCommandReactor?.handleEvents(committed.events)
 
     return {
       deduped: false,
@@ -122,6 +137,24 @@ export class OrchestrationEngine {
         receipt,
         sequence: events.at(-1)?.sequence ?? eventStore.currentSequence(),
       }
+    })
+  }
+
+  private createProviderCommandReactor(options: OrchestrationEngineOptions) {
+    if (!options.providerRuntime) return null
+
+    const registry =
+      typeof options.providerRuntime === 'object' && options.providerRuntime.registry
+        ? options.providerRuntime.registry
+        : createDefaultProviderRegistry()
+    const ingestion = new ProviderRuntimeIngestion((command) => this.dispatch(command))
+    const receipts = new ProviderRuntimeReceipts(this.database)
+
+    return new ProviderCommandReactor({
+      getReadModel: () => this.readModel,
+      ingestion,
+      receipts,
+      registry,
     })
   }
 }

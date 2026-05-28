@@ -111,6 +111,27 @@ export {
   type RuntimeMode,
 } from './orchestration-runtime'
 export {
+  DEFAULT_CODEX_PROVIDER_SETTINGS,
+  providerAuthSchema,
+  providerAuthStatusSchema,
+  providerAvailabilitySchema,
+  providerInstanceSettingsSchema,
+  providerListResultSchema,
+  providerModelSchema,
+  providerSnapshotSchema,
+  providerStatusSchema,
+  providerTraitsSchema,
+  type ProviderAuth,
+  type ProviderAuthStatus,
+  type ProviderAvailability,
+  type ProviderInstanceSettings,
+  type ProviderListResult,
+  type ProviderModel,
+  type ProviderSnapshot,
+  type ProviderStatus,
+  type ProviderTraits,
+} from './provider'
+export {
   clientOrchestrationCommandSchema,
   internalOrchestrationCommandSchema,
   orchestrationCommandSchema,

@@ -610,17 +610,20 @@ function applyThreadActivityAppendedEvent(
   const cappedActivities = activities.slice(-CHAT_ACTIVITY_CACHE_LIMIT)
   const nextIds = cappedActivities.map((entry) => entry.id)
 
-  return {
-    ...patchThreadShell(state, threadId, { updatedAt: activity.createdAt }),
-    activityByThreadId: {
-      ...state.activityByThreadId,
-      [threadId]: recordById(cappedActivities, (entry) => entry.id),
+  return writeTurnFailureState(
+    {
+      ...patchThreadShell(state, threadId, { updatedAt: activity.createdAt }),
+      activityByThreadId: {
+        ...state.activityByThreadId,
+        [threadId]: recordById(cappedActivities, (entry) => entry.id),
+      },
+      activityIdsByThreadId: {
+        ...state.activityIdsByThreadId,
+        [threadId]: nextIds,
+      },
     },
-    activityIdsByThreadId: {
-      ...state.activityIdsByThreadId,
-      [threadId]: nextIds,
-    },
-  }
+    activity,
+  )
 }
 
 function applyThreadProposedPlanUpsertedEvent(
@@ -783,6 +786,29 @@ function writeThreadTurnState(
       [threadId]: turnState,
     },
   }
+}
+
+function writeTurnFailureState(
+  state: ChatProjectionState,
+  activity: OrchestrationThreadActivity,
+): ChatProjectionState {
+  if (activity.kind !== 'provider.turn.failed') return state
+  if (!activity.turnId) return state
+
+  const turnState = state.threadTurnStateById[activity.threadId]
+  const latestTurn = turnState?.latestTurn
+  if (!latestTurn) return state
+  if (latestTurn.turnId !== activity.turnId) return state
+
+  return writeThreadTurnState(state, activity.threadId, {
+    ...turnState,
+    latestTurn: {
+      ...latestTurn,
+      completedAt: latestTurn.completedAt ?? activity.createdAt,
+      startedAt: latestTurn.startedAt ?? activity.createdAt,
+      state: 'error',
+    },
+  })
 }
 
 function writeAssistantMessageTurnState(

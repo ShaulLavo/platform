@@ -38,7 +38,7 @@ import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/language-server'
+} from '@editor/lsp-plugin'
 
 describe('editor path utilities', () => {
   it('adds, selects, and renames open tab paths', () => {

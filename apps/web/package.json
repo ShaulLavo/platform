@@ -19,7 +19,7 @@
     "@editor/diff": "workspace:*",
     "@editor/find": "workspace:*",
     "@editor/gutters": "workspace:*",
-    "@editor/language-server": "workspace:*",
+    "@editor/lsp-plugin": "workspace:*",
     "@editor/minimap": "workspace:*",
     "@editor/react": "workspace:*",
     "@editor/scope-lines": "workspace:*",

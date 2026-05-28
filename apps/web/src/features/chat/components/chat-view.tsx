@@ -131,9 +131,10 @@ export function ChatView({
         busy={busy}
         disabled={stopping}
         draftKey={thread.id}
-        error={sendError}
+        error={sendError ?? thread.session?.lastError ?? null}
         interactionMode={thread.interactionMode}
         modelSelection={thread.modelSelection}
+        modelSelectionLocked={thread.messages.length > 0 || thread.latestTurn !== null}
         rootPath={rootPath}
         runtimeMode={thread.runtimeMode}
         onStop={handleStop}

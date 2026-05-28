@@ -37,7 +37,7 @@ import {
   type EditorWorkspaceStoreApi,
 } from '@/features/editor/state/editor-workspace-state'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { LanguageServerDefinitionTarget } from '@editor/language-server'
+import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
 import { useMemo } from 'react'
 
 export type EditorCommands = {

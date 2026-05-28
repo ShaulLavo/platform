@@ -29,6 +29,8 @@ export const projectEntryQueryKeys = {
     [...projectEntryQueryKeys.all, rootPath, query, limit] as const,
 }
 
+type ProjectEntrySearchQueryKey = ReturnType<typeof projectEntryQueryKeys.search>
+
 export function projectEntrySearchQueryOptions(input: {
   enabled?: boolean
   limit?: number
@@ -37,7 +39,12 @@ export function projectEntrySearchQueryOptions(input: {
 }) {
   const limit = input.limit ?? PROJECT_ENTRY_QUERY_LIMIT
 
-  return queryOptions({
+  return queryOptions<
+    ProjectEntrySearchResult,
+    Error,
+    ProjectEntrySearchResult,
+    ProjectEntrySearchQueryKey
+  >({
     enabled: (input.enabled ?? true) && input.query.trim().length > 0,
     placeholderData: (previous) => previous ?? EMPTY_PROJECT_ENTRIES,
     queryFn: ({ signal }) => searchProjectEntries({ ...input, limit, signal }),

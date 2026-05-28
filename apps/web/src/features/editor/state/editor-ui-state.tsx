@@ -5,7 +5,7 @@ import {
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/language-server'
+} from '@editor/lsp-plugin'
 import type { ReactEditorController } from '@editor/react'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'

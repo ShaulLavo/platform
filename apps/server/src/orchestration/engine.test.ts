@@ -5,6 +5,12 @@ import { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as v from 'valibot'
+import {
+  approvalRequestIdSchema,
+  messageIdSchema,
+  threadIdSchema,
+  turnIdSchema,
+} from '@workspace/contracts'
 import { createApp } from '../app'
 import * as schema from '../db/schema'
 import { migrateOrchestrationDatabase } from '../db/migrations'
@@ -12,9 +18,12 @@ import { OrchestrationEventStore } from './event-store'
 import type { PendingOrchestrationEvent } from './event-store'
 import { OrchestrationEngine } from './engine'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
+import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
 import { projectEvents } from './projector'
 import { createEmptyReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
+import { MockProviderAdapter } from '../provider/adapters/mock'
+import { ProviderRegistry } from '../provider/registry'
 import {
   orchestrationCommandSchema,
   type OrchestrationCommand,
@@ -325,6 +334,198 @@ describe('orchestration engine', () => {
     await events.close()
     fixture.close()
   })
+
+  it('serves provider snapshots through the provider registry route', async () => {
+    const fixture = createFixture()
+    const root = await fixtureRoot()
+    const registry = new ProviderRegistry([new MockProviderAdapter()])
+    const app = createApp({
+      auth: { allowedOrigins: ['http://localhost:5173'] },
+      orchestration: { database: fixture.database, providerRegistry: registry },
+      watch: false,
+      workspaceRoot: root,
+    })
+
+    const providers = await getJson<{ providers: Array<{ providerInstanceId: string }> }>(
+      app,
+      '/providers',
+    )
+
+    expect(providers.providers).toContainEqual(
+      expect.objectContaining({ providerInstanceId: 'codex' }),
+    )
+    fixture.close()
+  })
+
+  it('starts a provider runtime turn and projects assistant output', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({ responseText: 'Runtime response' })
+    const engine = createRuntimeEngine(fixture, adapter)
+
+    await dispatchFirstThread(engine)
+    await engine.providerRuntimeIdle()
+
+    const runtime = fixture.database.select().from(schema.providerSessionRuntime).get()
+    const detail = engine.threadDetailSnapshot('thread-1')
+
+    expect(runtime).toMatchObject({
+      providerDriverKind: 'codex',
+      providerInstanceId: 'codex',
+      status: 'running',
+      threadId: 'thread-1',
+    })
+    expect(detail.thread.messages).toContainEqual(
+      expect.objectContaining({
+        role: 'assistant',
+        streaming: false,
+        text: 'Runtime response',
+      }),
+    )
+    fixture.close()
+  })
+
+  it('dedupes duplicate provider runtime events before dispatch', async () => {
+    const dispatched: OrchestrationCommand[] = []
+    const ingestion = new ProviderRuntimeIngestion(async (command) => {
+      dispatched.push(command)
+    })
+
+    await ingestion.ingest({
+      createdAt: now,
+      delta: 'one',
+      eventId: 'runtime-event-1',
+      messageId: v.parse(messageIdSchema, 'message-runtime'),
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+      turnId: v.parse(turnIdSchema, 'turn-1'),
+      type: 'assistant.delta',
+    })
+    await ingestion.ingest({
+      createdAt: now,
+      delta: 'one',
+      eventId: 'runtime-event-1',
+      messageId: v.parse(messageIdSchema, 'message-runtime'),
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+      turnId: v.parse(turnIdSchema, 'turn-1'),
+      type: 'assistant.delta',
+    })
+
+    expect(dispatched).toHaveLength(1)
+  })
+
+  it('ingests runtime proposed plans into shell projection state', async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+    const ingestion = new ProviderRuntimeIngestion(async (command) => {
+      await engine.dispatch(command)
+    })
+
+    await dispatchFirstThread(engine)
+    await ingestion.ingest({
+      createdAt: assistantStarted,
+      eventId: 'runtime-plan-1',
+      planMarkdown: '1. Inspect runtime\n2. Patch provider',
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+      turnId: v.parse(turnIdSchema, 'turn-1'),
+      type: 'proposed-plan.upsert',
+    })
+    const shell = engine.shellSnapshot()
+
+    expect(shell.threads[0]).toMatchObject({
+      hasActionableProposedPlan: true,
+      id: 'thread-1',
+    })
+    fixture.close()
+  })
+
+  it('projects provider failures onto session and turn state', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({ shouldFail: true })
+    const engine = createRuntimeEngine(fixture, adapter)
+
+    await dispatchFirstThread(engine)
+    await engine.providerRuntimeIdle()
+    const detail = engine.threadDetailSnapshot('thread-1')
+
+    expect(detail.thread.latestTurn).toMatchObject({ state: 'error', turnId: 'turn-1' })
+    expect(detail.thread.session).toMatchObject({
+      lastError: 'Mock provider failed',
+      status: 'error',
+    })
+    expect(detail.thread.activities).toContainEqual(
+      expect.objectContaining({ kind: 'provider.turn.failed', tone: 'error' }),
+    )
+    fixture.close()
+  })
+
+  it('routes interrupt requests to the active provider adapter', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const engine = createRuntimeEngine(fixture, adapter)
+
+    await dispatchFirstThread(engine)
+    await engine.providerRuntimeIdle()
+    await engine.dispatch(
+      command({
+        commandId: 'cmd-turn-interrupt',
+        createdAt: assistantCompleted,
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        type: 'thread.turn.interrupt',
+      }),
+    )
+    await engine.providerRuntimeIdle()
+    const detail = engine.threadDetailSnapshot('thread-1')
+
+    expect(adapter.interruptedThreads).toContain(v.parse(threadIdSchema, 'thread-1'))
+    expect(detail.thread.latestTurn).toMatchObject({ state: 'interrupted', turnId: 'turn-1' })
+    expect(detail.thread.session).toMatchObject({ status: 'interrupted' })
+    fixture.close()
+  })
+
+  it('routes approval and user-input responses to the active provider adapter', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const engine = createRuntimeEngine(fixture, adapter)
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const approvalRequestId = v.parse(approvalRequestIdSchema, 'approval-1')
+    const userInputRequestId = v.parse(approvalRequestIdSchema, 'user-input-1')
+
+    await dispatchFirstThread(engine)
+    await engine.providerRuntimeIdle()
+    await engine.dispatch(
+      command({
+        commandId: 'cmd-approval-respond',
+        createdAt: assistantCompleted,
+        decision: 'accept',
+        requestId: approvalRequestId,
+        threadId,
+        type: 'thread.approval.respond',
+      }),
+    )
+    await engine.dispatch(
+      command({
+        answers: { value: 'continue' },
+        commandId: 'cmd-user-input-respond',
+        createdAt: assistantCompleted,
+        requestId: userInputRequestId,
+        threadId,
+        type: 'thread.user-input.respond',
+      }),
+    )
+    await engine.providerRuntimeIdle()
+
+    expect(adapter.approvalResponses).toContainEqual({
+      decision: 'accept',
+      requestId: approvalRequestId,
+      threadId,
+    })
+    expect(adapter.userInputResponses).toContainEqual({
+      answers: { value: 'continue' },
+      requestId: userInputRequestId,
+      threadId,
+    })
+    fixture.close()
+  })
 })
 
 async function dispatchFirstThread(engine: OrchestrationEngine) {
@@ -428,6 +629,15 @@ function createFixture() {
     database,
     sqlite,
   }
+}
+
+function createRuntimeEngine(
+  fixture: ReturnType<typeof createFixture>,
+  adapter: MockProviderAdapter,
+) {
+  return new OrchestrationEngine(fixture.database, {
+    providerRuntime: { registry: new ProviderRegistry([adapter]) },
+  })
 }
 
 async function fixtureRoot() {

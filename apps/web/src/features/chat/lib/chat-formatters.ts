@@ -3,6 +3,7 @@ import type {
   OrchestrationLatestTurn,
   OrchestrationSession,
   OrchestrationThreadActivityTone,
+  ProviderSnapshot,
 } from '@workspace/contracts'
 
 import type { ChatSidebarThreadSummary } from '../state/chat-projection-store'
@@ -33,6 +34,25 @@ export function chatThreadPreview(thread: ChatSidebarThreadSummary) {
 
 export function formatChatModelLabel(modelSelection: Pick<ModelSelection, 'model'>) {
   return CHAT_MODEL_LABELS[modelSelection.model] ?? modelSelection.model
+}
+
+export function providerModelDisplayLabel(
+  provider: ProviderSnapshot | null | undefined,
+  modelSelection: Pick<ModelSelection, 'model'>,
+) {
+  const model = provider?.models.find((candidate) => candidate.slug === modelSelection.model)
+  if (!model) return formatChatModelLabel(modelSelection)
+
+  return model.shortName ?? model.name
+}
+
+export function providerStatusLabel(provider: ProviderSnapshot | null | undefined) {
+  if (!provider) return 'Provider unavailable'
+  if (provider.status === 'ready') return `${provider.displayLabel} ready`
+  if (provider.status === 'warning') return provider.message ?? `${provider.displayLabel} warning`
+  if (provider.status === 'disabled') return `${provider.displayLabel} disabled`
+
+  return provider.message ?? `${provider.displayLabel} error`
 }
 
 export function formatChatTimestamp(value: string) {

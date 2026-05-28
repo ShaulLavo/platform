@@ -1,5 +1,5 @@
 import type { TextSnapshot } from '@editor/core'
-import type { LanguageServerDefinitionTarget } from '@editor/language-server'
+import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
 
 export function selectionForDefinition(
   filePath: string,

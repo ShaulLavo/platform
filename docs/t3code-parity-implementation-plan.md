@@ -950,6 +950,29 @@ Purpose:
 
 - Add the first real T3Code-shaped provider runtime, starting with Codex.
 
+Implementation status:
+
+- Done on 2026-05-28:
+  - provider contracts for instance settings, status/auth, model lists, traits,
+    snapshots, and provider listing
+  - provider status cache, registry, `/providers` route, and Codex/mock adapters
+  - provider session runtime persistence through `provider_session_runtime`
+  - command reactor for turn start, interrupt, session stop, approval response,
+    and user-input response intents
+  - runtime ingestion for assistant deltas/completion, session state, activities,
+    proposed-plan upserts, provider failure projection, and runtime event dedupe
+  - bounded turn-start dedupe keyed by command/event identity
+  - Codex full-access `codex app-server` adapter streaming assistant output
+    into the projection pipeline, with app-server turn notification
+    correlation, diagnostic stderr tolerance, and interrupt support
+  - single-process app-server provider status probing with cached provider
+    query results for the chat model picker
+  - provider/model picker backed by provider snapshots, with status rendering,
+    started-thread selection locking, draft model selection, and session error
+    surfacing in the chat input
+  - deterministic mock provider test harness for runtime, failure, interrupt,
+    approval, and user-input paths
+
 Platform target paths:
 
 - `apps/server/src/provider/*`
@@ -1019,6 +1042,254 @@ T3 source paths:
 - `references/t3code/apps/server/src/persistence/Layers/ProviderSessionRuntime.ts`
 - `references/t3code/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
 - `references/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts`
+
+## Phase 7A: Provider Service And Session Directory Parity
+
+Purpose:
+
+- Move the Platform provider runtime from the Phase 7 V1 direct-registry shape
+  toward T3Code's provider service boundary.
+- Keep Codex as the only product provider. The parity target is T3Code's
+  provider-runtime architecture, not T3Code's full provider catalog.
+- Add the durable provider session directory semantics that make provider
+  runtime state recoverable and independently routable.
+
+Platform target paths:
+
+- `apps/server/src/provider/provider-service.ts`
+- `apps/server/src/provider/provider-session-directory.ts`
+- `apps/server/src/provider/provider-adapter-registry.ts`
+- `apps/server/src/provider/types.ts`
+- `apps/server/src/orchestration/provider-command-reactor.ts`
+- `apps/server/src/orchestration/runtime-receipts.ts`
+- `apps/server/src/db/schema.ts`
+
+Backend work:
+
+- Add a `ProviderService` layer that owns:
+  - start session
+  - send turn
+  - interrupt turn
+  - respond approval
+  - respond user input
+  - stop session
+  - list sessions
+  - get capabilities
+  - get instance routing info
+  - rollback conversation placeholder
+  - unified runtime event fan-out
+- Add `ProviderSessionDirectory` over `provider_session_runtime` with:
+  - upsert binding
+  - get binding by thread
+  - get provider by thread
+  - list thread IDs
+  - list bindings
+  - runtime payload merge semantics
+  - resume cursor preservation
+- Keep provider instance ID required on new runtime bindings.
+- Preserve migration-boundary behavior for old/null provider instance IDs by
+  promoting them to the default instance for the driver when reading.
+- Route `ProviderCommandReactor` through `ProviderService` instead of directly
+  calling `ProviderRegistry.adapter(...)`.
+- Keep Codex-only default wiring: provider service may be multi-adapter capable,
+  but the installed product adapter remains Codex.
+
+Tests:
+
+- Session directory upsert merges runtime payloads.
+- Session directory promotes missing provider instance IDs at read boundaries.
+- Provider service routes start/send/interrupt/stop through the Codex adapter.
+- Provider service lists active sessions.
+- Provider command reactor no longer depends on direct adapter lookup.
+- Runtime rows survive process restart and can be listed as bindings.
+
+Done when:
+
+- Provider routing, runtime binding persistence, and command reaction match the
+  T3Code service/directory model while still shipping only Codex.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/provider/Services/ProviderService.ts`
+- `references/t3code/apps/server/src/provider/Layers/ProviderService.ts`
+- `references/t3code/apps/server/src/provider/Services/ProviderSessionDirectory.ts`
+- `references/t3code/apps/server/src/provider/Layers/ProviderSessionDirectory.ts`
+- `references/t3code/apps/server/src/provider/Services/ProviderAdapterRegistry.ts`
+- `references/t3code/apps/server/src/provider/Layers/ProviderAdapterRegistry.ts`
+- `references/t3code/apps/server/src/persistence/Services/ProviderSessionRuntime.ts`
+- `references/t3code/apps/server/src/persistence/Layers/ProviderSessionRuntime.ts`
+
+## Phase 7B: Runtime Ingestion Buffer Parity
+
+Purpose:
+
+- Replace the thin Phase 7 runtime event mapper with T3Code's bounded
+  provider-runtime ingestion behavior.
+- Preserve backend-owned projections: runtime events become orchestration
+  commands; UI never owns durable transcript/tool state.
+
+Platform target paths:
+
+- `apps/server/src/orchestration/provider-runtime-ingestion.ts`
+- `apps/server/src/orchestration/provider-runtime-buffers.ts`
+- `apps/server/src/provider/types.ts`
+- `packages/contracts/src/orchestration-runtime.ts`
+- `packages/contracts/src/orchestration-commands.ts`
+- `packages/contracts/src/orchestration-events.ts`
+
+Backend work:
+
+- Add transient bounded caches matching T3Code defaults:
+  - assistant message IDs by turn: capacity `10_000`, TTL `120 minutes`
+  - buffered assistant text by message ID: capacity `20_000`, TTL `120 minutes`
+  - assistant segment state by turn
+  - buffered proposed plan text by plan ID: capacity `10_000`, TTL
+    `120 minutes`
+- Add a max buffered assistant text flush cap of `24_000` characters.
+- Support assistant segment rollover so multiple assistant content segments for
+  one provider turn become stable projected message IDs.
+- Normalize provider lifecycle/tool events into activities with stable item
+  types where the contracts support them.
+- Preserve proposed-plan buffering/upsert behavior by plan ID.
+- Keep runtime event dedupe, but make duplicate handling compatible with
+  provider event replay and worker restarts.
+- Add a drainable worker shape for runtime ingestion so tests do not depend on
+  sleeps.
+
+Tests:
+
+- Assistant deltas buffer and flush at completion.
+- Assistant text over `24_000` characters flushes before completion.
+- Multiple assistant segments produce stable message IDs.
+- Duplicate runtime events do not dispatch duplicate commands.
+- Proposed plan text buffers and upserts deterministically.
+- Drain resolves when runtime ingestion is idle.
+
+Done when:
+
+- Platform runtime ingestion has the same bounded buffering and lifecycle
+  semantics as T3Code for Codex runtime events.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/orchestration/Services/ProviderRuntimeIngestion.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
+- `references/t3code/packages/contracts/src/providerRuntime.ts`
+
+## Phase 7C: Provider Command Reactor Parity
+
+Purpose:
+
+- Bring command reaction behavior in line with T3Code's provider intent worker
+  while keeping the product provider set Codex-only.
+
+Platform target paths:
+
+- `apps/server/src/orchestration/provider-command-reactor.ts`
+- `apps/server/src/provider/provider-service.ts`
+- `apps/server/src/git/*`
+- `apps/server/src/orchestration/title-*`
+
+Backend work:
+
+- Add a drainable worker shape for provider command reaction.
+- Extend provider intent filtering to include runtime-mode set events where
+  needed.
+- Change turn-start dedupe from count-only to capacity `10_000` plus
+  `30 minute` TTL.
+- Preserve model selection per thread during provider command handling.
+- Add T3Code-style session ensure behavior:
+  - reuse active session when provider/cwd/model/runtime match
+  - start a new provider session when required
+  - persist binding updates through `ProviderSessionDirectory`
+- Add stale approval/user-input request handling that projects recoverable error
+  activities instead of silently failing.
+- Add provider failure activity kinds that match the specific failing operation:
+  - turn start
+  - turn interrupt
+  - approval respond
+  - user-input respond
+  - session stop
+- Integrate generated thread title update if Platform keeps T3Code's title
+  generation behavior in scope.
+
+Tests:
+
+- Turn-start dedupe expires after the TTL.
+- Reactor reuses compatible active sessions.
+- Reactor starts a new session when cwd/model/runtime changes.
+- Unknown/stale approval and user-input responses project actionable activity.
+- Interrupt/stop failures project specific failure activity kinds.
+- Reactor drain resolves when all provider actions finish.
+
+Done when:
+
+- Provider command reaction matches T3Code's provider-intent semantics for the
+  Codex adapter.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/orchestration/Services/ProviderCommandReactor.ts`
+- `references/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts`
+
+## Phase 7D: Codex Adapter Parity
+
+Purpose:
+
+- Bring the Codex adapter surface closer to T3Code's Codex adapter while keeping
+  the Platform implementation Bun/Elysia-native.
+
+Platform target paths:
+
+- `apps/server/src/provider/adapters/codex.ts`
+- `apps/server/src/provider/types.ts`
+- `apps/server/src/provider/adapters/codex.test.ts`
+
+Backend work:
+
+- Expand adapter shape toward T3Code:
+  - capabilities
+  - list sessions
+  - has session
+  - read provider thread
+  - rollback thread placeholder or implementation
+  - stop all
+  - canonical runtime event stream or equivalent sink integration through
+    `ProviderService`
+- Support Codex turn inputs beyond plain text when Platform contracts already
+  expose them:
+  - image attachments as data URLs
+  - mentions/text elements when available
+  - model selection options such as reasoning effort and fast mode when present
+- Continue mapping full-access to `approvalPolicy: never` and
+  `danger-full-access`.
+- Keep supervised runtime modes as contract placeholders unless their UI and
+  enforcement phases are active.
+- Preserve early turn notification correlation and diagnostic stderr tolerance.
+- Add rollback/read-thread behavior only if Codex app-server exposes stable
+  methods; otherwise expose explicit unsupported capability/errors.
+
+Tests:
+
+- Adapter reports capabilities.
+- Adapter lists and detects active sessions.
+- Adapter stop-all closes all Codex sessions.
+- Image attachments are encoded into Codex turn input.
+- Reasoning effort / fast mode options are passed only when selected for the
+  Codex instance.
+- Unsupported read/rollback paths fail with explicit provider errors.
+
+Done when:
+
+- The Codex adapter supports the T3Code provider adapter contract shape for the
+  features Platform exposes.
+
+T3 source paths:
+
+- `references/t3code/apps/server/src/provider/Services/ProviderAdapter.ts`
+- `references/t3code/apps/server/src/provider/Services/CodexAdapter.ts`
+- `references/t3code/apps/server/src/provider/Layers/CodexAdapter.ts`
+- `references/t3code/packages/effect-codex-app-server/src/*`
 
 ## Phase 8: Approvals, User Input, Plans
 

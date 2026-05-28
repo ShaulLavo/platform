@@ -6,7 +6,7 @@ import '@editor/scope-lines/style.css'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/language-server'
+} from '@editor/lsp-plugin'
 import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
 
 import { EditorFrame } from '@/features/editor/components/editor-frame'

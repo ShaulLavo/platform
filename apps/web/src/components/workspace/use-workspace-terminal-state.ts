@@ -1,14 +1,7 @@
 import { isCollapsedPanelSize } from '@/components/workspace/workspace-view-utils'
 import { clientErrors } from '@/lib/structured-errors'
 import { type PanelImperativeHandle, type PanelSize } from '@workspace/ui/components/resizable'
-import {
-  createContext,
-  createElement,
-  use,
-  useRef,
-  type RefObject,
-  type ReactNode,
-} from 'react'
+import { createContext, createElement, use, useRef, type RefObject, type ReactNode } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
@@ -33,11 +26,7 @@ export function WorkspaceTerminalStateProvider({ children }: { children: ReactNo
   const storeRef = useRef<WorkspaceTerminalStoreApi | null>(null)
   storeRef.current ??= createWorkspaceTerminalStore()
 
-  return createElement(
-    WorkspaceTerminalStateContext,
-    { value: storeRef.current },
-    children,
-  )
+  return createElement(WorkspaceTerminalStateContext, { value: storeRef.current }, children)
 }
 
 export function useWorkspaceTerminalState<T>(selector: (state: WorkspaceTerminalStore) => T): T {

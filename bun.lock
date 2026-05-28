@@ -85,19 +85,13 @@
         "vitest": "^3.1.1",
       },
     },
-    "../Editor/packages/language-server": {
-      "name": "@editor/language-server",
+    "../Editor/packages/lsp": {
+      "name": "@editor/lsp",
       "version": "0.0.0",
       "dependencies": {
-        "@editor/lsp": "workspace:*",
-        "remark-gfm": "^4.0.1",
-        "remark-parse": "^11.0.0",
-        "remark-stringify": "^11.0.0",
-        "unified": "^11.0.5",
         "vscode-languageserver-protocol": "^3.17.5",
       },
       "devDependencies": {
-        "@editor/core": "workspace:*",
         "@typescript/native-preview": "7.0.0-dev.20260524.1",
         "happy-dom": "^20.8.9",
         "oxfmt": "0.51.0",
@@ -105,14 +99,16 @@
         "typescript": "~5.9.3",
         "vitest": "^3.1.1",
       },
-      "peerDependencies": {
-        "@editor/core": "workspace:*",
-      },
     },
-    "../Editor/packages/lsp": {
-      "name": "@editor/lsp",
+    "../Editor/packages/lsp-plugin": {
+      "name": "@editor/lsp-plugin",
       "version": "0.0.0",
       "dependencies": {
+        "@editor/lsp": "workspace:*",
+        "remark-gfm": "^4.0.1",
+        "remark-parse": "^11.0.0",
+        "remark-stringify": "^11.0.0",
+        "unified": "^11.0.5",
         "vscode-languageserver-protocol": "^3.17.5",
       },
       "devDependencies": {
@@ -268,12 +264,9 @@
       "version": "0.0.0",
       "dependencies": {
         "@editor/lsp": "workspace:*",
+        "@editor/lsp-plugin": "workspace:*",
         "@typescript/vfs": "^1.6.4",
-        "remark-gfm": "^4.0.1",
-        "remark-parse": "^11.0.0",
-        "remark-stringify": "^11.0.0",
         "typescript": "~5.9.3",
-        "unified": "^11.0.5",
         "vscode-languageserver-protocol": "^3.17.5",
       },
       "devDependencies": {
@@ -327,7 +320,7 @@
         "@editor/diff": "workspace:*",
         "@editor/find": "workspace:*",
         "@editor/gutters": "workspace:*",
-        "@editor/language-server": "workspace:*",
+        "@editor/lsp-plugin": "workspace:*",
         "@editor/minimap": "workspace:*",
         "@editor/react": "workspace:*",
         "@editor/scope-lines": "workspace:*",
@@ -560,9 +553,9 @@
 
     "@editor/gutters": ["@editor/gutters@workspace:../Editor/packages/gutters"],
 
-    "@editor/language-server": ["@editor/language-server@workspace:../Editor/packages/language-server"],
-
     "@editor/lsp": ["@editor/lsp@workspace:../Editor/packages/lsp"],
+
+    "@editor/lsp-plugin": ["@editor/lsp-plugin@workspace:../Editor/packages/lsp-plugin"],
 
     "@editor/minimap": ["@editor/minimap@workspace:../Editor/packages/minimap"],
 

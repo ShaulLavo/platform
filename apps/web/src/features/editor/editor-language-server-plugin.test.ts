@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/language-server'
+import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/lsp-plugin'
 
 import type {
   EditorLanguageServerStatusSnapshot,
@@ -16,7 +16,7 @@ type MockLanguageServerPluginOptions = {
 
 const createdLanguageServerPlugins: MockLanguageServerPluginOptions[] = []
 
-mock.module('@editor/language-server/websocket', () => ({
+mock.module('@editor/lsp-plugin/websocket', () => ({
   createLanguageServerPlugin: (options: MockLanguageServerPluginOptions) => {
     createdLanguageServerPlugins.push(options)
     return {

@@ -27,7 +27,6 @@ import {
   type ChatInputCommandItem,
   type ChatInputTrigger,
 } from '../lib/chat-input-logic'
-import { formatChatModelLabel } from '../lib/chat-formatters'
 import { projectEntrySearchQueryOptions } from '../lib/project-entry-query'
 import {
   readChatInputDraftPrompt,
@@ -56,6 +55,7 @@ export function ChatInput({
   error,
   interactionMode,
   modelSelection,
+  modelSelectionLocked = false,
   onStop,
   onSubmit,
   rootPath,
@@ -67,6 +67,7 @@ export function ChatInput({
   error: string | null
   interactionMode: InteractionMode
   modelSelection: ModelSelection
+  modelSelectionLocked?: boolean
   onStop: () => void
   onSubmit: (payload: ChatInputSubmitPayload) => Promise<boolean>
   rootPath: string
@@ -81,11 +82,17 @@ export function ChatInput({
     () => (state: ChatInputDraftStore) => selectChatInputDraftImages(state, draftTarget),
     [draftTarget],
   )
+  const modelSelectionSelector = useMemo(
+    () => (state: ChatInputDraftStore) => state.getDraft(draftTarget).modelSelection,
+    [draftTarget],
+  )
   const images = useChatInputDraftStore(imagesSelector)
+  const draftModelSelection = useChatInputDraftStore(modelSelectionSelector)
   const addImages = useChatInputDraftStore((store) => store.addImages)
   const clearStoredDraft = useChatInputDraftStore((store) => store.clearDraft)
   const removeImage = useChatInputDraftStore((store) => store.removeImage)
   const setInteractionMode = useChatInputDraftStore((store) => store.setInteractionMode)
+  const setModelSelection = useChatInputDraftStore((store) => store.setModelSelection)
   const editorRef = useRef<LexicalEditor | null>(null)
   const submitButtonRef = useRef<HTMLButtonElement | null>(null)
   const initialDraft = useMemo(() => readChatInputDraftPrompt(draftTarget), [draftTarget])
@@ -94,9 +101,9 @@ export function ChatInput({
   const [submitting, setSubmitting] = useState(false)
   const [trigger, setTrigger] = useState<ChatInputTrigger | null>(null)
   const hasAttachments = images.length > 0
+  const activeModelSelection = draftModelSelection ?? modelSelection
   const sendDisabled = disabled || submitting || (!hasAttachments && !initialDraft.trim())
   const statusLabel = attachmentError ?? error ?? (busy ? 'Working' : null)
-  const modelLabel = formatChatModelLabel(modelSelection)
   const projectEntriesQuery = useQuery(
     projectEntrySearchQueryOptions({
       enabled: trigger?.kind === 'mention',
@@ -195,6 +202,14 @@ export function ChatInput({
     },
     [draftTarget, removeImage],
   )
+  const handleModelSelectionChange = useCallback(
+    (nextModelSelection: ModelSelection) => {
+      if (modelSelectionLocked) return
+
+      setModelSelection(draftTarget, nextModelSelection)
+    },
+    [draftTarget, modelSelectionLocked, setModelSelection],
+  )
   const handleCommandItemSelect = useCallback(
     (item: ChatInputCommandItem) => {
       const editor = editorRef.current
@@ -255,7 +270,7 @@ export function ChatInput({
               disabled={disabled || submitting}
               draftKey={draftKey}
               hasAttachments={hasAttachments}
-              placeholder='Ask anything. Use @ to mention, / for commands, or add context.'
+              placeholder='Use @ to mention, / for commands.'
               rootPath={rootPath}
               sendButtonRef={submitButtonRef}
               submitting={submitting}
@@ -275,10 +290,12 @@ export function ChatInput({
             <ChatInputActions
               busy={busy}
               disabled={disabled}
-              modelLabel={modelLabel}
+              modelSelection={activeModelSelection}
+              modelSelectionLocked={modelSelectionLocked}
               sendButtonRef={submitButtonRef}
               sendDisabled={sendDisabled}
               statusLabel={statusLabel}
+              onModelSelectionChange={handleModelSelectionChange}
               onStop={onStop}
               onSubmit={handleSubmit}
             />

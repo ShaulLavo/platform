@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import type { LanguageServerDefinitionTarget } from '@editor/language-server'
+import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
 
 import { openWorkspaceSearchMatch } from './open-search-match'
 

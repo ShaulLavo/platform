@@ -1,4 +1,5 @@
-import { AtIcon, CodeIcon, MicrophoneIcon, PlusIcon } from '@phosphor-icons/react'
+import { MicrophoneIcon, PlusIcon } from '@phosphor-icons/react'
+import type { ModelSelection } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
@@ -7,16 +8,14 @@ import type { RefObject } from 'react'
 import { ChatInputSubmitButton } from './chat-input-submit-button'
 import { ProviderModelPicker } from './provider-model-picker'
 
-const inputToolButtons = [
-  { Icon: PlusIcon, label: 'Add context', narrow: true },
-  { Icon: CodeIcon, label: 'Attach code', narrow: false },
-  { Icon: AtIcon, label: 'Mention context', narrow: false },
-] as const
+const inputToolButtons = [{ Icon: PlusIcon, label: 'Add context', narrow: true }] as const
 
 export function ChatInputActions({
   busy,
   disabled,
-  modelLabel,
+  modelSelectionLocked,
+  modelSelection,
+  onModelSelectionChange,
   onStop,
   onSubmit,
   sendButtonRef,
@@ -25,7 +24,9 @@ export function ChatInputActions({
 }: {
   busy: boolean
   disabled: boolean
-  modelLabel: string
+  modelSelectionLocked: boolean
+  modelSelection: ModelSelection
+  onModelSelectionChange: (modelSelection: ModelSelection) => void
   onStop: () => void
   onSubmit: () => Promise<boolean>
   sendButtonRef: RefObject<HTMLButtonElement | null>
@@ -58,24 +59,6 @@ export function ChatInputActions({
             <TooltipContent>{label}</TooltipContent>
           </Tooltip>
         ))}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label='Open commands'
-                className='text-muted-foreground hover:text-foreground rounded-md text-base @max-[300px]:hidden'
-                disabled={disabled}
-                size='icon-sm'
-                title='Open commands'
-                type='button'
-                variant='ghost'
-              />
-            }
-          >
-            <span aria-hidden>/</span>
-          </TooltipTrigger>
-          <TooltipContent>Open commands</TooltipContent>
-        </Tooltip>
         {statusLabel ? (
           <span className='text-muted-foreground ml-1 hidden max-w-36 truncate text-[11px] @min-[360px]:inline'>
             {statusLabel}
@@ -83,7 +66,13 @@ export function ChatInputActions({
         ) : null}
       </div>
       <div className='flex min-w-0 shrink-0 items-center justify-end gap-1.5'>
-        <ProviderModelPicker busy={busy} disabled={disabled} modelLabel={modelLabel} />
+        <ProviderModelPicker
+          busy={busy}
+          disabled={disabled}
+          locked={modelSelectionLocked}
+          modelSelection={modelSelection}
+          onChange={onModelSelectionChange}
+        />
         <Tooltip>
           <TooltipTrigger
             render={

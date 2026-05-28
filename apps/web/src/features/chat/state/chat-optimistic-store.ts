@@ -57,9 +57,7 @@ export function selectOptimisticMessagesForThread(
   return Object.values(messages)
 }
 
-export function createOptimisticMessagesForThreadSelector(
-  threadId: ThreadId | null | undefined,
-) {
+export function createOptimisticMessagesForThreadSelector(threadId: ThreadId | null | undefined) {
   let previousMessagesById: Record<MessageId, OptimisticChatMessage> | undefined
   let previousMessages: OptimisticChatMessage[] = EMPTY_OPTIMISTIC_MESSAGES
 

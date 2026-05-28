@@ -12,5 +12,5 @@ export function isChatThreadBusy(thread: ChatThread | undefined) {
 export function isBusyChatSession(session: OrchestrationSession | null) {
   if (!session) return false
 
-  return session.status !== 'idle' && session.status !== 'stopped'
+  return session.status === 'starting' || session.status === 'running'
 }

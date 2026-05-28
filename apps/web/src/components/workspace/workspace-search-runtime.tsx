@@ -9,9 +9,7 @@ export const WorkspaceSearchRuntime = memo(function WorkspaceSearchRuntime({
 }: {
   rootPath: string
 }) {
-  const enabled = useEditorWorkspaceState((state) =>
-    workspaceSearchRuntimeEnabled(state, rootPath),
-  )
+  const enabled = useEditorWorkspaceState((state) => workspaceSearchRuntimeEnabled(state, rootPath))
 
   useSearchBufferRuntime(rootPath, enabled)
 

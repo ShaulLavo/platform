@@ -27,6 +27,7 @@ export const app = createApp({
   auth: { allowedOrigins, sessionToken },
   homeDirectory,
   maxTextFileBytes,
+  orchestration: { providerRuntime: true },
   systemRoot,
   treeConcurrency,
   watch,

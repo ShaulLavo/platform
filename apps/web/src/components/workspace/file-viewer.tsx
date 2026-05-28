@@ -74,7 +74,7 @@ import {
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/language-server'
+} from '@editor/lsp-plugin'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 

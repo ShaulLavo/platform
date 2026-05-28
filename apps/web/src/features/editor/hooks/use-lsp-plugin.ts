@@ -1,7 +1,7 @@
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/language-server'
+} from '@editor/lsp-plugin'
 import { useEffect, useMemo, useState } from 'react'
 
 import {
