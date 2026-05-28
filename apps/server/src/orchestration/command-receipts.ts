@@ -9,6 +9,11 @@ import { orchestrationCommandReceiptSchema } from './schemas'
 import { db as defaultDb } from '../db/client'
 import { orchestrationCommandReceipts, type OrchestrationCommandReceiptRow } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
+import {
+  orchestrationCommandSummary,
+  recordChatPipelineInfo,
+  recordChatPipelineWarning,
+} from './orchestration-logging'
 
 export class OrchestrationCommandReceipts {
   private readonly database: OrchestrationDatabase
@@ -44,6 +49,10 @@ export class OrchestrationCommandReceipts {
     }
 
     this.database.insert(orchestrationCommandReceipts).values(receipt).run()
+    recordChatPipelineInfo('chat.pipeline.command_receipt.accepted', {
+      ...orchestrationCommandSummary(command),
+      resultSequence: sequence,
+    })
 
     return rowToReceipt(receipt)
   }
@@ -64,6 +73,10 @@ export class OrchestrationCommandReceipts {
     }
 
     this.database.insert(orchestrationCommandReceipts).values(receipt).run()
+    recordChatPipelineWarning('chat.pipeline.command_receipt.rejected', {
+      ...orchestrationCommandSummary(command),
+      error: receipt.error,
+    })
 
     return rowToReceipt(receipt)
   }

@@ -767,6 +767,14 @@ Implementation status:
     `platform.chat-input-draft.v1`, intentionally ignoring old drafts
   - narrow input layout hides attach-code, mention, and slash-command controls
     while keeping add-context, model, voice, and send/stop in one row
+- Revised on 2026-05-28:
+  - added evlog coverage across the chat command, stream, projection, provider,
+    runtime-ingestion, and Codex adapter pipeline
+  - aligned draft send with T3-style single-command turn bootstrap semantics:
+    `thread.turn.start.bootstrap.createThread` now creates the thread and starts
+    the first turn atomically
+  - moved post-dispatch projection repair to a background replay/snapshot sync
+    so a slow or reconnecting server cannot keep the input stuck in `Sending`
 - Deferred beyond Phase 5:
   - provider/runtime assistant response execution, so a submitted turn can remain
     in `Working` until Phase 7 wires the Codex runtime
@@ -1163,6 +1171,9 @@ Backend work:
   - buffered proposed plan text by plan ID: capacity `10_000`, TTL
     `120 minutes`
 - Add a max buffered assistant text flush cap of `24_000` characters.
+- Match T3Code's delivery model: assistant deltas stream by default, while the
+  bounded buffered path remains available for non-streaming delivery and uses
+  the `24_000` character safety flush cap.
 - Support assistant segment rollover so multiple assistant content segments for
   one provider turn become stable projected message IDs.
 - Normalize provider lifecycle/tool events into activities with stable item
@@ -1175,8 +1186,9 @@ Backend work:
 
 Tests:
 
-- Assistant deltas buffer and flush at completion.
-- Assistant text over `24_000` characters flushes before completion.
+- Assistant deltas stream by default.
+- Buffered assistant deltas flush at completion.
+- Buffered assistant text over `24_000` characters flushes before completion.
 - Multiple assistant segments produce stable message IDs.
 - Duplicate runtime events do not dispatch duplicate commands.
 - Proposed plan text buffers and upserts deterministically.
@@ -1305,6 +1317,93 @@ T3 source paths:
 
 - `references/t3code/apps/server/src/provider/Services/ProviderAdapter.ts`
 - `references/t3code/apps/server/src/provider/Services/CodexAdapter.ts`
+
+## Phase 7E: Chat UI Runtime State And Streaming Parity
+
+Purpose:
+
+- Make the Platform chat UI fully reflect the T3Code runtime state model for
+  Codex-backed threads.
+- Treat streaming assistant output as a Phase 7 requirement, not later polish.
+- Ensure all provider/runtime states projected by Phase 7, 7B, 7C, and 7D have
+  a deliberate UI representation.
+- Use Streamdown as the only assistant markdown rendering path for streamed and
+  completed assistant text.
+
+Platform target paths:
+
+- `apps/web/src/features/chat/components/message-bubble.tsx`
+- `apps/web/src/features/chat/components/messages-timeline.tsx`
+- `apps/web/src/features/chat/components/chat-view.tsx`
+- `apps/web/src/features/chat/components/chat-input*.tsx`
+- `apps/web/src/features/chat/lib/chat-timeline-items.ts`
+- `apps/web/src/features/chat/state/chat-projection-store.ts`
+- `apps/web/src/features/chat/state/chat-projection-writers.ts`
+- `apps/web/src/features/chat/state/thread-detail-subscriptions.ts`
+- `apps/web/src/features/chat/transport/*`
+
+Frontend work:
+
+- Render assistant text through `streamdown` with the installed Streamdown
+  plugins (`@streamdown/code`, `@streamdown/math`, `@streamdown/mermaid`, and
+  `@streamdown/cjk`) for both streaming and completed messages.
+- Keep streamed assistant markdown tolerant of incomplete markdown, unfinished
+  code fences, partial tables/lists, math, and mermaid blocks.
+- Do not add a second markdown renderer or a custom streaming markdown parser.
+- Keep streaming code blocks out of highlight/cache paths until they settle.
+- Preserve TanStack Virtual stability during streamed row-height changes:
+  stable item keys, dynamic measurement, pinned-to-end behavior, and explicit
+  scroll-to-latest.
+- Add UI states for every projected session and turn state:
+  - session starting, running, ready, interrupted, stopped, and error
+  - turn running, completed, interrupted, and error
+  - provider unavailable/auth error
+  - send pending, interrupt pending, stop pending, and command failure
+  - streaming assistant message, completed assistant message, and empty
+    completion
+- Add UI states for runtime activities:
+  - approval requested and resolved
+  - user input requested and resolved
+  - tool started, updated, completed, failed, and declined where payloads expose
+    status
+  - task started, progress, completed, failed, and stopped
+  - runtime warning and runtime error
+  - context compaction and context-window/token updates
+- Add projected proposed-plan UI states:
+  - plan streaming/buffering in progress when the backend exposes it
+  - actionable proposed plan available
+  - plan follow-up/implementation source reference
+- Ensure UI state is projection-driven. Do not store durable transcript,
+  activity, tool, approval, or plan state only in React component state.
+- Keep side-panel V1 and standalone V2 reuse constraints intact; shared state
+  and rendering components live under `apps/web/src/features/chat/*`.
+
+Tests:
+
+- Streamed assistant deltas update the visible message before completion.
+- Streamdown renders incomplete streamed markdown without layout breakage.
+- Completed assistant text reuses the same Streamdown rendering path.
+- Session and turn state matrix renders the expected controls/status for
+  starting, running, ready, interrupted, stopped, completed, and error states.
+- Approval, user-input, tool, task, runtime warning/error, context compaction,
+  and proposed-plan activities render from projections.
+- Timeline remains pinned during streaming and keeps row identity stable after
+  completion and replay.
+- Reconnect/replay hydrates the same UI state without duplicating streamed
+  message text or activities.
+
+Done when:
+
+- The Platform chat UI has full T3Code runtime-state parity for Codex-backed
+  threads, live assistant streaming is visible through Streamdown, and every
+  projected runtime state has an intentional reusable UI representation.
+
+T3 source paths:
+
+- `references/t3code/apps/web/src/components/chat/*`
+- `references/t3code/apps/web/src/components/AssistantMessage.tsx`
+- `references/t3code/apps/web/src/components/MessageList.tsx`
+- `references/t3code/apps/web/src/components/ToolCall.tsx`
 - `references/t3code/apps/server/src/provider/Layers/CodexAdapter.ts`
 - `references/t3code/packages/effect-codex-app-server/src/*`
 

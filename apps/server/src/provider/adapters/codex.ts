@@ -11,6 +11,11 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import type { ProviderAdapter, ProviderRuntimeSink, ProviderTurnInput } from '../types'
+import {
+  providerTurnSummary,
+  recordChatPipelineInfo,
+  recordChatPipelineWarning,
+} from '../../orchestration/orchestration-logging'
 
 const DEFAULT_CODEX_BINARY = 'codex'
 const DEFAULT_CODEX_MODEL = 'gpt-5.5'
@@ -52,9 +57,16 @@ export class CodexProviderAdapter implements ProviderAdapter {
 
   async snapshot(): Promise<ProviderSnapshot> {
     const checkedAt = new Date().toISOString()
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.snapshot.start')
 
     try {
       const probe = await probeCodexProvider()
+      recordChatPipelineInfo('chat.pipeline.codex_adapter.snapshot.complete', {
+        installed: true,
+        modelCount: probe.models.length,
+        status: probe.status,
+        version: probe.version,
+      })
 
       return {
         ...DEFAULT_CODEX_PROVIDER_SETTINGS,
@@ -69,6 +81,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     } catch (error) {
       if (isMissingCodexBinaryError(error)) return unavailableCodexSnapshot(checkedAt)
 
+      recordChatPipelineWarning('chat.pipeline.codex_adapter.snapshot.failed', { error })
       return {
         ...DEFAULT_CODEX_PROVIDER_SETTINGS,
         auth: { status: 'unknown' },
@@ -83,19 +96,27 @@ export class CodexProviderAdapter implements ProviderAdapter {
   }
 
   async startTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.start_turn.start', {
+      ...providerTurnSummary(input),
+    })
     const session = await this.ensureSession(input)
     await session.sendTurn({
       input,
       messageId: v.parse(messageIdSchema, `assistant:${input.turnId}`),
       sink,
     })
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.start_turn.complete', {
+      ...providerTurnSummary(input),
+    })
   }
 
   async interruptTurn({ threadId, turnId }: { threadId: ThreadId; turnId?: TurnId }) {
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.interrupt', { threadId, turnId })
     await this.sessions.get(threadId)?.interruptTurn(turnId)
   }
 
   async stopSession({ threadId }: { threadId: ThreadId }) {
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.stop', { threadId })
     const session = this.sessions.get(threadId)
     if (!session) return
 
@@ -115,13 +136,31 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const existing = this.sessions.get(input.thread.id)
     const cwd = normalizeCodexCwd(input.cwd)
     const model = normalizeCodexModel(input.modelSelection.model)
-    if (existing?.matches({ cwd, model, runtimeMode: input.runtimeMode })) return existing
+    if (existing?.matches({ cwd, model, runtimeMode: input.runtimeMode })) {
+      recordChatPipelineInfo('chat.pipeline.codex_adapter.session.reuse', {
+        model,
+        runtimeMode: input.runtimeMode,
+        threadId: input.thread.id,
+      })
+      return existing
+    }
 
     if (existing) {
+      recordChatPipelineInfo('chat.pipeline.codex_adapter.session.replace', {
+        model,
+        runtimeMode: input.runtimeMode,
+        threadId: input.thread.id,
+      })
       this.sessions.delete(input.thread.id)
       await existing.close()
     }
 
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.session.start', {
+      model,
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      threadId: input.thread.id,
+    })
     const session = await CodexAppServerSession.start({
       cwd,
       model,
@@ -130,6 +169,11 @@ export class CodexProviderAdapter implements ProviderAdapter {
       threadId: input.thread.id,
     })
     this.sessions.set(input.thread.id, session)
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.session.started', {
+      model,
+      runtimeMode: input.runtimeMode,
+      threadId: input.thread.id,
+    })
 
     return session
   }
@@ -176,11 +220,21 @@ class CodexAppServerSession {
     runtimeMode: RuntimeMode
     threadId: ThreadId
   }) {
+    recordChatPipelineInfo('chat.pipeline.codex_session.start', {
+      model: input.model,
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      threadId: input.threadId,
+    })
     const client = CodexAppServerRpcClient.start()
     try {
       await initializeCodexClient(client)
       const response = await client.request('thread/start', threadStartParams(input))
       const providerThreadId = readThreadIdFromThreadResponse(response)
+      recordChatPipelineInfo('chat.pipeline.codex_session.started', {
+        providerThreadId,
+        threadId: input.threadId,
+      })
 
       return new CodexAppServerSession({
         client,
@@ -192,6 +246,10 @@ class CodexAppServerSession {
         threadId: input.threadId,
       })
     } catch (error) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.start.failed', {
+        error,
+        threadId: input.threadId,
+      })
       client.close()
       throw error
     }
@@ -214,6 +272,12 @@ class CodexAppServerSession {
     messageId: string
     sink: ProviderRuntimeSink
   }) {
+    recordChatPipelineInfo('chat.pipeline.codex_session.send_turn.start', {
+      ...providerTurnSummary(input),
+      messageId,
+      providerSessionId: this.providerSessionId,
+      providerThreadId: this.providerThreadId,
+    })
     const activeTurn = activeCodexTurn({
       canonicalTurnId: input.turnId,
       messageId,
@@ -224,8 +288,19 @@ class CodexAppServerSession {
 
     await this.ingestSession(sink, 'running', input.turnId)
     try {
+      recordChatPipelineInfo('chat.pipeline.codex_session.turn_start_request', {
+        providerThreadId: this.providerThreadId,
+        threadId: this.threadId,
+        turnId: input.turnId,
+      })
       const response = await this.client.request('turn/start', turnStartParams(this, input))
       const providerTurnId = readTurnIdFromTurnResponse(response)
+      recordChatPipelineInfo('chat.pipeline.codex_session.turn_start_response', {
+        providerThreadId: this.providerThreadId,
+        providerTurnId,
+        threadId: this.threadId,
+        turnId: input.turnId,
+      })
       this.attachProviderTurn(providerTurnId, activeTurn)
       await this.settleIfTurnAlreadyTerminal(response, providerTurnId)
     } catch (error) {
@@ -233,10 +308,19 @@ class CodexAppServerSession {
 
       this.clearPendingTurn(activeTurn)
       this.rejectUnmappedTurn(activeTurn, error)
+      recordChatPipelineWarning('chat.pipeline.codex_session.send_turn.failed', {
+        error,
+        threadId: this.threadId,
+        turnId: input.turnId,
+      })
       throw error
     }
 
-    return activeTurn.promise
+    await activeTurn.promise
+    recordChatPipelineInfo('chat.pipeline.codex_session.send_turn.complete', {
+      threadId: this.threadId,
+      turnId: input.turnId,
+    })
   }
 
   providerThreadIdForTurn() {
@@ -245,8 +329,19 @@ class CodexAppServerSession {
 
   async interruptTurn(turnId: TurnId | undefined) {
     const providerTurnId = this.providerTurnIdForCanonical(turnId)
-    if (!providerTurnId) return
+    if (!providerTurnId) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.interrupt.missing_provider_turn', {
+        threadId: this.threadId,
+        turnId,
+      })
+      return
+    }
 
+    recordChatPipelineInfo('chat.pipeline.codex_session.interrupt_request', {
+      providerTurnId,
+      threadId: this.threadId,
+      turnId,
+    })
     await this.client.request('turn/interrupt', {
       threadId: this.providerThreadId,
       turnId: providerTurnId,
@@ -254,12 +349,21 @@ class CodexAppServerSession {
   }
 
   async close() {
+    recordChatPipelineInfo('chat.pipeline.codex_session.close', {
+      providerSessionId: this.providerSessionId,
+      threadId: this.threadId,
+    })
     this.rejectAllTurns(new Error('Codex session stopped.'))
     this.client.close()
   }
 
   private handleMessage(message: JsonRpcMessage) {
     if (!message.method) return
+    recordChatPipelineInfo('chat.pipeline.codex_session.message', {
+      hasId: message.id !== undefined,
+      method: message.method,
+      threadId: this.threadId,
+    })
     if (message.id !== undefined) {
       this.client.respondError(message.id, -32601, `Unsupported Codex request: ${message.method}`)
       return
@@ -288,11 +392,31 @@ class CodexAppServerSession {
     const payload = asRecord(params)
     const delta = stringField(payload, 'delta')
     const providerTurnId = stringField(payload, 'turnId')
-    if (!delta || !providerTurnId) return
+    if (!delta || !providerTurnId) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.delta.ignored', {
+        deltaLength: delta?.length ?? 0,
+        hasProviderTurnId: Boolean(providerTurnId),
+        threadId: this.threadId,
+      })
+      return
+    }
 
     const turn = this.turnForProviderTurnId(providerTurnId)
-    if (!turn) return
+    if (!turn) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.delta.missing_turn', {
+        providerTurnId,
+        threadId: this.threadId,
+      })
+      return
+    }
 
+    recordChatPipelineInfo('chat.pipeline.codex_session.delta.ingest', {
+      deltaLength: delta.length,
+      messageId: turn.messageId,
+      providerTurnId,
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+    })
     await turn.sink.ingest({
       createdAt: new Date().toISOString(),
       delta,
@@ -306,20 +430,46 @@ class CodexAppServerSession {
 
   private handleTurnStarted(params: unknown) {
     const providerTurnId = stringField(asRecord(asRecord(params).turn), 'id')
-    if (!providerTurnId) return
+    if (!providerTurnId) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.turn_started.ignored', {
+        threadId: this.threadId,
+      })
+      return
+    }
 
+    recordChatPipelineInfo('chat.pipeline.codex_session.turn_started', {
+      providerTurnId,
+      threadId: this.threadId,
+    })
     this.attachPendingTurn(providerTurnId)
   }
 
   private async handleTurnCompleted(params: unknown) {
     const turn = asRecord(asRecord(params).turn)
     const providerTurnId = stringField(turn, 'id')
-    if (!providerTurnId) return
+    if (!providerTurnId) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.turn_completed.ignored', {
+        threadId: this.threadId,
+      })
+      return
+    }
 
     const activeTurn = this.turnForProviderTurnId(providerTurnId)
-    if (!activeTurn) return
+    if (!activeTurn) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.turn_completed.missing_turn', {
+        providerTurnId,
+        threadId: this.threadId,
+      })
+      return
+    }
 
     const status = stringField(turn, 'status')
+    recordChatPipelineInfo('chat.pipeline.codex_session.turn_completed', {
+      providerTurnId,
+      status,
+      threadId: this.threadId,
+      turnId: activeTurn.canonicalTurnId,
+    })
     if (status === 'completed') {
       await this.completeTurn(providerTurnId, activeTurn)
       return
@@ -349,6 +499,12 @@ class CodexAppServerSession {
   }
 
   private async completeTurn(providerTurnId: string, turn: ActiveCodexTurn) {
+    recordChatPipelineInfo('chat.pipeline.codex_session.complete_turn', {
+      messageId: turn.messageId,
+      providerTurnId,
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+    })
     await turn.sink.ingest({
       completedAt: new Date().toISOString(),
       eventId: runtimeEventId('codex-assistant-complete'),

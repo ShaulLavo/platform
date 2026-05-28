@@ -141,6 +141,35 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
+  it('bootstraps a draft thread inside a turn-start command', async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+
+    await engine.dispatch(projectCreateCommand())
+    const result = await engine.dispatch(
+      threadTurnStartCommand({
+        bootstrapCreateThread: true,
+        commandId: 'cmd-bootstrap-turn',
+        threadId: 'thread-bootstrap',
+      }),
+    )
+    const replay = engine.replay({ afterSequence: 0 })
+    const detail = engine.threadDetailSnapshot('thread-bootstrap')
+
+    expect(result).toMatchObject({ deduped: false, sequence: 4 })
+    expect(replay.events.map((event) => event.type)).toEqual([
+      'project.created',
+      'thread.created',
+      'thread.message-sent',
+      'thread.turn-start-requested',
+    ])
+    expect(detail.thread.messages).toContainEqual(
+      expect.objectContaining({ id: 'message-1', role: 'user', text: 'Build the first slice' }),
+    )
+    expect(detail.thread.latestTurn).toMatchObject({ state: 'running', turnId: 'turn-1' })
+    fixture.close()
+  })
+
   it('keeps shell snapshot timestamps stable when projection is unchanged', async () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
@@ -330,6 +359,13 @@ describe('orchestration engine', () => {
       },
       kind: 'event',
     })
+    expect(await events.next()).toMatchObject({
+      event: {
+        payload: { messageId: 'message-1', threadId: 'thread-1', turnId: 'turn-1' },
+        type: 'thread.turn-start-requested',
+      },
+      kind: 'event',
+    })
     await targetTurn
     await events.close()
     fixture.close()
@@ -408,8 +444,27 @@ describe('orchestration engine', () => {
       turnId: v.parse(turnIdSchema, 'turn-1'),
       type: 'assistant.delta',
     })
+    await ingestion.ingest({
+      completedAt: later,
+      eventId: 'runtime-event-2',
+      messageId: v.parse(messageIdSchema, 'message-runtime'),
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+      turnId: v.parse(turnIdSchema, 'turn-1'),
+      type: 'assistant.complete',
+    })
+    await ingestion.ingest({
+      completedAt: later,
+      eventId: 'runtime-event-2',
+      messageId: v.parse(messageIdSchema, 'message-runtime'),
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+      turnId: v.parse(turnIdSchema, 'turn-1'),
+      type: 'assistant.complete',
+    })
 
-    expect(dispatched).toHaveLength(1)
+    expect(dispatched).toMatchObject([
+      { delta: 'one', type: 'thread.message.assistant.delta' },
+      { type: 'thread.message.assistant.complete' },
+    ])
   })
 
   it('ingests runtime proposed plans into shell projection state', async () => {
@@ -569,6 +624,20 @@ function threadCreateCommand(threadId = 'thread-1', commandId = 'cmd-thread-crea
 
 function threadTurnStartCommand(input: Partial<ThreadTurnStartFixture> = {}) {
   return command({
+    bootstrap: input.bootstrapCreateThread
+      ? {
+          createThread: {
+            branch: null,
+            createdAt: now,
+            interactionMode: 'default',
+            modelSelection,
+            projectId: 'project-1',
+            runtimeMode: 'full-access',
+            title: 'Phase 2',
+            worktreePath: null,
+          },
+        }
+      : undefined,
     commandId: input.commandId ?? 'cmd-turn-start',
     createdAt: later,
     interactionMode: 'default',
@@ -608,6 +677,7 @@ function assistantCompleteCommand() {
 }
 
 type ThreadTurnStartFixture = {
+  bootstrapCreateThread: boolean
   commandId: string
   messageId: string
   text: string

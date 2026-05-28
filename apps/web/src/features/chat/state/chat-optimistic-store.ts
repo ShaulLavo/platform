@@ -1,6 +1,8 @@
 import type { CommandId, MessageId, OrchestrationMessage, ThreadId } from '@workspace/contracts'
 import { create } from 'zustand'
 
+import { logChatPipelineDebug, optimisticMessageSummary } from '../lib/chat-pipeline-logging'
+
 export type OptimisticChatMessage = OrchestrationMessage & {
   commandId: CommandId
   optimistic: true
@@ -25,7 +27,16 @@ const EMPTY_OPTIMISTIC_MESSAGES: OptimisticChatMessage[] = []
 
 export const useChatOptimisticStore = create<ChatOptimisticStore>((set) => ({
   messagesByThreadId: {},
-  addOptimisticMessage: (commandId, message) =>
+  addOptimisticMessage: (commandId, message) => {
+    logChatPipelineDebug('chat.optimistic.add', {
+      ...optimisticMessageSummary({
+        commandId,
+        messageId: message.id,
+        textLength: message.text.length,
+        threadId: message.threadId,
+      }),
+    })
+
     set((state) => ({
       messagesByThreadId: {
         ...state.messagesByThreadId,
@@ -38,11 +49,19 @@ export const useChatOptimisticStore = create<ChatOptimisticStore>((set) => ({
           },
         },
       },
-    })),
-  clearResolvedOptimisticMessages: (threadId, resolvedMessageIds) =>
-    set((state) => clearResolvedMessages(state, threadId, resolvedMessageIds)),
-  removeOptimisticMessage: (threadId, messageId) =>
-    set((state) => removeOptimisticMessage(state, threadId, messageId)),
+    }))
+  },
+  clearResolvedOptimisticMessages: (threadId, resolvedMessageIds) => {
+    logChatPipelineDebug('chat.optimistic.clear_resolved', {
+      resolvedMessageCount: resolvedMessageIds.size,
+      threadId,
+    })
+    set((state) => clearResolvedMessages(state, threadId, resolvedMessageIds))
+  },
+  removeOptimisticMessage: (threadId, messageId) => {
+    logChatPipelineDebug('chat.optimistic.remove', { messageId, threadId })
+    set((state) => removeOptimisticMessage(state, threadId, messageId))
+  },
 }))
 
 export function selectOptimisticMessagesForThread(

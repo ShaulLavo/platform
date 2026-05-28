@@ -14,6 +14,14 @@ import {
   ProviderSessionDirectory,
   type ProviderRuntimeBindingWithMetadata,
 } from './provider-session-directory'
+import {
+  providerBindingSummary,
+  providerRuntimeEventSummary,
+  providerTurnControlSummary,
+  providerTurnSummary,
+  recordChatPipelineInfo,
+  recordChatPipelineWarning,
+} from '../orchestration/orchestration-logging'
 import type {
   ProviderApprovalResponseInput,
   ProviderRuntimeEvent,
@@ -51,9 +59,15 @@ export class ProviderService {
   }
 
   startSession(input: ProviderStartSessionInput) {
+    recordChatPipelineInfo('chat.pipeline.provider_service.start_session.start', {
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      status: input.status ?? 'starting',
+      threadId: input.threadId,
+    })
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
 
-    return this.sessionDirectory.upsert({
+    const binding = this.sessionDirectory.upsert({
       adapterKey: adapter.adapterKey,
       providerDriverKind: adapter.driverKind,
       providerInstanceId: input.providerInstanceId,
@@ -64,57 +78,124 @@ export class ProviderService {
       status: input.status ?? 'starting',
       threadId: input.threadId,
     })
+    recordChatPipelineInfo('chat.pipeline.provider_service.start_session.complete', {
+      ...providerBindingSummary(binding),
+    })
+
+    return binding
   }
 
   async sendTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
+    const startedAt = performance.now()
+    recordChatPipelineInfo('chat.pipeline.provider_service.send_turn.start', providerTurnSummary(input))
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
 
     try {
       await adapter.startTurn(input, this.runtimeSink(sink))
       this.sessionDirectory.markRunningIfActive(input.thread.id)
+      recordChatPipelineInfo('chat.pipeline.provider_service.send_turn.complete', {
+        ...providerTurnSummary(input),
+        durationMs: elapsedMs(startedAt),
+      })
     } catch (error) {
       this.markTurnFailed(input, error)
+      recordChatPipelineWarning('chat.pipeline.provider_service.send_turn.failed', {
+        ...providerTurnSummary(input),
+        durationMs: elapsedMs(startedAt),
+        error,
+      })
       throw error
     }
   }
 
   async interruptTurn(input: ProviderTurnControlInput) {
+    recordChatPipelineInfo('chat.pipeline.provider_service.interrupt.start', {
+      ...providerTurnControlSummary(input),
+    })
     const routed = this.routeThread(input.threadId)
-    if (!routed) return null
+    if (!routed) {
+      recordChatPipelineWarning('chat.pipeline.provider_service.interrupt.missing_binding', {
+        ...providerTurnControlSummary(input),
+      })
+      return null
+    }
 
     await routed.adapter.interruptTurn(input)
-    return this.sessionDirectory.upsert({
+    const binding = this.sessionDirectory.upsert({
       ...bindingForUpsert(routed.binding),
       runtimePayload: { activeTurnId: null },
       status: 'stopped',
     })
+    recordChatPipelineInfo('chat.pipeline.provider_service.interrupt.complete', {
+      ...providerBindingSummary(binding),
+      ...providerTurnControlSummary(input),
+    })
+
+    return binding
   }
 
   async stopSession(input: { threadId: ThreadId }) {
+    recordChatPipelineInfo('chat.pipeline.provider_service.stop.start', input)
     const routed = this.routeThread(input.threadId)
-    if (!routed) return null
+    if (!routed) {
+      recordChatPipelineWarning('chat.pipeline.provider_service.stop.missing_binding', input)
+      return null
+    }
 
     await routed.adapter.stopSession(input)
-    return this.sessionDirectory.upsert({
+    const binding = this.sessionDirectory.upsert({
       ...bindingForUpsert(routed.binding),
       runtimePayload: { activeTurnId: null },
       status: 'stopped',
     })
+    recordChatPipelineInfo('chat.pipeline.provider_service.stop.complete', {
+      ...providerBindingSummary(binding),
+    })
+
+    return binding
   }
 
   async respondApproval(input: ProviderApprovalResponseInput) {
+    recordChatPipelineInfo('chat.pipeline.provider_service.approval.start', {
+      requestId: input.requestId,
+      threadId: input.threadId,
+    })
     const routed = this.routeThread(input.threadId)
-    if (!routed) return false
+    if (!routed) {
+      recordChatPipelineWarning('chat.pipeline.provider_service.approval.missing_binding', {
+        requestId: input.requestId,
+        threadId: input.threadId,
+      })
+      return false
+    }
 
     await routed.adapter.respondApproval(input)
+    recordChatPipelineInfo('chat.pipeline.provider_service.approval.complete', {
+      requestId: input.requestId,
+      threadId: input.threadId,
+    })
     return true
   }
 
   async respondUserInput(input: ProviderUserInputResponseInput) {
+    recordChatPipelineInfo('chat.pipeline.provider_service.user_input.start', {
+      requestId: input.requestId,
+      threadId: input.threadId,
+    })
     const routed = this.routeThread(input.threadId)
-    if (!routed) return false
+    if (!routed) {
+      recordChatPipelineWarning('chat.pipeline.provider_service.user_input.missing_binding', {
+        requestId: input.requestId,
+        threadId: input.threadId,
+      })
+      return false
+    }
 
     await routed.adapter.respondUserInput(input)
+    recordChatPipelineInfo('chat.pipeline.provider_service.user_input.complete', {
+      requestId: input.requestId,
+      threadId: input.threadId,
+    })
     return true
   }
 
@@ -179,6 +260,9 @@ export class ProviderService {
   }
 
   private recordRuntimeEvent(event: ProviderRuntimeEvent) {
+    recordChatPipelineInfo('chat.pipeline.provider_service.runtime_event', {
+      ...providerRuntimeEventSummary(event),
+    })
     if (event.type !== 'session.set') return
 
     const adapter = this.adapterRegistry.adapter(event.providerInstanceId)
@@ -201,6 +285,10 @@ export class ProviderService {
   }
 
   private async emitRuntimeEvent(event: ProviderRuntimeEvent) {
+    recordChatPipelineInfo('chat.pipeline.provider_service.runtime_event.emit', {
+      listenerCount: this.runtimeEventListeners.size,
+      ...providerRuntimeEventSummary(event),
+    })
     for (const listener of this.runtimeEventListeners) {
       await Promise.resolve(listener(event)).catch(noop)
     }
@@ -254,3 +342,7 @@ function providerErrorMessage(error: unknown) {
 }
 
 function noop() {}
+
+function elapsedMs(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100
+}

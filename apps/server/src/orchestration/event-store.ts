@@ -8,6 +8,11 @@ import {
 } from './schemas'
 import { db as defaultDb } from '../db/client'
 import { orchestrationEvents, type OrchestrationEventRow } from '../db/schema'
+import {
+  orchestrationEventBatchSummary,
+  orchestrationReplaySummary,
+  recordChatPipelineInfo,
+} from './orchestration-logging'
 
 export type OrchestrationDatabase = typeof defaultDb
 export type PendingOrchestrationEvent = {
@@ -27,6 +32,10 @@ export class OrchestrationEventStore {
   append(events: PendingOrchestrationEvent[]) {
     if (events.length === 0) return []
 
+    recordChatPipelineInfo('chat.pipeline.event_store.append_start', {
+      eventCount: events.length,
+      eventTypes: events.map((event) => event.type),
+    })
     const streamVersions = new Map<string, number>()
     const appended: OrchestrationEvent[] = []
 
@@ -54,6 +63,9 @@ export class OrchestrationEventStore {
       appended.push(v.parse(orchestrationEventSchema, { ...event, sequence: inserted.sequence }))
     }
 
+    recordChatPipelineInfo('chat.pipeline.event_store.append_complete', {
+      ...orchestrationEventBatchSummary(appended),
+    })
     return appended
   }
 
@@ -67,18 +79,26 @@ export class OrchestrationEventStore {
   }
 
   readAfter(input: OrchestrationReplayEventsInput) {
+    recordChatPipelineInfo('chat.pipeline.event_store.replay_start', orchestrationReplaySummary(input))
     const conditions = [gt(orchestrationEvents.sequence, input.afterSequence)]
     const aggregateFilter = aggregateConditions(input)
 
     if (aggregateFilter) conditions.push(aggregateFilter)
 
-    return this.database
+    const events = this.database
       .select()
       .from(orchestrationEvents)
       .where(and(...conditions))
       .orderBy(asc(orchestrationEvents.sequence))
       .all()
       .map(rowToEvent)
+
+    recordChatPipelineInfo('chat.pipeline.event_store.replay_complete', {
+      ...orchestrationReplaySummary(input),
+      ...orchestrationEventBatchSummary(events),
+    })
+
+    return events
   }
 }
 

@@ -3,6 +3,7 @@ import type {
   OrchestrationReplayEventsInput,
   OrchestrationReplayEventsResult,
   OrchestrationShellStreamItem,
+  OrchestrationThreadDetailSnapshot,
   OrchestrationThreadStreamItem,
   ThreadId,
 } from '@workspace/contracts'
@@ -15,6 +16,7 @@ export type ChatEnvironment = {
   ) => Promise<{ deduped: boolean; sequence: number }>
   replayEvents: (input: OrchestrationReplayEventsInput) => Promise<OrchestrationReplayEventsResult>
   shellStream: (input?: OrchestrationStreamInput) => AsyncIterable<OrchestrationShellStreamItem>
+  threadDetailSnapshot: (threadId: ThreadId) => Promise<OrchestrationThreadDetailSnapshot>
   threadDetailStream: (
     threadId: ThreadId,
     input?: OrchestrationStreamInput,

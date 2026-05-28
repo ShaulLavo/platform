@@ -74,6 +74,21 @@ export const threadCreateCommandSchema = v.object({
   createdAt: isoDateTimeSchema,
 })
 
+export const threadTurnBootstrapCreateThreadSchema = v.object({
+  projectId: projectIdSchema,
+  title: trimmedNonEmptyStringSchema,
+  modelSelection: modelSelectionSchema,
+  runtimeMode: v.optional(runtimeModeSchema, DEFAULT_RUNTIME_MODE),
+  interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
+  branch: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
+  worktreePath: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
+  createdAt: isoDateTimeSchema,
+})
+
+export const threadTurnBootstrapSchema = v.object({
+  createThread: v.optional(threadTurnBootstrapCreateThreadSchema),
+})
+
 export const threadMetaUpdateCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('thread.meta.update'),
@@ -138,6 +153,7 @@ export const threadTurnStartCommandSchema = v.object({
   runtimeMode: v.optional(runtimeModeSchema, DEFAULT_RUNTIME_MODE),
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
   sourceProposedPlan: v.optional(sourceProposedPlanReferenceSchema),
+  bootstrap: v.optional(threadTurnBootstrapSchema),
   createdAt: isoDateTimeSchema,
 })
 
@@ -276,6 +292,10 @@ export type ProjectCreateCommand = v.InferOutput<typeof projectCreateCommandSche
 export type ProjectMetaUpdateCommand = v.InferOutput<typeof projectMetaUpdateCommandSchema>
 export type ProjectDeleteCommand = v.InferOutput<typeof projectDeleteCommandSchema>
 export type ThreadCreateCommand = v.InferOutput<typeof threadCreateCommandSchema>
+export type ThreadTurnBootstrapCreateThread = v.InferOutput<
+  typeof threadTurnBootstrapCreateThreadSchema
+>
+export type ThreadTurnBootstrap = v.InferOutput<typeof threadTurnBootstrapSchema>
 export type ThreadMetaUpdateCommand = v.InferOutput<typeof threadMetaUpdateCommandSchema>
 export type ThreadDeleteCommand = v.InferOutput<typeof threadDeleteCommandSchema>
 export type ThreadArchiveCommand = v.InferOutput<typeof threadArchiveCommandSchema>

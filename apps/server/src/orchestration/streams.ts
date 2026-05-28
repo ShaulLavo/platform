@@ -7,6 +7,10 @@ import {
 } from './schemas'
 import type { OrchestrationSnapshotQuery } from './snapshot-query'
 import * as v from 'valibot'
+import {
+  orchestrationEventBatchSummary,
+  recordChatPipelineInfo,
+} from './orchestration-logging'
 
 export type OrchestrationStreamOptions = {
   afterSequence?: number
@@ -20,6 +24,9 @@ type EventSubscriber = {
 
 const DETAIL_EVENT_TYPES = new Set<OrchestrationEvent['type']>([
   'thread.message-sent',
+  'thread.turn-start-requested',
+  'thread.turn-interrupt-requested',
+  'thread.session-stop-requested',
   'thread.activity-appended',
   'thread.proposed-plan-upserted',
   'thread.turn-diff-completed',
@@ -33,6 +40,10 @@ export class OrchestrationStreamHub {
   publish(events: OrchestrationEvent[]) {
     if (events.length === 0) return
 
+    recordChatPipelineInfo('chat.pipeline.stream_hub.publish', {
+      subscriberCount: this.subscribers.size,
+      ...orchestrationEventBatchSummary(events),
+    })
     for (const subscriber of this.subscribers) {
       subscriber.publish(events)
     }
@@ -47,6 +58,9 @@ export class OrchestrationStreamHub {
       close: () => {
         closed = true
         this.subscribers.delete(subscriber)
+        recordChatPipelineInfo('chat.pipeline.stream_hub.unsubscribe', {
+          subscriberCount: this.subscribers.size,
+        })
         while (waiters.length > 0) {
           waiters.shift()?.({ done: true, value: undefined })
         }
@@ -65,6 +79,9 @@ export class OrchestrationStreamHub {
     }
 
     this.subscribers.add(subscriber)
+    recordChatPipelineInfo('chat.pipeline.stream_hub.subscribe', {
+      subscriberCount: this.subscribers.size,
+    })
     signal?.addEventListener('abort', subscriber.close, { once: true })
 
     return eventBatchGenerator(subscriber, queue, waiters, signal)
@@ -81,6 +98,9 @@ export class OrchestrationStreams {
   }
 
   publish(events: OrchestrationEvent[]) {
+    recordChatPipelineInfo('chat.pipeline.streams.publish', {
+      ...orchestrationEventBatchSummary(events),
+    })
     this.hub.publish(events)
   }
 
@@ -90,6 +110,12 @@ export class OrchestrationStreams {
     const eventBatches = this.hub.subscribe(options.signal)
     const snapshot = this.snapshots.shellSnapshot()
     let sequence = Math.max(options.afterSequence ?? 0, snapshot.snapshotSequence)
+    recordChatPipelineInfo('chat.pipeline.shell_stream.snapshot', {
+      afterSequence: options.afterSequence ?? 0,
+      projectCount: snapshot.projects.length,
+      snapshotSequence: snapshot.snapshotSequence,
+      threadCount: snapshot.threads.length,
+    })
 
     yield v.parse(orchestrationShellStreamItemSchema, {
       kind: 'snapshot',
@@ -99,6 +125,11 @@ export class OrchestrationStreams {
     for await (const events of eventBatches) {
       const result = this.shellItemsAfter(events, sequence)
       sequence = result.sequence
+      recordChatPipelineInfo('chat.pipeline.shell_stream.batch', {
+        emittedItemCount: result.items.length,
+        sequence,
+        ...orchestrationEventBatchSummary(events),
+      })
       yield* result.items
     }
   }
@@ -110,6 +141,15 @@ export class OrchestrationStreams {
     const eventBatches = this.hub.subscribe(options.signal)
     const snapshot = this.snapshots.threadDetailSnapshot(threadId)
     let sequence = Math.max(options.afterSequence ?? 0, snapshot.snapshotSequence)
+    recordChatPipelineInfo('chat.pipeline.thread_stream.snapshot', {
+      activityCount: snapshot.thread.activities.length,
+      afterSequence: options.afterSequence ?? 0,
+      latestTurnState: snapshot.thread.latestTurn?.state ?? null,
+      messageCount: snapshot.thread.messages.length,
+      sessionStatus: snapshot.thread.session?.status ?? null,
+      snapshotSequence: snapshot.snapshotSequence,
+      threadId,
+    })
 
     yield v.parse(orchestrationThreadStreamItemSchema, {
       kind: 'snapshot',
@@ -119,6 +159,12 @@ export class OrchestrationStreams {
     for await (const events of eventBatches) {
       const result = detailItemsAfter(events, threadId, sequence)
       sequence = result.sequence
+      recordChatPipelineInfo('chat.pipeline.thread_stream.batch', {
+        emittedItemCount: result.items.length,
+        sequence,
+        threadId,
+        ...orchestrationEventBatchSummary(events),
+      })
       yield* result.items
     }
   }

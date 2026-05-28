@@ -11,6 +11,12 @@ import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
 import { createDefaultProviderRegistry, type ProviderRegistry } from '../provider/registry'
 import { ProviderService } from '../provider/provider-service'
 import { ProviderSessionDirectory } from '../provider/provider-session-directory'
+import {
+  orchestrationCommandSummary,
+  orchestrationEventBatchSummary,
+  recordChatPipelineInfo,
+  recordChatPipelineWarning,
+} from './orchestration-logging'
 import { projectEvents } from './projector'
 import type { OrchestrationReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
@@ -55,6 +61,7 @@ export class OrchestrationEngine {
   }
 
   dispatch(command: OrchestrationCommand) {
+    recordChatPipelineInfo('chat.pipeline.command.queued', orchestrationCommandSummary(command))
     const task = this.queue.then(() => this.dispatchNow(command))
     this.queue = task.then(noop, noop)
 
@@ -90,17 +97,53 @@ export class OrchestrationEngine {
   }
 
   private dispatchNow(command: OrchestrationCommand): OrchestrationDispatchResult {
+    const startedAt = performance.now()
+    recordChatPipelineInfo('chat.pipeline.command.start', orchestrationCommandSummary(command))
+
     const existing = this.receipts.find(command.commandId)
     if (existing) {
-      if (existing.status === 'accepted') return dedupedDispatchResult(existing)
+      if (existing.status === 'accepted') {
+        recordChatPipelineInfo('chat.pipeline.command.deduped', {
+          ...orchestrationCommandSummary(command),
+          resultSequence: existing.resultSequence,
+        })
+        return dedupedDispatchResult(existing)
+      }
 
+      recordChatPipelineWarning('chat.pipeline.command.previously_rejected', {
+        ...orchestrationCommandSummary(command),
+        storedError: existing.error,
+      })
       throw previouslyRejectedCommandError(existing)
     }
 
     const committed = this.commitNewCommand(command)
+    recordChatPipelineInfo('chat.pipeline.command.committed', {
+      ...orchestrationCommandSummary(command),
+      ...orchestrationEventBatchSummary(committed.events),
+      sequence: committed.sequence,
+    })
     this.readModel = projectEvents(committed.events, this.readModel)
+    recordChatPipelineInfo('chat.pipeline.read_model.projected', {
+      ...orchestrationCommandSummary(command),
+      ...orchestrationEventBatchSummary(committed.events),
+    })
     this.streams.publish(committed.events)
+    recordChatPipelineInfo('chat.pipeline.streams.published', {
+      ...orchestrationCommandSummary(command),
+      ...orchestrationEventBatchSummary(committed.events),
+    })
     this.providerCommandReactor?.handleEvents(committed.events)
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.notified', {
+      ...orchestrationCommandSummary(command),
+      ...orchestrationEventBatchSummary(committed.events),
+      enabled: this.providerCommandReactor !== null,
+    })
+    recordChatPipelineInfo('chat.pipeline.command.complete', {
+      ...orchestrationCommandSummary(command),
+      durationMs: elapsedMs(startedAt),
+      sequence: committed.sequence,
+    })
 
     return {
       deduped: false,
@@ -112,10 +155,19 @@ export class OrchestrationEngine {
   private commitNewCommand(command: OrchestrationCommand) {
     try {
       const pendingEvents = decideOrchestrationCommand(command, this.readModel)
+      recordChatPipelineInfo('chat.pipeline.command.decided', {
+        ...orchestrationCommandSummary(command),
+        eventCount: pendingEvents.length,
+        eventTypes: pendingEvents.map((event) => event.type),
+      })
 
       return this.commitCommand(command, pendingEvents)
     } catch (error) {
       this.receipts.recordRejected(command, error)
+      recordChatPipelineWarning('chat.pipeline.command.rejected', {
+        ...orchestrationCommandSummary(command),
+        error,
+      })
       throw error
     }
   }
@@ -166,6 +218,10 @@ export class OrchestrationEngine {
 }
 
 function noop() {}
+
+function elapsedMs(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100
+}
 
 function dedupedDispatchResult(
   receipt: NonNullable<ReturnType<OrchestrationCommandReceipts['find']>>,

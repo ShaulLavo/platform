@@ -3,6 +3,16 @@ import { useEffect, useMemo, useState } from 'react'
 
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { createThreadInterruptCommand, createTurnSubmission } from '../lib/chat-command-builders'
+import {
+  replayAfterTurnDispatch,
+  scheduleThreadProjectionSyncAfterDispatch,
+} from '../lib/chat-command-sync'
+import {
+  chatCommandSummary,
+  logChatPipelineInfo,
+  logChatPipelineWarn,
+  optimisticMessageSummary,
+} from '../lib/chat-pipeline-logging'
 import { isChatThreadBusy } from '../lib/chat-thread-status'
 import { createChatThreadSelector } from '../state/chat-projection-selectors'
 import {
@@ -89,17 +99,49 @@ export function ChatView({
       threadId: thread.id,
     })
 
+    logChatPipelineInfo('chat.send.submit', {
+      attachmentCount: attachments.length,
+      interactionMode,
+      model: modelSelection.model,
+      providerInstanceId: modelSelection.providerInstanceId,
+      runtimeMode,
+      textLength: text.length,
+      threadId: thread.id,
+    })
     useChatOptimisticStore
       .getState()
       .addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
+    logChatPipelineInfo('chat.optimistic.added_from_send', {
+      ...optimisticMessageSummary({
+        commandId: submission.command.commandId,
+        messageId: submission.optimisticMessage.id,
+        textLength: text.length,
+        threadId: thread.id,
+      }),
+    })
     setSendError(null)
     try {
-      await environment.dispatchCommand(submission.command)
+      logChatPipelineInfo('chat.command.dispatch.start', chatCommandSummary(submission.command))
+      const result = await environment.dispatchCommand(submission.command)
+      logChatPipelineInfo('chat.command.dispatch.accepted', {
+        ...chatCommandSummary(submission.command),
+        deduped: result.deduped,
+        sequence: result.sequence,
+      })
+      scheduleThreadProjectionSyncAfterDispatch({
+        environment,
+        replayAfterSequence: replayAfterTurnDispatch(result),
+        threadId: thread.id,
+      })
       return true
     } catch (error) {
       useChatOptimisticStore
         .getState()
         .removeOptimisticMessage(thread.id, submission.optimisticMessage.id)
+      logChatPipelineWarn('chat.command.dispatch.failed', {
+        ...chatCommandSummary(submission.command),
+        error,
+      })
       setSendError(chatViewErrorMessage(error))
       return false
     }
@@ -110,14 +152,20 @@ export function ChatView({
 
     setStopping(true)
     try {
-      await environment.dispatchCommand(
-        createThreadInterruptCommand({
-          createdAt: new Date().toISOString(),
-          threadId: thread.id,
-          turnId: thread.latestTurn?.turnId,
-        }),
-      )
+      const command = createThreadInterruptCommand({
+        createdAt: new Date().toISOString(),
+        threadId: thread.id,
+        turnId: thread.latestTurn?.turnId,
+      })
+      logChatPipelineInfo('chat.stop.dispatch.start', chatCommandSummary(command))
+      await environment.dispatchCommand(command)
+      logChatPipelineInfo('chat.stop.dispatch.accepted', chatCommandSummary(command))
     } catch (error) {
+      logChatPipelineWarn('chat.stop.dispatch.failed', {
+        error,
+        threadId: thread.id,
+        turnId: thread.latestTurn?.turnId,
+      })
       setSendError(chatViewErrorMessage(error))
     } finally {
       setStopping(false)

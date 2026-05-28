@@ -15,6 +15,10 @@ import * as v from 'valibot'
 import { db as defaultDb } from '../db/client'
 import { providerSessionRuntime, type ProviderSessionRuntimeRow } from '../db/schema'
 import type { OrchestrationDatabase } from '../orchestration/event-store'
+import {
+  recordChatPipelineInfo,
+  recordChatPipelineWarning,
+} from '../orchestration/orchestration-logging'
 
 export type ProviderRuntimeBindingStatus = 'starting' | 'running' | 'stopped' | 'error'
 
@@ -51,6 +55,13 @@ export class ProviderSessionDirectory {
   }
 
   upsert(binding: ProviderRuntimeBinding) {
+    recordChatPipelineInfo('chat.pipeline.provider_session_directory.upsert.start', {
+      providerDriverKind: binding.providerDriverKind,
+      providerInstanceId: binding.providerInstanceId,
+      runtimeMode: binding.runtimeMode,
+      status: binding.status,
+      threadId: binding.threadId,
+    })
     const existing = this.findRow(binding.threadId)
     const resolved = resolveBindingForWrite(binding, existing)
 
@@ -63,14 +74,37 @@ export class ProviderSessionDirectory {
       })
       .run()
 
+    recordChatPipelineInfo('chat.pipeline.provider_session_directory.upsert.complete', {
+      providerDriverKind: resolved.providerDriverKind,
+      providerInstanceId: resolved.providerInstanceId,
+      providerSessionId: resolved.providerSessionId,
+      runtimeMode: resolved.runtimeMode,
+      status: resolved.status,
+      threadId: resolved.threadId,
+    })
     return resolved
   }
 
   getBinding(threadId: ThreadId) {
     const row = this.findRow(threadId)
-    if (!row) return null
+    if (!row) {
+      recordChatPipelineInfo('chat.pipeline.provider_session_directory.get_binding.miss', {
+        threadId,
+      })
+      return null
+    }
 
-    return rowToBinding(row)
+    const binding = rowToBinding(row)
+    recordChatPipelineInfo('chat.pipeline.provider_session_directory.get_binding.hit', {
+      providerDriverKind: binding.providerDriverKind,
+      providerInstanceId: binding.providerInstanceId,
+      providerSessionId: binding.providerSessionId,
+      runtimeMode: binding.runtimeMode,
+      status: binding.status,
+      threadId: binding.threadId,
+    })
+
+    return binding
   }
 
   getProvider(threadId: ThreadId) {
@@ -87,15 +121,25 @@ export class ProviderSessionDirectory {
   }
 
   listBindings() {
-    return this.database
+    const bindings = this.database
       .select()
       .from(providerSessionRuntime)
       .orderBy(asc(providerSessionRuntime.lastSeenAt), asc(providerSessionRuntime.threadId))
       .all()
       .map(rowToBinding)
+    recordChatPipelineInfo('chat.pipeline.provider_session_directory.list_bindings', {
+      bindingCount: bindings.length,
+      threadIds: bindings.map((binding) => binding.threadId),
+    })
+
+    return bindings
   }
 
   markStatus(threadId: ThreadId, status: ProviderRuntimeBindingStatus) {
+    recordChatPipelineInfo('chat.pipeline.provider_session_directory.mark_status', {
+      status,
+      threadId,
+    })
     this.database
       .update(providerSessionRuntime)
       .set({ lastSeenAt: new Date().toISOString(), status })
@@ -106,7 +150,13 @@ export class ProviderSessionDirectory {
   markRunningIfActive(threadId: ThreadId) {
     const binding = this.getBinding(threadId)
     if (!binding) return
-    if (binding.status === 'stopped' || binding.status === 'error') return
+    if (binding.status === 'stopped' || binding.status === 'error') {
+      recordChatPipelineWarning('chat.pipeline.provider_session_directory.mark_running_skipped', {
+        status: binding.status,
+        threadId,
+      })
+      return
+    }
 
     this.markStatus(threadId, 'running')
   }

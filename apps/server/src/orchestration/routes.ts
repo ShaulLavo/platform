@@ -7,6 +7,8 @@ import {
 } from './schemas'
 import type { OrchestrationEngine } from './engine'
 import { toSse } from '../sse'
+import { observeRequestOperation } from '../observability'
+import { chatOperationContext, orchestrationReplaySummary } from './orchestration-logging'
 
 const ORCHESTRATION_STREAM_HEARTBEAT_MS = 15_000
 
@@ -26,13 +28,53 @@ const threadDetailStreamQuerySchema = v.object({
 export function orchestrationRoutes(engine: OrchestrationEngine) {
   return new Elysia({ name: 'orchestration-routes' }).group('/orchestration', (app) =>
     app
-      .post('/commands', ({ body }) => engine.dispatchClientCommand(body), {
-        body: clientOrchestrationCommandSchema,
-      })
-      .get('/shell-snapshot', () => engine.shellSnapshot())
-      .get('/thread-detail', ({ query }) => engine.threadDetailSnapshot(query.threadId), {
-        query: threadDetailQuerySchema,
-      })
+      .post(
+        '/commands',
+        ({ body }) =>
+          observeRequestOperation(
+            chatOperationContext('orchestration.commands', {
+              commandId: body.commandId,
+              commandType: body.type,
+            }),
+            async () => engine.dispatchClientCommand(body),
+            (result) => ({
+              deduped: result.deduped,
+              sequence: result.sequence,
+            }),
+          ),
+        {
+          body: clientOrchestrationCommandSchema,
+        },
+      )
+      .get('/shell-snapshot', () =>
+        observeRequestOperation(
+          chatOperationContext('orchestration.shell_snapshot'),
+          async () => engine.shellSnapshot(),
+          (snapshot) => ({
+            projectCount: snapshot.projects.length,
+            snapshotSequence: snapshot.snapshotSequence,
+            threadCount: snapshot.threads.length,
+          }),
+        ),
+      )
+      .get(
+        '/thread-detail',
+        ({ query }) =>
+          observeRequestOperation(
+            chatOperationContext('orchestration.thread_detail_snapshot', {
+              threadId: query.threadId,
+            }),
+            async () => engine.threadDetailSnapshot(query.threadId),
+            (snapshot) => ({
+              activityCount: snapshot.thread.activities.length,
+              messageCount: snapshot.thread.messages.length,
+              snapshotSequence: snapshot.snapshotSequence,
+            }),
+          ),
+        {
+          query: threadDetailQuerySchema,
+        },
+      )
       .get(
         '/shell-stream',
         ({ query, request }) =>
@@ -64,8 +106,20 @@ export function orchestrationRoutes(engine: OrchestrationEngine) {
           query: threadDetailStreamQuerySchema,
         },
       )
-      .post('/replay', ({ body }) => engine.replay(body), {
-        body: orchestrationReplayEventsInputSchema,
-      }),
+      .post(
+        '/replay',
+        ({ body }) =>
+          observeRequestOperation(
+            chatOperationContext('orchestration.replay', orchestrationReplaySummary(body)),
+            async () => engine.replay(body),
+            (result) => ({
+              eventCount: result.events.length,
+              maxSequence: result.events.at(-1)?.sequence ?? body.afterSequence,
+            }),
+          ),
+        {
+          body: orchestrationReplayEventsInputSchema,
+        },
+      ),
   )
 }

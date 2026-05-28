@@ -14,6 +14,13 @@ import type { ProviderService } from '../provider/provider-service'
 import type { ProviderRuntimeEvent } from '../provider/types'
 import type { OrchestrationReadModel } from './read-model'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
+import {
+  orchestrationEventBatchSummary,
+  orchestrationEventSummary,
+  providerRuntimeEventSummary,
+  recordChatPipelineInfo,
+  recordChatPipelineWarning,
+} from './orchestration-logging'
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -52,18 +59,28 @@ export class ProviderCommandReactor {
   }
 
   handleEvents(events: OrchestrationEvent[]) {
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.events_received', {
+      ...orchestrationEventBatchSummary(events),
+    })
     for (const event of events) {
       if (!isProviderIntentEvent(event)) continue
 
+      recordChatPipelineInfo('chat.pipeline.provider_reactor.intent_enqueued', {
+        ...orchestrationEventSummary(event),
+      })
       this.track(this.handleEvent(event))
     }
   }
 
   async drain() {
     await Promise.all(Array.from(this.pending))
+    await this.ingestion.drain()
   }
 
   private async handleEvent(event: ProviderIntentEvent) {
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.intent_start', {
+      ...orchestrationEventSummary(event),
+    })
     switch (event.type) {
       case 'thread.turn-start-requested':
         await this.startTurn(event)
@@ -86,12 +103,32 @@ export class ProviderCommandReactor {
   private async startTurn(
     event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
   ) {
-    if (this.hasHandledTurnStart(event)) return
+    if (this.hasHandledTurnStart(event)) {
+      recordChatPipelineInfo('chat.pipeline.provider_reactor.turn_start.deduped', {
+        ...orchestrationEventSummary(event),
+      })
+      return
+    }
 
     const context = await this.turnContext(event)
-    if (!context) return
+    if (!context) {
+      recordChatPipelineWarning('chat.pipeline.provider_reactor.turn_start.missing_context', {
+        ...orchestrationEventSummary(event),
+      })
+      return
+    }
 
     try {
+      recordChatPipelineInfo('chat.pipeline.provider_reactor.turn_start.context', {
+        interactionMode: context.interactionMode,
+        messageId: context.message.id,
+        model: context.modelSelection.model,
+        providerInstanceId: context.modelSelection.providerInstanceId,
+        runtimeMode: context.runtimeMode,
+        textLength: context.message.text.length,
+        threadId: context.thread.id,
+        turnId: event.payload.turnId,
+      })
       const binding = this.providerService.startSession({
         providerInstanceId: context.modelSelection.providerInstanceId,
         runtimeMode: context.runtimeMode,
@@ -121,6 +158,10 @@ export class ProviderCommandReactor {
         },
         { ingest: (runtimeEvent) => this.ingestProviderRuntimeEvent(runtimeEvent) },
       )
+      recordChatPipelineInfo('chat.pipeline.provider_reactor.turn_start.sent', {
+        threadId: context.thread.id,
+        turnId: event.payload.turnId,
+      })
     } catch (error) {
       await this.handleTurnFailure(
         event,
@@ -135,11 +176,19 @@ export class ProviderCommandReactor {
   private async interruptTurn(
     event: Extract<ProviderIntentEvent, { type: 'thread.turn-interrupt-requested' }>,
   ) {
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.interrupt.start', {
+      ...orchestrationEventSummary(event),
+    })
     const binding = await this.providerService.interruptTurn({
       threadId: event.payload.threadId,
       turnId: event.payload.turnId,
     })
-    if (!binding) return
+    if (!binding) {
+      recordChatPipelineWarning('chat.pipeline.provider_reactor.interrupt.missing_binding', {
+        ...orchestrationEventSummary(event),
+      })
+      return
+    }
 
     await this.ingestSession({
       providerInstanceId: binding.providerInstanceId,
@@ -154,8 +203,16 @@ export class ProviderCommandReactor {
   private async stopSession(
     event: Extract<ProviderIntentEvent, { type: 'thread.session-stop-requested' }>,
   ) {
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.stop.start', {
+      ...orchestrationEventSummary(event),
+    })
     const binding = await this.providerService.stopSession({ threadId: event.payload.threadId })
-    if (!binding) return
+    if (!binding) {
+      recordChatPipelineWarning('chat.pipeline.provider_reactor.stop.missing_binding', {
+        ...orchestrationEventSummary(event),
+      })
+      return
+    }
 
     await this.ingestSession({
       providerInstanceId: binding.providerInstanceId,
@@ -290,6 +347,14 @@ export class ProviderCommandReactor {
     threadId: ThreadId
     turnId: TurnId | null
   }) {
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.ingest_session', {
+      providerInstanceId: input.providerInstanceId,
+      providerSessionId: input.providerSessionId,
+      runtimeMode: input.runtimeMode,
+      sessionStatus: input.status,
+      threadId: input.threadId,
+      turnId: input.turnId,
+    })
     await this.ingestion.ingest({
       createdAt: new Date().toISOString(),
       eventId: runtimeEventId('provider-session'),
@@ -306,6 +371,9 @@ export class ProviderCommandReactor {
   }
 
   private async ingestProviderRuntimeEvent(event: ProviderRuntimeEvent) {
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.runtime_event', {
+      ...providerRuntimeEventSummary(event),
+    })
     await this.ingestion.ingest(event)
   }
 
@@ -327,7 +395,15 @@ export class ProviderCommandReactor {
 
   private track(task: Promise<void>) {
     this.pending.add(task)
-    void task.then(noop, noop).finally(() => this.pending.delete(task))
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.task_tracked', {
+      pendingCount: this.pending.size,
+    })
+    void task.then(noop, noop).finally(() => {
+      this.pending.delete(task)
+      recordChatPipelineInfo('chat.pipeline.provider_reactor.task_settled', {
+        pendingCount: this.pending.size,
+      })
+    })
   }
 }
 

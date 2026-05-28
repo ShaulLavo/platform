@@ -172,6 +172,24 @@ describe('chat projection writers', () => {
     expect(state.messageIdsByThreadId[threadId]).toEqual([parseMessageId('message-6')])
   })
 
+  it('applies equal-sequence detail snapshots as authoritative detail state', () => {
+    const threadId = parseThreadId('thread-1')
+    const message = makeMessage(6, threadId)
+    let state = createInitialChatProjectionState()
+
+    state = syncChatProjectionThreadDetailSnapshot(state, {
+      snapshotSequence: 6,
+      thread: makeThreadDetail({ id: threadId, messages: [] }),
+    })
+    state = syncChatProjectionThreadDetailSnapshot(state, {
+      snapshotSequence: 6,
+      thread: makeThreadDetail({ id: threadId, messages: [message] }),
+    })
+
+    expect(state.messageIdsByThreadId[threadId]).toEqual([message.id])
+    expect(state.messageByThreadId[threadId]?.[message.id]?.text).toBe(message.text)
+  })
+
   it('keeps sidebar summaries shell-owned while detail events update local turn state', () => {
     const threadId = parseThreadId('thread-1')
     const turnId = parseTurnId('turn-1')

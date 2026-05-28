@@ -49,6 +49,8 @@ describe('thread detail subscription cache', () => {
     releaseSecond()
     expect(cache.snapshot()[0]?.refCount).toBe(0)
     expect(timers.size()).toBe(1)
+    await waitForMicrotasks()
+    expect(fake.aborts).toEqual([])
 
     timers.runAll()
     await waitForMicrotasks()
@@ -105,7 +107,7 @@ describe('thread detail subscription cache', () => {
     cache.disposeAll()
   })
 
-  it('prewarms only the first visible sidebar threads', () => {
+  it('prewarms only first visible sidebar thread details', () => {
     const fake = createFakeEnvironment()
     const cache = createThreadDetailSubscriptionCache({
       environment: fake.environment,
@@ -115,7 +117,8 @@ describe('thread detail subscription cache', () => {
     cache.prewarmSidebarThreadDetails(threadIds)
 
     expect(fake.starts.map((start) => start.threadId)).toEqual(threadIds.slice(0, 10))
-    expect(cache.snapshot().every((entry) => entry.refCount === 0)).toBe(true)
+    expect(cache.size()).toBe(10)
+    expect(cache.snapshot().map((entry) => entry.refCount)).toEqual(Array(10).fill(0))
 
     cache.disposeAll()
   })
@@ -137,6 +140,9 @@ function createFakeEnvironment() {
       const item = await new Promise<OrchestrationShellStreamItem>(() => undefined)
 
       yield item
+    },
+    threadDetailSnapshot: async () => {
+      throw new Error('threadDetailSnapshot is not used by subscription cache tests.')
     },
     threadDetailStream: async function* (threadId, input = {}) {
       starts.push({ afterSequence: input.afterSequence, threadId })

@@ -64,7 +64,7 @@ describe('chat command builders', () => {
     expect(submission.command.message.attachments).toEqual(submission.optimisticMessage.attachments)
   })
 
-  it('builds a draft thread submission with one thread id and a prompt title', () => {
+  it('builds a draft thread turn with bootstrap create-thread metadata', () => {
     const projectId = workspaceProjectId('/Users/test/workspace/platform')
     const submission = createDraftThreadSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
@@ -73,10 +73,14 @@ describe('chat command builders', () => {
       text: 'Fix the draft thread flow',
     })
 
-    expect(submission.threadCommand.type).toBe('thread.create')
-    expect(submission.threadCommand.threadId).toBe(submission.turnCommand.threadId)
-    expect(submission.threadCommand.title).toBe('Fix the draft thread flow')
-    expect(submission.turnCommand.message.messageId).toBe(submission.optimisticMessage.id)
+    expect(submission.command.type).toBe('thread.turn.start')
+    expect(submission.command.bootstrap?.createThread).toMatchObject({
+      projectId,
+      title: 'Fix the draft thread flow',
+      worktreePath: '/Users/test/workspace/platform',
+    })
+    expect(submission.command.message.messageId).toBe(submission.optimisticMessage.id)
+    expect(submission.command.threadId).toBe(submission.optimisticMessage.threadId)
   })
 
   it('keeps interrupt commands scoped to the active thread and turn', () => {

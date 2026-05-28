@@ -19,6 +19,7 @@ import {
 import { OrchestrationEngine } from './orchestration/engine'
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
+import { orchestrationWsRoutes } from './orchestration/ws-rpc'
 import { createDefaultProviderRegistry, type ProviderRegistry } from './provider/registry'
 import { providerRoutes } from './provider/routes'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
@@ -77,6 +78,7 @@ export function createApp(options: AppOptions) {
     .ws('/lsp', lspRoutes(fs, auth))
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerRegistry))
+    .use(orchestrationWsRoutes(orchestration, auth))
     .use(orchestrationRoutes(orchestration))
     .use(gitRoutes(git))
     .use(fsRoutes(fs))

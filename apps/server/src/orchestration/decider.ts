@@ -197,9 +197,10 @@ function turnStartRequested(
   command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
   model: OrchestrationReadModel,
 ) {
-  requireThread(model, command.threadId)
+  const bootstrapEvent = bootstrapThreadCreated(command, model)
+  if (!bootstrapEvent) requireThread(model, command.threadId)
 
-  return [
+  const turnEvents = [
     event(command, 'thread.message-sent', {
       attachments: command.message.attachments,
       createdAt: command.createdAt,
@@ -223,6 +224,33 @@ function turnStartRequested(
       turnId: command.turnId,
     }),
   ]
+
+  return bootstrapEvent ? [bootstrapEvent, ...turnEvents] : turnEvents
+}
+
+function bootstrapThreadCreated(
+  command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
+  model: OrchestrationReadModel,
+) {
+  const createThread = command.bootstrap?.createThread
+  if (!createThread) return null
+
+  requireProject(model, createThread.projectId)
+  if (model.threads.has(command.threadId))
+    throw orchestrationErrors.THREAD_ALREADY_EXISTS({ threadId: command.threadId })
+
+  return event(command, 'thread.created', {
+    branch: createThread.branch,
+    createdAt: createThread.createdAt,
+    interactionMode: createThread.interactionMode ?? DEFAULT_INTERACTION_MODE,
+    modelSelection: createThread.modelSelection,
+    projectId: createThread.projectId,
+    runtimeMode: createThread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+    threadId: command.threadId,
+    title: createThread.title,
+    updatedAt: createThread.createdAt,
+    worktreePath: createThread.worktreePath,
+  })
 }
 
 function one<Type extends PendingOrchestrationEvent['type']>(

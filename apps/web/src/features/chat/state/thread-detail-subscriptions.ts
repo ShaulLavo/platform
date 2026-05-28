@@ -7,6 +7,12 @@ import type {
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { createLocalChatEnvironment } from '../environment/local-chat-environment'
 import {
+  chatStreamItemSummary,
+  logChatPipelineDebug,
+  logChatPipelineInfo,
+  logChatPipelineWarn,
+} from '../lib/chat-pipeline-logging'
+import {
   MAX_CACHED_THREAD_DETAIL_SUBSCRIPTIONS,
   SIDEBAR_THREAD_DETAIL_PREWARM_LIMIT,
   THREAD_DETAIL_SUBSCRIPTION_IDLE_EVICTION_MS,
@@ -61,6 +67,10 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
 
   function retain(threadId: ThreadId) {
     const entry = getOrCreateEntry(threadId)
+    logChatPipelineDebug('chat.thread_detail_subscription.retain', {
+      refCount: entry.refCount + 1,
+      threadId,
+    })
     clearEntryEviction(entry)
     entry.refCount += 1
     entry.lastAccessedAt = now()
@@ -75,17 +85,26 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
       released = true
       entry.refCount = Math.max(0, entry.refCount - 1)
       entry.lastAccessedAt = now()
+      logChatPipelineDebug('chat.thread_detail_subscription.release', {
+        refCount: entry.refCount,
+        threadId,
+      })
       reconcileEntryEviction(entry)
       evictIdleEntriesToCapacity()
     }
   }
 
   function prewarmSidebarThreadDetails(threadIds: ReadonlyArray<ThreadId>) {
-    const releases = threadIds.slice(0, SIDEBAR_THREAD_DETAIL_PREWARM_LIMIT).map(retain)
+    const releaseCallbacks = threadIds.slice(0, SIDEBAR_THREAD_DETAIL_PREWARM_LIMIT).map(retain)
 
-    for (const release of releases) {
+    for (const release of releaseCallbacks) {
       release()
     }
+
+    logChatPipelineInfo('chat.thread_detail_subscription.prewarm', {
+      requestedThreadCount: threadIds.length,
+      retainedThreadCount: releaseCallbacks.length,
+    })
   }
 
   function reconcileThread(threadId: ThreadId) {
@@ -151,6 +170,10 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     const abortController = new AbortController()
     entry.abortController = abortController
     entry.active = true
+    logChatPipelineInfo('chat.thread_detail_subscription.start', {
+      refCount: entry.refCount,
+      threadId: entry.threadId,
+    })
 
     void runThreadDetailSubscription(entry, abortController)
   }
@@ -160,6 +183,10 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     abortController: AbortController,
   ) {
     const afterSequence = store.getState().threadDetailSequenceById[entry.threadId] ?? 0
+    logChatPipelineInfo('chat.thread_detail_subscription.stream_open', {
+      afterSequence,
+      threadId: entry.threadId,
+    })
 
     try {
       for await (const item of options.environment.threadDetailStream(entry.threadId, {
@@ -171,16 +198,26 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     } catch (error) {
       if (!abortController.signal.aborted) {
         entry.lastError = error
+        logChatPipelineWarn('chat.thread_detail_subscription.stream_error', {
+          afterSequence,
+          error,
+          threadId: entry.threadId,
+        })
       }
     } finally {
       if (entry.abortController === abortController) {
         entry.abortController = null
         entry.active = false
+        logChatPipelineInfo('chat.thread_detail_subscription.stream_closed', {
+          aborted: abortController.signal.aborted,
+          threadId: entry.threadId,
+        })
       }
     }
   }
 
   function applyThreadStreamItem(item: OrchestrationThreadStreamItem) {
+    logChatPipelineDebug('chat.thread_detail_subscription.apply_item', chatStreamItemSummary(item))
     if (item.kind === 'snapshot') {
       store.getState().syncThreadDetailSnapshot(item.snapshot)
       return
@@ -204,6 +241,9 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
       entry.evictionTimeoutId = null
       if (!shouldEvictEntry(entry)) return
 
+      logChatPipelineInfo('chat.thread_detail_subscription.evict_idle', {
+        threadId: entry.threadId,
+      })
       disposeEntry(entry.threadId)
     }, idleEvictionMs)
   }
@@ -254,6 +294,9 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     entry.abortController?.abort()
     entry.abortController = null
     entry.active = false
+    logChatPipelineInfo('chat.thread_detail_subscription.dispose', {
+      threadId,
+    })
 
     return true
   }

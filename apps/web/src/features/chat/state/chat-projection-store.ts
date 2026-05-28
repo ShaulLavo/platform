@@ -23,6 +23,13 @@ import {
 import { create } from 'zustand'
 
 import {
+  chatEventSummary,
+  chatStreamItemSummary,
+  chatThreadSnapshotSummary,
+  logChatPipelineDebug,
+  logChatPipelineInfo,
+} from '../lib/chat-pipeline-logging'
+import {
   applyChatProjectionEvents,
   applyChatProjectionShellStreamItem,
   applyChatProjectionThreadStreamItem,
@@ -151,12 +158,42 @@ export function createInitialChatProjectionState(): ChatProjectionState {
 
 export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
   ...createInitialChatProjectionState(),
-  applyOrchestrationEvent: (event) => set((state) => applyChatProjectionEvents(state, [event])),
-  applyOrchestrationEvents: (events) => set((state) => applyChatProjectionEvents(state, events)),
-  applyShellStreamItem: (item) => set((state) => applyChatProjectionShellStreamItem(state, item)),
-  applyThreadStreamItem: (item) => set((state) => applyChatProjectionThreadStreamItem(state, item)),
-  resetChatProjection: () => set(createInitialChatProjectionState()),
-  syncShellSnapshot: (snapshot) => set((state) => syncChatProjectionShellSnapshot(state, snapshot)),
-  syncThreadDetailSnapshot: (snapshot) =>
-    set((state) => syncChatProjectionThreadDetailSnapshot(state, snapshot)),
+  applyOrchestrationEvent: (event) => {
+    logChatPipelineDebug('chat.projection.apply_event', chatEventSummary(event))
+    set((state) => applyChatProjectionEvents(state, [event]))
+  },
+  applyOrchestrationEvents: (events) => {
+    logChatPipelineDebug('chat.projection.apply_events', {
+      eventCount: events.length,
+      eventTypes: events.map((event) => event.type),
+      maxSequence: events.at(-1)?.sequence ?? null,
+    })
+    set((state) => applyChatProjectionEvents(state, events))
+  },
+  applyShellStreamItem: (item) => {
+    logChatPipelineDebug('chat.projection.apply_shell_stream_item', chatStreamItemSummary(item))
+    set((state) => applyChatProjectionShellStreamItem(state, item))
+  },
+  applyThreadStreamItem: (item) => {
+    logChatPipelineDebug('chat.projection.apply_thread_stream_item', chatStreamItemSummary(item))
+    set((state) => applyChatProjectionThreadStreamItem(state, item))
+  },
+  resetChatProjection: () => {
+    logChatPipelineInfo('chat.projection.reset')
+    set(createInitialChatProjectionState())
+  },
+  syncShellSnapshot: (snapshot) => {
+    logChatPipelineInfo('chat.projection.sync_shell_snapshot', {
+      projectCount: snapshot.projects.length,
+      snapshotSequence: snapshot.snapshotSequence,
+      threadCount: snapshot.threads.length,
+    })
+    set((state) => syncChatProjectionShellSnapshot(state, snapshot))
+  },
+  syncThreadDetailSnapshot: (snapshot) => {
+    logChatPipelineInfo('chat.projection.sync_thread_detail_snapshot', {
+      ...chatThreadSnapshotSummary(snapshot),
+    })
+    set((state) => syncChatProjectionThreadDetailSnapshot(state, snapshot))
+  },
 }))

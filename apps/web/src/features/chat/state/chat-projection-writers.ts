@@ -88,7 +88,7 @@ export function syncChatProjectionThreadDetailSnapshot(
   snapshot: OrchestrationThreadDetailSnapshot,
 ): ChatProjectionState {
   const threadId = snapshot.thread.id
-  if (!shouldApplyThreadSequence(state, threadId, snapshot.snapshotSequence)) return state
+  if (!shouldApplyThreadDetailSnapshot(state, threadId, snapshot.snapshotSequence)) return state
 
   const nextState = writeThreadDetailState(state, snapshot.thread)
 
@@ -166,6 +166,17 @@ function shouldApplyThreadSequence(
   sequence: number,
 ) {
   return sequence > (state.threadDetailSequenceById[threadId] ?? 0)
+}
+
+function shouldApplyThreadDetailSnapshot(
+  state: ChatProjectionState,
+  threadId: ThreadId,
+  sequence: number,
+) {
+  const currentSequence = state.threadDetailSequenceById[threadId] ?? 0
+  if (sequence > currentSequence) return true
+
+  return sequence === currentSequence
 }
 
 function markShellSequence(state: ChatProjectionState, sequence: number): ChatProjectionState {

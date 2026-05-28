@@ -34,8 +34,7 @@ export type ChatTurnSubmission = {
 }
 
 export type DraftThreadSubmission = {
-  threadCommand: ThreadCreateCommand
-  turnCommand: ThreadTurnStartCommand
+  command: ThreadTurnStartCommand
   optimisticMessage: OrchestrationMessage
 }
 
@@ -155,12 +154,8 @@ export function createDraftThreadSubmission({
   runtimeMode?: RuntimeMode
   text: string
 }): DraftThreadSubmission {
-  const threadCommand = createThreadCommand({
-    createdAt,
-    projectId,
-    rootPath,
-    title: threadTitleFromPrompt(text),
-  })
+  const threadId = createThreadId()
+  const title = threadTitleFromPrompt(text) ?? 'New chat'
   const submission = createTurnSubmission({
     attachments,
     createdAt,
@@ -168,13 +163,27 @@ export function createDraftThreadSubmission({
     modelSelection,
     runtimeMode,
     text,
-    threadId: threadCommand.threadId,
+    threadId,
   })
 
   return {
+    command: {
+      ...submission.command,
+      bootstrap: {
+        createThread: {
+          branch: null,
+          createdAt,
+          interactionMode,
+          modelSelection,
+          projectId,
+          runtimeMode,
+          title,
+          worktreePath: rootPath,
+        },
+      },
+      titleSeed: title,
+    },
     optimisticMessage: submission.optimisticMessage,
-    threadCommand,
-    turnCommand: submission.command,
   }
 }
 

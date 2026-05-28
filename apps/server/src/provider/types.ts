@@ -45,6 +45,40 @@ export type ProviderUserInputResponseInput = {
   threadId: ThreadId
 }
 
+type ProviderRuntimeBaseEvent = {
+  createdAt: string
+  eventId: string
+  itemId?: string
+  providerInstanceId?: ProviderInstanceId
+  providerName?: string
+  providerSessionId?: string | null
+  requestId?: string
+  runtimeMode?: RuntimeMode
+  threadId: ThreadId
+  turnId?: TurnId
+}
+
+export type ProviderRuntimeContentStreamKind =
+  | 'assistant_text'
+  | 'reasoning_text'
+  | 'reasoning_summary_text'
+  | 'plan_text'
+  | 'command_output'
+  | 'file_change_output'
+  | 'unknown'
+
+export type ProviderRuntimeItemStatus = 'inProgress' | 'completed' | 'failed' | 'declined'
+
+export type ProviderRuntimeSessionState =
+  | 'starting'
+  | 'ready'
+  | 'running'
+  | 'waiting'
+  | 'stopped'
+  | 'error'
+
+export type ProviderRuntimeTurnState = 'completed' | 'failed' | 'interrupted' | 'cancelled'
+
 export type ProviderRuntimeEvent =
   | {
       createdAt: string
@@ -98,6 +132,149 @@ export type ProviderRuntimeEvent =
       type: 'proposed-plan.upsert'
       updatedAt?: string
     }
+  | (ProviderRuntimeBaseEvent & {
+      type: 'content.delta'
+      payload: {
+        contentIndex?: number
+        delta: string
+        streamKind: ProviderRuntimeContentStreamKind
+        summaryIndex?: number
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'turn.proposed.delta'
+      payload: { delta: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'turn.proposed.completed'
+      payload: { planMarkdown: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'item.started'
+      payload: {
+        data?: unknown
+        detail?: string
+        itemType: string
+        status?: ProviderRuntimeItemStatus
+        title?: string
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'item.updated'
+      payload: {
+        data?: unknown
+        detail?: string
+        itemType: string
+        status?: ProviderRuntimeItemStatus
+        title?: string
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'item.completed'
+      payload: {
+        data?: unknown
+        detail?: string
+        itemType: string
+        status?: ProviderRuntimeItemStatus
+        title?: string
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'request.opened'
+      payload: {
+        args?: unknown
+        detail?: string
+        requestType: string
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'request.resolved'
+      payload: {
+        decision?: string
+        requestType: string
+        resolution?: unknown
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'user-input.requested'
+      payload: { questions: unknown[] }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'user-input.resolved'
+      payload: { answers: Record<string, unknown> }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'task.started'
+      payload: {
+        description?: string
+        taskId: string
+        taskType?: string
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'task.progress'
+      payload: {
+        description: string
+        lastToolName?: string
+        summary?: string
+        taskId: string
+        usage?: unknown
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'task.completed'
+      payload: {
+        status: 'completed' | 'failed' | 'stopped'
+        summary?: string
+        taskId: string
+        usage?: unknown
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'runtime.warning'
+      payload: { detail?: unknown; message: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'runtime.error'
+      payload: { class?: string; detail?: unknown; message: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'session.started'
+      payload: { message?: string; resume?: unknown }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'session.state.changed'
+      payload: { detail?: unknown; reason?: string; state: ProviderRuntimeSessionState }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'session.exited'
+      payload: { exitKind?: 'graceful' | 'error'; reason?: string; recoverable?: boolean }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.started'
+      payload: { providerThreadId?: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.state.changed'
+      payload: { detail?: unknown; state: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.token-usage.updated'
+      payload: { usage: Record<string, unknown> & { usedTokens?: number } }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'turn.started'
+      payload: { effort?: string; model?: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'turn.completed'
+      payload: {
+        errorMessage?: string
+        state: ProviderRuntimeTurnState
+        stopReason?: string | null
+        usage?: unknown
+      }
+    })
 
 export type ProviderRuntimeSink = {
   ingest: (event: ProviderRuntimeEvent) => Promise<void>

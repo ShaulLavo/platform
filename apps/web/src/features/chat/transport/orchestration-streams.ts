@@ -11,6 +11,7 @@ import { client } from '@/lib/client'
 import { log } from '@/lib/client-logging'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { clientErrors, createRpcError } from '@/lib/structured-errors'
+import { chatStreamItemSummary } from '../lib/chat-pipeline-logging'
 import { guardOrchestrationStreamSequence } from './orchestration-sequence'
 
 const ORCHESTRATION_STREAM_HEARTBEAT_EVENT = 'heartbeat'
@@ -58,7 +59,9 @@ async function* openOrchestrationShellStream({
     for await (const event of parseEdenSseStream(response.data)) {
       if (isOrchestrationHeartbeatEvent(event)) continue
 
-      yield v.parse(orchestrationShellStreamItemSchema, event.data)
+      const item = v.parse(orchestrationShellStreamItemSchema, event.data)
+      logOrchestrationStreamItem('orchestration.shell_stream.item', item, afterSequence)
+      yield item
     }
   } catch (error) {
     if (!signal?.aborted) {
@@ -96,7 +99,11 @@ async function* openOrchestrationThreadDetailStream(
     for await (const event of parseEdenSseStream(response.data)) {
       if (isOrchestrationHeartbeatEvent(event)) continue
 
-      yield v.parse(orchestrationThreadStreamItemSchema, event.data)
+      const item = v.parse(orchestrationThreadStreamItemSchema, event.data)
+      logOrchestrationStreamItem('orchestration.thread_stream.item', item, afterSequence, {
+        threadId,
+      })
+      yield item
     }
   } catch (error) {
     if (!signal?.aborted) {
@@ -107,6 +114,21 @@ async function* openOrchestrationThreadDetailStream(
 
     throw error
   }
+}
+
+function logOrchestrationStreamItem(
+  action: string,
+  item: OrchestrationShellStreamItem | OrchestrationThreadStreamItem,
+  afterSequence: number,
+  context: Record<string, unknown> = {},
+) {
+  log.debug({
+    action,
+    afterSequence,
+    area: 'orchestration',
+    ...context,
+    ...chatStreamItemSummary(item),
+  })
 }
 
 function logOrchestrationStream(

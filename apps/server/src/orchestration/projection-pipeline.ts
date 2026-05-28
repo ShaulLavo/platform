@@ -12,6 +12,11 @@ import {
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 import { OrchestrationEventStore } from './event-store'
+import {
+  orchestrationEventBatchSummary,
+  orchestrationEventSummary,
+  recordChatPipelineInfo,
+} from './orchestration-logging'
 
 export const ORCHESTRATION_PROJECTOR_NAME = 'orchestration'
 
@@ -28,17 +33,32 @@ export class OrchestrationProjectionPipeline {
   }
 
   catchUp() {
-    const events = this.eventStore.readAfter({ afterSequence: this.lastAppliedSequence() })
+    const afterSequence = this.lastAppliedSequence()
+    recordChatPipelineInfo('chat.pipeline.projection.catch_up.start', { afterSequence })
+    const events = this.eventStore.readAfter({ afterSequence })
     this.applyEvents(events)
+    recordChatPipelineInfo('chat.pipeline.projection.catch_up.complete', {
+      afterSequence,
+      ...orchestrationEventBatchSummary(events),
+    })
 
     return events
   }
 
   applyEvents(events: OrchestrationEvent[]) {
+    recordChatPipelineInfo('chat.pipeline.projection.apply_events.start', {
+      ...orchestrationEventBatchSummary(events),
+    })
     for (const event of events) {
+      recordChatPipelineInfo('chat.pipeline.projection.apply_event', {
+        ...orchestrationEventSummary(event),
+      })
       this.applyEvent(event)
       this.markApplied(event.sequence)
     }
+    recordChatPipelineInfo('chat.pipeline.projection.apply_events.complete', {
+      ...orchestrationEventBatchSummary(events),
+    })
   }
 
   lastAppliedSequence() {

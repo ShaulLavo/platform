@@ -1,18 +1,18 @@
 import {
-  dispatchOrchestrationCommand,
-  replayOrchestrationEvents,
-} from '../transport/orchestration-client'
-import {
-  subscribeOrchestrationShell,
-  subscribeOrchestrationThreadDetail,
-} from '../transport/orchestration-streams'
+  dispatchOrchestrationCommandRpc,
+  fetchOrchestrationThreadDetailSnapshotRpc,
+  replayOrchestrationEventsRpc,
+  subscribeOrchestrationShellRpc,
+  subscribeOrchestrationThreadDetailRpc,
+} from '../transport/orchestration-rpc-client'
 import type { ChatEnvironment } from './chat-environment'
 
 export function createLocalChatEnvironment(): ChatEnvironment {
   return {
-    dispatchCommand: dispatchOrchestrationCommand,
-    replayEvents: replayOrchestrationEvents,
-    shellStream: subscribeOrchestrationShell,
-    threadDetailStream: subscribeOrchestrationThreadDetail,
+    dispatchCommand: dispatchOrchestrationCommandRpc,
+    replayEvents: replayOrchestrationEventsRpc,
+    shellStream: subscribeOrchestrationShellRpc,
+    threadDetailSnapshot: fetchOrchestrationThreadDetailSnapshotRpc,
+    threadDetailStream: subscribeOrchestrationThreadDetailRpc,
   }
 }

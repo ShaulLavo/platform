@@ -11,9 +11,18 @@ import { useCallback, useMemo, useState } from 'react'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import {
   createDraftThreadSubmission,
-  createThreadDeleteCommand,
   defaultChatModelSelection,
 } from '../lib/chat-command-builders'
+import {
+  replayAfterDraftTurnDispatch,
+  scheduleThreadProjectionSyncAfterDispatch,
+} from '../lib/chat-command-sync'
+import {
+  chatCommandSummary,
+  logChatPipelineInfo,
+  logChatPipelineWarn,
+  optimisticMessageSummary,
+} from '../lib/chat-pipeline-logging'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatWelcomeView } from './chat-welcome-view'
@@ -62,6 +71,16 @@ export function ChatDraftView({
         runtimeMode,
         text,
       })
+      logChatPipelineInfo('chat.draft.submit', {
+        attachmentCount: attachments.length,
+        interactionMode,
+        model: modelSelection.model,
+        projectId: project.id,
+        providerInstanceId: modelSelection.providerInstanceId,
+        runtimeMode,
+        textLength: text.length,
+        threadId: submission.command.threadId,
+      })
       const result = await dispatchDraftSubmission(environment, submission)
       if (!result.ok) {
         setSendError(result.error)
@@ -69,7 +88,7 @@ export function ChatDraftView({
       }
 
       setSendError(null)
-      onThreadCreated(submission.threadCommand.threadId)
+      onThreadCreated(submission.command.threadId)
       return true
     },
     [environment, onThreadCreated, project, rootPath],
@@ -98,17 +117,36 @@ async function dispatchDraftSubmission(
   environment: ChatEnvironment,
   submission: ReturnType<typeof createDraftThreadSubmission>,
 ) {
-  let threadCreated = false
-
   try {
-    await environment.dispatchCommand(submission.threadCommand)
-    threadCreated = true
-    addOptimisticMessage(submission.turnCommand.commandId, submission.optimisticMessage)
-    await environment.dispatchCommand(submission.turnCommand)
+    addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
+    logChatPipelineInfo('chat.optimistic.added_from_draft_send', {
+      ...optimisticMessageSummary({
+        commandId: submission.command.commandId,
+        messageId: submission.optimisticMessage.id,
+        textLength: submission.optimisticMessage.text.length,
+        threadId: submission.optimisticMessage.threadId,
+      }),
+    })
+    logChatPipelineInfo('chat.draft.turn.dispatch.start', chatCommandSummary(submission.command))
+    const turnResult = await environment.dispatchCommand(submission.command)
+    logChatPipelineInfo('chat.draft.turn.dispatch.accepted', {
+      ...chatCommandSummary(submission.command),
+      deduped: turnResult.deduped,
+      sequence: turnResult.sequence,
+    })
+    scheduleThreadProjectionSyncAfterDispatch({
+      environment,
+      replayAfterSequence: replayAfterDraftTurnDispatch(turnResult),
+      threadId: submission.command.threadId,
+    })
     return { ok: true as const }
   } catch (error) {
     removeOptimisticMessage(submission.optimisticMessage)
-    await cleanupCreatedThread(environment, submission.threadCommand.threadId, threadCreated)
+    logChatPipelineWarn('chat.draft.dispatch.failed', {
+      error,
+      threadId: submission.command.threadId,
+      turnCommandId: submission.command.commandId,
+    })
     return { error: chatDraftErrorMessage(error), ok: false as const }
   }
 }
@@ -119,25 +157,6 @@ function addOptimisticMessage(commandId: CommandId, message: OrchestrationMessag
 
 function removeOptimisticMessage(message: OrchestrationMessage) {
   useChatOptimisticStore.getState().removeOptimisticMessage(message.threadId, message.id)
-}
-
-async function cleanupCreatedThread(
-  environment: ChatEnvironment,
-  threadId: ThreadId,
-  threadCreated: boolean,
-) {
-  if (!threadCreated) return
-
-  try {
-    await environment.dispatchCommand(
-      createThreadDeleteCommand({
-        deletedAt: new Date().toISOString(),
-        threadId,
-      }),
-    )
-  } catch {
-    // Best-effort cleanup; preserve the original send error for the input.
-  }
 }
 
 function chatDraftErrorMessage(error: unknown) {

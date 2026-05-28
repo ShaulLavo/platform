@@ -10,6 +10,8 @@ import {
   providerListResultSchema,
   orchestrationReplayEventsInputSchema,
   orchestrationShellSnapshotSchema,
+  orchestrationWsClientMessageSchema,
+  orchestrationWsServerMessageSchema,
   threadTurnStartCommandSchema,
 } from './index'
 
@@ -78,6 +80,33 @@ describe('orchestration contracts', () => {
     expect(command.message.attachments).toEqual([])
     expect(command.runtimeMode).toBe('full-access')
     expect(command.interactionMode).toBe('default')
+  })
+
+  it('validates T3-style turn bootstrap create-thread metadata', () => {
+    const command = v.parse(threadTurnStartCommandSchema, {
+      commandId: 'cmd-1',
+      type: 'thread.turn.start',
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      message: {
+        messageId: 'message-1',
+        role: 'user',
+        text: 'Build the first slice',
+      },
+      bootstrap: {
+        createThread: {
+          createdAt: now,
+          modelSelection,
+          projectId: 'project-1',
+          title: 'Build the first slice',
+        },
+      },
+      createdAt: now,
+    })
+
+    expect(command.bootstrap?.createThread?.projectId as string).toBe('project-1')
+    expect(command.bootstrap?.createThread?.runtimeMode).toBe('full-access')
+    expect(command.bootstrap?.createThread?.interactionMode).toBe('default')
   })
 
   it('rejects proposed-plan client commands deferred beyond Phase 1', () => {
@@ -219,5 +248,42 @@ describe('orchestration contracts', () => {
 
     expect(receipt.commandType).toBe('thread.turn.start')
     expect(receipt.resultSequence).toBe(7)
+  })
+
+  it('validates T3-style orchestration WebSocket RPC messages', () => {
+    const request = v.parse(orchestrationWsClientMessageSchema, {
+      kind: 'request',
+      requestId: 'request-1',
+      method: 'dispatchCommand',
+      command: {
+        commandId: 'cmd-1',
+        type: 'thread.turn.start',
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        message: {
+          messageId: 'message-1',
+          role: 'user',
+          text: 'Build the first slice',
+        },
+        createdAt: now,
+      },
+    })
+    const subscription = v.parse(orchestrationWsClientMessageSchema, {
+      afterSequence: 7,
+      kind: 'subscribe',
+      method: 'subscribeThread',
+      subscriptionId: 'subscription-1',
+      threadId: 'thread-1',
+    })
+    const response = v.parse(orchestrationWsServerMessageSchema, {
+      data: { deduped: false, sequence: 8 },
+      kind: 'response',
+      ok: true,
+      requestId: 'request-1',
+    })
+
+    expect(request.kind).toBe('request')
+    expect(subscription.kind).toBe('subscribe')
+    expect(response.kind).toBe('response')
   })
 })
