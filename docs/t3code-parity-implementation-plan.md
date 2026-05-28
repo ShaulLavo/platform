@@ -1054,6 +1054,23 @@ Purpose:
 - Add the durable provider session directory semantics that make provider
   runtime state recoverable and independently routable.
 
+Implementation status:
+
+- Done on 2026-05-28:
+  - provider adapter registry boundary split from the legacy provider registry
+    facade
+  - provider session directory over `provider_session_runtime` with payload
+    merge, resume cursor preservation, binding listing, and legacy null
+    provider instance promotion
+  - runtime receipts compatibility wrapper now delegates to the session
+    directory
+  - provider service facade for start/send/interrupt/stop, approval/user-input
+    routing, active session listing, capability/routing reads, rollback
+    placeholder, and runtime event fan-out
+  - provider command reactor routes through `ProviderService` instead of direct
+    adapter lookup
+  - focused provider service and session directory test coverage
+
 Platform target paths:
 
 - `apps/server/src/provider/provider-service.ts`

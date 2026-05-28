@@ -219,7 +219,7 @@ export const providerSessionRuntime = sqliteTable(
   {
     threadId: text('thread_id').primaryKey(),
     providerDriverKind: text('provider_driver_kind').notNull(),
-    providerInstanceId: text('provider_instance_id').notNull(),
+    providerInstanceId: text('provider_instance_id'),
     providerSessionId: text('provider_session_id'),
     adapterKey: text('adapter_key').notNull(),
     runtimeMode: text('runtime_mode', {
@@ -251,3 +251,5 @@ export type OrchestrationThreadActivityRow = typeof projectionThreadActivities.$
 export type NewOrchestrationThreadActivityRow = typeof projectionThreadActivities.$inferInsert
 export type ProjectionThreadSessionRow = typeof projectionThreadSessions.$inferSelect
 export type NewProjectionThreadSessionRow = typeof projectionThreadSessions.$inferInsert
+export type ProviderSessionRuntimeRow = typeof providerSessionRuntime.$inferSelect
+export type NewProviderSessionRuntimeRow = typeof providerSessionRuntime.$inferInsert

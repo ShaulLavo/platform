@@ -223,7 +223,7 @@ export function migrateOrchestrationDatabase(database: typeof db = db) {
 		CREATE TABLE IF NOT EXISTS provider_session_runtime (
 			thread_id TEXT PRIMARY KEY NOT NULL,
 			provider_driver_kind TEXT NOT NULL,
-			provider_instance_id TEXT NOT NULL,
+			provider_instance_id TEXT,
 			provider_session_id TEXT,
 			adapter_key TEXT NOT NULL,
 			runtime_mode TEXT NOT NULL,

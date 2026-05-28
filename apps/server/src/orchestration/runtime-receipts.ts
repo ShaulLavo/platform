@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import type {
   ProviderDriverKind,
   ProviderInstanceId,
@@ -6,22 +5,21 @@ import type {
   ThreadId,
 } from '@workspace/contracts'
 import { db as defaultDb } from '../db/client'
-import { providerSessionRuntime } from '../db/schema'
+import {
+  ProviderSessionDirectory,
+  type ProviderRuntimeBindingStatus,
+} from '../provider/provider-session-directory'
 import type { OrchestrationDatabase } from './event-store'
 
 export class ProviderRuntimeReceipts {
-  private readonly database: OrchestrationDatabase
+  private readonly directory: ProviderSessionDirectory
 
   constructor(database: OrchestrationDatabase = defaultDb) {
-    this.database = database
+    this.directory = new ProviderSessionDirectory(database)
   }
 
   find(threadId: ThreadId) {
-    return this.database
-      .select()
-      .from(providerSessionRuntime)
-      .where(eq(providerSessionRuntime.threadId, threadId))
-      .get()
+    return this.directory.getBinding(threadId)
   }
 
   upsert(input: {
@@ -31,61 +29,17 @@ export class ProviderRuntimeReceipts {
     providerSessionId?: string | null
     runtimeMode: RuntimeMode
     runtimePayload?: unknown
-    status: 'starting' | 'running' | 'stopped' | 'error'
+    status: ProviderRuntimeBindingStatus
     threadId: ThreadId
   }) {
-    const lastSeenAt = new Date().toISOString()
-    const runtimePayloadJson =
-      input.runtimePayload === undefined ? undefined : JSON.stringify(input.runtimePayload)
-
-    this.database
-      .insert(providerSessionRuntime)
-      .values({
-        adapterKey: input.adapterKey,
-        lastSeenAt,
-        providerDriverKind: input.providerDriverKind,
-        providerInstanceId: input.providerInstanceId,
-        providerSessionId: input.providerSessionId ?? null,
-        resumeCursorJson: null,
-        runtimeMode: input.runtimeMode,
-        runtimePayloadJson: runtimePayloadJson ?? null,
-        status: input.status,
-        threadId: input.threadId,
-      })
-      .onConflictDoUpdate({
-        target: providerSessionRuntime.threadId,
-        set: compactPatch({
-          adapterKey: input.adapterKey,
-          lastSeenAt,
-          providerDriverKind: input.providerDriverKind,
-          providerInstanceId: input.providerInstanceId,
-          providerSessionId: input.providerSessionId ?? null,
-          runtimeMode: input.runtimeMode,
-          runtimePayloadJson,
-          status: input.status,
-        }),
-      })
-      .run()
+    return this.directory.upsert(input)
   }
 
-  markStatus(threadId: ThreadId, status: 'running' | 'stopped' | 'error') {
-    this.database
-      .update(providerSessionRuntime)
-      .set({ lastSeenAt: new Date().toISOString(), status })
-      .where(eq(providerSessionRuntime.threadId, threadId))
-      .run()
+  markStatus(threadId: ThreadId, status: ProviderRuntimeBindingStatus) {
+    this.directory.markStatus(threadId, status)
   }
 
   markRunningIfActive(threadId: ThreadId) {
-    const runtime = this.find(threadId)
-    if (!runtime || runtime.status === 'stopped' || runtime.status === 'error') return
-
-    this.markStatus(threadId, 'running')
+    this.directory.markRunningIfActive(threadId)
   }
-}
-
-function compactPatch<T extends Record<string, unknown>>(patch: T) {
-  return Object.fromEntries(
-    Object.entries(patch).filter((entry) => entry[1] !== undefined),
-  ) as Partial<T>
 }

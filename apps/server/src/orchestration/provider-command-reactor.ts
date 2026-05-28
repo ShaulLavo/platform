@@ -1,22 +1,19 @@
 import type {
+  InteractionMode,
   ModelSelection,
   OrchestrationEvent,
+  OrchestrationMessage,
+  OrchestrationProject,
+  OrchestrationThread,
   RuntimeMode,
   ThreadId,
   TurnId,
 } from '@workspace/contracts'
-import {
-  DEFAULT_CODEX_PROVIDER_SETTINGS,
-  DEFAULT_PROVIDER_INSTANCE_ID,
-  DEFAULT_RUNTIME_MODE,
-  providerInstanceIdSchema,
-} from '@workspace/contracts'
-import * as v from 'valibot'
-import type { ProviderRegistry } from '../provider/registry'
+import { DEFAULT_CODEX_PROVIDER_SETTINGS, DEFAULT_RUNTIME_MODE } from '@workspace/contracts'
+import type { ProviderService } from '../provider/provider-service'
 import type { ProviderRuntimeEvent } from '../provider/types'
 import type { OrchestrationReadModel } from './read-model'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
-import { ProviderRuntimeReceipts } from './runtime-receipts'
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -36,26 +33,22 @@ export class ProviderCommandReactor {
   private readonly getReadModel: () => OrchestrationReadModel
   private readonly ingestion: ProviderRuntimeIngestion
   private readonly pending = new Set<Promise<void>>()
-  private readonly registry: ProviderRegistry
-  private readonly receipts: ProviderRuntimeReceipts
+  private readonly providerService: ProviderService
   private readonly turnStartKeys: string[] = []
   private readonly turnStartKeySet = new Set<string>()
 
   constructor({
     getReadModel,
     ingestion,
-    receipts,
-    registry,
+    providerService,
   }: {
     getReadModel: () => OrchestrationReadModel
     ingestion: ProviderRuntimeIngestion
-    receipts: ProviderRuntimeReceipts
-    registry: ProviderRegistry
+    providerService: ProviderService
   }) {
     this.getReadModel = getReadModel
     this.ingestion = ingestion
-    this.receipts = receipts
-    this.registry = registry
+    this.providerService = providerService
   }
 
   handleEvents(events: OrchestrationEvent[]) {
@@ -98,26 +91,22 @@ export class ProviderCommandReactor {
     const context = await this.turnContext(event)
     if (!context) return
 
-    this.receipts.upsert({
-      adapterKey: context.adapter.adapterKey,
-      providerDriverKind: context.adapter.driverKind,
-      providerInstanceId: context.modelSelection.providerInstanceId,
-      providerSessionId: providerSessionId(context.thread.id),
-      runtimeMode: context.runtimeMode,
-      status: 'starting',
-      threadId: context.thread.id,
-    })
-    await this.ingestSession({
-      providerInstanceId: context.modelSelection.providerInstanceId,
-      providerSessionId: providerSessionId(context.thread.id),
-      runtimeMode: context.runtimeMode,
-      status: 'starting',
-      threadId: context.thread.id,
-      turnId: event.payload.turnId,
-    })
-
     try {
-      await context.adapter.startTurn(
+      const binding = this.providerService.startSession({
+        providerInstanceId: context.modelSelection.providerInstanceId,
+        runtimeMode: context.runtimeMode,
+        runtimePayload: runtimePayloadFromTurnContext(context, event.payload.turnId),
+        threadId: context.thread.id,
+      })
+      await this.ingestSession({
+        providerInstanceId: binding.providerInstanceId,
+        providerSessionId: binding.providerSessionId,
+        runtimeMode: binding.runtimeMode,
+        status: 'starting',
+        threadId: context.thread.id,
+        turnId: event.payload.turnId,
+      })
+      await this.providerService.sendTurn(
         {
           attachments: context.message.attachments,
           cwd: context.thread.worktreePath ?? context.project.workspaceRoot,
@@ -132,7 +121,6 @@ export class ProviderCommandReactor {
         },
         { ingest: (runtimeEvent) => this.ingestProviderRuntimeEvent(runtimeEvent) },
       )
-      this.receipts.markRunningIfActive(context.thread.id)
     } catch (error) {
       await this.handleTurnFailure(
         event,
@@ -147,20 +135,16 @@ export class ProviderCommandReactor {
   private async interruptTurn(
     event: Extract<ProviderIntentEvent, { type: 'thread.turn-interrupt-requested' }>,
   ) {
-    const binding = this.receipts.find(event.payload.threadId)
-    const providerInstanceId = providerInstanceIdFromBinding(binding?.providerInstanceId)
-    const adapter = this.adapterForBinding(providerInstanceId)
-    if (!adapter) return
-
-    await adapter.interruptTurn({
+    const binding = await this.providerService.interruptTurn({
       threadId: event.payload.threadId,
       turnId: event.payload.turnId,
     })
-    this.receipts.markStatus(event.payload.threadId, 'stopped')
+    if (!binding) return
+
     await this.ingestSession({
-      providerInstanceId,
-      providerSessionId: binding?.providerSessionId ?? null,
-      runtimeMode: binding?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+      providerInstanceId: binding.providerInstanceId,
+      providerSessionId: binding.providerSessionId,
+      runtimeMode: binding.runtimeMode,
       status: 'interrupted',
       threadId: event.payload.threadId,
       turnId: event.payload.turnId ?? null,
@@ -170,17 +154,13 @@ export class ProviderCommandReactor {
   private async stopSession(
     event: Extract<ProviderIntentEvent, { type: 'thread.session-stop-requested' }>,
   ) {
-    const binding = this.receipts.find(event.payload.threadId)
-    const providerInstanceId = providerInstanceIdFromBinding(binding?.providerInstanceId)
-    const adapter = this.adapterForBinding(providerInstanceId)
-    if (!adapter) return
+    const binding = await this.providerService.stopSession({ threadId: event.payload.threadId })
+    if (!binding) return
 
-    await adapter.stopSession({ threadId: event.payload.threadId })
-    this.receipts.markStatus(event.payload.threadId, 'stopped')
     await this.ingestSession({
-      providerInstanceId,
-      providerSessionId: binding?.providerSessionId ?? null,
-      runtimeMode: binding?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+      providerInstanceId: binding.providerInstanceId,
+      providerSessionId: binding.providerSessionId,
+      runtimeMode: binding.runtimeMode,
       status: 'stopped',
       threadId: event.payload.threadId,
       turnId: null,
@@ -190,11 +170,8 @@ export class ProviderCommandReactor {
   private async respondApproval(
     event: Extract<ProviderIntentEvent, { type: 'thread.approval-response-requested' }>,
   ) {
-    const adapter = this.adapterForThread(event.payload.threadId)
-    if (!adapter) return
-
     try {
-      await adapter.respondApproval({
+      await this.providerService.respondApproval({
         decision: event.payload.decision,
         requestId: event.payload.requestId,
         threadId: event.payload.threadId,
@@ -213,11 +190,8 @@ export class ProviderCommandReactor {
   private async respondUserInput(
     event: Extract<ProviderIntentEvent, { type: 'thread.user-input-response-requested' }>,
   ) {
-    const adapter = this.adapterForThread(event.payload.threadId)
-    if (!adapter) return
-
     try {
-      await adapter.respondUserInput({
+      await this.providerService.respondUserInput({
         answers: event.payload.answers,
         requestId: event.payload.requestId,
         threadId: event.payload.threadId,
@@ -271,14 +245,8 @@ export class ProviderCommandReactor {
     if (!message) return null
 
     const modelSelection = event.payload.modelSelection ?? thread.modelSelection
-    const adapter = this.registry.adapter(modelSelection.providerInstanceId)
-    if (!adapter) {
-      await this.handleMissingProvider(event, modelSelection)
-      return null
-    }
 
     return {
-      adapter,
       interactionMode: event.payload.interactionMode ?? thread.interactionMode,
       message,
       modelSelection,
@@ -286,19 +254,6 @@ export class ProviderCommandReactor {
       runtimeMode: event.payload.runtimeMode ?? thread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
       thread,
     }
-  }
-
-  private async handleMissingProvider(
-    event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
-    modelSelection: ModelSelection,
-  ) {
-    await this.handleTurnFailure(
-      event,
-      event.payload.threadId,
-      modelSelection,
-      new Error(`Provider instance not found: ${modelSelection.providerInstanceId}`),
-      event.payload.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    )
   }
 
   private async handleTurnFailure(
@@ -309,7 +264,6 @@ export class ProviderCommandReactor {
     runtimeMode: RuntimeMode,
   ) {
     const detail = providerErrorMessage(error)
-    this.receipts.markStatus(threadId, 'error')
     await this.appendProviderFailureActivity({
       detail,
       event,
@@ -371,17 +325,6 @@ export class ProviderCommandReactor {
     return false
   }
 
-  private adapterForBinding(providerInstanceId: ModelSelection['providerInstanceId']) {
-    return this.registry.adapter(providerInstanceId)
-  }
-
-  private adapterForThread(threadId: ThreadId) {
-    const binding = this.receipts.find(threadId)
-    const providerInstanceId = providerInstanceIdFromBinding(binding?.providerInstanceId)
-
-    return this.adapterForBinding(providerInstanceId)
-  }
-
   private track(task: Promise<void>) {
     this.pending.add(task)
     void task.then(noop, noop).finally(() => this.pending.delete(task))
@@ -427,8 +370,14 @@ function turnIdForProviderFailure(event: ProviderIntentEvent) {
   return null
 }
 
-function providerInstanceIdFromBinding(value: string | null | undefined) {
-  return v.parse(providerInstanceIdSchema, value ?? DEFAULT_PROVIDER_INSTANCE_ID)
+function runtimePayloadFromTurnContext(context: ProviderTurnContext, turnId: TurnId) {
+  return {
+    activeTurnId: turnId,
+    cwd: context.thread.worktreePath ?? context.project.workspaceRoot,
+    interactionMode: context.interactionMode,
+    modelSelection: context.modelSelection,
+    runtimeMode: context.runtimeMode,
+  }
 }
 
 function providerDisplayName(providerInstanceId: ModelSelection['providerInstanceId']) {
@@ -440,3 +389,12 @@ function providerDisplayName(providerInstanceId: ModelSelection['providerInstanc
 }
 
 function noop() {}
+
+type ProviderTurnContext = {
+  interactionMode: InteractionMode
+  message: OrchestrationMessage
+  modelSelection: ModelSelection
+  project: OrchestrationProject
+  runtimeMode: RuntimeMode
+  thread: OrchestrationThread
+}

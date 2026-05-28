@@ -8,8 +8,9 @@ import { OrchestrationEventStore, type OrchestrationDatabase } from './event-sto
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
 import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
-import { ProviderRuntimeReceipts } from './runtime-receipts'
 import { createDefaultProviderRegistry, type ProviderRegistry } from '../provider/registry'
+import { ProviderService } from '../provider/provider-service'
+import { ProviderSessionDirectory } from '../provider/provider-session-directory'
 import { projectEvents } from './projector'
 import type { OrchestrationReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
@@ -22,7 +23,7 @@ export type OrchestrationDispatchResult = {
 }
 
 export type OrchestrationEngineOptions = {
-  providerRuntime?: boolean | { registry?: ProviderRegistry }
+  providerRuntime?: boolean | { providerService?: ProviderService; registry?: ProviderRegistry }
 }
 
 export class OrchestrationEngine {
@@ -148,13 +149,18 @@ export class OrchestrationEngine {
         ? options.providerRuntime.registry
         : createDefaultProviderRegistry()
     const ingestion = new ProviderRuntimeIngestion((command) => this.dispatch(command))
-    const receipts = new ProviderRuntimeReceipts(this.database)
+    const providerService =
+      typeof options.providerRuntime === 'object' && options.providerRuntime.providerService
+        ? options.providerRuntime.providerService
+        : new ProviderService({
+            adapterRegistry: registry,
+            sessionDirectory: new ProviderSessionDirectory(this.database),
+          })
 
     return new ProviderCommandReactor({
       getReadModel: () => this.readModel,
       ingestion,
-      receipts,
-      registry,
+      providerService,
     })
   }
 }
