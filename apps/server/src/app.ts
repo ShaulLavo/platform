@@ -2,6 +2,8 @@ import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import { authGuard, createAuthConfig, isCorsOriginAllowed, type AuthOptions } from './auth'
 import { db as platformDb } from './db/client'
+import { fontRoutes } from './fonts/routes'
+import { NerdFontService, type FontService } from './fonts/service'
 import { errorPayload, FsError, isFsError } from './fs/errors'
 import { fsRoutes } from './fs/routes'
 import { FileSystemService, type FileSystemServiceOptions } from './fs/service'
@@ -30,6 +32,7 @@ export type AppOptions = FileSystemServiceOptions & {
     env?: NodeJS.ProcessEnv
     ptyFactory?: TerminalPtyFactory
   }
+  fonts?: FontService
   orchestration?: {
     database?: OrchestrationDatabase
     providerRegistry?: ProviderRegistry
@@ -43,6 +46,7 @@ export function createApp(options: AppOptions) {
     maxTextFileBytes: fs.info().maxTextFileBytes,
   })
   const terminal = new TerminalService(Object.assign({ paths: fs.paths }, options.terminal))
+  const fonts = options.fonts ?? new NerdFontService()
   const providerRegistry =
     options.orchestration?.providerRegistry ?? createDefaultProviderRegistry()
   const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb, {
@@ -59,7 +63,13 @@ export function createApp(options: AppOptions) {
     .use(
       cors({
         allowedHeaders: ['authorization', 'content-type', 'x-evlog-source'],
-        exposeHeaders: ['content-length', 'content-type', 'x-fs-mtime-ms', 'x-fs-path'],
+        exposeHeaders: [
+          'cache-control',
+          'content-length',
+          'content-type',
+          'x-fs-mtime-ms',
+          'x-fs-path',
+        ],
         methods: ['GET', 'POST', 'OPTIONS'],
         origin: (request) => isCorsOriginAllowed(auth, request.headers.get('origin')),
       }),
@@ -80,6 +90,7 @@ export function createApp(options: AppOptions) {
     .use(providerRoutes(providerRegistry))
     .use(orchestrationWsRoutes(orchestration, auth))
     .use(orchestrationRoutes(orchestration))
+    .use(fontRoutes(fonts))
     .use(gitRoutes(git))
     .use(fsRoutes(fs))
     .onStop(async () => {

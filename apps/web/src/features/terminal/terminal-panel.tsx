@@ -5,6 +5,7 @@ import { useEffect, useRef, type ComponentPropsWithoutRef } from 'react'
 
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { sendTerminalClientMessage } from './terminal-socket'
@@ -191,7 +192,7 @@ function createTerminal() {
   return new Terminal({
     cursorBlink: true,
     cursorStyle: 'block',
-    fontFamily: "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace",
+    fontFamily: DEFAULT_MONO_FONT_STACK,
     fontSize: 12,
     scrollback: 10_000,
     smoothScrollDuration: 80,

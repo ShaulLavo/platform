@@ -53,7 +53,8 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  --font-mono: 'JetBrains Mono Variable', monospace;
+  --font-mono:
+    'JetBrains Mono Nerd Font', 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace;
   --animate-accordion-down: app-accordion-down 150ms ease-out;
   --animate-accordion-up: app-accordion-up 150ms ease-out;
 }
