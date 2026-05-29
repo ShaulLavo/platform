@@ -39,12 +39,8 @@ import {
   useEditorConflictStoreApi,
   type FilesystemConflict,
 } from '@/features/editor/state/editor-conflict-state'
-import {
-  type EditorDocumentView,
-  type LiveEditorViewDocument,
-  type LiveEditorDocument,
-  useEditorDocumentState,
-} from '@/features/editor/state/editor-document-state'
+import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
+import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
 import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
@@ -71,6 +67,7 @@ import {
   parseMergeConflicts,
   type DocumentSessionChange,
   type EditorKeymapLayer,
+  type EditorScrollPosition,
   type TextSnapshot,
 } from '@editor/core'
 import type {
@@ -436,16 +433,31 @@ function EditorPaneTabBody({
   const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
   const { fileState } = useSelectedFile(selectedSearchBuffer || selectedConflictDiff ? null : path)
-  const selectedEditorView = useEditorDocumentState((state) => state.viewsByTabId[tabId] ?? null)
-  const selectedLiveDocumentRecord = useEditorDocumentState((state) => {
-    const view = state.viewsByTabId[tabId]
-    if (!view) return null
-
-    return state.liveDocumentsById[view.documentId] ?? null
-  })
+  const selectedViewDocumentId = useEditorDocumentState(
+    (state) => state.viewsByTabId[tabId]?.documentId ?? null,
+  )
+  const selectedViewSession = useEditorDocumentState(
+    (state) => state.viewsByTabId[tabId]?.view ?? null,
+  )
+  const selectedDocumentBuffer = useEditorDocumentState((state) =>
+    selectedViewDocumentId
+      ? (state.liveDocumentsById[selectedViewDocumentId]?.buffer ?? null)
+      : null,
+  )
+  const selectedDocumentPath = useEditorDocumentState((state) =>
+    selectedViewDocumentId
+      ? (state.liveDocumentsById[selectedViewDocumentId]?.path ?? null)
+      : null,
+  )
   const selectedLiveDocument = useMemo(
-    () => joinedLiveEditorViewDocument(selectedLiveDocumentRecord, selectedEditorView),
-    [selectedEditorView, selectedLiveDocumentRecord],
+    () =>
+      joinedEditorRenderDocument({
+        buffer: selectedDocumentBuffer,
+        documentId: selectedViewDocumentId,
+        path: selectedDocumentPath,
+        view: selectedViewSession,
+      }),
+    [selectedDocumentBuffer, selectedDocumentPath, selectedViewDocumentId, selectedViewSession],
   )
   const ensureEditorView = useEditorDocumentState((state) => state.ensureEditorView)
   const ensureEditorViewForDocument = useEditorDocumentState(
@@ -577,7 +589,7 @@ function FileViewerBody({
   onReferencesClose,
 }: {
   active: boolean
-  liveDocument: LiveEditorViewDocument | null
+  liveDocument: EditorRenderDocument | null
   definitionTarget: LanguageServerDefinitionTarget | null
   editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
@@ -585,10 +597,7 @@ function FileViewerBody({
   rootPath: string
   tabId: string
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
-  onEditorScrollPositionChange: (
-    tabId: string,
-    scrollPosition: NonNullable<LiveEditorViewDocument['scrollPosition']>,
-  ) => void
+  onEditorScrollPositionChange: (tabId: string, scrollPosition: EditorScrollPosition) => void
   onEditorStatusSourceChange: (source: EditorStatusBarSource | null) => void
   onEditorTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
   onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
@@ -795,19 +804,27 @@ function readyFile(fileState: LoadState<FileResult>) {
   return fileState.data
 }
 
-function joinedLiveEditorViewDocument(
-  document: LiveEditorDocument | null,
-  view: EditorDocumentView | null,
-): LiveEditorViewDocument | null {
-  if (!document) return null
+function joinedEditorRenderDocument({
+  buffer,
+  documentId,
+  path,
+  view,
+}: {
+  buffer: EditorRenderDocument['buffer'] | null
+  documentId: string | null
+  path: string | null
+  view: EditorRenderDocument['view'] | null
+}): EditorRenderDocument | null {
+  if (!buffer) return null
+  if (!documentId) return null
+  if (!path) return null
   if (!view) return null
-  if (view.documentId !== document.id) return null
 
   return {
-    ...document,
-    scrollPosition: view.scrollPosition,
-    tabId: view.tabId,
-    view: view.view,
+    buffer,
+    id: documentId,
+    path,
+    view,
   }
 }
 

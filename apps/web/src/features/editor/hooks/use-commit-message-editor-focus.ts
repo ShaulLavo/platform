@@ -1,12 +1,12 @@
 import type { ReactEditorController } from '@editor/react'
 import { useEffect, useRef } from 'react'
 
-import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
 import { rowStartOffset } from '@/features/editor/utils/editor-position'
 
 type UseCommitMessageEditorFocusOptions = {
   controller: ReactEditorController
-  document: LiveEditorDocument
+  document: Pick<EditorRenderDocument, 'buffer' | 'path'>
 }
 
 export function useCommitMessageEditorFocus({

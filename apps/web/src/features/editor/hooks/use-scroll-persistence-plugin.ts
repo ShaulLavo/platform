@@ -1,14 +1,11 @@
 import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@editor/core'
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
-import type { LiveEditorViewDocument } from '@/features/editor/state/editor-document-state'
+import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
 
 type UseScrollPersistencePluginOptions = {
-  document: LiveEditorViewDocument
-  onScrollPositionChange?: (
-    path: string,
-    scrollPosition: NonNullable<LiveEditorViewDocument['scrollPosition']>,
-  ) => void
+  document: Pick<EditorRenderDocument, 'path'>
+  onScrollPositionChange?: (path: string, scrollPosition: EditorScrollPosition) => void
 }
 
 type ScrollPersistenceState = {

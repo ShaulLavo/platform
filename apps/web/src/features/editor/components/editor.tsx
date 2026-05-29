@@ -17,7 +17,7 @@ import {
 import { selectionForDefinition } from '@/features/editor/utils/editor-position'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
 import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
-import type { LiveEditorViewDocument } from '@/features/editor/state/editor-document-state'
+import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
 import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import {
@@ -26,11 +26,16 @@ import {
 } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
-import type { DocumentSessionChange, EditorKeymapLayer, EditorKeymapOptions } from '@editor/core'
+import type {
+  DocumentSessionChange,
+  EditorKeymapLayer,
+  EditorKeymapOptions,
+  EditorScrollPosition,
+} from '@editor/core'
 
 type EditorProps = {
   active: boolean
-  document: LiveEditorViewDocument
+  document: EditorRenderDocument
   keymapLayers: readonly EditorKeymapLayer[]
   rootPath: string
   tabId: string
@@ -38,10 +43,7 @@ type EditorProps = {
   onDirtyChange?: (path: string, dirty: boolean) => void
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
-  onScrollPositionChange?: (
-    path: string,
-    scrollPosition: NonNullable<LiveEditorViewDocument['scrollPosition']>,
-  ) => void
+  onScrollPositionChange?: (path: string, scrollPosition: EditorScrollPosition) => void
   onStatusSourceChange?: (source: EditorStatusBarSource) => void
   onTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
 }
@@ -94,12 +96,10 @@ export function Editor({
       documentId: liveDocument.id,
       buffer: liveDocument.buffer,
       languageId: languageIdForFilePath(liveDocument.path),
-      revision: liveDocument.contentRevision,
-      scrollPosition: liveDocument.scrollPosition,
       text: '',
       view: liveDocument.view,
     }),
-    [liveDocument],
+    [liveDocument.buffer, liveDocument.id, liveDocument.path, liveDocument.view],
   )
   const editorKeymap = useMemo(
     () =>
