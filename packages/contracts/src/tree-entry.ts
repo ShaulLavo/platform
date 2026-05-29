@@ -8,4 +8,5 @@ export type TreeEntry = {
   size: number
   mtimeMs: number
   birthtimeMs: number
+  version: string
 }

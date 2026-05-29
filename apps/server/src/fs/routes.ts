@@ -100,6 +100,7 @@ async function fileResponse(result: BlobFile) {
     'content-length': String(result.size),
     'x-fs-path': result.path,
     'x-fs-mtime-ms': String(result.mtimeMs),
+    'x-fs-version': result.version,
   })
 
   headers.set('content-type', file.type || 'application/octet-stream')

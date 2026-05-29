@@ -6,6 +6,7 @@ import { effectiveEntryType, statPath } from './stat'
 import { readTree } from './tree'
 import { getBlobFile, readTextFile } from './read'
 import { writeTextFile } from './write'
+import { textFileVersion } from './version'
 import { forgetAppSave, recordAppSave } from './app-save-marker'
 import { createFile, createFolder } from './create'
 import { renamePath } from './rename'
@@ -155,9 +156,11 @@ export class FileSystemService {
       {
         area: 'fs',
         contentBytes: Buffer.byteLength(body.content, 'utf8'),
+        hasBaseVersion: body.baseVersion !== undefined,
         hasExpectedMtime: body.expectedMtimeMs !== undefined,
         operation: 'write',
         path: body.path,
+        writeId: body.writeId,
       },
       () => this.writeObserved(body),
       (result) => ({ entryType: result.type, size: result.size }),
@@ -176,10 +179,23 @@ export class FileSystemService {
       throw error
     }
 
-    const entry = await this.statEntry(path)
-    this.changes.emit({ type: 'changed', path, entry })
+    const entry = {
+      ...(await this.statEntry(path)),
+      version: textFileVersion(body.content),
+    }
+    this.changes.emit({
+      type: 'changed',
+      path,
+      entry,
+      origin: body.origin,
+      version: entry.version,
+      writeId: body.writeId,
+    })
 
-    return this.stat(path)
+    return {
+      ...(await this.stat(path)),
+      version: entry.version,
+    }
   }
 
   async createFile(body: CreateFileBody) {
@@ -408,6 +424,7 @@ function entryFromStat(stat: FsStat): TreeEntry {
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     birthtimeMs: stat.birthtimeMs,
+    version: stat.version,
   }
 }
 

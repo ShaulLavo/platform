@@ -16,6 +16,7 @@ export type FilesystemConflict = {
   remotePath: string
   remoteSize: number | null
   remoteText: string | null
+  remoteVersion: string | null
   toastId?: string | number
 }
 

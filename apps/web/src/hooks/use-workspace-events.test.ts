@@ -270,5 +270,6 @@ function treeEntry(path: string) {
     path,
     size: 3,
     type: 'file' as const,
+    version: `test:2:${path}`,
   }
 }

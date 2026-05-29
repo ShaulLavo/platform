@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { lstat, realpath, rm, rename, stat, writeFile } from 'node:fs/promises'
+import type { Stats } from 'node:fs'
+import { lstat, readFile, realpath, rm, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { FsError, mapNodeError } from './errors'
 import type { WorkspacePaths } from './path'
 import { assertFile } from './stat'
 import type { WriteBody } from './contracts'
+import { fileVersion, textFileVersion } from './version'
 
 export async function writeTextFile(paths: WorkspacePaths, body: WriteBody) {
   const target = paths.resolve(body.path)
@@ -13,7 +15,10 @@ export async function writeTextFile(paths: WorkspacePaths, body: WriteBody) {
   try {
     const writePath = await writablePath(target.absolutePath)
     tempPath = temporaryPath(writePath)
-    await assertWritableTarget(writePath, body.expectedMtimeMs)
+    await assertWritableTarget(writePath, {
+      baseVersion: body.baseVersion,
+      expectedMtimeMs: body.expectedMtimeMs,
+    })
     await writeFile(tempPath, body.content, 'utf8')
     await rename(tempPath, writePath)
     return target.relativePath
@@ -24,15 +29,32 @@ export async function writeTextFile(paths: WorkspacePaths, body: WriteBody) {
   }
 }
 
-async function assertWritableTarget(absolutePath: string, expectedMtimeMs?: number) {
+async function assertWritableTarget(
+  absolutePath: string,
+  expected: { baseVersion?: string; expectedMtimeMs?: number },
+) {
   const stats = await statOptional(absolutePath)
   if (!stats) return
 
   assertFile(stats)
-  if (expectedMtimeMs === undefined) return
-  if (Math.abs(stats.mtimeMs - expectedMtimeMs) <= 1) return
+  if (expected.baseVersion !== undefined) {
+    const currentVersion = await targetVersion(absolutePath, stats, expected.baseVersion)
+    if (currentVersion !== expected.baseVersion) throw new FsError('FILE_CHANGED')
+  }
+  if (expected.expectedMtimeMs === undefined) return
+  if (Math.abs(stats.mtimeMs - expected.expectedMtimeMs) <= 1) return
 
   throw new FsError('FILE_CHANGED')
+}
+
+async function targetVersion(
+  absolutePath: string,
+  stats: Stats,
+  baseVersion: string,
+) {
+  if (!baseVersion.startsWith('sha256:')) return fileVersion(stats)
+
+  return textFileVersion(await readFile(absolutePath, 'utf8'))
 }
 
 async function writablePath(absolutePath: string) {

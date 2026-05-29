@@ -57,6 +57,7 @@ export async function notifyRenamedFilesystemConflict(
       remotePath,
       remoteSize: remoteFile.size,
       remoteText: remoteFile.content,
+      remoteVersion: remoteFile.version,
     },
     context,
   )
@@ -84,6 +85,7 @@ function changedConflict(
     remotePath: path,
     remoteSize: remoteFile.size,
     remoteText: remoteFile.content,
+    remoteVersion: remoteFile.version,
   }
 }
 
@@ -97,6 +99,7 @@ function deletedConflict(path: string, context: WorkspaceConflictContext): Files
     remotePath: path,
     remoteSize: null,
     remoteText: null,
+    remoteVersion: null,
   }
 }
 
@@ -159,11 +162,13 @@ function ensureConflictEditorDocument(
   if (context.getCachedEditorDocument(documentId)) return
 
   const content = createMergeConflictDocumentText(conflict)
+  const mtimeMs = Date.now()
   context.ensureCachedEditorDocument({
     content,
-    mtimeMs: Date.now(),
+    mtimeMs,
     path: documentId,
     size: content.length,
+    version: syntheticFileVersion(mtimeMs, content.length),
   })
 }
 
@@ -188,7 +193,11 @@ async function applyLocalConflict(conflict: FilesystemConflict, context: Workspa
   if (conflict.eventType === 'deleted') {
     await restoreDeletedLocalConflict(conflict)
   } else {
-    await writeFileContent(conflict.remotePath, conflict.localText, conflict.remoteMtimeMs)
+    await writeFileContent(conflict.remotePath, conflict.localText, {
+      baseVersion: conflict.remoteVersion,
+      expectedMtimeMs: conflict.remoteMtimeMs,
+      origin: 'conflict-resolution',
+    })
   }
 
   const file = await context.fetchFile(conflict.remotePath, new AbortController().signal)
@@ -249,6 +258,9 @@ function remoteFileResult(conflict: FilesystemConflict): FileResult {
     mtimeMs: conflict.remoteMtimeMs ?? Date.now(),
     path: conflict.remotePath,
     size: conflict.remoteSize ?? conflict.remoteText?.length ?? 0,
+    version:
+      conflict.remoteVersion ??
+      syntheticFileVersion(conflict.remoteMtimeMs ?? Date.now(), conflict.remoteSize ?? 0),
   }
 }
 
@@ -259,6 +271,10 @@ function localConflictText(path: string, context: WorkspaceConflictContext) {
 function createConflictId() {
   nextConflictId += 1
   return `${Date.now().toString(36)}-${nextConflictId.toString(36)}`
+}
+
+function syntheticFileVersion(mtimeMs: number, size: number) {
+  return `synthetic:${mtimeMs}:${size}`
 }
 
 function moveFileQueryData(queryClient: QueryClient, from: string, to: string) {

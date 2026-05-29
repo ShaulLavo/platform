@@ -335,7 +335,12 @@ function fallbackEntry(match: FindMatch): FsEntry {
     size: match.size ?? 0,
     targetType: match.targetType,
     type: match.type,
+    version: fallbackEntryVersion(match.mtimeMs ?? 0, match.size ?? 0),
   }
+}
+
+function fallbackEntryVersion(mtimeMs: number, size: number) {
+  return `search:${mtimeMs}:${size}`
 }
 
 async function* streamFindEvents(

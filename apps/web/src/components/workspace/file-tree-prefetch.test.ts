@@ -43,5 +43,6 @@ function entry(path: string, type: TreeEntry['type'], size: number): TreeEntry {
     path,
     size,
     type,
+    version: `test:1:${path}:${size}`,
   }
 }

@@ -1,4 +1,5 @@
 import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { WriteFileContentOptions } from '@/lib/file-server'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 import type { TextEdit } from '@editor/core'
@@ -27,8 +28,8 @@ export type WorkspaceSearchReplaceContext = {
   writeFileContent: (
     path: string,
     content: string,
-    expectedMtimeMs?: number | null,
-  ) => Promise<Pick<TreeEntry, 'mtimeMs' | 'size'>>
+    options?: WriteFileContentOptions,
+  ) => Promise<Pick<TreeEntry, 'mtimeMs' | 'size' | 'version'>>
 }
 
 type PathReplaceResult = {
@@ -179,7 +180,11 @@ async function replaceDiskFileChecked(
   }
 
   const content = applyWorkspaceSearchReplaceEdits(file.content, plan.edits)
-  const entry = await context.writeFileContent(path, content, file.mtimeMs)
+  const entry = await context.writeFileContent(path, content, {
+    baseVersion: file.version,
+    expectedMtimeMs: file.mtimeMs,
+    origin: 'search-replace',
+  })
   context.cacheFile(fileResultForReplacedContent(file, content, entry))
 
   return {
@@ -227,13 +232,14 @@ function contentMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
 function fileResultForReplacedContent(
   file: FileResult,
   content: string,
-  entry: Pick<TreeEntry, 'mtimeMs' | 'size'>,
+  entry: Pick<TreeEntry, 'mtimeMs' | 'size' | 'version'>,
 ): FileResult {
   return {
     ...file,
     content,
     mtimeMs: entry.mtimeMs,
     size: entry.size,
+    version: entry.version,
   }
 }
 

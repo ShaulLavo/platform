@@ -2,6 +2,7 @@ import type { Stats } from 'node:fs'
 import { lstat, stat } from 'node:fs/promises'
 import { FsError, mapNodeError } from './errors'
 import type { WorkspacePaths } from './path'
+import { fileVersion } from './version'
 
 export type FsEntryType = 'file' | 'directory' | 'symlink' | 'other'
 
@@ -17,6 +18,7 @@ export type FsStat = {
   size: number
   mtimeMs: number
   birthtimeMs: number
+  version: string
 }
 
 export type FsEntryStats = {
@@ -39,6 +41,7 @@ export async function statPath(paths: WorkspacePaths, input: string): Promise<Fs
       size: Number(entryStats.targetStats.size),
       mtimeMs: Number(entryStats.targetStats.mtimeMs),
       birthtimeMs: Number(entryStats.targetStats.birthtimeMs),
+      version: fileVersion(entryStats.targetStats),
     }
   } catch (error) {
     if (error instanceof FsError) throw error

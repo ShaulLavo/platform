@@ -116,6 +116,7 @@ function pickedDirectory(path: string): PickedFsEntry {
     path,
     size: 1,
     type: 'directory',
+    version: 'test:1:1',
   }
 }
 

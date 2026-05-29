@@ -49,16 +49,20 @@ describe('workspace search replacement runner', () => {
 
   it('writes uncached files with an mtime guard and caches the saved result', async () => {
     const cachedFiles: FileResult[] = []
-    const writes: Array<{ content: string; expectedMtimeMs?: number | null }> = []
+    const writes: Array<{ baseVersion?: string | null; content: string; expectedMtimeMs?: number | null }> = []
     const result = await replaceWorkspaceSearchMatches({
       context: testContext({
         files: {
           'repo/src/app.ts': fileResult('repo/src/app.ts', 'needle'),
         },
         onCacheFile: (file) => cachedFiles.push(file),
-        onWrite: (_path, content, expectedMtimeMs) => {
-          writes.push({ content, expectedMtimeMs })
-          return { mtimeMs: 200, size: content.length }
+        onWrite: (_path, content, options) => {
+          writes.push({
+            baseVersion: options?.baseVersion,
+            content,
+            expectedMtimeMs: options?.expectedMtimeMs,
+          })
+          return { mtimeMs: 200, size: content.length, version: 'test:200:3' }
         },
       }),
       matches: [match({ path: 'repo/src/app.ts' })],
@@ -66,13 +70,14 @@ describe('workspace search replacement runner', () => {
       replaceText: 'pin',
     })
 
-    expect(writes).toEqual([{ content: 'pin', expectedMtimeMs: 100 }])
+    expect(writes).toEqual([{ baseVersion: 'test:100:6', content: 'pin', expectedMtimeMs: 100 }])
     expect(cachedFiles).toEqual([
       expect.objectContaining({
         content: 'pin',
-        mtimeMs: 200,
-        path: 'repo/src/app.ts',
-        size: 3,
+      mtimeMs: 200,
+      path: 'repo/src/app.ts',
+      size: 3,
+      version: 'test:200:3',
       }),
     ])
     expect(result.replacedMatches).toBe(1)
@@ -118,7 +123,11 @@ function testContext({
   files = {},
   onCacheFile = () => {},
   onDirty = () => {},
-  onWrite = (_path, content) => ({ mtimeMs: 101, size: content.length }),
+  onWrite = (_path, content) => ({
+    mtimeMs: 101,
+    size: content.length,
+    version: `test:101:${content.length}`,
+  }),
 }: {
   documents?: Record<string, CachedEditorDocument>
   files?: Record<string, FileResult>
@@ -127,8 +136,8 @@ function testContext({
   onWrite?: (
     path: string,
     content: string,
-    expectedMtimeMs?: number | null,
-  ) => Pick<TreeEntry, 'mtimeMs' | 'size'>
+    options?: { baseVersion?: string | null; expectedMtimeMs?: number | null },
+  ) => Pick<TreeEntry, 'mtimeMs' | 'size' | 'version'>
 }): WorkspaceSearchReplaceContext {
   return {
     cacheFile: onCacheFile,
@@ -136,8 +145,7 @@ function testContext({
     getCachedEditorDocument: (path) => documents[path] ?? null,
     recordCachedEditorDocumentTextChange: onDirty,
     signal: new AbortController().signal,
-    writeFileContent: async (path, content, expectedMtimeMs) =>
-      onWrite(path, content, expectedMtimeMs),
+    writeFileContent: async (path, content, options) => onWrite(path, content, options),
   }
 }
 
@@ -159,6 +167,7 @@ function fileResult(path: string, content: string): FileResult {
     mtimeMs: 100,
     path,
     size: content.length,
+    version: `test:100:${content.length}`,
   }
 }
 

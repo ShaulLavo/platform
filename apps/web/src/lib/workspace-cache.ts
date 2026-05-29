@@ -128,6 +128,7 @@ const pickedDirectorySchema = v.object({
   path: v.string(),
   size: v.number(),
   type: v.literal('directory'),
+  version: v.optional(v.string(), ''),
 })
 const pickedSymlinkDirectorySchema = v.object({
   birthtimeMs: v.number(),
@@ -137,6 +138,7 @@ const pickedSymlinkDirectorySchema = v.object({
   size: v.number(),
   targetType: v.literal('directory'),
   type: v.literal('symlink'),
+  version: v.optional(v.string(), ''),
 })
 const rootFolderSchema = v.nullable(v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema]))
 const selectedFilePathSchema = v.nullable(v.string())

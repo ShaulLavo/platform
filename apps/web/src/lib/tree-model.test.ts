@@ -128,7 +128,10 @@ describe('moveTreeModelPaths', () => {
 
     expect(next.paths).toEqual(['src/', 'tests/', 'tests/button.ts'])
     expect(next.entriesByTreePath.has('src/button.ts')).toBe(false)
-    expect(next.entriesByTreePath.get('tests/button.ts')).toEqual(file('repo/tests/button.ts'))
+    expect(next.entriesByTreePath.get('tests/button.ts')).toEqual({
+      ...file('repo/tests/button.ts'),
+      version: 'test:1:repo/src/button.ts',
+    })
     expect(next.entriesByTreePath.has('src')).toBe(true)
   })
 
@@ -216,5 +219,6 @@ function entry(path: string, type: TreeEntry['type'], children?: TreeEntry[]): T
     path,
     size: 1,
     type,
+    version: `test:1:${path}`,
   }
 }

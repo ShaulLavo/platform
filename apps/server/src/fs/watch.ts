@@ -31,6 +31,7 @@ export class FileChangeHub {
   private readonly nativeWatchers = new Map<string, WatcherEntry>()
   private readonly paths: WorkspacePaths
   private readonly watchEnabled: boolean
+  private nextSequence = 1
 
   constructor(paths: WorkspacePaths, options: WatchOptions) {
     this.paths = paths
@@ -38,10 +39,10 @@ export class FileChangeHub {
   }
 
   emit(event: WatchServerMessage) {
-    if (!isFilesystemEvent(event)) return this.broadcast(event)
+    if (!isFilesystemEvent(event)) return this.broadcastSequenced(event)
     if (isIgnoredPath(event.path)) return
 
-    this.broadcast(event)
+    this.broadcastSequenced(event)
   }
 
   stream(inputs: string[], signal?: AbortSignal) {
@@ -156,7 +157,7 @@ export class FileChangeHub {
     const type = parcelEventType(event.type)
     const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
 
-    this.broadcast(nativeWatchEvent(type, relativePath, entry))
+    this.emit(nativeWatchEvent(type, relativePath, entry))
   }
 
   private async handleNodeEvent(relativeRoot: string, nativeEvent: string, filename: string) {
@@ -166,7 +167,7 @@ export class FileChangeHub {
     const type = await nativeEventType(this.paths, relativePath, nativeEvent)
     const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
 
-    this.broadcast(nativeWatchEvent(type, relativePath, entry))
+    this.emit(nativeWatchEvent(type, relativePath, entry))
   }
 
   private async *createStream(subscribed: Set<string>, signal?: AbortSignal) {
@@ -182,9 +183,10 @@ export class FileChangeHub {
 
     const abort = () => wake?.()
     const enqueue = (event: WatchServerMessage) => {
-      if (!shouldDeliver(event, subscribed)) return
+      const sequenced = this.withSequence(event)
+      if (!shouldDeliver(sequenced, subscribed)) return
 
-      queue.push(event)
+      queue.push(sequenced)
       wake?.()
     }
     let releases: WatchRelease[] = []
@@ -214,8 +216,16 @@ export class FileChangeHub {
     }
   }
 
+  private broadcastSequenced(event: WatchServerMessage) {
+    this.broadcast(this.withSequence(event))
+  }
+
   private broadcast(event: WatchServerMessage) {
     for (const listener of this.listeners) listener(event)
+  }
+
+  private withSequence(event: WatchServerMessage): WatchServerMessage {
+    return { ...event, sequence: this.nextSequence++ }
   }
 }
 
@@ -316,7 +326,7 @@ function nativeWatchEvent(
   if (type === 'deleted') return { type, path }
   if (!entry) return { type, path }
 
-  return { type, path, entry }
+  return { type, path, entry, version: entry.version }
 }
 
 async function pathExists(paths: WorkspacePaths, relativePath: string) {
@@ -349,6 +359,7 @@ function entryFromStat(stat: FsStat): TreeEntry {
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     birthtimeMs: stat.birthtimeMs,
+    version: stat.version,
   }
 }
 

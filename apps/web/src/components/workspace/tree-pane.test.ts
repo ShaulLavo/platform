@@ -440,6 +440,7 @@ function symlinkDirectory(path: string): TreeEntry {
     size: 1,
     targetType: 'directory',
     type: 'symlink',
+    version: `test:1:${path}`,
   }
 }
 
@@ -451,6 +452,7 @@ function directory(path: string): TreeEntry {
     path,
     size: 1,
     type: 'directory',
+    version: `test:1:${path}`,
   }
 }
 
@@ -462,5 +464,6 @@ function file(path: string): TreeEntry {
     path,
     size: 1,
     type: 'file',
+    version: `test:1:${path}`,
   }
 }

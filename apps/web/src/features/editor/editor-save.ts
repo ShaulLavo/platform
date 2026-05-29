@@ -6,9 +6,7 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import { setFileContentQueryData } from '@/lib/file-query-cache'
-import { writeFileContent } from '@/lib/file-server'
-import type { FileResult } from '@/lib/file-system-types'
+import { FileSyncService } from '@/features/editor/file-sync-service'
 import type { QueryClient } from '@tanstack/react-query'
 
 export async function saveSelectedEditorDocument(
@@ -57,11 +55,7 @@ export async function saveCachedEditorDocument(
   queryClient: QueryClient,
   document: CachedEditorDocument,
 ) {
-  const content = document.session.materializeFullText()
-  const entry = await writeFileContent(document.path, content, document.revision)
-  const file = fileResultForSavedDocument(document.path, content, entry)
-  documentStore.getState().markCachedEditorDocumentClean(document.path, entry.mtimeMs)
-  setFileContentQueryData(queryClient, file)
+  await new FileSyncService(documentStore, queryClient).save(document)
 }
 
 export function isDirtyCachedEditorDocument(
@@ -87,17 +81,4 @@ function shouldSaveDocument(
   if (!fileBackedEditorPath(document.path)) return false
 
   return isDirtyCachedEditorDocument(state, document.path)
-}
-
-function fileResultForSavedDocument(
-  path: string,
-  content: string,
-  entry: { readonly mtimeMs: number; readonly size: number },
-): FileResult {
-  return {
-    content,
-    mtimeMs: entry.mtimeMs,
-    path,
-    size: entry.size,
-  }
 }

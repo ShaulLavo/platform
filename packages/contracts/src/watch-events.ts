@@ -1,15 +1,57 @@
 import type { TreeEntry } from './tree-entry'
 
+export type WatchServerMessageMetadata = {
+  sequence?: number
+}
+
+export type WatchServerFilesystemMetadata = WatchServerMessageMetadata & {
+  origin?: string
+  version?: string
+  writeId?: string
+}
+
 export type WatchServerMessage =
-  | { type: 'ready'; root: string }
-  | { type: 'subscribed'; path: string }
-  | { type: 'unsubscribed'; path: string }
-  | { type: 'pong' }
-  | { type: 'created'; path: string; entry?: TreeEntry }
-  | { type: 'changed'; path: string; entry?: TreeEntry }
-  | { type: 'deleted'; path: string }
-  | { type: 'renamed'; path: string; oldPath: string; entry?: TreeEntry }
-  | { type: 'error'; code: string; message: string }
+  | { type: 'ready'; root: string; sequence?: number }
+  | { type: 'subscribed'; path: string; sequence?: number }
+  | { type: 'unsubscribed'; path: string; sequence?: number }
+  | { type: 'pong'; sequence?: number }
+  | {
+      type: 'created'
+      path: string
+      entry?: TreeEntry
+      origin?: string
+      sequence?: number
+      version?: string
+      writeId?: string
+    }
+  | {
+      type: 'changed'
+      path: string
+      entry?: TreeEntry
+      origin?: string
+      sequence?: number
+      version?: string
+      writeId?: string
+    }
+  | {
+      type: 'deleted'
+      path: string
+      origin?: string
+      sequence?: number
+      version?: string
+      writeId?: string
+    }
+  | {
+      type: 'renamed'
+      path: string
+      oldPath: string
+      entry?: TreeEntry
+      origin?: string
+      sequence?: number
+      version?: string
+      writeId?: string
+    }
+  | { type: 'error'; code: string; message: string; sequence?: number }
 
 export type WatchClientMessage =
   | { type: 'subscribe'; path: string }

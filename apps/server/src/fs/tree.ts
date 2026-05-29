@@ -11,6 +11,7 @@ import {
   type FsEntryType,
 } from './stat'
 import type { EntryTypeFilter } from './contracts'
+import { fileVersion } from './version'
 
 export type TreeEntry = {
   name: string
@@ -20,6 +21,7 @@ export type TreeEntry = {
   size: number
   mtimeMs: number
   birthtimeMs: number
+  version: string
   children?: TreeEntry[]
 }
 
@@ -129,6 +131,7 @@ async function readEntryMetadata(
     size: entryStats.targetStats.size,
     mtimeMs: entryStats.targetStats.mtimeMs,
     birthtimeMs: entryStats.targetStats.birthtimeMs,
+    version: fileVersion(entryStats.targetStats),
   } satisfies TreeEntry
 }
 

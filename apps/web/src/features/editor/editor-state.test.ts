@@ -301,7 +301,7 @@ describe('editor document store', () => {
     })
 
     const scrolledDocument = store.getState().getCachedEditorDocument('src/file.ts')
-    expect(scrolledDocument).toBe(document)
+    expect(scrolledDocument?.session).toBe(document.session)
     expect(scrolledDocument?.scrollPosition).toEqual({
       left: 10,
       top: 20,
@@ -320,7 +320,7 @@ describe('editor document store', () => {
     })
 
     const scrolledDocument = store.getState().getCachedEditorTabDocument('tab-a')
-    expect(scrolledDocument).toBe(document)
+    expect(scrolledDocument?.session).toBe(document.session)
     expect(scrolledDocument?.scrollPosition).toEqual({
       left: 12,
       top: 24,
@@ -381,7 +381,7 @@ describe('editor document store', () => {
     expect(store.getState().documentContentRevisions['src/file.ts']).not.toBe(firstEditRevision)
   })
 
-  it('syncs duplicate tab document text from edits while preserving per-tab history and scroll', () => {
+  it('shares duplicate tab document text and document-wide history while preserving per-tab scroll', () => {
     const store = createEditorDocumentStore()
     store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
     store.getState().ensureCachedEditorTabDocument('tab-b', file('src/file.ts', 'abc'))
@@ -409,15 +409,17 @@ describe('editor document store', () => {
     expect(syncedTabA?.session.materializeFullText()).toBe('abc!')
     expect(syncedTabB?.session.materializeFullText()).toBe('abc!')
     expect(syncedTabA?.session.canUndo()).toBe(true)
-    expect(syncedTabB?.session.canUndo()).toBe(false)
+    expect(syncedTabB?.session.canUndo()).toBe(true)
     expect(syncedTabA?.scrollPosition).toEqual({ left: 4, top: 8 })
     expect(syncedTabB?.scrollPosition).toBeUndefined()
-    expect(syncedTabA).toBe(sourceTab)
-    expect(syncedTabB).not.toBe(siblingTab)
+    expect(syncedTabA?.buffer).toBe(sourceTab.buffer)
+    expect(syncedTabB?.buffer).toBe(siblingTab.buffer)
+    expect(syncedTabA?.session).toBe(sourceTab.session)
+    expect(syncedTabB?.session).toBe(siblingTab.session)
     expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(true)
   })
 
-  it('keeps the source tab document identity for single-tab local edits', () => {
+  it('keeps the source tab buffer and view session for single-tab local edits', () => {
     const store = createEditorDocumentStore()
     const tab = store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
     let tabDocumentUpdates = 0
@@ -434,8 +436,11 @@ describe('editor document store', () => {
     })
     unsubscribe()
 
-    expect(store.getState().getCachedEditorTabDocument('tab-a')).toBe(tab)
-    expect(tabDocumentUpdates).toBe(0)
+    const updatedTab = store.getState().getCachedEditorTabDocument('tab-a')
+    expect(updatedTab?.buffer).toBe(tab.buffer)
+    expect(updatedTab?.session).toBe(tab.session)
+    expect(updatedTab?.view).toBe(tab.view)
+    expect(tabDocumentUpdates).toBe(1)
   })
 
   it('creates clean tab sessions without materializing canonical text', () => {
@@ -915,6 +920,7 @@ function rootFolder(path: string) {
     path,
     size: 1,
     type: 'directory' as const,
+    version: 'test:1:1',
   }
 }
 
@@ -924,7 +930,12 @@ function file(path: string, content: string, mtimeMs = 1): FileResult {
     mtimeMs,
     path,
     size: content.length,
+    version: testFileVersion(mtimeMs, content.length),
   }
+}
+
+function testFileVersion(mtimeMs: number, size: number) {
+  return `test:${mtimeMs}:${size}`
 }
 
 function definitionTarget(path: string): LanguageServerDefinitionTarget {

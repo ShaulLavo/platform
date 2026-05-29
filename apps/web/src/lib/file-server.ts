@@ -9,6 +9,13 @@ import {
 
 const TREE_LOAD_DEPTH = 1
 
+export type WriteFileContentOptions = {
+  baseVersion?: string | null
+  expectedMtimeMs?: number | null
+  origin?: string | null
+  writeId?: string | null
+}
+
 export async function fetchTree(path: string, signal: AbortSignal) {
   return observeClientOperation(
     { action: 'fs.tree', area: 'fs', path },
@@ -86,21 +93,22 @@ export async function fetchQuickOpenFiles({
 export async function writeFileContent(
   path: string,
   content: string,
-  expectedMtimeMs?: number | null,
+  options?: number | null | WriteFileContentOptions,
 ) {
+  const writeOptions = normalizeWriteFileContentOptions(options)
   return observeClientOperation(
     {
       action: 'fs.write',
       area: 'fs',
+      hasBaseVersion: writeOptions.baseVersion !== undefined && writeOptions.baseVersion !== null,
       contentBytes: new Blob([content]).size,
-      hasExpectedMtime: expectedMtimeMs !== undefined && expectedMtimeMs !== null,
+      hasExpectedMtime:
+        writeOptions.expectedMtimeMs !== undefined && writeOptions.expectedMtimeMs !== null,
       path,
+      writeId: writeOptions.writeId ?? undefined,
     },
     async () => {
-      const body =
-        expectedMtimeMs === undefined || expectedMtimeMs === null
-          ? { content, path }
-          : { content, expectedMtimeMs, path }
+      const body = writeFileContentBody(path, content, writeOptions)
       const response = await client.fs.write.post(body)
 
       if (response.error) throw createRpcError(response.error)
@@ -109,6 +117,35 @@ export async function writeFileContent(
     },
     (entry) => ({ entryType: entry.type, size: entry.size }),
   )
+}
+
+function normalizeWriteFileContentOptions(
+  options: number | null | WriteFileContentOptions | undefined,
+): WriteFileContentOptions {
+  if (typeof options === 'number' || options === null) {
+    return { expectedMtimeMs: options }
+  }
+
+  return options ?? {}
+}
+
+function writeFileContentBody(
+  path: string,
+  content: string,
+  options: WriteFileContentOptions,
+) {
+  return {
+    content,
+    path,
+    ...(options.baseVersion === undefined || options.baseVersion === null
+      ? {}
+      : { baseVersion: options.baseVersion }),
+    ...(options.expectedMtimeMs === undefined || options.expectedMtimeMs === null
+      ? {}
+      : { expectedMtimeMs: options.expectedMtimeMs }),
+    ...(options.origin === undefined || options.origin === null ? {} : { origin: options.origin }),
+    ...(options.writeId === undefined || options.writeId === null ? {} : { writeId: options.writeId }),
+  }
 }
 
 export async function createFileContent(path: string, content: string) {

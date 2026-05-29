@@ -875,7 +875,11 @@ async function applyConflictEditorResolution(
     await ensureFolderPath(parentPath(conflict.remotePath))
     await createFileContent(conflict.remotePath, resolvedText)
   } else {
-    await writeFileContent(conflict.remotePath, resolvedText, conflict.remoteMtimeMs)
+    await writeFileContent(conflict.remotePath, resolvedText, {
+      baseVersion: conflict.remoteVersion,
+      expectedMtimeMs: conflict.remoteMtimeMs,
+      origin: 'conflict-editor-resolution',
+    })
   }
 
   const file = await fetchFile(conflict.remotePath, new AbortController().signal)

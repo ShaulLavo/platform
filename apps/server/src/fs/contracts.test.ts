@@ -68,6 +68,7 @@ describe('filesystem contracts', () => {
         size: 42,
         targetType: 'file',
         type: 'file',
+        version: 'stat:2:42',
       }),
     ).toEqual({
       birthtimeMs: 1,
@@ -77,6 +78,7 @@ describe('filesystem contracts', () => {
       size: 42,
       targetType: 'file',
       type: 'file',
+      version: 'stat:2:42',
     })
   })
 

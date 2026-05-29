@@ -44,6 +44,7 @@ export const treeEntrySchema = v.object({
   size: v.number(),
   mtimeMs: v.number(),
   birthtimeMs: v.number(),
+  version: v.string(),
 })
 
 export const pathQuerySchema = v.object({
@@ -126,7 +127,10 @@ export const recordRecentBodySchema = v.object({
 export const writeBodySchema = v.object({
   path: pathSchema,
   content: v.string(),
+  baseVersion: v.optional(v.string()),
   expectedMtimeMs: v.optional(v.number()),
+  origin: v.optional(v.string()),
+  writeId: v.optional(v.string()),
 })
 
 export const createFileBodySchema = v.object({
@@ -172,43 +176,63 @@ export const watchClientMessageSchema = v.variant('type', [
   }),
 ])
 
+const watchSequenceFields = {
+  sequence: v.optional(v.number()),
+}
+
+const watchFilesystemMetadataFields = {
+  ...watchSequenceFields,
+  origin: v.optional(v.string()),
+  version: v.optional(v.string()),
+  writeId: v.optional(v.string()),
+}
+
 export const watchServerMessageSchema = v.variant('type', [
   v.object({
+    ...watchSequenceFields,
     type: v.literal('ready'),
     root: v.string(),
   }),
   v.object({
+    ...watchSequenceFields,
     type: v.literal('subscribed'),
     path: pathSchema,
   }),
   v.object({
+    ...watchSequenceFields,
     type: v.literal('unsubscribed'),
     path: pathSchema,
   }),
   v.object({
+    ...watchSequenceFields,
     type: v.literal('pong'),
   }),
   v.object({
+    ...watchFilesystemMetadataFields,
     type: v.literal('created'),
     path: pathSchema,
     entry: v.optional(treeEntrySchema),
   }),
   v.object({
+    ...watchFilesystemMetadataFields,
     type: v.literal('changed'),
     path: pathSchema,
     entry: v.optional(treeEntrySchema),
   }),
   v.object({
+    ...watchFilesystemMetadataFields,
     type: v.literal('deleted'),
     path: pathSchema,
   }),
   v.object({
+    ...watchFilesystemMetadataFields,
     type: v.literal('renamed'),
     path: pathSchema,
     oldPath: pathSchema,
     entry: v.optional(treeEntrySchema),
   }),
   v.object({
+    ...watchSequenceFields,
     type: v.literal('error'),
     code: v.string(),
     message: v.string(),

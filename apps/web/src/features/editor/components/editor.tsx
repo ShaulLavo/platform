@@ -92,11 +92,12 @@ export function Editor({
   const document = useMemo(
     () => ({
       documentId: cachedDocument.path,
+      buffer: cachedDocument.buffer,
       languageId: languageIdForFilePath(cachedDocument.path),
       revision: cachedDocument.contentRevision,
       scrollPosition: cachedDocument.scrollPosition,
-      session: cachedDocument.session,
       text: '',
+      view: cachedDocument.view,
     }),
     [cachedDocument],
   )

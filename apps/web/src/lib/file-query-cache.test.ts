@@ -40,5 +40,6 @@ function file(path: string): FileResult {
     mtimeMs: 1,
     path,
     size: path.length,
+    version: `test:1:${path.length}`,
   }
 }

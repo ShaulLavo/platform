@@ -659,9 +659,14 @@ function searchFilePaletteItems(
       size: match.size ?? 0,
       targetType: match.targetType,
       type: match.type,
+      version: searchEntryVersion(match.mtimeMs ?? 0, match.size ?? 0),
     },
     pathLabel: toTreePath(match.path, rootPath),
   }))
+}
+
+function searchEntryVersion(mtimeMs: number, size: number) {
+  return `search:${mtimeMs}:${size}`
 }
 
 function selectedFileCommandValue(selectedValue: string | null, items: readonly FilePaletteItem[]) {

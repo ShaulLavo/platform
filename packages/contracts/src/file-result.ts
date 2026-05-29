@@ -3,4 +3,5 @@ export type FileResult = {
   content: string
   mtimeMs: number
   size: number
+  version: string
 }
