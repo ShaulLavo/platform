@@ -1,9 +1,7 @@
 import { WorkspaceActivityButton } from '@/components/workspace/workspace-activity-button'
 import { WorkspaceActivityTab } from '@/components/workspace/workspace-activity-tab'
-import {
-  useWorkspaceTerminalCollapsed,
-  useWorkspaceTerminalToggle,
-} from '@/components/workspace/use-workspace-terminal-state'
+import { useWorkspaceTerminalCollapsed } from '@/components/workspace/use-workspace-terminal-collapsed'
+import { useWorkspaceTerminalToggle } from '@/components/workspace/use-workspace-terminal-toggle'
 import { ChatSidebarEntry } from '@/features/chat/components/chat-sidebar-entry'
 import {
   FolderIcon,

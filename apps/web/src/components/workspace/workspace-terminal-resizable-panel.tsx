@@ -1,8 +1,6 @@
-import {
-  useWorkspaceTerminalCollapsed,
-  useWorkspaceTerminalPanelRef,
-  useWorkspaceTerminalResizeHandler,
-} from '@/components/workspace/use-workspace-terminal-state'
+import { useWorkspaceTerminalCollapsed } from '@/components/workspace/use-workspace-terminal-collapsed'
+import { useWorkspaceTerminalPanelRef } from '@/components/workspace/use-workspace-terminal-panel-ref'
+import { useWorkspaceTerminalResizeHandler } from '@/components/workspace/use-workspace-terminal-resize-handler'
 import { TerminalPanel } from '@/features/terminal/terminal-panel'
 import { ResizablePanel } from '@workspace/ui/components/resizable'
 import { memo } from 'react'

@@ -19,16 +19,18 @@ import {
 } from '@workspace/ui/components/dialog'
 import { Input } from '@workspace/ui/components/input'
 import { Separator } from '@workspace/ui/components/separator'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
-import { useState, type ChangeEvent, type KeyboardEvent, type ReactElement } from 'react'
+import { useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import {
   useDirectoryLoad,
   useRecentEntries,
   useRecordRecentMutation,
   useServerInfoForOpen,
 } from './file-picker/data'
+import { IconTooltip } from './file-picker/icon-tooltip'
 import { FileList, ListHeader } from './file-picker/list'
-import { MobileLocations, PathBar, PlacesSidebar } from './file-picker/navigation'
+import { Breadcrumbs } from './file-picker/navigation/breadcrumbs'
+import { MobileLocations } from './file-picker/navigation/mobile-locations'
+import { PlacesSidebar } from './file-picker/navigation/places-sidebar'
 import { PreviewPane, SelectedSummary } from './file-picker/preview'
 import {
   ROOT_PATH,
@@ -223,7 +225,7 @@ export function FilePickerDialog({
           </div>
           <div className='mt-3 grid gap-2 lg:grid-cols-[170px_minmax(0,1fr)_240px]'>
             <div className='hidden lg:block' />
-            <PathBar currentPath={session.currentPath} onNavigate={session.navigateTo} />
+            <Breadcrumbs currentPath={session.currentPath} onNavigate={session.navigateTo} />
             <div className='relative'>
               <MagnifyingGlassIcon className='text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2' />
               <Input
@@ -290,14 +292,5 @@ export function FilePickerDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function IconTooltip({ children, label }: { children: ReactElement; label: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
   )
 }

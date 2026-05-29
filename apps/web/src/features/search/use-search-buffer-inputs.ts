@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 
 import type { SearchBufferOptionPatch } from '@/features/search/search-buffer-state'
 import { useSearchBufferStoreApi } from '@/features/search/search-buffer-state'
-import type { WorkspaceSearchQueryOptions } from '@/features/search/use-search-buffer'
+import type { WorkspaceSearchQueryOptions } from '@/features/search/search-buffer-query'
 import { useSearchBufferValue } from '@/features/search/use-search-buffer-value'
 
 export function useSearchBufferInputs(rootPath: string) {

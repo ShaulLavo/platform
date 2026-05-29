@@ -2,14 +2,12 @@ import { ArrowSquareOutIcon } from '@phosphor-icons/react'
 
 import { WorkspaceSearchSummary } from '@/components/workspace/workspace-search-summary'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { SearchFilterFields } from '@/features/search/search-filter-fields'
 import { SearchHistoryInput } from '@/features/search/search-history-input'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
-import {
-  SearchFilterFields,
-  SearchModeButtons,
-  SearchReplaceFields,
-  SearchReplaceToggleButton,
-} from '@/features/search/search-controls'
+import { SearchModeButtons } from '@/features/search/search-mode-buttons'
+import { SearchReplaceFields } from '@/features/search/search-replace-fields'
+import { SearchReplaceToggleButton } from '@/features/search/search-replace-toggle-button'
 import { useSearchBufferInputs } from '@/features/search/use-search-buffer-inputs'
 import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
 import { Button } from '@workspace/ui/components/button'

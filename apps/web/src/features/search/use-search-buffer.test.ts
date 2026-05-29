@@ -3,13 +3,13 @@ import { createEditorTextBuffer } from '@editor/core'
 import type { WorkspaceSearchEvent } from '@workspace/contracts'
 
 import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
+import { dirtySearchRevisionKey } from './search-buffer-dirty-documents'
+import { workspaceSearchQuery } from './search-buffer-query'
 import {
   clientOnlyWorkspaceSearchProvider,
   createFirstPaintSearchEventBatcher,
-  dirtySearchRevisionKey,
   runSearch,
-  workspaceSearchQuery,
-} from './use-search-buffer'
+} from './search-buffer-runner'
 import { createSearchBufferStore, type SearchBufferStoreApi } from './search-buffer-state'
 import { shouldStartWorkspaceSearch } from './search-run-state'
 

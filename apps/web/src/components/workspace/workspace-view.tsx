@@ -1,6 +1,6 @@
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { FileViewer } from '@/components/workspace/file-viewer'
-import { WorkspaceTerminalStateProvider } from '@/components/workspace/use-workspace-terminal-state'
+import { WorkspaceTerminalStateProvider } from '@/components/workspace/workspace-terminal-state-provider'
 import { WorkspaceActivityBar } from '@/components/workspace/workspace-activity-bar'
 import { WorkspaceSearchRuntime } from '@/components/workspace/workspace-search-runtime'
 import { WorkspaceSidebarResizablePanel } from '@/components/workspace/workspace-sidebar-resizable-panel'
