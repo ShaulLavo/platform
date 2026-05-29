@@ -5,7 +5,7 @@ export type EntryTypeCarrier = {
   targetType?: EntryTypeFilter
 }
 
-export type FileSystemEntryMetadata = EntryTypeCarrier & {
+export interface FileSystemEntryMetadata extends EntryTypeCarrier {
   path: string
   size: number
   mtimeMs: number
@@ -13,7 +13,7 @@ export type FileSystemEntryMetadata = EntryTypeCarrier & {
   version: string
 }
 
-export type TreeEntry = FileSystemEntryMetadata & {
+export interface TreeEntry extends FileSystemEntryMetadata {
   name: string
 }
 

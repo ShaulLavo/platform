@@ -2,7 +2,12 @@ import { createReadStream } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { WorkspaceSearchMatcher } from '@workspace/contracts'
+import {
+  isDirectoryEntry,
+  isFileEntry,
+  matchesEntryType,
+  type WorkspaceSearchMatcher,
+} from '@workspace/contracts'
 
 import type { EntryTypeFilter } from './contracts'
 import { SEARCH_LINE_BUFFER_BYTES, streamLines } from './search-line-decoder'
@@ -19,7 +24,7 @@ import {
   type FindMatch,
   type FindOptions,
 } from './search-shared'
-import { isDirectoryEntry, isFileEntry, matchesEntryType, type FsEntryStats } from './stat'
+import type { FsEntryStats } from './stat'
 import { recordRequestWarning } from '../observability'
 
 export async function* searchWithFallback(context: FindContext) {

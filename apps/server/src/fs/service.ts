@@ -1,8 +1,9 @@
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { effectiveEntryType, type FileSystemEntryMetadata } from '@workspace/contracts'
 import { createWorkspacePaths } from './path'
 import { FileChangeHub } from './watch'
-import { effectiveEntryType, statPath } from './stat'
+import { statPath } from './stat'
 import { readTree } from './tree'
 import { getBlobFile, readTextFile } from './read'
 import { writeTextFile } from './write'
@@ -24,7 +25,6 @@ import {
 import { findInWorkspaceStream, type FindOptions, type SearchStreamEvent } from './search'
 import { FsError } from './errors'
 import { FsMetadataStore, metadataRowToEntry, type FsMetadataEntry } from './metadata'
-import type { FsStat } from './stat'
 import type {
   CopyBody,
   CreateFileBody,
@@ -384,7 +384,7 @@ export class FileSystemService {
   }
 }
 
-function entryFromStat(stat: FsStat): TreeEntry {
+function entryFromStat(stat: FileSystemEntryMetadata): TreeEntry {
   return {
     path: stat.path,
     name: pathBasename(stat.path),

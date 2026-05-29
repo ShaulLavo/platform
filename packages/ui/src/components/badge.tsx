@@ -2,8 +2,9 @@ import { mergeProps } from '@base-ui/react/merge-props'
 import { useRender } from '@base-ui/react/use-render'
 import type { VariantProps } from 'class-variance-authority'
 
-import { badgeVariants } from '@workspace/ui/components/badge-variants'
 import { cn } from '@workspace/ui/lib/utils'
+
+import { badgeVariants } from './badge-variants'
 
 function Badge({
   className,

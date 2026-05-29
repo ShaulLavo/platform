@@ -2,9 +2,10 @@ import parcelWatcher from '@parcel/watcher'
 import { watch } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
+import type { FileSystemEntryMetadata } from '@workspace/contracts'
 import { FsError } from './errors'
 import { defaultIgnoredNames, isIgnoredPath, toPosix, type WorkspacePaths } from './path'
-import { statPath, type FsStat } from './stat'
+import { statPath } from './stat'
 import type { TreeEntry, WatchServerMessage } from './contracts'
 
 type Listener = (event: WatchServerMessage) => void
@@ -350,7 +351,7 @@ async function nativeEventEntry(
   }
 }
 
-function entryFromStat(stat: FsStat): TreeEntry {
+function entryFromStat(stat: FileSystemEntryMetadata): TreeEntry {
   return {
     path: stat.path,
     name: pathBasename(stat.path),

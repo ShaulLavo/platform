@@ -1,14 +1,14 @@
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
+import { effectiveEntryType, type EntryTypeFilter } from '@workspace/contracts'
 import { closeMetadataDatabase, db, metadataDatabasePath } from '../db/client'
 import { migrateMetadataDatabase } from '../db/migrations'
 import { fsMetadata, type FsMetadataRow } from '../db/schema'
-import { effectiveEntryType, type FsEntryType } from './stat'
 
 export type FsMetadataEntry = {
   path: string
   name: string
-  type: FsEntryType
-  targetType?: FsEntryType
+  type: EntryTypeFilter
+  targetType?: EntryTypeFilter
   size: number
   mtimeMs: number
   birthtimeMs: number

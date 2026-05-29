@@ -1,7 +1,5 @@
 import {
   effectiveEntryType,
-  isDirectoryEntry,
-  isFileEntry,
   type FileTreeEntry,
   type WorkspaceSearchMatch,
 } from '@workspace/contracts'

@@ -1,6 +1,10 @@
 import type { Stats } from 'node:fs'
 import { lstat, stat } from 'node:fs/promises'
-import type { EntryTypeCarrier, EntryTypeFilter, FileSystemEntryMetadata } from '@workspace/contracts'
+import type {
+  EntryTypeCarrier,
+  EntryTypeFilter,
+  FileSystemEntryMetadata,
+} from '@workspace/contracts'
 import { FsError, mapNodeError } from './errors'
 import type { WorkspacePaths } from './path'
 import { fileVersion } from './version'

@@ -4,6 +4,8 @@ import path from 'node:path'
 import {
   compareFuzzyRankedTargets,
   createWorkspaceSearchMatcher,
+  isFileEntry,
+  matchesEntryType,
   type WorkspaceSearchDoneEvent,
 } from '@workspace/contracts'
 
@@ -29,7 +31,7 @@ import {
   type FindOptions,
 } from './search-shared'
 import { canUseSearchTools, runToolLines } from './search-tool-runner'
-import { assertDirectory, isFileEntry, matchesEntryType } from './stat'
+import { assertDirectory } from './stat'
 import { recordRequestContext } from '../observability'
 import type { EntryTypeFilter } from './contracts'
 
