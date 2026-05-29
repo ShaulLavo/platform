@@ -24,6 +24,11 @@ type DefaultBindingSpec = {
   readonly vscodeCommandId?: string
 }
 
+type EditorBindingOptions = Omit<
+  DefaultBindingSpec,
+  'command' | 'hotkey' | 'pane' | 'vscodeCommandId'
+>
+
 export function defaultPlatformKeyBindings(
   platform: PlatformName = detectPlatform(),
 ): readonly PlatformKeyBinding[] {
@@ -68,10 +73,31 @@ function workspaceBinding(
 function editorBinding(
   hotkey: RegisterableHotkey,
   command: EditorPlatformCommandId,
+  options?: EditorBindingOptions,
+): DefaultBindingSpec
+function editorBinding(
+  hotkey: RegisterableHotkey,
+  command: EditorPlatformCommandId,
   vscodeCommandId: string,
-  options: Omit<DefaultBindingSpec, 'command' | 'hotkey' | 'pane' | 'vscodeCommandId'> = {},
+  options?: EditorBindingOptions,
+): DefaultBindingSpec
+function editorBinding(
+  hotkey: RegisterableHotkey,
+  command: EditorPlatformCommandId,
+  vscodeCommandIdOrOptions: string | EditorBindingOptions = {},
+  options: EditorBindingOptions = {},
 ): DefaultBindingSpec {
-  return { command, hotkey, pane: 'editor', vscodeCommandId, ...options }
+  if (typeof vscodeCommandIdOrOptions === 'string') {
+    return {
+      command,
+      hotkey,
+      pane: 'editor',
+      vscodeCommandId: vscodeCommandIdOrOptions,
+      ...options,
+    }
+  }
+
+  return { command, hotkey, pane: 'editor', ...vscodeCommandIdOrOptions }
 }
 
 function noOpBinding(
@@ -190,10 +216,10 @@ const defaultBindingSpecs = [
   editorBinding('Mod+Alt+R', 'editor.toggleFindRegex', 'toggleFindRegex', {
     platforms: ['mac'],
   }),
-  editorBinding('Alt+L', 'editor.toggleFindInSelection', 'toggleSearchScope', {
+  editorBinding('Alt+L', 'editor.toggleFindInSelection', 'toggleFindInSelection', {
     platforms: ['windows', 'linux'],
   }),
-  editorBinding('Mod+Alt+L', 'editor.toggleFindInSelection', 'toggleSearchScope', {
+  editorBinding('Mod+Alt+L', 'editor.toggleFindInSelection', 'toggleFindInSelection', {
     platforms: ['mac'],
   }),
   editorBinding('Alt+P', 'editor.togglePreserveCase', 'togglePreserveCase', {
@@ -316,13 +342,13 @@ const defaultBindingSpecs = [
   ),
   editorBinding('Mod+F2', 'editor.editor.action.changeAll', 'editor.action.changeAll'),
 
-  editorBinding('Backspace', 'editor.deleteBackward', 'deleteLeft'),
-  editorBinding('Shift+Backspace', 'editor.deleteBackward', 'deleteLeft'),
-  editorBinding('Control+H', 'editor.deleteBackward', 'deleteLeft', {
+  editorBinding('Backspace', 'editor.deleteBackward'),
+  editorBinding('Shift+Backspace', 'editor.deleteBackward'),
+  editorBinding('Control+H', 'editor.deleteBackward', {
     platforms: ['mac'],
   }),
-  editorBinding('Delete', 'editor.deleteForward', 'deleteRight'),
-  editorBinding('Control+D', 'editor.deleteForward', 'deleteRight', {
+  editorBinding('Delete', 'editor.deleteForward'),
+  editorBinding('Control+D', 'editor.deleteForward', {
     platforms: ['mac'],
   }),
   editorBinding('Tab', 'editor.indentSelection', 'tab'),

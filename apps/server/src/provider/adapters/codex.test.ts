@@ -144,8 +144,8 @@ function assertStartParams(message) {
     fail(message.id, 'cwd was not normalized');
     return false;
   }
-  if (message.params.model !== 'gpt-5.5') {
-    fail(message.id, 'legacy model was not normalized');
+  if (message.params.model !== 'codex') {
+    fail(message.id, 'model mismatch');
     return false;
   }
   if (message.params.approvalPolicy !== 'never') {
@@ -164,8 +164,8 @@ function assertStartParams(message) {
 }
 
 function assertTurnParams(message) {
-  if (message.params.model !== 'gpt-5.5') {
-    fail(message.id, 'turn model was not normalized');
+  if (message.params.model !== 'codex') {
+    fail(message.id, 'turn model mismatch');
     return false;
   }
   if (message.params.approvalPolicy !== 'never') {
@@ -393,7 +393,7 @@ describe('CodexProviderAdapter', () => {
       expect(hasSessionAfterStop).toBe(false)
       expect(sessions).toContainEqual(
         expect.objectContaining({
-          model: 'gpt-5.5',
+          model: 'codex',
           providerThreadId: 'provider-thread-1',
           status: 'ready',
           threadId: input.thread.id,
@@ -457,7 +457,7 @@ describe('CodexProviderAdapter', () => {
         } as ProviderTurnInput['attachments'][number],
       ]
       input.modelSelection = {
-        model: 'gpt-5.5',
+        model: 'codex',
         options: {
           fastMode: true,
           reasoningEffort: 'high',

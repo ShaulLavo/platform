@@ -132,59 +132,6 @@ describe('workspace cache', () => {
     expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/readme.md')
   })
 
-  it('migrates v6 tabs into one persisted pane', () => {
-    const rootFolder = pickedDirectory('/repo')
-
-    STORE.set(
-      'platform.workspace-state.v1',
-      JSON.stringify({
-        diffViewMode: 'split',
-        editorHistory: ['/repo/src/readme.md'],
-        gitPanelOpen: true,
-        openFilePaths: ['/repo/src/readme.md', '/repo/src/app.ts'],
-        recentlyClosedEditorPaths: [],
-        rootFolder,
-        searchBuffer: null,
-        selectedFilePath: '/repo/src/app.ts',
-        sidebarVisible: true,
-        version: 6,
-        workspacePanelTab: 'files',
-      }),
-    )
-
-    const cached = readWorkspaceCache()
-
-    expect(cached.openFilePaths).toEqual(['/repo/src/readme.md', '/repo/src/app.ts'])
-    expect(editorPanePaths(cached.editorPaneLayout)).toEqual([
-      '/repo/src/readme.md',
-      '/repo/src/app.ts',
-    ])
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/app.ts')
-  })
-
-  it('migrates v6 logs panel tab state', () => {
-    const rootFolder = pickedDirectory('/repo')
-
-    STORE.set(
-      'platform.workspace-state.v1',
-      JSON.stringify({
-        diffViewMode: 'split',
-        editorHistory: [],
-        gitPanelOpen: true,
-        openFilePaths: [],
-        recentlyClosedEditorPaths: [],
-        rootFolder,
-        searchBuffer: null,
-        selectedFilePath: null,
-        sidebarVisible: true,
-        version: 6,
-        workspacePanelTab: 'logs',
-      }),
-    )
-
-    expect(readWorkspaceCache().workspacePanelTab).toBe('logs')
-  })
-
   it('persists pane split sizes in the workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const editorPaneLayout: EditorPaneLayout = {
@@ -344,66 +291,6 @@ describe('workspace cache', () => {
     })
 
     expect(readWorkspaceCache().searchBuffer).toEqual(searchBuffer)
-  })
-
-  it('drops cache payloads with legacy cached search matches', () => {
-    const rootFolder = pickedDirectory('/repo')
-    const searchBuffer = {
-      activeResultId: 'search-result-match-a',
-      caseSensitive: false,
-      collapsedPaths: [],
-      excludeGlobText: '',
-      filtersVisible: false,
-      includeGlobText: '',
-      matchMode: 'literal' as const,
-      matches: [
-        {
-          kind: 'content' as const,
-          path: '/repo/src/app.ts',
-          source: 'disk' as const,
-          type: 'file' as const,
-        },
-      ],
-      query: 'needle',
-      queryHistory: ['needle'],
-      replaceHistory: [],
-      replaceText: '',
-      replaceVisible: false,
-      resultsQuery: 'needle',
-      resultsSearchQuery: {
-        includeContent: true,
-        limit: 200,
-        path: '/repo',
-        query: 'needle',
-      },
-      rootPath: '/repo',
-      totalCount: 1,
-      truncated: false,
-      wholeWord: false,
-    }
-
-    STORE.set(
-      'platform.workspace-state.v1',
-      JSON.stringify({
-        diffViewMode: 'split',
-        editorHistory: [],
-        gitPanelOpen: true,
-        openFilePaths: [],
-        recentlyClosedEditorPaths: [],
-        rootFolder,
-        searchBuffer,
-        selectedFilePath: null,
-        sidebarVisible: true,
-        version: 6,
-        workspacePanelTab: 'search',
-      }),
-    )
-
-    expect(readWorkspaceCache()).toMatchObject({
-      rootFolder: null,
-      searchBuffer: null,
-    })
-    expect(STORE.has('platform.workspace-state.v1')).toBe(false)
   })
 
   it('drops cached search buffer state for a different workspace', () => {

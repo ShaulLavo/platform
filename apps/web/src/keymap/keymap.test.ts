@@ -138,6 +138,11 @@ describe('command registry', () => {
       title: 'Find',
       vscodeCommandIds: ['actions.find'],
     })
+    expect(platformCommandSpec('editor.toggleFindInSelection')).toMatchObject({
+      category: 'Editor',
+      title: 'Toggle find in selection',
+      vscodeCommandIds: ['toggleFindInSelection'],
+    })
   })
 
   it('exposes appearance commands for the command palette', () => {
@@ -178,6 +183,22 @@ describe('command registry', () => {
         category: 'Editor',
         vscodeCommandIds: [vscodeCommandId],
       })
+    }
+  })
+
+  it('does not expose retired editor command aliases', () => {
+    const commandAliases = editorCommandsWithRetiredAliases.flatMap(
+      (command) => platformCommandSpec(command)?.vscodeCommandIds ?? [],
+    )
+    const bindingCommandIds = defaultBindingPlatforms.flatMap((platform) =>
+      defaultPlatformKeyBindings(platform).flatMap((binding) =>
+        binding.vscodeCommandId ? [binding.vscodeCommandId] : [],
+      ),
+    )
+
+    for (const alias of retiredEditorCommandAliases) {
+      expect(commandAliases).not.toContain(alias)
+      expect(bindingCommandIds).not.toContain(alias)
     }
   })
 })
@@ -365,6 +386,16 @@ const requestedEditorAliases = [
     'editor.action.moveSelectionToNextFindMatch',
   ],
 ] as const satisfies readonly (readonly [PlatformCommandId, string])[]
+
+const retiredEditorCommandAliases = ['toggleSearchScope', 'deleteLeft', 'deleteRight'] as const
+
+const editorCommandsWithRetiredAliases = [
+  'editor.toggleFindInSelection',
+  'editor.deleteBackward',
+  'editor.deleteForward',
+] as const satisfies readonly PlatformCommandId[]
+
+const defaultBindingPlatforms = ['mac', 'windows', 'linux'] as const
 
 function binding(
   keys: string,

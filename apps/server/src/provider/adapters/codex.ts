@@ -44,7 +44,6 @@ const DEFAULT_CODEX_BINARY = 'codex'
 const DEFAULT_CODEX_MODEL = 'gpt-5.5'
 const REQUEST_TIMEOUT_MS = 30_000
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000
-const LEGACY_CODEX_MODELS = new Set(['codex', 'gpt-5-codex'])
 const ANSI_ESCAPE_CHAR = String.fromCharCode(27)
 const ANSI_ESCAPE_REGEX = new RegExp(`${ANSI_ESCAPE_CHAR}\\[[0-9;]*m`, 'g')
 const CODEX_STDERR_LOG_REGEX =
@@ -2429,9 +2428,7 @@ function unavailableCodexSnapshot(checkedAt: string): ProviderSnapshot {
 
 function normalizeCodexModel(model: string | null | undefined) {
   const normalized = model?.trim()
-  if (!normalized || LEGACY_CODEX_MODELS.has(normalized)) return DEFAULT_CODEX_MODEL
-
-  return normalized
+  return normalized || DEFAULT_CODEX_MODEL
 }
 
 function normalizeCodexCwd(cwd: string) {
