@@ -11,6 +11,18 @@ export {
   type TreeEntry,
 } from './tree-entry'
 export type { FileResult } from './file-result'
+export type {
+  GitBranch,
+  GitBranchesResult,
+  GitCommitResult,
+  GitDiffHunk,
+  GitFileDiff,
+  GitFileStatus,
+  GitLineChange,
+  GitRepositoryInfo,
+  GitStatusResult,
+  GitTreeStatus,
+} from './git'
 export type { WatchClientMessage, WatchServerMessage } from './watch-events'
 export {
   normalizeTerminalCols,

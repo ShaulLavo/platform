@@ -1,17 +1,14 @@
-import { client } from '@/lib/client'
 import type { WorkspaceSearchEvent } from '@workspace/contracts'
-import type {
-  FindMatch,
-  FsEntry,
-  PickedFsEntry,
-  RecentResult,
-  SearchScope,
-  ServerInfo,
-  StatResult,
-  TreeResult,
-} from '@/lib/file-system-types'
+import type { FindMatch, FsEntry, PickedFsEntry, SearchScope } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
-import { clientErrors, createRpcError } from '@/lib/structured-errors'
+import {
+  fetchRecentEntries as fetchSharedRecentEntries,
+  fetchServerInfo as fetchSharedServerInfo,
+  fetchTree,
+  recordRecentEntry,
+  statPath,
+} from '@/lib/file-server'
+import { clientErrors } from '@/lib/structured-errors'
 import { streamWorkspaceSearch } from '@/lib/workspace-search-client'
 
 import {
@@ -48,30 +45,16 @@ export async function loadDirectoryData(
   return { currentEntry, entries }
 }
 
-export async function fetchServerInfo(signal: AbortSignal) {
-  const response = await client.health.get({
-    fetch: { signal },
-  })
-
-  if (response.error) throw createRpcError(response.error)
-
-  return response.data as ServerInfo
+export function fetchServerInfo(signal: AbortSignal) {
+  return fetchSharedServerInfo(signal)
 }
 
-export async function fetchRecentEntries(signal: AbortSignal) {
-  const response = await client.fs.recents.get({
-    query: { limit: RECENT_LIMIT },
-    fetch: { signal },
-  })
-
-  if (response.error) throw createRpcError(response.error)
-
-  return (response.data as RecentResult).entries
+export function fetchRecentEntries(signal: AbortSignal) {
+  return fetchSharedRecentEntries(RECENT_LIMIT, signal)
 }
 
 export async function recordRecent(entry: PickedFsEntry) {
-  const response = await client.fs.recents.post({ path: entry.path })
-  if (response.error) throw createRpcError(response.error)
+  await recordRecentEntry(entry.path)
 }
 
 async function loadEntries(
@@ -88,13 +71,7 @@ async function loadEntries(
 }
 
 async function fetchCurrentEntry(path: string, signal: AbortSignal) {
-  const response = await client.fs.stat.get({
-    query: { path },
-    fetch: { signal },
-  })
-  if (response.error) throw createRpcError(response.error)
-
-  const entry = response.data as StatResult
+  const entry = await statPath(path, signal)
   if (!isDirectoryEntry(entry)) {
     throw clientErrors.CURRENT_PATH_NOT_FOLDER()
   }
@@ -107,13 +84,8 @@ async function fetchCurrentEntry(path: string, signal: AbortSignal) {
 }
 
 async function fetchTreeEntries(path: string, signal: AbortSignal) {
-  const response = await client.fs.tree.get({
-    query: { depth: 1, path },
-    fetch: { signal },
-  })
-  if (response.error) throw createRpcError(response.error)
-
-  return (response.data as TreeResult).entries
+  const result = await fetchTree(path, signal)
+  return result.entries
 }
 
 async function streamSearchEntries(

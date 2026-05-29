@@ -1,80 +1,26 @@
-export type TreeStatus = 'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked'
+import type {
+  GitBranch,
+  GitBranchesResult,
+  GitCommitResult,
+  GitDiffHunk,
+  GitFileDiff,
+  GitFileStatus,
+  GitLineChange,
+  GitRepositoryInfo,
+  GitStatusResult,
+  GitTreeStatus,
+} from '@workspace/contracts'
 
-export type FileStatus = {
-  path: string
-  oldPath?: string
-  index: TreeStatus | 'unmodified' | 'conflicted'
-  worktree: TreeStatus | 'unmodified' | 'conflicted'
-  status: TreeStatus | 'conflicted'
-}
-
-export type RepositoryInfo = {
-  branch: string | null
-  commit: string | null
-  ahead: number
-  behind: number
-  path: string
-}
-
-export type StatusResult = {
-  repository: RepositoryInfo | null
-  files: FileStatus[]
-}
-
-export type LineChange = {
-  type: 'added' | 'deleted' | 'context'
-  oldLine: number | null
-  newLine: number | null
-  text: string
-}
-
-export type DiffHunk = {
-  header: string
-  oldStart: number
-  oldLines: number
-  newStart: number
-  newLines: number
-  patch: string
-  changes: LineChange[]
-}
-
-export type FileDiff = {
-  path: string
-  oldPath?: string
-  oldFileMissing?: boolean
-  newFileMissing?: boolean
-  oldObjectId?: string
-  newObjectId?: string
-  oldText?: string
-  newText?: string
-  staged: boolean
-  patch: string
-  hunks: DiffHunk[]
-}
-
-export type Branch = {
-  current: boolean
-  name: string
-  upstream: string | null
-  commit: string
-}
-
-export type BranchesResult = {
-  repository: RepositoryInfo | null
-  branches: Branch[]
-}
-
-export type CommitResult =
-  | {
-      kind: 'committed'
-      output: string
-      repository: RepositoryInfo
-    }
-  | {
-      kind: 'message-file'
-      path: string
-      repository: RepositoryInfo
-    }
+export type TreeStatus = GitTreeStatus
+export type FileStatus = GitFileStatus
+export type RepositoryInfo = GitRepositoryInfo
+export type StatusResult = GitStatusResult
+export type LineChange = GitLineChange
+export type DiffHunk = GitDiffHunk
+export type FileDiff = GitFileDiff
+export type Branch = GitBranch
+export type BranchesResult = GitBranchesResult
+export type CommitResult = GitCommitResult
 
 export type PanelSection = 'staged' | 'worktree'
 

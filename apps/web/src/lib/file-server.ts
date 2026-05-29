@@ -1,5 +1,13 @@
 import { client } from '@/lib/client'
-import type { FileResult, FindMatch, TreeEntry, TreeResult } from '@/lib/file-system-types'
+import type {
+  FileResult,
+  FindMatch,
+  RecentResult,
+  ServerInfo,
+  StatResult,
+  TreeEntry,
+  TreeResult,
+} from '@/lib/file-system-types'
 import { errorMessage as clientErrorMessage } from '@/lib/client-error-taxonomy'
 import { observeClientOperation } from '@/lib/client-logging'
 import {
@@ -194,6 +202,61 @@ export async function renamePath(from: string, to: string) {
       return response.data as TreeEntry
     },
     (entry) => ({ entryType: entry.type, size: entry.size }),
+  )
+}
+
+export async function fetchServerInfo(signal: AbortSignal) {
+  return observeClientOperation(
+    { action: 'fs.server_info', area: 'fs' },
+    async () => {
+      const response = await client.health.get({ fetch: { signal } })
+
+      if (response.error) throw createRpcError(response.error)
+
+      return response.data as ServerInfo
+    },
+    (info) => ({ homePath: info.homePath }),
+  )
+}
+
+export async function statPath(path: string, signal: AbortSignal) {
+  return observeClientOperation(
+    { action: 'fs.stat', area: 'fs', path },
+    async () => {
+      const response = await client.fs.stat.get({ query: { path }, fetch: { signal } })
+
+      if (response.error) throw createRpcError(response.error)
+
+      return response.data as StatResult
+    },
+    (entry) => ({ entryType: entry.type, size: entry.size }),
+  )
+}
+
+export async function fetchRecentEntries(limit: number, signal: AbortSignal) {
+  return observeClientOperation(
+    { action: 'fs.recents', area: 'fs', limit },
+    async () => {
+      const response = await client.fs.recents.get({ query: { limit }, fetch: { signal } })
+
+      if (response.error) throw createRpcError(response.error)
+
+      return (response.data as RecentResult).entries
+    },
+    (entries) => ({ entryCount: entries.length }),
+  )
+}
+
+export async function recordRecentEntry(path: string) {
+  return observeClientOperation(
+    { action: 'fs.record_recent', area: 'fs', path },
+    async () => {
+      const response = await client.fs.recents.post({ path })
+
+      if (response.error) throw createRpcError(response.error)
+
+      return null
+    },
   )
 }
 
