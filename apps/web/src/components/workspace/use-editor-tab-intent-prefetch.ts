@@ -11,7 +11,7 @@ import {
   type EditorTabPrefetchCandidate,
 } from '@/components/workspace/editor-tab-prefetch'
 import { createAnimationFrameScheduler } from '@/components/workspace/intent-prefetch-scheduler'
-import { fileContentQueryOptions } from '@/lib/file-query-cache'
+import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 import { fetchFile } from '@/lib/file-server'
 
 type EditorTabIntentPrefetchOptions<TElement extends HTMLElement> = {
@@ -30,7 +30,7 @@ export function useEditorTabIntentPrefetch<TElement extends HTMLElement = HTMLEl
 
   const prefetchPath = useEffectEvent((path: string) => {
     void queryClient.prefetchQuery({
-      ...fileContentQueryOptions(path),
+      ...fileSnapshotQueryOptions(path),
       queryFn: ({ signal }) => fetchFile(path, signal),
       staleTime: EDITOR_TAB_PREFETCH_STALE_MS,
     })

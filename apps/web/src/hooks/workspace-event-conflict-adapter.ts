@@ -4,9 +4,12 @@ import type {
   EditorConflictStoreApi,
   FilesystemConflict,
 } from '@/features/editor/state/editor-conflict-state'
-import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type {
+  LiveEditorDocument,
+  UnsyncedLiveEditorDocumentInput,
+} from '@/features/editor/state/editor-document-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { setFileContentQueryData } from '@/lib/file-query-cache'
+import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { createFileContent, ensureFolderPath, writeFileContent } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
@@ -17,13 +20,13 @@ import { toast } from 'sonner'
 
 export type WorkspaceConflictContext = {
   conflictStore: EditorConflictStoreApi
-  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
-  ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
+  discardLiveEditorDocument: (path: string) => { wasDirty: boolean }
+  ensureUnsyncedEditorDocument: (input: UnsyncedLiveEditorDocumentInput) => void
   fetchFile: (path: string, signal: AbortSignal) => Promise<FileResult>
-  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
-  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
+  forceReplaceLiveEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  getLiveEditorDocument: (path: string) => LiveEditorDocument | null
   queryClient: QueryClient
-  renameCachedEditorDocument: (from: string, to: string) => { wasDirty: boolean }
+  renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   selectFile: (path: string | null) => void
 }
 
@@ -159,16 +162,12 @@ function ensureConflictEditorDocument(
   conflict: FilesystemConflict,
   context: WorkspaceConflictContext,
 ) {
-  if (context.getCachedEditorDocument(documentId)) return
+  if (context.getLiveEditorDocument(documentId)) return
 
   const content = createMergeConflictDocumentText(conflict)
-  const mtimeMs = Date.now()
-  context.ensureCachedEditorDocument({
+  context.ensureUnsyncedEditorDocument({
     content,
-    mtimeMs,
-    path: documentId,
-    size: content.length,
-    version: syntheticFileVersion(mtimeMs, content.length),
+    id: documentId,
   })
 }
 
@@ -227,25 +226,25 @@ function replaceResolvedEditorFile(
   context: WorkspaceConflictContext,
 ) {
   if (localPath !== file.path) {
-    context.renameCachedEditorDocument(localPath, file.path)
+    context.renameLiveEditorDocument(localPath, file.path)
     moveFileQueryData(context.queryClient, localPath, file.path)
   }
 
-  setFileContentQueryData(context.queryClient, file)
-  context.forceReplaceCachedEditorDocument(file)
+  setFileSnapshotQueryData(context.queryClient, file)
+  context.forceReplaceLiveEditorDocument(file)
 }
 
 function discardResolvedEditorFile(path: string, context: WorkspaceConflictContext) {
-  context.discardCachedEditorDocument(path)
+  context.discardLiveEditorDocument(path)
   context.queryClient.removeQueries({
     exact: true,
-    queryKey: fileSystemKeys.file(path),
+    queryKey: fileSystemKeys.fileSnapshot(path),
   })
 }
 
 function finishConflict(conflict: FilesystemConflict, context: WorkspaceConflictContext) {
   if (conflict.diffDocumentId) {
-    context.discardCachedEditorDocument(conflict.diffDocumentId)
+    context.discardLiveEditorDocument(conflict.diffDocumentId)
   }
   if (conflict.toastId) toast.dismiss(conflict.toastId)
 
@@ -265,7 +264,7 @@ function remoteFileResult(conflict: FilesystemConflict): FileResult {
 }
 
 function localConflictText(path: string, context: WorkspaceConflictContext) {
-  return context.getCachedEditorDocument(path)?.session.materializeFullText() ?? ''
+  return context.getLiveEditorDocument(path)?.buffer.materializeFullText() ?? ''
 }
 
 function createConflictId() {
@@ -278,14 +277,14 @@ function syntheticFileVersion(mtimeMs: number, size: number) {
 }
 
 function moveFileQueryData(queryClient: QueryClient, from: string, to: string) {
-  const file = queryClient.getQueryData<FileResult>(fileSystemKeys.file(from))
+  const file = queryClient.getQueryData<FileResult>(fileSystemKeys.fileSnapshot(from))
   queryClient.removeQueries({
     exact: true,
-    queryKey: fileSystemKeys.file(from),
+    queryKey: fileSystemKeys.fileSnapshot(from),
   })
   if (!file) return
 
-  setFileContentQueryData(queryClient, { ...file, path: to })
+  setFileSnapshotQueryData(queryClient, { ...file, path: to })
 }
 
 function parentPath(path: string, rootPath: string) {

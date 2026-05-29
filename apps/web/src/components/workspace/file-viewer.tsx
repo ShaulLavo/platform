@@ -40,7 +40,9 @@ import {
   type FilesystemConflict,
 } from '@/features/editor/state/editor-conflict-state'
 import {
-  type CachedEditorDocument,
+  type EditorDocumentView,
+  type LiveEditorViewDocument,
+  type LiveEditorDocument,
   useEditorDocumentState,
 } from '@/features/editor/state/editor-document-state'
 import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
@@ -53,7 +55,7 @@ import { SearchBufferEditor } from '@/features/search/search-buffer-editor'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { setFileContentQueryData } from '@/lib/file-query-cache'
+import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { createFileContent, ensureFolderPath, fetchFile, writeFileContent } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
@@ -434,43 +436,60 @@ function EditorPaneTabBody({
   const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
   const { fileState } = useSelectedFile(selectedSearchBuffer || selectedConflictDiff ? null : path)
-  const selectedCachedDocument = useEditorDocumentState((state) =>
-    state.getCachedEditorTabDocument(tabId),
+  const selectedEditorView = useEditorDocumentState((state) => state.viewsByTabId[tabId] ?? null)
+  const selectedLiveDocumentRecord = useEditorDocumentState((state) => {
+    const view = state.viewsByTabId[tabId]
+    if (!view) return null
+
+    return state.liveDocumentsById[view.documentId] ?? null
+  })
+  const selectedLiveDocument = useMemo(
+    () => joinedLiveEditorViewDocument(selectedLiveDocumentRecord, selectedEditorView),
+    [selectedEditorView, selectedLiveDocumentRecord],
   )
-  const ensureCachedEditorTabDocument = useEditorDocumentState(
-    (state) => state.ensureCachedEditorTabDocument,
+  const ensureEditorView = useEditorDocumentState((state) => state.ensureEditorView)
+  const ensureEditorViewForDocument = useEditorDocumentState(
+    (state) => state.ensureEditorViewForDocument,
   )
-  const setCachedEditorDocumentDirty = useEditorDocumentState(
-    (state) => state.setCachedEditorDocumentDirty,
+  const getLiveEditorDocument = useEditorDocumentState((state) => state.getLiveEditorDocument)
+  const setLiveEditorDocumentDirty = useEditorDocumentState(
+    (state) => state.setLiveEditorDocumentDirty,
   )
-  const recordCachedEditorDocumentTextChange = useEditorDocumentState(
-    (state) => state.recordCachedEditorDocumentTextChange,
+  const recordLiveEditorDocumentTextChange = useEditorDocumentState(
+    (state) => state.recordLiveEditorDocumentTextChange,
   )
-  const forceReplaceCachedEditorDocument = useEditorDocumentState(
-    (state) => state.forceReplaceCachedEditorDocument,
+  const forceReplaceLiveEditorDocument = useEditorDocumentState(
+    (state) => state.forceReplaceLiveEditorDocument,
   )
-  const setCachedEditorTabDocumentScrollPosition = useEditorDocumentState(
-    (state) => state.setCachedEditorTabDocumentScrollPosition,
+  const setEditorViewScrollPosition = useEditorDocumentState(
+    (state) => state.setEditorViewScrollPosition,
   )
   const definitionTarget = useEditorUiState((state) => state.definitionTarget)
   const languageServerReferences = useEditorUiState((state) => state.languageServerReferences)
   const setLanguageServerReferences = useEditorUiState((state) => state.setLanguageServerReferences)
   const clearStatusBarSource = useEditorUiState((state) => state.clearStatusBarSource)
   const setStatusBarSource = useEditorUiState((state) => state.setStatusBarSource)
-  const { discardCachedEditorDocument, openDefinition, renameCachedEditorDocument } =
+  const { discardLiveEditorDocument, openDefinition, renameLiveEditorDocument } =
     useEditorCommands()
   const resolveConflictEditorDocument = useConflictEditorResolution({
-    discardCachedEditorDocument,
-    forceReplaceCachedEditorDocument,
-    renameCachedEditorDocument,
+    discardLiveEditorDocument,
+    forceReplaceLiveEditorDocument,
+    renameLiveEditorDocument,
   })
   const selectedFile = selectedConflictDiff || selectedSearchBuffer ? null : readyFile(fileState)
 
   useEffect(() => {
     if (!selectedFile) return
 
-    ensureCachedEditorTabDocument(tabId, selectedFile)
-  }, [ensureCachedEditorTabDocument, selectedFile, tabId])
+    ensureEditorView(tabId, selectedFile)
+  }, [ensureEditorView, selectedFile, tabId])
+
+  useEffect(() => {
+    if (!selectedConflictDiff) return
+    if (!getLiveEditorDocument(path)) return
+
+    ensureEditorViewForDocument(tabId, path)
+  }, [ensureEditorViewForDocument, getLiveEditorDocument, path, selectedConflictDiff, tabId])
 
   useEffect(() => {
     if (!active) return
@@ -478,7 +497,7 @@ function EditorPaneTabBody({
       clearStatusBarSource()
       return
     }
-    if (path && selectedCachedDocument) return
+    if (path && selectedLiveDocument) return
     if (path && fileState.status === 'ready') return
 
     clearStatusBarSource()
@@ -487,19 +506,16 @@ function EditorPaneTabBody({
     clearStatusBarSource,
     fileState.status,
     path,
-    selectedCachedDocument,
+    selectedLiveDocument,
     selectedSearchBuffer,
   ])
 
   const handleEditorTextChange = useCallback(
     (sourceTabId: string, changedPath: string, change: DocumentSessionChange) => {
-      recordCachedEditorDocumentTextChange(changedPath, {
-        change,
-        sourceTabId,
-      })
+      recordLiveEditorDocumentTextChange(changedPath)
       resolveConflictEditorDocument(changedPath, change.textSnapshot)
     },
-    [recordCachedEditorDocumentTextChange, resolveConflictEditorDocument],
+    [recordLiveEditorDocumentTextChange, resolveConflictEditorDocument],
   )
   const handleOpenReferences = useCallback(
     (result: LanguageServerReferencesResult) => {
@@ -521,15 +537,15 @@ function EditorPaneTabBody({
   return (
     <FileViewerBody
       active={active}
-      cachedDocument={selectedCachedDocument}
+      liveDocument={selectedLiveDocument}
       definitionTarget={active ? definitionTarget : null}
       editorKeymapLayers={editorKeymapLayers}
       fileState={fileState}
       languageServerReferences={active ? languageServerReferences : null}
       rootPath={rootPath}
       tabId={tabId}
-      onEditorDirtyChange={setCachedEditorDocumentDirty}
-      onEditorScrollPositionChange={setCachedEditorTabDocumentScrollPosition}
+      onEditorDirtyChange={setLiveEditorDocumentDirty}
+      onEditorScrollPositionChange={setEditorViewScrollPosition}
       onEditorStatusSourceChange={setStatusBarSource}
       onEditorTextChange={handleEditorTextChange}
       onOpenDefinition={openDefinition}
@@ -545,7 +561,7 @@ function FileViewerEmpty() {
 
 function FileViewerBody({
   active,
-  cachedDocument,
+  liveDocument,
   definitionTarget,
   editorKeymapLayers,
   fileState,
@@ -561,7 +577,7 @@ function FileViewerBody({
   onReferencesClose,
 }: {
   active: boolean
-  cachedDocument: CachedEditorDocument | null
+  liveDocument: LiveEditorViewDocument | null
   definitionTarget: LanguageServerDefinitionTarget | null
   editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
@@ -571,7 +587,7 @@ function FileViewerBody({
   onEditorDirtyChange?: (path: string, dirty: boolean) => void
   onEditorScrollPositionChange: (
     tabId: string,
-    scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
+    scrollPosition: NonNullable<LiveEditorViewDocument['scrollPosition']>,
   ) => void
   onEditorStatusSourceChange: (source: EditorStatusBarSource | null) => void
   onEditorTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
@@ -579,7 +595,7 @@ function FileViewerBody({
   onOpenReferences: (result: LanguageServerReferencesResult) => void | boolean
   onReferencesClose: () => void
 }) {
-  if (cachedDocument) {
+  if (liveDocument) {
     return (
       <div
         className={
@@ -591,7 +607,7 @@ function FileViewerBody({
         <Editor
           active={active}
           definitionTarget={definitionTarget}
-          document={cachedDocument}
+          document={liveDocument}
           keymapLayers={editorKeymapLayers}
           rootPath={rootPath}
           tabId={tabId}
@@ -779,14 +795,30 @@ function readyFile(fileState: LoadState<FileResult>) {
   return fileState.data
 }
 
+function joinedLiveEditorViewDocument(
+  document: LiveEditorDocument | null,
+  view: EditorDocumentView | null,
+): LiveEditorViewDocument | null {
+  if (!document) return null
+  if (!view) return null
+  if (view.documentId !== document.id) return null
+
+  return {
+    ...document,
+    scrollPosition: view.scrollPosition,
+    tabId: view.tabId,
+    view: view.view,
+  }
+}
+
 function useConflictEditorResolution({
-  discardCachedEditorDocument,
-  forceReplaceCachedEditorDocument,
-  renameCachedEditorDocument,
+  discardLiveEditorDocument,
+  forceReplaceLiveEditorDocument,
+  renameLiveEditorDocument,
 }: {
-  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
-  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
-  renameCachedEditorDocument: (from: string, to: string) => { wasDirty: boolean }
+  discardLiveEditorDocument: (path: string) => { wasDirty: boolean }
+  forceReplaceLiveEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
 }) {
   const conflictStore = useEditorConflictStoreApi()
   const queryClient = useQueryClient()
@@ -804,20 +836,20 @@ function useConflictEditorResolution({
         pendingResolutionTimeouts.current.delete(path)
         resolveConflictEditorSnapshot(conflictDiff, textSnapshot, {
           conflictStore,
-          discardCachedEditorDocument,
-          forceReplaceCachedEditorDocument,
+          discardLiveEditorDocument,
+          forceReplaceLiveEditorDocument,
           queryClient,
-          renameCachedEditorDocument,
+          renameLiveEditorDocument,
           resolvingConflictIds,
         })
       })
     },
     [
       conflictStore,
-      discardCachedEditorDocument,
-      forceReplaceCachedEditorDocument,
+      discardLiveEditorDocument,
+      forceReplaceLiveEditorDocument,
       queryClient,
-      renameCachedEditorDocument,
+      renameLiveEditorDocument,
     ],
   )
 }
@@ -889,10 +921,10 @@ async function applyConflictEditorResolution(
 
 type ConflictEditorResolutionContext = {
   conflictStore: ReturnType<typeof useEditorConflictStoreApi>
-  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
-  forceReplaceCachedEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  discardLiveEditorDocument: (path: string) => { wasDirty: boolean }
+  forceReplaceLiveEditorDocument: (file: FileResult) => { wasDirty: boolean }
   queryClient: ReturnType<typeof useQueryClient>
-  renameCachedEditorDocument: (from: string, to: string) => { wasDirty: boolean }
+  renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
 }
 
 function replaceResolvedConflictFile(
@@ -901,12 +933,12 @@ function replaceResolvedConflictFile(
   context: ConflictEditorResolutionContext,
 ) {
   if (localPath !== file.path) {
-    context.renameCachedEditorDocument(localPath, file.path)
+    context.renameLiveEditorDocument(localPath, file.path)
     moveFileQueryData(context.queryClient, localPath, file.path)
   }
 
-  setFileContentQueryData(context.queryClient, file)
-  context.forceReplaceCachedEditorDocument(file)
+  setFileSnapshotQueryData(context.queryClient, file)
+  context.forceReplaceLiveEditorDocument(file)
 }
 
 function finishEditorResolvedConflict(
@@ -914,7 +946,7 @@ function finishEditorResolvedConflict(
   context: ConflictEditorResolutionContext,
 ) {
   if (conflict.diffDocumentId) {
-    context.discardCachedEditorDocument(conflict.diffDocumentId)
+    context.discardLiveEditorDocument(conflict.diffDocumentId)
   }
   if (conflict.toastId) toast.dismiss(conflict.toastId)
 
@@ -926,14 +958,14 @@ function moveFileQueryData(
   from: string,
   to: string,
 ) {
-  const file = queryClient.getQueryData<FileResult>(fileSystemKeys.file(from))
+  const file = queryClient.getQueryData<FileResult>(fileSystemKeys.fileSnapshot(from))
   queryClient.removeQueries({
     exact: true,
-    queryKey: fileSystemKeys.file(from),
+    queryKey: fileSystemKeys.fileSnapshot(from),
   })
   if (!file) return
 
-  setFileContentQueryData(queryClient, { ...file, path: to })
+  setFileSnapshotQueryData(queryClient, { ...file, path: to })
 }
 
 function parentPath(path: string) {

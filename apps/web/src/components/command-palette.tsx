@@ -227,15 +227,15 @@ export function CommandPalette({
     enabled: symbolsEnabled,
     queryFn: ({ signal }) => {
       const selectedDocument = selectedFileBackedPath
-        ? documentStore.getState().documents[selectedFileBackedPath]
+        ? documentStore.getState().liveDocumentsById[selectedFileBackedPath]
         : null
 
       return fetchDocumentSymbols({
         path: selectedFileBackedPath ?? '',
         rootPath: rootFolder?.path ?? '',
         signal,
-        text: selectedDocument?.session.isDirty()
-          ? selectedDocument.session.materializeFullText()
+        text: selectedDocument?.buffer.isDirty()
+          ? selectedDocument.buffer.materializeFullText()
           : null,
       })
     },

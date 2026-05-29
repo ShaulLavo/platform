@@ -1,7 +1,7 @@
 import { AppCommandSurface } from '@/components/app-command-surface'
 import { EmptyWorkspace } from '@/components/empty-workspace'
 import { FilePickerDialog } from '@/components/file-picker-dialog'
-import { OpenTabCacheController } from '@/components/open-tab-cache-controller'
+import { OpenTabLiveDocumentController } from '@/components/open-tab-live-document-controller'
 import { WorkspaceView } from '@/components/workspace/workspace-view'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
@@ -53,7 +53,7 @@ export function AppWorkspace({
 
   return (
     <>
-      <OpenTabCacheController />
+      <OpenTabLiveDocumentController />
       <AppCommandSurface
         bindings={keymapBindings}
         requestCloseTab={onRequestCloseTab}

@@ -1,7 +1,7 @@
 import { errorMessage, fetchFile } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
-import { fileContentQueryOptions } from '@/lib/file-query-cache'
+import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 import { idleState, type LoadState } from '@/lib/load-state'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -11,7 +11,7 @@ export function useSelectedFile(selectedFilePath: string | null) {
   const queryClient = useQueryClient()
   const filePath = fileBackedDocumentPath(selectedFilePath)
   const query = useQuery<FileResult>({
-    ...fileContentQueryOptions(filePath ?? ''),
+    ...fileSnapshotQueryOptions(filePath ?? ''),
     enabled: Boolean(filePath),
     placeholderData: (previousFile) => previousFile,
     queryFn: ({ signal }) => fetchFile(filePath ?? '', signal),
@@ -26,7 +26,7 @@ export function useSelectedFile(selectedFilePath: string | null) {
 
     queryClient.removeQueries({
       exact: true,
-      queryKey: fileSystemKeys.file(filePath),
+      queryKey: fileSystemKeys.fileSnapshot(filePath),
     })
   }
 

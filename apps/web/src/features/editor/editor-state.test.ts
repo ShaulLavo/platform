@@ -39,6 +39,7 @@ import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
 } from '@editor/lsp-plugin'
+import { createEditorBufferSession } from '@editor/core'
 
 describe('editor path utilities', () => {
   it('adds, selects, and renames open tab paths', () => {
@@ -274,266 +275,133 @@ describe('editor pane state', () => {
   })
 })
 
-describe('editor document store', () => {
-  it('force replaces dirty cached documents and clears dirty state', () => {
+describe('editor live document store', () => {
+  it('force replaces dirty live documents and clears dirty state', () => {
     const store = createEditorDocumentStore()
-    const original = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
-    original.session.applyText(' edit')
-    store.getState().setCachedEditorDocumentDirty('src/file.ts', true)
+    const original = store.getState().ensureLiveEditorDocument(file('src/file.ts', 'local'))
+    createEditorBufferSession(original.buffer).applyText(' edit')
+    store.getState().setLiveEditorDocumentDirty('src/file.ts', true)
 
-    const result = store
-      .getState()
-      .forceReplaceCachedEditorDocument(file('src/file.ts', 'remote', 2))
-    const replaced = store.getState().getCachedEditorDocument('src/file.ts')
+    const result = store.getState().forceReplaceLiveEditorDocument(file('src/file.ts', 'remote', 2))
+    const replaced = store.getState().getLiveEditorDocument('src/file.ts')
 
     expect(result.wasDirty).toBe(true)
-    expect(replaced?.session.materializeFullText()).toBe('remote')
+    expect(replaced?.buffer.materializeFullText()).toBe('remote')
     expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(false)
   })
 
-  it('tracks scroll position on cached documents', () => {
+  it('stores tab views separately from live document buffers', () => {
     const store = createEditorDocumentStore()
-    const document = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
+    const tabA = store.getState().ensureEditorView('tab-a', file('src/file.ts', 'abc'))
+    const tabB = store.getState().ensureEditorView('tab-b', file('src/file.ts', 'abc'))
 
-    store.getState().setCachedEditorDocumentScrollPosition('src/file.ts', {
-      left: 10,
-      top: 20,
-    })
-
-    const scrolledDocument = store.getState().getCachedEditorDocument('src/file.ts')
-    expect(scrolledDocument?.session).toBe(document.session)
-    expect(scrolledDocument?.scrollPosition).toEqual({
-      left: 10,
-      top: 20,
-    })
-  })
-
-  it('tracks scroll position on cached tab documents without replacing the document', () => {
-    const store = createEditorDocumentStore()
-    const document = store
-      .getState()
-      .ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'local'))
-
-    store.getState().setCachedEditorTabDocumentScrollPosition('tab-a', {
-      left: 12,
-      top: 24,
-    })
-
-    const scrolledDocument = store.getState().getCachedEditorTabDocument('tab-a')
-    expect(scrolledDocument?.session).toBe(document.session)
-    expect(scrolledDocument?.scrollPosition).toEqual({
-      left: 12,
-      top: 24,
-    })
-  })
-
-  it('skips unchanged scroll position updates', () => {
-    const store = createEditorDocumentStore()
-    store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
-    let updates = 0
-    const unsubscribe = store.subscribe((state, previousState) => {
-      if (state.scrollPositionByPath !== previousState.scrollPositionByPath) {
-        updates += 1
-      }
-    })
-
-    store.getState().setCachedEditorDocumentScrollPosition('src/file.ts', {
-      left: 10,
-      top: 20,
-    })
-    store.getState().setCachedEditorDocumentScrollPosition('src/file.ts', {
-      left: 10,
-      top: 20,
-    })
-    unsubscribe()
-
-    expect(updates).toBe(1)
-  })
-
-  it('marks cached documents clean after saving without replacing the session', () => {
-    const store = createEditorDocumentStore()
-    const original = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
-    original.session.applyText('saved')
-    store.getState().setCachedEditorDocumentDirty('src/file.ts', true)
-
-    const result = store.getState().markCachedEditorDocumentClean('src/file.ts', 2)
-    const saved = store.getState().getCachedEditorDocument('src/file.ts')
-
-    expect(result).toBe(true)
-    expect(saved?.session).toBe(original.session)
-    expect(saved?.revision).toBe(2)
-    expect(saved?.session.isDirty()).toBe(false)
-    expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(false)
-  })
-
-  it('records dirty text changes even after the path is already dirty', () => {
-    const store = createEditorDocumentStore()
-    store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
-    const initialRevision = store.getState().documentContentRevisions['src/file.ts']
-
-    store.getState().recordCachedEditorDocumentTextChange('src/file.ts')
-    const firstEditRevision = store.getState().documentContentRevisions['src/file.ts']
-    store.getState().recordCachedEditorDocumentTextChange('src/file.ts')
-
-    expect(store.getState().dirtyContentRevision).toBe(2)
-    expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(true)
-    expect(firstEditRevision).not.toBe(initialRevision)
-    expect(store.getState().documentContentRevisions['src/file.ts']).not.toBe(firstEditRevision)
-  })
-
-  it('shares duplicate tab document text and document-wide history while preserving per-tab scroll', () => {
-    const store = createEditorDocumentStore()
-    store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
-    store.getState().ensureCachedEditorTabDocument('tab-b', file('src/file.ts', 'abc'))
-
-    store.getState().setCachedEditorTabDocumentScrollPosition('tab-a', {
+    store.getState().setEditorViewScrollPosition('tab-a', {
       left: 4,
       top: 8,
     })
-    const sourceTab = store.getState().getCachedEditorTabDocument('tab-a')
-    const siblingTab = store.getState().getCachedEditorTabDocument('tab-b')
-    if (!sourceTab || !siblingTab) throw new Error('Missing cached tab documents')
 
-    const change = sourceTab.session.applyText('!')
-    store.getState().recordCachedEditorDocumentTextChange('src/file.ts', {
-      change,
-      sourceTabId: 'tab-a',
+    expect(Object.keys(store.getState().liveDocumentsById)).toEqual(['src/file.ts'])
+    expect(Object.keys(store.getState().viewsByTabId).sort()).toEqual(['tab-a', 'tab-b'])
+    expect(tabA.buffer).toBe(tabB.buffer)
+    expect(tabA.view).not.toBe(tabB.view)
+    expect(store.getState().getEditorViewDocument('tab-a')?.scrollPosition).toEqual({
+      left: 4,
+      top: 8,
     })
+    expect(store.getState().getEditorViewDocument('tab-b')?.scrollPosition).toBeUndefined()
+  })
 
-    const syncedTabA = store.getState().getCachedEditorTabDocument('tab-a')
-    const syncedTabB = store.getState().getCachedEditorTabDocument('tab-b')
+  it('shares text and undo across duplicate views without replay sync code', () => {
+    const store = createEditorDocumentStore()
+    const tabA = store.getState().ensureEditorView('tab-a', file('src/file.ts', 'abc'))
+    const tabB = store.getState().ensureEditorView('tab-b', file('src/file.ts', 'abc'))
+    const sessionA = createEditorBufferSession(tabA.buffer, tabA.view)
+    const sessionB = createEditorBufferSession(tabB.buffer, tabB.view)
+
+    sessionA.applyText('!')
+    store.getState().recordLiveEditorDocumentTextChange('src/file.ts')
 
     expect(
-      store.getState().getCachedEditorDocument('src/file.ts')?.session.materializeFullText(),
+      store.getState().getLiveEditorDocument('src/file.ts')?.buffer.materializeFullText(),
     ).toBe('abc!')
-    expect(syncedTabA?.session.materializeFullText()).toBe('abc!')
-    expect(syncedTabB?.session.materializeFullText()).toBe('abc!')
-    expect(syncedTabA?.session.canUndo()).toBe(true)
-    expect(syncedTabB?.session.canUndo()).toBe(true)
-    expect(syncedTabA?.scrollPosition).toEqual({ left: 4, top: 8 })
-    expect(syncedTabB?.scrollPosition).toBeUndefined()
-    expect(syncedTabA?.buffer).toBe(sourceTab.buffer)
-    expect(syncedTabB?.buffer).toBe(siblingTab.buffer)
-    expect(syncedTabA?.session).toBe(sourceTab.session)
-    expect(syncedTabB?.session).toBe(siblingTab.session)
+    expect(sessionB.materializeFullText()).toBe('abc!')
+    expect(sessionA.canUndo()).toBe(true)
+    expect(sessionB.canUndo()).toBe(true)
     expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(true)
   })
 
-  it('keeps the source tab buffer and view session for single-tab local edits', () => {
+  it('removes closed views while retaining dirty live documents', () => {
     const store = createEditorDocumentStore()
-    const tab = store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
-    let tabDocumentUpdates = 0
-    const unsubscribe = store.subscribe((state, previousState) => {
-      if (state.tabDocuments !== previousState.tabDocuments) {
-        tabDocumentUpdates += 1
-      }
-    })
+    const tab = store.getState().ensureEditorView('tab-a', file('src/file.ts', 'abc'))
+    createEditorBufferSession(tab.buffer, tab.view).applyText('!')
+    store.getState().recordLiveEditorDocumentTextChange('src/file.ts')
 
-    const change = tab.session.applyText('!')
-    store.getState().recordCachedEditorDocumentTextChange('src/file.ts', {
-      change,
-      sourceTabId: 'tab-a',
-    })
-    unsubscribe()
+    expect(store.getState().removeEditorView('tab-a')).toBe(true)
+    expect(store.getState().evictCleanUnviewedLiveEditorDocument('src/file.ts')).toBe(false)
 
-    const updatedTab = store.getState().getCachedEditorTabDocument('tab-a')
-    expect(updatedTab?.buffer).toBe(tab.buffer)
-    expect(updatedTab?.session).toBe(tab.session)
-    expect(updatedTab?.view).toBe(tab.view)
-    expect(tabDocumentUpdates).toBe(1)
+    expect(store.getState().viewsByTabId['tab-a']).toBeUndefined()
+    expect(store.getState().liveDocumentsById['src/file.ts']).toBeDefined()
   })
 
-  it('creates clean tab sessions without materializing canonical text', () => {
+  it('evicts clean unviewed live documents', () => {
     const store = createEditorDocumentStore()
-    const canonical = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'abc'))
-    canonical.session.materializeFullText = () => {
-      throw new Error('clean tab session should use file content')
-    }
+    store.getState().ensureEditorView('tab-a', file('src/file.ts', 'abc'))
 
-    const tab = store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
+    expect(store.getState().removeEditorView('tab-a')).toBe(true)
+    expect(store.getState().evictCleanUnviewedLiveEditorDocument('src/file.ts')).toBe(true)
 
-    expect(tab.session.getTextSnapshot().readRange(0, tab.session.getSnapshot().length)).toBe('abc')
+    expect(store.getState().viewsByTabId['tab-a']).toBeUndefined()
+    expect(store.getState().liveDocumentsById['src/file.ts']).toBeUndefined()
   })
 
-  it('syncs tab document text from canonical edits without replaying the source', () => {
+  it('tracks content revisions by live document path', () => {
     const store = createEditorDocumentStore()
-    const canonical = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'abc'))
-    store.getState().ensureCachedEditorTabDocument('tab-a', file('src/file.ts', 'abc'))
-
-    const change = canonical.session.applyText('!')
-    store.getState().recordCachedEditorDocumentTextChange('src/file.ts', {
-      edits: change.edits,
-      source: 'canonical',
-    })
-
-    expect(canonical.session.materializeFullText()).toBe('abc!')
-    expect(
-      store.getState().getCachedEditorTabDocument('tab-a')?.session.materializeFullText(),
-    ).toBe('abc!')
-  })
-
-  it('tracks content revisions by cached document path', () => {
-    const store = createEditorDocumentStore()
-    store.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
-    store.getState().ensureCachedEditorDocument(file('src/b.ts', 'b'))
+    store.getState().ensureLiveEditorDocument(file('src/a.ts', 'a'))
+    store.getState().ensureLiveEditorDocument(file('src/b.ts', 'b'))
     const aRevision = store.getState().documentContentRevisions['src/a.ts']
     const bRevision = store.getState().documentContentRevisions['src/b.ts']
 
-    store.getState().recordCachedEditorDocumentTextChange('src/a.ts')
+    store.getState().recordLiveEditorDocumentTextChange('src/a.ts')
 
     expect(store.getState().documentContentRevisions['src/a.ts']).not.toBe(aRevision)
     expect(store.getState().documentContentRevisions['src/b.ts']).toBe(bRevision)
   })
 
-  it('moves and clears cached document content revisions', () => {
+  it('moves and clears live document content revisions', () => {
     const store = createEditorDocumentStore()
-    store.getState().ensureCachedEditorDocument(file('src/old.ts', 'a'))
+    store.getState().ensureLiveEditorDocument(file('src/old.ts', 'a'))
     const revision = store.getState().documentContentRevisions['src/old.ts']
 
-    store.getState().renameCachedEditorDocumentPath('src/old.ts', 'src/new.ts')
+    store.getState().renameLiveEditorDocumentPath('src/old.ts', 'src/new.ts')
     expect(store.getState().documentContentRevisions['src/new.ts']).toBe(revision)
 
-    store.getState().deleteCachedEditorDocument('src/new.ts')
+    store.getState().deleteLiveEditorDocument('src/new.ts')
 
     expect(store.getState().documentContentRevisions['src/old.ts']).toBeUndefined()
     expect(store.getState().documentContentRevisions['src/new.ts']).toBeUndefined()
     expect(revision).toEqual(expect.any(String))
   })
 
-  it('preserves the session when a forced refresh has matching content', () => {
+  it('keeps matching-content refreshes on the same live buffer', () => {
     const store = createEditorDocumentStore()
-    const original = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local'))
-    original.session.applyText(' edit')
-    store.getState().setCachedEditorDocumentDirty('src/file.ts', true)
+    const original = store.getState().ensureLiveEditorDocument(file('src/file.ts', 'local edit'))
+    store.getState().setLiveEditorDocumentDirty('src/file.ts', true)
 
     const result = store
       .getState()
-      .forceReplaceCachedEditorDocument(file('src/file.ts', 'local edit', 2))
-    const refreshed = store.getState().getCachedEditorDocument('src/file.ts')
+      .forceReplaceLiveEditorDocument(file('src/file.ts', 'local edit', 2))
+    const refreshed = store.getState().getLiveEditorDocument('src/file.ts')
 
     expect(result.wasDirty).toBe(true)
-    expect(refreshed?.session).toBe(original.session)
-    expect(refreshed?.revision).toBe(2)
-    expect(refreshed?.session.isDirty()).toBe(false)
+    expect(refreshed?.buffer).toBe(original.buffer)
+    expect(refreshed?.sync).toEqual(
+      expect.objectContaining({
+        kind: 'file',
+        mtimeMs: 2,
+      }),
+    )
+    expect(refreshed?.buffer.isDirty()).toBe(false)
     expect(store.getState().dirtyFilePaths.has('src/file.ts')).toBe(false)
-  })
-
-  it('skips forced refresh updates when content and revision already match', () => {
-    const store = createEditorDocumentStore()
-    const original = store.getState().ensureCachedEditorDocument(file('src/file.ts', 'local', 2))
-    let documentUpdates = 0
-    const unsubscribe = store.subscribe((state, previousState) => {
-      if (state.documents !== previousState.documents) documentUpdates += 1
-    })
-
-    const result = store
-      .getState()
-      .forceReplaceCachedEditorDocument(file('src/file.ts', 'local', 2))
-    unsubscribe()
-
-    expect(result.wasDirty).toBe(false)
-    expect(documentUpdates).toBe(0)
-    expect(store.getState().getCachedEditorDocument('src/file.ts')).toBe(original)
   })
 })
 
@@ -597,7 +465,7 @@ describe('editor commands', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts'], 'src/a.ts'),
     )
-    documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
+    documentStore.getState().ensureLiveEditorDocument(file('src/a.ts', 'a'))
     const statusBarSource = {} as never
     uiStore.setState({ statusBarSource })
 
@@ -614,7 +482,7 @@ describe('editor commands', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts'], 'src/a.ts'),
     )
-    documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
+    documentStore.getState().ensureLiveEditorDocument(file('src/a.ts', 'a'))
 
     const result = commands.openDefinition(definitionTarget('src/target.ts'))
 
@@ -626,20 +494,20 @@ describe('editor commands', () => {
     expect(documentStore.getState().fallbackDocumentPath).toBe('src/a.ts')
   })
 
-  it('discards cached documents and closes deleted tabs', () => {
+  it('discards live documents and closes deleted tabs', () => {
     const { commands, documentStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts', 'src/b.ts'], 'src/a.ts'),
     )
-    documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
-    documentStore.getState().setCachedEditorDocumentDirty('src/a.ts', true)
+    documentStore.getState().ensureLiveEditorDocument(file('src/a.ts', 'a'))
+    documentStore.getState().setLiveEditorDocumentDirty('src/a.ts', true)
 
-    const result = commands.discardCachedEditorDocument('src/a.ts')
+    const result = commands.discardLiveEditorDocument('src/a.ts')
 
     expect(result.wasDirty).toBe(true)
     expect(workspaceStore.getState().openFilePaths).toEqual(['src/b.ts'])
     expect(workspaceStore.getState().selectedFilePath).toBe('src/b.ts')
     expect(workspaceStore.getState().editorHistory).toEqual([])
-    expect(documentStore.getState().getCachedEditorDocument('src/a.ts')).toBe(null)
+    expect(documentStore.getState().getLiveEditorDocument('src/a.ts')).toBe(null)
     expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([])
   })
 
@@ -647,8 +515,8 @@ describe('editor commands', () => {
     const { commands, documentStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts', 'src/b.ts'], 'src/a.ts'),
     )
-    documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
-    documentStore.getState().setCachedEditorDocumentDirty('src/a.ts', true)
+    documentStore.getState().ensureLiveEditorDocument(file('src/a.ts', 'a'))
+    documentStore.getState().setLiveEditorDocumentDirty('src/a.ts', true)
 
     const result = commands.discardAndCloseTab(tabIdForPath(workspaceStore, 'src/a.ts'))
 
@@ -657,7 +525,7 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().selectedFilePath).toBe('src/b.ts')
     expect(workspaceStore.getState().editorHistory).toEqual([])
     expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual(['src/a.ts'])
-    expect(documentStore.getState().getCachedEditorDocument('src/a.ts')).toBe(null)
+    expect(documentStore.getState().getLiveEditorDocument('src/a.ts')).toBe(null)
     expect(documentStore.getState().dirtyFilePaths.has('src/a.ts')).toBe(false)
   })
 
@@ -730,8 +598,8 @@ describe('editor commands', () => {
     const { commands, documentStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts', 'src/b.ts', 'src/c.ts'], 'src/b.ts'),
     )
-    documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
-    documentStore.getState().setCachedEditorDocumentDirty('src/a.ts', true)
+    documentStore.getState().ensureLiveEditorDocument(file('src/a.ts', 'a'))
+    documentStore.getState().setLiveEditorDocumentDirty('src/a.ts', true)
     workspaceStore.setState({
       editorHistory: ['src/b.ts', 'src/a.ts'],
       recentlyClosedEditorPaths: ['src/old.ts'],
@@ -752,16 +620,16 @@ describe('editor commands', () => {
     expect(documentStore.getState().dirtyFilePaths.has('src/a.ts')).toBe(true)
   })
 
-  it('renames tabs, cached documents, dirty markers, and LSP targets', () => {
+  it('renames tabs, live documents, dirty markers, and LSP targets', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/old.ts'], 'src/old.ts'),
     )
-    documentStore.getState().ensureCachedEditorDocument(file('src/old.ts', 'a'))
-    documentStore.getState().setCachedEditorDocumentDirty('src/old.ts', true)
+    documentStore.getState().ensureLiveEditorDocument(file('src/old.ts', 'a'))
+    documentStore.getState().setLiveEditorDocumentDirty('src/old.ts', true)
     uiStore.getState().setDefinitionTarget(definitionTarget('src/old.ts'))
     uiStore.getState().setLanguageServerReferences(referencesResult('src/old.ts'))
 
-    const result = commands.renameCachedEditorDocument('src/old.ts', 'src/new.ts')
+    const result = commands.renameLiveEditorDocument('src/old.ts', 'src/new.ts')
 
     expect(result.wasDirty).toBe(true)
     expect(workspaceStore.getState().openFilePaths).toEqual(['src/new.ts'])
@@ -769,7 +637,7 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().editorHistory).toEqual(['src/new.ts'])
     expect(documentStore.getState().dirtyFilePaths.has('src/old.ts')).toBe(false)
     expect(documentStore.getState().dirtyFilePaths.has('src/new.ts')).toBe(true)
-    expect(documentStore.getState().getCachedEditorDocument('src/new.ts')?.path).toBe('src/new.ts')
+    expect(documentStore.getState().getLiveEditorDocument('src/new.ts')?.path).toBe('src/new.ts')
     expect(uiStore.getState().definitionTarget?.path).toBe('src/new.ts')
     expect(uiStore.getState().languageServerReferences?.targets[0]?.path).toBe('src/new.ts')
   })
@@ -778,7 +646,7 @@ describe('editor commands', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts'], 'src/a.ts'),
     )
-    documentStore.getState().ensureCachedEditorDocument(file('src/a.ts', 'a'))
+    documentStore.getState().ensureLiveEditorDocument(file('src/a.ts', 'a'))
     uiStore.getState().setDefinitionTarget(definitionTarget('src/a.ts'))
     uiStore.getState().setLanguageServerReferences(referencesResult('src/a.ts'))
 

@@ -1,253 +1,301 @@
 import {
   contentRevisionForText,
-  contentRevisionForTextSnapshot,
   textSnapshotEqualsText,
 } from '@/features/editor/utils/text-snapshot'
 import type { FileResult } from '@/lib/file-system-types'
 import {
-  createEditorBufferSession,
   createEditorTextBuffer,
   createEditorViewSession,
-  type DocumentSession,
+  type EditorScrollPosition,
   type EditorTextBuffer,
   type EditorViewSession,
-  type EditorScrollPosition,
 } from '@editor/core'
 
-export type WorkspaceDocumentProjection = {
-  contentRevision: string
-  fileVersion: string
-  path: string
-  revision: number
-  scrollPosition?: EditorScrollPosition
-  session: DocumentSession
+export type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
+
+export type LiveDocumentSync =
+  | {
+      fileVersion: string
+      kind: 'file'
+      mtimeMs: number
+      path: string
+      state: LiveDocumentSyncState
+    }
+  | {
+      kind: 'none'
+    }
+
+export type LiveEditorDocument = {
   buffer: EditorTextBuffer
+  contentRevision: string
+  id: string
+  localRevision: number
+  path: string
+  sync: LiveDocumentSync
+}
+
+export type EditorDocumentView = {
+  documentId: string
+  scrollPosition?: EditorScrollPosition
+  tabId: string
   view: EditorViewSession
+}
+
+export type LiveEditorViewDocument = LiveEditorDocument & {
+  scrollPosition?: EditorScrollPosition
+  tabId: string
+  view: EditorViewSession
+}
+
+export type UnsyncedLiveEditorDocumentInput = {
+  content: string
+  id: string
 }
 
 export type WorkspaceDocumentServiceState = {
   documentContentRevisions: Readonly<Record<string, string>>
   dirtyContentRevision: number
   dirtyFilePaths: ReadonlySet<string>
-  documents: Readonly<Record<string, WorkspaceDocumentProjection>>
-  scrollPositionByPath: Readonly<Record<string, EditorScrollPosition>>
+  liveDocumentsById: Readonly<Record<string, LiveEditorDocument>>
   scrollPositionByTabId: Readonly<Record<string, EditorScrollPosition>>
-  tabDocuments: Readonly<Record<string, WorkspaceDocumentProjection>>
+  viewsByTabId: Readonly<Record<string, EditorDocumentView>>
 }
 
-type WorkspaceDocumentRecord = {
+type LiveEditorDocumentRecord = {
   buffer: EditorTextBuffer
   contentRevision: string
-  fileVersion: string
+  id: string
+  localRevision: number
   path: string
-  revision: number
-  scrollPosition?: EditorScrollPosition
-  session: DocumentSession
-  view: EditorViewSession
+  sync: LiveDocumentSync
 }
 
-type WorkspaceDocumentViewRecord = {
-  path: string
+type EditorDocumentViewRecord = {
+  documentId: string
   scrollPosition?: EditorScrollPosition
-  session: DocumentSession
   tabId: string
   view: EditorViewSession
 }
 
 export class WorkspaceDocumentService {
   private readonly documentContentRevisions = new Map<string, string>()
-  private readonly documents = new Map<string, WorkspaceDocumentRecord>()
   private readonly dirtyFilePaths = new Set<string>()
-  private readonly tabDocuments = new Map<string, WorkspaceDocumentViewRecord>()
   private dirtyContentRevision = 0
+  private readonly liveDocumentsById = new Map<string, LiveEditorDocumentRecord>()
+  private readonly viewsByTabId = new Map<string, EditorDocumentViewRecord>()
 
   clear(): void {
     this.documentContentRevisions.clear()
-    this.documents.clear()
     this.dirtyFilePaths.clear()
-    this.tabDocuments.clear()
     this.dirtyContentRevision = 0
+    this.liveDocumentsById.clear()
+    this.viewsByTabId.clear()
   }
 
-  deleteDocument(path: string): { hadCachedDocument: boolean; wasDirty: boolean } {
-    const hadCachedDocument = this.documents.delete(path)
-    const wasDirty = this.isDirtyPath(path)
+  deleteLiveDocument(documentId: string): { hadLiveDocument: boolean; wasDirty: boolean } {
+    const document = this.liveDocumentsById.get(documentId)
+    const path = document?.path ?? documentId
+    const wasDirty = this.isDirtyDocumentId(documentId)
+    const hadLiveDocument = this.liveDocumentsById.delete(documentId)
+
     this.dirtyFilePaths.delete(path)
-    this.documentContentRevisions.delete(path)
+    this.documentContentRevisions.delete(documentId)
 
-    for (const [tabId, view] of this.tabDocuments) {
-      if (view.path !== path) continue
+    for (const [tabId, view] of this.viewsByTabId) {
+      if (view.documentId !== documentId) continue
 
-      this.tabDocuments.delete(tabId)
+      this.viewsByTabId.delete(tabId)
     }
 
-    return { hadCachedDocument, wasDirty }
+    return { hadLiveDocument, wasDirty }
   }
 
-  ensureDocument(file: FileResult): WorkspaceDocumentProjection {
-    const cached = this.documents.get(file.path)
-    if (cached?.buffer.isDirty()) return this.documentProjection(cached)
-    if (cached?.fileVersion === file.version) return this.documentProjection(cached)
+  ensureLiveDocument(file: FileResult): LiveEditorDocument {
+    const existing = this.liveDocumentsById.get(file.path)
+    if (existing?.buffer.isDirty()) return this.liveDocumentProjection(existing)
+    if (fileSyncVersion(existing) === file.version) return this.liveDocumentProjection(existing)
 
-    const record = this.createDocumentRecord(file, cached?.scrollPosition)
-    this.documents.set(file.path, record)
+    const record = this.createFileDocumentRecord(file)
+    this.liveDocumentsById.set(file.path, record)
     this.documentContentRevisions.set(file.path, record.contentRevision)
     this.dirtyFilePaths.delete(file.path)
-    this.rebindViewsForPath(file.path)
-    return this.documentProjection(record)
+    this.rebindViewsForDocument(file.path)
+    return this.liveDocumentProjection(record)
   }
 
-  ensureTabDocument(tabId: string, file: FileResult): WorkspaceDocumentProjection {
-    const document = this.ensureDocument(file)
-    const existing = this.tabDocuments.get(tabId)
-    if (
-      existing?.path === file.path &&
-      existing.session.getSnapshot() === document.session.getSnapshot()
-    ) {
-      return this.tabProjection(existing)
+  ensureView(tabId: string, file: FileResult): LiveEditorViewDocument {
+    const document = this.ensureLiveDocument(file)
+    return this.ensureViewForDocument(tabId, document.id)
+  }
+
+  ensureUnsyncedDocument(input: UnsyncedLiveEditorDocumentInput): LiveEditorDocument {
+    const existing = this.liveDocumentsById.get(input.id)
+    if (existing?.buffer.isDirty()) return this.liveDocumentProjection(existing)
+    if (existing && textSnapshotEqualsText(existing.buffer.getTextSnapshot(), input.content)) {
+      return this.liveDocumentProjection(existing)
+    }
+
+    const record = this.createUnsyncedDocumentRecord(input)
+    this.liveDocumentsById.set(input.id, record)
+    this.documentContentRevisions.set(input.id, record.contentRevision)
+    this.rebindViewsForDocument(input.id)
+    return this.liveDocumentProjection(record)
+  }
+
+  ensureViewForDocument(tabId: string, documentId: string): LiveEditorViewDocument {
+    const document = this.getRequiredLiveDocument(documentId)
+    const existing = this.viewsByTabId.get(tabId)
+    if (existing?.documentId === document.id) {
+      return this.viewDocumentProjection(existing)
     }
 
     const view = createEditorViewSession(document.buffer, `tab:${tabId}`)
     view.setScrollPosition(existing?.scrollPosition)
-    const session = createEditorBufferSession(document.buffer, view)
-    this.tabDocuments.set(tabId, {
-      path: file.path,
+    this.viewsByTabId.set(tabId, {
+      documentId: document.id,
       scrollPosition: existing?.scrollPosition,
-      session,
       tabId,
       view,
     })
-    return this.tabProjection(this.tabDocuments.get(tabId)!)
+    return this.viewDocumentProjection(this.viewsByTabId.get(tabId)!)
   }
 
-  evictCleanDocument(path: string): boolean {
-    const cached = this.documents.get(path)
-    if (!cached) return false
-    if (cached.buffer.isDirty()) return false
+  evictCleanLiveDocument(documentId: string): boolean {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return false
+    if (document.buffer.isDirty()) return false
 
-    this.deleteDocument(path)
+    this.deleteLiveDocument(documentId)
     return true
   }
 
-  evictCleanTabDocument(tabId: string): boolean {
-    const cached = this.tabDocuments.get(tabId)
-    if (!cached) return false
-    if (this.documents.get(cached.path)?.buffer.isDirty()) return false
+  evictCleanUnviewedLiveDocument(documentId: string): boolean {
+    if (this.hasViewsForDocument(documentId)) return false
 
-    this.tabDocuments.delete(tabId)
+    return this.evictCleanLiveDocument(documentId)
+  }
+
+  removeView(tabId: string): boolean {
+    const view = this.viewsByTabId.get(tabId)
+    if (!view) return false
+
+    this.viewsByTabId.delete(tabId)
     return true
   }
 
-  forceReplaceDocument(file: FileResult): { changed: boolean; wasDirty: boolean } {
-    const wasDirty = this.isDirtyPath(file.path)
-    const cached = this.documents.get(file.path)
-    if (cached && !wasDirty && cached.fileVersion === file.version) {
-      if (textSnapshotEqualsText(cached.buffer.getTextSnapshot(), file.content)) {
+  forceReplaceLiveDocument(file: FileResult): { changed: boolean; wasDirty: boolean } {
+    const wasDirty = this.isDirtyDocumentId(file.path)
+    const existing = this.liveDocumentsById.get(file.path)
+    if (existing && !wasDirty && fileSyncVersion(existing) === file.version) {
+      if (textSnapshotEqualsText(existing.buffer.getTextSnapshot(), file.content)) {
         return { changed: false, wasDirty: false }
       }
     }
 
-    const record = this.replacementRecord(file, cached)
+    const record = this.replacementRecord(file, existing)
 
-    this.documents.set(file.path, record)
+    this.liveDocumentsById.set(file.path, record)
     this.documentContentRevisions.set(file.path, record.contentRevision)
     this.dirtyFilePaths.delete(file.path)
-    this.rebindViewsForPath(file.path)
+    this.rebindViewsForDocument(file.path)
     return { changed: true, wasDirty }
   }
 
-  getDocument(path: string): WorkspaceDocumentProjection | null {
-    const record = this.documents.get(path)
+  getLiveDocument(documentId: string): LiveEditorDocument | null {
+    const record = this.liveDocumentsById.get(documentId)
     if (!record) return null
 
-    return this.documentProjection(record)
+    return this.liveDocumentProjection(record)
   }
 
-  getTabDocument(tabId: string): WorkspaceDocumentProjection | null {
-    const record = this.tabDocuments.get(tabId)
+  getView(tabId: string): EditorDocumentView | null {
+    const record = this.viewsByTabId.get(tabId)
     if (!record) return null
 
-    return this.tabProjection(record)
+    return this.viewProjection(record)
   }
 
-  hasDocument(path: string): boolean {
-    return this.documents.has(path)
+  getViewDocument(tabId: string): LiveEditorViewDocument | null {
+    const record = this.viewsByTabId.get(tabId)
+    if (!record) return null
+
+    return this.viewDocumentProjection(record)
   }
 
-  markClean(path: string, revision: number, fileVersion?: string): boolean {
-    const cached = this.documents.get(path)
-    if (!cached) return false
-
-    cached.buffer.markClean()
-    cached.revision = revision
-    if (fileVersion) cached.fileVersion = fileVersion
-    cached.contentRevision = contentRevisionForTextSnapshot(cached.buffer.getTextSnapshot())
-    this.documentContentRevisions.set(path, cached.contentRevision)
-    this.dirtyFilePaths.delete(path)
-    return true
+  hasLiveDocument(documentId: string): boolean {
+    return this.liveDocumentsById.has(documentId)
   }
 
   markSaved({
     fileVersion,
-    path,
-    revision,
+    documentId,
+    mtimeMs,
     savedContentRevision,
     savedText,
   }: {
     fileVersion: string
-    path: string
-    revision: number
+    documentId: string
+    mtimeMs: number
     savedContentRevision: string
     savedText: string
   }): boolean {
-    const cached = this.documents.get(path)
-    if (!cached) return false
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return false
+    if (document.sync.kind !== 'file') return false
 
-    cached.revision = revision
-    cached.fileVersion = fileVersion
-    if (cached.contentRevision !== savedContentRevision) return false
-    if (!textSnapshotEqualsText(cached.buffer.getTextSnapshot(), savedText)) return false
+    document.sync.mtimeMs = mtimeMs
+    document.sync.fileVersion = fileVersion
+    document.sync.state = 'idle'
+    if (document.contentRevision !== savedContentRevision) return false
+    if (!textSnapshotEqualsText(document.buffer.getTextSnapshot(), savedText)) return false
 
-    cached.buffer.markClean()
-    this.dirtyFilePaths.delete(path)
+    document.buffer.markClean()
+    document.localRevision = document.buffer.getRevision()
+    this.dirtyFilePaths.delete(document.path)
     return true
   }
 
-  recordTextChange(path: string): void {
+  recordTextChange(documentId: string): void {
     this.dirtyContentRevision += 1
     const contentRevision = editedContentRevision(this.dirtyContentRevision)
-    const cached = this.documents.get(path)
-    if (cached) {
-      cached.contentRevision = contentRevision
-      this.documentContentRevisions.set(path, contentRevision)
+    const document = this.liveDocumentsById.get(documentId)
+    if (document) {
+      document.contentRevision = contentRevision
+      document.localRevision = document.buffer.getRevision()
+      this.documentContentRevisions.set(documentId, contentRevision)
+      this.dirtyFilePaths.add(document.path)
+      return
     }
 
-    this.dirtyFilePaths.add(path)
+    this.dirtyFilePaths.add(documentId)
   }
 
-  renameDocument(from: string, to: string): { wasDirty: boolean } {
-    const wasDirty = this.isDirtyPath(from)
-    const cached = this.documents.get(from)
+  renameLiveDocument(from: string, to: string): { wasDirty: boolean } {
+    const wasDirty = this.isDirtyDocumentId(from)
+    const document = this.liveDocumentsById.get(from)
     const contentRevision = this.documentContentRevisions.get(from)
 
-    this.documents.delete(from)
+    this.liveDocumentsById.delete(from)
     this.documentContentRevisions.delete(from)
     this.renameDirtyPath(from, to)
 
     if (contentRevision !== undefined) this.documentContentRevisions.set(to, contentRevision)
-    if (cached) {
-      cached.path = to
-      this.documents.set(to, cached)
+    if (document) {
+      document.id = to
+      document.path = to
+      if (document.sync.kind === 'file') document.sync.path = to
+      this.liveDocumentsById.set(to, document)
     }
 
-    for (const view of this.tabDocuments.values()) {
-      if (view.path === from) view.path = to
+    for (const view of this.viewsByTabId.values()) {
+      if (view.documentId === from) view.documentId = to
     }
 
     return { wasDirty }
   }
 
-  setDirty(path: string, dirty: boolean): void {
+  setDirty(documentId: string, dirty: boolean): void {
+    const path = this.liveDocumentsById.get(documentId)?.path ?? documentId
     if (dirty) {
       this.dirtyFilePaths.add(path)
       return
@@ -256,23 +304,13 @@ export class WorkspaceDocumentService {
     this.dirtyFilePaths.delete(path)
   }
 
-  setDocumentScrollPosition(path: string, scrollPosition: EditorScrollPosition): boolean {
-    const document = this.documents.get(path)
-    if (!document) return false
-    if (scrollPositionsEqual(document.scrollPosition, scrollPosition)) return false
+  setViewScrollPosition(tabId: string, scrollPosition: EditorScrollPosition): boolean {
+    const view = this.viewsByTabId.get(tabId)
+    if (!view) return false
+    if (scrollPositionsEqual(view.scrollPosition, scrollPosition)) return false
 
-    document.scrollPosition = scrollPosition
-    document.view.setScrollPosition(scrollPosition)
-    return true
-  }
-
-  setTabScrollPosition(tabId: string, scrollPosition: EditorScrollPosition): boolean {
-    const document = this.tabDocuments.get(tabId)
-    if (!document) return false
-    if (scrollPositionsEqual(document.scrollPosition, scrollPosition)) return false
-
-    document.scrollPosition = scrollPosition
-    document.view.setScrollPosition(scrollPosition)
+    view.scrollPosition = scrollPosition
+    view.view.setScrollPosition(scrollPosition)
     return true
   }
 
@@ -281,114 +319,151 @@ export class WorkspaceDocumentService {
       documentContentRevisions: Object.fromEntries(this.documentContentRevisions),
       dirtyContentRevision: this.dirtyContentRevision,
       dirtyFilePaths: new Set(this.dirtyFilePaths),
-      documents: Object.fromEntries(
-        Array.from(this.documents, ([path, document]) => [path, this.documentProjection(document)]),
-      ),
-      scrollPositionByPath: Object.fromEntries(
-        Array.from(this.documents)
-          .filter(([, document]) => document.scrollPosition !== undefined)
-          .map(([path, document]) => [path, document.scrollPosition!]),
+      liveDocumentsById: Object.fromEntries(
+        Array.from(this.liveDocumentsById, ([documentId, document]) => [
+          documentId,
+          this.liveDocumentProjection(document),
+        ]),
       ),
       scrollPositionByTabId: Object.fromEntries(
-        Array.from(this.tabDocuments)
-          .filter(([, document]) => document.scrollPosition !== undefined)
-          .map(([tabId, document]) => [tabId, document.scrollPosition!]),
+        Array.from(this.viewsByTabId)
+          .filter(([, view]) => view.scrollPosition !== undefined)
+          .map(([tabId, view]) => [tabId, view.scrollPosition!]),
       ),
-      tabDocuments: Object.fromEntries(
-        Array.from(this.tabDocuments, ([tabId, document]) => [tabId, this.tabProjection(document)]),
+      viewsByTabId: Object.fromEntries(
+        Array.from(this.viewsByTabId, ([tabId, view]) => [tabId, this.viewProjection(view)]),
       ),
     }
   }
 
-  private createDocumentRecord(
-    file: FileResult,
-    scrollPosition?: EditorScrollPosition,
-  ): WorkspaceDocumentRecord {
+  private createFileDocumentRecord(file: FileResult): LiveEditorDocumentRecord {
     const buffer = createEditorTextBuffer(file.content)
-    const view = createEditorViewSession(buffer, `document:${file.path}`)
-    view.setScrollPosition(scrollPosition)
     buffer.markClean()
 
     return {
       buffer,
       contentRevision: contentRevisionForText(file.content),
-      fileVersion: file.version,
+      id: file.path,
+      localRevision: buffer.getRevision(),
       path: file.path,
-      revision: file.mtimeMs,
-      scrollPosition,
-      session: createEditorBufferSession(buffer, view),
-      view,
+      sync: {
+        fileVersion: file.version,
+        kind: 'file',
+        mtimeMs: file.mtimeMs,
+        path: file.path,
+        state: 'idle',
+      },
+    }
+  }
+
+  private createUnsyncedDocumentRecord(
+    input: UnsyncedLiveEditorDocumentInput,
+  ): LiveEditorDocumentRecord {
+    const buffer = createEditorTextBuffer(input.content)
+    buffer.markClean()
+
+    return {
+      buffer,
+      contentRevision: contentRevisionForText(input.content),
+      id: input.id,
+      localRevision: buffer.getRevision(),
+      path: input.id,
+      sync: { kind: 'none' },
     }
   }
 
   private replacementRecord(
     file: FileResult,
-    cached: WorkspaceDocumentRecord | undefined,
-  ): WorkspaceDocumentRecord {
-    if (!cached) return this.createDocumentRecord(file)
-    if (!textSnapshotEqualsText(cached.buffer.getTextSnapshot(), file.content)) {
-      return this.createDocumentRecord(file, cached.scrollPosition)
+    existing: LiveEditorDocumentRecord | undefined,
+  ): LiveEditorDocumentRecord {
+    if (!existing) return this.createFileDocumentRecord(file)
+    if (!textSnapshotEqualsText(existing.buffer.getTextSnapshot(), file.content)) {
+      return this.createFileDocumentRecord(file)
     }
 
-    cached.buffer.markClean()
-    cached.revision = file.mtimeMs
-    cached.fileVersion = file.version
-    cached.contentRevision = contentRevisionForText(file.content)
-    return cached
+    existing.buffer.markClean()
+    existing.localRevision = existing.buffer.getRevision()
+    existing.contentRevision = contentRevisionForText(file.content)
+    existing.sync = {
+      fileVersion: file.version,
+      kind: 'file',
+      mtimeMs: file.mtimeMs,
+      path: file.path,
+      state: 'idle',
+    }
+    return existing
   }
 
-  private rebindViewsForPath(path: string): void {
-    const document = this.documents.get(path)
+  private rebindViewsForDocument(documentId: string): void {
+    const document = this.liveDocumentsById.get(documentId)
     if (!document) return
 
-    for (const [tabId, view] of this.tabDocuments) {
-      if (view.path !== path) continue
+    for (const [tabId, view] of this.viewsByTabId) {
+      if (view.documentId !== documentId) continue
 
       const nextView = createEditorViewSession(document.buffer, `tab:${tabId}`)
       nextView.setScrollPosition(view.scrollPosition)
-      this.tabDocuments.set(tabId, {
+      this.viewsByTabId.set(tabId, {
         ...view,
-        session: createEditorBufferSession(document.buffer, nextView),
         view: nextView,
       })
     }
   }
 
-  private documentProjection(document: WorkspaceDocumentRecord): WorkspaceDocumentProjection {
+  private liveDocumentProjection(document: LiveEditorDocumentRecord): LiveEditorDocument {
     return {
       buffer: document.buffer,
       contentRevision: document.contentRevision,
-      fileVersion: document.fileVersion,
+      id: document.id,
+      localRevision: document.localRevision,
       path: document.path,
-      revision: document.revision,
-      scrollPosition: document.scrollPosition,
-      session: document.session,
-      view: document.view,
+      sync: syncProjection(document.sync),
     }
   }
 
-  private tabProjection(view: WorkspaceDocumentViewRecord): WorkspaceDocumentProjection {
-    const document = this.documents.get(view.path)
-    if (!document) {
-      throw new Error(`Missing workspace document for tab ${view.tabId}`)
-    }
-
+  private viewProjection(view: EditorDocumentViewRecord): EditorDocumentView {
     return {
-      buffer: document.buffer,
-      contentRevision: document.contentRevision,
-      fileVersion: document.fileVersion,
-      path: view.path,
-      revision: document.revision,
+      documentId: view.documentId,
       scrollPosition: view.scrollPosition,
-      session: view.session,
+      tabId: view.tabId,
       view: view.view,
     }
   }
 
-  private isDirtyPath(path: string): boolean {
-    if (this.dirtyFilePaths.has(path)) return true
+  private viewDocumentProjection(view: EditorDocumentViewRecord): LiveEditorViewDocument {
+    const document = this.getRequiredLiveDocument(view.documentId)
 
-    return this.documents.get(path)?.buffer.isDirty() === true
+    return {
+      ...this.liveDocumentProjection(document),
+      scrollPosition: view.scrollPosition,
+      tabId: view.tabId,
+      view: view.view,
+    }
+  }
+
+  private getRequiredLiveDocument(documentId: string): LiveEditorDocumentRecord {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) {
+      throw new Error(`Missing live document ${documentId}`)
+    }
+
+    return document
+  }
+
+  private hasViewsForDocument(documentId: string): boolean {
+    for (const view of this.viewsByTabId.values()) {
+      if (view.documentId === documentId) return true
+    }
+
+    return false
+  }
+
+  private isDirtyDocumentId(documentId: string): boolean {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return this.dirtyFilePaths.has(documentId)
+    if (this.dirtyFilePaths.has(document.path)) return true
+
+    return document.buffer.isDirty()
   }
 
   private renameDirtyPath(from: string, to: string): void {
@@ -408,4 +483,17 @@ function scrollPositionsEqual(
   if (!current) return false
 
   return current.left === next.left && current.top === next.top
+}
+
+function fileSyncVersion(document: LiveEditorDocumentRecord | undefined) {
+  if (!document) return null
+  if (document.sync.kind !== 'file') return null
+
+  return document.sync.fileVersion
+}
+
+function syncProjection(sync: LiveDocumentSync): LiveDocumentSync {
+  if (sync.kind === 'none') return { kind: 'none' }
+
+  return { ...sync }
 }

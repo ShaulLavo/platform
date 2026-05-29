@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react'
 import {
   useEditorDocumentState,
   useEditorDocumentStoreApi,
-  type CachedEditorDocument,
+  type LiveEditorDocument,
 } from '@/features/editor/state/editor-document-state'
 import { textLineAt } from '@/features/editor/utils/editor-position'
 import { compareSearchPaths } from '@/features/search/search-sort'
@@ -40,10 +40,10 @@ export function LanguageServerReferencesPane({
 }: LanguageServerReferencesPaneProps) {
   const documentStore = useEditorDocumentStoreApi()
   const documentRevisionKey = useEditorDocumentState((state) =>
-    referenceDocumentsRevisionKey(state.documents, references.targets),
+    referenceDocumentsRevisionKey(state.liveDocumentsById, references.targets),
   )
   const documents = useMemo(
-    () => referenceDocumentsByPath(documentStore.getState().documents, references.targets),
+    () => referenceDocumentsByPath(documentStore.getState().liveDocumentsById, references.targets),
     [documentRevisionKey, documentStore, references.targets],
   )
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(() => new Set())
@@ -153,7 +153,7 @@ function ReferenceRow({
   target,
   onOpenReference,
 }: {
-  readonly document: CachedEditorDocument | undefined
+  readonly document: LiveEditorDocument | undefined
   readonly target: LanguageServerDefinitionTarget
   onOpenReference(target: LanguageServerDefinitionTarget): void | boolean
 }) {
@@ -213,11 +213,11 @@ function referencePathLabel(path: string, rootPath: string) {
 }
 
 function referencePreview(
-  document: CachedEditorDocument | undefined,
+  document: LiveEditorDocument | undefined,
   target: LanguageServerDefinitionTarget,
 ) {
   const line = document
-    ? textLineAt(document.session.getTextSnapshot(), target.range.start.line)
+    ? textLineAt(document.buffer.getTextSnapshot(), target.range.start.line)
     : null
   const trimmed = line?.trim()
   if (trimmed) return trimmed
@@ -227,7 +227,7 @@ function referencePreview(
 }
 
 function referenceDocumentsRevisionKey(
-  documents: Readonly<Record<string, CachedEditorDocument>>,
+  documents: Readonly<Record<string, LiveEditorDocument>>,
   targets: readonly LanguageServerDefinitionTarget[],
 ) {
   let key = ''
@@ -238,17 +238,24 @@ function referenceDocumentsRevisionKey(
 
     seen.add(target.path)
     const document = documents[target.path]
-    key += `${target.path}\u0000${document?.contentRevision ?? ''}\u0000${document?.revision ?? ''}\u0001`
+    key += `${target.path}\u0000${document?.contentRevision ?? ''}\u0000${referenceDocumentSnapshotRevision(document)}\u0001`
   }
 
   return key
 }
 
+function referenceDocumentSnapshotRevision(document: LiveEditorDocument | undefined) {
+  if (!document) return ''
+  if (document.sync.kind === 'file') return document.sync.mtimeMs.toString()
+
+  return document.localRevision.toString()
+}
+
 function referenceDocumentsByPath(
-  documents: Readonly<Record<string, CachedEditorDocument>>,
+  documents: Readonly<Record<string, LiveEditorDocument>>,
   targets: readonly LanguageServerDefinitionTarget[],
 ) {
-  const result: Record<string, CachedEditorDocument | undefined> = {}
+  const result: Record<string, LiveEditorDocument | undefined> = {}
 
   for (const target of targets) {
     if (target.path in result) continue

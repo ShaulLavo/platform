@@ -1,9 +1,9 @@
 export const fileSystemKeys = {
   all: ['file-system'] as const,
-  files: () => [...fileSystemKeys.all, 'files'] as const,
-  file: (path: string) => [...fileSystemKeys.files(), path] as const,
+  fileSnapshots: () => [...fileSystemKeys.all, 'file-snapshots'] as const,
+  fileSnapshot: (path: string) => [...fileSystemKeys.fileSnapshots(), path] as const,
   quickOpenFiles: (rootPath: string, query: string) =>
-    [...fileSystemKeys.files(), 'quick-open', rootPath, query] as const,
+    [...fileSystemKeys.fileSnapshots(), 'quick-open', rootPath, query] as const,
   trees: () => [...fileSystemKeys.all, 'trees'] as const,
   tree: (rootPath: string) => [...fileSystemKeys.trees(), rootPath] as const,
   treeDirectory: (rootPath: string, treePath: string, path: string) =>

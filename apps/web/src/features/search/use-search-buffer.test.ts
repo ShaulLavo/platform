@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { createDocumentSession } from '@editor/core'
+import { createEditorTextBuffer } from '@editor/core'
 import type { WorkspaceSearchEvent } from '@workspace/contracts'
 
-import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
 import {
   clientOnlyWorkspaceSearchProvider,
   createFirstPaintSearchEventBatcher,
@@ -70,15 +70,15 @@ describe('workspace search buffer query', () => {
 
 describe('workspace search dirty revision key', () => {
   it('tracks dirty document revisions without reading document text', () => {
-    const dirtySession = createDocumentSession('local dirty text')
-    dirtySession.materializeFullText = () => {
+    const dirtyBuffer = createEditorTextBuffer('local dirty text')
+    dirtyBuffer.materializeFullText = () => {
       throw new Error('dirty key should not read document text')
     }
 
     const key = dirtySearchRevisionKey(
       {
-        'outside/file.ts': cachedDocument('outside/file.ts', 1),
-        'repo/src/dirty.ts': cachedDocument('repo/src/dirty.ts', 7, dirtySession),
+        'outside/file.ts': liveDocument('outside/file.ts', 1),
+        'repo/src/dirty.ts': liveDocument('repo/src/dirty.ts', 7, dirtyBuffer),
       },
       new Set(['outside/file.ts', 'repo/src/dirty.ts']),
       { 'repo/src/dirty.ts': 'e:4' },
@@ -94,7 +94,7 @@ describe('workspace search dirty revision key', () => {
   it('does not change for dirty paths outside the workspace', () => {
     expect(
       dirtySearchRevisionKey(
-        { 'outside/file.ts': cachedDocument('outside/file.ts', 1) },
+        { 'outside/file.ts': liveDocument('outside/file.ts', 1) },
         new Set(['outside/file.ts']),
         { 'outside/file.ts': 'e:1' },
         'repo',
@@ -102,10 +102,10 @@ describe('workspace search dirty revision key', () => {
     ).toBe('')
   })
 
-  it('changes for dirty content, file, path, and session revisions', () => {
-    const session = createDocumentSession('same')
+  it('changes for dirty content, file, path, and buffer revisions', () => {
+    const buffer = createEditorTextBuffer('same')
     const key = dirtySearchRevisionKey(
-      { 'repo/src/a.ts': cachedDocument('repo/src/a.ts', 1, session) },
+      { 'repo/src/a.ts': liveDocument('repo/src/a.ts', 1, buffer) },
       new Set(['repo/src/a.ts']),
       { 'repo/src/a.ts': 'e:1' },
       'repo',
@@ -113,7 +113,7 @@ describe('workspace search dirty revision key', () => {
 
     expect(
       dirtySearchRevisionKey(
-        { 'repo/src/a.ts': cachedDocument('repo/src/a.ts', 1, session) },
+        { 'repo/src/a.ts': liveDocument('repo/src/a.ts', 1, buffer) },
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:1' },
         'repo',
@@ -121,7 +121,7 @@ describe('workspace search dirty revision key', () => {
     ).toBe(key)
     expect(
       dirtySearchRevisionKey(
-        { 'repo/src/a.ts': cachedDocument('repo/src/a.ts', 1, session) },
+        { 'repo/src/a.ts': liveDocument('repo/src/a.ts', 1, buffer) },
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:2' },
         'repo',
@@ -129,7 +129,7 @@ describe('workspace search dirty revision key', () => {
     ).not.toBe(key)
     expect(
       dirtySearchRevisionKey(
-        { 'repo/src/a.ts': cachedDocument('repo/src/a.ts', 2, session) },
+        { 'repo/src/a.ts': liveDocument('repo/src/a.ts', 2, buffer) },
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:1' },
         'repo',
@@ -138,7 +138,7 @@ describe('workspace search dirty revision key', () => {
     expect(
       dirtySearchRevisionKey(
         {
-          'repo/src/a.ts': cachedDocument('repo/src/a.ts', 1, createDocumentSession('same')),
+          'repo/src/a.ts': liveDocument('repo/src/a.ts', 1, createEditorTextBuffer('same')),
         },
         new Set(['repo/src/a.ts']),
         { 'repo/src/a.ts': 'e:1' },
@@ -147,7 +147,7 @@ describe('workspace search dirty revision key', () => {
     ).not.toBe(key)
     expect(
       dirtySearchRevisionKey(
-        { 'repo/src/b.ts': cachedDocument('repo/src/b.ts', 1, session) },
+        { 'repo/src/b.ts': liveDocument('repo/src/b.ts', 1, buffer) },
         new Set(['repo/src/b.ts']),
         { 'repo/src/b.ts': 'e:1' },
         'repo',
@@ -544,16 +544,24 @@ function createRecordingBatcher() {
   }
 }
 
-function cachedDocument(
+function liveDocument(
   path: string,
-  revision = 1,
-  session = createDocumentSession(''),
-): CachedEditorDocument {
+  mtimeMs = 1,
+  buffer = createEditorTextBuffer(''),
+): LiveEditorDocument {
   return {
-    contentRevision: `h:test:${revision.toString(36)}`,
+    buffer,
+    contentRevision: `h:test:${mtimeMs.toString(36)}`,
+    id: path,
+    localRevision: buffer.getRevision(),
     path,
-    revision,
-    session,
+    sync: {
+      fileVersion: `test:${mtimeMs}`,
+      kind: 'file',
+      mtimeMs,
+      path,
+      state: 'idle',
+    },
   }
 }
 

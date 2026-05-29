@@ -1,8 +1,8 @@
-import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
 import type { WriteFileContentOptions } from '@/lib/file-server'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
-import type { TextEdit } from '@editor/core'
+import { createEditorBufferSession } from '@editor/core'
 
 import {
   applyWorkspaceSearchReplaceEdits,
@@ -19,11 +19,8 @@ export type WorkspaceSearchReplaceResult = {
 export type WorkspaceSearchReplaceContext = {
   cacheFile: (file: FileResult) => void
   fetchFile: (path: string, signal: AbortSignal) => Promise<FileResult>
-  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
-  recordCachedEditorDocumentTextChange: (
-    path: string,
-    options?: { edits?: readonly TextEdit[]; source?: 'canonical' },
-  ) => void
+  getLiveEditorDocument: (path: string) => LiveEditorDocument | null
+  recordLiveEditorDocumentTextChange: (path: string) => void
   signal: AbortSignal
   writeFileContent: (
     path: string,
@@ -103,16 +100,16 @@ async function replaceWorkspaceSearchPath({
   query: WorkspaceSearchQuery
   replaceText: string
 }): Promise<PathReplaceResult> {
-  const cached = context.getCachedEditorDocument(path)
-  if (cached) {
-    return replaceCachedDocument(cached, matches, query, replaceText, context)
+  const liveDocument = context.getLiveEditorDocument(path)
+  if (liveDocument) {
+    return replaceLiveDocument(liveDocument, matches, query, replaceText, context)
   }
 
   return replaceDiskFile(path, matches, query, replaceText, context)
 }
 
-function replaceCachedDocument(
-  document: CachedEditorDocument,
+function replaceLiveDocument(
+  document: LiveEditorDocument,
   matches: readonly WorkspaceSearchMatch[],
   query: WorkspaceSearchQuery,
   replaceText: string,
@@ -122,17 +119,14 @@ function replaceCachedDocument(
     matches,
     query,
     replaceText,
-    text: document.session.getTextSnapshot(),
+    text: document.buffer.getTextSnapshot(),
   })
   if (plan.edits.length === 0) {
     return skippedPathResult(plan.skippedCount)
   }
 
-  document.session.applyEdits(plan.edits)
-  context.recordCachedEditorDocumentTextChange(document.path, {
-    edits: plan.edits,
-    source: 'canonical',
-  })
+  createEditorBufferSession(document.buffer).applyEdits(plan.edits)
+  context.recordLiveEditorDocumentTextChange(document.path)
 
   return {
     changed: true,

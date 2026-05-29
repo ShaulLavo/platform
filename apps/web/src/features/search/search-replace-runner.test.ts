@@ -1,8 +1,8 @@
-import { createDocumentSession } from '@editor/core'
+import { createEditorTextBuffer } from '@editor/core'
 import { describe, expect, it } from 'bun:test'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
-import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import {
   replaceWorkspaceSearchMatches,
@@ -18,11 +18,8 @@ const QUERY: WorkspaceSearchQuery = {
 }
 
 describe('workspace search replacement runner', () => {
-  it('applies replacements to cached editor memory and marks it dirty', async () => {
-    const document = cachedDocument('repo/src/app.ts', 'needle')
-    document.session.materializeFullText = () => {
-      throw new Error('cached replacement should not materialize full text')
-    }
+  it('applies replacements to live editor memory and marks it dirty', async () => {
+    const document = liveDocument('repo/src/app.ts', 'needle')
     const dirtyPaths: string[] = []
     const result = await replaceWorkspaceSearchMatches({
       context: testContext({
@@ -35,9 +32,9 @@ describe('workspace search replacement runner', () => {
     })
 
     expect(
-      document.session.getTextSnapshot().readRange(0, document.session.getSnapshot().length),
+      document.buffer.getTextSnapshot().readRange(0, document.buffer.getSnapshot().length),
     ).toBe('pin')
-    expect(document.session.isDirty()).toBe(true)
+    expect(document.buffer.isDirty()).toBe(true)
     expect(dirtyPaths).toEqual([document.path])
     expect(result).toEqual({
       changedFiles: 1,
@@ -47,15 +44,19 @@ describe('workspace search replacement runner', () => {
     })
   })
 
-  it('writes uncached files with an mtime guard and caches the saved result', async () => {
-    const cachedFiles: FileResult[] = []
-    const writes: Array<{ baseVersion?: string | null; content: string; expectedMtimeMs?: number | null }> = []
+  it('writes disk files with an mtime guard and caches the saved snapshot', async () => {
+    const snapshotFiles: FileResult[] = []
+    const writes: Array<{
+      baseVersion?: string | null
+      content: string
+      expectedMtimeMs?: number | null
+    }> = []
     const result = await replaceWorkspaceSearchMatches({
       context: testContext({
         files: {
           'repo/src/app.ts': fileResult('repo/src/app.ts', 'needle'),
         },
-        onCacheFile: (file) => cachedFiles.push(file),
+        onCacheFile: (file) => snapshotFiles.push(file),
         onWrite: (_path, content, options) => {
           writes.push({
             baseVersion: options?.baseVersion,
@@ -71,19 +72,19 @@ describe('workspace search replacement runner', () => {
     })
 
     expect(writes).toEqual([{ baseVersion: 'test:100:6', content: 'pin', expectedMtimeMs: 100 }])
-    expect(cachedFiles).toEqual([
+    expect(snapshotFiles).toEqual([
       expect.objectContaining({
         content: 'pin',
-      mtimeMs: 200,
-      path: 'repo/src/app.ts',
-      size: 3,
-      version: 'test:200:3',
+        mtimeMs: 200,
+        path: 'repo/src/app.ts',
+        size: 3,
+        version: 'test:200:3',
       }),
     ])
     expect(result.replacedMatches).toBe(1)
   })
 
-  it('reports failed uncached writes as skipped file matches', async () => {
+  it('reports failed disk writes as skipped file matches', async () => {
     const result = await replaceWorkspaceSearchMatches({
       context: testContext({
         files: {
@@ -129,7 +130,7 @@ function testContext({
     version: `test:101:${content.length}`,
   }),
 }: {
-  documents?: Record<string, CachedEditorDocument>
+  documents?: Record<string, LiveEditorDocument>
   files?: Record<string, FileResult>
   onCacheFile?: (file: FileResult) => void
   onDirty?: (path: string) => void
@@ -142,22 +143,30 @@ function testContext({
   return {
     cacheFile: onCacheFile,
     fetchFile: async (path) => files[path] ?? missingFile(path),
-    getCachedEditorDocument: (path) => documents[path] ?? null,
-    recordCachedEditorDocumentTextChange: onDirty,
+    getLiveEditorDocument: (path) => documents[path] ?? null,
+    recordLiveEditorDocumentTextChange: onDirty,
     signal: new AbortController().signal,
     writeFileContent: async (path, content, options) => onWrite(path, content, options),
   }
 }
 
-function cachedDocument(path: string, text: string): CachedEditorDocument {
-  const session = createDocumentSession(text)
-  session.markClean()
+function liveDocument(path: string, text: string): LiveEditorDocument {
+  const buffer = createEditorTextBuffer(text)
+  buffer.markClean()
 
   return {
+    buffer,
     contentRevision: 'h:test',
+    id: path,
+    localRevision: buffer.getRevision(),
     path,
-    revision: 100,
-    session,
+    sync: {
+      fileVersion: 'test:100',
+      kind: 'file',
+      mtimeMs: 100,
+      path,
+      state: 'idle',
+    },
   }
 }
 

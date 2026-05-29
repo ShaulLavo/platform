@@ -17,7 +17,7 @@ import {
 import { selectionForDefinition } from '@/features/editor/utils/editor-position'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
 import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
-import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorViewDocument } from '@/features/editor/state/editor-document-state'
 import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import {
@@ -30,7 +30,7 @@ import type { DocumentSessionChange, EditorKeymapLayer, EditorKeymapOptions } fr
 
 type EditorProps = {
   active: boolean
-  document: CachedEditorDocument
+  document: LiveEditorViewDocument
   keymapLayers: readonly EditorKeymapLayer[]
   rootPath: string
   tabId: string
@@ -40,7 +40,7 @@ type EditorProps = {
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
   onScrollPositionChange?: (
     path: string,
-    scrollPosition: NonNullable<CachedEditorDocument['scrollPosition']>,
+    scrollPosition: NonNullable<LiveEditorViewDocument['scrollPosition']>,
   ) => void
   onStatusSourceChange?: (source: EditorStatusBarSource) => void
   onTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
@@ -49,7 +49,7 @@ type EditorProps = {
 export function Editor({
   active,
   definitionTarget,
-  document: cachedDocument,
+  document: liveDocument,
   keymapLayers,
   rootPath,
   tabId,
@@ -69,13 +69,13 @@ export function Editor({
   const { editorTheme } = useEditorColorTheme()
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
     enabled: active,
-    filePath: cachedDocument.path,
+    filePath: liveDocument.path,
     rootPath,
     onOpenDefinition,
     onOpenReferences,
   })
   const scrollPersistencePlugin = useScrollPersistencePlugin({
-    document: cachedDocument,
+    document: liveDocument,
     onScrollPositionChange,
   })
   const criticalEditorCorePlugins = useMemo(() => createCriticalEditorCorePlugins(), [])
@@ -91,15 +91,15 @@ export function Editor({
   )
   const document = useMemo(
     () => ({
-      documentId: cachedDocument.path,
-      buffer: cachedDocument.buffer,
-      languageId: languageIdForFilePath(cachedDocument.path),
-      revision: cachedDocument.contentRevision,
-      scrollPosition: cachedDocument.scrollPosition,
+      documentId: liveDocument.id,
+      buffer: liveDocument.buffer,
+      languageId: languageIdForFilePath(liveDocument.path),
+      revision: liveDocument.contentRevision,
+      scrollPosition: liveDocument.scrollPosition,
       text: '',
-      view: cachedDocument.view,
+      view: liveDocument.view,
     }),
-    [cachedDocument],
+    [liveDocument],
   )
   const editorKeymap = useMemo(
     () =>
@@ -120,8 +120,8 @@ export function Editor({
     onChange: (state, change) => {
       if (!change || change.kind === 'selection' || change.kind === 'none') return
 
-      onTextChange?.(tabId, cachedDocument.path, change)
-      onDirtyChange?.(cachedDocument.path, state.isDirty)
+      onTextChange?.(tabId, liveDocument.path, change)
+      onDirtyChange?.(liveDocument.path, state.isDirty)
     },
     plugins,
     theme: editorTheme,
@@ -130,12 +130,12 @@ export function Editor({
     () =>
       definitionTarget
         ? selectionForDefinition(
-            cachedDocument.path,
-            cachedDocument.session.getTextSnapshot(),
+            liveDocument.path,
+            liveDocument.buffer.getTextSnapshot(),
             definitionTarget,
           )
         : null,
-    [cachedDocument.path, cachedDocument.session, definitionTarget],
+    [definitionTarget, liveDocument.buffer, liveDocument.path],
   )
 
   useEffect(() => {
@@ -143,10 +143,10 @@ export function Editor({
 
     onStatusSourceChange?.({
       controller,
-      filePath: cachedDocument.path,
+      filePath: liveDocument.path,
       languageServerStatusSource,
     })
-  }, [active, cachedDocument.path, controller, languageServerStatusSource, onStatusSourceChange])
+  }, [active, controller, languageServerStatusSource, liveDocument.path, onStatusSourceChange])
 
   useLayoutEffect(() => {
     return () => {
@@ -155,9 +155,9 @@ export function Editor({
         scrollPositionFromSnapshot(controller.getSnapshot())
       if (!scrollPosition) return
 
-      onScrollPositionChange?.(cachedDocument.path, scrollPosition)
+      onScrollPositionChange?.(liveDocument.path, scrollPosition)
     }
-  }, [cachedDocument.path, controller, onScrollPositionChange])
+  }, [controller, liveDocument.path, onScrollPositionChange])
 
   useEffect(() => {
     if (!selection) return
@@ -181,7 +181,7 @@ export function Editor({
 
   useCommitMessageEditorFocus({
     controller,
-    document: cachedDocument,
+    document: liveDocument,
   })
 
   const handleActivate = useCallback(

@@ -1,12 +1,12 @@
 import type { ReactEditorController } from '@editor/react'
 import { useEffect, useRef } from 'react'
 
-import type { CachedEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
 import { rowStartOffset } from '@/features/editor/utils/editor-position'
 
 type UseCommitMessageEditorFocusOptions = {
   controller: ReactEditorController
-  document: CachedEditorDocument
+  document: LiveEditorDocument
 }
 
 export function useCommitMessageEditorFocus({
@@ -25,10 +25,10 @@ export function useCommitMessageEditorFocus({
     if (preparedPathRef.current === document.path) return
 
     preparedPathRef.current = document.path
-    const offset = rowStartOffset(document.session.getTextSnapshot(), 1)
+    const offset = rowStartOffset(document.buffer.getTextSnapshot(), 1)
     editor.setSelection(offset, offset, offset)
     editor.focus()
-  }, [controller, document.path, document.session])
+  }, [controller, document.buffer, document.path])
 }
 
 function isGitCommitMessagePath(path: string) {

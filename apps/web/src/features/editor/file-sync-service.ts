@@ -1,12 +1,9 @@
 import type {
-  CachedEditorDocument,
+  LiveEditorDocument,
   EditorDocumentStoreApi,
 } from '@/features/editor/state/editor-document-state'
-import { setFileContentQueryData } from '@/lib/file-query-cache'
-import {
-  writeFileContent,
-  type WriteFileContentOptions,
-} from '@/lib/file-server'
+import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
+import { writeFileContent, type WriteFileContentOptions } from '@/lib/file-server'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -23,26 +20,31 @@ export class FileSyncService {
     private readonly writeContent: FileSyncWriteFileContent = writeFileContent,
   ) {}
 
-  async save(document: CachedEditorDocument): Promise<FileResult> {
-    const text = document.session.materializeFullText()
+  async save(document: LiveEditorDocument): Promise<FileResult> {
+    if (document.sync.kind !== 'file') {
+      throw new Error(`Cannot save unsynced editor document ${document.id}`)
+    }
+
+    const sync = document.sync
+    const text = document.buffer.materializeFullText()
     const savedContentRevision = document.contentRevision
     const writeId = createWriteId()
-    const entry = await this.writeContent(document.path, text, {
-      baseVersion: document.fileVersion,
-      expectedMtimeMs: document.revision,
+    const entry = await this.writeContent(sync.path, text, {
+      baseVersion: sync.fileVersion,
+      expectedMtimeMs: sync.mtimeMs,
       origin: 'editor',
       writeId,
     })
-    const file = fileResultForSavedDocument(document.path, text, entry)
+    const file = fileResultForSavedDocument(sync.path, text, entry)
 
-    this.documentStore.getState().markCachedEditorDocumentSaved({
+    this.documentStore.getState().markLiveEditorDocumentSaved({
+      documentId: document.id,
       fileVersion: entry.version,
-      path: document.path,
-      revision: entry.mtimeMs,
+      mtimeMs: entry.mtimeMs,
       savedContentRevision,
       savedText: text,
     })
-    setFileContentQueryData(this.queryClient, file)
+    setFileSnapshotQueryData(this.queryClient, file)
     return file
   }
 }

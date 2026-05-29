@@ -10,7 +10,7 @@ describe('fileBackedDocumentPath', () => {
     expect(fileBackedDocumentPath('/repo/src/app.ts')).toBe('/repo/src/app.ts')
   })
 
-  it('filters virtual editor document ids', () => {
+  it('filters non-file editor document ids', () => {
     expect(fileBackedDocumentPath(diffDocumentId('/repo/src/app.ts', false))).toBe(null)
     expect(fileBackedDocumentPath(conflictDiffDocumentId('conflict-1'))).toBe(null)
     expect(fileBackedDocumentPath(searchBufferDocumentId('/repo'))).toBe(null)

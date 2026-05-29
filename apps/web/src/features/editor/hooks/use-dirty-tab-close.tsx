@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { UnsavedChangesDialog } from '@/features/editor/components/unsaved-changes-dialog'
 import {
   fileBackedEditorPath,
-  isDirtyCachedEditorDocument,
+  isDirtyLiveEditorDocument,
   saveEditorDocumentByPath,
 } from '@/features/editor/editor-save'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
@@ -60,7 +60,7 @@ export function useDirtyTabCloseRequest() {
       const openPathCounts = editorPanePathCounts(workspace.editorPaneLayout)
 
       for (const tab of openTabs) {
-        const dirty = isDirtyCachedEditorDocument(state, tab.path)
+        const dirty = isDirtyLiveEditorDocument(state, tab.path)
         const closingLastPathTab = closingPathCounts.get(tab.path) === openPathCounts.get(tab.path)
         if (dirty && closingLastPathTab) {
           appendPendingClose(pending, tab.path, tab.id)

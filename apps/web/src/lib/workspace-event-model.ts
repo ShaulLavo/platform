@@ -68,17 +68,17 @@ export function planWorkspaceReady({
 }
 
 export function planFetchedOpenFileRefresh({
-  cachedText,
+  liveText,
   isDirty,
   remoteText,
   path,
 }: {
-  cachedText: string | null
+  liveText: string | null
   isDirty: boolean
   remoteText: string
   path: string
 }): WorkspaceFetchedOpenFileOperation {
-  if (cachedText === remoteText)
+  if (liveText === remoteText)
     return { notifyDirtyOverwrite: false, path, type: 'replace-open-file' }
   if (isDirty) return { type: 'changed-conflict', path }
 

@@ -18,7 +18,7 @@ export function useCommitMutation(rootPath: string) {
     onSuccess: (result) => {
       if (result.kind === 'message-file') {
         void queryClient.invalidateQueries({
-          queryKey: fileSystemKeys.file(result.path),
+          queryKey: fileSystemKeys.fileSnapshot(result.path),
         })
         toast.info('Opened commit message')
         return

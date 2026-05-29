@@ -1,22 +1,26 @@
 import { clientErrors } from '@/lib/structured-errors'
 import type { FileResult } from '@/lib/file-system-types'
-import {
-  type DocumentSessionChange,
-  type EditorScrollPosition,
-  type TextEdit,
-} from '@editor/core'
+import { type EditorScrollPosition } from '@editor/core'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import {
   WorkspaceDocumentService,
-  type WorkspaceDocumentProjection,
+  type EditorDocumentView,
+  type LiveEditorDocument,
+  type LiveEditorViewDocument,
+  type UnsyncedLiveEditorDocumentInput,
 } from '@/features/editor/state/workspace-document-service'
 
-export type CachedEditorDocument = WorkspaceDocumentProjection
+export type {
+  EditorDocumentView,
+  LiveEditorDocument,
+  LiveEditorViewDocument,
+  UnsyncedLiveEditorDocumentInput,
+}
 
-export type DeleteCachedEditorDocumentResult = {
-  hadCachedDocument: boolean
+export type DeleteLiveEditorDocumentResult = {
+  hadLiveDocument: boolean
   wasDirty: boolean
 }
 
@@ -24,66 +28,45 @@ type EditorDocumentStoreState = {
   documentContentRevisions: Readonly<Record<string, string>>
   dirtyContentRevision: number
   dirtyFilePaths: ReadonlySet<string>
-  documents: Readonly<Record<string, CachedEditorDocument>>
   fallbackDocumentPath: string | null
-  scrollPositionByPath: Readonly<Record<string, EditorScrollPosition>>
+  liveDocumentsById: Readonly<Record<string, LiveEditorDocument>>
   scrollPositionByTabId: Readonly<Record<string, EditorScrollPosition>>
-  tabDocuments: Readonly<Record<string, CachedEditorDocument>>
+  viewsByTabId: Readonly<Record<string, EditorDocumentView>>
 }
 
 type EditorDocumentStoreActions = {
-  clearCachedEditorDocuments: () => void
-  deleteCachedEditorDocument: (
-    path: string,
-    options?: { bumpVersion?: boolean },
-  ) => DeleteCachedEditorDocumentResult
-  ensureCachedEditorDocument: (
+  clearLiveEditorDocuments: () => void
+  deleteLiveEditorDocument: (documentId: string) => DeleteLiveEditorDocumentResult
+  ensureEditorView: (tabId: string, file: FileResult) => LiveEditorViewDocument
+  ensureEditorViewForDocument: (tabId: string, documentId: string) => LiveEditorViewDocument
+  ensureLiveEditorDocument: (
     file: FileResult,
     selectedFilePath?: string | null,
-  ) => CachedEditorDocument
-  evictCleanCachedEditorDocument: (path: string) => boolean
-  evictCleanCachedEditorTabDocument: (tabId: string) => boolean
-  forceReplaceCachedEditorDocument: (
+  ) => LiveEditorDocument
+  ensureUnsyncedEditorDocument: (input: UnsyncedLiveEditorDocumentInput) => LiveEditorDocument
+  evictCleanLiveEditorDocument: (documentId: string) => boolean
+  evictCleanUnviewedLiveEditorDocument: (documentId: string) => boolean
+  forceReplaceLiveEditorDocument: (
     file: FileResult,
     selectedFilePath?: string | null,
   ) => { wasDirty: boolean }
-  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
-  getCachedEditorTabDocument: (tabId: string) => CachedEditorDocument | null
-  hasCachedEditorDocument: (path: string) => boolean
-  ensureCachedEditorTabDocument: (tabId: string, file: FileResult) => CachedEditorDocument
-  markCachedEditorDocumentClean: (path: string, revision: number) => boolean
-  markCachedEditorDocumentSaved: (input: {
+  getEditorView: (tabId: string) => EditorDocumentView | null
+  getEditorViewDocument: (tabId: string) => LiveEditorViewDocument | null
+  getLiveEditorDocument: (documentId: string) => LiveEditorDocument | null
+  hasLiveEditorDocument: (documentId: string) => boolean
+  markLiveEditorDocumentSaved: (input: {
+    documentId: string
     fileVersion: string
-    path: string
-    revision: number
+    mtimeMs: number
     savedContentRevision: string
     savedText: string
   }) => boolean
-  recordCachedEditorDocumentTextChange: (
-    path: string,
-    options?: {
-      source?: 'canonical'
-      sourceTabId?: string
-      text?: string
-      change?: DocumentSessionChange
-      edits?: readonly TextEdit[]
-    },
-  ) => void
-  renameCachedEditorDocumentPath: (
-    from: string,
-    to: string,
-    options?: { bumpVersion?: boolean },
-  ) => { wasDirty: boolean }
-  setCachedEditorDocumentDirty: (path: string, dirty: boolean) => void
-  setCachedEditorDocumentScrollPosition: (
-    path: string,
-    scrollPosition: EditorScrollPosition,
-  ) => void
-  setCachedEditorTabDocumentScrollPosition: (
-    tabId: string,
-    scrollPosition: EditorScrollPosition,
-  ) => void
+  recordLiveEditorDocumentTextChange: (documentId: string) => void
+  removeEditorView: (tabId: string) => boolean
+  renameLiveEditorDocumentPath: (from: string, to: string) => { wasDirty: boolean }
+  setEditorViewScrollPosition: (tabId: string, scrollPosition: EditorScrollPosition) => void
   setFallbackDocumentPath: (path: string | null) => void
+  setLiveEditorDocumentDirty: (documentId: string, dirty: boolean) => void
 }
 
 export type EditorDocumentStore = EditorDocumentStoreState & EditorDocumentStoreActions
@@ -114,41 +97,51 @@ export function createEditorDocumentStore() {
   return createStore<EditorDocumentStore>()((set, get) => ({
     ...initialDocuments,
     fallbackDocumentPath: null,
-    clearCachedEditorDocuments: () => {
+    clearLiveEditorDocuments: () => {
       service.clear()
       set({ ...service.state(), fallbackDocumentPath: null })
     },
-    deleteCachedEditorDocument: (path) => {
-      const result = service.deleteDocument(path)
+    deleteLiveEditorDocument: (documentId) => {
+      const result = service.deleteLiveDocument(documentId)
       set({ ...service.state() })
       return result
     },
-    ensureCachedEditorDocument: (file, selectedFilePath = null) => {
-      service.ensureDocument(file)
+    ensureEditorView: (tabId, file) => {
+      service.ensureView(tabId, file)
+      set({ ...service.state() })
+      return get().getEditorViewDocument(tabId)!
+    },
+    ensureEditorViewForDocument: (tabId, documentId) => {
+      service.ensureViewForDocument(tabId, documentId)
+      set({ ...service.state() })
+      return get().getEditorViewDocument(tabId)!
+    },
+    ensureLiveEditorDocument: (file, selectedFilePath = null) => {
+      service.ensureLiveDocument(file)
       set((state) => ({
         ...service.state(),
         fallbackDocumentPath:
           selectedFilePath === file.path ? file.path : state.fallbackDocumentPath,
       }))
-      return get().documents[file.path]!
+      return get().liveDocumentsById[file.path]!
     },
-    ensureCachedEditorTabDocument: (tabId, file) => {
-      service.ensureTabDocument(tabId, file)
+    ensureUnsyncedEditorDocument: (input) => {
+      service.ensureUnsyncedDocument(input)
       set({ ...service.state() })
-      return get().tabDocuments[tabId]!
+      return get().liveDocumentsById[input.id]!
     },
-    evictCleanCachedEditorDocument: (path) => {
-      const evicted = service.evictCleanDocument(path)
+    evictCleanLiveEditorDocument: (documentId) => {
+      const evicted = service.evictCleanLiveDocument(documentId)
       if (evicted) set({ ...service.state() })
       return evicted
     },
-    evictCleanCachedEditorTabDocument: (tabId) => {
-      const evicted = service.evictCleanTabDocument(tabId)
+    evictCleanUnviewedLiveEditorDocument: (documentId) => {
+      const evicted = service.evictCleanUnviewedLiveDocument(documentId)
       if (evicted) set({ ...service.state() })
       return evicted
     },
-    forceReplaceCachedEditorDocument: (file, selectedFilePath = null) => {
-      const result = service.forceReplaceDocument(file)
+    forceReplaceLiveEditorDocument: (file, selectedFilePath = null) => {
+      const result = service.forceReplaceLiveDocument(file)
       if (result.changed || selectedFilePath === file.path) {
         set((state) => ({
           ...service.state(),
@@ -156,45 +149,55 @@ export function createEditorDocumentStore() {
             selectedFilePath === file.path ? file.path : state.fallbackDocumentPath,
         }))
       }
-      return result
+      return { wasDirty: result.wasDirty }
     },
-    getCachedEditorDocument: (path) => get().documents[path] ?? null,
-    getCachedEditorTabDocument: (tabId) => get().tabDocuments[tabId] ?? null,
-    hasCachedEditorDocument: (path) => service.hasDocument(path),
-    markCachedEditorDocumentClean: (path, revision) => {
-      const marked = service.markClean(path, revision)
-      if (marked) set({ ...service.state() })
-      return marked
+    getEditorView: (tabId) => get().viewsByTabId[tabId] ?? null,
+    getEditorViewDocument: (tabId) => {
+      const view = get().viewsByTabId[tabId]
+      if (!view) return null
+
+      const document = get().liveDocumentsById[view.documentId]
+      if (!document) return null
+
+      return {
+        ...document,
+        scrollPosition: view.scrollPosition,
+        tabId,
+        view: view.view,
+      }
     },
-    markCachedEditorDocumentSaved: (input) => {
+    getLiveEditorDocument: (documentId) => get().liveDocumentsById[documentId] ?? null,
+    hasLiveEditorDocument: (documentId) => service.hasLiveDocument(documentId),
+    markLiveEditorDocumentSaved: (input) => {
       const marked = service.markSaved(input)
       set({ ...service.state() })
       return marked
     },
-    recordCachedEditorDocumentTextChange: (path) => {
-      service.recordTextChange(path)
+    recordLiveEditorDocumentTextChange: (documentId) => {
+      service.recordTextChange(documentId)
       set({ ...service.state() })
     },
-    renameCachedEditorDocumentPath: (from, to) => {
-      const result = service.renameDocument(from, to)
+    removeEditorView: (tabId) => {
+      const removed = service.removeView(tabId)
+      if (removed) set({ ...service.state() })
+      return removed
+    },
+    renameLiveEditorDocumentPath: (from, to) => {
+      const result = service.renameLiveDocument(from, to)
       set((state) => ({
         ...service.state(),
         fallbackDocumentPath: state.fallbackDocumentPath === from ? to : state.fallbackDocumentPath,
       }))
       return result
     },
-    setCachedEditorDocumentDirty: (path, dirty) => {
-      service.setDirty(path, dirty)
-      set({ ...service.state() })
-    },
-    setCachedEditorDocumentScrollPosition: (path, scrollPosition) => {
-      const changed = service.setDocumentScrollPosition(path, scrollPosition)
-      if (changed) set({ ...service.state() })
-    },
-    setCachedEditorTabDocumentScrollPosition: (tabId, scrollPosition) => {
-      const changed = service.setTabScrollPosition(tabId, scrollPosition)
+    setEditorViewScrollPosition: (tabId, scrollPosition) => {
+      const changed = service.setViewScrollPosition(tabId, scrollPosition)
       if (changed) set({ ...service.state() })
     },
     setFallbackDocumentPath: (fallbackDocumentPath) => set({ fallbackDocumentPath }),
+    setLiveEditorDocumentDirty: (documentId, dirty) => {
+      service.setDirty(documentId, dirty)
+      set({ ...service.state() })
+    },
   }))
 }

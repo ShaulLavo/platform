@@ -1,8 +1,8 @@
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import {
-  type CachedEditorDocument,
   type EditorDocumentStore,
   type EditorDocumentStoreApi,
+  type LiveEditorDocument,
 } from '@/features/editor/state/editor-document-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
@@ -28,11 +28,11 @@ export async function saveEditorDocumentByPath(
   if (!fileBackedEditorPath(path)) return false
 
   const state = documentStore.getState()
-  const document = state.getCachedEditorDocument(path)
-  if (!document) return false
-  if (!isDirtyCachedEditorDocument(state, path)) return true
+  const liveDocument = state.getLiveEditorDocument(path)
+  if (!liveDocument) return false
+  if (!isDirtyLiveEditorDocument(state, path)) return true
 
-  await saveCachedEditorDocument(documentStore, queryClient, document)
+  await saveLiveEditorDocument(documentStore, queryClient, liveDocument)
   return true
 }
 
@@ -41,28 +41,28 @@ export async function saveAllEditorDocuments(
   queryClient: QueryClient,
 ) {
   const state = documentStore.getState()
-  const dirtyDocuments = Object.values(state.documents).filter((document) =>
-    shouldSaveDocument(state, document),
+  const dirtyDocuments = Object.values(state.liveDocumentsById).filter((liveDocument) =>
+    shouldSaveDocument(state, liveDocument),
   )
 
   for (const document of dirtyDocuments) {
-    await saveCachedEditorDocument(documentStore, queryClient, document)
+    await saveLiveEditorDocument(documentStore, queryClient, document)
   }
 }
 
-export async function saveCachedEditorDocument(
+export async function saveLiveEditorDocument(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
-  document: CachedEditorDocument,
+  document: LiveEditorDocument,
 ) {
   await new FileSyncService(documentStore, queryClient).save(document)
 }
 
-export function isDirtyCachedEditorDocument(
-  state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'documents'>,
+export function isDirtyLiveEditorDocument(
+  state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'liveDocumentsById'>,
   path: string,
 ) {
-  return state.dirtyFilePaths.has(path) || state.documents[path]?.session.isDirty() === true
+  return state.dirtyFilePaths.has(path) || state.liveDocumentsById[path]?.buffer.isDirty() === true
 }
 
 export function fileBackedEditorPath(path: string | null | undefined) {
@@ -75,10 +75,11 @@ export function fileBackedEditorPath(path: string | null | undefined) {
 }
 
 function shouldSaveDocument(
-  state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'documents'>,
-  document: CachedEditorDocument,
+  state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'liveDocumentsById'>,
+  document: LiveEditorDocument,
 ) {
-  if (!fileBackedEditorPath(document.path)) return false
+  if (document.sync.kind !== 'file') return false
+  if (!fileBackedEditorPath(document.sync.path)) return false
 
-  return isDirtyCachedEditorDocument(state, document.path)
+  return isDirtyLiveEditorDocument(state, document.sync.path)
 }

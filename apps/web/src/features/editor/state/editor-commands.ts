@@ -43,7 +43,7 @@ import { useMemo } from 'react'
 export type EditorCommands = {
   closeTab: (tabId: string) => void
   discardAndCloseTab: (tabId: string) => { wasDirty: boolean }
-  discardCachedEditorDocument: (path: string) => { wasDirty: boolean }
+  discardLiveEditorDocument: (path: string) => { wasDirty: boolean }
   moveTabToPane: (tabId: string, paneId: string, targetIndex?: number) => boolean
   moveTabToSplit: (
     tabId: string,
@@ -54,7 +54,7 @@ export type EditorCommands = {
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
   pickRootFolder: (rootFolder: PickedFsEntry) => void
   reopenClosedEditor: () => boolean
-  renameCachedEditorDocument: (from: string, to: string) => { wasDirty: boolean }
+  renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   reorderTab: (paneId: string, tabId: string, targetIndex: number) => boolean
   selectFile: (path: string | null) => void
   selectPreviousEditor: () => boolean
@@ -89,8 +89,8 @@ export function createEditorCommands({
       closeTab(tabId, workspaceStore, documentStore, uiStore, {
         discard: true,
       }),
-    discardCachedEditorDocument: (path) =>
-      discardCachedEditorDocument(path, workspaceStore, documentStore, uiStore),
+    discardLiveEditorDocument: (path) =>
+      discardLiveEditorDocument(path, workspaceStore, documentStore, uiStore),
     moveTabToPane: (tabId, paneId, targetIndex) =>
       moveTabToPane(tabId, paneId, targetIndex, workspaceStore),
     moveTabToSplit: (tabId, paneId, zone, scope) =>
@@ -99,8 +99,8 @@ export function createEditorCommands({
     pickRootFolder: (rootFolder) =>
       pickRootFolder(rootFolder, workspaceStore, documentStore, uiStore),
     reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
-    renameCachedEditorDocument: (from, to) =>
-      renameCachedEditorDocument(from, to, workspaceStore, documentStore, uiStore),
+    renameLiveEditorDocument: (from, to) =>
+      renameLiveEditorDocument(from, to, workspaceStore, documentStore, uiStore),
     reorderTab: (paneId, tabId, targetIndex) =>
       reorderTab(paneId, tabId, targetIndex, workspaceStore),
     selectFile: (path) => selectFile(path, workspaceStore, documentStore),
@@ -125,7 +125,7 @@ function selectFile(
 
   documentStore.setState({
     fallbackDocumentPath: fallbackDocumentPathForSelection(
-      document.hasCachedEditorDocument,
+      document.hasLiveEditorDocument,
       workspace.selectedFilePath,
       document.fallbackDocumentPath,
     ),
@@ -157,7 +157,7 @@ function pickRootFolder(
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
 ) {
-  documentStore.getState().clearCachedEditorDocuments()
+  documentStore.getState().clearLiveEditorDocuments()
   uiStore.getState().resetEditorUiState()
   workspaceStore.getState().resetForRootFolder(rootFolder)
 }
@@ -178,15 +178,13 @@ function closeTab(
   const remainingCount = editorPanePathCounts(nextLayout).get(path) ?? 0
   const result =
     options.discard && remainingCount === 0
-      ? documentStore.getState().deleteCachedEditorDocument(path, {
-          bumpVersion: true,
-        })
+      ? documentStore.getState().deleteLiveEditorDocument(path)
       : { wasDirty: false }
 
-  if (!options.discard) {
-    documentStore.getState().evictCleanCachedEditorTabDocument(tabId)
+  if (!options.discard || remainingCount > 0) {
+    documentStore.getState().removeEditorView(tabId)
     if (remainingCount === 0) {
-      documentStore.getState().evictCleanCachedEditorDocument(path)
+      documentStore.getState().evictCleanUnviewedLiveEditorDocument(path)
     }
   }
 
@@ -208,16 +206,14 @@ function closeTab(
   return result
 }
 
-function discardCachedEditorDocument(
+function discardLiveEditorDocument(
   path: string,
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
 ) {
   const workspace = workspaceStore.getState()
-  const result = documentStore.getState().deleteCachedEditorDocument(path, {
-    bumpVersion: workspace.openFilePaths.includes(path),
-  })
+  const result = documentStore.getState().deleteLiveEditorDocument(path)
   const nextLayout = removeEditorPanePath(workspace.editorPaneLayout, path)
   const selectedFilePath = activeEditorPanePath(nextLayout)
 
@@ -265,7 +261,7 @@ function selectPreviousEditor(
   return true
 }
 
-function renameCachedEditorDocument(
+function renameLiveEditorDocument(
   from: string,
   to: string,
   workspaceStore: EditorWorkspaceStoreApi,
@@ -273,9 +269,7 @@ function renameCachedEditorDocument(
   uiStore: EditorUiStoreApi,
 ) {
   const workspace = workspaceStore.getState()
-  const result = documentStore.getState().renameCachedEditorDocumentPath(from, to, {
-    bumpVersion: workspace.openFilePaths.includes(from),
-  })
+  const result = documentStore.getState().renameLiveEditorDocumentPath(from, to)
   const editorPaneLayout = renameEditorPanePath(workspace.editorPaneLayout, from, to)
   workspaceStore.setState({
     ...editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
@@ -328,7 +322,7 @@ function selectTab(
 
   documentStore.setState({
     fallbackDocumentPath: fallbackDocumentPathForSelection(
-      document.hasCachedEditorDocument,
+      document.hasLiveEditorDocument,
       workspace.selectedFilePath,
       document.fallbackDocumentPath,
     ),
@@ -439,6 +433,6 @@ function updateFallbackForClosedPath(
   if (document.fallbackDocumentPath !== path) return
 
   document.setFallbackDocumentPath(
-    fallbackDocumentPathForSelection(document.hasCachedEditorDocument, selectedFilePath, null),
+    fallbackDocumentPathForSelection(document.hasLiveEditorDocument, selectedFilePath, null),
   )
 }

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import {
-  type CachedEditorDocument,
+  type LiveEditorDocument,
   useEditorDocumentState,
 } from '@/features/editor/state/editor-document-state'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
@@ -10,24 +10,22 @@ import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspac
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileResult } from '@/lib/file-system-types'
-import { fileContentQueryOptions } from '@/lib/file-query-cache'
+import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 import { fetchFile } from '@/lib/file-server'
 
-type OpenTabCacheContext = {
-  ensureCachedEditorDocument: (file: FileResult) => CachedEditorDocument
-  getCachedEditorDocument: (path: string) => CachedEditorDocument | null
+type OpenTabLiveDocumentContext = {
+  ensureLiveEditorDocument: (file: FileResult) => LiveEditorDocument
+  getLiveEditorDocument: (path: string) => LiveEditorDocument | null
   isActive: () => boolean
   queryClient: ReturnType<typeof useQueryClient>
 }
 
-const OPEN_TAB_CACHE_CONCURRENCY = 4
+const OPEN_TAB_LIVE_DOCUMENT_CONCURRENCY = 4
 
-export function useOpenTabCache() {
+export function useOpenTabLiveDocuments() {
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
-  const ensureCachedEditorDocument = useEditorDocumentState(
-    (state) => state.ensureCachedEditorDocument,
-  )
-  const getCachedEditorDocument = useEditorDocumentState((state) => state.getCachedEditorDocument)
+  const ensureLiveEditorDocument = useEditorDocumentState((state) => state.ensureLiveEditorDocument)
+  const getLiveEditorDocument = useEditorDocumentState((state) => state.getLiveEditorDocument)
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -36,15 +34,15 @@ export function useOpenTabCache() {
         !parseDiffDocumentId(path) &&
         !parseConflictDiffDocumentId(path) &&
         !parseSearchBufferDocumentId(path) &&
-        !getCachedEditorDocument(path),
+        !getLiveEditorDocument(path),
     )
     if (!paths.length) return
 
     let active = true
 
-    void cacheOpenTabs(paths, {
-      ensureCachedEditorDocument,
-      getCachedEditorDocument,
+    void warmOpenTabLiveDocuments(paths, {
+      ensureLiveEditorDocument,
+      getLiveEditorDocument,
       isActive: () => active,
       queryClient,
     })
@@ -52,12 +50,15 @@ export function useOpenTabCache() {
     return () => {
       active = false
     }
-  }, [ensureCachedEditorDocument, getCachedEditorDocument, openFilePaths, queryClient])
+  }, [ensureLiveEditorDocument, getLiveEditorDocument, openFilePaths, queryClient])
 }
 
-async function cacheOpenTabs(paths: readonly string[], context: OpenTabCacheContext) {
+async function warmOpenTabLiveDocuments(
+  paths: readonly string[],
+  context: OpenTabLiveDocumentContext,
+) {
   let nextIndex = 0
-  const workerCount = Math.min(paths.length, OPEN_TAB_CACHE_CONCURRENCY)
+  const workerCount = Math.min(paths.length, OPEN_TAB_LIVE_DOCUMENT_CONCURRENCY)
   await Promise.all(
     Array.from({ length: workerCount }, async () => {
       while (context.isActive()) {
@@ -65,36 +66,36 @@ async function cacheOpenTabs(paths: readonly string[], context: OpenTabCacheCont
         nextIndex += 1
         if (!path) return
 
-        await cacheOpenTab(path, context)
+        await warmOpenTabLiveDocument(path, context)
       }
     }),
   )
 }
 
-async function cacheOpenTab(path: string, context: OpenTabCacheContext) {
-  if (context.getCachedEditorDocument(path)) return
+async function warmOpenTabLiveDocument(path: string, context: OpenTabLiveDocumentContext) {
+  if (context.getLiveEditorDocument(path)) return
 
-  await cacheOpenFileTab(path, context)
+  await warmOpenFileLiveDocument(path, context)
 }
 
-async function cacheOpenFileTab(
+async function warmOpenFileLiveDocument(
   path: string,
   {
-    ensureCachedEditorDocument,
-    getCachedEditorDocument,
+    ensureLiveEditorDocument,
+    getLiveEditorDocument,
     isActive,
     queryClient,
-  }: OpenTabCacheContext,
+  }: OpenTabLiveDocumentContext,
 ) {
   try {
     const file = await queryClient.ensureQueryData({
-      ...fileContentQueryOptions(path),
+      ...fileSnapshotQueryOptions(path),
       queryFn: ({ signal }) => fetchFile(path, signal),
     })
     if (!isActive()) return
-    if (getCachedEditorDocument(path)) return
+    if (getLiveEditorDocument(path)) return
 
-    ensureCachedEditorDocument(file)
+    ensureLiveEditorDocument(file)
   } catch {
     // Background tab warming should not interrupt the active editor.
   }

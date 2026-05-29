@@ -8,7 +8,7 @@ import { workspaceSearchGlobPatterns } from '@workspace/contracts'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
-  type CachedEditorDocument,
+  type LiveEditorDocument,
   useEditorDocumentStoreApi,
   useEditorDocumentState,
 } from '@/features/editor/state/editor-document-state'
@@ -187,7 +187,7 @@ function useRunSearchBuffer(
 
     const documentState = documentStore.getState()
     const dirtyDocuments = dirtySearchDocuments(
-      documentState.documents,
+      documentState.liveDocumentsById,
       documentState.dirtyFilePaths,
       rootPath,
     )
@@ -232,7 +232,7 @@ function useRunDirtySearchBufferOverlay(
   const dirtyRevisionKey = useEditorDocumentState((state) =>
     query
       ? dirtySearchRevisionKey(
-          state.documents,
+          state.liveDocumentsById,
           state.dirtyFilePaths,
           state.documentContentRevisions,
           rootPath,
@@ -254,7 +254,7 @@ function useRunDirtySearchBufferOverlay(
     })
     const documentState = documentStore.getState()
     const dirtyDocuments = dirtySearchDocuments(
-      documentState.documents,
+      documentState.liveDocumentsById,
       documentState.dirtyFilePaths,
       rootPath,
     )
@@ -625,7 +625,7 @@ class ClientOnlyWorkspaceSearchProvider implements SearchProvider {
 }
 
 function dirtySearchDocuments(
-  documents: Readonly<Record<string, CachedEditorDocument>>,
+  documents: Readonly<Record<string, LiveEditorDocument>>,
   dirtyFilePaths: ReadonlySet<string>,
   rootPath: string,
 ) {
@@ -639,7 +639,7 @@ function dirtySearchDocuments(
 
     dirtyDocuments.push({
       path,
-      text: document.session.materializeFullText(),
+      text: document.buffer.materializeFullText(),
     })
   }
 
@@ -647,7 +647,7 @@ function dirtySearchDocuments(
 }
 
 export function dirtySearchRevisionKey(
-  documents: Readonly<Record<string, CachedEditorDocument>>,
+  documents: Readonly<Record<string, LiveEditorDocument>>,
   dirtyFilePaths: ReadonlySet<string>,
   contentRevisions: Readonly<Record<string, string>>,
   rootPath: string,
@@ -666,26 +666,32 @@ export function dirtySearchRevisionKey(
 
     parts.push(
       path,
-      document.revision.toString(),
+      liveDocumentSnapshotRevision(document),
       contentRevisions[path] ?? '',
-      dirtySearchSessionKey(document.session),
+      dirtySearchBufferKey(document.buffer),
     )
   }
 
   return parts.join('\0')
 }
 
-const dirtySearchSessionKeys = new WeakMap<CachedEditorDocument['session'], number>()
-let nextDirtySearchSessionKey = 1
+const dirtySearchBufferKeys = new WeakMap<LiveEditorDocument['buffer'], number>()
+let nextDirtySearchBufferKey = 1
 
-function dirtySearchSessionKey(session: CachedEditorDocument['session']) {
-  const existing = dirtySearchSessionKeys.get(session)
+function dirtySearchBufferKey(buffer: LiveEditorDocument['buffer']) {
+  const existing = dirtySearchBufferKeys.get(buffer)
   if (existing !== undefined) return existing.toString()
 
-  const key = nextDirtySearchSessionKey
-  nextDirtySearchSessionKey += 1
-  dirtySearchSessionKeys.set(session, key)
+  const key = nextDirtySearchBufferKey
+  nextDirtySearchBufferKey += 1
+  dirtySearchBufferKeys.set(buffer, key)
   return key.toString()
+}
+
+function liveDocumentSnapshotRevision(document: LiveEditorDocument) {
+  if (document.sync.kind === 'file') return document.sync.mtimeMs.toString()
+
+  return document.localRevision.toString()
 }
 
 function isPathInWorkspace(path: string, rootPath: string) {

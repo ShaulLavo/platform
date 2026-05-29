@@ -179,7 +179,7 @@ describe('planWorkspaceReady', () => {
 describe('planFetchedOpenFileRefresh', () => {
   it('replaces matching text without dirty-overwrite notification', () => {
     const operation = planFetchedOpenFileRefresh({
-      cachedText: 'same',
+      liveText: 'same',
       isDirty: true,
       path: 'repo/a.ts',
       remoteText: 'same',
@@ -194,7 +194,7 @@ describe('planFetchedOpenFileRefresh', () => {
 
   it('plans a conflict for dirty documents with different remote text', () => {
     const operation = planFetchedOpenFileRefresh({
-      cachedText: 'local',
+      liveText: 'local',
       isDirty: true,
       path: 'repo/a.ts',
       remoteText: 'remote',
@@ -208,7 +208,7 @@ describe('planFetchedOpenFileRefresh', () => {
 
   it('replaces clean documents with dirty-overwrite notification enabled', () => {
     const operation = planFetchedOpenFileRefresh({
-      cachedText: 'local',
+      liveText: 'local',
       isDirty: false,
       path: 'repo/a.ts',
       remoteText: 'remote',
