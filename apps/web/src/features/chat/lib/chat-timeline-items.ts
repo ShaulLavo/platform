@@ -6,18 +6,33 @@ import type {
 } from '@workspace/contracts'
 
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
+import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
+import {
+  chatMessageTimelineMetadata,
+  type ChatTimelineMessage,
+  fallbackChatMessageTimelineMetadata,
+} from './chat-message-metadata'
+import { chatWorkLogEntries, type ChatWorkLogEntry } from './chat-work-log'
 
 export type ChatTimelineItem =
   | {
-      activities: OrchestrationThreadActivity[]
+      activities: ChatWorkLogEntry[]
       id: string
       timestamp: string
       type: 'activity-group'
     }
   | {
+      assistantStreaming: boolean
+      assistantTurnInProgress: boolean
+      completionSummary: string | null
+      durationEnd: string
+      durationStart: string
       id: string
       message: OrchestrationMessage | OptimisticChatMessage
+      showAssistantCopyButton: boolean
+      showCompletionDivider: boolean
       timestamp: string
+      turnDiffSummary: ChatTurnDiffSummary | null
       type: 'message'
     }
   | {
@@ -35,17 +50,25 @@ export type ChatTimelineItem =
 
 type ChronologicalTimelineItem =
   | {
-      activity: OrchestrationThreadActivity
+      activity: ChatWorkLogEntry
       id: string
       sourceOrder: number
       timestamp: string
       type: 'activity'
     }
   | {
+      assistantStreaming: boolean
+      assistantTurnInProgress: boolean
+      completionSummary: string | null
+      durationEnd: string
+      durationStart: string
       id: string
       message: OrchestrationMessage | OptimisticChatMessage
+      showAssistantCopyButton: boolean
+      showCompletionDivider: boolean
       sourceOrder: number
       timestamp: string
+      turnDiffSummary: ChatTurnDiffSummary | null
       type: 'message'
     }
   | {
@@ -62,32 +85,60 @@ export function chatTimelineItems({
   messages,
   optimisticMessages,
   proposedPlans,
+  turnDiffSummaries = [],
 }: {
   activities: readonly OrchestrationThreadActivity[]
   latestTurn: OrchestrationLatestTurn | null
   messages: readonly OrchestrationMessage[]
   optimisticMessages: readonly OptimisticChatMessage[]
   proposedPlans: readonly OrchestrationProposedPlan[]
+  turnDiffSummaries?: readonly ChatTurnDiffSummary[]
 }) {
   const resolvedMessageIds = new Set(messages.map((message) => message.id))
+  const visibleOptimisticMessages = optimisticMessages.filter(
+    (message) => !resolvedMessageIds.has(message.id),
+  )
+  const timelineMessages = [...messages, ...visibleOptimisticMessages]
+  const workLogEntries = chatWorkLogEntries({ activities, latestTurnId: latestTurn?.turnId })
+  const messageMetadata = chatMessageTimelineMetadata({
+    latestTurn,
+    messages: timelineMessages,
+    showCompletionSummary: workLogEntries.length > 0,
+  })
+  const turnDiffSummaryByAssistantMessageId = deriveTurnDiffSummaryByAssistantMessageId(
+    turnDiffSummaries,
+    timelineMessages,
+  )
   const items: ChronologicalTimelineItem[] = []
   let sourceOrder = 0
 
   for (const message of messages) {
-    items.push(messageTimelineItem(message, sourceOrder))
+    items.push(
+      messageTimelineItem(
+        message,
+        sourceOrder,
+        messageMetadata.get(message.id),
+        turnDiffSummaryByAssistantMessageId.get(message.id) ?? null,
+      ),
+    )
     sourceOrder += 1
   }
-  for (const message of optimisticMessages) {
-    if (resolvedMessageIds.has(message.id)) continue
-
-    items.push(messageTimelineItem(message, sourceOrder))
+  for (const message of visibleOptimisticMessages) {
+    items.push(
+      messageTimelineItem(
+        message,
+        sourceOrder,
+        messageMetadata.get(message.id),
+        turnDiffSummaryByAssistantMessageId.get(message.id) ?? null,
+      ),
+    )
     sourceOrder += 1
   }
   for (const plan of proposedPlans) {
     items.push(proposedPlanTimelineItem(plan, sourceOrder))
     sourceOrder += 1
   }
-  for (const activity of activities) {
+  for (const activity of workLogEntries) {
     items.push(activityTimelineItem(activity, sourceOrder))
     sourceOrder += 1
   }
@@ -106,24 +157,44 @@ export function chatTimelineItemEstimate(item: ChatTimelineItem | undefined) {
   if (item.type === 'proposed-plan') return 160
   if (item.type === 'working') return 52
 
-  return Math.min(220, Math.max(56, 42 + Math.ceil(item.message.text.length / 48) * 18))
+  const dividerHeight = item.showCompletionDivider ? 34 : 0
+  const changedFilesHeight =
+    item.turnDiffSummary && item.turnDiffSummary.files.length > 0
+      ? Math.min(220, 46 + item.turnDiffSummary.files.length * 24)
+      : 0
+  const messageHeight = Math.min(
+    220,
+    Math.max(56, 42 + Math.ceil(item.message.text.length / 48) * 18),
+  )
+
+  return dividerHeight + messageHeight + changedFilesHeight
 }
 
 function messageTimelineItem(
   message: OrchestrationMessage | OptimisticChatMessage,
   sourceOrder: number,
+  metadata = fallbackChatMessageTimelineMetadata(message),
+  turnDiffSummary: ChatTurnDiffSummary | null = null,
 ): ChronologicalTimelineItem {
   return {
+    assistantStreaming: metadata.assistantStreaming,
+    assistantTurnInProgress: metadata.assistantTurnInProgress,
+    completionSummary: metadata.completionSummary,
+    durationEnd: metadata.durationEnd,
+    durationStart: metadata.durationStart,
     id: `message:${message.id}`,
     message,
+    showAssistantCopyButton: metadata.showAssistantCopyButton,
+    showCompletionDivider: metadata.showCompletionDivider,
     sourceOrder,
     timestamp: message.createdAt,
+    turnDiffSummary,
     type: 'message',
   }
 }
 
 function activityTimelineItem(
-  activity: OrchestrationThreadActivity,
+  activity: ChatWorkLogEntry,
   sourceOrder: number,
 ): ChronologicalTimelineItem {
   return {
@@ -163,7 +234,7 @@ function compareTimelineEntries(left: ChronologicalTimelineItem, right: Chronolo
 
 function groupActivityTimelineItems(items: readonly ChronologicalTimelineItem[]) {
   const groupedItems: ChatTimelineItem[] = []
-  let pendingActivities: OrchestrationThreadActivity[] = []
+  let pendingActivities: ChatWorkLogEntry[] = []
 
   for (const item of items) {
     if (item.type === 'activity') {
@@ -184,9 +255,17 @@ function groupActivityTimelineItems(items: readonly ChronologicalTimelineItem[])
 function timelineItemFromEntry(item: Exclude<ChronologicalTimelineItem, { type: 'activity' }>) {
   if (item.type === 'message') {
     return {
+      assistantStreaming: item.assistantStreaming,
+      assistantTurnInProgress: item.assistantTurnInProgress,
+      completionSummary: item.completionSummary,
+      durationEnd: item.durationEnd,
+      durationStart: item.durationStart,
       id: item.id,
       message: item.message,
+      showAssistantCopyButton: item.showAssistantCopyButton,
+      showCompletionDivider: item.showCompletionDivider,
       timestamp: item.timestamp,
+      turnDiffSummary: item.turnDiffSummary,
       type: item.type,
     }
   }
@@ -199,10 +278,35 @@ function timelineItemFromEntry(item: Exclude<ChronologicalTimelineItem, { type: 
   }
 }
 
-function appendActivityGroup(
-  items: ChatTimelineItem[],
-  activities: readonly OrchestrationThreadActivity[],
+function deriveTurnDiffSummaryByAssistantMessageId(
+  summaries: readonly ChatTurnDiffSummary[],
+  messages: readonly ChatTimelineMessage[],
 ) {
+  const lastAssistantMessageIdByTurnId = new Map<string, string>()
+  for (const message of messages.toSorted(compareMessagesByCreatedAt)) {
+    if (message.role !== 'assistant') continue
+    if (!message.turnId) continue
+
+    lastAssistantMessageIdByTurnId.set(message.turnId, message.id)
+  }
+
+  const summaryByAssistantMessageId = new Map<string, ChatTurnDiffSummary>()
+  for (const summary of summaries) {
+    const assistantMessageId =
+      summary.assistantMessageId ?? lastAssistantMessageIdByTurnId.get(summary.turnId)
+    if (!assistantMessageId) continue
+
+    summaryByAssistantMessageId.set(assistantMessageId, summary)
+  }
+
+  return summaryByAssistantMessageId
+}
+
+function compareMessagesByCreatedAt(left: ChatTimelineMessage, right: ChatTimelineMessage) {
+  return left.createdAt.localeCompare(right.createdAt)
+}
+
+function appendActivityGroup(items: ChatTimelineItem[], activities: readonly ChatWorkLogEntry[]) {
   const firstActivity = activities[0]
   if (!firstActivity) return
 

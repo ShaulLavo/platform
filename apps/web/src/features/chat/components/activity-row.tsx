@@ -1,4 +1,3 @@
-import type { OrchestrationThreadActivity } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 import {
   BrainIcon,
@@ -12,15 +11,12 @@ import {
   WarningCircleIcon,
 } from '@phosphor-icons/react'
 
-import {
-  chatActivityPresentation,
-  type ChatActivityIconKey,
-} from '../lib/chat-activity-presentation'
+import type { ChatActivityIconKey } from '../lib/chat-activity-presentation'
+import type { ChatWorkLogEntry, ChatWorkLogTone } from '../lib/chat-work-log'
 
-export function ActivityRow({ activity }: { activity: OrchestrationThreadActivity }) {
-  const presentation = chatActivityPresentation(activity)
-  const Icon = activityIcon(presentation.icon)
-  const detail = activityRowDetail(presentation.detail, presentation.status)
+export function ActivityRow({ activity }: { activity: ChatWorkLogEntry }) {
+  const Icon = activityIcon(activity.icon)
+  const detail = activityRowDetail(activity.detail, activity.status)
 
   return (
     <div className='rounded-md px-1 py-1'>
@@ -38,9 +34,9 @@ export function ActivityRow({ activity }: { activity: OrchestrationThreadActivit
             'min-w-0 flex-1 truncate text-[11px] leading-5',
             activityTextToneClass(activity.tone),
           )}
-          title={detail ? `${presentation.title} - ${detail}` : presentation.title}
+          title={detail ? `${activity.title} - ${detail}` : activity.title}
         >
-          <span className='text-foreground/80'>{presentation.title}</span>
+          <span className='text-foreground/80'>{activity.title}</span>
           {detail ? <span className='text-muted-foreground/55'> - {detail}</span> : null}
         </p>
       </div>
@@ -69,16 +65,15 @@ function activityRowDetail(detail: string | null, status: string | null) {
   return status
 }
 
-function activityIconToneClass(tone: OrchestrationThreadActivity['tone']) {
+function activityIconToneClass(tone: ChatWorkLogTone) {
   if (tone === 'error') return 'text-destructive'
-  if (tone === 'approval') return 'text-amber-600 dark:text-amber-300'
   if (tone === 'thinking') return 'text-muted-foreground/70'
   if (tone === 'tool') return 'text-sky-600 dark:text-sky-300'
 
   return 'text-muted-foreground/65'
 }
 
-function activityTextToneClass(tone: OrchestrationThreadActivity['tone']) {
+function activityTextToneClass(tone: ChatWorkLogTone) {
   if (tone === 'error') return 'text-destructive'
   if (tone === 'thinking') return 'text-muted-foreground/55'
 

@@ -42,18 +42,33 @@ function activityTitle(activity: OrchestrationThreadActivity, payload: Record<st
   if (activity.kind === 'context-window.updated') return 'Context window updated'
   if (activity.kind === 'task.started') return 'Task started'
   if (activity.kind === 'task.progress') return taskProgressTitle(activity, payload)
-  if (activity.kind === 'task.completed') return completedTaskTitle(payload)
+  if (activity.kind === 'task.completed') return taskCompletedTitle(activity, payload)
   if (activity.kind.startsWith('tool.')) return toolTitle(activity)
 
   return activity.summary
 }
 
-function completedTaskTitle(payload: Record<string, unknown>) {
+function taskCompletedTitle(
+  activity: OrchestrationThreadActivity,
+  payload: Record<string, unknown>,
+) {
+  const summary = stringValue(payload.summary)
+  if (summary) return summary
+  const detail = stringValue(payload.detail)
+  if (detail) return detail
+
+  return completedTaskTitle(activity, payload)
+}
+
+function completedTaskTitle(
+  activity: OrchestrationThreadActivity,
+  payload: Record<string, unknown>,
+) {
   const status = stringValue(payload.status)
   if (status === 'failed') return 'Task failed'
   if (status === 'stopped') return 'Task stopped'
 
-  return 'Task completed'
+  return activity.summary || 'Task completed'
 }
 
 function taskProgressTitle(
@@ -95,6 +110,7 @@ function activityDetail(
 ) {
   const detail = firstStringValue(payload, ['message', 'detail', 'summary', 'lastToolName'])
   if (activity.kind === 'task.progress') return detail && detail !== title ? detail : null
+  if (activity.kind === 'task.completed') return detail && detail !== title ? detail : null
   if (detail && detail !== title) return detail
   if (activity.summary !== title) return activity.summary
 

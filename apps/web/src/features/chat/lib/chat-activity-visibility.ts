@@ -1,9 +1,6 @@
-import type { OrchestrationThreadActivity } from '@workspace/contracts'
+import type { ChatWorkLogEntry } from './chat-work-log'
 
-export function visibleActivityGroupRows(
-  activities: readonly OrchestrationThreadActivity[],
-  maxRows: number,
-) {
+export function visibleActivityGroupRows(activities: readonly ChatWorkLogEntry[], maxRows: number) {
   if (maxRows <= 0) return []
   if (activities.length <= maxRows) return [...activities]
 

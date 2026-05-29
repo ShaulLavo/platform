@@ -1,0 +1,207 @@
+import { CaretRightIcon, FolderIcon, FolderOpenIcon } from '@phosphor-icons/react'
+import { cn } from '@workspace/ui/lib/utils'
+import { useCallback, useMemo, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+
+import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
+
+import {
+  buildChatTurnDiffTree,
+  hasNonZeroChatTurnDiffStat,
+  type ChatTurnDiffTreeNode,
+} from '../lib/chat-turn-diff-tree'
+import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
+import { ChatDiffStatLabel } from './chat-diff-stat-label'
+
+const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {}
+
+type DirectoryExpansionState = {
+  key: string
+  overrides: Record<string, boolean>
+}
+
+type RenderTreeNodeOptions = {
+  allDirectoriesExpanded: boolean
+  depth: number
+  expandedDirectories: Record<string, boolean>
+  node: ChatTurnDiffTreeNode
+  toggleDirectory: (pathValue: string) => void
+}
+
+export function AssistantChangedFilesTree({
+  allDirectoriesExpanded,
+  files,
+}: {
+  allDirectoriesExpanded: boolean
+  files: ChatTurnDiffSummary['files']
+}) {
+  const treeNodes = useMemo(() => buildChatTurnDiffTree(files), [files])
+  const directoryPathsKey = useMemo(
+    () => collectDirectoryPaths(treeNodes).join('\u0000'),
+    [treeNodes],
+  )
+  const expansionStateKey = `${allDirectoriesExpanded ? 'expanded' : 'collapsed'}\u0000${directoryPathsKey}`
+  const [directoryExpansionState, setDirectoryExpansionState] = useState<DirectoryExpansionState>(
+    () => ({
+      key: expansionStateKey,
+      overrides: {},
+    }),
+  )
+  const expandedDirectories =
+    directoryExpansionState.key === expansionStateKey
+      ? directoryExpansionState.overrides
+      : EMPTY_DIRECTORY_OVERRIDES
+
+  const toggleDirectory = useCallback(
+    (pathValue: string) => {
+      setDirectoryExpansionState((current) => {
+        const overrides = current.key === expansionStateKey ? current.overrides : {}
+
+        return {
+          key: expansionStateKey,
+          overrides: {
+            ...overrides,
+            [pathValue]: !(overrides[pathValue] ?? allDirectoriesExpanded),
+          },
+        }
+      })
+    },
+    [allDirectoriesExpanded, expansionStateKey],
+  )
+
+  return (
+    <div className='space-y-0.5'>
+      {treeNodes.map((node) =>
+        renderChatTurnDiffTreeNode({
+          allDirectoriesExpanded,
+          depth: 0,
+          expandedDirectories,
+          node,
+          toggleDirectory,
+        }),
+      )}
+    </div>
+  )
+}
+
+function renderChatTurnDiffTreeNode(options: RenderTreeNodeOptions): ReactNode {
+  const { node } = options
+  if (node.kind === 'directory') {
+    return renderDirectoryNode(options)
+  }
+
+  return renderFileNode(options)
+}
+
+function renderDirectoryNode({
+  allDirectoriesExpanded,
+  depth,
+  expandedDirectories,
+  node,
+  toggleDirectory,
+}: RenderTreeNodeOptions): ReactNode {
+  if (node.kind !== 'directory') return null
+
+  const isExpanded = expandedDirectories[node.path] ?? allDirectoriesExpanded
+
+  return (
+    <div key={`dir:${node.path}`}>
+      <button
+        className='group hover:bg-background/80 flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left'
+        data-scroll-anchor-ignore
+        style={treeNodeStyle(depth)}
+        type='button'
+        onClick={() => toggleDirectory(node.path)}
+      >
+        <CaretRightIcon
+          aria-hidden='true'
+          className={cn(
+            'text-muted-foreground/70 size-3.5 shrink-0 transition-transform group-hover:text-foreground/80',
+            isExpanded && 'rotate-90',
+          )}
+        />
+        {isExpanded ? (
+          <FolderOpenIcon className='text-muted-foreground/75 size-3.5 shrink-0' />
+        ) : (
+          <FolderIcon className='text-muted-foreground/75 size-3.5 shrink-0' />
+        )}
+        <span className='text-muted-foreground/90 group-hover:text-foreground/90 truncate font-mono text-[11px]'>
+          {node.name}
+        </span>
+        {hasNonZeroChatTurnDiffStat(node.stat) ? (
+          <span className='ml-auto shrink-0 font-mono text-[10px] tabular-nums'>
+            <ChatDiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
+          </span>
+        ) : null}
+      </button>
+      {isExpanded ? (
+        <div className='space-y-0.5'>
+          {node.children.map((childNode) =>
+            renderChatTurnDiffTreeNode({
+              allDirectoriesExpanded,
+              depth: depth + 1,
+              expandedDirectories,
+              node: childNode,
+              toggleDirectory,
+            }),
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function renderFileNode({ depth, node }: RenderTreeNodeOptions): ReactNode {
+  if (node.kind !== 'file') return null
+
+  const icon = iconForEntry({ name: node.name, type: 'file' })
+
+  return (
+    <div
+      className='group hover:bg-background/80 flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left'
+      key={`file:${node.path}`}
+      style={treeNodeStyle(depth)}
+      title={node.path}
+    >
+      <span aria-hidden='true' className='size-3.5 shrink-0' />
+      <span aria-hidden='true' className='size-3.5 shrink-0' style={fileIconStyle(icon)} />
+      <span className='text-muted-foreground/80 group-hover:text-foreground/90 truncate font-mono text-[11px]'>
+        {node.name}
+      </span>
+      {node.stat ? (
+        <span className='ml-auto shrink-0 font-mono text-[10px] tabular-nums'>
+          <ChatDiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function collectDirectoryPaths(nodes: readonly ChatTurnDiffTreeNode[]) {
+  const paths: string[] = []
+
+  for (const node of nodes) {
+    if (node.kind !== 'directory') continue
+
+    paths.push(node.path)
+    paths.push(...collectDirectoryPaths(node.children))
+  }
+
+  return paths
+}
+
+function treeNodeStyle(depth: number): CSSProperties {
+  return {
+    paddingLeft: `${8 + depth * 14}px`,
+  }
+}
+
+function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
+  const mask = `url(${icon.src}) center / contain no-repeat`
+
+  return {
+    backgroundColor: colorForFileIcon(icon),
+    mask,
+    WebkitMask: mask,
+  }
+}

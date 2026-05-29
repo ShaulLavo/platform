@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'bun:test'
-import {
-  eventIdSchema,
-  threadIdSchema,
-  turnIdSchema,
-  type OrchestrationThreadActivity,
-} from '@workspace/contracts'
-import * as v from 'valibot'
 
 import { visibleActivityGroupRows } from './chat-activity-visibility'
+import type { ChatWorkLogEntry, ChatWorkLogTone } from './chat-work-log'
 
 describe('chat activity visibility', () => {
   it('keeps thinking visible when the collapsed work log overflows', () => {
@@ -40,18 +34,15 @@ describe('chat activity visibility', () => {
   })
 })
 
-function activity(
-  id: string,
-  tone: OrchestrationThreadActivity['tone'],
-): OrchestrationThreadActivity {
+function activity(id: string, tone: ChatWorkLogTone): ChatWorkLogEntry {
   return {
     createdAt: '2026-05-28T00:00:00.000Z',
-    id: v.parse(eventIdSchema, id),
-    kind: tone === 'thinking' ? 'task.progress' : 'tool.completed',
-    payload: null,
-    summary: tone,
-    threadId: v.parse(threadIdSchema, 'thread-1'),
+    detail: null,
+    icon: tone === 'thinking' ? 'thinking' : 'tool',
+    id,
+    itemType: tone === 'tool' ? 'command_execution' : null,
+    status: null,
+    title: tone,
     tone,
-    turnId: v.parse(turnIdSchema, 'turn-1'),
   }
 }

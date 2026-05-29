@@ -87,6 +87,17 @@ describe('chat activity presentation', () => {
       title: 'Searching for API endpoints',
     })
   })
+
+  it('uses task completion detail as the compact row label', () => {
+    expect(
+      chatActivityPresentation(
+        activity('task.completed', 'error', { detail: 'Failed to deploy changes' }, 'Task failed'),
+      ),
+    ).toMatchObject({
+      detail: null,
+      title: 'Failed to deploy changes',
+    })
+  })
 })
 
 function activity(

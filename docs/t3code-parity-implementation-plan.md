@@ -1512,6 +1512,13 @@ Frontend work:
   - task started, thinking/progress, completed, failed, and stopped
   - Codex `item/reasoning/*` notifications normalized into visible thinking
     rows
+  - T3-style work-log derivation: latest-turn filtering, noisy lifecycle
+    suppression, compact task labels, and tool update/completion collapse
+  - T3-style message row derivation: assistant duration starts, completion
+    divider placement, completion summary labels, and terminal assistant copy
+    affordance computed before rendering
+  - T3-style assistant changed-files summaries projected from checkpoint turn
+    diffs directly under the assistant markdown
   - runtime warning and runtime error
   - context compaction and context-window/token updates
 - Add projected proposed-plan UI states:
@@ -1532,6 +1539,8 @@ Tests:
   starting, running, ready, interrupted, stopped, completed, and error states.
 - Approval, user-input, tool, task, runtime warning/error, context compaction,
   and proposed-plan activities render from projections.
+- Assistant changed-files summaries render below assistant markdown with
+  aggregate diff stats and expandable directory grouping.
 - Timeline remains pinned during streaming and keeps row identity stable after
   completion and replay.
 - Reconnect/replay hydrates the same UI state without duplicating streamed
@@ -1551,6 +1560,65 @@ T3 source paths:
 - `references/t3code/apps/web/src/components/ToolCall.tsx`
 - `references/t3code/apps/server/src/provider/Layers/CodexAdapter.ts`
 - `references/t3code/packages/effect-codex-app-server/src/*`
+
+## Phase 7F: Checkpoint Diff Interaction Parity
+
+Purpose:
+
+- Close the remaining T3Code checkpoint interaction gap after Phase 7E renders
+  checkpoint summaries in the assistant timeline.
+- Add the client/server surface needed for historical turn-diff inspection and
+  checkpoint revert affordances instead of opening a misleading live worktree
+  diff.
+- Render those historical checkpoint diffs through Platform's own diff
+  document/viewer UI, not a copied T3Code diff viewer.
+
+Platform target paths:
+
+- `packages/contracts/src/orchestration-commands.ts`
+- `packages/contracts/src/orchestration-events.ts`
+- `apps/server/src/orchestration/*`
+- `apps/server/src/git/*`
+- `apps/web/src/features/chat/components/*`
+- `apps/web/src/features/chat/transport/*`
+- `apps/web/src/features/git/diff-document.ts`
+
+Frontend/backend work:
+
+- Add T3-style turn-diff read APIs for per-turn and full-thread checkpoint
+  diffs.
+- Open the assistant changed-files `View diff` action and file rows against the
+  historical checkpoint diff, not the current worktree diff.
+- Adapt Platform's existing diff-document and diff-viewer components for
+  checkpoint-backed diffs so the interaction stays native to this app.
+- Add user-row checkpoint revert affordances and projection updates matching
+  T3's nearby-user-row behavior.
+- Keep checkpoint revert commands client-safe, replayable, and reflected in the
+  thread projection by trimming superseded checkpoint summaries.
+
+Tests:
+
+- Assistant changed-files `View diff` opens the selected historical turn diff.
+- File-row clicks open the historical file diff for that checkpoint.
+- User-row revert dispatches a checkpoint revert command and projection replay
+  trims later messages, activities, and turn-diff summaries.
+- Missing/error checkpoint states render intentionally and do not expose broken
+  actions.
+
+Done when:
+
+- Changed-files summaries are interactive like T3Code, historical turn diffs are
+  inspectable from the transcript, and checkpoint reverts round-trip through the
+  command/event/projection path.
+
+T3 source paths:
+
+- `references/t3code/apps/web/src/components/chat/ChangedFilesTree.tsx`
+- `references/t3code/apps/web/src/components/chat/MessagesTimeline.tsx`
+- `references/t3code/apps/web/src/components/ChatView.tsx`
+- `references/t3code/apps/web/src/environmentApi.ts`
+- `references/t3code/apps/server/src/checkpointing/*`
+- `references/t3code/apps/server/src/ws.ts`
 
 ## Phase 8: Approvals, User Input, Plans
 

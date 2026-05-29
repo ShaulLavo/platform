@@ -32,6 +32,7 @@ export function MessagesTimeline({
         messages: thread.messages,
         optimisticMessages,
         proposedPlans: thread.proposedPlans,
+        turnDiffSummaries: thread.turnDiffSummaries,
       }),
     [
       optimisticMessages,
@@ -39,6 +40,7 @@ export function MessagesTimeline({
       thread.latestTurn,
       thread.messages,
       thread.proposedPlans,
+      thread.turnDiffSummaries,
     ],
   )
   const virtualizer = useVirtualizer({

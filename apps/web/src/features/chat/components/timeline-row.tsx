@@ -1,5 +1,6 @@
 import type { ChatTimelineItem } from '../lib/chat-timeline-items'
 import { ActivityGroupRow } from './activity-group-row'
+import { AssistantMessageCopyButton } from './assistant-message-copy-button'
 import { MessageBubble } from './message-bubble'
 import { ProposedPlanCard } from './proposed-plan-card'
 import { WorkingRow } from './working-row'
@@ -17,9 +18,28 @@ export function TimelineRow({ item }: { item: ChatTimelineItem }) {
 }
 
 function timelineRowContent(item: ChatTimelineItem) {
-  if (item.type === 'message') return <MessageBubble message={item.message} />
+  if (item.type === 'message') {
+    return (
+      <MessageBubble
+        assistantStreaming={item.assistantStreaming}
+        assistantTurnInProgress={item.assistantTurnInProgress}
+        completionSummary={item.completionSummary}
+        durationEnd={item.durationEnd}
+        durationStart={item.durationStart}
+        message={item.message}
+        renderAssistantCopyButton={renderAssistantCopyButton}
+        showAssistantCopyButton={item.showAssistantCopyButton}
+        showCompletionDivider={item.showCompletionDivider}
+        turnDiffSummary={item.turnDiffSummary}
+      />
+    )
+  }
   if (item.type === 'activity-group') return <ActivityGroupRow activities={item.activities} />
   if (item.type === 'proposed-plan') return <ProposedPlanCard plan={item.plan} />
 
   return <WorkingRow latestTurn={item.latestTurn} />
+}
+
+function renderAssistantCopyButton(text: string) {
+  return <AssistantMessageCopyButton text={text} />
 }

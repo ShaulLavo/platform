@@ -7,6 +7,9 @@ import baseConfig from './vite.config'
 export default mergeConfig(
   baseConfig,
   defineConfig({
+    optimizeDeps: {
+      include: ['@phosphor-icons/react'],
+    },
     test: {
       browser: {
         enabled: true,

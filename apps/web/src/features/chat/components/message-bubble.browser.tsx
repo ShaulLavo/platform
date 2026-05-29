@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/components/theme-provider'
+import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { MessageBubble } from './message-bubble'
 
 const THEME_STORAGE_KEY = 'platform-message-bubble-browser-theme'
@@ -104,6 +105,41 @@ describe('MessageBubble browser rendering', () => {
       { interval: 100, timeout: 15_000 },
     )
   })
+
+  it('renders assistant changed files below assistant markdown', async () => {
+    const container = document.createElement('main')
+    container.style.width = '720px'
+    document.body.append(container)
+    root = createRoot(container)
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <EditorColorThemeProvider>
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'Changed these files:',
+              }}
+              turnDiffSummary={assistantChangedFilesSummary}
+            />
+          </EditorColorThemeProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    await vi.waitFor(() => {
+      const bodyText = document.body.textContent ?? ''
+      expect(bodyText).toContain('Changed files (3)')
+      expect(bodyText).toContain('+20')
+      expect(bodyText).toContain('-4')
+      expect(bodyText).toContain('message-bubble.tsx')
+      expect(bodyText).toContain('chat-timeline-items.ts')
+      expect(bodyText.indexOf('Changed these files:')).toBeLessThan(
+        bodyText.indexOf('Changed files (3)'),
+      )
+    })
+  })
 })
 
 const streamingAssistantChunks = [
@@ -167,6 +203,35 @@ const assistantCodeMessage = {
   turnId: null,
   updatedAt: '2026-05-28T00:00:00.000Z',
 } as OrchestrationMessage
+
+const assistantChangedFilesSummary = {
+  assistantMessageId: 'message-browser-assistant',
+  checkpointRef: 'checkpoint-browser',
+  checkpointTurnCount: 1,
+  completedAt: '2026-05-28T00:00:02.000Z',
+  files: [
+    {
+      additions: 12,
+      deletions: 4,
+      kind: 'modified',
+      path: 'src/features/chat/components/message-bubble.tsx',
+    },
+    {
+      additions: 6,
+      deletions: 0,
+      kind: 'modified',
+      path: 'src/features/chat/lib/chat-timeline-items.ts',
+    },
+    {
+      additions: 2,
+      deletions: 0,
+      kind: 'added',
+      path: 'src/features/chat/lib/chat-turn-diff-tree.ts',
+    },
+  ],
+  status: 'ready',
+  turnId: 'turn-browser',
+} as ChatTurnDiffSummary
 
 function streamdownCodeLanguage() {
   return document

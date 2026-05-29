@@ -1,16 +1,12 @@
-import type { OrchestrationThreadActivity } from '@workspace/contracts'
 import { useState } from 'react'
 
 import { visibleActivityGroupRows } from '../lib/chat-activity-visibility'
+import type { ChatWorkLogEntry } from '../lib/chat-work-log'
 import { ActivityRow } from './activity-row'
 
 const MAX_VISIBLE_ACTIVITY_ROWS = 6
 
-export function ActivityGroupRow({
-  activities,
-}: {
-  activities: readonly OrchestrationThreadActivity[]
-}) {
+export function ActivityGroupRow({ activities }: { activities: readonly ChatWorkLogEntry[] }) {
   const [expanded, setExpanded] = useState(false)
   const hasOverflow = activities.length > MAX_VISIBLE_ACTIVITY_ROWS
   const visibleActivities =

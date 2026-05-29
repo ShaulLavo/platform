@@ -1,72 +1,135 @@
 import type { OrchestrationMessage } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
+import type { ReactNode } from 'react'
 
 import { formatChatTimestamp } from '../lib/chat-formatters'
+import { resolveAssistantMessageCopyState } from '../lib/chat-message-metadata'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
+import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
+import { AssistantChangedFilesSection } from './assistant-changed-files-section'
+import { AssistantMessageMeta } from './assistant-message-meta'
 import { AssistantMarkdown } from './assistant-markdown'
+import { MessageCompletionDivider } from './message-completion-divider'
 
 export function MessageBubble({
+  assistantStreaming,
+  assistantTurnInProgress = false,
+  completionSummary = null,
+  durationEnd,
+  durationStart,
   message,
+  renderAssistantCopyButton,
+  showAssistantCopyButton = false,
+  showCompletionDivider = false,
+  turnDiffSummary = null,
 }: {
+  assistantStreaming?: boolean
+  assistantTurnInProgress?: boolean
+  completionSummary?: string | null
+  durationEnd?: string
+  durationStart?: string
   message: OrchestrationMessage | OptimisticChatMessage
+  renderAssistantCopyButton?: (text: string) => ReactNode
+  showAssistantCopyButton?: boolean
+  showCompletionDivider?: boolean
+  turnDiffSummary?: ChatTurnDiffSummary | null
 }) {
   const user = message.role === 'user'
+  const assistant = message.role === 'assistant'
+  const effectiveAssistantStreaming = assistantStreaming ?? (assistant ? message.streaming : false)
   const optimistic = 'optimistic' in message
   const attachments = message.attachments ?? []
-  const emptyAssistantCompletion = !user && !message.streaming && message.text.trim().length === 0
-
-  return (
-    <div
-      className={cn(
-        'flex w-full min-w-0',
-        user ? 'justify-end' : 'justify-start',
-        optimistic && 'opacity-70',
-      )}
-    >
-      <article
+  const assistantText = assistant
+    ? message.text || (effectiveAssistantStreaming ? '' : '(empty response)')
+    : ''
+  const attachmentList =
+    attachments.length > 0 ? (
+      <div
         className={cn(
-          'min-w-0 text-sm leading-5',
-          user
-            ? 'max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3 text-secondary-foreground'
-            : 'w-full max-w-full px-1 py-0.5 text-foreground',
+          'flex flex-wrap gap-1.5',
+          user ? message.text.trim().length > 0 && 'mb-2' : 'mt-2',
         )}
       >
-        {user ? (
-          <div className='break-words whitespace-pre-wrap'>{message.text}</div>
-        ) : emptyAssistantCompletion ? (
-          <div className='text-muted-foreground text-xs italic'>
-            Assistant completed without text.
-          </div>
-        ) : (
-          <AssistantMarkdown text={message.text} streaming={message.streaming} />
+        {attachments.map((attachment) => (
+          <span
+            className={cn(
+              'rounded border px-1.5 py-0.5 text-[10px]',
+              user
+                ? 'border-border/70 text-muted-foreground'
+                : 'border-border text-muted-foreground',
+            )}
+            key={attachment.id}
+          >
+            {attachment.name}
+          </span>
+        ))}
+      </div>
+    ) : null
+  const assistantCopyState = resolveAssistantMessageCopyState({
+    showCopyButton: showAssistantCopyButton,
+    streaming: effectiveAssistantStreaming || assistantTurnInProgress,
+    text: message.text,
+  })
+
+  return (
+    <>
+      {assistant && showCompletionDivider ? (
+        <MessageCompletionDivider completionSummary={completionSummary} />
+      ) : null}
+      <div
+        className={cn(
+          'flex w-full min-w-0',
+          assistant && 'group/assistant',
+          user ? 'justify-end' : 'justify-start',
+          optimistic && 'opacity-70',
         )}
-        {attachments.length > 0 ? (
-          <div className='mt-2 flex flex-wrap gap-1.5'>
-            {attachments.map((attachment) => (
-              <span
-                className={cn(
-                  'rounded border px-1.5 py-0.5 text-[10px]',
-                  user
-                    ? 'border-border/70 text-muted-foreground'
-                    : 'border-border text-muted-foreground',
-                )}
-                key={attachment.id}
-              >
-                {attachment.name}
-              </span>
-            ))}
-          </div>
-        ) : null}
-        <div
+      >
+        <article
           className={cn(
-            'mt-1 text-[10px] tabular-nums',
-            user ? 'text-muted-foreground/50' : 'text-muted-foreground/30',
+            'min-w-0 text-sm leading-5',
+            user
+              ? 'max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3 text-secondary-foreground'
+              : 'w-full max-w-full px-1 py-0.5 text-foreground',
           )}
         >
-          {messageTimestampLabel(message, optimistic)}
-        </div>
-      </article>
-    </div>
+          {user ? (
+            <>
+              {attachmentList}
+              {message.text.trim().length > 0 ? (
+                <div className='break-words whitespace-pre-wrap'>{message.text}</div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <AssistantMarkdown text={assistantText} streaming={effectiveAssistantStreaming} />
+              {turnDiffSummary ? <AssistantChangedFilesSection summary={turnDiffSummary} /> : null}
+              {attachmentList}
+            </>
+          )}
+          {user ? (
+            <div className='text-muted-foreground/50 mt-1 text-right text-[10px] tabular-nums'>
+              {messageTimestampLabel(message, optimistic)}
+            </div>
+          ) : (
+            <div className='mt-1.5 flex items-center gap-2'>
+              <p className='text-muted-foreground/30 text-[10px] tabular-nums'>
+                <AssistantMessageMeta
+                  createdAt={message.createdAt}
+                  durationEnd={durationEnd ?? message.updatedAt}
+                  durationStart={durationStart ?? message.createdAt}
+                  streaming={effectiveAssistantStreaming}
+                />
+              </p>
+              {assistantCopyState.visible && renderAssistantCopyButton ? (
+                <div className='flex items-center opacity-0 transition-opacity duration-200 group-hover/assistant:opacity-100'>
+                  {renderAssistantCopyButton(assistantCopyState.text ?? '')}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </article>
+      </div>
+    </>
   )
 }
 

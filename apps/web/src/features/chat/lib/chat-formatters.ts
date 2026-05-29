@@ -86,6 +86,40 @@ export function formatChatDateLabel(value: string) {
   }).format(date)
 }
 
+export function formatChatDuration(durationMs: number) {
+  if (!Number.isFinite(durationMs)) return '0ms'
+  if (durationMs < 0) return '0ms'
+  if (durationMs < 1000) return `${Math.max(1, Math.round(durationMs))}ms`
+  if (durationMs < 10_000) return `${(durationMs / 1000).toFixed(1)}s`
+  if (durationMs < 60_000) return `${Math.round(durationMs / 1000)}s`
+
+  const minutes = Math.floor(durationMs / 60_000)
+  const seconds = Math.round((durationMs % 60_000) / 1000)
+  if (seconds === 0) return `${minutes}m`
+  if (seconds === 60) return `${minutes + 1}m`
+
+  return `${minutes}m ${seconds}s`
+}
+
+export function formatChatElapsed(startIso: string, endIso: string | undefined | null) {
+  if (!endIso) return null
+
+  const startedAtMs = Date.parse(startIso)
+  const endedAtMs = Date.parse(endIso)
+  if (Number.isNaN(startedAtMs)) return null
+  if (Number.isNaN(endedAtMs)) return null
+  if (endedAtMs < startedAtMs) return null
+
+  return formatChatDuration(endedAtMs - startedAtMs)
+}
+
+export function formatAssistantMessageMeta(createdAt: string, elapsed: string | null) {
+  const timestamp = formatChatTimestamp(createdAt)
+  if (!elapsed) return timestamp
+
+  return `${timestamp} • ${elapsed}`
+}
+
 export function formatWorkingTimer(startIso: string, endIso: string) {
   const startedAtMs = Date.parse(startIso)
   const endedAtMs = Date.parse(endIso)
