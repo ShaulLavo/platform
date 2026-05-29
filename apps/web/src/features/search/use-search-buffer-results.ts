@@ -14,6 +14,7 @@ export function useSearchBufferResults(rootPath: string) {
     (snapshot) => snapshot.replaceVisible,
     false,
   )
+  const status = useSearchBufferValue(rootPath, (snapshot) => snapshot.status, 'idle')
   const resultsQuery = useSearchBufferValue(
     rootPath,
     (snapshot) => snapshot.resultsQuery || snapshot.query,
@@ -32,5 +33,6 @@ export function useSearchBufferResults(rootPath: string) {
     replaceVisible,
     resultsQuery,
     resultsSearchQuery,
+    status,
   }
 }

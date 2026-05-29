@@ -20,7 +20,7 @@ import {
 } from 'react'
 
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
-import { createPlatformEditorConsoleLoggingPlugin } from '@/features/editor/editor-plugins'
+import { createPlatformSearchResultEditorLoggingPlugin } from '@/features/editor/editor-plugins'
 import {
   EMPTY_EDITOR_PLUGINS,
   EMPTY_RANGE_DECORATIONS,
@@ -492,7 +492,7 @@ function fileResultEditorPlugins(
   syntaxPlugins: readonly EditorPlugin[],
   findPlugin: EditorPlugin | null,
 ) {
-  const loggingPlugin = createPlatformEditorConsoleLoggingPlugin()
+  const loggingPlugin = createPlatformSearchResultEditorLoggingPlugin()
   if (syntaxPlugins.length === 0 && !findPlugin) return [loggingPlugin]
 
   if (!findPlugin) return [...syntaxPlugins, loggingPlugin]

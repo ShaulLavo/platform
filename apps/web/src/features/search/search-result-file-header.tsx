@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-import { SearchAnimatedNumber } from '@/features/search/search-animated-number'
+import { SearchNumber } from '@/features/search/search-number'
 import { fileIconStyle, fileName, matchNoun } from '@/features/search/search-result-editor-utils'
 import type { SearchResultFileBlock } from '@/features/search/search-result-view-model'
 import { iconForEntry } from '@/lib/file-icons'
@@ -62,8 +62,7 @@ export function SearchResultFileHeader({
         </span>
       </div>
       <span className='bg-muted/55 text-muted-foreground rounded-sm px-1.5 text-[10px] leading-4'>
-        <SearchAnimatedNumber fontSize='10px' value={file.matchCount} />{' '}
-        {matchNoun(file.matchCount)}
+        <SearchNumber fontSize='10px' value={file.matchCount} /> {matchNoun(file.matchCount)}
       </span>
       {replaceVisible ? (
         <Button

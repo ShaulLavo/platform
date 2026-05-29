@@ -17,7 +17,7 @@ export function SearchBufferEditorResults({
   editorKeymapLayers: readonly EditorKeymapLayer[]
   rootPath: string
 }) {
-  const { activeResultId, groups, replaceVisible, resultsQuery, resultsSearchQuery } =
+  const { activeResultId, groups, replaceVisible, resultsQuery, resultsSearchQuery, status } =
     useSearchBufferResults(rootPath)
   const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
@@ -44,7 +44,7 @@ export function SearchBufferEditorResults({
     <SearchResultEditorSurface
       activeResultId={activeResultId}
       canReplace={resultCanReplace}
-      deferredPluginMode='immediate'
+      deferredPluginMode={status === 'loading' ? 'manual' : 'idle'}
       displayedResultsQuery={resultsSearchQuery?.query ?? null}
       groups={groups}
       keymapLayers={editorKeymapLayers}

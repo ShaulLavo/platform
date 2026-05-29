@@ -16,7 +16,7 @@ import {
   searchResultActiveMatchPosition,
   searchResultContentItems,
 } from '@/features/search/search-result-items'
-import { SearchAnimatedNumber } from '@/features/search/search-animated-number'
+import { SearchNumber } from '@/features/search/search-number'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -174,9 +174,9 @@ function summaryWithControls(
   const activeContent = active ? (
     <>
       {' '}
-      <span aria-hidden='true'>·</span> <SearchAnimatedNumber value={active.index} />
+      <span aria-hidden='true'>·</span> <SearchNumber value={active.index} />
       /
-      <SearchAnimatedNumber value={active.total} />
+      <SearchNumber value={active.total} />
     </>
   ) : null
   const activeTitle = active ? ` · ${active.index}/${active.total}` : ''
@@ -215,11 +215,11 @@ function searchResultCount(snapshot: SearchBufferSnapshot) {
   const fileTitle = fileCount.toLocaleString()
   const matchSummary = snapshot.truncated ? (
     <>
-      <SearchAnimatedNumber value={snapshot.totalCount} /> shown, limit reached
+      <SearchNumber value={snapshot.totalCount} /> shown, limit reached
     </>
   ) : (
     <>
-      <SearchAnimatedNumber value={snapshot.totalCount} /> {matchNoun(snapshot.totalCount)}
+      <SearchNumber value={snapshot.totalCount} /> {matchNoun(snapshot.totalCount)}
     </>
   )
   const titleMatches = snapshot.truncated
@@ -229,7 +229,7 @@ function searchResultCount(snapshot: SearchBufferSnapshot) {
   return {
     content: (
       <>
-        {matchSummary} in <SearchAnimatedNumber value={fileCount} /> {fileNoun(fileCount)}
+        {matchSummary} in <SearchNumber value={fileCount} /> {fileNoun(fileCount)}
       </>
     ),
     title: `${titleMatches} in ${fileTitle} ${fileNoun(fileCount)}`,

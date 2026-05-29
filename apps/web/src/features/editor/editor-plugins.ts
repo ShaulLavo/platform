@@ -39,6 +39,12 @@ let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 const PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN = createEditorLoggingPlugin(logEditorEventToConsole, {
   name: 'platform.editor-logging',
 })
+const PLATFORM_SEARCH_RESULT_EDITOR_LOGGING_PLUGIN = createEditorLoggingPlugin(
+  logSearchResultEditorEventToConsole,
+  {
+    name: 'platform.search-result-editor-logging',
+  },
+)
 let nonCriticalEditorPlugins: readonly EditorPlugin[] | null = null
 let nonCriticalEditorPluginsPromise: Promise<readonly EditorPlugin[]> | null = null
 
@@ -220,9 +226,23 @@ export function createPlatformEditorConsoleLoggingPlugin(): EditorPlugin {
   return PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN
 }
 
+export function createPlatformSearchResultEditorLoggingPlugin(): EditorPlugin {
+  return PLATFORM_SEARCH_RESULT_EDITOR_LOGGING_PLUGIN
+}
+
 function logEditorEventToConsole(event: EditorLogEvent): void {
   log.info({
     ...event,
     area: 'editor',
+  })
+}
+
+function logSearchResultEditorEventToConsole(event: EditorLogEvent): void {
+  if (event.level !== 'warn' && event.level !== 'error') return
+
+  log[event.level]({
+    ...event,
+    area: 'editor',
+    surface: 'search-result',
   })
 }

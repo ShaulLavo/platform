@@ -3,7 +3,7 @@ import { memo } from 'react'
 import type { CSSProperties } from 'react'
 
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
-import { SearchAnimatedNumber } from '@/features/search/search-animated-number'
+import { SearchNumber } from '@/features/search/search-number'
 import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
@@ -68,7 +68,7 @@ export const SearchFileGroupHeader = memo(function SearchFileGroupHeader({
           compact && 'h-4 px-1 leading-4',
         )}
       >
-        <SearchAnimatedNumber fontSize='10px' value={group.count} />
+        <SearchNumber fontSize='10px' value={group.count} />
       </span>
       {replaceVisible ? (
         <Button
