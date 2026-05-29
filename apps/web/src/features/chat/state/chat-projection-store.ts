@@ -83,6 +83,7 @@ export type ChatTurnDiffSummary = {
   completedAt: string
   files: OrchestrationCheckpointFile[]
   status: OrchestrationCheckpointStatus
+  threadId: ThreadId
   turnId: TurnId
 }
 

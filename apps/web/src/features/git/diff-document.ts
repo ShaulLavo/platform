@@ -10,6 +10,13 @@ export type DiffDocumentInfo =
     }
   | {
       id: string
+      kind: 'checkpoint'
+      path: string
+      query: CheckpointPayload
+      status?: FileStatus['index'] | FileStatus['worktree']
+    }
+  | {
+      id: string
       kind: 'snapshot'
       path: string
       query: BlobDiffRequest
@@ -27,8 +34,23 @@ type SnapshotPayload = {
   version: 2
 }
 
+type CheckpointPayload = {
+  fromTurnCount: number
+  newObjectId?: string
+  oldObjectId?: string
+  oldPath?: string
+  path: string
+  status?: FileStatus['index'] | FileStatus['worktree']
+  threadId: string
+  toTurnCount: number
+  version: 1
+}
+
+export type CheckpointDiffDocumentInput = Omit<CheckpointPayload, 'version'>
+
 const DIFF_DOCUMENT_PREFIX = 'git-diff:'
 const SNAPSHOT_SCOPE = 'v2'
+const CHECKPOINT_SCOPE = 'checkpoint-v1'
 
 export function diffDocumentId(path: string, staged: boolean): string
 export function diffDocumentId(diff: FileDiff): string
@@ -47,6 +69,7 @@ export function parseDiffDocumentId(id: string | null | undefined): DiffDocument
 
   const scope = body.slice(0, separatorIndex)
   const encoded = body.slice(separatorIndex + 1)
+  if (scope === CHECKPOINT_SCOPE) return parseCheckpointDiffDocument(id, encoded)
   if (scope === SNAPSHOT_SCOPE) return parseSnapshotDiffDocument(id, encoded)
 
   return parseLegacyDiffDocument(id, scope, encoded)
@@ -63,6 +86,10 @@ export function diffDocumentTitle(id: string) {
   const info = parseDiffDocumentId(id)
   if (!info) return displayPath(id)
 
+  if (info.kind === 'checkpoint') {
+    return `${displayDiffPath(info.path)} checkpoint diff ${info.query.fromTurnCount}-${info.query.toTurnCount}`
+  }
+
   const hash = snapshotShortHash(info)
   if (!hash) return `${displayDiffPath(info.path)} diff`
 
@@ -75,6 +102,22 @@ export function diffDocumentShortHash(id: string) {
 
   const hash = info.query.newObjectId ?? info.query.oldObjectId
   return hash?.slice(0, 7) ?? ''
+}
+
+export function checkpointDiffDocumentId(input: CheckpointDiffDocumentInput) {
+  const payload: CheckpointPayload = {
+    fromTurnCount: input.fromTurnCount,
+    newObjectId: input.newObjectId,
+    oldObjectId: input.oldObjectId,
+    oldPath: input.oldPath,
+    path: input.path,
+    status: input.status,
+    threadId: input.threadId,
+    toTurnCount: input.toTurnCount,
+    version: 1,
+  }
+
+  return `${DIFF_DOCUMENT_PREFIX}${CHECKPOINT_SCOPE}:${encodeURIComponent(JSON.stringify(payload))}`
 }
 
 function legacyDiffDocumentId(path: string, staged: boolean) {
@@ -120,6 +163,30 @@ function parseSnapshotDiffDocument(id: string, encoded: string) {
   }
 }
 
+function parseCheckpointDiffDocument(id: string, encoded: string) {
+  const payload = parseCheckpointPayload(encoded)
+  if (!payload) return null
+
+  return {
+    id,
+    kind: 'checkpoint' as const,
+    path: payload.path,
+    query: payload,
+    status: payload.status,
+  }
+}
+
+function parseCheckpointPayload(encoded: string): CheckpointPayload | null {
+  try {
+    const payload = JSON.parse(decodeURIComponent(encoded)) as unknown
+    if (!isCheckpointPayload(payload)) return null
+
+    return payload
+  } catch {
+    return null
+  }
+}
+
 function parseSnapshotPayload(encoded: string): SnapshotPayload | null {
   try {
     const payload = JSON.parse(decodeURIComponent(encoded)) as unknown
@@ -144,6 +211,23 @@ function isSnapshotPayload(value: unknown): value is SnapshotPayload {
   if (!optionalDiffStatus(payload.status)) return false
 
   return Boolean(payload.oldObjectId || payload.newObjectId)
+}
+
+function isCheckpointPayload(value: unknown): value is CheckpointPayload {
+  if (!value || typeof value !== 'object') return false
+
+  const payload = value as Partial<CheckpointPayload>
+  if (payload.version !== 1) return false
+  if (typeof payload.threadId !== 'string') return false
+  if (typeof payload.path !== 'string') return false
+  if (!Number.isInteger(payload.fromTurnCount)) return false
+  if (!Number.isInteger(payload.toTurnCount)) return false
+  if (!optionalString(payload.oldPath)) return false
+  if (!optionalString(payload.oldObjectId)) return false
+  if (!optionalString(payload.newObjectId)) return false
+  if (!optionalDiffStatus(payload.status)) return false
+
+  return payload.fromTurnCount >= 0 && payload.toTurnCount >= payload.fromTurnCount
 }
 
 function optionalString(value: unknown) {

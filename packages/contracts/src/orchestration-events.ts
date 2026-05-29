@@ -50,6 +50,7 @@ export const orchestrationEventTypes = [
   'thread.activity-appended',
   'thread.proposed-plan-upserted',
   'thread.turn-diff-completed',
+  'thread.checkpoint-revert-requested',
   'thread.reverted',
   'thread.approval-response-requested',
   'thread.user-input-response-requested',
@@ -192,6 +193,12 @@ export const threadTurnDiffCompletedPayloadSchema = v.object({
   completedAt: isoDateTimeSchema,
 })
 
+export const threadCheckpointRevertRequestedPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  turnCount: nonNegativeIntegerSchema,
+  createdAt: isoDateTimeSchema,
+})
+
 export const threadRevertedPayloadSchema = v.object({
   threadId: threadIdSchema,
   turnCount: nonNegativeIntegerSchema,
@@ -323,6 +330,11 @@ export const orchestrationEventSchema = v.variant('type', [
     ...eventBaseSchema,
     type: v.literal('thread.turn-diff-completed'),
     payload: threadTurnDiffCompletedPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.checkpoint-revert-requested'),
+    payload: threadCheckpointRevertRequestedPayloadSchema,
   }),
   v.object({
     ...eventBaseSchema,

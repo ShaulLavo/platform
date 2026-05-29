@@ -168,6 +168,8 @@ export class OrchestrationProjectionPipeline {
       case 'thread.proposed-plan-upserted':
         this.updateThread(event.payload.threadId, { hasActionableProposedPlan: true })
         return
+      case 'thread.checkpoint-revert-requested':
+        return
       case 'thread.reverted':
       case 'thread.approval-response-requested':
       case 'thread.user-input-response-requested':

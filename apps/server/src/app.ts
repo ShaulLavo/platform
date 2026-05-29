@@ -19,6 +19,7 @@ import {
   recordRequestError,
 } from './observability'
 import { OrchestrationEngine } from './orchestration/engine'
+import { OrchestrationCheckpointDiffQuery } from './orchestration/checkpoint-diff-query'
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
 import { orchestrationWsRoutes } from './orchestration/ws-rpc'
@@ -54,6 +55,10 @@ export function createApp(options: AppOptions) {
       ? { registry: providerRegistry }
       : false,
   })
+  const checkpointDiff = new OrchestrationCheckpointDiffQuery(
+    options.orchestration?.database ?? platformDb,
+    git,
+  )
   const auth = createAuthConfig(options.auth)
 
   const app = new Elysia({ name: 'platform' })
@@ -89,7 +94,7 @@ export function createApp(options: AppOptions) {
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerRegistry))
     .use(orchestrationWsRoutes(orchestration, auth))
-    .use(orchestrationRoutes(orchestration))
+    .use(orchestrationRoutes(orchestration, checkpointDiff))
     .use(fontRoutes(fonts))
     .use(gitRoutes(git))
     .use(fsRoutes(fs))

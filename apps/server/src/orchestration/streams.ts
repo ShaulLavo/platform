@@ -7,10 +7,7 @@ import {
 } from './schemas'
 import type { OrchestrationSnapshotQuery } from './snapshot-query'
 import * as v from 'valibot'
-import {
-  orchestrationEventBatchSummary,
-  recordChatPipelineInfo,
-} from './orchestration-logging'
+import { orchestrationEventBatchSummary, recordChatPipelineInfo } from './orchestration-logging'
 
 export type OrchestrationStreamOptions = {
   afterSequence?: number
@@ -30,6 +27,7 @@ const DETAIL_EVENT_TYPES = new Set<OrchestrationEvent['type']>([
   'thread.activity-appended',
   'thread.proposed-plan-upserted',
   'thread.turn-diff-completed',
+  'thread.checkpoint-revert-requested',
   'thread.reverted',
   'thread.session-set',
 ])

@@ -113,6 +113,63 @@ describe('provider runtime ingestion', () => {
     ])
   })
 
+  it('rolls over assistant segment message IDs after assistant item completion', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest(contentDelta('content-1', 'assistant-item-1', 'First'))
+    await ingestion.ingest(assistantItemCompleted('complete-1', 'assistant-item-1', 'First'))
+    await ingestion.ingest(contentDelta('content-2', 'assistant-item-2', 'Second'))
+    await ingestion.ingest(assistantItemCompleted('complete-2', 'assistant-item-2', 'Second'))
+
+    const messageCommands = dispatched.filter((command) =>
+      command.type.startsWith('thread.message.assistant'),
+    )
+
+    expect(messageCommands).toMatchObject([
+      {
+        delta: 'First',
+        messageId: 'assistant:assistant-item-1',
+        type: 'thread.message.assistant.delta',
+      },
+      {
+        messageId: 'assistant:assistant-item-1',
+        type: 'thread.message.assistant.complete',
+      },
+      {
+        delta: 'Second',
+        messageId: 'assistant:assistant-item-2',
+        type: 'thread.message.assistant.delta',
+      },
+      {
+        messageId: 'assistant:assistant-item-2',
+        type: 'thread.message.assistant.complete',
+      },
+    ])
+  })
+
+  it('finalizes active assistant item messages when the turn completes', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest(contentDelta('content-1', 'assistant-item-1', 'First'))
+    await ingestion.ingest(turnCompleted('turn-complete-1'))
+
+    const messageCommands = dispatched.filter((command) =>
+      command.type.startsWith('thread.message.assistant'),
+    )
+
+    expect(messageCommands).toMatchObject([
+      {
+        delta: 'First',
+        messageId: 'assistant:assistant-item-1',
+        type: 'thread.message.assistant.delta',
+      },
+      {
+        messageId: 'assistant:assistant-item-1',
+        type: 'thread.message.assistant.complete',
+      },
+    ])
+  })
+
   it('buffers proposed plan text and upserts deterministically', async () => {
     const { dispatched, ingestion } = fixture()
 
@@ -287,6 +344,23 @@ function assistantComplete(eventId: string) {
   }
 }
 
+function assistantItemCompleted(eventId: string, itemId: string, detail: string) {
+  return {
+    createdAt: later,
+    eventId,
+    itemId,
+    payload: {
+      detail,
+      itemType: 'assistant_message',
+      status: 'completed' as const,
+      title: 'Assistant message',
+    },
+    threadId,
+    turnId,
+    type: 'item.completed' as const,
+  }
+}
+
 function contentDelta(eventId: string, itemId: string, delta: string) {
   return {
     createdAt: now,
@@ -296,5 +370,16 @@ function contentDelta(eventId: string, itemId: string, delta: string) {
     threadId,
     turnId,
     type: 'content.delta' as const,
+  }
+}
+
+function turnCompleted(eventId: string) {
+  return {
+    createdAt: later,
+    eventId,
+    payload: { state: 'completed' as const },
+    threadId,
+    turnId,
+    type: 'turn.completed' as const,
   }
 }

@@ -260,7 +260,7 @@ describe('chat timeline items', () => {
       optimisticMessages: [],
       proposedPlans: [],
       turnDiffSummaries: [
-        turnDiffSummary(turnId, assistantMessageId, [
+        turnDiffSummary(threadId, turnId, assistantMessageId, [
           checkpointFile('apps/web/src/App.tsx', 12, 4),
           checkpointFile('packages/contracts/src/index.ts', 2, 0),
         ]),
@@ -277,6 +277,40 @@ describe('chat timeline items', () => {
           { additions: 2, deletions: 0, path: 'packages/contracts/src/index.ts' },
         ],
       },
+    })
+  })
+
+  it('projects checkpoint revert counts onto the nearby user row', () => {
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const turnId = v.parse(turnIdSchema, 'turn-1')
+    const assistantMessageId = v.parse(messageIdSchema, 'message-2')
+    const items = chatTimelineItems({
+      activities: [],
+      latestTurn: null,
+      messages: [
+        message('message-1', threadId, timestamp(1), 'user', { turnId }),
+        message('message-2', threadId, timestamp(2), 'assistant', {
+          text: 'Updated the files',
+          turnId,
+        }),
+      ],
+      optimisticMessages: [],
+      proposedPlans: [],
+      turnDiffSummaries: [
+        {
+          ...turnDiffSummary(threadId, turnId, assistantMessageId, [
+            checkpointFile('apps/web/src/App.tsx', 12, 4),
+          ]),
+          checkpointTurnCount: 3,
+        },
+      ],
+    })
+    const userItem = items.find(
+      (item) => item.type === 'message' && item.message.id === 'message-1',
+    )
+
+    expect(userItem).toMatchObject({
+      revertTurnCount: 2,
     })
   })
 })
@@ -359,6 +393,7 @@ function proposedPlan(
 }
 
 function turnDiffSummary(
+  threadId: ReturnType<typeof parseThreadId>,
   turnId: ReturnType<typeof parseTurnId>,
   assistantMessageId: ReturnType<typeof parseMessageId> | null,
   files: ChatTurnDiffSummary['files'],
@@ -370,6 +405,7 @@ function turnDiffSummary(
     completedAt: timestamp(5),
     files,
     status: 'ready',
+    threadId,
     turnId,
   }
 }

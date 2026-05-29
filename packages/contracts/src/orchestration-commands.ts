@@ -190,6 +190,14 @@ export const threadUserInputRespondCommandSchema = v.object({
   createdAt: isoDateTimeSchema,
 })
 
+export const threadCheckpointRevertCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.checkpoint.revert'),
+  threadId: threadIdSchema,
+  turnCount: nonNegativeIntegerSchema,
+  createdAt: isoDateTimeSchema,
+})
+
 export const clientOrchestrationCommandSchema = v.variant('type', [
   projectCreateCommandSchema,
   projectMetaUpdateCommandSchema,
@@ -206,6 +214,7 @@ export const clientOrchestrationCommandSchema = v.variant('type', [
   threadSessionStopCommandSchema,
   threadApprovalRespondCommandSchema,
   threadUserInputRespondCommandSchema,
+  threadCheckpointRevertCommandSchema,
 ])
 
 export const threadSessionSetCommandSchema = v.object({
@@ -310,6 +319,9 @@ export type ThreadSessionStopCommand = v.InferOutput<typeof threadSessionStopCom
 export type ThreadApprovalRespondCommand = v.InferOutput<typeof threadApprovalRespondCommandSchema>
 export type ThreadUserInputRespondCommand = v.InferOutput<
   typeof threadUserInputRespondCommandSchema
+>
+export type ThreadCheckpointRevertCommand = v.InferOutput<
+  typeof threadCheckpointRevertCommandSchema
 >
 export type ClientOrchestrationCommand = v.InferOutput<typeof clientOrchestrationCommandSchema>
 export type InternalOrchestrationCommand = v.InferOutput<typeof internalOrchestrationCommandSchema>

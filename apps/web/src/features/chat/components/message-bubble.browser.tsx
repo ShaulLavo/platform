@@ -140,6 +140,137 @@ describe('MessageBubble browser rendering', () => {
       )
     })
   })
+
+  it('preserves assistant prose line breaks between markdown blocks', async () => {
+    const container = document.createElement('main')
+    container.style.width = '720px'
+    document.body.append(container)
+    root = createRoot(container)
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <EditorColorThemeProvider>
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'First line\nsecond line\n\nNext paragraph\nwith detail',
+              }}
+            />
+          </EditorColorThemeProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    await vi.waitFor(() => {
+      const paragraphs = assistantMarkdownParagraphs()
+
+      expect(paragraphs).toHaveLength(2)
+      expect(paragraphs[0]?.textContent).toBe('First line\nsecond line')
+      expect(paragraphs[1]?.textContent).toBe('Next paragraph\nwith detail')
+      expect(
+        paragraphs.every((paragraph) => getComputedStyle(paragraph).whiteSpace === 'pre-wrap'),
+      ).toBe(true)
+    })
+  })
+
+  it('opens historical checkpoint diffs from changed-file actions', async () => {
+    const container = document.createElement('main')
+    container.style.width = '720px'
+    document.body.append(container)
+    root = createRoot(container)
+    const onOpenCheckpointDiff = vi.fn(() => Promise.resolve())
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <EditorColorThemeProvider>
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'Changed these files:',
+              }}
+              turnDiffSummary={assistantChangedFilesSummary}
+              onOpenCheckpointDiff={onOpenCheckpointDiff}
+            />
+          </EditorColorThemeProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    viewDiffButton().click()
+    await vi.waitFor(() => {
+      expect(onOpenCheckpointDiff).toHaveBeenCalledWith(assistantChangedFilesSummary, undefined)
+    })
+
+    changedFileButton('src/features/chat/lib/chat-timeline-items.ts').click()
+    await vi.waitFor(() => {
+      expect(onOpenCheckpointDiff).toHaveBeenCalledWith(
+        assistantChangedFilesSummary,
+        'src/features/chat/lib/chat-timeline-items.ts',
+      )
+    })
+  })
+
+  it('renders checkpoint status without broken diff actions', async () => {
+    const container = document.createElement('main')
+    container.style.width = '720px'
+    document.body.append(container)
+    root = createRoot(container)
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <EditorColorThemeProvider>
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'Changed these files:',
+              }}
+              turnDiffSummary={{
+                ...assistantChangedFilesSummary,
+                status: 'missing',
+              }}
+              onOpenCheckpointDiff={vi.fn()}
+            />
+          </EditorColorThemeProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Checkpoint missing')
+      expect(buttonByText('View diff')).toBeNull()
+      expect(changedFileButtonOrNull('src/features/chat/lib/chat-timeline-items.ts')).toBeNull()
+    })
+  })
+
+  it('dispatches user-row checkpoint revert actions', async () => {
+    const container = document.createElement('main')
+    container.style.width = '720px'
+    document.body.append(container)
+    root = createRoot(container)
+    const onRevertToCheckpoint = vi.fn()
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <EditorColorThemeProvider>
+            <MessageBubble
+              message={userMessage}
+              revertTurnCount={2}
+              onRevertToCheckpoint={onRevertToCheckpoint}
+            />
+          </EditorColorThemeProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    revertButton().click()
+    await vi.waitFor(() => {
+      expect(onRevertToCheckpoint).toHaveBeenCalledWith(2)
+    })
+  })
 })
 
 const streamingAssistantChunks = [
@@ -204,6 +335,18 @@ const assistantCodeMessage = {
   updatedAt: '2026-05-28T00:00:00.000Z',
 } as OrchestrationMessage
 
+const userMessage = {
+  attachments: [],
+  createdAt: '2026-05-28T00:00:00.000Z',
+  id: 'message-browser-user',
+  role: 'user',
+  streaming: false,
+  text: 'Please update the chat view.',
+  threadId: 'thread-browser',
+  turnId: 'turn-browser',
+  updatedAt: '2026-05-28T00:00:00.000Z',
+} as OrchestrationMessage
+
 const assistantChangedFilesSummary = {
   assistantMessageId: 'message-browser-assistant',
   checkpointRef: 'checkpoint-browser',
@@ -230,6 +373,7 @@ const assistantChangedFilesSummary = {
     },
   ],
   status: 'ready',
+  threadId: 'thread-browser',
   turnId: 'turn-browser',
 } as ChatTurnDiffSummary
 
@@ -256,6 +400,55 @@ function streamdownCodeBlock() {
   if (!(codeBlock instanceof HTMLElement)) return null
 
   return codeBlock
+}
+
+function assistantMarkdownParagraphs() {
+  const markdown = document.querySelector('article')?.firstElementChild
+  if (!(markdown instanceof HTMLElement)) return []
+
+  return Array.from(markdown.querySelectorAll('p')).filter(
+    (paragraph): paragraph is HTMLParagraphElement => paragraph instanceof HTMLParagraphElement,
+  )
+}
+
+function viewDiffButton() {
+  const button = buttonByText('View diff')
+  if (!button) throw new Error('View diff button not found')
+
+  return button
+}
+
+function buttonByText(text: string) {
+  return (
+    Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === text,
+    ) ?? null
+  )
+}
+
+function changedFileButton(path: string) {
+  const button = changedFileButtonOrNull(path)
+  if (!button) throw new Error(`Changed file button not found: ${path}`)
+
+  return button
+}
+
+function changedFileButtonOrNull(path: string) {
+  const button = document.querySelector(`button[title="${path}"]`)
+  if (!(button instanceof HTMLButtonElement)) return null
+
+  return button
+}
+
+function revertButton() {
+  const button = document.querySelector(
+    'button[aria-label="Revert to checkpoint before this turn"]',
+  )
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error('Revert button not found')
+  }
+
+  return button
 }
 
 function streamdownCodeBlockBodyStyle() {

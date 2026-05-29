@@ -6,6 +6,7 @@ import {
   threadIdSchema,
 } from './schemas'
 import type { OrchestrationEngine } from './engine'
+import type { OrchestrationCheckpointDiffQuery } from './checkpoint-diff-query'
 import { toSse } from '../sse'
 import { observeRequestOperation } from '../observability'
 import { chatOperationContext, orchestrationReplaySummary } from './orchestration-logging'
@@ -20,12 +21,28 @@ const streamQuerySchema = v.object({
   afterSequence: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(0)), '0'),
 })
 
+const turnCountQueryValueSchema = v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(0))
+
+const turnDiffQuerySchema = v.object({
+  fromTurnCount: turnCountQueryValueSchema,
+  threadId: threadIdSchema,
+  toTurnCount: turnCountQueryValueSchema,
+})
+
+const fullThreadDiffQuerySchema = v.object({
+  threadId: threadIdSchema,
+  toTurnCount: turnCountQueryValueSchema,
+})
+
 const threadDetailStreamQuerySchema = v.object({
   afterSequence: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(0)), '0'),
   threadId: threadIdSchema,
 })
 
-export function orchestrationRoutes(engine: OrchestrationEngine) {
+export function orchestrationRoutes(
+  engine: OrchestrationEngine,
+  checkpointDiff: OrchestrationCheckpointDiffQuery,
+) {
   return new Elysia({ name: 'orchestration-routes' }).group('/orchestration', (app) =>
     app
       .post(
@@ -73,6 +90,37 @@ export function orchestrationRoutes(engine: OrchestrationEngine) {
           ),
         {
           query: threadDetailQuerySchema,
+        },
+      )
+      .get(
+        '/turn-diff',
+        ({ query }) =>
+          observeRequestOperation(
+            chatOperationContext('orchestration.turn_diff', {
+              fromTurnCount: query.fromTurnCount,
+              threadId: query.threadId,
+              toTurnCount: query.toTurnCount,
+            }),
+            async () => checkpointDiff.turnDiff(query),
+            (diffs) => ({ diffCount: diffs.length }),
+          ),
+        {
+          query: turnDiffQuerySchema,
+        },
+      )
+      .get(
+        '/full-thread-diff',
+        ({ query }) =>
+          observeRequestOperation(
+            chatOperationContext('orchestration.full_thread_diff', {
+              threadId: query.threadId,
+              toTurnCount: query.toTurnCount,
+            }),
+            async () => checkpointDiff.fullThreadDiff(query),
+            (diffs) => ({ diffCount: diffs.length }),
+          ),
+        {
+          query: fullThreadDiffQuerySchema,
         },
       )
       .get(

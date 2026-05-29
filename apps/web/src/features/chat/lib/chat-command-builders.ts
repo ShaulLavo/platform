@@ -16,6 +16,7 @@ import {
   type ProjectCreateCommand,
   type ProjectId,
   type RuntimeMode,
+  type ThreadCheckpointRevertCommand,
   type ThreadCreateCommand,
   type ThreadDeleteCommand,
   type ThreadId,
@@ -217,6 +218,24 @@ export function createThreadInterruptCommand({
     threadId,
     turnId,
     type: 'thread.turn.interrupt',
+  }
+}
+
+export function createCheckpointRevertCommand({
+  createdAt,
+  threadId,
+  turnCount,
+}: {
+  createdAt: string
+  threadId: ThreadId
+  turnCount: number
+}): ThreadCheckpointRevertCommand {
+  return {
+    commandId: createCommandId(),
+    createdAt,
+    threadId,
+    turnCount,
+    type: 'thread.checkpoint.revert',
   }
 }
 

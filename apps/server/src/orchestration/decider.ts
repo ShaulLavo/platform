@@ -95,6 +95,19 @@ export function decideOrchestrationCommand(
         requestId: command.requestId,
         threadId: command.threadId,
       })
+    case 'thread.checkpoint.revert':
+      return [
+        event(command, 'thread.checkpoint-revert-requested', {
+          createdAt: command.createdAt,
+          threadId: command.threadId,
+          turnCount: command.turnCount,
+        }),
+        event(command, 'thread.reverted', {
+          revertedAt: command.createdAt,
+          threadId: command.threadId,
+          turnCount: command.turnCount,
+        }),
+      ]
     case 'thread.session.set':
       return one(command, 'thread.session-set', {
         session: command.session,

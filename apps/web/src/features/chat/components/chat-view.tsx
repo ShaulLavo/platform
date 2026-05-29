@@ -2,7 +2,11 @@ import type { ThreadId } from '@workspace/contracts'
 import { useEffect, useMemo, useState } from 'react'
 
 import type { ChatEnvironment } from '../environment/chat-environment'
-import { createThreadInterruptCommand, createTurnSubmission } from '../lib/chat-command-builders'
+import {
+  createCheckpointRevertCommand,
+  createThreadInterruptCommand,
+  createTurnSubmission,
+} from '../lib/chat-command-builders'
 import {
   replayAfterTurnDispatch,
   scheduleThreadProjectionSyncAfterDispatch,
@@ -43,6 +47,7 @@ export function ChatView({
   const optimisticMessages = useChatOptimisticStore(optimisticMessagesSelector)
   const [sendError, setSendError] = useState<string | null>(null)
   const [interrupting, setInterrupting] = useState(false)
+  const [revertingCheckpoint, setRevertingCheckpoint] = useState(false)
   const [sending, setSending] = useState(false)
   const busy = isChatThreadBusy(thread)
 
@@ -177,6 +182,46 @@ export function ChatView({
     }
   }
 
+  async function handleRevertToCheckpoint(turnCount: number) {
+    if (!thread) return
+    if (busy) {
+      setSendError('Interrupt the current turn before reverting checkpoints.')
+      return
+    }
+    if (!confirmCheckpointRevert(turnCount)) return
+
+    setRevertingCheckpoint(true)
+    setSendError(null)
+    try {
+      const command = createCheckpointRevertCommand({
+        createdAt: new Date().toISOString(),
+        threadId: thread.id,
+        turnCount,
+      })
+      logChatPipelineInfo('chat.checkpoint_revert.dispatch.start', chatCommandSummary(command))
+      const result = await environment.dispatchCommand(command)
+      logChatPipelineInfo('chat.checkpoint_revert.dispatch.accepted', {
+        ...chatCommandSummary(command),
+        deduped: result.deduped,
+        sequence: result.sequence,
+      })
+      scheduleThreadProjectionSyncAfterDispatch({
+        environment,
+        replayAfterSequence: Math.max(0, result.sequence - 2),
+        threadId: thread.id,
+      })
+    } catch (error) {
+      logChatPipelineWarn('chat.checkpoint_revert.dispatch.failed', {
+        error,
+        threadId: thread.id,
+        turnCount,
+      })
+      setSendError(chatViewErrorMessage(error))
+    } finally {
+      setRevertingCheckpoint(false)
+    }
+  }
+
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
       <ChatRuntimeStatus
@@ -186,7 +231,12 @@ export function ChatView({
         stopPending={false}
         thread={thread}
       />
-      <MessagesTimeline optimisticMessages={optimisticMessages} thread={thread} />
+      <MessagesTimeline
+        checkpointRevertPending={revertingCheckpoint}
+        optimisticMessages={optimisticMessages}
+        thread={thread}
+        onRevertToCheckpoint={handleRevertToCheckpoint}
+      />
       <ChatInput
         busy={busy}
         commandStatusLabel={interrupting ? 'Interrupting' : null}
@@ -202,6 +252,19 @@ export function ChatView({
         onSubmit={handleSend}
       />
     </section>
+  )
+}
+
+function confirmCheckpointRevert(turnCount: number) {
+  if (typeof window === 'undefined') return true
+  if (typeof window.confirm !== 'function') return true
+
+  return window.confirm(
+    [
+      `Revert this thread to checkpoint ${turnCount}?`,
+      'This will discard newer messages and turn diffs in this thread.',
+      'This action cannot be undone.',
+    ].join('\n'),
   )
 }
 

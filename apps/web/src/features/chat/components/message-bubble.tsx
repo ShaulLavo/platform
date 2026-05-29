@@ -1,4 +1,5 @@
 import type { OrchestrationMessage } from '@workspace/contracts'
+import { ArrowCounterClockwiseIcon } from '@phosphor-icons/react'
 import { cn } from '@workspace/ui/lib/utils'
 import type { ReactNode } from 'react'
 
@@ -14,22 +15,30 @@ import { MessageCompletionDivider } from './message-completion-divider'
 export function MessageBubble({
   assistantStreaming,
   assistantTurnInProgress = false,
+  checkpointRevertPending = false,
   completionSummary = null,
   durationEnd,
   durationStart,
   message,
+  onOpenCheckpointDiff,
+  onRevertToCheckpoint,
   renderAssistantCopyButton,
+  revertTurnCount = null,
   showAssistantCopyButton = false,
   showCompletionDivider = false,
   turnDiffSummary = null,
 }: {
   assistantStreaming?: boolean
   assistantTurnInProgress?: boolean
+  checkpointRevertPending?: boolean
   completionSummary?: string | null
   durationEnd?: string
   durationStart?: string
   message: OrchestrationMessage | OptimisticChatMessage
+  onOpenCheckpointDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
+  onRevertToCheckpoint?: (turnCount: number) => void
   renderAssistantCopyButton?: (text: string) => ReactNode
+  revertTurnCount?: number | null
   showAssistantCopyButton?: boolean
   showCompletionDivider?: boolean
   turnDiffSummary?: ChatTurnDiffSummary | null
@@ -70,6 +79,14 @@ export function MessageBubble({
     streaming: effectiveAssistantStreaming || assistantTurnInProgress,
     text: message.text,
   })
+  const canRevertCheckpoint =
+    user && typeof revertTurnCount === 'number' && Boolean(onRevertToCheckpoint)
+
+  function handleRevertClick() {
+    if (typeof revertTurnCount !== 'number') return
+
+    onRevertToCheckpoint?.(revertTurnCount)
+  }
 
   return (
     <>
@@ -102,13 +119,31 @@ export function MessageBubble({
           ) : (
             <>
               <AssistantMarkdown text={assistantText} streaming={effectiveAssistantStreaming} />
-              {turnDiffSummary ? <AssistantChangedFilesSection summary={turnDiffSummary} /> : null}
+              {turnDiffSummary ? (
+                <AssistantChangedFilesSection
+                  summary={turnDiffSummary}
+                  onOpenDiff={onOpenCheckpointDiff}
+                />
+              ) : null}
               {attachmentList}
             </>
           )}
           {user ? (
-            <div className='text-muted-foreground/50 mt-1 text-right text-[10px] tabular-nums'>
-              {messageTimestampLabel(message, optimistic)}
+            <div className='text-muted-foreground/50 mt-1 flex items-center justify-end gap-1.5 text-[10px] tabular-nums'>
+              {canRevertCheckpoint ? (
+                <button
+                  aria-label='Revert to checkpoint before this turn'
+                  className='hover:bg-background/80 hover:text-foreground inline-flex size-5 items-center justify-center border border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+                  data-scroll-anchor-ignore
+                  disabled={checkpointRevertPending}
+                  title='Revert to checkpoint before this turn'
+                  type='button'
+                  onClick={handleRevertClick}
+                >
+                  <ArrowCounterClockwiseIcon aria-hidden='true' className='size-3.5' />
+                </button>
+              ) : null}
+              <span>{messageTimestampLabel(message, optimistic)}</span>
             </div>
           ) : (
             <div className='mt-1.5 flex items-center gap-2'>

@@ -140,6 +140,29 @@ export class GitService {
     return results
   }
 
+  async diffRefs(input: { path: string; oldRef: string; newRef: string }): Promise<GitFileDiff[]> {
+    recordGitServiceOperation('diff_refs', input.path)
+    const repository = await this.requiredRepositoryLocation(input.path)
+    const result = await this.git(repository.rootAbsolutePath, [
+      'diff',
+      '--no-color',
+      '--no-ext-diff',
+      '--src-prefix=a/',
+      '--dst-prefix=b/',
+      '--find-renames',
+      '--unified=3',
+      input.oldRef,
+      input.newRef,
+    ])
+    const diffs = parseDiff(result.stdout, repository.rootPath, false)
+    const results = await mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
+      this.withRefDiffSnapshotRefs(repository, diff, input),
+    )
+
+    recordRequestContext({ git: { diffCount: results.length } })
+    return results
+  }
+
   async file(input: string, ref: string) {
     recordGitServiceOperation('file', input)
     const repository = await this.resolveRepositoryLocation(input)
@@ -318,7 +341,7 @@ export class GitService {
   }
 
   private async resolveRepositoryLocation(input = ''): Promise<GitRepositoryLocation | null> {
-    const resolved = this.paths.resolve(input)
+    const resolved = this.resolveServicePath(input)
     const cwd = await gitCwdForPath(resolved.absolutePath)
     const root = await this.git(cwd, ['rev-parse', '--show-toplevel', '--show-prefix'], {
       allowFailure: true,
@@ -342,7 +365,7 @@ export class GitService {
   }
 
   private pathspecForRepository(rootAbsolutePath: string, input = '') {
-    const absolutePath = this.paths.resolve(input).absolutePath
+    const absolutePath = this.resolveServicePath(input).absolutePath
     const relative = path.relative(rootAbsolutePath, absolutePath)
     if (relative === '') return null
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -350,6 +373,18 @@ export class GitService {
     }
 
     return toPosix(relative)
+  }
+
+  private resolveServicePath(input = '') {
+    if (!path.isAbsolute(input)) return this.paths.resolve(input)
+
+    const absolutePath = path.resolve(input)
+    this.paths.assertInside(absolutePath)
+
+    return {
+      absolutePath,
+      relativePath: this.paths.toRelative(absolutePath),
+    }
   }
 
   private async repositoryInfo(
@@ -445,6 +480,42 @@ export class GitService {
       newObjectId: query.newObjectId,
       oldObjectId: query.oldObjectId,
     }
+  }
+
+  private async withRefDiffSnapshotRefs(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff,
+    input: { oldRef: string; newRef: string },
+  ): Promise<GitFileDiff> {
+    const [oldObjectId, newObjectId] = await Promise.all([
+      this.refDiffObjectId(
+        repository,
+        input.oldRef,
+        diff.oldPath ?? diff.path,
+        diff.oldFileMissing,
+      ),
+      this.refDiffObjectId(repository, input.newRef, diff.path, diff.newFileMissing),
+    ])
+
+    return {
+      ...diff,
+      newObjectId: newObjectId ?? undefined,
+      oldObjectId: oldObjectId ?? undefined,
+    }
+  }
+
+  private async refDiffObjectId(
+    repository: GitRepositoryLocation,
+    ref: string,
+    pathValue: string,
+    missing: boolean | undefined,
+  ) {
+    if (missing) return null
+
+    const relativePath = repositoryRelativePath(repository.rootPath, pathValue)
+    if (!relativePath) return null
+
+    return this.gitObjectId(repository, `${ref}:${relativePath}`)
   }
 
   private async untrackedDiffs(repository: GitRepositoryLocation): Promise<GitFileDiff[]> {

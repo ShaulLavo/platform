@@ -46,7 +46,7 @@ export function AssistantMarkdown({
       animated={streaming}
       caret={streaming ? 'block' : undefined}
       className={cn(
-        'max-w-full min-w-0 break-words [&_[data-streamdown=code-block-body]]:!border-0 [&_[data-streamdown=code-block]]:max-w-full [&_[data-streamdown=code-block]]:!border-0 [&_[data-streamdown=code-block]]:!bg-transparent [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+        'max-w-full min-w-0 break-words whitespace-pre-wrap [&_[data-streamdown=code-block-body]]:!border-0 [&_[data-streamdown=code-block]]:max-w-full [&_[data-streamdown=code-block]]:!border-0 [&_[data-streamdown=code-block]]:!bg-transparent [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
         className,
       )}
       components={streaming ? streamingComponents : undefined}

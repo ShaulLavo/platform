@@ -229,7 +229,7 @@ export class ProviderRuntimeIngestion {
       commandTag: `assistant-complete:${input.messageId}`,
       completedAt: input.completedAt,
       event: input.event,
-      fallbackText: input.fallbackText,
+      fallbackText: hasProjectedMessage ? undefined : input.fallbackText,
       finalDeltaCommandTag: `assistant-delta-finalize:${input.messageId}`,
       hasProjectedMessage,
       messageId: input.messageId,

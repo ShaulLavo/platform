@@ -99,6 +99,17 @@ export const orchestrationReplayEventsResultSchema = v.object({
   events: v.array(orchestrationEventSchema),
 })
 
+export const orchestrationGetTurnDiffInputSchema = v.object({
+  threadId: threadIdSchema,
+  fromTurnCount: nonNegativeIntegerSchema,
+  toTurnCount: nonNegativeIntegerSchema,
+})
+
+export const orchestrationGetFullThreadDiffInputSchema = v.object({
+  threadId: threadIdSchema,
+  toTurnCount: nonNegativeIntegerSchema,
+})
+
 export const orchestrationCommandReceiptStatusSchema = v.picklist(['accepted', 'rejected'])
 
 export const orchestrationCommandReceiptSchema = v.object({
@@ -127,5 +138,11 @@ export type OrchestrationReplayEventsInput = v.InferOutput<
 >
 export type OrchestrationReplayEventsResult = v.InferOutput<
   typeof orchestrationReplayEventsResultSchema
+>
+export type OrchestrationGetTurnDiffInput = v.InferOutput<
+  typeof orchestrationGetTurnDiffInputSchema
+>
+export type OrchestrationGetFullThreadDiffInput = v.InferOutput<
+  typeof orchestrationGetFullThreadDiffInputSchema
 >
 export type OrchestrationCommandReceipt = v.InferOutput<typeof orchestrationCommandReceiptSchema>

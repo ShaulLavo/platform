@@ -2,6 +2,10 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import type { DiffDocumentInfo } from '@/features/git/diff-document'
 import { gitKeys } from '@/lib/query-keys'
+import {
+  checkpointDiffQueryKey,
+  fetchCheckpointDiff,
+} from '@/features/chat/lib/checkpoint-diff-query'
 import { fetchBlobDiff, fetchDiff } from '../api'
 
 type UseFileDiffOptions = {
@@ -34,12 +38,13 @@ export function useDiffDocumentDiff(
     placeholderData,
     queryFn: ({ signal }) => fetchDiffDocument(diff, signal),
     queryKey: diffDocumentQueryKey(diff),
-    staleTime: diff?.kind === 'snapshot' ? Infinity : 1000,
+    staleTime: diff?.kind === 'snapshot' || diff?.kind === 'checkpoint' ? Infinity : 1000,
   })
 }
 
 function fetchDiffDocument(diff: DiffDocumentInfo | null, signal?: AbortSignal) {
   if (!diff) return Promise.resolve([])
+  if (diff.kind === 'checkpoint') return fetchCheckpointDiff(diff.query, signal)
   if (diff.kind === 'snapshot') return fetchBlobDiff(diff.query, signal)
 
   return fetchDiff(diff.path, diff.staged, signal)
@@ -47,6 +52,7 @@ function fetchDiffDocument(diff: DiffDocumentInfo | null, signal?: AbortSignal) 
 
 function diffDocumentQueryKey(diff: DiffDocumentInfo | null) {
   if (!diff) return gitKeys.diff('', false)
+  if (diff.kind === 'checkpoint') return checkpointDiffQueryKey(diff.query)
   if (diff.kind === 'snapshot') return gitKeys.blobDiff(diff.query)
 
   return gitKeys.diff(diff.path, diff.staged)

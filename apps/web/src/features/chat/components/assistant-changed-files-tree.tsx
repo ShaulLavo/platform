@@ -25,15 +25,18 @@ type RenderTreeNodeOptions = {
   depth: number
   expandedDirectories: Record<string, boolean>
   node: ChatTurnDiffTreeNode
+  onOpenFileDiff?: (path: string) => void
   toggleDirectory: (pathValue: string) => void
 }
 
 export function AssistantChangedFilesTree({
   allDirectoriesExpanded,
   files,
+  onOpenFileDiff,
 }: {
   allDirectoriesExpanded: boolean
   files: ChatTurnDiffSummary['files']
+  onOpenFileDiff?: (path: string) => void
 }) {
   const treeNodes = useMemo(() => buildChatTurnDiffTree(files), [files])
   const directoryPathsKey = useMemo(
@@ -77,6 +80,7 @@ export function AssistantChangedFilesTree({
           depth: 0,
           expandedDirectories,
           node,
+          onOpenFileDiff,
           toggleDirectory,
         }),
       )}
@@ -98,6 +102,7 @@ function renderDirectoryNode({
   depth,
   expandedDirectories,
   node,
+  onOpenFileDiff,
   toggleDirectory,
 }: RenderTreeNodeOptions): ReactNode {
   if (node.kind !== 'directory') return null
@@ -142,6 +147,7 @@ function renderDirectoryNode({
               depth: depth + 1,
               expandedDirectories,
               node: childNode,
+              onOpenFileDiff,
               toggleDirectory,
             }),
           )}
@@ -151,18 +157,12 @@ function renderDirectoryNode({
   )
 }
 
-function renderFileNode({ depth, node }: RenderTreeNodeOptions): ReactNode {
+function renderFileNode({ depth, node, onOpenFileDiff }: RenderTreeNodeOptions): ReactNode {
   if (node.kind !== 'file') return null
 
   const icon = iconForEntry({ name: node.name, type: 'file' })
-
-  return (
-    <div
-      className='group hover:bg-background/80 flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left'
-      key={`file:${node.path}`}
-      style={treeNodeStyle(depth)}
-      title={node.path}
-    >
+  const content = (
+    <>
       <span aria-hidden='true' className='size-3.5 shrink-0' />
       <span aria-hidden='true' className='size-3.5 shrink-0' style={fileIconStyle(icon)} />
       <span className='text-muted-foreground/80 group-hover:text-foreground/90 truncate font-mono text-[11px]'>
@@ -173,6 +173,33 @@ function renderFileNode({ depth, node }: RenderTreeNodeOptions): ReactNode {
           <ChatDiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
         </span>
       ) : null}
+    </>
+  )
+
+  if (onOpenFileDiff) {
+    return (
+      <button
+        className='group hover:bg-background/80 flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left'
+        data-scroll-anchor-ignore
+        key={`file:${node.path}`}
+        style={treeNodeStyle(depth)}
+        title={node.path}
+        type='button'
+        onClick={() => onOpenFileDiff(node.path)}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className='group hover:bg-background/80 flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left'
+      key={`file:${node.path}`}
+      style={treeNodeStyle(depth)}
+      title={node.path}
+    >
+      {content}
     </div>
   )
 }

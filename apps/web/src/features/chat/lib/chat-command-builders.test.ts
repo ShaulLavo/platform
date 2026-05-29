@@ -10,6 +10,7 @@ import * as v from 'valibot'
 
 import {
   createDraftThreadSubmission,
+  createCheckpointRevertCommand,
   createThreadInterruptCommand,
   createTurnSubmission,
   createWorkspaceProjectCommand,
@@ -93,6 +94,21 @@ describe('chat command builders', () => {
     expect(command.type).toBe('thread.turn.interrupt')
     expect(command.threadId).toBe(threadId)
     expect(command.turnId).toBeUndefined()
+  })
+
+  it('builds checkpoint revert commands for user-row rollback affordances', () => {
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const command = createCheckpointRevertCommand({
+      createdAt: '2026-05-24T12:00:00.000Z',
+      threadId,
+      turnCount: 2,
+    })
+
+    expect(command).toMatchObject({
+      threadId,
+      turnCount: 2,
+      type: 'thread.checkpoint.revert',
+    })
   })
 
   it('formats workspace and prompt titles for compact sidebar use', () => {

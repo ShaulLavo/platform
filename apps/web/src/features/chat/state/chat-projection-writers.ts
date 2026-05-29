@@ -307,6 +307,8 @@ function applyFreshThreadEvent(
       return applyThreadProposedPlanUpsertedEvent(state, event)
     case 'thread.turn-diff-completed':
       return applyThreadTurnDiffCompletedEvent(state, event)
+    case 'thread.checkpoint-revert-requested':
+      return state
     case 'thread.reverted':
       return applyThreadRevertedEvent(state, event)
     case 'thread.approval-response-requested':
@@ -679,6 +681,7 @@ function applyThreadTurnDiffCompletedEvent(
     completedAt: event.payload.completedAt,
     files: event.payload.files,
     status: event.payload.status,
+    threadId: event.payload.threadId,
     turnId: event.payload.turnId,
   }
   const threadId = event.payload.threadId

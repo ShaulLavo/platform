@@ -577,7 +577,7 @@ class CodexAppServerSession {
 
   private async handleItemCompletedNotification(params: unknown) {
     const item = notificationItem(params)
-    if (!isReasoningItem(item)) return false
+    if (!isReasoningItem(item)) return this.handleAssistantMessageItemCompleted(params, item)
 
     const context = codexItemNotificationContext(params, 'completedAtMs')
     if (!context) return true
@@ -589,6 +589,39 @@ class CodexAppServerSession {
     }
 
     await this.emitCompletedReasoningItem(context.providerTurnId, item, turn, context.createdAt)
+    return true
+  }
+
+  private async handleAssistantMessageItemCompleted(params: unknown, item: unknown) {
+    if (!isAssistantMessageItem(item)) return false
+
+    const context = codexItemNotificationContext(params, 'completedAtMs')
+    if (!context) return true
+
+    const turn = this.turnForProviderTurnId(context.providerTurnId)
+    if (!turn) {
+      recordChatPipelineWarning('chat.pipeline.codex_session.assistant_item.missing_turn', {
+        itemId: item.id,
+        providerTurnId: context.providerTurnId,
+        threadId: this.threadId,
+      })
+      return true
+    }
+
+    await turn.sink.ingest({
+      createdAt: context.createdAt,
+      eventId: runtimeEventId('codex-assistant-item-complete'),
+      itemId: item.id,
+      payload: {
+        detail: item.text,
+        itemType: 'assistant_message',
+        status: 'completed',
+        title: 'Assistant message',
+      },
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+      type: 'item.completed',
+    })
     return true
   }
 
@@ -668,12 +701,15 @@ class CodexAppServerSession {
     })
     await turn.sink.ingest({
       createdAt: new Date().toISOString(),
-      delta: params.delta,
+      itemId: params.itemId,
       eventId: runtimeEventId('codex-assistant-delta'),
-      messageId: turn.messageId,
+      payload: {
+        delta: params.delta,
+        streamKind: 'assistant_text',
+      },
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
-      type: 'assistant.delta',
+      type: 'content.delta',
     })
   }
 
@@ -745,6 +781,7 @@ class CodexAppServerSession {
   }
 
   private async completeTurn(providerTurnId: string, turn: ActiveCodexTurn) {
+    const completedAt = new Date().toISOString()
     recordChatPipelineInfo('chat.pipeline.codex_session.complete_turn', {
       messageId: turn.messageId,
       providerTurnId,
@@ -752,7 +789,15 @@ class CodexAppServerSession {
       turnId: turn.canonicalTurnId,
     })
     await turn.sink.ingest({
-      completedAt: new Date().toISOString(),
+      createdAt: completedAt,
+      eventId: runtimeEventId('codex-turn-completed'),
+      payload: { state: 'completed' },
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+      type: 'turn.completed',
+    })
+    await turn.sink.ingest({
+      completedAt,
       eventId: runtimeEventId('codex-assistant-complete'),
       messageId: turn.messageId,
       threadId: this.threadId,
@@ -1585,6 +1630,14 @@ function isReasoningItem(value: unknown): value is CodexReasoningItem {
   if (stringField(record, 'type') !== 'reasoning') return false
 
   return Boolean(stringField(record, 'id'))
+}
+
+function isAssistantMessageItem(value: unknown): value is { id: string; text: string } {
+  const record = asRecord(value)
+  if (stringField(record, 'type') !== 'agentMessage') return false
+  if (!stringField(record, 'id')) return false
+
+  return typeof record.text === 'string'
 }
 
 function codexItemNotificationContext(

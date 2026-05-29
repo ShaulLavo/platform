@@ -123,6 +123,22 @@ function sendReasoningEvents() {
   });
 }
 
+function sendAgentMessageItemCompleted(itemId, text) {
+  send({
+    method: 'item/completed',
+    params: {
+      threadId: 'provider-thread-1',
+      turnId: 'provider-turn-1',
+      completedAtMs: 1770000002000,
+      item: {
+        id: itemId,
+        type: 'agentMessage',
+        text,
+      },
+    },
+  });
+}
+
 function assertStartParams(message) {
   if (message.params.cwd !== '/Users/shaul/Desktop/platform') {
     fail(message.id, 'cwd was not normalized');
@@ -258,6 +274,34 @@ function handle(message) {
       send({ id: message.id, result: { turn: fakeTurn('inProgress') } });
       return;
     }
+    if (mode === 'multi-agent-items') {
+      send({
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'provider-thread-1',
+          turnId: 'provider-turn-1',
+          itemId: 'item-1',
+          delta: 'First item',
+        },
+      });
+      sendAgentMessageItemCompleted('item-1', 'First item');
+      send({
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'provider-thread-1',
+          turnId: 'provider-turn-1',
+          itemId: 'item-2',
+          delta: 'Second item',
+        },
+      });
+      sendAgentMessageItemCompleted('item-2', 'Second item');
+      send({
+        method: 'turn/completed',
+        params: { threadId: 'provider-thread-1', turn: fakeTurn('completed') },
+      });
+      send({ id: message.id, result: { turn: fakeTurn('completed') } });
+      return;
+    }
     send({
       method: 'item/agentMessage/delta',
       params: {
@@ -267,6 +311,7 @@ function handle(message) {
         delta: 'Hello from app-server',
       },
     });
+    sendAgentMessageItemCompleted('item-1', 'Hello from app-server');
     send({
       method: 'turn/completed',
       params: { threadId: 'provider-thread-1', turn: fakeTurn('completed') },
@@ -355,18 +400,35 @@ describe('CodexProviderAdapter', () => {
       )
       expect(events).toContainEqual(
         expect.objectContaining({
-          delta: 'Hello from app-server',
+          itemId: 'item-1',
+          payload: expect.objectContaining({
+            delta: 'Hello from app-server',
+            streamKind: 'assistant_text',
+          }),
           threadId: input.thread.id,
           turnId: input.turnId,
-          type: 'assistant.delta',
+          type: 'content.delta',
         }),
       )
       expect(events).toContainEqual(
         expect.objectContaining({
-          messageId: `assistant:${input.turnId}`,
+          itemId: 'item-1',
+          payload: expect.objectContaining({
+            detail: 'Hello from app-server',
+            itemType: 'assistant_message',
+            status: 'completed',
+          }),
           threadId: input.thread.id,
           turnId: input.turnId,
-          type: 'assistant.complete',
+          type: 'item.completed',
+        }),
+      )
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          payload: { state: 'completed' },
+          threadId: input.thread.id,
+          turnId: input.turnId,
+          type: 'turn.completed',
         }),
       )
       expect(events).toContainEqual(
@@ -450,6 +512,50 @@ describe('CodexProviderAdapter', () => {
         ])
       },
       { mode: 'reasoning-events' },
+    )
+  })
+
+  it('preserves Codex assistant item boundaries for separate agent messages', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const events: ProviderRuntimeEvent[] = []
+        const input = providerTurnInput()
+
+        await adapter.startTurn(input, {
+          ingest: async (event) => {
+            events.push(event)
+          },
+        })
+        await adapter.stopAll()
+
+        const assistantDeltas = events.filter(
+          (event) =>
+            event.type === 'content.delta' && event.payload.streamKind === 'assistant_text',
+        )
+        const assistantCompletions = events.filter(
+          (event) =>
+            event.type === 'item.completed' && event.payload.itemType === 'assistant_message',
+        )
+
+        expect(assistantDeltas).toMatchObject([
+          {
+            itemId: 'item-1',
+            payload: { delta: 'First item', streamKind: 'assistant_text' },
+            type: 'content.delta',
+          },
+          {
+            itemId: 'item-2',
+            payload: { delta: 'Second item', streamKind: 'assistant_text' },
+            type: 'content.delta',
+          },
+        ])
+        expect(assistantCompletions).toMatchObject([
+          { itemId: 'item-1', type: 'item.completed' },
+          { itemId: 'item-2', type: 'item.completed' },
+        ])
+      },
+      { mode: 'multi-agent-items' },
     )
   })
 

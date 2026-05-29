@@ -30,6 +30,12 @@ export const gitKeys = {
     path: string
   }) => [...gitKeys.diffs(), 'blob', query] as const,
   diffs: () => [...gitKeys.all, 'diffs'] as const,
+  checkpointDiff: (query: {
+    fromTurnCount: number
+    path?: string
+    threadId: string
+    toTurnCount: number
+  }) => [...gitKeys.diffs(), 'checkpoint', query] as const,
   diff: (path: string, staged: boolean) => [...gitKeys.diffs(), path, staged] as const,
   statuses: () => [...gitKeys.all, 'statuses'] as const,
   status: (path: string) => [...gitKeys.statuses(), path] as const,

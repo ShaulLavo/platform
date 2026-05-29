@@ -141,6 +141,7 @@ describe('orchestration contracts', () => {
       'thread.activity-appended',
       'thread.proposed-plan-upserted',
       'thread.turn-diff-completed',
+      'thread.checkpoint-revert-requested',
       'thread.reverted',
       'thread.approval-response-requested',
       'thread.user-input-response-requested',

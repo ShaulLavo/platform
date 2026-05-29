@@ -141,6 +141,8 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
     case 'thread.proposed-plan-upserted':
       updateThreadValue(model, event.payload.threadId, { hasActionableProposedPlan: true })
       return
+    case 'thread.checkpoint-revert-requested':
+      return
     case 'thread.reverted':
     case 'thread.approval-response-requested':
     case 'thread.user-input-response-requested':

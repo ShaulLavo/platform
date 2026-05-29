@@ -29,6 +29,7 @@ export type ChatTimelineItem =
       durationStart: string
       id: string
       message: OrchestrationMessage | OptimisticChatMessage
+      revertTurnCount: number | null
       showAssistantCopyButton: boolean
       showCompletionDivider: boolean
       timestamp: string
@@ -64,6 +65,7 @@ type ChronologicalTimelineItem =
       durationStart: string
       id: string
       message: OrchestrationMessage | OptimisticChatMessage
+      revertTurnCount: number | null
       showAssistantCopyButton: boolean
       showCompletionDivider: boolean
       sourceOrder: number
@@ -109,6 +111,10 @@ export function chatTimelineItems({
     turnDiffSummaries,
     timelineMessages,
   )
+  const revertTurnCountByUserMessageId = deriveRevertTurnCountByUserMessageId(
+    timelineMessages,
+    turnDiffSummaryByAssistantMessageId,
+  )
   const items: ChronologicalTimelineItem[] = []
   let sourceOrder = 0
 
@@ -119,6 +125,7 @@ export function chatTimelineItems({
         sourceOrder,
         messageMetadata.get(message.id),
         turnDiffSummaryByAssistantMessageId.get(message.id) ?? null,
+        revertTurnCountByUserMessageId.get(message.id) ?? null,
       ),
     )
     sourceOrder += 1
@@ -130,6 +137,7 @@ export function chatTimelineItems({
         sourceOrder,
         messageMetadata.get(message.id),
         turnDiffSummaryByAssistantMessageId.get(message.id) ?? null,
+        revertTurnCountByUserMessageId.get(message.id) ?? null,
       ),
     )
     sourceOrder += 1
@@ -175,6 +183,7 @@ function messageTimelineItem(
   sourceOrder: number,
   metadata = fallbackChatMessageTimelineMetadata(message),
   turnDiffSummary: ChatTurnDiffSummary | null = null,
+  revertTurnCount: number | null = null,
 ): ChronologicalTimelineItem {
   return {
     assistantStreaming: metadata.assistantStreaming,
@@ -184,6 +193,7 @@ function messageTimelineItem(
     durationStart: metadata.durationStart,
     id: `message:${message.id}`,
     message,
+    revertTurnCount,
     showAssistantCopyButton: metadata.showAssistantCopyButton,
     showCompletionDivider: metadata.showCompletionDivider,
     sourceOrder,
@@ -262,6 +272,7 @@ function timelineItemFromEntry(item: Exclude<ChronologicalTimelineItem, { type: 
       durationStart: item.durationStart,
       id: item.id,
       message: item.message,
+      revertTurnCount: item.revertTurnCount,
       showAssistantCopyButton: item.showAssistantCopyButton,
       showCompletionDivider: item.showCompletionDivider,
       timestamp: item.timestamp,
@@ -300,6 +311,50 @@ function deriveTurnDiffSummaryByAssistantMessageId(
   }
 
   return summaryByAssistantMessageId
+}
+
+function deriveRevertTurnCountByUserMessageId(
+  messages: readonly ChatTimelineMessage[],
+  summaryByAssistantMessageId: ReadonlyMap<string, ChatTurnDiffSummary>,
+) {
+  const chronologicalMessages = messages.toSorted(compareMessagesByCreatedAt)
+  const counts = new Map<string, number>()
+
+  for (let index = 0; index < chronologicalMessages.length; index += 1) {
+    const message = chronologicalMessages[index]
+    if (!message || message.role !== 'user') continue
+
+    const turnCount = revertTurnCountAfterUserMessage(
+      chronologicalMessages,
+      index,
+      summaryByAssistantMessageId,
+    )
+    if (turnCount === null) continue
+
+    counts.set(message.id, turnCount)
+  }
+
+  return counts
+}
+
+function revertTurnCountAfterUserMessage(
+  messages: readonly ChatTimelineMessage[],
+  userMessageIndex: number,
+  summaryByAssistantMessageId: ReadonlyMap<string, ChatTurnDiffSummary>,
+) {
+  for (let index = userMessageIndex + 1; index < messages.length; index += 1) {
+    const message = messages[index]
+    if (!message) continue
+    if (message.role === 'user') return null
+    if (message.role !== 'assistant') continue
+
+    const summary = summaryByAssistantMessageId.get(message.id)
+    if (!summary) continue
+
+    return Math.max(0, summary.checkpointTurnCount - 1)
+  }
+
+  return null
 }
 
 function compareMessagesByCreatedAt(left: ChatTimelineMessage, right: ChatTimelineMessage) {
