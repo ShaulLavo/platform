@@ -428,7 +428,20 @@ describe('fs rpc events', () => {
     )
 
     expect(created.status).toBe(200)
-    await expect(noEvent(events)).resolves.toBe(true)
+
+    // The ignored create must emit nothing. Drain deterministically by issuing a
+    // visible create: since the stream is ordered, if the ignored create had
+    // emitted it would arrive before this sentinel.
+    const sentinel = await app.handle(
+      new Request('http://local/fs/create-file', {
+        body: JSON.stringify({ path: 'visible.txt' }),
+        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+        method: 'POST',
+      }),
+    )
+
+    expect(sentinel.status).toBe(200)
+    expect(await nextEvent(events)).toMatchObject({ path: 'visible.txt', type: 'created' })
     await events.close()
   })
 
@@ -544,7 +557,11 @@ describe('fs rpc events', () => {
     await mkdir(path.join(root, '.evlog', 'logs'), { recursive: true })
     await writeFile(path.join(root, '.evlog', 'logs', '2026-05-25.jsonl'), '{}\n')
 
-    await expect(noEvent(events, 500)).resolves.toBe(true)
+    // The ignored external changes must emit nothing. Drain deterministically with
+    // a visible external write: the watcher preserves order, so a leaked ignored
+    // event would arrive before this sentinel.
+    await writeFile(path.join(root, 'visible.txt'), 'ok')
+    expect(await nextEvent(events)).toMatchObject({ path: 'visible.txt' })
     await events.close()
   })
 })
@@ -1047,13 +1064,14 @@ async function nextMatchingEvent(
   throw new Error('timed out waiting for matching filesystem event')
 }
 
-async function noEvent(events: ReturnType<typeof createSseReader>, timeoutMs = 50) {
-  const result = await Promise.race([
-    events.next().then(() => false),
-    delay(timeoutMs).then(() => true),
+async function nextEvent(events: ReturnType<typeof createSseReader>) {
+  const event = await Promise.race([
+    events.next(),
+    delay(2_500).then(() => null),
   ])
+  if (!event) throw new Error('timed out waiting for filesystem event')
 
-  return result
+  return event
 }
 
 function delay(ms: number) {
