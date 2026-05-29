@@ -35,8 +35,15 @@ export async function lspRouteMatch(
   }
 }
 
-export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
+export type LspRouteDeps = {
+  readonly matchServer?: typeof matchLspServer
+  readonly createSession?: typeof LspProxySession.create
+}
+
+export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRouteDeps = {}) {
   const sessions = new WeakMap<object, PendingLspSession>()
+  const matchServer = deps.matchServer ?? matchLspServer
+  const createSession = deps.createSession ?? LspProxySession.create
 
   return {
     async open(ws: unknown) {
@@ -60,7 +67,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
         return
       }
 
-      const match = await resolveLspRouteMatch(fs.paths, socket)
+      const match = await resolveLspRouteMatch(fs.paths, socket, matchServer)
       if (!match) {
         rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {
@@ -74,7 +81,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig) {
         return
       }
 
-      const session = await LspProxySession.create(socket, match, fs.paths.toRelative(match.root))
+      const session = await createSession(socket, match, fs.paths.toRelative(match.root))
       if (!session) {
         rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {
@@ -183,12 +190,16 @@ async function flushPendingLspMessages(pending: PendingLspSession) {
   if (pending.messages.length > 0) flushPendingLspSession(pending)
 }
 
-async function resolveLspRouteMatch(paths: WorkspacePaths, input: LspRouteMatchInput) {
+async function resolveLspRouteMatch(
+  paths: WorkspacePaths,
+  input: LspRouteMatchInput,
+  match: typeof matchLspServer = matchLspServer,
+) {
   try {
     const file = input.path ? paths.resolve(input.path) : null
     if (!file) return null
 
-    return matchLspServer({
+    return match({
       filePath: file.absolutePath,
       serverId: input.serverId,
       workspaceRoot: paths.resolve(input.root).absolutePath,
