@@ -1,4 +1,4 @@
-import type { LoadState } from '../state'
+import type { LoadState } from '../model'
 
 import { RecentShortcut } from './recent-shortcut'
 import { RecentShortcutLoading } from './recent-shortcut-loading'

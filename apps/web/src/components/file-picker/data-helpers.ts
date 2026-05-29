@@ -20,7 +20,7 @@ import {
   compareSearchEntries,
   type DirectoryFsEntry,
   type FilePickerMode,
-} from './state'
+} from './model'
 
 export type DirectoryLoadData = {
   currentEntry: DirectoryFsEntry | null

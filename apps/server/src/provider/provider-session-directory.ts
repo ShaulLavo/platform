@@ -11,7 +11,7 @@ import {
   type ThreadId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
-import { db as defaultDb } from '../db/client'
+import { getDefaultPlatformDatabase } from '../db/client'
 import { providerSessionRuntime, type ProviderSessionRuntimeRow } from '../db/schema'
 import type { OrchestrationDatabase } from '../orchestration/event-store'
 import {
@@ -55,7 +55,7 @@ export type ProviderRuntimeBindingWithMetadata = {
 export class ProviderSessionDirectory {
   private readonly database: OrchestrationDatabase
 
-  constructor(database: OrchestrationDatabase = defaultDb) {
+  constructor(database: OrchestrationDatabase = getDefaultPlatformDatabase()) {
     this.database = database
   }
 

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { loadDirectoryData, type DirectoryLoadData } from './data-helpers'
 import { directoryLoadState } from './load-state'
-import type { FilePickerMode } from './state'
+import type { FilePickerMode } from './model'
 
 export function useDirectoryLoad({
   currentPath,

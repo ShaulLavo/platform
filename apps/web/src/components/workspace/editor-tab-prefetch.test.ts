@@ -5,7 +5,7 @@ import {
   editorTabPrefetchRegistrationKey,
 } from '@/components/workspace/editor-tab-prefetch'
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { diffDocumentId } from '@/features/git/diff-document'
+import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import type { FileDiff } from '@/features/git/types'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 
@@ -20,7 +20,7 @@ describe('editor tab prefetch helpers', () => {
     expect(
       editorTabIntentPrefetchKey([
         { id: 'tab-a', path: '/repo/src/app.ts' },
-        { id: 'tab-b', path: diffDocumentId(snapshotDiff('/repo/src/app.ts')) },
+        { id: 'tab-b', path: snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts')) },
         { id: 'tab-c', path: conflictDiffDocumentId('conflict-1') },
         { id: 'tab-d', path: searchBufferDocumentId('/repo') },
       ]),

@@ -4,7 +4,7 @@ import type {
   RuntimeMode,
   ThreadId,
 } from '@workspace/contracts'
-import { db as defaultDb } from '../db/client'
+import { getDefaultPlatformDatabase } from '../db/client'
 import {
   ProviderSessionDirectory,
   type ProviderRuntimeBindingStatus,
@@ -14,7 +14,7 @@ import type { OrchestrationDatabase } from './event-store'
 export class ProviderRuntimeReceipts {
   private readonly directory: ProviderSessionDirectory
 
-  constructor(database: OrchestrationDatabase = defaultDb) {
+  constructor(database: OrchestrationDatabase = getDefaultPlatformDatabase()) {
     this.directory = new ProviderSessionDirectory(database)
   }
 

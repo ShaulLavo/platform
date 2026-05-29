@@ -1,0 +1,281 @@
+import { fileMatchesAccept } from '@/lib/file-icons'
+import type { FsEntry, PickedFsEntry } from '@/lib/file-system-types'
+import { effectiveEntryType, isDirectoryEntry, isFileEntry } from '@/lib/file-system-types'
+import { compareFuzzyRankedTargets } from '@workspace/contracts'
+import { cn } from '@workspace/ui/lib/utils'
+
+export type LoadState =
+  | { status: 'idle' }
+  | { status: 'loading'; entries?: FsEntry[] }
+  | { status: 'ready'; entries: FsEntry[] }
+  | { status: 'error'; message: string }
+
+export type DirectoryFsEntry = FsEntry &
+  (
+    | {
+        type: 'directory'
+      }
+    | {
+        targetType: 'directory'
+        type: 'symlink'
+      }
+  )
+
+export type FilePickerMode = 'folder' | 'file'
+export type FilePickerIconMode = 'default' | 'vscode'
+
+export const ROOT_PATH = ''
+
+const modifiedDateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
+export function pickerCopy(mode: FilePickerMode) {
+  if (mode === 'file') {
+    return {
+      title: 'Choose file',
+      chooseLabel: 'Choose file',
+      searchLabel: 'Search files',
+      searchPlaceholder: 'Search files',
+      emptyDescription: 'This folder has no visible files or folders.',
+      emptyPreviewTitle: 'Select a file',
+      noSelectionLabel: 'No file selected',
+    }
+  }
+
+  return {
+    title: 'Choose folder',
+    chooseLabel: 'Choose folder',
+    searchLabel: 'Search files and folders',
+    searchPlaceholder: 'Search files and folders',
+    emptyDescription: 'This folder has no visible files or folders.',
+    emptyPreviewTitle: 'Select a folder',
+    noSelectionLabel: 'No folder selected',
+  }
+}
+
+export function listLabel(mode: FilePickerMode) {
+  if (mode === 'file') return 'Files and folders'
+
+  return 'Folders and files'
+}
+
+export function entryByOffset(entries: FsEntry[], selectedEntry: FsEntry | null, offset: number) {
+  if (entries.length === 0) return null
+
+  const currentIndex = entries.findIndex((entry) => entry.path === selectedEntry?.path)
+  const nextIndex = nextSelectionIndex(currentIndex, offset, entries.length)
+  return entries[nextIndex] ?? null
+}
+
+export function toPickedEntry(
+  entry: FsEntry | null,
+  mode: FilePickerMode,
+  accept?: readonly string[],
+): PickedFsEntry | null {
+  if (!entry) return null
+  if (!isPickableEntry(entry, mode, accept)) return null
+
+  return entry
+}
+
+export function currentPickableEntry(
+  entry: DirectoryFsEntry | null,
+  mode: FilePickerMode,
+): PickedFsEntry | null {
+  if (mode !== 'folder') return null
+
+  return entry
+}
+
+export function isPickableEntry(
+  entry: FsEntry,
+  mode: FilePickerMode,
+  accept?: readonly string[],
+): entry is PickedFsEntry {
+  if (mode === 'folder') return isDirectoryEntry(entry)
+  if (!isFileEntry(entry)) return false
+
+  return fileMatchesAccept(entry.name, accept)
+}
+
+export function parentPath(path: string) {
+  const parts = path.split('/').filter(Boolean)
+  parts.pop()
+
+  return parts.join('/')
+}
+
+export function basename(path: string) {
+  const parts = path.split('/').filter(Boolean)
+  return parts.at(-1) ?? 'Root'
+}
+
+export function pathCrumbs(path: string) {
+  const parts = path.split('/').filter(Boolean)
+  const crumbs = [{ label: 'Root', path: ROOT_PATH }]
+  let current = ROOT_PATH
+
+  for (const part of parts) {
+    current = current ? `${current}/${part}` : part
+    crumbs.push({ label: part, path: current })
+  }
+
+  return crumbs
+}
+
+export function initialPathForOpen(selectedValue: PickedFsEntry | null, homePath: string) {
+  if (!selectedValue) return homePath
+
+  return parentPath(selectedValue.path)
+}
+
+export function joinPaths(parent: string, child: string) {
+  if (!parent) return child
+
+  return `${parent}/${child}`
+}
+
+export function displayPath(path: string) {
+  if (!path) return '/'
+
+  return `/${path}`
+}
+
+export function compareEntries(a: FsEntry, b: FsEntry) {
+  const aType = effectiveEntryType(a)
+  const bType = effectiveEntryType(b)
+  if (aType === 'directory' && bType !== 'directory') return -1
+  if (aType !== 'directory' && bType === 'directory') return 1
+
+  return a.name.localeCompare(b.name)
+}
+
+export function compareSearchEntries(query: string) {
+  return (a: FsEntry, b: FsEntry) =>
+    compareFuzzyRankedTargets(entryRankTarget(a), entryRankTarget(b), query) || compareEntries(a, b)
+}
+
+export function tileTone(entry: FsEntry, selected: boolean) {
+  if (isDirectoryEntry(entry)) {
+    return cn(
+      'border-amber-200/70 bg-amber-50 text-amber-600 dark:border-amber-900/70 dark:bg-amber-950/30',
+      selected && 'border-amber-300 bg-amber-100 dark:border-amber-800',
+    )
+  }
+
+  if (isFileEntry(entry)) {
+    return cn(
+      'border-sky-200/70 bg-sky-50 text-sky-600 dark:border-sky-900/70 dark:bg-sky-950/30',
+      selected && 'border-sky-300 bg-sky-100 dark:border-sky-800',
+    )
+  }
+
+  return 'border-border bg-muted/30 text-muted-foreground'
+}
+
+export function kindLabel(entry: FsEntry) {
+  if (entry.type === 'symlink' && entry.targetType === 'directory') {
+    return 'Alias folder'
+  }
+  if (entry.type === 'symlink' && entry.targetType === 'file') {
+    return 'Alias file'
+  }
+  if (isDirectoryEntry(entry)) return 'Folder'
+  if (isFileEntry(entry)) return 'File'
+  if (entry.type === 'symlink') return 'Alias'
+
+  return 'Other'
+}
+
+export function fileExtension(name: string) {
+  const index = name.lastIndexOf('.')
+  if (index <= 0) return ''
+  if (index === name.length - 1) return ''
+
+  return name.slice(index + 1, index + 5)
+}
+
+export function formatSizeLabel(entry: FsEntry) {
+  if (isDirectoryEntry(entry)) return ''
+
+  return formatSize(entry.size)
+}
+
+export function formatSize(size: number) {
+  if (size === 0) return '0 B'
+
+  const units = ['B', 'KB', 'MB', 'GB']
+  const exponent = Math.min(Math.floor(Math.log(size) / Math.log(1024)), 3)
+  const value = size / 1024 ** exponent
+  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
+}
+
+export function formatModified(mtimeMs: number) {
+  if (mtimeMs <= 0) return 'Unknown'
+
+  return modifiedDateFormatter.format(new Date(mtimeMs))
+}
+
+export function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  return 'The file server did not return a usable response.'
+}
+
+export function rpcErrorMessage(error: unknown) {
+  const value = errorValue(error)
+  if (isErrorPayload(value)) return value.error.message
+
+  return 'The file server rejected the request.'
+}
+
+export function rawRpcErrorMessage(payload: unknown) {
+  if (isErrorPayload(payload)) return payload.error.message
+
+  return 'The file server rejected the request.'
+}
+
+export function loadStateEntries(state: LoadState) {
+  if (state.status === 'ready') return state.entries
+  if (state.status === 'loading') return state.entries ?? []
+
+  return []
+}
+
+export function loadingLoadState(previous: LoadState): LoadState {
+  const entries = loadStateEntries(previous)
+  if (entries.length === 0) return { status: 'loading' }
+
+  return { status: 'loading', entries }
+}
+
+function nextSelectionIndex(currentIndex: number, offset: number, length: number) {
+  if (currentIndex < 0 && offset > 0) return 0
+  if (currentIndex < 0) return length - 1
+
+  return Math.min(Math.max(currentIndex + offset, 0), length - 1)
+}
+
+function entryRankTarget(entry: FsEntry) {
+  return {
+    label: entry.name,
+    path: entry.path,
+  }
+}
+
+function errorValue(error: unknown) {
+  if (!error || typeof error !== 'object') return null
+  if (!('value' in error)) return null
+
+  return error.value
+}
+
+function isErrorPayload(value: unknown): value is { error: { message: string } } {
+  if (!value || typeof value !== 'object') return false
+  if (!('error' in value)) return false
+
+  const error = value.error
+  if (!error || typeof error !== 'object') return false
+  return 'message' in error && typeof error.message === 'string'
+}

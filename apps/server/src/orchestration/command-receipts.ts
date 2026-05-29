@@ -6,7 +6,7 @@ import type {
   OrchestrationEvent,
 } from './schemas'
 import { orchestrationCommandReceiptSchema } from './schemas'
-import { db as defaultDb } from '../db/client'
+import { getDefaultPlatformDatabase } from '../db/client'
 import { orchestrationCommandReceipts, type OrchestrationCommandReceiptRow } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 import {
@@ -18,7 +18,7 @@ import {
 export class OrchestrationCommandReceipts {
   private readonly database: OrchestrationDatabase
 
-  constructor(database: OrchestrationDatabase = defaultDb) {
+  constructor(database: OrchestrationDatabase = getDefaultPlatformDatabase()) {
     this.database = database
   }
 

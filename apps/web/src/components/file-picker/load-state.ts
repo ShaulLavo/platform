@@ -1,7 +1,7 @@
 import type { FsEntry } from '@/lib/file-system-types'
 import type { UseQueryResult } from '@tanstack/react-query'
 
-import { errorMessage, loadingLoadState, type LoadState } from './state'
+import { errorMessage, loadingLoadState, type LoadState } from './model'
 
 import type { DirectoryLoadData } from './data-helpers'
 

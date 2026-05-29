@@ -2,7 +2,7 @@ import { CaretRightIcon } from '@phosphor-icons/react'
 import { cn } from '@workspace/ui/lib/utils'
 import { Fragment } from 'react'
 
-import { pathCrumbs } from '../state'
+import { pathCrumbs } from '../model'
 
 export function Breadcrumbs({
   currentPath,

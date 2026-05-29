@@ -42,11 +42,11 @@ import {
   parentPath,
   pickerCopy,
   toPickedEntry,
-  useFilePickerSession,
   type FilePickerIconMode,
   type FilePickerMode,
   type LoadState,
-} from './file-picker/state'
+} from './file-picker/model'
+import { useFilePickerSession } from './file-picker/state'
 
 type FilePickerDialogProps = {
   accept?: readonly string[]

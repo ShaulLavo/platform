@@ -1,4 +1,4 @@
-import type { LoadState } from '../state'
+import type { LoadState } from '../model'
 
 import { LocationPill } from './location-pill'
 import { RecentPill } from './recent-pill'

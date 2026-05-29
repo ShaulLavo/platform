@@ -1,6 +1,6 @@
 import { ClockCounterClockwiseIcon } from '@phosphor-icons/react'
 
-import type { LoadState } from '../state'
+import type { LoadState } from '../model'
 
 import { RecentShortcutList } from './recent-shortcut-list'
 

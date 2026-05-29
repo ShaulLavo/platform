@@ -5,7 +5,7 @@ import { FileDashedIcon, FileIcon, FolderIcon, FolderOpenIcon } from '@phosphor-
 import { Badge } from '@workspace/ui/components/badge'
 import { cn } from '@workspace/ui/lib/utils'
 
-import { fileExtension, tileTone, type FilePickerIconMode } from './state'
+import { fileExtension, tileTone, type FilePickerIconMode } from './model'
 
 export function EntryPreviewTile({
   entry,

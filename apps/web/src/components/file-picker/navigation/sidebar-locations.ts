@@ -1,6 +1,6 @@
 import { FolderIcon, FolderOpenIcon, HardDrivesIcon, HouseIcon } from '@phosphor-icons/react'
 
-import { ROOT_PATH, joinPaths } from '../state'
+import { ROOT_PATH, joinPaths } from '../model'
 
 export function sidebarLocationsFor(homePath: string) {
   return [

@@ -1,6 +1,10 @@
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
 import { effectiveEntryType, type EntryTypeFilter } from '@workspace/contracts'
-import { closeMetadataDatabase, db, metadataDatabasePath } from '../db/client'
+import {
+  createMetadataDatabase,
+  type MetadataDatabaseHandle,
+  type PlatformDatabase,
+} from '../db/client'
 import { migrateMetadataDatabase } from '../db/migrations'
 import { fsMetadata, type FsMetadataRow } from '../db/schema'
 
@@ -14,17 +18,37 @@ export type FsMetadataEntry = {
   birthtimeMs: number
 }
 
-export class FsMetadataStore {
-  readonly databasePath = metadataDatabasePath
+export type FsMetadataStoreOptions = {
+  /** Existing database handle to use. The store will not close handles it does not own. */
+  database?: MetadataDatabaseHandle
+  /** Path to open a dedicated, store-owned database when no handle is provided. */
+  databasePath?: string
+}
 
-  constructor() {
-    migrateMetadataDatabase()
+export class FsMetadataStore {
+  readonly databasePath: string
+  private readonly db: PlatformDatabase
+  private readonly ownedHandle: MetadataDatabaseHandle | null
+
+  constructor(options: FsMetadataStoreOptions = {}) {
+    if (options.database) {
+      this.ownedHandle = null
+      this.db = options.database.db
+      this.databasePath = options.database.databasePath
+    } else {
+      this.ownedHandle = createMetadataDatabase({ databasePath: options.databasePath })
+      this.db = this.ownedHandle.db
+      this.databasePath = this.ownedHandle.databasePath
+    }
+
+    migrateMetadataDatabase(this.db)
   }
 
   recordPicked(entry: FsMetadataEntry) {
     const now = Date.now()
 
-    db.insert(fsMetadata)
+    this.db
+      .insert(fsMetadata)
       .values({
         path: entry.path,
         name: entry.name,
@@ -54,7 +78,7 @@ export class FsMetadataStore {
   }
 
   listRecentDirectories(limit: number) {
-    return db
+    return this.db
       .select()
       .from(fsMetadata)
       .where(and(eq(fsMetadata.entryType, 'directory'), isNotNull(fsMetadata.lastPickedAt)))
@@ -64,7 +88,7 @@ export class FsMetadataStore {
   }
 
   close() {
-    closeMetadataDatabase()
+    this.ownedHandle?.close()
   }
 }
 

@@ -1,6 +1,6 @@
 import { Separator } from '@workspace/ui/components/separator'
 
-import type { LoadState } from '../state'
+import type { LoadState } from '../model'
 
 import { LocationButton } from './location-button'
 import { RecentSidebarSection } from './recent-sidebar-section'

@@ -6,7 +6,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationReplayEventsInput,
 } from './schemas'
-import { db as defaultDb } from '../db/client'
+import { getDefaultPlatformDatabase, type PlatformDatabase } from '../db/client'
 import { orchestrationEvents, type OrchestrationEventRow } from '../db/schema'
 import {
   orchestrationEventBatchSummary,
@@ -14,7 +14,7 @@ import {
   recordChatPipelineInfo,
 } from './orchestration-logging'
 
-export type OrchestrationDatabase = typeof defaultDb
+export type OrchestrationDatabase = PlatformDatabase
 export type PendingOrchestrationEvent = {
   [Type in OrchestrationEvent['type']]: Omit<
     Extract<OrchestrationEvent, { type: Type }>,
@@ -25,7 +25,7 @@ export type PendingOrchestrationEvent = {
 export class OrchestrationEventStore {
   private readonly database: OrchestrationDatabase
 
-  constructor(database: OrchestrationDatabase = defaultDb) {
+  constructor(database: OrchestrationDatabase = getDefaultPlatformDatabase()) {
     this.database = database
   }
 

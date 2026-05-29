@@ -19,7 +19,7 @@ import {
   type OrchestrationThreadActivity,
   type OrchestrationThreadDetailSnapshot,
 } from './schemas'
-import { db as defaultDb } from '../db/client'
+import { getDefaultPlatformDatabase } from '../db/client'
 import {
   orchestrationEvents,
   projectionProjects,
@@ -46,7 +46,7 @@ import { ORCHESTRATION_PROJECTOR_NAME } from './projection-pipeline'
 export class OrchestrationSnapshotQuery {
   private readonly database: OrchestrationDatabase
 
-  constructor(database: OrchestrationDatabase = defaultDb) {
+  constructor(database: OrchestrationDatabase = getDefaultPlatformDatabase()) {
     this.database = database
   }
 

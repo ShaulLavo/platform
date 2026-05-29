@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import type { OrchestrationEvent } from './schemas'
-import { db as defaultDb } from '../db/client'
+import { getDefaultPlatformDatabase } from '../db/client'
 import {
   projectionProjects,
   projectionState,
@@ -25,7 +25,7 @@ export class OrchestrationProjectionPipeline {
   private readonly eventStore: OrchestrationEventStore
 
   constructor(
-    database: OrchestrationDatabase = defaultDb,
+    database: OrchestrationDatabase = getDefaultPlatformDatabase(),
     eventStore = new OrchestrationEventStore(database),
   ) {
     this.database = database

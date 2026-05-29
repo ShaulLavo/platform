@@ -7,7 +7,7 @@ import {
   editorPaneTabs,
   type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
-import { diffDocumentId } from '@/features/git/diff-document'
+import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileDiff } from '@/features/git/types'
 import { readWorkspaceCache, writeWorkspaceCache } from '@/lib/workspace-cache'
@@ -29,7 +29,7 @@ describe('workspace cache', () => {
 
   it('persists git diff tabs when their backing file is in the workspace', () => {
     const rootFolder = pickedDirectory('/repo')
-    const diffPath = diffDocumentId(snapshotDiff('/repo/src/app.ts'))
+    const diffPath = snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts'))
 
     writeWorkspaceCache({
       diffViewMode: 'stacked',
@@ -64,7 +64,7 @@ describe('workspace cache', () => {
 
   it('filters git diff tabs when their backing file is outside the workspace', () => {
     const rootFolder = pickedDirectory('/repo')
-    const diffPath = diffDocumentId(snapshotDiff('/other/src/app.ts'))
+    const diffPath = snapshotDiffDocumentId(snapshotDiff('/other/src/app.ts'))
 
     writeWorkspaceCache({
       diffViewMode: 'split',

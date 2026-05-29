@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   checkpointDiffDocumentId,
-  diffDocumentId,
+  snapshotDiffDocumentId,
   diffDocumentLabel,
   diffDocumentShortHash,
   diffDocumentTitle,
@@ -21,7 +21,7 @@ describe('git diff document ids', () => {
       staged: false,
     }
 
-    const id = diffDocumentId(diff)
+    const id = snapshotDiffDocumentId(diff)
 
     expect(parseDiffDocumentId(id)).toEqual({
       id,

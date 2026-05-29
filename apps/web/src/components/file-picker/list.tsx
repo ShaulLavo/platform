@@ -21,7 +21,7 @@ import {
   type FilePickerIconMode,
   type FilePickerMode,
   type LoadState,
-} from './state'
+} from './model'
 
 export function ListHeader({
   isLoading,

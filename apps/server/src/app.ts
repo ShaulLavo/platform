@@ -1,7 +1,7 @@
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 import { authGuard, createAuthConfig, isCorsOriginAllowed, type AuthOptions } from './auth'
-import { db as platformDb } from './db/client'
+import { getDefaultPlatformDatabase } from './db/client'
 import { fontRoutes } from './fonts/routes'
 import { NerdFontService, type FontService } from './fonts/service'
 import { errorPayload, FsError, isFsError } from './fs/errors'
@@ -53,13 +53,13 @@ export function createApp(options: AppOptions) {
   const fonts = options.fonts ?? new NerdFontService()
   const providerAdapterRegistry =
     options.orchestration?.providerAdapterRegistry ?? createDefaultProviderAdapterRegistry()
-  const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb, {
+  const orchestration = new OrchestrationEngine(options.orchestration?.database ?? getDefaultPlatformDatabase(), {
     providerRuntime: options.orchestration?.providerRuntime
       ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
       : false,
   })
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(
-    options.orchestration?.database ?? platformDb,
+    options.orchestration?.database ?? getDefaultPlatformDatabase(),
     git,
   )
   const auth = createAuthConfig(options.auth)

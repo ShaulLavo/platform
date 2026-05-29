@@ -2,7 +2,7 @@ import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { gitKeys } from '@/lib/query-keys'
 import { useQueryClient } from '@tanstack/react-query'
 import { fetchDiff } from '../api'
-import { diffDocumentId, hasDiffDocumentSnapshot } from '../diff-document'
+import { snapshotDiffDocumentId, hasDiffDocumentSnapshot } from '../diff-document'
 import type { ChangeRow, FileDiff } from '../types'
 
 export function useOpenDiffDocument() {
@@ -20,7 +20,7 @@ export function useOpenDiffDocument() {
     if (!diff) return
     if (!hasDiffDocumentSnapshot(diff)) return
 
-    const documentId = diffDocumentId(diff)
+    const documentId = snapshotDiffDocumentId(diff)
     const query = blobDiffQuery(diff)
     const queryKey = gitKeys.blobDiff(query)
     queryClient.setQueryData(queryKey, [diff])

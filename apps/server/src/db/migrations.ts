@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
-import { db } from './client'
+import { getDefaultPlatformDatabase, type PlatformDatabase } from './client'
 
-export function migrateMetadataDatabase(database: typeof db = db) {
+export function migrateMetadataDatabase(database: PlatformDatabase = getDefaultPlatformDatabase()) {
   database.run(sql`
 		CREATE TABLE IF NOT EXISTS fs_metadata (
 			path TEXT PRIMARY KEY NOT NULL,
@@ -27,7 +27,7 @@ export function migrateMetadataDatabase(database: typeof db = db) {
 	`)
 }
 
-export function migrateOrchestrationDatabase(database: typeof db = db) {
+export function migrateOrchestrationDatabase(database: PlatformDatabase = getDefaultPlatformDatabase()) {
   database.run(sql`
 		CREATE TABLE IF NOT EXISTS orchestration_events (
 			sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -248,12 +248,12 @@ export function migrateOrchestrationDatabase(database: typeof db = db) {
 	`)
 }
 
-export function migratePlatformDatabase(database: typeof db = db) {
+export function migratePlatformDatabase(database: PlatformDatabase = getDefaultPlatformDatabase()) {
   migrateMetadataDatabase(database)
   migrateOrchestrationDatabase(database)
 }
 
-function addBirthtimeColumn(database: typeof db) {
+function addBirthtimeColumn(database: PlatformDatabase) {
   try {
     database.run(sql`
 			ALTER TABLE fs_metadata
@@ -264,7 +264,7 @@ function addBirthtimeColumn(database: typeof db) {
   }
 }
 
-function deleteLegacyProviderSessionRuntimeRows(database: typeof db) {
+function deleteLegacyProviderSessionRuntimeRows(database: PlatformDatabase) {
   database.run(sql`
 		DELETE FROM provider_session_runtime
 		WHERE provider_instance_id IS NULL

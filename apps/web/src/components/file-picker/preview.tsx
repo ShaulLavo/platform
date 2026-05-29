@@ -13,7 +13,7 @@ import {
   pickerCopy,
   type FilePickerIconMode,
   type FilePickerMode,
-} from './state'
+} from './model'
 
 export function PreviewPane({
   currentPath,

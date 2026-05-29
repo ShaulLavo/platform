@@ -50,10 +50,6 @@ const DIFF_DOCUMENT_PREFIX = 'git-diff:'
 const SNAPSHOT_SCOPE = 'v2'
 const CHECKPOINT_SCOPE = 'checkpoint-v1'
 
-export function diffDocumentId(diff: SnapshotDiffDocumentInput) {
-  return snapshotDiffDocumentId(diff)
-}
-
 export function hasDiffDocumentSnapshot(diff: FileDiff): diff is SnapshotDiffDocumentInput {
   return Boolean(diff.oldObjectId || diff.newObjectId)
 }
@@ -121,7 +117,7 @@ export function checkpointDiffDocumentId(input: CheckpointDiffDocumentInput) {
   return `${DIFF_DOCUMENT_PREFIX}${CHECKPOINT_SCOPE}:${encodeURIComponent(JSON.stringify(payload))}`
 }
 
-function snapshotDiffDocumentId(diff: SnapshotDiffDocumentInput) {
+export function snapshotDiffDocumentId(diff: SnapshotDiffDocumentInput) {
   const payload: SnapshotPayload = {
     newObjectId: diff.newObjectId,
     oldObjectId: diff.oldObjectId,

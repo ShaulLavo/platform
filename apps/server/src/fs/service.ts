@@ -24,6 +24,7 @@ import {
 } from '../observability'
 import { findInWorkspaceStream, type FindOptions, type SearchStreamEvent } from './search'
 import { FsError } from './errors'
+import type { MetadataDatabaseHandle } from '../db/client'
 import { FsMetadataStore, metadataRowToEntry, type FsMetadataEntry } from './metadata'
 import type {
   CopyBody,
@@ -48,6 +49,10 @@ export type FileSystemServiceOptions = {
   maxSearchContentBytes?: number
   maxTextFileBytes?: number
   treeConcurrency?: number
+  /** Existing metadata database handle. When omitted the service opens and owns its own. */
+  metadataDatabase?: MetadataDatabaseHandle
+  /** Path for the service-owned metadata database when no handle is provided. */
+  metadataDatabasePath?: string
 }
 
 export const DEFAULT_TREE_CONCURRENCY = 32
@@ -90,7 +95,10 @@ export class FileSystemService {
     this.paths = createWorkspacePaths(options.workspaceRoot ?? this.systemRoot)
     this.homePath = resolveHomePath(this.paths, homeDirectory)
     this.defaultPath = this.homePath
-    this.metadata = new FsMetadataStore()
+    this.metadata = new FsMetadataStore({
+      database: options.metadataDatabase,
+      databasePath: options.metadataDatabasePath,
+    })
     this.maxSearchContentBytes = options.maxSearchContentBytes ?? 1024 * 1024
     this.maxTextFileBytes = options.maxTextFileBytes ?? resolveMaxTextFileBytes()
     this.treeConcurrency = options.treeConcurrency ?? DEFAULT_TREE_CONCURRENCY
