@@ -98,7 +98,7 @@ export function errorPayload(error: FsError) {
   }
 }
 
-function nodeErrorCode(error: unknown) {
+export function nodeErrorCode(error: unknown) {
   if (!error || typeof error !== 'object') return null
   if (!('code' in error)) return null
 

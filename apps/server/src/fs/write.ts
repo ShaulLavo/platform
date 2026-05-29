@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { lstat, readFile, realpath, rm, rename, stat, writeFile } from 'node:fs/promises'
+import { readFile, realpath, rm, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { FsError, mapNodeError } from './errors'
+import { lstatOptional, statOptional } from './mutation-target'
 import type { WorkspacePaths } from './path'
 import { assertFile } from './stat'
 import type { WriteBody } from './contracts'
@@ -64,24 +65,6 @@ async function writablePath(absolutePath: string) {
   return realpath(absolutePath)
 }
 
-async function lstatOptional(absolutePath: string) {
-  try {
-    return await lstat(absolutePath)
-  } catch (error) {
-    if (nodeErrorCode(error) === 'ENOENT') return null
-    throw error
-  }
-}
-
-async function statOptional(absolutePath: string) {
-  try {
-    return await stat(absolutePath)
-  } catch (error) {
-    if (nodeErrorCode(error) === 'ENOENT') return null
-    throw error
-  }
-}
-
 function temporaryPath(absolutePath: string) {
   return path.join(
     path.dirname(absolutePath),
@@ -97,12 +80,4 @@ async function removeTempFile(tempPath: string | null) {
   } catch {
     return
   }
-}
-
-function nodeErrorCode(error: unknown) {
-  if (!error || typeof error !== 'object') return null
-  if (!('code' in error)) return null
-
-  const code = error.code
-  return typeof code === 'string' ? code : null
 }

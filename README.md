@@ -19,6 +19,39 @@ The web app owns product workflows and UI state. It should talk to server APIs t
 
 The UI package should stay reusable and app-agnostic. React is provided by consuming apps as a peer dependency, while the package keeps React in dev dependencies for local typechecking and development.
 
+## Editor Packages Prerequisite
+
+The `packages/editor-*` entries are **symlinks**, not vendored sources. Each one
+points into a sibling checkout of the separate `Editor` monorepo using a stable
+relative path:
+
+```
+packages/editor-core                  -> ../../Editor/packages/editor
+packages/editor-diff                  -> ../../Editor/packages/diff
+packages/editor-find                  -> ../../Editor/packages/find
+packages/editor-gutters               -> ../../Editor/packages/gutters
+packages/editor-lsp                   -> ../../Editor/packages/lsp
+packages/editor-minimap               -> ../../Editor/packages/minimap
+packages/editor-panes                 -> ../../Editor/packages/panes
+packages/editor-react                 -> ../../Editor/packages/react
+packages/editor-scope-lines           -> ../../Editor/packages/scope-lines
+packages/editor-tree-sitter           -> ../../Editor/packages/tree-sitter
+packages/editor-tree-sitter-languages -> ../../Editor/packages/tree-sitter-languages
+packages/editor-typescript-lsp        -> ../../Editor/packages/typescript-lsp
+```
+
+Because the links are relative, the `Editor` repository must be checked out as a
+sibling of this repository so the packages resolve at `../../Editor/packages/*`:
+
+```
+<parent>/
+  platform/   # this repository
+  Editor/     # required sibling checkout
+```
+
+Clone `Editor` next to `platform` **before** running `bun install`; otherwise the
+editor workspace dependencies will fail to resolve.
+
 ## Common Commands
 
 ```bash

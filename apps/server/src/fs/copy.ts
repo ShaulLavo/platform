@@ -1,5 +1,10 @@
-import { cp, lstat, rm } from 'node:fs/promises'
+import { cp } from 'node:fs/promises'
 import { FsError, mapNodeError } from './errors'
+import {
+  assertExistingPath,
+  assertNotRootTarget,
+  removeDestinationIfAllowed,
+} from './mutation-target'
 import type { WorkspacePaths } from './path'
 import type { CopyBody } from './contracts'
 
@@ -8,7 +13,7 @@ export async function copyPath(paths: WorkspacePaths, body: CopyBody) {
   const to = paths.resolve(body.to)
 
   try {
-    assertNotRoot(to.relativePath)
+    assertNotRootTarget(to.relativePath)
     await assertExistingPath(from.absolutePath)
     await removeDestinationIfAllowed(to.absolutePath, body.overwrite)
     await cp(from.absolutePath, to.absolutePath, {
@@ -25,39 +30,4 @@ export async function copyPath(paths: WorkspacePaths, body: CopyBody) {
     if (error instanceof FsError) throw error
     throw mapNodeError(error)
   }
-}
-
-async function removeDestinationIfAllowed(absolutePath: string, overwrite?: boolean) {
-  const exists = await destinationExists(absolutePath)
-  if (!exists) return
-  if (!overwrite) throw new FsError('ALREADY_EXISTS')
-
-  await rm(absolutePath, { recursive: true, force: false })
-}
-
-async function assertExistingPath(absolutePath: string) {
-  await lstat(absolutePath)
-}
-
-async function destinationExists(absolutePath: string) {
-  try {
-    await lstat(absolutePath)
-    return true
-  } catch (error) {
-    if (nodeErrorCode(error) === 'ENOENT') return false
-    throw error
-  }
-}
-
-function assertNotRoot(relativePath: string) {
-  if (relativePath) return
-  throw new FsError('INVALID_PATH', 'operation cannot target the workspace root')
-}
-
-function nodeErrorCode(error: unknown) {
-  if (!error || typeof error !== 'object') return null
-  if (!('code' in error)) return null
-
-  const code = error.code
-  return typeof code === 'string' ? code : null
 }
