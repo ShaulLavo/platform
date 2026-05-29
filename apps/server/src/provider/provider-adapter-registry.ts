@@ -1,5 +1,4 @@
 import {
-  DEFAULT_PROVIDER_INSTANCE_ID,
   providerListResultSchema,
   type ProviderInstanceId,
   type ProviderListResult,
@@ -71,7 +70,7 @@ export class ProviderAdapterRegistry {
   }
 
   streamChanges(): AsyncIterable<ProviderAdapterRegistryChange> {
-    return providerRegistryChangeStream(this)
+    return providerAdapterRegistryChangeStream(this)
   }
 
   adapter(providerInstanceId: ProviderInstanceId) {
@@ -132,16 +131,12 @@ export function compareProviderSnapshots(left: ProviderSnapshot, right: Provider
   )
 }
 
-export function defaultProviderInstanceId() {
-  return DEFAULT_PROVIDER_INSTANCE_ID
-}
-
-function providerRegistryChangeStream(registry: ProviderAdapterRegistry) {
+function providerAdapterRegistryChangeStream(adapterRegistry: ProviderAdapterRegistry) {
   return {
     async *[Symbol.asyncIterator]() {
       const queue: ProviderAdapterRegistryChange[] = []
       const waiters: Array<() => void> = []
-      const unsubscribe = registry.subscribeChanges((change) => {
+      const unsubscribe = adapterRegistry.subscribeChanges((change) => {
         queue.push(change)
         waiters.shift()?.()
       })

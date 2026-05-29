@@ -26,7 +26,7 @@ import { projectEvents } from './projector'
 import { createEmptyReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
 import { MockProviderAdapter } from '../provider/adapters/mock'
-import { ProviderRegistry } from '../provider/registry'
+import { ProviderAdapterRegistry } from '../provider/provider-adapter-registry'
 import { ProviderService } from '../provider/provider-service'
 import { ProviderSessionDirectory } from '../provider/provider-session-directory'
 import { checkpointRefForThreadTurn } from './checkpoint-refs'
@@ -378,13 +378,13 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
-  it('serves provider snapshots through the provider registry route', async () => {
+  it('serves provider snapshots through the provider adapter registry route', async () => {
     const fixture = createFixture()
     const root = await fixtureRoot()
-    const registry = new ProviderRegistry([new MockProviderAdapter()])
+    const adapterRegistry = new ProviderAdapterRegistry([new MockProviderAdapter()])
     const app = createApp({
       auth: { allowedOrigins: ['http://localhost:5173'] },
-      orchestration: { database: fixture.database, providerRegistry: registry },
+      orchestration: { database: fixture.database, providerAdapterRegistry: adapterRegistry },
       watch: false,
       workspaceRoot: root,
     })
@@ -596,7 +596,7 @@ describe('orchestration engine', () => {
     const engine = new OrchestrationEngine(fixture.database, {
       providerRuntime: {
         checkpointGit: new GitService(createWorkspacePaths(root)),
-        registry: new ProviderRegistry([adapter]),
+        adapterRegistry: new ProviderAdapterRegistry([adapter]),
       },
     })
     const turnZeroRef = checkpointRefForThreadTurn('thread-1', 0)
@@ -960,7 +960,7 @@ function createRuntimeEngine(
   adapter: MockProviderAdapter,
 ) {
   return new OrchestrationEngine(fixture.database, {
-    providerRuntime: { registry: new ProviderRegistry([adapter]) },
+    providerRuntime: { adapterRegistry: new ProviderAdapterRegistry([adapter]) },
   })
 }
 
@@ -971,7 +971,7 @@ function createStandaloneProviderReactor(
   now: () => number,
 ) {
   const providerService = new ProviderService({
-    adapterRegistry: new ProviderRegistry([adapter]),
+    adapterRegistry: new ProviderAdapterRegistry([adapter]),
     sessionDirectory: new ProviderSessionDirectory(fixture.database),
   })
   const ingestion = new ProviderRuntimeIngestion(async (command) => {

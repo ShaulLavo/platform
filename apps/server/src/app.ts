@@ -23,7 +23,10 @@ import { OrchestrationCheckpointDiffQuery } from './orchestration/checkpoint-dif
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
 import { orchestrationWsRoutes } from './orchestration/ws-rpc'
-import { createDefaultProviderRegistry, type ProviderRegistry } from './provider/registry'
+import {
+  createDefaultProviderAdapterRegistry,
+  type ProviderAdapterRegistry,
+} from './provider/provider-adapter-registry'
 import { providerRoutes } from './provider/routes'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 
@@ -36,7 +39,7 @@ export type AppOptions = FileSystemServiceOptions & {
   fonts?: FontService
   orchestration?: {
     database?: OrchestrationDatabase
-    providerRegistry?: ProviderRegistry
+    providerAdapterRegistry?: ProviderAdapterRegistry
     providerRuntime?: boolean
   }
 }
@@ -48,11 +51,11 @@ export function createApp(options: AppOptions) {
   })
   const terminal = new TerminalService(Object.assign({ paths: fs.paths }, options.terminal))
   const fonts = options.fonts ?? new NerdFontService()
-  const providerRegistry =
-    options.orchestration?.providerRegistry ?? createDefaultProviderRegistry()
+  const providerAdapterRegistry =
+    options.orchestration?.providerAdapterRegistry ?? createDefaultProviderAdapterRegistry()
   const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb, {
     providerRuntime: options.orchestration?.providerRuntime
-      ? { checkpointGit: git, registry: providerRegistry }
+      ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
       : false,
   })
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(
@@ -92,7 +95,7 @@ export function createApp(options: AppOptions) {
     })
     .ws('/lsp', lspRoutes(fs, auth))
     .ws('/terminal', terminal.routes(auth))
-    .use(providerRoutes(providerRegistry))
+    .use(providerRoutes(providerAdapterRegistry))
     .use(orchestrationWsRoutes(orchestration, auth))
     .use(orchestrationRoutes(orchestration, checkpointDiff))
     .use(fontRoutes(fonts))

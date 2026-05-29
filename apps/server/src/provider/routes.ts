@@ -1,9 +1,13 @@
 import { Elysia } from 'elysia'
 import { providerListResultSchema } from '@workspace/contracts'
-import type { ProviderRegistry } from './registry'
+import type { ProviderAdapterRegistry } from './provider-adapter-registry'
 
-export function providerRoutes(registry: ProviderRegistry) {
-  return new Elysia({ name: 'provider-routes' }).get('/providers', () => registry.listProviders(), {
-    response: providerListResultSchema,
-  })
+export function providerRoutes(adapterRegistry: ProviderAdapterRegistry) {
+  return new Elysia({ name: 'provider-routes' }).get(
+    '/providers',
+    () => adapterRegistry.listProviders(),
+    {
+      response: providerListResultSchema,
+    },
+  )
 }

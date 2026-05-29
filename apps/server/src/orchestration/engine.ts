@@ -8,7 +8,10 @@ import { OrchestrationEventStore, type OrchestrationDatabase } from './event-sto
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
 import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
-import { createDefaultProviderRegistry, type ProviderRegistry } from '../provider/registry'
+import {
+  createDefaultProviderAdapterRegistry,
+  type ProviderAdapterRegistry,
+} from '../provider/provider-adapter-registry'
 import { ProviderService } from '../provider/provider-service'
 import { ProviderSessionDirectory } from '../provider/provider-session-directory'
 import type { GitService } from '../git/service'
@@ -32,7 +35,11 @@ export type OrchestrationDispatchResult = {
 export type OrchestrationEngineOptions = {
   providerRuntime?:
     | boolean
-    | { checkpointGit?: GitService; providerService?: ProviderService; registry?: ProviderRegistry }
+    | {
+        adapterRegistry?: ProviderAdapterRegistry
+        checkpointGit?: GitService
+        providerService?: ProviderService
+      }
 }
 
 export class OrchestrationEngine {
@@ -199,24 +206,22 @@ export class OrchestrationEngine {
   private createProviderCommandReactor(options: OrchestrationEngineOptions) {
     if (!options.providerRuntime) return null
 
-    const registry =
-      typeof options.providerRuntime === 'object' && options.providerRuntime.registry
-        ? options.providerRuntime.registry
-        : createDefaultProviderRegistry()
+    const providerRuntimeOptions =
+      typeof options.providerRuntime === 'object' ? options.providerRuntime : null
+    const adapterRegistry =
+      providerRuntimeOptions?.adapterRegistry ?? createDefaultProviderAdapterRegistry()
     const ingestion = new ProviderRuntimeIngestion((command) => this.dispatch(command), {
       getReadModel: () => this.readModel,
     })
-    const providerService =
-      typeof options.providerRuntime === 'object' && options.providerRuntime.providerService
-        ? options.providerRuntime.providerService
-        : new ProviderService({
-            adapterRegistry: registry,
-            sessionDirectory: new ProviderSessionDirectory(this.database),
-          })
+    const providerService = providerRuntimeOptions?.providerService
+      ? providerRuntimeOptions.providerService
+      : new ProviderService({
+          adapterRegistry,
+          sessionDirectory: new ProviderSessionDirectory(this.database),
+        })
 
     return new ProviderCommandReactor({
-      checkpointGit:
-        typeof options.providerRuntime === 'object' ? options.providerRuntime.checkpointGit : null,
+      checkpointGit: providerRuntimeOptions?.checkpointGit ?? null,
       dispatch: (command) => this.dispatch(command),
       getReadModel: () => this.readModel,
       ingestion,

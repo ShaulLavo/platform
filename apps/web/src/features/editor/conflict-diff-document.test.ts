@@ -21,7 +21,7 @@ describe('conflict diff document ids', () => {
 
   it('rejects malformed conflict diff ids', () => {
     expect(parseConflictDiffDocumentId(null)).toBe(null)
-    expect(parseConflictDiffDocumentId('git-diff:worktree:src/app.ts')).toBe(null)
+    expect(parseConflictDiffDocumentId('git-diff:v2:%7B%7D')).toBe(null)
     expect(parseConflictDiffDocumentId('conflict-diff:')).toBe(null)
     expect(parseConflictDiffDocumentId('conflict-diff:%E0%A4%A')).toBe(null)
   })

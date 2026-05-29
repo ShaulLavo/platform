@@ -223,7 +223,7 @@ export function migrateOrchestrationDatabase(database: typeof db = db) {
 		CREATE TABLE IF NOT EXISTS provider_session_runtime (
 			thread_id TEXT PRIMARY KEY NOT NULL,
 			provider_driver_kind TEXT NOT NULL,
-			provider_instance_id TEXT,
+			provider_instance_id TEXT NOT NULL,
 			provider_session_id TEXT,
 			adapter_key TEXT NOT NULL,
 			runtime_mode TEXT NOT NULL,
@@ -233,6 +233,7 @@ export function migrateOrchestrationDatabase(database: typeof db = db) {
 			runtime_payload_json TEXT
 		)
 	`)
+  deleteLegacyProviderSessionRuntimeRows(database)
   database.run(sql`
 		CREATE INDEX IF NOT EXISTS provider_session_runtime_status_idx
 		ON provider_session_runtime (status)
@@ -261,4 +262,11 @@ function addBirthtimeColumn(database: typeof db) {
   } catch {
     // Existing databases already have this column after the first migration run.
   }
+}
+
+function deleteLegacyProviderSessionRuntimeRows(database: typeof db) {
+  database.run(sql`
+		DELETE FROM provider_session_runtime
+		WHERE provider_instance_id IS NULL
+	`)
 }

@@ -1,6 +1,5 @@
 import { asc, eq } from 'drizzle-orm'
 import {
-  DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
   providerDriverKindSchema,
   providerInstanceIdSchema,
@@ -31,7 +30,7 @@ export type ProviderRuntimeBindingStatus =
 export type ProviderRuntimeBinding = {
   adapterKey?: string
   providerDriverKind: ProviderDriverKind
-  providerInstanceId?: ProviderInstanceId | null
+  providerInstanceId?: ProviderInstanceId
   providerSessionId?: string | null
   resumeCursor?: unknown | null
   runtimeMode?: RuntimeMode
@@ -204,7 +203,7 @@ function resolveProviderInstanceId(
   existing: ProviderSessionRuntimeRow | undefined,
   providerChanged: boolean,
 ) {
-  const existingProviderInstanceId = providerChanged ? null : existing?.providerInstanceId
+  const existingProviderInstanceId = providerChanged ? undefined : existing?.providerInstanceId
   const providerInstanceId = binding.providerInstanceId ?? existingProviderInstanceId
   if (!providerInstanceId) {
     throw new Error('providerInstanceId is required for provider session runtime bindings.')
@@ -249,7 +248,7 @@ function rowToBinding(row: ProviderSessionRuntimeRow): ProviderRuntimeBindingWit
     adapterKey: row.adapterKey,
     lastSeenAt: row.lastSeenAt,
     providerDriverKind,
-    providerInstanceId: providerInstanceIdFromRow(row.providerInstanceId, providerDriverKind),
+    providerInstanceId: v.parse(providerInstanceIdSchema, row.providerInstanceId),
     providerSessionId: row.providerSessionId,
     resumeCursor: parseNullableJson(row.resumeCursorJson),
     runtimeMode: v.parse(runtimeModeSchema, row.runtimeMode),
@@ -257,19 +256,6 @@ function rowToBinding(row: ProviderSessionRuntimeRow): ProviderRuntimeBindingWit
     status: parseRuntimeStatus(row.status),
     threadId: v.parse(threadIdSchema, row.threadId),
   }
-}
-
-function providerInstanceIdFromRow(value: string | null, providerDriverKind: ProviderDriverKind) {
-  return v.parse(
-    providerInstanceIdSchema,
-    value ?? defaultProviderInstanceIdForDriver(providerDriverKind),
-  )
-}
-
-function defaultProviderInstanceIdForDriver(providerDriverKind: ProviderDriverKind) {
-  if (providerDriverKind === 'codex') return DEFAULT_PROVIDER_INSTANCE_ID
-
-  return v.parse(providerInstanceIdSchema, providerDriverKind)
 }
 
 function parseRuntimeStatus(status: string): ProviderRuntimeBindingStatus {

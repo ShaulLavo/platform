@@ -46,7 +46,59 @@ describe('orchestration migrations', () => {
     )
     expect(columnNames(sqlite, 'projection_thread_sessions')).toContain('provider_instance_id')
     expect(columnNames(sqlite, 'provider_session_runtime')).toContain('provider_instance_id')
+    expect(columnInfo(sqlite, 'provider_session_runtime', 'provider_instance_id')?.not_null).toBe(1)
 
+    sqlite.close()
+  })
+
+  it('removes legacy provider runtime rows without provider instance ids', () => {
+    const sqlite = new Database(':memory:', { create: true })
+    const database = drizzle({ client: sqlite, schema })
+
+    sqlite.exec(`
+      CREATE TABLE provider_session_runtime (
+        thread_id TEXT PRIMARY KEY NOT NULL,
+        provider_driver_kind TEXT NOT NULL,
+        provider_instance_id TEXT,
+        provider_session_id TEXT,
+        adapter_key TEXT NOT NULL,
+        runtime_mode TEXT NOT NULL,
+        status TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        resume_cursor_json TEXT,
+        runtime_payload_json TEXT
+      )
+    `)
+    sqlite.exec(`
+      INSERT INTO provider_session_runtime (
+        thread_id,
+        provider_driver_kind,
+        provider_instance_id,
+        provider_session_id,
+        adapter_key,
+        runtime_mode,
+        status,
+        last_seen_at,
+        resume_cursor_json,
+        runtime_payload_json
+      )
+      VALUES (
+        'thread-legacy',
+        'codex',
+        NULL,
+        'provider-session:thread-legacy',
+        'codex',
+        'full-access',
+        'running',
+        '2026-05-28T00:00:00.000Z',
+        NULL,
+        NULL
+      )
+    `)
+
+    migrateOrchestrationDatabase(database)
+
+    expect(providerSessionRuntimeRowCount(sqlite)).toBe(0)
     sqlite.close()
   })
 
@@ -104,9 +156,25 @@ function columnNames(sqlite: Database, tableName: string) {
     .map((row) => row.name)
 }
 
+function columnInfo(sqlite: Database, tableName: string, columnName: string) {
+  return sqlite
+    .query<{ not_null: number }, [string, string]>(
+      'SELECT "notnull" AS not_null FROM pragma_table_info(?) WHERE name = ?',
+    )
+    .get(tableName, columnName)
+}
+
 function indexNames(sqlite: Database, tableName: string) {
   return sqlite
     .query<{ name: string }, [string]>('SELECT name FROM pragma_index_list(?) ORDER BY name')
     .all(tableName)
     .map((row) => row.name)
+}
+
+function providerSessionRuntimeRowCount(sqlite: Database) {
+  return (
+    sqlite
+      .query<{ count: number }, []>('SELECT COUNT(*) AS count FROM provider_session_runtime')
+      .get()?.count ?? 0
+  )
 }

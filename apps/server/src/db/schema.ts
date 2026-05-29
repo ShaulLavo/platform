@@ -219,7 +219,7 @@ export const providerSessionRuntime = sqliteTable(
   {
     threadId: text('thread_id').primaryKey(),
     providerDriverKind: text('provider_driver_kind').notNull(),
-    providerInstanceId: text('provider_instance_id'),
+    providerInstanceId: text('provider_instance_id').notNull(),
     providerSessionId: text('provider_session_id'),
     adapterKey: text('adapter_key').notNull(),
     runtimeMode: text('runtime_mode', {
