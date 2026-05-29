@@ -1212,8 +1212,6 @@ function isWorktreeStatus(status: FileStatus['worktree']) {
 }
 
 function diffStatusPaths(diff: NonNullable<ReturnType<typeof parseDiffDocumentId>>) {
-  if (diff.kind === 'legacy') return [diff.path]
-
   return [diff.path, diff.query.oldPath].filter(isPresentPath)
 }
 

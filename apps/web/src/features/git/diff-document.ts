@@ -4,12 +4,6 @@ import type { BlobDiffRequest, FileDiff, FileStatus, PanelSection } from './type
 export type DiffDocumentInfo =
   | {
       id: string
-      kind: 'legacy'
-      path: string
-      staged: boolean
-    }
-  | {
-      id: string
       kind: 'checkpoint'
       path: string
       query: CheckpointPayload
@@ -49,17 +43,19 @@ type CheckpointPayload = {
 }
 
 export type CheckpointDiffDocumentInput = Omit<CheckpointPayload, 'version'>
+export type SnapshotDiffDocumentInput = FileDiff &
+  ({ newObjectId: string } | { oldObjectId: string })
 
 const DIFF_DOCUMENT_PREFIX = 'git-diff:'
 const SNAPSHOT_SCOPE = 'v2'
 const CHECKPOINT_SCOPE = 'checkpoint-v1'
 
-export function diffDocumentId(path: string, staged: boolean): string
-export function diffDocumentId(diff: FileDiff): string
-export function diffDocumentId(input: FileDiff | string, staged = false) {
-  if (typeof input === 'string') return legacyDiffDocumentId(input, staged)
+export function diffDocumentId(diff: SnapshotDiffDocumentInput) {
+  return snapshotDiffDocumentId(diff)
+}
 
-  return snapshotDiffDocumentId(input)
+export function hasDiffDocumentSnapshot(diff: FileDiff): diff is SnapshotDiffDocumentInput {
+  return Boolean(diff.oldObjectId || diff.newObjectId)
 }
 
 export function parseDiffDocumentId(id: string | null | undefined): DiffDocumentInfo | null {
@@ -74,7 +70,7 @@ export function parseDiffDocumentId(id: string | null | undefined): DiffDocument
   if (scope === CHECKPOINT_SCOPE) return parseCheckpointDiffDocument(id, encoded)
   if (scope === SNAPSHOT_SCOPE) return parseSnapshotDiffDocument(id, encoded)
 
-  return parseLegacyDiffDocument(id, scope, encoded)
+  return null
 }
 
 export function diffDocumentLabel(id: string) {
@@ -125,17 +121,7 @@ export function checkpointDiffDocumentId(input: CheckpointDiffDocumentInput) {
   return `${DIFF_DOCUMENT_PREFIX}${CHECKPOINT_SCOPE}:${encodeURIComponent(JSON.stringify(payload))}`
 }
 
-function legacyDiffDocumentId(path: string, staged: boolean) {
-  const scope = staged ? 'staged' : 'worktree'
-
-  return `${DIFF_DOCUMENT_PREFIX}${scope}:${encodeURIComponent(path)}`
-}
-
-function snapshotDiffDocumentId(diff: FileDiff) {
-  if (!diff.oldObjectId && !diff.newObjectId) {
-    return legacyDiffDocumentId(diff.path, diff.staged)
-  }
-
+function snapshotDiffDocumentId(diff: SnapshotDiffDocumentInput) {
   const payload: SnapshotPayload = {
     newObjectId: diff.newObjectId,
     oldObjectId: diff.oldObjectId,
@@ -280,17 +266,6 @@ function optionalDiffStatus(value: unknown): value is SnapshotPayload['status'] 
     value === 'unmodified' ||
     value === 'conflicted'
   )
-}
-
-function parseLegacyDiffDocument(id: string, scope: string, encodedPath: string) {
-  if (scope !== 'staged' && scope !== 'worktree') return null
-
-  try {
-    const path = decodeURIComponent(encodedPath)
-    return { id, kind: 'legacy' as const, path, staged: scope === 'staged' }
-  } catch {
-    return null
-  }
 }
 
 function displayDiffPath(path: string) {

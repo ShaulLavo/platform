@@ -7,11 +7,11 @@ import {
   diffDocumentTitle,
   parseDiffDocumentId,
 } from './diff-document'
-import type { FileDiff } from './types'
+import type { SnapshotDiffDocumentInput } from './diff-document'
 
 describe('git diff document ids', () => {
   it('round-trips snapshot diff documents', () => {
-    const diff: FileDiff = {
+    const diff: SnapshotDiffDocumentInput = {
       hunks: [],
       newObjectId: 'b'.repeat(40),
       oldObjectId: 'a'.repeat(40),
@@ -39,23 +39,6 @@ describe('git diff document ids', () => {
     expect(diffDocumentLabel(id)).toBe('new.ts')
     expect(diffDocumentShortHash(id)).toBe('b'.repeat(7))
     expect(diffDocumentTitle(id)).toBe(`/repo/src/new.ts diff at ${'b'.repeat(7)}`)
-  })
-
-  it('parses legacy staged and worktree diff documents', () => {
-    const staged = diffDocumentId('/repo/src/app.ts', true)
-    const worktree = diffDocumentId('/repo/src/app.ts', false)
-
-    expect(parseDiffDocumentId(staged)).toMatchObject({
-      kind: 'legacy',
-      path: '/repo/src/app.ts',
-      staged: true,
-    })
-    expect(parseDiffDocumentId(worktree)).toMatchObject({
-      kind: 'legacy',
-      path: '/repo/src/app.ts',
-      staged: false,
-    })
-    expect(diffDocumentLabel(worktree)).toBe('app.ts')
   })
 
   it('round-trips checkpoint diff documents without falling back to live diffs', () => {
@@ -113,22 +96,5 @@ describe('git diff document ids', () => {
     expect(diffDocumentTitle(turn)).toBe('Turn checkpoint diff 1-2')
     expect(diffDocumentLabel(thread)).toBe('Thread diff 2')
     expect(diffDocumentTitle(thread)).toBe('Thread checkpoint diff 0-2')
-  })
-
-  it('falls back to legacy ids when a diff has no snapshot objects', () => {
-    const diff: FileDiff = {
-      hunks: [],
-      patch: '',
-      path: '/repo/src/large.bin',
-      staged: false,
-    }
-
-    const id = diffDocumentId(diff)
-
-    expect(parseDiffDocumentId(id)).toMatchObject({
-      kind: 'legacy',
-      path: '/repo/src/large.bin',
-      staged: false,
-    })
   })
 })

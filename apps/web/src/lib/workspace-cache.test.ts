@@ -445,7 +445,7 @@ describe('workspace cache', () => {
   })
 })
 
-function snapshotDiff(path: string): FileDiff {
+function snapshotDiff(path: string): FileDiff & { newObjectId: string; oldObjectId: string } {
   return {
     hunks: [],
     newObjectId: 'b'.repeat(40),

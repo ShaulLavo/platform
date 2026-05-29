@@ -445,9 +445,7 @@ function EditorPaneTabBody({
       : null,
   )
   const selectedDocumentPath = useEditorDocumentState((state) =>
-    selectedViewDocumentId
-      ? (state.liveDocumentsById[selectedViewDocumentId]?.path ?? null)
-      : null,
+    selectedViewDocumentId ? (state.liveDocumentsById[selectedViewDocumentId]?.path ?? null) : null,
   )
   const selectedLiveDocument = useMemo(
     () =>

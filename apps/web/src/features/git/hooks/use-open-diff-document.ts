@@ -2,7 +2,7 @@ import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { gitKeys } from '@/lib/query-keys'
 import { useQueryClient } from '@tanstack/react-query'
 import { fetchDiff } from '../api'
-import { diffDocumentId } from '../diff-document'
+import { diffDocumentId, hasDiffDocumentSnapshot } from '../diff-document'
 import type { ChangeRow, FileDiff } from '../types'
 
 export function useOpenDiffDocument() {
@@ -17,18 +17,14 @@ export function useOpenDiffDocument() {
       staleTime: 1000,
     })
     const diff = firstMatchingDiff(diffs, row.file.path)
-    if (!diff) {
-      selectFile(diffDocumentId(row.file.path, staged))
-      return
-    }
+    if (!diff) return
+    if (!hasDiffDocumentSnapshot(diff)) return
 
     const documentId = diffDocumentId(diff)
     const query = blobDiffQuery(diff)
-    if (canFetchBlobDiff(query)) {
-      const queryKey = gitKeys.blobDiff(query)
-      queryClient.setQueryData(queryKey, [diff])
-      await queryClient.invalidateQueries({ queryKey })
-    }
+    const queryKey = gitKeys.blobDiff(query)
+    queryClient.setQueryData(queryKey, [diff])
+    await queryClient.invalidateQueries({ queryKey })
     selectFile(documentId)
   }
 
@@ -52,8 +48,4 @@ function blobDiffQuery(diff: FileDiff) {
     oldPath: diff.oldPath,
     path: diff.path,
   }
-}
-
-function canFetchBlobDiff(query: ReturnType<typeof blobDiffQuery>) {
-  return Boolean(query.oldObjectId || query.newObjectId)
 }

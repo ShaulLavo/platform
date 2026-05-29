@@ -42,22 +42,20 @@ export function useDiffDocumentDiff(
     queryKey: diffDocumentQueryKey(diff),
     retry: diff?.kind === 'checkpoint' ? checkpointDiffRetry : undefined,
     retryDelay: diff?.kind === 'checkpoint' ? checkpointDiffRetryDelay : undefined,
-    staleTime: diff?.kind === 'snapshot' || diff?.kind === 'checkpoint' ? Infinity : 1000,
+    staleTime: diff ? Infinity : 1000,
   })
 }
 
 function fetchDiffDocument(diff: DiffDocumentInfo | null, signal?: AbortSignal) {
   if (!diff) return Promise.resolve([])
   if (diff.kind === 'checkpoint') return fetchCheckpointDiff(diff.query, signal)
-  if (diff.kind === 'snapshot') return fetchBlobDiff(diff.query, signal)
 
-  return fetchDiff(diff.path, diff.staged, signal)
+  return fetchBlobDiff(diff.query, signal)
 }
 
 function diffDocumentQueryKey(diff: DiffDocumentInfo | null) {
   if (!diff) return gitKeys.diff('', false)
   if (diff.kind === 'checkpoint') return checkpointDiffQueryKey(diff.query)
-  if (diff.kind === 'snapshot') return gitKeys.blobDiff(diff.query)
 
-  return gitKeys.diff(diff.path, diff.staged)
+  return gitKeys.blobDiff(diff.query)
 }
