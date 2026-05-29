@@ -1,0 +1,55 @@
+import { useCallback, useEffect, useRef } from 'react'
+
+import {
+  clearConflictResolutionTimeouts,
+  replaceConflictResolutionTimeout,
+  resolveConflictEditorSnapshot,
+} from '@/components/workspace/conflict-editor-resolution-utils'
+import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
+import { useEditorConflictStoreApi } from '@/features/editor/state/editor-conflict-state'
+import type { FileResult } from '@/lib/file-system-types'
+import type { TextSnapshot } from '@editor/core'
+import { useQueryClient } from '@tanstack/react-query'
+
+export function useConflictEditorResolution({
+  discardLiveEditorDocument,
+  forceReplaceLiveEditorDocument,
+  renameLiveEditorDocument,
+}: {
+  discardLiveEditorDocument: (path: string) => { wasDirty: boolean }
+  forceReplaceLiveEditorDocument: (file: FileResult) => { wasDirty: boolean }
+  renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
+}) {
+  const conflictStore = useEditorConflictStoreApi()
+  const queryClient = useQueryClient()
+  const resolvingConflictIds = useRef(new Set<string>())
+  const pendingResolutionTimeouts = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
+  useEffect(() => () => clearConflictResolutionTimeouts(pendingResolutionTimeouts.current), [])
+
+  return useCallback(
+    (path: string, textSnapshot: TextSnapshot) => {
+      const conflictDiff = parseConflictDiffDocumentId(path)
+      if (!conflictDiff) return
+
+      replaceConflictResolutionTimeout(pendingResolutionTimeouts.current, path, () => {
+        pendingResolutionTimeouts.current.delete(path)
+        resolveConflictEditorSnapshot(conflictDiff, textSnapshot, {
+          conflictStore,
+          discardLiveEditorDocument,
+          forceReplaceLiveEditorDocument,
+          queryClient,
+          renameLiveEditorDocument,
+          resolvingConflictIds,
+        })
+      })
+    },
+    [
+      conflictStore,
+      discardLiveEditorDocument,
+      forceReplaceLiveEditorDocument,
+      queryClient,
+      renameLiveEditorDocument,
+    ],
+  )
+}
