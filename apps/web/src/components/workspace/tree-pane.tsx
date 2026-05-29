@@ -21,7 +21,7 @@ import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileTreeIconsForPaths } from '@/lib/file-icons'
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isFileEntry } from '@/lib/file-system-types'
-import { movePath } from '@/lib/file-server'
+import { renamePath } from '@/lib/file-server'
 import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
@@ -258,7 +258,7 @@ type TreeDropMoveRequest = {
 
 async function moveDroppedTreePaths(request: TreeDropMoveRequest) {
   for (const move of request.moves) {
-    await movePath(
+    await renamePath(
       workspacePathForTreePath(request.rootPath, move.fromTreePath),
       workspacePathForTreePath(request.rootPath, move.toTreePath),
     )

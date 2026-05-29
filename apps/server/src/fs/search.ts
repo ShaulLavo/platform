@@ -42,7 +42,7 @@ export type FindResult = {
   matches: FindMatch[]
 }
 
-export type FindStreamEvent =
+export type SearchStreamEvent =
   | {
       type: 'match'
       match: FindMatch
@@ -50,7 +50,7 @@ export type FindStreamEvent =
   | WorkspaceSearchDoneEvent
 
 export type SearchProvider = {
-  search(query: FindOptions, signal?: AbortSignal): AsyncIterable<FindStreamEvent>
+  search(query: FindOptions, signal?: AbortSignal): AsyncIterable<SearchStreamEvent>
 }
 
 type SearchState = {
@@ -124,7 +124,7 @@ export async function* findInWorkspaceStream(
   paths: WorkspacePaths,
   options: FindOptions,
   signal?: AbortSignal,
-): AsyncGenerator<FindStreamEvent> {
+): AsyncGenerator<SearchStreamEvent> {
   const provider = new DiskWorkspaceSearchProvider(paths)
 
   yield* provider.search(options, signal)
@@ -135,7 +135,7 @@ async function* searchWorkspaceWithDiskTools(
   options: FindOptions,
   signal?: AbortSignal,
   runtime: SearchRuntimeOptions = streamingSearchRuntimeOptions,
-): AsyncGenerator<FindStreamEvent> {
+): AsyncGenerator<SearchStreamEvent> {
   if (signal?.aborted) return
 
   const context = await createFindContext(paths, options)

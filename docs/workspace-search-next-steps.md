@@ -57,7 +57,7 @@ Completed:
 - Added case-sensitive, regex, and whole-word options.
 - Added include/exclude glob fields behind a compact filter toggle.
 - Extended `WorkspaceSearchQuery` so providers receive the search mode and glob options.
-- Kept `/fs/find` and `/fs/find/events` backward compatible with defaults for older callers.
+- Exposed workspace search through `/fs/search/events`.
 - Added server-side `rg`/`fd` option translation and matching fallback support.
 - Added dirty open-buffer parity using the shared matcher.
 - Kept search mode selections stable through reruns and cleared query text.

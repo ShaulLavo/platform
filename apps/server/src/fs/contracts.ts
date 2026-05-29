@@ -57,7 +57,7 @@ export const treeQuerySchema = v.object({
   entryType: v.optional(entryTypeQueryValueSchema),
 })
 
-export const findQuerySchema = v.object({
+export const searchQuerySchema = v.object({
   path: v.optional(pathSchema, ''),
   query: v.string(),
   limit: v.optional(limitQueryValueSchema, '50'),
@@ -290,8 +290,8 @@ export const _assertWorkspaceSearchMatchModeParity: Assert<
   Equals<v.InferOutput<typeof matchModeQueryValueSchema>, ContractsWorkspaceSearchMatchMode>
 > = true
 
-export const _assertFindQueryWorkspaceSearchParity: Assert<
-  Omit<v.InferOutput<typeof findQuerySchema>, 'maxDepth'> extends Omit<
+export const _assertSearchQueryWorkspaceSearchParity: Assert<
+  Omit<v.InferOutput<typeof searchQuerySchema>, 'maxDepth'> extends Omit<
     ContractsWorkspaceSearchQuery,
     'maxDepth'
   >

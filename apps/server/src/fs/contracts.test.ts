@@ -3,7 +3,7 @@ import * as v from 'valibot'
 
 import {
   booleanQueryValueSchema,
-  findQuerySchema,
+  searchQuerySchema,
   treeEntrySchema,
   treeQuerySchema,
   workspaceSearchEventSchema,
@@ -20,8 +20,8 @@ describe('filesystem contracts', () => {
     })
   })
 
-  it('parses find queries with defaults', () => {
-    expect(v.parse(findQuerySchema, { query: 'button' })).toEqual({
+  it('parses search queries with defaults', () => {
+    expect(v.parse(searchQuerySchema, { query: 'button' })).toEqual({
       caseSensitive: false,
       includeContent: false,
       includeNames: true,
@@ -33,15 +33,15 @@ describe('filesystem contracts', () => {
     })
   })
 
-  it('preserves whitespace in find query text', () => {
-    expect(v.parse(findQuerySchema, { query: '  ' })).toMatchObject({
+  it('preserves whitespace in search query text', () => {
+    expect(v.parse(searchQuerySchema, { query: '  ' })).toMatchObject({
       query: '  ',
     })
   })
 
   it('parses search mode and glob query values', () => {
     expect(
-      v.parse(findQuerySchema, {
+      v.parse(searchQuerySchema, {
         caseSensitive: '1',
         excludeGlobs: '*.test.ts',
         includeGlobs: ['src/**/*.ts', 'tests/{unit,integration}/**/*.ts'],

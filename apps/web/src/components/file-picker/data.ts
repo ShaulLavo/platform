@@ -1,8 +1,8 @@
 import { client } from '@/lib/client'
+import type { WorkspaceSearchEvent } from '@workspace/contracts'
 import type {
   FindMatch,
   FsEntry,
-  FsEntryType,
   PickedFsEntry,
   RecentResult,
   SearchScope,
@@ -12,8 +12,8 @@ import type {
 } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { filePickerKeys } from '@/lib/query-keys'
-import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
 import { clientErrors, createRpcError } from '@/lib/structured-errors'
+import { streamWorkspaceSearch } from '@/lib/workspace-search-client'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { useEffect, useEffectEvent } from 'react'
 
@@ -27,12 +27,6 @@ import {
   type FilePickerMode,
   type LoadState,
 } from './state'
-
-type FindErrorEvent = {
-  error?: {
-    message?: string
-  }
-}
 
 type DirectoryLoadData = {
   currentEntry: DirectoryFsEntry | null
@@ -188,7 +182,7 @@ async function loadEntries(
   const trimmedQuery = query.trim()
   if (!trimmedQuery) return fetchTreeEntries(path, signal)
 
-  return streamFindEntries(path, trimmedQuery, mode, signal, onEntries)
+  return streamSearchEntries(path, trimmedQuery, mode, signal, onEntries)
 }
 
 async function fetchServerInfo(signal: AbortSignal) {
@@ -246,7 +240,7 @@ async function recordRecent(entry: PickedFsEntry) {
   if (response.error) throw createRpcError(response.error)
 }
 
-async function streamFindEntries(
+async function streamSearchEntries(
   path: string,
   query: string,
   mode: FilePickerMode,
@@ -257,7 +251,7 @@ async function streamFindEntries(
   const seenPaths = new Set<string>()
   const scope = path === ROOT_PATH ? 'system' : 'current'
 
-  await streamFindScope(
+  await streamSearchScope(
     path,
     query,
     mode,
@@ -276,7 +270,7 @@ async function streamFindEntries(
   return fallbackEntries(matches, query)
 }
 
-async function streamFindScope(
+async function streamSearchScope(
   path: string,
   query: string,
   mode: FilePickerMode,
@@ -290,15 +284,26 @@ async function streamFindScope(
   const scopedSignal = scopedSearchSignal(signal, timeoutMs)
 
   try {
-    for await (const event of streamFindEvents(path, query, mode, scopedSignal)) {
-      if (appendFindMatch(event, matches, seenPaths, scope)) {
+    for await (const event of streamWorkspaceSearch(
+      {
+        caseSensitive: false,
+        entryType: searchEntryType(mode),
+        includeContent: false,
+        includeNames: true,
+        limit: SEARCH_LIMIT,
+        matchMode: 'literal',
+        path,
+        query,
+        wholeWord: false,
+      },
+      scopedSignal,
+    )) {
+      if (appendSearchMatch(event, matches, seenPaths, scope)) {
         onMatch()
         continue
       }
 
-      if (event.event === 'error')
-        throw clientErrors.SEARCH_EVENT_ERROR({ message: findEventError(event.data) })
-      if (event.event === 'done') return
+      if (event.type === 'done') return
     }
   } catch (error) {
     if (scopedSignal.aborted) return
@@ -308,16 +313,16 @@ async function streamFindScope(
   }
 }
 
-function appendFindMatch(
-  event: EdenSseEvent,
+function appendSearchMatch(
+  event: WorkspaceSearchEvent,
   matches: FindMatch[],
   seenPaths: Set<string>,
   scope: SearchScope,
 ) {
-  if (event.event !== 'match') return false
+  if (event.type !== 'match') return false
 
-  const match = findEventMatch(event.data)
-  if (!match) return false
+  const match = event.match
+  if (match.kind !== 'name') return false
   if (seenPaths.has(match.path)) return false
 
   seenPaths.add(match.path)
@@ -341,32 +346,6 @@ function fallbackEntry(match: FindMatch): FsEntry {
 
 function fallbackEntryVersion(mtimeMs: number, size: number) {
   return `search:${mtimeMs}:${size}`
-}
-
-async function* streamFindEvents(
-  path: string,
-  query: string,
-  mode: FilePickerMode,
-  signal: AbortSignal,
-): AsyncGenerator<EdenSseEvent> {
-  const response = await client.fs.find.events.get({
-    query: {
-      caseSensitive: false,
-      entryType: searchEntryType(mode),
-      includeContent: false,
-      includeNames: true,
-      limit: SEARCH_LIMIT,
-      matchMode: 'literal',
-      path,
-      query,
-      wholeWord: false,
-    },
-    fetch: { signal },
-  })
-  if (response.error) throw clientErrors.SEARCH_FAILED({ status: response.status })
-  if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'Search' })
-
-  yield* parseEdenSseStream(response.data)
 }
 
 function searchEntryType(mode: FilePickerMode) {
@@ -400,57 +379,4 @@ function cleanupSearchSignal(signal: AbortSignal) {
 
 function fallbackEntries(matches: FindMatch[], query: string) {
   return matches.map(fallbackEntry).sort(compareSearchEntries(query))
-}
-
-function findEventMatch(data: unknown): FindMatch | null {
-  if (!data || typeof data !== 'object') return null
-  if (!('match' in data)) return null
-  if (!isFindMatch(data.match)) return null
-
-  return data.match
-}
-
-function isFindMatch(match: unknown): match is FindMatch {
-  if (!match || typeof match !== 'object') return false
-  if (!('kind' in match) || match.kind !== 'name') return false
-  if (!('path' in match) || typeof match.path !== 'string') return false
-  if (!('source' in match) || !isFindMatchSource(match.source)) return false
-  if (!('type' in match) || !isFsEntryType(match.type)) return false
-  if ('targetType' in match && !isOptionalFsEntryType(match.targetType)) {
-    return false
-  }
-  if ('size' in match && !isOptionalNumber(match.size)) return false
-  if ('mtimeMs' in match && !isOptionalNumber(match.mtimeMs)) return false
-  if ('birthtimeMs' in match && !isOptionalNumber(match.birthtimeMs)) {
-    return false
-  }
-
-  return true
-}
-
-function isFindMatchSource(source: unknown) {
-  return source === 'disk' || source === 'open-buffer'
-}
-
-function isOptionalFsEntryType(type: unknown): type is FsEntryType | undefined {
-  if (type === undefined) return true
-
-  return isFsEntryType(type)
-}
-
-function isFsEntryType(type: unknown): type is FsEntryType {
-  return type === 'file' || type === 'directory' || type === 'symlink' || type === 'other'
-}
-
-function isOptionalNumber(value: unknown) {
-  if (value === undefined) return true
-
-  return typeof value === 'number'
-}
-
-function findEventError(data: unknown) {
-  if (!data || typeof data !== 'object') return 'Search failed.'
-
-  const payload = data as FindErrorEvent
-  return payload.error?.message ?? 'Search failed.'
 }

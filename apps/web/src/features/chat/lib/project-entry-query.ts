@@ -1,8 +1,7 @@
 import type { EntryTypeFilter, WorkspaceSearchMatch } from '@workspace/contracts'
 import { queryOptions } from '@tanstack/react-query'
 
-import { client } from '@/lib/client'
-import { createRpcError } from '@/lib/structured-errors'
+import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
 
 const PROJECT_ENTRY_QUERY_LIMIT = 40
 const PROJECT_ENTRY_QUERY_STALE_TIME_MS = 15_000
@@ -64,9 +63,8 @@ async function searchProjectEntries({
   rootPath: string
   signal: AbortSignal
 }): Promise<ProjectEntrySearchResult> {
-  const response = await client.fs.find.get({
-    fetch: { signal },
-    query: {
+  const result = await collectWorkspaceSearch(
+    {
       caseSensitive: false,
       includeContent: false,
       includeNames: true,
@@ -76,14 +74,12 @@ async function searchProjectEntries({
       query,
       wholeWord: false,
     },
-  })
+    signal,
+  )
 
-  if (response.error) throw createRpcError(response.error)
-
-  const data = response.data as { matches?: WorkspaceSearchMatch[]; truncated?: boolean } | null
   return {
-    entries: projectEntryItems(data?.matches ?? []),
-    truncated: data?.truncated ?? false,
+    entries: projectEntryItems(result.matches),
+    truncated: result.truncated,
   }
 }
 

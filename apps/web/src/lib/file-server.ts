@@ -6,6 +6,7 @@ import {
   createRpcError,
   rpcErrorMessage as structuredRpcErrorMessage,
 } from '@/lib/structured-errors'
+import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
 
 const TREE_LOAD_DEPTH = 1
 
@@ -67,8 +68,8 @@ export async function fetchQuickOpenFiles({
       queryLength: query.length,
     },
     async () => {
-      const response = await client.fs.find.get({
-        query: {
+      const result = await collectWorkspaceSearch(
+        {
           caseSensitive: false,
           entryType: 'file',
           includeContent: false,
@@ -79,12 +80,10 @@ export async function fetchQuickOpenFiles({
           query,
           wholeWord: false,
         },
-        fetch: { signal },
-      })
+        signal,
+      )
 
-      if (response.error) throw createRpcError(response.error)
-
-      return (response.data as { matches: FindMatch[] }).matches
+      return result.matches as FindMatch[]
     },
     (matches) => ({ matchCount: matches.length }),
   )
@@ -129,11 +128,7 @@ function normalizeWriteFileContentOptions(
   return options ?? {}
 }
 
-function writeFileContentBody(
-  path: string,
-  content: string,
-  options: WriteFileContentOptions,
-) {
+function writeFileContentBody(path: string, content: string, options: WriteFileContentOptions) {
   return {
     content,
     path,
@@ -144,7 +139,9 @@ function writeFileContentBody(
       ? {}
       : { expectedMtimeMs: options.expectedMtimeMs }),
     ...(options.origin === undefined || options.origin === null ? {} : { origin: options.origin }),
-    ...(options.writeId === undefined || options.writeId === null ? {} : { writeId: options.writeId }),
+    ...(options.writeId === undefined || options.writeId === null
+      ? {}
+      : { writeId: options.writeId }),
   }
 }
 
@@ -186,11 +183,11 @@ export async function ensureFolderPath(path: string) {
   )
 }
 
-export async function movePath(from: string, to: string) {
+export async function renamePath(from: string, to: string) {
   return observeClientOperation(
-    { action: 'fs.move', area: 'fs', from, path: to },
+    { action: 'fs.rename', area: 'fs', from, path: to },
     async () => {
-      const response = await client.fs.move.post({ from, to })
+      const response = await client.fs.rename.post({ from, to })
 
       if (response.error) throw response.error
 

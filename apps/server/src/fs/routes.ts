@@ -5,16 +5,16 @@ import {
   createFolderBodySchema,
   deleteBodySchema,
   eventsQuerySchema,
-  findQuerySchema,
   pathQuerySchema,
   recordRecentBodySchema,
   recentsQuerySchema,
   renameBodySchema,
+  searchQuerySchema,
   treeQuerySchema,
   writeBodySchema,
 } from './contracts'
 import { errorPayload, FsError, isFsError } from './errors'
-import type { FindStreamEvent } from './search'
+import type { SearchStreamEvent } from './search'
 import type { FileSystemService } from './service'
 import { parseWatchInputs } from './watch'
 import { toErrorYieldingSse, toSse } from '../sse'
@@ -35,23 +35,17 @@ export function fsRoutes(fs: FileSystemService) {
         query: pathQuerySchema,
       })
       .get(
-        '/find/events',
+        '/search/events',
         ({ query, request }) =>
-          toErrorYieldingSse(fs.findEvents(query, request.signal), {
-            data: findEventData,
-            errorData: findErrorData,
+          toErrorYieldingSse(fs.searchEvents(query, request.signal), {
+            data: searchEventData,
+            errorData: searchErrorData,
             event: (event) => event.type,
           }),
         {
-          query: findQuerySchema,
+          query: searchQuerySchema,
         },
       )
-      .get('/find', ({ query }) => fs.find(query), {
-        query: findQuerySchema,
-      })
-      .get('/search', ({ query }) => fs.find(query), {
-        query: findQuerySchema,
-      })
       .get(
         '/events',
         ({ query, request }) =>
@@ -80,9 +74,6 @@ export function fsRoutes(fs: FileSystemService) {
       .post('/rename', ({ body }) => fs.rename(body), {
         body: renameBodySchema,
       })
-      .post('/move', ({ body }) => fs.rename(body), {
-        body: renameBodySchema,
-      })
       .post('/copy', ({ body }) => fs.copy(body), {
         body: copyBodySchema,
       })
@@ -107,7 +98,7 @@ async function fileResponse(result: BlobFile) {
   return new Response(file, { headers })
 }
 
-function findEventData(event: FindStreamEvent) {
+function searchEventData(event: SearchStreamEvent) {
   if (event.type === 'match') return { match: event.match }
 
   return {
@@ -118,7 +109,7 @@ function findEventData(event: FindStreamEvent) {
   }
 }
 
-function findErrorData(error: unknown) {
+function searchErrorData(error: unknown) {
   const fsError = isFsError(error) ? error : new FsError('OPERATION_FAILED', undefined, error)
 
   return errorPayload(fsError)

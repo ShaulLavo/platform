@@ -21,12 +21,7 @@ import {
   recordRequestError,
   recordStreamSummary,
 } from '../observability'
-import {
-  findInWorkspace,
-  findInWorkspaceStream,
-  type FindOptions,
-  type FindStreamEvent,
-} from './search'
+import { findInWorkspaceStream, type FindOptions, type SearchStreamEvent } from './search'
 import { FsError } from './errors'
 import { FsMetadataStore, metadataRowToEntry, type FsMetadataEntry } from './metadata'
 import type { FsStat } from './stat'
@@ -43,7 +38,7 @@ import type {
 } from './contracts'
 
 export type FileSystemInfo = ReturnType<FileSystemService['info']>
-export type FileSystemFindOptions = Omit<FindOptions, 'maxContentBytes'>
+export type FileSystemSearchOptions = Omit<FindOptions, 'maxContentBytes'>
 
 export type FileSystemServiceOptions = {
   workspaceRoot?: string
@@ -302,37 +297,11 @@ export class FileSystemService {
     return { path, deleted: true as const }
   }
 
-  find(options: FileSystemFindOptions) {
-    return observeRequestOperation(
-      {
-        area: 'fs',
-        includeContent: options.includeContent,
-        includeNames: options.includeNames,
-        limit: options.limit,
-        matchMode: options.matchMode,
-        operation: 'find',
-        path: options.path,
-      },
-      () =>
-        findInWorkspace(this.paths, {
-          ...options,
-          maxContentBytes: this.maxSearchContentBytes,
-        }),
-      (result) => ({
-        matchCount: result.matches.length,
-        search: {
-          matchCount: result.matches.length,
-          queryLength: options.query.length,
-        },
-      }),
-    )
-  }
-
-  async *findEvents(
-    options: FileSystemFindOptions,
+  async *searchEvents(
+    options: FileSystemSearchOptions,
     signal?: AbortSignal,
-  ): AsyncGenerator<FindStreamEvent> {
-    yield* observedFindEvents(
+  ): AsyncGenerator<SearchStreamEvent> {
+    yield* observedSearchEvents(
       findInWorkspaceStream(
         this.paths,
         {
@@ -428,9 +397,9 @@ function entryFromStat(stat: FsStat): TreeEntry {
   }
 }
 
-async function* observedFindEvents(
-  events: AsyncGenerator<FindStreamEvent>,
-  options: FileSystemFindOptions,
+async function* observedSearchEvents(
+  events: AsyncGenerator<SearchStreamEvent>,
+  options: FileSystemSearchOptions,
 ) {
   const startedAt = performance.now()
   const state = {
@@ -440,7 +409,7 @@ async function* observedFindEvents(
   }
   recordRequestContext({
     area: 'fs',
-    operation: 'find_events',
+    operation: 'search_events',
     search: {
       includeContent: options.includeContent,
       includeNames: options.includeNames,
@@ -452,19 +421,19 @@ async function* observedFindEvents(
 
   try {
     for await (const event of events) {
-      updateFindState(state, event)
+      updateSearchState(state, event)
       yield event
     }
   } catch (error) {
-    recordRequestError(error, findStreamSummary(options, startedAt, state, 'error'))
+    recordRequestError(error, searchStreamSummary(options, startedAt, state, 'error'))
     recordStreamSummary({
-      ...findStreamSummary(options, startedAt, state, 'error'),
+      ...searchStreamSummary(options, startedAt, state, 'error'),
       error: errorSummary(error),
     })
     throw error
   }
 
-  recordStreamSummary(findStreamSummary(options, startedAt, state, 'ok'))
+  recordStreamSummary(searchStreamSummary(options, startedAt, state, 'ok'))
 }
 
 async function* observedWatchEvents(
@@ -501,13 +470,13 @@ async function* observedWatchEvents(
   recordStreamSummary(watchStreamSummary(paths, startedAt, state, 'ok'))
 }
 
-function updateFindState(
+function updateSearchState(
   state: {
     completed: boolean
     matchCount: number
     truncated: boolean
   },
-  event: FindStreamEvent,
+  event: SearchStreamEvent,
 ) {
   if (event.type === 'match') {
     state.matchCount += 1
@@ -530,8 +499,8 @@ function updateWatchState(
   if (event.type === 'error') state.errorEventCount += 1
 }
 
-function findStreamSummary(
-  options: FileSystemFindOptions,
+function searchStreamSummary(
+  options: FileSystemSearchOptions,
   startedAt: number,
   state: {
     completed: boolean
@@ -546,7 +515,7 @@ function findStreamSummary(
     durationMs: elapsedMs(startedAt),
     limit: options.limit,
     matchCount: state.matchCount,
-    operation: 'find_events',
+    operation: 'search_events',
     path: options.path,
     search: {
       matchCount: state.matchCount,

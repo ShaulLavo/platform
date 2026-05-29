@@ -93,19 +93,15 @@ describe('observability runtime', () => {
         status: 200,
       })
       expect(request.url).toBe('https://posthog.test/batch/')
-      expect(payload).toMatchObject({
-        api_key: 'phc_test',
-        batch: [
-          {
-            distinct_id: 'platform-test',
-            event: 'platform_test_log',
-            properties: expect.objectContaining({
-              path: '/fs/tree',
-              service: 'platform',
-              source: 'be',
-            }),
-          },
-        ],
+      expect(payload.api_key).toBe('phc_test')
+      expect(postHogBatchEvent(payload, '/fs/tree')).toMatchObject({
+        distinct_id: 'platform-test',
+        event: 'platform_test_log',
+        properties: expect.objectContaining({
+          path: '/fs/tree',
+          service: 'platform',
+          source: 'be',
+        }),
       })
     } finally {
       fetchRecorder.restore()
@@ -274,7 +270,7 @@ describe('observability runtime', () => {
     })
   })
 
-  it('records git and search summaries without persisting payload contents', async () => {
+  it('records git summaries and streamed search context without persisting payload contents', async () => {
     const root = await fixtureRoot()
     const logDir = await fixtureRoot()
     const secretContent = 'needle TOP_SECRET_CONTENT'
@@ -284,7 +280,7 @@ describe('observability runtime', () => {
     const app = testApp(root)
 
     const search = await app.handle(
-      new Request('http://local/fs/find?query=needle&includeContent=true', {
+      new Request('http://local/fs/search/events?query=needle&includeContent=true', {
         headers: trustedOriginHeaders(),
       }),
     )
@@ -301,20 +297,16 @@ describe('observability runtime', () => {
     await search.text()
     await checkout.text()
     const events = await flushedEvents(logDir)
-    const searchEvent = eventForPath(events, '/fs/find')
+    const searchEvent = eventForPath(events, '/fs/search/events')
     const gitEvent = eventForPath(events, '/git/checkout')
     const serialized = JSON.stringify(events)
 
-    expect(searchEvent.fs).toMatchObject({
-      operations: [
-        expect.objectContaining({
-          matchCount: 1,
-          search: expect.objectContaining({
-            matchCount: 1,
-            queryLength: 6,
-          }),
-        }),
-      ],
+    expect(searchEvent).toMatchObject({
+      operation: 'search_events',
+      search: {
+        includeContent: true,
+        queryLength: 6,
+      },
     })
     expect(gitEvent.git).toMatchObject({
       commandCount: expect.any(Number),
@@ -462,6 +454,13 @@ function onlyPostHogRequest(requests: readonly RecordedFetchRequest[]) {
   return requests[0]
 }
 
+function postHogBatchEvent(payload: PostHogPayload, eventPath: string) {
+  const event = payload.batch?.find((candidate) => candidate.properties?.path === eventPath)
+  if (!event) throw new Error(`missing PostHog batch event for ${eventPath}`)
+
+  return event
+}
+
 function fetchBody(init: RequestInit | undefined) {
   return typeof init?.body === 'string' ? init.body : ''
 }
@@ -470,4 +469,12 @@ function fetchUrl(input: RequestInfo | URL) {
   if (input instanceof Request) return input.url
 
   return String(input)
+}
+
+type PostHogPayload = {
+  batch?: Array<{
+    properties?: {
+      path?: string
+    }
+  }>
 }

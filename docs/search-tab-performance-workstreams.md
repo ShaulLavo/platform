@@ -7,7 +7,7 @@
 - Breadcrumb window: `12.28s`
 - App target in trace: `localhost:5173` web app with `localhost:3001` server
 - Workspace searched: `Users/shaul/Desktop/platform`
-- Main observed query path: `/fs/find/events`
+- Main observed query path: `/fs/search/events`
 
 Important caveat: this trace was captured in Vite/dev mode with React DevTools instrumentation. Absolute timings are inflated, but the repeated bottleneck shape is clear enough to plan work.
 
@@ -17,15 +17,15 @@ The search tab bottleneck is primarily frontend result rendering after streamed 
 
 Observed request timings:
 
-| Query | Case sensitive | Duration | Chunks | Payload |
-| --- | --- | ---: | ---: | ---: |
-| `const` | true | `174.8ms` | 18 | `14.5KB` |
-| `const` | false | `286.7ms` | 27 | `54.0KB` |
-| `c` | false | `343.9ms` | 32 | `18.9KB` |
-| `co` | false | `256.4ms` | 46 | `54.2KB` |
-| `con` | false | `160.0ms` | 40 | `53.8KB` |
-| `cons` | false | `266.3ms` | 27 | `59.7KB` |
-| `const` | false | `142.8ms` | 43 | `54.3KB` |
+| Query   | Case sensitive |  Duration | Chunks |  Payload |
+| ------- | -------------- | --------: | -----: | -------: |
+| `const` | true           | `174.8ms` |     18 | `14.5KB` |
+| `const` | false          | `286.7ms` |     27 | `54.0KB` |
+| `c`     | false          | `343.9ms` |     32 | `18.9KB` |
+| `co`    | false          | `256.4ms` |     46 | `54.2KB` |
+| `con`   | false          | `160.0ms` |     40 | `53.8KB` |
+| `cons`  | false          | `266.3ms` |     27 | `59.7KB` |
+| `const` | false          | `142.8ms` |     43 | `54.3KB` |
 
 UI symptoms:
 
@@ -52,7 +52,7 @@ Current behavior:
 
 Trace evidence:
 
-- Main-thread long tasks occur immediately after `/fs/find/events` chunks and completions.
+- Main-thread long tasks occur immediately after `/fs/search/events` chunks and completions.
 - React profiler repeatedly reports `groups` and `matches` as referentially unequal, sometimes deeply equal.
 
 ### 2. Search Result Editor Surface Is Expensive During Loading
@@ -386,7 +386,7 @@ Owner write scope:
 Tasks:
 
 1. Add server-side timing/progress logging behind a dev flag or trace event if appropriate.
-2. Check whether `/fs/find/events` chunks can be coalesced server-side without hurting first-result latency.
+2. Check whether `/fs/search/events` chunks can be coalesced server-side without hurting first-result latency.
 3. Confirm abort behavior cancels `rg` promptly when the query changes.
 4. Confirm payload size is not inflated by unnecessary preview data.
 5. Keep this lower priority unless a production trace shows network/backend time dominating.
