@@ -52,7 +52,7 @@ export function createApp(options: AppOptions) {
     options.orchestration?.providerRegistry ?? createDefaultProviderRegistry()
   const orchestration = new OrchestrationEngine(options.orchestration?.database ?? platformDb, {
     providerRuntime: options.orchestration?.providerRuntime
-      ? { registry: providerRegistry }
+      ? { checkpointGit: git, registry: providerRegistry }
       : false,
   })
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(

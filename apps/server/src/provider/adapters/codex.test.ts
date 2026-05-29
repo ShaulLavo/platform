@@ -267,8 +267,9 @@ function handle(message) {
         method: 'item/agentMessage/delta',
         params: {
           threadId: 'provider-thread-1',
+          turnId: 'provider-turn-1',
           itemId: 'item-1',
-          delta: 'broken',
+          delta: 123,
         },
       });
       send({ id: message.id, result: { turn: fakeTurn('inProgress') } });
@@ -358,19 +359,19 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 setInterval(() => {}, 1000);
 `
 
+let fakeCodexLock: Promise<void> = Promise.resolve()
+
 describe('CodexProviderAdapter', () => {
   it('uses the app-server protocol and keeps early turn notifications', async () => {
     await withFakeCodex(async () => {
       const adapter = new CodexProviderAdapter()
       const events: ProviderRuntimeEvent[] = []
       const input = providerTurnInput()
+      collectAdapterEvents(adapter, events)
 
       const snapshot = await adapter.snapshot()
-      await adapter.startTurn(input, {
-        ingest: async (event) => {
-          events.push(event)
-        },
-      })
+      await adapter.sendTurn(input)
+      await settleRuntimeEvents()
       const sessions = await adapter.listSessions()
       const hasSession = await adapter.hasSession({ threadId: input.thread.id })
       await adapter.stopSession({ threadId: input.thread.id })
@@ -433,9 +434,9 @@ describe('CodexProviderAdapter', () => {
       )
       expect(events).toContainEqual(
         expect.objectContaining({
-          status: 'ready',
+          payload: { state: 'ready' },
           threadId: input.thread.id,
-          type: 'session.set',
+          type: 'session.state.changed',
         }),
       )
     })
@@ -464,9 +465,7 @@ describe('CodexProviderAdapter', () => {
         providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID as ProviderInstanceId,
       }
 
-      await adapter.startTurn(input, {
-        ingest: async () => {},
-      })
+      await adapter.sendTurn(input)
       await adapter.stopAll()
 
       expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(false)
@@ -479,12 +478,10 @@ describe('CodexProviderAdapter', () => {
         const adapter = new CodexProviderAdapter()
         const events: ProviderRuntimeEvent[] = []
         const input = providerTurnInput()
+        collectAdapterEvents(adapter, events)
 
-        await adapter.startTurn(input, {
-          ingest: async (event) => {
-            events.push(event)
-          },
-        })
+        await adapter.sendTurn(input)
+        await settleRuntimeEvents()
         await adapter.stopAll()
 
         const progressEvents = events.filter((event) => event.type === 'task.progress')
@@ -521,12 +518,10 @@ describe('CodexProviderAdapter', () => {
         const adapter = new CodexProviderAdapter()
         const events: ProviderRuntimeEvent[] = []
         const input = providerTurnInput()
+        collectAdapterEvents(adapter, events)
 
-        await adapter.startTurn(input, {
-          ingest: async (event) => {
-            events.push(event)
-          },
-        })
+        await adapter.sendTurn(input)
+        await settleRuntimeEvents()
         await adapter.stopAll()
 
         const assistantDeltas = events.filter(
@@ -564,9 +559,7 @@ describe('CodexProviderAdapter', () => {
       const adapter = new CodexProviderAdapter()
       const input = providerTurnInput()
 
-      await adapter.startTurn(input, {
-        ingest: async () => {},
-      })
+      await adapter.sendTurn(input)
       const snapshot = await adapter.readThread({ threadId: input.thread.id })
       const rolledBack = await adapter.rollbackThread({
         numTurns: 1,
@@ -613,11 +606,9 @@ describe('CodexProviderAdapter', () => {
         const adapter = new CodexProviderAdapter()
         const input = providerTurnInput()
 
-        await expect(
-          adapter.startTurn(input, {
-            ingest: async () => {},
-          }),
-        ).rejects.toThrow('Codex app-server protocol error for thread/start response')
+        await expect(adapter.sendTurn(input)).rejects.toThrow(
+          'Codex app-server protocol error for thread/start response',
+        )
       },
       { mode: 'malformed-thread-start' },
     )
@@ -629,11 +620,7 @@ describe('CodexProviderAdapter', () => {
         const adapter = new CodexProviderAdapter()
         const input = providerTurnInput()
 
-        await expect(
-          adapter.startTurn(input, {
-            ingest: async () => {},
-          }),
-        ).rejects.toThrow(
+        await expect(adapter.sendTurn(input)).rejects.toThrow(
           'Codex app-server protocol error for item/agentMessage/delta notification',
         )
         await adapter.stopAll()
@@ -644,6 +631,13 @@ describe('CodexProviderAdapter', () => {
 })
 
 async function withFakeCodex(run: () => Promise<void>, options: { readonly mode?: string } = {}) {
+  const previousLock = fakeCodexLock
+  let releaseLock: () => void = () => {}
+  fakeCodexLock = new Promise<void>((resolve) => {
+    releaseLock = resolve
+  })
+  await previousLock
+
   const directory = await mkdtemp(path.join(tmpdir(), 'platform-fake-codex-'))
   const binaryPath = path.join(directory, 'codex')
   const previousBinary = process.env.PLATFORM_CODEX_BINARY
@@ -659,7 +653,21 @@ async function withFakeCodex(run: () => Promise<void>, options: { readonly mode?
     restoreCodexBinary(previousBinary)
     restoreFakeCodexMode(previousMode)
     await rm(directory, { force: true, recursive: true })
+    releaseLock()
   }
+}
+
+function collectAdapterEvents(adapter: CodexProviderAdapter, events: ProviderRuntimeEvent[]) {
+  void (async () => {
+    for await (const event of adapter.streamEvents()) {
+      events.push(event)
+    }
+  })()
+}
+
+async function settleRuntimeEvents() {
+  await Promise.resolve()
+  await Promise.resolve()
 }
 
 function providerTurnInput(): ProviderTurnInput {

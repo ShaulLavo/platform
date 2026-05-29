@@ -9,16 +9,20 @@ import type { FileDiff, FileStatus } from '@/features/git/types'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 
 export type CheckpointDiffQueryInput = {
+  filePath?: string
   fromTurnCount: number
   path?: string
+  scope?: 'file' | 'thread' | 'turn'
   threadId: ThreadId
   toTurnCount: number
 }
 
 export function checkpointDiffQueryKey(input: CheckpointDiffQueryInput) {
   return gitKeys.checkpointDiff({
+    filePath: input.filePath,
     fromTurnCount: input.fromTurnCount,
     path: input.path,
+    scope: input.scope,
     threadId: input.threadId,
     toTurnCount: input.toTurnCount,
   })
@@ -29,8 +33,22 @@ export function checkpointDiffInputForSummary(
   path?: string,
 ): CheckpointDiffQueryInput {
   return {
+    filePath: path,
     fromTurnCount: Math.max(0, summary.checkpointTurnCount - 1),
     path,
+    scope: path ? 'file' : 'turn',
+    threadId: summary.threadId,
+    toTurnCount: summary.checkpointTurnCount,
+  }
+}
+
+export function checkpointFullThreadDiffInputForSummary(
+  summary: ChatTurnDiffSummary,
+): CheckpointDiffQueryInput {
+  return {
+    fromTurnCount: 0,
+    path: checkpointFullThreadDocumentPath(summary),
+    scope: 'thread',
     threadId: summary.threadId,
     toTurnCount: summary.checkpointTurnCount,
   }
@@ -50,14 +68,44 @@ export function checkpointDiffDocumentInput(
   const rangeInput = checkpointDiffInputForSummary(summary, path)
 
   return {
+    filePath: path,
     fromTurnCount: rangeInput.fromTurnCount,
     newObjectId: diff?.newObjectId,
     oldObjectId: diff?.oldObjectId,
     oldPath: diff?.oldPath,
     path,
+    scope: 'file',
     status: diff ? diffStatus(diff) : undefined,
     threadId: rangeInput.threadId,
     toTurnCount: rangeInput.toTurnCount,
+  }
+}
+
+export function checkpointTurnDiffDocumentInput(
+  summary: ChatTurnDiffSummary,
+): CheckpointDiffDocumentInput {
+  const rangeInput = checkpointDiffInputForSummary(summary)
+
+  return {
+    fromTurnCount: rangeInput.fromTurnCount,
+    path: checkpointTurnDocumentPath(summary),
+    scope: 'turn',
+    threadId: rangeInput.threadId,
+    toTurnCount: rangeInput.toTurnCount,
+  }
+}
+
+export function checkpointFullThreadDiffDocumentInput(
+  summary: ChatTurnDiffSummary,
+): CheckpointDiffDocumentInput {
+  const input = checkpointFullThreadDiffInputForSummary(summary)
+
+  return {
+    fromTurnCount: input.fromTurnCount,
+    path: input.path ?? checkpointFullThreadDocumentPath(summary),
+    scope: 'thread',
+    threadId: input.threadId,
+    toTurnCount: input.toTurnCount,
   }
 }
 
@@ -68,12 +116,17 @@ export function matchingCheckpointDiff(diffs: readonly FileDiff[], path: string 
 }
 
 export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signal?: AbortSignal) {
+  if (input.scope === 'thread') {
+    return fetchFullThreadCheckpointDiff(input, signal)
+  }
+
   return observeClientOperation(
     {
       action: 'chat.checkpoint_diff.http',
       area: 'chat',
       fromTurnCount: input.fromTurnCount,
-      path: input.path,
+      path: checkpointDiffFilePath(input),
+      scope: input.scope,
       threadId: input.threadId,
       toTurnCount: input.toTurnCount,
     },
@@ -88,7 +141,7 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
       })
       const diffs = unwrapOrchestrationResponse<FileDiff[]>(response)
 
-      return filterCheckpointDiffsForPath(diffs, input.path)
+      return filterCheckpointDiffsForPath(diffs, checkpointDiffFilePath(input))
     },
     (diffs) => ({ diffCount: diffs.length }),
   )
@@ -118,6 +171,26 @@ export async function fetchFullThreadCheckpointDiff(
     },
     (diffs) => ({ diffCount: diffs.length }),
   )
+}
+
+export function checkpointDiffRetry(failureCount: number, error: unknown) {
+  if (failureCount >= 2) return false
+
+  return !checkpointDiffErrorMessage(error).toLowerCase().includes('fromturncount')
+}
+
+export function checkpointDiffRetryDelay(attemptIndex: number) {
+  return Math.min(250 * 2 ** attemptIndex, 1_000)
+}
+
+export function checkpointDiffErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return 'Checkpoint diff unavailable.'
+}
+
+function checkpointDiffFilePath(input: CheckpointDiffQueryInput) {
+  return input.filePath ?? (input.scope === 'file' ? input.path : undefined)
 }
 
 function filterCheckpointDiffsForPath(diffs: readonly FileDiff[], path: string | undefined) {
@@ -152,4 +225,12 @@ function diffStatus(diff: FileDiff): FileStatus['index'] | FileStatus['worktree'
   if (diff.newFileMissing) return 'deleted'
 
   return 'modified'
+}
+
+function checkpointTurnDocumentPath(summary: ChatTurnDiffSummary) {
+  return `checkpoint-turn-${summary.checkpointTurnCount}`
+}
+
+function checkpointFullThreadDocumentPath(summary: ChatTurnDiffSummary) {
+  return `checkpoint-thread-${summary.checkpointTurnCount}`
 }

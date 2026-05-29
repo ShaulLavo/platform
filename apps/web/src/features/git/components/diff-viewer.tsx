@@ -29,7 +29,7 @@ import { displayPath } from '@/lib/path-formatters'
 import type { DiffHunk as GitDiffHunk, FileDiff, LineChange } from '../types'
 
 type GitDiffViewerProps = {
-  diff: FileDiff | null
+  diffs: readonly FileDiff[]
   error: unknown
   isError: boolean
   isPending: boolean
@@ -41,7 +41,7 @@ type TextDiffViewerProps = {
   detail?: string | null
   emptyMessage: string
   errorMessage?: string
-  file: DiffFile | null
+  files: readonly DiffFile[]
   isError?: boolean
   isPending?: boolean
   mode: EditorDiffViewMode
@@ -57,15 +57,15 @@ export type GitDiffViewerHandle = {
 }
 
 export const GitDiffViewer = forwardRef<GitDiffViewerHandle, GitDiffViewerProps>(
-  function GitDiffViewer({ diff, error, isError, isPending, mode, path }, ref) {
-    const diffFile = useMemo(() => (diff ? editorDiffFile(diff) : null), [diff])
+  function GitDiffViewer({ diffs, error, isError, isPending, mode, path }, ref) {
+    const diffFiles = useMemo(() => diffs.map(editorDiffFile), [diffs])
 
     return (
       <TextDiffViewer
         detail={errorMessage(error)}
         emptyMessage={`No git diff available for ${displayPath(path)}.`}
         errorMessage={`Git diff failed for ${displayPath(path)}.`}
-        file={diffFile}
+        files={diffFiles}
         isError={isError}
         isPending={isPending}
         mode={mode}
@@ -81,7 +81,7 @@ export const TextDiffViewer = forwardRef<GitDiffViewerHandle, TextDiffViewerProp
       detail = null,
       emptyMessage,
       errorMessage: failedMessage = 'Diff failed.',
-      file,
+      files,
       isError = false,
       isPending = false,
       mode,
@@ -92,8 +92,8 @@ export const TextDiffViewer = forwardRef<GitDiffViewerHandle, TextDiffViewerProp
 
     useImperativeHandle(ref, () => diffViewerHandle(viewRef), [])
 
-    if (file?.hunks.length) {
-      return <EditorDiffView ref={viewRef} file={file} mode={mode} />
+    if (files.some((file) => file.hunks.length > 0)) {
+      return <EditorDiffView ref={viewRef} files={files} mode={mode} />
     }
 
     if (isPending) return null
@@ -118,10 +118,10 @@ function diffViewerHandle(viewRef: RefObject<GitDiffViewerHandle | null>): GitDi
 const EditorDiffView = forwardRef<
   GitDiffViewerHandle,
   {
-    file: DiffFile
+    files: readonly DiffFile[]
     mode: EditorDiffViewMode
   }
->(function EditorDiffView({ file, mode }, ref) {
+>(function EditorDiffView({ files, mode }, ref) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<DiffView | null>(null)
   const { editorTheme } = useEditorColorTheme()
@@ -137,7 +137,7 @@ const EditorDiffView = forwardRef<
 
     const view = new DiffView(host, {
       mode: 'split',
-      showFileList: false,
+      showFileList: files.length > 1,
       splitPane: {
         createHandle: createGitDiffSplitHandle,
       },
@@ -150,15 +150,15 @@ const EditorDiffView = forwardRef<
       view.dispose()
       viewRef.current = null
     }
-  }, [editorTheme, syntaxBackend])
+  }, [editorTheme, files.length, syntaxBackend])
 
   useLayoutEffect(() => {
     viewRef.current?.setMode(mode)
   }, [editorTheme, mode, syntaxBackend])
 
   useLayoutEffect(() => {
-    viewRef.current?.setFiles([file])
-  }, [editorTheme, file, syntaxBackend])
+    viewRef.current?.setFiles([...files])
+  }, [editorTheme, files, syntaxBackend])
 
   return (
     <div

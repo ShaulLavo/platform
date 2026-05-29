@@ -5,6 +5,7 @@ import {
   messageIdSchema,
   proposedPlanIdSchema,
   type InternalOrchestrationCommand,
+  type OrchestrationCommand,
   type MessageId,
   type OrchestrationSession,
   type OrchestrationThreadActivity,
@@ -13,13 +14,16 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import type { ProviderRuntimeEvent } from '../provider/types'
+import type { OrchestrationReadModel } from './read-model'
 import {
   BoundedTtlCache,
   PROVIDER_RUNTIME_BUFFER_TTL_MS,
   ProviderRuntimeBuffers,
 } from './provider-runtime-buffers'
 
-export type ProviderRuntimeDispatch = (command: InternalOrchestrationCommand) => Promise<unknown>
+export type ProviderRuntimeDispatch = (
+  command: InternalOrchestrationCommand | OrchestrationCommand,
+) => Promise<unknown>
 export type AssistantDeliveryMode = 'streaming' | 'buffered'
 
 const SEEN_RUNTIME_EVENT_ID_MAX = 20_000
@@ -37,6 +41,7 @@ export class ProviderRuntimeIngestion {
   private readonly assistantDeliveryMode: AssistantDeliveryMode
   private readonly buffers: ProviderRuntimeBuffers
   private readonly dispatch: ProviderRuntimeDispatch
+  private readonly getReadModel: (() => OrchestrationReadModel) | null
   private queue = Promise.resolve()
   private readonly seenEventIds: BoundedTtlCache<string, true>
 
@@ -45,12 +50,14 @@ export class ProviderRuntimeIngestion {
     options: {
       assistantDeliveryMode?: AssistantDeliveryMode
       buffers?: ProviderRuntimeBuffers
+      getReadModel?: () => OrchestrationReadModel
       now?: () => number
     } = {},
   ) {
     this.assistantDeliveryMode = options.assistantDeliveryMode ?? 'streaming'
     this.buffers = options.buffers ?? new ProviderRuntimeBuffers({ now: options.now })
     this.dispatch = dispatch
+    this.getReadModel = options.getReadModel ?? null
     this.seenEventIds = new BoundedTtlCache({
       capacity: SEEN_RUNTIME_EVENT_ID_MAX,
       now: options.now,
@@ -73,6 +80,7 @@ export class ProviderRuntimeIngestion {
 
     this.seenEventIds.set(event.eventId, true)
     await this.dispatchSessionCommand(event)
+    await this.dispatchMetadataCommands(event)
     await this.dispatchContentCommands(event)
     await this.dispatchActivityCommands(event)
   }
@@ -85,14 +93,51 @@ export class ProviderRuntimeIngestion {
 
     const session = sessionFromLifecycleEvent(event)
     if (!session) return
+    if (!this.shouldApplyLifecycleSession(event)) return
 
     await this.dispatch({
       commandId: providerCommandId(event.eventId, 'session-set'),
       createdAt: session.updatedAt,
-      session,
+      session: this.sessionForCurrentReadModel(event, session),
       threadId: event.threadId,
       type: 'thread.session.set',
     })
+  }
+
+  private async dispatchMetadataCommands(event: ProviderRuntimeEvent) {
+    if (event.type !== 'thread.metadata.updated') return
+    if (!event.payload.name) return
+
+    await this.dispatch({
+      commandId: providerCommandId(event.eventId, 'thread-title-update'),
+      threadId: event.threadId,
+      title: event.payload.name,
+      type: 'thread.meta.update',
+      updatedAt: event.createdAt,
+    })
+  }
+
+  private shouldApplyLifecycleSession(event: ProviderRuntimeEvent) {
+    if (!isLifecycleSessionEvent(event)) return true
+    if (!event.turnId) return true
+
+    const thread = this.getReadModel?.().threads.get(event.threadId)
+    if (!thread?.latestTurn?.turnId) return true
+
+    return thread.latestTurn.turnId === event.turnId
+  }
+
+  private sessionForCurrentReadModel(event: ProviderRuntimeEvent, session: OrchestrationSession) {
+    const thread = this.getReadModel?.().threads.get(event.threadId)
+    if (!thread?.latestTurn) return session
+    if (thread.latestTurn.state !== 'running') return session
+    if (event.type !== 'session.started' && event.type !== 'thread.started') return session
+
+    return {
+      ...session,
+      activeTurnId: thread.latestTurn.turnId,
+      status: 'running' as const,
+    }
   }
 
   private async dispatchContentCommands(event: ProviderRuntimeEvent) {
@@ -574,6 +619,54 @@ function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationTh
       return [taskProgressActivity(event)]
     case 'task.completed':
       return [taskCompletedActivity(event)]
+    case 'turn.plan.updated':
+      return [turnPlanUpdatedActivity(event)]
+    case 'turn.diff.updated':
+      return [turnDiffUpdatedActivity(event)]
+    case 'hook.started':
+      return [hookStartedActivity(event)]
+    case 'hook.progress':
+      return [hookProgressActivity(event)]
+    case 'hook.completed':
+      return [hookCompletedActivity(event)]
+    case 'tool.progress':
+      return [toolProgressActivity(event)]
+    case 'tool.summary':
+      return [toolSummaryActivity(event)]
+    case 'auth.status':
+      return [authStatusActivity(event)]
+    case 'account.updated':
+      return [baseActivity(event, 'info', 'account.updated', 'Account updated', event.payload)]
+    case 'account.rate-limits.updated':
+      return [
+        baseActivity(
+          event,
+          'info',
+          'account.rate-limits.updated',
+          'Account rate limits updated',
+          event.payload,
+        ),
+      ]
+    case 'mcp.status.updated':
+      return [
+        baseActivity(event, 'info', 'mcp.status.updated', 'MCP status updated', event.payload),
+      ]
+    case 'mcp.oauth.completed':
+      return [mcpOauthCompletedActivity(event)]
+    case 'model.rerouted':
+      return [modelReroutedActivity(event)]
+    case 'config.warning':
+      return [configWarningActivity(event)]
+    case 'deprecation.notice':
+      return [deprecationNoticeActivity(event)]
+    case 'files.persisted':
+      return [filesPersistedActivity(event)]
+    case 'thread.realtime.started':
+    case 'thread.realtime.item-added':
+    case 'thread.realtime.audio.delta':
+    case 'thread.realtime.error':
+    case 'thread.realtime.closed':
+      return realtimeActivity(event)
     case 'runtime.warning':
       return [runtimeWarningActivity(event)]
     case 'runtime.error':
@@ -706,6 +799,139 @@ function taskCompletedActivity(event: Extract<ProviderRuntimeEvent, { type: 'tas
   )
 }
 
+function turnPlanUpdatedActivity(
+  event: Extract<ProviderRuntimeEvent, { type: 'turn.plan.updated' }>,
+) {
+  return baseActivity(event, 'thinking', 'turn.plan.updated', 'Plan updated', {
+    explanation: truncateDetail(event.payload.explanation ?? undefined),
+    plan: event.payload.plan,
+  })
+}
+
+function turnDiffUpdatedActivity(
+  event: Extract<ProviderRuntimeEvent, { type: 'turn.diff.updated' }>,
+) {
+  return baseActivity(event, 'tool', 'turn.diff.updated', 'Diff updated', {
+    unifiedDiff: truncateDetail(event.payload.unifiedDiff, 600),
+  })
+}
+
+function hookStartedActivity(event: Extract<ProviderRuntimeEvent, { type: 'hook.started' }>) {
+  return baseActivity(event, 'tool', 'hook.started', `${event.payload.hookName} started`, {
+    hookEvent: event.payload.hookEvent,
+    hookId: event.payload.hookId,
+    hookName: event.payload.hookName,
+  })
+}
+
+function hookProgressActivity(event: Extract<ProviderRuntimeEvent, { type: 'hook.progress' }>) {
+  return baseActivity(event, 'tool', 'hook.progress', 'Hook output', {
+    hookId: event.payload.hookId,
+    output: truncateDetail(event.payload.output),
+    stderr: truncateDetail(event.payload.stderr),
+    stdout: truncateDetail(event.payload.stdout),
+  })
+}
+
+function hookCompletedActivity(event: Extract<ProviderRuntimeEvent, { type: 'hook.completed' }>) {
+  return baseActivity(
+    event,
+    event.payload.outcome === 'error' ? 'error' : 'tool',
+    'hook.completed',
+    event.payload.outcome === 'error' ? 'Hook failed' : 'Hook completed',
+    {
+      exitCode: event.payload.exitCode,
+      hookId: event.payload.hookId,
+      outcome: event.payload.outcome,
+      output: truncateDetail(event.payload.output),
+      stderr: truncateDetail(event.payload.stderr),
+      stdout: truncateDetail(event.payload.stdout),
+    },
+  )
+}
+
+function toolProgressActivity(event: Extract<ProviderRuntimeEvent, { type: 'tool.progress' }>) {
+  return baseActivity(event, 'tool', 'tool.progress', event.payload.summary ?? 'Tool progress', {
+    elapsedSeconds: event.payload.elapsedSeconds,
+    summary: truncateDetail(event.payload.summary),
+    toolName: event.payload.toolName,
+    toolUseId: event.payload.toolUseId,
+  })
+}
+
+function toolSummaryActivity(event: Extract<ProviderRuntimeEvent, { type: 'tool.summary' }>) {
+  return baseActivity(event, 'tool', 'tool.summary', event.payload.summary, {
+    precedingToolUseIds: event.payload.precedingToolUseIds,
+    summary: truncateDetail(event.payload.summary),
+  })
+}
+
+function authStatusActivity(event: Extract<ProviderRuntimeEvent, { type: 'auth.status' }>) {
+  return baseActivity(
+    event,
+    event.payload.error ? 'error' : 'info',
+    'auth.status',
+    event.payload.error ? 'Authentication failed' : 'Authentication status updated',
+    event.payload,
+  )
+}
+
+function mcpOauthCompletedActivity(
+  event: Extract<ProviderRuntimeEvent, { type: 'mcp.oauth.completed' }>,
+) {
+  return baseActivity(
+    event,
+    event.payload.success ? 'info' : 'error',
+    'mcp.oauth.completed',
+    event.payload.success ? 'MCP OAuth completed' : 'MCP OAuth failed',
+    event.payload,
+  )
+}
+
+function modelReroutedActivity(event: Extract<ProviderRuntimeEvent, { type: 'model.rerouted' }>) {
+  return baseActivity(event, 'info', 'model.rerouted', 'Model rerouted', event.payload)
+}
+
+function configWarningActivity(event: Extract<ProviderRuntimeEvent, { type: 'config.warning' }>) {
+  return baseActivity(event, 'error', 'config.warning', event.payload.summary, event.payload)
+}
+
+function deprecationNoticeActivity(
+  event: Extract<ProviderRuntimeEvent, { type: 'deprecation.notice' }>,
+) {
+  return baseActivity(event, 'info', 'deprecation.notice', event.payload.summary, event.payload)
+}
+
+function filesPersistedActivity(event: Extract<ProviderRuntimeEvent, { type: 'files.persisted' }>) {
+  return baseActivity(event, 'info', 'files.persisted', 'Files persisted', event.payload)
+}
+
+function realtimeActivity(
+  event: Extract<
+    ProviderRuntimeEvent,
+    {
+      type:
+        | 'thread.realtime.audio.delta'
+        | 'thread.realtime.closed'
+        | 'thread.realtime.error'
+        | 'thread.realtime.item-added'
+        | 'thread.realtime.started'
+    }
+  >,
+) {
+  if (event.type === 'thread.realtime.audio.delta') return []
+
+  return [
+    baseActivity(
+      event,
+      event.type === 'thread.realtime.error' ? 'error' : 'info',
+      event.type,
+      realtimeSummary(event.type),
+      event.payload,
+    ),
+  ]
+}
+
 function runtimeWarningActivity(event: Extract<ProviderRuntimeEvent, { type: 'runtime.warning' }>) {
   return baseActivity(event, 'info', 'runtime.warning', 'Runtime warning', {
     detail: event.payload.detail,
@@ -748,6 +974,21 @@ function tokenUsageActivity(
       event.payload.usage,
     ),
   ]
+}
+
+function realtimeSummary(type: string) {
+  switch (type) {
+    case 'thread.realtime.started':
+      return 'Realtime session started'
+    case 'thread.realtime.item-added':
+      return 'Realtime item added'
+    case 'thread.realtime.closed':
+      return 'Realtime session closed'
+    case 'thread.realtime.error':
+      return 'Realtime error'
+    default:
+      return 'Realtime event'
+  }
 }
 
 function isReasoningStreamKind(streamKind: string) {

@@ -12,6 +12,7 @@ import {
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 import { rowToEvent } from './event-store'
+import { checkpointRefForThreadTurn } from './checkpoint-refs'
 import {
   orchestrationGetFullThreadDiffInputSchema,
   orchestrationGetTurnDiffInputSchema,
@@ -42,14 +43,16 @@ export class OrchestrationCheckpointDiffQuery {
     this.git = git
   }
 
-  turnDiff(input: OrchestrationGetTurnDiffInput): Promise<GitFileDiff[]> {
+  async turnDiff(input: OrchestrationGetTurnDiffInput): Promise<GitFileDiff[]> {
     const query = v.parse(orchestrationGetTurnDiffInputSchema, input)
     validateTurnRange(query)
 
     const context = this.threadCheckpointContext(query.threadId)
-    const refs = checkpointRefsForRange(query, context)
-    if (query.fromTurnCount === query.toTurnCount) return Promise.resolve([])
+    if (query.fromTurnCount === query.toTurnCount) return []
 
+    const refs = checkpointRefsForRange(query, context)
+    await this.assertCheckpointRefAvailable(context, refs.fromRef, query.fromTurnCount)
+    await this.assertCheckpointRefAvailable(context, refs.toRef, query.toTurnCount)
     return this.git.diffRefs({
       newRef: refs.toRef,
       oldRef: refs.fromRef,
@@ -123,6 +126,16 @@ export class OrchestrationCheckpointDiffQuery {
       (left, right) => left.checkpointTurnCount - right.checkpointTurnCount,
     )
   }
+
+  private async assertCheckpointRefAvailable(
+    context: ThreadCheckpointContext,
+    ref: string,
+    turnCount: number,
+  ) {
+    if (await this.git.hasRef({ path: context.workspacePath, ref })) return
+
+    throw checkpointUnavailable(turnCount)
+  }
 }
 
 function applyCheckpointEvent(
@@ -195,10 +208,4 @@ function checkpointRefForTurnCount(context: ThreadCheckpointContext, turnCount: 
 
 function checkpointUnavailable(turnCount: number) {
   return new FsError('NOT_FOUND', `Checkpoint ref is unavailable for turn ${turnCount}`)
-}
-
-function checkpointRefForThreadTurn(threadId: string, turnCount: number) {
-  const encodedThreadId = Buffer.from(threadId).toString('base64url')
-
-  return `refs/t3/checkpoints/${encodedThreadId}/turn/${turnCount}`
 }

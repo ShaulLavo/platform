@@ -376,7 +376,7 @@ function EditorPaneLeafView({
       {tab ? (
         selectedDiff ? (
           <GitDiffViewer
-            diff={selectedDiffQuery.data?.[0] ?? null}
+            diffs={selectedDiffQuery.data ?? []}
             error={selectedDiffQuery.error}
             isError={selectedDiffQuery.isError}
             isPending={selectedDiffQuery.isPending}

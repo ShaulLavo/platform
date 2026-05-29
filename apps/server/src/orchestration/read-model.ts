@@ -1,12 +1,25 @@
 import type {
+  MessageId,
+  OrchestrationCheckpointStatus,
   OrchestrationLatestTurn,
   OrchestrationProject,
   OrchestrationSession,
   OrchestrationThread,
+  TurnId,
 } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
 
+export type OrchestrationProjectedCheckpoint = {
+  assistantMessageId: MessageId | null
+  checkpointRef: string
+  checkpointTurnCount: number
+  completedAt: string
+  status: OrchestrationCheckpointStatus
+  turnId: TurnId
+}
+
 export type OrchestrationProjectedThread = OrchestrationThread & {
+  checkpointByTurnId: Record<TurnId, OrchestrationProjectedCheckpoint>
   hasActionableProposedPlan: boolean
   latestUserMessageAt: string | null
   pendingApprovalCount: number
@@ -86,7 +99,14 @@ function cloneThread(thread: OrchestrationProjectedThread): OrchestrationProject
   return {
     ...thread,
     activities: thread.activities.map((activity) => ({ ...activity })),
+    checkpointByTurnId: cloneRecord(thread.checkpointByTurnId),
     messages: thread.messages.map((message) => ({ ...message })),
     session: thread.session ? { ...thread.session } : null,
   }
+}
+
+function cloneRecord<T extends object>(record: Record<string, T>) {
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, { ...value }]),
+  ) as Record<string, T>
 }

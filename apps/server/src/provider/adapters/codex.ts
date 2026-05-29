@@ -2,7 +2,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import path from 'node:path'
 import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
+  approvalRequestIdSchema,
   messageIdSchema,
+  turnIdSchema,
+  type ApprovalRequestId,
   type ProviderModel,
   type ProviderSnapshot,
   type RuntimeMode,
@@ -13,16 +16,21 @@ import * as v from 'valibot'
 import type {
   ProviderAdapter,
   ProviderAdapterSession,
-  ProviderRuntimeSink,
+  ProviderApprovalResponseInput,
+  ProviderRuntimeEvent,
   ProviderThreadSnapshot,
+  ProviderSessionStartInput,
   ProviderTurnInput,
+  ProviderUserInputResponseInput,
 } from '../types'
+import { ProviderRuntimeEventStream } from '../provider-runtime-event-stream'
 import {
   providerTurnSummary,
   recordChatPipelineInfo,
   recordChatPipelineWarning,
 } from '../../orchestration/orchestration-logging'
 import {
+  CODEX_CLIENT_REQUEST_METHODS,
   codexServerNotification,
   parseCodexClientRequestParams,
   parseCodexClientRequestResult,
@@ -70,7 +78,6 @@ type ActiveCodexTurn = {
   reject: (error: Error) => void
   resolve: () => void
   settled: () => boolean
-  sink: ProviderRuntimeSink
 }
 
 type CodexReasoningState = {
@@ -78,10 +85,24 @@ type CodexReasoningState = {
   itemId: string
   lastEmittedSummary: string | null
   providerTurnId: string
-  sink: ProviderRuntimeSink
   summaryParts: Map<number, string>
   threadId: ThreadId
   turnId: TurnId
+}
+
+type PendingCodexApproval = {
+  id: JsonRpcId
+  requestType:
+    | 'apply_patch_approval'
+    | 'command_execution_approval'
+    | 'exec_command_approval'
+    | 'file_change_approval'
+  turnId?: TurnId
+}
+
+type PendingCodexUserInput = {
+  id: JsonRpcId
+  turnId?: TurnId
 }
 
 type CodexReasoningItem = {
@@ -106,6 +127,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
   readonly adapterKey = DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
   readonly capabilities = CODEX_ADAPTER_CAPABILITIES
   readonly driverKind = DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
+  private readonly events = new ProviderRuntimeEventStream()
   private readonly sessions = new Map<ThreadId, CodexAppServerSession>()
 
   async snapshot(): Promise<ProviderSnapshot> {
@@ -170,15 +192,23 @@ export class CodexProviderAdapter implements ProviderAdapter {
     return this.requireSession(threadId, 'thread/rollback').rollbackThread(numTurns)
   }
 
-  async startTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
+  streamEvents() {
+    return this.events.stream()
+  }
+
+  async startSession(input: ProviderSessionStartInput) {
+    const session = await this.ensureRuntimeSession(input)
+    return session.snapshot()
+  }
+
+  async sendTurn(input: ProviderTurnInput) {
     recordChatPipelineInfo('chat.pipeline.codex_adapter.start_turn.start', {
       ...providerTurnSummary(input),
     })
-    const session = await this.ensureSession(input)
+    const session = await this.ensureRuntimeSession(sessionInputFromTurn(input))
     await session.sendTurn({
       input,
       messageId: v.parse(messageIdSchema, `assistant:${input.turnId}`),
-      sink,
     })
     recordChatPipelineInfo('chat.pipeline.codex_adapter.start_turn.complete', {
       ...providerTurnSummary(input),
@@ -210,16 +240,16 @@ export class CodexProviderAdapter implements ProviderAdapter {
     }
   }
 
-  async respondApproval() {
-    throw new Error('Codex app-server approval responses are not wired to Platform UI yet.')
+  async respondApproval(input: ProviderApprovalResponseInput) {
+    await this.requireSession(input.threadId, 'approval/respond').respondApproval(input)
   }
 
-  async respondUserInput() {
-    throw new Error('Codex app-server user-input responses are not wired to Platform UI yet.')
+  async respondUserInput(input: ProviderUserInputResponseInput) {
+    await this.requireSession(input.threadId, 'user-input/respond').respondUserInput(input)
   }
 
-  private async ensureSession(input: ProviderTurnInput) {
-    const existing = this.sessions.get(input.thread.id)
+  private async ensureRuntimeSession(input: ProviderSessionStartInput) {
+    const existing = this.sessions.get(input.threadId)
     const cwd = normalizeCodexCwd(input.cwd)
     const model = normalizeCodexModel(input.modelSelection.model)
     const modelOptions = codexModelOptions(input)
@@ -227,7 +257,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
       recordChatPipelineInfo('chat.pipeline.codex_adapter.session.reuse', {
         model,
         runtimeMode: input.runtimeMode,
-        threadId: input.thread.id,
+        threadId: input.threadId,
       })
       return existing
     }
@@ -236,9 +266,9 @@ export class CodexProviderAdapter implements ProviderAdapter {
       recordChatPipelineInfo('chat.pipeline.codex_adapter.session.replace', {
         model,
         runtimeMode: input.runtimeMode,
-        threadId: input.thread.id,
+        threadId: input.threadId,
       })
-      this.sessions.delete(input.thread.id)
+      this.sessions.delete(input.threadId)
       await existing.close()
     }
 
@@ -246,21 +276,23 @@ export class CodexProviderAdapter implements ProviderAdapter {
       model,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
-      threadId: input.thread.id,
+      threadId: input.threadId,
     })
     const session = await CodexAppServerSession.start({
       cwd,
+      emit: (event) => this.events.publish(event),
       model,
       modelOptions,
       providerInstanceId: input.providerInstanceId,
+      resumeCursor: input.resumeCursor,
       runtimeMode: input.runtimeMode,
-      threadId: input.thread.id,
+      threadId: input.threadId,
     })
-    this.sessions.set(input.thread.id, session)
+    this.sessions.set(input.threadId, session)
     recordChatPipelineInfo('chat.pipeline.codex_adapter.session.started', {
       model,
       runtimeMode: input.runtimeMode,
-      threadId: input.thread.id,
+      threadId: input.threadId,
     })
 
     return session
@@ -278,10 +310,14 @@ class CodexAppServerSession {
   private readonly canonicalTurnByProviderTurnId = new Map<string, TurnId>()
   private readonly client: CodexAppServerRpcClient
   private readonly cwd: string
+  private readonly emit: (event: ProviderRuntimeEvent) => void
   private readonly model: string
+  private readonly pendingApprovals = new Map<ApprovalRequestId, PendingCodexApproval>()
+  private readonly pendingUserInputs = new Map<ApprovalRequestId, PendingCodexUserInput>()
   private readonly providerInstanceId: ProviderTurnInput['providerInstanceId']
   private readonly providerSessionId: string
   private readonly providerThreadId: string
+  private readonly resumeCursor: unknown | null
   private readonly reasoningItems = new Map<string, CodexReasoningState>()
   private readonly runtimeMode: RuntimeMode
   private readonly threadId: ThreadId
@@ -293,18 +329,22 @@ class CodexAppServerSession {
   private constructor(input: {
     client: CodexAppServerRpcClient
     cwd: string
+    emit: (event: ProviderRuntimeEvent) => void
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
     providerThreadId: string
+    resumeCursor: unknown | null
     runtimeMode: RuntimeMode
     threadId: ThreadId
   }) {
     this.client = input.client
     this.cwd = input.cwd
+    this.emit = input.emit
     this.model = input.model
     this.providerInstanceId = input.providerInstanceId
     this.providerSessionId = `codex:${input.providerThreadId}`
     this.providerThreadId = input.providerThreadId
+    this.resumeCursor = input.resumeCursor
     this.runtimeMode = input.runtimeMode
     this.threadId = input.threadId
     this.client.onMessage((message) => this.handleMessage(message))
@@ -312,9 +352,11 @@ class CodexAppServerSession {
 
   static async start(input: {
     cwd: string
+    emit: (event: ProviderRuntimeEvent) => void
     model: string
     modelOptions: CodexModelOptions
     providerInstanceId: ProviderTurnInput['providerInstanceId']
+    resumeCursor?: unknown | null
     runtimeMode: RuntimeMode
     threadId: ThreadId
   }) {
@@ -327,22 +369,28 @@ class CodexAppServerSession {
     const client = CodexAppServerRpcClient.start()
     try {
       await initializeCodexClient(client)
-      const response = await client.request('thread/start', threadStartParams(input))
+      const response = await openCodexThread(client, input)
       const providerThreadId = readThreadIdFromThreadResponse(response)
       recordChatPipelineInfo('chat.pipeline.codex_session.started', {
         providerThreadId,
         threadId: input.threadId,
       })
 
-      return new CodexAppServerSession({
+      const session = new CodexAppServerSession({
         client,
         cwd: input.cwd,
+        emit: input.emit,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
         providerThreadId,
+        resumeCursor: providerThreadId,
         runtimeMode: input.runtimeMode,
         threadId: input.threadId,
       })
+      session.emitSessionStarted(input.resumeCursor ?? null)
+      session.emitThreadStarted()
+
+      return session
     } catch (error) {
       recordChatPipelineWarning('chat.pipeline.codex_session.start.failed', {
         error,
@@ -372,6 +420,7 @@ class CodexAppServerSession {
       providerInstanceId: this.providerInstanceId,
       providerSessionId: this.providerSessionId,
       providerThreadId: this.providerThreadId,
+      resumeCursor: this.resumeCursor,
       runtimeMode: this.runtimeMode,
       status: this.status,
       threadId: this.threadId,
@@ -397,15 +446,7 @@ class CodexAppServerSession {
     return providerThreadSnapshot(this.threadId, response)
   }
 
-  async sendTurn({
-    input,
-    messageId,
-    sink,
-  }: {
-    input: ProviderTurnInput
-    messageId: string
-    sink: ProviderRuntimeSink
-  }) {
+  async sendTurn({ input, messageId }: { input: ProviderTurnInput; messageId: string }) {
     recordChatPipelineInfo('chat.pipeline.codex_session.send_turn.start', {
       ...providerTurnSummary(input),
       messageId,
@@ -415,12 +456,11 @@ class CodexAppServerSession {
     const activeTurn = activeCodexTurn({
       canonicalTurnId: input.turnId,
       messageId,
-      sink,
     })
     this.pendingTurn = activeTurn
     void activeTurn.promise.catch(noop)
 
-    await this.ingestSession(sink, 'running', input.turnId)
+    this.ingestSession('running', input.turnId)
     try {
       recordChatPipelineInfo('chat.pipeline.codex_session.turn_start_request', {
         providerThreadId: this.providerThreadId,
@@ -435,10 +475,18 @@ class CodexAppServerSession {
         threadId: this.threadId,
         turnId: input.turnId,
       })
+      if (activeTurn.settled()) {
+        await activeTurn.promise
+        return
+      }
+
       this.attachProviderTurn(providerTurnId, activeTurn)
       await this.settleIfTurnAlreadyTerminal(response, providerTurnId)
     } catch (error) {
-      if (activeTurn.settled()) return
+      if (activeTurn.settled()) {
+        await activeTurn.promise
+        return
+      }
 
       this.clearPendingTurn(activeTurn)
       this.rejectUnmappedTurn(activeTurn, error)
@@ -493,6 +541,83 @@ class CodexAppServerSession {
     this.client.close()
   }
 
+  private emitSessionStarted(resumeCursor: unknown | null) {
+    this.status = 'ready'
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-session-started'),
+      payload: { resume: resumeCursor ?? this.resumeCursor },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      type: 'session.started',
+    })
+  }
+
+  private emitThreadStarted() {
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-thread-started'),
+      payload: { providerThreadId: this.providerThreadId },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      type: 'thread.started',
+    })
+  }
+
+  async respondApproval(input: ProviderApprovalResponseInput) {
+    const pending = this.pendingApprovals.get(input.requestId)
+    if (!pending) throw new Error(`Unknown pending approval request: ${input.requestId}`)
+
+    this.pendingApprovals.delete(input.requestId)
+    this.client.respondSuccess(pending.id, { decision: input.decision })
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-request-resolved'),
+      payload: {
+        decision: input.decision,
+        requestType: pending.requestType,
+        resolution: { decision: input.decision },
+      },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerSessionId: this.providerSessionId,
+      requestId: input.requestId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: pending.turnId,
+      type: 'request.resolved',
+    })
+  }
+
+  async respondUserInput(input: ProviderUserInputResponseInput) {
+    const pending = this.pendingUserInputs.get(input.requestId)
+    if (!pending) throw new Error(`Unknown pending user-input request: ${input.requestId}`)
+
+    this.pendingUserInputs.delete(input.requestId)
+    this.client.respondSuccess(pending.id, { answers: input.answers })
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-user-input-resolved'),
+      payload: { answers: input.answers },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerSessionId: this.providerSessionId,
+      requestId: input.requestId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: pending.turnId,
+      type: 'user-input.resolved',
+    })
+  }
+
   private handleMessage(message: JsonRpcMessage) {
     if (!message.method) return
     recordChatPipelineInfo('chat.pipeline.codex_session.message', {
@@ -501,10 +626,92 @@ class CodexAppServerSession {
       threadId: this.threadId,
     })
     if (message.id !== undefined) {
-      this.client.respondError(message.id, -32601, `Unsupported Codex request: ${message.method}`)
+      void this.handleServerRequest(message).catch((error) => {
+        this.client.respondError(message.id as JsonRpcId, -32000, providerErrorMessage(error))
+      })
       return
     }
     void this.handleNotification(message).catch((error) => this.rejectActiveTurn(error))
+  }
+
+  private async handleServerRequest(message: JsonRpcMessage) {
+    if (!message.method || message.id === undefined) return
+    if (this.handleApprovalRequest(message)) return
+    if (this.handleUserInputRequest(message)) return
+
+    this.client.respondError(message.id, -32601, `Unsupported Codex request: ${message.method}`)
+  }
+
+  private handleApprovalRequest(message: JsonRpcMessage) {
+    const method = message.method
+    if (!method) return false
+
+    const requestType = approvalRequestType(method)
+    if (!requestType) return false
+
+    const requestId = v.parse(approvalRequestIdSchema, `codex:${crypto.randomUUID()}`)
+    const params = asRecord(message.params)
+    const turnId = parseOptionalTurnId(stringField(params, 'turnId'))
+    const itemId = stringField(params, 'itemId') ?? stringField(params, 'approvalId') ?? undefined
+    this.pendingApprovals.set(requestId, { id: message.id as JsonRpcId, requestType, turnId })
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-request-opened'),
+      itemId,
+      payload: {
+        args: message.params,
+        detail: approvalRequestDetail(requestType, params),
+        requestType,
+      },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: {
+        providerItemId: itemId,
+        providerRequestId: stringField(params, 'approvalId') ?? String(message.id),
+        providerTurnId: stringField(params, 'turnId') ?? undefined,
+      },
+      providerSessionId: this.providerSessionId,
+      raw: rawRequest(method, message.params),
+      requestId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId,
+      type: 'request.opened',
+    })
+
+    return true
+  }
+
+  private handleUserInputRequest(message: JsonRpcMessage) {
+    if (message.method !== 'item/tool/requestUserInput') return false
+
+    const requestId = v.parse(approvalRequestIdSchema, `codex:${crypto.randomUUID()}`)
+    const params = asRecord(message.params)
+    const turnId = parseOptionalTurnId(stringField(params, 'turnId'))
+    const itemId = stringField(params, 'itemId') ?? undefined
+    this.pendingUserInputs.set(requestId, { id: message.id as JsonRpcId, turnId })
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-user-input-requested'),
+      itemId,
+      payload: { questions: userInputQuestions(params) },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: {
+        providerItemId: itemId,
+        providerRequestId: String(message.id),
+        providerTurnId: stringField(params, 'turnId') ?? undefined,
+      },
+      providerSessionId: this.providerSessionId,
+      raw: rawRequest('item/tool/requestUserInput', message.params),
+      requestId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId,
+      type: 'user-input.requested',
+    })
+
+    return true
   }
 
   private async handleNotification(message: JsonRpcMessage) {
@@ -516,6 +723,9 @@ class CodexAppServerSession {
     if (!notification) return
 
     switch (notification.method) {
+      case 'thread/started':
+        this.handleThreadStartedNotification(notification.params)
+        return
       case 'turn/started':
         this.handleTurnStarted(notification.params)
         return
@@ -531,8 +741,76 @@ class CodexAppServerSession {
     }
   }
 
+  private handleThreadStartedNotification(
+    params: CodexServerNotificationParamsByMethod['thread/started'],
+  ) {
+    const providerThreadId = readProviderThreadId(params.thread)
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-thread-started-notification'),
+      payload: { providerThreadId },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
+      providerSessionId: this.providerSessionId,
+      raw: rawNotification('thread/started', params),
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      type: 'thread.started',
+    })
+  }
+
   private async handleManualNotification(method: string, params: unknown) {
     switch (method) {
+      case 'process/stderr':
+        return this.handleProcessStderrNotification(params)
+      case 'thread/status/changed':
+        return this.handleThreadStatusChangedNotification(params)
+      case 'thread/name/updated':
+        return this.handleThreadNameUpdatedNotification(params)
+      case 'thread/tokenUsage/updated':
+        return this.handleThreadTokenUsageUpdatedNotification(params)
+      case 'turn/diff/updated':
+        return this.handleTurnDiffUpdatedNotification(params)
+      case 'turn/plan/updated':
+        return this.handleTurnPlanUpdatedNotification(params)
+      case 'item/plan/delta':
+        return this.handlePlanDeltaNotification(params)
+      case 'command/exec/outputDelta':
+      case 'item/commandExecution/outputDelta':
+        return this.handleCommandOutputDeltaNotification(method, params)
+      case 'item/fileChange/outputDelta':
+        return this.handleFileChangeOutputDeltaNotification(params)
+      case 'serverRequest/resolved':
+        return this.handleServerRequestResolvedNotification(params)
+      case 'hook/started':
+        return this.handleHookStartedNotification(params)
+      case 'hook/completed':
+        return this.handleHookCompletedNotification(params)
+      case 'item/mcpToolCall/progress':
+        return this.handleMcpToolCallProgressNotification(params)
+      case 'mcpServer/oauthLogin/completed':
+        return this.handleMcpOauthCompletedNotification(params)
+      case 'mcpServer/startupStatus/updated':
+        return this.handleMcpStatusUpdatedNotification(params)
+      case 'account/updated':
+        return this.handleAccountUpdatedNotification(params)
+      case 'account/rateLimits/updated':
+        return this.handleAccountRateLimitsUpdatedNotification(params)
+      case 'model/rerouted':
+        return this.handleModelReroutedNotification(params)
+      case 'warning':
+      case 'configWarning':
+      case 'deprecationNotice':
+        return this.handleWarningLikeNotification(method, params)
+      case 'thread/compacted':
+        return this.handleThreadCompactedNotification(params)
+      case 'thread/realtime/started':
+      case 'thread/realtime/itemAdded':
+      case 'thread/realtime/outputAudio/delta':
+      case 'thread/realtime/error':
+      case 'thread/realtime/closed':
+        return this.handleRealtimeNotification(method, params)
       case 'item/started':
         return this.handleItemStartedNotification(params)
       case 'item/completed':
@@ -551,9 +829,325 @@ class CodexAppServerSession {
     }
   }
 
+  private handleProcessStderrNotification(params: unknown) {
+    const message = stringField(asRecord(params), 'message')
+    if (!message) return true
+
+    this.emitRuntimeNotification(
+      'runtime.warning',
+      { detail: params, message },
+      'process/stderr',
+      params,
+    )
+    return true
+  }
+
+  private handleThreadStatusChangedNotification(params: unknown) {
+    const state = threadStateFromValue(stringField(asRecord(params), 'status'))
+    this.emitRuntimeNotification(
+      'thread.state.changed',
+      { detail: params, state },
+      'thread/status/changed',
+      params,
+    )
+    return true
+  }
+
+  private handleThreadNameUpdatedNotification(params: unknown) {
+    const name = stringField(asRecord(params), 'name') ?? stringField(asRecord(params), 'title')
+    this.emitRuntimeNotification(
+      'thread.metadata.updated',
+      { metadata: asRecord(params), ...(name ? { name } : {}) },
+      'thread/name/updated',
+      params,
+    )
+    return true
+  }
+
+  private handleThreadTokenUsageUpdatedNotification(params: unknown) {
+    this.emitRuntimeNotification(
+      'thread.token-usage.updated',
+      { usage: tokenUsageSnapshot(params) },
+      'thread/tokenUsage/updated',
+      params,
+    )
+    return true
+  }
+
+  private handleTurnDiffUpdatedNotification(params: unknown) {
+    this.emitRuntimeNotification(
+      'turn.diff.updated',
+      { unifiedDiff: stringField(asRecord(params), 'unifiedDiff') ?? '' },
+      'turn/diff/updated',
+      params,
+    )
+    return true
+  }
+
+  private handleTurnPlanUpdatedNotification(params: unknown) {
+    this.emitRuntimeNotification(
+      'turn.plan.updated',
+      turnPlanPayload(params),
+      'turn/plan/updated',
+      params,
+    )
+    return true
+  }
+
+  private handlePlanDeltaNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'content.delta',
+      {
+        delta: stringField(record, 'delta') ?? '',
+        streamKind: 'plan_text',
+      },
+      'item/plan/delta',
+      params,
+      { itemId: stringField(record, 'itemId') ?? undefined },
+    )
+    return true
+  }
+
+  private handleCommandOutputDeltaNotification(method: string, params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'content.delta',
+      {
+        delta: stringField(record, 'delta') ?? stringField(record, 'output') ?? '',
+        streamKind: 'command_output',
+      },
+      method,
+      params,
+      { itemId: stringField(record, 'itemId') ?? undefined },
+    )
+    return true
+  }
+
+  private handleFileChangeOutputDeltaNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'content.delta',
+      {
+        delta: stringField(record, 'delta') ?? stringField(record, 'output') ?? '',
+        streamKind: 'file_change_output',
+      },
+      'item/fileChange/outputDelta',
+      params,
+      { itemId: stringField(record, 'itemId') ?? undefined },
+    )
+    return true
+  }
+
+  private handleServerRequestResolvedNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'request.resolved',
+      {
+        decision: stringField(record, 'decision') ?? undefined,
+        requestType: requestTypeFromRecord(record),
+        resolution: params,
+      },
+      'serverRequest/resolved',
+      params,
+      { requestId: stringField(record, 'requestId') ?? undefined },
+    )
+    return true
+  }
+
+  private handleHookStartedNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'hook.started',
+      {
+        hookEvent: stringField(record, 'hookEvent') ?? 'unknown',
+        hookId: stringField(record, 'hookId') ?? `hook:${crypto.randomUUID()}`,
+        hookName: stringField(record, 'hookName') ?? 'Hook',
+      },
+      'hook/started',
+      params,
+    )
+    return true
+  }
+
+  private handleHookCompletedNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'hook.completed',
+      {
+        exitCode: numberField(record, 'exitCode') ?? undefined,
+        hookId: stringField(record, 'hookId') ?? `hook:${crypto.randomUUID()}`,
+        outcome: hookOutcome(record),
+        output: stringField(record, 'output') ?? undefined,
+        stderr: stringField(record, 'stderr') ?? undefined,
+        stdout: stringField(record, 'stdout') ?? undefined,
+      },
+      'hook/completed',
+      params,
+    )
+    return true
+  }
+
+  private handleMcpToolCallProgressNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'tool.progress',
+      {
+        summary: stringField(record, 'summary') ?? stringField(record, 'message') ?? undefined,
+        toolName: stringField(record, 'toolName') ?? undefined,
+        toolUseId: stringField(record, 'toolUseId') ?? undefined,
+      },
+      'item/mcpToolCall/progress',
+      params,
+    )
+    return true
+  }
+
+  private handleMcpOauthCompletedNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'mcp.oauth.completed',
+      {
+        error: stringField(record, 'error') ?? undefined,
+        name: stringField(record, 'name') ?? undefined,
+        success: Boolean(record.success),
+      },
+      'mcpServer/oauthLogin/completed',
+      params,
+    )
+    return true
+  }
+
+  private handleMcpStatusUpdatedNotification(params: unknown) {
+    this.emitRuntimeNotification(
+      'mcp.status.updated',
+      { status: params },
+      'mcpServer/startupStatus/updated',
+      params,
+    )
+    return true
+  }
+
+  private handleAccountUpdatedNotification(params: unknown) {
+    this.emitRuntimeNotification('account.updated', { account: params }, 'account/updated', params)
+    return true
+  }
+
+  private handleAccountRateLimitsUpdatedNotification(params: unknown) {
+    this.emitRuntimeNotification(
+      'account.rate-limits.updated',
+      { rateLimits: params },
+      'account/rateLimits/updated',
+      params,
+    )
+    return true
+  }
+
+  private handleModelReroutedNotification(params: unknown) {
+    const record = asRecord(params)
+    this.emitRuntimeNotification(
+      'model.rerouted',
+      {
+        fromModel: stringField(record, 'fromModel') ?? this.model,
+        reason: stringField(record, 'reason') ?? 'Model rerouted',
+        toModel: stringField(record, 'toModel') ?? this.model,
+      },
+      'model/rerouted',
+      params,
+    )
+    return true
+  }
+
+  private handleWarningLikeNotification(method: string, params: unknown) {
+    const record = asRecord(params)
+    const summary = stringField(record, 'summary') ?? stringField(record, 'message') ?? method
+    if (method === 'configWarning') {
+      this.emitRuntimeNotification(
+        'config.warning',
+        {
+          details: stringField(record, 'details') ?? undefined,
+          path: stringField(record, 'path') ?? undefined,
+          range: record.range,
+          summary,
+        },
+        method,
+        params,
+      )
+      return true
+    }
+    if (method === 'deprecationNotice') {
+      this.emitRuntimeNotification(
+        'deprecation.notice',
+        { details: stringField(record, 'details') ?? undefined, summary },
+        method,
+        params,
+      )
+      return true
+    }
+
+    this.emitRuntimeNotification(
+      'runtime.warning',
+      { detail: params, message: summary },
+      method,
+      params,
+    )
+    return true
+  }
+
+  private handleThreadCompactedNotification(params: unknown) {
+    this.emitRuntimeNotification(
+      'thread.state.changed',
+      { detail: params, state: 'compacted' },
+      'thread/compacted',
+      params,
+    )
+    return true
+  }
+
+  private handleRealtimeNotification(method: string, params: unknown) {
+    this.emitRuntimeNotification(
+      realtimeEventType(method),
+      realtimePayload(method, params),
+      method,
+      params,
+    )
+    return true
+  }
+
+  private emitRuntimeNotification(
+    type: ProviderRuntimeEvent['type'],
+    payload: unknown,
+    method: string,
+    params: unknown,
+    options: { itemId?: string; requestId?: string } = {},
+  ) {
+    const record = asRecord(params)
+    const providerTurnId = stringField(record, 'turnId') ?? undefined
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId(`codex-${type}`),
+      itemId: options.itemId ?? stringField(record, 'itemId') ?? undefined,
+      payload,
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: {
+        providerItemId: options.itemId ?? stringField(record, 'itemId') ?? undefined,
+        providerRequestId: options.requestId,
+        providerTurnId,
+      },
+      providerSessionId: this.providerSessionId,
+      raw: rawNotification(method, params),
+      requestId: options.requestId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: canonicalTurnId(this.canonicalTurnByProviderTurnId, providerTurnId),
+      type,
+    } as ProviderRuntimeEvent)
+  }
+
   private async handleItemStartedNotification(params: unknown) {
     const item = notificationItem(params)
-    if (!isReasoningItem(item)) return false
+    if (!isReasoningItem(item)) return this.handleGenericItemLifecycle('item.started', params, item)
 
     const context = codexItemNotificationContext(params, 'startedAtMs')
     if (!context) return true
@@ -577,7 +1171,12 @@ class CodexAppServerSession {
 
   private async handleItemCompletedNotification(params: unknown) {
     const item = notificationItem(params)
-    if (!isReasoningItem(item)) return this.handleAssistantMessageItemCompleted(params, item)
+    if (!isReasoningItem(item)) {
+      const handled = await this.handleAssistantMessageItemCompleted(params, item)
+      if (handled) return true
+
+      return this.handleGenericItemLifecycle('item.completed', params, item)
+    }
 
     const context = codexItemNotificationContext(params, 'completedAtMs')
     if (!context) return true
@@ -589,6 +1188,45 @@ class CodexAppServerSession {
     }
 
     await this.emitCompletedReasoningItem(context.providerTurnId, item, turn, context.createdAt)
+    return true
+  }
+
+  private handleGenericItemLifecycle(
+    type: 'item.completed' | 'item.started',
+    params: unknown,
+    item: unknown,
+  ) {
+    const record = asRecord(item)
+    const context = codexItemNotificationContext(
+      params,
+      type === 'item.started' ? 'startedAtMs' : 'completedAtMs',
+    )
+    if (!context) return true
+
+    this.emit({
+      createdAt: context.createdAt,
+      eventId: runtimeEventId(`codex-${type}`),
+      itemId: stringField(record, 'id') ?? undefined,
+      payload: {
+        data: item,
+        detail: itemDetail(record),
+        itemType: canonicalItemType(stringField(record, 'type')),
+        status: type === 'item.started' ? 'inProgress' : 'completed',
+        title: itemTitle(record),
+      },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: {
+        providerItemId: stringField(record, 'id') ?? undefined,
+        providerTurnId: context.providerTurnId,
+      },
+      providerSessionId: this.providerSessionId,
+      raw: rawNotification(type.replace('.', '/'), params),
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: canonicalTurnId(this.canonicalTurnByProviderTurnId, context.providerTurnId),
+      type,
+    })
     return true
   }
 
@@ -608,7 +1246,7 @@ class CodexAppServerSession {
       return true
     }
 
-    await turn.sink.ingest({
+    this.emit({
       createdAt: context.createdAt,
       eventId: runtimeEventId('codex-assistant-item-complete'),
       itemId: item.id,
@@ -618,6 +1256,12 @@ class CodexAppServerSession {
         status: 'completed',
         title: 'Assistant message',
       },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: { providerItemId: item.id, providerTurnId: context.providerTurnId },
+      providerSessionId: this.providerSessionId,
+      raw: rawNotification('item/completed', params),
+      runtimeMode: this.runtimeMode,
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
       type: 'item.completed',
@@ -699,7 +1343,7 @@ class CodexAppServerSession {
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
     })
-    await turn.sink.ingest({
+    this.emit({
       createdAt: new Date().toISOString(),
       itemId: params.itemId,
       eventId: runtimeEventId('codex-assistant-delta'),
@@ -707,6 +1351,12 @@ class CodexAppServerSession {
         delta: params.delta,
         streamKind: 'assistant_text',
       },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: { providerItemId: params.itemId, providerTurnId: params.turnId },
+      providerSessionId: this.providerSessionId,
+      raw: rawNotification('item/agentMessage/delta', params),
+      runtimeMode: this.runtimeMode,
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
       type: 'content.delta',
@@ -726,6 +1376,23 @@ class CodexAppServerSession {
       threadId: this.threadId,
     })
     this.attachPendingTurn(params.turn.id)
+    const turn = this.turnForProviderTurnId(params.turn.id)
+    if (!turn) return
+
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-turn-started'),
+      payload: { model: this.model },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: { providerTurnId: params.turn.id },
+      providerSessionId: this.providerSessionId,
+      raw: rawNotification('turn/started', params),
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+      type: 'turn.started',
+    })
   }
 
   private async handleTurnCompleted(
@@ -759,7 +1426,7 @@ class CodexAppServerSession {
       return
     }
     if (params.turn.status === 'interrupted') {
-      await this.ingestSession(activeTurn.sink, 'ready', null)
+      this.ingestSession('ready', null)
       this.resolveTurn(params.turn.id, activeTurn)
       return
     }
@@ -771,6 +1438,19 @@ class CodexAppServerSession {
     if (params.willRetry === true) return
 
     const message = errorNotificationMessage(params.error)
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-error-notification'),
+      payload: { class: 'provider_error', detail: params.error, message },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerSessionId: this.providerSessionId,
+      raw: rawNotification('error', params),
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: canonicalTurnId(this.canonicalTurnByProviderTurnId, params.turnId ?? undefined),
+      type: 'runtime.error',
+    })
     if (!params.turnId) {
       this.rejectActiveTurn(new Error(message))
       return
@@ -788,15 +1468,20 @@ class CodexAppServerSession {
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
     })
-    await turn.sink.ingest({
+    this.emit({
       createdAt: completedAt,
       eventId: runtimeEventId('codex-turn-completed'),
       payload: { state: 'completed' },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: { providerTurnId },
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
       type: 'turn.completed',
     })
-    await turn.sink.ingest({
+    this.emit({
       completedAt,
       eventId: runtimeEventId('codex-assistant-complete'),
       messageId: turn.messageId,
@@ -804,7 +1489,7 @@ class CodexAppServerSession {
       turnId: turn.canonicalTurnId,
       type: 'assistant.complete',
     })
-    await this.ingestSession(turn.sink, 'ready', null)
+    this.ingestSession('ready', null)
     this.resolveTurn(providerTurnId, turn)
   }
 
@@ -821,7 +1506,7 @@ class CodexAppServerSession {
       return
     }
     if (response.turn.status === 'interrupted') {
-      await this.ingestSession(activeTurn.sink, 'ready', null)
+      this.ingestSession('ready', null)
       this.resolveTurn(providerTurnId, activeTurn)
       return
     }
@@ -859,23 +1544,20 @@ class CodexAppServerSession {
     if (this.pendingTurn === turn) this.pendingTurn = null
   }
 
-  private async ingestSession(
-    sink: ProviderRuntimeSink,
-    status: 'running' | 'ready',
-    turnId: TurnId | null,
-  ) {
+  private ingestSession(status: 'running' | 'ready', turnId: TurnId | null) {
     this.status = status
-    await sink.ingest({
+    this.emit({
       createdAt: new Date().toISOString(),
       eventId: runtimeEventId('codex-session'),
+      payload: { state: status },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
       providerSessionId: this.providerSessionId,
       runtimeMode: this.runtimeMode,
-      status,
       threadId: this.threadId,
-      turnId,
-      type: 'session.set',
+      ...(turnId ? { turnId } : {}),
+      type: 'session.state.changed',
     })
   }
 
@@ -890,11 +1572,15 @@ class CodexAppServerSession {
   }
 
   private rejectActiveTurn(error: unknown) {
+    const message = providerErrorMessage(error)
     const providerTurnId = this.activeProviderTurnId
-    if (!providerTurnId) return
+    const turn = providerTurnId ? this.turns.get(providerTurnId) : null
+    if (providerTurnId && turn) {
+      this.rejectTurn(providerTurnId, turn, message)
+      return
+    }
 
-    const turn = this.turns.get(providerTurnId)
-    if (turn) this.rejectTurn(providerTurnId, turn, providerErrorMessage(error))
+    if (this.pendingTurn) this.rejectPendingTurn(this.pendingTurn, message)
   }
 
   private rejectUnmappedTurn(turn: ActiveCodexTurn, error: unknown) {
@@ -925,6 +1611,62 @@ class CodexAppServerSession {
     this.clearReasoningForProviderTurn(providerTurnId)
     if (this.activeProviderTurnId === providerTurnId) this.activeProviderTurnId = null
     this.status = 'error'
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-turn-failed'),
+      payload: { errorMessage: message, state: 'failed' },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: { providerTurnId },
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+      type: 'turn.completed',
+    })
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-runtime-error'),
+      payload: { class: 'provider_error', message },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: { providerTurnId },
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+      type: 'runtime.error',
+    })
+    turn.reject(new Error(message))
+  }
+
+  private rejectPendingTurn(turn: ActiveCodexTurn, message: string) {
+    this.clearPendingTurn(turn)
+    this.status = 'error'
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-turn-failed'),
+      payload: { errorMessage: message, state: 'failed' },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+      type: 'turn.completed',
+    })
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('codex-runtime-error'),
+      payload: { class: 'provider_error', message },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: turn.canonicalTurnId,
+      type: 'runtime.error',
+    })
     turn.reject(new Error(message))
   }
 
@@ -946,7 +1688,6 @@ class CodexAppServerSession {
       itemId,
       lastEmittedSummary: null,
       providerTurnId,
-      sink: turn.sink,
       summaryParts: new Map(),
       threadId: this.threadId,
       turnId: turn.canonicalTurnId,
@@ -1013,7 +1754,7 @@ class CodexAppServerSession {
     updateLastEmitted: boolean
   }) {
     if (input.updateLastEmitted) input.state.lastEmittedSummary = input.summary
-    await input.state.sink.ingest({
+    this.emit({
       createdAt: input.createdAt,
       eventId: input.eventId,
       payload: {
@@ -1021,6 +1762,14 @@ class CodexAppServerSession {
         summary: input.summary,
         taskId: `reasoning:${input.state.itemId}`,
       },
+      provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: {
+        providerItemId: input.state.itemId,
+        providerTurnId: input.state.providerTurnId,
+      },
+      providerSessionId: this.providerSessionId,
+      runtimeMode: this.runtimeMode,
       threadId: input.state.threadId,
       turnId: input.state.turnId,
       type: 'task.progress',
@@ -1117,12 +1866,46 @@ class CodexAppServerRpcClient {
     return promise
   }
 
+  requestRaw<Result = unknown>(
+    method: string,
+    params: unknown,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+  ): Promise<Result> {
+    if (this.closed) return Promise.reject(new Error('Codex app-server is closed.'))
+
+    const id = this.nextId
+    this.nextId += 1
+    const promise = new Promise<Result>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(String(id))
+        reject(new Error(`Codex app-server request timed out: ${method}`))
+      }, timeoutMs)
+      this.pending.set(String(id), {
+        method: method as CodexClientRequestMethod,
+        reject,
+        resolve: resolve as (value: unknown) => void,
+        timer,
+      })
+    })
+    try {
+      this.write({ id, method, params })
+    } catch (error) {
+      this.rejectRequest(id, error)
+    }
+
+    return promise
+  }
+
   notify(method: string, params?: unknown) {
     this.write(params === undefined ? { method } : { method, params })
   }
 
   respondError(id: JsonRpcId, code: number, message: string) {
     this.write({ error: { code, message }, id })
+  }
+
+  respondSuccess(id: JsonRpcId, result: unknown) {
+    this.write({ id, result })
   }
 
   close() {
@@ -1169,10 +1952,6 @@ class CodexAppServerRpcClient {
       this.resolveResponse(message)
       return
     }
-    if (message.id !== undefined) {
-      this.respondError(message.id, -32601, `Unsupported Codex request: ${message.method}`)
-      return
-    }
     for (const handler of this.handlers) {
       handler(message)
     }
@@ -1190,11 +1969,16 @@ class CodexAppServerRpcClient {
       return
     }
 
-    try {
-      pending.resolve(parseCodexClientRequestResult(pending.method, message.result))
-    } catch (error) {
-      pending.reject(new Error(providerErrorMessage(error)))
+    if (pending.method in CODEX_CLIENT_REQUEST_METHODS) {
+      try {
+        pending.resolve(parseCodexClientRequestResult(pending.method, message.result))
+      } catch (error) {
+        pending.reject(new Error(providerErrorMessage(error)))
+      }
+      return
     }
+
+    pending.resolve(message.result)
   }
 
   private handleStderrLine(line: string) {
@@ -1265,6 +2049,25 @@ async function initializeCodexClient(
   return response
 }
 
+async function openCodexThread(
+  client: CodexAppServerRpcClient,
+  input: {
+    cwd: string
+    model: string
+    modelOptions: CodexModelOptions
+    resumeCursor?: unknown | null
+    runtimeMode: RuntimeMode
+  },
+) {
+  const resumeThreadId = typeof input.resumeCursor === 'string' ? input.resumeCursor : null
+  if (!resumeThreadId) return client.request('thread/start', threadStartParams(input))
+
+  return client.requestRaw<CodexClientRequestResultByMethod['thread/start']>('thread/resume', {
+    ...threadResumeParams(input),
+    threadId: resumeThreadId,
+  })
+}
+
 async function requestCodexModels(client: CodexAppServerRpcClient) {
   const models: ProviderModel[] = []
   let cursor: string | null = null
@@ -1280,11 +2083,7 @@ async function requestCodexModels(client: CodexAppServerRpcClient) {
   return models.length > 0 ? models : fallbackModels()
 }
 
-function activeCodexTurn(input: {
-  canonicalTurnId: TurnId
-  messageId: string
-  sink: ProviderRuntimeSink
-}): ActiveCodexTurn {
+function activeCodexTurn(input: { canonicalTurnId: TurnId; messageId: string }): ActiveCodexTurn {
   let settled = false
   let resolveTurn: () => void = noop
   let rejectTurn: (error: Error) => void = noop
@@ -1306,7 +2105,17 @@ function activeCodexTurn(input: {
     reject: rejectTurn,
     resolve: resolveTurn,
     settled: () => settled,
-    sink: input.sink,
+  }
+}
+
+function sessionInputFromTurn(input: ProviderTurnInput): ProviderSessionStartInput {
+  return {
+    cwd: input.cwd,
+    interactionMode: input.interactionMode,
+    modelSelection: input.modelSelection,
+    providerInstanceId: input.providerInstanceId,
+    runtimeMode: input.runtimeMode,
+    threadId: input.thread.id,
   }
 }
 
@@ -1321,12 +2130,30 @@ function threadStartParams(input: {
   return {
     approvalPolicy: runtime.approvalPolicy,
     cwd: input.cwd,
-    experimentalRawEvents: false,
+    developerInstructions: codexDeveloperInstructions(input.runtimeMode),
+    experimentalRawEvents: true,
     model: input.model,
-    persistExtendedHistory: false,
+    persistExtendedHistory: true,
     sandbox: runtime.sandbox,
     ...(input.modelOptions.serviceTier ? { serviceTier: input.modelOptions.serviceTier } : {}),
   } as CodexClientRequestParamsByMethod['thread/start']
+}
+
+function threadResumeParams(input: {
+  cwd: string
+  model: string
+  modelOptions: CodexModelOptions
+  runtimeMode: RuntimeMode
+}) {
+  const runtime = runtimeModeToThreadConfig(input.runtimeMode)
+
+  return {
+    cwd: input.cwd,
+    developerInstructions: codexDeveloperInstructions(input.runtimeMode),
+    model: input.model,
+    sandbox: runtime.sandbox,
+    ...(input.modelOptions.serviceTier ? { serviceTier: input.modelOptions.serviceTier } : {}),
+  }
 }
 
 function turnStartParams(
@@ -1338,6 +2165,7 @@ function turnStartParams(
 
   return {
     approvalPolicy: runtime.approvalPolicy,
+    developerInstructions: codexDeveloperInstructions(input.runtimeMode),
     input: codexTurnInput(input),
     model: normalizeCodexModel(input.modelSelection.model),
     sandboxPolicy: runtime.sandboxPolicy,
@@ -1382,7 +2210,9 @@ function codexTextElements(input: ProviderTurnInput) {
   return Array.isArray(value) ? value : []
 }
 
-function codexModelOptions(input: ProviderTurnInput): CodexModelOptions {
+function codexModelOptions(
+  input: ProviderTurnInput | ProviderSessionStartInput,
+): CodexModelOptions {
   if (input.modelSelection.providerInstanceId !== input.providerInstanceId) return {}
 
   const effort = codexReasoningEffort(input.modelSelection.options)
@@ -1395,9 +2225,7 @@ function codexModelOptions(input: ProviderTurnInput): CodexModelOptions {
   }
 }
 
-function codexReasoningEffort(
-  options: ProviderTurnInput['modelSelection']['options'],
-): CodexReasoningEffort | undefined {
+function codexReasoningEffort(options: ModelOptions): CodexReasoningEffort | undefined {
   const value = modelOptionValue(options, 'reasoningEffort') ?? modelOptionValue(options, 'effort')
   if (typeof value !== 'string') return undefined
 
@@ -1408,15 +2236,14 @@ function isCodexReasoningEffort(value: string): value is CodexReasoningEffort {
   return CODEX_REASONING_EFFORTS.has(value as CodexReasoningEffort)
 }
 
-function modelOptionValue(
-  options: ProviderTurnInput['modelSelection']['options'],
-  key: string,
-): unknown {
+function modelOptionValue(options: ModelOptions, key: string): unknown {
   if (!options) return undefined
   if (Array.isArray(options)) return modelOptionArrayValue(options, key)
 
   return asRecord(options)[key]
 }
+
+type ModelOptions = ProviderTurnInput['modelSelection']['options']
 
 function modelOptionArrayValue(options: unknown[], key: string) {
   for (const option of options) {
@@ -1522,6 +2349,10 @@ function readThreadIdFromThreadResponse(
   response: CodexClientRequestResultByMethod['thread/start'],
 ) {
   return response.thread.id
+}
+
+function readProviderThreadId(thread: unknown) {
+  return stringField(asRecord(thread), 'id') ?? undefined
 }
 
 function readTurnIdFromTurnResponse(response: CodexClientRequestResultByMethod['turn/start']) {
@@ -1778,6 +2609,210 @@ function stringField(record: Record<string, unknown>, key: string) {
 function numberField(record: Record<string, unknown>, key: string) {
   const value = record[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function parseOptionalTurnId(value: string | null) {
+  if (!value) return undefined
+
+  return v.parse(turnIdSchema, value)
+}
+
+function canonicalTurnId(
+  turnIds: Map<string, TurnId>,
+  providerTurnId: string | undefined,
+): TurnId | undefined {
+  if (!providerTurnId) return undefined
+
+  return turnIds.get(providerTurnId)
+}
+
+function rawNotification(method: string, payload: unknown) {
+  return {
+    method,
+    payload,
+    source: 'codex.app-server.notification' as const,
+  }
+}
+
+function rawRequest(method: string, payload: unknown) {
+  return {
+    method,
+    payload,
+    source: 'codex.app-server.request' as const,
+  }
+}
+
+function approvalRequestType(method: string) {
+  switch (method) {
+    case 'item/commandExecution/requestApproval':
+      return 'command_execution_approval'
+    case 'item/fileChange/requestApproval':
+      return 'file_change_approval'
+    case 'item/permissions/requestApproval':
+      return 'command_execution_approval'
+    case 'applyPatchApproval':
+      return 'apply_patch_approval'
+    case 'execCommandApproval':
+      return 'exec_command_approval'
+    default:
+      return null
+  }
+}
+
+function approvalRequestDetail(
+  requestType: NonNullable<ReturnType<typeof approvalRequestType>>,
+  params: Record<string, unknown>,
+) {
+  return (
+    stringField(params, 'command') ??
+    stringField(params, 'summary') ??
+    stringField(params, 'reason') ??
+    requestType
+  )
+}
+
+function userInputQuestions(params: Record<string, unknown>) {
+  const questions = params.questions
+  if (Array.isArray(questions)) return questions
+
+  return []
+}
+
+function threadStateFromValue(value: string | null) {
+  switch (value) {
+    case 'active':
+    case 'idle':
+    case 'archived':
+    case 'closed':
+    case 'compacted':
+    case 'error':
+      return value
+    default:
+      return 'active'
+  }
+}
+
+function tokenUsageSnapshot(params: unknown) {
+  const record = asRecord(params)
+  const usage = asRecord(record.usage)
+  const usedTokens =
+    numberField(usage, 'usedTokens') ??
+    numberField(usage, 'totalTokens') ??
+    numberField(record, 'usedTokens') ??
+    0
+
+  return { ...usage, usedTokens }
+}
+
+function turnPlanPayload(params: unknown) {
+  const record = asRecord(params)
+  const rawPlan = Array.isArray(record.plan) ? record.plan : []
+  const plan = rawPlan.map(runtimePlanStep).filter(isPresent)
+
+  return {
+    explanation: stringField(record, 'explanation'),
+    plan,
+  }
+}
+
+function runtimePlanStep(value: unknown) {
+  const record = asRecord(value)
+  const step = stringField(record, 'step')
+  const status = runtimePlanStepStatus(stringField(record, 'status'))
+  if (!step || !status) return null
+
+  return { status, step }
+}
+
+function runtimePlanStepStatus(value: string | null) {
+  if (value === 'pending' || value === 'inProgress' || value === 'completed') return value
+
+  return null
+}
+
+function requestTypeFromRecord(record: Record<string, unknown>) {
+  return stringField(record, 'requestType') ?? 'unknown'
+}
+
+function canonicalItemType(value: string | null) {
+  switch (value) {
+    case 'agentMessage':
+      return 'assistant_message'
+    case 'commandExecution':
+      return 'command_execution'
+    case 'fileChange':
+      return 'file_change'
+    case 'mcpToolCall':
+      return 'mcp_tool_call'
+    case 'dynamicToolCall':
+      return 'dynamic_tool_call'
+    case 'webSearch':
+      return 'web_search'
+    case 'imageView':
+      return 'image_view'
+    case 'reasoning':
+      return 'reasoning'
+    case 'plan':
+      return 'plan'
+    default:
+      return 'unknown'
+  }
+}
+
+function itemTitle(record: Record<string, unknown>) {
+  return stringField(record, 'title') ?? stringField(record, 'type') ?? 'Item'
+}
+
+function itemDetail(record: Record<string, unknown>) {
+  return stringField(record, 'detail') ?? stringField(record, 'text') ?? undefined
+}
+
+function hookOutcome(record: Record<string, unknown>) {
+  const outcome = stringField(record, 'outcome') ?? stringField(record, 'status')
+  if (outcome === 'success' || outcome === 'error' || outcome === 'cancelled') return outcome
+
+  return 'success'
+}
+
+function realtimeEventType(method: string): ProviderRuntimeEvent['type'] {
+  switch (method) {
+    case 'thread/realtime/started':
+      return 'thread.realtime.started'
+    case 'thread/realtime/itemAdded':
+      return 'thread.realtime.item-added'
+    case 'thread/realtime/outputAudio/delta':
+      return 'thread.realtime.audio.delta'
+    case 'thread/realtime/error':
+      return 'thread.realtime.error'
+    case 'thread/realtime/closed':
+      return 'thread.realtime.closed'
+    default:
+      return 'thread.realtime.error'
+  }
+}
+
+function realtimePayload(method: string, params: unknown) {
+  const record = asRecord(params)
+  switch (method) {
+    case 'thread/realtime/started':
+      return { realtimeSessionId: stringField(record, 'realtimeSessionId') ?? undefined }
+    case 'thread/realtime/itemAdded':
+      return { item: record.item ?? params }
+    case 'thread/realtime/outputAudio/delta':
+      return { audio: record.audio ?? record.delta ?? params }
+    case 'thread/realtime/closed':
+      return { reason: stringField(record, 'reason') ?? undefined }
+    default:
+      return { message: stringField(record, 'message') ?? 'Realtime error' }
+  }
+}
+
+function codexDeveloperInstructions(runtimeMode: RuntimeMode) {
+  if (runtimeMode === 'approval-required') {
+    return 'Use Plan mode when the user is planning. Request approval before running commands or editing files.'
+  }
+
+  return 'Use the current collaboration mode and keep provider runtime events granular for UI ingestion.'
 }
 
 function isPresent<T>(value: T | null | undefined): value is T {

@@ -163,6 +163,51 @@ export class GitService {
     return results
   }
 
+  async hasRef(input: { path: string; ref: string }) {
+    recordGitServiceOperation('has_ref', input.path, { ref: input.ref })
+    const repository = await this.requiredRepositoryLocation(input.path)
+
+    return (await this.resolveRefCommit(repository, input.ref)) !== null
+  }
+
+  async restoreRef(input: { fallbackToHead?: boolean; path: string; ref: string }) {
+    recordGitServiceOperation('restore_ref', input.path, {
+      fallbackToHead: input.fallbackToHead,
+      ref: input.ref,
+    })
+    const repository = await this.requiredRepositoryLocation(input.path)
+    const commit =
+      (await this.resolveRefCommit(repository, input.ref)) ??
+      (input.fallbackToHead ? await this.resolveRefCommit(repository, 'HEAD') : null)
+    if (!commit) return false
+
+    await this.git(repository.rootAbsolutePath, [
+      'restore',
+      '--source',
+      commit,
+      '--worktree',
+      '--staged',
+      '--',
+      '.',
+    ])
+    await this.git(repository.rootAbsolutePath, ['clean', '-fd', '--', '.'])
+
+    return true
+  }
+
+  async deleteRefs(input: { path: string; refs: readonly string[] }) {
+    const refs = Array.from(new Set(input.refs)).filter(Boolean)
+    recordGitServiceOperation('delete_refs', input.path, { refCount: refs.length })
+    if (refs.length === 0) return
+
+    const repository = await this.requiredRepositoryLocation(input.path)
+    for (const ref of refs) {
+      await this.git(repository.rootAbsolutePath, ['update-ref', '-d', ref], {
+        allowFailure: true,
+      })
+    }
+  }
+
   async file(input: string, ref: string) {
     recordGitServiceOperation('file', input)
     const repository = await this.resolveRepositoryLocation(input)
@@ -623,6 +668,17 @@ export class GitService {
     const result = await this.git(repository.rootAbsolutePath, ['rev-parse', revisionPath], {
       allowFailure: true,
     })
+    if (result.exitCode !== 0) return null
+
+    return result.stdout.trim() || null
+  }
+
+  private async resolveRefCommit(repository: GitRepositoryLocation, ref: string) {
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+      { allowFailure: true },
+    )
     if (result.exitCode !== 0) return null
 
     return result.stdout.trim() || null

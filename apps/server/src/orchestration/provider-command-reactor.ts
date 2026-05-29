@@ -1,6 +1,7 @@
 import type {
   InteractionMode,
   ModelSelection,
+  OrchestrationCommand,
   OrchestrationEvent,
   OrchestrationMessage,
   OrchestrationProject,
@@ -9,13 +10,16 @@ import type {
   ThreadId,
   TurnId,
 } from '@workspace/contracts'
-import { DEFAULT_CODEX_PROVIDER_SETTINGS, DEFAULT_RUNTIME_MODE } from '@workspace/contracts'
-import type {
-  ProviderEnsureSessionResult,
-  ProviderService,
-  ProviderSessionRuntimePayload,
-} from '../provider/provider-service'
+import * as v from 'valibot'
+import {
+  commandIdSchema,
+  DEFAULT_CODEX_PROVIDER_SETTINGS,
+  DEFAULT_RUNTIME_MODE,
+} from '@workspace/contracts'
+import type { ProviderService, ProviderSessionRuntimePayload } from '../provider/provider-service'
 import type { ProviderRuntimeEvent } from '../provider/types'
+import type { GitService } from '../git/service'
+import { checkpointRefForThreadTurn } from './checkpoint-refs'
 import type { OrchestrationReadModel } from './read-model'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
 import {
@@ -34,6 +38,7 @@ type ProviderIntentEvent = Extract<
       | 'thread.turn-start-requested'
       | 'thread.turn-interrupt-requested'
       | 'thread.session-stop-requested'
+      | 'thread.checkpoint-revert-requested'
       | 'thread.approval-response-requested'
       | 'thread.user-input-response-requested'
   }
@@ -43,6 +48,8 @@ const HANDLED_TURN_START_KEY_MAX = 10_000
 const HANDLED_TURN_START_KEY_TTL_MS = 30 * 60 * 1000
 
 export class ProviderCommandReactor {
+  private readonly checkpointGit: GitService | null
+  private readonly dispatch: ((command: OrchestrationCommand) => Promise<unknown> | unknown) | null
   private readonly getReadModel: () => OrchestrationReadModel
   private readonly ingestion: ProviderRuntimeIngestion
   private readonly now: () => number
@@ -54,24 +61,31 @@ export class ProviderCommandReactor {
   private readonly worker: DrainableProviderIntentWorker<ProviderIntentEvent>
 
   constructor({
+    checkpointGit,
+    dispatch,
     getReadModel,
     ingestion,
     now,
     providerService,
     turnStartKeyTtlMs,
   }: {
+    checkpointGit?: GitService | null
+    dispatch?: (command: OrchestrationCommand) => Promise<unknown> | unknown
     getReadModel: () => OrchestrationReadModel
     ingestion: ProviderRuntimeIngestion
     now?: () => number
     providerService: ProviderService
     turnStartKeyTtlMs?: number
   }) {
+    this.checkpointGit = checkpointGit ?? null
+    this.dispatch = dispatch ?? null
     this.getReadModel = getReadModel
     this.ingestion = ingestion
     this.now = now ?? Date.now
     this.providerService = providerService
     this.turnStartKeyTtlMs = turnStartKeyTtlMs ?? HANDLED_TURN_START_KEY_TTL_MS
     this.worker = new DrainableProviderIntentWorker((event) => this.handleEventSafely(event))
+    this.providerService.subscribeRuntimeEvents((event) => this.ingestProviderRuntimeEvent(event))
   }
 
   handleEvents(events: OrchestrationEvent[]) {
@@ -135,6 +149,9 @@ export class ProviderCommandReactor {
       case 'thread.session-stop-requested':
         await this.stopSession(event)
         return
+      case 'thread.checkpoint-revert-requested':
+        await this.revertCheckpoint(event)
+        return
       case 'thread.approval-response-requested':
         await this.respondApproval(event)
         return
@@ -173,16 +190,12 @@ export class ProviderCommandReactor {
         threadId: context.thread.id,
         turnId: event.payload.turnId,
       })
+      if (context.message.role !== 'user') {
+        throw new Error(`Provider turn ${event.payload.turnId} requires a user message.`)
+      }
+
       this.rememberModelSelection(context.thread.id, context.modelSelection)
-      const ensured = this.ensureSessionForTurn(context, event.payload.turnId)
-      await this.ingestSession({
-        providerInstanceId: ensured.binding.providerInstanceId,
-        providerSessionId: ensured.binding.providerSessionId,
-        runtimeMode: ensured.binding.runtimeMode,
-        status: ensuredSessionStatus(ensured),
-        threadId: context.thread.id,
-        turnId: event.payload.turnId,
-      })
+      await this.ensureSessionForTurn(context, event.payload.turnId)
       this.trackProviderAction(this.sendTurn(event, context))
     } catch (error) {
       await this.handleTurnFailure(
@@ -202,7 +215,7 @@ export class ProviderCommandReactor {
     if (!context) return
     if (!hasActiveSession(context.thread)) return
 
-    const ensured = this.providerService.ensureSession({
+    const ensured = await this.providerService.ensureSession({
       providerInstanceId: context.modelSelection.providerInstanceId,
       runtimeMode: context.runtimeMode,
       runtimePayload: runtimePayloadFromSessionContext(context, null),
@@ -231,21 +244,18 @@ export class ProviderCommandReactor {
     context: ProviderTurnContext,
   ) {
     try {
-      await this.providerService.sendTurn(
-        {
-          attachments: context.message.attachments,
-          cwd: context.thread.worktreePath ?? context.project.workspaceRoot,
-          interactionMode: context.interactionMode,
-          messageText: context.message.text,
-          modelSelection: context.modelSelection,
-          project: context.project,
-          providerInstanceId: context.modelSelection.providerInstanceId,
-          runtimeMode: context.runtimeMode,
-          thread: context.thread,
-          turnId: event.payload.turnId,
-        },
-        { ingest: (runtimeEvent) => this.ingestProviderRuntimeEvent(runtimeEvent) },
-      )
+      await this.providerService.sendTurn({
+        attachments: context.message.attachments,
+        cwd: context.thread.worktreePath ?? context.project.workspaceRoot,
+        interactionMode: context.interactionMode,
+        messageText: context.message.text,
+        modelSelection: context.modelSelection,
+        project: context.project,
+        providerInstanceId: context.modelSelection.providerInstanceId,
+        runtimeMode: context.runtimeMode,
+        thread: context.thread,
+        turnId: event.payload.turnId,
+      })
       recordChatPipelineInfo('chat.pipeline.provider_reactor.turn_start.sent', {
         threadId: context.thread.id,
         turnId: event.payload.turnId,
@@ -333,6 +343,72 @@ export class ProviderCommandReactor {
     }
   }
 
+  private async revertCheckpoint(
+    event: Extract<ProviderIntentEvent, { type: 'thread.checkpoint-revert-requested' }>,
+  ) {
+    recordChatPipelineInfo('chat.pipeline.provider_reactor.checkpoint_revert.start', {
+      ...orchestrationEventSummary(event),
+      turnCount: event.payload.turnCount,
+    })
+    try {
+      const context = this.checkpointRevertContext(event)
+      if (!context) {
+        await this.appendProviderFailureActivity({
+          detail:
+            'Checkpoint revert cannot run without a thread, project, Git service, and command dispatcher.',
+          event,
+          kind: 'checkpoint.revert.failed',
+          summary: 'Checkpoint revert failed',
+        })
+        return
+      }
+
+      const restored = await context.git.restoreRef({
+        fallbackToHead: event.payload.turnCount === 0,
+        path: context.workspacePath,
+        ref: context.targetRef,
+      })
+      if (!restored) {
+        throw new Error(`Checkpoint ref is unavailable for turn ${event.payload.turnCount}.`)
+      }
+
+      const rollbackTurns = context.currentTurnCount - event.payload.turnCount
+      if (rollbackTurns > 0) {
+        await this.providerService.rollbackConversation({
+          numTurns: rollbackTurns,
+          threadId: event.payload.threadId,
+        })
+      }
+
+      await context.git.deleteRefs({
+        path: context.workspacePath,
+        refs: context.staleRefs,
+      })
+      await Promise.resolve(
+        context.dispatch({
+          commandId: v.parse(commandIdSchema, `checkpoint-revert-complete:${event.eventId}`),
+          createdAt: new Date().toISOString(),
+          threadId: event.payload.threadId,
+          turnCount: event.payload.turnCount,
+          type: 'thread.revert.complete',
+        }),
+      )
+      recordChatPipelineInfo('chat.pipeline.provider_reactor.checkpoint_revert.complete', {
+        deletedRefCount: context.staleRefs.length,
+        rollbackTurns,
+        threadId: event.payload.threadId,
+        turnCount: event.payload.turnCount,
+      })
+    } catch (error) {
+      await this.appendProviderFailureActivity({
+        detail: providerErrorMessage(error),
+        event,
+        kind: 'checkpoint.revert.failed',
+        summary: 'Checkpoint revert failed',
+      })
+    }
+  }
+
   private async respondApproval(
     event: Extract<ProviderIntentEvent, { type: 'thread.approval-response-requested' }>,
   ) {
@@ -395,6 +471,7 @@ export class ProviderCommandReactor {
     detail: string
     event: ProviderIntentEvent
     kind:
+      | 'checkpoint.revert.failed'
       | 'provider.approval.respond.failed'
       | 'provider.session.stop.failed'
       | 'provider.turn.interrupt.failed'
@@ -560,6 +637,52 @@ export class ProviderCommandReactor {
     }
   }
 
+  private checkpointRevertContext(
+    event: Extract<ProviderIntentEvent, { type: 'thread.checkpoint-revert-requested' }>,
+  ) {
+    const git = this.checkpointGit
+    const dispatch = this.dispatch
+    if (!git || !dispatch) return null
+
+    const model = this.getReadModel()
+    const thread = model.threads.get(event.payload.threadId)
+    if (!thread) return null
+
+    const project = model.projects.get(thread.projectId)
+    if (!project) return null
+
+    const checkpoints = Object.values(thread.checkpointByTurnId).toSorted(
+      (left, right) => left.checkpointTurnCount - right.checkpointTurnCount,
+    )
+    const currentTurnCount = maxCheckpointTurnCount(checkpoints)
+    if (event.payload.turnCount > currentTurnCount) {
+      throw new Error(
+        `Checkpoint ${event.payload.turnCount} is newer than current checkpoint ${currentTurnCount}.`,
+      )
+    }
+
+    const targetRef = checkpointRefForTurnCount(
+      event.payload.threadId,
+      event.payload.turnCount,
+      checkpoints,
+    )
+    const staleRefs = checkpoints
+      .filter((checkpoint) => checkpoint.checkpointTurnCount > event.payload.turnCount)
+      .map((checkpoint) => checkpoint.checkpointRef)
+
+    return {
+      currentTurnCount,
+      dispatch,
+      git,
+      staleRefs,
+      targetRef,
+      workspacePath: workspacePathForCheckpointRevert({
+        fallbackWorkspacePath: thread.worktreePath ?? project.workspaceRoot,
+        providerPayload: this.providerService.bindingForThread(thread.id)?.runtimePayload,
+      }),
+    }
+  }
+
   private trackProviderAction(task: Promise<void>) {
     let tracked: Promise<void>
     tracked = task
@@ -587,6 +710,7 @@ function isProviderIntentEvent(event: OrchestrationEvent): event is ProviderInte
     case 'thread.turn-start-requested':
     case 'thread.turn-interrupt-requested':
     case 'thread.session-stop-requested':
+    case 'thread.checkpoint-revert-requested':
     case 'thread.approval-response-requested':
     case 'thread.user-input-response-requested':
       return true
@@ -641,17 +765,57 @@ function runtimePayloadFromSessionContext(
   }
 }
 
-function ensuredSessionStatus(ensured: ProviderEnsureSessionResult) {
-  if (!ensured.reused) return 'starting'
-  if (ensured.binding.status === 'running') return 'running'
-
-  return 'starting'
-}
-
 function hasActiveSession(thread: OrchestrationThread) {
   if (!thread.session) return false
 
   return thread.session.status !== 'stopped'
+}
+
+function maxCheckpointTurnCount(checkpoints: Array<{ checkpointTurnCount: number }>) {
+  let maxTurnCount = 0
+
+  for (const checkpoint of checkpoints) {
+    maxTurnCount = Math.max(maxTurnCount, checkpoint.checkpointTurnCount)
+  }
+
+  return maxTurnCount
+}
+
+function checkpointRefForTurnCount(
+  threadId: ThreadId,
+  turnCount: number,
+  checkpoints: Array<{
+    checkpointRef: string
+    checkpointTurnCount: number
+    status: 'ready' | 'missing' | 'error'
+  }>,
+) {
+  if (turnCount === 0) return checkpointRefForThreadTurn(threadId, 0)
+
+  const checkpoint = checkpoints.find((candidate) => candidate.checkpointTurnCount === turnCount)
+  if (!checkpoint || checkpoint.status !== 'ready') {
+    throw new Error(`Checkpoint ref is unavailable for turn ${turnCount}.`)
+  }
+
+  return checkpoint.checkpointRef
+}
+
+function workspacePathForCheckpointRevert(input: {
+  fallbackWorkspacePath: string
+  providerPayload: unknown
+}) {
+  if (!isRecord(input.providerPayload)) return input.fallbackWorkspacePath
+
+  return typeof input.providerPayload.cwd === 'string'
+    ? input.providerPayload.cwd
+    : input.fallbackWorkspacePath
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null) return false
+  if (typeof value !== 'object') return false
+
+  return !Array.isArray(value)
 }
 
 function turnStartKeyForEvent(

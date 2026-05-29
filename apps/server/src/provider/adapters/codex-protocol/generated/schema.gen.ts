@@ -39,6 +39,123 @@ export const V1InitializeResponseSchema = v.looseObject({
 })
 export type V1InitializeResponse = v.InferOutput<typeof V1InitializeResponseSchema>
 
+export const V2AccountLoginCompletedNotificationSchema = v.looseObject({
+  error: v.optional(v.union([v.string(), v.null()])),
+  loginId: v.optional(v.union([v.string(), v.null()])),
+  success: v.boolean(),
+})
+export type V2AccountLoginCompletedNotification = v.InferOutput<
+  typeof V2AccountLoginCompletedNotificationSchema
+>
+
+export const V2AccountRateLimitsUpdatedNotification__CreditsSnapshotSchema = v.looseObject({
+  balance: v.optional(v.union([v.string(), v.null()])),
+  hasCredits: v.boolean(),
+  unlimited: v.boolean(),
+})
+export type V2AccountRateLimitsUpdatedNotification__CreditsSnapshot = v.InferOutput<
+  typeof V2AccountRateLimitsUpdatedNotification__CreditsSnapshotSchema
+>
+
+export const V2AccountRateLimitsUpdatedNotification__PlanTypeSchema = v.picklist([
+  'free',
+  'go',
+  'plus',
+  'pro',
+  'prolite',
+  'team',
+  'self_serve_business_usage_based',
+  'business',
+  'enterprise_cbp_usage_based',
+  'enterprise',
+  'edu',
+  'unknown',
+])
+export type V2AccountRateLimitsUpdatedNotification__PlanType = v.InferOutput<
+  typeof V2AccountRateLimitsUpdatedNotification__PlanTypeSchema
+>
+
+export const V2AccountRateLimitsUpdatedNotification__RateLimitReachedTypeSchema = v.picklist([
+  'rate_limit_reached',
+  'workspace_owner_credits_depleted',
+  'workspace_member_credits_depleted',
+  'workspace_owner_usage_limit_reached',
+  'workspace_member_usage_limit_reached',
+])
+export type V2AccountRateLimitsUpdatedNotification__RateLimitReachedType = v.InferOutput<
+  typeof V2AccountRateLimitsUpdatedNotification__RateLimitReachedTypeSchema
+>
+
+export const V2AccountRateLimitsUpdatedNotification__RateLimitWindowSchema = v.looseObject({
+  resetsAt: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  usedPercent: v.pipe(v.number(), v.integer()),
+  windowDurationMins: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+})
+export type V2AccountRateLimitsUpdatedNotification__RateLimitWindow = v.InferOutput<
+  typeof V2AccountRateLimitsUpdatedNotification__RateLimitWindowSchema
+>
+
+export const V2AccountRateLimitsUpdatedNotification__RateLimitSnapshotSchema = v.looseObject({
+  credits: v.optional(
+    v.union([V2AccountRateLimitsUpdatedNotification__CreditsSnapshotSchema, v.null()]),
+  ),
+  limitId: v.optional(v.union([v.string(), v.null()])),
+  limitName: v.optional(v.union([v.string(), v.null()])),
+  planType: v.optional(v.union([V2AccountRateLimitsUpdatedNotification__PlanTypeSchema, v.null()])),
+  primary: v.optional(
+    v.union([V2AccountRateLimitsUpdatedNotification__RateLimitWindowSchema, v.null()]),
+  ),
+  rateLimitReachedType: v.optional(
+    v.union([V2AccountRateLimitsUpdatedNotification__RateLimitReachedTypeSchema, v.null()]),
+  ),
+  secondary: v.optional(
+    v.union([V2AccountRateLimitsUpdatedNotification__RateLimitWindowSchema, v.null()]),
+  ),
+})
+export type V2AccountRateLimitsUpdatedNotification__RateLimitSnapshot = v.InferOutput<
+  typeof V2AccountRateLimitsUpdatedNotification__RateLimitSnapshotSchema
+>
+
+export const V2AccountRateLimitsUpdatedNotificationSchema = v.looseObject({
+  rateLimits: V2AccountRateLimitsUpdatedNotification__RateLimitSnapshotSchema,
+})
+export type V2AccountRateLimitsUpdatedNotification = v.InferOutput<
+  typeof V2AccountRateLimitsUpdatedNotificationSchema
+>
+
+export const V2AccountUpdatedNotification__AuthModeSchema = v.union([
+  v.literal('apikey'),
+  v.literal('chatgpt'),
+  v.literal('chatgptAuthTokens'),
+])
+export type V2AccountUpdatedNotification__AuthMode = v.InferOutput<
+  typeof V2AccountUpdatedNotification__AuthModeSchema
+>
+
+export const V2AccountUpdatedNotification__PlanTypeSchema = v.picklist([
+  'free',
+  'go',
+  'plus',
+  'pro',
+  'prolite',
+  'team',
+  'self_serve_business_usage_based',
+  'business',
+  'enterprise_cbp_usage_based',
+  'enterprise',
+  'edu',
+  'unknown',
+])
+export type V2AccountUpdatedNotification__PlanType = v.InferOutput<
+  typeof V2AccountUpdatedNotification__PlanTypeSchema
+>
+
+export const V2AccountUpdatedNotificationSchema = v.looseObject({
+  authMode: v.optional(v.union([V2AccountUpdatedNotification__AuthModeSchema, v.null()])),
+  planType: v.optional(v.union([V2AccountUpdatedNotification__PlanTypeSchema, v.null()])),
+})
+export type V2AccountUpdatedNotification = v.InferOutput<typeof V2AccountUpdatedNotificationSchema>
+
 export const V2AgentMessageDeltaNotificationSchema = v.looseObject({
   delta: v.string(),
   itemId: v.string(),
@@ -47,6 +164,144 @@ export const V2AgentMessageDeltaNotificationSchema = v.looseObject({
 })
 export type V2AgentMessageDeltaNotification = v.InferOutput<
   typeof V2AgentMessageDeltaNotificationSchema
+>
+
+export const V2AppListUpdatedNotification__AppBrandingSchema = v.looseObject({
+  category: v.optional(v.union([v.string(), v.null()])),
+  developer: v.optional(v.union([v.string(), v.null()])),
+  isDiscoverableApp: v.boolean(),
+  privacyPolicy: v.optional(v.union([v.string(), v.null()])),
+  termsOfService: v.optional(v.union([v.string(), v.null()])),
+  website: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2AppListUpdatedNotification__AppBranding = v.InferOutput<
+  typeof V2AppListUpdatedNotification__AppBrandingSchema
+>
+
+export const V2AppListUpdatedNotification__AppReviewSchema = v.looseObject({ status: v.string() })
+export type V2AppListUpdatedNotification__AppReview = v.InferOutput<
+  typeof V2AppListUpdatedNotification__AppReviewSchema
+>
+
+export const V2AppListUpdatedNotification__AppScreenshotSchema = v.looseObject({
+  fileId: v.optional(v.union([v.string(), v.null()])),
+  url: v.optional(v.union([v.string(), v.null()])),
+  userPrompt: v.string(),
+})
+export type V2AppListUpdatedNotification__AppScreenshot = v.InferOutput<
+  typeof V2AppListUpdatedNotification__AppScreenshotSchema
+>
+
+export const V2AppListUpdatedNotification__AppMetadataSchema = v.looseObject({
+  categories: v.optional(v.union([v.array(v.string()), v.null()])),
+  developer: v.optional(v.union([v.string(), v.null()])),
+  firstPartyRequiresInstall: v.optional(v.union([v.boolean(), v.null()])),
+  firstPartyType: v.optional(v.union([v.string(), v.null()])),
+  review: v.optional(v.union([V2AppListUpdatedNotification__AppReviewSchema, v.null()])),
+  screenshots: v.optional(
+    v.union([v.array(V2AppListUpdatedNotification__AppScreenshotSchema), v.null()]),
+  ),
+  seoDescription: v.optional(v.union([v.string(), v.null()])),
+  showInComposerWhenUnlinked: v.optional(v.union([v.boolean(), v.null()])),
+  subCategories: v.optional(v.union([v.array(v.string()), v.null()])),
+  version: v.optional(v.union([v.string(), v.null()])),
+  versionId: v.optional(v.union([v.string(), v.null()])),
+  versionNotes: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2AppListUpdatedNotification__AppMetadata = v.InferOutput<
+  typeof V2AppListUpdatedNotification__AppMetadataSchema
+>
+
+export const V2AppListUpdatedNotification__AppInfoSchema = v.looseObject({
+  appMetadata: v.optional(v.union([V2AppListUpdatedNotification__AppMetadataSchema, v.null()])),
+  branding: v.optional(v.union([V2AppListUpdatedNotification__AppBrandingSchema, v.null()])),
+  description: v.optional(v.union([v.string(), v.null()])),
+  distributionChannel: v.optional(v.union([v.string(), v.null()])),
+  id: v.string(),
+  installUrl: v.optional(v.union([v.string(), v.null()])),
+  isAccessible: v.optional(v.boolean()),
+  isEnabled: v.optional(v.boolean()),
+  labels: v.optional(v.union([v.record(v.string(), v.string()), v.null()])),
+  logoUrl: v.optional(v.union([v.string(), v.null()])),
+  logoUrlDark: v.optional(v.union([v.string(), v.null()])),
+  name: v.string(),
+  pluginDisplayNames: v.optional(v.array(v.string())),
+})
+export type V2AppListUpdatedNotification__AppInfo = v.InferOutput<
+  typeof V2AppListUpdatedNotification__AppInfoSchema
+>
+
+export const V2AppListUpdatedNotificationSchema = v.looseObject({
+  data: v.array(V2AppListUpdatedNotification__AppInfoSchema),
+})
+export type V2AppListUpdatedNotification = v.InferOutput<typeof V2AppListUpdatedNotificationSchema>
+
+export const V2CommandExecOutputDeltaNotification__CommandExecOutputStreamSchema = v.union([
+  v.literal('stdout'),
+  v.literal('stderr'),
+])
+export type V2CommandExecOutputDeltaNotification__CommandExecOutputStream = v.InferOutput<
+  typeof V2CommandExecOutputDeltaNotification__CommandExecOutputStreamSchema
+>
+
+export const V2CommandExecOutputDeltaNotificationSchema = v.looseObject({
+  capReached: v.boolean(),
+  deltaBase64: v.string(),
+  processId: v.string(),
+  stream: V2CommandExecOutputDeltaNotification__CommandExecOutputStreamSchema,
+})
+export type V2CommandExecOutputDeltaNotification = v.InferOutput<
+  typeof V2CommandExecOutputDeltaNotificationSchema
+>
+
+export const V2CommandExecutionOutputDeltaNotificationSchema = v.looseObject({
+  delta: v.string(),
+  itemId: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2CommandExecutionOutputDeltaNotification = v.InferOutput<
+  typeof V2CommandExecutionOutputDeltaNotificationSchema
+>
+
+export const V2ConfigWarningNotification__TextPositionSchema = v.looseObject({
+  column: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  line: v.pipe(v.number(), v.integer(), v.minValue(0)),
+})
+export type V2ConfigWarningNotification__TextPosition = v.InferOutput<
+  typeof V2ConfigWarningNotification__TextPositionSchema
+>
+
+export const V2ConfigWarningNotification__TextRangeSchema = v.looseObject({
+  end: V2ConfigWarningNotification__TextPositionSchema,
+  start: V2ConfigWarningNotification__TextPositionSchema,
+})
+export type V2ConfigWarningNotification__TextRange = v.InferOutput<
+  typeof V2ConfigWarningNotification__TextRangeSchema
+>
+
+export const V2ConfigWarningNotificationSchema = v.looseObject({
+  details: v.optional(v.union([v.string(), v.null()])),
+  path: v.optional(v.union([v.string(), v.null()])),
+  range: v.optional(v.union([V2ConfigWarningNotification__TextRangeSchema, v.null()])),
+  summary: v.string(),
+})
+export type V2ConfigWarningNotification = v.InferOutput<typeof V2ConfigWarningNotificationSchema>
+
+export const V2ContextCompactedNotificationSchema = v.looseObject({
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ContextCompactedNotification = v.InferOutput<
+  typeof V2ContextCompactedNotificationSchema
+>
+
+export const V2DeprecationNoticeNotificationSchema = v.looseObject({
+  details: v.optional(v.union([v.string(), v.null()])),
+  summary: v.string(),
+})
+export type V2DeprecationNoticeNotification = v.InferOutput<
+  typeof V2DeprecationNoticeNotificationSchema
 >
 
 export const V2ErrorNotification__NonSteerableTurnKindSchema = v.picklist(['review', 'compact'])
@@ -121,6 +376,63 @@ export const V2ErrorNotificationSchema = v.looseObject({
 })
 export type V2ErrorNotification = v.InferOutput<typeof V2ErrorNotificationSchema>
 
+export const V2ExternalAgentConfigImportCompletedNotificationSchema = v.looseObject({})
+export type V2ExternalAgentConfigImportCompletedNotification = v.InferOutput<
+  typeof V2ExternalAgentConfigImportCompletedNotificationSchema
+>
+
+export const V2FileChangeOutputDeltaNotificationSchema = v.looseObject({
+  delta: v.string(),
+  itemId: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2FileChangeOutputDeltaNotification = v.InferOutput<
+  typeof V2FileChangeOutputDeltaNotificationSchema
+>
+
+export const V2FileChangePatchUpdatedNotification__PatchChangeKindSchema = v.union([
+  v.looseObject({ type: v.literal('add') }),
+  v.looseObject({ type: v.literal('delete') }),
+  v.looseObject({
+    move_path: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('update'),
+  }),
+])
+export type V2FileChangePatchUpdatedNotification__PatchChangeKind = v.InferOutput<
+  typeof V2FileChangePatchUpdatedNotification__PatchChangeKindSchema
+>
+
+export const V2FileChangePatchUpdatedNotification__FileUpdateChangeSchema = v.looseObject({
+  diff: v.string(),
+  kind: V2FileChangePatchUpdatedNotification__PatchChangeKindSchema,
+  path: v.string(),
+})
+export type V2FileChangePatchUpdatedNotification__FileUpdateChange = v.InferOutput<
+  typeof V2FileChangePatchUpdatedNotification__FileUpdateChangeSchema
+>
+
+export const V2FileChangePatchUpdatedNotificationSchema = v.looseObject({
+  changes: v.array(V2FileChangePatchUpdatedNotification__FileUpdateChangeSchema),
+  itemId: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2FileChangePatchUpdatedNotification = v.InferOutput<
+  typeof V2FileChangePatchUpdatedNotificationSchema
+>
+
+export const V2FsChangedNotification__AbsolutePathBufSchema = v.string()
+export type V2FsChangedNotification__AbsolutePathBuf = v.InferOutput<
+  typeof V2FsChangedNotification__AbsolutePathBufSchema
+>
+
+export const V2FsChangedNotificationSchema = v.looseObject({
+  changedPaths: v.array(V2FsChangedNotification__AbsolutePathBufSchema),
+  watchId: v.string(),
+})
+export type V2FsChangedNotification = v.InferOutput<typeof V2FsChangedNotificationSchema>
+
 export const V2GetAccountParamsSchema = v.looseObject({ refreshToken: v.optional(v.boolean()) })
 export type V2GetAccountParams = v.InferOutput<typeof V2GetAccountParamsSchema>
 
@@ -159,6 +471,1481 @@ export const V2GetAccountResponseSchema = v.looseObject({
   requiresOpenaiAuth: v.boolean(),
 })
 export type V2GetAccountResponse = v.InferOutput<typeof V2GetAccountResponseSchema>
+
+export const V2HookCompletedNotification__AbsolutePathBufSchema = v.string()
+export type V2HookCompletedNotification__AbsolutePathBuf = v.InferOutput<
+  typeof V2HookCompletedNotification__AbsolutePathBufSchema
+>
+
+export const V2HookCompletedNotification__HookEventNameSchema = v.picklist([
+  'preToolUse',
+  'permissionRequest',
+  'postToolUse',
+  'sessionStart',
+  'userPromptSubmit',
+  'stop',
+])
+export type V2HookCompletedNotification__HookEventName = v.InferOutput<
+  typeof V2HookCompletedNotification__HookEventNameSchema
+>
+
+export const V2HookCompletedNotification__HookExecutionModeSchema = v.picklist(['sync', 'async'])
+export type V2HookCompletedNotification__HookExecutionMode = v.InferOutput<
+  typeof V2HookCompletedNotification__HookExecutionModeSchema
+>
+
+export const V2HookCompletedNotification__HookHandlerTypeSchema = v.picklist([
+  'command',
+  'prompt',
+  'agent',
+])
+export type V2HookCompletedNotification__HookHandlerType = v.InferOutput<
+  typeof V2HookCompletedNotification__HookHandlerTypeSchema
+>
+
+export const V2HookCompletedNotification__HookOutputEntryKindSchema = v.picklist([
+  'warning',
+  'stop',
+  'feedback',
+  'context',
+  'error',
+])
+export type V2HookCompletedNotification__HookOutputEntryKind = v.InferOutput<
+  typeof V2HookCompletedNotification__HookOutputEntryKindSchema
+>
+
+export const V2HookCompletedNotification__HookOutputEntrySchema = v.looseObject({
+  kind: V2HookCompletedNotification__HookOutputEntryKindSchema,
+  text: v.string(),
+})
+export type V2HookCompletedNotification__HookOutputEntry = v.InferOutput<
+  typeof V2HookCompletedNotification__HookOutputEntrySchema
+>
+
+export const V2HookCompletedNotification__HookRunStatusSchema = v.picklist([
+  'running',
+  'completed',
+  'failed',
+  'blocked',
+  'stopped',
+])
+export type V2HookCompletedNotification__HookRunStatus = v.InferOutput<
+  typeof V2HookCompletedNotification__HookRunStatusSchema
+>
+
+export const V2HookCompletedNotification__HookScopeSchema = v.picklist(['thread', 'turn'])
+export type V2HookCompletedNotification__HookScope = v.InferOutput<
+  typeof V2HookCompletedNotification__HookScopeSchema
+>
+
+export const V2HookCompletedNotification__HookSourceSchema = v.picklist([
+  'system',
+  'user',
+  'project',
+  'mdm',
+  'sessionFlags',
+  'legacyManagedConfigFile',
+  'legacyManagedConfigMdm',
+  'unknown',
+])
+export type V2HookCompletedNotification__HookSource = v.InferOutput<
+  typeof V2HookCompletedNotification__HookSourceSchema
+>
+
+export const V2HookCompletedNotification__HookRunSummarySchema = v.looseObject({
+  completedAt: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  displayOrder: v.pipe(v.number(), v.integer()),
+  durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  entries: v.array(V2HookCompletedNotification__HookOutputEntrySchema),
+  eventName: V2HookCompletedNotification__HookEventNameSchema,
+  executionMode: V2HookCompletedNotification__HookExecutionModeSchema,
+  handlerType: V2HookCompletedNotification__HookHandlerTypeSchema,
+  id: v.string(),
+  scope: V2HookCompletedNotification__HookScopeSchema,
+  source: v.optional(V2HookCompletedNotification__HookSourceSchema),
+  sourcePath: V2HookCompletedNotification__AbsolutePathBufSchema,
+  startedAt: v.pipe(v.number(), v.integer()),
+  status: V2HookCompletedNotification__HookRunStatusSchema,
+  statusMessage: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2HookCompletedNotification__HookRunSummary = v.InferOutput<
+  typeof V2HookCompletedNotification__HookRunSummarySchema
+>
+
+export const V2HookCompletedNotificationSchema = v.looseObject({
+  run: V2HookCompletedNotification__HookRunSummarySchema,
+  threadId: v.string(),
+  turnId: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2HookCompletedNotification = v.InferOutput<typeof V2HookCompletedNotificationSchema>
+
+export const V2HookStartedNotification__AbsolutePathBufSchema = v.string()
+export type V2HookStartedNotification__AbsolutePathBuf = v.InferOutput<
+  typeof V2HookStartedNotification__AbsolutePathBufSchema
+>
+
+export const V2HookStartedNotification__HookEventNameSchema = v.picklist([
+  'preToolUse',
+  'permissionRequest',
+  'postToolUse',
+  'sessionStart',
+  'userPromptSubmit',
+  'stop',
+])
+export type V2HookStartedNotification__HookEventName = v.InferOutput<
+  typeof V2HookStartedNotification__HookEventNameSchema
+>
+
+export const V2HookStartedNotification__HookExecutionModeSchema = v.picklist(['sync', 'async'])
+export type V2HookStartedNotification__HookExecutionMode = v.InferOutput<
+  typeof V2HookStartedNotification__HookExecutionModeSchema
+>
+
+export const V2HookStartedNotification__HookHandlerTypeSchema = v.picklist([
+  'command',
+  'prompt',
+  'agent',
+])
+export type V2HookStartedNotification__HookHandlerType = v.InferOutput<
+  typeof V2HookStartedNotification__HookHandlerTypeSchema
+>
+
+export const V2HookStartedNotification__HookOutputEntryKindSchema = v.picklist([
+  'warning',
+  'stop',
+  'feedback',
+  'context',
+  'error',
+])
+export type V2HookStartedNotification__HookOutputEntryKind = v.InferOutput<
+  typeof V2HookStartedNotification__HookOutputEntryKindSchema
+>
+
+export const V2HookStartedNotification__HookOutputEntrySchema = v.looseObject({
+  kind: V2HookStartedNotification__HookOutputEntryKindSchema,
+  text: v.string(),
+})
+export type V2HookStartedNotification__HookOutputEntry = v.InferOutput<
+  typeof V2HookStartedNotification__HookOutputEntrySchema
+>
+
+export const V2HookStartedNotification__HookRunStatusSchema = v.picklist([
+  'running',
+  'completed',
+  'failed',
+  'blocked',
+  'stopped',
+])
+export type V2HookStartedNotification__HookRunStatus = v.InferOutput<
+  typeof V2HookStartedNotification__HookRunStatusSchema
+>
+
+export const V2HookStartedNotification__HookScopeSchema = v.picklist(['thread', 'turn'])
+export type V2HookStartedNotification__HookScope = v.InferOutput<
+  typeof V2HookStartedNotification__HookScopeSchema
+>
+
+export const V2HookStartedNotification__HookSourceSchema = v.picklist([
+  'system',
+  'user',
+  'project',
+  'mdm',
+  'sessionFlags',
+  'legacyManagedConfigFile',
+  'legacyManagedConfigMdm',
+  'unknown',
+])
+export type V2HookStartedNotification__HookSource = v.InferOutput<
+  typeof V2HookStartedNotification__HookSourceSchema
+>
+
+export const V2HookStartedNotification__HookRunSummarySchema = v.looseObject({
+  completedAt: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  displayOrder: v.pipe(v.number(), v.integer()),
+  durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  entries: v.array(V2HookStartedNotification__HookOutputEntrySchema),
+  eventName: V2HookStartedNotification__HookEventNameSchema,
+  executionMode: V2HookStartedNotification__HookExecutionModeSchema,
+  handlerType: V2HookStartedNotification__HookHandlerTypeSchema,
+  id: v.string(),
+  scope: V2HookStartedNotification__HookScopeSchema,
+  source: v.optional(V2HookStartedNotification__HookSourceSchema),
+  sourcePath: V2HookStartedNotification__AbsolutePathBufSchema,
+  startedAt: v.pipe(v.number(), v.integer()),
+  status: V2HookStartedNotification__HookRunStatusSchema,
+  statusMessage: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2HookStartedNotification__HookRunSummary = v.InferOutput<
+  typeof V2HookStartedNotification__HookRunSummarySchema
+>
+
+export const V2HookStartedNotificationSchema = v.looseObject({
+  run: V2HookStartedNotification__HookRunSummarySchema,
+  threadId: v.string(),
+  turnId: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2HookStartedNotification = v.InferOutput<typeof V2HookStartedNotificationSchema>
+
+export const V2ItemCompletedNotification__AbsolutePathBufSchema = v.string()
+export type V2ItemCompletedNotification__AbsolutePathBuf = v.InferOutput<
+  typeof V2ItemCompletedNotification__AbsolutePathBufSchema
+>
+
+export const V2ItemCompletedNotification__ByteRangeSchema = v.looseObject({
+  end: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  start: v.pipe(v.number(), v.integer(), v.minValue(0)),
+})
+export type V2ItemCompletedNotification__ByteRange = v.InferOutput<
+  typeof V2ItemCompletedNotification__ByteRangeSchema
+>
+
+export const V2ItemCompletedNotification__CollabAgentStatusSchema = v.picklist([
+  'pendingInit',
+  'running',
+  'interrupted',
+  'completed',
+  'errored',
+  'shutdown',
+  'notFound',
+])
+export type V2ItemCompletedNotification__CollabAgentStatus = v.InferOutput<
+  typeof V2ItemCompletedNotification__CollabAgentStatusSchema
+>
+
+export const V2ItemCompletedNotification__CollabAgentStateSchema = v.looseObject({
+  message: v.optional(v.union([v.string(), v.null()])),
+  status: V2ItemCompletedNotification__CollabAgentStatusSchema,
+})
+export type V2ItemCompletedNotification__CollabAgentState = v.InferOutput<
+  typeof V2ItemCompletedNotification__CollabAgentStateSchema
+>
+
+export const V2ItemCompletedNotification__CollabAgentToolSchema = v.picklist([
+  'spawnAgent',
+  'sendInput',
+  'resumeAgent',
+  'wait',
+  'closeAgent',
+])
+export type V2ItemCompletedNotification__CollabAgentTool = v.InferOutput<
+  typeof V2ItemCompletedNotification__CollabAgentToolSchema
+>
+
+export const V2ItemCompletedNotification__CollabAgentToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ItemCompletedNotification__CollabAgentToolCallStatus = v.InferOutput<
+  typeof V2ItemCompletedNotification__CollabAgentToolCallStatusSchema
+>
+
+export const V2ItemCompletedNotification__CommandActionSchema = v.union([
+  v.looseObject({
+    command: v.string(),
+    name: v.string(),
+    path: V2ItemCompletedNotification__AbsolutePathBufSchema,
+    type: v.literal('read'),
+  }),
+  v.looseObject({
+    command: v.string(),
+    path: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('listFiles'),
+  }),
+  v.looseObject({
+    command: v.string(),
+    path: v.optional(v.union([v.string(), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ command: v.string(), type: v.literal('unknown') }),
+])
+export type V2ItemCompletedNotification__CommandAction = v.InferOutput<
+  typeof V2ItemCompletedNotification__CommandActionSchema
+>
+
+export const V2ItemCompletedNotification__CommandExecutionSourceSchema = v.picklist([
+  'agent',
+  'userShell',
+  'unifiedExecStartup',
+  'unifiedExecInteraction',
+])
+export type V2ItemCompletedNotification__CommandExecutionSource = v.InferOutput<
+  typeof V2ItemCompletedNotification__CommandExecutionSourceSchema
+>
+
+export const V2ItemCompletedNotification__CommandExecutionStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+  'declined',
+])
+export type V2ItemCompletedNotification__CommandExecutionStatus = v.InferOutput<
+  typeof V2ItemCompletedNotification__CommandExecutionStatusSchema
+>
+
+export const V2ItemCompletedNotification__DynamicToolCallOutputContentItemSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('inputText') }),
+  v.looseObject({ imageUrl: v.string(), type: v.literal('inputImage') }),
+])
+export type V2ItemCompletedNotification__DynamicToolCallOutputContentItem = v.InferOutput<
+  typeof V2ItemCompletedNotification__DynamicToolCallOutputContentItemSchema
+>
+
+export const V2ItemCompletedNotification__DynamicToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ItemCompletedNotification__DynamicToolCallStatus = v.InferOutput<
+  typeof V2ItemCompletedNotification__DynamicToolCallStatusSchema
+>
+
+export const V2ItemCompletedNotification__PatchChangeKindSchema = v.union([
+  v.looseObject({ type: v.literal('add') }),
+  v.looseObject({ type: v.literal('delete') }),
+  v.looseObject({
+    move_path: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('update'),
+  }),
+])
+export type V2ItemCompletedNotification__PatchChangeKind = v.InferOutput<
+  typeof V2ItemCompletedNotification__PatchChangeKindSchema
+>
+
+export const V2ItemCompletedNotification__FileUpdateChangeSchema = v.looseObject({
+  diff: v.string(),
+  kind: V2ItemCompletedNotification__PatchChangeKindSchema,
+  path: v.string(),
+})
+export type V2ItemCompletedNotification__FileUpdateChange = v.InferOutput<
+  typeof V2ItemCompletedNotification__FileUpdateChangeSchema
+>
+
+export const V2ItemCompletedNotification__HookPromptFragmentSchema = v.looseObject({
+  hookRunId: v.string(),
+  text: v.string(),
+})
+export type V2ItemCompletedNotification__HookPromptFragment = v.InferOutput<
+  typeof V2ItemCompletedNotification__HookPromptFragmentSchema
+>
+
+export const V2ItemCompletedNotification__McpToolCallErrorSchema = v.looseObject({
+  message: v.string(),
+})
+export type V2ItemCompletedNotification__McpToolCallError = v.InferOutput<
+  typeof V2ItemCompletedNotification__McpToolCallErrorSchema
+>
+
+export const V2ItemCompletedNotification__McpToolCallResultSchema = v.looseObject({
+  _meta: v.optional(v.unknown()),
+  content: v.array(v.unknown()),
+  structuredContent: v.optional(v.unknown()),
+})
+export type V2ItemCompletedNotification__McpToolCallResult = v.InferOutput<
+  typeof V2ItemCompletedNotification__McpToolCallResultSchema
+>
+
+export const V2ItemCompletedNotification__McpToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ItemCompletedNotification__McpToolCallStatus = v.InferOutput<
+  typeof V2ItemCompletedNotification__McpToolCallStatusSchema
+>
+
+export const V2ItemCompletedNotification__MemoryCitationEntrySchema = v.looseObject({
+  lineEnd: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  lineStart: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  note: v.string(),
+  path: v.string(),
+})
+export type V2ItemCompletedNotification__MemoryCitationEntry = v.InferOutput<
+  typeof V2ItemCompletedNotification__MemoryCitationEntrySchema
+>
+
+export const V2ItemCompletedNotification__MemoryCitationSchema = v.looseObject({
+  entries: v.array(V2ItemCompletedNotification__MemoryCitationEntrySchema),
+  threadIds: v.array(v.string()),
+})
+export type V2ItemCompletedNotification__MemoryCitation = v.InferOutput<
+  typeof V2ItemCompletedNotification__MemoryCitationSchema
+>
+
+export const V2ItemCompletedNotification__MessagePhaseSchema = v.union([
+  v.literal('commentary'),
+  v.literal('final_answer'),
+])
+export type V2ItemCompletedNotification__MessagePhase = v.InferOutput<
+  typeof V2ItemCompletedNotification__MessagePhaseSchema
+>
+
+export const V2ItemCompletedNotification__PatchApplyStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+  'declined',
+])
+export type V2ItemCompletedNotification__PatchApplyStatus = v.InferOutput<
+  typeof V2ItemCompletedNotification__PatchApplyStatusSchema
+>
+
+export const V2ItemCompletedNotification__ReasoningEffortSchema = v.picklist([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+])
+export type V2ItemCompletedNotification__ReasoningEffort = v.InferOutput<
+  typeof V2ItemCompletedNotification__ReasoningEffortSchema
+>
+
+export const V2ItemCompletedNotification__TextElementSchema = v.looseObject({
+  byteRange: V2ItemCompletedNotification__ByteRangeSchema,
+  placeholder: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2ItemCompletedNotification__TextElement = v.InferOutput<
+  typeof V2ItemCompletedNotification__TextElementSchema
+>
+
+export const V2ItemCompletedNotification__UserInputSchema = v.union([
+  v.looseObject({
+    text: v.string(),
+    text_elements: v.optional(v.array(V2ItemCompletedNotification__TextElementSchema)),
+    type: v.literal('text'),
+  }),
+  v.looseObject({ type: v.literal('image'), url: v.string() }),
+  v.looseObject({ path: v.string(), type: v.literal('localImage') }),
+  v.looseObject({ name: v.string(), path: v.string(), type: v.literal('skill') }),
+  v.looseObject({ name: v.string(), path: v.string(), type: v.literal('mention') }),
+])
+export type V2ItemCompletedNotification__UserInput = v.InferOutput<
+  typeof V2ItemCompletedNotification__UserInputSchema
+>
+
+export const V2ItemCompletedNotification__WebSearchActionSchema = v.union([
+  v.looseObject({
+    queries: v.optional(v.union([v.array(v.string()), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ type: v.literal('openPage'), url: v.optional(v.union([v.string(), v.null()])) }),
+  v.looseObject({
+    pattern: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('findInPage'),
+    url: v.optional(v.union([v.string(), v.null()])),
+  }),
+  v.looseObject({ type: v.literal('other') }),
+])
+export type V2ItemCompletedNotification__WebSearchAction = v.InferOutput<
+  typeof V2ItemCompletedNotification__WebSearchActionSchema
+>
+
+export const V2ItemCompletedNotification__ThreadItemSchema = v.union([
+  v.looseObject({
+    content: v.array(V2ItemCompletedNotification__UserInputSchema),
+    id: v.string(),
+    type: v.literal('userMessage'),
+  }),
+  v.looseObject({
+    fragments: v.array(V2ItemCompletedNotification__HookPromptFragmentSchema),
+    id: v.string(),
+    type: v.literal('hookPrompt'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    memoryCitation: v.optional(
+      v.union([V2ItemCompletedNotification__MemoryCitationSchema, v.null()]),
+    ),
+    phase: v.optional(v.union([V2ItemCompletedNotification__MessagePhaseSchema, v.null()])),
+    text: v.string(),
+    type: v.literal('agentMessage'),
+  }),
+  v.looseObject({ id: v.string(), text: v.string(), type: v.literal('plan') }),
+  v.looseObject({
+    content: v.optional(v.array(v.string())),
+    id: v.string(),
+    summary: v.optional(v.array(v.string())),
+    type: v.literal('reasoning'),
+  }),
+  v.looseObject({
+    aggregatedOutput: v.optional(v.union([v.string(), v.null()])),
+    command: v.string(),
+    commandActions: v.array(V2ItemCompletedNotification__CommandActionSchema),
+    cwd: V2ItemCompletedNotification__AbsolutePathBufSchema,
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    exitCode: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    id: v.string(),
+    processId: v.optional(v.union([v.string(), v.null()])),
+    source: v.optional(V2ItemCompletedNotification__CommandExecutionSourceSchema),
+    status: V2ItemCompletedNotification__CommandExecutionStatusSchema,
+    type: v.literal('commandExecution'),
+  }),
+  v.looseObject({
+    changes: v.array(V2ItemCompletedNotification__FileUpdateChangeSchema),
+    id: v.string(),
+    status: V2ItemCompletedNotification__PatchApplyStatusSchema,
+    type: v.literal('fileChange'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    error: v.optional(v.union([V2ItemCompletedNotification__McpToolCallErrorSchema, v.null()])),
+    id: v.string(),
+    mcpAppResourceUri: v.optional(v.union([v.string(), v.null()])),
+    result: v.optional(v.union([V2ItemCompletedNotification__McpToolCallResultSchema, v.null()])),
+    server: v.string(),
+    status: V2ItemCompletedNotification__McpToolCallStatusSchema,
+    tool: v.string(),
+    type: v.literal('mcpToolCall'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    contentItems: v.optional(
+      v.union([
+        v.array(V2ItemCompletedNotification__DynamicToolCallOutputContentItemSchema),
+        v.null(),
+      ]),
+    ),
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    id: v.string(),
+    namespace: v.optional(v.union([v.string(), v.null()])),
+    status: V2ItemCompletedNotification__DynamicToolCallStatusSchema,
+    success: v.optional(v.union([v.boolean(), v.null()])),
+    tool: v.string(),
+    type: v.literal('dynamicToolCall'),
+  }),
+  v.looseObject({
+    agentsStates: v.record(v.string(), V2ItemCompletedNotification__CollabAgentStateSchema),
+    id: v.string(),
+    model: v.optional(v.union([v.string(), v.null()])),
+    prompt: v.optional(v.union([v.string(), v.null()])),
+    reasoningEffort: v.optional(
+      v.union([V2ItemCompletedNotification__ReasoningEffortSchema, v.null()]),
+    ),
+    receiverThreadIds: v.array(v.string()),
+    senderThreadId: v.string(),
+    status: V2ItemCompletedNotification__CollabAgentToolCallStatusSchema,
+    tool: V2ItemCompletedNotification__CollabAgentToolSchema,
+    type: v.literal('collabAgentToolCall'),
+  }),
+  v.looseObject({
+    action: v.optional(v.union([V2ItemCompletedNotification__WebSearchActionSchema, v.null()])),
+    id: v.string(),
+    query: v.string(),
+    type: v.literal('webSearch'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    path: V2ItemCompletedNotification__AbsolutePathBufSchema,
+    type: v.literal('imageView'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    result: v.string(),
+    revisedPrompt: v.optional(v.union([v.string(), v.null()])),
+    savedPath: v.optional(v.union([V2ItemCompletedNotification__AbsolutePathBufSchema, v.null()])),
+    status: v.string(),
+    type: v.literal('imageGeneration'),
+  }),
+  v.looseObject({ id: v.string(), review: v.string(), type: v.literal('enteredReviewMode') }),
+  v.looseObject({ id: v.string(), review: v.string(), type: v.literal('exitedReviewMode') }),
+  v.looseObject({ id: v.string(), type: v.literal('contextCompaction') }),
+])
+export type V2ItemCompletedNotification__ThreadItem = v.InferOutput<
+  typeof V2ItemCompletedNotification__ThreadItemSchema
+>
+
+export const V2ItemCompletedNotificationSchema = v.looseObject({
+  item: V2ItemCompletedNotification__ThreadItemSchema,
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ItemCompletedNotification = v.InferOutput<typeof V2ItemCompletedNotificationSchema>
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema = v.string()
+export type V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema
+>
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemAccessModeSchema =
+  v.picklist(['read', 'write', 'none'])
+export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemAccessMode = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewCompletedNotification__FileSystemAccessModeSchema
+>
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSpecialPathSchema =
+  v.union([
+    v.looseObject({ kind: v.literal('root') }),
+    v.looseObject({ kind: v.literal('minimal') }),
+    v.looseObject({ kind: v.literal('current_working_directory') }),
+    v.looseObject({
+      kind: v.literal('project_roots'),
+      subpath: v.optional(v.union([v.string(), v.null()])),
+    }),
+    v.looseObject({ kind: v.literal('tmpdir') }),
+    v.looseObject({ kind: v.literal('slash_tmp') }),
+    v.looseObject({
+      kind: v.literal('unknown'),
+      path: v.string(),
+      subpath: v.optional(v.union([v.string(), v.null()])),
+    }),
+  ])
+export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSpecialPath =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSpecialPathSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemPathSchema = v.union([
+  v.looseObject({
+    path: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema,
+    type: v.literal('path'),
+  }),
+  v.looseObject({ pattern: v.string(), type: v.literal('glob_pattern') }),
+  v.looseObject({
+    type: v.literal('special'),
+    value: V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSpecialPathSchema,
+  }),
+])
+export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemPath = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewCompletedNotification__FileSystemPathSchema
+>
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntrySchema =
+  v.looseObject({
+    access: V2ItemGuardianApprovalReviewCompletedNotification__FileSystemAccessModeSchema,
+    path: V2ItemGuardianApprovalReviewCompletedNotification__FileSystemPathSchema,
+  })
+export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntry =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntrySchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__AdditionalFileSystemPermissionsSchema =
+  v.looseObject({
+    entries: v.optional(
+      v.union([
+        v.array(V2ItemGuardianApprovalReviewCompletedNotification__FileSystemSandboxEntrySchema),
+        v.null(),
+      ]),
+    ),
+    globScanMaxDepth: v.optional(
+      v.union([v.pipe(v.number(), v.integer(), v.minValue(1)), v.null()]),
+    ),
+    read: v.optional(
+      v.union([
+        v.array(V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema),
+        v.null(),
+      ]),
+    ),
+    write: v.optional(
+      v.union([
+        v.array(V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema),
+        v.null(),
+      ]),
+    ),
+  })
+export type V2ItemGuardianApprovalReviewCompletedNotification__AdditionalFileSystemPermissions =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__AdditionalFileSystemPermissionsSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__AdditionalNetworkPermissionsSchema =
+  v.looseObject({ enabled: v.optional(v.union([v.boolean(), v.null()])) })
+export type V2ItemGuardianApprovalReviewCompletedNotification__AdditionalNetworkPermissions =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__AdditionalNetworkPermissionsSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__AutoReviewDecisionSourceSchema =
+  v.literal('agent')
+export type V2ItemGuardianApprovalReviewCompletedNotification__AutoReviewDecisionSource =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__AutoReviewDecisionSourceSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevelSchema =
+  v.picklist(['low', 'medium', 'high', 'critical'])
+export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevel = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevelSchema
+>
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewStatusSchema =
+  v.picklist(['inProgress', 'approved', 'denied', 'timedOut', 'aborted'])
+export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewStatus =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewStatusSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorizationSchema =
+  v.picklist(['unknown', 'low', 'medium', 'high'])
+export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorization =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorizationSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewSchema =
+  v.looseObject({
+    rationale: v.optional(v.union([v.string(), v.null()])),
+    riskLevel: v.optional(
+      v.union([
+        V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevelSchema,
+        v.null(),
+      ]),
+    ),
+    status: V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewStatusSchema,
+    userAuthorization: v.optional(
+      v.union([
+        V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorizationSchema,
+        v.null(),
+      ]),
+    ),
+  })
+export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReview =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSourceSchema =
+  v.picklist(['shell', 'unifiedExec'])
+export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSource =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSourceSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocolSchema =
+  v.picklist(['http', 'https', 'socks5Tcp', 'socks5Udp'])
+export type V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocol =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocolSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfileSchema =
+  v.looseObject({
+    fileSystem: v.optional(
+      v.union([
+        V2ItemGuardianApprovalReviewCompletedNotification__AdditionalFileSystemPermissionsSchema,
+        v.null(),
+      ]),
+    ),
+    network: v.optional(
+      v.union([
+        V2ItemGuardianApprovalReviewCompletedNotification__AdditionalNetworkPermissionsSchema,
+        v.null(),
+      ]),
+    ),
+  })
+export type V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfile =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfileSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewActionSchema =
+  v.union([
+    v.looseObject({
+      command: v.string(),
+      cwd: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema,
+      source: V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSourceSchema,
+      type: v.literal('command'),
+    }),
+    v.looseObject({
+      argv: v.array(v.string()),
+      cwd: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema,
+      program: v.string(),
+      source: V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSourceSchema,
+      type: v.literal('execve'),
+    }),
+    v.looseObject({
+      cwd: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema,
+      files: v.array(V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBufSchema),
+      type: v.literal('applyPatch'),
+    }),
+    v.looseObject({
+      host: v.string(),
+      port: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      protocol: V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocolSchema,
+      target: v.string(),
+      type: v.literal('networkAccess'),
+    }),
+    v.looseObject({
+      connectorId: v.optional(v.union([v.string(), v.null()])),
+      connectorName: v.optional(v.union([v.string(), v.null()])),
+      server: v.string(),
+      toolName: v.string(),
+      toolTitle: v.optional(v.union([v.string(), v.null()])),
+      type: v.literal('mcpToolCall'),
+    }),
+    v.looseObject({
+      permissions:
+        V2ItemGuardianApprovalReviewCompletedNotification__RequestPermissionProfileSchema,
+      reason: v.optional(v.union([v.string(), v.null()])),
+      type: v.literal('requestPermissions'),
+    }),
+  ])
+export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewAction =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewActionSchema
+  >
+
+export const V2ItemGuardianApprovalReviewCompletedNotificationSchema = v.looseObject({
+  action: V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewActionSchema,
+  decisionSource: V2ItemGuardianApprovalReviewCompletedNotification__AutoReviewDecisionSourceSchema,
+  review: V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewSchema,
+  reviewId: v.string(),
+  targetItemId: v.optional(v.union([v.string(), v.null()])),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ItemGuardianApprovalReviewCompletedNotification = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewCompletedNotificationSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema = v.string()
+export type V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessModeSchema =
+  v.picklist(['read', 'write', 'none'])
+export type V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessMode = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessModeSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemSpecialPathSchema = v.union(
+  [
+    v.looseObject({ kind: v.literal('root') }),
+    v.looseObject({ kind: v.literal('minimal') }),
+    v.looseObject({ kind: v.literal('current_working_directory') }),
+    v.looseObject({
+      kind: v.literal('project_roots'),
+      subpath: v.optional(v.union([v.string(), v.null()])),
+    }),
+    v.looseObject({ kind: v.literal('tmpdir') }),
+    v.looseObject({ kind: v.literal('slash_tmp') }),
+    v.looseObject({
+      kind: v.literal('unknown'),
+      path: v.string(),
+      subpath: v.optional(v.union([v.string(), v.null()])),
+    }),
+  ],
+)
+export type V2ItemGuardianApprovalReviewStartedNotification__FileSystemSpecialPath = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__FileSystemSpecialPathSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemPathSchema = v.union([
+  v.looseObject({
+    path: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema,
+    type: v.literal('path'),
+  }),
+  v.looseObject({ pattern: v.string(), type: v.literal('glob_pattern') }),
+  v.looseObject({
+    type: v.literal('special'),
+    value: V2ItemGuardianApprovalReviewStartedNotification__FileSystemSpecialPathSchema,
+  }),
+])
+export type V2ItemGuardianApprovalReviewStartedNotification__FileSystemPath = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__FileSystemPathSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntrySchema =
+  v.looseObject({
+    access: V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessModeSchema,
+    path: V2ItemGuardianApprovalReviewStartedNotification__FileSystemPathSchema,
+  })
+export type V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntry = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntrySchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__AdditionalFileSystemPermissionsSchema =
+  v.looseObject({
+    entries: v.optional(
+      v.union([
+        v.array(V2ItemGuardianApprovalReviewStartedNotification__FileSystemSandboxEntrySchema),
+        v.null(),
+      ]),
+    ),
+    globScanMaxDepth: v.optional(
+      v.union([v.pipe(v.number(), v.integer(), v.minValue(1)), v.null()]),
+    ),
+    read: v.optional(
+      v.union([
+        v.array(V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema),
+        v.null(),
+      ]),
+    ),
+    write: v.optional(
+      v.union([
+        v.array(V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema),
+        v.null(),
+      ]),
+    ),
+  })
+export type V2ItemGuardianApprovalReviewStartedNotification__AdditionalFileSystemPermissions =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewStartedNotification__AdditionalFileSystemPermissionsSchema
+  >
+
+export const V2ItemGuardianApprovalReviewStartedNotification__AdditionalNetworkPermissionsSchema =
+  v.looseObject({ enabled: v.optional(v.union([v.boolean(), v.null()])) })
+export type V2ItemGuardianApprovalReviewStartedNotification__AdditionalNetworkPermissions =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewStartedNotification__AdditionalNetworkPermissionsSchema
+  >
+
+export const V2ItemGuardianApprovalReviewStartedNotification__GuardianRiskLevelSchema = v.picklist([
+  'low',
+  'medium',
+  'high',
+  'critical',
+])
+export type V2ItemGuardianApprovalReviewStartedNotification__GuardianRiskLevel = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianRiskLevelSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewStatusSchema =
+  v.picklist(['inProgress', 'approved', 'denied', 'timedOut', 'aborted'])
+export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewStatus =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewStatusSchema
+  >
+
+export const V2ItemGuardianApprovalReviewStartedNotification__GuardianUserAuthorizationSchema =
+  v.picklist(['unknown', 'low', 'medium', 'high'])
+export type V2ItemGuardianApprovalReviewStartedNotification__GuardianUserAuthorization =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianUserAuthorizationSchema
+  >
+
+export const V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewSchema =
+  v.looseObject({
+    rationale: v.optional(v.union([v.string(), v.null()])),
+    riskLevel: v.optional(
+      v.union([V2ItemGuardianApprovalReviewStartedNotification__GuardianRiskLevelSchema, v.null()]),
+    ),
+    status: V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewStatusSchema,
+    userAuthorization: v.optional(
+      v.union([
+        V2ItemGuardianApprovalReviewStartedNotification__GuardianUserAuthorizationSchema,
+        v.null(),
+      ]),
+    ),
+  })
+export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReview = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSourceSchema =
+  v.picklist(['shell', 'unifiedExec'])
+export type V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSource = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSourceSchema
+>
+
+export const V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocolSchema =
+  v.picklist(['http', 'https', 'socks5Tcp', 'socks5Udp'])
+export type V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocol =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocolSchema
+  >
+
+export const V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfileSchema =
+  v.looseObject({
+    fileSystem: v.optional(
+      v.union([
+        V2ItemGuardianApprovalReviewStartedNotification__AdditionalFileSystemPermissionsSchema,
+        v.null(),
+      ]),
+    ),
+    network: v.optional(
+      v.union([
+        V2ItemGuardianApprovalReviewStartedNotification__AdditionalNetworkPermissionsSchema,
+        v.null(),
+      ]),
+    ),
+  })
+export type V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfile =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfileSchema
+  >
+
+export const V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewActionSchema =
+  v.union([
+    v.looseObject({
+      command: v.string(),
+      cwd: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema,
+      source: V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSourceSchema,
+      type: v.literal('command'),
+    }),
+    v.looseObject({
+      argv: v.array(v.string()),
+      cwd: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema,
+      program: v.string(),
+      source: V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSourceSchema,
+      type: v.literal('execve'),
+    }),
+    v.looseObject({
+      cwd: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema,
+      files: v.array(V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema),
+      type: v.literal('applyPatch'),
+    }),
+    v.looseObject({
+      host: v.string(),
+      port: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      protocol: V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocolSchema,
+      target: v.string(),
+      type: v.literal('networkAccess'),
+    }),
+    v.looseObject({
+      connectorId: v.optional(v.union([v.string(), v.null()])),
+      connectorName: v.optional(v.union([v.string(), v.null()])),
+      server: v.string(),
+      toolName: v.string(),
+      toolTitle: v.optional(v.union([v.string(), v.null()])),
+      type: v.literal('mcpToolCall'),
+    }),
+    v.looseObject({
+      permissions: V2ItemGuardianApprovalReviewStartedNotification__RequestPermissionProfileSchema,
+      reason: v.optional(v.union([v.string(), v.null()])),
+      type: v.literal('requestPermissions'),
+    }),
+  ])
+export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewAction =
+  v.InferOutput<
+    typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewActionSchema
+  >
+
+export const V2ItemGuardianApprovalReviewStartedNotificationSchema = v.looseObject({
+  action: V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewActionSchema,
+  review: V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewSchema,
+  reviewId: v.string(),
+  targetItemId: v.optional(v.union([v.string(), v.null()])),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ItemGuardianApprovalReviewStartedNotification = v.InferOutput<
+  typeof V2ItemGuardianApprovalReviewStartedNotificationSchema
+>
+
+export const V2ItemStartedNotification__AbsolutePathBufSchema = v.string()
+export type V2ItemStartedNotification__AbsolutePathBuf = v.InferOutput<
+  typeof V2ItemStartedNotification__AbsolutePathBufSchema
+>
+
+export const V2ItemStartedNotification__ByteRangeSchema = v.looseObject({
+  end: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  start: v.pipe(v.number(), v.integer(), v.minValue(0)),
+})
+export type V2ItemStartedNotification__ByteRange = v.InferOutput<
+  typeof V2ItemStartedNotification__ByteRangeSchema
+>
+
+export const V2ItemStartedNotification__CollabAgentStatusSchema = v.picklist([
+  'pendingInit',
+  'running',
+  'interrupted',
+  'completed',
+  'errored',
+  'shutdown',
+  'notFound',
+])
+export type V2ItemStartedNotification__CollabAgentStatus = v.InferOutput<
+  typeof V2ItemStartedNotification__CollabAgentStatusSchema
+>
+
+export const V2ItemStartedNotification__CollabAgentStateSchema = v.looseObject({
+  message: v.optional(v.union([v.string(), v.null()])),
+  status: V2ItemStartedNotification__CollabAgentStatusSchema,
+})
+export type V2ItemStartedNotification__CollabAgentState = v.InferOutput<
+  typeof V2ItemStartedNotification__CollabAgentStateSchema
+>
+
+export const V2ItemStartedNotification__CollabAgentToolSchema = v.picklist([
+  'spawnAgent',
+  'sendInput',
+  'resumeAgent',
+  'wait',
+  'closeAgent',
+])
+export type V2ItemStartedNotification__CollabAgentTool = v.InferOutput<
+  typeof V2ItemStartedNotification__CollabAgentToolSchema
+>
+
+export const V2ItemStartedNotification__CollabAgentToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ItemStartedNotification__CollabAgentToolCallStatus = v.InferOutput<
+  typeof V2ItemStartedNotification__CollabAgentToolCallStatusSchema
+>
+
+export const V2ItemStartedNotification__CommandActionSchema = v.union([
+  v.looseObject({
+    command: v.string(),
+    name: v.string(),
+    path: V2ItemStartedNotification__AbsolutePathBufSchema,
+    type: v.literal('read'),
+  }),
+  v.looseObject({
+    command: v.string(),
+    path: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('listFiles'),
+  }),
+  v.looseObject({
+    command: v.string(),
+    path: v.optional(v.union([v.string(), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ command: v.string(), type: v.literal('unknown') }),
+])
+export type V2ItemStartedNotification__CommandAction = v.InferOutput<
+  typeof V2ItemStartedNotification__CommandActionSchema
+>
+
+export const V2ItemStartedNotification__CommandExecutionSourceSchema = v.picklist([
+  'agent',
+  'userShell',
+  'unifiedExecStartup',
+  'unifiedExecInteraction',
+])
+export type V2ItemStartedNotification__CommandExecutionSource = v.InferOutput<
+  typeof V2ItemStartedNotification__CommandExecutionSourceSchema
+>
+
+export const V2ItemStartedNotification__CommandExecutionStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+  'declined',
+])
+export type V2ItemStartedNotification__CommandExecutionStatus = v.InferOutput<
+  typeof V2ItemStartedNotification__CommandExecutionStatusSchema
+>
+
+export const V2ItemStartedNotification__DynamicToolCallOutputContentItemSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('inputText') }),
+  v.looseObject({ imageUrl: v.string(), type: v.literal('inputImage') }),
+])
+export type V2ItemStartedNotification__DynamicToolCallOutputContentItem = v.InferOutput<
+  typeof V2ItemStartedNotification__DynamicToolCallOutputContentItemSchema
+>
+
+export const V2ItemStartedNotification__DynamicToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ItemStartedNotification__DynamicToolCallStatus = v.InferOutput<
+  typeof V2ItemStartedNotification__DynamicToolCallStatusSchema
+>
+
+export const V2ItemStartedNotification__PatchChangeKindSchema = v.union([
+  v.looseObject({ type: v.literal('add') }),
+  v.looseObject({ type: v.literal('delete') }),
+  v.looseObject({
+    move_path: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('update'),
+  }),
+])
+export type V2ItemStartedNotification__PatchChangeKind = v.InferOutput<
+  typeof V2ItemStartedNotification__PatchChangeKindSchema
+>
+
+export const V2ItemStartedNotification__FileUpdateChangeSchema = v.looseObject({
+  diff: v.string(),
+  kind: V2ItemStartedNotification__PatchChangeKindSchema,
+  path: v.string(),
+})
+export type V2ItemStartedNotification__FileUpdateChange = v.InferOutput<
+  typeof V2ItemStartedNotification__FileUpdateChangeSchema
+>
+
+export const V2ItemStartedNotification__HookPromptFragmentSchema = v.looseObject({
+  hookRunId: v.string(),
+  text: v.string(),
+})
+export type V2ItemStartedNotification__HookPromptFragment = v.InferOutput<
+  typeof V2ItemStartedNotification__HookPromptFragmentSchema
+>
+
+export const V2ItemStartedNotification__McpToolCallErrorSchema = v.looseObject({
+  message: v.string(),
+})
+export type V2ItemStartedNotification__McpToolCallError = v.InferOutput<
+  typeof V2ItemStartedNotification__McpToolCallErrorSchema
+>
+
+export const V2ItemStartedNotification__McpToolCallResultSchema = v.looseObject({
+  _meta: v.optional(v.unknown()),
+  content: v.array(v.unknown()),
+  structuredContent: v.optional(v.unknown()),
+})
+export type V2ItemStartedNotification__McpToolCallResult = v.InferOutput<
+  typeof V2ItemStartedNotification__McpToolCallResultSchema
+>
+
+export const V2ItemStartedNotification__McpToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ItemStartedNotification__McpToolCallStatus = v.InferOutput<
+  typeof V2ItemStartedNotification__McpToolCallStatusSchema
+>
+
+export const V2ItemStartedNotification__MemoryCitationEntrySchema = v.looseObject({
+  lineEnd: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  lineStart: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  note: v.string(),
+  path: v.string(),
+})
+export type V2ItemStartedNotification__MemoryCitationEntry = v.InferOutput<
+  typeof V2ItemStartedNotification__MemoryCitationEntrySchema
+>
+
+export const V2ItemStartedNotification__MemoryCitationSchema = v.looseObject({
+  entries: v.array(V2ItemStartedNotification__MemoryCitationEntrySchema),
+  threadIds: v.array(v.string()),
+})
+export type V2ItemStartedNotification__MemoryCitation = v.InferOutput<
+  typeof V2ItemStartedNotification__MemoryCitationSchema
+>
+
+export const V2ItemStartedNotification__MessagePhaseSchema = v.union([
+  v.literal('commentary'),
+  v.literal('final_answer'),
+])
+export type V2ItemStartedNotification__MessagePhase = v.InferOutput<
+  typeof V2ItemStartedNotification__MessagePhaseSchema
+>
+
+export const V2ItemStartedNotification__PatchApplyStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+  'declined',
+])
+export type V2ItemStartedNotification__PatchApplyStatus = v.InferOutput<
+  typeof V2ItemStartedNotification__PatchApplyStatusSchema
+>
+
+export const V2ItemStartedNotification__ReasoningEffortSchema = v.picklist([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+])
+export type V2ItemStartedNotification__ReasoningEffort = v.InferOutput<
+  typeof V2ItemStartedNotification__ReasoningEffortSchema
+>
+
+export const V2ItemStartedNotification__TextElementSchema = v.looseObject({
+  byteRange: V2ItemStartedNotification__ByteRangeSchema,
+  placeholder: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2ItemStartedNotification__TextElement = v.InferOutput<
+  typeof V2ItemStartedNotification__TextElementSchema
+>
+
+export const V2ItemStartedNotification__UserInputSchema = v.union([
+  v.looseObject({
+    text: v.string(),
+    text_elements: v.optional(v.array(V2ItemStartedNotification__TextElementSchema)),
+    type: v.literal('text'),
+  }),
+  v.looseObject({ type: v.literal('image'), url: v.string() }),
+  v.looseObject({ path: v.string(), type: v.literal('localImage') }),
+  v.looseObject({ name: v.string(), path: v.string(), type: v.literal('skill') }),
+  v.looseObject({ name: v.string(), path: v.string(), type: v.literal('mention') }),
+])
+export type V2ItemStartedNotification__UserInput = v.InferOutput<
+  typeof V2ItemStartedNotification__UserInputSchema
+>
+
+export const V2ItemStartedNotification__WebSearchActionSchema = v.union([
+  v.looseObject({
+    queries: v.optional(v.union([v.array(v.string()), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ type: v.literal('openPage'), url: v.optional(v.union([v.string(), v.null()])) }),
+  v.looseObject({
+    pattern: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('findInPage'),
+    url: v.optional(v.union([v.string(), v.null()])),
+  }),
+  v.looseObject({ type: v.literal('other') }),
+])
+export type V2ItemStartedNotification__WebSearchAction = v.InferOutput<
+  typeof V2ItemStartedNotification__WebSearchActionSchema
+>
+
+export const V2ItemStartedNotification__ThreadItemSchema = v.union([
+  v.looseObject({
+    content: v.array(V2ItemStartedNotification__UserInputSchema),
+    id: v.string(),
+    type: v.literal('userMessage'),
+  }),
+  v.looseObject({
+    fragments: v.array(V2ItemStartedNotification__HookPromptFragmentSchema),
+    id: v.string(),
+    type: v.literal('hookPrompt'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    memoryCitation: v.optional(
+      v.union([V2ItemStartedNotification__MemoryCitationSchema, v.null()]),
+    ),
+    phase: v.optional(v.union([V2ItemStartedNotification__MessagePhaseSchema, v.null()])),
+    text: v.string(),
+    type: v.literal('agentMessage'),
+  }),
+  v.looseObject({ id: v.string(), text: v.string(), type: v.literal('plan') }),
+  v.looseObject({
+    content: v.optional(v.array(v.string())),
+    id: v.string(),
+    summary: v.optional(v.array(v.string())),
+    type: v.literal('reasoning'),
+  }),
+  v.looseObject({
+    aggregatedOutput: v.optional(v.union([v.string(), v.null()])),
+    command: v.string(),
+    commandActions: v.array(V2ItemStartedNotification__CommandActionSchema),
+    cwd: V2ItemStartedNotification__AbsolutePathBufSchema,
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    exitCode: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    id: v.string(),
+    processId: v.optional(v.union([v.string(), v.null()])),
+    source: v.optional(V2ItemStartedNotification__CommandExecutionSourceSchema),
+    status: V2ItemStartedNotification__CommandExecutionStatusSchema,
+    type: v.literal('commandExecution'),
+  }),
+  v.looseObject({
+    changes: v.array(V2ItemStartedNotification__FileUpdateChangeSchema),
+    id: v.string(),
+    status: V2ItemStartedNotification__PatchApplyStatusSchema,
+    type: v.literal('fileChange'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    error: v.optional(v.union([V2ItemStartedNotification__McpToolCallErrorSchema, v.null()])),
+    id: v.string(),
+    mcpAppResourceUri: v.optional(v.union([v.string(), v.null()])),
+    result: v.optional(v.union([V2ItemStartedNotification__McpToolCallResultSchema, v.null()])),
+    server: v.string(),
+    status: V2ItemStartedNotification__McpToolCallStatusSchema,
+    tool: v.string(),
+    type: v.literal('mcpToolCall'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    contentItems: v.optional(
+      v.union([
+        v.array(V2ItemStartedNotification__DynamicToolCallOutputContentItemSchema),
+        v.null(),
+      ]),
+    ),
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    id: v.string(),
+    namespace: v.optional(v.union([v.string(), v.null()])),
+    status: V2ItemStartedNotification__DynamicToolCallStatusSchema,
+    success: v.optional(v.union([v.boolean(), v.null()])),
+    tool: v.string(),
+    type: v.literal('dynamicToolCall'),
+  }),
+  v.looseObject({
+    agentsStates: v.record(v.string(), V2ItemStartedNotification__CollabAgentStateSchema),
+    id: v.string(),
+    model: v.optional(v.union([v.string(), v.null()])),
+    prompt: v.optional(v.union([v.string(), v.null()])),
+    reasoningEffort: v.optional(
+      v.union([V2ItemStartedNotification__ReasoningEffortSchema, v.null()]),
+    ),
+    receiverThreadIds: v.array(v.string()),
+    senderThreadId: v.string(),
+    status: V2ItemStartedNotification__CollabAgentToolCallStatusSchema,
+    tool: V2ItemStartedNotification__CollabAgentToolSchema,
+    type: v.literal('collabAgentToolCall'),
+  }),
+  v.looseObject({
+    action: v.optional(v.union([V2ItemStartedNotification__WebSearchActionSchema, v.null()])),
+    id: v.string(),
+    query: v.string(),
+    type: v.literal('webSearch'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    path: V2ItemStartedNotification__AbsolutePathBufSchema,
+    type: v.literal('imageView'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    result: v.string(),
+    revisedPrompt: v.optional(v.union([v.string(), v.null()])),
+    savedPath: v.optional(v.union([V2ItemStartedNotification__AbsolutePathBufSchema, v.null()])),
+    status: v.string(),
+    type: v.literal('imageGeneration'),
+  }),
+  v.looseObject({ id: v.string(), review: v.string(), type: v.literal('enteredReviewMode') }),
+  v.looseObject({ id: v.string(), review: v.string(), type: v.literal('exitedReviewMode') }),
+  v.looseObject({ id: v.string(), type: v.literal('contextCompaction') }),
+])
+export type V2ItemStartedNotification__ThreadItem = v.InferOutput<
+  typeof V2ItemStartedNotification__ThreadItemSchema
+>
+
+export const V2ItemStartedNotificationSchema = v.looseObject({
+  item: V2ItemStartedNotification__ThreadItemSchema,
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ItemStartedNotification = v.InferOutput<typeof V2ItemStartedNotificationSchema>
+
+export const V2McpServerOauthLoginCompletedNotificationSchema = v.looseObject({
+  error: v.optional(v.union([v.string(), v.null()])),
+  name: v.string(),
+  success: v.boolean(),
+})
+export type V2McpServerOauthLoginCompletedNotification = v.InferOutput<
+  typeof V2McpServerOauthLoginCompletedNotificationSchema
+>
+
+export const V2McpServerStatusUpdatedNotification__McpServerStartupStateSchema = v.picklist([
+  'starting',
+  'ready',
+  'failed',
+  'cancelled',
+])
+export type V2McpServerStatusUpdatedNotification__McpServerStartupState = v.InferOutput<
+  typeof V2McpServerStatusUpdatedNotification__McpServerStartupStateSchema
+>
+
+export const V2McpServerStatusUpdatedNotificationSchema = v.looseObject({
+  error: v.optional(v.union([v.string(), v.null()])),
+  name: v.string(),
+  status: V2McpServerStatusUpdatedNotification__McpServerStartupStateSchema,
+})
+export type V2McpServerStatusUpdatedNotification = v.InferOutput<
+  typeof V2McpServerStatusUpdatedNotificationSchema
+>
+
+export const V2McpToolCallProgressNotificationSchema = v.looseObject({
+  itemId: v.string(),
+  message: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2McpToolCallProgressNotification = v.InferOutput<
+  typeof V2McpToolCallProgressNotificationSchema
+>
 
 export const V2ModelListParamsSchema = v.looseObject({
   cursor: v.optional(v.union([v.string(), v.null()])),
@@ -235,6 +2022,332 @@ export const V2ModelListResponseSchema = v.looseObject({
   nextCursor: v.optional(v.union([v.string(), v.null()])),
 })
 export type V2ModelListResponse = v.InferOutput<typeof V2ModelListResponseSchema>
+
+export const V2ModelReroutedNotification__ModelRerouteReasonSchema =
+  v.literal('highRiskCyberActivity')
+export type V2ModelReroutedNotification__ModelRerouteReason = v.InferOutput<
+  typeof V2ModelReroutedNotification__ModelRerouteReasonSchema
+>
+
+export const V2ModelReroutedNotificationSchema = v.looseObject({
+  fromModel: v.string(),
+  reason: V2ModelReroutedNotification__ModelRerouteReasonSchema,
+  threadId: v.string(),
+  toModel: v.string(),
+  turnId: v.string(),
+})
+export type V2ModelReroutedNotification = v.InferOutput<typeof V2ModelReroutedNotificationSchema>
+
+export const V2PlanDeltaNotificationSchema = v.looseObject({
+  delta: v.string(),
+  itemId: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2PlanDeltaNotification = v.InferOutput<typeof V2PlanDeltaNotificationSchema>
+
+export const V2RawResponseItemCompletedNotification__ImageDetailSchema = v.picklist([
+  'auto',
+  'low',
+  'high',
+  'original',
+])
+export type V2RawResponseItemCompletedNotification__ImageDetail = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__ImageDetailSchema
+>
+
+export const V2RawResponseItemCompletedNotification__ContentItemSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('input_text') }),
+  v.looseObject({
+    detail: v.optional(
+      v.union([V2RawResponseItemCompletedNotification__ImageDetailSchema, v.null()]),
+    ),
+    image_url: v.string(),
+    type: v.literal('input_image'),
+  }),
+  v.looseObject({ text: v.string(), type: v.literal('output_text') }),
+])
+export type V2RawResponseItemCompletedNotification__ContentItem = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__ContentItemSchema
+>
+
+export const V2RawResponseItemCompletedNotification__FunctionCallOutputContentItemSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('input_text') }),
+  v.looseObject({
+    detail: v.optional(
+      v.union([V2RawResponseItemCompletedNotification__ImageDetailSchema, v.null()]),
+    ),
+    image_url: v.string(),
+    type: v.literal('input_image'),
+  }),
+])
+export type V2RawResponseItemCompletedNotification__FunctionCallOutputContentItem = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__FunctionCallOutputContentItemSchema
+>
+
+export const V2RawResponseItemCompletedNotification__FunctionCallOutputBodySchema = v.union([
+  v.string(),
+  v.array(V2RawResponseItemCompletedNotification__FunctionCallOutputContentItemSchema),
+])
+export type V2RawResponseItemCompletedNotification__FunctionCallOutputBody = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__FunctionCallOutputBodySchema
+>
+
+export const V2RawResponseItemCompletedNotification__GhostCommitSchema = v.looseObject({
+  id: v.string(),
+  parent: v.optional(v.union([v.string(), v.null()])),
+  preexisting_untracked_dirs: v.array(v.string()),
+  preexisting_untracked_files: v.array(v.string()),
+})
+export type V2RawResponseItemCompletedNotification__GhostCommit = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__GhostCommitSchema
+>
+
+export const V2RawResponseItemCompletedNotification__LocalShellActionSchema = v.looseObject({
+  command: v.array(v.string()),
+  env: v.optional(v.union([v.record(v.string(), v.string()), v.null()])),
+  timeout_ms: v.optional(v.union([v.pipe(v.number(), v.integer(), v.minValue(0)), v.null()])),
+  type: v.literal('exec'),
+  user: v.optional(v.union([v.string(), v.null()])),
+  working_directory: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2RawResponseItemCompletedNotification__LocalShellAction = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__LocalShellActionSchema
+>
+
+export const V2RawResponseItemCompletedNotification__LocalShellStatusSchema = v.picklist([
+  'completed',
+  'in_progress',
+  'incomplete',
+])
+export type V2RawResponseItemCompletedNotification__LocalShellStatus = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__LocalShellStatusSchema
+>
+
+export const V2RawResponseItemCompletedNotification__MessagePhaseSchema = v.union([
+  v.literal('commentary'),
+  v.literal('final_answer'),
+])
+export type V2RawResponseItemCompletedNotification__MessagePhase = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__MessagePhaseSchema
+>
+
+export const V2RawResponseItemCompletedNotification__ReasoningItemContentSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('reasoning_text') }),
+  v.looseObject({ text: v.string(), type: v.literal('text') }),
+])
+export type V2RawResponseItemCompletedNotification__ReasoningItemContent = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__ReasoningItemContentSchema
+>
+
+export const V2RawResponseItemCompletedNotification__ReasoningItemReasoningSummarySchema =
+  v.looseObject({ text: v.string(), type: v.literal('summary_text') })
+export type V2RawResponseItemCompletedNotification__ReasoningItemReasoningSummary = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__ReasoningItemReasoningSummarySchema
+>
+
+export const V2RawResponseItemCompletedNotification__ResponsesApiWebSearchActionSchema = v.union([
+  v.looseObject({
+    queries: v.optional(v.union([v.array(v.string()), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ type: v.literal('open_page'), url: v.optional(v.union([v.string(), v.null()])) }),
+  v.looseObject({
+    pattern: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('find_in_page'),
+    url: v.optional(v.union([v.string(), v.null()])),
+  }),
+  v.looseObject({ type: v.literal('other') }),
+])
+export type V2RawResponseItemCompletedNotification__ResponsesApiWebSearchAction = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__ResponsesApiWebSearchActionSchema
+>
+
+export const V2RawResponseItemCompletedNotification__ResponseItemSchema = v.union([
+  v.looseObject({
+    content: v.array(V2RawResponseItemCompletedNotification__ContentItemSchema),
+    end_turn: v.optional(v.union([v.boolean(), v.null()])),
+    id: v.optional(v.union([v.string(), v.null()])),
+    phase: v.optional(
+      v.union([V2RawResponseItemCompletedNotification__MessagePhaseSchema, v.null()]),
+    ),
+    role: v.string(),
+    type: v.literal('message'),
+  }),
+  v.looseObject({
+    content: v.optional(
+      v.union([
+        v.array(V2RawResponseItemCompletedNotification__ReasoningItemContentSchema),
+        v.null(),
+      ]),
+    ),
+    encrypted_content: v.optional(v.union([v.string(), v.null()])),
+    summary: v.array(V2RawResponseItemCompletedNotification__ReasoningItemReasoningSummarySchema),
+    type: v.literal('reasoning'),
+  }),
+  v.looseObject({
+    action: V2RawResponseItemCompletedNotification__LocalShellActionSchema,
+    call_id: v.optional(v.union([v.string(), v.null()])),
+    id: v.optional(v.union([v.string(), v.null()])),
+    status: V2RawResponseItemCompletedNotification__LocalShellStatusSchema,
+    type: v.literal('local_shell_call'),
+  }),
+  v.looseObject({
+    arguments: v.string(),
+    call_id: v.string(),
+    id: v.optional(v.union([v.string(), v.null()])),
+    name: v.string(),
+    namespace: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('function_call'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    call_id: v.optional(v.union([v.string(), v.null()])),
+    execution: v.string(),
+    id: v.optional(v.union([v.string(), v.null()])),
+    status: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('tool_search_call'),
+  }),
+  v.looseObject({
+    call_id: v.string(),
+    output: V2RawResponseItemCompletedNotification__FunctionCallOutputBodySchema,
+    type: v.literal('function_call_output'),
+  }),
+  v.looseObject({
+    call_id: v.string(),
+    id: v.optional(v.union([v.string(), v.null()])),
+    input: v.string(),
+    name: v.string(),
+    status: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('custom_tool_call'),
+  }),
+  v.looseObject({
+    call_id: v.string(),
+    name: v.optional(v.union([v.string(), v.null()])),
+    output: V2RawResponseItemCompletedNotification__FunctionCallOutputBodySchema,
+    type: v.literal('custom_tool_call_output'),
+  }),
+  v.looseObject({
+    call_id: v.optional(v.union([v.string(), v.null()])),
+    execution: v.string(),
+    status: v.string(),
+    tools: v.array(v.unknown()),
+    type: v.literal('tool_search_output'),
+  }),
+  v.looseObject({
+    action: v.optional(
+      v.union([
+        V2RawResponseItemCompletedNotification__ResponsesApiWebSearchActionSchema,
+        v.null(),
+      ]),
+    ),
+    id: v.optional(v.union([v.string(), v.null()])),
+    status: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('web_search_call'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    result: v.string(),
+    revised_prompt: v.optional(v.union([v.string(), v.null()])),
+    status: v.string(),
+    type: v.literal('image_generation_call'),
+  }),
+  v.looseObject({
+    ghost_commit: V2RawResponseItemCompletedNotification__GhostCommitSchema,
+    type: v.literal('ghost_snapshot'),
+  }),
+  v.looseObject({ encrypted_content: v.string(), type: v.literal('compaction') }),
+  v.looseObject({ type: v.literal('other') }),
+])
+export type V2RawResponseItemCompletedNotification__ResponseItem = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotification__ResponseItemSchema
+>
+
+export const V2RawResponseItemCompletedNotificationSchema = v.looseObject({
+  item: V2RawResponseItemCompletedNotification__ResponseItemSchema,
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2RawResponseItemCompletedNotification = v.InferOutput<
+  typeof V2RawResponseItemCompletedNotificationSchema
+>
+
+export const V2ReasoningSummaryPartAddedNotificationSchema = v.looseObject({
+  itemId: v.string(),
+  summaryIndex: v.pipe(v.number(), v.integer()),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ReasoningSummaryPartAddedNotification = v.InferOutput<
+  typeof V2ReasoningSummaryPartAddedNotificationSchema
+>
+
+export const V2ReasoningSummaryTextDeltaNotificationSchema = v.looseObject({
+  delta: v.string(),
+  itemId: v.string(),
+  summaryIndex: v.pipe(v.number(), v.integer()),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ReasoningSummaryTextDeltaNotification = v.InferOutput<
+  typeof V2ReasoningSummaryTextDeltaNotificationSchema
+>
+
+export const V2ReasoningTextDeltaNotificationSchema = v.looseObject({
+  contentIndex: v.pipe(v.number(), v.integer()),
+  delta: v.string(),
+  itemId: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2ReasoningTextDeltaNotification = v.InferOutput<
+  typeof V2ReasoningTextDeltaNotificationSchema
+>
+
+export const V2ServerRequestResolvedNotification__RequestIdSchema = v.union([
+  v.string(),
+  v.pipe(v.number(), v.integer()),
+])
+export type V2ServerRequestResolvedNotification__RequestId = v.InferOutput<
+  typeof V2ServerRequestResolvedNotification__RequestIdSchema
+>
+
+export const V2ServerRequestResolvedNotificationSchema = v.looseObject({
+  requestId: V2ServerRequestResolvedNotification__RequestIdSchema,
+  threadId: v.string(),
+})
+export type V2ServerRequestResolvedNotification = v.InferOutput<
+  typeof V2ServerRequestResolvedNotificationSchema
+>
+
+export const V2SkillsChangedNotificationSchema = v.looseObject({})
+export type V2SkillsChangedNotification = v.InferOutput<typeof V2SkillsChangedNotificationSchema>
+
+export const V2TerminalInteractionNotificationSchema = v.looseObject({
+  itemId: v.string(),
+  processId: v.string(),
+  stdin: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2TerminalInteractionNotification = v.InferOutput<
+  typeof V2TerminalInteractionNotificationSchema
+>
+
+export const V2ThreadArchivedNotificationSchema = v.looseObject({ threadId: v.string() })
+export type V2ThreadArchivedNotification = v.InferOutput<typeof V2ThreadArchivedNotificationSchema>
+
+export const V2ThreadClosedNotificationSchema = v.looseObject({ threadId: v.string() })
+export type V2ThreadClosedNotification = v.InferOutput<typeof V2ThreadClosedNotificationSchema>
+
+export const V2ThreadNameUpdatedNotificationSchema = v.looseObject({
+  threadId: v.string(),
+  threadName: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2ThreadNameUpdatedNotification = v.InferOutput<
+  typeof V2ThreadNameUpdatedNotificationSchema
+>
 
 export const V2ThreadReadParamsSchema = v.looseObject({
   includeTurns: v.optional(v.boolean()),
@@ -782,6 +2895,986 @@ export const V2ThreadReadResponseSchema = v.looseObject({
   thread: V2ThreadReadResponse__ThreadSchema,
 })
 export type V2ThreadReadResponse = v.InferOutput<typeof V2ThreadReadResponseSchema>
+
+export const V2ThreadRealtimeClosedNotificationSchema = v.looseObject({
+  reason: v.optional(v.union([v.string(), v.null()])),
+  threadId: v.string(),
+})
+export type V2ThreadRealtimeClosedNotification = v.InferOutput<
+  typeof V2ThreadRealtimeClosedNotificationSchema
+>
+
+export const V2ThreadRealtimeErrorNotificationSchema = v.looseObject({
+  message: v.string(),
+  threadId: v.string(),
+})
+export type V2ThreadRealtimeErrorNotification = v.InferOutput<
+  typeof V2ThreadRealtimeErrorNotificationSchema
+>
+
+export const V2ThreadRealtimeItemAddedNotificationSchema = v.looseObject({
+  item: v.unknown(),
+  threadId: v.string(),
+})
+export type V2ThreadRealtimeItemAddedNotification = v.InferOutput<
+  typeof V2ThreadRealtimeItemAddedNotificationSchema
+>
+
+export const V2ThreadRealtimeOutputAudioDeltaNotification__ThreadRealtimeAudioChunkSchema =
+  v.looseObject({
+    data: v.string(),
+    itemId: v.optional(v.union([v.string(), v.null()])),
+    numChannels: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    sampleRate: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    samplesPerChannel: v.optional(
+      v.union([v.pipe(v.number(), v.integer(), v.minValue(0)), v.null()]),
+    ),
+  })
+export type V2ThreadRealtimeOutputAudioDeltaNotification__ThreadRealtimeAudioChunk = v.InferOutput<
+  typeof V2ThreadRealtimeOutputAudioDeltaNotification__ThreadRealtimeAudioChunkSchema
+>
+
+export const V2ThreadRealtimeOutputAudioDeltaNotificationSchema = v.looseObject({
+  audio: V2ThreadRealtimeOutputAudioDeltaNotification__ThreadRealtimeAudioChunkSchema,
+  threadId: v.string(),
+})
+export type V2ThreadRealtimeOutputAudioDeltaNotification = v.InferOutput<
+  typeof V2ThreadRealtimeOutputAudioDeltaNotificationSchema
+>
+
+export const V2ThreadRealtimeSdpNotificationSchema = v.looseObject({
+  sdp: v.string(),
+  threadId: v.string(),
+})
+export type V2ThreadRealtimeSdpNotification = v.InferOutput<
+  typeof V2ThreadRealtimeSdpNotificationSchema
+>
+
+export const V2ThreadRealtimeStartedNotification__RealtimeConversationVersionSchema = v.picklist([
+  'v1',
+  'v2',
+])
+export type V2ThreadRealtimeStartedNotification__RealtimeConversationVersion = v.InferOutput<
+  typeof V2ThreadRealtimeStartedNotification__RealtimeConversationVersionSchema
+>
+
+export const V2ThreadRealtimeStartedNotificationSchema = v.looseObject({
+  sessionId: v.optional(v.union([v.string(), v.null()])),
+  threadId: v.string(),
+  version: V2ThreadRealtimeStartedNotification__RealtimeConversationVersionSchema,
+})
+export type V2ThreadRealtimeStartedNotification = v.InferOutput<
+  typeof V2ThreadRealtimeStartedNotificationSchema
+>
+
+export const V2ThreadRealtimeTranscriptDeltaNotificationSchema = v.looseObject({
+  delta: v.string(),
+  role: v.string(),
+  threadId: v.string(),
+})
+export type V2ThreadRealtimeTranscriptDeltaNotification = v.InferOutput<
+  typeof V2ThreadRealtimeTranscriptDeltaNotificationSchema
+>
+
+export const V2ThreadRealtimeTranscriptDoneNotificationSchema = v.looseObject({
+  role: v.string(),
+  text: v.string(),
+  threadId: v.string(),
+})
+export type V2ThreadRealtimeTranscriptDoneNotification = v.InferOutput<
+  typeof V2ThreadRealtimeTranscriptDoneNotificationSchema
+>
+
+export const V2ThreadResumeParams__ApprovalsReviewerSchema = v.picklist([
+  'user',
+  'guardian_subagent',
+])
+export type V2ThreadResumeParams__ApprovalsReviewer = v.InferOutput<
+  typeof V2ThreadResumeParams__ApprovalsReviewerSchema
+>
+
+export const V2ThreadResumeParams__AskForApprovalSchema = v.union([
+  v.picklist(['untrusted', 'on-failure', 'on-request', 'never']),
+  v.looseObject({
+    granular: v.looseObject({
+      mcp_elicitations: v.boolean(),
+      request_permissions: v.optional(v.boolean()),
+      rules: v.boolean(),
+      sandbox_approval: v.boolean(),
+      skill_approval: v.optional(v.boolean()),
+    }),
+  }),
+])
+export type V2ThreadResumeParams__AskForApproval = v.InferOutput<
+  typeof V2ThreadResumeParams__AskForApprovalSchema
+>
+
+export const V2ThreadResumeParams__ImageDetailSchema = v.picklist([
+  'auto',
+  'low',
+  'high',
+  'original',
+])
+export type V2ThreadResumeParams__ImageDetail = v.InferOutput<
+  typeof V2ThreadResumeParams__ImageDetailSchema
+>
+
+export const V2ThreadResumeParams__ContentItemSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('input_text') }),
+  v.looseObject({
+    detail: v.optional(v.union([V2ThreadResumeParams__ImageDetailSchema, v.null()])),
+    image_url: v.string(),
+    type: v.literal('input_image'),
+  }),
+  v.looseObject({ text: v.string(), type: v.literal('output_text') }),
+])
+export type V2ThreadResumeParams__ContentItem = v.InferOutput<
+  typeof V2ThreadResumeParams__ContentItemSchema
+>
+
+export const V2ThreadResumeParams__FunctionCallOutputContentItemSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('input_text') }),
+  v.looseObject({
+    detail: v.optional(v.union([V2ThreadResumeParams__ImageDetailSchema, v.null()])),
+    image_url: v.string(),
+    type: v.literal('input_image'),
+  }),
+])
+export type V2ThreadResumeParams__FunctionCallOutputContentItem = v.InferOutput<
+  typeof V2ThreadResumeParams__FunctionCallOutputContentItemSchema
+>
+
+export const V2ThreadResumeParams__FunctionCallOutputBodySchema = v.union([
+  v.string(),
+  v.array(V2ThreadResumeParams__FunctionCallOutputContentItemSchema),
+])
+export type V2ThreadResumeParams__FunctionCallOutputBody = v.InferOutput<
+  typeof V2ThreadResumeParams__FunctionCallOutputBodySchema
+>
+
+export const V2ThreadResumeParams__GhostCommitSchema = v.looseObject({
+  id: v.string(),
+  parent: v.optional(v.union([v.string(), v.null()])),
+  preexisting_untracked_dirs: v.array(v.string()),
+  preexisting_untracked_files: v.array(v.string()),
+})
+export type V2ThreadResumeParams__GhostCommit = v.InferOutput<
+  typeof V2ThreadResumeParams__GhostCommitSchema
+>
+
+export const V2ThreadResumeParams__LocalShellActionSchema = v.looseObject({
+  command: v.array(v.string()),
+  env: v.optional(v.union([v.record(v.string(), v.string()), v.null()])),
+  timeout_ms: v.optional(v.union([v.pipe(v.number(), v.integer(), v.minValue(0)), v.null()])),
+  type: v.literal('exec'),
+  user: v.optional(v.union([v.string(), v.null()])),
+  working_directory: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2ThreadResumeParams__LocalShellAction = v.InferOutput<
+  typeof V2ThreadResumeParams__LocalShellActionSchema
+>
+
+export const V2ThreadResumeParams__LocalShellStatusSchema = v.picklist([
+  'completed',
+  'in_progress',
+  'incomplete',
+])
+export type V2ThreadResumeParams__LocalShellStatus = v.InferOutput<
+  typeof V2ThreadResumeParams__LocalShellStatusSchema
+>
+
+export const V2ThreadResumeParams__MessagePhaseSchema = v.union([
+  v.literal('commentary'),
+  v.literal('final_answer'),
+])
+export type V2ThreadResumeParams__MessagePhase = v.InferOutput<
+  typeof V2ThreadResumeParams__MessagePhaseSchema
+>
+
+export const V2ThreadResumeParams__PersonalitySchema = v.picklist(['none', 'friendly', 'pragmatic'])
+export type V2ThreadResumeParams__Personality = v.InferOutput<
+  typeof V2ThreadResumeParams__PersonalitySchema
+>
+
+export const V2ThreadResumeParams__ReasoningItemContentSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('reasoning_text') }),
+  v.looseObject({ text: v.string(), type: v.literal('text') }),
+])
+export type V2ThreadResumeParams__ReasoningItemContent = v.InferOutput<
+  typeof V2ThreadResumeParams__ReasoningItemContentSchema
+>
+
+export const V2ThreadResumeParams__ReasoningItemReasoningSummarySchema = v.looseObject({
+  text: v.string(),
+  type: v.literal('summary_text'),
+})
+export type V2ThreadResumeParams__ReasoningItemReasoningSummary = v.InferOutput<
+  typeof V2ThreadResumeParams__ReasoningItemReasoningSummarySchema
+>
+
+export const V2ThreadResumeParams__ResponsesApiWebSearchActionSchema = v.union([
+  v.looseObject({
+    queries: v.optional(v.union([v.array(v.string()), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ type: v.literal('open_page'), url: v.optional(v.union([v.string(), v.null()])) }),
+  v.looseObject({
+    pattern: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('find_in_page'),
+    url: v.optional(v.union([v.string(), v.null()])),
+  }),
+  v.looseObject({ type: v.literal('other') }),
+])
+export type V2ThreadResumeParams__ResponsesApiWebSearchAction = v.InferOutput<
+  typeof V2ThreadResumeParams__ResponsesApiWebSearchActionSchema
+>
+
+export const V2ThreadResumeParams__ResponseItemSchema = v.union([
+  v.looseObject({
+    content: v.array(V2ThreadResumeParams__ContentItemSchema),
+    end_turn: v.optional(v.union([v.boolean(), v.null()])),
+    id: v.optional(v.union([v.string(), v.null()])),
+    phase: v.optional(v.union([V2ThreadResumeParams__MessagePhaseSchema, v.null()])),
+    role: v.string(),
+    type: v.literal('message'),
+  }),
+  v.looseObject({
+    content: v.optional(
+      v.union([v.array(V2ThreadResumeParams__ReasoningItemContentSchema), v.null()]),
+    ),
+    encrypted_content: v.optional(v.union([v.string(), v.null()])),
+    summary: v.array(V2ThreadResumeParams__ReasoningItemReasoningSummarySchema),
+    type: v.literal('reasoning'),
+  }),
+  v.looseObject({
+    action: V2ThreadResumeParams__LocalShellActionSchema,
+    call_id: v.optional(v.union([v.string(), v.null()])),
+    id: v.optional(v.union([v.string(), v.null()])),
+    status: V2ThreadResumeParams__LocalShellStatusSchema,
+    type: v.literal('local_shell_call'),
+  }),
+  v.looseObject({
+    arguments: v.string(),
+    call_id: v.string(),
+    id: v.optional(v.union([v.string(), v.null()])),
+    name: v.string(),
+    namespace: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('function_call'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    call_id: v.optional(v.union([v.string(), v.null()])),
+    execution: v.string(),
+    id: v.optional(v.union([v.string(), v.null()])),
+    status: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('tool_search_call'),
+  }),
+  v.looseObject({
+    call_id: v.string(),
+    output: V2ThreadResumeParams__FunctionCallOutputBodySchema,
+    type: v.literal('function_call_output'),
+  }),
+  v.looseObject({
+    call_id: v.string(),
+    id: v.optional(v.union([v.string(), v.null()])),
+    input: v.string(),
+    name: v.string(),
+    status: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('custom_tool_call'),
+  }),
+  v.looseObject({
+    call_id: v.string(),
+    name: v.optional(v.union([v.string(), v.null()])),
+    output: V2ThreadResumeParams__FunctionCallOutputBodySchema,
+    type: v.literal('custom_tool_call_output'),
+  }),
+  v.looseObject({
+    call_id: v.optional(v.union([v.string(), v.null()])),
+    execution: v.string(),
+    status: v.string(),
+    tools: v.array(v.unknown()),
+    type: v.literal('tool_search_output'),
+  }),
+  v.looseObject({
+    action: v.optional(
+      v.union([V2ThreadResumeParams__ResponsesApiWebSearchActionSchema, v.null()]),
+    ),
+    id: v.optional(v.union([v.string(), v.null()])),
+    status: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('web_search_call'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    result: v.string(),
+    revised_prompt: v.optional(v.union([v.string(), v.null()])),
+    status: v.string(),
+    type: v.literal('image_generation_call'),
+  }),
+  v.looseObject({
+    ghost_commit: V2ThreadResumeParams__GhostCommitSchema,
+    type: v.literal('ghost_snapshot'),
+  }),
+  v.looseObject({ encrypted_content: v.string(), type: v.literal('compaction') }),
+  v.looseObject({ type: v.literal('other') }),
+])
+export type V2ThreadResumeParams__ResponseItem = v.InferOutput<
+  typeof V2ThreadResumeParams__ResponseItemSchema
+>
+
+export const V2ThreadResumeParams__SandboxModeSchema = v.picklist([
+  'read-only',
+  'workspace-write',
+  'danger-full-access',
+])
+export type V2ThreadResumeParams__SandboxMode = v.InferOutput<
+  typeof V2ThreadResumeParams__SandboxModeSchema
+>
+
+export const V2ThreadResumeParams__ServiceTierSchema = v.picklist(['fast', 'flex'])
+export type V2ThreadResumeParams__ServiceTier = v.InferOutput<
+  typeof V2ThreadResumeParams__ServiceTierSchema
+>
+
+export const V2ThreadResumeParamsSchema = v.looseObject({
+  approvalPolicy: v.optional(v.union([V2ThreadResumeParams__AskForApprovalSchema, v.null()])),
+  approvalsReviewer: v.optional(v.union([V2ThreadResumeParams__ApprovalsReviewerSchema, v.null()])),
+  baseInstructions: v.optional(v.union([v.string(), v.null()])),
+  config: v.optional(v.union([v.looseObject({}), v.null()])),
+  cwd: v.optional(v.union([v.string(), v.null()])),
+  developerInstructions: v.optional(v.union([v.string(), v.null()])),
+  model: v.optional(v.union([v.string(), v.null()])),
+  modelProvider: v.optional(v.union([v.string(), v.null()])),
+  personality: v.optional(v.union([V2ThreadResumeParams__PersonalitySchema, v.null()])),
+  sandbox: v.optional(v.union([V2ThreadResumeParams__SandboxModeSchema, v.null()])),
+  serviceTier: v.optional(
+    v.union([v.union([V2ThreadResumeParams__ServiceTierSchema, v.null()]), v.null()]),
+  ),
+  threadId: v.string(),
+})
+export type V2ThreadResumeParams = v.InferOutput<typeof V2ThreadResumeParamsSchema>
+
+export const V2ThreadResumeResponse__AbsolutePathBufSchema = v.string()
+export type V2ThreadResumeResponse__AbsolutePathBuf = v.InferOutput<
+  typeof V2ThreadResumeResponse__AbsolutePathBufSchema
+>
+
+export const V2ThreadResumeResponse__AgentPathSchema = v.string()
+export type V2ThreadResumeResponse__AgentPath = v.InferOutput<
+  typeof V2ThreadResumeResponse__AgentPathSchema
+>
+
+export const V2ThreadResumeResponse__ApprovalsReviewerSchema = v.picklist([
+  'user',
+  'guardian_subagent',
+])
+export type V2ThreadResumeResponse__ApprovalsReviewer = v.InferOutput<
+  typeof V2ThreadResumeResponse__ApprovalsReviewerSchema
+>
+
+export const V2ThreadResumeResponse__AskForApprovalSchema = v.union([
+  v.picklist(['untrusted', 'on-failure', 'on-request', 'never']),
+  v.looseObject({
+    granular: v.looseObject({
+      mcp_elicitations: v.boolean(),
+      request_permissions: v.optional(v.boolean()),
+      rules: v.boolean(),
+      sandbox_approval: v.boolean(),
+      skill_approval: v.optional(v.boolean()),
+    }),
+  }),
+])
+export type V2ThreadResumeResponse__AskForApproval = v.InferOutput<
+  typeof V2ThreadResumeResponse__AskForApprovalSchema
+>
+
+export const V2ThreadResumeResponse__ByteRangeSchema = v.looseObject({
+  end: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  start: v.pipe(v.number(), v.integer(), v.minValue(0)),
+})
+export type V2ThreadResumeResponse__ByteRange = v.InferOutput<
+  typeof V2ThreadResumeResponse__ByteRangeSchema
+>
+
+export const V2ThreadResumeResponse__NonSteerableTurnKindSchema = v.picklist(['review', 'compact'])
+export type V2ThreadResumeResponse__NonSteerableTurnKind = v.InferOutput<
+  typeof V2ThreadResumeResponse__NonSteerableTurnKindSchema
+>
+
+export const V2ThreadResumeResponse__CodexErrorInfoSchema = v.union([
+  v.picklist([
+    'contextWindowExceeded',
+    'usageLimitExceeded',
+    'serverOverloaded',
+    'internalServerError',
+    'unauthorized',
+    'badRequest',
+    'threadRollbackFailed',
+    'sandboxError',
+    'other',
+  ]),
+  v.looseObject({
+    httpConnectionFailed: v.looseObject({
+      httpStatusCode: v.optional(
+        v.union([v.pipe(v.number(), v.integer(), v.minValue(0)), v.null()]),
+      ),
+    }),
+  }),
+  v.looseObject({
+    responseStreamConnectionFailed: v.looseObject({
+      httpStatusCode: v.optional(
+        v.union([v.pipe(v.number(), v.integer(), v.minValue(0)), v.null()]),
+      ),
+    }),
+  }),
+  v.looseObject({
+    responseStreamDisconnected: v.looseObject({
+      httpStatusCode: v.optional(
+        v.union([v.pipe(v.number(), v.integer(), v.minValue(0)), v.null()]),
+      ),
+    }),
+  }),
+  v.looseObject({
+    responseTooManyFailedAttempts: v.looseObject({
+      httpStatusCode: v.optional(
+        v.union([v.pipe(v.number(), v.integer(), v.minValue(0)), v.null()]),
+      ),
+    }),
+  }),
+  v.looseObject({
+    activeTurnNotSteerable: v.looseObject({
+      turnKind: V2ThreadResumeResponse__NonSteerableTurnKindSchema,
+    }),
+  }),
+])
+export type V2ThreadResumeResponse__CodexErrorInfo = v.InferOutput<
+  typeof V2ThreadResumeResponse__CodexErrorInfoSchema
+>
+
+export const V2ThreadResumeResponse__CollabAgentStatusSchema = v.picklist([
+  'pendingInit',
+  'running',
+  'interrupted',
+  'completed',
+  'errored',
+  'shutdown',
+  'notFound',
+])
+export type V2ThreadResumeResponse__CollabAgentStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__CollabAgentStatusSchema
+>
+
+export const V2ThreadResumeResponse__CollabAgentStateSchema = v.looseObject({
+  message: v.optional(v.union([v.string(), v.null()])),
+  status: V2ThreadResumeResponse__CollabAgentStatusSchema,
+})
+export type V2ThreadResumeResponse__CollabAgentState = v.InferOutput<
+  typeof V2ThreadResumeResponse__CollabAgentStateSchema
+>
+
+export const V2ThreadResumeResponse__CollabAgentToolSchema = v.picklist([
+  'spawnAgent',
+  'sendInput',
+  'resumeAgent',
+  'wait',
+  'closeAgent',
+])
+export type V2ThreadResumeResponse__CollabAgentTool = v.InferOutput<
+  typeof V2ThreadResumeResponse__CollabAgentToolSchema
+>
+
+export const V2ThreadResumeResponse__CollabAgentToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ThreadResumeResponse__CollabAgentToolCallStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__CollabAgentToolCallStatusSchema
+>
+
+export const V2ThreadResumeResponse__CommandActionSchema = v.union([
+  v.looseObject({
+    command: v.string(),
+    name: v.string(),
+    path: V2ThreadResumeResponse__AbsolutePathBufSchema,
+    type: v.literal('read'),
+  }),
+  v.looseObject({
+    command: v.string(),
+    path: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('listFiles'),
+  }),
+  v.looseObject({
+    command: v.string(),
+    path: v.optional(v.union([v.string(), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ command: v.string(), type: v.literal('unknown') }),
+])
+export type V2ThreadResumeResponse__CommandAction = v.InferOutput<
+  typeof V2ThreadResumeResponse__CommandActionSchema
+>
+
+export const V2ThreadResumeResponse__CommandExecutionSourceSchema = v.picklist([
+  'agent',
+  'userShell',
+  'unifiedExecStartup',
+  'unifiedExecInteraction',
+])
+export type V2ThreadResumeResponse__CommandExecutionSource = v.InferOutput<
+  typeof V2ThreadResumeResponse__CommandExecutionSourceSchema
+>
+
+export const V2ThreadResumeResponse__CommandExecutionStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+  'declined',
+])
+export type V2ThreadResumeResponse__CommandExecutionStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__CommandExecutionStatusSchema
+>
+
+export const V2ThreadResumeResponse__DynamicToolCallOutputContentItemSchema = v.union([
+  v.looseObject({ text: v.string(), type: v.literal('inputText') }),
+  v.looseObject({ imageUrl: v.string(), type: v.literal('inputImage') }),
+])
+export type V2ThreadResumeResponse__DynamicToolCallOutputContentItem = v.InferOutput<
+  typeof V2ThreadResumeResponse__DynamicToolCallOutputContentItemSchema
+>
+
+export const V2ThreadResumeResponse__DynamicToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ThreadResumeResponse__DynamicToolCallStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__DynamicToolCallStatusSchema
+>
+
+export const V2ThreadResumeResponse__PatchChangeKindSchema = v.union([
+  v.looseObject({ type: v.literal('add') }),
+  v.looseObject({ type: v.literal('delete') }),
+  v.looseObject({
+    move_path: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('update'),
+  }),
+])
+export type V2ThreadResumeResponse__PatchChangeKind = v.InferOutput<
+  typeof V2ThreadResumeResponse__PatchChangeKindSchema
+>
+
+export const V2ThreadResumeResponse__FileUpdateChangeSchema = v.looseObject({
+  diff: v.string(),
+  kind: V2ThreadResumeResponse__PatchChangeKindSchema,
+  path: v.string(),
+})
+export type V2ThreadResumeResponse__FileUpdateChange = v.InferOutput<
+  typeof V2ThreadResumeResponse__FileUpdateChangeSchema
+>
+
+export const V2ThreadResumeResponse__GitInfoSchema = v.looseObject({
+  branch: v.optional(v.union([v.string(), v.null()])),
+  originUrl: v.optional(v.union([v.string(), v.null()])),
+  sha: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2ThreadResumeResponse__GitInfo = v.InferOutput<
+  typeof V2ThreadResumeResponse__GitInfoSchema
+>
+
+export const V2ThreadResumeResponse__HookPromptFragmentSchema = v.looseObject({
+  hookRunId: v.string(),
+  text: v.string(),
+})
+export type V2ThreadResumeResponse__HookPromptFragment = v.InferOutput<
+  typeof V2ThreadResumeResponse__HookPromptFragmentSchema
+>
+
+export const V2ThreadResumeResponse__McpToolCallErrorSchema = v.looseObject({ message: v.string() })
+export type V2ThreadResumeResponse__McpToolCallError = v.InferOutput<
+  typeof V2ThreadResumeResponse__McpToolCallErrorSchema
+>
+
+export const V2ThreadResumeResponse__McpToolCallResultSchema = v.looseObject({
+  _meta: v.optional(v.unknown()),
+  content: v.array(v.unknown()),
+  structuredContent: v.optional(v.unknown()),
+})
+export type V2ThreadResumeResponse__McpToolCallResult = v.InferOutput<
+  typeof V2ThreadResumeResponse__McpToolCallResultSchema
+>
+
+export const V2ThreadResumeResponse__McpToolCallStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+])
+export type V2ThreadResumeResponse__McpToolCallStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__McpToolCallStatusSchema
+>
+
+export const V2ThreadResumeResponse__MemoryCitationEntrySchema = v.looseObject({
+  lineEnd: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  lineStart: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  note: v.string(),
+  path: v.string(),
+})
+export type V2ThreadResumeResponse__MemoryCitationEntry = v.InferOutput<
+  typeof V2ThreadResumeResponse__MemoryCitationEntrySchema
+>
+
+export const V2ThreadResumeResponse__MemoryCitationSchema = v.looseObject({
+  entries: v.array(V2ThreadResumeResponse__MemoryCitationEntrySchema),
+  threadIds: v.array(v.string()),
+})
+export type V2ThreadResumeResponse__MemoryCitation = v.InferOutput<
+  typeof V2ThreadResumeResponse__MemoryCitationSchema
+>
+
+export const V2ThreadResumeResponse__MessagePhaseSchema = v.union([
+  v.literal('commentary'),
+  v.literal('final_answer'),
+])
+export type V2ThreadResumeResponse__MessagePhase = v.InferOutput<
+  typeof V2ThreadResumeResponse__MessagePhaseSchema
+>
+
+export const V2ThreadResumeResponse__NetworkAccessSchema = v.picklist(['restricted', 'enabled'])
+export type V2ThreadResumeResponse__NetworkAccess = v.InferOutput<
+  typeof V2ThreadResumeResponse__NetworkAccessSchema
+>
+
+export const V2ThreadResumeResponse__PatchApplyStatusSchema = v.picklist([
+  'inProgress',
+  'completed',
+  'failed',
+  'declined',
+])
+export type V2ThreadResumeResponse__PatchApplyStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__PatchApplyStatusSchema
+>
+
+export const V2ThreadResumeResponse__ReadOnlyAccessSchema = v.union([
+  v.looseObject({
+    includePlatformDefaults: v.optional(v.boolean()),
+    readableRoots: v.optional(v.array(V2ThreadResumeResponse__AbsolutePathBufSchema)),
+    type: v.literal('restricted'),
+  }),
+  v.looseObject({ type: v.literal('fullAccess') }),
+])
+export type V2ThreadResumeResponse__ReadOnlyAccess = v.InferOutput<
+  typeof V2ThreadResumeResponse__ReadOnlyAccessSchema
+>
+
+export const V2ThreadResumeResponse__ReasoningEffortSchema = v.picklist([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+])
+export type V2ThreadResumeResponse__ReasoningEffort = v.InferOutput<
+  typeof V2ThreadResumeResponse__ReasoningEffortSchema
+>
+
+export const V2ThreadResumeResponse__SandboxPolicySchema = v.union([
+  v.looseObject({ type: v.literal('dangerFullAccess') }),
+  v.looseObject({
+    access: v.optional(V2ThreadResumeResponse__ReadOnlyAccessSchema),
+    networkAccess: v.optional(v.boolean()),
+    type: v.literal('readOnly'),
+  }),
+  v.looseObject({
+    networkAccess: v.optional(V2ThreadResumeResponse__NetworkAccessSchema),
+    type: v.literal('externalSandbox'),
+  }),
+  v.looseObject({
+    excludeSlashTmp: v.optional(v.boolean()),
+    excludeTmpdirEnvVar: v.optional(v.boolean()),
+    networkAccess: v.optional(v.boolean()),
+    readOnlyAccess: v.optional(V2ThreadResumeResponse__ReadOnlyAccessSchema),
+    type: v.literal('workspaceWrite'),
+    writableRoots: v.optional(v.array(V2ThreadResumeResponse__AbsolutePathBufSchema)),
+  }),
+])
+export type V2ThreadResumeResponse__SandboxPolicy = v.InferOutput<
+  typeof V2ThreadResumeResponse__SandboxPolicySchema
+>
+
+export const V2ThreadResumeResponse__ServiceTierSchema = v.picklist(['fast', 'flex'])
+export type V2ThreadResumeResponse__ServiceTier = v.InferOutput<
+  typeof V2ThreadResumeResponse__ServiceTierSchema
+>
+
+export const V2ThreadResumeResponse__ThreadIdSchema = v.string()
+export type V2ThreadResumeResponse__ThreadId = v.InferOutput<
+  typeof V2ThreadResumeResponse__ThreadIdSchema
+>
+
+export const V2ThreadResumeResponse__SubAgentSourceSchema = v.union([
+  v.picklist(['review', 'compact', 'memory_consolidation']),
+  v.looseObject({
+    thread_spawn: v.looseObject({
+      agent_nickname: v.optional(v.union([v.string(), v.null()])),
+      agent_path: v.optional(v.union([V2ThreadResumeResponse__AgentPathSchema, v.null()])),
+      agent_role: v.optional(v.union([v.string(), v.null()])),
+      depth: v.pipe(v.number(), v.integer()),
+      parent_thread_id: V2ThreadResumeResponse__ThreadIdSchema,
+    }),
+  }),
+  v.looseObject({ other: v.string() }),
+])
+export type V2ThreadResumeResponse__SubAgentSource = v.InferOutput<
+  typeof V2ThreadResumeResponse__SubAgentSourceSchema
+>
+
+export const V2ThreadResumeResponse__SessionSourceSchema = v.union([
+  v.picklist(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
+  v.looseObject({ custom: v.string() }),
+  v.looseObject({ subAgent: V2ThreadResumeResponse__SubAgentSourceSchema }),
+])
+export type V2ThreadResumeResponse__SessionSource = v.InferOutput<
+  typeof V2ThreadResumeResponse__SessionSourceSchema
+>
+
+export const V2ThreadResumeResponse__TextElementSchema = v.looseObject({
+  byteRange: V2ThreadResumeResponse__ByteRangeSchema,
+  placeholder: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2ThreadResumeResponse__TextElement = v.InferOutput<
+  typeof V2ThreadResumeResponse__TextElementSchema
+>
+
+export const V2ThreadResumeResponse__ThreadActiveFlagSchema = v.picklist([
+  'waitingOnApproval',
+  'waitingOnUserInput',
+])
+export type V2ThreadResumeResponse__ThreadActiveFlag = v.InferOutput<
+  typeof V2ThreadResumeResponse__ThreadActiveFlagSchema
+>
+
+export const V2ThreadResumeResponse__ThreadStatusSchema = v.union([
+  v.looseObject({ type: v.literal('notLoaded') }),
+  v.looseObject({ type: v.literal('idle') }),
+  v.looseObject({ type: v.literal('systemError') }),
+  v.looseObject({
+    activeFlags: v.array(V2ThreadResumeResponse__ThreadActiveFlagSchema),
+    type: v.literal('active'),
+  }),
+])
+export type V2ThreadResumeResponse__ThreadStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__ThreadStatusSchema
+>
+
+export const V2ThreadResumeResponse__TurnErrorSchema = v.looseObject({
+  additionalDetails: v.optional(v.union([v.string(), v.null()])),
+  codexErrorInfo: v.optional(v.union([V2ThreadResumeResponse__CodexErrorInfoSchema, v.null()])),
+  message: v.string(),
+})
+export type V2ThreadResumeResponse__TurnError = v.InferOutput<
+  typeof V2ThreadResumeResponse__TurnErrorSchema
+>
+
+export const V2ThreadResumeResponse__UserInputSchema = v.union([
+  v.looseObject({
+    text: v.string(),
+    text_elements: v.optional(v.array(V2ThreadResumeResponse__TextElementSchema)),
+    type: v.literal('text'),
+  }),
+  v.looseObject({ type: v.literal('image'), url: v.string() }),
+  v.looseObject({ path: v.string(), type: v.literal('localImage') }),
+  v.looseObject({ name: v.string(), path: v.string(), type: v.literal('skill') }),
+  v.looseObject({ name: v.string(), path: v.string(), type: v.literal('mention') }),
+])
+export type V2ThreadResumeResponse__UserInput = v.InferOutput<
+  typeof V2ThreadResumeResponse__UserInputSchema
+>
+
+export const V2ThreadResumeResponse__WebSearchActionSchema = v.union([
+  v.looseObject({
+    queries: v.optional(v.union([v.array(v.string()), v.null()])),
+    query: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('search'),
+  }),
+  v.looseObject({ type: v.literal('openPage'), url: v.optional(v.union([v.string(), v.null()])) }),
+  v.looseObject({
+    pattern: v.optional(v.union([v.string(), v.null()])),
+    type: v.literal('findInPage'),
+    url: v.optional(v.union([v.string(), v.null()])),
+  }),
+  v.looseObject({ type: v.literal('other') }),
+])
+export type V2ThreadResumeResponse__WebSearchAction = v.InferOutput<
+  typeof V2ThreadResumeResponse__WebSearchActionSchema
+>
+
+export const V2ThreadResumeResponse__ThreadItemSchema = v.union([
+  v.looseObject({
+    content: v.array(V2ThreadResumeResponse__UserInputSchema),
+    id: v.string(),
+    type: v.literal('userMessage'),
+  }),
+  v.looseObject({
+    fragments: v.array(V2ThreadResumeResponse__HookPromptFragmentSchema),
+    id: v.string(),
+    type: v.literal('hookPrompt'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    memoryCitation: v.optional(v.union([V2ThreadResumeResponse__MemoryCitationSchema, v.null()])),
+    phase: v.optional(v.union([V2ThreadResumeResponse__MessagePhaseSchema, v.null()])),
+    text: v.string(),
+    type: v.literal('agentMessage'),
+  }),
+  v.looseObject({ id: v.string(), text: v.string(), type: v.literal('plan') }),
+  v.looseObject({
+    content: v.optional(v.array(v.string())),
+    id: v.string(),
+    summary: v.optional(v.array(v.string())),
+    type: v.literal('reasoning'),
+  }),
+  v.looseObject({
+    aggregatedOutput: v.optional(v.union([v.string(), v.null()])),
+    command: v.string(),
+    commandActions: v.array(V2ThreadResumeResponse__CommandActionSchema),
+    cwd: V2ThreadResumeResponse__AbsolutePathBufSchema,
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    exitCode: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    id: v.string(),
+    processId: v.optional(v.union([v.string(), v.null()])),
+    source: v.optional(V2ThreadResumeResponse__CommandExecutionSourceSchema),
+    status: V2ThreadResumeResponse__CommandExecutionStatusSchema,
+    type: v.literal('commandExecution'),
+  }),
+  v.looseObject({
+    changes: v.array(V2ThreadResumeResponse__FileUpdateChangeSchema),
+    id: v.string(),
+    status: V2ThreadResumeResponse__PatchApplyStatusSchema,
+    type: v.literal('fileChange'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    error: v.optional(v.union([V2ThreadResumeResponse__McpToolCallErrorSchema, v.null()])),
+    id: v.string(),
+    mcpAppResourceUri: v.optional(v.union([v.string(), v.null()])),
+    result: v.optional(v.union([V2ThreadResumeResponse__McpToolCallResultSchema, v.null()])),
+    server: v.string(),
+    status: V2ThreadResumeResponse__McpToolCallStatusSchema,
+    tool: v.string(),
+    type: v.literal('mcpToolCall'),
+  }),
+  v.looseObject({
+    arguments: v.unknown(),
+    contentItems: v.optional(
+      v.union([v.array(V2ThreadResumeResponse__DynamicToolCallOutputContentItemSchema), v.null()]),
+    ),
+    durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+    id: v.string(),
+    namespace: v.optional(v.union([v.string(), v.null()])),
+    status: V2ThreadResumeResponse__DynamicToolCallStatusSchema,
+    success: v.optional(v.union([v.boolean(), v.null()])),
+    tool: v.string(),
+    type: v.literal('dynamicToolCall'),
+  }),
+  v.looseObject({
+    agentsStates: v.record(v.string(), V2ThreadResumeResponse__CollabAgentStateSchema),
+    id: v.string(),
+    model: v.optional(v.union([v.string(), v.null()])),
+    prompt: v.optional(v.union([v.string(), v.null()])),
+    reasoningEffort: v.optional(v.union([V2ThreadResumeResponse__ReasoningEffortSchema, v.null()])),
+    receiverThreadIds: v.array(v.string()),
+    senderThreadId: v.string(),
+    status: V2ThreadResumeResponse__CollabAgentToolCallStatusSchema,
+    tool: V2ThreadResumeResponse__CollabAgentToolSchema,
+    type: v.literal('collabAgentToolCall'),
+  }),
+  v.looseObject({
+    action: v.optional(v.union([V2ThreadResumeResponse__WebSearchActionSchema, v.null()])),
+    id: v.string(),
+    query: v.string(),
+    type: v.literal('webSearch'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    path: V2ThreadResumeResponse__AbsolutePathBufSchema,
+    type: v.literal('imageView'),
+  }),
+  v.looseObject({
+    id: v.string(),
+    result: v.string(),
+    revisedPrompt: v.optional(v.union([v.string(), v.null()])),
+    savedPath: v.optional(v.union([V2ThreadResumeResponse__AbsolutePathBufSchema, v.null()])),
+    status: v.string(),
+    type: v.literal('imageGeneration'),
+  }),
+  v.looseObject({ id: v.string(), review: v.string(), type: v.literal('enteredReviewMode') }),
+  v.looseObject({ id: v.string(), review: v.string(), type: v.literal('exitedReviewMode') }),
+  v.looseObject({ id: v.string(), type: v.literal('contextCompaction') }),
+])
+export type V2ThreadResumeResponse__ThreadItem = v.InferOutput<
+  typeof V2ThreadResumeResponse__ThreadItemSchema
+>
+
+export const V2ThreadResumeResponse__TurnStatusSchema = v.picklist([
+  'completed',
+  'interrupted',
+  'failed',
+  'inProgress',
+])
+export type V2ThreadResumeResponse__TurnStatus = v.InferOutput<
+  typeof V2ThreadResumeResponse__TurnStatusSchema
+>
+
+export const V2ThreadResumeResponse__TurnSchema = v.looseObject({
+  completedAt: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  durationMs: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  error: v.optional(v.union([V2ThreadResumeResponse__TurnErrorSchema, v.null()])),
+  id: v.string(),
+  items: v.array(V2ThreadResumeResponse__ThreadItemSchema),
+  startedAt: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  status: V2ThreadResumeResponse__TurnStatusSchema,
+})
+export type V2ThreadResumeResponse__Turn = v.InferOutput<typeof V2ThreadResumeResponse__TurnSchema>
+
+export const V2ThreadResumeResponse__ThreadSchema = v.looseObject({
+  agentNickname: v.optional(v.union([v.string(), v.null()])),
+  agentRole: v.optional(v.union([v.string(), v.null()])),
+  cliVersion: v.string(),
+  createdAt: v.pipe(v.number(), v.integer()),
+  cwd: V2ThreadResumeResponse__AbsolutePathBufSchema,
+  ephemeral: v.boolean(),
+  forkedFromId: v.optional(v.union([v.string(), v.null()])),
+  gitInfo: v.optional(v.union([V2ThreadResumeResponse__GitInfoSchema, v.null()])),
+  id: v.string(),
+  modelProvider: v.string(),
+  name: v.optional(v.union([v.string(), v.null()])),
+  path: v.optional(v.union([v.string(), v.null()])),
+  preview: v.string(),
+  source: V2ThreadResumeResponse__SessionSourceSchema,
+  status: V2ThreadResumeResponse__ThreadStatusSchema,
+  turns: v.array(V2ThreadResumeResponse__TurnSchema),
+  updatedAt: v.pipe(v.number(), v.integer()),
+})
+export type V2ThreadResumeResponse__Thread = v.InferOutput<
+  typeof V2ThreadResumeResponse__ThreadSchema
+>
+
+export const V2ThreadResumeResponseSchema = v.looseObject({
+  approvalPolicy: V2ThreadResumeResponse__AskForApprovalSchema,
+  approvalsReviewer: V2ThreadResumeResponse__ApprovalsReviewerSchema,
+  cwd: V2ThreadResumeResponse__AbsolutePathBufSchema,
+  instructionSources: v.optional(v.array(V2ThreadResumeResponse__AbsolutePathBufSchema)),
+  model: v.string(),
+  modelProvider: v.string(),
+  reasoningEffort: v.optional(v.union([V2ThreadResumeResponse__ReasoningEffortSchema, v.null()])),
+  sandbox: V2ThreadResumeResponse__SandboxPolicySchema,
+  serviceTier: v.optional(v.union([V2ThreadResumeResponse__ServiceTierSchema, v.null()])),
+  thread: V2ThreadResumeResponse__ThreadSchema,
+})
+export type V2ThreadResumeResponse = v.InferOutput<typeof V2ThreadResumeResponseSchema>
 
 export const V2ThreadRollbackParamsSchema = v.looseObject({
   numTurns: v.pipe(v.number(), v.integer(), v.minValue(0)),
@@ -2604,6 +5697,69 @@ export const V2ThreadStartResponseSchema = v.looseObject({
 })
 export type V2ThreadStartResponse = v.InferOutput<typeof V2ThreadStartResponseSchema>
 
+export const V2ThreadStatusChangedNotification__ThreadActiveFlagSchema = v.picklist([
+  'waitingOnApproval',
+  'waitingOnUserInput',
+])
+export type V2ThreadStatusChangedNotification__ThreadActiveFlag = v.InferOutput<
+  typeof V2ThreadStatusChangedNotification__ThreadActiveFlagSchema
+>
+
+export const V2ThreadStatusChangedNotification__ThreadStatusSchema = v.union([
+  v.looseObject({ type: v.literal('notLoaded') }),
+  v.looseObject({ type: v.literal('idle') }),
+  v.looseObject({ type: v.literal('systemError') }),
+  v.looseObject({
+    activeFlags: v.array(V2ThreadStatusChangedNotification__ThreadActiveFlagSchema),
+    type: v.literal('active'),
+  }),
+])
+export type V2ThreadStatusChangedNotification__ThreadStatus = v.InferOutput<
+  typeof V2ThreadStatusChangedNotification__ThreadStatusSchema
+>
+
+export const V2ThreadStatusChangedNotificationSchema = v.looseObject({
+  status: V2ThreadStatusChangedNotification__ThreadStatusSchema,
+  threadId: v.string(),
+})
+export type V2ThreadStatusChangedNotification = v.InferOutput<
+  typeof V2ThreadStatusChangedNotificationSchema
+>
+
+export const V2ThreadTokenUsageUpdatedNotification__TokenUsageBreakdownSchema = v.looseObject({
+  cachedInputTokens: v.pipe(v.number(), v.integer()),
+  inputTokens: v.pipe(v.number(), v.integer()),
+  outputTokens: v.pipe(v.number(), v.integer()),
+  reasoningOutputTokens: v.pipe(v.number(), v.integer()),
+  totalTokens: v.pipe(v.number(), v.integer()),
+})
+export type V2ThreadTokenUsageUpdatedNotification__TokenUsageBreakdown = v.InferOutput<
+  typeof V2ThreadTokenUsageUpdatedNotification__TokenUsageBreakdownSchema
+>
+
+export const V2ThreadTokenUsageUpdatedNotification__ThreadTokenUsageSchema = v.looseObject({
+  last: V2ThreadTokenUsageUpdatedNotification__TokenUsageBreakdownSchema,
+  modelContextWindow: v.optional(v.union([v.pipe(v.number(), v.integer()), v.null()])),
+  total: V2ThreadTokenUsageUpdatedNotification__TokenUsageBreakdownSchema,
+})
+export type V2ThreadTokenUsageUpdatedNotification__ThreadTokenUsage = v.InferOutput<
+  typeof V2ThreadTokenUsageUpdatedNotification__ThreadTokenUsageSchema
+>
+
+export const V2ThreadTokenUsageUpdatedNotificationSchema = v.looseObject({
+  threadId: v.string(),
+  tokenUsage: V2ThreadTokenUsageUpdatedNotification__ThreadTokenUsageSchema,
+  turnId: v.string(),
+})
+export type V2ThreadTokenUsageUpdatedNotification = v.InferOutput<
+  typeof V2ThreadTokenUsageUpdatedNotificationSchema
+>
+
+export const V2ThreadUnarchivedNotificationSchema = v.looseObject({ threadId: v.string() })
+export type V2ThreadUnarchivedNotification = v.InferOutput<
+  typeof V2ThreadUnarchivedNotificationSchema
+>
+
 export const V2TurnCompletedNotification__AbsolutePathBufSchema = v.string()
 export type V2TurnCompletedNotification__AbsolutePathBuf = v.InferOutput<
   typeof V2TurnCompletedNotification__AbsolutePathBufSchema
@@ -3075,6 +6231,15 @@ export const V2TurnCompletedNotificationSchema = v.looseObject({
 })
 export type V2TurnCompletedNotification = v.InferOutput<typeof V2TurnCompletedNotificationSchema>
 
+export const V2TurnDiffUpdatedNotificationSchema = v.looseObject({
+  diff: v.string(),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2TurnDiffUpdatedNotification = v.InferOutput<
+  typeof V2TurnDiffUpdatedNotificationSchema
+>
+
 export const V2TurnInterruptParamsSchema = v.looseObject({
   threadId: v.string(),
   turnId: v.string(),
@@ -3083,6 +6248,33 @@ export type V2TurnInterruptParams = v.InferOutput<typeof V2TurnInterruptParamsSc
 
 export const V2TurnInterruptResponseSchema = v.looseObject({})
 export type V2TurnInterruptResponse = v.InferOutput<typeof V2TurnInterruptResponseSchema>
+
+export const V2TurnPlanUpdatedNotification__TurnPlanStepStatusSchema = v.picklist([
+  'pending',
+  'inProgress',
+  'completed',
+])
+export type V2TurnPlanUpdatedNotification__TurnPlanStepStatus = v.InferOutput<
+  typeof V2TurnPlanUpdatedNotification__TurnPlanStepStatusSchema
+>
+
+export const V2TurnPlanUpdatedNotification__TurnPlanStepSchema = v.looseObject({
+  status: V2TurnPlanUpdatedNotification__TurnPlanStepStatusSchema,
+  step: v.string(),
+})
+export type V2TurnPlanUpdatedNotification__TurnPlanStep = v.InferOutput<
+  typeof V2TurnPlanUpdatedNotification__TurnPlanStepSchema
+>
+
+export const V2TurnPlanUpdatedNotificationSchema = v.looseObject({
+  explanation: v.optional(v.union([v.string(), v.null()])),
+  plan: v.array(V2TurnPlanUpdatedNotification__TurnPlanStepSchema),
+  threadId: v.string(),
+  turnId: v.string(),
+})
+export type V2TurnPlanUpdatedNotification = v.InferOutput<
+  typeof V2TurnPlanUpdatedNotificationSchema
+>
 
 export const V2TurnStartedNotification__AbsolutePathBufSchema = v.string()
 export type V2TurnStartedNotification__AbsolutePathBuf = v.InferOutput<
@@ -4164,3 +7356,34 @@ export type V2TurnStartResponse__Turn = v.InferOutput<typeof V2TurnStartResponse
 
 export const V2TurnStartResponseSchema = v.looseObject({ turn: V2TurnStartResponse__TurnSchema })
 export type V2TurnStartResponse = v.InferOutput<typeof V2TurnStartResponseSchema>
+
+export const V2WarningNotificationSchema = v.looseObject({
+  message: v.string(),
+  threadId: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2WarningNotification = v.InferOutput<typeof V2WarningNotificationSchema>
+
+export const V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupModeSchema = v.picklist(
+  ['elevated', 'unelevated'],
+)
+export type V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupMode = v.InferOutput<
+  typeof V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupModeSchema
+>
+
+export const V2WindowsSandboxSetupCompletedNotificationSchema = v.looseObject({
+  error: v.optional(v.union([v.string(), v.null()])),
+  mode: V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupModeSchema,
+  success: v.boolean(),
+})
+export type V2WindowsSandboxSetupCompletedNotification = v.InferOutput<
+  typeof V2WindowsSandboxSetupCompletedNotificationSchema
+>
+
+export const V2WindowsWorldWritableWarningNotificationSchema = v.looseObject({
+  extraCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  failedScan: v.boolean(),
+  samplePaths: v.array(v.string()),
+})
+export type V2WindowsWorldWritableWarningNotification = v.InferOutput<
+  typeof V2WindowsWorldWritableWarningNotificationSchema
+>

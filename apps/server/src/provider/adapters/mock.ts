@@ -7,7 +7,8 @@ import {
   type ApprovalRequestId,
   type ThreadId,
 } from '@workspace/contracts'
-import type { ProviderAdapter, ProviderRuntimeSink, ProviderTurnInput } from '../types'
+import { ProviderRuntimeEventStream } from '../provider-runtime-event-stream'
+import type { ProviderAdapter, ProviderSessionStartInput, ProviderTurnInput } from '../types'
 
 type MockProviderAdapterOptions = {
   approvalError?: string
@@ -34,13 +35,15 @@ export class MockProviderAdapter implements ProviderAdapter {
     threadId: ThreadId
   }> = []
   readonly interruptedThreads: ThreadId[] = []
+  readonly rollbacks: Array<{ numTurns: number; threadId: ThreadId }> = []
   readonly startedTurns: ProviderTurnInput[] = []
   readonly userInputResponses: Array<{
     answers: ProviderUserInputAnswers
     requestId: ApprovalRequestId
     threadId: ThreadId
   }> = []
-  private readonly sessions = new Map<ThreadId, ProviderTurnInput>()
+  private readonly events = new ProviderRuntimeEventStream()
+  private readonly sessions = new Map<ThreadId, ProviderSessionStartInput>()
   private readonly approvalError: string | null
   private readonly beforeComplete: (() => Promise<void> | void) | null
   private readonly interruptError: string | null
@@ -79,14 +82,72 @@ export class MockProviderAdapter implements ProviderAdapter {
     }
   }
 
-  async startTurn(input: ProviderTurnInput, sink: ProviderRuntimeSink) {
+  streamEvents() {
+    return this.events.stream()
+  }
+
+  async startSession(input: ProviderSessionStartInput) {
+    this.sessions.set(input.threadId, input)
+    this.events.publish({
+      createdAt: new Date().toISOString(),
+      eventId: `mock-session-started:${input.threadId}`,
+      payload: { resume: input.resumeCursor ?? null },
+      provider: this.driverKind,
+      providerInstanceId: input.providerInstanceId,
+      providerSessionId: `mock:${input.threadId}`,
+      raw: {
+        payload: input,
+        source: 'codex.sdk.thread-event',
+      },
+      runtimeMode: input.runtimeMode,
+      threadId: input.threadId,
+      type: 'session.started',
+    })
+    this.events.publish({
+      createdAt: new Date().toISOString(),
+      eventId: `mock-thread-started:${input.threadId}`,
+      payload: { providerThreadId: `mock-thread:${input.threadId}` },
+      provider: this.driverKind,
+      providerInstanceId: input.providerInstanceId,
+      providerSessionId: `mock:${input.threadId}`,
+      runtimeMode: input.runtimeMode,
+      threadId: input.threadId,
+      type: 'thread.started',
+    })
+
+    return {
+      cwd: input.cwd,
+      model: input.modelSelection.model,
+      providerInstanceId: input.providerInstanceId as ProviderInstanceId,
+      providerSessionId: `mock:${input.threadId}`,
+      providerThreadId: `mock-thread:${input.threadId}`,
+      resumeCursor: input.resumeCursor ?? null,
+      runtimeMode: input.runtimeMode,
+      status: 'ready' as const,
+      threadId: input.threadId,
+    }
+  }
+
+  async sendTurn(input: ProviderTurnInput) {
     this.startedTurns.push(input)
-    this.sessions.set(input.thread.id, input)
+    if (!this.sessions.has(input.thread.id)) await this.startSession(sessionInputFromTurn(input))
     if (this.shouldFail) throw new Error('Mock provider failed')
     await Promise.resolve(this.beforeComplete?.())
 
     const messageId = `assistant:${input.turnId}`
-    await sink.ingest({
+    this.events.publish({
+      createdAt: new Date().toISOString(),
+      eventId: `mock-turn-started:${input.turnId}`,
+      payload: { model: input.modelSelection.model },
+      provider: this.driverKind,
+      providerInstanceId: input.providerInstanceId,
+      providerSessionId: `mock:${input.thread.id}`,
+      runtimeMode: input.runtimeMode,
+      threadId: input.thread.id,
+      turnId: input.turnId,
+      type: 'turn.started',
+    })
+    this.events.publish({
       createdAt: new Date().toISOString(),
       delta: this.responseText,
       eventId: `mock-delta:${input.turnId}`,
@@ -95,13 +156,25 @@ export class MockProviderAdapter implements ProviderAdapter {
       turnId: input.turnId,
       type: 'assistant.delta',
     })
-    await sink.ingest({
+    this.events.publish({
       completedAt: new Date().toISOString(),
       eventId: `mock-complete:${input.turnId}`,
       messageId,
       threadId: input.thread.id,
       turnId: input.turnId,
       type: 'assistant.complete',
+    })
+    this.events.publish({
+      createdAt: new Date().toISOString(),
+      eventId: `mock-turn-completed:${input.turnId}`,
+      payload: { state: 'completed' },
+      provider: this.driverKind,
+      providerInstanceId: input.providerInstanceId,
+      providerSessionId: `mock:${input.thread.id}`,
+      runtimeMode: input.runtimeMode,
+      threadId: input.thread.id,
+      turnId: input.turnId,
+      type: 'turn.completed',
     })
   }
 
@@ -110,11 +183,12 @@ export class MockProviderAdapter implements ProviderAdapter {
       cwd: input.cwd,
       model: input.modelSelection.model,
       providerInstanceId: input.providerInstanceId as ProviderInstanceId,
-      providerSessionId: `mock:${input.thread.id}`,
-      providerThreadId: `mock-thread:${input.thread.id}`,
+      providerSessionId: `mock:${input.threadId}`,
+      providerThreadId: `mock-thread:${input.threadId}`,
+      resumeCursor: input.resumeCursor ?? null,
       runtimeMode: input.runtimeMode,
       status: 'ready' as const,
-      threadId: input.thread.id,
+      threadId: input.threadId,
     }))
   }
 
@@ -134,6 +208,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       throw new Error('Mock provider rollback requires numTurns >= 1.')
     }
 
+    this.rollbacks.push({ numTurns, threadId })
     return this.readThread({ threadId })
   }
 
@@ -172,5 +247,16 @@ export class MockProviderAdapter implements ProviderAdapter {
     if (this.userInputError) throw new Error(this.userInputError)
 
     this.userInputResponses.push(input)
+  }
+}
+
+function sessionInputFromTurn(input: ProviderTurnInput): ProviderSessionStartInput {
+  return {
+    cwd: input.cwd,
+    interactionMode: input.interactionMode,
+    modelSelection: input.modelSelection,
+    providerInstanceId: input.providerInstanceId,
+    runtimeMode: input.runtimeMode,
+    threadId: input.thread.id,
   }
 }

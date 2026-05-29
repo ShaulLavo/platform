@@ -2,7 +2,7 @@ import {
   messageIdSchema,
   threadIdSchema,
   turnIdSchema,
-  type InternalOrchestrationCommand,
+  type OrchestrationCommand,
 } from '@workspace/contracts'
 import { describe, expect, it } from 'bun:test'
 import * as v from 'valibot'
@@ -313,7 +313,7 @@ describe('provider runtime ingestion', () => {
 })
 
 function fixture(options: ConstructorParameters<typeof ProviderRuntimeIngestion>[1] = {}) {
-  const dispatched: InternalOrchestrationCommand[] = []
+  const dispatched: OrchestrationCommand[] = []
   const ingestion = new ProviderRuntimeIngestion(async (command) => {
     dispatched.push(command)
   }, options)

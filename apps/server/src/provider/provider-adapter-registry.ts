@@ -17,8 +17,18 @@ export type ProviderInstanceRoutingInfo = {
   providerInstanceId: ProviderInstanceId
 }
 
+export type ProviderAdapterRegistryChange = {
+  providerInstanceIds: ProviderInstanceId[]
+  type: 'providers.changed'
+}
+
+export type ProviderAdapterRegistryChangeListener = (
+  change: ProviderAdapterRegistryChange,
+) => Promise<void> | void
+
 export class ProviderAdapterRegistry {
   private readonly adapters = new Map<ProviderInstanceId, ProviderAdapter>()
+  private readonly changeListeners = new Set<ProviderAdapterRegistryChangeListener>()
   private readonly statusCache: ProviderStatusCache
 
   constructor(adapters: ProviderAdapter[], statusCache = new ProviderStatusCache()) {
@@ -40,6 +50,28 @@ export class ProviderAdapterRegistry {
 
   listInstances() {
     return Array.from(this.adapters.keys())
+  }
+
+  register(adapter: ProviderAdapter) {
+    this.adapters.set(adapter.adapterKey as ProviderInstanceId, adapter)
+    this.emitChanges()
+  }
+
+  unregister(providerInstanceId: ProviderInstanceId) {
+    const deleted = this.adapters.delete(providerInstanceId)
+    if (deleted) this.emitChanges()
+
+    return deleted
+  }
+
+  subscribeChanges(listener: ProviderAdapterRegistryChangeListener) {
+    this.changeListeners.add(listener)
+
+    return () => this.changeListeners.delete(listener)
+  }
+
+  streamChanges(): AsyncIterable<ProviderAdapterRegistryChange> {
+    return providerRegistryChangeStream(this)
   }
 
   adapter(providerInstanceId: ProviderInstanceId) {
@@ -76,6 +108,16 @@ export class ProviderAdapterRegistry {
 
     return snapshot
   }
+
+  private emitChanges() {
+    const change = {
+      providerInstanceIds: this.listInstances(),
+      type: 'providers.changed' as const,
+    }
+    for (const listener of this.changeListeners) {
+      void Promise.resolve(listener(change))
+    }
+  }
 }
 
 export function createDefaultProviderAdapterRegistry() {
@@ -92,4 +134,34 @@ export function compareProviderSnapshots(left: ProviderSnapshot, right: Provider
 
 export function defaultProviderInstanceId() {
   return DEFAULT_PROVIDER_INSTANCE_ID
+}
+
+function providerRegistryChangeStream(registry: ProviderAdapterRegistry) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const queue: ProviderAdapterRegistryChange[] = []
+      const waiters: Array<() => void> = []
+      const unsubscribe = registry.subscribeChanges((change) => {
+        queue.push(change)
+        waiters.shift()?.()
+      })
+
+      try {
+        for (;;) {
+          const change = queue.shift()
+          if (change) {
+            yield change
+            continue
+          }
+
+          await new Promise<void>((resolve) => {
+            waiters.push(resolve)
+          })
+        }
+      } finally {
+        unsubscribe()
+        waiters.splice(0)
+      }
+    },
+  }
 }

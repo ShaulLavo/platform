@@ -6,6 +6,7 @@ import * as CodexSchema from './schema.gen'
 export const CODEX_CLIENT_REQUEST_METHODS = {
   initialize: 'initialize',
   'thread/start': 'thread/start',
+  'thread/resume': 'thread/resume',
   'thread/rollback': 'thread/rollback',
   'thread/read': 'thread/read',
   'turn/start': 'turn/start',
@@ -17,9 +18,59 @@ export const CODEX_CLIENT_REQUEST_METHODS = {
 export const CODEX_SERVER_NOTIFICATION_METHODS = {
   error: 'error',
   'thread/started': 'thread/started',
+  'thread/status/changed': 'thread/status/changed',
+  'thread/archived': 'thread/archived',
+  'thread/unarchived': 'thread/unarchived',
+  'thread/closed': 'thread/closed',
+  'skills/changed': 'skills/changed',
+  'thread/name/updated': 'thread/name/updated',
+  'thread/tokenUsage/updated': 'thread/tokenUsage/updated',
   'turn/started': 'turn/started',
+  'hook/started': 'hook/started',
   'turn/completed': 'turn/completed',
+  'hook/completed': 'hook/completed',
+  'turn/diff/updated': 'turn/diff/updated',
+  'turn/plan/updated': 'turn/plan/updated',
+  'item/started': 'item/started',
+  'item/autoApprovalReview/started': 'item/autoApprovalReview/started',
+  'item/autoApprovalReview/completed': 'item/autoApprovalReview/completed',
+  'item/completed': 'item/completed',
+  'rawResponseItem/completed': 'rawResponseItem/completed',
   'item/agentMessage/delta': 'item/agentMessage/delta',
+  'item/plan/delta': 'item/plan/delta',
+  'command/exec/outputDelta': 'command/exec/outputDelta',
+  'item/commandExecution/outputDelta': 'item/commandExecution/outputDelta',
+  'item/commandExecution/terminalInteraction': 'item/commandExecution/terminalInteraction',
+  'item/fileChange/outputDelta': 'item/fileChange/outputDelta',
+  'item/fileChange/patchUpdated': 'item/fileChange/patchUpdated',
+  'serverRequest/resolved': 'serverRequest/resolved',
+  'item/mcpToolCall/progress': 'item/mcpToolCall/progress',
+  'mcpServer/oauthLogin/completed': 'mcpServer/oauthLogin/completed',
+  'mcpServer/startupStatus/updated': 'mcpServer/startupStatus/updated',
+  'account/updated': 'account/updated',
+  'account/rateLimits/updated': 'account/rateLimits/updated',
+  'app/list/updated': 'app/list/updated',
+  'externalAgentConfig/import/completed': 'externalAgentConfig/import/completed',
+  'fs/changed': 'fs/changed',
+  'item/reasoning/summaryTextDelta': 'item/reasoning/summaryTextDelta',
+  'item/reasoning/summaryPartAdded': 'item/reasoning/summaryPartAdded',
+  'item/reasoning/textDelta': 'item/reasoning/textDelta',
+  'thread/compacted': 'thread/compacted',
+  'model/rerouted': 'model/rerouted',
+  warning: 'warning',
+  deprecationNotice: 'deprecationNotice',
+  configWarning: 'configWarning',
+  'thread/realtime/started': 'thread/realtime/started',
+  'thread/realtime/itemAdded': 'thread/realtime/itemAdded',
+  'thread/realtime/transcript/delta': 'thread/realtime/transcript/delta',
+  'thread/realtime/transcript/done': 'thread/realtime/transcript/done',
+  'thread/realtime/outputAudio/delta': 'thread/realtime/outputAudio/delta',
+  'thread/realtime/sdp': 'thread/realtime/sdp',
+  'thread/realtime/error': 'thread/realtime/error',
+  'thread/realtime/closed': 'thread/realtime/closed',
+  'windows/worldWritableWarning': 'windows/worldWritableWarning',
+  'windowsSandbox/setupCompleted': 'windowsSandbox/setupCompleted',
+  'account/login/completed': 'account/login/completed',
 } as const
 
 export type CodexClientRequestMethod = keyof typeof CODEX_CLIENT_REQUEST_METHODS
@@ -28,6 +79,7 @@ export type CodexServerNotificationMethod = keyof typeof CODEX_SERVER_NOTIFICATI
 export interface CodexClientRequestParamsByMethod {
   readonly initialize: CodexSchema.V1InitializeParams
   readonly 'thread/start': CodexSchema.V2ThreadStartParams
+  readonly 'thread/resume': CodexSchema.V2ThreadResumeParams
   readonly 'thread/rollback': CodexSchema.V2ThreadRollbackParams
   readonly 'thread/read': CodexSchema.V2ThreadReadParams
   readonly 'turn/start': CodexSchema.V2TurnStartParams
@@ -39,6 +91,7 @@ export interface CodexClientRequestParamsByMethod {
 export interface CodexClientRequestResultByMethod {
   readonly initialize: CodexSchema.V1InitializeResponse
   readonly 'thread/start': CodexSchema.V2ThreadStartResponse
+  readonly 'thread/resume': CodexSchema.V2ThreadResumeResponse
   readonly 'thread/rollback': CodexSchema.V2ThreadRollbackResponse
   readonly 'thread/read': CodexSchema.V2ThreadReadResponse
   readonly 'turn/start': CodexSchema.V2TurnStartResponse
@@ -50,14 +103,65 @@ export interface CodexClientRequestResultByMethod {
 export interface CodexServerNotificationParamsByMethod {
   readonly error: CodexSchema.V2ErrorNotification
   readonly 'thread/started': CodexSchema.V2ThreadStartedNotification
+  readonly 'thread/status/changed': CodexSchema.V2ThreadStatusChangedNotification
+  readonly 'thread/archived': CodexSchema.V2ThreadArchivedNotification
+  readonly 'thread/unarchived': CodexSchema.V2ThreadUnarchivedNotification
+  readonly 'thread/closed': CodexSchema.V2ThreadClosedNotification
+  readonly 'skills/changed': CodexSchema.V2SkillsChangedNotification
+  readonly 'thread/name/updated': CodexSchema.V2ThreadNameUpdatedNotification
+  readonly 'thread/tokenUsage/updated': CodexSchema.V2ThreadTokenUsageUpdatedNotification
   readonly 'turn/started': CodexSchema.V2TurnStartedNotification
+  readonly 'hook/started': CodexSchema.V2HookStartedNotification
   readonly 'turn/completed': CodexSchema.V2TurnCompletedNotification
+  readonly 'hook/completed': CodexSchema.V2HookCompletedNotification
+  readonly 'turn/diff/updated': CodexSchema.V2TurnDiffUpdatedNotification
+  readonly 'turn/plan/updated': CodexSchema.V2TurnPlanUpdatedNotification
+  readonly 'item/started': CodexSchema.V2ItemStartedNotification
+  readonly 'item/autoApprovalReview/started': CodexSchema.V2ItemGuardianApprovalReviewStartedNotification
+  readonly 'item/autoApprovalReview/completed': CodexSchema.V2ItemGuardianApprovalReviewCompletedNotification
+  readonly 'item/completed': CodexSchema.V2ItemCompletedNotification
+  readonly 'rawResponseItem/completed': CodexSchema.V2RawResponseItemCompletedNotification
   readonly 'item/agentMessage/delta': CodexSchema.V2AgentMessageDeltaNotification
+  readonly 'item/plan/delta': CodexSchema.V2PlanDeltaNotification
+  readonly 'command/exec/outputDelta': CodexSchema.V2CommandExecOutputDeltaNotification
+  readonly 'item/commandExecution/outputDelta': CodexSchema.V2CommandExecutionOutputDeltaNotification
+  readonly 'item/commandExecution/terminalInteraction': CodexSchema.V2TerminalInteractionNotification
+  readonly 'item/fileChange/outputDelta': CodexSchema.V2FileChangeOutputDeltaNotification
+  readonly 'item/fileChange/patchUpdated': CodexSchema.V2FileChangePatchUpdatedNotification
+  readonly 'serverRequest/resolved': CodexSchema.V2ServerRequestResolvedNotification
+  readonly 'item/mcpToolCall/progress': CodexSchema.V2McpToolCallProgressNotification
+  readonly 'mcpServer/oauthLogin/completed': CodexSchema.V2McpServerOauthLoginCompletedNotification
+  readonly 'mcpServer/startupStatus/updated': CodexSchema.V2McpServerStatusUpdatedNotification
+  readonly 'account/updated': CodexSchema.V2AccountUpdatedNotification
+  readonly 'account/rateLimits/updated': CodexSchema.V2AccountRateLimitsUpdatedNotification
+  readonly 'app/list/updated': CodexSchema.V2AppListUpdatedNotification
+  readonly 'externalAgentConfig/import/completed': CodexSchema.V2ExternalAgentConfigImportCompletedNotification
+  readonly 'fs/changed': CodexSchema.V2FsChangedNotification
+  readonly 'item/reasoning/summaryTextDelta': CodexSchema.V2ReasoningSummaryTextDeltaNotification
+  readonly 'item/reasoning/summaryPartAdded': CodexSchema.V2ReasoningSummaryPartAddedNotification
+  readonly 'item/reasoning/textDelta': CodexSchema.V2ReasoningTextDeltaNotification
+  readonly 'thread/compacted': CodexSchema.V2ContextCompactedNotification
+  readonly 'model/rerouted': CodexSchema.V2ModelReroutedNotification
+  readonly warning: CodexSchema.V2WarningNotification
+  readonly deprecationNotice: CodexSchema.V2DeprecationNoticeNotification
+  readonly configWarning: CodexSchema.V2ConfigWarningNotification
+  readonly 'thread/realtime/started': CodexSchema.V2ThreadRealtimeStartedNotification
+  readonly 'thread/realtime/itemAdded': CodexSchema.V2ThreadRealtimeItemAddedNotification
+  readonly 'thread/realtime/transcript/delta': CodexSchema.V2ThreadRealtimeTranscriptDeltaNotification
+  readonly 'thread/realtime/transcript/done': CodexSchema.V2ThreadRealtimeTranscriptDoneNotification
+  readonly 'thread/realtime/outputAudio/delta': CodexSchema.V2ThreadRealtimeOutputAudioDeltaNotification
+  readonly 'thread/realtime/sdp': CodexSchema.V2ThreadRealtimeSdpNotification
+  readonly 'thread/realtime/error': CodexSchema.V2ThreadRealtimeErrorNotification
+  readonly 'thread/realtime/closed': CodexSchema.V2ThreadRealtimeClosedNotification
+  readonly 'windows/worldWritableWarning': CodexSchema.V2WindowsWorldWritableWarningNotification
+  readonly 'windowsSandbox/setupCompleted': CodexSchema.V2WindowsSandboxSetupCompletedNotification
+  readonly 'account/login/completed': CodexSchema.V2AccountLoginCompletedNotification
 }
 
 export const CODEX_CLIENT_REQUEST_PARAMS = {
   initialize: CodexSchema.V1InitializeParamsSchema,
   'thread/start': CodexSchema.V2ThreadStartParamsSchema,
+  'thread/resume': CodexSchema.V2ThreadResumeParamsSchema,
   'thread/rollback': CodexSchema.V2ThreadRollbackParamsSchema,
   'thread/read': CodexSchema.V2ThreadReadParamsSchema,
   'turn/start': CodexSchema.V2TurnStartParamsSchema,
@@ -69,6 +173,7 @@ export const CODEX_CLIENT_REQUEST_PARAMS = {
 export const CODEX_CLIENT_REQUEST_RESULTS = {
   initialize: CodexSchema.V1InitializeResponseSchema,
   'thread/start': CodexSchema.V2ThreadStartResponseSchema,
+  'thread/resume': CodexSchema.V2ThreadResumeResponseSchema,
   'thread/rollback': CodexSchema.V2ThreadRollbackResponseSchema,
   'thread/read': CodexSchema.V2ThreadReadResponseSchema,
   'turn/start': CodexSchema.V2TurnStartResponseSchema,
@@ -80,7 +185,61 @@ export const CODEX_CLIENT_REQUEST_RESULTS = {
 export const CODEX_SERVER_NOTIFICATION_PARAMS = {
   error: CodexSchema.V2ErrorNotificationSchema,
   'thread/started': CodexSchema.V2ThreadStartedNotificationSchema,
+  'thread/status/changed': CodexSchema.V2ThreadStatusChangedNotificationSchema,
+  'thread/archived': CodexSchema.V2ThreadArchivedNotificationSchema,
+  'thread/unarchived': CodexSchema.V2ThreadUnarchivedNotificationSchema,
+  'thread/closed': CodexSchema.V2ThreadClosedNotificationSchema,
+  'skills/changed': CodexSchema.V2SkillsChangedNotificationSchema,
+  'thread/name/updated': CodexSchema.V2ThreadNameUpdatedNotificationSchema,
+  'thread/tokenUsage/updated': CodexSchema.V2ThreadTokenUsageUpdatedNotificationSchema,
   'turn/started': CodexSchema.V2TurnStartedNotificationSchema,
+  'hook/started': CodexSchema.V2HookStartedNotificationSchema,
   'turn/completed': CodexSchema.V2TurnCompletedNotificationSchema,
+  'hook/completed': CodexSchema.V2HookCompletedNotificationSchema,
+  'turn/diff/updated': CodexSchema.V2TurnDiffUpdatedNotificationSchema,
+  'turn/plan/updated': CodexSchema.V2TurnPlanUpdatedNotificationSchema,
+  'item/started': CodexSchema.V2ItemStartedNotificationSchema,
+  'item/autoApprovalReview/started':
+    CodexSchema.V2ItemGuardianApprovalReviewStartedNotificationSchema,
+  'item/autoApprovalReview/completed':
+    CodexSchema.V2ItemGuardianApprovalReviewCompletedNotificationSchema,
+  'item/completed': CodexSchema.V2ItemCompletedNotificationSchema,
+  'rawResponseItem/completed': CodexSchema.V2RawResponseItemCompletedNotificationSchema,
   'item/agentMessage/delta': CodexSchema.V2AgentMessageDeltaNotificationSchema,
+  'item/plan/delta': CodexSchema.V2PlanDeltaNotificationSchema,
+  'command/exec/outputDelta': CodexSchema.V2CommandExecOutputDeltaNotificationSchema,
+  'item/commandExecution/outputDelta': CodexSchema.V2CommandExecutionOutputDeltaNotificationSchema,
+  'item/commandExecution/terminalInteraction': CodexSchema.V2TerminalInteractionNotificationSchema,
+  'item/fileChange/outputDelta': CodexSchema.V2FileChangeOutputDeltaNotificationSchema,
+  'item/fileChange/patchUpdated': CodexSchema.V2FileChangePatchUpdatedNotificationSchema,
+  'serverRequest/resolved': CodexSchema.V2ServerRequestResolvedNotificationSchema,
+  'item/mcpToolCall/progress': CodexSchema.V2McpToolCallProgressNotificationSchema,
+  'mcpServer/oauthLogin/completed': CodexSchema.V2McpServerOauthLoginCompletedNotificationSchema,
+  'mcpServer/startupStatus/updated': CodexSchema.V2McpServerStatusUpdatedNotificationSchema,
+  'account/updated': CodexSchema.V2AccountUpdatedNotificationSchema,
+  'account/rateLimits/updated': CodexSchema.V2AccountRateLimitsUpdatedNotificationSchema,
+  'app/list/updated': CodexSchema.V2AppListUpdatedNotificationSchema,
+  'externalAgentConfig/import/completed':
+    CodexSchema.V2ExternalAgentConfigImportCompletedNotificationSchema,
+  'fs/changed': CodexSchema.V2FsChangedNotificationSchema,
+  'item/reasoning/summaryTextDelta': CodexSchema.V2ReasoningSummaryTextDeltaNotificationSchema,
+  'item/reasoning/summaryPartAdded': CodexSchema.V2ReasoningSummaryPartAddedNotificationSchema,
+  'item/reasoning/textDelta': CodexSchema.V2ReasoningTextDeltaNotificationSchema,
+  'thread/compacted': CodexSchema.V2ContextCompactedNotificationSchema,
+  'model/rerouted': CodexSchema.V2ModelReroutedNotificationSchema,
+  warning: CodexSchema.V2WarningNotificationSchema,
+  deprecationNotice: CodexSchema.V2DeprecationNoticeNotificationSchema,
+  configWarning: CodexSchema.V2ConfigWarningNotificationSchema,
+  'thread/realtime/started': CodexSchema.V2ThreadRealtimeStartedNotificationSchema,
+  'thread/realtime/itemAdded': CodexSchema.V2ThreadRealtimeItemAddedNotificationSchema,
+  'thread/realtime/transcript/delta': CodexSchema.V2ThreadRealtimeTranscriptDeltaNotificationSchema,
+  'thread/realtime/transcript/done': CodexSchema.V2ThreadRealtimeTranscriptDoneNotificationSchema,
+  'thread/realtime/outputAudio/delta':
+    CodexSchema.V2ThreadRealtimeOutputAudioDeltaNotificationSchema,
+  'thread/realtime/sdp': CodexSchema.V2ThreadRealtimeSdpNotificationSchema,
+  'thread/realtime/error': CodexSchema.V2ThreadRealtimeErrorNotificationSchema,
+  'thread/realtime/closed': CodexSchema.V2ThreadRealtimeClosedNotificationSchema,
+  'windows/worldWritableWarning': CodexSchema.V2WindowsWorldWritableWarningNotificationSchema,
+  'windowsSandbox/setupCompleted': CodexSchema.V2WindowsSandboxSetupCompletedNotificationSchema,
+  'account/login/completed': CodexSchema.V2AccountLoginCompletedNotificationSchema,
 } as const

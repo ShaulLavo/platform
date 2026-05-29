@@ -1,7 +1,11 @@
 import { useState } from 'react'
 
-import { canOpenCheckpointDiff } from '../lib/checkpoint-diff-query'
+import { canOpenCheckpointDiff, checkpointDiffErrorMessage } from '../lib/checkpoint-diff-query'
 import { hasNonZeroChatTurnDiffStat, summarizeChatTurnDiffStats } from '../lib/chat-turn-diff-tree'
+import {
+  chatChangedFilesExpansionKey,
+  useChatChangedFilesExpansionStore,
+} from '../state/chat-changed-files-expansion-store'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { AssistantChangedFilesTree } from './assistant-changed-files-tree'
 import { ChatDiffStatLabel } from './chat-diff-stat-label'
@@ -9,17 +13,24 @@ import { ChatDiffStatLabel } from './chat-diff-stat-label'
 export function AssistantChangedFilesSection({
   summary,
   onOpenDiff,
+  onOpenThreadDiff,
 }: {
   summary: ChatTurnDiffSummary
   onOpenDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
+  onOpenThreadDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
 }) {
-  const [allDirectoriesExpanded, setAllDirectoriesExpanded] = useState(true)
+  const expansionKey = chatChangedFilesExpansionKey(summary)
+  const allDirectoriesExpanded = useChatChangedFilesExpansionStore(
+    (state) => state.expandedBySummaryId[expansionKey] ?? true,
+  )
+  const setSummaryExpanded = useChatChangedFilesExpansionStore((state) => state.setSummaryExpanded)
   const [diffError, setDiffError] = useState<string | null>(null)
   const files = summary.files
   if (files.length === 0) return null
 
   const summaryStat = summarizeChatTurnDiffStats(files)
   const checkpointDiffAvailable = Boolean(onOpenDiff) && canOpenCheckpointDiff(summary)
+  const threadDiffAvailable = Boolean(onOpenThreadDiff) && canOpenCheckpointDiff(summary)
 
   async function handleOpenCheckpointDiff(path?: string) {
     if (!checkpointDiffAvailable) return
@@ -27,6 +38,17 @@ export function AssistantChangedFilesSection({
     setDiffError(null)
     try {
       await onOpenDiff?.(summary, path)
+    } catch (error) {
+      setDiffError(checkpointDiffErrorMessage(error))
+    }
+  }
+
+  async function handleOpenThreadDiff() {
+    if (!threadDiffAvailable) return
+
+    setDiffError(null)
+    try {
+      await onOpenThreadDiff?.(summary)
     } catch (error) {
       setDiffError(checkpointDiffErrorMessage(error))
     }
@@ -62,11 +84,21 @@ export function AssistantChangedFilesSection({
               {checkpointStatusLabel(summary.status)}
             </span>
           )}
+          {threadDiffAvailable ? (
+            <button
+              className='border-border bg-background hover:bg-muted hover:text-foreground h-6 border px-2 text-xs font-medium transition-colors'
+              data-scroll-anchor-ignore
+              type='button'
+              onClick={() => void handleOpenThreadDiff()}
+            >
+              Thread diff
+            </button>
+          ) : null}
           <button
             className='border-border bg-background hover:bg-muted hover:text-foreground h-6 border px-2 text-xs font-medium transition-colors'
             data-scroll-anchor-ignore
             type='button'
-            onClick={() => setAllDirectoriesExpanded((value) => !value)}
+            onClick={() => setSummaryExpanded(expansionKey, !allDirectoriesExpanded)}
           >
             {allDirectoriesExpanded ? 'Collapse all' : 'Expand all'}
           </button>
@@ -88,10 +120,4 @@ function checkpointStatusLabel(status: ChatTurnDiffSummary['status']) {
   if (status === 'error') return 'Checkpoint error'
 
   return 'Diff unavailable'
-}
-
-function checkpointDiffErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Checkpoint diff unavailable.'
 }

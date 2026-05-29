@@ -10,11 +10,13 @@ export function TimelineRow({
   checkpointRevertPending = false,
   item,
   onOpenCheckpointDiff,
+  onOpenThreadCheckpointDiff,
   onRevertToCheckpoint,
 }: {
   checkpointRevertPending?: boolean
   item: ChatTimelineItem
   onOpenCheckpointDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
+  onOpenThreadCheckpointDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
   onRevertToCheckpoint?: (turnCount: number) => void
 }) {
   return (
@@ -27,6 +29,7 @@ export function TimelineRow({
         checkpointRevertPending,
         item,
         onOpenCheckpointDiff,
+        onOpenThreadCheckpointDiff,
         onRevertToCheckpoint,
       })}
     </div>
@@ -37,11 +40,13 @@ function timelineRowContent({
   checkpointRevertPending,
   item,
   onOpenCheckpointDiff,
+  onOpenThreadCheckpointDiff,
   onRevertToCheckpoint,
 }: {
   checkpointRevertPending: boolean
   item: ChatTimelineItem
   onOpenCheckpointDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
+  onOpenThreadCheckpointDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
   onRevertToCheckpoint?: (turnCount: number) => void
 }) {
   if (item.type === 'message') {
@@ -55,6 +60,7 @@ function timelineRowContent({
         durationStart={item.durationStart}
         message={item.message}
         onOpenCheckpointDiff={onOpenCheckpointDiff}
+        onOpenThreadCheckpointDiff={onOpenThreadCheckpointDiff}
         onRevertToCheckpoint={onRevertToCheckpoint}
         renderAssistantCopyButton={renderAssistantCopyButton}
         revertTurnCount={item.revertTurnCount}

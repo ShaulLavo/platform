@@ -171,6 +171,8 @@ export class OrchestrationProjectionPipeline {
       case 'thread.checkpoint-revert-requested':
         return
       case 'thread.reverted':
+        this.pruneThreadAfterRevert(event)
+        return
       case 'thread.approval-response-requested':
       case 'thread.user-input-response-requested':
         return
@@ -534,6 +536,74 @@ export class OrchestrationProjectionPipeline {
     })
   }
 
+  private pruneThreadAfterRevert(event: Extract<OrchestrationEvent, { type: 'thread.reverted' }>) {
+    const threadId = event.payload.threadId
+    const summaries = checkpointSummariesAfterReverts(
+      this.eventStore.readAfter({ afterSequence: 0, threadId }),
+    ).filter((summary) => summary.checkpointTurnCount <= event.payload.turnCount)
+    const retainedTurnIds = new Set(summaries.map((summary) => summary.turnId))
+    const messages = this.database
+      .select()
+      .from(projectionThreadMessages)
+      .where(eq(projectionThreadMessages.threadId, threadId))
+      .all()
+      .filter((message) => shouldRetainAfterRevert(message.turnId, retainedTurnIds))
+    const activities = this.database
+      .select()
+      .from(projectionThreadActivities)
+      .where(eq(projectionThreadActivities.threadId, threadId))
+      .all()
+      .filter((activity) => shouldRetainAfterRevert(activity.turnId, retainedTurnIds))
+    const turns = this.database
+      .select()
+      .from(projectionTurns)
+      .where(eq(projectionTurns.threadId, threadId))
+      .all()
+      .filter((turn) => retainedTurnIds.has(turn.turnId))
+    const latestTurn = latestProjectionTurn(turns)
+
+    this.replaceThreadMessages(threadId, messages)
+    this.replaceThreadActivities(threadId, activities)
+    this.database.delete(projectionTurns).where(eq(projectionTurns.threadId, threadId)).run()
+    if (turns.length > 0) {
+      this.database.insert(projectionTurns).values(turns.map(turnInsertRow)).run()
+    }
+
+    this.updateThread(threadId, {
+      hasActionableProposedPlan: false,
+      latestTurnId: latestTurn?.turnId ?? null,
+      latestTurnJson: latestTurn ? JSON.stringify(latestTurnJson(latestTurn)) : null,
+      latestUserMessageAt: latestUserMessageAt(messages),
+      updatedAt: event.payload.revertedAt,
+    })
+  }
+
+  private replaceThreadMessages(
+    threadId: string,
+    rows: Array<typeof projectionThreadMessages.$inferSelect>,
+  ) {
+    this.database
+      .delete(projectionThreadMessages)
+      .where(eq(projectionThreadMessages.threadId, threadId))
+      .run()
+    if (rows.length === 0) return
+
+    this.database.insert(projectionThreadMessages).values(rows).run()
+  }
+
+  private replaceThreadActivities(
+    threadId: string,
+    rows: Array<typeof projectionThreadActivities.$inferSelect>,
+  ) {
+    this.database
+      .delete(projectionThreadActivities)
+      .where(eq(projectionThreadActivities.threadId, threadId))
+      .run()
+    if (rows.length === 0) return
+
+    this.database.insert(projectionThreadActivities).values(rows).run()
+  }
+
   private updateSessionStatus(threadId: string, status: 'stopped', updatedAt: string) {
     this.database
       .update(projectionThreadSessions)
@@ -618,4 +688,94 @@ function assistantTurnCompletedAt(
   if (event.payload.streaming) return current ?? null
 
   return current ?? event.payload.updatedAt
+}
+
+type CheckpointSummary = {
+  checkpointTurnCount: number
+  turnId: string
+}
+
+function checkpointSummariesAfterReverts(events: readonly OrchestrationEvent[]) {
+  const summaries = new Map<string, CheckpointSummary>()
+
+  for (const event of events) {
+    if (event.type === 'thread.turn-diff-completed') {
+      summaries.set(event.payload.turnId, {
+        checkpointTurnCount: event.payload.checkpointTurnCount,
+        turnId: event.payload.turnId,
+      })
+      continue
+    }
+    if (event.type !== 'thread.reverted') continue
+
+    for (const summary of summaries.values()) {
+      if (summary.checkpointTurnCount <= event.payload.turnCount) continue
+
+      summaries.delete(summary.turnId)
+    }
+  }
+
+  return Array.from(summaries.values()).toSorted(
+    (left, right) => left.checkpointTurnCount - right.checkpointTurnCount,
+  )
+}
+
+function shouldRetainAfterRevert(turnId: string | null, retainedTurnIds: Set<string>) {
+  if (!turnId) return true
+
+  return retainedTurnIds.has(turnId)
+}
+
+function latestProjectionTurn(turns: Array<typeof projectionTurns.$inferSelect>) {
+  return turns
+    .toSorted((left, right) => {
+      const requestedOrder = left.requestedAt.localeCompare(right.requestedAt)
+      if (requestedOrder !== 0) return requestedOrder
+
+      return left.turnId.localeCompare(right.turnId)
+    })
+    .at(-1)
+}
+
+function latestTurnJson(turn: typeof projectionTurns.$inferSelect) {
+  return {
+    assistantMessageId: turn.assistantMessageId,
+    completedAt: turn.completedAt,
+    requestedAt: turn.requestedAt,
+    sourceProposedPlan: parseJsonOrUndefined(turn.sourceProposedPlanJson),
+    startedAt: turn.startedAt,
+    state: turn.state,
+    turnId: turn.turnId,
+  }
+}
+
+function turnInsertRow(
+  turn: typeof projectionTurns.$inferSelect,
+): typeof projectionTurns.$inferInsert {
+  return {
+    assistantMessageId: turn.assistantMessageId,
+    completedAt: turn.completedAt,
+    requestedAt: turn.requestedAt,
+    sourceProposedPlanJson: turn.sourceProposedPlanJson,
+    startedAt: turn.startedAt,
+    state: turn.state,
+    threadId: turn.threadId,
+    turnId: turn.turnId,
+    userMessageId: turn.userMessageId,
+  }
+}
+
+function latestUserMessageAt(messages: Array<typeof projectionThreadMessages.$inferSelect>) {
+  return (
+    messages
+      .filter((message) => message.role === 'user')
+      .toSorted((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .at(-1)?.createdAt ?? null
+  )
+}
+
+function parseJsonOrUndefined(value: string | null) {
+  if (!value) return undefined
+
+  return JSON.parse(value) as unknown
 }

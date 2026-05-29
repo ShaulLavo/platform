@@ -20,7 +20,13 @@ import {
   recordChatPipelineWarning,
 } from '../orchestration/orchestration-logging'
 
-export type ProviderRuntimeBindingStatus = 'starting' | 'running' | 'stopped' | 'error'
+export type ProviderRuntimeBindingStatus =
+  | 'starting'
+  | 'ready'
+  | 'running'
+  | 'waiting'
+  | 'stopped'
+  | 'error'
 
 export type ProviderRuntimeBinding = {
   adapterKey?: string
@@ -269,7 +275,9 @@ function defaultProviderInstanceIdForDriver(providerDriverKind: ProviderDriverKi
 function parseRuntimeStatus(status: string): ProviderRuntimeBindingStatus {
   switch (status) {
     case 'starting':
+    case 'ready':
     case 'running':
+    case 'waiting':
     case 'stopped':
     case 'error':
       return status

@@ -225,7 +225,9 @@ export const providerSessionRuntime = sqliteTable(
     runtimeMode: text('runtime_mode', {
       enum: ['full-access', 'approval-required', 'auto-accept-edits'],
     }).notNull(),
-    status: text('status', { enum: ['starting', 'running', 'stopped', 'error'] }).notNull(),
+    status: text('status', {
+      enum: ['starting', 'ready', 'running', 'waiting', 'stopped', 'error'],
+    }).notNull(),
     lastSeenAt: text('last_seen_at').notNull(),
     resumeCursorJson: text('resume_cursor_json'),
     runtimePayloadJson: text('runtime_payload_json'),

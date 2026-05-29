@@ -29,7 +29,7 @@ export function MessagesTimeline({
   const pinnedToEndRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
   const [atEnd, setAtEnd] = useState(true)
-  const { openCheckpointDiff } = useOpenCheckpointDiffDocument()
+  const { openCheckpointDiff, openFullThreadCheckpointDiff } = useOpenCheckpointDiffDocument()
   const items = useMemo(
     () =>
       chatTimelineItems({
@@ -75,6 +75,10 @@ export function MessagesTimeline({
   const handleOpenCheckpointDiff = useCallback(
     (summary: ChatTurnDiffSummary, path?: string) => openCheckpointDiff(summary, path),
     [openCheckpointDiff],
+  )
+  const handleOpenThreadCheckpointDiff = useCallback(
+    (summary: ChatTurnDiffSummary) => openFullThreadCheckpointDiff(summary),
+    [openFullThreadCheckpointDiff],
   )
 
   useLayoutEffect(() => {
@@ -123,6 +127,7 @@ export function MessagesTimeline({
                 checkpointRevertPending={checkpointRevertPending}
                 item={items[virtualItem.index]!}
                 onOpenCheckpointDiff={handleOpenCheckpointDiff}
+                onOpenThreadCheckpointDiff={handleOpenThreadCheckpointDiff}
                 onRevertToCheckpoint={onRevertToCheckpoint}
               />
             </div>

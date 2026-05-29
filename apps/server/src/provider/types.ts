@@ -28,6 +28,16 @@ export type ProviderTurnInput = {
   turnId: TurnId
 }
 
+export type ProviderSessionStartInput = {
+  cwd: string
+  interactionMode?: InteractionMode
+  modelSelection: ModelSelection
+  providerInstanceId: ProviderInstanceId
+  resumeCursor?: unknown | null
+  runtimeMode: RuntimeMode
+  threadId: ThreadId
+}
+
 export type ProviderTurnControlInput = {
   threadId: ThreadId
   turnId?: TurnId
@@ -49,13 +59,41 @@ type ProviderRuntimeBaseEvent = {
   createdAt: string
   eventId: string
   itemId?: string
+  provider?: ProviderDriverKind
   providerInstanceId?: ProviderInstanceId
   providerName?: string
+  providerRefs?: ProviderRefs
   providerSessionId?: string | null
   requestId?: string
+  raw?: RuntimeEventRaw
   runtimeMode?: RuntimeMode
   threadId: ThreadId
   turnId?: TurnId
+}
+
+export type RuntimeEventRawSource =
+  | 'codex.app-server.notification'
+  | 'codex.app-server.request'
+  | 'codex.app-server.stderr'
+  | 'codex.eventmsg'
+  | 'codex.sdk.thread-event'
+  | 'claude.sdk.message'
+  | 'claude.sdk.permission'
+  | 'opencode.sdk.event'
+  | 'acp.jsonrpc'
+  | `acp.${string}.extension`
+
+export type RuntimeEventRaw = {
+  messageType?: string
+  method?: string
+  payload: unknown
+  source: RuntimeEventRawSource
+}
+
+export type ProviderRefs = {
+  providerItemId?: string
+  providerRequestId?: string
+  providerTurnId?: string
 }
 
 export type ProviderRuntimeContentStreamKind =
@@ -77,7 +115,17 @@ export type ProviderRuntimeSessionState =
   | 'stopped'
   | 'error'
 
+export type ProviderRuntimeThreadState =
+  | 'active'
+  | 'idle'
+  | 'archived'
+  | 'closed'
+  | 'compacted'
+  | 'error'
+
 export type ProviderRuntimeTurnState = 'completed' | 'failed' | 'interrupted' | 'cancelled'
+
+export type ProviderRuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
 
 export type ProviderRuntimeEvent =
   | {
@@ -243,6 +291,10 @@ export type ProviderRuntimeEvent =
       payload: { message?: string; resume?: unknown }
     })
   | (ProviderRuntimeBaseEvent & {
+      type: 'session.configured'
+      payload: { config: Record<string, unknown> }
+    })
+  | (ProviderRuntimeBaseEvent & {
       type: 'session.state.changed'
       payload: { detail?: unknown; reason?: string; state: ProviderRuntimeSessionState }
     })
@@ -256,11 +308,35 @@ export type ProviderRuntimeEvent =
     })
   | (ProviderRuntimeBaseEvent & {
       type: 'thread.state.changed'
-      payload: { detail?: unknown; state: string }
+      payload: { detail?: unknown; state: ProviderRuntimeThreadState }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.metadata.updated'
+      payload: { metadata?: Record<string, unknown>; name?: string }
     })
   | (ProviderRuntimeBaseEvent & {
       type: 'thread.token-usage.updated'
       payload: { usage: Record<string, unknown> & { usedTokens?: number } }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.realtime.started'
+      payload: { realtimeSessionId?: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.realtime.item-added'
+      payload: { item: unknown }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.realtime.audio.delta'
+      payload: { audio: unknown }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.realtime.error'
+      payload: { message: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'thread.realtime.closed'
+      payload: { reason?: string }
     })
   | (ProviderRuntimeBaseEvent & {
       type: 'turn.started'
@@ -273,6 +349,92 @@ export type ProviderRuntimeEvent =
         state: ProviderRuntimeTurnState
         stopReason?: string | null
         usage?: unknown
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'turn.aborted'
+      payload: { reason: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'turn.plan.updated'
+      payload: {
+        explanation?: string | null
+        plan: Array<{ status: ProviderRuntimePlanStepStatus; step: string }>
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'turn.diff.updated'
+      payload: { unifiedDiff: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'hook.started'
+      payload: { hookEvent: string; hookId: string; hookName: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'hook.progress'
+      payload: { hookId: string; output?: string; stderr?: string; stdout?: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'hook.completed'
+      payload: {
+        exitCode?: number
+        hookId: string
+        outcome: 'success' | 'error' | 'cancelled'
+        output?: string
+        stderr?: string
+        stdout?: string
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'tool.progress'
+      payload: {
+        elapsedSeconds?: number
+        summary?: string
+        toolName?: string
+        toolUseId?: string
+      }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'tool.summary'
+      payload: { precedingToolUseIds?: string[]; summary: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'auth.status'
+      payload: { error?: string; isAuthenticating?: boolean; output?: string[] }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'account.updated'
+      payload: { account: unknown }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'account.rate-limits.updated'
+      payload: { rateLimits: unknown }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'mcp.status.updated'
+      payload: { status: unknown }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'mcp.oauth.completed'
+      payload: { error?: string; name?: string; success: boolean }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'model.rerouted'
+      payload: { fromModel: string; reason: string; toModel: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'config.warning'
+      payload: { details?: string; path?: string; range?: unknown; summary: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'deprecation.notice'
+      payload: { details?: string; summary: string }
+    })
+  | (ProviderRuntimeBaseEvent & {
+      type: 'files.persisted'
+      payload: {
+        failed?: Array<{ error: string; filename: string }>
+        files: Array<{ fileId: string; filename: string }>
       }
     })
 
@@ -293,6 +455,7 @@ export type ProviderAdapterSession = {
   providerInstanceId: ProviderInstanceId
   providerSessionId: string
   providerThreadId?: string
+  resumeCursor?: unknown | null
   runtimeMode: RuntimeMode
   status: ProviderRuntimeSessionState
   threadId: ThreadId
@@ -324,7 +487,9 @@ export type ProviderAdapter = {
     threadId: ThreadId
   }) => Promise<ProviderThreadSnapshot>
   snapshot: () => Promise<ProviderSnapshot>
-  startTurn: (input: ProviderTurnInput, sink: ProviderRuntimeSink) => Promise<void>
+  startSession: (input: ProviderSessionStartInput) => Promise<ProviderAdapterSession>
+  sendTurn: (input: ProviderTurnInput) => Promise<void>
+  streamEvents: () => AsyncIterable<ProviderRuntimeEvent>
   stopAll: () => Promise<void>
   stopSession: (input: { threadId: ThreadId }) => Promise<void>
 }

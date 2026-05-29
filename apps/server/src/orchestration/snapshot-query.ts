@@ -1,4 +1,4 @@
-import { asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import * as v from 'valibot'
 import { orchestrationErrors } from '../observability'
 import {
@@ -21,6 +21,7 @@ import {
 } from './schemas'
 import { db as defaultDb } from '../db/client'
 import {
+  orchestrationEvents,
   projectionProjects,
   projectionState,
   projectionThreadActivities,
@@ -34,7 +35,12 @@ import {
   type ProjectionThreadSessionRow,
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
-import { createEmptyReadModel, type OrchestrationReadModel } from './read-model'
+import { rowToEvent } from './event-store'
+import {
+  createEmptyReadModel,
+  type OrchestrationProjectedCheckpoint,
+  type OrchestrationReadModel,
+} from './read-model'
 import { ORCHESTRATION_PROJECTOR_NAME } from './projection-pipeline'
 
 export class OrchestrationSnapshotQuery {
@@ -59,6 +65,7 @@ export class OrchestrationSnapshotQuery {
       )
       model.threads.set(row.threadId, {
         ...thread,
+        checkpointByTurnId: this.threadCheckpoints(row.threadId),
         hasActionableProposedPlan: row.hasActionableProposedPlan,
         latestUserMessageAt: row.latestUserMessageAt,
         pendingApprovalCount: row.pendingApprovalCount,
@@ -137,6 +144,27 @@ export class OrchestrationSnapshotQuery {
       .from(projectionThreadSessions)
       .where(eq(projectionThreadSessions.threadId, threadId))
       .get()
+  }
+
+  private threadCheckpoints(threadId: string) {
+    const summaries = new Map<string, OrchestrationProjectedCheckpoint>()
+    const rows = this.database
+      .select()
+      .from(orchestrationEvents)
+      .where(
+        and(
+          eq(orchestrationEvents.aggregateKind, 'thread'),
+          eq(orchestrationEvents.aggregateId, threadId),
+        ),
+      )
+      .orderBy(asc(orchestrationEvents.sequence))
+      .all()
+
+    for (const row of rows) {
+      applyCheckpointEvent(summaries, rowToEvent(row))
+    }
+
+    return Object.fromEntries(summaries) as Record<string, OrchestrationProjectedCheckpoint>
   }
 
   private currentSequence() {
@@ -278,6 +306,30 @@ function sessionFromRow(row: ProjectionThreadSessionRow): OrchestrationSession {
     threadId: row.threadId,
     updatedAt: row.updatedAt,
   })
+}
+
+function applyCheckpointEvent(
+  summaries: Map<string, OrchestrationProjectedCheckpoint>,
+  event: ReturnType<typeof rowToEvent>,
+) {
+  if (event.type === 'thread.turn-diff-completed') {
+    summaries.set(event.payload.turnId, {
+      assistantMessageId: event.payload.assistantMessageId,
+      checkpointRef: event.payload.checkpointRef,
+      checkpointTurnCount: event.payload.checkpointTurnCount,
+      completedAt: event.payload.completedAt,
+      status: event.payload.status,
+      turnId: event.payload.turnId,
+    })
+    return
+  }
+  if (event.type !== 'thread.reverted') return
+
+  for (const summary of summaries.values()) {
+    if (summary.checkpointTurnCount <= event.payload.turnCount) continue
+
+    summaries.delete(summary.turnId)
+  }
 }
 
 function parseJson<T>(value: string | null, fallback?: T) {

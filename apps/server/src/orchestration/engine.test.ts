@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -14,6 +14,8 @@ import {
 import { createApp } from '../app'
 import * as schema from '../db/schema'
 import { migrateOrchestrationDatabase } from '../db/migrations'
+import { createWorkspacePaths } from '../fs/path'
+import { GitService } from '../git/service'
 import { OrchestrationEventStore } from './event-store'
 import type { PendingOrchestrationEvent } from './event-store'
 import { OrchestrationEngine } from './engine'
@@ -27,6 +29,7 @@ import { MockProviderAdapter } from '../provider/adapters/mock'
 import { ProviderRegistry } from '../provider/registry'
 import { ProviderService } from '../provider/provider-service'
 import { ProviderSessionDirectory } from '../provider/provider-session-directory'
+import { checkpointRefForThreadTurn } from './checkpoint-refs'
 import {
   orchestrationCommandSchema,
   type OrchestrationCommand,
@@ -411,7 +414,7 @@ describe('orchestration engine', () => {
     expect(runtime).toMatchObject({
       providerDriverKind: 'codex',
       providerInstanceId: 'codex',
-      status: 'running',
+      status: 'ready',
       threadId: 'thread-1',
     })
     expect(detail.thread.messages).toContainEqual(
@@ -585,6 +588,58 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
+  it('restores checkpoint refs and emits reverted after provider rollback', async () => {
+    const fixture = createFixture()
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    const adapter = new MockProviderAdapter()
+    const engine = new OrchestrationEngine(fixture.database, {
+      providerRuntime: {
+        checkpointGit: new GitService(createWorkspacePaths(root)),
+        registry: new ProviderRegistry([adapter]),
+      },
+    })
+    const turnZeroRef = checkpointRefForThreadTurn('thread-1', 0)
+    const turnOneRef = checkpointRefForThreadTurn('thread-1', 1)
+    const turnTwoRef = checkpointRefForThreadTurn('thread-1', 2)
+
+    await commitFileCheckpoint(root, 'base\n', 'turn zero', turnZeroRef)
+    await commitFileCheckpoint(root, 'one\n', 'turn one', turnOneRef)
+    await commitFileCheckpoint(root, 'two\n', 'turn two', turnTwoRef)
+    await dispatchCheckpointRuntimeThread(engine, root, turnOneRef, turnTwoRef)
+
+    await engine.dispatch(
+      command({
+        commandId: 'cmd-checkpoint-revert',
+        createdAt: assistantCompleted,
+        threadId: 'thread-1',
+        turnCount: 1,
+        type: 'thread.checkpoint.revert',
+      }),
+    )
+    await engine.providerRuntimeIdle()
+
+    const events = engine.replay({ afterSequence: 0 }).events
+    const detail = engine.threadDetailSnapshot('thread-1')
+
+    expect(events.map((event) => event.type)).toContain('thread.checkpoint-revert-requested')
+    expect(events.at(-1)).toMatchObject({
+      payload: { threadId: 'thread-1', turnCount: 1 },
+      type: 'thread.reverted',
+    })
+    expect(await readFile(path.join(root, 'app.txt'), 'utf8')).toBe('one\n')
+    expect(await gitRefExists(root, turnTwoRef)).toBe(false)
+    expect(adapter.rollbacks).toContainEqual({
+      numTurns: 1,
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+    })
+    expect(detail.thread.messages.map((message) => message.turnId)).not.toContain('turn-2')
+    expect(
+      Object.keys(engine.readModelSnapshot().threads.get('thread-1')?.checkpointByTurnId ?? {}),
+    ).toEqual(['turn-1'])
+    fixture.close()
+  })
+
   it('projects interrupt and stop provider failures with operation-specific kinds', async () => {
     const interruptFixture = createFixture()
     const interruptAdapter = new MockProviderAdapter({ interruptError: 'interrupt failed' })
@@ -737,6 +792,31 @@ async function dispatchFirstThread(engine: OrchestrationEngine) {
   await engine.dispatch(threadTurnStartCommand())
 }
 
+async function dispatchCheckpointRuntimeThread(
+  engine: OrchestrationEngine,
+  workspaceRoot: string,
+  turnOneRef: string,
+  turnTwoRef: string,
+) {
+  await engine.dispatch(projectCreateCommand({ workspaceRoot }))
+  await engine.dispatch(
+    threadCreateCommand('thread-1', 'cmd-thread-create-checkpoint', workspaceRoot),
+  )
+  await engine.dispatch(threadTurnStartCommand())
+  await engine.providerRuntimeIdle()
+  await engine.dispatch(turnDiffCompleteCommand('cmd-turn-1-diff', 'turn-1', turnOneRef, 1))
+  await engine.dispatch(
+    threadTurnStartCommand({
+      commandId: 'cmd-turn-2-start',
+      messageId: 'message-turn-2',
+      text: 'Second turn',
+      turnId: 'turn-2',
+    }),
+  )
+  await engine.providerRuntimeIdle()
+  await engine.dispatch(turnDiffCompleteCommand('cmd-turn-2-diff', 'turn-2', turnTwoRef, 2))
+}
+
 function projectCreateCommand(input: Partial<ProjectCreateFixture> = {}) {
   return command({
     commandId: input.commandId ?? 'cmd-project-create',
@@ -745,16 +825,21 @@ function projectCreateCommand(input: Partial<ProjectCreateFixture> = {}) {
     projectId: input.projectId ?? 'project-1',
     title: 'Platform',
     type: 'project.create',
-    workspaceRoot: '/workspace',
+    workspaceRoot: input.workspaceRoot ?? '/workspace',
   })
 }
 
 type ProjectCreateFixture = {
   commandId: string
   projectId: string
+  workspaceRoot: string
 }
 
-function threadCreateCommand(threadId = 'thread-1', commandId = 'cmd-thread-create') {
+function threadCreateCommand(
+  threadId = 'thread-1',
+  commandId = 'cmd-thread-create',
+  worktreePath: string | null = null,
+) {
   return command({
     branch: null,
     commandId,
@@ -766,7 +851,7 @@ function threadCreateCommand(threadId = 'thread-1', commandId = 'cmd-thread-crea
     threadId,
     title: 'Phase 2',
     type: 'thread.create',
-    worktreePath: null,
+    worktreePath,
   })
 }
 
@@ -821,6 +906,27 @@ function assistantCompleteCommand() {
     threadId: 'thread-1',
     turnId: 'turn-1',
     type: 'thread.message.assistant.complete',
+  })
+}
+
+function turnDiffCompleteCommand(
+  commandId: string,
+  turnId: string,
+  checkpointRef: string,
+  checkpointTurnCount: number,
+) {
+  return command({
+    assistantMessageId: `assistant:${turnId}`,
+    checkpointRef,
+    checkpointTurnCount,
+    commandId,
+    completedAt: assistantCompleted,
+    createdAt: assistantCompleted,
+    files: [{ additions: 1, deletions: 1, kind: 'modified', path: 'app.txt' }],
+    status: 'ready',
+    threadId: 'thread-1',
+    turnId,
+    type: 'thread.turn.diff.complete',
   })
 }
 
@@ -899,6 +1005,45 @@ async function fixtureRoot() {
   roots.push(root)
 
   return root
+}
+
+async function initGitRepository(root: string) {
+  await runGit(root, ['init'])
+  await runGit(root, ['config', 'user.email', 'test@example.com'])
+  await runGit(root, ['config', 'user.name', 'Test User'])
+}
+
+async function commitFileCheckpoint(
+  root: string,
+  content: string,
+  message: string,
+  checkpointRef: string,
+) {
+  await writeFile(path.join(root, 'app.txt'), content)
+  await runGit(root, ['add', 'app.txt'])
+  await runGit(root, ['commit', '-m', message])
+  await runGit(root, ['update-ref', checkpointRef, 'HEAD'])
+}
+
+async function gitRefExists(root: string, ref: string) {
+  const result = await runGit(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], true)
+
+  return result.exitCode === 0
+}
+
+async function runGit(root: string, args: readonly string[], allowFailure = false) {
+  const process = Bun.spawn(['git', '-C', root].concat(args), {
+    stderr: 'pipe',
+    stdout: 'pipe',
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited,
+  ])
+  if (allowFailure || exitCode === 0) return { exitCode, stderr, stdout }
+
+  throw new Error(`${stderr}${stdout}`.trim())
 }
 
 function createOrchestrationTestApp(

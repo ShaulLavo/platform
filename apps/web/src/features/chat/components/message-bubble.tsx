@@ -21,6 +21,7 @@ export function MessageBubble({
   durationStart,
   message,
   onOpenCheckpointDiff,
+  onOpenThreadCheckpointDiff,
   onRevertToCheckpoint,
   renderAssistantCopyButton,
   revertTurnCount = null,
@@ -36,6 +37,7 @@ export function MessageBubble({
   durationStart?: string
   message: OrchestrationMessage | OptimisticChatMessage
   onOpenCheckpointDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
+  onOpenThreadCheckpointDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
   onRevertToCheckpoint?: (turnCount: number) => void
   renderAssistantCopyButton?: (text: string) => ReactNode
   revertTurnCount?: number | null
@@ -123,6 +125,7 @@ export function MessageBubble({
                 <AssistantChangedFilesSection
                   summary={turnDiffSummary}
                   onOpenDiff={onOpenCheckpointDiff}
+                  onOpenThreadDiff={onOpenThreadCheckpointDiff}
                 />
               ) : null}
               {attachmentList}

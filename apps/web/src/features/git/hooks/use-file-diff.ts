@@ -3,6 +3,8 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { DiffDocumentInfo } from '@/features/git/diff-document'
 import { gitKeys } from '@/lib/query-keys'
 import {
+  checkpointDiffRetry,
+  checkpointDiffRetryDelay,
   checkpointDiffQueryKey,
   fetchCheckpointDiff,
 } from '@/features/chat/lib/checkpoint-diff-query'
@@ -38,6 +40,8 @@ export function useDiffDocumentDiff(
     placeholderData,
     queryFn: ({ signal }) => fetchDiffDocument(diff, signal),
     queryKey: diffDocumentQueryKey(diff),
+    retry: diff?.kind === 'checkpoint' ? checkpointDiffRetry : undefined,
+    retryDelay: diff?.kind === 'checkpoint' ? checkpointDiffRetryDelay : undefined,
     staleTime: diff?.kind === 'snapshot' || diff?.kind === 'checkpoint' ? Infinity : 1000,
   })
 }

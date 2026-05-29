@@ -11,6 +11,7 @@ import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
 import { createDefaultProviderRegistry, type ProviderRegistry } from '../provider/registry'
 import { ProviderService } from '../provider/provider-service'
 import { ProviderSessionDirectory } from '../provider/provider-session-directory'
+import type { GitService } from '../git/service'
 import {
   orchestrationCommandSummary,
   orchestrationEventBatchSummary,
@@ -29,7 +30,9 @@ export type OrchestrationDispatchResult = {
 }
 
 export type OrchestrationEngineOptions = {
-  providerRuntime?: boolean | { providerService?: ProviderService; registry?: ProviderRegistry }
+  providerRuntime?:
+    | boolean
+    | { checkpointGit?: GitService; providerService?: ProviderService; registry?: ProviderRegistry }
 }
 
 export class OrchestrationEngine {
@@ -200,7 +203,9 @@ export class OrchestrationEngine {
       typeof options.providerRuntime === 'object' && options.providerRuntime.registry
         ? options.providerRuntime.registry
         : createDefaultProviderRegistry()
-    const ingestion = new ProviderRuntimeIngestion((command) => this.dispatch(command))
+    const ingestion = new ProviderRuntimeIngestion((command) => this.dispatch(command), {
+      getReadModel: () => this.readModel,
+    })
     const providerService =
       typeof options.providerRuntime === 'object' && options.providerRuntime.providerService
         ? options.providerRuntime.providerService
@@ -210,6 +215,9 @@ export class OrchestrationEngine {
           })
 
     return new ProviderCommandReactor({
+      checkpointGit:
+        typeof options.providerRuntime === 'object' ? options.providerRuntime.checkpointGit : null,
+      dispatch: (command) => this.dispatch(command),
       getReadModel: () => this.readModel,
       ingestion,
       providerService,

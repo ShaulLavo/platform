@@ -20,6 +20,7 @@ import { createWorkspacePaths } from '../fs/path'
 import { GitService } from '../git/service'
 import { OrchestrationEngine } from './engine'
 import { OrchestrationCheckpointDiffQuery } from './checkpoint-diff-query'
+import { checkpointRefForThreadTurn } from './checkpoint-refs'
 
 const now = '2026-05-29T00:00:00.000Z'
 const modelSelection = {
@@ -47,13 +48,13 @@ describe('orchestration checkpoint diff query', () => {
     )
 
     try {
-      expect(() =>
+      await expect(
         checkpointDiff.turnDiff({
           fromTurnCount: 0,
           threadId,
           toTurnCount: 0,
         }),
-      ).toThrow('Thread not found')
+      ).rejects.toThrow('Thread not found')
     } finally {
       sqlite.close()
     }
@@ -180,10 +181,4 @@ async function runGit(root: string, args: readonly string[]) {
   if (exitCode === 0) return { stderr, stdout }
 
   throw new Error(`${stderr}${stdout}`.trim())
-}
-
-function checkpointRefForThreadTurn(threadId: string, turnCount: number) {
-  const encodedThreadId = Buffer.from(threadId).toString('base64url')
-
-  return `refs/t3/checkpoints/${encodedThreadId}/turn/${turnCount}`
 }

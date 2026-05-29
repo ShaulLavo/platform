@@ -35,11 +35,13 @@ type SnapshotPayload = {
 }
 
 type CheckpointPayload = {
+  filePath?: string
   fromTurnCount: number
   newObjectId?: string
   oldObjectId?: string
   oldPath?: string
   path: string
+  scope?: 'file' | 'thread' | 'turn'
   status?: FileStatus['index'] | FileStatus['worktree']
   threadId: string
   toTurnCount: number
@@ -78,6 +80,7 @@ export function parseDiffDocumentId(id: string | null | undefined): DiffDocument
 export function diffDocumentLabel(id: string) {
   const info = parseDiffDocumentId(id)
   if (!info) return basename(id)
+  if (info.kind === 'checkpoint') return checkpointDiffLabel(info.query)
 
   return basename(info.path)
 }
@@ -87,7 +90,7 @@ export function diffDocumentTitle(id: string) {
   if (!info) return displayPath(id)
 
   if (info.kind === 'checkpoint') {
-    return `${displayDiffPath(info.path)} checkpoint diff ${info.query.fromTurnCount}-${info.query.toTurnCount}`
+    return checkpointDiffTitle(info.query)
   }
 
   const hash = snapshotShortHash(info)
@@ -106,11 +109,13 @@ export function diffDocumentShortHash(id: string) {
 
 export function checkpointDiffDocumentId(input: CheckpointDiffDocumentInput) {
   const payload: CheckpointPayload = {
+    filePath: input.filePath,
     fromTurnCount: input.fromTurnCount,
     newObjectId: input.newObjectId,
     oldObjectId: input.oldObjectId,
     oldPath: input.oldPath,
     path: input.path,
+    scope: input.scope,
     status: input.status,
     threadId: input.threadId,
     toTurnCount: input.toTurnCount,
@@ -220,6 +225,8 @@ function isCheckpointPayload(value: unknown): value is CheckpointPayload {
   if (payload.version !== 1) return false
   if (typeof payload.threadId !== 'string') return false
   if (typeof payload.path !== 'string') return false
+  if (!optionalCheckpointScope(payload.scope)) return false
+  if (!optionalString(payload.filePath)) return false
   if (!Number.isInteger(payload.fromTurnCount)) return false
   if (!Number.isInteger(payload.toTurnCount)) return false
   if (!optionalString(payload.oldPath)) return false
@@ -228,6 +235,28 @@ function isCheckpointPayload(value: unknown): value is CheckpointPayload {
   if (!optionalDiffStatus(payload.status)) return false
 
   return payload.fromTurnCount >= 0 && payload.toTurnCount >= payload.fromTurnCount
+}
+
+function checkpointDiffLabel(payload: CheckpointPayload) {
+  const scope = payload.scope ?? 'file'
+  if (scope === 'thread') return `Thread diff ${payload.toTurnCount}`
+  if (scope === 'turn') return `Turn diff ${payload.fromTurnCount}-${payload.toTurnCount}`
+
+  return basename(payload.filePath ?? payload.path)
+}
+
+function checkpointDiffTitle(payload: CheckpointPayload) {
+  const scope = payload.scope ?? 'file'
+  if (scope === 'thread') return `Thread checkpoint diff 0-${payload.toTurnCount}`
+  if (scope === 'turn') {
+    return `Turn checkpoint diff ${payload.fromTurnCount}-${payload.toTurnCount}`
+  }
+
+  return `${displayDiffPath(payload.filePath ?? payload.path)} checkpoint diff ${payload.fromTurnCount}-${payload.toTurnCount}`
+}
+
+function optionalCheckpointScope(value: unknown): value is CheckpointPayload['scope'] {
+  return value === undefined || value === 'file' || value === 'thread' || value === 'turn'
 }
 
 function optionalString(value: unknown) {

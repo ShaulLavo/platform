@@ -126,14 +126,29 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       )
       return
     case 'thread.turn-diff-completed':
-      updateThread(model, event.payload.threadId, (thread) =>
-        setLatestTurnState(
+      updateThread(model, event.payload.threadId, (thread) => {
+        const updated = setLatestTurnState(
           thread,
           event.payload.status === 'error' ? 'error' : 'completed',
           event.payload.completedAt,
           event.payload.assistantMessageId,
-        ),
-      )
+        )
+
+        return {
+          ...updated,
+          checkpointByTurnId: {
+            ...updated.checkpointByTurnId,
+            [event.payload.turnId]: {
+              assistantMessageId: event.payload.assistantMessageId,
+              checkpointRef: event.payload.checkpointRef,
+              checkpointTurnCount: event.payload.checkpointTurnCount,
+              completedAt: event.payload.completedAt,
+              status: event.payload.status,
+              turnId: event.payload.turnId,
+            },
+          },
+        }
+      })
       return
     case 'thread.session-stop-requested':
       updateThread(model, event.payload.threadId, (thread) => setThreadSession(thread, null))
@@ -144,6 +159,8 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
     case 'thread.checkpoint-revert-requested':
       return
     case 'thread.reverted':
+      updateThread(model, event.payload.threadId, (thread) => revertedThread(thread, event))
+      return
     case 'thread.approval-response-requested':
     case 'thread.user-input-response-requested':
       return
@@ -155,6 +172,7 @@ function createdThread(event: Extract<OrchestrationEvent, { type: 'thread.create
     activities: [],
     archivedAt: null,
     branch: event.payload.branch,
+    checkpointByTurnId: {},
     createdAt: event.payload.createdAt,
     deletedAt: null,
     hasActionableProposedPlan: false,
@@ -173,6 +191,66 @@ function createdThread(event: Extract<OrchestrationEvent, { type: 'thread.create
     updatedAt: event.payload.updatedAt,
     worktreePath: event.payload.worktreePath,
   } satisfies OrchestrationProjectedThread
+}
+
+function revertedThread(
+  thread: OrchestrationProjectedThread,
+  event: Extract<OrchestrationEvent, { type: 'thread.reverted' }>,
+): OrchestrationProjectedThread {
+  const checkpoints = retainedCheckpoints(thread, event.payload.turnCount)
+  const retainedTurnIds = new Set(checkpoints.map((checkpoint) => checkpoint.turnId))
+
+  return {
+    ...thread,
+    activities: thread.activities.filter((activity) =>
+      shouldRetainAfterRevert(activity.turnId, retainedTurnIds),
+    ),
+    checkpointByTurnId: recordByTurnId(checkpoints),
+    hasActionableProposedPlan: false,
+    latestTurn: latestTurnAfterRevert(thread.latestTurn, checkpoints, retainedTurnIds),
+    messages: thread.messages.filter((message) =>
+      shouldRetainAfterRevert(message.turnId, retainedTurnIds),
+    ),
+    updatedAt: event.payload.revertedAt,
+  }
+}
+
+function retainedCheckpoints(thread: OrchestrationProjectedThread, turnCount: number) {
+  return Object.values(thread.checkpointByTurnId)
+    .filter((checkpoint) => checkpoint.checkpointTurnCount <= turnCount)
+    .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount)
+}
+
+function recordByTurnId(checkpoints: ReturnType<typeof retainedCheckpoints>) {
+  return Object.fromEntries(
+    checkpoints.map((checkpoint) => [checkpoint.turnId, checkpoint]),
+  ) as OrchestrationProjectedThread['checkpointByTurnId']
+}
+
+function latestTurnAfterRevert(
+  latestTurn: OrchestrationProjectedThread['latestTurn'],
+  checkpoints: ReturnType<typeof retainedCheckpoints>,
+  retainedTurnIds: Set<string>,
+) {
+  if (latestTurn && retainedTurnIds.has(latestTurn.turnId)) return latestTurn
+
+  const checkpoint = checkpoints.at(-1)
+  if (!checkpoint) return null
+
+  return {
+    assistantMessageId: checkpoint.assistantMessageId,
+    completedAt: checkpoint.completedAt,
+    requestedAt: checkpoint.completedAt,
+    startedAt: checkpoint.completedAt,
+    state: checkpoint.status === 'error' ? 'error' : 'completed',
+    turnId: checkpoint.turnId,
+  } satisfies NonNullable<OrchestrationProjectedThread['latestTurn']>
+}
+
+function shouldRetainAfterRevert(turnId: string | null, retainedTurnIds: Set<string>) {
+  if (!turnId) return true
+
+  return retainedTurnIds.has(turnId)
 }
 
 function updateProject(

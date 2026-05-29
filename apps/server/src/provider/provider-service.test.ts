@@ -19,7 +19,7 @@ import { ProviderSessionDirectory } from './provider-session-directory'
 import type { ProviderRuntimeEvent, ProviderTurnInput } from './types'
 
 describe('ProviderService', () => {
-  it('reuses compatible session bindings and resets incompatible ones', () => {
+  it('reuses compatible session bindings and resets incompatible ones', async () => {
     const fixture = createFixture()
     const adapter = new MockProviderAdapter()
     const service = new ProviderService({
@@ -27,19 +27,19 @@ describe('ProviderService', () => {
       sessionDirectory: new ProviderSessionDirectory(fixture.database),
     })
     const input = providerTurnInput()
-    const first = service.ensureSession({
+    const first = await service.ensureSession({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),
       threadId: input.thread.id,
     })
-    const reused = service.ensureSession({
+    const reused = await service.ensureSession({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: { ...providerSessionPayload(input), activeTurnId: input.turnId },
       threadId: input.thread.id,
     })
-    const reset = service.ensureSession({
+    const reset = await service.ensureSession({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: {
@@ -51,7 +51,10 @@ describe('ProviderService', () => {
 
     expect(first).toMatchObject({ reused: false })
     expect(reused).toMatchObject({ reused: true })
-    expect(reset).toMatchObject({ binding: { providerSessionId: null }, reused: false })
+    expect(reset).toMatchObject({
+      binding: { runtimePayload: expect.objectContaining({ cwd: '/other-workspace' }) },
+      reused: false,
+    })
     fixture.close()
   })
 
@@ -64,23 +67,19 @@ describe('ProviderService', () => {
       sessionDirectory: directory,
     })
     const input = providerTurnInput()
-    const runtimeEvents: ProviderRuntimeEvent[] = []
     const fanOutEvents: ProviderRuntimeEvent[] = []
     const unsubscribe = service.subscribeRuntimeEvents((event) => {
       fanOutEvents.push(event)
     })
 
-    service.startSession({
+    await service.startSession({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
-      runtimePayload: { modelSelection: input.modelSelection },
+      runtimePayload: providerSessionPayload(input),
       threadId: input.thread.id,
     })
-    await service.sendTurn(input, {
-      ingest: async (event) => {
-        runtimeEvents.push(event)
-      },
-    })
+    await service.sendTurn(input)
+    await waitForRuntimeEvent(fanOutEvents, 'turn.completed')
     const activeSessions = service.listSessions()
     await service.interruptTurn({ threadId: input.thread.id, turnId: input.turnId })
     await service.stopSession({ threadId: input.thread.id })
@@ -93,16 +92,17 @@ describe('ProviderService', () => {
       turnId: input.turnId,
     })
     expect(adapter.interruptedThreads).toEqual([input.thread.id, input.thread.id])
-    expect(runtimeEvents.map((event) => event.type)).toEqual([
+    expect(fanOutEvents.map((event) => event.type)).toContain('turn.started')
+    expect(fanOutEvents.map((event) => event.type)).toContain('assistant.delta')
+    expect(fanOutEvents.map((event) => event.type)).toContain('assistant.complete')
+    expect(fanOutEvents.map((event) => event.type)).toContain('turn.completed')
+    expect(fanOutEvents.map((event) => event.type).slice(-3)).toEqual([
       'assistant.delta',
       'assistant.complete',
-    ])
-    expect(fanOutEvents.map((event) => event.type)).toEqual([
-      'assistant.delta',
-      'assistant.complete',
+      'turn.completed',
     ])
     expect(activeSessions).toContainEqual(
-      expect.objectContaining({ status: 'running', threadId: input.thread.id }),
+      expect.objectContaining({ status: 'ready', threadId: input.thread.id }),
     )
     expect(directory.getBinding(input.thread.id)).toMatchObject({ status: 'stopped' })
     fixture.close()
@@ -155,6 +155,21 @@ function providerTurnInput(): ProviderTurnInput {
       worktreePath: '/workspace',
     },
     turnId,
+  }
+}
+
+async function settleRuntimeEvents() {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+async function waitForRuntimeEvent(
+  events: ProviderRuntimeEvent[],
+  type: ProviderRuntimeEvent['type'],
+) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (events.some((event) => event.type === type)) return
+    await settleRuntimeEvents()
   }
 }
 

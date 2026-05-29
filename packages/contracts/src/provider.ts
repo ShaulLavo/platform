@@ -82,11 +82,11 @@ export const DEFAULT_CODEX_PROVIDER_SETTINGS = {
   providerInstanceId: 'codex' as ProviderInstanceId,
   runtimeModes: ['full-access'],
   traits: {
-    supportsApprovals: false,
+    supportsApprovals: true,
     supportsFullAccess: true,
     supportsInterrupt: true,
     supportsSessionStop: true,
     supportsStreaming: true,
-    supportsUserInput: false,
+    supportsUserInput: true,
   },
 } satisfies ProviderInstanceSettings

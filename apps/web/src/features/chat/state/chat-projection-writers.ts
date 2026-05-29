@@ -736,6 +736,7 @@ function applyThreadRevertedEvent(
   const plans = selectProposedPlans(state, threadId).filter((plan) =>
     shouldRetainAfterRevert(plan.turnId, retainedTurnIds),
   )
+  const latestSummary = summaries.at(-1)
 
   return {
     ...patchThreadShell(state, threadId, { updatedAt: event.payload.revertedAt }),
@@ -771,6 +772,23 @@ function applyThreadRevertedEvent(
       ...state.turnDiffSummaryByThreadId,
       [threadId]: recordById(summaries, (summary) => summary.turnId),
     },
+    threadTurnStateById: {
+      ...state.threadTurnStateById,
+      [threadId]: {
+        latestTurn: latestSummary ? latestTurnFromSummary(latestSummary) : null,
+      },
+    },
+  }
+}
+
+function latestTurnFromSummary(summary: ChatTurnDiffSummary): OrchestrationLatestTurn {
+  return {
+    assistantMessageId: summary.assistantMessageId,
+    completedAt: summary.completedAt,
+    requestedAt: summary.completedAt,
+    startedAt: summary.completedAt,
+    state: checkpointStatusToLatestTurnState(summary.status),
+    turnId: summary.turnId,
   }
 }
 

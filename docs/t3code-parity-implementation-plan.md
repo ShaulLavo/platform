@@ -980,6 +980,41 @@ Implementation status:
     surfacing in the chat input
   - deterministic mock provider test harness for runtime, failure, interrupt,
     approval, and user-input paths
+- Parity repair done on 2026-05-29:
+  - replaced the per-turn runtime sink with adapter-owned runtime event streams
+    fanned out through `ProviderService`
+  - made provider session start/resume explicit and persisted lifecycle binding
+    updates from `session.started`, `thread.started`, and `session.state.changed`
+  - added registry change events so provider service can subscribe to adapters
+    registered after construction
+  - expanded canonical provider runtime events for lifecycle, raw protocol,
+    approvals, user input, tools, hooks, MCP, account/rate-limit, model
+    reroute, config, file, and realtime notifications
+  - upgraded Codex app-server handling for `thread/resume`, app-server request
+    approvals, user-input requests, broad notification normalization, stderr
+    warnings, malformed protocol rejection, and terminal turn races
+  - expanded generated Codex Valibot protocol coverage to the broader native
+    notification set needed by the runtime mapper
+  - moved command reaction to the provider-service stream, with async session
+    ensure, provider role validation, checkpoint rollback preservation, and
+    provider-control routing through active sessions
+  - broadened runtime ingestion to normalize T3-style plans, diffs, hooks,
+    tools, auth/account/rate limits, MCP, model reroutes, warnings,
+    compaction, files, and realtime events without letting stale lifecycle
+    events overwrite the active turn
+
+Deliberate non-parity:
+
+- Platform still ships Codex as the product provider and mock as a deterministic
+  test harness, not T3Code's full provider catalog.
+- Platform does not import T3Code's Effect runtime or protocol package; Codex
+  protocol schemas are generated into Platform Valibot/TypeScript instead.
+- Provider instance configuration remains Platform-local and registry-backed;
+  persistent/shadow provider instance catalogs are deferred until the product
+  needs multiple user-configured providers.
+- Proposed-plan projection remains limited to the fields in Platform's current
+  contract/read model; extra T3 metadata such as implementation thread linkage
+  is deferred until those fields exist in Platform schemas.
 
 Platform target paths:
 
