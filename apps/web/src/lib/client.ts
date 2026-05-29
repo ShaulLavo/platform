@@ -1,6 +1,6 @@
 import { treaty } from '@elysia/eden'
 
-import type { App } from 'server'
+import type { App } from 'server/client-contract'
 
 const defaultServerUrl = 'http://localhost:3001'
 

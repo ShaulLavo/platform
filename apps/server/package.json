@@ -6,6 +6,9 @@
   "exports": {
     ".": {
       "types": "./src/app.ts"
+    },
+    "./client-contract": {
+      "types": "./src/client-contract.ts"
     }
   },
   "scripts": {
