@@ -1,12 +1,46 @@
 export type EntryTypeFilter = 'file' | 'directory' | 'symlink' | 'other'
 
-export type TreeEntry = {
-  name: string
-  path: string
+export type EntryTypeCarrier = {
   type: EntryTypeFilter
   targetType?: EntryTypeFilter
+}
+
+export type FileSystemEntryMetadata = EntryTypeCarrier & {
+  path: string
   size: number
   mtimeMs: number
   birthtimeMs: number
   version: string
+}
+
+export type TreeEntry = FileSystemEntryMetadata & {
+  name: string
+}
+
+export type FileTreeEntry = TreeEntry & {
+  children?: FileTreeEntry[]
+}
+
+export type FileTreeResult = {
+  path: string
+  entries: FileTreeEntry[]
+}
+
+export function effectiveEntryType(entry: EntryTypeCarrier): EntryTypeFilter {
+  return entry.targetType ?? entry.type
+}
+
+export function isDirectoryEntry(entry: EntryTypeCarrier) {
+  return effectiveEntryType(entry) === 'directory'
+}
+
+export function isFileEntry(entry: EntryTypeCarrier) {
+  return effectiveEntryType(entry) === 'file'
+}
+
+export function matchesEntryType(entry: EntryTypeCarrier, entryType?: EntryTypeFilter) {
+  if (!entryType) return true
+  if (entry.type === entryType) return true
+
+  return entry.targetType === entryType
 }

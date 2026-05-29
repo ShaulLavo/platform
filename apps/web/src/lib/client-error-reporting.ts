@@ -1,3 +1,5 @@
+import { errorNumberField, errorStringField } from '@workspace/contracts'
+
 import { log } from './client-logging'
 
 type ClientErrorReport = {
@@ -85,18 +87,4 @@ function sanitizeRecord(record: Record<string, unknown>, seen: WeakSet<object>) 
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-function errorStringField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as Record<string, unknown>)[field]
-  return typeof value === 'string' ? value : undefined
-}
-
-function errorNumberField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as Record<string, unknown>)[field]
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }

@@ -1,4 +1,4 @@
-import { isRecord } from '@workspace/contracts'
+import { errorNumberField, errorStringField, isRecord } from '@workspace/contracts'
 import { Elysia } from 'elysia'
 
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
@@ -353,20 +353,6 @@ function serializeOrchestrationRpcError(error: unknown) {
     message: String(error),
     name: typeof error,
   }
-}
-
-function errorStringField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as unknown as Record<string, unknown>)[field]
-  return typeof value === 'string' ? value : undefined
-}
-
-function errorNumberField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as unknown as Record<string, unknown>)[field]
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function orchestrationRpcWebSocket(value: unknown): OrchestrationRpcWebSocket | null {

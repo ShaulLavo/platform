@@ -1,34 +1,17 @@
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { FsError, mapNodeError } from './errors'
-import { isIgnoredPath, treeIgnoredNames, toPosix, type WorkspacePaths } from './path'
 import {
-  assertDirectory,
   effectiveEntryType,
   isDirectoryEntry,
   matchesEntryType,
-  readEntryStats,
-  type FsEntryType,
-} from './stat'
-import type { EntryTypeFilter } from './contracts'
+  type EntryTypeFilter,
+  type FileTreeEntry,
+  type FileTreeResult,
+} from '@workspace/contracts'
+import { FsError, mapNodeError } from './errors'
+import { isIgnoredPath, treeIgnoredNames, toPosix, type WorkspacePaths } from './path'
+import { assertDirectory, readEntryStats } from './stat'
 import { fileVersion } from './version'
-
-export type TreeEntry = {
-  name: string
-  path: string
-  type: FsEntryType
-  targetType?: FsEntryType
-  size: number
-  mtimeMs: number
-  birthtimeMs: number
-  version: string
-  children?: TreeEntry[]
-}
-
-export type TreeResult = {
-  path: string
-  entries: TreeEntry[]
-}
 
 export type TreeReadOptions = {
   concurrency?: number
@@ -42,7 +25,7 @@ export async function readTree(
   depth = 1,
   entryType?: EntryTypeFilter,
   options: TreeReadOptions = {},
-): Promise<TreeResult> {
+): Promise<FileTreeResult> {
   const target = paths.resolve(input)
   const limit = createTaskLimiter(options.concurrency ?? 32)
 
@@ -115,7 +98,7 @@ async function readEntryMetadata(
   absoluteDirectory: string,
   relativeDirectory: string,
   name: string,
-): Promise<TreeEntry | null> {
+): Promise<FileTreeEntry | null> {
   const relativePath = joinRelative(relativeDirectory, name)
   if (isIgnoredPath(relativePath, treeIgnoredNames)) return null
 
@@ -132,7 +115,7 @@ async function readEntryMetadata(
     mtimeMs: entryStats.targetStats.mtimeMs,
     birthtimeMs: entryStats.targetStats.birthtimeMs,
     version: fileVersion(entryStats.targetStats),
-  } satisfies TreeEntry
+  } satisfies FileTreeEntry
 }
 
 async function safeEntryStats(absolutePath: string) {
@@ -166,7 +149,7 @@ function joinRelative(parent: string, child: string) {
   return toPosix(path.join(parent, child))
 }
 
-function compareTreeEntries(a: TreeEntry, b: TreeEntry) {
+function compareTreeEntries(a: FileTreeEntry, b: FileTreeEntry) {
   const aType = effectiveEntryType(a)
   const bType = effectiveEntryType(b)
   if (aType === 'directory' && bType !== 'directory') return -1
@@ -177,12 +160,12 @@ function compareTreeEntries(a: TreeEntry, b: TreeEntry) {
   return 0
 }
 
-function matchingEntry(entry: TreeEntry, entryType?: EntryTypeFilter) {
+function matchingEntry(entry: FileTreeEntry, entryType?: EntryTypeFilter) {
   if (matchesEntryType(entry, entryType)) return entry
 
   return null
 }
 
-function isTreeEntry(entry: TreeEntry | null): entry is TreeEntry {
+function isTreeEntry(entry: FileTreeEntry | null): entry is FileTreeEntry {
   return entry !== null
 }

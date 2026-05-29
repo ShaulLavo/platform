@@ -1,4 +1,4 @@
-import { isRecord } from '@workspace/contracts'
+import { errorNumberField, errorStringField, isRecord } from '@workspace/contracts'
 import type { RequestLogger } from 'evlog'
 import { useLogger } from 'evlog/elysia'
 
@@ -124,12 +124,12 @@ export function elapsedMs(startedAt: number) {
 export function errorSummary(error: unknown) {
   if (error instanceof Error) {
     return {
-      code: errorCode(error),
-      fix: errorStringField(error, 'fix'),
+      code: errorStringField(error, 'code'),
+      fix: errorStringField(error, 'fix', { maxLength: 500, preserve: 'end' }),
       message: limitText(error.message, 500),
       name: error.name,
       status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
-      why: errorStringField(error, 'why'),
+      why: errorStringField(error, 'why', { maxLength: 500, preserve: 'end' }),
     }
   }
 
@@ -188,7 +188,7 @@ function errorForLogger(error: unknown) {
 function sanitizedErrorForLogger(error: Error) {
   const cause = errorCause(error)
   const clone = createStructuredError({
-    code: errorCode(error),
+    code: errorStringField(error, 'code'),
     message: error.message,
   })
   clone.name = error.name
@@ -265,27 +265,6 @@ function safeDiagnosticContext(context: Record<string, unknown>) {
     ...rest,
     targetPath: path,
   }
-}
-
-function errorCode(error: Error) {
-  if (!('code' in error)) return undefined
-
-  const code = error.code
-  return typeof code === 'string' ? code : undefined
-}
-
-function errorStringField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as unknown as Record<string, unknown>)[field]
-  return typeof value === 'string' ? limitText(value, 500) : undefined
-}
-
-function errorNumberField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as unknown as Record<string, unknown>)[field]
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function gitContext(logger: RequestLogger<Record<string, unknown>>) {

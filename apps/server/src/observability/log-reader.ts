@@ -10,7 +10,7 @@ import type {
   LogEventSummary,
   LogLiveStreamItem,
 } from '@workspace/contracts'
-import { isRecord } from '@workspace/contracts'
+import { errorStringField, isRecord } from '@workspace/contracts'
 import type { LogLevel, WideEvent } from 'evlog'
 import { readFsLogs, tailFsLogs } from 'evlog/fs'
 
@@ -144,9 +144,9 @@ export function normalizeLogEvent(event: WideEvent): NormalizedLogEvent {
     area: stringField(rawJson.area),
     durationMs: durationMs(rawJson),
     environment: stringField(rawJson.environment),
-    errorCode: errorStringField(rawJson.error, 'code'),
-    errorMessage: errorStringField(rawJson.error, 'message'),
-    errorName: errorStringField(rawJson.error, 'name'),
+    errorCode: stringField(errorStringField(rawJson.error, 'code')),
+    errorMessage: stringField(errorStringField(rawJson.error, 'message')),
+    errorName: stringField(errorStringField(rawJson.error, 'name')),
     id: eventId(rawJson, rawText),
     level: logLevel(rawJson.level),
     message: stringField(rawJson.message),
@@ -499,12 +499,6 @@ function durationUnitMultiplier(unit: string | undefined) {
   if (unit === 'm') return 60_000
 
   return 1
-}
-
-function errorStringField(error: unknown, field: string) {
-  if (!isRecord(error)) return null
-
-  return stringField(error[field])
 }
 
 function stringField(value: unknown) {

@@ -1,4 +1,4 @@
-import { isRecord } from '@workspace/contracts'
+import { errorNumberField, errorStringField, isRecord } from '@workspace/contracts'
 import { log, type LogLevel } from 'evlog'
 
 import { observabilityConfig } from './runtime'
@@ -207,12 +207,12 @@ function sanitizeError(error: Error, depth: number, seen: WeakSet<object>) {
   seen.add(error)
   return {
     cause: sanitizeDiagnosticValue(error.cause, depth + 1, seen),
-    code: errorStringField(error, 'code'),
-    fix: errorStringField(error, 'fix'),
+    code: errorStringField(error, 'code', { maxLength: maxStringLength }),
+    fix: errorStringField(error, 'fix', { maxLength: maxStringLength }),
     message: limitString(error.message),
     name: error.name,
     status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
-    why: errorStringField(error, 'why'),
+    why: errorStringField(error, 'why', { maxLength: maxStringLength }),
   }
 }
 
@@ -245,18 +245,4 @@ function limitString(value: string) {
 
 function stringField(value: unknown) {
   return typeof value === 'string' && value.trim() ? limitString(value.trim()) : null
-}
-
-function errorStringField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as unknown as Record<string, unknown>)[field]
-  return typeof value === 'string' ? limitString(value) : undefined
-}
-
-function errorNumberField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as unknown as Record<string, unknown>)[field]
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }

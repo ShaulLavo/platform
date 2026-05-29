@@ -1,34 +1,19 @@
 import type { Stats } from 'node:fs'
 import { lstat, stat } from 'node:fs/promises'
+import type { EntryTypeCarrier, EntryTypeFilter, FileSystemEntryMetadata } from '@workspace/contracts'
 import { FsError, mapNodeError } from './errors'
 import type { WorkspacePaths } from './path'
 import { fileVersion } from './version'
 
-export type FsEntryType = 'file' | 'directory' | 'symlink' | 'other'
-
-export type FsEntryTypeCarrier = {
-  type: FsEntryType
-  targetType?: FsEntryType
-}
-
-export type FsStat = {
-  path: string
-  type: FsEntryType
-  targetType?: FsEntryType
-  size: number
-  mtimeMs: number
-  birthtimeMs: number
-  version: string
-}
-
-export type FsEntryStats = {
+export type FsEntryStats = EntryTypeCarrier & {
   displayStats: Stats
   targetStats: Stats
-  type: FsEntryType
-  targetType?: FsEntryType
 }
 
-export async function statPath(paths: WorkspacePaths, input: string): Promise<FsStat> {
+export async function statPath(
+  paths: WorkspacePaths,
+  input: string,
+): Promise<FileSystemEntryMetadata> {
   const target = paths.resolve(input)
 
   try {
@@ -88,31 +73,12 @@ export async function readEntryStats(absolutePath: string) {
   } satisfies FsEntryStats
 }
 
-export function typeFromStats(stats: Stats): FsEntryType {
+export function typeFromStats(stats: Stats): EntryTypeFilter {
   if (stats.isFile()) return 'file'
   if (stats.isDirectory()) return 'directory'
   if (stats.isSymbolicLink()) return 'symlink'
 
   return 'other'
-}
-
-export function effectiveEntryType(entry: FsEntryTypeCarrier): FsEntryType {
-  return entry.targetType ?? entry.type
-}
-
-export function isDirectoryEntry(entry: FsEntryTypeCarrier) {
-  return effectiveEntryType(entry) === 'directory'
-}
-
-export function isFileEntry(entry: FsEntryTypeCarrier) {
-  return effectiveEntryType(entry) === 'file'
-}
-
-export function matchesEntryType(entry: FsEntryTypeCarrier, entryType?: FsEntryType) {
-  if (!entryType) return true
-  if (entry.type === entryType) return true
-
-  return entry.targetType === entryType
 }
 
 export function assertFile(stats: Stats) {

@@ -1,5 +1,7 @@
 import {
   createWorkspaceSearchMatcher,
+  errorNumberField,
+  errorStringField,
   type WorkspaceSearchMatcher,
   type WorkspaceSearchTextMatch,
   type WorkspaceSearchDoneEvent,
@@ -203,20 +205,6 @@ function searchErrorSummary(error: unknown) {
 
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100
-}
-
-function errorStringField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as Record<string, unknown>)[field]
-  return typeof value === 'string' ? value : undefined
-}
-
-function errorNumberField(error: Error, field: string) {
-  if (!(field in error)) return undefined
-
-  const value = (error as Record<string, unknown>)[field]
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function shouldStopCompositeSearch(

@@ -1,4 +1,15 @@
-export type { EntryTypeFilter, TreeEntry } from './tree-entry'
+export {
+  effectiveEntryType,
+  isDirectoryEntry,
+  isFileEntry,
+  matchesEntryType,
+  type EntryTypeCarrier,
+  type EntryTypeFilter,
+  type FileSystemEntryMetadata,
+  type FileTreeEntry,
+  type FileTreeResult,
+  type TreeEntry,
+} from './tree-entry'
 export type { FileResult } from './file-result'
 export type { WatchClientMessage, WatchServerMessage } from './watch-events'
 export {
@@ -36,6 +47,7 @@ export {
   type FuzzyRankTarget,
 } from './fuzzy-rank'
 export type { ErrorCategory } from './error-category'
+export { errorNumberField, errorStringField, type ErrorStringFieldOptions } from './error-fields'
 export { isRecord } from './is-record'
 export {
   approvalRequestIdSchema,
