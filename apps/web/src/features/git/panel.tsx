@@ -15,10 +15,10 @@ import { PanelShell } from './components/panel-shell'
 
 const EMPTY_FILES: readonly FileStatus[] = []
 
-export const Panel = memo(function Panel({
+export const Panel = memo(({
   className,
   rootPath,
-}: ComponentProps<'section'> & { rootPath: string }) {
+}: ComponentProps<'section'> & { rootPath: string }) => {
   return (
     <StateProvider>
       <PanelContent className={className} rootPath={rootPath} />

@@ -8,7 +8,7 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import type { EditorKeymapLayer } from '@editor/core'
 
-export const FileViewer = memo(function FileViewer({
+export const FileViewer = memo(({
   editorKeymapLayers,
   rootPath,
   onRequestCloseTab,
@@ -18,7 +18,7 @@ export const FileViewer = memo(function FileViewer({
   rootPath: string
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
-}) {
+}) => {
   const editorPaneLayout = useEditorWorkspaceState((state) => state.editorPaneLayout)
   const [dropTarget, setDropTarget] = useState<EditorPaneSplitDropTarget | null>(null)
   const surfaceRef = useRef<HTMLElement | null>(null)

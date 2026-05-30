@@ -4,11 +4,11 @@ import { workspaceSearchRuntimeEnabled } from '@/components/workspace/workspace-
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useSearchBufferRuntime } from '@/features/search/use-search-buffer-runtime'
 
-export const WorkspaceSearchRuntime = memo(function WorkspaceSearchRuntime({
+export const WorkspaceSearchRuntime = memo(({
   rootPath,
 }: {
   rootPath: string
-}) {
+}) => {
   const enabled = useEditorWorkspaceState((state) => workspaceSearchRuntimeEnabled(state, rootPath))
 
   useSearchBufferRuntime(rootPath, enabled)

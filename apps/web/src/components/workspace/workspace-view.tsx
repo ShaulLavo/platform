@@ -28,7 +28,7 @@ type WorkspaceViewProps = {
   onRequestCloseTabs: RequestCloseTabs
 }
 
-export const WorkspaceView = memo(function WorkspaceView({
+export const WorkspaceView = memo(({
   editorKeymapLayers,
   rootFolder,
   treeState,
@@ -36,7 +36,7 @@ export const WorkspaceView = memo(function WorkspaceView({
   onPrefetchDirectory,
   onRequestCloseTab,
   onRequestCloseTabs,
-}: WorkspaceViewProps) {
+}: WorkspaceViewProps) => {
   const rootPath = rootFolder.path
 
   return (

@@ -45,7 +45,7 @@ import {
   type ReactNode,
 } from 'react'
 
-export const TreePane = memo(function TreePane({
+export const TreePane = memo(({
   gitStatus,
   onVisibleItemCountChange,
   onLoadDirectory,
@@ -59,7 +59,7 @@ export const TreePane = memo(function TreePane({
   onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
   state: LoadState<TreeModel>
-}) {
+}) => {
   if (state.status === 'loading') return <TreeStatus label='Loading folder' />
   if (state.status === 'error') {
     return <TreeStatus icon={<WarningCircleIcon className='size-4' />} label={state.message} />

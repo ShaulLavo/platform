@@ -64,7 +64,7 @@ type SearchResultFileEditorProps = {
   onSelectResultWithoutReveal: (id: SearchResultId | null) => void
 }
 
-export const SearchResultFileEditor = memo(function SearchResultFileEditor({
+export const SearchResultFileEditor = memo(({
   active,
   activeResultId,
   canReplace,
@@ -75,7 +75,7 @@ export const SearchResultFileEditor = memo(function SearchResultFileEditor({
   onOpenTarget,
   onReplaceMatch,
   onSelectResultWithoutReveal,
-}: SearchResultFileEditorProps) {
+}: SearchResultFileEditorProps) => {
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const setActiveEditorCommandDispatch = useWorkspaceFocus(
     (state) => state.setActiveEditorCommandDispatch,

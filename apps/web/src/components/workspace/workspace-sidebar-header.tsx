@@ -7,7 +7,7 @@ import type { TreeModel } from '@/lib/tree-model'
 import type { WorkspacePanelTab } from '@/lib/workspace-cache'
 import { memo } from 'react'
 
-export const WorkspaceSidebarHeader = memo(function WorkspaceSidebarHeader({
+export const WorkspaceSidebarHeader = memo(({
   tab,
   treeState,
   visibleTreeItemCount,
@@ -15,7 +15,7 @@ export const WorkspaceSidebarHeader = memo(function WorkspaceSidebarHeader({
   tab: WorkspacePanelTab
   treeState: LoadState<TreeModel>
   visibleTreeItemCount: number | null
-}) {
+}) => {
   const title = workspacePanelTabTitle(tab)
   const detail = tab === 'files' ? workspaceTreeHeaderDetail(treeState, visibleTreeItemCount) : null
 

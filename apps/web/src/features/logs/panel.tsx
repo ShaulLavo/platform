@@ -18,7 +18,7 @@ type LogsPanelProps = {
   active: boolean
 }
 
-export const LogsPanel = memo(function LogsPanel({ active }: LogsPanelProps) {
+export const LogsPanel = memo(({ active }: LogsPanelProps) => {
   const queryClient = useQueryClient()
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const [filtersState, setFiltersState] = useState<LogsFilterState>(defaultLogsFilterState)

@@ -15,14 +15,14 @@ type SearchNumberProps = {
   value: number
 }
 
-export const SearchNumber = memo(function SearchNumber(props: SearchNumberProps) {
+export const SearchNumber = memo((props: SearchNumberProps) => {
   return <SearchAnimatedCounterValue {...props} />
 }, searchNumberPropsEqual)
 
-const SearchAnimatedCounterValue = memo(function SearchAnimatedCounterValue({
+const SearchAnimatedCounterValue = memo(({
   fontSize = '11px',
   value,
-}) {
+}) => {
   return (
     <span aria-label={value.toLocaleString()}>
       <AnimatedCounter

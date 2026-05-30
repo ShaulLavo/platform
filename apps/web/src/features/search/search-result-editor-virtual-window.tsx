@@ -38,7 +38,7 @@ type SearchResultEditorVirtualWindowProps = {
   readonly onToggleGroup: (path: string) => void
 }
 
-export const SearchResultEditorVirtualWindow = memo(function SearchResultEditorVirtualWindow({
+export const SearchResultEditorVirtualWindow = memo(({
   activeResultId,
   canReplace,
   editorTheme,
@@ -56,7 +56,7 @@ export const SearchResultEditorVirtualWindow = memo(function SearchResultEditorV
   onSelectResult,
   onSelectResultWithoutReveal,
   onToggleGroup,
-}: SearchResultEditorVirtualWindowProps) {
+}: SearchResultEditorVirtualWindowProps) => {
   const {
     items: virtualItems,
     scrollToIndex,

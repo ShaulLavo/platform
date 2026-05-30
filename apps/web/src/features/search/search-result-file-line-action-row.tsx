@@ -19,14 +19,14 @@ type SearchResultFileLineActionRowProps = {
   onReplaceLine: (line: SearchResultFileDocumentLine) => void
 }
 
-export const SearchResultFileLineActionRow = memo(function SearchResultFileLineActionRow({
+export const SearchResultFileLineActionRow = memo(({
   canReplace,
   line,
   lineActionRowsRef,
   replaceVisible,
   onOpenLine,
   onReplaceLine,
-}: SearchResultFileLineActionRowProps) {
+}: SearchResultFileLineActionRowProps) => {
   const rowRef = useRef<HTMLDivElement | null>(null)
   const openLabel = searchResultLineOpenLabel(line)
 

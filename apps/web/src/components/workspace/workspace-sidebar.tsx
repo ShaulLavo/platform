@@ -16,7 +16,7 @@ import { memo } from 'react'
 
 const sidebarTabPanelClassName = 'min-h-0 min-w-0 flex-1 overflow-hidden'
 
-export const WorkspaceSidebar = memo(function WorkspaceSidebar({
+export const WorkspaceSidebar = memo(({
   onLoadDirectory,
   onPrefetchDirectory,
   onVisibleItemCountChange,
@@ -30,7 +30,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
   rootPath: string
   treeState: LoadState<TreeModel>
   visibleTreeItemCount: number | null
-}) {
+}) => {
   const activeTab = useEditorWorkspaceState((state) =>
     state.sidebarVisible ? state.workspacePanelTab : null,
   )

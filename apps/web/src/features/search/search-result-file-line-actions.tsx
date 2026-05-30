@@ -17,14 +17,14 @@ type SearchResultFileLineActionsProps = {
   onReplaceLine: (line: SearchResultFileDocumentLine) => void
 }
 
-export const SearchResultFileLineActions = memo(function SearchResultFileLineActions({
+export const SearchResultFileLineActions = memo(({
   canReplace,
   document,
   lineActionRowsRef,
   replaceVisible,
   onOpenLine,
   onReplaceLine,
-}: SearchResultFileLineActionsProps) {
+}: SearchResultFileLineActionsProps) => {
   return (
     <div className='grid shrink-0' style={searchResultLineActionsStyle(document.lines.length)}>
       {document.lines.map((line) => (

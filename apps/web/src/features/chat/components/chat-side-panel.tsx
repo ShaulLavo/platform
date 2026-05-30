@@ -13,7 +13,7 @@ import { ChatPanelStatus } from './chat-panel-status'
 import { ChatDraftView } from './chat-draft-view'
 import { ChatView } from './chat-view'
 
-export const ChatSidePanel = memo(function ChatSidePanel({ rootPath }: { rootPath: string }) {
+export const ChatSidePanel = memo(({ rootPath }: { rootPath: string }) => {
   const environment = useMemo(() => createLocalChatEnvironment(), [])
   const shell = useChatShellSubscription(environment)
   const projectState = useWorkspaceChatProject({ environment, rootPath })

@@ -17,14 +17,14 @@ type SearchResultFileHeaderProps = {
   onToggleFile: (path: string) => void
 }
 
-export const SearchResultFileHeader = memo(function SearchResultFileHeader({
+export const SearchResultFileHeader = memo(({
   active,
   canReplace,
   file,
   replaceVisible,
   onReplaceFile,
   onToggleFile,
-}: SearchResultFileHeaderProps) {
+}: SearchResultFileHeaderProps) => {
   const name = fileName(file.path)
   const icon = useMemo(() => iconForEntry({ name, type: 'file' }), [name])
   const handleReplace = useCallback(() => onReplaceFile?.(file.path), [file.path, onReplaceFile])

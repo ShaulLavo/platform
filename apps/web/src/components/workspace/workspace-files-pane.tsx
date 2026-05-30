@@ -6,7 +6,7 @@ import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
 import { memo, useMemo } from 'react'
 
-export const WorkspaceFilesPane = memo(function WorkspaceFilesPane({
+export const WorkspaceFilesPane = memo(({
   onLoadDirectory,
   onPrefetchDirectory,
   onVisibleItemCountChange,
@@ -18,7 +18,7 @@ export const WorkspaceFilesPane = memo(function WorkspaceFilesPane({
   onVisibleItemCountChange: (count: number) => void
   rootPath: string
   state: LoadState<TreeModel>
-}) {
+}) => {
   const gitStatus = useStatus(rootPath)
   const gitStatusEntries = useMemo(
     () => statusEntriesForTree(gitStatus.data?.files ?? [], rootPath),

@@ -8,7 +8,7 @@ import { workspaceSearchReplacementPreview } from '@/features/search/search-repl
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export const SearchMatchRow = memo(function SearchMatchRow({
+export const SearchMatchRow = memo(({
   active,
   className,
   canReplace,
@@ -34,7 +34,7 @@ export const SearchMatchRow = memo(function SearchMatchRow({
   query: string
   onOpenMatch: (match: WorkspaceSearchMatch) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-}) {
+}) => {
   const location = searchMatchLocation(match)
   const display = searchMatchDisplay(match, query, {
     maxLength: matchPreviewMaxLength(match, previewMaxLength),
@@ -123,7 +123,7 @@ export const SearchMatchRow = memo(function SearchMatchRow({
   )
 })
 
-export const SearchNameMatchRow = memo(function SearchNameMatchRow({
+export const SearchNameMatchRow = memo(({
   active,
   className,
   compact,
@@ -139,7 +139,7 @@ export const SearchNameMatchRow = memo(function SearchNameMatchRow({
   previewMaxLength?: number
   query: string
   onOpenMatch: (match: WorkspaceSearchMatch) => void
-}) {
+}) => {
   const display = searchMatchDisplay(match, query, {
     maxLength: previewMaxLength,
   })

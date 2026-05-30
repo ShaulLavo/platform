@@ -2,7 +2,7 @@ import { EditorStatusBarContent } from '@/features/editor/components/editor-stat
 import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
 import { memo } from 'react'
 
-export const EditorStatusBar = memo(function EditorStatusBar() {
+export const EditorStatusBar = memo(() => {
   const source = useEditorUiState((state) => state.statusBarSource)
 
   return (

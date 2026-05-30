@@ -26,7 +26,7 @@ type SearchResultFileHeaderRowProps = {
   readonly onToggleFile: (path: string) => void
 }
 
-export const SearchResultFileHeaderRow = memo(function SearchResultFileHeaderRow({
+export const SearchResultFileHeaderRow = memo(({
   activeResultId,
   canReplace,
   replaceVisible,
@@ -36,7 +36,7 @@ export const SearchResultFileHeaderRow = memo(function SearchResultFileHeaderRow
   onReplaceFile,
   onSelectResult,
   onToggleFile,
-}: SearchResultFileHeaderRowProps) {
+}: SearchResultFileHeaderRowProps) => {
   const id = searchResultVirtualRowId(row)
   const active = searchResultFileContainsId(row.file, activeResultId)
   const handleMouseDown = useCallback(() => onSelectResult(id), [id, onSelectResult])

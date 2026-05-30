@@ -23,13 +23,13 @@ type WorkspaceSidebarResizablePanelProps = {
   onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
 }
 
-export const WorkspaceSidebarResizablePanel = memo(function WorkspaceSidebarResizablePanel({
+export const WorkspaceSidebarResizablePanel = memo(({
   onLoadDirectory,
   onPrefetchDirectory,
   rootPath,
   treeReady,
   treeState,
-}: WorkspaceSidebarResizablePanelProps) {
+}: WorkspaceSidebarResizablePanelProps) => {
   const sidebarVisible = useEditorWorkspaceState((state) => state.sidebarVisible)
   const setSidebarVisible = useEditorWorkspaceState((state) => state.setSidebarVisible)
   const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null)

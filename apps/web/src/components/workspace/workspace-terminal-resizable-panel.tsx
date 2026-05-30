@@ -5,11 +5,11 @@ import { TerminalPanel } from '@/features/terminal/terminal-panel'
 import { ResizablePanel } from '@workspace/ui/components/resizable'
 import { memo } from 'react'
 
-export const WorkspaceTerminalResizablePanel = memo(function WorkspaceTerminalResizablePanel({
+export const WorkspaceTerminalResizablePanel = memo(({
   rootPath,
 }: {
   rootPath: string
-}) {
+}) => {
   const handleTerminalResize = useWorkspaceTerminalResizeHandler()
   const terminalPanelRef = useWorkspaceTerminalPanelRef()
 
@@ -31,11 +31,11 @@ export const WorkspaceTerminalResizablePanel = memo(function WorkspaceTerminalRe
   )
 })
 
-const WorkspaceTerminalPanelVisibility = memo(function WorkspaceTerminalPanelVisibility({
+const WorkspaceTerminalPanelVisibility = memo(({
   rootPath,
 }: {
   rootPath: string
-}) {
+}) => {
   const terminalCollapsed = useWorkspaceTerminalCollapsed()
 
   return (

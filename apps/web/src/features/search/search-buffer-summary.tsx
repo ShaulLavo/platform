@@ -3,7 +3,7 @@ import { memo } from 'react'
 import { SearchSummary } from '@/features/search/search-summary'
 import { useSearchBufferValue } from '@/features/search/use-search-buffer-value'
 
-export const SearchBufferSummary = memo(function SearchBufferSummary({
+export const SearchBufferSummary = memo(({
   buttonClassName,
   className,
   rootPath,
@@ -11,7 +11,7 @@ export const SearchBufferSummary = memo(function SearchBufferSummary({
   buttonClassName?: string
   className?: string
   rootPath: string
-}) {
+}) => {
   const snapshot = useSearchBufferValue(rootPath, (activeSnapshot) => activeSnapshot, null)
 
   return (

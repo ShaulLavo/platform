@@ -8,10 +8,10 @@ type SearchResultSourceLineGutterProps = {
   minDigits: number
 }
 
-export const SearchResultSourceLineGutter = memo(function SearchResultSourceLineGutter({
+export const SearchResultSourceLineGutter = memo(({
   document,
   minDigits,
-}: SearchResultSourceLineGutterProps) {
+}: SearchResultSourceLineGutterProps) => {
   return (
     <div
       aria-hidden='true'

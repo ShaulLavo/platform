@@ -8,7 +8,7 @@ import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/fil
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export const SearchFileGroupHeader = memo(function SearchFileGroupHeader({
+export const SearchFileGroupHeader = memo(({
   active,
   className,
   canReplace,
@@ -26,7 +26,7 @@ export const SearchFileGroupHeader = memo(function SearchFileGroupHeader({
   replaceVisible?: boolean
   onReplace?: (group: WorkspaceSearchFileGroup) => void
   onToggle: (path: string) => void
-}) {
+}) => {
   const icon = iconForEntry({ name: group.name, type: 'file' })
 
   return (

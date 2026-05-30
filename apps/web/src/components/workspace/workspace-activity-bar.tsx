@@ -12,7 +12,7 @@ import {
 } from '@phosphor-icons/react'
 import { memo } from 'react'
 
-export const WorkspaceActivityBar = memo(function WorkspaceActivityBar() {
+export const WorkspaceActivityBar = memo(() => {
   return (
     <nav
       aria-label='Workspace activity'
@@ -42,7 +42,7 @@ export const WorkspaceActivityBar = memo(function WorkspaceActivityBar() {
   )
 })
 
-const WorkspaceTerminalActivityButton = memo(function WorkspaceTerminalActivityButton() {
+const WorkspaceTerminalActivityButton = memo(() => {
   const terminalCollapsed = useWorkspaceTerminalCollapsed()
   const toggleTerminal = useWorkspaceTerminalToggle()
 

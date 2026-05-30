@@ -8,12 +8,12 @@ type EditorFrameProps = {
   children?: ReactNode
 }
 
-export const EditorFrame = memo(function EditorFrame({
+export const EditorFrame = memo(({
   active,
   controller,
   onActivate,
   children,
-}: EditorFrameProps) {
+}: EditorFrameProps) => {
   return (
     <div
       className='bg-background flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden'

@@ -218,7 +218,7 @@ function scrollActiveSearchResultIntoView(
   virtualizerRef.current.scrollToIndex(currentActiveIndex, { align: 'auto' })
 }
 
-const SearchResultRow = memo(function SearchResultRow({
+const SearchResultRow = memo(({
   active,
   item,
   canReplace,
@@ -248,7 +248,7 @@ const SearchResultRow = memo(function SearchResultRow({
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
   onSelectResult: (id: string | null) => void
   onToggleGroup: (path: string) => void
-}) {
+}) => {
   if (item.type === 'group') {
     return (
       <SearchFileGroupHeader

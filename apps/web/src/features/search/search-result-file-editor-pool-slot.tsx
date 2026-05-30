@@ -29,7 +29,7 @@ type SearchResultFileEditorPoolSlotProps = {
   onSelectResultWithoutReveal: (id: SearchResultId | null) => void
 }
 
-export const SearchResultFileEditorPoolSlot = memo(function SearchResultFileEditorPoolSlot({
+export const SearchResultFileEditorPoolSlot = memo(({
   activeResultId,
   canReplace,
   editorTheme,
@@ -40,7 +40,7 @@ export const SearchResultFileEditorPoolSlot = memo(function SearchResultFileEdit
   onOpenTarget,
   onReplaceMatch,
   onSelectResultWithoutReveal,
-}: SearchResultFileEditorPoolSlotProps) {
+}: SearchResultFileEditorPoolSlotProps) => {
   const { item, visible } = entry
   const row = item.row
   const file = row.file
