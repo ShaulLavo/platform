@@ -58,10 +58,11 @@ export function ChromeEditorTab({
     <ContextMenu>
       <ContextMenuTrigger
         className={cn(
-          'group group/chrome-tab relative flex cursor-grab items-center overflow-hidden border-x border-border/80 bg-muted/55 text-xs text-muted-foreground hover:z-20 hover:bg-background/70 active:cursor-grabbing',
+          'group group/chrome-tab relative flex cursor-grab items-center overflow-hidden border-x border-transparent bg-background/55 text-xs text-muted-foreground/70 hover:z-20 hover:border-border/50 hover:bg-muted/45 hover:text-foreground/85 active:cursor-grabbing',
           'z-[var(--chrome-tab-z)]',
           tabDragClassName(insertionEdge, dragged),
-          tab.active && 'z-30 border-border bg-background text-foreground shadow-none',
+          tab.active &&
+            'z-30 border-border bg-muted/85 text-foreground shadow-[inset_0_1px_0_var(--border)]',
         )}
         data-chrome-tab-root=''
         data-editor-tab-id={tab.id}

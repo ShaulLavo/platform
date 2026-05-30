@@ -1,15 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 
 import { createAuthConfig } from '../auth'
 import { createWorkspacePaths } from '../fs/path'
+import { lspRoutes, type LspRouteDeps } from './routes'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
-const createdSessions: FakeLspProxySession[] = []
-let matchedRoot = ''
 
 class FakeLspProxySession {
   disposed = false
@@ -24,40 +23,19 @@ class FakeLspProxySession {
   }
 }
 
-mock.module('./registry', () => ({
-  matchLspServer: async () => {
-    await Bun.sleep(25)
-    return {
-      root: matchedRoot,
-      server: { id: 'buffered-lsp' },
-    }
-  },
-}))
-
-mock.module('./proxy-session', () => ({
-  LspProxySession: {
-    create: async () => {
-      await Bun.sleep(25)
-      const session = new FakeLspProxySession()
-      createdSessions.push(session)
-      return session
-    },
-  },
-}))
-
-const { lspRoutes } = await import('./routes')
-
 afterEach(async () => {
-  matchedRoot = ''
-  createdSessions.length = 0
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
 describe('LSP websocket routes', () => {
   it('buffers client messages while the server session is opening', async () => {
     const root = await fixtureRoot()
-    matchedRoot = root
-    const routes = lspRoutes({ paths: createWorkspacePaths(root) }, auth())
+    const createdSessions: FakeLspProxySession[] = []
+    const routes = lspRoutes(
+      { paths: createWorkspacePaths(root) },
+      auth(),
+      bufferedLspDeps(root, createdSessions),
+    )
     const ws = fakeSocket({
       path: 'src/file.fake',
       root: '',
@@ -71,6 +49,23 @@ describe('LSP websocket routes', () => {
     expect(createdSessions[0]?.clientMessages).toEqual([initializeRequest(1)])
   })
 })
+
+// Inject fakes through lspRoutes' deps instead of mocking modules — Bun module
+// mocks are global and would leak the fake registry into other test files.
+function bufferedLspDeps(root: string, createdSessions: FakeLspProxySession[]): LspRouteDeps {
+  return {
+    matchServer: (async () => {
+      await Bun.sleep(25)
+      return { root, server: { id: 'buffered-lsp' } }
+    }) as unknown as LspRouteDeps['matchServer'],
+    createSession: (async () => {
+      await Bun.sleep(25)
+      const session = new FakeLspProxySession()
+      createdSessions.push(session)
+      return session
+    }) as unknown as LspRouteDeps['createSession'],
+  }
+}
 
 async function fixtureRoot() {
   const root = await mkdtemp(path.join(tmpdir(), 'platform-lsp-route-'))
