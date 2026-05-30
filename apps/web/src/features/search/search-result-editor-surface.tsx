@@ -18,10 +18,7 @@ import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
 import { handleSearchResultSurfaceKeyDown } from '@/features/search/search-result-editor-keyboard'
-import type {
-  SearchResultDeferredPluginMode,
-  SearchResultEditorScrollToIndex,
-} from '@/features/search/search-result-editor-types'
+import type { SearchResultEditorScrollToIndex } from '@/features/search/search-result-editor-types'
 import {
   groupMap,
   resetSearchResultScroll,
@@ -39,13 +36,11 @@ import {
   searchResultVirtualRows,
   type SearchResultOpenTarget,
 } from '@/features/search/search-result-view-model'
-import { useSearchResultDeferredPlugins } from '@/features/search/use-search-result-deferred-plugins'
 import { readonlyEditorKeymapLayers } from '@/keymap'
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
   canReplace?: boolean
-  deferredPluginMode?: SearchResultDeferredPluginMode
   displayedResultsQuery: string | null
   groups: readonly WorkspaceSearchFileGroup[]
   keymapLayers: readonly EditorKeymapLayer[]
@@ -66,7 +61,6 @@ export const SearchResultEditorSurface = memo(
   ({
     activeResultId,
     canReplace,
-    deferredPluginMode = 'immediate',
     displayedResultsQuery,
     groups,
     keymapLayers,
@@ -114,11 +108,6 @@ export const SearchResultEditorSurface = memo(
     const scrollToIndexRef = useRef<SearchResultEditorScrollToIndex>(noopScrollToIndex)
     const scrollToOffsetRef = useRef<(offset: number) => void>(noopScrollToOffset)
     const { editorTheme } = useEditorColorTheme()
-    const deferredPlugins = useSearchResultDeferredPlugins({
-      mode: deferredPluginMode,
-      resultKey: displayedResultsQuery,
-      rowCount: rows.length,
-    })
     const selectResultWithoutReveal = useCallback(
       (id: SearchResultId | null) => {
         if (id === activeResultId) return
@@ -206,7 +195,6 @@ export const SearchResultEditorSurface = memo(
         <SearchResultEditorVirtualWindow
           activeResultId={activeResultId}
           canReplace={canReplace}
-          deferredPluginsReady={deferredPlugins.ready}
           editorTheme={editorTheme}
           keymapLayers={readonlyKeymapLayers}
           parentRef={parentRef}
@@ -215,9 +203,7 @@ export const SearchResultEditorSurface = memo(
           rows={rows}
           scrollToIndexRef={scrollToIndexRef}
           scrollToOffsetRef={scrollToOffsetRef}
-          syntaxPlugins={deferredPlugins.syntaxPlugins}
           treeId={treeId}
-          onEnableDeferredPlugins={deferredPlugins.enable}
           onOpenTarget={onOpenTarget}
           onReplaceFile={handleReplaceFile}
           onReplaceMatch={onReplaceMatch}

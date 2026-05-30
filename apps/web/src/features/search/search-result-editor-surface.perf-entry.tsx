@@ -38,12 +38,9 @@ observeEditorMountTiming((durationMs) => {
   editorMountStats.totalMs += durationMs
 })
 
-type SearchPerfDeferredMode = 'idle' | 'immediate' | 'manual'
-
 type SearchPerfVariant = {
   readonly autoScroll: boolean
   readonly collapsed: boolean
-  readonly deferredMode: SearchPerfDeferredMode
   readonly replaceVisible: boolean
   readonly streaming: boolean
   readonly theme: 'dark' | 'light'
@@ -144,7 +141,6 @@ export function SearchResultEditorSurfacePerfFixture() {
       <SearchResultEditorSurface
         activeResultId={activeResultId}
         canReplace={variant.replaceVisible}
-        deferredPluginMode={variant.deferredMode}
         displayedResultsQuery={SEARCH_QUERY}
         groups={groups}
         keymapLayers={EMPTY_KEYMAP_LAYERS}
@@ -201,19 +197,10 @@ function readSearchPerfVariant(): SearchPerfVariant {
   return {
     autoScroll: params.get('scroll') !== '0',
     collapsed: params.get('collapsed') === '1',
-    deferredMode: searchPerfDeferredMode(params.get('syntax')),
     replaceVisible: params.get('replace') === 'visible',
     streaming: params.get('stream') === '1',
     theme: params.get('theme') === 'light' ? 'light' : 'dark',
   }
-}
-
-function searchPerfDeferredMode(value: string | null): SearchPerfDeferredMode {
-  if (value === 'immediate') return 'immediate'
-  if (value === 'manual') return 'manual'
-  if (value === 'idle') return 'idle'
-
-  return 'immediate'
 }
 
 function createSearchPerfGroups(
@@ -386,7 +373,7 @@ function variantLabel(variant: SearchPerfVariant) {
   const collapsed = variant.collapsed ? 'collapsed' : 'expanded'
   const stream = variant.streaming ? 'stream' : 'static'
 
-  return `${variant.deferredMode}/${replace}/${collapsed}/${stream}/${variant.theme}`
+  return `${replace}/${collapsed}/${stream}/${variant.theme}`
 }
 
 function formatMs(value: number | null) {

@@ -1,4 +1,4 @@
-import type { EditorKeymapLayer, EditorPlugin, EditorTheme } from '@editor/core'
+import type { EditorKeymapLayer, EditorTheme } from '@editor/core'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import { memo, useMemo, type RefObject } from 'react'
 
@@ -8,7 +8,7 @@ import {
   isSearchResultRenderedFileResultItem,
   searchResultRenderedVirtualItems,
 } from '@/features/search/search-result-editor-utils'
-import { SearchResultFileEditorPoolSlot } from '@/features/search/search-result-file-editor'
+import { SearchResultFileEditorPoolSlot } from '@/features/search/search-result-file-editor-pool-slot'
 import { SearchResultFileHeaderRow } from '@/features/search/search-result-file-header-row'
 import type { SearchResultId } from '@/features/search/search-result-items'
 import type {
@@ -21,7 +21,6 @@ import { useSearchResultFileEditorPoolEntries } from '@/features/search/use-sear
 type SearchResultEditorVirtualWindowProps = {
   readonly activeResultId: SearchResultId | null
   readonly canReplace?: boolean
-  readonly deferredPluginsReady: boolean
   readonly editorTheme: EditorTheme
   readonly keymapLayers: readonly EditorKeymapLayer[]
   readonly parentRef: RefObject<HTMLDivElement | null>
@@ -30,9 +29,7 @@ type SearchResultEditorVirtualWindowProps = {
   readonly rows: readonly SearchResultVirtualRow[]
   readonly scrollToIndexRef: RefObject<SearchResultEditorScrollToIndex>
   readonly scrollToOffsetRef: RefObject<(offset: number) => void>
-  readonly syntaxPlugins: readonly EditorPlugin[]
   readonly treeId: string
-  readonly onEnableDeferredPlugins: () => void
   readonly onOpenTarget: (target: SearchResultOpenTarget) => void
   readonly onReplaceFile?: (path: string) => void
   readonly onReplaceMatch?: (match: WorkspaceSearchMatch) => void
@@ -44,7 +41,6 @@ type SearchResultEditorVirtualWindowProps = {
 export const SearchResultEditorVirtualWindow = memo(function SearchResultEditorVirtualWindow({
   activeResultId,
   canReplace,
-  deferredPluginsReady,
   editorTheme,
   keymapLayers,
   parentRef,
@@ -53,9 +49,7 @@ export const SearchResultEditorVirtualWindow = memo(function SearchResultEditorV
   rows,
   scrollToIndexRef,
   scrollToOffsetRef,
-  syntaxPlugins,
   treeId,
-  onEnableDeferredPlugins,
   onOpenTarget,
   onReplaceFile,
   onReplaceMatch,
@@ -113,15 +107,12 @@ export const SearchResultEditorVirtualWindow = memo(function SearchResultEditorV
         <SearchResultFileEditorPoolSlot
           activeResultId={activeResultId}
           canReplace={canReplace}
-          deferredPluginsReady={deferredPluginsReady}
           editorTheme={editorTheme}
           entry={entry}
           key={`file-results-pool:${entry.key}`}
           keymapLayers={keymapLayers}
           replaceVisible={replaceVisible}
-          syntaxPlugins={syntaxPlugins}
           treeId={treeId}
-          onEnableDeferredPlugins={onEnableDeferredPlugins}
           onOpenTarget={onOpenTarget}
           onReplaceMatch={onReplaceMatch}
           onSelectResultWithoutReveal={onSelectResultWithoutReveal}

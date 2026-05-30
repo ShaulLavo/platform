@@ -268,16 +268,6 @@ export function searchResultVirtualRowExpanded(row: SearchResultVirtualRow) {
   return !row.file.collapsed
 }
 
-export function scheduleSearchResultSyntaxEnable(callback: () => void) {
-  if (typeof window.requestIdleCallback === 'function') {
-    const id = window.requestIdleCallback(callback, { timeout: 800 })
-    return () => window.cancelIdleCallback(id)
-  }
-
-  const id = globalThis.setTimeout(callback, 120)
-  return () => globalThis.clearTimeout(id)
-}
-
 export function openFileResultOnEnter(event: KeyboardEvent<HTMLDivElement>, onOpen: () => void) {
   if (event.key !== 'Enter') return false
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false

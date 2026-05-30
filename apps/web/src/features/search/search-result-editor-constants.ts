@@ -1,9 +1,4 @@
-import type {
-  BrowserTextMetrics,
-  EditorKeymapOptions,
-  EditorPlugin,
-  EditorRangeDecoration,
-} from '@editor/core'
+import type { BrowserTextMetrics, EditorKeymapOptions } from '@editor/core'
 import type { CSSProperties } from 'react'
 
 import type { SearchResultVirtualListViewport } from '@/features/search/search-result-virtual-list'
@@ -42,8 +37,6 @@ export const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
   gutterNumber: false,
   rowBackground: false,
 } as const
-export const EMPTY_EDITOR_PLUGINS: readonly EditorPlugin[] = []
-export const EMPTY_RANGE_DECORATIONS: readonly EditorRangeDecoration[] = []
 export const SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS = {
   characterWidth: EXCERPT_EDITOR_CHARACTER_WIDTH,
   rowHeight: EXCERPT_EDITOR_LINE_HEIGHT,
