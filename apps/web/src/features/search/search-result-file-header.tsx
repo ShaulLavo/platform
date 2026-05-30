@@ -1,31 +1,34 @@
 import { CaretRightIcon } from '@phosphor-icons/react'
-import { useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-import { SearchNumber } from '@/features/search/search-number'
 import { fileIconStyle, fileName, matchNoun } from '@/features/search/search-result-editor-utils'
 import type { SearchResultFileBlock } from '@/features/search/search-result-view-model'
 import { iconForEntry } from '@/lib/file-icons'
 
-export function SearchResultFileHeader({
-  active,
-  canReplace,
-  file,
-  replaceVisible,
-  onReplace,
-  onToggle,
-}: {
+type SearchResultFileHeaderProps = {
   active: boolean
   canReplace?: boolean
   file: SearchResultFileBlock
   replaceVisible: boolean
-  onReplace: () => void
-  onToggle: () => void
-}) {
+  onReplaceFile?: (path: string) => void
+  onToggleFile: (path: string) => void
+}
+
+export const SearchResultFileHeader = memo(function SearchResultFileHeader({
+  active,
+  canReplace,
+  file,
+  replaceVisible,
+  onReplaceFile,
+  onToggleFile,
+}: SearchResultFileHeaderProps) {
   const name = fileName(file.path)
   const icon = useMemo(() => iconForEntry({ name, type: 'file' }), [name])
+  const handleReplace = useCallback(() => onReplaceFile?.(file.path), [file.path, onReplaceFile])
+  const handleToggle = useCallback(() => onToggleFile(file.path), [file.path, onToggleFile])
 
   return (
     <div
@@ -42,7 +45,7 @@ export function SearchResultFileHeader({
         disabled={file.excerpts.length === 0}
         tabIndex={-1}
         type='button'
-        onClick={onToggle}
+        onClick={handleToggle}
       >
         <CaretRightIcon
           className={cn(
@@ -62,7 +65,7 @@ export function SearchResultFileHeader({
         </span>
       </div>
       <span className='bg-muted/55 text-muted-foreground rounded-sm px-1.5 text-[10px] leading-4'>
-        <SearchNumber fontSize='10px' value={file.matchCount} /> {matchNoun(file.matchCount)}
+        {file.matchCount.toLocaleString()} {matchNoun(file.matchCount)}
       </span>
       {replaceVisible ? (
         <Button
@@ -72,11 +75,11 @@ export function SearchResultFileHeader({
           title='Replace matches in this file'
           type='button'
           variant='ghost'
-          onClick={onReplace}
+          onClick={handleReplace}
         >
           Replace
         </Button>
       ) : null}
     </div>
   )
-}
+})

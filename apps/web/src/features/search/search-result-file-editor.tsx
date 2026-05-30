@@ -63,21 +63,7 @@ import {
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export function SearchResultFileEditorPoolSlot({
-  activeResultId,
-  canReplace,
-  deferredPluginsReady,
-  editorTheme,
-  entry,
-  keymapLayers,
-  replaceVisible,
-  syntaxPlugins,
-  treeId,
-  onEnableDeferredPlugins,
-  onOpenTarget,
-  onReplaceMatch,
-  onSelectResultWithoutReveal,
-}: {
+type SearchResultFileEditorPoolSlotProps = {
   activeResultId: SearchResultId | null
   canReplace?: boolean
   deferredPluginsReady: boolean
@@ -91,7 +77,23 @@ export function SearchResultFileEditorPoolSlot({
   onOpenTarget: (target: SearchResultOpenTarget) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
   onSelectResultWithoutReveal: (id: SearchResultId | null) => void
-}) {
+}
+
+export const SearchResultFileEditorPoolSlot = memo(function SearchResultFileEditorPoolSlot({
+  activeResultId,
+  canReplace,
+  deferredPluginsReady,
+  editorTheme,
+  entry,
+  keymapLayers,
+  replaceVisible,
+  syntaxPlugins,
+  treeId,
+  onEnableDeferredPlugins,
+  onOpenTarget,
+  onReplaceMatch,
+  onSelectResultWithoutReveal,
+}: SearchResultFileEditorPoolSlotProps) {
   const { item, visible } = entry
   const row = item.row
   const file = row.file
@@ -131,7 +133,7 @@ export function SearchResultFileEditorPoolSlot({
       />
     </div>
   )
-}
+})
 
 type SearchResultFileEditorProps = {
   active: boolean

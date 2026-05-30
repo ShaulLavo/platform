@@ -77,6 +77,15 @@ export function visibleSearchResultVirtualListItems(
   return metrics.items.slice(0, options.fallbackCount ?? 0)
 }
 
+export function searchResultVirtualListItemsEqual(
+  left: readonly SearchResultVirtualListItem[],
+  right: readonly SearchResultVirtualListItem[],
+) {
+  if (left.length !== right.length) return false
+
+  return left.every((item, index) => searchResultVirtualListItemEqual(item, right[index]))
+}
+
 export function scrollTopForSearchResultVirtualListItem(
   metrics: SearchResultVirtualListMetrics,
   index: number,
@@ -106,6 +115,20 @@ export function scrollTopForSearchResultVirtualListItem(
   }
 
   return viewport.top
+}
+
+function searchResultVirtualListItemEqual(
+  left: SearchResultVirtualListItem,
+  right: SearchResultVirtualListItem | undefined,
+) {
+  if (!right) return false
+
+  return (
+    left.index === right.index &&
+    left.key === right.key &&
+    left.size === right.size &&
+    left.start === right.start
+  )
 }
 
 function searchResultVirtualListItemTarget(

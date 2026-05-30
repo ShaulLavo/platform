@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   clampSearchResultVirtualListScrollTop,
   createSearchResultVirtualListMetrics,
+  searchResultVirtualListItemsEqual,
   scrollTopForSearchResultVirtualListItem,
   visibleSearchResultVirtualListItems,
 } from './search-result-virtual-list'
@@ -37,6 +38,15 @@ describe('search result virtual list', () => {
     )
 
     expect(visible.map((item) => item.key)).toEqual(['row:2', 'row:3', 'row:4', 'row:5'])
+  })
+
+  it('compares virtual item windows by rendered item signature', () => {
+    const first = createSearchResultVirtualListMetrics([{ key: 'row:0', size: 20 }]).items
+    const same = createSearchResultVirtualListMetrics([{ key: 'row:0', size: 20 }]).items
+    const resized = createSearchResultVirtualListMetrics([{ key: 'row:0', size: 24 }]).items
+
+    expect(searchResultVirtualListItemsEqual(first, same)).toBe(true)
+    expect(searchResultVirtualListItemsEqual(first, resized)).toBe(false)
   })
 
   it('scrolls only when the target row is outside the viewport', () => {

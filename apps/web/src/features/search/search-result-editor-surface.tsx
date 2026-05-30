@@ -17,24 +17,20 @@ import {
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
-import { SEARCH_RESULT_VIRTUAL_PADDING } from '@/features/search/search-result-editor-constants'
 import { handleSearchResultSurfaceKeyDown } from '@/features/search/search-result-editor-keyboard'
-import type { SearchResultDeferredPluginMode } from '@/features/search/search-result-editor-types'
+import type {
+  SearchResultDeferredPluginMode,
+  SearchResultEditorScrollToIndex,
+} from '@/features/search/search-result-editor-types'
 import {
   groupMap,
-  isSearchResultRenderedFileResultItem,
   resetSearchResultScroll,
   scrollActiveSearchResultIntoView,
   searchResultDomId,
-  searchResultFileContainsId,
-  searchResultRenderedVirtualItems,
-  searchResultVirtualRowExpanded,
   searchResultVirtualRowIndex,
   searchResultVirtualRowScrollTarget,
-  searchResultVirtualRowStyle,
 } from '@/features/search/search-result-editor-utils'
-import { SearchResultFileEditorPoolSlot } from '@/features/search/search-result-file-editor'
-import { SearchResultFileHeader } from '@/features/search/search-result-file-header'
+import { SearchResultEditorVirtualWindow } from '@/features/search/search-result-editor-virtual-window'
 import type { SearchResultId } from '@/features/search/search-result-items'
 import {
   searchResultFileBlocks,
@@ -44,8 +40,6 @@ import {
   type SearchResultOpenTarget,
 } from '@/features/search/search-result-view-model'
 import { useSearchResultDeferredPlugins } from '@/features/search/use-search-result-deferred-plugins'
-import { useSearchResultEditorVirtualizer } from '@/features/search/use-search-result-editor-virtualizer'
-import { useSearchResultFileEditorPoolEntries } from '@/features/search/use-search-result-file-editor-pool-entries'
 import { readonlyEditorKeymapLayers } from '@/keymap'
 
 type SearchResultEditorSurfaceProps = {
@@ -64,6 +58,9 @@ type SearchResultEditorSurfaceProps = {
   onSelectResult: (id: SearchResultId | null) => void
   onToggleGroup: (path: string) => void
 }
+
+const noopScrollToIndex: SearchResultEditorScrollToIndex = () => {}
+const noopScrollToOffset = () => {}
 
 export const SearchResultEditorSurface = memo(
   ({
@@ -114,33 +111,14 @@ export const SearchResultEditorSurface = memo(
     const previousDisplayedResultsQueryRef = useRef<string | null>(null)
     const activeIndexRef = useRef(activeIndex)
     const activeScrollTargetRef = useRef(activeScrollTarget)
+    const scrollToIndexRef = useRef<SearchResultEditorScrollToIndex>(noopScrollToIndex)
+    const scrollToOffsetRef = useRef<(offset: number) => void>(noopScrollToOffset)
     const { editorTheme } = useEditorColorTheme()
     const deferredPlugins = useSearchResultDeferredPlugins({
       mode: deferredPluginMode,
       resultKey: displayedResultsQuery,
       rowCount: rows.length,
     })
-
-    const {
-      items: virtualItems,
-      onScroll: handleVirtualScroll,
-      scrollToIndex,
-      scrollToOffset,
-      totalSize: virtualTotalSize,
-    } = useSearchResultEditorVirtualizer(rows, parentRef)
-    const renderedVirtualItems = useMemo(
-      () => searchResultRenderedVirtualItems(virtualItems, rows),
-      [rows, virtualItems],
-    )
-    const fileResultItems = useMemo(
-      () => renderedVirtualItems.filter(isSearchResultRenderedFileResultItem),
-      [renderedVirtualItems],
-    )
-    const fileEditorPoolEntries = useSearchResultFileEditorPoolEntries(
-      fileResultItems,
-      prewarmEditorPool,
-    )
-    const scrollToIndexRef = useRef(scrollToIndex)
     const selectResultWithoutReveal = useCallback(
       (id: SearchResultId | null) => {
         if (id === activeResultId) return
@@ -154,8 +132,7 @@ export const SearchResultEditorSurface = memo(
     useLayoutEffect(() => {
       activeIndexRef.current = activeIndex
       activeScrollTargetRef.current = activeScrollTarget
-      scrollToIndexRef.current = scrollToIndex
-    }, [activeIndex, activeScrollTarget, scrollToIndex])
+    }, [activeIndex, activeScrollTarget])
 
     useLayoutEffect(() => {
       if (!activeResultId) return
@@ -176,13 +153,13 @@ export const SearchResultEditorSurface = memo(
       if (previousDisplayedResultsQueryRef.current === displayedResultsQuery) return
 
       previousDisplayedResultsQueryRef.current = displayedResultsQuery
-      resetSearchResultScroll(parentRef, scrollToOffset)
+      resetSearchResultScroll(parentRef, scrollToOffsetRef.current)
       const frame = window.requestAnimationFrame(() =>
-        resetSearchResultScroll(parentRef, scrollToOffset),
+        resetSearchResultScroll(parentRef, scrollToOffsetRef.current),
       )
 
       return () => window.cancelAnimationFrame(frame)
-    }, [displayedResultsQuery, scrollToOffset])
+    }, [displayedResultsQuery])
 
     useEffect(() => {
       if (activeRow?.type === 'file-results') return
@@ -190,12 +167,15 @@ export const SearchResultEditorSurface = memo(
       setActiveEditorCommandDispatch(null)
     }, [activeRow, setActiveEditorCommandDispatch])
 
-    function handleReplaceFile(path: string) {
-      const group = groupByPath.get(path)
-      if (!group) return
+    const handleReplaceFile = useCallback(
+      (path: string) => {
+        const group = groupByPath.get(path)
+        if (!group) return
 
-      onReplaceGroup?.(group)
-    }
+        onReplaceGroup?.(group)
+      },
+      [groupByPath, onReplaceGroup],
+    )
 
     function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
       handleSearchResultSurfaceKeyDown({
@@ -222,61 +202,29 @@ export const SearchResultEditorSurface = memo(
         onFocusCapture={() => setFocusArea('editor')}
         onKeyDown={handleKeyDown}
         onPointerDownCapture={() => setFocusArea('editor')}
-        onScroll={handleVirtualScroll}
       >
-        <div
-          className='relative'
-          style={{ height: virtualTotalSize + SEARCH_RESULT_VIRTUAL_PADDING }}
-        >
-          {renderedVirtualItems.map(({ renderKey, row, virtualItem }) => {
-            if (row.type !== 'file') return null
-
-            const id = searchResultVirtualRowId(row)
-            const active = searchResultFileContainsId(row.file, activeResultId)
-
-            return (
-              <div
-                aria-expanded={searchResultVirtualRowExpanded(row)}
-                aria-level={1}
-                aria-selected={active}
-                className='absolute right-2 left-2'
-                data-index={virtualItem.index}
-                id={searchResultDomId(treeId, id)}
-                key={renderKey}
-                role='treeitem'
-                style={searchResultVirtualRowStyle(virtualItem)}
-                onMouseDown={() => onSelectResult(id)}
-              >
-                <SearchResultFileHeader
-                  active={active}
-                  canReplace={canReplace}
-                  file={row.file}
-                  replaceVisible={replaceVisible}
-                  onReplace={() => handleReplaceFile(row.file.path)}
-                  onToggle={() => onToggleGroup(row.file.path)}
-                />
-              </div>
-            )
-          })}
-          {fileEditorPoolEntries.map((entry) => (
-            <SearchResultFileEditorPoolSlot
-              activeResultId={activeResultId}
-              canReplace={canReplace}
-              deferredPluginsReady={deferredPlugins.ready}
-              editorTheme={editorTheme}
-              entry={entry}
-              key={`file-results-pool:${entry.key}`}
-              keymapLayers={readonlyKeymapLayers}
-              replaceVisible={replaceVisible}
-              syntaxPlugins={deferredPlugins.syntaxPlugins}
-              treeId={treeId}
-              onEnableDeferredPlugins={deferredPlugins.enable}
-              onOpenTarget={onOpenTarget}
-              onReplaceMatch={onReplaceMatch}
-              onSelectResultWithoutReveal={selectResultWithoutReveal}
-            />
-          ))}
-        </div>
+        <SearchResultEditorVirtualWindow
+          activeResultId={activeResultId}
+          canReplace={canReplace}
+          deferredPluginsReady={deferredPlugins.ready}
+          editorTheme={editorTheme}
+          keymapLayers={readonlyKeymapLayers}
+          parentRef={parentRef}
+          prewarmEditorPool={prewarmEditorPool}
+          replaceVisible={replaceVisible}
+          rows={rows}
+          scrollToIndexRef={scrollToIndexRef}
+          scrollToOffsetRef={scrollToOffsetRef}
+          syntaxPlugins={deferredPlugins.syntaxPlugins}
+          treeId={treeId}
+          onEnableDeferredPlugins={deferredPlugins.enable}
+          onOpenTarget={onOpenTarget}
+          onReplaceFile={handleReplaceFile}
+          onReplaceMatch={onReplaceMatch}
+          onSelectResult={onSelectResult}
+          onSelectResultWithoutReveal={selectResultWithoutReveal}
+          onToggleGroup={onToggleGroup}
+        />
       </div>
     )
   },
