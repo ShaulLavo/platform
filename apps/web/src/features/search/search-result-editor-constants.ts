@@ -25,6 +25,7 @@ export const INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT = {
 } satisfies SearchResultVirtualListViewport
 export const FILE_RESULTS_EDITOR_MIN_HEIGHT = 28
 export const FILE_RESULTS_ROW_VERTICAL_PADDING = 8
+export const SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT = 200
 
 export const SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE = {
   contain: 'layout paint style',

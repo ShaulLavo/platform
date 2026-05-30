@@ -1,4 +1,4 @@
-import type { EditorRangeDecoration } from '@editor/core'
+import type { EditorRangeDecoration, EditorScrollMode } from '@editor/core'
 import type { CSSProperties, KeyboardEvent, RefObject } from 'react'
 
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
@@ -26,6 +26,7 @@ import {
   FILE_RESULTS_ROW_VERTICAL_PADDING,
   FILE_ROW_ESTIMATE,
   SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
+  SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT,
   SEARCH_RESULT_VIRTUAL_BASE_MIN_OVERSCAN,
   SEARCH_RESULT_VIRTUAL_BASE_OVERSCAN_RATIO,
   SEARCH_RESULT_VIRTUAL_FAST_MIN_OVERSCAN,
@@ -158,8 +159,9 @@ export function searchResultVirtualRowScrollTarget(
 
 export function searchResultFileExcerptOffset(index: number) {
   const rowStep = EXCERPT_EDITOR_LINE_HEIGHT + SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+  const visibleIndex = Math.min(index, SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT - 1)
 
-  return FILE_RESULTS_ROW_VERTICAL_PADDING / 2 + index * rowStep
+  return FILE_RESULTS_ROW_VERTICAL_PADDING / 2 + Math.max(0, visibleIndex) * rowStep
 }
 
 export function searchResultVirtualRowEstimate(row: SearchResultVirtualRow | undefined) {
@@ -389,6 +391,16 @@ export function searchResultFileEditorStyle(document: SearchResultFileDocument):
   }
 }
 
+export function searchResultFileEditorScrollMode(lineCount: number): EditorScrollMode {
+  if (lineCount > SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT) return 'virtualized'
+
+  return 'static'
+}
+
+export function searchResultFileEditorVisibleLineCount(lineCount: number) {
+  return Math.max(0, Math.min(lineCount, SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT))
+}
+
 export function searchResultSourceLineGutterStyle(
   lineCount: number,
   minDigits: number,
@@ -415,7 +427,11 @@ export function searchResultFileEditorRowHeight(file: SearchResultFileBlock) {
 }
 
 export function searchResultFileEditorHeight(lineCount: number) {
-  const rowGaps = Math.max(0, lineCount - 1) * SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+  const visibleLineCount = searchResultFileEditorVisibleLineCount(lineCount)
+  const rowGaps = Math.max(0, visibleLineCount - 1) * SEARCH_RESULT_FILE_EDITOR_ROW_GAP
 
-  return Math.max(FILE_RESULTS_EDITOR_MIN_HEIGHT, lineCount * EXCERPT_EDITOR_LINE_HEIGHT + rowGaps)
+  return Math.max(
+    FILE_RESULTS_EDITOR_MIN_HEIGHT,
+    visibleLineCount * EXCERPT_EDITOR_LINE_HEIGHT + rowGaps,
+  )
 }

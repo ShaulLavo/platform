@@ -1,9 +1,7 @@
 import type { SearchBufferStatus } from '@/features/search/search-buffer-state'
-import {
-  SearchErrorState,
-  SearchIdleState,
-  SearchPendingOrEmpty,
-} from '@/features/search/search-status-states'
+import { SearchErrorState } from '@/features/search/search-error-state'
+import { SearchIdleState } from '@/features/search/search-idle-state'
+import { SearchPendingOrEmpty } from '@/features/search/search-pending-or-empty'
 
 export function SearchBufferStatusState({
   error,

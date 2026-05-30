@@ -323,6 +323,10 @@
   overflow: hidden;
 }
 
+.search-result-file-editor-host .editor-virtualized[data-editor-scroll-mode='virtualized'] {
+  overflow: auto;
+}
+
 .search-result-excerpt-editor-host .editor-virtualized-gutter,
 .search-result-file-editor-host .editor-virtualized-gutter {
   background: transparent;

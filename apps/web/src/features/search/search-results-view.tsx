@@ -29,11 +29,9 @@ import {
   type SearchResultItem,
   type SearchResultId,
 } from '@/features/search/search-result-items'
-import {
-  SearchErrorState,
-  SearchIdleState,
-  SearchPendingOrEmpty,
-} from '@/features/search/search-status-states'
+import { SearchErrorState } from '@/features/search/search-error-state'
+import { SearchIdleState } from '@/features/search/search-idle-state'
+import { SearchPendingOrEmpty } from '@/features/search/search-pending-or-empty'
 import { cn } from '@workspace/ui/lib/utils'
 
 const SEARCH_PREVIEW_MAX_CHARACTERS = 96

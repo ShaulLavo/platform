@@ -38,6 +38,7 @@ import {
   preventReadonlyInput,
   readonlyEditingKey,
   searchResultFileDocumentId,
+  searchResultFileEditorScrollMode,
   searchResultFileEditorStyle,
   searchResultFileLineIdAtClientY,
   searchResultFileRangeDecorations,
@@ -108,6 +109,7 @@ export const SearchResultFileEditor = memo(({
     [active, keymapLayers],
   )
   const editorStyle = useMemo(() => searchResultFileEditorStyle(fileDocument), [fileDocument])
+  const editorScrollMode = searchResultFileEditorScrollMode(fileDocument.lines.length)
   const controller = useEditor({
     cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
     document,
@@ -117,6 +119,7 @@ export const SearchResultFileEditor = memo(({
     plugins,
     rangeDecorations,
     rowGap: SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
+    scrollMode: editorScrollMode,
     selectionSyncMode: 'none',
     storeSync: 'none',
     textMetrics: SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS,

@@ -26,7 +26,10 @@ export const SearchResultFileLineActions = memo(({
   onReplaceLine,
 }: SearchResultFileLineActionsProps) => {
   return (
-    <div className='grid shrink-0' style={searchResultLineActionsStyle(document.lines.length)}>
+    <div
+      className='grid shrink-0 overflow-hidden'
+      style={searchResultLineActionsStyle(document.lines.length)}
+    >
       {document.lines.map((line) => (
         <SearchResultFileLineActionRow
           canReplace={canReplace}
