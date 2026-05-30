@@ -1,5 +1,4 @@
 import '@editor/core/style.css'
-import '@editor/find/style.css'
 
 import type { EditorKeymapLayer } from '@editor/core'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'

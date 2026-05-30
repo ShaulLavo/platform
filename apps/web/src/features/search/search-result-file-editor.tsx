@@ -4,7 +4,6 @@ import type {
   EditorPlugin,
   EditorTheme,
 } from '@editor/core'
-import { createEditorFindPlugin } from '@editor/find'
 import { EditorHost, useEditor } from '@editor/react'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {
@@ -96,16 +95,8 @@ export const SearchResultFileEditor = memo(({
     () => searchResultFileRangeDecorations(fileDocument, activeResultId),
     [activeResultId, fileDocument],
   )
-  const findPlugin = useMemo(() => {
-    if (!active) return null
-
-    return createEditorFindPlugin()
-  }, [active])
   const syntaxPlugins = useMemo(() => createEditorSyntaxHighlightingPlugins(), [])
-  const plugins = useMemo(
-    () => fileResultEditorPlugins(syntaxPlugins, findPlugin),
-    [findPlugin, syntaxPlugins],
-  )
+  const plugins = useMemo(() => fileResultEditorPlugins(syntaxPlugins), [syntaxPlugins])
   const editorKeymap = useMemo(
     () =>
       active
@@ -276,14 +267,9 @@ export const SearchResultFileEditor = memo(({
   )
 })
 
-function fileResultEditorPlugins(
-  syntaxPlugins: readonly EditorPlugin[],
-  findPlugin: EditorPlugin | null,
-) {
+function fileResultEditorPlugins(syntaxPlugins: readonly EditorPlugin[]) {
   const loggingPlugin = createPlatformSearchResultEditorLoggingPlugin()
-  if (syntaxPlugins.length === 0 && !findPlugin) return [loggingPlugin]
+  if (syntaxPlugins.length === 0) return [loggingPlugin]
 
-  if (!findPlugin) return [...syntaxPlugins, loggingPlugin]
-
-  return syntaxPlugins.concat(findPlugin, loggingPlugin)
+  return syntaxPlugins.concat(loggingPlugin)
 }
