@@ -1,7 +1,10 @@
 import { memo, type RefObject } from 'react'
 
 import { SearchResultFileLineActionRow } from '@/features/search/search-result-file-line-action-row'
-import { searchResultLineActionsStyle } from '@/features/search/search-result-editor-utils'
+import {
+  searchResultFileDocumentVisibleLines,
+  searchResultLineActionsStyle,
+} from '@/features/search/search-result-editor-utils'
 import type { SearchResultId } from '@/features/search/search-result-items'
 import type {
   SearchResultFileDocument,
@@ -17,30 +20,34 @@ type SearchResultFileLineActionsProps = {
   onReplaceLine: (line: SearchResultFileDocumentLine) => void
 }
 
-export const SearchResultFileLineActions = memo(({
-  canReplace,
-  document,
-  lineActionRowsRef,
-  replaceVisible,
-  onOpenLine,
-  onReplaceLine,
-}: SearchResultFileLineActionsProps) => {
-  return (
-    <div
-      className='grid shrink-0 overflow-hidden'
-      style={searchResultLineActionsStyle(document.lines.length)}
-    >
-      {document.lines.map((line) => (
-        <SearchResultFileLineActionRow
-          canReplace={canReplace}
-          key={line.id}
-          line={line}
-          lineActionRowsRef={lineActionRowsRef}
-          replaceVisible={replaceVisible}
-          onOpenLine={onOpenLine}
-          onReplaceLine={onReplaceLine}
-        />
-      ))}
-    </div>
-  )
-})
+export const SearchResultFileLineActions = memo(
+  ({
+    canReplace,
+    document,
+    lineActionRowsRef,
+    replaceVisible,
+    onOpenLine,
+    onReplaceLine,
+  }: SearchResultFileLineActionsProps) => {
+    const lines = searchResultFileDocumentVisibleLines(document)
+
+    return (
+      <div
+        className='grid shrink-0 overflow-hidden'
+        style={searchResultLineActionsStyle(lines.length)}
+      >
+        {lines.map((line) => (
+          <SearchResultFileLineActionRow
+            canReplace={canReplace}
+            key={line.id}
+            line={line}
+            lineActionRowsRef={lineActionRowsRef}
+            replaceVisible={replaceVisible}
+            onOpenLine={onOpenLine}
+            onReplaceLine={onReplaceLine}
+          />
+        ))}
+      </div>
+    )
+  },
+)

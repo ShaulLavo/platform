@@ -38,86 +38,90 @@ type SearchResultEditorVirtualWindowProps = {
   readonly onToggleGroup: (path: string) => void
 }
 
-export const SearchResultEditorVirtualWindow = memo(({
-  activeResultId,
-  canReplace,
-  editorTheme,
-  keymapLayers,
-  parentRef,
-  prewarmEditorPool,
-  replaceVisible,
-  rows,
-  scrollToIndexRef,
-  scrollToOffsetRef,
-  treeId,
-  onOpenTarget,
-  onReplaceFile,
-  onReplaceMatch,
-  onSelectResult,
-  onSelectResultWithoutReveal,
-  onToggleGroup,
-}: SearchResultEditorVirtualWindowProps) => {
-  const {
-    items: virtualItems,
-    scrollToIndex,
-    scrollToOffset,
-    totalSize: virtualTotalSize,
-  } = useSearchResultEditorVirtualizer(rows, parentRef)
-  scrollToIndexRef.current = scrollToIndex
-  scrollToOffsetRef.current = scrollToOffset
-
-  const renderedVirtualItems = useMemo(
-    () => searchResultRenderedVirtualItems(virtualItems, rows),
-    [rows, virtualItems],
-  )
-  const fileResultItems = useMemo(
-    () => renderedVirtualItems.filter(isSearchResultRenderedFileResultItem),
-    [renderedVirtualItems],
-  )
-  const fileEditorPoolEntries = useSearchResultFileEditorPoolEntries(
-    fileResultItems,
+export const SearchResultEditorVirtualWindow = memo(
+  ({
+    activeResultId,
+    canReplace,
+    editorTheme,
+    keymapLayers,
+    parentRef,
     prewarmEditorPool,
-  )
-  const windowStyle = useMemo(
-    () => ({ height: virtualTotalSize + SEARCH_RESULT_VIRTUAL_PADDING }),
-    [virtualTotalSize],
-  )
+    replaceVisible,
+    rows,
+    scrollToIndexRef,
+    scrollToOffsetRef,
+    treeId,
+    onOpenTarget,
+    onReplaceFile,
+    onReplaceMatch,
+    onSelectResult,
+    onSelectResultWithoutReveal,
+    onToggleGroup,
+  }: SearchResultEditorVirtualWindowProps) => {
+    const {
+      items: virtualItems,
+      scrollToIndex,
+      scrollToOffset,
+      totalSize: virtualTotalSize,
+      viewport,
+    } = useSearchResultEditorVirtualizer(rows, parentRef)
+    scrollToIndexRef.current = scrollToIndex
+    scrollToOffsetRef.current = scrollToOffset
 
-  return (
-    <div className='relative' style={windowStyle}>
-      {renderedVirtualItems.map(({ renderKey, row, virtualItem }) => {
-        if (row.type !== 'file') return null
+    const renderedVirtualItems = useMemo(
+      () => searchResultRenderedVirtualItems(virtualItems, rows),
+      [rows, virtualItems],
+    )
+    const fileResultItems = useMemo(
+      () => renderedVirtualItems.filter(isSearchResultRenderedFileResultItem),
+      [renderedVirtualItems],
+    )
+    const fileEditorPoolEntries = useSearchResultFileEditorPoolEntries(
+      fileResultItems,
+      prewarmEditorPool,
+    )
+    const windowStyle = useMemo(
+      () => ({ height: virtualTotalSize + SEARCH_RESULT_VIRTUAL_PADDING }),
+      [virtualTotalSize],
+    )
 
-        return (
-          <SearchResultFileHeaderRow
+    return (
+      <div className='relative' style={windowStyle}>
+        {renderedVirtualItems.map(({ renderKey, row, virtualItem }) => {
+          if (row.type !== 'file') return null
+
+          return (
+            <SearchResultFileHeaderRow
+              activeResultId={activeResultId}
+              canReplace={canReplace}
+              key={renderKey}
+              replaceVisible={replaceVisible}
+              row={row}
+              treeId={treeId}
+              virtualItem={virtualItem}
+              onReplaceFile={onReplaceFile}
+              onSelectResult={onSelectResult}
+              onToggleFile={onToggleGroup}
+            />
+          )
+        })}
+        {fileEditorPoolEntries.map((entry) => (
+          <SearchResultFileEditorPoolSlot
             activeResultId={activeResultId}
             canReplace={canReplace}
-            key={renderKey}
+            editorTheme={editorTheme}
+            entry={entry}
+            key={`file-results-pool:${entry.key}`}
+            keymapLayers={keymapLayers}
             replaceVisible={replaceVisible}
-            row={row}
             treeId={treeId}
-            virtualItem={virtualItem}
-            onReplaceFile={onReplaceFile}
-            onSelectResult={onSelectResult}
-            onToggleFile={onToggleGroup}
+            viewport={viewport}
+            onOpenTarget={onOpenTarget}
+            onReplaceMatch={onReplaceMatch}
+            onSelectResultWithoutReveal={onSelectResultWithoutReveal}
           />
-        )
-      })}
-      {fileEditorPoolEntries.map((entry) => (
-        <SearchResultFileEditorPoolSlot
-          activeResultId={activeResultId}
-          canReplace={canReplace}
-          editorTheme={editorTheme}
-          entry={entry}
-          key={`file-results-pool:${entry.key}`}
-          keymapLayers={keymapLayers}
-          replaceVisible={replaceVisible}
-          treeId={treeId}
-          onOpenTarget={onOpenTarget}
-          onReplaceMatch={onReplaceMatch}
-          onSelectResultWithoutReveal={onSelectResultWithoutReveal}
-        />
-      ))}
-    </div>
-  )
-})
+        ))}
+      </div>
+    )
+  },
+)

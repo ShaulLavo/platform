@@ -25,6 +25,8 @@ import {
   FILE_RESULTS_EDITOR_MIN_HEIGHT,
   FILE_RESULTS_ROW_VERTICAL_PADDING,
   FILE_ROW_ESTIMATE,
+  SEARCH_RESULT_FILE_EDITOR_FULL_RENDER_LINE_LIMIT,
+  SEARCH_RESULT_FILE_EDITOR_LINE_OVERSCAN,
   SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
   SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT,
   SEARCH_RESULT_VIRTUAL_BASE_MIN_OVERSCAN,
@@ -208,6 +210,7 @@ export function searchResultVirtualRowStyle(
 ): CSSProperties {
   return {
     contain: 'layout paint style',
+    height: virtualItem.size,
     transform: `translateY(${virtualItem.start + SEARCH_RESULT_VIRTUAL_ROW_OFFSET}px)`,
   }
 }
@@ -257,6 +260,17 @@ export function equalSearchResultVirtualViewport(
   next: SearchResultVirtualListViewport,
 ) {
   return current.height === next.height && current.top === next.top
+}
+
+export function searchResultFileEditorRenderViewport(
+  viewport: SearchResultVirtualListViewport,
+): SearchResultVirtualListViewport {
+  const rowStride = EXCERPT_EDITOR_LINE_HEIGHT + SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+
+  return {
+    height: viewport.height,
+    top: Math.floor(viewport.top / rowStride) * rowStride,
+  }
 }
 
 export function searchResultVirtualViewportHeight(entry: ResizeObserverEntry) {
@@ -399,6 +413,97 @@ export function searchResultFileEditorScrollMode(lineCount: number): EditorScrol
 
 export function searchResultFileEditorVisibleLineCount(lineCount: number) {
   return Math.max(0, Math.min(lineCount, SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT))
+}
+
+export function searchResultFileDocumentVisibleLines(document: SearchResultFileDocument) {
+  return document.lines.slice(0, searchResultFileEditorVisibleLineCount(document.lines.length))
+}
+
+export type SearchResultFileEditorLineWindow = {
+  readonly end: number
+  readonly offsetY: number
+  readonly start: number
+}
+
+export function equalSearchResultFileEditorLineWindow(
+  current: SearchResultFileEditorLineWindow,
+  next: SearchResultFileEditorLineWindow,
+) {
+  return (
+    current.start === next.start && current.end === next.end && current.offsetY === next.offsetY
+  )
+}
+
+export function searchResultFileEditorLineWindow({
+  lineCount,
+  virtualItem,
+  viewport,
+}: {
+  lineCount: number
+  virtualItem: SearchResultVirtualListMetrics['items'][number]
+  viewport: SearchResultVirtualListViewport
+}): SearchResultFileEditorLineWindow {
+  const visibleLineCount = searchResultFileEditorVisibleLineCount(lineCount)
+  if (visibleLineCount === 0) return { end: 0, offsetY: 0, start: 0 }
+  if (visibleLineCount <= SEARCH_RESULT_FILE_EDITOR_FULL_RENDER_LINE_LIMIT) {
+    return { end: visibleLineCount, offsetY: 0, start: 0 }
+  }
+
+  const rowStride = EXCERPT_EDITOR_LINE_HEIGHT + SEARCH_RESULT_FILE_EDITOR_ROW_GAP
+  const contentTop =
+    virtualItem.start + SEARCH_RESULT_VIRTUAL_ROW_OFFSET + FILE_RESULTS_ROW_VERTICAL_PADDING / 2
+  const startY = viewport.top - contentTop - SEARCH_RESULT_FILE_EDITOR_LINE_OVERSCAN
+  const endY = viewport.top + viewport.height - contentTop + SEARCH_RESULT_FILE_EDITOR_LINE_OVERSCAN
+  const start = Math.max(0, Math.floor(startY / rowStride))
+  const end = Math.min(visibleLineCount, Math.ceil(endY / rowStride))
+  if (end <= start) return { end: 0, offsetY: 0, start: 0 }
+
+  return {
+    end,
+    offsetY: start * rowStride,
+    start,
+  }
+}
+
+export function searchResultFileDocumentWindow(
+  document: SearchResultFileDocument,
+  window: SearchResultFileEditorLineWindow,
+): SearchResultFileDocument {
+  if (window.start === 0 && window.end === document.lines.length) return document
+
+  return buildSearchResultFileDocumentWindow(document, window)
+}
+
+function buildSearchResultFileDocumentWindow(
+  document: SearchResultFileDocument,
+  window: SearchResultFileEditorLineWindow,
+): SearchResultFileDocument {
+  const lines: SearchResultFileDocumentLine[] = []
+  let text = ''
+
+  for (const sourceLine of document.lines.slice(window.start, window.end)) {
+    const lineText = document.text.slice(sourceLine.start, sourceLine.end)
+    const start = text ? text.length + 1 : 0
+    const offset = start - sourceLine.start
+    lines.push({
+      ...sourceLine,
+      end: start + lineText.length,
+      matchRanges: sourceLine.matchRanges.map((range) => ({
+        end: range.end + offset,
+        start: range.start + offset,
+      })),
+      row: lines.length,
+      start,
+    })
+    text = text ? `${text}\n${lineText}` : lineText
+  }
+
+  return {
+    languageId: document.languageId,
+    lines,
+    path: document.path,
+    text,
+  }
 }
 
 export function searchResultSourceLineGutterStyle(

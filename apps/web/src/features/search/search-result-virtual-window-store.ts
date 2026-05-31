@@ -10,6 +10,7 @@ import type {
   SearchResultVirtualScrollSample,
 } from '@/features/search/search-result-editor-types'
 import {
+  searchResultFileEditorRenderViewport,
   searchResultVirtualOverscan,
   searchResultVirtualOverscanLevel,
 } from '@/features/search/search-result-editor-utils'
@@ -25,6 +26,7 @@ import {
 export type SearchResultVirtualWindow = {
   readonly items: SearchResultVirtualListMetrics['items']
   readonly totalSize: number
+  readonly viewport: SearchResultVirtualListViewport
 }
 
 export type SearchResultVirtualWindowChangeHandler = (window: SearchResultVirtualWindow) => void
@@ -171,6 +173,7 @@ export class SearchResultVirtualWindowStore {
         overscan: searchResultVirtualOverscan(this.viewport.height, this.overscanLevel),
       }),
       totalSize: this.metrics.totalSize,
+      viewport: searchResultFileEditorRenderViewport(this.viewport),
     }
   }
 
@@ -229,7 +232,10 @@ export function searchResultVirtualWindowsEqual(
   right: SearchResultVirtualWindow,
 ) {
   return (
-    left.totalSize === right.totalSize && searchResultVirtualListItemsEqual(left.items, right.items)
+    left.totalSize === right.totalSize &&
+    left.viewport.height === right.viewport.height &&
+    left.viewport.top === right.viewport.top &&
+    searchResultVirtualListItemsEqual(left.items, right.items)
   )
 }
 

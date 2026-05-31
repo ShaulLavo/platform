@@ -7,6 +7,7 @@ import {
   useState,
   type RefObject,
 } from 'react'
+import { flushSync } from 'react-dom'
 
 import type {
   SearchResultEditorScrollToIndex,
@@ -23,9 +24,12 @@ import {
   type SearchResultVirtualWindow,
 } from '@/features/search/search-result-virtual-window-store'
 
+export type SearchResultScrollSyncMode = 'raf' | 'sync'
+
 export function useSearchResultEditorVirtualizer(
   rows: readonly SearchResultVirtualRow[],
   parentRef: RefObject<HTMLDivElement | null>,
+  scrollSyncMode: SearchResultScrollSyncMode = 'raf',
 ): SearchResultEditorVirtualizer {
   const itemInputs = useMemo(() => searchResultVirtualRowInputs(rows), [rows])
   const metrics = useMemo(() => createSearchResultVirtualListMetrics(itemInputs), [itemInputs])
@@ -52,7 +56,16 @@ export function useSearchResultEditorVirtualizer(
     const element = parentRef.current
     if (!element) return
 
-    const handleScroll = () => store.setScrollTop(element.scrollTop)
+    const handleScroll = () => {
+      if (scrollSyncMode === 'sync') {
+        flushSync(() => {
+          store.setScrollTop(element.scrollTop, { publish: 'sync' })
+        })
+        return
+      }
+
+      store.setScrollTop(element.scrollTop, { publish: 'defer' })
+    }
 
     element.addEventListener('scroll', handleScroll, { passive: true })
     store.setScrollTop(element.scrollTop, {
@@ -61,7 +74,7 @@ export function useSearchResultEditorVirtualizer(
     })
 
     return () => element.removeEventListener('scroll', handleScroll)
-  }, [parentRef, store])
+  }, [parentRef, scrollSyncMode, store])
 
   useEffect(() => {
     const element = parentRef.current
@@ -115,5 +128,6 @@ export function useSearchResultEditorVirtualizer(
     scrollToIndex,
     scrollToOffset,
     totalSize: windowState.totalSize,
+    viewport: windowState.viewport,
   }
 }

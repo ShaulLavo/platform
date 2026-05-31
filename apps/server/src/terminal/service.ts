@@ -43,25 +43,37 @@ type TerminalBridgeMessage =
   | { type: 'error'; message: string }
 
 export type TerminalServiceOptions = {
+  detachTtlMs?: number
   env?: NodeJS.ProcessEnv
   paths: WorkspacePaths
   ptyFactory?: TerminalPtyFactory
 }
 
+type TerminalConnection = {
+  key: object
+  close: () => void
+  send: (message: string) => void
+}
+
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
+const TERMINAL_REPLAY_BUFFER_BYTES = 256 * 1024
+const TERMINAL_DETACHED_TTL_MS = 10 * 60 * 1000
 
 export class TerminalService {
+  private readonly detachTtlMs: number
   private readonly env: NodeJS.ProcessEnv
   private readonly paths: WorkspacePaths
+  private readonly persistentSessions = new Map<string, TerminalSession>()
   private readonly ptyFactory: TerminalPtyFactory
-  private readonly sessions = new Set<TerminalSession>()
 
   constructor({
+    detachTtlMs = TERMINAL_DETACHED_TTL_MS,
     env = process.env,
     paths,
     ptyFactory = defaultTerminalPtyFactory,
   }: TerminalServiceOptions) {
+    this.detachTtlMs = detachTtlMs
     this.env = env
     this.paths = paths
     this.ptyFactory = ptyFactory
@@ -76,10 +88,10 @@ export class TerminalService {
   }
 
   dispose() {
-    for (const session of this.sessions) {
+    for (const session of [...this.persistentSessions.values()]) {
       session.dispose()
     }
-    this.sessions.clear()
+    this.persistentSessions.clear()
   }
 
   private open(ws: unknown, auth: AuthConfig) {
@@ -109,17 +121,29 @@ export class TerminalService {
       return
     }
 
+    const connection: TerminalConnection = {
+      key: socket.key,
+      close: socket.close,
+      send: socket.send,
+    }
+    const existing = this.persistentSessions.get(root.relativePath)
+    if (existing) {
+      socketSessions.set(socket.key, existing)
+      existing.attach(connection)
+      return
+    }
+
     const session = new TerminalSession({
       cwd: root.absolutePath,
+      detachTtlMs: this.detachTtlMs,
       env: this.env,
-      onDispose: (disposed) => this.sessions.delete(disposed),
+      onDispose: () => this.persistentSessions.delete(root.relativePath),
       ptyFactory: this.ptyFactory,
       rootPath: root.relativePath,
-      send: socket.send,
     })
-    this.sessions.add(session)
+    this.persistentSessions.set(root.relativePath, session)
     socketSessions.set(socket.key, session)
-    if (session.start()) return
+    if (session.start(connection)) return
 
     session.dispose({ kill: false })
     socketSessions.delete(socket.key)
@@ -141,8 +165,8 @@ export class TerminalService {
     if (!socket) return
 
     const session = socketSessions.get(socket.key)
-    session?.dispose()
     socketSessions.delete(socket.key)
+    session?.detach(socket.key)
   }
 
   private resolveRoot(root: string) {
@@ -158,12 +182,15 @@ export class TerminalService {
 
 export class TerminalSession {
   private readonly cwd: string
+  private readonly detachTtlMs: number
   private readonly env: NodeJS.ProcessEnv
   private readonly onDispose: (session: TerminalSession) => void
   private readonly ptyFactory: TerminalPtyFactory
   private readonly rootPath: string
-  private readonly send: (message: string) => void
+  private readonly outputBufferChunks: string[] = []
+  private connection: TerminalConnection | null = null
   private dataDisposable: TerminalPtyDisposable | null = null
+  private detachTimer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
   private errorMessage: string | null = null
   private exitDisposable: TerminalPtyDisposable | null = null
@@ -171,6 +198,7 @@ export class TerminalSession {
   private inputBytes = 0
   private inputMessageCount = 0
   private openedAt = performance.now()
+  private outputBufferBytes = 0
   private outputBytes = 0
   private outputMessageCount = 0
   private pty: TerminalPty | null = null
@@ -180,45 +208,58 @@ export class TerminalSession {
 
   constructor({
     cwd,
+    detachTtlMs,
     env,
     onDispose,
     ptyFactory,
     rootPath,
-    send,
   }: {
     cwd: string
+    detachTtlMs: number
     env: NodeJS.ProcessEnv
     onDispose: (session: TerminalSession) => void
     ptyFactory: TerminalPtyFactory
     rootPath: string
-    send: (message: string) => void
   }) {
     this.cwd = cwd
+    this.detachTtlMs = detachTtlMs
     this.env = env
     this.onDispose = onDispose
     this.ptyFactory = ptyFactory
     this.rootPath = rootPath
-    this.send = send
   }
 
-  start() {
+  start(connection: TerminalConnection) {
+    this.setConnection(connection)
     const spawnResult = this.spawnPty()
     if (!spawnResult) return false
 
     this.pty = spawnResult.pty
     this.shell = spawnResult.shell
-    this.dataDisposable = this.pty.onData((data) => this.sendMessage({ type: 'output', data }))
+    this.dataDisposable = this.pty.onData((data) => this.handleOutput(data))
     this.exitDisposable = this.pty.onExit((event) => {
       this.exitCode = event.exitCode
-      this.sendMessage({ type: 'exit', exitCode: event.exitCode })
+      this.emit({ type: 'exit', exitCode: event.exitCode })
       this.dispose({ kill: false })
     })
-    this.sendMessage({
-      type: 'ready',
-      cwd: this.cwd,
-      shell: spawnResult.shell,
-    })
+    this.emitReady()
     return true
+  }
+
+  attach(connection: TerminalConnection) {
+    if (this.disposed) return
+
+    this.setConnection(connection)
+    this.emitReady()
+    const buffered = this.outputBufferChunks.join('')
+    if (buffered) this.emit({ type: 'output', data: buffered })
+  }
+
+  detach(key: object) {
+    if (!this.connection || this.connection.key !== key) return
+
+    this.connection = null
+    this.startDetachTimer()
   }
 
   handleMessage(message: unknown) {
@@ -236,11 +277,62 @@ export class TerminalSession {
     if (this.disposed) return
 
     this.disposed = true
+    this.cancelDetachTimer()
+    this.connection = null
     this.dataDisposable?.dispose()
     this.exitDisposable?.dispose()
     this.killPty(options.kill ?? true)
     this.recordSession()
     this.onDispose(this)
+  }
+
+  private emitReady() {
+    if (this.shell === null) return
+
+    this.emit({ type: 'ready', cwd: this.cwd, shell: this.shell })
+  }
+
+  private setConnection(connection: TerminalConnection) {
+    this.cancelDetachTimer()
+    if (this.connection && this.connection.key !== connection.key) {
+      this.connection.close()
+    }
+    this.connection = connection
+  }
+
+  private startDetachTimer() {
+    this.cancelDetachTimer()
+    this.detachTimer = setTimeout(() => {
+      this.detachTimer = null
+      this.dispose({ kill: true })
+    }, this.detachTtlMs)
+    this.detachTimer.unref?.()
+  }
+
+  private cancelDetachTimer() {
+    if (!this.detachTimer) return
+
+    clearTimeout(this.detachTimer)
+    this.detachTimer = null
+  }
+
+  private handleOutput(data: string) {
+    this.appendOutput(data)
+    this.emit({ type: 'output', data })
+  }
+
+  private appendOutput(data: string) {
+    this.outputBufferChunks.push(data)
+    this.outputBufferBytes += Buffer.byteLength(data, 'utf8')
+    while (
+      this.outputBufferBytes > TERMINAL_REPLAY_BUFFER_BYTES &&
+      this.outputBufferChunks.length > 1
+    ) {
+      const removed = this.outputBufferChunks.shift()
+      if (removed === undefined) break
+
+      this.outputBufferBytes -= Buffer.byteLength(removed, 'utf8')
+    }
   }
 
   private spawnPty() {
@@ -254,7 +346,7 @@ export class TerminalSession {
       lastError = result.error
     }
 
-    this.sendMessage({
+    this.emit({
       message: this.recordSpawnError(lastError),
       type: 'error',
     })
@@ -289,9 +381,9 @@ export class TerminalSession {
     }
   }
 
-  private sendMessage(message: TerminalServerMessage) {
+  private emit(message: TerminalServerMessage) {
     this.recordServerMessage(message)
-    this.send(JSON.stringify(message))
+    this.connection?.send(JSON.stringify(message))
   }
 
   private recordClientMessage(message: TerminalClientMessage) {

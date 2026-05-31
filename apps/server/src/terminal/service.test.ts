@@ -83,20 +83,58 @@ describe('terminal service', () => {
     expect(pty.ptys[0]?.resizes).toEqual([[TERMINAL_MAX_COLS, TERMINAL_MIN_ROWS]])
   })
 
-  it('kills PTYs on socket close and service disposal', async () => {
+  it('keeps the PTY alive on socket close and kills it on disposal', async () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const first = fakeSocket('')
-    const second = fakeSocket('')
+    const ws = fakeSocket('')
 
-    routes.open(first)
-    routes.open(second)
-    routes.close(first)
+    routes.open(ws)
+    routes.close(ws)
+
+    expect(pty.ptys).toHaveLength(1)
+    expect(pty.ptys[0]?.killed).toBe(false)
+
     service.dispose()
 
-    expect(pty.ptys.map((ptyProcess) => ptyProcess.killed)).toEqual([true, true])
+    expect(pty.ptys[0]?.killed).toBe(true)
+  })
+
+  it('reuses the PTY and replays buffered output on reconnect', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const first = fakeSocket('project')
+
+    routes.open(first)
+    pty.ptys[0]?.emit('streamed-output\r\n')
+    routes.close(first)
+
+    const second = fakeSocket('project')
+    routes.open(second)
+
+    expect(pty.ptys).toHaveLength(1)
+    expect(pty.ptys[0]?.killed).toBe(false)
+    expect(second.messages[0]).toMatchObject({ type: 'ready' })
+    expect(terminalOutputText(second.messages)).toContain('streamed-output')
+
+    service.dispose()
+  })
+
+  it('kills the PTY when a detached session exceeds its idle TTL', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { detachTtlMs: 0, ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const ws = fakeSocket('')
+
+    routes.open(ws)
+    routes.close(ws)
+    await Bun.sleep(10)
+
+    expect(pty.ptys[0]?.killed).toBe(true)
   })
 
   it('streams output through the default Node-backed PTY bridge', async () => {
@@ -128,6 +166,7 @@ describe('terminal service', () => {
 function testService(
   root: string,
   options: {
+    detachTtlMs?: number
     env?: NodeJS.ProcessEnv
     ptyFactory?: TerminalPtyFactory
   } = {},
@@ -214,6 +253,10 @@ class FakePty {
 
   kill() {
     this.killed = true
+  }
+
+  emit(data: string) {
+    for (const listener of this.dataListeners) listener(data)
   }
 
   onData(listener: (data: string) => void) {

@@ -30,14 +30,14 @@ describe('search result virtual window store', () => {
     expect(fixture.changes[0]?.items[0]?.index).toBeGreaterThan(0)
   })
 
-  it('publishes viewport resize only when the rendered window changes', () => {
+  it('publishes viewport resize for render viewport consumers', () => {
     const fixture = createStoreFixture()
 
     fixture.store.setViewportHeight(41)
-    expect(fixture.changes).toHaveLength(0)
+    expect(fixture.changes).toHaveLength(1)
 
     fixture.store.setViewportHeight(1_000)
-    expect(fixture.changes).toHaveLength(1)
+    expect(fixture.changes).toHaveLength(2)
   })
 
   it('publishes programmatic scroll synchronously', () => {
@@ -50,6 +50,18 @@ describe('search result virtual window store', () => {
 
     expect(fixture.changes).toHaveLength(1)
     expect(fixture.scheduler.frameCount()).toBe(0)
+  })
+
+  it('exposes a row-aligned viewport for editor line windows', () => {
+    const fixture = createStoreFixture()
+
+    expect(fixture.store.getWindow().viewport).toEqual({ height: 40, top: 0 })
+    fixture.store.setScrollTop(29, {
+      publish: 'sync',
+      updateVelocity: false,
+    })
+
+    expect(fixture.store.getWindow().viewport).toEqual({ height: 40, top: 28 })
   })
 })
 

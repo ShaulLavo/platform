@@ -38,7 +38,7 @@ const WorkspaceTerminalPanelVisibility = memo(({
 }) => {
   const terminalCollapsed = useWorkspaceTerminalCollapsed()
 
-  return (
-    <TerminalPanel aria-hidden={terminalCollapsed} inert={terminalCollapsed} rootPath={rootPath} />
-  )
+  if (terminalCollapsed) return null
+
+  return <TerminalPanel rootPath={rootPath} />
 })
