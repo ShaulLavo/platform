@@ -16,7 +16,7 @@ export const WorkspaceTerminalResizablePanel = memo(({
   return (
     <ResizablePanel
       id='workspace-terminal'
-      className='min-h-0 min-w-0 overflow-hidden'
+      className='min-h-0 min-w-0 overflow-hidden p-2'
       collapsible
       collapsedSize='0px'
       defaultSize='30%'

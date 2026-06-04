@@ -1,50 +1,32 @@
 import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
+import { TerminalWindowIcon, XIcon } from '@phosphor-icons/react'
 import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
 import { useEffect, useRef, type ComponentPropsWithoutRef } from 'react'
 
+import { useWorkspaceTerminalToggle } from '@/components/workspace/use-workspace-terminal-toggle'
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { sendTerminalClientMessage } from './terminal-socket'
+import { readTerminalTheme } from './terminal-theme'
+import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 
 type TerminalDimensions = {
   cols: number
   rows: number
 }
 
-const TERMINAL_THEME = {
-  background: '#101214',
-  foreground: '#d7dde5',
-  cursor: '#f4f7fb',
-  cursorAccent: '#101214',
-  selectionBackground: '#3d5368',
-  selectionForeground: '#ffffff',
-  black: '#15181c',
-  red: '#ff5f57',
-  green: '#5fd38d',
-  yellow: '#f3c969',
-  blue: '#6aa8ff',
-  magenta: '#d28bff',
-  cyan: '#5fd7e5',
-  white: '#d7dde5',
-  brightBlack: '#6d7682',
-  brightRed: '#ff8f87',
-  brightGreen: '#89e8af',
-  brightYellow: '#f7d98c',
-  brightBlue: '#93c1ff',
-  brightMagenta: '#e1b0ff',
-  brightCyan: '#8ce8f0',
-  brightWhite: '#ffffff',
-}
-
 let ghosttyInitPromise: Promise<void> | null = null
 
 export function TerminalPanel({ className, rootPath, ...sectionProps }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const terminalRef = useRef<Terminal | null>(null)
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const toggleTerminal = useWorkspaceTerminalToggle()
+  const { colorMode } = useEditorColorTheme()
 
   useEffect(() => {
     const host = hostRef.current
@@ -53,24 +35,47 @@ export function TerminalPanel({ className, rootPath, ...sectionProps }: Terminal
     return mountTerminal({
       host,
       rootPath,
+      onReady: (terminal) => {
+        terminalRef.current = terminal
+      },
     })
   }, [rootPath])
+
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!terminal) return
+
+    terminal.options.theme = readTerminalTheme()
+  }, [colorMode])
 
   return (
     <section
       aria-label='Terminal'
       {...sectionProps}
       className={cn(
-        'grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-[#101214] text-[#d7dde5]',
+        'border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border',
         className,
       )}
+      style={{ background: 'var(--terminal-background)' }}
       onFocusCapture={() => setFocusArea('terminal')}
       onPointerDownCapture={() => setFocusArea('terminal')}
     >
-      <div
-        className='min-h-0 min-w-0 overflow-hidden bg-[#101214] px-2 py-1 font-mono'
-        ref={hostRef}
-      />
+      <header className='text-muted-foreground border-border/60 flex h-8 shrink-0 items-center justify-between gap-2 border-b px-3'>
+        <span className='flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase'>
+          <TerminalWindowIcon className='size-3.5' weight='bold' />
+          Terminal
+        </span>
+        <button
+          aria-label='Close terminal'
+          className='hover:text-foreground hover:bg-muted/60 -mr-1 flex size-5 items-center justify-center rounded-md transition-colors'
+          onClick={toggleTerminal}
+          title='Close terminal'
+          type='button'
+        >
+          <XIcon className='size-3.5' />
+        </button>
+      </header>
+      <div className='min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono' ref={hostRef} />
     </section>
   )
 }
@@ -79,7 +84,15 @@ type TerminalPanelProps = ComponentPropsWithoutRef<'section'> & {
   rootPath: string
 }
 
-function mountTerminal({ host, rootPath }: { host: HTMLDivElement; rootPath: string }) {
+function mountTerminal({
+  host,
+  rootPath,
+  onReady,
+}: {
+  host: HTMLDivElement
+  rootPath: string
+  onReady: (terminal: Terminal) => void
+}) {
   let cancelled = false
   let dataDisposable: IDisposable | null = null
   let fitAddon: FitAddon | null = null
@@ -100,6 +113,7 @@ function mountTerminal({ host, rootPath }: { host: HTMLDivElement; rootPath: str
       terminalDimensions = currentTerminalDimensions(terminal)
       fitAddon.observeResize()
       terminal.focus()
+      onReady(terminal)
       dataDisposable = terminal.onData((data) =>
         sendTerminalClientMessage(socket, { type: 'input', data }),
       )
@@ -196,7 +210,7 @@ function createTerminal() {
     fontSize: 12,
     scrollback: 10_000,
     smoothScrollDuration: 80,
-    theme: TERMINAL_THEME,
+    theme: readTerminalTheme(),
   })
 }
 
