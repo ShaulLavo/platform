@@ -5,14 +5,11 @@ import type {
   WorkspaceSearchMatch,
   WorkspaceSearchQuery,
 } from '@workspace/contracts'
-import { fuzzyRank } from '@workspace/contracts'
+import { fuzzyRank, workspaceSearchPreview } from '@workspace/contracts'
 
 import { isIgnoredPath, toPosix } from './path'
 import { readEntryStats, type FsEntryStats } from './stat'
 import type { GitIgnoreMatcher } from './search-gitignore'
-
-const SEARCH_PREVIEW_CONTEXT_CHARS = 80
-const SEARCH_PREVIEW_MAX_CHARS = 240
 
 export type FindOptions = WorkspaceSearchQuery & {
   maxContentBytes: number
@@ -95,7 +92,7 @@ export function contentMatch({
   lineNumber: number
   relativePath: string
 }): FindMatch {
-  const preview = searchPreview(searchContentLineText(line), columnIndex)
+  const preview = workspaceSearchPreview(searchContentLineText(line), columnIndex, endColumnIndex)
 
   return {
     ...searchMatchMetadata(entry),
@@ -152,19 +149,4 @@ export function globMatchPath(context: FindContext, relativePath: string) {
 
 function searchContentLineText(line: string) {
   return line.replace(/(?:\r\n|\r|\n)$/u, '')
-}
-
-function searchPreview(line: string, columnIndex: number) {
-  if (line.length <= SEARCH_PREVIEW_MAX_CHARS) {
-    return { startColumn: 0, text: line }
-  }
-
-  const latestStart = Math.max(0, line.length - SEARCH_PREVIEW_MAX_CHARS)
-  const preferredStart = Math.max(0, columnIndex - SEARCH_PREVIEW_CONTEXT_CHARS)
-  const startColumn = Math.min(preferredStart, latestStart)
-
-  return {
-    startColumn,
-    text: line.slice(startColumn, startColumn + SEARCH_PREVIEW_MAX_CHARS),
-  }
 }

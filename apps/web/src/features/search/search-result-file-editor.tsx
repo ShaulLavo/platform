@@ -18,11 +18,12 @@ import {
 
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import {
-  createEditorSyntaxHighlightingPlugins,
   createPlatformSearchResultEditorLoggingPlugin,
+  editorTreeSitterSyntaxProvider,
 } from '@/features/editor/editor-plugins'
 import { SearchResultFileLineActions } from '@/features/search/search-result-file-line-actions'
 import { SearchResultSourceLineGutter } from '@/features/search/search-result-source-line-gutter'
+import { createSearchResultSyntaxHighlightingPlugin } from '@/features/search/search-result-syntax-plugin'
 import {
   EXCERPT_EDITOR_LINE_HEIGHT,
   SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
@@ -38,6 +39,7 @@ import {
   preventReadonlyInput,
   readonlyEditingKey,
   searchResultFileDocumentId,
+  searchResultFileDocumentRevision,
   searchResultFileDocumentWindow,
   searchResultFileEditorScrollMode,
   searchResultFileEditorStyle,
@@ -96,16 +98,20 @@ export const SearchResultFileEditor = memo(
         documentId: searchResultFileDocumentId(file),
         documentMode: 'static' as const,
         languageId: visibleDocument.languageId,
+        revision: searchResultFileDocumentRevision(visibleDocument, lineWindow),
         text: visibleDocument.text,
-        textSyncMode: 'incremental' as const,
+        textSyncMode: 'open' as const,
       }),
-      [file, visibleDocument],
+      [file, lineWindow, visibleDocument],
     )
     const rangeDecorations = useMemo(
       () => searchResultFileRangeDecorations(visibleDocument, activeResultId),
       [activeResultId, visibleDocument],
     )
-    const syntaxPlugins = useMemo(() => createEditorSyntaxHighlightingPlugins(), [])
+    const syntaxPlugins = useMemo(
+      () => [createSearchResultSyntaxHighlightingPlugin(editorTreeSitterSyntaxProvider())],
+      [],
+    )
     const plugins = useMemo(() => createFileResultEditorPlugins(syntaxPlugins), [syntaxPlugins])
     const editorKeymap = useMemo(
       () =>

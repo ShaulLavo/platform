@@ -45,6 +45,11 @@ export type {
   WorkspaceSearchSource,
 } from './workspace-search'
 export {
+  workspaceSearchPreview,
+  type WorkspaceSearchPreview,
+  type WorkspaceSearchPreviewOptions,
+} from './workspace-search-preview'
+export {
   createWorkspaceSearchMatcher,
   workspaceSearchGlobPatterns,
   type WorkspaceSearchMatcher,

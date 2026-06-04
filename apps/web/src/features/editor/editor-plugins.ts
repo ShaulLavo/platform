@@ -4,6 +4,7 @@ import {
   type EditorDisposable,
   type EditorLogEvent,
   type EditorPlugin,
+  type EditorScrollPosition,
   type EditorSyntaxProvider,
 } from '@editor/core'
 import type { DiffSyntaxBackend } from '@editor/diff'
@@ -36,6 +37,7 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
 )
 
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
+const editorScrollPositionsByInstanceId = new Map<string, EditorScrollPosition>()
 const PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN = createEditorLoggingPlugin(logEditorEventToConsole, {
   name: 'platform.editor-logging',
 })
@@ -192,7 +194,7 @@ export function createEditorDiffSyntaxBackend(
   }
 }
 
-function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {
+export function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {
   if (treeSitterSyntaxProvider) return treeSitterSyntaxProvider
 
   const provider = createTreeSitterSyntaxProvider()
@@ -231,10 +233,15 @@ export function createPlatformSearchResultEditorLoggingPlugin(): EditorPlugin {
 }
 
 function logEditorEventToConsole(event: EditorLogEvent): void {
+  cacheEditorScrollPosition(event)
+  if (event.action === 'editor.viewport.changed') return
+
   log.info({
+    ...editorEventScrollContext(event),
     ...event,
     area: 'editor',
   })
+  forgetEditorScrollPosition(event)
 }
 
 function logSearchResultEditorEventToConsole(event: EditorLogEvent): void {
@@ -245,4 +252,57 @@ function logSearchResultEditorEventToConsole(event: EditorLogEvent): void {
     area: 'editor',
     surface: 'search-result',
   })
+}
+
+function cacheEditorScrollPosition(event: EditorLogEvent): void {
+  const instanceId = editorLogInstanceId(event)
+  const scrollPosition = editorLogScrollPosition(event)
+  if (!instanceId || !scrollPosition) return
+
+  editorScrollPositionsByInstanceId.set(instanceId, scrollPosition)
+}
+
+function editorEventScrollContext(event: EditorLogEvent): Record<string, unknown> {
+  const instanceId = editorLogInstanceId(event)
+  if (!instanceId) return {}
+
+  const scrollPosition = editorScrollPositionsByInstanceId.get(instanceId)
+  if (!scrollPosition) return {}
+
+  return { scrollPosition }
+}
+
+function forgetEditorScrollPosition(event: EditorLogEvent): void {
+  if (event.action !== 'editor.lifecycle.disposing') return
+
+  const instanceId = editorLogInstanceId(event)
+  if (!instanceId) return
+
+  editorScrollPositionsByInstanceId.delete(instanceId)
+}
+
+function editorLogInstanceId(event: EditorLogEvent): string | null {
+  const instanceId = event.editor?.instanceId
+  return typeof instanceId === 'string' ? instanceId : null
+}
+
+function editorLogScrollPosition(event: EditorLogEvent): EditorScrollPosition | null {
+  const viewport = event.viewport
+  if (!editorLogViewportHasScrollPosition(viewport)) return null
+
+  return {
+    left: viewport.scrollLeft,
+    top: viewport.scrollTop,
+  }
+}
+
+function editorLogViewportHasScrollPosition(
+  viewport: unknown,
+): viewport is { readonly scrollLeft: number; readonly scrollTop: number } {
+  if (!viewport || typeof viewport !== 'object') return false
+
+  return (
+    typeof (viewport as Record<string, unknown>).scrollLeft === 'number' &&
+    typeof (viewport as Record<string, unknown>).scrollTop === 'number'
+  )
 }

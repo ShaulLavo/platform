@@ -8,14 +8,12 @@ import {
   type WorkspaceSearchEvent,
   type WorkspaceSearchMatch,
   type WorkspaceSearchQuery,
+  workspaceSearchPreview,
 } from '@workspace/contracts'
 
 import { log } from '@/lib/client-logging'
 import { streamWorkspaceSearch } from '@/lib/workspace-search-client'
 import { compareSearchPaths } from '@/features/search/search-sort'
-
-const SEARCH_PREVIEW_CONTEXT_CHARS = 80
-const SEARCH_PREVIEW_MAX_CHARS = 240
 
 export type SearchProvider = {
   search(query: WorkspaceSearchQuery, signal?: AbortSignal): AsyncIterable<WorkspaceSearchEvent>
@@ -273,7 +271,7 @@ function openBufferMatch(
   lineIndex: number,
   match: WorkspaceSearchTextMatch,
 ): WorkspaceSearchMatch {
-  const preview = searchPreview(line, match.start)
+  const preview = workspaceSearchPreview(line, match.start, match.end)
 
   return {
     column: match.start + 1,
@@ -285,21 +283,6 @@ function openBufferMatch(
     previewStartColumn: preview.startColumn,
     source: 'open-buffer',
     type: 'file',
-  }
-}
-
-function searchPreview(line: string, columnIndex: number) {
-  if (line.length <= SEARCH_PREVIEW_MAX_CHARS) {
-    return { startColumn: 0, text: line }
-  }
-
-  const latestStart = Math.max(0, line.length - SEARCH_PREVIEW_MAX_CHARS)
-  const preferredStart = Math.max(0, columnIndex - SEARCH_PREVIEW_CONTEXT_CHARS)
-  const startColumn = Math.min(preferredStart, latestStart)
-
-  return {
-    startColumn,
-    text: line.slice(startColumn, startColumn + SEARCH_PREVIEW_MAX_CHARS),
   }
 }
 

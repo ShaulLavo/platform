@@ -51,6 +51,8 @@ const PASSIVE_MATCH_STYLE = {
   backgroundColor: 'var(--search-result-match-background)',
 } satisfies Partial<CSSStyleDeclaration>
 
+export const SEARCH_RESULT_FILE_DOCUMENT_ID_PREFIX = 'search-result-file:'
+
 const ACTIVE_MATCH_STYLE = {
   backgroundColor: 'var(--search-result-match-active-background)',
   textDecoration: 'underline 1px var(--search-result-match-active-decoration)',
@@ -350,7 +352,14 @@ export function currentSearchResultFileLine(
 }
 
 export function searchResultFileDocumentId(file: SearchResultFileBlock) {
-  return `search-result-file:${file.path}`
+  return `${SEARCH_RESULT_FILE_DOCUMENT_ID_PREFIX}${file.path}`
+}
+
+export function searchResultFileDocumentRevision(
+  document: SearchResultFileDocument,
+  window: SearchResultFileEditorLineWindow,
+) {
+  return `${window.start}:${window.end}:${document.text}`
 }
 
 export function searchResultLineOpenLabel(line: SearchResultFileDocumentLine) {

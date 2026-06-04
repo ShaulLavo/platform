@@ -162,6 +162,21 @@ describe('search result view model', () => {
     ).toBe('needle')
   })
 
+  it('keeps the raw search preview text for excerpt editor syntax', () => {
+    const preview = `${'x'.repeat(80)}createNeedle${'y'.repeat(120)}`
+    const match = contentMatch({
+      column: 81,
+      endColumn: 93,
+      line: 12,
+      preview,
+    })
+    const blocks = searchResultFileBlocks([fileGroup([match])], 'create')
+    const excerpt = blocks[0]?.excerpts[0]
+
+    expect(excerpt?.text).toBe(preview)
+    expect(excerpt?.matchRanges).toEqual([{ end: 92, start: 80 }])
+  })
+
   it('keeps collapsed group excerpts out of the virtual row model', () => {
     const firstMatch = contentMatch({
       column: 1,
@@ -380,7 +395,7 @@ describe('search result view model', () => {
 
 function contentMatch(
   patch: Pick<WorkspaceSearchMatch, 'column' | 'endColumn' | 'line' | 'preview'> &
-    Partial<Pick<WorkspaceSearchMatch, 'path'>>,
+    Partial<Pick<WorkspaceSearchMatch, 'path' | 'previewStartColumn'>>,
 ): WorkspaceSearchMatch {
   return {
     kind: 'content',

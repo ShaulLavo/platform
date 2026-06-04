@@ -11,6 +11,7 @@ import {
 } from '@/features/search/search-result-editor-constants'
 import {
   searchResultFileDocumentWindow,
+  searchResultFileDocumentRevision,
   searchResultFileEditorLineWindow,
   searchResultFileEditorHeight,
   searchResultFileEditorRowHeight,
@@ -146,6 +147,22 @@ describe('search result editor utils', () => {
     ])
     expect(window.lines[0]?.matchRanges).toEqual([{ end: 3, start: 1 }])
   })
+
+  it('changes the controlled editor revision when the visible window changes', () => {
+    const document = textDocument()
+    const firstWindow = lineWindow(0, 2)
+    const secondWindow = lineWindow(1, 3)
+    const firstRevision = searchResultFileDocumentRevision(
+      searchResultFileDocumentWindow(document, firstWindow),
+      firstWindow,
+    )
+    const secondRevision = searchResultFileDocumentRevision(
+      searchResultFileDocumentWindow(document, secondWindow),
+      secondWindow,
+    )
+
+    expect(firstRevision).not.toBe(secondRevision)
+  })
 })
 
 function editorHeightForLineCount(lineCount: number) {
@@ -216,4 +233,12 @@ function textDocument(): SearchResultFileDocument {
     path: 'test.ts',
     text: 'alpha\nbeta\ngamma',
   } as SearchResultFileDocument
+}
+
+function lineWindow(start: number, end: number) {
+  return {
+    end,
+    offsetY: 0,
+    start,
+  }
 }

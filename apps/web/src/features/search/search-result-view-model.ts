@@ -339,11 +339,7 @@ function nameSearchResultFileBlock(
 }
 
 function searchResultExcerpt(item: SearchResultMatchItem, query: string): SearchResultExcerpt {
-  const display = searchResultExcerptDisplay(
-    searchMatchDisplay(item.match, query, {
-      maxLength: SEARCH_RESULT_EXCERPT_MAX_LENGTH,
-    }),
-  )
+  const display = searchResultExcerptDisplay(searchResultEditorDisplay(item.match, query))
 
   return {
     id: item.id,
@@ -354,6 +350,45 @@ function searchResultExcerpt(item: SearchResultMatchItem, query: string): Search
     sourceMatch: item.match,
     startLine: searchResultExcerptStartLine(item.match),
     text: searchResultExcerptText(display.text),
+  }
+}
+
+function searchResultEditorDisplay(match: WorkspaceSearchMatch, query: string): SearchMatchDisplay {
+  if (match.kind !== 'content') {
+    return searchMatchDisplay(match, query, {
+      maxLength: SEARCH_RESULT_EXCERPT_MAX_LENGTH,
+    })
+  }
+
+  const text = searchResultExcerptText(match.preview || 'Matched line')
+  const range = searchResultContentPreviewRange(match, text) ?? searchResultQueryRange(text, query)
+  if (!range) return { text }
+
+  return { range, text }
+}
+
+function searchResultContentPreviewRange(match: WorkspaceSearchMatch, preview: string) {
+  if (match.kind !== 'content') return null
+  if (match.column === undefined || match.endColumn === undefined) return null
+
+  const previewStart = match.previewStartColumn ?? 0
+  const start = match.column - 1 - previewStart
+  const end = match.endColumn - 1 - previewStart
+  if (start < 0 || end <= start) return null
+  if (start >= preview.length) return null
+
+  return { end: Math.min(end, preview.length), start }
+}
+
+function searchResultQueryRange(text: string, query: string) {
+  if (!query) return null
+
+  const start = text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase())
+  if (start < 0) return null
+
+  return {
+    end: start + query.length,
+    start,
   }
 }
 
