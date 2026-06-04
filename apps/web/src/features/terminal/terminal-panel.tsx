@@ -1,18 +1,16 @@
 import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
-import { TerminalWindowIcon, XIcon } from '@phosphor-icons/react'
 import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
-import { useEffect, useRef, type ComponentPropsWithoutRef } from 'react'
+import { useEffect, useEffectEvent, useRef, type ComponentPropsWithoutRef } from 'react'
 
-import { useWorkspaceTerminalToggle } from '@/components/workspace/use-workspace-terminal-toggle'
+import { useTheme } from '@/components/theme-context'
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { sendTerminalClientMessage } from './terminal-socket'
-import { readTerminalTheme } from './terminal-theme'
-import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import { readTerminalTheme, syncTerminalTheme } from './terminal-theme'
 
 type TerminalDimensions = {
   cols: number
@@ -23,58 +21,68 @@ let ghosttyInitPromise: Promise<void> | null = null
 
 export function TerminalPanel({ className, rootPath, ...sectionProps }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const themeSyncFrameRef = useRef<number | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
+  const { resolvedTheme } = useTheme()
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-  const toggleTerminal = useWorkspaceTerminalToggle()
-  const { colorMode } = useEditorColorTheme()
+  const syncTerminalThemeAfterFrame = useEffectEvent(() => {
+    if (themeSyncFrameRef.current !== null) {
+      window.cancelAnimationFrame(themeSyncFrameRef.current)
+    }
+
+    themeSyncFrameRef.current = window.requestAnimationFrame(() => {
+      themeSyncFrameRef.current = null
+      const terminal = terminalRef.current
+      if (!terminal) return
+
+      syncTerminalTheme(terminal)
+    })
+  })
 
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
 
-    return mountTerminal({
+    const unmountTerminal = mountTerminal({
       host,
       rootPath,
       onReady: (terminal) => {
         terminalRef.current = terminal
+        syncTerminalThemeAfterFrame()
       },
     })
+
+    return () => {
+      if (themeSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(themeSyncFrameRef.current)
+        themeSyncFrameRef.current = null
+      }
+
+      terminalRef.current = null
+      unmountTerminal()
+    }
   }, [rootPath])
 
   useEffect(() => {
-    const terminal = terminalRef.current
-    if (!terminal) return
+    syncTerminalThemeAfterFrame()
 
-    terminal.options.theme = readTerminalTheme()
-  }, [colorMode])
+    return () => {
+      if (themeSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(themeSyncFrameRef.current)
+        themeSyncFrameRef.current = null
+      }
+    }
+  }, [resolvedTheme])
 
   return (
     <section
       aria-label='Terminal'
       {...sectionProps}
-      className={cn(
-        'border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border',
-        className,
-      )}
+      className={cn('flex h-full min-h-0 min-w-0 flex-col overflow-hidden', className)}
       style={{ background: 'var(--terminal-background)' }}
       onFocusCapture={() => setFocusArea('terminal')}
       onPointerDownCapture={() => setFocusArea('terminal')}
     >
-      <header className='text-muted-foreground border-border/60 flex h-8 shrink-0 items-center justify-between gap-2 border-b px-3'>
-        <span className='flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase'>
-          <TerminalWindowIcon className='size-3.5' weight='bold' />
-          Terminal
-        </span>
-        <button
-          aria-label='Close terminal'
-          className='hover:text-foreground hover:bg-muted/60 -mr-1 flex size-5 items-center justify-center rounded-md transition-colors'
-          onClick={toggleTerminal}
-          title='Close terminal'
-          type='button'
-        >
-          <XIcon className='size-3.5' />
-        </button>
-      </header>
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono' ref={hostRef} />
     </section>
   )

@@ -158,6 +158,7 @@
   --terminal-cursor: #1a1a1a;
   --terminal-cursor-accent: #f6f6f4;
   --terminal-selection: #cdd6e3;
+  --terminal-selection-foreground: #1a1a1a;
   --terminal-ansi-black: #3c3c3c;
   --terminal-ansi-red: #d1453b;
   --terminal-ansi-green: #3f9a52;
@@ -274,6 +275,7 @@
   --terminal-cursor: #f4f7fb;
   --terminal-cursor-accent: #0e1013;
   --terminal-selection: #33455a;
+  --terminal-selection-foreground: #ffffff;
   --terminal-ansi-black: #15181c;
   --terminal-ansi-red: #ff5f57;
   --terminal-ansi-green: #5fd38d;

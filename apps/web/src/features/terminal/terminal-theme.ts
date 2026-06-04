@@ -70,13 +70,7 @@ export function syncTerminalTheme(
   if (!renderer || !wasmTerm) return theme
 
   renderer.setTheme(theme)
-  renderer.render(
-    wasmTerm,
-    true,
-    terminal.viewportY,
-    terminal,
-    terminalScrollbarOpacity(terminal),
-  )
+  renderer.render(wasmTerm, true, terminal.viewportY, terminal, terminalScrollbarOpacity(terminal))
 
   return theme
 }

@@ -1,7 +1,7 @@
 import { AppCommandSurface } from '@/components/app-command-surface'
 import { EmptyWorkspace } from '@/components/empty-workspace'
-import { FilePickerDialog } from '@/components/file-picker-dialog'
 import { OpenTabLiveDocumentController } from '@/components/open-tab-live-document-controller'
+import { usePickEntry } from '@/components/use-pick-entry'
 import { WorkspaceView } from '@/components/workspace/workspace-view'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
@@ -50,6 +50,13 @@ export function AppWorkspace({
     },
     [pickRootFolder, resetTreeLoad],
   )
+  const picker = usePickEntry({
+    mode: 'folder',
+    onOpenChange: setPickerOpen,
+    onPick: handlePick,
+    open: pickerOpen,
+    value: rootFolder,
+  })
 
   return (
     <>
@@ -74,15 +81,7 @@ export function AppWorkspace({
           <EmptyWorkspace onChooseFolder={openPicker} />
         )}
       </div>
-      {pickerOpen && (
-        <FilePickerDialog
-          mode='folder'
-          onOpenChange={setPickerOpen}
-          onPick={handlePick}
-          open={pickerOpen}
-          value={rootFolder}
-        />
-      )}
+      {picker}
     </>
   )
 }
