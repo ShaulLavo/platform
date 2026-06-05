@@ -15,6 +15,7 @@ import {
   workspaceSearchReplaceSummary,
 } from '@/features/search/search-replace-runner'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
+import { errorMessage } from '@/lib/error-message'
 import { fetchFile, writeFileContent } from '@/lib/file-server'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
@@ -128,7 +129,7 @@ async function runReplace({
   } catch (error) {
     if (controller.signal.aborted) return
 
-    store.getState().failReplace(rootPath, replaceErrorMessage(error))
+    store.getState().failReplace(rootPath, errorMessage(error, 'Replace failed.'))
   }
 }
 
@@ -149,10 +150,4 @@ function canReplace(
 
 function firstContentMatch(matches: readonly WorkspaceSearchMatch[]) {
   return matches.find((match) => match.kind === 'content') ?? null
-}
-
-function replaceErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Replace failed.'
 }

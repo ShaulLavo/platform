@@ -1,6 +1,7 @@
 import type { ThreadId } from '@workspace/contracts'
 import { useEffect, useMemo, useState } from 'react'
 
+import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import {
   createCheckpointRevertCommand,
@@ -150,7 +151,7 @@ export function ChatView({
         ...chatCommandSummary(submission.command),
         error,
       })
-      setSendError(chatViewErrorMessage(error))
+      setSendError(errorMessage(error, 'Chat command failed.'))
       return false
     } finally {
       setSending(false)
@@ -176,7 +177,7 @@ export function ChatView({
         threadId: thread.id,
         turnId: thread.latestTurn?.turnId,
       })
-      setSendError(chatViewErrorMessage(error))
+      setSendError(errorMessage(error, 'Chat command failed.'))
     } finally {
       setInterrupting(false)
     }
@@ -216,7 +217,7 @@ export function ChatView({
         threadId: thread.id,
         turnCount,
       })
-      setSendError(chatViewErrorMessage(error))
+      setSendError(errorMessage(error, 'Chat command failed.'))
     } finally {
       setRevertingCheckpoint(false)
     }
@@ -266,10 +267,4 @@ function confirmCheckpointRevert(turnCount: number) {
       'This action cannot be undone.',
     ].join('\n'),
   )
-}
-
-function chatViewErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Chat command failed.'
 }

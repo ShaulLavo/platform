@@ -12,7 +12,7 @@ import {
 import * as v from 'valibot'
 
 import { client } from '@/lib/client'
-import { normalizeEdenSseData, parseEdenSseStream } from '@/lib/eden-events'
+import { parseEdenSseStream, unwrapEdenResponse } from '@/lib/eden-events'
 import { clientErrors, createRpcError } from '@/lib/structured-errors'
 import { logFilterQuery } from './log-filter-params'
 
@@ -25,7 +25,7 @@ export async function fetchLogSummary(
     query: logFilterQuery(filters),
   })
 
-  return v.parse(logDashboardSummarySchema, unwrapLogsResponse(response))
+  return v.parse(logDashboardSummarySchema, unwrapEdenResponse(response, { normalizeSse: true }))
 }
 
 export async function fetchLogEvents(
@@ -40,7 +40,7 @@ export async function fetchLogEvents(
     },
   })
 
-  return v.parse(logEventsResultSchema, unwrapLogsResponse(response))
+  return v.parse(logEventsResultSchema, unwrapEdenResponse(response, { normalizeSse: true }))
 }
 
 export async function fetchLogEventDetail(
@@ -52,7 +52,7 @@ export async function fetchLogEventDetail(
     query: { id },
   })
 
-  return v.parse(logEventDetailSchema, unwrapLogsResponse(response))
+  return v.parse(logEventDetailSchema, unwrapEdenResponse(response, { normalizeSse: true }))
 }
 
 export async function* subscribeLogEvents(
@@ -71,10 +71,4 @@ export async function* subscribeLogEvents(
 
     yield v.parse(logLiveStreamItemSchema, event.data)
   }
-}
-
-function unwrapLogsResponse(response: { data?: unknown; error?: unknown }) {
-  if (response.error) throw createRpcError(response.error)
-
-  return normalizeEdenSseData(response.data)
 }

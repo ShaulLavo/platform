@@ -80,7 +80,7 @@ export function toClientError(input: unknown): ClientError {
   }
 }
 
-export function errorMessage(input: unknown): string {
+export function clientErrorMessage(input: unknown): string {
   return toClientError(input).message
 }
 

@@ -1,5 +1,4 @@
 import type { FileTree as PierreFileTreeModel } from '@pierre/trees'
-import { ForesightManager } from 'js.foresight'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -9,6 +8,11 @@ import {
   fileTreeRowPath,
   FILE_TREE_PREFETCH_STALE_MS,
 } from '@/components/workspace/file-tree-prefetch'
+import {
+  createIntentPrefetchRegistry,
+  type IntentPrefetchRegistry,
+  type IntentPrefetchRow,
+} from '@/components/workspace/intent-prefetch-registry'
 import { createAnimationFrameScheduler } from '@/components/workspace/intent-prefetch-scheduler'
 import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 import { fetchFile } from '@/lib/file-server'
@@ -50,18 +54,27 @@ export function useFileTreeIntentPrefetch({
     })
   })
 
-  const syncRegistrations = useEffectEvent((registrations: Map<HTMLElement, string>) => {
-    syncForesightRegistrations(tree, registrations, prefetchTreePath)
+  const syncRegistrations = useEffectEvent((registry: IntentPrefetchRegistry<string>) => {
+    const shadowRoot = tree.getFileTreeContainer()?.shadowRoot
+    if (!shadowRoot) {
+      registry.clear()
+      return
+    }
+
+    registry.sync(fileTreeRowElements(shadowRoot), prefetchTreePath)
   })
 
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const registrations = new Map<HTMLElement, string>()
+    const registry = createIntentPrefetchRegistry({
+      reactivateAfter: FILE_TREE_PREFETCH_STALE_MS,
+      resolveRow: resolveFileTreeRow,
+    })
     let observer: MutationObserver | null = null
     const schedule = createAnimationFrameScheduler(() => {
       observer ??= observeTreeRows(tree, schedule.request)
-      syncRegistrations(registrations)
+      syncRegistrations(registry)
     })
     const unsubscribe = tree.subscribe(schedule.request)
 
@@ -71,77 +84,21 @@ export function useFileTreeIntentPrefetch({
       unsubscribe()
       observer?.disconnect()
       schedule.cancel()
-      unregisterAll(registrations)
+      registry.clear()
     }
   }, [tree])
 }
 
-function syncForesightRegistrations(
-  tree: PierreFileTreeModel,
-  registrations: Map<HTMLElement, string>,
-  onIntent: (treePath: string) => void,
-) {
-  const shadowRoot = tree.getFileTreeContainer()?.shadowRoot
-  if (!shadowRoot) {
-    unregisterAll(registrations)
-    return
-  }
-
-  const currentElements = new Set(fileTreeRowElements(shadowRoot))
-  unregisterRemovedElements(registrations, currentElements)
-
-  for (const element of currentElements) {
-    registerElementPath(element, registrations, onIntent)
-  }
-}
-
-function registerElementPath(
-  element: HTMLElement,
-  registrations: Map<HTMLElement, string>,
-  onIntent: (treePath: string) => void,
-) {
+function resolveFileTreeRow(element: HTMLElement): IntentPrefetchRow<string> | null {
   const treePath = fileTreeRowPath(element)
-  if (!treePath) {
-    unregisterElement(element, registrations)
-    return
-  }
+  if (!treePath) return null
 
-  const currentPath = registrations.get(element)
-  if (currentPath === treePath) return
-  if (currentPath) unregisterElement(element, registrations)
-
-  ForesightManager.instance.register({
-    callback: () => onIntent(treePath),
-    element,
+  return {
+    intent: treePath,
+    key: treePath,
     meta: { treePath },
     name: `file-tree:${treePath}`,
-    reactivateAfter: FILE_TREE_PREFETCH_STALE_MS,
-  })
-  registrations.set(element, treePath)
-}
-
-function unregisterRemovedElements(
-  registrations: Map<HTMLElement, string>,
-  currentElements: ReadonlySet<HTMLElement>,
-) {
-  for (const element of registrations.keys()) {
-    if (currentElements.has(element)) continue
-
-    unregisterElement(element, registrations)
   }
-}
-
-function unregisterAll(registrations: Map<HTMLElement, string>) {
-  for (const element of registrations.keys()) {
-    unregisterElement(element, registrations)
-  }
-}
-
-function unregisterElement(element: HTMLElement, registrations: Map<HTMLElement, string>) {
-  registrations.delete(element)
-  if (!ForesightManager.isInitiated) return
-
-  ForesightManager.instance.unregister(element)
 }
 
 function observeTreeRows(tree: PierreFileTreeModel, onChange: () => void): MutationObserver | null {

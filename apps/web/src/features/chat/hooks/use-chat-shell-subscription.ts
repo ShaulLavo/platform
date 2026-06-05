@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { useChatProjectionStore } from '../state/chat-projection-store'
 
@@ -49,7 +50,7 @@ async function subscribeShellOnce(
   } catch (error) {
     if (signal.aborted) return
 
-    setState({ error: chatErrorMessage(error), status: 'error' })
+    setState({ error: errorMessage(error, 'Chat connection failed.'), status: 'error' })
   }
 }
 
@@ -81,10 +82,4 @@ async function reconnectDelay(signal: AbortSignal) {
       { once: true },
     )
   })
-}
-
-function chatErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Chat connection failed.'
 }

@@ -1,6 +1,9 @@
 import { fileMatchesAccept } from '@/lib/file-icons'
 import type { FsEntry, PickedFsEntry } from '@/lib/file-system-types'
 import { effectiveEntryType, isDirectoryEntry, isFileEntry } from '@/lib/file-system-types'
+import { formatSize } from '@/lib/path-formatters'
+
+export { basename, displayPath, formatSize } from '@/lib/path-formatters'
 import { compareFuzzyRankedTargets } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -107,11 +110,6 @@ export function parentPath(path: string) {
   return parts.join('/')
 }
 
-export function basename(path: string) {
-  const parts = path.split('/').filter(Boolean)
-  return parts.at(-1) ?? 'Root'
-}
-
 export function pathCrumbs(path: string) {
   const parts = path.split('/').filter(Boolean)
   const crumbs = [{ label: 'Root', path: ROOT_PATH }]
@@ -135,12 +133,6 @@ export function joinPaths(parent: string, child: string) {
   if (!parent) return child
 
   return `${parent}/${child}`
-}
-
-export function displayPath(path: string) {
-  if (!path) return '/'
-
-  return `/${path}`
 }
 
 export function compareEntries(a: FsEntry, b: FsEntry) {
@@ -203,24 +195,10 @@ export function formatSizeLabel(entry: FsEntry) {
   return formatSize(entry.size)
 }
 
-export function formatSize(size: number) {
-  if (size === 0) return '0 B'
-
-  const units = ['B', 'KB', 'MB', 'GB']
-  const exponent = Math.min(Math.floor(Math.log(size) / Math.log(1024)), 3)
-  const value = size / 1024 ** exponent
-  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
-}
-
 export function formatModified(mtimeMs: number) {
   if (mtimeMs <= 0) return 'Unknown'
 
   return modifiedDateFormatter.format(new Date(mtimeMs))
-}
-
-export function errorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-  return 'The file server did not return a usable response.'
 }
 
 export function rpcErrorMessage(error: unknown) {

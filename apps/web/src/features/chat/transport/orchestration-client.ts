@@ -9,7 +9,7 @@ import type {
 
 import { client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
-import { createRpcError } from '@/lib/structured-errors'
+import { unwrapEdenResponse } from '@/lib/eden-events'
 import { chatCommandSummary, chatReplaySummary } from '../lib/chat-pipeline-logging'
 
 export async function dispatchOrchestrationCommand(command: ClientOrchestrationCommand) {
@@ -22,7 +22,7 @@ export async function dispatchOrchestrationCommand(command: ClientOrchestrationC
     async () => {
       const response = await client.orchestration.commands.post(command)
 
-      return unwrapOrchestrationResponse<{ deduped: boolean; sequence: number }>(response)
+      return unwrapEdenResponse<{ deduped: boolean; sequence: number }>(response)
     },
     (result) => ({
       deduped: result.deduped,
@@ -42,7 +42,7 @@ export async function fetchOrchestrationShellSnapshot(signal?: AbortSignal) {
         fetch: { signal },
       })
 
-      return unwrapOrchestrationResponse<OrchestrationShellSnapshot>(response)
+      return unwrapEdenResponse<OrchestrationShellSnapshot>(response)
     },
     (snapshot) => ({
       projectCount: snapshot.projects.length,
@@ -68,7 +68,7 @@ export async function fetchOrchestrationThreadDetailSnapshot(
         query: { threadId },
       })
 
-      return unwrapOrchestrationResponse<OrchestrationThreadDetailSnapshot>(response)
+      return unwrapEdenResponse<OrchestrationThreadDetailSnapshot>(response)
     },
     (snapshot) => ({
       activityCount: snapshot.thread.activities.length,
@@ -90,7 +90,7 @@ export async function replayOrchestrationEvents(input: OrchestrationReplayEvents
     async () => {
       const response = await client.orchestration.replay.post(input)
 
-      return unwrapOrchestrationResponse<OrchestrationReplayEventsResult>(response)
+      return unwrapEdenResponse<OrchestrationReplayEventsResult>(response)
     },
     (result) => ({
       eventCount: result.events.length,
@@ -98,10 +98,4 @@ export async function replayOrchestrationEvents(input: OrchestrationReplayEvents
       maxSequence: result.events.at(-1)?.sequence ?? input.afterSequence,
     }),
   )
-}
-
-export function unwrapOrchestrationResponse<T>(response: { data?: unknown; error?: unknown }): T {
-  if (response.error) throw createRpcError(response.error)
-
-  return response.data as T
 }

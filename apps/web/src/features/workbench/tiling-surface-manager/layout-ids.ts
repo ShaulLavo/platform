@@ -1,9 +1,12 @@
 import type {
   LayoutNodeId,
   LayoutPolicyId,
+  HotkeyPresetId,
+  LayoutCommandId,
   OverlayId,
   RecipeId,
   SurfaceId,
+  WindowManagementCommandId,
   WindowId,
 } from './layout-types'
 
@@ -63,6 +66,18 @@ export function recipeId(key: string): RecipeId {
 
 export function layoutPolicyId(key: string): LayoutPolicyId {
   return encodedId('policy', key) as LayoutPolicyId
+}
+
+export function windowManagementCommandId(key: string): WindowManagementCommandId {
+  return encodedId('window-command', key) as WindowManagementCommandId
+}
+
+export function layoutCommandId(key: string): LayoutCommandId {
+  return encodedId('layout-command', key) as LayoutCommandId
+}
+
+export function hotkeyPresetId(key: string): HotkeyPresetId {
+  return encodedId('hotkey-preset', key) as HotkeyPresetId
 }
 
 export function overlayId(key: string): OverlayId {

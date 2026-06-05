@@ -1,6 +1,7 @@
 import type { OrchestrationProjectShell } from '@workspace/contracts'
 import { useEffect, useMemo, useState } from 'react'
 
+import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { createWorkspaceProjectCommand, workspaceProjectId } from '../lib/chat-command-builders'
 import { selectChatProjects } from '../state/chat-projection-selectors'
@@ -61,12 +62,6 @@ async function createWorkspaceProject(
       }),
     )
   } catch (error) {
-    setError(chatProjectErrorMessage(error))
+    setError(errorMessage(error, 'Could not prepare chat for this workspace.'))
   }
-}
-
-function chatProjectErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Could not prepare chat for this workspace.'
 }

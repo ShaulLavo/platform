@@ -9,6 +9,7 @@ import {
   type ChatCommandState,
   type ChatRuntimeAlertTone,
 } from '../lib/chat-runtime-state'
+import { errorMessage } from '@/lib/error-message'
 import { providerListQueryOptions } from '../lib/provider-query'
 import type { ChatThread } from '../state/chat-projection-store'
 
@@ -25,7 +26,9 @@ export function ChatRuntimeStatus({
   const provider = providersQuery.data?.providers.find(
     (candidate) => candidate.providerInstanceId === thread.modelSelection.providerInstanceId,
   )
-  const providerError = providersQuery.error ? errorMessage(providersQuery.error) : null
+  const providerError = providersQuery.error
+    ? errorMessage(providersQuery.error, 'Provider request failed.')
+    : null
   const commandState = useMemo(
     () => ({ commandFailure, interruptPending, sendPending, stopPending }),
     [commandFailure, interruptPending, sendPending, stopPending],
@@ -78,10 +81,4 @@ function runtimeAlertClass(tone: ChatRuntimeAlertTone) {
   if (tone === 'busy') return 'border-border/70 bg-card text-muted-foreground'
 
   return null
-}
-
-function errorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Provider request failed.'
 }

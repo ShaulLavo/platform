@@ -8,7 +8,7 @@ import type {
   TreeEntry,
   TreeResult,
 } from '@/lib/file-system-types'
-import { errorMessage as clientErrorMessage } from '@/lib/client-error-taxonomy'
+import { clientErrorMessage } from '@/lib/client-error-taxonomy'
 import { observeClientOperation } from '@/lib/client-logging'
 import { omitNullish } from '@/lib/objects'
 import {

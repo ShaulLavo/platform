@@ -1,6 +1,6 @@
 import { client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
-import { createRpcError } from '@/lib/structured-errors'
+import { unwrapEdenResponse } from '@/lib/eden-events'
 import type { BlobDiffRequest, StatusResult } from './types'
 
 export async function fetchStatus(path: string, signal?: AbortSignal) {
@@ -12,7 +12,10 @@ export async function fetchStatus(path: string, signal?: AbortSignal) {
         fetch: { signal },
       })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     (result) => ({ fileCount: result.files.length, hasRepository: result.repository !== null }),
   )
@@ -27,7 +30,10 @@ export async function fetchDiff(path: string, staged: boolean, signal?: AbortSig
         fetch: { signal },
       })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     (diffs) => ({ diffCount: diffs.length }),
   )
@@ -47,7 +53,10 @@ export async function fetchBlobDiff(query: BlobDiffRequest, signal?: AbortSignal
         fetch: { signal },
       })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     (diffs) => ({ diffCount: diffs.length }),
   )
@@ -62,7 +71,10 @@ export async function fetchBranches(path: string, signal?: AbortSignal) {
         fetch: { signal },
       })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     (result) => ({
       branchCount: result.branches.length,
@@ -79,7 +91,10 @@ export async function stagePaths(paths: readonly string[]) {
   return observeGitPathsOperation('git.stage', paths, async () => {
     const response = await client.git.stage.post({ paths: Array.from(paths) })
 
-    return unwrapGitResponse(response)
+    return unwrapEdenResponse(response, {
+      requireData: true,
+      emptyMessage: 'git server returned an empty response',
+    })
   })
 }
 
@@ -91,7 +106,10 @@ export async function unstagePaths(paths: readonly string[]) {
   return observeGitPathsOperation('git.unstage', paths, async () => {
     const response = await client.git.unstage.post({ paths: Array.from(paths) })
 
-    return unwrapGitResponse(response)
+    return unwrapEdenResponse(response, {
+      requireData: true,
+      emptyMessage: 'git server returned an empty response',
+    })
   })
 }
 
@@ -103,7 +121,10 @@ export async function discardPaths(paths: readonly string[]) {
   return observeGitPathsOperation('git.discard', paths, async () => {
     const response = await client.git.discard.post({ paths: Array.from(paths) })
 
-    return unwrapGitResponse(response)
+    return unwrapEdenResponse(response, {
+      requireData: true,
+      emptyMessage: 'git server returned an empty response',
+    })
   })
 }
 
@@ -117,7 +138,10 @@ export async function commitChanges(path: string, message: string) {
     async () => {
       const response = await client.git.commit.post({ message, path })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     (result) => ({ kind: result.kind }),
   )
@@ -129,7 +153,10 @@ export async function checkoutBranch(path: string, branch: string) {
     async () => {
       const response = await client.git.checkout.post({ branch, path })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     statusSummary,
   )
@@ -145,7 +172,10 @@ export async function createBranch(path: string, branch: string) {
         path,
       })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     (result) => ({ branchCount: result.branches.length }),
   )
@@ -157,7 +187,10 @@ export async function fetchRemote(path: string) {
     async () => {
       const response = await client.git.fetch.post({ path })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     outputSummary,
   )
@@ -169,7 +202,10 @@ export async function pullRemote(path: string) {
     async () => {
       const response = await client.git.pull.post({ path })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     outputSummary,
   )
@@ -181,7 +217,10 @@ export async function pushRemote(path: string) {
     async () => {
       const response = await client.git.push.post({ path })
 
-      return unwrapGitResponse(response)
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
     },
     outputSummary,
   )
@@ -194,14 +233,6 @@ export async function syncRemote(path: string) {
 
     return { pull, push }
   })
-}
-
-function unwrapGitResponse<T>(response: { data: T | null; error: unknown }): T {
-  if (response.error) throw createRpcError(response.error)
-  if (response.data === null)
-    throw createRpcError(new Error('git server returned an empty response'))
-
-  return response.data
 }
 
 function observeGitOperation<T>(

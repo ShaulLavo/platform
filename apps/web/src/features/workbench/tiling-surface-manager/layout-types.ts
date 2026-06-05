@@ -9,6 +9,9 @@ export type WindowId = Brand<string, 'WindowId'>
 export type LayoutNodeId = Brand<string, 'LayoutNodeId'>
 export type RecipeId = Brand<string, 'RecipeId'>
 export type LayoutPolicyId = Brand<string, 'LayoutPolicyId'>
+export type WindowManagementCommandId = Brand<string, 'WindowManagementCommandId'>
+export type LayoutCommandId = Brand<string, 'LayoutCommandId'>
+export type HotkeyPresetId = Brand<string, 'HotkeyPresetId'>
 export type OverlayId = Brand<string, 'OverlayId'>
 
 export type SerializedWorkspaceLayoutVersion = typeof WORKSPACE_LAYOUT_VERSION
@@ -143,10 +146,163 @@ export type LayoutPolicyState = {
   readonly stickyPlacementsBySurfaceId: Readonly<Record<string, SurfacePlacementHint>>
 }
 
+export type CommandIcon = string
+
+export type CustomWindowFrame = {
+  readonly anchor:
+    | 'bottom'
+    | 'bottom-left'
+    | 'bottom-right'
+    | 'center'
+    | 'left'
+    | 'right'
+    | 'top'
+    | 'top-left'
+    | 'top-right'
+  readonly height: number
+  readonly offsetX: number
+  readonly offsetY: number
+  readonly unit: 'percent' | 'points'
+  readonly width: number
+}
+
+export type CommandCycleRule = {
+  readonly resetMs: number
+  readonly scope: 'surface' | 'window' | 'workspace'
+  readonly steps: readonly CustomWindowFrame[]
+  readonly wrapDisplays?: boolean
+}
+
+export type CommandCycleState = {
+  readonly commandId: WindowManagementCommandId
+  readonly scopeKey: string
+  readonly stepIndex: number
+  readonly updatedAtMs: number
+}
+
+export type BuiltInWindowManagementCommand = {
+  readonly aliases: readonly string[]
+  readonly capabilityPredicate?: string
+  readonly category: 'Window Management'
+  readonly cycleRule?: CommandCycleRule
+  readonly icon: CommandIcon
+  readonly id: WindowManagementCommandId
+  readonly kind: 'built-in'
+  readonly operation: LayoutOperation['type']
+  readonly title: string
+}
+
+export type CustomWindowManagementCommand = {
+  readonly aliases: readonly string[]
+  readonly category: 'Window Management'
+  readonly cycleRule?: CommandCycleRule
+  readonly enabled: boolean
+  readonly icon: CommandIcon
+  readonly id: WindowManagementCommandId
+  readonly kind: 'custom-window'
+  readonly targetFrame: CustomWindowFrame
+  readonly title: string
+}
+
+export type WindowManagementCommand = BuiltInWindowManagementCommand | CustomWindowManagementCommand
+
+export type LayoutCommandSurfaceSlot = {
+  readonly displayHint?: SurfacePlacementHint
+  readonly frame: CustomWindowFrame
+  readonly id: string
+  readonly payload?: { readonly kind: 'file' | 'quicklink' | 'url'; readonly value: string }
+  readonly resourceKey?: string
+  readonly stateKey?: string
+  readonly surfaceType: SurfaceType
+}
+
+export type WorkspaceLayoutCommand = {
+  readonly aliases: readonly string[]
+  readonly enabled: boolean
+  readonly hotkeyId?: string
+  readonly icon: CommandIcon
+  readonly id: LayoutCommandId
+  readonly slots: readonly LayoutCommandSurfaceSlot[]
+  readonly title: string
+}
+
+export type WindowManagementHotkeyPreset = {
+  readonly bindings: Readonly<Record<string, string>>
+  readonly id: HotkeyPresetId
+  readonly source: 'hyprland-i3' | 'magnet' | 'platform' | 'rectangle' | 'spectacle' | 'vscode'
+  readonly title: string
+}
+
+export type LayoutOperation =
+  | { readonly policyId?: LayoutPolicyId; readonly surface: Surface; readonly type: 'openSurface' }
+  | { readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
+  | { readonly surfaceId: SurfaceId; readonly type: 'minimizeSurface' }
+  | {
+      readonly placement?: SurfacePlacementHint
+      readonly surfaceId: SurfaceId
+      readonly type: 'restoreSurface'
+    }
+  | {
+      readonly edge: DropEdge
+      readonly sourceWindowId?: WindowId
+      readonly surfaceId?: SurfaceId
+      readonly type: 'splitWindow'
+      readonly windowId: WindowId
+    }
+  | {
+      readonly destination: DropDestination
+      readonly surfaceId: SurfaceId
+      readonly type: 'moveSurface'
+    }
+  | {
+      readonly destination: DropDestination
+      readonly type: 'moveWindow'
+      readonly windowId: WindowId
+    }
+  | {
+      readonly index?: number
+      readonly surfaceId: SurfaceId
+      readonly targetWindowId: WindowId
+      readonly type: 'tabSurface'
+    }
+  | {
+      readonly fromIndex: number
+      readonly toIndex: number
+      readonly type: 'reorderSurface'
+      readonly windowId: WindowId
+    }
+  | {
+      readonly deltaPx: number
+      readonly handleIndex: number
+      readonly splitId: LayoutNodeId
+      readonly type: 'resizeSplit'
+    }
+  | { readonly type: 'maximizeWindow'; readonly windowId: WindowId }
+  | { readonly type: 'restoreWindow'; readonly windowId: WindowId }
+  | { readonly recipeId: RecipeId; readonly type: 'applyRecipe' }
+  | {
+      readonly command: CustomWindowManagementCommand
+      readonly nowMs?: number
+      readonly targetWindowId?: WindowId
+      readonly type: 'applyCustomWindowCommand'
+    }
+  | { readonly command: WorkspaceLayoutCommand; readonly type: 'applyLayoutCommand' }
+
+export type DropDestination =
+  | { readonly kind: 'parent-edge'; readonly edge: DropEdge; readonly nodeId: LayoutNodeId }
+  | { readonly kind: 'rail' }
+  | { readonly kind: 'root-edge'; readonly edge: DropEdge }
+  | { readonly kind: 'window-center'; readonly tabIndex?: number; readonly windowId: WindowId }
+  | { readonly kind: 'window-edge'; readonly edge: DropEdge; readonly windowId: WindowId }
+
 export type WorkspaceLayout = {
   readonly activeRecipeId: RecipeId
+  readonly activeHotkeyPresetId?: HotkeyPresetId
   readonly activeSurfaceId?: SurfaceId
   readonly activeWindowId?: WindowId
+  readonly commandCycleState?: CommandCycleState
+  readonly hotkeyPresetsById: Readonly<Record<HotkeyPresetId, WindowManagementHotkeyPreset>>
+  readonly layoutCommandsById: Readonly<Record<LayoutCommandId, WorkspaceLayoutCommand>>
   readonly mruSurfaceIds: readonly SurfaceId[]
   readonly mruWindowIds: readonly WindowId[]
   readonly nodesById: Readonly<Record<LayoutNodeId, LayoutNode>>
@@ -157,5 +313,6 @@ export type WorkspaceLayout = {
   readonly surfaceRegistryVersion: SurfaceRegistryVersion
   readonly surfacesById: Readonly<Record<SurfaceId, Surface>>
   readonly version: SerializedWorkspaceLayoutVersion
+  readonly windowCommandsById: Readonly<Record<WindowManagementCommandId, WindowManagementCommand>>
   readonly windowsById: Readonly<Record<WindowId, WorkbenchWindow>>
 }

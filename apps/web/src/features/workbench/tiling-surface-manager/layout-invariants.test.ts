@@ -11,8 +11,21 @@ import {
   checkWorkspaceLayoutInvariants,
   type LayoutInvariantViolationCode,
 } from './layout-invariants'
-import { fileEditorSurfaceId, layoutNodeId, workbenchWindowId } from './layout-ids'
-import type { LayoutNode, Surface, WorkbenchWindow, WorkspaceLayout } from './layout-types'
+import {
+  fileEditorSurfaceId,
+  hotkeyPresetId,
+  layoutCommandId,
+  layoutNodeId,
+  windowManagementCommandId,
+  workbenchWindowId,
+} from './layout-ids'
+import type {
+  CustomWindowFrame,
+  LayoutNode,
+  Surface,
+  WorkbenchWindow,
+  WorkspaceLayout,
+} from './layout-types'
 
 describe('tiling surface layout invariants', () => {
   it('accepts the classic first-run builder output', () => {
@@ -106,6 +119,51 @@ describe('tiling surface layout invariants', () => {
     expect(violationCodes(nextLayout)).toContain('orphan-transient-preview-owner')
   })
 
+  it('reports invalid layout command surface slots', () => {
+    const commandId = layoutCommandId('invalid-slot')
+    const layout = {
+      ...createClassicFirstRunWorkspaceLayout(),
+      layoutCommandsById: {
+        [commandId]: {
+          aliases: [],
+          enabled: true,
+          icon: 'layout',
+          id: commandId,
+          slots: [
+            {
+              frame: frame('center'),
+              id: 'unknown',
+              surfaceType: 'agent-run',
+            },
+          ],
+          title: 'Invalid Slot',
+        },
+      },
+    } as WorkspaceLayout
+
+    expect(violationCodes(layout)).toContain('invalid-layout-command-slot-surface-type')
+  })
+
+  it('reports hotkey presets that reference missing commands', () => {
+    const presetId = hotkeyPresetId('bad-preset')
+    const missingCommandId = windowManagementCommandId('missing-command')
+    const layout = {
+      ...createClassicFirstRunWorkspaceLayout(),
+      hotkeyPresetsById: {
+        [presetId]: {
+          bindings: {
+            [missingCommandId]: 'Ctrl+Alt+M',
+          },
+          id: presetId,
+          source: 'platform',
+          title: 'Bad Preset',
+        },
+      },
+    }
+
+    expect(violationCodes(layout)).toContain('invalid-hotkey-preset-command')
+  })
+
   it('reports a missing root node', () => {
     const layout = {
       ...createClassicFirstRunWorkspaceLayout(),
@@ -176,5 +234,16 @@ function addSurfaceToWindow(
         surfaceIds: window.surfaceIds.concat(surface.id),
       },
     },
+  }
+}
+
+function frame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {
+  return {
+    anchor,
+    height: 50,
+    offsetX: 0,
+    offsetY: 0,
+    unit: 'percent',
+    width: 50,
   }
 }

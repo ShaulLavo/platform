@@ -1,8 +1,30 @@
-import { clientErrors } from './structured-errors'
+import { clientErrors, createRpcError } from './structured-errors'
 
 export type EdenSseEvent = {
   event: string
   data: unknown
+}
+
+export type UnwrapEdenOptions = {
+  /** Throw when `data` is null/undefined instead of returning it. */
+  requireData?: boolean
+  /** Run `data` through `normalizeEdenSseData` before returning. */
+  normalizeSse?: boolean
+  /** Error message used when `requireData` rejects empty data. */
+  emptyMessage?: string
+}
+
+export function unwrapEdenResponse<T>(
+  response: { data?: T | null; error?: unknown },
+  options: UnwrapEdenOptions = {},
+): T {
+  if (response.error) throw createRpcError(response.error)
+  if (options.requireData && response.data == null)
+    throw createRpcError(new Error(options.emptyMessage ?? 'server returned an empty response'))
+
+  const data = options.normalizeSse ? normalizeEdenSseData(response.data) : response.data
+
+  return data as T
 }
 
 export async function* parseEdenSseStream(stream: unknown): AsyncGenerator<EdenSseEvent> {

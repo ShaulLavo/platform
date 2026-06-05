@@ -90,7 +90,7 @@ export const TextDiffViewer = forwardRef<GitDiffViewerHandle, TextDiffViewerProp
   ) {
     const viewRef = useRef<GitDiffViewerHandle | null>(null)
 
-    useImperativeHandle(ref, () => diffViewerHandle(viewRef), [])
+    useImperativeHandle(ref, () => createDiffViewerHandle(viewRef), [])
 
     if (files.some((file) => file.hunks.length > 0)) {
       return <EditorDiffView ref={viewRef} files={files} mode={mode} />
@@ -106,7 +106,9 @@ export const TextDiffViewer = forwardRef<GitDiffViewerHandle, TextDiffViewerProp
   },
 )
 
-function diffViewerHandle(viewRef: RefObject<GitDiffViewerHandle | null>): GitDiffViewerHandle {
+function createDiffViewerHandle<T extends GitDiffViewerHandle>(
+  viewRef: RefObject<T | null>,
+): GitDiffViewerHandle {
   return {
     getCurrentHunk: () => viewRef.current?.getCurrentHunk() ?? null,
     revealHunk: (index) => viewRef.current?.revealHunk(index) ?? false,
@@ -129,7 +131,7 @@ const EditorDiffView = forwardRef<
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
   const syntaxBackend = useMemo(() => createEditorDiffSyntaxBackend(), [])
 
-  useImperativeHandle(ref, () => diffViewHandle(viewRef), [])
+  useImperativeHandle(ref, () => createDiffViewerHandle(viewRef), [])
 
   useLayoutEffect(() => {
     const host = hostRef.current
@@ -171,15 +173,6 @@ const EditorDiffView = forwardRef<
     />
   )
 })
-
-function diffViewHandle(viewRef: RefObject<DiffView | null>): GitDiffViewerHandle {
-  return {
-    getCurrentHunk: () => viewRef.current?.getCurrentHunk() ?? null,
-    revealHunk: (index) => viewRef.current?.revealHunk(index) ?? false,
-    revealNextHunk: (options) => viewRef.current?.revealNextHunk(options) ?? false,
-    revealPreviousHunk: (options) => viewRef.current?.revealPreviousHunk(options) ?? false,
-  }
-}
 
 const diffViewStyle = {
   '--editor-background': 'var(--background)',

@@ -634,7 +634,7 @@ function removeInvalidTransientSurfaces(
   const validSurfacesById: Record<string, Surface> = {}
 
   for (const surface of Object.values(surfacesById)) {
-    if (surface.lifecycle === 'transient' && !hasValidTransientOwner(surface, surfacesById)) {
+    if (surface.lifecycle === 'transient' && hasInvalidTransientOwner(surface, surfacesById)) {
       continue
     }
 
@@ -642,6 +642,13 @@ function removeInvalidTransientSurfaces(
   }
 
   return validSurfacesById
+}
+
+function hasInvalidTransientOwner(surface: Surface, surfacesById: WorkspaceLayout['surfacesById']) {
+  if (surface.type === 'search-preview') return !hasValidTransientOwner(surface, surfacesById)
+  if (!surface.ownerSurfaceId && !surface.ownerContextKey) return false
+
+  return !hasValidTransientOwner(surface, surfacesById)
 }
 
 function hasValidTransientOwner(surface: Surface, surfacesById: WorkspaceLayout['surfacesById']) {

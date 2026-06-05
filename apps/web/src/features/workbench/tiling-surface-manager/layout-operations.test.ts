@@ -6,9 +6,11 @@ import {
   CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
+  createSearchPreviewSurface,
   createSearchResultsSurface,
 } from './layout-builders'
 import { checkWorkspaceLayoutInvariants } from './layout-invariants'
+import { fileEditorSurfaceId, layoutCommandId, windowManagementCommandId } from './layout-ids'
 import {
   findNodeIdForWindow,
   findWindowIdContainingSurface,
@@ -16,6 +18,8 @@ import {
   visibleWindowIdsInOrder,
 } from './layout-normalize'
 import {
+  applyCustomWindowCommand,
+  applyLayoutCommand,
   applyRecipe,
   closeSurface,
   maximizeWindow,
@@ -29,7 +33,14 @@ import {
   restoreWindow,
   tabSurface,
 } from './layout-operations'
-import type { LayoutSplitNode, SurfaceId, WorkspaceLayout } from './layout-types'
+import type {
+  CustomWindowFrame,
+  CustomWindowManagementCommand,
+  LayoutSplitNode,
+  SurfaceId,
+  WorkspaceLayout,
+  WorkspaceLayoutCommand,
+} from './layout-types'
 
 describe('tiling surface layout operations', () => {
   it('opens surfaces into tab containers and reorders tabs', () => {
@@ -125,6 +136,18 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(closed)
   })
 
+  it('does not close surfaces blocked by close capabilities or close policy', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const placeholderId = layout.activeSurfaceId
+    if (!placeholderId) throw new Error('Expected placeholder')
+
+    const closed = closeSurface(layout, placeholderId)
+
+    expect(closed.surfacesById[placeholderId]).toBeDefined()
+    expect(visibleSurfaceIdsInOrder(closed)).toContain(placeholderId)
+    expectValidLayout(closed)
+  })
+
   it('falls back to the nearest tab when closing the active surface', () => {
     const fileA = createFileEditorSurface({ path: '/repo/src/close-a.ts' })
     const fileB = createFileEditorSurface({ path: '/repo/src/close-b.ts' })
@@ -172,6 +195,29 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(promoted)
   })
 
+  it('opens transient search and file previews before normalization can clean orphans', () => {
+    const search = createSearchResultsSurface()
+    const withSearch = openSurface(createClassicFirstRunWorkspaceLayout(), search)
+    const searchPreview = createSearchPreviewSurface({
+      ownerContextKey: 'result:/repo/src/app.ts:1',
+      ownerSurfaceId: search.id,
+      resourceKey: '/repo/src/app.ts',
+    })
+    const filePreview = createFileEditorSurface({
+      lifecycle: 'transient',
+      path: '/repo/src/file-preview.ts',
+    })
+    const withSearchPreview = openSurface(withSearch, searchPreview)
+    const withFilePreview = openSurface(withSearchPreview, filePreview)
+
+    expect(withSearchPreview.surfacesById[searchPreview.id]).toBeDefined()
+    expect(visibleSurfaceIdsInOrder(withSearchPreview)).toContain(searchPreview.id)
+    expect(withFilePreview.surfacesById[searchPreview.id]).toBeUndefined()
+    expect(withFilePreview.surfacesById[filePreview.id]).toBeDefined()
+    expect(visibleSurfaceIdsInOrder(withFilePreview)).toContain(filePreview.id)
+    expectValidLayout(withFilePreview)
+  })
+
   it('maximizes, restores, and applies existing recipes as pure state updates', () => {
     const maximized = maximizeWindow(
       createClassicFirstRunWorkspaceLayout(),
@@ -184,6 +230,62 @@ describe('tiling surface layout operations', () => {
     expect(restored.windowsById[CLASSIC_EDITOR_WINDOW_ID].mode).toBe('normal')
     expect(recipeApplied.activeRecipeId).toBe(restored.activeRecipeId)
     expectValidLayout(recipeApplied)
+  })
+
+  it('applies custom window commands and advances command cycling state', () => {
+    const command = customWindowCommand({
+      cycleRule: {
+        resetMs: 1000,
+        scope: 'window',
+        steps: [frame('left'), frame('right')],
+      },
+      id: windowManagementCommandId('cycle-halves'),
+      targetFrame: frame('left'),
+    })
+    const first = applyCustomWindowCommand(
+      createClassicFirstRunWorkspaceLayout(),
+      command,
+      CLASSIC_EDITOR_WINDOW_ID,
+      10,
+    )
+    const second = applyCustomWindowCommand(first, command, CLASSIC_EDITOR_WINDOW_ID, 20)
+
+    expect(first.commandCycleState?.stepIndex).toBe(0)
+    expect(second.commandCycleState?.stepIndex).toBe(1)
+    expect(second.commandCycleState?.commandId).toBe(command.id)
+    expectValidLayout(second)
+  })
+
+  it('applies saved layout command slots by opening and placing surfaces', () => {
+    const filePath = '/repo/src/layout-command.ts'
+    const command: WorkspaceLayoutCommand = {
+      aliases: ['review layout'],
+      enabled: true,
+      icon: 'layout',
+      id: layoutCommandId('review-layout'),
+      slots: [
+        {
+          frame: frame('right'),
+          id: 'editor',
+          resourceKey: filePath,
+          surfaceType: 'file-editor',
+        },
+        {
+          frame: frame('left'),
+          id: 'search',
+          surfaceType: 'search-results',
+        },
+      ],
+      title: 'Review Layout',
+    }
+    const applied = applyLayoutCommand(createClassicFirstRunWorkspaceLayout(), command)
+
+    expect(applied.surfacesById[fileEditorSurfaceId(filePath)]).toBeDefined()
+    expect(
+      Object.values(applied.surfacesById).some((surface) => surface.type === 'search-results'),
+    ).toBe(true)
+    expect(visibleSurfaceIdsInOrder(applied)).toContain(fileEditorSurfaceId(filePath))
+    expectValidLayout(applied)
   })
 })
 
@@ -247,4 +349,30 @@ function expectValidLayout(layout: WorkspaceLayout) {
     ok: true,
     violations: [],
   })
+}
+
+function customWindowCommand(
+  patch: Pick<CustomWindowManagementCommand, 'id' | 'targetFrame'> &
+    Partial<CustomWindowManagementCommand>,
+): CustomWindowManagementCommand {
+  return {
+    aliases: [],
+    category: 'Window Management',
+    enabled: true,
+    icon: 'window',
+    kind: 'custom-window',
+    title: 'Custom Window Command',
+    ...patch,
+  }
+}
+
+function frame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {
+  return {
+    anchor,
+    height: 50,
+    offsetX: 0,
+    offsetY: 0,
+    unit: 'percent',
+    width: 50,
+  }
 }

@@ -1,5 +1,15 @@
 import { layoutNodeId, workbenchWindowId } from './layout-ids'
 import {
+  createDiagnosticsSurface,
+  createDiffSurface,
+  createFileEditorSurface,
+  createFileNavigatorSurface,
+  createGitChangesSurface,
+  createPlaceholderSurface,
+  createSearchResultsSurface,
+  createTerminalSurface,
+} from './layout-builders'
+import {
   edgeAxis,
   findNodeIdForWindow,
   findParentNodeId,
@@ -10,7 +20,12 @@ import {
   repairSplitSizes,
 } from './layout-normalize'
 import type {
+  CustomWindowFrame,
+  CustomWindowManagementCommand,
   DropEdge,
+  DropDestination,
+  LayoutCommandSurfaceSlot,
+  LayoutOperation,
   LayoutNode,
   LayoutNodeId,
   LayoutPolicyId,
@@ -24,68 +39,18 @@ import type {
   WindowId,
   WorkbenchWindow,
   WorkspaceLayout,
+  WorkspaceLayoutCommand,
 } from './layout-types'
 
 const RESIZE_REFERENCE_PX = 1000
 const MIN_RESIZE_SIZE = 0.05
 
-export type DropDestination =
-  | { readonly kind: 'parent-edge'; readonly edge: DropEdge; readonly nodeId: LayoutNodeId }
-  | { readonly kind: 'rail' }
-  | { readonly kind: 'root-edge'; readonly edge: DropEdge }
-  | { readonly kind: 'window-center'; readonly tabIndex?: number; readonly windowId: WindowId }
-  | { readonly kind: 'window-edge'; readonly edge: DropEdge; readonly windowId: WindowId }
-
-export type LayoutOperation =
-  | { readonly policyId?: LayoutPolicyId; readonly surface: Surface; readonly type: 'openSurface' }
-  | { readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
-  | { readonly surfaceId: SurfaceId; readonly type: 'minimizeSurface' }
-  | {
-      readonly placement?: SurfacePlacementHint
-      readonly surfaceId: SurfaceId
-      readonly type: 'restoreSurface'
-    }
-  | {
-      readonly edge: DropEdge
-      readonly sourceWindowId?: WindowId
-      readonly surfaceId?: SurfaceId
-      readonly type: 'splitWindow'
-      readonly windowId: WindowId
-    }
-  | {
-      readonly destination: DropDestination
-      readonly surfaceId: SurfaceId
-      readonly type: 'moveSurface'
-    }
-  | {
-      readonly destination: DropDestination
-      readonly type: 'moveWindow'
-      readonly windowId: WindowId
-    }
-  | {
-      readonly index?: number
-      readonly surfaceId: SurfaceId
-      readonly targetWindowId: WindowId
-      readonly type: 'tabSurface'
-    }
-  | {
-      readonly fromIndex: number
-      readonly toIndex: number
-      readonly type: 'reorderSurface'
-      readonly windowId: WindowId
-    }
-  | {
-      readonly deltaPx: number
-      readonly handleIndex: number
-      readonly splitId: LayoutNodeId
-      readonly type: 'resizeSplit'
-    }
-  | { readonly type: 'maximizeWindow'; readonly windowId: WindowId }
-  | { readonly type: 'restoreWindow'; readonly windowId: WindowId }
-  | { readonly recipeId: RecipeId; readonly type: 'applyRecipe' }
-
 export type OpenSurfaceOptions = {
   readonly policyId?: LayoutPolicyId
+}
+
+export type CloseSurfaceOptions = {
+  readonly force?: boolean
 }
 
 export function applyLayoutOperation(
@@ -119,6 +84,15 @@ export function applyLayoutOperation(
       return restoreWindow(layout, operation.windowId)
     case 'applyRecipe':
       return applyRecipe(layout, operation.recipeId)
+    case 'applyCustomWindowCommand':
+      return applyCustomWindowCommand(
+        layout,
+        operation.command,
+        operation.targetWindowId,
+        operation.nowMs,
+      )
+    case 'applyLayoutCommand':
+      return applyLayoutCommand(layout, operation.command)
   }
 }
 
@@ -138,9 +112,15 @@ export function openSurface(
   return normalizeWorkspaceLayout(placedLayout)
 }
 
-export function closeSurface(layout: WorkspaceLayout, surfaceId: SurfaceId): WorkspaceLayout {
+export function closeSurface(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  options: CloseSurfaceOptions = {},
+): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
-  if (!normalizedLayout.surfacesById[surfaceId]) return normalizedLayout
+  const surface = normalizedLayout.surfacesById[surfaceId]
+  if (!surface) return normalizedLayout
+  if (!options.force && !surfaceCanClose(surface)) return normalizedLayout
 
   const withoutSurface = deleteSurfaceFromLayout(normalizedLayout, surfaceId)
 
@@ -262,15 +242,26 @@ export function tabSurface(
   index?: number,
 ): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
-  const targetWindow = normalizedLayout.windowsById[targetWindowId]
-  const surface = normalizedLayout.surfacesById[surfaceId]
-  if (!targetWindow || !surface) return normalizedLayout
+  const updatedLayout = tabSurfaceInLayout(normalizedLayout, surfaceId, targetWindowId, index)
+
+  return normalizeWorkspaceLayout(updatedLayout)
+}
+
+function tabSurfaceInLayout(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  targetWindowId: WindowId,
+  index?: number,
+): WorkspaceLayout {
+  const targetWindow = layout.windowsById[targetWindowId]
+  const surface = layout.surfacesById[surfaceId]
+  if (!targetWindow || !surface) return layout
   if (!surfaceCanUseDestination(surface, { kind: 'window-center', windowId: targetWindowId })) {
-    return normalizedLayout
+    return layout
   }
 
   const detachedLayout = removeSurfaceFromOtherWindows(
-    removeSurfaceFromRail(normalizedLayout, surfaceId),
+    removeSurfaceFromRail(layout, surfaceId),
     surfaceId,
     targetWindowId,
   )
@@ -281,7 +272,7 @@ export function tabSurface(
     windowId: targetWindowId,
   })
 
-  return normalizeWorkspaceLayout(stickyLayout)
+  return stickyLayout
 }
 
 export function reorderSurface(
@@ -364,6 +355,198 @@ export function applyRecipe(layout: WorkspaceLayout, recipeId: RecipeId): Worksp
   })
 }
 
+export function applyCustomWindowCommand(
+  layout: WorkspaceLayout,
+  command: CustomWindowManagementCommand,
+  targetWindowId?: WindowId,
+  nowMs = 0,
+): WorkspaceLayout {
+  const normalizedLayout = normalizeWorkspaceLayout(layout)
+  if (!command.enabled) return normalizedLayout
+
+  const windowId = targetWindowId ?? normalizedLayout.activeWindowId
+  if (!windowId) return normalizedLayout
+  if (!normalizedLayout.windowsById[windowId]) return normalizedLayout
+
+  const selection = selectCommandFrame(normalizedLayout, command, windowId, nowMs)
+  const layoutWithFrame = applyFrameToWindow(normalizedLayout, windowId, selection.frame)
+
+  return normalizeWorkspaceLayout({
+    ...layoutWithFrame,
+    commandCycleState: selection.cycleState,
+  })
+}
+
+export function applyLayoutCommand(
+  layout: WorkspaceLayout,
+  command: WorkspaceLayoutCommand,
+): WorkspaceLayout {
+  const normalizedLayout = normalizeWorkspaceLayout(layout)
+  if (!command.enabled) return normalizedLayout
+
+  let nextLayout = normalizedLayout
+  for (const slot of command.slots) {
+    nextLayout = applyLayoutCommandSlot(nextLayout, slot)
+  }
+
+  return normalizeWorkspaceLayout(nextLayout)
+}
+
+function applyLayoutCommandSlot(
+  layout: WorkspaceLayout,
+  slot: LayoutCommandSurfaceSlot,
+): WorkspaceLayout {
+  const surface = surfaceForLayoutCommandSlot(slot)
+  if (!surface) return layout
+
+  return openSurface(layout, {
+    ...surface,
+    placement: slot.displayHint ?? placementHintForFrame(layout, slot.frame),
+  })
+}
+
+function surfaceForLayoutCommandSlot(slot: LayoutCommandSurfaceSlot): Surface | null {
+  if (slot.surfaceType === 'file-editor') return fileEditorSurfaceForSlot(slot)
+  if (slot.surfaceType === 'diff') return diffSurfaceForSlot(slot)
+  if (slot.surfaceType === 'search-results') return createSearchResultsSurface()
+  if (slot.surfaceType === 'terminal') return terminalSurfaceForSlot(slot)
+  if (slot.surfaceType === 'file-navigator') return createFileNavigatorSurface()
+  if (slot.surfaceType === 'git-changes') return createGitChangesSurface()
+  if (slot.surfaceType === 'diagnostics') return createDiagnosticsSurface()
+  if (slot.surfaceType === 'placeholder') return placeholderSurfaceForSlot(slot)
+
+  return null
+}
+
+function fileEditorSurfaceForSlot(slot: LayoutCommandSurfaceSlot): Surface | null {
+  const path = slot.resourceKey ?? filePayloadValue(slot)
+  if (!path) return null
+
+  return createFileEditorSurface({ path })
+}
+
+function diffSurfaceForSlot(slot: LayoutCommandSurfaceSlot): Surface | null {
+  if (!slot.resourceKey) return null
+
+  return createDiffSurface({ diffDocumentId: slot.resourceKey })
+}
+
+function terminalSurfaceForSlot(slot: LayoutCommandSurfaceSlot): Surface {
+  return createTerminalSurface({ sessionId: slot.stateKey ?? slot.resourceKey ?? slot.id })
+}
+
+function placeholderSurfaceForSlot(slot: LayoutCommandSurfaceSlot): Surface {
+  return createPlaceholderSurface({
+    contextKey: slot.stateKey ?? slot.resourceKey ?? slot.id,
+    title: slot.resourceKey ?? slot.id,
+  })
+}
+
+function filePayloadValue(slot: LayoutCommandSurfaceSlot) {
+  if (slot.payload?.kind !== 'file') return null
+
+  return slot.payload.value
+}
+
+function selectCommandFrame(
+  layout: WorkspaceLayout,
+  command: CustomWindowManagementCommand,
+  targetWindowId: WindowId,
+  nowMs: number,
+) {
+  const cycleRule = command.cycleRule
+  if (!cycleRule || cycleRule.steps.length === 0) {
+    return { cycleState: undefined, frame: command.targetFrame }
+  }
+
+  const scopeKey = commandCycleScopeKey(layout, cycleRule.scope, targetWindowId)
+  const stepIndex = nextCycleStepIndex(layout, command, scopeKey, nowMs)
+
+  return {
+    cycleState: {
+      commandId: command.id,
+      scopeKey,
+      stepIndex,
+      updatedAtMs: nowMs,
+    },
+    frame: cycleRule.steps[stepIndex] ?? command.targetFrame,
+  }
+}
+
+function nextCycleStepIndex(
+  layout: WorkspaceLayout,
+  command: CustomWindowManagementCommand,
+  scopeKey: string,
+  nowMs: number,
+) {
+  const state = layout.commandCycleState
+  if (!state) return 0
+  if (state.commandId !== command.id) return 0
+  if (state.scopeKey !== scopeKey) return 0
+  if (cycleTimedOut(command, state.updatedAtMs, nowMs)) return 0
+
+  return (state.stepIndex + 1) % (command.cycleRule?.steps.length ?? 1)
+}
+
+function cycleTimedOut(command: CustomWindowManagementCommand, updatedAtMs: number, nowMs: number) {
+  const resetMs = command.cycleRule?.resetMs
+  if (resetMs === undefined) return false
+
+  return nowMs - updatedAtMs > resetMs
+}
+
+function commandCycleScopeKey(
+  layout: WorkspaceLayout,
+  scope: 'surface' | 'window' | 'workspace',
+  targetWindowId: WindowId,
+) {
+  if (scope === 'workspace') return 'workspace'
+  if (scope === 'window') return targetWindowId
+
+  return layout.windowsById[targetWindowId]?.activeSurfaceId ?? targetWindowId
+}
+
+function applyFrameToWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  frame: CustomWindowFrame,
+): WorkspaceLayout {
+  if (frameMaximizes(frame)) return maximizeWindow(layout, windowId)
+
+  const edge = edgeForFrameAnchor(frame.anchor)
+  const layoutWithNormalMode = layoutWithWindowMode(layout, windowId, 'normal')
+  if (!edge) return layoutWithNormalMode
+
+  return moveWindow(layoutWithNormalMode, windowId, { edge, kind: 'root-edge' })
+}
+
+function placementHintForFrame(
+  layout: WorkspaceLayout,
+  frame: CustomWindowFrame,
+): SurfacePlacementHint {
+  const edge = edgeForFrameAnchor(frame.anchor)
+  if (edge) return { edge, kind: 'root-edge' }
+  if (layout.activeWindowId) return { kind: 'active-window' }
+
+  return { edge: 'right', kind: 'root-edge' }
+}
+
+function edgeForFrameAnchor(anchor: CustomWindowFrame['anchor']): DropEdge | null {
+  if (anchor.includes('left')) return 'left'
+  if (anchor.includes('right')) return 'right'
+  if (anchor.includes('top')) return 'top'
+  if (anchor.includes('bottom')) return 'bottom'
+
+  return null
+}
+
+function frameMaximizes(frame: CustomWindowFrame) {
+  if (frame.unit !== 'percent') return false
+  if (frame.anchor !== 'center') return false
+
+  return frame.width >= 95 && frame.height >= 95
+}
+
 function placeSurface(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
@@ -376,19 +559,37 @@ function placeSurface(
   if (!destination) return ensureSurfaceIsVisible(layout, surfaceId)
   if (destination.kind === 'rail') return addSurfaceToRail(layout, surfaceId, 'minimizedSurfaceIds')
   if (destination.kind === 'window-center') {
-    return tabSurface(layout, surfaceId, destination.windowId, destination.tabIndex)
+    return tabSurfaceInLayout(layout, surfaceId, destination.windowId, destination.tabIndex)
   }
 
-  return moveSurface(layout, surfaceId, destination)
+  return placeSurfaceAtEdgeDestination(layout, surfaceId, destination)
 }
 
 function ensureSurfaceIsVisible(layout: WorkspaceLayout, surfaceId: SurfaceId): WorkspaceLayout {
   const activeWindowId = layout.activeWindowId
   if (activeWindowId && layout.windowsById[activeWindowId]) {
-    return tabSurface(layout, surfaceId, activeWindowId)
+    return tabSurfaceInLayout(layout, surfaceId, activeWindowId)
   }
 
   return createRootSurfaceWindow(removeSurfaceFromRail(layout, surfaceId), surfaceId)
+}
+
+function placeSurfaceAtEdgeDestination(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  destination: DropDestination,
+): WorkspaceLayout {
+  const surface = layout.surfacesById[surfaceId]
+  if (!surface) return layout
+  if (!surfaceCanUseDestination(surface, destination)) return layout
+
+  const detachedLayout = removeSurfaceFromWindows(
+    removeSurfaceFromRail(layout, surfaceId),
+    surfaceId,
+  )
+  const nextLayout = insertSurfaceWindow(detachedLayout, surfaceId, destination)
+
+  return recordStickyPlacement(nextLayout, surfaceId, destination)
 }
 
 function destinationForPlacement(
@@ -1001,6 +1202,13 @@ function surfaceCanUseDestination(surface: Surface, destination: DropDestination
   return surface.capabilities.validPlacements.includes(destination.kind)
 }
 
+function surfaceCanClose(surface: Surface) {
+  if (!surface.capabilities.canClose) return false
+  if (surface.closePolicy.type === 'block') return false
+
+  return true
+}
+
 function addSurfaceToRail(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
@@ -1147,16 +1355,27 @@ function setWindowMode(
   const window = normalizedLayout.windowsById[windowId]
   if (!window) return normalizedLayout
 
-  return normalizeWorkspaceLayout({
-    ...normalizedLayout,
+  return normalizeWorkspaceLayout(layoutWithWindowMode(normalizedLayout, windowId, mode))
+}
+
+function layoutWithWindowMode(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  mode: WorkbenchWindow['mode'],
+): WorkspaceLayout {
+  const window = layout.windowsById[windowId]
+  if (!window) return layout
+
+  return {
+    ...layout,
     windowsById: {
-      ...normalizedLayout.windowsById,
+      ...layout.windowsById,
       [windowId]: {
         ...window,
         mode,
       },
     },
-  })
+  }
 }
 
 function resizeAdjacentSizes(sizes: readonly number[], handleIndex: number, deltaPx: number) {

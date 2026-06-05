@@ -2,8 +2,9 @@ import type { ThreadId } from '@workspace/contracts'
 
 import { client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
+import { unwrapEdenResponse } from '@/lib/eden-events'
+import { errorMessage } from '@/lib/error-message'
 import { gitKeys } from '@/lib/query-keys'
-import { unwrapOrchestrationResponse } from '../transport/orchestration-client'
 import type { CheckpointDiffDocumentInput } from '@/features/git/diff-document'
 import type { FileDiff, FileStatus } from '@/features/git/types'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
@@ -139,7 +140,7 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
           toTurnCount: String(input.toTurnCount),
         },
       })
-      const diffs = unwrapOrchestrationResponse<FileDiff[]>(response)
+      const diffs = unwrapEdenResponse<FileDiff[]>(response)
 
       return filterCheckpointDiffsForPath(diffs, checkpointDiffFilePath(input))
     },
@@ -167,7 +168,7 @@ export async function fetchFullThreadCheckpointDiff(
         },
       })
 
-      return unwrapOrchestrationResponse<FileDiff[]>(response)
+      return unwrapEdenResponse<FileDiff[]>(response)
     },
     (diffs) => ({ diffCount: diffs.length }),
   )
@@ -176,17 +177,13 @@ export async function fetchFullThreadCheckpointDiff(
 export function checkpointDiffRetry(failureCount: number, error: unknown) {
   if (failureCount >= 2) return false
 
-  return !checkpointDiffErrorMessage(error).toLowerCase().includes('fromturncount')
+  return !errorMessage(error, 'Checkpoint diff unavailable.')
+    .toLowerCase()
+    .includes('fromturncount')
 }
 
 export function checkpointDiffRetryDelay(attemptIndex: number) {
   return Math.min(250 * 2 ** attemptIndex, 1_000)
-}
-
-export function checkpointDiffErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Checkpoint diff unavailable.'
 }
 
 function checkpointDiffFilePath(input: CheckpointDiffQueryInput) {

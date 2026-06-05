@@ -58,6 +58,8 @@ const DEFAULT_VALID_PLACEMENTS = [
 export function createEmptyWorkspaceLayout(): WorkspaceLayout {
   return {
     activeRecipeId: CLASSIC_RECIPE_ID,
+    hotkeyPresetsById: {},
+    layoutCommandsById: {},
     mruSurfaceIds: [],
     mruWindowIds: [],
     nodesById: {},
@@ -68,6 +70,7 @@ export function createEmptyWorkspaceLayout(): WorkspaceLayout {
     surfaceRegistryVersion: SURFACE_REGISTRY_VERSION,
     surfacesById: {},
     version: WORKSPACE_LAYOUT_VERSION,
+    windowCommandsById: {},
     windowsById: {},
   }
 }
@@ -101,6 +104,8 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
     activeRecipeId: CLASSIC_RECIPE_ID,
     activeSurfaceId: editorPlaceholder.id,
     activeWindowId: editorWindow.id,
+    hotkeyPresetsById: {},
+    layoutCommandsById: {},
     mruSurfaceIds: [editorPlaceholder.id, fileNavigator.id, diagnostics.id],
     mruWindowIds: [editorWindow.id, sideWindow.id, diagnosticsWindow.id],
     nodesById: {
@@ -146,6 +151,7 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
       [fileNavigator.id]: fileNavigator,
     },
     version: WORKSPACE_LAYOUT_VERSION,
+    windowCommandsById: {},
     windowsById: {
       [diagnosticsWindow.id]: diagnosticsWindow,
       [editorWindow.id]: editorWindow,

@@ -5,6 +5,7 @@ import type {
   LayoutSplitNode,
   Surface,
   SurfaceId,
+  SurfaceType,
   WindowId,
   WorkbenchWindow,
   WorkspaceLayout,
@@ -17,6 +18,8 @@ export type LayoutInvariantViolationCode =
   | 'duplicate-visible-surface'
   | 'invalid-split-child-count'
   | 'invalid-split-size-count'
+  | 'invalid-layout-command-slot-surface-type'
+  | 'invalid-hotkey-preset-command'
   | 'minimized-surface-visible'
   | 'missing-node-child'
   | 'missing-root-node'
@@ -52,6 +55,18 @@ type VisibleSurfaceReference = {
   readonly windowId: WindowId
 }
 
+const KNOWN_SURFACE_TYPES = new Set<SurfaceType>([
+  'diagnostics',
+  'diff',
+  'file-editor',
+  'file-navigator',
+  'git-changes',
+  'placeholder',
+  'search-preview',
+  'search-results',
+  'terminal',
+])
+
 export function checkWorkspaceLayoutInvariants(layout: WorkspaceLayout): LayoutInvariantReport {
   const violations: LayoutInvariantViolation[] = []
   const traversal = collectVisibleWindows(layout, violations)
@@ -66,6 +81,7 @@ export function checkWorkspaceLayoutInvariants(layout: WorkspaceLayout): LayoutI
   checkMinimizedSurfaces(layout, visibleSurfaceReferences, violations)
   checkTransientPreviewOwners(layout, violations)
   checkRailReferences(layout, violations)
+  checkCommandReferences(layout, violations)
 
   return {
     ok: violations.length === 0,
@@ -410,7 +426,7 @@ function checkTransientPreviewOwners(
 ) {
   for (const surface of Object.values(layout.surfacesById)) {
     if (surface.lifecycle !== 'transient') continue
-    if (hasValidTransientOwner(surface, layout)) continue
+    if (!hasInvalidTransientOwner(surface, layout)) continue
 
     pushViolation(
       violations,
@@ -421,6 +437,13 @@ function checkTransientPreviewOwners(
       },
     )
   }
+}
+
+function hasInvalidTransientOwner(surface: Surface, layout: WorkspaceLayout) {
+  if (surface.type === 'search-preview') return !hasValidTransientOwner(surface, layout)
+  if (!surface.ownerSurfaceId && !surface.ownerContextKey) return false
+
+  return !hasValidTransientOwner(surface, layout)
 }
 
 function hasValidTransientOwner(surface: Surface, layout: WorkspaceLayout) {
@@ -464,6 +487,64 @@ function checkRailSurfaceIds(
       },
     )
   }
+}
+
+function checkCommandReferences(layout: WorkspaceLayout, violations: LayoutInvariantViolation[]) {
+  checkLayoutCommandSlots(layout, violations)
+  checkHotkeyPresetBindings(layout, violations)
+}
+
+function checkLayoutCommandSlots(layout: WorkspaceLayout, violations: LayoutInvariantViolation[]) {
+  for (const command of Object.values(layout.layoutCommandsById)) {
+    for (const slot of command.slots) {
+      checkLayoutCommandSlot(command.id, slot.surfaceType, violations)
+    }
+  }
+}
+
+function checkLayoutCommandSlot(
+  commandId: string,
+  surfaceType: SurfaceType,
+  violations: LayoutInvariantViolation[],
+) {
+  if (KNOWN_SURFACE_TYPES.has(surfaceType)) return
+
+  pushViolation(
+    violations,
+    'invalid-layout-command-slot-surface-type',
+    `Layout command ${commandId} references unknown surface type ${surfaceType}.`,
+  )
+}
+
+function checkHotkeyPresetBindings(
+  layout: WorkspaceLayout,
+  violations: LayoutInvariantViolation[],
+) {
+  const knownCommandIds = new Set([
+    ...Object.keys(layout.windowCommandsById),
+    ...Object.keys(layout.layoutCommandsById),
+  ])
+
+  for (const preset of Object.values(layout.hotkeyPresetsById)) {
+    for (const commandId of Object.keys(preset.bindings)) {
+      checkHotkeyPresetBinding(preset.id, commandId, knownCommandIds, violations)
+    }
+  }
+}
+
+function checkHotkeyPresetBinding(
+  presetId: string,
+  commandId: string,
+  knownCommandIds: ReadonlySet<string>,
+  violations: LayoutInvariantViolation[],
+) {
+  if (knownCommandIds.has(commandId)) return
+
+  pushViolation(
+    violations,
+    'invalid-hotkey-preset-command',
+    `Hotkey preset ${presetId} references unknown command ${commandId}.`,
+  )
 }
 
 function pushViolation(

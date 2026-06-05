@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { canOpenCheckpointDiff, checkpointDiffErrorMessage } from '../lib/checkpoint-diff-query'
+import { errorMessage } from '@/lib/error-message'
+import { canOpenCheckpointDiff } from '../lib/checkpoint-diff-query'
 import { hasNonZeroChatTurnDiffStat, summarizeChatTurnDiffStats } from '../lib/chat-turn-diff-tree'
 import {
   chatChangedFilesExpansionKey,
@@ -39,7 +40,7 @@ export function AssistantChangedFilesSection({
     try {
       await onOpenDiff?.(summary, path)
     } catch (error) {
-      setDiffError(checkpointDiffErrorMessage(error))
+      setDiffError(errorMessage(error, 'Checkpoint diff unavailable.'))
     }
   }
 
@@ -50,7 +51,7 @@ export function AssistantChangedFilesSection({
     try {
       await onOpenThreadDiff?.(summary)
     } catch (error) {
-      setDiffError(checkpointDiffErrorMessage(error))
+      setDiffError(errorMessage(error, 'Checkpoint diff unavailable.'))
     }
   }
 

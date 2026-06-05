@@ -21,12 +21,18 @@
     "format:check": "turbo format:check",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
+    "dupes": "jscpd apps packages",
+    "dupes:report": "jscpd apps packages --reporters html,console --output ./jscpd-report",
+    "unused:exports": "knip --exports --no-config-hints",
+    "unused:files": "knip --files --no-config-hints",
     "verify:spelling": "bash scripts/verify-no-refrences.sh",
     "hooks:install": "lefthook install",
     "hooks:pre-commit": "lefthook run pre-commit"
   },
   "devDependencies": {
     "@typescript/native-preview": "latest",
+    "jscpd": "^4.2.4",
+    "knip": "^6.16.0",
     "lefthook": "^2.1.9",
     "oxfmt": "latest",
     "oxlint": "latest",

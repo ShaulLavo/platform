@@ -27,6 +27,9 @@ describe('tiling surface layout builders', () => {
       activeRecipeId: CLASSIC_RECIPE_ID,
       activeSurfaceId: undefined,
       activeWindowId: undefined,
+      commandCycleState: undefined,
+      hotkeyPresets: [],
+      layoutCommands: [],
       mruSurfaceIds: [],
       mruWindowIds: [],
       nodes: [],
@@ -55,6 +58,7 @@ describe('tiling surface layout builders', () => {
       surfaceRegistryVersion: 1,
       surfaces: [],
       version: 1,
+      windowCommands: [],
       windows: [],
     })
   })
@@ -68,6 +72,9 @@ describe('tiling surface layout builders', () => {
       activeRecipeId: CLASSIC_RECIPE_ID,
       activeSurfaceId: placeholder,
       activeWindowId: CLASSIC_EDITOR_WINDOW_ID,
+      commandCycleState: undefined,
+      hotkeyPresets: [],
+      layoutCommands: [],
       mruSurfaceIds: [placeholder, fileNavigator, diagnostics],
       mruWindowIds: [
         CLASSIC_EDITOR_WINDOW_ID,
@@ -161,6 +168,7 @@ describe('tiling surface layout builders', () => {
         },
       ],
       version: 1,
+      windowCommands: [],
       windows: [
         {
           activeSurfaceId: diagnostics,
@@ -196,6 +204,9 @@ function layoutSnapshot(layout: WorkspaceLayout) {
     activeRecipeId: layout.activeRecipeId,
     activeSurfaceId: layout.activeSurfaceId,
     activeWindowId: layout.activeWindowId,
+    commandCycleState: layout.commandCycleState,
+    hotkeyPresets: Object.values(layout.hotkeyPresetsById).sort(compareIds),
+    layoutCommands: Object.values(layout.layoutCommandsById).sort(compareIds),
     mruSurfaceIds: layout.mruSurfaceIds,
     mruWindowIds: layout.mruWindowIds,
     nodes: Object.values(layout.nodesById).map(nodeSnapshot).sort(compareIds),
@@ -214,6 +225,7 @@ function layoutSnapshot(layout: WorkspaceLayout) {
     surfaceRegistryVersion: layout.surfaceRegistryVersion,
     surfaces: Object.values(layout.surfacesById).map(surfaceSnapshot).sort(compareIds),
     version: layout.version,
+    windowCommands: Object.values(layout.windowCommandsById).sort(compareIds),
     windows: Object.values(layout.windowsById).map(windowSnapshot).sort(compareIds),
   }
 }

@@ -1,4 +1,3 @@
-import { ForesightManager } from 'js.foresight'
 import { useEffect, useEffectEvent, useMemo, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -10,6 +9,11 @@ import {
   editorTabPrefetchTarget,
   type EditorTabPrefetchCandidate,
 } from '@/components/workspace/editor-tab-prefetch'
+import {
+  createIntentPrefetchRegistry,
+  type IntentPrefetchRegistry,
+  type IntentPrefetchRow,
+} from '@/components/workspace/intent-prefetch-registry'
 import { createAnimationFrameScheduler } from '@/components/workspace/intent-prefetch-scheduler'
 import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 import { fetchFile } from '@/lib/file-server'
@@ -37,8 +41,8 @@ export function useEditorTabIntentPrefetch<TElement extends HTMLElement = HTMLEl
   })
 
   const syncRegistrations = useEffectEvent(
-    (root: ParentNode, registrations: Map<HTMLElement, string>) => {
-      syncForesightRegistrations(root, registrations, prefetchPath)
+    (root: ParentNode, registry: IntentPrefetchRegistry<string>) => {
+      registry.sync(editorTabElements(root), prefetchPath)
     },
   )
 
@@ -49,9 +53,12 @@ export function useEditorTabIntentPrefetch<TElement extends HTMLElement = HTMLEl
     const root = tabListRef.current
     if (!root) return
 
-    const registrations = new Map<HTMLElement, string>()
+    const registry = createIntentPrefetchRegistry({
+      reactivateAfter: EDITOR_TAB_PREFETCH_STALE_MS,
+      resolveRow: resolveEditorTabRow,
+    })
     const schedule = createAnimationFrameScheduler(() => {
-      syncRegistrations(root, registrations)
+      syncRegistrations(root, registry)
     })
     const observer = observeEditorTabs(root, schedule.request)
 
@@ -60,72 +67,22 @@ export function useEditorTabIntentPrefetch<TElement extends HTMLElement = HTMLEl
     return () => {
       observer?.disconnect()
       schedule.cancel()
-      unregisterAll(registrations)
+      registry.clear()
     }
   }, [enabled, registrationKey, tabListRef])
 }
 
-function syncForesightRegistrations(
-  root: ParentNode,
-  registrations: Map<HTMLElement, string>,
-  onIntent: (path: string) => void,
-) {
-  const currentElements = new Set(editorTabElements(root))
-  unregisterRemovedElements(registrations, currentElements)
-
-  for (const element of currentElements) {
-    registerElementPath(element, registrations, onIntent)
-  }
-}
-
-function registerElementPath(
-  element: HTMLElement,
-  registrations: Map<HTMLElement, string>,
-  onIntent: (path: string) => void,
-) {
+function resolveEditorTabRow(element: HTMLElement): IntentPrefetchRow<string> | null {
   const target = editorTabPrefetchTarget(element)
-  if (!target) {
-    unregisterElement(element, registrations)
-    return
-  }
+  if (!target) return null
 
   const key = editorTabPrefetchRegistrationKey(target)
-  const currentKey = registrations.get(element)
-  if (currentKey === key) return
-  if (currentKey) unregisterElement(element, registrations)
-
-  ForesightManager.instance.register({
-    callback: () => onIntent(target.path),
-    element,
+  return {
+    intent: target.path,
+    key,
     meta: { path: target.path, tabId: target.id },
     name: `editor-tab:${key}`,
-    reactivateAfter: EDITOR_TAB_PREFETCH_STALE_MS,
-  })
-  registrations.set(element, key)
-}
-
-function unregisterRemovedElements(
-  registrations: Map<HTMLElement, string>,
-  currentElements: ReadonlySet<HTMLElement>,
-) {
-  for (const element of registrations.keys()) {
-    if (currentElements.has(element)) continue
-
-    unregisterElement(element, registrations)
   }
-}
-
-function unregisterAll(registrations: Map<HTMLElement, string>) {
-  for (const element of registrations.keys()) {
-    unregisterElement(element, registrations)
-  }
-}
-
-function unregisterElement(element: HTMLElement, registrations: Map<HTMLElement, string>) {
-  registrations.delete(element)
-  if (!ForesightManager.isInitiated) return
-
-  ForesightManager.instance.unregister(element)
 }
 
 function observeEditorTabs(root: HTMLElement, onChange: () => void): MutationObserver | null {

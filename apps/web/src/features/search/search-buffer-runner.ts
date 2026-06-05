@@ -9,6 +9,7 @@ import {
   type SearchBufferSnapshot,
   sameWorkspaceSearchQuery,
 } from '@/features/search/search-buffer-state'
+import { errorMessage } from '@/lib/error-message'
 import {
   CompositeSearchProvider,
   DiskSearchProvider,
@@ -59,7 +60,7 @@ export async function runSearch(
     if (isAbortError(error)) return
 
     batcher.fail()
-    store.getState().failSearch(runId, errorMessage(error))
+    store.getState().failSearch(runId, errorMessage(error, 'Search failed.'))
   } finally {
     batcher.dispose()
   }
@@ -315,13 +316,6 @@ class ClientOnlyWorkspaceSearchProvider implements SearchProvider {
       type: 'done',
     }
   }
-}
-
-function errorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-
-  return 'Search failed.'
 }
 
 function isAbortError(error: unknown) {

@@ -8,6 +8,7 @@ import {
 } from '@workspace/contracts'
 import { useCallback, useMemo, useState } from 'react'
 
+import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import {
   createDraftThreadSubmission,
@@ -147,7 +148,7 @@ async function dispatchDraftSubmission(
       threadId: submission.command.threadId,
       turnCommandId: submission.command.commandId,
     })
-    return { error: chatDraftErrorMessage(error), ok: false as const }
+    return { error: errorMessage(error, 'Chat command failed.'), ok: false as const }
   }
 }
 
@@ -157,10 +158,4 @@ function addOptimisticMessage(commandId: CommandId, message: OrchestrationMessag
 
 function removeOptimisticMessage(message: OrchestrationMessage) {
   useChatOptimisticStore.getState().removeOptimisticMessage(message.threadId, message.id)
-}
-
-function chatDraftErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return 'Chat command failed.'
 }
