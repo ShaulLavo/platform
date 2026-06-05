@@ -27,8 +27,10 @@ type LanguageServerSocketOptions = {
   serverId?: string | null
 }
 
-export function connectTerminalSocket(rootPath: string): EdenServerSocket {
-  return adaptEdenSocket(client.terminal.subscribe({ query: { root: rootPath } }))
+export function connectTerminalSocket(rootPath: string, sessionId: string): EdenServerSocket {
+  return adaptEdenSocket(
+    client.terminal.subscribe({ query: { root: rootPath, session: sessionId } }),
+  )
 }
 
 export function connectLanguageServerSocket({

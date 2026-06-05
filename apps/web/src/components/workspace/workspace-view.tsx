@@ -2,20 +2,16 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { FileViewer } from '@/components/workspace/file-viewer'
 import { WorkspaceTerminalStateProvider } from '@/components/workspace/workspace-terminal-state-provider'
 import { WorkspaceActivityBar } from '@/components/workspace/workspace-activity-bar'
+import { WorkspaceFloatingTerminal } from '@/components/workspace/workspace-floating-terminal'
 import { WorkspaceSearchRuntime } from '@/components/workspace/workspace-search-runtime'
 import { WorkspaceSidebarResizablePanel } from '@/components/workspace/workspace-sidebar-resizable-panel'
 import { WorkspaceStatusBar } from '@/components/workspace/workspace-status-bar'
-import { WorkspaceTerminalResizablePanel } from '@/components/workspace/workspace-terminal-resizable-panel'
 import { workspaceResizableStorageKey } from '@/components/workspace/workspace-view-utils'
 import type { PickedFsEntry, TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
 import type { EditorKeymapLayer } from '@editor/core'
-import {
-  PersistedResizablePanelGroup,
-  ResizableHandle,
-  ResizablePanel,
-} from '@workspace/ui/components/resizable'
+import { PersistedResizablePanelGroup, ResizablePanel } from '@workspace/ui/components/resizable'
 import { memo } from 'react'
 
 type WorkspaceViewProps = {
@@ -63,27 +59,18 @@ export const WorkspaceView = memo(({
                 className='h-full min-h-0 min-w-0 overflow-hidden'
                 minSize='480px'
               >
-                <PersistedResizablePanelGroup
-                  className='min-h-0 min-w-0'
-                  orientation='vertical'
-                  storageKey={workspaceResizableStorageKey(rootPath, 'editor')}
+                <div
+                  className='relative h-full min-h-0 min-w-0 overflow-hidden'
+                  data-terminal-overlay-bounds
                 >
-                  <ResizablePanel
-                    id='workspace-editor-surface'
-                    className='min-h-0 min-w-0 overflow-hidden'
-                    defaultSize='70%'
-                    minSize='240px'
-                  >
-                    <FileViewer
-                      editorKeymapLayers={editorKeymapLayers}
-                      rootPath={rootPath}
-                      onRequestCloseTab={onRequestCloseTab}
-                      onRequestCloseTabs={onRequestCloseTabs}
-                    />
-                  </ResizablePanel>
-                  <ResizableHandle aria-label='Resize terminal' withHandle />
-                  <WorkspaceTerminalResizablePanel rootPath={rootPath} />
-                </PersistedResizablePanelGroup>
+                  <FileViewer
+                    editorKeymapLayers={editorKeymapLayers}
+                    rootPath={rootPath}
+                    onRequestCloseTab={onRequestCloseTab}
+                    onRequestCloseTabs={onRequestCloseTabs}
+                  />
+                  <WorkspaceFloatingTerminal rootPath={rootPath} />
+                </div>
               </ResizablePanel>
             </PersistedResizablePanelGroup>
           </div>

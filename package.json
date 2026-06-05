@@ -11,6 +11,8 @@
   "scripts": {
     "build": "bun scripts/prod.ts build",
     "dev": "turbo dev",
+    "dev:web": "turbo dev --filter=!desktop",
+    "desktop:dev": "bun run --cwd apps/desktop dev:standalone",
     "lint": "turbo lint",
     "prod": "bun scripts/prod.ts",
     "start": "bun scripts/prod.ts start",

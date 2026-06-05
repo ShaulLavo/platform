@@ -123,6 +123,45 @@ describe('terminal service', () => {
     service.dispose()
   })
 
+  it('keeps terminal tab sessions isolated within the same workspace', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'project'))
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const first = fakeSocket('project', 'terminal-1')
+    const second = fakeSocket('project', 'terminal-2')
+
+    routes.open(first)
+    routes.open(second)
+    routes.message(first, { type: 'input', data: 'echo first\r' })
+    routes.message(second, { type: 'input', data: 'echo second\r' })
+
+    expect(pty.ptys).toHaveLength(2)
+    expect(pty.ptys[0]?.writes).toEqual(['echo first\r'])
+    expect(pty.ptys[1]?.writes).toEqual(['echo second\r'])
+
+    service.dispose()
+  })
+
+  it('kills only the disposed terminal tab session', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const first = fakeSocket('', 'terminal-1')
+    const second = fakeSocket('', 'terminal-2')
+
+    routes.open(first)
+    routes.open(second)
+    routes.message(first, { type: 'dispose' })
+
+    expect(pty.ptys[0]?.killed).toBe(true)
+    expect(pty.ptys[1]?.killed).toBe(false)
+
+    service.dispose()
+  })
+
   it('kills the PTY when a detached session exceeds its idle TTL', async () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory()
@@ -187,14 +226,14 @@ function auth() {
   return createAuthConfig({ allowedOrigins: [TRUSTED_ORIGIN] })
 }
 
-function fakeSocket(root: string) {
+function fakeSocket(root: string, session?: string) {
   const messages: TerminalServerMessage[] = []
   const raw = {}
   return {
     closed: false,
     data: {
       headers: { origin: TRUSTED_ORIGIN },
-      query: { root },
+      query: { root, session },
     },
     messages,
     raw,

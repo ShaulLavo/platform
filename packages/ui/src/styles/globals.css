@@ -61,6 +61,9 @@
 
 :root {
   color-scheme: light;
+  /* Height of the desktop window's draggable title strip (WindowTitleBar).
+     Matches T3 Code's 40px macOS titlebar. */
+  --titlebar-height: 40px;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -148,6 +151,33 @@
     transparent
   );
   --search-result-match-active-decoration: oklch(0.58 0.16 74);
+
+  /* Editor surface */
+  --editor-inactive-selection: oklch(0.72 0.13 240 / 0.18);
+
+  /* Terminal surface — light (matches --background) */
+  --terminal-background: #ffffff;
+  --terminal-foreground: #3c3c3c;
+  --terminal-cursor: #1a1a1a;
+  --terminal-cursor-accent: #ffffff;
+  --terminal-selection: #cdd6e3;
+  --terminal-selection-foreground: #1a1a1a;
+  --terminal-ansi-black: #3c3c3c;
+  --terminal-ansi-red: #d1453b;
+  --terminal-ansi-green: #3f9a52;
+  --terminal-ansi-yellow: #b07d00;
+  --terminal-ansi-blue: #3b75d1;
+  --terminal-ansi-magenta: #9a4fb0;
+  --terminal-ansi-cyan: #2a8499;
+  --terminal-ansi-white: #b6b6b3;
+  --terminal-ansi-bright-black: #8a8a86;
+  --terminal-ansi-bright-red: #e0594f;
+  --terminal-ansi-bright-green: #54ab68;
+  --terminal-ansi-bright-yellow: #c79520;
+  --terminal-ansi-bright-blue: #5a8fe0;
+  --terminal-ansi-bright-magenta: #b06ac4;
+  --terminal-ansi-bright-cyan: #3f9fb5;
+  --terminal-ansi-bright-white: #2a2a2a;
 }
 
 .dark {
@@ -238,6 +268,33 @@
     transparent
   );
   --search-result-match-active-decoration: oklch(0.93 0.18 95);
+
+  /* Editor surface */
+  --editor-inactive-selection: oklch(0.72 0.13 240 / 0.16);
+
+  /* Terminal surface — dark (matches --background) */
+  --terminal-background: #0a0a0a;
+  --terminal-foreground: #d7dde5;
+  --terminal-cursor: #f4f7fb;
+  --terminal-cursor-accent: #0a0a0a;
+  --terminal-selection: #33455a;
+  --terminal-selection-foreground: #ffffff;
+  --terminal-ansi-black: #15181c;
+  --terminal-ansi-red: #ff5f57;
+  --terminal-ansi-green: #5fd38d;
+  --terminal-ansi-yellow: #f3c969;
+  --terminal-ansi-blue: #6aa8ff;
+  --terminal-ansi-magenta: #d28bff;
+  --terminal-ansi-cyan: #5fd7e5;
+  --terminal-ansi-white: #d7dde5;
+  --terminal-ansi-bright-black: #6d7682;
+  --terminal-ansi-bright-red: #ff8f87;
+  --terminal-ansi-bright-green: #89e8af;
+  --terminal-ansi-bright-yellow: #f7d98c;
+  --terminal-ansi-bright-blue: #93c1ff;
+  --terminal-ansi-bright-magenta: #e1b0ff;
+  --terminal-ansi-bright-cyan: #8ce8f0;
+  --terminal-ansi-bright-white: #ffffff;
 }
 
 @media (forced-colors: active) {
@@ -342,7 +399,7 @@
 }
 
 [data-editor-focus-active='false'] .app-editor-host .editor-virtualized-selection-range {
-  background-color: rgba(56, 189, 248, 0.16);
+  background-color: var(--editor-inactive-selection);
 }
 
 .app-fold-gutter-icon {

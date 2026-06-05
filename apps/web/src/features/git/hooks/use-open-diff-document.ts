@@ -23,8 +23,13 @@ export function useOpenDiffDocument() {
     const documentId = snapshotDiffDocumentId(diff)
     const query = blobDiffQuery(diff)
     const queryKey = gitKeys.blobDiff(query)
-    queryClient.setQueryData(queryKey, [diff])
-    await queryClient.invalidateQueries({ queryKey })
+    // Blob diffs are content-addressed by object id, so the cached entry never
+    // goes stale. Seed it once and reuse it; re-seeding (or invalidating) would
+    // hand the viewer a fresh reference and force a refetch, blinking the diff
+    // and reloading tabs that are already open instead of just reselecting them.
+    if (queryClient.getQueryData(queryKey) === undefined) {
+      queryClient.setQueryData(queryKey, [diff])
+    }
     selectFile(documentId)
   }
 

@@ -8,6 +8,7 @@ export const TERMINAL_MAX_ROWS = 200
 export type TerminalClientMessage =
   | { type: 'input'; data: string }
   | { type: 'resize'; cols: number; rows: number }
+  | { type: 'dispose' }
 
 export type TerminalServerMessage =
   | { type: 'ready'; shell: string; cwd: string }
@@ -20,6 +21,7 @@ export function parseTerminalClientMessage(value: unknown): TerminalClientMessag
   if (!isRecord(parsed)) return null
   if (parsed.type === 'input') return terminalInputMessage(parsed)
   if (parsed.type === 'resize') return terminalResizeMessage(parsed)
+  if (parsed.type === 'dispose') return { type: 'dispose' }
 
   return null
 }

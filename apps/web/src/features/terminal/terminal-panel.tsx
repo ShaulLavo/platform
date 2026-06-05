@@ -1,85 +1,152 @@
 import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
-import { useEffect, useRef, type ComponentPropsWithoutRef } from 'react'
+import { useEffect, useEffectEvent, useRef, type ComponentPropsWithoutRef } from 'react'
 
+import { useTheme } from '@/components/theme-context'
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { sendTerminalClientMessage } from './terminal-socket'
+import { readTerminalTheme, syncTerminalTheme } from './terminal-theme'
 
 type TerminalDimensions = {
   cols: number
   rows: number
 }
 
-const TERMINAL_THEME = {
-  background: '#101214',
-  foreground: '#d7dde5',
-  cursor: '#f4f7fb',
-  cursorAccent: '#101214',
-  selectionBackground: '#3d5368',
-  selectionForeground: '#ffffff',
-  black: '#15181c',
-  red: '#ff5f57',
-  green: '#5fd38d',
-  yellow: '#f3c969',
-  blue: '#6aa8ff',
-  magenta: '#d28bff',
-  cyan: '#5fd7e5',
-  white: '#d7dde5',
-  brightBlack: '#6d7682',
-  brightRed: '#ff8f87',
-  brightGreen: '#89e8af',
-  brightYellow: '#f7d98c',
-  brightBlue: '#93c1ff',
-  brightMagenta: '#e1b0ff',
-  brightCyan: '#8ce8f0',
-  brightWhite: '#ffffff',
-}
-
 let ghosttyInitPromise: Promise<void> | null = null
 
-export function TerminalPanel({ className, rootPath, ...sectionProps }: TerminalPanelProps) {
+export function TerminalPanel({
+  active = true,
+  className,
+  rootPath,
+  sessionId,
+  ...sectionProps
+}: TerminalPanelProps) {
+  const activeRef = useRef(active)
+  const activationFrameRef = useRef<number | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const themeSyncFrameRef = useRef<number | null>(null)
+  const terminalRef = useRef<Terminal | null>(null)
+  const { resolvedTheme } = useTheme()
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  activeRef.current = active
+  const syncTerminalThemeAfterFrame = useEffectEvent(() => {
+    if (themeSyncFrameRef.current !== null) {
+      window.cancelAnimationFrame(themeSyncFrameRef.current)
+    }
+
+    themeSyncFrameRef.current = window.requestAnimationFrame(() => {
+      themeSyncFrameRef.current = null
+      const terminal = terminalRef.current
+      if (!terminal) return
+
+      syncTerminalTheme(terminal)
+    })
+  })
+  const activateTerminalAfterFrame = useEffectEvent(() => {
+    if (activationFrameRef.current !== null) {
+      window.cancelAnimationFrame(activationFrameRef.current)
+    }
+
+    activationFrameRef.current = window.requestAnimationFrame(() => {
+      activationFrameRef.current = null
+      fitAddonRef.current?.fit()
+      terminalRef.current?.focus()
+    })
+  })
 
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
 
-    return mountTerminal({
+    const unmountTerminal = mountTerminal({
       host,
       rootPath,
+      sessionId,
+      onReady: (terminal, fitAddon) => {
+        fitAddonRef.current = fitAddon
+        terminalRef.current = terminal
+        syncTerminalThemeAfterFrame()
+        if (activeRef.current) activateTerminalAfterFrame()
+      },
     })
-  }, [rootPath])
+
+    return () => {
+      if (themeSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(themeSyncFrameRef.current)
+        themeSyncFrameRef.current = null
+      }
+      if (activationFrameRef.current !== null) {
+        window.cancelAnimationFrame(activationFrameRef.current)
+        activationFrameRef.current = null
+      }
+
+      terminalRef.current = null
+      fitAddonRef.current = null
+      unmountTerminal()
+    }
+  }, [rootPath, sessionId])
+
+  useEffect(() => {
+    syncTerminalThemeAfterFrame()
+
+    return () => {
+      if (themeSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(themeSyncFrameRef.current)
+        themeSyncFrameRef.current = null
+      }
+    }
+  }, [resolvedTheme])
+
+  useEffect(() => {
+    if (!active) return
+
+    activateTerminalAfterFrame()
+
+    return () => {
+      if (activationFrameRef.current !== null) {
+        window.cancelAnimationFrame(activationFrameRef.current)
+        activationFrameRef.current = null
+      }
+    }
+  }, [active])
 
   return (
     <section
       aria-label='Terminal'
       {...sectionProps}
-      className={cn(
-        'grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-[#101214] text-[#d7dde5]',
-        className,
-      )}
+      className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
+      style={{ background: 'var(--terminal-background)' }}
       onFocusCapture={() => setFocusArea('terminal')}
       onPointerDownCapture={() => setFocusArea('terminal')}
     >
-      <div
-        className='min-h-0 min-w-0 overflow-hidden bg-[#101214] px-2 py-1 font-mono'
-        ref={hostRef}
-      />
+      <div className='min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono' ref={hostRef} />
     </section>
   )
 }
 
 type TerminalPanelProps = ComponentPropsWithoutRef<'section'> & {
+  active?: boolean
   rootPath: string
+  sessionId: string
 }
 
-function mountTerminal({ host, rootPath }: { host: HTMLDivElement; rootPath: string }) {
+function mountTerminal({
+  host,
+  rootPath,
+  sessionId,
+  onReady,
+}: {
+  host: HTMLDivElement
+  rootPath: string
+  sessionId: string
+  onReady: (terminal: Terminal, fitAddon: FitAddon) => void
+}) {
   let cancelled = false
   let dataDisposable: IDisposable | null = null
   let fitAddon: FitAddon | null = null
@@ -99,7 +166,7 @@ function mountTerminal({ host, rootPath }: { host: HTMLDivElement; rootPath: str
       fitAddon.fit()
       terminalDimensions = currentTerminalDimensions(terminal)
       fitAddon.observeResize()
-      terminal.focus()
+      onReady(terminal, fitAddon)
       dataDisposable = terminal.onData((data) =>
         sendTerminalClientMessage(socket, { type: 'input', data }),
       )
@@ -111,6 +178,7 @@ function mountTerminal({ host, rootPath }: { host: HTMLDivElement; rootPath: str
         getTerminalDimensions: () => terminalDimensions,
         isCancelled: () => cancelled,
         rootPath,
+        sessionId,
         terminal,
       })
     })
@@ -135,14 +203,16 @@ function openTerminalSocket({
   getTerminalDimensions,
   isCancelled,
   rootPath,
+  sessionId,
   terminal,
 }: {
   getTerminalDimensions: () => TerminalDimensions | null
   isCancelled: () => boolean
   rootPath: string
+  sessionId: string
   terminal: Terminal
 }) {
-  const socket = connectTerminalSocket(rootPath)
+  const socket = connectTerminalSocket(rootPath, sessionId)
 
   socket.addEventListener('open', () => {
     if (isCancelled()) return
@@ -196,7 +266,7 @@ function createTerminal() {
     fontSize: 12,
     scrollback: 10_000,
     smoothScrollDuration: 80,
-    theme: TERMINAL_THEME,
+    theme: readTerminalTheme(),
   })
 }
 

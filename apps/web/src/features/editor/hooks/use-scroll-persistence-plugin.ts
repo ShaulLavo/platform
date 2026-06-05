@@ -2,6 +2,7 @@ import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@ed
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
 import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
+import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
 
 type UseScrollPersistencePluginOptions = {
   document: Pick<EditorRenderDocument, 'path'>
@@ -32,8 +33,10 @@ export function useScrollPersistencePlugin({
   return useMemo<EditorPlugin>(
     () => ({
       name: 'platform-scroll-persistence',
-      activate: (context) =>
-        context.registerViewContribution({
+      activate: (context) => {
+        if (editorPerformanceFeatureDisabled('scroll-persistence')) return undefined
+
+        return context.registerViewContribution({
           createContribution: ({ scrollElement }) => {
             const persister = createScrollPositionPersister(stateRef, scrollElement)
             scrollElement.addEventListener('scroll', persister.handleScroll, {
@@ -50,7 +53,8 @@ export function useScrollPersistencePlugin({
               dispose: () => scrollElement.removeEventListener('scroll', persister.handleScroll),
             }
           },
-        }),
+        })
+      },
     }),
     [],
   )

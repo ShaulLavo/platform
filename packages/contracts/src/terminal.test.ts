@@ -46,6 +46,11 @@ describe('terminal protocol', () => {
     })
   })
 
+  it('parses client dispose messages', () => {
+    expect(parseTerminalClientMessage({ type: 'dispose' })).toEqual({ type: 'dispose' })
+    expect(parseTerminalClientMessage('{"type":"dispose"}')).toEqual({ type: 'dispose' })
+  })
+
   it('rejects malformed client messages', () => {
     expect(parseTerminalClientMessage('{')).toBeNull()
     expect(parseTerminalClientMessage({ type: 'input', data: 1 })).toBeNull()

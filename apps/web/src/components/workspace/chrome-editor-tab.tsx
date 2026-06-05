@@ -1,5 +1,7 @@
 import type { RefObject } from 'react'
 
+import { ChromeTabSelectButton } from '@/components/workspace/chrome-tab-select-button'
+import { chromeTabRootClassName } from '@/components/workspace/chrome-tab-style'
 import { ChromeTabTitle } from '@/components/workspace/chrome-tab-title'
 import { ChromeTabTrailingSlot } from '@/components/workspace/chrome-tab-trailing-slot'
 import { EditorTabContextMenuContent } from '@/components/workspace/editor-tab-context-menu-content'
@@ -57,13 +59,15 @@ export function ChromeEditorTab({
   return (
     <ContextMenu>
       <ContextMenuTrigger
-        className={cn(
-          'group group/chrome-tab relative flex cursor-grab items-center overflow-hidden border-x border-transparent bg-background/55 text-xs text-muted-foreground/70 hover:z-20 hover:border-border/50 hover:bg-muted/45 hover:text-foreground/85 active:cursor-grabbing',
-          'z-[var(--chrome-tab-z)]',
-          tabDragClassName(insertionEdge, dragged),
-          tab.active &&
-            'z-30 border-border bg-muted/85 text-foreground shadow-[inset_0_1px_0_var(--border)]',
-        )}
+        className={chromeTabRootClassName({
+          active: tab.active,
+          className: cn(
+            'cursor-grab hover:z-20 active:cursor-grabbing',
+            'z-[var(--chrome-tab-z)]',
+            tabDragClassName(insertionEdge, dragged),
+            tab.active && 'z-30',
+          ),
+        })}
         data-chrome-tab-root=''
         data-editor-tab-id={tab.id}
         data-editor-tab-path={tab.path}
@@ -73,9 +77,8 @@ export function ChromeEditorTab({
         ref={tabRef}
         style={tabStyle}
       >
-        <button
+        <ChromeTabSelectButton
           aria-selected={tab.active}
-          className='focus-visible:ring-ring/50 flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 pr-1.5 pl-3 text-left transition-colors outline-none focus-visible:ring-1'
           onClick={() => onSelect(tab)}
           onDragEnd={onDragEnd}
           onDragStart={(event) => {
@@ -85,7 +88,6 @@ export function ChromeEditorTab({
           draggable
           role='tab'
           title={tab.title}
-          type='button'
         >
           <span
             aria-hidden='true'
@@ -93,7 +95,7 @@ export function ChromeEditorTab({
             style={fileIconStyle(tab.icon)}
           />
           <ChromeTabTitle tab={tab} />
-        </button>
+        </ChromeTabSelectButton>
         <ChromeTabTrailingSlot tab={tab} width={trailingSlotWidth} onClose={onClose} />
       </ContextMenuTrigger>
       <EditorTabContextMenuContent

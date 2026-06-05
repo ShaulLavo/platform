@@ -57,6 +57,8 @@ type TerminalConnection = {
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
+const DEFAULT_TERMINAL_SESSION_ID = 'default'
+const MAX_TERMINAL_SESSION_ID_LENGTH = 96
 const TERMINAL_REPLAY_BUFFER_BYTES = 256 * 1024
 const TERMINAL_DETACHED_TTL_MS = 10 * 60 * 1000
 
@@ -88,7 +90,7 @@ export class TerminalService {
   }
 
   dispose() {
-    for (const session of [...this.persistentSessions.values()]) {
+    for (const session of this.persistentSessions.values()) {
       session.dispose()
     }
     this.persistentSessions.clear()
@@ -126,7 +128,9 @@ export class TerminalService {
       close: socket.close,
       send: socket.send,
     }
-    const existing = this.persistentSessions.get(root.relativePath)
+    const sessionId = socket.sessionId
+    const sessionKey = terminalSessionKey(root.relativePath, sessionId)
+    const existing = this.persistentSessions.get(sessionKey)
     if (existing) {
       socketSessions.set(socket.key, existing)
       existing.attach(connection)
@@ -137,11 +141,12 @@ export class TerminalService {
       cwd: root.absolutePath,
       detachTtlMs: this.detachTtlMs,
       env: this.env,
-      onDispose: () => this.persistentSessions.delete(root.relativePath),
+      onDispose: () => this.persistentSessions.delete(sessionKey),
       ptyFactory: this.ptyFactory,
       rootPath: root.relativePath,
+      sessionId,
     })
-    this.persistentSessions.set(root.relativePath, session)
+    this.persistentSessions.set(sessionKey, session)
     socketSessions.set(socket.key, session)
     if (session.start(connection)) return
 
@@ -187,6 +192,7 @@ export class TerminalSession {
   private readonly onDispose: (session: TerminalSession) => void
   private readonly ptyFactory: TerminalPtyFactory
   private readonly rootPath: string
+  private readonly sessionId: string
   private readonly outputBufferChunks: string[] = []
   private connection: TerminalConnection | null = null
   private dataDisposable: TerminalPtyDisposable | null = null
@@ -213,6 +219,7 @@ export class TerminalSession {
     onDispose,
     ptyFactory,
     rootPath,
+    sessionId,
   }: {
     cwd: string
     detachTtlMs: number
@@ -220,6 +227,7 @@ export class TerminalSession {
     onDispose: (session: TerminalSession) => void
     ptyFactory: TerminalPtyFactory
     rootPath: string
+    sessionId: string
   }) {
     this.cwd = cwd
     this.detachTtlMs = detachTtlMs
@@ -227,6 +235,7 @@ export class TerminalSession {
     this.onDispose = onDispose
     this.ptyFactory = ptyFactory
     this.rootPath = rootPath
+    this.sessionId = sessionId
   }
 
   start(connection: TerminalConnection) {
@@ -268,6 +277,10 @@ export class TerminalSession {
     const parsed = parseTerminalClientMessage(message)
     if (!parsed) return
     this.recordClientMessage(parsed)
+    if (parsed.type === 'dispose') {
+      this.dispose({ kill: true })
+      return
+    }
     if (!this.pty) return
 
     handleTerminalClientMessage(this.pty, parsed)
@@ -387,6 +400,7 @@ export class TerminalSession {
   }
 
   private recordClientMessage(message: TerminalClientMessage) {
+    if (message.type === 'dispose') return
     if (message.type === 'input') {
       this.inputBytes += Buffer.byteLength(message.data, 'utf8')
       this.inputMessageCount += 1
@@ -428,6 +442,7 @@ export class TerminalSession {
       resizeCount: this.resizeCount,
       rootPath: this.rootPath,
       serverMessageCount: this.serverMessageCount,
+      sessionId: this.sessionId,
       shell: this.shell,
     }
 
@@ -447,6 +462,7 @@ type TerminalWebSocket = {
   data: unknown
   key: object
   root: string
+  sessionId: string
   send(message: string): unknown
 }
 
@@ -461,6 +477,7 @@ function terminalWebSocketObject(value: unknown): TerminalWebSocket | null {
     data: value.data,
     key: websocketKey(value),
     root: rootFromWebSocketData(value.data),
+    sessionId: sessionIdFromWebSocketData(value.data),
     send: (message) => send.call(value, message),
   }
 }
@@ -470,17 +487,38 @@ function websocketKey(value: Record<string, unknown>): object {
 }
 
 function rootFromWebSocketData(data: unknown) {
-  if (!isRecord(data)) return ''
-  if (isRecord(data.query) && typeof data.query.root === 'string') {
-    return data.query.root
+  return queryValueFromWebSocketData(data, 'root') ?? ''
+}
+
+function sessionIdFromWebSocketData(data: unknown) {
+  return terminalSessionId(queryValueFromWebSocketData(data, 'session'))
+}
+
+function queryValueFromWebSocketData(data: unknown, key: string) {
+  if (!isRecord(data)) return null
+  if (isRecord(data.query) && typeof data.query[key] === 'string') {
+    return data.query[key]
   }
-  if (typeof data.url !== 'string') return ''
+  if (typeof data.url !== 'string') return null
 
   try {
-    return new URL(data.url).searchParams.get('root') ?? ''
+    return new URL(data.url).searchParams.get(key)
   } catch {
-    return ''
+    return null
   }
+}
+
+function terminalSessionId(value: unknown) {
+  if (typeof value !== 'string') return DEFAULT_TERMINAL_SESSION_ID
+
+  const trimmed = value.trim()
+  if (!trimmed) return DEFAULT_TERMINAL_SESSION_ID
+
+  return trimmed.slice(0, MAX_TERMINAL_SESSION_ID_LENGTH)
+}
+
+function terminalSessionKey(rootPath: string, sessionId: string) {
+  return JSON.stringify([rootPath, sessionId])
 }
 
 function handleTerminalClientMessage(ptyProcess: TerminalPty, message: TerminalClientMessage) {
@@ -488,6 +526,7 @@ function handleTerminalClientMessage(ptyProcess: TerminalPty, message: TerminalC
     ptyProcess.write(message.data)
     return
   }
+  if (message.type !== 'resize') return
 
   ptyProcess.resize(message.cols, message.rows)
 }
