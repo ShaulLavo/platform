@@ -118,7 +118,7 @@
 
 .workbench-dockview--tabs-chrome .dockview-theme-platform .dv-tabs-and-actions-container {
   align-items: flex-end;
-  background: var(--workbench-dockview-header-background);
+  background: var(--background);
 }
 
 .workbench-dockview--tabs-chrome .dockview-theme-platform .dv-tabs-container {
@@ -152,6 +152,12 @@
 .workbench-dockview--tabs-chrome .dockview-theme-platform .dv-tab.dv-inactive-tab:hover {
   background: transparent;
   color: inherit;
+}
+
+.workbench-dockview--tabs-chrome .dockview-theme-platform .dv-tab:focus-within::after,
+.workbench-dockview--tabs-chrome .dockview-theme-platform .dv-tab:focus::after {
+  content: none;
+  outline: none !important;
 }
 
 .workbench-dockview--tabs-chrome .dockview-theme-platform .workbench-dockview-tab {

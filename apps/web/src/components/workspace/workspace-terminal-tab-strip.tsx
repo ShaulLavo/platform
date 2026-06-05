@@ -16,7 +16,7 @@ export function WorkspaceTerminalTabStrip({ rootPath }: { rootPath: string }) {
   return (
     <div
       className='border-border/70 flex h-7 shrink-0 items-stretch border-b pr-8 pl-1'
-      style={{ background: 'var(--terminal-background)' }}
+      style={{ background: 'var(--background)' }}
     >
       <div
         aria-label='Terminal tabs'
