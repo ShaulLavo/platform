@@ -1,6 +1,6 @@
 import { AppWorkspace } from '@/components/app-workspace'
-import { WindowTitleBar } from '@/components/workspace/window-title-bar'
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { WindowTitleBar } from '@/components/workspace/shell/components/window-title-bar'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { defaultPlatformKeyBindings, editorKeymapLayersFromPlatform } from '@/keymap'

@@ -1,12 +1,15 @@
 import { use, type DragEvent } from 'react'
 import type { IDockviewPanelHeaderProps } from 'dockview-react'
 
-import { ChromeTabSelectButton } from '@/components/workspace/chrome-tab-select-button'
-import { chromeTabRootClassName } from '@/components/workspace/chrome-tab-style'
-import { ChromeTabTitle } from '@/components/workspace/chrome-tab-title'
-import { ChromeTabTrailingSlot } from '@/components/workspace/chrome-tab-trailing-slot'
-import { fileIconStyle, tabDragClassName } from '@/components/workspace/editor-tab-style-utils'
-import { editorTabInsertionEdge } from '@/components/workspace/use-editor-tab-drag'
+import { ChromeTabSelectButton } from '@/components/workspace/editor-tabs/components/chrome-tab-select-button'
+import { chromeTabRootClassName } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
+import { ChromeTabTitle } from '@/components/workspace/editor-tabs/components/chrome-tab-title'
+import { ChromeTabTrailingSlot } from '@/components/workspace/editor-tabs/components/chrome-tab-trailing-slot'
+import {
+  fileIconStyle,
+  tabDragClassName,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
+import { editorTabInsertionEdge } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { useDockviewPanelActive } from './use-dockview-panel-active'

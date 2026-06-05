@@ -1,0 +1,13 @@
+import { memo } from 'react'
+
+import { workspaceSearchRuntimeEnabled } from '@/components/workspace/search/utils/workspace-search-runtime-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useSearchBufferRuntime } from '@/features/search/use-search-buffer-runtime'
+
+export const WorkspaceSearchRuntime = memo(({ rootPath }: { rootPath: string }) => {
+  const enabled = useEditorWorkspaceState((state) => workspaceSearchRuntimeEnabled(state, rootPath))
+
+  useSearchBufferRuntime(rootPath, enabled)
+
+  return null
+})

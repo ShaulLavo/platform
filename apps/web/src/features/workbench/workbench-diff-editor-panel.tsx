@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
-import { DiffTabActions } from '@/components/workspace/diff-tab-actions'
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { DiffTabActions } from '@/components/workspace/diff/components/diff-tab-actions'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'

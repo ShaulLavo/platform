@@ -5,7 +5,7 @@ import {
   type UseHotkeyOptions,
 } from '@tanstack/react-hotkeys'
 
-import type { WorkspaceFocusArea } from '@/components/workspace/workspace-focus-state'
+import type { WorkspaceFocusArea } from '@/components/workspace/focus/providers/workspace-focus-state'
 
 import { activePlatformKeyBindings } from './active-bindings'
 import { isEditorPlatformCommandId } from './editor-keymap'

@@ -7,7 +7,7 @@ import 'dockview-react/dist/styles/dockview.css'
 import './workbench-spike.css'
 
 import { ThemeProvider } from '@/components/theme-provider'
-import { WorkspaceFocusProvider } from '@/components/workspace/workspace-focus-provider'
+import { WorkspaceFocusProvider } from '@/components/workspace/focus/providers/workspace-focus-provider'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
 import { WorkbenchSpikeApp } from '@/features/workbench-spike/workbench-spike-app'
 import { queryClient } from '@/lib/query-client'

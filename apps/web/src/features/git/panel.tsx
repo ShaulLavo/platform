@@ -1,7 +1,7 @@
 import { cn } from '@workspace/ui/lib/utils'
 import { memo, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { errorMessage } from '@/lib/file-server'
 import { useStatus } from './hooks'

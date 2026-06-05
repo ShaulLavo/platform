@@ -1,4 +1,7 @@
-import { EMPTY_GIT_FILES, editorTabModel } from '@/components/workspace/editor-tab-model'
+import {
+  EMPTY_GIT_FILES,
+  editorTabModel,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
 import { useStatus } from '@/features/git/hooks'

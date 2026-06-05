@@ -6,7 +6,7 @@ import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-works
 import {
   FILE_TREE_PREFETCH_STALE_MS,
   treeDirectoryPrefetchKey,
-} from '@/components/workspace/file-tree-prefetch'
+} from '@/components/workspace/file-tree/utils/file-tree-prefetch'
 import { idleState, type LoadState } from '@/lib/load-state'
 import { canonicalTreePath, toTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys } from '@/lib/query-keys'

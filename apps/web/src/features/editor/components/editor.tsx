@@ -26,7 +26,7 @@ import {
 } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
 import { editorPerformanceLayoutVariant } from '@/lib/editor-performance-trace'
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import type {
   DocumentSessionChange,
   EditorKeymapLayer,

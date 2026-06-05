@@ -1,10 +1,10 @@
 import { createContext } from 'react'
 
-import type { EditorTabConflictMap } from '@/components/workspace/editor-tab-types'
+import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import type {
   EditorTabDragController,
   EditorTabDragItem,
-} from '@/components/workspace/use-editor-tab-drag'
+} from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { FileStatus } from '@/features/git/types'
 import type { EditorKeymapLayer } from '@editor/core'

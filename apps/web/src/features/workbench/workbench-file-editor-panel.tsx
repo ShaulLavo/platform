@@ -1,4 +1,4 @@
-import { EditorPaneTabBody } from '@/components/workspace/editor-pane-tab-body'
+import { EditorPaneTabBody } from '@/components/workspace/editor-panes/components/editor-pane-tab-body'
 import type { EditorKeymapLayer } from '@editor/core'
 
 import type { WorkbenchFileEditorPanel as WorkbenchFileEditorPanelModel } from './workbench-panel-types'

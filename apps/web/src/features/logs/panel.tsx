@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import { logsKeys } from '@/lib/query-keys'
 import {
   logDashboardFilters,

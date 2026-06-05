@@ -22,7 +22,7 @@ import {
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import { createEditorDiffSyntaxBackend } from '@/features/editor/editor-plugins'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { errorMessage } from '@/lib/file-server'
 import { displayPath } from '@/lib/path-formatters'

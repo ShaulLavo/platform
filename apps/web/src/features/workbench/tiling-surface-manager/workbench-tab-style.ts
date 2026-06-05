@@ -5,7 +5,7 @@ import {
   CHROME_TAB_HEIGHT,
   CHROME_TAB_INACTIVE_MIN_WIDTH,
   CHROME_TAB_STANDARD_WIDTH,
-} from '@/components/workspace/chrome-tab-layout'
+} from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 
 export function workbenchChromeTabStyle({
   active,

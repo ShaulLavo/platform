@@ -1,4 +1,4 @@
-import type { WorkspaceFocusArea } from '@/components/workspace/workspace-focus-state'
+import type { WorkspaceFocusArea } from '@/components/workspace/focus/providers/workspace-focus-state'
 import type { EditorCommandId } from '@editor/core'
 import type { HotkeyMeta, RegisterableHotkey } from '@tanstack/react-hotkeys'
 

@@ -13,7 +13,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
 import { handleSearchResultSurfaceKeyDown } from '@/features/search/search-result-editor-keyboard'

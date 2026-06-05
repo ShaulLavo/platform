@@ -1,7 +1,7 @@
 import { createContext } from 'react'
 
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
-import type { EditorTabModel } from '@/components/workspace/editor-tab-types'
+import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import type { EditorKeymapLayer } from '@editor/core'
 
 import type { Surface, SurfaceId } from './layout-types'

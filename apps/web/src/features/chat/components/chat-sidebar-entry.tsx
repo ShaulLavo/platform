@@ -1,4 +1,4 @@
-import { WorkspaceActivityTab } from '@/components/workspace/workspace-activity-tab'
+import { WorkspaceActivityTab } from '@/components/workspace/activity-bar/components/workspace-activity-tab'
 import { ChatsCircleIcon } from '@phosphor-icons/react'
 
 export function ChatSidebarEntry() {

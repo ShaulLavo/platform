@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 import {
   useWorkspaceFocus,
   type WorkspaceFocusArea,
-} from '@/components/workspace/workspace-focus-state'
+} from '@/components/workspace/focus/providers/workspace-focus-state'
 import { useTheme, type Theme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'

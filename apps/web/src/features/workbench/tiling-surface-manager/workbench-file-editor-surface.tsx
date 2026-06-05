@@ -1,4 +1,4 @@
-import { EditorPaneTabBody } from '@/components/workspace/editor-pane-tab-body'
+import { EditorPaneTabBody } from '@/components/workspace/editor-panes/components/editor-pane-tab-body'
 
 import { WorkbenchPanelUnavailable } from '../workbench-panel-unavailable'
 import { useWorkbenchEditorSurfaceContext } from './use-workbench-editor-surface-context'

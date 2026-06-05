@@ -6,7 +6,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/components/theme-provider'
-import { EMPTY_GIT_FILES, editorTabModel } from '@/components/workspace/editor-tab-model'
+import {
+  EMPTY_GIT_FILES,
+  editorTabModel,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 

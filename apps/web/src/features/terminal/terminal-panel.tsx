@@ -4,7 +4,7 @@ import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
 import { useEffect, useEffectEvent, useRef, type ComponentPropsWithoutRef } from 'react'
 
 import { useTheme } from '@/components/theme-context'
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'

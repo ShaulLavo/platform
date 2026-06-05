@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import '@workspace/ui/globals.css'
 
 import { ThemeProvider } from '@/components/theme-provider'
-import { WorkspaceFocusProvider } from '@/components/workspace/workspace-focus-provider'
+import { WorkspaceFocusProvider } from '@/components/workspace/focus/providers/workspace-focus-provider'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
 import { SearchResultEditorSurface } from '@/features/search/search-result-editor-surface'

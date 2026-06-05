@@ -1,5 +1,8 @@
-import { editorTabModel } from '@/components/workspace/editor-tab-model'
-import type { EditorTabConflictMap, EditorTabModel } from '@/components/workspace/editor-tab-types'
+import { editorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+import type {
+  EditorTabConflictMap,
+  EditorTabModel,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import type { FileStatus } from '@/features/git/types'
 
 import type { WorkbenchDockviewPanelRecord } from './workbench-dockview-model'

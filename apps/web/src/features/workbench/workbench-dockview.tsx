@@ -14,17 +14,17 @@ import 'dockview-react/dist/styles/dockview.css'
 import {
   copyTextToClipboard,
   editorTabCloseTargets,
-} from '@/components/workspace/editor-tab-actions-utils'
+} from '@/components/workspace/editor-tabs/utils/editor-tab-actions-utils'
 import {
   editorTabCloseTargetIds,
   type EditorTabCloseTargetKind,
-} from '@/components/workspace/editor-tab-close-targets'
-import { EMPTY_GIT_FILES } from '@/components/workspace/editor-tab-model'
-import type { EditorTabModel } from '@/components/workspace/editor-tab-types'
+} from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
+import { EMPTY_GIT_FILES } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import {
   hasEditorTabDragPayload,
   useEditorTabDrag,
-} from '@/components/workspace/use-editor-tab-drag'
+} from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useTheme } from '@/components/theme-context'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
@@ -32,7 +32,7 @@ import { useEditorConflictState } from '@/features/editor/state/editor-conflict-
 import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useStatus } from '@/features/git/hooks'
-import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
+import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
 import type { EditorKeymapLayer } from '@editor/core'
 import { cn } from '@workspace/ui/lib/utils'
 
