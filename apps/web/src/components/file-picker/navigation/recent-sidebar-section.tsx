@@ -1,6 +1,6 @@
 import { ClockCounterClockwiseIcon } from '@phosphor-icons/react'
 
-import type { LoadState } from '../model'
+import type { EntriesLoadState } from '../model'
 
 import { RecentShortcutList } from './recent-shortcut-list'
 
@@ -11,7 +11,7 @@ export function RecentSidebarSection({
 }: {
   currentPath: string
   onNavigate: (path: string) => void
-  state: LoadState
+  state: EntriesLoadState
 }) {
   return (
     <div>

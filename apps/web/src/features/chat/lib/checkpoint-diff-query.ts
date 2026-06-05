@@ -135,9 +135,9 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
       const response = await client.orchestration['turn-diff'].get({
         fetch: { signal },
         query: {
-          fromTurnCount: String(input.fromTurnCount),
+          fromTurnCount: input.fromTurnCount,
           threadId: input.threadId,
-          toTurnCount: String(input.toTurnCount),
+          toTurnCount: input.toTurnCount,
         },
       })
       const diffs = unwrapEdenResponse<FileDiff[]>(response)
@@ -164,7 +164,7 @@ export async function fetchFullThreadCheckpointDiff(
         fetch: { signal },
         query: {
           threadId: input.threadId,
-          toTurnCount: String(input.toTurnCount),
+          toTurnCount: input.toTurnCount,
         },
       })
 

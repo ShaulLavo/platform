@@ -1,4 +1,4 @@
-import type { LoadState } from '../model'
+import type { EntriesLoadState } from '../model'
 
 import { RecentShortcut } from './recent-shortcut'
 import { RecentShortcutLoading } from './recent-shortcut-loading'
@@ -11,15 +11,15 @@ export function RecentShortcutList({
 }: {
   currentPath: string
   onNavigate: (path: string) => void
-  state: LoadState
+  state: EntriesLoadState
 }) {
   if (state.status === 'loading') return <RecentShortcutLoading />
   if (state.status === 'error') return <RecentSidebarNote>Could not load</RecentSidebarNote>
-  if (state.status === 'ready' && state.entries.length === 0) {
+  if (state.status === 'ready' && state.data.length === 0) {
     return <RecentSidebarNote>No folders yet</RecentSidebarNote>
   }
 
-  const entries = state.status === 'ready' ? state.entries : []
+  const entries = state.status === 'ready' ? state.data : []
 
   return (
     <div className='space-y-0.5'>

@@ -1,17 +1,14 @@
 import { fileMatchesAccept } from '@/lib/file-icons'
 import type { FsEntry, PickedFsEntry } from '@/lib/file-system-types'
 import { effectiveEntryType, isDirectoryEntry, isFileEntry } from '@/lib/file-system-types'
+import type { LoadState } from '@/lib/load-state'
 import { formatSize } from '@/lib/path-formatters'
 
 export { basename, displayPath, formatSize } from '@/lib/path-formatters'
 import { compareFuzzyRankedTargets } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 
-export type LoadState =
-  | { status: 'idle' }
-  | { status: 'loading'; entries?: FsEntry[] }
-  | { status: 'ready'; entries: FsEntry[] }
-  | { status: 'error'; message: string }
+export type EntriesLoadState = LoadState<FsEntry[]>
 
 export type DirectoryFsEntry = FsEntry &
   (
@@ -214,18 +211,18 @@ export function rawRpcErrorMessage(payload: unknown) {
   return 'The file server rejected the request.'
 }
 
-export function loadStateEntries(state: LoadState) {
-  if (state.status === 'ready') return state.entries
-  if (state.status === 'loading') return state.entries ?? []
+export function loadStateEntries(state: EntriesLoadState) {
+  if (state.status === 'ready') return state.data
+  if (state.status === 'loading') return state.data ?? []
 
   return []
 }
 
-export function loadingLoadState(previous: LoadState): LoadState {
+export function loadingLoadState(previous: EntriesLoadState): EntriesLoadState {
   const entries = loadStateEntries(previous)
   if (entries.length === 0) return { status: 'loading' }
 
-  return { status: 'loading', entries }
+  return { status: 'loading', data: entries }
 }
 
 function nextSelectionIndex(currentIndex: number, offset: number, length: number) {

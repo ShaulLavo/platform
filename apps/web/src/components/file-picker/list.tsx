@@ -18,9 +18,9 @@ import {
   isPickableEntry,
   listLabel,
   pickerCopy,
+  type EntriesLoadState,
   type FilePickerIconMode,
   type FilePickerMode,
-  type LoadState,
 } from './model'
 
 export function ListHeader({
@@ -60,7 +60,7 @@ export function FileList({
   entries: FsEntry[]
   iconMode: FilePickerIconMode
   isSearching: boolean
-  loadState: LoadState
+  loadState: EntriesLoadState
   mode: FilePickerMode
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
   onNavigate: (path: string) => void

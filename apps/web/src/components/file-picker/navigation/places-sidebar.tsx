@@ -1,6 +1,6 @@
 import { Separator } from '@workspace/ui/components/separator'
 
-import type { LoadState } from '../model'
+import type { EntriesLoadState } from '../model'
 
 import { LocationButton } from './location-button'
 import { RecentSidebarSection } from './recent-sidebar-section'
@@ -15,7 +15,7 @@ export function PlacesSidebar({
   currentPath: string
   homePath: string
   onNavigate: (path: string) => void
-  recentState: LoadState
+  recentState: EntriesLoadState
 }) {
   const locations = sidebarLocationsFor(homePath)
 

@@ -1,4 +1,4 @@
-import type { LoadState } from '../model'
+import type { EntriesLoadState } from '../model'
 
 import { LocationPill } from './location-pill'
 import { RecentPill } from './recent-pill'
@@ -13,10 +13,10 @@ export function MobileLocations({
   currentPath: string
   homePath: string
   onNavigate: (path: string) => void
-  recentState: LoadState
+  recentState: EntriesLoadState
 }) {
   const locations = sidebarLocationsFor(homePath)
-  const recents = recentState.status === 'ready' ? recentState.entries : []
+  const recents = recentState.status === 'ready' ? recentState.data : []
 
   return (
     <div className='mt-2 space-y-1 lg:hidden'>

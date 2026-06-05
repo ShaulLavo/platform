@@ -2,6 +2,8 @@ import { XIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
 
+import { formatSize } from '@/lib/path-formatters'
+
 import type { ChatInputImageAttachment } from '../state/chat-input-draft-store'
 
 export function ChatInputAttachmentList({
@@ -30,7 +32,7 @@ export function ChatInputAttachmentList({
           />
           <span className='min-w-0 flex-1 text-xs'>
             <span className='block truncate font-medium'>{attachment.name}</span>
-            <span className='text-muted-foreground block'>{formatAttachmentSize(attachment)}</span>
+            <span className='text-muted-foreground block'>{formatSize(attachment.sizeBytes)}</span>
           </span>
           <Tooltip>
             <TooltipTrigger
@@ -55,11 +57,4 @@ export function ChatInputAttachmentList({
       ))}
     </div>
   )
-}
-
-function formatAttachmentSize(attachment: ChatInputImageAttachment) {
-  if (attachment.sizeBytes < 1024) return `${attachment.sizeBytes} B`
-  if (attachment.sizeBytes < 1024 * 1024) return `${Math.round(attachment.sizeBytes / 1024)} KB`
-
-  return `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
 }
