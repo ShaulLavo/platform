@@ -92,27 +92,33 @@ about workflow-shaped layouts:
 15. Drag and drop should live-preview snapped layouts. As the user drags,
     surrounding windows rearrange around the potential drop target; releasing
     commits the previewed layout.
-16. Windows have visible gaps by default, with a wallpaper/background visible
+16. Keyboard control should follow classic tiling-window-manager grammar,
+    inspired by Hyprland/Wayland and i3: directional focus, move, split, resize,
+    maximize/restore, minimize/restore, parent focus, and recipe/workspace
+    switching should all be first-class commands.
+17. Editor muscle memory still matters. File, tab, command palette, close,
+    reopen, and search shortcuts should remain compatible where possible.
+18. Windows have visible gaps by default, with a wallpaper/background visible
     through the gaps.
-17. Windows have a very slight translucent and blurred background. The effect
+19. Windows have a very slight translucent and blurred background. The effect
     must not hurt code readability, terminal contrast, or performance.
-18. Stacked groups, floating surfaces, browser popouts, extension surfaces, and
+20. Stacked groups, floating surfaces, browser popouts, extension surfaces, and
     agent implementation are deferred from V1.
-19. Agent surfaces are still a required follow-up product plan because agent
+21. Agent surfaces are still a required follow-up product plan because agent
     chat, plans, tasks, logs, patches, artifacts, and terminals need surface
     semantics later.
-20. Git/review workflows should target GitButler-level clarity: contextual
+22. Git/review workflows should target GitButler-level clarity: contextual
     preview, visible state, dense workflow navigation, and workflow-specific
     drop behavior where that model fits.
-21. GitButler-style lanes should live inside git/review workflow surfaces or
+23. GitButler-style lanes should live inside git/review workflow surfaces or
     recipe policies in V1. They should not be added as generic layout tree nodes
     unless a prototype proves they generalize beyond git/review/agent workflows.
-22. Workflows are nested experiences inside surfaces. The tiling workspace gives
+24. Workflows are nested experiences inside surfaces. The tiling workspace gives
     those surfaces space, focus, persistence, previews, and restore behavior; it
     does not own each workflow's internal interaction model.
-23. Generic tiling is the foundation, but the best Platform layouts should be
+25. Generic tiling is the foundation, but the best Platform layouts should be
     workflow-native, not merely rearranged editor panes.
-24. Far future should support a Niri-like spatial mode where surfaces can become
+26. Far future should support a Niri-like spatial mode where surfaces can become
     independent windows placed freely in space. V1 should only preserve the
     product distinction between surface identity and presentation.
 

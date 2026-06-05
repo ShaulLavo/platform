@@ -50,6 +50,9 @@ This plan should be read as the execution path for `technical-design.md`.
   singleton, preview, running, and mount/unmount semantics.
 - Follow `technical-design.md` "Layout Operation API" for operation names,
   drop destinations, and normalization requirements.
+- Follow `technical-design.md` "Keyboard Control Direction" for command IDs,
+  keymap integration, Hyprland/i3-style layout actions, and browser-safe
+  binding choices.
 - Follow `technical-design.md` "Persistence and Restore" for serialized state,
   placeholder behavior, and corrupt-layout recovery.
 - Follow `technical-design.md` "Repo-Specific Migration Notes" for what to
@@ -578,10 +581,25 @@ Exit criteria:
 
 ## Phase 11 - Command And Keymap Retargeting
 
-Goal: keep muscle-memory command IDs while replacing implementations.
+Goal: keep muscle-memory command IDs while adding tiling-window-manager command
+grammar through the existing Platform keymap layer.
 
 Work:
 
+- Add new tiling workspace commands to `WorkspaceCommandId` in
+  `apps/web/src/keymap/types.ts`.
+- Add command metadata in `apps/web/src/keymap/command-registry.ts` so the
+  command palette, shortcut labels, and aliases work.
+- Add browser-safe default bindings in `apps/web/src/keymap/default-bindings.ts`.
+  Use Hyprland/i3-style grammar where practical, but keep exact chords in the
+  keymap layer rather than the layout core.
+- Add handlers in `apps/web/src/keymap/commands.ts` that dispatch layout
+  operations through the surface manager.
+- Keep `useAppKeymap` as the app-level registration point. Do not add
+  renderer-local global keyboard listeners.
+- Keep the current pane-scoped focus model for V1, extended with any needed
+  workbench/window/rail focus areas. Do not block this phase on the future
+  full context-predicate keymap runtime.
 - Retarget workspace commands to surface operations:
   - close active surface;
   - close others;
@@ -590,6 +608,12 @@ Work:
   - move surface/window;
   - focus window left/right/up/down;
   - focus parent/enclosing split;
+  - focus child/active surface;
+  - keyboard resize active split by direction and step;
+  - move active surface/window by direction;
+  - move active surface/window to parent or root edge;
+  - tab active surface into target window;
+  - tear active tab into a new window;
   - quick open previous surface;
   - reopen closed editor;
   - toggle file navigator/search/git/terminal/problems surfaces;
@@ -602,6 +626,9 @@ Work:
 
 Tests:
 
+- New tiling commands have command-registry metadata.
+- New default bindings resolve through `activePlatformKeyBindings`.
+- Pane-scoped bindings override global bindings where expected.
 - Existing command aliases still dispatch.
 - Commands reject invalid active surface types.
 - Focus and MRU commands use layout selectors.
@@ -611,6 +638,8 @@ Exit criteria:
 
 - `keymap/commands.ts` no longer reads `editorPaneLayout`, `workspacePanelTab`,
   `sidebarVisible`, or `gitPanelOpen`.
+- No layout shortcut is owned by `WorkbenchLayoutRenderer` or window-frame
+  component-level global listeners.
 
 ## Phase 12 - Workspace Cache Replacement
 

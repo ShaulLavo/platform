@@ -255,6 +255,50 @@ Required renderer behaviors:
 - Keep resize math constraint-aware. Adjacent percentage resizing is V1; a
   Zellij-style solver pass is a future escape hatch for fixed/stacked layouts.
 
+## Keyboard Control Direction
+
+Keyboard control should use a Hyprland/Wayland-inspired command grammar, with
+i3 as the structural reference. The exact default key chords can be configured
+in the keymap layer, but the layout system must expose first-class commands for:
+
+- Directional focus: focus left, right, up, and down.
+- Parent/child focus: focus enclosing split, active child, active window, and
+  active surface.
+- Surface movement: move active surface left, right, up, down, to parent edge,
+  to root edge, into another window as a tab, or to the rail.
+- Window movement: move active window by direction or structural destination.
+- Splitting: split active window left, right, up, or down.
+- Tab control: next/previous surface in window, reorder surface, tear surface
+  into a new window, and merge into the target window.
+- Resize mode: keyboard-resize the active split by direction and step amount,
+  with constraint-aware clamping.
+- State commands: maximize/restore, minimize/restore from rail, close surface,
+  close window, promote preview, and pin/unpin where supported.
+- Recipe/workspace commands: apply recipe, reset recipe shape, focus rail, and
+  restore previous layout state.
+
+Do not bake browser-hostile or OS-reserved shortcuts into the layout core. The
+core exposes commands; the keymap layer chooses bindings and can provide
+Hyprland-like defaults where the platform allows them. Existing VS Code-style
+command IDs and aliases should retarget to these surface operations for muscle
+memory.
+
+Current app integration should use the existing keymap architecture:
+
+- Add layout commands to `WorkspaceCommandId` in
+  `apps/web/src/keymap/types.ts`.
+- Add command metadata and aliases in `apps/web/src/keymap/command-registry.ts`
+  so the command palette and shortcut labels work.
+- Add browser-safe default bindings in
+  `apps/web/src/keymap/default-bindings.ts`. Hyprland-like bindings should be
+  defaults/presets, not assumptions in layout code.
+- Dispatch through `usePlatformCommandDispatch` in
+  `apps/web/src/keymap/commands.ts`, then call surface/layout operations.
+- Keep app-level registration in `useAppKeymap`; do not add renderer-local
+  global keyboard listeners.
+- Use the current pane-scoped model for V1, and leave richer Zed-style context
+  predicates to the existing keymap roadmap.
+
 ## Surface Registry Draft
 
 | Surface        |          Cardinality | Lifecycle          | Default Placement            | Rail                   | Notes                                                               |
