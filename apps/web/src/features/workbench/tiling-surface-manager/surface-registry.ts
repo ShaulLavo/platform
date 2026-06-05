@@ -319,12 +319,14 @@ function descriptor({
   closePolicy = staticClosePolicy,
   create,
   restore,
+  serialize = serializeRestorableSurface,
   type,
 }: {
   readonly cardinality: SurfaceCardinality
   readonly closePolicy?: SurfaceDescriptor['closePolicy']
   readonly create: SurfaceDescriptor['create']
   readonly restore: SurfaceDescriptor['restore']
+  readonly serialize?: SurfaceDescriptor['serialize']
   readonly type: SurfaceType
 }): SurfaceDescriptor {
   return {
@@ -334,7 +336,7 @@ function descriptor({
     create,
     defaultRecipeSlot: (surface) => surface.capabilities.defaultRecipeSlot,
     restore,
-    serialize: serializeSurface,
+    serialize,
     type,
     validPlacements: (surface) => surface.capabilities.validPlacements,
   }
@@ -561,6 +563,12 @@ function serializeSurface(surface: Surface): SerializedSurface {
     ...(surface.stateKey ? { stateKey: surface.stateKey } : {}),
     ...(surface.title ? { title: surface.title } : {}),
   }
+}
+
+function serializeRestorableSurface(surface: Surface): SerializedSurface | null {
+  if (surface.lifecycle === 'transient') return null
+
+  return serializeSurface(surface)
 }
 
 function fileEditorClosePolicy(surface: Surface, context: SurfaceCloseContext): SurfaceClosePolicy {

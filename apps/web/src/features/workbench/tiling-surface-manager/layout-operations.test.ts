@@ -10,7 +10,12 @@ import {
   createSearchResultsSurface,
 } from './layout-builders'
 import { checkWorkspaceLayoutInvariants } from './layout-invariants'
-import { fileEditorSurfaceId, layoutCommandId, windowManagementCommandId } from './layout-ids'
+import {
+  CLASSIC_POLICY_ID,
+  fileEditorSurfaceId,
+  layoutCommandId,
+  windowManagementCommandId,
+} from './layout-ids'
 import {
   findNodeIdForWindow,
   findWindowIdContainingSurface,
@@ -18,6 +23,7 @@ import {
   visibleWindowIdsInOrder,
 } from './layout-normalize'
 import {
+  activateSurface,
   applyCustomWindowCommand,
   applyLayoutCommand,
   applyRecipe,
@@ -61,6 +67,34 @@ describe('tiling surface layout operations', () => {
       fileA.id,
     ])
     expectValidLayout(reordered)
+  })
+
+  it('activates existing tabs without recording sticky placement changes', () => {
+    const fileA = createFileEditorSurface({ path: '/repo/src/focus-a.ts' })
+    const fileB = createFileEditorSurface({ path: '/repo/src/focus-b.ts' })
+    const opened = openSurface(openSurface(createClassicFirstRunWorkspaceLayout(), fileA), fileB)
+    const stickyPlacement = { edge: 'right', kind: 'root-edge' } as const
+    const layout = {
+      ...opened,
+      policiesById: {
+        ...opened.policiesById,
+        [CLASSIC_POLICY_ID]: {
+          ...opened.policiesById[CLASSIC_POLICY_ID],
+          stickyPlacementsBySurfaceId: {
+            ...opened.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId,
+            [fileA.id]: stickyPlacement,
+          },
+        },
+      },
+    } satisfies WorkspaceLayout
+    const activated = activateSurface(layout, fileA.id, CLASSIC_EDITOR_WINDOW_ID)
+
+    expect(activated.activeSurfaceId).toBe(fileA.id)
+    expect(activated.windowsById[CLASSIC_EDITOR_WINDOW_ID].activeSurfaceId).toBe(fileA.id)
+    expect(activated.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[fileA.id]).toEqual(
+      stickyPlacement,
+    )
+    expectValidLayout(activated)
   })
 
   it('splits a tab to a window edge and can tab it back into the center', () => {

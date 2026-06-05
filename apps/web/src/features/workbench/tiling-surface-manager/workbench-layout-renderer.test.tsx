@@ -7,6 +7,7 @@ import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
+  createTerminalSurface,
 } from './layout-builders'
 import { minimizeSurface, openSurface } from './layout-operations'
 import { WorkbenchLayoutProvider } from './workbench-layout-provider'
@@ -60,6 +61,18 @@ describe('WorkbenchLayoutRenderer', () => {
     expect(html).toContain('data-workbench-rail')
     expect(html).toContain('data-rail-state="minimized"')
     expect(html).toContain('Restore minimized.ts')
+  })
+
+  it('does not duplicate visible running surfaces in hidden hosts', () => {
+    const terminal = createTerminalSurface({
+      sessionId: 'visible-terminal',
+      title: 'Visible Terminal',
+    })
+    const layout = openSurface(createClassicFirstRunWorkspaceLayout(), terminal)
+    const html = renderLayout(layout)
+
+    expect(matchCount(html, `data-surface-id="${terminal.id}"`)).toBe(1)
+    expect(html).not.toContain('data-workbench-hidden-surface-hosts')
   })
 })
 

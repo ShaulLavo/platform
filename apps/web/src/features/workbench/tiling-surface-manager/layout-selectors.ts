@@ -228,6 +228,9 @@ export function windowCommandDisabledReason(
 ): string | null {
   if (command.kind === 'custom-window' && !command.enabled) return 'Command is disabled.'
   if (command.kind === 'custom-window') return customWindowCommandDisabledReason(layout)
+  if (command.capabilityPredicate) {
+    return capabilityPredicateDisabledReason(layout, command.capabilityPredicate)
+  }
   if (operationRequiresActiveWindow(command.operation) && !selectActiveWindow(layout)) {
     return 'No active window.'
   }
@@ -446,6 +449,52 @@ function activeCapabilityDisabledReason(layout: WorkspaceLayout, operation: Layo
   }
 
   return null
+}
+
+function capabilityPredicateDisabledReason(layout: WorkspaceLayout, predicate: string) {
+  if (predicate === 'active-window') return activeWindowDisabledReason(layout)
+  if (predicate === 'active-surface-can-close') return activeSurfaceCanCloseDisabledReason(layout)
+  if (predicate === 'active-surface-can-minimize') {
+    return activeSurfaceCanMinimizeDisabledReason(layout)
+  }
+  if (predicate === 'active-window-and-splittable-surface') {
+    return activeWindowAndSplittableSurfaceDisabledReason(layout)
+  }
+
+  return null
+}
+
+function activeWindowDisabledReason(layout: WorkspaceLayout) {
+  if (selectActiveWindow(layout)) return null
+
+  return 'No active window.'
+}
+
+function activeSurfaceCanCloseDisabledReason(layout: WorkspaceLayout) {
+  const activeSurface = selectActiveSurface(layout)
+  if (!activeSurface) return 'No active surface.'
+  if (canCloseSurface(activeSurface)) return null
+
+  return 'Active surface cannot be closed.'
+}
+
+function activeSurfaceCanMinimizeDisabledReason(layout: WorkspaceLayout) {
+  const activeSurface = selectActiveSurface(layout)
+  if (!activeSurface) return 'No active surface.'
+  if (activeSurface.capabilities.canMinimize) return null
+
+  return 'Active surface cannot be minimized.'
+}
+
+function activeWindowAndSplittableSurfaceDisabledReason(layout: WorkspaceLayout) {
+  const activeWindowReason = activeWindowDisabledReason(layout)
+  if (activeWindowReason) return activeWindowReason
+
+  const activeSurface = selectActiveSurface(layout)
+  if (!activeSurface) return 'No active surface.'
+  if (activeSurface.capabilities.canSplit) return null
+
+  return 'Active surface cannot be split.'
 }
 
 function operationRequiresActiveSurface(operation: LayoutOperationType) {

@@ -58,6 +58,8 @@ export function applyLayoutOperation(
   operation: LayoutOperation,
 ): WorkspaceLayout {
   switch (operation.type) {
+    case 'activateSurface':
+      return activateSurface(layout, operation.surfaceId, operation.windowId)
     case 'openSurface':
       return openSurface(layout, operation.surface, { policyId: operation.policyId })
     case 'closeSurface':
@@ -94,6 +96,32 @@ export function applyLayoutOperation(
     case 'applyLayoutCommand':
       return applyLayoutCommand(layout, operation.command)
   }
+}
+
+export function activateSurface(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  windowId?: WindowId,
+): WorkspaceLayout {
+  const normalizedLayout = normalizeWorkspaceLayout(layout)
+  const targetWindowId = windowId ?? findWindowIdContainingSurface(normalizedLayout, surfaceId)
+  if (!targetWindowId) return normalizedLayout
+
+  const window = normalizedLayout.windowsById[targetWindowId]
+  if (!window?.surfaceIds.includes(surfaceId)) return normalizedLayout
+
+  return normalizeWorkspaceLayout({
+    ...normalizedLayout,
+    activeSurfaceId: surfaceId,
+    activeWindowId: targetWindowId,
+    windowsById: {
+      ...normalizedLayout.windowsById,
+      [targetWindowId]: {
+        ...window,
+        activeSurfaceId: surfaceId,
+      },
+    },
+  })
 }
 
 export function openSurface(

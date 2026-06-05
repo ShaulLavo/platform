@@ -166,25 +166,28 @@ export function serializeWorkspaceLayout(
   layout: WorkspaceLayout,
   registry: SurfaceRegistry = defaultSurfaceRegistry,
 ): SerializedWorkspaceLayout {
+  const surfaces = serializedSurfaceEntries(layout, registry)
+  const serializableLayout = layoutFilteredToSerializedSurfaces(layout, surfaces)
+
   return {
-    activeHotkeyPresetId: layout.activeHotkeyPresetId,
-    activeRecipeId: layout.activeRecipeId,
-    activeSurfaceId: layout.activeSurfaceId,
-    activeWindowId: layout.activeWindowId,
-    customWindowCommands: customWindowCommandsForSerialization(layout),
-    hotkeyPresets: Object.values(layout.hotkeyPresetsById),
-    layoutCommands: Object.values(layout.layoutCommandsById),
-    mruSurfaceIds: layout.mruSurfaceIds,
-    mruWindowIds: layout.mruWindowIds,
-    nodes: Object.values(layout.nodesById),
-    policies: Object.values(layout.policiesById),
-    rail: layout.rail,
-    recipes: Object.values(layout.recipesById),
-    rootNodeId: layout.rootNodeId,
+    activeHotkeyPresetId: serializableLayout.activeHotkeyPresetId,
+    activeRecipeId: serializableLayout.activeRecipeId,
+    activeSurfaceId: serializableLayout.activeSurfaceId,
+    activeWindowId: serializableLayout.activeWindowId,
+    customWindowCommands: customWindowCommandsForSerialization(serializableLayout),
+    hotkeyPresets: Object.values(serializableLayout.hotkeyPresetsById),
+    layoutCommands: Object.values(serializableLayout.layoutCommandsById),
+    mruSurfaceIds: serializableLayout.mruSurfaceIds,
+    mruWindowIds: serializableLayout.mruWindowIds,
+    nodes: Object.values(serializableLayout.nodesById),
+    policies: Object.values(serializableLayout.policiesById),
+    rail: serializableLayout.rail,
+    recipes: Object.values(serializableLayout.recipesById),
+    rootNodeId: serializableLayout.rootNodeId,
     surfaceRegistryVersion: SURFACE_REGISTRY_VERSION,
-    surfaces: serializedSurfaceEntries(layout, registry),
+    surfaces,
     version: WORKSPACE_LAYOUT_VERSION,
-    windows: Object.values(layout.windowsById),
+    windows: Object.values(serializableLayout.windowsById),
   }
 }
 
@@ -244,6 +247,69 @@ function serializedSurfaceEntries(
   }
 
   return entries
+}
+
+function layoutFilteredToSerializedSurfaces(
+  layout: WorkspaceLayout,
+  surfaceEntries: readonly SerializedWorkspaceSurfaceEntry[],
+): WorkspaceLayout {
+  const surfaceIds = new Set(surfaceEntries.map((entry) => entry.id))
+  const surfacesById = filteredSurfacesById(layout.surfacesById, surfaceIds)
+
+  return normalizeWorkspaceLayout({
+    ...layout,
+    policiesById: filteredPoliciesBySurfaceIds(layout.policiesById, surfaceIds),
+    surfacesById,
+  })
+}
+
+function filteredSurfacesById(
+  surfacesById: WorkspaceLayout['surfacesById'],
+  surfaceIds: ReadonlySet<SurfaceId>,
+) {
+  const filtered: Record<string, Surface> = {}
+
+  for (const surface of Object.values(surfacesById)) {
+    if (!surfaceIds.has(surface.id)) continue
+
+    filtered[surface.id] = surface
+  }
+
+  return filtered
+}
+
+function filteredPoliciesBySurfaceIds(
+  policiesById: WorkspaceLayout['policiesById'],
+  surfaceIds: ReadonlySet<SurfaceId>,
+) {
+  const filtered: Record<string, LayoutPolicyState> = {}
+
+  for (const policy of Object.values(policiesById)) {
+    filtered[policy.id] = {
+      ...policy,
+      stickyPlacementsBySurfaceId: filteredStickyPlacements(
+        policy.stickyPlacementsBySurfaceId,
+        surfaceIds,
+      ),
+    }
+  }
+
+  return filtered
+}
+
+function filteredStickyPlacements(
+  placements: LayoutPolicyState['stickyPlacementsBySurfaceId'],
+  surfaceIds: ReadonlySet<SurfaceId>,
+) {
+  const filtered: Record<string, SurfacePlacementHint> = {}
+
+  for (const [surfaceId, placement] of Object.entries(placements)) {
+    if (!surfaceIds.has(surfaceId as SurfaceId)) continue
+
+    filtered[surfaceId] = placement
+  }
+
+  return filtered
 }
 
 function fallbackRestoreResult(

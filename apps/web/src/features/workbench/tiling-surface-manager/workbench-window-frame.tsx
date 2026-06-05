@@ -107,10 +107,9 @@ export function WorkbenchWindowFrame({
 
 function selectWindowOperation(node: MaterializedWindowNode): LayoutOperation {
   return {
-    index: node.window.surfaceIds.indexOf(node.window.activeSurfaceId),
     surfaceId: node.window.activeSurfaceId,
-    targetWindowId: node.window.id,
-    type: 'tabSurface',
+    type: 'activateSurface',
+    windowId: node.window.id,
   }
 }
 

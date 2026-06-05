@@ -234,6 +234,11 @@ export type WindowManagementHotkeyPreset = {
 }
 
 export type LayoutOperation =
+  | {
+      readonly surfaceId: SurfaceId
+      readonly type: 'activateSurface'
+      readonly windowId?: WindowId
+    }
   | { readonly policyId?: LayoutPolicyId; readonly surface: Surface; readonly type: 'openSurface' }
   | { readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
   | { readonly surfaceId: SurfaceId; readonly type: 'minimizeSurface' }

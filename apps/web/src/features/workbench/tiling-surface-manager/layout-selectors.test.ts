@@ -9,7 +9,11 @@ import {
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
 } from './layout-builders'
-import { CLOSE_ACTIVE_SURFACE_COMMAND_ID, commandMatchesSearch } from './layout-command-catalog'
+import {
+  CLOSE_ACTIVE_SURFACE_COMMAND_ID,
+  MOVE_ACTIVE_SURFACE_TO_RAIL_COMMAND_ID,
+  commandMatchesSearch,
+} from './layout-command-catalog'
 import { layoutCommandId, windowManagementCommandId } from './layout-ids'
 import { openSurface } from './layout-operations'
 import {
@@ -85,10 +89,12 @@ describe('tiling surface layout selectors', () => {
     const rows = selectCommandPaletteRows(layout)
 
     const closeRow = rows.find((row) => row.id === CLOSE_ACTIVE_SURFACE_COMMAND_ID)
+    const moveToRailRow = rows.find((row) => row.id === MOVE_ACTIVE_SURFACE_TO_RAIL_COMMAND_ID)
     const customRow = rows.find((row) => row.id === customCommand.id)
     const savedRow = rows.find((row) => row.id === savedLayoutCommand.id)
 
     expect(closeRow?.disabledReason).toBe('Active surface cannot be closed.')
+    expect(moveToRailRow?.disabledReason).toBe('Active surface cannot be minimized.')
     expect(customRow?.kind).toBe('custom-window')
     expect(customRow?.disabledReason).toBe('Command is disabled.')
     expect(savedRow?.kind).toBe('saved-layout')

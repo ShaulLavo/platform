@@ -1,4 +1,5 @@
 import { WorkbenchSurfaceHost } from './workbench-surface-host'
+import { visibleSurfaceIdsInOrder } from './layout-normalize'
 import type { WorkbenchSurfaceRendererRegistry } from './surface-renderer-registry'
 import type { Surface, WorkspaceLayout } from './layout-types'
 
@@ -32,8 +33,10 @@ function hiddenMountedSurfaces(layout: WorkspaceLayout): readonly Surface[] {
     ...layout.rail.minimizedSurfaceIds,
     ...layout.rail.runningSurfaceIds,
   ])
+  const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))
 
   return Array.from(hiddenSurfaceIds)
+    .filter((surfaceId) => !visibleSurfaceIds.has(surfaceId))
     .map((surfaceId) => layout.surfacesById[surfaceId])
     .filter(isKeepMountedSurface)
 }

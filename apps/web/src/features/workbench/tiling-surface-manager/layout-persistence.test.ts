@@ -191,11 +191,46 @@ describe('tiling surface layout persistence', () => {
       resourceKey: '/repo/src/app.ts',
     })
     const layout = addSurfaceToEditorWindow(createClassicFirstRunWorkspaceLayout(), preview)
-    const restored = restoreWorkspaceLayout(serializeWorkspaceLayout(layout), { rootPath })
+    const serializedLayout = serializeWorkspaceLayout(layout)
+    const serialized = {
+      ...serializedLayout,
+      surfaces: [
+        ...serializedLayout.surfaces,
+        {
+          id: preview.id,
+          surface: {
+            lifecycle: 'transient',
+            ownerContextKey: preview.ownerContextKey,
+            ownerSurfaceId: preview.ownerSurfaceId,
+            resourceKey: preview.resourceKey,
+            stateKey: preview.stateKey,
+            title: preview.title,
+            type: 'search-preview',
+            version: SURFACE_SERIALIZED_VERSION,
+          },
+        },
+      ],
+    } satisfies SerializedWorkspaceLayout
+    const restored = restoreWorkspaceLayout(serialized, { rootPath })
 
     expect(restored.layout.surfacesById[preview.id]).toBeUndefined()
     expect(restored.warnings.map((warning) => warning.code)).toContain('surface-dropped')
     expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
+  })
+
+  it('does not serialize transient previews by default', () => {
+    const search = createSearchResultsSurface()
+    const preview = createSearchPreviewSurface({
+      ownerContextKey: 'result:/repo/src/app.ts:1',
+      ownerSurfaceId: search.id,
+      resourceKey: '/repo/src/app.ts',
+    })
+    const layout = openSurface(openSurface(createClassicFirstRunWorkspaceLayout(), search), preview)
+    const serialized = serializeWorkspaceLayout(layout)
+
+    expect(serialized.surfaces.map((entry) => entry.id)).not.toContain(preview.id)
+    expect(serialized.windows.flatMap((window) => window.surfaceIds)).not.toContain(preview.id)
+    expect(serialized.activeSurfaceId).not.toBe(preview.id)
   })
 
   it('matches placeholders by resource key when previous surface IDs changed', () => {

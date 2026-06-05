@@ -10,7 +10,7 @@ import {
   searchResultsSurfaceId,
   terminalSurfaceId,
 } from './layout-ids'
-import type { Surface, SurfaceType } from './layout-types'
+import { SURFACE_SERIALIZED_VERSION, type SurfaceType } from './layout-types'
 import {
   canFloatSurface,
   canSplitSurface,
@@ -187,7 +187,14 @@ describe('tiling surface registry', () => {
     })
     expect(preview?.id).toBe(searchPreviewSurfaceId(owner.id, ownerContextKey))
 
-    const serialized = serializeRegisteredSurface(defaultSurfaceRegistry, preview as Surface)
+    const serialized = {
+      lifecycle: 'transient',
+      ownerContextKey,
+      ownerSurfaceId: owner.id,
+      resourceKey: '/repo/src/app.ts',
+      type: 'search-preview',
+      version: SURFACE_SERIALIZED_VERSION,
+    } as const
     expect(restoreRegisteredSurface(defaultSurfaceRegistry, serialized, { rootPath })).toBeNull()
     expect(
       restoreRegisteredSurface(defaultSurfaceRegistry, serialized, {

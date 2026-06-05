@@ -99,9 +99,8 @@ export function WorkbenchTabStrip({
 
 function selectSurfaceOperation(window: WorkbenchWindow, surface: Surface): LayoutOperation {
   return {
-    index: window.surfaceIds.indexOf(surface.id),
     surfaceId: surface.id,
-    targetWindowId: window.id,
-    type: 'tabSurface',
+    type: 'activateSurface',
+    windowId: window.id,
   }
 }
