@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import Electrobun, { BrowserView, BrowserWindow, Utils } from 'electrobun/bun'
+import { applyEnvFileOverrides } from '@workspace/observability/env-file'
 import type { DesktopRPC, PlatformPickOptions } from '../shared/rpc'
 import {
   flushDesktopObservability,
@@ -14,7 +15,7 @@ import {
 type ChildProcess = ReturnType<typeof Bun.spawn>
 
 const ROOT_DIR = resolvePlatformRoot()
-loadPlatformEnv(path.join(ROOT_DIR, '.env'))
+applyEnvFileOverrides(path.join(ROOT_DIR, '.env'), Bun.env)
 initializeDesktopObservability()
 const WEB_DIR = path.join(ROOT_DIR, 'apps/web')
 const SHARED_DEV = Bun.env.PLATFORM_DESKTOP_SHARED_DEV === '1'
@@ -346,45 +347,6 @@ async function commandOutput(command: string[]) {
   await child.exited
 
   return output
-}
-
-function loadPlatformEnv(filePath: string) {
-  if (!existsSync(filePath)) return
-
-  for (const line of readFileSync(filePath, 'utf8').split(/\r?\n/u)) {
-    applyPlatformEnvLine(line)
-  }
-}
-
-function applyPlatformEnvLine(line: string) {
-  const normalized = normalizeEnvLine(line)
-  if (!normalized) return
-
-  const separatorIndex = normalized.indexOf('=')
-  if (separatorIndex <= 0) return
-
-  const key = normalized.slice(0, separatorIndex).trim()
-  if (!key || Bun.env[key] !== undefined) return
-
-  Bun.env[key] = unquoteEnvValue(normalized.slice(separatorIndex + 1).trim())
-}
-
-function normalizeEnvLine(line: string) {
-  const trimmed = line.trim()
-  if (!trimmed || trimmed.startsWith('#')) return ''
-  if (trimmed.startsWith('export ')) return trimmed.slice('export '.length).trim()
-
-  return trimmed
-}
-
-function unquoteEnvValue(value: string) {
-  if (value.length < 2) return value
-
-  const quote = value[0]
-  if (quote !== '"' && quote !== "'") return value
-  if (value.at(-1) !== quote) return value
-
-  return value.slice(1, -1)
 }
 
 function canConnect(host: string, port: number) {

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --env-file=../../.env vite",
+    "dev": "bun ../../scripts/run-with-env.ts vite",
     "build": "tsgo && bun --env-file=../../.env vite build",
     "bench:editor-scroll": "node scripts/editor-scroll-benchmark.mjs",
     "bench:editor-scroll:gate": "node scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium",

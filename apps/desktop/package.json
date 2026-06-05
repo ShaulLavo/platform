@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "PLATFORM_DESKTOP_SHARED_DEV=1 electrobun dev",
-    "dev:standalone": "electrobun dev",
+    "dev": "bun ../../scripts/run-with-env.ts PLATFORM_DESKTOP_SHARED_DEV=1 electrobun dev",
+    "dev:standalone": "bun ../../scripts/run-with-env.ts electrobun dev",
     "build": "electrobun build",
     "lint": "oxlint .",
     "format": "oxfmt --write .",

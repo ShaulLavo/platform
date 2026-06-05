@@ -6,7 +6,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./env": "./src/env.ts"
+    "./env": "./src/env.ts",
+    "./env-file": "./src/env-file.ts"
   },
   "scripts": {
     "build": "tsgo --noEmit",
