@@ -113,7 +113,7 @@
 }
 
 .workbench-dockview--tabs-chrome .dockview-theme-platform {
-  --dv-tabs-and-actions-container-height: 41px;
+  --dv-tabs-and-actions-container-height: 32px;
 }
 
 .workbench-dockview--tabs-chrome .dockview-theme-platform .dv-tabs-and-actions-container {
@@ -131,10 +131,10 @@
   border-left: 0;
   border-right: 0;
   color: inherit;
-  height: 41px;
+  height: 32px;
   max-width: 224px;
   min-width: 80px;
-  padding: 0;
+  padding: 3px 0;
   transition:
     background-color 150ms ease,
     border-color 150ms ease,

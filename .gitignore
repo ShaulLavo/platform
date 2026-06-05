@@ -33,3 +33,6 @@ npm-debug.log*
 .kiro/
 references/
 .desloppify/
+
+# Playwright MCP output (screenshots, snapshots, console/network logs)
+.playwright-mcp/
