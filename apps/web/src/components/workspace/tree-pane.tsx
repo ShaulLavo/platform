@@ -45,39 +45,41 @@ import {
   type ReactNode,
 } from 'react'
 
-export const TreePane = memo(({
-  gitStatus,
-  onVisibleItemCountChange,
-  onLoadDirectory,
-  onPrefetchDirectory,
-  rootPath,
-  state,
-}: {
-  gitStatus?: readonly GitStatusEntry[]
-  onVisibleItemCountChange?: (count: number) => void
-  onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void
-  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
-  rootPath: string
-  state: LoadState<TreeModel>
-}) => {
-  if (state.status === 'loading') return <TreeStatus label='Loading folder' />
-  if (state.status === 'error') {
-    return <TreeStatus icon={<WarningCircleIcon className='size-4' />} label={state.message} />
-  }
-  if (state.status !== 'ready') return <TreeStatus label='No files' />
-  if (state.data.paths.length === 0) return <TreeStatus label='No files' />
+export const TreePane = memo(
+  ({
+    gitStatus,
+    onVisibleItemCountChange,
+    onLoadDirectory,
+    onPrefetchDirectory,
+    rootPath,
+    state,
+  }: {
+    gitStatus?: readonly GitStatusEntry[]
+    onVisibleItemCountChange?: (count: number) => void
+    onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void
+    onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
+    rootPath: string
+    state: LoadState<TreeModel>
+  }) => {
+    if (state.status === 'loading') return <TreeStatus label='Loading folder' />
+    if (state.status === 'error') {
+      return <TreeStatus icon={<WarningCircleIcon className='size-4' />} label={state.message} />
+    }
+    if (state.status !== 'ready') return <TreeStatus label='No files' />
+    if (state.data.paths.length === 0) return <TreeStatus label='No files' />
 
-  return (
-    <ReadyTreePane
-      gitStatus={gitStatus}
-      model={state.data}
-      rootPath={rootPath}
-      onVisibleItemCountChange={onVisibleItemCountChange}
-      onLoadDirectory={onLoadDirectory}
-      onPrefetchDirectory={onPrefetchDirectory}
-    />
-  )
-})
+    return (
+      <ReadyTreePane
+        gitStatus={gitStatus}
+        model={state.data}
+        rootPath={rootPath}
+        onVisibleItemCountChange={onVisibleItemCountChange}
+        onLoadDirectory={onLoadDirectory}
+        onPrefetchDirectory={onPrefetchDirectory}
+      />
+    )
+  },
+)
 
 function ReadyTreePane({
   gitStatus,

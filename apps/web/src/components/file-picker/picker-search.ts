@@ -37,9 +37,20 @@ export async function streamPickerSearchEntries(
   const seenPaths = new Set<string>()
   const scope: SearchScope = path === ROOT_PATH ? 'system' : 'current'
 
-  await streamSearchScope(search, path, query, mode, scope, matches, seenPaths, signal, scopeTimeoutMs, () => {
-    onEntries(fallbackEntries(matches, query))
-  })
+  await streamSearchScope(
+    search,
+    path,
+    query,
+    mode,
+    scope,
+    matches,
+    seenPaths,
+    signal,
+    scopeTimeoutMs,
+    () => {
+      onEntries(fallbackEntries(matches, query))
+    },
+  )
 
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 

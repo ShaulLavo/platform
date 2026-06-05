@@ -34,7 +34,9 @@ export function WorkbenchSpikeTerminalPanel({ panel }: { panel: WorkbenchSpikePa
 function mountTerminalProbe(
   host: HTMLDivElement,
   panelId: string,
-  onResize: Parameters<typeof WorkbenchSpikeMetricsContext.Provider>[0]['value']['onTerminalPanelResized'],
+  onResize: Parameters<
+    typeof WorkbenchSpikeMetricsContext.Provider
+  >[0]['value']['onTerminalPanelResized'],
 ) {
   let cancelled = false
   let fitAddon: FitAddon | null = null

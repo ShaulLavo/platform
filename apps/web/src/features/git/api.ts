@@ -198,7 +198,8 @@ export async function syncRemote(path: string) {
 
 function unwrapGitResponse<T>(response: { data: T | null; error: unknown }): T {
   if (response.error) throw createRpcError(response.error)
-  if (response.data === null) throw createRpcError(new Error('git server returned an empty response'))
+  if (response.data === null)
+    throw createRpcError(new Error('git server returned an empty response'))
 
   return response.data
 }

@@ -110,10 +110,12 @@ export function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]>
   if (nonCriticalEditorPlugins) return Promise.resolve(nonCriticalEditorPlugins)
   if (nonCriticalEditorPluginsPromise) return nonCriticalEditorPluginsPromise
 
-  nonCriticalEditorPluginsPromise = Promise.all(nonCriticalEditorPluginLoaders()).then((plugins) => {
-    nonCriticalEditorPlugins = plugins.filter((plugin): plugin is EditorPlugin => plugin !== null)
-    return nonCriticalEditorPlugins
-  })
+  nonCriticalEditorPluginsPromise = Promise.all(nonCriticalEditorPluginLoaders()).then(
+    (plugins) => {
+      nonCriticalEditorPlugins = plugins.filter((plugin): plugin is EditorPlugin => plugin !== null)
+      return nonCriticalEditorPlugins
+    },
+  )
 
   return nonCriticalEditorPluginsPromise
 }

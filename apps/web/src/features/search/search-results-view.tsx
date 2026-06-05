@@ -216,90 +216,92 @@ function scrollActiveSearchResultIntoView(
   virtualizerRef.current.scrollToIndex(currentActiveIndex, { align: 'auto' })
 }
 
-const SearchResultRow = memo(({
-  active,
-  item,
-  canReplace,
-  compact,
-  previewMaxLength,
-  query,
-  replaceQuery,
-  replaceText,
-  replaceVisible,
-  onOpenMatch,
-  onReplaceGroup,
-  onReplaceMatch,
-  onSelectResult,
-  onToggleGroup,
-}: {
-  active: boolean
-  item: SearchResultItem
-  canReplace?: boolean
-  compact?: boolean
-  previewMaxLength?: number
-  query: string
-  replaceQuery: WorkspaceSearchQuery | null
-  replaceText: string
-  replaceVisible?: boolean
-  onOpenMatch: (match: WorkspaceSearchMatch) => void
-  onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
-  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-  onSelectResult: (id: string | null) => void
-  onToggleGroup: (path: string) => void
-}) => {
-  if (item.type === 'group') {
-    return (
-      <SearchFileGroupHeader
-        active={active}
-        canReplace={canReplace}
-        compact={compact}
-        group={item.group}
-        replaceVisible={replaceVisible}
-        onReplace={onReplaceGroup}
-        onToggle={() => {
-          onSelectResult(item.id)
-          onToggleGroup(item.group.path)
-        }}
-      />
-    )
-  }
-  if (item.type === 'name') {
-    return (
-      <SearchNameMatchRow
-        active={active}
-        compact={compact}
-        match={item.match}
-        previewMaxLength={previewMaxLength}
-        query={query}
-        onOpenMatch={() => {
-          onSelectResult(item.id)
-          onOpenMatch(item.match)
-        }}
-      />
-    )
-  }
+const SearchResultRow = memo(
+  ({
+    active,
+    item,
+    canReplace,
+    compact,
+    previewMaxLength,
+    query,
+    replaceQuery,
+    replaceText,
+    replaceVisible,
+    onOpenMatch,
+    onReplaceGroup,
+    onReplaceMatch,
+    onSelectResult,
+    onToggleGroup,
+  }: {
+    active: boolean
+    item: SearchResultItem
+    canReplace?: boolean
+    compact?: boolean
+    previewMaxLength?: number
+    query: string
+    replaceQuery: WorkspaceSearchQuery | null
+    replaceText: string
+    replaceVisible?: boolean
+    onOpenMatch: (match: WorkspaceSearchMatch) => void
+    onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
+    onReplaceMatch?: (match: WorkspaceSearchMatch) => void
+    onSelectResult: (id: string | null) => void
+    onToggleGroup: (path: string) => void
+  }) => {
+    if (item.type === 'group') {
+      return (
+        <SearchFileGroupHeader
+          active={active}
+          canReplace={canReplace}
+          compact={compact}
+          group={item.group}
+          replaceVisible={replaceVisible}
+          onReplace={onReplaceGroup}
+          onToggle={() => {
+            onSelectResult(item.id)
+            onToggleGroup(item.group.path)
+          }}
+        />
+      )
+    }
+    if (item.type === 'name') {
+      return (
+        <SearchNameMatchRow
+          active={active}
+          compact={compact}
+          match={item.match}
+          previewMaxLength={previewMaxLength}
+          query={query}
+          onOpenMatch={() => {
+            onSelectResult(item.id)
+            onOpenMatch(item.match)
+          }}
+        />
+      )
+    }
 
-  return (
-    <div className={cn('ml-4 border-l', compact && 'ml-3')}>
-      <SearchMatchRow
-        active={active}
-        canReplace={canReplace}
-        compact={compact}
-        match={item.match}
-        previewMaxLength={previewMaxLength}
-        replaceQuery={replaceQuery}
-        replaceText={replaceText}
-        replaceVisible={replaceVisible}
-        query={query}
-        onOpenMatch={() => {
-          onSelectResult(item.id)
-          onOpenMatch(item.match)
-        }}
-        onReplaceMatch={onReplaceMatch}
-      />
-    </div>
-  )
-})
+    return (
+      <div className={cn('ml-4 border-l', compact && 'ml-3')}>
+        <SearchMatchRow
+          active={active}
+          canReplace={canReplace}
+          compact={compact}
+          match={item.match}
+          previewMaxLength={previewMaxLength}
+          replaceQuery={replaceQuery}
+          replaceText={replaceText}
+          replaceVisible={replaceVisible}
+          query={query}
+          onOpenMatch={() => {
+            onSelectResult(item.id)
+            onOpenMatch(item.match)
+          }}
+          onReplaceMatch={onReplaceMatch}
+        />
+      </div>
+    )
+  },
+)
 
 function searchResultItemEstimate(
   item: SearchResultItem | undefined,

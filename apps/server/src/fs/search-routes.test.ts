@@ -22,7 +22,9 @@ describe('GET /fs/search/events', () => {
 
     const matches = events.filter((event) => event.type === 'match')
     expect(matches).toContainEqual(
-      expect.objectContaining({ match: expect.objectContaining({ kind: 'name', path: 'src/button.ts' }) }),
+      expect.objectContaining({
+        match: expect.objectContaining({ kind: 'name', path: 'src/button.ts' }),
+      }),
     )
 
     const done = events.at(-1)
@@ -54,7 +56,7 @@ describe('GET /fs/search/events', () => {
     const events = await search(root, { query: 'shared', entryType: 'directory' })
     const matchPaths = events
       .filter((event) => event.type === 'match')
-      .map((event) => (event.match as { path: string; type: string }))
+      .map((event) => event.match as { path: string; type: string })
 
     expect(matchPaths.length).toBeGreaterThan(0)
     for (const match of matchPaths) {
@@ -120,7 +122,9 @@ async function readSseEvents(response: Response): Promise<SseEvent[]> {
   for (const block of text.split('\n\n')) {
     const lines = block.split(/\r?\n/)
     const eventLine = lines.find((line) => line.startsWith('event:'))
-    const dataLines = lines.filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart())
+    const dataLines = lines
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
     if (!eventLine || dataLines.length === 0) continue
 
     const type = eventLine.slice(6).trim()

@@ -2,11 +2,21 @@ import { existsSync, readdirSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import Electrobun, { BrowserView, BrowserWindow, Utils } from 'electrobun/bun'
+import { applyEnvFileOverrides } from '@workspace/observability/env-file'
 import type { DesktopRPC, PlatformPickOptions } from '../shared/rpc'
+import {
+  flushDesktopObservability,
+  initializeDesktopObservability,
+  recordDesktopError,
+  recordDesktopInfo,
+  shouldInheritChildOutput,
+} from './observability'
 
 type ChildProcess = ReturnType<typeof Bun.spawn>
 
 const ROOT_DIR = resolvePlatformRoot()
+applyEnvFileOverrides(path.join(ROOT_DIR, '.env'), Bun.env)
+initializeDesktopObservability()
 const WEB_DIR = path.join(ROOT_DIR, 'apps/web')
 const SHARED_DEV = Bun.env.PLATFORM_DESKTOP_SHARED_DEV === '1'
 const WEB_HOST = '127.0.0.1'
@@ -26,13 +36,15 @@ let stopping = false
 
 Electrobun.events.on('before-quit', async () => {
   await stopProcesses()
+  await flushDesktopObservability()
 })
 
 try {
   await startDesktop()
 } catch (error) {
-  console.error(errorMessage(error))
+  recordDesktopError('desktop.start_failed', { error: errorMessage(error) })
   await stopProcesses()
+  await flushDesktopObservability()
   Utils.quit()
 }
 
@@ -46,7 +58,7 @@ async function startDesktop() {
 }
 
 async function startSharedDesktop() {
-  console.log('[desktop] shared dev mode: waiting for turbo-managed server and web')
+  recordDesktopInfo('desktop.shared_dev.wait')
   await waitForHttp(`${SERVER_URL}/health`)
   await waitForHttp(WEB_URL)
   openMainWindow()
@@ -131,11 +143,17 @@ function openMainWindow() {
 
 async function pickEntry(options: PlatformPickOptions) {
   const folder = startingFolder(options.startingPath)
-  console.log(`[desktop] picker opening: mode=${options.mode} startingFolder=${folder}`)
+  recordDesktopInfo('desktop.picker.open', {
+    mode: options.mode,
+    startingFolder: folder,
+  })
   const paths = await openFileDialog(options, folder)
 
   const selectedPaths = paths.filter(Boolean)
-  console.log(`[desktop] picker selected: count=${selectedPaths.length} first=${selectedPaths[0]}`)
+  recordDesktopInfo('desktop.picker.selected', {
+    count: selectedPaths.length,
+    first: selectedPaths[0],
+  })
   return { paths: selectedPaths }
 }
 
@@ -149,7 +167,7 @@ async function openFileDialog(options: PlatformPickOptions, startingFolder: stri
       startingFolder,
     })
   } catch (error) {
-    console.error(`[desktop] picker failed: ${errorMessage(error)}`)
+    recordDesktopError('desktop.picker.failed', { error: errorMessage(error) })
     throw error
   }
 }
@@ -160,13 +178,14 @@ function spawnProcess(
   cwd: string,
   env: Record<string, string | undefined>,
 ) {
-  console.log(`[desktop] ${name}: ${command.join(' ')}`)
+  recordDesktopInfo('desktop.process.spawn', { command, cwd, name })
+  const output = shouldInheritChildOutput() ? 'inherit' : 'ignore'
   const child = Bun.spawn({
     cmd: command,
     cwd,
     env,
-    stderr: 'inherit',
-    stdout: 'inherit',
+    stderr: output,
+    stdout: output,
   })
 
   childProcesses.add(child)
@@ -179,8 +198,9 @@ async function monitorProcess(name: string, child: ChildProcess) {
   childProcesses.delete(child)
   if (stopping) return
 
-  console.error(`[desktop] ${name} exited with code ${exitCode}; quitting`)
+  recordDesktopError('desktop.process.exited', { exitCode, name })
   await stopProcesses()
+  await flushDesktopObservability()
   Utils.quit()
 }
 
@@ -223,9 +243,12 @@ async function releasePlatformPort(host: string, port: number, label: string) {
     )
   }
 
-  console.log(
-    `[desktop] ${label} port ${host}:${port} is busy; stopping ${processes.length} platform process(es)`,
-  )
+  recordDesktopInfo('desktop.port.release', {
+    host,
+    label,
+    port,
+    processCount: processes.length,
+  })
 
   killProcesses(processes, 'SIGTERM')
 
@@ -255,7 +278,11 @@ async function waitForPortRelease(host: string, port: number, timeoutMs: number)
 
 function killProcesses(processes: Array<{ command: string; pid: number }>, signal: NodeJS.Signals) {
   for (const processInfo of processes) {
-    console.log(`[desktop] ${signal} pid ${processInfo.pid}: ${processInfo.command}`)
+    recordDesktopInfo('desktop.process.kill', {
+      command: processInfo.command,
+      pid: processInfo.pid,
+      signal,
+    })
     process.kill(processInfo.pid, signal)
   }
 }

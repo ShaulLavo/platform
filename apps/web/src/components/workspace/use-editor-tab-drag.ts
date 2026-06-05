@@ -11,6 +11,14 @@ import {
   type EditorTabDropTargetBounds,
 } from '@/components/workspace/editor-tab-dnd'
 
+// TODO(chrome-tab-dnd): Reimagine the chrome tab drag as a pointer-driven in-strip slide.
+// The dragged tab should stay inside the tab bar and follow the pointer horizontally while
+// the other tabs animate aside to reveal exactly where it will land on release — no floating
+// drag-image / "pop out". Only once the pointer is pulled down far enough past the strip
+// should the whole tab snap out (detach) into its own window.
+// TODO(chrome-tab-dnd): Study Chrome's tab strip source for the detach pull-down threshold and
+// the slide/reorder motion details before implementing:
+// https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/views/tabs/
 export const EDITOR_TAB_DRAG_KIND = 'platform/editor-tab'
 export const EDITOR_TAB_DRAG_MIME = 'application/x-platform-editor-tab'
 const EDITOR_TAB_DRAG_AUTO_SCROLL_EDGE_PX = 36

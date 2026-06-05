@@ -48,11 +48,7 @@ async function assertWritableTarget(
   throw new FsError('FILE_CHANGED')
 }
 
-async function targetVersion(
-  absolutePath: string,
-  stats: Stats,
-  baseVersion: string,
-) {
+async function targetVersion(absolutePath: string, stats: Stats, baseVersion: string) {
   if (!baseVersion.startsWith('sha256:')) return fileVersion(stats)
 
   return textFileVersion(await readFile(absolutePath, 'utf8'))

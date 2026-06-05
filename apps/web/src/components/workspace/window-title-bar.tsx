@@ -16,7 +16,7 @@ export function WindowTitleBar() {
 
   return (
     <div
-      className={`${DRAG_REGION_CLASS} bg-background relative flex h-[var(--titlebar-height)] shrink-0 select-none items-center`}
+      className={`${DRAG_REGION_CLASS} bg-background relative flex h-[var(--titlebar-height)] shrink-0 items-center select-none`}
       style={{ paddingLeft: TRAFFIC_LIGHT_INSET }}
     >
       <span className='text-muted-foreground pointer-events-none absolute inset-x-0 truncate px-20 text-center text-xs font-medium'>

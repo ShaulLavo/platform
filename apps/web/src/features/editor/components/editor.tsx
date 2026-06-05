@@ -110,8 +110,7 @@ export function Editor({
       }) satisfies EditorKeymapOptions,
     [keymapLayers],
   )
-  const rowPositioning =
-    editorPerformanceLayoutVariant() === 'absolute-rows' ? 'top' : 'transform'
+  const rowPositioning = editorPerformanceLayoutVariant() === 'absolute-rows' ? 'top' : 'transform'
   const controller = useEditor({
     cursorLineHighlight: {
       gutterNumber: true,

@@ -1,4 +1,14 @@
-export type ObservabilityEnvironment = 'development' | 'production' | 'test'
+import {
+  booleanFromEnv,
+  observabilityEnabledFromEnv,
+  observabilityEnv,
+  observabilityEnvironment,
+  type ObservabilityEnv,
+  type ObservabilityEnvironment,
+} from './env'
+
+export type { ObservabilityEnv, ObservabilityEnvironment }
+
 export type ObservabilityPostHogMode = 'events' | 'logs'
 
 export type ObservabilityConfig = {
@@ -26,8 +36,6 @@ export type ObservabilityConfig = {
   slowMs: number
 }
 
-export type ObservabilityEnv = Record<string, string | undefined>
-
 const DEFAULT_BATCH_INTERVAL_MS = 5_000
 const DEFAULT_BATCH_SIZE = 50
 const DEFAULT_LOG_DIR = '.evlog/logs'
@@ -44,7 +52,7 @@ export function observabilityConfigFromEnv(
   env: ObservabilityEnv = process.env,
 ): ObservabilityConfig {
   const environment = observabilityEnvironment(env)
-  const enabled = booleanFromEnv(observabilityEnv(env, 'ENABLED')) ?? environment !== 'test'
+  const enabled = observabilityEnabledFromEnv(env)
   const postHogApiKey = stringFromEnv(
     observabilityEnv(env, 'POSTHOG_API_KEY'),
     env.POSTHOG_API_KEY,
@@ -98,27 +106,6 @@ export function observabilityConfigFromEnv(
     service: observabilityEnv(env, 'SERVICE')?.trim() || 'platform',
     slowMs: positiveInteger(observabilityEnv(env, 'SLOW_MS'), DEFAULT_SLOW_MS),
   }
-}
-
-function observabilityEnvironment(env: ObservabilityEnv): ObservabilityEnvironment {
-  if (env.NODE_ENV === 'production') return 'production'
-  if (env.NODE_ENV === 'test') return 'test'
-
-  return 'development'
-}
-
-function booleanFromEnv(value: string | undefined) {
-  if (value === undefined) return undefined
-
-  const normalized = value.trim().toLowerCase()
-  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
-  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
-
-  return undefined
-}
-
-function observabilityEnv(env: ObservabilityEnv, key: string) {
-  return env[`OBSERVABILITY_${key}`]
 }
 
 function stringFromEnv(...values: Array<string | undefined>) {

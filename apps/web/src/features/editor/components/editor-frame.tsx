@@ -8,21 +8,18 @@ type EditorFrameProps = {
   children?: ReactNode
 }
 
-export const EditorFrame = memo(({
-  active,
-  controller,
-  onActivate,
-  children,
-}: EditorFrameProps) => {
-  return (
-    <div
-      className='bg-background flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden'
-      data-editor-focus-active={active ? 'true' : 'false'}
-      onFocusCapture={onActivate}
-      onPointerDownCapture={onActivate}
-    >
-      <EditorHost className='app-editor-host' controller={controller} />
-      {children}
-    </div>
-  )
-})
+export const EditorFrame = memo(
+  ({ active, controller, onActivate, children }: EditorFrameProps) => {
+    return (
+      <div
+        className='bg-background flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden'
+        data-editor-focus-active={active ? 'true' : 'false'}
+        onFocusCapture={onActivate}
+        onPointerDownCapture={onActivate}
+      >
+        <EditorHost className='app-editor-host' controller={controller} />
+        {children}
+      </div>
+    )
+  },
+)

@@ -12,7 +12,9 @@ describe('fileBackedDocumentPath', () => {
   })
 
   it('filters non-file editor document ids', () => {
-    expect(fileBackedDocumentPath(snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts')))).toBe(null)
+    expect(fileBackedDocumentPath(snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts')))).toBe(
+      null,
+    )
     expect(fileBackedDocumentPath(conflictDiffDocumentId('conflict-1'))).toBe(null)
     expect(fileBackedDocumentPath(searchBufferDocumentId('/repo'))).toBe(null)
   })

@@ -8,84 +8,86 @@ import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/fil
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export const SearchFileGroupHeader = memo(({
-  active,
-  className,
-  canReplace,
-  compact,
-  group,
-  replaceVisible,
-  onReplace,
-  onToggle,
-}: {
-  active?: boolean
-  className?: string
-  canReplace?: boolean
-  compact?: boolean
-  group: WorkspaceSearchFileGroup
-  replaceVisible?: boolean
-  onReplace?: (group: WorkspaceSearchFileGroup) => void
-  onToggle: (path: string) => void
-}) => {
-  const icon = iconForEntry({ name: group.name, type: 'file' })
+export const SearchFileGroupHeader = memo(
+  ({
+    active,
+    className,
+    canReplace,
+    compact,
+    group,
+    replaceVisible,
+    onReplace,
+    onToggle,
+  }: {
+    active?: boolean
+    className?: string
+    canReplace?: boolean
+    compact?: boolean
+    group: WorkspaceSearchFileGroup
+    replaceVisible?: boolean
+    onReplace?: (group: WorkspaceSearchFileGroup) => void
+    onToggle: (path: string) => void
+  }) => {
+    const icon = iconForEntry({ name: group.name, type: 'file' })
 
-  return (
-    <div
-      className={cn(
-        'grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left',
-        compact && 'h-6 gap-1 overflow-hidden px-1.5 py-0',
-        active && 'bg-muted/60',
-        !active && 'hover:bg-muted/55',
-        className,
-      )}
-    >
-      <button
+    return (
+      <div
         className={cn(
-          'grid min-w-0 grid-cols-[16px_16px_minmax(0,1fr)] items-center gap-1.5 text-left outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
-          compact && 'h-full grid-cols-[14px_14px_minmax(0,1fr)] gap-1 overflow-hidden',
+          'grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left',
+          compact && 'h-6 gap-1 overflow-hidden px-1.5 py-0',
+          active && 'bg-muted/60',
+          !active && 'hover:bg-muted/55',
+          className,
         )}
-        tabIndex={-1}
-        type='button'
-        onClick={() => onToggle(group.path)}
       >
-        <CaretRightIcon
+        <button
           className={cn(
-            'size-3.5 text-muted-foreground transition-transform',
-            compact && 'size-3',
-            !group.collapsed && 'rotate-90',
+            'grid min-w-0 grid-cols-[16px_16px_minmax(0,1fr)] items-center gap-1.5 text-left outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
+            compact && 'h-full grid-cols-[14px_14px_minmax(0,1fr)] gap-1 overflow-hidden',
           )}
-        />
-        <span
-          aria-hidden='true'
-          className={cn('size-4', compact && 'size-3.5')}
-          style={fileIconStyle(icon)}
-        />
-        <SearchFileGroupTitle compact={compact} group={group} />
-      </button>
-      <span
-        className={cn(
-          'rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground',
-          compact && 'h-4 px-1 leading-4',
-        )}
-      >
-        <SearchNumber fontSize='10px' value={group.count} />
-      </span>
-      {replaceVisible ? (
-        <Button
-          className='h-6 px-1.5 text-[10px]'
-          disabled={!canReplace}
-          size='xs'
-          title='Replace matches in this file'
+          tabIndex={-1}
           type='button'
-          variant='ghost'
-          onClick={() => onReplace?.(group)}
+          onClick={() => onToggle(group.path)}
         >
-          Replace
-        </Button>
-      ) : null}
-    </div>
-  )
-})
+          <CaretRightIcon
+            className={cn(
+              'size-3.5 text-muted-foreground transition-transform',
+              compact && 'size-3',
+              !group.collapsed && 'rotate-90',
+            )}
+          />
+          <span
+            aria-hidden='true'
+            className={cn('size-4', compact && 'size-3.5')}
+            style={fileIconStyle(icon)}
+          />
+          <SearchFileGroupTitle compact={compact} group={group} />
+        </button>
+        <span
+          className={cn(
+            'rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground',
+            compact && 'h-4 px-1 leading-4',
+          )}
+        >
+          <SearchNumber fontSize='10px' value={group.count} />
+        </span>
+        {replaceVisible ? (
+          <Button
+            className='h-6 px-1.5 text-[10px]'
+            disabled={!canReplace}
+            size='xs'
+            title='Replace matches in this file'
+            type='button'
+            variant='ghost'
+            onClick={() => onReplace?.(group)}
+          >
+            Replace
+          </Button>
+        ) : null}
+      </div>
+    )
+  },
+)
 
 function SearchFileGroupTitle({
   compact,

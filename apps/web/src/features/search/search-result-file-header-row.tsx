@@ -26,41 +26,43 @@ type SearchResultFileHeaderRowProps = {
   readonly onToggleFile: (path: string) => void
 }
 
-export const SearchResultFileHeaderRow = memo(({
-  activeResultId,
-  canReplace,
-  replaceVisible,
-  row,
-  treeId,
-  virtualItem,
-  onReplaceFile,
-  onSelectResult,
-  onToggleFile,
-}: SearchResultFileHeaderRowProps) => {
-  const id = searchResultVirtualRowId(row)
-  const active = searchResultFileContainsId(row.file, activeResultId)
-  const handleMouseDown = useCallback(() => onSelectResult(id), [id, onSelectResult])
+export const SearchResultFileHeaderRow = memo(
+  ({
+    activeResultId,
+    canReplace,
+    replaceVisible,
+    row,
+    treeId,
+    virtualItem,
+    onReplaceFile,
+    onSelectResult,
+    onToggleFile,
+  }: SearchResultFileHeaderRowProps) => {
+    const id = searchResultVirtualRowId(row)
+    const active = searchResultFileContainsId(row.file, activeResultId)
+    const handleMouseDown = useCallback(() => onSelectResult(id), [id, onSelectResult])
 
-  return (
-    <div
-      aria-expanded={searchResultVirtualRowExpanded(row)}
-      aria-level={1}
-      aria-selected={active}
-      className='absolute right-2 left-2'
-      data-index={virtualItem.index}
-      id={searchResultDomId(treeId, id)}
-      role='treeitem'
-      style={searchResultVirtualRowStyle(virtualItem)}
-      onMouseDown={handleMouseDown}
-    >
-      <SearchResultFileHeader
-        active={active}
-        canReplace={canReplace}
-        file={row.file}
-        replaceVisible={replaceVisible}
-        onReplaceFile={onReplaceFile}
-        onToggleFile={onToggleFile}
-      />
-    </div>
-  )
-})
+    return (
+      <div
+        aria-expanded={searchResultVirtualRowExpanded(row)}
+        aria-level={1}
+        aria-selected={active}
+        className='absolute right-2 left-2'
+        data-index={virtualItem.index}
+        id={searchResultDomId(treeId, id)}
+        role='treeitem'
+        style={searchResultVirtualRowStyle(virtualItem)}
+        onMouseDown={handleMouseDown}
+      >
+        <SearchResultFileHeader
+          active={active}
+          canReplace={canReplace}
+          file={row.file}
+          replaceVisible={replaceVisible}
+          onReplaceFile={onReplaceFile}
+          onToggleFile={onToggleFile}
+        />
+      </div>
+    )
+  },
+)

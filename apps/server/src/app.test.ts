@@ -1065,10 +1065,7 @@ async function nextMatchingEvent(
 }
 
 async function nextEvent(events: ReturnType<typeof createSseReader>) {
-  const event = await Promise.race([
-    events.next(),
-    delay(2_500).then(() => null),
-  ])
+  const event = await Promise.race([events.next(), delay(2_500).then(() => null)])
   if (!event) throw new Error('timed out waiting for filesystem event')
 
   return event

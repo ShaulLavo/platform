@@ -1,5 +1,5 @@
 export { applyObservability } from './elysia'
-export { observabilityConfigFromEnv, type ObservabilityConfig } from './config'
+export { observabilityConfigFromEnv, type ObservabilityConfig } from '@workspace/observability'
 export { observabilityRoutes } from './routes'
 export {
   createStructuredError,

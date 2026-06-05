@@ -8,33 +8,35 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import type { EditorKeymapLayer } from '@editor/core'
 
-export const FileViewer = memo(({
-  editorKeymapLayers,
-  rootPath,
-  onRequestCloseTab,
-  onRequestCloseTabs,
-}: {
-  editorKeymapLayers: readonly EditorKeymapLayer[]
-  rootPath: string
-  onRequestCloseTab: RequestCloseTab
-  onRequestCloseTabs: RequestCloseTabs
-}) => {
-  const editorPaneLayout = useEditorWorkspaceState((state) => state.editorPaneLayout)
-  const [dropTarget, setDropTarget] = useState<EditorPaneSplitDropTarget | null>(null)
-  const surfaceRef = useRef<HTMLElement | null>(null)
+export const FileViewer = memo(
+  ({
+    editorKeymapLayers,
+    rootPath,
+    onRequestCloseTab,
+    onRequestCloseTabs,
+  }: {
+    editorKeymapLayers: readonly EditorKeymapLayer[]
+    rootPath: string
+    onRequestCloseTab: RequestCloseTab
+    onRequestCloseTabs: RequestCloseTabs
+  }) => {
+    const editorPaneLayout = useEditorWorkspaceState((state) => state.editorPaneLayout)
+    const [dropTarget, setDropTarget] = useState<EditorPaneSplitDropTarget | null>(null)
+    const surfaceRef = useRef<HTMLElement | null>(null)
 
-  return (
-    <EditorPaneDropContext value={{ dropTarget, setDropTarget, surfaceRef }}>
-      <section className='relative h-full min-h-0 overflow-hidden' ref={surfaceRef}>
-        <EditorPaneNodeView
-          editorKeymapLayers={editorKeymapLayers}
-          node={editorPaneLayout.root}
-          rootPath={rootPath}
-          onRequestCloseTab={onRequestCloseTab}
-          onRequestCloseTabs={onRequestCloseTabs}
-        />
-        <EditorPaneDropOverlay target={dropTarget?.scope === 'root' ? dropTarget : null} />
-      </section>
-    </EditorPaneDropContext>
-  )
-})
+    return (
+      <EditorPaneDropContext value={{ dropTarget, setDropTarget, surfaceRef }}>
+        <section className='relative h-full min-h-0 overflow-hidden' ref={surfaceRef}>
+          <EditorPaneNodeView
+            editorKeymapLayers={editorKeymapLayers}
+            node={editorPaneLayout.root}
+            rootPath={rootPath}
+            onRequestCloseTab={onRequestCloseTab}
+            onRequestCloseTabs={onRequestCloseTabs}
+          />
+          <EditorPaneDropOverlay target={dropTarget?.scope === 'root' ? dropTarget : null} />
+        </section>
+      </EditorPaneDropContext>
+    )
+  },
+)

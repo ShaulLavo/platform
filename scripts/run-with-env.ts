@@ -1,0 +1,72 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { observabilityEnabledFromEnv } from '../packages/observability/src/env'
+import { observabilityEnvFromFile } from '../packages/observability/src/env-file'
+
+const root = path.resolve(import.meta.dirname, '..')
+const cwd = process.cwd()
+const env = observabilityEnvFromFile(path.join(root, '.env'), Bun.env)
+const commandArgs = applyEnvAssignments(Bun.argv.slice(2))
+if (commandArgs.length === 0) throw new Error('Missing command.')
+
+const output = observabilityEnabledFromEnv(env) ? 'inherit' : 'ignore'
+const child = Bun.spawn({
+  cmd: commandForArgs(commandArgs),
+  cwd,
+  env,
+  stderr: output,
+  stdout: output,
+})
+
+installSignalHandlers(child)
+process.exit(await child.exited)
+
+function applyEnvAssignments(args: string[]) {
+  const remaining = [...args]
+
+  while (remaining[0] && isEnvAssignment(remaining[0])) {
+    const assignment = remaining.shift()
+    if (assignment) applyEnvAssignment(assignment)
+  }
+
+  return remaining
+}
+
+function isEnvAssignment(value: string) {
+  return /^[A-Za-z_][A-Za-z0-9_]*=/u.test(value)
+}
+
+function applyEnvAssignment(assignment: string) {
+  const separatorIndex = assignment.indexOf('=')
+  const key = assignment.slice(0, separatorIndex)
+  env[key] = assignment.slice(separatorIndex + 1)
+}
+
+function commandForArgs(args: readonly string[]) {
+  const [command, ...rest] = args
+  if (!command) throw new Error('Missing command.')
+  if (command.startsWith('-')) return [process.execPath, ...args]
+
+  return [resolveCommand(command), ...rest]
+}
+
+function resolveCommand(command: string) {
+  if (path.isAbsolute(command) || command.startsWith('.')) return command
+
+  const localBin = path.join(cwd, 'node_modules/.bin', command)
+  if (existsSync(localBin)) return localBin
+
+  const rootBin = path.join(root, 'node_modules/.bin', command)
+  if (existsSync(rootBin)) return rootBin
+
+  return command
+}
+
+function installSignalHandlers(child: ReturnType<typeof Bun.spawn>) {
+  const stop = (signal: NodeJS.Signals) => {
+    child.kill(signal)
+  }
+
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
+}

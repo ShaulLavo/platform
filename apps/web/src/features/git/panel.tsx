@@ -15,16 +15,15 @@ import { PanelShell } from './components/panel-shell'
 
 const EMPTY_FILES: readonly FileStatus[] = []
 
-export const Panel = memo(({
-  className,
-  rootPath,
-}: ComponentProps<'section'> & { rootPath: string }) => {
-  return (
-    <StateProvider>
-      <PanelContent className={className} rootPath={rootPath} />
-    </StateProvider>
-  )
-})
+export const Panel = memo(
+  ({ className, rootPath }: ComponentProps<'section'> & { rootPath: string }) => {
+    return (
+      <StateProvider>
+        <PanelContent className={className} rootPath={rootPath} />
+      </StateProvider>
+    )
+  },
+)
 
 function StateProvider({ children }: { children: ReactNode }) {
   const [store] = useState(createGitStore)

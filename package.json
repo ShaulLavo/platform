@@ -5,14 +5,15 @@
   "workspaces": [
     "apps/*",
     "packages/contracts",
+    "packages/observability",
     "packages/ui",
     "../Editor/packages/*"
   ],
   "scripts": {
     "build": "bun scripts/prod.ts build",
-    "dev": "turbo dev",
-    "dev:web": "turbo dev --filter=!desktop",
-    "desktop:dev": "bun run --cwd apps/desktop dev:standalone",
+    "dev": "bun --env-file=.env scripts/dev.ts",
+    "dev:web": "bun --env-file=.env scripts/dev.ts --filter=!desktop",
+    "desktop:dev": "bun --env-file=.env scripts/desktop-dev.ts",
     "lint": "turbo lint",
     "prod": "bun scripts/prod.ts",
     "start": "bun scripts/prod.ts start",
@@ -20,10 +21,13 @@
     "format:check": "turbo format:check",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "verify:spelling": "bash scripts/verify-no-refrences.sh"
+    "verify:spelling": "bash scripts/verify-no-refrences.sh",
+    "hooks:install": "lefthook install",
+    "hooks:pre-commit": "lefthook run pre-commit"
   },
   "devDependencies": {
     "@typescript/native-preview": "latest",
+    "lefthook": "^2.1.9",
     "oxfmt": "latest",
     "oxlint": "latest",
     "turbo": "^2.9.2",
