@@ -194,6 +194,8 @@ export function createEditorSyntaxHighlightingPlugins(
 ): readonly EditorPlugin[] {
   void _options
 
+  if (editorPerformanceFeatureDisabled('syntax')) return []
+
   return [javaScript({ jsx: true }), typeScript({ tsx: true }), html(), css(), json(), markdown()]
 }
 
