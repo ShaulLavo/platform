@@ -1,4 +1,5 @@
 import { AppWorkspace } from '@/components/app-workspace'
+import { WindowTitleBar } from '@/components/workspace/window-title-bar'
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
@@ -35,16 +36,19 @@ export function AppContent() {
 
   return (
     <main
-      className='bg-background text-foreground h-svh overflow-hidden'
+      className='bg-background text-foreground flex h-svh flex-col overflow-hidden'
       onFocusCapture={handleGlobalFocusCapture}
       onPointerDownCapture={handleGlobalPointerDownCapture}
     >
-      <AppWorkspace
-        editorKeymapLayers={editorKeymapLayers}
-        keymapBindings={keymapBindings}
-        onRequestCloseTab={requestCloseTab}
-        onRequestCloseTabs={requestCloseTabs}
-      />
+      <WindowTitleBar />
+      <div className='min-h-0 flex-1'>
+        <AppWorkspace
+          editorKeymapLayers={editorKeymapLayers}
+          keymapBindings={keymapBindings}
+          onRequestCloseTab={requestCloseTab}
+          onRequestCloseTabs={requestCloseTabs}
+        />
+      </div>
       {dirtyTabCloseDialog}
     </main>
   )

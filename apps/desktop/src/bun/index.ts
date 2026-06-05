@@ -117,7 +117,14 @@ function openMainWindow() {
     },
     preload: 'views://preload/index.js',
     rpc,
-    titleBarStyle: 'default',
+    // Ghostty-style seamless chrome: full-size content view with inset traffic
+    // lights floating over the web UI (no separate native titlebar). The web app
+    // renders its own draggable title strip; see WindowTitleBar.
+    titleBarStyle: 'hiddenInset',
+    // Push the traffic lights right (x) and down (y) so they sit centered and
+    // inset within the 40px web title strip, matching T3 Code's macOS chrome
+    // (hiddenInset, lights ~{x:16,y:18}). Tweak alongside --titlebar-height.
+    trafficLightOffset: { x: 12, y: 6 },
     url: WEB_URL,
   })
 }

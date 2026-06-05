@@ -61,6 +61,9 @@
 
 :root {
   color-scheme: light;
+  /* Height of the desktop window's draggable title strip (WindowTitleBar).
+     Matches T3 Code's 40px macOS titlebar. */
+  --titlebar-height: 40px;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
