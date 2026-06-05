@@ -9,9 +9,11 @@ import { ThemeProvider } from '@/components/theme-provider.tsx'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme.ts'
 import { initializeClientLogging, log } from '@/lib/client-logging.ts'
 import { loadDefaultNerdFont } from '@/lib/default-nerd-font.ts'
+import { installEditorPerformanceTraceFromUrl } from '@/lib/editor-performance-trace.ts'
 import { queryClient } from '@/lib/query-client.ts'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
+installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
 log.info({
   action: 'app.bootstrap',

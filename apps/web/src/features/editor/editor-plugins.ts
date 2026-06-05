@@ -27,6 +27,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
+import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
 
 const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
   createElement(CaretDownIcon, {
@@ -109,19 +110,32 @@ export function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]>
   if (nonCriticalEditorPlugins) return Promise.resolve(nonCriticalEditorPlugins)
   if (nonCriticalEditorPluginsPromise) return nonCriticalEditorPluginsPromise
 
-  nonCriticalEditorPluginsPromise = Promise.all([
-    loadPlugin('@editor/scope-lines', () =>
-      import('@editor/scope-lines').then((module) => module.createScopeLinesPlugin()),
-    ),
-    loadPlugin('@editor/minimap', () =>
-      import('@editor/minimap').then((module) => module.createMinimapPlugin()),
-    ),
-  ]).then((plugins) => {
+  nonCriticalEditorPluginsPromise = Promise.all(nonCriticalEditorPluginLoaders()).then((plugins) => {
     nonCriticalEditorPlugins = plugins.filter((plugin): plugin is EditorPlugin => plugin !== null)
     return nonCriticalEditorPlugins
   })
 
   return nonCriticalEditorPluginsPromise
+}
+
+function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>[] {
+  const loaders: Promise<EditorPlugin | null>[] = []
+  if (!editorPerformanceFeatureDisabled('scope-lines')) {
+    loaders.push(
+      loadPlugin('@editor/scope-lines', () =>
+        import('@editor/scope-lines').then((module) => module.createScopeLinesPlugin()),
+      ),
+    )
+  }
+  if (!editorPerformanceFeatureDisabled('minimap')) {
+    loaders.push(
+      loadPlugin('@editor/minimap', () =>
+        import('@editor/minimap').then((module) => module.createMinimapPlugin()),
+      ),
+    )
+  }
+
+  return loaders
 }
 
 function scheduleNonCriticalPluginLoad(load: () => void) {

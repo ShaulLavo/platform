@@ -1,0 +1,295 @@
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+.workbench-spike-root {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(140px, 24vh);
+  min-width: 1024px;
+  height: 100svh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.workbench-spike-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) auto minmax(360px, 1fr);
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--muted) 22%, transparent);
+  padding: 10px 12px;
+}
+
+.workbench-spike-title-block {
+  min-width: 0;
+}
+
+.workbench-spike-title-block h1 {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.workbench-spike-panel-kicker {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workbench-spike-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workbench-spike-actions button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0 9px;
+}
+
+.workbench-spike-actions button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--ring) 65%, transparent);
+  background: var(--accent);
+}
+
+.workbench-spike-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.workbench-spike-metrics {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.workbench-spike-metrics div {
+  min-width: 0;
+}
+
+.workbench-spike-metrics dt {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.workbench-spike-metrics dd {
+  min-width: 0;
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-spike-layout {
+  min-height: 0;
+  min-width: 0;
+}
+
+.dockview-theme-platform {
+  --dv-active-sash-color: color-mix(in oklch, var(--ring) 55%, transparent);
+  --dv-activegroup-hiddenpanel-tab-background-color: color-mix(
+    in oklch,
+    var(--muted) 38%,
+    transparent
+  );
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--background);
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-border-radius: 0px;
+  --dv-drag-over-background-color: color-mix(in oklch, var(--ring) 16%, transparent);
+  --dv-drag-over-border: 1px solid color-mix(in oklch, var(--ring) 70%, transparent);
+  --dv-group-view-background-color: var(--background);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(
+    in oklch,
+    var(--muted) 24%,
+    transparent
+  );
+  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(
+    in oklch,
+    var(--muted-foreground) 72%,
+    transparent
+  );
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--background);
+  --dv-inactivegroup-visiblepanel-tab-color: color-mix(
+    in oklch,
+    var(--foreground) 82%,
+    transparent
+  );
+  --dv-paneview-active-outline-color: color-mix(in oklch, var(--ring) 65%, transparent);
+  --dv-paneview-header-border-color: var(--border);
+  --dv-sash-color: transparent;
+  --dv-scrollbar-background-color: color-mix(
+    in oklch,
+    var(--muted-foreground) 32%,
+    transparent
+  );
+  --dv-separator-border: var(--border);
+  --dv-tab-border-radius: 0px;
+  --dv-tab-divider-color: var(--border);
+  --dv-tab-font-size: 12px;
+  --dv-tab-margin: 0;
+  --dv-tabs-and-actions-container-background-color: color-mix(
+    in oklch,
+    var(--muted) 22%,
+    transparent
+  );
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tabs-and-actions-container-height: 32px;
+  height: 100%;
+}
+
+.dockview-theme-platform .dv-groupview.dv-active-group {
+  outline: 1px solid color-mix(in oklch, var(--ring) 28%, transparent);
+  outline-offset: -1px;
+}
+
+.dockview-theme-platform .dv-tab {
+  padding: 0 9px;
+}
+
+.workbench-spike-panel {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background);
+}
+
+.workbench-spike-editor-panel {
+  background: var(--background);
+}
+
+.workbench-spike-terminal-panel {
+  --terminal-background: #0e1013;
+  --terminal-foreground: #d7dde5;
+  --terminal-cursor: #f4f7fb;
+  --terminal-cursor-accent: #0e1013;
+  --terminal-selection: #33455a;
+  --terminal-selection-foreground: #ffffff;
+  background: var(--terminal-background, #0c0c0c);
+}
+
+.workbench-spike-terminal-host {
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 10px;
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.workbench-spike-info-panel {
+  gap: 12px;
+  justify-content: center;
+  padding: 28px;
+}
+
+.workbench-spike-info-panel h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.workbench-spike-info-panel p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.workbench-spike-info-panel dl {
+  display: grid;
+  width: min(520px, 100%);
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.workbench-spike-info-panel dt {
+  color: var(--muted-foreground);
+}
+
+.workbench-spike-info-panel dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-spike-watermark {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.workbench-spike-watermark p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.workbench-spike-serialized {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklch, var(--muted) 14%, transparent);
+}
+
+.workbench-spike-serialized h2 {
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 7px 10px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.workbench-spike-serialized pre {
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  color: var(--foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}

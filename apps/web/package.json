@@ -39,6 +39,7 @@
     "@tanstack/react-virtual": "3.13.26",
     "@workspace/contracts": "workspace:*",
     "@workspace/ui": "workspace:*",
+    "dockview-react": "^6.6.1",
     "evlog": "^2.17.0",
     "ghostty-web": "^0.4.0",
     "js.foresight": "^3.5.0",
