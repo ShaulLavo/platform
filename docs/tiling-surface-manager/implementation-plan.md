@@ -468,6 +468,12 @@ Exit criteria:
 
 ## Phase 7 - File And Diff Surface Cutover
 
+Status: started 2026-06-05. Initial cutover slice maps existing
+`EditorPaneLayout` leaves into normalized file/diff surfaces, carries editor
+tab identity through surface serialized state, renders file/diff surfaces through
+the custom renderer, and removes production `WorkspaceView` use of
+`WorkbenchDockview`.
+
 Goal: replace editor-pane layout and Dockview for file/diff editor workflows.
 
 Work:
@@ -850,6 +856,9 @@ Work:
   - rail item labels.
 - Visual language:
   - visible gaps with wallpaper/background;
+  - use `/Users/shaul/Pictures/6se14k41od671.png` as the default wallpaper
+    source; when implemented, copy/package it as an app asset instead of
+    depending on the absolute local path at runtime;
   - slight translucent/blurred windows;
   - clear active window and active surface state;
   - clear transient preview state;

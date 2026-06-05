@@ -1,14 +1,23 @@
-import { useRef } from 'react'
+import { use, useMemo, useRef } from 'react'
 
+import { ChromeEditorTabList } from '@/components/workspace/chrome-editor-tab-list'
 import { ChromeTabCloseButton } from '@/components/workspace/chrome-tab-close-button'
 import { chromeTabLayout } from '@/components/workspace/chrome-tab-layout'
 import { ChromeTabSelectButton } from '@/components/workspace/chrome-tab-select-button'
 import { chromeTabRootClassName } from '@/components/workspace/chrome-tab-style'
+import { sameEditorTabModel } from '@/components/workspace/editor-tab-model'
+import { useChromeVisualTabs } from '@/components/workspace/use-chrome-visual-tabs'
 import { useElementWidth } from '@/components/workspace/use-element-width'
+import { useEditorTabDrag } from '@/components/workspace/use-editor-tab-drag'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { surfacePanelId } from './workbench-surface-host'
 import { WorkbenchSurfaceIcon } from './workbench-surface-icon'
+import {
+  editorPaneIdForWorkbenchWindowId,
+  editorSurfaceSerializedState,
+} from './workbench-editor-surface-layout'
+import { WorkbenchEditorSurfaceContext } from './workbench-editor-surface-context'
 import { workbenchChromeTabStyle } from './workbench-tab-style'
 import type { LayoutOperation, Surface, WorkbenchWindow } from './layout-types'
 
@@ -22,6 +31,36 @@ export function WorkbenchTabStrip({
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
   const tabListRef = useRef<HTMLDivElement | null>(null)
+  const selectedTabRef = useRef<HTMLDivElement | null>(null)
+  const editorSurfaceContext = use(WorkbenchEditorSurfaceContext)
+  // useChromeVisualTabs uses tab array identity to decide whether to dispatch a sync.
+  const editorTabs = useMemo(
+    () =>
+      editorSurfaceContext?.tabModelForSurface
+        ? surfaces.flatMap((surface) => {
+            const tab = editorSurfaceContext.tabModelForSurface(
+              surface,
+              surface.id === window.activeSurfaceId,
+            )
+            if (!tab) return []
+
+            return [tab]
+          })
+        : [],
+    [editorSurfaceContext, surfaces, window.activeSurfaceId],
+  )
+  const visualTabs = useChromeVisualTabs(
+    editorTabs,
+    Boolean(editorSurfaceContext),
+    sameEditorTabModel,
+  )
+  const tabDrag = useEditorTabDrag({
+    paneId: editorPaneIdForWorkbenchWindowId(window.id) ?? String(window.id),
+    tabs: editorTabs,
+    tabListRef,
+    onMoveToPane: (tabId, targetIndex) => moveSurfaceTab(tabId, targetIndex),
+    onReorder: (tabId, targetIndex) => reorderSurfaceTab(tabId, targetIndex),
+  })
   const availableWidth = useElementWidth(tabListRef)
   const activeIndex = surfaces.findIndex((surface) => surface.id === window.activeSurfaceId)
   const layout =
@@ -32,6 +71,28 @@ export function WorkbenchTabStrip({
           availableWidth,
           tabCount: surfaces.length,
         })
+
+  if (editorSurfaceContext && visualTabs.length > 0) {
+    return (
+      <div
+        aria-label='Window tabs'
+        className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+        ref={tabListRef}
+        role='tablist'
+      >
+        <ChromeEditorTabList
+          drag={tabDrag}
+          selectedTabRef={selectedTabRef}
+          tabListRef={tabListRef}
+          tabs={visualTabs}
+          onClose={editorSurfaceContext.requestCloseTab}
+          onCloseTabs={editorSurfaceContext.requestCloseTabs}
+          onSelect={selectEditorTab}
+          onSplit={splitEditorTab}
+        />
+      </div>
+    )
+  }
 
   return (
     <div
@@ -95,6 +156,59 @@ export function WorkbenchTabStrip({
       </div>
     </div>
   )
+
+  function moveSurfaceTab(tabId: string, targetIndex: number) {
+    const surfaceId = editorSurfaceContext?.surfaceIdForEditorTabId(tabId)
+    if (!surfaceId) return false
+
+    onDispatch({
+      index: targetIndex,
+      surfaceId,
+      targetWindowId: window.id,
+      type: 'tabSurface',
+    })
+    return true
+  }
+
+  function reorderSurfaceTab(tabId: string, targetIndex: number) {
+    const fromIndex = surfaces.findIndex((surface) => {
+      const state = editorSurfaceSerializedState(surface)
+      return state?.editorTabId === tabId
+    })
+    if (fromIndex < 0) return false
+
+    onDispatch({
+      fromIndex,
+      toIndex: targetIndex,
+      type: 'reorderSurface',
+      windowId: window.id,
+    })
+    return true
+  }
+
+  function selectEditorTab(tab: (typeof editorTabs)[number]) {
+    const surfaceId = editorSurfaceContext?.surfaceIdForEditorTabId(tab.id)
+    if (!surfaceId) return
+
+    onDispatch({
+      surfaceId,
+      type: 'activateSurface',
+      windowId: window.id,
+    })
+  }
+
+  function splitEditorTab(tabId: string, direction: 'horizontal' | 'vertical') {
+    const surfaceId = editorSurfaceContext?.surfaceIdForEditorTabId(tabId)
+    if (!surfaceId) return false
+
+    onDispatch({
+      edge: direction === 'horizontal' ? 'right' : 'bottom',
+      surfaceId,
+      type: 'splitWindow',
+      windowId: window.id,
+    })
+    return true
+  }
 }
 
 function selectSurfaceOperation(window: WorkbenchWindow, surface: Surface): LayoutOperation {

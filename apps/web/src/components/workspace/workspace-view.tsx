@@ -5,7 +5,7 @@ import { WorkspaceFloatingTerminal } from '@/components/workspace/workspace-floa
 import { WorkspaceSearchRuntime } from '@/components/workspace/workspace-search-runtime'
 import { WorkspaceSidebarResizablePanel } from '@/components/workspace/workspace-sidebar-resizable-panel'
 import { workspaceResizableStorageKey } from '@/components/workspace/workspace-view-utils'
-import { WorkbenchDockview } from '@/features/workbench/workbench-dockview'
+import { WorkbenchEditorSurfaceLayoutView } from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout-view'
 import type { PickedFsEntry, TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
@@ -63,7 +63,7 @@ export const WorkspaceView = memo(
                     className='relative h-full min-h-0 min-w-0 overflow-hidden'
                     data-terminal-overlay-bounds
                   >
-                    <WorkbenchDockview
+                    <WorkbenchEditorSurfaceLayoutView
                       editorKeymapLayers={editorKeymapLayers}
                       rootPath={rootPath}
                       onRequestCloseTab={onRequestCloseTab}

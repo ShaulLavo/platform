@@ -1,15 +1,27 @@
 import '@workspace/ui/globals.css'
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/components/theme-provider'
+import { EMPTY_GIT_FILES, editorTabModel } from '@/components/workspace/editor-tab-model'
+import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
-import { createClassicFirstRunWorkspaceLayout } from './layout-builders'
+import {
+  createClassicFirstRunWorkspaceLayout,
+  createEmptyWorkspaceLayout,
+  createFileEditorSurface,
+} from './layout-builders'
+import { openSurface } from './layout-operations'
 import { WorkbenchLayoutProvider } from './workbench-layout-provider'
 import { WorkbenchLayoutRenderer } from './workbench-layout-renderer'
+import { editorSurfaceSerializedState } from './workbench-editor-surface-layout'
+import { WorkbenchEditorSurfaceProvider } from './workbench-editor-surface-provider'
+import { workbenchEditorSurfaceRendererRegistry } from './workbench-editor-surface-renderers'
+import type { Surface } from './layout-types'
 
 const THEME_STORAGE_KEY = 'platform-workbench-layout-renderer-browser-theme'
 
@@ -57,6 +69,48 @@ describe('WorkbenchLayoutRenderer browser rendering', () => {
 
     expect(document.activeElement).toBe(tab)
   })
+
+  it('renders editor-backed surfaces with Chrome editor tabs', async () => {
+    const container = document.createElement('main')
+    const queryClient = new QueryClient()
+    container.style.height = '420px'
+    container.style.width = '780px'
+    document.body.append(container)
+    root = createRoot(container)
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <TooltipProvider delay={0}>
+            <QueryClientProvider client={queryClient}>
+              <EditorStateProvider>
+                <WorkbenchEditorSurfaceProvider
+                  editorKeymapLayers={[]}
+                  requestCloseTab={() => true}
+                  requestCloseTabs={() => true}
+                  rootPath='/repo'
+                  surfaceIdForEditorTabId={(tabId) => surfaceIdForEditorTabId(tabId)}
+                  tabModelForSurface={(surface, active) => tabModelForSurface(surface, active)}
+                >
+                  <WorkbenchLayoutProvider initialLayout={editorSurfaceLayout()}>
+                    <WorkbenchLayoutRenderer
+                      surfaceRenderers={workbenchEditorSurfaceRendererRegistry}
+                    />
+                  </WorkbenchLayoutProvider>
+                </WorkbenchEditorSurfaceProvider>
+              </EditorStateProvider>
+            </QueryClientProvider>
+          </TooltipProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    await vi.waitFor(() => {
+      expect(editorChromeTabs()).toHaveLength(2)
+      expect(document.body.textContent).toContain('a.ts')
+      expect(document.body.textContent).toContain('b.ts')
+    })
+  })
 })
 
 function windowRegions() {
@@ -75,4 +129,50 @@ function firstTab() {
   if (!tab) throw new Error('Missing workbench tab')
 
   return tab
+}
+
+function editorChromeTabs() {
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-editor-tab-id]'))
+}
+
+function editorSurfaceLayout() {
+  const fileA = editorSurface('/repo/src/a.ts', 'tab-a')
+  const fileB = editorSurface('/repo/src/b.ts', 'tab-b')
+
+  return openSurface(openSurface(createEmptyWorkspaceLayout(), fileA), fileB)
+}
+
+function editorSurface(path: string, tabId: string): Surface {
+  return {
+    ...createFileEditorSurface({ path }),
+    serializedState: {
+      editorPaneId: 'pane-editor',
+      editorTabId: tabId,
+    },
+  }
+}
+
+function surfaceIdForEditorTabId(tabId: string) {
+  const surface = Object.values(editorSurfaceLayout().surfacesById).find(
+    (surface) => editorSurfaceSerializedState(surface)?.editorTabId === tabId,
+  )
+
+  return surface?.id ?? null
+}
+
+function tabModelForSurface(surface: Surface, active: boolean) {
+  const state = editorSurfaceSerializedState(surface)
+  if (!state) return null
+  if (!surface.resourceKey) return null
+
+  return editorTabModel({
+    conflicts: {},
+    gitFiles: EMPTY_GIT_FILES,
+    rootPath: '/repo',
+    selectedTabId: active ? state.editorTabId : null,
+    tab: {
+      id: state.editorTabId,
+      path: surface.resourceKey,
+    },
+  })
 }

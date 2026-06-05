@@ -43,7 +43,7 @@ export function WorkbenchWindowFrame({
         if (!active && activeSurface) onDispatch(selectWindowOperation(node))
       }}
     >
-      <header className='border-border/70 bg-background/85 flex h-10 shrink-0 items-end gap-2 border-b px-1.5 pt-1'>
+      <header className='border-border/70 bg-background/85 flex h-10 shrink-0 items-end gap-2 border-b pt-1'>
         <WorkbenchTabStrip surfaces={node.surfaces} window={window} onDispatch={onDispatch} />
         <div className='flex h-8 shrink-0 items-center gap-0.5 pb-1'>
           <WorkbenchWindowControlButton
