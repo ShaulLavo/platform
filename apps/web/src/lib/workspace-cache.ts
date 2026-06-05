@@ -24,7 +24,9 @@ import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/
 import * as v from 'valibot'
 
 const CACHE_KEY = 'platform.workspace-state.v1'
-const CACHE_VERSION = 7
+// TODO: Investigate whether TanStack DB can handle persisted cache invalidation
+// and migrations without manual version bumps.
+const CACHE_VERSION = 8
 
 type WorkspaceCachePayload = {
   diffViewMode: EditorDiffViewMode

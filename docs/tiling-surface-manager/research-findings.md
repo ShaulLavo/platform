@@ -14,10 +14,14 @@ git, terminal, diff, and search work.
 Local references reviewed:
 
 - Dockview: `references/dockview`
+- React Layman: `references/react-layman`
+- React Mosaic: `references/react-mosaic`
 - GitButler: `references/gitbutler`
 - T3Code: `references/t3code`
 - Athas: `references/athas`
 - Hyprland: `references/hyprland`
+- i3: `references/i3`
+- Zellij: `references/zellij`
 - VS Code: `references/vscode` and `/Users/shaul/Desktop/D/Editors/vscode`
 - Zed: `/Users/shaul/Desktop/D/Editors/zed`
 
@@ -25,38 +29,47 @@ Relevant existing Platform docs:
 
 - `docs/dockview-workbench-prd.md`
 - `docs/t3code-reference.md`
+- `docs/tiling-surface-manager/prd.md`
 
 ## Executive Readout
 
-The strongest direction is a product-owned layout model rendered by a capable
-layout engine, not a layout-library-owned product. Dockview is good at docking,
-serialization, edge groups, floating groups, and drag/drop mechanics, but it
-should not define panel identity, panel lifecycle, dirty state, persistence
-semantics, terminal sessions, command routing, or workflow rules.
+The strongest direction is a product-owned tiling surface manager: close to
+"Hyprland in the browser", but designed for code work and easy mouse use. Every
+meaningful artifact should be a surface: editor, diff, terminal, search,
+diagnostics, git changes, agent plan, logs, review, preview, inspector. A tab,
+window, rail item, dock panel, sheet, or floating layer is only a presentation
+of that surface.
 
-The best reference for a custom in-app editor layout model is Athas. It has a
-clear split/group tree, typed pane contents, MRU pane tracking, preview/pinned
-state, bottom pane separation, custom drop zones, fullscreen handling, and
-workspace-session persistence that restores stable resources instead of volatile
-React/editor instances.
+The important product move is to treat sidebars as a taskbar/rail for surfaces,
+not as a fixed set of panels. Search, diff, file tree, terminals, agents, and
+git views should be able to open together, split, tab, minimize, restore, and
+participate in auto-tiling. The system should preserve old editor experiences
+for adoption, but the default mental model should be "arrange my work surfaces"
+rather than "toggle one sidebar and one bottom panel."
 
-The best reference for a fresh product feel is GitButler. Its layout is not a
-generic IDE clone. It makes branch stacks, unassigned changes, preview diffs,
-folded lanes, and drag affordances into the primary workspace grammar. That is
-the lesson: the new Platform workbench should support classic editor behavior,
-but its distinctive layouts should come from our core workflows.
+The TypeScript references point to a clear implementation direction: keep a
+pure layout tree with n-ary splits, explicit tab/window nodes, controlled state,
+normalization after every structural operation, and tested tree transforms.
+React Mosaic has the strongest TS implementation patterns. React Layman is
+smaller and easier to read, but its path-only identity and deep-clone reducer
+would not be enough for Platform without a stronger surface registry and stable
+window IDs.
 
-The best non-editor reference is Hyprland. It treats layout as an algorithm
-attached to a workspace, with configurable placement and resizing policy. That
-suggests a better model than "tabs can be dragged anywhere": users and features
-should be able to pick strategies for where new surfaces go, how splits are
-chosen, when focus follows, and which workflows get lane/master/focus layouts.
+The native window-manager references add the missing product grammar. Hyprland
+confirms layout policies/algorithms per workspace. i3 confirms that a tree of
+containers with split, stacked, tabbed, scratchpad, parent focus, and parent-edge
+drop behavior creates powerful structure from simple rules. Zellij confirms that
+developer workspaces need panes, tabs, floating surfaces, stacked panes, layout
+recipes, session restore, plugin panes, and mouse resizing/moving under one
+workspace model.
 
-The compatibility target from VS Code and Zed is clear: users expect editor
-groups, splits, preview tabs, pinned tabs, side docks, bottom terminals,
-keyboard navigation, focus/MRU behavior, restore-on-reopen, and movable
-auxiliary views. We should support those experiences without inheriting the old
-taxonomy as the only conceptual model.
+The best local editor reference remains Athas because it already has a typed
+pane tree, broad content union, MRU focus, bottom root, custom drop zones, and
+resource-based persistence. The best product-feel reference remains GitButler:
+its layout is workflow-native rather than a clone. The compatibility baseline
+from VS Code and Zed is still non-negotiable: editor groups, splits, preview
+tabs, pinned tabs, side docks, bottom terminals, keyboard navigation, focus/MRU
+behavior, restore-on-reopen, and movable auxiliary views.
 
 ## Reference Findings
 
@@ -106,6 +119,174 @@ Dockview can be a renderer or accelerant, but Platform needs its own workbench
 model above it. The existing `docs/dockview-workbench-prd.md` already points in
 the right direction: Dockview should own geometry, while Platform owns panel
 metadata and lifecycle.
+
+### React Layman
+
+React Layman is a compact TypeScript layout manager inspired by Replit,
+LeetCode, and React Mosaic. It is valuable because the implementation is small
+enough to understand end to end.
+
+Important files:
+
+- `references/react-layman/src/types.ts`
+- `references/react-layman/src/Layman.tsx`
+- `references/react-layman/src/LaymanReducer.ts`
+- `references/react-layman/src/Window.tsx`
+- `references/react-layman/src/WindowDropTarget.tsx`
+- `references/react-layman/src/WindowToolbar.tsx`
+- `references/react-layman/src/WindowTabs.tsx`
+- `references/react-layman/src/Separator.tsx`
+- `references/react-layman/src/LaymanContext.tsx`
+- `references/react-layman/src/TabData.ts`
+
+Product/API shape:
+
+- `LaymanProvider` owns `initialLayout`, renderer registration, window
+  mutability, and toolbar controls.
+- It supports rows, columns, resize separators, draggable windows, tabbed
+  windows, draggable tabs, delete window, auto-arrange, and corner heuristics.
+- Drop placement is the familiar five-part grammar: `top`, `bottom`, `left`,
+  `right`, and `center`.
+
+Implementation details to take:
+
+- The model is recursively typed as `LaymanLayout = LaymanWindow | LaymanNode |
+undefined`.
+- `LaymanWindow` holds `tabs`, `selectedIndex`, and optional `viewPercent`.
+- `LaymanNode` holds `direction`, `viewPercent`, and `children`.
+- `Children<T> = [T, T, ...T[]]` is a useful TS trick: split nodes must have at
+  least two children.
+- `LaymanPath = number[]` is used as the address for all tree operations.
+- The reducer uses `klona` deep clone plus path helpers (`getLayoutAtPath`,
+  `setAtPath`) for operations such as add window, remove window, move window,
+  move tab, select tab, move separator, auto arrange, and heuristic add.
+- `removeWindow` deletes an empty leaf, redistributes the removed percent,
+  collapses a single-child parent, and merges same-direction grandparents.
+- `addWindow` either inserts into an existing same-direction split and rescales
+  siblings, or wraps the target leaf in a new split at 50/50.
+- `moveWindow` removes the source, adjusts the destination path after removal,
+  then either merges tabs on center drop or adds a split on edge drop.
+- Rendering measures the root via `ResizeObserver`, traverses the tree, and
+  converts percentages into absolute `Position` values for windows, tabs,
+  toolbars, separators, highlights, and the dragged window preview.
+- During whole-window drag, it temporarily renders siblings as if the dragged
+  window were absent, rescales their percentages, then renders the dragged
+  window separately.
+- Drag/drop is built on `react-dnd`; drop targets are rendered over each window
+  during a global drag, and the highlight is a single absolute overlay.
+- Separator resize uses document `mousemove`/`mouseup`, clamps based on
+  neighbor geometry, and updates adjacent sibling percentages only.
+
+Implementation concerns:
+
+- Path-only identity is fragile once operations remove/collapse nodes. Platform
+  should use stable surface/window IDs and resolve paths only at operation time.
+- There is no durable surface registry, typed surface lifecycle, preview/pinned
+  state, command routing, versioned persistence, or migration story.
+- Reducer-wide deep clone is simple but becomes expensive and hard to reason
+  about as surface metadata and lifecycle grows.
+- Content-aware min sizes are not part of the model beyond toolbar/separator
+  constraints.
+
+Design implication:
+
+React Layman is a good small reference for reducer mechanics and edge/center
+drop semantics, but Platform needs a stronger state model: stable IDs,
+controlled store integration, typed surfaces, versioned persistence, and a
+separate registry for surface lifecycle.
+
+### React Mosaic
+
+React Mosaic is the strongest TypeScript implementation reference. It is a
+tiling window manager with controlled/uncontrolled state, n-ary splits, explicit
+tabs nodes, drag/drop transforms, normalization, and serialization-friendly data
+structures.
+
+Important files:
+
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/types.ts`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/Mosaic.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/MosaicRoot.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/Split.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/MosaicDropTarget.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/MosaicWindow.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/MosaicTabs.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/DraggableTab.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/RootDropTargets.tsx`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/util/BoundingBox.ts`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/util/mosaicUpdates.ts`
+- `references/react-mosaic/libs/react-mosaic-component/src/lib/util/mosaicUtilities.ts`
+
+Product/API shape:
+
+- The public model supports `value` plus `onChange` for controlled use and
+  `initialValue` for uncontrolled use.
+- `onRelease` fires at the end of a committed interaction, which is important
+  for debounced persistence and analytics.
+- `CreateNode` can be sync or async, so new surfaces can be created lazily.
+- Tab rendering is customizable through title, button, toolbar, and close-state
+  renderers.
+- `mosaicId` scopes drag/drop so two Mosaic instances do not accidentally
+  accept each other's windows.
+
+Implementation details to take:
+
+- New model:
+  - `MosaicSplitNode` has `type: "split"`, `direction`, `children`, and
+    optional `splitPercentages`.
+  - `MosaicTabsNode` has `type: "tabs"`, `tabs`, and `activeTabIndex`.
+  - `MosaicNode<T>` is split node, tabs node, or leaf key.
+  - `MosaicPath = number[]`.
+- Legacy binary tree conversion exists, but the active model is n-ary. That
+  avoids long chains of same-direction split nodes.
+- `updateTree` applies immutable updates through `immutability-helper` and
+  optionally normalizes after every operation.
+- `normalizeMosaicTree` removes empty splits/tabs, collapses single-child
+  splits, collapses one-tab tab nodes to leaves, flattens same-direction split
+  nodes, recalculates `splitPercentages`, and clamps active tab index.
+- `createRemoveUpdate` redistributes removed split percentage across remaining
+  children and handles tab active-index repair.
+- `createDragToUpdates` is the critical transform:
+  - `tab-container` drop removes source, adjusts destination path, pushes the
+    source into destination tabs, and activates it.
+  - `tab-reorder` inserts at the target index and updates active tab.
+  - `split` removes source, adjusts destination path, chooses direction from
+    edge, inserts into an existing same-direction split if possible, otherwise
+    wraps destination in a 50/50 split.
+  - It includes fallbacks when the destination disappears after source removal.
+- `createHideUpdate` provides reversible hidden state during drag, but this
+  mutates layout state and must be treated carefully if persisted.
+- `createExpandUpdate` bubbles desired percentages up through ancestors.
+- Rendering is percentage-based: `MosaicRoot` recursively converts split nodes
+  into `BoundingBox` percentages and renders each leaf as an absolutely
+  positioned tile.
+- `Split` throttles resize to 30fps, supports mouse/touch, uses document capture
+  listeners, clamps by `minimumPaneSizePercentage`, calls `onChange` during drag,
+  and calls `onRelease` on mouseup.
+- `MosaicWindow` defers hide on drag start because browser DnD requires the
+  source element to exist at drag start.
+- `MosaicTabs` supports whole-tab-container drag, tab bar drop to add as tab,
+  tab index drop targets for reorder, and a content-area blocker so nested
+  window drop targets do not steal tab drops.
+
+Implementation concerns:
+
+- The path adjustment logic is necessarily complex because paths are positional.
+  Platform should keep path operations pure but identify persistent entities by
+  stable IDs.
+- `createAddChildUpdate` resets split percentages equally, which may be
+  surprising for an editor where existing pane sizes feel intentional.
+- Collapsing one-tab tabs nodes to leaves may not match Platform if every
+  visible editor-like window should always have a tabstrip/container identity.
+- JSON-string matching of tab arrays is not a pattern to copy for product state.
+
+Design implication:
+
+For our TypeScript implementation, React Mosaic is the best starting point:
+n-ary split nodes, explicit tabs/window nodes, pure update transforms,
+normalization, controlled value support, drag grammar, and resize release events.
+Platform should improve it with stable IDs, a surface registry, stronger
+capability checks, content-aware minimums, and app-owned persistence.
 
 ### GitButler
 
@@ -370,6 +551,304 @@ can use classic split/stack behavior, git review can use lanes plus preview,
 agent pairing can use master/detail with terminal and plan surfaces, and search
 can use a results-driven layout.
 
+### i3
+
+i3 is the clearest reference for a durable tiling tree and mouse-accessible
+structural editing. It is worth studying because its product grammar is small
+but powerful: split containers, tabbed containers, stacked containers, focus
+parent/child, workspaces, scratchpad, and drag-to-restructure.
+
+Important files and docs:
+
+- `references/i3/docs/userguide`
+- `references/i3/docs/layout-saving`
+- `references/i3/include/data.h`
+- `references/i3/include/con.h`
+- `references/i3/src/tree.c`
+- `references/i3/src/con.c`
+- `references/i3/src/move.c`
+- `references/i3/src/render.c`
+- `references/i3/src/tiling_drag.c`
+
+Product decisions to take:
+
+- Every managed thing is a container. A container can host a real window or
+  other containers.
+- Split containers can be `splith` or `splitv`; tabbed and stacked are alternate
+  presentations of the same underlying child set.
+- Focus can move to parent and child containers, not only leaf windows. This is
+  how users intentionally choose where the next window or split applies.
+- Workspaces are created on demand, have a default orientation based on output
+  aspect ratio, and can have a default layout of split, stacked, or tabbed.
+- Scratchpad is a hidden workspace for surfaces that are "not in the layout
+  right now" but quickly recallable. For Platform, this maps to minimized or
+  rail-only surfaces.
+- Layout save/restore creates placeholders that later swallow matching windows.
+  Platform should copy the concept, not the X11 matching: restore placeholders
+  for surfaces whose editor buffer, terminal session, agent run, or remote
+  resource is not ready yet.
+- Tiling drag has three drop meanings:
+  - center drop moves into target, or swaps if the swap modifier is active;
+  - edge drop inserts as a sibling, creating/changing a split if needed;
+  - thinner outer edge drop promotes to the parent edge, then performs a
+    directional move.
+
+Implementation details to take:
+
+- `struct Con` stores parent pointer, node children, focus order, floating
+  children, layout, last split layout, workspace layout, percent, rects, window
+  metadata, fullscreen state, sticky state, floating state, and scratchpad
+  state.
+- `layout_t` includes `L_SPLITH`, `L_SPLITV`, `L_STACKED`, `L_TABBED`,
+  `L_DOCKAREA`, `L_OUTPUT`, and `L_DEFAULT`.
+- `tree_open_con` opens new containers under the focused/target parent, assigns
+  default split layout, then calls `con_fix_percent`.
+- `tree_split` does not blindly wrap. If splitting an empty or one-child
+  workspace, it changes orientation; if the parent split has only one child, it
+  changes the parent orientation; otherwise it creates a new split container,
+  replaces the target in node/focus queues, transfers percent, and moves the
+  target under the new split.
+- `tree_close_internal` recursively closes children, detaches the container,
+  calls `con_fix_percent` on the parent for tiled nodes, renders to avoid gaps,
+  activates the next focus, and lets parent cleanup remove empty containers.
+- `con_fix_percent` is simple and important: missing child percentages are set
+  proportionally, total zero falls back to equal distribution, and non-one totals
+  are normalized.
+- `insert_con_into` preserves focus semantics using the lowest common ancestor,
+  detaches the source, fixes old percentages, inserts before/after target in
+  both node and focus queues, sets source percent to zero, fixes destination
+  percentages, then invokes old-parent cleanup.
+- `con_move_to_target` refuses self/descendant moves, descends split targets to
+  focused children, special-cases scratchpad and floating targets, and then
+  reattaches with percent repair.
+- `render_con_split` assigns each child rect from percentages; stacked and
+  tabbed give children the same body rect and render focus/decoration
+  differently.
+- `tiling_drag.c` computes nearest edge thresholds, draws an indicator window,
+  and commits center/sibling/parent behavior on mouse release.
+
+Design implication:
+
+Platform should copy i3's structural clarity: explicit parent/child operations,
+normalized percentages, parent-edge drops, scratchpad/minimized state, focus
+parent, and placeholder restore. For the browser, those concepts should be
+presented visually through drop overlays, rail targets, breadcrumbs, and
+keyboard commands rather than requiring users to think in tree terms.
+
+### Zellij
+
+Zellij is a developer workspace rather than just a terminal grid. It combines
+tabs, tiled panes, floating panes, stacked panes, layout files, swap layouts,
+session serialization, plugin panes, mouse resizing/moving, collaboration, and
+a web client.
+
+Important files and docs:
+
+- `references/zellij/README.md`
+- `references/zellij/docs/ARCHITECTURE.md`
+- `references/zellij/example/default.kdl`
+- `references/zellij/example/layouts/multiple_tabs_layout.kdl`
+- `references/zellij/zellij-utils/src/input/layout.rs`
+- `references/zellij/zellij-utils/src/kdl/kdl_layout_parser.rs`
+- `references/zellij/zellij-utils/src/pane_size.rs`
+- `references/zellij/zellij-utils/src/session_serialization.rs`
+- `references/zellij/zellij-server/src/tab/mod.rs`
+- `references/zellij/zellij-server/src/tab/layout_applier.rs`
+- `references/zellij/zellij-server/src/tab/swap_layouts.rs`
+- `references/zellij/zellij-server/src/tab/mouse_handler.rs`
+- `references/zellij/zellij-server/src/panes/tiled_panes/mod.rs`
+- `references/zellij/zellij-server/src/panes/tiled_panes/pane_resizer.rs`
+- `references/zellij/zellij-server/src/panes/tiled_panes/stacked_panes.rs`
+- `references/zellij/zellij-server/src/panes/floating_panes/mod.rs`
+- `references/zellij/zellij-server/src/session_layout_metadata.rs`
+
+Product decisions to take:
+
+- The product is a workspace for developers and ops users, not a generic pane
+  widget.
+- Beginner and power-user behavior coexist: good defaults, mouse support,
+  modal keybindings, layouts, swap layouts, plugins, floating panes, stacked
+  panes, and web-client access.
+- Built-in panes such as tab bar, status bar, strider, session manager,
+  configuration, plugin manager, layout manager, about, and share are plugins.
+  Platform can use the same idea for file tree, search, git, agents, review,
+  diagnostics, and settings: all are surfaces with registered capabilities.
+- KDL layout files define tabs, panes, split directions, fixed/percent sizes,
+  floating panes, default tab templates, external `children` insertion points,
+  and plugin/command panes.
+- Swap layouts are first-class layout recipes selected at runtime by pane-count
+  constraints. This maps directly to Platform workspace recipes.
+- `auto_layout`, `session_serialization`, `serialize_pane_viewport`,
+  `scrollback_lines_to_serialize`, `stacked_resize`, `pane_frames`,
+  `focus_follows_mouse`, and `mouse_hover_effects` are product-level layout
+  settings, not implementation trivia.
+- Stacked panes are not the same as tabbed panes. A stack shows one flexible
+  main pane plus one-line collapsed panes; this is useful for dense terminal,
+  log, task, or agent-output groups.
+- Floating panes can be shown/hidden as a layer, pinned, moved, resized, and
+  ordered with z-index. Pinned panes remain visible even when the floating layer
+  is hidden.
+- Session restore serializes tabs, tiled panes, floating panes, commands,
+  plugins, cwd, focus, hide-floating state, swap layouts, and optional pane
+  viewport/scrollback.
+
+Implementation details to take:
+
+- `Layout` contains tabs, focused tab index, default template, swap layouts,
+  `swap_tiled_layouts`, and `swap_floating_layouts`.
+- `TiledPaneLayout` contains child split direction, name, children, optional
+  split size, run instruction, borderless/focus flags, external children index,
+  `children_are_stacked`, `is_expanded_in_stack`, sync exclusions,
+  `hide_floating_panes`, initial contents, and default colors.
+- `FloatingPaneLayout` contains name, x/y/width/height, pinned, borderless, run
+  instruction, focus, already-running state, initial contents, logical position,
+  and default colors.
+- `SplitSize` and `PercentOrFixed` explicitly support percent and fixed cell
+  sizes. Platform should support percent and fixed pixel/min-content sizes.
+- `PaneGeom` stores x/y, rows/cols `Dimension`, stacked ID, pinned state, and
+  logical position. `Dimension` keeps both constraint and resolved inner value.
+- Runtime tiled state is not only a tree. `TiledPanes` stores a map of `PaneId`
+  to pane objects with concrete geometry; layout templates are flattened into
+  geometry and applied to existing/new panes.
+- `position_panes_in_space` recurses through `TiledPaneLayout`, supports
+  truncating/extending layout to fit pane count, assigns stack IDs, validates
+  minimum sizes, and returns leaf layout/geometry pairs in a breadth-first order.
+- `split_space` handles stacked children by making every collapsed child fixed
+  height 1 and one child flexible; it also distributes free percent across
+  flexible children and adjusts rounding errors on the last flexible pane.
+- `LayoutApplier` applies layouts by exact run match, then logical-position
+  match, then best effort. This is valuable for Platform restore: match surfaces
+  first by resource identity, then last known logical slot, then fallback stack.
+- `ExistingTabState` drains current panes, sorts candidates by logical position,
+  extracts exact content matches, extracts logical-position matches, and leaves
+  unmatched panes for best-effort placement or close.
+- `PaneResizer` uses a Cassowary solver to preserve flexible ratios and fixed
+  sizes, then discretizes rounded sizes so there are no gaps or overlaps.
+- `StackedPanes` treats a stack as one flexible pane plus one-line fixed panes,
+  swaps which pane is flexible on focus, computes the stack rect, and preserves
+  minimum stack height.
+- `FloatingPanes` tracks desired pane positions, z-index order, pinned panes,
+  visibility, and in-progress mouse movement separately from tiled panes.
+- `MouseHandler` turns frame edges and cursor deltas into resize strategies,
+  supports tiled and floating resize, marks swap layouts dirty when user changes
+  geometry, supports floating drag, selection, scroll, focus-on-hover, click
+  through, group toggles, and hover feedback.
+- `SessionLayoutMetadata` can decide whether a session is dirty by comparing
+  current pane count/commands with the base layout and excluding built-in
+  management plugins from the count.
+
+Design implication:
+
+Zellij argues for a layered architecture: product surfaces and sessions, layout
+recipes/templates, runtime geometry, and renderer interaction state are
+different layers. For Platform we probably still want a pure TS layout tree as
+the main source of truth, but Zellij's geometry-first runtime model is a useful
+escape hatch for stacked panes, fixed-size toolbars, solver-backed resize, and
+restore matching.
+
+## Second-Pass Implementation Notes From Existing References
+
+These are the implementation details from the original reference set that should
+not get lost behind the product conclusions.
+
+Dockview:
+
+- Serialized state separates `grid`, `panels`, `activeGroup`, `floatingGroups`,
+  `popoutGroups`, and `edgeGroups`.
+- Panel state stores id, content component, tab component, title, params,
+  renderer, and min/max dimensions.
+- `toJSON` serializes geometry plus panel state; `fromJSON` can reuse existing
+  panels, rebuild groups, and reset invalid layouts.
+- `DockviewApi` exposes active group/panel events, `layout`, `focus`,
+  `addPanel`, `removePanel`, `addGroup`, `removeGroup`, floating groups, edge
+  groups, and save/restore.
+- Edge groups are deliberately not normal editor groups. They cannot maximize,
+  float, or pop out, which maps well to constrained tool regions.
+
+GitButler:
+
+- `AppLayout` and `AppSidebar` separate shell navigation from workspace content.
+- `MainViewport` builds a three-way product split: left unassigned changes,
+  optional preview diff, and main stack lanes.
+- `MultiStackView` manages horizontal stack lanes, folded stacks, panning,
+  pagination, drag reordering, and drop zones.
+- `SashLayer` renders resize handles in an overlay to avoid overflow clipping.
+- `Resizer` supports persisted IDs, sync names/groups, passive mode, edge
+  offsets, pointer-driven resize, and requestAnimationFrame scheduling.
+- `FloatingModal` uses snap-point management instead of arbitrary freeform
+  placement.
+
+T3Code:
+
+- Diff visibility is route/search state (`diff=1`), making layout shareable.
+- The same diff surface becomes an inline right panel on desktop and a sheet on
+  mobile; identity survives presentation changes.
+- The sidebar primitive supports controlled/uncontrolled open state, cookie
+  persistence, localStorage width, pointer capture, requestAnimationFrame
+  resize, and `shouldAcceptWidth` constraints.
+- `AppSidebarLayout` rejects sidebar widths that would leave the main content
+  too narrow.
+- `ChatView` keeps terminal drawers mounted per thread while lazily mounting
+  diff/plan sidebars.
+
+Athas:
+
+- The pane tree has `PaneGroup` for tab groups and `PaneSplit` for horizontal or
+  vertical splits.
+- `PaneContentType` is a large discriminated union: editor, terminal, agent,
+  web viewer, new tab, diff, image, pdf, binary, database, PR, issue, action,
+  markdown preview, HTML, CSV, external editor, global search, diagnostics,
+  references, onboarding, and more.
+- The pane store tracks root, bottom root, active pane, MRU pane IDs,
+  fullscreen pane, preview/pin/lock state, reorder, resize, distribute,
+  navigation, and session restore.
+- `pane-tree.ts` normalizes and flattens same-direction splits for resize UX.
+- Drop zones use a center/edge threshold grammar; bottom pane is a separate
+  root, not just another child of the center tree.
+- Workspace persistence stores path/session type and hydrates back to current
+  buffers instead of persisting volatile buffer IDs.
+
+Zed:
+
+- `Item` models editor-like tab content with title/icon/tooltip, dirty state,
+  capabilities, split/clone behavior, close behavior, and item events.
+- `Panel` is a separate contract with persistent name/key, valid positions,
+  default/initial size, flexible sizing support, icon, toggle, zoom, and active
+  pane behavior.
+- Docks track active panel, visibility, zoom, and position for left, right, and
+  bottom regions.
+- `PaneGroup` is a tree with axis members and pane members; panes contain items,
+  active item, pinned count, preview item, and serialized item records.
+- Terminal panel is itself a panel with an internal pane group, proving panels
+  can host nested layout.
+
+VS Code:
+
+- The workbench has named parts: titlebar, banner, activity bar, sidebar,
+  panel, auxiliary bar, editor, status bar, and related chat/sidebar areas.
+- The layout service restores named parts through a serializable grid and
+  multiple state scopes: workspace, profile, machine/user, runtime, and zen.
+- `EditorPart` owns a serializable grid of editor groups, MRU active groups,
+  persisted group state, and restore fallback.
+- Pane composite parts manage active/pinned/visible view containers, while view
+  containers can move between sidebar, panel, and auxiliary bar.
+- The implementation shows why focus, restore timing, view container movement,
+  and memento scope must be designed early.
+
+Hyprland:
+
+- A workspace owns targets and delegates placement to a selected layout
+  algorithm.
+- `WorkspaceAlgoMatcher` chooses tiled algorithms such as dwindle, master,
+  scrolling, and monocle, with a separate floating algorithm.
+- Dwindle and master expose policy knobs: split choice, smart split/resizing,
+  active/cursor split, master ratio, new-on-top/active, orientation, and
+  drop-at-cursor.
+- Lua layout providers operate over a stable context with area, targets, grid
+  cell, row, column, and split helpers.
+- This argues for Platform layout policies as data/code over stable primitives,
+  not one hard-coded placement heuristic.
+
 ## Cross-Cutting Learnings
 
 1. Product identity must be separate from geometry.
@@ -379,58 +858,88 @@ can use a results-driven layout.
    git stack needs product metadata and lifecycle independent of where it is
    rendered.
 
-2. Support classic layouts as compatibility, not as the whole system.
+2. A window should be a first-class concept.
+
+   The user idea of "editor becomes a window" is directionally right. A window
+   is the visible container that can split, tab, minimize, restore, float,
+   maximize, and receive focus. A surface is the product artifact inside it.
+   One window may contain many surfaces as tabs.
+
+3. The rail should behave more like a taskbar than a fixed sidebar.
+
+   File tree, search, diff, terminal, agents, git, diagnostics, and review
+   should not fight for one sidebar slot. They should be openable surfaces that
+   can be visible, minimized, restored, moved, split, or tabbed.
+
+4. Support classic layouts as compatibility, not as the whole system.
 
    Users expect editor groups, split panes, pinned tabs, preview tabs, sidebars,
    bottom terminals, command palette actions, and restore-on-reopen. We should
    support that, but our best layouts should be workflow-native.
 
-3. The central area and tool surfaces need different contracts.
+5. The central area and tool surfaces need different contracts.
 
    VS Code and Zed both separate central editor groups from side/bottom panels.
    Athas shows that the boundary can be more flexible if both sides use typed
    content. We should model both without forcing everything into one bucket.
 
-4. Some surfaces need nested layout.
+6. Some surfaces need nested layout.
 
    A terminal panel may contain split terminals. An agent panel may contain chat,
    plan, logs, and artifacts. A review surface may contain files, diffs,
    comments, and test output. "Panel contains a layout tree" should be legal.
 
-5. Drop grammar should be explicit.
+7. Use n-ary splits and explicit tab/window nodes.
+
+   React Mosaic and i3 both show why same-direction split chains should be
+   flattened or avoided. N-ary splits make resizing, normalization, and
+   serialization simpler. Explicit window/tab nodes keep container identity
+   stable even when there is one tab.
+
+8. Drop grammar should be explicit.
 
    Center drop, edge drop, lane drop, bottom drop, dock drop, and floating drop
-   should be distinct operations. This is how Athas and GitButler keep dense
-   layouts understandable.
+   should be distinct operations. i3's center/sibling/parent drop model is the
+   clearest mouse grammar for structural tiling; React Mosaic and React Layman
+   provide the web implementation patterns.
 
-6. Resizing must be constraint-aware.
+9. Resizing must be constraint-aware.
 
    Min/max is not enough. Resize operations need to account for editor minimum
    width, composer space, terminal usability, preview readability, responsive
-   mode, and sibling surfaces.
+   mode, and sibling surfaces. Zellij's fixed/percent dimensions and solver
+   pass are useful when simple adjacent percentage resizing is not enough.
 
-7. Persistence should store stable resources and policy, not live instances.
+10. Persistence should store stable resources and policy, not live instances.
 
-   Store surface type, resource identity, placement, active/MRU state, preview
-   state, pin state, and restorable session keys. Do not persist React component
-   state or volatile buffer IDs as the durable source of truth.
+Store surface type, resource identity, placement, active/MRU state, preview
+state, pin state, and restorable session keys. Do not persist React component
+state or volatile buffer IDs as the durable source of truth. i3 placeholders
+and Zellij run/logical-position matching are good restore patterns.
 
-8. Focus and MRU are layout features.
+11. Focus and MRU are layout features.
 
-   Close fallback, command targeting, keyboard navigation, split placement, and
-   restore behavior all need active surface and MRU surface history.
+Close fallback, command targeting, keyboard navigation, split placement, and
+restore behavior all need active surface and MRU surface history.
 
-9. Transient surfaces deserve first-class handling.
+12. Transient surfaces deserve first-class handling.
 
-   Preview diff, peek references, search preview, inline terminal, mobile sheet,
-   temporary agent artifact, and floating inspector should not be hacked in as
-   permanent panels.
+Preview diff, peek references, search preview, inline terminal, mobile sheet,
+temporary agent artifact, and floating inspector should not be hacked in as
+permanent panels.
 
-10. Layout policy should be programmable.
+13. Layout policy should be programmable.
 
     Hyprland shows the value of separating the primitive operations from the
     policy that chooses placement. Platform should have placement policies and
     layout recipes, even if they start as internal presets.
+
+14. Runtime geometry and durable layout are different layers.
+
+    React Mosaic stores durable layout as a pure tree. Zellij stores runtime
+    panes with concrete geometry and uses layout templates to position them.
+    Platform should keep the durable app state pure, but allow derived geometry
+    caches, solver passes, and drag previews as renderer/runtime state.
 
 ## Proposed Platform Model
 
@@ -439,6 +948,8 @@ shape:
 
 ```ts
 type SurfaceId = string
+type WindowId = string
+type LayoutNodeId = string
 
 type SurfaceRole =
   | 'editor'
@@ -453,6 +964,7 @@ type SurfaceRole =
   | 'custom'
 
 type SurfaceLifecycle = 'persistent' | 'session' | 'transient'
+type SurfacePlacement = 'center' | 'left' | 'right' | 'bottom' | 'rail' | 'floating'
 
 type Surface = {
   id: SurfaceId
@@ -469,9 +981,42 @@ type Surface = {
 }
 
 type LayoutNode =
-  | { kind: 'split'; direction: 'horizontal' | 'vertical'; sizes: number[]; children: LayoutNode[] }
-  | { kind: 'stack'; activeSurfaceId?: SurfaceId; surfaceIds: SurfaceId[] }
-  | { kind: 'lanes'; activeLaneId?: string; laneIds: string[] }
+  | {
+      kind: 'split'
+      id: LayoutNodeId
+      direction: 'horizontal' | 'vertical'
+      children: LayoutNode[]
+      sizes: number[]
+    }
+  | {
+      kind: 'window'
+      id: WindowId
+      surfaceIds: SurfaceId[]
+      activeSurfaceId?: SurfaceId
+      previewSurfaceId?: SurfaceId
+      pinnedSurfaceIds?: SurfaceId[]
+    }
+  | {
+      kind: 'lanes'
+      id: LayoutNodeId
+      laneIds: string[]
+      activeLaneId?: string
+    }
+
+type FloatingWindow = {
+  id: WindowId
+  surfaceIds: SurfaceId[]
+  activeSurfaceId?: SurfaceId
+  rect: { x: number; y: number; width: number; height: number }
+  pinned?: boolean
+  zIndex: number
+}
+
+type RailItem = {
+  surfaceId: SurfaceId
+  lastPlacement: SurfacePlacement
+  badge?: string
+}
 
 type WorkspaceLayout = {
   version: number
@@ -480,9 +1025,13 @@ type WorkspaceLayout = {
   leftDock: DockState
   rightDock: DockState
   bottomDock: DockState
+  rail: RailItem[]
+  floatingWindows: FloatingWindow[]
   overlays: OverlayState[]
   activeSurfaceId?: SurfaceId
+  activeWindowId?: WindowId
   mruSurfaceIds: SurfaceId[]
+  mruWindowIds: WindowId[]
   policies: LayoutPolicyState
 }
 ```
@@ -491,13 +1040,106 @@ This does not have to be the exact implementation shape, but the principles are
 important:
 
 - Surfaces own product identity.
-- Layout nodes own placement.
+- Windows own visible grouping, tabs, preview, and pinned state.
+- Layout nodes own placement and geometry.
 - Docks are projections of surfaces into shell regions.
+- The rail owns minimized/available surfaces and last placement.
 - Overlays are separate from durable layout.
 - Policies decide where new surfaces go.
+- Node/window/surface IDs are stable; paths are transient render addresses.
 - A renderer can be swapped or mixed without changing product state.
 
+## TypeScript Implementation Guidance
+
+The first implementation should be a Platform-owned store plus a pure layout
+operation library. React components should render state and dispatch commands;
+they should not own durable layout logic.
+
+Recommended modules:
+
+- `surface-registry.ts`: registers surface types, capabilities, default
+  placement, title/icon/dirty/close behavior, restore handlers, and renderers.
+- `layout-types.ts`: durable state types, operation types, geometry types, and
+  serialized layout versions.
+- `layout-operations.ts`: pure transforms such as split window, move surface,
+  move window, tab surface, reorder tab, close surface, minimize, restore,
+  maximize, resize, auto tile, normalize, and validate.
+- `layout-normalize.ts`: collapse empty nodes, flatten same-direction splits,
+  repair size arrays, remove duplicate surfaces, route orphaned surfaces to
+  rail/default window, clamp active IDs, and preserve stable IDs.
+- `layout-selectors.ts`: resolve node/window paths from IDs, compute bounding
+  boxes, find focus neighbors, find drop targets, calculate MRU fallbacks.
+- `layout-persistence.ts`: versioned serialization, migration, restore matching,
+  corrupt-state recovery, and placeholder surfaces.
+- `layout-policies.ts`: classic, active-adjacent, master/detail, lane workflow,
+  preview-adjacent, root-edge, and task/agent placement policies.
+
+State rules:
+
+- Persistent operations target IDs, not paths. Paths are fine as render-time
+  addresses and patch locations after resolving the latest tree.
+- Every structural operation should run `normalizeLayout` before committing.
+- Split nodes should be n-ary. If an edge drop targets a child of a same-
+  direction split, insert into that split instead of wrapping another split.
+- Window nodes should remain window nodes even with one surface. This preserves
+  tabstrip, preview, active-window, and close/move semantics.
+- Surface registry entries should own product lifecycle. Layout code should ask
+  capabilities questions such as "can close", "can split", "can float", "can
+  minimize", "requires mounted while hidden", and "supports preview".
+- Drag state should be ephemeral. Do not persist hidden/drag-preview layout.
+  Commit only on drop, with preview geometry shown through derived state.
+- Resize should maintain percent sizes for flexible panes and pixel/fixed
+  constraints for toolbars, rails, and minimum content. Use simple adjacent
+  resize first; keep a solver option for stacked/fixed-heavy layouts.
+- Persistence should store a surface registry version and layout version. On
+  restore, match by stable resource key first, then previous surface ID if
+  still valid, then logical/window position, then fallback rail/default stack.
+- Unit tests should cover pure tree operations heavily. The risky code is path
+  adjustment, normalization, close fallback, duplicate prevention, restore
+  migration, and drop grammar.
+
+Initial operation grammar:
+
+- `openSurface(surface, policy)`
+- `splitWindow(windowId, direction, placement, newSurfaceOrWindow)`
+- `moveSurface(surfaceId, destination)`
+- `moveWindow(windowId, destination)`
+- `tabSurface(surfaceId, targetWindowId, index?)`
+- `reorderTab(windowId, fromIndex, toIndex)`
+- `minimizeSurface(surfaceId)`
+- `restoreSurface(surfaceId, placement?)`
+- `resizeSplit(splitId, handleIndex, deltaPx)`
+- `maximizeWindow(windowId)` and `restoreWindow(windowId)`
+- `applyRecipe(recipeId)`
+
+Drop destinations should be explicit:
+
+```ts
+type DropDestination =
+  | { kind: 'window-center'; windowId: WindowId; tabIndex?: number }
+  | { kind: 'window-edge'; windowId: WindowId; edge: 'top' | 'right' | 'bottom' | 'left' }
+  | { kind: 'parent-edge'; nodeId: LayoutNodeId; edge: 'top' | 'right' | 'bottom' | 'left' }
+  | { kind: 'root-edge'; edge: 'top' | 'right' | 'bottom' | 'left' }
+  | { kind: 'dock'; dock: 'left' | 'right' | 'bottom' }
+  | { kind: 'rail' }
+  | { kind: 'floating'; rect?: FloatingWindow['rect'] }
+```
+
+This keeps the UX concrete: center means tab/merge, edge means split, parent
+edge means promote to the enclosing split, dock means tool region, rail means
+minimize, floating means overlay window.
+
 ## Layout Recipes To Explore
+
+Tiling surface manager:
+
+- Every opened artifact becomes a surface in a window.
+- Drag center to tab; drag edge to split; drag outer parent edge to promote.
+- Rail shows minimized, running, or available surfaces.
+- Search, diff, files, terminal, git, and agent can all be visible together.
+- Auto-tiling policy places new surfaces by role and active context.
+- Mouse resizing, keyboard focus movement, maximize, minimize, and restore all
+  operate on windows.
 
 Classic IDE:
 
@@ -531,6 +1173,13 @@ Search and investigate:
 - Persistent result set with transient file preview.
 - Ability to promote preview to real editor.
 
+Dense execution/log mode:
+
+- Stack terminals, task logs, and agent output as one flexible main pane plus
+  collapsed one-line panes.
+- Allow one log/output surface to expand without losing the rest of the stack.
+- Good for build, test, agent, and deployment workflows.
+
 Focus mode:
 
 - One active surface or one split group.
@@ -543,15 +1192,25 @@ To feel credible as a code editor, V1 should preserve these familiar behaviors:
 
 - Split editor left/right/up/down.
 - Move editor between groups.
+- Move whole window between split positions.
+- Move individual surface between windows.
+- Tab a surface into another window.
+- Drag whole window and drag individual tab/surface.
 - Close active, close others, close left/right, close clean.
 - Reopen closed editor.
 - Preview editor promoted by edit/pin.
 - Pinned tabs protected from ordinary close.
 - Active group and MRU group navigation.
+- Focus window left/right/up/down.
+- Focus parent/enclosing split for structural commands.
+- Swap windows or surfaces.
 - Toggle left sidebar.
 - Toggle bottom terminal/panel.
+- Minimize surface to rail and restore it.
+- Open multiple tool surfaces at the same time.
 - Move focus left/right/up/down.
 - Maximize/restore group or panel.
+- Toggle floating layer and pinned floating surfaces.
 - Restore workspace layout after reload.
 - Gracefully reset corrupt layouts.
 - Command palette commands for every layout operation.
@@ -567,44 +1226,55 @@ These are compatibility behaviors, not necessarily the internal architecture.
    should be transient until promoted. The old "open beside active editor"
    heuristic is too weak.
 
-2. Workflow lanes.
+2. Mouse-first structural tiling.
+
+   Use i3-style center/edge/parent-edge drop zones with clear overlays. This
+   gives users real tree control without making them learn the tree.
+
+3. Workflow lanes.
 
    Borrow GitButler's confidence here. Branch stacks, PR review, agent tasks,
    and investigation threads all benefit from lanes more than from generic tabs.
 
-3. Layout policies.
+4. Layout policies.
 
    Provide internal policies such as classic split, master/detail, lane stack,
    preview-adjacent, active-context, and cursor/drop-target. Later, expose them
    as user/project settings.
 
-4. Context-linked transient previews.
+5. Rail as taskbar.
+
+   The rail should show minimized/running/available surfaces, not just
+   mutually-exclusive view containers. This makes "open search, diff, files,
+   terminal, and agent all at once" feel natural.
+
+6. Context-linked transient previews.
 
    Preview surfaces should be linked to the selected list item, stack, search
    result, diagnostic, or agent artifact. Promotion to persistent surface should
    be explicit.
 
-5. Portable surfaces.
+7. Portable surfaces.
 
    The same surface should be able to render as center tab, dock panel, bottom
    panel, sheet, drawer, floating window, or lane detail if its capabilities
    allow it.
 
-6. Constraint-aware resizing.
+8. Constraint-aware resizing.
 
    Resizers should know when a requested width would break the editor/composer
    and reject or clamp it.
 
-7. First-class layout profiles.
+9. First-class layout profiles.
 
    A project can remember "editing", "review", "agent", and "focus" profiles
    with separate placement policies and visibility.
 
-8. Safer persistence and migrations.
+10. Safer persistence and migrations.
 
-   Persist layout version, surface registry version, and resource keys. On
-   invalid state, recover as much as possible and route orphaned surfaces to a
-   default stack.
+Persist layout version, surface registry version, and resource keys. On
+invalid state, recover as much as possible and route orphaned surfaces to a
+default stack.
 
 ## Open Vision Questions
 
@@ -630,50 +1300,68 @@ These are compatibility behaviors, not necessarily the internal architecture.
    be allowed inside editor stacks? Should git lanes accept arbitrary file
    editors? We need capability rules, not a single yes/no answer.
 
-5. Do we want layout algorithms as user-visible settings?
+5. What exactly is a window?
+
+   Is every tab group a window? Does a dock panel become a window when undocked?
+   Can a workflow lane contain windows? The implementation should answer this
+   before coding because it determines IDs, MRU, close fallback, and drag/drop.
+
+6. What belongs in the rail?
+
+   Should the rail show only minimized surfaces, all running surfaces, all
+   registered tools, or a mix? A taskbar-like rail is powerful, but it needs a
+   clear rule so it does not become noisy.
+
+7. Do we want layout algorithms as user-visible settings?
 
    Hyprland suggests yes eventually. V1 can ship internal policies first:
    classic, preview-adjacent, master/detail, lane workflow, and focus.
 
-6. How much of Dockview should remain?
+8. Should V1 use a pure tree runtime or derived geometry runtime?
+
+   React Mosaic favors a pure tree. Zellij proves a geometry-first runtime can
+   handle fixed/stacked/solver cases. Platform likely wants a pure durable tree
+   plus derived geometry, but stacked panes and fixed toolbars may pressure this.
+
+9. How much of Dockview should remain?
 
    Option A: product-owned model rendered through Dockview for central docking.
    Option B: custom split/stack renderer from the start. Option A moves faster,
    but only if Dockview never becomes the product model.
 
-7. What should the activity rail represent?
+10. What should the activity rail represent?
 
-   VS Code uses view containers. GitButler uses workflow destinations. Platform
-   may want activity items for workspace, changes, agents, search, review, and
-   settings, with each opening a layout recipe rather than just a sidebar.
+VS Code uses view containers. GitButler uses workflow destinations. Platform
+may want activity items for workspace, changes, agents, search, review, and
+settings, with each opening a layout recipe rather than just a sidebar.
 
-8. What is the lifecycle contract for terminals and agents?
+11. What is the lifecycle contract for terminals and agents?
 
-   Some hidden surfaces must stay mounted. Others should serialize and dispose.
-   We need explicit lifecycle rules per surface type.
+Some hidden surfaces must stay mounted. Others should serialize and dispose.
+We need explicit lifecycle rules per surface type.
 
-9. How should extension-contributed surfaces work?
+12. How should extension-contributed surfaces work?
 
-   Extensions should probably register surface types with capabilities and
-   placement preferences, not arbitrary React nodes with global layout power.
+Extensions should probably register surface types with capabilities and
+placement preferences, not arbitrary React nodes with global layout power.
 
-10. How should multi-window, popout, and floating behave?
+13. How should multi-window, popout, and floating behave?
 
-    Floating is useful, but it increases persistence, focus, and lifecycle
-    complexity. It should follow after central/dock/bottom/sheet surfaces are
-    solid.
+Floating is useful, but it increases persistence, focus, and lifecycle
+complexity. It should follow after central/dock/bottom/sheet surfaces are
+solid.
 
-11. What is the keyboard-first story?
+14. What is the keyboard-first story?
 
-    Layout commands should be complete: split, move, swap, focus, resize,
-    maximize, promote preview, toggle dock, cycle surface, open recipe.
+Layout commands should be complete: split, move, swap, focus, resize,
+maximize, promote preview, toggle dock, cycle surface, open recipe.
 
-12. What visual identity should this have?
+15. What visual identity should this have?
 
-    We should avoid a VS Code clone and avoid a generic Dockview skin. The
-    design should be quieter than marketing UI but fresher than old IDE chrome:
-    workflow lanes, crisp resize affordances, clear active/focus state, and
-    fewer nested boxes.
+We should avoid a VS Code clone and avoid a generic Dockview skin. The
+design should be quieter than marketing UI but fresher than old IDE chrome:
+workflow lanes, crisp resize affordances, clear active/focus state, and
+fewer nested boxes.
 
 ## Recommended Next Steps
 
@@ -681,32 +1369,45 @@ These are compatibility behaviors, not necessarily the internal architecture.
 
    Define `Surface`, `SurfaceRegistry`, `LayoutNode`, `DockState`,
    `OverlayState`, lifecycle rules, capabilities, persistence, migration, and
-   command routing.
+   command routing. Include the definition of `Window`, rail behavior, floating
+   behavior, and what state is durable versus derived.
 
-2. Decide the renderer strategy.
+2. Build the pure layout operation library first.
+
+   Implement IDs, split/window nodes, normalize, split, tab, move, reorder,
+   minimize, restore, close, resize, maximize, and recipe application as pure
+   TypeScript functions with unit tests before wiring React.
+
+3. Decide the renderer strategy.
 
    Choose between a Dockview-backed renderer for the center workbench or a
    custom Athas-style split/stack renderer. If Dockview stays, keep a strict
    adapter boundary.
 
-3. Prototype two recipes.
+4. Prototype two recipes.
 
    Build one classic IDE recipe and one distinctive Platform recipe, likely
    git/agent review lanes with contextual diff preview. This will reveal whether
    the model is expressive enough.
 
-4. Define placement policies.
+5. Prototype mouse drop grammar.
+
+   Implement visual drop overlays for center, edge, parent edge, root edge,
+   dock, rail, and floating. This is the fastest way to validate the
+   "Hyprland in browser but easy with mouse" thesis.
+
+6. Define placement policies.
 
    Start with internal policies for active stack, adjacent preview, bottom
    terminal, lane append, master/detail, and focus mode.
 
-5. Define persistence and recovery.
+7. Define persistence and recovery.
 
    Persist stable surface identities and layout version. Add fallback behavior
    for missing resources, missing surface types, corrupt trees, and orphaned
    surfaces.
 
-6. Build command coverage early.
+8. Build command coverage early.
 
    Every layout operation should be command-addressable. This keeps the system
    keyboard-first and makes VS Code/Zed parity possible without coupling the UI
@@ -715,12 +1416,16 @@ These are compatibility behaviors, not necessarily the internal architecture.
 ## Bottom Line
 
 The layout manager should be ours at the product-model layer. Dockview can help
-with mechanics, Athas gives the clean custom tree, Zed and VS Code define the
-compatibility baseline, T3Code shows route/responsive/session handling,
-GitButler shows how to make layout feel native to the workflow, and Hyprland
-shows how to make placement policy and layout algorithms first-class.
+with mechanics, React Mosaic gives the best TypeScript tree/update reference,
+React Layman gives a compact reducer/drop reference, Athas gives the custom
+typed pane model, Zed and VS Code define the compatibility baseline, T3Code
+shows route/responsive/session handling, GitButler shows workflow-native
+layout, Hyprland shows layout policies, i3 shows structural tiling and mouse
+drop grammar, and Zellij shows developer-workspace recipes, stacked/floating
+panes, plugins, and session restore.
 
-The strongest vision is a typed, policy-driven surface manager with classic IDE
-compatibility and distinctive workflow recipes. That gives us a path to support
-what users already know while making the editor feel materially better than a
-Zed or VS Code clone.
+The strongest vision is a typed, policy-driven tiling surface manager: classic
+IDE compatibility underneath, a taskbar-like rail for surfaces, mouse-first
+structural tiling, stable TypeScript layout operations, and distinctive workflow
+recipes on top. That gives us a path to support what users already know while
+making the editor feel materially better than a Zed or VS Code clone.
