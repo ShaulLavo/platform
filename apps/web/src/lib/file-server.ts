@@ -10,6 +10,7 @@ import type {
 } from '@/lib/file-system-types'
 import { errorMessage as clientErrorMessage } from '@/lib/client-error-taxonomy'
 import { observeClientOperation } from '@/lib/client-logging'
+import { omitNullish } from '@/lib/objects'
 import {
   createRpcError,
   rpcErrorMessage as structuredRpcErrorMessage,
@@ -140,16 +141,12 @@ function writeFileContentBody(path: string, content: string, options: WriteFileC
   return {
     content,
     path,
-    ...(options.baseVersion === undefined || options.baseVersion === null
-      ? {}
-      : { baseVersion: options.baseVersion }),
-    ...(options.expectedMtimeMs === undefined || options.expectedMtimeMs === null
-      ? {}
-      : { expectedMtimeMs: options.expectedMtimeMs }),
-    ...(options.origin === undefined || options.origin === null ? {} : { origin: options.origin }),
-    ...(options.writeId === undefined || options.writeId === null
-      ? {}
-      : { writeId: options.writeId }),
+    ...omitNullish({
+      baseVersion: options.baseVersion,
+      expectedMtimeMs: options.expectedMtimeMs,
+      origin: options.origin,
+      writeId: options.writeId,
+    }),
   }
 }
 

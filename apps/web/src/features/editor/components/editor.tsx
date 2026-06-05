@@ -25,6 +25,7 @@ import {
   useScrollPersistencePlugin,
 } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
+import { editorPerformanceLayoutVariant } from '@/lib/editor-performance-trace'
 import { useWorkspaceFocus } from '@/components/workspace/workspace-focus-state'
 import type {
   DocumentSessionChange,
@@ -109,6 +110,8 @@ export function Editor({
       }) satisfies EditorKeymapOptions,
     [keymapLayers],
   )
+  const rowPositioning =
+    editorPerformanceLayoutVariant() === 'absolute-rows' ? 'top' : 'transform'
   const controller = useEditor({
     cursorLineHighlight: {
       gutterNumber: true,
@@ -124,6 +127,7 @@ export function Editor({
       onDirtyChange?.(liveDocument.path, state.isDirty)
     },
     plugins,
+    rowPositioning,
     theme: editorTheme,
   })
   const selection = useMemo(

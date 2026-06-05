@@ -28,6 +28,7 @@ type EditorPerformanceTraceReport = {
   readonly dom: Readonly<Record<string, number>>
   readonly events: Readonly<Record<string, number>>
   readonly frameStats: Readonly<Record<string, number>>
+  readonly layoutVariant: EditorPerformanceLayoutVariant
   readonly topDiagnostics: readonly EditorPerformanceTraceSummary[]
   readonly topTargets: readonly EditorPerformanceTraceTargetSummary[]
   readonly traceEvents: readonly EditorPerformanceTraceEvent[]
@@ -65,9 +66,12 @@ type EditorPerformanceTraceGlobal = typeof globalThis & {
 
 const TRACE_PARAM = 'editorPerfTrace'
 const DISABLE_PARAM = 'editorPerfDisable'
+const LAYOUT_PARAM = 'editorPerfLayout'
 const SLOW_FRAME_MS = 16.7
 const LONG_FRAME_MS = 50
 const MAX_TRACE_EVENTS = 5000
+
+export type EditorPerformanceLayoutVariant = 'absolute-rows' | 'default'
 
 let disabledFeatureSet: ReadonlySet<string> | null = null
 
@@ -77,7 +81,7 @@ export function installEditorPerformanceTraceFromUrl(): void {
   installDisabledFeatureStyles(editorPerformanceDisabledFeatures())
   if (!editorPerformanceTraceEnabled(window.location.search)) return
 
-  const trace = createEditorPerformanceTrace(window)
+  const trace = createEditorPerformanceTrace()
   editorPerformanceTraceGlobal().__EDITOR_PERFORMANCE_DIAGNOSTICS__ = trace.sink
   editorPerformanceTraceGlobal().__editorPerfTrace = trace.handle
 
@@ -90,19 +94,26 @@ export function editorPerformanceFeatureDisabled(feature: string): boolean {
   return editorPerformanceDisabledFeatures().has(feature)
 }
 
-function createEditorPerformanceTrace(view: Window): {
+export function editorPerformanceLayoutVariant(): EditorPerformanceLayoutVariant {
+  if (typeof window === 'undefined') return 'default'
+
+  const value = new URLSearchParams(window.location.search).get(LAYOUT_PARAM)
+  return value === 'absolute-rows' ? 'absolute-rows' : 'default'
+}
+
+function createEditorPerformanceTrace(): {
   readonly handle: EditorPerformanceTraceHandle
   readonly sink: EditorPerformanceDiagnosticSink
 } {
   let stopped = false
   let frame = 0
-  let lastFrameTime = view.performance.now()
+  let lastFrameTime = performance.now()
   let traceEvents: EditorPerformanceTraceEvent[] = []
   let frameDurations: number[] = []
-  let startedAt = view.performance.now()
+  let startedAt = performance.now()
   const eventCounts = new Map<string, number>()
   const targetCounts = new Map<string, number>()
-  const observer = createLongTaskObserver(view, (event) => {
+  const observer = createLongTaskObserver((event) => {
     traceEvents = boundedAppend(traceEvents, event)
   })
 
@@ -112,7 +123,7 @@ function createEditorPerformanceTrace(view: Window): {
       if (stopped) return
 
       traceEvents = boundedAppend(traceEvents, {
-        at: view.performance.now(),
+        at: performance.now(),
         diagnostic,
         kind: 'diagnostic',
       })
@@ -126,8 +137,8 @@ function createEditorPerformanceTrace(view: Window): {
     increment(targetCounts, `${event.type}:${targetLabel(event.target)}`)
   }
 
-  view.addEventListener('scroll', recordInputEvent, { capture: true, passive: true })
-  view.addEventListener('wheel', recordInputEvent, { capture: true, passive: true })
+  window.addEventListener('scroll', recordInputEvent, { capture: true, passive: true })
+  window.addEventListener('wheel', recordInputEvent, { capture: true, passive: true })
 
   const tick = (now: number) => {
     if (stopped) return
@@ -135,14 +146,14 @@ function createEditorPerformanceTrace(view: Window): {
     const duration = now - lastFrameTime
     lastFrameTime = now
     frameDurations.push(duration)
-    frame = view.requestAnimationFrame(tick)
+    frame = requestAnimationFrame(tick)
   }
-  frame = view.requestAnimationFrame(tick)
+  frame = requestAnimationFrame(tick)
 
   const handle: EditorPerformanceTraceHandle = {
     download: () => {
       const report = createReport()
-      downloadJson(view, report)
+      downloadJson(report)
       return report
     },
     mark: (name, detail) => {
@@ -161,7 +172,7 @@ function createEditorPerformanceTrace(view: Window): {
       frameDurations = []
       eventCounts.clear()
       targetCounts.clear()
-      startedAt = view.performance.now()
+      startedAt = performance.now()
       lastFrameTime = startedAt
     },
     stop: () => {
@@ -169,9 +180,9 @@ function createEditorPerformanceTrace(view: Window): {
 
       stopped = true
       sink.enabled = false
-      view.cancelAnimationFrame(frame)
-      view.removeEventListener('scroll', recordInputEvent, { capture: true })
-      view.removeEventListener('wheel', recordInputEvent, { capture: true })
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', recordInputEvent, { capture: true })
+      window.removeEventListener('wheel', recordInputEvent, { capture: true })
       observer?.disconnect()
     },
   }
@@ -179,15 +190,16 @@ function createEditorPerformanceTrace(view: Window): {
   function createReport(): EditorPerformanceTraceReport {
     return {
       disabledFeatures: Array.from(editorPerformanceDisabledFeatures()),
-      dom: domSnapshot(view.document),
-      durationMs: view.performance.now() - startedAt,
+      dom: domSnapshot(document),
+      durationMs: performance.now() - startedAt,
       events: Object.fromEntries(eventCounts),
       frameStats: frameStats(frameDurations),
+      layoutVariant: editorPerformanceLayoutVariant(),
       topDiagnostics: summarizeDiagnostics(traceEvents),
       topTargets: summarizeTargets(targetCounts),
       traceEvents,
-      url: view.location.href,
-      userAgent: view.navigator.userAgent,
+      url: location.href,
+      userAgent: navigator.userAgent,
     }
   }
 
@@ -195,13 +207,12 @@ function createEditorPerformanceTrace(view: Window): {
 }
 
 function createLongTaskObserver(
-  view: Window,
   record: (event: EditorPerformanceTraceEvent) => void,
 ): PerformanceObserver | null {
-  if (!('PerformanceObserver' in view)) return null
+  if (!('PerformanceObserver' in window)) return null
 
   try {
-    const observer = new view.PerformanceObserver((list) => {
+    const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         record({
           at: entry.startTime,
@@ -283,13 +294,47 @@ function frameStats(durations: readonly number[]): Readonly<Record<string, numbe
 }
 
 function domSnapshot(document: Document): Readonly<Record<string, number>> {
+  const highlights = cssHighlightSnapshot(document)
+
   return {
+    cssHighlightGroups: highlights.groups,
+    cssHighlightRanges: highlights.ranges,
+    cssHighlightRules: cssHighlightRuleCount(document),
+    editorRowTextCharacters: editorRowTextCharacters(document),
     editorRows: document.querySelectorAll('.editor-virtualized-row').length,
     editorScrollers: document.querySelectorAll('.editor-virtualized').length,
     minimapCanvases: document.querySelectorAll('.editor-minimap-canvas').length,
     minimaps: document.querySelectorAll('.editor-minimap').length,
     scopeLines: document.querySelectorAll('.editor-scope-line').length,
   }
+}
+
+function cssHighlightSnapshot(document: Document): { readonly groups: number; readonly ranges: number } {
+  const registry = document.defaultView?.CSS?.highlights
+  if (!registry) return { groups: 0, ranges: 0 }
+
+  let groups = 0
+  let ranges = 0
+  for (const [, highlight] of registry) {
+    groups += 1
+    ranges += highlight.size
+  }
+
+  return { groups, ranges }
+}
+
+function cssHighlightRuleCount(document: Document): number {
+  return Array.from(document.querySelectorAll('style')).reduce(
+    (count, style) => count + (style.textContent?.match(/::highlight\(/g)?.length ?? 0),
+    0,
+  )
+}
+
+function editorRowTextCharacters(document: Document): number {
+  return Array.from(document.querySelectorAll('.editor-virtualized-row')).reduce(
+    (count, row) => count + (row.textContent?.length ?? 0),
+    0,
+  )
 }
 
 function targetLabel(target: EventTarget | null): string {
@@ -310,13 +355,13 @@ function boundedAppend<T>(items: readonly T[], item: T): T[] {
   return items.slice(1).concat(item)
 }
 
-function downloadJson(view: Window, report: EditorPerformanceTraceReport): void {
+function downloadJson(report: EditorPerformanceTraceReport): void {
   const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
-  const link = view.document.createElement('a')
+  const link = document.createElement('a')
   link.download = `editor-perf-trace-${Date.now()}.json`
-  link.href = view.URL.createObjectURL(blob)
+  link.href = URL.createObjectURL(blob)
   link.click()
-  view.URL.revokeObjectURL(link.href)
+  URL.revokeObjectURL(link.href)
 }
 
 function installDisabledFeatureStyles(features: ReadonlySet<string>): void {
