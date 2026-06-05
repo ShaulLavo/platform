@@ -14,7 +14,16 @@ export default {
       entrypoint: 'src/bun/index.ts',
     },
     mac: {
-      defaultRenderer: 'native',
+      bundleCEF: true,
+      defaultRenderer: 'cef',
+    },
+    win: {
+      bundleCEF: true,
+      defaultRenderer: 'cef',
+    },
+    linux: {
+      bundleCEF: true,
+      defaultRenderer: 'cef',
     },
     views: {
       preload: {

@@ -180,11 +180,7 @@ A workbench panel is a persisted item in the layout. It has a stable ID, a type,
 metadata needed for rendering, and lifecycle rules.
 
 ```ts
-type WorkbenchPanel =
-  | FileEditorPanel
-  | DiffEditorPanel
-  | TerminalPanel
-  | SearchPanel
+type WorkbenchPanel = FileEditorPanel | DiffEditorPanel | TerminalPanel | SearchPanel
 ```
 
 ### Panel Types
@@ -338,6 +334,11 @@ state, and default panel placement.
   embedded product.
 - Use a custom or extended Dockview theme rather than accepting a stock theme
   unchanged.
+- Dockview tab bars must stay synchronized with the active Platform color
+  theme, including active, inactive, hover, border, and separator states.
+- Dockview panel backgrounds must stay synchronized with the active Platform
+  color theme so editor, diff, terminal, and empty states do not sit on a
+  mismatched surface.
 - Tab height, colors, separators, hover states, active group states, and drag
   overlays should match current workspace chrome.
 - Avoid nested-card styling. The workbench is a full-height tool surface.
@@ -571,6 +572,50 @@ Phase 0 decision:
 - Render file editor and diff panels through the registry.
 - Wire active panel changes into Platform state.
 
+Phase 2 progress, 2026-06-05:
+
+- Added a production Dockview shell under `apps/web/src/features/workbench/`
+  and swapped the central workspace area from `FileViewer` to
+  `WorkbenchDockview`. Sidebar, activity bar, status bar, command palette,
+  search runtime, and floating terminal remain outside Dockview.
+- The shell derives file and diff workbench panels from the existing
+  `editorPaneLayout` as a bounded migration bridge. Dockview now owns the
+  central tab strip, group movement, and split geometry, while active Dockview
+  panel changes route back through Platform's editor selection state.
+- File panels render the existing `EditorPaneTabBody`, preserving current
+  document/session wiring. Diff panels render `GitDiffViewer` with the existing
+  diff actions for reveal, open file, and view-mode changes.
+- Added a Chrome-style Dockview tab renderer and context-menu actions that
+  delegate to the existing dirty-tab close guard instead of using Dockview's
+  unguarded built-in close path.
+- Chrome-style tabs disable Dockview's native panel DnD and use Platform's
+  existing editor-tab drag controller for tab-bar reordering. Dockview-native
+  default tabs keep Dockview's native DnD behavior.
+- Added Platform-aligned Dockview theme overrides in
+  `workbench-dockview.css`.
+- Verification passed for web typecheck, web lint, focused workbench tests, and
+  the production web build. Browser verification loaded the app's empty
+  workspace with no console errors; mounting a real workspace in the in-app
+  Browser was blocked because the Browser sandbox could not seed workspace
+  `localStorage` and the folder picker is native.
+
+Phase 2 follow-up requirements, 2026-06-05:
+
+- Fix theme propagation so Dockview tab bars and panel backgrounds update with
+  the active Platform theme instead of retaining static shell colors.
+- Keep Chrome-tab drag/drop independent from Dockview panel DnD. Chrome tabs
+  should behave like tabs in the tab bar, not as pane split handles.
+- Keep Dockview-native default tabs available as a supported tab presentation,
+  but do not override Dockview's native overflow, scroll, DnD indicator, or tab
+  context-menu behavior there. Only Platform theme sync should apply until the
+  mode is intentionally revisited.
+- Preserve Chrome-style tabs as a supported presentation mode. The collapsed
+  Dockview-native behavior should be an additional mode, not a replacement for
+  the existing Chrome-tab feel.
+- Add a workbench tab presentation setting or policy hook that can choose
+  between Chrome-style tabs and Dockview-native default tabs without changing
+  panel identity, close behavior, dirty guards, or layout persistence.
+
 ### Phase 3: Terminal As Panel
 
 - Convert each terminal session into a workbench panel.
@@ -648,3 +693,5 @@ Phase 0 decision:
    both?
 5. What is the exact default layout when the first opened panel is search or
    terminal instead of a file?
+6. What should the user-facing names be for the two tab presentation modes:
+   Chrome-style tabs and Dockview-native default tabs?
