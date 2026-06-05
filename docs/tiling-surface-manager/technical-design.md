@@ -63,6 +63,10 @@ These are the concrete examples from the research that shape this design:
 - Zellij shows developer workspace depth: layout files, swap layouts, tiled
   panes, floating panes, stacked panes, plugin panes, session serialization,
   mouse resizing, and exact/logical-position restore matching.
+- Raycast Window Management grounds the command UX: searchable window commands,
+  command rows with category and shortcut metadata, per-command hotkey
+  recording, cycling behavior, preset import, custom single-window commands,
+  and multi-item layout commands.
 
 ## Core Model Draft
 
@@ -77,6 +81,11 @@ type WorkspaceLayout = {
   rail: RailState
   recipesById: Record<RecipeId, WorkspaceRecipe>
   policiesById: Record<LayoutPolicyId, LayoutPolicyState>
+  windowCommandsById: Record<WindowManagementCommandId, WindowManagementCommand>
+  layoutCommandsById: Record<LayoutCommandId, WorkspaceLayoutCommand>
+  hotkeyPresetsById: Record<HotkeyPresetId, WindowManagementHotkeyPreset>
+  activeHotkeyPresetId?: HotkeyPresetId
+  commandCycleState?: CommandCycleState
   activeSurfaceId?: SurfaceId
   activeWindowId?: WindowId
   mruSurfaceIds: SurfaceId[]
@@ -299,6 +308,156 @@ Current app integration should use the existing keymap architecture:
 - Use the current pane-scoped model for V1, and leave richer Zed-style context
   predicates to the existing keymap roadmap.
 
+## Command Palette And Layout Command Direction
+
+Raycast Window Management should be treated as the reference for command-driven
+layout control. Platform's command palette should expose window management as a
+searchable command family, not only as hidden keybindings. The launcher row
+needs enough metadata for power use: icon, title, category, alias match,
+shortcut, enabled/disabled state, and a short description when useful.
+
+Command UX rules:
+
+- Searching "left", "right", "maximize", "third", "terminal bottom",
+  "layout", or a saved layout name should return relevant layout commands.
+- Built-in commands and user-authored commands should appear in the same
+  command palette groups, with type metadata available for settings.
+- Disabled states should come from active surface/window capabilities and
+  workspace availability, not selected file path alone.
+- Repeated commands may use cycling rules. Cycling state should key off command
+  ID, active window/surface, display/workspace, and a short timeout so unrelated
+  invocations do not surprise the user.
+- Hotkey assignment and presets belong in the keymap/command management layer.
+  Layout operations must stay shortcut-agnostic.
+- Command definitions execute pure layout operations, recipes, and placement
+  policies. They do not own a second layout tree.
+
+Draft command catalog model:
+
+```ts
+type WindowManagementCommand = BuiltInWindowManagementCommand | CustomWindowManagementCommand
+
+type BuiltInWindowManagementCommand = {
+  id: WindowManagementCommandId
+  kind: 'built-in'
+  title: string
+  category: 'Window Management'
+  icon: CommandIcon
+  aliases: string[]
+  operationFactory: WindowCommandOperationFactory
+  cycleRule?: CommandCycleRule
+  capabilityPredicate: CommandCapabilityPredicate
+}
+
+type CustomWindowManagementCommand = {
+  id: WindowManagementCommandId
+  kind: 'custom-window'
+  title: string
+  category: 'Window Management'
+  icon: CommandIcon
+  aliases: string[]
+  enabled: boolean
+  targetFrame: CustomWindowFrame
+  cycleRule?: CommandCycleRule
+}
+
+type CustomWindowFrame = {
+  unit: 'percent' | 'points'
+  width: number
+  height: number
+  anchor:
+    | 'top-left'
+    | 'top'
+    | 'top-right'
+    | 'left'
+    | 'center'
+    | 'right'
+    | 'bottom-left'
+    | 'bottom'
+    | 'bottom-right'
+  offsetX: number
+  offsetY: number
+}
+
+type WorkspaceLayoutCommand = {
+  id: LayoutCommandId
+  title: string
+  icon: CommandIcon
+  aliases: string[]
+  enabled: boolean
+  slots: LayoutCommandSurfaceSlot[]
+  hotkeyId?: HotkeyBindingId
+}
+
+type LayoutCommandSurfaceSlot = {
+  id: string
+  surfaceType: SurfaceType
+  resourceKey?: string
+  stateKey?: string
+  payload?: { kind: 'url' | 'file' | 'quicklink'; value: string }
+  displayHint?: DisplayPlacementHint
+  frame: CustomWindowFrame
+}
+
+type CommandCycleRule = {
+  scope: 'window' | 'surface' | 'workspace'
+  steps: CustomWindowFrame[]
+  resetMs: number
+  wrapDisplays?: boolean
+}
+
+type WindowManagementHotkeyPreset = {
+  id: HotkeyPresetId
+  title: string
+  source: 'platform' | 'rectangle' | 'magnet' | 'spectacle' | 'vscode' | 'hyprland-i3'
+  bindings: Record<WindowManagementCommandId | LayoutCommandId, string>
+}
+```
+
+The built-in catalog should cover the command names users expect from Raycast
+and desktop window managers:
+
+- Size/state: fullscreen, maximize, almost maximize, maximize height, maximize
+  width, restore, reasonable size, and center.
+- Fractions: left/right/top/bottom halves, thirds, two-thirds, fourths,
+  quarters, sixths, and common center fractions.
+- Movement: move left/right/up/down, move to parent edge, move to root edge,
+  move to rail, and move to next/previous display when display support exists.
+- Focus: focus left/right/up/down, focus parent, focus child, focus rail, and
+  restore previous surface/window.
+- Recipes/layouts: apply recipe, reset recipe, create window command, create
+  layout command, and run saved layout command.
+
+Settings direction:
+
+- Reuse the existing command metadata source where possible, but add a command
+  management surface for layout commands with Name, Type, Alias, Hotkey, and
+  Enabled-style fields.
+- Provide a detail/config panel for the Window Management command family:
+  default gap, cycling mode, wrap displays, OS compatibility toggles where
+  applicable, and hotkey presets.
+- The custom command editor should support size, pinned position, offsets,
+  percent/point units, alias, enabled state, icon, and hotkey.
+- The layout command editor should support adding surfaces, assigning frames,
+  ordering/focusing slots, optional URL/file/quicklink payloads, and hotkey
+  binding. Multi-display hints can be stored before full multi-monitor
+  execution ships.
+
+Current app integration expands beyond the keymap files:
+
+- `apps/web/src/components/command-palette.tsx` and
+  `apps/web/src/components/command-palette/*` need mode/group support for
+  window management commands and saved layout commands.
+- `apps/web/src/components/app-command-surface.tsx` remains the global command
+  overlay owner, but disabled states and dispatch should consult layout
+  selectors and command capabilities.
+- `apps/web/src/keymap/command-registry.ts` remains the command metadata entry
+  point, but it needs command-family/type metadata for settings and command
+  palette grouping.
+- `apps/web/src/keymap/default-bindings.ts` should provide browser-safe default
+  bindings plus optional preset bindings. Presets are data applied by settings,
+  not baked into layout operations.
+
 ## Surface Registry Draft
 
 | Surface        |          Cardinality | Lifecycle          | Default Placement            | Rail                   | Notes                                                               |
@@ -429,6 +588,12 @@ type LayoutOperation =
   | { type: 'maximizeWindow'; windowId: WindowId }
   | { type: 'restoreWindow'; windowId: WindowId }
   | { type: 'applyRecipe'; recipeId: RecipeId }
+  | {
+      type: 'applyCustomWindowCommand'
+      command: CustomWindowManagementCommand
+      targetWindowId?: WindowId
+    }
+  | { type: 'applyLayoutCommand'; command: WorkspaceLayoutCommand }
 ```
 
 Drop destinations should be explicit:
@@ -451,6 +616,9 @@ Reference grounding:
 - i3 adds parent-edge drop and focus-parent semantics, which are important for
   deliberate structural editing.
 - Athas adds bottom-root behavior and explicit drop-zone actions.
+- Raycast adds command-catalog execution, custom window frames, cycling, and
+  saved layout commands. These should resolve to ordinary layout operations and
+  recipe policy calls before commit.
 
 Every operation must normalize before commit:
 
@@ -577,6 +745,19 @@ Current app facts:
   active sidebar tab, diff mode, and search buffer state.
 - `apps/web/src/keymap/commands.ts` routes workspace commands to old editor
   pane actions and fixed sidebar actions.
+- `apps/web/src/components/command-palette.tsx` and
+  `apps/web/src/components/command-palette/*` render quick access modes,
+  command groups, file/symbol/editor/view groups, row metadata, filtering, and
+  disabled states that currently depend heavily on workspace presence and the
+  selected file path.
+- `apps/web/src/components/app-command-surface.tsx` owns the global command
+  palette open/search state and wires `usePlatformCommandDispatch` into the
+  command surface.
+- `apps/web/src/keymap/command-registry.ts`,
+  `apps/web/src/keymap/default-bindings.ts`, and
+  `apps/web/src/keymap/active-bindings.ts` are the current command metadata,
+  default binding, and active binding sources that layout commands should
+  extend instead of bypassing.
 - `apps/web/src/features/workbench-spike` is a phase-0 Dockview spike with its
   own storage key and metrics. It is useful as research, but should not remain
   as production architecture.
@@ -674,6 +855,12 @@ Cleanup after the surface manager lands:
    items. The command IDs and aliases can remain for muscle memory, but the
    implementation should stop mutating fixed sidebar and editor pane state.
 
+   The command palette should also grow a Raycast-style Window Management
+   command family. Built-in layout commands, custom single-window commands, and
+   saved layout commands should use the same `CommandSpec`/keymap machinery
+   where possible, add type/category metadata for settings, and derive disabled
+   state from surface/window capabilities instead of selected path alone.
+
 10. Delete the Dockview spike after extracting learnings.
 
     `apps/web/src/features/workbench-spike` should be removed once its useful
@@ -723,6 +910,10 @@ The risky code is pure layout logic, so test it outside React first:
 - VS Code/Zed compatibility cases: close active, close others, preview
   promotion, pinned protection, split/move commands, restore corrupted layout,
   and command palette coverage.
+- Raycast cases: command palette rows for window management commands, aliases
+  and shortcut display, capability-based disabled state, hotkey preset
+  application, cycling reset behavior, custom window command frame application,
+  and saved layout command execution.
 
 Add renderer tests after the pure reducer is stable: drop overlay hit targets,
 keyboard focus movement, resize handles, drag preview rendering, and surface
@@ -750,3 +941,10 @@ during the operation-library spike:
 - Placeholder serialization and restore matching details.
 - Recipe and placement policy API shape.
 - How much parent-edge and root-edge drop behavior is V1 versus follow-up.
+- Exact command catalog schema and how it extends `CommandSpec` without
+  coupling layout internals to command palette rendering.
+- Cycling state scope and timeout defaults.
+- Whether V1 layout commands launch URL/file/quicklink payloads or only store
+  payloads for surface types that can already consume them.
+- Settings UI ownership for the command table, hotkey presets, and layout
+  command editor.

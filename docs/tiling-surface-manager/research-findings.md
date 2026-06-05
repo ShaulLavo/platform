@@ -31,6 +31,11 @@ Relevant existing Platform docs:
 - `docs/t3code-reference.md`
 - `docs/tiling-surface-manager/prd.md`
 
+External product UX research supplied for this planning pass:
+
+- Raycast Window Management command palette, settings, hotkey, preset, custom
+  command, and layout command flows.
+
 ## Executive Readout
 
 The strongest direction is a product-owned tiling surface manager: close to
@@ -63,6 +68,14 @@ developer workspaces need panes, tabs, floating surfaces, stacked panes, layout
 recipes, session restore, plugin panes, and mouse resizing/moving under one
 workspace model.
 
+Raycast adds the missing command-product reference. Its Window Management
+experience is keyboard-first: users discover commands through the launcher,
+assign hotkeys to the commands they repeat, optionally import familiar presets,
+and then mostly stop seeing UI. For Platform, the command palette should not
+only list editor commands; it should become the discoverable control surface for
+window commands, custom single-window commands, recipes, layout commands, and
+hotkey assignment.
+
 The best local editor reference remains Athas because it already has a typed
 pane tree, broad content union, MRU focus, bottom root, custom drop zones, and
 resource-based persistence. The best product-feel reference remains GitButler:
@@ -72,6 +85,68 @@ tabs, pinned tabs, side docks, bottom terminals, keyboard navigation, focus/MRU
 behavior, restore-on-reopen, and movable auxiliary views.
 
 ## Reference Findings
+
+### Raycast Window Management
+
+Raycast Window Management is the clearest UX reference for command-driven window
+control. It is not a Rectangle-style edge-snap overlay. The primary flow is
+keyboard-first: open Raycast, search for commands such as Left Half, Right Half,
+Almost Maximize, Maximize, Last Third, First Two Thirds, or Toggle Fullscreen,
+then execute the selected result. Command rows use the normal launcher
+structure: icon, command name, category label, and shortcut display.
+
+What to take:
+
+- The command palette should be the first discovery surface for window
+  management. A user should be able to type "left", "right", "maximize",
+  "layout", "terminal bottom", or "review layout" and find the right command.
+- Common commands should graduate into global hotkeys. The product ladder is
+  search command, use command, bind hotkey, then rely on muscle memory.
+- Window management commands should be broad enough to cover real geometry:
+  fullscreen, maximize, almost maximize, maximize height/width, halves, thirds,
+  fourths, quarters, sixths, center, restore, reasonable size, move to next or
+  previous display, move between spaces where the host allows it, and focus or
+  move by direction.
+- Settings should expose a command table with Name, Type, Alias, Hotkey, and
+  Enabled-style fields. The detail panel should manage extension-level options
+  such as gap, cycling, display wrapping, OS integration compatibility toggles,
+  and presets.
+- Cycling is valuable for repeated left/right commands. One shortcut can cycle
+  through widths such as half, two-thirds, and one-third, and later through
+  displays when display support exists.
+- Hotkey presets reduce migration cost. Platform should plan presets for
+  familiar tools such as Rectangle, Magnet, Spectacle, VS Code-style editor
+  splits, and optionally Hyprland/i3-style tiling grammar.
+- Custom single-window commands should be creatable from search or settings.
+  The command definition needs size, pinned position, offset, unit system
+  points/percent, alias, enabled state, and optional hotkey.
+- Layout commands should arrange multiple surfaces at once. The builder flow is:
+  add surfaces/apps, assign target slots/displays when available, resize or
+  choose percentages, optionally choose a URL/file/quicklink payload for
+  surfaces that can open one, then save and bind a hotkey.
+
+What not to copy blindly:
+
+- Raycast's model is OS-window management. Platform's model is surface
+  management inside a workflow shell. A Platform layout command should arrange
+  registered surfaces first, then optionally integrate external URLs/files where
+  a surface type supports them.
+- Raycast does not replace mouse drag-to-edge snapping with previews. Platform
+  still needs its planned mouse drag/drop, live layout preview, edge/center
+  drops, rail drops, and resize handles because the workbench is an interactive
+  tiled surface editor, not only a global hotkey layer.
+- Pro-gating is not a design requirement for Platform. The relevant takeaway is
+  capability shape, not pricing.
+
+Design implication:
+
+The command palette should be upgraded from "search app/editor commands" to the
+front door for workspace layout control. The surface manager needs a command
+catalog layer above pure layout operations: built-in command definitions,
+custom single-window command definitions, saved layout commands, aliases,
+hotkeys, presets, disabled-state predicates, and command history for cycling.
+Those definitions should execute layout operations, recipes, and policies rather
+than owning layout state themselves.
 
 ### Dockview
 
@@ -940,6 +1015,22 @@ permanent panels.
     panes with concrete geometry and uses layout templates to position them.
     Platform should keep the durable app state pure, but allow derived geometry
     caches, solver passes, and drag previews as renderer/runtime state.
+
+15. Command discovery is part of layout UX.
+
+    Raycast shows that a powerful window manager can start as a searchable
+    command catalog. Platform should make layout commands discoverable in the
+    existing command palette with category labels, icons, aliases, shortcuts,
+    disabled states, and command-specific metadata instead of hiding tiling
+    power behind undocumented key chords.
+
+16. Hotkeys, presets, cycling, and layout builders sit above operations.
+
+    Built-in window commands, custom single-window commands, and saved layout
+    commands should execute the same pure layout operations and recipe policies
+    as drag/drop. Their definitions need aliases, enabled state, hotkeys,
+    preset membership, optional cycling rules, and payloads, but they should not
+    become a second layout state model.
 
 ## Proposed Platform Model
 

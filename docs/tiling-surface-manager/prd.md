@@ -36,6 +36,17 @@ chrome.
   running, and pinned surfaces.
 - Recipe: a workspace placement behavior plus reset shape, not just a saved
   layout.
+- Command palette: the keyboard-first launcher for finding and running surface,
+  window, recipe, and layout commands. It remains a global overlay, not a
+  managed tiled surface.
+- Window management command: a command that applies one structural or geometric
+  operation to the focused surface/window, such as Left Half, Right Half,
+  Maximize, Move to Next Display, or Restore.
+- Layout command: a saved multi-surface workspace arrangement that can open or
+  focus several surfaces, assign each to a slot, apply sizes/positions, and be
+  launched from search or a global hotkey.
+- Hotkey preset: a named mapping of window management commands to shortcut
+  chords, including compatibility presets for common external window managers.
 - Spatial mode: a far-future workspace mode where surfaces can detach from the
   tiled tree into independent spatial windows while preserving surface identity.
 
@@ -121,6 +132,36 @@ about workflow-shaped layouts:
 26. Far future should support a Niri-like spatial mode where surfaces can become
     independent windows placed freely in space. V1 should only preserve the
     product distinction between surface identity and presentation.
+27. The command palette is part of the tiling product, not only a generic app
+    command list. It should expose window management commands with searchable
+    names, category labels, icons, shortcuts, aliases, and disabled states
+    derived from active surface/window capabilities.
+28. The intended UX ladder mirrors Raycast Window Management: users can search
+    and run a command, promote repeated commands to global hotkeys, apply a
+    preset if they are migrating from another window manager, then mostly live
+    in muscle memory.
+29. Platform should ship a broad built-in window management command catalog:
+    maximize, almost maximize, fullscreen, restore, center, reasonable size,
+    halves, thirds, fourths, quarters, sixths, move by direction, move to next
+    or previous display when available, focus by direction, and rail/minimize
+    operations.
+30. Repeated left/right sizing commands should support cycling behavior where
+    useful, such as cycling through one-half, two-thirds, one-third, and
+    adjacent display targets. Cycling state must be scoped so repeated
+    invocation feels intentional rather than surprising.
+31. Settings must include a command management table with Name, Type, Alias,
+    Hotkey, and Enabled-style fields, plus an extension/detail panel for gap,
+    cycling, display wrapping, Stage Manager or OS-integration compatibility
+    toggles where relevant, and hotkey preset import.
+32. Users should be able to create custom single-window commands from the
+    command palette or settings by choosing size, pinned position, and offsets
+    in percentages or points.
+33. Users should be able to create layout commands that arrange multiple
+    Platform surfaces, optionally associate URLs/files/quicklinks with surfaces
+    that know how to open them, and bind the result to a global hotkey.
+34. Raycast is a reference for command search, hotkey management, presets, and
+    layout-builder UX. It is not a reason to remove Platform's planned mouse
+    drag/drop tiling, live previews, edge drops, or rail drops.
 
 ## Initial Surface Set
 
@@ -140,9 +181,9 @@ about workflow-shaped layouts:
 - Floating surfaces
 - Stacked groups
 - Browser popout windows
-- Multi-window or multi-monitor behavior
+- OS-level multi-window or full multi-monitor behavior
 - Niri-like spatial mode with independent surface windows
-- Deep saved profile management
+- Deep saved profile management beyond command presets and layout commands
 - User-authored layout scripts or algorithms
 
 ## Required Follow-Up Plans
@@ -169,8 +210,16 @@ about workflow-shaped layouts:
    visually distracting?
 8. In far-future spatial mode, should independent surface windows be OS-level
    windows, in-app canvas windows, or both?
+9. Should layout commands launch external URLs/files in V1, or should V1 limit
+   them to Platform-native surfaces while preserving the schema for later?
+10. Which hotkey presets should ship first: Rectangle, Magnet, Spectacle, VS
+    Code-compatible, Hyprland/i3-style, or a Platform default?
+11. Should command palette layout creation be a guided modal, a settings detail
+    panel, or both?
 
 ## References
 
 - Research findings: `docs/tiling-surface-manager/research-findings.md`
 - Technical design draft: `docs/tiling-surface-manager/technical-design.md`
+- Raycast Window Management UX research notes captured in
+  `docs/tiling-surface-manager/research-findings.md`

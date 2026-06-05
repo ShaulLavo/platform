@@ -53,6 +53,9 @@ This plan should be read as the execution path for `technical-design.md`.
 - Follow `technical-design.md` "Keyboard Control Direction" for command IDs,
   keymap integration, Hyprland/i3-style layout actions, and browser-safe
   binding choices.
+- Follow `technical-design.md` "Command Palette And Layout Command Direction"
+  for Raycast-style command discovery, hotkey presets, cycling, custom
+  single-window commands, and saved layout commands.
 - Follow `technical-design.md` "Persistence and Restore" for serialized state,
   placeholder behavior, and corrupt-layout recovery.
 - Follow `technical-design.md` "Repo-Specific Migration Notes" for what to
@@ -101,6 +104,9 @@ Initial pure modules:
 - `layout-geometry.ts`
 - `layout-persistence.ts`
 - `layout-policies.ts`
+- `layout-command-catalog.ts`
+- `layout-command-cycling.ts`
+- `layout-command-presets.ts`
 - `surface-registry.ts`
 - `surface-state.ts`
 - `surface-commands.ts`
@@ -116,6 +122,8 @@ Initial React modules:
 - `workbench-rail.tsx`
 - `workbench-drop-overlay.tsx`
 - `workbench-resize-overlay.tsx`
+- `window-management-settings.tsx`
+- `layout-command-editor.tsx`
 
 Keep each exported React component in its own file. Keep hooks in their own
 files. Keep pure helpers out of component and hook files.
@@ -154,9 +162,12 @@ Goal: land the durable normalized model without wiring it to React.
 Work:
 
 - Define `SurfaceId`, `WindowId`, `LayoutNodeId`, `RecipeId`,
-  `LayoutPolicyId`, and `OverlayId`.
+  `LayoutPolicyId`, `WindowManagementCommandId`, `LayoutCommandId`,
+  `HotkeyPresetId`, and `OverlayId`.
 - Define `WorkspaceLayout`, `Surface`, `WorkbenchWindow`, `LayoutNode`,
-  `RailState`, `WorkspaceRecipe`, and `LayoutPolicyState`.
+  `RailState`, `WorkspaceRecipe`, `LayoutPolicyState`,
+  `WindowManagementCommand`, `WorkspaceLayoutCommand`,
+  `WindowManagementHotkeyPreset`, and `CommandCycleState`.
 - Define lifecycle, cardinality, placement hints, capabilities, close policy,
   renderer lifecycle, and serialized version types.
 - Include transient owner fields on `Surface`: `ownerSurfaceId` and
@@ -172,13 +183,16 @@ Work:
   - active surface belongs to active window when both exist;
   - split child count and size array length match;
   - no same-axis split chains after normalization;
-  - no orphan transient preview owners.
+  - no orphan transient preview owners;
+  - layout command slots reference registered surface types;
+  - hotkey presets reference known window/layout command IDs.
 
 Tests:
 
 - Builder snapshots for empty and classic layouts.
 - Invariant tests for missing surfaces, duplicate surface references, bad active
-  IDs, invalid split sizes, and orphan previews.
+  IDs, invalid split sizes, orphan previews, invalid layout command slots, and
+  hotkey presets that reference missing commands.
 
 Exit criteria:
 
@@ -270,7 +284,9 @@ Work:
   - `resizeSplit`;
   - `maximizeWindow`;
   - `restoreWindow`;
-  - `applyRecipe`.
+  - `applyRecipe`;
+  - `applyCustomWindowCommand`;
+  - `applyLayoutCommand`.
 - Implement explicit `DropDestination` support:
   - `window-center`;
   - `window-edge`;
@@ -281,6 +297,10 @@ Work:
 - Preserve stable window IDs where possible.
 - Keep windows alive as windows even with one surface.
 - Move manual placement into sticky state for later policy decisions.
+- Compile custom window commands into target-frame changes against the active or
+  requested window.
+- Compile saved layout commands into open/focus/place operations for their
+  surface slots, then normalize once before commit.
 
 Tests:
 
@@ -292,6 +312,8 @@ Tests:
   fallback, and focus parent/child preparation.
 - Surface-specific tests for singleton duplicate prevention, preview promotion,
   and orphan transient cleanup.
+- Raycast-inspired custom window command application, saved layout command
+  surface slot placement, and command cycling step selection.
 
 Exit criteria:
 
@@ -311,7 +333,10 @@ Work:
   - visible surfaces;
   - MRU fallback;
   - window neighbors;
-  - capability-filtered command targets.
+  - capability-filtered command targets;
+  - command palette rows for built-in window commands, custom window commands,
+    and saved layout commands;
+  - command disabled-state reasons from active surface/window capabilities.
 - Implement geometry:
   - root rect to split/window rect derivation;
   - visible gap handling;
@@ -325,6 +350,11 @@ Work:
   - `focusPolicy`;
   - internal placeholder for `laneWorkflowPolicy` that routes into workflow
     surfaces rather than adding V1 lane nodes.
+- Implement initial command catalog helpers:
+  - built-in window command list;
+  - command alias search metadata;
+  - hotkey preset data;
+  - cycling step selection and reset state.
 - Create the Zustand store for `WorkspaceLayout`.
 - Add `dispatchLayoutOperation` that runs operation, normalization, and
   invariant checks in development.
@@ -335,6 +365,9 @@ Tests:
 - Geometry derivation for horizontal and vertical n-ary splits.
 - Policy placement for file, diff, search, terminal, git, navigator, and
   diagnostics.
+- Command row derivation for built-in commands, custom commands, and saved
+  layouts.
+- Cycling state reset by command, active window/surface, and timeout.
 - MRU fallback after close/minimize.
 - Store dispatch does not mutate old objects unexpectedly.
 
@@ -357,11 +390,15 @@ Work:
   - windows, active surface, preview/pin state, and MRU;
   - split nodes and sizes;
   - active recipe and sticky manual placements;
-  - rail state.
+  - rail state;
+  - user-authored custom window commands;
+  - saved layout commands;
+  - active hotkey preset ID and user hotkey overrides.
 - Do not persist:
   - React component state;
   - DOM rects;
   - drag previews;
+  - command cycling runtime state;
   - durable tree path addresses;
   - transient previews unless the registry explicitly marks them restorable;
   - mounted/unmounted UI state.
@@ -384,6 +421,9 @@ Tests:
 - Running terminals restore by session key.
 - Invalid transient previews are dropped.
 - Placeholder matching by resource key.
+- Custom window commands and saved layout commands round trip.
+- Invalid command slots or preset bindings are dropped or disabled with a clear
+  recovery path.
 
 Exit criteria:
 
@@ -579,10 +619,11 @@ Exit criteria:
 
 - No separate terminal overlay state remains.
 
-## Phase 11 - Command And Keymap Retargeting
+## Phase 11 - Command Palette, Hotkeys, Presets, And Layout Commands
 
-Goal: keep muscle-memory command IDs while adding tiling-window-manager command
-grammar through the existing Platform keymap layer.
+Goal: keep muscle-memory command IDs while upgrading the command palette into a
+Raycast-style control surface for window management, custom window commands, and
+saved layout commands.
 
 Work:
 
@@ -590,9 +631,30 @@ Work:
   `apps/web/src/keymap/types.ts`.
 - Add command metadata in `apps/web/src/keymap/command-registry.ts` so the
   command palette, shortcut labels, and aliases work.
+- Extend command metadata with command family/type information for Window
+  Management, built-in commands, custom window commands, saved layout commands,
+  and settings/editing commands.
+- Add built-in Window Management commands:
+  - fullscreen;
+  - maximize;
+  - almost maximize;
+  - maximize height/width;
+  - restore;
+  - reasonable size;
+  - center;
+  - halves;
+  - thirds and two-thirds;
+  - fourths and quarters;
+  - sixths;
+  - move/focus by direction;
+  - move to rail;
+  - move to next/previous display when display support exists.
 - Add browser-safe default bindings in `apps/web/src/keymap/default-bindings.ts`.
   Use Hyprland/i3-style grammar where practical, but keep exact chords in the
   keymap layer rather than the layout core.
+- Add hotkey preset data for Platform defaults plus migration-friendly presets
+  such as Rectangle, Magnet, Spectacle, VS Code-style splits, and optionally
+  Hyprland/i3-style commands.
 - Add handlers in `apps/web/src/keymap/commands.ts` that dispatch layout
   operations through the surface manager.
 - Keep `useAppKeymap` as the app-level registration point. Do not add
@@ -600,6 +662,31 @@ Work:
 - Keep the current pane-scoped focus model for V1, extended with any needed
   workbench/window/rail focus areas. Do not block this phase on the future
   full context-predicate keymap runtime.
+- Extend `apps/web/src/components/command-palette.tsx` and
+  `apps/web/src/components/command-palette/*` so command rows can show Window
+  Management category labels, icons, aliases, shortcut labels, and saved layout
+  commands alongside ordinary workspace/editor commands.
+- Update command palette disabled states to use active surface/window
+  capabilities instead of selected path alone.
+- Add command palette entries for:
+  - create custom window command;
+  - create layout command;
+  - edit window management settings;
+  - apply hotkey preset;
+  - run saved layout command.
+- Implement custom single-window command definitions with size, pinned
+  position, offsets, percent/point units, alias, enabled state, icon, and
+  optional hotkey.
+- Implement saved layout command definitions with multiple surface slots,
+  frames, focus order, optional URL/file/quicklink payloads for compatible
+  surfaces, alias, enabled state, icon, and optional hotkey.
+- Implement command cycling for repeated commands such as Left Half and Right
+  Half. Cycling should reset by command, active window/surface, workspace, and
+  timeout.
+- Add a Window Management settings surface or settings detail panel with
+  Name/Type/Alias/Hotkey/Enabled-style command table, default gap, cycling
+  mode, display wrapping, OS compatibility toggles where applicable, and
+  hotkey presets.
 - Retarget workspace commands to surface operations:
   - close active surface;
   - close others;
@@ -620,24 +707,34 @@ Work:
   - maximize/restore;
   - minimize/restore from rail.
 - Keep VS Code command aliases, but remove old sidebar/editor-pane mutations.
-- Update command palette disabled states to use active surface capabilities
-  instead of selected path alone.
 - Route file lifecycle commands through active file-backed surface.
 
 Tests:
 
 - New tiling commands have command-registry metadata.
+- Window Management commands appear in command palette groups with category,
+  aliases, icons, shortcut labels, and disabled states.
 - New default bindings resolve through `activePlatformKeyBindings`.
+- Hotkey presets apply deterministic command bindings and can be replaced.
 - Pane-scoped bindings override global bindings where expected.
 - Existing command aliases still dispatch.
 - Commands reject invalid active surface types.
 - Focus and MRU commands use layout selectors.
 - Toggle sidebar/panel aliases map to rail/surface operations.
+- Custom window command applies the expected frame and normalizes layout.
+- Saved layout command opens/focuses/places all compatible surface slots.
+- Cycling commands advance and reset predictably.
 
 Exit criteria:
 
 - `keymap/commands.ts` no longer reads `editorPaneLayout`, `workspacePanelTab`,
   `sidebarVisible`, or `gitPanelOpen`.
+- Command palette no longer derives layout command availability from selected
+  path alone.
+- Users can discover and run built-in window management commands from the
+  command palette.
+- Users can define at least one custom window command and one saved layout
+  command, then run each from the command palette.
 - No layout shortcut is owned by `WorkbenchLayoutRenderer` or window-frame
   component-level global listeners.
 
@@ -650,7 +747,8 @@ Work:
 - Replace `workspace-cache.ts` with versioned surface layout persistence.
 - Persist layout and surface registry versions.
 - Persist singleton surface state, rail state, MRU, recipe, windows, split
-  nodes, resource keys, and state keys.
+  nodes, resource keys, state keys, custom window commands, saved layout
+  commands, active hotkey preset ID, and user hotkey overrides.
 - Wire `useWorkspaceCachePersistence` to the layout store plus feature surface
   state serializers.
 - Because repo policy says no backward compatibility shims, do not keep old
@@ -667,7 +765,9 @@ Delete in this phase:
   - `sidebarVisible`;
   - `workspacePanelTab`;
   - `gitPanelOpen`;
-  - old search-buffer editor-tab persistence.
+  - old search-buffer editor-tab persistence;
+  - any command palette disabled-state assumptions tied to selected file path
+    instead of surface capabilities.
 - Old tests that preserve obsolete cache behavior.
 
 Tests:
@@ -676,6 +776,7 @@ Tests:
 - Corrupt layout recovery.
 - Search singleton state persistence.
 - Terminal session persistence.
+- Custom window command and saved layout command persistence.
 - File/diff resource filtering.
 - Registry-version fallback.
 
@@ -820,6 +921,8 @@ Work:
   - review;
   - agent pairing placeholder;
   - focus.
+- Expose useful recipes as saved layout commands where the command palette UX
+  is the right entry point.
 - Prototype Git/review workflow placement with contextual diff preview.
 - Keep GitButler-style lanes inside git/review surfaces or policy behavior in
   V1.
@@ -838,6 +941,7 @@ Work:
 Tests:
 
 - Recipe reset shape tests.
+- Saved layout command applies the intended recipe shape and focus order.
 - Sticky manual placement wins over recipe default.
 - Singleton surfaces restore last useful state and placement.
 - Durable surfaces do not jump unexpectedly.
@@ -861,7 +965,8 @@ The phases are intentionally larger than individual PRs. Suggested merge slices:
 8. Rail plus file navigator and Git Changes.
 9. Search Results and Search Preview lifecycle.
 10. Terminal running surfaces.
-11. Command retargeting.
+11. Command palette, hotkey presets, custom window commands, and saved layout
+    commands.
 12. Cache replacement.
 13. Drag/drop and resize.
 14. Visual/accessibility/performance pass.
@@ -911,6 +1016,10 @@ bun --cwd apps/web test:browser
 - Workspace reload restores by stable resource/session keys and recovers from
   corrupt layout state.
 - Keymap and command palette aliases target surface operations.
+- Command palette exposes a Window Management command family with built-in
+  commands, aliases, shortcuts, capability-based disabled states, hotkey
+  presets, cycling behavior, custom single-window commands, and saved layout
+  commands.
 - Old editor-pane, sidebar-tab, Dockview sync, floating-terminal, and old cache
   ownership are gone.
 
@@ -922,7 +1031,8 @@ bun --cwd apps/web test:browser
 - Generic stacked groups.
 - Generic lane layout node type.
 - Browser popouts.
-- Multi-window and multi-monitor behavior.
+- Multi-window behavior and full OS-level multi-monitor display/space movement
+  beyond stored display hints.
 - Niri-like spatial mode.
 - User-authored layout scripts or algorithms.
 - Deep saved profile management.
