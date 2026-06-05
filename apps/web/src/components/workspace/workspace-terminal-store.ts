@@ -1,15 +1,21 @@
-import { isCollapsedPanelSize } from '@/components/workspace/workspace-view-utils'
-import { type PanelImperativeHandle, type PanelSize } from '@workspace/ui/components/resizable'
-import { type RefObject } from 'react'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
+export type WorkspaceTerminalTab = {
+  id: string
+  title: string
+}
+
 type WorkspaceTerminalStoreState = {
+  activeTerminalTabId: string
+  nextTerminalTabIndex: number
   terminalCollapsed: boolean
-  terminalPanelRef: RefObject<PanelImperativeHandle | null>
+  terminalTabs: WorkspaceTerminalTab[]
 }
 
 type WorkspaceTerminalStoreActions = {
-  handleTerminalResize: (size: PanelSize) => void
+  closeTerminalTab: (tabId: string) => void
+  createTerminalTab: () => WorkspaceTerminalTab
+  setActiveTerminalTabId: (tabId: string) => void
   setTerminalCollapsed: (collapsed: boolean) => void
   toggleTerminal: () => void
 }
@@ -18,36 +24,76 @@ export type WorkspaceTerminalStore = WorkspaceTerminalStoreState & WorkspaceTerm
 
 export type WorkspaceTerminalStoreApi = StoreApi<WorkspaceTerminalStore>
 
-export function createWorkspaceTerminalStore() {
-  const terminalPanelRef: RefObject<PanelImperativeHandle | null> = {
-    current: null,
-  }
+const INITIAL_TERMINAL_TAB: WorkspaceTerminalTab = {
+  id: 'terminal-1',
+  title: '1',
+}
 
+export function createWorkspaceTerminalStore() {
   return createStore<WorkspaceTerminalStore>()((set, get) => ({
+    activeTerminalTabId: INITIAL_TERMINAL_TAB.id,
+    nextTerminalTabIndex: 2,
     terminalCollapsed: false,
-    terminalPanelRef,
-    handleTerminalResize: (size) => {
-      get().setTerminalCollapsed(isCollapsedPanelSize(size))
-    },
+    terminalTabs: [INITIAL_TERMINAL_TAB],
     setTerminalCollapsed: (terminalCollapsed) =>
       set((state) => {
         if (state.terminalCollapsed === terminalCollapsed) return state
 
         return { terminalCollapsed }
       }),
+    setActiveTerminalTabId: (activeTerminalTabId) =>
+      set((state) => {
+        if (state.activeTerminalTabId === activeTerminalTabId) return state
+        if (!state.terminalTabs.some((tab) => tab.id === activeTerminalTabId)) return state
+
+        return { activeTerminalTabId }
+      }),
+    createTerminalTab: () => {
+      const tab = nextTerminalTab(get().nextTerminalTabIndex)
+
+      set((state) => ({
+        activeTerminalTabId: tab.id,
+        nextTerminalTabIndex: state.nextTerminalTabIndex + 1,
+        terminalCollapsed: false,
+        terminalTabs: [...state.terminalTabs, tab],
+      }))
+
+      return tab
+    },
+    closeTerminalTab: (tabId) =>
+      set((state) => {
+        if (state.terminalTabs.length <= 1) return state
+
+        const tabIndex = state.terminalTabs.findIndex((tab) => tab.id === tabId)
+        if (tabIndex === -1) return state
+
+        const terminalTabs = state.terminalTabs.filter((tab) => tab.id !== tabId)
+        const activeTerminalTabId =
+          state.activeTerminalTabId === tabId
+            ? replacementActiveTerminalTabId(terminalTabs, tabIndex)
+            : state.activeTerminalTabId
+
+        return {
+          activeTerminalTabId,
+          terminalTabs,
+        }
+      }),
     toggleTerminal: () => {
-      const nextCollapsed = !get().terminalCollapsed
-      const terminalPanel = terminalPanelRef.current
-
-      get().setTerminalCollapsed(nextCollapsed)
-      if (!terminalPanel) return
-
-      if (nextCollapsed) {
-        terminalPanel.collapse()
-        return
-      }
-
-      terminalPanel.expand()
+      get().setTerminalCollapsed(!get().terminalCollapsed)
     },
   }))
+}
+
+function nextTerminalTab(index: number) {
+  return {
+    id: `terminal-${index}`,
+    title: String(index),
+  }
+}
+
+function replacementActiveTerminalTabId(
+  tabs: readonly WorkspaceTerminalTab[],
+  closedIndex: number,
+) {
+  return tabs[Math.min(closedIndex, tabs.length - 1)]?.id ?? INITIAL_TERMINAL_TAB.id
 }

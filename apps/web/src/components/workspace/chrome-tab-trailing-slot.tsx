@@ -1,5 +1,4 @@
-import { XIcon } from '@phosphor-icons/react'
-
+import { ChromeTabCloseButton } from '@/components/workspace/chrome-tab-close-button'
 import {
   chromeTabCloseButtonVisibilityClassName,
   chromeTabRootWidth,
@@ -33,12 +32,9 @@ export function ChromeTabTrailingSlot({
       )}
       style={chromeTabTrailingSlotStyle()}
     >
-      <button
+      <ChromeTabCloseButton
         aria-label={`Close ${tab.name}`}
-        className={cn(
-          'group/close flex size-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-[background-color,color,opacity] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
-          chromeTabCloseButtonVisibilityClassName(tab, dirty),
-        )}
+        className={chromeTabCloseButtonVisibilityClassName(tab, dirty)}
         data-editor-tab-drag-blocker=''
         draggable={false}
         onClick={(event) => {
@@ -47,10 +43,7 @@ export function ChromeTabTrailingSlot({
         }}
         onDragStart={(event) => event.preventDefault()}
         title={`Close ${tab.name}`}
-        type='button'
-      >
-        <XIcon className='size-3 opacity-70' />
-      </button>
+      />
       {dirty ? (
         <span
           aria-hidden='true'

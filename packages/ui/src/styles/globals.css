@@ -152,11 +152,11 @@
   /* Editor surface */
   --editor-inactive-selection: oklch(0.72 0.13 240 / 0.18);
 
-  /* Terminal surface — light */
-  --terminal-background: #f6f6f4;
+  /* Terminal surface — light (matches --background) */
+  --terminal-background: #ffffff;
   --terminal-foreground: #3c3c3c;
   --terminal-cursor: #1a1a1a;
-  --terminal-cursor-accent: #f6f6f4;
+  --terminal-cursor-accent: #ffffff;
   --terminal-selection: #cdd6e3;
   --terminal-selection-foreground: #1a1a1a;
   --terminal-ansi-black: #3c3c3c;
@@ -269,11 +269,11 @@
   /* Editor surface */
   --editor-inactive-selection: oklch(0.72 0.13 240 / 0.16);
 
-  /* Terminal surface — dark */
-  --terminal-background: #0e1013;
+  /* Terminal surface — dark (matches --background) */
+  --terminal-background: #0a0a0a;
   --terminal-foreground: #d7dde5;
   --terminal-cursor: #f4f7fb;
-  --terminal-cursor-accent: #0e1013;
+  --terminal-cursor-accent: #0a0a0a;
   --terminal-selection: #33455a;
   --terminal-selection-foreground: #ffffff;
   --terminal-ansi-black: #15181c;

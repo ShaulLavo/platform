@@ -11,12 +11,16 @@ export type PlatformBridge = {
   pickEntry(options: PlatformPickOptions): Promise<string[]>
 }
 
+export type PlatformPickResult = {
+  paths: string[]
+}
+
 export type DesktopRPC = {
   bun: RPCSchema<{
     requests: {
       pickEntry: {
         params: PlatformPickOptions
-        response: string[]
+        response: PlatformPickResult
       }
     }
     messages: Record<string, never>

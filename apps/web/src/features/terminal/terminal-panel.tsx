@@ -19,12 +19,22 @@ type TerminalDimensions = {
 
 let ghosttyInitPromise: Promise<void> | null = null
 
-export function TerminalPanel({ className, rootPath, ...sectionProps }: TerminalPanelProps) {
+export function TerminalPanel({
+  active = true,
+  className,
+  rootPath,
+  sessionId,
+  ...sectionProps
+}: TerminalPanelProps) {
+  const activeRef = useRef(active)
+  const activationFrameRef = useRef<number | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
   const themeSyncFrameRef = useRef<number | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
   const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  activeRef.current = active
   const syncTerminalThemeAfterFrame = useEffectEvent(() => {
     if (themeSyncFrameRef.current !== null) {
       window.cancelAnimationFrame(themeSyncFrameRef.current)
@@ -38,6 +48,17 @@ export function TerminalPanel({ className, rootPath, ...sectionProps }: Terminal
       syncTerminalTheme(terminal)
     })
   })
+  const activateTerminalAfterFrame = useEffectEvent(() => {
+    if (activationFrameRef.current !== null) {
+      window.cancelAnimationFrame(activationFrameRef.current)
+    }
+
+    activationFrameRef.current = window.requestAnimationFrame(() => {
+      activationFrameRef.current = null
+      fitAddonRef.current?.fit()
+      terminalRef.current?.focus()
+    })
+  })
 
   useEffect(() => {
     const host = hostRef.current
@@ -46,9 +67,12 @@ export function TerminalPanel({ className, rootPath, ...sectionProps }: Terminal
     const unmountTerminal = mountTerminal({
       host,
       rootPath,
-      onReady: (terminal) => {
+      sessionId,
+      onReady: (terminal, fitAddon) => {
+        fitAddonRef.current = fitAddon
         terminalRef.current = terminal
         syncTerminalThemeAfterFrame()
+        if (activeRef.current) activateTerminalAfterFrame()
       },
     })
 
@@ -57,11 +81,16 @@ export function TerminalPanel({ className, rootPath, ...sectionProps }: Terminal
         window.cancelAnimationFrame(themeSyncFrameRef.current)
         themeSyncFrameRef.current = null
       }
+      if (activationFrameRef.current !== null) {
+        window.cancelAnimationFrame(activationFrameRef.current)
+        activationFrameRef.current = null
+      }
 
       terminalRef.current = null
+      fitAddonRef.current = null
       unmountTerminal()
     }
-  }, [rootPath])
+  }, [rootPath, sessionId])
 
   useEffect(() => {
     syncTerminalThemeAfterFrame()
@@ -74,11 +103,24 @@ export function TerminalPanel({ className, rootPath, ...sectionProps }: Terminal
     }
   }, [resolvedTheme])
 
+  useEffect(() => {
+    if (!active) return
+
+    activateTerminalAfterFrame()
+
+    return () => {
+      if (activationFrameRef.current !== null) {
+        window.cancelAnimationFrame(activationFrameRef.current)
+        activationFrameRef.current = null
+      }
+    }
+  }, [active])
+
   return (
     <section
       aria-label='Terminal'
       {...sectionProps}
-      className={cn('flex h-full min-h-0 min-w-0 flex-col overflow-hidden', className)}
+      className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
       style={{ background: 'var(--terminal-background)' }}
       onFocusCapture={() => setFocusArea('terminal')}
       onPointerDownCapture={() => setFocusArea('terminal')}
@@ -89,17 +131,21 @@ export function TerminalPanel({ className, rootPath, ...sectionProps }: Terminal
 }
 
 type TerminalPanelProps = ComponentPropsWithoutRef<'section'> & {
+  active?: boolean
   rootPath: string
+  sessionId: string
 }
 
 function mountTerminal({
   host,
   rootPath,
+  sessionId,
   onReady,
 }: {
   host: HTMLDivElement
   rootPath: string
-  onReady: (terminal: Terminal) => void
+  sessionId: string
+  onReady: (terminal: Terminal, fitAddon: FitAddon) => void
 }) {
   let cancelled = false
   let dataDisposable: IDisposable | null = null
@@ -120,8 +166,7 @@ function mountTerminal({
       fitAddon.fit()
       terminalDimensions = currentTerminalDimensions(terminal)
       fitAddon.observeResize()
-      terminal.focus()
-      onReady(terminal)
+      onReady(terminal, fitAddon)
       dataDisposable = terminal.onData((data) =>
         sendTerminalClientMessage(socket, { type: 'input', data }),
       )
@@ -133,6 +178,7 @@ function mountTerminal({
         getTerminalDimensions: () => terminalDimensions,
         isCancelled: () => cancelled,
         rootPath,
+        sessionId,
         terminal,
       })
     })
@@ -157,14 +203,16 @@ function openTerminalSocket({
   getTerminalDimensions,
   isCancelled,
   rootPath,
+  sessionId,
   terminal,
 }: {
   getTerminalDimensions: () => TerminalDimensions | null
   isCancelled: () => boolean
   rootPath: string
+  sessionId: string
   terminal: Terminal
 }) {
-  const socket = connectTerminalSocket(rootPath)
+  const socket = connectTerminalSocket(rootPath, sessionId)
 
   socket.addEventListener('open', () => {
     if (isCancelled()) return

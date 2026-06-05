@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "electrobun dev",
+    "dev": "PLATFORM_DESKTOP_SHARED_DEV=1 electrobun dev",
+    "dev:standalone": "electrobun dev",
     "build": "electrobun build",
     "lint": "oxlint .",
     "format": "oxfmt --write .",

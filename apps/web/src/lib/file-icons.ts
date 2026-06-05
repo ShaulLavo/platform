@@ -1,6 +1,8 @@
 import { getBuiltInFileIconColor } from '@pierre/trees'
 import type { FileTreeIconConfig, RemappedIcon } from '@pierre/trees'
 
+import { VSCODE_ICON_SYMBOLS } from './vscode-icon-symbols'
+
 export type FileIconEntry = {
   name: string
   type: 'file' | 'directory' | 'symlink' | 'other'
@@ -614,10 +616,7 @@ function vscodeIconSpriteSheet() {
 }
 
 function vscodeIconSymbol(name: VscodeIconName) {
-  const symbolName = treeIconSymbolName(name)
-  const src = iconSrc(name)
-
-  return `<symbol id="${symbolName}" viewBox="0 0 16 16"><rect width="16" height="16" fill="currentColor" style="mask:url('${src}') center / contain no-repeat;-webkit-mask:url('${src}') center / contain no-repeat"/></symbol>`
+  return VSCODE_ICON_SYMBOLS[name]
 }
 
 function treeIconReference(name: VscodeIconName): RemappedIcon {
