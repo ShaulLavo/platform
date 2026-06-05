@@ -33,8 +33,8 @@ export type SurfaceRendererLifecycle = 'keep-mounted' | 'unmount-when-hidden'
 export type SurfaceClosePolicy =
   | { readonly type: 'block'; readonly reason: string }
   | { readonly type: 'close' }
-  | { readonly type: 'confirm-dirty-file' }
-  | { readonly type: 'dispose-running-surface' }
+  | { readonly type: 'confirm-dirty-file'; readonly path: string }
+  | { readonly type: 'dispose-running-surface'; readonly sessionId: string }
 
 export type WorkspaceRecipeSlot =
   | 'bottom'
