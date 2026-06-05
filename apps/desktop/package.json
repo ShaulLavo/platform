@@ -13,6 +13,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@workspace/observability": "workspace:*",
     "electrobun": "^1.18.1"
   },
   "devDependencies": {

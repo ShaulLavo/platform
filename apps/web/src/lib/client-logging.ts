@@ -1,5 +1,6 @@
 import { initLogger, log as evlog, type LogLevel } from 'evlog'
 import { createHttpLogDrain } from 'evlog/http'
+import { observabilityEnabledFromEnv } from '@workspace/observability/env'
 
 import { serverUrl } from './client'
 
@@ -136,7 +137,10 @@ function logIngestEndpoint() {
 }
 
 function clientLoggingEnabled() {
-  return import.meta.env.VITE_CLIENT_LOGGING !== 'false'
+  return observabilityEnabledFromEnv({
+    NODE_ENV: import.meta.env.MODE,
+    OBSERVABILITY_ENABLED: import.meta.env.OBSERVABILITY_ENABLED,
+  })
 }
 
 function clientLogMinLevel(): ClientLogLevel {

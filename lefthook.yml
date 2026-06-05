@@ -1,0 +1,23 @@
+pre-commit:
+  parallel: false
+  jobs:
+    - name: format staged files
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,md,mdx,yml,yaml}'
+      run: PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" bun x oxfmt --write {staged_files}
+      stage_fixed: true
+
+    - name: lint fix staged files
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs}'
+      run: PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" bun x oxlint --fix {staged_files}
+      stage_fixed: true
+
+    - name: lint check staged files
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs}'
+      run: PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" bun x oxlint {staged_files}
+
+    - name: typecheck repo
+      run: PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" bun run typecheck
+
+    # TODO: Move the editor scroll benchmark gate to CI, where the web and API servers can be started reliably.
+    # - name: editor scroll bench gate
+    #   run: PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" bun run --cwd apps/web bench:editor-scroll:gate

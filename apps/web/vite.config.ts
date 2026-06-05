@@ -9,6 +9,11 @@ const workspaceRoot = path.resolve(__dirname, '../..')
 const editorSourceRoot = resolveEditorSourceRoot(workspaceRoot)
 
 export default defineConfig({
+  define: {
+    'import.meta.env.OBSERVABILITY_ENABLED': JSON.stringify(
+      process.env.OBSERVABILITY_ENABLED ?? '',
+    ),
+  },
   plugins: [
     platformSelfSaveHmrPlugin(),
     react({
