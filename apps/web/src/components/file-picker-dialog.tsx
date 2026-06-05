@@ -1,3 +1,4 @@
+import { errorMessage } from '@/lib/error-message'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import {
@@ -36,7 +37,6 @@ import {
   ROOT_PATH,
   currentPickableEntry,
   entryByOffset,
-  errorMessage,
   isPickableEntry,
   loadStateEntries,
   parentPath,
@@ -91,7 +91,10 @@ export function FilePickerDialog({
     serverInfo,
   })
   const loadState: LoadState = serverInfoError
-    ? { status: 'error', message: errorMessage(serverInfoError) }
+    ? {
+        status: 'error',
+        message: errorMessage(serverInfoError, 'The file server did not return a usable response.'),
+      }
     : directoryLoadState
   const visibleEntries = loadStateEntries(loadState)
   const isLoadingEntries = loadState.status === 'loading'

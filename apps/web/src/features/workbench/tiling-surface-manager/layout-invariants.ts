@@ -1,3 +1,4 @@
+import { builtInWindowManagementCommands } from './layout-command-catalog'
 import type {
   LayoutNode,
   LayoutNodeId,
@@ -521,6 +522,7 @@ function checkHotkeyPresetBindings(
   violations: LayoutInvariantViolation[],
 ) {
   const knownCommandIds = new Set([
+    ...builtInWindowManagementCommands().map((command) => command.id),
     ...Object.keys(layout.windowCommandsById),
     ...Object.keys(layout.layoutCommandsById),
   ])

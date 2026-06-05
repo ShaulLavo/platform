@@ -434,9 +434,16 @@ function fallbackSurfaceForLayout(layout: WorkspaceLayout) {
     ...layout.rail.minimizedSurfaceIds,
     ...layout.rail.runningSurfaceIds,
   ])
+  const preferredSurfaceIds = uniqueSurfaceIds([
+    ...(layout.activeSurfaceId ? [layout.activeSurfaceId] : []),
+    ...layout.mruSurfaceIds,
+    ...Object.values(layout.surfacesById).map((surface) => surface.id),
+  ])
 
-  for (const surface of Object.values(layout.surfacesById)) {
-    if (railSurfaceIds.has(surface.id)) continue
+  for (const surfaceId of preferredSurfaceIds) {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface) continue
+    if (railSurfaceIds.has(surfaceId)) continue
     if (!canFallbackSurface(surface)) continue
 
     return surface

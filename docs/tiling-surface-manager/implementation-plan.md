@@ -431,6 +431,11 @@ Exit criteria:
 
 ## Phase 6 - Custom Renderer Skeleton
 
+Status: started 2026-06-05. Initial skeleton covers fixture surface
+renderers, absolute window rendering from derived geometry, shared overlay
+layers, Chrome-style tab presentation, rail entries, surface host lifecycle
+mount rules, and smoke/browser coverage.
+
 Goal: render the new model with no heavy surface migration yet.
 
 Work:
@@ -751,6 +756,10 @@ Work:
   commands, active hotkey preset ID, and user hotkey overrides.
 - Wire `useWorkspaceCachePersistence` to the layout store plus feature surface
   state serializers.
+- Normalize cache mismatch policy: server-backed caches may reset and refetch,
+  but local-only UI state must either migrate explicitly or be intentionally
+  dropped. Every local-only persisted schema needs a version and clear mismatch
+  behavior.
 - Because repo policy says no backward compatibility shims, do not keep old
   cache schema branches long term.
 - If a one-time conversion is desired, land it in the same phase and delete the
