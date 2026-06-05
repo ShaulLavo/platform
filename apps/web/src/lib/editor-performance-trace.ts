@@ -309,7 +309,10 @@ function domSnapshot(document: Document): Readonly<Record<string, number>> {
   }
 }
 
-function cssHighlightSnapshot(document: Document): { readonly groups: number; readonly ranges: number } {
+function cssHighlightSnapshot(document: Document): {
+  readonly groups: number
+  readonly ranges: number
+} {
   const registry = document.defaultView?.CSS?.highlights
   if (!registry) return { groups: 0, ranges: 0 }
 

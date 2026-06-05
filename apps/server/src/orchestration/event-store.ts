@@ -79,7 +79,10 @@ export class OrchestrationEventStore {
   }
 
   readAfter(input: OrchestrationReplayEventsInput) {
-    recordChatPipelineInfo('chat.pipeline.event_store.replay_start', orchestrationReplaySummary(input))
+    recordChatPipelineInfo(
+      'chat.pipeline.event_store.replay_start',
+      orchestrationReplaySummary(input),
+    )
     const conditions = [gt(orchestrationEvents.sequence, input.afterSequence)]
     const aggregateFilter = aggregateConditions(input)
 

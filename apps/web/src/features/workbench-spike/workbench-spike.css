@@ -147,11 +147,7 @@ body {
   --dv-paneview-active-outline-color: color-mix(in oklch, var(--ring) 65%, transparent);
   --dv-paneview-header-border-color: var(--border);
   --dv-sash-color: transparent;
-  --dv-scrollbar-background-color: color-mix(
-    in oklch,
-    var(--muted-foreground) 32%,
-    transparent
-  );
+  --dv-scrollbar-background-color: color-mix(in oklch, var(--muted-foreground) 32%, transparent);
   --dv-separator-border: var(--border);
   --dv-tab-border-radius: 0px;
   --dv-tab-divider-color: var(--border);

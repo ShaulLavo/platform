@@ -19,10 +19,7 @@ export const SearchNumber = memo((props: SearchNumberProps) => {
   return <SearchAnimatedCounterValue {...props} />
 }, searchNumberPropsEqual)
 
-const SearchAnimatedCounterValue = memo(({
-  fontSize = '11px',
-  value,
-}) => {
+const SearchAnimatedCounterValue = memo(({ fontSize = '11px', value }) => {
   return (
     <span aria-label={value.toLocaleString()}>
       <AnimatedCounter

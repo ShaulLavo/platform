@@ -27,7 +27,9 @@ export function migrateMetadataDatabase(database: PlatformDatabase = getDefaultP
 	`)
 }
 
-export function migrateOrchestrationDatabase(database: PlatformDatabase = getDefaultPlatformDatabase()) {
+export function migrateOrchestrationDatabase(
+  database: PlatformDatabase = getDefaultPlatformDatabase(),
+) {
   database.run(sql`
 		CREATE TABLE IF NOT EXISTS orchestration_events (
 			sequence INTEGER PRIMARY KEY AUTOINCREMENT,

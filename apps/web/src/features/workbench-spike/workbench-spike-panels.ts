@@ -49,7 +49,8 @@ export function createInitialWorkbenchSpikePanels(): readonly WorkbenchSpikePane
 
 export function createWorkbenchSpikeTerminalPanel(index: number): WorkbenchSpikePanel {
   return {
-    description: 'Ghostty terminal renderer without a server socket, used to validate Dockview resize.',
+    description:
+      'Ghostty terminal renderer without a server socket, used to validate Dockview resize.',
     id: `terminal:spike:${index}`,
     subtitle: `session ${index}`,
     title: `Terminal ${index}`,

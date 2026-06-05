@@ -245,16 +245,13 @@ export async function fetchRecentEntries(limit: number, signal: AbortSignal) {
 }
 
 export async function recordRecentEntry(path: string) {
-  return observeClientOperation(
-    { action: 'fs.record_recent', area: 'fs', path },
-    async () => {
-      const response = await client.fs.recents.post({ path })
+  return observeClientOperation({ action: 'fs.record_recent', area: 'fs', path }, async () => {
+    const response = await client.fs.recents.post({ path })
 
-      if (response.error) throw createRpcError(response.error)
+    if (response.error) throw createRpcError(response.error)
 
-      return null
-    },
-  )
+    return null
+  })
 }
 
 export function errorMessage(error: unknown) {

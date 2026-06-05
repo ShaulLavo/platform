@@ -8,170 +8,174 @@ import { workspaceSearchReplacementPreview } from '@/features/search/search-repl
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export const SearchMatchRow = memo(({
-  active,
-  className,
-  canReplace,
-  compact,
-  match,
-  previewMaxLength,
-  replaceQuery,
-  replaceText,
-  replaceVisible,
-  query,
-  onOpenMatch,
-  onReplaceMatch,
-}: {
-  active?: boolean
-  className?: string
-  canReplace?: boolean
-  compact?: boolean
-  match: WorkspaceSearchMatch
-  previewMaxLength?: number
-  replaceQuery: WorkspaceSearchQuery | null
-  replaceText: string
-  replaceVisible?: boolean
-  query: string
-  onOpenMatch: (match: WorkspaceSearchMatch) => void
-  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-}) => {
-  const location = searchMatchLocation(match)
-  const display = searchMatchDisplay(match, query, {
-    maxLength: matchPreviewMaxLength(match, previewMaxLength),
-  })
-  const replacementPreview =
-    replaceVisible && replaceQuery
-      ? workspaceSearchReplacementPreview({
-          match,
-          query: replaceQuery,
-          replaceText,
-        })
-      : null
+export const SearchMatchRow = memo(
+  ({
+    active,
+    className,
+    canReplace,
+    compact,
+    match,
+    previewMaxLength,
+    replaceQuery,
+    replaceText,
+    replaceVisible,
+    query,
+    onOpenMatch,
+    onReplaceMatch,
+  }: {
+    active?: boolean
+    className?: string
+    canReplace?: boolean
+    compact?: boolean
+    match: WorkspaceSearchMatch
+    previewMaxLength?: number
+    replaceQuery: WorkspaceSearchQuery | null
+    replaceText: string
+    replaceVisible?: boolean
+    query: string
+    onOpenMatch: (match: WorkspaceSearchMatch) => void
+    onReplaceMatch?: (match: WorkspaceSearchMatch) => void
+  }) => {
+    const location = searchMatchLocation(match)
+    const display = searchMatchDisplay(match, query, {
+      maxLength: matchPreviewMaxLength(match, previewMaxLength),
+    })
+    const replacementPreview =
+      replaceVisible && replaceQuery
+        ? workspaceSearchReplacementPreview({
+            match,
+            query: replaceQuery,
+            replaceText,
+          })
+        : null
 
-  return (
-    <div
-      className={cn(
-        'group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs',
-        compact && 'h-6 gap-1 px-1.5 py-0',
-        active && 'bg-muted/60',
-        className,
-      )}
-    >
+    return (
       <div
         className={cn(
-          'grid w-full min-w-0 grid-cols-[42px_minmax(0,1fr)] gap-2 text-left',
-          compact && 'grid-cols-[34px_minmax(0,1fr)] gap-1.5',
+          'group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs',
+          compact && 'h-6 gap-1 px-1.5 py-0',
+          active && 'bg-muted/60',
+          className,
         )}
       >
-        <span className='text-muted-foreground text-right text-[11px] tabular-nums'>
-          {location}
-        </span>
-        <span
-          className={cn('flex min-w-0 items-center gap-2 overflow-hidden', compact && 'gap-1.5')}
-        >
-          <span
-            className={cn(
-              'block min-w-0 flex-1 truncate font-mono text-[11px] leading-5',
-              compact && 'leading-4',
-            )}
-          >
-            <HighlightedPreview
-              preview={display.text}
-              query={query}
-              range={display.range}
-              replacementText={replacementPreview?.text}
-            />
-          </span>
-          {match.source === 'open-buffer' ? (
-            <span className='bg-muted/50 text-muted-foreground shrink-0 rounded px-1 text-[10px] leading-4'>
-              unsaved
-            </span>
-          ) : null}
-        </span>
-      </div>
-      <div className='flex h-full shrink-0 items-center gap-0.5'>
-        <Button
-          aria-label={searchMatchOpenLabel(match)}
+        <div
           className={cn(
-            'pointer-events-none opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100',
-            compact && 'size-5',
-            active && 'pointer-events-auto opacity-100',
+            'grid w-full min-w-0 grid-cols-[42px_minmax(0,1fr)] gap-2 text-left',
+            compact && 'grid-cols-[34px_minmax(0,1fr)] gap-1.5',
           )}
-          size='icon-xs'
-          title={searchMatchOpenLabel(match)}
-          type='button'
-          variant='ghost'
-          onClick={() => onOpenMatch(match)}
         >
-          <ArrowSquareOutIcon className='size-3.5' />
-        </Button>
-        {replaceVisible ? (
+          <span className='text-muted-foreground text-right text-[11px] tabular-nums'>
+            {location}
+          </span>
+          <span
+            className={cn('flex min-w-0 items-center gap-2 overflow-hidden', compact && 'gap-1.5')}
+          >
+            <span
+              className={cn(
+                'block min-w-0 flex-1 truncate font-mono text-[11px] leading-5',
+                compact && 'leading-4',
+              )}
+            >
+              <HighlightedPreview
+                preview={display.text}
+                query={query}
+                range={display.range}
+                replacementText={replacementPreview?.text}
+              />
+            </span>
+            {match.source === 'open-buffer' ? (
+              <span className='bg-muted/50 text-muted-foreground shrink-0 rounded px-1 text-[10px] leading-4'>
+                unsaved
+              </span>
+            ) : null}
+          </span>
+        </div>
+        <div className='flex h-full shrink-0 items-center gap-0.5'>
           <Button
-            className={cn('h-6 px-1.5 text-[10px]', compact && 'h-5 px-1')}
-            disabled={!canReplace}
-            size='xs'
-            title='Replace this match'
+            aria-label={searchMatchOpenLabel(match)}
+            className={cn(
+              'pointer-events-none opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100',
+              compact && 'size-5',
+              active && 'pointer-events-auto opacity-100',
+            )}
+            size='icon-xs'
+            title={searchMatchOpenLabel(match)}
             type='button'
             variant='ghost'
-            onClick={() => onReplaceMatch?.(match)}
+            onClick={() => onOpenMatch(match)}
           >
-            Replace
+            <ArrowSquareOutIcon className='size-3.5' />
           </Button>
-        ) : null}
+          {replaceVisible ? (
+            <Button
+              className={cn('h-6 px-1.5 text-[10px]', compact && 'h-5 px-1')}
+              disabled={!canReplace}
+              size='xs'
+              title='Replace this match'
+              type='button'
+              variant='ghost'
+              onClick={() => onReplaceMatch?.(match)}
+            >
+              Replace
+            </Button>
+          ) : null}
+        </div>
       </div>
-    </div>
-  )
-})
+    )
+  },
+)
 
-export const SearchNameMatchRow = memo(({
-  active,
-  className,
-  compact,
-  match,
-  previewMaxLength,
-  query,
-  onOpenMatch,
-}: {
-  active?: boolean
-  className?: string
-  compact?: boolean
-  match: WorkspaceSearchMatch
-  previewMaxLength?: number
-  query: string
-  onOpenMatch: (match: WorkspaceSearchMatch) => void
-}) => {
-  const display = searchMatchDisplay(match, query, {
-    maxLength: previewMaxLength,
-  })
+export const SearchNameMatchRow = memo(
+  ({
+    active,
+    className,
+    compact,
+    match,
+    previewMaxLength,
+    query,
+    onOpenMatch,
+  }: {
+    active?: boolean
+    className?: string
+    compact?: boolean
+    match: WorkspaceSearchMatch
+    previewMaxLength?: number
+    query: string
+    onOpenMatch: (match: WorkspaceSearchMatch) => void
+  }) => {
+    const display = searchMatchDisplay(match, query, {
+      maxLength: previewMaxLength,
+    })
 
-  return (
-    <button
-      className={cn(
-        'grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50',
-        compact && 'h-6 grid-cols-[14px_minmax(0,1fr)_auto] gap-1 px-1.5 py-0',
-        active && 'bg-muted/60',
-        !active && 'hover:bg-muted/55',
-        className,
-      )}
-      tabIndex={-1}
-      type='button'
-      onClick={() => onOpenMatch(match)}
-    >
-      <FileTextIcon className={cn('size-3.5 text-muted-foreground', compact && 'size-3')} />
-      <span className='block min-w-0 truncate text-xs'>
-        <HighlightedPreview preview={display.text} query={query} range={display.range} />
-      </span>
-      <span
+    return (
+      <button
         className={cn(
-          'rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground',
-          compact && 'px-1',
+          'grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50',
+          compact && 'h-6 grid-cols-[14px_minmax(0,1fr)_auto] gap-1 px-1.5 py-0',
+          active && 'bg-muted/60',
+          !active && 'hover:bg-muted/55',
+          className,
         )}
+        tabIndex={-1}
+        type='button'
+        onClick={() => onOpenMatch(match)}
       >
-        name
-      </span>
-    </button>
-  )
-})
+        <FileTextIcon className={cn('size-3.5 text-muted-foreground', compact && 'size-3')} />
+        <span className='block min-w-0 truncate text-xs'>
+          <HighlightedPreview preview={display.text} query={query} range={display.range} />
+        </span>
+        <span
+          className={cn(
+            'rounded bg-muted/50 px-1.5 text-[10px] leading-4 text-muted-foreground',
+            compact && 'px-1',
+          )}
+        >
+          name
+        </span>
+      </button>
+    )
+  },
+)
 
 function searchMatchLocation(match: WorkspaceSearchMatch) {
   if (match.kind === 'name') return 'name'

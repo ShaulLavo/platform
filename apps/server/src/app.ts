@@ -53,11 +53,14 @@ export function createApp(options: AppOptions) {
   const fonts = options.fonts ?? new NerdFontService()
   const providerAdapterRegistry =
     options.orchestration?.providerAdapterRegistry ?? createDefaultProviderAdapterRegistry()
-  const orchestration = new OrchestrationEngine(options.orchestration?.database ?? getDefaultPlatformDatabase(), {
-    providerRuntime: options.orchestration?.providerRuntime
-      ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
-      : false,
-  })
+  const orchestration = new OrchestrationEngine(
+    options.orchestration?.database ?? getDefaultPlatformDatabase(),
+    {
+      providerRuntime: options.orchestration?.providerRuntime
+        ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
+        : false,
+    },
+  )
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(
     options.orchestration?.database ?? getDefaultPlatformDatabase(),
     git,

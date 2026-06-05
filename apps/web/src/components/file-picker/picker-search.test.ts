@@ -74,7 +74,14 @@ describe('streamPickerSearchEntries', () => {
     ])
     const snapshots: number[] = []
 
-    const result = await streamPickerSearchEntries('src', 'a', 'file', new AbortController().signal, (entries) => snapshots.push(entries.length), { search })
+    const result = await streamPickerSearchEntries(
+      'src',
+      'a',
+      'file',
+      new AbortController().signal,
+      (entries) => snapshots.push(entries.length),
+      { search },
+    )
 
     expect(result.map((entry) => entry.path).sort()).toEqual(['src/a.ts', 'src/b.ts'])
     // One incremental emission per accepted (deduped) match.
@@ -88,9 +95,16 @@ describe('streamPickerSearchEntries', () => {
       return toStream([matchEvent('a.ts'), doneEvent()])
     }
 
-    const result = await streamPickerSearchEntries('', 'a', 'file', new AbortController().signal, () => undefined, {
-      search,
-    })
+    const result = await streamPickerSearchEntries(
+      '',
+      'a',
+      'file',
+      new AbortController().signal,
+      () => undefined,
+      {
+        search,
+      },
+    )
 
     expect(observedQuery).toBe('')
     expect(result[0]).toMatchObject({ searchScope: 'system' })
@@ -100,9 +114,16 @@ describe('streamPickerSearchEntries', () => {
     const controller = new AbortController()
     const search = stubStream([matchEvent('a.ts'), doneEvent()])
 
-    const promise = streamPickerSearchEntries('src', 'a', 'file', controller.signal, () => controller.abort(), {
-      search,
-    })
+    const promise = streamPickerSearchEntries(
+      'src',
+      'a',
+      'file',
+      controller.signal,
+      () => controller.abort(),
+      {
+        search,
+      },
+    )
 
     await expect(promise).rejects.toThrow('Aborted')
   })

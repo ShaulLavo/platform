@@ -23,82 +23,84 @@ type WorkspaceSidebarResizablePanelProps = {
   onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
 }
 
-export const WorkspaceSidebarResizablePanel = memo(({
-  onLoadDirectory,
-  onPrefetchDirectory,
-  rootPath,
-  treeReady,
-  treeState,
-}: WorkspaceSidebarResizablePanelProps) => {
-  const sidebarVisible = useEditorWorkspaceState((state) => state.sidebarVisible)
-  const setSidebarVisible = useEditorWorkspaceState((state) => state.setSidebarVisible)
-  const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null)
-  const [visibleTreeItemCount, setVisibleTreeItemCount] =
-    useState<VisibleTreeItemCountSnapshot | null>(null)
-  const currentVisibleTreeItemCount =
-    treeReady && visibleTreeItemCount?.rootPath === rootPath ? visibleTreeItemCount.count : null
+export const WorkspaceSidebarResizablePanel = memo(
+  ({
+    onLoadDirectory,
+    onPrefetchDirectory,
+    rootPath,
+    treeReady,
+    treeState,
+  }: WorkspaceSidebarResizablePanelProps) => {
+    const sidebarVisible = useEditorWorkspaceState((state) => state.sidebarVisible)
+    const setSidebarVisible = useEditorWorkspaceState((state) => state.setSidebarVisible)
+    const sidebarPanelRef = useRef<PanelImperativeHandle | null>(null)
+    const [visibleTreeItemCount, setVisibleTreeItemCount] =
+      useState<VisibleTreeItemCountSnapshot | null>(null)
+    const currentVisibleTreeItemCount =
+      treeReady && visibleTreeItemCount?.rootPath === rootPath ? visibleTreeItemCount.count : null
 
-  useEffect(() => {
-    const sidebarPanel = sidebarPanelRef.current
-    if (!sidebarPanel) return
+    useEffect(() => {
+      const sidebarPanel = sidebarPanelRef.current
+      if (!sidebarPanel) return
 
-    if (sidebarVisible) {
-      sidebarPanel.expand()
-      return
+      if (sidebarVisible) {
+        sidebarPanel.expand()
+        return
+      }
+
+      sidebarPanel.collapse()
+    }, [sidebarVisible])
+
+    function handleVisibleTreeItemCountChange(count: number) {
+      setVisibleTreeItemCount((current) => {
+        if (current?.count === count && current.rootPath === rootPath) return current
+
+        return { count, rootPath }
+      })
     }
 
-    sidebarPanel.collapse()
-  }, [sidebarVisible])
+    function handleSidebarResize(
+      size: PanelSize,
+      _id: string | number | undefined,
+      previousSize: PanelSize | undefined,
+    ) {
+      if (!previousSize) return
 
-  function handleVisibleTreeItemCountChange(count: number) {
-    setVisibleTreeItemCount((current) => {
-      if (current?.count === count && current.rootPath === rootPath) return current
+      const nextSidebarVisible = !isCollapsedPanelSize(size)
+      if (nextSidebarVisible === sidebarVisible) return
 
-      return { count, rootPath }
-    })
-  }
+      setSidebarVisible(nextSidebarVisible)
+    }
 
-  function handleSidebarResize(
-    size: PanelSize,
-    _id: string | number | undefined,
-    previousSize: PanelSize | undefined,
-  ) {
-    if (!previousSize) return
-
-    const nextSidebarVisible = !isCollapsedPanelSize(size)
-    if (nextSidebarVisible === sidebarVisible) return
-
-    setSidebarVisible(nextSidebarVisible)
-  }
-
-  return (
-    <>
-      <ResizablePanel
-        id='workspace-sidebar'
-        className='min-h-0 min-w-0 overflow-hidden'
-        collapsible
-        collapsedSize='0px'
-        defaultSize={sidebarVisible ? '320px' : '0px'}
-        minSize='240px'
-        maxSize='50%'
-        groupResizeBehavior='preserve-pixel-size'
-        panelRef={sidebarPanelRef}
-        onResize={handleSidebarResize}
-      >
-        <WorkspaceSidebar
-          rootPath={rootPath}
-          treeState={treeState}
-          visibleTreeItemCount={currentVisibleTreeItemCount}
-          onVisibleItemCountChange={handleVisibleTreeItemCountChange}
-          onLoadDirectory={onLoadDirectory}
-          onPrefetchDirectory={onPrefetchDirectory}
+    return (
+      <>
+        <ResizablePanel
+          id='workspace-sidebar'
+          className='min-h-0 min-w-0 overflow-hidden'
+          collapsible
+          collapsedSize='0px'
+          defaultSize={sidebarVisible ? '320px' : '0px'}
+          minSize='240px'
+          maxSize='50%'
+          groupResizeBehavior='preserve-pixel-size'
+          panelRef={sidebarPanelRef}
+          onResize={handleSidebarResize}
+        >
+          <WorkspaceSidebar
+            rootPath={rootPath}
+            treeState={treeState}
+            visibleTreeItemCount={currentVisibleTreeItemCount}
+            onVisibleItemCountChange={handleVisibleTreeItemCountChange}
+            onLoadDirectory={onLoadDirectory}
+            onPrefetchDirectory={onPrefetchDirectory}
+          />
+        </ResizablePanel>
+        <ResizableHandle
+          aria-label='Resize workspace sidebar'
+          className={sidebarVisible ? undefined : '-mr-px'}
+          withHandle
         />
-      </ResizablePanel>
-      <ResizableHandle
-        aria-label='Resize workspace sidebar'
-        className={sidebarVisible ? undefined : '-mr-px'}
-        withHandle
-      />
-    </>
-  )
-})
+      </>
+    )
+  },
+)
