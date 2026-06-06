@@ -25,6 +25,7 @@ import {
   createFileEditorSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
+import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
 import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
@@ -201,6 +202,61 @@ describe('LayoutRenderer browser rendering', () => {
       expect(fileSnapshots.some((query) => query.state.status === 'success')).toBe(true)
     })
   })
+
+  it('holds editor tab widths immediately after a direct workbench tab close', async () => {
+    const container = document.createElement('main')
+    const queryClient = new QueryClient()
+    const layoutStore = createWorkspaceLayoutStore(editorSurfaceLayout(), {
+      checkInvariants: false,
+    })
+    container.style.height = '420px'
+    container.style.width = '780px'
+    document.body.append(container)
+    root = createRoot(container)
+
+    flushSync(() => {
+      root?.render(
+        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+          <EditorColorThemeProvider>
+            <TooltipProvider delay={0}>
+              <FocusProvider>
+                <QueryClientProvider client={queryClient}>
+                  <EditorStateProvider>
+                    <EditorSurfaceProvider
+                      editorKeymapLayers={[]}
+                      gitStore={createGitStore()}
+                      requestCloseTab={(tabId) => closeEditorSurfaceTab(layoutStore, tabId)}
+                      requestCloseTabs={() => true}
+                      rootPath={TEST_ROOT_PATH}
+                      surfaceIdForEditorTabId={(tabId) => surfaceIdForEditorTabId(tabId)}
+                      tabModelForSurface={(surface, active) => tabModelForSurface(surface, active)}
+                    >
+                      <LayoutProvider store={layoutStore}>
+                        <LayoutRenderer surfaceRenderers={editorSurfaceRendererRegistry} />
+                      </LayoutProvider>
+                    </EditorSurfaceProvider>
+                  </EditorStateProvider>
+                </QueryClientProvider>
+              </FocusProvider>
+            </TooltipProvider>
+          </EditorColorThemeProvider>
+        </ThemeProvider>,
+      )
+    })
+
+    await vi.waitFor(() => {
+      expect(editorChromeTabs()).toHaveLength(2)
+      expect(editorChromeTabWidths().every((width) => width > 0)).toBe(true)
+    })
+
+    const beforeWidths = editorChromeTabWidths()
+    closeEditorSurfaceTab(layoutStore, 'tab-b')
+    await nextFrame()
+
+    expect(editorChromeTabs()).toHaveLength(1)
+    expect(editorChromeCloseSpacerWidth()).toBeGreaterThan(0)
+    expect(Math.max(...editorChromeTabWidths())).toBeLessThanOrEqual(Math.max(...beforeWidths))
+  })
 })
 
 function renderClassicLayout() {
@@ -309,6 +365,34 @@ function buttonWithLabel(label: string) {
 
 function editorChromeTabs() {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-editor-tab-id]'))
+}
+
+function editorChromeTabWidths() {
+  return editorChromeTabs().map((tab) => tab.getBoundingClientRect().width)
+}
+
+function editorChromeCloseSpacerWidth() {
+  const spacer = document.querySelector<HTMLElement>('[data-chrome-close-spacer]')
+  if (!spacer) throw new Error('Missing close spacer')
+
+  return spacer.getBoundingClientRect().width
+}
+
+function closeEditorSurfaceTab(
+  layoutStore: ReturnType<typeof createWorkspaceLayoutStore>,
+  tabId: string,
+) {
+  const surfaceId = surfaceIdForEditorTabId(tabId)
+  if (!surfaceId) return false
+
+  layoutStore.getState().dispatchLayoutOperation({ surfaceId, type: 'closeSurface' })
+  return true
+}
+
+function nextFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
 }
 
 function resizePointerEvent(type: string, clientX: number, clientY: number) {

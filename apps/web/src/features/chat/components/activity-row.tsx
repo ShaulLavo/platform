@@ -68,7 +68,7 @@ function activityRowDetail(detail: string | null, status: string | null) {
 function activityIconToneClass(tone: ChatWorkLogTone) {
   if (tone === 'error') return 'text-destructive'
   if (tone === 'thinking') return 'text-muted-foreground/70'
-  if (tone === 'tool') return 'text-sky-600 dark:text-sky-300'
+  if (tone === 'tool') return 'text-info'
 
   return 'text-muted-foreground/65'
 }

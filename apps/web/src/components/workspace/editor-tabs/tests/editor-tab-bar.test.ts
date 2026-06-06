@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { editorTabCloseTargetIds } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
+import { removedChromeCloseSpacerWidth } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
 import {
   chromeVisualTabsReducer,
   syncChromeVisualTabs,
@@ -151,16 +152,8 @@ describe('chromeVisualTabsReducer', () => {
     })
 
     expect(next.sourceTabs).toBe(nextTabs)
-    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
-      'present',
-      'opening',
-      'closing',
-    ])
-    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
-      'src/a.ts',
-      'src/c.ts',
-      'src/b.ts',
-    ])
+    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'opening'])
+    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual(['src/a.ts', 'src/c.ts'])
   })
 
   it('finishes opening tabs on the matching animation frame', () => {
@@ -179,7 +172,7 @@ describe('chromeVisualTabsReducer', () => {
     expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'present'])
   })
 
-  it('keeps removed tabs as closing ghosts at the end', () => {
+  it('removes missing tabs immediately', () => {
     const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts', 'src/c.ts'])
     const state = chromeVisualTabsState(initialTabs)
     const nextTabs = chromeTabs(['src/a.ts', 'src/c.ts'])
@@ -190,34 +183,8 @@ describe('chromeVisualTabsReducer', () => {
       type: 'sync-tabs',
     })
 
-    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
-      'present',
-      'present',
-      'closing',
-    ])
-    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
-      'src/a.ts',
-      'src/c.ts',
-      'src/b.ts',
-    ])
-  })
-
-  it('removes closing ghosts on the matching timeout', () => {
-    const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts'])
-    const state = chromeVisualTabsState(initialTabs)
-    const synced = chromeVisualTabsReducer(state, {
-      areTabsEqual: sameChromeTab,
-      tabs: chromeTabs(['src/a.ts']),
-      type: 'sync-tabs',
-    })
-
-    const next = chromeVisualTabsReducer(synced, {
-      closingKey: 'src/b.ts',
-      type: 'remove-closing',
-    })
-
-    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present'])
-    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual(['src/a.ts'])
+    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'present'])
+    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual(['src/a.ts', 'src/c.ts'])
   })
 
   it('reuses semantically equal tab models', () => {
@@ -241,6 +208,33 @@ describe('chromeVisualTabsReducer', () => {
     })
 
     expect(next).toBe(state)
+  })
+})
+
+describe('removedChromeCloseSpacerWidth', () => {
+  it('returns the removed tab advance from the previous layout snapshot', () => {
+    const previous = {
+      overlap: 18,
+      tabs: [
+        { id: 'tab-a', width: 224 },
+        { id: 'tab-b', width: 204 },
+      ],
+    }
+    const current = {
+      overlap: 18,
+      tabs: [{ id: 'tab-a', width: 224 }],
+    }
+
+    expect(removedChromeCloseSpacerWidth(previous, current)).toBe(186)
+  })
+
+  it('returns zero without a previous layout snapshot', () => {
+    const current = {
+      overlap: 18,
+      tabs: [{ id: 'tab-a', width: 224 }],
+    }
+
+    expect(removedChromeCloseSpacerWidth(null, current)).toBe(0)
   })
 })
 

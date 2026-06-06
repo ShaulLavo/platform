@@ -862,6 +862,7 @@ type FileTreeRenderRowFrame = {
   handleRowDragStart: (event: DragEvent, row: FileTreeVisibleRow, targetPath: string) => void
   handleRowDragEnd: () => void
   handleRowTouchStart: (event: TouchEvent, row: FileTreeVisibleRow, targetPath: string) => void
+  markPointerFocusPath: (path: string) => void
   instanceId: string | undefined
   itemHeight: number
   gitStatusByPath: ReadonlyMap<string, GitStatus> | undefined
@@ -924,6 +925,7 @@ function renderStyledRow(
     handleRowDragStart,
     handleRowDragEnd,
     handleRowTouchStart,
+    markPointerFocusPath,
     instanceId,
     itemHeight,
     gitStatusByPath,
@@ -1075,7 +1077,11 @@ function renderStyledRow(
 
         if (controller.isSearchOpen()) {
           event.preventDefault()
+          return
         }
+
+        markPointerFocusPath(targetPath)
+        focusElement(event.currentTarget instanceof HTMLElement ? event.currentTarget : null)
       }}
       onTouchStart={
         dragAndDropEnabled && !isParked
@@ -3320,6 +3326,11 @@ export function FileTreeView({
     ignoredInheritanceCache,
     instanceId,
     itemHeight,
+    markPointerFocusPath: (path) => {
+      if (controller.getFocusedPath() === path) return
+
+      pointerFocusScrollPathRef.current = path
+    },
     onKeyDown: handleTreeKeyDown,
     onRowClick: handleRowClick,
     openContextMenuForRow,

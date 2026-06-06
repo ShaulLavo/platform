@@ -65,7 +65,7 @@ export function ChromeEditorTab({
         className={chromeTabRootClassName({
           active: tab.active,
           className: cn(
-            'cursor-grab hover:z-20 active:cursor-grabbing',
+            'cursor-pointer hover:z-20',
             'z-[var(--chrome-tab-z)]',
             tabDragClassName(insertionEdge, dragged),
             tab.active && 'z-30',

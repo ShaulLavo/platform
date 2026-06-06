@@ -47,7 +47,7 @@ export function ChromeTabTrailingSlot({
         <span
           aria-hidden='true'
           className={cn(
-            'pointer-events-none absolute size-2 rounded-full bg-amber-500 transition-opacity',
+            'pointer-events-none absolute size-2 rounded-full bg-warning transition-opacity',
             'opacity-100 group-focus-within/chrome-tab:opacity-0 group-hover/chrome-tab:opacity-0',
           )}
         />

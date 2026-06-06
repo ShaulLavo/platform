@@ -55,18 +55,16 @@ describe('FileTree browser behavior', () => {
     scrollElement.scrollTop = 120
     scrollElement.dispatchEvent(new Event('scroll', { bubbles: true }))
 
-    await vi.waitFor(() => {
-      expect(rowButton(shadowRoot, 'src/features/a-8.ts')).toBeTruthy()
-    })
+    const selectedRow = rowButton(shadowRoot, 'src/features/a-3.ts')
 
     const previousScrollTop = scrollElement.scrollTop
-    rowButton(shadowRoot, 'src/features/a-8.ts').dispatchEvent(
-      new MouseEvent('click', { bubbles: true, detail: 1 }),
-    )
+    selectedRow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, detail: 1 }))
+    selectedRow.focus()
+    selectedRow.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))
 
     await vi.waitFor(() => {
-      expect(currentModel.getSelectedPaths()).toEqual(['src/features/a-8.ts'])
-      expect(currentModel.getFocusedPath()).toBe('src/features/a-8.ts')
+      expect(currentModel.getSelectedPaths()).toEqual(['src/features/a-3.ts'])
+      expect(currentModel.getFocusedPath()).toBe('src/features/a-3.ts')
     })
     expect(scrollElement.scrollTop).toBe(previousScrollTop)
   })

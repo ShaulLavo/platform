@@ -31,10 +31,7 @@ export function LocationButton({
       type='button'
     >
       <Icon
-        className={cn(
-          'size-4 shrink-0',
-          selected ? 'text-sky-600 dark:text-sky-300' : 'text-muted-foreground',
-        )}
+        className={cn('size-4 shrink-0', selected ? 'text-info' : 'text-muted-foreground')}
         weight='duotone'
       />
       <span className='truncate'>{location.label}</span>

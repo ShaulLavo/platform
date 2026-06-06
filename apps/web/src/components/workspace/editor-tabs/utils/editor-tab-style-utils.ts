@@ -7,6 +7,7 @@ import {
   CHROME_TAB_INACTIVE_MIN_WIDTH,
   CHROME_TAB_STANDARD_WIDTH,
   CHROME_TAB_TRAILING_SLOT_WIDTH,
+  type ChromeTabLayout,
 } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import type {
   EditorChromeVisualTab,
@@ -20,7 +21,7 @@ import { cn } from '@workspace/ui/lib/utils'
 export const CHROME_TAB_GROW_DELAY_MS = 1200
 
 const CHROME_TAB_TRANSITION =
-  'flex-basis 160ms cubic-bezier(0.2, 0, 0, 1), margin-left 160ms cubic-bezier(0.2, 0, 0, 1), max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)'
+  'flex-basis 160ms cubic-bezier(0.2, 0, 0, 1), margin-left 160ms cubic-bezier(0.2, 0, 0, 1), max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), transform 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)'
 const CHROME_TAB_SLOT_TRANSITION =
   'max-width 160ms cubic-bezier(0.2, 0, 0, 1), min-width 160ms cubic-bezier(0.2, 0, 0, 1), width 160ms cubic-bezier(0.2, 0, 0, 1)'
 
@@ -53,15 +54,11 @@ export function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
 }
 
 export function activeChromeTabId(visualTabs: readonly EditorChromeVisualTab[]) {
-  return (
-    visualTabs.find((visualTab) => visualTab.phase !== 'closing' && visualTab.tab.active)?.tab.id ??
-    null
-  )
+  return visualTabs.find((visualTab) => visualTab.tab.active)?.tab.id ?? null
 }
 
 export function chromeTrailingSlotWidths(visualTabs: readonly EditorChromeVisualTab[]) {
   return visualTabs.map((visualTab) => {
-    if (visualTab.phase === 'closing') return 0
     if (!visualTab.tab.active) return 0
 
     return CHROME_TAB_TRAILING_SLOT_WIDTH
@@ -74,11 +71,75 @@ export function chromeTabCloseButtonVisibilityClassName(tab: EditorTabModel, dir
   return 'pointer-events-none opacity-0 group-focus-within/chrome-tab:pointer-events-auto group-focus-within/chrome-tab:opacity-100 group-hover/chrome-tab:pointer-events-auto group-hover/chrome-tab:opacity-100'
 }
 
+export function chromeCloseSpacerStyle(width: number) {
+  return {
+    flex: `0 0 ${width}px`,
+    maxWidth: width,
+    minWidth: width,
+    width,
+  } as CSSProperties
+}
+
 export function chromeTabTrailingSlotStyle() {
   return {
     '--chrome-tab-trailing-slot-width': `${CHROME_TAB_TRAILING_SLOT_WIDTH}px`,
     transition: CHROME_TAB_SLOT_TRANSITION,
   } as CSSProperties
+}
+
+export type ChromeCloseSpacerSnapshot = {
+  readonly overlap: number
+  readonly tabs: readonly ChromeCloseSpacerSnapshotTab[]
+}
+
+type ChromeCloseSpacerSnapshotTab = {
+  readonly id: string
+  readonly width: number
+}
+
+export function chromeCloseSpacerSnapshot(
+  visualTabs: readonly EditorChromeVisualTab[],
+  layout: ChromeTabLayout | null,
+  rootElement: HTMLElement | null,
+): ChromeCloseSpacerSnapshot {
+  const domWidths = chromeTabDomWidths(rootElement)
+
+  return {
+    overlap: layout?.overlap ?? 0,
+    tabs: visualTabs.map((visualTab, index) => ({
+      id: visualTab.tab.id,
+      width: domWidths.get(visualTab.tab.id) ?? layout?.tabs[index]?.width ?? 0,
+    })),
+  }
+}
+
+function chromeTabDomWidths(rootElement: HTMLElement | null) {
+  const widths = new Map<string, number>()
+  if (rootElement === null) return widths
+
+  const tabElements = rootElement.querySelectorAll<HTMLElement>('[data-editor-tab-id]')
+  for (const tabElement of tabElements) {
+    const tabId = tabElement.dataset.editorTabId
+    if (!tabId) continue
+
+    widths.set(tabId, tabElement.getBoundingClientRect().width)
+  }
+
+  return widths
+}
+
+export function removedChromeCloseSpacerWidth(
+  previous: ChromeCloseSpacerSnapshot | null,
+  current: ChromeCloseSpacerSnapshot,
+) {
+  if (previous === null) return 0
+
+  const currentTabIds = new Set(current.tabs.map((tab) => tab.id))
+  return previous.tabs.reduce((width, tab) => {
+    if (currentTabIds.has(tab.id)) return width
+
+    return width + Math.max(0, tab.width - previous.overlap)
+  }, 0)
 }
 
 export function chromeTabStyle(
@@ -89,7 +150,7 @@ export function chromeTabStyle(
   trailingSlotWidth: number,
 ) {
   const tab = visualTab.tab
-  const fixedWidth = closingOrOpeningTabWidth(visualTab)
+  const fixedWidth = openingTabWidth(visualTab)
   const targetWidth = fixedWidth ?? layoutWidth
   const minWidth = tab.active
     ? CHROME_TAB_ACTIVE_MIN_WIDTH + trailingSlotWidth
@@ -107,19 +168,7 @@ export function chromeTabStyle(
   } as CSSProperties
 }
 
-export function chromeGhostTabStyle(index: number, overlap: number, width: number | null) {
-  return {
-    flex: width === null ? '1 1 0px' : `0 0 ${width}px`,
-    height: CHROME_TAB_HEIGHT,
-    marginLeft: index === 0 ? 0 : -overlap,
-    maxWidth: width ?? CHROME_TAB_STANDARD_WIDTH,
-    minWidth: width ?? CHROME_TAB_INACTIVE_MIN_WIDTH,
-    transition: CHROME_TAB_TRANSITION,
-    width: width ?? 'auto',
-  } as CSSProperties
-}
-
-function closingOrOpeningTabWidth(visualTab: EditorChromeVisualTab) {
+function openingTabWidth(visualTab: EditorChromeVisualTab) {
   if (visualTab.phase === 'opening') return CHROME_TAB_CLOSED_WIDTH
 
   return null
