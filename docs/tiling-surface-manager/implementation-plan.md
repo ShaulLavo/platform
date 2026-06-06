@@ -659,6 +659,10 @@ Work:
   - selection changes replace the preview;
   - close/reset owner closes unpromoted preview;
   - edit/open/pin promotes preview to durable file or diff surface.
+- Route surfaces opened from a maximized/fullscreen owner or active window into
+  that same window as a tab by default. Do not open child or full-mode search
+  surfaces behind the active fullscreen context unless the command explicitly
+  asks for a different placement.
 - Opening a search result should dispatch `openSurface`, not `selectFile`.
 
 Delete in this phase:
@@ -675,6 +679,11 @@ Tests:
 - Selection creates or replaces one Search Preview.
 - Owner close/reset drops unpromoted Search Preview.
 - Promotion turns preview into durable file/diff surface.
+- Opening full Search or another child surface from a maximized/fullscreen
+  Search window creates or focuses a tab in that same window, not a hidden
+  surface behind it.
+- Explicit user placement commands can still override the fullscreen tab
+  default.
 
 Exit criteria:
 

@@ -98,13 +98,16 @@ about workflow-shaped layouts:
 10. Search Preview is contextual and transient. It is replaced by selection
     changes, promoted on explicit open/pin/edit intent, and cleaned up when its
     owning search context closes or changes.
-11. Git Changes is a durable singleton surface. It restores selection, grouping,
+11. Surfaces opened from inside a maximized or fullscreen window default to a tab
+    in that same window. They must not open behind the active fullscreen context
+    unless the user explicitly requests a different placement.
+12. Git Changes is a durable singleton surface. It restores selection, grouping,
     staged/unstaged state, filters, and linked diff context when possible.
-12. File Navigator is a durable singleton surface. It restores expansion and
+13. File Navigator is a durable singleton surface. It restores expansion and
     selection when possible.
-13. Diffs behave like file tabs by default. V1 should not require a special
+14. Diffs behave like file tabs by default. V1 should not require a special
     diff-only side region.
-14. Window tab stacks should use the existing Chrome-style tab treatment by
+15. Window tab stacks should use the existing Chrome-style tab treatment by
     default, including close affordances, active/inactive shape, overflow
     behavior, and drag/reorder feel where applicable. Tab drag should start as
     an in-strip slide/reorder interaction: the dragged tab stays in the tab bar
@@ -113,16 +116,16 @@ about workflow-shaped layouts:
     workspace placement, not a free-floating tab in the air. This is a special
     tab transition into the same snapped drag grammar used by windows and other
     movable surfaces.
-15. Minimize means collapse the window in place into an accordion header.
+16. Minimize means collapse the window in place into an accordion header.
     Collapse/expand is independent from whether the surface keeps running,
     unmounts UI, suspends, or disposes resources.
-16. Close removes the surface or represented window from the visible layout, but
+17. Close removes the surface or represented window from the visible layout, but
     close is also independent from runtime. Registry close policy decides
     whether the underlying state/session is disposed, suspended, kept in the
     background, or protected by confirmation.
-17. Transient previews generally do not collapse. They are replaced, closed, or
+18. Transient previews generally do not collapse. They are replaced, closed, or
     promoted into durable surfaces.
-18. Drag and drop should live-preview snapped layouts. As the user drags,
+19. Drag and drop should live-preview snapped layouts. As the user drags,
     surrounding windows rearrange around the potential drop target; releasing
     commits the previewed layout. All draggable things, including whole windows,
     detached tabs, and single-surface moves, must always preview a concrete
@@ -130,63 +133,63 @@ about workflow-shaped layouts:
     target. Dragging must not create a floating, popout, or otherwise unsnapped
     intermediate state. Future floating windows may exist only through explicit
     commands or policy, not by dragging a window or tab out of the grid.
-19. Keyboard control should follow classic tiling-window-manager grammar,
+20. Keyboard control should follow classic tiling-window-manager grammar,
     inspired by Hyprland/Wayland and i3: directional focus, move, split, resize,
     maximize/restore, collapse/expand, parent focus, and recipe/workspace
     switching should all be first-class commands.
-20. Editor muscle memory still matters. File, tab, command palette, close,
+21. Editor muscle memory still matters. File, tab, command palette, close,
     reopen, and search shortcuts should remain compatible where possible.
-21. Windows have visible gaps by default, with a wallpaper/background visible
+22. Windows have visible gaps by default, with a wallpaper/background visible
     through the gaps.
-22. Windows have a very slight translucent and blurred background. The effect
+23. Windows have a very slight translucent and blurred background. The effect
     must not hurt code readability, terminal contrast, or performance.
-23. Stacked groups, floating surfaces, browser popouts, extension surfaces, and
+24. Stacked groups, floating surfaces, browser popouts, extension surfaces, and
     agent implementation are deferred from V1.
-24. Agent surfaces are still a required follow-up product plan because agent
+25. Agent surfaces are still a required follow-up product plan because agent
     chat, plans, tasks, logs, patches, artifacts, and terminals need surface
     semantics later.
-25. Git/review workflows should target GitButler-level clarity: contextual
+26. Git/review workflows should target GitButler-level clarity: contextual
     preview, visible state, dense workflow navigation, and workflow-specific
     drop behavior where that model fits.
-26. GitButler-style lanes should live inside git/review workflow surfaces or
+27. GitButler-style lanes should live inside git/review workflow surfaces or
     recipe policies in V1. They should not be added as generic layout tree nodes
     unless a prototype proves they generalize beyond git/review/agent workflows.
-27. Workflows are nested experiences inside surfaces. The tiling workspace gives
+28. Workflows are nested experiences inside surfaces. The tiling workspace gives
     those surfaces space, focus, persistence, previews, and restore behavior; it
     does not own each workflow's internal interaction model.
-28. Generic tiling is the foundation, but the best Platform layouts should be
+29. Generic tiling is the foundation, but the best Platform layouts should be
     workflow-native, not merely rearranged editor panes.
-29. Far future should support a Niri-like spatial mode where surfaces can become
+30. Far future should support a Niri-like spatial mode where surfaces can become
     independent windows placed freely in space. V1 should only preserve the
     product distinction between surface identity and presentation.
-30. The command palette is part of the tiling product, not only a generic app
+31. The command palette is part of the tiling product, not only a generic app
     command list. It should expose window management commands with searchable
     names, category labels, icons, shortcuts, aliases, and disabled states
     derived from active surface/window capabilities.
-31. The intended UX ladder mirrors Raycast Window Management: users can search
+32. The intended UX ladder mirrors Raycast Window Management: users can search
     and run a command, promote repeated commands to global hotkeys, apply a
     preset if they are migrating from another window manager, then mostly live
     in muscle memory.
-32. Platform should ship a broad built-in window management command catalog:
+33. Platform should ship a broad built-in window management command catalog:
     maximize, almost maximize, fullscreen, restore, center, reasonable size,
     halves, thirds, fourths, quarters, sixths, move by direction, move to next
     or previous display when available, focus by direction, focus rail, and
     collapse/expand operations.
-33. Repeated left/right sizing commands should support cycling behavior where
+34. Repeated left/right sizing commands should support cycling behavior where
     useful, such as cycling through one-half, two-thirds, one-third, and
     adjacent display targets. Cycling state must be scoped so repeated
     invocation feels intentional rather than surprising.
-34. Settings must include a command management table with Name, Type, Alias,
+35. Settings must include a command management table with Name, Type, Alias,
     Hotkey, and Enabled-style fields, plus an extension/detail panel for gap,
     cycling, display wrapping, Stage Manager or OS-integration compatibility
     toggles where relevant, and hotkey preset import.
-35. Users should be able to create custom single-window commands from the
+36. Users should be able to create custom single-window commands from the
     command palette or settings by choosing size, pinned position, and offsets
     in percentages or points.
-36. Users should be able to create layout commands that arrange multiple
+37. Users should be able to create layout commands that arrange multiple
     Platform surfaces, optionally associate URLs/files/quicklinks with surfaces
     that know how to open them, and bind the result to a global hotkey.
-37. Raycast is a reference for command search, hotkey management, presets, and
+38. Raycast is a reference for command search, hotkey management, presets, and
     layout-builder UX. It is not a reason to remove Platform's planned mouse
     drag/drop tiling, live previews, edge drops, or background drops.
 

@@ -603,6 +603,10 @@ Recipe policy examples:
   content/tool surface opens unless sticky manual placement exists.
 - `previewAdjacentPolicy`: put transient previews near the selected list,
   search result, diagnostic, git file, or agent artifact.
+- `fullscreenOwnerPolicy`: when a command opens a related surface from a
+  maximized/fullscreen owner or active window, tab it into that same window by
+  default so it cannot open behind the fullscreen context. Explicit user
+  placement commands may override this.
 - `laneWorkflowPolicy`: route git, review, or agent work items into a
   lane-capable workflow surface or adjacent split, and keep contextual preview
   near that workflow context.
