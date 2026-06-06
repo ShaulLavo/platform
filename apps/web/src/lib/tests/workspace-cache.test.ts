@@ -11,13 +11,10 @@ import {
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileDiff } from '@/features/git/types'
-import { createGitChangesSurface } from '@/features/workbench/tiling-surface-manager/layout-builders'
-import { visibleSurfaceIdsInOrder } from '@/features/workbench/tiling-surface-manager/layout-normalize'
-import {
-  moveSurface,
-  openSurface,
-} from '@/features/workbench/tiling-surface-manager/layout-operations'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
+import { createGitChangesSurface } from '@/features/tiling-surface-manager/utils/layout-builders'
+import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/utils/layout-normalize'
+import { moveSurface, openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
+import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import {
   readWorkspaceCache,
   writeWorkspaceCache,

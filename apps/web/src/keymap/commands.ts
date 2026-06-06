@@ -17,16 +17,13 @@ import {
 import {
   createFileNavigatorSurface,
   createGitChangesSurface,
-} from '@/features/workbench/tiling-surface-manager/layout-builders'
+} from '@/features/tiling-surface-manager/utils/layout-builders'
 import {
   findWindowIdContainingSurface,
   visibleSurfaceIdsInOrder,
-} from '@/features/workbench/tiling-surface-manager/layout-normalize'
-import { applyLayoutOperation } from '@/features/workbench/tiling-surface-manager/layout-operations'
-import type {
-  Surface,
-  WorkspaceLayout,
-} from '@/features/workbench/tiling-surface-manager/layout-types'
+} from '@/features/tiling-surface-manager/utils/layout-normalize'
+import { applyLayoutOperation } from '@/features/tiling-surface-manager/utils/layout-operations'
+import type { Surface, WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import {
   nextEditorDiffViewMode,

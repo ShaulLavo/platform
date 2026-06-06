@@ -19,16 +19,16 @@ import {
 } from '@/features/editor/state/editor-pane-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import type { WorkspaceLayout } from '@/features/workbench/tiling-surface-manager/layout-types'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
 import {
   restoreWorkspaceLayout,
   serializeWorkspaceLayout,
   type SerializedWorkspaceLayout,
-} from '@/features/workbench/tiling-surface-manager/layout-persistence'
+} from '@/features/tiling-surface-manager/utils/layout-persistence'
 import {
   editorPaneLayoutForWorkspaceLayout,
   workspaceLayoutForEditorPaneLayout,
-} from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
+} from '@/features/workbench/utils/editor-surface-layout'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/contracts'
 import * as v from 'valibot'

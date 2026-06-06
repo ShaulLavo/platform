@@ -7,11 +7,11 @@ import {
   normalizeEditorPaneLayout,
   type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
-import type { WorkspaceLayout } from '@/features/workbench/tiling-surface-manager/layout-types'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
 import {
   editorPaneLayoutForWorkspaceLayout,
   workspaceLayoutForEditorPaneLayout,
-} from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
+} from '@/features/workbench/utils/editor-surface-layout'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'

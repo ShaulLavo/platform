@@ -33,7 +33,7 @@ import {
 } from '@/features/editor/state/editor-tab-paths'
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
+import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import type { FileResult } from '@/lib/file-system-types'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import type {

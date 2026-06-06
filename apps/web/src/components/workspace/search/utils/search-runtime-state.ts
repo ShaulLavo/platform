@@ -1,7 +1,7 @@
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import { searchResultsSurfaceId } from '@/features/workbench/tiling-surface-manager/layout-ids'
-import { findWindowIdContainingSurface } from '@/features/workbench/tiling-surface-manager/layout-normalize'
-import type { WorkspaceLayout } from '@/features/workbench/tiling-surface-manager/layout-types'
+import { searchResultsSurfaceId } from '@/features/tiling-surface-manager/utils/layout-ids'
+import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/utils/layout-normalize'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
 
 type SearchRuntimeSelection = {
   selectedFilePath: string | null

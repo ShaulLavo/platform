@@ -6,8 +6,8 @@ import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
   createSearchResultsSurface,
-} from '@/features/workbench/tiling-surface-manager/layout-builders'
-import { openSurface } from '@/features/workbench/tiling-surface-manager/layout-operations'
+} from '@/features/tiling-surface-manager/utils/layout-builders'
+import { openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
 
 const rootPath = '/workspace'
 

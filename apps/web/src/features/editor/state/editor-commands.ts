@@ -28,7 +28,7 @@ import { parseDiffDocumentId } from '@/features/git/diff-document'
 import {
   createDiffSurface,
   createFileEditorSurface,
-} from '@/features/workbench/tiling-surface-manager/layout-builders'
+} from '@/features/tiling-surface-manager/utils/layout-builders'
 import {
   activateSurface,
   closeSurface as closeSurfaceInLayout,
@@ -36,8 +36,8 @@ import {
   openSurface,
   reorderSurface,
   tabSurface,
-} from '@/features/workbench/tiling-surface-manager/layout-operations'
-import { findWindowIdContainingSurface } from '@/features/workbench/tiling-surface-manager/layout-normalize'
+} from '@/features/tiling-surface-manager/utils/layout-operations'
+import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/utils/layout-normalize'
 import type {
   DropDestination,
   DropEdge,
@@ -45,11 +45,11 @@ import type {
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/workbench/tiling-surface-manager/layout-types'
+} from '@/features/tiling-surface-manager/utils/layout-types'
 import {
   editorPaneIdForWorkbenchWindow,
   editorSurfaceSerializedState,
-} from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
+} from '@/features/workbench/utils/editor-surface-layout'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
 import { useMemo } from 'react'
