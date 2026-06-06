@@ -213,8 +213,10 @@ describe('LayoutRenderer', () => {
 
     fireEvent.click(railButtonForSurface(chat.id))
 
-    expect(visibleSurfaceIdsInOrder(store.getState().layout)).not.toContain(chat.id)
-    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'background')
+    expect(store.getState().layout.activeSurfaceId).toBe(chat.id)
+    expect(visibleSurfaceIdsInOrder(store.getState().layout)).toContain(chat.id)
+    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'active')
+    expect(railButtonForSurface(logs.id)).toHaveAttribute('data-rail-state', 'visible')
   })
 
   it('does not duplicate visible running surfaces in hidden hosts', () => {

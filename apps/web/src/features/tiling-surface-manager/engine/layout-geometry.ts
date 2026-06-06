@@ -301,16 +301,10 @@ function recipeSlotDropZoneRects(rootRect: LayoutRect): readonly DropZoneLayoutR
       rect: centerRect(rootRect, {}),
     },
     {
-      destination: { kind: 'recipe-slot', slot: 'primary-side' },
-      id: overlayId('drop:recipe-slot:primary-side'),
+      destination: { kind: 'recipe-slot', slot: 'left-tool-pane' },
+      id: overlayId('drop:recipe-slot:left-tool-pane'),
       kind: 'recipe-slot',
       rect: edgeRect(rootRect, 'left', Math.max(48, rootRect.width * 0.18)),
-    },
-    {
-      destination: { kind: 'recipe-slot', slot: 'secondary-side' },
-      id: overlayId('drop:recipe-slot:secondary-side'),
-      kind: 'recipe-slot',
-      rect: edgeRect(rootRect, 'right', Math.max(48, rootRect.width * 0.18)),
     },
     {
       destination: { kind: 'recipe-slot', slot: 'bottom' },

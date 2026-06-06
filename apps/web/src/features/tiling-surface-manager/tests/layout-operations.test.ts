@@ -196,7 +196,7 @@ describe('tiling surface layout operations', () => {
     const backgrounded = moveSurface(opened, git.id, { kind: 'background' })
     const restored = moveSurface(backgrounded, git.id, {
       kind: 'recipe-slot',
-      slot: 'secondary-side',
+      slot: 'left-tool-pane',
     })
 
     expect(visibleSurfaceIdsInOrder(backgrounded)).not.toContain(git.id)
@@ -818,7 +818,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(layout)
   })
 
-  it('rebalances no-main tool panes into primary and secondary columns', () => {
+  it('order-packs no-main tool panes into one stable left stack', () => {
     const fileNavigator = createFileNavigatorSurface()
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
@@ -829,17 +829,17 @@ describe('tiling surface layout operations', () => {
 
     let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
     layout = applyRailItem(layout, git.id)
-    expectToolColumns(layout, [fileNavigator.id], [git.id])
+    expectLeftToolStack(layout, [fileNavigator.id, git.id])
 
     layout = applyRailItem(layout, search.id)
-    expectToolColumns(layout, [fileNavigator.id, search.id], [git.id])
+    expectLeftToolStack(layout, [fileNavigator.id, search.id, git.id])
 
     layout = applyRailItem(layout, chat.id)
-    expectToolColumns(layout, [fileNavigator.id, search.id], [git.id, chat.id])
+    expectLeftToolStack(layout, [fileNavigator.id, search.id, git.id, chat.id])
     expectValidLayout(layout)
   })
 
-  it('restores backgrounded primary tools back into the primary no-main column', () => {
+  it('restores backgrounded left tools back into stable recipe order', () => {
     const fileNavigator = createFileNavigatorSurface()
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
@@ -855,7 +855,7 @@ describe('tiling surface layout operations', () => {
     layout = applyRailItem(layout, chat.id)
     layout = applyRailItem(layout, fileNavigator.id)
 
-    expectToolColumns(layout, [search.id, fileNavigator.id], [git.id, chat.id])
+    expectLeftToolStack(layout, [fileNavigator.id, search.id, git.id, chat.id])
     expectValidLayout(layout)
   })
 
@@ -908,7 +908,7 @@ describe('tiling surface layout operations', () => {
         kind: 'window-edge',
         windowId: mustFindWindowId(layout, chat.id),
       })
-      expect(surfaceHeight(layout, chat.id)).toBeCloseTo(baselineChatHeight, 3)
+      expect(siblingNodeIds(layout, chat.id)).toContain(mustFindNodeId(layout, fileNavigator.id))
     }
 
     expectValidLayout(layout)
@@ -949,33 +949,48 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(opened)
   })
 
-  it('maps active rail singleton items to background operations', () => {
+  it('maps active expanded rail singleton items to collapse operations', () => {
     const git = createGitChangesSurface()
     const layout = activateSurface(openSurface(createClassicFirstRunWorkspaceLayout(), git), git.id)
     const item = selectWorkbenchRailSurfaceItems(layout).find(
       (candidate) => candidate.surface.id === git.id,
     )
     if (!item) throw new Error('Expected Git rail item')
+    const windowId = mustFindWindowId(layout, git.id)
 
     expect(railItemOperation(layout, item)).toEqual({
-      surfaceId: git.id,
-      destination: { kind: 'background' },
-      type: 'moveSurface',
+      type: 'collapseWindow',
+      windowId,
     })
   })
 
-  it('maps visible inactive rail singleton items to background operations', () => {
+  it('maps visible inactive rail singleton items to focus operations', () => {
     const chat = createChatSurface()
     const logs = createLogsSurface()
     let layout = openSurface(createClassicFirstRunWorkspaceLayout(), chat)
     layout = openSurface(layout, logs)
     const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), chat.id)
+    const windowId = mustFindWindowId(layout, chat.id)
 
     expect(item.state).toBe('visible')
     expect(railItemOperation(layout, item)).toEqual({
       surfaceId: chat.id,
-      destination: { kind: 'background' },
-      type: 'moveSurface',
+      type: 'activateSurface',
+      windowId,
+    })
+  })
+
+  it('maps collapsed rail singleton items to expand operations', () => {
+    const git = createGitChangesSurface()
+    const opened = openSurface(createClassicFirstRunWorkspaceLayout(), git)
+    const windowId = mustFindWindowId(opened, git.id)
+    const layout = collapseWindow(opened, windowId)
+    const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), git.id)
+
+    expect(item.state).toBe('collapsed')
+    expect(railItemOperation(layout, item)).toEqual({
+      type: 'expandWindow',
+      windowId,
     })
   })
 })
@@ -991,24 +1006,7 @@ function splitFileFromEditor(
   })
 }
 
-function expectToolColumns(
-  layout: WorkspaceLayout,
-  primarySurfaceIds: readonly SurfaceId[],
-  secondarySurfaceIds: readonly SurfaceId[],
-) {
-  const primaryColumnNodeId = expectToolColumn(layout, primarySurfaceIds)
-  const secondaryColumnNodeId = expectToolColumn(layout, secondarySurfaceIds)
-  const rootNodeId = layout.rootNodeId
-  if (!rootNodeId) throw new Error('Expected root node')
-
-  expect(layout.nodesById[rootNodeId]).toMatchObject({
-    axis: 'horizontal',
-    childIds: [primaryColumnNodeId, secondaryColumnNodeId],
-    kind: 'split',
-  })
-}
-
-function expectToolColumn(layout: WorkspaceLayout, surfaceIds: readonly SurfaceId[]) {
+function expectLeftToolStack(layout: WorkspaceLayout, surfaceIds: readonly SurfaceId[]) {
   const nodeIds = surfaceIds.map((surfaceId) => mustFindNodeId(layout, surfaceId))
   if (nodeIds.length === 1) return nodeIds[0]
 

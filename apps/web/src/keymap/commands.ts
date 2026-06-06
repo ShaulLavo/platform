@@ -17,10 +17,7 @@ import {
   createFileNavigatorSurface,
   createGitChangesSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
-import {
-  findWindowIdContainingSurface,
-  visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
+import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
 import type {
   Surface,
@@ -315,14 +312,18 @@ function layoutWithFocusedSurface(layout: WorkspaceLayout, surface: Surface) {
 
 function layoutWithToggledSurface(layout: WorkspaceLayout, surface: Surface) {
   const existingSurface = surfaceForCommand(layout, surface)
-  const visibleSurfaceIds = visibleSurfaceIdsInOrder(layout)
-  if (visibleSurfaceIds.includes(existingSurface.id)) {
+  const visibleWindowId = findWindowIdContainingSurface(layout, existingSurface.id)
+  const visibleWindow = visibleWindowId ? layout.windowsById[visibleWindowId] : null
+  if (visibleWindowId && visibleWindow?.mode === 'collapsed') {
     return applyLayoutOperation(layout, {
-      destination: { kind: 'background' },
-      surfaceId: existingSurface.id,
-      type: 'moveSurface',
+      type: 'expandWindow',
+      windowId: visibleWindowId,
     })
   }
+  if (visibleWindowId && layout.activeSurfaceId === existingSurface.id) {
+    return applyLayoutOperation(layout, { type: 'collapseWindow', windowId: visibleWindowId })
+  }
+  if (visibleWindowId) return layoutWithFocusedSurface(layout, existingSurface)
 
   return layoutWithFocusedSurface(layout, existingSurface)
 }

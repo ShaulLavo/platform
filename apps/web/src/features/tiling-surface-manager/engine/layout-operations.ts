@@ -29,6 +29,7 @@ import {
   isNodeDescendant,
   normalizeWorkspaceLayout,
   repairSplitSizes,
+  visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
 } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type {
@@ -47,6 +48,7 @@ import type {
   Surface,
   SurfaceId,
   SurfacePlacementHint,
+  SurfaceType,
   WorkspaceRecipeSlot,
   WindowId,
   WorkbenchWindow,
@@ -56,6 +58,22 @@ import type {
 
 const RESIZE_REFERENCE_PX = 1000
 const MIN_RESIZE_SIZE = 0.05
+const RECIPE_LEFT_TOOL_SURFACE_TYPES = [
+  'file-navigator',
+  'search-results',
+  'git-changes',
+  'chat',
+  'logs',
+] as const satisfies readonly SurfaceType[]
+
+type RecipeTree = {
+  readonly nodeId: LayoutNodeId
+  readonly nodesById: Record<string, LayoutNode>
+}
+
+type RecipeNodeAllocator = {
+  readonly nodeId: (key: string) => LayoutNodeId
+}
 
 export type OpenSurfaceOptions = {
   readonly policyId?: LayoutPolicyId
@@ -194,7 +212,7 @@ export function closeSurface(
 
   const withoutSurface = deleteSurfaceFromLayout(normalizedLayout, surfaceId)
 
-  return normalizeWorkspaceLayout(withoutSurface)
+  return normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(withoutSurface))
 }
 
 function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId): WorkspaceLayout {
@@ -219,7 +237,9 @@ export function collapseWindow(layout: WorkspaceLayout, windowId: WindowId): Wor
   if (!window) return normalizedLayout
   if (!windowCanCollapse(normalizedLayout, window)) return normalizedLayout
 
-  return normalizeWorkspaceLayout(layoutWithWindowMode(normalizedLayout, windowId, 'collapsed'))
+  return normalizeToolPaneRecipeLayout(
+    normalizeWorkspaceLayout(layoutWithWindowMode(normalizedLayout, windowId, 'collapsed')),
+  )
 }
 
 export function expandWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLayout {
@@ -227,7 +247,19 @@ export function expandWindow(layout: WorkspaceLayout, windowId: WindowId): Works
   const window = normalizedLayout.windowsById[windowId]
   if (!window) return normalizedLayout
 
-  return normalizeWorkspaceLayout(layoutWithWindowMode(normalizedLayout, windowId, 'normal'))
+  const expandedLayout = layoutWithWindowMode(normalizedLayout, windowId, 'normal')
+
+  return normalizeToolPaneRecipeLayout(
+    normalizeWorkspaceLayout(activateWindow(expandedLayout, window)),
+  )
+}
+
+function activateWindow(layout: WorkspaceLayout, window: WorkbenchWindow): WorkspaceLayout {
+  return {
+    ...layout,
+    activeSurfaceId: window.activeSurfaceId,
+    activeWindowId: window.id,
+  }
 }
 
 export function restoreSurface(
@@ -973,32 +1005,41 @@ function destinationForRecipeSlotDrop(
 }
 
 function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): WorkspaceLayout {
-  const visibleWindowIds = visibleWindowIdsInOrder(layout)
-  const mainWindowIds = visibleWindowIdsForRecipeSlots(layout, ['editor-center'])
-  if (mainWindowIds.length > 0) return layout
+  const bottomPreparedLayout = layoutWithRecipeBottomToolPane(layout)
+  const toolWindowIds = managedLeftToolWindowIds(bottomPreparedLayout)
+  if (toolWindowIds.length === 0) return bottomPreparedLayout
 
-  const primaryWindowIds = visibleWindowIdsForRecipeSlots(layout, ['primary-side'])
-  const secondaryWindowIds = visibleWindowIdsForRecipeSlots(layout, ['secondary-side'])
-  const toolWindowIds = appendUniqueWindowIds(primaryWindowIds, secondaryWindowIds)
-  if (toolWindowIds.length <= 1) return layout
-  if (hasUnmanagedVisibleWindows(layout, visibleWindowIds, toolWindowIds)) return layout
+  const tree = recipePackedTree(bottomPreparedLayout, toolWindowIds)
+  if (!tree) return bottomPreparedLayout
 
-  const contentTree = toolPaneGridContentTree(layout, primaryWindowIds, secondaryWindowIds)
-  if (!contentTree) return layout
-
-  return normalizeWorkspaceLayout(layoutWithToolPaneGrid(layout, contentTree))
+  return normalizeWorkspaceLayout({
+    ...bottomPreparedLayout,
+    nodesById: tree.nodesById,
+    rootNodeId: tree.nodeId,
+  })
 }
 
-function hasUnmanagedVisibleWindows(
-  layout: WorkspaceLayout,
-  visibleWindowIds: readonly WindowId[],
-  toolWindowIds: readonly WindowId[],
-) {
-  const managedWindowIds = new Set([...toolWindowIds, CLASSIC_DIAGNOSTICS_WINDOW_ID])
+function layoutWithRecipeBottomToolPane(layout: WorkspaceLayout): WorkspaceLayout {
+  const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+  if (!recipeShouldShowClassicBottomToolPane(layout, terminal.id)) return layout
 
-  for (const windowId of visibleWindowIds) {
-    if (managedWindowIds.has(windowId)) continue
-    if (!layout.windowsById[windowId]) continue
+  return showClassicBottomToolPane(layout, terminal.id)
+}
+
+function recipeShouldShowClassicBottomToolPane(layout: WorkspaceLayout, terminalId: SurfaceId) {
+  const terminalWindowId = findWindowIdContainingSurface(layout, terminalId)
+  if (!terminalWindowId) return false
+  if (terminalWindowId === CLASSIC_DIAGNOSTICS_WINDOW_ID) return false
+  if (surfaceHasValidStickyPlacement(layout, terminalId)) return false
+
+  return normalRecipeSurfaceIsVisible(layout)
+}
+
+function normalRecipeSurfaceIsVisible(layout: WorkspaceLayout) {
+  for (const surfaceId of visibleSurfaceIdsInOrder(layout)) {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface) continue
+    if (surface.type === 'terminal' || surface.type === 'diagnostics') continue
 
     return true
   }
@@ -1006,57 +1047,129 @@ function hasUnmanagedVisibleWindows(
   return false
 }
 
-function toolPaneGridContentTree(
-  layout: WorkspaceLayout,
-  primaryWindowIds: readonly WindowId[],
-  secondaryWindowIds: readonly WindowId[],
-) {
-  const columns = [
-    toolPaneGridColumn(layout, 'primary', primaryWindowIds),
-    toolPaneGridColumn(layout, 'secondary', secondaryWindowIds),
-  ].filter(isToolPaneGridTree)
-  if (columns.length === 0) return null
-  if (columns.length === 1) return columns[0]
+function managedLeftToolWindowIds(layout: WorkspaceLayout) {
+  const windowIds: WindowId[] = []
+  const seen = new Set<WindowId>()
 
-  const rootNode = createSplitNode({
-    axis: 'horizontal',
-    childIds: columns.map((column) => column.nodeId),
-    id: layoutNodeId('recipe:tool-grid:content'),
-    sizes: balancedSplitSizes(columns.length),
-  })
+  for (const type of RECIPE_LEFT_TOOL_SURFACE_TYPES) {
+    appendManagedLeftToolWindowId(layout, type, windowIds, seen)
+  }
+
+  return windowIds
+}
+
+function appendManagedLeftToolWindowId(
+  layout: WorkspaceLayout,
+  type: SurfaceType,
+  windowIds: WindowId[],
+  seen: Set<WindowId>,
+) {
+  const surface = Object.values(layout.surfacesById).find((candidate) => candidate.type === type)
+  if (!surface) return
+  if (surfaceHasValidStickyPlacement(layout, surface.id)) return
+  if (recipeSlotForSurface(layout, surface) !== 'left-tool-pane') return
+
+  const windowId = findWindowIdContainingSurface(layout, surface.id)
+  if (!windowId) return
+  if (seen.has(windowId)) return
+  if (windowHasManualPlacementDependent(layout, windowId)) return
+
+  seen.add(windowId)
+  windowIds.push(windowId)
+}
+
+function surfaceHasValidStickyPlacement(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  return placementCanRestoreSurface(layout, stickyPlacementForSurface(layout, surfaceId))
+}
+
+function windowHasManualPlacementDependent(layout: WorkspaceLayout, windowId: WindowId) {
+  for (const surface of Object.values(layout.surfacesById)) {
+    if (!surfaceHasValidStickyPlacement(layout, surface.id)) continue
+    if (!stickyPlacementTargetsWindow(layout, surface.id, windowId)) continue
+
+    return true
+  }
+
+  return false
+}
+
+function stickyPlacementTargetsWindow(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  windowId: WindowId,
+) {
+  if (layout.windowsById[windowId]?.surfaceIds.includes(surfaceId)) return false
+
+  const placement = stickyPlacementForSurface(layout, surfaceId)
+  if (placement?.kind === 'window-center') return placement.windowId === windowId
+  if (placement?.kind === 'window-edge') return placement.windowId === windowId
+
+  return false
+}
+
+function recipePackedTree(layout: WorkspaceLayout, toolWindowIds: readonly WindowId[]) {
+  const bottomWindowId = visibleRecipeBottomWindowId(layout)
+  const excludedWindowIds = new Set([...toolWindowIds, CLASSIC_DIAGNOSTICS_WINDOW_ID])
+  const allocator = createRecipeNodeAllocator(layout)
+  const leftTree = stackedWindowTree(allocator, toolWindowIds, 'recipe:left-tool-pane')
+  const mainTree = mainContentTree(layout, excludedWindowIds, allocator)
+  const contentTree = recipeContentTree(layout, leftTree, mainTree, allocator)
+  const bottomTree = bottomWindowId ? windowTree(bottomWindowId, CLASSIC_DIAGNOSTICS_NODE_ID) : null
+
+  return recipeRootTree(layout, contentTree, bottomTree, allocator)
+}
+
+function createRecipeNodeAllocator(layout: WorkspaceLayout): RecipeNodeAllocator {
+  const usedNodeIds = new Set(Object.keys(layout.nodesById) as LayoutNodeId[])
 
   return {
-    nodeId: rootNode.id,
-    nodesById: mergeToolPaneGridNodes(columns, rootNode),
+    nodeId: (key) => {
+      const nodeId = allocatedRecipeNodeId(usedNodeIds, key)
+      usedNodeIds.add(nodeId)
+
+      return nodeId
+    },
   }
 }
 
-function toolPaneGridColumn(
-  layout: WorkspaceLayout,
-  key: 'primary' | 'secondary',
+function allocatedRecipeNodeId(usedNodeIds: ReadonlySet<LayoutNodeId>, key: string) {
+  const firstId = layoutNodeId(key)
+  if (!usedNodeIds.has(firstId)) return firstId
+
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = layoutNodeId(`${key}:${index}`)
+    if (!usedNodeIds.has(candidate)) return candidate
+  }
+
+  throw new Error(`Unable to allocate recipe node id for ${key}`)
+}
+
+function visibleRecipeBottomWindowId(layout: WorkspaceLayout): WindowId | null {
+  if (!findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)) return null
+
+  return CLASSIC_DIAGNOSTICS_WINDOW_ID
+}
+
+function stackedWindowTree(
+  allocator: RecipeNodeAllocator,
   windowIds: readonly WindowId[],
+  nodeKey: string,
 ) {
-  const windowTrees = windowIds.map((windowId) => toolPaneGridWindowTree(layout, windowId))
-  const windows = windowTrees.filter(isToolPaneGridTree)
-  if (windows.length === 0) return null
-  if (windows.length === 1) return windows[0]
+  const windowTrees = windowIds.map((windowId) =>
+    windowTree(windowId, allocator.nodeId(`${nodeKey}:window:${windowId}`)),
+  )
+  if (windowTrees.length === 0) return null
+  if (windowTrees.length === 1) return windowTrees[0]
 
-  const columnNode = createSplitNode({
+  return splitTree({
     axis: 'vertical',
-    childIds: windows.map((window) => window.nodeId),
-    id: layoutNodeId(`recipe:tool-grid:${key}`),
-    sizes: balancedSplitSizes(windows.length),
+    id: allocator.nodeId(nodeKey),
+    sizes: balancedSplitSizes(windowTrees.length),
+    trees: windowTrees,
   })
-
-  return {
-    nodeId: columnNode.id,
-    nodesById: mergeToolPaneGridNodes(windows, columnNode),
-  }
 }
 
-function toolPaneGridWindowTree(layout: WorkspaceLayout, windowId: WindowId) {
-  const nodeId = findNodeIdForWindow(layout, windowId) ?? layoutNodeId(`recipe:tool:${windowId}`)
-
+function windowTree(windowId: WindowId, nodeId: LayoutNodeId): RecipeTree {
   return {
     nodeId,
     nodesById: {
@@ -1065,80 +1178,232 @@ function toolPaneGridWindowTree(layout: WorkspaceLayout, windowId: WindowId) {
   }
 }
 
-function layoutWithToolPaneGrid(
+function compactTreeWithoutWindows(
   layout: WorkspaceLayout,
-  contentTree: { readonly nodeId: LayoutNodeId; readonly nodesById: Record<string, LayoutNode> },
+  excludedWindowIds: ReadonlySet<WindowId>,
 ) {
-  const bottomNodeId = findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
-  if (!bottomNodeId) {
-    return {
-      ...layout,
-      nodesById: contentTree.nodesById,
-      rootNodeId: contentTree.nodeId,
-    }
+  if (!layout.rootNodeId) return null
+
+  return compactNodeWithoutWindows(layout, layout.rootNodeId, excludedWindowIds, new Set())
+}
+
+function mainContentTree(
+  layout: WorkspaceLayout,
+  excludedWindowIds: ReadonlySet<WindowId>,
+  allocator: RecipeNodeAllocator,
+) {
+  const compactTree = compactTreeWithoutWindows(layout, excludedWindowIds)
+  const compactWindowIds = compactTree
+    ? windowIdsInRecipeTree(layout, compactTree)
+    : new Set<WindowId>()
+  const missingWindowIds = unmanagedWindowIds(layout, excludedWindowIds, compactWindowIds)
+  if (missingWindowIds.length === 0) return compactTree
+
+  const missingTree = stackedWindowTree(allocator, missingWindowIds, 'recipe:main:missing')
+  if (!compactTree) return missingTree
+  if (!missingTree) return compactTree
+
+  return splitTree({
+    axis: 'horizontal',
+    id: allocator.nodeId('recipe:main:recovered'),
+    sizes: balancedSplitSizes(2),
+    trees: [compactTree, missingTree],
+  })
+}
+
+function windowIdsInRecipeTree(layout: WorkspaceLayout, tree: RecipeTree) {
+  const windowIds = new Set<WindowId>()
+
+  for (const node of Object.values(tree.nodesById)) {
+    if (node.kind !== 'window') continue
+    if (!layout.windowsById[node.windowId]) continue
+
+    windowIds.add(node.windowId)
   }
 
-  const bottomNode = createWindowNode({
-    id: bottomNodeId,
-    windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
-  })
-  const rootNode = createSplitNode({
-    axis: 'vertical',
-    childIds: [contentTree.nodeId, bottomNodeId],
-    id: layoutNodeId('recipe:tool-grid:root'),
-    sizes: [0.74, 0.26],
-  })
+  return windowIds
+}
+
+function unmanagedWindowIds(
+  layout: WorkspaceLayout,
+  excludedWindowIds: ReadonlySet<WindowId>,
+  existingWindowIds: ReadonlySet<WindowId>,
+) {
+  const windowIds: WindowId[] = []
+
+  for (const window of Object.values(layout.windowsById)) {
+    if (excludedWindowIds.has(window.id)) continue
+    if (existingWindowIds.has(window.id)) continue
+    if (window.surfaceIds.length === 0) continue
+
+    windowIds.push(window.id)
+  }
+
+  return windowIds
+}
+
+function compactNodeWithoutWindows(
+  layout: WorkspaceLayout,
+  nodeId: LayoutNodeId,
+  excludedWindowIds: ReadonlySet<WindowId>,
+  seenNodeIds: Set<LayoutNodeId>,
+): RecipeTree | null {
+  if (seenNodeIds.has(nodeId)) return null
+
+  const node = layout.nodesById[nodeId]
+  if (!node) return null
+  if (node.kind === 'window') return compactWindowNode(node, excludedWindowIds)
+
+  return compactSplitNode(layout, node, excludedWindowIds, new Set(seenNodeIds).add(nodeId))
+}
+
+function compactWindowNode(
+  node: Extract<LayoutNode, { readonly kind: 'window' }>,
+  excludedWindowIds: ReadonlySet<WindowId>,
+) {
+  if (excludedWindowIds.has(node.windowId)) return null
 
   return {
-    ...layout,
+    nodeId: node.id,
     nodesById: {
-      ...contentTree.nodesById,
-      [bottomNodeId]: bottomNode,
-      [rootNode.id]: rootNode,
+      [node.id]: node,
     },
-    rootNodeId: rootNode.id,
+  } satisfies RecipeTree
+}
+
+function compactSplitNode(
+  layout: WorkspaceLayout,
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  excludedWindowIds: ReadonlySet<WindowId>,
+  seenNodeIds: Set<LayoutNodeId>,
+) {
+  const children = compactSplitChildren(layout, node, excludedWindowIds, seenNodeIds)
+  if (children.length === 0) return null
+  if (children.length === 1) return children[0]?.tree ?? null
+
+  return splitTree({
+    axis: node.axis,
+    id: node.id,
+    sizes: repairSplitSizes(
+      children.map((child) => child.size),
+      children.length,
+    ),
+    trees: children.map((child) => child.tree),
+  })
+}
+
+function compactSplitChildren(
+  layout: WorkspaceLayout,
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  excludedWindowIds: ReadonlySet<WindowId>,
+  seenNodeIds: Set<LayoutNodeId>,
+) {
+  const sizes = repairSplitSizes(node.sizes, node.childIds.length)
+  const children: { readonly size: number; readonly tree: RecipeTree }[] = []
+
+  for (const [index, childId] of node.childIds.entries()) {
+    const tree = compactNodeWithoutWindows(layout, childId, excludedWindowIds, seenNodeIds)
+    if (!tree) continue
+
+    children.push({ size: sizes[index] ?? 0, tree })
+  }
+
+  return children
+}
+
+function recipeContentTree(
+  layout: WorkspaceLayout,
+  leftTree: RecipeTree | null,
+  mainTree: RecipeTree | null,
+  allocator: RecipeNodeAllocator,
+) {
+  if (!leftTree) return mainTree
+  if (!mainTree) return leftTree
+
+  return splitTree({
+    axis: 'horizontal',
+    id: allocator.nodeId('recipe:content'),
+    sizes: recipeContentSplitSizes(layout),
+    trees: [leftTree, mainTree],
+  })
+}
+
+function recipeContentSplitSizes(layout: WorkspaceLayout) {
+  const firstToolWindowId = managedLeftToolWindowIds(layout)[0]
+  const existingLeftNodeId = firstToolWindowId
+    ? findNodeIdForWindow(layout, firstToolWindowId)
+    : null
+  const parentNodeId = existingLeftNodeId ? findParentNodeId(layout, existingLeftNodeId) : null
+  const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
+  if (parentNode?.kind !== 'split') return [0.24, 0.76]
+  if (parentNode.axis !== 'horizontal') return [0.24, 0.76]
+
+  return repairSplitSizes(parentNode.sizes, 2)
+}
+
+function recipeRootTree(
+  layout: WorkspaceLayout,
+  contentTree: RecipeTree | null,
+  bottomTree: RecipeTree | null,
+  allocator: RecipeNodeAllocator,
+) {
+  if (!contentTree) return bottomTree
+  if (!bottomTree) return contentTree
+
+  return splitTree({
+    axis: 'vertical',
+    id: allocator.nodeId('recipe:root'),
+    sizes: recipeRootSplitSizes(layout),
+    trees: [contentTree, bottomTree],
+  })
+}
+
+function recipeRootSplitSizes(layout: WorkspaceLayout) {
+  const bottomNodeId = findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+  const parentNodeId = bottomNodeId ? findParentNodeId(layout, bottomNodeId) : null
+  const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
+  if (parentNode?.kind !== 'split') return [0.74, 0.26]
+  if (parentNode.axis !== 'vertical') return [0.74, 0.26]
+
+  return repairSplitSizes(parentNode.sizes, 2)
+}
+
+function splitTree({
+  axis,
+  id,
+  sizes,
+  trees,
+}: {
+  readonly axis: LayoutSplitNode['axis']
+  readonly id: LayoutNodeId
+  readonly sizes: readonly number[]
+  readonly trees: readonly RecipeTree[]
+}): RecipeTree {
+  const node = createSplitNode({
+    axis,
+    childIds: trees.map((tree) => tree.nodeId),
+    id,
+    sizes,
+  })
+  const nodesById = mergedRecipeNodes(trees)
+
+  return {
+    nodeId: node.id,
+    nodesById: {
+      ...nodesById,
+      [node.id]: node,
+    },
   }
 }
 
-function mergeToolPaneGridNodes(
-  trees: readonly {
-    readonly nodeId: LayoutNodeId
-    readonly nodesById: Record<string, LayoutNode>
-  }[],
-  node: LayoutNode,
-) {
+function mergedRecipeNodes(trees: readonly RecipeTree[]) {
   const nodesById: Record<string, LayoutNode> = {}
 
   for (const tree of trees) {
     Object.assign(nodesById, tree.nodesById)
   }
 
-  nodesById[node.id] = node
-
   return nodesById
-}
-
-function isToolPaneGridTree(
-  value: { readonly nodeId: LayoutNodeId; readonly nodesById: Record<string, LayoutNode> } | null,
-): value is { readonly nodeId: LayoutNodeId; readonly nodesById: Record<string, LayoutNode> } {
-  return Boolean(value)
-}
-
-function appendUniqueWindowIds(
-  windowIds: readonly WindowId[],
-  additionalWindowIds: readonly WindowId[],
-) {
-  const seen = new Set(windowIds)
-  const nextWindowIds = windowIds.slice()
-
-  for (const windowId of additionalWindowIds) {
-    if (seen.has(windowId)) continue
-
-    seen.add(windowId)
-    nextWindowIds.push(windowId)
-  }
-
-  return nextWindowIds
 }
 
 function balancedSplitSizes(count: number) {
@@ -1149,7 +1414,7 @@ function destinationForMainViewSlot(layout: WorkspaceLayout): DropDestination | 
   const mainWindowId = visibleWindowIdForRecipeSlot(layout, 'editor-center')
   if (mainWindowId) return { kind: 'window-center', windowId: mainWindowId }
 
-  const toolWindowIds = visibleWindowIdsForRecipeSlots(layout, ['primary-side', 'secondary-side'])
+  const toolWindowIds = visibleWindowIdsForRecipeSlots(layout, ['left-tool-pane'])
   if (toolWindowIds.length > 0) return rootOrActiveDestination(layout, 'right')
 
   return mainViewFallbackDestination(layout)
@@ -1157,23 +1422,12 @@ function destinationForMainViewSlot(layout: WorkspaceLayout): DropDestination | 
 
 function destinationForToolPaneSlot(
   layout: WorkspaceLayout,
-  slot: Extract<WorkspaceRecipeSlot, 'primary-side' | 'secondary-side'>,
+  slot: Extract<WorkspaceRecipeSlot, 'left-tool-pane'>,
 ): DropDestination | null {
   const sameSlotWindowIds = visibleWindowIdsForRecipeSlots(layout, [slot])
   if (sameSlotWindowIds.length > 0) return toolPaneSameSlotDestination(sameSlotWindowIds)
 
-  const toolWindowIds = visibleWindowIdsForRecipeSlots(layout, ['primary-side', 'secondary-side'])
-  if (toolWindowIds.length === 0) return rootOrActiveDestination(layout, 'left')
-  if (slot === 'primary-side') return toolPanePrimaryFallbackDestination(toolWindowIds)
-
-  const targetWindowId = targetToolWindowId(toolWindowIds)
-  if (!targetWindowId) return rootOrActiveDestination(layout, 'left')
-
-  return {
-    edge: toolPaneInsertEdge(layout, toolWindowIds),
-    kind: 'window-edge',
-    windowId: targetWindowId,
-  }
+  return rootOrActiveDestination(layout, 'left')
 }
 
 function toolPaneSameSlotDestination(windowIds: readonly WindowId[]): DropDestination | null {
@@ -1183,24 +1437,12 @@ function toolPaneSameSlotDestination(windowIds: readonly WindowId[]): DropDestin
   return { edge: 'bottom', kind: 'window-edge', windowId: targetWindowId }
 }
 
-function toolPanePrimaryFallbackDestination(windowIds: readonly WindowId[]): DropDestination {
-  return { edge: 'left', kind: 'window-edge', windowId: windowIds[0] }
-}
-
 function targetToolWindowId(toolWindowIds: readonly WindowId[]) {
   return toolWindowIds[toolWindowIds.length - 1]
 }
 
-function toolPaneInsertEdge(layout: WorkspaceLayout, toolWindowIds: readonly WindowId[]): DropEdge {
-  const mainWindowId = visibleWindowIdForRecipeSlot(layout, 'editor-center')
-  if (mainWindowId) return 'bottom'
-  if (toolWindowIds.length === 1) return 'right'
-
-  return 'bottom'
-}
-
 function isToolPaneRecipeSlot(slot: WorkspaceRecipeSlot) {
-  return slot === 'primary-side' || slot === 'secondary-side'
+  return slot === 'left-tool-pane'
 }
 
 function rootOrActiveDestination(layout: WorkspaceLayout, edge: DropEdge): DropDestination | null {
@@ -1212,10 +1454,19 @@ function rootOrActiveDestination(layout: WorkspaceLayout, edge: DropEdge): DropD
 function mainViewFallbackDestination(layout: WorkspaceLayout): DropDestination | null {
   const activeDestination = activeWindowDestination(layout)
   if (activeDestination?.kind !== 'window-center') return activeDestination
+  if (activeWindowContainsRecipeSlot(layout, 'bottom'))
+    return rootOrActiveDestination(layout, 'top')
   if (activeDestination.windowId !== CLASSIC_DIAGNOSTICS_WINDOW_ID) return activeDestination
   if (layout.rootNodeId) return { edge: 'top', kind: 'root-edge' }
 
   return null
+}
+
+function activeWindowContainsRecipeSlot(layout: WorkspaceLayout, slot: WorkspaceRecipeSlot) {
+  const activeWindowId = layout.activeWindowId
+  if (!activeWindowId) return false
+
+  return windowContainsRecipeSlot(layout, layout.windowsById[activeWindowId], slot)
 }
 
 function activeWindowDestination(

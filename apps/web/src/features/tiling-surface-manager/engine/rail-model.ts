@@ -27,6 +27,7 @@ const DEFAULT_TERMINAL_SURFACE_ID = terminalSurfaceId('terminal-1')
 export type WorkbenchRailSurfaceState =
   | 'active'
   | 'background'
+  | 'collapsed'
   | 'pinned'
   | 'running'
   | 'singleton'
@@ -137,6 +138,10 @@ function currentRailSurfaceState(
   }
 
   if (findWindowIdContainingSurface(layout, item.surface.id)) {
+    const windowId = findWindowIdContainingSurface(layout, item.surface.id)
+    const window = windowId ? layout.windowsById[windowId] : null
+    if (window?.mode === 'collapsed') return 'collapsed'
+
     return item.surface.id === layout.activeSurfaceId ? 'active' : 'visible'
   }
   if (item.surface.id === layout.activeSurfaceId) return 'active'
@@ -186,19 +191,26 @@ export function railItemOperation(
   }
 
   const windowId = railSurfaceWindowId(layout, item.surface.id)
-  if (windowId && item.surface.capabilities.canCollapse) {
+  const window = windowId ? layout.windowsById[windowId] : null
+  if (windowId && window?.mode === 'collapsed') {
     return {
-      destination: { kind: 'background' },
-      surfaceId: item.surface.id,
-      type: 'moveSurface',
+      type: 'expandWindow',
+      windowId,
     }
   }
 
   if (windowId) {
+    if (item.state === 'active' && item.surface.capabilities.canCollapse) {
+      return {
+        type: 'collapseWindow',
+        windowId,
+      }
+    }
+
     return {
       surfaceId: item.surface.id,
-      targetWindowId: windowId,
-      type: 'tabSurface',
+      type: 'activateSurface',
+      windowId,
     }
   }
 

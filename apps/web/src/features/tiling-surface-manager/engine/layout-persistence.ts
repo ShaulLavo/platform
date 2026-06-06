@@ -128,9 +128,8 @@ const KNOWN_SURFACE_TYPES = new Set<SurfaceType>([
 const KNOWN_RECIPE_SLOTS = new Set<WorkspaceRecipeSlot>([
   'bottom',
   'editor-center',
-  'primary-side',
+  'left-tool-pane',
   'rail',
-  'secondary-side',
   'transient-preview',
 ])
 const KNOWN_PLACEMENT_KINDS = new Set<SurfacePlacementKind>([

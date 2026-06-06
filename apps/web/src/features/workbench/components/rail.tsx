@@ -76,11 +76,12 @@ function dispatchRailItemOperation(
 
 function railItemLabel(item: WorkbenchRailSurfaceItem) {
   if (item.state === 'background') return `Restore ${item.surface.title}`
+  if (item.state === 'collapsed') return `Expand ${item.surface.title}`
   if (item.surface.id === DEFAULT_TERMINAL_SURFACE_ID && paneIsVisible(item)) {
     return 'Hide bottom tool pane'
   }
   if (paneIsVisible(item) && item.surface.capabilities.canCollapse) {
-    return `Send ${item.surface.title} to background`
+    return `Collapse ${item.surface.title}`
   }
   if (item.state === 'active') return `${item.surface.title} active`
   if (item.state === 'visible') return `Focus ${item.surface.title}`

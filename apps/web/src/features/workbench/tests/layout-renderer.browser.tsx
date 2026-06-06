@@ -128,22 +128,23 @@ describe('LayoutRenderer browser rendering', () => {
     buttonWithLabel('Restore Chat').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Send Chat to background').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Collapse Chat').dataset.railState).toBe('active')
     })
 
     buttonWithLabel('Restore Logs').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Send Logs to background').dataset.railState).toBe('active')
-      expect(buttonWithLabel('Send Chat to background').dataset.railState).toBe('visible')
+      expect(buttonWithLabel('Collapse Logs').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Collapse Chat').dataset.railState).toBe('visible')
       expect(windowRegions()).toHaveLength(5)
     })
 
-    buttonWithLabel('Send Chat to background').click()
+    buttonWithLabel('Collapse Chat').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Restore Chat').dataset.railState).toBe('background')
-      expect(windowRegions()).toHaveLength(4)
+      expect(buttonWithLabel('Collapse Chat').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Collapse Logs').dataset.railState).toBe('visible')
+      expect(windowRegions()).toHaveLength(5)
     })
   })
 

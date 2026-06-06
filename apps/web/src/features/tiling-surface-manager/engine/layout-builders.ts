@@ -238,14 +238,14 @@ export function createSearchResultsSurface(): Surface {
     capabilities: surfaceCapabilities({
       canSplit: false,
       canUnmountWhenNotExpanded: true,
-      defaultRecipeSlot: 'primary-side',
+      defaultRecipeSlot: 'left-tool-pane',
       supportsPreview: true,
     }),
     cardinality: 'singleton',
     closePolicy: { type: 'close' },
     id: searchResultsSurfaceId(),
     lifecycle: 'durable',
-    placement: { kind: 'recipe-slot', slot: 'primary-side' },
+    placement: { kind: 'recipe-slot', slot: 'left-tool-pane' },
     rendererLifecycle: 'unmount-when-not-expanded',
     resourceKey: 'workspace-search',
     stateKey: 'workspace-search',
@@ -314,7 +314,7 @@ export function createTerminalSurface({
 export function createFileNavigatorSurface(): Surface {
   return createSingletonSurface({
     id: fileNavigatorSurfaceId(),
-    slot: 'primary-side',
+    slot: 'left-tool-pane',
     title: 'Files',
     type: 'file-navigator',
   })
@@ -323,7 +323,7 @@ export function createFileNavigatorSurface(): Surface {
 export function createGitChangesSurface(): Surface {
   return createSingletonSurface({
     id: gitChangesSurfaceId(),
-    slot: 'secondary-side',
+    slot: 'left-tool-pane',
     title: 'Git Changes',
     type: 'git-changes',
   })
@@ -332,7 +332,7 @@ export function createGitChangesSurface(): Surface {
 export function createLogsSurface(): Surface {
   return createSingletonSurface({
     id: logsSurfaceId(),
-    slot: 'secondary-side',
+    slot: 'left-tool-pane',
     title: 'Logs',
     type: 'logs',
   })
@@ -341,7 +341,7 @@ export function createLogsSurface(): Surface {
 export function createChatSurface(): Surface {
   return createSingletonSurface({
     id: chatSurfaceId(),
-    slot: 'secondary-side',
+    slot: 'left-tool-pane',
     title: 'Chat',
     type: 'chat',
   })
@@ -449,15 +449,15 @@ export function classicWorkspaceRecipe(): WorkspaceRecipe {
     resetRootNodeId: CLASSIC_ROOT_NODE_ID,
     surfaceSlots: {
       diagnostics: 'bottom',
-      chat: 'secondary-side',
+      chat: 'left-tool-pane',
       diff: 'editor-center',
       'file-editor': 'editor-center',
-      'file-navigator': 'primary-side',
-      'git-changes': 'secondary-side',
-      logs: 'secondary-side',
+      'file-navigator': 'left-tool-pane',
+      'git-changes': 'left-tool-pane',
+      logs: 'left-tool-pane',
       placeholder: 'editor-center',
       'search-preview': 'transient-preview',
-      'search-results': 'primary-side',
+      'search-results': 'left-tool-pane',
       terminal: 'bottom',
     },
     title: 'Classic',

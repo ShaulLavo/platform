@@ -1,10 +1,56 @@
 # Tiling Surface Manager Implementation Plan
 
 Date: 2026-06-05
+Last audited: 2026-06-06
 
-Status: draft implementation plan. This plan is grounded in `prd.md`,
-`technical-design.md`, `research-findings.md`, and the current app ownership
-points called out in the technical design.
+Status: implementation in progress. Phases 1-7 have been re-audited against the
+updated plan and current code. The production workbench now uses the
+Platform-owned `WorkspaceLayout` model for file/diff surfaces and the custom
+renderer. Remaining old editor-pane state is limited to migration/derived
+compatibility paths called out below, not production rendering ownership.
+
+This plan is grounded in `prd.md`, `technical-design.md`, `research-findings.md`,
+and the current app ownership points called out in the technical design.
+
+## Current State Snapshot - 2026-06-06
+
+Completed and verified for phases 1-7:
+
+- Core normalized layout model exists under
+  `apps/web/src/features/tiling-surface-manager/utils/`.
+- Collapse is window presentation state through `collapseWindow` and
+  `expandWindow`; background surfaces use `rail.backgroundSurfaceIds`.
+- The old `minimizeSurface` operation and `rail.minimizedSurfaceIds` model are
+  removed from the current durable model. Legacy `minimizedSurfaceIds` is read
+  only as migration input and converted to `backgroundSurfaceIds`.
+- Surface registry covers V1 file editor, diff, search results, search preview,
+  terminal, file navigator, git changes, diagnostics/problems, chat, logs, and
+  placeholders.
+- Drop destinations include `window-center`, `window-edge`, `parent-edge`,
+  `root-edge`, `recipe-slot`, and `background`.
+- Persistence writes `WorkspaceLayout`; old `editorPaneLayout` is accepted only
+  as optional migration input and is no longer written to cache payloads.
+- Production file/diff rendering runs through workbench surfaces and the custom
+  renderer. `WorkspaceView` no longer uses Dockview.
+- `dockview-react`, the Dockview spike entry, and obsolete editor-pane renderer
+  components have been removed.
+- Dirty close and keymap command dispatch read editor tab state from
+  `WorkspaceLayout` surface records instead of `workspace.editorPaneLayout`.
+- Renderer coverage includes split layouts, Chrome tab presentation, collapse
+  and expand, background hosts, lifecycle mount policy, search preview, and
+  browser smoke coverage.
+
+Migration-scoped compatibility that still intentionally exists:
+
+- `editor-pane-state.ts` remains as a pure compatibility/conversion model for
+  cache migration, editor command tab IDs, and tests until equivalent
+  surface-native tests fully replace it.
+- `editorPaneLayoutForWorkspaceLayout` and
+  `workspaceLayoutForEditorPaneLayout` remain as bridge helpers for restore and
+  legacy cache/test paths.
+- `EditorWorkspaceStore` still exposes derived `editorPaneLayout`,
+  `openFilePaths`, and `selectedFilePath` for older editor/document consumers,
+  but `workspaceLayout` is the runtime layout source of truth.
 
 ## Implementation Direction
 
@@ -86,8 +132,10 @@ This plan should be read as the execution path for `technical-design.md`.
 - React components render state and dispatch operations; they do not own durable
   layout logic.
 - Zustand state is normalized and selector-driven.
-- Collapse/minimize is presentation state. It collapses a visible window in
-  place into an accordion header and is independent from runtime lifecycle.
+- Collapse is presentation state. It collapses a visible window in place into an
+  accordion header and is independent from runtime lifecycle.
+- Backgrounding removes a surface from visible windows and keeps it addressable
+  through rail state when policy allows it.
 - Close removes the represented surface/window from visible layout. Registry
   close policy independently decides whether state or sessions are disposed,
   suspended, kept in the background, or protected by confirmation.
@@ -99,13 +147,17 @@ This plan should be read as the execution path for `technical-design.md`.
   the same phase. No long-term compatibility shims, aliases, or duplicate layout
   truth.
 
-## Proposed Module Shape
+## Current Module Shape
 
-Create the new implementation under:
+The pure surface-manager implementation currently lives under:
 
-`apps/web/src/features/workbench/tiling-surface-manager/`
+`apps/web/src/features/tiling-surface-manager/`
 
-Initial pure modules:
+Workbench React integration and production surface renderers live under:
+
+`apps/web/src/features/workbench/`
+
+Pure modules:
 
 - `layout-types.ts`
 - `layout-ids.ts`
@@ -124,19 +176,22 @@ Initial pure modules:
 - `surface-state.ts`
 - `surface-commands.ts`
 
-Initial React modules:
+React modules:
 
-- `workbench-layout-provider.tsx`
-- `workbench-layout-renderer.tsx`
-- `workbench-split-node.tsx`
-- `workbench-window-frame.tsx`
-- `workbench-tab-strip.tsx`
-- `workbench-surface-host.tsx`
-- `workbench-rail.tsx`
-- `workbench-drop-overlay.tsx`
-- `workbench-resize-overlay.tsx`
-- `window-management-settings.tsx`
-- `layout-command-editor.tsx`
+- `layout-renderer.tsx`
+- `split-node.tsx`
+- `window-frame.tsx`
+- `tab-strip.tsx`
+- `surface-host.tsx`
+- `rail.tsx`
+- `drop-overlay.tsx`
+- `resize-overlay.tsx`
+- `hidden-surface-hosts.tsx`
+- surface renderers such as `file-editor-surface.tsx`,
+  `diff-editor-surface.tsx`, `search-results-surface.tsx`,
+  `search-preview-surface.tsx`, `terminal-surface.tsx`,
+  `file-navigator-surface.tsx`, `git-changes-surface.tsx`, and
+  `diagnostics-surface.tsx`.
 
 Keep each exported React component in its own file. Keep hooks in their own
 files. Keep pure helpers out of component and hook files.
@@ -169,6 +224,12 @@ Exit criteria:
 - No production code changes yet.
 
 ## Phase 1 - Core Types, IDs, Builders, And Invariants
+
+Status: completed and re-audited 2026-06-06. The durable model supports
+collapsed windows, background surfaces, active/MRU state, rail state, recipes,
+policies, custom commands, hotkey presets, overlays, and transient preview owner
+fields. The current model uses `backgroundSurfaceIds`; old minimized rail state
+is migration input only.
 
 Goal: land the durable normalized model without wiring it to React.
 
@@ -212,9 +273,14 @@ Tests:
 Exit criteria:
 
 - New core model compiles and is covered by pure unit tests.
-- Existing app still runs on old layout state.
+- Existing app has moved beyond the original "old layout state" staging point:
+  `WorkspaceLayout` is now the production runtime source for workbench layout.
 
 ## Phase 2 - Surface Registry Contract
+
+Status: completed and re-audited 2026-06-06. The registry covers V1 surfaces,
+including search preview, and exposes the current capability names:
+`canCollapse`, `canUnmountWhenNotExpanded`, and `closeRuntimePolicy`.
 
 Goal: replace the early `WorkbenchPanel` vocabulary with the real surface
 contract.
@@ -270,10 +336,15 @@ Exit criteria:
 
 - New registry covers everything currently represented by `WorkbenchPanel`, plus
   file navigator, git changes, and diagnostics.
-- Do not delete old `workbench-registry.ts` yet; it is deleted at renderer
-  cutover.
+- Old registry/rendering ownership has been superseded by workbench surface
+  renderers and the surface-manager registry.
 
 ## Phase 3 - Pure Layout Operations And Normalization
+
+Status: completed and re-audited 2026-06-06. Operations are pure TypeScript,
+normalize before commit, support `background` and `recipe-slot` destinations,
+and no longer expose a core `minimizeSurface` operation. Collapse/expand are
+window mode operations.
 
 Goal: implement the risky tree mechanics outside React.
 
@@ -348,6 +419,10 @@ Exit criteria:
 
 ## Phase 4 - Selectors, Geometry, Policies, And Store
 
+Status: completed and re-audited 2026-06-06. Selectors, geometry, policies,
+command catalog/presets/cycling, and store dispatch are implemented. Renderer
+components now use narrower subscriptions for layout slices where practical.
+
 Goal: make the model usable by a renderer and command layer.
 
 Work:
@@ -400,9 +475,15 @@ Tests:
 Exit criteria:
 
 - New layout store can be created from an empty root and can run pure operations.
-- Store is not yet production source of truth.
+- Store is now production source of truth for workbench layout. Derived
+  `editorPaneLayout` remains only as compatibility state for older editor/cache
+  paths.
 
 ## Phase 5 - Persistence And Restore V1
+
+Status: completed and re-audited 2026-06-06. Workspace cache writes serialized
+`WorkspaceLayout` and no longer writes `editorPaneLayout`. Restore accepts old
+`editorPaneLayout` and old `minimizedSurfaceIds` only as migration input.
 
 Goal: define the new serialized layout before production wiring.
 
@@ -454,13 +535,17 @@ Tests:
 Exit criteria:
 
 - New persistence has tests before old cache is touched.
+- Old cache ownership has been touched and narrowed: `editorPaneLayout` is
+  optional read-only migration input, while `WorkspaceLayout` is the persisted
+  layout payload.
 
 ## Phase 6 - Custom Renderer Skeleton
 
-Status: started 2026-06-05. Initial skeleton covers fixture surface
-renderers, absolute window rendering from derived geometry, shared overlay
-layers, Chrome-style tab presentation, rail entries, surface host lifecycle
-mount rules, and smoke/browser coverage.
+Status: completed and re-audited 2026-06-06. The custom renderer is the
+production workbench renderer for current surfaces. It covers split rendering,
+Chrome-style tabs, frames, collapse/expand controls, accordion collapsed
+windows, maximized windows, overlays, background hosts, and lifecycle
+mount/unmount policy.
 
 Goal: render the new model with no heavy surface migration yet.
 
@@ -491,15 +576,16 @@ Tests:
 Exit criteria:
 
 - Renderer can display fixture surfaces from the new store.
-- No production cutover yet.
+- Production cutover has happened for file/diff and current V1 workbench
+  surfaces.
 
 ## Phase 7 - File And Diff Surface Cutover
 
-Status: completed 2026-06-05. Runtime file/diff layout is now owned by
-`WorkspaceLayout`; editor-pane selection data is derived from surfaces for editor
-documents, dirty close, and cache persistence until the old owner is deleted. The
-custom renderer owns file, diff, and empty-editor surfaces, and production
-`WorkspaceView` no longer uses `WorkbenchDockview`.
+Status: completed and re-audited 2026-06-06. Runtime file/diff layout is owned
+by `WorkspaceLayout`; file, diff, empty-editor, and search-preview rendering is
+hosted by workbench surfaces. Dirty close and keymap dispatch now read editor tab
+records from `WorkspaceLayout` surfaces. Cache persistence writes
+`WorkspaceLayout` only. Production `WorkspaceView` no longer uses Dockview.
 
 Goal: replace editor-pane layout and Dockview for file/diff editor workflows.
 
@@ -527,7 +613,8 @@ Keep temporarily only if still imported by tests or not-yet-rehosted code:
 
 - Pure ideas from `editor-pane-state.ts` tests until equivalent surface-manager
   tests fully replace them.
-- Dockview spike files until the final cleanup phase.
+- The Dockview spike has been removed. `editor-pane-state.ts` remains only as a
+  pure compatibility/conversion model for migration and tests.
 
 Tests:
 
@@ -540,7 +627,9 @@ Tests:
 
 Exit criteria:
 
-- File and diff editing no longer depend on Dockview or `EditorPaneLayout`.
+- File and diff editing no longer depend on Dockview. Runtime layout ownership is
+  `WorkspaceLayout`; `EditorPaneLayout` remains only as migration/derived
+  compatibility state.
 
 ## Phase 8 - Rail And Classic Singleton Surfaces
 
@@ -1147,25 +1236,43 @@ The phases are intentionally larger than individual PRs. Suggested merge slices:
 
 ## Verification Commands
 
-Run focused tests during core work:
+Last verified: 2026-06-06.
+
+Focused phase 1-7 regression gates:
 
 ```sh
-bun --cwd apps/web test src/features/workbench/tiling-surface-manager
+bun --bun vitest run --project node --project dom src/features/tiling-surface-manager/tests src/features/workbench/tests
+bun --bun vitest run --project node src/lib/tests/workspace-cache.test.ts src/features/editor/tests/editor-state.test.ts src/hooks/tests/use-workspace-cache-persistence.test.ts
+bun --bun vitest run --project node src/components/workspace/editor-tabs/tests src/components/workspace/file-tree/tests
+bun run test:browser -- src/features/workbench/tests/layout-renderer.browser.tsx
 ```
 
-Run broader checks before production cutovers:
+Full app gates:
 
 ```sh
-bun --cwd apps/web test
-bun --cwd apps/web typecheck
-bun --cwd apps/web lint
+bun run typecheck
+bun run lint
+bun --bun vitest run --project node --project dom
+git diff --check
 ```
 
-Run browser verification after renderer phases:
+Audit scans:
 
 ```sh
-bun --cwd apps/web test:browser
+rg -n "components/workspace/editor-panes|components/workspace/file-tree/components/file-viewer|FileViewer|EditorPaneTabBody|EditorTabBar|EditorTabList|TabCloseButton|workbench-spike|dockview|Dockview|canMinimize|minimizeSurface|minimizedSurfaceIds" apps/web/src apps/web/package.json apps/web/*.html package.json bun.lock -g '*'
 ```
+
+Expected remaining scan hits:
+
+- `layout-normalize.ts` and `layout-persistence.ts` may mention
+  `minimizedSurfaceIds` only while reading old persisted layouts and migrating
+  them to `backgroundSurfaceIds`.
+- Chrome tab component names such as `ChromeEditorTabList` and
+  `ChromeTabCloseButton` are current shared presentation components, not legacy
+  editor-pane ownership.
+- The browser runner may print Vite's post-success `The build was canceled`
+  message after passing all tests; the command is considered passing when it
+  exits with code 0.
 
 ## V1 Definition Of Done
 

@@ -101,7 +101,7 @@ describe('tiling surface registry', () => {
     expect(canSplitSurface(defaultSurfaceRegistry, search)).toBe(false)
     expect(canUnmountSurfaceWhenNotExpanded(defaultSurfaceRegistry, search)).toBe(true)
     expect(canUnmountSurfaceWhenNotExpanded(defaultSurfaceRegistry, terminal)).toBe(false)
-    expect(defaultSurfaceRecipeSlot(defaultSurfaceRegistry, search)).toBe('primary-side')
+    expect(defaultSurfaceRecipeSlot(defaultSurfaceRegistry, search)).toBe('left-tool-pane')
     expect(validSurfacePlacements(defaultSurfaceRegistry, file)).toContain('window-edge')
   })
 

@@ -65,8 +65,8 @@ export const workspaceCommandSpecs = [
   ),
   workspaceCommand(
     'workspace.toggleSidebarVisibility',
-    'Toggle sidebar visibility',
-    'Show or hide the workspace sidebar.',
+    'Toggle Files pane',
+    'Open, collapse, expand, or focus the Files pane.',
     ['workbench.action.toggleSidebarVisibility'],
   ),
   workspaceCommand(

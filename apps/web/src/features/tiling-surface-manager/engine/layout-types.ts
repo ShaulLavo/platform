@@ -44,9 +44,8 @@ export type SurfaceClosePolicy =
 export type WorkspaceRecipeSlot =
   | 'bottom'
   | 'editor-center'
-  | 'primary-side'
+  | 'left-tool-pane'
   | 'rail'
-  | 'secondary-side'
   | 'transient-preview'
 
 export type SurfacePlacementKind =

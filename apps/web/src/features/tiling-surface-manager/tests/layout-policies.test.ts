@@ -31,13 +31,13 @@ describe('tiling surface layout policies', () => {
   it('maps classic surface types to recipe slots', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const entries: readonly [Surface, WorkspaceRecipeSlot][] = [
-      [createFileNavigatorSurface(), 'primary-side'],
+      [createFileNavigatorSurface(), 'left-tool-pane'],
       [createFileEditorSurface({ path: '/repo/src/app.ts' }), 'editor-center'],
       [createDiffSurface({ diffDocumentId: 'diff:/repo/src/app.ts' }), 'editor-center'],
-      [createSearchResultsSurface(), 'primary-side'],
+      [createSearchResultsSurface(), 'left-tool-pane'],
       [createTerminalSurface({ sessionId: 'terminal-1' }), 'bottom'],
-      [createGitChangesSurface(), 'secondary-side'],
-      [createLogsSurface(), 'secondary-side'],
+      [createGitChangesSurface(), 'left-tool-pane'],
+      [createLogsSurface(), 'left-tool-pane'],
       [createDiagnosticsSurface(), 'bottom'],
     ]
 
