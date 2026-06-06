@@ -5,7 +5,6 @@ import type {
 } from '@workspace/tree/utils/model/publicTypes'
 import { FileTree } from '@workspace/tree/components/FileTree'
 import { useFileTree } from '@workspace/tree/hooks/useFileTree'
-import { useFileTreeSelection } from '@workspace/tree/hooks/useFileTreeSelection'
 import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
 import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
@@ -27,7 +26,6 @@ import { renamePath } from '@/lib/file-server'
 import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
-import { log } from '@/lib/client-logging'
 import {
   type DirectoryLoadOptions,
   moveTreeModelPaths,
@@ -43,6 +41,7 @@ import {
   memo,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type ReactNode,
 } from 'react'
@@ -103,7 +102,6 @@ function ReadyTreePane({
   const setFocusArea = useFocus((store) => store.setFocusArea)
   const queryClient = useQueryClient()
   const expandedDirectoryPathsRef = useRef<ReadonlySet<string> | undefined>(undefined)
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const modelRef = useRef(model)
   const movePendingRef = useRef(false)
   const pathsRef = useRef(model.paths)
@@ -153,6 +151,9 @@ function ReadyTreePane({
   const initialSelectedPaths = selectedFilePath
     ? [treePathForSelectedPath(rootPath, selectedFilePath)]
     : undefined
+  const [selectedTreePaths, setSelectedTreePaths] = useState<readonly string[]>(
+    () => initialSelectedPaths ?? [],
+  )
   const { model: tree } = useFileTree({
     density: 'compact',
     flattenEmptyDirectories: true,
@@ -174,10 +175,10 @@ function ReadyTreePane({
         reportError(toClientError({ code: 'INVALID_PATH', error }))
       },
     },
+    onSelectionChange: setSelectedTreePaths,
     renderRowDecoration: (context) => treeRowDecoration(modelRef.current, context),
     unsafeCSS: treeUnsafeCss,
   })
-  const selectedTreePaths = useFileTreeSelection(tree)
 
   useFileTreeIntentPrefetch({
     model,
@@ -214,8 +215,6 @@ function ReadyTreePane({
       state: selectionSyncRef.current,
       tree,
     })
-    const previousPathCount = pathsRef.current.length
-    const selectedPathsBefore = tree.getSelectedPaths()
     pathsRef.current = syncTreePaneState({
       loadExpandedDirectoriesForCurrentModel,
       model,
@@ -225,38 +224,9 @@ function ReadyTreePane({
       selectedFilePath,
       tree,
     })
-    const selectedPathsAfter = tree.getSelectedPaths()
     updateSelectionSyncState(selectionSyncRef.current, selectionSync, rootPath, selectedFilePath)
-    logTreeSync({
-      model,
-      previousPathCount,
-      rootPath,
-      selectedFilePath,
-      selectedPathsAfter,
-      selectedPathsBefore,
-      selectionSync,
-    })
     publishVisibleItemCount(tree)
   }, [model, rootPath, selectedFilePath, tree])
-
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      logTreePointerEvent(event, containerRef.current, treeRef.current)
-    }
-
-    function handleClick(event: MouseEvent) {
-      logTreePointerEvent(event, containerRef.current, treeRef.current)
-      queuePostClickTreeSelectionLog(event, containerRef.current, treeRef.current)
-    }
-
-    document.addEventListener('click', handleClick, true)
-    document.addEventListener('pointerdown', handlePointerDown, true)
-
-    return () => {
-      document.removeEventListener('click', handleClick, true)
-      document.removeEventListener('pointerdown', handlePointerDown, true)
-    }
-  }, [])
 
   useEffect(() => {
     return tree.subscribe(() => {
@@ -270,7 +240,6 @@ function ReadyTreePane({
       className='h-full'
       onFocusCapture={() => setFocusArea('file-tree')}
       onPointerDownCapture={() => setFocusArea('file-tree')}
-      ref={containerRef}
     >
       <FileTree aria-label='Folder tree' className='block h-full' model={tree} style={treeStyle} />
     </div>
@@ -289,23 +258,9 @@ function openSelectedTreeFile({
   selectFile: (path: string | null) => void
 }) {
   const entry = selectedFileEntryForTreeSelection(model, selectedPaths)
-  log.info({
-    action: 'file-tree.selection.change',
-    area: 'file-tree',
-    resolvedPath: entry?.path ?? null,
-    selectedFilePath,
-    selectedCount: selectedPaths.length,
-    selectedPaths,
-  })
   if (!entry) return
   if (entry.path === selectedFilePath) return
 
-  log.info({
-    action: 'file-tree.selection.open_file',
-    area: 'file-tree',
-    path: entry.path,
-    selectedPaths,
-  })
   selectFile(entry.path)
 }
 
@@ -384,199 +339,6 @@ function updateSelectionSyncState(
 
   state.rootPath = rootPath
   state.selectedFilePath = selectedFilePath
-}
-
-function logTreeSync({
-  model,
-  previousPathCount,
-  rootPath,
-  selectedFilePath,
-  selectedPathsAfter,
-  selectedPathsBefore,
-  selectionSync,
-}: {
-  model: TreeModel
-  previousPathCount: number
-  rootPath: string
-  selectedFilePath: string | null
-  selectedPathsAfter: readonly string[]
-  selectedPathsBefore: readonly string[]
-  selectionSync: SelectionSyncPlan
-}) {
-  if (
-    !shouldLogTreeSync(
-      model,
-      previousPathCount,
-      selectedPathsBefore,
-      selectedPathsAfter,
-      selectionSync,
-    )
-  ) {
-    return
-  }
-
-  log.info({
-    action: 'file-tree.sync',
-    area: 'file-tree',
-    modelPathCount: model.paths.length,
-    previousPathCount,
-    rootPath,
-    selectedFilePath,
-    selectedPathsAfter,
-    selectedPathsBefore,
-    selectionSyncCanComplete: selectionSync.canComplete,
-    selectionSyncReason: selectionSync.reason,
-    selectionSyncRequested: selectionSync.shouldSync,
-    selectionSyncTreePath: selectionSync.treePath,
-  })
-}
-
-function logTreePointerEvent(
-  event: MouseEvent | PointerEvent,
-  container: HTMLDivElement | null,
-  tree: FileTreeModel | null,
-) {
-  if (!container) return
-  if (!pointIsInsideElement(event, container)) return
-
-  const eventItem = eventTreeItem(event)
-  const geometryItem = geometryTreeItem(event, container)
-  const item = eventItem ?? geometryItem
-  log.info({
-    action: 'file-tree.pointer',
-    area: 'file-tree',
-    button: mouseEventButton(event),
-    eventType: event.type,
-    eventItemPath: eventItem?.path ?? null,
-    eventItemType: eventItem?.type ?? null,
-    geometryItemPath: geometryItem?.path ?? null,
-    geometryItemType: geometryItem?.type ?? null,
-    itemPath: item?.path ?? null,
-    itemType: item?.type ?? null,
-    treeCanResolveItem: item?.path ? Boolean(tree?.getItem(item.path)) : null,
-    selectedPaths: tree?.getSelectedPaths() ?? [],
-    target: eventTargetSummary(event.target),
-    targetPath: eventTargetPathSummary(event, 16),
-  })
-}
-
-function queuePostClickTreeSelectionLog(
-  event: MouseEvent,
-  container: HTMLDivElement | null,
-  tree: FileTreeModel | null,
-) {
-  if (!container) return
-  if (!tree) return
-  if (!pointIsInsideElement(event, container)) return
-
-  const eventItem = eventTreeItem(event)
-  const geometryItem = geometryTreeItem(event, container)
-  const item = eventItem ?? geometryItem
-  window.setTimeout(() => {
-    log.info({
-      action: 'file-tree.pointer.after_click',
-      area: 'file-tree',
-      eventItemPath: eventItem?.path ?? null,
-      geometryItemPath: geometryItem?.path ?? null,
-      itemPath: item?.path ?? null,
-      treeCanResolveItem: item?.path ? Boolean(tree.getItem(item.path)) : null,
-      selectedPaths: tree.getSelectedPaths(),
-    })
-  }, 0)
-}
-
-function pointIsInsideElement(event: MouseEvent | PointerEvent, element: HTMLElement) {
-  const rect = element.getBoundingClientRect()
-  if (rect.width <= 0 || rect.height <= 0) return false
-  if (event.clientX < rect.left || event.clientX > rect.right) return false
-
-  return event.clientY >= rect.top && event.clientY <= rect.bottom
-}
-
-function mouseEventButton(event: MouseEvent | PointerEvent) {
-  if (typeof event.button !== 'number') return null
-
-  return event.button
-}
-
-function eventTreeItem(event: MouseEvent | PointerEvent) {
-  for (const target of event.composedPath()) {
-    const item = treeItemForEventTarget(target)
-    if (item) return item
-  }
-
-  return null
-}
-
-function geometryTreeItem(event: MouseEvent | PointerEvent, container: HTMLElement) {
-  const shadowRoot = container.querySelector('file-tree-container')?.shadowRoot
-  if (!shadowRoot) return null
-
-  const elements = Array.from(
-    shadowRoot.querySelectorAll<HTMLElement>('[data-type="item"][data-item-path]'),
-  )
-  for (const element of elements.toReversed()) {
-    if (!pointIsInsideElement(event, element)) continue
-
-    return {
-      path: element.dataset.itemPath ?? null,
-      type: element.dataset.itemType ?? null,
-    }
-  }
-
-  return null
-}
-
-function treeItemForEventTarget(target: EventTarget | null) {
-  const element = eventPathElement(target)
-  if (!element) return null
-  if (element.dataset.type !== 'item') return null
-
-  return {
-    path: element.dataset.itemPath ?? null,
-    type: element.dataset.itemType ?? null,
-  }
-}
-
-function eventTargetPathSummary(event: MouseEvent | PointerEvent, limit: number) {
-  return event.composedPath().flatMap(eventTargetSummary).slice(0, limit)
-}
-
-function eventTargetSummary(target: EventTarget | null) {
-  const element = eventPathElement(target)
-  if (!element) return []
-
-  return [
-    {
-      dataItemPath: element.dataset.itemPath ?? null,
-      dataItemType: element.dataset.itemType ?? null,
-      dataType: element.dataset.type ?? null,
-      tagName: element.tagName.toLowerCase(),
-    },
-  ]
-}
-
-function eventPathElement(target: EventTarget | null) {
-  return target instanceof HTMLElement || target instanceof SVGElement ? target : null
-}
-
-function shouldLogTreeSync(
-  model: TreeModel,
-  previousPathCount: number,
-  selectedPathsBefore: readonly string[],
-  selectedPathsAfter: readonly string[],
-  selectionSync: SelectionSyncPlan,
-) {
-  if (selectionSync.shouldSync) return true
-  if (previousPathCount !== model.paths.length) return true
-
-  return !stringArraysEqual(selectedPathsBefore, selectedPathsAfter)
-}
-
-function stringArraysEqual(left: readonly string[], right: readonly string[]) {
-  if (left.length !== right.length) return false
-
-  return left.every((value, index) => value === right[index])
 }
 
 function treeRowDecoration(model: TreeModel, context: FileTreeRowDecorationContext) {

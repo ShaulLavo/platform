@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
+import { useState } from 'react'
 
 import { FileTree } from '@workspace/tree/components/FileTree'
 import { useFileTree } from '@workspace/tree/hooks/useFileTree'
-import { useFileTreeSelection } from '@workspace/tree/hooks/useFileTreeSelection'
 
 let root: Root | null = null
 
@@ -15,18 +15,19 @@ afterEach(() => {
 })
 
 describe('FileTree React integration', () => {
-  it('renders the model and updates hook subscriptions', async () => {
+  it('renders the model and reports selection changes', async () => {
     const container = document.createElement('main')
     document.body.append(container)
     root = createRoot(container)
 
     function Harness() {
+      const [selectedPaths, setSelectedPaths] = useState<readonly string[]>(['src/a.ts'])
       const { model } = useFileTree({
         initialExpansion: 'open',
         initialSelectedPaths: ['src/a.ts'],
+        onSelectionChange: setSelectedPaths,
         paths: ['src/', 'src/a.ts', 'src/b.ts'],
       })
-      const selectedPaths = useFileTreeSelection(model)
 
       return (
         <>
