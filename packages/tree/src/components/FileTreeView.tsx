@@ -1201,6 +1201,7 @@ export function FileTreeView({
     path: string
     scrollTop: number
   } | null>(null)
+  const pointerFocusScrollPathRef = useRef<string | null>(null)
   const debugContextMenuTriggerPathRef = useRef<string | null>(null)
   const debugDisableScrollSuppressionRef = useRef(false)
 
@@ -2753,6 +2754,12 @@ export function FileTreeView({
       pendingStickyKeyboardFocusPath != null &&
       pendingStickyKeyboardFocusPath === focusedPath &&
       focusedPath != null
+    const pointerFocusScrollPath = pointerFocusScrollPathRef.current
+    const shouldSuppressPointerFocusScroll =
+      pointerFocusScrollPath != null && pointerFocusScrollPath === focusedPath
+    if (pointerFocusScrollPath != null) {
+      pointerFocusScrollPathRef.current = null
+    }
     let shouldSuppressDomFocusForScrollRequest = false
     let shouldUpdateViewportForScrollRequest = false
     if (scrollRequest != null && scrollRequest.id !== processedScrollRequestIdRef.current) {
@@ -2837,6 +2844,7 @@ export function FileTreeView({
       (shouldOwnDomFocus &&
         focusedPathChanged &&
         pendingStickyFocusPath !== focusedPath &&
+        !shouldSuppressPointerFocusScroll &&
         !shouldPreserveStickyKeyboardFocusViewport &&
         scrollFocusedRowIntoView(
           scrollElement,
@@ -3223,6 +3231,9 @@ export function FileTreeView({
         clickedElement != null &&
         clickedElement.dataset.itemParked !== 'true'
 
+      if (event.detail > 0 && mode === 'flow' && controller.getFocusedPath() !== actionTargetPath) {
+        pointerFocusScrollPathRef.current = actionTargetPath
+      }
       controller.focusMountedPathFromInput(actionTargetPath)
       if (shouldExposeFocusedTrigger) {
         domFocusOwnerRef.current = true

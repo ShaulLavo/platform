@@ -41,7 +41,6 @@ import {
   memo,
   useMemo,
   useRef,
-  useState,
   type CSSProperties,
   type ReactNode,
 } from 'react'
@@ -103,6 +102,8 @@ function ReadyTreePane({
   const queryClient = useQueryClient()
   const expandedDirectoryPathsRef = useRef<ReadonlySet<string> | undefined>(undefined)
   const modelRef = useRef(model)
+  const selectedFilePathRef = useRef(selectedFilePath)
+  const selectFileRef = useRef(selectFile)
   const movePendingRef = useRef(false)
   const pathsRef = useRef(model.paths)
   const selectionSyncRef = useRef<SelectionSyncState>({
@@ -110,6 +111,15 @@ function ReadyTreePane({
     selectedFilePath: undefined,
   })
   const treeRef = useRef<FileTreeModel | null>(null)
+  // useFileTree consumes options once; keep this callback stable and read live app state from refs.
+  const handleTreeSelectionChangeRef = useRef((selectedPaths: readonly string[]) => {
+    openSelectedTreeFile({
+      model: modelRef.current,
+      selectedFilePath: selectedFilePathRef.current,
+      selectedPaths,
+      selectFile: selectFileRef.current,
+    })
+  })
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const moveMutation = useMutation({
     mutationFn: moveDroppedTreePaths,
@@ -151,9 +161,6 @@ function ReadyTreePane({
   const initialSelectedPaths = selectedFilePath
     ? [treePathForSelectedPath(rootPath, selectedFilePath)]
     : undefined
-  const [selectedTreePaths, setSelectedTreePaths] = useState<readonly string[]>(
-    () => initialSelectedPaths ?? [],
-  )
   const { model: tree } = useFileTree({
     density: 'compact',
     flattenEmptyDirectories: true,
@@ -175,7 +182,7 @@ function ReadyTreePane({
         reportError(toClientError({ code: 'INVALID_PATH', error }))
       },
     },
-    onSelectionChange: setSelectedTreePaths,
+    onSelectionChange: handleTreeSelectionChangeRef.current,
     renderRowDecoration: (context) => treeRowDecoration(modelRef.current, context),
     unsafeCSS: treeUnsafeCss,
   })
@@ -188,25 +195,10 @@ function ReadyTreePane({
 
   useLayoutEffect(() => {
     modelRef.current = model
+    selectedFilePathRef.current = selectedFilePath
+    selectFileRef.current = selectFile
     treeRef.current = tree
-  }, [model, tree])
-
-  useEffect(() => {
-    tree.setIcons(icons)
-  }, [icons, tree])
-
-  useEffect(() => {
-    tree.setGitStatus(gitStatus)
-  }, [gitStatus, tree])
-
-  useEffect(() => {
-    openSelectedTreeFile({
-      model: modelRef.current,
-      selectedFilePath,
-      selectedPaths: selectedTreePaths,
-      selectFile,
-    })
-  }, [selectFile, selectedFilePath, selectedTreePaths])
+  }, [model, selectFile, selectedFilePath, tree])
 
   useEffect(() => {
     const selectionSync = selectionSyncPlan({

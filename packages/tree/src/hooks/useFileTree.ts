@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { FileTreeOptions } from '@workspace/tree/utils/model/publicTypes'
 import { FileTree } from '@workspace/tree/utils/render/FileTree'
@@ -15,11 +15,32 @@ export interface UseFileTreeResult {
 }
 
 // Creates the model exactly once so React callers have a stable imperative
-// runtime. Later option changes are intentionally ignored; callers must use
-// explicit model methods like resetPaths and setComposition.
+// runtime. Controller and initial options are constructor-only; supported
+// mutable visual options are synced below.
 export function useFileTree(options: FileTreeOptions): UseFileTreeResult {
   const [model] = useState(() => new FileTree(options))
   const cleanUpRef = useRef<CleanUpRef>({ timeout: null, model })
+  const iconsRef = useRef(options.icons)
+  const gitStatusRef = useRef(options.gitStatus)
+
+  useLayoutEffect(() => {
+    if (iconsRef.current === options.icons) {
+      return
+    }
+
+    iconsRef.current = options.icons
+    model.setIcons(options.icons)
+  }, [model, options.icons])
+
+  useLayoutEffect(() => {
+    if (gitStatusRef.current === options.gitStatus) {
+      return
+    }
+
+    gitStatusRef.current = options.gitStatus
+    model.setGitStatus(options.gitStatus)
+  }, [model, options.gitStatus])
+
   useEffect(() => {
     const { current } = cleanUpRef
     // NOTE(amadeus): This is designed to ensure strict mode doesn't blow away

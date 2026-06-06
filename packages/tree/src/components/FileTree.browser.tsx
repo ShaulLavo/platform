@@ -18,32 +18,7 @@ afterEach(() => {
 
 describe('FileTree browser behavior', () => {
   it('renders rows, scrolls, keeps sticky rows, handles keyboard focus, and starts rename', async () => {
-    const container = document.createElement('main')
-    container.style.height = '180px'
-    container.style.width = '360px'
-    document.body.append(container)
-    root = createRoot(container)
-    model = new FileTreeModel({
-      gitStatus: [{ path: 'src/features/a-3.ts', status: 'modified' }],
-      initialExpansion: 'open',
-      initialVisibleRowCount: 6,
-      itemHeight: 24,
-      paths: browserPaths(),
-      renaming: true,
-      stickyFolders: true,
-    })
-
-    flushSync(() => {
-      root?.render(
-        <FileTree
-          aria-label='Files'
-          model={model as FileTreeModel}
-          style={{ display: 'block', height: '180px', width: '360px' }}
-        />,
-      )
-    })
-
-    const shadowRoot = await waitForShadowRoot()
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
     const firstRow = rowButton(shadowRoot, 'src/features/')
     expect(firstRow.getAttribute('role')).toBe('treeitem')
 
@@ -66,14 +41,66 @@ describe('FileTree browser behavior', () => {
       expect(virtualRoot(shadowRoot).dataset.scrollAtTop).toBeUndefined()
     })
 
-    model.startRenaming('src/features/a-3.ts')
+    currentModel.startRenaming('src/features/a-3.ts')
 
     await vi.waitFor(() => {
       const input = shadowRoot.querySelector<HTMLInputElement>('[data-item-rename-input]')
       expect(input?.value).toBe('a-3.ts')
     })
   })
+
+  it('preserves scroll position when selecting a visible row by pointer', async () => {
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const scrollElement = virtualScroll(shadowRoot)
+    scrollElement.scrollTop = 120
+    scrollElement.dispatchEvent(new Event('scroll', { bubbles: true }))
+
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/features/a-8.ts')).toBeTruthy()
+    })
+
+    const previousScrollTop = scrollElement.scrollTop
+    rowButton(shadowRoot, 'src/features/a-8.ts').dispatchEvent(
+      new MouseEvent('click', { bubbles: true, detail: 1 }),
+    )
+
+    await vi.waitFor(() => {
+      expect(currentModel.getSelectedPaths()).toEqual(['src/features/a-8.ts'])
+      expect(currentModel.getFocusedPath()).toBe('src/features/a-8.ts')
+    })
+    expect(scrollElement.scrollTop).toBe(previousScrollTop)
+  })
 })
+
+async function mountBrowserTree() {
+  const container = document.createElement('main')
+  container.style.height = '180px'
+  container.style.width = '360px'
+  document.body.append(container)
+  root = createRoot(container)
+  const mountedModel = new FileTreeModel({
+    gitStatus: [{ path: 'src/features/a-3.ts', status: 'modified' }],
+    initialExpansion: 'open',
+    initialVisibleRowCount: 6,
+    itemHeight: 24,
+    paths: browserPaths(),
+    renaming: true,
+    stickyFolders: true,
+  })
+  model = mountedModel
+
+  flushSync(() => {
+    root?.render(
+      <FileTree
+        aria-label='Files'
+        model={mountedModel}
+        style={{ display: 'block', height: '180px', width: '360px' }}
+      />,
+    )
+  })
+
+  return { model: mountedModel, shadowRoot: await waitForShadowRoot() }
+}
 
 function browserPaths() {
   const paths = ['src/', 'src/features/']
