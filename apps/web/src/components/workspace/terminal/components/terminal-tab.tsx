@@ -47,7 +47,7 @@ export function TerminalTab({
             active &&
               'w-[var(--chrome-tab-trailing-slot-width)] max-w-[var(--chrome-tab-trailing-slot-width)] min-w-[var(--chrome-tab-trailing-slot-width)]',
           )}
-          style={chromeTabTrailingSlotStyle()}
+          style={chromeTabTrailingSlotStyle(false)}
         >
           <ChromeTabCloseButton
             aria-label={`Close ${label}`}

@@ -31,23 +31,12 @@ const directoryLoadSkippedLogs = createCoalescedLogQueue({
 })
 
 export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
+  return useWorkspaceTreeForRootPath(rootFolder?.path ?? null)
+}
+
+export function useWorkspaceTreeForRootPath(rootPath: string | null) {
+  const { rootTreeKey, treeState } = useWorkspaceTreeQuery(rootPath)
   const queryClient = useQueryClient()
-  const workspaceStore = useEditorWorkspaceStoreApi()
-  const rootPath = rootFolder?.path ?? ''
-  const rootTreeKey = useMemo(() => fileSystemKeys.tree(rootPath), [rootPath])
-  const query = useQuery({
-    enabled: Boolean(rootFolder),
-    queryFn: async ({ signal }) => {
-      const selectedFilePath = workspaceStore.getState().selectedFilePath
-      const result = await fetchInitialTree(rootPath, selectedFilePath, signal)
-      return treeModelWithDirectoryLoads(result.root, rootPath, result.directories)
-    },
-    queryKey: rootTreeKey,
-  })
-  const treeState = useMemo(
-    () => (rootFolder ? treeLoadState(query) : idleState),
-    [query.data, query.error, query.isError, query.isPending, rootFolder],
-  )
 
   const resetTreeLoad = useCallback(() => {
     queryClient.removeQueries({ queryKey: fileSystemKeys.trees() })
@@ -55,7 +44,7 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
 
   const loadTreeDirectory = useCallback(
     (entry: TreeEntry, treePath: string, options: DirectoryLoadOptions = {}) => {
-      if (!rootFolder) {
+      if (!rootPath) {
         logDirectoryLoadSkipped(treePath, 'missing-root')
         return
       }
@@ -73,13 +62,13 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
       }
 
       const canonicalPath = canonicalTreePath(treePath)
-      const directoryKey = treeDirectoryPrefetchKey(rootFolder.path, canonicalPath, entry)
+      const directoryKey = treeDirectoryPrefetchKey(rootPath, canonicalPath, entry)
       log.info({
         action: 'file-tree.directory.load.start',
         area: 'file-tree',
         entryPath: entry.path,
         retry: options.retry === true,
-        rootPath: rootFolder.path,
+        rootPath,
         treePath: canonicalPath,
       })
 
@@ -104,10 +93,10 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
               area: 'file-tree',
               entryCount: result.entries.length,
               entryPath: entry.path,
-              rootPath: rootFolder.path,
+              rootPath,
               treePath: canonicalPath,
             })
-            return mergeDirectoryLoad(model, rootFolder.path, result, canonicalPath)
+            return mergeDirectoryLoad(model, rootPath, result, canonicalPath)
           }),
         )
         .catch((error: unknown) => {
@@ -117,7 +106,7 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
             area: 'file-tree',
             entryPath: entry.path,
             error: { message },
-            rootPath: rootFolder.path,
+            rootPath,
             treePath: canonicalPath,
           })
           queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
@@ -127,29 +116,65 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
           })
         })
     },
-    [queryClient, rootFolder, rootTreeKey, treeState],
+    [queryClient, rootPath, rootTreeKey, treeState],
   )
 
   const prefetchTreeDirectory = useCallback(
     (entry: TreeEntry, treePath: string) => {
-      if (!rootFolder) return
+      if (!rootPath) return
       if (treeState.status !== 'ready') return
       if (!isDirectoryEntry(entry)) return
       if (!shouldLoadDirectory(treeState.data, treePath)) return
 
       void queryClient.prefetchQuery({
         queryFn: ({ signal }) => fetchTree(entry.path, signal),
-        queryKey: treeDirectoryPrefetchKey(rootFolder.path, treePath, entry),
+        queryKey: treeDirectoryPrefetchKey(rootPath, treePath, entry),
         staleTime: FILE_TREE_PREFETCH_STALE_MS,
       })
     },
-    [queryClient, rootFolder, treeState],
+    [queryClient, rootPath, treeState],
   )
 
   return {
     loadTreeDirectory,
     prefetchTreeDirectory,
     resetTreeLoad,
+    treeState,
+  }
+}
+
+export function useWorkspaceTreeState(rootFolder: PickedFsEntry | null) {
+  return useWorkspaceTreeQuery(rootFolder?.path ?? null).treeState
+}
+
+export function useResetWorkspaceTreeLoad() {
+  const queryClient = useQueryClient()
+
+  return useCallback(() => {
+    queryClient.removeQueries({ queryKey: fileSystemKeys.trees() })
+  }, [queryClient])
+}
+
+function useWorkspaceTreeQuery(rootPath: string | null) {
+  const workspaceStore = useEditorWorkspaceStoreApi()
+  const resolvedRootPath = rootPath ?? ''
+  const rootTreeKey = useMemo(() => fileSystemKeys.tree(resolvedRootPath), [resolvedRootPath])
+  const query = useQuery({
+    enabled: Boolean(rootPath),
+    queryFn: async ({ signal }) => {
+      const selectedFilePath = workspaceStore.getState().selectedFilePath
+      const result = await fetchInitialTree(resolvedRootPath, selectedFilePath, signal)
+      return treeModelWithDirectoryLoads(result.root, resolvedRootPath, result.directories)
+    },
+    queryKey: rootTreeKey,
+  })
+  const treeState = useMemo(
+    () => (rootPath ? treeLoadState(query) : idleState),
+    [query.data, query.error, query.isError, query.isPending, rootPath],
+  )
+
+  return {
+    rootTreeKey,
     treeState,
   }
 }

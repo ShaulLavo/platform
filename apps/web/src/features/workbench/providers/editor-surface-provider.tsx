@@ -12,7 +12,6 @@ export function EditorSurfaceProvider({
   rootPath,
   surfaceIdForEditorTabId,
   tabModelForSurface,
-  toolSurfaceState,
 }: EditorSurfaceContextValue & {
   readonly children: ReactNode
 }) {
@@ -26,7 +25,6 @@ export function EditorSurfaceProvider({
         rootPath,
         surfaceIdForEditorTabId,
         tabModelForSurface,
-        toolSurfaceState,
       }}
     >
       {children}

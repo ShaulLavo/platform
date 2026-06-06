@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
 import { editorTabCloseTargetIds } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
-import { removedChromeCloseSpacerWidth } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
 import {
+  cachedChromeTabCloseLayoutSnapshot,
+  cacheChromeTabCloseLayoutSnapshot,
+  chromeTabCloseModeAvailableWidth,
+  chromeTabCloseLayoutSnapshot,
+  chromeTabCloseLayoutWidth,
+  hasClosingChromeTabs,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-close-layout'
+import {
+  chromeTabCloseBurstTargetId,
+  chromeTabCloseTargetAfterClosingTab,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-close-retarget'
+import {
+  chromeVisualTabsInitialState,
   chromeVisualTabsReducer,
+  primeChromeVisualTabsCache,
   syncChromeVisualTabs,
   type ChromeVisualTabsState,
 } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
@@ -17,6 +30,7 @@ import {
   editorTabDropIndex,
   type EditorTabDropTargetBounds,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-dnd'
+import type { EditorChromeVisualTab } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 
 describe('editorTabDropIndex', () => {
   it('inserts before the first tab midpoint', () => {
@@ -152,8 +166,16 @@ describe('chromeVisualTabsReducer', () => {
     })
 
     expect(next.sourceTabs).toBe(nextTabs)
-    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'opening'])
-    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual(['src/a.ts', 'src/c.ts'])
+    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
+      'present',
+      'closing',
+      'opening',
+    ])
+    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+      'src/c.ts',
+    ])
   })
 
   it('finishes opening tabs on the matching animation frame', () => {
@@ -172,7 +194,7 @@ describe('chromeVisualTabsReducer', () => {
     expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'present'])
   })
 
-  it('removes missing tabs immediately', () => {
+  it('keeps missing tabs closing before delayed removal', () => {
     const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts', 'src/c.ts'])
     const state = chromeVisualTabsState(initialTabs)
     const nextTabs = chromeTabs(['src/a.ts', 'src/c.ts'])
@@ -183,8 +205,63 @@ describe('chromeVisualTabsReducer', () => {
       type: 'sync-tabs',
     })
 
+    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
+      'present',
+      'closing',
+      'present',
+    ])
+    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+      'src/c.ts',
+    ])
+  })
+
+  it('removes closing tabs on the matching hold timeout', () => {
+    const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts', 'src/c.ts'])
+    const state = chromeVisualTabsState(initialTabs)
+    const synced = chromeVisualTabsReducer(state, {
+      areTabsEqual: sameChromeTab,
+      tabs: chromeTabs(['src/a.ts', 'src/c.ts']),
+      type: 'sync-tabs',
+    })
+
+    const next = chromeVisualTabsReducer(synced, {
+      closingKey: 'src/b.ts',
+      type: 'remove-closing',
+    })
+
     expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'present'])
     expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual(['src/a.ts', 'src/c.ts'])
+  })
+
+  it('keeps repeated closes in closing phase during the same hold window', () => {
+    const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'])
+    const state = chromeVisualTabsState(initialTabs)
+    const firstClose = chromeVisualTabsReducer(state, {
+      areTabsEqual: sameChromeTab,
+      tabs: chromeTabs(['src/a.ts', 'src/c.ts', 'src/d.ts']),
+      type: 'sync-tabs',
+    })
+
+    const secondClose = chromeVisualTabsReducer(firstClose, {
+      areTabsEqual: sameChromeTab,
+      tabs: chromeTabs(['src/a.ts', 'src/d.ts']),
+      type: 'sync-tabs',
+    })
+
+    expect(secondClose.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
+      'present',
+      'closing',
+      'closing',
+      'present',
+    ])
+    expect(secondClose.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+      'src/c.ts',
+      'src/d.ts',
+    ])
   })
 
   it('reuses semantically equal tab models', () => {
@@ -209,32 +286,29 @@ describe('chromeVisualTabsReducer', () => {
 
     expect(next).toBe(state)
   })
-})
 
-describe('removedChromeCloseSpacerWidth', () => {
-  it('returns the removed tab advance from the previous layout snapshot', () => {
-    const previous = {
-      overlap: 18,
-      tabs: [
-        { id: 'tab-a', width: 224 },
-        { id: 'tab-b', width: 204 },
-      ],
-    }
-    const current = {
-      overlap: 18,
-      tabs: [{ id: 'tab-a', width: 224 }],
-    }
+  it('restores closing tabs from a primed pane cache after a remount', () => {
+    const cacheKey = 'chrome-visual-tabs-remount-test'
+    const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts', 'src/c.ts'])
+    const state = chromeVisualTabsState(initialTabs)
 
-    expect(removedChromeCloseSpacerWidth(previous, current)).toBe(186)
-  })
+    primeChromeVisualTabsCache(cacheKey, initialTabs, state.visualTabs)
+    const remounted = chromeVisualTabsInitialState(
+      chromeTabs(['src/a.ts', 'src/c.ts']),
+      cacheKey,
+      sameChromeTab,
+    )
 
-  it('returns zero without a previous layout snapshot', () => {
-    const current = {
-      overlap: 18,
-      tabs: [{ id: 'tab-a', width: 224 }],
-    }
-
-    expect(removedChromeCloseSpacerWidth(null, current)).toBe(0)
+    expect(remounted.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
+      'present',
+      'closing',
+      'present',
+    ])
+    expect(remounted.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+      'src/c.ts',
+    ])
   })
 })
 
@@ -276,6 +350,129 @@ describe('editorTabCloseTargetIds', () => {
   })
 })
 
+describe('chromeTabCloseTargetAfterClosingTab', () => {
+  it('returns the first non-closing tab after the clicked closing tab', () => {
+    expect(
+      chromeTabCloseTargetAfterClosingTab(
+        chromeVisualTabs(['present', 'closing', 'present'], ['tab-a', 'tab-b', 'tab-c']),
+        'tab-b',
+      ),
+    ).toBe('tab-c')
+  })
+
+  it('skips tabs already closing during a close burst', () => {
+    expect(
+      chromeTabCloseTargetAfterClosingTab(
+        chromeVisualTabs(
+          ['present', 'closing', 'closing', 'present'],
+          ['tab-a', 'tab-b', 'tab-c', 'tab-d'],
+        ),
+        'tab-b',
+      ),
+    ).toBe('tab-d')
+  })
+
+  it('returns null when no following tab can be closed', () => {
+    expect(
+      chromeTabCloseTargetAfterClosingTab(
+        chromeVisualTabs(['present', 'closing'], ['tab-a', 'tab-b']),
+        'tab-b',
+      ),
+    ).toBeNull()
+  })
+})
+
+describe('chromeTabCloseBurstTargetId', () => {
+  it('returns only the survivor after the rightmost closing tab', () => {
+    expect(
+      chromeTabCloseBurstTargetId(
+        chromeVisualTabs(
+          ['present', 'closing', 'closing', 'present', 'present'],
+          ['tab-a', 'tab-b', 'tab-c', 'tab-d', 'tab-e'],
+        ),
+      ),
+    ).toBe('tab-d')
+  })
+
+  it('returns null when no closing tab has a survivor after it', () => {
+    expect(
+      chromeTabCloseBurstTargetId(chromeVisualTabs(['present', 'closing'], ['tab-a', 'tab-b'])),
+    ).toBeNull()
+  })
+})
+
+describe('chrome close layout snapshots', () => {
+  it('holds survivor widths from the pre-close layout', () => {
+    const visualTabs = chromeVisualTabs(
+      ['present', 'present', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+    const snapshot = chromeTabCloseLayoutSnapshot(visualTabs, chromeLayout([96, 96, 96], 12))
+    const closingTabs = chromeVisualTabs(
+      ['present', 'closing', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+
+    expect(hasClosingChromeTabs(closingTabs)).toBe(true)
+    expect(chromeTabCloseLayoutWidth(snapshot, closingTabs[2]!, 140)).toBe(96)
+  })
+
+  it('falls back to the live layout for tabs opened during close mode', () => {
+    const visualTabs = chromeVisualTabs(['present'], ['tab-a'])
+    const snapshot = chromeTabCloseLayoutSnapshot(visualTabs, chromeLayout([100], 0))
+    const openingTab = chromeVisualTabs(['opening'], ['tab-b'])[0]!
+
+    expect(chromeTabCloseLayoutWidth(snapshot, openingTab, 80)).toBe(80)
+  })
+
+  it('shrinks the virtual available width by closing tab contribution', () => {
+    const visualTabs = chromeVisualTabs(
+      ['present', 'present', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+    const snapshot = chromeTabCloseLayoutSnapshot(visualTabs, chromeLayout([96, 96, 96], 12))
+    const closingTabs = chromeVisualTabs(
+      ['present', 'closing', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+
+    expect(chromeTabCloseModeAvailableWidth(snapshot, closingTabs, 300)).toBe(216)
+  })
+
+  it('preserves currently held widths when refreshing a close burst snapshot', () => {
+    const visualTabs = chromeVisualTabs(
+      ['present', 'present', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+    const snapshot = chromeTabCloseLayoutSnapshot(visualTabs, chromeLayout([96, 96, 96], 12))
+    const closingTabs = chromeVisualTabs(
+      ['present', 'closing', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+    const nextSnapshot = chromeTabCloseLayoutSnapshot(
+      closingTabs,
+      chromeLayout([120, 120, 120], 12),
+      snapshot,
+    )
+
+    expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[0]!, 120)).toBe(96)
+    expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[1]!, 120)).toBe(12)
+    expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[2]!, 120)).toBe(96)
+  })
+
+  it('reuses the calculated close layout snapshot from a pane cache', () => {
+    const cacheKey = 'chrome-close-layout-remount-test'
+    const visualTabs = chromeVisualTabs(['present'], ['tab-a'])
+    const snapshot = chromeTabCloseLayoutSnapshot(visualTabs, chromeLayout([96], 0))
+
+    cacheChromeTabCloseLayoutSnapshot(cacheKey, snapshot)
+
+    expect(
+      chromeTabCloseLayoutWidth(cachedChromeTabCloseLayoutSnapshot(cacheKey), visualTabs[0]!, 140),
+    ).toBe(96)
+  })
+})
+
 function tabBounds(): readonly EditorTabDropTargetBounds[] {
   return [
     { id: 'tab-a', left: 0, path: 'src/a.ts', right: 100 },
@@ -303,6 +500,39 @@ function editorTabs() {
 
 function chromeTabs(paths: readonly string[]) {
   return paths.map((path) => ({ path }))
+}
+
+function chromeVisualTabs(
+  phases: readonly ('closing' | 'opening' | 'present')[],
+  ids: string[],
+): EditorChromeVisualTab[] {
+  return phases.map((phase, index) => ({
+    phase,
+    tab: {
+      active: false,
+      copyPath: ids[index] ?? '',
+      copyRelativePath: ids[index] ?? '',
+      diffStatus: null,
+      diffSuffix: '',
+      icon: { name: 'file', src: '' },
+      id: ids[index] ?? '',
+      name: ids[index] ?? '',
+      path: ids[index] ?? '',
+      title: ids[index] ?? '',
+    },
+  }))
+}
+
+function chromeLayout(widths: readonly number[], overlap: number) {
+  return {
+    overlap,
+    tabs: widths.map((width, index) => ({
+      index,
+      width,
+      x: index * width,
+    })),
+    trackWidth: widths.reduce((total, width) => total + width, 0),
+  }
 }
 
 function chromeVisualTabsState(

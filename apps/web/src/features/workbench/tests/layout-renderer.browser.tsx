@@ -249,13 +249,15 @@ describe('LayoutRenderer browser rendering', () => {
       expect(editorChromeTabWidths().every((width) => width > 0)).toBe(true)
     })
 
-    const beforeWidths = editorChromeTabWidths()
+    const beforeWidths = editorChromeTabWidthsById()
     closeEditorSurfaceTab(layoutStore, 'tab-b')
     await nextFrame()
 
-    expect(editorChromeTabs()).toHaveLength(1)
-    expect(editorChromeCloseSpacerWidth()).toBeGreaterThan(0)
-    expect(Math.max(...editorChromeTabWidths())).toBeLessThanOrEqual(Math.max(...beforeWidths))
+    const afterWidths = editorChromeTabWidthsById()
+    expect(editorChromeTabs()).toHaveLength(2)
+    expect(editorChromeTab('tab-b')).toHaveAttribute('data-editor-tab-phase', 'closing')
+    expect(editorChromeTab('tab-b').style.width).toBe('18px')
+    expect(widthDelta(afterWidths, beforeWidths, 'tab-a')).toBeLessThanOrEqual(1)
   })
 })
 
@@ -367,15 +369,27 @@ function editorChromeTabs() {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-editor-tab-id]'))
 }
 
+function editorChromeTab(tabId: string) {
+  const tab = document.querySelector<HTMLElement>(`[data-editor-tab-id="${tabId}"]`)
+  if (!tab) throw new Error(`Missing editor tab ${tabId}`)
+
+  return tab
+}
+
 function editorChromeTabWidths() {
   return editorChromeTabs().map((tab) => tab.getBoundingClientRect().width)
 }
 
-function editorChromeCloseSpacerWidth() {
-  const spacer = document.querySelector<HTMLElement>('[data-chrome-close-spacer]')
-  if (!spacer) throw new Error('Missing close spacer')
+function editorChromeTabWidthsById() {
+  return new Map(editorChromeTabs().map((tab) => [tab.dataset.editorTabId ?? '', tab.offsetWidth]))
+}
 
-  return spacer.getBoundingClientRect().width
+function widthDelta(
+  current: ReadonlyMap<string, number>,
+  previous: ReadonlyMap<string, number>,
+  id: string,
+) {
+  return Math.abs((current.get(id) ?? 0) - (previous.get(id) ?? 0))
 }
 
 function closeEditorSurfaceTab(

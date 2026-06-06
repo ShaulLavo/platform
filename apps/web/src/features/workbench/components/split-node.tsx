@@ -11,7 +11,6 @@ import type { MaterializedLayoutNode } from '@/features/tiling-surface-manager/e
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
 
 export function SplitNode({
-  activeWindowId,
   maximizedRect,
   maximizedWindowId,
   node,
@@ -19,7 +18,6 @@ export function SplitNode({
   windowRectsById,
   onDispatch,
 }: {
-  readonly activeWindowId?: WindowId
   readonly maximizedRect: LayoutRect
   readonly maximizedWindowId?: WindowId
   readonly node: MaterializedLayoutNode
@@ -35,10 +33,9 @@ export function SplitNode({
 
     return (
       <WindowFrame
-        active={activeWindowId === node.windowId}
-        node={node}
         rect={rect}
         surfaceRenderers={surfaceRenderers}
+        windowId={node.windowId}
         onDispatch={onDispatch}
       />
     )
@@ -48,8 +45,7 @@ export function SplitNode({
     <>
       {node.children.map((child) => (
         <SplitNode
-          activeWindowId={activeWindowId}
-          key={child.id}
+          key={child.kind === 'window' ? child.windowId : child.id}
           maximizedRect={maximizedRect}
           maximizedWindowId={maximizedWindowId}
           node={child}

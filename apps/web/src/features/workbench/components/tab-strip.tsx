@@ -6,7 +6,10 @@ import { chromeTabLayout } from '@/components/workspace/editor-tabs/utils/chrome
 import { ChromeTabSelectButton } from '@/components/workspace/editor-tabs/components/chrome-tab-select-button'
 import { chromeTabRootClassName } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
 import { sameEditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
-import { useChromeVisualTabs } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
+import {
+  primeChromeVisualTabsCache,
+  useChromeVisualTabs,
+} from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import { useElementWidth } from '@/components/workspace/shared/hooks/use-element-width'
 import { useEditorTabDrag } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import { cn } from '@workspace/ui/lib/utils'
@@ -37,6 +40,7 @@ export function TabStrip({
   const tabListRef = useRef<HTMLDivElement | null>(null)
   const selectedTabRef = useRef<HTMLDivElement | null>(null)
   const editorSurfaceContext = use(EditorSurfaceContext)
+  const editorPaneId = editorPaneIdForWorkbenchWindowId(window.id) ?? String(window.id)
   const editorTabs = useMemo(
     () =>
       editorSurfaceContext?.tabModelForSurface
@@ -56,9 +60,10 @@ export function TabStrip({
     editorTabs,
     Boolean(editorSurfaceContext),
     sameEditorTabModel,
+    editorPaneId,
   )
   const tabDrag = useEditorTabDrag({
-    paneId: editorPaneIdForWorkbenchWindowId(window.id) ?? String(window.id),
+    paneId: editorPaneId,
     tabs: editorTabs,
     tabListRef,
     onMoveToPane: (tabId, targetIndex) => moveSurfaceTab(tabId, targetIndex),
@@ -84,10 +89,12 @@ export function TabStrip({
         role='tablist'
       >
         <ChromeEditorTabList
+          closeLayoutCacheKey={editorPaneId}
           drag={tabDrag}
           selectedTabRef={selectedTabRef}
           tabListRef={tabListRef}
           tabs={visualTabs}
+          onBeforeClose={primeEditorTabCloseState}
           onClose={editorSurfaceContext.requestCloseTab}
           onCloseTabs={editorSurfaceContext.requestCloseTabs}
           onSelect={selectEditorTab}
@@ -159,6 +166,10 @@ export function TabStrip({
       </div>
     </div>
   )
+
+  function primeEditorTabCloseState() {
+    primeChromeVisualTabsCache(editorPaneId, editorTabs, visualTabs)
+  }
 
   function moveSurfaceTab(tabId: string, targetIndex: number) {
     const surfaceId = editorSurfaceContext?.surfaceIdForEditorTabId(tabId)

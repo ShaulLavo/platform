@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
@@ -12,8 +12,6 @@ import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-p
 import { TerminalStateProvider } from '@/components/workspace/terminal/providers/terminal-state-provider'
 import { ThemeProviderContext } from '@/components/theme-context'
 import { FocusContext, createFocusStore } from '@/components/workspace/focus/providers/focus-state'
-import type { LoadState } from '@/lib/load-state'
-import type { TreeModel } from '@/lib/tree-model'
 
 import {
   CLASSIC_DIAGNOSTICS_WINDOW_ID,
@@ -28,14 +26,22 @@ import {
   createTerminalSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
+  closeSurface,
   moveSurface,
   openSurface,
 } from '@/features/tiling-surface-manager/engine/layout-operations'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
-import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
+import {
+  LayoutRenderer,
+  surfaceAreaLayoutEqual,
+} from '@/features/workbench/components/layout-renderer'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
+import {
+  createSurfaceRendererRegistry,
+  type SurfaceRenderer,
+} from '@/features/workbench/utils/surface-renderer-registry'
 import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 import { layoutNodeId, overlayId } from '@/features/tiling-surface-manager/engine/layout-ids'
@@ -328,6 +334,41 @@ describe('LayoutRenderer', () => {
     expect(html).toContain('/repo/src/app.ts')
     expect(html).not.toContain('data-surface-renderer="fixture"')
   })
+
+  it('does not rerender unrelated surfaces when closing an inactive editor tab', async () => {
+    const counts = {
+      fileEditor: 0,
+      fileNavigator: 0,
+      fixture: 0,
+    }
+    const registry = createCountingSurfaceRendererRegistry(counts)
+    const fileA = createFileEditorSurface({ path: '/repo/src/a.ts' })
+    const fileB = createFileEditorSurface({ path: '/repo/src/b.ts' })
+    const layout = openSurface(openSurface(createClassicFirstRunWorkspaceLayout(), fileA), fileB)
+    const store = renderInteractiveLayout(layout, { surfaceRenderers: registry })
+
+    await act(async () => {})
+
+    const initialFileEditorCount = counts.fileEditor
+    const initialFileNavigatorCount = counts.fileNavigator
+
+    act(() => {
+      store.getState().dispatchLayoutOperation({ surfaceId: fileA.id, type: 'closeSurface' })
+    })
+
+    expect(counts.fileEditor).toBe(initialFileEditorCount)
+    expect(counts.fileNavigator).toBe(initialFileNavigatorCount)
+  })
+
+  it('keeps surface-area geometry equal when inactive tab close only rewrites node ids', () => {
+    const fileA = createFileEditorSurface({ path: '/repo/src/a.ts' })
+    const fileB = createFileEditorSurface({ path: '/repo/src/b.ts' })
+    const layout = openSurface(openSurface(createClassicFirstRunWorkspaceLayout(), fileA), fileB)
+    const nextLayout = closeSurface(layout, fileA.id)
+
+    expect(layout.rootNodeId).not.toBe(nextLayout.rootNodeId)
+    expect(surfaceAreaLayoutEqual(layout, nextLayout)).toBe(true)
+  })
 })
 
 function renderLayout(
@@ -372,7 +413,10 @@ function renderLayout(
   )
 }
 
-function renderInteractiveLayout(layout: WorkspaceLayout) {
+function renderInteractiveLayout(
+  layout: WorkspaceLayout,
+  options: { surfaceRenderers?: Parameters<typeof LayoutRenderer>[0]['surfaceRenderers'] } = {},
+) {
   const store = createWorkspaceLayoutStore(layout, { checkInvariants: false })
 
   render(
@@ -395,6 +439,7 @@ function renderInteractiveLayout(layout: WorkspaceLayout) {
                     x: 0,
                     y: 0,
                   }}
+                  surfaceRenderers={options.surfaceRenderers}
                 />
               </LayoutProvider>
             </TooltipProvider>
@@ -405,6 +450,39 @@ function renderInteractiveLayout(layout: WorkspaceLayout) {
   )
 
   return store
+}
+
+function createCountingSurfaceRendererRegistry(counts: {
+  fileEditor: number
+  fileNavigator: number
+  fixture: number
+}) {
+  const FileNavigatorRenderer: SurfaceRenderer = () => {
+    counts.fileNavigator += 1
+    return <div data-counting-surface='file-navigator' />
+  }
+  const FileEditorRenderer: SurfaceRenderer = () => {
+    counts.fileEditor += 1
+    return <div data-counting-surface='file-editor' />
+  }
+  const FixtureRenderer: SurfaceRenderer = ({ surface }) => {
+    counts.fixture += 1
+    return <div data-counting-surface={surface.type} />
+  }
+
+  return createSurfaceRendererRegistry([
+    { renderer: FixtureRenderer, type: 'chat' },
+    { renderer: FixtureRenderer, type: 'diagnostics' },
+    { renderer: FixtureRenderer, type: 'diff' },
+    { renderer: FileEditorRenderer, type: 'file-editor' },
+    { renderer: FileNavigatorRenderer, type: 'file-navigator' },
+    { renderer: FixtureRenderer, type: 'git-changes' },
+    { renderer: FixtureRenderer, type: 'logs' },
+    { renderer: FixtureRenderer, type: 'placeholder' },
+    { renderer: FixtureRenderer, type: 'search-preview' },
+    { renderer: FixtureRenderer, type: 'search-results' },
+    { renderer: FixtureRenderer, type: 'terminal' },
+  ])
 }
 
 function railButtonForSurface(surfaceId: string) {
@@ -430,13 +508,6 @@ function withEditorSurfaceProvider(children: ReactNode) {
       rootPath='/repo'
       surfaceIdForEditorTabId={() => null}
       tabModelForSurface={() => null}
-      toolSurfaceState={{
-        treeState: LOADING_TREE_STATE,
-        visibleTreeItemCount: null,
-        onLoadDirectory: noop,
-        onPrefetchDirectory: noop,
-        onVisibleTreeItemCountChange: noop,
-      }}
     >
       {children}
     </EditorSurfaceProvider>
@@ -446,7 +517,5 @@ function withEditorSurfaceProvider(children: ReactNode) {
 function matchCount(value: string, pattern: string) {
   return value.split(pattern).length - 1
 }
-
-const LOADING_TREE_STATE = { status: 'loading' } satisfies LoadState<TreeModel>
 
 function noop() {}

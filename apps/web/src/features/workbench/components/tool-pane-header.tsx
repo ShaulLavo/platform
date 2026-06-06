@@ -9,11 +9,11 @@ export function ToolPaneHeader({
   visibleTreeItemCount,
 }: {
   tab: ToolPaneHeaderTab
-  treeState: LoadState<TreeModel>
-  visibleTreeItemCount: number | null
+  treeState?: LoadState<TreeModel>
+  visibleTreeItemCount?: number | null
 }) {
   const title = panelTabTitle(tab)
-  const detail = tab === 'files' ? treeHeaderDetail(treeState, visibleTreeItemCount) : null
+  const detail = tab === 'files' ? treeHeaderDetail(treeState, visibleTreeItemCount ?? null) : null
 
   return (
     <div className='flex h-10 shrink-0 items-center gap-2 border-b px-3'>
@@ -33,7 +33,11 @@ function panelTabTitle(tab: ToolPaneHeaderTab) {
   return 'Search'
 }
 
-function treeHeaderDetail(treeState: LoadState<TreeModel>, visibleTreeItemCount: number | null) {
+function treeHeaderDetail(
+  treeState: LoadState<TreeModel> | undefined,
+  visibleTreeItemCount: number | null,
+) {
+  if (!treeState) return null
   if (treeState.status === 'loading') return 'Loading...'
   if (treeState.status === 'error') return 'Unable to load files'
   if (visibleTreeItemCount === null) return null

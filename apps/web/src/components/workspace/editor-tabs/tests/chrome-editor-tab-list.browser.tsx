@@ -4,10 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { ChromeEditorTabList } from '@/components/workspace/editor-tabs/components/chrome-editor-tab-list'
 import type { EditorTabDragController } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
+import {
+  primeChromeVisualTabsCache,
+  useChromeVisualTabs,
+} from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
@@ -18,6 +22,7 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 const THEME_STORAGE_KEY = 'platform-chrome-tab-list-browser-theme'
 
 let root: Root | null = null
+let nextHarnessId = 0
 
 afterEach(() => {
   if (root) {
@@ -30,30 +35,29 @@ afterEach(() => {
 })
 
 describe('ChromeEditorTabList browser layout', () => {
-  it('removes a close-button tab immediately and slides survivors into place', async () => {
-    renderTabHarness({ closeDelayMs: 80 })
+  it('collapses a closed tab through CSS and holds survivor widths', async () => {
+    renderTabHarness({ activeName: 'a.ts' })
 
     await vi.waitFor(() => {
       expect(editorTabs()).toHaveLength(3)
       expect(editorTabs().every((tab) => tab.getBoundingClientRect().width > 0)).toBe(true)
     })
 
-    const beforeWidths = editorTabWidths()
+    const beforeWidths = editorTabWidthsById()
     closeButton('Close b.ts').click()
     await settledReactUpdate()
 
-    expect(queryEditorTab('b.ts')).toBeNull()
-    expect(editorTabs()).toHaveLength(2)
-    expect(closeSpacerWidth()).toBeGreaterThan(0)
-    expect(editorTab('c.ts').style.transform).toMatch(/^translateX/u)
-    expect(Math.max(...editorTabWidths())).toBeLessThanOrEqual(Math.max(...beforeWidths))
-
-    await nextFrame()
-
+    const closingTab = editorTab('b.ts')
+    const afterWidths = editorTabWidthsById()
+    expect(editorTabs()).toHaveLength(3)
+    expect(closingTab).toHaveAttribute('data-editor-tab-phase', 'closing')
+    expect(closingTab.style.width).toBe('18px')
     expect(editorTab('c.ts').style.transform).toBe('')
+    expect(widthDelta(afterWidths, beforeWidths, 'a.ts')).toBeLessThanOrEqual(1)
+    expect(widthDelta(afterWidths, beforeWidths, 'c.ts')).toBeLessThanOrEqual(1)
   })
 
-  it('slides survivors when a tab disappears outside the close button path', async () => {
+  it('marks direct source removals as closing before delayed removal', async () => {
     renderTabHarness()
 
     await vi.waitFor(() => {
@@ -61,22 +65,57 @@ describe('ChromeEditorTabList browser layout', () => {
       expect(editorTabs().every((tab) => tab.getBoundingClientRect().width > 0)).toBe(true)
     })
 
-    const beforeWidths = editorTabWidths()
     closeButton('Direct close b.ts').click()
     await settledReactUpdate()
 
-    expect(queryEditorTab('b.ts')).toBeNull()
-    expect(editorTabs()).toHaveLength(2)
-    expect(closeSpacerWidth()).toBeGreaterThan(0)
-    expect(editorTab('c.ts').style.transform).toMatch(/^translateX/u)
-    expect(Math.max(...editorTabWidths())).toBeLessThanOrEqual(Math.max(...beforeWidths))
-
-    await nextFrame()
-
+    expect(editorTabs()).toHaveLength(3)
+    expect(editorTab('b.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
+    expect(editorTab('b.ts').style.width).toBe('18px')
     expect(editorTab('c.ts').style.transform).toBe('')
   })
 
+  it('retargets clicks on a closing tab to the next non-closing tab', async () => {
+    renderTabHarness({ activeName: 'a.ts' })
+
+    await vi.waitFor(() => {
+      expect(editorTabs()).toHaveLength(3)
+    })
+
+    closeButton('Close b.ts').click()
+    await settledReactUpdate()
+
+    editorTab('b.ts').click()
+    await settledReactUpdate()
+
+    expect(editorTab('b.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
+    expect(editorTab('c.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
+  })
+
   it('does not resize cramped tabs on the first close frame', async () => {
+    renderTabHarness({
+      activeName: 'tab-1.ts',
+      closeName: 'tab-5.ts',
+      containerWidth: 460,
+      names: crampedTabNames(),
+    })
+
+    await vi.waitFor(() => {
+      expect(editorTabs()).toHaveLength(10)
+      expect(editorTabs().every((tab) => tab.getBoundingClientRect().width > 0)).toBe(true)
+    })
+
+    const beforeWidths = editorTabWidthsById()
+    closeButton('Close tab-5.ts').click()
+    await settledReactUpdate()
+
+    const afterWidths = editorTabWidthsById()
+    expect(queryEditorTab('tab-5.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
+    expect(widthDelta(afterWidths, beforeWidths, 'tab-6.ts')).toBeLessThanOrEqual(1)
+    expect(widthDelta(afterWidths, beforeWidths, 'tab-7.ts')).toBeLessThanOrEqual(1)
+    expect(editorTab('tab-6.ts').style.transform).toBe('')
+  })
+
+  it('does not grow cramped tabs when the active tab closes', async () => {
     renderTabHarness({
       activeName: 'tab-5.ts',
       closeName: 'tab-5.ts',
@@ -94,10 +133,32 @@ describe('ChromeEditorTabList browser layout', () => {
     await settledReactUpdate()
 
     const afterWidths = editorTabWidthsById()
-    expect(queryEditorTab('tab-5.ts')).toBeNull()
+    expect(queryEditorTab('tab-5.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
     expect(widthDelta(afterWidths, beforeWidths, 'tab-6.ts')).toBeLessThanOrEqual(1)
     expect(widthDelta(afterWidths, beforeWidths, 'tab-7.ts')).toBeLessThanOrEqual(1)
-    expect(editorTab('tab-6.ts').style.transform).toMatch(/^translateX/u)
+  })
+
+  it('keeps the next close target under the same click point during a close burst', async () => {
+    renderTabHarness({
+      activeName: 'tab-1.ts',
+      closeName: 'tab-5.ts',
+      containerWidth: 460,
+      names: crampedTabNames(),
+    })
+
+    await vi.waitFor(() => {
+      expect(editorTabs()).toHaveLength(10)
+      expect(editorTabs().every((tab) => tab.getBoundingClientRect().width > 0)).toBe(true)
+    })
+
+    const closePoint = elementCenter(closeButton('Close tab-5.ts'))
+    closeButton('Close tab-5.ts').click()
+    await settledReactUpdate()
+    clickPoint(closePoint)
+    await settledReactUpdate()
+
+    expect(editorTab('tab-5.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
+    expect(editorTab('tab-6.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
   })
 
   it('uses the pointer cursor across the tab body but not the close button', async () => {
@@ -161,13 +222,19 @@ function TabHarness({
 }: Required<Pick<TabHarnessOptions, 'activeName' | 'closeDelayMs' | 'closeName' | 'names'>>) {
   const tabListRef = useRef<HTMLDivElement | null>(null)
   const selectedTabRef = useRef<HTMLDivElement | null>(null)
+  const cacheKeyRef = useRef(`chrome-tab-browser-harness-${nextHarnessId++}`)
   const [tabs, setTabs] = useState(() => editorTabModels(names, activeName))
-  const visualTabs = useMemo(() => tabs.map((tab) => ({ phase: 'present' as const, tab })), [tabs])
+  const visualTabs = useChromeVisualTabs(tabs, true, sameEditorTab, cacheKeyRef.current)
 
   function closeTab(tabId: string) {
     setTabs((current) => {
+      const closingIndex = current.findIndex((tab) => tab.id === tabId)
+      const closingTab = current[closingIndex]
       const next = current.filter((tab) => tab.id !== tabId)
-      return next.map((tab, index) => ({ ...tab, active: index === 0 }))
+      if (!closingTab?.active) return next
+
+      const activeIndex = Math.max(0, Math.min(closingIndex, next.length - 1))
+      return next.map((tab, index) => ({ ...tab, active: index === activeIndex }))
     })
   }
 
@@ -191,10 +258,12 @@ function TabHarness({
       />
       <div ref={tabListRef} role='tablist'>
         <ChromeEditorTabList
+          closeLayoutCacheKey={cacheKeyRef.current}
           drag={idleDragController()}
           selectedTabRef={selectedTabRef}
           tabListRef={tabListRef}
           tabs={visualTabs}
+          onBeforeClose={() => primeChromeVisualTabsCache(cacheKeyRef.current, tabs, visualTabs)}
           onClose={handleClose}
           onCloseTabs={() => true}
           onSelect={() => undefined}
@@ -218,6 +287,10 @@ function editorTabModels(names: readonly string[], activeName: string): EditorTa
     path: name,
     title: name,
   }))
+}
+
+function sameEditorTab(left: EditorTabModel, right: EditorTabModel) {
+  return left.id === right.id && left.active === right.active
 }
 
 function idleDragController(): EditorTabDragController {
@@ -254,10 +327,6 @@ function tabSelectButton(tab: HTMLElement) {
   return button
 }
 
-function editorTabWidths() {
-  return editorTabs().map((tab) => tab.getBoundingClientRect().width)
-}
-
 function editorTabWidthsById() {
   return new Map(editorTabs().map((tab) => [tab.dataset.editorTabId ?? '', tab.offsetWidth]))
 }
@@ -281,19 +350,28 @@ function closeButton(label: string) {
   return button
 }
 
-function nextFrame() {
-  return new Promise<void>((resolve) => {
-    requestAnimationFrame(() => resolve())
-  })
+function elementCenter(element: HTMLElement) {
+  const rect = element.getBoundingClientRect()
+
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  }
+}
+
+function clickPoint(point: { readonly x: number; readonly y: number }) {
+  const target = document.elementFromPoint(point.x, point.y)
+  if (!target) throw new Error('Missing click target')
+
+  target.dispatchEvent(
+    new MouseEvent('click', {
+      bubbles: true,
+      clientX: point.x,
+      clientY: point.y,
+    }),
+  )
 }
 
 function settledReactUpdate() {
   return Promise.resolve()
-}
-
-function closeSpacerWidth() {
-  const spacer = document.querySelector<HTMLElement>('[data-chrome-close-spacer]')
-  if (!spacer) throw new Error('Missing close spacer')
-
-  return spacer.getBoundingClientRect().width
 }

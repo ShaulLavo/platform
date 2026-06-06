@@ -12,7 +12,8 @@ export function useLayoutRootRect(initialRect: LayoutRect | null = null) {
     if (!element) return
 
     function updateRect() {
-      setRect(rootLayoutRect(element?.clientWidth ?? 0, element?.clientHeight ?? 0))
+      const nextRect = rootLayoutRect(element?.clientWidth ?? 0, element?.clientHeight ?? 0)
+      setRect((current) => (layoutRectsEqual(current, nextRect) ? current : nextRect))
     }
 
     updateRect()
@@ -25,4 +26,13 @@ export function useLayoutRootRect(initialRect: LayoutRect | null = null) {
   }, [])
 
   return { rect, rootRef }
+}
+
+function layoutRectsEqual(left: LayoutRect | null, right: LayoutRect) {
+  if (!left) return false
+  if (left.height !== right.height) return false
+  if (left.width !== right.width) return false
+  if (left.x !== right.x) return false
+
+  return left.y === right.y
 }

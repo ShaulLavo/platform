@@ -25,6 +25,8 @@ type PendingClose = {
   tabIds: readonly string[]
 }
 
+const EMPTY_PENDING_CLOSES: readonly PendingClose[] = []
+
 export function useDirtyTabCloseRequest() {
   const documentStore = useEditorDocumentStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
@@ -38,12 +40,14 @@ export function useDirtyTabCloseRequest() {
   const canSavePendingPath = fileBackedEditorPath(pendingPath) !== null
 
   const clearPendingClose = useCallback(() => {
-    setPendingCloses([])
+    setPendingCloses(emptyPendingCloses)
     setSaveError(null)
   }, [])
 
   const advancePendingClose = useCallback(() => {
-    setPendingCloses((closes) => closes.slice(1))
+    setPendingCloses((closes) =>
+      closes.length <= 1 ? emptyPendingCloses(closes) : closes.slice(1),
+    )
     setSaveError(null)
   }, [])
 
@@ -70,7 +74,7 @@ export function useDirtyTabCloseRequest() {
         closeTab(tab.id)
       }
 
-      setPendingCloses(pending)
+      setPendingCloses((current) => pendingClosesForRequest(current, pending))
       setSaveError(null)
 
       return pending.length === 0
@@ -153,6 +157,21 @@ export function useDirtyTabCloseRequest() {
     requestCloseTab,
     requestCloseTabs,
   }
+}
+
+function emptyPendingCloses(current: readonly PendingClose[]) {
+  if (current.length === 0) return current
+
+  return EMPTY_PENDING_CLOSES
+}
+
+function pendingClosesForRequest(
+  current: readonly PendingClose[],
+  pending: readonly PendingClose[],
+) {
+  if (pending.length > 0) return pending
+
+  return emptyPendingCloses(current)
 }
 
 async function saveAndClosePendingTab(pendingClose: PendingClose, context: SaveAndCloseContext) {

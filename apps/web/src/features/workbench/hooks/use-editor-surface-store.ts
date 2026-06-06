@@ -1,10 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
-import {
-  useEditorWorkspaceState,
-  useEditorWorkspaceStoreApi,
-} from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import {
@@ -18,9 +15,9 @@ export function useEditorSurfaceStore({
   readonly requestCloseTab: RequestCloseTab
 }) {
   const workspaceStore = useEditorWorkspaceStoreApi()
-  const workspaceLayout = useEditorWorkspaceState((state) => state.workspaceLayout)
   const dispatchContextRef = useRef<EditorSurfaceDispatchContext | null>(null)
   const [store] = useState(() => {
+    const workspaceLayout = workspaceStore.getState().workspaceLayout
     const layoutStore = createWorkspaceLayoutStore(workspaceLayout)
 
     layoutStore.setState({
@@ -38,15 +35,31 @@ export function useEditorSurfaceStore({
     return layoutStore
   })
 
+  useLayoutEffect(() => {
+    let syncedLayout = store.getState().layout
+
+    function syncWorkspaceLayout() {
+      const workspaceLayout = workspaceStore.getState().workspaceLayout
+      if (syncedLayout === workspaceLayout) return
+
+      syncedLayout = workspaceLayout
+      store.getState().replaceLayout(workspaceLayout)
+    }
+
+    syncWorkspaceLayout()
+
+    return workspaceStore.subscribe((state, previousState) => {
+      if (state.workspaceLayout === previousState.workspaceLayout) return
+
+      syncWorkspaceLayout()
+    })
+  }, [store, workspaceStore])
+
   dispatchContextRef.current = {
     commitLayout: (layout) => workspaceStore.getState().setWorkspaceLayout(layout),
     requestCloseTab,
     store,
   }
-
-  useLayoutEffect(() => {
-    store.getState().replaceLayout(workspaceLayout)
-  }, [store, workspaceLayout])
 
   return store
 }

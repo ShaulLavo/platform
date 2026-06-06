@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import { useState, type DragEvent, type MouseEvent, type RefObject } from 'react'
 
 import { ChromeTabSelectButton } from '@/components/workspace/editor-tabs/components/chrome-tab-select-button'
 import { chromeTabRootClassName } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
@@ -24,6 +24,8 @@ import { ContextMenu, ContextMenuTrigger } from '@workspace/ui/components/contex
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ChromeEditorTab({
+  closeMode,
+  closeTarget,
   dragged,
   index,
   insertionEdge,
@@ -34,12 +36,15 @@ export function ChromeEditorTab({
   trailingSlotWidth,
   visualTab,
   onClose,
+  onCloseClosingTab,
   onCloseTabs,
   onSplit,
   onDragEnd,
   onDragStart,
   onSelect,
 }: {
+  closeMode: boolean
+  closeTarget: boolean
   dragged: boolean
   index: number
   insertionEdge: EditorTabInsertionEdge
@@ -50,33 +55,73 @@ export function ChromeEditorTab({
   trailingSlotWidth: number
   visualTab: EditorChromeVisualTab
   onClose: (path: string) => void
+  onCloseClosingTab: (tabId: string) => void
   onCloseTabs: RequestCloseTabs
   onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
   onDragEnd: () => void
   onDragStart: EditorTabDragController['onDragStart']
   onSelect: (tab: EditorTabModel) => void
 }) {
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const tab = visualTab.tab
   const tabStyle = chromeTabStyle(visualTab, index, overlap, layoutWidth, trailingSlotWidth)
+  const closing = visualTab.phase === 'closing'
+
+  function handleClickCapture(event: MouseEvent<HTMLDivElement>) {
+    if (!closing) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    onCloseClosingTab(tab.id)
+  }
+
+  function handleContextMenu(event: MouseEvent<HTMLDivElement>) {
+    if (!closing) return
+
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function handleDragStart(event: DragEvent<HTMLDivElement>) {
+    if (closing) {
+      event.preventDefault()
+      return
+    }
+
+    onDragStart(event, tab)
+  }
+
+  function handleSelectDragStart(event: DragEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    if (closing) {
+      event.preventDefault()
+      return
+    }
+
+    onDragStart(event, tab)
+  }
 
   return (
-    <ContextMenu>
+    <ContextMenu open={contextMenuOpen} onOpenChange={setContextMenuOpen}>
       <ContextMenuTrigger
         className={chromeTabRootClassName({
           active: tab.active,
           className: cn(
-            'cursor-pointer hover:z-20',
+            'cursor-pointer',
             'z-[var(--chrome-tab-z)]',
+            closing && 'opacity-0',
             tabDragClassName(insertionEdge, dragged),
-            tab.active && 'z-30',
           ),
         })}
         data-chrome-tab-root=''
         data-editor-tab-id={tab.id}
+        data-editor-tab-phase={visualTab.phase}
         data-editor-tab-path={tab.path}
-        draggable
+        draggable={!closing}
+        onClickCapture={handleClickCapture}
+        onContextMenu={handleContextMenu}
         onDragEnd={onDragEnd}
-        onDragStart={(event) => onDragStart(event, tab)}
+        onDragStart={handleDragStart}
         ref={tabRef}
         style={tabStyle}
       >
@@ -84,11 +129,8 @@ export function ChromeEditorTab({
           aria-selected={tab.active}
           onClick={() => onSelect(tab)}
           onDragEnd={onDragEnd}
-          onDragStart={(event) => {
-            event.stopPropagation()
-            onDragStart(event, tab)
-          }}
-          draggable
+          onDragStart={handleSelectDragStart}
+          draggable={!closing}
           role='tab'
           title={tab.title}
         >
@@ -99,14 +141,22 @@ export function ChromeEditorTab({
           />
           <ChromeTabTitle tab={tab} />
         </ChromeTabSelectButton>
-        <ChromeTabTrailingSlot tab={tab} width={trailingSlotWidth} onClose={onClose} />
+        <ChromeTabTrailingSlot
+          closeMode={closeMode}
+          forceVisible={closeTarget}
+          tab={tab}
+          width={trailingSlotWidth}
+          onClose={onClose}
+        />
       </ContextMenuTrigger>
-      <EditorTabContextMenuContent
-        tab={tab}
-        tabs={tabs}
-        onCloseTabs={onCloseTabs}
-        onSplit={onSplit}
-      />
+      {contextMenuOpen ? (
+        <EditorTabContextMenuContent
+          tab={tab}
+          tabs={tabs}
+          onCloseTabs={onCloseTabs}
+          onSplit={onSplit}
+        />
+      ) : null}
     </ContextMenu>
   )
 }

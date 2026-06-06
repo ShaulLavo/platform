@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import {
@@ -6,7 +6,7 @@ import {
   useEditorDocumentState,
 } from '@/features/editor/state/editor-document-state'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileResult } from '@/lib/file-system-types'
@@ -23,34 +23,52 @@ type OpenTabLiveDocumentContext = {
 const OPEN_TAB_LIVE_DOCUMENT_CONCURRENCY = 4
 
 export function useOpenTabLiveDocuments() {
-  const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
+  const workspaceStore = useEditorWorkspaceStoreApi()
   const ensureLiveEditorDocument = useEditorDocumentState((state) => state.ensureLiveEditorDocument)
   const getLiveEditorDocument = useEditorDocumentState((state) => state.getLiveEditorDocument)
   const queryClient = useQueryClient()
-
-  useEffect(() => {
-    const paths = openFilePaths.filter(
-      (path) =>
-        !parseDiffDocumentId(path) &&
-        !parseConflictDiffDocumentId(path) &&
-        !parseSearchBufferDocumentId(path) &&
-        !getLiveEditorDocument(path),
-    )
-    if (!paths.length) return
-
-    let active = true
+  const warmPaths = useEffectEvent((openFilePaths: readonly string[], isActive: () => boolean) => {
+    const paths = unwarmedOpenFilePaths(openFilePaths, getLiveEditorDocument)
+    if (paths.length === 0) return
 
     void warmOpenTabLiveDocuments(paths, {
       ensureLiveEditorDocument,
       getLiveEditorDocument,
-      isActive: () => active,
+      isActive,
       queryClient,
+    })
+  })
+
+  useEffect(() => {
+    let active = true
+    const isActive = () => active
+
+    warmPaths(workspaceStore.getState().openFilePaths, isActive)
+
+    const unsubscribe = workspaceStore.subscribe((state, previousState) => {
+      if (state.openFilePaths === previousState.openFilePaths) return
+
+      warmPaths(state.openFilePaths, isActive)
     })
 
     return () => {
       active = false
+      unsubscribe()
     }
-  }, [ensureLiveEditorDocument, getLiveEditorDocument, openFilePaths, queryClient])
+  }, [warmPaths, workspaceStore])
+}
+
+function unwarmedOpenFilePaths(
+  openFilePaths: readonly string[],
+  getLiveEditorDocument: (path: string) => LiveEditorDocument | null,
+) {
+  return openFilePaths.filter(
+    (path) =>
+      !parseDiffDocumentId(path) &&
+      !parseConflictDiffDocumentId(path) &&
+      !parseSearchBufferDocumentId(path) &&
+      !getLiveEditorDocument(path),
+  )
 }
 
 async function warmOpenTabLiveDocuments(

@@ -13,7 +13,7 @@ export function ChromeTabCloseButton({
     <button
       className={cn(
         'group/close flex size-6 shrink-0 cursor-default items-center justify-center rounded-[5px] text-muted-foreground outline-none',
-        'transition-[background-color,color,opacity,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]',
+        'transition-[background-color,color,opacity,transform] duration-75 ease-[cubic-bezier(0.23,1,0.32,1)]',
         'hover:bg-muted hover:text-foreground active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-ring/50',
         className,
       )}

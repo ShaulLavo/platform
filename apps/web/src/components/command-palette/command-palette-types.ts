@@ -1,7 +1,5 @@
 import type { Theme } from '@/components/theme-context'
 import type { TreeEntry } from '@/lib/file-system-types'
-import type { LoadState } from '@/lib/load-state'
-import type { TreeModel } from '@/lib/tree-model'
 import type {
   CommandSpec,
   PlatformCommandDispatch,
@@ -16,7 +14,6 @@ export type CommandPaletteProps = {
   readonly onSearchChange: (search: string) => void
   readonly open: boolean
   readonly search: string
-  readonly treeState: LoadState<TreeModel>
 }
 
 export type CommandPaletteItem = {

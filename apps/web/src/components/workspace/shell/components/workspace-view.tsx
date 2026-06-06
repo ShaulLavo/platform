@@ -2,18 +2,13 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { TerminalStateProvider } from '@/components/workspace/terminal/providers/terminal-state-provider'
 import { SearchRuntime } from '@/components/workspace/search/components/search-runtime'
 import { EditorSurfaceLayoutView } from '@/features/workbench/components/editor-surface-layout-view'
-import type { PickedFsEntry, TreeEntry } from '@/lib/file-system-types'
-import type { LoadState } from '@/lib/load-state'
-import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
+import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { EditorKeymapLayer } from '@editor/core'
 import { memo } from 'react'
 
 type WorkspaceViewProps = {
   editorKeymapLayers: readonly EditorKeymapLayer[]
   rootFolder: PickedFsEntry
-  treeState: LoadState<TreeModel>
-  onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void
-  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   onRequestCloseTab: RequestCloseTab
   onRequestCloseTabs: RequestCloseTabs
 }
@@ -22,9 +17,6 @@ export const WorkspaceView = memo(
   ({
     editorKeymapLayers,
     rootFolder,
-    treeState,
-    onLoadDirectory,
-    onPrefetchDirectory,
     onRequestCloseTab,
     onRequestCloseTabs,
   }: WorkspaceViewProps) => {
@@ -39,9 +31,6 @@ export const WorkspaceView = memo(
               <EditorSurfaceLayoutView
                 editorKeymapLayers={editorKeymapLayers}
                 rootPath={rootPath}
-                treeState={treeState}
-                onLoadDirectory={onLoadDirectory}
-                onPrefetchDirectory={onPrefetchDirectory}
                 onRequestCloseTab={onRequestCloseTab}
                 onRequestCloseTabs={onRequestCloseTabs}
               />

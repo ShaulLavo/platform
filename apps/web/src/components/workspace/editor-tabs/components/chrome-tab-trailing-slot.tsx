@@ -8,10 +8,14 @@ import { useEditorTabDirty } from '@/components/workspace/editor-tabs/hooks/use-
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ChromeTabTrailingSlot({
+  closeMode,
+  forceVisible,
   tab,
   width,
   onClose,
 }: {
+  closeMode: boolean
+  forceVisible: boolean
   tab: EditorTabModel
   width: number
   onClose: (path: string) => void
@@ -28,12 +32,17 @@ export function ChromeTabTrailingSlot({
           'max-w-[var(--chrome-tab-trailing-slot-width)] min-w-[var(--chrome-tab-trailing-slot-width)] w-[var(--chrome-tab-trailing-slot-width)]',
         width > 0 &&
           'max-w-[var(--chrome-tab-trailing-slot-width)] min-w-[var(--chrome-tab-trailing-slot-width)] w-[var(--chrome-tab-trailing-slot-width)]',
+        forceVisible &&
+          'max-w-[var(--chrome-tab-trailing-slot-width)] min-w-[var(--chrome-tab-trailing-slot-width)] w-[var(--chrome-tab-trailing-slot-width)]',
       )}
-      style={chromeTabTrailingSlotStyle()}
+      style={chromeTabTrailingSlotStyle(closeMode)}
     >
       <ChromeTabCloseButton
         aria-label={`Close ${tab.name}`}
-        className={chromeTabCloseButtonVisibilityClassName(tab, dirty)}
+        className={cn(
+          chromeTabCloseButtonVisibilityClassName(tab, dirty, forceVisible),
+          closeMode && 'transition-none',
+        )}
         data-editor-tab-drag-blocker=''
         draggable={false}
         onClick={(event) => {
@@ -43,7 +52,7 @@ export function ChromeTabTrailingSlot({
         onDragStart={(event) => event.preventDefault()}
         title={`Close ${tab.name}`}
       />
-      {dirty ? (
+      {dirty && !forceVisible ? (
         <span
           aria-hidden='true'
           className={cn(
