@@ -20,6 +20,7 @@ import {
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import { createClassicFirstRunWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   restoreWorkspaceLayout,
   serializeWorkspaceLayout,
@@ -352,8 +353,8 @@ function isPathInWorkspace(path: string, rootPath: string) {
 }
 
 function emptyWorkspaceState(): WorkspaceCacheState {
-  const editorPaneLayout = createEditorPaneLayoutForPaths([], null)
-  const workspaceLayout = workspaceLayoutForEditorPaneLayout(editorPaneLayout)
+  const workspaceLayout = createClassicFirstRunWorkspaceLayout()
+  const editorPaneLayout = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
 
   return {
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,

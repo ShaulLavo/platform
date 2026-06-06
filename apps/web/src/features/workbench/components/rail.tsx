@@ -2,7 +2,6 @@ import { cn } from '@workspace/ui/lib/utils'
 
 import {
   railItemOperation,
-  selectWorkbenchRailSurfaceItems,
   type WorkbenchRailSurfaceItem,
 } from '@/features/tiling-surface-manager/engine/rail-model'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
@@ -20,13 +19,14 @@ import type {
 const DEFAULT_TERMINAL_SURFACE_ID = terminalSurfaceId('terminal-1')
 
 export function Rail({
-  layout,
+  getLayout,
+  items,
   onDispatch,
 }: {
-  readonly layout: WorkspaceLayout
+  readonly getLayout: () => WorkspaceLayout
+  readonly items: readonly WorkbenchRailSurfaceItem[]
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
-  const items = selectWorkbenchRailSurfaceItems(layout)
   if (items.length === 0) return null
 
   return (
@@ -48,7 +48,7 @@ export function Rail({
           key={item.surface.id}
           title={railItemLabel(item)}
           type='button'
-          onClick={() => dispatchRailItemOperation(layout, item, onDispatch)}
+          onClick={() => dispatchRailItemOperation(getLayout(), item, onDispatch)}
         >
           <SurfaceIcon className='size-4' type={item.surface.type} />
         </button>

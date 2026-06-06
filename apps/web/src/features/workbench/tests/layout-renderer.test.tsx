@@ -123,6 +123,8 @@ describe('LayoutRenderer', () => {
     expect(html).toContain('Focus Chat')
     expect(html).toContain('Focus Logs')
     expect(html).toContain('Focus Terminal')
+    expect(html).not.toContain('Classic recipe active')
+    expect(html).not.toContain('data-rail-recipe-id=')
   })
 
   it('dispatches pointer drag resize operations from handles', () => {
@@ -145,7 +147,7 @@ describe('LayoutRenderer', () => {
 
     const handle = screen.getByRole('separator', { name: 'Resize columns' })
     fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 10, pointerId: 1 })
-    fireEvent.pointerMove(handle, { clientX: 432, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(handle, { buttons: 1, clientX: 432, clientY: 10, pointerId: 1 })
     fireEvent.pointerUp(handle, { clientX: 432, clientY: 10, pointerId: 1 })
 
     expect(operations).toEqual([
@@ -156,6 +158,32 @@ describe('LayoutRenderer', () => {
         type: 'resizeSplit',
       },
     ])
+  })
+
+  it('stops pointer drag resize when hover moves no longer have the primary button down', () => {
+    const operations: LayoutOperation[] = []
+
+    render(
+      <ResizeOverlay
+        resizeHandleRects={[
+          {
+            axis: 'horizontal',
+            handleIndex: 0,
+            id: overlayId('resize:test:0'),
+            rect: { height: 720, width: 8, x: 400, y: 0 },
+            splitId: layoutNodeId('split-test'),
+          },
+        ]}
+        onDispatch={(operation) => operations.push(operation)}
+      />,
+    )
+
+    const handle = screen.getByRole('separator', { name: 'Resize columns' })
+    fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(handle, { buttons: 0, clientX: 432, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(handle, { buttons: 0, clientX: 464, clientY: 10, pointerId: 1 })
+
+    expect(operations).toEqual([])
   })
 
   it('hides the classic bottom tool pane from its window controls', () => {

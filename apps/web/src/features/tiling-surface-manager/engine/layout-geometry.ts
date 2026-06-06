@@ -60,12 +60,14 @@ export type LayoutGeometry = {
 }
 
 export type LayoutGeometryOptions = {
+  readonly collapsedWindowHeaderPx?: number
   readonly dropEdgeRatio?: number
   readonly gapPx?: number
   readonly minDropZonePx?: number
   readonly resizeHandleThicknessPx?: number
 }
 
+const DEFAULT_COLLAPSED_WINDOW_HEADER_PX = 40
 const DEFAULT_DROP_EDGE_RATIO = 0.25
 const DEFAULT_MIN_DROP_ZONE_PX = 32
 const DEFAULT_RESIZE_HANDLE_THICKNESS_PX = 6
@@ -112,7 +114,14 @@ export function deriveNodeRects(
   const nodeRectsById: Record<string, LayoutRect> = {}
   if (!layout.rootNodeId) return nodeRectsById
 
-  assignNodeRect(layout, layout.rootNodeId, rootRect, nodeRectsById, options.gapPx ?? 0)
+  assignNodeRect(
+    layout,
+    layout.rootNodeId,
+    rootRect,
+    nodeRectsById,
+    options.gapPx ?? 0,
+    options.collapsedWindowHeaderPx ?? DEFAULT_COLLAPSED_WINDOW_HEADER_PX,
+  )
   return nodeRectsById
 }
 
@@ -173,6 +182,7 @@ function assignNodeRect(
   rect: LayoutRect,
   nodeRectsById: Record<string, LayoutRect>,
   gapPx: number,
+  collapsedWindowHeaderPx: number,
 ) {
   const node = layout.nodesById[nodeId]
   if (!node) return
@@ -180,33 +190,97 @@ function assignNodeRect(
   nodeRectsById[nodeId] = rect
   if (node.kind === 'window') return
 
-  const childRects = childRectsForSplit(node, rect, gapPx)
+  const childRects = childRectsForSplit(layout, node, rect, gapPx, collapsedWindowHeaderPx)
   node.childIds.forEach((childId, index) => {
     const childRect = childRects[index]
     if (!childRect) return
 
-    assignNodeRect(layout, childId, childRect, nodeRectsById, gapPx)
+    assignNodeRect(layout, childId, childRect, nodeRectsById, gapPx, collapsedWindowHeaderPx)
   })
 }
 
 function childRectsForSplit(
+  layout: WorkspaceLayout,
   node: Extract<LayoutNode, { readonly kind: 'split' }>,
   rect: LayoutRect,
   gapPx: number,
+  collapsedWindowHeaderPx: number,
 ) {
-  const sizes = repairSplitSizes(node.sizes, node.childIds.length)
-  const mainSize = node.axis === 'horizontal' ? rect.width : rect.height
+  const sizes = splitChildMainSizes(layout, node, rect, gapPx, collapsedWindowHeaderPx)
   const crossSize = node.axis === 'horizontal' ? rect.height : rect.width
-  const availableMainSize = Math.max(0, mainSize - gapPx * Math.max(0, sizes.length - 1))
   let cursor = node.axis === 'horizontal' ? rect.x : rect.y
 
-  return sizes.map((size) => {
-    const childMainSize = availableMainSize * size
+  return sizes.map((childMainSize) => {
     const childRect = splitChildRect(node.axis, rect, cursor, childMainSize, crossSize)
     cursor += childMainSize + gapPx
 
     return childRect
   })
+}
+
+function splitChildMainSizes(
+  layout: WorkspaceLayout,
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  rect: LayoutRect,
+  gapPx: number,
+  collapsedWindowHeaderPx: number,
+) {
+  const flexibleRatios = repairSplitSizes(node.sizes, node.childIds.length)
+  const mainSize = node.axis === 'horizontal' ? rect.width : rect.height
+  const availableMainSize = Math.max(0, mainSize - gapPx * Math.max(0, node.childIds.length - 1))
+  const fixedSizes = collapsedChildMainSizes(layout, node, collapsedWindowHeaderPx)
+  const totalFixedSize = fixedSizes.reduce<number>((sum, size) => sum + (size ?? 0), 0)
+  if (totalFixedSize > availableMainSize) {
+    return constrainedFixedMainSizes(fixedSizes, availableMainSize)
+  }
+
+  const flexibleMainSize = availableMainSize - totalFixedSize
+  const flexibleRatioTotal = flexibleRatios.reduce(
+    (sum, ratio, index) => sum + (fixedSizes[index] === null ? ratio : 0),
+    0,
+  )
+
+  return flexibleRatios.map((ratio, index) => {
+    const fixedSize = fixedSizes[index]
+    if (fixedSize !== null) return fixedSize
+    if (flexibleRatioTotal <= 0) return 0
+
+    return flexibleMainSize * (ratio / flexibleRatioTotal)
+  })
+}
+
+function collapsedChildMainSizes(
+  layout: WorkspaceLayout,
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  collapsedWindowHeaderPx: number,
+) {
+  return node.childIds.map((childId) =>
+    collapsedChildMainSize(layout, childId, collapsedWindowHeaderPx),
+  )
+}
+
+function collapsedChildMainSize(
+  layout: WorkspaceLayout,
+  childId: LayoutNodeId,
+  collapsedWindowHeaderPx: number,
+) {
+  const child = layout.nodesById[childId]
+  if (!child || child.kind !== 'window') return null
+
+  const window = layout.windowsById[child.windowId]
+  if (window?.mode !== 'collapsed') return null
+
+  return Math.max(0, collapsedWindowHeaderPx)
+}
+
+function constrainedFixedMainSizes(
+  fixedSizes: readonly (number | null)[],
+  availableMainSize: number,
+) {
+  const fixedCount = fixedSizes.filter((size) => size !== null).length
+  const constrainedSize = fixedCount > 0 ? availableMainSize / fixedCount : 0
+
+  return fixedSizes.map((size) => (size === null ? 0 : constrainedSize))
 }
 
 function splitChildRect(

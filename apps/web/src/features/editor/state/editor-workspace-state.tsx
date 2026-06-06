@@ -2,16 +2,11 @@ import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import {
   activeEditorPanePath,
-  createEditorPaneLayoutForPaths,
   editorPaneOpenPaths,
-  normalizeEditorPaneLayout,
-  type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
-import {
-  editorPaneLayoutForWorkspaceLayout,
-  workspaceLayoutForEditorPaneLayout,
-} from '@/features/workbench/utils/editor-surface-layout'
+import { createClassicFirstRunWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { editorPaneLayoutForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
@@ -28,12 +23,9 @@ type EditorWorkspaceStoreActions = {
   openPicker: () => void
   resetForRootFolder: (rootFolder: PickedFsEntry) => void
   setDiffViewMode: (mode: EditorDiffViewMode) => void
-  setEditorPaneLayout: (layout: EditorPaneLayout) => void
   setEditorHistory: (paths: string[]) => void
-  setOpenFilePaths: (paths: string[]) => void
   setPickerOpen: (open: boolean) => void
   setRecentlyClosedEditorPaths: (paths: string[]) => void
-  setSelectedFilePath: (path: string | null) => void
   setWorkspaceLayout: (layout: WorkspaceLayout) => void
 }
 
@@ -75,35 +67,9 @@ export function createEditorWorkspaceStore(
     resetForRootFolder: (rootFolder) =>
       set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
     setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
-    setEditorPaneLayout: (editorPaneLayout) =>
-      set((state) =>
-        editorWorkspaceSelectionForPaneLayout(editorPaneLayout, {
-          currentOpenFilePaths: state.openFilePaths,
-        }),
-      ),
     setEditorHistory: (editorHistory) => set({ editorHistory }),
-    setOpenFilePaths: (openFilePaths) =>
-      set((state) =>
-        editorWorkspaceSelectionForPaneLayout(
-          createEditorPaneLayoutForPaths(
-            pathsWithSelectedPath(openFilePaths, state.selectedFilePath),
-            state.selectedFilePath,
-          ),
-          { currentOpenFilePaths: state.openFilePaths },
-        ),
-      ),
     setPickerOpen: (pickerOpen) => set({ pickerOpen }),
     setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) => set({ recentlyClosedEditorPaths }),
-    setSelectedFilePath: (selectedFilePath) =>
-      set((state) =>
-        editorWorkspaceSelectionForPaneLayout(
-          createEditorPaneLayoutForPaths(
-            pathsWithSelectedPath(state.openFilePaths, selectedFilePath),
-            selectedFilePath,
-          ),
-          { currentOpenFilePaths: state.openFilePaths },
-        ),
-      ),
     setWorkspaceLayout: (workspaceLayout) =>
       set((state) =>
         editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout, {
@@ -113,20 +79,11 @@ export function createEditorWorkspaceStore(
   }))
 }
 
-function pathsWithSelectedPath(openFilePaths: readonly string[], selectedFilePath: string | null) {
-  if (!selectedFilePath) return openFilePaths
-  if (openFilePaths.includes(selectedFilePath)) return openFilePaths
-
-  return openFilePaths.concat(selectedFilePath)
-}
-
 function workspaceStateForRootFolderReset(
   rootFolder: PickedFsEntry,
   diffViewMode: EditorDiffViewMode,
 ) {
-  const workspaceLayout = workspaceLayoutForEditorPaneLayout(
-    createEditorPaneLayoutForPaths([], null),
-  )
+  const workspaceLayout = createClassicFirstRunWorkspaceLayout()
 
   return {
     ...editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout),
@@ -135,25 +92,6 @@ function workspaceStateForRootFolderReset(
     pickerOpen: false,
     recentlyClosedEditorPaths: [],
     rootFolder,
-  }
-}
-
-export function editorWorkspaceSelectionForPaneLayout(
-  editorPaneLayout: EditorPaneLayout,
-  options: { currentOpenFilePaths?: string[] } = {},
-) {
-  const normalized = normalizeEditorPaneLayout(editorPaneLayout)
-  const workspaceLayout = workspaceLayoutForEditorPaneLayout(normalized)
-  const openFilePaths = stableOpenFilePaths(
-    options.currentOpenFilePaths,
-    editorPaneOpenPaths(normalized),
-  )
-
-  return {
-    editorPaneLayout: normalized,
-    openFilePaths,
-    selectedFilePath: activeEditorPanePath(normalized),
-    workspaceLayout,
   }
 }
 

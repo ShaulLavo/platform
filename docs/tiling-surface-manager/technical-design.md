@@ -557,12 +557,13 @@ Examples:
 
 - Classic/default: the rail is a command surface; Files, Search, Git, Chat, and
   Logs prefer left nested tool panes; file editors, diffs, and promoted previews
-  prefer the main view; Terminal and Problems prefer the bottom tool pane. The
-  nested tool-pane shape is ordinary split tree structure, not a sidebar model.
-  Terminal is special only as default recipe policy: default terminal commands
-  target the full-width bottom tool pane, while user drag/drop or explicit move
-  commands create sticky manual placement in any ordinary split. This preserves
-  VS Code and Zed muscle memory while still using Platform surfaces internally.
+  prefer the main view; Terminal and Problems prefer the bottom of the
+  editor/main panel. The nested tool-pane shape is ordinary split tree
+  structure, not a sidebar model. Terminal is special only as default recipe
+  policy: default terminal commands target the editor/main panel bottom, while
+  user drag/drop or explicit move commands create sticky manual placement in any
+  ordinary split. This preserves VS Code and Zed muscle memory while still using
+  Platform surfaces internally.
 - Recipe-managed left tool panes are derived from the ordered visible set, not
   from incremental append history. Opening, closing, collapsing, or expanding
   Files/Search/Git/Chat/Logs should repack the recipe-managed subset in stable
@@ -595,12 +596,12 @@ For V1, assume one active recipe per workspace.
 Recipe policy examples:
 
 - `classicPolicy`: open editor-like surfaces in the main view; place terminal
-  and Problems in the bottom tool pane; route Files, Search, Git, Chat, and Logs
-  into order-packed left nested tool panes; restore singleton tools through
-  default recipe placement when their last concrete window placement is stale;
-  if Terminal is opened first, allow it to temporarily fill available space,
-  then reshape it into the full-width bottom tool pane when the first normal
-  content/tool surface opens unless sticky manual placement exists.
+  and Problems at the bottom of the editor/main panel; route Files, Search, Git,
+  Chat, and Logs into order-packed left nested tool panes; restore singleton
+  tools through default recipe placement when their last concrete window
+  placement is stale; if Terminal is opened first, allow it to temporarily fill
+  available space, then reshape it into the editor/main panel bottom when the
+  first normal content/tool surface opens unless sticky manual placement exists.
 - `previewAdjacentPolicy`: put transient previews near the selected list,
   search result, diagnostic, git file, or agent artifact.
 - `fullscreenOwnerPolicy`: when a command opens a related surface from a
@@ -997,9 +998,9 @@ accordion geometry, and surface mounting rules for running terminals.
 - Invalid sticky memory is cleared or demoted before fallback. Restore must not
   repeatedly retry memory that fails minimum editor width, tool-pane
   width/height, terminal height, viewport, or recipe side-pane limits.
-- Default terminal commands prefer the `bottom-tools` recipe slot, but manual
-  terminal placement wins until the user resets the recipe or opens a new
-  default bottom-pane terminal.
+- Default terminal commands prefer the `bottom-tools` recipe slot under the
+  editor/main panel, but manual terminal placement wins until the user resets
+  the recipe or opens a new default bottom-pane terminal.
 - Transient previews can auto-replace.
 - Durable surfaces should not jump unexpectedly.
 - Live drag rearrangement is allowed because the user is actively controlling

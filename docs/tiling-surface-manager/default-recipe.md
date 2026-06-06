@@ -28,9 +28,9 @@ not a model primitive.
   but renders as a fixed accordion header. Collapse is presentation state only.
 - Tool surfaces: Files, Search, Git, Chat, and Logs.
 - Main surfaces: file editors, diffs, and promoted previews.
-- Bottom tool pane: Terminal and Problems grouped as a classic bottom pane.
-  This is a temporary Phase 8 bridge until Phase 10 turns terminal sessions
-  into true running surfaces.
+- Bottom tool pane: Terminal and Problems grouped at the bottom of the
+  editor/main panel. This is a temporary Phase 8 bridge until Phase 10 turns
+  terminal sessions into true running surfaces.
 - Nested panes: ordinary split-tree sublayouts that allow multiple windows on
   one side of the workspace without introducing `leftDock`, `rightDock`,
   `bottomDock`, `sidebar`, or lane node kinds.
@@ -40,12 +40,13 @@ not a model primitive.
 - The default recipe creates ordinary split nodes only.
 - Tool surfaces prefer a left nested tool-pane group.
 - Main surfaces prefer the main view to the right of the tool-pane group.
-- The bottom tool pane spans below the content area and excludes the rail.
+- The bottom tool pane is nested under the editor/main panel. It does not span
+  under the left tool-pane group and excludes the rail.
 - Terminal and Problems prefer the bottom tool pane when opened from the rail,
   command palette, or default terminal command.
 - If Terminal is the first visible surface, it may temporarily use the available
   work area. Opening the first normal content or tool surface reshapes the
-  recipe so Terminal/Problems move into the full-width bottom tool pane unless
+  recipe so Terminal/Problems move to the bottom of the editor/main panel unless
   the user has manually placed that terminal elsewhere.
 - Recipe-managed tool surfaces are order-packed, not appended to whatever split
   happened to exist before. Files, Search, Git, Chat, and Logs are packed from
@@ -59,7 +60,7 @@ not a model primitive.
 - The same split-tree primitives must support:
   - three tool windows stacked on the left;
   - one main item taking the full right side;
-  - Terminal/Problems spanning below both.
+  - Terminal/Problems nested below the main item, not below the left tools.
 
 When no main surface is visible, the first tool surface may use the available
 work area. Opening a main surface creates or restores the main view and moves
@@ -74,8 +75,8 @@ placement.
 - Clicking the active expanded tool surface collapses its pane into an
   accordion header in place.
 - Clicking a collapsed tool surface expands and focuses it.
-- Clicking Terminal toggles the whole bottom tool pane, not only the Terminal
-  tab.
+- Clicking Terminal toggles the whole bottom tool pane under the editor/main
+  panel, not only the Terminal tab.
 - Terminal is special only as default recipe policy. Dragging a terminal to the
   left, right, or another split creates sticky manual placement; rail/default
   terminal actions should not force that terminal back to the bottom until the

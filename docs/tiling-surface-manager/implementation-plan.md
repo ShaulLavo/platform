@@ -6,8 +6,9 @@ Last audited: 2026-06-06
 Status: implementation in progress. Phases 1-7 have been re-audited against the
 updated plan and current code. The production workbench now uses the
 Platform-owned `WorkspaceLayout` model for file/diff surfaces and the custom
-renderer. Remaining old editor-pane state is limited to migration/derived
-compatibility paths called out below, not production rendering ownership.
+renderer. Remaining old editor-pane state is limited to derived compatibility
+and migration/test paths called out below, not production rendering ownership or
+layout mutation.
 
 This plan is grounded in `prd.md`, `technical-design.md`, `research-findings.md`,
 and the current app ownership points called out in the technical design.
@@ -17,7 +18,7 @@ and the current app ownership points called out in the technical design.
 Completed and verified for phases 1-7:
 
 - Core normalized layout model exists under
-  `apps/web/src/features/tiling-surface-manager/utils/`.
+  `apps/web/src/features/tiling-surface-manager/engine/`.
 - Collapse is window presentation state through `collapseWindow` and
   `expandWindow`; background surfaces use `rail.backgroundSurfaceIds`.
 - The old `minimizeSurface` operation and `rail.minimizedSurfaceIds` model are
@@ -39,6 +40,20 @@ Completed and verified for phases 1-7:
 - Renderer coverage includes split layouts, Chrome tab presentation, collapse
   and expand, background hosts, lifecycle mount policy, search preview, and
   browser smoke coverage.
+- Collapsed windows now receive fixed accordion-header allocation in split
+  geometry instead of retaining their expanded body size.
+- Sticky placements are validated against target visibility and surface
+  placement capabilities before reuse; invalid sticky memory is cleared before
+  recipe fallback can proceed.
+- The rail now includes recipe entries and active recipe status in addition to
+  surface states.
+- Diagnostics/Problems now renders active editor language-server diagnostics
+  when available instead of only showing a static placeholder.
+- Cache persistence subscriptions now compare typed field snapshots instead of
+  serializing the entire workspace/search state on every store change.
+- Rail and hidden-surface renderer wrappers now subscribe to derived lists with
+  equality checks; the main surface area still subscribes to the full layout
+  because its geometry/tree derivation depends on the visible split model.
 
 Migration-scoped compatibility that still intentionally exists:
 
@@ -47,10 +62,13 @@ Migration-scoped compatibility that still intentionally exists:
   surface-native tests fully replace it.
 - `editorPaneLayoutForWorkspaceLayout` and
   `workspaceLayoutForEditorPaneLayout` remain as bridge helpers for restore and
-  legacy cache/test paths.
+  legacy cache/test paths. The pane-to-workspace bridge now creates editor
+  surfaces only; it no longer injects classic fixed tool surfaces.
 - `EditorWorkspaceStore` still exposes derived `editorPaneLayout`,
   `openFilePaths`, and `selectedFilePath` for older editor/document consumers,
-  but `workspaceLayout` is the runtime layout source of truth.
+  but `workspaceLayout` is the runtime layout source of truth. The old
+  `setEditorPaneLayout`, `setOpenFilePaths`, and `setSelectedFilePath` mutation
+  paths have been removed.
 
 ## Implementation Direction
 
@@ -420,8 +438,11 @@ Exit criteria:
 ## Phase 4 - Selectors, Geometry, Policies, And Store
 
 Status: completed and re-audited 2026-06-06. Selectors, geometry, policies,
-command catalog/presets/cycling, and store dispatch are implemented. Renderer
-components now use narrower subscriptions for layout slices where practical.
+command catalog/presets/cycling, and store dispatch are implemented. Collapsed
+windows are represented as fixed accordion-header allocations in geometry.
+Rail and hidden-surface renderer wrappers use derived-list equality selectors;
+the main surface area remains the intentional full-layout subscriber. The cache
+persistence hot path has been narrowed with typed snapshot equality.
 
 Goal: make the model usable by a renderer and command layer.
 
@@ -633,6 +654,14 @@ Exit criteria:
 
 ## Phase 8 - Rail And Classic Singleton Surfaces
 
+Status: partially complete and re-audited 2026-06-06. The default rail exposes
+surface states, classic singleton surfaces are registered, left tool panes
+order-pack through recipe-managed split nodes, and stale or invalid sticky
+placements are cleared before recipe fallback. The Diagnostics/Problems surface
+now renders active editor diagnostics when available. Remaining Phase 8 work is
+to remove the temporary classic bottom-pane one-off and complete true
+terminal/problems singleton ownership in later terminal/search phases.
+
 Goal: turn fixed sidebar concepts into rail commands and recipe-controlled
 nested tool panes in the surface manager.
 
@@ -640,7 +669,9 @@ Work:
 
 - Implement `WorkbenchRail`.
 - Register rail entries/status for visible expanded, visible collapsed,
-  background, running, pinned, recipe, and singleton surfaces.
+  background, running, pinned, and singleton surfaces. Keep recipe state in the
+  layout model and command layer; do not add a visible default rail recipe
+  button.
 - Rehost File Navigator as durable singleton surface.
 - Rehost Git Changes as durable singleton surface.
 - Rehost Diagnostics/Problems as durable singleton surface.
@@ -652,13 +683,13 @@ Work:
 - Implement the default recipe from `default-recipe.md`:
   - Files/Search/Git/Chat/Logs prefer left nested tool panes;
   - file editors, diffs, and promoted previews prefer the main view;
-  - terminal/problems stay in one classic bottom tool pane, with the Terminal
-    rail entry acting as the pane handle and Problems remaining a tab in that
-    pane;
+  - terminal/problems stay in one classic bottom tool pane nested under the
+    editor/main panel, with the Terminal rail entry acting as the pane handle
+    and Problems remaining a tab in that pane;
   - opening Terminal first may temporarily use the available work area, but
     opening the first normal content/tool surface reshapes Terminal/Problems
-    into the full-width bottom tool pane unless the terminal has sticky manual
-    placement;
+    into the bottom of the editor/main panel unless the terminal has sticky
+    manual placement;
   - a manually moved terminal stays in its chosen split/side placement until the
     user resets the recipe or opens a new default bottom-pane terminal;
   - the recipe uses ordinary nested split nodes only, with no sidebar/dock/lane
@@ -717,8 +748,8 @@ Tests:
   pane.
 - Terminal rail toggles the whole classic bottom tool pane, preserving the
   Problems tab and terminal session.
-- Terminal opened first moves to the full-width bottom tool pane when another
-  normal surface opens through recipe placement.
+- Terminal opened first moves to the bottom of the editor/main panel when
+  another normal surface opens through recipe placement.
 - A terminal manually moved to the left or right is not forced back to the
   bottom by later recipe placement.
 - File Navigator and Git Changes preserve selection/state hooks.
@@ -794,7 +825,7 @@ Work:
 - Set `canUnmountWhenNotExpanded: false` for terminal surfaces whose renderer
   must stay mounted and enforce it in `WorkbenchSurfaceHost`.
 - Place terminals through recipe policy. In the default recipe, default
-  terminal commands target the full-width bottom tool pane.
+  terminal commands target the bottom of the editor/main panel.
 - Distinguish default terminal placement from manual terminal placement:
   default terminal commands target `bottom-tools`; user drag/drop or explicit
   move commands create sticky manual placement while the target remains valid.
@@ -1237,6 +1268,18 @@ The phases are intentionally larger than individual PRs. Suggested merge slices:
 ## Verification Commands
 
 Last verified: 2026-06-06.
+
+Focused verification from the 2026-06-06 re-audit/fix pass:
+
+```sh
+bun run typecheck
+bun --bun vitest run --project node src/features/tiling-surface-manager/tests/layout-geometry.test.ts src/features/tiling-surface-manager/tests/layout-operations.test.ts src/hooks/tests/use-workspace-cache-persistence.test.ts
+bun --bun vitest run --project node src/lib/tests/workspace-cache.test.ts src/features/editor/tests/editor-state.test.ts src/features/workbench/tests/editor-surface-layout.test.ts src/features/workbench/tests/editor-surface-dispatch.test.ts src/hooks/tests/use-workspace-cache-persistence.test.ts
+bun --bun vitest run --project dom src/features/workbench/tests/layout-renderer.test.tsx
+bun run lint
+bun --bun vitest run --project node --project dom
+git diff --check
+```
 
 Focused phase 1-7 regression gates:
 

@@ -21,9 +21,11 @@ import {
   surfaceIdLabel,
 } from './renderer'
 
-const COLS = 66
-const ROWS = 22
-const GAP = 1
+const COLS = 72
+const ROWS = 36
+// No gap: panes tile edge-to-edge and neighbors share a single border line
+// (the grid merges them into ┬┴├┤┼ junctions), so every seam looks identical.
+const GAP = 0
 
 // Compact slot tags shown inside each pane; mirrors SLOT_STYLES labels.
 const SLOT_TAGS = {
@@ -54,7 +56,7 @@ export function renderStateAscii(engine: Engine, state: DiagramState): string {
   const grid = new CharGrid(COLS, ROWS)
   const nodeRects = engine.geometry.deriveNodeRects(
     state.layout,
-    { height: ROWS, width: COLS, x: 0, y: 0 },
+    { height: ROWS - 1, width: COLS - 1, x: 0, y: 0 },
     { gapPx: GAP },
   )
   const windowRects = engine.geometry.deriveWindowRects(state.layout, nodeRects)
@@ -86,10 +88,12 @@ function divider(): string {
 }
 
 function drawPane(grid: CharGrid, layout: WorkspaceLayout, rect: LayoutRect, windowId: WindowId) {
+  // Inclusive edges on both axes: a pane ends exactly where its neighbor starts,
+  // so adjacent borders land on the same cell and merge into one shared line.
   const x0 = Math.round(rect.x)
   const y0 = Math.round(rect.y)
-  const width = Math.round(rect.x + rect.width) - x0
-  const height = Math.round(rect.y + rect.height) - y0
+  const width = Math.round(rect.x + rect.width) - x0 + 1
+  const height = Math.round(rect.y + rect.height) - y0 + 1
   if (width < 2 || height < 2) return
 
   grid.box(x0, y0, width, height)
@@ -102,26 +106,8 @@ function drawPane(grid: CharGrid, layout: WorkspaceLayout, rect: LayoutRect, win
   if (innerWidth < 1) return
 
   const active = layout.activeWindowId === windowId
-  drawTabs(grid, layout, window, innerX, y0 + 1, innerWidth)
+  if (height >= 4) grid.text(innerX, y0 + 1, truncate(`${width}×${height}`, innerWidth))
   drawLabel(grid, layout, window, innerX, y0 + Math.floor(height / 2), innerWidth, active)
-}
-
-function drawTabs(
-  grid: CharGrid,
-  _layout: WorkspaceLayout,
-  window: WorkspaceLayout['windowsById'][WindowId],
-  x: number,
-  y: number,
-  width: number,
-) {
-  if (window.surfaceIds.length < 2) return
-
-  const tabs = window.surfaceIds.map((surfaceId) => {
-    const mark = surfaceId === window.activeSurfaceId ? '*' : ''
-
-    return `${mark}${surfaceIdLabel(surfaceId)}`
-  })
-  grid.text(x, y, truncate(tabs.join(' '), width))
 }
 
 function drawLabel(
@@ -137,7 +123,10 @@ function drawLabel(
   const slot = slotForSurface(layout, window.activeSurfaceId)
   const name = surface?.title ?? surfaceIdLabel(window.activeSurfaceId)
   const marker = active ? '* ' : ''
-  grid.text(x, y, truncate(`${marker}${name} [${SLOT_TAGS[slot]}]`, width))
+  // Only the active tab is shown; hidden tabs are hinted with a +N suffix.
+  const hidden = window.surfaceIds.length - 1
+  const more = hidden > 0 ? ` +${hidden}` : ''
+  grid.text(x, y, truncate(`${marker}${name} [${SLOT_TAGS[slot]}]${more}`, width))
 }
 
 function railLine(engine: Engine, layout: WorkspaceLayout): string {

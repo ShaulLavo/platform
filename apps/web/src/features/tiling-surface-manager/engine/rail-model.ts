@@ -18,6 +18,7 @@ import type {
   LayoutOperation,
   Surface,
   SurfaceId,
+  WorkspaceRecipe,
   WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 
@@ -38,6 +39,19 @@ export type WorkbenchRailSurfaceItem = {
   readonly surface: Surface
 }
 
+export type WorkbenchRailRecipeState = 'active-recipe' | 'recipe'
+
+export type WorkbenchRailRecipeItem = {
+  readonly recipe: WorkspaceRecipe
+  readonly state: WorkbenchRailRecipeState
+}
+
+export type WorkbenchRailItem = WorkbenchRailRecipeItem | WorkbenchRailSurfaceItem
+
+export function selectWorkbenchRailItems(layout: WorkspaceLayout): readonly WorkbenchRailItem[] {
+  return [...selectWorkbenchRailSurfaceItems(layout), ...selectWorkbenchRailRecipeItems(layout)]
+}
+
 export function selectWorkbenchRailSurfaceItems(
   layout: WorkspaceLayout,
 ): readonly WorkbenchRailSurfaceItem[] {
@@ -52,6 +66,22 @@ export function selectWorkbenchRailSurfaceItems(
   appendSingletonItems(items, seen, layout)
 
   return items.map((item) => railItemWithCurrentState(layout, item))
+}
+
+export function selectWorkbenchRailRecipeItems(
+  layout: WorkspaceLayout,
+): readonly WorkbenchRailRecipeItem[] {
+  return layout.rail.recipeIds.flatMap((recipeId) => {
+    const recipe = layout.recipesById[recipeId]
+    if (!recipe) return []
+
+    return [
+      {
+        recipe,
+        state: recipeId === layout.activeRecipeId ? 'active-recipe' : 'recipe',
+      },
+    ]
+  })
 }
 
 function appendDefaultRailItems(
@@ -173,8 +203,12 @@ function classicBottomToolPaneOwnsDiagnostics(layout: WorkspaceLayout, surface: 
 
 export function railItemOperation(
   layout: WorkspaceLayout,
-  item: WorkbenchRailSurfaceItem,
+  item: WorkbenchRailItem,
 ): LayoutOperation {
+  if (isWorkbenchRailRecipeItem(item)) {
+    return { recipeId: item.recipe.id, type: 'applyRecipe' }
+  }
+
   const classicBottomTarget = classicBottomToolPaneTargetForRailItem(item)
   if (classicBottomTarget) {
     return {
@@ -218,6 +252,12 @@ export function railItemOperation(
     surfaceId: item.surface.id,
     type: 'restoreSurface',
   }
+}
+
+export function isWorkbenchRailRecipeItem(
+  item: WorkbenchRailItem,
+): item is WorkbenchRailRecipeItem {
+  return 'recipe' in item
 }
 
 function classicBottomToolPaneTargetForRailItem(item: WorkbenchRailSurfaceItem) {

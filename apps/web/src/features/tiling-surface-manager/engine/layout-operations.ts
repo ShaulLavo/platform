@@ -194,8 +194,12 @@ export function openSurface(
   const surfaceToOpen = surfaceForOpen(existingSurface, surface)
   const layoutWithSurface = upsertSurface(normalizedLayout, surfaceToOpen)
   const restoredLayout = removeSurfaceFromRail(layoutWithSurface, surfaceToOpen.id)
-  const placement = placementForOpen(restoredLayout, surfaceToOpen, options.policyId)
-  const placedLayout = placeSurface(restoredLayout, surfaceToOpen.id, placement)
+  const resolvedPlacement = placementForOpen(restoredLayout, surfaceToOpen, options.policyId)
+  const placedLayout = placeSurface(
+    resolvedPlacement.layout,
+    surfaceToOpen.id,
+    resolvedPlacement.placement,
+  )
 
   return normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(placedLayout))
 }
@@ -271,35 +275,56 @@ export function restoreSurface(
   const surface = normalizedLayout.surfacesById[surfaceId]
   if (!surface) return normalizedLayout
 
-  const placementHint = placementForRestore(normalizedLayout, surface, placement)
-  const restoredLayout = removeSurfaceFromRail(normalizedLayout, surfaceId)
-  const placedLayout = placeSurface(restoredLayout, surfaceId, placementHint)
+  const resolvedPlacement = placementForRestore(normalizedLayout, surface, placement)
+  const restoredLayout = removeSurfaceFromRail(resolvedPlacement.layout, surfaceId)
+  const placedLayout = placeSurface(restoredLayout, surfaceId, resolvedPlacement.placement)
 
   return normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(placedLayout))
+}
+
+type PlacementResolution = {
+  readonly layout: WorkspaceLayout
+  readonly placement: SurfacePlacementHint
 }
 
 function placementForRestore(
   layout: WorkspaceLayout,
   surface: Surface,
   placement?: SurfacePlacementHint,
-): SurfacePlacementHint {
-  if (placement && placementCanRestoreSurface(layout, placement)) return placement
-
-  const stickyPlacement = stickyPlacementForSurface(layout, surface.id)
-  if (stickyPlacement && placementCanRestoreSurface(layout, stickyPlacement)) return stickyPlacement
-
-  if (surface.placement && placementCanRestoreSurface(layout, surface.placement)) {
-    return surface.placement
+): PlacementResolution {
+  if (placement && placementCanRestoreSurface(layout, placement, surface)) {
+    return { layout, placement }
   }
 
-  return { kind: 'recipe-slot', slot: recipeSlotForSurface(layout, surface) }
+  const stickyPlacement = stickyPlacementForSurface(layout, surface.id)
+  if (!stickyPlacement) return fallbackPlacementForRestore(layout, surface)
+  if (placementCanRestoreSurface(layout, stickyPlacement, surface)) {
+    return { layout, placement: stickyPlacement }
+  }
+
+  return fallbackPlacementForRestore(clearStickyPlacement(layout, surface.id), surface)
+}
+
+function fallbackPlacementForRestore(
+  layout: WorkspaceLayout,
+  surface: Surface,
+): PlacementResolution {
+  const placement = surface.placement
+  if (placement && placementCanRestoreSurface(layout, placement)) {
+    return { layout, placement }
+  }
+
+  return { layout, placement: { kind: 'recipe-slot', slot: recipeSlotForSurface(layout, surface) } }
 }
 
 function placementCanRestoreSurface(
   layout: WorkspaceLayout,
   placement: SurfacePlacementHint | undefined,
+  surface?: Surface,
 ) {
   if (!placement) return false
+  if (surface && !surface.capabilities.validPlacements.includes(placement.kind)) return false
+  if (surface && !placementSatisfiesRecipeConstraints(layout, placement, surface)) return false
 
   switch (placement.kind) {
     case 'active-window':
@@ -317,6 +342,16 @@ function placementCanRestoreSurface(
     case 'window-edge':
       return layoutHasVisibleWindow(layout, placement.windowId)
   }
+}
+
+function placementSatisfiesRecipeConstraints(
+  layout: WorkspaceLayout,
+  placement: SurfacePlacementHint,
+  surface: Surface,
+) {
+  if (placement.kind !== 'recipe-slot') return true
+
+  return placement.slot === recipeSlotForSurface(layout, surface)
 }
 
 function layoutWithClassicBottomToolPane(layout: WorkspaceLayout): WorkspaceLayout {
@@ -354,6 +389,13 @@ function layoutWithClassicBottomToolPane(layout: WorkspaceLayout): WorkspaceLayo
 }
 
 function showClassicBottomToolPane(
+  layout: WorkspaceLayout,
+  targetSurfaceId: SurfaceId,
+): WorkspaceLayout {
+  return normalizeToolPaneRecipeLayout(showClassicBottomToolPaneLayout(layout, targetSurfaceId))
+}
+
+function showClassicBottomToolPaneLayout(
   layout: WorkspaceLayout,
   targetSurfaceId: SurfaceId,
 ): WorkspaceLayout {
@@ -1023,7 +1065,7 @@ function layoutWithRecipeBottomToolPane(layout: WorkspaceLayout): WorkspaceLayou
   const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
   if (!recipeShouldShowClassicBottomToolPane(layout, terminal.id)) return layout
 
-  return showClassicBottomToolPane(layout, terminal.id)
+  return showClassicBottomToolPaneLayout(layout, terminal.id)
 }
 
 function recipeShouldShowClassicBottomToolPane(layout: WorkspaceLayout, terminalId: SurfaceId) {
@@ -1079,7 +1121,10 @@ function appendManagedLeftToolWindowId(
 }
 
 function surfaceHasValidStickyPlacement(layout: WorkspaceLayout, surfaceId: SurfaceId) {
-  return placementCanRestoreSurface(layout, stickyPlacementForSurface(layout, surfaceId))
+  const surface = layout.surfacesById[surfaceId]
+  if (!surface) return false
+
+  return placementCanRestoreSurface(layout, stickyPlacementForSurface(layout, surfaceId), surface)
 }
 
 function windowHasManualPlacementDependent(layout: WorkspaceLayout, windowId: WindowId) {
@@ -1113,10 +1158,10 @@ function recipePackedTree(layout: WorkspaceLayout, toolWindowIds: readonly Windo
   const allocator = createRecipeNodeAllocator(layout)
   const leftTree = stackedWindowTree(allocator, toolWindowIds, 'recipe:left-tool-pane')
   const mainTree = mainContentTree(layout, excludedWindowIds, allocator)
-  const contentTree = recipeContentTree(layout, leftTree, mainTree, allocator)
   const bottomTree = bottomWindowId ? windowTree(bottomWindowId, CLASSIC_DIAGNOSTICS_NODE_ID) : null
+  const mainPanelTree = recipeMainPanelTree(layout, mainTree, bottomTree, allocator)
 
-  return recipeRootTree(layout, contentTree, bottomTree, allocator)
+  return recipeContentTree(layout, leftTree, mainPanelTree, allocator)
 }
 
 function createRecipeNodeAllocator(layout: WorkspaceLayout): RecipeNodeAllocator {
@@ -1341,24 +1386,24 @@ function recipeContentSplitSizes(layout: WorkspaceLayout) {
   return repairSplitSizes(parentNode.sizes, 2)
 }
 
-function recipeRootTree(
+function recipeMainPanelTree(
   layout: WorkspaceLayout,
-  contentTree: RecipeTree | null,
+  mainTree: RecipeTree | null,
   bottomTree: RecipeTree | null,
   allocator: RecipeNodeAllocator,
 ) {
-  if (!contentTree) return bottomTree
-  if (!bottomTree) return contentTree
+  if (!mainTree) return bottomTree
+  if (!bottomTree) return mainTree
 
   return splitTree({
     axis: 'vertical',
-    id: allocator.nodeId('recipe:root'),
-    sizes: recipeRootSplitSizes(layout),
-    trees: [contentTree, bottomTree],
+    id: allocator.nodeId('recipe:main-panel'),
+    sizes: recipeMainPanelSplitSizes(layout),
+    trees: [mainTree, bottomTree],
   })
 }
 
-function recipeRootSplitSizes(layout: WorkspaceLayout) {
+function recipeMainPanelSplitSizes(layout: WorkspaceLayout) {
   const bottomNodeId = findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
   const parentNodeId = bottomNodeId ? findParentNodeId(layout, bottomNodeId) : null
   const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
@@ -1578,12 +1623,25 @@ function placementForOpen(
   layout: WorkspaceLayout,
   surface: Surface,
   policyId?: LayoutPolicyId,
-): SurfacePlacementHint | undefined {
+): PlacementResolution {
   const stickyPlacement = stickyPlacementForSurface(layout, surface.id, policyId)
-  if (placementCanRestoreSurface(layout, stickyPlacement)) return stickyPlacement
-  if (placementCanRestoreSurface(layout, surface.placement)) return surface.placement
+  if (stickyPlacement && placementCanRestoreSurface(layout, stickyPlacement, surface)) {
+    return { layout, placement: stickyPlacement }
+  }
+  if (stickyPlacement) {
+    return fallbackPlacementForOpen(clearStickyPlacement(layout, surface.id, policyId), surface)
+  }
 
-  return { kind: 'recipe-slot', slot: recipeSlotForSurface(layout, surface) }
+  return fallbackPlacementForOpen(layout, surface)
+}
+
+function fallbackPlacementForOpen(layout: WorkspaceLayout, surface: Surface): PlacementResolution {
+  const placement = surface.placement
+  if (placement && placementCanRestoreSurface(layout, placement)) {
+    return { layout, placement }
+  }
+
+  return { layout, placement: { kind: 'recipe-slot', slot: recipeSlotForSurface(layout, surface) } }
 }
 
 function upsertSurface(layout: WorkspaceLayout, surface: Surface): WorkspaceLayout {
@@ -2251,6 +2309,29 @@ function setStickyPlacement(
           ...policy.stickyPlacementsBySurfaceId,
           [surfaceId]: placement,
         },
+      },
+    },
+  }
+}
+
+function clearStickyPlacement(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  policyId?: LayoutPolicyId,
+): WorkspaceLayout {
+  const policy = policyId ? layout.policiesById[policyId] : policyForStickyPlacement(layout)
+  if (!policy?.stickyPlacementsBySurfaceId[surfaceId]) return layout
+
+  const stickyPlacementsBySurfaceId = { ...policy.stickyPlacementsBySurfaceId }
+  delete stickyPlacementsBySurfaceId[surfaceId]
+
+  return {
+    ...layout,
+    policiesById: {
+      ...layout.policiesById,
+      [policy.id]: {
+        ...policy,
+        stickyPlacementsBySurfaceId,
       },
     },
   }

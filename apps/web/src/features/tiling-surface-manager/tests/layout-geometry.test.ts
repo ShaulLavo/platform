@@ -5,6 +5,7 @@ import {
   CLASSIC_EDITOR_NODE_ID,
   CLASSIC_EDITOR_WINDOW_ID,
   CLASSIC_FILE_NAVIGATOR_NODE_ID,
+  CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
   CLASSIC_MAIN_NODE_ID,
   CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
@@ -16,6 +17,7 @@ import {
   deriveResizeHandleRects,
   type LayoutRect,
 } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout geometry', () => {
   it('derives horizontal and vertical n-ary split rects with visible gaps', () => {
@@ -24,7 +26,7 @@ describe('tiling surface layout geometry', () => {
     const nodeRects = deriveNodeRects(layout, rect, { gapPx: 10 })
 
     expectRect(nodeRects[CLASSIC_FILE_NAVIGATOR_NODE_ID], {
-      height: 584.6,
+      height: 800,
       width: 217.8,
       x: 0,
       y: 0,
@@ -37,8 +39,8 @@ describe('tiling surface layout geometry', () => {
     })
     expectRect(nodeRects[CLASSIC_DIAGNOSTICS_NODE_ID], {
       height: 205.4,
-      width: 1000,
-      x: 0,
+      width: 772.2,
+      x: 227.8,
       y: 594.6,
     })
   })
@@ -52,10 +54,38 @@ describe('tiling surface layout geometry', () => {
     const rootHandle = handles.find((handle) => handle.splitId === CLASSIC_ROOT_NODE_ID)
     const mainHandle = handles.find((handle) => handle.splitId === CLASSIC_MAIN_NODE_ID)
 
-    expect(rootHandle?.axis).toBe('vertical')
-    expectRect(rootHandle?.rect, { height: 8, width: 1000, x: 0, y: 585.6 })
-    expect(mainHandle?.axis).toBe('horizontal')
-    expectRect(mainHandle?.rect, { height: 584.6, width: 8, x: 218.8, y: 0 })
+    expect(rootHandle?.axis).toBe('horizontal')
+    expectRect(rootHandle?.rect, { height: 800, width: 8, x: 218.8, y: 0 })
+    expect(mainHandle?.axis).toBe('vertical')
+    expectRect(mainHandle?.rect, { height: 8, width: 772.2, x: 227.8, y: 585.6 })
+  })
+
+  it('allocates collapsed split children as fixed accordion headers', () => {
+    const base = createClassicFirstRunWorkspaceLayout()
+    const layout = {
+      ...base,
+      windowsById: {
+        ...base.windowsById,
+        [CLASSIC_FILE_NAVIGATOR_WINDOW_ID]: {
+          ...base.windowsById[CLASSIC_FILE_NAVIGATOR_WINDOW_ID],
+          mode: 'collapsed',
+        },
+      },
+    } satisfies WorkspaceLayout
+    const nodeRects = deriveNodeRects(layout, rootRect(), { gapPx: 10 })
+
+    expectRect(nodeRects[CLASSIC_FILE_NAVIGATOR_NODE_ID], {
+      height: 800,
+      width: 40,
+      x: 0,
+      y: 0,
+    })
+    expectRect(nodeRects[CLASSIC_EDITOR_NODE_ID], {
+      height: 584.6,
+      width: 950,
+      x: 50,
+      y: 0,
+    })
   })
 
   it('derives background, recipe-slot, root, parent, window-edge, and center drop zones', () => {

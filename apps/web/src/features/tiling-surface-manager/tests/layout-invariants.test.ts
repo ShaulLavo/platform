@@ -83,7 +83,7 @@ describe('tiling surface layout invariants', () => {
   it('reports invalid split sizes and same-axis split chains', () => {
     const layout = updateNode(
       createClassicFirstRunWorkspaceLayout(),
-      CLASSIC_MAIN_NODE_ID,
+      CLASSIC_ROOT_NODE_ID,
       (node) => ({
         ...node,
         axis: 'vertical',

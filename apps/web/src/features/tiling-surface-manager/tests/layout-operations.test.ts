@@ -5,7 +5,8 @@ import {
   CLASSIC_DIAGNOSTICS_WINDOW_ID,
   CLASSIC_EDITOR_NODE_ID,
   CLASSIC_EDITOR_WINDOW_ID,
-  CLASSIC_MAIN_NODE_ID,
+  CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+  CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
   createChatSurface,
   createDiagnosticsSurface,
@@ -57,6 +58,7 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
   railItemOperation,
+  selectWorkbenchRailRecipeItems,
   selectWorkbenchRailSurfaceItems,
 } from '@/features/tiling-surface-manager/engine/rail-model'
 import type {
@@ -247,11 +249,11 @@ describe('tiling surface layout operations', () => {
   it('resizes adjacent split percentages and normalizes the result', () => {
     const resized = resizeSplit(
       createClassicFirstRunWorkspaceLayout(),
-      CLASSIC_MAIN_NODE_ID,
+      CLASSIC_ROOT_NODE_ID,
       0,
       100,
     )
-    const root = resized.nodesById[CLASSIC_MAIN_NODE_ID] as LayoutSplitNode
+    const root = resized.nodesById[CLASSIC_ROOT_NODE_ID] as LayoutSplitNode
 
     expect(root.sizes[0]).toBeCloseTo(0.32)
     expect(root.sizes[1]).toBeCloseTo(0.68)
@@ -419,6 +421,9 @@ describe('tiling surface layout operations', () => {
 
     expect(restored.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(restored.activeSurfaceId).toBe(chat.id)
+    expect(
+      restored.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[chat.id],
+    ).toBeUndefined()
     expect(visibleSurfaceIdsInOrder(restored)).toContain(chat.id)
     expectValidLayout(restored)
   })
@@ -522,9 +527,68 @@ describe('tiling surface layout operations', () => {
     const opened = applyLayoutOperation(layout, railItemOperation(layout, item))
 
     expect(opened.rail.backgroundSurfaceIds).not.toContain(chat.id)
+    expect(
+      opened.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[chat.id],
+    ).toBeUndefined()
     expect(visibleSurfaceIdsInOrder(opened)).toContain(chat.id)
     expect(mustFindWindowId(opened, chat.id)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
     expectValidLayout(opened)
+  })
+
+  it('clears sticky placements that are invalid for the surface capabilities', () => {
+    const search = createSearchResultsSurface()
+    const preview = createSearchPreviewSurface({
+      ownerContextKey: 'result:/repo/src/app.ts:1',
+      ownerSurfaceId: search.id,
+      resourceKey: '/repo/src/app.ts',
+    })
+    const searchOpened = openSurface(createClassicFirstRunWorkspaceLayout(), search)
+    const layout = {
+      ...searchOpened,
+      policiesById: {
+        ...searchOpened.policiesById,
+        [CLASSIC_POLICY_ID]: {
+          ...searchOpened.policiesById[CLASSIC_POLICY_ID],
+          stickyPlacementsBySurfaceId: {
+            ...searchOpened.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId,
+            [preview.id]: { kind: 'recipe-slot', slot: 'left-tool-pane' },
+          },
+        },
+      },
+    } satisfies WorkspaceLayout
+    const restored = openSurface(layout, preview)
+    const restoredSticky =
+      restored.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[preview.id]
+
+    expect(restoredSticky).not.toMatchObject({ kind: 'recipe-slot', slot: 'left-tool-pane' })
+    expect(preview.capabilities.validPlacements).toContain(restoredSticky?.kind)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(preview.id)
+    expectValidLayout(restored)
+  })
+
+  it('clears sticky recipe-slot placements that violate the active recipe slot', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const base = createClassicFirstRunWorkspaceLayout()
+    const layout = {
+      ...base,
+      policiesById: {
+        ...base.policiesById,
+        [CLASSIC_POLICY_ID]: {
+          ...base.policiesById[CLASSIC_POLICY_ID],
+          stickyPlacementsBySurfaceId: {
+            ...base.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId,
+            [terminal.id]: { kind: 'recipe-slot', slot: 'left-tool-pane' },
+          },
+        },
+      },
+    } satisfies WorkspaceLayout
+    const restored = restoreSurface(layout, terminal.id)
+    const restoredSticky =
+      restored.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[terminal.id]
+
+    expect(restoredSticky).not.toMatchObject({ kind: 'recipe-slot', slot: 'left-tool-pane' })
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(terminal.id)
+    expectValidLayout(restored)
   })
 
   it('opens main surfaces above the bottom tool pane when no main view is visible', () => {
@@ -545,6 +609,30 @@ describe('tiling surface layout operations', () => {
     expect(mustFindWindowId(opened, file.id)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
     expect(findNodeIdForWindow(opened, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeDefined()
     expectValidLayout(opened)
+  })
+
+  it('nests the classic bottom tool pane under the editor main panel beside left tools', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const editorNodeId = findNodeIdForWindow(layout, CLASSIC_EDITOR_WINDOW_ID)
+    const bottomNodeId = findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    const fileNavigatorNodeId = findNodeIdForWindow(layout, CLASSIC_FILE_NAVIGATOR_WINDOW_ID)
+    if (!editorNodeId || !bottomNodeId || !fileNavigatorNodeId) {
+      throw new Error('Expected classic recipe windows')
+    }
+
+    const editorParentId = findParentNodeId(layout, editorNodeId)
+    const bottomParentId = findParentNodeId(layout, bottomNodeId)
+    const fileNavigatorParentId = findParentNodeId(layout, fileNavigatorNodeId)
+    const mainPanelNode = bottomParentId ? layout.nodesById[bottomParentId] : null
+
+    expect(bottomParentId).toBe(editorParentId)
+    expect(bottomParentId).not.toBe(fileNavigatorParentId)
+    expect(mainPanelNode).toMatchObject({
+      axis: 'vertical',
+      childIds: [editorNodeId, bottomNodeId],
+      kind: 'split',
+    })
+    expectValidLayout(layout)
   })
 
   it('toggles the classic bottom tool pane as a group from terminal', () => {
@@ -569,12 +657,12 @@ describe('tiling surface layout operations', () => {
     const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
     const restored = toggleClassicBottomToolPane(hidden, 'terminal')
     const window = restored.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]
-    const root = restored.rootNodeId ? restored.nodesById[restored.rootNodeId] : null
+    const bottomNodeId = findNodeIdForWindow(restored, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    const bottomParentId = bottomNodeId ? findParentNodeId(restored, bottomNodeId) : null
+    const bottomParent = bottomParentId ? restored.nodesById[bottomParentId] : null
 
-    expect(findNodeIdForWindow(restored, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBe(
-      CLASSIC_DIAGNOSTICS_NODE_ID,
-    )
-    expect(root).toMatchObject({
+    expect(bottomNodeId).toBe(CLASSIC_DIAGNOSTICS_NODE_ID)
+    expect(bottomParent).toMatchObject({
       axis: 'vertical',
       childIds: expect.arrayContaining([CLASSIC_DIAGNOSTICS_NODE_ID]),
       kind: 'split',
@@ -760,6 +848,18 @@ describe('tiling surface layout operations', () => {
     expect(railItemOperation(layout, mustFindRailItem(items, chat.id))).toEqual({
       surface: chat,
       type: 'openSurface',
+    })
+  })
+
+  it('exposes active recipe rail entries that apply recipes', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const item = selectWorkbenchRailRecipeItems(layout)[0]
+    if (!item) throw new Error('Expected recipe rail item')
+
+    expect(item.state).toBe('active-recipe')
+    expect(railItemOperation(layout, item)).toEqual({
+      recipeId: layout.activeRecipeId,
+      type: 'applyRecipe',
     })
   })
 

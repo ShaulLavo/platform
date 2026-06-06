@@ -10,6 +10,7 @@ type ResizeDragState = {
   readonly handleId: string
   lastClientX: number
   lastClientY: number
+  readonly pointerId: number
 }
 
 export function ResizeOverlay({
@@ -42,13 +43,19 @@ export function ResizeOverlay({
       handleId: handle.id,
       lastClientX: event.clientX,
       lastClientY: event.clientY,
+      pointerId: event.pointerId,
     }
   }
 
   function handlePointerMove(event: PointerEvent<HTMLElement>, handle: ResizeHandleLayoutRect) {
     const drag = dragRef.current
     if (!drag) return
+    if (drag.pointerId !== event.pointerId) return
     if (drag.handleId !== handle.id) return
+    if (!primaryPointerButtonIsDown(event)) {
+      handlePointerEnd(event)
+      return
+    }
 
     const deltaPx = pointerResizeDelta(handle, event, drag)
     drag.lastClientX = event.clientX
@@ -127,6 +134,10 @@ function pointerResizeDelta(
   if (handle.axis === 'horizontal') return event.clientX - drag.lastClientX
 
   return event.clientY - drag.lastClientY
+}
+
+function primaryPointerButtonIsDown(event: PointerEvent<HTMLElement>) {
+  return (event.buttons & 1) === 1
 }
 
 function capturePointer(element: HTMLElement, pointerId: number) {

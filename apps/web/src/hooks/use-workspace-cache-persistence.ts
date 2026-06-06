@@ -54,8 +54,8 @@ export function subscribeWorkspaceCachePersistence({
 }: WorkspaceCachePersistenceOptions) {
   let disposed = false
   let timer: CacheWriteTimer | null = null
-  let workspaceKey = workspacePersistenceKey(workspaceStore.getState())
-  let searchKey = searchPersistenceKey(searchStore.getState())
+  let workspaceSnapshot = cachedWorkspaceState(workspaceStore.getState())
+  let searchSnapshot = cachedSearchBufferState(searchStore.getState().active)
 
   function persistNow() {
     if (disposed) return
@@ -82,17 +82,17 @@ export function subscribeWorkspaceCachePersistence({
   }
 
   const unsubscribeWorkspace = workspaceStore.subscribe((state) => {
-    const nextKey = workspacePersistenceKey(state)
-    if (nextKey === workspaceKey) return
+    const nextSnapshot = cachedWorkspaceState(state)
+    if (cachedWorkspaceStatesEqual(workspaceSnapshot, nextSnapshot)) return
 
-    workspaceKey = nextKey
+    workspaceSnapshot = nextSnapshot
     scheduleWrite()
   })
   const unsubscribeSearch = searchStore.subscribe((state) => {
-    const nextKey = searchPersistenceKey(state)
-    if (nextKey === searchKey) return
+    const nextSnapshot = cachedSearchBufferState(state.active)
+    if (cachedSearchBufferStatesEqual(searchSnapshot, nextSnapshot)) return
 
-    searchKey = nextKey
+    searchSnapshot = nextSnapshot
     scheduleWrite()
   })
   const removeLifecycleFlush = addLifecycleFlush(flushPendingWrite)
@@ -129,12 +129,53 @@ function cachedWorkspaceState(state: EditorWorkspaceStore): CachedWorkspaceState
   }
 }
 
-function workspacePersistenceKey(state: EditorWorkspaceStore) {
-  return JSON.stringify(cachedWorkspaceState(state))
+function cachedWorkspaceStatesEqual(left: CachedWorkspaceState, right: CachedWorkspaceState) {
+  return (
+    left.diffViewMode === right.diffViewMode &&
+    left.editorPaneLayout === right.editorPaneLayout &&
+    left.rootFolder === right.rootFolder &&
+    left.selectedFilePath === right.selectedFilePath &&
+    left.workspaceLayout === right.workspaceLayout &&
+    readonlyArraysEqual(left.editorHistory, right.editorHistory) &&
+    readonlyArraysEqual(left.openFilePaths, right.openFilePaths) &&
+    readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)
+  )
 }
 
-function searchPersistenceKey(state: SearchBufferStore) {
-  return JSON.stringify(cachedSearchBufferState(state.active))
+function cachedSearchBufferStatesEqual(
+  left: WorkspaceCacheState['searchBuffer'],
+  right: WorkspaceCacheState['searchBuffer'],
+) {
+  if (left === right) return true
+  if (!left || !right) return false
+
+  return (
+    left.activeResultId === right.activeResultId &&
+    left.caseSensitive === right.caseSensitive &&
+    left.excludeGlobText === right.excludeGlobText &&
+    left.filtersVisible === right.filtersVisible &&
+    left.includeGlobText === right.includeGlobText &&
+    left.matchMode === right.matchMode &&
+    left.query === right.query &&
+    left.replaceText === right.replaceText &&
+    left.replaceVisible === right.replaceVisible &&
+    left.resultsQuery === right.resultsQuery &&
+    left.resultsSearchQuery === right.resultsSearchQuery &&
+    left.rootPath === right.rootPath &&
+    left.totalCount === right.totalCount &&
+    left.truncated === right.truncated &&
+    left.wholeWord === right.wholeWord &&
+    readonlyArraysEqual(left.collapsedPaths, right.collapsedPaths) &&
+    readonlyArraysEqual(left.queryHistory, right.queryHistory) &&
+    readonlyArraysEqual(left.replaceHistory, right.replaceHistory)
+  )
+}
+
+function readonlyArraysEqual<T>(left: readonly T[], right: readonly T[]) {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+
+  return left.every((item, index) => Object.is(item, right[index]))
 }
 
 function addLifecycleFlush(flush: () => void) {

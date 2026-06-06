@@ -7,13 +7,12 @@ import type {
 } from '@/features/tiling-surface-manager/engine/layout-types'
 
 export function HiddenSurfaceHosts({
-  layout,
+  surfaces,
   surfaceRenderers,
 }: {
-  readonly layout: WorkspaceLayout
+  readonly surfaces: readonly Surface[]
   readonly surfaceRenderers: SurfaceRendererRegistry
 }) {
-  const surfaces = hiddenMountedSurfaces(layout)
   if (surfaces.length === 0) return null
 
   return (
@@ -31,7 +30,7 @@ export function HiddenSurfaceHosts({
   )
 }
 
-function hiddenMountedSurfaces(layout: WorkspaceLayout): readonly Surface[] {
+export function selectHiddenMountedSurfaces(layout: WorkspaceLayout): readonly Surface[] {
   const hiddenSurfaceIds = new Set([
     ...layout.rail.backgroundSurfaceIds,
     ...layout.rail.runningSurfaceIds,

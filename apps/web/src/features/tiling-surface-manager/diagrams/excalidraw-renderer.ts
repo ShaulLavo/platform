@@ -374,6 +374,18 @@ function drawPane(
   )
   drawTabs(builder, layout, rect, window)
   drawActivePaneLabel(builder, layout, rect, window.activeSurfaceId, style)
+  drawPaneDimensions(builder, rect, style)
+}
+
+function drawPaneDimensions(builder: DiagramBuilder, rect: LayoutRect, style: SlotStyle) {
+  if (rect.width < 54 || rect.height < 44) return
+
+  const dims = `${Math.round(rect.width)}×${Math.round(rect.height)} px`
+  builder.addText(dims, rect.x + 9, rect.y + rect.height - 18, {
+    fontSize: 9,
+    strokeColor: style.strokeColor,
+    width: Math.max(40, rect.width - 18),
+  })
 }
 
 function activeWindowStrokeWidth(layout: WorkspaceLayout, windowId: WindowId): number {

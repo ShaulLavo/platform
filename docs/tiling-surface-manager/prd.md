@@ -76,15 +76,16 @@ about workflow-shaped layouts:
 1. The workbench is powered by the tiling surface manager from day one.
 2. Default first run uses a familiar classic-shaped recipe on top of that
    tiling model, defined in `default-recipe.md`: tool surfaces in left nested
-   panes, editor center/main view, Terminal/Problems in the bottom tool pane,
-   and tabs where users expect them.
+   panes, editor center/main view, Terminal/Problems at the bottom of the
+   editor/main panel, and tabs where users expect them.
 3. Classic editor behavior must be credible onboarding and compatibility, but
    classic is a recipe, not the architecture ceiling.
 4. The rail primarily focuses/restores stateful surfaces and recipes. It is not
    a separate "tool" model and not layout storage for collapsed panes.
 5. Terminal is special only as default recipe behavior: default terminal actions
-   target the full-width bottom tool pane, but user-driven terminal placement in
-   any split is valid and sticky while its concrete target remains valid.
+   target the bottom of the editor/main panel, but user-driven terminal
+   placement in any split is valid and sticky while its concrete target remains
+   valid.
 6. Recipe-managed tool panes are order-packed from the current visible set. The
    default recipe must not keep appending tools into stale split history that
    shrinks older panes.

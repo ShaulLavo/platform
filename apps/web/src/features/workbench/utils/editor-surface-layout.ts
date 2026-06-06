@@ -11,22 +11,9 @@ import {
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 
 import {
-  CLASSIC_DIAGNOSTICS_NODE_ID,
-  CLASSIC_DIAGNOSTICS_WINDOW_ID,
-  CLASSIC_FILE_NAVIGATOR_NODE_ID,
-  CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
-  CLASSIC_MAIN_NODE_ID,
-  CLASSIC_ROOT_NODE_ID,
-  createEmptyWorkspaceLayout,
-  createChatSurface,
-  createDiagnosticsSurface,
-  createFileNavigatorSurface,
-  createGitChangesSurface,
-  createLogsSurface,
   createPlaceholderSurface,
-  createSearchResultsSurface,
+  createEmptyWorkspaceLayout,
   createSplitNode,
-  createTerminalSurface,
   createWindowNode,
   createWorkbenchWindow,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
@@ -96,7 +83,7 @@ export function workspaceLayoutForEditorPaneLayout(layout: EditorPaneLayout): Wo
     windowsById: context.windowsById,
   } satisfies WorkspaceLayout
 
-  return normalizeWorkspaceLayout(layoutWithClassicToolSurfaces(editorLayout))
+  return normalizeWorkspaceLayout(editorLayout)
 }
 
 export function editorSurfaceSerializedState(
@@ -550,89 +537,6 @@ function visibleSurfaceIds(context: EditorSurfaceLayoutContext) {
 
 function visibleWindowIds(context: EditorSurfaceLayoutContext) {
   return Object.values(context.windowsById).map((window) => window.id)
-}
-
-function layoutWithClassicToolSurfaces(layout: WorkspaceLayout): WorkspaceLayout {
-  if (!layout.rootNodeId) return layout
-
-  const fileNavigator = createFileNavigatorSurface()
-  const searchResults = createSearchResultsSurface()
-  const gitChanges = createGitChangesSurface()
-  const chat = createChatSurface()
-  const logs = createLogsSurface()
-  const diagnostics = createDiagnosticsSurface()
-  const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-  const fileNavigatorWindow = createWorkbenchWindow({
-    activeSurfaceId: fileNavigator.id,
-    id: CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
-    pinnedSurfaceIds: [fileNavigator.id],
-    surfaceIds: [fileNavigator.id],
-  })
-  const diagnosticsWindow = createWorkbenchWindow({
-    activeSurfaceId: terminal.id,
-    id: CLASSIC_DIAGNOSTICS_WINDOW_ID,
-    pinnedSurfaceIds: [diagnostics.id],
-    surfaceIds: [diagnostics.id, terminal.id],
-  })
-
-  return {
-    ...layout,
-    mruSurfaceIds: [...layout.mruSurfaceIds, fileNavigator.id, terminal.id, diagnostics.id],
-    mruWindowIds: [...layout.mruWindowIds, fileNavigatorWindow.id, diagnosticsWindow.id],
-    nodesById: {
-      ...layout.nodesById,
-      [CLASSIC_DIAGNOSTICS_NODE_ID]: createWindowNode({
-        id: CLASSIC_DIAGNOSTICS_NODE_ID,
-        windowId: diagnosticsWindow.id,
-      }),
-      [CLASSIC_FILE_NAVIGATOR_NODE_ID]: createWindowNode({
-        id: CLASSIC_FILE_NAVIGATOR_NODE_ID,
-        windowId: fileNavigatorWindow.id,
-      }),
-      [CLASSIC_MAIN_NODE_ID]: createSplitNode({
-        axis: 'vertical',
-        childIds: [layout.rootNodeId, CLASSIC_DIAGNOSTICS_NODE_ID],
-        id: CLASSIC_MAIN_NODE_ID,
-        sizes: [0.74, 0.26],
-      }),
-      [CLASSIC_ROOT_NODE_ID]: createSplitNode({
-        axis: 'horizontal',
-        childIds: [CLASSIC_FILE_NAVIGATOR_NODE_ID, CLASSIC_MAIN_NODE_ID],
-        id: CLASSIC_ROOT_NODE_ID,
-        sizes: [0.22, 0.78],
-      }),
-    },
-    rail: {
-      backgroundSurfaceIds: [searchResults.id, gitChanges.id, chat.id, logs.id],
-      pinnedSurfaceIds: [
-        fileNavigator.id,
-        searchResults.id,
-        gitChanges.id,
-        chat.id,
-        diagnostics.id,
-        logs.id,
-      ],
-      recipeIds: layout.rail.recipeIds,
-      runningSurfaceIds: [terminal.id],
-      visibleSingletonSurfaceIds: [fileNavigator.id, diagnostics.id],
-    },
-    rootNodeId: CLASSIC_ROOT_NODE_ID,
-    surfacesById: {
-      ...layout.surfacesById,
-      [diagnostics.id]: diagnostics,
-      [fileNavigator.id]: fileNavigator,
-      [gitChanges.id]: gitChanges,
-      [chat.id]: chat,
-      [logs.id]: logs,
-      [searchResults.id]: searchResults,
-      [terminal.id]: terminal,
-    },
-    windowsById: {
-      ...layout.windowsById,
-      [diagnosticsWindow.id]: diagnosticsWindow,
-      [fileNavigatorWindow.id]: fileNavigatorWindow,
-    },
-  }
 }
 
 function editorPaneWindowId(paneId: string): WindowId {
