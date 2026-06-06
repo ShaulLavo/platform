@@ -3,23 +3,23 @@ import { describe, expect, it } from 'vitest'
 import {
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/utils/layout-command-presets'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
 import {
   commandCycleScopeKey,
   commandCycleStateShouldReset,
   layoutWithResetCommandCycleState,
   selectCommandCycleStep,
-} from '@/features/tiling-surface-manager/utils/layout-command-cycling'
-import { commandAliasSearchMetadata } from '@/features/tiling-surface-manager/utils/layout-command-catalog'
-import { windowManagementCommandId } from '@/features/tiling-surface-manager/utils/layout-ids'
-import { openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@/features/tiling-surface-manager/engine/layout-command-cycling'
+import { commandAliasSearchMetadata } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
+import { windowManagementCommandId } from '@/features/tiling-surface-manager/engine/layout-ids'
+import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
 import type {
   CommandCycleRule,
   CustomWindowFrame,
   WindowManagementCommand,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout command helpers', () => {
   it('advances cycling steps and resets by command, surface scope, and timeout', () => {

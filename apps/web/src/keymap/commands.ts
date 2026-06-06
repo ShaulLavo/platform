@@ -4,7 +4,6 @@ import { useFocus, type FocusArea } from '@/components/workspace/focus/providers
 import { useTheme, type Theme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { activeEditorPaneTab } from '@/features/editor/state/editor-pane-state'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
@@ -17,18 +16,22 @@ import {
 import {
   createFileNavigatorSurface,
   createGitChangesSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   findWindowIdContainingSurface,
   visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/utils/layout-normalize'
-import { applyLayoutOperation } from '@/features/tiling-surface-manager/utils/layout-operations'
-import type { Surface, WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-normalize'
+import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
+import type {
+  Surface,
+  WorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-types'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from '@/features/editor/utils/diff-view-mode'
+import { activeEditorSurfaceTab } from '@/features/workbench/utils/editor-surface-layout'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
@@ -94,7 +97,7 @@ export function usePlatformCommandDispatch({
 
       const workspace = workspaceStore.getState()
       return dispatchWorkspaceCommand(workspaceCommand, {
-        activeTabId: activeEditorPaneTab(workspace.editorPaneLayout)?.id ?? null,
+        activeTabId: activeEditorSurfaceTab(workspace.workspaceLayout)?.id ?? null,
         diffViewMode: workspace.diffViewMode,
         documentStore,
         openPicker: workspace.openPicker,
@@ -315,8 +318,9 @@ function layoutWithToggledSurface(layout: WorkspaceLayout, surface: Surface) {
   const visibleSurfaceIds = visibleSurfaceIdsInOrder(layout)
   if (visibleSurfaceIds.includes(existingSurface.id)) {
     return applyLayoutOperation(layout, {
+      destination: { kind: 'background' },
       surfaceId: existingSurface.id,
-      type: 'minimizeSurface',
+      type: 'moveSurface',
     })
   }
 

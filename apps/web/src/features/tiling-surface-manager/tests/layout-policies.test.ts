@@ -12,20 +12,20 @@ import {
   createSearchPreviewSurface,
   createSearchResultsSurface,
   createTerminalSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/utils/layout-normalize'
-import { openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/engine/layout-normalize'
+import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
   FOCUS_POLICY_ID,
   LANE_WORKFLOW_POLICY_ID,
   MASTER_DETAIL_POLICY_ID,
   PREVIEW_ADJACENT_POLICY_ID,
   placementForSurfaceWithPolicy,
-} from '@/features/tiling-surface-manager/utils/layout-policies'
+} from '@/features/tiling-surface-manager/engine/layout-policies'
 import type {
   Surface,
   WorkspaceRecipeSlot,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout policies', () => {
   it('maps classic surface types to recipe slots', () => {

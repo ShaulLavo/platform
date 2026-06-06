@@ -6,11 +6,11 @@ import {
   CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
   createSearchPreviewSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   checkWorkspaceLayoutInvariants,
   type LayoutInvariantViolationCode,
-} from '@/features/tiling-surface-manager/utils/layout-invariants'
+} from '@/features/tiling-surface-manager/engine/layout-invariants'
 import {
   fileEditorSurfaceId,
   hotkeyPresetId,
@@ -18,14 +18,14 @@ import {
   layoutNodeId,
   windowManagementCommandId,
   workbenchWindowId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import type {
   CustomWindowFrame,
   LayoutNode,
   Surface,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout invariants', () => {
   it('accepts the classic first-run builder output', () => {
@@ -94,18 +94,18 @@ describe('tiling surface layout invariants', () => {
     expect(violationCodes(layout)).toEqual(['invalid-split-size-count', 'same-axis-split-chain'])
   })
 
-  it('reports visible minimized surfaces', () => {
+  it('reports visible background surfaces', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const visibleSurfaceId = layout.rail.visibleSingletonSurfaceIds[0]
     const nextLayout = {
       ...layout,
       rail: {
         ...layout.rail,
-        minimizedSurfaceIds: [visibleSurfaceId],
+        backgroundSurfaceIds: [visibleSurfaceId],
       },
     }
 
-    expect(violationCodes(nextLayout)).toContain('minimized-surface-visible')
+    expect(violationCodes(nextLayout)).toContain('background-surface-visible')
   })
 
   it('reports orphan transient preview owners', () => {

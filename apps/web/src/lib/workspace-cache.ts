@@ -19,12 +19,12 @@ import {
 } from '@/features/editor/state/editor-pane-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 import {
   restoreWorkspaceLayout,
   serializeWorkspaceLayout,
   type SerializedWorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-persistence'
+} from '@/features/tiling-surface-manager/engine/layout-persistence'
 import {
   editorPaneLayoutForWorkspaceLayout,
   workspaceLayoutForEditorPaneLayout,
@@ -41,7 +41,7 @@ const CACHE_VERSION = 9
 type WorkspaceCachePayload = {
   diffViewMode: EditorDiffViewMode
   editorHistory: string[]
-  editorPaneLayout: EditorPaneLayout
+  editorPaneLayout?: EditorPaneLayout
   recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
   searchBuffer: CachedSearchBufferState | null
@@ -141,7 +141,7 @@ const editorPaneLayoutSchema = v.custom<EditorPaneLayout>(isEditorPaneLayoutPayl
 const workspaceCachePayloadSchema = v.object({
   diffViewMode: diffViewModeSchema,
   editorHistory: v.array(v.string()),
-  editorPaneLayout: editorPaneLayoutSchema,
+  editorPaneLayout: v.optional(editorPaneLayoutSchema),
   recentlyClosedEditorPaths: v.array(v.string()),
   rootFolder: rootFolderSchema,
   searchBuffer: v.nullable(cachedSearchBufferStateSchema),
@@ -199,7 +199,6 @@ export function writeWorkspaceCache({
     const payload: WorkspaceCachePayload = {
       diffViewMode,
       editorHistory: workspacePathsForCache(rootFolder, editorHistory),
-      editorPaneLayout: persistedPaneLayout,
       recentlyClosedEditorPaths: workspacePathsForCache(rootFolder, recentlyClosedEditorPaths),
       rootFolder,
       searchBuffer: searchBufferForWorkspace(rootFolder, searchBuffer),
@@ -248,12 +247,7 @@ function parseCachePayload(value: string): WorkspaceCachePayload | null {
 }
 
 function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCacheState {
-  const fallbackEditorPaneLayout = editorPaneLayoutForWorkspace(
-    payload.rootFolder,
-    payload.editorPaneLayout,
-    [],
-    null,
-  )
+  const fallbackEditorPaneLayout = fallbackEditorPaneLayoutForPayload(payload)
   const fallbackWorkspaceLayout = workspaceLayoutForEditorPaneLayout(fallbackEditorPaneLayout)
   const workspaceLayout = restoreWorkspaceLayout(payload.workspaceLayout, {
     fallbackLayout: fallbackWorkspaceLayout,
@@ -280,6 +274,14 @@ function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCac
     selectedFilePath: activeEditorPanePath(editorPaneLayout),
     workspaceLayout,
   }
+}
+
+function fallbackEditorPaneLayoutForPayload(payload: WorkspaceCachePayload) {
+  if (payload.editorPaneLayout) {
+    return editorPaneLayoutForWorkspace(payload.rootFolder, payload.editorPaneLayout, [], null)
+  }
+
+  return createEditorPaneLayoutForPaths([], null)
 }
 
 function selectedPathForWorkspace(

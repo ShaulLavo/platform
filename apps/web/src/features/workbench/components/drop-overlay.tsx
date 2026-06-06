@@ -1,5 +1,5 @@
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
-import type { DropZoneLayoutRect } from '@/features/tiling-surface-manager/utils/layout-geometry'
+import type { DropZoneLayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
 
 export function DropOverlay({
   dropZoneRects,

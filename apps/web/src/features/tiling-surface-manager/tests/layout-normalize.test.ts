@@ -13,18 +13,21 @@ import {
   createTerminalSurface,
   createWindowNode,
   createWorkbenchWindow,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/utils/layout-invariants'
-import { layoutNodeId, workbenchWindowId } from '@/features/tiling-surface-manager/utils/layout-ids'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
+import {
+  layoutNodeId,
+  workbenchWindowId,
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import {
   normalizeWorkspaceLayout,
   visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
-} from '@/features/tiling-surface-manager/utils/layout-normalize'
+} from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type {
   LayoutSplitNode,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout normalization', () => {
   it('removes empty windows, collapses empty splits, flattens same-axis chains, and repairs sizes', () => {
@@ -103,7 +106,7 @@ describe('tiling surface layout normalization', () => {
       },
     })
 
-    expect(normalized.rail.minimizedSurfaceIds).toContain(file.id)
+    expect(normalized.rail.backgroundSurfaceIds).toContain(file.id)
     expect(normalized.rail.runningSurfaceIds).toContain(terminal.id)
     expect(normalized.surfacesById[preview.id]).toBeUndefined()
     expect(checkWorkspaceLayoutInvariants(normalized).ok).toBe(true)
@@ -124,7 +127,7 @@ describe('tiling surface layout normalization', () => {
 
     expect(visibleWindowIdsInOrder(normalized)).toHaveLength(1)
     expect(visibleSurfaceIdsInOrder(normalized)).toEqual([file.id])
-    expect(normalized.rail.minimizedSurfaceIds).toEqual([])
+    expect(normalized.rail.backgroundSurfaceIds).toEqual([])
     expect(checkWorkspaceLayoutInvariants(normalized).ok).toBe(true)
   })
 })

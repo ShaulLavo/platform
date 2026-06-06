@@ -11,9 +11,12 @@ import {
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileDiff } from '@/features/git/types'
-import { createGitChangesSurface } from '@/features/tiling-surface-manager/utils/layout-builders'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/utils/layout-normalize'
-import { moveSurface, openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
+import { createGitChangesSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
+import {
+  moveSurface,
+  openSurface,
+} from '@/features/tiling-surface-manager/engine/layout-operations'
 import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import {
   readWorkspaceCache,
@@ -52,8 +55,11 @@ describe('workspace cache', () => {
       }),
     )
 
+    const rawPayload = JSON.parse(Array.from(STORE.values())[0] ?? '{}') as Record<string, unknown>
     const cached = readWorkspaceCache()
 
+    expect(rawPayload).not.toHaveProperty('editorPaneLayout')
+    expect(rawPayload).toHaveProperty('workspaceLayout')
     expect(cached).toMatchObject({
       diffViewMode: 'stacked',
       editorHistory: [diffPath, '/repo/src/readme.md'],
@@ -211,7 +217,7 @@ describe('workspace cache', () => {
     const cached = readWorkspaceCache()
 
     expect(visibleSurfaceIdsInOrder(cached.workspaceLayout)).toContain(gitChanges.id)
-    expect(cached.workspaceLayout.rail.minimizedSurfaceIds).not.toContain(gitChanges.id)
+    expect(cached.workspaceLayout.rail.backgroundSurfaceIds).not.toContain(gitChanges.id)
     expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/app.ts')
   })
 

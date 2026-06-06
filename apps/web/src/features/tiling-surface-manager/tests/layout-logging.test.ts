@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
-import { createFileEditorSurface } from '@/features/tiling-surface-manager/utils/layout-builders'
+import { createFileEditorSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   layoutSnapshot,
   operationSummary,
-} from '@/features/tiling-surface-manager/utils/layout-logging'
-import { createWorkbenchWindow } from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-logging'
+import { createWorkbenchWindow } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   CLASSIC_RECIPE_ID,
   layoutNodeId,
   workbenchWindowId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('layout logging', () => {
   it('summarizes layout snapshots without raw id arrays or file paths', () => {
@@ -23,7 +23,7 @@ describe('layout logging', () => {
         id: 'surface:file-editor:.../src/app.ts',
         type: 'file-editor',
       },
-      minimizedSurfaceCount: 0,
+      backgroundSurfaceCount: 0,
       nodeCount: 1,
       visibleSurfaceCount: 1,
       visibleWindowCount: 1,
@@ -71,7 +71,7 @@ function layoutWithFileEditor(path: string): WorkspaceLayout {
     },
     policiesById: {},
     rail: {
-      minimizedSurfaceIds: [],
+      backgroundSurfaceIds: [],
       pinnedSurfaceIds: [],
       recipeIds: [],
       runningSurfaceIds: [],

@@ -8,17 +8,17 @@ import {
   CLASSIC_MAIN_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   CLOSE_ACTIVE_SURFACE_COMMAND_ID,
-  MOVE_ACTIVE_SURFACE_TO_RAIL_COMMAND_ID,
+  MOVE_ACTIVE_SURFACE_TO_BACKGROUND_COMMAND_ID,
   commandMatchesSearch,
-} from '@/features/tiling-surface-manager/utils/layout-command-catalog'
+} from '@/features/tiling-surface-manager/engine/layout-command-catalog'
 import {
   layoutCommandId,
   windowManagementCommandId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
-import { openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
   resolveNodePath,
   resolveSurfacePath,
@@ -29,13 +29,13 @@ import {
   selectMaterializedLayoutTree,
   selectMruFallback,
   selectWindowNeighborIds,
-} from '@/features/tiling-surface-manager/utils/layout-selectors'
+} from '@/features/tiling-surface-manager/engine/layout-selectors'
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout selectors', () => {
   it('materializes the normalized tree and resolves node, window, and surface paths', () => {
@@ -92,12 +92,14 @@ describe('tiling surface layout selectors', () => {
     const rows = selectCommandPaletteRows(layout)
 
     const closeRow = rows.find((row) => row.id === CLOSE_ACTIVE_SURFACE_COMMAND_ID)
-    const moveToRailRow = rows.find((row) => row.id === MOVE_ACTIVE_SURFACE_TO_RAIL_COMMAND_ID)
+    const moveToRailRow = rows.find(
+      (row) => row.id === MOVE_ACTIVE_SURFACE_TO_BACKGROUND_COMMAND_ID,
+    )
     const customRow = rows.find((row) => row.id === customCommand.id)
     const savedRow = rows.find((row) => row.id === savedLayoutCommand.id)
 
     expect(closeRow?.disabledReason).toBe('Active surface cannot be closed.')
-    expect(moveToRailRow?.disabledReason).toBe('Active surface cannot be minimized.')
+    expect(moveToRailRow?.disabledReason).toBe('Active surface cannot be backgrounded.')
     expect(customRow?.kind).toBe('custom-window')
     expect(customRow?.disabledReason).toBe('Command is disabled.')
     expect(savedRow?.kind).toBe('saved-layout')

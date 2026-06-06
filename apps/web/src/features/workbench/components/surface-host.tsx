@@ -4,7 +4,7 @@ import {
   surfaceRendererFor,
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
-import type { Surface, WindowId } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { Surface, WindowId } from '@/features/tiling-surface-manager/engine/layout-types'
 
 export function SurfaceHost({
   active,
@@ -19,7 +19,7 @@ export function SurfaceHost({
   readonly visible: boolean
   readonly windowId?: WindowId
 }) {
-  if (!visible && surface.rendererLifecycle === 'unmount-when-hidden') return null
+  if (!visible && surface.rendererLifecycle === 'unmount-when-not-expanded') return null
 
   const Renderer = surfaceRendererFor(surfaceRenderers, surface.type)
 

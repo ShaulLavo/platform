@@ -14,7 +14,7 @@ import type { SnapshotDiffDocumentInput } from '@/features/git/diff-document'
 import {
   diffSurfaceId,
   fileEditorSurfaceId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import {
   editorPaneIdForWorkbenchWindowId,
   editorPaneLayoutForWorkspaceLayout,

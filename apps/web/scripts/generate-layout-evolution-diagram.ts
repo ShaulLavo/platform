@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { createServer } from 'vite'
 
-import type { LayoutRect } from '../src/features/tiling-surface-manager/utils/layout-geometry'
+import type { LayoutRect } from '../src/features/tiling-surface-manager/engine/layout-geometry'
 import type {
   LayoutOperation,
   Surface,
@@ -12,7 +12,7 @@ import type {
   WindowId,
   WorkspaceLayout,
   WorkspaceRecipeSlot,
-} from '../src/features/tiling-surface-manager/utils/layout-types'
+} from '../src/features/tiling-surface-manager/engine/layout-types'
 
 const OUTPUT_PATH = path.resolve(
   import.meta.dirname,
@@ -115,12 +115,12 @@ async function loadEngine() {
 
   try {
     const [builders, geometry, normalize, operations, rail, selectors] = await Promise.all([
-      server.ssrLoadModule('/src/features/tiling-surface-manager/utils/layout-builders.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/utils/layout-geometry.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/utils/layout-normalize.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/utils/layout-operations.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/utils/rail-model.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/utils/layout-selectors.ts'),
+      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-builders.ts'),
+      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-geometry.ts'),
+      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-normalize.ts'),
+      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-operations.ts'),
+      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/rail-model.ts'),
+      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-selectors.ts'),
     ])
 
     return {

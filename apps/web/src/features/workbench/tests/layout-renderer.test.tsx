@@ -23,26 +23,28 @@ import {
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
   createLogsSurface,
+  createSearchPreviewSurface,
+  createSearchResultsSurface,
   createTerminalSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
-  minimizeSurface,
+  moveSurface,
   openSurface,
-} from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@/features/tiling-surface-manager/engine/layout-operations'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
 import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
 import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
-import { layoutNodeId, overlayId } from '@/features/tiling-surface-manager/utils/layout-ids'
-import type { LayoutOperation } from '@/features/tiling-surface-manager/utils/layout-types'
-import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/utils/surface-state'
+import { layoutNodeId, overlayId } from '@/features/tiling-surface-manager/engine/layout-ids'
+import type { LayoutOperation } from '@/features/tiling-surface-manager/engine/layout-types'
+import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import {
   findNodeIdForWindow,
   visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/utils/layout-normalize'
+} from '@/features/tiling-surface-manager/engine/layout-normalize'
 
 describe('LayoutRenderer', () => {
   it('renders an empty layout state', () => {
@@ -60,6 +62,24 @@ describe('LayoutRenderer', () => {
     expect(html).toContain('data-window-id=')
     expect(html).toContain('app.ts')
     expect(html).toContain('data-surface-renderer="fixture"')
+  })
+
+  it('collapses a window without removing its surface from the layout', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
+    const layout = openSurface(createEmptyWorkspaceLayout(), file)
+    const store = renderInteractiveLayout(layout)
+
+    fireEvent.click(screen.getByLabelText('Collapse app.ts'))
+
+    const collapsedLayout = store.getState().layout
+    const activeWindowId = collapsedLayout.activeWindowId
+
+    expect(activeWindowId).toBeDefined()
+    expect(activeWindowId ? collapsedLayout.windowsById[activeWindowId]?.mode : undefined).toBe(
+      'collapsed',
+    )
+    expect(visibleSurfaceIdsInOrder(collapsedLayout)).toContain(file.id)
+    expect(screen.getByLabelText('Expand app.ts')).toBeInTheDocument()
   })
 
   it('renders split windows and resize/drop overlay layers', () => {
@@ -84,15 +104,15 @@ describe('LayoutRenderer', () => {
     expect(html).toContain('Close b.ts tab')
   })
 
-  it('renders minimized surfaces in the rail', () => {
-    const file = createFileEditorSurface({ path: '/repo/src/minimized.ts' })
+  it('renders background surfaces in the rail', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/backgrounded.ts' })
     const opened = openSurface(createEmptyWorkspaceLayout(), file)
-    const layout = minimizeSurface(opened, file.id)
+    const layout = backgroundSurface(opened, file.id)
     const html = renderLayout(layout)
 
     expect(html).toContain('data-workbench-rail')
-    expect(html).toContain('data-rail-state="minimized"')
-    expect(html).toContain('Restore minimized.ts')
+    expect(html).toContain('data-rail-state="background"')
+    expect(html).toContain('Restore backgrounded.ts')
     expect(html).not.toContain('absolute top-3 right-3')
   })
 
@@ -194,7 +214,7 @@ describe('LayoutRenderer', () => {
     fireEvent.click(railButtonForSurface(chat.id))
 
     expect(visibleSurfaceIdsInOrder(store.getState().layout)).not.toContain(chat.id)
-    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'minimized')
+    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'background')
   })
 
   it('does not duplicate visible running surfaces in hidden hosts', () => {
@@ -217,6 +237,25 @@ describe('LayoutRenderer', () => {
     })
 
     expect(html).toContain('No file selected')
+    expect(html).not.toContain('data-surface-renderer="fixture"')
+  })
+
+  it('renders search previews with the production renderer', () => {
+    const search = createSearchResultsSurface()
+    const preview = createSearchPreviewSurface({
+      ownerContextKey: 'result:/repo/src/app.ts:1',
+      ownerSurfaceId: search.id,
+      resourceKey: '/repo/src/app.ts',
+      title: 'app.ts:1',
+    })
+    const layout = openSurface(openSurface(createEmptyWorkspaceLayout(), search), preview)
+    const html = renderLayout(layout, {
+      surfaceRenderers: editorSurfaceRendererRegistry,
+      withEditorSurfaceProvider: true,
+    })
+
+    expect(html).toContain('data-search-preview-surface')
+    expect(html).toContain('/repo/src/app.ts')
     expect(html).not.toContain('data-surface-renderer="fixture"')
   })
 })
@@ -303,6 +342,12 @@ function railButtonForSurface(surfaceId: string) {
   if (!button) throw new Error(`Missing rail button ${surfaceId}`)
 
   return button
+}
+
+function backgroundSurface(layout: WorkspaceLayout, surfaceId: WorkspaceLayout['activeSurfaceId']) {
+  if (!surfaceId) return layout
+
+  return moveSurface(layout, surfaceId, { kind: 'background' })
 }
 
 function withEditorSurfaceProvider(children: ReactNode) {

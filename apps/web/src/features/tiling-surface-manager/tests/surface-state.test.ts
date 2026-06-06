@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/utils/layout-invariants'
-import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/utils/surface-state'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
+import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 
 describe('tiling surface workspace layout store', () => {
   it('creates a normalized empty store and dispatches operations through the pure reducer', () => {

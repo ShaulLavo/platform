@@ -1,7 +1,10 @@
 import { SurfaceHost } from '@/features/workbench/components/surface-host'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/utils/layout-normalize'
+import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
-import type { Surface, WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
+import type {
+  Surface,
+  WorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 export function HiddenSurfaceHosts({
   layout,
@@ -30,7 +33,7 @@ export function HiddenSurfaceHosts({
 
 function hiddenMountedSurfaces(layout: WorkspaceLayout): readonly Surface[] {
   const hiddenSurfaceIds = new Set([
-    ...layout.rail.minimizedSurfaceIds,
+    ...layout.rail.backgroundSurfaceIds,
     ...layout.rail.runningSurfaceIds,
   ])
   const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))

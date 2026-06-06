@@ -11,7 +11,7 @@ import {
   CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   CLASSIC_POLICY_ID,
   CLASSIC_RECIPE_ID,
@@ -23,13 +23,13 @@ import {
   placeholderSurfaceId,
   searchResultsSurfaceId,
   terminalSurfaceId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import type {
   LayoutNode,
   Surface,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout builders', () => {
   it('creates an empty workspace layout snapshot', () => {
@@ -51,7 +51,7 @@ describe('tiling surface layout builders', () => {
         },
       ],
       rail: {
-        minimizedSurfaceIds: [],
+        backgroundSurfaceIds: [],
         pinnedSurfaceIds: [],
         recipeIds: [CLASSIC_RECIPE_ID],
         runningSurfaceIds: [],
@@ -135,7 +135,7 @@ describe('tiling surface layout builders', () => {
         },
       ],
       rail: {
-        minimizedSurfaceIds: [searchResults, gitChanges, chat, logs],
+        backgroundSurfaceIds: [searchResults, gitChanges, chat, logs],
         pinnedSurfaceIds: [fileNavigator, searchResults, gitChanges, chat, diagnostics, logs],
         recipeIds: [CLASSIC_RECIPE_ID],
         runningSurfaceIds: [terminal],

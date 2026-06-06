@@ -7,7 +7,7 @@ import {
   normalizeEditorPaneLayout,
   type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 import {
   editorPaneLayoutForWorkspaceLayout,
   workspaceLayoutForEditorPaneLayout,

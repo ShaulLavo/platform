@@ -1,3 +1,6 @@
+> [!NOTE]
+> **STATUS: 🔵 TOUCH-UP ONLY (reviewed 2026-06-06).** Historical research snapshot — content still valid; only paths/dates may need a refresh.
+
 # Editor Layout Manager Research Findings
 
 Date: 2026-06-05

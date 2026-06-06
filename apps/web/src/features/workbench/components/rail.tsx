@@ -4,18 +4,18 @@ import {
   railItemOperation,
   selectWorkbenchRailSurfaceItems,
   type WorkbenchRailSurfaceItem,
-} from '@/features/tiling-surface-manager/utils/rail-model'
+} from '@/features/tiling-surface-manager/engine/rail-model'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
-import { terminalSurfaceId } from '@/features/tiling-surface-manager/utils/layout-ids'
+import { terminalSurfaceId } from '@/features/tiling-surface-manager/engine/layout-ids'
 import {
   layoutSnapshot,
   logWorkbenchLayoutInfo,
   operationSummary,
-} from '@/features/tiling-surface-manager/utils/layout-logging'
+} from '@/features/tiling-surface-manager/engine/layout-logging'
 import type {
   LayoutOperation,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 const DEFAULT_TERMINAL_SURFACE_ID = terminalSurfaceId('terminal-1')
 
@@ -75,12 +75,12 @@ function dispatchRailItemOperation(
 }
 
 function railItemLabel(item: WorkbenchRailSurfaceItem) {
-  if (item.state === 'minimized') return `Restore ${item.surface.title}`
+  if (item.state === 'background') return `Restore ${item.surface.title}`
   if (item.surface.id === DEFAULT_TERMINAL_SURFACE_ID && paneIsVisible(item)) {
     return 'Hide bottom tool pane'
   }
-  if (paneIsVisible(item) && item.surface.capabilities.canMinimize) {
-    return `Minimize ${item.surface.title}`
+  if (paneIsVisible(item) && item.surface.capabilities.canCollapse) {
+    return `Send ${item.surface.title} to background`
   }
   if (item.state === 'active') return `${item.surface.title} active`
   if (item.state === 'visible') return `Focus ${item.surface.title}`

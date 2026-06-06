@@ -28,7 +28,7 @@ import { parseDiffDocumentId } from '@/features/git/diff-document'
 import {
   createDiffSurface,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   activateSurface,
   closeSurface as closeSurfaceInLayout,
@@ -36,8 +36,8 @@ import {
   openSurface,
   reorderSurface,
   tabSurface,
-} from '@/features/tiling-surface-manager/utils/layout-operations'
-import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/utils/layout-normalize'
+} from '@/features/tiling-surface-manager/engine/layout-operations'
+import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type {
   DropDestination,
   DropEdge,
@@ -45,7 +45,7 @@ import type {
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 import {
   editorPaneIdForWorkbenchWindow,
   editorSurfaceSerializedState,
@@ -527,8 +527,8 @@ function replaceSurface(
     mruSurfaceIds: replaceSurfaceIds(layout.mruSurfaceIds, surfaceId, replacement.id),
     rail: {
       ...layout.rail,
-      minimizedSurfaceIds: replaceSurfaceIds(
-        layout.rail.minimizedSurfaceIds,
+      backgroundSurfaceIds: replaceSurfaceIds(
+        layout.rail.backgroundSurfaceIds,
         surfaceId,
         replacement.id,
       ),

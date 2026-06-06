@@ -6,7 +6,7 @@ import {
   useEditorWorkspaceStoreApi,
 } from '@/features/editor/state/editor-workspace-state'
 
-import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/utils/surface-state'
+import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import {
   dispatchEditorSurfaceOperation,
   type EditorSurfaceDispatchContext,

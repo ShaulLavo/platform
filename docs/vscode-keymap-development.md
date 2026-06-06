@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Status doc stamped 2026-05-11; keymap code in `apps/web/src/keymap/` advanced since. Refresh.
+
 # VS Code Keymap Development Status
 
 Last updated: 2026-05-11.

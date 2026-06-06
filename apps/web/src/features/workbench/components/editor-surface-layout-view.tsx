@@ -18,7 +18,7 @@ import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-
 import { useEditorSurfaceStore } from '@/features/workbench/hooks/use-editor-surface-store'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
-import type { Surface } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { Surface } from '@/features/tiling-surface-manager/engine/layout-types'
 
 export function EditorSurfaceLayoutView({
   editorKeymapLayers,

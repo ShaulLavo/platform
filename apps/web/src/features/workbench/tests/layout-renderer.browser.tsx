@@ -23,14 +23,14 @@ import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
 import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
-import type { Surface } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { Surface } from '@/features/tiling-surface-manager/engine/layout-types'
 
 const THEME_STORAGE_KEY = 'platform-workbench-layout-renderer-browser-theme'
 const TEST_ROOT_PATH = 'repo'
@@ -128,21 +128,21 @@ describe('LayoutRenderer browser rendering', () => {
     buttonWithLabel('Restore Chat').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Minimize Chat').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Send Chat to background').dataset.railState).toBe('active')
     })
 
     buttonWithLabel('Restore Logs').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Minimize Logs').dataset.railState).toBe('active')
-      expect(buttonWithLabel('Minimize Chat').dataset.railState).toBe('visible')
+      expect(buttonWithLabel('Send Logs to background').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Send Chat to background').dataset.railState).toBe('visible')
       expect(windowRegions()).toHaveLength(5)
     })
 
-    buttonWithLabel('Minimize Chat').click()
+    buttonWithLabel('Send Chat to background').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Restore Chat').dataset.railState).toBe('minimized')
+      expect(buttonWithLabel('Restore Chat').dataset.railState).toBe('background')
       expect(windowRegions()).toHaveLength(4)
     })
   })

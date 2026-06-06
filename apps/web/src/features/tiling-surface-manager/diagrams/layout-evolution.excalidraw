@@ -8702,8 +8702,8 @@
       "fontFamily": 5,
       "fontSize": 15,
       "lineHeight": 1.25,
-      "originalText": "Rail-clicking visible Files minimizes it; Search stays in its primary-side window.",
-      "text": "Rail-clicking visible Files minimizes it; Search stays in its primary-side window.",
+      "originalText": "Rail-clicking visible Files backgrounds it; Search stays in its primary-side window.",
+      "text": "Rail-clicking visible Files backgrounds it; Search stays in its primary-side window.",
       "textAlign": "left",
       "type": "text",
       "verticalAlign": "top"
@@ -11635,8 +11635,8 @@
       "fontFamily": 5,
       "fontSize": 12,
       "lineHeight": 1.25,
-      "originalText": "Files minimized; Search uses recipe slot",
-      "text": "Files minimized; Search uses recipe slot",
+      "originalText": "Files backgrounded; Search uses recipe slot",
+      "text": "Files backgrounded; Search uses recipe slot",
       "textAlign": "left",
       "type": "text",
       "verticalAlign": "top"
@@ -11801,8 +11801,8 @@
       "fontFamily": 5,
       "fontSize": 12,
       "lineHeight": 1.25,
-      "originalText": "visible rail item -> minimize Files",
-      "text": "visible rail item -> minimize Files",
+      "originalText": "visible rail item -> background Files",
+      "text": "visible rail item -> background Files",
       "textAlign": "left",
       "type": "text",
       "verticalAlign": "top"

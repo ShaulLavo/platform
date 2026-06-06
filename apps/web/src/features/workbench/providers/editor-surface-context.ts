@@ -8,7 +8,7 @@ import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
 import type { EditorKeymapLayer } from '@editor/core'
 
-import type { Surface, SurfaceId } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { Surface, SurfaceId } from '@/features/tiling-surface-manager/engine/layout-types'
 
 export type EditorSurfaceContextValue = {
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]

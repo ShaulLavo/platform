@@ -9,15 +9,15 @@ import {
   searchPreviewSurfaceId,
   searchResultsSurfaceId,
   terminalSurfaceId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import {
   SURFACE_SERIALIZED_VERSION,
   type SurfaceType,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 import {
   canFloatSurface,
   canSplitSurface,
-  canUnmountSurfaceWhenHidden,
+  canUnmountSurfaceWhenNotExpanded,
   createRegisteredSurface,
   createSurfaceRegistry,
   defaultSurfaceRecipeSlot,
@@ -28,7 +28,7 @@ import {
   surfaceClosePolicy,
   validSurfacePlacements,
   type SurfaceDescriptor,
-} from '@/features/tiling-surface-manager/utils/surface-registry'
+} from '@/features/tiling-surface-manager/engine/surface-registry'
 
 const rootPath = '/repo'
 
@@ -99,8 +99,8 @@ describe('tiling surface registry', () => {
     expect(canSplitSurface(defaultSurfaceRegistry, file)).toBe(true)
     expect(supportsSurfacePreview(defaultSurfaceRegistry, file)).toBe(true)
     expect(canSplitSurface(defaultSurfaceRegistry, search)).toBe(false)
-    expect(canUnmountSurfaceWhenHidden(defaultSurfaceRegistry, search)).toBe(true)
-    expect(canUnmountSurfaceWhenHidden(defaultSurfaceRegistry, terminal)).toBe(false)
+    expect(canUnmountSurfaceWhenNotExpanded(defaultSurfaceRegistry, search)).toBe(true)
+    expect(canUnmountSurfaceWhenNotExpanded(defaultSurfaceRegistry, terminal)).toBe(false)
     expect(defaultSurfaceRecipeSlot(defaultSurfaceRegistry, search)).toBe('primary-side')
     expect(validSurfacePlacements(defaultSurfaceRegistry, file)).toContain('window-edge')
   })

@@ -5,7 +5,7 @@ import type {
   Surface,
   SurfaceType,
   WindowId,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 export type SurfaceRendererProps = {
   readonly active: boolean

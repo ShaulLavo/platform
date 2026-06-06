@@ -13,12 +13,12 @@ import {
   createTerminalSurface,
   createWorkbenchWindow,
   createWindowNode,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   CLOSE_ACTIVE_SURFACE_COMMAND_ID,
   MAXIMIZE_ACTIVE_WINDOW_COMMAND_ID,
-} from '@/features/tiling-surface-manager/utils/layout-command-catalog'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/utils/layout-invariants'
+} from '@/features/tiling-surface-manager/engine/layout-command-catalog'
+import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
 import {
   fileEditorSurfaceId,
   hotkeyPresetId,
@@ -28,17 +28,17 @@ import {
   placeholderSurfaceId,
   windowManagementCommandId,
   workbenchWindowId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/utils/layout-normalize'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import {
-  minimizeSurface,
+  moveSurface,
   openSurface,
-} from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
   restoreWorkspaceLayout,
   serializeWorkspaceLayout,
   type SerializedWorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-persistence'
+} from '@/features/tiling-surface-manager/engine/layout-persistence'
 import {
   SURFACE_SERIALIZED_VERSION,
   type CustomWindowFrame,
@@ -46,7 +46,7 @@ import {
   type SurfaceId,
   type WorkspaceLayout,
   type WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 const rootPath = '/repo'
 
@@ -175,7 +175,7 @@ describe('tiling surface layout persistence', () => {
 
   it('restores running terminals by session key', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-restore' })
-    const layout = minimizeSurface(
+    const layout = backgroundSurface(
       openSurface(createClassicFirstRunWorkspaceLayout(), terminal),
       terminal.id,
     )
@@ -249,7 +249,7 @@ describe('tiling surface layout persistence', () => {
       mruWindowIds: [windowId],
       nodes: [createWindowNode({ id: nodeId, windowId })],
       rail: {
-        minimizedSurfaceIds: [],
+        backgroundSurfaceIds: [],
         pinnedSurfaceIds: [],
         recipeIds: [],
         runningSurfaceIds: [],
@@ -391,6 +391,10 @@ function customWindowCommand(): CustomWindowManagementCommand {
     targetFrame: frame('center'),
     title: 'Custom Center',
   }
+}
+
+function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  return moveSurface(layout, surfaceId, { kind: 'background' })
 }
 
 function frame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {

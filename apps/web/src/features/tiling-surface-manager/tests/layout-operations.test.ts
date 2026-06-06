@@ -16,15 +16,15 @@ import {
   createSearchPreviewSurface,
   createSearchResultsSurface,
   createTerminalSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/utils/layout-invariants'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
 import {
   CLASSIC_POLICY_ID,
   fileEditorSurfaceId,
   layoutCommandId,
   workbenchWindowId,
   windowManagementCommandId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import {
   findParentNodeId,
   findNodeIdForWindow,
@@ -32,8 +32,8 @@ import {
   normalizeWorkspaceLayout,
   visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
-} from '@/features/tiling-surface-manager/utils/layout-normalize'
-import { deriveLayoutGeometry } from '@/features/tiling-surface-manager/utils/layout-geometry'
+} from '@/features/tiling-surface-manager/engine/layout-normalize'
+import { deriveLayoutGeometry } from '@/features/tiling-surface-manager/engine/layout-geometry'
 import {
   activateSurface,
   applyLayoutOperation,
@@ -41,9 +41,10 @@ import {
   applyLayoutCommand,
   applyRecipe,
   closeSurface,
+  collapseWindow,
+  expandWindow,
   hideClassicBottomToolPane,
   maximizeWindow,
-  minimizeSurface,
   moveSurface,
   moveWindow,
   openSurface,
@@ -53,11 +54,11 @@ import {
   restoreWindow,
   tabSurface,
   toggleClassicBottomToolPane,
-} from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
   railItemOperation,
   selectWorkbenchRailSurfaceItems,
-} from '@/features/tiling-surface-manager/utils/rail-model'
+} from '@/features/tiling-surface-manager/engine/rail-model'
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
@@ -66,7 +67,7 @@ import type {
   SurfaceType,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout operations', () => {
   it('opens surfaces into tab containers and reorders tabs', () => {
@@ -175,15 +176,45 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(moved)
   })
 
-  it('minimizes, restores, and closes a last surface without preserving empty windows', () => {
+  it('collapses and expands windows without removing them from the split tree', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/collapsible.ts' })
+    const opened = openSurface(emptyLayout(), file)
+    const windowId = mustFindWindowId(opened, file.id)
+    const collapsed = collapseWindow(opened, windowId)
+    const expanded = expandWindow(collapsed, windowId)
+
+    expect(collapsed.windowsById[windowId]?.mode).toBe('collapsed')
+    expect(visibleWindowIdsInOrder(collapsed)).toEqual([windowId])
+    expect(visibleSurfaceIdsInOrder(collapsed)).toEqual([file.id])
+    expect(expanded.windowsById[windowId]?.mode).toBe('normal')
+    expectValidLayout(expanded)
+  })
+
+  it('moves surfaces to background and restores recipe-slot drops through concrete placement', () => {
+    const git = createGitChangesSurface()
+    const opened = openSurface(createClassicFirstRunWorkspaceLayout(), git)
+    const backgrounded = moveSurface(opened, git.id, { kind: 'background' })
+    const restored = moveSurface(backgrounded, git.id, {
+      kind: 'recipe-slot',
+      slot: 'secondary-side',
+    })
+
+    expect(visibleSurfaceIdsInOrder(backgrounded)).not.toContain(git.id)
+    expect(backgrounded.rail.backgroundSurfaceIds).toContain(git.id)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(git.id)
+    expect(restored.rail.backgroundSurfaceIds).not.toContain(git.id)
+    expectValidLayout(restored)
+  })
+
+  it('backgrounds, restores, and closes a last surface without preserving empty windows', () => {
     const file = createFileEditorSurface({ path: '/repo/src/solo.ts' })
     const opened = openSurface(emptyLayout(), file)
-    const minimized = minimizeSurface(opened, file.id)
-    const restored = restoreSurface(minimized, file.id)
+    const backgrounded = backgroundSurface(opened, file.id)
+    const restored = restoreSurface(backgrounded, file.id)
     const closed = closeSurface(restored, file.id)
 
-    expect(visibleWindowIdsInOrder(minimized)).toEqual([])
-    expect(minimized.rail.minimizedSurfaceIds).toContain(file.id)
+    expect(visibleWindowIdsInOrder(backgrounded)).toEqual([])
+    expect(backgrounded.rail.backgroundSurfaceIds).toContain(file.id)
     expect(visibleSurfaceIdsInOrder(restored)).toEqual([file.id])
     expect(closed.rootNodeId).toBeNull()
     expect(closed.surfacesById[file.id]).toBeUndefined()
@@ -352,24 +383,24 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(withGit)
   })
 
-  it('minimizes and restores singleton tool surfaces from their sticky placement', () => {
+  it('backgrounds and restores singleton tool surfaces from their sticky placement', () => {
     const git = createGitChangesSurface()
     const opened = openSurface(createClassicFirstRunWorkspaceLayout(), git)
     const moved = moveSurface(opened, git.id, {
       edge: 'right',
       kind: 'root-edge',
     })
-    const minimized = minimizeSurface(moved, git.id)
-    const restored = restoreSurface(minimized, git.id)
+    const backgrounded = backgroundSurface(moved, git.id)
+    const restored = restoreSurface(backgrounded, git.id)
 
-    expect(visibleSurfaceIdsInOrder(minimized)).not.toContain(git.id)
-    expect(minimized.rail.minimizedSurfaceIds).toContain(git.id)
+    expect(visibleSurfaceIdsInOrder(backgrounded)).not.toContain(git.id)
+    expect(backgrounded.rail.backgroundSurfaceIds).toContain(git.id)
     expect(visibleSurfaceIdsInOrder(restored)).toContain(git.id)
     expect(mustFindWindowId(restored, git.id)).not.toBe(CLASSIC_EDITOR_WINDOW_ID)
     expectValidLayout(restored)
   })
 
-  it('ignores rail sticky placement when restoring minimized rail surfaces', () => {
+  it('ignores rail sticky placement when restoring backgrounded rail surfaces', () => {
     const chat = createChatSurface()
     const base = createClassicFirstRunWorkspaceLayout()
     const layout = {
@@ -386,13 +417,13 @@ describe('tiling surface layout operations', () => {
     } satisfies WorkspaceLayout
     const restored = restoreSurface(layout, chat.id)
 
-    expect(restored.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(restored.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(restored.activeSurfaceId).toBe(chat.id)
     expect(visibleSurfaceIdsInOrder(restored)).toContain(chat.id)
     expectValidLayout(restored)
   })
 
-  it('ignores rail surface placement when restoring minimized rail surfaces', () => {
+  it('ignores rail surface placement when restoring backgrounded rail surfaces', () => {
     const chat = createChatSurface()
     const base = createClassicFirstRunWorkspaceLayout()
     const layout = {
@@ -407,13 +438,13 @@ describe('tiling surface layout operations', () => {
     } satisfies WorkspaceLayout
     const restored = restoreSurface(layout, chat.id)
 
-    expect(restored.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(restored.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(restored.activeSurfaceId).toBe(chat.id)
     expect(visibleSurfaceIdsInOrder(restored)).toContain(chat.id)
     expectValidLayout(restored)
   })
 
-  it('ignores stale window surface placement when restoring minimized rail surfaces', () => {
+  it('ignores stale window surface placement when restoring backgrounded rail surfaces', () => {
     const chat = createChatSurface()
     const base = createClassicFirstRunWorkspaceLayout()
     const layout = {
@@ -432,7 +463,7 @@ describe('tiling surface layout operations', () => {
     const withoutTargetWindow = closeSurface(layout, createFileNavigatorSurface().id)
     const restored = restoreSurface(withoutTargetWindow, chat.id)
 
-    expect(restored.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(restored.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(restored.activeSurfaceId).toBe(chat.id)
     expect(visibleSurfaceIdsInOrder(restored)).toContain(chat.id)
     expectValidLayout(restored)
@@ -452,10 +483,10 @@ describe('tiling surface layout operations', () => {
         },
       },
     } satisfies WorkspaceLayout
-    const minimized = minimizeSurface(layout, fileNavigator.id)
-    const restored = restoreSurface(minimized, fileNavigator.id)
+    const backgrounded = backgroundSurface(layout, fileNavigator.id)
+    const restored = restoreSurface(backgrounded, fileNavigator.id)
 
-    expect(restored.rail.minimizedSurfaceIds).not.toContain(fileNavigator.id)
+    expect(restored.rail.backgroundSurfaceIds).not.toContain(fileNavigator.id)
     expect(restored.activeSurfaceId).toBe(fileNavigator.id)
     expect(visibleSurfaceIdsInOrder(restored)).toContain(fileNavigator.id)
     expectValidLayout(restored)
@@ -482,7 +513,7 @@ describe('tiling surface layout operations', () => {
       },
       rail: {
         ...base.rail,
-        minimizedSurfaceIds: base.rail.minimizedSurfaceIds.filter((id) => id !== chat.id),
+        backgroundSurfaceIds: base.rail.backgroundSurfaceIds.filter((id) => id !== chat.id),
         pinnedSurfaceIds: base.rail.pinnedSurfaceIds.filter((id) => id !== chat.id),
       },
       surfacesById,
@@ -490,7 +521,7 @@ describe('tiling surface layout operations', () => {
     const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), chat.id)
     const opened = applyLayoutOperation(layout, railItemOperation(layout, item))
 
-    expect(opened.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(opened.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(visibleSurfaceIdsInOrder(opened)).toContain(chat.id)
     expect(mustFindWindowId(opened, chat.id)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
     expectValidLayout(opened)
@@ -587,8 +618,8 @@ describe('tiling surface layout operations', () => {
       diagnostics.id,
       terminal.id,
     ])
-    expect(normalized.rail.minimizedSurfaceIds).not.toContain(diagnostics.id)
-    expect(normalized.rail.minimizedSurfaceIds).not.toContain(terminal.id)
+    expect(normalized.rail.backgroundSurfaceIds).not.toContain(diagnostics.id)
+    expect(normalized.rail.backgroundSurfaceIds).not.toContain(terminal.id)
     expectValidLayout(normalized)
   })
 
@@ -808,7 +839,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(layout)
   })
 
-  it('restores minimized primary tools back into the primary no-main column', () => {
+  it('restores backgrounded primary tools back into the primary no-main column', () => {
     const fileNavigator = createFileNavigatorSurface()
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
@@ -818,7 +849,7 @@ describe('tiling surface layout operations', () => {
     if (!placeholderId) throw new Error('Expected editor placeholder')
 
     let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
-    layout = minimizeSurface(layout, fileNavigator.id)
+    layout = backgroundSurface(layout, fileNavigator.id)
     layout = applyRailItem(layout, search.id)
     layout = applyRailItem(layout, git.id)
     layout = applyRailItem(layout, chat.id)
@@ -828,7 +859,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(layout)
   })
 
-  it('restores minimized primary tools beside primary tools when a main pane is visible', () => {
+  it('restores backgrounded primary tools beside primary tools when a main pane is visible', () => {
     const fileNavigator = createFileNavigatorSurface()
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
@@ -839,7 +870,7 @@ describe('tiling surface layout operations', () => {
     if (!placeholderId) throw new Error('Expected editor placeholder')
 
     let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
-    layout = minimizeSurface(layout, fileNavigator.id)
+    layout = backgroundSurface(layout, fileNavigator.id)
     layout = applyRailItem(layout, search.id)
     layout = applyRailItem(layout, git.id)
     layout = applyRailItem(layout, chat.id)
@@ -869,7 +900,7 @@ describe('tiling surface layout operations', () => {
     const baselineChatHeight = surfaceHeight(layout, chat.id)
 
     for (let index = 0; index < 3; index += 1) {
-      layout = minimizeSurface(layout, fileNavigator.id)
+      layout = backgroundSurface(layout, fileNavigator.id)
       expect(surfaceHeight(layout, chat.id)).toBeGreaterThan(baselineChatHeight)
 
       layout = restoreSurface(layout, fileNavigator.id, {
@@ -918,7 +949,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(opened)
   })
 
-  it('maps active rail singleton items to minimize operations', () => {
+  it('maps active rail singleton items to background operations', () => {
     const git = createGitChangesSurface()
     const layout = activateSurface(openSurface(createClassicFirstRunWorkspaceLayout(), git), git.id)
     const item = selectWorkbenchRailSurfaceItems(layout).find(
@@ -928,11 +959,12 @@ describe('tiling surface layout operations', () => {
 
     expect(railItemOperation(layout, item)).toEqual({
       surfaceId: git.id,
-      type: 'minimizeSurface',
+      destination: { kind: 'background' },
+      type: 'moveSurface',
     })
   })
 
-  it('maps visible inactive rail singleton items to minimize operations', () => {
+  it('maps visible inactive rail singleton items to background operations', () => {
     const chat = createChatSurface()
     const logs = createLogsSurface()
     let layout = openSurface(createClassicFirstRunWorkspaceLayout(), chat)
@@ -942,7 +974,8 @@ describe('tiling surface layout operations', () => {
     expect(item.state).toBe('visible')
     expect(railItemOperation(layout, item)).toEqual({
       surfaceId: chat.id,
-      type: 'minimizeSurface',
+      destination: { kind: 'background' },
+      type: 'moveSurface',
     })
   })
 })
@@ -1031,7 +1064,7 @@ function emptyLayout(): WorkspaceLayout {
     mruWindowIds: [],
     nodesById: {},
     rail: {
-      minimizedSurfaceIds: [],
+      backgroundSurfaceIds: [],
       pinnedSurfaceIds: [],
       recipeIds: createClassicFirstRunWorkspaceLayout().rail.recipeIds,
       runningSurfaceIds: [],
@@ -1092,6 +1125,10 @@ function expectValidLayout(layout: WorkspaceLayout) {
     ok: true,
     violations: [],
   })
+}
+
+function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  return moveSurface(layout, surfaceId, { kind: 'background' })
 }
 
 function customWindowCommand(

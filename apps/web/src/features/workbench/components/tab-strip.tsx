@@ -23,7 +23,7 @@ import type {
   LayoutOperation,
   Surface,
   WorkbenchWindow,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 export function TabStrip({
   surfaces,

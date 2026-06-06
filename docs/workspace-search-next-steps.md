@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Refresh Done/open status; fix dead `/Desktop/platform` and `/Desktop/Editors` paths (repo moved to `/D/platform`, refs now in `references/`).
+
 # Workspace Search Next Steps
 
 This tracks the remaining work to bring the current provider/search-buffer implementation to Zed parity first. VS Code is a secondary reference for mature details, especially when Zed does not expose a behavior clearly or when we want additional polish after the Zed-shaped flow works.

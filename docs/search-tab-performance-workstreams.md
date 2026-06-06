@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Tied to a one-off 2026-05-13 trace; mark what was addressed; fix dead paths.
+
 # Search Tab Performance Workstreams
 
 ## Source Trace

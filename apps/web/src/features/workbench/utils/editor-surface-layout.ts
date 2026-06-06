@@ -29,13 +29,16 @@ import {
   createTerminalSurface,
   createWindowNode,
   createWorkbenchWindow,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { layoutNodeId, workbenchWindowId } from '@/features/tiling-surface-manager/utils/layout-ids'
-import { normalizeWorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-normalize'
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import {
+  layoutNodeId,
+  workbenchWindowId,
+} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { normalizeWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import {
   createRegisteredSurface,
   defaultSurfaceRegistry,
-} from '@/features/tiling-surface-manager/utils/surface-registry'
+} from '@/features/tiling-surface-manager/engine/surface-registry'
 import type {
   LayoutNode,
   LayoutNodeId,
@@ -44,11 +47,18 @@ import type {
   WindowId,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 export type EditorSurfaceSerializedState = {
   readonly editorPaneId: string
   readonly editorTabId: string
+}
+
+export type EditorSurfaceTabRecord = {
+  readonly id: string
+  readonly path: string
+  readonly surfaceId: SurfaceId
+  readonly windowId: WindowId
 }
 
 type EditorSurfaceRecord = {
@@ -129,6 +139,90 @@ export function editorPaneIdForWorkbenchWindow(windowId: WindowId): string {
 
 export function editorTabIdForSurface(surface: Surface): string {
   return editorSurfaceSerializedState(surface)?.editorTabId ?? `surface-tab:${surface.id}`
+}
+
+export function activeEditorSurfaceTab(layout: WorkspaceLayout): EditorSurfaceTabRecord | null {
+  const activeSurfaceId = layout.activeSurfaceId
+  if (!activeSurfaceId) return activeEditorSurfaceTabForWindow(layout)
+
+  const activeTab = editorSurfaceTabRecordForSurface(
+    layout,
+    activeSurfaceId,
+    windowIdContainingSurface(layout, activeSurfaceId),
+  )
+  return activeTab ?? activeEditorSurfaceTabForWindow(layout)
+}
+
+export function editorSurfaceTabRecords(
+  layout: WorkspaceLayout,
+): readonly EditorSurfaceTabRecord[] {
+  const records: EditorSurfaceTabRecord[] = []
+
+  for (const window of Object.values(layout.windowsById)) {
+    for (const surfaceId of window.surfaceIds) {
+      const record = editorSurfaceTabRecordForSurface(layout, surfaceId, window.id)
+      if (!record) continue
+
+      records.push(record)
+    }
+  }
+
+  return records
+}
+
+export function editorSurfacePathCounts(layout: WorkspaceLayout) {
+  const counts = new Map<string, number>()
+  for (const tab of editorSurfaceTabRecords(layout)) {
+    counts.set(tab.path, (counts.get(tab.path) ?? 0) + 1)
+  }
+
+  return counts
+}
+
+function activeEditorSurfaceTabForWindow(layout: WorkspaceLayout) {
+  const windowId = layout.activeWindowId
+  const window = windowId ? layout.windowsById[windowId] : null
+  if (!window) return null
+
+  const activeTab = editorSurfaceTabRecordForSurface(layout, window.activeSurfaceId, window.id)
+  if (activeTab) return activeTab
+
+  for (const surfaceId of window.surfaceIds) {
+    const tab = editorSurfaceTabRecordForSurface(layout, surfaceId, window.id)
+    if (tab) return tab
+  }
+
+  return null
+}
+
+function editorSurfaceTabRecordForSurface(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId | undefined,
+  windowId: WindowId | null,
+): EditorSurfaceTabRecord | null {
+  if (!surfaceId) return null
+  if (!windowId) return null
+
+  const surface = layout.surfacesById[surfaceId]
+  const tab = editorPaneTabForSurface(surface)
+  if (!tab) return null
+
+  return {
+    id: tab.id,
+    path: tab.path,
+    surfaceId,
+    windowId,
+  }
+}
+
+function windowIdContainingSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  for (const window of Object.values(layout.windowsById)) {
+    if (!window.surfaceIds.includes(surfaceId)) continue
+
+    return window.id
+  }
+
+  return null
 }
 
 function createEditorSurfaceLayoutContext(
@@ -509,7 +603,7 @@ function layoutWithClassicToolSurfaces(layout: WorkspaceLayout): WorkspaceLayout
       }),
     },
     rail: {
-      minimizedSurfaceIds: [searchResults.id, gitChanges.id, chat.id, logs.id],
+      backgroundSurfaceIds: [searchResults.id, gitChanges.id, chat.id, logs.id],
       pinnedSurfaceIds: [
         fileNavigator.id,
         searchResults.id,
