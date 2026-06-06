@@ -1,9 +1,6 @@
 import { useCallback } from 'react'
 
-import {
-  useWorkspaceFocus,
-  type WorkspaceFocusArea,
-} from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus, type FocusArea } from '@/components/workspace/focus/providers/focus-state'
 import { useTheme, type Theme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
@@ -45,7 +42,7 @@ type WorkspaceCommandContext = {
   readonly requestEditorFocus: () => void
   readonly selectedFilePath: string | null
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
-  readonly setFocusArea: (area: WorkspaceFocusArea) => void
+  readonly setFocusArea: (area: FocusArea) => void
   readonly setGitPanelOpen: (open: boolean) => void
   readonly setSidebarVisible: (visible: boolean) => void
   readonly setTheme: (theme: Theme) => void
@@ -69,9 +66,9 @@ export function usePlatformCommandDispatch({
   const queryClient = useQueryClient()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const { setTheme } = useTheme()
-  const requestEditorFocus = useWorkspaceFocus((state) => state.requestEditorFocus)
-  const dispatchEditorCommand = useWorkspaceFocus((state) => state.dispatchEditorCommand)
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
+  const dispatchEditorCommand = useFocus((state) => state.dispatchEditorCommand)
+  const setFocusArea = useFocus((state) => state.setFocusArea)
   const { closeTab, reopenClosedEditor, selectPreviousEditor, splitTab } = useEditorCommands()
   const fallbackRequestCloseTab = useCallback<RequestCloseTab>(
     (tabId) => {

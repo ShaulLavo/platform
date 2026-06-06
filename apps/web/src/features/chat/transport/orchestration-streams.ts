@@ -9,7 +9,7 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 import { log } from '@/lib/client-logging'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { clientErrors, createRpcError } from '@/lib/structured-errors'
@@ -49,7 +49,7 @@ async function* openOrchestrationShellStream({
   const startedAt = performance.now()
 
   try {
-    const response = await client.orchestration['shell-stream'].get({
+    const response = await getClient().orchestration['shell-stream'].get({
       fetch: { signal },
       query: { afterSequence },
     })
@@ -81,7 +81,7 @@ async function* openOrchestrationThreadDetailStream(
   const startedAt = performance.now()
 
   try {
-    const response = await client.orchestration['thread-detail-stream'].get({
+    const response = await getClient().orchestration['thread-detail-stream'].get({
       fetch: { signal },
       query: { afterSequence, threadId },
     })

@@ -3,14 +3,19 @@ import '@workspace/ui/globals.css'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/components/theme-provider'
 import {
   EMPTY_GIT_FILES,
   editorTabModel,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+import { FocusProvider } from '@/components/workspace/focus/providers/focus-provider'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
+import { disposeEditorTreeSitterSyntaxProvider } from '@/features/editor/editor-plugins'
+import { serverUrl } from '@/lib/client'
+import { fileSystemKeys } from '@/lib/query-keys'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
 import {
@@ -27,8 +32,15 @@ import { workbenchEditorSurfaceRendererRegistry } from './workbench-editor-surfa
 import type { Surface } from './layout-types'
 
 const THEME_STORAGE_KEY = 'platform-workbench-layout-renderer-browser-theme'
+const TEST_ROOT_PATH = 'repo'
+const FILE_A_PATH = `${TEST_ROOT_PATH}/src/a.ts`
+const FILE_B_PATH = `${TEST_ROOT_PATH}/src/b.ts`
 
 let root: Root | null = null
+
+beforeAll(async () => {
+  await waitForFileServer()
+})
 
 afterEach(() => {
   if (root) {
@@ -38,6 +50,10 @@ afterEach(() => {
 
   document.body.innerHTML = ''
   localStorage.removeItem(THEME_STORAGE_KEY)
+})
+
+afterAll(async () => {
+  await disposeEditorTreeSitterSyntaxProvider()
 })
 
 describe('WorkbenchLayoutRenderer browser rendering', () => {
@@ -51,11 +67,15 @@ describe('WorkbenchLayoutRenderer browser rendering', () => {
     flushSync(() => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
-          <TooltipProvider delay={0}>
-            <WorkbenchLayoutProvider initialLayout={createClassicFirstRunWorkspaceLayout()}>
-              <WorkbenchLayoutRenderer />
-            </WorkbenchLayoutProvider>
-          </TooltipProvider>
+          <EditorColorThemeProvider>
+            <TooltipProvider delay={0}>
+              <FocusProvider>
+                <WorkbenchLayoutProvider initialLayout={createClassicFirstRunWorkspaceLayout()}>
+                  <WorkbenchLayoutRenderer />
+                </WorkbenchLayoutProvider>
+              </FocusProvider>
+            </TooltipProvider>
+          </EditorColorThemeProvider>
         </ThemeProvider>,
       )
     })
@@ -84,26 +104,30 @@ describe('WorkbenchLayoutRenderer browser rendering', () => {
     flushSync(() => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
-          <TooltipProvider delay={0}>
-            <QueryClientProvider client={queryClient}>
-              <EditorStateProvider>
-                <WorkbenchEditorSurfaceProvider
-                  editorKeymapLayers={[]}
-                  requestCloseTab={() => true}
-                  requestCloseTabs={() => true}
-                  rootPath='/repo'
-                  surfaceIdForEditorTabId={(tabId) => surfaceIdForEditorTabId(tabId)}
-                  tabModelForSurface={(surface, active) => tabModelForSurface(surface, active)}
-                >
-                  <WorkbenchLayoutProvider initialLayout={editorSurfaceLayout()}>
-                    <WorkbenchLayoutRenderer
-                      surfaceRenderers={workbenchEditorSurfaceRendererRegistry}
-                    />
-                  </WorkbenchLayoutProvider>
-                </WorkbenchEditorSurfaceProvider>
-              </EditorStateProvider>
-            </QueryClientProvider>
-          </TooltipProvider>
+          <EditorColorThemeProvider>
+            <TooltipProvider delay={0}>
+              <FocusProvider>
+                <QueryClientProvider client={queryClient}>
+                  <EditorStateProvider>
+                    <WorkbenchEditorSurfaceProvider
+                      editorKeymapLayers={[]}
+                      requestCloseTab={() => true}
+                      requestCloseTabs={() => true}
+                      rootPath={TEST_ROOT_PATH}
+                      surfaceIdForEditorTabId={(tabId) => surfaceIdForEditorTabId(tabId)}
+                      tabModelForSurface={(surface, active) => tabModelForSurface(surface, active)}
+                    >
+                      <WorkbenchLayoutProvider initialLayout={editorSurfaceLayout()}>
+                        <WorkbenchLayoutRenderer
+                          surfaceRenderers={workbenchEditorSurfaceRendererRegistry}
+                        />
+                      </WorkbenchLayoutProvider>
+                    </WorkbenchEditorSurfaceProvider>
+                  </EditorStateProvider>
+                </QueryClientProvider>
+              </FocusProvider>
+            </TooltipProvider>
+          </EditorColorThemeProvider>
         </ThemeProvider>,
       )
     })
@@ -112,6 +136,15 @@ describe('WorkbenchLayoutRenderer browser rendering', () => {
       expect(editorChromeTabs()).toHaveLength(2)
       expect(document.body.textContent).toContain('a.ts')
       expect(document.body.textContent).toContain('b.ts')
+    })
+
+    await vi.waitFor(() => {
+      const fileSnapshots = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: fileSystemKeys.fileSnapshots() })
+
+      expect(queryClient.isFetching({ queryKey: fileSystemKeys.fileSnapshots() })).toBe(0)
+      expect(fileSnapshots.some((query) => query.state.status === 'success')).toBe(true)
     })
   })
 })
@@ -139,8 +172,8 @@ function editorChromeTabs() {
 }
 
 function editorSurfaceLayout() {
-  const fileA = editorSurface('/repo/src/a.ts', 'tab-a')
-  const fileB = editorSurface('/repo/src/b.ts', 'tab-b')
+  const fileA = editorSurface(FILE_A_PATH, 'tab-a')
+  const fileB = editorSurface(FILE_B_PATH, 'tab-b')
 
   return openSurface(openSurface(createEmptyWorkspaceLayout(), fileA), fileB)
 }
@@ -171,11 +204,19 @@ function tabModelForSurface(surface: Surface, active: boolean) {
   return editorTabModel({
     conflicts: {},
     gitFiles: EMPTY_GIT_FILES,
-    rootPath: '/repo',
+    rootPath: TEST_ROOT_PATH,
     selectedTabId: active ? state.editorTabId : null,
     tab: {
       id: state.editorTabId,
       path: surface.resourceKey,
     },
+  })
+}
+
+async function waitForFileServer() {
+  await vi.waitFor(async () => {
+    const response = await fetch(`${serverUrl}/fs/read?path=${encodeURIComponent(FILE_A_PATH)}`)
+
+    expect(response.ok).toBe(true)
   })
 }

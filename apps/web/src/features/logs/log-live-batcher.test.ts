@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import type { LogEventSummary } from '@workspace/contracts'
 
 import { createLiveEventBatcher } from './log-live-batcher'

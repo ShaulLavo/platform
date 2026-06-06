@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { gitStatusSymbol } from './status-symbols'
 
 describe('git status symbols', () => {

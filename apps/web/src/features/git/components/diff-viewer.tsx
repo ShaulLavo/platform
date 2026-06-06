@@ -22,7 +22,7 @@ import {
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import { createEditorDiffSyntaxBackend } from '@/features/editor/editor-plugins'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { errorMessage } from '@/lib/file-server'
 import { displayPath } from '@/lib/path-formatters'
@@ -127,8 +127,8 @@ const EditorDiffView = forwardRef<
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<DiffView | null>(null)
   const { editorTheme } = useEditorColorTheme()
-  const active = useWorkspaceFocus((state) => state.activeArea === 'editor')
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const active = useFocus((state) => state.activeArea === 'editor')
+  const setFocusArea = useFocus((state) => state.setFocusArea)
   const syntaxBackend = useMemo(() => createEditorDiffSyntaxBackend(), [])
 
   useImperativeHandle(ref, () => createDiffViewerHandle(viewRef), [])

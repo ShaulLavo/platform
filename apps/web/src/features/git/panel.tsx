@@ -1,7 +1,7 @@
 import { cn } from '@workspace/ui/lib/utils'
 import { memo, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { errorMessage } from '@/lib/file-server'
 import { useStatus } from './hooks'
@@ -38,7 +38,7 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
   const rows = useMemo(() => changeRows(files), [files])
   const hasLocalChanges = rows.staged.length > 0 || rows.worktree.length > 0
   const panelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const setFocusArea = useFocus((state) => state.setFocusArea)
 
   if (status.isPending) {
     return <PanelShell className={className} label='Loading Git' />

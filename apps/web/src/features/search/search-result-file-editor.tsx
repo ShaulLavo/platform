@@ -16,7 +16,7 @@ import {
   type PointerEvent,
 } from 'react'
 
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import {
   createPlatformSearchResultEditorLoggingPlugin,
   editorTreeSitterSyntaxProvider,
@@ -83,10 +83,8 @@ export const SearchResultFileEditor = memo(
     onReplaceMatch,
     onSelectResultWithoutReveal,
   }: SearchResultFileEditorProps) => {
-    const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-    const setActiveEditorCommandDispatch = useWorkspaceFocus(
-      (state) => state.setActiveEditorCommandDispatch,
-    )
+    const setFocusArea = useFocus((state) => state.setFocusArea)
+    const setActiveEditorCommandDispatch = useFocus((state) => state.setActiveEditorCommandDispatch)
     const fileDocument = useMemo(() => searchResultFileDocument(file), [file])
     const visibleDocument = useMemo(
       () => searchResultFileDocumentWindow(fileDocument, lineWindow),

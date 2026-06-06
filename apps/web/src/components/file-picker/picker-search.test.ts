@@ -1,6 +1,6 @@
 import type { WorkspaceSearchEvent, WorkspaceSearchMatch } from '@workspace/contracts'
 import type { FindMatch } from '@/lib/file-system-types'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import {
   appendSearchMatch,

@@ -15,7 +15,7 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "typecheck": "tsgo --noEmit",
-    "test": "bun test"
+    "test": "vitest run"
   },
   "dependencies": {
     "evlog": "^2.17.0"
@@ -30,6 +30,7 @@
     "oxfmt": "latest",
     "oxlint": "latest",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0"
+    "typescript-eslint": "^8.54.0",
+    "vitest": "^3.2.4"
   }
 }

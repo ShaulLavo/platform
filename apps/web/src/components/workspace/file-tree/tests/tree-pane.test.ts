@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { FileTree as PierreFileTree } from '@pierre/trees'
 import type { FileTreeDirectoryHandle, FileTreeItemHandle } from '@pierre/trees'
 

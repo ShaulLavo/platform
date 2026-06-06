@@ -9,6 +9,10 @@
     },
     "./client-contract": {
       "types": "./src/client-contract.ts"
+    },
+    "./testing": {
+      "types": "./src/testing.ts",
+      "default": "./src/testing.ts"
     }
   },
   "scripts": {

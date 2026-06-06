@@ -1,15 +1,15 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { initLogger } from 'evlog'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const toastError = mock()
+import { notifyMutationError } from './notify-mutation-error'
 
-initLogger({ silent: true, _suppressDrainWarning: true })
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
 
-mock.module('sonner', () => ({
+vi.mock('sonner', () => ({
   toast: { error: toastError },
 }))
 
-const { notifyMutationError } = await import('./notify-mutation-error')
+initLogger({ _suppressDrainWarning: true, silent: true })
 
 describe('notifyMutationError', () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { createEditorTextBuffer } from '@editor/core'
 import type { WorkspaceSearchEvent } from '@workspace/contracts'
 

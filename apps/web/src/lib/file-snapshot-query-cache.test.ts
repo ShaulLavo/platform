@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import {
   FILE_SNAPSHOT_QUERY_GC_TIME_MS,

@@ -7,6 +7,11 @@ import {
   normalizeEditorPaneLayout,
   type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
+import type { WorkspaceLayout } from '@/features/workbench/tiling-surface-manager/layout-types'
+import {
+  editorPaneLayoutForWorkspaceLayout,
+  workspaceLayoutForEditorPaneLayout,
+} from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
 import type { CachedWorkspaceState, WorkspacePanelTab } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
@@ -16,6 +21,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla'
 
 type EditorWorkspaceStoreState = CachedWorkspaceState & {
   pickerOpen: boolean
+  workspaceLayout: WorkspaceLayout
 }
 
 type EditorWorkspaceStoreActions = {
@@ -31,7 +37,8 @@ type EditorWorkspaceStoreActions = {
   setRecentlyClosedEditorPaths: (paths: string[]) => void
   setSelectedFilePath: (path: string | null) => void
   setSidebarVisible: (visible: boolean) => void
-  setWorkspacePanelSelection: (selection: WorkspacePanelSelection) => void
+  setWorkspaceLayout: (layout: WorkspaceLayout) => void
+  setWorkspacePanelSelection: (selection: PanelSelection) => void
   setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
 }
 
@@ -41,10 +48,7 @@ export type EditorWorkspaceStoreApi = StoreApi<EditorWorkspaceStore>
 
 export const EditorWorkspaceStateContext = createContext<EditorWorkspaceStoreApi | null>(null)
 
-type WorkspacePanelSelection = Pick<
-  EditorWorkspaceStoreState,
-  'sidebarVisible' | 'workspacePanelTab'
->
+type PanelSelection = Pick<EditorWorkspaceStoreState, 'sidebarVisible' | 'workspacePanelTab'>
 
 export function useEditorWorkspaceStoreApi() {
   const store = use(EditorWorkspaceStateContext)
@@ -64,6 +68,8 @@ export function useEditorWorkspaceState<T>(selector: (state: EditorWorkspaceStor
 export function createEditorWorkspaceStore(
   initialState: CachedWorkspaceState = readWorkspaceCache(),
 ) {
+  const initialWorkspaceLayout = workspaceLayoutForEditorPaneLayout(initialState.editorPaneLayout)
+
   return createStore<EditorWorkspaceStore>()((set) => ({
     diffViewMode: initialState.diffViewMode,
     editorHistory: initialState.editorHistory,
@@ -75,24 +81,13 @@ export function createEditorWorkspaceStore(
     rootFolder: initialState.rootFolder,
     selectedFilePath: initialState.selectedFilePath,
     sidebarVisible: initialState.sidebarVisible,
+    workspaceLayout: initialWorkspaceLayout,
     workspacePanelTab: initialState.workspacePanelTab,
     activateWorkspacePanelTab: (workspacePanelTab) =>
-      set((state) => workspacePanelSelectionForTabActivation(state, workspacePanelTab)),
+      set((state) => panelSelectionForTabActivation(state, workspacePanelTab)),
     openPicker: () => set({ pickerOpen: true }),
     resetForRootFolder: (rootFolder) =>
-      set((state) => ({
-        diffViewMode: state.diffViewMode,
-        editorHistory: [],
-        editorPaneLayout: createEditorPaneLayoutForPaths([], null),
-        gitPanelOpen: true,
-        openFilePaths: [],
-        pickerOpen: false,
-        recentlyClosedEditorPaths: [],
-        rootFolder,
-        selectedFilePath: null,
-        sidebarVisible: true,
-        workspacePanelTab: 'files',
-      })),
+      set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
     setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
     setEditorPaneLayout: (editorPaneLayout) =>
       set((state) =>
@@ -130,6 +125,12 @@ export function createEditorWorkspaceStore(
 
         return { sidebarVisible }
       }),
+    setWorkspaceLayout: (workspaceLayout) =>
+      set((state) =>
+        editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout, {
+          currentOpenFilePaths: state.openFilePaths,
+        }),
+      ),
     setWorkspacePanelSelection: (selection) =>
       set((state) => {
         if (
@@ -149,10 +150,10 @@ export function createEditorWorkspaceStore(
   }))
 }
 
-function workspacePanelSelectionForTabActivation(
-  current: WorkspacePanelSelection,
+function panelSelectionForTabActivation(
+  current: PanelSelection,
   workspacePanelTab: WorkspacePanelTab,
-): WorkspacePanelSelection {
+): PanelSelection {
   if (current.sidebarVisible && current.workspacePanelTab === workspacePanelTab) {
     return { ...current, sidebarVisible: false }
   }
@@ -167,11 +168,33 @@ function pathsWithSelectedPath(openFilePaths: readonly string[], selectedFilePat
   return openFilePaths.concat(selectedFilePath)
 }
 
+function workspaceStateForRootFolderReset(
+  rootFolder: PickedFsEntry,
+  diffViewMode: EditorDiffViewMode,
+) {
+  const workspaceLayout = workspaceLayoutForEditorPaneLayout(
+    createEditorPaneLayoutForPaths([], null),
+  )
+
+  return {
+    ...editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout),
+    diffViewMode,
+    editorHistory: [],
+    gitPanelOpen: true,
+    pickerOpen: false,
+    recentlyClosedEditorPaths: [],
+    rootFolder,
+    sidebarVisible: true,
+    workspacePanelTab: 'files' as const,
+  }
+}
+
 export function editorWorkspaceSelectionForPaneLayout(
   editorPaneLayout: EditorPaneLayout,
   options: { currentOpenFilePaths?: string[] } = {},
 ) {
   const normalized = normalizeEditorPaneLayout(editorPaneLayout)
+  const workspaceLayout = workspaceLayoutForEditorPaneLayout(normalized)
   const openFilePaths = stableOpenFilePaths(
     options.currentOpenFilePaths,
     editorPaneOpenPaths(normalized),
@@ -181,6 +204,25 @@ export function editorWorkspaceSelectionForPaneLayout(
     editorPaneLayout: normalized,
     openFilePaths,
     selectedFilePath: activeEditorPanePath(normalized),
+    workspaceLayout,
+  }
+}
+
+export function editorWorkspaceSelectionForWorkspaceLayout(
+  workspaceLayout: WorkspaceLayout,
+  options: { currentOpenFilePaths?: string[] } = {},
+) {
+  const editorPaneLayout = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
+  const openFilePaths = stableOpenFilePaths(
+    options.currentOpenFilePaths,
+    editorPaneOpenPaths(editorPaneLayout),
+  )
+
+  return {
+    editorPaneLayout,
+    openFilePaths,
+    selectedFilePath: activeEditorPanePath(editorPaneLayout),
+    workspaceLayout,
   }
 }
 

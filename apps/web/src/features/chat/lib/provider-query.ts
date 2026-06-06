@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { ProviderListResult } from '@workspace/contracts'
 
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 import { createRpcError } from '@/lib/structured-errors'
 
 const PROVIDER_LIST_STALE_TIME_MS = 60_000
@@ -23,7 +23,7 @@ export function providerListQueryOptions() {
 }
 
 async function fetchProviders() {
-  const response = await client.providers.get()
+  const response = await getClient().providers.get()
   if (response.error) throw createRpcError(response.error)
 
   return response.data as ProviderListResult

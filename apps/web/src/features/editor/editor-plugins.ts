@@ -11,7 +11,11 @@ import type { DiffSyntaxBackend } from '@editor/diff'
 import { createEditorFindPlugin } from '@editor/find'
 import { createFoldGutterPlugin, createLineGutterPlugin } from '@editor/gutters'
 import type { FoldGutterIconContext } from '@editor/gutters'
-import { createTreeSitterSyntaxProvider } from '@editor/tree-sitter'
+import {
+  createTreeSitterSyntaxProvider,
+  createTreeSitterWorkerBackend,
+  type TreeSitterBackend,
+} from '@editor/tree-sitter'
 import { CaretDownIcon } from '@phosphor-icons/react/ssr'
 import {
   TREE_SITTER_LANGUAGE_CONTRIBUTIONS,
@@ -38,6 +42,7 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
 )
 
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
+let treeSitterSyntaxBackend: TreeSitterBackend | null = null
 const editorScrollPositionsByInstanceId = new Map<string, EditorScrollPosition>()
 const PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN = createEditorLoggingPlugin(logEditorEventToConsole, {
   name: 'platform.editor-logging',
@@ -215,13 +220,22 @@ export function createEditorDiffSyntaxBackend(
 export function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {
   if (treeSitterSyntaxProvider) return treeSitterSyntaxProvider
 
-  const provider = createTreeSitterSyntaxProvider()
+  const backend = createTreeSitterWorkerBackend()
+  const provider = createTreeSitterSyntaxProvider({ backend })
   for (const contribution of TREE_SITTER_LANGUAGE_CONTRIBUTIONS) {
     provider.registerLanguage(contribution, { replace: true })
   }
 
+  treeSitterSyntaxBackend = backend
   treeSitterSyntaxProvider = provider
   return provider
+}
+
+export async function disposeEditorTreeSitterSyntaxProvider() {
+  const backend = treeSitterSyntaxBackend
+  treeSitterSyntaxBackend = null
+  treeSitterSyntaxProvider = null
+  await backend?.dispose?.()
 }
 
 async function loadPlugin(

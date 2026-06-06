@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { shouldRefreshReadyRootTree } from '@/hooks/use-workspace-events'
 import {

@@ -16,7 +16,7 @@ import {
 import { useFileTreeIntentPrefetch } from '@/components/workspace/file-tree/hooks/use-file-tree-intent-prefetch'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileTreeIconsForPaths } from '@/lib/file-icons'
 import type { TreeEntry } from '@/lib/file-system-types'
@@ -98,7 +98,7 @@ function ReadyTreePane({
 }) {
   const selectedFilePath = useEditorWorkspaceState((store) => store.selectedFilePath)
   const { selectFile } = useEditorCommands()
-  const setFocusArea = useWorkspaceFocus((store) => store.setFocusArea)
+  const setFocusArea = useFocus((store) => store.setFocusArea)
   const queryClient = useQueryClient()
   const expandedDirectoryPathsRef = useRef<ReadonlySet<string> | undefined>(undefined)
   const modelRef = useRef(model)

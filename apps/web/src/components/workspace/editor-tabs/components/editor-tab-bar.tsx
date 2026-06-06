@@ -17,7 +17,7 @@ import { LegacyEditorTabList } from '@/components/workspace/editor-tabs/componen
 import { useChromeVisualTabs } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import { useEditorTabDrag } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-intent-prefetch'
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
@@ -60,7 +60,7 @@ export function EditorTabBar({
   const selectedDiff = parseDiffDocumentId(selectedFilePath)
   const conflicts = useEditorConflictState((state) => state.conflicts)
   const { moveTabToPane, reorderTab, selectFile, selectTab, splitTab } = useEditorCommands()
-  const requestEditorFocus = useWorkspaceFocus((state) => state.requestEditorFocus)
+  const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
   const gitStatus = useStatus(rootPath)
   const gitFiles = gitStatus.data?.files ?? EMPTY_GIT_FILES
   const editorTabs = useMemo(

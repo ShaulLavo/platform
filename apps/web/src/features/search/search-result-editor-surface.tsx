@@ -13,7 +13,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
 import { handleSearchResultSurfaceKeyDown } from '@/features/search/search-result-editor-keyboard'
@@ -74,10 +74,8 @@ export const SearchResultEditorSurface = memo(
   }: SearchResultEditorSurfaceProps) => {
     const treeId = useId()
     const parentRef = useRef<HTMLDivElement | null>(null)
-    const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
-    const setActiveEditorCommandDispatch = useWorkspaceFocus(
-      (state) => state.setActiveEditorCommandDispatch,
-    )
+    const setFocusArea = useFocus((state) => state.setFocusArea)
+    const setActiveEditorCommandDispatch = useFocus((state) => state.setActiveEditorCommandDispatch)
     const readonlyKeymapLayers = useMemo(
       () => readonlyEditorKeymapLayers(keymapLayers),
       [keymapLayers],

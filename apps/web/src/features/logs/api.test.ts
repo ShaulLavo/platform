@@ -1,35 +1,23 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const summaryGet = mock()
-const eventsGet = mock()
-const eventGet = mock()
-const liveGet = mock()
+import { type Client, resetClient, setClient } from '@/lib/client'
+import * as api from './api'
 
-mock.module('@/lib/client', () => ({
-  client: {
-    _log: {
-      dashboard: {
-        event: { get: eventGet },
-        events: { get: eventsGet },
-        live: { get: liveGet },
-        summary: { get: summaryGet },
-      },
-    },
-  },
-  serverUrl: 'http://localhost:3001',
-}))
+// Eden can hand back live `Date` objects for timestamp fields; the api layer must
+// normalize them to ISO strings before valibot validation. A real server returns
+// JSON strings and never exercises that branch, so we inject a crafted response
+// through the real client seam (`setClient`) — no `mock.module`.
+function clientWith(overrides: unknown) {
+  setClient(overrides as unknown as Client)
+}
 
-const api = await import('./api')
+afterEach(() => {
+  resetClient()
+})
 
 describe('logs api', () => {
-  beforeEach(() => {
-    for (const endpoint of [summaryGet, eventsGet, eventGet, liveGet]) {
-      endpoint.mockReset()
-    }
-  })
-
   it('normalizes Eden Date values before validating dashboard responses', async () => {
-    summaryGet.mockResolvedValueOnce({
+    const summaryGet = vi.fn().mockResolvedValueOnce({
       data: {
         actions: [],
         areas: [],
@@ -55,6 +43,7 @@ describe('logs api', () => {
         warnCount: 0,
       },
     })
+    clientWith({ _log: { dashboard: { summary: { get: summaryGet } } } })
 
     const result = await api.fetchLogSummary({
       since: '2026-05-25T10:00:00.000Z',
@@ -101,7 +90,7 @@ describe('logs api', () => {
       timestamp: new Date('2026-05-25T10:02:00.000Z'),
     } as const
 
-    eventsGet.mockResolvedValueOnce({
+    const eventsGet = vi.fn().mockResolvedValueOnce({
       data: {
         detailsById: {
           'event-1': {
@@ -114,6 +103,7 @@ describe('logs api', () => {
         total: 1,
       },
     })
+    clientWith({ _log: { dashboard: { events: { get: eventsGet } } } })
 
     const result = await api.fetchLogEvents({})
 

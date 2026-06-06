@@ -1,16 +1,16 @@
 import { AppContent } from '@/components/app-content'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
-import { WorkspaceFocusProvider } from '@/components/workspace/focus/providers/workspace-focus-provider'
+import { FocusProvider } from '@/components/workspace/focus/providers/focus-provider'
 import { HotkeysProvider } from '@tanstack/react-hotkeys'
 
 export function App() {
   return (
     <EditorStateProvider>
-      <WorkspaceFocusProvider>
+      <FocusProvider>
         <HotkeysProvider>
           <AppContent />
         </HotkeysProvider>
-      </WorkspaceFocusProvider>
+      </FocusProvider>
     </EditorStateProvider>
   )
 }

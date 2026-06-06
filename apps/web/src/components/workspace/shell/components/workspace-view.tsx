@@ -1,10 +1,10 @@
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
-import { WorkspaceTerminalStateProvider } from '@/components/workspace/terminal/providers/workspace-terminal-state-provider'
-import { WorkspaceActivityBar } from '@/components/workspace/activity-bar/components/workspace-activity-bar'
-import { WorkspaceFloatingTerminal } from '@/components/workspace/terminal/components/workspace-floating-terminal'
-import { WorkspaceSearchRuntime } from '@/components/workspace/search/components/workspace-search-runtime'
-import { WorkspaceSidebarResizablePanel } from '@/components/workspace/sidebar/components/workspace-sidebar-resizable-panel'
-import { workspaceResizableStorageKey } from '@/components/workspace/shell/utils/workspace-view-utils'
+import { TerminalStateProvider } from '@/components/workspace/terminal/providers/terminal-state-provider'
+import { ActivityBar } from '@/components/workspace/activity-bar/components/activity-bar'
+import { FloatingTerminal } from '@/components/workspace/terminal/components/floating-terminal'
+import { SearchRuntime } from '@/components/workspace/search/components/search-runtime'
+import { SidebarResizablePanel } from '@/components/workspace/sidebar/components/sidebar-resizable-panel'
+import { resizableStorageKey } from '@/components/workspace/shell/utils/workspace-view-utils'
 import { WorkbenchEditorSurfaceLayoutView } from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout-view'
 import type { PickedFsEntry, TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
@@ -36,18 +36,18 @@ export const WorkspaceView = memo(
     const rootPath = rootFolder.path
 
     return (
-      <WorkspaceTerminalStateProvider>
-        <WorkspaceSearchRuntime rootPath={rootPath} />
+      <TerminalStateProvider>
+        <SearchRuntime rootPath={rootPath} />
         <div className='h-full min-h-0 flex-1 overflow-auto'>
           <div className='flex h-full min-w-[1024px] flex-col'>
             <div className='flex min-h-0 flex-1 flex-row gap-0'>
-              <WorkspaceActivityBar />
+              <ActivityBar />
               <PersistedResizablePanelGroup
                 className='min-h-0 flex-1'
                 orientation='horizontal'
-                storageKey={workspaceResizableStorageKey(rootPath, 'main')}
+                storageKey={resizableStorageKey(rootPath, 'main')}
               >
-                <WorkspaceSidebarResizablePanel
+                <SidebarResizablePanel
                   rootPath={rootPath}
                   treeReady={treeState.status === 'ready'}
                   treeState={treeState}
@@ -69,14 +69,14 @@ export const WorkspaceView = memo(
                       onRequestCloseTab={onRequestCloseTab}
                       onRequestCloseTabs={onRequestCloseTabs}
                     />
-                    <WorkspaceFloatingTerminal rootPath={rootPath} />
+                    <FloatingTerminal rootPath={rootPath} />
                   </div>
                 </ResizablePanel>
               </PersistedResizablePanelGroup>
             </div>
           </div>
         </div>
-      </WorkspaceTerminalStateProvider>
+      </TerminalStateProvider>
     )
   },
 )

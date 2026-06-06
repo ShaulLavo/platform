@@ -6,7 +6,7 @@ import type {
   WorkspaceSearchQuery,
 } from '@workspace/contracts'
 
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
 import { clientErrors } from '@/lib/structured-errors'
 
@@ -47,7 +47,7 @@ export async function* streamWorkspaceSearch(
   query: WorkspaceSearchQuery,
   signal?: AbortSignal,
 ): AsyncGenerator<WorkspaceSearchEvent> {
-  const response = await client.fs.search.events.get({
+  const response = await getClient().fs.search.events.get({
     query: workspaceSearchRequestQuery(query),
     fetch: { signal },
   })

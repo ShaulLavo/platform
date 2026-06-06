@@ -1,4 +1,4 @@
-import type { WorkspaceFocusArea } from '@/components/workspace/focus/providers/workspace-focus-state'
+import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
 import type { EditorCommandId } from '@editor/core'
 import type { HotkeyMeta, RegisterableHotkey } from '@tanstack/react-hotkeys'
 
@@ -40,7 +40,7 @@ export type PlatformKeyBinding = {
   readonly keys: string
   readonly hotkey: RegisterableHotkey
   readonly command: PlatformCommandId | null
-  readonly pane?: WorkspaceFocusArea | 'any'
+  readonly pane?: FocusArea | 'any'
   readonly source: KeyBindingSource
   readonly vscodeCommandId?: string
   readonly preventDefault?: boolean

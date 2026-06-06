@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { fileLoadState } from '@/hooks/use-selected-file'
 import type { FileResult } from '@/lib/file-system-types'

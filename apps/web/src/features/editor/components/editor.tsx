@@ -26,7 +26,7 @@ import {
 } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
 import { editorPerformanceLayoutVariant } from '@/lib/editor-performance-trace'
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import type {
   DocumentSessionChange,
   EditorKeymapLayer,
@@ -63,12 +63,10 @@ export function Editor({
   onStatusSourceChange,
   onTextChange,
 }: EditorProps) {
-  const editorActive = useWorkspaceFocus((state) => state.activeArea === 'editor' && active)
-  const editorFocusRequestId = useWorkspaceFocus((state) => state.consumeEditorFocusRequest())
-  const setActiveEditorCommandDispatch = useWorkspaceFocus(
-    (state) => state.setActiveEditorCommandDispatch,
-  )
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const editorActive = useFocus((state) => state.activeArea === 'editor' && active)
+  const editorFocusRequestId = useFocus((state) => state.consumeEditorFocusRequest())
+  const setActiveEditorCommandDispatch = useFocus((state) => state.setActiveEditorCommandDispatch)
+  const setFocusArea = useFocus((state) => state.setFocusArea)
   const { editorTheme } = useEditorColorTheme()
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
     enabled: active,

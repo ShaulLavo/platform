@@ -1,4 +1,4 @@
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 
 export type EdenServerSocket = {
   readonly readyState?: number
@@ -29,7 +29,7 @@ type LanguageServerSocketOptions = {
 
 export function connectTerminalSocket(rootPath: string, sessionId: string): EdenServerSocket {
   return adaptEdenSocket(
-    client.terminal.subscribe({ query: { root: rootPath, session: sessionId } }),
+    getClient().terminal.subscribe({ query: { root: rootPath, session: sessionId } }),
   )
 }
 
@@ -39,7 +39,7 @@ export function connectLanguageServerSocket({
   serverId,
 }: LanguageServerSocketOptions): EdenServerSocket {
   return adaptEdenSocket(
-    client.lsp.subscribe({
+    getClient().lsp.subscribe({
       query: { path, root: rootPath, server: serverId ?? undefined },
     }),
   )

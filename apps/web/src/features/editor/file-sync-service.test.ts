@@ -4,7 +4,7 @@ import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { createEditorBufferSession } from '@editor/core'
 import { QueryClient } from '@tanstack/react-query'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 describe('FileSyncService', () => {
   it('saves with a base file version and marks unchanged saved buffers clean', async () => {

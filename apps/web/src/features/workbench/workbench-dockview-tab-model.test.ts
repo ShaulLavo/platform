@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import type { FileDiff } from '@/features/git/types'

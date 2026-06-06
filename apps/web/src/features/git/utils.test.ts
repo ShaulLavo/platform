@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import type { RepositoryInfo } from './types'
 import { canSyncChanges, syncChangesLabel } from './utils'

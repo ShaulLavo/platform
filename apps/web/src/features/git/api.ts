@@ -1,4 +1,4 @@
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import type { BlobDiffRequest, StatusResult } from './types'
@@ -7,7 +7,7 @@ export async function fetchStatus(path: string, signal?: AbortSignal) {
   return observeGitOperation(
     { action: 'git.status', path },
     async () => {
-      const response = await client.git.status.get({
+      const response = await getClient().git.status.get({
         query: { path },
         fetch: { signal },
       })
@@ -25,7 +25,7 @@ export async function fetchDiff(path: string, staged: boolean, signal?: AbortSig
   return observeGitOperation(
     { action: 'git.diff', path, staged },
     async () => {
-      const response = await client.git.diff.get({
+      const response = await getClient().git.diff.get({
         query: { path, staged },
         fetch: { signal },
       })
@@ -48,7 +48,7 @@ export async function fetchBlobDiff(query: BlobDiffRequest, signal?: AbortSignal
       path: query.path,
     },
     async () => {
-      const response = await client.git.diff.blob.get({
+      const response = await getClient().git.diff.blob.get({
         query,
         fetch: { signal },
       })
@@ -66,7 +66,7 @@ export async function fetchBranches(path: string, signal?: AbortSignal) {
   return observeGitOperation(
     { action: 'git.branches', path },
     async () => {
-      const response = await client.git.branches.get({
+      const response = await getClient().git.branches.get({
         query: { path },
         fetch: { signal },
       })
@@ -89,7 +89,7 @@ export async function stagePath(path: string) {
 
 export async function stagePaths(paths: readonly string[]) {
   return observeGitPathsOperation('git.stage', paths, async () => {
-    const response = await client.git.stage.post({ paths: Array.from(paths) })
+    const response = await getClient().git.stage.post({ paths: Array.from(paths) })
 
     return unwrapEdenResponse(response, {
       requireData: true,
@@ -104,7 +104,7 @@ export async function unstagePath(path: string) {
 
 export async function unstagePaths(paths: readonly string[]) {
   return observeGitPathsOperation('git.unstage', paths, async () => {
-    const response = await client.git.unstage.post({ paths: Array.from(paths) })
+    const response = await getClient().git.unstage.post({ paths: Array.from(paths) })
 
     return unwrapEdenResponse(response, {
       requireData: true,
@@ -119,7 +119,7 @@ export async function discardPath(path: string) {
 
 export async function discardPaths(paths: readonly string[]) {
   return observeGitPathsOperation('git.discard', paths, async () => {
-    const response = await client.git.discard.post({ paths: Array.from(paths) })
+    const response = await getClient().git.discard.post({ paths: Array.from(paths) })
 
     return unwrapEdenResponse(response, {
       requireData: true,
@@ -136,7 +136,7 @@ export async function commitChanges(path: string, message: string) {
       path,
     },
     async () => {
-      const response = await client.git.commit.post({ message, path })
+      const response = await getClient().git.commit.post({ message, path })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -151,7 +151,7 @@ export async function checkoutBranch(path: string, branch: string) {
   return observeGitOperation(
     { action: 'git.checkout', branch, path },
     async () => {
-      const response = await client.git.checkout.post({ branch, path })
+      const response = await getClient().git.checkout.post({ branch, path })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -166,7 +166,7 @@ export async function createBranch(path: string, branch: string) {
   return observeGitOperation(
     { action: 'git.create_branch', branch, checkout: true, path },
     async () => {
-      const response = await client.git['create-branch'].post({
+      const response = await getClient().git['create-branch'].post({
         branch,
         checkout: true,
         path,
@@ -185,7 +185,7 @@ export async function fetchRemote(path: string) {
   return observeGitOperation(
     { action: 'git.fetch_remote', path },
     async () => {
-      const response = await client.git.fetch.post({ path })
+      const response = await getClient().git.fetch.post({ path })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -200,7 +200,7 @@ export async function pullRemote(path: string) {
   return observeGitOperation(
     { action: 'git.pull_remote', path },
     async () => {
-      const response = await client.git.pull.post({ path })
+      const response = await getClient().git.pull.post({ path })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -215,7 +215,7 @@ export async function pushRemote(path: string) {
   return observeGitOperation(
     { action: 'git.push_remote', path },
     async () => {
-      const response = await client.git.push.post({ path })
+      const response = await getClient().git.push.post({ path })
 
       return unwrapEdenResponse(response, {
         requireData: true,

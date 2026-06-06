@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { logsKeys } from '@/lib/query-keys'
 import {
   logDashboardFilters,
@@ -20,7 +20,7 @@ type LogsPanelProps = {
 
 export const LogsPanel = memo(({ active }: LogsPanelProps) => {
   const queryClient = useQueryClient()
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const setFocusArea = useFocus((state) => state.setFocusArea)
   const [filtersState, setFiltersState] = useState<LogsFilterState>(defaultLogsFilterState)
   const [inspectedEventId, setInspectedEventId] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now)

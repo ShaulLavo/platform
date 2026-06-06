@@ -1,0 +1,135 @@
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const SERVER_START_TIMEOUT_MS = 15_000
+const SERVER_STOP_TIMEOUT_MS = 5_000
+const DEFAULT_BROWSER_PORT = '5179'
+const DEFAULT_FILE_SERVER_URL = 'http://127.0.0.1:33201'
+
+export default async function setupBrowserFileServer() {
+  const serverUrl = new URL(process.env.VITEST_BROWSER_FILE_SERVER_URL ?? DEFAULT_FILE_SERVER_URL)
+  const browserPort = process.env.VITEST_BROWSER_PORT ?? DEFAULT_BROWSER_PORT
+  const server = startServer(serverUrl, browserPort)
+
+  await waitForServer(server, serverUrl, browserPort)
+
+  return async () => {
+    await stopServer(server)
+  }
+}
+
+function startServer(serverUrl: URL, browserPort: string) {
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..')
+  const serverRoot = path.join(repoRoot, 'apps/server')
+  const fixtureRoot = path.join(repoRoot, 'apps/web/test/fixtures/workbench-file-server')
+  const hostname = loopbackHostname(serverUrl.hostname)
+  const server = spawn('bun', ['src/index.ts'], {
+    cwd: serverRoot,
+    env: {
+      ...process.env,
+      FS_HOST: hostname,
+      FS_SYSTEM_ROOT: fixtureRoot,
+      FS_WATCH: 'false',
+      FS_WORKSPACE_ROOT: fixtureRoot,
+      PORT: serverUrl.port,
+      SERVER_ALLOWED_ORIGINS: allowedOrigins(browserPort).join(','),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  return trackServerOutput(server)
+}
+
+async function waitForServer(server: TrackedServer, serverUrl: URL, browserPort: string) {
+  const deadline = Date.now() + SERVER_START_TIMEOUT_MS
+  let lastError = 'server has not responded yet'
+
+  while (Date.now() < deadline) {
+    if (server.process.exitCode !== null) {
+      throw new Error(serverErrorMessage('Browser file server exited before startup', server))
+    }
+
+    try {
+      const response = await fetch(new URL('/health', serverUrl), {
+        headers: { origin: `http://127.0.0.1:${browserPort}` },
+      })
+      if (response.ok) return
+
+      lastError = `health returned ${response.status}`
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+    }
+
+    await delay(100)
+  }
+
+  throw new Error(serverErrorMessage(`Browser file server did not start: ${lastError}`, server))
+}
+
+async function stopServer(server: TrackedServer) {
+  if (server.process.exitCode !== null) return
+
+  const exited = waitForExit(server.process)
+  server.process.kill('SIGTERM')
+
+  const stopped = await Promise.race([exited.then(() => true), delay(SERVER_STOP_TIMEOUT_MS)])
+  if (stopped) return
+
+  server.process.kill('SIGKILL')
+  await exited
+}
+
+type TrackedServer = {
+  output: () => string
+  process: ChildProcessWithoutNullStreams
+}
+
+function trackServerOutput(process: ChildProcessWithoutNullStreams): TrackedServer {
+  const chunks: string[] = []
+  const append = (chunk: Buffer) => {
+    chunks.push(chunk.toString('utf8'))
+    if (chunks.length > 40) chunks.shift()
+  }
+
+  process.stdout.on('data', append)
+  process.stderr.on('data', append)
+
+  return {
+    output: () => chunks.join('').trim(),
+    process,
+  }
+}
+
+function waitForExit(process: ChildProcessWithoutNullStreams) {
+  return new Promise<void>((resolve) => {
+    process.once('exit', () => resolve())
+  })
+}
+
+function allowedOrigins(browserPort: string) {
+  return [
+    `http://127.0.0.1:${browserPort}`,
+    `http://localhost:${browserPort}`,
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+  ]
+}
+
+function loopbackHostname(hostname: string) {
+  if (hostname === 'localhost') return '127.0.0.1'
+  if (hostname === '127.0.0.1') return hostname
+
+  throw new Error(`Browser file server must use a loopback host, received ${hostname}`)
+}
+
+function serverErrorMessage(message: string, server: TrackedServer) {
+  const output = server.output()
+  if (!output) return message
+
+  return `${message}\n\n${output}`
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}

@@ -5,7 +5,7 @@ import {
   type UseHotkeyOptions,
 } from '@tanstack/react-hotkeys'
 
-import type { WorkspaceFocusArea } from '@/components/workspace/focus/providers/workspace-focus-state'
+import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
 
 import { activePlatformKeyBindings } from './active-bindings'
 import { isEditorPlatformCommandId } from './editor-keymap'
@@ -28,7 +28,7 @@ export function useAppKeymap({
 }: {
   readonly bindings: readonly PlatformKeyBinding[]
   readonly dispatch: PlatformCommandDispatch
-  readonly focusedPane: WorkspaceFocusArea
+  readonly focusedPane: FocusArea
 }) {
   const activeBindings = useMemo(
     () => appKeyBindingsForPane(bindings, focusedPane),
@@ -44,7 +44,7 @@ export function useAppKeymap({
 
 export function appKeyBindingsForPane(
   bindings: readonly PlatformKeyBinding[],
-  focusedPane: WorkspaceFocusArea,
+  focusedPane: FocusArea,
 ): readonly PlatformKeyBinding[] {
   return activePlatformKeyBindings(bindings, focusedPane).filter(isAppKeyBinding)
 }

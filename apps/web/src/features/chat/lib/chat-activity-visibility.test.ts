@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { visibleActivityGroupRows } from './chat-activity-visibility'
 import type { ChatWorkLogEntry, ChatWorkLogTone } from './chat-work-log'

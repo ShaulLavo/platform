@@ -5,6 +5,7 @@ import {
   type EditorPaneLeaf,
   type EditorPaneLayout,
   type EditorPaneNode,
+  type EditorPaneSplit,
   type EditorPaneTab,
 } from '@/features/editor/state/editor-pane-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
@@ -91,6 +92,25 @@ export function editorPaneIdForWorkbenchWindowId(windowId: WindowId): string | n
   if (!decodedKey.startsWith('editor-pane:')) return null
 
   return decodedKey.slice('editor-pane:'.length)
+}
+
+export function editorPaneLayoutForWorkspaceLayout(layout: WorkspaceLayout): EditorPaneLayout {
+  const normalizedLayout = normalizeWorkspaceLayout(layout)
+  const root = editorPaneNodeForLayoutRoot(normalizedLayout)
+  const activePaneId = activeEditorPaneIdForWorkspaceLayout(normalizedLayout, root)
+
+  return normalizeEditorPaneLayout({
+    activePaneId,
+    root,
+  })
+}
+
+export function editorPaneIdForWorkbenchWindow(windowId: WindowId): string {
+  return editorPaneIdForWorkbenchWindowId(windowId) ?? `workbench:${windowId}`
+}
+
+export function editorTabIdForSurface(surface: Surface): string {
+  return editorSurfaceSerializedState(surface)?.editorTabId ?? `surface-tab:${surface.id}`
 }
 
 function createEditorSurfaceLayoutContext(
@@ -251,6 +271,139 @@ function placeholderSurfaceForPane(paneId: string): Surface {
     contextKey: `editor-pane:${paneId}`,
     title: 'No file selected',
   })
+}
+
+function editorPaneNodeForLayoutRoot(layout: WorkspaceLayout): EditorPaneNode {
+  const rootNode = layout.rootNodeId
+    ? editorPaneNodeForLayoutNode(layout, layout.rootNodeId, new Set())
+    : null
+
+  return rootNode ?? emptyEditorPaneLeaf('empty')
+}
+
+function editorPaneNodeForLayoutNode(
+  layout: WorkspaceLayout,
+  nodeId: LayoutNodeId,
+  seenNodeIds: Set<LayoutNodeId>,
+): EditorPaneNode | null {
+  if (seenNodeIds.has(nodeId)) return null
+
+  const node = layout.nodesById[nodeId]
+  if (!node) return null
+  if (node.kind === 'window') return editorPaneLeafForWindow(layout, node.windowId)
+
+  return editorPaneSplitForLayoutNode(layout, node, new Set(seenNodeIds).add(nodeId))
+}
+
+function editorPaneSplitForLayoutNode(
+  layout: WorkspaceLayout,
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  seenNodeIds: Set<LayoutNodeId>,
+): EditorPaneNode | null {
+  const children = node.childIds.flatMap((childId) => {
+    const child = editorPaneNodeForLayoutNode(layout, childId, seenNodeIds)
+    return child ? [child] : []
+  })
+  if (children.length === 0) return null
+  if (children.length === 1) return children[0]
+
+  return {
+    children,
+    direction: node.axis,
+    id: String(node.id),
+    kind: 'split',
+    sizes: node.sizes,
+  } satisfies EditorPaneSplit
+}
+
+function editorPaneLeafForWindow(layout: WorkspaceLayout, windowId: WindowId): EditorPaneLeaf {
+  const window = layout.windowsById[windowId]
+  const paneId = editorPaneIdForWorkbenchWindow(windowId)
+  if (!window) return emptyEditorPaneLeaf(paneId)
+
+  const tabs = editorPaneTabsForWindow(layout, window)
+
+  return {
+    activeTabId: activeEditorTabIdForWindow(layout, window, tabs),
+    id: paneId,
+    kind: 'leaf',
+    tabs,
+  }
+}
+
+function editorPaneTabsForWindow(
+  layout: WorkspaceLayout,
+  window: WorkbenchWindow,
+): EditorPaneTab[] {
+  const tabs: EditorPaneTab[] = []
+
+  for (const surfaceId of window.surfaceIds) {
+    const tab = editorPaneTabForSurface(layout.surfacesById[surfaceId])
+    if (!tab) continue
+
+    tabs.push(tab)
+  }
+
+  return tabs
+}
+
+function editorPaneTabForSurface(surface: Surface | undefined): EditorPaneTab | null {
+  if (!surface?.resourceKey) return null
+  if (surface.type !== 'file-editor' && surface.type !== 'diff') return null
+
+  return {
+    id: editorTabIdForSurface(surface),
+    path: surface.resourceKey,
+  }
+}
+
+function activeEditorTabIdForWindow(
+  layout: WorkspaceLayout,
+  window: WorkbenchWindow,
+  tabs: readonly EditorPaneTab[],
+) {
+  const activeSurface = layout.surfacesById[window.activeSurfaceId]
+  const activeTabId = activeSurface ? editorTabIdForSurface(activeSurface) : null
+  if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) return activeTabId
+
+  return tabs.at(0)?.id ?? null
+}
+
+function activeEditorPaneIdForWorkspaceLayout(
+  layout: WorkspaceLayout,
+  root: EditorPaneNode,
+): string {
+  const windowId = layout.activeWindowId
+  const activePaneId = windowId ? editorPaneIdForWorkbenchWindow(windowId) : null
+  if (activePaneId && editorPaneNodeHasPane(root, activePaneId)) return activePaneId
+
+  return firstEditorPaneId(root) ?? 'empty'
+}
+
+function editorPaneNodeHasPane(node: EditorPaneNode, paneId: string): boolean {
+  if (node.kind === 'leaf') return node.id === paneId
+
+  return node.children.some((child) => editorPaneNodeHasPane(child, paneId))
+}
+
+function firstEditorPaneId(node: EditorPaneNode): string | null {
+  if (node.kind === 'leaf') return node.id
+
+  for (const child of node.children) {
+    const paneId = firstEditorPaneId(child)
+    if (paneId) return paneId
+  }
+
+  return null
+}
+
+function emptyEditorPaneLeaf(id: string): EditorPaneLeaf {
+  return {
+    activeTabId: null,
+    id,
+    kind: 'leaf',
+    tabs: [],
+  }
 }
 
 function appendSurfaces(

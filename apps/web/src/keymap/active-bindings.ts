@@ -1,4 +1,4 @@
-import type { WorkspaceFocusArea } from '@/components/workspace/focus/providers/workspace-focus-state'
+import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
 
 import type { PlatformKeyBinding } from './types'
 
@@ -9,7 +9,7 @@ type SelectedBinding = {
 
 export function activePlatformKeyBindings(
   bindings: readonly PlatformKeyBinding[],
-  focusedPane: WorkspaceFocusArea,
+  focusedPane: FocusArea,
 ): readonly PlatformKeyBinding[] {
   const selected = new Map<string, SelectedBinding>()
 
@@ -23,7 +23,7 @@ export function activePlatformKeyBindings(
 function selectActiveBinding(
   selected: Map<string, SelectedBinding>,
   binding: PlatformKeyBinding,
-  focusedPane: WorkspaceFocusArea,
+  focusedPane: FocusArea,
 ) {
   if (!bindingMatchesFocusedPane(binding, focusedPane)) return
 
@@ -34,14 +34,14 @@ function selectActiveBinding(
   selected.set(binding.keys, { binding, priority })
 }
 
-function bindingMatchesFocusedPane(binding: PlatformKeyBinding, focusedPane: WorkspaceFocusArea) {
+function bindingMatchesFocusedPane(binding: PlatformKeyBinding, focusedPane: FocusArea) {
   if (!binding.pane) return true
   if (binding.pane === 'any') return true
 
   return binding.pane === focusedPane
 }
 
-function bindingPriority(binding: PlatformKeyBinding, focusedPane: WorkspaceFocusArea) {
+function bindingPriority(binding: PlatformKeyBinding, focusedPane: FocusArea) {
   if (focusedPane && binding.pane === focusedPane) return 2
   if (!binding.pane || binding.pane === 'any') return 1
 

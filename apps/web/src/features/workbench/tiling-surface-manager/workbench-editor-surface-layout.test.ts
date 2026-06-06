@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import {
+  activeEditorPanePath,
   createEditorPaneLayoutForPaths,
   createEditorPaneTab,
+  editorPaneOpenPaths,
   splitEditorPaneTab,
   type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
@@ -10,7 +12,10 @@ import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import type { FileDiff } from '@/features/git/types'
 
 import { diffSurfaceId, fileEditorSurfaceId } from './layout-ids'
-import { workspaceLayoutForEditorPaneLayout } from './workbench-editor-surface-layout'
+import {
+  editorPaneLayoutForWorkspaceLayout,
+  workspaceLayoutForEditorPaneLayout,
+} from './workbench-editor-surface-layout'
 
 describe('workspaceLayoutForEditorPaneLayout', () => {
   it('maps file and diff editor tabs to editor surfaces', () => {
@@ -86,6 +91,23 @@ describe('workspaceLayoutForEditorPaneLayout', () => {
       editorPaneId: 'right-pane',
       editorTabId: rightTab.id,
     })
+  })
+
+  it('round trips visible editor surfaces back to compatibility editor panes', () => {
+    const editorLayout = createEditorPaneLayoutForPaths(
+      ['/repo/src/a.ts', '/repo/src/b.ts'],
+      '/repo/src/b.ts',
+    )
+    const tabId = editorLayout.root.kind === 'leaf' ? editorLayout.root.tabs[0]?.id : null
+    const splitLayout = tabId ? splitEditorPaneTab(editorLayout, tabId, 'horizontal') : editorLayout
+    const workspaceLayout = workspaceLayoutForEditorPaneLayout(splitLayout)
+    const roundTrip = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
+
+    expect(new Set(editorPaneOpenPaths(roundTrip))).toEqual(
+      new Set(['/repo/src/a.ts', '/repo/src/b.ts']),
+    )
+    expect(activeEditorPanePath(roundTrip)).toBe('/repo/src/a.ts')
+    expect(roundTrip.root.kind).toBe('split')
   })
 })
 

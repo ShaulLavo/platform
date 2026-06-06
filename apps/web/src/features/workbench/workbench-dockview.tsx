@@ -32,7 +32,7 @@ import { useEditorConflictState } from '@/features/editor/state/editor-conflict-
 import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useStatus } from '@/features/git/hooks'
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import type { EditorKeymapLayer } from '@editor/core'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -120,7 +120,7 @@ export function WorkbenchDockview({
   } satisfies WorkbenchDockviewTabModelContext
   const tabModelContextRef = useRef(tabModelContext)
   const { reorderTab, selectTab, splitTab } = useEditorCommands()
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const setFocusArea = useFocus((state) => state.setFocusArea)
   const chromeTabDrag = useEditorTabDrag({
     paneId: WORKBENCH_DOCKVIEW_CHROME_TAB_DND_PANE_ID,
     tabListRef: chromeTabListRef,

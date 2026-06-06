@@ -9,7 +9,7 @@ import {
   type EditorToken,
   type PieceTableSnapshot,
 } from '@editor/core'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { createSearchResultSyntaxProvider } from '@/features/search/search-result-syntax-plugin'
 

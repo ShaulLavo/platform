@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PROVIDER_INSTANCE_ID } from '@workspace/contracts'
 
 import { CHAT_INPUT_DRAFT_STORAGE_KEY } from '../lib/chat-draft-storage'

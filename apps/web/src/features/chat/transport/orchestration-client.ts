@@ -7,7 +7,7 @@ import type {
   ThreadId,
 } from '@workspace/contracts'
 
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import { chatCommandSummary, chatReplaySummary } from '../lib/chat-pipeline-logging'
@@ -20,7 +20,7 @@ export async function dispatchOrchestrationCommand(command: ClientOrchestrationC
       ...chatCommandSummary(command),
     },
     async () => {
-      const response = await client.orchestration.commands.post(command)
+      const response = await getClient().orchestration.commands.post(command)
 
       return unwrapEdenResponse<{ deduped: boolean; sequence: number }>(response)
     },
@@ -38,7 +38,7 @@ export async function fetchOrchestrationShellSnapshot(signal?: AbortSignal) {
       area: 'chat',
     },
     async () => {
-      const response = await client.orchestration['shell-snapshot'].get({
+      const response = await getClient().orchestration['shell-snapshot'].get({
         fetch: { signal },
       })
 
@@ -63,7 +63,7 @@ export async function fetchOrchestrationThreadDetailSnapshot(
       threadId,
     },
     async () => {
-      const response = await client.orchestration['thread-detail'].get({
+      const response = await getClient().orchestration['thread-detail'].get({
         fetch: { signal },
         query: { threadId },
       })
@@ -88,7 +88,7 @@ export async function replayOrchestrationEvents(input: OrchestrationReplayEvents
       ...chatReplaySummary(input),
     },
     async () => {
-      const response = await client.orchestration.replay.post(input)
+      const response = await getClient().orchestration.replay.post(input)
 
       return unwrapEdenResponse<OrchestrationReplayEventsResult>(response)
     },

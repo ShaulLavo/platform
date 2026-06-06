@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { createEditorCommands } from '@/features/editor/state/editor-commands'
 import { createEditorConflictStore } from '@/features/editor/state/editor-conflict-state'

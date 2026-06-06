@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
 import {
   moveTreeModelPaths,

@@ -1,6 +1,6 @@
 import type { ThreadId } from '@workspace/contracts'
 
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import { errorMessage } from '@/lib/error-message'
@@ -132,7 +132,7 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
       toTurnCount: input.toTurnCount,
     },
     async () => {
-      const response = await client.orchestration['turn-diff'].get({
+      const response = await getClient().orchestration['turn-diff'].get({
         fetch: { signal },
         query: {
           fromTurnCount: input.fromTurnCount,
@@ -160,7 +160,7 @@ export async function fetchFullThreadCheckpointDiff(
       toTurnCount: input.toTurnCount,
     },
     async () => {
-      const response = await client.orchestration['full-thread-diff'].get({
+      const response = await getClient().orchestration['full-thread-diff'].get({
         fetch: { signal },
         query: {
           threadId: input.threadId,

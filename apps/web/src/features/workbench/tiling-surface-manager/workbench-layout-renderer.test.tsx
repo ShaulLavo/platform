@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
+
+import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
 
 import {
   createClassicFirstRunWorkspaceLayout,
@@ -13,6 +15,8 @@ import { minimizeSurface, openSurface } from './layout-operations'
 import { WorkbenchLayoutProvider } from './workbench-layout-provider'
 import { WorkbenchLayoutRenderer } from './workbench-layout-renderer'
 import type { WorkspaceLayout } from './layout-types'
+import { workbenchEditorSurfaceRendererRegistry } from './workbench-editor-surface-renderers'
+import { workspaceLayoutForEditorPaneLayout } from './workbench-editor-surface-layout'
 
 describe('WorkbenchLayoutRenderer', () => {
   it('renders an empty layout state', () => {
@@ -74,9 +78,22 @@ describe('WorkbenchLayoutRenderer', () => {
     expect(matchCount(html, `data-surface-id="${terminal.id}"`)).toBe(1)
     expect(html).not.toContain('data-workbench-hidden-surface-hosts')
   })
+
+  it('renders editor placeholders without fixture debug UI', () => {
+    const layout = workspaceLayoutForEditorPaneLayout(createEditorPaneLayoutForPaths([], null))
+    const html = renderLayout(layout, { surfaceRenderers: workbenchEditorSurfaceRendererRegistry })
+
+    expect(html).toContain('No file selected')
+    expect(html).not.toContain('data-surface-renderer="fixture"')
+  })
 })
 
-function renderLayout(layout: WorkspaceLayout) {
+function renderLayout(
+  layout: WorkspaceLayout,
+  options: {
+    surfaceRenderers?: Parameters<typeof WorkbenchLayoutRenderer>[0]['surfaceRenderers']
+  } = {},
+) {
   return renderToStaticMarkup(
     <TooltipProvider>
       <WorkbenchLayoutProvider initialLayout={layout}>
@@ -87,6 +104,7 @@ function renderLayout(layout: WorkspaceLayout) {
             x: 0,
             y: 0,
           }}
+          surfaceRenderers={options.surfaceRenderers}
         />
       </WorkbenchLayoutProvider>
     </TooltipProvider>,

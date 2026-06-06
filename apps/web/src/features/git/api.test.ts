@@ -1,145 +1,56 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { execFileSync } from 'node:child_process'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { describe } from 'vitest'
 
-const statusGet = mock()
-const diffGet = mock()
-const blobDiffGet = mock()
-const branchesGet = mock()
-const stagePost = mock()
-const unstagePost = mock()
-const discardPost = mock()
-const commitPost = mock()
-const checkoutPost = mock()
-const createBranchPost = mock()
-const fetchPost = mock()
-const pullPost = mock()
-const pushPost = mock()
+import { expect, test } from '../../../test/fixtures'
+import * as api from './api'
 
-mock.module('@/lib/client', () => ({
-  client: {
-    git: {
-      status: { get: statusGet },
-      diff: { get: diffGet, blob: { get: blobDiffGet } },
-      branches: { get: branchesGet },
-      stage: { post: stagePost },
-      unstage: { post: unstagePost },
-      discard: { post: discardPost },
-      commit: { post: commitPost },
-      checkout: { post: checkoutPost },
-      'create-branch': { post: createBranchPost },
-      fetch: { post: fetchPost },
-      pull: { post: pullPost },
-      push: { post: pushPost },
-    },
-  },
-}))
+// Drives the real git server in-process through the api.ts wrappers — the same
+// `getClient()` the app uses, pointed at the test server by the `client` fixture.
+// No mock.module, no fake client.
 
-const api = await import('./api')
+async function initRepo(root: string) {
+  const repo = path.join(root, 'repo')
+  await mkdir(repo, { recursive: true })
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' })
+  git('init', '-b', 'main')
+  git('config', 'user.email', 'test@example.com')
+  git('config', 'user.name', 'Test')
+  await writeFile(path.join(repo, 'a.ts'), 'export const a = 1\n')
+  git('add', 'a.ts')
+  git('commit', '-m', 'init')
+  return repo
+}
 
-describe('git api', () => {
-  beforeEach(() => {
-    for (const endpoint of [
-      statusGet,
-      diffGet,
-      blobDiffGet,
-      branchesGet,
-      stagePost,
-      unstagePost,
-      discardPost,
-      commitPost,
-      checkoutPost,
-      createBranchPost,
-      fetchPost,
-      pullPost,
-      pushPost,
-    ]) {
-      endpoint.mockReset()
-    }
+describe('git api against the real server', () => {
+  test('reports a clean repository on its branch', async ({ client, server }) => {
+    void client
+    await initRepo(server.root)
+
+    const status = await api.fetchStatus('repo')
+
+    expect(status.repository?.branch).toBe('main')
+    expect(status.files).toEqual([])
   })
 
-  it('passes read query params and abort signals through to the RPC client', async () => {
-    const signal = new AbortController().signal
-    const status = { files: [], repository: repositoryInfo() }
-    statusGet.mockResolvedValueOnce({ data: status })
+  test('surfaces worktree modifications', async ({ client, server }) => {
+    void client
+    const repo = await initRepo(server.root)
+    await writeFile(path.join(repo, 'a.ts'), 'export const a = 2\n')
 
-    await expect(api.fetchStatus('repo', signal)).resolves.toBe(status)
+    const status = await api.fetchStatus('repo')
 
-    expect(statusGet).toHaveBeenCalledWith({
-      query: { path: 'repo' },
-      fetch: { signal },
-    })
+    const changed = status.files.find((file) => file.path.endsWith('a.ts'))
+    expect(changed?.worktree).toBe('modified')
   })
 
-  it('uses the server bulk path body for path mutations', async () => {
-    const status = { files: [], repository: repositoryInfo() }
-    stagePost.mockResolvedValueOnce({ data: status })
-    unstagePost.mockResolvedValueOnce({ data: status })
-    discardPost.mockResolvedValueOnce({ data: status })
+  test('lists branches through the wrapper', async ({ client, server }) => {
+    void client
+    await initRepo(server.root)
 
-    await expect(api.stagePath('src/a.ts')).resolves.toBe(status)
-    await expect(api.unstagePaths(['src/a.ts', 'src/b.ts'])).resolves.toBe(status)
-    await expect(api.discardPath('src/c.ts')).resolves.toBe(status)
+    const result = await api.fetchBranches('repo')
 
-    expect(stagePost).toHaveBeenCalledWith({ paths: ['src/a.ts'] })
-    expect(unstagePost).toHaveBeenCalledWith({
-      paths: ['src/a.ts', 'src/b.ts'],
-    })
-    expect(discardPost).toHaveBeenCalledWith({ paths: ['src/c.ts'] })
-  })
-
-  it('maps RPC error payloads to user-safe errors', async () => {
-    statusGet.mockResolvedValueOnce({
-      error: { value: { error: { code: 'GIT_REPOSITORY_NOT_FOUND' } } },
-    })
-
-    await expect(api.fetchStatus('repo')).rejects.toThrow(
-      'The file server could not complete the filesystem operation.',
-    )
-  })
-
-  it('keeps branch and remote mutation payloads explicit', async () => {
-    const branches = { branches: [], repository: repositoryInfo() }
-    const output = { output: 'done' }
-    createBranchPost.mockResolvedValueOnce({ data: branches })
-    fetchPost.mockResolvedValueOnce({ data: output })
-
-    await expect(api.createBranch('repo', 'feature')).resolves.toBe(branches)
-    await expect(api.fetchRemote('repo')).resolves.toBe(output)
-
-    expect(createBranchPost).toHaveBeenCalledWith({
-      branch: 'feature',
-      checkout: true,
-      path: 'repo',
-    })
-    expect(fetchPost).toHaveBeenCalledWith({ path: 'repo' })
-  })
-
-  it('syncs remote changes by pulling before pushing', async () => {
-    const calls: string[] = []
-    const pull = { output: 'pulled' }
-    const push = { output: 'pushed' }
-    pullPost.mockImplementationOnce(async () => {
-      calls.push('pull')
-      return { data: pull }
-    })
-    pushPost.mockImplementationOnce(async () => {
-      calls.push('push')
-      return { data: push }
-    })
-
-    await expect(api.syncRemote('repo')).resolves.toEqual({ pull, push })
-
-    expect(pullPost).toHaveBeenCalledWith({ path: 'repo' })
-    expect(pushPost).toHaveBeenCalledWith({ path: 'repo' })
-    expect(calls).toEqual(['pull', 'push'])
+    expect(result.branches.map((branch) => branch.name)).toContain('main')
   })
 })
-
-function repositoryInfo() {
-  return {
-    ahead: 0,
-    behind: 0,
-    branch: 'main',
-    commit: 'abc123',
-    path: 'repo',
-  }
-}

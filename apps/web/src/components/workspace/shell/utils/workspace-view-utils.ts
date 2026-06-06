@@ -10,7 +10,7 @@ export type VisibleTreeItemCountSnapshot = {
   rootPath: string
 }
 
-type WorkspacePanelSelection = {
+type PanelSelection = {
   sidebarVisible: boolean
   workspacePanelTab: WorkspacePanelTab
 }
@@ -19,7 +19,7 @@ export function isCollapsedPanelSize(size: PanelSize) {
   return size.inPixels <= COLLAPSED_PANEL_SIZE_PX
 }
 
-export function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
+export function isPanelTab(value: string): value is WorkspacePanelTab {
   return (
     value === 'chat' ||
     value === 'files' ||
@@ -29,10 +29,10 @@ export function isWorkspacePanelTab(value: string): value is WorkspacePanelTab {
   )
 }
 
-export function workspacePanelSelectionForTabActivation(
-  current: WorkspacePanelSelection,
+export function panelSelectionForTabActivation(
+  current: PanelSelection,
   tab: WorkspacePanelTab,
-): WorkspacePanelSelection {
+): PanelSelection {
   if (current.sidebarVisible && current.workspacePanelTab === tab) {
     return { ...current, sidebarVisible: false }
   }
@@ -40,7 +40,7 @@ export function workspacePanelSelectionForTabActivation(
   return { sidebarVisible: true, workspacePanelTab: tab }
 }
 
-export function workspacePanelTabTitle(tab: WorkspacePanelTab) {
+export function panelTabTitle(tab: WorkspacePanelTab) {
   if (tab === 'chat') return 'Chat'
   if (tab === 'files') return 'Files'
   if (tab === 'logs') return 'Logs'
@@ -49,22 +49,19 @@ export function workspacePanelTabTitle(tab: WorkspacePanelTab) {
   return 'Git'
 }
 
-export function workspaceActivityButtonId(tab: WorkspacePanelTab) {
+export function activityButtonId(tab: WorkspacePanelTab) {
   return `workspace-activity-${tab}`
 }
 
-export function workspaceSidebarPanelId(tab: WorkspacePanelTab) {
+export function sidebarPanelId(tab: WorkspacePanelTab) {
   return `workspace-sidebar-panel-${tab}`
 }
 
-export function workspaceResizableStorageKey(rootPath: string, group: string) {
+export function resizableStorageKey(rootPath: string, group: string) {
   return `workspace:${rootPath}:${group}`
 }
 
-export function workspaceTreeHeaderDetail(
-  state: LoadState<TreeModel>,
-  visibleTreeItemCount: number | null,
-) {
+export function treeHeaderDetail(state: LoadState<TreeModel>, visibleTreeItemCount: number | null) {
   if (state.status === 'ready' && visibleTreeItemCount !== null) {
     return visibleTreeItemCountLabel(visibleTreeItemCount)
   }

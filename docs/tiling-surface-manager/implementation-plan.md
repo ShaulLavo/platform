@@ -468,11 +468,11 @@ Exit criteria:
 
 ## Phase 7 - File And Diff Surface Cutover
 
-Status: started 2026-06-05. Initial cutover slice maps existing
-`EditorPaneLayout` leaves into normalized file/diff surfaces, carries editor
-tab identity through surface serialized state, renders file/diff surfaces through
-the custom renderer, and removes production `WorkspaceView` use of
-`WorkbenchDockview`.
+Status: completed 2026-06-05. Runtime file/diff layout is now owned by
+`WorkspaceLayout`; legacy editor-pane state is synchronized from surfaces only
+as compatibility data for editor documents, dirty close, and cache persistence.
+The custom renderer owns file, diff, and empty-editor surfaces, and production
+`WorkspaceView` no longer uses `WorkbenchDockview`.
 
 Goal: replace editor-pane layout and Dockview for file/diff editor workflows.
 

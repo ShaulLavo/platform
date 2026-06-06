@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { DiffTabActions } from '@/components/workspace/diff/components/diff-tab-actions'
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
@@ -25,7 +25,7 @@ export function WorkbenchDiffEditorPanel({
   const diffViewMode = useEditorWorkspaceState((state) => state.diffViewMode)
   const setDiffViewMode = useEditorWorkspaceState((state) => state.setDiffViewMode)
   const clearStatusBarSource = useEditorUiState((state) => state.clearStatusBarSource)
-  const requestEditorFocus = useWorkspaceFocus((state) => state.requestEditorFocus)
+  const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
   const { selectFile } = useEditorCommands()
 
   useEffect(() => {

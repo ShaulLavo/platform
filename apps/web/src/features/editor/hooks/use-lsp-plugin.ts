@@ -10,7 +10,7 @@ import {
   type LanguageServerMatch,
 } from '@/features/editor/editor-language-server-plugin'
 import { createEditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 
 type UseLanguageServerPluginOptions = {
   enabled?: boolean
@@ -37,8 +37,8 @@ export function useLanguageServerPlugin({
     if (!enabled) return
 
     const controller = new AbortController()
-    client.lsp.match
-      .get({
+    getClient()
+      .lsp.match.get({
         query: { path: filePath, root: rootPath },
         fetch: { signal: controller.signal },
       })

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { activePlatformKeyBindings } from './active-bindings'
 import { commandHotkeyMeta, platformCommandSpec } from './command-registry'

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { threadIdSchema, type OrchestrationShellStreamItem } from '@workspace/contracts'
 import * as v from 'valibot'
 

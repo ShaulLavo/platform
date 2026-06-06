@@ -1,5 +1,5 @@
 import { createEditorTextBuffer } from '@editor/core'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
 import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'

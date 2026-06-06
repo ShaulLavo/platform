@@ -4,7 +4,7 @@ import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
 import { useEffect, useEffectEvent, useRef, type ComponentPropsWithoutRef } from 'react'
 
 import { useTheme } from '@/components/theme-context'
-import { useWorkspaceFocus } from '@/components/workspace/focus/providers/workspace-focus-state'
+import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
@@ -33,7 +33,7 @@ export function TerminalPanel({
   const themeSyncFrameRef = useRef<number | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
-  const setFocusArea = useWorkspaceFocus((state) => state.setFocusArea)
+  const setFocusArea = useFocus((state) => state.setFocusArea)
   activeRef.current = active
   const syncTerminalThemeAfterFrame = useEffectEvent(() => {
     if (themeSyncFrameRef.current !== null) {

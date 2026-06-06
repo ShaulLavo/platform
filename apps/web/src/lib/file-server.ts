@@ -1,4 +1,4 @@
-import { client } from '@/lib/client'
+import { getClient } from '@/lib/client'
 import type {
   FileResult,
   FindMatch,
@@ -30,7 +30,7 @@ export async function fetchTree(path: string, signal: AbortSignal) {
   return observeClientOperation(
     { action: 'fs.tree', area: 'fs', path },
     async () => {
-      const response = await client.fs.tree.get({
+      const response = await getClient().fs.tree.get({
         query: { depth: TREE_LOAD_DEPTH, path },
         fetch: { signal },
       })
@@ -47,7 +47,7 @@ export async function fetchFile(path: string, signal: AbortSignal) {
   return observeClientOperation(
     { action: 'fs.read', area: 'fs', path },
     async () => {
-      const response = await client.fs.read.get({
+      const response = await getClient().fs.read.get({
         query: { path },
         fetch: { signal },
       })
@@ -117,7 +117,7 @@ export async function writeFileContent(
     },
     async () => {
       const body = writeFileContentBody(path, content, writeOptions)
-      const response = await client.fs.write.post(body)
+      const response = await getClient().fs.write.post(body)
 
       if (response.error) throw createRpcError(response.error)
 
@@ -159,7 +159,7 @@ export async function createFileContent(path: string, content: string) {
       path,
     },
     async () => {
-      const response = await client.fs['create-file'].post({ content, path })
+      const response = await getClient().fs['create-file'].post({ content, path })
 
       if (response.error) throw createRpcError(response.error)
 
@@ -175,7 +175,7 @@ export async function ensureFolderPath(path: string) {
   return observeClientOperation(
     { action: 'fs.create_folder', area: 'fs', path, recursive: true },
     async () => {
-      const response = await client.fs['create-folder'].post({
+      const response = await getClient().fs['create-folder'].post({
         path,
         recursive: true,
       })
@@ -192,7 +192,7 @@ export async function renamePath(from: string, to: string) {
   return observeClientOperation(
     { action: 'fs.rename', area: 'fs', from, path: to },
     async () => {
-      const response = await client.fs.rename.post({ from, to })
+      const response = await getClient().fs.rename.post({ from, to })
 
       if (response.error) throw response.error
 
@@ -206,7 +206,7 @@ export async function fetchServerInfo(signal: AbortSignal) {
   return observeClientOperation(
     { action: 'fs.server_info', area: 'fs' },
     async () => {
-      const response = await client.health.get({ fetch: { signal } })
+      const response = await getClient().health.get({ fetch: { signal } })
 
       if (response.error) throw createRpcError(response.error)
 
@@ -220,7 +220,7 @@ export async function statPath(path: string, signal: AbortSignal) {
   return observeClientOperation(
     { action: 'fs.stat', area: 'fs', path },
     async () => {
-      const response = await client.fs.stat.get({ query: { path }, fetch: { signal } })
+      const response = await getClient().fs.stat.get({ query: { path }, fetch: { signal } })
 
       if (response.error) throw createRpcError(response.error)
 
@@ -234,7 +234,7 @@ export async function fetchRecentEntries(limit: number, signal: AbortSignal) {
   return observeClientOperation(
     { action: 'fs.recents', area: 'fs', limit },
     async () => {
-      const response = await client.fs.recents.get({ query: { limit }, fetch: { signal } })
+      const response = await getClient().fs.recents.get({ query: { limit }, fetch: { signal } })
 
       if (response.error) throw createRpcError(response.error)
 
@@ -246,7 +246,7 @@ export async function fetchRecentEntries(limit: number, signal: AbortSignal) {
 
 export async function recordRecentEntry(path: string) {
   return observeClientOperation({ action: 'fs.record_recent', area: 'fs', path }, async () => {
-    const response = await client.fs.recents.post({ path })
+    const response = await getClient().fs.recents.post({ path })
 
     if (response.error) throw createRpcError(response.error)
 

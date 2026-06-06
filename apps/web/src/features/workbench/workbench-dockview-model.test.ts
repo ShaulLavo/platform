@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'

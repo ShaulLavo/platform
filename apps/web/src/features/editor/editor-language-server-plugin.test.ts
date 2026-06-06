@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/lsp-plugin'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   EditorLanguageServerStatusSnapshot,
@@ -14,23 +14,21 @@ type MockLanguageServerPluginOptions = {
   readonly webSocketRoute: string | URL
 }
 
-const createdLanguageServerPlugins: MockLanguageServerPluginOptions[] = []
+const { createdLanguageServerPlugins } = vi.hoisted(() => ({
+  createdLanguageServerPlugins: [] as MockLanguageServerPluginOptions[],
+}))
 
-mock.module('@editor/lsp-plugin/websocket', () => ({
+vi.mock('@editor/lsp-plugin/websocket', () => ({
   createLanguageServerPlugin: (options: MockLanguageServerPluginOptions) => {
     createdLanguageServerPlugins.push(options)
     return {
-      name: 'editor.language-server',
       activate: () => [],
+      name: 'editor.language-server',
     }
   },
 }))
 
-mock.module('@/lib/client', () => ({
-  serverUrl: 'http://localhost:3001',
-}))
-
-mock.module('@/lib/server-sockets', () => ({
+vi.mock('@/lib/server-sockets', () => ({
   EdenLanguageServerWebSocket: class EdenLanguageServerWebSocket {},
 }))
 
@@ -148,16 +146,13 @@ function statusSource(): TestStatusSource {
   let resetCount = 0
   let snapshot: EditorLanguageServerStatusSnapshot = { diagnostics: null, status: 'idle' }
   return {
-    get snapshot() {
-      return snapshot
-    },
     getSnapshot: () => snapshot,
-    get resetCount() {
-      return resetCount
-    },
     reset: () => {
       resetCount += 1
       snapshot = { diagnostics: null, status: 'idle' }
+    },
+    get resetCount() {
+      return resetCount
     },
     setDiagnostics: (diagnostics) => {
       snapshot = { ...snapshot, diagnostics }
@@ -167,6 +162,9 @@ function statusSource(): TestStatusSource {
     },
     setStatus: (status) => {
       snapshot = { ...snapshot, status }
+    },
+    get snapshot() {
+      return snapshot
     },
     subscribe: () => () => undefined,
   }

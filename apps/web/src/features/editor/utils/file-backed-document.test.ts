@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'

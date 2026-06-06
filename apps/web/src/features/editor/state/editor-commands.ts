@@ -1,18 +1,6 @@
 import { fallbackDocumentPathForSelection } from '@/features/editor/state/editor-fallback-path'
 import {
-  activeEditorPanePath,
-  closeEditorPaneTabs,
-  editorPanePathCounts,
-  findEditorPaneTab,
-  moveEditorPaneTabToPane,
-  moveEditorPaneTabToSplit,
-  openEditorPathInActivePane,
-  removeEditorPanePath,
-  renameEditorPanePath,
-  reorderEditorPaneTab,
-  selectEditorPaneTab,
-  setActiveEditorPane,
-  splitEditorPaneTab,
+  createEditorPaneTab,
   type EditorPaneDropZone,
   type EditorPaneSplitDirection,
   type EditorPaneSplitScope,
@@ -31,11 +19,37 @@ import {
 } from '@/features/editor/state/editor-tab-paths'
 import { useEditorUiStoreApi, type EditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import {
-  editorWorkspaceSelectionForPaneLayout,
+  editorWorkspaceSelectionForWorkspaceLayout,
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStore,
   type EditorWorkspaceStoreApi,
 } from '@/features/editor/state/editor-workspace-state'
+import { parseDiffDocumentId } from '@/features/git/diff-document'
+import {
+  createDiffSurface,
+  createFileEditorSurface,
+} from '@/features/workbench/tiling-surface-manager/layout-builders'
+import {
+  activateSurface,
+  closeSurface as closeSurfaceInLayout,
+  moveSurface,
+  openSurface,
+  reorderSurface,
+  tabSurface,
+} from '@/features/workbench/tiling-surface-manager/layout-operations'
+import { findWindowIdContainingSurface } from '@/features/workbench/tiling-surface-manager/layout-normalize'
+import type {
+  DropDestination,
+  DropEdge,
+  Surface,
+  SurfaceId,
+  WindowId,
+  WorkspaceLayout,
+} from '@/features/workbench/tiling-surface-manager/layout-types'
+import {
+  editorPaneIdForWorkbenchWindow,
+  editorSurfaceSerializedState,
+} from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
 import { useMemo } from 'react'
@@ -120,8 +134,10 @@ function selectFile(
 
   const workspace = workspaceStore.getState()
   const document = documentStore.getState()
-  const editorPaneLayout = openEditorPathInActivePane(workspace.editorPaneLayout, selectedFilePath)
-  if (editorPaneLayout === workspace.editorPaneLayout) return
+  const workspaceLayout = openEditorPathInWorkspaceLayout(
+    workspace.workspaceLayout,
+    selectedFilePath,
+  )
 
   documentStore.setState({
     fallbackDocumentPath: fallbackDocumentPathForSelection(
@@ -131,7 +147,7 @@ function selectFile(
     ),
   })
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    ...editorWorkspaceSelectionForWorkspaceLayoutForState(workspace, workspaceLayout),
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
   })
 }
@@ -170,12 +186,14 @@ function closeTab(
   options: { discard?: boolean } = {},
 ) {
   const workspace = workspaceStore.getState()
-  const location = findEditorPaneTab(workspace.editorPaneLayout.root, tabId)
+  const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
   if (!location) return { wasDirty: false }
+  if (!location.surface.resourceKey) return { wasDirty: false }
 
-  const path = location.tab.path
-  const nextLayout = closeEditorPaneTabs(workspace.editorPaneLayout, [tabId])
-  const remainingCount = editorPanePathCounts(nextLayout).get(path) ?? 0
+  const path = location.surface.resourceKey
+  const nextLayout = closeSurfaceInLayout(workspace.workspaceLayout, location.surface.id)
+  const nextSelection = editorWorkspaceSelectionForWorkspaceLayoutForState(workspace, nextLayout)
+  const remainingCount = editorSurfacePathCounts(nextLayout).get(path) ?? 0
   const result =
     options.discard && remainingCount === 0
       ? documentStore.getState().deleteLiveEditorDocument(path)
@@ -188,11 +206,11 @@ function closeTab(
     }
   }
 
-  const selectedFilePath = activeEditorPanePath(nextLayout)
+  const selectedFilePath = nextSelection.selectedFilePath
   updateUiForClosedPath(path, selectedFilePath, remainingCount, uiStore)
   updateFallbackForClosedPath(path, selectedFilePath, documentStore)
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, nextLayout),
+    ...nextSelection,
     editorHistory:
       remainingCount === 0
         ? editorHistoryForClosedPath(workspace.editorHistory, path)
@@ -214,13 +232,14 @@ function discardLiveEditorDocument(
 ) {
   const workspace = workspaceStore.getState()
   const result = documentStore.getState().deleteLiveEditorDocument(path)
-  const nextLayout = removeEditorPanePath(workspace.editorPaneLayout, path)
-  const selectedFilePath = activeEditorPanePath(nextLayout)
+  const nextLayout = closeEditorPathSurfaces(workspace.workspaceLayout, path)
+  const nextSelection = editorWorkspaceSelectionForWorkspaceLayoutForState(workspace, nextLayout)
+  const selectedFilePath = nextSelection.selectedFilePath
 
   updateUiForClosedPath(path, selectedFilePath, 0, uiStore)
   updateFallbackForClosedPath(path, selectedFilePath, documentStore)
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, nextLayout),
+    ...nextSelection,
     editorHistory: editorHistoryForClosedPath(workspace.editorHistory, path),
   })
 
@@ -270,9 +289,9 @@ function renameLiveEditorDocument(
 ) {
   const workspace = workspaceStore.getState()
   const result = documentStore.getState().renameLiveEditorDocumentPath(from, to)
-  const editorPaneLayout = renameEditorPanePath(workspace.editorPaneLayout, from, to)
+  const workspaceLayout = renameEditorPathInWorkspaceLayout(workspace.workspaceLayout, from, to)
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    ...editorWorkspaceSelectionForWorkspaceLayoutForState(workspace, workspaceLayout),
     editorHistory: editorHistoryForRenamedPath(workspace.editorHistory, from, to),
     recentlyClosedEditorPaths: editorHistoryForRenamedPath(
       workspace.recentlyClosedEditorPaths,
@@ -293,16 +312,15 @@ function reorderTab(
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
-  const editorPaneLayout = reorderEditorPaneTab(
-    workspace.editorPaneLayout,
-    paneId,
-    tabId,
-    targetIndex,
-  )
-  if (editorPaneLayout === workspace.editorPaneLayout) return false
+  const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
+  if (!location) return false
+  if (location.index === targetIndex) return false
 
   workspaceStore.setState(
-    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    editorWorkspaceSelectionForWorkspaceLayoutForState(
+      workspace,
+      reorderSurface(workspace.workspaceLayout, location.windowId, location.index, targetIndex),
+    ),
   )
   return true
 }
@@ -314,10 +332,16 @@ function selectTab(
   documentStore: EditorDocumentStoreApi,
 ) {
   const workspace = workspaceStore.getState()
-  const editorPaneLayout = selectEditorPaneTab(workspace.editorPaneLayout, paneId, tabId)
-  if (editorPaneLayout === workspace.editorPaneLayout) return
+  const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
+  if (!location) return
+  if (surfaceLocationIsActive(workspace.workspaceLayout, location)) return
 
-  const selectedFilePath = activeEditorPanePath(editorPaneLayout)
+  const workspaceLayout = activateSurface(workspace.workspaceLayout, location.surface.id)
+  const nextSelection = editorWorkspaceSelectionForWorkspaceLayoutForState(
+    workspace,
+    workspaceLayout,
+  )
+  const selectedFilePath = nextSelection.selectedFilePath
   const document = documentStore.getState()
 
   documentStore.setState({
@@ -328,18 +352,23 @@ function selectTab(
     ),
   })
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    ...nextSelection,
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
   })
 }
 
 function setActivePane(paneId: string, workspaceStore: EditorWorkspaceStoreApi) {
   const workspace = workspaceStore.getState()
-  const editorPaneLayout = setActiveEditorPane(workspace.editorPaneLayout, paneId)
-  if (editorPaneLayout === workspace.editorPaneLayout) return
+  const windowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  if (!windowId) return
+  const activeSurfaceId = workspace.workspaceLayout.windowsById[windowId]?.activeSurfaceId
+  if (!activeSurfaceId) return
 
   workspaceStore.setState(
-    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    editorWorkspaceSelectionForWorkspaceLayoutForState(
+      workspace,
+      activateSurface(workspace.workspaceLayout, activeSurfaceId),
+    ),
   )
 }
 
@@ -349,11 +378,18 @@ function splitTab(
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
-  const editorPaneLayout = splitEditorPaneTab(workspace.editorPaneLayout, tabId, direction)
-  if (editorPaneLayout === workspace.editorPaneLayout) return false
+  const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
+  if (!location) return false
 
   workspaceStore.setState(
-    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    editorWorkspaceSelectionForWorkspaceLayoutForState(
+      workspace,
+      moveSurface(workspace.workspaceLayout, location.surface.id, {
+        edge: edgeForEditorSplitDirection(direction),
+        kind: 'window-edge',
+        windowId: location.windowId,
+      }),
+    ),
   )
   return true
 }
@@ -365,16 +401,15 @@ function moveTabToPane(
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
-  const editorPaneLayout = moveEditorPaneTabToPane(
-    workspace.editorPaneLayout,
-    tabId,
-    paneId,
-    targetIndex,
-  )
-  if (editorPaneLayout === workspace.editorPaneLayout) return false
+  const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
+  const targetWindowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  if (!location || !targetWindowId) return false
 
   workspaceStore.setState(
-    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    editorWorkspaceSelectionForWorkspaceLayoutForState(
+      workspace,
+      tabSurface(workspace.workspaceLayout, location.surface.id, targetWindowId, targetIndex),
+    ),
   )
   return true
 }
@@ -387,27 +422,263 @@ function moveTabToSplit(
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
-  const editorPaneLayout = moveEditorPaneTabToSplit(workspace.editorPaneLayout, {
-    sourceTabId: tabId,
-    targetPaneId: paneId,
-    scope,
-    zone,
-  })
-  if (editorPaneLayout === workspace.editorPaneLayout) return false
+  const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
+  const targetWindowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  if (!location || !targetWindowId) return false
 
   workspaceStore.setState(
-    editorWorkspaceSelectionForPaneLayoutForState(workspace, editorPaneLayout),
+    editorWorkspaceSelectionForWorkspaceLayoutForState(
+      workspace,
+      moveSurface(
+        workspace.workspaceLayout,
+        location.surface.id,
+        splitDestination(targetWindowId, zone, scope),
+      ),
+    ),
   )
   return true
 }
 
-function editorWorkspaceSelectionForPaneLayoutForState(
+function editorWorkspaceSelectionForWorkspaceLayoutForState(
   workspace: EditorWorkspaceStore,
-  editorPaneLayout: Parameters<typeof editorWorkspaceSelectionForPaneLayout>[0],
+  workspaceLayout: WorkspaceLayout,
 ) {
-  return editorWorkspaceSelectionForPaneLayout(editorPaneLayout, {
+  return editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout, {
     currentOpenFilePaths: workspace.openFilePaths,
   })
+}
+
+function openEditorPathInWorkspaceLayout(layout: WorkspaceLayout, path: string) {
+  const existingSurface = editorSurfaceForPath(layout, path)
+  if (existingSurface) return activateSurface(layout, existingSurface.id)
+
+  return openSurface(layout, createEditorSurfaceForPath(layout, path))
+}
+
+function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface {
+  const tab = createEditorPaneTab(path)
+  const serializedState = {
+    editorPaneId: editorPaneIdForNewSurface(layout),
+    editorTabId: tab.id,
+  }
+  const surface = parseDiffDocumentId(path)
+    ? createDiffSurface({ diffDocumentId: path })
+    : createFileEditorSurface({ path })
+
+  return { ...surface, serializedState }
+}
+
+function editorPaneIdForNewSurface(layout: WorkspaceLayout) {
+  const windowId = layout.activeWindowId
+  if (!windowId) return 'workbench:root'
+
+  return editorPaneIdForWorkbenchWindow(windowId)
+}
+
+function closeEditorPathSurfaces(layout: WorkspaceLayout, path: string) {
+  let nextLayout = layout
+  for (const surface of editorSurfacesForPath(layout, path)) {
+    nextLayout = closeSurfaceInLayout(nextLayout, surface.id)
+  }
+
+  return nextLayout
+}
+
+function renameEditorPathInWorkspaceLayout(
+  layout: WorkspaceLayout,
+  from: string,
+  to: string,
+): WorkspaceLayout {
+  let nextLayout = layout
+  for (const surface of editorSurfacesForPath(layout, from)) {
+    nextLayout = replaceFileEditorSurfacePath(nextLayout, surface, to)
+  }
+
+  return nextLayout
+}
+
+function replaceFileEditorSurfacePath(
+  layout: WorkspaceLayout,
+  surface: Surface,
+  path: string,
+): WorkspaceLayout {
+  if (surface.type !== 'file-editor') return layout
+
+  const replacement = {
+    ...createFileEditorSurface({ path }),
+    serializedState: surface.serializedState,
+  }
+
+  return replaceSurface(layout, surface.id, replacement)
+}
+
+function replaceSurface(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  replacement: Surface,
+): WorkspaceLayout {
+  const surfacesById = { ...layout.surfacesById }
+  delete surfacesById[surfaceId]
+  surfacesById[replacement.id] = replacement
+
+  return {
+    ...layout,
+    activeSurfaceId: replaceSurfaceId(layout.activeSurfaceId, surfaceId, replacement.id),
+    mruSurfaceIds: replaceSurfaceIds(layout.mruSurfaceIds, surfaceId, replacement.id),
+    rail: {
+      ...layout.rail,
+      minimizedSurfaceIds: replaceSurfaceIds(
+        layout.rail.minimizedSurfaceIds,
+        surfaceId,
+        replacement.id,
+      ),
+      pinnedSurfaceIds: replaceSurfaceIds(layout.rail.pinnedSurfaceIds, surfaceId, replacement.id),
+      runningSurfaceIds: replaceSurfaceIds(
+        layout.rail.runningSurfaceIds,
+        surfaceId,
+        replacement.id,
+      ),
+      visibleSingletonSurfaceIds: replaceSurfaceIds(
+        layout.rail.visibleSingletonSurfaceIds,
+        surfaceId,
+        replacement.id,
+      ),
+    },
+    surfacesById,
+    windowsById: replaceWindowSurfaceIds(layout, surfaceId, replacement.id),
+  }
+}
+
+function replaceWindowSurfaceIds(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  replacementId: SurfaceId,
+) {
+  return Object.fromEntries(
+    Object.entries(layout.windowsById).map(([windowId, window]) => [
+      windowId,
+      {
+        ...window,
+        activeSurfaceId: replaceSurfaceId(window.activeSurfaceId, surfaceId, replacementId),
+        pinnedSurfaceIds: replaceSurfaceIds(window.pinnedSurfaceIds, surfaceId, replacementId),
+        previewSurfaceId: replaceSurfaceId(window.previewSurfaceId, surfaceId, replacementId),
+        surfaceIds: replaceSurfaceIds(window.surfaceIds, surfaceId, replacementId),
+      },
+    ]),
+  )
+}
+
+function replaceSurfaceIds(
+  surfaceIds: readonly SurfaceId[],
+  surfaceId: SurfaceId,
+  replacementId: SurfaceId,
+) {
+  return surfaceIds.map((id) => replaceSurfaceId(id, surfaceId, replacementId))
+}
+
+function replaceSurfaceId<TId extends SurfaceId | undefined>(
+  value: TId,
+  surfaceId: SurfaceId,
+  replacementId: SurfaceId,
+): TId {
+  return (value === surfaceId ? replacementId : value) as TId
+}
+
+function editorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface | null {
+  return editorSurfacesForPath(layout, path)[0] ?? null
+}
+
+function editorSurfacesForPath(layout: WorkspaceLayout, path: string) {
+  return Object.values(layout.surfacesById).filter((surface) => editorSurfacePath(surface) === path)
+}
+
+function editorSurfacePath(surface: Surface) {
+  if (surface.type !== 'file-editor' && surface.type !== 'diff') return null
+
+  return surface.resourceKey ?? null
+}
+
+function editorSurfaceLocationForTabId(layout: WorkspaceLayout, tabId: string) {
+  for (const window of Object.values(layout.windowsById)) {
+    const location = editorSurfaceLocationInWindow(layout, window.id, tabId)
+    if (location) return location
+  }
+
+  return null
+}
+
+function editorSurfaceLocationInWindow(layout: WorkspaceLayout, windowId: WindowId, tabId: string) {
+  const window = layout.windowsById[windowId]
+  if (!window) return null
+
+  const index = window.surfaceIds.findIndex((surfaceId) => {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface) return false
+
+    return editorSurfaceSerializedState(surface)?.editorTabId === tabId
+  })
+  if (index < 0) return null
+
+  const surface = layout.surfacesById[window.surfaceIds[index]]
+  if (!surface) return null
+
+  return { index, surface, windowId }
+}
+
+function surfaceLocationIsActive(
+  layout: WorkspaceLayout,
+  location: NonNullable<ReturnType<typeof editorSurfaceLocationForTabId>>,
+) {
+  if (layout.activeSurfaceId !== location.surface.id) return false
+
+  return layout.activeWindowId === location.windowId
+}
+
+function editorSurfacePathCounts(layout: WorkspaceLayout) {
+  const counts = new Map<string, number>()
+  for (const surface of Object.values(layout.surfacesById)) {
+    const path = editorSurfacePath(surface)
+    if (!path) continue
+
+    counts.set(path, (counts.get(path) ?? 0) + 1)
+  }
+
+  return counts
+}
+
+function windowIdForEditorPaneId(layout: WorkspaceLayout, paneId: string): WindowId | null {
+  for (const window of Object.values(layout.windowsById)) {
+    if (editorPaneIdForWorkbenchWindow(window.id) === paneId) return window.id
+  }
+
+  return windowIdForSerializedEditorPaneId(layout, paneId)
+}
+
+function windowIdForSerializedEditorPaneId(
+  layout: WorkspaceLayout,
+  paneId: string,
+): WindowId | null {
+  for (const surface of Object.values(layout.surfacesById)) {
+    if (editorSurfaceSerializedState(surface)?.editorPaneId !== paneId) continue
+
+    return findWindowIdContainingSurface(layout, surface.id)
+  }
+
+  return null
+}
+
+function edgeForEditorSplitDirection(direction: EditorPaneSplitDirection): DropEdge {
+  return direction === 'horizontal' ? 'right' : 'bottom'
+}
+
+function splitDestination(
+  windowId: WindowId,
+  zone: Exclude<EditorPaneDropZone, 'center'>,
+  scope: EditorPaneSplitScope | undefined,
+): DropDestination {
+  if (scope === 'root') return { edge: zone, kind: 'root-edge' }
+
+  return { edge: zone, kind: 'window-edge', windowId }
 }
 
 function updateUiForClosedPath(
