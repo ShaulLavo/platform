@@ -1,14 +1,15 @@
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import type { WorkspacePanelTab } from '@/lib/workspace-cache'
+import { searchResultsSurfaceId } from '@/features/workbench/tiling-surface-manager/layout-ids'
+import { findWindowIdContainingSurface } from '@/features/workbench/tiling-surface-manager/layout-normalize'
+import type { WorkspaceLayout } from '@/features/workbench/tiling-surface-manager/layout-types'
 
 type SearchRuntimeSelection = {
   selectedFilePath: string | null
-  sidebarVisible: boolean
-  workspacePanelTab: WorkspacePanelTab
+  workspaceLayout: WorkspaceLayout
 }
 
 export function searchRuntimeEnabled(state: SearchRuntimeSelection, rootPath: string) {
-  if (state.sidebarVisible && state.workspacePanelTab === 'search') return true
+  if (findWindowIdContainingSurface(state.workspaceLayout, searchResultsSurfaceId())) return true
 
   const searchBuffer = parseSearchBufferDocumentId(state.selectedFilePath)
 

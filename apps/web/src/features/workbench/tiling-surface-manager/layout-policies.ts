@@ -110,6 +110,7 @@ function masterDetailPlacementForSurface(
   if (surface.type === 'file-navigator') return { edge: 'left', kind: 'root-edge' }
   if (surface.type === 'search-results') return { edge: 'left', kind: 'root-edge' }
   if (surface.type === 'git-changes') return { edge: 'right', kind: 'root-edge' }
+  if (surface.type === 'logs') return { edge: 'right', kind: 'root-edge' }
   if (surface.type === 'diagnostics') return { edge: 'bottom', kind: 'root-edge' }
   if (surface.type === 'terminal') return { edge: 'bottom', kind: 'root-edge' }
 

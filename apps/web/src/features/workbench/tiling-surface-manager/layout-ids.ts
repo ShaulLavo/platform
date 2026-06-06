@@ -44,6 +44,10 @@ export function gitChangesSurfaceId(): SurfaceId {
   return surfaceId('git-changes', 'workspace')
 }
 
+export function logsSurfaceId(): SurfaceId {
+  return surfaceId('logs', 'workspace')
+}
+
 export function diagnosticsSurfaceId(): SurfaceId {
   return surfaceId('diagnostics', 'workspace')
 }

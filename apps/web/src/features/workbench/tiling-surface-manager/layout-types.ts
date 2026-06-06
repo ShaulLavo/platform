@@ -24,6 +24,7 @@ export type SurfaceType =
   | 'file-editor'
   | 'file-navigator'
   | 'git-changes'
+  | 'logs'
   | 'placeholder'
   | 'search-preview'
   | 'search-results'

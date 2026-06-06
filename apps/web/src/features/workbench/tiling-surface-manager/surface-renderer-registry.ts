@@ -25,6 +25,7 @@ const DEFAULT_RENDERED_SURFACE_TYPES = [
   'file-editor',
   'file-navigator',
   'git-changes',
+  'logs',
   'placeholder',
   'search-preview',
   'search-results',

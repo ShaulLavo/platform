@@ -11,6 +11,7 @@ export function WorkbenchEditorSurfaceProvider({
   rootPath,
   surfaceIdForEditorTabId,
   tabModelForSurface,
+  toolSurfaceState,
 }: WorkbenchEditorSurfaceContextValue & {
   readonly children: ReactNode
 }) {
@@ -23,6 +24,7 @@ export function WorkbenchEditorSurfaceProvider({
         rootPath,
         surfaceIdForEditorTabId,
         tabModelForSurface,
+        toolSurfaceState,
       }}
     >
       {children}

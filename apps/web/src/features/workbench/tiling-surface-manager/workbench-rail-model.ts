@@ -1,7 +1,13 @@
 import { findWindowIdContainingSurface } from './layout-normalize'
 import type { Surface, SurfaceId, WorkspaceLayout } from './layout-types'
 
-export type WorkbenchRailSurfaceState = 'active' | 'minimized' | 'pinned' | 'running' | 'visible'
+export type WorkbenchRailSurfaceState =
+  | 'active'
+  | 'minimized'
+  | 'pinned'
+  | 'running'
+  | 'singleton'
+  | 'visible'
 
 export type WorkbenchRailSurfaceItem = {
   readonly state: WorkbenchRailSurfaceState
@@ -18,6 +24,7 @@ export function selectWorkbenchRailSurfaceItems(
   appendRailItems(items, seen, layout, layout.rail.visibleSingletonSurfaceIds, 'visible')
   appendRailItems(items, seen, layout, layout.rail.minimizedSurfaceIds, 'minimized')
   appendRailItems(items, seen, layout, layout.rail.runningSurfaceIds, 'running')
+  appendSingletonItems(items, seen, layout)
 
   return items.map((item) => railItemWithCurrentState(layout, item))
 }
@@ -41,6 +48,20 @@ function appendRailItems(
 
     seen.add(surfaceId)
     items.push({ state, surface })
+  }
+}
+
+function appendSingletonItems(
+  items: WorkbenchRailSurfaceItem[],
+  seen: Set<SurfaceId>,
+  layout: WorkspaceLayout,
+) {
+  for (const surface of Object.values(layout.surfacesById)) {
+    if (surface.cardinality !== 'singleton') continue
+    if (seen.has(surface.id)) continue
+
+    seen.add(surface.id)
+    items.push({ state: 'singleton', surface })
   }
 }
 

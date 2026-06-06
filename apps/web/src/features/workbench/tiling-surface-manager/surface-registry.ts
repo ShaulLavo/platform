@@ -6,6 +6,7 @@ import {
   createFileEditorSurface,
   createFileNavigatorSurface,
   createGitChangesSurface,
+  createLogsSurface,
   createPlaceholderSurface,
   createSearchPreviewSurface,
   createSearchResultsSurface,
@@ -83,6 +84,10 @@ export type SurfaceCreateInput =
     }
   | {
       readonly serializedState?: unknown
+      readonly type: 'logs'
+    }
+  | {
+      readonly serializedState?: unknown
       readonly type: 'diagnostics'
     }
   | {
@@ -126,6 +131,7 @@ export const defaultSurfaceDescriptors = [
   terminalDescriptor(),
   fileNavigatorDescriptor(),
   gitChangesDescriptor(),
+  logsDescriptor(),
   diagnosticsDescriptor(),
   placeholderDescriptor(),
 ] as const satisfies readonly SurfaceDescriptor[]
@@ -291,6 +297,17 @@ function gitChangesDescriptor(): SurfaceDescriptor {
     restore: (data, context) =>
       restoreWorkspaceSingletonSurface(data, context, 'git-changes', createGitChangesSurface),
     type: 'git-changes',
+  })
+}
+
+function logsDescriptor(): SurfaceDescriptor {
+  return descriptor({
+    cardinality: 'singleton',
+    create: (input, context) =>
+      createWorkspaceSingletonSurface(input, context, 'logs', createLogsSurface),
+    restore: (data, context) =>
+      restoreWorkspaceSingletonSurface(data, context, 'logs', createLogsSurface),
+    type: 'logs',
   })
 }
 
@@ -641,6 +658,7 @@ function isSurfaceType(value: unknown): value is SurfaceType {
     value === 'file-editor' ||
     value === 'file-navigator' ||
     value === 'git-changes' ||
+    value === 'logs' ||
     value === 'placeholder' ||
     value === 'search-preview' ||
     value === 'search-results' ||

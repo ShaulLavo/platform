@@ -118,6 +118,7 @@ const KNOWN_SURFACE_TYPES = new Set<SurfaceType>([
   'file-editor',
   'file-navigator',
   'git-changes',
+  'logs',
   'placeholder',
   'search-preview',
   'search-results',

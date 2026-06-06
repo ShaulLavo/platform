@@ -14,6 +14,20 @@ import {
   saveAllEditorDocuments,
   saveSelectedEditorDocument,
 } from '@/features/editor/editor-save'
+import {
+  createFileNavigatorSurface,
+  createGitChangesSurface,
+  createTerminalSurface,
+} from '@/features/workbench/tiling-surface-manager/layout-builders'
+import {
+  findWindowIdContainingSurface,
+  visibleSurfaceIdsInOrder,
+} from '@/features/workbench/tiling-surface-manager/layout-normalize'
+import { applyLayoutOperation } from '@/features/workbench/tiling-surface-manager/layout-operations'
+import type {
+  Surface,
+  WorkspaceLayout,
+} from '@/features/workbench/tiling-surface-manager/layout-types'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import {
   nextEditorDiffViewMode,
@@ -23,7 +37,6 @@ import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { fetchFile } from '@/lib/file-server'
-import type { WorkspacePanelTab } from '@/lib/workspace-cache'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { editorCommandIdFromPlatform, isEditorPlatformCommandId } from './editor-keymap'
@@ -34,7 +47,6 @@ type WorkspaceCommandContext = {
   readonly activeTabId: string | null
   readonly diffViewMode: EditorDiffViewMode
   readonly documentStore: EditorDocumentStoreApi
-  readonly gitPanelOpen: boolean
   readonly openPicker: () => void
   readonly queryClient: QueryClient
   readonly reopenClosedEditor: () => boolean
@@ -43,14 +55,12 @@ type WorkspaceCommandContext = {
   readonly selectedFilePath: string | null
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: FocusArea) => void
-  readonly setGitPanelOpen: (open: boolean) => void
-  readonly setSidebarVisible: (visible: boolean) => void
   readonly setTheme: (theme: Theme) => void
-  readonly setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
+  readonly setWorkspaceLayout: (layout: WorkspaceLayout) => void
   readonly showCommandPalette: (initialSearch?: string) => void
-  readonly sidebarVisible: boolean
   readonly selectPreviousEditor: () => boolean
   readonly splitTab: (tabId: string, direction: 'horizontal') => boolean
+  readonly workspaceLayout: WorkspaceLayout
 }
 
 type WorkspaceCommandHandler = (context: WorkspaceCommandContext) => boolean | void
@@ -91,7 +101,6 @@ export function usePlatformCommandDispatch({
         activeTabId: activeEditorPaneTab(workspace.editorPaneLayout)?.id ?? null,
         diffViewMode: workspace.diffViewMode,
         documentStore,
-        gitPanelOpen: workspace.gitPanelOpen,
         openPicker: workspace.openPicker,
         queryClient,
         reopenClosedEditor,
@@ -100,14 +109,12 @@ export function usePlatformCommandDispatch({
         selectedFilePath: workspace.selectedFilePath,
         setDiffViewMode: workspace.setDiffViewMode,
         setFocusArea,
-        setGitPanelOpen: workspace.setGitPanelOpen,
-        setSidebarVisible: workspace.setSidebarVisible,
         setTheme,
-        setWorkspacePanelTab: workspace.setWorkspacePanelTab,
+        setWorkspaceLayout: workspace.setWorkspaceLayout,
         showCommandPalette,
-        sidebarVisible: workspace.sidebarVisible,
         selectPreviousEditor,
         splitTab,
+        workspaceLayout: workspace.workspaceLayout,
       })
     },
     [
@@ -159,15 +166,13 @@ const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandl
     requestEditorFocus()
     return true
   },
-  'workspace.focusFileTree': ({ setFocusArea, setSidebarVisible, setWorkspacePanelTab }) => {
-    setSidebarVisible(true)
-    setWorkspacePanelTab('files')
+  'workspace.focusFileTree': ({ setFocusArea, setWorkspaceLayout, workspaceLayout }) => {
+    setWorkspaceLayout(layoutWithFocusedSurface(workspaceLayout, createFileNavigatorSurface()))
     setFocusArea('file-tree')
     return true
   },
-  'workspace.focusGit': ({ setFocusArea, setSidebarVisible, setWorkspacePanelTab }) => {
-    setSidebarVisible(true)
-    setWorkspacePanelTab('git')
+  'workspace.focusGit': ({ setFocusArea, setWorkspaceLayout, workspaceLayout }) => {
+    setWorkspaceLayout(layoutWithFocusedSurface(workspaceLayout, createGitChangesSurface()))
     setFocusArea('git')
     return true
   },
@@ -244,21 +249,15 @@ const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandl
     setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
     return true
   },
-  'workspace.togglePanel': ({
-    gitPanelOpen,
-    setFocusArea,
-    setGitPanelOpen,
-    setSidebarVisible,
-    setWorkspacePanelTab,
-  }) => {
-    setSidebarVisible(true)
-    setWorkspacePanelTab('git')
-    setGitPanelOpen(!gitPanelOpen)
-    setFocusArea('git')
+  'workspace.togglePanel': ({ setFocusArea, setWorkspaceLayout, workspaceLayout }) => {
+    setWorkspaceLayout(
+      layoutWithToggledSurface(workspaceLayout, createTerminalSurface({ sessionId: 'terminal-1' })),
+    )
+    setFocusArea('terminal')
     return true
   },
-  'workspace.toggleSidebarVisibility': ({ setSidebarVisible, sidebarVisible }) => {
-    setSidebarVisible(!sidebarVisible)
+  'workspace.toggleSidebarVisibility': ({ setWorkspaceLayout, workspaceLayout }) => {
+    setWorkspaceLayout(layoutWithToggledSurface(workspaceLayout, createFileNavigatorSurface()))
     return true
   },
 }
@@ -293,6 +292,48 @@ async function revertSelectedEditorDocument(
 
 function reportCommandError(error: unknown) {
   reportError(toClientError(error))
+}
+
+function layoutWithFocusedSurface(layout: WorkspaceLayout, surface: Surface) {
+  const existingSurface = surfaceForCommand(layout, surface)
+  const visibleWindowId = findWindowIdContainingSurface(layout, existingSurface.id)
+  if (visibleWindowId) {
+    return applyLayoutOperation(layout, {
+      surfaceId: existingSurface.id,
+      type: 'activateSurface',
+      windowId: visibleWindowId,
+    })
+  }
+  if (layout.surfacesById[existingSurface.id]) {
+    return applyLayoutOperation(layout, { surfaceId: existingSurface.id, type: 'restoreSurface' })
+  }
+
+  return applyLayoutOperation(layout, { surface: existingSurface, type: 'openSurface' })
+}
+
+function layoutWithToggledSurface(layout: WorkspaceLayout, surface: Surface) {
+  const existingSurface = surfaceForCommand(layout, surface)
+  const visibleSurfaceIds = visibleSurfaceIdsInOrder(layout)
+  if (visibleSurfaceIds.includes(existingSurface.id)) {
+    return applyLayoutOperation(layout, {
+      surfaceId: existingSurface.id,
+      type: 'minimizeSurface',
+    })
+  }
+
+  return layoutWithFocusedSurface(layout, existingSurface)
+}
+
+function surfaceForCommand(layout: WorkspaceLayout, surface: Surface): Surface {
+  return layout.surfacesById[surface.id] ?? singletonSurfaceByType(layout, surface) ?? surface
+}
+
+function singletonSurfaceByType(layout: WorkspaceLayout, surface: Surface): Surface | null {
+  if (surface.cardinality !== 'singleton') return null
+
+  return (
+    Object.values(layout.surfacesById).find((candidate) => candidate.type === surface.type) ?? null
+  )
 }
 
 function workspaceCommandIdFromPlatform(command: PlatformCommandId): WorkspaceCommandId | null {

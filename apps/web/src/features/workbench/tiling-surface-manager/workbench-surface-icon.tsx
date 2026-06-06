@@ -5,6 +5,7 @@ import {
   FilesIcon,
   FolderIcon,
   GitBranchIcon,
+  ListBulletsIcon,
   PulseIcon,
   TerminalWindowIcon,
 } from '@phosphor-icons/react'
@@ -25,6 +26,7 @@ export function WorkbenchSurfaceIcon({
   if (type === 'terminal') return <TerminalWindowIcon className={className} />
   if (type === 'file-navigator') return <FolderIcon className={className} />
   if (type === 'git-changes') return <GitBranchIcon className={className} />
+  if (type === 'logs') return <ListBulletsIcon className={className} />
   if (type === 'diagnostics') return <PulseIcon className={className} />
 
   return <FileDashedIcon className={className} />

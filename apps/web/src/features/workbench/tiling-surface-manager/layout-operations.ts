@@ -5,6 +5,7 @@ import {
   createFileEditorSurface,
   createFileNavigatorSurface,
   createGitChangesSurface,
+  createLogsSurface,
   createPlaceholderSurface,
   createSearchResultsSurface,
   createTerminalSurface,
@@ -178,7 +179,8 @@ export function restoreSurface(
   const surface = normalizedLayout.surfacesById[surfaceId]
   if (!surface) return normalizedLayout
 
-  const placementHint = placement ?? surface.placement
+  const placementHint =
+    placement ?? stickyPlacementForSurface(normalizedLayout, surfaceId) ?? surface.placement
   const restoredLayout = removeSurfaceFromRail(normalizedLayout, surfaceId)
   const placedLayout = placeSurface(restoredLayout, surfaceId, placementHint)
 
@@ -440,6 +442,7 @@ function surfaceForLayoutCommandSlot(slot: LayoutCommandSurfaceSlot): Surface | 
   if (slot.surfaceType === 'terminal') return terminalSurfaceForSlot(slot)
   if (slot.surfaceType === 'file-navigator') return createFileNavigatorSurface()
   if (slot.surfaceType === 'git-changes') return createGitChangesSurface()
+  if (slot.surfaceType === 'logs') return createLogsSurface()
   if (slot.surfaceType === 'diagnostics') return createDiagnosticsSurface()
   if (slot.surfaceType === 'placeholder') return placeholderSurfaceForSlot(slot)
 
@@ -685,9 +688,21 @@ function findExistingSurfaceForOpen(layout: WorkspaceLayout, surface: Surface) {
 function surfaceForOpen(existingSurface: Surface | null, incomingSurface: Surface) {
   if (!existingSurface) return incomingSurface
   if (shouldPromoteSurface(existingSurface, incomingSurface)) return incomingSurface
+  if (shouldRefreshExistingSurface(existingSurface, incomingSurface)) {
+    return {
+      ...incomingSurface,
+      placement: existingSurface.placement ?? incomingSurface.placement,
+    }
+  }
   if (incomingSurface.lifecycle === 'transient') return incomingSurface
 
   return existingSurface
+}
+
+function shouldRefreshExistingSurface(existingSurface: Surface, incomingSurface: Surface) {
+  if (existingSurface.id !== incomingSurface.id) return false
+
+  return incomingSurface.serializedState !== undefined
 }
 
 function shouldPromoteSurface(existingSurface: Surface, incomingSurface: Surface) {

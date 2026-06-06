@@ -35,3 +35,30 @@
 - Delete obsolete tests instead of preserving old behavior.
 - Rename all affected symbols and call sites in one pass.
 - Remove duplicate code aggressively.
+
+## Testing
+
+### Runner and environments
+
+- Tests run on **Vitest under the Bun runtime** (`bun --bun vitest`). The `--bun` flag is required: `bun:sqlite`, `Bun.spawn`, and other Bun APIs do not resolve under Node. The only casualty is coverage, which we do not use.
+- Three Vitest projects (test worlds), in environment-preference order **real browser > happy-dom > jsdom — never jsdom**:
+  - `node` — pure logic and anything that drives the in-process server. Runs under `--bun`.
+  - `dom` — hooks and component/render tests in **happy-dom**. Runs under `--bun`.
+  - `browser` — real-paint/layout/visual `*.browser.tsx` tests via Playwright. Runs under **plain Node** (Vitest browser mode's orchestration breaks under `--bun`).
+- `apps/*` run `bun --bun vitest`; runtime-neutral `packages/*` run plain `vitest` (Node).
+
+### Use the real thing — do not mock our own code
+
+- Drive the **real in-process Elysia server** in tests. Import `{ test, expect }` from the shared test API (`apps/web/test/fixtures.ts`), not from `vitest` directly; the `server` fixture builds a real `createApp` over a temp workspace and the `client` fixture is a real `treaty` client wired to `app.handle` (no socket, no port).
+- **Never `mock.module`/`vi.mock` our own server, client, or feature modules.** The RPC client is injectable: production code calls `getClient()` from `@/lib/client` (there is no bare `client` export); the `client` fixture points it at the real server via `setClient`/`resetClient`.
+- Build **real state** rather than stubbing responses — e.g. `git init` a real repo and write real files into the temp workspace, then assert through the real routes.
+
+### Mock only the genuine boundary
+
+- The only legitimate fakes are the **outside world** and **unspawnable processes**: third-party HTTP (font downloads, GitHub, provider APIs) via MSW or an injected `fetcher` (use `onUnhandledRequest: 'error'`); PTY and LSP child processes via their injectable factories; and serialization edges a real server cannot reproduce (e.g. Eden `Date` normalization). `MockProviderAdapter` is a production adapter, not a test stub — prefer it over the real Codex adapter, which spawns an external binary.
+- Browser tests cannot import the Bun-native server into Node, so they spawn the real server as a child `bun` process behind a Vite proxy (see `apps/web/test/env/browser-file-server.ts`). Node/dom tests import it in-process instead.
+
+### Structure and hygiene
+
+- Shared test code lives under `test/`: `fixtures.ts` (the `test.extend` entry point), `render.tsx` (`renderWithProviders` mirrors the app's `main.tsx` provider stack), `factories/` (shared builders), `env/` and `msw/`. Do not redefine per-file factories or hand-roll provider trees.
+- Avoid module-level non-determinism (e.g. `Math.random()` evaluated at import) — it produces order-dependent failures under Vitest's module graph. Use deterministic or seedable ids.

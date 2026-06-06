@@ -5,7 +5,11 @@ import {
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
 import { useStatus } from '@/features/git/hooks'
+import type { TreeEntry } from '@/lib/file-system-types'
+import type { LoadState } from '@/lib/load-state'
+import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
 import type { EditorKeymapLayer } from '@editor/core'
+import { useState } from 'react'
 
 import { WorkbenchLayoutProvider } from './workbench-layout-provider'
 import { WorkbenchLayoutRenderer } from './workbench-layout-renderer'
@@ -17,12 +21,22 @@ import type { Surface } from './layout-types'
 
 export function WorkbenchEditorSurfaceLayoutView({
   editorKeymapLayers,
+  onLoadDirectory,
+  onPrefetchDirectory,
   rootPath,
+  treeState,
   onRequestCloseTab,
   onRequestCloseTabs,
 }: {
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+  readonly treeState: LoadState<TreeModel>
   readonly rootPath: string
+  readonly onLoadDirectory: (
+    entry: TreeEntry,
+    treePath: string,
+    options?: DirectoryLoadOptions,
+  ) => void
+  readonly onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   readonly onRequestCloseTab: RequestCloseTab
   readonly onRequestCloseTabs: RequestCloseTabs
 }) {
@@ -32,6 +46,20 @@ export function WorkbenchEditorSurfaceLayoutView({
   const conflicts = useEditorConflictState((state) => state.conflicts)
   const gitStatus = useStatus(rootPath)
   const gitFiles = gitStatus.data?.files ?? EMPTY_GIT_FILES
+  const [visibleTreeItemCount, setVisibleTreeItemCount] = useState<{
+    readonly count: number
+    readonly rootPath: string
+  } | null>(null)
+  const currentVisibleTreeItemCount =
+    visibleTreeItemCount?.rootPath === rootPath ? visibleTreeItemCount.count : null
+
+  function handleVisibleTreeItemCountChange(count: number) {
+    setVisibleTreeItemCount((current) => {
+      if (current?.count === count && current.rootPath === rootPath) return current
+
+      return { count, rootPath }
+    })
+  }
 
   return (
     <WorkbenchEditorSurfaceProvider
@@ -54,6 +82,13 @@ export function WorkbenchEditorSurfaceLayoutView({
           rootPath,
         })
       }
+      toolSurfaceState={{
+        treeState,
+        visibleTreeItemCount: currentVisibleTreeItemCount,
+        onLoadDirectory,
+        onPrefetchDirectory,
+        onVisibleTreeItemCountChange: handleVisibleTreeItemCountChange,
+      }}
     >
       <WorkbenchLayoutProvider store={store}>
         <WorkbenchLayoutRenderer surfaceRenderers={workbenchEditorSurfaceRendererRegistry} />

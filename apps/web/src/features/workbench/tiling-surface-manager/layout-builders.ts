@@ -7,6 +7,7 @@ import {
   fileNavigatorSurfaceId,
   gitChangesSurfaceId,
   layoutNodeId,
+  logsSurfaceId,
   placeholderSurfaceId,
   searchPreviewSurfaceId,
   searchResultsSurfaceId,
@@ -77,11 +78,15 @@ export function createEmptyWorkspaceLayout(): WorkspaceLayout {
 
 export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
   const fileNavigator = createFileNavigatorSurface()
+  const searchResults = createSearchResultsSurface()
+  const gitChanges = createGitChangesSurface()
+  const logs = createLogsSurface()
   const editorPlaceholder = createPlaceholderSurface({
     contextKey: 'empty-editor',
     title: 'No file selected',
   })
   const diagnostics = createDiagnosticsSurface()
+  const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
   const sideWindow = createWorkbenchWindow({
     activeSurfaceId: fileNavigator.id,
     id: CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
@@ -94,10 +99,10 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
     surfaceIds: [editorPlaceholder.id],
   })
   const diagnosticsWindow = createWorkbenchWindow({
-    activeSurfaceId: diagnostics.id,
+    activeSurfaceId: terminal.id,
     id: CLASSIC_DIAGNOSTICS_WINDOW_ID,
     pinnedSurfaceIds: [diagnostics.id],
-    surfaceIds: [diagnostics.id],
+    surfaceIds: [diagnostics.id, terminal.id],
   })
 
   return {
@@ -106,7 +111,7 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
     activeWindowId: editorWindow.id,
     hotkeyPresetsById: {},
     layoutCommandsById: {},
-    mruSurfaceIds: [editorPlaceholder.id, fileNavigator.id, diagnostics.id],
+    mruSurfaceIds: [editorPlaceholder.id, fileNavigator.id, terminal.id, diagnostics.id],
     mruWindowIds: [editorWindow.id, sideWindow.id, diagnosticsWindow.id],
     nodesById: {
       [CLASSIC_DIAGNOSTICS_NODE_ID]: createWindowNode({
@@ -136,10 +141,16 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
     },
     policiesById: defaultPoliciesById(),
     rail: {
-      minimizedSurfaceIds: [],
-      pinnedSurfaceIds: [fileNavigator.id, diagnostics.id],
+      minimizedSurfaceIds: [searchResults.id, gitChanges.id, logs.id],
+      pinnedSurfaceIds: [
+        fileNavigator.id,
+        searchResults.id,
+        gitChanges.id,
+        diagnostics.id,
+        logs.id,
+      ],
       recipeIds: [CLASSIC_RECIPE_ID],
-      runningSurfaceIds: [],
+      runningSurfaceIds: [terminal.id],
       visibleSingletonSurfaceIds: [fileNavigator.id, diagnostics.id],
     },
     recipesById: defaultRecipesById(),
@@ -149,6 +160,10 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
       [diagnostics.id]: diagnostics,
       [editorPlaceholder.id]: editorPlaceholder,
       [fileNavigator.id]: fileNavigator,
+      [gitChanges.id]: gitChanges,
+      [logs.id]: logs,
+      [searchResults.id]: searchResults,
+      [terminal.id]: terminal,
     },
     version: WORKSPACE_LAYOUT_VERSION,
     windowCommandsById: {},
@@ -307,6 +322,15 @@ export function createGitChangesSurface(): Surface {
   })
 }
 
+export function createLogsSurface(): Surface {
+  return createSingletonSurface({
+    id: logsSurfaceId(),
+    slot: 'secondary-side',
+    title: 'Logs',
+    type: 'logs',
+  })
+}
+
 export function createDiagnosticsSurface(): Surface {
   return createSingletonSurface({
     id: diagnosticsSurfaceId(),
@@ -413,6 +437,7 @@ export function classicWorkspaceRecipe(): WorkspaceRecipe {
       'file-editor': 'editor-center',
       'file-navigator': 'primary-side',
       'git-changes': 'secondary-side',
+      logs: 'secondary-side',
       placeholder: 'editor-center',
       'search-preview': 'transient-preview',
       'search-results': 'primary-side',

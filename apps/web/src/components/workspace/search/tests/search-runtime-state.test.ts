@@ -2,17 +2,27 @@ import { describe, expect, test } from 'vitest'
 
 import { searchRuntimeEnabled } from '@/components/workspace/search/utils/search-runtime-state'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import {
+  createClassicFirstRunWorkspaceLayout,
+  createEmptyWorkspaceLayout,
+  createSearchResultsSurface,
+} from '@/features/workbench/tiling-surface-manager/layout-builders'
+import { openSurface } from '@/features/workbench/tiling-surface-manager/layout-operations'
 
 const rootPath = '/workspace'
 
 describe('workspace search runtime state', () => {
-  test('runs while the sidebar search tab is visible', () => {
+  test('runs while the search results surface is visible', () => {
+    const workspaceLayout = openSurface(
+      createClassicFirstRunWorkspaceLayout(),
+      createSearchResultsSurface(),
+    )
+
     expect(
       searchRuntimeEnabled(
         {
           selectedFilePath: null,
-          sidebarVisible: true,
-          workspacePanelTab: 'search',
+          workspaceLayout,
         },
         rootPath,
       ),
@@ -24,8 +34,7 @@ describe('workspace search runtime state', () => {
       searchRuntimeEnabled(
         {
           selectedFilePath: searchBufferDocumentId(rootPath),
-          sidebarVisible: false,
-          workspacePanelTab: 'files',
+          workspaceLayout: createEmptyWorkspaceLayout(),
         },
         rootPath,
       ),
@@ -34,8 +43,7 @@ describe('workspace search runtime state', () => {
       searchRuntimeEnabled(
         {
           selectedFilePath: searchBufferDocumentId(rootPath),
-          sidebarVisible: true,
-          workspacePanelTab: 'git',
+          workspaceLayout: createClassicFirstRunWorkspaceLayout(),
         },
         rootPath,
       ),
@@ -47,8 +55,7 @@ describe('workspace search runtime state', () => {
       searchRuntimeEnabled(
         {
           selectedFilePath: null,
-          sidebarVisible: false,
-          workspacePanelTab: 'search',
+          workspaceLayout: createEmptyWorkspaceLayout(),
         },
         rootPath,
       ),
@@ -57,8 +64,7 @@ describe('workspace search runtime state', () => {
       searchRuntimeEnabled(
         {
           selectedFilePath: searchBufferDocumentId('/other-workspace'),
-          sidebarVisible: false,
-          workspacePanelTab: 'files',
+          workspaceLayout: createEmptyWorkspaceLayout(),
         },
         rootPath,
       ),
