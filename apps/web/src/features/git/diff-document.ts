@@ -1,4 +1,5 @@
 import { basename, displayPath } from '@/lib/path-formatters'
+import type { ThreadId } from '@workspace/contracts'
 import type { BlobDiffRequest, FileDiff, FileStatus, PanelSection } from './types'
 
 export type DiffDocumentInfo =
@@ -37,7 +38,7 @@ type CheckpointPayload = {
   path: string
   scope?: 'file' | 'thread' | 'turn'
   status?: FileStatus['index'] | FileStatus['worktree']
-  threadId: string
+  threadId: ThreadId
   toTurnCount: number
   version: 1
 }
@@ -209,14 +210,18 @@ function isCheckpointPayload(value: unknown): value is CheckpointPayload {
   if (typeof payload.path !== 'string') return false
   if (!optionalCheckpointScope(payload.scope)) return false
   if (!optionalString(payload.filePath)) return false
+  if (typeof payload.fromTurnCount !== 'number') return false
   if (!Number.isInteger(payload.fromTurnCount)) return false
+  if (typeof payload.toTurnCount !== 'number') return false
   if (!Number.isInteger(payload.toTurnCount)) return false
   if (!optionalString(payload.oldPath)) return false
   if (!optionalString(payload.oldObjectId)) return false
   if (!optionalString(payload.newObjectId)) return false
   if (!optionalDiffStatus(payload.status)) return false
 
-  return payload.fromTurnCount >= 0 && payload.toTurnCount >= payload.fromTurnCount
+  const fromTurnCount = payload.fromTurnCount
+  const toTurnCount = payload.toTurnCount
+  return fromTurnCount >= 0 && toTurnCount >= fromTurnCount
 }
 
 function checkpointDiffLabel(payload: CheckpointPayload) {
@@ -233,8 +238,10 @@ function checkpointDiffTitle(payload: CheckpointPayload) {
   if (scope === 'turn') {
     return `Turn checkpoint diff ${payload.fromTurnCount}-${payload.toTurnCount}`
   }
+  const fromTurnCount = payload.fromTurnCount
+  const toTurnCount = payload.toTurnCount
 
-  return `${displayDiffPath(payload.filePath ?? payload.path)} checkpoint diff ${payload.fromTurnCount}-${payload.toTurnCount}`
+  return `${displayDiffPath(payload.filePath ?? payload.path)} checkpoint diff ${fromTurnCount}-${toTurnCount}`
 }
 
 function optionalCheckpointScope(value: unknown): value is CheckpointPayload['scope'] {

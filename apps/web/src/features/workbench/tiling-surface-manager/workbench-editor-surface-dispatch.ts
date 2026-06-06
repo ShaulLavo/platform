@@ -3,6 +3,13 @@ import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-clos
 import { applyLayoutOperation } from './layout-operations'
 import type { LayoutOperation, WorkspaceLayout } from './layout-types'
 import type { WorkspaceLayoutStoreApi } from './surface-state'
+import {
+  layoutSnapshot,
+  logWorkbenchLayoutInfo,
+  logWorkbenchLayoutWarn,
+  operationSummary,
+  visibleLayoutChanged,
+} from './workbench-layout-logging'
 import { editorSurfaceSerializedState } from './workbench-editor-surface-layout'
 
 export type WorkbenchEditorSurfaceDispatchContext = {
@@ -40,7 +47,33 @@ function dispatchSurfaceOperation(
   operation: LayoutOperation,
   context: WorkbenchEditorSurfaceDispatchContext,
 ) {
-  const layout = applyLayoutOperation(context.store.getState().layout, operation)
-  context.store.getState().replaceLayout(layout)
-  context.commitLayout(layout)
+  const beforeLayout = context.store.getState().layout
+  const before = layoutSnapshot(beforeLayout)
+  const operationContext = operationSummary(operation)
+
+  try {
+    const layout = applyLayoutOperation(beforeLayout, operation)
+    context.store.getState().replaceLayout(layout)
+    context.commitLayout(layout)
+    logWorkbenchLayoutInfo('layout.operation.dispatch', {
+      activeSurfaceChanged: beforeLayout.activeSurfaceId !== layout.activeSurfaceId,
+      activeWindowChanged: beforeLayout.activeWindowId !== layout.activeWindowId,
+      before,
+      changed: visibleLayoutChanged(beforeLayout, layout),
+      dispatcher: 'editor-surface',
+      operation: operationContext,
+      outcome: 'ok',
+      result: layoutSnapshot(layout),
+      stateChanged: layout !== beforeLayout,
+    })
+  } catch (error) {
+    logWorkbenchLayoutWarn('layout.operation.dispatch', {
+      before,
+      dispatcher: 'editor-surface',
+      error,
+      operation: operationContext,
+      outcome: 'error',
+    })
+    throw error
+  }
 }

@@ -306,7 +306,7 @@ function renameLiveEditorDocument(
 }
 
 function reorderTab(
-  paneId: string,
+  _paneId: string,
   tabId: string,
   targetIndex: number,
   workspaceStore: EditorWorkspaceStoreApi,
@@ -326,7 +326,7 @@ function reorderTab(
 }
 
 function selectTab(
-  paneId: string,
+  _paneId: string,
   tabId: string,
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,

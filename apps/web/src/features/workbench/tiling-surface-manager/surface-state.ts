@@ -4,6 +4,13 @@ import { createEmptyWorkspaceLayout } from './layout-builders'
 import { checkWorkspaceLayoutInvariants, type LayoutInvariantReport } from './layout-invariants'
 import { normalizeWorkspaceLayout } from './layout-normalize'
 import { applyLayoutOperation as applyPureLayoutOperation } from './layout-operations'
+import {
+  layoutSnapshot,
+  logWorkbenchLayoutInfo,
+  logWorkbenchLayoutWarn,
+  operationSummary,
+  visibleLayoutChanged,
+} from './workbench-layout-logging'
 import type { LayoutOperation, WorkspaceLayout } from './layout-types'
 
 export type WorkspaceLayoutStoreState = {
@@ -39,13 +46,10 @@ export function createWorkspaceLayoutStore(
     layout: initialVerifiedLayout,
     dispatchLayoutOperation: (operation) =>
       set((state) => ({
-        layout: normalizeAndVerifyWorkspaceLayout(
-          applyPureLayoutOperation(state.layout, operation),
-          {
-            ...options,
-            checkInvariants,
-          },
-        ),
+        layout: dispatchVerifiedLayoutOperation(state.layout, operation, {
+          ...options,
+          checkInvariants,
+        }),
       })),
     replaceLayout: (layout) =>
       set({
@@ -62,6 +66,42 @@ export function createWorkspaceLayoutStore(
         }),
       }),
   }))
+}
+
+function dispatchVerifiedLayoutOperation(
+  layout: WorkspaceLayout,
+  operation: LayoutOperation,
+  options: Required<Pick<CreateWorkspaceLayoutStoreOptions, 'checkInvariants'>> &
+    CreateWorkspaceLayoutStoreOptions,
+) {
+  const before = layoutSnapshot(layout)
+  const operationContext = operationSummary(operation)
+
+  try {
+    const nextLayout = normalizeAndVerifyWorkspaceLayout(
+      applyPureLayoutOperation(layout, operation),
+      options,
+    )
+    logWorkbenchLayoutInfo('layout.operation.dispatch', {
+      activeSurfaceChanged: layout.activeSurfaceId !== nextLayout.activeSurfaceId,
+      activeWindowChanged: layout.activeWindowId !== nextLayout.activeWindowId,
+      before,
+      changed: visibleLayoutChanged(layout, nextLayout),
+      operation: operationContext,
+      outcome: 'ok',
+      result: layoutSnapshot(nextLayout),
+      stateChanged: nextLayout !== layout,
+    })
+    return nextLayout
+  } catch (error) {
+    logWorkbenchLayoutWarn('layout.operation.dispatch', {
+      before,
+      error,
+      operation: operationContext,
+      outcome: 'error',
+    })
+    throw error
+  }
 }
 
 function normalizeAndVerifyWorkspaceLayout(

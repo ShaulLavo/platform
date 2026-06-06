@@ -3,7 +3,7 @@ import { cjk } from '@streamdown/cjk'
 import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
 import { cn } from '@workspace/ui/lib/utils'
-import { useMemo } from 'react'
+import { useMemo, type ComponentProps } from 'react'
 import { Streamdown, type Components } from 'streamdown'
 
 import { normalizeAgentMarkdown } from '../lib/agent-markdown'
@@ -16,7 +16,8 @@ import { AssistantMarkdownStreamingCode } from './assistant-markdown-streaming-c
 const baseStreamdownPlugins = { cjk, math, mermaid }
 const streamingComponents = {
   code: AssistantMarkdownStreamingCode,
-} satisfies Components
+} as unknown as Components
+type StreamdownProps = ComponentProps<typeof Streamdown>
 
 export function AssistantMarkdown({
   className,
@@ -52,8 +53,8 @@ export function AssistantMarkdown({
       components={streaming ? streamingComponents : undefined}
       isAnimating={streaming}
       mode='streaming'
-      plugins={streamdownPlugins}
-      shikiTheme={streamdownThemes}
+      plugins={streamdownPlugins as unknown as StreamdownProps['plugins']}
+      shikiTheme={streamdownThemes as unknown as StreamdownProps['shikiTheme']}
     >
       {renderedText}
     </Streamdown>

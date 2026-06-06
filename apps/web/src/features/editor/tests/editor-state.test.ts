@@ -33,6 +33,7 @@ import {
 } from '@/features/editor/state/editor-tab-paths'
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
+import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
 import type { FileResult } from '@/lib/file-system-types'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import type {
@@ -443,6 +444,7 @@ describe('editor conflict store', () => {
       remotePath: 'src/file.ts',
       remoteSize: 6,
       remoteText: 'remote',
+      remoteVersion: 'remote-version-1',
     })
     store.getState().updateConflict('conflict-1', {
       diffDocumentId: 'conflict-diff:conflict-1',
@@ -656,65 +658,12 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().openFilePaths).toEqual([])
     expect(workspaceStore.getState().selectedFilePath).toBe(null)
     expect(workspaceStore.getState().editorHistory).toEqual([])
-    expect(workspaceStore.getState().gitPanelOpen).toBe(true)
     expect(workspaceStore.getState().recentlyClosedEditorPaths).toEqual([])
-    expect(workspaceStore.getState().sidebarVisible).toBe(true)
-    expect(workspaceStore.getState().workspacePanelTab).toBe('files')
+    expect(workspaceStore.getState().workspaceLayout.rootNodeId).not.toBeNull()
     expect(documentStore.getState().dirtyFilePaths).toEqual(new Set())
     expect(documentStore.getState().fallbackDocumentPath).toBe(null)
     expect(uiStore.getState().definitionTarget).toBe(null)
     expect(uiStore.getState().languageServerReferences).toBe(null)
-  })
-
-  it('coalesces workspace panel selection updates', () => {
-    const store = createEditorWorkspaceStore(workspaceState([], null))
-    let panelUpdates = 0
-    const unsubscribe = store.subscribe((state, previousState) => {
-      if (
-        state.sidebarVisible !== previousState.sidebarVisible ||
-        state.workspacePanelTab !== previousState.workspacePanelTab
-      ) {
-        panelUpdates += 1
-      }
-    })
-
-    store.getState().setWorkspacePanelSelection({
-      sidebarVisible: true,
-      workspacePanelTab: 'files',
-    })
-    store.getState().setWorkspacePanelSelection({
-      sidebarVisible: true,
-      workspacePanelTab: 'search',
-    })
-    store.getState().setWorkspacePanelSelection({
-      sidebarVisible: true,
-      workspacePanelTab: 'search',
-    })
-    unsubscribe()
-
-    expect(panelUpdates).toBe(1)
-  })
-
-  it('activates workspace panel tabs without duplicate updates', () => {
-    const store = createEditorWorkspaceStore(workspaceState([], null))
-    let panelUpdates = 0
-    const unsubscribe = store.subscribe((state, previousState) => {
-      if (
-        state.sidebarVisible !== previousState.sidebarVisible ||
-        state.workspacePanelTab !== previousState.workspacePanelTab
-      ) {
-        panelUpdates += 1
-      }
-    })
-
-    store.getState().activateWorkspacePanelTab('files')
-    store.getState().activateWorkspacePanelTab('files')
-    store.getState().activateWorkspacePanelTab('search')
-    unsubscribe()
-
-    expect(store.getState().sidebarVisible).toBe(true)
-    expect(store.getState().workspacePanelTab).toBe('search')
-    expect(panelUpdates).toBe(3)
   })
 })
 
@@ -741,13 +690,11 @@ function workspaceState(
     diffViewMode: 'split',
     editorHistory: selectedFilePath ? [selectedFilePath] : [],
     editorPaneLayout,
-    gitPanelOpen: true,
     openFilePaths,
     recentlyClosedEditorPaths: [],
     rootFolder: rootFolder(''),
     selectedFilePath,
-    sidebarVisible: true,
-    workspacePanelTab: 'files',
+    workspaceLayout: workspaceLayoutForEditorPaneLayout(editorPaneLayout),
   }
 }
 

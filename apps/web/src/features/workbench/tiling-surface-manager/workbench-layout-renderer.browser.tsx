@@ -12,6 +12,7 @@ import {
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import { FocusProvider } from '@/components/workspace/focus/providers/focus-provider'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { createGitStore } from '@/features/git/state'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
 import { disposeEditorTreeSitterSyntaxProvider } from '@/features/editor/editor-plugins'
 import { serverUrl } from '@/lib/client'
@@ -58,39 +59,92 @@ afterAll(async () => {
 
 describe('WorkbenchLayoutRenderer browser rendering', () => {
   it('renders nonblank windows and keeps tab focusable', async () => {
-    const container = document.createElement('main')
-    container.style.height = '620px'
-    container.style.width = '920px'
-    document.body.append(container)
-    root = createRoot(container)
-
-    flushSync(() => {
-      root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
-          <EditorColorThemeProvider>
-            <TooltipProvider delay={0}>
-              <FocusProvider>
-                <WorkbenchLayoutProvider initialLayout={createClassicFirstRunWorkspaceLayout()}>
-                  <WorkbenchLayoutRenderer />
-                </WorkbenchLayoutProvider>
-              </FocusProvider>
-            </TooltipProvider>
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
-      )
-    })
+    renderClassicLayout()
 
     await vi.waitFor(() => {
       expect(windowRegions()).toHaveLength(3)
       expect(document.body.textContent).toContain('No file selected')
       expect(firstWindowRect().width).toBeGreaterThan(100)
       expect(firstWindowRect().height).toBeGreaterThan(100)
+      expect(firstWindowOuterInset()).toEqual({ left: 8, top: 8 })
     })
 
     const tab = firstTab()
     tab.focus()
 
     expect(document.activeElement).toBe(tab)
+  })
+
+  it('keeps resize overlays click-through outside handles', async () => {
+    renderClassicLayout()
+
+    await vi.waitFor(() => {
+      expect(windowRegions()).toHaveLength(3)
+      expect(surfaceArea()).not.toBeNull()
+      expect(workbenchRail()).not.toBeNull()
+      expect(resizeOverlay()).not.toBeNull()
+      expect(firstColumnResizeHandle()).not.toBeNull()
+    })
+
+    expect(getComputedStyle(resizeOverlay()).pointerEvents).toBe('none')
+    expect(getComputedStyle(firstColumnResizeHandle()).pointerEvents).toBe('auto')
+
+    const railRect = workbenchRail().getBoundingClientRect()
+    const surfaceRect = surfaceArea().getBoundingClientRect()
+    expect(railRect.right).toBeLessThanOrEqual(surfaceRect.left + 1)
+    expect(railRect.height).toBeGreaterThan(railRect.width)
+  })
+
+  it('resizes split windows with pointer drag handles', async () => {
+    renderClassicLayout()
+
+    await vi.waitFor(() => {
+      expect(windowRegions()).toHaveLength(3)
+      expect(firstColumnResizeHandle()).not.toBeNull()
+    })
+
+    const handle = firstColumnResizeHandle()
+    const handleRect = handle.getBoundingClientRect()
+    const initialRects = windowRects()
+    const pointerY = handleRect.top + handleRect.height / 2
+    const startX = handleRect.left + handleRect.width / 2
+
+    handle.dispatchEvent(resizePointerEvent('pointerdown', startX, pointerY))
+    handle.dispatchEvent(resizePointerEvent('pointermove', startX + 80, pointerY))
+    handle.dispatchEvent(resizePointerEvent('pointerup', startX + 80, pointerY))
+
+    await vi.waitFor(() => {
+      expect(windowRects()).not.toEqual(initialRects)
+    })
+  })
+
+  it('activates rail panes while another rail pane is open', async () => {
+    renderClassicLayout()
+
+    await vi.waitFor(() => {
+      expect(buttonWithLabel('Restore Chat')).not.toBeNull()
+    })
+
+    buttonWithLabel('Restore Chat').click()
+
+    await vi.waitFor(() => {
+      expect(buttonWithLabel('Minimize Chat').dataset.railState).toBe('active')
+    })
+
+    buttonWithLabel('Restore Logs').click()
+
+    await vi.waitFor(() => {
+      expect(buttonWithLabel('Minimize Logs').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Minimize Chat').dataset.railState).toBe('visible')
+      expect(windowRegions()).toHaveLength(5)
+    })
+
+    buttonWithLabel('Minimize Chat').click()
+
+    await vi.waitFor(() => {
+      expect(buttonWithLabel('Restore Chat').dataset.railState).toBe('minimized')
+      expect(windowRegions()).toHaveLength(4)
+    })
   })
 
   it('renders editor-backed surfaces with Chrome editor tabs', async () => {
@@ -111,6 +165,7 @@ describe('WorkbenchLayoutRenderer browser rendering', () => {
                   <EditorStateProvider>
                     <WorkbenchEditorSurfaceProvider
                       editorKeymapLayers={[]}
+                      gitStore={createGitStore()}
                       requestCloseTab={() => true}
                       requestCloseTabs={() => true}
                       rootPath={TEST_ROOT_PATH}
@@ -149,6 +204,33 @@ describe('WorkbenchLayoutRenderer browser rendering', () => {
   })
 })
 
+function renderClassicLayout() {
+  const container = document.createElement('main')
+  container.style.height = '620px'
+  container.style.left = '0'
+  container.style.position = 'fixed'
+  container.style.top = '0'
+  container.style.width = '920px'
+  document.body.append(container)
+  root = createRoot(container)
+
+  flushSync(() => {
+    root?.render(
+      <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <EditorColorThemeProvider>
+          <TooltipProvider delay={0}>
+            <FocusProvider>
+              <WorkbenchLayoutProvider initialLayout={createClassicFirstRunWorkspaceLayout()}>
+                <WorkbenchLayoutRenderer />
+              </WorkbenchLayoutProvider>
+            </FocusProvider>
+          </TooltipProvider>
+        </EditorColorThemeProvider>
+      </ThemeProvider>,
+    )
+  })
+}
+
 function windowRegions() {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-window-id]'))
 }
@@ -160,6 +242,56 @@ function firstWindowRect() {
   return firstWindow.getBoundingClientRect()
 }
 
+function firstWindowOuterInset() {
+  const surfaceRect = surfaceArea().getBoundingClientRect()
+  const windowRect = firstWindowRect()
+
+  return {
+    left: Math.round(windowRect.left - surfaceRect.left),
+    top: Math.round(windowRect.top - surfaceRect.top),
+  }
+}
+
+function windowRects() {
+  return windowRegions().map((window) => {
+    const rect = window.getBoundingClientRect()
+    return {
+      height: rect.height,
+      width: rect.width,
+      x: rect.x,
+      y: rect.y,
+    }
+  })
+}
+
+function surfaceArea() {
+  const area = document.querySelector<HTMLElement>('[data-workbench-surface-area]')
+  if (!area) throw new Error('Missing workbench surface area')
+
+  return area
+}
+
+function workbenchRail() {
+  const rail = document.querySelector<HTMLElement>('[data-workbench-rail]')
+  if (!rail) throw new Error('Missing workbench rail')
+
+  return rail
+}
+
+function resizeOverlay() {
+  const overlay = document.querySelector<HTMLElement>('[data-workbench-resize-overlay]')
+  if (!overlay) throw new Error('Missing resize overlay')
+
+  return overlay
+}
+
+function firstColumnResizeHandle() {
+  const handle = document.querySelector<HTMLElement>('[aria-label="Resize columns"]')
+  if (!handle) throw new Error('Missing resize handle')
+
+  return handle
+}
+
 function firstTab() {
   const tab = document.querySelector<HTMLElement>('[role="tab"]')
   if (!tab) throw new Error('Missing workbench tab')
@@ -167,8 +299,28 @@ function firstTab() {
   return tab
 }
 
+function buttonWithLabel(label: string) {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+    (candidate) => candidate.getAttribute('aria-label') === label,
+  )
+  if (!button) throw new Error(`Missing button ${label}`)
+
+  return button
+}
+
 function editorChromeTabs() {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-editor-tab-id]'))
+}
+
+function resizePointerEvent(type: string, clientX: number, clientY: number) {
+  return new PointerEvent(type, {
+    bubbles: true,
+    button: 0,
+    buttons: type === 'pointerup' ? 0 : 1,
+    clientX,
+    clientY,
+    pointerId: 1,
+  })
 }
 
 function editorSurfaceLayout() {

@@ -291,7 +291,7 @@ const streamingAssistantChunks = [
 ] as const
 
 function StreamingMessageBubble() {
-  const [text, setText] = useState(streamingAssistantChunks[0])
+  const [text, setText] = useState<string>(streamingAssistantChunks[0])
   const [streaming, setStreaming] = useState(true)
 
   useEffect(() => {
@@ -333,7 +333,7 @@ const assistantCodeMessage = {
   threadId: 'thread-browser',
   turnId: null,
   updatedAt: '2026-05-28T00:00:00.000Z',
-} as OrchestrationMessage
+} as unknown as OrchestrationMessage
 
 const userMessage = {
   attachments: [],
@@ -345,7 +345,7 @@ const userMessage = {
   threadId: 'thread-browser',
   turnId: 'turn-browser',
   updatedAt: '2026-05-28T00:00:00.000Z',
-} as OrchestrationMessage
+} as unknown as OrchestrationMessage
 
 const assistantChangedFilesSummary = {
   assistantMessageId: 'message-browser-assistant',

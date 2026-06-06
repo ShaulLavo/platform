@@ -8,7 +8,6 @@ export type TerminalTab = {
 type TerminalStoreState = {
   activeTerminalTabId: string
   nextTerminalTabIndex: number
-  terminalCollapsed: boolean
   terminalTabs: TerminalTab[]
 }
 
@@ -16,8 +15,6 @@ type TerminalStoreActions = {
   closeTerminalTab: (tabId: string) => void
   createTerminalTab: () => TerminalTab
   setActiveTerminalTabId: (tabId: string) => void
-  setTerminalCollapsed: (collapsed: boolean) => void
-  toggleTerminal: () => void
 }
 
 export type TerminalStore = TerminalStoreState & TerminalStoreActions
@@ -33,14 +30,7 @@ export function createTerminalStore() {
   return createStore<TerminalStore>()((set, get) => ({
     activeTerminalTabId: INITIAL_TERMINAL_TAB.id,
     nextTerminalTabIndex: 2,
-    terminalCollapsed: false,
     terminalTabs: [INITIAL_TERMINAL_TAB],
-    setTerminalCollapsed: (terminalCollapsed) =>
-      set((state) => {
-        if (state.terminalCollapsed === terminalCollapsed) return state
-
-        return { terminalCollapsed }
-      }),
     setActiveTerminalTabId: (activeTerminalTabId) =>
       set((state) => {
         if (state.activeTerminalTabId === activeTerminalTabId) return state
@@ -54,7 +44,6 @@ export function createTerminalStore() {
       set((state) => ({
         activeTerminalTabId: tab.id,
         nextTerminalTabIndex: state.nextTerminalTabIndex + 1,
-        terminalCollapsed: false,
         terminalTabs: [...state.terminalTabs, tab],
       }))
 
@@ -78,9 +67,6 @@ export function createTerminalStore() {
           terminalTabs,
         }
       }),
-    toggleTerminal: () => {
-      get().setTerminalCollapsed(!get().terminalCollapsed)
-    },
   }))
 }
 

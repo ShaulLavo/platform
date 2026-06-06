@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
 import { createSearchBufferStore } from '@/features/search/search-buffer-state'
+import { createSearchResultsSurface } from '@/features/workbench/tiling-surface-manager/layout-builders'
+import { openSurface } from '@/features/workbench/tiling-surface-manager/layout-operations'
+import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { CachedWorkspaceState, WorkspaceCacheState } from '@/lib/workspace-cache'
 import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
@@ -86,7 +89,11 @@ describe('workspace cache persistence', () => {
     workspaceStore.getState().setPickerOpen(true)
     expect(timers.hasPending()).toBe(false)
 
-    workspaceStore.getState().setSidebarVisible(false)
+    workspaceStore
+      .getState()
+      .setWorkspaceLayout(
+        openSurface(workspaceStore.getState().workspaceLayout, createSearchResultsSurface()),
+      )
     expect(timers.hasPending()).toBe(true)
 
     unsubscribe()
@@ -94,17 +101,17 @@ describe('workspace cache persistence', () => {
 })
 
 function cachedWorkspace(): CachedWorkspaceState {
+  const editorPaneLayout = createEditorPaneLayoutForPaths([], null)
+
   return {
     diffViewMode: 'split',
     editorHistory: [],
-    editorPaneLayout: createEditorPaneLayoutForPaths([], null),
-    gitPanelOpen: true,
+    editorPaneLayout,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: pickedDirectory('/repo'),
     selectedFilePath: null,
-    sidebarVisible: true,
-    workspacePanelTab: 'files',
+    workspaceLayout: workspaceLayoutForEditorPaneLayout(editorPaneLayout),
   }
 }
 

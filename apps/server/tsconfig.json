@@ -1,16 +1,12 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2023",
-    "module": "ESNext",
+    // Server has no DOM.Iterable; keep its lib narrower than the template.
     "lib": ["ES2023", "DOM"],
     "types": ["bun", "node"],
-    "skipLibCheck": true,
-    "strict": true,
-    "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
-    "noEmit": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

@@ -18,6 +18,7 @@ import {
   CLASSIC_MAIN_NODE_ID,
   CLASSIC_ROOT_NODE_ID,
   createEmptyWorkspaceLayout,
+  createChatSurface,
   createDiagnosticsSurface,
   createFileNavigatorSurface,
   createGitChangesSurface,
@@ -460,6 +461,7 @@ function layoutWithClassicToolSurfaces(layout: WorkspaceLayout): WorkspaceLayout
   const fileNavigator = createFileNavigatorSurface()
   const searchResults = createSearchResultsSurface()
   const gitChanges = createGitChangesSurface()
+  const chat = createChatSurface()
   const logs = createLogsSurface()
   const diagnostics = createDiagnosticsSurface()
   const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
@@ -504,11 +506,12 @@ function layoutWithClassicToolSurfaces(layout: WorkspaceLayout): WorkspaceLayout
       }),
     },
     rail: {
-      minimizedSurfaceIds: [searchResults.id, gitChanges.id, logs.id],
+      minimizedSurfaceIds: [searchResults.id, gitChanges.id, chat.id, logs.id],
       pinnedSurfaceIds: [
         fileNavigator.id,
         searchResults.id,
         gitChanges.id,
+        chat.id,
         diagnostics.id,
         logs.id,
       ],
@@ -522,6 +525,7 @@ function layoutWithClassicToolSurfaces(layout: WorkspaceLayout): WorkspaceLayout
       [diagnostics.id]: diagnostics,
       [fileNavigator.id]: fileNavigator,
       [gitChanges.id]: gitChanges,
+      [chat.id]: chat,
       [logs.id]: logs,
       [searchResults.id]: searchResults,
       [terminal.id]: terminal,

@@ -19,6 +19,7 @@ export type SurfaceRegistryVersion = typeof SURFACE_REGISTRY_VERSION
 export type SerializedSurfaceVersion = typeof SURFACE_SERIALIZED_VERSION
 
 export type SurfaceType =
+  | 'chat'
   | 'diagnostics'
   | 'diff'
   | 'file-editor'
@@ -240,6 +241,11 @@ export type LayoutOperation =
       readonly type: 'activateSurface'
       readonly windowId?: WindowId
     }
+  | {
+      readonly target: 'diagnostics' | 'terminal'
+      readonly type: 'toggleClassicBottomToolPane'
+    }
+  | { readonly type: 'hideClassicBottomToolPane' }
   | { readonly policyId?: LayoutPolicyId; readonly surface: Surface; readonly type: 'openSurface' }
   | { readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
   | { readonly surfaceId: SurfaceId; readonly type: 'minimizeSurface' }

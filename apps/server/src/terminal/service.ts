@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs'
+import path from 'node:path'
 import {
   isRecord,
   parseTerminalClientMessage,
@@ -602,7 +604,7 @@ class NodePtyBridge implements TerminalPty {
   #writeQueue = Promise.resolve()
 
   constructor(options: TerminalPtySpawnOptions) {
-    this.#child = Bun.spawn(['node', '--eval', NODE_PTY_BRIDGE_SCRIPT], {
+    this.#child = Bun.spawn([resolveNodeBinary(), '--eval', NODE_PTY_BRIDGE_SCRIPT], {
       env: {
         ...options.env,
         NODE_PTY_BRIDGE_MODULE: resolveNodePtyModule(),
@@ -777,7 +779,37 @@ function bridgeMessageFromValue(value: unknown): TerminalBridgeMessage | null {
 }
 
 function resolveNodePtyModule() {
-  return Bun.resolveSync('@lydell/node-pty', import.meta.path)
+  // `import.meta.dirname` resolves under both real Bun and Vitest's transform;
+  // `import.meta.path` comes back undefined under Vitest and breaks resolveSync.
+  return Bun.resolveSync('@lydell/node-pty', import.meta.dirname)
+}
+
+let cachedNodeBinary: string | undefined
+
+// node-pty's native addon needs a real Node runtime: its master-fd socket breaks
+// under Bun's Node emulation (`this._socket.write is not a function`). When the
+// server runs under `bun --bun` (notably the Vitest suite), Bun prepends a shim
+// directory to PATH whose `node` symlinks to the Bun binary, so a bare `node`
+// spawn would run Bun. Resolve the first PATH entry whose `node` is not that shim.
+function resolveNodeBinary(): string {
+  if (cachedNodeBinary) return cachedNodeBinary
+
+  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+    if (!dir) continue
+    const candidate = path.join(dir, 'node')
+    let real: string
+    try {
+      real = realpathSync(candidate)
+    } catch {
+      continue
+    }
+    if (path.basename(real).startsWith('bun')) continue
+    cachedNodeBinary = candidate
+    return candidate
+  }
+
+  cachedNodeBinary = 'node'
+  return cachedNodeBinary
 }
 
 function noop() {}

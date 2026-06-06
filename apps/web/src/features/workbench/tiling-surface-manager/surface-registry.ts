@@ -1,6 +1,8 @@
 import { diffDocumentLabel, parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 
 import {
+  createChatSurface,
   createDiagnosticsSurface,
   createDiffSurface,
   createFileEditorSurface,
@@ -88,6 +90,10 @@ export type SurfaceCreateInput =
     }
   | {
       readonly serializedState?: unknown
+      readonly type: 'chat'
+    }
+  | {
+      readonly serializedState?: unknown
       readonly type: 'diagnostics'
     }
   | {
@@ -131,6 +137,7 @@ export const defaultSurfaceDescriptors = [
   terminalDescriptor(),
   fileNavigatorDescriptor(),
   gitChangesDescriptor(),
+  chatDescriptor(),
   logsDescriptor(),
   diagnosticsDescriptor(),
   placeholderDescriptor(),
@@ -311,6 +318,17 @@ function logsDescriptor(): SurfaceDescriptor {
   })
 }
 
+function chatDescriptor(): SurfaceDescriptor {
+  return descriptor({
+    cardinality: 'singleton',
+    create: (input, context) =>
+      createWorkspaceSingletonSurface(input, context, 'chat', createChatSurface),
+    restore: (data, context) =>
+      restoreWorkspaceSingletonSurface(data, context, 'chat', createChatSurface),
+    type: 'chat',
+  })
+}
+
 function diagnosticsDescriptor(): SurfaceDescriptor {
   return descriptor({
     cardinality: 'singleton',
@@ -460,7 +478,7 @@ function restoreFileEditorSurface(data: unknown, context: SurfaceRestoreContext)
   if (!serialized) return null
   if (!serialized.resourceKey) return null
   if (!isEditorSurfaceLifecycle(serialized.lifecycle)) return null
-  if (!isPathInWorkspace(serialized.resourceKey, context.rootPath)) return null
+  if (!editorResourceInWorkspace(serialized.resourceKey, context.rootPath)) return null
 
   return withSerializedState(
     createFileEditorSurface({
@@ -653,6 +671,7 @@ function isSerializedSurface(value: unknown): value is SerializedSurface {
 
 function isSurfaceType(value: unknown): value is SurfaceType {
   return (
+    value === 'chat' ||
     value === 'diagnostics' ||
     value === 'diff' ||
     value === 'file-editor' ||
@@ -707,9 +726,18 @@ function resourceAllowedForRoot(resourceKey: string | undefined, rootPath: strin
 function pathFromWorkspaceResource(resourceKey: string) {
   const diff = parseDiffDocumentId(resourceKey)
   if (diff) return diff.path
+  const searchBuffer = parseSearchBufferDocumentId(resourceKey)
+  if (searchBuffer) return searchBuffer.rootPath
   if (resourceKey.startsWith('/')) return resourceKey
 
   return null
+}
+
+function editorResourceInWorkspace(resourceKey: string, rootPath: string | null) {
+  const searchBuffer = parseSearchBufferDocumentId(resourceKey)
+  if (searchBuffer) return searchBuffer.rootPath === rootPath
+
+  return isPathInWorkspace(resourceKey, rootPath)
 }
 
 function workspaceAllowedForCreate(context: SurfaceCreateContext) {

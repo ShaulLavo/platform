@@ -42,9 +42,9 @@ import {
   parentPath,
   pickerCopy,
   toPickedEntry,
+  type EntriesLoadState,
   type FilePickerIconMode,
   type FilePickerMode,
-  type LoadState,
 } from './file-picker/model'
 import { useFilePickerSession } from './file-picker/state'
 
@@ -90,7 +90,7 @@ export function FilePickerDialog({
     reloadVersion,
     serverInfo,
   })
-  const loadState: LoadState = serverInfoError
+  const loadState: EntriesLoadState = serverInfoError
     ? {
         status: 'error',
         message: errorMessage(serverInfoError, 'The file server did not return a usable response.'),

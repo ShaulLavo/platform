@@ -5,6 +5,11 @@ import {
   splitEditorPaneTab,
 } from '@/features/editor/state/editor-pane-state'
 
+import {
+  createChatSurface,
+  createClassicFirstRunWorkspaceLayout,
+  createFileNavigatorSurface,
+} from '../layout-builders'
 import { createWorkspaceLayoutStore } from '../surface-state'
 import { dispatchWorkbenchEditorSurfaceOperation } from '../workbench-editor-surface-dispatch'
 import {
@@ -12,7 +17,10 @@ import {
   editorPaneIdForWorkbenchWindowId,
   workspaceLayoutForEditorPaneLayout,
 } from '../workbench-editor-surface-layout'
-import type { LayoutNodeId, WorkspaceLayout } from '../layout-types'
+import { CLASSIC_POLICY_ID } from '../layout-ids'
+import { findWindowIdContainingSurface, visibleSurfaceIdsInOrder } from '../layout-normalize'
+import { closeSurface, minimizeSurface } from '../layout-operations'
+import type { LayoutNodeId, SurfaceId, WorkspaceLayout } from '../layout-types'
 
 describe('dispatchWorkbenchEditorSurfaceOperation', () => {
   it('commits renderer-owned resize and maximize operations', () => {
@@ -74,7 +82,172 @@ describe('dispatchWorkbenchEditorSurfaceOperation', () => {
     ])
     expect(committed).toEqual([])
   })
+
+  it('commits rail restores that have stale rail sticky placement', () => {
+    const chat = createChatSurface()
+    const layout = layoutWithRailStickyPlacement(chat.id)
+    const store = createWorkspaceLayoutStore(layout)
+    const committed: WorkspaceLayout[] = []
+
+    dispatchWorkbenchEditorSurfaceOperation(
+      { surfaceId: chat.id, type: 'restoreSurface' },
+      {
+        commitLayout: (layout) => committed.push(layout),
+        requestCloseTab: () => false,
+        store,
+      },
+    )
+
+    const committedLayout = committed[0]
+    if (!committedLayout) throw new Error('Expected committed layout')
+
+    expect(committedLayout.activeSurfaceId).toBe(chat.id)
+    expect(committedLayout.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(chat.id)
+  })
+
+  it('commits rail restores that have stale rail surface placement', () => {
+    const chat = createChatSurface()
+    const layout = layoutWithRailSurfacePlacement(chat.id)
+    const store = createWorkspaceLayoutStore(layout)
+    const committed: WorkspaceLayout[] = []
+
+    dispatchWorkbenchEditorSurfaceOperation(
+      { surfaceId: chat.id, type: 'restoreSurface' },
+      {
+        commitLayout: (layout) => committed.push(layout),
+        requestCloseTab: () => false,
+        store,
+      },
+    )
+
+    const committedLayout = committed[0]
+    expect(committedLayout).toBeDefined()
+    expect(committedLayout?.activeSurfaceId).toBe(chat.id)
+    expect(committedLayout?.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(chat.id)
+  })
+
+  it('commits rail restores that have stale window surface placement', () => {
+    const chat = createChatSurface()
+    const layout = layoutWithStaleWindowSurfacePlacement(chat.id)
+    const store = createWorkspaceLayoutStore(layout)
+    const committed: WorkspaceLayout[] = []
+
+    dispatchWorkbenchEditorSurfaceOperation(
+      { surfaceId: chat.id, type: 'restoreSurface' },
+      {
+        commitLayout: (layout) => committed.push(layout),
+        requestCloseTab: () => false,
+        store,
+      },
+    )
+
+    const committedLayout = committed[0]
+    expect(committedLayout).toBeDefined()
+    expect(committedLayout?.activeSurfaceId).toBe(chat.id)
+    expect(committedLayout?.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(chat.id)
+  })
+
+  it('commits files rail restores that have stale window surface placement', () => {
+    const fileNavigator = createFileNavigatorSurface()
+    const layout = layoutWithStaleFilesWindowSurfacePlacement()
+    const store = createWorkspaceLayoutStore(layout)
+    const committed: WorkspaceLayout[] = []
+
+    dispatchWorkbenchEditorSurfaceOperation(
+      { surfaceId: fileNavigator.id, type: 'restoreSurface' },
+      {
+        commitLayout: (layout) => committed.push(layout),
+        requestCloseTab: () => false,
+        store,
+      },
+    )
+
+    const committedLayout = committed[0]
+    expect(committedLayout).toBeDefined()
+    expect(committedLayout?.activeSurfaceId).toBe(fileNavigator.id)
+    expect(committedLayout?.rail.minimizedSurfaceIds).not.toContain(fileNavigator.id)
+    expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(fileNavigator.id)
+  })
 })
+
+function layoutWithRailStickyPlacement(surfaceId: SurfaceId): WorkspaceLayout {
+  const layout = createClassicFirstRunWorkspaceLayout()
+
+  return {
+    ...layout,
+    policiesById: {
+      ...layout.policiesById,
+      [CLASSIC_POLICY_ID]: {
+        ...layout.policiesById[CLASSIC_POLICY_ID],
+        stickyPlacementsBySurfaceId: {
+          [surfaceId]: { kind: 'rail' },
+        },
+      },
+    },
+  }
+}
+
+function layoutWithRailSurfacePlacement(surfaceId: SurfaceId): WorkspaceLayout {
+  const layout = createClassicFirstRunWorkspaceLayout()
+  const surface = layout.surfacesById[surfaceId]
+  if (!surface) return layout
+
+  return {
+    ...layout,
+    surfacesById: {
+      ...layout.surfacesById,
+      [surfaceId]: {
+        ...surface,
+        placement: { kind: 'rail' },
+      },
+    },
+  }
+}
+
+function layoutWithStaleWindowSurfacePlacement(surfaceId: SurfaceId): WorkspaceLayout {
+  const fileNavigator = createFileNavigatorSurface()
+  const layout = createClassicFirstRunWorkspaceLayout()
+  const surface = layout.surfacesById[surfaceId]
+  const targetWindowId = findWindowIdContainingSurface(layout, fileNavigator.id)
+  if (!surface || !targetWindowId) return layout
+
+  const withStalePlacement = {
+    ...layout,
+    surfacesById: {
+      ...layout.surfacesById,
+      [surfaceId]: {
+        ...surface,
+        placement: { kind: 'window-center', windowId: targetWindowId },
+      },
+    },
+  }
+
+  return closeSurface(withStalePlacement, fileNavigator.id)
+}
+
+function layoutWithStaleFilesWindowSurfacePlacement(): WorkspaceLayout {
+  const fileNavigator = createFileNavigatorSurface()
+  const layout = createClassicFirstRunWorkspaceLayout()
+  const surface = layout.surfacesById[fileNavigator.id]
+  const targetWindowId = findWindowIdContainingSurface(layout, fileNavigator.id)
+  if (!surface || !targetWindowId) return layout
+
+  const withStalePlacement = {
+    ...layout,
+    surfacesById: {
+      ...layout.surfacesById,
+      [fileNavigator.id]: {
+        ...surface,
+        placement: { kind: 'window-center', windowId: targetWindowId },
+      },
+    },
+  }
+
+  return minimizeSurface(withStalePlacement, fileNavigator.id)
+}
 
 function splitEditorWorkspaceLayout() {
   const editorLayout = createEditorPaneLayoutForPaths(

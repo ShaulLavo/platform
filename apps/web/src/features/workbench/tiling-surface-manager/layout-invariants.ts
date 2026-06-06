@@ -57,6 +57,7 @@ type VisibleSurfaceReference = {
 }
 
 const KNOWN_SURFACE_TYPES = new Set<SurfaceType>([
+  'chat',
   'diagnostics',
   'diff',
   'file-editor',

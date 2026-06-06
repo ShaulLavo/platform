@@ -48,6 +48,10 @@ export function logsSurfaceId(): SurfaceId {
   return surfaceId('logs', 'workspace')
 }
 
+export function chatSurfaceId(): SurfaceId {
+  return surfaceId('chat', 'workspace')
+}
+
 export function diagnosticsSurfaceId(): SurfaceId {
   return surfaceId('diagnostics', 'workspace')
 }

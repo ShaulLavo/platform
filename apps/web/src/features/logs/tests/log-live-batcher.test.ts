@@ -7,7 +7,7 @@ describe('createLiveEventBatcher', () => {
   it('flushes multiple pushed events as one batch', () => {
     let scheduledFlush: (() => void) | null = null
     const batches: string[][] = []
-    const batcher = createLiveEventBatcher(
+    const batcher = createLiveEventBatcher<LogEventSummary>(
       (events) => batches.push(events.map((event) => event.id)),
       (flush) => {
         scheduledFlush = flush
@@ -22,14 +22,14 @@ describe('createLiveEventBatcher', () => {
     batcher.push(event('b'))
 
     expect(batches).toEqual([])
-    scheduledFlush?.()
+    ;(scheduledFlush as (() => void) | null)?.()
     expect(batches).toEqual([['a', 'b']])
   })
 
   it('drops pending events when canceled', () => {
     let scheduledFlush: (() => void) | null = null
     const batches: string[][] = []
-    const batcher = createLiveEventBatcher(
+    const batcher = createLiveEventBatcher<LogEventSummary>(
       (events) => batches.push(events.map((event) => event.id)),
       (flush) => {
         scheduledFlush = flush
@@ -42,7 +42,7 @@ describe('createLiveEventBatcher', () => {
 
     batcher.push(event('a'))
     batcher.cancel()
-    scheduledFlush?.()
+    ;(scheduledFlush as (() => void) | null)?.()
 
     expect(batches).toEqual([])
   })

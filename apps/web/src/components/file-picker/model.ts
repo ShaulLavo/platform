@@ -4,6 +4,7 @@ import { effectiveEntryType, isDirectoryEntry, isFileEntry } from '@/lib/file-sy
 import type { LoadState } from '@/lib/load-state'
 import { formatSize } from '@/lib/path-formatters'
 
+export type { LoadState } from '@/lib/load-state'
 export { basename, displayPath, formatSize } from '@/lib/path-formatters'
 import { compareFuzzyRankedTargets } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'

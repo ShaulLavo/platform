@@ -13,11 +13,11 @@ export type EditorPaneLeaf = {
 }
 
 export type EditorPaneSplit = {
-  children: EditorPaneNode[]
+  children: readonly EditorPaneNode[]
   direction: EditorPaneSplitDirection
   id: string
   kind: 'split'
-  sizes: number[]
+  sizes: readonly number[]
 }
 
 export type EditorPaneNode = EditorPaneLeaf | EditorPaneSplit

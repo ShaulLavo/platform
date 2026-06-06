@@ -113,7 +113,9 @@ export class WorkspaceDocumentService {
   ensureLiveDocument(file: FileResult): LiveEditorDocument {
     const existing = this.liveDocumentsById.get(file.path)
     if (existing?.buffer.isDirty()) return this.liveDocumentProjection(existing)
-    if (fileSyncVersion(existing) === file.version) return this.liveDocumentProjection(existing)
+    if (existing && fileSyncVersion(existing) === file.version) {
+      return this.liveDocumentProjection(existing)
+    }
 
     const record = this.createFileDocumentRecord(file)
     this.liveDocumentsById.set(file.path, record)
@@ -157,7 +159,10 @@ export class WorkspaceDocumentService {
       tabId,
       view,
     })
-    return this.viewDocumentProjection(this.viewsByTabId.get(tabId)!)
+    const nextView = this.viewsByTabId.get(tabId)
+    if (!nextView) throw new Error('editor view was not created')
+
+    return this.viewDocumentProjection(nextView)
   }
 
   evictCleanLiveDocument(documentId: string): boolean {

@@ -1,6 +1,7 @@
 import {
   CLASSIC_POLICY_ID,
   CLASSIC_RECIPE_ID,
+  chatSurfaceId,
   diagnosticsSurfaceId,
   diffSurfaceId,
   fileEditorSurfaceId,
@@ -80,6 +81,7 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
   const fileNavigator = createFileNavigatorSurface()
   const searchResults = createSearchResultsSurface()
   const gitChanges = createGitChangesSurface()
+  const chat = createChatSurface()
   const logs = createLogsSurface()
   const editorPlaceholder = createPlaceholderSurface({
     contextKey: 'empty-editor',
@@ -127,25 +129,26 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
         windowId: sideWindow.id,
       }),
       [CLASSIC_MAIN_NODE_ID]: createSplitNode({
-        axis: 'vertical',
-        childIds: [CLASSIC_EDITOR_NODE_ID, CLASSIC_DIAGNOSTICS_NODE_ID],
+        axis: 'horizontal',
+        childIds: [CLASSIC_FILE_NAVIGATOR_NODE_ID, CLASSIC_EDITOR_NODE_ID],
         id: CLASSIC_MAIN_NODE_ID,
-        sizes: [0.74, 0.26],
+        sizes: [0.22, 0.78],
       }),
       [CLASSIC_ROOT_NODE_ID]: createSplitNode({
-        axis: 'horizontal',
-        childIds: [CLASSIC_FILE_NAVIGATOR_NODE_ID, CLASSIC_MAIN_NODE_ID],
+        axis: 'vertical',
+        childIds: [CLASSIC_MAIN_NODE_ID, CLASSIC_DIAGNOSTICS_NODE_ID],
         id: CLASSIC_ROOT_NODE_ID,
-        sizes: [0.22, 0.78],
+        sizes: [0.74, 0.26],
       }),
     },
     policiesById: defaultPoliciesById(),
     rail: {
-      minimizedSurfaceIds: [searchResults.id, gitChanges.id, logs.id],
+      minimizedSurfaceIds: [searchResults.id, gitChanges.id, chat.id, logs.id],
       pinnedSurfaceIds: [
         fileNavigator.id,
         searchResults.id,
         gitChanges.id,
+        chat.id,
         diagnostics.id,
         logs.id,
       ],
@@ -161,6 +164,7 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
       [editorPlaceholder.id]: editorPlaceholder,
       [fileNavigator.id]: fileNavigator,
       [gitChanges.id]: gitChanges,
+      [chat.id]: chat,
       [logs.id]: logs,
       [searchResults.id]: searchResults,
       [terminal.id]: terminal,
@@ -331,6 +335,15 @@ export function createLogsSurface(): Surface {
   })
 }
 
+export function createChatSurface(): Surface {
+  return createSingletonSurface({
+    id: chatSurfaceId(),
+    slot: 'secondary-side',
+    title: 'Chat',
+    type: 'chat',
+  })
+}
+
 export function createDiagnosticsSurface(): Surface {
   return createSingletonSurface({
     id: diagnosticsSurfaceId(),
@@ -433,6 +446,7 @@ export function classicWorkspaceRecipe(): WorkspaceRecipe {
     resetRootNodeId: CLASSIC_ROOT_NODE_ID,
     surfaceSlots: {
       diagnostics: 'bottom',
+      chat: 'secondary-side',
       diff: 'editor-center',
       'file-editor': 'editor-center',
       'file-navigator': 'primary-side',

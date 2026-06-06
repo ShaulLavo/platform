@@ -12,7 +12,7 @@ import {
   editorPaneLayoutForWorkspaceLayout,
   workspaceLayoutForEditorPaneLayout,
 } from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
-import type { CachedWorkspaceState, WorkspacePanelTab } from '@/lib/workspace-cache'
+import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
 import { createContext, use } from 'react'
@@ -25,21 +25,16 @@ type EditorWorkspaceStoreState = CachedWorkspaceState & {
 }
 
 type EditorWorkspaceStoreActions = {
-  activateWorkspacePanelTab: (tab: WorkspacePanelTab) => void
   openPicker: () => void
   resetForRootFolder: (rootFolder: PickedFsEntry) => void
   setDiffViewMode: (mode: EditorDiffViewMode) => void
   setEditorPaneLayout: (layout: EditorPaneLayout) => void
   setEditorHistory: (paths: string[]) => void
-  setGitPanelOpen: (open: boolean) => void
   setOpenFilePaths: (paths: string[]) => void
   setPickerOpen: (open: boolean) => void
   setRecentlyClosedEditorPaths: (paths: string[]) => void
   setSelectedFilePath: (path: string | null) => void
-  setSidebarVisible: (visible: boolean) => void
   setWorkspaceLayout: (layout: WorkspaceLayout) => void
-  setWorkspacePanelSelection: (selection: PanelSelection) => void
-  setWorkspacePanelTab: (tab: WorkspacePanelTab) => void
 }
 
 export type EditorWorkspaceStore = EditorWorkspaceStoreState & EditorWorkspaceStoreActions
@@ -47,8 +42,6 @@ export type EditorWorkspaceStore = EditorWorkspaceStoreState & EditorWorkspaceSt
 export type EditorWorkspaceStoreApi = StoreApi<EditorWorkspaceStore>
 
 export const EditorWorkspaceStateContext = createContext<EditorWorkspaceStoreApi | null>(null)
-
-type PanelSelection = Pick<EditorWorkspaceStoreState, 'sidebarVisible' | 'workspacePanelTab'>
 
 export function useEditorWorkspaceStoreApi() {
   const store = use(EditorWorkspaceStateContext)
@@ -68,23 +61,16 @@ export function useEditorWorkspaceState<T>(selector: (state: EditorWorkspaceStor
 export function createEditorWorkspaceStore(
   initialState: CachedWorkspaceState = readWorkspaceCache(),
 ) {
-  const initialWorkspaceLayout = workspaceLayoutForEditorPaneLayout(initialState.editorPaneLayout)
-
   return createStore<EditorWorkspaceStore>()((set) => ({
     diffViewMode: initialState.diffViewMode,
     editorHistory: initialState.editorHistory,
     editorPaneLayout: initialState.editorPaneLayout,
-    gitPanelOpen: initialState.gitPanelOpen,
     openFilePaths: initialState.openFilePaths,
     pickerOpen: false,
     recentlyClosedEditorPaths: initialState.recentlyClosedEditorPaths,
     rootFolder: initialState.rootFolder,
     selectedFilePath: initialState.selectedFilePath,
-    sidebarVisible: initialState.sidebarVisible,
-    workspaceLayout: initialWorkspaceLayout,
-    workspacePanelTab: initialState.workspacePanelTab,
-    activateWorkspacePanelTab: (workspacePanelTab) =>
-      set((state) => panelSelectionForTabActivation(state, workspacePanelTab)),
+    workspaceLayout: initialState.workspaceLayout,
     openPicker: () => set({ pickerOpen: true }),
     resetForRootFolder: (rootFolder) =>
       set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
@@ -96,7 +82,6 @@ export function createEditorWorkspaceStore(
         }),
       ),
     setEditorHistory: (editorHistory) => set({ editorHistory }),
-    setGitPanelOpen: (gitPanelOpen) => set({ gitPanelOpen }),
     setOpenFilePaths: (openFilePaths) =>
       set((state) =>
         editorWorkspaceSelectionForPaneLayout(
@@ -119,46 +104,13 @@ export function createEditorWorkspaceStore(
           { currentOpenFilePaths: state.openFilePaths },
         ),
       ),
-    setSidebarVisible: (sidebarVisible) =>
-      set((state) => {
-        if (state.sidebarVisible === sidebarVisible) return state
-
-        return { sidebarVisible }
-      }),
     setWorkspaceLayout: (workspaceLayout) =>
       set((state) =>
         editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout, {
           currentOpenFilePaths: state.openFilePaths,
         }),
       ),
-    setWorkspacePanelSelection: (selection) =>
-      set((state) => {
-        if (
-          state.sidebarVisible === selection.sidebarVisible &&
-          state.workspacePanelTab === selection.workspacePanelTab
-        )
-          return state
-
-        return selection
-      }),
-    setWorkspacePanelTab: (workspacePanelTab) =>
-      set((state) => {
-        if (state.workspacePanelTab === workspacePanelTab) return state
-
-        return { workspacePanelTab }
-      }),
   }))
-}
-
-function panelSelectionForTabActivation(
-  current: PanelSelection,
-  workspacePanelTab: WorkspacePanelTab,
-): PanelSelection {
-  if (current.sidebarVisible && current.workspacePanelTab === workspacePanelTab) {
-    return { ...current, sidebarVisible: false }
-  }
-
-  return { sidebarVisible: true, workspacePanelTab }
 }
 
 function pathsWithSelectedPath(openFilePaths: readonly string[], selectedFilePath: string | null) {
@@ -180,12 +132,9 @@ function workspaceStateForRootFolderReset(
     ...editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout),
     diffViewMode,
     editorHistory: [],
-    gitPanelOpen: true,
     pickerOpen: false,
     recentlyClosedEditorPaths: [],
     rootFolder,
-    sidebarVisible: true,
-    workspacePanelTab: 'files' as const,
   }
 }
 

@@ -34,7 +34,7 @@ const FALLBACK_TERMINAL_THEME: ITheme = {
   selectionForeground: '#ffffff',
 }
 
-type TerminalRuntimeThemeState = Terminal & {
+type TerminalRuntimeThemeState = {
   readonly scrollbarOpacity?: number
 }
 
@@ -76,7 +76,7 @@ export function syncTerminalTheme(
 }
 
 function terminalScrollbarOpacity(terminal: Terminal) {
-  const runtimeTerminal = terminal as TerminalRuntimeThemeState
+  const runtimeTerminal = terminal as unknown as TerminalRuntimeThemeState
   return runtimeTerminal.scrollbarOpacity ?? 0
 }
 

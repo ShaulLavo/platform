@@ -1,3 +1,4 @@
+import { WorkbenchChatSurface } from './workbench-chat-surface'
 import { WorkbenchDiagnosticsSurface } from './workbench-diagnostics-surface'
 import { createWorkbenchSurfaceRendererRegistry } from './surface-renderer-registry'
 import { WorkbenchDiffEditorSurface } from './workbench-diff-editor-surface'
@@ -10,6 +11,10 @@ import { WorkbenchSearchResultsSurface } from './workbench-search-results-surfac
 import { WorkbenchTerminalSurface } from './workbench-terminal-surface'
 
 export const workbenchEditorSurfaceRendererRegistry = createWorkbenchSurfaceRendererRegistry([
+  {
+    renderer: WorkbenchChatSurface,
+    type: 'chat',
+  },
   {
     renderer: WorkbenchDiagnosticsSurface,
     type: 'diagnostics',

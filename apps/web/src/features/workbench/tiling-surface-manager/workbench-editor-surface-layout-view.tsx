@@ -4,6 +4,7 @@ import {
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
+import { createGitStore } from '@/features/git/state'
 import { useStatus } from '@/features/git/hooks'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
@@ -43,6 +44,7 @@ export function WorkbenchEditorSurfaceLayoutView({
   const store = useWorkbenchEditorSurfaceStore({
     requestCloseTab: onRequestCloseTab,
   })
+  const [gitStore] = useState(createGitStore)
   const conflicts = useEditorConflictState((state) => state.conflicts)
   const gitStatus = useStatus(rootPath)
   const gitFiles = gitStatus.data?.files ?? EMPTY_GIT_FILES
@@ -64,6 +66,7 @@ export function WorkbenchEditorSurfaceLayoutView({
   return (
     <WorkbenchEditorSurfaceProvider
       editorKeymapLayers={editorKeymapLayers}
+      gitStore={gitStore}
       requestCloseTab={onRequestCloseTab}
       requestCloseTabs={onRequestCloseTabs}
       rootPath={rootPath}

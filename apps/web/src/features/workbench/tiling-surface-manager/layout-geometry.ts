@@ -64,6 +64,17 @@ const DEFAULT_DROP_EDGE_RATIO = 0.25
 const DEFAULT_MIN_DROP_ZONE_PX = 32
 const DEFAULT_RESIZE_HANDLE_THICKNESS_PX = 6
 
+export function insetLayoutRect(rect: LayoutRect, insetPx: number): LayoutRect {
+  const inset = Math.min(Math.max(0, insetPx), rect.width / 2, rect.height / 2)
+
+  return {
+    height: Math.max(0, rect.height - inset * 2),
+    width: Math.max(0, rect.width - inset * 2),
+    x: rect.x + inset,
+    y: rect.y + inset,
+  }
+}
+
 export function deriveLayoutGeometry(
   layout: WorkspaceLayout,
   rootRect: LayoutRect,
@@ -71,11 +82,18 @@ export function deriveLayoutGeometry(
 ): LayoutGeometry {
   const nodeRectsById = deriveNodeRects(layout, rootRect, options)
   const windowRectsById = deriveWindowRects(layout, nodeRectsById)
-
-  return {
-    dropZoneRects: deriveDropZoneRects(layout, rootRect, nodeRectsById, windowRectsById, options),
+  const dropZoneRects = deriveDropZoneRects(
+    layout,
+    rootRect,
     nodeRectsById,
-    resizeHandleRects: deriveResizeHandleRects(layout, nodeRectsById, options),
+    windowRectsById,
+    options,
+  )
+  const resizeHandleRects = deriveResizeHandleRects(layout, nodeRectsById, options)
+  return {
+    dropZoneRects,
+    nodeRectsById,
+    resizeHandleRects,
     windowRectsById,
   }
 }
@@ -198,7 +216,7 @@ function splitChildRect(
 }
 
 function resizeHandleRectsForSplit(
-  layout: WorkspaceLayout,
+  _layout: WorkspaceLayout,
   node: Extract<LayoutNode, { readonly kind: 'split' }>,
   nodeRectsById: Readonly<Record<string, LayoutRect>>,
   options: LayoutGeometryOptions,
@@ -284,7 +302,7 @@ function windowDropZoneRectsForWindow(
   options: LayoutGeometryOptions,
 ): readonly DropZoneLayoutRect[] {
   const edgeZones = dropEdges().map((edge) => ({
-    destination: { edge, kind: 'window-edge', windowId: windowRect.windowId },
+    destination: { edge, kind: 'window-edge' as const, windowId: windowRect.windowId },
     edge,
     id: overlayId(`drop:window:${windowRect.windowId}:${edge}`),
     kind: 'window-edge' as const,
@@ -329,7 +347,7 @@ function parentEdgeDropZoneRectsForNode(
   options: LayoutGeometryOptions,
 ) {
   return dropEdges().map((edge) => ({
-    destination: { edge, kind: 'parent-edge', nodeId },
+    destination: { edge, kind: 'parent-edge' as const, nodeId },
     edge,
     id: overlayId(`drop:parent:${nodeId}:${edge}`),
     kind: 'parent-edge' as const,

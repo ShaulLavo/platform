@@ -2,10 +2,9 @@ import { cn } from '@workspace/ui/lib/utils'
 import { memo, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { errorMessage } from '@/lib/file-server'
 import { useStatus } from './hooks'
-import { StateContext, createGitStore } from './state'
+import { StateContext, createGitStore, useGitState, type GitStoreApi } from './state'
 import type { FileStatus } from './types'
 import { changeRows } from './utils'
 import { ChangeGroup } from './components/change-group'
@@ -16,19 +15,23 @@ import { PanelShell } from './components/panel-shell'
 const EMPTY_FILES: readonly FileStatus[] = []
 
 export const Panel = memo(
-  ({ className, rootPath }: ComponentProps<'section'> & { rootPath: string }) => {
+  ({
+    className,
+    rootPath,
+    store,
+  }: ComponentProps<'section'> & { rootPath: string; store?: GitStoreApi }) => {
     return (
-      <StateProvider>
+      <StateProvider store={store}>
         <PanelContent className={className} rootPath={rootPath} />
       </StateProvider>
     )
   },
 )
 
-function StateProvider({ children }: { children: ReactNode }) {
-  const [store] = useState(createGitStore)
+function StateProvider({ children, store }: { children: ReactNode; store?: GitStoreApi }) {
+  const [localStore] = useState(createGitStore)
 
-  return <StateContext value={store}>{children}</StateContext>
+  return <StateContext value={store ?? localStore}>{children}</StateContext>
 }
 
 function PanelContent({ className, rootPath }: ComponentProps<'section'> & { rootPath: string }) {
@@ -37,7 +40,7 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
   const repository = status.data?.repository ?? null
   const rows = useMemo(() => changeRows(files), [files])
   const hasLocalChanges = rows.staged.length > 0 || rows.worktree.length > 0
-  const panelOpen = useEditorWorkspaceState((state) => state.gitPanelOpen)
+  const panelOpen = useGitState((state) => state.panelOpen)
   const setFocusArea = useFocus((state) => state.setFocusArea)
 
   if (status.isPending) {

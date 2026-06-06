@@ -2,6 +2,7 @@ import { cn } from '@workspace/ui/lib/utils'
 
 import {
   deriveLayoutGeometry,
+  insetLayoutRect,
   type LayoutGeometryOptions,
   type LayoutRect,
 } from './layout-geometry'
@@ -46,7 +47,8 @@ export function WorkbenchLayoutRenderer({
   const dispatchLayoutOperation = useWorkbenchLayoutState((state) => state.dispatchLayoutOperation)
   const { rect, rootRef } = useWorkbenchLayoutRootRect(initialRect)
   const rootRect = rect ?? DEFAULT_LAYOUT_RECT
-  const geometry = deriveLayoutGeometry(layout, rootRect, geometryOptions)
+  const surfaceRect = insetLayoutRect(rootRect, geometryOptions.gapPx ?? 0)
+  const geometry = deriveLayoutGeometry(layout, surfaceRect, geometryOptions)
   const tree = selectMaterializedLayoutTree(layout)
   const maximizedWindowId = maximizedLayoutWindowId(layout.windowsById)
 
@@ -54,36 +56,41 @@ export function WorkbenchLayoutRenderer({
     <div
       aria-label='Workbench layout'
       className={cn(
-        'bg-background text-foreground relative h-full min-h-0 min-w-0 overflow-hidden',
+        'bg-background text-foreground flex h-full min-h-0 min-w-0 overflow-hidden',
         className,
       )}
       data-workbench-layout-renderer=''
-      ref={rootRef}
       role='application'
     >
-      {tree ? (
-        <WorkbenchSplitNode
-          activeWindowId={layout.activeWindowId}
-          maximizedRect={rootRect}
-          maximizedWindowId={maximizedWindowId}
-          node={tree}
-          surfaceRenderers={surfaceRenderers}
-          windowRectsById={geometry.windowRectsById}
-          onDispatch={dispatchLayoutOperation}
-        />
-      ) : (
-        <div className='text-muted-foreground grid h-full place-items-center text-sm'>
-          No surfaces
-        </div>
-      )}
-      {maximizedWindowId ? null : (
-        <WorkbenchResizeOverlay
-          resizeHandleRects={geometry.resizeHandleRects}
-          onDispatch={dispatchLayoutOperation}
-        />
-      )}
-      <WorkbenchDropOverlay dropZoneRects={geometry.dropZoneRects} />
       <WorkbenchRail layout={layout} onDispatch={dispatchLayoutOperation} />
+      <div
+        className='relative min-h-0 min-w-0 flex-1 overflow-hidden'
+        data-workbench-surface-area=''
+        ref={rootRef}
+      >
+        {tree ? (
+          <WorkbenchSplitNode
+            activeWindowId={layout.activeWindowId}
+            maximizedRect={surfaceRect}
+            maximizedWindowId={maximizedWindowId}
+            node={tree}
+            surfaceRenderers={surfaceRenderers}
+            windowRectsById={geometry.windowRectsById}
+            onDispatch={dispatchLayoutOperation}
+          />
+        ) : (
+          <div className='text-muted-foreground grid h-full place-items-center text-sm'>
+            No surfaces
+          </div>
+        )}
+        {maximizedWindowId ? null : (
+          <WorkbenchResizeOverlay
+            resizeHandleRects={geometry.resizeHandleRects}
+            onDispatch={dispatchLayoutOperation}
+          />
+        )}
+        <WorkbenchDropOverlay dropZoneRects={geometry.dropZoneRects} />
+      </div>
       <WorkbenchHiddenSurfaceHosts layout={layout} surfaceRenderers={surfaceRenderers} />
     </div>
   )

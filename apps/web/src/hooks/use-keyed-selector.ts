@@ -33,7 +33,7 @@ export function useKeyedSelector<T>(options: {
 }): MultiKeyedSelector<T>
 
 export function useKeyedSelector<T>(options?: { multiple?: boolean; initial?: T | Iterable<T> }) {
-  const selectorRef = useRef<SingleKeyedSelector<T> | MultiKeyedSelector<T>>()
+  const selectorRef = useRef<SingleKeyedSelector<T> | MultiKeyedSelector<T> | null>(null)
 
   if (!selectorRef.current) {
     selectorRef.current = createKeyedSelector<T>(options)

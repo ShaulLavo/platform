@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
+  threadIdSchema,
   type OrchestrationSession,
   type OrchestrationSessionStatus,
 } from '@workspace/contracts'
+import * as v from 'valibot'
 
 import { isBusyChatSession } from '../chat-thread-status'
 
@@ -28,7 +30,7 @@ function makeSession(status: OrchestrationSessionStatus): OrchestrationSession {
     providerSessionId: null,
     runtimeMode: DEFAULT_RUNTIME_MODE,
     status,
-    threadId: 'thread-1',
+    threadId: v.parse(threadIdSchema, 'thread-1'),
     updatedAt: '2026-05-28T00:00:00.000Z',
   }
 }

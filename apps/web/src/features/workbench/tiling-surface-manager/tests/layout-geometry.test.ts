@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CLASSIC_DIAGNOSTICS_NODE_ID,
   CLASSIC_EDITOR_NODE_ID,
   CLASSIC_EDITOR_WINDOW_ID,
   CLASSIC_FILE_NAVIGATOR_NODE_ID,
@@ -23,7 +24,7 @@ describe('tiling surface layout geometry', () => {
     const nodeRects = deriveNodeRects(layout, rect, { gapPx: 10 })
 
     expectRect(nodeRects[CLASSIC_FILE_NAVIGATOR_NODE_ID], {
-      height: 800,
+      height: 584.6,
       width: 217.8,
       x: 0,
       y: 0,
@@ -33,6 +34,12 @@ describe('tiling surface layout geometry', () => {
       width: 772.2,
       x: 227.8,
       y: 0,
+    })
+    expectRect(nodeRects[CLASSIC_DIAGNOSTICS_NODE_ID], {
+      height: 205.4,
+      width: 1000,
+      x: 0,
+      y: 594.6,
     })
   })
 
@@ -45,9 +52,10 @@ describe('tiling surface layout geometry', () => {
     const rootHandle = handles.find((handle) => handle.splitId === CLASSIC_ROOT_NODE_ID)
     const mainHandle = handles.find((handle) => handle.splitId === CLASSIC_MAIN_NODE_ID)
 
-    expect(rootHandle?.axis).toBe('horizontal')
-    expectRect(rootHandle?.rect, { height: 800, width: 8, x: 218.8, y: 0 })
-    expect(mainHandle?.axis).toBe('vertical')
+    expect(rootHandle?.axis).toBe('vertical')
+    expectRect(rootHandle?.rect, { height: 8, width: 1000, x: 0, y: 585.6 })
+    expect(mainHandle?.axis).toBe('horizontal')
+    expectRect(mainHandle?.rect, { height: 584.6, width: 8, x: 218.8, y: 0 })
   })
 
   it('derives root, parent, window-edge, and center drop zones', () => {

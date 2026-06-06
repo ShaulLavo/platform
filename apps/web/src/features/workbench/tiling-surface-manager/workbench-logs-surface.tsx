@@ -1,8 +1,8 @@
-import { SidebarHeader } from '@/components/workspace/sidebar/components/sidebar-header'
 import { LogsPanel } from '@/features/logs/panel'
 
 import { WorkbenchPanelUnavailable } from '../workbench-panel-unavailable'
 import type { WorkbenchSurfaceRendererProps } from './surface-renderer-registry'
+import { ToolPaneHeader } from './tool-pane-header'
 import { useWorkbenchEditorSurfaceContext } from './use-workbench-editor-surface-context'
 
 export function WorkbenchLogsSurface({ active, surface, visible }: WorkbenchSurfaceRendererProps) {
@@ -16,7 +16,7 @@ export function WorkbenchLogsSurface({ active, surface, visible }: WorkbenchSurf
 
   return (
     <section className='bg-background flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
-      <SidebarHeader
+      <ToolPaneHeader
         tab='logs'
         treeState={toolSurfaceState.treeState}
         visibleTreeItemCount={toolSurfaceState.visibleTreeItemCount}

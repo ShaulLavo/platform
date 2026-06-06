@@ -1,10 +1,15 @@
 {
+  // Base template. Every workspace tsconfig extends this and layers on its own
+  // ruleset (env `types`, `include`, `paths`, extra strictness). It defines no
+  // `include`, so it never compiles anything on its own — `turbo typecheck`
+  // fans out to each workspace's `typecheck` script.
   "compilerOptions": {
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
-    "strict": true
+    "strict": true,
+    "noEmit": true
   }
 }

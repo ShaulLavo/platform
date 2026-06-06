@@ -86,7 +86,7 @@ describe('tiling surface layout invariants', () => {
       CLASSIC_MAIN_NODE_ID,
       (node) => ({
         ...node,
-        axis: 'horizontal',
+        axis: 'vertical',
         sizes: [1],
       }),
     )
@@ -139,7 +139,7 @@ describe('tiling surface layout invariants', () => {
           title: 'Invalid Slot',
         },
       },
-    } as WorkspaceLayout
+    } as unknown as WorkspaceLayout
 
     expect(violationCodes(layout)).toContain('invalid-layout-command-slot-surface-type')
   })
@@ -159,7 +159,7 @@ describe('tiling surface layout invariants', () => {
           title: 'Bad Preset',
         },
       },
-    }
+    } satisfies WorkspaceLayout
 
     expect(violationCodes(layout)).toContain('invalid-hotkey-preset-command')
   })

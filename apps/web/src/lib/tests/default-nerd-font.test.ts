@@ -28,7 +28,7 @@ describe('loadDefaultNerdFont', () => {
 
   it('keeps the fallback stack when the server request fails', async () => {
     const state = fontLoaderState({
-      fetcher: async () => new Response('missing', { status: 404 }),
+      fetcher: (async () => new Response('missing', { status: 404 })) as unknown as typeof fetch,
     })
 
     const result = await loadDefaultNerdFont({
@@ -113,8 +113,8 @@ function fontLoaderState(options: { fetcher?: typeof fetch } = {}) {
 }
 
 function successfulFontFetch(requests: string[]): typeof fetch {
-  return async (input) => {
+  return (async (input) => {
     requests.push(String(input))
     return new Response(new Uint8Array([1, 2, 3]).buffer)
-  }
+  }) as typeof fetch
 }

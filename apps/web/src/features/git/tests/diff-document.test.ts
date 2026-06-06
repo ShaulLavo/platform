@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { threadIdSchema } from '@workspace/contracts'
+import * as v from 'valibot'
 import {
   checkpointDiffDocumentId,
   snapshotDiffDocumentId,
@@ -10,6 +12,8 @@ import {
 import type { SnapshotDiffDocumentInput } from '../diff-document'
 
 describe('git diff document ids', () => {
+  const threadId = v.parse(threadIdSchema, 'thread-1')
+
   it('round-trips snapshot diff documents', () => {
     const diff: SnapshotDiffDocumentInput = {
       hunks: [],
@@ -50,7 +54,7 @@ describe('git diff document ids', () => {
       path: '/repo/src/app.ts',
       scope: 'file',
       status: 'modified',
-      threadId: 'thread-1',
+      threadId,
       toTurnCount: 2,
     })
 
@@ -66,7 +70,7 @@ describe('git diff document ids', () => {
         path: '/repo/src/app.ts',
         scope: 'file',
         status: 'modified',
-        threadId: 'thread-1',
+        threadId,
         toTurnCount: 2,
         version: 1,
       },
@@ -81,14 +85,14 @@ describe('git diff document ids', () => {
       fromTurnCount: 1,
       path: 'checkpoint-turn-2',
       scope: 'turn',
-      threadId: 'thread-1',
+      threadId,
       toTurnCount: 2,
     })
     const thread = checkpointDiffDocumentId({
       fromTurnCount: 0,
       path: 'checkpoint-thread-2',
       scope: 'thread',
-      threadId: 'thread-1',
+      threadId,
       toTurnCount: 2,
     })
 

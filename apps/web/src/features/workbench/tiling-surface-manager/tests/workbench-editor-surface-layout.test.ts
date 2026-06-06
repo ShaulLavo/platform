@@ -9,7 +9,7 @@ import {
   type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import type { SnapshotDiffDocumentInput } from '@/features/git/diff-document'
 
 import { diffSurfaceId, fileEditorSurfaceId } from '../layout-ids'
 import {
@@ -98,7 +98,7 @@ describe('workspaceLayoutForEditorPaneLayout', () => {
     })
   })
 
-  it('round trips visible editor surfaces back to compatibility editor panes', () => {
+  it('round trips visible editor surfaces back to derived editor panes', () => {
     const editorLayout = createEditorPaneLayoutForPaths(
       ['/repo/src/a.ts', '/repo/src/b.ts'],
       '/repo/src/b.ts',
@@ -116,12 +116,15 @@ describe('workspaceLayoutForEditorPaneLayout', () => {
   })
 })
 
-function snapshotDiff(path: string): FileDiff {
+function snapshotDiff(path: string): SnapshotDiffDocumentInput {
   return {
+    hunks: [],
     newFileMissing: false,
     newObjectId: 'new-object',
     oldFileMissing: false,
     oldObjectId: 'old-object',
+    patch: '',
     path,
+    staged: false,
   }
 }

@@ -1,5 +1,17 @@
-import { findWindowIdContainingSurface } from './layout-normalize'
+import { findNodeIdForWindow, findWindowIdContainingSurface } from './layout-normalize'
+import { terminalSurfaceId, workbenchWindowId } from './layout-ids'
+import {
+  createChatSurface,
+  createFileNavigatorSurface,
+  createGitChangesSurface,
+  createLogsSurface,
+  createSearchResultsSurface,
+  createTerminalSurface,
+} from './layout-builders'
 import type { Surface, SurfaceId, WorkspaceLayout } from './layout-types'
+
+const CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID = workbenchWindowId('classic:diagnostics')
+const DEFAULT_TERMINAL_SURFACE_ID = terminalSurfaceId('terminal-1')
 
 export type WorkbenchRailSurfaceState =
   | 'active'
@@ -20,6 +32,7 @@ export function selectWorkbenchRailSurfaceItems(
   const items: WorkbenchRailSurfaceItem[] = []
   const seen = new Set<SurfaceId>()
 
+  appendDefaultRailItems(items, seen, layout)
   appendRailItems(items, seen, layout, layout.rail.pinnedSurfaceIds, 'pinned')
   appendRailItems(items, seen, layout, layout.rail.visibleSingletonSurfaceIds, 'visible')
   appendRailItems(items, seen, layout, layout.rail.minimizedSurfaceIds, 'minimized')
@@ -27,6 +40,25 @@ export function selectWorkbenchRailSurfaceItems(
   appendSingletonItems(items, seen, layout)
 
   return items.map((item) => railItemWithCurrentState(layout, item))
+}
+
+function appendDefaultRailItems(
+  items: WorkbenchRailSurfaceItem[],
+  seen: Set<SurfaceId>,
+  layout: WorkspaceLayout,
+) {
+  const surfaces = [
+    createFileNavigatorSurface(),
+    createSearchResultsSurface(),
+    createGitChangesSurface(),
+    createChatSurface(),
+    createLogsSurface(),
+    createTerminalSurface({ sessionId: 'terminal-1' }),
+  ]
+
+  for (const surface of surfaces) {
+    appendRailItem(items, seen, layout.surfacesById[surface.id] ?? surface, 'pinned')
+  }
 }
 
 export function railSurfaceWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
@@ -45,9 +77,7 @@ function appendRailItems(
 
     const surface = layout.surfacesById[surfaceId]
     if (!surface) continue
-
-    seen.add(surfaceId)
-    items.push({ state, surface })
+    appendRailItem(items, seen, surface, state, layout)
   }
 }
 
@@ -59,10 +89,22 @@ function appendSingletonItems(
   for (const surface of Object.values(layout.surfacesById)) {
     if (surface.cardinality !== 'singleton') continue
     if (seen.has(surface.id)) continue
-
-    seen.add(surface.id)
-    items.push({ state: 'singleton', surface })
+    appendRailItem(items, seen, surface, 'singleton', layout)
   }
+}
+
+function appendRailItem(
+  items: WorkbenchRailSurfaceItem[],
+  seen: Set<SurfaceId>,
+  surface: Surface,
+  state: WorkbenchRailSurfaceState,
+  layout?: WorkspaceLayout,
+) {
+  if (seen.has(surface.id)) return
+  if (layout && classicBottomToolPaneOwnsDiagnostics(layout, surface)) return
+
+  seen.add(surface.id)
+  items.push({ state, surface })
 }
 
 function railItemWithCurrentState(
@@ -79,10 +121,36 @@ function currentRailSurfaceState(
   layout: WorkspaceLayout,
   item: WorkbenchRailSurfaceItem,
 ): WorkbenchRailSurfaceState {
+  if (item.surface.id === DEFAULT_TERMINAL_SURFACE_ID) {
+    return currentClassicBottomToolPaneState(layout)
+  }
+
+  if (findWindowIdContainingSurface(layout, item.surface.id)) {
+    return item.surface.id === layout.activeSurfaceId ? 'active' : 'visible'
+  }
   if (item.surface.id === layout.activeSurfaceId) return 'active'
   if (layout.rail.minimizedSurfaceIds.includes(item.surface.id)) return 'minimized'
   if (layout.rail.runningSurfaceIds.includes(item.surface.id)) return 'running'
   if (layout.rail.visibleSingletonSurfaceIds.includes(item.surface.id)) return 'visible'
 
   return item.state
+}
+
+function currentClassicBottomToolPaneState(layout: WorkspaceLayout): WorkbenchRailSurfaceState {
+  const visible = Boolean(findNodeIdForWindow(layout, CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID))
+  if (!visible)
+    return layout.rail.runningSurfaceIds.includes(DEFAULT_TERMINAL_SURFACE_ID)
+      ? 'running'
+      : 'pinned'
+  if (layout.activeSurfaceId !== DEFAULT_TERMINAL_SURFACE_ID) return 'visible'
+
+  return 'active'
+}
+
+function classicBottomToolPaneOwnsDiagnostics(layout: WorkspaceLayout, surface: Surface) {
+  if (surface.type !== 'diagnostics') return false
+
+  return Boolean(
+    layout.windowsById[CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID]?.surfaceIds.includes(surface.id),
+  )
 }

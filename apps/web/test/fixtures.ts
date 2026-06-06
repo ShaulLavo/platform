@@ -10,7 +10,7 @@ export type TestClient = ReturnType<typeof createInProcessClient>
 // `app.handle`, so there is no socket, no port, and nothing mocked.
 export function createInProcessClient(server: TestServer): ReturnType<typeof treaty<App>> {
   return treaty<App>(TEST_ORIGIN, {
-    fetcher: (input, init) => server.app.handle(new Request(input, init)),
+    fetcher: ((input, init) => server.app.handle(new Request(input, init))) as typeof fetch,
     headers: { origin: server.origin },
   })
 }
@@ -25,7 +25,7 @@ type Fixtures = {
 // The project's own test entry point. Tests import { test, expect } from here,
 // never from 'vitest' directly, so shared setup/teardown stays in one place.
 export const test = base.extend<Fixtures>({
-  server: async ({}, use) => {
+  server: async (_ctx, use) => {
     const server = await makeTestServer()
     await use(server)
     await server.cleanup()

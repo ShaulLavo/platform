@@ -1,6 +1,7 @@
 import '@editor/core/style.css'
 import '@editor/find/style.css'
 import { useEditor } from '@editor/react'
+import type { EditorKeymapLayer } from '@editor/core'
 import '@editor/scope-lines/style.css'
 import { EditorHost } from '@editor/react'
 import { useContext, useEffect, useEffectEvent } from 'react'
@@ -11,7 +12,7 @@ import type { WorkbenchSpikePanel } from '@/features/workbench-spike/workbench-s
 import { createCriticalEditorCorePlugins } from '@/features/editor/editor-plugins'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 
-const EMPTY_KEYMAP_LAYERS = []
+const EMPTY_KEYMAP_LAYERS: readonly EditorKeymapLayer[] = []
 
 export function WorkbenchSpikeEditorPanel({ panel }: { panel: WorkbenchSpikePanel }) {
   const { onEditorPanelMounted } = useContext(WorkbenchSpikeMetricsContext)

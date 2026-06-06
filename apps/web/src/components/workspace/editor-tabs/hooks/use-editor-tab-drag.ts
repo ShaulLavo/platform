@@ -511,7 +511,7 @@ function setEditorTabDragData(dataTransfer: DataTransfer, format: string, value:
   try {
     dataTransfer.setData(format, value)
   } catch {
-    // Some browser/test shims reject custom MIME writes; text/plain remains a fallback.
+    // Some browser/test implementations reject custom MIME writes; text/plain remains a fallback.
   }
 }
 

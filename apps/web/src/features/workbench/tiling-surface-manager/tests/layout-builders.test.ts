@@ -15,6 +15,7 @@ import {
 import {
   CLASSIC_POLICY_ID,
   CLASSIC_RECIPE_ID,
+  chatSurfaceId,
   diagnosticsSurfaceId,
   fileNavigatorSurfaceId,
   gitChangesSurfaceId,
@@ -72,6 +73,7 @@ describe('tiling surface layout builders', () => {
     const placeholder = placeholderSurfaceId('empty-editor')
     const diagnostics = diagnosticsSurfaceId()
     const gitChanges = gitChangesSurfaceId()
+    const chat = chatSurfaceId()
     const logs = logsSurfaceId()
     const searchResults = searchResultsSurfaceId()
     const terminal = terminalSurfaceId('terminal-1')
@@ -106,18 +108,18 @@ describe('tiling surface layout builders', () => {
           windowId: CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
         },
         {
-          axis: 'vertical',
-          childIds: [CLASSIC_EDITOR_NODE_ID, CLASSIC_DIAGNOSTICS_NODE_ID],
+          axis: 'horizontal',
+          childIds: [CLASSIC_FILE_NAVIGATOR_NODE_ID, CLASSIC_EDITOR_NODE_ID],
           id: CLASSIC_MAIN_NODE_ID,
           kind: 'split',
-          sizes: [0.74, 0.26],
+          sizes: [0.22, 0.78],
         },
         {
-          axis: 'horizontal',
-          childIds: [CLASSIC_FILE_NAVIGATOR_NODE_ID, CLASSIC_MAIN_NODE_ID],
+          axis: 'vertical',
+          childIds: [CLASSIC_MAIN_NODE_ID, CLASSIC_DIAGNOSTICS_NODE_ID],
           id: CLASSIC_ROOT_NODE_ID,
           kind: 'split',
-          sizes: [0.22, 0.78],
+          sizes: [0.74, 0.26],
         },
       ],
       policies: [
@@ -128,8 +130,8 @@ describe('tiling surface layout builders', () => {
         },
       ],
       rail: {
-        minimizedSurfaceIds: [searchResults, gitChanges, logs],
-        pinnedSurfaceIds: [fileNavigator, searchResults, gitChanges, diagnostics, logs],
+        minimizedSurfaceIds: [searchResults, gitChanges, chat, logs],
+        pinnedSurfaceIds: [fileNavigator, searchResults, gitChanges, chat, diagnostics, logs],
         recipeIds: [CLASSIC_RECIPE_ID],
         runningSurfaceIds: [terminal],
         visibleSingletonSurfaceIds: [fileNavigator, diagnostics],
@@ -144,6 +146,16 @@ describe('tiling surface layout builders', () => {
       rootNodeId: CLASSIC_ROOT_NODE_ID,
       surfaceRegistryVersion: 1,
       surfaces: [
+        {
+          cardinality: 'singleton',
+          id: chat,
+          lifecycle: 'durable',
+          ownerContextKey: undefined,
+          ownerSurfaceId: undefined,
+          placement: { kind: 'recipe-slot', slot: 'secondary-side' },
+          title: 'Chat',
+          type: 'chat',
+        },
         {
           cardinality: 'singleton',
           id: diagnostics,

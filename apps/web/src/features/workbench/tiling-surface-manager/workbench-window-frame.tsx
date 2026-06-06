@@ -4,6 +4,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { WorkbenchSurfaceHost } from './workbench-surface-host'
 import { WorkbenchTabStrip } from './workbench-tab-strip'
 import { WorkbenchWindowControlButton } from './workbench-window-control-button'
+import { CLASSIC_DIAGNOSTICS_WINDOW_ID } from './layout-builders'
 import { layoutRectStyle } from './workbench-layout-style'
 import type { LayoutRect } from './layout-geometry'
 import type { LayoutOperation } from './layout-types'
@@ -26,6 +27,19 @@ export function WorkbenchWindowFrame({
   const window = node.window
   const activeSurface = node.activeSurface
   const maximized = window.mode === 'maximized'
+  const classicBottomToolPane = window.id === CLASSIC_DIAGNOSTICS_WINDOW_ID
+  let minimizeLabel = 'Minimize surface'
+  let closeLabel = 'Close surface'
+
+  if (classicBottomToolPane) {
+    minimizeLabel = 'Hide bottom tool pane'
+    closeLabel = 'Close bottom tool pane'
+  }
+
+  if (!classicBottomToolPane && activeSurface) {
+    minimizeLabel = `Minimize ${activeSurface.title}`
+    closeLabel = `Close ${activeSurface.title}`
+  }
 
   return (
     <section
@@ -45,11 +59,15 @@ export function WorkbenchWindowFrame({
     >
       <header className='border-border/70 bg-background/85 flex h-10 shrink-0 items-end gap-2 border-b pt-1'>
         <WorkbenchTabStrip surfaces={node.surfaces} window={window} onDispatch={onDispatch} />
-        <div className='flex h-8 shrink-0 items-center gap-0.5 pb-1'>
+        <div className='border-border/70 ml-1 flex h-8 shrink-0 items-center gap-0.5 border-l pb-1 pl-1'>
           <WorkbenchWindowControlButton
-            disabled={!activeSurface?.capabilities.canMinimize}
-            label={activeSurface ? `Minimize ${activeSurface.title}` : 'Minimize surface'}
+            disabled={!classicBottomToolPane && !activeSurface?.capabilities.canMinimize}
+            label={minimizeLabel}
             onClick={() => {
+              if (classicBottomToolPane) {
+                onDispatch({ type: 'hideClassicBottomToolPane' })
+                return
+              }
               if (activeSurface) {
                 onDispatch({ surfaceId: activeSurface.id, type: 'minimizeSurface' })
               }
@@ -73,9 +91,13 @@ export function WorkbenchWindowFrame({
             )}
           </WorkbenchWindowControlButton>
           <WorkbenchWindowControlButton
-            disabled={!activeSurface?.capabilities.canClose}
-            label={activeSurface ? `Close ${activeSurface.title}` : 'Close surface'}
+            disabled={!classicBottomToolPane && !activeSurface?.capabilities.canClose}
+            label={closeLabel}
             onClick={() => {
+              if (classicBottomToolPane) {
+                onDispatch({ type: 'hideClassicBottomToolPane' })
+                return
+              }
               if (activeSurface) {
                 onDispatch({ surfaceId: activeSurface.id, type: 'closeSurface' })
               }

@@ -113,6 +113,7 @@ type SerializedSurfaceInput = SerializedWorkspaceSurfaceEntry & {
 
 const CUSTOM_WINDOW_COMMAND_CATEGORY = 'Window Management' as const
 const KNOWN_SURFACE_TYPES = new Set<SurfaceType>([
+  'chat',
   'diagnostics',
   'diff',
   'file-editor',
@@ -480,7 +481,7 @@ function restoreLayoutFromData(
     policiesById,
     rail: restoredRail(data.rail, surfaces.idMap, fallbackLayout.rail),
     recipesById,
-    rootNodeId: optionalNodeId(data.rootNodeId),
+    rootNodeId: optionalNodeId(data.rootNodeId) ?? null,
     surfaceRegistryVersion: SURFACE_REGISTRY_VERSION,
     surfacesById: surfaces.surfacesById,
     version: WORKSPACE_LAYOUT_VERSION,
@@ -652,12 +653,16 @@ function restoredLayoutCommandSlot(value: unknown): LayoutCommandSurfaceSlot | n
 function restoredLayoutCommandPayload(value: unknown) {
   if (!isRecord(value)) return undefined
   if (!isString(value.value)) return undefined
-  if (value.kind !== 'file' && value.kind !== 'quicklink' && value.kind !== 'url') return undefined
+  if (!isLayoutCommandPayloadKind(value.kind)) return undefined
 
   return {
     kind: value.kind,
     value: value.value,
   }
+}
+
+function isLayoutCommandPayloadKind(value: unknown): value is 'file' | 'quicklink' | 'url' {
+  return value === 'file' || value === 'quicklink' || value === 'url'
 }
 
 function restoredHotkeyPresets(value: unknown, knownCommandIds: ReadonlySet<string>) {

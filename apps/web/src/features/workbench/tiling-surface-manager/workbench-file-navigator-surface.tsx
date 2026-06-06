@@ -1,8 +1,8 @@
 import { FilesPane } from '@/components/workspace/file-tree/components/files-pane'
-import { SidebarHeader } from '@/components/workspace/sidebar/components/sidebar-header'
 
 import { WorkbenchPanelUnavailable } from '../workbench-panel-unavailable'
 import type { WorkbenchSurfaceRendererProps } from './surface-renderer-registry'
+import { ToolPaneHeader } from './tool-pane-header'
 import { useWorkbenchEditorSurfaceContext } from './use-workbench-editor-surface-context'
 
 export function WorkbenchFileNavigatorSurface({ surface }: WorkbenchSurfaceRendererProps) {
@@ -16,7 +16,7 @@ export function WorkbenchFileNavigatorSurface({ surface }: WorkbenchSurfaceRende
 
   return (
     <section className='bg-background flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
-      <SidebarHeader
+      <ToolPaneHeader
         tab='files'
         treeState={toolSurfaceState.treeState}
         visibleTreeItemCount={toolSurfaceState.visibleTreeItemCount}

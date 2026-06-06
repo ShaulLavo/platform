@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import type { SnapshotDiffDocumentInput } from '@/features/git/diff-document'
 
 import {
   CLASSIC_EDITOR_WINDOW_ID,
@@ -294,7 +294,7 @@ describe('tiling surface layout persistence', () => {
         },
       ],
       title: 'Invalid Layout Command',
-    } as WorkspaceLayoutCommand
+    } as unknown as WorkspaceLayoutCommand
     const presetId = hotkeyPresetId('mixed-preset')
     const missingCommandId = windowManagementCommandId('missing-command')
     const serialized = {
@@ -401,11 +401,12 @@ function frame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {
   }
 }
 
-function snapshotDiff(path: string): FileDiff {
+function snapshotDiff(path: string): SnapshotDiffDocumentInput {
   return {
+    hunks: [],
     newObjectId: 'abcdef1234567890',
+    patch: '',
     path,
     staged: false,
-    worktree: 'modified',
   }
 }

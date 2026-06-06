@@ -1,70 +1,96 @@
 # Repository Guidelines
 
-## React File Organization
+## Code Organization
 
-- Put each React component in its own file. Do not define multiple exported components in a single component file.
-- Put each React hook in its own file. Hook files should focus on the hook and its direct React-specific wiring.
-- Do not keep general-purpose utilities inside React component or hook files. Move pure helpers, formatters, data transforms, constants, and other reusable non-React logic into dedicated utility files.
-- Prefer colocated utility files when the helper is feature-specific, and shared utility modules when the helper is reused across features.
-- Avoid manual React memoization by default. Do not add `memo`, `useMemo`, or `useCallback` just to stabilize render-time values or callbacks; let the React Compiler optimize ordinary component code.
-- Use manual memoization only when there is a measured performance issue, a library API requires stable identity, or a hook dependency would otherwise cause incorrect behavior. Leave a short comment explaining the reason when adding it.
+- Group by feature, then by kind:
+  - `components/` — React render components only (`.tsx`)
+  - `hooks/` — `use-*` hooks
+  - `providers/` — context providers and `*-context.ts` modules
+  - `utils/` — pure non-React code
+  - `tests/` — feature tests
+- Do not create empty folders.
+- Import exact files through `@/`. Do not add barrel `index.ts` files.
 
-## Feature Folder Structure
+## Control Flow
 
-- Group files by feature/concern, not by a single flat directory. When a folder accumulates many unrelated concerns, split it into per-feature subfolders.
-- Within each feature folder, separate files by kind into these subfolders:
-  - `components/` — React render components only (`.tsx`). Nothing else lives here.
-  - `hooks/` — `use-*` hooks.
-  - `providers/` — React context providers and their context-object modules (`*-provider.*`, `*-context.ts`). Keep these out of `components/`.
-  - `utils/` — pure non-React code: models, types, helpers, constants, stores.
-  - `tests/` — `*.test.ts(x)` files for that feature.
-- Omit any subfolder a feature does not need; do not create empty ones.
-- Cross-feature primitives shared by multiple features go in a `shared/` feature folder using the same subfolder split.
-- Import modules by their exact path via the `@/` alias. Do not add barrel `index.ts` files.
+- The `never-nester` skill is part of every development task: `/Users/shaul/.agents/skills/never-nester/SKILL.md`.
+- Keep nesting depth to 3 or less.
+- Use guard clauses and early returns. Keep the happy path shallow.
+- In loops, use inverted conditions with `continue` instead of wrapping the body in `if`.
+- Extract inner logic into named functions when inversion is not enough.
+- Do not use `else` after an early return.
+- Never use nested ternaries. Split the logic into `if` statements or a named helper.
 
-## Naming
+## React Code
 
-- Do not prefix file or symbol names with the name of the folder that already conveys it (e.g. inside a `workspace/` or `terminal/` folder, name files `sidebar.tsx` / `terminal-tab.tsx`, not `workspace-sidebar.tsx` / `workspace-terminal-tab.tsx`).
-- Keep a qualifier only when it carries real meaning beyond the folder — domain types (`WorkspaceCache`, `WorkspaceLayout`, `WorkspaceCommand`), domain concepts (a `workspacePath` is a path within the workspace), or a top-level root component (`WorkspaceView`) — not when it is purely the redundant folder name.
-- When dropping a redundant prefix, rename the file, its exported symbols, and all call sites together in one pass (see Refactoring Policy).
+- One component per file. Do not export multiple components from one component file.
+- One hook per file. Keep hook files focused on the hook and its React wiring.
+- Keep pure helpers out of component and hook files. Move formatters, transforms, constants, stores, models, and other reusable logic into `utils/`.
+- Keep providers and context-object modules in `providers/`, not `components/`.
+- Avoid manual React memoization. Do not add `memo`, `useMemo`, or `useCallback` for ordinary render values or callbacks. Use them only for measured performance issues, required stable identity, or correctness. Add a short reason when you do.
 
-## Refactoring Policy
+## Naming And Refactors
 
+- Do not repeat the folder name in file or symbol names. In `workspace/`, prefer `sidebar.tsx`, not `workspace-sidebar.tsx`.
+- Keep qualifiers only when they add meaning: domain types like `WorkspaceCommand`, domain terms like `workspacePath`, or root components like `WorkspaceView`.
+- When removing a redundant prefix, rename the file, exports, and all call sites in one pass.
 - No backward compatibility shims.
 - No legacy aliases.
 - Delete obsolete tests instead of preserving old behavior.
-- Rename all affected symbols and call sites in one pass.
 - Remove duplicate code aggressively.
+
+## TypeScript Fixes
+
+- Treat readonly/mutable mismatches as contract bugs first.
+- Do not copy containers just to satisfy TypeScript.
+- If a callee does not mutate a value, make its parameter or model type accept readonly data.
+- Avoid fake fixes like `sizes: [...node.sizes]`. Copy only for a real ownership boundary or real mutation.
 
 ## Testing
 
-### Runner and environments
+- Tests run on Vitest.
+- Apps run under Bun: `bun --bun vitest`.
+- Runtime-neutral `packages/*` run plain `vitest`.
+- Use these environments, in this order of preference: real browser, happy-dom, never jsdom.
+- Test projects:
+  - `node` — pure logic and in-process server tests. Runs under `--bun`.
+  - `dom` — hook and component tests in happy-dom. Runs under `--bun`.
+  - `browser` — real layout/paint `*.browser.tsx` tests via Playwright. Runs under plain Node because Vitest browser orchestration breaks under `--bun`.
+- The `--bun` flag is required for app tests. Without it, `bun:sqlite`, `Bun.spawn`, and other Bun APIs do not resolve. Coverage is the only casualty; we do not use it.
 
-- Tests run on **Vitest under the Bun runtime** (`bun --bun vitest`). The `--bun` flag is required: `bun:sqlite`, `Bun.spawn`, and other Bun APIs do not resolve under Node. The only casualty is coverage, which we do not use.
-- Three Vitest projects (test worlds), in environment-preference order **real browser > happy-dom > jsdom — never jsdom**:
-  - `node` — pure logic and anything that drives the in-process server. Runs under `--bun`.
-  - `dom` — hooks and component/render tests in **happy-dom**. Runs under `--bun`.
-  - `browser` — real-paint/layout/visual `*.browser.tsx` tests via Playwright. Runs under **plain Node** (Vitest browser mode's orchestration breaks under `--bun`).
-- `apps/*` run `bun --bun vitest`; runtime-neutral `packages/*` run plain `vitest` (Node).
+### Use Real App Code
 
-### Use the real thing — do not mock our own code
+- Import `{ test, expect }` from `apps/web/test/fixtures.ts`, not from `vitest`, for app tests.
+- Drive the real in-process Elysia server. The `server` fixture builds `createApp` over a temp workspace. The `client` fixture is a real `treaty` client wired to `app.handle`.
+- Do not `mock.module` or `vi.mock` our server, client, or feature modules.
+- Production code calls `getClient()` from `@/lib/client`. Tests inject the real client with `setClient` and reset it with `resetClient`.
+- Build real state. For example, `git init` a temp repo and write real files, then assert through real routes.
 
-- Drive the **real in-process Elysia server** in tests. Import `{ test, expect }` from the shared test API (`apps/web/test/fixtures.ts`), not from `vitest` directly; the `server` fixture builds a real `createApp` over a temp workspace and the `client` fixture is a real `treaty` client wired to `app.handle` (no socket, no port).
-- **Never `mock.module`/`vi.mock` our own server, client, or feature modules.** The RPC client is injectable: production code calls `getClient()` from `@/lib/client` (there is no bare `client` export); the `client` fixture points it at the real server via `setClient`/`resetClient`.
-- Build **real state** rather than stubbing responses — e.g. `git init` a real repo and write real files into the temp workspace, then assert through the real routes.
+### Mock Boundaries Only
 
-### Mock only the genuine boundary
+- Mock only the outside world and unspawnable processes.
+- Use MSW or injected `fetcher`s for third-party HTTP. Set `onUnhandledRequest: 'error'`.
+- Use injectable factories for PTY and LSP child processes.
+- Mock serialization edges a real server cannot reproduce, such as Eden `Date` normalization.
+- `MockProviderAdapter` is a production adapter, not a test stub. Prefer it over the real Codex adapter, which spawns an external binary.
+- Browser tests cannot import the Bun-native server into Node. Spawn the real server as a child `bun` process behind the Vite proxy in `apps/web/test/env/browser-file-server.ts`.
+- Node and dom tests import the server in-process.
 
-- The only legitimate fakes are the **outside world** and **unspawnable processes**: third-party HTTP (font downloads, GitHub, provider APIs) via MSW or an injected `fetcher` (use `onUnhandledRequest: 'error'`); PTY and LSP child processes via their injectable factories; and serialization edges a real server cannot reproduce (e.g. Eden `Date` normalization). `MockProviderAdapter` is a production adapter, not a test stub — prefer it over the real Codex adapter, which spawns an external binary.
-- Browser tests cannot import the Bun-native server into Node, so they spawn the real server as a child `bun` process behind a Vite proxy (see `apps/web/test/env/browser-file-server.ts`). Node/dom tests import it in-process instead.
+### Test Hygiene
 
-### Structure and hygiene
+- Shared test code lives under `test/`.
+- Use `fixtures.ts` for `test.extend`.
+- Use `render.tsx`; `renderWithProviders` mirrors the app's `main.tsx` provider stack.
+- Put shared builders in `test/factories/`.
+- Put environment and MSW setup in `test/env/` and `test/msw/`.
+- Do not redefine per-file factories.
+- Do not hand-roll provider trees.
+- Avoid import-time nondeterminism, such as `Math.random()` at module scope. Use deterministic or seedable ids.
 
-- Shared test code lives under `test/`: `fixtures.ts` (the `test.extend` entry point), `render.tsx` (`renderWithProviders` mirrors the app's `main.tsx` provider stack), `factories/` (shared builders), `env/` and `msw/`. Do not redefine per-file factories or hand-roll provider trees.
-- Avoid module-level non-determinism (e.g. `Math.random()` evaluated at import) — it produces order-dependent failures under Vitest's module graph. Use deterministic or seedable ids.
+### Bun/Vitest Gotchas
 
-### Bun-under-Vitest gotchas
-
-- Some Bun-native `import.meta` properties are not populated under Vitest's transform: `import.meta.path` and `import.meta.dir` come back `undefined` (`import.meta.dirname` works). Production code that relies on them keeps working under real `bun`, but a test exercising that path will fail — prefer not to depend on Bun-only `import.meta` fields in code that tests must drive.
-- A cold first run of process-spawning integration tests (TypeScript language server, git, PTY) can exceed Vitest's 5s default timeout; warm runs fit comfortably. If a cold CI run flakes on these, raise `testTimeout` for that project.
-- **node-pty cannot allocate a PTY from inside a Vitest worker** (it works under `bun test`, the main process, but Vitest has no in-process pool — threads and forks both fail). The single real-bridge terminal test is skipped under Vitest with a `TODO(pty-in-tests)`; `FakePty` covers the rest of the terminal logic. This is unresolved — see the TODO.
+- Under Vitest transforms, `import.meta.path` and `import.meta.dir` are `undefined`. `import.meta.dirname` works. Avoid Bun-only `import.meta` fields in code that tests must drive.
+- Cold process-spawning tests can exceed Vitest's 5s default timeout. If CI flakes cold, raise `testTimeout` for that project.
+- The node-pty bridge must spawn the real Node binary, not Bun's `--bun` node shim.
+- Under `bun --bun`, Bun prepends a temp `node` symlink to `PATH`. `Bun.spawn(['node', ...])` then runs Bun, and `@lydell/node-pty` breaks with `this._socket.write is not a function`.
+- Use `resolveNodeBinary()` in `terminal/service.ts`; it walks `PATH` and skips Bun-backed `node`. Production plain `bun` already resolves `node` correctly, but this protects tests.

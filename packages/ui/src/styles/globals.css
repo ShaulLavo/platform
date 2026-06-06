@@ -4,7 +4,7 @@
 @import '@fontsource-variable/jetbrains-mono';
 
 @custom-variant dark (&:is(.dark *));
-@source '../../../apps/**/*.{ts,tsx}';
+@source '../../../../apps/**/*.{ts,tsx}';
 @source '../../../components/**/*.{ts,tsx}';
 @source '../**/*.{ts,tsx}';
 @source '../../../../node_modules/.bun/node_modules/streamdown/dist/*.js';

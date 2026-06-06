@@ -71,16 +71,17 @@ about workflow-shaped layouts:
 
 1. The workbench is powered by the tiling surface manager from day one.
 2. Default first run uses a familiar classic-shaped recipe on top of that
-   tiling model: file/navigation surfaces side-like, editor center, terminal
-   bottom-like, and tabs where users expect them.
+   tiling model, defined in `default-recipe.md`: tool surfaces in left nested
+   panes, editor center/main view, Terminal/Problems in the bottom tool pane,
+   and tabs where users expect them.
 3. Classic editor behavior must be credible onboarding and compatibility, but
    classic is a recipe, not the architecture ceiling.
 4. The rail primarily focuses/restores stateful surfaces and recipes. It is not
    a separate "tool" model.
 5. Search is a durable singleton surface. Opening search restores its query,
    filters, selection, and result state when one exists.
-6. Search defaults to a small side-like tiled surface, but can be moved,
-   maximized, tabbed, split, or minimized.
+6. Search defaults to the left nested tool panes, but can be moved, maximized,
+   tabbed, split, or minimized.
 7. Search durability means preserving search state, not keeping the heavy search
    UI rendered in the background. Hidden or minimized search can unmount and
    rehydrate from its surface state.

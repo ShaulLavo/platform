@@ -181,7 +181,7 @@ function fileWithExcerptCount(lineCount: number): SearchResultFileBlock {
     path: 'test.ts',
     pathLabel: 'test.ts',
     pending: false,
-  } as SearchResultFileBlock
+  } as unknown as SearchResultFileBlock
 }
 
 function documentWithLineCount(lineCount: number): SearchResultFileDocument {
@@ -190,7 +190,7 @@ function documentWithLineCount(lineCount: number): SearchResultFileDocument {
     lines: Array.from({ length: lineCount }, (_, index) => ({ id: `line:${index}` })),
     path: 'test.ts',
     text: '',
-  } as SearchResultFileDocument
+  } as unknown as SearchResultFileDocument
 }
 
 function textDocument(): SearchResultFileDocument {
@@ -232,7 +232,7 @@ function textDocument(): SearchResultFileDocument {
     ],
     path: 'test.ts',
     text: 'alpha\nbeta\ngamma',
-  } as SearchResultFileDocument
+  } as unknown as SearchResultFileDocument
 }
 
 function lineWindow(start: number, end: number) {

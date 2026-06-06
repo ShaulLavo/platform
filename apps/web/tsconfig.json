@@ -1,10 +1,8 @@
 {
+  // Solution config: the web app has two compilation worlds — browser app
+  // sources (tsconfig.app.json) and the Node-side Vite config
+  // (tsconfig.node.json). It compiles nothing itself; `typecheck` runs
+  // `tsgo --build` so both referenced projects are type-checked.
   "files": [],
-  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"],
-      "@workspace/ui/*": ["../../packages/ui/src/*"]
-    }
-  }
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
 }

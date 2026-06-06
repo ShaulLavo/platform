@@ -1,4 +1,5 @@
 import {
+  ChatCircleTextIcon,
   FileCodeIcon,
   FileDashedIcon,
   FileMagnifyingGlassIcon,
@@ -19,6 +20,7 @@ export function WorkbenchSurfaceIcon({
   readonly className?: string
   readonly type: SurfaceType
 }) {
+  if (type === 'chat') return <ChatCircleTextIcon className={className} />
   if (type === 'file-editor') return <FileCodeIcon className={className} />
   if (type === 'diff') return <FilesIcon className={className} />
   if (type === 'search-results') return <FileMagnifyingGlassIcon className={className} />

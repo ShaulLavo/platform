@@ -14,13 +14,13 @@ import {
   editorTabInsertionEdge,
   type EditorTabDragController,
 } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
-import { LegacyTabCloseButton } from '@/components/workspace/editor-tabs/components/legacy-tab-close-button'
+import { TabCloseButton } from '@/components/workspace/editor-tabs/components/tab-close-button'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorPaneSplitDirection } from '@/features/editor/state/editor-pane-state'
 import { ContextMenu, ContextMenuTrigger } from '@workspace/ui/components/context-menu'
 import { cn } from '@workspace/ui/lib/utils'
 
-export function LegacyEditorTabList({
+export function EditorTabList({
   drag,
   selectedTabRef,
   tabSizing,
@@ -96,7 +96,7 @@ export function LegacyEditorTabList({
                   </span>
                 ) : null}
               </button>
-              <LegacyTabCloseButton tab={tab} onClose={onClose} />
+              <TabCloseButton tab={tab} onClose={onClose} />
             </ContextMenuTrigger>
             <EditorTabContextMenuContent
               tab={tab}

@@ -2,6 +2,7 @@ import { createContext } from 'react'
 
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { GitStoreApi } from '@/features/git/state'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
@@ -11,6 +12,7 @@ import type { Surface, SurfaceId } from './layout-types'
 
 export type WorkbenchEditorSurfaceContextValue = {
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+  readonly gitStore: GitStoreApi
   readonly requestCloseTab: RequestCloseTab
   readonly requestCloseTabs: RequestCloseTabs
   readonly rootPath: string

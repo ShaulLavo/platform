@@ -1,11 +1,10 @@
-import type { ComponentType } from 'react'
+import type { FunctionComponent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import {
   DockviewReact,
   type DockviewApi,
   type DockviewReadyEvent,
   type IDockviewPanelProps,
-  type IDisposable,
 } from 'dockview-react'
 
 import {
@@ -43,12 +42,16 @@ import type {
 import { WorkbenchSpikeWatermark } from '@/features/workbench-spike/workbench-spike-watermark'
 
 const dockviewComponents = {
-  workbenchSpikePanel: WorkbenchSpikeDockviewPanel as ComponentType<IDockviewPanelProps>,
+  workbenchSpikePanel: WorkbenchSpikeDockviewPanel as FunctionComponent<IDockviewPanelProps>,
+}
+
+type Disposable = {
+  dispose(): void
 }
 
 export function WorkbenchSpikeApp() {
   const apiRef = useRef<DockviewApi | null>(null)
-  const disposablesRef = useRef<IDisposable[]>([])
+  const disposablesRef = useRef<Disposable[]>([])
   const panelSequenceRef = useRef(2)
   const panelsRef = useRef<readonly WorkbenchSpikePanel[]>([])
   const [metrics, setMetrics] = useState(createWorkbenchSpikeMetrics)
@@ -210,7 +213,7 @@ function terminalPlacement(api: DockviewApi) {
   }
 }
 
-function replaceDisposables(target: IDisposable[], next: IDisposable[]) {
+function replaceDisposables(target: Disposable[], next: Disposable[]) {
   for (const disposable of target) disposable.dispose()
   target.splice(0, target.length, ...next)
 }

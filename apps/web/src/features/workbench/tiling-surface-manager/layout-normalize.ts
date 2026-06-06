@@ -15,6 +15,7 @@ import type {
 } from './layout-types'
 
 const MIN_SPLIT_SIZE = 0.05
+const CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID = workbenchWindowId('classic:diagnostics')
 
 type TreeNormalizationResult = {
   readonly nodesById: Record<string, LayoutNode>
@@ -412,7 +413,7 @@ function ensureFallbackWindow(
     mode: 'normal',
     pinnedSurfaceIds: [],
     surfaceIds: [fallbackSurface.id],
-  }
+  } satisfies WorkbenchWindow
   const node = {
     id: nodeId,
     kind: 'window',
@@ -425,7 +426,10 @@ function ensureFallbackWindow(
     activeWindowId: windowId,
     nodesById: { [nodeId]: node },
     rootNodeId: nodeId,
-    windowsById: { [windowId]: window },
+    windowsById: {
+      ...hiddenClassicBottomToolPaneWindowById(layout),
+      [windowId]: window,
+    },
   }
 }
 
@@ -434,6 +438,7 @@ function fallbackSurfaceForLayout(layout: WorkspaceLayout) {
     ...layout.rail.minimizedSurfaceIds,
     ...layout.rail.runningSurfaceIds,
   ])
+  const hiddenClassicBottomSurfaceIds = hiddenClassicBottomToolPaneSurfaceIds(layout)
   const preferredSurfaceIds = uniqueSurfaceIds([
     ...(layout.activeSurfaceId ? [layout.activeSurfaceId] : []),
     ...layout.mruSurfaceIds,
@@ -443,6 +448,7 @@ function fallbackSurfaceForLayout(layout: WorkspaceLayout) {
   for (const surfaceId of preferredSurfaceIds) {
     const surface = layout.surfacesById[surfaceId]
     if (!surface) continue
+    if (hiddenClassicBottomSurfaceIds.has(surfaceId)) continue
     if (railSurfaceIds.has(surfaceId)) continue
     if (!canFallbackSurface(surface)) continue
 
@@ -462,11 +468,12 @@ function canFallbackSurface(surface: Surface) {
 
 function routeOrphanSurfaces(layout: WorkspaceLayout): WorkspaceLayout {
   const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))
+  const hiddenClassicBottomSurfaceIds = hiddenClassicBottomToolPaneSurfaceIds(layout)
   const surfacesById: Record<string, Surface> = {}
   let rail = layout.rail
 
   for (const surface of Object.values(layout.surfacesById)) {
-    if (visibleSurfaceIds.has(surface.id)) {
+    if (visibleSurfaceIds.has(surface.id) || hiddenClassicBottomSurfaceIds.has(surface.id)) {
       surfacesById[surface.id] = surface
       continue
     }
@@ -598,8 +605,12 @@ function repairMruWindowIds(layout: WorkspaceLayout) {
 
 function repairRailState(layout: WorkspaceLayout): RailState {
   const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))
+  const hiddenClassicBottomSurfaceIds = hiddenClassicBottomToolPaneSurfaceIds(layout)
   const minimizedSurfaceIds = uniqueSurfaceIds(layout.rail.minimizedSurfaceIds).filter(
-    (surfaceId) => Boolean(layout.surfacesById[surfaceId]) && !visibleSurfaceIds.has(surfaceId),
+    (surfaceId) =>
+      Boolean(layout.surfacesById[surfaceId]) &&
+      !visibleSurfaceIds.has(surfaceId) &&
+      !hiddenClassicBottomSurfaceIds.has(surfaceId),
   )
   const runningSurfaceIds = runningSurfaceIdsForLayout(layout)
 
@@ -633,6 +644,22 @@ function visibleSingletonSurfaceIdsForLayout(
     .filter((surface) => surface.cardinality === 'singleton')
     .filter((surface) => visibleSurfaceIds.has(surface.id))
     .map((surface) => surface.id)
+}
+
+function hiddenClassicBottomToolPaneSurfaceIds(layout: WorkspaceLayout) {
+  const window = layout.windowsById[CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID]
+  if (!window) return new Set<SurfaceId>()
+  if (findNodeIdForWindow(layout, CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID)) return new Set<SurfaceId>()
+
+  return new Set(window.surfaceIds)
+}
+
+function hiddenClassicBottomToolPaneWindowById(layout: WorkspaceLayout) {
+  const window = layout.windowsById[CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID]
+  if (!window) return {}
+  if (findNodeIdForWindow(layout, CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID)) return {}
+
+  return { [CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID]: window }
 }
 
 function removeInvalidTransientSurfaces(

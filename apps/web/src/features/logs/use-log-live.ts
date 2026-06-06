@@ -16,11 +16,13 @@ export function useLogLive(filters: LogDashboardFilters, enabled: boolean) {
     if (!enabled) return
 
     const controller = new AbortController()
-    const batcher = createLiveEventBatcher((events) => {
-      queryClient.setQueryData<LogEventsResult>(logsKeys.events(queryFilters), (current) =>
-        mergeLiveLogItems(current, events),
-      )
-    })
+    const batcher = createLiveEventBatcher<Extract<LogLiveStreamItem, { kind: 'event' }>>(
+      (events) => {
+        queryClient.setQueryData<LogEventsResult>(logsKeys.events(queryFilters), (current) =>
+          mergeLiveLogItems(current, events),
+        )
+      },
+    )
 
     void runLogLiveStream(filters, controller.signal, (item) => {
       if (item.kind !== 'event') return

@@ -31,7 +31,7 @@ export async function collectWorkspaceSearch(
       continue
     }
 
-    done = event
+    if (event.type === 'done') done = event
   }
 
   return {

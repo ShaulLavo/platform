@@ -136,14 +136,14 @@ export function WorkbenchTabStrip({
               </ChromeTabSelectButton>
               <div className='flex h-full w-7 shrink-0 items-center justify-center'>
                 <ChromeTabCloseButton
-                  aria-label={`Close ${surface.title}`}
+                  aria-label={`Close ${surface.title} tab`}
                   className={cn(
                     'size-5 opacity-0 group-focus-within/chrome-tab:opacity-100 group-hover/chrome-tab:opacity-100',
                     active && 'opacity-100',
                     !surface.capabilities.canClose && 'pointer-events-none opacity-30',
                   )}
                   disabled={!surface.capabilities.canClose}
-                  title={`Close ${surface.title}`}
+                  title={`Close ${surface.title} tab`}
                   onClick={(event) => {
                     event.stopPropagation()
                     onDispatch({ surfaceId: surface.id, type: 'closeSurface' })

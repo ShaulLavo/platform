@@ -34,6 +34,14 @@ placement policies. No V1 generic `lane`, `stacked`, `floating`, or `spatial`
 layout node kinds. Workflow lanes live inside workflow surfaces or policies
 until a prototype proves they need to become general primitives.
 
+## Default Recipe Reference
+
+The canonical default recipe spec is `default-recipe.md`. It uses the checked-in
+sketch and editable Excalidraw source as the visual reference, but the code model
+must remain ordinary surfaces, windows, split nodes, rail state, and recipe
+policy. Do not add a `sidebar`, dock, lane, or compatibility model to represent
+the default recipe.
+
 ## Technical Design Alignment
 
 This plan should be read as the execution path for `technical-design.md`.
@@ -469,9 +477,9 @@ Exit criteria:
 ## Phase 7 - File And Diff Surface Cutover
 
 Status: completed 2026-06-05. Runtime file/diff layout is now owned by
-`WorkspaceLayout`; legacy editor-pane state is synchronized from surfaces only
-as compatibility data for editor documents, dirty close, and cache persistence.
-The custom renderer owns file, diff, and empty-editor surfaces, and production
+`WorkspaceLayout`; editor-pane selection data is derived from surfaces for editor
+documents, dirty close, and cache persistence until the old owner is deleted. The
+custom renderer owns file, diff, and empty-editor surfaces, and production
 `WorkspaceView` no longer uses `WorkbenchDockview`.
 
 Goal: replace editor-pane layout and Dockview for file/diff editor workflows.
@@ -517,7 +525,8 @@ Exit criteria:
 
 ## Phase 8 - Rail And Classic Singleton Surfaces
 
-Goal: turn fixed sidebar concepts into surface-manager concepts.
+Goal: turn fixed sidebar concepts into rail commands and recipe-controlled
+nested tool panes in the surface manager.
 
 Work:
 
@@ -527,13 +536,25 @@ Work:
 - Rehost File Navigator as durable singleton surface.
 - Rehost Git Changes as durable singleton surface.
 - Rehost Diagnostics/Problems as durable singleton surface.
-- Rehost Logs as a surface if the existing Logs panel remains part of V1.
+- Rehost Logs as a separate rail surface if the existing Logs panel remains
+  part of V1; do not fold Logs into the temporary Terminal/Problems bottom-pane
+  handle.
 - Register Chat only as a current UI surface if needed; keep full agent surface
   semantics in the required follow-up agent plan.
-- Implement classic recipe placement:
-  - navigator/search/git side-like;
-  - editor center;
-  - terminal/problems bottom-like;
+- Implement the default recipe from `default-recipe.md`:
+  - Files/Search/Git/Chat/Logs prefer left nested tool panes;
+  - file editors, diffs, and promoted previews prefer the main view;
+  - terminal/problems stay in one classic bottom tool pane, with the Terminal
+    rail entry acting as the pane handle and Problems remaining a tab in that
+    pane;
+  - the recipe uses ordinary nested split nodes only, with no sidebar/dock/lane
+    layout primitive;
+  - first tool surface can occupy the available work area when no main surface
+    is visible;
+  - opening a main surface creates/restores the main view and places tool
+    surfaces into the left nested tool-pane group;
+  - multiple tool surfaces may be visible on the left as separate nested
+    windows/panes;
   - tabs where users expect them.
 - Replace activity bar sidebar toggles with rail focus/restore/minimize
   operations.
@@ -549,15 +570,25 @@ Delete in this phase:
 Tests:
 
 - Multiple singleton tool surfaces can be visible at once.
+- Multiple tool windows can be visible in the left nested tool-pane group.
+- Left nested tool panes can coexist with a full-height main window on the
+  right.
 - Minimize sends durable singleton surfaces to rail.
 - Restore returns singleton surfaces to last useful placement.
+- Restore ignores stale placements that target missing or hidden windows and
+  returns singleton surfaces through default recipe placement.
+- Clicking an active rail item minimizes the corresponding tool surface.
+- Terminal rail toggles the whole classic bottom tool pane, preserving the
+  Problems tab and terminal session.
 - File Navigator and Git Changes preserve selection/state hooks.
 - Classic first-run layout still feels familiar.
 
 Exit criteria:
 
-- Sidebar is either deleted or reduced to a rail/tool presentation with no
-  independent layout state.
+- The old fixed sidebar is either deleted or reduced to rail/tool presentation
+  with no independent layout state.
+- The new default recipe has no `sidebar`, dock, lane, compatibility shim, or
+  duplicate layout truth in code.
 
 ## Phase 9 - Search Results And Search Preview Lifecycle
 
@@ -603,12 +634,15 @@ Goal: move terminal overlay tabs into the surface manager.
 Work:
 
 - Represent each terminal session/tab as a running terminal surface.
+- Delete the temporary Phase 8 bottom-pane one-off once terminal sessions are
+  true running surfaces and the rail has a proper pane/group target.
 - Route terminal creation through `openSurface`.
 - Minimize terminal hides its window while preserving the server session.
 - Close terminal uses registry close policy to dispose the session.
 - Set `canUnmountWhenHidden: false` for terminal surfaces and enforce it in
   `WorkbenchSurfaceHost`.
-- Place terminals through recipe policy, usually bottom-like in classic.
+- Place terminals through recipe policy, usually in the bottom tool pane for the
+  default recipe.
 - Preserve terminal transport, theme sync, and server session semantics.
 
 Delete in this phase:
@@ -617,6 +651,8 @@ Delete in this phase:
 - `workspace-terminal-store.ts`.
 - terminal overlay height persistence.
 - terminal overlay tab strip ownership.
+- the internal terminal tab strip/store still embedded in the current terminal
+  surface renderer.
 
 Tests:
 
@@ -819,7 +855,7 @@ Work:
 - Add resize handles in the overlay layer.
 - Implement adjacent percentage resizing for V1.
 - Add content-aware constraints for editor minimums, terminal usability, and
-  side-like tool widths.
+  nested tool-pane widths.
 - Persist preferred sizes only on intentional resize release.
 
 Tests:
@@ -925,6 +961,10 @@ Exit criteria:
 
 - There is one layout source of truth: `WorkspaceLayout`.
 - No old editor-pane/sidebar/Dockview/terminal-overlay state remains.
+- Triple-check that no legacy layout owners, migration branches,
+  compatibility shims, compatibility aliases, or duplicate state truths remain.
+- Triple-check that no temporary Phase 8 bottom-pane one-off, legacy terminal
+  tab store, compatibility shim, or hidden duplicate pane model remains.
 
 ## Phase 16 - Workflow Recipes And Follow-Up Plans
 
@@ -960,14 +1000,15 @@ Tests:
 
 - Recipe reset shape tests.
 - Saved layout command applies the intended recipe shape and focus order.
-- Sticky manual placement wins over recipe default.
-- Singleton surfaces restore last useful state and placement.
+- Sticky manual placement overrides recipe default only when its concrete target
+  still exists and is visible.
+- Singleton surfaces restore last useful state and last valid placement.
 - Durable surfaces do not jump unexpectedly.
 
 Exit criteria:
 
-- Classic compatibility is solid, and the first workflow-native recipe is ready
-  to build without changing the core model.
+- Classic singleton workflows are stable, and the first workflow-native recipe is
+  ready to build without changing the core model.
 
 ## Suggested PR Slicing
 
@@ -1024,7 +1065,7 @@ bun --cwd apps/web test:browser
 - Center and edge drag/drop work with live previews.
 - Parent/root edge support is either implemented or model-ready and explicitly
   deferred from UI.
-- Resize is constraint-aware enough for editor, terminal, and side-like tool
+- Resize is constraint-aware enough for editor, terminal, and nested tool-pane
   surfaces.
 - Search state is durable while heavy search UI can unmount when hidden.
 - Terminal minimize preserves the running session and stays mounted; close

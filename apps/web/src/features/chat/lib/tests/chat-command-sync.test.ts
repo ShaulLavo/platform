@@ -37,7 +37,7 @@ describe('chat command sync', () => {
           sequence: 9,
           threadId,
         }),
-    } as ChatEnvironment
+    } as unknown as ChatEnvironment
 
     useChatProjectionStore.getState().resetChatProjection()
     await syncThreadProjectionAfterDispatch({
@@ -67,7 +67,7 @@ describe('chat command sync', () => {
           sequence: 10,
           threadId,
         }),
-    } as ChatEnvironment
+    } as unknown as ChatEnvironment
 
     useChatProjectionStore.getState().resetChatProjection()
     await syncThreadProjectionAfterDispatch({

@@ -121,13 +121,11 @@ function cachedWorkspaceState(state: EditorWorkspaceStore): CachedWorkspaceState
     diffViewMode: state.diffViewMode,
     editorHistory: state.editorHistory,
     editorPaneLayout: state.editorPaneLayout,
-    gitPanelOpen: state.gitPanelOpen,
     openFilePaths: state.openFilePaths,
     recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
     rootFolder: state.rootFolder,
     selectedFilePath: state.selectedFilePath,
-    sidebarVisible: state.sidebarVisible,
-    workspacePanelTab: state.workspacePanelTab,
+    workspaceLayout: state.workspaceLayout,
   }
 }
 

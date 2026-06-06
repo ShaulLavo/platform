@@ -1,10 +1,13 @@
+import '@testing-library/jest-dom/vitest'
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen } from '@testing-library/react'
 
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
+import { createGitStore } from '@/features/git/state'
 import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
 import { TerminalStateProvider } from '@/components/workspace/terminal/providers/terminal-state-provider'
 import { ThemeProviderContext } from '@/components/theme-context'
@@ -13,9 +16,13 @@ import type { LoadState } from '@/lib/load-state'
 import type { TreeModel } from '@/lib/tree-model'
 
 import {
+  CLASSIC_DIAGNOSTICS_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
+  createChatSurface,
+  createDiagnosticsSurface,
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
+  createLogsSurface,
   createTerminalSurface,
 } from '../layout-builders'
 import { minimizeSurface, openSurface } from '../layout-operations'
@@ -25,6 +32,11 @@ import type { WorkspaceLayout } from '../layout-types'
 import { WorkbenchEditorSurfaceProvider } from '../workbench-editor-surface-provider'
 import { workbenchEditorSurfaceRendererRegistry } from '../workbench-editor-surface-renderers'
 import { workspaceLayoutForEditorPaneLayout } from '../workbench-editor-surface-layout'
+import { WorkbenchResizeOverlay } from '../workbench-resize-overlay'
+import { layoutNodeId, overlayId } from '../layout-ids'
+import type { LayoutOperation } from '../layout-types'
+import { createWorkspaceLayoutStore } from '../surface-state'
+import { findNodeIdForWindow, visibleSurfaceIdsInOrder } from '../layout-normalize'
 
 describe('WorkbenchLayoutRenderer', () => {
   it('renders an empty layout state', () => {
@@ -50,6 +62,8 @@ describe('WorkbenchLayoutRenderer', () => {
     expect(matchCount(html, 'data-window-id=')).toBeGreaterThanOrEqual(3)
     expect(html).toContain('data-workbench-resize-overlay')
     expect(html).toContain('data-workbench-drop-overlay')
+    expect(html).toContain('pointer-events-none absolute inset-0 z-30')
+    expect(html).toContain('pointer-events-auto absolute')
   })
 
   it('renders multiple tabs in a window', () => {
@@ -61,7 +75,7 @@ describe('WorkbenchLayoutRenderer', () => {
     expect(html).toContain('data-surface-tab-id')
     expect(html).toContain('a.ts')
     expect(html).toContain('b.ts')
-    expect(html).toContain('Close b.ts')
+    expect(html).toContain('Close b.ts tab')
   })
 
   it('renders minimized surfaces in the rail', () => {
@@ -73,6 +87,108 @@ describe('WorkbenchLayoutRenderer', () => {
     expect(html).toContain('data-workbench-rail')
     expect(html).toContain('data-rail-state="minimized"')
     expect(html).toContain('Restore minimized.ts')
+    expect(html).not.toContain('absolute top-3 right-3')
+  })
+
+  it('renders current default rail entries', () => {
+    const html = renderLayout(createEmptyWorkspaceLayout())
+
+    expect(html).toContain('Focus Files')
+    expect(html).toContain('Focus Chat')
+    expect(html).toContain('Focus Logs')
+    expect(html).toContain('Focus Terminal')
+  })
+
+  it('dispatches pointer drag resize operations from handles', () => {
+    const operations: LayoutOperation[] = []
+
+    render(
+      <WorkbenchResizeOverlay
+        resizeHandleRects={[
+          {
+            axis: 'horizontal',
+            handleIndex: 0,
+            id: overlayId('resize:test:0'),
+            rect: { height: 720, width: 8, x: 400, y: 0 },
+            splitId: layoutNodeId('split-test'),
+          },
+        ]}
+        onDispatch={(operation) => operations.push(operation)}
+      />,
+    )
+
+    const handle = screen.getByRole('separator', { name: 'Resize columns' })
+    fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientX: 432, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(handle, { clientX: 432, clientY: 10, pointerId: 1 })
+
+    expect(operations).toEqual([
+      {
+        deltaPx: 32,
+        handleIndex: 0,
+        splitId: layoutNodeId('split-test'),
+        type: 'resizeSplit',
+      },
+    ])
+  })
+
+  it('hides the classic bottom tool pane from its window controls', () => {
+    const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+
+    fireEvent.click(screen.getAllByLabelText('Hide bottom tool pane')[0])
+
+    expect(findNodeIdForWindow(store.getState().layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+  })
+
+  it('closes the classic bottom tool pane from its window close control', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const diagnostics = createDiagnosticsSurface()
+    const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+
+    fireEvent.click(screen.getByLabelText('Close bottom tool pane'))
+
+    const layout = store.getState().layout
+    expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+    expect(layout.surfacesById[terminal.id]).toBeDefined()
+    expect(layout.surfacesById[diagnostics.id]).toBeDefined()
+  })
+
+  it('keeps classic bottom tool pane tab close scoped to the active surface', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const diagnostics = createDiagnosticsSurface()
+    const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+
+    expect(screen.getByLabelText('Close Problems tab')).toBeVisible()
+
+    fireEvent.click(screen.getByLabelText('Close Terminal tab'))
+
+    const layout = store.getState().layout
+    expect(layout.surfacesById[terminal.id]).toBeUndefined()
+    expect(layout.surfacesById[diagnostics.id]).toBeDefined()
+    expect(visibleSurfaceIdsInOrder(layout)).toContain(diagnostics.id)
+    expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toEqual(expect.any(String))
+  })
+
+  it('activates rail panes when another rail pane is already open', () => {
+    const chat = createChatSurface()
+    const logs = createLogsSurface()
+    const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+
+    fireEvent.click(screen.getByLabelText('Restore Chat'))
+
+    expect(store.getState().layout.activeSurfaceId).toBe(chat.id)
+    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'active')
+
+    fireEvent.click(screen.getByLabelText('Restore Logs'))
+
+    expect(store.getState().layout.activeSurfaceId).toBe(logs.id)
+    expect(railButtonForSurface(logs.id)).toHaveAttribute('data-rail-state', 'active')
+    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'visible')
+
+    fireEvent.click(railButtonForSurface(chat.id))
+
+    expect(visibleSurfaceIdsInOrder(store.getState().layout)).not.toContain(chat.id)
+    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'minimized')
   })
 
   it('does not duplicate visible running surfaces in hidden hosts', () => {
@@ -141,10 +257,53 @@ function renderLayout(
   )
 }
 
+function renderInteractiveLayout(layout: WorkspaceLayout) {
+  const store = createWorkspaceLayoutStore(layout, { checkInvariants: false })
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ThemeProviderContext
+        value={{
+          resolvedTheme: 'dark',
+          theme: 'dark',
+          setTheme: noop,
+        }}
+      >
+        <TerminalStateProvider>
+          <FocusContext value={createFocusStore()}>
+            <TooltipProvider>
+              <WorkbenchLayoutProvider store={store}>
+                <WorkbenchLayoutRenderer
+                  initialRect={{
+                    height: 720,
+                    width: 1080,
+                    x: 0,
+                    y: 0,
+                  }}
+                />
+              </WorkbenchLayoutProvider>
+            </TooltipProvider>
+          </FocusContext>
+        </TerminalStateProvider>
+      </ThemeProviderContext>
+    </QueryClientProvider>,
+  )
+
+  return store
+}
+
+function railButtonForSurface(surfaceId: string) {
+  const button = document.querySelector<HTMLButtonElement>(`[data-rail-surface-id="${surfaceId}"]`)
+  if (!button) throw new Error(`Missing rail button ${surfaceId}`)
+
+  return button
+}
+
 function withEditorSurfaceProvider(children: ReactNode) {
   return (
     <WorkbenchEditorSurfaceProvider
       editorKeymapLayers={[]}
+      gitStore={createGitStore()}
       requestCloseTab={() => true}
       requestCloseTabs={() => true}
       rootPath='/repo'

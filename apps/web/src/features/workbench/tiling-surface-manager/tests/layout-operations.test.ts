@@ -1,34 +1,46 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CLASSIC_DIAGNOSTICS_NODE_ID,
+  CLASSIC_DIAGNOSTICS_WINDOW_ID,
   CLASSIC_EDITOR_NODE_ID,
   CLASSIC_EDITOR_WINDOW_ID,
-  CLASSIC_ROOT_NODE_ID,
+  CLASSIC_MAIN_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
+  createChatSurface,
+  createDiagnosticsSurface,
+  createFileNavigatorSurface,
   createFileEditorSurface,
   createGitChangesSurface,
+  createLogsSurface,
   createSearchPreviewSurface,
   createSearchResultsSurface,
+  createTerminalSurface,
 } from '../layout-builders'
 import { checkWorkspaceLayoutInvariants } from '../layout-invariants'
 import {
   CLASSIC_POLICY_ID,
   fileEditorSurfaceId,
   layoutCommandId,
+  workbenchWindowId,
   windowManagementCommandId,
 } from '../layout-ids'
 import {
+  findParentNodeId,
   findNodeIdForWindow,
   findWindowIdContainingSurface,
+  normalizeWorkspaceLayout,
   visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
 } from '../layout-normalize'
 import {
   activateSurface,
+  applyLayoutOperation,
   applyCustomWindowCommand,
   applyLayoutCommand,
   applyRecipe,
   closeSurface,
+  hideClassicBottomToolPane,
   maximizeWindow,
   minimizeSurface,
   moveSurface,
@@ -39,12 +51,16 @@ import {
   restoreSurface,
   restoreWindow,
   tabSurface,
+  toggleClassicBottomToolPane,
 } from '../layout-operations'
+import { selectWorkbenchRailSurfaceItems } from '../workbench-rail-model'
+import { railItemOperation } from '../workbench-rail'
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
   LayoutSplitNode,
   SurfaceId,
+  SurfaceType,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
 } from '../layout-types'
@@ -197,11 +213,11 @@ describe('tiling surface layout operations', () => {
   it('resizes adjacent split percentages and normalizes the result', () => {
     const resized = resizeSplit(
       createClassicFirstRunWorkspaceLayout(),
-      CLASSIC_ROOT_NODE_ID,
+      CLASSIC_MAIN_NODE_ID,
       0,
       100,
     )
-    const root = resized.nodesById[CLASSIC_ROOT_NODE_ID] as LayoutSplitNode
+    const root = resized.nodesById[CLASSIC_MAIN_NODE_ID] as LayoutSplitNode
 
     expect(root.sizes[0]).toBeCloseTo(0.32)
     expect(root.sizes[1]).toBeCloseTo(0.68)
@@ -349,6 +365,508 @@ describe('tiling surface layout operations', () => {
     expect(mustFindWindowId(restored, git.id)).not.toBe(CLASSIC_EDITOR_WINDOW_ID)
     expectValidLayout(restored)
   })
+
+  it('ignores rail sticky placement when restoring minimized rail surfaces', () => {
+    const chat = createChatSurface()
+    const base = createClassicFirstRunWorkspaceLayout()
+    const layout = {
+      ...base,
+      policiesById: {
+        ...base.policiesById,
+        [CLASSIC_POLICY_ID]: {
+          ...base.policiesById[CLASSIC_POLICY_ID],
+          stickyPlacementsBySurfaceId: {
+            [chat.id]: { kind: 'rail' },
+          },
+        },
+      },
+    } satisfies WorkspaceLayout
+    const restored = restoreSurface(layout, chat.id)
+
+    expect(restored.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(restored.activeSurfaceId).toBe(chat.id)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(chat.id)
+    expectValidLayout(restored)
+  })
+
+  it('ignores rail surface placement when restoring minimized rail surfaces', () => {
+    const chat = createChatSurface()
+    const base = createClassicFirstRunWorkspaceLayout()
+    const layout = {
+      ...base,
+      surfacesById: {
+        ...base.surfacesById,
+        [chat.id]: {
+          ...chat,
+          placement: { kind: 'rail' },
+        },
+      },
+    } satisfies WorkspaceLayout
+    const restored = restoreSurface(layout, chat.id)
+
+    expect(restored.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(restored.activeSurfaceId).toBe(chat.id)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(chat.id)
+    expectValidLayout(restored)
+  })
+
+  it('ignores stale window surface placement when restoring minimized rail surfaces', () => {
+    const chat = createChatSurface()
+    const base = createClassicFirstRunWorkspaceLayout()
+    const layout = {
+      ...base,
+      surfacesById: {
+        ...base.surfacesById,
+        [chat.id]: {
+          ...chat,
+          placement: {
+            kind: 'window-center',
+            windowId: mustFindWindowId(base, createFileNavigatorSurface().id),
+          },
+        },
+      },
+    } satisfies WorkspaceLayout
+    const withoutTargetWindow = closeSurface(layout, createFileNavigatorSurface().id)
+    const restored = restoreSurface(withoutTargetWindow, chat.id)
+
+    expect(restored.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(restored.activeSurfaceId).toBe(chat.id)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(chat.id)
+    expectValidLayout(restored)
+  })
+
+  it('ignores stale window surface placement when restoring files from the rail', () => {
+    const fileNavigator = createFileNavigatorSurface()
+    const base = createClassicFirstRunWorkspaceLayout()
+    const fileWindowId = mustFindWindowId(base, fileNavigator.id)
+    const layout = {
+      ...base,
+      surfacesById: {
+        ...base.surfacesById,
+        [fileNavigator.id]: {
+          ...fileNavigator,
+          placement: { kind: 'window-center', windowId: fileWindowId },
+        },
+      },
+    } satisfies WorkspaceLayout
+    const minimized = minimizeSurface(layout, fileNavigator.id)
+    const restored = restoreSurface(minimized, fileNavigator.id)
+
+    expect(restored.rail.minimizedSurfaceIds).not.toContain(fileNavigator.id)
+    expect(restored.activeSurfaceId).toBe(fileNavigator.id)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(fileNavigator.id)
+    expectValidLayout(restored)
+  })
+
+  it('ignores stale sticky placement when opening missing default rail surfaces', () => {
+    const chat = createChatSurface()
+    const base = createClassicFirstRunWorkspaceLayout()
+    const surfacesById = { ...base.surfacesById }
+    delete surfacesById[chat.id]
+    const layout = {
+      ...base,
+      policiesById: {
+        ...base.policiesById,
+        [CLASSIC_POLICY_ID]: {
+          ...base.policiesById[CLASSIC_POLICY_ID],
+          stickyPlacementsBySurfaceId: {
+            [chat.id]: {
+              kind: 'window-center',
+              windowId: workbenchWindowId('missing'),
+            },
+          },
+        },
+      },
+      rail: {
+        ...base.rail,
+        minimizedSurfaceIds: base.rail.minimizedSurfaceIds.filter((id) => id !== chat.id),
+        pinnedSurfaceIds: base.rail.pinnedSurfaceIds.filter((id) => id !== chat.id),
+      },
+      surfacesById,
+    } satisfies WorkspaceLayout
+    const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), chat.id)
+    const opened = applyLayoutOperation(layout, railItemOperation(layout, item))
+
+    expect(opened.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(visibleSurfaceIdsInOrder(opened)).toContain(chat.id)
+    expect(mustFindWindowId(opened, chat.id)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    expectValidLayout(opened)
+  })
+
+  it('opens main surfaces above the bottom tool pane when no main view is visible', () => {
+    const fileNavigator = createFileNavigatorSurface()
+    const file = createFileEditorSurface({ path: '/repo/src/bottom-only.ts' })
+    const base = createClassicFirstRunWorkspaceLayout()
+    const placeholderId = firstSurfaceIdOfType(base, 'placeholder')
+    if (!placeholderId) throw new Error('Expected editor placeholder')
+
+    const withoutFileNavigator = closeSurface(base, fileNavigator.id)
+    const bottomOnly = closeSurface(withoutFileNavigator, placeholderId, { force: true })
+    const opened = openSurface(bottomOnly, file)
+
+    expect(visibleSurfaceIdsInOrder(opened)).toContain(file.id)
+    expect(visibleSurfaceIdsInOrder(opened)).toContain(
+      createTerminalSurface({ sessionId: 'terminal-1' }).id,
+    )
+    expect(mustFindWindowId(opened, file.id)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    expect(findNodeIdForWindow(opened, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeDefined()
+    expectValidLayout(opened)
+  })
+
+  it('toggles the classic bottom tool pane as a group from terminal', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const hidden = toggleClassicBottomToolPane(layout, 'terminal')
+
+    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(diagnostics.id)
+    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(terminal.id)
+    expect(findNodeIdForWindow(hidden, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+    expect(hidden.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
+      diagnostics.id,
+      terminal.id,
+    ])
+    expectValidLayout(hidden)
+  })
+
+  it('restores the hidden classic bottom tool pane with terminal active', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const restored = toggleClassicBottomToolPane(hidden, 'terminal')
+    const window = restored.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]
+    const root = restored.rootNodeId ? restored.nodesById[restored.rootNodeId] : null
+
+    expect(findNodeIdForWindow(restored, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBe(
+      CLASSIC_DIAGNOSTICS_NODE_ID,
+    )
+    expect(root).toMatchObject({
+      axis: 'vertical',
+      childIds: expect.arrayContaining([CLASSIC_DIAGNOSTICS_NODE_ID]),
+      kind: 'split',
+    })
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(diagnostics.id)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(terminal.id)
+    expect(window.activeSurfaceId).toBe(terminal.id)
+    expect(restored.activeWindowId).toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    expect(restored.activeSurfaceId).toBe(terminal.id)
+    expectValidLayout(restored)
+  })
+
+  it('hides the classic bottom tool pane when problems is active', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const layout = activateSurface(
+      createClassicFirstRunWorkspaceLayout(),
+      diagnostics.id,
+      CLASSIC_DIAGNOSTICS_WINDOW_ID,
+    )
+    const hidden = toggleClassicBottomToolPane(layout, 'terminal')
+
+    expect(findNodeIdForWindow(hidden, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(diagnostics.id)
+    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(terminal.id)
+    expect(hidden.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
+      diagnostics.id,
+      terminal.id,
+    ])
+    expectValidLayout(hidden)
+  })
+
+  it('keeps the hidden classic bottom tool pane intact through normalization', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const normalized = normalizeWorkspaceLayout(hidden)
+
+    expect(findNodeIdForWindow(normalized, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+    expect(normalized.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
+      diagnostics.id,
+      terminal.id,
+    ])
+    expect(normalized.rail.minimizedSurfaceIds).not.toContain(diagnostics.id)
+    expect(normalized.rail.minimizedSurfaceIds).not.toContain(terminal.id)
+    expectValidLayout(normalized)
+  })
+
+  it('does not resurrect hidden classic bottom pane surfaces as fallback windows', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const fileNavigator = createFileNavigatorSurface()
+    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const withoutFileNavigator = closeSurface(hidden, fileNavigator.id)
+    const placeholderId = firstSurfaceIdOfType(withoutFileNavigator, 'placeholder')
+    if (!placeholderId) throw new Error('Expected editor placeholder')
+
+    const withoutVisibleSurfaces = closeSurface(withoutFileNavigator, placeholderId, {
+      force: true,
+    })
+
+    expect(findNodeIdForWindow(withoutVisibleSurfaces, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+    expect(visibleSurfaceIdsInOrder(withoutVisibleSurfaces)).not.toContain(diagnostics.id)
+    expect(visibleSurfaceIdsInOrder(withoutVisibleSurfaces)).not.toContain(terminal.id)
+    expect(withoutVisibleSurfaces.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
+      diagnostics.id,
+      terminal.id,
+    ])
+    expectValidLayout(withoutVisibleSurfaces)
+  })
+
+  it('preserves the hidden classic bottom pane record when creating a fallback window', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const file = createFileEditorSurface({ path: '/repo/src/fallback.ts' })
+    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const normalized = normalizeWorkspaceLayout({
+      ...hidden,
+      activeSurfaceId: file.id,
+      mruSurfaceIds: [file.id],
+      nodesById: {},
+      rootNodeId: null,
+      surfacesById: {
+        ...hidden.surfacesById,
+        [file.id]: file,
+      },
+    })
+
+    expect(visibleSurfaceIdsInOrder(normalized)).toContain(file.id)
+    expect(visibleSurfaceIdsInOrder(normalized)).not.toContain(diagnostics.id)
+    expect(visibleSurfaceIdsInOrder(normalized)).not.toContain(terminal.id)
+    expect(findNodeIdForWindow(normalized, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+    expect(normalized.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
+      diagnostics.id,
+      terminal.id,
+    ])
+    expectValidLayout(normalized)
+  })
+
+  it('recreates missing classic bottom tool pane surfaces on restore', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const withoutTerminal = closeSurface(hidden, terminal.id)
+    const withoutToolSurfaces = closeSurface(withoutTerminal, diagnostics.id)
+    const restored = toggleClassicBottomToolPane(withoutToolSurfaces, 'terminal')
+
+    expect(restored.surfacesById[diagnostics.id]).toBeDefined()
+    expect(restored.surfacesById[terminal.id]).toBeDefined()
+    expect(restored.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
+      diagnostics.id,
+      terminal.id,
+    ])
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(diagnostics.id)
+    expect(visibleSurfaceIdsInOrder(restored)).toContain(terminal.id)
+    expectValidLayout(restored)
+  })
+
+  it('maps default terminal rail items to the classic bottom tool pane toggle', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const layout = activateSurface(
+      createClassicFirstRunWorkspaceLayout(),
+      terminal.id,
+      CLASSIC_DIAGNOSTICS_WINDOW_ID,
+    )
+    const item = selectWorkbenchRailSurfaceItems(layout).find(
+      (candidate) => candidate.surface.id === terminal.id,
+    )
+    if (!item) throw new Error('Expected Terminal rail item')
+
+    expect(railItemOperation(layout, item)).toEqual({
+      target: 'terminal',
+      type: 'toggleClassicBottomToolPane',
+    })
+  })
+
+  it('marks the terminal rail item visible when the bottom pane is visible on problems', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const layout = activateSurface(
+      createClassicFirstRunWorkspaceLayout(),
+      diagnostics.id,
+      CLASSIC_DIAGNOSTICS_WINDOW_ID,
+    )
+    const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), terminal.id)
+
+    expect(item.state).toBe('visible')
+    expect(railItemOperation(layout, item)).toEqual({
+      target: 'terminal',
+      type: 'toggleClassicBottomToolPane',
+    })
+    expect(
+      visibleSurfaceIdsInOrder(applyLayoutOperation(layout, railItemOperation(layout, item))),
+    ).not.toContain(terminal.id)
+  })
+
+  it('keeps diagnostics inside the classic bottom pane instead of exposing a rail item', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const logs = createLogsSurface()
+    const layout = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const items = selectWorkbenchRailSurfaceItems(layout)
+    const diagnosticsItem = items.find((candidate) => candidate.surface.id === diagnostics.id)
+    const logsItem = items.find((candidate) => candidate.surface.id === logs.id)
+    if (!logsItem) throw new Error('Expected Logs rail item')
+
+    expect(diagnosticsItem).toBeUndefined()
+    expect(railItemOperation(layout, logsItem)).toEqual({
+      surfaceId: logs.id,
+      type: 'restoreSurface',
+    })
+  })
+
+  it('seeds current default rail entries when surfaces are missing from the layout', () => {
+    const fileNavigator = createFileNavigatorSurface()
+    const chat = createChatSurface()
+    const logs = createLogsSurface()
+    const layout = emptyLayout()
+    const items = selectWorkbenchRailSurfaceItems(layout)
+
+    expect(items.map((item) => item.surface.id)).toEqual(
+      expect.arrayContaining([fileNavigator.id, chat.id, logs.id]),
+    )
+    expect(railItemOperation(layout, mustFindRailItem(items, chat.id))).toEqual({
+      surface: chat,
+      type: 'openSurface',
+    })
+  })
+
+  it('activates the first rail side pane opened as a new edge window', () => {
+    const chat = createChatSurface()
+    const layout = applyRailItem(createClassicFirstRunWorkspaceLayout(), chat.id)
+    const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), chat.id)
+
+    expect(layout.activeSurfaceId).toBe(chat.id)
+    expect(layout.activeWindowId).toBe(mustFindWindowId(layout, chat.id))
+    expect(item.state).toBe('active')
+    expectValidLayout(layout)
+  })
+
+  it('opens primary and secondary rail entries as separate visible panes', () => {
+    const chat = createChatSurface()
+    const search = createSearchResultsSurface()
+    let layout = createClassicFirstRunWorkspaceLayout()
+
+    layout = applyLayoutOperation(
+      layout,
+      railItemOperation(
+        layout,
+        mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), search.id),
+      ),
+    )
+    layout = applyLayoutOperation(
+      layout,
+      railItemOperation(layout, mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), chat.id)),
+    )
+
+    expect(visibleSurfaceIdsInOrder(layout)).toContain(search.id)
+    expect(visibleSurfaceIdsInOrder(layout)).toContain(chat.id)
+    expect(mustFindWindowId(layout, search.id)).not.toBe(mustFindWindowId(layout, chat.id))
+    expectValidLayout(layout)
+  })
+
+  it('places same-slot rail entries as separate nested tool panes', () => {
+    const chat = createChatSurface()
+    const logs = createLogsSurface()
+    const git = createGitChangesSurface()
+    let layout = createClassicFirstRunWorkspaceLayout()
+
+    layout = applyRailItem(layout, chat.id)
+    layout = applyRailItem(layout, logs.id)
+    layout = applyRailItem(layout, git.id)
+
+    expect(visibleWindowIdsInOrder(layout)).toHaveLength(6)
+    expect(mustFindWindowId(layout, chat.id)).not.toBe(mustFindWindowId(layout, logs.id))
+    expect(mustFindWindowId(layout, logs.id)).not.toBe(mustFindWindowId(layout, git.id))
+    expect(mustFindWindowId(layout, chat.id)).not.toBe(mustFindWindowId(layout, git.id))
+    expect(visibleWindowIdsInOrder(layout).indexOf(mustFindWindowId(layout, git.id))).toBeLessThan(
+      visibleWindowIdsInOrder(layout).indexOf(CLASSIC_EDITOR_WINDOW_ID),
+    )
+    expect(layout.windowsById[mustFindWindowId(layout, git.id)].activeSurfaceId).toBe(git.id)
+    expectValidLayout(layout)
+  })
+
+  it('rebalances no-main tool panes into primary and secondary columns', () => {
+    const fileNavigator = createFileNavigatorSurface()
+    const search = createSearchResultsSurface()
+    const git = createGitChangesSurface()
+    const chat = createChatSurface()
+    const hiddenBottom = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
+    if (!placeholderId) throw new Error('Expected editor placeholder')
+
+    let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
+    layout = applyRailItem(layout, git.id)
+    expectToolColumns(layout, [fileNavigator.id], [git.id])
+
+    layout = applyRailItem(layout, search.id)
+    expectToolColumns(layout, [fileNavigator.id, search.id], [git.id])
+
+    layout = applyRailItem(layout, chat.id)
+    expectToolColumns(layout, [fileNavigator.id, search.id], [git.id, chat.id])
+    expectValidLayout(layout)
+  })
+
+  it('opens main surfaces beside active nested tool panes', () => {
+    const chat = createChatSurface()
+    const logs = createLogsSurface()
+    const git = createGitChangesSurface()
+    const file = createFileEditorSurface({ path: '/repo/src/main-from-tool.ts' })
+    const hiddenBottom = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
+    if (!placeholderId) throw new Error('Expected editor placeholder')
+
+    let toolOnly = closeSurface(hiddenBottom, placeholderId, { force: true })
+    toolOnly = applyRailItem(toolOnly, chat.id)
+    toolOnly = applyRailItem(toolOnly, logs.id)
+    toolOnly = applyRailItem(toolOnly, git.id)
+    const opened = openSurface(toolOnly, file)
+    const fileWindowIndex = visibleWindowIdsInOrder(opened).indexOf(
+      mustFindWindowId(opened, file.id),
+    )
+
+    expect(opened.activeSurfaceId).toBe(file.id)
+    expect(mustFindWindowId(opened, file.id)).not.toBe(mustFindWindowId(opened, chat.id))
+    expect(mustFindWindowId(opened, file.id)).not.toBe(mustFindWindowId(opened, logs.id))
+    expect(mustFindWindowId(opened, file.id)).not.toBe(mustFindWindowId(opened, git.id))
+    expect(visibleWindowIdsInOrder(opened)).toHaveLength(5)
+    expect(visibleWindowIdsInOrder(opened).indexOf(mustFindWindowId(opened, chat.id))).toBeLessThan(
+      fileWindowIndex,
+    )
+    expect(visibleWindowIdsInOrder(opened).indexOf(mustFindWindowId(opened, logs.id))).toBeLessThan(
+      fileWindowIndex,
+    )
+    expect(visibleWindowIdsInOrder(opened).indexOf(mustFindWindowId(opened, git.id))).toBeLessThan(
+      fileWindowIndex,
+    )
+    expectValidLayout(opened)
+  })
+
+  it('maps active rail singleton items to minimize operations', () => {
+    const git = createGitChangesSurface()
+    const layout = activateSurface(openSurface(createClassicFirstRunWorkspaceLayout(), git), git.id)
+    const item = selectWorkbenchRailSurfaceItems(layout).find(
+      (candidate) => candidate.surface.id === git.id,
+    )
+    if (!item) throw new Error('Expected Git rail item')
+
+    expect(railItemOperation(layout, item)).toEqual({
+      surfaceId: git.id,
+      type: 'minimizeSurface',
+    })
+  })
+
+  it('maps visible inactive rail singleton items to minimize operations', () => {
+    const chat = createChatSurface()
+    const logs = createLogsSurface()
+    let layout = openSurface(createClassicFirstRunWorkspaceLayout(), chat)
+    layout = openSurface(layout, logs)
+    const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), chat.id)
+
+    expect(item.state).toBe('visible')
+    expect(railItemOperation(layout, item)).toEqual({
+      surfaceId: chat.id,
+      type: 'minimizeSurface',
+    })
+  })
 })
 
 function splitFileFromEditor(
@@ -360,6 +878,50 @@ function splitFileFromEditor(
     kind: 'window-edge',
     windowId: CLASSIC_EDITOR_WINDOW_ID,
   })
+}
+
+function expectToolColumns(
+  layout: WorkspaceLayout,
+  primarySurfaceIds: readonly SurfaceId[],
+  secondarySurfaceIds: readonly SurfaceId[],
+) {
+  const primaryColumnNodeId = expectToolColumn(layout, primarySurfaceIds)
+  const secondaryColumnNodeId = expectToolColumn(layout, secondarySurfaceIds)
+  const rootNodeId = layout.rootNodeId
+  if (!rootNodeId) throw new Error('Expected root node')
+
+  expect(layout.nodesById[rootNodeId]).toMatchObject({
+    axis: 'horizontal',
+    childIds: [primaryColumnNodeId, secondaryColumnNodeId],
+    kind: 'split',
+  })
+}
+
+function expectToolColumn(layout: WorkspaceLayout, surfaceIds: readonly SurfaceId[]) {
+  const nodeIds = surfaceIds.map((surfaceId) => mustFindNodeId(layout, surfaceId))
+  if (nodeIds.length === 1) return nodeIds[0]
+
+  const parentNodeId = findParentNodeId(layout, nodeIds[0])
+  if (!parentNodeId) throw new Error('Expected tool column parent node')
+
+  for (const nodeId of nodeIds) {
+    expect(findParentNodeId(layout, nodeId)).toBe(parentNodeId)
+  }
+  expect(layout.nodesById[parentNodeId]).toMatchObject({
+    axis: 'vertical',
+    childIds: nodeIds,
+    kind: 'split',
+  })
+
+  return parentNodeId
+}
+
+function mustFindNodeId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  const windowId = mustFindWindowId(layout, surfaceId)
+  const nodeId = findNodeIdForWindow(layout, windowId)
+  if (!nodeId) throw new Error(`Expected node for ${surfaceId}`)
+
+  return nodeId
 }
 
 function emptyLayout(): WorkspaceLayout {
@@ -390,10 +952,31 @@ function mustFindWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   return windowId
 }
 
+function mustFindRailItem(
+  items: ReturnType<typeof selectWorkbenchRailSurfaceItems>,
+  surfaceId: SurfaceId,
+) {
+  const item = items.find((candidate) => candidate.surface.id === surfaceId)
+  if (!item) throw new Error(`Expected rail item ${surfaceId}`)
+
+  return item
+}
+
+function applyRailItem(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  return applyLayoutOperation(
+    layout,
+    railItemOperation(layout, mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), surfaceId)),
+  )
+}
+
 function windowPreviewSurfaceIds(layout: WorkspaceLayout) {
   return Object.values(layout.windowsById)
     .map((window) => window.previewSurfaceId)
     .filter(Boolean)
+}
+
+function firstSurfaceIdOfType(layout: WorkspaceLayout, surfaceType: SurfaceType) {
+  return Object.values(layout.surfacesById).find((surface) => surface.type === surfaceType)?.id
 }
 
 function layoutShape(layout: WorkspaceLayout) {

@@ -6,6 +6,7 @@ import type { WorkbenchEditorSurfaceContextValue } from './workbench-editor-surf
 export function WorkbenchEditorSurfaceProvider({
   children,
   editorKeymapLayers,
+  gitStore,
   requestCloseTab,
   requestCloseTabs,
   rootPath,
@@ -19,6 +20,7 @@ export function WorkbenchEditorSurfaceProvider({
     <WorkbenchEditorSurfaceContext.Provider
       value={{
         editorKeymapLayers,
+        gitStore,
         requestCloseTab,
         requestCloseTabs,
         rootPath,

@@ -13,7 +13,7 @@ import {
   type EditorTabModel,
   type EditorTabSizing,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import { LegacyEditorTabList } from '@/components/workspace/editor-tabs/components/legacy-editor-tab-list'
+import { EditorTabList } from '@/components/workspace/editor-tabs/components/editor-tab-list'
 import { useChromeVisualTabs } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import { useEditorTabDrag } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-intent-prefetch'
@@ -142,7 +142,7 @@ export function EditorTabBar({
             onSelect={handleSelectTab}
           />
         ) : (
-          <LegacyEditorTabList
+          <EditorTabList
             selectedTabRef={selectedTabRef}
             drag={tabDrag}
             tabSizing={tabSizing}

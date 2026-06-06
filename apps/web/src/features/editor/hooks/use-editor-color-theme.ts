@@ -1,13 +1,4 @@
-import {
-  createContext,
-  createElement,
-  useCallback,
-  use,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
+import { createContext, createElement, useCallback, use, useMemo, type ReactNode } from 'react'
 import type { EditorTheme } from '@editor/core'
 
 import { useTheme } from '@/components/theme-context'
@@ -25,8 +16,6 @@ type EditorColorThemeState = {
 }
 
 const EditorColorThemeContext = createContext<EditorColorThemeState | undefined>(undefined)
-
-const SHIKI_PRELOAD_THEMES = ['github-dark', 'github-light'] as const
 
 const shikiThemeByColorMode = {
   dark: 'github-dark',
@@ -173,33 +162,6 @@ export function useEditorColorTheme({
 } = {}) {
   const colorTheme = useEditorColorThemeState()
   const { colorMode, shikiTheme } = colorTheme
-  const [shikiEditorThemes, setShikiEditorThemes] = useState<
-    Partial<Record<ShikiThemeName, EditorTheme>>
-  >({})
-
-  useEffect(() => {
-    if (palette !== 'shiki') return
-
-    let active = true
-
-    import('@editor/core/shiki')
-      .then(({ loadShikiTheme }) =>
-        loadShikiTheme({ theme: shikiTheme, themes: SHIKI_PRELOAD_THEMES }),
-      )
-      .then((editorTheme) => {
-        if (!active || !editorTheme) return
-
-        setShikiEditorThemes((current) => {
-          if (current[shikiTheme] === editorTheme) return current
-          return { ...current, [shikiTheme]: editorTheme }
-        })
-      })
-      .catch(() => undefined)
-
-    return () => {
-      active = false
-    }
-  }, [palette, shikiTheme])
 
   return {
     colorMode,
@@ -207,8 +169,6 @@ export function useEditorColorTheme({
       colorMode,
       editorTheme: colorTheme.editorTheme,
       palette,
-      shikiEditorThemes,
-      shikiTheme,
     }),
     shikiTheme,
     shikiThemeResolver: colorTheme.shikiThemeResolver,
@@ -231,16 +191,12 @@ function editorThemeForPalette({
   colorMode,
   editorTheme,
   palette,
-  shikiEditorThemes,
-  shikiTheme,
 }: {
   readonly colorMode: EditorColorMode
   readonly editorTheme: EditorTheme
   readonly palette: EditorThemePalette
-  readonly shikiEditorThemes: Partial<Record<ShikiThemeName, EditorTheme>>
-  readonly shikiTheme: ShikiThemeName
 }): EditorTheme {
   if (palette === 'tree-sitter') return editorTheme
 
-  return shikiEditorThemes[shikiTheme] ?? fallbackShikiEditorThemeByColorMode[colorMode]
+  return fallbackShikiEditorThemeByColorMode[colorMode]
 }

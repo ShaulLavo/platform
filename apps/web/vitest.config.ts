@@ -1,4 +1,5 @@
 import path from 'node:path'
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
@@ -44,7 +45,7 @@ export default defineConfig({
       },
       {
         // Real-paint / layout / visual tests in a real browser via Playwright.
-        plugins: [reactPlugin()],
+        plugins: [reactPlugin(), tailwindcss()],
         resolve: { alias, dedupe: ['react', 'react-dom'] },
         define: {
           'import.meta.env.VITE_SERVER_URL': 'globalThis.location.origin',

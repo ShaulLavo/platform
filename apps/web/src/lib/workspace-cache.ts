@@ -19,29 +19,35 @@ import {
 } from '@/features/editor/state/editor-pane-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import type { WorkspaceLayout } from '@/features/workbench/tiling-surface-manager/layout-types'
+import {
+  restoreWorkspaceLayout,
+  serializeWorkspaceLayout,
+  type SerializedWorkspaceLayout,
+} from '@/features/workbench/tiling-surface-manager/layout-persistence'
+import {
+  editorPaneLayoutForWorkspaceLayout,
+  workspaceLayoutForEditorPaneLayout,
+} from '@/features/workbench/tiling-surface-manager/workbench-editor-surface-layout'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/contracts'
 import * as v from 'valibot'
 
 const CACHE_KEY = 'platform.workspace-state.v1'
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
-// migrate deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 8
+// update deliberately or drop intentionally. Server-backed caches may reset/refetch.
+const CACHE_VERSION = 9
 
 type WorkspaceCachePayload = {
   diffViewMode: EditorDiffViewMode
   editorHistory: string[]
   editorPaneLayout: EditorPaneLayout
-  gitPanelOpen: boolean
   recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
   searchBuffer: CachedSearchBufferState | null
-  sidebarVisible: boolean
   version: typeof CACHE_VERSION
-  workspacePanelTab: WorkspacePanelTab
+  workspaceLayout: SerializedWorkspaceLayout
 }
-
-export type WorkspacePanelTab = 'chat' | 'files' | 'git' | 'logs' | 'search'
 
 export type CachedSearchBufferState = {
   activeResultId: string | null
@@ -85,13 +91,6 @@ const pickedSymlinkDirectorySchema = v.object({
 })
 const rootFolderSchema = v.nullable(v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema]))
 const nullableStringSchema = v.nullable(v.string())
-const workspacePanelTabSchema = v.union([
-  v.literal('chat'),
-  v.literal('files'),
-  v.literal('git'),
-  v.literal('logs'),
-  v.literal('search'),
-])
 const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)
 const entryTypeSchema = v.union([
   v.literal('file'),
@@ -143,26 +142,22 @@ const workspaceCachePayloadSchema = v.object({
   diffViewMode: diffViewModeSchema,
   editorHistory: v.array(v.string()),
   editorPaneLayout: editorPaneLayoutSchema,
-  gitPanelOpen: v.boolean(),
   recentlyClosedEditorPaths: v.array(v.string()),
   rootFolder: rootFolderSchema,
   searchBuffer: v.nullable(cachedSearchBufferStateSchema),
-  sidebarVisible: v.boolean(),
   version: v.literal(CACHE_VERSION),
-  workspacePanelTab: workspacePanelTabSchema,
+  workspaceLayout: v.unknown(),
 })
 
 export type CachedWorkspaceState = {
   diffViewMode: EditorDiffViewMode
   editorHistory: string[]
   editorPaneLayout: EditorPaneLayout
-  gitPanelOpen: boolean
   openFilePaths: string[]
   recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
-  sidebarVisible: boolean
-  workspacePanelTab: WorkspacePanelTab
+  workspaceLayout: WorkspaceLayout
 }
 
 export type WorkspaceCacheState = CachedWorkspaceState & {
@@ -180,39 +175,36 @@ export function writeWorkspaceCache({
   openFilePaths,
   rootFolder,
   selectedFilePath,
-  workspacePanelTab,
   diffViewMode,
   editorHistory,
-  gitPanelOpen,
   recentlyClosedEditorPaths,
-  sidebarVisible,
   searchBuffer,
   editorPaneLayout,
-}:
-  | WorkspaceCacheState
-  | (Omit<WorkspaceCacheState, 'editorPaneLayout'> & {
-      editorPaneLayout?: EditorPaneLayout
-    })) {
+  workspaceLayout,
+}: WorkspaceCacheState) {
   if (!canUseLocalStorage()) return
 
   try {
     const persistedPaneLayout = editorPaneLayoutForWorkspace(
       rootFolder,
-      editorPaneLayout ?? createEditorPaneLayoutForPaths(openFilePaths, selectedFilePath),
+      editorPaneLayout,
       openFilePaths,
       selectedFilePath,
+    )
+    const persistedWorkspaceLayout = workspaceLayoutForCache(
+      rootFolder,
+      persistedPaneLayout,
+      workspaceLayout,
     )
     const payload: WorkspaceCachePayload = {
       diffViewMode,
       editorHistory: workspacePathsForCache(rootFolder, editorHistory),
       editorPaneLayout: persistedPaneLayout,
-      gitPanelOpen,
       recentlyClosedEditorPaths: workspacePathsForCache(rootFolder, recentlyClosedEditorPaths),
       rootFolder,
       searchBuffer: searchBufferForWorkspace(rootFolder, searchBuffer),
-      sidebarVisible,
       version: CACHE_VERSION,
-      workspacePanelTab,
+      workspaceLayout: serializeWorkspaceLayout(persistedWorkspaceLayout),
     }
 
     localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
@@ -252,22 +244,32 @@ function parseCachePayload(value: string): WorkspaceCachePayload | null {
   const result = v.safeParse(workspaceCachePayloadSchema, parsed)
   if (!result.success) return null
 
-  return result.output
+  return result.output as WorkspaceCachePayload
 }
 
 function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCacheState {
-  const editorPaneLayout = editorPaneLayoutForWorkspace(
+  const fallbackEditorPaneLayout = editorPaneLayoutForWorkspace(
     payload.rootFolder,
     payload.editorPaneLayout,
     [],
     null,
+  )
+  const fallbackWorkspaceLayout = workspaceLayoutForEditorPaneLayout(fallbackEditorPaneLayout)
+  const workspaceLayout = restoreWorkspaceLayout(payload.workspaceLayout, {
+    fallbackLayout: fallbackWorkspaceLayout,
+    rootPath: payload.rootFolder?.path ?? null,
+  }).layout
+  const editorPaneLayout = editorPaneLayoutForWorkspace(
+    payload.rootFolder,
+    editorPaneLayoutForWorkspaceLayout(workspaceLayout),
+    editorPaneOpenPaths(fallbackEditorPaneLayout),
+    activeEditorPanePath(fallbackEditorPaneLayout),
   )
 
   return {
     diffViewMode: payload.diffViewMode,
     editorHistory: workspacePathsForCache(payload.rootFolder, payload.editorHistory),
     editorPaneLayout,
-    gitPanelOpen: payload.gitPanelOpen,
     openFilePaths: editorPaneOpenPaths(editorPaneLayout),
     recentlyClosedEditorPaths: workspacePathsForCache(
       payload.rootFolder,
@@ -276,8 +278,7 @@ function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCac
     rootFolder: payload.rootFolder,
     searchBuffer: searchBufferForWorkspace(payload.rootFolder, payload.searchBuffer),
     selectedFilePath: activeEditorPanePath(editorPaneLayout),
-    sidebarVisible: payload.sidebarVisible,
-    workspacePanelTab: payload.workspacePanelTab,
+    workspaceLayout,
   }
 }
 
@@ -350,20 +351,33 @@ function isPathInWorkspace(path: string, rootPath: string) {
 
 function emptyWorkspaceState(): WorkspaceCacheState {
   const editorPaneLayout = createEditorPaneLayoutForPaths([], null)
+  const workspaceLayout = workspaceLayoutForEditorPaneLayout(editorPaneLayout)
 
   return {
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
     editorPaneLayout,
-    gitPanelOpen: true,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: null,
     searchBuffer: null,
     selectedFilePath: null,
-    sidebarVisible: true,
-    workspacePanelTab: 'files',
+    workspaceLayout,
   }
+}
+
+function workspaceLayoutForCache(
+  rootFolder: PickedFsEntry | null,
+  editorPaneLayout: EditorPaneLayout,
+  workspaceLayout: WorkspaceLayout,
+) {
+  const fallbackLayout = workspaceLayoutForEditorPaneLayout(editorPaneLayout)
+
+  const serializedLayout = serializeWorkspaceLayout(workspaceLayout)
+  return restoreWorkspaceLayout(serializedLayout, {
+    fallbackLayout,
+    rootPath: rootFolder?.path ?? null,
+  }).layout
 }
 
 function canUseLocalStorage() {

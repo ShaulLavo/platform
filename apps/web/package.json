@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun ../../scripts/run-with-env.ts vite",
-    "build": "tsgo && bun --env-file=../../.env vite build",
+    "build": "tsgo --build && bun --env-file=../../.env vite build",
     "bench:editor-scroll": "node scripts/editor-scroll-benchmark.mjs",
     "bench:editor-scroll:gate": "node scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium",
     "bench:editor-scroll:gate:all": "node scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium,webkit,firefox",
@@ -16,7 +16,7 @@
     "test": "bun --bun vitest run --project node --project dom",
     "test:watch": "bun --bun vitest --project node --project dom",
     "test:browser": "vitest run --project browser",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsgo --build",
     "preview": "bun --env-file=../../.env vite preview"
   },
   "dependencies": {

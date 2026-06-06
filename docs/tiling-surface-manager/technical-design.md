@@ -464,11 +464,11 @@ Current app integration expands beyond the keymap files:
 | -------------- | -------------------: | ------------------ | ---------------------------- | ---------------------- | ------------------------------------------------------------------- |
 | File Editor    |                multi | durable or preview | active window tab            | when open/minimized    | edit or pin promotes preview                                        |
 | Diff           |                multi | durable or preview | like file tab                | when durable/minimized | no special default side zone                                        |
-| Search Results |            singleton | durable            | small side-like window       | yes                    | restore query, filters, selection, results; may unmount when hidden |
+| Search Results |            singleton | durable            | left nested tool pane        | yes                    | restore query, filters, selection, results; may unmount when hidden |
 | Search Preview | singleton/contextual | transient          | near search or active window | no                     | owned by search context; replaced by selection                      |
 | Terminal       |                multi | running            | recipe decides               | yes                    | minimize preserves process                                          |
-| File Navigator |            singleton | durable            | narrow side-like window      | yes                    | restore expanded tree and selection                                 |
-| Git Changes    |            singleton | durable            | side-like or recipe slot     | yes                    | restore selection, filters, staged state                            |
+| File Navigator |            singleton | durable            | left nested tool pane        | yes                    | restore expanded tree and selection                                 |
+| Git Changes    |            singleton | durable            | left nested tool pane        | yes                    | restore selection, filters, staged state                            |
 | Diagnostics    |            singleton | durable            | recipe decides               | yes                    | links to editor/preview                                             |
 | Test Output    |   singleton or multi | running/durable    | bottom/adjacent              | yes if running         | close rules matter                                                  |
 | Agent Surfaces |               future | mixed              | agent recipe                 | yes                    | needs separate product plan                                         |
@@ -515,25 +515,34 @@ and keeping the heavy UI mounted would create unnecessary work.
 
 A recipe is placement behavior plus a reset shape, not just a saved layout.
 
+The canonical default recipe spec is `default-recipe.md`. It defines the
+checked-in sketch, editable Excalidraw source, vocabulary, and V1 behavior.
+The default recipe must be implemented with ordinary surfaces, windows, split
+nodes, rail state, and recipe policy. It must not introduce a `sidebar`, dock,
+lane, or compatibility model.
+
 Examples:
 
-- Classic: editor center, nav/search/git side-like, terminal/problems
-  bottom-like. This preserves VS Code and Zed muscle memory while still using
-  Platform surfaces internally.
-- Search: search results open as a durable singleton in a compact side-like
-  window, selection opens a transient preview adjacent to the search or active
-  editor, and Enter promotes the preview. This borrows from T3Code responsive
-  diff presentation and VS Code search preview behavior without making search a
-  fixed sidebar.
+- Classic/default: the rail is a command surface; Files, Search, Git, Chat, and
+  Logs prefer left nested tool panes; file editors, diffs, and promoted previews
+  prefer the main view; Terminal and Problems prefer the bottom tool pane. The
+  nested tool-pane shape is ordinary split tree structure, not a sidebar model.
+  This preserves VS Code and Zed muscle memory while still using Platform
+  surfaces internally.
+- Search: search results open as a durable singleton in the left nested
+  tool-pane group, selection opens a transient preview adjacent to the search or
+  active editor, and Enter promotes the preview. This borrows from T3Code
+  responsive diff presentation and VS Code search preview behavior without
+  making search a fixed sidebar.
 - Review: Git Changes is visible, diffs open like file tabs by default, and
   branch/PR stacks can use lane-like workflow surfaces when the workflow needs
   sequence. GitButler's unassigned changes, preview diff, stack lanes, folding,
   and panning are the grounding example.
 - Agent pairing: editor or diff is the main surface, agent chat/plan/logs are
-  right-side or side-like surfaces, terminal/test output attaches to the task
-  context, and artifacts/patches open as transient previews. Zellij plugin
-  panes and Athas agent panes ground the surface model; Hyprland grounds the
-  placement policy.
+  recipe-placed tool panes, terminal/test output attaches to the task context,
+  and artifacts/patches open as transient previews. Zellij plugin panes and
+  Athas agent panes ground the surface model; Hyprland grounds the placement
+  policy.
 - Dense execution: terminals, task logs, and agent output can become a stacked
   group later. Zellij's stacked panes are the reference: one flexible active
   pane plus collapsed one-line panes.
@@ -545,9 +554,10 @@ For V1, assume one active recipe per workspace.
 
 Recipe policy examples:
 
-- `classicPolicy`: open editor-like surfaces in the active window; place
-  terminals in the last terminal slot or bottom-like split; restore singleton
-  tools to their last placement.
+- `classicPolicy`: open editor-like surfaces in the main view; place terminal
+  and Problems in the bottom tool pane; route Files, Search, Git, Chat, and Logs
+  into left nested tool panes; restore singleton tools through default recipe
+  placement when their last concrete window placement is stale.
 - `previewAdjacentPolicy`: put transient previews near the selected list,
   search result, diagnostic, git file, or agent artifact.
 - `laneWorkflowPolicy`: route git, review, or agent work items into a
@@ -922,8 +932,9 @@ mounting rules for running terminals.
 ## Automation Rules
 
 - User drag/drop wins.
-- Manual placement becomes sticky.
-- Singleton surfaces restore their last useful state and placement.
+- Manual placement becomes sticky only while the concrete placement target still
+  exists and is visible.
+- Singleton surfaces restore their last useful state and last valid placement.
 - Recipes provide defaults, not forced moves.
 - Transient previews can auto-replace.
 - Durable surfaces should not jump unexpectedly.

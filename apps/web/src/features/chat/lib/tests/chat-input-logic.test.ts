@@ -48,7 +48,7 @@ describe('chat input logic', () => {
   })
 
   it('filters slash commands by query', () => {
-    expect(searchChatInputSlashCommands('pla').map((item) => item.value)).toEqual(['plan'])
+    expect(searchChatInputSlashCommands('pla').map((item) => item.id)).toEqual(['plan'])
   })
 
   it('keeps entry types for mention icons', () => {

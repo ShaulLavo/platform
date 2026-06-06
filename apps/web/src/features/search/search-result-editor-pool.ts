@@ -168,15 +168,16 @@ function syncSearchResultFileEditorPoolCache(
   visibleItems: readonly SearchResultRenderedFileResultItem[],
 ) {
   const poolKeySet = new Set(poolKeys)
-  let next: Map<SearchResultId, SearchResultRenderedFileResultItem> | null = null
+  let next: ReadonlyMap<SearchResultId, SearchResultRenderedFileResultItem> | null = null
   for (const item of visibleItems) {
     next = syncSearchResultFileEditorPoolCacheItem(next ?? current, item)
   }
   for (const key of current.keys()) {
     if (poolKeySet.has(key)) continue
 
-    next ??= new Map(current)
-    next.delete(key)
+    const mutableNext = next instanceof Map ? next : new Map(next ?? current)
+    mutableNext.delete(key)
+    next = mutableNext
   }
 
   return next ?? current

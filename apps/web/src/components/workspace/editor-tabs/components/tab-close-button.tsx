@@ -5,7 +5,7 @@ import { useEditorTabDirty } from '@/components/workspace/editor-tabs/hooks/use-
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { cn } from '@workspace/ui/lib/utils'
 
-export function LegacyTabCloseButton({
+export function TabCloseButton({
   tab,
   onClose,
 }: {

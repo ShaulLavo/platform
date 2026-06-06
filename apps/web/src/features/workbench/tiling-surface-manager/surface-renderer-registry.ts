@@ -20,6 +20,7 @@ export type WorkbenchSurfaceRendererDescriptor = {
 export type WorkbenchSurfaceRendererRegistry = ReadonlyMap<SurfaceType, WorkbenchSurfaceRenderer>
 
 const DEFAULT_RENDERED_SURFACE_TYPES = [
+  'chat',
   'diagnostics',
   'diff',
   'file-editor',

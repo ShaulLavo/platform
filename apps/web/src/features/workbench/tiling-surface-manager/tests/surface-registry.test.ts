@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import type { SnapshotDiffDocumentInput } from '@/features/git/diff-document'
 
 import {
   diffSurfaceId,
@@ -226,11 +226,12 @@ function testDescriptor(type: SurfaceType): SurfaceDescriptor {
   }
 }
 
-function snapshotDiff(path: string): FileDiff {
+function snapshotDiff(path: string): SnapshotDiffDocumentInput {
   return {
+    hunks: [],
     newObjectId: 'abcdef1234567890',
+    patch: '',
     path,
     staged: false,
-    worktree: 'modified',
   }
 }

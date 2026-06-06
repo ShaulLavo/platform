@@ -176,12 +176,9 @@ describe('terminal service', () => {
     expect(pty.ptys[0]?.killed).toBe(true)
   })
 
-  // TODO(pty-in-tests): we could not get the real node-pty bridge to work in the
-  // test environment. The PTY never emits output when its `node` process is spawned
-  // from a Vitest worker (it works under `bun test`, the main process). Verified it
-  // is node-pty itself, not resolution/stdio. Look into this and re-enable — the
-  // other terminal tests cover the service via FakePty in the meantime.
-  it.skip('streams output through the default Node-backed PTY bridge', async () => {
+  // The bridge spawns a real Node binary (not Bun's `--bun` node shim, whose
+  // node-pty master-fd socket is broken), so the native PTY works under Vitest.
+  it('streams output through the default Node-backed PTY bridge', async () => {
     const root = await fixtureRoot()
     const service = testService(root, {
       env: {
