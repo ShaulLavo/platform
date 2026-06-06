@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from 'react'
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import type { ResizeHandleLayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
@@ -7,6 +7,7 @@ import type { LayoutOperation } from '@/features/tiling-surface-manager/engine/l
 const KEYBOARD_RESIZE_DELTA_PX = 32
 
 type ResizeDragState = {
+  readonly element: HTMLElement
   readonly handleId: string
   lastClientX: number
   lastClientY: number
@@ -21,6 +22,30 @@ export function ResizeOverlay({
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
   const dragRef = useRef<ResizeDragState | null>(null)
+  useEffect(() => {
+    function handleWindowBlur() {
+      endPointerDrag(dragRef)
+    }
+
+    function handleWindowPointerEnd(event: PointerEvent) {
+      const drag = dragRef.current
+      if (!drag) return
+      if (drag.pointerId !== event.pointerId) return
+
+      endPointerDrag(dragRef)
+    }
+
+    window.addEventListener('blur', handleWindowBlur)
+    window.addEventListener('pointercancel', handleWindowPointerEnd)
+    window.addEventListener('pointerup', handleWindowPointerEnd)
+
+    return () => {
+      endPointerDrag(dragRef)
+      window.removeEventListener('blur', handleWindowBlur)
+      window.removeEventListener('pointercancel', handleWindowPointerEnd)
+      window.removeEventListener('pointerup', handleWindowPointerEnd)
+    }
+  }, [])
   if (resizeHandleRects.length === 0) return null
 
   function dispatchResize(handle: ResizeHandleLayoutRect, deltaPx: number) {
@@ -34,12 +59,16 @@ export function ResizeOverlay({
     })
   }
 
-  function handlePointerDown(event: PointerEvent<HTMLElement>, handle: ResizeHandleLayoutRect) {
+  function handlePointerDown(
+    event: ReactPointerEvent<HTMLElement>,
+    handle: ResizeHandleLayoutRect,
+  ) {
     if (event.button !== 0) return
 
     event.preventDefault()
     capturePointer(event.currentTarget, event.pointerId)
     dragRef.current = {
+      element: event.currentTarget,
       handleId: handle.id,
       lastClientX: event.clientX,
       lastClientY: event.clientY,
@@ -47,13 +76,16 @@ export function ResizeOverlay({
     }
   }
 
-  function handlePointerMove(event: PointerEvent<HTMLElement>, handle: ResizeHandleLayoutRect) {
+  function handlePointerMove(
+    event: ReactPointerEvent<HTMLElement>,
+    handle: ResizeHandleLayoutRect,
+  ) {
     const drag = dragRef.current
     if (!drag) return
     if (drag.pointerId !== event.pointerId) return
     if (drag.handleId !== handle.id) return
     if (!primaryPointerButtonIsDown(event)) {
-      handlePointerEnd(event)
+      endPointerDrag(dragRef)
       return
     }
 
@@ -63,11 +95,8 @@ export function ResizeOverlay({
     dispatchResize(handle, deltaPx)
   }
 
-  function handlePointerEnd(event: PointerEvent<HTMLElement>) {
-    if (!dragRef.current) return
-
-    dragRef.current = null
-    releasePointer(event.currentTarget, event.pointerId)
+  function handlePointerEnd() {
+    endPointerDrag(dragRef)
   }
 
   return (
@@ -95,6 +124,7 @@ export function ResizeOverlay({
           }}
           onPointerCancel={handlePointerEnd}
           onPointerDown={(event) => handlePointerDown(event, handle)}
+          onLostPointerCapture={handlePointerEnd}
           onPointerMove={(event) => handlePointerMove(event, handle)}
           onPointerUp={handlePointerEnd}
         />
@@ -128,7 +158,7 @@ function resizeHandleClassName(handle: ResizeHandleLayoutRect) {
 
 function pointerResizeDelta(
   handle: ResizeHandleLayoutRect,
-  event: PointerEvent<HTMLElement>,
+  event: ReactPointerEvent<HTMLElement>,
   drag: ResizeDragState,
 ) {
   if (handle.axis === 'horizontal') return event.clientX - drag.lastClientX
@@ -136,8 +166,16 @@ function pointerResizeDelta(
   return event.clientY - drag.lastClientY
 }
 
-function primaryPointerButtonIsDown(event: PointerEvent<HTMLElement>) {
+function primaryPointerButtonIsDown(event: ReactPointerEvent<HTMLElement>) {
   return (event.buttons & 1) === 1
+}
+
+function endPointerDrag(dragRef: { current: ResizeDragState | null }) {
+  const drag = dragRef.current
+  if (!drag) return
+
+  dragRef.current = null
+  releasePointer(drag.element, drag.pointerId)
 }
 
 function capturePointer(element: HTMLElement, pointerId: number) {

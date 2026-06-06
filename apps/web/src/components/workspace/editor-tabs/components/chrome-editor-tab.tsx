@@ -49,7 +49,7 @@ export function ChromeEditorTab({
   tabRef?: RefObject<HTMLDivElement | null>
   trailingSlotWidth: number
   visualTab: EditorChromeVisualTab
-  onClose: (path: string, width: number | null) => void
+  onClose: (path: string) => void
   onCloseTabs: RequestCloseTabs
   onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
   onDragEnd: () => void

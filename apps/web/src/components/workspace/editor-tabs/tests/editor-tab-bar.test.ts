@@ -151,8 +151,16 @@ describe('chromeVisualTabsReducer', () => {
     })
 
     expect(next.sourceTabs).toBe(nextTabs)
-    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'opening'])
-    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual(['src/a.ts', 'src/c.ts'])
+    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
+      'present',
+      'opening',
+      'closing',
+    ])
+    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
+      'src/a.ts',
+      'src/c.ts',
+      'src/b.ts',
+    ])
   })
 
   it('finishes opening tabs on the matching animation frame', () => {
@@ -169,6 +177,47 @@ describe('chromeVisualTabsReducer', () => {
     })
 
     expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present', 'present'])
+  })
+
+  it('keeps removed tabs as closing ghosts at the end', () => {
+    const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts', 'src/c.ts'])
+    const state = chromeVisualTabsState(initialTabs)
+    const nextTabs = chromeTabs(['src/a.ts', 'src/c.ts'])
+
+    const next = chromeVisualTabsReducer(state, {
+      areTabsEqual: sameChromeTab,
+      tabs: nextTabs,
+      type: 'sync-tabs',
+    })
+
+    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual([
+      'present',
+      'present',
+      'closing',
+    ])
+    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual([
+      'src/a.ts',
+      'src/c.ts',
+      'src/b.ts',
+    ])
+  })
+
+  it('removes closing ghosts on the matching timeout', () => {
+    const initialTabs = chromeTabs(['src/a.ts', 'src/b.ts'])
+    const state = chromeVisualTabsState(initialTabs)
+    const synced = chromeVisualTabsReducer(state, {
+      areTabsEqual: sameChromeTab,
+      tabs: chromeTabs(['src/a.ts']),
+      type: 'sync-tabs',
+    })
+
+    const next = chromeVisualTabsReducer(synced, {
+      closingKey: 'src/b.ts',
+      type: 'remove-closing',
+    })
+
+    expect(next.visualTabs.map((visualTab) => visualTab.phase)).toEqual(['present'])
+    expect(next.visualTabs.map((visualTab) => visualTab.tab.path)).toEqual(['src/a.ts'])
   })
 
   it('reuses semantically equal tab models', () => {

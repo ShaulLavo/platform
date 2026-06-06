@@ -1,7 +1,6 @@
 import { ChromeTabCloseButton } from '@/components/workspace/editor-tabs/components/chrome-tab-close-button'
 import {
   chromeTabCloseButtonVisibilityClassName,
-  chromeTabRootWidth,
   chromeTabTrailingSlotStyle,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
@@ -15,7 +14,7 @@ export function ChromeTabTrailingSlot({
 }: {
   tab: EditorTabModel
   width: number
-  onClose: (path: string, width: number | null) => void
+  onClose: (path: string) => void
 }) {
   const dirty = useEditorTabDirty(tab.path)
 
@@ -39,7 +38,7 @@ export function ChromeTabTrailingSlot({
         draggable={false}
         onClick={(event) => {
           event.stopPropagation()
-          onClose(tab.id, chromeTabRootWidth(event.currentTarget))
+          onClose(tab.id)
         }}
         onDragStart={(event) => event.preventDefault()}
         title={`Close ${tab.name}`}

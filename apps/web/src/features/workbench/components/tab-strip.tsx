@@ -76,7 +76,7 @@ export function TabStrip({
           tabCount: surfaces.length,
         })
 
-  if (editorSurfaceContext && visualTabs.length === surfaces.length && visualTabs.length > 0) {
+  if (editorSurfaceContext && editorTabs.length === surfaces.length && visualTabs.length > 0) {
     return (
       <div
         aria-label='Window tabs'

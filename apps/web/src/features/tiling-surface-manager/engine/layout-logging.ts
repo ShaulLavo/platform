@@ -1,4 +1,5 @@
 import { log } from '@/lib/client-logging'
+import { createCoalescedLogQueue } from '@/lib/coalesced-log'
 
 import {
   visibleSurfaceIdsInOrder,
@@ -13,12 +14,28 @@ import type {
 
 type WorkbenchLayoutLogContext = Record<string, unknown>
 
+const RESIZE_SPLIT_LAYOUT_LOG_DELAY_MS = 250
+const resizeSplitLayoutInfoLogs = createCoalescedLogQueue({
+  delayMs: RESIZE_SPLIT_LAYOUT_LOG_DELAY_MS,
+  emit: (event) => log.info(event),
+})
+
 export function logWorkbenchLayoutInfo(action: string, context: WorkbenchLayoutLogContext = {}) {
-  log.info(workbenchLayoutLogEvent(action, context))
+  const event = workbenchLayoutLogEvent(action, context)
+  if (!shouldCoalesceWorkbenchLayoutInfo(action, event)) {
+    log.info(event)
+    return
+  }
+
+  resizeSplitLayoutInfoLogs.queue(resizeSplitLayoutInfoLogKey(event), event)
 }
 
 export function logWorkbenchLayoutWarn(action: string, context: WorkbenchLayoutLogContext = {}) {
   log.warn(workbenchLayoutLogEvent(action, context))
+}
+
+export function flushPendingWorkbenchLayoutInfoLogs() {
+  resizeSplitLayoutInfoLogs.flushAll()
 }
 
 export function layoutSnapshot(layout: WorkspaceLayout) {
@@ -150,6 +167,30 @@ function workbenchLayoutLogEvent(action: string, context: WorkbenchLayoutLogCont
     area: 'workbench.layout',
     ...context,
   })
+}
+
+function shouldCoalesceWorkbenchLayoutInfo(action: string, event: WorkbenchLayoutLogContext) {
+  if (action !== 'layout.operation.dispatch') return false
+  if (event.outcome !== 'ok') return false
+
+  const operation = event.operation
+  if (!isRecord(operation)) return false
+
+  return operation.operationType === 'resizeSplit'
+}
+
+function resizeSplitLayoutInfoLogKey(event: WorkbenchLayoutLogContext) {
+  const operation = event.operation
+  if (!isRecord(operation)) return 'resizeSplit'
+
+  return [
+    event.area,
+    event.action,
+    event.dispatcher ?? 'store',
+    operation.operationType,
+    operation.splitId,
+    operation.handleIndex,
+  ].join(':')
 }
 
 function visibleLayoutSnapshot(layout: WorkspaceLayout) {

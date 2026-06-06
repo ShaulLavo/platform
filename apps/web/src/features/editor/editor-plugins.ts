@@ -44,6 +44,10 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 let treeSitterSyntaxBackend: TreeSitterBackend | null = null
 const editorScrollPositionsByInstanceId = new Map<string, EditorScrollPosition>()
+const ignoredEditorInfoActions = new Set([
+  'editor.plugins.gutters.changed',
+  'editor.syntax.document_started',
+])
 const PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN = createEditorLoggingPlugin(logEditorEventToConsole, {
   name: 'platform.editor-logging',
 })
@@ -267,13 +271,39 @@ export function createPlatformSearchResultEditorLoggingPlugin(): EditorPlugin {
 function logEditorEventToConsole(event: EditorLogEvent): void {
   cacheEditorScrollPosition(event)
   if (event.action === 'editor.viewport.changed') return
+  if (!shouldLogEditorEvent(event)) {
+    forgetEditorScrollPosition(event)
+    return
+  }
 
-  log.info({
+  log[editorLogLevel(event)]({
     ...editorEventScrollContext(event),
     ...event,
     area: 'editor',
   })
   forgetEditorScrollPosition(event)
+}
+
+function shouldLogEditorEvent(event: EditorLogEvent): boolean {
+  if (editorLogLevel(event) !== 'info') return true
+  if (ignoredEditorInfoActions.has(event.action)) return false
+
+  return !isShortEmptyEditorLifecycleSummary(event)
+}
+
+function isShortEmptyEditorLifecycleSummary(event: EditorLogEvent): boolean {
+  if (event.action !== 'editor.lifecycle.summary') return false
+  if (numberAtEventRecord(event, 'lifecycle', 'mountDurationMs') >= 100) return false
+  if (numberAtEventRecord(event, 'document', 'openedCount') > 0) return false
+  if (numberAtEventRecord(event, 'document', 'setTextCount') > 0) return false
+
+  return numberAtEventRecord(event, 'document', 'syncedTextCount') === 0
+}
+
+function editorLogLevel(event: EditorLogEvent) {
+  if (event.level === 'warn' || event.level === 'error') return event.level
+
+  return 'info'
 }
 
 function logSearchResultEditorEventToConsole(event: EditorLogEvent): void {
@@ -326,6 +356,14 @@ function editorLogScrollPosition(event: EditorLogEvent): EditorScrollPosition | 
     left: viewport.scrollLeft,
     top: viewport.scrollTop,
   }
+}
+
+function numberAtEventRecord(event: EditorLogEvent, parentKey: string, key: string) {
+  const parent = (event as Record<string, unknown>)[parentKey]
+  if (!parent || typeof parent !== 'object') return 0
+
+  const value = (parent as Record<string, unknown>)[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 function editorLogViewportHasScrollPosition(

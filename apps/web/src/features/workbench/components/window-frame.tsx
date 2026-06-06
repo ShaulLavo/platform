@@ -1,4 +1,5 @@
 import { ArrowsInSimpleIcon, ArrowsOutSimpleIcon, MinusIcon, XIcon } from '@phosphor-icons/react'
+import type { FocusEvent } from 'react'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { SurfaceHost } from '@/features/workbench/components/surface-host'
@@ -55,7 +56,8 @@ export function WindowFrame({
       role='region'
       style={layoutRectStyle(rect)}
       tabIndex={0}
-      onFocusCapture={() => {
+      onFocusCapture={(event) => {
+        if (focusCameFromToolSurface(event)) return
         if (!active && activeSurface) onDispatch(selectWindowOperation(node))
       }}
     >
@@ -141,6 +143,23 @@ function selectWindowOperation(node: MaterializedWindowNode): LayoutOperation {
     type: 'activateSurface',
     windowId: node.window.id,
   }
+}
+
+function focusCameFromToolSurface(event: FocusEvent<HTMLElement>) {
+  const surfaceType = focusedSurfaceType(event.target)
+  if (!surfaceType) return false
+  if (surfaceType === 'file-editor') return false
+
+  return surfaceType !== 'diff'
+}
+
+function focusedSurfaceType(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return null
+
+  const host = target.closest('[data-surface-host]')
+  if (!(host instanceof HTMLElement)) return null
+
+  return host.dataset.surfaceType ?? null
 }
 
 function windowLabel(node: MaterializedWindowNode) {

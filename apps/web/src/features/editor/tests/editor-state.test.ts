@@ -33,7 +33,23 @@ import {
 } from '@/features/editor/state/editor-tab-paths'
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
+import {
+  CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+  CLASSIC_EDITOR_WINDOW_ID,
+  createClassicFirstRunWorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+import {
+  fileEditorSurfaceId,
+  fileNavigatorSurfaceId,
+  placeholderSurfaceId,
+} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { activateSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
+import {
+  editorPaneLayoutForWorkspaceLayout,
+  editorPaneIdForWorkbenchWindow,
+  editorSurfaceSerializedState,
+  workspaceLayoutForEditorPaneLayout,
+} from '@/features/workbench/utils/editor-surface-layout'
 import type { FileResult } from '@/lib/file-system-types'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import type {
@@ -480,6 +496,46 @@ describe('editor commands', () => {
     expect(uiStore.getState().statusBarSource).toBe(statusBarSource)
   })
 
+  it('replaces the first-run empty editor tab and keeps opening tree selections', () => {
+    const { commands, workspaceStore } = setupStores(classicWorkspaceState())
+    const placeholderId = placeholderSurfaceId('empty-editor')
+
+    commands.selectFile('src/a.ts')
+
+    expect(workspaceStore.getState().workspaceLayout.surfacesById[placeholderId]).toBeUndefined()
+    expect(
+      workspaceStore.getState().workspaceLayout.windowsById[CLASSIC_EDITOR_WINDOW_ID],
+    ).toMatchObject({
+      activeSurfaceId: fileEditorSurfaceId('src/a.ts'),
+      surfaceIds: [fileEditorSurfaceId('src/a.ts')],
+    })
+
+    workspaceStore
+      .getState()
+      .setWorkspaceLayout(
+        activateSurface(
+          workspaceStore.getState().workspaceLayout,
+          fileNavigatorSurfaceId(),
+          CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+        ),
+      )
+    commands.selectFile('src/b.ts')
+
+    expect(workspaceStore.getState().openFilePaths).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(workspaceStore.getState().selectedFilePath).toBe('src/b.ts')
+    expect(
+      editorSurfaceSerializedState(
+        workspaceStore.getState().workspaceLayout.surfacesById[fileEditorSurfaceId('src/b.ts')]!,
+      )?.editorPaneId,
+    ).toBe(editorPaneIdForWorkbenchWindow(CLASSIC_EDITOR_WINDOW_ID))
+    expect(
+      workspaceStore.getState().workspaceLayout.windowsById[CLASSIC_EDITOR_WINDOW_ID],
+    ).toMatchObject({
+      activeSurfaceId: fileEditorSurfaceId('src/b.ts'),
+      surfaceIds: [fileEditorSurfaceId('src/a.ts'), fileEditorSurfaceId('src/b.ts')],
+    })
+  })
+
   it('opens definitions through workspace, document, and ui stores', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts'], 'src/a.ts'),
@@ -695,6 +751,21 @@ function workspaceState(
     rootFolder: rootFolder(''),
     selectedFilePath,
     workspaceLayout: workspaceLayoutForEditorPaneLayout(editorPaneLayout),
+  }
+}
+
+function classicWorkspaceState(): CachedWorkspaceState {
+  const workspaceLayout = createClassicFirstRunWorkspaceLayout()
+
+  return {
+    diffViewMode: 'split',
+    editorHistory: [],
+    editorPaneLayout: editorPaneLayoutForWorkspaceLayout(workspaceLayout),
+    openFilePaths: [],
+    recentlyClosedEditorPaths: [],
+    rootFolder: rootFolder(''),
+    selectedFilePath: null,
+    workspaceLayout,
   }
 }
 

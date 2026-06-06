@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { FileTree as PierreFileTree } from '@pierre/trees'
-import type { FileTreeDirectoryHandle, FileTreeItemHandle } from '@pierre/trees'
+import type { FileTreeDirectoryHandle, FileTreeFileHandle, FileTreeItemHandle } from '@pierre/trees'
 
 import {
   loadExpandedDirectories,
   syncTreePaneState,
   visibleTreeItemCount,
 } from '@/components/workspace/file-tree/utils/tree-pane-state'
+import { selectedFileEntryForTreeSelection } from '@/components/workspace/file-tree/utils/tree-selection'
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
 import { mergeDirectoryLoad, treeModel } from '@/lib/tree-model'
 
@@ -82,6 +83,118 @@ describe('syncTreePaneState', () => {
       })
 
       expect(loadedPaths).toEqual(['vendor/'])
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it('does not rewrite tree selection when the selected file is already selected', () => {
+    const root = 'repo'
+    const model = treeModel(tree(root, [file('repo/src/a.ts'), file('repo/src/b.ts')]), root)
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: 'closed',
+      paths: model.paths,
+    })
+
+    try {
+      getFile(fileTree, 'src/a.ts').select()
+      getFile(fileTree, 'src/b.ts').select()
+
+      syncTreePaneState({
+        loadExpandedDirectoriesForCurrentModel: () => {},
+        model,
+        previousPaths: model.paths,
+        rootPath: root,
+        selectedFilePath: 'repo/src/b.ts',
+        tree: fileTree,
+      })
+
+      expect(fileTree.getSelectedPaths()).toEqual(['src/a.ts', 'src/b.ts'])
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it('does not reselect the active editor file during tree-only syncs', () => {
+    const root = 'repo'
+    const model = treeModel(tree(root, [directory('repo/src'), file('repo/src/a.ts')]), root)
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: 'closed',
+      paths: model.paths,
+    })
+
+    try {
+      getDirectory(fileTree, 'src/').select()
+
+      syncTreePaneState({
+        loadExpandedDirectoriesForCurrentModel: () => {},
+        model,
+        previousPaths: model.paths,
+        rootPath: root,
+        selectedFilePath: 'repo/src/a.ts',
+        syncSelection: false,
+        tree: fileTree,
+      })
+
+      expect(fileTree.getSelectedPaths()).toEqual(['src/'])
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it('skips stale removals that are already absent from the tree model', () => {
+    const root = 'repo'
+    const model = treeModel(tree(root, [directory('repo/packages/editor-find')]), root)
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: 'closed',
+      paths: model.paths,
+    })
+
+    try {
+      expect(() => {
+        syncTreePaneState({
+          loadExpandedDirectoriesForCurrentModel: () => {},
+          model,
+          previousPaths: [...model.paths, 'packages/editor-find/.turbo/'],
+          rootPath: root,
+          selectedFilePath: null,
+          tree: fileTree,
+        })
+      }).not.toThrow()
+    } finally {
+      fileTree.cleanUp()
+    }
+  })
+
+  it('skips stale additions that already exist in the tree model', () => {
+    const root = 'repo'
+    const model = treeModel(
+      tree(root, [
+        directory('repo/packages/editor-find'),
+        directory('repo/packages/editor-find/.turbo'),
+      ]),
+      root,
+    )
+    const fileTree = new PierreFileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: 'closed',
+      paths: model.paths,
+    })
+
+    try {
+      expect(() => {
+        syncTreePaneState({
+          loadExpandedDirectoriesForCurrentModel: () => {},
+          model,
+          previousPaths: model.paths.filter((path) => path !== 'packages/editor-find/.turbo/'),
+          rootPath: root,
+          selectedFilePath: null,
+          tree: fileTree,
+        })
+      }).not.toThrow()
     } finally {
       fileTree.cleanUp()
     }
@@ -390,6 +503,26 @@ describe('visibleTreeItemCount', () => {
   })
 })
 
+describe('selectedFileEntryForTreeSelection', () => {
+  it('uses the most recently selected file when the tree model keeps older selections', () => {
+    const root = 'repo'
+    const model = treeModel(tree(root, [file('repo/src/a.ts'), file('repo/src/b.ts')]), root)
+
+    expect(selectedFileEntryForTreeSelection(model, ['src/a.ts', 'src/b.ts'])?.path).toBe(
+      'repo/src/b.ts',
+    )
+  })
+
+  it('skips selected directories when resolving the selected file', () => {
+    const root = 'repo'
+    const model = treeModel(tree(root, [directory('repo/src'), file('repo/src/a.ts')]), root)
+
+    expect(selectedFileEntryForTreeSelection(model, ['src/a.ts', 'src/'])?.path).toBe(
+      'repo/src/a.ts',
+    )
+  })
+})
+
 function focusChangesDuring(tree: PierreFileTree, action: () => void) {
   const paths: (string | null)[] = []
   const unsubscribe = tree.subscribe(() => {
@@ -423,8 +556,21 @@ function getDirectory(tree: PierreFileTree, path: string): FileTreeDirectoryHand
   return item
 }
 
+function getFile(tree: PierreFileTree, path: string): FileTreeFileHandle {
+  const item = tree.getItem(path)
+  if (!isFileHandle(item)) {
+    throw new Error(`Expected ${path} to be a file`)
+  }
+
+  return item
+}
+
 function isDirectoryHandle(item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle {
   return item?.isDirectory() === true
+}
+
+function isFileHandle(item: FileTreeItemHandle | null): item is FileTreeFileHandle {
+  return item?.isDirectory() === false
 }
 
 function tree(path: string, entries: TreeEntry[]): TreeResult {

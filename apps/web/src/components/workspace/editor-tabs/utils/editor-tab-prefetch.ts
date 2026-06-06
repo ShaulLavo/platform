@@ -1,7 +1,5 @@
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 
-export const EDITOR_TAB_PREFETCH_STALE_MS = 5_000
-
 export type EditorTabPrefetchCandidate = {
   id: string
   path: string

@@ -1,14 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useState, type RefObject } from 'react'
+import { useLayoutEffect, useMemo, type RefObject } from 'react'
 
 import { ChromeEditorTab } from '@/components/workspace/editor-tabs/components/chrome-editor-tab'
 import { chromeTabLayout } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import { scrollSelectedTabIntoView } from '@/components/workspace/editor-tabs/utils/editor-tab-scroll'
 import {
   activeChromeTabId,
-  chromeCloseSpacerStyle,
-  CHROME_TAB_GROW_DELAY_MS,
+  chromeGhostTabStyle,
   chromeTrailingSlotWidths,
-  nextCloseModeSpacerWidth,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
 import type {
   EditorChromeVisualTab,
@@ -43,50 +41,48 @@ export function ChromeEditorTabList({
 }) {
   const activeTabId = activeChromeTabId(tabs)
   const measuredAvailableWidth = useElementWidth(tabListRef)
-  const [closeModeSpacerWidth, setCloseModeSpacerWidth] = useState(0)
   const trailingSlotWidths = useMemo(() => chromeTrailingSlotWidths(tabs), [tabs])
-  const availableWidth =
+  const layout =
     measuredAvailableWidth === null
       ? null
-      : Math.max(0, measuredAvailableWidth - closeModeSpacerWidth)
-  const layout =
-    availableWidth === null
-      ? null
       : chromeTabLayout({
-          activeIndex: tabs.findIndex((visualTab) => visualTab.tab.active),
-          availableWidth,
+          activeIndex: tabs.findIndex(
+            (visualTab) => visualTab.phase !== 'closing' && visualTab.tab.active,
+          ),
+          availableWidth: measuredAvailableWidth,
           tabCount: tabs.length,
           trailingSlotWidths,
         })
   const overlap = layout?.overlap ?? 0
-  const spacerStyle = chromeCloseSpacerStyle(closeModeSpacerWidth)
-  const tabModels = useMemo(() => tabs.map((visualTab) => visualTab.tab), [tabs])
+  const tabModels = useMemo(
+    () =>
+      tabs.filter((visualTab) => visualTab.phase !== 'closing').map((visualTab) => visualTab.tab),
+    [tabs],
+  )
 
   useLayoutEffect(() => {
     scrollSelectedTabIntoView(tabListRef.current, selectedTabRef.current)
   }, [activeTabId, selectedTabRef, tabListRef, tabs.length])
 
-  useEffect(() => {
-    if (closeModeSpacerWidth <= 0) return
-
-    const timeout = window.setTimeout(() => {
-      setCloseModeSpacerWidth(0)
-    }, CHROME_TAB_GROW_DELAY_MS)
-
-    return () => window.clearTimeout(timeout)
-  }, [closeModeSpacerWidth])
-
-  function handleClose(tabId: string, width: number | null) {
+  function handleClose(tabId: string) {
     const closed = onClose(tabId)
-    if (!closed) return
-
-    const nextSpacerWidth = nextCloseModeSpacerWidth(closeModeSpacerWidth, layout, width)
-    setCloseModeSpacerWidth(nextSpacerWidth)
+    if (closed) return
   }
 
   return (
     <div className='flex min-w-full items-end overflow-visible'>
       {tabs.map((visualTab, index) => {
+        if (visualTab.phase === 'closing') {
+          return (
+            <div
+              aria-hidden='true'
+              className='pointer-events-none invisible'
+              key={visualTab.tab.id}
+              style={chromeGhostTabStyle(index, overlap, layout?.tabs[index]?.width ?? null)}
+            />
+          )
+        }
+
         const insertionEdge = editorTabInsertionEdge(tabModels, visualTab.tab, drag.state)
 
         return (
@@ -110,7 +106,6 @@ export function ChromeEditorTabList({
           />
         )
       })}
-      <div aria-hidden='true' className='pointer-events-none' style={spacerStyle} />
     </div>
   )
 }

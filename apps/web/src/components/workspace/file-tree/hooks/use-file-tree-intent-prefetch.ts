@@ -6,16 +6,18 @@ import {
   canPrefetchFileEntry,
   fileTreeRowElements,
   fileTreeRowPath,
-  FILE_TREE_PREFETCH_STALE_MS,
 } from '@/components/workspace/file-tree/utils/file-tree-prefetch'
 import {
   createIntentPrefetchRegistry,
+  INTENT_PREFETCH_HIT_SLOP_PX,
   type IntentPrefetchRegistry,
   type IntentPrefetchRow,
 } from '@/components/workspace/shared/utils/intent-prefetch-registry'
 import { createAnimationFrameScheduler } from '@/components/workspace/shared/utils/intent-prefetch-scheduler'
-import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
-import { fetchFile } from '@/lib/file-server'
+import {
+  FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
+  prefetchFileSnapshotQuery,
+} from '@/lib/file-snapshot-query-cache'
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
@@ -47,11 +49,7 @@ export function useFileTreeIntentPrefetch({
     }
     if (!canPrefetchFileEntry(entry)) return
 
-    void queryClient.prefetchQuery({
-      ...fileSnapshotQueryOptions(entry.path),
-      queryFn: ({ signal }) => fetchFile(entry.path, signal),
-      staleTime: FILE_TREE_PREFETCH_STALE_MS,
-    })
+    void prefetchFileSnapshotQuery(queryClient, entry.path)
   })
 
   const syncRegistrations = useEffectEvent((registry: IntentPrefetchRegistry<string>) => {
@@ -68,7 +66,8 @@ export function useFileTreeIntentPrefetch({
     if (typeof window === 'undefined') return
 
     const registry = createIntentPrefetchRegistry({
-      reactivateAfter: FILE_TREE_PREFETCH_STALE_MS,
+      hitSlop: INTENT_PREFETCH_HIT_SLOP_PX,
+      reactivateAfter: FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
       resolveRow: resolveFileTreeRow,
     })
     let observer: MutationObserver | null = null

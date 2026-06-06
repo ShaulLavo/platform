@@ -13,7 +13,7 @@ describe('observability config', () => {
       environment: 'production',
       filePretty: false,
       infoSampleRate: 25,
-      logDir: '.evlog/logs',
+      logDir: 'logs',
       maxBufferSize: 1_000,
       maxFiles: 14,
       maxSizePerFile: 10_485_760,
@@ -86,7 +86,7 @@ describe('observability config', () => {
 
     expect(config).toMatchObject({
       enabled: true,
-      logDir: '.evlog/logs',
+      logDir: 'logs',
       postHogApiKey: '',
       postHogEnabled: false,
     })

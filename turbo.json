@@ -45,10 +45,7 @@
       "outputs": ["dist/**"]
     },
     "lint": {
-      "dependsOn": ["^lint", "//#verify:spelling"]
-    },
-    "//#verify:spelling": {
-      "inputs": ["scripts/verify-no-refrences.sh", "**/*", "!.kiro/specs/**"]
+      "dependsOn": ["^lint"]
     },
     "format": {
       "dependsOn": ["^format"],

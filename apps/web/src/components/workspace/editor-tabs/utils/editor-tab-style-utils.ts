@@ -7,7 +7,6 @@ import {
   CHROME_TAB_INACTIVE_MIN_WIDTH,
   CHROME_TAB_STANDARD_WIDTH,
   CHROME_TAB_TRAILING_SLOT_WIDTH,
-  type ChromeTabLayout,
 } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import type {
   EditorChromeVisualTab,
@@ -54,11 +53,15 @@ export function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
 }
 
 export function activeChromeTabId(visualTabs: readonly EditorChromeVisualTab[]) {
-  return visualTabs.find((visualTab) => visualTab.tab.active)?.tab.id ?? null
+  return (
+    visualTabs.find((visualTab) => visualTab.phase !== 'closing' && visualTab.tab.active)?.tab.id ??
+    null
+  )
 }
 
 export function chromeTrailingSlotWidths(visualTabs: readonly EditorChromeVisualTab[]) {
   return visualTabs.map((visualTab) => {
+    if (visualTab.phase === 'closing') return 0
     if (!visualTab.tab.active) return 0
 
     return CHROME_TAB_TRAILING_SLOT_WIDTH
@@ -71,37 +74,11 @@ export function chromeTabCloseButtonVisibilityClassName(tab: EditorTabModel, dir
   return 'pointer-events-none opacity-0 group-focus-within/chrome-tab:pointer-events-auto group-focus-within/chrome-tab:opacity-100 group-hover/chrome-tab:pointer-events-auto group-hover/chrome-tab:opacity-100'
 }
 
-export function chromeCloseSpacerStyle(width: number) {
-  return {
-    flex: `0 0 ${width}px`,
-    maxWidth: width,
-    minWidth: width,
-    width,
-  } as CSSProperties
-}
-
 export function chromeTabTrailingSlotStyle() {
   return {
     '--chrome-tab-trailing-slot-width': `${CHROME_TAB_TRAILING_SLOT_WIDTH}px`,
     transition: CHROME_TAB_SLOT_TRANSITION,
   } as CSSProperties
-}
-
-export function chromeTabRootWidth(element: HTMLElement) {
-  return element.closest('[data-chrome-tab-root]')?.getBoundingClientRect().width ?? null
-}
-
-export function nextCloseModeSpacerWidth(
-  currentSpacerWidth: number,
-  layout: ChromeTabLayout | null,
-  closedTabWidth: number | null,
-) {
-  if (closedTabWidth === null) return currentSpacerWidth
-
-  const overlap = layout?.overlap ?? 0
-  const closedTabAdvance = Math.max(0, closedTabWidth - overlap)
-
-  return currentSpacerWidth + closedTabAdvance
 }
 
 export function chromeTabStyle(
@@ -127,6 +104,18 @@ export function chromeTabStyle(
     minWidth: targetWidth ?? minWidth,
     transition: CHROME_TAB_TRANSITION,
     width: targetWidth ?? 'auto',
+  } as CSSProperties
+}
+
+export function chromeGhostTabStyle(index: number, overlap: number, width: number | null) {
+  return {
+    flex: width === null ? '1 1 0px' : `0 0 ${width}px`,
+    height: CHROME_TAB_HEIGHT,
+    marginLeft: index === 0 ? 0 : -overlap,
+    maxWidth: width ?? CHROME_TAB_STANDARD_WIDTH,
+    minWidth: width ?? CHROME_TAB_INACTIVE_MIN_WIDTH,
+    transition: CHROME_TAB_TRANSITION,
+    width: width ?? 'auto',
   } as CSSProperties
 }
 

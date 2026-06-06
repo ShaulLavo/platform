@@ -1,10 +1,17 @@
 import type { Query, QueryClient, QueryKey } from '@tanstack/react-query'
 
 import type { FileResult } from '@/lib/file-system-types'
+import { fetchFile } from '@/lib/file-server'
 import { fileSystemKeys } from '@/lib/query-keys'
 
 export const FILE_SNAPSHOT_QUERY_GC_TIME_MS = 2 * 60 * 1000
 export const FILE_SNAPSHOT_QUERY_CACHE_LIMIT = 64
+export const FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS = 5_000
+
+type PrefetchFileSnapshotQueryOptions = {
+  readonly fetcher?: (path: string, signal: AbortSignal) => Promise<FileResult>
+  readonly staleTime?: number
+}
 
 export function fileSnapshotQueryOptions(path: string) {
   return {
@@ -28,6 +35,24 @@ export function setFileSnapshotQueryData(
   )
   query.setData(file, { manual: true, updatedAt: options.updatedAt })
   pruneFileSnapshotQueryCache(queryClient)
+}
+
+export function prefetchFileSnapshotQuery(
+  queryClient: QueryClient,
+  path: string,
+  options: PrefetchFileSnapshotQueryOptions = {},
+) {
+  const staleTime = options.staleTime ?? FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS
+  if (!shouldPrefetchFileSnapshotQuery(queryClient, path)) {
+    return Promise.resolve()
+  }
+
+  const fetcher = options.fetcher ?? fetchFile
+  return queryClient.prefetchQuery({
+    ...fileSnapshotQueryOptions(path),
+    queryFn: ({ signal }) => fetcher(path, signal),
+    staleTime,
+  })
 }
 
 export function installFileSnapshotQueryCachePolicy(queryClient: QueryClient) {
@@ -66,6 +91,14 @@ export function pruneFileSnapshotQueryCache(
   }
 
   return removed
+}
+
+function shouldPrefetchFileSnapshotQuery(queryClient: QueryClient, path: string) {
+  const state = queryClient.getQueryState<FileResult>(fileSystemKeys.fileSnapshot(path))
+  if (!state) return true
+  if (state.fetchStatus === 'fetching') return false
+
+  return state.data === undefined
 }
 
 function fileSnapshotQueries(queryClient: QueryClient) {

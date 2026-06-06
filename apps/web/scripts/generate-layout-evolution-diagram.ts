@@ -14,12 +14,9 @@ import {
   previewState,
 } from '../src/features/tiling-surface-manager/diagrams/states'
 
-const DIAGRAMS_DIR = path.resolve(
-  import.meta.dirname,
-  '../src/features/tiling-surface-manager/diagrams',
-)
-const EXCALIDRAW_PATH = path.join(DIAGRAMS_DIR, 'layout-evolution.excalidraw')
-const ASCII_PATH = path.join(DIAGRAMS_DIR, 'layout-evolution.txt')
+const OUTPUT_DIR = path.resolve(import.meta.dirname, '../../../diagrams')
+const EXCALIDRAW_PATH = path.join(OUTPUT_DIR, 'layout-evolution.excalidraw')
+const ASCII_PATH = path.join(OUTPUT_DIR, 'layout-evolution.txt')
 
 const engine = await loadEngine()
 
@@ -36,7 +33,7 @@ async function main(engine: Engine) {
   const excalidraw = excalidrawRenderer.render({ engine, groups })
   const ascii = asciiRenderer.render({ engine, groups })
 
-  await fs.mkdir(DIAGRAMS_DIR, { recursive: true })
+  await fs.mkdir(OUTPUT_DIR, { recursive: true })
   await fs.writeFile(EXCALIDRAW_PATH, excalidraw, 'utf8')
   await fs.writeFile(ASCII_PATH, ascii, 'utf8')
 

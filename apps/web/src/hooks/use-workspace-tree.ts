@@ -8,6 +8,8 @@ import {
   treeDirectoryPrefetchKey,
 } from '@/components/workspace/file-tree/utils/file-tree-prefetch'
 import { idleState, type LoadState } from '@/lib/load-state'
+import { log } from '@/lib/client-logging'
+import { createCoalescedLogQueue } from '@/lib/coalesced-log'
 import { canonicalTreePath, toTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys } from '@/lib/query-keys'
 import {
@@ -21,6 +23,12 @@ import {
 } from '@/lib/tree-model'
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
+
+const DIRECTORY_LOAD_SKIPPED_LOG_DELAY_MS = 250
+const directoryLoadSkippedLogs = createCoalescedLogQueue({
+  delayMs: DIRECTORY_LOAD_SKIPPED_LOG_DELAY_MS,
+  emit: (event) => log.info(event),
+})
 
 export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
   const queryClient = useQueryClient()
@@ -47,13 +55,33 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
 
   const loadTreeDirectory = useCallback(
     (entry: TreeEntry, treePath: string, options: DirectoryLoadOptions = {}) => {
-      if (!rootFolder) return
-      if (treeState.status !== 'ready') return
-      if (!isDirectoryEntry(entry)) return
-      if (!shouldLoadDirectory(treeState.data, treePath, options)) return
+      if (!rootFolder) {
+        logDirectoryLoadSkipped(treePath, 'missing-root')
+        return
+      }
+      if (treeState.status !== 'ready') {
+        logDirectoryLoadSkipped(treePath, `tree-${treeState.status}`)
+        return
+      }
+      if (!isDirectoryEntry(entry)) {
+        logDirectoryLoadSkipped(treePath, 'not-directory')
+        return
+      }
+      if (!shouldLoadDirectory(treeState.data, treePath, options)) {
+        logDirectoryLoadSkipped(treePath, 'not-needed')
+        return
+      }
 
       const canonicalPath = canonicalTreePath(treePath)
       const directoryKey = treeDirectoryPrefetchKey(rootFolder.path, canonicalPath, entry)
+      log.info({
+        action: 'file-tree.directory.load.start',
+        area: 'file-tree',
+        entryPath: entry.path,
+        retry: options.retry === true,
+        rootPath: rootFolder.path,
+        treePath: canonicalPath,
+      })
 
       queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
         if (!model) return model
@@ -71,14 +99,31 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
           queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
             if (!model) return model
 
+            log.info({
+              action: 'file-tree.directory.load.success',
+              area: 'file-tree',
+              entryCount: result.entries.length,
+              entryPath: entry.path,
+              rootPath: rootFolder.path,
+              treePath: canonicalPath,
+            })
             return mergeDirectoryLoad(model, rootFolder.path, result, canonicalPath)
           }),
         )
         .catch((error: unknown) => {
+          const message = errorMessage(error)
+          log.warn({
+            action: 'file-tree.directory.load.error',
+            area: 'file-tree',
+            entryPath: entry.path,
+            error: { message },
+            rootPath: rootFolder.path,
+            treePath: canonicalPath,
+          })
           queryClient.setQueryData(rootTreeKey, (model: TreeModel | undefined) => {
             if (!model) return model
 
-            return markDirectoryError(model, canonicalPath, errorMessage(error))
+            return markDirectoryError(model, canonicalPath, message)
           })
         })
     },
@@ -107,6 +152,17 @@ export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
     resetTreeLoad,
     treeState,
   }
+}
+
+function logDirectoryLoadSkipped(treePath: string, reason: string) {
+  const event = {
+    action: 'file-tree.directory.load.skipped',
+    area: 'file-tree',
+    reason,
+    treePath,
+  }
+
+  directoryLoadSkippedLogs.queue(`${reason}:${treePath}`, event)
 }
 
 export function selectedFileAncestorDirectoryPaths(

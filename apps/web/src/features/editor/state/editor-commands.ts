@@ -50,6 +50,7 @@ import {
   editorPaneIdForWorkbenchWindow,
   editorSurfaceSerializedState,
 } from '@/features/workbench/utils/editor-surface-layout'
+import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
 import { useMemo } from 'react'
@@ -138,6 +139,17 @@ function selectFile(
     workspace.workspaceLayout,
     selectedFilePath,
   )
+  const nextSelection = editorWorkspaceSelectionForWorkspaceLayoutForState(
+    workspace,
+    workspaceLayout,
+  )
+
+  logSelectFileTransition({
+    nextSelection,
+    requestedPath: selectedFilePath,
+    workspace,
+    workspaceLayout,
+  })
 
   documentStore.setState({
     fallbackDocumentPath: fallbackDocumentPathForSelection(
@@ -147,8 +159,40 @@ function selectFile(
     ),
   })
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForWorkspaceLayoutForState(workspace, workspaceLayout),
+    ...nextSelection,
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
+  })
+}
+
+function logSelectFileTransition({
+  nextSelection,
+  requestedPath,
+  workspace,
+  workspaceLayout,
+}: {
+  nextSelection: ReturnType<typeof editorWorkspaceSelectionForWorkspaceLayoutForState>
+  requestedPath: string
+  workspace: EditorWorkspaceStore
+  workspaceLayout: WorkspaceLayout
+}) {
+  const existingSurface = editorSurfaceForPath(workspace.workspaceLayout, requestedPath)
+  const requestedSurface = editorSurfaceForPath(workspaceLayout, requestedPath)
+
+  log.info({
+    action: 'editor.command.select_file',
+    area: 'editor',
+    existingSurfaceId: existingSurface?.id ?? null,
+    nextActiveSurfaceId: workspaceLayout.activeSurfaceId,
+    nextActiveWindowId: workspaceLayout.activeWindowId,
+    nextOpenFilePaths: nextSelection.openFilePaths,
+    nextSelectedFilePath: nextSelection.selectedFilePath,
+    previousActiveSurfaceId: workspace.workspaceLayout.activeSurfaceId,
+    previousActiveWindowId: workspace.workspaceLayout.activeWindowId,
+    previousOpenFilePaths: workspace.openFilePaths,
+    previousSelectedFilePath: workspace.selectedFilePath,
+    requestedPath,
+    requestedSurfaceActive: requestedSurface?.id === workspaceLayout.activeSurfaceId,
+    requestedSurfaceId: requestedSurface?.id ?? null,
   })
 }
 
@@ -452,7 +496,10 @@ function openEditorPathInWorkspaceLayout(layout: WorkspaceLayout, path: string) 
   const existingSurface = editorSurfaceForPath(layout, path)
   if (existingSurface) return activateSurface(layout, existingSurface.id)
 
-  return openSurface(layout, createEditorSurfaceForPath(layout, path))
+  const surface = createEditorSurfaceForPath(layout, path)
+  const nextLayout = openSurface(layout, surface)
+
+  return closePlaceholderSurfacesInSurfaceWindow(nextLayout, surface.id)
 }
 
 function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface {
@@ -469,10 +516,79 @@ function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surf
 }
 
 function editorPaneIdForNewSurface(layout: WorkspaceLayout) {
-  const windowId = layout.activeWindowId
+  const windowId = editorWindowIdForNewSurface(layout)
   if (!windowId) return 'workbench:root'
 
   return editorPaneIdForWorkbenchWindow(windowId)
+}
+
+function editorWindowIdForNewSurface(layout: WorkspaceLayout) {
+  const activeWindowId = layout.activeWindowId
+  if (activeWindowId && windowContainsEditorSurface(layout, activeWindowId)) return activeWindowId
+
+  const activeSurfaceWindowId = activeEditorSurfaceWindowId(layout)
+  if (activeSurfaceWindowId) return activeSurfaceWindowId
+
+  return firstEditorWindowId(layout) ?? activeWindowId ?? null
+}
+
+function activeEditorSurfaceWindowId(layout: WorkspaceLayout) {
+  const activeSurfaceId = layout.activeSurfaceId
+  if (!activeSurfaceId) return null
+
+  const windowId = findWindowIdContainingSurface(layout, activeSurfaceId)
+  if (!windowId) return null
+  if (!windowContainsEditorSurface(layout, windowId)) return null
+
+  return windowId
+}
+
+function firstEditorWindowId(layout: WorkspaceLayout) {
+  for (const window of Object.values(layout.windowsById)) {
+    if (!windowContainsEditorSurface(layout, window.id)) continue
+
+    return window.id
+  }
+
+  return null
+}
+
+function windowContainsEditorSurface(layout: WorkspaceLayout, windowId: WindowId) {
+  const window = layout.windowsById[windowId]
+  if (!window) return false
+
+  return window.surfaceIds.some((surfaceId) =>
+    surfaceBelongsToEditorPane(layout.surfacesById[surfaceId]),
+  )
+}
+
+function surfaceBelongsToEditorPane(surface: Surface | undefined) {
+  if (!surface) return false
+  if (surface.type === 'file-editor') return true
+  if (surface.type === 'diff') return true
+
+  return surface.type === 'placeholder'
+}
+
+function closePlaceholderSurfacesInSurfaceWindow(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  const windowId = findWindowIdContainingSurface(layout, surfaceId)
+  if (!windowId) return layout
+
+  return closePlaceholderSurfacesInWindow(layout, windowId)
+}
+
+function closePlaceholderSurfacesInWindow(layout: WorkspaceLayout, windowId: WindowId) {
+  const surfaceIds = layout.windowsById[windowId]?.surfaceIds ?? []
+  let nextLayout = layout
+
+  for (const surfaceId of surfaceIds) {
+    const surface = nextLayout.surfacesById[surfaceId]
+    if (surface?.type !== 'placeholder') continue
+
+    nextLayout = closeSurfaceInLayout(nextLayout, surface.id, { force: true })
+  }
+
+  return nextLayout
 }
 
 function closeEditorPathSurfaces(layout: WorkspaceLayout, path: string) {

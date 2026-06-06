@@ -10,7 +10,7 @@ import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { sendTerminalClientMessage } from './terminal-socket'
-import { readTerminalTheme, syncTerminalTheme } from './terminal-theme'
+import { readTerminalTheme } from './terminal-theme'
 
 type TerminalDimensions = {
   cols: number
@@ -30,24 +30,10 @@ export function TerminalPanel({
   const activationFrameRef = useRef<number | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
-  const themeSyncFrameRef = useRef<number | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
   const setFocusArea = useFocus((state) => state.setFocusArea)
   activeRef.current = active
-  const syncTerminalThemeAfterFrame = useEffectEvent(() => {
-    if (themeSyncFrameRef.current !== null) {
-      window.cancelAnimationFrame(themeSyncFrameRef.current)
-    }
-
-    themeSyncFrameRef.current = window.requestAnimationFrame(() => {
-      themeSyncFrameRef.current = null
-      const terminal = terminalRef.current
-      if (!terminal) return
-
-      syncTerminalTheme(terminal)
-    })
-  })
   const activateTerminalAfterFrame = useEffectEvent(() => {
     if (activationFrameRef.current !== null) {
       window.cancelAnimationFrame(activationFrameRef.current)
@@ -60,6 +46,10 @@ export function TerminalPanel({
     })
   })
 
+  // ghostty-web bakes the theme into its WASM terminal at construction and has
+  // no runtime theme API, so a live theme switch is applied by rebuilding the
+  // terminal: the new instance reads the active CSS palette and the server
+  // replays its buffer on reconnect (same as a page refresh).
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -71,16 +61,11 @@ export function TerminalPanel({
       onReady: (terminal, fitAddon) => {
         fitAddonRef.current = fitAddon
         terminalRef.current = terminal
-        syncTerminalThemeAfterFrame()
         if (activeRef.current) activateTerminalAfterFrame()
       },
     })
 
     return () => {
-      if (themeSyncFrameRef.current !== null) {
-        window.cancelAnimationFrame(themeSyncFrameRef.current)
-        themeSyncFrameRef.current = null
-      }
       if (activationFrameRef.current !== null) {
         window.cancelAnimationFrame(activationFrameRef.current)
         activationFrameRef.current = null
@@ -90,18 +75,7 @@ export function TerminalPanel({
       fitAddonRef.current = null
       unmountTerminal()
     }
-  }, [rootPath, sessionId])
-
-  useEffect(() => {
-    syncTerminalThemeAfterFrame()
-
-    return () => {
-      if (themeSyncFrameRef.current !== null) {
-        window.cancelAnimationFrame(themeSyncFrameRef.current)
-        themeSyncFrameRef.current = null
-      }
-    }
-  }, [resolvedTheme])
+  }, [resolvedTheme, rootPath, sessionId])
 
   useEffect(() => {
     if (!active) return

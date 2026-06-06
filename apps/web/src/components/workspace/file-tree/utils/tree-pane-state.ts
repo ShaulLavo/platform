@@ -19,6 +19,7 @@ export function syncTreePaneState({
   model,
   previousPaths,
   rootPath,
+  syncSelection = true,
   selectedFilePath,
   tree,
 }: {
@@ -26,11 +27,12 @@ export function syncTreePaneState({
   model: TreeModel
   previousPaths: readonly string[]
   rootPath: string
+  syncSelection?: boolean
   selectedFilePath: string | null
   tree: PierreFileTreeModel
 }) {
   syncTreePaths(tree, previousPaths, model.paths, model)
-  syncSelectedFilePath(tree, rootPath, selectedFilePath)
+  if (syncSelection) syncSelectedFilePath(tree, rootPath, selectedFilePath)
   loadExpandedDirectoriesForCurrentModel(tree)
 
   return model.paths
@@ -84,7 +86,7 @@ function syncSelectedFilePath(
   expandKnownAncestorDirectories(tree, canonicalPath)
   const item = tree.getItem(canonicalPath)
   if (!item || item.isDirectory()) return
-  if (isOnlySelectedPath(tree, canonicalPath)) return
+  if (tree.getSelectedPaths().includes(canonicalPath)) return
 
   clearTreeSelection(tree)
   item.select()
@@ -215,9 +217,12 @@ function syncTreePaths(
   const expandedPathsBeforeSync = expandedDirectoryPathSet(model, tree)
 
   if (shouldResetTreePaths(changes)) {
-    tree.resetPaths(nextPaths, {
-      initialExpandedPaths: expandedDirectoryPaths(model, tree),
-    })
+    resetTreePaths(tree, nextPaths, model)
+    return
+  }
+
+  if (treePathChangesDriftedFromLiveTree(tree, changes)) {
+    resetTreePaths(tree, nextPaths, model)
     return
   }
 
@@ -249,6 +254,28 @@ function shouldResetTreePaths({ added, removed }: TreePathChanges) {
   return added.length + removed.length > INCREMENTAL_TREE_SYNC_LIMIT
 }
 
+function resetTreePaths(tree: PierreFileTreeModel, paths: readonly string[], model: TreeModel) {
+  tree.resetPaths(paths, {
+    initialExpandedPaths: expandedDirectoryPaths(model, tree),
+  })
+}
+
+function treePathChangesDriftedFromLiveTree(tree: PierreFileTreeModel, changes: TreePathChanges) {
+  for (const path of changes.removed) {
+    if (treeHasPath(tree, path)) continue
+
+    return true
+  }
+
+  for (const path of changes.added) {
+    if (!treeHasPath(tree, path)) continue
+
+    return true
+  }
+
+  return false
+}
+
 function topLevelRemovedPaths(paths: readonly string[]) {
   const removedPathSet = new Set(paths)
 
@@ -268,12 +295,18 @@ function treePathDepth(path: string) {
 }
 
 function removeTreePath(tree: PierreFileTreeModel, path: string) {
+  if (!treeHasPath(tree, path)) return
+
   if (path.endsWith('/')) {
     tree.remove(path, { recursive: true })
     return
   }
 
   tree.remove(path)
+}
+
+function treeHasPath(tree: PierreFileTreeModel, path: string) {
+  return tree.getItem(path) !== null
 }
 
 function expandKnownAncestorDirectories(tree: PierreFileTreeModel, treePath: string) {
@@ -295,13 +328,6 @@ function ancestorDirectoryPaths(treePath: string) {
   }
 
   return paths
-}
-
-function isOnlySelectedPath(tree: PierreFileTreeModel, treePath: string) {
-  const selectedPaths = tree.getSelectedPaths()
-  if (selectedPaths.length !== 1) return false
-
-  return canonicalTreePath(selectedPaths[0] ?? '') === treePath
 }
 
 function expandedDirectoryPaths(model: TreeModel, tree: PierreFileTreeModel) {

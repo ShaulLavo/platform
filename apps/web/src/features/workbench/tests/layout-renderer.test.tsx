@@ -186,6 +186,32 @@ describe('LayoutRenderer', () => {
     expect(operations).toEqual([])
   })
 
+  it('stops pointer drag resize when pointerup happens outside the handle', () => {
+    const operations: LayoutOperation[] = []
+
+    render(
+      <ResizeOverlay
+        resizeHandleRects={[
+          {
+            axis: 'horizontal',
+            handleIndex: 0,
+            id: overlayId('resize:test:0'),
+            rect: { height: 720, width: 8, x: 400, y: 0 },
+            splitId: layoutNodeId('split-test'),
+          },
+        ]}
+        onDispatch={(operation) => operations.push(operation)}
+      />,
+    )
+
+    const handle = screen.getByRole('separator', { name: 'Resize columns' })
+    fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(window, { clientX: 432, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(handle, { buttons: 1, clientX: 464, clientY: 10, pointerId: 1 })
+
+    expect(operations).toEqual([])
+  })
+
   it('hides the classic bottom tool pane from its window controls', () => {
     const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
 
@@ -245,6 +271,20 @@ describe('LayoutRenderer', () => {
     expect(visibleSurfaceIdsInOrder(store.getState().layout)).toContain(chat.id)
     expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'active')
     expect(railButtonForSurface(logs.id)).toHaveAttribute('data-rail-state', 'visible')
+  })
+
+  it('does not let tool pane focus steal active editor selection', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
+    const store = renderInteractiveLayout(openSurface(createClassicFirstRunWorkspaceLayout(), file))
+
+    const toolSurface = document.querySelector(
+      '[data-surface-host][data-surface-type="file-navigator"]',
+    )
+    if (!(toolSurface instanceof HTMLElement)) throw new Error('Missing file navigator host')
+
+    fireEvent.focus(toolSurface)
+
+    expect(store.getState().layout.activeSurfaceId).toBe(file.id)
   })
 
   it('does not duplicate visible running surfaces in hidden hosts', () => {

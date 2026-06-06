@@ -25,6 +25,7 @@ apps/desktop/build/
 
 # Debug
 npm-debug.log*
+logs/
 .evlog/
 
 # Misc

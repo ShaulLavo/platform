@@ -1,6 +1,8 @@
 import { useLayoutEffect, useReducer, type Reducer } from 'react'
 
-export type ChromeVisualTabPhase = 'opening' | 'present'
+import { CHROME_TAB_GROW_DELAY_MS } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
+
+export type ChromeVisualTabPhase = 'closing' | 'opening' | 'present'
 
 export type ChromeVisualTabSource = {
   id?: string
@@ -32,6 +34,10 @@ export type ChromeVisualTabsAction<TTab extends ChromeVisualTabSource> =
       openingKey: string
       type: 'finish-opening'
     }
+  | {
+      closingKey: string
+      type: 'remove-closing'
+    }
 
 export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
   tabs: readonly TTab[],
@@ -48,6 +54,7 @@ export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
       ? syncChromeVisualTabs(state.visualTabs, tabs, areTabsEqual)
       : state.visualTabs
   const openingKey = chromeVisualTabPhaseKey(visualTabs, 'opening')
+  const closingKey = chromeVisualTabPhaseKey(visualTabs, 'closing')
 
   useLayoutEffect(() => {
     if (!enabled) return
@@ -67,6 +74,17 @@ export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
     return () => cancelAnimationFrame(frame)
   }, [enabled, openingKey])
 
+  useLayoutEffect(() => {
+    if (!enabled) return
+    if (!closingKey) return
+
+    const timeout = window.setTimeout(() => {
+      dispatch({ closingKey, type: 'remove-closing' })
+    }, CHROME_TAB_GROW_DELAY_MS)
+
+    return () => window.clearTimeout(timeout)
+  }, [closingKey, enabled])
+
   if (!enabled) return []
 
   return visualTabs
@@ -80,12 +98,22 @@ export function chromeVisualTabsReducer<TTab extends ChromeVisualTabSource>(
     return syncChromeVisualTabsState(state, action.tabs, action.areTabsEqual)
   }
 
-  const openingKey = chromeVisualTabPhaseKey(state.visualTabs, 'opening')
-  if (openingKey !== action.openingKey) return state
+  if (action.type === 'finish-opening') {
+    const openingKey = chromeVisualTabPhaseKey(state.visualTabs, 'opening')
+    if (openingKey !== action.openingKey) return state
+
+    return {
+      ...state,
+      visualTabs: presentOpeningChromeVisualTabs(state.visualTabs),
+    }
+  }
+
+  const closingKey = chromeVisualTabPhaseKey(state.visualTabs, 'closing')
+  if (closingKey !== action.closingKey) return state
 
   return {
     ...state,
-    visualTabs: presentOpeningChromeVisualTabs(state.visualTabs),
+    visualTabs: removeClosingChromeVisualTabs(state.visualTabs),
   }
 }
 
@@ -99,16 +127,22 @@ export function syncChromeVisualTabs<TTab extends ChromeVisualTabSource>(
   const currentByKey = new Map(
     current.map((visualTab) => [chromeVisualTabKey(visualTab.tab), visualTab]),
   )
+  const nextKeys = new Set(tabs.map(chromeVisualTabKey))
   const next = tabs.map((tab) => {
     const visualTab = currentByKey.get(chromeVisualTabKey(tab))
     if (!visualTab) return { phase: 'opening' as const, tab }
 
     return nextChromeVisualTab(visualTab, tab, areTabsEqual)
   })
+  const closing = current.filter((visualTab) => {
+    const key = chromeVisualTabKey(visualTab.tab)
+    return !nextKeys.has(key)
+  })
+  const nextWithClosing = next.concat(closing.map(closingChromeVisualTab))
 
-  if (sameChromeVisualTabs(current, next, areTabsEqual)) return current
+  if (sameChromeVisualTabs(current, nextWithClosing, areTabsEqual)) return current
 
-  return next
+  return nextWithClosing
 }
 
 function initialChromeVisualTabsState<TTab extends ChromeVisualTabSource>(
@@ -148,6 +182,12 @@ function presentChromeVisualTab<TTab extends ChromeVisualTabSource>(
   return { phase: 'present', tab }
 }
 
+function closingChromeVisualTab<TTab extends ChromeVisualTabSource>(
+  visualTab: ChromeVisualTab<TTab>,
+): ChromeVisualTab<TTab> {
+  return { phase: 'closing', tab: visualTab.tab }
+}
+
 function presentOpeningChromeVisualTabs<TTab extends ChromeVisualTabSource>(
   current: readonly ChromeVisualTab<TTab>[],
 ) {
@@ -156,6 +196,12 @@ function presentOpeningChromeVisualTabs<TTab extends ChromeVisualTabSource>(
 
     return { ...visualTab, phase: 'present' as const }
   })
+}
+
+function removeClosingChromeVisualTabs<TTab extends ChromeVisualTabSource>(
+  current: readonly ChromeVisualTab<TTab>[],
+) {
+  return current.filter((visualTab) => visualTab.phase !== 'closing')
 }
 
 function chromeVisualTabPhaseKey<TTab extends ChromeVisualTabSource>(
