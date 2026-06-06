@@ -1,4 +1,3 @@
-import type { FileTree as PierreFileTreeModel } from '@pierre/trees'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -21,11 +20,12 @@ import {
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
+import type { FileTree } from '@workspace/tree/utils/render/FileTree'
 
 type FileTreeIntentPrefetchOptions = {
   model: TreeModel
   onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
-  tree: PierreFileTreeModel
+  tree: FileTree
 }
 
 export function useFileTreeIntentPrefetch({
@@ -100,7 +100,7 @@ function resolveFileTreeRow(element: HTMLElement): IntentPrefetchRow<string> | n
   }
 }
 
-function observeTreeRows(tree: PierreFileTreeModel, onChange: () => void): MutationObserver | null {
+function observeTreeRows(tree: FileTree, onChange: () => void): MutationObserver | null {
   if (typeof MutationObserver === 'undefined') return null
 
   const shadowRoot = tree.getFileTreeContainer()?.shadowRoot

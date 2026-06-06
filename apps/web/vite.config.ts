@@ -29,9 +29,6 @@ export default defineConfig({
     },
     dedupe: ['react', 'react-dom'],
   },
-  optimizeDeps: {
-    exclude: ['@pierre/trees', '@pierre/trees/react'],
-  },
   server: {
     fs: {
       allow: uniquePaths([workspaceRoot, editorSourceRoot]),

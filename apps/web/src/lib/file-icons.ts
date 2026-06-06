@@ -1,5 +1,5 @@
-import { getBuiltInFileIconColor } from '@pierre/trees'
-import type { FileTreeIconConfig, RemappedIcon } from '@pierre/trees'
+import { getBuiltInFileIconColor } from '@workspace/tree/utils/builtInIcons'
+import type { FileTreeIconConfig, RemappedIcon } from '@workspace/tree/utils/iconConfig'
 
 import { VSCODE_ICON_SYMBOLS } from './vscode-icon-symbols'
 

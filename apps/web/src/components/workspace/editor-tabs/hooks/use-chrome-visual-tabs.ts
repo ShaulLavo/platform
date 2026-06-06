@@ -49,19 +49,20 @@ export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
     ChromeVisualTabsAction<TTab>
   > = chromeVisualTabsReducer
   const [state, dispatch] = useReducer(reducer, initialChromeVisualTabsState(tabs))
-  const visualTabs =
-    enabled && state.sourceTabs !== tabs
-      ? syncChromeVisualTabs(state.visualTabs, tabs, areTabsEqual)
-      : state.visualTabs
+  const sourceTabsChanged =
+    enabled && !sameChromeVisualTabSources(state.sourceTabs, tabs, areTabsEqual)
+  const visualTabs = sourceTabsChanged
+    ? syncChromeVisualTabs(state.visualTabs, tabs, areTabsEqual)
+    : state.visualTabs
   const openingKey = chromeVisualTabPhaseKey(visualTabs, 'opening')
   const closingKey = chromeVisualTabPhaseKey(visualTabs, 'closing')
 
   useLayoutEffect(() => {
     if (!enabled) return
-    if (state.sourceTabs === tabs) return
+    if (!sourceTabsChanged) return
 
     dispatch({ areTabsEqual, tabs, type: 'sync-tabs' })
-  }, [areTabsEqual, enabled, state.sourceTabs, tabs])
+  }, [areTabsEqual, enabled, sourceTabsChanged, tabs])
 
   useLayoutEffect(() => {
     if (!enabled) return
@@ -160,7 +161,8 @@ function syncChromeVisualTabsState<TTab extends ChromeVisualTabSource>(
   areTabsEqual: ChromeVisualTabEquality<TTab>,
 ): ChromeVisualTabsState<TTab> {
   const visualTabs = syncChromeVisualTabs(state.visualTabs, tabs, areTabsEqual)
-  if (state.sourceTabs === tabs && state.visualTabs === visualTabs) return state
+  const sourceTabsChanged = !sameChromeVisualTabSources(state.sourceTabs, tabs, areTabsEqual)
+  if (!sourceTabsChanged && state.visualTabs === visualTabs) return state
 
   return { sourceTabs: tabs, visualTabs }
 }
@@ -228,6 +230,21 @@ function sameChromeVisualTabs<TTab extends ChromeVisualTabSource>(
   return left.every((visualTab, index) =>
     sameChromeVisualTab(visualTab, right[index], areTabsEqual),
   )
+}
+
+function sameChromeVisualTabSources<TTab extends ChromeVisualTabSource>(
+  left: readonly TTab[],
+  right: readonly TTab[],
+  areTabsEqual: ChromeVisualTabEquality<TTab>,
+) {
+  if (left.length !== right.length) return false
+
+  return left.every((tab, index) => {
+    const rightTab = right[index]
+    if (!rightTab) return false
+
+    return areTabsEqual(tab, rightTab)
+  })
 }
 
 function sameChromeVisualTab<TTab extends ChromeVisualTabSource>(

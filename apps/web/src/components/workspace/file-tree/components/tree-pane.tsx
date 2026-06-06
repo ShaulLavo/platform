@@ -1,11 +1,13 @@
 import type {
-  FileTree as PierreFileTreeModel,
   FileTreeDropContext,
   FileTreeDropResult,
   FileTreeRowDecorationContext,
-  GitStatusEntry,
-} from '@pierre/trees'
-import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
+} from '@workspace/tree/utils/model/publicTypes'
+import { FileTree } from '@workspace/tree/components/FileTree'
+import { useFileTree } from '@workspace/tree/hooks/useFileTree'
+import { useFileTreeSelection } from '@workspace/tree/hooks/useFileTreeSelection'
+import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
 
 import {
@@ -109,7 +111,7 @@ function ReadyTreePane({
     rootPath: null,
     selectedFilePath: undefined,
   })
-  const treeRef = useRef<PierreFileTreeModel | null>(null)
+  const treeRef = useRef<FileTreeModel | null>(null)
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const moveMutation = useMutation({
     mutationFn: moveDroppedTreePaths,
@@ -136,17 +138,15 @@ function ReadyTreePane({
       invalidateMoveQueries(queryClient)
     },
   })
-  const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
-    (currentTree: PierreFileTreeModel) => {
-      expandedDirectoryPathsRef.current = loadExpandedDirectories(
-        currentTree,
-        model,
-        onLoadDirectory,
-        expandedDirectoryPathsRef.current,
-      )
-    },
-  )
-  const publishVisibleItemCount = useEffectEvent((currentTree: PierreFileTreeModel) => {
+  const loadExpandedDirectoriesForCurrentModel = useEffectEvent((currentTree: FileTreeModel) => {
+    expandedDirectoryPathsRef.current = loadExpandedDirectories(
+      currentTree,
+      model,
+      onLoadDirectory,
+      expandedDirectoryPathsRef.current,
+    )
+  })
+  const publishVisibleItemCount = useEffectEvent((currentTree: FileTreeModel) => {
     onVisibleItemCountChange?.(visibleTreeItemCount(currentTree, modelRef.current))
   })
 
@@ -272,12 +272,7 @@ function ReadyTreePane({
       onPointerDownCapture={() => setFocusArea('file-tree')}
       ref={containerRef}
     >
-      <PierreFileTree
-        aria-label='Folder tree'
-        className='block h-full'
-        model={tree}
-        style={treeStyle}
-      />
+      <FileTree aria-label='Folder tree' className='block h-full' model={tree} style={treeStyle} />
     </div>
   )
 }
@@ -346,7 +341,7 @@ function selectionSyncPlan({
   rootPath: string
   selectedFilePath: string | null
   state: SelectionSyncState
-  tree: PierreFileTreeModel
+  tree: FileTreeModel
 }): SelectionSyncPlan {
   const treePath = selectedTreePath(rootPath, selectedFilePath)
   const canComplete = selectedFilePathCanCompleteSync(tree, treePath, selectedFilePath)
@@ -368,7 +363,7 @@ function selectedTreePath(rootPath: string, selectedFilePath: string | null) {
 }
 
 function selectedFilePathCanCompleteSync(
-  tree: PierreFileTreeModel,
+  tree: FileTreeModel,
   treePath: string | null,
   selectedFilePath: string | null,
 ) {
@@ -439,7 +434,7 @@ function logTreeSync({
 function logTreePointerEvent(
   event: MouseEvent | PointerEvent,
   container: HTMLDivElement | null,
-  tree: PierreFileTreeModel | null,
+  tree: FileTreeModel | null,
 ) {
   if (!container) return
   if (!pointIsInsideElement(event, container)) return
@@ -458,7 +453,7 @@ function logTreePointerEvent(
     geometryItemType: geometryItem?.type ?? null,
     itemPath: item?.path ?? null,
     itemType: item?.type ?? null,
-    pierreCanResolveItem: item?.path ? Boolean(tree?.getItem(item.path)) : null,
+    treeCanResolveItem: item?.path ? Boolean(tree?.getItem(item.path)) : null,
     selectedPaths: tree?.getSelectedPaths() ?? [],
     target: eventTargetSummary(event.target),
     targetPath: eventTargetPathSummary(event, 16),
@@ -468,7 +463,7 @@ function logTreePointerEvent(
 function queuePostClickTreeSelectionLog(
   event: MouseEvent,
   container: HTMLDivElement | null,
-  tree: PierreFileTreeModel | null,
+  tree: FileTreeModel | null,
 ) {
   if (!container) return
   if (!tree) return
@@ -484,7 +479,7 @@ function queuePostClickTreeSelectionLog(
       eventItemPath: eventItem?.path ?? null,
       geometryItemPath: geometryItem?.path ?? null,
       itemPath: item?.path ?? null,
-      pierreCanResolveItem: item?.path ? Boolean(tree.getItem(item.path)) : null,
+      treeCanResolveItem: item?.path ? Boolean(tree.getItem(item.path)) : null,
       selectedPaths: tree.getSelectedPaths(),
     })
   }, 0)

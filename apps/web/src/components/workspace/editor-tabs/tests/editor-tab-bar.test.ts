@@ -229,6 +229,19 @@ describe('chromeVisualTabsReducer', () => {
 
     expect(visualTabs[0]?.tab).toBe(initialTabs[0])
   })
+
+  it('ignores semantically equal source arrays', () => {
+    const initialTabs = chromeTabs(['src/a.ts'])
+    const state = chromeVisualTabsState(initialTabs)
+
+    const next = chromeVisualTabsReducer(state, {
+      areTabsEqual: sameChromeTab,
+      tabs: chromeTabs(['src/a.ts']),
+      type: 'sync-tabs',
+    })
+
+    expect(next).toBe(state)
+  })
 })
 
 describe('editorTabCloseTargetIds', () => {

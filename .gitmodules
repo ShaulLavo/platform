@@ -1,4 +1,0 @@
-[submodule "packages/pierre"]
-	path = packages/pierre
-	url = https://github.com/ShaulLavo/pierre.git
-	branch = codex/tree-drag-selection

@@ -7,15 +7,12 @@
       "apps/*",
       "packages/contracts",
       "packages/observability",
-      "packages/pierre/packages/path-store",
-      "packages/pierre/packages/tree-test-data",
-      "packages/pierre/packages/trees",
+      "packages/tree",
       "packages/ui",
       "../Editor/packages/*"
     ],
     "catalog": {
       "@arethetypeswrong/core": "0.18.2",
-      "@pierre/vscode-icons": "0.0.9",
       "@playwright/test": "1.51.1",
       "@radix-ui/react-dropdown-menu": "2.1.16",
       "@types/jsdom": "28.0.1",

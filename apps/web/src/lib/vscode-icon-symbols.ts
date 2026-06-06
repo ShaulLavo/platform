@@ -1,4 +1,4 @@
-// Inlined from apps/web/public/vscode-icons/*.svg so @pierre/trees renders
+// Inlined from apps/web/public/vscode-icons/*.svg so the file tree renders
 // path-based symbols instead of native-WebKit-fragile masked rectangles.
 
 export const VSCODE_ICON_SYMBOLS = {

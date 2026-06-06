@@ -37,7 +37,6 @@ export function TabStrip({
   const tabListRef = useRef<HTMLDivElement | null>(null)
   const selectedTabRef = useRef<HTMLDivElement | null>(null)
   const editorSurfaceContext = use(EditorSurfaceContext)
-  // useChromeVisualTabs uses tab array identity to decide whether to dispatch a sync.
   const editorTabs = useMemo(
     () =>
       editorSurfaceContext?.tabModelForSurface
