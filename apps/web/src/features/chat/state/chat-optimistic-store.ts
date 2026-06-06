@@ -1,7 +1,11 @@
 import type { CommandId, MessageId, OrchestrationMessage, ThreadId } from '@workspace/contracts'
 import { create } from 'zustand'
 
-import { logChatPipelineDebug, optimisticMessageSummary } from '../lib/chat-pipeline-logging'
+import {
+  createChatPipelineScope,
+  optimisticMessageSummary,
+  type ChatPipelineScope,
+} from '../lib/chat-pipeline-logging'
 
 export type OptimisticChatMessage = OrchestrationMessage & {
   commandId: CommandId
@@ -24,18 +28,23 @@ type ChatOptimisticActions = {
 export type ChatOptimisticStore = ChatOptimisticState & ChatOptimisticActions
 
 const EMPTY_OPTIMISTIC_MESSAGES: OptimisticChatMessage[] = []
+const CHAT_OPTIMISTIC_LOG_FLUSH_MS = 250
+
+let optimisticLogScope: ChatPipelineScope | null = null
+let optimisticLogFlushId: ReturnType<typeof setTimeout> | null = null
 
 export const useChatOptimisticStore = create<ChatOptimisticStore>((set) => ({
   messagesByThreadId: {},
   addOptimisticMessage: (commandId, message) => {
-    logChatPipelineDebug('chat.optimistic.add', {
-      ...optimisticMessageSummary({
+    recordOptimisticMutation(
+      'add',
+      optimisticMessageSummary({
         commandId,
         messageId: message.id,
         textLength: message.text.length,
         threadId: message.threadId,
       }),
-    })
+    )
 
     set((state) => ({
       messagesByThreadId: {
@@ -52,17 +61,52 @@ export const useChatOptimisticStore = create<ChatOptimisticStore>((set) => ({
     }))
   },
   clearResolvedOptimisticMessages: (threadId, resolvedMessageIds) => {
-    logChatPipelineDebug('chat.optimistic.clear_resolved', {
+    recordOptimisticMutation('clearResolved', {
       resolvedMessageCount: resolvedMessageIds.size,
       threadId,
     })
     set((state) => clearResolvedMessages(state, threadId, resolvedMessageIds))
   },
   removeOptimisticMessage: (threadId, messageId) => {
-    logChatPipelineDebug('chat.optimistic.remove', { messageId, threadId })
+    recordOptimisticMutation('remove', { messageId, threadId })
     set((state) => removeOptimisticMessage(state, threadId, messageId))
   },
 }))
+
+function recordOptimisticMutation(kind: string, context: Record<string, unknown>) {
+  const scope = currentOptimisticLogScope()
+  scope.increment('optimistic.mutationCount')
+  scope.increment(`optimistic.${kind}Count`)
+  scope.set({
+    optimistic: {
+      latest: {
+        kind,
+        ...context,
+      },
+    },
+  })
+  scheduleOptimisticLogFlush()
+}
+
+function currentOptimisticLogScope() {
+  if (optimisticLogScope) return optimisticLogScope
+
+  optimisticLogScope = createChatPipelineScope('chat.optimistic.summary')
+  return optimisticLogScope
+}
+
+function scheduleOptimisticLogFlush() {
+  if (optimisticLogFlushId !== null) clearTimeout(optimisticLogFlushId)
+
+  optimisticLogFlushId = setTimeout(flushOptimisticLogScope, CHAT_OPTIMISTIC_LOG_FLUSH_MS)
+}
+
+function flushOptimisticLogScope() {
+  const scope = optimisticLogScope
+  optimisticLogScope = null
+  optimisticLogFlushId = null
+  scope?.end()
+}
 
 export function selectOptimisticMessagesForThread(
   state: ChatOptimisticStore,

@@ -9,8 +9,10 @@ import type {
 } from '@workspace/contracts'
 
 import { log } from '@/lib/client-logging'
+import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 
 type ChatLogContext = Record<string, unknown>
+export type ChatPipelineScope = WideEventScope
 
 export function logChatPipelineDebug(action: string, context: ChatLogContext = {}) {
   log.debug(chatLogEvent(action, context))
@@ -26,6 +28,10 @@ export function logChatPipelineWarn(action: string, context: ChatLogContext = {}
 
 export function logChatPipelineError(action: string, context: ChatLogContext = {}) {
   log.error(chatLogEvent(action, context))
+}
+
+export function createChatPipelineScope(action: string, context: ChatLogContext = {}) {
+  return createWideEventScope(chatLogEvent(action, context))
 }
 
 export function chatCommandSummary(command: ClientOrchestrationCommand) {

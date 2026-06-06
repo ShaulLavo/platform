@@ -17,9 +17,10 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import { observeClientOperation, log } from '@/lib/client-logging'
+import { observeClientOperation } from '@/lib/client-logging'
 import { serverUrl } from '@/lib/client'
 import { clientErrors, createClientError } from '@/lib/structured-errors'
+import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import { chatCommandSummary, chatReplaySummary } from '../lib/chat-pipeline-logging'
 import { guardOrchestrationStreamSequence } from './orchestration-sequence'
 import type { OrchestrationStreamInput } from './orchestration-streams'
@@ -39,6 +40,7 @@ type PendingRequest = {
 type RpcSubscription<T> = {
   method: OrchestrationWsSubscribe['method']
   queue: AsyncSubscriptionQueue<T>
+  scope: WideEventScope
   threadId?: ThreadId
 }
 
@@ -48,6 +50,7 @@ export class OrchestrationRpcClient {
   private pendingRequests = new Map<string, PendingRequest>()
   private requestCounter = 0
   private socket: WebSocket | null = null
+  private socketScope: WideEventScope | null = null
   private subscriptionCounter = 0
   private subscriptions = new Map<OrchestrationWsSubscriptionId, RpcSubscription<unknown>>()
 
@@ -207,10 +210,20 @@ export class OrchestrationRpcClient {
     if (signal?.aborted) return
 
     const queue = new AsyncSubscriptionQueue<T>()
+    const threadId = message.method === 'subscribeThread' ? message.threadId : undefined
+    const scope = createWideEventScope({
+      action: 'orchestration.ws.subscription.summary',
+      afterSequence: message.afterSequence,
+      area: 'orchestration',
+      method: message.method,
+      subscriptionId: message.subscriptionId,
+      threadId,
+    })
     const subscription: RpcSubscription<T> = {
       method: message.method,
       queue,
-      threadId: message.method === 'subscribeThread' ? message.threadId : undefined,
+      scope,
+      threadId,
     }
     this.subscriptions.set(message.subscriptionId, subscription as RpcSubscription<unknown>)
     const abort = () => queue.close()
@@ -218,16 +231,10 @@ export class OrchestrationRpcClient {
     try {
       signal?.addEventListener('abort', abort, { once: true })
       await this.sendClientMessage(message)
-      log.info({
-        action: 'orchestration.ws.subscription.open',
-        afterSequence: message.afterSequence,
-        area: 'orchestration',
-        method: message.method,
-        subscriptionId: message.subscriptionId,
-        threadId: subscription.threadId,
-      })
+      scope.increment('subscription.openCount')
       yield* drainSubscriptionQueue(queue)
     } catch (error) {
+      scope.error(error)
       if (!signal?.aborted) throw error
     } finally {
       signal?.removeEventListener('abort', abort)
@@ -236,13 +243,9 @@ export class OrchestrationRpcClient {
         kind: 'unsubscribe',
         subscriptionId: message.subscriptionId,
       })
-      log.info({
-        action: 'orchestration.ws.subscription.close',
+      scope.increment('subscription.closeCount')
+      scope.end({
         aborted: signal?.aborted ?? false,
-        area: 'orchestration',
-        method: message.method,
-        subscriptionId: message.subscriptionId,
-        threadId: subscription.threadId,
       })
     }
   }
@@ -254,6 +257,11 @@ export class OrchestrationRpcClient {
 
     const socket = new WebSocket(orchestrationRpcUrl())
     this.socket = socket
+    this.socketScope = createWideEventScope({
+      action: 'orchestration.ws.connection.summary',
+      area: 'orchestration',
+      url: orchestrationRpcUrl(),
+    })
     this.opening = this.openSocketConnection(socket)
 
     return this.opening
@@ -282,18 +290,13 @@ export class OrchestrationRpcClient {
         clearTimeout(timeoutId)
         this.opening = null
         this.startHeartbeat()
-        log.info({
-          action: 'orchestration.ws.open',
-          area: 'orchestration',
-          url: orchestrationRpcUrl(),
-        })
+        this.socketScope?.increment('socket.openCount')
         resolve(socket)
       })
       socket.addEventListener('message', (event) => this.handleSocketMessage(event))
       socket.addEventListener('error', (event) => {
-        log.warn({
-          action: 'orchestration.ws.error',
-          area: 'orchestration',
+        this.socketScope?.increment('socket.errorCount')
+        this.socketScope?.warn('Orchestration WebSocket transport error.', {
           eventType: event.type,
         })
         rejectOpening(createOrchestrationRpcSocketError())
@@ -334,7 +337,7 @@ export class OrchestrationRpcClient {
   }
 
   private handleSocketMessage(event: MessageEvent) {
-    const message = parseOrchestrationRpcMessage(event.data)
+    const message = this.parseSocketMessage(event.data)
     if (!message) return
     if (message.kind === 'response') {
       this.handleResponseMessage(message)
@@ -364,12 +367,14 @@ export class OrchestrationRpcClient {
 
     this.pendingRequests.delete(message.requestId)
     clearTimeout(pending.timeoutId)
-    log.info({
-      action: 'orchestration.ws.response',
-      area: 'orchestration',
-      durationMs: elapsedMs(pending.startedAt),
-      method: pending.method,
-      ok: message.ok,
+    this.socketScope?.increment('response.count')
+    this.socketScope?.increment(message.ok ? 'response.okCount' : 'response.errorCount')
+    this.socketScope?.set({
+      response: {
+        latestDurationMs: elapsedMs(pending.startedAt),
+        latestMethod: pending.method,
+        latestOk: message.ok,
+      },
     })
     if (message.ok) {
       pending.resolve(message.data)
@@ -385,6 +390,7 @@ export class OrchestrationRpcClient {
     const subscription = this.subscriptions.get(message.subscriptionId)
     if (!subscription) return
 
+    subscription.scope.increment('subscription.nextCount')
     subscription.queue.push(message.item)
   }
 
@@ -394,6 +400,10 @@ export class OrchestrationRpcClient {
     const subscription = this.subscriptions.get(message.subscriptionId)
     if (!subscription) return
 
+    subscription.scope.error(createOrchestrationRpcServerError(message.error), {
+      code: message.error.code,
+      status: message.error.status,
+    })
     subscription.queue.fail(createOrchestrationRpcServerError(message.error))
   }
 
@@ -403,12 +413,13 @@ export class OrchestrationRpcClient {
     this.socket = null
     this.opening = null
     this.stopHeartbeat()
+    const scope = this.socketScope
+    this.socketScope = null
     const error = createOrchestrationRpcCloseError(event)
     this.rejectPendingRequests(error)
     this.failSubscriptions(error)
-    log.warn({
-      action: 'orchestration.ws.close',
-      area: 'orchestration',
+    scope?.increment('socket.closeCount')
+    scope?.end({
       code: event.code,
       reason: event.reason,
       wasClean: event.wasClean,
@@ -430,6 +441,24 @@ export class OrchestrationRpcClient {
 
     for (const subscription of subscriptions) {
       subscription.queue.fail(error)
+    }
+  }
+
+  private parseSocketMessage(data: unknown): OrchestrationWsServerMessage | null {
+    if (typeof data !== 'string') {
+      this.socketScope?.increment('message.invalidCount')
+      this.socketScope?.warn('Invalid orchestration WebSocket message.', {
+        reason: 'non_string_message',
+      })
+      return null
+    }
+
+    try {
+      return v.parse(orchestrationWsServerMessageSchema, JSON.parse(data))
+    } catch (error) {
+      this.socketScope?.increment('message.invalidCount')
+      this.socketScope?.warn('Invalid orchestration WebSocket message.', { error })
+      return null
     }
   }
 
@@ -552,28 +581,6 @@ async function* drainSubscriptionQueue<T>(queue: AsyncSubscriptionQueue<T>) {
     if (result.done) return
 
     yield result.value
-  }
-}
-
-function parseOrchestrationRpcMessage(data: unknown): OrchestrationWsServerMessage | null {
-  if (typeof data !== 'string') {
-    log.warn({
-      action: 'orchestration.ws.message.invalid',
-      area: 'orchestration',
-      reason: 'non_string_message',
-    })
-    return null
-  }
-
-  try {
-    return v.parse(orchestrationWsServerMessageSchema, JSON.parse(data))
-  } catch (error) {
-    log.warn({
-      action: 'orchestration.ws.message.invalid',
-      area: 'orchestration',
-      error,
-    })
-    return null
   }
 }
 

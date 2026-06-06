@@ -16,7 +16,8 @@ Status: Phase 0 tracking checklist for `implementation-plan.md`.
       Replacement phase: Phase 6 renderer skeleton, Phase 7 production cutover,
       and Phase 15 deletion.
 - [ ] `WorkspaceSidebar` and sidebar tab state.
-      Replacement phase: Phase 8 rail and singleton surface rehost.
+      Replacement phase: Phase 8 rail, collapsed-pane, and singleton surface
+      rehost.
 - [ ] `WorkspaceFloatingTerminal` and terminal overlay store.
       Replacement phase: Phase 10 running terminal surface rehost.
 - [ ] `WorkspaceSearchRuntime` sidebar/search-buffer enablement.
@@ -43,7 +44,7 @@ Status: Phase 0 tracking checklist for `implementation-plan.md`.
 - Keep behavior tests for dirty close confirmation.
 - Keep behavior tests for diff restore and invalid diff dropping.
 - Keep behavior tests for search state preservation.
-- Keep behavior tests for terminal close disposal.
+- Keep behavior tests for terminal close/runtime policy.
 - Keep behavior tests for command IDs, aliases, and keymap routing.
 - Keep behavior tests for command palette grouping, shortcut display, quick
   access modes, and command filtering.
@@ -51,8 +52,8 @@ Status: Phase 0 tracking checklist for `implementation-plan.md`.
 - Keep behavior tests for focus fallback.
 - Rewrite editor-pane split, move, reorder, close, resize, and active-pane tests
   as surface/window/node operation tests once Phase 3 lands.
-- Rewrite fixed sidebar tab tests as rail and singleton surface tests once Phase
-  8 lands.
+- Rewrite fixed sidebar tab tests as rail, collapsed-pane, and singleton surface
+  tests once Phase 8 lands.
 - Rewrite Dockview sync and tab model tests as renderer adapter or custom
   renderer tests once Phase 6 lands.
 - Rewrite floating terminal overlay tests as running surface lifecycle tests

@@ -8,9 +8,9 @@ import type { ChatEnvironment } from '../environment/chat-environment'
 import { createLocalChatEnvironment } from '../environment/local-chat-environment'
 import {
   chatStreamItemSummary,
-  logChatPipelineDebug,
+  createChatPipelineScope,
+  type ChatPipelineScope,
   logChatPipelineInfo,
-  logChatPipelineWarn,
 } from '../lib/chat-pipeline-logging'
 import {
   MAX_CACHED_THREAD_DETAIL_SUBSCRIPTIONS,
@@ -50,6 +50,7 @@ type ThreadDetailSubscriptionEntry = {
   lastAccessedAt: number
   lastError: unknown
   refCount: number
+  scope: ChatPipelineScope
   threadId: ThreadId
 }
 
@@ -67,9 +68,9 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
 
   function retain(threadId: ThreadId) {
     const entry = getOrCreateEntry(threadId)
-    logChatPipelineDebug('chat.thread_detail_subscription.retain', {
+    entry.scope.increment('subscription.retainCount')
+    entry.scope.set({
       refCount: entry.refCount + 1,
-      threadId,
     })
     clearEntryEviction(entry)
     entry.refCount += 1
@@ -85,9 +86,9 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
       released = true
       entry.refCount = Math.max(0, entry.refCount - 1)
       entry.lastAccessedAt = now()
-      logChatPipelineDebug('chat.thread_detail_subscription.release', {
+      entry.scope.increment('subscription.releaseCount')
+      entry.scope.set({
         refCount: entry.refCount,
-        threadId,
       })
       reconcileEntryEviction(entry)
       evictIdleEntriesToCapacity()
@@ -156,6 +157,7 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
       lastAccessedAt: now(),
       lastError: null,
       refCount: 0,
+      scope: createChatPipelineScope('chat.thread_detail_subscription.summary', { threadId }),
       threadId,
     }
 
@@ -170,9 +172,9 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     const abortController = new AbortController()
     entry.abortController = abortController
     entry.active = true
-    logChatPipelineInfo('chat.thread_detail_subscription.start', {
+    entry.scope.increment('subscription.startCount')
+    entry.scope.set({
       refCount: entry.refCount,
-      threadId: entry.threadId,
     })
 
     void runThreadDetailSubscription(entry, abortController)
@@ -183,9 +185,9 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     abortController: AbortController,
   ) {
     const afterSequence = store.getState().threadDetailSequenceById[entry.threadId] ?? 0
-    logChatPipelineInfo('chat.thread_detail_subscription.stream_open', {
+    entry.scope.increment('stream.openCount')
+    entry.scope.set({
       afterSequence,
-      threadId: entry.threadId,
     })
 
     try {
@@ -193,31 +195,39 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
         afterSequence,
         signal: abortController.signal,
       })) {
-        applyThreadStreamItem(item)
+        applyThreadStreamItem(entry, item)
       }
     } catch (error) {
       if (!abortController.signal.aborted) {
         entry.lastError = error
-        logChatPipelineWarn('chat.thread_detail_subscription.stream_error', {
+        entry.scope.increment('stream.errorCount')
+        entry.scope.warn('Thread detail stream failed.', {
           afterSequence,
           error,
-          threadId: entry.threadId,
         })
       }
     } finally {
       if (entry.abortController === abortController) {
         entry.abortController = null
         entry.active = false
-        logChatPipelineInfo('chat.thread_detail_subscription.stream_closed', {
+        entry.scope.increment('stream.closeCount')
+        entry.scope.set({
           aborted: abortController.signal.aborted,
-          threadId: entry.threadId,
         })
       }
     }
   }
 
-  function applyThreadStreamItem(item: OrchestrationThreadStreamItem) {
-    logChatPipelineDebug('chat.thread_detail_subscription.apply_item', chatStreamItemSummary(item))
+  function applyThreadStreamItem(
+    entry: ThreadDetailSubscriptionEntry,
+    item: OrchestrationThreadStreamItem,
+  ) {
+    entry.scope.increment('stream.itemCount')
+    entry.scope.set({
+      stream: {
+        latestItem: chatStreamItemSummary(item),
+      },
+    })
     if (item.kind === 'snapshot') {
       store.getState().syncThreadDetailSnapshot(item.snapshot)
       return
@@ -291,9 +301,13 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
 
     clearEntryEviction(entry)
     entries.delete(threadId)
+    const wasActive = entry.abortController !== null
     entry.abortController?.abort()
     entry.abortController = null
     entry.active = false
+    entry.scope.increment('subscription.disposeCount')
+    if (wasActive) entry.scope.increment('stream.closeCount')
+    entry.scope.end({ aborted: wasActive, refCount: entry.refCount })
     logChatPipelineInfo('chat.thread_detail_subscription.dispose', {
       threadId,
     })

@@ -1,9 +1,9 @@
 import { FilePickerDialog, type FilePickerMode } from '@/components/file-picker-dialog'
-import { log } from '@/lib/client-logging'
 import { errorMessage } from '@/lib/file-server'
 import { isDirectoryEntry, isFileEntry, type PickedFsEntry } from '@/lib/file-system-types'
 import { getPlatformBridge } from '@/lib/platform/bridge'
 import { hydratePickedEntry } from '@/lib/platform/hydrate-picked-entry'
+import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import { useEffect } from 'react'
 import { toast } from 'sonner'
 
@@ -91,30 +91,49 @@ async function handleNativePickResult(
   pickPromise: Promise<string | null>,
   { isActive, mode, onOpenChange, onPick }: NativePickResultHandlers,
 ) {
-  const controller = new AbortController()
-  const path = await selectedNativePath(pickPromise, isActive)
-  if (!isActive()) return
-  if (!path) return onOpenChange(false)
-
-  log.info({
-    action: 'platform.native_picker.selected',
+  const startedAt = performance.now()
+  const scope = createWideEventScope({
+    action: 'platform.native_picker.summary',
     area: 'platform',
-    path,
+    mode,
   })
+  const controller = new AbortController()
+  const path = await selectedNativePath(pickPromise, isActive, scope)
+  if (!isActive()) {
+    scope.end({ aborted: true, durationMs: elapsedMs(startedAt) })
+    return
+  }
+  if (!path) {
+    if (scope.count('picker.errorCount') === 0) scope.set({ outcome: 'cancelled' })
+    scope.end({ durationMs: elapsedMs(startedAt) })
+    onOpenChange(false)
+    return
+  }
 
   try {
+    scope.increment('picker.selectedCount')
+    scope.set({ path })
     const entry = await hydratePickedEntry(path, controller.signal)
-    if (!isActive()) return
+    if (!isActive()) {
+      scope.end({ aborted: true, durationMs: elapsedMs(startedAt) })
+      return
+    }
 
     assertEntryMatchesMode(entry, mode)
+    scope.increment('picker.hydratedCount')
+    scope.set({ entryType: entry.type, outcome: 'ok' })
     onPick(entry)
   } catch (error) {
     if (!isActive()) return
 
+    scope.increment('picker.errorCount')
+    scope.warn('Native picker entry hydration failed.', { error })
+    scope.set({ outcome: 'error' })
     toast.error('Could not open selected path', {
       description: errorMessage(error),
     })
   } finally {
+    scope.end({ durationMs: elapsedMs(startedAt) })
     if (isActive()) onOpenChange(false)
   }
 }
@@ -122,16 +141,15 @@ async function handleNativePickResult(
 async function selectedNativePath(
   pickPromise: Promise<string | null>,
   isActive: () => boolean,
+  scope: WideEventScope,
 ): Promise<string | null> {
   try {
     return await pickPromise
   } catch (error) {
     if (isActive()) {
-      log.warn({
-        action: 'platform.native_picker.failed',
-        area: 'platform',
-        message: errorMessage(error),
-      })
+      scope.increment('picker.errorCount')
+      scope.warn('Native picker failed.', { message: errorMessage(error) })
+      scope.set({ outcome: 'error' })
     }
 
     return null
@@ -156,4 +174,8 @@ function assertEntryMatchesMode(entry: PickedFsEntry, mode: FilePickerMode) {
   if (mode === 'file' && isFileEntry(entry)) return
 
   throw new Error(mode === 'folder' ? 'Picked path is not a folder.' : 'Picked path is not a file.')
+}
+
+function elapsedMs(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100
 }

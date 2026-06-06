@@ -26,8 +26,8 @@ import {
   chatEventSummary,
   chatStreamItemSummary,
   chatThreadSnapshotSummary,
-  logChatPipelineDebug,
-  logChatPipelineInfo,
+  createChatPipelineScope,
+  type ChatPipelineScope,
 } from '../lib/chat-pipeline-logging'
 import {
   applyChatProjectionEvents,
@@ -136,6 +136,11 @@ export type ChatProjectionActions = {
 
 export type ChatProjectionStore = ChatProjectionState & ChatProjectionActions
 
+const CHAT_PROJECTION_LOG_FLUSH_MS = 250
+
+let projectionLogScope: ChatPipelineScope | null = null
+let projectionLogFlushId: ReturnType<typeof setTimeout> | null = null
+
 export function createInitialChatProjectionState(): ChatProjectionState {
   return {
     activityByThreadId: {},
@@ -164,11 +169,11 @@ export function createInitialChatProjectionState(): ChatProjectionState {
 export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
   ...createInitialChatProjectionState(),
   applyOrchestrationEvent: (event) => {
-    logChatPipelineDebug('chat.projection.apply_event', chatEventSummary(event))
+    recordProjectionMutation('applyEvent', chatEventSummary(event))
     set((state) => applyChatProjectionEvents(state, [event]))
   },
   applyOrchestrationEvents: (events) => {
-    logChatPipelineDebug('chat.projection.apply_events', {
+    recordProjectionMutation('applyEvents', {
       eventCount: events.length,
       eventTypes: events.map((event) => event.type),
       maxSequence: events.at(-1)?.sequence ?? null,
@@ -176,19 +181,19 @@ export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
     set((state) => applyChatProjectionEvents(state, events))
   },
   applyShellStreamItem: (item) => {
-    logChatPipelineDebug('chat.projection.apply_shell_stream_item', chatStreamItemSummary(item))
+    recordProjectionMutation('applyShellStreamItem', chatStreamItemSummary(item))
     set((state) => applyChatProjectionShellStreamItem(state, item))
   },
   applyThreadStreamItem: (item) => {
-    logChatPipelineDebug('chat.projection.apply_thread_stream_item', chatStreamItemSummary(item))
+    recordProjectionMutation('applyThreadStreamItem', chatStreamItemSummary(item))
     set((state) => applyChatProjectionThreadStreamItem(state, item))
   },
   resetChatProjection: () => {
-    logChatPipelineInfo('chat.projection.reset')
+    recordProjectionMutation('reset')
     set(createInitialChatProjectionState())
   },
   syncShellSnapshot: (snapshot) => {
-    logChatPipelineInfo('chat.projection.sync_shell_snapshot', {
+    recordProjectionMutation('syncShellSnapshot', {
       projectCount: snapshot.projects.length,
       snapshotSequence: snapshot.snapshotSequence,
       threadCount: snapshot.threads.length,
@@ -196,9 +201,42 @@ export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
     set((state) => syncChatProjectionShellSnapshot(state, snapshot))
   },
   syncThreadDetailSnapshot: (snapshot) => {
-    logChatPipelineInfo('chat.projection.sync_thread_detail_snapshot', {
-      ...chatThreadSnapshotSummary(snapshot),
-    })
+    recordProjectionMutation('syncThreadDetailSnapshot', chatThreadSnapshotSummary(snapshot))
     set((state) => syncChatProjectionThreadDetailSnapshot(state, snapshot))
   },
 }))
+
+function recordProjectionMutation(kind: string, context: Record<string, unknown> = {}) {
+  const scope = currentProjectionLogScope()
+  scope.increment('projection.mutationCount')
+  scope.increment(`projection.${kind}Count`)
+  scope.set({
+    projection: {
+      latest: {
+        kind,
+        ...context,
+      },
+    },
+  })
+  scheduleProjectionLogFlush()
+}
+
+function currentProjectionLogScope() {
+  if (projectionLogScope) return projectionLogScope
+
+  projectionLogScope = createChatPipelineScope('chat.projection.summary')
+  return projectionLogScope
+}
+
+function scheduleProjectionLogFlush() {
+  if (projectionLogFlushId !== null) clearTimeout(projectionLogFlushId)
+
+  projectionLogFlushId = setTimeout(flushProjectionLogScope, CHAT_PROJECTION_LOG_FLUSH_MS)
+}
+
+function flushProjectionLogScope() {
+  const scope = projectionLogScope
+  projectionLogScope = null
+  projectionLogFlushId = null
+  scope?.end()
+}

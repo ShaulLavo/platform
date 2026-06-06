@@ -21,8 +21,11 @@ not a model primitive.
 
 ## Vocabulary
 
-- Rail: command surface for focusing, restoring, minimizing, and toggling
-  surfaces or recipe-controlled panes. It is not layout storage.
+- Rail: command/status surface for focusing, expanding, collapsing, opening, and
+  toggling surfaces or recipe-controlled panes. It is not layout storage and
+  never stores collapsed panes.
+- Collapsed pane: a normal recipe-placed window that remains in the split tree
+  but renders as a fixed accordion header. Collapse is presentation state only.
 - Tool surfaces: Files, Search, Git, Chat, and Logs.
 - Main surfaces: file editors, diffs, and promoted previews.
 - Bottom tool pane: Terminal and Problems grouped as a classic bottom pane.
@@ -38,6 +41,21 @@ not a model primitive.
 - Tool surfaces prefer a left nested tool-pane group.
 - Main surfaces prefer the main view to the right of the tool-pane group.
 - The bottom tool pane spans below the content area and excludes the rail.
+- Terminal and Problems prefer the bottom tool pane when opened from the rail,
+  command palette, or default terminal command.
+- If Terminal is the first visible surface, it may temporarily use the available
+  work area. Opening the first normal content or tool surface reshapes the
+  recipe so Terminal/Problems move into the full-width bottom tool pane unless
+  the user has manually placed that terminal elsewhere.
+- Recipe-managed tool surfaces are order-packed, not appended to whatever split
+  happened to exist before. Files, Search, Git, Chat, and Logs are packed from
+  the current visible recipe-managed set in stable recipe order whenever that
+  set changes.
+- Opening, closing, collapsing, or expanding a recipe-managed tool recomputes
+  the left tool-pane group from the ordered visible set. It must not preserve
+  accidental incremental split nesting that keeps shrinking older panes.
+- User drag/drop or explicit move creates sticky manual placement and opts that
+  tool surface out of automatic order packing while the target remains valid.
 - The same split-tree primitives must support:
   - three tool windows stacked on the left;
   - one main item taking the full right side;
@@ -50,12 +68,18 @@ placement.
 
 ## Rail Behavior
 
-- Clicking a hidden tool surface inserts or restores it into the left nested
-  tool-pane group.
-- Clicking a visible inactive tool surface focuses it.
-- Clicking the active tool surface minimizes it.
+- Clicking a background or absent tool surface inserts or restores it into the
+  left nested tool-pane group through recipe placement.
+- Clicking a visible inactive expanded tool surface focuses it.
+- Clicking the active expanded tool surface collapses its pane into an
+  accordion header in place.
+- Clicking a collapsed tool surface expands and focuses it.
 - Clicking Terminal toggles the whole bottom tool pane, not only the Terminal
   tab.
+- Terminal is special only as default recipe policy. Dragging a terminal to the
+  left, right, or another split creates sticky manual placement; rail/default
+  terminal actions should not force that terminal back to the bottom until the
+  user resets the recipe or opens a new default bottom-pane terminal.
 - Logs is a tool surface in the left nested tool-pane group. It is not part of
   the Terminal/Problems bottom pane.
 
@@ -64,14 +88,24 @@ placement.
 - Tab close closes only that surface/tab.
 - Window or pane close acts on the whole represented pane/window when the chrome
   is pane-level.
+- Collapse/minimize never decides whether a surface keeps running, unmounts UI,
+  or disposes state. Surface registry lifecycle/render policy decides that.
+- Close removes the represented surface/window from the visible layout. Registry
+  close policy independently decides whether state or sessions are disposed,
+  kept in the background, suspended, or protected by confirmation.
 - Bottom tool pane close hides the Terminal/Problems pane and preserves its
   surfaces.
-- Restore may reuse manual or sticky placement only when its target window still
-  exists and is visible.
-- Stale placement targeting missing or hidden windows falls back to default
-  recipe placement.
-- Rail restore means "make the recipe place this surface," not "reuse the last
-  raw window id."
+- Restore may reuse manual or sticky placement only when the memory was created
+  by a user action, its target window still exists and is visible, the surface
+  type is still valid for that placement, and current constraints pass.
+- Constraint checks include editor minimum width, tool-pane minimum width and
+  height, terminal minimum height, viewport size, and recipe limits such as
+  maximum side columns or rows.
+- Stale or constraint-failing placement memory is cleared or demoted before
+  falling back to default recipe placement/order packing. Invalid memory must
+  not keep retrying on later restores.
+- Rail open/restore means "make the recipe place this surface," not "reuse the
+  last raw window id."
 
 ## Implementation Constraints
 

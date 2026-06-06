@@ -14,8 +14,7 @@ import {
 } from '../lib/chat-command-sync'
 import {
   chatCommandSummary,
-  logChatPipelineInfo,
-  logChatPipelineWarn,
+  createChatPipelineScope,
   optimisticMessageSummary,
 } from '../lib/chat-pipeline-logging'
 import { isChatThreadBusy } from '../lib/chat-thread-status'
@@ -106,21 +105,24 @@ export function ChatView({
       text,
       threadId: thread.id,
     })
-
-    logChatPipelineInfo('chat.send.submit', {
+    const startedAt = performance.now()
+    const scope = createChatPipelineScope('chat.command.dispatch.summary', {
+      ...chatCommandSummary(submission.command),
       attachmentCount: attachments.length,
       interactionMode,
       model: modelSelection.model,
       providerInstanceId: modelSelection.providerInstanceId,
       runtimeMode,
       textLength: text.length,
-      threadId: thread.id,
     })
+
+    scope.increment('command.submitCount')
     useChatOptimisticStore
       .getState()
       .addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
-    logChatPipelineInfo('chat.optimistic.added_from_send', {
-      ...optimisticMessageSummary({
+    scope.increment('command.optimisticAddedCount')
+    scope.set({
+      optimistic: optimisticMessageSummary({
         commandId: submission.command.commandId,
         messageId: submission.optimisticMessage.id,
         textLength: text.length,
@@ -130,11 +132,12 @@ export function ChatView({
     setSendError(null)
     setSending(true)
     try {
-      logChatPipelineInfo('chat.command.dispatch.start', chatCommandSummary(submission.command))
+      scope.increment('command.dispatchStartCount')
       const result = await environment.dispatchCommand(submission.command)
-      logChatPipelineInfo('chat.command.dispatch.accepted', {
-        ...chatCommandSummary(submission.command),
+      scope.increment('command.dispatchAcceptedCount')
+      scope.set({
         deduped: result.deduped,
+        outcome: 'ok',
         sequence: result.sequence,
       })
       scheduleThreadProjectionSyncAfterDispatch({
@@ -147,13 +150,13 @@ export function ChatView({
       useChatOptimisticStore
         .getState()
         .removeOptimisticMessage(thread.id, submission.optimisticMessage.id)
-      logChatPipelineWarn('chat.command.dispatch.failed', {
-        ...chatCommandSummary(submission.command),
-        error,
-      })
+      scope.increment('command.dispatchFailedCount')
+      scope.warn('Chat command dispatch failed.', { error })
+      scope.set({ outcome: 'error' })
       setSendError(errorMessage(error, 'Chat command failed.'))
       return false
     } finally {
+      scope.end({ durationMs: elapsedMs(startedAt) })
       setSending(false)
     }
   }
@@ -162,23 +165,25 @@ export function ChatView({
     if (!thread) return
 
     setInterrupting(true)
+    const startedAt = performance.now()
+    const command = createThreadInterruptCommand({
+      createdAt: new Date().toISOString(),
+      threadId: thread.id,
+      turnId: thread.latestTurn?.turnId,
+    })
+    const scope = createChatPipelineScope('chat.stop.dispatch.summary', chatCommandSummary(command))
     try {
-      const command = createThreadInterruptCommand({
-        createdAt: new Date().toISOString(),
-        threadId: thread.id,
-        turnId: thread.latestTurn?.turnId,
-      })
-      logChatPipelineInfo('chat.stop.dispatch.start', chatCommandSummary(command))
+      scope.increment('command.dispatchStartCount')
       await environment.dispatchCommand(command)
-      logChatPipelineInfo('chat.stop.dispatch.accepted', chatCommandSummary(command))
+      scope.increment('command.dispatchAcceptedCount')
+      scope.set({ outcome: 'ok' })
     } catch (error) {
-      logChatPipelineWarn('chat.stop.dispatch.failed', {
-        error,
-        threadId: thread.id,
-        turnId: thread.latestTurn?.turnId,
-      })
+      scope.increment('command.dispatchFailedCount')
+      scope.warn('Stop command dispatch failed.', { error })
+      scope.set({ outcome: 'error' })
       setSendError(errorMessage(error, 'Chat command failed.'))
     } finally {
+      scope.end({ durationMs: elapsedMs(startedAt) })
       setInterrupting(false)
     }
   }
@@ -193,17 +198,23 @@ export function ChatView({
 
     setRevertingCheckpoint(true)
     setSendError(null)
+    const startedAt = performance.now()
+    const command = createCheckpointRevertCommand({
+      createdAt: new Date().toISOString(),
+      threadId: thread.id,
+      turnCount,
+    })
+    const scope = createChatPipelineScope(
+      'chat.checkpoint_revert.dispatch.summary',
+      chatCommandSummary(command),
+    )
     try {
-      const command = createCheckpointRevertCommand({
-        createdAt: new Date().toISOString(),
-        threadId: thread.id,
-        turnCount,
-      })
-      logChatPipelineInfo('chat.checkpoint_revert.dispatch.start', chatCommandSummary(command))
+      scope.increment('command.dispatchStartCount')
       const result = await environment.dispatchCommand(command)
-      logChatPipelineInfo('chat.checkpoint_revert.dispatch.accepted', {
-        ...chatCommandSummary(command),
+      scope.increment('command.dispatchAcceptedCount')
+      scope.set({
         deduped: result.deduped,
+        outcome: 'ok',
         sequence: result.sequence,
       })
       scheduleThreadProjectionSyncAfterDispatch({
@@ -212,13 +223,12 @@ export function ChatView({
         threadId: thread.id,
       })
     } catch (error) {
-      logChatPipelineWarn('chat.checkpoint_revert.dispatch.failed', {
-        error,
-        threadId: thread.id,
-        turnCount,
-      })
+      scope.increment('command.dispatchFailedCount')
+      scope.warn('Checkpoint revert command dispatch failed.', { error })
+      scope.set({ outcome: 'error' })
       setSendError(errorMessage(error, 'Chat command failed.'))
     } finally {
+      scope.end({ durationMs: elapsedMs(startedAt) })
       setRevertingCheckpoint(false)
     }
   }
@@ -254,6 +264,10 @@ export function ChatView({
       />
     </section>
   )
+}
+
+function elapsedMs(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100
 }
 
 function confirmCheckpointRevert(turnCount: number) {

@@ -10,7 +10,7 @@ import {
 import * as v from 'valibot'
 
 import { getClient } from '@/lib/client'
-import { log } from '@/lib/client-logging'
+import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { clientErrors, createRpcError } from '@/lib/structured-errors'
 import { chatStreamItemSummary } from '../lib/chat-pipeline-logging'
@@ -47,6 +47,9 @@ async function* openOrchestrationShellStream({
   signal,
 }: OrchestrationStreamInput): AsyncGenerator<OrchestrationShellStreamItem> {
   const startedAt = performance.now()
+  const scope = createOrchestrationStreamScope('orchestration.shell_stream.summary', {
+    afterSequence,
+  })
 
   try {
     const response = await getClient().orchestration['shell-stream'].get({
@@ -56,21 +59,30 @@ async function* openOrchestrationShellStream({
     if (response.error) throw createRpcError(response.error)
     if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'Shell stream' })
 
-    logOrchestrationStream('orchestration.shell_stream.open', afterSequence, startedAt)
+    scope.increment('stream.openCount')
 
     for await (const event of parseEdenSseStream(response.data)) {
-      if (isOrchestrationHeartbeatEvent(event)) continue
+      if (isOrchestrationHeartbeatEvent(event)) {
+        scope.increment('stream.heartbeatCount')
+        continue
+      }
 
       const item = v.parse(orchestrationShellStreamItemSchema, event.data)
-      logOrchestrationStreamItem('orchestration.shell_stream.item', item, afterSequence)
+      recordOrchestrationStreamItem(scope, item)
       yield item
     }
   } catch (error) {
     if (!signal?.aborted) {
-      logOrchestrationStream('orchestration.shell_stream.error', afterSequence, startedAt, error)
+      scope.increment('stream.errorCount')
+      scope.error(error, { error: streamErrorSummary(error) })
     }
 
     throw error
+  } finally {
+    scope.end({
+      aborted: signal?.aborted ?? false,
+      durationMs: elapsedMs(startedAt),
+    })
   }
 }
 
@@ -79,6 +91,10 @@ async function* openOrchestrationThreadDetailStream(
   { afterSequence = 0, signal }: OrchestrationStreamInput,
 ): AsyncGenerator<OrchestrationThreadStreamItem> {
   const startedAt = performance.now()
+  const scope = createOrchestrationStreamScope('orchestration.thread_stream.summary', {
+    afterSequence,
+    threadId,
+  })
 
   try {
     const response = await getClient().orchestration['thread-detail-stream'].get({
@@ -88,66 +104,50 @@ async function* openOrchestrationThreadDetailStream(
     if (response.error) throw createRpcError(response.error)
     if (!response.data) throw clientErrors.EDEN_STREAM_MISSING({ label: 'Thread detail stream' })
 
-    logOrchestrationStream(
-      'orchestration.thread_stream.open',
-      afterSequence,
-      startedAt,
-      undefined,
-      {
-        threadId,
-      },
-    )
+    scope.increment('stream.openCount')
 
     for await (const event of parseEdenSseStream(response.data)) {
-      if (isOrchestrationHeartbeatEvent(event)) continue
+      if (isOrchestrationHeartbeatEvent(event)) {
+        scope.increment('stream.heartbeatCount')
+        continue
+      }
 
       const item = v.parse(orchestrationThreadStreamItemSchema, event.data)
-      logOrchestrationStreamItem('orchestration.thread_stream.item', item, afterSequence, {
-        threadId,
-      })
+      recordOrchestrationStreamItem(scope, item)
       yield item
     }
   } catch (error) {
     if (!signal?.aborted) {
-      logOrchestrationStream('orchestration.thread_stream.error', afterSequence, startedAt, error, {
-        threadId,
-      })
+      scope.increment('stream.errorCount')
+      scope.error(error, { error: streamErrorSummary(error) })
     }
 
     throw error
+  } finally {
+    scope.end({
+      aborted: signal?.aborted ?? false,
+      durationMs: elapsedMs(startedAt),
+    })
   }
 }
 
-function logOrchestrationStreamItem(
-  action: string,
-  item: OrchestrationShellStreamItem | OrchestrationThreadStreamItem,
-  afterSequence: number,
-  context: Record<string, unknown> = {},
-) {
-  log.debug({
+function createOrchestrationStreamScope(action: string, context: Record<string, unknown>) {
+  return createWideEventScope({
     action,
-    afterSequence,
     area: 'orchestration',
     ...context,
-    ...chatStreamItemSummary(item),
   })
 }
 
-function logOrchestrationStream(
-  action: string,
-  afterSequence: number,
-  startedAt: number,
-  error?: unknown,
-  context: Record<string, unknown> = {},
+function recordOrchestrationStreamItem(
+  scope: WideEventScope,
+  item: OrchestrationShellStreamItem | OrchestrationThreadStreamItem,
 ) {
-  log[error === undefined ? 'info' : 'warn']({
-    action,
-    afterSequence,
-    area: 'orchestration',
-    durationMs: elapsedMs(startedAt),
-    error: error === undefined ? undefined : streamErrorSummary(error),
-    outcome: error === undefined ? 'ok' : 'error',
-    ...context,
+  scope.increment('stream.itemCount')
+  scope.set({
+    stream: {
+      latestItem: chatStreamItemSummary(item),
+    },
   })
 }
 

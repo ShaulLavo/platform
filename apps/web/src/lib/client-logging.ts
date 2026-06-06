@@ -136,7 +136,7 @@ function logIngestEndpoint() {
   return `${serverUrl.replace(/\/$/u, '')}${ingestPath}`
 }
 
-function clientLoggingEnabled() {
+export function clientLoggingEnabled() {
   return observabilityEnabledFromEnv({
     NODE_ENV: import.meta.env.MODE,
     OBSERVABILITY_ENABLED: import.meta.env.OBSERVABILITY_ENABLED,
@@ -178,7 +178,7 @@ function sanitizeError(error: Error, seen: WeakSet<object>) {
   }
 }
 
-function sanitizeRecord(record: Record<string, unknown>, seen = new WeakSet<object>()) {
+export function sanitizeRecord(record: Record<string, unknown>, seen = new WeakSet<object>()) {
   const safe: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(record)) {

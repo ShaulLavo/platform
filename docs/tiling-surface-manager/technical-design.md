@@ -109,13 +109,15 @@ type Surface = {
   capabilities: SurfaceCapabilities
 }
 
+type RecipeSlotId = string
+
 type WorkbenchWindow = {
   id: WindowId
   surfaceIds: SurfaceId[]
   activeSurfaceId: SurfaceId
   previewSurfaceId?: SurfaceId
   pinnedSurfaceIds: SurfaceId[]
-  mode: 'normal' | 'maximized'
+  mode: 'normal' | 'maximized' | 'collapsed'
 }
 
 type LayoutNode =
@@ -130,8 +132,9 @@ type LayoutNode =
 
 type RailState = {
   pinnedSurfaceIds: SurfaceId[]
-  minimizedSurfaceIds: SurfaceId[]
+  backgroundSurfaceIds: SurfaceId[]
   visibleSingletonSurfaceIds: SurfaceId[]
+  runningSurfaceIds: SurfaceId[]
   recipeIds: RecipeId[]
 }
 ```
@@ -153,9 +156,11 @@ classic recipe and guided by placement metadata. This prevents the product from
 having two competing layout foundations: "the tiled workspace" and "special
 docks."
 
-The rail remains separate because minimized, pinned, running, and recipe entries
-are not visible tiled layout. Drag previews and overlays also remain separate
-because they are transient renderer state, not committed workspace structure.
+The rail remains separate because pinned, running, background, recipe, and
+status entries are not tiled layout nodes. Collapsed panes do stay in the split
+tree as windows with `mode: 'collapsed'`; they do not move into rail state.
+Drag previews and overlays also remain separate because they are transient
+renderer state, not committed workspace structure.
 
 Lanes, stacked groups, floating windows, and far-future spatial windows are not
 core V1 `LayoutNode` kinds. For V1, workflow lanes should be represented by
@@ -176,10 +181,17 @@ Model rules grounded in the references:
 - A surface is not a tab, panel, sheet, dock, lane, or floating window. Those
   are presentations. T3Code's diff example and Zed's `Item`/`Panel` split both
   require this separation.
-- Running surfaces must stay mounted while hidden or minimized. T3Code keeps
-  thread terminal drawers mounted, Athas keeps bottom terminal sessions alive,
-  and Zellij serializes command panes and scrollback. Close, not minimize/hide,
-  is the semantic that stops or disposes a running surface.
+- Collapse/minimize is presentation state. It turns a visible window into a
+  fixed accordion header in place and does not decide whether the surface keeps
+  running, unmounts UI, suspends, or disposes resources.
+- Close removes the represented surface/window from visible layout. Registry
+  close policy independently decides whether state or sessions are disposed,
+  kept in the background, suspended, or protected by confirmation.
+- Running surfaces may stay mounted while collapsed, hidden, or backgrounded.
+  T3Code keeps thread terminal drawers mounted, Athas keeps bottom terminal
+  sessions alive, and Zellij serializes command panes and scrollback. The
+  registry owns that runtime policy; layout operations do not infer it from
+  collapse or close.
 - Placeholder surfaces are allowed during restore. i3 layout placeholders and
   Zellij exact/logical-position matching are the reference behavior.
 
@@ -234,6 +246,9 @@ adapter boundary stays strict. The renderer should be heavily inspired by:
 - Platform's existing Chrome-style tab components for tab shape, active/inactive
   treatment, close affordances, title behavior, overflow feel, and tab-strip
   polish.
+- Chromium's tab strip source for the specific in-strip slide/reorder behavior,
+  vertical detach threshold, and drag-down progress animation before replacing
+  the current editor-tab drag TODO.
 - React Layman for the simple center/edge drop grammar and small reducer-style
   operation examples.
 - i3 for center, sibling edge, and parent-edge drag behavior.
@@ -256,11 +271,25 @@ Required renderer behaviors:
 - Keep heavy surface content mounted or unmounted according to registry
   lifecycle, not according to incidental visibility.
 - Support window drag and individual surface/tab drag.
+- Enforce one snapped drag grammar for all draggable layout objects. Whole
+  windows, detached tabs, and surface moves should always preview a concrete
+  grid, merge, edge, recipe-slot, or background destination. A pointer drag must
+  not create a free-floating or popout state.
 - Use the existing Chrome-style tab presentation as the default tab-strip
   treatment for window surface stacks. A surface is still not a tab; this is the
   visual and interaction presentation for stacked surfaces.
+- Start individual surface/tab drag as a Chrome-like in-strip reorder. While the
+  pointer stays within the detach threshold, keep the dragged tab in the strip
+  and animate sibling tabs aside to show the release index. Do not show a
+  floating drag image or pulled-out pane in this state.
+- When the pointer crosses the vertical detach threshold, convert the gesture
+  into a snapped workspace drag. The dragged surface should preview a concrete
+  destination as a new window, merge target, edge split, parent/root edge split,
+  recipe slot, or background target. It should not hover unsnapped between
+  destinations.
 - Distinguish center drop from edge drop, parent-edge drop, root-edge drop,
-  rail drop, and future floating drop.
+  recipe-slot drop, and background drop. Future floating windows are a separate
+  command/policy mode, not a drag destination.
 - Keep resize math constraint-aware. Adjacent percentage resizing is V1; a
   Zellij-style solver pass is a future escape hatch for fixed/stacked layouts.
 
@@ -274,15 +303,15 @@ in the keymap layer, but the layout system must expose first-class commands for:
 - Parent/child focus: focus enclosing split, active child, active window, and
   active surface.
 - Surface movement: move active surface left, right, up, down, to parent edge,
-  to root edge, into another window as a tab, or to the rail.
+  to root edge, into another window as a tab, or into background state.
 - Window movement: move active window by direction or structural destination.
 - Splitting: split active window left, right, up, or down.
 - Tab control: next/previous surface in window, reorder surface, tear surface
   into a new window, and merge into the target window.
 - Resize mode: keyboard-resize the active split by direction and step amount,
   with constraint-aware clamping.
-- State commands: maximize/restore, minimize/restore from rail, close surface,
-  close window, promote preview, and pin/unpin where supported.
+- State commands: maximize/restore, collapse/expand window, close surface, close
+  window, promote preview, and pin/unpin where supported.
 - Recipe/workspace commands: apply recipe, reset recipe shape, focus rail, and
   restore previous layout state.
 
@@ -422,7 +451,8 @@ and desktop window managers:
 - Fractions: left/right/top/bottom halves, thirds, two-thirds, fourths,
   quarters, sixths, and common center fractions.
 - Movement: move left/right/up/down, move to parent edge, move to root edge,
-  move to rail, and move to next/previous display when display support exists.
+  move to background, and move to next/previous display when display support
+  exists.
 - Focus: focus left/right/up/down, focus parent, focus child, focus rail, and
   restore previous surface/window.
 - Recipes/layouts: apply recipe, reset recipe, create window command, create
@@ -460,18 +490,18 @@ Current app integration expands beyond the keymap files:
 
 ## Surface Registry Draft
 
-| Surface        |          Cardinality | Lifecycle          | Default Placement            | Rail                   | Notes                                                               |
-| -------------- | -------------------: | ------------------ | ---------------------------- | ---------------------- | ------------------------------------------------------------------- |
-| File Editor    |                multi | durable or preview | active window tab            | when open/minimized    | edit or pin promotes preview                                        |
-| Diff           |                multi | durable or preview | like file tab                | when durable/minimized | no special default side zone                                        |
-| Search Results |            singleton | durable            | left nested tool pane        | yes                    | restore query, filters, selection, results; may unmount when hidden |
-| Search Preview | singleton/contextual | transient          | near search or active window | no                     | owned by search context; replaced by selection                      |
-| Terminal       |                multi | running            | recipe decides               | yes                    | minimize preserves process                                          |
-| File Navigator |            singleton | durable            | left nested tool pane        | yes                    | restore expanded tree and selection                                 |
-| Git Changes    |            singleton | durable            | left nested tool pane        | yes                    | restore selection, filters, staged state                            |
-| Diagnostics    |            singleton | durable            | recipe decides               | yes                    | links to editor/preview                                             |
-| Test Output    |   singleton or multi | running/durable    | bottom/adjacent              | yes if running         | close rules matter                                                  |
-| Agent Surfaces |               future | mixed              | agent recipe                 | yes                    | needs separate product plan                                         |
+| Surface        |          Cardinality | Lifecycle          | Default Placement            | Rail/status | Notes                                                                  |
+| -------------- | -------------------: | ------------------ | ---------------------------- | ----------- | ---------------------------------------------------------------------- |
+| File Editor    |                multi | durable or preview | active window tab            | visible/bg  | edit or pin promotes preview                                           |
+| Diff           |                multi | durable or preview | like file tab                | visible/bg  | no special default side zone                                           |
+| Search Results |            singleton | durable            | left nested tool pane        | yes         | restore query, filters, selection, results; may unmount when collapsed |
+| Search Preview | singleton/contextual | transient          | near search or active window | no          | owned by search context; replaced by selection                         |
+| Terminal       |                multi | running            | recipe decides               | yes         | runtime policy decides keep-mounted/dispose behavior                   |
+| File Navigator |            singleton | durable            | left nested tool pane        | yes         | restore expanded tree and selection                                    |
+| Git Changes    |            singleton | durable            | left nested tool pane        | yes         | restore selection, filters, staged state                               |
+| Diagnostics    |            singleton | durable            | recipe decides               | yes         | links to editor/preview                                                |
+| Test Output    |   singleton or multi | running/durable    | bottom/adjacent              | yes         | close and runtime rules are policy-driven                              |
+| Agent Surfaces |               future | mixed              | agent recipe                 | yes         | needs separate product plan                                            |
 
 Registry behavior examples:
 
@@ -490,8 +520,8 @@ Registry behavior examples:
 - Search Results durability is state durability, not render durability. Query,
   filters, selected result, result list metadata, scroll position, and preview
   relationship should live in search surface state. The expensive search UI and
-  virtualized result rendering may unmount when hidden or minimized unless the
-  registry explicitly requires it to stay mounted.
+  virtualized result rendering may unmount when collapsed, hidden, or
+  backgrounded unless the registry explicitly requires it to stay mounted.
 - Search Preview must have an owner/context, such as `ownerSurfaceId` pointing
   to Search Results and `ownerContextKey` pointing to the selected result key.
   Selection changes replace the preview in place. Closing or resetting the
@@ -505,11 +535,13 @@ Registry behavior examples:
   promote to durable editors when the user opens, edits, pins, or tabs them.
 
 The registry owns capability checks such as `canClose`, `canSplit`,
-`canMinimize`, `canFloat`, `supportsPreview`, `canUnmountWhenHidden`,
-`validPlacements`, `defaultRecipeSlot`, `restore`, and `serialize`.
-`canUnmountWhenHidden` should be false for running surfaces. It can be true for
-durable stateful surfaces such as Search Results when preserving state is enough
-and keeping the heavy UI mounted would create unnecessary work.
+`canCollapse`, `canFloat`, `supportsPreview`, `canUnmountWhenNotExpanded`,
+`closeRuntimePolicy`, `validPlacements`, `defaultRecipeSlot`, `restore`, and
+`serialize`. `canUnmountWhenNotExpanded` should be false for running surfaces
+that must keep an interactive renderer mounted. It can be true for durable
+stateful surfaces such as Search Results when preserving state is enough and
+keeping the heavy UI mounted would create unnecessary work. `closeRuntimePolicy`
+must be independent from collapse policy.
 
 ## Recipe Draft
 
@@ -527,8 +559,15 @@ Examples:
   Logs prefer left nested tool panes; file editors, diffs, and promoted previews
   prefer the main view; Terminal and Problems prefer the bottom tool pane. The
   nested tool-pane shape is ordinary split tree structure, not a sidebar model.
-  This preserves VS Code and Zed muscle memory while still using Platform
-  surfaces internally.
+  Terminal is special only as default recipe policy: default terminal commands
+  target the full-width bottom tool pane, while user drag/drop or explicit move
+  commands create sticky manual placement in any ordinary split. This preserves
+  VS Code and Zed muscle memory while still using Platform surfaces internally.
+- Recipe-managed left tool panes are derived from the ordered visible set, not
+  from incremental append history. Opening, closing, collapsing, or expanding
+  Files/Search/Git/Chat/Logs should repack the recipe-managed subset in stable
+  recipe order; manual sticky placement opts a surface out of this automatic
+  packing while the target remains valid.
 - Search: search results open as a durable singleton in the left nested
   tool-pane group, selection opens a transient preview adjacent to the search or
   active editor, and Enter promotes the preview. This borrows from T3Code
@@ -546,9 +585,10 @@ Examples:
 - Dense execution: terminals, task logs, and agent output can become a stacked
   group later. Zellij's stacked panes are the reference: one flexible active
   pane plus collapsed one-line panes.
-- Focus: active surface dominates, other durable surfaces minimize or hide, and
-  restore returns to the prior recipe state. VS Code zen mode and Zed zoomed
-  panels are compatibility references.
+- Focus: active surface dominates, other durable surfaces collapse in place or
+  move to background according to policy, and restore returns to the prior
+  recipe state. VS Code zen mode and Zed zoomed panels are compatibility
+  references.
 
 For V1, assume one active recipe per workspace.
 
@@ -556,8 +596,11 @@ Recipe policy examples:
 
 - `classicPolicy`: open editor-like surfaces in the main view; place terminal
   and Problems in the bottom tool pane; route Files, Search, Git, Chat, and Logs
-  into left nested tool panes; restore singleton tools through default recipe
-  placement when their last concrete window placement is stale.
+  into order-packed left nested tool panes; restore singleton tools through
+  default recipe placement when their last concrete window placement is stale;
+  if Terminal is opened first, allow it to temporarily fill available space,
+  then reshape it into the full-width bottom tool pane when the first normal
+  content/tool surface opens unless sticky manual placement exists.
 - `previewAdjacentPolicy`: put transient previews near the selected list,
   search result, diagnostic, git file, or agent artifact.
 - `laneWorkflowPolicy`: route git, review, or agent work items into a
@@ -565,8 +608,8 @@ Recipe policy examples:
   near that workflow context.
 - `masterDetailPolicy`: keep active editor/diff as master and place related
   tools as detail surfaces.
-- `focusPolicy`: maximize active window and route secondary surfaces to rail
-  unless explicitly opened.
+- `focusPolicy`: maximize active window and collapse secondary windows in place
+  or move surfaces to background according to explicit policy.
 
 Hyprland's workspace algorithm matcher is the reference for selecting policies
 per workspace or recipe. Zellij swap layouts are the reference for choosing a
@@ -581,7 +624,8 @@ dependencies:
 type LayoutOperation =
   | { type: 'openSurface'; surface: Surface; policyId?: LayoutPolicyId }
   | { type: 'closeSurface'; surfaceId: SurfaceId }
-  | { type: 'minimizeSurface'; surfaceId: SurfaceId }
+  | { type: 'collapseWindow'; windowId: WindowId }
+  | { type: 'expandWindow'; windowId: WindowId }
   | { type: 'restoreSurface'; surfaceId: SurfaceId; placement?: SurfacePlacementHint }
   | {
       type: 'splitWindow'
@@ -614,7 +658,8 @@ type DropDestination =
   | { kind: 'window-edge'; windowId: WindowId; edge: DropEdge }
   | { kind: 'parent-edge'; nodeId: LayoutNodeId; edge: DropEdge }
   | { kind: 'root-edge'; edge: DropEdge }
-  | { kind: 'rail' }
+  | { kind: 'recipe-slot'; slot: RecipeSlotId }
+  | { kind: 'background' }
 ```
 
 Reference grounding:
@@ -634,11 +679,13 @@ Every operation must normalize before commit:
 
 - Remove empty windows and invalid tabs.
 - Collapse empty split nodes.
+- Preserve collapsed windows as valid split children with fixed header geometry.
 - Flatten same-axis split nodes.
 - Repair size arrays and normalize percentages.
 - Clamp active surface/window IDs.
 - Preserve stable IDs where possible.
-- Route orphaned durable or running surfaces to the rail or a fallback window.
+- Route orphaned durable or running surfaces to background state or a fallback
+  window according to registry policy.
 
 ## Persistence and Restore
 
@@ -647,8 +694,9 @@ Persist product state, not renderer state:
 - layout version and surface registry version;
 - surface type, lifecycle, resource key, state key, and restorable state;
 - window membership, active surface, preview/pin state, and MRU;
-- split tree, sizes, active recipe, and sticky manual placements;
-- rail state for minimized, pinned, running, and singleton surfaces.
+- split tree, sizes, collapsed window mode, active recipe, and sticky manual
+  placements;
+- rail state for pinned, running, background, recipe, and singleton surfaces.
 
 Do not persist:
 
@@ -667,7 +715,8 @@ Restore matching order:
 3. Match by previous surface ID only if it is still valid in the current
    workspace.
 4. Match by logical window or recipe slot.
-5. Route unmatched durable or running surfaces to rail or the default stack.
+5. Route unmatched durable or running surfaces to background state or the
+   default stack according to registry policy.
 6. Drop invalid transient surfaces.
 7. Drop transient previews whose owner/context no longer exists, unless the
    preview has been promoted to a durable surface.
@@ -693,7 +742,8 @@ Reference grounding:
 - `layout-types.ts`: durable state types, operation types, geometry types, and
   serialized version schemas.
 - `layout-operations.ts`: pure operation reducer for open, split, move, tab,
-  reorder, close, minimize, restore, resize, maximize, and recipe application.
+  reorder, close, collapse, expand, restore, resize, maximize, and recipe
+  application.
 - `layout-normalize.ts`: empty-node cleanup, same-axis flattening, size repair,
   active ID repair, duplicate-surface prevention, orphan routing, and invariant
   checks.
@@ -707,7 +757,8 @@ Reference grounding:
 - `WorkbenchSurfaceHost.tsx`: renders one surface by registry entry and applies
   mount/unmount rules.
 - `WorkbenchWindowFrame.tsx`: frame, Chrome-style tab strip, active state,
-  resize affordance, close/minimize/maximize controls, and drag handles.
+  resize affordance, close/collapse/maximize controls, accordion-header
+  rendering, and drag handles.
 - `WorkbenchLayoutRenderer.tsx`: recursive split/window rendering and overlay
   coordination.
 
@@ -815,10 +866,10 @@ Cleanup after the surface manager lands:
    surfaces/windows directly and must not derive panels from `EditorPaneLayout`.
    Either way, the pane-to-panel sync code should go away.
 
-4. Collapse fixed sidebar tabs into rail-backed singleton surfaces.
+4. Rehost fixed sidebar tabs as recipe-placed singleton tool surfaces.
 
    Files, Search, Git, Logs, and Chat should register as surfaces with
-   placement rules. `WorkspaceSidebar`, `WorkspaceSidebarResizablePanel`,
+   placement and collapse rules. `WorkspaceSidebar`, `WorkspaceSidebarResizablePanel`,
    `WorkspaceActivityBar`, and `workspacePanelTab` utilities should be deleted
    or reduced to rail presentation after their content components are rehosted.
 
@@ -828,10 +879,10 @@ Cleanup after the surface manager lands:
    `sidebarVisible`, `workspacePanelTab`, or a selected fake search-buffer
    editor document. Opening a search result should create a transient preview
    or durable editor surface through `openSurface`, not `selectFile`.
-   Hidden/minimized Search Results should preserve its state without requiring
-   the heavy search UI to remain mounted. Search Preview should be owned by the
-   search context and replaced or cleaned up on selection/search reset instead
-   of accumulating orphan transient surfaces.
+   Collapsed, hidden, or background Search Results should preserve state without
+   requiring the heavy search UI to remain mounted. Search Preview should be
+   owned by the search context and replaced or cleaned up on selection/search
+   reset instead of accumulating orphan transient surfaces.
 
 6. Move git diff opening to surface commands.
 
@@ -842,11 +893,13 @@ Cleanup after the surface manager lands:
 7. Promote terminal overlay tabs into running surfaces.
 
    The terminal store, floating terminal overlay, terminal tab strip, and
-   terminal height persistence should be replaced by surface lifecycle and
-   placement. Minimize should hide the window while preserving the running
-   session; close should use the registry close policy to dispose the server
-   session. Running surfaces should stay mounted while hidden/minimized; close
-   is the stop/dispose action.
+   terminal height persistence should be replaced by surface lifecycle,
+   placement, and collapse policy. Collapsing a terminal window shows an
+   accordion header in place. Closing a terminal removes it from visible layout;
+   registry close policy independently decides whether the server session is
+   disposed, suspended, or kept as a background running surface. Running
+   surfaces should stay mounted while collapsed/hidden only when registry
+   render policy requires it.
 
 8. Replace workspace cache with versioned surface layout persistence.
 
@@ -908,7 +961,7 @@ The risky code is pure layout logic, so test it outside React first:
 - React Layman cases: remove last window, merge same-axis splits, redistribute
   percentages, center drop tabbing, and edge drop wrapping.
 - i3 cases: parent-edge drop, self/descendant move rejection, percent repair,
-  close fallback, focus parent/child, and scratchpad/minimize restore.
+  close fallback, focus parent/child, collapse/expand, and background restore.
 - Athas cases: typed surface restore, bottom-root moves, MRU focus fallback,
   preview/pin state, and resource-key hydration.
 - T3Code cases: presentation switch from inline to sheet/drawer while preserving
@@ -926,16 +979,23 @@ The risky code is pure layout logic, so test it outside React first:
   and saved layout command execution.
 
 Add renderer tests after the pure reducer is stable: drop overlay hit targets,
-keyboard focus movement, resize handles, drag preview rendering, and surface
-mounting rules for running terminals.
+keyboard focus movement, resize handles, drag preview rendering, collapsed
+accordion geometry, and surface mounting rules for running terminals.
 
 ## Automation Rules
 
 - User drag/drop wins.
-- Manual placement becomes sticky only while the concrete placement target still
-  exists and is visible.
+- Manual placement becomes sticky only when it was created by an explicit user
+  action and only while the concrete placement target still exists, is visible,
+  accepts that surface type, and passes current constraints.
 - Singleton surfaces restore their last useful state and last valid placement.
 - Recipes provide defaults, not forced moves.
+- Invalid sticky memory is cleared or demoted before fallback. Restore must not
+  repeatedly retry memory that fails minimum editor width, tool-pane
+  width/height, terminal height, viewport, or recipe side-pane limits.
+- Default terminal commands prefer the `bottom-tools` recipe slot, but manual
+  terminal placement wins until the user resets the recipe or opens a new
+  default bottom-pane terminal.
 - Transient previews can auto-replace.
 - Durable surfaces should not jump unexpectedly.
 - Live drag rearrangement is allowed because the user is actively controlling

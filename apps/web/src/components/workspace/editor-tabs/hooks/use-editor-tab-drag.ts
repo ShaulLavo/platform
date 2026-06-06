@@ -13,9 +13,10 @@ import {
 
 // TODO(chrome-tab-dnd): Reimagine the chrome tab drag as a pointer-driven in-strip slide.
 // The dragged tab should stay inside the tab bar and follow the pointer horizontally while
-// the other tabs animate aside to reveal exactly where it will land on release — no floating
-// drag-image / "pop out". Only once the pointer is pulled down far enough past the strip
-// should the whole tab snap out (detach) into its own window.
+// the other tabs animate aside to reveal exactly where it will land on release. Only once
+// the pointer is pulled down far enough past the strip should the tab detach into the same
+// snapped workspace drag grammar used by whole-window drags. Do not create a floating drag
+// image, popout, or unsnapped intermediate state.
 // TODO(chrome-tab-dnd): Study Chrome's tab strip source for the detach pull-down threshold and
 // the slide/reorder motion details before implementing:
 // https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/views/tabs/

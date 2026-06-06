@@ -36,6 +36,23 @@ External product UX research supplied for this planning pass:
 - Raycast Window Management command palette, settings, hotkey, preset, custom
   command, and layout command flows.
 
+## Decision Amendment - 2026-06-06
+
+After implementation planning, Platform changed the V1 minimize model:
+
+- Collapse/minimize is presentation state. It keeps the window in the split tree
+  and renders it as a fixed accordion header.
+- The rail is command/status UI, not layout storage for collapsed panes.
+- Close removes a surface/window from visible layout, but close does not itself
+  define runtime behavior.
+- Surface registry policy independently decides whether collapsed, hidden,
+  background, or closed surfaces keep running, unmount UI, suspend, or dispose
+  resources.
+
+Older research notes below may mention the surveyed rail-as-collapsed-storage
+pattern. The product plan should follow this amendment and the canonical
+PRD/technical design.
+
 ## Executive Readout
 
 The strongest direction is a product-owned tiling surface manager: close to
@@ -47,7 +64,7 @@ of that surface.
 
 The important product move is to treat sidebars as a taskbar/rail for surfaces,
 not as a fixed set of panels. Search, diff, file tree, terminals, agents, and
-git views should be able to open together, split, tab, minimize, restore, and
+git views should be able to open together, split, tab, collapse, expand, and
 participate in auto-tiling. The system should preserve old editor experiences
 for adoption, but the default mental model should be "arrange my work surfaces"
 rather than "toggle one sidebar and one bottom panel."
@@ -133,8 +150,8 @@ What not to copy blindly:
   a surface type supports them.
 - Raycast does not replace mouse drag-to-edge snapping with previews. Platform
   still needs its planned mouse drag/drop, live layout preview, edge/center
-  drops, rail drops, and resize handles because the workbench is an interactive
-  tiled surface editor, not only a global hotkey layer.
+  drops, background drops, and resize handles because the workbench is an
+  interactive tiled surface editor, not only a global hotkey layer.
 - Pro-gating is not a design requirement for Platform. The relevant takeaway is
   capability shape, not pricing.
 
@@ -656,8 +673,8 @@ Product decisions to take:
 - Workspaces are created on demand, have a default orientation based on output
   aspect ratio, and can have a default layout of split, stacked, or tabbed.
 - Scratchpad is a hidden workspace for surfaces that are "not in the layout
-  right now" but quickly recallable. For Platform, this maps to minimized or
-  rail-only surfaces.
+  right now" but quickly recallable. For Platform, this maps to background
+  surfaces, while ordinary minimize maps to collapsed in-place windows.
 - Layout save/restore creates placeholders that later swallow matching windows.
   Platform should copy the concept, not the X11 matching: restore placeholders
   for surfaces whose editor buffer, terminal session, agent run, or remote
@@ -705,10 +722,11 @@ Implementation details to take:
 Design implication:
 
 Platform should copy i3's structural clarity: explicit parent/child operations,
-normalized percentages, parent-edge drops, scratchpad/minimized state, focus
-parent, and placeholder restore. For the browser, those concepts should be
-presented visually through drop overlays, rail targets, breadcrumbs, and
-keyboard commands rather than requiring users to think in tree terms.
+normalized percentages, parent-edge drops, scratchpad/background state,
+collapsed in-place windows, focus parent, and placeholder restore. For the
+browser, those concepts should be presented visually through drop overlays, rail
+targets, breadcrumbs, accordion headers, and keyboard commands rather than
+requiring users to think in tree terms.
 
 ### Zellij
 
@@ -936,7 +954,7 @@ Hyprland:
 2. A window should be a first-class concept.
 
    The user idea of "editor becomes a window" is directionally right. A window
-   is the visible container that can split, tab, minimize, restore, float,
+   is the visible container that can split, tab, collapse, expand, float,
    maximize, and receive focus. A surface is the product artifact inside it.
    One window may contain many surfaces as tabs.
 
@@ -944,7 +962,9 @@ Hyprland:
 
    File tree, search, diff, terminal, agents, git, diagnostics, and review
    should not fight for one sidebar slot. They should be openable surfaces that
-   can be visible, minimized, restored, moved, split, or tabbed.
+   can be visible, collapsed, backgrounded, expanded, moved, split, or tabbed.
+   Recipe-managed tool surfaces should be order-packed from the current visible
+   set rather than incrementally appended to old split history.
 
 4. Support classic layouts as compatibility, not as the whole system.
 
@@ -973,10 +993,12 @@ Hyprland:
 
 8. Drop grammar should be explicit.
 
-   Center drop, edge drop, lane drop, bottom drop, dock drop, and floating drop
-   should be distinct operations. i3's center/sibling/parent drop model is the
-   clearest mouse grammar for structural tiling; React Mosaic and React Layman
-   provide the web implementation patterns.
+   Center drop, edge drop, parent/root-edge drop, recipe-slot drop, and
+   background drop should be distinct operations. Floating windows are a future
+   explicit command/policy mode, not a mouse drag destination. i3's
+   center/sibling/parent drop model is the clearest mouse grammar for structural
+   tiling; React Mosaic and React Layman provide the web implementation
+   patterns.
 
 9. Resizing must be constraint-aware.
 
@@ -1034,8 +1056,10 @@ permanent panels.
 
 ## Proposed Platform Model
 
-The core model should be a typed surface graph plus layout zones. A simplified
-shape:
+The core model should be a typed surface graph plus a normalized split tree.
+Recipe policy can prefer left tool placement or a bottom tool pane, but those
+preferences must compile into ordinary split/window nodes rather than dock,
+sidebar, or lane roots. A simplified shape:
 
 ```ts
 type SurfaceId = string
@@ -1055,7 +1079,8 @@ type SurfaceRole =
   | 'custom'
 
 type SurfaceLifecycle = 'persistent' | 'session' | 'transient'
-type SurfacePlacement = 'center' | 'left' | 'right' | 'bottom' | 'rail' | 'floating'
+type SurfacePlacement = 'split-tree' | 'background' | 'floating'
+type RecipeSlot = 'left-tools' | 'main' | 'bottom-tools'
 
 type Surface = {
   id: SurfaceId
@@ -1084,14 +1109,9 @@ type LayoutNode =
       id: WindowId
       surfaceIds: SurfaceId[]
       activeSurfaceId?: SurfaceId
+      mode?: 'normal' | 'maximized' | 'collapsed'
       previewSurfaceId?: SurfaceId
       pinnedSurfaceIds?: SurfaceId[]
-    }
-  | {
-      kind: 'lanes'
-      id: LayoutNodeId
-      laneIds: string[]
-      activeLaneId?: string
     }
 
 type FloatingWindow = {
@@ -1105,17 +1125,16 @@ type FloatingWindow = {
 
 type RailItem = {
   surfaceId: SurfaceId
-  lastPlacement: SurfacePlacement
+  status: 'visible' | 'collapsed' | 'background' | 'running' | 'pinned' | 'available'
+  recipeSlot?: RecipeSlot
   badge?: string
 }
 
 type WorkspaceLayout = {
   version: number
   surfaces: Record<SurfaceId, Surface>
-  center: LayoutNode
-  leftDock: DockState
-  rightDock: DockState
-  bottomDock: DockState
+  root: LayoutNode
+  backgroundSurfaceIds: SurfaceId[]
   rail: RailItem[]
   floatingWindows: FloatingWindow[]
   overlays: OverlayState[]
@@ -1133,8 +1152,10 @@ important:
 - Surfaces own product identity.
 - Windows own visible grouping, tabs, preview, and pinned state.
 - Layout nodes own placement and geometry.
-- Docks are projections of surfaces into shell regions.
-- The rail owns minimized/available surfaces and last placement.
+- Recipe slots are placement policy labels that project surfaces into ordinary
+  split-tree positions.
+- The rail reports available, background, running, pinned, and collapsed
+  surfaces. It does not own collapsed pane placement.
 - Overlays are separate from durable layout.
 - Policies decide where new surfaces go.
 - Node/window/surface IDs are stable; paths are transient render addresses.
@@ -1153,11 +1174,12 @@ Recommended modules:
 - `layout-types.ts`: durable state types, operation types, geometry types, and
   serialized layout versions.
 - `layout-operations.ts`: pure transforms such as split window, move surface,
-  move window, tab surface, reorder tab, close surface, minimize, restore,
-  maximize, resize, auto tile, normalize, and validate.
+  move window, tab surface, reorder tab, close surface, collapse window, expand
+  window, restore surface, pack recipe-managed tools, maximize, resize, auto
+  tile, normalize, and validate.
 - `layout-normalize.ts`: collapse empty nodes, flatten same-direction splits,
   repair size arrays, remove duplicate surfaces, route orphaned surfaces to
-  rail/default window, clamp active IDs, and preserve stable IDs.
+  background/default window, clamp active IDs, and preserve stable IDs.
 - `layout-selectors.ts`: resolve node/window paths from IDs, compute bounding
   boxes, find focus neighbors, find drop targets, calculate MRU fallbacks.
 - `layout-persistence.ts`: versioned serialization, migration, restore matching,
@@ -1176,15 +1198,23 @@ State rules:
   tabstrip, preview, active-window, and close/move semantics.
 - Surface registry entries should own product lifecycle. Layout code should ask
   capabilities questions such as "can close", "can split", "can float", "can
-  minimize", "requires mounted while hidden", and "supports preview".
+  collapse", "requires mounted while not expanded", and "supports preview".
 - Drag state should be ephemeral. Do not persist hidden/drag-preview layout.
   Commit only on drop, with preview geometry shown through derived state.
+- Chrome-style tab drag should be researched from Chromium's tab strip source
+  before implementation. Preserve in-strip slide/reorder by default, vertical
+  pull-down detach only after a threshold, and no unsnapped floating tab or pane
+  while the user is still choosing a placement.
+- The same snapped-drag invariant applies to whole-window drag and individual
+  surface moves. Dragging should never create floating or popout state; future
+  floating windows require explicit commands or placement policy.
 - Resize should maintain percent sizes for flexible panes and pixel/fixed
   constraints for toolbars, rails, and minimum content. Use simple adjacent
   resize first; keep a solver option for stacked/fixed-heavy layouts.
 - Persistence should store a surface registry version and layout version. On
   restore, match by stable resource key first, then previous surface ID if
-  still valid, then logical/window position, then fallback rail/default stack.
+  still valid, then logical/window position, then fallback background/default
+  stack.
 - Unit tests should cover pure tree operations heavily. The risky code is path
   adjustment, normalization, close fallback, duplicate prevention, restore
   migration, and drop grammar.
@@ -1197,7 +1227,7 @@ Initial operation grammar:
 - `moveWindow(windowId, destination)`
 - `tabSurface(surfaceId, targetWindowId, index?)`
 - `reorderTab(windowId, fromIndex, toIndex)`
-- `minimizeSurface(surfaceId)`
+- `collapseWindow(windowId)` and `expandWindow(windowId)`
 - `restoreSurface(surfaceId, placement?)`
 - `resizeSplit(splitId, handleIndex, deltaPx)`
 - `maximizeWindow(windowId)` and `restoreWindow(windowId)`
@@ -1211,14 +1241,15 @@ type DropDestination =
   | { kind: 'window-edge'; windowId: WindowId; edge: 'top' | 'right' | 'bottom' | 'left' }
   | { kind: 'parent-edge'; nodeId: LayoutNodeId; edge: 'top' | 'right' | 'bottom' | 'left' }
   | { kind: 'root-edge'; edge: 'top' | 'right' | 'bottom' | 'left' }
-  | { kind: 'dock'; dock: 'left' | 'right' | 'bottom' }
-  | { kind: 'rail' }
-  | { kind: 'floating'; rect?: FloatingWindow['rect'] }
+  | { kind: 'recipe-slot'; slot: RecipeSlot }
+  | { kind: 'background' }
 ```
 
 This keeps the UX concrete: center means tab/merge, edge means split, parent
-edge means promote to the enclosing split, dock means tool region, rail means
-minimize, floating means overlay window.
+edge means promote to the enclosing split, recipe slot means place through the
+active recipe's normal split-tree policy, background means remove from visible
+layout while preserving state by policy. Floating windows are a future explicit
+command/policy mode, not a pointer drag destination.
 
 ## Layout Recipes To Explore
 
@@ -1226,18 +1257,20 @@ Tiling surface manager:
 
 - Every opened artifact becomes a surface in a window.
 - Drag center to tab; drag edge to split; drag outer parent edge to promote.
-- Rail shows minimized, running, or available surfaces.
+- Rail shows visible, collapsed, background, running, pinned, or available
+  surfaces.
 - Search, diff, files, terminal, git, and agent can all be visible together.
 - Auto-tiling policy places new surfaces by role and active context.
-- Mouse resizing, keyboard focus movement, maximize, minimize, and restore all
+- Mouse resizing, keyboard focus movement, maximize, collapse, expand, and restore all
   operate on windows.
 
 Classic IDE:
 
 - Center editor stacks with splits.
-- Left project/search/git dock.
-- Right outline/agent/inspector dock.
-- Bottom terminal/problems/output dock.
+- Left nested project/search/git tool panes.
+- Right recipe-placed outline/agent/inspector panes where the active recipe
+  calls for them.
+- Bottom terminal/problems/output tool pane.
 - Preview tabs and pinned tabs.
 - VS Code/Zed-style keyboard commands.
 
@@ -1252,7 +1285,8 @@ Review and changes:
 Agent pairing:
 
 - Main editor or diff as master.
-- Agent chat/plan/logs as right lane or right dock.
+- Agent chat/plan/logs as recipe-placed right-side panes or workflow-internal
+  lanes.
 - Terminal/task output as bottom or embedded detail.
 - Artifacts and patches as transient previews.
 - Placement policy favors active work item instead of arbitrary last tab.
@@ -1297,7 +1331,7 @@ To feel credible as a code editor, V1 should preserve these familiar behaviors:
 - Swap windows or surfaces.
 - Toggle left sidebar.
 - Toggle bottom terminal/panel.
-- Minimize surface to rail and restore it.
+- Collapse a window to an accordion header and expand it.
 - Open multiple tool surfaces at the same time.
 - Move focus left/right/up/down.
 - Maximize/restore group or panel.
@@ -1335,9 +1369,9 @@ These are compatibility behaviors, not necessarily the internal architecture.
 
 5. Rail as taskbar.
 
-   The rail should show minimized/running/available surfaces, not just
-   mutually-exclusive view containers. This makes "open search, diff, files,
-   terminal, and agent all at once" feel natural.
+   The rail should show visible/collapsed/background/running/available
+   surfaces, not just mutually-exclusive view containers. This makes "open
+   search, diff, files, terminal, and agent all at once" feel natural.
 
 6. Context-linked transient previews.
 
@@ -1387,9 +1421,11 @@ default stack.
 
 4. Which surfaces can mix freely?
 
-   Should terminal tabs live beside file editors by default? Should agent panes
-   be allowed inside editor stacks? Should git lanes accept arbitrary file
-   editors? We need capability rules, not a single yes/no answer.
+   Terminal tabs should not live beside file editors by default in the classic
+   recipe: default terminal commands target the bottom tool pane. User-driven
+   terminal placement can still put terminals beside editors, and that manual
+   placement stays sticky while valid. Agent panes and git lanes still need
+   capability rules rather than a single yes/no answer.
 
 5. What exactly is a window?
 
@@ -1399,9 +1435,9 @@ default stack.
 
 6. What belongs in the rail?
 
-   Should the rail show only minimized surfaces, all running surfaces, all
-   registered tools, or a mix? A taskbar-like rail is powerful, but it needs a
-   clear rule so it does not become noisy.
+   Should the rail show collapsed surfaces, background surfaces, all running
+   surfaces, all registered tools, or a mix? A taskbar-like rail is powerful,
+   but it needs a clear rule so it does not become noisy.
 
 7. Do we want layout algorithms as user-visible settings?
 
@@ -1444,8 +1480,9 @@ solid.
 
 14. What is the keyboard-first story?
 
-Layout commands should be complete: split, move, swap, focus, resize,
-maximize, promote preview, toggle dock, cycle surface, open recipe.
+Layout commands should be complete: split, move, swap, focus, resize, maximize,
+collapse, expand, promote preview, toggle recipe pane, cycle surface, and open
+recipe.
 
 15. What visual identity should this have?
 
@@ -1458,16 +1495,16 @@ fewer nested boxes.
 
 1. Write the Platform workbench model spec.
 
-   Define `Surface`, `SurfaceRegistry`, `LayoutNode`, `DockState`,
-   `OverlayState`, lifecycle rules, capabilities, persistence, migration, and
-   command routing. Include the definition of `Window`, rail behavior, floating
-   behavior, and what state is durable versus derived.
+   Define `Surface`, `SurfaceRegistry`, `LayoutNode`, `Window`, `OverlayState`,
+   lifecycle rules, capabilities, persistence, migration, and command routing.
+   Include collapsed window mode, background state, rail command/status behavior,
+   floating behavior, and what state is durable versus derived.
 
 2. Build the pure layout operation library first.
 
    Implement IDs, split/window nodes, normalize, split, tab, move, reorder,
-   minimize, restore, close, resize, maximize, and recipe application as pure
-   TypeScript functions with unit tests before wiring React.
+   collapse, expand, restore, close, resize, maximize, and recipe application as
+   pure TypeScript functions with unit tests before wiring React.
 
 3. Decide the renderer strategy.
 
@@ -1484,7 +1521,7 @@ fewer nested boxes.
 5. Prototype mouse drop grammar.
 
    Implement visual drop overlays for center, edge, parent edge, root edge,
-   dock, rail, and floating. This is the fastest way to validate the
+   recipe slot, background, and floating. This is the fastest way to validate the
    "Hyprland in browser but easy with mouse" thesis.
 
 6. Define placement policies.

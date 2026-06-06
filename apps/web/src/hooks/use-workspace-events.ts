@@ -11,7 +11,6 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { log } from '@/lib/client-logging'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
@@ -22,6 +21,7 @@ import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { toTreePath } from '@/lib/path-formatters'
 import { clientErrors } from '@/lib/structured-errors'
+import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import {
   planFetchedOpenFileRefresh,
   planWorkspaceFilesystemEvents,
@@ -70,7 +70,12 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const { discardLiveEditorDocument, renameLiveEditorDocument, selectFile } = useEditorCommands()
   const rootPath = rootFolder?.path ?? null
   const applyEvents = useEffectEvent(
-    (events: FilesystemEvent[], signal: AbortSignal, currentRootPath: string) => {
+    (
+      events: FilesystemEvent[],
+      signal: AbortSignal,
+      currentRootPath: string,
+      eventsScope: WideEventScope,
+    ) => {
       const documentState = documentStore.getState()
       const workspaceState = workspaceStore.getState()
 
@@ -91,68 +96,70 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         rootPath: currentRootPath,
         selectFile,
         signal,
+        scope: eventsScope,
       }).catch((error: unknown) => {
         if (signal.aborted) return
 
+        eventsScope.warn('Failed to apply workspace filesystem events.', { error })
         reportError(toClientError(error))
       })
     },
   )
-  const applyReady = useEffectEvent((signal: AbortSignal, currentRootPath: string) => {
-    const documentState = documentStore.getState()
-    const workspaceState = workspaceStore.getState()
+  const applyReady = useEffectEvent(
+    (signal: AbortSignal, currentRootPath: string, eventsScope: WideEventScope) => {
+      const documentState = documentStore.getState()
+      const workspaceState = workspaceStore.getState()
 
-    void applyWorkspaceReady({
-      conflictStore,
-      discardLiveEditorDocument,
-      dirtyFilePaths: documentState.dirtyFilePaths,
-      ensureUnsyncedEditorDocument: documentState.ensureUnsyncedEditorDocument,
-      forceReplaceLiveEditorDocument: (file) =>
-        documentStore
-          .getState()
-          .forceReplaceLiveEditorDocument(file, workspaceStore.getState().selectedFilePath),
-      getLiveEditorDocument: documentState.getLiveEditorDocument,
-      openFilePaths: workspaceState.openFilePaths,
-      queryClient,
-      renameLiveEditorDocument,
-      rootPath: currentRootPath,
-      selectFile,
-      signal,
-    }).catch((error: unknown) => {
-      if (signal.aborted) return
+      void applyWorkspaceReady({
+        conflictStore,
+        discardLiveEditorDocument,
+        dirtyFilePaths: documentState.dirtyFilePaths,
+        ensureUnsyncedEditorDocument: documentState.ensureUnsyncedEditorDocument,
+        forceReplaceLiveEditorDocument: (file) =>
+          documentStore
+            .getState()
+            .forceReplaceLiveEditorDocument(file, workspaceStore.getState().selectedFilePath),
+        getLiveEditorDocument: documentState.getLiveEditorDocument,
+        openFilePaths: workspaceState.openFilePaths,
+        queryClient,
+        renameLiveEditorDocument,
+        rootPath: currentRootPath,
+        selectFile,
+        signal,
+        scope: eventsScope,
+      }).catch((error: unknown) => {
+        if (signal.aborted) return
 
-      reportError(toClientError(error))
-    })
-  })
+        eventsScope.warn('Failed to apply workspace ready events.', { error })
+        reportError(toClientError(error))
+      })
+    },
+  )
 
   useEffect(() => {
     if (!rootPath) return
 
     const controller = new AbortController()
-    const queue = createEventQueue((events) => applyEvents(events, controller.signal, rootPath))
-    log.info({
-      action: 'workspace.events.subscribe',
+    const eventsScope = createWideEventScope({
+      action: 'workspace.events.summary',
       area: 'workspace-events',
       path: rootPath,
     })
+    const queue = createEventQueue((events) =>
+      applyEvents(events, controller.signal, rootPath, eventsScope),
+    )
+    eventsScope.increment('subscription.subscribeCount')
 
     void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
       if (message.type === 'ready') {
-        log.info({
-          action: 'workspace.events.ready',
-          area: 'workspace-events',
-          path: rootPath,
-        })
-        applyReady(controller.signal, rootPath)
+        eventsScope.increment('subscription.readyCount')
+        applyReady(controller.signal, rootPath, eventsScope)
         return
       }
       if (message.type === 'error') {
-        log.warn({
-          action: 'workspace.events.error',
-          area: 'workspace-events',
+        eventsScope.increment('subscription.errorCount')
+        eventsScope.warn(message.message, {
           code: message.code,
-          message: message.message,
-          path: rootPath,
         })
         reportError(toClientError(message))
         return
@@ -169,17 +176,15 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return
 
+      eventsScope.warn('Workspace event stream failed.', { error })
       reportError(toClientError(error))
     })
 
     return () => {
       controller.abort()
       queue.clear()
-      log.info({
-        action: 'workspace.events.unsubscribe',
-        area: 'workspace-events',
-        path: rootPath,
-      })
+      eventsScope.increment('subscription.unsubscribeCount')
+      eventsScope.end()
     }
   }, [rootPath])
 
@@ -202,6 +207,7 @@ async function applyWorkspaceEvents({
   rootPath,
   selectFile,
   signal,
+  scope,
 }: {
   conflictStore: EditorConflictStoreApi
   discardLiveEditorDocument: (path: string) => { wasDirty: boolean }
@@ -216,14 +222,15 @@ async function applyWorkspaceEvents({
   rootPath: string
   selectFile: (path: string | null) => void
   signal: AbortSignal
+  scope: WideEventScope
 }) {
   const plan = planWorkspaceFilesystemEvents({
     events,
     openFiles: openFileSnapshots(openFilePaths, dirtyFilePaths, getLiveEditorDocument),
     rootPath,
   })
-  logWorkspaceEventBatch(rootPath, events)
-  logWorkspaceEventPlan('workspace.events.plan', rootPath, plan)
+  logWorkspaceEventBatch(scope, events)
+  logWorkspaceEventPlan(scope, 'workspace.events.plan', plan)
 
   await applyWorkspaceEventPlan({
     conflictStore,
@@ -245,26 +252,36 @@ function invalidateGitState(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: gitKeys.all })
 }
 
-function logWorkspaceEventBatch(rootPath: string, events: readonly FilesystemEvent[]) {
+function logWorkspaceEventBatch(scope: WideEventScope, events: readonly FilesystemEvent[]) {
   if (!events.length) return
 
-  log.info({
-    action: 'workspace.events.batch',
-    area: 'workspace-events',
-    eventCount: events.length,
-    eventTypes: filesystemEventCounts(events),
-    path: rootPath,
+  scope.increment('events.batchCount')
+  scope.increment('events.eventCount', events.length)
+  scope.set({
+    events: {
+      latestBatchTypes: filesystemEventCounts(events),
+    },
   })
 }
 
-function logWorkspaceEventPlan(action: string, rootPath: string, plan: WorkspaceEventPlan) {
-  log.info({
-    action,
-    area: 'workspace-events',
-    invalidatesGitState: plan.shouldInvalidateGitState,
-    openFileOperationCount: plan.openFileOperations.length,
-    path: rootPath,
-    treeOperationCount: plan.treeOperations.length,
+function logWorkspaceEventPlan(
+  scope: WideEventScope,
+  action: 'workspace.events.plan' | 'workspace.events.ready_plan',
+  plan: WorkspaceEventPlan,
+) {
+  scope.increment('plans.count')
+  scope.increment(`plans.${action === 'workspace.events.ready_plan' ? 'readyCount' : 'batchCount'}`)
+  scope.increment('plans.openFileOperationCount', plan.openFileOperations.length)
+  scope.increment('plans.treeOperationCount', plan.treeOperations.length)
+  if (plan.shouldInvalidateGitState) scope.increment('plans.gitInvalidationCount')
+
+  scope.set({
+    plans: {
+      latestAction: action,
+      latestInvalidatesGitState: plan.shouldInvalidateGitState,
+      latestOpenFileOperationCount: plan.openFileOperations.length,
+      latestTreeOperationCount: plan.treeOperations.length,
+    },
   })
 }
 
@@ -291,6 +308,7 @@ async function applyWorkspaceReady({
   rootPath,
   selectFile,
   signal,
+  scope,
 }: {
   conflictStore: EditorConflictStoreApi
   discardLiveEditorDocument: (path: string) => { wasDirty: boolean }
@@ -304,12 +322,13 @@ async function applyWorkspaceReady({
   rootPath: string
   selectFile: (path: string | null) => void
   signal: AbortSignal
+  scope: WideEventScope
 }) {
   const plan = planWorkspaceReady({
     openFiles: openFileSnapshots(openFilePaths, dirtyFilePaths, getLiveEditorDocument),
     rootPath,
   })
-  logWorkspaceEventPlan('workspace.events.ready_plan', rootPath, plan)
+  logWorkspaceEventPlan(scope, 'workspace.events.ready_plan', plan)
 
   await applyWorkspaceEventPlan({
     conflictStore,

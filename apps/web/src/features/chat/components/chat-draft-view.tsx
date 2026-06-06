@@ -20,8 +20,8 @@ import {
 } from '../lib/chat-command-sync'
 import {
   chatCommandSummary,
-  logChatPipelineInfo,
-  logChatPipelineWarn,
+  createChatPipelineScope,
+  type ChatPipelineScope,
   optimisticMessageSummary,
 } from '../lib/chat-pipeline-logging'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
@@ -72,7 +72,8 @@ export function ChatDraftView({
         runtimeMode,
         text,
       })
-      logChatPipelineInfo('chat.draft.submit', {
+      const scope = createChatPipelineScope('chat.draft.dispatch.summary', {
+        ...chatCommandSummary(submission.command),
         attachmentCount: attachments.length,
         interactionMode,
         model: modelSelection.model,
@@ -80,17 +81,23 @@ export function ChatDraftView({
         providerInstanceId: modelSelection.providerInstanceId,
         runtimeMode,
         textLength: text.length,
-        threadId: submission.command.threadId,
       })
-      const result = await dispatchDraftSubmission(environment, submission)
-      if (!result.ok) {
-        setSendError(result.error)
-        return false
-      }
+      const startedAt = performance.now()
 
-      setSendError(null)
-      onThreadCreated(submission.command.threadId)
-      return true
+      try {
+        scope.increment('command.submitCount')
+        const result = await dispatchDraftSubmission(environment, submission, scope)
+        if (!result.ok) {
+          setSendError(result.error)
+          return false
+        }
+
+        setSendError(null)
+        onThreadCreated(submission.command.threadId)
+        return true
+      } finally {
+        scope.end({ durationMs: elapsedMs(startedAt) })
+      }
     },
     [environment, onThreadCreated, project, rootPath],
   )
@@ -117,22 +124,25 @@ export function ChatDraftView({
 async function dispatchDraftSubmission(
   environment: ChatEnvironment,
   submission: ReturnType<typeof createDraftThreadSubmission>,
+  scope: ChatPipelineScope,
 ) {
   try {
     addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
-    logChatPipelineInfo('chat.optimistic.added_from_draft_send', {
-      ...optimisticMessageSummary({
+    scope.increment('command.optimisticAddedCount')
+    scope.set({
+      optimistic: optimisticMessageSummary({
         commandId: submission.command.commandId,
         messageId: submission.optimisticMessage.id,
         textLength: submission.optimisticMessage.text.length,
         threadId: submission.optimisticMessage.threadId,
       }),
     })
-    logChatPipelineInfo('chat.draft.turn.dispatch.start', chatCommandSummary(submission.command))
+    scope.increment('command.dispatchStartCount')
     const turnResult = await environment.dispatchCommand(submission.command)
-    logChatPipelineInfo('chat.draft.turn.dispatch.accepted', {
-      ...chatCommandSummary(submission.command),
+    scope.increment('command.dispatchAcceptedCount')
+    scope.set({
       deduped: turnResult.deduped,
+      outcome: 'ok',
       sequence: turnResult.sequence,
     })
     scheduleThreadProjectionSyncAfterDispatch({
@@ -143,11 +153,9 @@ async function dispatchDraftSubmission(
     return { ok: true as const }
   } catch (error) {
     removeOptimisticMessage(submission.optimisticMessage)
-    logChatPipelineWarn('chat.draft.dispatch.failed', {
-      error,
-      threadId: submission.command.threadId,
-      turnCommandId: submission.command.commandId,
-    })
+    scope.increment('command.dispatchFailedCount')
+    scope.warn('Draft command dispatch failed.', { error })
+    scope.set({ outcome: 'error' })
     return { error: errorMessage(error, 'Chat command failed.'), ok: false as const }
   }
 }
@@ -158,4 +166,8 @@ function addOptimisticMessage(commandId: CommandId, message: OrchestrationMessag
 
 function removeOptimisticMessage(message: OrchestrationMessage) {
   useChatOptimisticStore.getState().removeOptimisticMessage(message.threadId, message.id)
+}
+
+function elapsedMs(startedAt: number) {
+  return Math.round((performance.now() - startedAt) * 100) / 100
 }
