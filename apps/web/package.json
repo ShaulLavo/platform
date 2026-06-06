@@ -13,9 +13,8 @@
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "test": "bun test",
-    "test:vitest": "bun --bun vitest run --project node --project dom",
-    "test:vitest:watch": "bun --bun vitest --project node --project dom",
+    "test": "bun --bun vitest run --project node --project dom",
+    "test:watch": "bun --bun vitest --project node --project dom",
     "test:browser": "vitest run --project browser",
     "typecheck": "tsgo --noEmit",
     "preview": "bun --env-file=../../.env vite preview"

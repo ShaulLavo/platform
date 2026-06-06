@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import type { LspServerMatch } from '../registry'
@@ -132,7 +132,7 @@ async function lspFixture() {
   })
   process.stdin.on('data', (chunk) => reader.push(chunk))
 
-  const spawn = mock(async () => ({ process: process.process }))
+  const spawn = vi.fn(async () => ({ process: process.process }))
   const match = {
     root,
     server: {
@@ -177,7 +177,7 @@ function fakeProcess() {
   const stdin = new PassThrough()
   const stderr = new PassThrough()
   const events = new EventEmitter()
-  const kill = mock(() => {
+  const kill = vi.fn(() => {
     events.emit('exit', null, 'SIGTERM')
     return true
   })

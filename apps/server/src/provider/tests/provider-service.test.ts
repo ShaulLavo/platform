@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as v from 'valibot'
 import {

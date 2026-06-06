@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, lstat, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'

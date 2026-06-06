@@ -4,7 +4,7 @@ import {
   turnIdSchema,
   type OrchestrationCommand,
 } from '@workspace/contracts'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import * as v from 'valibot'
 import { MAX_BUFFERED_ASSISTANT_CHARS } from '../provider-runtime-buffers'
 import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'

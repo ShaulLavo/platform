@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { DiskWorkspaceSearchProvider, findInWorkspace, findInWorkspaceStream } from '../search'
 import { createWorkspacePaths } from '../path'

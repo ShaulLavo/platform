@@ -22,7 +22,7 @@
     "build": "tsgo --noEmit && bun build src/index.ts --target bun --outdir dist --external @parcel/watcher",
     "codex-protocol:check": "bun src/provider/adapters/codex-protocol/generate.ts --check",
     "codex-protocol:generate": "bun src/provider/adapters/codex-protocol/generate.ts",
-    "test": "bun test",
+    "test": "bun --bun vitest run",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
@@ -58,6 +58,7 @@
     "globals": "^17.2.0",
     "oxfmt": "latest",
     "oxlint": "latest",
-    "typescript-eslint": "^8.54.0"
+    "typescript-eslint": "^8.54.0",
+    "vitest": "^3.2.4"
   }
 }

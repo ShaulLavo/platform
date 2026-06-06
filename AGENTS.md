@@ -62,3 +62,9 @@
 
 - Shared test code lives under `test/`: `fixtures.ts` (the `test.extend` entry point), `render.tsx` (`renderWithProviders` mirrors the app's `main.tsx` provider stack), `factories/` (shared builders), `env/` and `msw/`. Do not redefine per-file factories or hand-roll provider trees.
 - Avoid module-level non-determinism (e.g. `Math.random()` evaluated at import) — it produces order-dependent failures under Vitest's module graph. Use deterministic or seedable ids.
+
+### Bun-under-Vitest gotchas
+
+- Some Bun-native `import.meta` properties are not populated under Vitest's transform: `import.meta.path` and `import.meta.dir` come back `undefined` (`import.meta.dirname` works). Production code that relies on them keeps working under real `bun`, but a test exercising that path will fail — prefer not to depend on Bun-only `import.meta` fields in code that tests must drive.
+- A cold first run of process-spawning integration tests (TypeScript language server, git, PTY) can exceed Vitest's 5s default timeout; warm runs fit comfortably. If a cold CI run flakes on these, raise `testTimeout` for that project.
+- **node-pty cannot allocate a PTY from inside a Vitest worker** (it works under `bun test`, the main process, but Vitest has no in-process pool — threads and forks both fail). The single real-bridge terminal test is skipped under Vitest with a `TODO(pty-in-tests)`; `FakePty` covers the rest of the terminal logic. This is unresolved — see the TODO.

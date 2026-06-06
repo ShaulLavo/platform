@@ -334,6 +334,7 @@
         "oxfmt": "latest",
         "oxlint": "latest",
         "typescript-eslint": "^8.54.0",
+        "vitest": "^3.2.4",
       },
     },
     "apps/web": {

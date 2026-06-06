@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'vitest'
 import {
   CODEX_CLIENT_REQUEST_PARAMS,
   CODEX_CLIENT_REQUEST_RESULTS,
