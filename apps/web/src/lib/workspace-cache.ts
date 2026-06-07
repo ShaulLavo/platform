@@ -7,15 +7,8 @@ import {
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import {
   activeEditorPanePath,
-  createEditorPaneLayoutForPaths,
   editorPaneOpenPaths,
-  editorPaneTabs,
-  filterEditorPaneLayoutTabs,
-  normalizeEditorPaneLayout,
   type EditorPaneLayout,
-  type EditorPaneNode,
-  type EditorPaneSplitDirection,
-  type EditorPaneTab,
 } from '@/features/editor/state/editor-pane-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
@@ -26,10 +19,7 @@ import {
   serializeWorkspaceLayout,
   type SerializedWorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-persistence'
-import {
-  editorPaneLayoutForWorkspaceLayout,
-  workspaceLayoutForEditorPaneLayout,
-} from '@/features/workbench/utils/editor-surface-layout'
+import { editorPaneLayoutForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -37,12 +27,11 @@ import * as v from 'valibot'
 const CACHE_KEY = 'platform.workspace-state.v1'
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 9
+const CACHE_VERSION = 10
 
 type WorkspaceCachePayload = {
   diffViewMode: EditorDiffViewMode
   editorHistory: string[]
-  editorPaneLayout?: EditorPaneLayout
   recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
   searchBuffer: CachedSearchBufferState | null
@@ -138,11 +127,9 @@ const cachedSearchBufferStateSchema = v.strictObject({
   truncated: v.boolean(),
   wholeWord: v.boolean(),
 })
-const editorPaneLayoutSchema = v.custom<EditorPaneLayout>(isEditorPaneLayoutPayload)
 const workspaceCachePayloadSchema = v.object({
   diffViewMode: diffViewModeSchema,
   editorHistory: v.array(v.string()),
-  editorPaneLayout: v.optional(editorPaneLayoutSchema),
   recentlyClosedEditorPaths: v.array(v.string()),
   rootFolder: rootFolderSchema,
   searchBuffer: v.nullable(cachedSearchBufferStateSchema),
@@ -165,6 +152,13 @@ export type WorkspaceCacheState = CachedWorkspaceState & {
   searchBuffer: CachedSearchBufferState | null
 }
 
+export type WorkspaceCacheWriteState = Pick<
+  CachedWorkspaceState,
+  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workspaceLayout'
+> & {
+  searchBuffer: CachedSearchBufferState | null
+}
+
 export function readWorkspaceCache(): WorkspaceCacheState {
   const payload = readCachePayload()
   if (!payload) return emptyWorkspaceState()
@@ -173,30 +167,17 @@ export function readWorkspaceCache(): WorkspaceCacheState {
 }
 
 export function writeWorkspaceCache({
-  openFilePaths,
   rootFolder,
-  selectedFilePath,
   diffViewMode,
   editorHistory,
   recentlyClosedEditorPaths,
   searchBuffer,
-  editorPaneLayout,
   workspaceLayout,
-}: WorkspaceCacheState) {
+}: WorkspaceCacheWriteState) {
   if (!canUseLocalStorage()) return
 
   try {
-    const persistedPaneLayout = editorPaneLayoutForWorkspace(
-      rootFolder,
-      editorPaneLayout,
-      openFilePaths,
-      selectedFilePath,
-    )
-    const persistedWorkspaceLayout = workspaceLayoutForCache(
-      rootFolder,
-      persistedPaneLayout,
-      workspaceLayout,
-    )
+    const persistedWorkspaceLayout = workspaceLayoutForCache(rootFolder, workspaceLayout)
     const payload: WorkspaceCachePayload = {
       diffViewMode,
       editorHistory: workspacePathsForCache(rootFolder, editorHistory),
@@ -248,18 +229,11 @@ function parseCachePayload(value: string): WorkspaceCachePayload | null {
 }
 
 function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCacheState {
-  const fallbackEditorPaneLayout = fallbackEditorPaneLayoutForPayload(payload)
-  const fallbackWorkspaceLayout = workspaceLayoutForEditorPaneLayout(fallbackEditorPaneLayout)
   const workspaceLayout = restoreWorkspaceLayout(payload.workspaceLayout, {
-    fallbackLayout: fallbackWorkspaceLayout,
+    fallbackLayout: createClassicFirstRunWorkspaceLayout(),
     rootPath: payload.rootFolder?.path ?? null,
   }).layout
-  const editorPaneLayout = editorPaneLayoutForWorkspace(
-    payload.rootFolder,
-    editorPaneLayoutForWorkspaceLayout(workspaceLayout),
-    editorPaneOpenPaths(fallbackEditorPaneLayout),
-    activeEditorPanePath(fallbackEditorPaneLayout),
-  )
+  const editorPaneLayout = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
 
   return {
     diffViewMode: payload.diffViewMode,
@@ -277,40 +251,6 @@ function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCac
   }
 }
 
-function fallbackEditorPaneLayoutForPayload(payload: WorkspaceCachePayload) {
-  if (payload.editorPaneLayout) {
-    return editorPaneLayoutForWorkspace(payload.rootFolder, payload.editorPaneLayout, [], null)
-  }
-
-  return createEditorPaneLayoutForPaths([], null)
-}
-
-function selectedPathForWorkspace(
-  rootFolder: PickedFsEntry | null,
-  selectedFilePath: string | null,
-) {
-  if (!rootFolder) return null
-  if (!selectedFilePath) return null
-  if (parseConflictDiffDocumentId(selectedFilePath)) return null
-  if (isPathInWorkspace(backingPathForWorkspace(selectedFilePath), rootFolder.path)) {
-    return selectedFilePath
-  }
-
-  return null
-}
-
-function openPathsForWorkspace(
-  rootFolder: PickedFsEntry | null,
-  openFilePaths: readonly string[],
-  selectedFilePath: string | null,
-) {
-  const uniquePaths = workspacePathsForCache(rootFolder, openFilePaths)
-  if (!selectedFilePath) return uniquePaths
-  if (uniquePaths.includes(selectedFilePath)) return uniquePaths
-
-  return uniquePaths.concat(selectedFilePath)
-}
-
 function workspacePathsForCache(rootFolder: PickedFsEntry | null, paths: readonly string[]) {
   return Array.from(new Set(paths.filter((path) => pathForWorkspace(rootFolder, path))))
 }
@@ -318,6 +258,7 @@ function workspacePathsForCache(rootFolder: PickedFsEntry | null, paths: readonl
 function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
   if (!rootFolder) return false
   if (parseConflictDiffDocumentId(path)) return false
+  if (parseSearchBufferDocumentId(path)) return false
 
   return isPathInWorkspace(backingPathForWorkspace(path), rootFolder.path)
 }
@@ -327,9 +268,6 @@ function backingPathForWorkspace(path: string) {
 
   const diff = parseDiffDocumentId(path)
   if (diff) return diff.path
-
-  const searchBuffer = parseSearchBufferDocumentId(path)
-  if (searchBuffer) return searchBuffer.rootPath
 
   return path
 }
@@ -371,93 +309,15 @@ function emptyWorkspaceState(): WorkspaceCacheState {
 
 function workspaceLayoutForCache(
   rootFolder: PickedFsEntry | null,
-  editorPaneLayout: EditorPaneLayout,
   workspaceLayout: WorkspaceLayout,
 ) {
-  const fallbackLayout = workspaceLayoutForEditorPaneLayout(editorPaneLayout)
-
   const serializedLayout = serializeWorkspaceLayout(workspaceLayout)
   return restoreWorkspaceLayout(serializedLayout, {
-    fallbackLayout,
+    fallbackLayout: createClassicFirstRunWorkspaceLayout(),
     rootPath: rootFolder?.path ?? null,
   }).layout
 }
 
 function canUseLocalStorage() {
   return typeof localStorage !== 'undefined'
-}
-
-function editorPaneLayoutForWorkspace(
-  rootFolder: PickedFsEntry | null,
-  layout: EditorPaneLayout,
-  fallbackOpenFilePaths: readonly string[],
-  fallbackSelectedFilePath: string | null,
-) {
-  const normalized = normalizeEditorPaneLayout(layout)
-  const filtered = filterEditorPaneLayoutTabs(normalized, (tab) =>
-    pathForWorkspace(rootFolder, tab.path),
-  )
-  if (editorPaneTabs(filtered.root).length > 0) return filtered
-
-  const selectedFilePath = selectedPathForWorkspace(rootFolder, fallbackSelectedFilePath)
-  return createEditorPaneLayoutForPaths(
-    openPathsForWorkspace(rootFolder, fallbackOpenFilePaths, selectedFilePath),
-    selectedFilePath,
-  )
-}
-
-function isEditorPaneLayoutPayload(value: unknown): value is EditorPaneLayout {
-  if (!isRecord(value)) return false
-  if (typeof value.activePaneId !== 'string') return false
-
-  return isEditorPaneNode(value.root)
-}
-
-function isEditorPaneNode(value: unknown): value is EditorPaneNode {
-  if (!isRecord(value)) return false
-  if (value.kind === 'leaf') return isEditorPaneLeaf(value)
-  if (value.kind === 'split') return isEditorPaneSplit(value)
-
-  return false
-}
-
-function isEditorPaneLeaf(value: Record<string, unknown>) {
-  if (typeof value.id !== 'string') return false
-  if (value.activeTabId !== null && typeof value.activeTabId !== 'string') {
-    return false
-  }
-  if (!Array.isArray(value.tabs)) return false
-
-  return value.tabs.every(isEditorPaneTab)
-}
-
-function isEditorPaneSplit(value: Record<string, unknown>) {
-  if (typeof value.id !== 'string') return false
-  if (!isEditorPaneSplitDirection(value.direction)) return false
-  if (!Array.isArray(value.children)) return false
-  if (!Array.isArray(value.sizes)) return false
-  if (!value.sizes.every(isFiniteNumber)) return false
-
-  return value.children.every(isEditorPaneNode)
-}
-
-function isEditorPaneTab(value: unknown): value is EditorPaneTab {
-  if (!isRecord(value)) return false
-  if (typeof value.id !== 'string') return false
-
-  return typeof value.path === 'string'
-}
-
-function isEditorPaneSplitDirection(value: unknown): value is EditorPaneSplitDirection {
-  return value === 'horizontal' || value === 'vertical'
-}
-
-function isFiniteNumber(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (!value) return false
-
-  return typeof value === 'object'
 }

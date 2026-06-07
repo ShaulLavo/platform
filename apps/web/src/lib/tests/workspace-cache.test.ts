@@ -59,6 +59,8 @@ describe('workspace cache', () => {
     const cached = readWorkspaceCache()
 
     expect(rawPayload).not.toHaveProperty('editorPaneLayout')
+    expect(rawPayload).not.toHaveProperty('openFilePaths')
+    expect(rawPayload).not.toHaveProperty('selectedFilePath')
     expect(rawPayload).toHaveProperty('workspaceLayout')
     expect(cached).toMatchObject({
       diffViewMode: 'stacked',
@@ -221,7 +223,7 @@ describe('workspace cache', () => {
     expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/app.ts')
   })
 
-  it('persists search buffer tabs', () => {
+  it('drops legacy search buffer editor tabs', () => {
     const rootFolder = pickedDirectory('/repo')
     const searchPath = searchBufferDocumentId('/repo')
 
@@ -238,10 +240,10 @@ describe('workspace cache', () => {
     )
 
     expect(readWorkspaceCache()).toMatchObject({
-      editorHistory: [searchPath],
-      openFilePaths: ['/repo/src/readme.md', searchPath],
-      recentlyClosedEditorPaths: [searchPath],
-      selectedFilePath: searchPath,
+      editorHistory: [],
+      openFilePaths: ['/repo/src/readme.md'],
+      recentlyClosedEditorPaths: [],
+      selectedFilePath: '/repo/src/readme.md',
     })
   })
 

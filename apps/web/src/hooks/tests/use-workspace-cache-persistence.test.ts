@@ -7,7 +7,7 @@ import { createSearchResultsSurface } from '@/features/tiling-surface-manager/en
 import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
 import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { CachedWorkspaceState, WorkspaceCacheState } from '@/lib/workspace-cache'
+import type { CachedWorkspaceState, WorkspaceCacheWriteState } from '@/lib/workspace-cache'
 import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 
 describe('workspace cache persistence', () => {
@@ -15,7 +15,7 @@ describe('workspace cache persistence', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
     const timers = deferredTimers()
-    const writes: WorkspaceCacheState[] = []
+    const writes: WorkspaceCacheWriteState[] = []
     const unsubscribe = subscribeWorkspaceCachePersistence({
       clearTimeout: timers.clearTimeout,
       searchStore,
@@ -89,6 +89,12 @@ describe('workspace cache persistence', () => {
     workspaceStore.getState().setPickerOpen(true)
     expect(timers.hasPending()).toBe(false)
 
+    workspaceStore.setState({
+      openFilePaths: ['/repo/src/a.ts'],
+      selectedFilePath: '/repo/src/a.ts',
+    })
+    expect(timers.hasPending()).toBe(false)
+
     workspaceStore
       .getState()
       .setWorkspaceLayout(
@@ -150,7 +156,7 @@ function deferredTimers() {
   }
 }
 
-function hasCachedMatches(state: WorkspaceCacheState | undefined) {
+function hasCachedMatches(state: WorkspaceCacheWriteState | undefined) {
   const searchBuffer = state?.searchBuffer
   if (!searchBuffer) return false
 

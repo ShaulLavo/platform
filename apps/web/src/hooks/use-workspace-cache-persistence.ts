@@ -13,7 +13,7 @@ import {
 } from '@/features/search/search-buffer-state'
 import {
   type CachedWorkspaceState,
-  type WorkspaceCacheState,
+  type WorkspaceCacheWriteState,
   writeWorkspaceCache,
 } from '@/lib/workspace-cache'
 
@@ -21,13 +21,18 @@ const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
 type CacheWriteTimer = ReturnType<typeof setTimeout>
 
+type WorkspaceCacheSnapshot = Pick<
+  CachedWorkspaceState,
+  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workspaceLayout'
+>
+
 type WorkspaceCachePersistenceOptions = {
   clearTimeout?: (timer: CacheWriteTimer) => void
   debounceMs?: number
   searchStore: SearchBufferStoreApi
   setTimeout?: (callback: () => void, delay: number) => CacheWriteTimer
   workspaceStore: EditorWorkspaceStoreApi
-  writeCache?: (state: WorkspaceCacheState) => void
+  writeCache?: (state: WorkspaceCacheWriteState) => void
 }
 
 export function useWorkspaceCachePersistence() {
@@ -109,42 +114,36 @@ export function subscribeWorkspaceCachePersistence({
 export function workspaceCacheStateForStores(
   workspaceState: EditorWorkspaceStore,
   searchState: SearchBufferStore,
-): WorkspaceCacheState {
+): WorkspaceCacheWriteState {
   return {
     ...cachedWorkspaceState(workspaceState),
     searchBuffer: cachedSearchBufferState(searchState.active),
   }
 }
 
-function cachedWorkspaceState(state: EditorWorkspaceStore): CachedWorkspaceState {
+function cachedWorkspaceState(state: EditorWorkspaceStore): WorkspaceCacheSnapshot {
   return {
     diffViewMode: state.diffViewMode,
     editorHistory: state.editorHistory,
-    editorPaneLayout: state.editorPaneLayout,
-    openFilePaths: state.openFilePaths,
     recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
     rootFolder: state.rootFolder,
-    selectedFilePath: state.selectedFilePath,
     workspaceLayout: state.workspaceLayout,
   }
 }
 
-function cachedWorkspaceStatesEqual(left: CachedWorkspaceState, right: CachedWorkspaceState) {
+function cachedWorkspaceStatesEqual(left: WorkspaceCacheSnapshot, right: WorkspaceCacheSnapshot) {
   return (
     left.diffViewMode === right.diffViewMode &&
-    left.editorPaneLayout === right.editorPaneLayout &&
     left.rootFolder === right.rootFolder &&
-    left.selectedFilePath === right.selectedFilePath &&
     left.workspaceLayout === right.workspaceLayout &&
     readonlyArraysEqual(left.editorHistory, right.editorHistory) &&
-    readonlyArraysEqual(left.openFilePaths, right.openFilePaths) &&
     readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)
   )
 }
 
 function cachedSearchBufferStatesEqual(
-  left: WorkspaceCacheState['searchBuffer'],
-  right: WorkspaceCacheState['searchBuffer'],
+  left: WorkspaceCacheWriteState['searchBuffer'],
+  right: WorkspaceCacheWriteState['searchBuffer'],
 ) {
   if (left === right) return true
   if (!left || !right) return false

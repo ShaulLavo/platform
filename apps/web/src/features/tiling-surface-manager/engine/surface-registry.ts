@@ -734,8 +734,7 @@ function pathFromWorkspaceResource(resourceKey: string) {
 }
 
 function editorResourceInWorkspace(resourceKey: string, rootPath: string | null) {
-  const searchBuffer = parseSearchBufferDocumentId(resourceKey)
-  if (searchBuffer) return searchBuffer.rootPath === rootPath
+  if (parseSearchBufferDocumentId(resourceKey)) return false
 
   return isPathInWorkspace(resourceKey, rootPath)
 }
