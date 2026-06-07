@@ -11,15 +11,21 @@ import {
 } from '@workspace/ui/components/command'
 
 import { CommandPaletteGroupsFactory } from '@/components/command-palette/command-palette-groups-factory'
-import type { CommandPaletteProps } from '@/components/command-palette/command-palette-types'
+import type {
+  CommandPaletteItem,
+  CommandPaletteProps,
+} from '@/components/command-palette/command-palette-types'
 import {
   commandKeepsPaletteOpen,
+  commandPaletteItemDisabledReason,
   commandPaletteItems,
+  commandPaletteSelectionLayoutOperation,
   editorPaletteItems,
   emptyLabelForMode,
   fileUriForPath,
   groupedCommandItems,
   isCommandDisabled,
+  layoutCommandPaletteItems,
   placeholderForMode,
   quickAccessFilter,
   quickAccessMode,
@@ -28,6 +34,7 @@ import {
 import { useCommandPaletteFiles } from '@/components/command-palette/use-command-palette-files'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
 import { useTheme } from '@/components/theme-context'
+import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
 import { activeEditorPathForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 
 export function CommandPaletteContent({
@@ -44,13 +51,12 @@ export function CommandPaletteContent({
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
   const workspaceLayout = useEditorWorkspaceState((state) => state.workspaceLayout)
+  const setWorkspaceLayout = useEditorWorkspaceState((state) => state.setWorkspaceLayout)
   const activeFilePath = activeEditorPathForWorkspaceLayout(workspaceLayout)
   const { openDefinition, selectFile } = useEditorCommands()
   const mode = quickAccessMode(search)
   const query = quickAccessQuery(search)
   const treeState = useWorkspaceTreeState(rootFolder)
-  const items = commandPaletteItems(platformCommandSpecs, bindings)
-  const groups = groupedCommandItems(items)
   const editorItems = editorPaletteItems(openFilePaths, selectedFilePath)
   const {
     fileQuery,
@@ -70,8 +76,28 @@ export function CommandPaletteContent({
     rootPath: rootFolder?.path ?? null,
     selectedFilePath: activeFilePath,
   })
+  const commandItems = [
+    ...commandPaletteItems(platformCommandSpecs, bindings),
+    ...layoutCommandPaletteItems(workspaceLayout),
+  ]
+  const groups = groupedCommandItems(commandItems)
 
-  function runCommand(command: PlatformCommandId) {
+  function runCommand(item: CommandPaletteItem) {
+    const disabledReason = commandPaletteItemDisabledReason(item, {
+      activeFilePath,
+      hasWorkspace,
+      workspaceLayout,
+    })
+    if (disabledReason) return
+
+    const handled = dispatchCommandPaletteSelection(item)
+    if (handled === false) return
+    if (commandPaletteItemKeepsOpen(item)) return
+
+    onOpenChange(false)
+  }
+
+  function runPlatformCommand(command: PlatformCommandId) {
     if (isCommandDisabled(command, { activeFilePath, hasWorkspace, workspaceLayout })) return
 
     const handled = dispatch(command)
@@ -79,6 +105,20 @@ export function CommandPaletteContent({
     if (commandKeepsPaletteOpen(command)) return
 
     onOpenChange(false)
+  }
+
+  function dispatchCommandPaletteSelection(item: CommandPaletteItem) {
+    const operation = commandPaletteSelectionLayoutOperation(item.command, Date.now())
+    if (!operation) return dispatchPlatformPaletteSelection(item)
+
+    setWorkspaceLayout(applyLayoutOperation(workspaceLayout, operation))
+    return true
+  }
+
+  function dispatchPlatformPaletteSelection(item: CommandPaletteItem) {
+    if (item.command.kind !== 'platform') return false
+
+    return dispatch(item.command.command)
   }
 
   function handleCommandValueChange(value: string) {
@@ -147,9 +187,16 @@ export function CommandPaletteContent({
           workspaceLayout={workspaceLayout}
           onCommandSelect={runCommand}
           onFileSelect={openFile}
+          onPlatformCommandSelect={runPlatformCommand}
           onSymbolSelect={openSymbol}
         />
       </CommandList>
     </CommandDialog>
   )
+}
+
+function commandPaletteItemKeepsOpen(item: CommandPaletteItem) {
+  if (item.command.kind !== 'platform') return false
+
+  return commandKeepsPaletteOpen(item.command.command)
 }

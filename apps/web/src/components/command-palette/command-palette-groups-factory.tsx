@@ -29,8 +29,9 @@ type CommandPaletteGroupsFactoryProps = {
   readonly symbolItems: readonly FlatDocumentSymbol[]
   readonly symbolsPending: boolean
   readonly workspaceLayout: WorkspaceLayout
-  readonly onCommandSelect: (command: PlatformCommandId) => void
+  readonly onCommandSelect: (item: CommandPaletteItem) => void
   readonly onFileSelect: (path: string) => void
+  readonly onPlatformCommandSelect: (command: PlatformCommandId) => void
   readonly onSymbolSelect: (symbol: FlatDocumentSymbol) => void
 }
 
@@ -49,6 +50,7 @@ export function CommandPaletteGroupsFactory({
   workspaceLayout,
   onCommandSelect,
   onFileSelect,
+  onPlatformCommandSelect,
   onSymbolSelect,
 }: CommandPaletteGroupsFactoryProps) {
   if (mode === 'commands') {
@@ -64,11 +66,11 @@ export function CommandPaletteGroupsFactory({
   }
 
   if (mode === 'views') {
-    return <ViewGroups hasWorkspace={hasWorkspace} onSelect={onCommandSelect} />
+    return <ViewGroups hasWorkspace={hasWorkspace} onSelect={onPlatformCommandSelect} />
   }
 
   if (mode === 'colorMode') {
-    return <ColorModeGroups currentTheme={currentTheme} onSelect={onCommandSelect} />
+    return <ColorModeGroups currentTheme={currentTheme} onSelect={onPlatformCommandSelect} />
   }
 
   if (mode === 'editors') {

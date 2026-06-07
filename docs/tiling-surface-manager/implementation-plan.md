@@ -859,10 +859,11 @@ management command metadata, default bindings, command dispatch, hotkey preset
 data, custom window command definitions, saved layout command definitions,
 cycling, persistence, and layout-operation tests exist. Command disabled states
 and file lifecycle commands now derive their file target from the active
-file-backed surface in `WorkspaceLayout`, not legacy selected-path state.
-Remaining Phase 11 work is to expose and execute custom window commands, saved
-layout commands, and settings/editing entries from the production command
-palette.
+file-backed surface in `WorkspaceLayout`, not legacy selected-path state. The
+production command palette now exposes custom window commands and saved layout
+commands from the layout selector and executes them through surface-manager
+operations. Remaining Phase 11 work is to add settings/editing entries and
+production hotkey-preset application.
 
 Goal: keep muscle-memory command IDs while upgrading the command palette into a
 Raycast-style control surface for window management, custom window commands, and

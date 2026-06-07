@@ -1,7 +1,12 @@
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import { windowCommandDisabledReason } from '@/features/tiling-surface-manager/engine/layout-selectors'
+import {
+  selectCommandPaletteRows,
+  windowCommandDisabledReason,
+  type LayoutCommandPaletteRow,
+} from '@/features/tiling-surface-manager/engine/layout-selectors'
 import type {
+  LayoutOperation,
   WindowManagementCommand,
   WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -27,6 +32,7 @@ import {
 } from './command-palette-data'
 import type {
   CommandPaletteItem,
+  CommandPaletteSelection,
   EditorPaletteItem,
   FilePaletteItem,
   QuickAccessMode,
@@ -39,10 +45,11 @@ export function commandPaletteItems(
 ): readonly CommandPaletteItem[] {
   return specs
     .filter((spec) => !hiddenCommandPaletteCommands.has(spec.id))
-    .map((spec) => ({
-      shortcut: commandShortcut(spec.id, bindings),
-      spec,
-    }))
+    .map((spec) => platformCommandPaletteItem(spec, bindings))
+}
+
+export function layoutCommandPaletteItems(layout: WorkspaceLayout): readonly CommandPaletteItem[] {
+  return selectCommandPaletteRows(layout).flatMap(layoutCommandPaletteItem)
 }
 
 export function groupedCommandItems(
@@ -50,13 +57,13 @@ export function groupedCommandItems(
 ): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
   const groups = new Map<string, CommandPaletteItem[]>()
   for (const item of items) {
-    const group = groups.get(item.spec.category)
+    const group = groups.get(item.category)
     if (group) {
       group.push(item)
       continue
     }
 
-    groups.set(item.spec.category, [item])
+    groups.set(item.category, [item])
   }
 
   return Array.from(groups.entries())
@@ -134,6 +141,36 @@ export type CommandDisabledContext = {
   readonly activeFilePath: string | null
   readonly hasWorkspace: boolean
   readonly workspaceLayout: WorkspaceLayout
+}
+
+export function commandPaletteItemDisabledReason(
+  item: CommandPaletteItem,
+  context: CommandDisabledContext,
+) {
+  if (item.command.kind !== 'platform') return item.disabledReason ?? null
+
+  return commandDisabledReason(item.command.command, context)
+}
+
+export function commandPaletteSelectionLayoutOperation(
+  selection: CommandPaletteSelection,
+  nowMs: number,
+): LayoutOperation | null {
+  if (selection.kind === 'custom-window') {
+    return {
+      command: selection.command,
+      nowMs,
+      type: 'applyCustomWindowCommand',
+    }
+  }
+  if (selection.kind === 'saved-layout') {
+    return {
+      command: selection.command,
+      type: 'applyLayoutCommand',
+    }
+  }
+
+  return null
 }
 
 export function isCommandDisabled(command: PlatformCommandId, context: CommandDisabledContext) {
@@ -246,6 +283,66 @@ function commandShortcut(command: PlatformCommandId, bindings: readonly Platform
   if (typeof binding.hotkey === 'string') return formatHotkey(binding.hotkey)
 
   return formatHotkey(binding.keys)
+}
+
+function platformCommandPaletteItem(
+  spec: CommandSpec,
+  bindings: readonly PlatformKeyBinding[],
+): CommandPaletteItem {
+  return {
+    aliases: spec.aliases ?? [],
+    category: spec.category,
+    command: { command: spec.id, kind: 'platform' },
+    description: spec.description,
+    icon: spec.icon,
+    id: spec.id,
+    keywords: commandKeywords(spec),
+    shortcut: commandShortcut(spec.id, bindings),
+    title: spec.title,
+  }
+}
+
+function layoutCommandPaletteItem(row: LayoutCommandPaletteRow): readonly CommandPaletteItem[] {
+  if (row.kind === 'built-in-window') return []
+
+  const command = layoutCommandPaletteSelection(row)
+  if (!command) return []
+
+  return [
+    {
+      aliases: row.aliases,
+      category: row.category,
+      command,
+      description: layoutCommandDescription(row),
+      disabledReason: row.disabledReason,
+      icon: row.icon,
+      id: `layout:${row.id}`,
+      keywords: layoutCommandKeywords(row),
+      shortcut: null,
+      title: row.title,
+    },
+  ]
+}
+
+function layoutCommandPaletteSelection(
+  row: LayoutCommandPaletteRow,
+): CommandPaletteSelection | null {
+  if (row.kind === 'custom-window' && row.command.kind === 'custom-window') {
+    return { command: row.command, kind: 'custom-window' }
+  }
+  if (row.kind !== 'saved-layout') return null
+
+  return { command: row.command, kind: 'saved-layout' }
+}
+
+function layoutCommandDescription(row: LayoutCommandPaletteRow) {
+  if (row.kind === 'custom-window') return 'Custom window command.'
+
+  return 'Saved layout command.'
+}
+
+function layoutCommandKeywords(row: LayoutCommandPaletteRow) {
+  return [row.title, row.category, row.id, row.searchableText, ...row.aliases]
 }
 
 const builtInWindowCommandsById = new Map(
