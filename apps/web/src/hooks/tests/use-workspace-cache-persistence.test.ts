@@ -112,7 +112,6 @@ function cachedWorkspace(): CachedWorkspaceState {
   return {
     diffViewMode: 'split',
     editorHistory: [],
-    editorPaneLayout,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: pickedDirectory('/repo'),

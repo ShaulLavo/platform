@@ -3,9 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import {
-  activeEditorPanePath,
   createEditorPaneLayoutForPaths,
-  editorPaneTabs,
   type EditorPaneLayout,
 } from '@/features/editor/state/editor-pane-state'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
@@ -71,8 +69,8 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: diffPath,
     })
-    expect(editorPanePaths(cached.editorPaneLayout)).toEqual(['/repo/src/readme.md', diffPath])
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(diffPath)
+    expect(cached.openFilePaths).toEqual(['/repo/src/readme.md', diffPath])
+    expect(cached.selectedFilePath).toBe(diffPath)
   })
 
   it('filters git diff tabs when their backing file is outside the workspace', () => {
@@ -102,8 +100,8 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: null,
     })
-    expect(editorPanePaths(cached.editorPaneLayout)).toEqual([])
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(null)
+    expect(cached.openFilePaths).toEqual([])
+    expect(cached.selectedFilePath).toBe(null)
   })
 
   it('does not persist transient conflict diff tabs', () => {
@@ -133,8 +131,8 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: '/repo/src/readme.md',
     })
-    expect(editorPanePaths(cached.editorPaneLayout)).toEqual(['/repo/src/readme.md'])
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/readme.md')
+    expect(cached.openFilePaths).toEqual(['/repo/src/readme.md'])
+    expect(cached.selectedFilePath).toBe('/repo/src/readme.md')
   })
 
   it('persists pane split sizes in the workspace cache', () => {
@@ -178,12 +176,17 @@ describe('workspace cache', () => {
 
     const cached = readWorkspaceCache()
 
-    expect(cached.editorPaneLayout.root).toMatchObject({
-      direction: 'horizontal',
-      kind: 'split',
-      sizes: [30, 70],
+    expect(Object.values(cached.workspaceLayout.nodesById)).toContainEqual(
+      expect.objectContaining({
+        axis: 'horizontal',
+        kind: 'split',
+        sizes: [0.3, 0.7],
+      }),
+    )
+    expect(cached).toMatchObject({
+      openFilePaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
+      selectedFilePath: '/repo/src/b.ts',
     })
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/b.ts')
   })
 
   it('persists singleton tool surface layout', () => {
@@ -220,7 +223,7 @@ describe('workspace cache', () => {
 
     expect(visibleSurfaceIdsInOrder(cached.workspaceLayout)).toContain(gitChanges.id)
     expect(cached.workspaceLayout.rail.backgroundSurfaceIds).not.toContain(gitChanges.id)
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/app.ts')
+    expect(cached.selectedFilePath).toBe('/repo/src/app.ts')
   })
 
   it('drops legacy search buffer editor tabs', () => {
@@ -355,11 +358,7 @@ function pickedDirectory(path: string): PickedFsEntry {
   }
 }
 
-function editorPanePaths(layout: EditorPaneLayout) {
-  return editorPaneTabs(layout.root).map((tab) => tab.path)
-}
-
-type WorkspaceCacheTestState = Omit<WorkspaceCacheState, 'editorPaneLayout' | 'workspaceLayout'> & {
+type WorkspaceCacheTestState = Omit<WorkspaceCacheState, 'workspaceLayout'> & {
   readonly editorPaneLayout?: EditorPaneLayout
   readonly workspaceLayout?: WorkspaceCacheState['workspaceLayout']
 }
@@ -370,8 +369,13 @@ function workspaceCacheState(input: WorkspaceCacheTestState): WorkspaceCacheStat
     createEditorPaneLayoutForPaths(input.openFilePaths, input.selectedFilePath)
 
   return {
-    ...input,
-    editorPaneLayout,
+    diffViewMode: input.diffViewMode,
+    editorHistory: input.editorHistory,
+    openFilePaths: input.openFilePaths,
+    recentlyClosedEditorPaths: input.recentlyClosedEditorPaths,
+    rootFolder: input.rootFolder,
+    searchBuffer: input.searchBuffer,
+    selectedFilePath: input.selectedFilePath,
     workspaceLayout: input.workspaceLayout ?? workspaceLayoutForEditorPaneLayout(editorPaneLayout),
   }
 }

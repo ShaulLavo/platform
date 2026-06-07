@@ -21,7 +21,10 @@ import {
   layoutNodeId,
   workbenchWindowId,
 } from '@/features/tiling-surface-manager/engine/layout-ids'
-import { normalizeWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-normalize'
+import {
+  normalizeWorkspaceLayout,
+  visibleSurfaceIdsInOrder,
+} from '@/features/tiling-surface-manager/engine/layout-normalize'
 import {
   createRegisteredSurface,
   defaultSurfaceRegistry,
@@ -64,6 +67,31 @@ type EditorSurfaceLayoutContext = {
   readonly windowsById: Record<string, WorkbenchWindow>
 }
 
+export function editorOpenPathsForWorkspaceLayout(layout: WorkspaceLayout) {
+  const normalizedLayout = normalizeWorkspaceLayout(layout)
+  const paths = new Set<string>()
+
+  for (const surfaceId of visibleSurfaceIdsInOrder(normalizedLayout)) {
+    const path = editorPathForSurface(normalizedLayout.surfacesById[surfaceId])
+    if (!path) continue
+
+    paths.add(path)
+  }
+
+  return Array.from(paths)
+}
+
+export function activeEditorPathForWorkspaceLayout(layout: WorkspaceLayout) {
+  const normalizedLayout = normalizeWorkspaceLayout(layout)
+  const surfaceId = normalizedLayout.activeSurfaceId
+  const activePath = editorPathForSurface(
+    surfaceId ? normalizedLayout.surfacesById[surfaceId] : undefined,
+  )
+  if (activePath) return activePath
+
+  return editorOpenPathsForWorkspaceLayout(normalizedLayout)[0] ?? null
+}
+
 export function workspaceLayoutForEditorPaneLayout(layout: EditorPaneLayout): WorkspaceLayout {
   const normalizedLayout = normalizeEditorPaneLayout(layout)
   const recordsByTabId = winningEditorSurfaceRecordsByTabId(normalizedLayout)
@@ -84,6 +112,13 @@ export function workspaceLayoutForEditorPaneLayout(layout: EditorPaneLayout): Wo
   } satisfies WorkspaceLayout
 
   return normalizeWorkspaceLayout(editorLayout)
+}
+
+function editorPathForSurface(surface: Surface | undefined) {
+  if (!surface) return null
+  if (surface.type !== 'file-editor' && surface.type !== 'diff') return null
+
+  return surface.resourceKey ?? null
 }
 
 export function editorSurfaceSerializedState(

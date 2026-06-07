@@ -1,12 +1,11 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import {
-  activeEditorPanePath,
-  editorPaneOpenPaths,
-} from '@/features/editor/state/editor-pane-state'
+  activeEditorPathForWorkspaceLayout,
+  editorOpenPathsForWorkspaceLayout,
+} from '@/features/workbench/utils/editor-surface-layout'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 import { createClassicFirstRunWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
-import { editorPaneLayoutForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
@@ -56,7 +55,6 @@ export function createEditorWorkspaceStore(
   return createStore<EditorWorkspaceStore>()((set) => ({
     diffViewMode: initialState.diffViewMode,
     editorHistory: initialState.editorHistory,
-    editorPaneLayout: initialState.editorPaneLayout,
     openFilePaths: initialState.openFilePaths,
     pickerOpen: false,
     recentlyClosedEditorPaths: initialState.recentlyClosedEditorPaths,
@@ -99,16 +97,14 @@ export function editorWorkspaceSelectionForWorkspaceLayout(
   workspaceLayout: WorkspaceLayout,
   options: { currentOpenFilePaths?: string[] } = {},
 ) {
-  const editorPaneLayout = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
   const openFilePaths = stableOpenFilePaths(
     options.currentOpenFilePaths,
-    editorPaneOpenPaths(editorPaneLayout),
+    editorOpenPathsForWorkspaceLayout(workspaceLayout),
   )
 
   return {
-    editorPaneLayout,
     openFilePaths,
-    selectedFilePath: activeEditorPanePath(editorPaneLayout),
+    selectedFilePath: activeEditorPathForWorkspaceLayout(workspaceLayout),
     workspaceLayout,
   }
 }

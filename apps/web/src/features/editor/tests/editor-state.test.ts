@@ -745,7 +745,6 @@ function workspaceState(
   return {
     diffViewMode: 'split',
     editorHistory: selectedFilePath ? [selectedFilePath] : [],
-    editorPaneLayout,
     openFilePaths,
     recentlyClosedEditorPaths: [],
     rootFolder: rootFolder(''),
@@ -760,7 +759,6 @@ function classicWorkspaceState(): CachedWorkspaceState {
   return {
     diffViewMode: 'split',
     editorHistory: [],
-    editorPaneLayout: editorPaneLayoutForWorkspaceLayout(workspaceLayout),
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: rootFolder(''),
@@ -770,7 +768,7 @@ function classicWorkspaceState(): CachedWorkspaceState {
 }
 
 function activePaneId(workspaceStore: ReturnType<typeof createEditorWorkspaceStore>) {
-  return workspaceStore.getState().editorPaneLayout.activePaneId
+  return editorPaneLayoutForWorkspaceLayout(workspaceStore.getState().workspaceLayout).activePaneId
 }
 
 function panePathGroups(layout: ReturnType<typeof createEditorPaneLayoutForPaths>) {
@@ -790,7 +788,7 @@ function tabIdForPathInLayout(
 }
 
 function tabIdForPath(workspaceStore: ReturnType<typeof createEditorWorkspaceStore>, path: string) {
-  const layout = workspaceStore.getState().editorPaneLayout
+  const layout = editorPaneLayoutForWorkspaceLayout(workspaceStore.getState().workspaceLayout)
   const pane = findEditorPane(layout.root, layout.activePaneId)
   const match = pane?.tabs.find((candidate) => candidate.path === path)
   if (match) return match.id

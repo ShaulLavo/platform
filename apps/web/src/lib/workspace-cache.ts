@@ -5,11 +5,6 @@ import {
   type EditorDiffViewMode,
 } from '@/features/editor/utils/diff-view-mode'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import {
-  activeEditorPanePath,
-  editorPaneOpenPaths,
-  type EditorPaneLayout,
-} from '@/features/editor/state/editor-pane-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -19,7 +14,10 @@ import {
   serializeWorkspaceLayout,
   type SerializedWorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-persistence'
-import { editorPaneLayoutForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
+import {
+  activeEditorPathForWorkspaceLayout,
+  editorOpenPathsForWorkspaceLayout,
+} from '@/features/workbench/utils/editor-surface-layout'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -140,7 +138,6 @@ const workspaceCachePayloadSchema = v.object({
 export type CachedWorkspaceState = {
   diffViewMode: EditorDiffViewMode
   editorHistory: string[]
-  editorPaneLayout: EditorPaneLayout
   openFilePaths: string[]
   recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
@@ -233,20 +230,18 @@ function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCac
     fallbackLayout: createClassicFirstRunWorkspaceLayout(),
     rootPath: payload.rootFolder?.path ?? null,
   }).layout
-  const editorPaneLayout = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
 
   return {
     diffViewMode: payload.diffViewMode,
     editorHistory: workspacePathsForCache(payload.rootFolder, payload.editorHistory),
-    editorPaneLayout,
-    openFilePaths: editorPaneOpenPaths(editorPaneLayout),
+    openFilePaths: editorOpenPathsForWorkspaceLayout(workspaceLayout),
     recentlyClosedEditorPaths: workspacePathsForCache(
       payload.rootFolder,
       payload.recentlyClosedEditorPaths,
     ),
     rootFolder: payload.rootFolder,
     searchBuffer: searchBufferForWorkspace(payload.rootFolder, payload.searchBuffer),
-    selectedFilePath: activeEditorPanePath(editorPaneLayout),
+    selectedFilePath: activeEditorPathForWorkspaceLayout(workspaceLayout),
     workspaceLayout,
   }
 }
@@ -292,12 +287,10 @@ function isPathInWorkspace(path: string, rootPath: string) {
 
 function emptyWorkspaceState(): WorkspaceCacheState {
   const workspaceLayout = createClassicFirstRunWorkspaceLayout()
-  const editorPaneLayout = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
 
   return {
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
-    editorPaneLayout,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: null,
