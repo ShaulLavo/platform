@@ -19,24 +19,30 @@ import type { DropZoneLayoutRect } from '@/features/tiling-surface-manager/engin
 import type {
   LayoutOperation,
   SurfaceId,
+  WindowId,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 
 export function DropOverlay({
   dropZoneRects,
   surfaceIdForEditorTabId,
   onDispatch,
+  onPreview,
 }: {
   readonly dropZoneRects: readonly DropZoneLayoutRect[]
   readonly surfaceIdForEditorTabId?: (tabId: string) => SurfaceId | null
   readonly onDispatch: (operation: LayoutOperation) => void
+  readonly onPreview?: (operation: LayoutOperation | null) => void
 }) {
   const [activeDropZoneId, setActiveDropZoneId] = useState<string | null>(null)
   const [acceptingDrop, setAcceptingDrop] = useState(false)
+
+  useEffect(() => () => onPreview?.(null), [onPreview])
 
   useEffect(() => {
     if (!surfaceIdForEditorTabId) {
       setAcceptingDrop(false)
       setActiveDropZoneId(null)
+      onPreview?.(null)
       return
     }
 
@@ -49,6 +55,7 @@ export function DropOverlay({
     function clearDocumentDrag() {
       setAcceptingDrop(false)
       setActiveDropZoneId(null)
+      onPreview?.(null)
     }
 
     document.addEventListener('dragenter', handleDocumentDrag, true)
@@ -62,18 +69,20 @@ export function DropOverlay({
       document.removeEventListener('drop', clearDocumentDrag, true)
       document.removeEventListener('dragend', clearDocumentDrag, true)
     }
-  }, [surfaceIdForEditorTabId])
+  }, [onPreview, surfaceIdForEditorTabId])
 
   useEffect(() => {
     if (!surfaceIdForEditorTabId) {
       setAcceptingDrop(false)
       setActiveDropZoneId(null)
+      onPreview?.(null)
       return
     }
 
     function clearPointerDrag() {
       setAcceptingDrop(false)
       setActiveDropZoneId(null)
+      onPreview?.(null)
     }
 
     function handlePointerDrag(event: Event) {
@@ -92,9 +101,9 @@ export function DropOverlay({
       }
 
       setAcceptingDrop(true)
-      setActiveDropZoneId(
-        dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)?.id ?? null,
-      )
+      const dropZone = dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)
+      setActiveDropZoneId(dropZone?.id ?? null)
+      onPreview?.(dropZone ? moveSurfaceOperation(surfaceId, dropZone) : null)
     }
 
     function handlePointerDrop(event: Event) {
@@ -107,11 +116,7 @@ export function DropOverlay({
       if (!surfaceId) return
       if (!dropZone) return
 
-      onDispatch({
-        destination: dropZone.destination,
-        surfaceId,
-        type: 'moveSurface',
-      })
+      onDispatch(moveSurfaceOperation(surfaceId, dropZone))
     }
 
     document.addEventListener(EDITOR_TAB_POINTER_DRAG_EVENT, handlePointerDrag)
@@ -123,12 +128,13 @@ export function DropOverlay({
       document.removeEventListener(EDITOR_TAB_POINTER_DROP_EVENT, handlePointerDrop)
       document.removeEventListener(EDITOR_TAB_POINTER_CANCEL_EVENT, clearPointerDrag)
     }
-  }, [dropZoneRects, onDispatch, surfaceIdForEditorTabId])
+  }, [dropZoneRects, onDispatch, onPreview, surfaceIdForEditorTabId])
 
   useEffect(() => {
     function clearWindowDrag() {
       setAcceptingDrop(false)
       setActiveDropZoneId(null)
+      onPreview?.(null)
     }
 
     function handleWindowDrag(event: Event) {
@@ -136,9 +142,9 @@ export function DropOverlay({
       if (!detail) return
 
       setAcceptingDrop(true)
-      setActiveDropZoneId(
-        dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)?.id ?? null,
-      )
+      const dropZone = dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)
+      setActiveDropZoneId(dropZone?.id ?? null)
+      onPreview?.(dropZone ? moveWindowOperation(detail.windowId, dropZone) : null)
     }
 
     function handleWindowDrop(event: Event) {
@@ -149,11 +155,7 @@ export function DropOverlay({
       const dropZone = dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)
       if (!dropZone) return
 
-      onDispatch({
-        destination: dropZone.destination,
-        type: 'moveWindow',
-        windowId: detail.windowId,
-      })
+      onDispatch(moveWindowOperation(detail.windowId, dropZone))
     }
 
     document.addEventListener(WORKBENCH_WINDOW_POINTER_DRAG_EVENT, handleWindowDrag)
@@ -165,7 +167,7 @@ export function DropOverlay({
       document.removeEventListener(WORKBENCH_WINDOW_POINTER_DROP_EVENT, handleWindowDrop)
       document.removeEventListener(WORKBENCH_WINDOW_POINTER_CANCEL_EVENT, clearWindowDrag)
     }
-  }, [dropZoneRects, onDispatch])
+  }, [dropZoneRects, onDispatch, onPreview])
 
   if (dropZoneRects.length === 0) return null
 
@@ -190,9 +192,15 @@ export function DropOverlay({
             role='button'
             style={layoutRectStyle(dropZone.rect)}
             tabIndex={-1}
-            onDragLeave={(event) => handleDragLeave(event, setActiveDropZoneId)}
+            onDragLeave={(event) => handleDragLeave(event, setActiveDropZoneId, onPreview)}
             onDragOver={(event) =>
-              handleDragOver(event, dropZone, surfaceIdForEditorTabId, setActiveDropZoneId)
+              handleDragOver(
+                event,
+                dropZone,
+                surfaceIdForEditorTabId,
+                setActiveDropZoneId,
+                onPreview,
+              )
             }
             onDrop={(event) =>
               handleDrop(
@@ -202,6 +210,7 @@ export function DropOverlay({
                 onDispatch,
                 setActiveDropZoneId,
                 setAcceptingDrop,
+                onPreview,
               )
             }
           />
@@ -223,21 +232,26 @@ function handleDragOver(
   dropZone: DropZoneLayoutRect,
   surfaceIdForEditorTabId: ((tabId: string) => SurfaceId | null) | undefined,
   setActiveDropZoneId: (dropZoneId: string | null) => void,
+  onPreview: ((operation: LayoutOperation | null) => void) | undefined,
 ) {
-  if (!canAcceptEditorTabDrop(event, surfaceIdForEditorTabId)) return
+  const surfaceId = droppedSurfaceId(event, surfaceIdForEditorTabId)
+  if (!surfaceId) return
 
   event.preventDefault()
   event.dataTransfer.dropEffect = 'move'
   setActiveDropZoneId(dropZone.id)
+  onPreview?.(moveSurfaceOperation(surfaceId, dropZone))
 }
 
 function handleDragLeave(
   event: ReactDragEvent<HTMLElement>,
   setActiveDropZoneId: (dropZoneId: string | null) => void,
+  onPreview: ((operation: LayoutOperation | null) => void) | undefined,
 ) {
   if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
 
   setActiveDropZoneId(null)
+  onPreview?.(null)
 }
 
 function handleDrop(
@@ -247,29 +261,18 @@ function handleDrop(
   onDispatch: (operation: LayoutOperation) => void,
   setActiveDropZoneId: (dropZoneId: string | null) => void,
   setAcceptingDrop: (accepting: boolean) => void,
+  onPreview: ((operation: LayoutOperation | null) => void) | undefined,
 ) {
   const surfaceId = droppedSurfaceId(event, surfaceIdForEditorTabId)
   setActiveDropZoneId(null)
   setAcceptingDrop(false)
+  onPreview?.(null)
   if (!surfaceId) return
 
   event.preventDefault()
   event.stopPropagation()
   event.dataTransfer.dropEffect = 'move'
-  onDispatch({
-    destination: dropZone.destination,
-    surfaceId,
-    type: 'moveSurface',
-  })
-}
-
-function canAcceptEditorTabDrop(
-  event: ReactDragEvent<HTMLElement>,
-  surfaceIdForEditorTabId: ((tabId: string) => SurfaceId | null) | undefined,
-) {
-  if (!surfaceIdForEditorTabId) return false
-
-  return hasEditorTabDragPayload(event.dataTransfer)
+  onDispatch(moveSurfaceOperation(surfaceId, dropZone))
 }
 
 function droppedSurfaceId(
@@ -289,6 +292,22 @@ function pointerDragDetail(event: Event) {
   if (!isEditorTabPointerDragDetail(event.detail)) return null
 
   return event.detail
+}
+
+function moveSurfaceOperation(surfaceId: SurfaceId, dropZone: DropZoneLayoutRect): LayoutOperation {
+  return {
+    destination: dropZone.destination,
+    surfaceId,
+    type: 'moveSurface',
+  }
+}
+
+function moveWindowOperation(windowId: WindowId, dropZone: DropZoneLayoutRect): LayoutOperation {
+  return {
+    destination: dropZone.destination,
+    type: 'moveWindow',
+    windowId,
+  }
 }
 
 function dropZoneAtPoint(

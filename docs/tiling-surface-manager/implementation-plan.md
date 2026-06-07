@@ -1024,19 +1024,20 @@ Exit criteria:
 
 ## Phase 13 - Drag, Drop, Live Preview, And Resize
 
-Status: partially complete and re-audited 2026-06-07. Editor tab dragging now
-uses a pointer-driven in-strip gesture for visible tabs, keeps the dragged tab
-inside the strip below the detach threshold, and hands detached pointer drags to
-the snapped `DropOverlay` destinations. Whole-window header drags now use the
-same overlay and commit snapped `moveWindow` operations. The mouse detach
-threshold follows Chromium `TabDragController::kVerticalDetachMagnetism` at 15
-px; touch follows `kTouchVerticalDetachMagnetism` at 50 px; reattach hysteresis
-is 4 px; drag motion uses immediate pointer-follow transforms while sibling/drop
-slot movement uses existing Chrome-tab transition timing. Remaining Phase 13
-work is full committed-layout preview state for snapped drag/drop placements.
-Resize dragging now previews handle movement locally at animation-frame cadence,
-commits split sizes only on release, and clamps editor, terminal, and tool panes
-with content-aware minimums.
+Status: completed and re-audited 2026-06-07. Editor tab dragging now uses a
+pointer-driven in-strip gesture for visible tabs, keeps the dragged tab inside
+the strip below the detach threshold, and hands detached pointer drags to
+snapped `DropOverlay` destinations. Whole-window header drags use the same
+overlay and commit snapped `moveWindow` operations. Snapped drag/drop previews
+derive an uncommitted layout from the current move operation, while drop/cancel
+clears preview state and release commits only the snapped operation. The mouse
+detach threshold follows Chromium `TabDragController::kVerticalDetachMagnetism`
+at 15 px; touch follows `kTouchVerticalDetachMagnetism` at 50 px; reattach
+hysteresis is 4 px; drag motion uses immediate pointer-follow transforms while
+sibling/drop slot movement uses existing Chrome-tab transition timing. Resize
+dragging previews handle movement locally at animation-frame cadence, commits
+split sizes only on release, and clamps editor, terminal, and tool panes with
+content-aware minimums.
 
 Goal: deliver the interaction model from the PRD.
 

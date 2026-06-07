@@ -243,6 +243,7 @@ describe('LayoutRenderer', () => {
   it('dispatches snapped move operations from detached pointer tab drags', () => {
     const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
     const operations: LayoutOperation[] = []
+    const previews: (LayoutOperation | null)[] = []
     const destination = {
       edge: 'right' as const,
       kind: 'window-edge' as const,
@@ -263,6 +264,7 @@ describe('LayoutRenderer', () => {
         ]}
         surfaceIdForEditorTabId={(tabId) => (tabId === 'tab-app' ? file.id : null)}
         onDispatch={(operation) => operations.push(operation)}
+        onPreview={(operation) => previews.push(operation)}
       />,
     )
 
@@ -282,6 +284,12 @@ describe('LayoutRenderer', () => {
 
     expect(dropZone).toHaveAttribute('data-accepting', 'true')
     expect(dropZone).toHaveAttribute('data-active', 'true')
+    expect(operations).toEqual([])
+    expect(lastItem(previews)).toEqual({
+      destination,
+      surfaceId: file.id,
+      type: 'moveSurface',
+    })
 
     act(() => {
       dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DROP_EVENT, {
@@ -302,10 +310,12 @@ describe('LayoutRenderer', () => {
         type: 'moveSurface',
       },
     ])
+    expect(lastItem(previews)).toBeNull()
   })
 
   it('dispatches snapped move operations from pointer window drags', () => {
     const operations: LayoutOperation[] = []
+    const previews: (LayoutOperation | null)[] = []
     const sourceWindowId = workbenchWindowId('source')
     const destination = {
       edge: 'right' as const,
@@ -326,6 +336,7 @@ describe('LayoutRenderer', () => {
           },
         ]}
         onDispatch={(operation) => operations.push(operation)}
+        onPreview={(operation) => previews.push(operation)}
       />,
     )
 
@@ -341,6 +352,12 @@ describe('LayoutRenderer', () => {
 
     expect(dropZone).toHaveAttribute('data-accepting', 'true')
     expect(dropZone).toHaveAttribute('data-active', 'true')
+    expect(operations).toEqual([])
+    expect(lastItem(previews)).toEqual({
+      destination,
+      type: 'moveWindow',
+      windowId: sourceWindowId,
+    })
 
     act(() => {
       dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DROP_EVENT, {
@@ -357,6 +374,7 @@ describe('LayoutRenderer', () => {
         windowId: sourceWindowId,
       },
     ])
+    expect(lastItem(previews)).toBeNull()
   })
 
   it('ignores editor tab drops that cannot resolve to a surface', () => {
@@ -824,6 +842,10 @@ function nextAnimationFrame() {
 
     window.requestAnimationFrame(() => resolve())
   })
+}
+
+function lastItem<T>(items: readonly T[]) {
+  return items[items.length - 1]
 }
 
 function noop() {}

@@ -1,4 +1,4 @@
-import { use } from 'react'
+import { use, useState } from 'react'
 import { cn } from '@workspace/ui/lib/utils'
 
 import {
@@ -28,6 +28,7 @@ import {
   defaultSurfaceRendererRegistry,
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
+import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
 import type {
   LayoutOperation,
   LayoutNode,
@@ -96,12 +97,18 @@ function LayoutRendererSurfaceArea({
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
   const layout = useLayoutState((state) => state.layout, surfaceAreaLayoutEqual)
+  const [previewOperation, setPreviewOperation] = useState<LayoutOperation | null>(null)
   const { rect, rootRef } = useLayoutRootRect(initialRect)
   const rootRect = rect ?? DEFAULT_LAYOUT_RECT
   const surfaceRect = insetLayoutRect(rootRect, geometryOptions.gapPx ?? 0)
   const geometry = deriveLayoutGeometry(layout, surfaceRect, geometryOptions)
-  const tree = selectMaterializedLayoutTree(layout)
-  const maximizedWindowId = maximizedLayoutWindowId(layout.windowsById)
+  const previewLayout = previewLayoutForOperation(layout, previewOperation)
+  const previewGeometry =
+    previewLayout === layout
+      ? geometry
+      : deriveLayoutGeometry(previewLayout, surfaceRect, geometryOptions)
+  const tree = selectMaterializedLayoutTree(previewLayout)
+  const maximizedWindowId = maximizedLayoutWindowId(previewLayout.windowsById)
   const editorSurfaceContext = use(EditorSurfaceContext)
 
   return (
@@ -126,7 +133,7 @@ function LayoutRendererSurfaceArea({
           maximizedWindowId={maximizedWindowId}
           node={tree}
           surfaceRenderers={surfaceRenderers}
-          windowRectsById={geometry.windowRectsById}
+          windowRectsById={previewGeometry.windowRectsById}
           onDispatch={onDispatch}
         />
       ) : (
@@ -141,9 +148,23 @@ function LayoutRendererSurfaceArea({
         dropZoneRects={geometry.dropZoneRects}
         surfaceIdForEditorTabId={editorSurfaceContext?.surfaceIdForEditorTabId}
         onDispatch={onDispatch}
+        onPreview={setPreviewOperation}
       />
     </div>
   )
+}
+
+function previewLayoutForOperation(layout: WorkspaceLayout, operation: LayoutOperation | null) {
+  if (!operation) return layout
+  if (!previewableLayoutOperation(operation)) return layout
+
+  return applyLayoutOperation(layout, operation)
+}
+
+function previewableLayoutOperation(operation: LayoutOperation) {
+  if (operation.type === 'moveSurface') return true
+
+  return operation.type === 'moveWindow'
 }
 
 function LayoutRendererRail({
