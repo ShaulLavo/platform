@@ -22,13 +22,19 @@ import {
   CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
   CLASSIC_EDITOR_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
+  createFileEditorSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   fileEditorSurfaceId,
   fileNavigatorSurfaceId,
   placeholderSurfaceId,
 } from '@/features/tiling-surface-manager/engine/layout-ids'
-import { activateSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
+import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
+import {
+  activateSurface,
+  moveSurface,
+  openSurface,
+} from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
   editorGroupIdForWorkbenchWindow,
   editorSurfaceTabRecords,
@@ -340,6 +346,51 @@ describe('editor commands', () => {
       activeSurfaceId: fileEditorSurfaceId('src/b.ts'),
       surfaceIds: [fileEditorSurfaceId('src/a.ts'), fileEditorSurfaceId('src/b.ts')],
     })
+  })
+
+  it('restores backgrounded existing file surfaces when selected', () => {
+    const path = 'src/backgrounded.ts'
+    const surfaceId = fileEditorSurfaceId(path)
+    const backgroundedLayout = moveSurface(editorWorkspaceLayoutForPaths([path], path), surfaceId, {
+      kind: 'background',
+    })
+    const { commands, workspaceStore } = setupStores({
+      ...workspaceState([], null),
+      workspaceLayout: backgroundedLayout,
+    })
+
+    commands.selectFile(path)
+
+    const layout = workspaceStore.getState().workspaceLayout
+    expect(backgroundedLayout.rail.backgroundSurfaceIds).toContain(surfaceId)
+    expect(layout.rail.backgroundSurfaceIds).not.toContain(surfaceId)
+    expect(visibleSurfaceIdsInOrder(layout)).toContain(surfaceId)
+    expect(workspaceStore.getState().openFilePaths).toEqual([path])
+    expect(workspaceStore.getState().selectedFilePath).toBe(path)
+  })
+
+  it('promotes transient file previews when selected as durable files', () => {
+    const path = 'src/preview.ts'
+    const preview = {
+      ...createFileEditorSurface({ lifecycle: 'transient', path }),
+      serializedState: {
+        editorGroupId: 'preview-group',
+        editorTabId: 'preview-tab',
+      },
+    }
+    const previewLayout = openSurface(editorWorkspaceLayoutForPaths([], null), preview)
+    const { commands, workspaceStore } = setupStores({
+      ...workspaceState([path], path),
+      workspaceLayout: previewLayout,
+    })
+
+    commands.selectFile(path)
+
+    const promoted = workspaceStore.getState().workspaceLayout.surfacesById[preview.id]
+    expect(previewLayout.surfacesById[preview.id]?.lifecycle).toBe('transient')
+    expect(promoted?.lifecycle).toBe('durable')
+    expect(promoted ? editorSurfaceSerializedState(promoted) : null).not.toBe(null)
+    expect(workspaceStore.getState().selectedFilePath).toBe(path)
   })
 
   it('opens definitions through workspace, document, and ui stores', () => {

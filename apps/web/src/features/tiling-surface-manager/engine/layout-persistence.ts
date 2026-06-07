@@ -134,6 +134,7 @@ const KNOWN_RECIPE_SLOTS = new Set<WorkspaceRecipeSlot>([
 ])
 const KNOWN_PLACEMENT_KINDS = new Set<SurfacePlacementKind>([
   'active-window',
+  'background',
   'parent-edge',
   'rail',
   'recipe-slot',
@@ -941,6 +942,7 @@ function restoredPlacementHint(value: unknown): SurfacePlacementHint | undefined
   if (!isPlacementKind(value.kind)) return undefined
   if (value.kind === 'active-window')
     return { kind: value.kind, tabIndex: optionalNumber(value.tabIndex) }
+  if (value.kind === 'background') return { kind: value.kind }
   if (value.kind === 'rail') return { kind: value.kind }
   if (value.kind === 'recipe-slot') return restoredRecipeSlotPlacement(value)
   if (value.kind === 'window-center') return restoredWindowCenterPlacement(value)

@@ -504,12 +504,30 @@ function editorWorkspaceSelectionForWorkspaceLayoutForState(
 
 function openEditorPathInWorkspaceLayout(layout: WorkspaceLayout, path: string) {
   const existingSurface = editorSurfaceForPath(layout, path)
-  if (existingSurface) return activateSurface(layout, existingSurface.id)
+  if (existingSurface) return openExistingEditorSurface(layout, existingSurface, path)
 
   const surface = createEditorSurfaceForPath(layout, path)
   const nextLayout = openSurface(layout, surface)
 
   return closePlaceholderSurfacesInSurfaceWindow(nextLayout, surface.id)
+}
+
+function openExistingEditorSurface(
+  layout: WorkspaceLayout,
+  existingSurface: Surface,
+  path: string,
+) {
+  if (existingSurface.lifecycle === 'transient') {
+    const surface = createEditorSurfaceForPath(layout, path)
+    const nextLayout = openSurface(layout, surface)
+
+    return closePlaceholderSurfacesInSurfaceWindow(nextLayout, surface.id)
+  }
+
+  const windowId = findWindowIdContainingSurface(layout, existingSurface.id)
+  if (windowId) return activateSurface(layout, existingSurface.id, windowId)
+
+  return openSurface(layout, existingSurface)
 }
 
 function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface {

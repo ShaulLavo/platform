@@ -140,6 +140,43 @@ describe('tiling surface layout persistence', () => {
     expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
   })
 
+  it('round trips background placement hints', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/background.ts' })
+    const savedCommand = savedLayoutCommand('/repo/src/background.ts')
+    const commandWithBackgroundHint = {
+      ...savedCommand,
+      slots: savedCommand.slots.map((slot) => ({
+        ...slot,
+        displayHint: { kind: 'background' } as const,
+      })),
+    } satisfies WorkspaceLayoutCommand
+    const layout = {
+      ...openSurface(createClassicFirstRunWorkspaceLayout(), file),
+      layoutCommandsById: {
+        [commandWithBackgroundHint.id]: commandWithBackgroundHint,
+      },
+      policiesById: {
+        ...createClassicFirstRunWorkspaceLayout().policiesById,
+        [CLASSIC_POLICY_ID]: {
+          ...createClassicFirstRunWorkspaceLayout().policiesById[CLASSIC_POLICY_ID],
+          stickyPlacementsBySurfaceId: {
+            [file.id]: { kind: 'background' },
+          },
+        },
+      },
+    } satisfies WorkspaceLayout
+
+    const restored = restoreWorkspaceLayout(serializeWorkspaceLayout(layout), { rootPath })
+
+    expect(
+      restored.layout.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[file.id],
+    ).toEqual({ kind: 'background' })
+    expect(restored.layout.layoutCommandsById[savedCommand.id].slots[0]?.displayHint).toEqual({
+      kind: 'background',
+    })
+    expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
+  })
+
   it('falls back on unsupported serialized versions', () => {
     const fallbackLayout = createClassicFirstRunWorkspaceLayout()
     const serialized = {
