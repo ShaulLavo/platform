@@ -610,8 +610,9 @@ Work:
   mount/unmount rules.
 - Add basic keyboard focus attributes and ARIA labels for windows, tabs,
   separators, and rail targets.
-- Add visual gaps and subtle translucent/blurred window background without
-  hurting editor or terminal contrast.
+- Add visual gaps, fully transparent window/frame borders, and panel
+  backgrounds controlled by a scoped workbench opacity variable with backdrop
+  blur, without hurting editor or terminal contrast.
 
 Tests:
 
@@ -1261,10 +1262,18 @@ Work:
   - rail item labels.
 - Visual language:
   - visible gaps with wallpaper/background;
+  - wallpaper/backdrop spans the full workbench, including the rail;
   - use `/Users/shaul/Pictures/6se14k41od671.png` as the default wallpaper
     source; when implemented, copy/package it as an app asset instead of
     depending on the absolute local path at runtime;
-  - slight translucent/blurred windows;
+  - fully transparent window/frame borders;
+  - panel backgrounds controlled by a scoped workbench opacity variable,
+    with backdrop blur;
+  - no inner pane background stacking; only the window/rail container owns
+    surface material;
+  - terminal canvases stay transparent over the pane material; the web terminal
+    renderer must clear transparent rows with real canvas clears/copy semantics
+    instead of painting a solid terminal body;
   - clear active window and active surface state;
   - clear transient preview state;
   - clear collapsed/background/running rail state.

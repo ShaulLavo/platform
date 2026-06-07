@@ -215,6 +215,14 @@ describe('LayoutRenderer browser rendering', () => {
       expect(document.body.textContent).toContain('b.ts')
     })
 
+    expect(editorChromeTabButton('tab-b')).toHaveAttribute('aria-selected', 'true')
+
+    editorChromeTab('tab-a').click()
+
+    await vi.waitFor(() => {
+      expect(editorChromeTabButton('tab-a')).toHaveAttribute('aria-selected', 'true')
+    })
+
     await vi.waitFor(() => {
       const fileSnapshots = queryClient
         .getQueryCache()
@@ -402,6 +410,13 @@ function editorChromeTab(tabId: string) {
   if (!tab) throw new Error(`Missing editor tab ${tabId}`)
 
   return tab
+}
+
+function editorChromeTabButton(tabId: string) {
+  const button = editorChromeTab(tabId).querySelector<HTMLElement>('[role="tab"]')
+  if (!button) throw new Error(`Missing editor tab button ${tabId}`)
+
+  return button
 }
 
 function editorChromeTabWidths() {

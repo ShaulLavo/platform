@@ -67,12 +67,17 @@ export function LayoutRenderer({
     <div
       aria-label='Workbench layout'
       className={cn(
-        'bg-background text-foreground flex h-full min-h-0 min-w-0 overflow-hidden',
+        'bg-background text-foreground relative isolate flex h-full min-h-0 min-w-0 overflow-hidden',
         className,
       )}
       data-workbench-layout-renderer=''
       role='application'
     >
+      <div
+        aria-hidden='true'
+        className="pointer-events-none absolute inset-0 z-0 bg-[url('/workbench/wallpaper.png')] bg-cover bg-center"
+        data-workbench-wallpaper=''
+      />
       <LayoutRendererRail onDispatch={dispatchLayoutOperation} />
       <LayoutRendererSurfaceArea
         geometryOptions={geometryOptions}
@@ -113,20 +118,10 @@ function LayoutRendererSurfaceArea({
 
   return (
     <div
-      className='bg-background relative min-h-0 min-w-0 flex-1 overflow-hidden'
+      className='relative z-10 min-h-0 min-w-0 flex-1 overflow-hidden'
       data-workbench-surface-area=''
       ref={rootRef}
     >
-      <div
-        aria-hidden='true'
-        className="pointer-events-none absolute inset-0 bg-[url('/workbench/wallpaper.png')] bg-cover bg-center opacity-40"
-        data-workbench-wallpaper=''
-      />
-      <div
-        aria-hidden='true'
-        className='bg-background/55 pointer-events-none absolute inset-0 backdrop-blur-[1px]'
-        data-workbench-wallpaper-tint=''
-      />
       {tree ? (
         <SplitNode
           maximizedRect={surfaceRect}

@@ -133,7 +133,7 @@ function mountTerminal({
     .then(() => {
       if (cancelled) return
 
-      terminal = createTerminal()
+      terminal = createTerminal(host)
       fitAddon = new FitAddon()
       terminal.loadAddon(fitAddon)
       terminal.open(host)
@@ -232,15 +232,16 @@ function handleTerminalServerMessage({
   terminal.writeln(message.message)
 }
 
-function createTerminal() {
+function createTerminal(root: HTMLElement) {
   return new Terminal({
+    allowTransparency: true,
     cursorBlink: true,
     cursorStyle: 'block',
     fontFamily: DEFAULT_MONO_FONT_STACK,
     fontSize: 12,
     scrollback: 10_000,
     smoothScrollDuration: 80,
-    theme: readTerminalTheme(),
+    theme: readTerminalTheme(root),
   })
 }
 

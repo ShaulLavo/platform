@@ -121,10 +121,7 @@ export function TabStrip({
             <div
               className={chromeTabRootClassName({
                 active,
-                className: cn(
-                  'z-[var(--chrome-tab-z)] border border-transparent',
-                  active && 'border-border/60 shadow-sm',
-                ),
+                className: 'z-[var(--chrome-tab-z)] border border-transparent',
               })}
               data-chrome-tab-root=''
               data-surface-tab-id={surface.id}

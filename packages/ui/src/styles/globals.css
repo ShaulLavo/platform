@@ -72,9 +72,11 @@
   /* Height of the desktop window's draggable title strip (WindowTitleBar).
      Matches T3 Code's 40px macOS titlebar. */
   --titlebar-height: 40px;
-  --background: oklch(1 0.006 70);
+  --background-solid: oklch(1 0.006 70);
+  --background: var(--background-solid);
   --foreground: oklch(0.145 0.006 70);
-  --card: oklch(1 0.006 70);
+  --card-solid: oklch(1 0.006 70);
+  --card: var(--card-solid);
   --card-foreground: oklch(0.145 0.006 70);
   --popover: oklch(1 0.006 70);
   --popover-foreground: oklch(0.145 0.006 70);
@@ -82,9 +84,11 @@
   --primary-foreground: oklch(0.985 0.006 70);
   --secondary: oklch(0.97 0.006 70);
   --secondary-foreground: oklch(0.205 0.006 70);
-  --muted: oklch(0.97 0.006 70);
+  --muted-solid: oklch(0.97 0.006 70);
+  --muted: var(--muted-solid);
   --muted-foreground: oklch(0.556 0.006 70);
-  --accent: oklch(0.97 0.006 70);
+  --accent-solid: oklch(0.97 0.006 70);
+  --accent: var(--accent-solid);
   --accent-foreground: oklch(0.205 0.006 70);
   --destructive: oklch(0.55 0.17 18);
   --info: oklch(0.55 0.17 230);
@@ -173,7 +177,9 @@
   --editor-inactive-selection: oklch(0.72 0.13 240 / 0.18);
 
   /* Terminal surface — light (matches --background) */
-  --terminal-background: #ffffff;
+  --terminal-background-solid: #ffffff;
+  --terminal-background: var(--terminal-background-solid);
+  --terminal-canvas-background: var(--terminal-background);
   --terminal-foreground: #3c3c3c;
   --terminal-cursor: #1a1a1a;
   --terminal-cursor-accent: #ffffff;
@@ -199,9 +205,11 @@
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.145 0.006 70);
+  --background-solid: oklch(0.145 0.006 70);
+  --background: var(--background-solid);
   --foreground: oklch(0.985 0.006 70);
-  --card: oklch(0.205 0.006 70);
+  --card-solid: oklch(0.205 0.006 70);
+  --card: var(--card-solid);
   --card-foreground: oklch(0.985 0.006 70);
   --popover: oklch(0.205 0.006 70);
   --popover-foreground: oklch(0.985 0.006 70);
@@ -209,9 +217,11 @@
   --primary-foreground: oklch(0.22 0.014 70);
   --secondary: oklch(0.269 0.006 70);
   --secondary-foreground: oklch(0.985 0.006 70);
-  --muted: oklch(0.269 0.006 70);
+  --muted-solid: oklch(0.269 0.006 70);
+  --muted: var(--muted-solid);
   --muted-foreground: oklch(0.708 0.006 70);
-  --accent: oklch(0.269 0.006 70);
+  --accent-solid: oklch(0.269 0.006 70);
+  --accent: var(--accent-solid);
   --accent-foreground: oklch(0.985 0.006 70);
   --destructive: oklch(0.74 0.145 18);
   --info: oklch(0.74 0.145 230);
@@ -296,7 +306,9 @@
   --editor-inactive-selection: oklch(0.72 0.13 240 / 0.16);
 
   /* Terminal surface — dark (matches --background) */
-  --terminal-background: #0a0a0a;
+  --terminal-background-solid: #0a0a0a;
+  --terminal-background: var(--terminal-background-solid);
+  --terminal-canvas-background: var(--terminal-background);
   --terminal-foreground: #d7dde5;
   --terminal-cursor: #f4f7fb;
   --terminal-cursor-accent: #0a0a0a;
@@ -318,6 +330,42 @@
   --terminal-ansi-bright-magenta: #e1b0ff;
   --terminal-ansi-bright-cyan: #8ce8f0;
   --terminal-ansi-bright-white: #ffffff;
+}
+
+[data-workbench-layout-renderer] {
+  /* Workbench panes can make this dynamic without changing component classes. */
+  --workbench-surface-opacity: 80%;
+  --background: color-mix(
+    in oklch,
+    var(--background-solid) var(--workbench-surface-opacity),
+    transparent
+  );
+  --card: color-mix(in oklch, var(--card-solid) var(--workbench-surface-opacity), transparent);
+  --muted: color-mix(in oklch, var(--muted-solid) var(--workbench-surface-opacity), transparent);
+  --accent: color-mix(in oklch, var(--accent-solid) var(--workbench-surface-opacity), transparent);
+  --border: transparent;
+  --terminal-background: color-mix(
+    in oklch,
+    var(--terminal-background-solid) var(--workbench-surface-opacity),
+    transparent
+  );
+  --terminal-canvas-background: rgba(0, 0, 0, 0);
+}
+
+[data-workbench-layout-renderer] [data-surface-host] {
+  /* WindowFrame owns pane material; mounted surface content must not stack it. */
+  --background: transparent;
+  --card: transparent;
+  --muted: transparent;
+  --accent: transparent;
+  --border: transparent;
+  --terminal-background: transparent;
+}
+
+[data-workbench-rail] {
+  /* Rail owns its material; item states should not add another fill layer. */
+  --muted: transparent;
+  --accent: transparent;
 }
 
 @media (forced-colors: active) {

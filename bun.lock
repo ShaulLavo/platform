@@ -545,6 +545,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "ghostty-web@0.4.0": "patches/ghostty-web@0.4.0.patch",
+  },
   "catalog": {
     "@arethetypeswrong/core": "0.18.2",
     "@playwright/test": "1.51.1",

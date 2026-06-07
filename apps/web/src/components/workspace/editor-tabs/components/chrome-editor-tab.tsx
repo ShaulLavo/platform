@@ -108,6 +108,12 @@ export function ChromeEditorTab({
     event.stopPropagation()
   }
 
+  function handleSelectClick() {
+    if (closing) return
+
+    onSelect(tab)
+  }
+
   function handleDragStart(event: DragEvent<HTMLDivElement>) {
     if (closing) {
       event.preventDefault()
@@ -144,6 +150,7 @@ export function ChromeEditorTab({
         data-editor-tab-phase={visualTab.phase}
         data-editor-tab-path={tab.path}
         draggable={false}
+        onClick={handleSelectClick}
         onClickCapture={handleClickCapture}
         onContextMenu={handleContextMenu}
         onDragEnd={onDragEnd}
@@ -157,7 +164,6 @@ export function ChromeEditorTab({
       >
         <ChromeTabSelectButton
           aria-selected={tab.active}
-          onClick={() => onSelect(tab)}
           onDragEnd={onDragEnd}
           onDragStart={handleSelectDragStart}
           draggable={false}

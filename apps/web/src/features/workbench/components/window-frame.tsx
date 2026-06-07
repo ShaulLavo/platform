@@ -149,11 +149,7 @@ export const WindowFrame = memo(function WindowFrame({
   return (
     <section
       aria-label={windowLabel({ activeSurface, window })}
-      className={cn(
-        'absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-card/90 shadow-md ring-1 ring-border/30 backdrop-blur-md transition-[background-color,border-color,box-shadow]',
-        active ? 'border-info/60 ring-info/30 shadow-lg' : 'border-border/70',
-        collapsed && 'bg-card/80',
-      )}
+      className='bg-card absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-transparent backdrop-blur-md transition-colors'
       data-active={active ? 'true' : 'false'}
       data-window-mode={window.mode}
       data-window-id={window.id}
@@ -164,7 +160,7 @@ export const WindowFrame = memo(function WindowFrame({
       onPointerDownCapture={handleWindowFocusPointerDown}
     >
       <header
-        className='border-border/70 bg-card/80 flex h-10 shrink-0 cursor-grab items-end gap-2 border-b pt-1 backdrop-blur-md active:cursor-grabbing'
+        className='flex h-10 shrink-0 cursor-grab items-end gap-2 border-b border-transparent pt-1 active:cursor-grabbing'
         onLostPointerCapture={handleWindowDragPointerCancel}
         onPointerCancel={handleWindowDragPointerCancel}
         onPointerDown={handleWindowDragPointerDown}
@@ -173,7 +169,7 @@ export const WindowFrame = memo(function WindowFrame({
       >
         <TabStrip surfaces={surfaces} window={window} onDispatch={onDispatch} />
         <div
-          className='border-border/70 ml-1 flex h-8 shrink-0 items-center gap-0.5 pb-1 pl-1'
+          className='ml-1 flex h-8 shrink-0 items-center gap-0.5 pb-1 pl-1'
           data-window-drag-blocker=''
         >
           <WindowControlButton
@@ -216,12 +212,7 @@ export const WindowFrame = memo(function WindowFrame({
           </WindowControlButton>
         </div>
       </header>
-      <div
-        className={cn(
-          'bg-background/90 relative min-h-0 flex-1 overflow-hidden',
-          collapsed && 'hidden',
-        )}
-      >
+      <div className={cn('relative min-h-0 flex-1 overflow-hidden', collapsed && 'hidden')}>
         {surfaces.map((surface) => {
           const visible = surface.id === window.activeSurfaceId
 

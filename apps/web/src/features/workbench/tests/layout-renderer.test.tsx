@@ -10,7 +10,12 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 import { createGitStore } from '@/features/git/state'
 import { ThemeProviderContext } from '@/components/theme-context'
 import { FocusContext, createFocusStore } from '@/components/workspace/focus/providers/focus-state'
+import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 
+import {
+  EMPTY_GIT_FILES,
+  editorTabModel,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import {
   EDITOR_TAB_DRAG_KIND,
   EDITOR_TAB_DRAG_MIME,
@@ -45,10 +50,14 @@ import {
   LayoutRenderer,
   surfaceAreaLayoutEqual,
 } from '@/features/workbench/components/layout-renderer'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import type {
+  Surface,
+  WorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-types'
 import { SnappedDragController } from '@/features/workbench/components/snapped-drag-controller'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
+import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
 import {
   createSurfaceRendererRegistry,
   type SurfaceRenderer,
@@ -542,6 +551,20 @@ describe('LayoutRenderer', () => {
     expect(store.getState().layout.activeSurfaceId).toBe(file.id)
   })
 
+  it('selects an editor tab when the click is retargeted to the draggable tab root', () => {
+    const fileA = createEditorSurfaceWithTab('/repo/src/a.ts', 'tab-a')
+    const fileB = createEditorSurfaceWithTab('/repo/src/b.ts', 'tab-b')
+    const layout = openSurface(openSurface(createEmptyWorkspaceLayout(), fileA), fileB)
+    const store = renderInteractiveEditorSurfaceLayout(layout)
+
+    expect(store.getState().layout.activeSurfaceId).toBe(fileB.id)
+
+    fireEvent.click(editorTabRoot('tab-a'))
+
+    expect(store.getState().layout.activeSurfaceId).toBe(fileA.id)
+    expect(editorTabButton('tab-a')).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('activates a window when pointer down starts inside event-consuming surface content', () => {
     const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
     const registry = createEventConsumingSurfaceRendererRegistry()
@@ -735,6 +758,96 @@ function renderInteractiveLayout(
   )
 
   return store
+}
+
+function renderInteractiveEditorSurfaceLayout(layout: WorkspaceLayout) {
+  const store = createWorkspaceLayoutStore(layout, { checkInvariants: false })
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ThemeProviderContext
+        value={{
+          resolvedTheme: 'dark',
+          theme: 'dark',
+          setTheme: noop,
+        }}
+      >
+        <FocusContext value={createFocusStore()}>
+          <TooltipProvider>
+            <EditorStateProvider>
+              <EditorSurfaceProvider
+                editorKeymapLayers={[]}
+                gitStore={createGitStore()}
+                requestCloseTab={() => true}
+                requestCloseTabs={() => true}
+                rootPath='/repo'
+                surfaceIdForEditorTabId={(tabId) => editorSurfaceIdForTabId(store, tabId)}
+                tabModelForSurface={(surface, active) => editorTabModelForSurface(surface, active)}
+              >
+                <LayoutProvider store={store}>
+                  <LayoutRenderer surfaceRenderers={editorSurfaceRendererRegistry} />
+                </LayoutProvider>
+              </EditorSurfaceProvider>
+            </EditorStateProvider>
+          </TooltipProvider>
+        </FocusContext>
+      </ThemeProviderContext>
+    </QueryClientProvider>,
+  )
+
+  return store
+}
+
+function editorSurfaceIdForTabId(
+  store: ReturnType<typeof createWorkspaceLayoutStore>,
+  tabId: string,
+) {
+  const surface = Object.values(store.getState().layout.surfacesById).find(
+    (candidate) => editorSurfaceSerializedState(candidate)?.editorTabId === tabId,
+  )
+
+  return surface?.id ?? null
+}
+
+function createEditorSurfaceWithTab(path: string, tabId: string): Surface {
+  return {
+    ...createFileEditorSurface({ path }),
+    serializedState: {
+      editorGroupId: 'test-editor-group',
+      editorTabId: tabId,
+    },
+  }
+}
+
+function editorTabModelForSurface(surface: Surface, active: boolean) {
+  const state = editorSurfaceSerializedState(surface)
+  if (!state) return null
+  if (!surface.resourceKey) return null
+
+  return editorTabModel({
+    conflicts: {},
+    gitFiles: EMPTY_GIT_FILES,
+    rootPath: '/repo',
+    selectedTabId: active ? state.editorTabId : null,
+    tab: {
+      id: state.editorTabId,
+      path: surface.resourceKey,
+    },
+  })
+}
+
+function editorTabRoot(tabId: string) {
+  const tab = document.querySelector<HTMLElement>(`[data-editor-tab-id="${tabId}"]`)
+  if (!tab) throw new Error(`Missing editor tab ${tabId}`)
+
+  return tab
+}
+
+function editorTabButton(tabId: string) {
+  const button = editorTabRoot(tabId).querySelector<HTMLElement>('[role="tab"]')
+  if (!button) throw new Error(`Missing editor tab button ${tabId}`)
+
+  return button
 }
 
 function createCountingSurfaceRendererRegistry(counts: {

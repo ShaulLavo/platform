@@ -1,7 +1,7 @@
 import type { ITheme } from 'ghostty-web'
 
 const TERMINAL_THEME_VARIABLES = {
-  background: '--terminal-background',
+  background: '--terminal-canvas-background',
   foreground: '--terminal-foreground',
   cursor: '--terminal-cursor',
   cursorAccent: '--terminal-cursor-accent',
