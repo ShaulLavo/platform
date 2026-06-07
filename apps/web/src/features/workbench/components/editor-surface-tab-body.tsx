@@ -5,8 +5,6 @@ import {
   readyFile,
 } from '@/components/workspace/diff/utils/editor-render-document-utils'
 import { useConflictEditorResolution } from '@/components/workspace/diff/hooks/use-conflict-editor-resolution'
-import { SearchBufferEditor } from '@/features/search/search-buffer-editor'
-import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
@@ -29,9 +27,8 @@ export function EditorSurfaceTabBody({
   rootPath: string
   tabId: string
 }) {
-  const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
-  const { fileState } = useSelectedFile(selectedSearchBuffer || selectedConflictDiff ? null : path)
+  const { fileState } = useSelectedFile(selectedConflictDiff ? null : path)
   const selectedViewDocumentId = useEditorDocumentState(
     (state) => state.viewsByTabId[tabId]?.documentId ?? null,
   )
@@ -85,7 +82,7 @@ export function EditorSurfaceTabBody({
     forceReplaceLiveEditorDocument,
     renameLiveEditorDocument,
   })
-  const selectedFile = selectedConflictDiff || selectedSearchBuffer ? null : readyFile(fileState)
+  const selectedFile = selectedConflictDiff ? null : readyFile(fileState)
 
   useEffect(() => {
     if (!selectedFile) return
@@ -102,22 +99,11 @@ export function EditorSurfaceTabBody({
 
   useEffect(() => {
     if (!active) return
-    if (selectedSearchBuffer) {
-      clearStatusBarSource()
-      return
-    }
     if (path && selectedLiveDocument) return
     if (path && fileState.status === 'ready') return
 
     clearStatusBarSource()
-  }, [
-    active,
-    clearStatusBarSource,
-    fileState.status,
-    path,
-    selectedLiveDocument,
-    selectedSearchBuffer,
-  ])
+  }, [active, clearStatusBarSource, fileState.status, path, selectedLiveDocument])
 
   const handleEditorTextChange = useCallback(
     (_sourceTabId: string, changedPath: string, change: DocumentSessionChange) => {
@@ -133,15 +119,6 @@ export function EditorSurfaceTabBody({
     },
     [setLanguageServerReferences],
   )
-
-  if (selectedSearchBuffer) {
-    return (
-      <SearchBufferEditor
-        editorKeymapLayers={editorKeymapLayers}
-        rootPath={selectedSearchBuffer.rootPath}
-      />
-    )
-  }
 
   return (
     <FileEditorBody

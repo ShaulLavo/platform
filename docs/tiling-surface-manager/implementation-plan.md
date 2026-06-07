@@ -762,6 +762,18 @@ Exit criteria:
 
 ## Phase 9 - Search Results And Search Preview Lifecycle
 
+Status: completed and re-audited 2026-06-07. Search Results is a durable
+singleton surface and search runtime enablement is derived from the
+`WorkspaceLayout` search surface instead of sidebar or panel state. Search
+selection now creates or replaces one transient Search Preview through a pure
+layout helper, using the Search Results surface as owner and the active result
+ID as owner context. Clearing or changing selection closes stale owner previews,
+owner removal is still handled by transient-owner normalization, and
+search-result open actions route through file/definition surface commands rather
+than `selectFile`. The old search-buffer editor-tab renderer and wrapper
+components were deleted; remaining `search-buffer:*` handling is cache/filter
+state for the Search Results runtime and is covered by Phase 12 cache cleanup.
+
 Goal: implement the PRD search decisions exactly.
 
 Work:

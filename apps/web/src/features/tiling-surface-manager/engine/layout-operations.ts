@@ -2,6 +2,7 @@ import {
   layoutNodeId,
   workbenchWindowId,
 } from '@/features/tiling-surface-manager/engine/layout-ids'
+import { placementForSurfaceWithPolicy } from '@/features/tiling-surface-manager/engine/layout-policies'
 import {
   createChatSurface,
   createDiagnosticsSurface,
@@ -1457,13 +1458,28 @@ function placementForOpen(
     return { layout, placement: stickyPlacement }
   }
   if (stickyPlacement) {
-    return fallbackPlacementForOpen(clearStickyPlacement(layout, surface.id, policyId), surface)
+    return fallbackPlacementForOpen(
+      clearStickyPlacement(layout, surface.id, policyId),
+      surface,
+      policyId,
+    )
   }
 
-  return fallbackPlacementForOpen(layout, surface)
+  return fallbackPlacementForOpen(layout, surface, policyId)
 }
 
-function fallbackPlacementForOpen(layout: WorkspaceLayout, surface: Surface): PlacementResolution {
+function fallbackPlacementForOpen(
+  layout: WorkspaceLayout,
+  surface: Surface,
+  policyId?: LayoutPolicyId,
+): PlacementResolution {
+  if (policyId) {
+    const policyPlacement = placementForSurfaceWithPolicy({ layout, policyId, surface })
+    if (placementCanRestoreSurface(layout, policyPlacement, surface)) {
+      return { layout, placement: policyPlacement }
+    }
+  }
+
   const placement = surface.placement
   if (placement && placementCanRestoreSurface(layout, placement)) {
     return { layout, placement }
