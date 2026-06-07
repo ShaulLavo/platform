@@ -16,9 +16,9 @@ import {
   editorTabCloseTargetIds,
   type EditorTabCloseTargetKind,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
+import type { EditorSplitDirection } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
-import type { EditorPaneSplitDirection } from '@/features/editor/state/editor-pane-state'
 import type { RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import {
   ContextMenuContent,
@@ -35,7 +35,7 @@ export function EditorTabContextMenuContent({
   tab: EditorTabModel
   tabs: readonly EditorTabModel[]
   onCloseTabs: RequestCloseTabs
-  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
+  onSplit: (tabId: string, direction: EditorSplitDirection) => boolean
 }) {
   const documentStore = useEditorDocumentStoreApi()
 

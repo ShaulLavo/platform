@@ -18,8 +18,8 @@ import type {
   EditorTabDragController,
   EditorTabInsertionEdge,
 } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
+import type { EditorSplitDirection } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import type { RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
-import type { EditorPaneSplitDirection } from '@/features/editor/state/editor-pane-state'
 import { ContextMenu, ContextMenuTrigger } from '@workspace/ui/components/context-menu'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -57,7 +57,7 @@ export function ChromeEditorTab({
   onClose: (path: string) => void
   onCloseClosingTab: (tabId: string) => void
   onCloseTabs: RequestCloseTabs
-  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
+  onSplit: (tabId: string, direction: EditorSplitDirection) => boolean
   onDragEnd: () => void
   onDragStart: EditorTabDragController['onDragStart']
   onSelect: (tab: EditorTabModel) => void

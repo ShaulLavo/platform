@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
+import { editorWorkspaceLayoutForPaths } from '../../../test/factories/editor-workspace-layout'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
 import { createSearchBufferStore } from '@/features/search/search-buffer-state'
 import { createSearchResultsSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
 import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { CachedWorkspaceState, WorkspaceCacheWriteState } from '@/lib/workspace-cache'
 import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
@@ -107,8 +106,6 @@ describe('workspace cache persistence', () => {
 })
 
 function cachedWorkspace(): CachedWorkspaceState {
-  const editorPaneLayout = createEditorPaneLayoutForPaths([], null)
-
   return {
     diffViewMode: 'split',
     editorHistory: [],
@@ -116,7 +113,7 @@ function cachedWorkspace(): CachedWorkspaceState {
     recentlyClosedEditorPaths: [],
     rootFolder: pickedDirectory('/repo'),
     selectedFilePath: null,
-    workspaceLayout: workspaceLayoutForEditorPaneLayout(editorPaneLayout),
+    workspaceLayout: editorWorkspaceLayoutForPaths([], null),
   }
 }
 

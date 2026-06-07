@@ -431,7 +431,7 @@ function editorSurface(path: string, tabId: string): Surface {
   return {
     ...createFileEditorSurface({ path }),
     serializedState: {
-      editorPaneId: 'pane-editor',
+      editorGroupId: 'group-editor',
       editorTabId: tabId,
     },
   }

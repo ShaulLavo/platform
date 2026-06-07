@@ -8,7 +8,6 @@ import { act, createEvent, fireEvent, render, screen } from '@testing-library/re
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
 import { createGitStore } from '@/features/git/state'
-import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
 import { ThemeProviderContext } from '@/components/theme-context'
 import { FocusContext, createFocusStore } from '@/components/workspace/focus/providers/focus-state'
 
@@ -23,6 +22,7 @@ import {
   createDiagnosticsSurface,
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
+  createPlaceholderSurface,
   createLogsSurface,
   createSearchPreviewSurface,
   createSearchResultsSurface,
@@ -46,7 +46,6 @@ import {
   createSurfaceRendererRegistry,
   type SurfaceRenderer,
 } from '@/features/workbench/utils/surface-renderer-registry'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 import {
   layoutNodeId,
@@ -407,7 +406,11 @@ describe('LayoutRenderer', () => {
   })
 
   it('renders editor placeholders without fixture debug UI', () => {
-    const layout = workspaceLayoutForEditorPaneLayout(createEditorPaneLayoutForPaths([], null))
+    const placeholder = createPlaceholderSurface({
+      contextKey: 'empty-editor',
+      title: 'No file selected',
+    })
+    const layout = openSurface(createEmptyWorkspaceLayout(), placeholder)
     const html = renderLayout(layout, {
       surfaceRenderers: editorSurfaceRendererRegistry,
       withEditorSurfaceProvider: true,

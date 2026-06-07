@@ -12,7 +12,7 @@ the source of truth for completed slices and remaining gaps.
 This plan is grounded in `prd.md`, `technical-design.md`, `research-findings.md`,
 and the current app ownership points called out in the technical design.
 
-## Current State Snapshot - 2026-06-06
+## Current State Snapshot - 2026-06-07
 
 Completed and verified for phases 1-7:
 
@@ -56,18 +56,14 @@ Completed and verified for phases 1-7:
 
 Migration-scoped compatibility that still intentionally exists:
 
-- `editor-pane-state.ts` remains as a pure compatibility/conversion model for
-  cache migration, editor command tab IDs, and tests until equivalent
-  surface-native tests fully replace it.
-- `editorPaneLayoutForWorkspaceLayout` and
-  `workspaceLayoutForEditorPaneLayout` remain as bridge helpers for restore and
-  legacy cache/test paths. The pane-to-workspace bridge now creates editor
-  surfaces only; it no longer injects classic fixed tool surfaces.
-- `EditorWorkspaceStore` still exposes derived `editorPaneLayout`,
-  `openFilePaths`, and `selectedFilePath` for older editor/document consumers,
-  but `workspaceLayout` is the runtime layout source of truth. The old
-  `setEditorPaneLayout`, `setOpenFilePaths`, and `setSelectedFilePath` mutation
-  paths have been removed.
+- Legacy `minimizedSurfaceIds` is still read only as persisted-layout migration
+  input and converted to `backgroundSurfaceIds`.
+- `EditorWorkspaceStore` still exposes derived `openFilePaths` and
+  `selectedFilePath` for document, tree, and file-event consumers. These values
+  are recomputed from `WorkspaceLayout`; they are no longer persisted as
+  top-level cache payload fields.
+- The old `editor-pane-state.ts` module, `EditorPaneLayout` bridge helpers, and
+  `editorPaneLayout` store/cache state are removed.
 
 ## Implementation Direction
 
@@ -496,8 +492,8 @@ Exit criteria:
 
 - New layout store can be created from an empty root and can run pure operations.
 - Store is now production source of truth for workbench layout. Derived
-  `editorPaneLayout` remains only as compatibility state for older editor/cache
-  paths.
+  `openFilePaths` and `selectedFilePath` remain only as convenience state for
+  older editor/document consumers.
 
 ## Phase 5 - Persistence And Restore V1
 
@@ -601,11 +597,12 @@ Exit criteria:
 
 ## Phase 7 - File And Diff Surface Cutover
 
-Status: completed and re-audited 2026-06-06. Runtime file/diff layout is owned
+Status: completed and re-audited 2026-06-07. Runtime file/diff layout is owned
 by `WorkspaceLayout`; file, diff, empty-editor, and search-preview rendering is
 hosted by workbench surfaces. Dirty close and keymap dispatch now read editor tab
 records from `WorkspaceLayout` surfaces. Cache persistence writes
-`WorkspaceLayout` only. Production `WorkspaceView` no longer uses Dockview.
+`WorkspaceLayout` only. Production `WorkspaceView` no longer uses Dockview, and
+the old editor-pane compatibility model has been deleted.
 
 Goal: replace editor-pane layout and Dockview for file/diff editor workflows.
 
@@ -632,9 +629,10 @@ Delete in this phase:
 Keep temporarily only if still imported by tests or not-yet-rehosted code:
 
 - Pure ideas from `editor-pane-state.ts` tests until equivalent surface-manager
-  tests fully replace them.
-- The Dockview spike has been removed. `editor-pane-state.ts` remains only as a
-  pure compatibility/conversion model for migration and tests.
+  tests fully replace them. This is complete as of the 2026-06-07 re-audit:
+  editor tests now use direct `WorkspaceLayout` fixtures and surface selectors.
+- The Dockview spike has been removed. `editor-pane-state.ts` was deleted after
+  its remaining fixture and selector coverage moved to surface-native tests.
 
 Tests:
 
@@ -648,8 +646,7 @@ Tests:
 Exit criteria:
 
 - File and diff editing no longer depend on Dockview. Runtime layout ownership is
-  `WorkspaceLayout`; `EditorPaneLayout` remains only as migration/derived
-  compatibility state.
+  `WorkspaceLayout`; `EditorPaneLayout` compatibility state has been deleted.
 
 ## Phase 8 - Rail And Classic Singleton Surfaces
 
@@ -1146,6 +1143,12 @@ Exit criteria:
 - The custom renderer is visually and interactively production-ready.
 
 ## Phase 15 - Legacy Deletion And Dependency Cleanup
+
+Status: completed and re-audited 2026-06-07 for old editor-pane, Dockview,
+workbench-spike, floating-terminal, and old cache ownership. The old
+`editor-pane-state.ts` module is deleted; tests now build surface-native
+`WorkspaceLayout` fixtures; `rg` finds no old layout-owner source references
+outside documented migration readers and cache assertions.
 
 Goal: remove all old layout owners after their replacements have landed.
 

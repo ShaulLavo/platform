@@ -29,9 +29,9 @@ import {
   editorTabInsertionEdge,
   type EditorTabDragController,
 } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
+import type { EditorSplitDirection } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import { useElementWidth } from '@/components/workspace/shared/hooks/use-element-width'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
-import type { EditorPaneSplitDirection } from '@/features/editor/state/editor-pane-state'
 
 export function ChromeEditorTabList({
   closeLayoutCacheKey,
@@ -53,7 +53,7 @@ export function ChromeEditorTabList({
   onBeforeClose?: () => void
   onClose: RequestCloseTab
   onCloseTabs: RequestCloseTabs
-  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
+  onSplit: (tabId: string, direction: EditorSplitDirection) => boolean
   onSelect: (tab: EditorTabModel) => void
 }) {
   const closeLayoutSnapshotRef = useRef<ChromeTabCloseLayoutSnapshot | null>(null)

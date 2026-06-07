@@ -17,7 +17,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { surfacePanelId } from '@/features/workbench/components/surface-host'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
 import {
-  editorPaneIdForWorkbenchWindowId,
+  editorGroupIdForWorkbenchWindowId,
   editorSurfaceSerializedState,
 } from '@/features/workbench/utils/editor-surface-layout'
 import { EditorSurfaceContext } from '@/features/workbench/providers/editor-surface-context'
@@ -40,7 +40,7 @@ export function TabStrip({
   const tabListRef = useRef<HTMLDivElement | null>(null)
   const selectedTabRef = useRef<HTMLDivElement | null>(null)
   const editorSurfaceContext = use(EditorSurfaceContext)
-  const editorPaneId = editorPaneIdForWorkbenchWindowId(window.id) ?? String(window.id)
+  const editorGroupId = editorGroupIdForWorkbenchWindowId(window.id) ?? String(window.id)
   const editorTabs = useMemo(
     () =>
       editorSurfaceContext?.tabModelForSurface
@@ -60,10 +60,10 @@ export function TabStrip({
     editorTabs,
     Boolean(editorSurfaceContext),
     sameEditorTabModel,
-    editorPaneId,
+    editorGroupId,
   )
   const tabDrag = useEditorTabDrag({
-    paneId: editorPaneId,
+    paneId: editorGroupId,
     tabs: editorTabs,
     tabListRef,
     onMoveToPane: (tabId, targetIndex) => moveSurfaceTab(tabId, targetIndex),
@@ -89,7 +89,7 @@ export function TabStrip({
         role='tablist'
       >
         <ChromeEditorTabList
-          closeLayoutCacheKey={editorPaneId}
+          closeLayoutCacheKey={editorGroupId}
           drag={tabDrag}
           selectedTabRef={selectedTabRef}
           tabListRef={tabListRef}
@@ -168,7 +168,7 @@ export function TabStrip({
   )
 
   function primeEditorTabCloseState() {
-    primeChromeVisualTabsCache(editorPaneId, editorTabs, visualTabs)
+    primeChromeVisualTabsCache(editorGroupId, editorTabs, visualTabs)
   }
 
   function moveSurfaceTab(tabId: string, targetIndex: number) {

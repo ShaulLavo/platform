@@ -1,121 +1,80 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  activeEditorPanePath,
-  createEditorPaneLayoutForPaths,
-  createEditorPaneTab,
-  editorPaneOpenPaths,
-  splitEditorPaneTab,
-  type EditorPaneLayout,
-} from '@/features/editor/state/editor-pane-state'
+  editorWorkspaceLayoutForPaths,
+  splitEditorWorkspaceLayoutForPaths,
+} from '../../../../test/factories/editor-workspace-layout'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import type { SnapshotDiffDocumentInput } from '@/features/git/diff-document'
 
 import {
-  diffSurfaceId,
-  fileEditorSurfaceId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
-import {
-  editorPaneIdForWorkbenchWindowId,
-  editorPaneLayoutForWorkspaceLayout,
-  workspaceLayoutForEditorPaneLayout,
+  activeEditorPathForWorkspaceLayout,
+  activeEditorSurfaceTab,
+  editorOpenPathsForWorkspaceLayout,
+  editorGroupIdForWorkbenchWindowId,
+  editorSurfacePathCounts,
+  editorSurfaceSerializedState,
+  editorSurfaceTabRecords,
 } from '@/features/workbench/utils/editor-surface-layout'
+import { fileEditorSurfaceId } from '@/features/tiling-surface-manager/engine/layout-ids'
 
-describe('workspaceLayoutForEditorPaneLayout', () => {
-  it('maps file and diff editor tabs to editor surfaces', () => {
+describe('editor surface layout selectors', () => {
+  it('lists visible file and diff editor paths in layout order', () => {
     const diffDocumentId = snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts'))
-    const editorLayout = createEditorPaneLayoutForPaths(
+    const layout = editorWorkspaceLayoutForPaths(
       ['/repo/src/readme.md', diffDocumentId],
       diffDocumentId,
     )
-    const layout = workspaceLayoutForEditorPaneLayout(editorLayout)
 
-    expect(layout.surfacesById[fileEditorSurfaceId('/repo/src/readme.md')]?.type).toBe(
-      'file-editor',
-    )
-    expect(layout.surfacesById[diffSurfaceId(diffDocumentId)]?.type).toBe('diff')
-    expect(layout.activeSurfaceId).toBe(diffSurfaceId(diffDocumentId))
+    expect(editorOpenPathsForWorkspaceLayout(layout)).toEqual([
+      '/repo/src/readme.md',
+      diffDocumentId,
+    ])
+    expect(activeEditorPathForWorkspaceLayout(layout)).toBe(diffDocumentId)
   })
 
-  it('preserves editor tab ids in surface serialized state', () => {
-    const editorLayout = createEditorPaneLayoutForPaths(['/repo/src/app.ts'], '/repo/src/app.ts')
-    const tab = editorLayout.root.kind === 'leaf' ? editorLayout.root.tabs[0] : null
-    const layout = workspaceLayoutForEditorPaneLayout(editorLayout)
-    const surface = layout.surfacesById[fileEditorSurfaceId('/repo/src/app.ts')]
-
-    expect(surface?.serializedState).toEqual({
-      editorPaneId: editorLayout.activePaneId,
-      editorTabId: tab?.id,
+  it('reads editor tab records from file-backed surfaces', () => {
+    const layout = splitEditorWorkspaceLayoutForPaths({
+      activePath: '/repo/src/b.ts',
+      leftPaths: ['/repo/src/a.ts'],
+      rightPaths: ['/repo/src/b.ts'],
     })
-  })
+    const activeTab = activeEditorSurfaceTab(layout)
 
-  it('creates one workbench window per editor pane leaf', () => {
-    const editorLayout = createEditorPaneLayoutForPaths(
-      ['/repo/src/a.ts', '/repo/src/b.ts'],
+    expect(activeTab?.path).toBe('/repo/src/b.ts')
+    expect(editorSurfaceTabRecords(layout).map((tab) => tab.path)).toEqual([
       '/repo/src/a.ts',
+      '/repo/src/b.ts',
+    ])
+    expect(editorSurfacePathCounts(layout)).toEqual(
+      new Map([
+        ['/repo/src/a.ts', 1],
+        ['/repo/src/b.ts', 1],
+      ]),
     )
-    const tabId = editorLayout.root.kind === 'leaf' ? editorLayout.root.tabs[0]?.id : null
-    const splitLayout = tabId ? splitEditorPaneTab(editorLayout, tabId, 'horizontal') : editorLayout
-    const layout = workspaceLayoutForEditorPaneLayout(splitLayout)
-
-    expect(
-      Object.values(layout.windowsById).filter((window) =>
-        editorPaneIdForWorkbenchWindowId(window.id),
-      ),
-    ).toHaveLength(2)
-    expect(layout.rootNodeId ? layout.nodesById[layout.rootNodeId]?.kind : null).toBe('split')
   })
 
-  it('prefers the active duplicate tab when one path appears in multiple panes', () => {
-    const leftTab = createEditorPaneTab('/repo/src/app.ts')
-    const rightTab = createEditorPaneTab('/repo/src/app.ts')
-    const splitLayout: EditorPaneLayout = {
-      activePaneId: 'right-pane',
-      root: {
-        children: [
-          {
-            activeTabId: leftTab.id,
-            id: 'left-pane',
-            kind: 'leaf',
-            tabs: [leftTab],
-          },
-          {
-            activeTabId: rightTab.id,
-            id: 'right-pane',
-            kind: 'leaf',
-            tabs: [rightTab],
-          },
-        ],
-        direction: 'horizontal',
-        id: 'root-split',
-        kind: 'split',
-        sizes: [0.5, 0.5],
-      },
-    }
-    const layout = workspaceLayoutForEditorPaneLayout(splitLayout)
+  it('preserves serialized editor tab ids on surfaces', () => {
+    const layout = editorWorkspaceLayoutForPaths(['/repo/src/app.ts'], '/repo/src/app.ts')
     const surface = layout.surfacesById[fileEditorSurfaceId('/repo/src/app.ts')]
 
-    expect(surface?.serializedState).toEqual({
-      editorPaneId: 'right-pane',
-      editorTabId: rightTab.id,
+    expect(surface ? editorSurfaceSerializedState(surface) : null).toEqual({
+      editorGroupId: 'main',
+      editorTabId: 'test-tab:main:0',
     })
   })
 
-  it('round trips visible editor surfaces back to derived editor panes', () => {
-    const editorLayout = createEditorPaneLayoutForPaths(
-      ['/repo/src/a.ts', '/repo/src/b.ts'],
-      '/repo/src/b.ts',
-    )
-    const tabId = editorLayout.root.kind === 'leaf' ? editorLayout.root.tabs[0]?.id : null
-    const splitLayout = tabId ? splitEditorPaneTab(editorLayout, tabId, 'horizontal') : editorLayout
-    const workspaceLayout = workspaceLayoutForEditorPaneLayout(splitLayout)
-    const roundTrip = editorPaneLayoutForWorkspaceLayout(workspaceLayout)
+  it('decodes editor group ids from editor workbench window ids', () => {
+    const layout = splitEditorWorkspaceLayoutForPaths({
+      activePath: '/repo/src/a.ts',
+      leftPaths: ['/repo/src/a.ts'],
+      rightPaths: ['/repo/src/b.ts'],
+    })
+    const paneIds = Object.values(layout.windowsById)
+      .map((window) => editorGroupIdForWorkbenchWindowId(window.id))
+      .filter(Boolean)
 
-    expect(new Set(editorPaneOpenPaths(roundTrip))).toEqual(
-      new Set(['/repo/src/a.ts', '/repo/src/b.ts']),
-    )
-    expect(activeEditorPanePath(roundTrip)).toBe('/repo/src/a.ts')
-    expect(roundTrip.root.kind).toBe('split')
+    expect(new Set(paneIds)).toEqual(new Set(['left', 'right']))
   })
 })
 

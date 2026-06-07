@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import {
-  createEditorPaneLayoutForPaths,
-  type EditorPaneLayout,
-} from '@/features/editor/state/editor-pane-state'
+  editorWorkspaceLayoutForPaths,
+  splitEditorWorkspaceLayoutForPaths,
+} from '../../../test/factories/editor-workspace-layout'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileDiff } from '@/features/git/types'
@@ -15,7 +15,6 @@ import {
   moveSurface,
   openSurface,
 } from '@/features/tiling-surface-manager/engine/layout-operations'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import {
   readWorkspaceCache,
   writeWorkspaceCache,
@@ -137,40 +136,23 @@ describe('workspace cache', () => {
 
   it('persists pane split sizes in the workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
-    const editorPaneLayout: EditorPaneLayout = {
-      activePaneId: 'pane-b',
-      root: {
-        children: [
-          {
-            activeTabId: 'tab-a',
-            id: 'pane-a',
-            kind: 'leaf',
-            tabs: [{ id: 'tab-a', path: '/repo/src/a.ts' }],
-          },
-          {
-            activeTabId: 'tab-b',
-            id: 'pane-b',
-            kind: 'leaf',
-            tabs: [{ id: 'tab-b', path: '/repo/src/b.ts' }],
-          },
-        ],
-        direction: 'horizontal',
-        id: 'split-a',
-        kind: 'split',
-        sizes: [30, 70],
-      },
-    }
+    const workspaceLayout = splitEditorWorkspaceLayoutForPaths({
+      activePath: '/repo/src/b.ts',
+      leftPaths: ['/repo/src/a.ts'],
+      rightPaths: ['/repo/src/b.ts'],
+      sizes: [0.3, 0.7],
+    })
 
     writeWorkspaceCache(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
-        editorPaneLayout,
         openFilePaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
         recentlyClosedEditorPaths: [],
         rootFolder,
         searchBuffer: null,
         selectedFilePath: '/repo/src/b.ts',
+        workspaceLayout,
       }),
     )
 
@@ -191,13 +173,12 @@ describe('workspace cache', () => {
 
   it('persists singleton tool surface layout', () => {
     const rootFolder = pickedDirectory('/repo')
-    const editorPaneLayout = createEditorPaneLayoutForPaths(
-      ['/repo/src/app.ts'],
-      '/repo/src/app.ts',
-    )
     const gitChanges = createGitChangesSurface()
     const workspaceLayout = moveSurface(
-      openSurface(workspaceLayoutForEditorPaneLayout(editorPaneLayout), gitChanges),
+      openSurface(
+        editorWorkspaceLayoutForPaths(['/repo/src/app.ts'], '/repo/src/app.ts'),
+        gitChanges,
+      ),
       gitChanges.id,
       {
         edge: 'right',
@@ -209,7 +190,6 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
-        editorPaneLayout,
         openFilePaths: ['/repo/src/app.ts'],
         recentlyClosedEditorPaths: [],
         rootFolder,
@@ -359,15 +339,10 @@ function pickedDirectory(path: string): PickedFsEntry {
 }
 
 type WorkspaceCacheTestState = Omit<WorkspaceCacheState, 'workspaceLayout'> & {
-  readonly editorPaneLayout?: EditorPaneLayout
   readonly workspaceLayout?: WorkspaceCacheState['workspaceLayout']
 }
 
 function workspaceCacheState(input: WorkspaceCacheTestState): WorkspaceCacheState {
-  const editorPaneLayout =
-    input.editorPaneLayout ??
-    createEditorPaneLayoutForPaths(input.openFilePaths, input.selectedFilePath)
-
   return {
     diffViewMode: input.diffViewMode,
     editorHistory: input.editorHistory,
@@ -376,7 +351,9 @@ function workspaceCacheState(input: WorkspaceCacheTestState): WorkspaceCacheStat
     rootFolder: input.rootFolder,
     searchBuffer: input.searchBuffer,
     selectedFilePath: input.selectedFilePath,
-    workspaceLayout: input.workspaceLayout ?? workspaceLayoutForEditorPaneLayout(editorPaneLayout),
+    workspaceLayout:
+      input.workspaceLayout ??
+      editorWorkspaceLayoutForPaths(input.openFilePaths, input.selectedFilePath),
   }
 }
 

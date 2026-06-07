@@ -1,10 +1,10 @@
 import { fallbackDocumentPathForSelection } from '@/features/editor/state/editor-fallback-path'
 import {
-  createEditorPaneTab,
-  type EditorPaneDropZone,
-  type EditorPaneSplitDirection,
-  type EditorPaneSplitScope,
-} from '@/features/editor/state/editor-pane-state'
+  createEditorTabRecord,
+  type EditorDropZone,
+  type EditorSplitDirection,
+  type EditorSplitScope,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
@@ -47,7 +47,7 @@ import type {
   WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 import {
-  editorPaneIdForWorkbenchWindow,
+  editorGroupIdForWorkbenchWindow,
   editorSurfaceSerializedState,
 } from '@/features/workbench/utils/editor-surface-layout'
 import { log } from '@/lib/client-logging'
@@ -63,8 +63,8 @@ export type EditorCommands = {
   moveTabToSplit: (
     tabId: string,
     paneId: string,
-    zone: Exclude<EditorPaneDropZone, 'center'>,
-    scope?: EditorPaneSplitScope,
+    zone: Exclude<EditorDropZone, 'center'>,
+    scope?: EditorSplitScope,
   ) => boolean
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
   openFileSurface: (path: string) => void
@@ -76,7 +76,7 @@ export type EditorCommands = {
   selectPreviousEditor: () => boolean
   selectTab: (paneId: string, tabId: string) => void
   setActivePane: (paneId: string) => void
-  splitTab: (tabId: string, direction: EditorPaneSplitDirection) => boolean
+  splitTab: (tabId: string, direction: EditorSplitDirection) => boolean
 }
 
 export function useEditorCommands() {
@@ -413,7 +413,7 @@ function selectTab(
 
 function setActivePane(paneId: string, workspaceStore: EditorWorkspaceStoreApi) {
   const workspace = workspaceStore.getState()
-  const windowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  const windowId = windowIdForEditorGroupId(workspace.workspaceLayout, paneId)
   if (!windowId) return
   const activeSurfaceId = workspace.workspaceLayout.windowsById[windowId]?.activeSurfaceId
   if (!activeSurfaceId) return
@@ -428,7 +428,7 @@ function setActivePane(paneId: string, workspaceStore: EditorWorkspaceStoreApi) 
 
 function splitTab(
   tabId: string,
-  direction: EditorPaneSplitDirection,
+  direction: EditorSplitDirection,
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
@@ -456,7 +456,7 @@ function moveTabToPane(
 ) {
   const workspace = workspaceStore.getState()
   const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
-  const targetWindowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  const targetWindowId = windowIdForEditorGroupId(workspace.workspaceLayout, paneId)
   if (!location || !targetWindowId) return false
 
   workspaceStore.setState(
@@ -471,13 +471,13 @@ function moveTabToPane(
 function moveTabToSplit(
   tabId: string,
   paneId: string,
-  zone: Exclude<EditorPaneDropZone, 'center'>,
-  scope: EditorPaneSplitScope | undefined,
+  zone: Exclude<EditorDropZone, 'center'>,
+  scope: EditorSplitScope | undefined,
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
   const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
-  const targetWindowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  const targetWindowId = windowIdForEditorGroupId(workspace.workspaceLayout, paneId)
   if (!location || !targetWindowId) return false
 
   workspaceStore.setState(
@@ -513,9 +513,9 @@ function openEditorPathInWorkspaceLayout(layout: WorkspaceLayout, path: string) 
 }
 
 function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface {
-  const tab = createEditorPaneTab(path)
+  const tab = createEditorTabRecord(path)
   const serializedState = {
-    editorPaneId: editorPaneIdForNewSurface(layout),
+    editorGroupId: editorGroupIdForNewSurface(layout),
     editorTabId: tab.id,
   }
   const surface = parseDiffDocumentId(path)
@@ -525,11 +525,11 @@ function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surf
   return { ...surface, serializedState }
 }
 
-function editorPaneIdForNewSurface(layout: WorkspaceLayout) {
+function editorGroupIdForNewSurface(layout: WorkspaceLayout) {
   const windowId = editorWindowIdForNewSurface(layout)
   if (!windowId) return 'workbench:root'
 
-  return editorPaneIdForWorkbenchWindow(windowId)
+  return editorGroupIdForWorkbenchWindow(windowId)
 }
 
 function editorWindowIdForNewSurface(layout: WorkspaceLayout) {
@@ -568,11 +568,11 @@ function windowContainsEditorSurface(layout: WorkspaceLayout, windowId: WindowId
   if (!window) return false
 
   return window.surfaceIds.some((surfaceId) =>
-    surfaceBelongsToEditorPane(layout.surfacesById[surfaceId]),
+    surfaceBelongsToEditorGroup(layout.surfacesById[surfaceId]),
   )
 }
 
-function surfaceBelongsToEditorPane(surface: Surface | undefined) {
+function surfaceBelongsToEditorGroup(surface: Surface | undefined) {
   if (!surface) return false
   if (surface.type === 'file-editor') return true
   if (surface.type === 'diff') return true
@@ -772,20 +772,20 @@ function editorSurfacePathCounts(layout: WorkspaceLayout) {
   return counts
 }
 
-function windowIdForEditorPaneId(layout: WorkspaceLayout, paneId: string): WindowId | null {
+function windowIdForEditorGroupId(layout: WorkspaceLayout, paneId: string): WindowId | null {
   for (const window of Object.values(layout.windowsById)) {
-    if (editorPaneIdForWorkbenchWindow(window.id) === paneId) return window.id
+    if (editorGroupIdForWorkbenchWindow(window.id) === paneId) return window.id
   }
 
-  return windowIdForSerializedEditorPaneId(layout, paneId)
+  return windowIdForSerializedEditorGroupId(layout, paneId)
 }
 
-function windowIdForSerializedEditorPaneId(
+function windowIdForSerializedEditorGroupId(
   layout: WorkspaceLayout,
   paneId: string,
 ): WindowId | null {
   for (const surface of Object.values(layout.surfacesById)) {
-    if (editorSurfaceSerializedState(surface)?.editorPaneId !== paneId) continue
+    if (editorSurfaceSerializedState(surface)?.editorGroupId !== paneId) continue
 
     return findWindowIdContainingSurface(layout, surface.id)
   }
@@ -793,14 +793,14 @@ function windowIdForSerializedEditorPaneId(
   return null
 }
 
-function edgeForEditorSplitDirection(direction: EditorPaneSplitDirection): DropEdge {
+function edgeForEditorSplitDirection(direction: EditorSplitDirection): DropEdge {
   return direction === 'horizontal' ? 'right' : 'bottom'
 }
 
 function splitDestination(
   windowId: WindowId,
-  zone: Exclude<EditorPaneDropZone, 'center'>,
-  scope: EditorPaneSplitScope | undefined,
+  zone: Exclude<EditorDropZone, 'center'>,
+  scope: EditorSplitScope | undefined,
 ): DropDestination {
   if (scope === 'root') return { edge: zone, kind: 'root-edge' }
 
