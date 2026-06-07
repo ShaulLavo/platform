@@ -1,3 +1,4 @@
+import { use } from 'react'
 import { cn } from '@workspace/ui/lib/utils'
 
 import {
@@ -15,6 +16,7 @@ import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-re
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { DropOverlay } from '@/features/workbench/components/drop-overlay'
+import { EditorSurfaceContext } from '@/features/workbench/providers/editor-surface-context'
 import {
   HiddenSurfaceHosts,
   selectHiddenMountedSurfaces,
@@ -100,6 +102,7 @@ function LayoutRendererSurfaceArea({
   const geometry = deriveLayoutGeometry(layout, surfaceRect, geometryOptions)
   const tree = selectMaterializedLayoutTree(layout)
   const maximizedWindowId = maximizedLayoutWindowId(layout.windowsById)
+  const editorSurfaceContext = use(EditorSurfaceContext)
 
   return (
     <div
@@ -124,7 +127,11 @@ function LayoutRendererSurfaceArea({
       {maximizedWindowId ? null : (
         <ResizeOverlay resizeHandleRects={geometry.resizeHandleRects} onDispatch={onDispatch} />
       )}
-      <DropOverlay dropZoneRects={geometry.dropZoneRects} />
+      <DropOverlay
+        dropZoneRects={geometry.dropZoneRects}
+        surfaceIdForEditorTabId={editorSurfaceContext?.surfaceIdForEditorTabId}
+        onDispatch={onDispatch}
+      />
     </div>
   )
 }

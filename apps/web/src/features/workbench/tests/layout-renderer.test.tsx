@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen } from '@testing-library/react'
 
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
@@ -12,6 +12,10 @@ import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-p
 import { ThemeProviderContext } from '@/components/theme-context'
 import { FocusContext, createFocusStore } from '@/components/workspace/focus/providers/focus-state'
 
+import {
+  EDITOR_TAB_DRAG_KIND,
+  EDITOR_TAB_DRAG_MIME,
+} from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import {
   CLASSIC_DIAGNOSTICS_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
@@ -35,6 +39,7 @@ import {
   surfaceAreaLayoutEqual,
 } from '@/features/workbench/components/layout-renderer'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import { DropOverlay } from '@/features/workbench/components/drop-overlay'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
 import {
@@ -43,7 +48,11 @@ import {
 } from '@/features/workbench/utils/surface-renderer-registry'
 import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
-import { layoutNodeId, overlayId } from '@/features/tiling-surface-manager/engine/layout-ids'
+import {
+  layoutNodeId,
+  overlayId,
+  workbenchWindowId,
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import type { LayoutOperation } from '@/features/tiling-surface-manager/engine/layout-types'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import {
@@ -163,6 +172,82 @@ describe('LayoutRenderer', () => {
         type: 'resizeSplit',
       },
     ])
+  })
+
+  it('dispatches snapped move operations from editor tab drops', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
+    const operations: LayoutOperation[] = []
+    const destination = {
+      edge: 'right' as const,
+      kind: 'window-edge' as const,
+      windowId: workbenchWindowId('target'),
+    }
+
+    render(
+      <DropOverlay
+        dropZoneRects={[
+          {
+            destination,
+            edge: 'right',
+            id: overlayId('drop:test:right'),
+            kind: 'window-edge',
+            rect: { height: 240, width: 160, x: 480, y: 0 },
+            windowId: destination.windowId,
+          },
+        ]}
+        surfaceIdForEditorTabId={(tabId) => (tabId === 'tab-app' ? file.id : null)}
+        onDispatch={(operation) => operations.push(operation)}
+      />,
+    )
+
+    const dropZone = screen.getByRole('button', { name: 'Drop window-edge right' })
+    const dataTransfer = editorTabDataTransfer({ path: '/repo/src/app.ts', tabId: 'tab-app' })
+
+    expect(dropZone).not.toHaveAttribute('data-accepting')
+
+    fireEditorTabDragEvent(dropZone, 'dragOver', dataTransfer)
+    expect(dataTransfer.dropEffect).toBe('move')
+    expect(dropZone).toHaveAttribute('data-accepting', 'true')
+    expect(dropZone).toHaveAttribute('data-active', 'true')
+
+    fireEditorTabDragEvent(dropZone, 'drop', dataTransfer)
+
+    expect(operations).toEqual([
+      {
+        destination,
+        surfaceId: file.id,
+        type: 'moveSurface',
+      },
+    ])
+    expect(dropZone).not.toHaveAttribute('data-accepting')
+    expect(dropZone).not.toHaveAttribute('data-active')
+  })
+
+  it('ignores editor tab drops that cannot resolve to a surface', () => {
+    const operations: LayoutOperation[] = []
+
+    render(
+      <DropOverlay
+        dropZoneRects={[
+          {
+            destination: { kind: 'background' },
+            id: overlayId('drop:test:background'),
+            kind: 'background',
+            rect: { height: 120, width: 120, x: 200, y: 160 },
+          },
+        ]}
+        surfaceIdForEditorTabId={() => null}
+        onDispatch={(operation) => operations.push(operation)}
+      />,
+    )
+
+    fireEditorTabDragEvent(
+      screen.getByRole('button', { name: 'Drop background' }),
+      'drop',
+      editorTabDataTransfer({ path: '/repo/src/missing.ts', tabId: 'tab-missing' }),
+    )
+
+    expect(operations).toEqual([])
   })
 
   it('stops pointer drag resize when hover moves no longer have the primary button down', () => {
@@ -507,6 +592,45 @@ function backgroundSurface(layout: WorkspaceLayout, surfaceId: WorkspaceLayout['
   if (!surfaceId) return layout
 
   return moveSurface(layout, surfaceId, { kind: 'background' })
+}
+
+function editorTabDataTransfer({ path, tabId }: { path: string; tabId: string }): DataTransfer {
+  const values = new Map([
+    [
+      EDITOR_TAB_DRAG_MIME,
+      JSON.stringify({
+        kind: EDITOR_TAB_DRAG_KIND,
+        paneId: 'pane-a',
+        path,
+        tabId,
+      }),
+    ],
+    ['text/plain', path],
+  ])
+  const types = Array.from(values.keys())
+
+  return {
+    dropEffect: 'none',
+    effectAllowed: 'move',
+    getData: (format: string) => values.get(format) ?? '',
+    setData: (format: string, value: string) => {
+      values.set(format, value)
+      if (types.includes(format)) return
+
+      types.push(format)
+    },
+    types,
+  } as unknown as DataTransfer
+}
+
+function fireEditorTabDragEvent(
+  element: Element,
+  type: 'dragOver' | 'drop',
+  dataTransfer: DataTransfer,
+) {
+  const event = type === 'dragOver' ? createEvent.dragOver(element) : createEvent.drop(element)
+  Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
+  fireEvent(element, event)
 }
 
 function withEditorSurfaceProvider(children: ReactNode) {
