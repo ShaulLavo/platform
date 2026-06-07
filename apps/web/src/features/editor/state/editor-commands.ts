@@ -67,6 +67,7 @@ export type EditorCommands = {
     scope?: EditorPaneSplitScope,
   ) => boolean
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
+  openFileSurface: (path: string) => void
   pickRootFolder: (rootFolder: PickedFsEntry) => void
   reopenClosedEditor: () => boolean
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
@@ -111,6 +112,7 @@ export function createEditorCommands({
     moveTabToSplit: (tabId, paneId, zone, scope) =>
       moveTabToSplit(tabId, paneId, zone, scope, workspaceStore),
     openDefinition: (target) => openDefinition(target, workspaceStore, documentStore, uiStore),
+    openFileSurface: (path) => openFileBackedSurface(path, workspaceStore, documentStore),
     pickRootFolder: (rootFolder) =>
       pickRootFolder(rootFolder, workspaceStore, documentStore, uiStore),
     reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
@@ -133,6 +135,14 @@ function selectFile(
 ) {
   if (!selectedFilePath) return
 
+  openFileBackedSurface(selectedFilePath, workspaceStore, documentStore)
+}
+
+function openFileBackedSurface(
+  selectedFilePath: string,
+  workspaceStore: EditorWorkspaceStoreApi,
+  documentStore: EditorDocumentStoreApi,
+) {
   const workspace = workspaceStore.getState()
   const document = documentStore.getState()
   const workspaceLayout = openEditorPathInWorkspaceLayout(
@@ -202,7 +212,7 @@ function openDefinition(
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
 ) {
-  selectFile(definitionTarget.path, workspaceStore, documentStore)
+  openFileBackedSurface(definitionTarget.path, workspaceStore, documentStore)
   uiStore.setState({
     definitionTarget,
     statusBarSource: null,

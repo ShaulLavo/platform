@@ -4,6 +4,28 @@ import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
 import { openWorkspaceSearchMatch } from '../open-search-match'
 
 describe('openWorkspaceSearchMatch', () => {
+  it('opens file matches through the file surface command', () => {
+    let openedPath: string | null = null
+
+    openWorkspaceSearchMatch(
+      {
+        kind: 'name',
+        path: 'repo/src/app.ts',
+        source: 'disk',
+        type: 'file',
+      },
+      'needle',
+      {
+        openDefinition: () => false,
+        openFileSurface: (path) => {
+          openedPath = path
+        },
+      },
+    )
+
+    expect(openedPath).toBe('repo/src/app.ts')
+  })
+
   it('opens content matches at zero-based editor ranges', () => {
     let opened: LanguageServerDefinitionTarget | null = null
 
@@ -19,11 +41,11 @@ describe('openWorkspaceSearchMatch', () => {
       },
       'needle',
       {
+        openFileSurface: () => {},
         openDefinition: (target) => {
           opened = target
           return true
         },
-        selectFile: () => {},
       },
     )
 

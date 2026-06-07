@@ -6,10 +6,10 @@ import type { EditorCommands } from '@/features/editor/state/editor-commands'
 export function openWorkspaceSearchMatch(
   match: WorkspaceSearchMatch,
   query: string,
-  commands: Pick<EditorCommands, 'openDefinition' | 'selectFile'>,
+  commands: Pick<EditorCommands, 'openDefinition' | 'openFileSurface'>,
 ) {
   if (!isContentLocation(match)) {
-    commands.selectFile(match.path)
+    commands.openFileSurface(match.path)
     return
   }
 

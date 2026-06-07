@@ -27,7 +27,7 @@ export function SearchBufferEditorResults({
   const handleOpenTarget = useCallback(
     (target: SearchResultOpenTarget) => {
       if (!target.match) {
-        commands.selectFile(target.path)
+        commands.openFileSurface(target.path)
         return
       }
 

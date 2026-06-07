@@ -1,15 +1,15 @@
 import { ArrowSquareOutIcon } from '@phosphor-icons/react'
 
 import { SearchSummary } from '@/components/workspace/search/components/search-summary'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { SearchFilterFields } from '@/features/search/search-filter-fields'
 import { SearchHistoryInput } from '@/features/search/search-history-input'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { SearchModeButtons } from '@/features/search/search-mode-buttons'
 import { SearchReplaceFields } from '@/features/search/search-replace-fields'
 import { SearchReplaceToggleButton } from '@/features/search/search-replace-toggle-button'
 import { useSearchBufferInputs } from '@/features/search/use-search-buffer-inputs'
 import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
+import { createSearchResultsSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { Button } from '@workspace/ui/components/button'
 
 export function SearchControls({ rootPath }: { rootPath: string }) {
@@ -29,10 +29,13 @@ export function SearchControls({ rootPath }: { rootPath: string }) {
     setSearchOptions,
   } = useSearchBufferInputs(rootPath)
   const replace = useWorkspaceSearchReplace(rootPath, replaceVisible)
-  const commands = useEditorCommands()
+  const dispatchLayoutOperation = useLayoutState((state) => state.dispatchLayoutOperation)
 
-  function handleOpenBuffer() {
-    commands.selectFile(searchBufferDocumentId(rootPath))
+  function handleOpenSearchResults() {
+    dispatchLayoutOperation({
+      surface: createSearchResultsSurface(),
+      type: 'openSurface',
+    })
   }
 
   return (
@@ -63,13 +66,13 @@ export function SearchControls({ rootPath }: { rootPath: string }) {
           onToggle={setReplaceVisible}
         />
         <Button
-          aria-label='Open search results in editor'
+          aria-label='Open search results surface'
           className='text-muted-foreground hover:text-foreground size-7 shrink-0'
           size='icon-sm'
-          title='Open search results in editor'
+          title='Open search results surface'
           type='button'
           variant='ghost'
-          onClick={handleOpenBuffer}
+          onClick={handleOpenSearchResults}
         >
           <ArrowSquareOutIcon className='size-4' />
         </Button>
