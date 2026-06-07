@@ -1,4 +1,8 @@
-import type { ChromeTabLayout } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
+import {
+  CHROME_TAB_ACTIVE_MIN_WIDTH,
+  CHROME_TAB_TRAILING_SLOT_WIDTH,
+  type ChromeTabLayout,
+} from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import type { EditorChromeVisualTab } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 
 export type ChromeTabCloseLayoutSnapshot = {
@@ -16,6 +20,7 @@ export function chromeTabCloseLayoutSnapshot(
   visualTabs: readonly EditorChromeVisualTab[],
   layout: ChromeTabLayout | null,
   heldSnapshot: ChromeTabCloseLayoutSnapshot | null = null,
+  promotedActiveTabId: string | null = null,
 ): ChromeTabCloseLayoutSnapshot | null {
   if (!layout) return null
 
@@ -26,7 +31,13 @@ export function chromeTabCloseLayoutSnapshot(
 
     widthsById.set(
       visualTab.tab.id,
-      chromeTabCloseLayoutSnapshotWidth(visualTab, tabBounds.width, layout, heldSnapshot),
+      chromeTabCloseLayoutSnapshotWidth(
+        visualTab,
+        tabBounds.width,
+        layout,
+        heldSnapshot,
+        promotedActiveTabId,
+      ),
     )
   }
 
@@ -34,6 +45,26 @@ export function chromeTabCloseLayoutSnapshot(
     overlap: layout.overlap,
     widthsById,
   }
+}
+
+export function promotedChromeTabIdAfterClose(
+  visualTabs: readonly EditorChromeVisualTab[],
+  closingTabId: string,
+) {
+  const closingIndex = visualTabs.findIndex((visualTab) => visualTab.tab.id === closingTabId)
+  if (closingIndex < 0) return null
+
+  const closingTab = visualTabs[closingIndex]
+  if (!closingTab?.tab.active) return null
+
+  const remainingTabs = visualTabs.filter((visualTab) => {
+    if (visualTab.phase === 'closing') return false
+    return visualTab.tab.id !== closingTabId
+  })
+  if (remainingTabs.length === 0) return null
+
+  const promotedIndex = Math.max(0, Math.min(closingIndex, remainingTabs.length - 1))
+  return remainingTabs[promotedIndex]?.tab.id ?? null
 }
 
 export function chromeTabCloseLayoutWidth(
@@ -84,13 +115,22 @@ function chromeTabCloseLayoutSnapshotWidth(
   tabWidth: number,
   layout: ChromeTabLayout,
   heldSnapshot: ChromeTabCloseLayoutSnapshot | null,
+  promotedActiveTabId: string | null,
 ) {
   if (visualTab.phase === 'closing') return layout.overlap
 
   const heldWidth = heldSnapshot?.widthsById.get(visualTab.tab.id)
-  if (typeof heldWidth === 'number') return heldWidth
+  const width = typeof heldWidth === 'number' ? heldWidth : tabWidth
+  if (visualTab.tab.id !== promotedActiveTabId) return width
 
-  return tabWidth
+  return promotedActiveChromeTabWidth(width)
+}
+
+function promotedActiveChromeTabWidth(width: number) {
+  return Math.max(
+    width + CHROME_TAB_TRAILING_SLOT_WIDTH,
+    CHROME_TAB_ACTIVE_MIN_WIDTH + CHROME_TAB_TRAILING_SLOT_WIDTH,
+  )
 }
 
 function chromeTabCloseModeRemovedWidth(

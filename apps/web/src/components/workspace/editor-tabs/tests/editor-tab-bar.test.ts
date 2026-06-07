@@ -8,11 +8,13 @@ import {
   chromeTabCloseLayoutSnapshot,
   chromeTabCloseLayoutWidth,
   hasClosingChromeTabs,
+  promotedChromeTabIdAfterClose,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-close-layout'
 import {
   chromeTabCloseBurstTargetId,
   chromeTabCloseTargetAfterClosingTab,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-close-retarget'
+import { chromeTabStyle } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
 import {
   chromeVisualTabsInitialState,
   chromeVisualTabsReducer,
@@ -401,6 +403,17 @@ describe('chromeTabCloseBurstTargetId', () => {
   })
 })
 
+describe('chromeTabStyle', () => {
+  it('collapses closing tabs without transitioning their hit box', () => {
+    const closingTab = chromeVisualTabs(['closing'], ['tab-a'])[0]!
+    const style = chromeTabStyle(closingTab, 0, 18, 64, 0)
+
+    expect(style.transition).toBe('none')
+    expect(style.flex).toBe('0 0 18px')
+    expect(style.width).toBe(18)
+  })
+})
+
 describe('chrome close layout snapshots', () => {
   it('holds survivor widths from the pre-close layout', () => {
     const visualTabs = chromeVisualTabs(
@@ -458,6 +471,40 @@ describe('chrome close layout snapshots', () => {
     expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[0]!, 120)).toBe(96)
     expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[1]!, 120)).toBe(12)
     expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[2]!, 120)).toBe(96)
+  })
+
+  it('reserves active width for an inactive tab promoted by closing the selected tab', () => {
+    const visualTabs = chromeVisualTabs(['present', 'present'], ['tab-a', 'tab-b']).map(
+      (visualTab, index) => ({
+        ...visualTab,
+        tab: { ...visualTab.tab, active: index === 0 },
+      }),
+    )
+    const snapshot = chromeTabCloseLayoutSnapshot(
+      visualTabs,
+      chromeLayout([108, 64], 18),
+      null,
+      promotedChromeTabIdAfterClose(visualTabs, 'tab-a'),
+    )
+
+    expect(chromeTabCloseLayoutWidth(snapshot, visualTabs[1]!, 64)).toBe(108)
+  })
+
+  it('adds the active close slot when a standard inactive tab is promoted', () => {
+    const visualTabs = chromeVisualTabs(['present', 'present'], ['tab-a', 'tab-b']).map(
+      (visualTab, index) => ({
+        ...visualTab,
+        tab: { ...visualTab.tab, active: index === 0 },
+      }),
+    )
+    const snapshot = chromeTabCloseLayoutSnapshot(
+      visualTabs,
+      chromeLayout([252, 224], 0),
+      null,
+      promotedChromeTabIdAfterClose(visualTabs, 'tab-a'),
+    )
+
+    expect(chromeTabCloseLayoutWidth(snapshot, visualTabs[1]!, 224)).toBe(252)
   })
 
   it('reuses the calculated close layout snapshot from a pane cache', () => {

@@ -9,6 +9,7 @@ import {
   chromeTabCloseLayoutSnapshot,
   chromeTabCloseLayoutWidth,
   hasClosingChromeTabs,
+  promotedChromeTabIdAfterClose,
   type ChromeTabCloseLayoutSnapshot,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-close-layout'
 import {
@@ -100,14 +101,19 @@ export function ChromeEditorTabList({
   }, [closeLayoutCacheKey, closing, currentLayoutSnapshot])
 
   function handleClose(tabId: string) {
-    captureCloseLayoutSnapshot()
+    captureCloseLayoutSnapshot(tabId)
     onBeforeClose?.()
     const closed = onClose(tabId)
     if (closed) return
   }
 
-  function captureCloseLayoutSnapshot() {
-    const nextCloseLayoutSnapshot = chromeTabCloseLayoutSnapshot(tabs, layout, closeLayoutSnapshot)
+  function captureCloseLayoutSnapshot(tabId: string) {
+    const nextCloseLayoutSnapshot = chromeTabCloseLayoutSnapshot(
+      tabs,
+      layout,
+      closeLayoutSnapshot,
+      promotedChromeTabIdAfterClose(tabs, tabId),
+    )
     if (!nextCloseLayoutSnapshot) return
 
     closeLayoutSnapshotRef.current = nextCloseLayoutSnapshot

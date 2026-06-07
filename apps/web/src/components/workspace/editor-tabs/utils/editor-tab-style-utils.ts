@@ -106,7 +106,7 @@ export function chromeTabStyle(
     marginLeft: index === 0 ? 0 : -overlap,
     maxWidth: targetWidth ?? CHROME_TAB_STANDARD_WIDTH + trailingSlotWidth,
     minWidth: targetWidth ?? minWidth,
-    transition: CHROME_TAB_TRANSITION,
+    transition: visualTab.phase === 'closing' ? 'none' : CHROME_TAB_TRANSITION,
     width: targetWidth ?? 'auto',
   } as CSSProperties
 }

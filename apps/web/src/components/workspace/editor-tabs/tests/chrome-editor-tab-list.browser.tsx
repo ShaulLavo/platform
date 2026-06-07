@@ -12,6 +12,10 @@ import {
   primeChromeVisualTabsCache,
   useChromeVisualTabs,
 } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
+import {
+  CHROME_TAB_ACTIVE_MIN_WIDTH,
+  CHROME_TAB_TRAILING_SLOT_WIDTH,
+} from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
@@ -115,7 +119,7 @@ describe('ChromeEditorTabList browser layout', () => {
     expect(editorTab('tab-6.ts').style.transform).toBe('')
   })
 
-  it('does not grow cramped tabs when the active tab closes', async () => {
+  it('promotes the next tab to active width when the active tab closes', async () => {
     renderTabHarness({
       activeName: 'tab-5.ts',
       closeName: 'tab-5.ts',
@@ -134,7 +138,10 @@ describe('ChromeEditorTabList browser layout', () => {
 
     const afterWidths = editorTabWidthsById()
     expect(queryEditorTab('tab-5.ts')).toHaveAttribute('data-editor-tab-phase', 'closing')
-    expect(widthDelta(afterWidths, beforeWidths, 'tab-6.ts')).toBeLessThanOrEqual(1)
+    expect(afterWidths.get('tab-6.ts')).toBe(
+      CHROME_TAB_ACTIVE_MIN_WIDTH + CHROME_TAB_TRAILING_SLOT_WIDTH,
+    )
+    expect((afterWidths.get('tab-6.ts') ?? 0) > (beforeWidths.get('tab-6.ts') ?? 0)).toBe(true)
     expect(widthDelta(afterWidths, beforeWidths, 'tab-7.ts')).toBeLessThanOrEqual(1)
   })
 
