@@ -50,7 +50,10 @@ import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from '@/features/editor/utils/diff-view-mode'
-import { activeEditorSurfaceTab } from '@/features/workbench/utils/editor-surface-layout'
+import {
+  activeEditorPathForWorkspaceLayout,
+  activeEditorSurfaceTab,
+} from '@/features/workbench/utils/editor-surface-layout'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
@@ -63,6 +66,7 @@ import type { PlatformCommandDispatch } from './use-app-keymap'
 import { windowManagementCommandIdForWorkspaceCommand } from './window-management-command-ids'
 
 type WorkspaceCommandContext = {
+  readonly activeFilePath: string | null
   readonly activeTabId: string | null
   readonly diffViewMode: EditorDiffViewMode
   readonly documentStore: EditorDocumentStoreApi
@@ -71,7 +75,6 @@ type WorkspaceCommandContext = {
   readonly reopenClosedEditor: () => boolean
   readonly requestCloseTab: RequestCloseTab
   readonly requestEditorFocus: () => void
-  readonly selectedFilePath: string | null
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: FocusArea) => void
   readonly setTheme: (theme: Theme) => void
@@ -116,6 +119,7 @@ export function usePlatformCommandDispatch({
 
       const workspace = workspaceStore.getState()
       return dispatchWorkspaceCommand(workspaceCommand, {
+        activeFilePath: activeEditorPathForWorkspaceLayout(workspace.workspaceLayout),
         activeTabId: activeEditorSurfaceTab(workspace.workspaceLayout)?.id ?? null,
         diffViewMode: workspace.diffViewMode,
         documentStore,
@@ -124,7 +128,6 @@ export function usePlatformCommandDispatch({
         reopenClosedEditor,
         requestCloseTab: resolvedRequestCloseTab,
         requestEditorFocus,
-        selectedFilePath: workspace.selectedFilePath,
         setDiffViewMode: workspace.setDiffViewMode,
         setFocusArea,
         setTheme,
@@ -191,8 +194,8 @@ const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandl
     setFocusArea('git')
     return true
   },
-  'workspace.gotoSymbol': ({ selectedFilePath, showCommandPalette }) => {
-    if (!fileBackedEditorPath(selectedFilePath)) return false
+  'workspace.gotoSymbol': ({ activeFilePath, showCommandPalette }) => {
+    if (!fileBackedEditorPath(activeFilePath)) return false
 
     showCommandPalette('@')
     return true
@@ -213,17 +216,17 @@ const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandl
     return true
   },
   'workspace.reopenClosedEditor': ({ reopenClosedEditor }) => reopenClosedEditor(),
-  'workspace.revertFile': ({ documentStore, queryClient, selectedFilePath }) =>
-    runFileLifecycle(selectedFilePath, () =>
-      revertSelectedEditorDocument(documentStore, queryClient, selectedFilePath),
+  'workspace.revertFile': ({ activeFilePath, documentStore, queryClient }) =>
+    runFileLifecycle(activeFilePath, () =>
+      revertSelectedEditorDocument(documentStore, queryClient, activeFilePath),
     ),
   'workspace.saveAllFiles': ({ documentStore, queryClient }) => {
     void saveAllEditorDocuments(documentStore, queryClient).catch(reportCommandError)
     return true
   },
-  'workspace.saveFile': ({ documentStore, queryClient, selectedFilePath }) =>
-    runFileLifecycle(selectedFilePath, () =>
-      saveSelectedEditorDocument(documentStore, queryClient, selectedFilePath),
+  'workspace.saveFile': ({ activeFilePath, documentStore, queryClient }) =>
+    runFileLifecycle(activeFilePath, () =>
+      saveSelectedEditorDocument(documentStore, queryClient, activeFilePath),
     ),
   'workspace.showAllEditors': ({ showCommandPalette }) => {
     showCommandPalette('edt ')
@@ -437,8 +440,8 @@ function activeSurfaceCloseDisabledReason(layout: WorkspaceLayout) {
   return windowCommandDisabledReason(layout, command)
 }
 
-function runFileLifecycle(selectedFilePath: string | null, operation: () => Promise<boolean>) {
-  if (!fileBackedEditorPath(selectedFilePath)) return false
+function runFileLifecycle(activeFilePath: string | null, operation: () => Promise<boolean>) {
+  if (!fileBackedEditorPath(activeFilePath)) return false
 
   void operation().catch(reportCommandError)
   return true
@@ -447,9 +450,9 @@ function runFileLifecycle(selectedFilePath: string | null, operation: () => Prom
 async function revertSelectedEditorDocument(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
-  selectedFilePath: string | null,
+  activeFilePath: string | null,
 ) {
-  const path = fileBackedEditorPath(selectedFilePath)
+  const path = fileBackedEditorPath(activeFilePath)
   if (!path) return false
 
   const file = await fetchFile(path, new AbortController().signal)

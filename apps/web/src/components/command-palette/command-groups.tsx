@@ -8,17 +8,17 @@ import type { CommandPaletteItem } from './command-palette-types'
 import { commandDisabledReason } from './command-palette-utils'
 
 type CommandGroupsProps = {
+  readonly activeFilePath: string | null
   readonly groups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
   readonly hasWorkspace: boolean
-  readonly selectedFilePath: string | null
   readonly workspaceLayout: WorkspaceLayout
   readonly onSelect: (command: PlatformCommandId) => void
 }
 
 export function CommandGroups({
+  activeFilePath,
   groups,
   hasWorkspace,
-  selectedFilePath,
   workspaceLayout,
   onSelect,
 }: CommandGroupsProps) {
@@ -29,8 +29,8 @@ export function CommandGroups({
           {groupItems.map((item) => (
             <CommandPaletteRow
               disabledReason={commandDisabledReason(item.spec.id, {
+                activeFilePath,
                 hasWorkspace,
-                selectedFilePath,
                 workspaceLayout,
               })}
               item={item}

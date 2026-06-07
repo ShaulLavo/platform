@@ -4,7 +4,10 @@ import { commandDisabledReason } from '@/components/command-palette/command-pale
 import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
+  createFileEditorSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
+import { activeEditorPathForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 
 import { activePlatformKeyBindings } from '../active-bindings'
 import {
@@ -391,49 +394,60 @@ describe('command palette command availability', () => {
   it('uses active layout capabilities for window management commands', () => {
     const workspaceLayout = createClassicFirstRunWorkspaceLayout()
     const emptyWorkspaceLayout = createEmptyWorkspaceLayout()
+    const fileWorkspaceLayout = openSurface(
+      workspaceLayout,
+      createFileEditorSurface({ path: '/repo/src/app.ts' }),
+    )
 
     expect(
       commandDisabledReason('workspace.window.maximizeActiveWindow', {
+        activeFilePath: null,
         hasWorkspace: true,
-        selectedFilePath: null,
         workspaceLayout,
       }),
     ).toBeNull()
     expect(
       commandDisabledReason('workspace.window.closeActiveSurface', {
+        activeFilePath: null,
         hasWorkspace: true,
-        selectedFilePath: null,
         workspaceLayout,
       }),
     ).toBe('Active surface cannot be closed.')
     expect(
       commandDisabledReason('workspace.closeCurrentTab', {
+        activeFilePath: null,
         hasWorkspace: true,
-        selectedFilePath: null,
         workspaceLayout,
       }),
     ).toBe('Active surface cannot be closed.')
     expect(
       commandDisabledReason('workspace.splitEditor', {
+        activeFilePath: null,
         hasWorkspace: true,
-        selectedFilePath: null,
         workspaceLayout: emptyWorkspaceLayout,
       }),
     ).toBe('No active window.')
     expect(
       commandDisabledReason('workspace.closeCurrentTab', {
+        activeFilePath: null,
         hasWorkspace: true,
-        selectedFilePath: null,
         workspaceLayout: emptyWorkspaceLayout,
       }),
     ).toBe('No active surface.')
     expect(
       commandDisabledReason('workspace.saveFile', {
+        activeFilePath: null,
         hasWorkspace: true,
-        selectedFilePath: null,
         workspaceLayout,
       }),
     ).toBe('No file-backed surface is active.')
+    expect(
+      commandDisabledReason('workspace.saveFile', {
+        activeFilePath: activeEditorPathForWorkspaceLayout(fileWorkspaceLayout),
+        hasWorkspace: true,
+        workspaceLayout: fileWorkspaceLayout,
+      }),
+    ).toBeNull()
   })
 })
 

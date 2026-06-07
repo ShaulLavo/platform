@@ -28,6 +28,7 @@ import {
 import { useCommandPaletteFiles } from '@/components/command-palette/use-command-palette-files'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
 import { useTheme } from '@/components/theme-context'
+import { activeEditorPathForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 
 export function CommandPaletteContent({
   bindings,
@@ -43,6 +44,7 @@ export function CommandPaletteContent({
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
   const workspaceLayout = useEditorWorkspaceState((state) => state.workspaceLayout)
+  const activeFilePath = activeEditorPathForWorkspaceLayout(workspaceLayout)
   const { openDefinition, selectFile } = useEditorCommands()
   const mode = quickAccessMode(search)
   const query = quickAccessQuery(search)
@@ -66,11 +68,11 @@ export function CommandPaletteContent({
   const { selectedFileBackedPath, symbolQuery, symbolsEnabled } = useCommandPaletteSymbols({
     mode,
     rootPath: rootFolder?.path ?? null,
-    selectedFilePath,
+    selectedFilePath: activeFilePath,
   })
 
   function runCommand(command: PlatformCommandId) {
-    if (isCommandDisabled(command, { hasWorkspace, selectedFilePath, workspaceLayout })) return
+    if (isCommandDisabled(command, { activeFilePath, hasWorkspace, workspaceLayout })) return
 
     const handled = dispatch(command)
     if (handled === false) return
@@ -138,8 +140,8 @@ export function CommandPaletteContent({
           fileQuery={fileQuery}
           fileSearchError={fileSearchQuery.isError}
           hasWorkspace={hasWorkspace}
+          activeFilePath={activeFilePath}
           mode={mode}
-          selectedFilePath={selectedFilePath}
           symbolItems={symbolQuery.data ?? []}
           symbolsPending={symbolsEnabled && symbolQuery.isPending}
           workspaceLayout={workspaceLayout}

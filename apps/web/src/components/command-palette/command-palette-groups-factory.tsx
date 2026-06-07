@@ -17,6 +17,7 @@ import { SymbolGroups } from './symbol-groups'
 import { ViewGroups } from './view-groups'
 
 type CommandPaletteGroupsFactoryProps = {
+  readonly activeFilePath: string | null
   readonly commandGroups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
   readonly currentTheme: Theme
   readonly editorItems: readonly EditorPaletteItem[]
@@ -25,7 +26,6 @@ type CommandPaletteGroupsFactoryProps = {
   readonly fileSearchError: boolean
   readonly hasWorkspace: boolean
   readonly mode: QuickAccessMode
-  readonly selectedFilePath: string | null
   readonly symbolItems: readonly FlatDocumentSymbol[]
   readonly symbolsPending: boolean
   readonly workspaceLayout: WorkspaceLayout
@@ -35,6 +35,7 @@ type CommandPaletteGroupsFactoryProps = {
 }
 
 export function CommandPaletteGroupsFactory({
+  activeFilePath,
   commandGroups,
   currentTheme,
   editorItems,
@@ -43,7 +44,6 @@ export function CommandPaletteGroupsFactory({
   fileSearchError,
   hasWorkspace,
   mode,
-  selectedFilePath,
   symbolItems,
   symbolsPending,
   workspaceLayout,
@@ -55,8 +55,8 @@ export function CommandPaletteGroupsFactory({
     return (
       <CommandGroups
         groups={commandGroups}
+        activeFilePath={activeFilePath}
         hasWorkspace={hasWorkspace}
-        selectedFilePath={selectedFilePath}
         workspaceLayout={workspaceLayout}
         onSelect={onCommandSelect}
       />

@@ -131,8 +131,8 @@ export function commandKeywords(spec: CommandSpec) {
 }
 
 export type CommandDisabledContext = {
+  readonly activeFilePath: string | null
   readonly hasWorkspace: boolean
-  readonly selectedFilePath: string | null
   readonly workspaceLayout: WorkspaceLayout
 }
 
@@ -147,10 +147,10 @@ export function commandDisabledReason(command: PlatformCommandId, context: Comma
   const windowReason = windowManagementDisabledReason(command, context.workspaceLayout)
   if (windowReason) return windowReason
   if (selectedFileCommands.has(command)) {
-    return fileBackedPath(context.selectedFilePath) ? null : 'No file-backed surface is active.'
+    return fileBackedPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
   }
   if (isEditorPlatformCommandId(command)) {
-    return fileBackedPath(context.selectedFilePath) ? null : 'No file-backed surface is active.'
+    return fileBackedPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
   }
 
   return null
