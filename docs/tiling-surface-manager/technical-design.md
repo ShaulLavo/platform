@@ -117,7 +117,7 @@ type WorkbenchWindow = {
   activeSurfaceId: SurfaceId
   previewSurfaceId?: SurfaceId
   pinnedSurfaceIds: SurfaceId[]
-  mode: 'normal' | 'maximized' | 'collapsed'
+  mode: 'normal' | 'maximized' | 'fullscreen' | 'collapsed'
 }
 
 type LayoutNode =

@@ -108,7 +108,7 @@ function LayoutRendererSurfaceArea({
       ? geometry
       : deriveLayoutGeometry(previewLayout, surfaceRect, geometryOptions)
   const tree = selectMaterializedLayoutTree(previewLayout)
-  const maximizedWindowId = maximizedLayoutWindowId(previewLayout.windowsById)
+  const maximizedWindowId = fullSurfaceLayoutWindowId(previewLayout.windowsById)
   const editorSurfaceContext = use(EditorSurfaceContext)
 
   return (
@@ -196,10 +196,16 @@ function LayoutRendererHiddenSurfaceHosts({
   return <HiddenSurfaceHosts surfaces={surfaces} surfaceRenderers={surfaceRenderers} />
 }
 
-function maximizedLayoutWindowId(
+function fullSurfaceLayoutWindowId(
   windowsById: Readonly<Record<WindowId, WorkbenchWindow>>,
 ): WindowId | undefined {
-  return Object.values(windowsById).find((window) => window.mode === 'maximized')?.id
+  return Object.values(windowsById).find(windowUsesFullSurface)?.id
+}
+
+function windowUsesFullSurface(window: WorkbenchWindow) {
+  if (window.mode === 'fullscreen') return true
+
+  return window.mode === 'maximized'
 }
 
 export function surfaceAreaLayoutEqual(left: WorkspaceLayout, right: WorkspaceLayout) {

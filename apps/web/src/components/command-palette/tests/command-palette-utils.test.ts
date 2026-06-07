@@ -129,7 +129,7 @@ test('window management action items create definitions, settings, and hotkey pr
     command: expect.objectContaining({
       enabled: true,
       kind: 'custom-window',
-      title: 'Custom Left Half',
+      title: 'Custom Window Command',
     }),
     type: 'upsertCustomWindowCommand',
   })

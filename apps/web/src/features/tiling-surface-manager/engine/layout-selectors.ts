@@ -463,6 +463,11 @@ function capabilityPredicateDisabledReason(layout: WorkspaceLayout, predicate: s
   if (predicate === 'active-window-and-splittable-surface') {
     return activeWindowAndSplittableSurfaceDisabledReason(layout)
   }
+  if (predicate === 'active-surface-can-move') return activeSurfaceCanMoveDisabledReason(layout)
+  if (predicate === 'display-movement-unavailable') {
+    return 'Display movement is unavailable in the browser workbench.'
+  }
+  if (predicate === 'rail-available') return railAvailableDisabledReason(layout)
 
   return null
 }
@@ -506,6 +511,23 @@ function activeSurfaceCanBackgroundDisabledReason(layout: WorkspaceLayout) {
   return 'Active surface cannot be backgrounded.'
 }
 
+function activeSurfaceCanMoveDisabledReason(layout: WorkspaceLayout) {
+  const activeSurface = selectActiveSurface(layout)
+  if (!activeSurface) return 'No active surface.'
+  if (activeSurface.capabilities.validPlacements.length > 0) return null
+
+  return 'Active surface cannot be moved.'
+}
+
+function railAvailableDisabledReason(layout: WorkspaceLayout) {
+  if (layout.rail.backgroundSurfaceIds.length > 0) return null
+  if (layout.rail.pinnedSurfaceIds.length > 0) return null
+  if (layout.rail.runningSurfaceIds.length > 0) return null
+  if (layout.rail.visibleSingletonSurfaceIds.length > 0) return null
+
+  return 'No rail items are available.'
+}
+
 function activeWindowAndSplittableSurfaceDisabledReason(layout: WorkspaceLayout) {
   const activeWindowReason = activeWindowDisabledReason(layout)
   if (activeWindowReason) return activeWindowReason
@@ -524,6 +546,7 @@ function operationRequiresActiveSurface(operation: LayoutOperationType) {
 function operationRequiresActiveWindow(operation: LayoutOperationType) {
   return [
     'applyCustomWindowCommand',
+    'fullscreenWindow',
     'maximizeWindow',
     'moveWindow',
     'reorderSurface',

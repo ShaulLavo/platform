@@ -587,6 +587,7 @@ function restoredCustomWindowCommand(value: unknown): CustomWindowManagementComm
     category: CUSTOM_WINDOW_COMMAND_CATEGORY,
     cycleRule: restoredCycleRule(value.cycleRule),
     enabled: value.enabled,
+    hotkeyId: optionalString(value.hotkeyId),
     icon: value.icon,
     id: value.id as WindowManagementCommandId,
     kind: 'custom-window',
@@ -769,13 +770,21 @@ function restoredWindow(
   return {
     activeSurfaceId,
     id: value.id as WindowId,
-    mode: value.mode === 'maximized' ? 'maximized' : 'normal',
+    mode: restoredWindowMode(value.mode),
     pinnedSurfaceIds: mapSurfaceIds(value.pinnedSurfaceIds, idMap).filter((surfaceId) =>
       surfaceIds.includes(surfaceId),
     ),
     previewSurfaceId: mapOptionalSurfaceId(value.previewSurfaceId, idMap),
     surfaceIds,
   }
+}
+
+function restoredWindowMode(value: unknown): WorkbenchWindow['mode'] {
+  if (value === 'fullscreen') return 'fullscreen'
+  if (value === 'maximized') return 'maximized'
+  if (value === 'collapsed') return 'collapsed'
+
+  return 'normal'
 }
 
 function restoredNodes(value: unknown) {

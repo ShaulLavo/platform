@@ -177,6 +177,7 @@ describe('workspace search run state', () => {
       filtersVisible: false,
       includeGlobText: '',
       matchMode: 'literal',
+      matches: [],
       query: 'needle',
       queryHistory: [],
       replaceHistory: [],

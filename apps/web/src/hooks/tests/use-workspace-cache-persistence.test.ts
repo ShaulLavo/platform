@@ -63,12 +63,17 @@ describe('workspace cache persistence', () => {
     timers.flush()
     expect(writes).toHaveLength(2)
     expect(writes.at(-1)?.searchBuffer).toMatchObject({
+      matches: [
+        expect.objectContaining({
+          path: '/repo/src/app.ts',
+        }),
+      ],
       query: 'needle',
       resultsQuery: 'needle',
       totalCount: 1,
       truncated: false,
     })
-    expect(hasCachedMatches(writes.at(-1))).toBe(false)
+    expect(cachedMatchCount(writes.at(-1))).toBe(1)
 
     unsubscribe()
   })
@@ -152,9 +157,9 @@ function deferredTimers() {
   }
 }
 
-function hasCachedMatches(state: WorkspaceCacheWriteState | undefined) {
+function cachedMatchCount(state: WorkspaceCacheWriteState | undefined) {
   const searchBuffer = state?.searchBuffer
-  if (!searchBuffer) return false
+  if (!searchBuffer) return 0
 
-  return 'matches' in searchBuffer
+  return searchBuffer.matches.length
 }

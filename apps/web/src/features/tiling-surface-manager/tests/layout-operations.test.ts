@@ -69,6 +69,7 @@ import type {
   LayoutSplitNode,
   SurfaceId,
   SurfaceType,
+  WindowId,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
 } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -377,6 +378,51 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(second)
   })
 
+  it('applies custom window command frame size as a split ratio', () => {
+    const command = customWindowCommand({
+      id: windowManagementCommandId('left-third'),
+      targetFrame: frame('left', { height: 100, width: 33.333 }),
+    })
+    const applied = applyCustomWindowCommand(
+      createClassicFirstRunWorkspaceLayout(),
+      command,
+      CLASSIC_EDITOR_WINDOW_ID,
+    )
+
+    expectWindowSplitRatio(applied, CLASSIC_EDITOR_WINDOW_ID, 0.333)
+    expectValidLayout(applied)
+  })
+
+  it('applies centered custom window command frames to the current split axis', () => {
+    const command = customWindowCommand({
+      id: windowManagementCommandId('centered-width'),
+      targetFrame: frame('center', { height: 70, width: 60 }),
+    })
+    const applied = applyCustomWindowCommand(
+      createClassicFirstRunWorkspaceLayout(),
+      command,
+      CLASSIC_EDITOR_WINDOW_ID,
+    )
+
+    expectWindowSplitRatio(applied, CLASSIC_EDITOR_WINDOW_ID, 0.7)
+    expectValidLayout(applied)
+  })
+
+  it('includes custom window command frame offsets in the split ratio', () => {
+    const command = customWindowCommand({
+      id: windowManagementCommandId('offset-left'),
+      targetFrame: frame('left', { offsetX: 10, width: 30 }),
+    })
+    const applied = applyCustomWindowCommand(
+      createClassicFirstRunWorkspaceLayout(),
+      command,
+      CLASSIC_EDITOR_WINDOW_ID,
+    )
+
+    expectWindowSplitRatio(applied, CLASSIC_EDITOR_WINDOW_ID, 0.4)
+    expectValidLayout(applied)
+  })
+
   it('applies saved layout command slots by opening and placing surfaces', () => {
     const filePath = '/repo/src/layout-command.ts'
     const command: WorkspaceLayoutCommand = {
@@ -406,6 +452,11 @@ describe('tiling surface layout operations', () => {
       Object.values(applied.surfacesById).some((surface) => surface.type === 'search-results'),
     ).toBe(true)
     expect(visibleSurfaceIdsInOrder(applied)).toContain(fileEditorSurfaceId(filePath))
+    expectWindowSplitRatioGreaterThan(
+      applied,
+      mustFindWindowId(applied, fileEditorSurfaceId(filePath)),
+      0.45,
+    )
     expectValidLayout(applied)
   })
 
@@ -1089,6 +1140,36 @@ function siblingNodeIds(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   return parentNode.childIds.filter((childId) => childId !== nodeId)
 }
 
+function expectWindowSplitRatio(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  expectedRatio: number,
+) {
+  expect(windowSplitRatio(layout, windowId)).toBeCloseTo(expectedRatio, 2)
+}
+
+function expectWindowSplitRatioGreaterThan(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  minRatio: number,
+) {
+  expect(windowSplitRatio(layout, windowId)).toBeGreaterThan(minRatio)
+}
+
+function windowSplitRatio(layout: WorkspaceLayout, windowId: WindowId) {
+  const nodeId = findNodeIdForWindow(layout, windowId)
+  if (!nodeId) throw new Error(`Expected node for ${windowId}`)
+
+  const parentNodeId = findParentNodeId(layout, nodeId)
+  if (!parentNodeId) throw new Error(`Expected parent split for ${windowId}`)
+
+  const parentNode = layout.nodesById[parentNodeId]
+  if (!parentNode || parentNode.kind !== 'split') throw new Error(`Expected split parent`)
+
+  const childIndex = parentNode.childIds.indexOf(nodeId)
+  return parentNode.sizes[childIndex] ?? 0
+}
+
 function surfaceHeight(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   const windowId = mustFindWindowId(layout, surfaceId)
   const geometry = deriveLayoutGeometry(layout, { height: 1000, width: 1000, x: 0, y: 0 })
@@ -1196,13 +1277,21 @@ function customWindowCommand(
   }
 }
 
-function frame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {
+function frame(
+  anchor: CustomWindowFrame['anchor'],
+  size: {
+    readonly height?: number
+    readonly offsetX?: number
+    readonly offsetY?: number
+    readonly width?: number
+  } = {},
+): CustomWindowFrame {
   return {
     anchor,
-    height: 50,
-    offsetX: 0,
-    offsetY: 0,
+    height: size.height ?? 50,
+    offsetX: size.offsetX ?? 0,
+    offsetY: size.offsetY ?? 0,
     unit: 'percent',
-    width: 50,
+    width: size.width ?? 50,
   }
 }

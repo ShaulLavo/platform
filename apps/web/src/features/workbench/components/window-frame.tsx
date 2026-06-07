@@ -62,7 +62,7 @@ export const WindowFrame = memo(function WindowFrame({
 
   const { active, activeSurface, surfaces, window } = state
   const collapsed = window.mode === 'collapsed'
-  const maximized = window.mode === 'maximized'
+  const fullSurface = window.mode === 'fullscreen' || window.mode === 'maximized'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
   const collapseLabel = collapsed
     ? `Expand ${activeSurface?.title ?? 'window'}`
@@ -175,15 +175,15 @@ export const WindowFrame = memo(function WindowFrame({
             <MinusIcon className='size-3.5' />
           </WindowControlButton>
           <WindowControlButton
-            label={maximized ? 'Restore window' : 'Maximize window'}
+            label={fullSurface ? 'Restore window' : 'Maximize window'}
             onClick={() =>
               onDispatch({
-                type: maximized ? 'restoreWindow' : 'maximizeWindow',
+                type: fullSurface ? 'restoreWindow' : 'maximizeWindow',
                 windowId: window.id,
               })
             }
           >
-            {maximized ? (
+            {fullSurface ? (
               <ArrowsInSimpleIcon className='size-3.5' />
             ) : (
               <ArrowsOutSimpleIcon className='size-3.5' />

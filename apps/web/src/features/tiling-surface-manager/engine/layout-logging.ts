@@ -104,6 +104,7 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
     case 'collapseWindow':
     case 'expandWindow':
       return { ...base, windowId: compactLayoutId(operation.windowId) }
+    case 'fullscreenWindow':
     case 'maximizeWindow':
     case 'restoreWindow':
       return { ...base, windowId: compactLayoutId(operation.windowId) }

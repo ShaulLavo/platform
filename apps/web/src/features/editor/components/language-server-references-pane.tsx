@@ -23,6 +23,7 @@ type LanguageServerReferencesPaneProps = {
   readonly rootPath: string
   onClose(): void
   onOpenReference(target: LanguageServerDefinitionTarget): void | boolean
+  onPreviewReference(target: LanguageServerDefinitionTarget): void
 }
 
 type ReferenceGroup = {
@@ -37,6 +38,7 @@ export function LanguageServerReferencesPane({
   rootPath,
   onClose,
   onOpenReference,
+  onPreviewReference,
 }: LanguageServerReferencesPaneProps) {
   const documentStore = useEditorDocumentStoreApi()
   const documentRevisionKey = useEditorDocumentState((state) =>
@@ -98,6 +100,7 @@ export function LanguageServerReferencesPane({
                         key={`${target.uri}:${target.range.start.line}:${target.range.start.character}:${index}`}
                         target={target}
                         onOpenReference={onOpenReference}
+                        onPreviewReference={onPreviewReference}
                       />
                     ))}
               </div>
@@ -152,10 +155,12 @@ function ReferenceRow({
   document,
   target,
   onOpenReference,
+  onPreviewReference,
 }: {
   readonly document: LiveEditorDocument | undefined
   readonly target: LanguageServerDefinitionTarget
   onOpenReference(target: LanguageServerDefinitionTarget): void | boolean
+  onPreviewReference(target: LanguageServerDefinitionTarget): void
 }) {
   const line = target.range.start.line + 1
   const preview = referencePreview(document, target)
@@ -165,6 +170,8 @@ function ReferenceRow({
       className='group hover:bg-muted/55 focus-visible:ring-ring/50 grid h-6 w-full grid-cols-[38px_minmax(0,1fr)] items-center gap-2 px-2 pl-7 text-left text-xs outline-none focus-visible:ring-1'
       type='button'
       onClick={() => onOpenReference(target)}
+      onFocus={() => onPreviewReference(target)}
+      onMouseEnter={() => onPreviewReference(target)}
     >
       <span className='text-muted-foreground text-right text-[11px] tabular-nums'>{line}</span>
       <span className='text-muted-foreground group-hover:text-foreground min-w-0 truncate font-mono text-[11px]'>

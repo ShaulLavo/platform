@@ -1,15 +1,29 @@
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/lsp-plugin'
+import type {
+  LanguageServerDefinitionTarget,
+  LanguageServerDiagnosticSummary,
+  LanguageServerStatus,
+} from '@editor/lsp-plugin'
 
 import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
+import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
-import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
+import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import { PanelUnavailable } from '@/features/workbench/components/panel-unavailable'
+import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
+import { openTransientFilePreview } from '@/features/workbench/utils/transient-file-preview'
 import type { SurfaceRendererProps } from '@/features/workbench/utils/surface-renderer-registry'
 
 export function DiagnosticsSurface({ surface }: SurfaceRendererProps) {
   const statusBarSource = useEditorUiState((state) => state.statusBarSource)
+  const commands = useEditorCommands()
+  const layoutStore = useLayoutStoreApi()
+  const uiStore = useEditorUiStoreApi()
   if (surface.type !== 'diagnostics') {
     return <PanelUnavailable message='This surface is not diagnostics.' />
+  }
+
+  function previewDiagnostic(target: LanguageServerDefinitionTarget) {
+    openTransientFilePreview({ layoutStore, ownerSurfaceId: surface.id, target, uiStore })
   }
 
   return (
@@ -18,7 +32,11 @@ export function DiagnosticsSurface({ surface }: SurfaceRendererProps) {
         <div className='truncate text-xs font-medium'>Problems</div>
       </header>
       {statusBarSource ? (
-        <DiagnosticsStatus source={statusBarSource} />
+        <DiagnosticsStatus
+          source={statusBarSource}
+          onOpenDiagnostic={commands.openDefinition}
+          onPreviewDiagnostic={previewDiagnostic}
+        />
       ) : (
         <DiagnosticsEmpty message='No active editor diagnostics' />
       )}
@@ -26,7 +44,15 @@ export function DiagnosticsSurface({ surface }: SurfaceRendererProps) {
   )
 }
 
-function DiagnosticsStatus({ source }: { readonly source: EditorStatusBarSource }) {
+function DiagnosticsStatus({
+  source,
+  onOpenDiagnostic,
+  onPreviewDiagnostic,
+}: {
+  readonly source: EditorStatusBarSource
+  onOpenDiagnostic(target: LanguageServerDefinitionTarget): void | boolean
+  onPreviewDiagnostic(target: LanguageServerDefinitionTarget): void
+}) {
   const { diagnostics, status } = useEditorLanguageServerStatus(source.languageServerStatusSource)
   if (!diagnostics || diagnostics.counts.total === 0) {
     return <DiagnosticsEmpty message={emptyDiagnosticsMessage(status)} />
@@ -41,7 +67,12 @@ function DiagnosticsStatus({ source }: { readonly source: EditorStatusBarSource 
         <DiagnosticCount label='Info' value={diagnostics.counts.information} />
         <DiagnosticCount label='Hints' value={diagnostics.counts.hint} />
       </div>
-      <DiagnosticList diagnostics={diagnostics} />
+      <DiagnosticList
+        diagnostics={diagnostics}
+        path={source.filePath}
+        onOpenDiagnostic={onOpenDiagnostic}
+        onPreviewDiagnostic={onPreviewDiagnostic}
+      />
     </div>
   )
 }
@@ -57,21 +88,39 @@ function DiagnosticCount({ label, value }: { readonly label: string; readonly va
 
 function DiagnosticList({
   diagnostics,
+  path,
+  onOpenDiagnostic,
+  onPreviewDiagnostic,
 }: {
   readonly diagnostics: LanguageServerDiagnosticSummary
+  readonly path: string
+  onOpenDiagnostic(target: LanguageServerDefinitionTarget): void | boolean
+  onPreviewDiagnostic(target: LanguageServerDefinitionTarget): void
 }) {
   if (diagnostics.diagnostics.length === 0) return null
 
   return (
     <ol className='mt-3 space-y-2'>
-      {diagnostics.diagnostics.map((diagnostic, index) => (
-        <li className='rounded border p-2' key={diagnosticKey(diagnostic, index)}>
-          <div className='text-muted-foreground text-[11px]'>
-            {diagnosticSeverityLabel(diagnostic.severity)}
-          </div>
-          <div className='text-foreground'>{diagnostic.message}</div>
-        </li>
-      ))}
+      {diagnostics.diagnostics.map((diagnostic, index) => {
+        const target = diagnosticTarget(path, diagnostics.uri ?? fileUriForPath(path), diagnostic)
+
+        return (
+          <li className='rounded border' key={diagnosticKey(diagnostic, index)}>
+            <button
+              className='hover:bg-muted/55 focus-visible:ring-ring/50 block w-full rounded px-2 py-2 text-left outline-none focus-visible:ring-1'
+              type='button'
+              onClick={() => onOpenDiagnostic(target)}
+              onFocus={() => onPreviewDiagnostic(target)}
+              onMouseEnter={() => onPreviewDiagnostic(target)}
+            >
+              <div className='text-muted-foreground text-[11px]'>
+                {diagnosticSeverityLabel(diagnostic.severity)}
+              </div>
+              <div className='text-foreground'>{diagnostic.message}</div>
+            </button>
+          </li>
+        )
+      })}
     </ol>
   )
 }
@@ -105,4 +154,22 @@ function diagnosticKey(
   index: number,
 ) {
   return `${diagnostic.message}:${index}`
+}
+
+function diagnosticTarget(
+  path: string,
+  uri: string,
+  diagnostic: LanguageServerDiagnosticSummary['diagnostics'][number],
+): LanguageServerDefinitionTarget {
+  return {
+    path,
+    range: diagnostic.range,
+    uri,
+  }
+}
+
+function fileUriForPath(path: string) {
+  const normalized = path.replace(/^\/+/, '')
+
+  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }

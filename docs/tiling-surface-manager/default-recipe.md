@@ -29,8 +29,8 @@ not a model primitive.
 - Tool surfaces: Files, Search, Git, Chat, and Logs.
 - Main surfaces: file editors, diffs, and promoted previews.
 - Bottom tool pane: Terminal and Problems grouped at the bottom of the
-  editor/main panel. This is a temporary Phase 8 bridge until Phase 10 turns
-  terminal sessions into true running surfaces.
+  editor/main panel. Terminal sessions are running surfaces; the bottom pane is
+  recipe placement, not a temporary bridge.
 - Nested panes: ordinary split-tree sublayouts that allow multiple windows on
   one side of the workspace without introducing `leftDock`, `rightDock`,
   `bottomDock`, `sidebar`, or lane node kinds.

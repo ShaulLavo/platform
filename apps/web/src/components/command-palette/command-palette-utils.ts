@@ -479,13 +479,13 @@ function defaultCustomWindowCommand(layout: WorkspaceLayout): CustomWindowManage
   const id = nextCustomWindowCommandId(layout)
 
   return {
-    aliases: ['left half', 'custom left half'],
+    aliases: ['custom window command', 'editable window command'],
     category: 'Window Management',
     enabled: true,
-    icon: 'panel-left',
+    icon: 'window',
     id,
     kind: 'custom-window',
-    targetFrame: leftHalfFrame,
+    targetFrame: defaultCustomWindowFrame,
     title: customWindowCommandTitle(id),
   }
 }
@@ -541,11 +541,11 @@ function surfaceTypeCanBeSaved(surfaceType: SurfaceType) {
 }
 
 function nextCustomWindowCommandId(layout: WorkspaceLayout) {
-  const base = windowManagementCommandId('custom-left-half')
+  const base = windowManagementCommandId('custom-window-command')
   if (!layout.windowCommandsById[base]) return base
 
   for (let index = 2; ; index += 1) {
-    const id = windowManagementCommandId(`custom-left-half-${index}`)
+    const id = windowManagementCommandId(`custom-window-command-${index}`)
     if (layout.windowCommandsById[id]) continue
 
     return id
@@ -565,9 +565,9 @@ function nextLayoutCommandId(layout: WorkspaceLayout) {
 }
 
 function customWindowCommandTitle(id: CustomWindowManagementCommand['id']) {
-  if (id === windowManagementCommandId('custom-left-half')) return 'Custom Left Half'
+  if (id === windowManagementCommandId('custom-window-command')) return 'Custom Window Command'
 
-  return 'Custom Left Half Copy'
+  return 'Custom Window Command Copy'
 }
 
 function savedLayoutCommandTitle(id: WorkspaceLayoutCommand['id']) {
@@ -590,6 +590,15 @@ const leftHalfFrame: CustomWindowFrame = {
   offsetY: 0,
   unit: 'percent',
   width: 50,
+}
+
+const defaultCustomWindowFrame: CustomWindowFrame = {
+  anchor: 'center',
+  height: 70,
+  offsetX: 0,
+  offsetY: 0,
+  unit: 'percent',
+  width: 60,
 }
 
 const rightHalfFrame: CustomWindowFrame = {

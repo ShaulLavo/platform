@@ -114,6 +114,8 @@ export function applyLayoutOperation(
       return reorderSurface(layout, operation.windowId, operation.fromIndex, operation.toIndex)
     case 'resizeSplit':
       return resizeSplit(layout, operation.splitId, operation.handleIndex, operation.deltaPx)
+    case 'fullscreenWindow':
+      return fullscreenWindow(layout, operation.windowId)
     case 'maximizeWindow':
       return maximizeWindow(layout, operation.windowId)
     case 'restoreWindow':
@@ -520,6 +522,10 @@ export function resizeSplit(
   })
 }
 
+export function fullscreenWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLayout {
+  return setWindowMode(layout, windowId, 'fullscreen')
+}
+
 export function maximizeWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLayout {
   return setWindowMode(layout, windowId, 'maximized')
 }
@@ -636,10 +642,14 @@ function applyLayoutCommandSlot(
   const surface = surfaceForLayoutCommandSlot(slot)
   if (!surface) return layout
 
-  return openSurface(layout, {
+  const openedLayout = openSurface(layout, {
     ...surface,
     placement: slot.displayHint ?? placementHintForFrame(layout, slot.frame),
   })
+  const windowId = findWindowIdContainingSurface(openedLayout, surface.id)
+  if (!windowId) return openedLayout
+
+  return applyFrameToWindow(openedLayout, windowId, slot.frame)
 }
 
 function surfaceForLayoutCommandSlot(slot: LayoutCommandSurfaceSlot): Surface | null {
@@ -754,9 +764,10 @@ function applyFrameToWindow(
 
   const edge = edgeForFrameAnchor(frame.anchor)
   const layoutWithNormalMode = layoutWithWindowMode(layout, windowId, 'normal')
-  if (!edge) return layoutWithNormalMode
+  if (!edge) return applyFrameCurrentSplitRatioToWindow(layoutWithNormalMode, windowId, frame)
 
-  return moveWindow(layoutWithNormalMode, windowId, { edge, kind: 'root-edge' })
+  const movedLayout = moveWindow(layoutWithNormalMode, windowId, { edge, kind: 'root-edge' })
+  return applyFrameMainRatioToWindow(movedLayout, windowId, frame, edge)
 }
 
 function placementHintForFrame(
@@ -784,6 +795,124 @@ function frameMaximizes(frame: CustomWindowFrame) {
   if (frame.anchor !== 'center') return false
 
   return frame.width >= 95 && frame.height >= 95
+}
+
+function applyFrameMainRatioToWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  frame: CustomWindowFrame,
+  edge: DropEdge,
+): WorkspaceLayout {
+  const ratio = mainAxisRatioForFrame(frame, edge)
+  if (ratio === null) return layout
+
+  const nodeId = findNodeIdForWindow(layout, windowId)
+  if (!nodeId) return layout
+
+  const parentNodeId = findParentNodeId(layout, nodeId)
+  if (!parentNodeId) return layout
+
+  const split = layout.nodesById[parentNodeId]
+  if (!split || split.kind !== 'split') return layout
+  if (split.axis !== edgeAxis(edge)) return layout
+
+  const childIndex = split.childIds.indexOf(nodeId)
+  if (childIndex < 0) return layout
+
+  return layoutWithSplitChildRatio(layout, split, childIndex, ratio)
+}
+
+function applyFrameCurrentSplitRatioToWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  frame: CustomWindowFrame,
+): WorkspaceLayout {
+  const nodeId = findNodeIdForWindow(layout, windowId)
+  if (!nodeId) return layout
+
+  const parentNodeId = findParentNodeId(layout, nodeId)
+  if (!parentNodeId) return layout
+
+  const split = layout.nodesById[parentNodeId]
+  if (!split || split.kind !== 'split') return layout
+
+  const childIndex = split.childIds.indexOf(nodeId)
+  if (childIndex < 0) return layout
+
+  const ratio = splitAxisRatioForFrame(frame, split.axis)
+  if (ratio === null) return layout
+
+  return layoutWithSplitChildRatio(layout, split, childIndex, ratio)
+}
+
+function mainAxisRatioForFrame(frame: CustomWindowFrame, edge: DropEdge) {
+  return frameAxisRatio(frame, edgeAxis(edge))
+}
+
+function splitAxisRatioForFrame(frame: CustomWindowFrame, axis: LayoutSplitAxis) {
+  return frameAxisRatio(frame, axis)
+}
+
+function frameAxisRatio(frame: CustomWindowFrame, axis: LayoutSplitAxis) {
+  const size = frameAxisSize(frame, axis)
+  if (frame.unit === 'percent') return clampFrameRatio(size / 100)
+
+  return clampFrameRatio(size / RESIZE_REFERENCE_PX)
+}
+
+function frameAxisSize(frame: CustomWindowFrame, axis: LayoutSplitAxis) {
+  const size = axis === 'horizontal' ? frame.width : frame.height
+  const offset = axis === 'horizontal' ? frame.offsetX : frame.offsetY
+
+  return size + Math.abs(offset)
+}
+
+function layoutWithSplitChildRatio(
+  layout: WorkspaceLayout,
+  split: LayoutSplitNode,
+  childIndex: number,
+  ratio: number,
+): WorkspaceLayout {
+  const sizes = splitSizesWithChildRatio(split, childIndex, ratio)
+
+  return normalizeWorkspaceLayout({
+    ...layout,
+    nodesById: {
+      ...layout.nodesById,
+      [split.id]: {
+        ...split,
+        sizes,
+      },
+    },
+  })
+}
+
+function splitSizesWithChildRatio(split: LayoutSplitNode, childIndex: number, ratio: number) {
+  const sizes = repairSplitSizes(split.sizes, split.childIds.length)
+  if (sizes.length <= 1) return sizes
+
+  const remainingRatio = 1 - ratio
+  const remainingTotal = sizes.reduce((sum, size, index) => {
+    if (index === childIndex) return sum
+
+    return sum + size
+  }, 0)
+
+  return repairSplitSizes(
+    sizes.map((size, index) => {
+      if (index === childIndex) return ratio
+      if (remainingTotal <= 0) return remainingRatio / Math.max(1, sizes.length - 1)
+
+      return (size / remainingTotal) * remainingRatio
+    }),
+    sizes.length,
+  )
+}
+
+function clampFrameRatio(ratio: number) {
+  if (!Number.isFinite(ratio)) return null
+
+  return Math.min(0.9, Math.max(0.1, ratio))
 }
 
 function placeSurface(

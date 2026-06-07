@@ -27,6 +27,7 @@ export function FileEditorBody({
   onEditorTextChange,
   onOpenDefinition,
   onOpenReferences,
+  onPreviewDefinition,
   onReferencesClose,
 }: {
   active: boolean
@@ -43,6 +44,7 @@ export function FileEditorBody({
   onEditorTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
   onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences: (result: LanguageServerReferencesResult) => void | boolean
+  onPreviewDefinition: (target: LanguageServerDefinitionTarget) => void
   onReferencesClose: () => void
 }) {
   if (liveDocument) {
@@ -76,6 +78,7 @@ export function FileEditorBody({
             rootPath={rootPath}
             onClose={onReferencesClose}
             onOpenReference={onOpenDefinition}
+            onPreviewReference={onPreviewDefinition}
           />
         ) : null}
       </div>

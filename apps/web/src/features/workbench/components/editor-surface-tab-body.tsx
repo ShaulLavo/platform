@@ -8,11 +8,16 @@ import { useConflictEditorResolution } from '@/components/workspace/diff/hooks/u
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
-import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
+import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
+import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
+import { openTransientFilePreview } from '@/features/workbench/utils/transient-file-preview'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@editor/core'
-import type { LanguageServerReferencesResult } from '@editor/lsp-plugin'
+import type {
+  LanguageServerDefinitionTarget,
+  LanguageServerReferencesResult,
+} from '@editor/lsp-plugin'
 
 export function EditorSurfaceTabBody({
   active,
@@ -75,6 +80,8 @@ export function EditorSurfaceTabBody({
   const setLanguageServerReferences = useEditorUiState((state) => state.setLanguageServerReferences)
   const clearStatusBarSource = useEditorUiState((state) => state.clearStatusBarSource)
   const setStatusBarSource = useEditorUiState((state) => state.setStatusBarSource)
+  const layoutStore = useLayoutStoreApi()
+  const uiStore = useEditorUiStoreApi()
   const { discardLiveEditorDocument, openDefinition, renameLiveEditorDocument } =
     useEditorCommands()
   const resolveConflictEditorDocument = useConflictEditorResolution({
@@ -119,6 +126,16 @@ export function EditorSurfaceTabBody({
     },
     [setLanguageServerReferences],
   )
+  const handlePreviewDefinition = useCallback(
+    (target: LanguageServerDefinitionTarget) => {
+      openTransientFilePreview({
+        layoutStore,
+        target,
+        uiStore,
+      })
+    },
+    [layoutStore, uiStore],
+  )
 
   return (
     <FileEditorBody
@@ -136,6 +153,7 @@ export function EditorSurfaceTabBody({
       onEditorTextChange={handleEditorTextChange}
       onOpenDefinition={openDefinition}
       onOpenReferences={handleOpenReferences}
+      onPreviewDefinition={handlePreviewDefinition}
       onReferencesClose={() => setLanguageServerReferences(null)}
     />
   )

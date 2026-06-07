@@ -4,6 +4,26 @@ import {
   type RegisterableHotkey,
 } from '@tanstack/react-hotkeys'
 
+import {
+  CENTER_ACTIVE_WINDOW_COMMAND_ID,
+  FOCUS_WINDOW_BOTTOM_COMMAND_ID,
+  FOCUS_WINDOW_LEFT_COMMAND_ID,
+  FOCUS_WINDOW_RIGHT_COMMAND_ID,
+  FOCUS_WINDOW_TOP_COMMAND_ID,
+  FULLSCREEN_ACTIVE_WINDOW_COMMAND_ID,
+  LEFT_HALF_ACTIVE_WINDOW_COMMAND_ID,
+  NEXT_SURFACE_IN_WINDOW_COMMAND_ID,
+  PREVIOUS_SURFACE_IN_WINDOW_COMMAND_ID,
+  REASONABLE_SIZE_ACTIVE_WINDOW_COMMAND_ID,
+  RESIZE_ACTIVE_SPLIT_BOTTOM_COMMAND_ID,
+  RESIZE_ACTIVE_SPLIT_LEFT_COMMAND_ID,
+  RESIZE_ACTIVE_SPLIT_RIGHT_COMMAND_ID,
+  RESIZE_ACTIVE_SPLIT_TOP_COMMAND_ID,
+  RIGHT_HALF_ACTIVE_WINDOW_COMMAND_ID,
+  TAB_ACTIVE_SURFACE_LEFT_COMMAND_ID,
+  TAB_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
+  TEAR_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
+} from '@/features/tiling-surface-manager/engine/layout-command-catalog'
 import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
 import type {
   WindowManagementCommandId,
@@ -137,6 +157,23 @@ function workspaceBinding(
   options: Omit<DefaultBindingSpec, 'command' | 'hotkey'> = {},
 ): DefaultBindingSpec {
   return { command, hotkey, pane: 'any', ...options }
+}
+
+function windowManagementBinding(
+  hotkey: RegisterableHotkey,
+  commandId: WindowManagementCommandId,
+  options: Omit<DefaultBindingSpec, 'command' | 'hotkey'> = {},
+): DefaultBindingSpec {
+  const command = workspaceCommandIdForWindowManagementCommand(commandId)
+  if (!command) {
+    throw new Error(`Missing workspace command for ${commandId}`)
+  }
+
+  return workspaceBinding(hotkey, command, {
+    preventDefault: true,
+    stopPropagation: true,
+    ...options,
+  })
 }
 
 function editorBinding(
@@ -298,6 +335,24 @@ const defaultBindingSpecs = [
     preventDefault: true,
     stopPropagation: true,
   }),
+  windowManagementBinding('Alt+Shift+F', FULLSCREEN_ACTIVE_WINDOW_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+X', CENTER_ACTIVE_WINDOW_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+Z', REASONABLE_SIZE_ACTIVE_WINDOW_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+1', LEFT_HALF_ACTIVE_WINDOW_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+2', RIGHT_HALF_ACTIVE_WINDOW_COMMAND_ID),
+  windowManagementBinding('Control+Alt+Shift+ArrowLeft', FOCUS_WINDOW_LEFT_COMMAND_ID),
+  windowManagementBinding('Control+Alt+Shift+ArrowRight', FOCUS_WINDOW_RIGHT_COMMAND_ID),
+  windowManagementBinding('Control+Alt+Shift+ArrowUp', FOCUS_WINDOW_TOP_COMMAND_ID),
+  windowManagementBinding('Control+Alt+Shift+ArrowDown', FOCUS_WINDOW_BOTTOM_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+P', PREVIOUS_SURFACE_IN_WINDOW_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+N', NEXT_SURFACE_IN_WINDOW_COMMAND_ID),
+  windowManagementBinding('Control+Alt+ArrowLeft', RESIZE_ACTIVE_SPLIT_LEFT_COMMAND_ID),
+  windowManagementBinding('Control+Alt+ArrowRight', RESIZE_ACTIVE_SPLIT_RIGHT_COMMAND_ID),
+  windowManagementBinding('Control+Alt+ArrowUp', RESIZE_ACTIVE_SPLIT_TOP_COMMAND_ID),
+  windowManagementBinding('Control+Alt+ArrowDown', RESIZE_ACTIVE_SPLIT_BOTTOM_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+H', TAB_ACTIVE_SURFACE_LEFT_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+L', TAB_ACTIVE_SURFACE_RIGHT_COMMAND_ID),
+  windowManagementBinding('Alt+Shift+T', TEAR_ACTIVE_SURFACE_RIGHT_COMMAND_ID),
 
   editorBinding('Mod+Z', 'editor.undo', 'undo'),
   editorBinding('Mod+Shift+Z', 'editor.redo', 'redo'),

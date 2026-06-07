@@ -101,7 +101,7 @@ export type Surface = {
   readonly type: SurfaceType
 }
 
-export type WorkbenchWindowMode = 'collapsed' | 'maximized' | 'normal'
+export type WorkbenchWindowMode = 'collapsed' | 'fullscreen' | 'maximized' | 'normal'
 
 export type WorkbenchWindow = {
   readonly activeSurfaceId: SurfaceId
@@ -189,6 +189,7 @@ export type BuiltInWindowManagementCommand = {
   readonly capabilityPredicate?: string
   readonly category: 'Window Management'
   readonly cycleRule?: CommandCycleRule
+  readonly frame?: CustomWindowFrame
   readonly icon: CommandIcon
   readonly id: WindowManagementCommandId
   readonly kind: 'built-in'
@@ -201,6 +202,7 @@ export type CustomWindowManagementCommand = {
   readonly category: 'Window Management'
   readonly cycleRule?: CommandCycleRule
   readonly enabled: boolean
+  readonly hotkeyId?: string
   readonly icon: CommandIcon
   readonly id: WindowManagementCommandId
   readonly kind: 'custom-window'
@@ -288,6 +290,7 @@ export type LayoutOperation =
       readonly splitId: LayoutNodeId
       readonly type: 'resizeSplit'
     }
+  | { readonly type: 'fullscreenWindow'; readonly windowId: WindowId }
   | { readonly type: 'maximizeWindow'; readonly windowId: WindowId }
   | { readonly type: 'restoreWindow'; readonly windowId: WindowId }
   | { readonly recipeId: RecipeId; readonly type: 'applyRecipe' }

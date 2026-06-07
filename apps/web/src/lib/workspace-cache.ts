@@ -19,13 +19,17 @@ import {
   editorOpenPathsForWorkspaceLayout,
 } from '@/features/workbench/utils/editor-surface-layout'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/contracts'
+import type {
+  WorkspaceSearchMatch,
+  WorkspaceSearchMatchMode,
+  WorkspaceSearchQuery,
+} from '@workspace/contracts'
 import * as v from 'valibot'
 
 const CACHE_KEY = 'platform.workspace-state.v1'
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 10
+const CACHE_VERSION = 11
 
 type WorkspaceCachePayload = {
   diffViewMode: EditorDiffViewMode
@@ -45,6 +49,7 @@ export type CachedSearchBufferState = {
   filtersVisible: boolean
   includeGlobText: string
   matchMode: WorkspaceSearchMatchMode
+  matches: WorkspaceSearchMatch[]
   query: string
   queryHistory: string[]
   replaceHistory: string[]
@@ -86,11 +91,27 @@ const entryTypeSchema = v.union([
   v.literal('symlink'),
   v.literal('other'),
 ])
+const workspaceSearchSourceSchema = v.union([v.literal('disk'), v.literal('open-buffer')])
 const workspaceSearchMatchModeSchema = v.union([
   v.literal('literal'),
   v.literal('regex'),
   v.literal('fuzzy'),
 ])
+const workspaceSearchMatchSchema = v.object({
+  birthtimeMs: v.optional(v.number()),
+  column: v.optional(v.number()),
+  endColumn: v.optional(v.number()),
+  kind: v.union([v.literal('name'), v.literal('content')]),
+  line: v.optional(v.number()),
+  mtimeMs: v.optional(v.number()),
+  path: v.string(),
+  preview: v.optional(v.string()),
+  previewStartColumn: v.optional(v.number()),
+  size: v.optional(v.number()),
+  source: workspaceSearchSourceSchema,
+  targetType: v.optional(entryTypeSchema),
+  type: entryTypeSchema,
+})
 const workspaceSearchQuerySchema = v.object({
   caseSensitive: v.optional(v.boolean()),
   entryType: v.optional(entryTypeSchema),
@@ -113,6 +134,7 @@ const cachedSearchBufferStateSchema = v.strictObject({
   filtersVisible: v.boolean(),
   includeGlobText: v.string(),
   matchMode: workspaceSearchMatchModeSchema,
+  matches: v.array(workspaceSearchMatchSchema),
   query: v.string(),
   queryHistory: v.array(v.string()),
   replaceHistory: v.array(v.string()),
