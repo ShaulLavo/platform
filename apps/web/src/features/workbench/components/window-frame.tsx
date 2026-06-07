@@ -68,10 +68,12 @@ export const WindowFrame = memo(function WindowFrame({
     <section
       aria-label={windowLabel({ activeSurface, window })}
       className={cn(
-        'absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-background/95 shadow-sm backdrop-blur-sm',
-        active ? 'border-ring/45 shadow-black/10' : 'border-border/70',
+        'absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-card/90 shadow-md ring-1 ring-border/30 backdrop-blur-md transition-[background-color,border-color,box-shadow]',
+        active ? 'border-info/60 ring-info/30 shadow-lg' : 'border-border/70',
+        collapsed && 'bg-card/80',
       )}
       data-active={active ? 'true' : 'false'}
+      data-window-mode={window.mode}
       data-window-id={window.id}
       role='region'
       style={layoutRectStyle(rect)}
@@ -84,7 +86,7 @@ export const WindowFrame = memo(function WindowFrame({
         onDispatch(selectWindowOperation(window))
       }}
     >
-      <header className='border-border/70 bg-background/85 flex h-10 shrink-0 items-end gap-2 border-b pt-1'>
+      <header className='border-border/70 bg-card/80 flex h-10 shrink-0 items-end gap-2 border-b pt-1 backdrop-blur-md'>
         <TabStrip surfaces={surfaces} window={window} onDispatch={onDispatch} />
         <div className='border-border/70 ml-1 flex h-8 shrink-0 items-center gap-0.5 pb-1 pl-1'>
           <WindowControlButton
@@ -137,7 +139,7 @@ export const WindowFrame = memo(function WindowFrame({
       </header>
       <div
         className={cn(
-          'bg-background relative min-h-0 flex-1 overflow-hidden',
+          'bg-background/90 relative min-h-0 flex-1 overflow-hidden',
           collapsed && 'hidden',
         )}
       >

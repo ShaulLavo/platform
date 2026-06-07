@@ -30,7 +30,7 @@ export function Rail({
   return (
     <nav
       aria-label='Workbench rail'
-      className='border-border/80 bg-muted/30 flex w-11 shrink-0 flex-col items-center gap-1 border-r p-1'
+      className='border-border/80 bg-card/75 flex w-11 shrink-0 flex-col items-center gap-1 border-r p-1 backdrop-blur-md'
       data-workbench-rail=''
     >
       {items.map((item) => (
@@ -38,7 +38,7 @@ export function Rail({
           aria-label={railItemLabel(item)}
           className={cn(
             'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/60 flex size-8 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-1',
-            item.state === 'active' && 'bg-accent text-accent-foreground',
+            item.state === 'active' && 'bg-accent text-accent-foreground ring-info/30 ring-1',
             item.state === 'visible' && 'bg-muted text-foreground',
           )}
           data-rail-state={item.state}

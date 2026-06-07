@@ -100,6 +100,7 @@ describe('LayoutRenderer', () => {
     const html = renderLayout(createClassicFirstRunWorkspaceLayout())
 
     expect(matchCount(html, 'data-window-id=')).toBeGreaterThanOrEqual(3)
+    expect(html).toContain('data-workbench-wallpaper')
     expect(html).toContain('data-workbench-resize-overlay')
     expect(html).toContain('data-workbench-drop-overlay')
     expect(html).toContain('pointer-events-none absolute inset-0 z-30')
