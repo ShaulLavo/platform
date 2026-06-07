@@ -1010,6 +1010,17 @@ Exit criteria:
 
 ## Phase 12 - Workspace Cache Replacement
 
+Status: completed and re-audited 2026-06-07. The persisted workspace cache is
+versioned and writes serialized `WorkspaceLayout` plus scoped feature state such
+as Search Results runtime metadata. The raw payload no longer writes
+`editorPaneLayout`, `openFilePaths`, `selectedFilePath`, `sidebarVisible`,
+`workspacePanelTab`, or `gitPanelOpen`; tests assert those fields are absent.
+`openFilePaths` and `selectedFilePath` still exist only as derived bootstrap
+values recomputed from `WorkspaceLayout` for current editor, tree, command
+palette, and file-event consumers. Search buffer metadata is filtered by active
+workspace root, does not persist streaming match batches, and legacy
+`search-buffer:*` editor tabs are dropped during cache filtering.
+
 Goal: make `WorkspaceLayout` the persisted workspace state.
 
 Work:
