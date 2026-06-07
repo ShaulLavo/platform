@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "dnd-kit-implementation": {
+      "source": "atman-33/skills",
+      "sourceType": "github",
+      "skillPath": "dnd-kit-implementation/SKILL.md",
+      "computedHash": "c03f77600c16d1366c209e1372987ae52602696ea3383565a63088dceafa9978"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",

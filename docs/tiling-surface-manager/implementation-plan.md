@@ -4,20 +4,25 @@ Date: 2026-06-05
 Last audited: 2026-06-07
 
 Status: implementation broadly completed and re-audited 2026-06-07, with drag
-UX corrected on 2026-06-07 by replacing visible target chrome with private
-snap-destination hit testing and sticky snapped layout preview, and resize UX
-corrected on 2026-06-07 by making panes resize live from pointer movement.
-The production workbench now uses the Platform-owned `WorkspaceLayout` model for
-file/diff/search/tool surfaces, terminal running surfaces, command palette
-operations, snapped drag/reflow wiring, cache state, and workflow recipe
-metadata.
+UX reopened on 2026-06-07 for a clean `dnd-kit` rewrite across all app tabs and
+workbench window/surface dragging, using the current package family centered on
+`@dnd-kit/react`. Resize UX was corrected on 2026-06-07 by making panes resize
+live from pointer movement. The production workbench now uses the Platform-owned
+`WorkspaceLayout` model for file/diff/search/tool surfaces, terminal running
+surfaces, command palette operations, cache state, and workflow recipe metadata.
 Per-phase status notes below are the source of truth for completed slices and
 intentional migration-scoped compatibility.
 
-Drag correction note, 2026-06-07: visible target chrome is not product
-accepted. The required UX is sticky snapped drag preview: the actual tiled
-layout reflows to the release result, and no visible drop zones appear anywhere
-in the app.
+Drag rewrite note, 2026-06-07: the current mixed native/custom drag system is
+not product accepted. Phase 13 must replace it with `dnd-kit` for all app tab
+strips and workbench window/surface dragging. Start with `@dnd-kit/react` and
+pull in supporting current packages only when needed: `@dnd-kit/collision` for
+collision detection, `@dnd-kit/geometry` for rect math, `@dnd-kit/dom` for
+framework-agnostic DOM behavior, `@dnd-kit/abstract` for lower-level primitives,
+and `@dnd-kit/helpers` for utility functions. The required UX is sticky snapped
+drag preview: the actual tiled layout reflows to the release result, no native
+browser drag ghost or default animation appears, and no visible drop zones
+appear anywhere in the app.
 
 Resize correction note, 2026-06-07: resize handles must not be transform-only
 previews. Pointer movement dispatches incremental `resizeSplit` operations
@@ -1103,69 +1108,77 @@ Exit criteria:
 
 - Reload restores the surface workspace without old editor-pane cache fields.
 
-## Phase 13 - Sticky Snapped Drag, Live Preview, And Resize
+## Phase 13 - Dnd-Kit Drag, Sticky Snap Preview, And Resize
 
-Status: corrected and re-audited 2026-06-07. The production workbench uses
-private snap-destination hit testing through `SnappedDragController`, keeps drag
-preview as uncommitted layout state, and renders no visible drop-zone or
-target-overlay chrome. Resize handles now dispatch live incremental
+Status: reopened 2026-06-07. The current mixed native/custom drag implementation
+is not product accepted and should be deleted rather than patched. Resize
+handles remain corrected: pointer movement dispatches live incremental
 `resizeSplit` operations using measured split geometry, so both adjacent panes
-and the handle reflow with the pointer. Product acceptance still requires every
-future drag path to preserve sticky snapped preview: the actual tiled layout
-reflows to the exact release result, with no visible drop zones anywhere in the
-app.
+and the handle reflow with the pointer.
 
-Existing useful pieces to keep: pointer-driven in-strip tab dragging, Chromium-
-derived detach thresholds, uncommitted preview layout state, commit-on-release,
-cancel-to-restore, live pointer resize, content-aware resize constraints,
-normalized stored split ratios, measured resize references, keyboard resize
-steps, and private snap-destination hit testing. Existing pieces to block from
-returning: any visible drop target layer, drop-zone rect rendering, placeholder
-drop slot, transform-only resize handles, release-only pointer resize, or
-preview where a window/tab appears to pop out of the tiling grid.
+Goal: replace app drag/drop with a `dnd-kit` based architecture for all app tab
+strips and workbench window/surface dragging. Prefer `@dnd-kit/react` as the
+React adapter and add lower-level current dnd-kit packages only for concrete
+needs.
 
-Goal: deliver the corrected interaction model from the PRD.
+Required product behavior:
 
-Work:
+- All normal tabs in the app use the same Chrome-style tab implementation and
+  interaction model. This is not editor-only.
+- Locked, pinned, protected, or otherwise special tabs are modeled through
+  explicit capabilities. They can be non-draggable or constrained, but not
+  through one-off tab implementations.
+- Tabs stay attached to their own tab bar by default. Horizontal drag reorders
+  visually inside the strip, sibling tabs move out of the way, and reorder
+  commits only on release.
+- A tab becomes a workbench surface/window drag only after the pointer leaves the
+  tab bar far enough to cross the detach threshold/buffer.
+- Detached tabs immediately use the workbench snap-preview system. They do not
+  float freely, pop out to a browser window, or show an unsnapped pane preview.
+- Workbench windows/surfaces are draggable where their capabilities allow it.
+  During drag, the layout previews the snapped/rearranged destination. The user
+  can continue dragging and change the destination. The operation commits only
+  on release.
+- Dragging over resize handles, split overlays, or panel handles must not cancel
+  a tab, detached-tab, surface, or window drag.
+- No native browser drag ghost, default browser animation, visible drop-zone
+  layer, target-zone overlay, placeholder slot, or separate drop target chrome
+  may appear. The preview is the layout and tabs themselves moving.
 
-- Implement surface tab drag, whole-window drag, and tab-stack/window-group
-  drag as separate gestures.
-- Enforce the global sticky snapped-drag invariant: every pointer-driven move
-  previews and commits a concrete snapped layout destination or explicit
-  background target. This applies to whole-window drag, tab-stack/window-group
-  drag, detached single-tab drag, and individual surface moves. Drag must never
-  create a floating, popout, or unsnapped intermediate state.
-- Remove visible drop zones everywhere. Do not render drop-zone overlays,
-  target-zone highlights, placeholder drop slots, or any separate drop target
-  affordance. The preview is the layout itself rearranging.
-- Apply the same no-target-chrome rule to non-layout drag flows in the app, such
-  as file-tree moves. They may keep private target resolution for semantics, but
-  must not draw separate drop affordances.
-- Keep dragged windows, tab stacks, and detached tabs visually attached to the
-  tiling system. Other tiles reflow around the snap destination so the user sees
-  the exact geometry that will exist on release.
-- Replace the current editor-tab drag TODO with a pointer-driven Chrome-like
-  tab drag model:
-  - below the detach threshold, the dragged surface/tab remains inside the tab
-    strip and sibling tabs slide aside to show the exact reorder position;
-  - the implementation should not use a floating drag image or visually pull a
-    pane out while the gesture is still an in-strip reorder;
-  - before coding the threshold and drag-down animation, read Chromium's tab
-    strip source under
-    `chrome/browser/ui/views/tabs/` and document the chosen threshold,
-    hysteresis, and easing/progress behavior.
-- Convert a tab drag to workspace placement only after the pointer is pulled
-  down past the detach threshold. Once detached, the single tab immediately
-  becomes a snapped window in preview unless it is merging back into a tab
-  stack. It previews the final grid position, merge target, edge split,
-  parent/root edge split, recipe slot, or background target. There should never
-  be an unsnapped tab/pane hovering in the workspace.
-- Keep Chrome-style tabs sticky to their own strip while reordering. Pulling
-  out of the strip switches to the snapped workspace preview without passing
-  through a loose floating-tab state.
-- Implement live drag preview state separate from committed layout.
-- Batch pointer move preview updates with animation-frame cadence.
-- Commit previewed transform on release.
+Architecture:
+
+- Add `@dnd-kit/react` if it is not already present.
+- Use `@dnd-kit/react` hooks/providers for draggable, droppable, sortable,
+  sensor, operation, and monitor wiring where they fit.
+- Add `@dnd-kit/collision` when the workbench snap targets need custom
+  collision detection beyond simple target selection.
+- Add `@dnd-kit/geometry` when shared rect math is useful for tab-strip
+  thresholds, snap destinations, or layout hit testing.
+- Add `@dnd-kit/dom` only if the implementation needs framework-agnostic DOM
+  sensor or measurement primitives outside React components.
+- Add `@dnd-kit/abstract` only if the React adapter is too high-level for a
+  specific sticky-snap interaction and the lower-level primitives keep the code
+  simpler.
+- Add `@dnd-kit/helpers` only for reusable utility functions that replace local
+  ad hoc sorting or movement helpers.
+- Build one app-level drag/drop layer for:
+  - tab sorting inside a tab strip;
+  - tab detaching into a workbench surface/window drag;
+  - workbench window/surface snapping;
+  - commit-on-release and cancel-to-restore.
+- Keep tab-strip sorting separate from workbench snapping until the detach
+  threshold is crossed.
+- Share the workbench snap-preview controller between whole-window drags,
+  surface drags, tab-stack/window-group drags, and detached tab drags.
+- Use existing pure operations where possible:
+  - `reorderSurface` for tab reorder;
+  - `tabSurface` for center merge/tab targets;
+  - `moveSurface` for detached single-tab/surface placement;
+  - `moveWindow` for whole-window placement;
+  - `resizeSplit` for live resize.
+- Keep live drag preview state separate from committed `WorkspaceLayout`.
+- Batch pointer-move preview updates with animation-frame cadence.
+- Commit the previewed operation only on release.
 - Cancel restores committed layout.
 - Support internal snap destinations:
   - center tab/merge;
@@ -1175,38 +1188,52 @@ Work:
   - recipe-slot placement through the active recipe policy;
   - background target when a surface is intentionally removed from visible
     layout.
-- Add resize handles in the overlay layer.
-- Implement adjacent percentage resizing for V1. Pointer movement must dispatch
-  incremental resize operations live with the rendered split reference, then the
-  reducer converts those pixels into normalized ratios.
-- Add content-aware constraints for editor minimums, terminal usability, and
-  nested tool-pane widths.
+- Continue using live resize handles in the overlay layer. Pointer movement must
+  dispatch incremental resize operations with the rendered split reference, then
+  the reducer converts those pixels into normalized ratios.
+- Keep content-aware resize constraints for editor minimums, terminal usability,
+  and nested tool-pane widths.
 - Keep stored split sizes normalized so layouts survive viewport changes.
+
+Delete in this phase:
+
+- Native browser DnD handlers and draggable attributes used for app layout/tab
+  movement.
+- MIME payload helpers and DataTransfer-based tab/window payloads.
+- Custom document drag/drop events superseded by the `dnd-kit` architecture.
+- Any current half-custom tab/window drag code that duplicates `dnd-kit`
+  sensors, collision detection, sorting, preview state, or release handling.
+- Duplicate tab implementations once their behavior is covered by the shared
+  Chrome tab model.
 
 Tests:
 
-- Whole-window drag always previews a snapped destination and never renders a
-  floating or popout window preview.
+- Audit all tab systems and verify normal tabs use the shared Chrome tab
+  implementation.
+- Locked/special tabs are non-draggable or constrained according to explicit
+  capabilities.
+- In-strip tab drag previews reorder before release.
+- In-strip tab reorder commits only on release.
+- A tab remains attached below the detach threshold.
+- A tab crossing the detach threshold switches to workbench snap preview.
+- Detached tab preview is always snapped to a concrete destination.
+- Detached tab placement commits only on release.
+- Whole-window drag previews a snapped destination and never renders a floating
+  or popout window preview.
+- Whole-window drag commits only on release.
 - Tab-stack/window-group drag moves the represented group together while the
   rest of the layout reflows to the exact release result.
+- No drag path renders visible drop zones, target-zone overlays, placeholder
+  drop slots, native drag ghosts, or separate drop-target chrome.
 - No pointer-drag path can create future floating-window state; floating windows
   must require an explicit command or policy when that mode exists.
-- No drag path renders visible drop zones, target-zone overlays, placeholder
-  drop slots, or separate drop-target chrome.
-- In-strip tab drag keeps the source tab in the strip, animates sibling slots,
-  and commits only a reorder when the pointer never crosses the detach
-  threshold.
-- Pulling a tab down past the detach threshold switches to snapped workspace
-  placement, makes the single tab a snapped window in preview, and exposes the
-  exact final geometry that will be committed.
-- Detach threshold tests cover the documented Chromium-derived threshold,
-  hysteresis, and drag-down progress states.
-- Detached tab drag never renders an unsnapped floating tab/pane preview.
-- Snap-destination hit testing.
+- Dragging across resize handles or split overlays does not cancel tab,
+  detached-tab, surface, or window dragging.
+- Snap-destination hit testing prefers concrete snap targets over background.
 - Center snap merges/tabs.
 - Edge snap splits.
-- Parent/root edge snapping either works or is explicitly feature-gated with model
-  support already tested.
+- Parent/root edge snapping either works or is explicitly feature-gated with
+  model support already tested.
 - Drag preview does not persist.
 - Resize clamps and normalizes percentages.
 - Resize panes reflow live on pointer movement, including small drags.
@@ -1218,17 +1245,17 @@ Tests:
 
 Exit criteria:
 
+- All normal app tabs share the Chrome tab implementation and `dnd-kit`
+  interaction model.
+- Special tab behavior is capability-driven and covered by tests.
+- Window/surface dragging and detached tab dragging share the same sticky snapped
+  preview path.
+- Every drag commit happens on release, after the user has had time to continue
+  repositioning the preview.
 - Sticky snapped drag previews are usable in production without visible drop
-  zones.
-- Whole-window dragging follows the same snapped-layout rule as tab detaching
-  and surface moves, and tab-stack/window-group dragging is covered by the same
-  invariant.
-- Chrome-style tab dragging feels correct: reorder happens inside the strip by
-  default, detach happens only after the vertical pull-down threshold, and every
-  detached preview is snapped to a concrete workspace destination as the exact
-  release result.
-- Resize feels direct: adjacent panes resize during the drag, small movements
-  are accepted, and the handle tracks the rendered boundary.
+  zones or native browser drag artifacts.
+- Resize still feels direct: adjacent panes resize during the drag, small
+  movements are accepted, and the handle tracks the rendered boundary.
 
 ## Phase 14 - Accessibility, Visual Polish, And Performance
 
@@ -1423,7 +1450,7 @@ The phases are intentionally larger than individual PRs. Suggested merge slices:
 11. Command palette, hotkey presets, custom window commands, and saved layout
     commands.
 12. Cache replacement.
-13. Sticky snapped drag/reflow and resize.
+13. Dnd-kit drag/reflow and resize.
 14. Visual/accessibility/performance pass.
 15. Legacy deletion and dependency cleanup.
 16. First workflow recipe and follow-up plans.
@@ -1509,9 +1536,10 @@ Expected remaining scan hits:
 - Classic first-run layout is implemented as a recipe over the tiling model.
 - Rail can focus, open, expand, collapse, and show status for
   durable/running/singleton surfaces.
-- Window tab stacks use the existing Chrome-style tab presentation.
-- Window/group drag and tab drag use sticky snapped live previews with no
-  visible drop zones.
+- Window tab stacks and normal app tab strips use one shared Chrome-style tab
+  presentation.
+- Window/group drag, surface drag, and tab drag use `@dnd-kit/react` sticky
+  snapped live previews with no visible drop zones.
 - Center, edge, parent-edge, and root-edge snap destinations are either
   implemented or model-ready and explicitly feature-gated from UI.
 - Resize is live and constraint-aware enough for editor, terminal, and nested
