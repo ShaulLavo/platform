@@ -85,6 +85,7 @@ export function TabStrip({
       <div
         aria-label='Window tabs'
         className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+        data-window-drag-blocker=''
         ref={tabListRef}
         role='tablist'
       >
@@ -108,6 +109,7 @@ export function TabStrip({
     <div
       aria-label='Window tabs'
       className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+      data-window-drag-blocker=''
       ref={tabListRef}
       role='tablist'
     >

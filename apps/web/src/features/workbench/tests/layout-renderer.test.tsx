@@ -18,6 +18,11 @@ import {
   EDITOR_TAB_POINTER_DROP_EVENT,
 } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import {
+  WORKBENCH_WINDOW_POINTER_DRAG_EVENT,
+  WORKBENCH_WINDOW_POINTER_DROP_EVENT,
+  dispatchWorkbenchWindowPointerDragEvent,
+} from '@/features/workbench/utils/window-drag-events'
+import {
   CLASSIC_DIAGNOSTICS_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
   createChatSurface,
@@ -285,6 +290,61 @@ describe('LayoutRenderer', () => {
         destination,
         surfaceId: file.id,
         type: 'moveSurface',
+      },
+    ])
+  })
+
+  it('dispatches snapped move operations from pointer window drags', () => {
+    const operations: LayoutOperation[] = []
+    const sourceWindowId = workbenchWindowId('source')
+    const destination = {
+      edge: 'right' as const,
+      kind: 'window-edge' as const,
+      windowId: workbenchWindowId('target'),
+    }
+
+    render(
+      <DropOverlay
+        dropZoneRects={[
+          {
+            destination,
+            edge: 'right',
+            id: overlayId('drop:test:right'),
+            kind: 'window-edge',
+            rect: { height: 240, width: 160, x: 480, y: 0 },
+            windowId: destination.windowId,
+          },
+        ]}
+        onDispatch={(operation) => operations.push(operation)}
+      />,
+    )
+
+    const dropZone = screen.getByRole('button', { name: 'Drop window-edge right' })
+
+    act(() => {
+      dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DRAG_EVENT, {
+        clientX: 500,
+        clientY: 12,
+        windowId: sourceWindowId,
+      })
+    })
+
+    expect(dropZone).toHaveAttribute('data-accepting', 'true')
+    expect(dropZone).toHaveAttribute('data-active', 'true')
+
+    act(() => {
+      dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DROP_EVENT, {
+        clientX: 500,
+        clientY: 12,
+        windowId: sourceWindowId,
+      })
+    })
+
+    expect(operations).toEqual([
+      {
+        destination,
+        type: 'moveWindow',
+        windowId: sourceWindowId,
       },
     ])
   })

@@ -1,5 +1,5 @@
 import { ArrowsInSimpleIcon, ArrowsOutSimpleIcon, MinusIcon, XIcon } from '@phosphor-icons/react'
-import { memo, type FocusEvent } from 'react'
+import { memo, useRef, type FocusEvent, type PointerEvent } from 'react'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { SurfaceHost } from '@/features/workbench/components/surface-host'
@@ -18,6 +18,13 @@ import type {
 } from '@/features/tiling-surface-manager/engine/layout-types'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
+import {
+  WORKBENCH_WINDOW_DRAG_START_THRESHOLD_PX,
+  WORKBENCH_WINDOW_POINTER_DRAG_EVENT,
+  WORKBENCH_WINDOW_POINTER_DROP_EVENT,
+  dispatchWorkbenchWindowPointerCancelEvent,
+  dispatchWorkbenchWindowPointerDragEvent,
+} from '@/features/workbench/utils/window-drag-events'
 
 type WindowFrameState = {
   readonly active: boolean
@@ -34,6 +41,13 @@ type WindowFrameProps = {
   readonly onDispatch: (operation: LayoutOperation) => void
 }
 
+type WindowPointerDrag = {
+  readonly pointerId: number
+  readonly startX: number
+  readonly startY: number
+  started: boolean
+}
+
 // Measured: surface-area rect/layout updates were repainting every window subtree.
 export const WindowFrame = memo(function WindowFrame({
   rect,
@@ -41,6 +55,7 @@ export const WindowFrame = memo(function WindowFrame({
   windowId,
   onDispatch,
 }: WindowFrameProps) {
+  const windowDragRef = useRef<WindowPointerDrag | null>(null)
   const state = useLayoutState(
     (store) => selectWindowFrameState(store.layout, windowId),
     windowFrameStateEqual,
@@ -62,6 +77,64 @@ export const WindowFrame = memo(function WindowFrame({
   if (!classicBottomToolPane && activeSurface) {
     collapseLabel = collapsed ? `Expand ${activeSurface.title}` : `Collapse ${activeSurface.title}`
     closeLabel = `Close ${activeSurface.title}`
+  }
+
+  function handleWindowDragPointerDown(event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0) return
+    if (windowDragBlockedTarget(event.target)) return
+
+    windowDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      started: false,
+    }
+    setWindowPointerCapture(event.currentTarget, event.pointerId)
+  }
+
+  function handleWindowDragPointerMove(event: PointerEvent<HTMLElement>) {
+    const drag = windowDragRef.current
+    if (!windowDragMatchesEvent(drag, event)) return
+    if (!primaryWindowPointerButtonIsDown(event)) {
+      cancelWindowPointerDrag(event.currentTarget, drag)
+      windowDragRef.current = null
+      return
+    }
+    if (!drag.started && !windowDragMovedEnough(drag, event)) return
+
+    event.preventDefault()
+    drag.started = true
+    dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DRAG_EVENT, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      windowId: window.id,
+    })
+  }
+
+  function handleWindowDragPointerUp(event: PointerEvent<HTMLElement>) {
+    const drag = windowDragRef.current
+    if (!windowDragMatchesEvent(drag, event)) return
+
+    releaseWindowPointerCapture(event.currentTarget, drag.pointerId)
+    windowDragRef.current = null
+    if (!drag.started) return
+
+    dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DROP_EVENT, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      windowId: window.id,
+    })
+  }
+
+  function handleWindowDragPointerCancel(event: PointerEvent<HTMLElement>) {
+    const drag = windowDragRef.current
+    if (!windowDragMatchesEvent(drag, event)) return
+
+    releaseWindowPointerCapture(event.currentTarget, drag.pointerId)
+    windowDragRef.current = null
+    if (!drag.started) return
+
+    dispatchWorkbenchWindowPointerCancelEvent()
   }
 
   return (
@@ -86,9 +159,19 @@ export const WindowFrame = memo(function WindowFrame({
         onDispatch(selectWindowOperation(window))
       }}
     >
-      <header className='border-border/70 bg-card/80 flex h-10 shrink-0 items-end gap-2 border-b pt-1 backdrop-blur-md'>
+      <header
+        className='border-border/70 bg-card/80 flex h-10 shrink-0 cursor-grab items-end gap-2 border-b pt-1 backdrop-blur-md active:cursor-grabbing'
+        onLostPointerCapture={handleWindowDragPointerCancel}
+        onPointerCancel={handleWindowDragPointerCancel}
+        onPointerDown={handleWindowDragPointerDown}
+        onPointerMove={handleWindowDragPointerMove}
+        onPointerUp={handleWindowDragPointerUp}
+      >
         <TabStrip surfaces={surfaces} window={window} onDispatch={onDispatch} />
-        <div className='border-border/70 ml-1 flex h-8 shrink-0 items-center gap-0.5 pb-1 pl-1'>
+        <div
+          className='border-border/70 ml-1 flex h-8 shrink-0 items-center gap-0.5 pb-1 pl-1'
+          data-window-drag-blocker=''
+        >
           <WindowControlButton
             disabled={!classicBottomToolPane && !windowCanCollapse}
             label={collapseLabel}
@@ -257,6 +340,66 @@ function focusedSurfaceType(target: EventTarget | null) {
   if (!(host instanceof HTMLElement)) return null
 
   return host.dataset.surfaceType ?? null
+}
+
+function windowDragBlockedTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false
+
+  return Boolean(target.closest('[data-window-drag-blocker]'))
+}
+
+function windowDragMatchesEvent(
+  drag: WindowPointerDrag | null,
+  event: PointerEvent<HTMLElement>,
+): drag is WindowPointerDrag {
+  if (!drag) return false
+
+  return drag.pointerId === event.pointerId
+}
+
+function windowDragMovedEnough(
+  drag: WindowPointerDrag,
+  event: Pick<PointerEvent<HTMLElement>, 'clientX' | 'clientY'>,
+) {
+  return (
+    Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >=
+    WORKBENCH_WINDOW_DRAG_START_THRESHOLD_PX
+  )
+}
+
+function primaryWindowPointerButtonIsDown(event: Pick<PointerEvent<HTMLElement>, 'buttons'>) {
+  return (event.buttons & 1) === 1
+}
+
+function cancelWindowPointerDrag(element: HTMLElement, drag: WindowPointerDrag) {
+  releaseWindowPointerCapture(element, drag.pointerId)
+  if (!drag.started) return
+
+  dispatchWorkbenchWindowPointerCancelEvent()
+}
+
+function setWindowPointerCapture(element: HTMLElement, pointerId: number) {
+  if (!element.isConnected) return
+  if (!element.setPointerCapture) return
+
+  try {
+    element.setPointerCapture(pointerId)
+  } catch {
+    // Synthetic browser-test pointer events may not register an active pointer.
+  }
+}
+
+function releaseWindowPointerCapture(element: HTMLElement, pointerId: number) {
+  if (!element.isConnected) return
+  if (!element.releasePointerCapture) return
+
+  try {
+    if (element.hasPointerCapture && !element.hasPointerCapture(pointerId)) return
+
+    element.releasePointerCapture(pointerId)
+  } catch {
+    // Ignore stale pointer capture after browser-level cancellation.
+  }
 }
 
 function windowLabel({

@@ -9,6 +9,12 @@ import {
   readEditorTabDragPayload,
 } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
+import {
+  WORKBENCH_WINDOW_POINTER_CANCEL_EVENT,
+  WORKBENCH_WINDOW_POINTER_DRAG_EVENT,
+  WORKBENCH_WINDOW_POINTER_DROP_EVENT,
+  workbenchWindowPointerDragDetail,
+} from '@/features/workbench/utils/window-drag-events'
 import type { DropZoneLayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
 import type {
   LayoutOperation,
@@ -118,6 +124,48 @@ export function DropOverlay({
       document.removeEventListener(EDITOR_TAB_POINTER_CANCEL_EVENT, clearPointerDrag)
     }
   }, [dropZoneRects, onDispatch, surfaceIdForEditorTabId])
+
+  useEffect(() => {
+    function clearWindowDrag() {
+      setAcceptingDrop(false)
+      setActiveDropZoneId(null)
+    }
+
+    function handleWindowDrag(event: Event) {
+      const detail = workbenchWindowPointerDragDetail(event)
+      if (!detail) return
+
+      setAcceptingDrop(true)
+      setActiveDropZoneId(
+        dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)?.id ?? null,
+      )
+    }
+
+    function handleWindowDrop(event: Event) {
+      const detail = workbenchWindowPointerDragDetail(event)
+      clearWindowDrag()
+      if (!detail) return
+
+      const dropZone = dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)
+      if (!dropZone) return
+
+      onDispatch({
+        destination: dropZone.destination,
+        type: 'moveWindow',
+        windowId: detail.windowId,
+      })
+    }
+
+    document.addEventListener(WORKBENCH_WINDOW_POINTER_DRAG_EVENT, handleWindowDrag)
+    document.addEventListener(WORKBENCH_WINDOW_POINTER_DROP_EVENT, handleWindowDrop)
+    document.addEventListener(WORKBENCH_WINDOW_POINTER_CANCEL_EVENT, clearWindowDrag)
+
+    return () => {
+      document.removeEventListener(WORKBENCH_WINDOW_POINTER_DRAG_EVENT, handleWindowDrag)
+      document.removeEventListener(WORKBENCH_WINDOW_POINTER_DROP_EVENT, handleWindowDrop)
+      document.removeEventListener(WORKBENCH_WINDOW_POINTER_CANCEL_EVENT, clearWindowDrag)
+    }
+  }, [dropZoneRects, onDispatch])
 
   if (dropZoneRects.length === 0) return null
 
