@@ -91,9 +91,10 @@ export function chromeTabStyle(
   overlap: number,
   layoutWidth: number | null,
   trailingSlotWidth: number,
+  closedWidth = overlap,
 ) {
   const tab = visualTab.tab
-  const fixedWidth = openingTabWidth(visualTab, overlap)
+  const fixedWidth = openingTabWidth(visualTab, overlap, closedWidth)
   const targetWidth = fixedWidth ?? layoutWidth
   const minWidth = tab.active
     ? CHROME_TAB_ACTIVE_MIN_WIDTH + trailingSlotWidth
@@ -111,8 +112,8 @@ export function chromeTabStyle(
   } as CSSProperties
 }
 
-function openingTabWidth(visualTab: EditorChromeVisualTab, overlap: number) {
-  if (visualTab.phase === 'closing') return overlap
+function openingTabWidth(visualTab: EditorChromeVisualTab, overlap: number, closedWidth: number) {
+  if (visualTab.phase === 'closing') return closedWidth
   if (visualTab.phase === 'opening') return overlap
 
   return null

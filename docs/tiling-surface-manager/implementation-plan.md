@@ -3,11 +3,12 @@
 Date: 2026-06-05
 Last audited: 2026-06-07
 
-Status: implementation in progress. The production workbench now uses the
-Platform-owned `WorkspaceLayout` model for file/diff/search/tool surfaces,
-terminal running surfaces, command palette operations, drag/drop overlay wiring,
-cache state, and workflow recipe metadata. Per-phase status notes below remain
-the source of truth for completed slices and remaining gaps.
+Status: implementation completed and re-audited 2026-06-07. The production
+workbench now uses the Platform-owned `WorkspaceLayout` model for
+file/diff/search/tool surfaces, terminal running surfaces, command palette
+operations, drag/drop overlay wiring, cache state, and workflow recipe metadata.
+Per-phase status notes below are the source of truth for completed slices and
+intentional migration-scoped compatibility.
 
 This plan is grounded in `prd.md`, `technical-design.md`, `research-findings.md`,
 and the current app ownership points called out in the technical design.
@@ -210,6 +211,10 @@ Keep each exported React component in its own file. Keep hooks in their own
 files. Keep pure helpers out of component and hook files.
 
 ## Phase 0 - Baseline And Test Map
+
+Status: completed and re-audited 2026-06-07. The implementation plan now tracks
+the old layout owners, the replacement phases, and the behavior coverage that
+was preserved or rewritten during the migration.
 
 Goal: freeze current behavior expectations before changing ownership.
 
@@ -1162,6 +1167,20 @@ Exit criteria:
   detached preview is snapped to a concrete workspace destination.
 
 ## Phase 14 - Accessibility, Visual Polish, And Performance
+
+Status: completed and re-audited 2026-06-07. The renderer packages the default
+wallpaper at `apps/web/public/workbench/wallpaper.png`; labels the application,
+rail, windows, tab strips, resize handles, and drop targets; and keeps active,
+collapsed, background, running, and transient preview states visible through the
+custom renderer. The performance audit confirmed selector equality boundaries for
+the main surface area, window frames, rail, hidden hosts, and surface content.
+Browser coverage now includes a compact-width smoke test. The review also fixed
+the Chrome tab close-layout fallback so direct workbench closes and close bursts
+hold measured tab geometry before `ResizeObserver` has produced a layout
+snapshot. Browser verification currently uses
+`node --preserve-symlinks node_modules/vitest/vitest.mjs` because the checked-in
+Bun symlink layout prevents `bun run test:browser` from resolving
+`@vitest/browser`'s Vite peer during collection.
 
 Goal: make the new workspace credible as a daily editor shell.
 

@@ -525,6 +525,14 @@ describe('chromeTabStyle', () => {
     expect(style.flex).toBe('0 0 18px')
     expect(style.width).toBe(18)
   })
+
+  it('keeps closing hit width independent from overlap', () => {
+    const closingTab = chromeVisualTabs(['closing'], ['tab-a'])[0]!
+    const style = chromeTabStyle(closingTab, 0, 0, 64, 0, 18)
+
+    expect(style.flex).toBe('0 0 18px')
+    expect(style.marginLeft).toBe(0)
+  })
 })
 
 describe('chrome close layout snapshots', () => {
@@ -562,7 +570,7 @@ describe('chrome close layout snapshots', () => {
       ['tab-a', 'tab-b', 'tab-c'],
     )
 
-    expect(chromeTabCloseModeAvailableWidth(snapshot, closingTabs, 300)).toBe(216)
+    expect(chromeTabCloseModeAvailableWidth(snapshot, closingTabs, 300)).toBe(222)
   })
 
   it('preserves currently held widths when refreshing a close burst snapshot', () => {
@@ -582,8 +590,25 @@ describe('chrome close layout snapshots', () => {
     )
 
     expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[0]!, 120)).toBe(96)
-    expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[1]!, 120)).toBe(12)
+    expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[1]!, 120)).toBe(18)
     expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[2]!, 120)).toBe(96)
+  })
+
+  it('keeps closed width separate from layout overlap', () => {
+    const visualTabs = chromeVisualTabs(
+      ['present', 'present', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+    const snapshot = chromeTabCloseLayoutSnapshot(visualTabs, chromeLayout([96, 96, 96], 0))
+    const closingTabs = chromeVisualTabs(
+      ['present', 'closing', 'present'],
+      ['tab-a', 'tab-b', 'tab-c'],
+    )
+    const nextSnapshot = chromeTabCloseLayoutSnapshot(closingTabs, chromeLayout([96, 96, 96], 0))
+
+    expect(snapshot?.overlap).toBe(0)
+    expect(chromeTabCloseLayoutWidth(nextSnapshot, closingTabs[1]!, 96)).toBe(18)
+    expect(chromeTabCloseModeAvailableWidth(snapshot, closingTabs, 300)).toBe(222)
   })
 
   it('reserves active width for an inactive tab promoted by closing the selected tab', () => {

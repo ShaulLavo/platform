@@ -96,6 +96,24 @@ describe('LayoutRenderer browser rendering', () => {
     expect(railRect.height).toBeGreaterThan(railRect.width)
   })
 
+  it('keeps the workbench framed at mobile width', async () => {
+    renderClassicLayout({ height: 720, width: 390 })
+
+    await vi.waitFor(() => {
+      expect(windowRegions()).toHaveLength(3)
+      expect(surfaceArea().getBoundingClientRect().width).toBeGreaterThan(300)
+      expect(railElement().getBoundingClientRect().width).toBeGreaterThan(30)
+    })
+
+    const surfaceRect = surfaceArea().getBoundingClientRect()
+    for (const rect of windowRects()) {
+      expect(rect.width).toBeGreaterThan(0)
+      expect(rect.height).toBeGreaterThan(0)
+      expect(rect.x).toBeGreaterThanOrEqual(surfaceRect.x)
+      expect(rect.x + rect.width).toBeLessThanOrEqual(surfaceRect.x + surfaceRect.width + 1)
+    }
+  })
+
   it('resizes split windows with pointer drag handles', async () => {
     renderClassicLayout()
 
@@ -261,13 +279,19 @@ describe('LayoutRenderer browser rendering', () => {
   })
 })
 
-function renderClassicLayout() {
+function renderClassicLayout({
+  height = 620,
+  width = 920,
+}: {
+  readonly height?: number
+  readonly width?: number
+} = {}) {
   const container = document.createElement('main')
-  container.style.height = '620px'
+  container.style.height = `${height}px`
   container.style.left = '0'
   container.style.position = 'fixed'
   container.style.top = '0'
-  container.style.width = '920px'
+  container.style.width = `${width}px`
   document.body.append(container)
   root = createRoot(container)
 

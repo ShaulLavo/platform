@@ -1,11 +1,13 @@
 import {
   CHROME_TAB_ACTIVE_MIN_WIDTH,
+  CHROME_TAB_CLOSED_WIDTH,
   CHROME_TAB_TRAILING_SLOT_WIDTH,
   type ChromeTabLayout,
 } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import type { EditorChromeVisualTab } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 
 export type ChromeTabCloseLayoutSnapshot = {
+  readonly closedWidth: number
   readonly overlap: number
   readonly widthsById: ReadonlyMap<string, number>
 }
@@ -24,6 +26,8 @@ export function chromeTabCloseLayoutSnapshot(
 ): ChromeTabCloseLayoutSnapshot | null {
   if (!layout) return null
 
+  const closedWidth = heldSnapshot?.closedWidth ?? CHROME_TAB_CLOSED_WIDTH
+  const overlap = heldSnapshot?.overlap ?? layout.overlap
   const widthsById = new Map<string, number>()
   for (const [index, visualTab] of visualTabs.entries()) {
     const tabBounds = layout.tabs[index]
@@ -34,15 +38,16 @@ export function chromeTabCloseLayoutSnapshot(
       chromeTabCloseLayoutSnapshotWidth(
         visualTab,
         tabBounds.width,
-        layout,
         heldSnapshot,
+        closedWidth,
         promotedActiveTabId,
       ),
     )
   }
 
   return {
-    overlap: layout.overlap,
+    closedWidth,
+    overlap,
     widthsById,
   }
 }
@@ -113,11 +118,11 @@ export function cachedChromeTabCloseLayoutSnapshot(cacheKey: string | undefined)
 function chromeTabCloseLayoutSnapshotWidth(
   visualTab: EditorChromeVisualTab,
   tabWidth: number,
-  layout: ChromeTabLayout,
   heldSnapshot: ChromeTabCloseLayoutSnapshot | null,
+  closedWidth: number,
   promotedActiveTabId: string | null,
 ) {
-  if (visualTab.phase === 'closing') return layout.overlap
+  if (visualTab.phase === 'closing') return closedWidth
 
   const heldWidth = heldSnapshot?.widthsById.get(visualTab.tab.id)
   const width = typeof heldWidth === 'number' ? heldWidth : tabWidth
@@ -151,5 +156,5 @@ function chromeTabCloseModeTabRemovedWidth(
   const width = snapshot.widthsById.get(visualTab.tab.id)
   if (typeof width !== 'number') return 0
 
-  return Math.max(0, width - snapshot.overlap)
+  return Math.max(0, width - snapshot.closedWidth)
 }

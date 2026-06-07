@@ -30,6 +30,7 @@ import { ContextMenu, ContextMenuTrigger } from '@workspace/ui/components/contex
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ChromeEditorTab({
+  closedWidth,
   closeMode,
   closeTarget,
   dragOffsetX,
@@ -54,6 +55,7 @@ export function ChromeEditorTab({
   onPointerUp,
   onSelect,
 }: {
+  closedWidth: number
   closeMode: boolean
   closeTarget: boolean
   dragOffsetX: number
@@ -80,7 +82,14 @@ export function ChromeEditorTab({
 }) {
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const tab = visualTab.tab
-  const tabStyle = chromeTabStyle(visualTab, index, overlap, layoutWidth, trailingSlotWidth)
+  const tabStyle = chromeTabStyle(
+    visualTab,
+    index,
+    overlap,
+    layoutWidth,
+    trailingSlotWidth,
+    closedWidth,
+  )
   const style = editorTabStyleWithDragOffset(tabStyle, dragOffsetX)
   const closing = visualTab.phase === 'closing'
 

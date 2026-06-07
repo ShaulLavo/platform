@@ -1,7 +1,12 @@
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
 import { ChromeEditorTab } from '@/components/workspace/editor-tabs/components/chrome-editor-tab'
-import { chromeTabLayout } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
+import {
+  CHROME_TAB_ACTIVE_MIN_WIDTH,
+  CHROME_TAB_CLOSED_WIDTH,
+  CHROME_TAB_TRAILING_SLOT_WIDTH,
+  chromeTabLayout,
+} from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import {
   cachedChromeTabCloseLayoutSnapshot,
   cacheChromeTabCloseLayoutSnapshot,
@@ -64,7 +69,9 @@ export function ChromeEditorTabList({
   const trailingSlotWidths = useMemo(() => chromeTrailingSlotWidths(tabs), [tabs])
   const cachedCloseLayoutSnapshot = cachedChromeTabCloseLayoutSnapshot(closeLayoutCacheKey)
   const closeLayoutSnapshot = closing
-    ? (closeLayoutSnapshotRef.current ?? cachedCloseLayoutSnapshot)
+    ? (closeLayoutSnapshotRef.current ??
+      cachedCloseLayoutSnapshot ??
+      mountedChromeTabCloseLayoutSnapshot(tabListRef.current, tabs))
     : null
   const availableWidth =
     measuredAvailableWidth === null
@@ -108,12 +115,10 @@ export function ChromeEditorTabList({
   }
 
   function captureCloseLayoutSnapshot(tabId: string) {
-    const nextCloseLayoutSnapshot = chromeTabCloseLayoutSnapshot(
-      tabs,
-      layout,
-      closeLayoutSnapshot,
-      promotedChromeTabIdAfterClose(tabs, tabId),
-    )
+    const promotedTabId = promotedChromeTabIdAfterClose(tabs, tabId)
+    const nextCloseLayoutSnapshot =
+      chromeTabCloseLayoutSnapshot(tabs, layout, closeLayoutSnapshot, promotedTabId) ??
+      mountedChromeTabCloseLayoutSnapshot(tabListRef.current, tabs, promotedTabId)
     if (!nextCloseLayoutSnapshot) return
 
     closeLayoutSnapshotRef.current = nextCloseLayoutSnapshot
@@ -135,6 +140,7 @@ export function ChromeEditorTabList({
 
         return (
           <ChromeEditorTab
+            closedWidth={closeLayoutSnapshot?.closedWidth ?? overlap}
             closeMode={closing}
             closeTarget={visualTab.tab.id === closeBurstTargetId}
             dragOffsetX={dragged && !drag.state?.detached ? (drag.state?.offsetX ?? 0) : 0}
@@ -167,5 +173,108 @@ export function ChromeEditorTabList({
         )
       })}
     </div>
+  )
+}
+
+function mountedChromeTabCloseLayoutSnapshot(
+  tabListElement: HTMLElement | null,
+  visualTabs: readonly EditorChromeVisualTab[],
+  promotedActiveTabId: string | null = null,
+): ChromeTabCloseLayoutSnapshot | null {
+  if (!tabListElement) return null
+
+  const measurements = mountedChromeTabMeasurements(tabListElement)
+  const widthsById = new Map(measurements.map((measurement) => [measurement.id, measurement.width]))
+
+  if (widthsById.size === 0) return null
+
+  promoteMountedActiveCloseWidth(widthsById, visualTabs, promotedActiveTabId)
+
+  return {
+    closedWidth: CHROME_TAB_CLOSED_WIDTH,
+    overlap: mountedChromeTabOverlap(measurements),
+    widthsById,
+  }
+}
+
+type MountedChromeTabMeasurement = {
+  readonly id: string
+  readonly left: number
+  readonly right: number
+  readonly width: number
+}
+
+function mountedChromeTabMeasurements(tabListElement: HTMLElement) {
+  const measurements: MountedChromeTabMeasurement[] = []
+  const tabElements = tabListElement.querySelectorAll<HTMLElement>('[data-editor-tab-id]')
+  for (const tabElement of tabElements) {
+    const measurement = mountedChromeTabMeasurement(tabElement)
+    if (!measurement) continue
+
+    measurements.push(measurement)
+  }
+
+  return measurements
+}
+
+function mountedChromeTabMeasurement(tabElement: HTMLElement): MountedChromeTabMeasurement | null {
+  const id = tabElement.dataset.editorTabId
+  if (!id) return null
+
+  const rect = tabElement.getBoundingClientRect()
+  if (rect.width <= 0) return null
+
+  return {
+    id,
+    left: rect.left,
+    right: rect.right,
+    width: rect.width,
+  }
+}
+
+function mountedChromeTabOverlap(measurements: readonly MountedChromeTabMeasurement[]) {
+  let overlap = 0
+  for (let index = 1; index < measurements.length; index += 1) {
+    const previous = measurements[index - 1]
+    const current = measurements[index]
+    if (!previous || !current) continue
+
+    overlap = Math.max(overlap, previous.right - current.left)
+  }
+
+  return Math.max(0, Math.min(CHROME_TAB_CLOSED_WIDTH, Math.round(overlap)))
+}
+
+function promoteMountedActiveCloseWidth(
+  widthsById: Map<string, number>,
+  visualTabs: readonly EditorChromeVisualTab[],
+  promotedActiveTabId: string | null,
+) {
+  const promotedTabId = promotedActiveTabId ?? mountedActiveClosePromotedTabId(visualTabs)
+  if (!promotedTabId) return
+
+  const width = widthsById.get(promotedTabId)
+  if (typeof width !== 'number') return
+
+  widthsById.set(
+    promotedTabId,
+    Math.max(width, CHROME_TAB_ACTIVE_MIN_WIDTH + CHROME_TAB_TRAILING_SLOT_WIDTH),
+  )
+}
+
+function mountedActiveClosePromotedTabId(visualTabs: readonly EditorChromeVisualTab[]) {
+  const activeClosingTab = visualTabs.find((visualTab) => {
+    if (visualTab.phase !== 'closing') return false
+
+    return visualTab.tab.active
+  })
+  if (!activeClosingTab) return null
+
+  return (
+    visualTabs.find((visualTab) => {
+      if (visualTab.phase === 'closing') return false
+
+      return visualTab.tab.active
+    })?.tab.id ?? null
   )
 }
