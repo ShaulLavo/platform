@@ -309,6 +309,10 @@ function idleDragController(): EditorTabDragController {
     onDragOver: () => undefined,
     onDragStart: () => undefined,
     onDrop: () => undefined,
+    onPointerCancel: () => undefined,
+    onPointerDown: () => undefined,
+    onPointerMove: () => undefined,
+    onPointerUp: () => undefined,
   }
 }
 

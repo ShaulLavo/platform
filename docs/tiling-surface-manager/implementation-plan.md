@@ -1024,6 +1024,17 @@ Exit criteria:
 
 ## Phase 13 - Drag, Drop, Live Preview, And Resize
 
+Status: partially complete and re-audited 2026-06-07. Editor tab dragging now
+uses a pointer-driven in-strip gesture for visible tabs, keeps the dragged tab
+inside the strip below the detach threshold, and hands detached pointer drags to
+the snapped `DropOverlay` destinations. The mouse detach threshold follows
+Chromium `TabDragController::kVerticalDetachMagnetism` at 15 px; touch follows
+`kTouchVerticalDetachMagnetism` at 50 px; reattach hysteresis is 4 px; drag
+motion uses immediate pointer-follow transforms while sibling/drop-slot movement
+uses existing Chrome-tab transition timing. Remaining Phase 13 work is
+whole-window pointer dragging, full committed-layout preview state, content-aware
+resize constraints, and persisted resize preferences.
+
 Goal: deliver the interaction model from the PRD.
 
 Work:

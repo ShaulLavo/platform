@@ -3,6 +3,7 @@ import {
   useReducer,
   useRef,
   type DragEvent as ReactDragEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react'
 
@@ -11,17 +12,16 @@ import {
   type EditorTabDropTargetBounds,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-dnd'
 
-// TODO(chrome-tab-dnd): Reimagine the chrome tab drag as a pointer-driven in-strip slide.
-// The dragged tab should stay inside the tab bar and follow the pointer horizontally while
-// the other tabs animate aside to reveal exactly where it will land on release. Only once
-// the pointer is pulled down far enough past the strip should the tab detach into the same
-// snapped workspace drag grammar used by whole-window drags. Do not create a floating drag
-// image, popout, or unsnapped intermediate state.
-// TODO(chrome-tab-dnd): Study Chrome's tab strip source for the detach pull-down threshold and
-// the slide/reorder motion details before implementing:
-// https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/views/tabs/
 export const EDITOR_TAB_DRAG_KIND = 'platform/editor-tab'
 export const EDITOR_TAB_DRAG_MIME = 'application/x-platform-editor-tab'
+export const EDITOR_TAB_POINTER_DRAG_EVENT = 'platform-editor-tab-pointer-drag'
+export const EDITOR_TAB_POINTER_DROP_EVENT = 'platform-editor-tab-pointer-drop'
+export const EDITOR_TAB_POINTER_CANCEL_EVENT = 'platform-editor-tab-pointer-cancel'
+// Chromium TabDragController uses 15 DIP mouse and 50 DIP touch vertical detach magnetism.
+export const EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX = 15
+export const EDITOR_TAB_TOUCH_DETACH_THRESHOLD_PX = 50
+export const EDITOR_TAB_DETACH_HYSTERESIS_PX = 4
+export const EDITOR_TAB_DRAG_START_THRESHOLD_PX = 3
 const EDITOR_TAB_DRAG_AUTO_SCROLL_EDGE_PX = 36
 const EDITOR_TAB_DRAG_AUTO_SCROLL_STEP_PX = 14
 
@@ -31,6 +31,9 @@ export type EditorTabDragItem = {
 }
 
 export type EditorTabDragState = {
+  detached: boolean
+  detachProgress: number
+  offsetX: number
   paneId: string
   path: string
   sourceIndex: number
@@ -48,6 +51,10 @@ export type EditorTabDragController = {
   onDragOver: (event: ReactDragEvent<HTMLElement>) => void
   onDragStart: (event: ReactDragEvent<HTMLElement>, tab: EditorTabDragItem) => void
   onDrop: (event: ReactDragEvent<HTMLElement>) => void
+  onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>, tab: EditorTabDragItem) => void
+  onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void
+  onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void
 }
 
 export type EditorTabDragAction =
@@ -59,12 +66,39 @@ export type EditorTabDragAction =
       type: 'start'
     }
   | { targetIndex: number | null; type: 'target' }
+  | {
+      detached: boolean
+      detachProgress: number
+      offsetX: number
+      targetIndex: number | null
+      type: 'move'
+    }
   | { type: 'clear' }
 
 export type EditorTabDragPayload = {
   kind: typeof EDITOR_TAB_DRAG_KIND
   paneId: string
   path: string
+  tabId: string
+}
+
+export type EditorTabPointerDragDetail = EditorTabDragPayload & {
+  clientX: number
+  clientY: number
+  detached: boolean
+  detachProgress: number
+}
+
+type EditorTabPointerDrag = {
+  detached: boolean
+  path: string
+  paneId: string
+  pointerId: number
+  pointerType: string
+  sourceIndex: number
+  startX: number
+  startY: number
+  started: boolean
   tabId: string
 }
 
@@ -92,6 +126,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
   const ownsDragRef = useRef(false)
   const onMoveToPaneRef = useRef(onMoveToPane)
   const onReorderRef = useRef(onReorder)
+  const pointerDragRef = useRef<EditorTabPointerDrag | null>(null)
 
   useEffect(() => {
     stateRef.current = state
@@ -112,6 +147,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
       dragImageCleanupRef.current?.()
       dragImageCleanupRef.current = null
       dragClientXRef.current = null
+      cancelEditorTabPointerDrag()
       cancelEditorTabDragAutoScroll(autoScrollFrameRef)
     },
     [],
@@ -140,6 +176,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
 
   function clearDrag() {
     const currentTabId = stateRef.current?.tabId ?? null
+    cancelEditorTabPointerDrag()
     dispatchDrag({ type: 'clear' })
     documentDragCleanupRef.current?.()
     documentDragCleanupRef.current = null
@@ -167,6 +204,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     const scrollElement = tabListRef.current
     const clientX = dragClientXRef.current
     if (!stateRef.current) return
+    if (stateRef.current.detached) return
     if (!scrollElement) return
     if (clientX === null) return
 
@@ -359,7 +397,7 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
       tabId: tab.id,
     }
     ownsDragRef.current = true
-    dragImageCleanupRef.current = mountEditorTabDragImage(event)
+    dragImageCleanupRef.current = mountTransparentEditorTabDragImage(event)
     startDocumentDragListeners()
     syncDragTarget(event.clientX)
     scheduleAutoScroll(event.clientX)
@@ -370,6 +408,165 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     if (current) clearDrag()
   }
 
+  function handlePointerDown(event: ReactPointerEvent<HTMLElement>, tab: EditorTabDragItem) {
+    if (event.button !== 0) return
+    if (isEditorTabDragBlockedTarget(event.target)) return
+
+    const sourceIndex = tabs.findIndex((candidate) => candidate.id === tab.id)
+    if (sourceIndex === -1) return
+
+    clearDrag()
+    pointerDragRef.current = {
+      detached: false,
+      paneId,
+      path: tab.path,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      sourceIndex,
+      startX: event.clientX,
+      startY: event.clientY,
+      started: false,
+      tabId: tab.id,
+    }
+    setPointerCapture(event.currentTarget, event.pointerId)
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLElement>) {
+    const pointer = pointerDragRef.current
+    if (!pointerDragMatchesEvent(pointer, event)) return
+
+    const delta = pointerDragDelta(pointer, event)
+    if (!pointer.started && !pointerDragMovedEnough(delta)) return
+
+    event.preventDefault()
+    startPointerDrag(pointer)
+    updatePointerDrag(pointer, event, delta)
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLElement>) {
+    const pointer = pointerDragRef.current
+    if (!pointerDragMatchesEvent(pointer, event)) return
+
+    releasePointerCapture(event.currentTarget, pointer.pointerId)
+
+    if (!pointer.started) {
+      pointerDragRef.current = null
+      return
+    }
+
+    if (pointer.detached) {
+      dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DROP_EVENT, pointer, event, {
+        detached: true,
+        progress: 1,
+      })
+      clearDrag()
+      return
+    }
+
+    syncDragTarget(event.clientX)
+    const next = stateRef.current
+    if (next) commitDrag(next)
+
+    clearDrag()
+  }
+
+  function handlePointerCancel(event: ReactPointerEvent<HTMLElement>) {
+    const pointer = pointerDragRef.current
+    if (!pointerDragMatchesEvent(pointer, event)) return
+
+    releasePointerCapture(event.currentTarget, pointer.pointerId)
+    clearDrag()
+  }
+
+  function startPointerDrag(pointer: EditorTabPointerDrag) {
+    if (pointer.started) return
+
+    pointer.started = true
+    ownsDragRef.current = true
+    dispatchDrag({
+      paneId: pointer.paneId,
+      path: pointer.path,
+      sourceIndex: pointer.sourceIndex,
+      tabId: pointer.tabId,
+      type: 'start',
+    })
+  }
+
+  function updatePointerDrag(
+    pointer: EditorTabPointerDrag,
+    event: ReactPointerEvent<HTMLElement>,
+    delta: EditorTabPointerDelta,
+  ) {
+    const detach = editorTabDetachState({
+      currentY: event.clientY,
+      pointerType: pointer.pointerType,
+      startY: pointer.startY,
+      wasDetached: pointer.detached,
+    })
+    pointer.detached = detach.detached
+
+    if (detach.detached) {
+      updateDetachedPointerDrag(pointer, event, delta, detach.progress)
+      return
+    }
+
+    updateAttachedPointerDrag(pointer, event, delta, detach.progress)
+  }
+
+  function updateAttachedPointerDrag(
+    pointer: EditorTabPointerDrag,
+    event: ReactPointerEvent<HTMLElement>,
+    delta: EditorTabPointerDelta,
+    detachProgress: number,
+  ) {
+    const targetIndex = editorTabDropIndex(
+      editorTabDropTargetBounds(tabListRef.current),
+      event.clientX,
+      pointer.tabId,
+    )
+    dispatchDrag({
+      detached: false,
+      detachProgress,
+      offsetX: delta.x,
+      targetIndex,
+      type: 'move',
+    })
+    dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DRAG_EVENT, pointer, event, {
+      detached: false,
+      progress: detachProgress,
+    })
+    scheduleAutoScroll(event.clientX)
+  }
+
+  function updateDetachedPointerDrag(
+    pointer: EditorTabPointerDrag,
+    event: ReactPointerEvent<HTMLElement>,
+    delta: EditorTabPointerDelta,
+    detachProgress: number,
+  ) {
+    cancelEditorTabDragAutoScroll(autoScrollFrameRef)
+    dragClientXRef.current = null
+    dispatchDrag({
+      detached: true,
+      detachProgress,
+      offsetX: delta.x,
+      targetIndex: null,
+      type: 'move',
+    })
+    dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DRAG_EVENT, pointer, event, {
+      detached: true,
+      progress: detachProgress,
+    })
+  }
+
+  function cancelEditorTabPointerDrag() {
+    const pointer = pointerDragRef.current
+    pointerDragRef.current = null
+    if (!pointer?.started) return
+
+    dispatchEditorTabPointerCancelEvent()
+  }
+
   return {
     draggedTabId: state?.tabId ?? null,
     state,
@@ -378,6 +575,10 @@ export function useEditorTabDrag<TTab extends EditorTabDragItem>({
     onDragOver: handleTabListDragOver,
     onDragStart: handleDragStart,
     onDrop: handleTabListDrop,
+    onPointerCancel: handlePointerCancel,
+    onPointerDown: handlePointerDown,
+    onPointerMove: handlePointerMove,
+    onPointerUp: handlePointerUp,
   }
 }
 
@@ -389,6 +590,9 @@ export function editorTabDragReducer(
 
   if (action.type === 'start') {
     return {
+      detached: false,
+      detachProgress: 0,
+      offsetX: 0,
       path: action.path,
       paneId: action.paneId,
       sourceIndex: action.sourceIndex,
@@ -398,9 +602,54 @@ export function editorTabDragReducer(
   }
 
   if (!state) return state
+
+  if (action.type === 'move') {
+    return {
+      ...state,
+      detached: action.detached,
+      detachProgress: action.detachProgress,
+      offsetX: action.offsetX,
+      targetIndex: action.targetIndex,
+    }
+  }
+
   if (state.targetIndex === action.targetIndex) return state
 
   return { ...state, targetIndex: action.targetIndex }
+}
+
+type EditorTabPointerDelta = {
+  readonly x: number
+  readonly y: number
+}
+
+export function editorTabDetachState({
+  currentY,
+  pointerType,
+  startY,
+  wasDetached,
+}: {
+  readonly currentY: number
+  readonly pointerType: string
+  readonly startY: number
+  readonly wasDetached: boolean
+}) {
+  const threshold = editorTabDetachThreshold(pointerType)
+  const distance = Math.abs(currentY - startY)
+  const detachThreshold = wasDetached
+    ? Math.max(0, threshold - EDITOR_TAB_DETACH_HYSTERESIS_PX)
+    : threshold
+
+  return {
+    detached: distance >= detachThreshold,
+    progress: Math.min(1, distance / threshold),
+  }
+}
+
+export function editorTabDetachThreshold(pointerType: string) {
+  if (pointerType === 'touch') return EDITOR_TAB_TOUCH_DETACH_THRESHOLD_PX
+
+  return EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX
 }
 
 export function editorTabInsertionEdge<TTab extends EditorTabDragItem>(
@@ -563,6 +812,43 @@ function clearActiveEditorTabDragPayload(tabId: string | null, ownsDrag: boolean
   activeEditorTabDragPayload = null
 }
 
+function dispatchEditorTabPointerDragEvent(
+  type: typeof EDITOR_TAB_POINTER_DRAG_EVENT | typeof EDITOR_TAB_POINTER_DROP_EVENT,
+  pointer: EditorTabPointerDrag,
+  event: Pick<ReactPointerEvent<HTMLElement>, 'clientX' | 'clientY'>,
+  state: { readonly detached: boolean; readonly progress: number },
+) {
+  document.dispatchEvent(
+    new CustomEvent<EditorTabPointerDragDetail>(type, {
+      detail: {
+        detached: state.detached,
+        detachProgress: state.progress,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        kind: EDITOR_TAB_DRAG_KIND,
+        paneId: pointer.paneId,
+        path: pointer.path,
+        tabId: pointer.tabId,
+      },
+    }),
+  )
+}
+
+function dispatchEditorTabPointerCancelEvent() {
+  document.dispatchEvent(new CustomEvent(EDITOR_TAB_POINTER_CANCEL_EVENT))
+}
+
+export function isEditorTabPointerDragDetail(value: unknown): value is EditorTabPointerDragDetail {
+  if (!isEditorTabDragPayload(value)) return false
+
+  const detail = value as Partial<EditorTabPointerDragDetail>
+  if (typeof detail.clientX !== 'number') return false
+  if (typeof detail.clientY !== 'number') return false
+  if (typeof detail.detached !== 'boolean') return false
+
+  return typeof detail.detachProgress === 'number'
+}
+
 function isEditorTabDragPayload(value: unknown): value is EditorTabDragPayload {
   if (!value || typeof value !== 'object') return false
 
@@ -578,30 +864,20 @@ function isEditorTabDragPayload(value: unknown): value is EditorTabDragPayload {
   )
 }
 
-function mountEditorTabDragImage(event: ReactDragEvent<HTMLElement>) {
-  const source = editorTabDragImageSource(event.currentTarget)
-  const rect = source.getBoundingClientRect()
-  const clone = source.cloneNode(true) as HTMLElement
-  clone.style.position = 'fixed'
-  clone.style.top = '-1000px'
-  clone.style.left = '-1000px'
-  clone.style.width = `${rect.width}px`
-  clone.style.height = `${rect.height}px`
-  clone.style.pointerEvents = 'none'
-  clone.style.opacity = '0.92'
+function mountTransparentEditorTabDragImage(event: ReactDragEvent<HTMLElement>) {
+  const image = document.createElement('div')
+  image.style.position = 'fixed'
+  image.style.top = '-1000px'
+  image.style.left = '-1000px'
+  image.style.width = '1px'
+  image.style.height = '1px'
+  image.style.pointerEvents = 'none'
+  image.style.opacity = '0'
 
-  document.body.appendChild(clone)
-  event.dataTransfer.setDragImage(
-    clone,
-    Math.max(0, event.clientX - rect.left),
-    Math.max(0, event.clientY - rect.top),
-  )
+  document.body.appendChild(image)
+  event.dataTransfer.setDragImage(image, 0, 0)
 
-  return () => clone.remove()
-}
-
-function editorTabDragImageSource(element: HTMLElement) {
-  return element.closest<HTMLElement>('[data-editor-tab-id]') ?? element
+  return () => image.remove()
 }
 
 function editorTabDragAutoScrollDelta(rect: DOMRect, clientX: number) {
@@ -620,6 +896,44 @@ function cancelEditorTabDragAutoScroll(frameRef: { current: number | null }) {
 
   window.cancelAnimationFrame(frameRef.current)
   frameRef.current = null
+}
+
+function pointerDragMatchesEvent(
+  pointer: EditorTabPointerDrag | null,
+  event: ReactPointerEvent<HTMLElement>,
+): pointer is EditorTabPointerDrag {
+  if (!pointer) return false
+
+  return pointer.pointerId === event.pointerId
+}
+
+function pointerDragDelta(
+  pointer: EditorTabPointerDrag,
+  event: Pick<ReactPointerEvent<HTMLElement>, 'clientX' | 'clientY'>,
+): EditorTabPointerDelta {
+  return {
+    x: event.clientX - pointer.startX,
+    y: event.clientY - pointer.startY,
+  }
+}
+
+function pointerDragMovedEnough(delta: EditorTabPointerDelta) {
+  return Math.hypot(delta.x, delta.y) >= EDITOR_TAB_DRAG_START_THRESHOLD_PX
+}
+
+function setPointerCapture(element: HTMLElement, pointerId: number) {
+  if (!element.isConnected) return
+  if (!element.setPointerCapture) return
+
+  element.setPointerCapture(pointerId)
+}
+
+function releasePointerCapture(element: HTMLElement, pointerId: number) {
+  if (!element.isConnected) return
+  if (!element.releasePointerCapture) return
+  if (element.hasPointerCapture && !element.hasPointerCapture(pointerId)) return
+
+  element.releasePointerCapture(pointerId)
 }
 
 function isEditorTabDragBlockedTarget(target: EventTarget | null) {

@@ -1,4 +1,10 @@
-import { useState, type DragEvent, type MouseEvent, type RefObject } from 'react'
+import {
+  useState,
+  type CSSProperties,
+  type DragEvent,
+  type MouseEvent,
+  type RefObject,
+} from 'react'
 
 import { ChromeTabSelectButton } from '@/components/workspace/editor-tabs/components/chrome-tab-select-button'
 import { chromeTabRootClassName } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
@@ -26,6 +32,7 @@ import { cn } from '@workspace/ui/lib/utils'
 export function ChromeEditorTab({
   closeMode,
   closeTarget,
+  dragOffsetX,
   dragged,
   index,
   insertionEdge,
@@ -41,10 +48,15 @@ export function ChromeEditorTab({
   onSplit,
   onDragEnd,
   onDragStart,
+  onPointerCancel,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
   onSelect,
 }: {
   closeMode: boolean
   closeTarget: boolean
+  dragOffsetX: number
   dragged: boolean
   index: number
   insertionEdge: EditorTabInsertionEdge
@@ -60,11 +72,16 @@ export function ChromeEditorTab({
   onSplit: (tabId: string, direction: EditorSplitDirection) => boolean
   onDragEnd: () => void
   onDragStart: EditorTabDragController['onDragStart']
+  onPointerCancel: EditorTabDragController['onPointerCancel']
+  onPointerDown: EditorTabDragController['onPointerDown']
+  onPointerMove: EditorTabDragController['onPointerMove']
+  onPointerUp: EditorTabDragController['onPointerUp']
   onSelect: (tab: EditorTabModel) => void
 }) {
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const tab = visualTab.tab
   const tabStyle = chromeTabStyle(visualTab, index, overlap, layoutWidth, trailingSlotWidth)
+  const style = editorTabStyleWithDragOffset(tabStyle, dragOffsetX)
   const closing = visualTab.phase === 'closing'
 
   function handleClickCapture(event: MouseEvent<HTMLDivElement>) {
@@ -117,20 +134,24 @@ export function ChromeEditorTab({
         data-editor-tab-id={tab.id}
         data-editor-tab-phase={visualTab.phase}
         data-editor-tab-path={tab.path}
-        draggable={!closing}
+        draggable={false}
         onClickCapture={handleClickCapture}
         onContextMenu={handleContextMenu}
         onDragEnd={onDragEnd}
         onDragStart={handleDragStart}
+        onPointerCancel={onPointerCancel}
+        onPointerDown={(event) => onPointerDown(event, tab)}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
         ref={tabRef}
-        style={tabStyle}
+        style={style}
       >
         <ChromeTabSelectButton
           aria-selected={tab.active}
           onClick={() => onSelect(tab)}
           onDragEnd={onDragEnd}
           onDragStart={handleSelectDragStart}
-          draggable={!closing}
+          draggable={false}
           role='tab'
           title={tab.title}
         >
@@ -159,4 +180,14 @@ export function ChromeEditorTab({
       ) : null}
     </ContextMenu>
   )
+}
+
+function editorTabStyleWithDragOffset(style: CSSProperties, dragOffsetX: number) {
+  if (dragOffsetX === 0) return style
+
+  return {
+    ...style,
+    transform: `translate3d(${dragOffsetX}px, 0, 0)`,
+    transition: 'none',
+  } satisfies CSSProperties
 }

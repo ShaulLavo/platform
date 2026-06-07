@@ -23,7 +23,11 @@ import {
   type ChromeVisualTabsState,
 } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import {
+  EDITOR_TAB_DETACH_HYSTERESIS_PX,
   EDITOR_TAB_DRAG_MIME,
+  EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX,
+  EDITOR_TAB_TOUCH_DETACH_THRESHOLD_PX,
+  editorTabDetachState,
   editorTabDragReducer,
   editorTabInsertionEdge,
   hasEditorTabDragPayload,
@@ -69,6 +73,9 @@ describe('editorTabDragReducer', () => {
         type: 'start',
       }),
     ).toEqual({
+      detached: false,
+      detachProgress: 0,
+      offsetX: 0,
       paneId: 'pane-a',
       path: 'src/b.ts',
       sourceIndex: 1,
@@ -79,6 +86,9 @@ describe('editorTabDragReducer', () => {
 
   it('updates the drag target index and clears the drag', () => {
     const dragging = {
+      detached: false,
+      detachProgress: 0,
+      offsetX: 0,
       paneId: 'pane-a',
       path: 'src/b.ts',
       sourceIndex: 1,
@@ -87,6 +97,9 @@ describe('editorTabDragReducer', () => {
     }
 
     expect(editorTabDragReducer(dragging, { targetIndex: 0, type: 'target' })).toEqual({
+      detached: false,
+      detachProgress: 0,
+      offsetX: 0,
       paneId: 'pane-a',
       path: 'src/b.ts',
       sourceIndex: 1,
@@ -94,6 +107,97 @@ describe('editorTabDragReducer', () => {
       targetIndex: 0,
     })
     expect(editorTabDragReducer(dragging, { type: 'clear' })).toBeNull()
+  })
+
+  it('tracks attached pointer movement without detaching', () => {
+    const dragging = {
+      detached: false,
+      detachProgress: 0,
+      offsetX: 0,
+      paneId: 'pane-a',
+      path: 'src/b.ts',
+      sourceIndex: 1,
+      tabId: 'tab-b',
+      targetIndex: 1,
+    }
+
+    expect(
+      editorTabDragReducer(dragging, {
+        detached: false,
+        detachProgress: 0.5,
+        offsetX: 28,
+        targetIndex: 0,
+        type: 'move',
+      }),
+    ).toEqual({
+      detached: false,
+      detachProgress: 0.5,
+      offsetX: 28,
+      paneId: 'pane-a',
+      path: 'src/b.ts',
+      sourceIndex: 1,
+      tabId: 'tab-b',
+      targetIndex: 0,
+    })
+  })
+})
+
+describe('editorTabDetachState', () => {
+  it('uses Chromium-derived mouse and touch detach thresholds', () => {
+    expect(
+      editorTabDetachState({
+        currentY: EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX - 1,
+        pointerType: 'mouse',
+        startY: 0,
+        wasDetached: false,
+      }).detached,
+    ).toBe(false)
+    expect(
+      editorTabDetachState({
+        currentY: EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX,
+        pointerType: 'mouse',
+        startY: 0,
+        wasDetached: false,
+      }).detached,
+    ).toBe(true)
+    expect(
+      editorTabDetachState({
+        currentY: EDITOR_TAB_TOUCH_DETACH_THRESHOLD_PX - 1,
+        pointerType: 'touch',
+        startY: 0,
+        wasDetached: false,
+      }).detached,
+    ).toBe(false)
+  })
+
+  it('uses hysteresis before reattaching a detached tab', () => {
+    expect(
+      editorTabDetachState({
+        currentY: EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX - EDITOR_TAB_DETACH_HYSTERESIS_PX,
+        pointerType: 'mouse',
+        startY: 0,
+        wasDetached: true,
+      }).detached,
+    ).toBe(true)
+    expect(
+      editorTabDetachState({
+        currentY: EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX - EDITOR_TAB_DETACH_HYSTERESIS_PX - 1,
+        pointerType: 'mouse',
+        startY: 0,
+        wasDetached: true,
+      }).detached,
+    ).toBe(false)
+  })
+
+  it('reports normalized detach progress', () => {
+    expect(
+      editorTabDetachState({
+        currentY: EDITOR_TAB_MOUSE_DETACH_THRESHOLD_PX / 2,
+        pointerType: 'mouse',
+        startY: 0,
+        wasDetached: false,
+      }).progress,
+    ).toBe(0.5)
   })
 })
 
@@ -117,6 +221,9 @@ describe('editorTabInsertionEdge', () => {
 
     expect(
       editorTabInsertionEdge(tabs, tabs[0]!, {
+        detached: false,
+        detachProgress: 0,
+        offsetX: 0,
         paneId: 'pane-a',
         path: 'src/b.ts',
         sourceIndex: 1,
@@ -131,6 +238,9 @@ describe('editorTabInsertionEdge', () => {
 
     expect(
       editorTabInsertionEdge(tabs, tabs[2]!, {
+        detached: false,
+        detachProgress: 0,
+        offsetX: 0,
         paneId: 'pane-a',
         path: 'src/b.ts',
         sourceIndex: 1,
@@ -145,6 +255,9 @@ describe('editorTabInsertionEdge', () => {
 
     expect(
       editorTabInsertionEdge(tabs, tabs[2]!, {
+        detached: false,
+        detachProgress: 0,
+        offsetX: 0,
         paneId: 'pane-a',
         path: 'src/b.ts',
         sourceIndex: 1,

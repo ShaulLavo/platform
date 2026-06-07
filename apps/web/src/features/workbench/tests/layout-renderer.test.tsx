@@ -14,6 +14,8 @@ import { FocusContext, createFocusStore } from '@/components/workspace/focus/pro
 import {
   EDITOR_TAB_DRAG_KIND,
   EDITOR_TAB_DRAG_MIME,
+  EDITOR_TAB_POINTER_DRAG_EVENT,
+  EDITOR_TAB_POINTER_DROP_EVENT,
 } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import {
   CLASSIC_DIAGNOSTICS_WINDOW_ID,
@@ -221,6 +223,70 @@ describe('LayoutRenderer', () => {
     ])
     expect(dropZone).not.toHaveAttribute('data-accepting')
     expect(dropZone).not.toHaveAttribute('data-active')
+  })
+
+  it('dispatches snapped move operations from detached pointer tab drags', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
+    const operations: LayoutOperation[] = []
+    const destination = {
+      edge: 'right' as const,
+      kind: 'window-edge' as const,
+      windowId: workbenchWindowId('target'),
+    }
+
+    render(
+      <DropOverlay
+        dropZoneRects={[
+          {
+            destination,
+            edge: 'right',
+            id: overlayId('drop:test:right'),
+            kind: 'window-edge',
+            rect: { height: 240, width: 160, x: 480, y: 0 },
+            windowId: destination.windowId,
+          },
+        ]}
+        surfaceIdForEditorTabId={(tabId) => (tabId === 'tab-app' ? file.id : null)}
+        onDispatch={(operation) => operations.push(operation)}
+      />,
+    )
+
+    const dropZone = screen.getByRole('button', { name: 'Drop window-edge right' })
+
+    act(() => {
+      dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DRAG_EVENT, {
+        clientX: 500,
+        clientY: 12,
+        detached: true,
+        detachProgress: 1,
+        paneId: 'pane-a',
+        path: '/repo/src/app.ts',
+        tabId: 'tab-app',
+      })
+    })
+
+    expect(dropZone).toHaveAttribute('data-accepting', 'true')
+    expect(dropZone).toHaveAttribute('data-active', 'true')
+
+    act(() => {
+      dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DROP_EVENT, {
+        clientX: 500,
+        clientY: 12,
+        detached: true,
+        detachProgress: 1,
+        paneId: 'pane-a',
+        path: '/repo/src/app.ts',
+        tabId: 'tab-app',
+      })
+    })
+
+    expect(operations).toEqual([
+      {
+        destination,
+        surfaceId: file.id,
+        type: 'moveSurface',
+      },
+    ])
   })
 
   it('ignores editor tab drops that cannot resolve to a surface', () => {
@@ -635,6 +701,28 @@ function fireEditorTabDragEvent(
   const event = type === 'dragOver' ? createEvent.dragOver(element) : createEvent.drop(element)
   Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
   fireEvent(element, event)
+}
+
+function dispatchEditorTabPointerDragEvent(
+  type: typeof EDITOR_TAB_POINTER_DRAG_EVENT | typeof EDITOR_TAB_POINTER_DROP_EVENT,
+  detail: {
+    readonly clientX: number
+    readonly clientY: number
+    readonly detached: boolean
+    readonly detachProgress: number
+    readonly paneId: string
+    readonly path: string
+    readonly tabId: string
+  },
+) {
+  document.dispatchEvent(
+    new CustomEvent(type, {
+      detail: {
+        ...detail,
+        kind: EDITOR_TAB_DRAG_KIND,
+      },
+    }),
+  )
 }
 
 function withEditorSurfaceProvider(children: ReactNode) {

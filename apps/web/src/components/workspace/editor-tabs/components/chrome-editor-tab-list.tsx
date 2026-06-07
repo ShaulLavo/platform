@@ -131,12 +131,14 @@ export function ChromeEditorTabList({
     <div className='flex min-w-full items-end overflow-visible'>
       {tabs.map((visualTab, index) => {
         const insertionEdge = editorTabInsertionEdge(tabModels, visualTab.tab, drag.state)
+        const dragged = drag.draggedTabId === visualTab.tab.id
 
         return (
           <ChromeEditorTab
             closeMode={closing}
             closeTarget={visualTab.tab.id === closeBurstTargetId}
-            dragged={drag.draggedTabId === visualTab.tab.id}
+            dragOffsetX={dragged && !drag.state?.detached ? (drag.state?.offsetX ?? 0) : 0}
+            dragged={dragged}
             index={index}
             insertionEdge={insertionEdge}
             layoutWidth={chromeTabCloseLayoutWidth(
@@ -156,6 +158,10 @@ export function ChromeEditorTabList({
             onSplit={onSplit}
             onDragEnd={drag.onDragEnd}
             onDragStart={drag.onDragStart}
+            onPointerCancel={drag.onPointerCancel}
+            onPointerDown={drag.onPointerDown}
+            onPointerMove={drag.onPointerMove}
+            onPointerUp={drag.onPointerUp}
             onSelect={onSelect}
           />
         )

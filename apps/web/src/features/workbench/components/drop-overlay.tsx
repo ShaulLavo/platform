@@ -1,7 +1,11 @@
 import { useEffect, useState, type DragEvent as ReactDragEvent } from 'react'
 
 import {
+  EDITOR_TAB_POINTER_CANCEL_EVENT,
+  EDITOR_TAB_POINTER_DRAG_EVENT,
+  EDITOR_TAB_POINTER_DROP_EVENT,
   hasEditorTabDragPayload,
+  isEditorTabPointerDragDetail,
   readEditorTabDragPayload,
 } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
@@ -53,6 +57,67 @@ export function DropOverlay({
       document.removeEventListener('dragend', clearDocumentDrag, true)
     }
   }, [surfaceIdForEditorTabId])
+
+  useEffect(() => {
+    if (!surfaceIdForEditorTabId) {
+      setAcceptingDrop(false)
+      setActiveDropZoneId(null)
+      return
+    }
+
+    function clearPointerDrag() {
+      setAcceptingDrop(false)
+      setActiveDropZoneId(null)
+    }
+
+    function handlePointerDrag(event: Event) {
+      const detail = pointerDragDetail(event)
+      if (!detail) return
+
+      if (!detail.detached) {
+        clearPointerDrag()
+        return
+      }
+
+      const surfaceId = surfaceIdForEditorTabId?.(detail.tabId)
+      if (!surfaceId) {
+        clearPointerDrag()
+        return
+      }
+
+      setAcceptingDrop(true)
+      setActiveDropZoneId(
+        dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)?.id ?? null,
+      )
+    }
+
+    function handlePointerDrop(event: Event) {
+      const detail = pointerDragDetail(event)
+      clearPointerDrag()
+      if (!detail?.detached) return
+
+      const surfaceId = surfaceIdForEditorTabId?.(detail.tabId)
+      const dropZone = dropZoneAtPoint(dropZoneRects, detail.clientX, detail.clientY)
+      if (!surfaceId) return
+      if (!dropZone) return
+
+      onDispatch({
+        destination: dropZone.destination,
+        surfaceId,
+        type: 'moveSurface',
+      })
+    }
+
+    document.addEventListener(EDITOR_TAB_POINTER_DRAG_EVENT, handlePointerDrag)
+    document.addEventListener(EDITOR_TAB_POINTER_DROP_EVENT, handlePointerDrop)
+    document.addEventListener(EDITOR_TAB_POINTER_CANCEL_EVENT, clearPointerDrag)
+
+    return () => {
+      document.removeEventListener(EDITOR_TAB_POINTER_DRAG_EVENT, handlePointerDrag)
+      document.removeEventListener(EDITOR_TAB_POINTER_DROP_EVENT, handlePointerDrop)
+      document.removeEventListener(EDITOR_TAB_POINTER_CANCEL_EVENT, clearPointerDrag)
+    }
+  }, [dropZoneRects, onDispatch, surfaceIdForEditorTabId])
 
   if (dropZoneRects.length === 0) return null
 
@@ -169,4 +234,28 @@ function droppedSurfaceId(
   if (result.status !== 'valid') return null
 
   return surfaceIdForEditorTabId(result.payload.tabId)
+}
+
+function pointerDragDetail(event: Event) {
+  if (!(event instanceof CustomEvent)) return null
+  if (!isEditorTabPointerDragDetail(event.detail)) return null
+
+  return event.detail
+}
+
+function dropZoneAtPoint(
+  dropZoneRects: readonly DropZoneLayoutRect[],
+  clientX: number,
+  clientY: number,
+) {
+  return (
+    dropZoneRects.find((dropZone) => {
+      const rect = dropZone.rect
+      if (clientX < rect.x) return false
+      if (clientX > rect.x + rect.width) return false
+      if (clientY < rect.y) return false
+
+      return clientY <= rect.y + rect.height
+    }) ?? null
+  )
 }
