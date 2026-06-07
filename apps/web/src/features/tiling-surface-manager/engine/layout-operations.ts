@@ -3,9 +3,7 @@ import {
   workbenchWindowId,
 } from '@/features/tiling-surface-manager/engine/layout-ids'
 import {
-  CLASSIC_DIAGNOSTICS_NODE_ID,
-  CLASSIC_DIAGNOSTICS_WINDOW_ID,
-  CLASSIC_ROOT_NODE_ID,
+  createChatSurface,
   createDiagnosticsSurface,
   createDiffSurface,
   createFileEditorSurface,
@@ -17,14 +15,7 @@ import {
   createTerminalSurface,
   createSplitNode,
   createWindowNode,
-  createWorkbenchWindow,
-  createChatSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
-import {
-  classicBottomToolPaneOwnsSurface,
-  classicBottomToolPaneWindowId,
-  visibleClassicBottomToolPaneWindowId,
-} from '@/features/tiling-surface-manager/engine/bottom-tool-pane'
 import {
   edgeAxis,
   findNodeIdForWindow,
@@ -34,7 +25,6 @@ import {
   isNodeDescendant,
   normalizeWorkspaceLayout,
   repairSplitSizes,
-  visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
 } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type {
@@ -101,10 +91,6 @@ export function applyLayoutOperation(
   switch (operation.type) {
     case 'activateSurface':
       return activateSurface(layout, operation.surfaceId, operation.windowId)
-    case 'toggleClassicBottomToolPane':
-      return toggleClassicBottomToolPane(layout, operation.target)
-    case 'hideClassicBottomToolPane':
-      return hideClassicBottomToolPane(layout)
     case 'openSurface':
       return openSurface(layout, operation.surface, { policyId: operation.policyId })
     case 'closeSurface':
@@ -149,31 +135,6 @@ export function applyLayoutOperation(
     case 'applyLayoutCommand':
       return applyLayoutCommand(layout, operation.command)
   }
-}
-
-export function toggleClassicBottomToolPane(
-  layout: WorkspaceLayout,
-  target: 'diagnostics' | 'terminal',
-): WorkspaceLayout {
-  const normalizedLayout = normalizeWorkspaceLayout(layout)
-  const preparedLayout = layoutWithClassicBottomToolPane(normalizedLayout)
-  const targetSurfaceId = classicBottomToolPaneTargetSurfaceId(target)
-  const visible = Boolean(visibleClassicBottomToolPaneWindowId(preparedLayout))
-  if (!visible) return showClassicBottomToolPane(preparedLayout, targetSurfaceId)
-
-  return hideClassicBottomToolPane(preparedLayout)
-}
-
-export function hideClassicBottomToolPane(layout: WorkspaceLayout): WorkspaceLayout {
-  const normalizedLayout = normalizeWorkspaceLayout(layout)
-  const windowId = visibleClassicBottomToolPaneWindowId(normalizedLayout)
-  const nodeId = windowId ? findNodeIdForWindow(normalizedLayout, windowId) : null
-  if (!nodeId) return normalizedLayout
-
-  const detached = detachNode(normalizedLayout, nodeId)
-  if (!detached) return normalizedLayout
-
-  return normalizeWorkspaceLayout(detached.layout)
 }
 
 export function activateSurface(
@@ -370,169 +331,6 @@ function placementSatisfiesRecipeConstraints(
   if (placement.kind !== 'recipe-slot') return true
 
   return placement.slot === recipeSlotForSurface(layout, surface)
-}
-
-function layoutWithClassicBottomToolPane(layout: WorkspaceLayout): WorkspaceLayout {
-  const diagnostics =
-    layout.surfacesById[createDiagnosticsSurface().id] ?? createDiagnosticsSurface()
-  const terminal =
-    layout.surfacesById[createTerminalSurface({ sessionId: 'terminal-1' }).id] ??
-    createTerminalSurface({ sessionId: 'terminal-1' })
-  const existingWindow = layout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]
-  const surfaceIds = classicBottomToolPaneSurfaceIds(layout, existingWindow, [
-    diagnostics.id,
-    terminal.id,
-  ])
-  const activeSurfaceId = classicBottomToolPaneActiveSurfaceId(existingWindow, surfaceIds)
-  const window = createWorkbenchWindow({
-    activeSurfaceId,
-    id: CLASSIC_DIAGNOSTICS_WINDOW_ID,
-    pinnedSurfaceIds: [diagnostics.id],
-    surfaceIds,
-  })
-
-  return {
-    ...layout,
-    rail: railWithClassicBottomToolPaneSurfaces(layout, diagnostics.id, terminal.id),
-    surfacesById: {
-      ...layout.surfacesById,
-      [diagnostics.id]: diagnostics,
-      [terminal.id]: terminal,
-    },
-    windowsById: {
-      ...layout.windowsById,
-      [CLASSIC_DIAGNOSTICS_WINDOW_ID]: window,
-    },
-  }
-}
-
-function showClassicBottomToolPane(
-  layout: WorkspaceLayout,
-  targetSurfaceId: SurfaceId,
-): WorkspaceLayout {
-  return normalizeToolPaneRecipeLayout(showClassicBottomToolPaneLayout(layout, targetSurfaceId))
-}
-
-function showClassicBottomToolPaneLayout(
-  layout: WorkspaceLayout,
-  targetSurfaceId: SurfaceId,
-): WorkspaceLayout {
-  const preparedLayout = layoutWithClassicBottomToolPane(layout)
-  const window = preparedLayout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]
-  if (!window) return normalizeWorkspaceLayout(preparedLayout)
-
-  const deduplicatedLayout = removeClassicBottomToolPaneSurfacesFromOtherWindows(
-    preparedLayout,
-    window.surfaceIds,
-  )
-  const attachedLayout = attachClassicBottomToolPaneNode(deduplicatedLayout)
-  const attachedWindow = attachedLayout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID] ?? window
-
-  return normalizeWorkspaceLayout({
-    ...attachedLayout,
-    activeSurfaceId: targetSurfaceId,
-    activeWindowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
-    windowsById: {
-      ...attachedLayout.windowsById,
-      [CLASSIC_DIAGNOSTICS_WINDOW_ID]: {
-        ...attachedWindow,
-        activeSurfaceId: targetSurfaceId,
-      },
-    },
-  })
-}
-
-function classicBottomToolPaneTargetSurfaceId(target: 'diagnostics' | 'terminal') {
-  if (target === 'diagnostics') return createDiagnosticsSurface().id
-
-  return createTerminalSurface({ sessionId: 'terminal-1' }).id
-}
-
-function classicBottomToolPaneSurfaceIds(
-  layout: WorkspaceLayout,
-  window: WorkbenchWindow | undefined,
-  requiredSurfaceIds: readonly SurfaceId[],
-) {
-  const existingSurfaceIds = window?.surfaceIds.filter((surfaceId) => {
-    const surface = layout.surfacesById[surfaceId]
-    return surface?.type === 'diagnostics' || surface?.type === 'terminal'
-  })
-
-  return appendUniqueSurfaceIds(existingSurfaceIds ?? [], requiredSurfaceIds)
-}
-
-function classicBottomToolPaneActiveSurfaceId(
-  window: WorkbenchWindow | undefined,
-  surfaceIds: readonly SurfaceId[],
-) {
-  if (window && surfaceIds.includes(window.activeSurfaceId)) return window.activeSurfaceId
-
-  return surfaceIds[surfaceIds.length - 1] ?? createTerminalSurface({ sessionId: 'terminal-1' }).id
-}
-
-function railWithClassicBottomToolPaneSurfaces(
-  layout: WorkspaceLayout,
-  diagnosticsSurfaceId: SurfaceId,
-  terminalSurfaceId: SurfaceId,
-) {
-  return {
-    ...layout.rail,
-    backgroundSurfaceIds: (layout.rail.backgroundSurfaceIds ?? []).filter(
-      (surfaceId) => surfaceId !== diagnosticsSurfaceId && surfaceId !== terminalSurfaceId,
-    ),
-    pinnedSurfaceIds: appendUniqueSurfaceIds(layout.rail.pinnedSurfaceIds, [diagnosticsSurfaceId]),
-    runningSurfaceIds: appendUniqueSurfaceIds(layout.rail.runningSurfaceIds, [terminalSurfaceId]),
-  }
-}
-
-function removeClassicBottomToolPaneSurfacesFromOtherWindows(
-  layout: WorkspaceLayout,
-  surfaceIds: readonly SurfaceId[],
-): WorkspaceLayout {
-  let nextLayout = layout
-
-  for (const surfaceId of surfaceIds) {
-    nextLayout = removeSurfaceFromOtherWindows(nextLayout, surfaceId, CLASSIC_DIAGNOSTICS_WINDOW_ID)
-  }
-
-  return nextLayout
-}
-
-function attachClassicBottomToolPaneNode(layout: WorkspaceLayout): WorkspaceLayout {
-  if (findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)) return layout
-
-  const contentNodeId = layout.rootNodeId
-  const bottomNode = createWindowNode({
-    id: CLASSIC_DIAGNOSTICS_NODE_ID,
-    windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
-  })
-  if (!contentNodeId) return layoutWithRootNode(layout, bottomNode)
-
-  const rootNode = createSplitNode({
-    axis: 'vertical',
-    childIds: [contentNodeId, CLASSIC_DIAGNOSTICS_NODE_ID],
-    id: classicBottomToolPaneRootNodeId(layout, contentNodeId),
-    sizes: [0.74, 0.26],
-  })
-
-  return {
-    ...layout,
-    nodesById: {
-      ...layout.nodesById,
-      [CLASSIC_DIAGNOSTICS_NODE_ID]: bottomNode,
-      [rootNode.id]: rootNode,
-    },
-    rootNodeId: rootNode.id,
-  }
-}
-
-function classicBottomToolPaneRootNodeId(
-  layout: WorkspaceLayout,
-  contentNodeId: LayoutNodeId,
-): LayoutNodeId {
-  if (contentNodeId !== CLASSIC_ROOT_NODE_ID) return CLASSIC_ROOT_NODE_ID
-
-  return uniqueNodeId(layout, 'classic:root-with-bottom')
 }
 
 export function splitWindow(
@@ -1107,46 +905,17 @@ function destinationForRecipeSlotDrop(
 }
 
 function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): WorkspaceLayout {
-  const bottomPreparedLayout = layoutWithRecipeBottomToolPane(layout)
-  const toolWindowIds = managedLeftToolWindowIds(bottomPreparedLayout)
-  if (toolWindowIds.length === 0) return bottomPreparedLayout
+  const toolWindowIds = managedLeftToolWindowIds(layout)
+  if (toolWindowIds.length === 0 && !visibleRecipeBottomWindowId(layout)) return layout
 
-  const tree = recipePackedTree(bottomPreparedLayout, toolWindowIds)
-  if (!tree) return bottomPreparedLayout
+  const tree = recipePackedTree(layout, toolWindowIds)
+  if (!tree) return layout
 
   return normalizeWorkspaceLayout({
-    ...bottomPreparedLayout,
+    ...layout,
     nodesById: tree.nodesById,
     rootNodeId: tree.nodeId,
   })
-}
-
-function layoutWithRecipeBottomToolPane(layout: WorkspaceLayout): WorkspaceLayout {
-  const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-  if (!recipeShouldShowClassicBottomToolPane(layout, terminal.id)) return layout
-
-  return showClassicBottomToolPaneLayout(layout, terminal.id)
-}
-
-function recipeShouldShowClassicBottomToolPane(layout: WorkspaceLayout, terminalId: SurfaceId) {
-  const terminalWindowId = findWindowIdContainingSurface(layout, terminalId)
-  if (!terminalWindowId) return false
-  if (classicBottomToolPaneOwnsSurface(layout, terminalId)) return false
-  if (surfaceHasValidStickyPlacement(layout, terminalId)) return false
-
-  return normalRecipeSurfaceIsVisible(layout)
-}
-
-function normalRecipeSurfaceIsVisible(layout: WorkspaceLayout) {
-  for (const surfaceId of visibleSurfaceIdsInOrder(layout)) {
-    const surface = layout.surfacesById[surfaceId]
-    if (!surface) continue
-    if (surface.type === 'terminal' || surface.type === 'diagnostics') continue
-
-    return true
-  }
-
-  return false
 }
 
 function managedLeftToolWindowIds(layout: WorkspaceLayout) {
@@ -1214,13 +983,14 @@ function stickyPlacementTargetsWindow(
 
 function recipePackedTree(layout: WorkspaceLayout, toolWindowIds: readonly WindowId[]) {
   const bottomWindowId = visibleRecipeBottomWindowId(layout)
-  const classicBottomWindowId =
-    classicBottomToolPaneWindowId(layout) ?? CLASSIC_DIAGNOSTICS_WINDOW_ID
-  const excludedWindowIds = new Set([...toolWindowIds, classicBottomWindowId])
+  const bottomWindowIds = bottomWindowId ? [bottomWindowId] : []
+  const excludedWindowIds = new Set([...toolWindowIds, ...bottomWindowIds])
   const allocator = createRecipeNodeAllocator(layout)
   const leftTree = stackedWindowTree(allocator, toolWindowIds, 'recipe:left-tool-pane')
   const mainTree = mainContentTree(layout, excludedWindowIds, allocator)
-  const bottomTree = bottomWindowId ? windowTree(bottomWindowId, CLASSIC_DIAGNOSTICS_NODE_ID) : null
+  const bottomTree = bottomWindowId
+    ? windowTree(bottomWindowId, allocator.nodeId('recipe:bottom'))
+    : null
   const mainPanelTree = recipeMainPanelTree(layout, mainTree, bottomTree, allocator)
 
   return recipeContentTree(layout, leftTree, mainPanelTree, allocator)
@@ -1252,7 +1022,7 @@ function allocatedRecipeNodeId(usedNodeIds: ReadonlySet<LayoutNodeId>, key: stri
 }
 
 function visibleRecipeBottomWindowId(layout: WorkspaceLayout): WindowId | null {
-  return visibleClassicBottomToolPaneWindowId(layout)
+  return visibleWindowIdForRecipeSlot(layout, 'bottom')
 }
 
 function stackedWindowTree(
@@ -1562,10 +1332,7 @@ function mainViewFallbackDestination(layout: WorkspaceLayout): DropDestination |
   if (activeDestination?.kind !== 'window-center') return activeDestination
   if (activeWindowContainsRecipeSlot(layout, 'bottom'))
     return rootOrActiveDestination(layout, 'top')
-  if (activeDestination.windowId !== classicBottomToolPaneWindowId(layout)) return activeDestination
-  if (layout.rootNodeId) return { edge: 'top', kind: 'root-edge' }
-
-  return null
+  return activeDestination
 }
 
 function activeWindowContainsRecipeSlot(layout: WorkspaceLayout, slot: WorkspaceRecipeSlot) {
@@ -2614,23 +2381,6 @@ function insertAt<TItem>(items: readonly TItem[], item: TItem, index: number) {
   const insertIndex = clampIndex(index, items.length)
 
   return [...items.slice(0, insertIndex), item, ...items.slice(insertIndex)]
-}
-
-function appendUniqueSurfaceIds(
-  surfaceIds: readonly SurfaceId[],
-  additionalSurfaceIds: readonly SurfaceId[],
-) {
-  const seen = new Set(surfaceIds)
-  const nextSurfaceIds = surfaceIds.slice()
-
-  for (const surfaceId of additionalSurfaceIds) {
-    if (seen.has(surfaceId)) continue
-
-    seen.add(surfaceId)
-    nextSurfaceIds.push(surfaceId)
-  }
-
-  return nextSurfaceIds
 }
 
 function clampIndex(index: number, length: number) {

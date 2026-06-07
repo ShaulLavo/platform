@@ -650,13 +650,15 @@ Exit criteria:
 
 ## Phase 8 - Rail And Classic Singleton Surfaces
 
-Status: partially complete and re-audited 2026-06-06. The default rail exposes
-surface states, classic singleton surfaces are registered, left tool panes
+Status: completed and re-audited 2026-06-07. The default rail exposes surface
+states, recipe entries, running terminals, and singleton Problems as normal
+surface entries. Classic singleton surfaces are registered, left tool panes
 order-pack through recipe-managed split nodes, and stale or invalid sticky
 placements are cleared before recipe fallback. The Diagnostics/Problems surface
-now renders active editor diagnostics when available. Remaining Phase 8 work is
-to remove the temporary classic bottom-pane one-off and complete true
-terminal/problems singleton ownership in later terminal/search phases.
+renders active editor diagnostics when available. The temporary bottom-pane
+operation/helper was removed; terminal/problems placement now flows through
+ordinary bottom recipe-slot windows, `openSurface`, `restoreSurface`,
+`collapseWindow`, and `closeSurface`.
 
 Goal: turn fixed sidebar concepts into rail commands and recipe-controlled
 nested tool panes in the surface manager.
@@ -679,9 +681,9 @@ Work:
 - Implement the default recipe from `default-recipe.md`:
   - Files/Search/Git/Chat/Logs prefer left nested tool panes;
   - file editors, diffs, and promoted previews prefer the main view;
-  - terminal/problems stay in one classic bottom tool pane nested under the
-    editor/main panel, with the Terminal rail entry acting as the pane handle
-    and Problems remaining a tab in that pane;
+  - terminal/problems stay in the bottom recipe-slot window nested under the
+    editor/main panel, with Terminal and Problems acting as ordinary rail/tab
+    surfaces;
   - opening Terminal first may temporarily use the available work area, but
     opening the first normal content/tool surface reshapes Terminal/Problems
     into the bottom of the editor/main panel unless the terminal has sticky
@@ -742,8 +744,8 @@ Tests:
 - Clicking an active expanded rail item collapses the corresponding tool pane.
 - Clicking a collapsed rail item expands and focuses the corresponding tool
   pane.
-- Terminal rail toggles the whole classic bottom tool pane, preserving the
-  Problems tab and terminal session.
+- Terminal rail focuses or collapses the terminal window through ordinary rail
+  operations while preserving the Problems tab and terminal session.
 - Terminal opened first moves to the bottom of the editor/main panel when
   another normal surface opens through recipe placement.
 - A terminal manually moved to the left or right is not forced back to the
@@ -807,6 +809,15 @@ Exit criteria:
 
 ## Phase 10 - Terminal Running Surfaces
 
+Status: completed and re-audited 2026-06-07. Terminal sessions are running
+surfaces with `keep-mounted` renderer policy and dispose-running close policy.
+Default terminal commands route through `openSurface`/`restoreSurface` and the
+bottom recipe slot. The temporary Phase 8 bottom-pane operation/helper,
+detached hidden bottom-pane normalization branch, floating terminal overlay,
+terminal overlay height persistence, and terminal overlay tab strip ownership
+are removed. Manual terminal drag/drop still records sticky placement and opts
+out of recipe packing while the target remains valid.
+
 Goal: move terminal overlay tabs into the surface manager.
 
 Work:
@@ -844,8 +855,8 @@ Tests:
 - Collapsed/hidden terminals stay mounted only when registry render policy
   requires it.
 - Multiple terminals restore by session key.
-- Default terminal placement follows classic bottom-pane policy.
-- Manual terminal placement overrides classic bottom-pane policy while the
+- Default terminal placement follows bottom recipe-slot policy.
+- Manual terminal placement overrides bottom recipe-slot policy while the
   concrete target remains valid.
 
 Exit criteria:
@@ -1173,10 +1184,10 @@ Exit criteria:
 ## Phase 15 - Legacy Deletion And Dependency Cleanup
 
 Status: completed and re-audited 2026-06-07 for old editor-pane, Dockview,
-workbench-spike, floating-terminal, and old cache ownership. The old
-`editor-pane-state.ts` module is deleted; tests now build surface-native
-`WorkspaceLayout` fixtures; `rg` finds no old layout-owner source references
-outside documented migration readers and cache assertions.
+workbench-spike, floating-terminal, temporary bottom-pane helpers, and old
+cache ownership. The old `editor-pane-state.ts` module is deleted; tests now
+build surface-native `WorkspaceLayout` fixtures; `rg` finds no old layout-owner
+source references outside documented migration readers and cache assertions.
 
 Goal: remove all old layout owners after their replacements have landed.
 

@@ -456,28 +456,30 @@ describe('LayoutRenderer', () => {
     expect(operations).toEqual([])
   })
 
-  it('hides the classic bottom tool pane from its window controls', () => {
+  it('collapses the terminal window from its window controls', () => {
     const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
 
-    fireEvent.click(screen.getAllByLabelText('Hide bottom tool pane')[0])
+    fireEvent.click(screen.getAllByLabelText('Collapse Terminal')[1])
 
-    expect(findNodeIdForWindow(store.getState().layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+    expect(store.getState().layout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].mode).toBe(
+      'collapsed',
+    )
   })
 
-  it('closes the classic bottom tool pane from its window close control', () => {
+  it('closes the active terminal surface from its window close control', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const diagnostics = createDiagnosticsSurface()
     const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
 
-    fireEvent.click(screen.getByLabelText('Close bottom tool pane'))
+    fireEvent.click(screen.getByLabelText('Close Terminal'))
 
     const layout = store.getState().layout
-    expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
-    expect(layout.surfacesById[terminal.id]).toBeDefined()
+    expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toEqual(expect.any(String))
+    expect(layout.surfacesById[terminal.id]).toBeUndefined()
     expect(layout.surfacesById[diagnostics.id]).toBeDefined()
   })
 
-  it('keeps classic bottom tool pane tab close scoped to the active surface', () => {
+  it('keeps bottom window tab close scoped to the active surface', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const diagnostics = createDiagnosticsSurface()
     const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())

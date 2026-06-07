@@ -5,7 +5,6 @@ import { cn } from '@workspace/ui/lib/utils'
 import { SurfaceHost } from '@/features/workbench/components/surface-host'
 import { TabStrip } from '@/features/workbench/components/tab-strip'
 import { WindowControlButton } from '@/features/workbench/components/window-control-button'
-import { isClassicBottomToolPaneWindow } from '@/features/tiling-surface-manager/engine/bottom-tool-pane'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import { surfacesAreEqual } from '@/features/workbench/utils/surface-equality'
 import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
@@ -29,7 +28,6 @@ import {
 type WindowFrameState = {
   readonly active: boolean
   readonly activeSurface: Surface | null
-  readonly classicBottomToolPane: boolean
   readonly surfaces: readonly Surface[]
   readonly window: WorkbenchWindow
 }
@@ -62,22 +60,14 @@ export const WindowFrame = memo(function WindowFrame({
   )
   if (!state) return null
 
-  const { active, activeSurface, classicBottomToolPane, surfaces, window } = state
+  const { active, activeSurface, surfaces, window } = state
   const collapsed = window.mode === 'collapsed'
   const maximized = window.mode === 'maximized'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
-  let collapseLabel = collapsed ? 'Expand window' : 'Collapse window'
-  let closeLabel = 'Close surface'
-
-  if (classicBottomToolPane) {
-    collapseLabel = 'Hide bottom tool pane'
-    closeLabel = 'Close bottom tool pane'
-  }
-
-  if (!classicBottomToolPane && activeSurface) {
-    collapseLabel = collapsed ? `Expand ${activeSurface.title}` : `Collapse ${activeSurface.title}`
-    closeLabel = `Close ${activeSurface.title}`
-  }
+  const collapseLabel = collapsed
+    ? `Expand ${activeSurface?.title ?? 'window'}`
+    : `Collapse ${activeSurface?.title ?? 'window'}`
+  const closeLabel = `Close ${activeSurface?.title ?? 'surface'}`
 
   function handleWindowDragPointerDown(event: PointerEvent<HTMLElement>) {
     if (event.button !== 0) return
@@ -173,13 +163,9 @@ export const WindowFrame = memo(function WindowFrame({
           data-window-drag-blocker=''
         >
           <WindowControlButton
-            disabled={!classicBottomToolPane && !windowCanCollapse}
+            disabled={!windowCanCollapse}
             label={collapseLabel}
             onClick={() => {
-              if (classicBottomToolPane) {
-                onDispatch({ type: 'hideClassicBottomToolPane' })
-                return
-              }
               onDispatch({
                 type: collapsed ? 'expandWindow' : 'collapseWindow',
                 windowId: window.id,
@@ -204,13 +190,9 @@ export const WindowFrame = memo(function WindowFrame({
             )}
           </WindowControlButton>
           <WindowControlButton
-            disabled={!classicBottomToolPane && !activeSurface?.capabilities.canClose}
+            disabled={!activeSurface?.capabilities.canClose}
             label={closeLabel}
             onClick={() => {
-              if (classicBottomToolPane) {
-                onDispatch({ type: 'hideClassicBottomToolPane' })
-                return
-              }
               if (activeSurface) {
                 onDispatch({ surfaceId: activeSurface.id, type: 'closeSurface' })
               }
@@ -271,7 +253,6 @@ function selectWindowFrameState(
   return {
     active: layout.activeWindowId === windowId,
     activeSurface: layout.surfacesById[window.activeSurfaceId] ?? null,
-    classicBottomToolPane: isClassicBottomToolPaneWindow(layout, window),
     surfaces: window.surfaceIds
       .map((surfaceId) => layout.surfacesById[surfaceId])
       .filter(isSurface),
@@ -283,7 +264,6 @@ function windowFrameStateEqual(left: WindowFrameState | null, right: WindowFrame
   if (left === right) return true
   if (!left || !right) return false
   if (left.active !== right.active) return false
-  if (left.classicBottomToolPane !== right.classicBottomToolPane) return false
   if (!surfacesAreEqual(left.activeSurface, right.activeSurface)) return false
   if (!windowsEqual(left.window, right.window)) return false
 

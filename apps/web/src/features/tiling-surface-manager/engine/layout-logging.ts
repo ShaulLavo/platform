@@ -104,8 +104,6 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
     case 'collapseWindow':
     case 'expandWindow':
       return { ...base, windowId: compactLayoutId(operation.windowId) }
-    case 'hideClassicBottomToolPane':
-      return base
     case 'maximizeWindow':
     case 'restoreWindow':
       return { ...base, windowId: compactLayoutId(operation.windowId) }
@@ -158,8 +156,6 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
         surfaceId: compactLayoutId(operation.surfaceId),
         targetWindowId: compactLayoutId(operation.targetWindowId),
       }
-    case 'toggleClassicBottomToolPane':
-      return { ...base, target: operation.target }
     case 'upsertCustomWindowCommand':
       return { ...base, commandId: operation.command.id, commandTitle: operation.command.title }
     case 'upsertLayoutCommand':

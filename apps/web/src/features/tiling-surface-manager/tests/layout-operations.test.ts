@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  CLASSIC_DIAGNOSTICS_NODE_ID,
   CLASSIC_DIAGNOSTICS_WINDOW_ID,
   CLASSIC_EDITOR_NODE_ID,
   CLASSIC_EDITOR_WINDOW_ID,
@@ -36,7 +35,6 @@ import {
   findParentNodeId,
   findNodeIdForWindow,
   findWindowIdContainingSurface,
-  normalizeWorkspaceLayout,
   visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
 } from '@/features/tiling-surface-manager/engine/layout-normalize'
@@ -50,7 +48,6 @@ import {
   closeSurface,
   collapseWindow,
   expandWindow,
-  hideClassicBottomToolPane,
   maximizeWindow,
   moveSurface,
   moveWindow,
@@ -60,7 +57,6 @@ import {
   restoreSurface,
   restoreWindow,
   tabSurface,
-  toggleClassicBottomToolPane,
 } from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
   railItemOperation,
@@ -73,7 +69,6 @@ import type {
   LayoutSplitNode,
   SurfaceId,
   SurfaceType,
-  WorkbenchWindow,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
 } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -708,7 +703,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(opened)
   })
 
-  it('nests the classic bottom tool pane under the editor main panel beside left tools', () => {
+  it('nests the bottom recipe slot under the editor main panel beside left tools', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const editorNodeId = findNodeIdForWindow(layout, CLASSIC_EDITOR_WINDOW_ID)
     const bottomNodeId = findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
@@ -732,165 +727,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(layout)
   })
 
-  it('toggles the classic bottom tool pane as a group from terminal', () => {
-    const layout = createClassicFirstRunWorkspaceLayout()
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const hidden = toggleClassicBottomToolPane(layout, 'terminal')
-
-    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(diagnostics.id)
-    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(terminal.id)
-    expect(findNodeIdForWindow(hidden, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
-    expect(hidden.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
-      diagnostics.id,
-      terminal.id,
-    ])
-    expectValidLayout(hidden)
-  })
-
-  it('hides a visible bottom tool pane by surface membership', () => {
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const customWindowId = workbenchWindowId('custom:bottom-tool-pane')
-    const layout = layoutWithRenamedBottomToolPaneWindow(customWindowId)
-    const hidden = hideClassicBottomToolPane(layout)
-
-    expect(findNodeIdForWindow(hidden, customWindowId)).toBeNull()
-    expect(hidden.windowsById[customWindowId]?.surfaceIds).toEqual([diagnostics.id, terminal.id])
-    expectValidLayout(hidden)
-  })
-
-  it('restores the hidden classic bottom tool pane with terminal active', () => {
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
-    const restored = toggleClassicBottomToolPane(hidden, 'terminal')
-    const window = restored.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]
-    const bottomNodeId = findNodeIdForWindow(restored, CLASSIC_DIAGNOSTICS_WINDOW_ID)
-    const bottomParentId = bottomNodeId ? findParentNodeId(restored, bottomNodeId) : null
-    const bottomParent = bottomParentId ? restored.nodesById[bottomParentId] : null
-
-    expect(bottomNodeId).toBe(CLASSIC_DIAGNOSTICS_NODE_ID)
-    expect(bottomParent).toMatchObject({
-      axis: 'vertical',
-      childIds: expect.arrayContaining([CLASSIC_DIAGNOSTICS_NODE_ID]),
-      kind: 'split',
-    })
-    expect(visibleSurfaceIdsInOrder(restored)).toContain(diagnostics.id)
-    expect(visibleSurfaceIdsInOrder(restored)).toContain(terminal.id)
-    expect(window.activeSurfaceId).toBe(terminal.id)
-    expect(restored.activeWindowId).toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
-    expect(restored.activeSurfaceId).toBe(terminal.id)
-    expectValidLayout(restored)
-  })
-
-  it('hides the classic bottom tool pane when problems is active', () => {
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const layout = activateSurface(
-      createClassicFirstRunWorkspaceLayout(),
-      diagnostics.id,
-      CLASSIC_DIAGNOSTICS_WINDOW_ID,
-    )
-    const hidden = toggleClassicBottomToolPane(layout, 'terminal')
-
-    expect(findNodeIdForWindow(hidden, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
-    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(diagnostics.id)
-    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(terminal.id)
-    expect(hidden.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
-      diagnostics.id,
-      terminal.id,
-    ])
-    expectValidLayout(hidden)
-  })
-
-  it('keeps the hidden classic bottom tool pane intact through normalization', () => {
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
-    const normalized = normalizeWorkspaceLayout(hidden)
-
-    expect(findNodeIdForWindow(normalized, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
-    expect(normalized.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
-      diagnostics.id,
-      terminal.id,
-    ])
-    expect(normalized.rail.backgroundSurfaceIds).not.toContain(diagnostics.id)
-    expect(normalized.rail.backgroundSurfaceIds).not.toContain(terminal.id)
-    expectValidLayout(normalized)
-  })
-
-  it('does not resurrect hidden classic bottom pane surfaces as fallback windows', () => {
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const fileNavigator = createFileNavigatorSurface()
-    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
-    const withoutFileNavigator = closeSurface(hidden, fileNavigator.id)
-    const placeholderId = firstSurfaceIdOfType(withoutFileNavigator, 'placeholder')
-    if (!placeholderId) throw new Error('Expected editor placeholder')
-
-    const withoutVisibleSurfaces = closeSurface(withoutFileNavigator, placeholderId, {
-      force: true,
-    })
-
-    expect(findNodeIdForWindow(withoutVisibleSurfaces, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
-    expect(visibleSurfaceIdsInOrder(withoutVisibleSurfaces)).not.toContain(diagnostics.id)
-    expect(visibleSurfaceIdsInOrder(withoutVisibleSurfaces)).not.toContain(terminal.id)
-    expect(withoutVisibleSurfaces.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
-      diagnostics.id,
-      terminal.id,
-    ])
-    expectValidLayout(withoutVisibleSurfaces)
-  })
-
-  it('preserves the hidden classic bottom pane record when creating a fallback window', () => {
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const file = createFileEditorSurface({ path: '/repo/src/fallback.ts' })
-    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
-    const normalized = normalizeWorkspaceLayout({
-      ...hidden,
-      activeSurfaceId: file.id,
-      mruSurfaceIds: [file.id],
-      nodesById: {},
-      rootNodeId: null,
-      surfacesById: {
-        ...hidden.surfacesById,
-        [file.id]: file,
-      },
-    })
-
-    expect(visibleSurfaceIdsInOrder(normalized)).toContain(file.id)
-    expect(visibleSurfaceIdsInOrder(normalized)).not.toContain(diagnostics.id)
-    expect(visibleSurfaceIdsInOrder(normalized)).not.toContain(terminal.id)
-    expect(findNodeIdForWindow(normalized, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
-    expect(normalized.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
-      diagnostics.id,
-      terminal.id,
-    ])
-    expectValidLayout(normalized)
-  })
-
-  it('recreates missing classic bottom tool pane surfaces on restore', () => {
-    const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
-    const hidden = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
-    const withoutTerminal = closeSurface(hidden, terminal.id)
-    const withoutToolSurfaces = closeSurface(withoutTerminal, diagnostics.id)
-    const restored = toggleClassicBottomToolPane(withoutToolSurfaces, 'terminal')
-
-    expect(restored.surfacesById[diagnostics.id]).toBeDefined()
-    expect(restored.surfacesById[terminal.id]).toBeDefined()
-    expect(restored.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toEqual([
-      diagnostics.id,
-      terminal.id,
-    ])
-    expect(visibleSurfaceIdsInOrder(restored)).toContain(diagnostics.id)
-    expect(visibleSurfaceIdsInOrder(restored)).toContain(terminal.id)
-    expectValidLayout(restored)
-  })
-
-  it('maps default terminal rail items to the classic bottom tool pane toggle', () => {
+  it('collapses the active terminal window from the terminal rail item', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const layout = activateSurface(
       createClassicFirstRunWorkspaceLayout(),
@@ -903,12 +740,12 @@ describe('tiling surface layout operations', () => {
     if (!item) throw new Error('Expected Terminal rail item')
 
     expect(railItemOperation(layout, item)).toEqual({
-      target: 'terminal',
-      type: 'toggleClassicBottomToolPane',
+      type: 'collapseWindow',
+      windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
     })
   })
 
-  it('marks the terminal rail item visible when the bottom pane is visible on problems', () => {
+  it('focuses the terminal rail item when the bottom window is visible on problems', () => {
     const diagnostics = createDiagnosticsSurface()
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const layout = activateSurface(
@@ -920,27 +757,26 @@ describe('tiling surface layout operations', () => {
 
     expect(item.state).toBe('visible')
     expect(railItemOperation(layout, item)).toEqual({
-      target: 'terminal',
-      type: 'toggleClassicBottomToolPane',
+      surfaceId: terminal.id,
+      type: 'activateSurface',
+      windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
     })
-    expect(
-      visibleSurfaceIdsInOrder(applyLayoutOperation(layout, railItemOperation(layout, item))),
-    ).not.toContain(terminal.id)
+    expect(applyLayoutOperation(layout, railItemOperation(layout, item)).activeSurfaceId).toBe(
+      terminal.id,
+    )
   })
 
-  it('keeps diagnostics inside the classic bottom pane instead of exposing a rail item', () => {
+  it('exposes diagnostics as a normal rail item', () => {
     const diagnostics = createDiagnosticsSurface()
-    const logs = createLogsSurface()
-    const layout = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const layout = createClassicFirstRunWorkspaceLayout()
     const items = selectWorkbenchRailSurfaceItems(layout)
     const diagnosticsItem = items.find((candidate) => candidate.surface.id === diagnostics.id)
-    const logsItem = items.find((candidate) => candidate.surface.id === logs.id)
-    if (!logsItem) throw new Error('Expected Logs rail item')
 
-    expect(diagnosticsItem).toBeUndefined()
-    expect(railItemOperation(layout, logsItem)).toEqual({
-      surfaceId: logs.id,
-      type: 'restoreSurface',
+    expect(diagnosticsItem?.state).toBe('visible')
+    expect(railItemOperation(layout, diagnosticsItem!)).toEqual({
+      surfaceId: diagnostics.id,
+      type: 'activateSurface',
+      windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
     })
   })
 
@@ -1032,7 +868,7 @@ describe('tiling surface layout operations', () => {
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
     const chat = createChatSurface()
-    const hiddenBottom = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
     if (!placeholderId) throw new Error('Expected editor placeholder')
 
@@ -1053,7 +889,7 @@ describe('tiling surface layout operations', () => {
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
     const chat = createChatSurface()
-    const hiddenBottom = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
     if (!placeholderId) throw new Error('Expected editor placeholder')
 
@@ -1074,7 +910,7 @@ describe('tiling surface layout operations', () => {
     const git = createGitChangesSurface()
     const chat = createChatSurface()
     const file = createFileEditorSurface({ path: '/repo/src/main-before-files.ts' })
-    const hiddenBottom = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
     if (!placeholderId) throw new Error('Expected editor placeholder')
 
@@ -1128,7 +964,7 @@ describe('tiling surface layout operations', () => {
     const logs = createLogsSurface()
     const git = createGitChangesSurface()
     const file = createFileEditorSurface({ path: '/repo/src/main-from-tool.ts' })
-    const hiddenBottom = hideClassicBottomToolPane(createClassicFirstRunWorkspaceLayout())
+    const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
     if (!placeholderId) throw new Error('Expected editor placeholder')
 
@@ -1262,6 +1098,13 @@ function surfaceHeight(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   return rect.height
 }
 
+function layoutWithoutBottomSurfaces(layout: WorkspaceLayout) {
+  const diagnostics = createDiagnosticsSurface()
+  const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+
+  return closeSurface(closeSurface(layout, terminal.id), diagnostics.id)
+}
+
 function emptyLayout(): WorkspaceLayout {
   return {
     ...createClassicFirstRunWorkspaceLayout(),
@@ -1332,51 +1175,6 @@ function expectValidLayout(layout: WorkspaceLayout) {
     ok: true,
     violations: [],
   })
-}
-
-function layoutWithRenamedBottomToolPaneWindow(windowId: ReturnType<typeof workbenchWindowId>) {
-  const layout = createClassicFirstRunWorkspaceLayout()
-  const window = layout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]
-  const node = layout.nodesById[CLASSIC_DIAGNOSTICS_NODE_ID]
-  if (!window) throw new Error('Expected bottom tool pane window')
-  if (!node || node.kind !== 'window') throw new Error('Expected bottom tool pane node')
-
-  const windowsById = layoutWindowsWithRenamedBottomToolPane(layout, window, windowId)
-
-  return {
-    ...layout,
-    activeWindowId: windowId,
-    nodesById: {
-      ...layout.nodesById,
-      [CLASSIC_DIAGNOSTICS_NODE_ID]: {
-        ...node,
-        windowId,
-      },
-    },
-    windowsById,
-  } satisfies WorkspaceLayout
-}
-
-function layoutWindowsWithRenamedBottomToolPane(
-  layout: WorkspaceLayout,
-  window: WorkbenchWindow,
-  windowId: ReturnType<typeof workbenchWindowId>,
-) {
-  const windowsById: Record<string, WorkbenchWindow> = {}
-
-  for (const currentWindow of Object.values(layout.windowsById)) {
-    if (currentWindow.id === CLASSIC_DIAGNOSTICS_WINDOW_ID) continue
-
-    windowsById[currentWindow.id] = currentWindow
-  }
-
-  return {
-    ...windowsById,
-    [windowId]: {
-      ...window,
-      id: windowId,
-    },
-  } satisfies WorkspaceLayout['windowsById']
 }
 
 function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {

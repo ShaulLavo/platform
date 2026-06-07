@@ -16,6 +16,7 @@ import {
 import {
   createFileNavigatorSurface,
   createGitChangesSurface,
+  createTerminalSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   BACKGROUND_ACTIVE_SURFACE_COMMAND_ID,
@@ -263,10 +264,7 @@ const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandl
   },
   'workspace.togglePanel': ({ setFocusArea, setWorkspaceLayout, workspaceLayout }) => {
     setWorkspaceLayout(
-      applyLayoutOperation(workspaceLayout, {
-        target: 'terminal',
-        type: 'toggleClassicBottomToolPane',
-      }),
+      layoutWithToggledSurface(workspaceLayout, createTerminalSurface({ sessionId: 'terminal-1' })),
     )
     setFocusArea('terminal')
     return true
