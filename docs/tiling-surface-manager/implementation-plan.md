@@ -1,14 +1,13 @@
 # Tiling Surface Manager Implementation Plan
 
 Date: 2026-06-05
-Last audited: 2026-06-06
+Last audited: 2026-06-07
 
-Status: implementation in progress. Phases 1-7 have been re-audited against the
-updated plan and current code. The production workbench now uses the
-Platform-owned `WorkspaceLayout` model for file/diff surfaces and the custom
-renderer. Remaining old editor-pane state is limited to derived compatibility
-and migration/test paths called out below, not production rendering ownership or
-layout mutation.
+Status: implementation in progress. The production workbench now uses the
+Platform-owned `WorkspaceLayout` model for file/diff/search/tool surfaces,
+terminal running surfaces, command palette operations, drag/drop overlay wiring,
+cache state, and workflow recipe metadata. Per-phase status notes below remain
+the source of truth for completed slices and remaining gaps.
 
 This plan is grounded in `prd.md`, `technical-design.md`, `research-findings.md`,
 and the current app ownership points called out in the technical design.
@@ -1198,6 +1197,13 @@ Exit criteria:
 
 ## Phase 16 - Workflow Recipes And Follow-Up Plans
 
+Status: completed and re-audited 2026-06-07. Workflow recipe metadata now
+covers Classic, Search And Investigate, Review, Agent Pairing, and Focus. The
+Review Workspace saved layout command applies the Review recipe before opening
+its concrete surfaces, and old serialized layouts restore the default saved
+layout command from fallback state. Required follow-up plans are documented in
+`agent-surfaces-follow-up-plan.md` and `placement-policy-follow-up-plan.md`.
+
 Goal: add the first distinctive Platform workflows after the foundation is
 stable.
 
@@ -1267,7 +1273,16 @@ The phases are intentionally larger than individual PRs. Suggested merge slices:
 
 ## Verification Commands
 
-Last verified: 2026-06-06.
+Last verified: 2026-06-07.
+
+Focused verification from the 2026-06-07 Phase 16 recipe/follow-up pass:
+
+```sh
+bun --bun vitest run --project node src/features/tiling-surface-manager/tests
+bun run typecheck
+bun run format:check
+git diff --check
+```
 
 Focused verification from the 2026-06-06 re-audit/fix pass:
 

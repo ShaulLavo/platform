@@ -217,7 +217,7 @@ export function restoreWorkspaceLayout(
 
   const warnings = registryVersionWarnings(data)
   const surfaces = restoreSurfaceEntries(data.surfaces, registry, options.rootPath)
-  const commandResult = restoreCommands(data)
+  const commandResult = restoreCommands(data, fallbackLayout)
   const layout = restoreLayoutFromData(data, fallbackLayout, surfaces, commandResult)
   const recoveredLayout = normalizeAndRecoverLayout(layout, fallbackLayout, [
     ...warnings,
@@ -422,18 +422,22 @@ function mappedOwnerSurface(
   }
 }
 
-function restoreCommands(data: Record<string, unknown>): CommandRestoreResult {
+function restoreCommands(
+  data: Record<string, unknown>,
+  fallbackLayout: WorkspaceLayout,
+): CommandRestoreResult {
   const windowCommandsById = restoredCustomWindowCommands(data.customWindowCommands)
   const layoutCommandResult = restoredLayoutCommands(data.layoutCommands)
-  const knownCommandIds = knownHotkeyCommandIds(
-    windowCommandsById,
-    layoutCommandResult.commandsById,
-  )
+  const layoutCommandsById = {
+    ...fallbackLayout.layoutCommandsById,
+    ...layoutCommandResult.commandsById,
+  }
+  const knownCommandIds = knownHotkeyCommandIds(windowCommandsById, layoutCommandsById)
   const hotkeyPresetResult = restoredHotkeyPresets(data.hotkeyPresets, knownCommandIds)
 
   return {
     hotkeyPresetsById: hotkeyPresetResult.presetsById,
-    layoutCommandsById: layoutCommandResult.commandsById,
+    layoutCommandsById,
     warnings: [
       ...commandRecoveryWarnings(layoutCommandResult.droppedSlotCount, 'layout command slots'),
       ...commandRecoveryWarnings(hotkeyPresetResult.droppedBindingCount, 'hotkey bindings'),
@@ -623,6 +627,7 @@ function restoredLayoutCommand(value: unknown) {
       hotkeyId: optionalString(value.hotkeyId),
       icon: value.icon,
       id: value.id as LayoutCommandId,
+      recipeId: optionalRecipeId(value.recipeId),
       slots,
       title: value.title,
     },
@@ -1121,6 +1126,12 @@ function optionalNodeId(value: unknown) {
   if (!isString(value)) return undefined
 
   return value as LayoutNodeId
+}
+
+function optionalRecipeId(value: unknown) {
+  if (!isString(value)) return undefined
+
+  return value as RecipeId
 }
 
 function arrayValues(value: unknown): readonly unknown[] {

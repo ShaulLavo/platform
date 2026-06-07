@@ -22,7 +22,11 @@ import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manage
 import {
   CLASSIC_POLICY_ID,
   fileEditorSurfaceId,
+  gitChangesSurfaceId,
   layoutCommandId,
+  REVIEW_LAYOUT_COMMAND_ID,
+  REVIEW_RECIPE_ID,
+  searchResultsSurfaceId,
   workbenchWindowId,
   windowManagementCommandId,
 } from '@/features/tiling-surface-manager/engine/layout-ids'
@@ -320,6 +324,16 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(recipeApplied)
   })
 
+  it('applies workflow recipes without resetting the classic split shape', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const review = applyRecipe(layout, REVIEW_RECIPE_ID)
+
+    expect(review.activeRecipeId).toBe(REVIEW_RECIPE_ID)
+    expect(review.rootNodeId).toBe(CLASSIC_ROOT_NODE_ID)
+    expect(review.rail.recipeIds).toContain(REVIEW_RECIPE_ID)
+    expectValidLayout(review)
+  })
+
   it('applies custom window commands and advances command cycling state', () => {
     const command = customWindowCommand({
       cycleRule: {
@@ -373,6 +387,22 @@ describe('tiling surface layout operations', () => {
       Object.values(applied.surfacesById).some((surface) => surface.type === 'search-results'),
     ).toBe(true)
     expect(visibleSurfaceIdsInOrder(applied)).toContain(fileEditorSurfaceId(filePath))
+    expectValidLayout(applied)
+  })
+
+  it('applies saved workflow layout commands with their recipe and focus order', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const command = layout.layoutCommandsById[REVIEW_LAYOUT_COMMAND_ID]
+    if (!command) throw new Error('Expected default review layout command')
+
+    const applied = applyLayoutCommand(layout, command)
+
+    expect(applied.activeRecipeId).toBe(REVIEW_RECIPE_ID)
+    expect(applied.activeSurfaceId).toBe(gitChangesSurfaceId())
+    expect(applied.rail.recipeIds).toContain(REVIEW_RECIPE_ID)
+    expect(visibleSurfaceIdsInOrder(applied)).toEqual(
+      expect.arrayContaining([searchResultsSurfaceId(), gitChangesSurfaceId()]),
+    )
     expectValidLayout(applied)
   })
 

@@ -26,6 +26,8 @@ import {
   layoutNodeId,
   CLASSIC_POLICY_ID,
   placeholderSurfaceId,
+  REVIEW_LAYOUT_COMMAND_ID,
+  REVIEW_RECIPE_ID,
   windowManagementCommandId,
   workbenchWindowId,
 } from '@/features/tiling-surface-manager/engine/layout-ids'
@@ -121,6 +123,20 @@ describe('tiling surface layout persistence', () => {
     expect(
       restored.layout.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[file.id],
     ).toEqual({ kind: 'window-center', windowId: CLASSIC_EDITOR_WINDOW_ID })
+    expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
+  })
+
+  it('restores fallback saved layout commands for old serialized layouts', () => {
+    const serialized = {
+      ...serializeWorkspaceLayout(createClassicFirstRunWorkspaceLayout()),
+      layoutCommands: [],
+    } satisfies SerializedWorkspaceLayout
+    const restored = restoreWorkspaceLayout(serialized, { rootPath })
+
+    expect(restored.layout.layoutCommandsById[REVIEW_LAYOUT_COMMAND_ID]?.recipeId).toBe(
+      REVIEW_RECIPE_ID,
+    )
+    expect(restored.layout.layoutCommandsById[REVIEW_LAYOUT_COMMAND_ID]?.enabled).toBe(true)
     expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
   })
 
@@ -368,6 +384,7 @@ function savedLayoutCommand(path: string): WorkspaceLayoutCommand {
     enabled: true,
     icon: 'layout',
     id: layoutCommandId(`saved:${path}`),
+    recipeId: REVIEW_RECIPE_ID,
     slots: [
       {
         frame: frame('center'),

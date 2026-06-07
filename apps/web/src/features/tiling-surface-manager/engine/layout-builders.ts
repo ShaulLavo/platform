@@ -1,6 +1,11 @@
 import {
+  AGENT_PAIRING_RECIPE_ID,
   CLASSIC_POLICY_ID,
   CLASSIC_RECIPE_ID,
+  FOCUS_RECIPE_ID,
+  REVIEW_LAYOUT_COMMAND_ID,
+  REVIEW_RECIPE_ID,
+  SEARCH_INVESTIGATE_RECIPE_ID,
   chatSurfaceId,
   diagnosticsSurfaceId,
   diffSurfaceId,
@@ -19,6 +24,8 @@ import {
   SURFACE_REGISTRY_VERSION,
   SURFACE_SERIALIZED_VERSION,
   WORKSPACE_LAYOUT_VERSION,
+  type CustomWindowFrame,
+  type LayoutCommandSurfaceSlot,
   type LayoutNode,
   type LayoutNodeId,
   type LayoutPolicyId,
@@ -34,6 +41,7 @@ import {
   type WindowId,
   type WorkbenchWindow,
   type WorkspaceLayout,
+  type WorkspaceLayoutCommand,
   type WorkspaceRecipe,
   type WorkspaceRecipeSlot,
 } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -63,7 +71,7 @@ export function createEmptyWorkspaceLayout(): WorkspaceLayout {
   return {
     activeRecipeId: CLASSIC_RECIPE_ID,
     hotkeyPresetsById: {},
-    layoutCommandsById: {},
+    layoutCommandsById: defaultLayoutCommandsById(),
     mruSurfaceIds: [],
     mruWindowIds: [],
     nodesById: {},
@@ -114,7 +122,7 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
     activeSurfaceId: editorPlaceholder.id,
     activeWindowId: editorWindow.id,
     hotkeyPresetsById: {},
-    layoutCommandsById: {},
+    layoutCommandsById: defaultLayoutCommandsById(),
     mruSurfaceIds: [editorPlaceholder.id, fileNavigator.id, terminal.id, diagnostics.id],
     mruWindowIds: [editorWindow.id, sideWindow.id, diagnosticsWindow.id],
     nodesById: {
@@ -464,6 +472,93 @@ export function classicWorkspaceRecipe(): WorkspaceRecipe {
   }
 }
 
+export function searchInvestigateWorkspaceRecipe(): WorkspaceRecipe {
+  return {
+    description:
+      'Search results on the side, contextual previews near results, and files in the main editor.',
+    id: SEARCH_INVESTIGATE_RECIPE_ID,
+    surfaceSlots: {
+      diagnostics: 'bottom',
+      chat: 'left-tool-pane',
+      diff: 'editor-center',
+      'file-editor': 'editor-center',
+      'file-navigator': 'left-tool-pane',
+      'git-changes': 'rail',
+      logs: 'left-tool-pane',
+      placeholder: 'editor-center',
+      'search-preview': 'transient-preview',
+      'search-results': 'left-tool-pane',
+      terminal: 'bottom',
+    },
+    title: 'Search And Investigate',
+  }
+}
+
+export function reviewWorkspaceRecipe(): WorkspaceRecipe {
+  return {
+    description:
+      'Git changes and search context on the side, diffs in the editor, and checks below.',
+    id: REVIEW_RECIPE_ID,
+    surfaceSlots: {
+      diagnostics: 'bottom',
+      chat: 'left-tool-pane',
+      diff: 'editor-center',
+      'file-editor': 'editor-center',
+      'file-navigator': 'rail',
+      'git-changes': 'left-tool-pane',
+      logs: 'bottom',
+      placeholder: 'editor-center',
+      'search-preview': 'transient-preview',
+      'search-results': 'left-tool-pane',
+      terminal: 'bottom',
+    },
+    title: 'Review',
+  }
+}
+
+export function agentPairingWorkspaceRecipe(): WorkspaceRecipe {
+  return {
+    description:
+      'A placeholder pairing workflow with chat on the side and logs or terminal output below.',
+    id: AGENT_PAIRING_RECIPE_ID,
+    surfaceSlots: {
+      diagnostics: 'bottom',
+      chat: 'left-tool-pane',
+      diff: 'editor-center',
+      'file-editor': 'editor-center',
+      'file-navigator': 'rail',
+      'git-changes': 'rail',
+      logs: 'bottom',
+      placeholder: 'editor-center',
+      'search-preview': 'transient-preview',
+      'search-results': 'rail',
+      terminal: 'bottom',
+    },
+    title: 'Agent Pairing',
+  }
+}
+
+export function focusWorkspaceRecipe(): WorkspaceRecipe {
+  return {
+    description: 'Editors stay central while supporting tools stay in the rail until opened.',
+    id: FOCUS_RECIPE_ID,
+    surfaceSlots: {
+      diagnostics: 'rail',
+      chat: 'rail',
+      diff: 'editor-center',
+      'file-editor': 'editor-center',
+      'file-navigator': 'rail',
+      'git-changes': 'rail',
+      logs: 'rail',
+      placeholder: 'editor-center',
+      'search-preview': 'transient-preview',
+      'search-results': 'rail',
+      terminal: 'rail',
+    },
+    title: 'Focus',
+  }
+}
+
 export function classicLayoutPolicyState(): LayoutPolicyState {
   return {
     id: CLASSIC_POLICY_ID,
@@ -584,8 +679,81 @@ function emptyRailState() {
 
 function defaultRecipesById(): Readonly<Record<RecipeId, WorkspaceRecipe>> {
   return {
+    [AGENT_PAIRING_RECIPE_ID]: agentPairingWorkspaceRecipe(),
     [CLASSIC_RECIPE_ID]: classicWorkspaceRecipe(),
+    [FOCUS_RECIPE_ID]: focusWorkspaceRecipe(),
+    [REVIEW_RECIPE_ID]: reviewWorkspaceRecipe(),
+    [SEARCH_INVESTIGATE_RECIPE_ID]: searchInvestigateWorkspaceRecipe(),
   }
+}
+
+function defaultLayoutCommandsById(): WorkspaceLayout['layoutCommandsById'] {
+  const reviewCommand = reviewLayoutCommand()
+
+  return {
+    [reviewCommand.id]: reviewCommand,
+  }
+}
+
+function reviewLayoutCommand(): WorkspaceLayoutCommand {
+  return {
+    aliases: ['git review', 'review changes', 'code review'],
+    enabled: true,
+    icon: 'git-pull-request',
+    id: REVIEW_LAYOUT_COMMAND_ID,
+    recipeId: REVIEW_RECIPE_ID,
+    slots: [
+      recipeCommandSlot({
+        frame: layoutCommandFrame('left'),
+        id: 'search',
+        slot: 'left-tool-pane',
+        surfaceType: 'search-results',
+      }),
+      recipeCommandSlot({
+        frame: layoutCommandFrame('bottom'),
+        id: 'diagnostics',
+        slot: 'bottom',
+        surfaceType: 'diagnostics',
+      }),
+      recipeCommandSlot({
+        frame: layoutCommandFrame('left'),
+        id: 'git-changes',
+        slot: 'left-tool-pane',
+        surfaceType: 'git-changes',
+      }),
+    ],
+    title: 'Review Workspace',
+  }
+}
+
+function recipeCommandSlot({
+  frame,
+  id,
+  slot,
+  surfaceType,
+}: {
+  readonly frame: CustomWindowFrame
+  readonly id: string
+  readonly slot: WorkspaceRecipeSlot
+  readonly surfaceType: LayoutCommandSurfaceSlot['surfaceType']
+}): LayoutCommandSurfaceSlot {
+  return {
+    displayHint: { kind: 'recipe-slot', slot },
+    frame,
+    id,
+    surfaceType,
+  }
+}
+
+function layoutCommandFrame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {
+  if (anchor === 'bottom') {
+    return { anchor, height: 0.28, offsetX: 0, offsetY: 0, unit: 'percent', width: 1 }
+  }
+  if (anchor === 'left') {
+    return { anchor, height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 0.28 }
+  }
+
+  return { anchor, height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 1 }
 }
 
 function defaultPoliciesById(): Readonly<Record<LayoutPolicyId, LayoutPolicyState>> {

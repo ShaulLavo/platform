@@ -4,6 +4,7 @@ import type {
   LayoutNodeId,
   LayoutSplitAxis,
   LayoutSplitNode,
+  RecipeId,
   Surface,
   SurfaceId,
   SurfaceType,
@@ -20,6 +21,7 @@ export type LayoutInvariantViolationCode =
   | 'duplicate-visible-surface'
   | 'invalid-split-child-count'
   | 'invalid-split-size-count'
+  | 'invalid-layout-command-recipe'
   | 'invalid-layout-command-slot-surface-type'
   | 'invalid-hotkey-preset-command'
   | 'missing-node-child'
@@ -499,10 +501,28 @@ function checkCommandReferences(layout: WorkspaceLayout, violations: LayoutInvar
 
 function checkLayoutCommandSlots(layout: WorkspaceLayout, violations: LayoutInvariantViolation[]) {
   for (const command of Object.values(layout.layoutCommandsById)) {
+    checkLayoutCommandRecipe(layout, command.id, command.recipeId, violations)
+
     for (const slot of command.slots) {
       checkLayoutCommandSlot(command.id, slot.surfaceType, violations)
     }
   }
+}
+
+function checkLayoutCommandRecipe(
+  layout: WorkspaceLayout,
+  commandId: string,
+  recipeId: RecipeId | undefined,
+  violations: LayoutInvariantViolation[],
+) {
+  if (!recipeId) return
+  if (layout.recipesById[recipeId]) return
+
+  pushViolation(
+    violations,
+    'invalid-layout-command-recipe',
+    `Layout command ${commandId} references unknown recipe ${recipeId}.`,
+  )
 }
 
 function checkLayoutCommandSlot(

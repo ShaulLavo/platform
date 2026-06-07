@@ -10,8 +10,13 @@ import type {
   WindowId,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 
+export const AGENT_PAIRING_RECIPE_ID = recipeId('agent-pairing')
 export const CLASSIC_RECIPE_ID = recipeId('classic')
+export const FOCUS_RECIPE_ID = recipeId('focus')
+export const REVIEW_RECIPE_ID = recipeId('review')
+export const SEARCH_INVESTIGATE_RECIPE_ID = recipeId('search-investigate')
 export const CLASSIC_POLICY_ID = layoutPolicyId('classic')
+export const REVIEW_LAYOUT_COMMAND_ID = layoutCommandId('review-workspace')
 
 export function fileEditorSurfaceId(path: string): SurfaceId {
   return surfaceId('file-editor', path)

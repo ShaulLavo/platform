@@ -16,6 +16,7 @@ import {
   hotkeyPresetId,
   layoutCommandId,
   layoutNodeId,
+  recipeId,
   windowManagementCommandId,
   workbenchWindowId,
 } from '@/features/tiling-surface-manager/engine/layout-ids'
@@ -142,6 +143,32 @@ describe('tiling surface layout invariants', () => {
     } as unknown as WorkspaceLayout
 
     expect(violationCodes(layout)).toContain('invalid-layout-command-slot-surface-type')
+  })
+
+  it('reports saved layout commands that reference missing recipes', () => {
+    const commandId = layoutCommandId('invalid-recipe')
+    const layout = {
+      ...createClassicFirstRunWorkspaceLayout(),
+      layoutCommandsById: {
+        [commandId]: {
+          aliases: [],
+          enabled: true,
+          icon: 'layout',
+          id: commandId,
+          recipeId: recipeId('missing-workflow'),
+          slots: [
+            {
+              frame: frame('center'),
+              id: 'file',
+              surfaceType: 'file-editor',
+            },
+          ],
+          title: 'Invalid Recipe',
+        },
+      },
+    } satisfies WorkspaceLayout
+
+    expect(violationCodes(layout)).toContain('invalid-layout-command-recipe')
   })
 
   it('reports hotkey presets that reference missing commands', () => {

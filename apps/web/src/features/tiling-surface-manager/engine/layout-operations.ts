@@ -768,7 +768,9 @@ export function applyLayoutCommand(
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   if (!command.enabled) return normalizedLayout
 
-  let nextLayout = normalizedLayout
+  let nextLayout = command.recipeId
+    ? applyRecipe(normalizedLayout, command.recipeId)
+    : normalizedLayout
   for (const slot of command.slots) {
     nextLayout = applyLayoutCommandSlot(nextLayout, slot)
   }

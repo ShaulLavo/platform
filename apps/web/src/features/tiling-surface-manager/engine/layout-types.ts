@@ -226,6 +226,7 @@ export type WorkspaceLayoutCommand = {
   readonly hotkeyId?: string
   readonly icon: CommandIcon
   readonly id: LayoutCommandId
+  readonly recipeId?: RecipeId
   readonly slots: readonly LayoutCommandSurfaceSlot[]
   readonly title: string
 }

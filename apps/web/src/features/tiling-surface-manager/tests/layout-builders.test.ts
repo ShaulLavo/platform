@@ -13,8 +13,13 @@ import {
   createEmptyWorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
+  AGENT_PAIRING_RECIPE_ID,
   CLASSIC_POLICY_ID,
   CLASSIC_RECIPE_ID,
+  FOCUS_RECIPE_ID,
+  REVIEW_LAYOUT_COMMAND_ID,
+  REVIEW_RECIPE_ID,
+  SEARCH_INVESTIGATE_RECIPE_ID,
   chatSurfaceId,
   diagnosticsSurfaceId,
   fileNavigatorSurfaceId,
@@ -39,7 +44,7 @@ describe('tiling surface layout builders', () => {
       activeWindowId: undefined,
       commandCycleState: undefined,
       hotkeyPresets: [],
-      layoutCommands: [],
+      layoutCommands: [reviewLayoutCommandSnapshot()],
       mruSurfaceIds: [],
       mruWindowIds: [],
       nodes: [],
@@ -59,9 +64,29 @@ describe('tiling surface layout builders', () => {
       },
       recipes: [
         {
+          id: AGENT_PAIRING_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Agent Pairing',
+        },
+        {
           id: CLASSIC_RECIPE_ID,
           resetRootNodeId: CLASSIC_ROOT_NODE_ID,
           title: 'Classic',
+        },
+        {
+          id: FOCUS_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Focus',
+        },
+        {
+          id: REVIEW_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Review',
+        },
+        {
+          id: SEARCH_INVESTIGATE_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Search And Investigate',
         },
       ],
       rootNodeId: null,
@@ -89,7 +114,7 @@ describe('tiling surface layout builders', () => {
       activeWindowId: CLASSIC_EDITOR_WINDOW_ID,
       commandCycleState: undefined,
       hotkeyPresets: [],
-      layoutCommands: [],
+      layoutCommands: [reviewLayoutCommandSnapshot()],
       mruSurfaceIds: [placeholder, fileNavigator, terminal, diagnostics],
       mruWindowIds: [
         CLASSIC_EDITOR_WINDOW_ID,
@@ -143,9 +168,29 @@ describe('tiling surface layout builders', () => {
       },
       recipes: [
         {
+          id: AGENT_PAIRING_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Agent Pairing',
+        },
+        {
           id: CLASSIC_RECIPE_ID,
           resetRootNodeId: CLASSIC_ROOT_NODE_ID,
           title: 'Classic',
+        },
+        {
+          id: FOCUS_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Focus',
+        },
+        {
+          id: REVIEW_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Review',
+        },
+        {
+          id: SEARCH_INVESTIGATE_RECIPE_ID,
+          resetRootNodeId: undefined,
+          title: 'Search And Investigate',
         },
       ],
       rootNodeId: CLASSIC_ROOT_NODE_ID,
@@ -262,6 +307,28 @@ describe('tiling surface layout builders', () => {
       ],
     })
   })
+
+  it('registers workflow recipes with surface placement slots', () => {
+    const layout = createEmptyWorkspaceLayout()
+
+    expect(layout.recipesById[SEARCH_INVESTIGATE_RECIPE_ID].surfaceSlots).toMatchObject({
+      'search-preview': 'transient-preview',
+      'search-results': 'left-tool-pane',
+    })
+    expect(layout.recipesById[REVIEW_RECIPE_ID].surfaceSlots).toMatchObject({
+      diff: 'editor-center',
+      'git-changes': 'left-tool-pane',
+      logs: 'bottom',
+    })
+    expect(layout.recipesById[AGENT_PAIRING_RECIPE_ID].surfaceSlots).toMatchObject({
+      chat: 'left-tool-pane',
+      logs: 'bottom',
+    })
+    expect(layout.recipesById[FOCUS_RECIPE_ID].surfaceSlots).toMatchObject({
+      'file-editor': 'editor-center',
+      'file-navigator': 'rail',
+    })
+  })
 })
 
 function layoutSnapshot(layout: WorkspaceLayout) {
@@ -281,11 +348,13 @@ function layoutSnapshot(layout: WorkspaceLayout) {
       stickyPlacementsBySurfaceId: policy.stickyPlacementsBySurfaceId,
     })),
     rail: layout.rail,
-    recipes: Object.values(layout.recipesById).map((recipe) => ({
-      id: recipe.id,
-      resetRootNodeId: recipe.resetRootNodeId,
-      title: recipe.title,
-    })),
+    recipes: Object.values(layout.recipesById)
+      .map((recipe) => ({
+        id: recipe.id,
+        resetRootNodeId: recipe.resetRootNodeId,
+        title: recipe.title,
+      }))
+      .sort(compareIds),
     rootNodeId: layout.rootNodeId,
     surfaceRegistryVersion: layout.surfaceRegistryVersion,
     surfaces: Object.values(layout.surfacesById).map(surfaceSnapshot).sort(compareIds),
@@ -333,4 +402,42 @@ function windowSnapshot(window: WorkbenchWindow) {
 
 function compareIds(left: { readonly id: string }, right: { readonly id: string }) {
   return left.id.localeCompare(right.id)
+}
+
+function reviewLayoutCommandSnapshot() {
+  return {
+    aliases: ['git review', 'review changes', 'code review'],
+    enabled: true,
+    icon: 'git-pull-request',
+    id: REVIEW_LAYOUT_COMMAND_ID,
+    recipeId: REVIEW_RECIPE_ID,
+    slots: [
+      {
+        displayHint: { kind: 'recipe-slot', slot: 'left-tool-pane' },
+        frame: { anchor: 'left', height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 0.28 },
+        id: 'search',
+        surfaceType: 'search-results',
+      },
+      {
+        displayHint: { kind: 'recipe-slot', slot: 'bottom' },
+        frame: {
+          anchor: 'bottom',
+          height: 0.28,
+          offsetX: 0,
+          offsetY: 0,
+          unit: 'percent',
+          width: 1,
+        },
+        id: 'diagnostics',
+        surfaceType: 'diagnostics',
+      },
+      {
+        displayHint: { kind: 'recipe-slot', slot: 'left-tool-pane' },
+        frame: { anchor: 'left', height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 0.28 },
+        id: 'git-changes',
+        surfaceType: 'git-changes',
+      },
+    ],
+    title: 'Review Workspace',
+  }
 }
