@@ -148,7 +148,7 @@ describe('LayoutRenderer', () => {
     expect(html).not.toContain('data-rail-recipe-id=')
   })
 
-  it('dispatches pointer drag resize operations from handles', () => {
+  it('previews pointer drag resize operations locally and commits on release', async () => {
     const operations: LayoutOperation[] = []
 
     render(
@@ -169,6 +169,15 @@ describe('LayoutRenderer', () => {
     const handle = screen.getByRole('separator', { name: 'Resize columns' })
     fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 10, pointerId: 1 })
     fireEvent.pointerMove(handle, { buttons: 1, clientX: 432, clientY: 10, pointerId: 1 })
+
+    expect(operations).toEqual([])
+
+    await act(async () => {
+      await nextAnimationFrame()
+    })
+
+    expect(handle).toHaveStyle({ transform: 'translate3d(32px, 0, 0)' })
+
     fireEvent.pointerUp(handle, { clientX: 432, clientY: 10, pointerId: 1 })
 
     expect(operations).toEqual([
@@ -179,6 +188,7 @@ describe('LayoutRenderer', () => {
         type: 'resizeSplit',
       },
     ])
+    expect(handle).not.toHaveStyle({ transform: 'translate3d(32px, 0, 0)' })
   })
 
   it('dispatches snapped move operations from editor tab drops', () => {
@@ -803,6 +813,17 @@ function withEditorSurfaceProvider(children: ReactNode) {
 
 function matchCount(value: string, pattern: string) {
   return value.split(pattern).length - 1
+}
+
+function nextAnimationFrame() {
+  return new Promise<void>((resolve) => {
+    if (!window.requestAnimationFrame) {
+      resolve()
+      return
+    }
+
+    window.requestAnimationFrame(() => resolve())
+  })
 }
 
 function noop() {}

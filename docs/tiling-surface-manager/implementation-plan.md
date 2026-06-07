@@ -1033,8 +1033,10 @@ threshold follows Chromium `TabDragController::kVerticalDetachMagnetism` at 15
 px; touch follows `kTouchVerticalDetachMagnetism` at 50 px; reattach hysteresis
 is 4 px; drag motion uses immediate pointer-follow transforms while sibling/drop
 slot movement uses existing Chrome-tab transition timing. Remaining Phase 13
-work is full committed-layout preview state, content-aware resize constraints,
-and persisted resize preferences.
+work is full committed-layout preview state for snapped drag/drop placements.
+Resize dragging now previews handle movement locally at animation-frame cadence,
+commits split sizes only on release, and clamps editor, terminal, and tool panes
+with content-aware minimums.
 
 Goal: deliver the interaction model from the PRD.
 

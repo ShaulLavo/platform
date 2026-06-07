@@ -49,6 +49,7 @@ import type {
   LayoutPolicyId,
   LayoutPolicyState,
   LayoutSplitNode,
+  LayoutSplitAxis,
   RecipeId,
   Surface,
   SurfaceId,
@@ -63,6 +64,10 @@ import type {
 
 const RESIZE_REFERENCE_PX = 1000
 const MIN_RESIZE_SIZE = 0.05
+const MIN_EDITOR_RESIZE_SIZE = 0.22
+const MIN_TERMINAL_RESIZE_SIZE = 0.16
+const MIN_TOOL_RESIZE_SIZE = 0.14
+const MIN_VERTICAL_TOOL_RESIZE_SIZE = 0.12
 const RECIPE_LEFT_TOOL_SURFACE_TYPES = [
   'file-navigator',
   'search-results',
@@ -695,7 +700,7 @@ export function resizeSplit(
   if (!split || split.kind !== 'split') return normalizedLayout
   if (handleIndex < 0 || handleIndex >= split.childIds.length - 1) return normalizedLayout
 
-  const sizes = resizeAdjacentSizes(split.sizes, handleIndex, deltaPx)
+  const sizes = resizeAdjacentSizes(normalizedLayout, split, handleIndex, deltaPx)
 
   return normalizeWorkspaceLayout({
     ...normalizedLayout,
@@ -2407,12 +2412,23 @@ function layoutWithWindowMode(
   }
 }
 
-function resizeAdjacentSizes(sizes: readonly number[], handleIndex: number, deltaPx: number) {
+function resizeAdjacentSizes(
+  layout: WorkspaceLayout,
+  split: LayoutSplitNode,
+  handleIndex: number,
+  deltaPx: number,
+) {
+  const sizes = split.sizes
   const repairedSizes = repairSplitSizes(sizes, sizes.length)
   const delta = deltaPx / RESIZE_REFERENCE_PX
   const left = repairedSizes[handleIndex] ?? 0
   const right = repairedSizes[handleIndex + 1] ?? 0
-  const clampedDelta = clampDelta(left, right, delta)
+  const minimums = constrainedResizeMinimums(
+    resizeMinimumForNode(layout, split.childIds[handleIndex], split.axis),
+    resizeMinimumForNode(layout, split.childIds[handleIndex + 1], split.axis),
+    left + right,
+  )
+  const clampedDelta = clampDelta(left, right, delta, minimums.left, minimums.right)
   const nextSizes = repairedSizes.slice()
   nextSizes[handleIndex] = left + clampedDelta
   nextSizes[handleIndex + 1] = right - clampedDelta
@@ -2420,11 +2436,82 @@ function resizeAdjacentSizes(sizes: readonly number[], handleIndex: number, delt
   return repairSplitSizes(nextSizes, nextSizes.length)
 }
 
-function clampDelta(left: number, right: number, delta: number) {
-  const maxPositiveDelta = right - MIN_RESIZE_SIZE
-  const maxNegativeDelta = MIN_RESIZE_SIZE - left
+function constrainedResizeMinimums(left: number, right: number, total: number) {
+  const minimumTotal = left + right
+  if (minimumTotal <= total) return { left, right }
+  if (minimumTotal <= 0) return { left: MIN_RESIZE_SIZE, right: MIN_RESIZE_SIZE }
+
+  const scale = total / minimumTotal
+  return {
+    left: left * scale,
+    right: right * scale,
+  }
+}
+
+function clampDelta(
+  left: number,
+  right: number,
+  delta: number,
+  minimumLeft: number,
+  minimumRight: number,
+) {
+  const maxPositiveDelta = right - minimumRight
+  const maxNegativeDelta = minimumLeft - left
 
   return Math.max(maxNegativeDelta, Math.min(maxPositiveDelta, delta))
+}
+
+function resizeMinimumForNode(
+  layout: WorkspaceLayout,
+  nodeId: LayoutNodeId | undefined,
+  axis: LayoutSplitAxis,
+): number {
+  if (!nodeId) return MIN_RESIZE_SIZE
+
+  const node = layout.nodesById[nodeId]
+  if (!node) return MIN_RESIZE_SIZE
+  if (node.kind === 'window') return resizeMinimumForWindow(layout, node.windowId, axis)
+
+  const childMinimums: number[] = node.childIds.map((childId) =>
+    resizeMinimumForNode(layout, childId, axis),
+  )
+  if (node.axis === axis) {
+    return Math.max(
+      MIN_RESIZE_SIZE,
+      childMinimums.reduce<number>((sum, size) => sum + size, 0),
+    )
+  }
+
+  return Math.max(MIN_RESIZE_SIZE, ...childMinimums)
+}
+
+function resizeMinimumForWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  axis: LayoutSplitAxis,
+): number {
+  const window = layout.windowsById[windowId]
+  if (!window) return MIN_RESIZE_SIZE
+  if (window.mode === 'collapsed') return MIN_RESIZE_SIZE
+
+  const minimums = window.surfaceIds.map((surfaceId) =>
+    resizeMinimumForSurface(layout.surfacesById[surfaceId], axis),
+  )
+
+  return Math.max(MIN_RESIZE_SIZE, ...minimums)
+}
+
+function resizeMinimumForSurface(surface: Surface | undefined, axis: LayoutSplitAxis): number {
+  if (!surface) return MIN_RESIZE_SIZE
+  if (surface.type === 'file-editor') return MIN_EDITOR_RESIZE_SIZE
+  if (surface.type === 'diff') return MIN_EDITOR_RESIZE_SIZE
+  if (surface.type === 'placeholder') return MIN_EDITOR_RESIZE_SIZE
+  if (surface.type === 'search-preview') return MIN_EDITOR_RESIZE_SIZE
+  if (surface.type === 'terminal') return MIN_TERMINAL_RESIZE_SIZE
+  if (surface.type === 'diagnostics') return MIN_VERTICAL_TOOL_RESIZE_SIZE
+  if (axis === 'vertical') return MIN_VERTICAL_TOOL_RESIZE_SIZE
+
+  return MIN_TOOL_RESIZE_SIZE
 }
 
 function validReorder(window: WorkbenchWindow, fromIndex: number, toIndex: number) {

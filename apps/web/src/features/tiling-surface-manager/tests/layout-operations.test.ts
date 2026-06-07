@@ -6,6 +6,7 @@ import {
   CLASSIC_EDITOR_NODE_ID,
   CLASSIC_EDITOR_WINDOW_ID,
   CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+  CLASSIC_MAIN_NODE_ID,
   CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
   createChatSurface,
@@ -263,6 +264,28 @@ describe('tiling surface layout operations', () => {
     expect(root.sizes[0]).toBeCloseTo(0.32)
     expect(root.sizes[1]).toBeCloseTo(0.68)
     expectValidLayout(resized)
+  })
+
+  it('preserves content-aware resize minimums for tools and terminal panes', () => {
+    const narrowToolPane = resizeSplit(
+      createClassicFirstRunWorkspaceLayout(),
+      CLASSIC_ROOT_NODE_ID,
+      0,
+      -1000,
+    )
+    const shortTerminalPane = resizeSplit(
+      createClassicFirstRunWorkspaceLayout(),
+      CLASSIC_MAIN_NODE_ID,
+      0,
+      1000,
+    )
+    const root = narrowToolPane.nodesById[CLASSIC_ROOT_NODE_ID] as LayoutSplitNode
+    const main = shortTerminalPane.nodesById[CLASSIC_MAIN_NODE_ID] as LayoutSplitNode
+
+    expect(root.sizes[0]).toBeCloseTo(0.14)
+    expect(main.sizes[1]).toBeCloseTo(0.16)
+    expectValidLayout(narrowToolPane)
+    expectValidLayout(shortTerminalPane)
   })
 
   it('prevents singleton duplicates and promotes transient previews in place', () => {
