@@ -1231,8 +1231,10 @@ State rules:
   surface moves. Dragging should never create floating or popout state; future
   floating windows require explicit commands or placement policy.
 - Resize should maintain percent sizes for flexible panes and pixel/fixed
-  constraints for toolbars, rails, and minimum content. Use simple adjacent
-  resize first; keep a solver option for stacked/fixed-heavy layouts.
+  constraints for toolbars, rails, and minimum content. Pointer resizing should
+  use measured rendered split geometry to convert pixels into normalized ratios.
+  Use simple adjacent resize first; keep a solver option for stacked/fixed-heavy
+  layouts.
 - Persistence should store a surface registry version and layout version. On
   restore, match by stable resource key first, then previous surface ID if
   still valid, then logical/window position, then fallback background/default
@@ -1251,7 +1253,7 @@ Initial operation grammar:
 - `reorderTab(windowId, fromIndex, toIndex)`
 - `collapseWindow(windowId)` and `expandWindow(windowId)`
 - `restoreSurface(surfaceId, placement?)`
-- `resizeSplit(splitId, handleIndex, deltaPx)`
+- `resizeSplit(splitId, handleIndex, deltaPx, referencePx?)`
 - `maximizeWindow(windowId)` and `restoreWindow(windowId)`
 - `applyRecipe(recipeId)`
 

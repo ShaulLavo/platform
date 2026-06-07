@@ -263,6 +263,21 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(resized)
   })
 
+  it('uses a measured pixel reference when resizing splits', () => {
+    const resized = resizeSplit(
+      createClassicFirstRunWorkspaceLayout(),
+      CLASSIC_ROOT_NODE_ID,
+      0,
+      100,
+      500,
+    )
+    const root = resized.nodesById[CLASSIC_ROOT_NODE_ID] as LayoutSplitNode
+
+    expect(root.sizes[0]).toBeCloseTo(0.42)
+    expect(root.sizes[1]).toBeCloseTo(0.58)
+    expectValidLayout(resized)
+  })
+
   it('preserves content-aware resize minimums for tools and terminal panes', () => {
     const narrowToolPane = resizeSplit(
       createClassicFirstRunWorkspaceLayout(),

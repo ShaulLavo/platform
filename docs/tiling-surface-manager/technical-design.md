@@ -266,8 +266,12 @@ return only renderer events such as resize, focus, and snap/reposition.
 Required renderer behaviors:
 
 - Render split children from derived rects, not stored DOM state.
-- Render resize handles in an overlay layer. Drag previews should be shown by
-  reflowing the actual window/tab geometry, not by drawing visible drop zones.
+- Render resize handles in an overlay layer. Pointer resize should dispatch
+  incremental operations during movement so adjacent panes reflow live and the
+  handle follows the rendered boundary. Do not show resize as a transform-only
+  handle preview that commits on release.
+- Drag previews should be shown by reflowing the actual window/tab geometry,
+  not by drawing visible drop zones.
 - Use live drag previews that show the layout that will be committed.
 - Keep heavy surface content mounted or unmounted according to registry
   lifecycle, not according to incidental visibility.
@@ -299,8 +303,11 @@ Required renderer behaviors:
 - Resolve center, edge, parent-edge, root-edge, recipe-slot, and background as
   internal snap destinations. They are not user-visible drop zones. Future
   floating windows are a separate command/policy mode, not a drag destination.
-- Keep resize math constraint-aware. Adjacent percentage resizing is V1; a
-  Zellij-style solver pass is a future escape hatch for fixed/stacked layouts.
+- Keep resize math constraint-aware. Adjacent percentage resizing is V1, but
+  pointer deltas must be converted with the measured rendered split reference
+  rather than an arbitrary fixed pixel constant. The committed model still
+  stores normalized ratios so layouts survive viewport changes. A Zellij-style
+  solver pass is a future escape hatch for fixed/stacked layouts.
 
 ## Keyboard Control Direction
 
@@ -652,7 +659,13 @@ type LayoutOperation =
   | { type: 'moveWindow'; windowId: WindowId; destination: SnapDestination }
   | { type: 'tabSurface'; surfaceId: SurfaceId; targetWindowId: WindowId; index?: number }
   | { type: 'reorderSurface'; windowId: WindowId; fromIndex: number; toIndex: number }
-  | { type: 'resizeSplit'; splitId: LayoutNodeId; handleIndex: number; deltaPx: number }
+  | {
+      type: 'resizeSplit'
+      splitId: LayoutNodeId
+      handleIndex: number
+      deltaPx: number
+      referencePx?: number
+    }
   | { type: 'maximizeWindow'; windowId: WindowId }
   | { type: 'restoreWindow'; windowId: WindowId }
   | { type: 'applyRecipe'; recipeId: RecipeId }
@@ -999,6 +1012,9 @@ Add renderer tests after the pure reducer is stable: snap-destination
 resolution, no visible drop-zone rendering, keyboard focus movement, resize
 handles, sticky drag preview/reflow rendering, collapsed accordion geometry, and
 surface mounting rules for running terminals.
+Resize renderer tests should assert live pane reflow during pointer movement,
+small-drag acceptance, measured split-reference conversion, and handle alignment
+with the updated rendered split boundary.
 
 ## Automation Rules
 
@@ -1025,7 +1041,8 @@ These are the questions that still need implementation-level answers before or
 during the operation-library spike:
 
 - Exact surface capability schema.
-- Rect computation and what geometry is cached versus derived.
+- Future geometry caching boundaries beyond the current derived rects and
+  measured resize references.
 - Sticky snapped drag preview data model.
 - Placeholder serialization and restore matching details.
 - Recipe and placement policy API shape.

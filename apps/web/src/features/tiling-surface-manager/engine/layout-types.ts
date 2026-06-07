@@ -287,6 +287,7 @@ export type LayoutOperation =
   | {
       readonly deltaPx: number
       readonly handleIndex: number
+      readonly referencePx?: number
       readonly splitId: LayoutNodeId
       readonly type: 'resizeSplit'
     }

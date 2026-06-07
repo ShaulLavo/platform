@@ -55,8 +55,10 @@ describe('tiling surface layout geometry', () => {
     const mainHandle = handles.find((handle) => handle.splitId === CLASSIC_MAIN_NODE_ID)
 
     expect(rootHandle?.axis).toBe('horizontal')
+    expect(rootHandle?.resizeReferencePx).toBeCloseTo(990)
     expectRect(rootHandle?.rect, { height: 800, width: 8, x: 218.8, y: 0 })
     expect(mainHandle?.axis).toBe('vertical')
+    expect(mainHandle?.resizeReferencePx).toBeCloseTo(790)
     expectRect(mainHandle?.rect, { height: 8, width: 772.2, x: 227.8, y: 585.6 })
   })
 

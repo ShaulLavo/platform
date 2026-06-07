@@ -140,6 +140,7 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
         ...base,
         deltaPx: operation.deltaPx,
         handleIndex: operation.handleIndex,
+        referencePx: operation.referencePx,
         splitId: compactLayoutId(operation.splitId),
       }
     case 'splitWindow':

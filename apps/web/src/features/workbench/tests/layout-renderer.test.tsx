@@ -149,7 +149,7 @@ describe('LayoutRenderer', () => {
     expect(html).not.toContain('data-rail-recipe-id=')
   })
 
-  it('previews pointer drag resize operations locally and commits on release', async () => {
+  it('dispatches pointer drag resize operations live', () => {
     const operations: LayoutOperation[] = []
 
     render(
@@ -160,6 +160,7 @@ describe('LayoutRenderer', () => {
             handleIndex: 0,
             id: overlayId('resize:test:0'),
             rect: { height: 720, width: 8, x: 400, y: 0 },
+            resizeReferencePx: 800,
             splitId: layoutNodeId('split-test'),
           },
         ]}
@@ -171,25 +172,19 @@ describe('LayoutRenderer', () => {
     fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 10, pointerId: 1 })
     fireEvent.pointerMove(handle, { buttons: 1, clientX: 432, clientY: 10, pointerId: 1 })
 
-    expect(operations).toEqual([])
-
-    await act(async () => {
-      await nextAnimationFrame()
-    })
-
-    expect(handle).toHaveStyle({ transform: 'translate3d(32px, 0, 0)' })
-
-    fireEvent.pointerUp(handle, { clientX: 432, clientY: 10, pointerId: 1 })
-
     expect(operations).toEqual([
       {
         deltaPx: 32,
         handleIndex: 0,
+        referencePx: 800,
         splitId: layoutNodeId('split-test'),
         type: 'resizeSplit',
       },
     ])
-    expect(handle).not.toHaveStyle({ transform: 'translate3d(32px, 0, 0)' })
+
+    fireEvent.pointerUp(handle, { clientX: 432, clientY: 10, pointerId: 1 })
+
+    expect(operations).toHaveLength(1)
   })
 
   it('dispatches snapped move operations from document editor tab drags without rendering targets', () => {
@@ -419,6 +414,7 @@ describe('LayoutRenderer', () => {
             handleIndex: 0,
             id: overlayId('resize:test:0'),
             rect: { height: 720, width: 8, x: 400, y: 0 },
+            resizeReferencePx: 800,
             splitId: layoutNodeId('split-test'),
           },
         ]}
@@ -434,7 +430,7 @@ describe('LayoutRenderer', () => {
     expect(operations).toEqual([])
   })
 
-  it('stops pointer drag resize when pointerup happens outside the handle', () => {
+  it('ends pointer drag resize when pointerup happens outside the handle', () => {
     const operations: LayoutOperation[] = []
 
     render(
@@ -445,6 +441,7 @@ describe('LayoutRenderer', () => {
             handleIndex: 0,
             id: overlayId('resize:test:0'),
             rect: { height: 720, width: 8, x: 400, y: 0 },
+            resizeReferencePx: 800,
             splitId: layoutNodeId('split-test'),
           },
         ]}
@@ -457,7 +454,15 @@ describe('LayoutRenderer', () => {
     fireEvent.pointerUp(window, { clientX: 432, clientY: 10, pointerId: 1 })
     fireEvent.pointerMove(handle, { buttons: 1, clientX: 464, clientY: 10, pointerId: 1 })
 
-    expect(operations).toEqual([])
+    expect(operations).toEqual([
+      {
+        deltaPx: 32,
+        handleIndex: 0,
+        referencePx: 800,
+        splitId: layoutNodeId('split-test'),
+        type: 'resizeSplit',
+      },
+    ])
   })
 
   it('collapses the terminal window from its window controls', () => {
@@ -535,6 +540,26 @@ describe('LayoutRenderer', () => {
     fireEvent.focus(toolSurface)
 
     expect(store.getState().layout.activeSurfaceId).toBe(file.id)
+  })
+
+  it('activates a window when pointer down starts inside event-consuming surface content', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
+    const registry = createEventConsumingSurfaceRendererRegistry()
+    const store = renderInteractiveLayout(
+      openSurface(createClassicFirstRunWorkspaceLayout(), file),
+      {
+        surfaceRenderers: registry,
+      },
+    )
+    const content = screen.getByRole('button', { name: 'Files' })
+    const host = content.closest('[data-surface-host]')
+    if (!(host instanceof HTMLElement)) throw new Error('Missing file navigator host')
+
+    fireEvent.pointerDown(content, { button: 0, pointerId: 1 })
+
+    expect(store.getState().layout.activeSurfaceId).toBe(host.dataset.surfaceId)
+    expect(host.closest('[data-window-id]')).toHaveAttribute('data-active', 'true')
+    expect(content).toHaveAttribute('data-active', 'true')
   })
 
   it('does not duplicate visible running surfaces in hidden hosts', () => {
@@ -745,6 +770,34 @@ function createCountingSurfaceRendererRegistry(counts: {
   ])
 }
 
+function createEventConsumingSurfaceRendererRegistry() {
+  const EventConsumingRenderer: SurfaceRenderer = ({ active, surface }) => (
+    <button
+      data-active={active ? 'true' : 'false'}
+      data-consuming-surface={surface.type}
+      type='button'
+      onFocus={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {surface.title}
+    </button>
+  )
+
+  return createSurfaceRendererRegistry([
+    { renderer: EventConsumingRenderer, type: 'chat' },
+    { renderer: EventConsumingRenderer, type: 'diagnostics' },
+    { renderer: EventConsumingRenderer, type: 'diff' },
+    { renderer: EventConsumingRenderer, type: 'file-editor' },
+    { renderer: EventConsumingRenderer, type: 'file-navigator' },
+    { renderer: EventConsumingRenderer, type: 'git-changes' },
+    { renderer: EventConsumingRenderer, type: 'logs' },
+    { renderer: EventConsumingRenderer, type: 'placeholder' },
+    { renderer: EventConsumingRenderer, type: 'search-preview' },
+    { renderer: EventConsumingRenderer, type: 'search-results' },
+    { renderer: EventConsumingRenderer, type: 'terminal' },
+  ])
+}
+
 function railButtonForSurface(surfaceId: string) {
   const button = document.querySelector<HTMLButtonElement>(`[data-rail-surface-id="${surfaceId}"]`)
   if (!button) throw new Error(`Missing rail button ${surfaceId}`)
@@ -845,17 +898,6 @@ function withEditorSurfaceProvider(children: ReactNode) {
 
 function matchCount(value: string, pattern: string) {
   return value.split(pattern).length - 1
-}
-
-function nextAnimationFrame() {
-  return new Promise<void>((resolve) => {
-    if (!window.requestAnimationFrame) {
-      resolve()
-      return
-    }
-
-    window.requestAnimationFrame(() => resolve())
-  })
 }
 
 function lastItem<T>(items: readonly T[]) {

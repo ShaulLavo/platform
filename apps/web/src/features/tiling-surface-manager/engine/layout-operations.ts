@@ -113,7 +113,13 @@ export function applyLayoutOperation(
     case 'reorderSurface':
       return reorderSurface(layout, operation.windowId, operation.fromIndex, operation.toIndex)
     case 'resizeSplit':
-      return resizeSplit(layout, operation.splitId, operation.handleIndex, operation.deltaPx)
+      return resizeSplit(
+        layout,
+        operation.splitId,
+        operation.handleIndex,
+        operation.deltaPx,
+        operation.referencePx,
+      )
     case 'fullscreenWindow':
       return fullscreenWindow(layout, operation.windowId)
     case 'maximizeWindow':
@@ -502,13 +508,14 @@ export function resizeSplit(
   splitId: LayoutNodeId,
   handleIndex: number,
   deltaPx: number,
+  referencePx: number = RESIZE_REFERENCE_PX,
 ): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const split = normalizedLayout.nodesById[splitId]
   if (!split || split.kind !== 'split') return normalizedLayout
   if (handleIndex < 0 || handleIndex >= split.childIds.length - 1) return normalizedLayout
 
-  const sizes = resizeAdjacentSizes(normalizedLayout, split, handleIndex, deltaPx)
+  const sizes = resizeAdjacentSizes(normalizedLayout, split, handleIndex, deltaPx, referencePx)
 
   return normalizeWorkspaceLayout({
     ...normalizedLayout,
@@ -2379,10 +2386,11 @@ function resizeAdjacentSizes(
   split: LayoutSplitNode,
   handleIndex: number,
   deltaPx: number,
+  referencePx: number,
 ) {
   const sizes = split.sizes
   const repairedSizes = repairSplitSizes(sizes, sizes.length)
-  const delta = deltaPx / RESIZE_REFERENCE_PX
+  const delta = resizeRatioDelta(deltaPx, referencePx)
   const left = repairedSizes[handleIndex] ?? 0
   const right = repairedSizes[handleIndex + 1] ?? 0
   const minimums = constrainedResizeMinimums(
@@ -2396,6 +2404,13 @@ function resizeAdjacentSizes(
   nextSizes[handleIndex + 1] = right - clampedDelta
 
   return repairSplitSizes(nextSizes, nextSizes.length)
+}
+
+function resizeRatioDelta(deltaPx: number, referencePx: number) {
+  if (!Number.isFinite(referencePx)) return deltaPx / RESIZE_REFERENCE_PX
+  if (referencePx <= 0) return deltaPx / RESIZE_REFERENCE_PX
+
+  return deltaPx / referencePx
 }
 
 function constrainedResizeMinimums(left: number, right: number, total: number) {

@@ -34,6 +34,7 @@ export type ResizeHandleLayoutRect = {
   readonly handleIndex: number
   readonly id: OverlayId
   readonly rect: LayoutRect
+  readonly resizeReferencePx: number
   readonly splitId: LayoutNodeId
 }
 
@@ -226,10 +227,9 @@ function splitChildMainSizes(
   collapsedWindowHeaderPx: number,
 ) {
   const flexibleRatios = repairSplitSizes(node.sizes, node.childIds.length)
-  const mainSize = node.axis === 'horizontal' ? rect.width : rect.height
-  const availableMainSize = Math.max(0, mainSize - gapPx * Math.max(0, node.childIds.length - 1))
+  const availableMainSize = splitAvailableMainSize(node, rect, gapPx)
   const fixedSizes = collapsedChildMainSizes(layout, node, collapsedWindowHeaderPx)
-  const totalFixedSize = fixedSizes.reduce<number>((sum, size) => sum + (size ?? 0), 0)
+  const totalFixedSize = sumFixedSizes(fixedSizes)
   if (totalFixedSize > availableMainSize) {
     return constrainedFixedMainSizes(fixedSizes, availableMainSize)
   }
@@ -247,6 +247,20 @@ function splitChildMainSizes(
 
     return flexibleMainSize * (ratio / flexibleRatioTotal)
   })
+}
+
+function splitAvailableMainSize(
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  rect: LayoutRect,
+  gapPx: number,
+) {
+  const mainSize = splitMainSize(node.axis, rect)
+
+  return Math.max(0, mainSize - gapPx * Math.max(0, node.childIds.length - 1))
+}
+
+function sumFixedSizes(sizes: readonly (number | null)[]) {
+  return sizes.reduce<number>((sum, size) => sum + (size ?? 0), 0)
 }
 
 function collapsedChildMainSizes(
@@ -298,7 +312,7 @@ function splitChildRect(
 }
 
 function resizeHandleRectsForSplit(
-  _layout: WorkspaceLayout,
+  layout: WorkspaceLayout,
   node: Extract<LayoutNode, { readonly kind: 'split' }>,
   nodeRectsById: Readonly<Record<string, LayoutRect>>,
   options: LayoutGeometryOptions,
@@ -306,7 +320,7 @@ function resizeHandleRectsForSplit(
   const handles: ResizeHandleLayoutRect[] = []
 
   for (let index = 0; index < node.childIds.length - 1; index += 1) {
-    const handleRect = resizeHandleRectForIndex(node, nodeRectsById, index, options)
+    const handleRect = resizeHandleRectForIndex(layout, node, nodeRectsById, index, options)
     if (!handleRect) continue
 
     handles.push(handleRect)
@@ -316,6 +330,7 @@ function resizeHandleRectsForSplit(
 }
 
 function resizeHandleRectForIndex(
+  layout: WorkspaceLayout,
   node: Extract<LayoutNode, { readonly kind: 'split' }>,
   nodeRectsById: Readonly<Record<string, LayoutRect>>,
   handleIndex: number,
@@ -331,8 +346,64 @@ function resizeHandleRectForIndex(
     handleIndex,
     id: overlayId(`resize:${node.id}:${handleIndex}`),
     rect: handleRectBetween(before, after, splitRect, node.axis, options),
+    resizeReferencePx: resizeReferencePxForSplit(layout, node, nodeRectsById, splitRect, options),
     splitId: node.id,
   }
+}
+
+function resizeReferencePxForSplit(
+  layout: WorkspaceLayout,
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  nodeRectsById: Readonly<Record<string, LayoutRect>>,
+  splitRect: LayoutRect,
+  options: LayoutGeometryOptions,
+) {
+  const collapsedWindowHeaderPx =
+    options.collapsedWindowHeaderPx ?? DEFAULT_COLLAPSED_WINDOW_HEADER_PX
+  const availableMainSize = renderedChildMainSizeTotal(node, nodeRectsById, splitRect)
+  const fixedSizes = collapsedChildMainSizes(layout, node, collapsedWindowHeaderPx)
+  const flexibleMainSize = availableMainSize - sumFixedSizes(fixedSizes)
+  if (flexibleMainSize <= 0) return Math.max(1, availableMainSize)
+
+  const flexibleRatioTotal = flexibleResizeRatioTotal(node, fixedSizes)
+  if (flexibleRatioTotal <= 0) return Math.max(1, flexibleMainSize)
+
+  return Math.max(1, flexibleMainSize / flexibleRatioTotal)
+}
+
+function renderedChildMainSizeTotal(
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  nodeRectsById: Readonly<Record<string, LayoutRect>>,
+  splitRect: LayoutRect,
+) {
+  const total = node.childIds.reduce((sum, childId) => {
+    const rect = nodeRectsById[childId]
+    if (!rect) return sum
+
+    return sum + splitMainSize(node.axis, rect)
+  }, 0)
+  if (total > 0) return total
+
+  return splitMainSize(node.axis, splitRect)
+}
+
+function splitMainSize(axis: LayoutSplitAxis, rect: LayoutRect) {
+  if (axis === 'horizontal') return rect.width
+
+  return rect.height
+}
+
+function flexibleResizeRatioTotal(
+  node: Extract<LayoutNode, { readonly kind: 'split' }>,
+  fixedSizes: readonly (number | null)[],
+) {
+  const ratios = repairSplitSizes(node.sizes, node.childIds.length)
+
+  return ratios.reduce<number>((sum, ratio, index) => {
+    if (fixedSizes[index] !== null) return sum
+
+    return sum + ratio
+  }, 0)
 }
 
 function handleRectBetween(

@@ -3,9 +3,10 @@
 Date: 2026-06-05
 Last audited: 2026-06-07
 
-Status: implementation broadly completed and re-audited 2026-06-07, with the
-drag UX corrected on 2026-06-07 by replacing visible target chrome with private
-snap-destination hit testing and sticky snapped layout preview.
+Status: implementation broadly completed and re-audited 2026-06-07, with drag
+UX corrected on 2026-06-07 by replacing visible target chrome with private
+snap-destination hit testing and sticky snapped layout preview, and resize UX
+corrected on 2026-06-07 by making panes resize live from pointer movement.
 The production workbench now uses the Platform-owned `WorkspaceLayout` model for
 file/diff/search/tool surfaces, terminal running surfaces, command palette
 operations, snapped drag/reflow wiring, cache state, and workflow recipe
@@ -17,6 +18,13 @@ Drag correction note, 2026-06-07: visible target chrome is not product
 accepted. The required UX is sticky snapped drag preview: the actual tiled
 layout reflows to the release result, and no visible drop zones appear anywhere
 in the app.
+
+Resize correction note, 2026-06-07: resize handles must not be transform-only
+previews. Pointer movement dispatches incremental `resizeSplit` operations
+immediately, both adjacent panes reflow live, and the handle stays on the
+rendered split boundary. Split sizes remain stored as normalized ratios, but the
+pointer-to-ratio conversion uses the measured rendered split size rather than a
+fixed reference constant.
 
 This plan is grounded in `prd.md`, `technical-design.md`, `research-findings.md`,
 and the current app ownership points called out in the technical design.
@@ -58,6 +66,9 @@ Completed and verified for phases 1-7:
   surface states.
 - Diagnostics/Problems now renders active editor language-server diagnostics
   when available instead of only showing a static placeholder.
+- Resize handles now carry a measured `resizeReferencePx` derived from rendered
+  split geometry. Pointer drags dispatch live incremental resize operations
+  with that reference, while keyboard resize still uses discrete step commands.
 - Cache persistence subscriptions now compare typed field snapshots instead of
   serializing the entire workspace/search state on every store change.
 - Rail and hidden-surface renderer wrappers now subscribe to derived lists with
@@ -450,8 +461,10 @@ Status: completed and re-audited 2026-06-06. Selectors, geometry, policies,
 command catalog/presets/cycling, and store dispatch are implemented. Collapsed
 windows are represented as fixed accordion-header allocations in geometry.
 Rail and hidden-surface renderer wrappers use derived-list equality selectors;
-the main surface area remains the intentional full-layout subscriber. The cache
-persistence hot path has been narrowed with typed snapshot equality.
+resize handles include a measured rendered split reference for pointer-to-ratio
+conversion. The main surface area remains the intentional full-layout
+subscriber. The cache persistence hot path has been narrowed with typed snapshot
+equality.
 
 Goal: make the model usable by a renderer and command layer.
 
@@ -472,6 +485,7 @@ Work:
   - root rect to split/window rect derivation;
   - visible gap handling;
   - resize handle rects;
+  - measured resize references for rendered split geometry;
   - internal snap-destination hit rects;
   - root-edge and parent-edge snap hit zones.
 - Implement policies:
@@ -574,8 +588,8 @@ Exit criteria:
 Status: completed and re-audited 2026-06-06. The custom renderer is the
 production workbench renderer for current surfaces. It covers split rendering,
 Chrome-style tabs, frames, collapse/expand controls, accordion collapsed
-windows, maximized windows, overlays, background hosts, and lifecycle
-mount/unmount policy.
+windows, maximized windows, live resize handles, overlays, background hosts, and
+lifecycle mount/unmount policy.
 
 Goal: render the new model with no heavy surface migration yet.
 
@@ -585,7 +599,8 @@ Work:
 - Render split children from derived rects.
 - Render windows absolutely inside the layout root.
 - Render resize handles and snapped drag preview coordination without separate
-  target chrome.
+  target chrome. Resize handles should resize adjacent panes live from pointer
+  movement; they should not be transform-only previews that commit on release.
 - Implement window frame, Chrome-style tab strip, active state,
   close/collapse/maximize controls, collapsed accordion-header rendering, and
   surface host. Reuse or adapt the
@@ -1090,17 +1105,21 @@ Exit criteria:
 Status: corrected and re-audited 2026-06-07. The production workbench uses
 private snap-destination hit testing through `SnappedDragController`, keeps drag
 preview as uncommitted layout state, and renders no visible drop-zone or
-target-overlay chrome. Product acceptance still requires every future drag path
-to preserve sticky snapped preview: the actual tiled layout reflows to the exact
-release result, with no visible drop zones anywhere in the app.
+target-overlay chrome. Resize handles now dispatch live incremental
+`resizeSplit` operations using measured split geometry, so both adjacent panes
+and the handle reflow with the pointer. Product acceptance still requires every
+future drag path to preserve sticky snapped preview: the actual tiled layout
+reflows to the exact release result, with no visible drop zones anywhere in the
+app.
 
 Existing useful pieces to keep: pointer-driven in-strip tab dragging, Chromium-
 derived detach thresholds, uncommitted preview layout state, commit-on-release,
-cancel-to-restore, content-aware resize constraints, release-only resize
-persistence, and private snap-destination hit testing. Existing pieces to block
-from returning: any visible drop target layer, drop-zone rect rendering,
-placeholder drop slot, or preview where a window/tab appears to pop out of the
-tiling grid.
+cancel-to-restore, live pointer resize, content-aware resize constraints,
+normalized stored split ratios, measured resize references, keyboard resize
+steps, and private snap-destination hit testing. Existing pieces to block from
+returning: any visible drop target layer, drop-zone rect rendering, placeholder
+drop slot, transform-only resize handles, release-only pointer resize, or
+preview where a window/tab appears to pop out of the tiling grid.
 
 Goal: deliver the corrected interaction model from the PRD.
 
@@ -1154,10 +1173,12 @@ Work:
   - background target when a surface is intentionally removed from visible
     layout.
 - Add resize handles in the overlay layer.
-- Implement adjacent percentage resizing for V1.
+- Implement adjacent percentage resizing for V1. Pointer movement must dispatch
+  incremental resize operations live with the rendered split reference, then the
+  reducer converts those pixels into normalized ratios.
 - Add content-aware constraints for editor minimums, terminal usability, and
   nested tool-pane widths.
-- Persist preferred sizes only on intentional resize release.
+- Keep stored split sizes normalized so layouts survive viewport changes.
 
 Tests:
 
@@ -1185,6 +1206,11 @@ Tests:
   support already tested.
 - Drag preview does not persist.
 - Resize clamps and normalizes percentages.
+- Resize panes reflow live on pointer movement, including small drags.
+- The rendered handle follows the pointer because it is positioned from updated
+  split geometry, not a delayed transform preview.
+- Pointer resize converts deltas with measured rendered split size instead of a
+  fixed reference constant.
 - Renderer does not rerender every surface on pointer movement.
 
 Exit criteria:
@@ -1198,6 +1224,8 @@ Exit criteria:
   default, detach happens only after the vertical pull-down threshold, and every
   detached preview is snapped to a concrete workspace destination as the exact
   release result.
+- Resize feels direct: adjacent panes resize during the drag, small movements
+  are accepted, and the handle tracks the rendered boundary.
 
 ## Phase 14 - Accessibility, Visual Polish, And Performance
 
@@ -1402,6 +1430,18 @@ bun run format:check
 git diff --check
 ```
 
+Focused verification from the 2026-06-07 resize correction pass:
+
+```sh
+bun run typecheck
+bun run lint
+bun run format:check
+bun --bun vitest run --project node src/features/tiling-surface-manager/tests/layout-geometry.test.ts src/features/tiling-surface-manager/tests/layout-operations.test.ts
+bun --bun vitest run --project dom src/features/workbench/tests/layout-renderer.test.tsx
+NODE_OPTIONS=--preserve-symlinks ./node_modules/.bin/vitest run --project browser src/features/workbench/tests/layout-renderer.browser.tsx -t "resizes split windows with pointer drag handles"
+git diff --check
+```
+
 Focused verification from the 2026-06-06 re-audit/fix pass:
 
 ```sh
@@ -1463,8 +1503,9 @@ Expected remaining scan hits:
   visible drop zones.
 - Center, edge, parent-edge, and root-edge snap destinations are either
   implemented or model-ready and explicitly feature-gated from UI.
-- Resize is constraint-aware enough for editor, terminal, and nested tool-pane
-  surfaces.
+- Resize is live and constraint-aware enough for editor, terminal, and nested
+  tool-pane surfaces; pointer deltas use measured split geometry while stored
+  sizes remain normalized.
 - Search state is durable while heavy search UI can unmount when collapsed,
   hidden, or backgrounded.
 - Terminal collapse preserves the visible layout position as an accordion

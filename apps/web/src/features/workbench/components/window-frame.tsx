@@ -127,6 +127,25 @@ export const WindowFrame = memo(function WindowFrame({
     dispatchWorkbenchWindowPointerCancelEvent()
   }
 
+  function handleWindowFocus(event: FocusEvent<HTMLElement>) {
+    if (focusCameFromToolSurface(event)) return
+
+    activateWindow()
+  }
+
+  function handleWindowFocusPointerDown(event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0) return
+
+    activateWindow()
+  }
+
+  function activateWindow() {
+    if (active) return
+    if (!activeSurface) return
+
+    onDispatch(selectWindowOperation(window))
+  }
+
   return (
     <section
       aria-label={windowLabel({ activeSurface, window })}
@@ -141,13 +160,8 @@ export const WindowFrame = memo(function WindowFrame({
       role='region'
       style={layoutRectStyle(rect)}
       tabIndex={0}
-      onFocusCapture={(event) => {
-        if (focusCameFromToolSurface(event)) return
-        if (active) return
-        if (!activeSurface) return
-
-        onDispatch(selectWindowOperation(window))
-      }}
+      onFocusCapture={handleWindowFocus}
+      onPointerDownCapture={handleWindowFocusPointerDown}
     >
       <header
         className='border-border/70 bg-card/80 flex h-10 shrink-0 cursor-grab items-end gap-2 border-b pt-1 backdrop-blur-md active:cursor-grabbing'

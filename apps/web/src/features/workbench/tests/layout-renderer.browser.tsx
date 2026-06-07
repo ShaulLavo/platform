@@ -130,11 +130,15 @@ describe('LayoutRenderer browser rendering', () => {
 
     handle.dispatchEvent(resizePointerEvent('pointerdown', startX, pointerY))
     handle.dispatchEvent(resizePointerEvent('pointermove', startX + 80, pointerY))
-    handle.dispatchEvent(resizePointerEvent('pointerup', startX + 80, pointerY))
-
     await vi.waitFor(() => {
       expect(windowRects()).not.toEqual(initialRects)
     })
+
+    const movedHandleRect = firstColumnResizeHandle().getBoundingClientRect()
+    const movedHandleX = movedHandleRect.left + movedHandleRect.width / 2
+    expect(Math.abs(movedHandleX - (startX + 80))).toBeLessThanOrEqual(1)
+
+    handle.dispatchEvent(resizePointerEvent('pointerup', startX + 80, pointerY))
   })
 
   it('activates rail panes while another rail pane is open', async () => {

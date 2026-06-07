@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import type { ResizeHandleLayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
@@ -9,23 +9,18 @@ const KEYBOARD_RESIZE_DELTA_PX = 32
 type ResizeDragState = {
   readonly element: HTMLElement
   readonly handle: ResizeHandleSnapshot
+  lastClientX: number
+  lastClientY: number
   readonly pointerId: number
-  previewDeltaPx: number
-  previewFrameId: number | null
-  readonly startClientX: number
-  readonly startClientY: number
 }
 
 type ResizeHandleSnapshot = {
+  readonly axis: ResizeHandleLayoutRect['axis']
   readonly handleId: string
   readonly handleIndex: number
+  readonly referencePx: number
   readonly splitId: ResizeHandleLayoutRect['splitId']
 }
-
-type ResizePreviewState = {
-  readonly deltaPx: number
-  readonly handleId: string
-} | null
 
 export function ResizeOverlay({
   resizeHandleRects,
@@ -35,11 +30,10 @@ export function ResizeOverlay({
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
   const dragRef = useRef<ResizeDragState | null>(null)
-  const [preview, setPreview] = useState<ResizePreviewState>(null)
 
   useEffect(() => {
     function handleWindowBlur() {
-      cancelPointerDrag(dragRef, setPreview)
+      cancelPointerDrag(dragRef)
     }
 
     function handleWindowPointerCancel(event: PointerEvent) {
@@ -47,7 +41,7 @@ export function ResizeOverlay({
       if (!drag) return
       if (drag.pointerId !== event.pointerId) return
 
-      cancelPointerDrag(dragRef, setPreview)
+      cancelPointerDrag(dragRef)
     }
 
     function handleWindowPointerUp(event: PointerEvent) {
@@ -55,7 +49,7 @@ export function ResizeOverlay({
       if (!drag) return
       if (drag.pointerId !== event.pointerId) return
 
-      commitPointerDrag(dragRef, setPreview, onDispatch)
+      finishPointerDrag(dragRef, onDispatch, event)
     }
 
     window.addEventListener('blur', handleWindowBlur)
@@ -63,7 +57,7 @@ export function ResizeOverlay({
     window.addEventListener('pointerup', handleWindowPointerUp)
 
     return () => {
-      cancelPointerDrag(dragRef, setPreview)
+      cancelPointerDrag(dragRef)
       window.removeEventListener('blur', handleWindowBlur)
       window.removeEventListener('pointercancel', handleWindowPointerCancel)
       window.removeEventListener('pointerup', handleWindowPointerUp)
@@ -82,13 +76,10 @@ export function ResizeOverlay({
     dragRef.current = {
       element: event.currentTarget,
       handle: resizeHandleSnapshot(handle),
+      lastClientX: event.clientX,
+      lastClientY: event.clientY,
       pointerId: event.pointerId,
-      previewDeltaPx: 0,
-      previewFrameId: null,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
     }
-    setPreview(null)
   }
 
   function handlePointerMove(
@@ -100,16 +91,15 @@ export function ResizeOverlay({
     if (drag.pointerId !== event.pointerId) return
     if (drag.handle.handleId !== handle.id) return
     if (!primaryPointerButtonIsDown(event)) {
-      cancelPointerDrag(dragRef, setPreview)
+      cancelPointerDrag(dragRef)
       return
     }
 
-    drag.previewDeltaPx = pointerResizeDelta(handle, event, drag)
-    scheduleResizePreview(dragRef, setPreview)
+    dispatchPointerDragDelta(dragRef, onDispatch, event)
   }
 
   function handlePointerCancel() {
-    cancelPointerDrag(dragRef, setPreview)
+    cancelPointerDrag(dragRef)
   }
 
   function handlePointerUp(event: ReactPointerEvent<HTMLElement>) {
@@ -117,7 +107,7 @@ export function ResizeOverlay({
     if (!drag) return
     if (drag.pointerId !== event.pointerId) return
 
-    commitPointerDrag(dragRef, setPreview, onDispatch)
+    finishPointerDrag(dragRef, onDispatch, event)
   }
 
   return (
@@ -130,11 +120,11 @@ export function ResizeOverlay({
         <div
           aria-label={resizeHandleLabel(handle)}
           aria-orientation={handle.axis === 'horizontal' ? 'vertical' : 'horizontal'}
-          className={`${resizeHandleClassName(handle)} pointer-events-auto absolute rounded-full transition-[background-color,transform] will-change-transform outline-none`}
+          className={`${resizeHandleClassName(handle)} pointer-events-auto absolute rounded-full transition-[background-color] outline-none`}
           data-resize-handle-id={handle.id}
           key={handle.id}
           role='separator'
-          style={resizeHandleStyle(handle, preview)}
+          style={layoutRectStyle(handle.rect)}
           tabIndex={0}
           onKeyDown={(event) => {
             const deltaPx = keyboardResizeDelta(handle, event.key)
@@ -179,91 +169,61 @@ function resizeHandleClassName(handle: ResizeHandleLayoutRect) {
 
 function resizeHandleSnapshot(handle: ResizeHandleLayoutRect): ResizeHandleSnapshot {
   return {
+    axis: handle.axis,
     handleId: handle.id,
     handleIndex: handle.handleIndex,
+    referencePx: handle.resizeReferencePx,
     splitId: handle.splitId,
   }
-}
-
-function resizeHandleStyle(handle: ResizeHandleLayoutRect, preview: ResizePreviewState) {
-  const transform = resizePreviewTransform(handle, preview)
-  if (!transform) return layoutRectStyle(handle.rect)
-
-  return {
-    ...layoutRectStyle(handle.rect),
-    transform,
-  }
-}
-
-function resizePreviewTransform(handle: ResizeHandleLayoutRect, preview: ResizePreviewState) {
-  if (!preview) return undefined
-  if (preview.handleId !== handle.id) return undefined
-  if (preview.deltaPx === 0) return undefined
-  if (handle.axis === 'horizontal') return `translate3d(${preview.deltaPx}px, 0, 0)`
-
-  return `translate3d(0, ${preview.deltaPx}px, 0)`
-}
-
-function pointerResizeDelta(
-  handle: ResizeHandleLayoutRect,
-  event: ReactPointerEvent<HTMLElement>,
-  drag: ResizeDragState,
-) {
-  if (handle.axis === 'horizontal') return event.clientX - drag.startClientX
-
-  return event.clientY - drag.startClientY
 }
 
 function primaryPointerButtonIsDown(event: ReactPointerEvent<HTMLElement>) {
   return (event.buttons & 1) === 1
 }
 
-function scheduleResizePreview(
+function dispatchPointerDragDelta(
   dragRef: { current: ResizeDragState | null },
-  setPreview: (preview: ResizePreviewState) => void,
-) {
-  const drag = dragRef.current
-  if (!drag) return
-  if (drag.previewFrameId !== null) return
-
-  drag.previewFrameId = requestResizeAnimationFrame(() => {
-    const current = dragRef.current
-    if (!current) return
-
-    current.previewFrameId = null
-    setPreview({
-      deltaPx: current.previewDeltaPx,
-      handleId: current.handle.handleId,
-    })
-  })
-}
-
-function commitPointerDrag(
-  dragRef: { current: ResizeDragState | null },
-  setPreview: (preview: ResizePreviewState) => void,
   onDispatch: (operation: LayoutOperation) => void,
+  event: Pick<PointerEvent | ReactPointerEvent<HTMLElement>, 'clientX' | 'clientY'>,
 ) {
   const drag = dragRef.current
   if (!drag) return
+  const deltaPx = pointerResizeDelta(event, drag)
+  if (deltaPx === 0) return
 
-  dragRef.current = null
-  cancelResizePreviewFrame(drag)
-  releasePointer(drag.element, drag.pointerId)
-  setPreview(null)
-  dispatchResize(onDispatch, drag.handle, drag.previewDeltaPx)
+  drag.lastClientX = event.clientX
+  drag.lastClientY = event.clientY
+  dispatchResize(onDispatch, drag.handle, deltaPx)
 }
 
-function cancelPointerDrag(
+function pointerResizeDelta(
+  event: Pick<PointerEvent | ReactPointerEvent<HTMLElement>, 'clientX' | 'clientY'>,
+  drag: ResizeDragState,
+) {
+  if (drag.handle.axis === 'horizontal') return event.clientX - drag.lastClientX
+
+  return event.clientY - drag.lastClientY
+}
+
+function finishPointerDrag(
   dragRef: { current: ResizeDragState | null },
-  setPreview: (preview: ResizePreviewState) => void,
+  onDispatch: (operation: LayoutOperation) => void,
+  event: Pick<PointerEvent | ReactPointerEvent<HTMLElement>, 'clientX' | 'clientY'>,
 ) {
   const drag = dragRef.current
   if (!drag) return
 
+  dispatchPointerDragDelta(dragRef, onDispatch, event)
   dragRef.current = null
-  cancelResizePreviewFrame(drag)
   releasePointer(drag.element, drag.pointerId)
-  setPreview(null)
+}
+
+function cancelPointerDrag(dragRef: { current: ResizeDragState | null }) {
+  const drag = dragRef.current
+  if (!drag) return
+
+  dragRef.current = null
+  releasePointer(drag.element, drag.pointerId)
 }
 
 function dispatchResize(
@@ -276,26 +236,10 @@ function dispatchResize(
   onDispatch({
     deltaPx,
     handleIndex: handle.handleIndex,
+    referencePx: handle.referencePx,
     splitId: handle.splitId,
     type: 'resizeSplit',
   })
-}
-
-function requestResizeAnimationFrame(callback: FrameRequestCallback) {
-  if (!window.requestAnimationFrame) {
-    callback(0)
-    return null
-  }
-
-  return window.requestAnimationFrame(callback)
-}
-
-function cancelResizePreviewFrame(drag: ResizeDragState) {
-  if (drag.previewFrameId === null) return
-  if (!window.cancelAnimationFrame) return
-
-  window.cancelAnimationFrame(drag.previewFrameId)
-  drag.previewFrameId = null
 }
 
 function capturePointer(element: HTMLElement, pointerId: number) {
