@@ -9,7 +9,6 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
 import { createGitStore } from '@/features/git/state'
 import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
-import { TerminalStateProvider } from '@/components/workspace/terminal/providers/terminal-state-provider'
 import { ThemeProviderContext } from '@/components/theme-context'
 import { FocusContext, createFocusStore } from '@/components/workspace/focus/providers/focus-state'
 
@@ -305,6 +304,22 @@ describe('LayoutRenderer', () => {
     expect(html).not.toContain('data-workbench-hidden-surface-hosts')
   })
 
+  it('renders terminal surfaces without an embedded terminal tab store', () => {
+    const terminal = createTerminalSurface({
+      sessionId: 'terminal-2',
+      title: 'Terminal 2',
+    })
+    const layout = openSurface(createEmptyWorkspaceLayout(), terminal)
+    const html = renderLayout(layout, {
+      surfaceRenderers: editorSurfaceRendererRegistry,
+      withEditorSurfaceProvider: true,
+    })
+
+    expect(html).toContain('aria-label="Terminal"')
+    expect(html).not.toContain('Terminal tabs')
+    expect(html).not.toContain('New terminal tab')
+  })
+
   it('renders editor placeholders without fixture debug UI', () => {
     const layout = workspaceLayoutForEditorPaneLayout(createEditorPaneLayoutForPaths([], null))
     const html = renderLayout(layout, {
@@ -401,13 +416,11 @@ function renderLayout(
           setTheme: noop,
         }}
       >
-        <TerminalStateProvider>
-          <FocusContext value={createFocusStore()}>
-            <TooltipProvider>
-              {options.withEditorSurfaceProvider ? withEditorSurfaceProvider(renderer) : renderer}
-            </TooltipProvider>
-          </FocusContext>
-        </TerminalStateProvider>
+        <FocusContext value={createFocusStore()}>
+          <TooltipProvider>
+            {options.withEditorSurfaceProvider ? withEditorSurfaceProvider(renderer) : renderer}
+          </TooltipProvider>
+        </FocusContext>
       </ThemeProviderContext>
     </QueryClientProvider>,
   )
@@ -428,23 +441,21 @@ function renderInteractiveLayout(
           setTheme: noop,
         }}
       >
-        <TerminalStateProvider>
-          <FocusContext value={createFocusStore()}>
-            <TooltipProvider>
-              <LayoutProvider store={store}>
-                <LayoutRenderer
-                  initialRect={{
-                    height: 720,
-                    width: 1080,
-                    x: 0,
-                    y: 0,
-                  }}
-                  surfaceRenderers={options.surfaceRenderers}
-                />
-              </LayoutProvider>
-            </TooltipProvider>
-          </FocusContext>
-        </TerminalStateProvider>
+        <FocusContext value={createFocusStore()}>
+          <TooltipProvider>
+            <LayoutProvider store={store}>
+              <LayoutRenderer
+                initialRect={{
+                  height: 720,
+                  width: 1080,
+                  x: 0,
+                  y: 0,
+                }}
+                surfaceRenderers={options.surfaceRenderers}
+              />
+            </LayoutProvider>
+          </TooltipProvider>
+        </FocusContext>
       </ThemeProviderContext>
     </QueryClientProvider>,
   )

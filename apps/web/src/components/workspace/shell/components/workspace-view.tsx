@@ -1,5 +1,4 @@
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
-import { TerminalStateProvider } from '@/components/workspace/terminal/providers/terminal-state-provider'
 import { SearchRuntime } from '@/components/workspace/search/components/search-runtime'
 import { EditorSurfaceLayoutView } from '@/features/workbench/components/editor-surface-layout-view'
 import type { PickedFsEntry } from '@/lib/file-system-types'
@@ -23,7 +22,7 @@ export const WorkspaceView = memo(
     const rootPath = rootFolder.path
 
     return (
-      <TerminalStateProvider>
+      <>
         <SearchRuntime rootPath={rootPath} />
         <div className='h-full min-h-0 flex-1 overflow-auto'>
           <div className='flex h-full min-w-[1024px] flex-col'>
@@ -37,7 +36,7 @@ export const WorkspaceView = memo(
             </div>
           </div>
         </div>
-      </TerminalStateProvider>
+      </>
     )
   },
 )

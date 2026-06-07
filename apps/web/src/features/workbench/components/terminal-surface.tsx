@@ -1,23 +1,27 @@
-import { TerminalPanelStack } from '@/components/workspace/terminal/components/terminal-panel-stack'
-import { TerminalTabStrip } from '@/components/workspace/terminal/components/terminal-tab-strip'
+import { TerminalPanel } from '@/features/terminal/terminal-panel'
 
 import { PanelUnavailable } from '@/features/workbench/components/panel-unavailable'
 import type { SurfaceRendererProps } from '@/features/workbench/utils/surface-renderer-registry'
 import { useEditorSurfaceContext } from '@/features/workbench/hooks/use-editor-surface-context'
 
-export function TerminalSurface({ surface }: SurfaceRendererProps) {
+export function TerminalSurface({ active, surface, visible }: SurfaceRendererProps) {
   const { rootPath } = useEditorSurfaceContext()
   if (surface.type !== 'terminal') {
     return <PanelUnavailable message='This surface is not a terminal.' />
   }
 
+  const sessionId = terminalSessionId(surface)
+
   return (
-    <section
-      className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'
-      style={{ background: 'var(--terminal-background)' }}
-    >
-      <TerminalTabStrip rootPath={rootPath} />
-      <TerminalPanelStack rootPath={rootPath} />
-    </section>
+    <TerminalPanel
+      active={active && visible}
+      className='h-full'
+      rootPath={rootPath}
+      sessionId={sessionId}
+    />
   )
+}
+
+function terminalSessionId(surface: SurfaceRendererProps['surface']) {
+  return surface.stateKey ?? surface.resourceKey ?? String(surface.id)
 }
