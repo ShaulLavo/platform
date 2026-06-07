@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
+import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
+import {
+  createClassicFirstRunWorkspaceLayout,
+  createEmptyWorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-builders'
+
 import { activePlatformKeyBindings } from '../active-bindings'
-import { commandHotkeyMeta, platformCommandSpec } from '../command-registry'
+import {
+  commandHotkeyMeta,
+  platformCommandSpec,
+  windowManagementCommandSpecs,
+} from '../command-registry'
 import { defaultPlatformKeyBindings } from '../default-bindings'
 import {
   editorKeyBindingFromPlatform,
@@ -168,6 +178,24 @@ describe('command registry', () => {
     })
   })
 
+  it('exposes built-in window management commands for the command palette', () => {
+    expect(platformCommandSpec('workspace.window.maximizeActiveWindow')).toMatchObject({
+      aliases: expect.arrayContaining(['fullscreen']),
+      category: 'Window Management',
+      commandFamily: 'window-management',
+      commandKind: 'built-in-window',
+      icon: 'maximize',
+      title: 'Maximize Active Window',
+    })
+    expect(platformCommandSpec('workspace.window.collapseActiveWindow')).toMatchObject({
+      category: 'Window Management',
+      title: 'Collapse Active Window',
+    })
+    expect(windowManagementCommandSpecs.map((spec) => spec.id)).toContain(
+      'workspace.window.splitActiveWindowRight',
+    )
+  })
+
   it('exposes requested VS Code workspace command aliases', () => {
     for (const [command, vscodeCommandId] of requestedWorkspaceAliases) {
       expect(platformCommandSpec(command)).toMatchObject({
@@ -279,6 +307,20 @@ describe('defaultPlatformKeyBindings', () => {
     )
   })
 
+  it('uses browser-safe defaults for window management commands', () => {
+    const bindings = defaultPlatformKeyBindings('linux')
+
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.maximizeActiveWindow',
+        keys: 'Alt+Shift+M',
+      }),
+    )
+    expect(commands(appKeyBindingsForPane(bindings, 'global'))).toContain(
+      'workspace.window.closeActiveSurface',
+    )
+  })
+
   it('does not bind browser tab switching keys to pane focus commands', () => {
     const bindings = defaultPlatformKeyBindings('linux')
 
@@ -342,6 +384,56 @@ describe('defaultPlatformKeyBindings', () => {
         keys: 'Mod+Shift+ArrowUp',
       }),
     )
+  })
+})
+
+describe('command palette command availability', () => {
+  it('uses active layout capabilities for window management commands', () => {
+    const workspaceLayout = createClassicFirstRunWorkspaceLayout()
+    const emptyWorkspaceLayout = createEmptyWorkspaceLayout()
+
+    expect(
+      commandDisabledReason('workspace.window.maximizeActiveWindow', {
+        hasWorkspace: true,
+        selectedFilePath: null,
+        workspaceLayout,
+      }),
+    ).toBeNull()
+    expect(
+      commandDisabledReason('workspace.window.closeActiveSurface', {
+        hasWorkspace: true,
+        selectedFilePath: null,
+        workspaceLayout,
+      }),
+    ).toBe('Active surface cannot be closed.')
+    expect(
+      commandDisabledReason('workspace.closeCurrentTab', {
+        hasWorkspace: true,
+        selectedFilePath: null,
+        workspaceLayout,
+      }),
+    ).toBe('Active surface cannot be closed.')
+    expect(
+      commandDisabledReason('workspace.splitEditor', {
+        hasWorkspace: true,
+        selectedFilePath: null,
+        workspaceLayout: emptyWorkspaceLayout,
+      }),
+    ).toBe('No active window.')
+    expect(
+      commandDisabledReason('workspace.closeCurrentTab', {
+        hasWorkspace: true,
+        selectedFilePath: null,
+        workspaceLayout: emptyWorkspaceLayout,
+      }),
+    ).toBe('No active surface.')
+    expect(
+      commandDisabledReason('workspace.saveFile', {
+        hasWorkspace: true,
+        selectedFilePath: null,
+        workspaceLayout,
+      }),
+    ).toBe('No file-backed surface is active.')
   })
 })
 

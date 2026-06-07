@@ -11,6 +11,8 @@ export const BACKGROUND_ACTIVE_SURFACE_COMMAND_ID = windowManagementCommandId(
 )
 export const MAXIMIZE_ACTIVE_WINDOW_COMMAND_ID = windowManagementCommandId('maximize-active-window')
 export const RESTORE_ACTIVE_WINDOW_COMMAND_ID = windowManagementCommandId('restore-active-window')
+export const COLLAPSE_ACTIVE_WINDOW_COMMAND_ID = windowManagementCommandId('collapse-active-window')
+export const EXPAND_ACTIVE_WINDOW_COMMAND_ID = windowManagementCommandId('expand-active-window')
 export const SPLIT_ACTIVE_WINDOW_LEFT_COMMAND_ID = windowManagementCommandId(
   'split-active-window-left',
 )
@@ -69,6 +71,22 @@ export const BUILT_IN_WINDOW_MANAGEMENT_COMMANDS = [
     id: RESTORE_ACTIVE_WINDOW_COMMAND_ID,
     operation: 'restoreWindow',
     title: 'Restore Active Window',
+  }),
+  builtInCommand({
+    aliases: ['collapse window', 'fold window', 'accordion'],
+    capabilityPredicate: 'active-window-can-collapse',
+    icon: 'minus',
+    id: COLLAPSE_ACTIVE_WINDOW_COMMAND_ID,
+    operation: 'collapseWindow',
+    title: 'Collapse Active Window',
+  }),
+  builtInCommand({
+    aliases: ['expand window', 'unfold window', 'show window'],
+    capabilityPredicate: 'active-window-can-expand',
+    icon: 'arrows-out',
+    id: EXPAND_ACTIVE_WINDOW_COMMAND_ID,
+    operation: 'expandWindow',
+    title: 'Expand Active Window',
   }),
   builtInCommand({
     aliases: ['split left', 'left half', 'new pane left'],

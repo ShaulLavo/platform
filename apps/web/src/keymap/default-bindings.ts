@@ -173,6 +173,62 @@ const defaultBindingSpecs = [
     vscodeCommandId: 'workbench.action.closeActiveEditor',
   }),
   workspaceBinding('Mod+Shift+D', 'workspace.toggleDiffViewMode'),
+  workspaceBinding('Alt+Shift+W', 'workspace.window.closeActiveSurface', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+H', 'workspace.window.backgroundActiveSurface', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+M', 'workspace.window.maximizeActiveWindow', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+R', 'workspace.window.restoreActiveWindow', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+C', 'workspace.window.collapseActiveWindow', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+E', 'workspace.window.expandActiveWindow', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+A', 'workspace.window.splitActiveWindowLeft', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+D', 'workspace.window.splitActiveWindowRight', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+K', 'workspace.window.splitActiveWindowTop', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+J', 'workspace.window.splitActiveWindowBottom', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+ArrowLeft', 'workspace.window.moveActiveWindowLeft', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+ArrowRight', 'workspace.window.moveActiveWindowRight', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+ArrowUp', 'workspace.window.moveActiveWindowTop', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
+  workspaceBinding('Alt+Shift+ArrowDown', 'workspace.window.moveActiveWindowBottom', {
+    preventDefault: true,
+    stopPropagation: true,
+  }),
 
   editorBinding('Mod+Z', 'editor.undo', 'undo'),
   editorBinding('Mod+Shift+Z', 'editor.redo', 'redo'),

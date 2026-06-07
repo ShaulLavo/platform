@@ -1,4 +1,5 @@
 import type { Theme } from '@/components/theme-context'
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
 import type { PlatformCommandId } from '@/keymap'
 
@@ -27,6 +28,7 @@ type CommandPaletteGroupsFactoryProps = {
   readonly selectedFilePath: string | null
   readonly symbolItems: readonly FlatDocumentSymbol[]
   readonly symbolsPending: boolean
+  readonly workspaceLayout: WorkspaceLayout
   readonly onCommandSelect: (command: PlatformCommandId) => void
   readonly onFileSelect: (path: string) => void
   readonly onSymbolSelect: (symbol: FlatDocumentSymbol) => void
@@ -44,6 +46,7 @@ export function CommandPaletteGroupsFactory({
   selectedFilePath,
   symbolItems,
   symbolsPending,
+  workspaceLayout,
   onCommandSelect,
   onFileSelect,
   onSymbolSelect,
@@ -54,6 +57,7 @@ export function CommandPaletteGroupsFactory({
         groups={commandGroups}
         hasWorkspace={hasWorkspace}
         selectedFilePath={selectedFilePath}
+        workspaceLayout={workspaceLayout}
         onSelect={onCommandSelect}
       />
     )

@@ -1,14 +1,17 @@
 import { CommandGroup } from '@workspace/ui/components/command'
 
+import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { PlatformCommandId } from '@/keymap'
+
 import { CommandPaletteRow } from './command-palette-row'
 import type { CommandPaletteItem } from './command-palette-types'
-import { isCommandDisabled } from './command-palette-utils'
-import type { PlatformCommandId } from '@/keymap'
+import { commandDisabledReason } from './command-palette-utils'
 
 type CommandGroupsProps = {
   readonly groups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
   readonly hasWorkspace: boolean
   readonly selectedFilePath: string | null
+  readonly workspaceLayout: WorkspaceLayout
   readonly onSelect: (command: PlatformCommandId) => void
 }
 
@@ -16,6 +19,7 @@ export function CommandGroups({
   groups,
   hasWorkspace,
   selectedFilePath,
+  workspaceLayout,
   onSelect,
 }: CommandGroupsProps) {
   return (
@@ -24,7 +28,11 @@ export function CommandGroups({
         <CommandGroup key={category} heading={category}>
           {groupItems.map((item) => (
             <CommandPaletteRow
-              disabled={isCommandDisabled(item.spec.id, hasWorkspace, selectedFilePath)}
+              disabledReason={commandDisabledReason(item.spec.id, {
+                hasWorkspace,
+                selectedFilePath,
+                workspaceLayout,
+              })}
               item={item}
               key={item.spec.id}
               onSelect={onSelect}

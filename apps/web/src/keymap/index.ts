@@ -4,6 +4,7 @@ export {
   editorCommandSpecs,
   platformCommandSpec,
   platformCommandSpecs,
+  windowManagementCommandSpecs,
   workspaceCommandSpecs,
 } from './command-registry'
 export { defaultPlatformKeyBindings } from './default-bindings'
@@ -17,6 +18,12 @@ export {
 } from './editor-keymap'
 export { usePlatformCommandDispatch } from './commands'
 export { appKeyBindingsForPane, useAppKeymap } from './use-app-keymap'
+export {
+  isWindowManagementWorkspaceCommand,
+  windowManagementCommandIdForWorkspaceCommand,
+  workspaceCommandIdForWindowManagementCommand,
+  workspaceWindowManagementCommandIds,
+} from './window-management-command-ids'
 export type { CommandSpec } from './command-registry'
 export type {
   EditorPlatformCommandId,

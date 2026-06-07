@@ -453,6 +453,9 @@ function activeCapabilityDisabledReason(layout: WorkspaceLayout, operation: Layo
 
 function capabilityPredicateDisabledReason(layout: WorkspaceLayout, predicate: string) {
   if (predicate === 'active-window') return activeWindowDisabledReason(layout)
+  if (predicate === 'active-window-can-collapse')
+    return activeWindowCanCollapseDisabledReason(layout)
+  if (predicate === 'active-window-can-expand') return activeWindowCanExpandDisabledReason(layout)
   if (predicate === 'active-surface-can-close') return activeSurfaceCanCloseDisabledReason(layout)
   if (predicate === 'active-surface-can-background') {
     return activeSurfaceCanBackgroundDisabledReason(layout)
@@ -468,6 +471,23 @@ function activeWindowDisabledReason(layout: WorkspaceLayout) {
   if (selectActiveWindow(layout)) return null
 
   return 'No active window.'
+}
+
+function activeWindowCanCollapseDisabledReason(layout: WorkspaceLayout) {
+  const window = selectActiveWindow(layout)
+  if (!window) return 'No active window.'
+  if (window.mode === 'collapsed') return 'Active window is already collapsed.'
+  if (windowCanCollapse(layout, window)) return null
+
+  return 'Active window cannot be collapsed.'
+}
+
+function activeWindowCanExpandDisabledReason(layout: WorkspaceLayout) {
+  const window = selectActiveWindow(layout)
+  if (!window) return 'No active window.'
+  if (window.mode === 'collapsed') return null
+
+  return 'Active window is not collapsed.'
 }
 
 function activeSurfaceCanCloseDisabledReason(layout: WorkspaceLayout) {
@@ -538,6 +558,15 @@ function canCloseSurface(surface: Surface) {
   if (!surface.capabilities.canClose) return false
 
   return surface.closePolicy.type !== 'block'
+}
+
+function windowCanCollapse(layout: WorkspaceLayout, window: WorkbenchWindow) {
+  for (const surfaceId of window.surfaceIds) {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface?.capabilities.canCollapse) return false
+  }
+
+  return true
 }
 
 function isSurface(surface: Surface | undefined): surface is Surface {

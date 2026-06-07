@@ -17,9 +17,31 @@ import {
   createFileNavigatorSurface,
   createGitChangesSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
+import {
+  BACKGROUND_ACTIVE_SURFACE_COMMAND_ID,
+  CLOSE_ACTIVE_SURFACE_COMMAND_ID,
+  COLLAPSE_ACTIVE_WINDOW_COMMAND_ID,
+  EXPAND_ACTIVE_WINDOW_COMMAND_ID,
+  MAXIMIZE_ACTIVE_WINDOW_COMMAND_ID,
+  MOVE_ACTIVE_SURFACE_TO_BACKGROUND_COMMAND_ID,
+  MOVE_ACTIVE_WINDOW_BOTTOM_COMMAND_ID,
+  MOVE_ACTIVE_WINDOW_LEFT_COMMAND_ID,
+  MOVE_ACTIVE_WINDOW_RIGHT_COMMAND_ID,
+  MOVE_ACTIVE_WINDOW_TOP_COMMAND_ID,
+  RESTORE_ACTIVE_WINDOW_COMMAND_ID,
+  SPLIT_ACTIVE_WINDOW_BOTTOM_COMMAND_ID,
+  SPLIT_ACTIVE_WINDOW_LEFT_COMMAND_ID,
+  SPLIT_ACTIVE_WINDOW_RIGHT_COMMAND_ID,
+  SPLIT_ACTIVE_WINDOW_TOP_COMMAND_ID,
+  builtInWindowManagementCommands,
+} from '@/features/tiling-surface-manager/engine/layout-command-catalog'
 import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
+import { windowCommandDisabledReason } from '@/features/tiling-surface-manager/engine/layout-selectors'
 import type {
+  BuiltInWindowManagementCommand,
+  DropEdge,
+  LayoutOperation,
   Surface,
   WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -38,6 +60,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { editorCommandIdFromPlatform, isEditorPlatformCommandId } from './editor-keymap'
 import type { PlatformCommandId, WorkspaceCommandId } from './types'
 import type { PlatformCommandDispatch } from './use-app-keymap'
+import { windowManagementCommandIdForWorkspaceCommand } from './window-management-command-ids'
 
 type WorkspaceCommandContext = {
   readonly activeTabId: string | null
@@ -55,7 +78,6 @@ type WorkspaceCommandContext = {
   readonly setWorkspaceLayout: (layout: WorkspaceLayout) => void
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly selectPreviousEditor: () => boolean
-  readonly splitTab: (tabId: string, direction: 'horizontal') => boolean
   readonly workspaceLayout: WorkspaceLayout
 }
 
@@ -75,7 +97,7 @@ export function usePlatformCommandDispatch({
   const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
   const dispatchEditorCommand = useFocus((state) => state.dispatchEditorCommand)
   const setFocusArea = useFocus((state) => state.setFocusArea)
-  const { closeTab, reopenClosedEditor, selectPreviousEditor, splitTab } = useEditorCommands()
+  const { closeTab, reopenClosedEditor, selectPreviousEditor } = useEditorCommands()
   const fallbackRequestCloseTab = useCallback<RequestCloseTab>(
     (tabId) => {
       closeTab(tabId)
@@ -109,7 +131,6 @@ export function usePlatformCommandDispatch({
         setWorkspaceLayout: workspace.setWorkspaceLayout,
         showCommandPalette,
         selectPreviousEditor,
-        splitTab,
         workspaceLayout: workspace.workspaceLayout,
       })
     },
@@ -124,7 +145,6 @@ export function usePlatformCommandDispatch({
       setTheme,
       showCommandPalette,
       selectPreviousEditor,
-      splitTab,
       workspaceStore,
     ],
   )
@@ -144,8 +164,7 @@ function dispatchWorkspaceCommand(command: WorkspaceCommandId, context: Workspac
 }
 
 const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandler> = {
-  'workspace.closeCurrentTab': ({ activeTabId, requestCloseTab }) =>
-    closeSelectedTab(activeTabId, requestCloseTab),
+  'workspace.closeCurrentTab': closeActiveSurface,
   'workspace.focusEditor': ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
@@ -234,13 +253,7 @@ const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandl
     setTheme('system')
     return true
   },
-  'workspace.splitEditor': ({ activeTabId, requestEditorFocus, splitTab }) => {
-    if (!activeTabId) return false
-    if (!splitTab(activeTabId, 'horizontal')) return false
-
-    requestEditorFocus()
-    return true
-  },
+  'workspace.splitEditor': windowCommandHandler('workspace.window.splitActiveWindowRight'),
   'workspace.toggleDiffViewMode': ({ diffViewMode, setDiffViewMode }) => {
     setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
     return true
@@ -259,6 +272,49 @@ const workspaceCommandHandlers: Record<WorkspaceCommandId, WorkspaceCommandHandl
     setWorkspaceLayout(layoutWithToggledSurface(workspaceLayout, createFileNavigatorSurface()))
     return true
   },
+  'workspace.window.backgroundActiveSurface': windowCommandHandler(
+    'workspace.window.backgroundActiveSurface',
+  ),
+  'workspace.window.closeActiveSurface': closeActiveSurface,
+  'workspace.window.collapseActiveWindow': windowCommandHandler(
+    'workspace.window.collapseActiveWindow',
+  ),
+  'workspace.window.expandActiveWindow': windowCommandHandler(
+    'workspace.window.expandActiveWindow',
+  ),
+  'workspace.window.maximizeActiveWindow': windowCommandHandler(
+    'workspace.window.maximizeActiveWindow',
+  ),
+  'workspace.window.moveActiveSurfaceToBackground': windowCommandHandler(
+    'workspace.window.moveActiveSurfaceToBackground',
+  ),
+  'workspace.window.moveActiveWindowBottom': windowCommandHandler(
+    'workspace.window.moveActiveWindowBottom',
+  ),
+  'workspace.window.moveActiveWindowLeft': windowCommandHandler(
+    'workspace.window.moveActiveWindowLeft',
+  ),
+  'workspace.window.moveActiveWindowRight': windowCommandHandler(
+    'workspace.window.moveActiveWindowRight',
+  ),
+  'workspace.window.moveActiveWindowTop': windowCommandHandler(
+    'workspace.window.moveActiveWindowTop',
+  ),
+  'workspace.window.restoreActiveWindow': windowCommandHandler(
+    'workspace.window.restoreActiveWindow',
+  ),
+  'workspace.window.splitActiveWindowBottom': windowCommandHandler(
+    'workspace.window.splitActiveWindowBottom',
+  ),
+  'workspace.window.splitActiveWindowLeft': windowCommandHandler(
+    'workspace.window.splitActiveWindowLeft',
+  ),
+  'workspace.window.splitActiveWindowRight': windowCommandHandler(
+    'workspace.window.splitActiveWindowRight',
+  ),
+  'workspace.window.splitActiveWindowTop': windowCommandHandler(
+    'workspace.window.splitActiveWindowTop',
+  ),
 }
 
 function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCloseTab) {
@@ -266,6 +322,119 @@ function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCl
 
   requestCloseTab(activeTabId)
   return true
+}
+
+function closeActiveSurface(context: WorkspaceCommandContext) {
+  if (activeSurfaceCloseDisabledReason(context.workspaceLayout)) return false
+
+  const activeSurface = activeSurfaceForLayout(context.workspaceLayout)
+  if (!activeSurface) return false
+  if (activeSurface.closePolicy.type === 'confirm-dirty-file') {
+    return closeSelectedTab(context.activeTabId, context.requestCloseTab)
+  }
+
+  return applyWorkspaceLayoutOperation(context, {
+    surfaceId: activeSurface.id,
+    type: 'closeSurface',
+  })
+}
+
+function windowCommandHandler(commandId: WorkspaceCommandId): WorkspaceCommandHandler {
+  return (context) => dispatchBuiltInWindowCommand(commandId, context)
+}
+
+function dispatchBuiltInWindowCommand(
+  commandId: WorkspaceCommandId,
+  context: WorkspaceCommandContext,
+) {
+  const command = builtInWindowCommandForWorkspaceCommand(commandId)
+  if (!command) return false
+  if (windowCommandDisabledReason(context.workspaceLayout, command)) return false
+  if (command.id === CLOSE_ACTIVE_SURFACE_COMMAND_ID) return closeActiveSurface(context)
+
+  const operation = layoutOperationForBuiltInWindowCommand(context.workspaceLayout, command.id)
+  if (!operation) return false
+
+  return applyWorkspaceLayoutOperation(context, operation)
+}
+
+function applyWorkspaceLayoutOperation(
+  context: WorkspaceCommandContext,
+  operation: LayoutOperation,
+) {
+  context.setWorkspaceLayout(applyLayoutOperation(context.workspaceLayout, operation))
+  return true
+}
+
+function builtInWindowCommandForWorkspaceCommand(commandId: WorkspaceCommandId) {
+  const windowCommandId = windowManagementCommandIdForWorkspaceCommand(commandId)
+  if (!windowCommandId) return null
+
+  return builtInWindowCommandsById.get(windowCommandId) ?? null
+}
+
+function layoutOperationForBuiltInWindowCommand(
+  layout: WorkspaceLayout,
+  commandId: BuiltInWindowManagementCommand['id'],
+): LayoutOperation | null {
+  const activeWindowId = layout.activeWindowId
+  const activeSurfaceId = layout.activeSurfaceId
+  const splitEdge = splitWindowEdgesByCommandId[commandId]
+  if (splitEdge && activeWindowId && activeSurfaceId) {
+    return {
+      edge: splitEdge,
+      surfaceId: activeSurfaceId,
+      type: 'splitWindow',
+      windowId: activeWindowId,
+    }
+  }
+
+  const moveEdge = moveWindowEdgesByCommandId[commandId]
+  if (moveEdge && activeWindowId) {
+    return {
+      destination: { edge: moveEdge, kind: 'root-edge' },
+      type: 'moveWindow',
+      windowId: activeWindowId,
+    }
+  }
+
+  if (backgroundSurfaceCommandIds.has(commandId) && activeSurfaceId) {
+    return {
+      destination: { kind: 'background' },
+      surfaceId: activeSurfaceId,
+      type: 'moveSurface',
+    }
+  }
+  if (!activeWindowId) return null
+
+  return activeWindowOperation(commandId, activeWindowId)
+}
+
+function activeWindowOperation(
+  commandId: BuiltInWindowManagementCommand['id'],
+  windowId: WorkspaceLayout['activeWindowId'],
+): LayoutOperation | null {
+  if (!windowId) return null
+  if (commandId === MAXIMIZE_ACTIVE_WINDOW_COMMAND_ID) return { type: 'maximizeWindow', windowId }
+  if (commandId === RESTORE_ACTIVE_WINDOW_COMMAND_ID) return { type: 'restoreWindow', windowId }
+  if (commandId === COLLAPSE_ACTIVE_WINDOW_COMMAND_ID) return { type: 'collapseWindow', windowId }
+  if (commandId === EXPAND_ACTIVE_WINDOW_COMMAND_ID) return { type: 'expandWindow', windowId }
+
+  return null
+}
+
+function activeSurfaceForLayout(layout: WorkspaceLayout) {
+  const activeSurfaceId = layout.activeSurfaceId
+  if (!activeSurfaceId) return null
+
+  return layout.surfacesById[activeSurfaceId] ?? null
+}
+
+function activeSurfaceCloseDisabledReason(layout: WorkspaceLayout) {
+  const command = builtInWindowCommandsById.get(CLOSE_ACTIVE_SURFACE_COMMAND_ID)
+  if (!command) return 'Close surface command is unavailable.'
+
+  return windowCommandDisabledReason(layout, command)
 }
 
 function runFileLifecycle(selectedFilePath: string | null, operation: () => Promise<boolean>) {
@@ -344,6 +513,29 @@ function workspaceCommandIdFromPlatform(command: PlatformCommandId): WorkspaceCo
   if (isEditorPlatformCommandId(command)) return null
 
   return command
+}
+
+const builtInWindowCommandsById = new Map(
+  builtInWindowManagementCommands().map((command) => [command.id, command]),
+)
+
+const backgroundSurfaceCommandIds = new Set<BuiltInWindowManagementCommand['id']>([
+  BACKGROUND_ACTIVE_SURFACE_COMMAND_ID,
+  MOVE_ACTIVE_SURFACE_TO_BACKGROUND_COMMAND_ID,
+])
+
+const splitWindowEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+  [SPLIT_ACTIVE_WINDOW_BOTTOM_COMMAND_ID]: 'bottom',
+  [SPLIT_ACTIVE_WINDOW_LEFT_COMMAND_ID]: 'left',
+  [SPLIT_ACTIVE_WINDOW_RIGHT_COMMAND_ID]: 'right',
+  [SPLIT_ACTIVE_WINDOW_TOP_COMMAND_ID]: 'top',
+}
+
+const moveWindowEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+  [MOVE_ACTIVE_WINDOW_BOTTOM_COMMAND_ID]: 'bottom',
+  [MOVE_ACTIVE_WINDOW_LEFT_COMMAND_ID]: 'left',
+  [MOVE_ACTIVE_WINDOW_RIGHT_COMMAND_ID]: 'right',
+  [MOVE_ACTIVE_WINDOW_TOP_COMMAND_ID]: 'top',
 }
 
 function noop() {}

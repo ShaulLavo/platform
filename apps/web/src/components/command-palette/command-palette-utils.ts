@@ -1,4 +1,10 @@
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
+import { windowCommandDisabledReason } from '@/features/tiling-surface-manager/engine/layout-selectors'
+import type {
+  WindowManagementCommand,
+  WorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-types'
 import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'
@@ -8,6 +14,8 @@ import {
   type CommandSpec,
   type PlatformCommandId,
   type PlatformKeyBinding,
+  type WorkspaceCommandId,
+  windowManagementCommandIdForWorkspaceCommand,
 } from '@/keymap'
 import { fuzzyRankScore } from '@workspace/contracts'
 
@@ -117,21 +125,35 @@ export function commandKeywords(spec: CommandSpec) {
     spec.category,
     spec.description ?? '',
     spec.id,
+    ...(spec.aliases ?? []),
     ...(spec.vscodeCommandIds ?? []),
   ]
 }
 
-export function isCommandDisabled(
-  command: PlatformCommandId,
-  hasWorkspace: boolean,
-  selectedFilePath: string | null,
-) {
-  if (workspaceOptionalCommands.has(command)) return false
-  if (!hasWorkspace) return true
-  if (selectedFileCommands.has(command)) return !fileBackedPath(selectedFilePath)
-  if (isEditorPlatformCommandId(command)) return !fileBackedPath(selectedFilePath)
+export type CommandDisabledContext = {
+  readonly hasWorkspace: boolean
+  readonly selectedFilePath: string | null
+  readonly workspaceLayout: WorkspaceLayout
+}
 
-  return false
+export function isCommandDisabled(command: PlatformCommandId, context: CommandDisabledContext) {
+  return commandDisabledReason(command, context) !== null
+}
+
+export function commandDisabledReason(command: PlatformCommandId, context: CommandDisabledContext) {
+  if (workspaceOptionalCommands.has(command)) return null
+  if (!context.hasWorkspace) return 'No workspace open.'
+
+  const windowReason = windowManagementDisabledReason(command, context.workspaceLayout)
+  if (windowReason) return windowReason
+  if (selectedFileCommands.has(command)) {
+    return fileBackedPath(context.selectedFilePath) ? null : 'No file-backed surface is active.'
+  }
+  if (isEditorPlatformCommandId(command)) {
+    return fileBackedPath(context.selectedFilePath) ? null : 'No file-backed surface is active.'
+  }
+
+  return null
 }
 
 export function fileBackedPath(path: string | null) {
@@ -224,6 +246,36 @@ function commandShortcut(command: PlatformCommandId, bindings: readonly Platform
   if (typeof binding.hotkey === 'string') return formatHotkey(binding.hotkey)
 
   return formatHotkey(binding.keys)
+}
+
+const builtInWindowCommandsById = new Map(
+  builtInWindowManagementCommands().map((command) => [command.id, command]),
+)
+
+function windowManagementDisabledReason(command: PlatformCommandId, layout: WorkspaceLayout) {
+  const windowCommand = windowManagementCommandForPlatformCommand(command)
+  if (!windowCommand) return null
+
+  return windowCommandDisabledReason(layout, windowCommand)
+}
+
+function windowManagementCommandForPlatformCommand(
+  command: PlatformCommandId,
+): WindowManagementCommand | null {
+  if (isEditorPlatformCommandId(command)) return null
+
+  const workspaceCommand = layoutAliasCommand(command) ?? command
+  const windowCommandId = windowManagementCommandIdForWorkspaceCommand(workspaceCommand)
+  if (!windowCommandId) return null
+
+  return builtInWindowCommandsById.get(windowCommandId) ?? null
+}
+
+function layoutAliasCommand(command: PlatformCommandId): WorkspaceCommandId | null {
+  if (command === 'workspace.closeCurrentTab') return 'workspace.window.closeActiveSurface'
+  if (command === 'workspace.splitEditor') return 'workspace.window.splitActiveWindowRight'
+
+  return null
 }
 
 function quickAccessRankTarget(value: string, keywords: readonly string[] | undefined) {

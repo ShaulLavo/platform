@@ -42,6 +42,7 @@ export function CommandPaletteContent({
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
+  const workspaceLayout = useEditorWorkspaceState((state) => state.workspaceLayout)
   const { openDefinition, selectFile } = useEditorCommands()
   const mode = quickAccessMode(search)
   const query = quickAccessQuery(search)
@@ -69,7 +70,7 @@ export function CommandPaletteContent({
   })
 
   function runCommand(command: PlatformCommandId) {
-    if (isCommandDisabled(command, hasWorkspace, selectedFilePath)) return
+    if (isCommandDisabled(command, { hasWorkspace, selectedFilePath, workspaceLayout })) return
 
     const handled = dispatch(command)
     if (handled === false) return
@@ -141,6 +142,7 @@ export function CommandPaletteContent({
           selectedFilePath={selectedFilePath}
           symbolItems={symbolQuery.data ?? []}
           symbolsPending={symbolsEnabled && symbolQuery.isPending}
+          workspaceLayout={workspaceLayout}
           onCommandSelect={runCommand}
           onFileSelect={openFile}
           onSymbolSelect={openSymbol}
