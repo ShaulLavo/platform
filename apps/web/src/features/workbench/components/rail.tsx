@@ -5,7 +5,7 @@ import {
   type WorkbenchRailSurfaceItem,
 } from '@/features/tiling-surface-manager/engine/rail-model'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
-import { terminalSurfaceId } from '@/features/tiling-surface-manager/engine/layout-ids'
+import { DEFAULT_CLASSIC_TERMINAL_SURFACE_ID } from '@/features/tiling-surface-manager/engine/bottom-tool-pane'
 import {
   layoutSnapshot,
   logWorkbenchLayoutInfo,
@@ -15,8 +15,6 @@ import type {
   LayoutOperation,
   WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
-
-const DEFAULT_TERMINAL_SURFACE_ID = terminalSurfaceId('terminal-1')
 
 export function Rail({
   getLayout,
@@ -77,7 +75,7 @@ function dispatchRailItemOperation(
 function railItemLabel(item: WorkbenchRailSurfaceItem) {
   if (item.state === 'background') return `Restore ${item.surface.title}`
   if (item.state === 'collapsed') return `Expand ${item.surface.title}`
-  if (item.surface.id === DEFAULT_TERMINAL_SURFACE_ID && paneIsVisible(item)) {
+  if (item.surface.id === DEFAULT_CLASSIC_TERMINAL_SURFACE_ID && paneIsVisible(item)) {
     return 'Hide bottom tool pane'
   }
   if (paneIsVisible(item) && item.surface.capabilities.canCollapse) {

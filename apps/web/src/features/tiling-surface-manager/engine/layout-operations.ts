@@ -21,6 +21,11 @@ import {
   createChatSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
+  classicBottomToolPaneOwnsSurface,
+  classicBottomToolPaneWindowId,
+  visibleClassicBottomToolPaneWindowId,
+} from '@/features/tiling-surface-manager/engine/bottom-tool-pane'
+import {
   edgeAxis,
   findNodeIdForWindow,
   findParentNodeId,
@@ -141,7 +146,7 @@ export function toggleClassicBottomToolPane(
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const preparedLayout = layoutWithClassicBottomToolPane(normalizedLayout)
   const targetSurfaceId = classicBottomToolPaneTargetSurfaceId(target)
-  const visible = Boolean(findNodeIdForWindow(preparedLayout, CLASSIC_DIAGNOSTICS_WINDOW_ID))
+  const visible = Boolean(visibleClassicBottomToolPaneWindowId(preparedLayout))
   if (!visible) return showClassicBottomToolPane(preparedLayout, targetSurfaceId)
 
   return hideClassicBottomToolPane(preparedLayout)
@@ -149,7 +154,8 @@ export function toggleClassicBottomToolPane(
 
 export function hideClassicBottomToolPane(layout: WorkspaceLayout): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
-  const nodeId = findNodeIdForWindow(normalizedLayout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+  const windowId = visibleClassicBottomToolPaneWindowId(normalizedLayout)
+  const nodeId = windowId ? findNodeIdForWindow(normalizedLayout, windowId) : null
   if (!nodeId) return normalizedLayout
 
   const detached = detachNode(normalizedLayout, nodeId)
@@ -1071,7 +1077,7 @@ function layoutWithRecipeBottomToolPane(layout: WorkspaceLayout): WorkspaceLayou
 function recipeShouldShowClassicBottomToolPane(layout: WorkspaceLayout, terminalId: SurfaceId) {
   const terminalWindowId = findWindowIdContainingSurface(layout, terminalId)
   if (!terminalWindowId) return false
-  if (terminalWindowId === CLASSIC_DIAGNOSTICS_WINDOW_ID) return false
+  if (classicBottomToolPaneOwnsSurface(layout, terminalId)) return false
   if (surfaceHasValidStickyPlacement(layout, terminalId)) return false
 
   return normalRecipeSurfaceIsVisible(layout)
@@ -1154,7 +1160,9 @@ function stickyPlacementTargetsWindow(
 
 function recipePackedTree(layout: WorkspaceLayout, toolWindowIds: readonly WindowId[]) {
   const bottomWindowId = visibleRecipeBottomWindowId(layout)
-  const excludedWindowIds = new Set([...toolWindowIds, CLASSIC_DIAGNOSTICS_WINDOW_ID])
+  const classicBottomWindowId =
+    classicBottomToolPaneWindowId(layout) ?? CLASSIC_DIAGNOSTICS_WINDOW_ID
+  const excludedWindowIds = new Set([...toolWindowIds, classicBottomWindowId])
   const allocator = createRecipeNodeAllocator(layout)
   const leftTree = stackedWindowTree(allocator, toolWindowIds, 'recipe:left-tool-pane')
   const mainTree = mainContentTree(layout, excludedWindowIds, allocator)
@@ -1190,9 +1198,7 @@ function allocatedRecipeNodeId(usedNodeIds: ReadonlySet<LayoutNodeId>, key: stri
 }
 
 function visibleRecipeBottomWindowId(layout: WorkspaceLayout): WindowId | null {
-  if (!findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)) return null
-
-  return CLASSIC_DIAGNOSTICS_WINDOW_ID
+  return visibleClassicBottomToolPaneWindowId(layout)
 }
 
 function stackedWindowTree(
@@ -1404,7 +1410,8 @@ function recipeMainPanelTree(
 }
 
 function recipeMainPanelSplitSizes(layout: WorkspaceLayout) {
-  const bottomNodeId = findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+  const bottomWindowId = visibleRecipeBottomWindowId(layout)
+  const bottomNodeId = bottomWindowId ? findNodeIdForWindow(layout, bottomWindowId) : null
   const parentNodeId = bottomNodeId ? findParentNodeId(layout, bottomNodeId) : null
   const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
   if (parentNode?.kind !== 'split') return [0.74, 0.26]
@@ -1501,7 +1508,7 @@ function mainViewFallbackDestination(layout: WorkspaceLayout): DropDestination |
   if (activeDestination?.kind !== 'window-center') return activeDestination
   if (activeWindowContainsRecipeSlot(layout, 'bottom'))
     return rootOrActiveDestination(layout, 'top')
-  if (activeDestination.windowId !== CLASSIC_DIAGNOSTICS_WINDOW_ID) return activeDestination
+  if (activeDestination.windowId !== classicBottomToolPaneWindowId(layout)) return activeDestination
   if (layout.rootNodeId) return { edge: 'top', kind: 'root-edge' }
 
   return null

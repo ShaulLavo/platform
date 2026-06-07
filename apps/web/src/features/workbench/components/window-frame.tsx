@@ -5,7 +5,7 @@ import { cn } from '@workspace/ui/lib/utils'
 import { SurfaceHost } from '@/features/workbench/components/surface-host'
 import { TabStrip } from '@/features/workbench/components/tab-strip'
 import { WindowControlButton } from '@/features/workbench/components/window-control-button'
-import { CLASSIC_DIAGNOSTICS_WINDOW_ID } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { isClassicBottomToolPaneWindow } from '@/features/tiling-surface-manager/engine/bottom-tool-pane'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import { surfacesAreEqual } from '@/features/workbench/utils/surface-equality'
 import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
@@ -22,6 +22,7 @@ import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 type WindowFrameState = {
   readonly active: boolean
   readonly activeSurface: Surface | null
+  readonly classicBottomToolPane: boolean
   readonly surfaces: readonly Surface[]
   readonly window: WorkbenchWindow
 }
@@ -46,10 +47,9 @@ export const WindowFrame = memo(function WindowFrame({
   )
   if (!state) return null
 
-  const { active, activeSurface, surfaces, window } = state
+  const { active, activeSurface, classicBottomToolPane, surfaces, window } = state
   const collapsed = window.mode === 'collapsed'
   const maximized = window.mode === 'maximized'
-  const classicBottomToolPane = window.id === CLASSIC_DIAGNOSTICS_WINDOW_ID
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
   let collapseLabel = collapsed ? 'Expand window' : 'Collapse window'
   let closeLabel = 'Close surface'
@@ -186,6 +186,7 @@ function selectWindowFrameState(
   return {
     active: layout.activeWindowId === windowId,
     activeSurface: layout.surfacesById[window.activeSurfaceId] ?? null,
+    classicBottomToolPane: isClassicBottomToolPaneWindow(layout, window),
     surfaces: window.surfaceIds
       .map((surfaceId) => layout.surfacesById[surfaceId])
       .filter(isSurface),
@@ -197,6 +198,7 @@ function windowFrameStateEqual(left: WindowFrameState | null, right: WindowFrame
   if (left === right) return true
   if (!left || !right) return false
   if (left.active !== right.active) return false
+  if (left.classicBottomToolPane !== right.classicBottomToolPane) return false
   if (!surfacesAreEqual(left.activeSurface, right.activeSurface)) return false
   if (!windowsEqual(left.window, right.window)) return false
 

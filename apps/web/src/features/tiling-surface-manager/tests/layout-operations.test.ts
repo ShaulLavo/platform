@@ -67,6 +67,7 @@ import type {
   LayoutSplitNode,
   SurfaceId,
   SurfaceType,
+  WorkbenchWindow,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
 } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -651,6 +652,18 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(hidden)
   })
 
+  it('hides a visible bottom tool pane by surface membership', () => {
+    const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const customWindowId = workbenchWindowId('custom:bottom-tool-pane')
+    const layout = layoutWithRenamedBottomToolPaneWindow(customWindowId)
+    const hidden = hideClassicBottomToolPane(layout)
+
+    expect(findNodeIdForWindow(hidden, customWindowId)).toBeNull()
+    expect(hidden.windowsById[customWindowId]?.surfaceIds).toEqual([diagnostics.id, terminal.id])
+    expectValidLayout(hidden)
+  })
+
   it('restores the hidden classic bottom tool pane with terminal active', () => {
     const diagnostics = createDiagnosticsSurface()
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
@@ -1223,6 +1236,51 @@ function expectValidLayout(layout: WorkspaceLayout) {
     ok: true,
     violations: [],
   })
+}
+
+function layoutWithRenamedBottomToolPaneWindow(windowId: ReturnType<typeof workbenchWindowId>) {
+  const layout = createClassicFirstRunWorkspaceLayout()
+  const window = layout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]
+  const node = layout.nodesById[CLASSIC_DIAGNOSTICS_NODE_ID]
+  if (!window) throw new Error('Expected bottom tool pane window')
+  if (!node || node.kind !== 'window') throw new Error('Expected bottom tool pane node')
+
+  const windowsById = layoutWindowsWithRenamedBottomToolPane(layout, window, windowId)
+
+  return {
+    ...layout,
+    activeWindowId: windowId,
+    nodesById: {
+      ...layout.nodesById,
+      [CLASSIC_DIAGNOSTICS_NODE_ID]: {
+        ...node,
+        windowId,
+      },
+    },
+    windowsById,
+  } satisfies WorkspaceLayout
+}
+
+function layoutWindowsWithRenamedBottomToolPane(
+  layout: WorkspaceLayout,
+  window: WorkbenchWindow,
+  windowId: ReturnType<typeof workbenchWindowId>,
+) {
+  const windowsById: Record<string, WorkbenchWindow> = {}
+
+  for (const currentWindow of Object.values(layout.windowsById)) {
+    if (currentWindow.id === CLASSIC_DIAGNOSTICS_WINDOW_ID) continue
+
+    windowsById[currentWindow.id] = currentWindow
+  }
+
+  return {
+    ...windowsById,
+    [windowId]: {
+      ...window,
+      id: windowId,
+    },
+  } satisfies WorkspaceLayout['windowsById']
 }
 
 function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {

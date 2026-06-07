@@ -1,11 +1,9 @@
+import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import {
-  findNodeIdForWindow,
-  findWindowIdContainingSurface,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
-import {
-  terminalSurfaceId,
-  workbenchWindowId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
+  classicBottomToolPaneOwnsSurface,
+  DEFAULT_CLASSIC_TERMINAL_SURFACE_ID,
+  visibleClassicBottomToolPaneWindowId,
+} from '@/features/tiling-surface-manager/engine/bottom-tool-pane'
 import {
   createChatSurface,
   createFileNavigatorSurface,
@@ -21,9 +19,6 @@ import type {
   WorkspaceRecipe,
   WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
-
-const CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID = workbenchWindowId('classic:diagnostics')
-const DEFAULT_TERMINAL_SURFACE_ID = terminalSurfaceId('terminal-1')
 
 export type WorkbenchRailSurfaceState =
   | 'active'
@@ -163,7 +158,7 @@ function currentRailSurfaceState(
   layout: WorkspaceLayout,
   item: WorkbenchRailSurfaceItem,
 ): WorkbenchRailSurfaceState {
-  if (item.surface.id === DEFAULT_TERMINAL_SURFACE_ID) {
+  if (item.surface.id === DEFAULT_CLASSIC_TERMINAL_SURFACE_ID) {
     return currentClassicBottomToolPaneState(layout)
   }
 
@@ -183,12 +178,13 @@ function currentRailSurfaceState(
 }
 
 function currentClassicBottomToolPaneState(layout: WorkspaceLayout): WorkbenchRailSurfaceState {
-  const visible = Boolean(findNodeIdForWindow(layout, CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID))
+  const visibleWindowId = visibleClassicBottomToolPaneWindowId(layout)
+  const visible = Boolean(visibleWindowId)
   if (!visible)
-    return (layout.rail.runningSurfaceIds ?? []).includes(DEFAULT_TERMINAL_SURFACE_ID)
+    return (layout.rail.runningSurfaceIds ?? []).includes(DEFAULT_CLASSIC_TERMINAL_SURFACE_ID)
       ? 'running'
       : 'pinned'
-  if (layout.activeSurfaceId !== DEFAULT_TERMINAL_SURFACE_ID) return 'visible'
+  if (layout.activeSurfaceId !== DEFAULT_CLASSIC_TERMINAL_SURFACE_ID) return 'visible'
 
   return 'active'
 }
@@ -196,9 +192,7 @@ function currentClassicBottomToolPaneState(layout: WorkspaceLayout): WorkbenchRa
 function classicBottomToolPaneOwnsDiagnostics(layout: WorkspaceLayout, surface: Surface) {
   if (surface.type !== 'diagnostics') return false
 
-  return Boolean(
-    layout.windowsById[CLASSIC_BOTTOM_TOOL_PANE_WINDOW_ID]?.surfaceIds.includes(surface.id),
-  )
+  return classicBottomToolPaneOwnsSurface(layout, surface.id)
 }
 
 export function railItemOperation(
@@ -261,7 +255,7 @@ export function isWorkbenchRailRecipeItem(
 }
 
 function classicBottomToolPaneTargetForRailItem(item: WorkbenchRailSurfaceItem) {
-  if (item.surface.id === DEFAULT_TERMINAL_SURFACE_ID) return 'terminal'
+  if (item.surface.id === DEFAULT_CLASSIC_TERMINAL_SURFACE_ID) return 'terminal'
 
   return null
 }
