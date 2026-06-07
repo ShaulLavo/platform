@@ -9,8 +9,11 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-geometry'
 import { selectMaterializedLayoutTree } from '@/features/tiling-surface-manager/engine/layout-selectors'
 import {
-  selectWorkbenchRailSurfaceItems,
-  type WorkbenchRailSurfaceItem,
+  isWorkbenchRailBottomPaneItem,
+  isWorkbenchRailRecipeItem,
+  isWorkbenchRailSurfaceItem,
+  selectWorkbenchRailItems,
+  type WorkbenchRailItem,
 } from '@/features/tiling-surface-manager/engine/rail-model'
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
@@ -168,10 +171,7 @@ function LayoutRendererRail({
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
   const layoutStore = useLayoutStoreApi()
-  const items = useLayoutState(
-    (state) => selectWorkbenchRailSurfaceItems(state.layout),
-    railItemsEqual,
-  )
+  const items = useLayoutState((state) => selectWorkbenchRailItems(state.layout), railItemsEqual)
 
   return (
     <Rail getLayout={() => layoutStore.getState().layout} items={items} onDispatch={onDispatch} />
@@ -283,24 +283,35 @@ function layoutWindowGeometryEqual(
   return left.mode === right.mode
 }
 
-function railItemsEqual(
-  left: readonly WorkbenchRailSurfaceItem[],
-  right: readonly WorkbenchRailSurfaceItem[],
-) {
+function railItemsEqual(left: readonly WorkbenchRailItem[], right: readonly WorkbenchRailItem[]) {
   if (left === right) return true
   if (left.length !== right.length) return false
 
   return left.every((item, index) => railItemsAreEqual(item, right[index]))
 }
 
-function railItemsAreEqual(
-  left: WorkbenchRailSurfaceItem,
-  right: WorkbenchRailSurfaceItem | undefined,
-) {
+function railItemsAreEqual(left: WorkbenchRailItem, right: WorkbenchRailItem | undefined) {
   if (!right) return false
   if (left.state !== right.state) return false
+  if (isWorkbenchRailBottomPaneItem(left)) return isWorkbenchRailBottomPaneItem(right)
+  if (isWorkbenchRailSurfaceItem(left)) return surfaceRailItemsAreEqual(left, right)
+  if (isWorkbenchRailRecipeItem(left)) return recipeRailItemsAreEqual(left, right)
+
+  return false
+}
+
+function surfaceRailItemsAreEqual(left: WorkbenchRailItem, right: WorkbenchRailItem) {
+  if (!isWorkbenchRailSurfaceItem(left)) return false
+  if (!isWorkbenchRailSurfaceItem(right)) return false
 
   return left.surface === right.surface
+}
+
+function recipeRailItemsAreEqual(left: WorkbenchRailItem, right: WorkbenchRailItem) {
+  if (!isWorkbenchRailRecipeItem(left)) return false
+  if (!isWorkbenchRailRecipeItem(right)) return false
+
+  return left.recipe === right.recipe
 }
 
 function surfacesEqual(left: readonly Surface[], right: readonly Surface[]) {

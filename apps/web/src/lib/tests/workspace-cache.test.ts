@@ -16,6 +16,7 @@ import {
   openSurface,
 } from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
+  WORKSPACE_CACHE_STORAGE_KEYS,
   readWorkspaceCache,
   writeWorkspaceCache,
   type WorkspaceCacheState,
@@ -52,13 +53,16 @@ describe('workspace cache', () => {
       }),
     )
 
-    const rawPayload = JSON.parse(Array.from(STORE.values())[0] ?? '{}') as Record<string, unknown>
+    const cachedWorkspaceLayout = cacheEntry<Record<string, unknown>>(
+      WORKSPACE_CACHE_STORAGE_KEYS.workspaceLayout,
+    )
     const cached = readWorkspaceCache()
 
-    expect(rawPayload).not.toHaveProperty('editorPaneLayout')
-    expect(rawPayload).not.toHaveProperty('openFilePaths')
-    expect(rawPayload).not.toHaveProperty('selectedFilePath')
-    expect(rawPayload).toHaveProperty('workspaceLayout')
+    expect(new Set(STORE.keys())).toEqual(new Set(Object.values(WORKSPACE_CACHE_STORAGE_KEYS)))
+    expect(cachedWorkspaceLayout).not.toHaveProperty('editorPaneLayout')
+    expect(cachedWorkspaceLayout).not.toHaveProperty('openFilePaths')
+    expect(cachedWorkspaceLayout).not.toHaveProperty('selectedFilePath')
+    expect(cachedWorkspaceLayout).toHaveProperty('version')
     expect(cached).toMatchObject({
       diffViewMode: 'stacked',
       editorHistory: [diffPath, '/repo/src/readme.md'],
@@ -296,33 +300,76 @@ describe('workspace cache', () => {
         openFilePaths: [],
         recentlyClosedEditorPaths: [],
         rootFolder: pickedDirectory('/repo'),
-        searchBuffer: {
-          activeResultId: null,
-          caseSensitive: false,
-          collapsedPaths: [],
-          excludeGlobText: '',
-          filtersVisible: false,
-          includeGlobText: '',
-          matchMode: 'literal',
-          matches: [],
-          query: 'needle',
-          queryHistory: [],
-          replaceHistory: [],
-          replaceText: '',
-          replaceVisible: false,
-          resultsQuery: '',
-          resultsSearchQuery: null,
-          rootPath: '/other',
-          totalCount: 0,
-          truncated: false,
-          wholeWord: false,
-        },
+        searchBuffer: emptySearchBuffer('/other'),
         selectedFilePath: null,
       }),
     )
 
     expect(readWorkspaceCache()).toMatchObject({
       searchBuffer: null,
+    })
+  })
+
+  it('drops only the invalid cache entry while restoring valid workspace state', () => {
+    const rootFolder = pickedDirectory('/repo')
+
+    writeWorkspaceCache(
+      workspaceCacheState({
+        diffViewMode: 'stacked',
+        editorHistory: ['/repo/src/readme.md'],
+        openFilePaths: ['/repo/src/readme.md'],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer: null,
+        selectedFilePath: '/repo/src/readme.md',
+      }),
+    )
+    STORE.set(WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer, JSON.stringify({ rootPath: '/repo' }))
+
+    const cached = readWorkspaceCache()
+
+    expect(STORE.has(WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer)).toBe(false)
+    expect(cached).toMatchObject({
+      diffViewMode: 'stacked',
+      editorHistory: ['/repo/src/readme.md'],
+      openFilePaths: ['/repo/src/readme.md'],
+      rootFolder,
+      searchBuffer: null,
+      selectedFilePath: '/repo/src/readme.md',
+    })
+  })
+
+  it('keeps small cache entries when the search buffer entry fails to write', () => {
+    const rootFolder = pickedDirectory('/repo')
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: fakeLocalStorage({
+        failingSetKeys: new Set([WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer]),
+      }),
+    })
+
+    writeWorkspaceCache(
+      workspaceCacheState({
+        diffViewMode: 'stacked',
+        editorHistory: ['/repo/src/readme.md'],
+        openFilePaths: ['/repo/src/readme.md'],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer: emptySearchBuffer('/repo'),
+        selectedFilePath: '/repo/src/readme.md',
+      }),
+    )
+
+    const cached = readWorkspaceCache()
+
+    expect(STORE.has(WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer)).toBe(false)
+    expect(cached).toMatchObject({
+      diffViewMode: 'stacked',
+      editorHistory: ['/repo/src/readme.md'],
+      openFilePaths: ['/repo/src/readme.md'],
+      rootFolder,
+      searchBuffer: null,
+      selectedFilePath: '/repo/src/readme.md',
     })
   })
 })
@@ -350,6 +397,30 @@ function pickedDirectory(path: string): PickedFsEntry {
   }
 }
 
+function emptySearchBuffer(rootPath: string): WorkspaceCacheState['searchBuffer'] {
+  return {
+    activeResultId: null,
+    caseSensitive: false,
+    collapsedPaths: [],
+    excludeGlobText: '',
+    filtersVisible: false,
+    includeGlobText: '',
+    matchMode: 'literal',
+    matches: [],
+    query: 'needle',
+    queryHistory: [],
+    replaceHistory: [],
+    replaceText: '',
+    replaceVisible: false,
+    resultsQuery: '',
+    resultsSearchQuery: null,
+    rootPath,
+    totalCount: 0,
+    truncated: false,
+    wholeWord: false,
+  }
+}
+
 type WorkspaceCacheTestState = Omit<WorkspaceCacheState, 'workspaceLayout'> & {
   readonly workspaceLayout?: WorkspaceCacheState['workspaceLayout']
 }
@@ -369,13 +440,23 @@ function workspaceCacheState(input: WorkspaceCacheTestState): WorkspaceCacheStat
   }
 }
 
-function fakeLocalStorage() {
+function cacheEntry<T>(key: string): T {
+  return JSON.parse(STORE.get(key) ?? 'null') as T
+}
+
+type FakeLocalStorageOptions = {
+  readonly failingSetKeys?: ReadonlySet<string>
+}
+
+function fakeLocalStorage(options: FakeLocalStorageOptions = {}) {
   return {
     getItem: (key: string) => STORE.get(key) ?? null,
     removeItem: (key: string) => {
       STORE.delete(key)
     },
     setItem: (key: string, value: string) => {
+      if (options.failingSetKeys?.has(key)) throw new Error('localStorage quota exceeded')
+
       STORE.set(key, value)
     },
   }

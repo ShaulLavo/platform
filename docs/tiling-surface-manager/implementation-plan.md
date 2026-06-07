@@ -713,8 +713,8 @@ Work:
   - Files/Search/Git/Chat/Logs prefer left nested tool panes;
   - file editors, diffs, and promoted previews prefer the main view;
   - terminal/problems stay in the bottom recipe-slot window nested under the
-    editor/main panel, with Terminal and Problems acting as ordinary rail/tab
-    surfaces;
+    editor/main panel, with one Terminal rail button controlling the whole
+    bottom pane and Problems available through the bottom-pane tab/menu;
   - opening Terminal first may temporarily use the available work area, but
     opening the first normal content/tool surface reshapes Terminal/Problems
     into the bottom of the editor/main panel unless the terminal has sticky
@@ -775,8 +775,10 @@ Tests:
 - Clicking an active expanded rail item collapses the corresponding tool pane.
 - Clicking a collapsed rail item expands and focuses the corresponding tool
   pane.
-- Terminal rail focuses or collapses the terminal window through ordinary rail
-  operations while preserving the Problems tab and terminal session.
+- Terminal rail toggles the whole bottom pane through pane-level rail semantics
+  while preserving the Problems tab and terminal session.
+- Terminal/Problems bottom-pane tabs do not expose close buttons; their
+  visibility is controlled by the bottom-pane context menu.
 - Terminal opened first moves to the bottom of the editor/main panel when
   another normal surface opens through recipe placement.
 - A terminal manually moved to the left or right is not forced back to the

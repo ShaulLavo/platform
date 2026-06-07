@@ -12,10 +12,21 @@ import {
 } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import { useElementWidth } from '@/components/workspace/shared/hooks/use-element-width'
 import { useEditorTabDrag } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@workspace/ui/components/context-menu'
 import { cn } from '@workspace/ui/lib/utils'
+import { CheckIcon } from '@phosphor-icons/react'
 
 import { surfacePanelId } from '@/features/workbench/components/surface-host'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
+import {
+  bottomPaneSurfaceVisibilityOperation,
+  type BottomPaneSurfaceVisibilityItem,
+} from '@/features/tiling-surface-manager/engine/bottom-pane-model'
 import {
   editorGroupIdForWorkbenchWindowId,
   editorSurfaceSerializedState,
@@ -29,10 +40,12 @@ import type {
 } from '@/features/tiling-surface-manager/engine/layout-types'
 
 export function TabStrip({
+  bottomPaneSurfaceVisibilityItems = [],
   surfaces,
   window,
   onDispatch,
 }: {
+  readonly bottomPaneSurfaceVisibilityItems?: readonly BottomPaneSurfaceVisibilityItem[]
   readonly surfaces: readonly Surface[]
   readonly window: WorkbenchWindow
   readonly onDispatch: (operation: LayoutOperation) => void
@@ -71,6 +84,7 @@ export function TabStrip({
   })
   const availableWidth = useElementWidth(tabListRef)
   const activeIndex = surfaces.findIndex((surface) => surface.id === window.activeSurfaceId)
+  const bottomPane = bottomPaneSurfaceVisibilityItems.length > 0
   const layout =
     availableWidth === null
       ? null
@@ -105,44 +119,38 @@ export function TabStrip({
     )
   }
 
-  return (
-    <div
-      aria-label='Window tabs'
-      className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
-      data-window-drag-blocker=''
-      ref={tabListRef}
-      role='tablist'
-    >
-      <div className='flex min-w-full items-end overflow-visible'>
-        {surfaces.map((surface, index) => {
-          const active = surface.id === window.activeSurfaceId
+  const tabListContent = (
+    <div className='flex min-w-full items-end overflow-visible'>
+      {surfaces.map((surface, index) => {
+        const active = surface.id === window.activeSurfaceId
 
-          return (
-            <div
-              className={chromeTabRootClassName({
-                active,
-                className: 'z-[var(--chrome-tab-z)] border border-transparent',
-              })}
-              data-chrome-tab-root=''
-              data-surface-tab-id={surface.id}
-              key={surface.id}
-              style={chromeTabStyle({
-                active,
-                index,
-                overlap: layout?.overlap ?? 0,
-                width: layout?.tabs[index]?.width ?? null,
-              })}
+        return (
+          <div
+            className={chromeTabRootClassName({
+              active,
+              className: 'z-[var(--chrome-tab-z)] border border-transparent',
+            })}
+            data-chrome-tab-root=''
+            data-surface-tab-id={surface.id}
+            key={surface.id}
+            style={chromeTabStyle({
+              active,
+              index,
+              overlap: layout?.overlap ?? 0,
+              width: layout?.tabs[index]?.width ?? null,
+            })}
+          >
+            <ChromeTabSelectButton
+              aria-controls={surfacePanelId(surface.id)}
+              aria-selected={active}
+              role='tab'
+              title={surface.title}
+              onClick={() => onDispatch(selectSurfaceOperation(window, surface))}
             >
-              <ChromeTabSelectButton
-                aria-controls={surfacePanelId(surface.id)}
-                aria-selected={active}
-                role='tab'
-                title={surface.title}
-                onClick={() => onDispatch(selectSurfaceOperation(window, surface))}
-              >
-                <SurfaceIcon className='size-3.5 shrink-0' type={surface.type} />
-                <span className='min-w-0 truncate'>{surface.title}</span>
-              </ChromeTabSelectButton>
+              <SurfaceIcon className='size-3.5 shrink-0' type={surface.type} />
+              <span className='min-w-0 truncate'>{surface.title}</span>
+            </ChromeTabSelectButton>
+            {bottomPane ? null : (
               <div className='flex h-full w-7 shrink-0 items-center justify-center'>
                 <ChromeTabCloseButton
                   aria-label={`Close ${surface.title} tab`}
@@ -159,10 +167,55 @@ export function TabStrip({
                   }}
                 />
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  if (bottomPane) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger
+          aria-label='Window tabs'
+          className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+          data-window-drag-blocker=''
+          ref={tabListRef}
+          role='tablist'
+        >
+          {tabListContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent className='w-48'>
+          {bottomPaneSurfaceVisibilityItems.map((item) => (
+            <ContextMenuItem
+              aria-checked={item.checked}
+              disabled={item.disabled}
+              key={item.surface.id}
+              role='menuitemcheckbox'
+              onClick={() => dispatchBottomPaneSurfaceVisibilityChange(item)}
+            >
+              <SurfaceIcon className='size-3.5' type={item.surface.type} />
+              <span className='min-w-0 truncate'>{item.surface.title}</span>
+              <CheckIcon
+                className={cn('ml-auto size-3.5', item.checked ? 'opacity-100' : 'opacity-0')}
+              />
+            </ContextMenuItem>
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
+    )
+  }
+
+  return (
+    <div
+      aria-label='Window tabs'
+      className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+      data-window-drag-blocker=''
+      ref={tabListRef}
+      role='tablist'
+    >
+      {tabListContent}
     </div>
   )
 
@@ -221,6 +274,13 @@ export function TabStrip({
       windowId: window.id,
     })
     return true
+  }
+
+  function dispatchBottomPaneSurfaceVisibilityChange(item: BottomPaneSurfaceVisibilityItem) {
+    const operation = bottomPaneSurfaceVisibilityOperation(item, !item.checked)
+    if (!operation) return
+
+    onDispatch(operation)
   }
 }
 

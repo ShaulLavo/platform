@@ -26,20 +26,20 @@ import type {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-const CACHE_KEY = 'platform.workspace-state.v1'
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 11
+const CACHE_VERSION = 12
+const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
+const LEGACY_WORKSPACE_CACHE_KEY = 'platform.workspace-state.v1'
 
-type WorkspaceCachePayload = {
-  diffViewMode: EditorDiffViewMode
-  editorHistory: string[]
-  recentlyClosedEditorPaths: string[]
-  rootFolder: PickedFsEntry | null
-  searchBuffer: CachedSearchBufferState | null
-  version: typeof CACHE_VERSION
-  workspaceLayout: SerializedWorkspaceLayout
-}
+export const WORKSPACE_CACHE_STORAGE_KEYS = {
+  diffViewMode: `${CACHE_KEY_PREFIX}.diffViewMode`,
+  editorHistory: `${CACHE_KEY_PREFIX}.editorHistory`,
+  recentlyClosedEditorPaths: `${CACHE_KEY_PREFIX}.recentlyClosedEditorPaths`,
+  rootFolder: `${CACHE_KEY_PREFIX}.rootFolder`,
+  searchBuffer: `${CACHE_KEY_PREFIX}.searchBuffer`,
+  workspaceLayout: `${CACHE_KEY_PREFIX}.workspaceLayout`,
+} as const
 
 export type CachedSearchBufferState = {
   activeResultId: string | null
@@ -85,6 +85,7 @@ const pickedSymlinkDirectorySchema = v.object({
 const rootFolderSchema = v.nullable(v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema]))
 const nullableStringSchema = v.nullable(v.string())
 const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)
+const stringArraySchema = v.array(v.string())
 const entryTypeSchema = v.union([
   v.literal('file'),
   v.literal('directory'),
@@ -147,15 +148,7 @@ const cachedSearchBufferStateSchema = v.strictObject({
   truncated: v.boolean(),
   wholeWord: v.boolean(),
 })
-const workspaceCachePayloadSchema = v.object({
-  diffViewMode: diffViewModeSchema,
-  editorHistory: v.array(v.string()),
-  recentlyClosedEditorPaths: v.array(v.string()),
-  rootFolder: rootFolderSchema,
-  searchBuffer: v.nullable(cachedSearchBufferStateSchema),
-  version: v.literal(CACHE_VERSION),
-  workspaceLayout: v.unknown(),
-})
+const serializedWorkspaceLayoutSchema = v.unknown()
 
 export type CachedWorkspaceState = {
   diffViewMode: EditorDiffViewMode
@@ -179,10 +172,9 @@ export type WorkspaceCacheWriteState = Pick<
 }
 
 export function readWorkspaceCache(): WorkspaceCacheState {
-  const payload = readCachePayload()
-  if (!payload) return emptyWorkspaceState()
+  if (!canUseLocalStorage()) return emptyWorkspaceState()
 
-  return workspaceStateFromPayload(payload)
+  return workspaceStateFromCache()
 }
 
 export function writeWorkspaceCache({
@@ -195,76 +187,107 @@ export function writeWorkspaceCache({
 }: WorkspaceCacheWriteState) {
   if (!canUseLocalStorage()) return
 
-  try {
-    const persistedWorkspaceLayout = workspaceLayoutForCache(rootFolder, workspaceLayout)
-    const payload: WorkspaceCachePayload = {
-      diffViewMode,
-      editorHistory: workspacePathsForCache(rootFolder, editorHistory),
-      recentlyClosedEditorPaths: workspacePathsForCache(rootFolder, recentlyClosedEditorPaths),
-      rootFolder,
-      searchBuffer: searchBufferForWorkspace(rootFolder, searchBuffer),
-      version: CACHE_VERSION,
-      workspaceLayout: serializeWorkspaceLayout(persistedWorkspaceLayout),
-    }
-
-    localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
-  } catch {
-    // Ignore private-mode or quota failures; the app should still open normally.
-  }
+  removeCacheEntry(LEGACY_WORKSPACE_CACHE_KEY)
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode, diffViewMode)
+  writeCacheEntry(
+    WORKSPACE_CACHE_STORAGE_KEYS.editorHistory,
+    workspacePathsForCache(rootFolder, editorHistory),
+  )
+  writeCacheEntry(
+    WORKSPACE_CACHE_STORAGE_KEYS.recentlyClosedEditorPaths,
+    workspacePathsForCache(rootFolder, recentlyClosedEditorPaths),
+  )
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.rootFolder, rootFolder)
+  writeCacheEntry(
+    WORKSPACE_CACHE_STORAGE_KEYS.workspaceLayout,
+    workspaceLayoutPayload(rootFolder, workspaceLayout),
+  )
+  writeCacheEntry(
+    WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer,
+    searchBufferForWorkspace(rootFolder, searchBuffer),
+  )
 }
 
-function readCachePayload() {
-  if (!canUseLocalStorage()) return null
-
-  try {
-    const value = localStorage.getItem(CACHE_KEY)
-    if (!value) return null
-
-    const payload = parseCachePayload(value)
-    if (payload) return payload
-
-    localStorage.removeItem(CACHE_KEY)
-    reportError(toClientError({ code: 'INVALID_PATH' }))
-    return null
-  } catch (error) {
-    localStorage.removeItem(CACHE_KEY)
-    reportError(toClientError({ code: 'OPERATION_FAILED', error }))
-    return null
-  }
-}
-
-function parseCachePayload(value: string): WorkspaceCachePayload | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    return null
-  }
-
-  const result = v.safeParse(workspaceCachePayloadSchema, parsed)
-  if (!result.success) return null
-
-  return result.output as WorkspaceCachePayload
-}
-
-function workspaceStateFromPayload(payload: WorkspaceCachePayload): WorkspaceCacheState {
-  const workspaceLayout = restoreWorkspaceLayout(payload.workspaceLayout, {
+function workspaceStateFromCache(): WorkspaceCacheState {
+  const rootFolder = readCacheEntry<PickedFsEntry | null>(
+    WORKSPACE_CACHE_STORAGE_KEYS.rootFolder,
+    rootFolderSchema,
+    null,
+  )
+  const serializedWorkspaceLayout = readCacheEntry<unknown>(
+    WORKSPACE_CACHE_STORAGE_KEYS.workspaceLayout,
+    serializedWorkspaceLayoutSchema,
+    null,
+  )
+  const workspaceLayout = restoreWorkspaceLayout(serializedWorkspaceLayout, {
     fallbackLayout: createClassicFirstRunWorkspaceLayout(),
-    rootPath: payload.rootFolder?.path ?? null,
+    rootPath: rootFolder?.path ?? null,
   }).layout
 
   return {
-    diffViewMode: payload.diffViewMode,
-    editorHistory: workspacePathsForCache(payload.rootFolder, payload.editorHistory),
+    diffViewMode: readCacheEntry(
+      WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode,
+      diffViewModeSchema,
+      DEFAULT_DIFF_VIEW_MODE,
+    ),
+    editorHistory: workspacePathsForCache(
+      rootFolder,
+      readCacheEntry<string[]>(WORKSPACE_CACHE_STORAGE_KEYS.editorHistory, stringArraySchema, []),
+    ),
     openFilePaths: editorOpenPathsForWorkspaceLayout(workspaceLayout),
     recentlyClosedEditorPaths: workspacePathsForCache(
-      payload.rootFolder,
-      payload.recentlyClosedEditorPaths,
+      rootFolder,
+      readCacheEntry<string[]>(
+        WORKSPACE_CACHE_STORAGE_KEYS.recentlyClosedEditorPaths,
+        stringArraySchema,
+        [],
+      ),
     ),
-    rootFolder: payload.rootFolder,
-    searchBuffer: searchBufferForWorkspace(payload.rootFolder, payload.searchBuffer),
+    rootFolder,
+    searchBuffer: searchBufferForWorkspace(
+      rootFolder,
+      readCacheEntry<CachedSearchBufferState | null>(
+        WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer,
+        v.nullable(cachedSearchBufferStateSchema),
+        null,
+      ),
+    ),
     selectedFilePath: activeEditorPathForWorkspaceLayout(workspaceLayout),
     workspaceLayout,
+  }
+}
+
+function readCacheEntry<T>(key: string, schema: v.GenericSchema, fallback: T): T {
+  try {
+    const value = localStorage.getItem(key)
+    if (!value) return fallback
+
+    const result = v.safeParse(schema, JSON.parse(value))
+    if (result.success) return result.output as T
+
+    removeCacheEntry(key)
+    reportError(toClientError({ code: 'INVALID_PATH' }))
+    return fallback
+  } catch (error) {
+    removeCacheEntry(key)
+    reportError(toClientError({ code: 'OPERATION_FAILED', error }))
+    return fallback
+  }
+}
+
+function writeCacheEntry(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    removeCacheEntry(key)
+  }
+}
+
+function removeCacheEntry(key: string) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // Ignore private-mode failures; the app should still open normally.
   }
 }
 
@@ -331,6 +354,13 @@ function workspaceLayoutForCache(
     fallbackLayout: createClassicFirstRunWorkspaceLayout(),
     rootPath: rootFolder?.path ?? null,
   }).layout
+}
+
+function workspaceLayoutPayload(
+  rootFolder: PickedFsEntry | null,
+  workspaceLayout: WorkspaceLayout,
+): SerializedWorkspaceLayout {
+  return serializeWorkspaceLayout(workspaceLayoutForCache(rootFolder, workspaceLayout))
 }
 
 function canUseLocalStorage() {

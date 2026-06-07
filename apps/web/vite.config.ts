@@ -14,6 +14,9 @@ export default defineConfig({
       process.env.OBSERVABILITY_ENABLED ?? '',
     ),
   },
+  optimizeDeps: {
+    exclude: ['ghostty-web'],
+  },
   plugins: [
     platformSelfSaveHmrPlugin(),
     react({

@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, createEvent, fireEvent, render, screen } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
@@ -148,12 +149,17 @@ describe('LayoutRenderer', () => {
   })
 
   it('renders current default rail entries', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const diagnostics = createDiagnosticsSurface()
     const html = renderLayout(createEmptyWorkspaceLayout())
 
     expect(html).toContain('Focus Files')
     expect(html).toContain('Focus Chat')
     expect(html).toContain('Focus Logs')
-    expect(html).toContain('Focus Terminal')
+    expect(html).toContain('Open Terminal')
+    expect(html).toContain('data-rail-pane-id="bottom-pane"')
+    expect(html).not.toContain(`data-rail-surface-id="${terminal.id}"`)
+    expect(html).not.toContain(`data-rail-surface-id="${diagnostics.id}"`)
     expect(html).not.toContain('Classic recipe active')
     expect(html).not.toContain('data-rail-recipe-id=')
   })
@@ -476,40 +482,76 @@ describe('LayoutRenderer', () => {
 
   it('collapses the terminal window from its window controls', () => {
     const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+    const bottomPane = screen.getByRole('region', { name: 'Window: Terminal' })
 
-    fireEvent.click(screen.getAllByLabelText('Collapse Terminal')[1])
+    fireEvent.click(within(bottomPane).getByLabelText('Collapse Terminal'))
 
     expect(store.getState().layout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].mode).toBe(
       'collapsed',
     )
   })
 
-  it('closes the active terminal surface from its window close control', () => {
+  it('renders a pane close control but no bottom tab close controls', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const diagnostics = createDiagnosticsSurface()
-    const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+    renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+    const bottomPane = screen.getByRole('region', { name: 'Window: Terminal' })
 
-    fireEvent.click(screen.getByLabelText('Close Terminal'))
-
-    const layout = store.getState().layout
-    expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toEqual(expect.any(String))
-    expect(layout.surfacesById[terminal.id]).toBeUndefined()
-    expect(layout.surfacesById[diagnostics.id]).toBeDefined()
+    expect(within(bottomPane).getByLabelText('Close Terminal')).toBeVisible()
+    expect(screen.queryByLabelText('Close Terminal tab')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Close Problems tab')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Terminal' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Problems' })).toBeVisible()
+    expect(terminal.id).toBeDefined()
+    expect(diagnostics.id).toBeDefined()
   })
 
-  it('keeps bottom window tab close scoped to the active surface', () => {
+  it('closes the bottom pane from the rail without deleting its surfaces', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const diagnostics = createDiagnosticsSurface()
     const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
 
-    expect(screen.getByLabelText('Close Problems tab')).toBeVisible()
-
-    fireEvent.click(screen.getByLabelText('Close Terminal tab'))
-
+    fireEvent.click(railButtonForBottomPane())
     const layout = store.getState().layout
-    expect(layout.surfacesById[terminal.id]).toBeUndefined()
+
+    expect(layout.surfacesById[terminal.id]).toBeDefined()
     expect(layout.surfacesById[diagnostics.id]).toBeDefined()
-    expect(visibleSurfaceIdsInOrder(layout)).toContain(diagnostics.id)
+    expect(visibleSurfaceIdsInOrder(layout)).not.toContain(terminal.id)
+    expect(visibleSurfaceIdsInOrder(layout)).not.toContain(diagnostics.id)
+    expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+  })
+
+  it('closes the bottom pane from its close control without deleting surfaces', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const diagnostics = createDiagnosticsSurface()
+    const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+    const bottomPane = screen.getByRole('region', { name: 'Window: Terminal' })
+
+    fireEvent.click(within(bottomPane).getByLabelText('Close Terminal'))
+    const layout = store.getState().layout
+
+    expect(layout.surfacesById[terminal.id]).toBeDefined()
+    expect(layout.surfacesById[diagnostics.id]).toBeDefined()
+    expect(visibleSurfaceIdsInOrder(layout)).not.toContain(terminal.id)
+    expect(visibleSurfaceIdsInOrder(layout)).not.toContain(diagnostics.id)
+    expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBeNull()
+  })
+
+  it('hides bottom pane tabs from the context menu without deleting surfaces', async () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const diagnostics = createDiagnosticsSurface()
+    const user = userEvent.setup()
+    const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
+    const tabList = bottomPaneTabList()
+
+    fireEvent.contextMenu(tabList)
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Problems' }))
+    const layout = store.getState().layout
+
+    expect(layout.surfacesById[terminal.id]).toBeDefined()
+    expect(layout.surfacesById[diagnostics.id]).toBeDefined()
+    expect(visibleSurfaceIdsInOrder(layout)).toContain(terminal.id)
+    expect(visibleSurfaceIdsInOrder(layout)).not.toContain(diagnostics.id)
     expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toEqual(expect.any(String))
   })
 
@@ -916,6 +958,21 @@ function railButtonForSurface(surfaceId: string) {
   if (!button) throw new Error(`Missing rail button ${surfaceId}`)
 
   return button
+}
+
+function railButtonForBottomPane() {
+  const button = document.querySelector<HTMLButtonElement>('[data-rail-pane-id="bottom-pane"]')
+  if (!button) throw new Error('Missing bottom pane rail button')
+
+  return button
+}
+
+function bottomPaneTabList() {
+  const terminalTab = screen.getByRole('tab', { name: 'Terminal' })
+  const tabList = terminalTab.closest<HTMLElement>('[role="tablist"]')
+  if (!tabList) throw new Error('Missing bottom pane tab list')
+
+  return tabList
 }
 
 function backgroundSurface(layout: WorkspaceLayout, surfaceId: WorkspaceLayout['activeSurfaceId']) {

@@ -59,7 +59,13 @@ import {
   tabSurface,
 } from '@/features/tiling-surface-manager/engine/layout-operations'
 import {
+  bottomPaneSurfaceVisibilityItems,
+  bottomPaneSurfaceVisibilityOperation,
+} from '@/features/tiling-surface-manager/engine/bottom-pane-model'
+import {
+  isWorkbenchRailBottomPaneItem,
   railItemOperation,
+  selectWorkbenchRailItems,
   selectWorkbenchRailRecipeItems,
   selectWorkbenchRailSurfaceItems,
 } from '@/features/tiling-surface-manager/engine/rail-model'
@@ -793,56 +799,94 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(layout)
   })
 
-  it('collapses the active terminal window from the terminal rail item', () => {
+  it('closes the active terminal window from the terminal rail item', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const layout = activateSurface(
       createClassicFirstRunWorkspaceLayout(),
       terminal.id,
       CLASSIC_DIAGNOSTICS_WINDOW_ID,
     )
-    const item = selectWorkbenchRailSurfaceItems(layout).find(
-      (candidate) => candidate.surface.id === terminal.id,
-    )
-    if (!item) throw new Error('Expected Terminal rail item')
+    const item = mustFindBottomPaneRailItem(layout)
 
     expect(railItemOperation(layout, item)).toEqual({
-      type: 'collapseWindow',
+      destination: { kind: 'background' },
+      type: 'moveWindow',
       windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
     })
   })
 
-  it('focuses the terminal rail item when the bottom window is visible on problems', () => {
+  it('closes the bottom pane from the terminal rail item when problems is active', () => {
     const diagnostics = createDiagnosticsSurface()
-    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const layout = activateSurface(
       createClassicFirstRunWorkspaceLayout(),
       diagnostics.id,
       CLASSIC_DIAGNOSTICS_WINDOW_ID,
     )
-    const item = mustFindRailItem(selectWorkbenchRailSurfaceItems(layout), terminal.id)
+    const item = mustFindBottomPaneRailItem(layout)
 
-    expect(item.state).toBe('visible')
+    expect(item.state).toBe('active')
     expect(railItemOperation(layout, item)).toEqual({
-      surfaceId: terminal.id,
-      type: 'activateSurface',
+      destination: { kind: 'background' },
+      type: 'moveWindow',
       windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
     })
-    expect(applyLayoutOperation(layout, railItemOperation(layout, item)).activeSurfaceId).toBe(
-      terminal.id,
-    )
   })
 
-  it('exposes diagnostics as a normal rail item', () => {
+  it('does not expose diagnostics or terminal as normal rail items', () => {
     const diagnostics = createDiagnosticsSurface()
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     const layout = createClassicFirstRunWorkspaceLayout()
     const items = selectWorkbenchRailSurfaceItems(layout)
-    const diagnosticsItem = items.find((candidate) => candidate.surface.id === diagnostics.id)
 
-    expect(diagnosticsItem?.state).toBe('visible')
-    expect(railItemOperation(layout, diagnosticsItem!)).toEqual({
-      surfaceId: diagnostics.id,
-      type: 'activateSurface',
-      windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
+    expect(items.some((candidate) => candidate.surface.id === diagnostics.id)).toBe(false)
+    expect(items.some((candidate) => candidate.surface.id === terminal.id)).toBe(false)
+    expect(mustFindBottomPaneRailItem(layout).state).toBe('visible')
+  })
+
+  it('restores the preserved terminal surface when the bottom pane is hidden', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const diagnostics = createDiagnosticsSurface()
+    let layout = createClassicFirstRunWorkspaceLayout()
+    layout = moveSurface(layout, terminal.id, { kind: 'background' })
+    layout = moveSurface(layout, diagnostics.id, { kind: 'background' })
+    const item = mustFindBottomPaneRailItem(layout)
+
+    expect(railItemOperation(layout, item)).toEqual({
+      placement: { kind: 'recipe-slot', slot: 'bottom' },
+      surfaceId: terminal.id,
+      type: 'restoreSurface',
+    })
+  })
+
+  it('hides and restores bottom pane tabs through visibility operations', () => {
+    const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+    const items = bottomPaneSurfaceVisibilityItems(
+      createClassicFirstRunWorkspaceLayout(),
+      CLASSIC_DIAGNOSTICS_WINDOW_ID,
+    )
+    const terminalItem = items.find((item) => item.surface.id === terminal.id)
+    if (!terminalItem) throw new Error('Expected terminal visibility item')
+
+    const hideOperation = bottomPaneSurfaceVisibilityOperation(terminalItem, false)
+    if (!hideOperation) throw new Error('Expected terminal hide operation')
+
+    const hidden = applyLayoutOperation(createClassicFirstRunWorkspaceLayout(), hideOperation)
+    expect(hidden.surfacesById[terminal.id]).toBeDefined()
+    expect(hidden.rail.runningSurfaceIds).toContain(terminal.id)
+    expect(visibleSurfaceIdsInOrder(hidden)).not.toContain(terminal.id)
+
+    const hiddenItems = bottomPaneSurfaceVisibilityItems(hidden, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    const hiddenTerminalItem = hiddenItems.find((item) => item.surface.id === terminal.id)
+    const onlyVisibleItem = hiddenItems.find((item) => item.checked)
+    if (!hiddenTerminalItem) throw new Error('Expected hidden terminal visibility item')
+    if (!onlyVisibleItem) throw new Error('Expected one visible bottom pane item')
+
+    expect(onlyVisibleItem.disabled).toBe(true)
+    expect(bottomPaneSurfaceVisibilityOperation(onlyVisibleItem, false)).toBeNull()
+    expect(bottomPaneSurfaceVisibilityOperation(hiddenTerminalItem, true)).toEqual({
+      placement: { kind: 'recipe-slot', slot: 'bottom' },
+      surfaceId: terminal.id,
+      type: 'restoreSurface',
     })
   })
 
@@ -1235,6 +1279,13 @@ function mustFindRailItem(
 ) {
   const item = items.find((candidate) => candidate.surface.id === surfaceId)
   if (!item) throw new Error(`Expected rail item ${surfaceId}`)
+
+  return item
+}
+
+function mustFindBottomPaneRailItem(layout: WorkspaceLayout) {
+  const item = selectWorkbenchRailItems(layout).find(isWorkbenchRailBottomPaneItem)
+  if (!item) throw new Error('Expected bottom pane rail item')
 
   return item
 }
