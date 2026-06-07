@@ -19,6 +19,7 @@ import {
   createSearchResultsSurface,
   createTerminalSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
 import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
 import {
   CLASSIC_POLICY_ID,
@@ -427,6 +428,48 @@ describe('tiling surface layout operations', () => {
       expect.arrayContaining([searchResultsSurfaceId(), gitChangesSurfaceId()]),
     )
     expectValidLayout(applied)
+  })
+
+  it('upserts editable command definitions and applies active hotkey presets', () => {
+    const customCommand = customWindowCommand({
+      id: windowManagementCommandId('palette-left-half'),
+      targetFrame: frame('left'),
+    })
+    const layoutCommand: WorkspaceLayoutCommand = {
+      aliases: ['palette layout'],
+      enabled: true,
+      icon: 'layout',
+      id: layoutCommandId('palette-layout'),
+      slots: [
+        {
+          frame: frame('left'),
+          id: 'search',
+          surfaceType: 'search-results',
+        },
+      ],
+      title: 'Palette Layout',
+    }
+    const preset = defaultWindowManagementHotkeyPresets()[1]
+    if (!preset) throw new Error('Expected default hotkey preset')
+
+    const withCustomCommand = applyLayoutOperation(createClassicFirstRunWorkspaceLayout(), {
+      command: customCommand,
+      type: 'upsertCustomWindowCommand',
+    })
+    const withLayoutCommand = applyLayoutOperation(withCustomCommand, {
+      command: layoutCommand,
+      type: 'upsertLayoutCommand',
+    })
+    const withPreset = applyLayoutOperation(withLayoutCommand, {
+      preset,
+      type: 'applyHotkeyPreset',
+    })
+
+    expect(withPreset.windowCommandsById[customCommand.id]).toEqual(customCommand)
+    expect(withPreset.layoutCommandsById[layoutCommand.id]).toEqual(layoutCommand)
+    expect(withPreset.activeHotkeyPresetId).toBe(preset.id)
+    expect(withPreset.hotkeyPresetsById[preset.id]).toEqual(preset)
+    expectValidLayout(withPreset)
   })
 
   it('allows multiple singleton tool surfaces to be visible at once', () => {

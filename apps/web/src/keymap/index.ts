@@ -7,7 +7,10 @@ export {
   windowManagementCommandSpecs,
   workspaceCommandSpecs,
 } from './command-registry'
-export { defaultPlatformKeyBindings } from './default-bindings'
+export {
+  defaultPlatformKeyBindings,
+  platformKeyBindingsForWorkspaceLayout,
+} from './default-bindings'
 export {
   editorCommandIdFromPlatform,
   editorKeyBindingFromPlatform,

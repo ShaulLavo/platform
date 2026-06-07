@@ -854,16 +854,18 @@ Exit criteria:
 
 ## Phase 11 - Command Palette, Hotkeys, Presets, And Layout Commands
 
-Status: partially complete and re-audited 2026-06-07. Built-in window
-management command metadata, default bindings, command dispatch, hotkey preset
-data, custom window command definitions, saved layout command definitions,
-cycling, persistence, and layout-operation tests exist. Command disabled states
-and file lifecycle commands now derive their file target from the active
-file-backed surface in `WorkspaceLayout`, not legacy selected-path state. The
-production command palette now exposes custom window commands and saved layout
-commands from the layout selector and executes them through surface-manager
-operations. Remaining Phase 11 work is to add settings/editing entries and
-production hotkey-preset application.
+Status: completed and re-audited 2026-06-07. Built-in window management command
+metadata, default bindings, command dispatch, hotkey preset data, custom window
+command definitions, saved layout command definitions, cycling, persistence,
+and layout-operation tests exist. Command disabled states and file lifecycle
+commands now derive their file target from the active file-backed surface in
+`WorkspaceLayout`, not legacy selected-path state. The production command
+palette exposes custom window commands and saved layout commands from the
+layout selector and executes them through surface-manager operations. It also
+includes entries to create a custom window command, create a saved layout
+command from visible surfaces, open the window-management settings detail
+surface, and apply hotkey presets. Applied hotkey presets are persisted in
+`WorkspaceLayout` and replace runtime window-management key bindings.
 
 Goal: keep muscle-memory command IDs while upgrading the command palette into a
 Raycast-style control surface for window management, custom window commands, and

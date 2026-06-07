@@ -1,6 +1,7 @@
 import type { Theme } from '@/components/theme-context'
 import type {
   CustomWindowManagementCommand,
+  LayoutOperation,
   WorkspaceLayoutCommand,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 import type { TreeEntry } from '@/lib/file-system-types'
@@ -19,6 +20,7 @@ export type CommandPaletteSelection =
   | { readonly command: PlatformCommandId; readonly kind: 'platform' }
   | { readonly command: CustomWindowManagementCommand; readonly kind: 'custom-window' }
   | { readonly command: WorkspaceLayoutCommand; readonly kind: 'saved-layout' }
+  | { readonly kind: 'layout-operation'; readonly operation: LayoutOperation }
 
 export type CommandPaletteItem = {
   readonly aliases: readonly string[]

@@ -30,6 +30,7 @@ import {
   quickAccessFilter,
   quickAccessMode,
   quickAccessQuery,
+  windowManagementActionPaletteItems,
 } from '@/components/command-palette/command-palette-utils'
 import { useCommandPaletteFiles } from '@/components/command-palette/use-command-palette-files'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
@@ -79,6 +80,7 @@ export function CommandPaletteContent({
   const commandItems = [
     ...commandPaletteItems(platformCommandSpecs, bindings),
     ...layoutCommandPaletteItems(workspaceLayout),
+    ...windowManagementActionPaletteItems(workspaceLayout),
   ]
   const groups = groupedCommandItems(commandItems)
 

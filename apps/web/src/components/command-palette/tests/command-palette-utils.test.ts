@@ -4,7 +4,9 @@ import {
   commandPaletteItemDisabledReason,
   commandPaletteSelectionLayoutOperation,
   layoutCommandPaletteItems,
+  windowManagementActionPaletteItems,
 } from '@/components/command-palette/command-palette-utils'
+import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
 import { createClassicFirstRunWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
 import { CLOSE_ACTIVE_SURFACE_COMMAND_ID } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
 import {
@@ -108,6 +110,53 @@ test('layout command palette items keep selector disabled reasons', () => {
       workspaceLayout: layout,
     }),
   ).toBe('Command is disabled.')
+})
+
+test('window management action items create definitions, settings, and hotkey preset operations', () => {
+  const layout = createClassicFirstRunWorkspaceLayout()
+  const items = windowManagementActionPaletteItems(layout)
+  const customItem = items.find((item) => item.title === 'Create Custom Window Command')
+  const layoutItem = items.find((item) => item.title === 'Create Layout Command')
+  const settingsItem = items.find((item) => item.title === 'Window Management Settings')
+  const preset = defaultWindowManagementHotkeyPresets()[0]
+  if (!preset) throw new Error('Expected default hotkey preset')
+
+  const presetItem = items.find((item) => item.title === `Apply ${preset.title} Hotkey Preset`)
+
+  expect(
+    customItem ? commandPaletteSelectionLayoutOperation(customItem.command, 1) : null,
+  ).toMatchObject({
+    command: expect.objectContaining({
+      enabled: true,
+      kind: 'custom-window',
+      title: 'Custom Left Half',
+    }),
+    type: 'upsertCustomWindowCommand',
+  })
+  expect(
+    layoutItem ? commandPaletteSelectionLayoutOperation(layoutItem.command, 1) : null,
+  ).toMatchObject({
+    command: expect.objectContaining({
+      enabled: true,
+      title: 'Saved Current Workspace',
+    }),
+    type: 'upsertLayoutCommand',
+  })
+  expect(
+    settingsItem ? commandPaletteSelectionLayoutOperation(settingsItem.command, 1) : null,
+  ).toMatchObject({
+    surface: expect.objectContaining({
+      title: 'Window Management Settings',
+      type: 'placeholder',
+    }),
+    type: 'openSurface',
+  })
+  expect(
+    presetItem ? commandPaletteSelectionLayoutOperation(presetItem.command, 1) : null,
+  ).toMatchObject({
+    preset,
+    type: 'applyHotkeyPreset',
+  })
 })
 
 const leftHalfFrame: CustomWindowFrame = {

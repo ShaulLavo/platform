@@ -55,6 +55,7 @@ export const CLASSIC_DIAGNOSTICS_NODE_ID = layoutNodeId('classic:diagnostics')
 export const CLASSIC_FILE_NAVIGATOR_WINDOW_ID = workbenchWindowId('classic:file-navigator')
 export const CLASSIC_EDITOR_WINDOW_ID = workbenchWindowId('classic:editor')
 export const CLASSIC_DIAGNOSTICS_WINDOW_ID = workbenchWindowId('classic:diagnostics')
+export const WINDOW_MANAGEMENT_SETTINGS_PLACEHOLDER_CONTEXT_KEY = 'window-management-settings'
 
 const DEFAULT_VALID_PLACEMENTS = [
   'active-window',
@@ -365,28 +366,40 @@ export function createDiagnosticsSurface(): Surface {
 }
 
 export function createPlaceholderSurface({
+  canClose = false,
   contextKey,
   title,
 }: {
+  readonly canClose?: boolean
   readonly contextKey: string
   readonly title: string
 }): Surface {
   return createSurface({
     capabilities: surfaceCapabilities({
-      canClose: false,
+      canClose,
       canFloat: false,
       canCollapse: false,
       defaultRecipeSlot: 'editor-center',
       validPlacements: ['active-window', 'window-center', 'window-edge', 'root-edge'],
     }),
     cardinality: 'multi',
-    closePolicy: { reason: 'placeholder surfaces are replaced, not closed', type: 'block' },
+    closePolicy: canClose
+      ? { type: 'close' }
+      : { reason: 'placeholder surfaces are replaced, not closed', type: 'block' },
     id: placeholderSurfaceId(contextKey),
     lifecycle: 'placeholder',
     placement: { kind: 'recipe-slot', slot: 'editor-center' },
     stateKey: contextKey,
     title,
     type: 'placeholder',
+  })
+}
+
+export function createWindowManagementSettingsSurface(): Surface {
+  return createPlaceholderSurface({
+    canClose: true,
+    contextKey: WINDOW_MANAGEMENT_SETTINGS_PLACEHOLDER_CONTEXT_KEY,
+    title: 'Window Management Settings',
   })
 }
 

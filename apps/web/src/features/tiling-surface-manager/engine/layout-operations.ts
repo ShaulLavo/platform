@@ -55,6 +55,7 @@ import type {
   SurfaceId,
   SurfacePlacementHint,
   SurfaceType,
+  WindowManagementHotkeyPreset,
   WorkspaceRecipeSlot,
   WindowId,
   WorkbenchWindow,
@@ -132,6 +133,12 @@ export function applyLayoutOperation(
       return restoreWindow(layout, operation.windowId)
     case 'applyRecipe':
       return applyRecipe(layout, operation.recipeId)
+    case 'upsertCustomWindowCommand':
+      return upsertCustomWindowCommand(layout, operation.command)
+    case 'upsertLayoutCommand':
+      return upsertLayoutCommand(layout, operation.command)
+    case 'applyHotkeyPreset':
+      return applyHotkeyPreset(layout, operation.preset)
     case 'applyCustomWindowCommand':
       return applyCustomWindowCommand(
         layout,
@@ -781,6 +788,46 @@ export function applyLayoutCommand(
   }
 
   return normalizeWorkspaceLayout(nextLayout)
+}
+
+export function upsertCustomWindowCommand(
+  layout: WorkspaceLayout,
+  command: CustomWindowManagementCommand,
+): WorkspaceLayout {
+  return normalizeWorkspaceLayout({
+    ...layout,
+    windowCommandsById: {
+      ...layout.windowCommandsById,
+      [command.id]: command,
+    },
+  })
+}
+
+export function upsertLayoutCommand(
+  layout: WorkspaceLayout,
+  command: WorkspaceLayoutCommand,
+): WorkspaceLayout {
+  return normalizeWorkspaceLayout({
+    ...layout,
+    layoutCommandsById: {
+      ...layout.layoutCommandsById,
+      [command.id]: command,
+    },
+  })
+}
+
+export function applyHotkeyPreset(
+  layout: WorkspaceLayout,
+  preset: WindowManagementHotkeyPreset,
+): WorkspaceLayout {
+  return normalizeWorkspaceLayout({
+    ...layout,
+    activeHotkeyPresetId: preset.id,
+    hotkeyPresetsById: {
+      ...layout.hotkeyPresetsById,
+      [preset.id]: preset,
+    },
+  })
 }
 
 function applyLayoutCommandSlot(

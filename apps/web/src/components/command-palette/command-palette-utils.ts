@@ -1,14 +1,27 @@
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { createWindowManagementSettingsSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
 import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
+import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
+import {
+  layoutCommandId,
+  windowManagementCommandId,
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 import {
   selectCommandPaletteRows,
+  selectVisibleSurfaces,
   windowCommandDisabledReason,
   type LayoutCommandPaletteRow,
 } from '@/features/tiling-surface-manager/engine/layout-selectors'
 import type {
+  CustomWindowFrame,
+  CustomWindowManagementCommand,
+  LayoutCommandSurfaceSlot,
   LayoutOperation,
+  Surface,
+  SurfaceType,
   WindowManagementCommand,
   WorkspaceLayout,
+  WorkspaceLayoutCommand,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
@@ -50,6 +63,17 @@ export function commandPaletteItems(
 
 export function layoutCommandPaletteItems(layout: WorkspaceLayout): readonly CommandPaletteItem[] {
   return selectCommandPaletteRows(layout).flatMap(layoutCommandPaletteItem)
+}
+
+export function windowManagementActionPaletteItems(
+  layout: WorkspaceLayout,
+): readonly CommandPaletteItem[] {
+  return [
+    createCustomWindowCommandPaletteItem(layout),
+    createLayoutCommandPaletteItem(layout),
+    windowManagementSettingsPaletteItem(),
+    ...hotkeyPresetPaletteItems(layout),
+  ]
 }
 
 export function groupedCommandItems(
@@ -147,7 +171,11 @@ export function commandPaletteItemDisabledReason(
   item: CommandPaletteItem,
   context: CommandDisabledContext,
 ) {
-  if (item.command.kind !== 'platform') return item.disabledReason ?? null
+  if (item.command.kind !== 'platform') {
+    if (!context.hasWorkspace) return 'No workspace open.'
+
+    return item.disabledReason ?? null
+  }
 
   return commandDisabledReason(item.command.command, context)
 }
@@ -156,6 +184,7 @@ export function commandPaletteSelectionLayoutOperation(
   selection: CommandPaletteSelection,
   nowMs: number,
 ): LayoutOperation | null {
+  if (selection.kind === 'layout-operation') return selection.operation
   if (selection.kind === 'custom-window') {
     return {
       command: selection.command,
@@ -343,6 +372,242 @@ function layoutCommandDescription(row: LayoutCommandPaletteRow) {
 
 function layoutCommandKeywords(row: LayoutCommandPaletteRow) {
   return [row.title, row.category, row.id, row.searchableText, ...row.aliases]
+}
+
+function createCustomWindowCommandPaletteItem(layout: WorkspaceLayout): CommandPaletteItem {
+  const command = defaultCustomWindowCommand(layout)
+
+  return {
+    aliases: ['new window command', 'create custom command'],
+    category: 'Window Management',
+    command: {
+      kind: 'layout-operation',
+      operation: {
+        command,
+        type: 'upsertCustomWindowCommand',
+      },
+    },
+    description: 'Create a custom window command.',
+    icon: 'plus',
+    id: 'window-management:create-custom-window-command',
+    keywords: [
+      'Create Custom Window Command',
+      'Window Management',
+      'custom window command',
+      'new command',
+    ],
+    shortcut: null,
+    title: 'Create Custom Window Command',
+  }
+}
+
+function createLayoutCommandPaletteItem(layout: WorkspaceLayout): CommandPaletteItem {
+  const command = savedLayoutCommandForWorkspace(layout)
+
+  return {
+    aliases: ['new layout command', 'save current layout'],
+    category: 'Window Management',
+    command: {
+      kind: 'layout-operation',
+      operation: {
+        command,
+        type: 'upsertLayoutCommand',
+      },
+    },
+    description: 'Create a saved layout command from visible surfaces.',
+    icon: 'layout',
+    id: 'window-management:create-layout-command',
+    keywords: [
+      'Create Layout Command',
+      'Window Management',
+      'saved layout command',
+      'save current layout',
+    ],
+    shortcut: null,
+    title: 'Create Layout Command',
+  }
+}
+
+function windowManagementSettingsPaletteItem(): CommandPaletteItem {
+  return {
+    aliases: ['window settings', 'layout settings', 'hotkey settings'],
+    category: 'Window Management',
+    command: {
+      kind: 'layout-operation',
+      operation: {
+        surface: createWindowManagementSettingsSurface(),
+        type: 'openSurface',
+      },
+    },
+    description: 'Open window management settings.',
+    icon: 'settings',
+    id: 'window-management:settings',
+    keywords: ['Window Management Settings', 'window settings', 'layout settings'],
+    shortcut: null,
+    title: 'Window Management Settings',
+  }
+}
+
+function hotkeyPresetPaletteItems(layout: WorkspaceLayout): readonly CommandPaletteItem[] {
+  return defaultWindowManagementHotkeyPresets().map((preset) => ({
+    aliases: ['hotkey preset', preset.source],
+    category: 'Window Management',
+    command: {
+      kind: 'layout-operation' as const,
+      operation: {
+        preset,
+        type: 'applyHotkeyPreset' as const,
+      },
+    },
+    description: `${preset.title} window management shortcuts.`,
+    disabledReason:
+      layout.activeHotkeyPresetId === preset.id ? 'Hotkey preset is already active.' : null,
+    icon: 'keyboard',
+    id: `window-management:hotkey-preset:${preset.id}`,
+    keywords: [
+      `Apply ${preset.title} Hotkey Preset`,
+      'Window Management',
+      'hotkey preset',
+      preset.source,
+    ],
+    shortcut: null,
+    title: `Apply ${preset.title} Hotkey Preset`,
+  }))
+}
+
+function defaultCustomWindowCommand(layout: WorkspaceLayout): CustomWindowManagementCommand {
+  const id = nextCustomWindowCommandId(layout)
+
+  return {
+    aliases: ['left half', 'custom left half'],
+    category: 'Window Management',
+    enabled: true,
+    icon: 'panel-left',
+    id,
+    kind: 'custom-window',
+    targetFrame: leftHalfFrame,
+    title: customWindowCommandTitle(id),
+  }
+}
+
+function savedLayoutCommandForWorkspace(layout: WorkspaceLayout): WorkspaceLayoutCommand {
+  const id = nextLayoutCommandId(layout)
+  const slots = savedLayoutCommandSlots(layout)
+
+  return {
+    aliases: ['current layout', 'saved workspace layout'],
+    enabled: true,
+    icon: 'layout',
+    id,
+    slots,
+    title: savedLayoutCommandTitle(id),
+  }
+}
+
+function savedLayoutCommandSlots(layout: WorkspaceLayout): readonly LayoutCommandSurfaceSlot[] {
+  const slots = selectVisibleSurfaces(layout).flatMap(savedLayoutCommandSlot)
+  if (slots.length > 0) return slots
+
+  return [
+    {
+      frame: leftHalfFrame,
+      id: 'search-results',
+      surfaceType: 'search-results',
+    },
+  ]
+}
+
+function savedLayoutCommandSlot(
+  surface: Surface,
+  index: number,
+): readonly LayoutCommandSurfaceSlot[] {
+  if (!surfaceTypeCanBeSaved(surface.type)) return []
+
+  return [
+    {
+      frame: savedLayoutFrame(index),
+      id: `${surface.type}:${index}`,
+      resourceKey: surface.resourceKey,
+      stateKey: surface.stateKey,
+      surfaceType: surface.type,
+    },
+  ]
+}
+
+function surfaceTypeCanBeSaved(surfaceType: SurfaceType) {
+  if (surfaceType === 'search-preview') return false
+
+  return true
+}
+
+function nextCustomWindowCommandId(layout: WorkspaceLayout) {
+  const base = windowManagementCommandId('custom-left-half')
+  if (!layout.windowCommandsById[base]) return base
+
+  for (let index = 2; ; index += 1) {
+    const id = windowManagementCommandId(`custom-left-half-${index}`)
+    if (layout.windowCommandsById[id]) continue
+
+    return id
+  }
+}
+
+function nextLayoutCommandId(layout: WorkspaceLayout) {
+  const base = layoutCommandId('saved-current-workspace')
+  if (!layout.layoutCommandsById[base]) return base
+
+  for (let index = 2; ; index += 1) {
+    const id = layoutCommandId(`saved-current-workspace-${index}`)
+    if (layout.layoutCommandsById[id]) continue
+
+    return id
+  }
+}
+
+function customWindowCommandTitle(id: CustomWindowManagementCommand['id']) {
+  if (id === windowManagementCommandId('custom-left-half')) return 'Custom Left Half'
+
+  return 'Custom Left Half Copy'
+}
+
+function savedLayoutCommandTitle(id: WorkspaceLayoutCommand['id']) {
+  if (id === layoutCommandId('saved-current-workspace')) return 'Saved Current Workspace'
+
+  return 'Saved Current Workspace Copy'
+}
+
+function savedLayoutFrame(index: number): CustomWindowFrame {
+  if (index % 3 === 1) return rightHalfFrame
+  if (index % 3 === 2) return bottomHalfFrame
+
+  return leftHalfFrame
+}
+
+const leftHalfFrame: CustomWindowFrame = {
+  anchor: 'left',
+  height: 100,
+  offsetX: 0,
+  offsetY: 0,
+  unit: 'percent',
+  width: 50,
+}
+
+const rightHalfFrame: CustomWindowFrame = {
+  anchor: 'right',
+  height: 100,
+  offsetX: 0,
+  offsetY: 0,
+  unit: 'percent',
+  width: 50,
+}
+
+const bottomHalfFrame: CustomWindowFrame = {
+  anchor: 'bottom',
+  height: 50,
+  offsetX: 0,
+  offsetY: 0,
+  unit: 'percent',
+  width: 100,
 }
 
 const builtInWindowCommandsById = new Map(

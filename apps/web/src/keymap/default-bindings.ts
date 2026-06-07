@@ -4,6 +4,13 @@ import {
   type RegisterableHotkey,
 } from '@tanstack/react-hotkeys'
 
+import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
+import type {
+  WindowManagementCommandId,
+  WindowManagementHotkeyPreset,
+  WorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-types'
+
 import { commandHotkeyMeta } from './command-registry'
 import type {
   EditorPlatformCommandId,
@@ -11,6 +18,7 @@ import type {
   PlatformKeyBinding,
   WorkspaceCommandId,
 } from './types'
+import { workspaceCommandIdForWindowManagementCommand } from './window-management-command-ids'
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
@@ -35,6 +43,21 @@ export function defaultPlatformKeyBindings(
   return defaultBindingSpecs.flatMap((spec) => bindingForPlatform(spec, platform))
 }
 
+export function platformKeyBindingsForWorkspaceLayout(
+  bindings: readonly PlatformKeyBinding[],
+  layout: Pick<WorkspaceLayout, 'activeHotkeyPresetId' | 'hotkeyPresetsById'>,
+  platform: PlatformName = detectPlatform(),
+): readonly PlatformKeyBinding[] {
+  const preset = activeHotkeyPresetForWorkspaceLayout(layout)
+  if (!preset) return bindings
+
+  const presetBindings = platformKeyBindingsForHotkeyPreset(preset, platform)
+  if (presetBindings.length === 0) return bindings
+
+  const presetCommands = new Set(presetBindings.map((binding) => binding.command))
+  return [...bindings.filter((binding) => !presetCommands.has(binding.command)), ...presetBindings]
+}
+
 function bindingForPlatform(
   spec: DefaultBindingSpec,
   platform: PlatformName,
@@ -52,6 +75,52 @@ function bindingForPlatform(
       source: 'default',
       stopPropagation: spec.stopPropagation,
       vscodeCommandId: spec.vscodeCommandId,
+    },
+  ]
+}
+
+function activeHotkeyPresetForWorkspaceLayout(
+  layout: Pick<WorkspaceLayout, 'activeHotkeyPresetId' | 'hotkeyPresetsById'>,
+) {
+  const activePresetId = layout.activeHotkeyPresetId
+  if (!activePresetId) return null
+
+  return (
+    layout.hotkeyPresetsById[activePresetId] ??
+    defaultWindowManagementHotkeyPresets().find((preset) => preset.id === activePresetId) ??
+    null
+  )
+}
+
+function platformKeyBindingsForHotkeyPreset(
+  preset: WindowManagementHotkeyPreset,
+  platform: PlatformName,
+) {
+  return Object.entries(preset.bindings).flatMap(([commandId, hotkey]) =>
+    platformKeyBindingForPresetBinding(commandId, hotkey, platform),
+  )
+}
+
+function platformKeyBindingForPresetBinding(
+  commandId: string,
+  hotkey: string,
+  platform: PlatformName,
+): readonly PlatformKeyBinding[] {
+  const command = workspaceCommandIdForWindowManagementCommand(
+    commandId as WindowManagementCommandId,
+  )
+  if (!command) return []
+
+  return [
+    {
+      command,
+      hotkey: hotkey as RegisterableHotkey,
+      keys: normalizeRegisterableHotkey(hotkey as RegisterableHotkey, platform),
+      meta: commandHotkeyMeta(command),
+      pane: 'any',
+      preventDefault: true,
+      source: 'default',
+      stopPropagation: true,
     },
   ]
 }

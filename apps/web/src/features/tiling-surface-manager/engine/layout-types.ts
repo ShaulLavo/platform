@@ -298,6 +298,12 @@ export type LayoutOperation =
   | { readonly recipeId: RecipeId; readonly type: 'applyRecipe' }
   | {
       readonly command: CustomWindowManagementCommand
+      readonly type: 'upsertCustomWindowCommand'
+    }
+  | { readonly command: WorkspaceLayoutCommand; readonly type: 'upsertLayoutCommand' }
+  | { readonly preset: WindowManagementHotkeyPreset; readonly type: 'applyHotkeyPreset' }
+  | {
+      readonly command: CustomWindowManagementCommand
       readonly nowMs?: number
       readonly targetWindowId?: WindowId
       readonly type: 'applyCustomWindowCommand'

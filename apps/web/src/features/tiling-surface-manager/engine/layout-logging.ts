@@ -94,6 +94,8 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
       }
     case 'applyLayoutCommand':
       return { ...base, commandId: operation.command.id, commandTitle: operation.command.title }
+    case 'applyHotkeyPreset':
+      return { ...base, presetId: operation.preset.id, presetTitle: operation.preset.title }
     case 'applyRecipe':
       return { ...base, recipeId: operation.recipeId }
     case 'closeSurface':
@@ -158,6 +160,10 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
       }
     case 'toggleClassicBottomToolPane':
       return { ...base, target: operation.target }
+    case 'upsertCustomWindowCommand':
+      return { ...base, commandId: operation.command.id, commandTitle: operation.command.title }
+    case 'upsertLayoutCommand':
+      return { ...base, commandId: operation.command.id, commandTitle: operation.command.title }
   }
 }
 

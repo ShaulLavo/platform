@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
+import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
 import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
@@ -15,7 +16,10 @@ import {
   platformCommandSpec,
   windowManagementCommandSpecs,
 } from '../command-registry'
-import { defaultPlatformKeyBindings } from '../default-bindings'
+import {
+  defaultPlatformKeyBindings,
+  platformKeyBindingsForWorkspaceLayout,
+} from '../default-bindings'
 import {
   editorKeyBindingFromPlatform,
   editorKeymapLayersFromPlatform,
@@ -321,6 +325,40 @@ describe('defaultPlatformKeyBindings', () => {
     )
     expect(commands(appKeyBindingsForPane(bindings, 'global'))).toContain(
       'workspace.window.closeActiveSurface',
+    )
+  })
+
+  it('replaces default window management bindings with the active hotkey preset', () => {
+    const preset = defaultWindowManagementHotkeyPresets().find(
+      (candidate) => candidate.title === 'VS Code',
+    )
+    if (!preset) throw new Error('Expected VS Code hotkey preset')
+
+    const layout = {
+      ...createClassicFirstRunWorkspaceLayout(),
+      activeHotkeyPresetId: preset.id,
+      hotkeyPresetsById: {
+        [preset.id]: preset,
+      },
+    }
+    const bindings = platformKeyBindingsForWorkspaceLayout(
+      defaultPlatformKeyBindings('linux'),
+      layout,
+      'linux',
+    )
+
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.closeActiveSurface',
+        hotkey: 'Ctrl+W',
+        keys: 'Mod+W',
+      }),
+    )
+    expect(bindings).not.toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.closeActiveSurface',
+        keys: 'Alt+Shift+W',
+      }),
     )
   })
 
