@@ -26,8 +26,8 @@ import { basename, displayPath } from '@/lib/path-formatters'
 export const EMPTY_GIT_FILES: readonly FileStatus[] = []
 
 export type EditorSplitDirection = 'horizontal' | 'vertical'
+export type EditorSnapZone = 'bottom' | 'center' | 'left' | 'right' | 'top'
 export type EditorSplitScope = 'pane' | 'root'
-export type EditorDropZone = 'bottom' | 'center' | 'left' | 'right' | 'top'
 
 export type EditorTabRecord = {
   readonly id: string

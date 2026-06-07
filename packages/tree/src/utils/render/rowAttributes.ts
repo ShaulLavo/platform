@@ -12,7 +12,6 @@ import type { FileTreeRowClickMode } from '@workspace/tree/utils/render/rowClick
 export type FileTreeRowStateFlags = {
   isFocusRinged: boolean
   isContextHovered: boolean
-  isDragTarget: boolean
   isDragging: boolean
   effectiveGitStatus: GitStatus | null
   containsGitChange: boolean
@@ -72,9 +71,6 @@ export function computeFileTreeRowElementAttributes(
   }
   if (state.isContextHovered) {
     stateAttributes['data-item-context-hover'] = 'true'
-  }
-  if (state.isDragTarget) {
-    stateAttributes['data-item-drag-target'] = true
   }
   if (state.isDragging) {
     stateAttributes['data-item-dragging'] = true

@@ -31,8 +31,8 @@ import {
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
-  DropEdge,
-  DropDestination,
+  LayoutEdge,
+  SnapDestination,
   LayoutCommandSurfaceSlot,
   LayoutOperation,
   LayoutNode,
@@ -339,7 +339,7 @@ function placementSatisfiesRecipeConstraints(
 export function splitWindow(
   layout: WorkspaceLayout,
   input: {
-    readonly edge: DropEdge
+    readonly edge: LayoutEdge
     readonly sourceWindowId?: WindowId
     readonly surfaceId?: SurfaceId
     readonly windowId: WindowId
@@ -364,7 +364,7 @@ export function splitWindow(
 export function moveSurface(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
-  destination: DropDestination,
+  destination: SnapDestination,
 ): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const surface = normalizedLayout.surfacesById[surfaceId]
@@ -399,7 +399,7 @@ export function moveSurface(
 export function moveWindow(
   layout: WorkspaceLayout,
   windowId: WindowId,
-  destination: DropDestination,
+  destination: SnapDestination,
 ): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const window = normalizedLayout.windowsById[windowId]
@@ -781,7 +781,7 @@ function placementHintForFrame(
   return { edge: 'right', kind: 'root-edge' }
 }
 
-function edgeForFrameAnchor(anchor: CustomWindowFrame['anchor']): DropEdge | null {
+function edgeForFrameAnchor(anchor: CustomWindowFrame['anchor']): LayoutEdge | null {
   if (anchor.includes('left')) return 'left'
   if (anchor.includes('right')) return 'right'
   if (anchor.includes('top')) return 'top'
@@ -801,7 +801,7 @@ function applyFrameMainRatioToWindow(
   layout: WorkspaceLayout,
   windowId: WindowId,
   frame: CustomWindowFrame,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WorkspaceLayout {
   const ratio = mainAxisRatioForFrame(frame, edge)
   if (ratio === null) return layout
@@ -845,7 +845,7 @@ function applyFrameCurrentSplitRatioToWindow(
   return layoutWithSplitChildRatio(layout, split, childIndex, ratio)
 }
 
-function mainAxisRatioForFrame(frame: CustomWindowFrame, edge: DropEdge) {
+function mainAxisRatioForFrame(frame: CustomWindowFrame, edge: LayoutEdge) {
   return frameAxisRatio(frame, edgeAxis(edge))
 }
 
@@ -956,7 +956,7 @@ function ensureSurfaceIsVisible(layout: WorkspaceLayout, surfaceId: SurfaceId): 
 function placeSurfaceAtEdgeDestination(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
-  destination: DropDestination,
+  destination: SnapDestination,
   options: { readonly recordStickyPlacement: boolean } = { recordStickyPlacement: true },
 ): WorkspaceLayout {
   const surface = layout.surfacesById[surfaceId]
@@ -976,7 +976,7 @@ function placeSurfaceAtEdgeDestination(
 function destinationForPlacement(
   layout: WorkspaceLayout,
   placement?: SurfacePlacementHint,
-): DropDestination | null {
+): SnapDestination | null {
   if (!placement) return activeWindowDestination(layout)
 
   switch (placement.kind) {
@@ -1014,7 +1014,7 @@ function destinationForSurfacePlacement(
 function destinationForRecipeSlot(
   layout: WorkspaceLayout,
   slot: WorkspaceRecipeSlot,
-): DropDestination | null {
+): SnapDestination | null {
   if (isToolPaneRecipeSlot(slot)) return destinationForToolPaneSlot(layout, slot)
   if (slot === 'editor-center') return destinationForMainViewSlot(layout)
 
@@ -1029,7 +1029,7 @@ function destinationForRecipeSlot(
 
 function destinationForRecipeSlotDrop(
   layout: WorkspaceLayout,
-  destination: Extract<DropDestination, { readonly kind: 'recipe-slot' }>,
+  destination: Extract<SnapDestination, { readonly kind: 'recipe-slot' }>,
 ) {
   return destinationForRecipeSlot(layout, destination.slot) ?? ({ kind: 'background' } as const)
 }
@@ -1416,7 +1416,7 @@ function balancedSplitSizes(count: number) {
   return Array.from({ length: count }, () => 1 / count)
 }
 
-function destinationForMainViewSlot(layout: WorkspaceLayout): DropDestination | null {
+function destinationForMainViewSlot(layout: WorkspaceLayout): SnapDestination | null {
   const mainWindowId = visibleWindowIdForRecipeSlot(layout, 'editor-center')
   if (mainWindowId) return { kind: 'window-center', windowId: mainWindowId }
 
@@ -1429,14 +1429,14 @@ function destinationForMainViewSlot(layout: WorkspaceLayout): DropDestination | 
 function destinationForToolPaneSlot(
   layout: WorkspaceLayout,
   slot: Extract<WorkspaceRecipeSlot, 'left-tool-pane'>,
-): DropDestination | null {
+): SnapDestination | null {
   const sameSlotWindowIds = visibleWindowIdsForRecipeSlots(layout, [slot])
   if (sameSlotWindowIds.length > 0) return toolPaneSameSlotDestination(sameSlotWindowIds)
 
   return rootOrActiveDestination(layout, 'left')
 }
 
-function toolPaneSameSlotDestination(windowIds: readonly WindowId[]): DropDestination | null {
+function toolPaneSameSlotDestination(windowIds: readonly WindowId[]): SnapDestination | null {
   const targetWindowId = targetToolWindowId(windowIds)
   if (!targetWindowId) return null
 
@@ -1451,13 +1451,16 @@ function isToolPaneRecipeSlot(slot: WorkspaceRecipeSlot) {
   return slot === 'left-tool-pane'
 }
 
-function rootOrActiveDestination(layout: WorkspaceLayout, edge: DropEdge): DropDestination | null {
+function rootOrActiveDestination(
+  layout: WorkspaceLayout,
+  edge: LayoutEdge,
+): SnapDestination | null {
   if (layout.rootNodeId) return { edge, kind: 'root-edge' }
 
   return activeWindowDestination(layout)
 }
 
-function mainViewFallbackDestination(layout: WorkspaceLayout): DropDestination | null {
+function mainViewFallbackDestination(layout: WorkspaceLayout): SnapDestination | null {
   const activeDestination = activeWindowDestination(layout)
   if (activeDestination?.kind !== 'window-center') return activeDestination
   if (activeWindowContainsRecipeSlot(layout, 'bottom'))
@@ -1475,7 +1478,7 @@ function activeWindowContainsRecipeSlot(layout: WorkspaceLayout, slot: Workspace
 function activeWindowDestination(
   layout: WorkspaceLayout,
   tabIndex?: number,
-): DropDestination | null {
+): SnapDestination | null {
   if (!layout.activeWindowId) return null
   if (!layoutHasVisibleWindow(layout, layout.activeWindowId)) return null
 
@@ -1772,7 +1775,7 @@ function insertSurfaceId(surfaceIds: readonly SurfaceId[], surfaceId: SurfaceId,
 function moveSingleSurfaceWindow(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
-  destination: DropDestination,
+  destination: SnapDestination,
 ): WorkspaceLayout | null {
   const sourceWindowId = findWindowIdContainingSurface(layout, surfaceId)
   if (!sourceWindowId) return null
@@ -1787,7 +1790,7 @@ function moveSingleSurfaceWindow(
 function insertSurfaceWindow(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
-  destination: DropDestination,
+  destination: SnapDestination,
 ): WorkspaceLayout {
   const surfaceWindow = createSurfaceWindow(layout, surfaceId)
   const layoutWithWindow = {
@@ -1854,7 +1857,7 @@ function previewSurfaceIdForNewWindow(layout: WorkspaceLayout, surfaceId: Surfac
 function insertNodeAtDestination(
   layout: WorkspaceLayout,
   node: LayoutNode,
-  destination: DropDestination,
+  destination: SnapDestination,
 ): WorkspaceLayout {
   if (destination.kind === 'root-edge') return insertNodeAtRootEdge(layout, node, destination.edge)
   if (destination.kind === 'window-edge') {
@@ -1871,7 +1874,7 @@ function insertNodeAtWindowEdge(
   layout: WorkspaceLayout,
   node: LayoutNode,
   targetWindowId: WindowId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WorkspaceLayout {
   const targetNodeId = findNodeIdForWindow(layout, targetWindowId)
   if (!targetNodeId) return insertNodeAtRootEdge(layout, node, edge)
@@ -1883,7 +1886,7 @@ function insertNodeAtParentEdge(
   layout: WorkspaceLayout,
   node: LayoutNode,
   targetNodeId: LayoutNodeId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WorkspaceLayout {
   const parentNodeId = findParentNodeId(layout, targetNodeId)
   if (!parentNodeId) return insertNodeAtRootEdge(layout, node, edge)
@@ -1894,7 +1897,7 @@ function insertNodeAtParentEdge(
 function insertNodeAtRootEdge(
   layout: WorkspaceLayout,
   node: LayoutNode,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WorkspaceLayout {
   if (!layout.rootNodeId) return layoutWithRootNode(layout, node)
   if (layout.rootNodeId === node.id) return layout
@@ -1906,7 +1909,7 @@ function insertNodeAroundTarget(
   layout: WorkspaceLayout,
   node: LayoutNode,
   targetNodeId: LayoutNodeId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WorkspaceLayout {
   const targetNode = layout.nodesById[targetNodeId]
   if (!targetNode) return layoutWithRootNode(layout, node)
@@ -1925,7 +1928,7 @@ function insertNodeIntoSplit(
   node: LayoutNode,
   split: LayoutSplitNode,
   targetNodeId: LayoutNodeId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WorkspaceLayout {
   const targetIndex = split.childIds.indexOf(targetNodeId)
   if (targetIndex < 0) return layout
@@ -1952,7 +1955,7 @@ function wrapTargetWithSplit(
   layout: WorkspaceLayout,
   node: LayoutNode,
   targetNode: LayoutNode,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WorkspaceLayout {
   const splitNode = createWrappingSplit(layout, node.id, targetNode.id, edge)
   const nodesById = {
@@ -1984,7 +1987,7 @@ function createWrappingSplit(
   layout: WorkspaceLayout,
   insertNodeId: LayoutNodeId,
   targetNodeId: LayoutNodeId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): LayoutSplitNode {
   const childIds = isLeadingEdge(edge) ? [insertNodeId, targetNodeId] : [targetNodeId, insertNodeId]
 
@@ -2122,7 +2125,7 @@ function backgroundWindowSurfaces(
 function windowMoveRejected(
   layout: WorkspaceLayout,
   windowId: WindowId,
-  destination: DropDestination,
+  destination: SnapDestination,
 ) {
   const nodeId = findNodeIdForWindow(layout, windowId)
   if (!nodeId) return true
@@ -2138,7 +2141,7 @@ function windowMoveRejected(
 function surfaceMoveRejected(
   layout: WorkspaceLayout,
   sourceWindowId: WindowId,
-  destination: DropDestination,
+  destination: SnapDestination,
 ) {
   if (destination.kind === 'window-edge' && destination.windowId === sourceWindowId) return true
   if (destination.kind === 'background' || destination.kind === 'rail') return false
@@ -2150,7 +2153,7 @@ function surfaceMoveRejected(
   return isNodeDescendant(layout, nodeId, destination.nodeId)
 }
 
-function surfaceCanUseDestination(surface: Surface, destination: DropDestination) {
+function surfaceCanUseDestination(surface: Surface, destination: SnapDestination) {
   return surface.capabilities.validPlacements.includes(destination.kind)
 }
 
@@ -2219,7 +2222,7 @@ function deleteSurfaceFromRail(layout: WorkspaceLayout, surfaceId: SurfaceId): W
 function recordStickyPlacement(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
-  destination: DropDestination,
+  destination: SnapDestination,
 ): WorkspaceLayout {
   const placement = placementFromDestination(destination)
   if (!placement) return layout
@@ -2230,7 +2233,7 @@ function recordStickyPlacement(
 function recordStickyPlacementsForWindow(
   layout: WorkspaceLayout,
   window: WorkbenchWindow,
-  destination: DropDestination,
+  destination: SnapDestination,
 ) {
   let nextLayout = layout
 
@@ -2241,7 +2244,7 @@ function recordStickyPlacementsForWindow(
   return nextLayout
 }
 
-function placementFromDestination(destination: DropDestination): SurfacePlacementHint | null {
+function placementFromDestination(destination: SnapDestination): SurfacePlacementHint | null {
   switch (destination.kind) {
     case 'parent-edge':
       return { edge: destination.edge, kind: 'parent-edge', nodeId: destination.nodeId }

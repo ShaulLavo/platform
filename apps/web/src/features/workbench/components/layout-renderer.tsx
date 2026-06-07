@@ -15,7 +15,7 @@ import {
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
-import { DropOverlay } from '@/features/workbench/components/drop-overlay'
+import { SnappedDragController } from '@/features/workbench/components/snapped-drag-controller'
 import { EditorSurfaceContext } from '@/features/workbench/providers/editor-surface-context'
 import {
   HiddenSurfaceHosts,
@@ -144,8 +144,8 @@ function LayoutRendererSurfaceArea({
       {maximizedWindowId ? null : (
         <ResizeOverlay resizeHandleRects={geometry.resizeHandleRects} onDispatch={onDispatch} />
       )}
-      <DropOverlay
-        dropZoneRects={geometry.dropZoneRects}
+      <SnappedDragController
+        snapDestinationRects={geometry.snapDestinationRects}
         surfaceIdForEditorTabId={editorSurfaceContext?.surfaceIdForEditorTabId}
         onDispatch={onDispatch}
         onPreview={setPreviewOperation}

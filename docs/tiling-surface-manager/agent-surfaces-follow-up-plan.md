@@ -42,9 +42,11 @@ policy.
 - Plans and tasks should open through recipe placement, not raw window IDs.
 - Agent-owned logs, terminals, patches, artifacts, and generated diffs should
   prefer the owner task or chat context before falling back to the active recipe.
-- User drag/drop of any agent-owned surface should create manual placement
-  memory through the shared placement policy, not through agent-specific layout
-  state.
+- User drag/repositioning of any agent-owned surface should create manual
+  placement memory through the shared placement policy, not through
+  agent-specific layout state. Agent surfaces follow the same sticky snapped
+  preview rule as every other surface: no visible drop zones and no unsnapped
+  floating drag state.
 
 ## Implementation Sequence
 

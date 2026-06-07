@@ -6,7 +6,7 @@ import {
   visibleWindowIdsInOrder,
 } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type {
-  DropDestination,
+  SnapDestination,
   LayoutNodeId,
   LayoutOperation,
   WorkspaceLayout,
@@ -111,13 +111,13 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
     case 'moveSurface':
       return {
         ...base,
-        dropTarget: dropTargetSummary(operation.destination),
+        snapDestination: snapDestinationSummary(operation.destination),
         surfaceId: compactLayoutId(operation.surfaceId),
       }
     case 'moveWindow':
       return {
         ...base,
-        dropTarget: dropTargetSummary(operation.destination),
+        snapDestination: snapDestinationSummary(operation.destination),
         windowId: compactLayoutId(operation.windowId),
       }
     case 'openSurface':
@@ -239,7 +239,7 @@ function stableStringify(value: unknown) {
   return JSON.stringify(value)
 }
 
-function dropTargetSummary(destination: DropDestination) {
+function snapDestinationSummary(destination: SnapDestination) {
   if (destination.kind === 'background') return { kind: destination.kind }
   if (destination.kind === 'rail') return { kind: destination.kind }
   if (destination.kind === 'recipe-slot') {

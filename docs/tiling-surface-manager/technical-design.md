@@ -36,18 +36,18 @@ These are the concrete examples from the research that shape this design:
 - React Mosaic gives the best TypeScript shape for n-ary split nodes, explicit
   tabs nodes, controlled state, pure drag transforms, normalization, and
   release-time persistence hooks.
-- React Layman gives a small readable reducer for the five-part drop grammar:
+- React Layman gives a small readable reducer for five structural destinations:
   top, bottom, left, right, and center. Its path-only addressing is useful for
   rendering but too fragile for durable Platform state.
 - GitButler shows how a code workspace can be workflow-native: unassigned
   changes, optional preview diff, horizontal stack lanes, folding, panning,
-  lane drop zones, and overlay sashes.
+  lane reordering, and overlay sashes.
 - T3Code shows that a single surface identity can have responsive
   presentations. Its diff panel is route/search-state driven on desktop and can
   become a mobile sheet without becoming a different product object.
 - Athas is the closest local custom editor reference: typed pane content,
   split/group tree, bottom root, MRU pane tracking, preview/pin state, explicit
-  drop zones, and resource-based workspace persistence.
+  structural move actions, and resource-based workspace persistence.
 - Zed separates editor-like `Item` contracts from dock `Panel` contracts and
   lets terminal panels host their own internal pane group. That is the right
   model for Platform surfaces that contain nested layout.
@@ -59,7 +59,7 @@ These are the concrete examples from the research that shape this design:
   placement, and custom layout providers map directly to Platform recipes.
 - i3 gives the cleanest structural tiling grammar: containers, split/tabbed/
   stacked presentations, parent focus, scratchpad, placeholder restore, and
-  center/edge/parent-edge drag behavior.
+  center/edge/parent-edge structural moves.
 - Zellij shows developer workspace depth: layout files, swap layouts, tiled
   panes, floating panes, stacked panes, plugin panes, session serialization,
   mouse resizing, and exact/logical-position restore matching.
@@ -159,7 +159,7 @@ docks."
 The rail remains separate because pinned, running, background, recipe, and
 status entries are not tiled layout nodes. Collapsed panes do stay in the split
 tree as windows with `mode: 'collapsed'`; they do not move into rail state.
-Drag previews and overlays also remain separate because they are transient
+Drag preview/reflow state also remains separate because it is transient
 renderer state, not committed workspace structure.
 
 Lanes, stacked groups, floating windows, and far-future spatial windows are not
@@ -233,15 +233,15 @@ Reference examples:
   Platform resize reducers need content-aware constraints, not only numeric min
   and max.
 - Zellij separates durable layout templates from runtime pane geometry. Platform
-  should keep durable layout pure and derive rects, solver results, hover
-  targets, and drag previews in renderer state.
+  should keep durable layout pure and derive rects, solver results, snap
+  destinations, and drag previews in renderer state.
 
 ## Renderer and Interaction Direction
 
 Build a custom renderer first unless a Dockview-backed spike can prove that the
 adapter boundary stays strict. The renderer should be heavily inspired by:
 
-- React Mosaic for n-ary split rendering, tab drop targets, resize throttling,
+- React Mosaic for n-ary split rendering, tab reordering, resize throttling,
   and normalization after transforms.
 - Platform's existing Chrome-style tab components for tab shape, active/inactive
   treatment, close affordances, title behavior, overflow feel, and tab-strip
@@ -249,32 +249,40 @@ adapter boundary stays strict. The renderer should be heavily inspired by:
 - Chromium's tab strip source for the specific in-strip slide/reorder behavior,
   vertical detach threshold, and drag-down progress animation before replacing
   the current editor-tab drag TODO.
-- React Layman for the simple center/edge drop grammar and small reducer-style
-  operation examples.
-- i3 for center, sibling edge, and parent-edge drag behavior.
-- GitButler for lane drop zones, panning, folded lane states, and overlay sash
+- React Layman for the simple center/edge structural grammar and small
+  reducer-style operation examples.
+- i3 for center, sibling edge, and parent-edge structural behavior.
+- GitButler for lane reordering, panning, folded lane states, and overlay sash
   layers that avoid overflow clipping.
 - Zellij for stacked panes and floating panes as future modes, especially the
   distinction between one flexible pane and collapsed one-line panes.
-- Athas for explicit drop zones, pane container rendering, bottom root behavior,
-  and MRU-driven focus fallback.
+- Athas for explicit pane move actions, pane container rendering, bottom root
+  behavior, and MRU-driven focus fallback.
 
 Do not make Dockview the source of truth. If Dockview is used later, it should
 receive already-decided window, surface, and placement state from Platform and
-return only renderer events such as resize, focus, and drop.
+return only renderer events such as resize, focus, and snap/reposition.
 
 Required renderer behaviors:
 
 - Render split children from derived rects, not stored DOM state.
-- Render one overlay layer for active drag/drop targets and resize handles.
+- Render resize handles in an overlay layer. Drag previews should be shown by
+  reflowing the actual window/tab geometry, not by drawing visible drop zones.
 - Use live drag previews that show the layout that will be committed.
 - Keep heavy surface content mounted or unmounted according to registry
   lifecycle, not according to incidental visibility.
 - Support window drag and individual surface/tab drag.
-- Enforce one snapped drag grammar for all draggable layout objects. Whole
-  windows, detached tabs, and surface moves should always preview a concrete
-  grid, merge, edge, recipe-slot, or background destination. A pointer drag must
-  not create a free-floating or popout state.
+- Enforce one sticky snapped drag grammar for all draggable layout objects.
+  Whole windows, tab-stack/window groups, detached tabs, and surface moves
+  should always preview a concrete grid, merge, edge, recipe-slot, or background
+  destination. A pointer drag must not create a free-floating or popout state.
+  The dragged object must not visually pop out of the layout; the surrounding
+  tiles reflow and the screen shows the exact release result.
+- Never render visible drop zones, target-zone overlays, placeholder drop slots,
+  or any drag affordance that is separate from the snapped layout preview.
+- The same no-target-chrome rule applies to non-layout app D&D such as file-tree
+  moves. Those flows can keep private target resolution but must not expose
+  separate drop-zone or drop-target presentation.
 - Use the existing Chrome-style tab presentation as the default tab-strip
   treatment for window surface stacks. A surface is still not a tab; this is the
   visual and interaction presentation for stacked surfaces.
@@ -283,13 +291,14 @@ Required renderer behaviors:
   and animate sibling tabs aside to show the release index. Do not show a
   floating drag image or pulled-out pane in this state.
 - When the pointer crosses the vertical detach threshold, convert the gesture
-  into a snapped workspace drag. The dragged surface should preview a concrete
-  destination as a new window, merge target, edge split, parent/root edge split,
-  recipe slot, or background target. It should not hover unsnapped between
-  destinations.
-- Distinguish center drop from edge drop, parent-edge drop, root-edge drop,
-  recipe-slot drop, and background drop. Future floating windows are a separate
-  command/policy mode, not a drag destination.
+  into a snapped workspace drag. The dragged surface becomes a new snapped
+  window in preview unless it is merging back into a tab stack, and it should
+  preview a concrete destination as a grid position, merge target, edge split,
+  parent/root edge split, recipe slot, or background target. It should not hover
+  unsnapped between destinations.
+- Resolve center, edge, parent-edge, root-edge, recipe-slot, and background as
+  internal snap destinations. They are not user-visible drop zones. Future
+  floating windows are a separate command/policy mode, not a drag destination.
 - Keep resize math constraint-aware. Adjacent percentage resizing is V1; a
   Zellij-style solver pass is a future escape hatch for fixed/stacked layouts.
 
@@ -561,9 +570,9 @@ Examples:
   editor/main panel. The nested tool-pane shape is ordinary split tree
   structure, not a sidebar model. Terminal is special only as default recipe
   policy: default terminal commands target the editor/main panel bottom, while
-  user drag/drop or explicit move commands create sticky manual placement in any
-  ordinary split. This preserves VS Code and Zed muscle memory while still using
-  Platform surfaces internally.
+  user drag/repositioning or explicit move commands create sticky manual
+  placement in any ordinary split. This preserves VS Code and Zed muscle memory
+  while still using Platform surfaces internally.
 - Recipe-managed left tool panes are derived from the ordered visible set, not
   from incremental append history. Opening, closing, collapsing, or expanding
   Files/Search/Git/Chat/Logs should repack the recipe-managed subset in stable
@@ -635,12 +644,12 @@ type LayoutOperation =
   | {
       type: 'splitWindow'
       windowId: WindowId
-      edge: DropEdge
+      edge: LayoutEdge
       surfaceId?: SurfaceId
       sourceWindowId?: WindowId
     }
-  | { type: 'moveSurface'; surfaceId: SurfaceId; destination: DropDestination }
-  | { type: 'moveWindow'; windowId: WindowId; destination: DropDestination }
+  | { type: 'moveSurface'; surfaceId: SurfaceId; destination: SnapDestination }
+  | { type: 'moveWindow'; windowId: WindowId; destination: SnapDestination }
   | { type: 'tabSurface'; surfaceId: SurfaceId; targetWindowId: WindowId; index?: number }
   | { type: 'reorderSurface'; windowId: WindowId; fromIndex: number; toIndex: number }
   | { type: 'resizeSplit'; splitId: LayoutNodeId; handleIndex: number; deltaPx: number }
@@ -655,27 +664,28 @@ type LayoutOperation =
   | { type: 'applyLayoutCommand'; command: WorkspaceLayoutCommand }
 ```
 
-Drop destinations should be explicit:
+Internal snap destinations should be explicit. They are hit-tested privately by
+the renderer and must never be rendered as visible drop zones:
 
 ```ts
-type DropDestination =
+type SnapDestination =
   | { kind: 'window-center'; windowId: WindowId; tabIndex?: number }
-  | { kind: 'window-edge'; windowId: WindowId; edge: DropEdge }
-  | { kind: 'parent-edge'; nodeId: LayoutNodeId; edge: DropEdge }
-  | { kind: 'root-edge'; edge: DropEdge }
+  | { kind: 'window-edge'; windowId: WindowId; edge: LayoutEdge }
+  | { kind: 'parent-edge'; nodeId: LayoutNodeId; edge: LayoutEdge }
+  | { kind: 'root-edge'; edge: LayoutEdge }
   | { kind: 'recipe-slot'; slot: RecipeSlotId }
   | { kind: 'background' }
 ```
 
 Reference grounding:
 
-- React Mosaic's `createDragToUpdates` covers tab-container drops, tab reorder,
-  split drops, path adjustment, and fallbacks when the destination disappears.
+- React Mosaic's `createDragToUpdates` covers tab-container moves, tab reorder,
+  split moves, path adjustment, and fallbacks when the destination disappears.
 - React Layman's `moveWindow`, `addWindow`, and `removeWindow` are the compact
   version of the same tree edits.
-- i3 adds parent-edge drop and focus-parent semantics, which are important for
-  deliberate structural editing.
-- Athas adds bottom-root behavior and explicit drop-zone actions.
+- i3 adds parent-edge movement and focus-parent semantics, which are important
+  for deliberate structural editing.
+- Athas adds bottom-root behavior and explicit pane move actions.
 - Raycast adds command-catalog execution, custom window frames, cycling, and
   saved layout commands. These should resolve to ordinary layout operations and
   recipe policy calls before commit.
@@ -753,8 +763,8 @@ Reference grounding:
   active ID repair, duplicate-surface prevention, orphan routing, and invariant
   checks.
 - `layout-selectors.ts`: ID-to-path resolution, rect derivation, focus
-  neighbors, MRU fallback, drop-target calculation, and capability-filtered
-  command targets.
+  neighbors, MRU fallback, snap-destination calculation, and
+  capability-filtered command targets.
 - `layout-persistence.ts`: serialization, migration, corrupt-state recovery,
   placeholder surfaces, and restore matching.
 - `layout-policies.ts`: classic, preview-adjacent, lane workflow, master/detail,
@@ -788,7 +798,7 @@ Current app facts:
   `sidebarVisible`, `workspacePanelTab`, and `gitPanelOpen`.
 - `apps/web/src/features/editor/state/editor-pane-state.ts` is the old editor
   layout model: split/leaf nodes, tab IDs, path-backed tabs, max split depth,
-  center/edge drop operations, resize sizes, normalization, and active pane.
+  center/edge snap operations, resize sizes, normalization, and active pane.
 - `apps/web/src/features/workbench/workbench-dockview.tsx` renders Dockview,
   but `apps/web/src/features/workbench/workbench-dockview-model.ts` derives
   Dockview panels from the old `EditorPaneLayout`. Dockview is currently a
@@ -961,12 +971,14 @@ Cleanup rule:
 
 The risky code is pure layout logic, so test it outside React first:
 
-- React Mosaic cases: tab-container drop, tab reorder, split insert, destination
-  path repair after source removal, and normalize after every transform.
+- React Mosaic cases: tab-container moves, tab reorder, split insert,
+  destination path repair after source removal, and normalize after every
+  transform.
 - React Layman cases: remove last window, merge same-axis splits, redistribute
-  percentages, center drop tabbing, and edge drop wrapping.
-- i3 cases: parent-edge drop, self/descendant move rejection, percent repair,
-  close fallback, focus parent/child, collapse/expand, and background restore.
+  percentages, center snap tabbing, and edge snap wrapping.
+- i3 cases: parent-edge movement, self/descendant move rejection, percent
+  repair, close fallback, focus parent/child, collapse/expand, and background
+  restore.
 - Athas cases: typed surface restore, bottom-root moves, MRU focus fallback,
   preview/pin state, and resource-key hydration.
 - T3Code cases: presentation switch from inline to sheet/drawer while preserving
@@ -983,13 +995,14 @@ The risky code is pure layout logic, so test it outside React first:
   application, cycling reset behavior, custom window command frame application,
   and saved layout command execution.
 
-Add renderer tests after the pure reducer is stable: drop overlay hit targets,
-keyboard focus movement, resize handles, drag preview rendering, collapsed
-accordion geometry, and surface mounting rules for running terminals.
+Add renderer tests after the pure reducer is stable: snap-destination
+resolution, no visible drop-zone rendering, keyboard focus movement, resize
+handles, sticky drag preview/reflow rendering, collapsed accordion geometry, and
+surface mounting rules for running terminals.
 
 ## Automation Rules
 
-- User drag/drop wins.
+- User drag/repositioning wins.
 - Manual placement becomes sticky only when it was created by an explicit user
   action and only while the concrete placement target still exists, is visible,
   accepts that surface type, and passes current constraints.
@@ -1013,10 +1026,10 @@ during the operation-library spike:
 
 - Exact surface capability schema.
 - Rect computation and what geometry is cached versus derived.
-- Drag preview data model.
+- Sticky snapped drag preview data model.
 - Placeholder serialization and restore matching details.
 - Recipe and placement policy API shape.
-- How much parent-edge and root-edge drop behavior is V1 versus follow-up.
+- How much parent-edge and root-edge snap behavior is V1 versus follow-up.
 - Exact command catalog schema and how it extends `CommandSpec` without
   coupling layout internals to command palette rendering.
 - Cycling state scope and timeout defaults.

@@ -15,7 +15,7 @@ import {
   type CommandCycleRule,
   type CustomWindowFrame,
   type CustomWindowManagementCommand,
-  type DropEdge,
+  type LayoutEdge,
   type HotkeyPresetId,
   type LayoutCommandId,
   type LayoutCommandSurfaceSlot,
@@ -141,7 +141,7 @@ const KNOWN_PLACEMENT_KINDS = new Set<SurfacePlacementKind>([
   'window-center',
   'window-edge',
 ])
-const KNOWN_DROP_EDGES = new Set<DropEdge>(['bottom', 'left', 'right', 'top'])
+const KNOWN_LAYOUT_EDGES = new Set<LayoutEdge>(['bottom', 'left', 'right', 'top'])
 const KNOWN_SPLIT_AXES = new Set<LayoutSplitAxis>(['horizontal', 'vertical'])
 const KNOWN_FRAME_ANCHORS = new Set<CustomWindowFrame['anchor']>([
   'bottom',
@@ -974,7 +974,7 @@ function restoredWindowCenterPlacement(
 function restoredWindowEdgePlacement(
   value: Record<string, unknown>,
 ): SurfacePlacementHint | undefined {
-  if (!isDropEdge(value.edge)) return undefined
+  if (!isLayoutEdge(value.edge)) return undefined
   if (!isString(value.windowId)) return undefined
 
   return {
@@ -987,7 +987,7 @@ function restoredWindowEdgePlacement(
 function restoredParentEdgePlacement(
   value: Record<string, unknown>,
 ): SurfacePlacementHint | undefined {
-  if (!isDropEdge(value.edge)) return undefined
+  if (!isLayoutEdge(value.edge)) return undefined
   if (!isString(value.nodeId)) return undefined
 
   return {
@@ -1000,7 +1000,7 @@ function restoredParentEdgePlacement(
 function restoredRootEdgePlacement(
   value: Record<string, unknown>,
 ): SurfacePlacementHint | undefined {
-  if (!isDropEdge(value.edge)) return undefined
+  if (!isLayoutEdge(value.edge)) return undefined
 
   return { edge: value.edge, kind: 'root-edge' }
 }
@@ -1195,8 +1195,8 @@ function isPlacementKind(value: unknown): value is SurfacePlacementKind {
   return isString(value) && KNOWN_PLACEMENT_KINDS.has(value as SurfacePlacementKind)
 }
 
-function isDropEdge(value: unknown): value is DropEdge {
-  return isString(value) && KNOWN_DROP_EDGES.has(value as DropEdge)
+function isLayoutEdge(value: unknown): value is LayoutEdge {
+  return isString(value) && KNOWN_LAYOUT_EDGES.has(value as LayoutEdge)
 }
 
 function isSplitAxis(value: unknown): value is LayoutSplitAxis {

@@ -70,7 +70,6 @@ import {
 function formatFlattenedSegments(
   row: FileTreeVisibleRow,
   renameInput: JSX.Element | null = null,
-  dragTargetFlattenedSegmentPath: string | null = null,
 ): JSX.Element | string {
   'use no memo'
   const segments = row.flattenedSegments
@@ -84,12 +83,7 @@ function formatFlattenedSegments(
         const isLast = index === segments.length - 1
         return (
           <Fragment key={segment.path}>
-            <span
-              data-item-flattened-subitem={segment.path}
-              data-item-flattened-subitem-drag-target={
-                dragTargetFlattenedSegmentPath === segment.path ? 'true' : undefined
-              }
-            >
+            <span data-item-flattened-subitem={segment.path}>
               {isLast && renameInput != null ? renameInput : <Truncate>{segment.name}</Truncate>}
             </span>
             {index < segments.length - 1 ? ' / ' : ''}
@@ -774,7 +768,6 @@ function renderFileTreeRowContent(
     actionLaneEnabled = false,
     customDecoration = null,
     decorationLaneEnabled = false,
-    dragTargetFlattenedSegmentPath = null,
     gitDecoration = null,
     gitLaneActive = false,
     renameInput = null,
@@ -783,7 +776,6 @@ function renderFileTreeRowContent(
     actionLaneEnabled?: boolean
     customDecoration?: FileTreeRowDecoration | null
     decorationLaneEnabled?: boolean
-    dragTargetFlattenedSegmentPath?: string | null
     gitDecoration?: FileTreeRowDecoration | null
     gitLaneActive?: boolean
     renameInput?: JSX.Element | null
@@ -814,7 +806,7 @@ function renderFileTreeRowContent(
       </div>
       <div data-item-section='content'>
         {row.isFlattened
-          ? formatFlattenedSegments(row, renameInput, dragTargetFlattenedSegmentPath)
+          ? formatFlattenedSegments(row, renameInput)
           : (renameInput ?? (
               <MiddleTruncate minimumLength={5} split='extension'>
                 {row.name}
@@ -856,7 +848,6 @@ type FileTreeRenderRowFrame = {
   visualFocusPath: string | null
   contextHoverPath: string | null
   draggedPathSet: ReadonlySet<string> | null
-  dragTarget: FileTreeDropTarget | null
   dragAndDropEnabled: boolean
   shouldSuppressContextMenu: () => boolean
   handleRowDragStart: (event: DragEvent, row: FileTreeVisibleRow, targetPath: string) => void
@@ -919,7 +910,6 @@ function renderStyledRow(
     visualFocusPath,
     contextHoverPath,
     draggedPathSet,
-    dragTarget,
     dragAndDropEnabled,
     shouldSuppressContextMenu,
     handleRowDragStart,
@@ -983,7 +973,6 @@ function renderStyledRow(
     actionLaneEnabled,
     customDecoration,
     decorationLaneEnabled,
-    dragTargetFlattenedSegmentPath: dragTarget?.flattenedSegmentPath ?? null,
     gitDecoration,
     gitLaneActive,
     renameInput,
@@ -1008,7 +997,6 @@ function renderStyledRow(
       containsGitChange,
       effectiveGitStatus,
       isContextHovered: contextHoverPath === targetPath,
-      isDragTarget: dragTarget?.kind === 'directory' && dragTarget.directoryPath === targetPath,
       isDragging: draggedPathSet?.has(targetPath) === true,
       isFocusRinged: row.isFocused && visualFocusPath === targetPath,
     },
@@ -1367,7 +1355,6 @@ export function FileTreeView({
     () => (dragSession == null ? null : new Set(dragSession.draggedPaths)),
     [dragSession],
   )
-  const dragTarget = dragSession?.target ?? null
   const draggedPrimaryPath = dragSession?.primaryPath ?? null
   const treeDomId = getFileTreeRootDomId(instanceId)
   const {
@@ -3316,7 +3303,6 @@ export function FileTreeView({
     directoriesWithGitChanges,
     dragAndDropEnabled,
     draggedPathSet,
-    dragTarget,
     gitLaneActive,
     gitStatusByPath,
     handleRowDragEnd,

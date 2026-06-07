@@ -1,7 +1,7 @@
 import { fallbackDocumentPathForSelection } from '@/features/editor/state/editor-fallback-path'
 import {
   createEditorTabRecord,
-  type EditorDropZone,
+  type EditorSnapZone,
   type EditorSplitDirection,
   type EditorSplitScope,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
@@ -39,8 +39,8 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-operations'
 import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type {
-  DropDestination,
-  DropEdge,
+  SnapDestination,
+  LayoutEdge,
   Surface,
   SurfaceId,
   WindowId,
@@ -63,7 +63,7 @@ export type EditorCommands = {
   moveTabToSplit: (
     tabId: string,
     paneId: string,
-    zone: Exclude<EditorDropZone, 'center'>,
+    zone: Exclude<EditorSnapZone, 'center'>,
     scope?: EditorSplitScope,
   ) => boolean
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
@@ -471,7 +471,7 @@ function moveTabToPane(
 function moveTabToSplit(
   tabId: string,
   paneId: string,
-  zone: Exclude<EditorDropZone, 'center'>,
+  zone: Exclude<EditorSnapZone, 'center'>,
   scope: EditorSplitScope | undefined,
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
@@ -793,15 +793,15 @@ function windowIdForSerializedEditorGroupId(
   return null
 }
 
-function edgeForEditorSplitDirection(direction: EditorSplitDirection): DropEdge {
+function edgeForEditorSplitDirection(direction: EditorSplitDirection): LayoutEdge {
   return direction === 'horizontal' ? 'right' : 'bottom'
 }
 
 function splitDestination(
   windowId: WindowId,
-  zone: Exclude<EditorDropZone, 'center'>,
+  zone: Exclude<EditorSnapZone, 'center'>,
   scope: EditorSplitScope | undefined,
-): DropDestination {
+): SnapDestination {
   if (scope === 'root') return { edge: zone, kind: 'root-edge' }
 
   return { edge: zone, kind: 'window-edge', windowId }

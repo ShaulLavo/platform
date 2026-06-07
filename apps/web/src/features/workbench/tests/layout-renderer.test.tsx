@@ -46,7 +46,7 @@ import {
   surfaceAreaLayoutEqual,
 } from '@/features/workbench/components/layout-renderer'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
-import { DropOverlay } from '@/features/workbench/components/drop-overlay'
+import { SnappedDragController } from '@/features/workbench/components/snapped-drag-controller'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
 import {
@@ -102,13 +102,14 @@ describe('LayoutRenderer', () => {
     expect(screen.getByLabelText('Expand app.ts')).toBeInTheDocument()
   })
 
-  it('renders split windows and resize/drop overlay layers', () => {
+  it('renders split windows and resize handles without target chrome', () => {
     const html = renderLayout(createClassicFirstRunWorkspaceLayout())
 
     expect(matchCount(html, 'data-window-id=')).toBeGreaterThanOrEqual(3)
     expect(html).toContain('data-workbench-wallpaper')
     expect(html).toContain('data-workbench-resize-overlay')
-    expect(html).toContain('data-workbench-drop-overlay')
+    expect(html).not.toContain('data-workbench-drop-overlay')
+    expect(html).not.toContain('data-drop-zone-id')
     expect(html).toContain('pointer-events-none absolute inset-0 z-30')
     expect(html).toContain('pointer-events-auto absolute')
   })
@@ -191,9 +192,10 @@ describe('LayoutRenderer', () => {
     expect(handle).not.toHaveStyle({ transform: 'translate3d(32px, 0, 0)' })
   })
 
-  it('dispatches snapped move operations from editor tab drops', () => {
+  it('dispatches snapped move operations from document editor tab drags without rendering targets', () => {
     const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
     const operations: LayoutOperation[] = []
+    const previews: (LayoutOperation | null)[] = []
     const destination = {
       edge: 'right' as const,
       kind: 'window-edge' as const,
@@ -201,12 +203,12 @@ describe('LayoutRenderer', () => {
     }
 
     render(
-      <DropOverlay
-        dropZoneRects={[
+      <SnappedDragController
+        snapDestinationRects={[
           {
             destination,
             edge: 'right',
-            id: overlayId('drop:test:right'),
+            id: overlayId('snap:test:right'),
             kind: 'window-edge',
             rect: { height: 240, width: 160, x: 480, y: 0 },
             windowId: destination.windowId,
@@ -214,20 +216,27 @@ describe('LayoutRenderer', () => {
         ]}
         surfaceIdForEditorTabId={(tabId) => (tabId === 'tab-app' ? file.id : null)}
         onDispatch={(operation) => operations.push(operation)}
+        onPreview={(operation) => previews.push(operation)}
       />,
     )
 
-    const dropZone = screen.getByRole('button', { name: 'Drop window-edge right' })
     const dataTransfer = editorTabDataTransfer({ path: '/repo/src/app.ts', tabId: 'tab-app' })
 
-    expect(dropZone).not.toHaveAttribute('data-accepting')
+    expect(screen.queryByRole('button')).toBeNull()
 
-    fireEditorTabDragEvent(dropZone, 'dragOver', dataTransfer)
+    const dragOver = fireDocumentEditorTabDragEvent('dragover', dataTransfer, {
+      clientX: 500,
+      clientY: 12,
+    })
     expect(dataTransfer.dropEffect).toBe('move')
-    expect(dropZone).toHaveAttribute('data-accepting', 'true')
-    expect(dropZone).toHaveAttribute('data-active', 'true')
+    expect(dragOver.defaultPrevented).toBe(true)
+    expect(lastItem(previews)).toEqual({
+      destination,
+      surfaceId: file.id,
+      type: 'moveSurface',
+    })
 
-    fireEditorTabDragEvent(dropZone, 'drop', dataTransfer)
+    fireDocumentEditorTabDragEvent('drop', dataTransfer, { clientX: 500, clientY: 12 })
 
     expect(operations).toEqual([
       {
@@ -236,8 +245,7 @@ describe('LayoutRenderer', () => {
         type: 'moveSurface',
       },
     ])
-    expect(dropZone).not.toHaveAttribute('data-accepting')
-    expect(dropZone).not.toHaveAttribute('data-active')
+    expect(lastItem(previews)).toBeNull()
   })
 
   it('dispatches snapped move operations from detached pointer tab drags', () => {
@@ -251,12 +259,12 @@ describe('LayoutRenderer', () => {
     }
 
     render(
-      <DropOverlay
-        dropZoneRects={[
+      <SnappedDragController
+        snapDestinationRects={[
           {
             destination,
             edge: 'right',
-            id: overlayId('drop:test:right'),
+            id: overlayId('snap:test:right'),
             kind: 'window-edge',
             rect: { height: 240, width: 160, x: 480, y: 0 },
             windowId: destination.windowId,
@@ -268,7 +276,7 @@ describe('LayoutRenderer', () => {
       />,
     )
 
-    const dropZone = screen.getByRole('button', { name: 'Drop window-edge right' })
+    expect(screen.queryByRole('button')).toBeNull()
 
     act(() => {
       dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DRAG_EVENT, {
@@ -282,8 +290,6 @@ describe('LayoutRenderer', () => {
       })
     })
 
-    expect(dropZone).toHaveAttribute('data-accepting', 'true')
-    expect(dropZone).toHaveAttribute('data-active', 'true')
     expect(operations).toEqual([])
     expect(lastItem(previews)).toEqual({
       destination,
@@ -324,12 +330,12 @@ describe('LayoutRenderer', () => {
     }
 
     render(
-      <DropOverlay
-        dropZoneRects={[
+      <SnappedDragController
+        snapDestinationRects={[
           {
             destination,
             edge: 'right',
-            id: overlayId('drop:test:right'),
+            id: overlayId('snap:test:right'),
             kind: 'window-edge',
             rect: { height: 240, width: 160, x: 480, y: 0 },
             windowId: destination.windowId,
@@ -340,7 +346,7 @@ describe('LayoutRenderer', () => {
       />,
     )
 
-    const dropZone = screen.getByRole('button', { name: 'Drop window-edge right' })
+    expect(screen.queryByRole('button')).toBeNull()
 
     act(() => {
       dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DRAG_EVENT, {
@@ -350,8 +356,6 @@ describe('LayoutRenderer', () => {
       })
     })
 
-    expect(dropZone).toHaveAttribute('data-accepting', 'true')
-    expect(dropZone).toHaveAttribute('data-active', 'true')
     expect(operations).toEqual([])
     expect(lastItem(previews)).toEqual({
       destination,
@@ -381,11 +385,11 @@ describe('LayoutRenderer', () => {
     const operations: LayoutOperation[] = []
 
     render(
-      <DropOverlay
-        dropZoneRects={[
+      <SnappedDragController
+        snapDestinationRects={[
           {
             destination: { kind: 'background' },
-            id: overlayId('drop:test:background'),
+            id: overlayId('snap:test:background'),
             kind: 'background',
             rect: { height: 120, width: 120, x: 200, y: 160 },
           },
@@ -395,10 +399,10 @@ describe('LayoutRenderer', () => {
       />,
     )
 
-    fireEditorTabDragEvent(
-      screen.getByRole('button', { name: 'Drop background' }),
+    fireDocumentEditorTabDragEvent(
       'drop',
       editorTabDataTransfer({ path: '/repo/src/missing.ts', tabId: 'tab-missing' }),
+      { clientX: 220, clientY: 180 },
     )
 
     expect(operations).toEqual([])
@@ -783,14 +787,22 @@ function editorTabDataTransfer({ path, tabId }: { path: string; tabId: string })
   } as unknown as DataTransfer
 }
 
-function fireEditorTabDragEvent(
-  element: Element,
-  type: 'dragOver' | 'drop',
+function fireDocumentEditorTabDragEvent(
+  type: 'dragover' | 'drop',
   dataTransfer: DataTransfer,
+  point: {
+    readonly clientX: number
+    readonly clientY: number
+  },
 ) {
-  const event = type === 'dragOver' ? createEvent.dragOver(element) : createEvent.drop(element)
+  const event =
+    type === 'dragover' ? createEvent.dragOver(document.body) : createEvent.drop(document.body)
+  Object.defineProperty(event, 'clientX', { value: point.clientX })
+  Object.defineProperty(event, 'clientY', { value: point.clientY })
   Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
-  fireEvent(element, event)
+  fireEvent(document.body, event)
+
+  return event
 }
 
 function dispatchEditorTabPointerDragEvent(

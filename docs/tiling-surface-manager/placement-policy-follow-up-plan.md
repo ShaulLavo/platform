@@ -2,7 +2,8 @@
 
 Date: 2026-06-07
 
-Status: follow-up plan after real drag/drop and basic tiling behavior are proven.
+Status: follow-up plan after real snapped drag/reflow and basic tiling behavior
+are proven.
 
 ## Scope
 
@@ -15,7 +16,8 @@ constraint handling.
 
 - Active recipe and recipe slot for the surface type.
 - Surface capabilities and valid placement kinds.
-- Manual placement memory created by user drag/drop or explicit move commands.
+- Manual placement memory created by user drag/repositioning or explicit move
+  commands.
 - Target existence and visibility for window, parent, and root destinations.
 - Current layout geometry, viewport size, collapsed state, and split sizes.
 - Surface-specific minimums for editor, tool, terminal, preview, and review

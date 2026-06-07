@@ -56,6 +56,19 @@ Older research notes below may mention the surveyed rail-as-collapsed-storage
 pattern. The product plan should follow this amendment and the canonical
 PRD/technical design.
 
+## Decision Amendment - 2026-06-07
+
+Platform will not use visible drop zones anywhere in the app. Dragging a window,
+tab stack, group, or individual tab must use sticky snapped layout preview: the
+actual tiled layout reflows to show the exact release result. A dragged object
+must never pop out into a floating preview, and a detached tab immediately
+previews as a snapped window unless it is merging back into a tab stack.
+
+Older research notes below may describe visible target regions in reference
+projects. Treat those as implementation references for structural transforms,
+not as Platform UX requirements. The canonical PRD and technical design require
+snap destinations resolved internally with no visible drop-zone chrome.
+
 ## Executive Readout
 
 The strongest direction is a product-owned tiling surface manager: close to
@@ -83,7 +96,7 @@ window IDs.
 The native window-manager references add the missing product grammar. Hyprland
 confirms layout policies/algorithms per workspace. i3 confirms that a tree of
 containers with split, stacked, tabbed, scratchpad, parent focus, and parent-edge
-drop behavior creates powerful structure from simple rules. Zellij confirms that
+move behavior creates powerful structure from simple rules. Zellij confirms that
 developer workspaces need panes, tabs, floating surfaces, stacked panes, layout
 recipes, session restore, plugin panes, and mouse resizing/moving under one
 workspace model.
@@ -97,8 +110,9 @@ window commands, custom single-window commands, recipes, layout commands, and
 hotkey assignment.
 
 The best local editor reference remains Athas because it already has a typed
-pane tree, broad content union, MRU focus, bottom root, custom drop zones, and
-resource-based persistence. The best product-feel reference remains GitButler:
+pane tree, broad content union, MRU focus, bottom root, custom structural move
+actions, and resource-based persistence. The best product-feel reference remains
+GitButler:
 its layout is workflow-native rather than a clone. The compatibility baseline
 from VS Code and Zed is still non-negotiable: editor groups, splits, preview
 tabs, pinned tabs, side docks, bottom terminals, keyboard navigation, focus/MRU
@@ -152,9 +166,10 @@ What not to copy blindly:
   registered surfaces first, then optionally integrate external URLs/files where
   a surface type supports them.
 - Raycast does not replace mouse drag-to-edge snapping with previews. Platform
-  still needs its planned mouse drag/drop, live layout preview, edge/center
-  drops, background drops, and resize handles because the workbench is an
-  interactive tiled surface editor, not only a global hotkey layer.
+  still needs its planned sticky snapped drag/repositioning, live layout
+  preview, edge/center snap destinations, background moves, and resize handles
+  because the workbench is an interactive tiled surface editor, not only a
+  global hotkey layer.
 - Pro-gating is not a design requirement for Platform. The relevant takeaway is
   capability shape, not pricing.
 
@@ -190,7 +205,7 @@ Important files and docs:
 
 What to take:
 
-- It has mature geometry, group/tab behavior, drag/drop, and layout
+- It has mature geometry, group/tab behavior, drag mechanics, and layout
   serialization.
 - Edge groups are useful for side/bottom tool surfaces that should not behave
   like ordinary editor tabs.
@@ -240,7 +255,7 @@ Product/API shape:
   mutability, and toolbar controls.
 - It supports rows, columns, resize separators, draggable windows, tabbed
   windows, draggable tabs, delete window, auto-arrange, and corner heuristics.
-- Drop placement is the familiar five-part grammar: `top`, `bottom`, `left`,
+- Placement is the familiar five-part grammar: `top`, `bottom`, `left`,
   `right`, and `center`.
 
 Implementation details to take:
@@ -260,15 +275,16 @@ undefined`.
 - `addWindow` either inserts into an existing same-direction split and rescales
   siblings, or wraps the target leaf in a new split at 50/50.
 - `moveWindow` removes the source, adjusts the destination path after removal,
-  then either merges tabs on center drop or adds a split on edge drop.
+  then either merges tabs on center move or adds a split on edge move.
 - Rendering measures the root via `ResizeObserver`, traverses the tree, and
   converts percentages into absolute `Position` values for windows, tabs,
   toolbars, separators, highlights, and the dragged window preview.
 - During whole-window drag, it temporarily renders siblings as if the dragged
   window were absent, rescales their percentages, then renders the dragged
   window separately.
-- Drag/drop is built on `react-dnd`; drop targets are rendered over each window
-  during a global drag, and the highlight is a single absolute overlay.
+- Drag mechanics are built on `react-dnd`; target regions are rendered over
+  each window during a global drag, and the highlight is a single absolute
+  overlay. Platform should not copy that visible target-region UI.
 - Separator resize uses document `mousemove`/`mouseup`, clamps based on
   neighbor geometry, and updates adjacent sibling percentages only.
 
@@ -286,7 +302,7 @@ Implementation concerns:
 Design implication:
 
 React Layman is a good small reference for reducer mechanics and edge/center
-drop semantics, but Platform needs a stronger state model: stable IDs,
+move semantics, but Platform needs a stronger state model: stable IDs,
 controlled store integration, typed surfaces, versioned persistence, and a
 separate registry for surface lifecycle.
 
@@ -294,7 +310,7 @@ separate registry for surface lifecycle.
 
 React Mosaic is the strongest TypeScript implementation reference. It is a
 tiling window manager with controlled/uncontrolled state, n-ary splits, explicit
-tabs nodes, drag/drop transforms, normalization, and serialization-friendly data
+tabs nodes, drag transforms, normalization, and serialization-friendly data
 structures.
 
 Important files:
@@ -321,7 +337,7 @@ Product/API shape:
 - `CreateNode` can be sync or async, so new surfaces can be created lazily.
 - Tab rendering is customizable through title, button, toolbar, and close-state
   renderers.
-- `mosaicId` scopes drag/drop so two Mosaic instances do not accidentally
+- `mosaicId` scopes drag state so two Mosaic instances do not accidentally
   accept each other's windows.
 
 Implementation details to take:
@@ -342,7 +358,7 @@ Implementation details to take:
 - `createRemoveUpdate` redistributes removed split percentage across remaining
   children and handles tab active-index repair.
 - `createDragToUpdates` is the critical transform:
-  - `tab-container` drop removes source, adjusts destination path, pushes the
+  - `tab-container` move removes source, adjusts destination path, pushes the
     source into destination tabs, and activates it.
   - `tab-reorder` inserts at the target index and updates active tab.
   - `split` removes source, adjusts destination path, chooses direction from
@@ -360,9 +376,9 @@ Implementation details to take:
   and calls `onRelease` on mouseup.
 - `MosaicWindow` defers hide on drag start because browser DnD requires the
   source element to exist at drag start.
-- `MosaicTabs` supports whole-tab-container drag, tab bar drop to add as tab,
-  tab index drop targets for reorder, and a content-area blocker so nested
-  window drop targets do not steal tab drops.
+- `MosaicTabs` supports whole-tab-container drag, tab bar insertion as tab,
+  tab index target regions for reorder, and a content-area blocker so nested
+  window target regions do not steal tab insertion.
 
 Implementation concerns:
 
@@ -388,7 +404,7 @@ capability checks, content-aware minimums, and app-owned persistence.
 GitButler is the strongest example of a fresh layout because it is not generic.
 Its workspace is shaped around branch-stack work: unassigned changes on the
 left, optional preview diff, horizontal stack lanes, folding, panning, and
-workflow-specific drop zones.
+workflow-specific insertion behavior.
 
 Important files:
 
@@ -413,8 +429,8 @@ What to take:
 - Horizontal lanes are powerful for git stacks, agents, tasks, review queues,
   and other workflows where "sequence of related work" matters more than
   "open file tabs."
-- Folded lanes, pagination, drag panning, and drop zones make dense workflows
-  manageable without resorting to nested tabs everywhere.
+- Folded lanes, pagination, drag panning, and insertion affordances make dense
+  workflows manageable without resorting to nested tabs everywhere.
 - Overlay sash layers avoid clipping resize handles inside overflow-hidden
   panes.
 - Resizers should persist preferred sizes only after intentional user resize,
@@ -470,7 +486,8 @@ losing identity.
 Athas is the strongest local reference for a custom editor layout manager. It
 uses a typed pane tree with split nodes and pane groups, a broad discriminated
 union of pane content types, a separate bottom root, MRU pane tracking,
-fullscreen overlays, explicit drop zones, and workspace-session persistence.
+fullscreen overlays, explicit structural move actions, and workspace-session
+persistence.
 
 Important files:
 
@@ -502,8 +519,8 @@ What to take:
   command routing.
 - Same-direction nested splits can be flattened for resize UX without changing
   the persisted logical tree.
-- Drop grammar should be explicit: center means add/move tab, edges mean split,
-  bottom can mean move into bottom root.
+- Snap/move grammar should be explicit: center means add/move tab, edges mean
+  split, bottom can mean move into bottom root.
 - Persistence should restore stable resources, not volatile buffer IDs. Athas
   serializes paths/session types, then maps them back to current buffers during
   hydration.
@@ -513,7 +530,7 @@ What to take:
 Design implication:
 
 If we build custom, start from an Athas-like tree and improve it with Dockview's
-drag/drop polish, GitButler's workflow lanes, and Hyprland-style policies.
+drag mechanics, GitButler's workflow lanes, and Hyprland-style policies.
 
 ### Zed
 
@@ -634,7 +651,8 @@ What to take:
 - Layout can be an algorithm, not just stored geometry.
 - Different workspaces can use different algorithms.
 - Placement policy matters: new surface as master, slave, before/after active,
-  drop at cursor, active-based split, cursor-based split, smart resizing.
+  cursor-targeted placement, active-based split, cursor-based split, smart
+  resizing.
 - "Floating" and "tiled" are different behavior classes under one manager.
 - Custom layout scripts can operate over a stable context: available area,
   targets, grid cells, rows, columns, and split helpers.
@@ -682,10 +700,10 @@ Product decisions to take:
   Platform should copy the concept, not the X11 matching: restore placeholders
   for surfaces whose editor buffer, terminal session, agent run, or remote
   resource is not ready yet.
-- Tiling drag has three drop meanings:
-  - center drop moves into target, or swaps if the swap modifier is active;
-  - edge drop inserts as a sibling, creating/changing a split if needed;
-  - thinner outer edge drop promotes to the parent edge, then performs a
+- Tiling drag has three structural meanings:
+  - center move inserts into target, or swaps if the swap modifier is active;
+  - edge move inserts as a sibling, creating/changing a split if needed;
+  - thinner outer edge move promotes to the parent edge, then performs a
     directional move.
 
 Implementation details to take:
@@ -725,11 +743,11 @@ Implementation details to take:
 Design implication:
 
 Platform should copy i3's structural clarity: explicit parent/child operations,
-normalized percentages, parent-edge drops, scratchpad/background state,
+normalized percentages, parent-edge moves, scratchpad/background state,
 collapsed in-place windows, focus parent, and placeholder restore. For the
-browser, those concepts should be presented visually through drop overlays, rail
-targets, breadcrumbs, accordion headers, and keyboard commands rather than
-requiring users to think in tree terms.
+browser, those concepts should be presented through sticky snapped layout
+reflow, rail targets, breadcrumbs, accordion headers, and keyboard commands
+rather than requiring users to think in tree terms.
 
 ### Zellij
 
@@ -867,7 +885,7 @@ GitButler:
 - `MainViewport` builds a three-way product split: left unassigned changes,
   optional preview diff, and main stack lanes.
 - `MultiStackView` manages horizontal stack lanes, folded stacks, panning,
-  pagination, drag reordering, and drop zones.
+  pagination, drag reordering, and insertion affordances.
 - `SashLayer` renders resize handles in an overlay to avoid overflow clipping.
 - `Resizer` supports persisted IDs, sync names/groups, passive mode, edge
   offsets, pointer-driven resize, and requestAnimationFrame scheduling.
@@ -899,8 +917,9 @@ Athas:
   fullscreen pane, preview/pin/lock state, reorder, resize, distribute,
   navigation, and session restore.
 - `pane-tree.ts` normalizes and flattens same-direction splits for resize UX.
-- Drop zones use a center/edge threshold grammar; bottom pane is a separate
-  root, not just another child of the center tree.
+- Target regions use a center/edge threshold grammar; bottom pane is a separate
+  root, not just another child of the center tree. Platform should adapt the
+  structural operations without showing visible target regions.
 - Workspace persistence stores path/session type and hydrates back to current
   buffers instead of persisting volatile buffer IDs.
 
@@ -939,7 +958,7 @@ Hyprland:
   scrolling, and monocle, with a separate floating algorithm.
 - Dwindle and master expose policy knobs: split choice, smart split/resizing,
   active/cursor split, master ratio, new-on-top/active, orientation, and
-  drop-at-cursor.
+  cursor-targeted placement.
 - Lua layout providers operate over a stable context with area, targets, grid
   cell, row, column, and split helpers.
 - This argues for Platform layout policies as data/code over stable primitives,
@@ -994,14 +1013,14 @@ Hyprland:
    serialization simpler. Explicit window/tab nodes keep container identity
    stable even when there is one tab.
 
-8. Drop grammar should be explicit.
+8. Snap/move grammar should be explicit.
 
-   Center drop, edge drop, parent/root-edge drop, recipe-slot drop, and
-   background drop should be distinct operations. Floating windows are a future
+   Center snap, edge snap, parent/root-edge snap, recipe-slot snap, and
+   background moves should be distinct operations. Floating windows are a future
    explicit command/policy mode, not a mouse drag destination. i3's
-   center/sibling/parent drop model is the clearest mouse grammar for structural
-   tiling; React Mosaic and React Layman provide the web implementation
-   patterns.
+   center/sibling/parent move model is the clearest mouse grammar for structural
+   tiling; React Mosaic and React Layman provide web implementation patterns for
+   the underlying transforms.
 
 9. Resizing must be constraint-aware.
 
@@ -1053,7 +1072,7 @@ permanent panels.
 
     Built-in window commands, custom single-window commands, and saved layout
     commands should execute the same pure layout operations and recipe policies
-    as drag/drop. Their definitions need aliases, enabled state, hotkeys,
+    as drag/repositioning. Their definitions need aliases, enabled state, hotkeys,
     preset membership, optional cycling rules, and payloads, but they should not
     become a second layout state model.
 
@@ -1184,7 +1203,7 @@ Recommended modules:
   repair size arrays, remove duplicate surfaces, route orphaned surfaces to
   background/default window, clamp active IDs, and preserve stable IDs.
 - `layout-selectors.ts`: resolve node/window paths from IDs, compute bounding
-  boxes, find focus neighbors, find drop targets, calculate MRU fallbacks.
+  boxes, find focus neighbors, find snap destinations, calculate MRU fallbacks.
 - `layout-persistence.ts`: versioned serialization, migration, restore matching,
   corrupt-state recovery, and placeholder surfaces.
 - `layout-policies.ts`: classic, active-adjacent, master/detail, lane workflow,
@@ -1195,7 +1214,7 @@ State rules:
 - Persistent operations target IDs, not paths. Paths are fine as render-time
   addresses and patch locations after resolving the latest tree.
 - Every structural operation should run `normalizeLayout` before committing.
-- Split nodes should be n-ary. If an edge drop targets a child of a same-
+- Split nodes should be n-ary. If an edge snap targets a child of a same-
   direction split, insert into that split instead of wrapping another split.
 - Window nodes should remain window nodes even with one surface. This preserves
   tabstrip, preview, active-window, and close/move semantics.
@@ -1203,7 +1222,7 @@ State rules:
   capabilities questions such as "can close", "can split", "can float", "can
   collapse", "requires mounted while not expanded", and "supports preview".
 - Drag state should be ephemeral. Do not persist hidden/drag-preview layout.
-  Commit only on drop, with preview geometry shown through derived state.
+  Commit only on release, with preview geometry shown through derived state.
 - Chrome-style tab drag should be researched from Chromium's tab strip source
   before implementation. Preserve in-strip slide/reorder by default, vertical
   pull-down detach only after a threshold, and no unsnapped floating tab or pane
@@ -1220,7 +1239,7 @@ State rules:
   stack.
 - Unit tests should cover pure tree operations heavily. The risky code is path
   adjustment, normalization, close fallback, duplicate prevention, restore
-  migration, and drop grammar.
+  migration, and snap/move grammar.
 
 Initial operation grammar:
 
@@ -1236,10 +1255,10 @@ Initial operation grammar:
 - `maximizeWindow(windowId)` and `restoreWindow(windowId)`
 - `applyRecipe(recipeId)`
 
-Drop destinations should be explicit:
+Internal snap destinations should be explicit:
 
 ```ts
-type DropDestination =
+type SnapDestination =
   | { kind: 'window-center'; windowId: WindowId; tabIndex?: number }
   | { kind: 'window-edge'; windowId: WindowId; edge: 'top' | 'right' | 'bottom' | 'left' }
   | { kind: 'parent-edge'; nodeId: LayoutNodeId; edge: 'top' | 'right' | 'bottom' | 'left' }
@@ -1259,7 +1278,7 @@ command/policy mode, not a pointer drag destination.
 Tiling surface manager:
 
 - Every opened artifact becomes a surface in a window.
-- Drag center to tab; drag edge to split; drag outer parent edge to promote.
+- Snap center to tab; snap edge to split; snap outer parent edge to promote.
 - Rail shows visible, collapsed, background, running, pinned, or available
   surfaces.
 - Search, diff, files, terminal, git, and agent can all be visible together.
@@ -1356,8 +1375,9 @@ These are compatibility behaviors, not necessarily the internal architecture.
 
 2. Mouse-first structural tiling.
 
-   Use i3-style center/edge/parent-edge drop zones with clear overlays. This
-   gives users real tree control without making them learn the tree.
+   Use i3-style center/edge/parent-edge snap destinations with sticky snapped
+   layout reflow. This gives users real tree control without making them learn
+   the tree and without showing visible drop zones.
 
 3. Workflow lanes.
 
@@ -1367,8 +1387,8 @@ These are compatibility behaviors, not necessarily the internal architecture.
 4. Layout policies.
 
    Provide internal policies such as classic split, master/detail, lane stack,
-   preview-adjacent, active-context, and cursor/drop-target. Later, expose them
-   as user/project settings.
+   preview-adjacent, active-context, and cursor-targeted placement. Later,
+   expose them as user/project settings.
 
 5. Rail as taskbar.
 
@@ -1434,7 +1454,8 @@ default stack.
 
    Is every tab group a window? Does a dock panel become a window when undocked?
    Can a workflow lane contain windows? The implementation should answer this
-   before coding because it determines IDs, MRU, close fallback, and drag/drop.
+   before coding because it determines IDs, MRU, close fallback, and
+   drag/repositioning.
 
 6. What belongs in the rail?
 
@@ -1521,10 +1542,11 @@ fewer nested boxes.
    git/agent review lanes with contextual diff preview. This will reveal whether
    the model is expressive enough.
 
-5. Prototype mouse drop grammar.
+5. Prototype sticky snapped drag grammar.
 
-   Implement visual drop overlays for center, edge, parent edge, root edge,
-   recipe slot, background, and floating. This is the fastest way to validate the
+   Implement center, edge, parent edge, root edge, recipe slot, and background
+   snap destinations using sticky layout reflow. Do not render visual target
+   overlays or floating drag previews. This is the fastest way to validate the
    "Hyprland in browser but easy with mouse" thesis.
 
 6. Define placement policies.
@@ -1548,11 +1570,11 @@ fewer nested boxes.
 
 The layout manager should be ours at the product-model layer. Dockview can help
 with mechanics, React Mosaic gives the best TypeScript tree/update reference,
-React Layman gives a compact reducer/drop reference, Athas gives the custom
+React Layman gives a compact reducer/move reference, Athas gives the custom
 typed pane model, Zed and VS Code define the compatibility baseline, T3Code
 shows route/responsive/session handling, GitButler shows workflow-native
 layout, Hyprland shows layout policies, i3 shows structural tiling and mouse
-drop grammar, and Zellij shows developer-workspace recipes, stacked/floating
+snap/move grammar, and Zellij shows developer-workspace recipes, stacked/floating
 panes, plugins, and session restore.
 
 The strongest vision is a typed, policy-driven tiling surface manager: classic

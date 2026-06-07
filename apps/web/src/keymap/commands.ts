@@ -77,7 +77,7 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-selectors'
 import type {
   BuiltInWindowManagementCommand,
-  DropEdge,
+  LayoutEdge,
   LayoutNodeId,
   LayoutOperation,
   Surface,
@@ -516,7 +516,7 @@ function activeWindowOperation(
   return null
 }
 
-function focusWindowOperation(layout: WorkspaceLayout, edge: DropEdge): LayoutOperation | null {
+function focusWindowOperation(layout: WorkspaceLayout, edge: LayoutEdge): LayoutOperation | null {
   const activeWindowId = layout.activeWindowId
   if (!activeWindowId) return null
 
@@ -535,7 +535,7 @@ function focusWindowOperation(layout: WorkspaceLayout, edge: DropEdge): LayoutOp
 
 function resizeActiveSplitOperation(
   layout: WorkspaceLayout,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): LayoutOperation | null {
   const target = activeSplitResizeTarget(layout, edge)
   if (!target) return null
@@ -548,7 +548,7 @@ function resizeActiveSplitOperation(
   }
 }
 
-function activeSplitResizeTarget(layout: WorkspaceLayout, edge: DropEdge) {
+function activeSplitResizeTarget(layout: WorkspaceLayout, edge: LayoutEdge) {
   const activeWindowId = layout.activeWindowId
   if (!activeWindowId) return null
 
@@ -572,7 +572,7 @@ function resizeTargetForChildIndex(
   splitId: LayoutNodeId,
   childIndex: number,
   childCount: number,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ) {
   const previousHandle = childIndex - 1
   if (edge === 'left' || edge === 'top') {
@@ -585,7 +585,7 @@ function resizeTargetForChildIndex(
   return { deltaPx: 80, handleIndex: childIndex, splitId }
 }
 
-function resizeEdgeMatchesSplitAxis(edge: DropEdge, axis: 'horizontal' | 'vertical') {
+function resizeEdgeMatchesSplitAxis(edge: LayoutEdge, axis: 'horizontal' | 'vertical') {
   if (axis === 'horizontal') return edge === 'left' || edge === 'right'
 
   return edge === 'top' || edge === 'bottom'
@@ -594,7 +594,7 @@ function resizeEdgeMatchesSplitAxis(edge: DropEdge, axis: 'horizontal' | 'vertic
 function tabActiveSurfaceOperation(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): LayoutOperation | null {
   const activeWindowId = layout.activeWindowId
   if (!activeWindowId) return null
@@ -835,42 +835,42 @@ const displayMovementCommandIds = new Set<BuiltInWindowManagementCommand['id']>(
   MOVE_ACTIVE_WINDOW_PREVIOUS_DISPLAY_COMMAND_ID,
 ])
 
-const splitWindowEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+const splitWindowEdgesByCommandId: Readonly<Partial<Record<string, LayoutEdge>>> = {
   [SPLIT_ACTIVE_WINDOW_BOTTOM_COMMAND_ID]: 'bottom',
   [SPLIT_ACTIVE_WINDOW_LEFT_COMMAND_ID]: 'left',
   [SPLIT_ACTIVE_WINDOW_RIGHT_COMMAND_ID]: 'right',
   [SPLIT_ACTIVE_WINDOW_TOP_COMMAND_ID]: 'top',
 }
 
-const moveSurfaceEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+const moveSurfaceEdgesByCommandId: Readonly<Partial<Record<string, LayoutEdge>>> = {
   [MOVE_ACTIVE_SURFACE_BOTTOM_COMMAND_ID]: 'bottom',
   [MOVE_ACTIVE_SURFACE_LEFT_COMMAND_ID]: 'left',
   [MOVE_ACTIVE_SURFACE_RIGHT_COMMAND_ID]: 'right',
   [MOVE_ACTIVE_SURFACE_TOP_COMMAND_ID]: 'top',
 }
 
-const moveWindowEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+const moveWindowEdgesByCommandId: Readonly<Partial<Record<string, LayoutEdge>>> = {
   [MOVE_ACTIVE_WINDOW_BOTTOM_COMMAND_ID]: 'bottom',
   [MOVE_ACTIVE_WINDOW_LEFT_COMMAND_ID]: 'left',
   [MOVE_ACTIVE_WINDOW_RIGHT_COMMAND_ID]: 'right',
   [MOVE_ACTIVE_WINDOW_TOP_COMMAND_ID]: 'top',
 }
 
-const focusWindowEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+const focusWindowEdgesByCommandId: Readonly<Partial<Record<string, LayoutEdge>>> = {
   [FOCUS_WINDOW_BOTTOM_COMMAND_ID]: 'bottom',
   [FOCUS_WINDOW_LEFT_COMMAND_ID]: 'left',
   [FOCUS_WINDOW_RIGHT_COMMAND_ID]: 'right',
   [FOCUS_WINDOW_TOP_COMMAND_ID]: 'top',
 }
 
-const resizeSplitEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+const resizeSplitEdgesByCommandId: Readonly<Partial<Record<string, LayoutEdge>>> = {
   [RESIZE_ACTIVE_SPLIT_BOTTOM_COMMAND_ID]: 'bottom',
   [RESIZE_ACTIVE_SPLIT_LEFT_COMMAND_ID]: 'left',
   [RESIZE_ACTIVE_SPLIT_RIGHT_COMMAND_ID]: 'right',
   [RESIZE_ACTIVE_SPLIT_TOP_COMMAND_ID]: 'top',
 }
 
-const tabSurfaceEdgesByCommandId: Readonly<Partial<Record<string, DropEdge>>> = {
+const tabSurfaceEdgesByCommandId: Readonly<Partial<Record<string, LayoutEdge>>> = {
   [TAB_ACTIVE_SURFACE_LEFT_COMMAND_ID]: 'left',
   [TAB_ACTIVE_SURFACE_RIGHT_COMMAND_ID]: 'right',
 }

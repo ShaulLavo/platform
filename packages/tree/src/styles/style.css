@@ -717,7 +717,7 @@
     gap: 2px;
   }
   [data-item-flattened-subitem]:hover,
-  [data-item-flattened-subitem-drag-target='true'] {
+  [data-item-flattened-subitem]:focus-visible {
     text-decoration: underline;
   }
 
@@ -1092,10 +1092,6 @@
   }
 
   /* Drag and drop */
-  [data-item-drag-target='true'] {
-    background-color: var(--trees-selected-bg);
-  }
-
   [data-item-dragging='true'] {
     opacity: 0.5;
   }

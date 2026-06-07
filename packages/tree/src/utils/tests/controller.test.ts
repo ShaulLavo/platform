@@ -132,7 +132,6 @@ describe('tree pure helpers', () => {
         effectiveGitStatus: 'modified',
         isContextHovered: false,
         isDragging: false,
-        isDragTarget: true,
         isFocusRinged: true,
       },
       targetPath: 'src/a.ts',
@@ -141,7 +140,7 @@ describe('tree pure helpers', () => {
     expect(attributes.role).toBe('treeitem')
     expect(attributes.tabIndex).toBe(0)
     expect(attributes['data-item-git-status']).toBe('modified')
-    expect(attributes['data-item-drag-target']).toBe(true)
+    expect(attributes['data-item-drag-target']).toBeUndefined()
     expect(attributes['data-item-parent-path']).toBe('src/')
   })
 })

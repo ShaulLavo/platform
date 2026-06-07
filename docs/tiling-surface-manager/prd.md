@@ -64,8 +64,8 @@ about workflow-shaped layouts:
 - Related work can use lane-like workflow surfaces when sequence, ownership, or
   review state matters.
 - Preview should often be contextual, transient, and close to the selected work.
-- Dense workflows should support folding, panning, clear drop zones, and
-  persistent preferred sizes.
+- Dense workflows should support folding, panning, snapped drag reflow, and
+  persistent preferred sizes without visible drop-zone chrome.
 - Git, review, search, and future agent work should feel like first-class
   workspaces, not tools bolted onto the side of an editor.
 - GitButler-style lanes are a workflow interaction pattern, not automatically a
@@ -110,13 +110,14 @@ about workflow-shaped layouts:
     diff-only side region.
 15. Window tab stacks should use the existing Chrome-style tab treatment by
     default, including close affordances, active/inactive shape, overflow
-    behavior, and drag/reorder feel where applicable. Tab drag should start as
-    an in-strip slide/reorder interaction: the dragged tab stays in the tab bar
-    while sibling tabs animate aside. Pulling the pointer down past a researched
-    Chrome-like detach threshold should then convert the drag into a snapped
-    workspace placement, not a free-floating tab in the air. This is a special
-    tab transition into the same snapped drag grammar used by windows and other
-    movable surfaces.
+    behavior, and drag/reorder feel where applicable. A whole window/tab stack
+    is draggable as one group, and an individual surface tab is draggable as one
+    surface. Tab drag starts as an in-strip slide/reorder interaction: the
+    dragged tab stays in the tab bar while sibling tabs animate aside. Pulling
+    the pointer down past a researched Chrome-like detach threshold converts
+    that single tab into a snapped workspace placement. The detached tab becomes
+    a window immediately in preview, snaps to the grid, and shows its final
+    release geometry before commit. It never floats as a loose tab or pane.
 16. Minimize means collapse the window in place into an accordion header.
     Collapse/expand is independent from whether the surface keeps running,
     unmounts UI, suspends, or disposes resources.
@@ -126,14 +127,19 @@ about workflow-shaped layouts:
     background, or protected by confirmation.
 18. Transient previews generally do not collapse. They are replaced, closed, or
     promoted into durable surfaces.
-19. Drag and drop should live-preview snapped layouts. As the user drags,
-    surrounding windows rearrange around the potential drop target; releasing
-    commits the previewed layout. All draggable things, including whole windows,
-    detached tabs, and single-surface moves, must always preview a concrete
-    snapped destination in the visible workspace grid or an explicit background
-    target. Dragging must not create a floating, popout, or otherwise unsnapped
-    intermediate state. Future floating windows may exist only through explicit
-    commands or policy, not by dragging a window or tab out of the grid.
+19. Drag and drop must use sticky snapped layout preview everywhere in the app.
+    There are no visible drop zones, drop-zone overlays, placeholder slots, or
+    "dragged out" floating previews anywhere. As the user drags, the dragged
+    object stays visually attached to the tiling system and all other tiles
+    rearrange around the snap destination. The screen should show the exact
+    end-result layout that will be committed on mouse release. This applies to
+    whole windows, groups of tab stacks/windows, individual tabs detached from a
+    stack, and single-surface moves. Dragging must not create a floating,
+    popout, or otherwise unsnapped intermediate state. Future floating windows
+    may exist only through explicit commands or policy, not by dragging a window
+    or tab out of the grid. Non-layout drag flows such as file-tree moves must
+    also avoid visible drop-zone or target chrome; they may resolve targets
+    privately, but the UI must not draw separate drop affordances.
 20. Keyboard control should follow classic tiling-window-manager grammar,
     inspired by Hyprland/Wayland and i3: directional focus, move, split, resize,
     maximize/restore, collapse/expand, parent focus, and recipe/workspace
@@ -151,7 +157,7 @@ about workflow-shaped layouts:
     semantics later.
 26. Git/review workflows should target GitButler-level clarity: contextual
     preview, visible state, dense workflow navigation, and workflow-specific
-    drop behavior where that model fits.
+    snap/reflow behavior where that model fits.
 27. GitButler-style lanes should live inside git/review workflow surfaces or
     recipe policies in V1. They should not be added as generic layout tree nodes
     unless a prototype proves they generalize beyond git/review/agent workflows.
@@ -192,7 +198,8 @@ about workflow-shaped layouts:
     that know how to open them, and bind the result to a global hotkey.
 38. Raycast is a reference for command search, hotkey management, presets, and
     layout-builder UX. It is not a reason to remove Platform's planned mouse
-    drag/drop tiling, live previews, edge drops, or background drops.
+    drag/repositioning, sticky snapped previews, edge/center snap destinations,
+    or explicit background moves.
 
 ## Initial Surface Set
 
@@ -235,8 +242,8 @@ about workflow-shaped layouts:
    glance?
 5. How much automatic placement should happen before it feels like the product
    is fighting the user?
-6. Which advanced mouse interactions, such as parent-edge drop, should wait
-   until after the basic edge/center drop model is proven?
+6. Which advanced mouse interactions, such as parent-edge or root-edge snapping,
+   should wait until after the basic edge/center snap model is proven?
 7. What exact tab detach threshold, drag-down progress animation, and sibling
    tab slide timing should be copied or adapted from Chromium's tab strip
    source?

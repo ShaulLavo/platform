@@ -12,7 +12,7 @@ import {
   mergeWindowManagementCommands,
 } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
 import type {
-  DropEdge,
+  LayoutEdge,
   LayoutCommandId,
   LayoutOperation,
   LayoutNode,
@@ -68,7 +68,7 @@ export type LayoutMruFallback = {
   readonly window: WorkbenchWindow | null
 }
 
-export type WindowNeighborIds = Partial<Record<DropEdge, WindowId>>
+export type WindowNeighborIds = Partial<Record<LayoutEdge, WindowId>>
 
 export type CapabilityFilteredCommandTargets = {
   readonly activeSurface: Surface | null
@@ -385,7 +385,7 @@ function selectMruWindowFallback(layout: WorkspaceLayout): WorkbenchWindow | nul
 function selectWindowNeighborId(
   layout: WorkspaceLayout,
   nodeId: LayoutNodeId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WindowId | undefined {
   const parentNodeId = findParentNodeId(layout, nodeId)
   if (!parentNodeId) return undefined
@@ -403,7 +403,7 @@ function siblingNeighborId(
   layout: WorkspaceLayout,
   parent: Extract<LayoutNode, { readonly kind: 'split' }>,
   nodeId: LayoutNodeId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WindowId | undefined {
   if (parent.axis !== edgeAxis(edge)) return undefined
 
@@ -418,7 +418,7 @@ function siblingNeighborId(
 function nearestWindowIdForEdge(
   layout: WorkspaceLayout,
   nodeId: LayoutNodeId,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ): WindowId | null {
   const node = layout.nodesById[nodeId]
   if (!node) return null
@@ -432,7 +432,7 @@ function nearestWindowIdForEdge(
 
 function nearestChildIdForEdge(
   node: Extract<LayoutNode, { readonly kind: 'split' }>,
-  edge: DropEdge,
+  edge: LayoutEdge,
 ) {
   if (node.axis !== edgeAxis(edge)) return node.childIds[0]
 
@@ -596,7 +596,7 @@ function isSurface(surface: Surface | undefined): surface is Surface {
   return Boolean(surface)
 }
 
-function oppositeEdge(edge: DropEdge): DropEdge {
+function oppositeEdge(edge: LayoutEdge): LayoutEdge {
   if (edge === 'left') return 'right'
   if (edge === 'right') return 'left'
   if (edge === 'top') return 'bottom'

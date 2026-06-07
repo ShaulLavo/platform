@@ -3,12 +3,20 @@
 Date: 2026-06-05
 Last audited: 2026-06-07
 
-Status: implementation completed and re-audited 2026-06-07. The production
-workbench now uses the Platform-owned `WorkspaceLayout` model for
+Status: implementation broadly completed and re-audited 2026-06-07, with the
+drag UX corrected on 2026-06-07 by replacing visible target chrome with private
+snap-destination hit testing and sticky snapped layout preview.
+The production workbench now uses the Platform-owned `WorkspaceLayout` model for
 file/diff/search/tool surfaces, terminal running surfaces, command palette
-operations, drag/drop overlay wiring, cache state, and workflow recipe metadata.
+operations, snapped drag/reflow wiring, cache state, and workflow recipe
+metadata.
 Per-phase status notes below are the source of truth for completed slices and
 intentional migration-scoped compatibility.
+
+Drag correction note, 2026-06-07: visible target chrome is not product
+accepted. The required UX is sticky snapped drag preview: the actual tiled
+layout reflows to the release result, and no visible drop zones appear anywhere
+in the app.
 
 This plan is grounded in `prd.md`, `technical-design.md`, `research-findings.md`,
 and the current app ownership points called out in the technical design.
@@ -27,8 +35,9 @@ Completed and verified for phases 1-7:
 - Surface registry covers V1 file editor, diff, search results, search preview,
   terminal, file navigator, git changes, diagnostics/problems, chat, logs, and
   placeholders.
-- Drop destinations include `window-center`, `window-edge`, `parent-edge`,
-  `root-edge`, `recipe-slot`, and `background`.
+- Internal snap destinations include `window-center`, `window-edge`,
+  `parent-edge`, `root-edge`, `recipe-slot`, and `background`. The workbench
+  hit-tests these privately and must not render visible drop zones.
 - Persistence writes `WorkspaceLayout`; old `editorPaneLayout` is accepted only
   as optional migration input and is no longer written to cache payloads.
 - Production file/diff rendering runs through workbench surfaces and the custom
@@ -87,7 +96,7 @@ The durable V1 source of truth is the normalized model:
 The rail stays separate because pinned, running, background, recipe, and status
 entries are not tiled layout nodes. Collapsed panes remain in the split tree as
 windows rendered as accordion headers; they do not move into rail state. Drag
-previews and overlays also stay separate because they are renderer interaction
+preview/reflow state also stays separate because it is renderer interaction
 state.
 
 No V1 top-level `leftDock`, `rightDock`, or `bottomDock` roots. Classic side and
@@ -114,12 +123,12 @@ This plan should be read as the execution path for `technical-design.md`.
 - Follow `technical-design.md` "State Direction" for Zustand and selector
   boundaries. Renderer phases should not introduce broad workspace rerenders.
 - Follow `technical-design.md` "Renderer and Interaction Direction" for the
-  custom renderer, overlay layer, Chrome-style tab presentation, and drag/drop
-  grammar.
+  custom renderer, Chrome-style tab presentation, sticky snapped drag/reflow,
+  and the no-visible-drop-zone rule.
 - Follow `technical-design.md` "Surface Registry Draft" for lifecycle,
   singleton, preview, running, and mount/unmount semantics.
 - Follow `technical-design.md` "Layout Operation API" for operation names,
-  drop destinations, and normalization requirements.
+  internal snap destinations, and normalization requirements.
 - Follow `technical-design.md` "Keyboard Control Direction" for command IDs,
   keymap integration, Hyprland/i3-style layout actions, and browser-safe
   binding choices.
@@ -198,7 +207,7 @@ React modules:
 - `tab-strip.tsx`
 - `surface-host.tsx`
 - `rail.tsx`
-- `drop-overlay.tsx`
+- `snapped-drag-controller.tsx` (private snap hit testing; renders no DOM)
 - `resize-overlay.tsx`
 - `hidden-surface-hosts.tsx`
 - surface renderers such as `file-editor-surface.tsx`,
@@ -395,7 +404,7 @@ Work:
   - `applyRecipe`;
   - `applyCustomWindowCommand`;
   - `applyLayoutCommand`.
-- Implement explicit `DropDestination` support:
+- Implement explicit internal snap-destination support:
   - `window-center`;
   - `window-edge`;
   - `parent-edge`;
@@ -419,12 +428,12 @@ Work:
 
 Tests:
 
-- React Mosaic-inspired tab container drops, tab reorder, split insert, and
+- React Mosaic-inspired tab container moves, tab reorder, split insert, and
   destination repair after source removal.
 - React Layman-inspired remove last window, same-axis merge, percentage
   redistribution, center tabbing, and edge wrapping.
-- i3-inspired parent-edge drop, self/descendant rejection, percent repair, close
-  fallback, and focus parent/child preparation.
+- i3-inspired parent-edge movement, self/descendant rejection, percent repair,
+  close fallback, and focus parent/child preparation.
 - Surface-specific tests for singleton duplicate prevention, preview promotion,
   and orphan transient cleanup.
 - Raycast-inspired custom window command application, saved layout command
@@ -463,8 +472,8 @@ Work:
   - root rect to split/window rect derivation;
   - visible gap handling;
   - resize handle rects;
-  - drop zone rects;
-  - root-edge and parent-edge hit zones.
+  - internal snap-destination hit rects;
+  - root-edge and parent-edge snap hit zones.
 - Implement policies:
   - `classicPolicy`;
   - `previewAdjacentPolicy`;
@@ -575,7 +584,8 @@ Work:
 - Implement `workbench-layout-renderer.tsx` and children.
 - Render split children from derived rects.
 - Render windows absolutely inside the layout root.
-- Render one overlay layer for resize handles and drop targets.
+- Render resize handles and snapped drag preview coordination without separate
+  target chrome.
 - Implement window frame, Chrome-style tab strip, active state,
   close/collapse/maximize controls, collapsed accordion-header rendering, and
   surface host. Reuse or adapt the
@@ -705,9 +715,9 @@ Work:
     visible set in stable recipe order whenever that set changes;
   - order packing rebuilds the left tool-pane group shape from recipe-managed
     tools instead of appending to stale incremental split history;
-  - user drag/drop or explicit move creates sticky manual placement and opts
-    that tool surface out of automatic order packing while its target remains
-    valid;
+  - user drag/repositioning or explicit move creates sticky manual placement and
+    opts that tool surface out of automatic order packing while its target
+    remains valid;
   - multiple tool surfaces may be visible on the left as separate nested
     windows/panes;
   - tabs where users expect them.
@@ -832,8 +842,8 @@ Default terminal commands route through `openSurface`/`restoreSurface` and the
 bottom recipe slot. The temporary Phase 8 bottom-pane operation/helper,
 detached hidden bottom-pane normalization branch, floating terminal overlay,
 terminal overlay height persistence, and terminal overlay tab strip ownership
-are removed. Manual terminal drag/drop still records sticky placement and opts
-out of recipe packing while the target remains valid.
+are removed. Manual terminal drag/repositioning still records sticky placement
+and opts out of recipe packing while the target remains valid.
 
 Goal: move terminal overlay tabs into the surface manager.
 
@@ -851,8 +861,9 @@ Work:
 - Place terminals through recipe policy. In the default recipe, default
   terminal commands target the bottom of the editor/main panel.
 - Distinguish default terminal placement from manual terminal placement:
-  default terminal commands target `bottom-tools`; user drag/drop or explicit
-  move commands create sticky manual placement while the target remains valid.
+  default terminal commands target `bottom-tools`; user drag/repositioning or
+  explicit move commands create sticky manual placement while the target remains
+  valid.
 - Preserve terminal transport, theme sync, and server session semantics.
 
 Delete in this phase:
@@ -1074,33 +1085,43 @@ Exit criteria:
 
 - Reload restores the surface workspace without old editor-pane cache fields.
 
-## Phase 13 - Drag, Drop, Live Preview, And Resize
+## Phase 13 - Sticky Snapped Drag, Live Preview, And Resize
 
-Status: completed and re-audited 2026-06-07. Editor tab dragging now uses a
-pointer-driven in-strip gesture for visible tabs, keeps the dragged tab inside
-the strip below the detach threshold, and hands detached pointer drags to
-snapped `DropOverlay` destinations. Whole-window header drags use the same
-overlay and commit snapped `moveWindow` operations. Snapped drag/drop previews
-derive an uncommitted layout from the current move operation, while drop/cancel
-clears preview state and release commits only the snapped operation. The mouse
-detach threshold follows Chromium `TabDragController::kVerticalDetachMagnetism`
-at 15 px; touch follows `kTouchVerticalDetachMagnetism` at 50 px; reattach
-hysteresis is 4 px; drag motion uses immediate pointer-follow transforms while
-sibling/drop slot movement uses existing Chrome-tab transition timing. Resize
-dragging previews handle movement locally at animation-frame cadence, commits
-split sizes only on release, and clamps editor, terminal, and tool panes with
-content-aware minimums.
+Status: corrected and re-audited 2026-06-07. The production workbench uses
+private snap-destination hit testing through `SnappedDragController`, keeps drag
+preview as uncommitted layout state, and renders no visible drop-zone or
+target-overlay chrome. Product acceptance still requires every future drag path
+to preserve sticky snapped preview: the actual tiled layout reflows to the exact
+release result, with no visible drop zones anywhere in the app.
 
-Goal: deliver the interaction model from the PRD.
+Existing useful pieces to keep: pointer-driven in-strip tab dragging, Chromium-
+derived detach thresholds, uncommitted preview layout state, commit-on-release,
+cancel-to-restore, content-aware resize constraints, release-only resize
+persistence, and private snap-destination hit testing. Existing pieces to block
+from returning: any visible drop target layer, drop-zone rect rendering,
+placeholder drop slot, or preview where a window/tab appears to pop out of the
+tiling grid.
+
+Goal: deliver the corrected interaction model from the PRD.
 
 Work:
 
-- Implement surface tab drag and whole-window drag.
-- Enforce the global snapped-drag invariant: every pointer-driven move previews
-  and commits a concrete snapped layout destination or explicit background
-  target. This applies to whole-window drag, detached tab drag, and individual
-  surface moves. Drag must never create a floating, popout, or unsnapped
-  intermediate state.
+- Implement surface tab drag, whole-window drag, and tab-stack/window-group
+  drag as separate gestures.
+- Enforce the global sticky snapped-drag invariant: every pointer-driven move
+  previews and commits a concrete snapped layout destination or explicit
+  background target. This applies to whole-window drag, tab-stack/window-group
+  drag, detached single-tab drag, and individual surface moves. Drag must never
+  create a floating, popout, or unsnapped intermediate state.
+- Remove visible drop zones everywhere. Do not render drop-zone overlays,
+  target-zone highlights, placeholder drop slots, or any separate drop target
+  affordance. The preview is the layout itself rearranging.
+- Apply the same no-target-chrome rule to non-layout drag flows in the app, such
+  as file-tree moves. They may keep private target resolution for semantics, but
+  must not draw separate drop affordances.
+- Keep dragged windows, tab stacks, and detached tabs visually attached to the
+  tiling system. Other tiles reflow around the snap destination so the user sees
+  the exact geometry that will exist on release.
 - Replace the current editor-tab drag TODO with a pointer-driven Chrome-like
   tab drag model:
   - below the detach threshold, the dragged surface/tab remains inside the tab
@@ -1112,15 +1133,19 @@ Work:
     `chrome/browser/ui/views/tabs/` and document the chosen threshold,
     hysteresis, and easing/progress behavior.
 - Convert a tab drag to workspace placement only after the pointer is pulled
-  down past the detach threshold. Once detached, the surface previews a snapped
-  destination as a new window, merge target, edge split, parent/root edge split,
-  recipe slot, or background target.
-  There should never be an unsnapped tab/pane hovering in the workspace.
+  down past the detach threshold. Once detached, the single tab immediately
+  becomes a snapped window in preview unless it is merging back into a tab
+  stack. It previews the final grid position, merge target, edge split,
+  parent/root edge split, recipe slot, or background target. There should never
+  be an unsnapped tab/pane hovering in the workspace.
+- Keep Chrome-style tabs sticky to their own strip while reordering. Pulling
+  out of the strip switches to the snapped workspace preview without passing
+  through a loose floating-tab state.
 - Implement live drag preview state separate from committed layout.
 - Batch pointer move preview updates with animation-frame cadence.
 - Commit previewed transform on release.
 - Cancel restores committed layout.
-- Support drop destinations:
+- Support internal snap destinations:
   - center tab/merge;
   - window edge split;
   - parent edge split;
@@ -1138,20 +1163,25 @@ Tests:
 
 - Whole-window drag always previews a snapped destination and never renders a
   floating or popout window preview.
+- Tab-stack/window-group drag moves the represented group together while the
+  rest of the layout reflows to the exact release result.
 - No pointer-drag path can create future floating-window state; floating windows
   must require an explicit command or policy when that mode exists.
+- No drag path renders visible drop zones, target-zone overlays, placeholder
+  drop slots, or separate drop-target chrome.
 - In-strip tab drag keeps the source tab in the strip, animates sibling slots,
   and commits only a reorder when the pointer never crosses the detach
   threshold.
 - Pulling a tab down past the detach threshold switches to snapped workspace
-  placement and exposes the exact destination that will be committed.
+  placement, makes the single tab a snapped window in preview, and exposes the
+  exact final geometry that will be committed.
 - Detach threshold tests cover the documented Chromium-derived threshold,
   hysteresis, and drag-down progress states.
 - Detached tab drag never renders an unsnapped floating tab/pane preview.
-- Drop target hit testing.
-- Center drop tabs.
-- Edge drop splits.
-- Parent/root edge drops either work or are explicitly feature-gated with model
+- Snap-destination hit testing.
+- Center snap merges/tabs.
+- Edge snap splits.
+- Parent/root edge snapping either works or is explicitly feature-gated with model
   support already tested.
 - Drag preview does not persist.
 - Resize clamps and normalizes percentages.
@@ -1159,20 +1189,24 @@ Tests:
 
 Exit criteria:
 
-- Drag/drop live-previewed snapped layouts are usable in production.
+- Sticky snapped drag previews are usable in production without visible drop
+  zones.
 - Whole-window dragging follows the same snapped-layout rule as tab detaching
-  and surface moves.
+  and surface moves, and tab-stack/window-group dragging is covered by the same
+  invariant.
 - Chrome-style tab dragging feels correct: reorder happens inside the strip by
   default, detach happens only after the vertical pull-down threshold, and every
-  detached preview is snapped to a concrete workspace destination.
+  detached preview is snapped to a concrete workspace destination as the exact
+  release result.
 
 ## Phase 14 - Accessibility, Visual Polish, And Performance
 
 Status: completed and re-audited 2026-06-07. The renderer packages the default
 wallpaper at `apps/web/public/workbench/wallpaper.png`; labels the application,
-rail, windows, tab strips, resize handles, and drop targets; and keeps active,
-collapsed, background, running, and transient preview states visible through the
-custom renderer. The performance audit confirmed selector equality boundaries for
+rail, windows, tab strips, resize handles, and snapped drag preview states; and
+keeps active, collapsed, background, running, and transient preview states
+visible through the custom renderer. The performance audit confirmed selector
+equality boundaries for
 the main surface area, window frames, rail, hidden hosts, and surface content.
 Browser coverage now includes a compact-width smoke test. The review also fixed
 the Chrome tab close-layout fallback so direct workbench closes and close bursts
@@ -1350,7 +1384,7 @@ The phases are intentionally larger than individual PRs. Suggested merge slices:
 11. Command palette, hotkey presets, custom window commands, and saved layout
     commands.
 12. Cache replacement.
-13. Drag/drop and resize.
+13. Sticky snapped drag/reflow and resize.
 14. Visual/accessibility/performance pass.
 15. Legacy deletion and dependency cleanup.
 16. First workflow recipe and follow-up plans.
@@ -1425,9 +1459,10 @@ Expected remaining scan hits:
 - Rail can focus, open, expand, collapse, and show status for
   durable/running/singleton surfaces.
 - Window tab stacks use the existing Chrome-style tab presentation.
-- Center and edge drag/drop work with live previews.
-- Parent/root edge support is either implemented or model-ready and explicitly
-  deferred from UI.
+- Window/group drag and tab drag use sticky snapped live previews with no
+  visible drop zones.
+- Center, edge, parent-edge, and root-edge snap destinations are either
+  implemented or model-ready and explicitly feature-gated from UI.
 - Resize is constraint-aware enough for editor, terminal, and nested tool-pane
   surfaces.
 - Search state is durable while heavy search UI can unmount when collapsed,

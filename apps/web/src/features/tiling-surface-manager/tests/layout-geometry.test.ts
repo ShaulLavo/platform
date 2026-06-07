@@ -11,10 +11,10 @@ import {
   createClassicFirstRunWorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
-  deriveDropZoneRects,
   deriveLayoutGeometry,
   deriveNodeRects,
   deriveResizeHandleRects,
+  deriveSnapDestinationRects,
   type LayoutRect,
 } from '@/features/tiling-surface-manager/engine/layout-geometry'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
@@ -88,29 +88,33 @@ describe('tiling surface layout geometry', () => {
     })
   })
 
-  it('derives background, recipe-slot, root, parent, window-edge, and center drop zones', () => {
+  it('derives background, recipe-slot, root, parent, window-edge, and center snap destinations', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const geometry = deriveLayoutGeometry(layout, rootRect(), {
-      dropEdgeRatio: 0.2,
-      minDropZonePx: 20,
+      minSnapDestinationPx: 20,
+      snapEdgeRatio: 0.2,
     })
-    const editorCenter = geometry.dropZoneRects.find(
-      (zone) => zone.kind === 'window-center' && zone.windowId === CLASSIC_EDITOR_WINDOW_ID,
+    const editorCenter = geometry.snapDestinationRects.find(
+      (destination) =>
+        destination.kind === 'window-center' && destination.windowId === CLASSIC_EDITOR_WINDOW_ID,
     )
-    const rootLeft = geometry.dropZoneRects.find(
-      (zone) => zone.kind === 'root-edge' && zone.edge === 'left',
+    const rootLeft = geometry.snapDestinationRects.find(
+      (destination) => destination.kind === 'root-edge' && destination.edge === 'left',
     )
-    const parentEditorLeft = geometry.dropZoneRects.find(
-      (zone) =>
-        zone.kind === 'parent-edge' &&
-        zone.edge === 'left' &&
-        zone.destination.kind === 'parent-edge' &&
-        zone.destination.nodeId === CLASSIC_EDITOR_NODE_ID,
+    const parentEditorLeft = geometry.snapDestinationRects.find(
+      (destination) =>
+        destination.kind === 'parent-edge' &&
+        destination.edge === 'left' &&
+        destination.destination.kind === 'parent-edge' &&
+        destination.destination.nodeId === CLASSIC_EDITOR_NODE_ID,
     )
-    const background = geometry.dropZoneRects.find((zone) => zone.kind === 'background')
-    const editorRecipeSlot = geometry.dropZoneRects.find(
-      (zone) =>
-        zone.destination.kind === 'recipe-slot' && zone.destination.slot === 'editor-center',
+    const background = geometry.snapDestinationRects.find(
+      (destination) => destination.kind === 'background',
+    )
+    const editorRecipeSlot = geometry.snapDestinationRects.find(
+      (destination) =>
+        destination.destination.kind === 'recipe-slot' &&
+        destination.destination.slot === 'editor-center',
     )
 
     expect(background?.destination.kind).toBe('background')
@@ -123,7 +127,7 @@ describe('tiling surface layout geometry', () => {
   it('exposes the same derivations through the full geometry helper', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const geometry = deriveLayoutGeometry(layout, rootRect())
-    const dropZones = deriveDropZoneRects(
+    const snapDestinationRects = deriveSnapDestinationRects(
       layout,
       rootRect(),
       geometry.nodeRectsById,
@@ -132,7 +136,7 @@ describe('tiling surface layout geometry', () => {
 
     expect(geometry.windowRectsById[CLASSIC_EDITOR_WINDOW_ID]?.nodeId).toBe(CLASSIC_EDITOR_NODE_ID)
     expect(geometry.nodeRectsById[CLASSIC_ROOT_NODE_ID]).toEqual(rootRect())
-    expect(dropZones.length).toBe(geometry.dropZoneRects.length)
+    expect(snapDestinationRects.length).toBe(geometry.snapDestinationRects.length)
   })
 })
 

@@ -55,8 +55,10 @@ not a model primitive.
 - Opening, closing, collapsing, or expanding a recipe-managed tool recomputes
   the left tool-pane group from the ordered visible set. It must not preserve
   accidental incremental split nesting that keeps shrinking older panes.
-- User drag/drop or explicit move creates sticky manual placement and opts that
-  tool surface out of automatic order packing while the target remains valid.
+- User drag/repositioning or explicit move creates sticky manual placement and
+  opts that tool surface out of automatic order packing while the target remains
+  valid. Dragging uses the global sticky snapped preview: no visible drop zones
+  are shown, and the current layout reflows to the exact release result.
 - The same split-tree primitives must support:
   - three tool windows stacked on the left;
   - one main item taking the full right side;
@@ -77,7 +79,7 @@ placement.
 - Clicking a collapsed tool surface expands and focuses it.
 - Clicking Terminal toggles the whole bottom tool pane under the editor/main
   panel, not only the Terminal tab.
-- Terminal is special only as default recipe policy. Dragging a terminal to the
+- Terminal is special only as default recipe policy. Snapping a terminal to the
   left, right, or another split creates sticky manual placement; rail/default
   terminal actions should not force that terminal back to the bottom until the
   user resets the recipe or opens a new default bottom-pane terminal.

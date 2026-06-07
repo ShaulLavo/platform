@@ -158,7 +158,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(moved)
   })
 
-  it('supports parent-edge drops and rejects self or descendant window moves', () => {
+  it('supports parent-edge snaps and rejects self or descendant window moves', () => {
     const file = createFileEditorSurface({ path: '/repo/src/parent-edge.ts' })
     const split = splitFileFromEditor(createClassicFirstRunWorkspaceLayout(), file)
     const fileWindowId = mustFindWindowId(split, file.id)
@@ -195,7 +195,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(expanded)
   })
 
-  it('moves surfaces to background and restores recipe-slot drops through concrete placement', () => {
+  it('moves surfaces to background and restores recipe-slot snaps through concrete placement', () => {
     const git = createGitChangesSurface()
     const opened = openSurface(createClassicFirstRunWorkspaceLayout(), git)
     const backgrounded = moveSurface(opened, git.id, { kind: 'background' })

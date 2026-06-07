@@ -58,18 +58,18 @@ export type SurfacePlacementKind =
   | 'window-center'
   | 'window-edge'
 
-export type DropEdge = 'bottom' | 'left' | 'right' | 'top'
+export type LayoutEdge = 'bottom' | 'left' | 'right' | 'top'
 export type LayoutSplitAxis = 'horizontal' | 'vertical'
 
 export type SurfacePlacementHint =
   | { readonly kind: 'active-window'; readonly tabIndex?: number }
   | { readonly kind: 'background' }
-  | { readonly kind: 'parent-edge'; readonly edge: DropEdge; readonly nodeId: LayoutNodeId }
+  | { readonly kind: 'parent-edge'; readonly edge: LayoutEdge; readonly nodeId: LayoutNodeId }
   | { readonly kind: 'rail' }
   | { readonly kind: 'recipe-slot'; readonly slot: WorkspaceRecipeSlot }
-  | { readonly kind: 'root-edge'; readonly edge: DropEdge }
+  | { readonly kind: 'root-edge'; readonly edge: LayoutEdge }
   | { readonly kind: 'window-center'; readonly tabIndex?: number; readonly windowId: WindowId }
-  | { readonly kind: 'window-edge'; readonly edge: DropEdge; readonly windowId: WindowId }
+  | { readonly kind: 'window-edge'; readonly edge: LayoutEdge; readonly windowId: WindowId }
 
 export type SurfaceCapabilities = {
   readonly canCollapse: boolean
@@ -256,19 +256,19 @@ export type LayoutOperation =
       readonly type: 'restoreSurface'
     }
   | {
-      readonly edge: DropEdge
+      readonly edge: LayoutEdge
       readonly sourceWindowId?: WindowId
       readonly surfaceId?: SurfaceId
       readonly type: 'splitWindow'
       readonly windowId: WindowId
     }
   | {
-      readonly destination: DropDestination
+      readonly destination: SnapDestination
       readonly surfaceId: SurfaceId
       readonly type: 'moveSurface'
     }
   | {
-      readonly destination: DropDestination
+      readonly destination: SnapDestination
       readonly type: 'moveWindow'
       readonly windowId: WindowId
     }
@@ -308,14 +308,14 @@ export type LayoutOperation =
     }
   | { readonly command: WorkspaceLayoutCommand; readonly type: 'applyLayoutCommand' }
 
-export type DropDestination =
+export type SnapDestination =
   | { readonly kind: 'background' }
-  | { readonly kind: 'parent-edge'; readonly edge: DropEdge; readonly nodeId: LayoutNodeId }
+  | { readonly kind: 'parent-edge'; readonly edge: LayoutEdge; readonly nodeId: LayoutNodeId }
   | { readonly kind: 'rail' }
   | { readonly kind: 'recipe-slot'; readonly slot: WorkspaceRecipeSlot }
-  | { readonly kind: 'root-edge'; readonly edge: DropEdge }
+  | { readonly kind: 'root-edge'; readonly edge: LayoutEdge }
   | { readonly kind: 'window-center'; readonly tabIndex?: number; readonly windowId: WindowId }
-  | { readonly kind: 'window-edge'; readonly edge: DropEdge; readonly windowId: WindowId }
+  | { readonly kind: 'window-edge'; readonly edge: LayoutEdge; readonly windowId: WindowId }
 
 export type WorkspaceLayout = {
   readonly activeRecipeId: RecipeId
