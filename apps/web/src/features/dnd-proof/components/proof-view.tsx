@@ -1,5 +1,6 @@
 import { PointerActivationConstraints } from '@dnd-kit/dom'
 import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
+import { useState } from 'react'
 
 import { ProofEventLog } from '@/features/dnd-proof/components/proof-event-log'
 import { ProofResizeHandles } from '@/features/dnd-proof/components/proof-resize-handles'
@@ -45,6 +46,7 @@ const GEOMETRY_OPTIONS: LayoutGeometryOptions = {
 }
 
 export function DndProofView() {
+  const [dropZonesVisible, setDropZonesVisible] = useState(true)
   const {
     activateSurface,
     activeDrag,
@@ -92,12 +94,14 @@ export function DndProofView() {
     >
       <main className='bg-background text-foreground flex h-svh flex-col overflow-hidden'>
         <ProofToolbar
+          dropZonesVisible={dropZonesVisible}
           surfaceCount={surfaceCount}
           windowCount={visibleWindowIds.length}
           onAddTab={() => addTab()}
           onAddWindow={addWindow}
           onReset={reset}
           onScenario={setScenario}
+          onToggleDropZones={() => setDropZonesVisible((visible) => !visible)}
         />
         <div className='grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_18rem]'>
           <section
@@ -137,7 +141,11 @@ export function DndProofView() {
             })}
             <ProofResizeHandles resizeHandleRects={geometry.resizeHandleRects} />
             {snapDestinations.map((snapDestination) => (
-              <ProofSnapDestination key={snapDestination.id} snapDestination={snapDestination} />
+              <ProofSnapDestination
+                key={snapDestination.id}
+                snapDestination={snapDestination}
+                visible={dropZonesVisible}
+              />
             ))}
           </section>
           <ProofEventLog events={model.events} />

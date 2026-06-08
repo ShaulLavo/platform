@@ -12,8 +12,10 @@ import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofSnapDestination({
   snapDestination,
+  visible,
 }: {
   readonly snapDestination: ProofSnapDestinationRect
+  readonly visible: boolean
 }) {
   const data: DndProofDropData = {
     destination: snapDestination.destination,
@@ -28,8 +30,10 @@ export function ProofSnapDestination({
   return (
     <div
       className={cn(
-        'pointer-events-none absolute z-30 grid place-items-center rounded-md border border-dashed border-info/30 bg-info/5 text-[0.65rem] font-medium text-info opacity-65 transition-[opacity,background-color,border-color]',
-        isDropTarget && 'border-info bg-info/20 opacity-100 ring-2 ring-info',
+        'pointer-events-none absolute z-30 grid place-items-center rounded-md text-[0.65rem] font-medium transition-[opacity,background-color,border-color]',
+        visible && 'border border-dashed border-info/30 bg-info/5 text-info opacity-65',
+        !visible && 'opacity-0',
+        visible && isDropTarget && 'border-info bg-info/20 opacity-100 ring-2 ring-info',
       )}
       data-proof-snap-destination={snapDestination.id}
       data-proof-snap-drop-data={JSON.stringify(data)}
