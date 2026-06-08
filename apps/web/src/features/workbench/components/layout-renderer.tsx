@@ -1,4 +1,4 @@
-import { use, useState } from 'react'
+import { useState } from 'react'
 import { cn } from '@workspace/ui/lib/utils'
 
 import {
@@ -18,12 +18,11 @@ import {
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
-import { SnappedDragController } from '@/features/workbench/components/snapped-drag-controller'
-import { EditorSurfaceContext } from '@/features/workbench/providers/editor-surface-context'
 import {
   HiddenSurfaceHosts,
   selectHiddenMountedSurfaces,
 } from '@/features/workbench/components/hidden-surface-hosts'
+import { WorkbenchDragDropProvider } from '@/features/workbench/providers/drag-drop-provider'
 import { Rail } from '@/features/workbench/components/rail'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 import { SplitNode } from '@/features/workbench/components/split-node'
@@ -111,13 +110,13 @@ function LayoutRendererSurfaceArea({
   const surfaceRect = insetLayoutRect(rootRect, geometryOptions.gapPx ?? 0)
   const geometry = deriveLayoutGeometry(layout, surfaceRect, geometryOptions)
   const previewLayout = previewLayoutForOperation(layout, previewOperation)
+  const previewLayoutSnapshot = previewLayout === layout ? null : previewLayout
   const previewGeometry =
     previewLayout === layout
       ? geometry
       : deriveLayoutGeometry(previewLayout, surfaceRect, geometryOptions)
   const tree = selectMaterializedLayoutTree(previewLayout)
   const maximizedWindowId = fullSurfaceLayoutWindowId(previewLayout.windowsById)
-  const editorSurfaceContext = use(EditorSurfaceContext)
 
   return (
     <div
@@ -125,29 +124,31 @@ function LayoutRendererSurfaceArea({
       data-workbench-surface-area=''
       ref={rootRef}
     >
-      {tree ? (
-        <SplitNode
-          maximizedRect={surfaceRect}
-          maximizedWindowId={maximizedWindowId}
-          node={tree}
-          surfaceRenderers={surfaceRenderers}
-          windowRectsById={previewGeometry.windowRectsById}
-          onDispatch={onDispatch}
-        />
-      ) : (
-        <div className='text-muted-foreground grid h-full place-items-center text-sm'>
-          No surfaces
-        </div>
-      )}
-      {maximizedWindowId ? null : (
-        <ResizeOverlay resizeHandleRects={geometry.resizeHandleRects} onDispatch={onDispatch} />
-      )}
-      <SnappedDragController
+      <WorkbenchDragDropProvider
+        coordinateRootRef={rootRef}
         snapDestinationRects={geometry.snapDestinationRects}
-        surfaceIdForEditorTabId={editorSurfaceContext?.surfaceIdForEditorTabId}
         onDispatch={onDispatch}
         onPreview={setPreviewOperation}
-      />
+      >
+        {tree ? (
+          <SplitNode
+            maximizedRect={surfaceRect}
+            maximizedWindowId={maximizedWindowId}
+            node={tree}
+            previewLayout={previewLayoutSnapshot}
+            surfaceRenderers={surfaceRenderers}
+            windowRectsById={previewGeometry.windowRectsById}
+            onDispatch={onDispatch}
+          />
+        ) : (
+          <div className='text-muted-foreground grid h-full place-items-center text-sm'>
+            No surfaces
+          </div>
+        )}
+        {maximizedWindowId ? null : (
+          <ResizeOverlay resizeHandleRects={geometry.resizeHandleRects} onDispatch={onDispatch} />
+        )}
+      </WorkbenchDragDropProvider>
     </div>
   )
 }
@@ -161,6 +162,7 @@ function previewLayoutForOperation(layout: WorkspaceLayout, operation: LayoutOpe
 
 function previewableLayoutOperation(operation: LayoutOperation) {
   if (operation.type === 'moveSurface') return true
+  if (operation.type === 'reorderSurface') return true
 
   return operation.type === 'moveWindow'
 }

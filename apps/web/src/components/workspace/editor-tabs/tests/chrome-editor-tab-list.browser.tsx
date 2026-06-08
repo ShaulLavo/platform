@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useRef, useState } from 'react'
 
 import { ChromeEditorTabList } from '@/components/workspace/editor-tabs/components/chrome-editor-tab-list'
-import type { EditorTabDragController } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import {
   primeChromeVisualTabsCache,
   useChromeVisualTabs,
@@ -22,6 +21,14 @@ import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-col
 import { iconForEntry } from '@/lib/file-icons'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
+import {
+  WORKBENCH_TAB_DRAG_TYPE,
+  type WorkbenchTabDragData,
+} from '@/features/workbench/utils/drag-drop-data'
+import {
+  fileEditorSurfaceId,
+  workbenchWindowId,
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 
 const THEME_STORAGE_KEY = 'platform-chrome-tab-list-browser-theme'
 
@@ -263,10 +270,10 @@ function TabHarness({
         aria-label={`Direct close ${closeName}`}
         onClick={() => closeTab(closeName)}
       />
-      <div ref={tabListRef} role='tablist'>
+      <div data-workbench-tab-strip-id='test-strip' ref={tabListRef} role='tablist'>
         <ChromeEditorTabList
           closeLayoutCacheKey={cacheKeyRef.current}
-          drag={idleDragController()}
+          dndByTabId={tabDndById(tabs)}
           selectedTabRef={selectedTabRef}
           tabListRef={tabListRef}
           tabs={visualTabs}
@@ -300,19 +307,22 @@ function sameEditorTab(left: EditorTabModel, right: EditorTabModel) {
   return left.id === right.id && left.active === right.active
 }
 
-function idleDragController(): EditorTabDragController {
+function tabDndById(tabs: readonly EditorTabModel[]) {
+  return new Map(tabs.map((tab, index) => [tab.id, tabDndData(tab, index)]))
+}
+
+function tabDndData(tab: EditorTabModel, index: number): WorkbenchTabDragData {
   return {
-    draggedTabId: null,
-    state: null,
-    onDragEnd: () => undefined,
-    onDragLeave: () => undefined,
-    onDragOver: () => undefined,
-    onDragStart: () => undefined,
-    onDrop: () => undefined,
-    onPointerCancel: () => undefined,
-    onPointerDown: () => undefined,
-    onPointerMove: () => undefined,
-    onPointerUp: () => undefined,
+    capabilities: {
+      canDetach: true,
+      canDrag: true,
+      canReorder: true,
+    },
+    dragType: WORKBENCH_TAB_DRAG_TYPE,
+    sourceIndex: index,
+    sourceWindowId: workbenchWindowId('test-window'),
+    stripId: 'test-strip',
+    surfaceId: fileEditorSurfaceId(tab.path),
   }
 }
 

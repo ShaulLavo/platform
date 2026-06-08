@@ -21,6 +21,8 @@
     "preview": "bun --env-file=../../.env vite preview"
   },
   "dependencies": {
+    "@dnd-kit/dom": "0.4.0",
+    "@dnd-kit/react": "0.4.0",
     "@editor/core": "workspace:*",
     "@editor/diff": "workspace:*",
     "@editor/find": "workspace:*",

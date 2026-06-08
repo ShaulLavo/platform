@@ -30,17 +30,21 @@ import type {
   EditorChromeVisualTab,
   EditorTabModel,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import {
-  editorTabInsertionEdge,
-  type EditorTabDragController,
-} from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
 import type { EditorSplitDirection } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import { useElementWidth } from '@/components/workspace/shared/hooks/use-element-width'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
+import {
+  WORKBENCH_TAB_DRAG_TYPE,
+  type WorkbenchTabDragData,
+} from '@/features/workbench/utils/drag-drop-data'
+import {
+  placeholderSurfaceId,
+  workbenchWindowId,
+} from '@/features/tiling-surface-manager/engine/layout-ids'
 
 export function ChromeEditorTabList({
   closeLayoutCacheKey,
-  drag,
+  dndByTabId,
   selectedTabRef,
   tabListRef,
   tabs,
@@ -51,7 +55,7 @@ export function ChromeEditorTabList({
   onSelect,
 }: {
   closeLayoutCacheKey?: string
-  drag: EditorTabDragController
+  dndByTabId: ReadonlyMap<string, WorkbenchTabDragData>
   selectedTabRef: RefObject<HTMLDivElement | null>
   tabListRef: RefObject<HTMLDivElement | null>
   tabs: readonly EditorChromeVisualTab[]
@@ -135,18 +139,15 @@ export function ChromeEditorTabList({
   return (
     <div className='flex min-w-full items-end overflow-visible'>
       {tabs.map((visualTab, index) => {
-        const insertionEdge = editorTabInsertionEdge(tabModels, visualTab.tab, drag.state)
-        const dragged = drag.draggedTabId === visualTab.tab.id
+        const dnd = dndByTabId.get(visualTab.tab.id) ?? disabledTabDragData(visualTab.tab.id, index)
 
         return (
           <ChromeEditorTab
             closedWidth={closeLayoutSnapshot?.closedWidth ?? overlap}
             closeMode={closing}
             closeTarget={visualTab.tab.id === closeBurstTargetId}
-            dragOffsetX={dragged && !drag.state?.detached ? (drag.state?.offsetX ?? 0) : 0}
-            dragged={dragged}
+            dnd={dnd}
             index={index}
-            insertionEdge={insertionEdge}
             layoutWidth={chromeTabCloseLayoutWidth(
               closeLayoutSnapshot,
               visualTab,
@@ -162,18 +163,27 @@ export function ChromeEditorTabList({
             onCloseClosingTab={handleCloseClosingTab}
             onCloseTabs={onCloseTabs}
             onSplit={onSplit}
-            onDragEnd={drag.onDragEnd}
-            onDragStart={drag.onDragStart}
-            onPointerCancel={drag.onPointerCancel}
-            onPointerDown={drag.onPointerDown}
-            onPointerMove={drag.onPointerMove}
-            onPointerUp={drag.onPointerUp}
             onSelect={onSelect}
           />
         )
       })}
     </div>
   )
+}
+
+function disabledTabDragData(tabId: string, index: number): WorkbenchTabDragData {
+  return {
+    capabilities: {
+      canDetach: false,
+      canDrag: false,
+      canReorder: false,
+    },
+    dragType: WORKBENCH_TAB_DRAG_TYPE,
+    sourceIndex: index,
+    sourceWindowId: workbenchWindowId('disabled-window'),
+    stripId: 'disabled-tabs',
+    surfaceId: placeholderSurfaceId(tabId),
+  }
 }
 
 function mountedChromeTabCloseLayoutSnapshot(

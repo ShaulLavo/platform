@@ -6,6 +6,7 @@ import {
   CHROME_TAB_INACTIVE_MIN_WIDTH,
   CHROME_TAB_STANDARD_WIDTH,
 } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
+import { CHROME_TAB_TRANSITION } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
 
 export function chromeTabStyle({
   active,
@@ -27,6 +28,7 @@ export function chromeTabStyle({
     marginLeft: index === 0 ? 0 : -overlap,
     maxWidth: width ?? CHROME_TAB_STANDARD_WIDTH,
     minWidth: width ?? minWidth,
+    transition: CHROME_TAB_TRANSITION,
     width: width ?? 'auto',
   } as CSSProperties
 }

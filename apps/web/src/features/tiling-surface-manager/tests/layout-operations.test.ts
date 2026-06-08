@@ -164,6 +164,28 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(moved)
   })
 
+  it('merges a multi-tab window into another window center', () => {
+    const fileA = createFileEditorSurface({ path: '/repo/src/merge-a.ts' })
+    const fileB = createFileEditorSurface({ path: '/repo/src/merge-b.ts' })
+    const split = splitFileFromEditor(createClassicFirstRunWorkspaceLayout(), fileA)
+    const sourceWindowId = mustFindWindowId(split, fileA.id)
+    const tabbed = tabSurface(openSurface(split, fileB), fileB.id, sourceWindowId)
+    const sourceSurfaceIds = tabbed.windowsById[sourceWindowId].surfaceIds
+    const targetSurfaceIds = tabbed.windowsById[CLASSIC_EDITOR_WINDOW_ID].surfaceIds
+    const merged = moveWindow(tabbed, sourceWindowId, {
+      kind: 'window-center',
+      windowId: CLASSIC_EDITOR_WINDOW_ID,
+    })
+
+    expect(merged.windowsById[sourceWindowId]).toBeUndefined()
+    expect(visibleWindowIdsInOrder(merged)).not.toContain(sourceWindowId)
+    expect(merged.windowsById[CLASSIC_EDITOR_WINDOW_ID].surfaceIds).toEqual([
+      ...targetSurfaceIds,
+      ...sourceSurfaceIds,
+    ])
+    expectValidLayout(merged)
+  })
+
   it('supports parent-edge snaps and rejects self or descendant window moves', () => {
     const file = createFileEditorSurface({ path: '/repo/src/parent-edge.ts' })
     const split = splitFileFromEditor(createClassicFirstRunWorkspaceLayout(), file)

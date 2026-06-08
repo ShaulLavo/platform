@@ -23,15 +23,22 @@ import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
+  createPlaceholderSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
+import { visibleWindowIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
 import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
-import type { Surface } from '@/features/tiling-surface-manager/engine/layout-types'
+import type {
+  Surface,
+  SurfaceId,
+  WindowId,
+  WorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-types'
 
 const THEME_STORAGE_KEY = 'platform-workbench-layout-renderer-browser-theme'
 const TEST_ROOT_PATH = 'repo'
@@ -51,6 +58,7 @@ afterEach(() => {
   }
 
   document.body.innerHTML = ''
+  currentDragPoint = null
   localStorage.removeItem(THEME_STORAGE_KEY)
 })
 
@@ -231,6 +239,25 @@ describe('LayoutRenderer browser rendering', () => {
       expect(queryClient.isFetching({ queryKey: fileSystemKeys.fileSnapshots() })).toBe(0)
       expect(fileSnapshots.some((query) => query.state.status === 'success')).toBe(true)
     })
+
+    const tabBPoint = centerOf(editorChromeTab('tab-b'))
+
+    startPointerDrag(editorChromeTab('tab-a'))
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: tabBPoint.x + 24, y: tabBPoint.y }, editorChromeTab('tab-b'))
+    await nextFrame()
+    finishPointerDrag({ x: tabBPoint.x + 24, y: tabBPoint.y })
+
+    await vi.waitFor(() => {
+      expect(editorChromeTabIds().indexOf('tab-a')).toBeGreaterThan(0)
+    })
+
+    editorChromeTab('tab-b').click()
+
+    await vi.waitFor(() => {
+      expect(editorChromeTabButton('tab-b')).toHaveAttribute('aria-selected', 'true')
+    })
   })
 
   it('holds editor tab widths immediately after a direct workbench tab close', async () => {
@@ -289,6 +316,248 @@ describe('LayoutRenderer browser rendering', () => {
     expect(editorChromeTab('tab-b').style.width).toBe('18px')
     expect(widthDelta(afterWidths, beforeWidths, 'tab-a')).toBeLessThanOrEqual(1)
   })
+
+  it('previews normal tab reordering before pointer release', async () => {
+    const { store, surfaces } = renderGenericTabbedLayout()
+
+    await waitForWorkbenchTabs(surfaces)
+
+    const beforeLayout = store.getState().layout
+    const beforeTabIds = workbenchTabIds()
+    const sourceId = activeWindowSurfaceIds(store)[0]
+    const targetId = activeWindowSurfaceIds(store).at(-1)
+    if (!sourceId) throw new Error('Missing source tab id')
+    if (!targetId) throw new Error('Missing target tab id')
+
+    const sourceTab = workbenchTab(sourceId)
+    const targetTab = workbenchTab(targetId)
+    const targetPoint = centerOf(targetTab)
+
+    startPointerDrag(sourceTab)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: targetPoint.x + 24, y: targetPoint.y }, targetTab)
+    await nextFrame()
+
+    expect(store.getState().layout).toBe(beforeLayout)
+    await vi.waitFor(() => {
+      expect(workbenchTabIds()).not.toEqual(beforeTabIds)
+      expect(workbenchTabIds().indexOf(sourceId)).toBeGreaterThan(0)
+    })
+    expectWorkbenchTabInsideStrip(sourceId)
+
+    finishPointerDrag({ x: targetPoint.x + 24, y: targetPoint.y })
+  })
+
+  it('moves an attached tab with the pointer before reordering', async () => {
+    const { store, surfaces } = renderGenericTabbedLayout()
+
+    await waitForWorkbenchTabs(surfaces)
+
+    const beforeLayout = store.getState().layout
+    const beforeTabIds = workbenchTabIds()
+    const sourceId = activeWindowSurfaceIds(store)[0]
+    if (!sourceId) throw new Error('Missing source tab id')
+
+    const sourceTab = workbenchTab(sourceId)
+    const sourceCenter = centerOf(sourceTab)
+    const beforeRect = sourceTab.getBoundingClientRect()
+
+    expect(sourceTab.style.transition).toContain('flex-basis')
+
+    startPointerDrag(sourceTab)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: sourceCenter.x + 48, y: sourceCenter.y + 4 })
+    await nextFrame()
+
+    const movedTab = workbenchTab(sourceId)
+    const movedRect = movedTab.getBoundingClientRect()
+    expect(store.getState().layout).toBe(beforeLayout)
+    expect(workbenchTabIds()).toEqual(beforeTabIds)
+    expect(movedTab.style.transform).toContain('translate3d')
+    expect(movedTab.style.transition).toBe('none')
+    expect(movedRect.left).toBeGreaterThan(beforeRect.left + 8)
+    expectWorkbenchTabInsideStrip(sourceId)
+
+    finishPointerDrag()
+    await nextFrame()
+
+    expect(workbenchTab(sourceId).style.transition).toContain('flex-basis')
+  })
+
+  it('commits normal tab reorder on pointer release', async () => {
+    const { store, surfaces } = renderGenericTabbedLayout()
+
+    await waitForWorkbenchTabs(surfaces)
+
+    const sourceId = activeWindowSurfaceIds(store)[0]
+    const targetId = activeWindowSurfaceIds(store).at(-1)
+    if (!sourceId) throw new Error('Missing source tab id')
+    if (!targetId) throw new Error('Missing target tab id')
+
+    const sourceTab = workbenchTab(sourceId)
+    const targetTab = workbenchTab(targetId)
+    const targetPoint = centerOf(targetTab)
+    const beforeIds = activeWindowSurfaceIds(store)
+
+    startPointerDrag(sourceTab)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: targetPoint.x + 24, y: targetPoint.y }, targetTab)
+    await nextFrame()
+    finishPointerDrag({ x: targetPoint.x + 24, y: targetPoint.y })
+
+    await vi.waitFor(() => {
+      const reorderedIds = activeWindowSurfaceIds(store)
+      expect(reorderedIds.indexOf(sourceId)).toBeGreaterThan(0)
+      expect(new Set(reorderedIds)).toEqual(new Set(beforeIds))
+    })
+  })
+
+  it('keeps a tab attached below the detach threshold', async () => {
+    const { store, surfaces } = renderGenericTabbedLayout()
+
+    await waitForWorkbenchTabs(surfaces)
+
+    const tab = workbenchTab(surfaces[0].id)
+    const startWindowId = windowIdForSurface(store.getState().layout, surfaces[0].id)
+    const beforeWindowIds = visibleWindowIdsInOrder(store.getState().layout)
+    const tabCenter = centerOf(tab)
+
+    dragPointerTo(tab, { x: tabCenter.x + 4, y: tabCenter.y + 12 })
+
+    await nextFrame()
+
+    expect(windowIdForSurface(store.getState().layout, surfaces[0].id)).toBe(startWindowId)
+    expect(visibleWindowIdsInOrder(store.getState().layout)).toEqual(beforeWindowIds)
+  })
+
+  it('keeps an attached tab inside its strip while dragging below detach threshold', async () => {
+    const { surfaces } = renderGenericTabbedLayout()
+
+    await waitForWorkbenchTabs(surfaces)
+
+    const tab = workbenchTab(surfaces[0].id)
+    const tabCenter = centerOf(tab)
+
+    startPointerDrag(tab)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: tabCenter.x + 120, y: tabCenter.y + 12 })
+    await nextFrame()
+
+    expectWorkbenchTabInsideStrip(surfaces[0].id)
+
+    finishPointerDrag()
+  })
+
+  it('previews detached tab snapping and commits only on release', async () => {
+    const { store, surfaces } = renderGenericTabbedLayout()
+
+    await waitForWorkbenchTabs(surfaces)
+
+    const tab = workbenchTab(surfaces[0].id)
+    const beforeLayout = store.getState().layout
+    const beforeRects = windowRects()
+    const startWindowId = windowIdForSurface(beforeLayout, surfaces[0].id)
+    const snapPoint = rootRightSnapPoint()
+
+    startPointerDrag(tab)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(snapPoint)
+
+    await vi.waitFor(() => {
+      expect(windowRects()).not.toEqual(beforeRects)
+    })
+
+    expect(store.getState().layout).toBe(beforeLayout)
+
+    finishPointerDrag(snapPoint)
+
+    await vi.waitFor(() => {
+      expect(store.getState().layout).not.toBe(beforeLayout)
+      expect(windowIdForSurface(store.getState().layout, surfaces[0].id)).not.toBe(startWindowId)
+    })
+  })
+
+  it('keeps bottom pane special tabs constrained by tab capabilities', async () => {
+    const store = renderClassicLayoutWithStore()
+
+    await vi.waitFor(() => {
+      expect(workbenchTabForRole('Terminal')).not.toBeNull()
+    })
+    await nextFrame()
+
+    const terminalTab = workbenchTabForRole('Terminal')
+    const beforeWindowIds = visibleWindowIdsInOrder(store.getState().layout)
+    const beforeBottomPaneIds = bottomPaneSurfaceIds(store.getState().layout)
+
+    dragPointerTo(terminalTab, rootRightSnapPoint())
+    await nextFrame()
+
+    expect(terminalTab).not.toHaveAttribute('data-workbench-tab-dragging', 'true')
+    expect(visibleWindowIdsInOrder(store.getState().layout)).toEqual(beforeWindowIds)
+    expect(bottomPaneSurfaceIds(store.getState().layout)).toEqual(beforeBottomPaneIds)
+  })
+
+  it('previews window snapping and commits only on release', async () => {
+    const store = renderClassicLayoutWithStore()
+
+    await vi.waitFor(() => {
+      expect(windowRegions()).toHaveLength(3)
+    })
+    await nextFrame()
+
+    const beforeLayout = store.getState().layout
+    const beforeRects = windowRects()
+    const header = workbenchWindowHeader(activeWindowId(store.getState().layout))
+    const snapPoint = rootRightSnapPoint()
+
+    startPointerDrag(header)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(snapPoint)
+
+    await vi.waitFor(() => {
+      expect(windowRects()).not.toEqual(beforeRects)
+    })
+
+    expect(store.getState().layout).toBe(beforeLayout)
+
+    finishPointerDrag(snapPoint)
+
+    await vi.waitFor(() => {
+      expect(store.getState().layout).not.toBe(beforeLayout)
+    })
+  })
+
+  it('keeps a window drag active while crossing resize handles', async () => {
+    const store = renderClassicLayoutWithStore()
+
+    await vi.waitFor(() => {
+      expect(firstColumnResizeHandle()).not.toBeNull()
+    })
+    await nextFrame()
+
+    const beforeLayout = store.getState().layout
+    const header = workbenchWindowHeader(activeWindowId(beforeLayout))
+    const handleCenter = centerOf(firstColumnResizeHandle())
+    const snapPoint = rootRightSnapPoint()
+
+    startPointerDrag(header)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(handleCenter, firstColumnResizeHandle())
+    await nextFrame()
+    movePointerTo(snapPoint)
+    finishPointerDrag(snapPoint)
+
+    await vi.waitFor(() => {
+      expect(store.getState().layout).not.toBe(beforeLayout)
+    })
+  })
 })
 
 function renderClassicLayout({
@@ -298,7 +567,53 @@ function renderClassicLayout({
   readonly height?: number
   readonly width?: number
 } = {}) {
+  renderWorkbenchLayout(createClassicFirstRunWorkspaceLayout(), { height, width })
+}
+
+function renderClassicLayoutWithStore(options: RenderWorkbenchLayoutOptions = {}) {
+  return renderWorkbenchLayout(createClassicFirstRunWorkspaceLayout(), options)
+}
+
+function renderGenericTabbedLayout(options: RenderWorkbenchLayoutOptions = {}) {
+  const surfaces = [
+    createPlaceholderSurface({
+      canClose: true,
+      contextKey: 'generic-tab-a',
+      title: 'Surface A',
+    }),
+    createPlaceholderSurface({
+      canClose: true,
+      contextKey: 'generic-tab-b',
+      title: 'Surface B',
+    }),
+    createPlaceholderSurface({
+      canClose: true,
+      contextKey: 'generic-tab-c',
+      title: 'Surface C',
+    }),
+  ]
+  const layout = surfaces.reduce<WorkspaceLayout>(
+    (currentLayout, surface) => openSurface(currentLayout, surface),
+    createEmptyWorkspaceLayout(),
+  )
+
+  return {
+    store: renderWorkbenchLayout(layout, options),
+    surfaces,
+  }
+}
+
+type RenderWorkbenchLayoutOptions = {
+  readonly height?: number
+  readonly width?: number
+}
+
+function renderWorkbenchLayout(
+  layout: WorkspaceLayout,
+  { height = 620, width = 920 }: RenderWorkbenchLayoutOptions = {},
+) {
   const container = document.createElement('main')
+  const store = createWorkspaceLayoutStore(layout, { checkInvariants: false })
   container.style.height = `${height}px`
   container.style.left = '0'
   container.style.position = 'fixed'
@@ -313,7 +628,7 @@ function renderClassicLayout({
         <EditorColorThemeProvider>
           <TooltipProvider delay={0}>
             <FocusProvider>
-              <LayoutProvider initialLayout={createClassicFirstRunWorkspaceLayout()}>
+              <LayoutProvider store={store}>
                 <LayoutRenderer />
               </LayoutProvider>
             </FocusProvider>
@@ -322,10 +637,28 @@ function renderClassicLayout({
       </ThemeProvider>,
     )
   })
+
+  return store
 }
 
 function windowRegions() {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-window-id]'))
+}
+
+function workbenchWindow(windowId: WindowId) {
+  const windowElement = document.querySelector<HTMLElement>(`[data-window-id="${windowId}"]`)
+  if (!windowElement) throw new Error(`Missing workbench window ${windowId}`)
+
+  return windowElement
+}
+
+function workbenchWindowHeader(windowId: WindowId) {
+  const header = workbenchWindow(windowId).querySelector<HTMLElement>(
+    '[data-workbench-window-drag-handle]',
+  )
+  if (!header) throw new Error(`Missing workbench window header ${windowId}`)
+
+  return header
 }
 
 function firstWindowRect() {
@@ -392,6 +725,50 @@ function firstTab() {
   return tab
 }
 
+function workbenchTab(surfaceId: SurfaceId) {
+  const tab = document.querySelector<HTMLElement>(`[data-workbench-tab-id="${surfaceId}"]`)
+  if (!tab) throw new Error(`Missing workbench tab ${surfaceId}`)
+
+  return tab
+}
+
+function workbenchTabIds() {
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-workbench-tab-id]')).map(
+    (tab) => tab.dataset.workbenchTabId ?? '',
+  )
+}
+
+function expectWorkbenchTabInsideStrip(surfaceId: SurfaceId) {
+  const tab = workbenchTab(surfaceId)
+  const strip = tab.closest<HTMLElement>('[data-workbench-tab-strip-id]')
+  if (!strip) throw new Error(`Missing tab strip for ${surfaceId}`)
+
+  const tabRect = tab.getBoundingClientRect()
+  const stripRect = strip.getBoundingClientRect()
+
+  expect(tabRect.top).toBeGreaterThanOrEqual(stripRect.top - 1)
+  expect(tabRect.bottom).toBeLessThanOrEqual(stripRect.bottom + 1)
+}
+
+function workbenchTabForRole(name: string) {
+  const tabButton = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]')).find(
+    (candidate) => candidate.textContent?.trim() === name,
+  )
+  if (!tabButton) throw new Error(`Missing tab ${name}`)
+
+  const tab = tabButton.closest<HTMLElement>('[data-workbench-tab-id]')
+  if (!tab) throw new Error(`Missing workbench tab root ${name}`)
+
+  return tab
+}
+
+async function waitForWorkbenchTabs(surfaces: readonly Surface[]) {
+  await vi.waitFor(() => {
+    expect(surfaces.map((surface) => workbenchTab(surface.id))).toHaveLength(surfaces.length)
+  })
+  await nextFrame()
+}
+
 function buttonWithLabel(label: string) {
   const button = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
     (candidate) => candidate.getAttribute('aria-label') === label,
@@ -401,8 +778,47 @@ function buttonWithLabel(label: string) {
   return button
 }
 
+function activeWindowId(layout: WorkspaceLayout) {
+  if (!layout.activeWindowId) throw new Error('Missing active window')
+
+  return layout.activeWindowId
+}
+
+function activeWindowSurfaceIds(store: ReturnType<typeof createWorkspaceLayoutStore>) {
+  const layout = store.getState().layout
+  const window = layout.windowsById[activeWindowId(layout)]
+  if (!window) throw new Error('Missing active window state')
+
+  return window.surfaceIds
+}
+
+function windowIdForSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  const window = Object.values(layout.windowsById).find((candidate) =>
+    candidate.surfaceIds.includes(surfaceId),
+  )
+  if (!window) throw new Error(`Missing window for surface ${surfaceId}`)
+
+  return window.id
+}
+
+function bottomPaneSurfaceIds(layout: WorkspaceLayout) {
+  const window = Object.values(layout.windowsById).find((candidate) =>
+    candidate.surfaceIds.some((surfaceId) => {
+      const title = layout.surfacesById[surfaceId]?.title
+      return title === 'Terminal' || title === 'Problems'
+    }),
+  )
+  if (!window) throw new Error('Missing bottom pane window')
+
+  return window.surfaceIds
+}
+
 function editorChromeTabs() {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-editor-tab-id]'))
+}
+
+function editorChromeTabIds() {
+  return editorChromeTabs().map((tab) => tab.dataset.editorTabId ?? '')
 }
 
 function editorChromeTab(tabId: string) {
@@ -450,6 +866,82 @@ function nextFrame() {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve())
   })
+}
+
+type PointerPoint = {
+  readonly x: number
+  readonly y: number
+}
+
+let currentDragPoint: PointerPoint | null = null
+
+function dragPointerTo(element: HTMLElement, point: PointerPoint) {
+  startPointerDrag(element)
+  movePointerBy(8, 0)
+  movePointerTo(point)
+  finishPointerDrag(point)
+}
+
+function startPointerDrag(element: HTMLElement, point: PointerPoint = centerOf(element)) {
+  currentDragPoint = point
+  element.dispatchEvent(pointerEvent('pointerdown', point, 1))
+}
+
+function movePointerBy(deltaX: number, deltaY: number, target: EventTarget = document) {
+  if (!currentDragPoint) throw new Error('Cannot move a pointer before pointerdown')
+
+  movePointerTo(
+    {
+      x: currentDragPoint.x + deltaX,
+      y: currentDragPoint.y + deltaY,
+    },
+    target,
+  )
+}
+
+function movePointerTo(point: PointerPoint, target: EventTarget = document) {
+  currentDragPoint = point
+  target.dispatchEvent(pointerEvent('pointermove', point, 1))
+}
+
+function finishPointerDrag(point: PointerPoint = currentDragPoint ?? { x: 0, y: 0 }) {
+  document.dispatchEvent(pointerEvent('pointerup', point, 0))
+  currentDragPoint = null
+}
+
+function pointerEvent(type: string, point: PointerPoint, buttons: number) {
+  return new PointerEvent(type, {
+    bubbles: true,
+    button: 0,
+    buttons,
+    cancelable: true,
+    clientX: point.x,
+    clientY: point.y,
+    isPrimary: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+  })
+}
+
+function centerOf(element: HTMLElement): PointerPoint {
+  const rect = element.getBoundingClientRect()
+
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  }
+}
+
+function rootRightSnapPoint(): PointerPoint {
+  const rects = windowRegions().map((windowElement) => windowElement.getBoundingClientRect())
+  const right = Math.max(...rects.map((rect) => rect.right))
+  const top = Math.min(...rects.map((rect) => rect.top))
+  const bottom = Math.max(...rects.map((rect) => rect.bottom))
+
+  return {
+    x: right - 12,
+    y: top + (bottom - top) / 2,
+  }
 }
 
 function resizePointerEvent(type: string, clientX: number, clientY: number) {

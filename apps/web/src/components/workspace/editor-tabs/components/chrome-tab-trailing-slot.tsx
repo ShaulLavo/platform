@@ -43,13 +43,12 @@ export function ChromeTabTrailingSlot({
           chromeTabCloseButtonVisibilityClassName(tab, dirty, forceVisible),
           closeMode && 'transition-none',
         )}
-        data-editor-tab-drag-blocker=''
+        data-workbench-drag-blocker=''
         draggable={false}
         onClick={(event) => {
           event.stopPropagation()
           onClose(tab.id)
         }}
-        onDragStart={(event) => event.preventDefault()}
         title={`Close ${tab.name}`}
       />
       {dirty && !forceVisible ? (

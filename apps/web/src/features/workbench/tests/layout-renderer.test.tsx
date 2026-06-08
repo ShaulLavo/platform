@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
@@ -17,17 +17,6 @@ import {
   EMPTY_GIT_FILES,
   editorTabModel,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
-import {
-  EDITOR_TAB_DRAG_KIND,
-  EDITOR_TAB_DRAG_MIME,
-  EDITOR_TAB_POINTER_DRAG_EVENT,
-  EDITOR_TAB_POINTER_DROP_EVENT,
-} from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
-import {
-  WORKBENCH_WINDOW_POINTER_DRAG_EVENT,
-  WORKBENCH_WINDOW_POINTER_DROP_EVENT,
-  dispatchWorkbenchWindowPointerDragEvent,
-} from '@/features/workbench/utils/window-drag-events'
 import {
   CLASSIC_DIAGNOSTICS_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
@@ -55,7 +44,6 @@ import type {
   Surface,
   WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
-import { SnappedDragController } from '@/features/workbench/components/snapped-drag-controller'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
@@ -64,11 +52,7 @@ import {
   type SurfaceRenderer,
 } from '@/features/workbench/utils/surface-renderer-registry'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
-import {
-  layoutNodeId,
-  overlayId,
-  workbenchWindowId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { layoutNodeId, overlayId } from '@/features/tiling-surface-manager/engine/layout-ids'
 import type { LayoutOperation } from '@/features/tiling-surface-manager/engine/layout-types'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import {
@@ -200,222 +184,6 @@ describe('LayoutRenderer', () => {
     fireEvent.pointerUp(handle, { clientX: 432, clientY: 10, pointerId: 1 })
 
     expect(operations).toHaveLength(1)
-  })
-
-  it('dispatches snapped move operations from document editor tab drags without rendering targets', () => {
-    const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
-    const operations: LayoutOperation[] = []
-    const previews: (LayoutOperation | null)[] = []
-    const destination = {
-      edge: 'right' as const,
-      kind: 'window-edge' as const,
-      windowId: workbenchWindowId('target'),
-    }
-
-    render(
-      <SnappedDragController
-        snapDestinationRects={[
-          {
-            destination,
-            edge: 'right',
-            id: overlayId('snap:test:right'),
-            kind: 'window-edge',
-            rect: { height: 240, width: 160, x: 480, y: 0 },
-            windowId: destination.windowId,
-          },
-        ]}
-        surfaceIdForEditorTabId={(tabId) => (tabId === 'tab-app' ? file.id : null)}
-        onDispatch={(operation) => operations.push(operation)}
-        onPreview={(operation) => previews.push(operation)}
-      />,
-    )
-
-    const dataTransfer = editorTabDataTransfer({ path: '/repo/src/app.ts', tabId: 'tab-app' })
-
-    expect(screen.queryByRole('button')).toBeNull()
-
-    const dragOver = fireDocumentEditorTabDragEvent('dragover', dataTransfer, {
-      clientX: 500,
-      clientY: 12,
-    })
-    expect(dataTransfer.dropEffect).toBe('move')
-    expect(dragOver.defaultPrevented).toBe(true)
-    expect(lastItem(previews)).toEqual({
-      destination,
-      surfaceId: file.id,
-      type: 'moveSurface',
-    })
-
-    fireDocumentEditorTabDragEvent('drop', dataTransfer, { clientX: 500, clientY: 12 })
-
-    expect(operations).toEqual([
-      {
-        destination,
-        surfaceId: file.id,
-        type: 'moveSurface',
-      },
-    ])
-    expect(lastItem(previews)).toBeNull()
-  })
-
-  it('dispatches snapped move operations from detached pointer tab drags', () => {
-    const file = createFileEditorSurface({ path: '/repo/src/app.ts' })
-    const operations: LayoutOperation[] = []
-    const previews: (LayoutOperation | null)[] = []
-    const destination = {
-      edge: 'right' as const,
-      kind: 'window-edge' as const,
-      windowId: workbenchWindowId('target'),
-    }
-
-    render(
-      <SnappedDragController
-        snapDestinationRects={[
-          {
-            destination,
-            edge: 'right',
-            id: overlayId('snap:test:right'),
-            kind: 'window-edge',
-            rect: { height: 240, width: 160, x: 480, y: 0 },
-            windowId: destination.windowId,
-          },
-        ]}
-        surfaceIdForEditorTabId={(tabId) => (tabId === 'tab-app' ? file.id : null)}
-        onDispatch={(operation) => operations.push(operation)}
-        onPreview={(operation) => previews.push(operation)}
-      />,
-    )
-
-    expect(screen.queryByRole('button')).toBeNull()
-
-    act(() => {
-      dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DRAG_EVENT, {
-        clientX: 500,
-        clientY: 12,
-        detached: true,
-        detachProgress: 1,
-        paneId: 'pane-a',
-        path: '/repo/src/app.ts',
-        tabId: 'tab-app',
-      })
-    })
-
-    expect(operations).toEqual([])
-    expect(lastItem(previews)).toEqual({
-      destination,
-      surfaceId: file.id,
-      type: 'moveSurface',
-    })
-
-    act(() => {
-      dispatchEditorTabPointerDragEvent(EDITOR_TAB_POINTER_DROP_EVENT, {
-        clientX: 500,
-        clientY: 12,
-        detached: true,
-        detachProgress: 1,
-        paneId: 'pane-a',
-        path: '/repo/src/app.ts',
-        tabId: 'tab-app',
-      })
-    })
-
-    expect(operations).toEqual([
-      {
-        destination,
-        surfaceId: file.id,
-        type: 'moveSurface',
-      },
-    ])
-    expect(lastItem(previews)).toBeNull()
-  })
-
-  it('dispatches snapped move operations from pointer window drags', () => {
-    const operations: LayoutOperation[] = []
-    const previews: (LayoutOperation | null)[] = []
-    const sourceWindowId = workbenchWindowId('source')
-    const destination = {
-      edge: 'right' as const,
-      kind: 'window-edge' as const,
-      windowId: workbenchWindowId('target'),
-    }
-
-    render(
-      <SnappedDragController
-        snapDestinationRects={[
-          {
-            destination,
-            edge: 'right',
-            id: overlayId('snap:test:right'),
-            kind: 'window-edge',
-            rect: { height: 240, width: 160, x: 480, y: 0 },
-            windowId: destination.windowId,
-          },
-        ]}
-        onDispatch={(operation) => operations.push(operation)}
-        onPreview={(operation) => previews.push(operation)}
-      />,
-    )
-
-    expect(screen.queryByRole('button')).toBeNull()
-
-    act(() => {
-      dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DRAG_EVENT, {
-        clientX: 500,
-        clientY: 12,
-        windowId: sourceWindowId,
-      })
-    })
-
-    expect(operations).toEqual([])
-    expect(lastItem(previews)).toEqual({
-      destination,
-      type: 'moveWindow',
-      windowId: sourceWindowId,
-    })
-
-    act(() => {
-      dispatchWorkbenchWindowPointerDragEvent(WORKBENCH_WINDOW_POINTER_DROP_EVENT, {
-        clientX: 500,
-        clientY: 12,
-        windowId: sourceWindowId,
-      })
-    })
-
-    expect(operations).toEqual([
-      {
-        destination,
-        type: 'moveWindow',
-        windowId: sourceWindowId,
-      },
-    ])
-    expect(lastItem(previews)).toBeNull()
-  })
-
-  it('ignores editor tab drops that cannot resolve to a surface', () => {
-    const operations: LayoutOperation[] = []
-
-    render(
-      <SnappedDragController
-        snapDestinationRects={[
-          {
-            destination: { kind: 'background' },
-            id: overlayId('snap:test:background'),
-            kind: 'background',
-            rect: { height: 120, width: 120, x: 200, y: 160 },
-          },
-        ]}
-        surfaceIdForEditorTabId={() => null}
-        onDispatch={(operation) => operations.push(operation)}
-      />,
-    )
-
-    fireDocumentEditorTabDragEvent(
-      'drop',
-      editorTabDataTransfer({ path: '/repo/src/missing.ts', tabId: 'tab-missing' }),
-      { clientX: 220, clientY: 180 },
-    )
-
-    expect(operations).toEqual([])
   })
 
   it('stops pointer drag resize when hover moves no longer have the primary button down', () => {
@@ -981,75 +749,6 @@ function backgroundSurface(layout: WorkspaceLayout, surfaceId: WorkspaceLayout['
   return moveSurface(layout, surfaceId, { kind: 'background' })
 }
 
-function editorTabDataTransfer({ path, tabId }: { path: string; tabId: string }): DataTransfer {
-  const values = new Map([
-    [
-      EDITOR_TAB_DRAG_MIME,
-      JSON.stringify({
-        kind: EDITOR_TAB_DRAG_KIND,
-        paneId: 'pane-a',
-        path,
-        tabId,
-      }),
-    ],
-    ['text/plain', path],
-  ])
-  const types = Array.from(values.keys())
-
-  return {
-    dropEffect: 'none',
-    effectAllowed: 'move',
-    getData: (format: string) => values.get(format) ?? '',
-    setData: (format: string, value: string) => {
-      values.set(format, value)
-      if (types.includes(format)) return
-
-      types.push(format)
-    },
-    types,
-  } as unknown as DataTransfer
-}
-
-function fireDocumentEditorTabDragEvent(
-  type: 'dragover' | 'drop',
-  dataTransfer: DataTransfer,
-  point: {
-    readonly clientX: number
-    readonly clientY: number
-  },
-) {
-  const event =
-    type === 'dragover' ? createEvent.dragOver(document.body) : createEvent.drop(document.body)
-  Object.defineProperty(event, 'clientX', { value: point.clientX })
-  Object.defineProperty(event, 'clientY', { value: point.clientY })
-  Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
-  fireEvent(document.body, event)
-
-  return event
-}
-
-function dispatchEditorTabPointerDragEvent(
-  type: typeof EDITOR_TAB_POINTER_DRAG_EVENT | typeof EDITOR_TAB_POINTER_DROP_EVENT,
-  detail: {
-    readonly clientX: number
-    readonly clientY: number
-    readonly detached: boolean
-    readonly detachProgress: number
-    readonly paneId: string
-    readonly path: string
-    readonly tabId: string
-  },
-) {
-  document.dispatchEvent(
-    new CustomEvent(type, {
-      detail: {
-        ...detail,
-        kind: EDITOR_TAB_DRAG_KIND,
-      },
-    }),
-  )
-}
-
 function withEditorSurfaceProvider(children: ReactNode) {
   return (
     <EditorSurfaceProvider
@@ -1068,10 +767,6 @@ function withEditorSurfaceProvider(children: ReactNode) {
 
 function matchCount(value: string, pattern: string) {
   return value.split(pattern).length - 1
-}
-
-function lastItem<T>(items: readonly T[]) {
-  return items[items.length - 1]
 }
 
 function noop() {}

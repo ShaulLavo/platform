@@ -1,28 +1,26 @@
 # Tiling Surface Manager Implementation Plan
 
 Date: 2026-06-05
-Last audited: 2026-06-07
+Last audited: 2026-06-08
 
-Status: implementation broadly completed and re-audited 2026-06-07, with drag
-UX reopened on 2026-06-07 for a clean `dnd-kit` rewrite across all app tabs and
-workbench window/surface dragging, using the current package family centered on
-`@dnd-kit/react`. Resize UX was corrected on 2026-06-07 by making panes resize
-live from pointer movement. The production workbench now uses the Platform-owned
-`WorkspaceLayout` model for file/diff/search/tool surfaces, terminal running
-surfaces, command palette operations, cache state, and workflow recipe metadata.
-Per-phase status notes below are the source of truth for completed slices and
-intentional migration-scoped compatibility.
+Status: implementation broadly completed and re-audited 2026-06-08. The clean
+`dnd-kit` rewrite for all normal app tabs and workbench window/surface dragging
+is now complete using the current package family centered on `@dnd-kit/react`
+and `@dnd-kit/dom`. Resize UX was corrected on 2026-06-07 by making panes
+resize live from pointer movement. The production workbench now uses the
+Platform-owned `WorkspaceLayout` model for file/diff/search/tool surfaces,
+terminal running surfaces, command palette operations, cache state, and workflow
+recipe metadata. Per-phase status notes below are the source of truth for
+completed slices and intentional migration-scoped compatibility.
 
-Drag rewrite note, 2026-06-07: the current mixed native/custom drag system is
-not product accepted. Phase 13 must replace it with `dnd-kit` for all app tab
-strips and workbench window/surface dragging. Start with `@dnd-kit/react` and
-pull in supporting current packages only when needed: `@dnd-kit/collision` for
-collision detection, `@dnd-kit/geometry` for rect math, `@dnd-kit/dom` for
-framework-agnostic DOM behavior, `@dnd-kit/abstract` for lower-level primitives,
-and `@dnd-kit/helpers` for utility functions. The required UX is sticky snapped
-drag preview: the actual tiled layout reflows to the release result, no native
-browser drag ghost or default animation appears, and no visible drop zones
-appear anywhere in the app.
+Drag rewrite note, 2026-06-08: the previous mixed native/custom drag system has
+been removed for workbench tabs/windows. Sticky snapped preview now runs through
+the shared `dnd-kit` provider and app-rendered preview layout snapshots. While
+attached, the dragged tab renders horizontal pointer-follow feedback inside its
+own strip and remains clipped to that strip until the detach threshold is
+crossed. The tiled layout reflows to the release result, no native browser drag
+ghost or default animation appears, and no visible drop zones appear anywhere in
+the app.
 
 Resize correction note, 2026-06-07: resize handles must not be transform-only
 previews. Pointer movement dispatches incremental `resizeSplit` operations
@@ -218,14 +216,16 @@ Pure modules:
 React modules:
 
 - `layout-renderer.tsx`
+- `providers/drag-drop-provider.tsx`
 - `split-node.tsx`
 - `window-frame.tsx`
 - `tab-strip.tsx`
+- `chrome-tab.tsx`
 - `surface-host.tsx`
 - `rail.tsx`
-- `snapped-drag-controller.tsx` (private snap hit testing; renders no DOM)
 - `resize-overlay.tsx`
 - `hidden-surface-hosts.tsx`
+- `utils/drag-drop-data.ts`
 - surface renderers such as `file-editor-surface.tsx`,
   `diff-editor-surface.tsx`, `search-results-surface.tsx`,
   `search-preview-surface.tsx`, `terminal-surface.tsx`,
@@ -1110,11 +1110,12 @@ Exit criteria:
 
 ## Phase 13 - Dnd-Kit Drag, Sticky Snap Preview, And Resize
 
-Status: reopened 2026-06-07. The current mixed native/custom drag implementation
-is not product accepted and should be deleted rather than patched. Resize
-handles remain corrected: pointer movement dispatches live incremental
-`resizeSplit` operations using measured split geometry, so both adjacent panes
-and the handle reflow with the pointer.
+Status: completed and re-audited 2026-06-08. The mixed native/custom workbench drag
+implementation was deleted and replaced with a shared `dnd-kit` architecture for
+normal app tabs and workbench window/surface dragging. Resize handles remain
+corrected: pointer movement dispatches live incremental `resizeSplit`
+operations using measured split geometry, so both adjacent panes and the handle
+reflow with the pointer.
 
 Goal: replace app drag/drop with a `dnd-kit` based architecture for all app tab
 strips and workbench window/surface dragging. Prefer `@dnd-kit/react` as the
@@ -1129,8 +1130,9 @@ Required product behavior:
   explicit capabilities. They can be non-draggable or constrained, but not
   through one-off tab implementations.
 - Tabs stay attached to their own tab bar by default. Horizontal drag reorders
-  visually inside the strip, sibling tabs move out of the way, and reorder
-  commits only on release.
+  visually inside the strip, the dragged tab follows horizontal pointer movement
+  before any reorder threshold is crossed, sibling tabs move out of the way when
+  the sortable preview index changes, and reorder commits only on release.
 - A tab becomes a workbench surface/window drag only after the pointer leaves the
   tab bar far enough to cross the detach threshold/buffer.
 - Detached tabs immediately use the workbench snap-preview system. They do not
@@ -1147,29 +1149,44 @@ Required product behavior:
 
 Architecture:
 
-- Add `@dnd-kit/react` if it is not already present.
-- Use `@dnd-kit/react` hooks/providers for draggable, droppable, sortable,
-  sensor, operation, and monitor wiring where they fit.
-- Add `@dnd-kit/collision` when the workbench snap targets need custom
-  collision detection beyond simple target selection.
-- Add `@dnd-kit/geometry` when shared rect math is useful for tab-strip
-  thresholds, snap destinations, or layout hit testing.
-- Add `@dnd-kit/dom` only if the implementation needs framework-agnostic DOM
-  sensor or measurement primitives outside React components.
-- Add `@dnd-kit/abstract` only if the React adapter is too high-level for a
-  specific sticky-snap interaction and the lower-level primitives keep the code
-  simpler.
-- Add `@dnd-kit/helpers` only for reusable utility functions that replace local
-  ad hoc sorting or movement helpers.
-- Build one app-level drag/drop layer for:
+- `apps/web` now depends on `@dnd-kit/react@0.4.0` and `@dnd-kit/dom@0.4.0`.
+  Lower-level `@dnd-kit/collision`, `@dnd-kit/geometry`,
+  `@dnd-kit/abstract`, and `@dnd-kit/helpers` are not imported directly by app
+  code.
+- `WorkbenchDragDropProvider` is the single app-level drag/drop layer for:
   - tab sorting inside a tab strip;
   - tab detaching into a workbench surface/window drag;
   - workbench window/surface snapping;
   - commit-on-release and cancel-to-restore.
+- `WorkbenchChromeTab` is the shared Chrome-style tab implementation for normal
+  workbench tab strips. Editor-backed tabs and generic surface tabs both render
+  through it.
+- `drag-drop-data.ts` models tab/window drag data and explicit tab/window drag
+  capabilities. Bottom-pane tabs are constrained through these capabilities
+  rather than a bespoke tab implementation.
+- Whole-window drags use `useDraggable`; tab strips use `useSortable`. The
+  provider owns shared pointer sensors, disables built-in dnd-kit feedback
+  movement and drop animation, and suppresses native drag artifacts with
+  `draggable={false}` on app tab chrome. Attached tab motion is rendered by the
+  shared Chrome tab itself as a horizontal transform that is clamped to the
+  source strip. Chrome tab layout transitions stay enabled for normal tabs;
+  dnd-kit must not replace them with a free-moving live element or a default
+  drop animation.
+- Preview coordinates are tracked at the shared provider level from the active
+  document pointer stream. This keeps sortable tabs, detached tabs, and window
+  drags on the same live pointer source even when a specific dnd-kit event path
+  does not emit `dragmove` for a sortable source.
+- Attached tab feedback is exposed through provider context and consumed by
+  `WorkbenchChromeTab`. The active attached tab disables its own transition only
+  while following the pointer; sibling tabs retain Chrome tab transitions and
+  dnd-kit sortable index-change animation.
+- Snap hit testing uses existing `layout-geometry` snap destination rects. The
+  provider converts dnd-kit client coordinates into the surface-area local
+  coordinate space before hit testing because layout geometry is local to the
+  surface-area renderer.
 - Keep tab-strip sorting separate from workbench snapping until the detach
   threshold is crossed.
-- Share the workbench snap-preview controller between whole-window drags,
-  surface drags, tab-stack/window-group drags, and detached tab drags.
+- Whole-window drags and detached tab drags share the same snap-preview path.
 - Use existing pure operations where possible:
   - `reorderSurface` for tab reorder;
   - `tabSurface` for center merge/tab targets;
@@ -1177,6 +1194,9 @@ Architecture:
   - `moveWindow` for whole-window placement;
   - `resizeSplit` for live resize.
 - Keep live drag preview state separate from committed `WorkspaceLayout`.
+- Render previews through a transient layout snapshot passed into window frames,
+  so `reorderSurface`, `moveSurface`, and `moveWindow` can visibly reflow tabs
+  and windows before the store commits.
 - Batch pointer-move preview updates with animation-frame cadence.
 - Commit the previewed operation only on release.
 - Cancel restores committed layout.
@@ -1197,14 +1217,16 @@ Architecture:
 
 Delete in this phase:
 
-- Native browser DnD handlers and draggable attributes used for app layout/tab
-  movement.
-- MIME payload helpers and DataTransfer-based tab/window payloads.
-- Custom document drag/drop events superseded by the `dnd-kit` architecture.
-- Any current half-custom tab/window drag code that duplicates `dnd-kit`
-  sensors, collision detection, sorting, preview state, or release handling.
-- Duplicate tab implementations once their behavior is covered by the shared
-  Chrome tab model.
+- Deleted native browser DnD handlers and draggable attributes used for
+  workbench layout/tab movement.
+- Deleted MIME payload helpers and DataTransfer-based editor tab payloads.
+- Deleted custom document drag/drop events superseded by the `dnd-kit`
+  architecture.
+- Deleted the previous half-custom tab/window drag controller code:
+  `use-editor-tab-drag.ts`, `editor-tab-dnd.ts`,
+  `snapped-drag-controller.tsx`, and `window-drag-events.ts`.
+- Replaced duplicate normal workbench tab roots with the shared Chrome tab
+  model.
 
 Tests:
 
@@ -1212,9 +1234,14 @@ Tests:
   implementation.
 - Locked/special tabs are non-draggable or constrained according to explicit
   capabilities.
+- Attached tab drag visibly follows horizontal pointer movement before an
+  in-strip reorder preview is triggered.
 - In-strip tab drag previews reorder before release.
 - In-strip tab reorder commits only on release.
+- An attached tab remains inside its tab strip while dragging below the detach
+  threshold.
 - A tab remains attached below the detach threshold.
+- Editor-backed file tabs remain clickable and selectable after a tab drag.
 - A tab crossing the detach threshold switches to workbench snap preview.
 - Detached tab preview is always snapped to a concrete destination.
 - Detached tab placement commits only on release.

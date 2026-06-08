@@ -6,6 +6,7 @@ import type {
 import type {
   LayoutOperation,
   WindowId,
+  WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 import type { MaterializedLayoutNode } from '@/features/tiling-surface-manager/engine/layout-selectors'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
@@ -14,6 +15,7 @@ export function SplitNode({
   maximizedRect,
   maximizedWindowId,
   node,
+  previewLayout,
   surfaceRenderers,
   windowRectsById,
   onDispatch,
@@ -21,6 +23,7 @@ export function SplitNode({
   readonly maximizedRect: LayoutRect
   readonly maximizedWindowId?: WindowId
   readonly node: MaterializedLayoutNode
+  readonly previewLayout: WorkspaceLayout | null
   readonly surfaceRenderers: SurfaceRendererRegistry
   readonly windowRectsById: Readonly<Record<string, WindowLayoutRect>>
   readonly onDispatch: (operation: LayoutOperation) => void
@@ -33,6 +36,7 @@ export function SplitNode({
 
     return (
       <WindowFrame
+        previewLayout={previewLayout}
         rect={rect}
         surfaceRenderers={surfaceRenderers}
         windowId={node.windowId}
@@ -49,6 +53,7 @@ export function SplitNode({
           maximizedRect={maximizedRect}
           maximizedWindowId={maximizedWindowId}
           node={child}
+          previewLayout={previewLayout}
           surfaceRenderers={surfaceRenderers}
           windowRectsById={windowRectsById}
           onDispatch={onDispatch}
