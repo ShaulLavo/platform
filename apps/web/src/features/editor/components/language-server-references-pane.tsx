@@ -66,7 +66,7 @@ export function LanguageServerReferencesPane({
       <div className='flex h-10 items-center justify-between gap-2 border-b px-3'>
         <div className='flex min-w-0 items-center gap-2'>
           <span className='truncate text-xs font-medium'>References</span>
-          <span className='bg-muted/70 text-muted-foreground rounded px-1.5 text-[10px] leading-4'>
+          <span className='bg-muted/70 text-muted-foreground rounded px-1.5 text-[10px] leading-4 tabular-nums'>
             {references.targets.length.toLocaleString()}
           </span>
         </div>
@@ -144,7 +144,7 @@ function ReferenceGroupHeader({
           {group.pathLabel}
         </span>
       </span>
-      <span className='bg-muted/50 text-muted-foreground rounded px-1 text-[10px] leading-4'>
+      <span className='bg-muted/50 text-muted-foreground rounded px-1 text-[10px] leading-4 tabular-nums'>
         {group.targets.length}
       </span>
     </button>

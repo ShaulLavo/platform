@@ -36,7 +36,7 @@ export function Header({ repository, rootPath }: { repository: RepositoryInfo; r
           ].join(' ')}
         />
         <span className='shrink-0 text-sm font-semibold'>Changes</span>
-        <span className='text-muted-foreground min-w-0 truncate text-xs font-normal'>
+        <span className='text-muted-foreground min-w-0 truncate text-xs font-normal tabular-nums'>
           {aheadBehindLabel(repository)}
         </span>
       </button>

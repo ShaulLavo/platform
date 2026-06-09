@@ -36,7 +36,7 @@ export function ProofToolbar({
     <header className='border-border flex h-16 shrink-0 items-center justify-between border-b px-4'>
       <div className='min-w-0'>
         <h1 className='truncate text-sm font-medium'>dnd-kit tiling proof</h1>
-        <p className='text-muted-foreground text-xs'>
+        <p className='text-muted-foreground text-xs tabular-nums'>
           {windowCount} windows / {surfaceCount} tabs
         </p>
       </div>

@@ -343,7 +343,7 @@ function FileRow({
         </div>
       </div>
       <KindBadge entry={entry} />
-      <div className='text-muted-foreground truncate max-sm:hidden'>
+      <div className='text-muted-foreground truncate tabular-nums max-sm:hidden'>
         {formatModified(entry.mtimeMs)}
       </div>
       <div className='text-muted-foreground text-right tabular-nums max-sm:hidden'>

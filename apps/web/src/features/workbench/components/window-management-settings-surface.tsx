@@ -406,7 +406,7 @@ function renderNumberInput(label: string, value: number, onChange: (value: numbe
   return (
     <label className='grid gap-1 text-xs'>
       <span className='text-muted-foreground text-[11px]'>{label}</span>
-      <Input type='number' value={value} onChange={handleChange} />
+      <Input className='tabular-nums' type='number' value={value} onChange={handleChange} />
     </label>
   )
 }

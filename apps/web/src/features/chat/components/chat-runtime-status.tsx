@@ -62,7 +62,7 @@ export function ChatRuntimeStatus({
               <Icon className={cn('size-4', alert.tone === 'busy' && 'animate-spin')} />
               <AlertTitle>{alert.title}</AlertTitle>
               {alert.detail ? (
-                <AlertDescription className='line-clamp-3' title={alert.detail}>
+                <AlertDescription className='line-clamp-3 tabular-nums' title={alert.detail}>
                   {alert.detail}
                 </AlertDescription>
               ) : null}

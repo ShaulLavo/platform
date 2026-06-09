@@ -43,7 +43,7 @@ export function ChangeGroup({
           <span className='min-w-0 flex-1 truncate'>{label}</span>
         </CollapsibleTrigger>
         <GroupActions rows={rows} section={section} />
-        <span className='bg-background text-muted-foreground ml-1 flex h-5 min-w-5 items-center justify-center rounded-full border px-1.5 text-[11px] font-normal'>
+        <span className='bg-background text-muted-foreground ml-1 flex h-5 min-w-5 items-center justify-center rounded-full border px-1.5 text-[11px] font-normal tabular-nums'>
           {rows.length}
         </span>
       </div>

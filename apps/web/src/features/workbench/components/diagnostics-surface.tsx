@@ -81,7 +81,7 @@ function DiagnosticCount({ label, value }: { readonly label: string; readonly va
   return (
     <div className='rounded border px-2 py-1'>
       <div className='text-muted-foreground'>{label}</div>
-      <div className='text-foreground font-medium'>{value}</div>
+      <div className='text-foreground font-medium tabular-nums'>{value}</div>
     </div>
   )
 }

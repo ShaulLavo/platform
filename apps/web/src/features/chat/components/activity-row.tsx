@@ -37,7 +37,9 @@ export function ActivityRow({ activity }: { activity: ChatWorkLogEntry }) {
           title={detail ? `${activity.title} - ${detail}` : activity.title}
         >
           <span className='text-foreground/80'>{activity.title}</span>
-          {detail ? <span className='text-muted-foreground/55'> - {detail}</span> : null}
+          {detail ? (
+            <span className='text-muted-foreground/55 tabular-nums'> - {detail}</span>
+          ) : null}
         </p>
       </div>
     </div>

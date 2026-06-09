@@ -48,7 +48,7 @@ export function CommitControls({
       <div className='shrink-0 px-2 pt-3'>
         {showSyncChanges ? (
           <Button
-            className='h-8 w-full text-sm'
+            className='h-8 w-full text-sm tabular-nums'
             disabled={syncChanges.isPending}
             onClick={() => syncChanges.mutate()}
             type='button'
