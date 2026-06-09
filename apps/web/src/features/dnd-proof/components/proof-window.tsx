@@ -33,10 +33,12 @@ export function ProofWindow({
   tabStripRenderEpoch,
   window,
   onAddTab,
+  onCollapseWindowToRail,
+  onCollapseWindowToRow,
   onCloseSurface,
   onCloseWindow,
+  onExpandWindow,
   onSelectSurface,
-  onToggleWindowCollapse,
 }: {
   readonly activeDrag: DndProofDragData | null
   readonly activeResolvedTarget: ResolvedDndProofTarget | null
@@ -47,10 +49,12 @@ export function ProofWindow({
   readonly tabStripRenderEpoch: number
   readonly window: WorkbenchWindow
   readonly onAddTab: (windowId: WorkbenchWindow['id']) => void
+  readonly onCollapseWindowToRail: (windowId: WorkbenchWindow['id']) => void
+  readonly onCollapseWindowToRow: (windowId: WorkbenchWindow['id']) => void
   readonly onCloseSurface: (surfaceId: SurfaceId) => void
   readonly onCloseWindow: (windowId: WorkbenchWindow['id']) => void
+  readonly onExpandWindow: (windowId: WorkbenchWindow['id']) => void
   readonly onSelectSurface: (surfaceId: SurfaceId) => void
-  readonly onToggleWindowCollapse: (windowId: WorkbenchWindow['id']) => void
 }) {
   const data: DndProofDragData & DndProofDropData = {
     kind: 'window',
@@ -89,10 +93,33 @@ export function ProofWindow({
   const collapsed = window.mode === 'collapsed'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
   const title = proofWindowTitle(layout, window.id)
-  const collapseLabel = collapsed
-    ? `Expand ${activeSurface?.title ?? title}`
-    : `Collapse ${activeSurface?.title ?? title}`
+  const activeTitle = activeSurface?.title ?? title
+  const collapseToRailLabel = `Collapse ${activeTitle} to rail`
+  const collapseToRowLabel = `Collapse ${activeTitle} to row`
+  const expandLabel = `Expand ${activeTitle}`
   const chromeOrientation = collapsedChromeOrientation(collapsed, rect)
+  const rowButtonActive = collapsed && collapsedWindowLooksLikeRow(window, chromeOrientation)
+  const railButtonActive = collapsed && collapsedWindowLooksLikeRail(window, chromeOrientation)
+  const rowButtonLabel = rowButtonActive ? expandLabel : collapseToRowLabel
+  const railButtonLabel = railButtonActive ? expandLabel : collapseToRailLabel
+
+  function handleRowButtonClick() {
+    if (rowButtonActive) {
+      onExpandWindow(window.id)
+      return
+    }
+
+    onCollapseWindowToRow(window.id)
+  }
+
+  function handleRailButtonClick() {
+    if (railButtonActive) {
+      onExpandWindow(window.id)
+      return
+    }
+
+    onCollapseWindowToRail(window.id)
+  }
 
   return (
     <section
@@ -105,6 +132,7 @@ export function ProofWindow({
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-window-collapsed={collapsed ? 'true' : 'false'}
+      data-proof-window-collapsed-edge={window.collapsedEdge}
       data-proof-window-chrome-orientation={chromeOrientation}
       data-proof-window-id={window.id}
       data-proof-window-mode={window.mode}
@@ -164,17 +192,30 @@ export function ProofWindow({
             <PlusIcon className='size-3' />
           </Button>
           <Button
-            aria-label={collapseLabel}
+            aria-label={rowButtonLabel}
             className='text-muted-foreground hover:text-foreground size-7 rounded-md'
-            disabled={!windowCanCollapse}
+            disabled={!rowButtonActive && !windowCanCollapse}
             size='icon-sm'
-            title={collapseLabel}
+            title={rowButtonLabel}
             type='button'
             variant='ghost'
-            onClick={() => onToggleWindowCollapse(window.id)}
+            onClick={handleRowButtonClick}
             onPointerDown={(event) => event.stopPropagation()}
           >
             <MinusIcon className='size-3.5' />
+          </Button>
+          <Button
+            aria-label={railButtonLabel}
+            className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+            disabled={!railButtonActive && !windowCanCollapse}
+            size='icon-sm'
+            title={railButtonLabel}
+            type='button'
+            variant='ghost'
+            onClick={handleRailButtonClick}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <MinusIcon className='size-3.5 rotate-90' />
           </Button>
           <Button
             aria-label={`Close ${title}`}
@@ -209,6 +250,28 @@ function collapsedChromeOrientation(collapsed: boolean, rect: LayoutRect) {
   if (rect.width >= rect.height) return 'horizontal'
 
   return 'vertical'
+}
+
+function collapsedWindowLooksLikeRow(
+  window: WorkbenchWindow,
+  chromeOrientation: 'horizontal' | 'vertical',
+) {
+  if (window.collapsedEdge === 'top') return true
+  if (window.collapsedEdge === 'bottom') return true
+  if (window.collapsedEdge) return false
+
+  return chromeOrientation === 'horizontal'
+}
+
+function collapsedWindowLooksLikeRail(
+  window: WorkbenchWindow,
+  chromeOrientation: 'horizontal' | 'vertical',
+) {
+  if (window.collapsedEdge === 'left') return true
+  if (window.collapsedEdge === 'right') return true
+  if (window.collapsedEdge) return false
+
+  return chromeOrientation === 'vertical'
 }
 
 function activeSurfaceForWindow(

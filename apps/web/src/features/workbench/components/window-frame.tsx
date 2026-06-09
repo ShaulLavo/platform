@@ -287,6 +287,7 @@ function windowsEqual(left: WorkbenchWindow, right: WorkbenchWindow) {
   if (left === right) return true
   if (left.id !== right.id) return false
   if (left.mode !== right.mode) return false
+  if (left.collapsedEdge !== right.collapsedEdge) return false
   if (left.activeSurfaceId !== right.activeSurfaceId) return false
 
   return surfaceIdsEqual(left.surfaceIds, right.surfaceIds)

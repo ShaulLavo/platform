@@ -7,6 +7,7 @@ import {
   CLASSIC_EDITOR_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
   createDiffSurface,
+  createEmptyWorkspaceLayout,
   createFileEditorSurface,
   createSearchPreviewSurface,
   createSearchResultsSurface,
@@ -33,6 +34,7 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-ids'
 import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import {
+  collapseWindow,
   moveSurface,
   openSurface,
 } from '@/features/tiling-surface-manager/engine/layout-operations'
@@ -137,6 +139,22 @@ describe('tiling surface layout persistence', () => {
       REVIEW_RECIPE_ID,
     )
     expect(restored.layout.layoutCommandsById[REVIEW_LAYOUT_COMMAND_ID]?.enabled).toBe(true)
+    expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
+  })
+
+  it('round trips collapsed window edges', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/collapsed-edge.ts' })
+    const opened = openSurface(createEmptyWorkspaceLayout(), file)
+    const windowId = Object.values(opened.windowsById).find((window) =>
+      window.surfaceIds.includes(file.id),
+    )?.id
+    if (!windowId) throw new Error('Expected file window')
+
+    const layout = collapseWindow(opened, windowId, 'left')
+    const restored = restoreWorkspaceLayout(serializeWorkspaceLayout(layout), { rootPath })
+
+    expect(restored.layout.windowsById[windowId]?.mode).toBe('collapsed')
+    expect(restored.layout.windowsById[windowId]?.collapsedEdge).toBe('left')
     expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
   })
 

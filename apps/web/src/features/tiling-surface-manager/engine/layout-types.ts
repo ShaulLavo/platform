@@ -105,6 +105,7 @@ export type WorkbenchWindowMode = 'collapsed' | 'fullscreen' | 'maximized' | 'no
 
 export type WorkbenchWindow = {
   readonly activeSurfaceId: SurfaceId
+  readonly collapsedEdge?: LayoutEdge
   readonly id: WindowId
   readonly mode: WorkbenchWindowMode
   readonly pinnedSurfaceIds: readonly SurfaceId[]
@@ -248,7 +249,7 @@ export type LayoutOperation =
     }
   | { readonly policyId?: LayoutPolicyId; readonly surface: Surface; readonly type: 'openSurface' }
   | { readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
-  | { readonly type: 'collapseWindow'; readonly windowId: WindowId }
+  | { readonly edge?: LayoutEdge; readonly type: 'collapseWindow'; readonly windowId: WindowId }
   | { readonly type: 'expandWindow'; readonly windowId: WindowId }
   | {
       readonly placement?: SurfacePlacementHint

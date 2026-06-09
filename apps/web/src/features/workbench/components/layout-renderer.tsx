@@ -281,6 +281,7 @@ function layoutWindowGeometryEqual(
 ) {
   if (left === right) return true
   if (!left || !right) return false
+  if (left.collapsedEdge !== right.collapsedEdge) return false
 
   return left.mode === right.mode
 }

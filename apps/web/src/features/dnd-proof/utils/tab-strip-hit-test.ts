@@ -7,6 +7,9 @@ type PointerCoordinates = {
   readonly y: number
 }
 
+type TabDockingDirection = 'down' | 'left' | 'none' | 'right' | 'up'
+type TabStripOrientation = 'horizontal' | 'vertical'
+
 export type DndProofTabStripHit = {
   readonly strength: 'direct' | 'dock' | 'strip'
   readonly target: Extract<DndProofDropData, { readonly kind: 'tab' | 'tab-strip' }>
@@ -65,6 +68,7 @@ export function tabStripDropTargetAtPoint(
   source: DndProofDragData,
   point: PointerCoordinates,
   options: {
+    readonly sourceStripOrientation?: TabStripOrientation | null
     readonly sourceStripRect?: LayoutRect | null
   } = {},
 ): DndProofDropData | null {
@@ -75,6 +79,7 @@ export function tabStripDropHitAtPoint(
   source: DndProofDragData,
   point: PointerCoordinates,
   options: {
+    readonly sourceStripOrientation?: TabStripOrientation | null
     readonly sourceStripRect?: LayoutRect | null
   } = {},
 ): DndProofTabStripHit | null {
@@ -92,6 +97,7 @@ export function tabStripDropHitAtPoint(
     source,
     point,
     options.sourceStripRect ?? null,
+    options.sourceStripOrientation ?? null,
   )
   if (!dockingStrip) return null
 
@@ -105,6 +111,7 @@ export function describeTabStripHitTest(
   source: DndProofDragData,
   point: PointerCoordinates,
   options: {
+    readonly sourceStripOrientation?: TabStripOrientation | null
     readonly sourceStripRect?: LayoutRect | null
   } = {},
 ) {
@@ -113,11 +120,16 @@ export function describeTabStripHitTest(
   const directStrip = tabStripElementAtPoint(source, point)
   if (directStrip) return `direct strip ${tabStripElementId(directStrip)}`
 
-  const direction = tabDockingDirection(options.sourceStripRect ?? null, point)
+  const direction = tabDockingDirection(
+    options.sourceStripRect ?? null,
+    options.sourceStripOrientation ?? null,
+    point,
+  )
   const dockingStrip = tabStripElementNearDockingPoint(
     source,
     point,
     options.sourceStripRect ?? null,
+    options.sourceStripOrientation ?? null,
   )
   if (dockingStrip) return `dock strip ${tabStripElementId(dockingStrip)} dir=${direction}`
 
@@ -406,8 +418,9 @@ function tabStripElementNearDockingPoint(
   source: DndProofDragData,
   point: PointerCoordinates,
   sourceStripRect: LayoutRect | null,
+  sourceStripOrientation: TabStripOrientation | null,
 ) {
-  const direction = tabDockingDirection(sourceStripRect, point)
+  const direction = tabDockingDirection(sourceStripRect, sourceStripOrientation, point)
   const candidates = tabStripElements().flatMap((stripElement) => {
     if (sourceWindowOwnsTabStrip(source, stripElement)) return []
     if (!pointIsInsideTabStripDockingBand(stripElement, point)) return []
@@ -747,16 +760,24 @@ function tabStripElementId(element: HTMLElement) {
 function pointIsInsideTabStripBand(
   element: HTMLElement,
   point: PointerCoordinates,
-  verticalSlop: number,
+  crossAxisSlop: number,
 ) {
   const rect = element.getBoundingClientRect()
-  const horizontalSlop = TAB_STRIP_TRAILING_EDGE_SLOP_PX
+  const trailingSlop = TAB_STRIP_TRAILING_EDGE_SLOP_PX
+  if (tabStripOrientation(element) === 'vertical') {
+    return (
+      point.x >= rect.left - crossAxisSlop &&
+      point.x <= rect.right + crossAxisSlop &&
+      point.y >= rect.top - trailingSlop &&
+      point.y <= rect.bottom + trailingSlop
+    )
+  }
 
   return (
-    point.x >= rect.left - horizontalSlop &&
-    point.x <= rect.right + horizontalSlop &&
-    point.y >= rect.top - verticalSlop &&
-    point.y <= rect.bottom + verticalSlop
+    point.x >= rect.left - trailingSlop &&
+    point.x <= rect.right + trailingSlop &&
+    point.y >= rect.top - crossAxisSlop &&
+    point.y <= rect.bottom + crossAxisSlop
   )
 }
 
@@ -766,6 +787,14 @@ function pointIsNearTabStrip(element: HTMLElement, point: PointerCoordinates) {
 
 function pointIsInsideTabStripDockingBand(element: HTMLElement, point: PointerCoordinates) {
   const rect = element.getBoundingClientRect()
+  if (tabStripOrientation(element) === 'vertical') {
+    return (
+      point.x >= rect.left - TAB_STRIP_DOCK_ABOVE_SLOP_PX &&
+      point.x <= rect.right + TAB_STRIP_DOCK_BELOW_SLOP_PX &&
+      point.y >= rect.top - TAB_STRIP_DOCK_HORIZONTAL_SLOP_PX &&
+      point.y <= rect.bottom + TAB_STRIP_DOCK_HORIZONTAL_SLOP_PX
+    )
+  }
 
   return (
     point.x >= rect.left - TAB_STRIP_DOCK_HORIZONTAL_SLOP_PX &&
@@ -779,12 +808,24 @@ function tabStripDockingScore(element: HTMLElement, point: PointerCoordinates) {
   const rect = element.getBoundingClientRect()
   const verticalDistance = distanceFromRange(point.y, rect.top, rect.bottom)
   const horizontalDistance = distanceFromRange(point.x, rect.left, rect.right)
+  if (tabStripOrientation(element) === 'vertical') return horizontalDistance * 10 + verticalDistance
 
   return verticalDistance * 10 + horizontalDistance
 }
 
-function tabDockingDirection(sourceStripRect: LayoutRect | null, point: PointerCoordinates) {
+function tabDockingDirection(
+  sourceStripRect: LayoutRect | null,
+  sourceStripOrientation: TabStripOrientation | null,
+  point: PointerCoordinates,
+): TabDockingDirection {
   if (!sourceStripRect) return 'none'
+  if (sourceStripOrientation === 'vertical') {
+    const sourceCenterX = sourceStripRect.x + sourceStripRect.width / 2
+    if (point.x < sourceCenterX) return 'left'
+    if (point.x > sourceCenterX) return 'right'
+
+    return 'none'
+  }
 
   const sourceCenterY = sourceStripRect.y + sourceStripRect.height / 2
   if (point.y < sourceCenterY) return 'up'
@@ -796,11 +837,13 @@ function tabDockingDirection(sourceStripRect: LayoutRect | null, point: PointerC
 function tabStripMatchesDockingDirection(
   element: HTMLElement,
   point: PointerCoordinates,
-  direction: 'down' | 'none' | 'up',
+  direction: TabDockingDirection,
 ) {
   if (direction === 'none') return true
 
   const rect = element.getBoundingClientRect()
+  if (direction === 'left') return rect.right <= point.x
+  if (direction === 'right') return rect.left >= point.x
   if (direction === 'up') return rect.bottom <= point.y
 
   return rect.top >= point.y

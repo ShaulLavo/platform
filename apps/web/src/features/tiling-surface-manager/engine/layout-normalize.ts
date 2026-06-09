@@ -392,7 +392,7 @@ function repairWindow(
     ? window.activeSurfaceId
     : surfaceIds[0]
 
-  return {
+  return repairWindowCollapsedEdge({
     ...window,
     activeSurfaceId,
     pinnedSurfaceIds: uniqueSurfaceIds(window.pinnedSurfaceIds).filter((surfaceId) =>
@@ -400,7 +400,7 @@ function repairWindow(
     ),
     previewSurfaceId: previewSurfaceIdForWindow(window, surfaceIds),
     surfaceIds,
-  }
+  })
 }
 
 function previewSurfaceIdForWindow(
@@ -452,12 +452,25 @@ function removeDuplicateSurfacesFromWindow(
     ? window.activeSurfaceId
     : surfaceIds[0]
 
-  return {
+  return repairWindowCollapsedEdge({
     ...window,
     activeSurfaceId,
     pinnedSurfaceIds: window.pinnedSurfaceIds.filter((surfaceId) => surfaceIds.includes(surfaceId)),
     previewSurfaceId: previewSurfaceIdForWindow(window, surfaceIds),
     surfaceIds,
+  })
+}
+
+function repairWindowCollapsedEdge(window: WorkbenchWindow): WorkbenchWindow {
+  if (window.mode === 'collapsed') return window
+
+  return {
+    activeSurfaceId: window.activeSurfaceId,
+    id: window.id,
+    mode: window.mode,
+    pinnedSurfaceIds: window.pinnedSurfaceIds,
+    previewSurfaceId: window.previewSurfaceId,
+    surfaceIds: window.surfaceIds,
   }
 }
 

@@ -407,6 +407,7 @@ export function createWindowManagementSettingsSurface(): Surface {
 
 export function createWorkbenchWindow({
   activeSurfaceId,
+  collapsedEdge,
   id,
   mode = 'normal',
   pinnedSurfaceIds = [],
@@ -414,19 +415,27 @@ export function createWorkbenchWindow({
   surfaceIds,
 }: {
   readonly activeSurfaceId: SurfaceId
+  readonly collapsedEdge?: WorkbenchWindow['collapsedEdge']
   readonly id: WindowId
   readonly mode?: WorkbenchWindow['mode']
   readonly pinnedSurfaceIds?: readonly SurfaceId[]
   readonly previewSurfaceId?: SurfaceId
   readonly surfaceIds: readonly SurfaceId[]
 }): WorkbenchWindow {
-  return {
+  const window = {
     activeSurfaceId,
     id,
     mode,
     pinnedSurfaceIds,
     previewSurfaceId,
     surfaceIds,
+  } satisfies WorkbenchWindow
+  if (mode !== 'collapsed') return window
+  if (!collapsedEdge) return window
+
+  return {
+    ...window,
+    collapsedEdge,
   }
 }
 

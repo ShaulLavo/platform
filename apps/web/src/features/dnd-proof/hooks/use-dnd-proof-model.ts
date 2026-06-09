@@ -98,6 +98,7 @@ type ActiveProofDrag =
       sourceIndex: number | null
       sourceWindowId: WindowId | null
       stripRect: LayoutRect | null
+      stripOrientation: 'horizontal' | 'vertical' | null
     }
   | {
       kind: 'window'
@@ -686,7 +687,11 @@ function noneTargetDebug(
   activeDrag: ActiveProofDrag | null,
 ) {
   const sourceStripRect = activeDrag?.kind === 'tab' ? activeDrag.stripRect : null
-  const tabStripProbe = describeTabStripHitTest(source, point, { sourceStripRect })
+  const sourceStripOrientation = activeDrag?.kind === 'tab' ? activeDrag.stripOrientation : null
+  const tabStripProbe = describeTabStripHitTest(source, point, {
+    sourceStripOrientation,
+    sourceStripRect,
+  })
 
   return `${pointSource}@${formatPoint(point)} raw=${rawTargetDebugLabel(rawTarget)} ${tabStripProbe}`
 }
@@ -787,6 +792,8 @@ function activeProofDragForSource(
   if (!source) return null
   if (source.kind === 'window') return { kind: 'window', source }
 
+  const sourceElement = event.operation.source?.element
+
   return {
     detached: false,
     kind: 'tab',
@@ -794,7 +801,8 @@ function activeProofDragForSource(
     source,
     sourceIndex: sourceTabIndex(event.operation.source?.data),
     sourceWindowId: surfaceWindowId(model.layout, source.surfaceId),
-    stripRect: tabStripRect(event.operation.source?.element),
+    stripOrientation: tabStripOrientation(sourceElement),
+    stripRect: tabStripRect(sourceElement),
   }
 }
 
@@ -845,8 +853,9 @@ function tabTargetForDrag({
 }) {
   if (mode === 'tab-detached') {
     const sourceStripRect = activeDrag?.kind === 'tab' ? activeDrag.stripRect : null
+    const sourceStripOrientation = activeDrag?.kind === 'tab' ? activeDrag.stripOrientation : null
     const pointTarget = tabTargetFromHit(
-      tabStripDropHitAtPoint(source, eventPoint, { sourceStripRect }),
+      tabStripDropHitAtPoint(source, eventPoint, { sourceStripOrientation, sourceStripRect }),
       'app',
     )
     if (pointTarget) {
@@ -906,7 +915,7 @@ function directCrossWindowTabTarget(
   if (hit.strength !== 'direct') return null
   if (hit.target.windowId === sourceWindowId) return null
 
-  return tabTargetFromHit(hit)
+  return tabTargetFromHit(hit, 'app')
 }
 
 function rawTabTargetForPoint(
@@ -1128,7 +1137,11 @@ function updateTabDetachState(
 ) {
   if (activeDrag.detached) return
 
-  const outsideDistance = tabStripOutsideDistance(activeDrag.stripRect, point.y)
+  const outsideDistance = tabStripOutsideDistance(
+    activeDrag.stripRect,
+    activeDrag.stripOrientation,
+    point,
+  )
   const threshold = tabDetachThreshold(activeDrag.pointerType)
   activeDrag.detached = outsideDistance >= threshold
 }
@@ -1139,10 +1152,20 @@ function tabDetachThreshold(pointerType: string) {
   return TAB_MOUSE_DETACH_THRESHOLD_PX
 }
 
-function tabStripOutsideDistance(rect: LayoutRect | null, clientY: number) {
+function tabStripOutsideDistance(
+  rect: LayoutRect | null,
+  orientation: 'horizontal' | 'vertical' | null,
+  point: PointerCoordinates,
+) {
   if (!rect) return 0
-  if (clientY < rect.y) return rect.y - clientY
-  if (clientY > rect.y + rect.height) return clientY - rect.y - rect.height
+  if (orientation === 'vertical') return distanceFromRange(point.x, rect.x, rect.x + rect.width)
+
+  return distanceFromRange(point.y, rect.y, rect.y + rect.height)
+}
+
+function distanceFromRange(value: number, min: number, max: number) {
+  if (value < min) return min - value
+  if (value > max) return value - max
 
   return 0
 }
@@ -1152,6 +1175,14 @@ function tabStripRect(sourceElement: Element | undefined): LayoutRect | null {
   if (!stripElement) return null
 
   return layoutRectFromDomRect(stripElement.getBoundingClientRect())
+}
+
+function tabStripOrientation(sourceElement: Element | undefined) {
+  const stripElement = sourceElement?.closest<HTMLElement>('[data-proof-tab-strip-id]')
+  if (stripElement?.dataset.proofTabStripOrientation === 'vertical') return 'vertical'
+  if (stripElement?.dataset.proofTabStripOrientation === 'horizontal') return 'horizontal'
+
+  return null
 }
 
 function layoutRectFromDomRect(rect: DOMRect): LayoutRect {

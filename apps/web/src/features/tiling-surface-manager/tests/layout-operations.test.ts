@@ -249,6 +249,23 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(expanded)
   })
 
+  it('stores explicit collapsed edges and clears them on expand', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/collapsible-edge.ts' })
+    const opened = openSurface(emptyLayout(), file)
+    const windowId = mustFindWindowId(opened, file.id)
+    const collapsed = collapseWindow(opened, windowId, 'left')
+    const retargeted = collapseWindow(collapsed, windowId, 'bottom')
+    const expanded = expandWindow(collapsed, windowId)
+
+    expect(collapsed.windowsById[windowId]?.mode).toBe('collapsed')
+    expect(collapsed.windowsById[windowId]?.collapsedEdge).toBe('left')
+    expect(retargeted.windowsById[windowId]?.mode).toBe('collapsed')
+    expect(retargeted.windowsById[windowId]?.collapsedEdge).toBe('bottom')
+    expect(expanded.windowsById[windowId]?.mode).toBe('normal')
+    expect(expanded.windowsById[windowId]?.collapsedEdge).toBeUndefined()
+    expectValidLayout(expanded)
+  })
+
   it('moves surfaces to background and restores recipe-slot snaps through concrete placement', () => {
     const git = createGitChangesSurface()
     const opened = openSurface(createClassicFirstRunWorkspaceLayout(), git)

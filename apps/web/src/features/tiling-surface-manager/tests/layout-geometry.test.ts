@@ -121,6 +121,41 @@ describe('tiling surface layout geometry', () => {
     expectRect(geometry.windowRectsById[windowId]?.rect, { height: 40, width: 1000, x: 0, y: 0 })
   })
 
+  it('allocates explicit single root collapsed edges', () => {
+    const surface = createPlaceholderSurface({
+      canCollapse: true,
+      canClose: true,
+      contextKey: 'single-root-collapse-edge',
+      title: 'Single Root Edge',
+    })
+    const opened = openSurface(createEmptyWorkspaceLayout(), surface)
+    const windowId = findWindowIdContainingSurface(opened, surface.id)
+    if (!windowId) throw new Error('Expected opened surface window')
+
+    const bottom = collapseWindow(opened, windowId, 'bottom')
+    const left = collapseWindow(opened, windowId, 'left')
+    const nodeId = findNodeIdForWindow(opened, windowId)
+    if (!nodeId) throw new Error('Expected collapsed window node')
+
+    const bottomGeometry = deriveLayoutGeometry(bottom, rootRect(), { gapPx: 10 })
+    const leftGeometry = deriveLayoutGeometry(left, rootRect(), { gapPx: 10 })
+
+    expectRect(bottomGeometry.windowRectsById[windowId]?.rect, {
+      height: 40,
+      width: 1000,
+      x: 0,
+      y: 760,
+    })
+    expectRect(leftGeometry.windowRectsById[windowId]?.rect, {
+      height: 800,
+      width: 40,
+      x: 0,
+      y: 0,
+    })
+    expectRect(bottomGeometry.nodeRectsById[nodeId], { height: 40, width: 1000, x: 0, y: 760 })
+    expectRect(leftGeometry.nodeRectsById[nodeId], { height: 800, width: 40, x: 0, y: 0 })
+  })
+
   it('derives background, recipe-slot, root, parent, window-edge, and center snap destinations', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const geometry = deriveLayoutGeometry(layout, rootRect(), {

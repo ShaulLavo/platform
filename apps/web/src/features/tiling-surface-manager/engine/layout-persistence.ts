@@ -767,16 +767,24 @@ function restoredWindow(
   const surfaceIds = mapSurfaceIds(value.surfaceIds, idMap)
   const activeSurfaceId = mapOptionalSurfaceId(value.activeSurfaceId, idMap) ?? surfaceIds[0]
   if (!activeSurfaceId) return null
+  const mode = restoredWindowMode(value.mode)
 
-  return {
+  const window = {
     activeSurfaceId,
     id: value.id as WindowId,
-    mode: restoredWindowMode(value.mode),
+    mode,
     pinnedSurfaceIds: mapSurfaceIds(value.pinnedSurfaceIds, idMap).filter((surfaceId) =>
       surfaceIds.includes(surfaceId),
     ),
     previewSurfaceId: mapOptionalSurfaceId(value.previewSurfaceId, idMap),
     surfaceIds,
+  } satisfies WorkbenchWindow
+  const collapsedEdge = restoredCollapsedEdge(value.collapsedEdge, mode)
+  if (!collapsedEdge) return window
+
+  return {
+    ...window,
+    collapsedEdge,
   }
 }
 
@@ -786,6 +794,16 @@ function restoredWindowMode(value: unknown): WorkbenchWindow['mode'] {
   if (value === 'collapsed') return 'collapsed'
 
   return 'normal'
+}
+
+function restoredCollapsedEdge(
+  value: unknown,
+  mode: WorkbenchWindow['mode'],
+): WorkbenchWindow['collapsedEdge'] {
+  if (mode !== 'collapsed') return undefined
+  if (!isLayoutEdge(value)) return undefined
+
+  return value
 }
 
 function restoredNodes(value: unknown) {

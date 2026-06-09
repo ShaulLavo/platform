@@ -213,11 +213,33 @@ function windowNodeRect(
   isRootNode: boolean,
 ): LayoutRect {
   if (!isRootNode) return rect
-  if (layout.windowsById[node.windowId]?.mode !== 'collapsed') return rect
+  const window = layout.windowsById[node.windowId]
+  if (window?.mode !== 'collapsed') return rect
+
+  return collapsedWindowRect(rect, collapsedWindowHeaderPx, window.collapsedEdge)
+}
+
+function collapsedWindowRect(
+  rect: LayoutRect,
+  collapsedWindowHeaderPx: number,
+  edge: LayoutEdge | undefined,
+): LayoutRect {
+  const size = Math.max(0, collapsedWindowHeaderPx)
+  if (edge === 'left') return { ...rect, width: Math.min(rect.width, size) }
+  if (edge === 'right') {
+    const width = Math.min(rect.width, size)
+
+    return { ...rect, width, x: rect.x + rect.width - width }
+  }
+  if (edge === 'bottom') {
+    const height = Math.min(rect.height, size)
+
+    return { ...rect, height, y: rect.y + rect.height - height }
+  }
 
   return {
     ...rect,
-    height: Math.min(rect.height, Math.max(0, collapsedWindowHeaderPx)),
+    height: Math.min(rect.height, size),
   }
 }
 

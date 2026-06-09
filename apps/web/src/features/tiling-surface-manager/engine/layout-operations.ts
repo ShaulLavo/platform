@@ -99,7 +99,7 @@ export function applyLayoutOperation(
     case 'closeSurface':
       return closeSurface(layout, operation.surfaceId)
     case 'collapseWindow':
-      return collapseWindow(layout, operation.windowId)
+      return collapseWindow(layout, operation.windowId, operation.edge)
     case 'expandWindow':
       return expandWindow(layout, operation.windowId)
     case 'restoreSurface':
@@ -225,15 +225,19 @@ function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId): Works
   )
 }
 
-export function collapseWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLayout {
+export function collapseWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  edge?: LayoutEdge,
+): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const window = normalizedLayout.windowsById[windowId]
   if (!window) return normalizedLayout
   if (!windowCanCollapse(normalizedLayout, window)) return normalizedLayout
 
-  return normalizeToolPaneRecipeLayout(
-    normalizeWorkspaceLayout(layoutWithWindowMode(normalizedLayout, windowId, 'collapsed')),
-  )
+  const collapsedLayout = layoutWithCollapsedWindow(normalizedLayout, windowId, edge)
+
+  return normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(collapsedLayout))
 }
 
 export function expandWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLayout {
@@ -2439,10 +2443,24 @@ function setWindowMode(
   return normalizeWorkspaceLayout(layoutWithWindowMode(normalizedLayout, windowId, mode))
 }
 
+function layoutWithCollapsedWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  edge: LayoutEdge | undefined,
+): WorkspaceLayout {
+  if (!edge) return layoutWithWindowMode(layout, windowId, 'collapsed')
+
+  const expandedLayout = layoutWithWindowMode(layout, windowId, 'normal')
+  const movedLayout = moveWindow(expandedLayout, windowId, { edge, kind: 'root-edge' })
+
+  return layoutWithWindowMode(movedLayout, windowId, 'collapsed', edge)
+}
+
 function layoutWithWindowMode(
   layout: WorkspaceLayout,
   windowId: WindowId,
   mode: WorkbenchWindow['mode'],
+  collapsedEdge?: LayoutEdge,
 ): WorkspaceLayout {
   const window = layout.windowsById[windowId]
   if (!window) return layout
@@ -2451,11 +2469,31 @@ function layoutWithWindowMode(
     ...layout,
     windowsById: {
       ...layout.windowsById,
-      [windowId]: {
-        ...window,
-        mode,
-      },
+      [windowId]: windowWithMode(window, mode, collapsedEdge),
     },
+  }
+}
+
+function windowWithMode(
+  window: WorkbenchWindow,
+  mode: WorkbenchWindow['mode'],
+  collapsedEdge: LayoutEdge | undefined,
+): WorkbenchWindow {
+  if (mode === 'collapsed') {
+    return {
+      ...window,
+      collapsedEdge,
+      mode,
+    }
+  }
+
+  return {
+    activeSurfaceId: window.activeSurfaceId,
+    id: window.id,
+    mode,
+    pinnedSurfaceIds: window.pinnedSurfaceIds,
+    previewSurfaceId: window.previewSurfaceId,
+    surfaceIds: window.surfaceIds,
   }
 }
 

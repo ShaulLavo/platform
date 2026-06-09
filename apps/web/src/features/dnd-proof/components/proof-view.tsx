@@ -19,7 +19,10 @@ import {
   type LayoutRect,
 } from '@/features/tiling-surface-manager/engine/layout-geometry'
 import { visibleWindowIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import type {
+  LayoutEdge,
+  WorkspaceLayout,
+} from '@/features/tiling-surface-manager/engine/layout-types'
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 
@@ -104,16 +107,69 @@ export function DndProofView() {
     return count + window.surfaceIds.length
   }, 0)
 
-  function toggleWindowCollapse(windowId: WorkspaceLayout['activeWindowId']) {
+  function collapseWindowToRow(windowId: WorkspaceLayout['activeWindowId']) {
     if (!windowId) return
 
     const window = model.layout.windowsById[windowId]
     if (!window) return
 
     dispatchLayoutOperation({
-      type: window.mode === 'collapsed' ? 'expandWindow' : 'collapseWindow',
+      edge: rowCollapseEdge(windowId),
+      type: 'collapseWindow',
       windowId,
     })
+  }
+
+  function collapseWindowToRail(windowId: WorkspaceLayout['activeWindowId']) {
+    if (!windowId) return
+
+    const window = model.layout.windowsById[windowId]
+    if (!window) return
+
+    dispatchLayoutOperation({
+      edge: railCollapseEdge(windowId),
+      type: 'collapseWindow',
+      windowId,
+    })
+  }
+
+  function expandWindow(windowId: WorkspaceLayout['activeWindowId']) {
+    if (!windowId) return
+
+    const window = model.layout.windowsById[windowId]
+    if (!window) return
+    if (window.mode !== 'collapsed') return
+
+    dispatchLayoutOperation({
+      type: 'expandWindow',
+      windowId,
+    })
+  }
+
+  function rowCollapseEdge(windowId: WorkspaceLayout['activeWindowId']): LayoutEdge {
+    if (!windowId) return 'bottom'
+
+    const rect = committedGeometry.windowRectsById[windowId]?.rect
+    if (!rect) return 'bottom'
+
+    const centerY = rect.y + rect.height / 2
+    const midpointY = surfaceRect.y + surfaceRect.height / 2
+    if (centerY < midpointY) return 'top'
+
+    return 'bottom'
+  }
+
+  function railCollapseEdge(windowId: WorkspaceLayout['activeWindowId']): LayoutEdge {
+    if (!windowId) return 'left'
+
+    const rect = committedGeometry.windowRectsById[windowId]?.rect
+    if (!rect) return 'left'
+
+    const centerX = rect.x + rect.width / 2
+    const midpointX = surfaceRect.x + surfaceRect.width / 2
+    if (centerX > midpointX) return 'right'
+
+    return 'left'
   }
 
   return (
@@ -171,10 +227,12 @@ export function DndProofView() {
                   tabStripRenderEpoch={tabStripRenderEpoch}
                   window={window}
                   onAddTab={addTab}
+                  onCollapseWindowToRail={collapseWindowToRail}
+                  onCollapseWindowToRow={collapseWindowToRow}
                   onCloseSurface={removeSurface}
                   onCloseWindow={removeWindow}
+                  onExpandWindow={expandWindow}
                   onSelectSurface={activateSurface}
-                  onToggleWindowCollapse={toggleWindowCollapse}
                 />
               )
             })}

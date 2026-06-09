@@ -200,6 +200,36 @@ describe.sequential('dnd proof browser behavior', () => {
     await settleProofDrag()
   })
 
+  it('previews a detached tab from a collapsed vertical rail dock band before release', async () => {
+    renderProof()
+
+    await waitForProof()
+    await collapseAllWindowsToRails()
+
+    const { sourceId, targetStrip } = collapsedRailDragPair()
+    const targetStripId = proofTabStripId(targetStrip)
+    const targetElement = tabDockElementInStrip(targetStrip)
+    const targetPoint = elementPointFromRatio(targetElement.element, {
+      x: targetElement.x,
+      y: targetElement.y,
+    })
+    const source = await settledVisibleTabSource(sourceId)
+    const sourcePoint = tabPointFromRatio(source.tab, source.point)
+
+    startPointerDrag(source.tab, sourcePoint)
+    movePointerBy(0, 8)
+    await nextFrame()
+    movePointerTo(targetPoint)
+
+    await vi.waitFor(() => {
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expectValidProofTabState()
+    })
+
+    finishPointerDrag(targetPoint)
+    await settleProofDrag()
+  })
+
   it('survives repeated same-tab cross-window round trips with real browser pointer events', async () => {
     renderProof()
 
@@ -332,6 +362,7 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
       expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('bottom')
       expect(collapsedRect.height).toBeLessThan(expandedRect.height)
       expect(collapsedRect.height).toBeLessThanOrEqual(42)
       expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
@@ -368,9 +399,79 @@ describe.sequential('dnd proof browser behavior', () => {
 
       expect(windowRegions()).toHaveLength(1)
       expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('bottom')
       expect(collapsedRect.height).toBeLessThan(expandedRect.height)
       expect(collapsedRect.height).toBeLessThanOrEqual(42)
       expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
+    })
+  })
+
+  it('collapses a single root proof window to its left rail allocation', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const targetWindow = await closeWindowsUntilOne()
+    const targetWindowId = proofWindowId(targetWindow)
+    const expandedRect = targetWindow.getBoundingClientRect()
+
+    collapseToRailButtonIn(targetWindow).click()
+
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(targetWindowId)
+      const collapsedRect = collapsedWindow.getBoundingClientRect()
+
+      expect(windowRegions()).toHaveLength(1)
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
+      expect(collapsedWindow.dataset.proofWindowChromeOrientation).toBe('vertical')
+      expect(collapsedRect.width).toBeLessThan(expandedRect.width)
+      expect(collapsedRect.width).toBeLessThanOrEqual(42)
+      expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
+    })
+  })
+
+  it('switches a collapsed proof window between rail and row allocations', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const targetWindow = await closeWindowsUntilOne()
+    const targetWindowId = proofWindowId(targetWindow)
+
+    collapseToRailButtonIn(targetWindow).click()
+
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(targetWindowId)
+      const collapsedRect = collapsedWindow.getBoundingClientRect()
+
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
+      expect(collapsedRect.width).toBeLessThanOrEqual(42)
+    })
+
+    collapseButtonIn(proofWindowById(targetWindowId)).click()
+
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(targetWindowId)
+      const collapsedRect = collapsedWindow.getBoundingClientRect()
+
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('bottom')
+      expect(collapsedRect.height).toBeLessThanOrEqual(42)
+      expect(collapsedRect.width).toBeGreaterThan(42)
+    })
+
+    collapseToRailButtonIn(proofWindowById(targetWindowId)).click()
+
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(targetWindowId)
+      const collapsedRect = collapsedWindow.getBoundingClientRect()
+
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
+      expect(collapsedRect.width).toBeLessThanOrEqual(42)
+      expect(collapsedRect.height).toBeGreaterThan(42)
     })
   })
 
@@ -382,13 +483,14 @@ describe.sequential('dnd proof browser behavior', () => {
     const targetWindow = leftmostWindowRegion()
     const targetWindowId = proofWindowId(targetWindow)
 
-    collapseButtonIn(targetWindow).click()
+    collapseToRailButtonIn(targetWindow).click()
 
     await vi.waitFor(() => {
       const collapsedWindow = proofWindowById(targetWindowId)
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
       expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
       expect(collapsedWindow.dataset.proofWindowChromeOrientation).toBe('vertical')
       expect(tabStripInWindow(collapsedWindow).dataset.proofTabStripOrientation).toBe('vertical')
       expect(collapsedRect.width).toBeLessThanOrEqual(42)
@@ -1180,6 +1282,58 @@ async function collapseWindowElement(windowElement: HTMLElement) {
   return proofWindowById(windowId)
 }
 
+async function collapseAllWindowsToRails() {
+  const windowIds = windowRegions().map(proofWindowId)
+
+  for (const windowId of windowIds) {
+    collapseToRailButtonIn(proofWindowById(windowId)).click()
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(windowId)
+
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowChromeOrientation).toBe('vertical')
+    })
+  }
+
+  await settleProofDrag()
+}
+
+function collapsedRailDragPair() {
+  const groups = railStripsByCollapsedEdge()
+
+  for (const strips of groups.values()) {
+    if (strips.length < 2) continue
+
+    const sourceStrip = strips.find((strip) => tabsInStrip(strip).length > 0)
+    if (!sourceStrip) continue
+
+    const targetStrip = strips.find((strip) => strip !== sourceStrip)
+    const sourceTab = tabsInStrip(sourceStrip)[0]
+    if (!targetStrip || !sourceTab) continue
+
+    return {
+      sourceId: proofTabId(sourceTab),
+      targetStrip,
+    }
+  }
+
+  throw new Error('Missing same-edge collapsed rail pair')
+}
+
+function railStripsByCollapsedEdge() {
+  const groups = new Map<string, HTMLElement[]>()
+
+  for (const strip of tabStrips()) {
+    const windowElement = proofWindowContainingStrip(strip)
+    if (strip.dataset.proofTabStripOrientation !== 'vertical') continue
+
+    const edge = windowElement.dataset.proofWindowCollapsedEdge ?? 'none'
+    groups.set(edge, [...(groups.get(edge) ?? []), strip])
+  }
+
+  return groups
+}
+
 async function closeWindowsUntilOne() {
   while (windowRegions().length > 1) {
     const windowElement = windowRegions().at(-1)
@@ -1215,8 +1369,19 @@ async function addTabsToWindow(windowElement: HTMLElement, count: number) {
 }
 
 function collapseButtonIn(windowElement: HTMLElement) {
-  const button = buttonInWindowWithLabelPrefix(windowElement, 'Collapse ')
+  return collapseToRowButtonIn(windowElement)
+}
+
+function collapseToRowButtonIn(windowElement: HTMLElement) {
+  const button = buttonInWindowWithLabelText(windowElement, ' to row')
   if (!button) throw new Error('Missing collapse button')
+
+  return button
+}
+
+function collapseToRailButtonIn(windowElement: HTMLElement) {
+  const button = buttonInWindowWithLabelText(windowElement, ' to rail')
+  if (!button) throw new Error('Missing rail collapse button')
 
   return button
 }
@@ -1260,13 +1425,7 @@ function windowControlButtons(windowElement: HTMLElement) {
 }
 
 function expectWindowControlsInside(windowElement: HTMLElement) {
-  const buttons = [
-    windowControlButtonWithLabelPrefix(windowElement, 'Add tab to '),
-    windowControlButtonWithLabelPrefix(windowElement, 'Expand '),
-    closeButtonIn(windowElement),
-  ]
-
-  for (const button of buttons) {
+  for (const button of windowControlButtons(windowElement)) {
     expectElementInsideWindow(button, windowElement)
   }
 }
@@ -1286,6 +1445,12 @@ function expectElementInsideWindow(element: HTMLElement, windowElement: HTMLElem
 function buttonInWindowWithLabelPrefix(windowElement: HTMLElement, prefix: string) {
   return Array.from(windowElement.querySelectorAll<HTMLButtonElement>('button')).find((candidate) =>
     candidate.getAttribute('aria-label')?.startsWith(prefix),
+  )
+}
+
+function buttonInWindowWithLabelText(windowElement: HTMLElement, text: string) {
+  return Array.from(windowElement.querySelectorAll<HTMLButtonElement>('button')).find((candidate) =>
+    candidate.getAttribute('aria-label')?.includes(text),
   )
 }
 
@@ -1438,6 +1603,13 @@ function proofTab(tabId: string) {
   if (!tab) throw new Error(`Missing proof tab ${tabId}`)
 
   return tab
+}
+
+function proofTabId(tab: HTMLElement) {
+  const tabId = tab.dataset.proofTabId
+  if (!tabId) throw new Error('Missing proof tab id')
+
+  return tabId
 }
 
 function snapDestinationWithLabel(label: string) {
@@ -1841,7 +2013,17 @@ function tabPointFromRatio(
     readonly y: number
   },
 ) {
-  const rect = tab.getBoundingClientRect()
+  return elementPointFromRatio(tab, ratio)
+}
+
+function elementPointFromRatio(
+  element: HTMLElement,
+  ratio: {
+    readonly x: number
+    readonly y: number
+  },
+) {
+  const rect = element.getBoundingClientRect()
 
   return {
     x: rect.left + rect.width * ratio.x,
