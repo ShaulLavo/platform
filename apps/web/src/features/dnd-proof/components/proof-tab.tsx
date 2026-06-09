@@ -19,6 +19,8 @@ export function ProofTab({
   active,
   dropZonesVisible,
   index,
+  optimisticSorting,
+  orientation,
   surface,
   windowId,
   onClose,
@@ -27,6 +29,8 @@ export function ProofTab({
   readonly active: boolean
   readonly dropZonesVisible: boolean
   readonly index: number
+  readonly optimisticSorting: boolean
+  readonly orientation: 'horizontal' | 'vertical'
   readonly surface: Surface
   readonly windowId: WindowId
   readonly onClose: (surfaceId: SurfaceId) => void
@@ -46,6 +50,7 @@ export function ProofTab({
     group: windowId,
     id: tabDragId(surface.id),
     index,
+    plugins: optimisticSorting ? undefined : [],
     type: DND_PROOF_TAB_TYPE,
   })
 
@@ -59,8 +64,11 @@ export function ProofTab({
     <div
       aria-selected={active}
       className={cn(
-        'group/proof-tab flex h-9 w-28 min-w-20 max-w-44 shrink-0 cursor-grab items-center gap-1.5 rounded-t-md border px-2 text-xs shadow-sm active:cursor-grabbing',
+        'group/proof-tab flex shrink-0 cursor-grab items-center border text-xs shadow-sm active:cursor-grabbing',
         'transition-[background-color,border-color,opacity,box-shadow]',
+        orientation === 'vertical'
+          ? 'h-24 w-8 flex-col gap-1 rounded-md px-1 py-2'
+          : 'h-9 w-28 min-w-20 max-w-44 gap-1.5 rounded-t-md px-2',
         active
           ? 'bg-background text-foreground border-border'
           : 'bg-muted/60 text-muted-foreground border-transparent hover:bg-muted',
@@ -79,10 +87,20 @@ export function ProofTab({
       onClick={selectSurface}
     >
       <span className='bg-primary size-2 rounded-full' />
-      <span className='min-w-0 flex-1 truncate'>{surface.title}</span>
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate',
+          orientation === 'vertical' && 'min-h-0 [writing-mode:vertical-rl]',
+        )}
+      >
+        {surface.title}
+      </span>
       <Button
         aria-label={`Close ${surface.title}`}
-        className='size-5 opacity-0 group-focus-within/proof-tab:opacity-100 group-hover/proof-tab:opacity-100'
+        className={cn(
+          'size-5 opacity-0 group-focus-within/proof-tab:opacity-100 group-hover/proof-tab:opacity-100',
+          orientation === 'vertical' && 'mt-1',
+        )}
         disabled={!surface.capabilities.canClose}
         draggable={false}
         size='icon-xs'

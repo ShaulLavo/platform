@@ -1,16 +1,19 @@
 import type { DndProofDragData, DndProofDropData } from '@/features/dnd-proof/utils/drag-data'
 import type { DndProofDropCandidate } from '@/features/dnd-proof/utils/snap-destinations'
 import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { WindowId } from '@/features/tiling-surface-manager/engine/layout-types'
 
 export type DndProofIntentMode = 'idle' | 'tab-detached' | 'tab-reorder' | 'window'
 
 export type ResolvedDndProofTarget = {
   readonly candidateId?: string
   readonly mode: DndProofIntentMode
+  readonly previewKind?: 'app' | 'dnd-kit'
   readonly target: DndProofDropData
 }
 
 export type DndProofTabTarget = {
+  readonly previewKind?: 'app' | 'dnd-kit'
   readonly priority: number
   readonly target: Extract<DndProofDropData, { readonly kind: 'tab' | 'tab-strip' }>
 }
@@ -21,6 +24,7 @@ export type ResolveDndProofTargetInput = {
   readonly point: PointerCoordinates
   readonly previousTarget: ResolvedDndProofTarget | null
   readonly source: DndProofDragData
+  readonly sourceWindowId?: WindowId | null
   readonly tabTarget: DndProofTabTarget | null
 }
 
@@ -37,13 +41,35 @@ export function resolveDndProofTarget(
   const tabTarget = resolvedTabTarget(input)
   if (input.mode === 'tab-reorder') return tabTarget
 
-  const candidate = resolvedSnapCandidate(input)
+  const stickyCandidate = previousStickyCandidate(input)
+  const candidate = resolvedSnapCandidate(input, stickyCandidate)
   const tabPriority = input.tabTarget?.priority ?? 0
+  if (stickyCandidateBeatsTabTarget(input, stickyCandidate, candidate)) {
+    return resolvedCandidateTarget(input, stickyCandidate)
+  }
   if (!tabTarget) return resolvedCandidateTarget(input, candidate)
   if (!candidate) return tabTarget
   if (candidate.priority > tabPriority) return resolvedCandidateTarget(input, candidate)
 
   return tabTarget
+}
+
+function stickyCandidateBeatsTabTarget(
+  input: ResolveDndProofTargetInput,
+  stickyCandidate: DndProofDropCandidate | null,
+  candidate: DndProofDropCandidate | null,
+) {
+  if (!stickyCandidate) return false
+  if (candidate?.id !== stickyCandidate.id) return false
+  if (stickyCandidate.target.kind !== 'snap-destination') return false
+
+  const destination = stickyCandidate.target.destination
+  if (destination.kind !== 'window-edge') return false
+  if (destination.edge !== 'top') return false
+  if (!input.tabTarget) return true
+  if (!input.sourceWindowId) return true
+
+  return input.tabTarget.target.windowId === input.sourceWindowId
 }
 
 function resolvedTabTarget({
@@ -53,13 +79,21 @@ function resolvedTabTarget({
 }: ResolveDndProofTargetInput): ResolvedDndProofTarget | null {
   if (!tabTarget) return null
   if (!targetBelongsToTabStrip(tabTarget.target)) return null
-  if (mode === 'tab-reorder') return { mode, target: tabTarget.target }
-  if (mode === 'tab-detached') return { mode, target: tabTarget.target }
+  if (mode === 'tab-reorder') return resolvedTabTargetFromInput(mode, tabTarget)
+  if (mode === 'tab-detached') return resolvedTabTargetFromInput(mode, tabTarget)
   if (mode !== 'window') return null
   if (source.kind !== 'window') return null
   if (tabTarget.target.windowId === source.windowId) return null
 
-  return { mode, target: tabTarget.target }
+  return resolvedTabTargetFromInput(mode, tabTarget)
+}
+
+function resolvedTabTargetFromInput(mode: DndProofIntentMode, tabTarget: DndProofTabTarget) {
+  return {
+    mode,
+    previewKind: tabTarget.previewKind,
+    target: tabTarget.target,
+  }
 }
 
 function resolvedCandidateTarget(
@@ -75,11 +109,13 @@ function resolvedCandidateTarget(
   }
 }
 
-function resolvedSnapCandidate(input: ResolveDndProofTargetInput) {
+function resolvedSnapCandidate(
+  input: ResolveDndProofTargetInput,
+  stickyCandidate: DndProofDropCandidate | null,
+) {
   const candidatesAtPoint = input.candidates.filter((candidate) =>
     pointInRect(candidate.hitRect, input.point),
   )
-  const stickyCandidate = previousStickyCandidate(input)
   const topCandidate = bestCandidate(candidatesAtPoint, input.point)
   if (!stickyCandidate) return topCandidate
   if (!topCandidate) return stickyCandidate

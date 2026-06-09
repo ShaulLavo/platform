@@ -18,6 +18,8 @@ import { cn } from '@workspace/ui/lib/utils'
 export function ProofTabStrip({
   activeDrag,
   dropZonesVisible,
+  optimisticSorting,
+  orientation,
   surfaces,
   window,
   onCloseSurface,
@@ -25,6 +27,8 @@ export function ProofTabStrip({
 }: {
   readonly activeDrag: DndProofDragData | null
   readonly dropZonesVisible: boolean
+  readonly optimisticSorting: boolean
+  readonly orientation: 'horizontal' | 'vertical'
   readonly surfaces: readonly Surface[]
   readonly window: WorkbenchWindow
   readonly onCloseSurface: (surfaceId: SurfaceId) => void
@@ -45,10 +49,15 @@ export function ProofTabStrip({
   return (
     <div
       aria-label='Window tabs'
+      aria-orientation={orientation}
       className={cn(
-        'flex min-h-10 min-w-0 flex-1 items-end gap-1 overflow-x-auto border-b border-border px-2 pt-2',
+        'flex min-h-0 min-w-0 flex-1 gap-1 border-border',
+        orientation === 'vertical'
+          ? 'w-full flex-col items-center overflow-x-hidden overflow-y-auto py-1'
+          : 'min-h-10 items-end overflow-x-auto border-b px-2 pt-2',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
+      data-proof-tab-strip-orientation={orientation}
       data-proof-tab-strip-id={window.id}
       ref={ref}
       role='tablist'
@@ -59,6 +68,8 @@ export function ProofTabStrip({
           dropZonesVisible={dropZonesVisible}
           index={index}
           key={surface.id}
+          optimisticSorting={optimisticSorting && orientation === 'horizontal'}
+          orientation={orientation}
           surface={surface}
           windowId={window.id}
           onClose={onCloseSurface}
@@ -66,7 +77,12 @@ export function ProofTabStrip({
         />
       ))}
       {surfaces.length === 0 ? (
-        <div className='text-muted-foreground flex h-9 items-center px-3 text-xs'>
+        <div
+          className={cn(
+            'text-muted-foreground flex items-center justify-center text-xs',
+            orientation === 'vertical' ? 'h-16 w-full [writing-mode:vertical-rl]' : 'h-9 px-3',
+          )}
+        >
           Drop tab here
         </div>
       ) : null}

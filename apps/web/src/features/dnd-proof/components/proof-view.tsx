@@ -1,11 +1,10 @@
 import { PointerActivationConstraints } from '@dnd-kit/dom'
 import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { ProofDragOverlay } from '@/features/dnd-proof/components/proof-drag-overlay'
 import { ProofEventLog } from '@/features/dnd-proof/components/proof-event-log'
 import { ProofPreviewWindow } from '@/features/dnd-proof/components/proof-preview-window'
-import { ProofResizeHandles } from '@/features/dnd-proof/components/proof-resize-handles'
 import { ProofSnapDestination } from '@/features/dnd-proof/components/proof-snap-destination'
 import { ProofToolbar } from '@/features/dnd-proof/components/proof-toolbar'
 import { ProofWindow } from '@/features/dnd-proof/components/proof-window'
@@ -22,6 +21,7 @@ import {
 import { visibleWindowIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
+import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 
 const PROOF_SENSORS = [
   PointerSensor.configure({
@@ -55,6 +55,7 @@ export function DndProofView() {
     activeResolvedTarget,
     addTab,
     addWindow,
+    dispatchLayoutOperation,
     handleDragEnd,
     handleDragMove,
     handleDragOver,
@@ -73,11 +74,15 @@ export function DndProofView() {
   const rootRect = rect ?? DEFAULT_LAYOUT_RECT
   const surfaceRect = insetLayoutRect(rootRect, GEOMETRY_OPTIONS.gapPx ?? 0)
   const committedGeometry = deriveLayoutGeometry(model.layout, surfaceRect, GEOMETRY_OPTIONS)
+  const renderLayout = previewLayout ?? model.layout
   const previewGeometry = previewLayout
     ? deriveLayoutGeometry(previewLayout, surfaceRect, GEOMETRY_OPTIONS)
     : committedGeometry
   const snapGeometry = deriveLayoutGeometry(snapLayout, surfaceRect, GEOMETRY_OPTIONS)
   const visibleWindowIds = visibleWindowIdsInOrder(model.layout)
+  const optimisticTabSorting = !visibleWindowIds.some((windowId) => {
+    return model.layout.windowsById[windowId]?.mode === 'collapsed'
+  })
   const previewOnlyWindowIds = previewLayout
     ? visibleWindowIdsInOrder(previewLayout).filter(
         (windowId) => !model.layout.windowsById[windowId],
@@ -87,8 +92,11 @@ export function DndProofView() {
     activeDrag,
     rootRect: surfaceRect,
     snapDestinationRects: snapGeometry.snapDestinationRects,
+    sourceWindowRect: sourceWindowRectForDrag(snapGeometry.windowRectsById, activeDrag),
     sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
   })
+  const snapDestinationsRef = useRef(snapDestinations)
+  snapDestinationsRef.current = snapDestinations
   const surfaceCount = visibleWindowIds.reduce((count, windowId) => {
     const window = model.layout.windowsById[windowId]
     if (!window) return count
@@ -96,12 +104,24 @@ export function DndProofView() {
     return count + window.surfaceIds.length
   }, 0)
 
+  function toggleWindowCollapse(windowId: WorkspaceLayout['activeWindowId']) {
+    if (!windowId) return
+
+    const window = model.layout.windowsById[windowId]
+    if (!window) return
+
+    dispatchLayoutOperation({
+      type: window.mode === 'collapsed' ? 'expandWindow' : 'collapseWindow',
+      windowId,
+    })
+  }
+
   return (
     <DragDropProvider
       sensors={PROOF_SENSORS}
-      onDragEnd={(event) => handleDragEnd(event, snapDestinations, rootRef.current)}
-      onDragMove={(event) => handleDragMove(event, snapDestinations, rootRef.current)}
-      onDragOver={(event) => handleDragOver(event, snapDestinations, rootRef.current)}
+      onDragEnd={(event) => handleDragEnd(event, snapDestinationsRef.current, rootRef.current)}
+      onDragMove={(event) => handleDragMove(event, snapDestinationsRef.current, rootRef.current)}
+      onDragOver={(event) => handleDragOver(event, snapDestinationsRef.current, rootRef.current)}
       onDragStart={handleDragStart}
     >
       <main className='bg-background text-foreground flex h-svh flex-col overflow-hidden'>
@@ -115,7 +135,7 @@ export function DndProofView() {
           onScenario={setScenario}
           onToggleDropZones={() => setDropZonesVisible((visible) => !visible)}
         />
-        <div className='grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_18rem]'>
+        <div className='grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_18rem] gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_18rem] xl:grid-rows-1'>
           <section
             aria-label='dnd-kit tiling proof surface'
             className='bg-muted/20 border-border relative isolate min-h-0 min-w-0 overflow-hidden rounded-md border'
@@ -132,7 +152,8 @@ export function DndProofView() {
               </div>
             ) : null}
             {visibleWindowIds.map((windowId) => {
-              const window = model.layout.windowsById[windowId]
+              const window =
+                renderLayout.windowsById[windowId] ?? model.layout.windowsById[windowId]
               const windowRect =
                 previewGeometry.windowRectsById[windowId] ??
                 committedGeometry.windowRectsById[windowId]
@@ -141,9 +162,11 @@ export function DndProofView() {
               return (
                 <ProofWindow
                   activeDrag={activeDrag}
+                  activeResolvedTarget={activeResolvedTarget}
                   dropZonesVisible={dropZonesVisible}
                   key={windowId}
-                  layout={model.layout}
+                  layout={renderLayout}
+                  optimisticTabSorting={optimisticTabSorting}
                   rect={windowRect.rect}
                   tabStripRenderEpoch={tabStripRenderEpoch}
                   window={window}
@@ -151,6 +174,7 @@ export function DndProofView() {
                   onCloseSurface={removeSurface}
                   onCloseWindow={removeWindow}
                   onSelectSurface={activateSurface}
+                  onToggleWindowCollapse={toggleWindowCollapse}
                 />
               )
             })}
@@ -160,7 +184,10 @@ export function DndProofView() {
 
               return <ProofPreviewWindow key={windowId} rect={windowRect.rect} />
             })}
-            <ProofResizeHandles resizeHandleRects={committedGeometry.resizeHandleRects} />
+            <ResizeOverlay
+              resizeHandleRects={committedGeometry.resizeHandleRects}
+              onDispatch={dispatchLayoutOperation}
+            />
             {snapDestinations.map((snapDestination) => (
               <ProofSnapDestination
                 key={snapDestination.id}
@@ -183,4 +210,13 @@ function sourceWindowIdForDrag(layout: WorkspaceLayout, activeDrag: DndProofDrag
   if (activeDrag.kind === 'window') return activeDrag.windowId
 
   return surfaceWindowId(layout, activeDrag.surfaceId)
+}
+
+function sourceWindowRectForDrag(
+  windowRectsById: ReturnType<typeof deriveLayoutGeometry>['windowRectsById'],
+  activeDrag: DndProofDragData | null,
+) {
+  if (activeDrag?.kind !== 'window') return null
+
+  return windowRectsById[activeDrag.windowId]?.rect ?? null
 }

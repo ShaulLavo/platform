@@ -7,6 +7,7 @@ import {
   addProofWindow,
   createInitialProofModel,
   createProofScenarioModel,
+  dispatchProofLayoutOperation,
   moveProofSurfaceToDestination,
   moveProofSurfaceToTab,
   moveProofSurfaceToWindowEnd,
@@ -25,6 +26,7 @@ import {
   type DndProofDropData,
 } from '@/features/dnd-proof/utils/drag-data'
 import type {
+  LayoutOperation,
   SnapDestination,
   SurfaceId,
   WindowId,
@@ -34,8 +36,12 @@ import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout
 import { visibleWindowIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import {
   describeTabStripHitTest,
+  pointIsInsideProofWindowCenter,
+  proofWindowCenterElementAtPoint,
   resolveTabStripDropTarget,
+  stopTabStripBodyAutoscroll,
   tabStripDropHitAtPoint,
+  tabStripDropTargetForWindowBodyPoint,
   tabStripDropTargetForWindowAtPoint,
   tabStripDropTargetMatchesPoint,
   type DndProofTabStripHit,
@@ -51,8 +57,10 @@ import type { DndProofDropCandidate } from '@/features/dnd-proof/utils/snap-dest
 const TAB_MOUSE_DETACH_THRESHOLD_PX = 15
 const TAB_TOUCH_DETACH_THRESHOLD_PX = 50
 const DIRECT_TAB_TARGET_PRIORITY = 110
+const WINDOW_BODY_TAB_TARGET_PRIORITY = 100
 const STRIP_TAB_TARGET_PRIORITY = 85
 const DOCK_TAB_TARGET_PRIORITY = 92
+const WINDOW_BODY_STICKY_INFLATE_PX = 24
 const STATE_EVENT_LIMIT = 80
 
 type PointerCoordinates = {
@@ -73,6 +81,12 @@ type StateLogInput = {
   readonly phase: StateLogPhase
   readonly source: DndProofDragData
   readonly target: DndProofDropData | null
+}
+
+type BodyAutoScrollInput = {
+  readonly eventPoint: PointerCoordinates
+  readonly source: Extract<DndProofDragData, { readonly kind: 'tab' }>
+  readonly windowId: WindowId
 }
 
 type ActiveProofDrag =
@@ -101,23 +115,30 @@ export function useDndProofModel() {
   const [tabStripRenderEpoch, setTabStripRenderEpoch] = useState(0)
   const activeDragRef = useRef<ActiveProofDrag | null>(null)
   const dragStartModelRef = useRef<ProofModel | null>(null)
+  const activeResolvedTargetRef = useRef<ResolvedDndProofTarget | null>(null)
   const lastResolvedTargetRef = useRef<ResolvedDndProofTarget | null>(null)
   const lastStateEventSignatureRef = useRef<string | null>(null)
   const pendingCommitFrameRef = useRef<number | null>(null)
+  const pendingCommitModelRef = useRef<ProofModel | null>(null)
   const stateEventSequenceRef = useRef(0)
 
   useEffect(() => {
-    return () => cancelPendingCommitFrame(pendingCommitFrameRef)
+    return () => {
+      stopTabStripBodyAutoscroll()
+      cancelPendingCommitFrame(pendingCommitFrameRef)
+      pendingCommitModelRef.current = null
+    }
   }, [])
 
   function handleDragStart(event: DragStartEvent) {
     const source = proofDragData(event.operation.source?.data)
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    stopTabStripBodyAutoscroll()
+    flushPendingCommit()
     setPreviewModel(null)
     dragStartModelRef.current = model
     lastResolvedTargetRef.current = null
     activeDragRef.current = activeProofDragForSource(source, event, model)
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setActiveDrag(source)
     if (!source) return
 
@@ -181,6 +202,7 @@ export function useDndProofModel() {
     candidates: readonly DndProofDropCandidate[],
     coordinateRoot: HTMLElement | null,
   ) {
+    stopTabStripBodyAutoscroll()
     const source = sourceForDragEvent(
       event.operation.source?.data,
       activeDragRef.current,
@@ -189,13 +211,16 @@ export function useDndProofModel() {
     const rawTarget = proofDropData(event.operation.target?.data)
     const eventPoint = dragEventPoint(event)
     const resolvedTarget = source
-      ? (resolvedTargetForDragEnd({
+      ? (sourceReturnTargetForDragEnd(source, activeResolvedTargetRef.current) ??
+        activeResolvedTargetRef.current ??
+        promotedResolvedTargetForDragEnd({
           candidates,
           coordinateRoot,
           eventPoint: eventPoint.point,
           rawTarget,
           source,
-        }) ?? lastResolvedTargetRef.current)
+        }) ??
+        lastResolvedTargetRef.current)
       : null
     const baseModel = dragStartModelRef.current ?? model
     const target = resolvedTarget?.target ?? null
@@ -232,7 +257,7 @@ export function useDndProofModel() {
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
     setActiveDrag(null)
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     commitModelAfterDrag(nextModel)
   }
@@ -256,11 +281,13 @@ export function useDndProofModel() {
       candidates,
       coordinateRoot,
       eventPoint,
+      onBodyAutoScroll: handleBodyAutoScroll,
       rawTarget,
       previousTarget: lastResolvedTargetRef.current,
       source,
     })
-    if (!resolvedTarget) {
+    const previewTarget = promoteWindowCenterTabTarget(source, resolvedTarget, eventPoint)
+    if (!previewTarget) {
       clearPreviewForMissingTarget({
         eventPoint,
         pointSource,
@@ -271,17 +298,17 @@ export function useDndProofModel() {
     }
 
     const baseModel = dragStartModelRef.current ?? model
-    const nextPreviewModel = previewModelForTarget(baseModel, source, resolvedTarget.target)
-    if (dropTargetCanCommit(baseModel.layout, resolvedTarget.target)) {
-      lastResolvedTargetRef.current = resolvedTarget
-      setActiveResolvedTarget(resolvedTarget)
+    const nextPreviewModel = previewModelForTarget(baseModel, source, previewTarget)
+    if (dropTargetCanCommit(baseModel.layout, previewTarget.target)) {
+      lastResolvedTargetRef.current = previewTarget
+      updateActiveResolvedTarget(previewTarget)
     }
     setPreviewModel(nextPreviewModel)
     logStateAfterMove({
       layout: nextPreviewModel?.layout ?? baseModel.layout,
       phase: 'move',
       source,
-      target: resolvedTarget.target,
+      target: previewTarget.target,
     })
   }
 
@@ -296,8 +323,8 @@ export function useDndProofModel() {
     readonly rawTarget: DndProofDropData | null
     readonly source: DndProofDragData
   }) {
-    lastResolvedTargetRef.current = null
-    setActiveResolvedTarget(null)
+    stopTabStripBodyAutoscroll()
+    updateActiveResolvedTarget(null)
     logStateAfterMove({
       layout: (dragStartModelRef.current ?? model).layout,
       phase: 'move',
@@ -308,6 +335,34 @@ export function useDndProofModel() {
     if (!snapPreviewMode(activeDragRef.current)) return
 
     setPreviewModel(null)
+  }
+
+  function handleBodyAutoScroll({ eventPoint, source, windowId }: BodyAutoScrollInput) {
+    const activeProofDrag = activeDragRef.current
+    if (!activeProofDrag || activeProofDrag.kind !== 'tab' || !activeProofDrag.detached) {
+      stopTabStripBodyAutoscroll()
+      return
+    }
+
+    const previousTarget = activeResolvedTargetRef.current ?? lastResolvedTargetRef.current
+    const target = tabStripDropTargetForWindowBodyPoint(windowId, eventPoint, {
+      previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
+      scroll: false,
+    })
+    const resolvedTarget = resolvedWindowBodyTabTarget(target)
+    if (!resolvedTarget) return
+
+    const baseModel = dragStartModelRef.current ?? model
+    if (!dropTargetCanCommit(baseModel.layout, resolvedTarget.target)) return
+
+    lastResolvedTargetRef.current = resolvedTarget
+    updateActiveResolvedTarget(resolvedTarget)
+    logStateAfterMove({
+      layout: baseModel.layout,
+      phase: 'move',
+      source,
+      target: resolvedTarget.target,
+    })
   }
 
   function logStateAfterMove(input: StateLogInput) {
@@ -321,21 +376,21 @@ export function useDndProofModel() {
   }
 
   function addWindow() {
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    flushPendingCommit()
     dragStartModelRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     setModel((current) => addProofWindow(current))
   }
 
   function addTab(windowId?: WindowId) {
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    flushPendingCommit()
     dragStartModelRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     setModel((current) => addProofTab(current, windowId))
   }
@@ -344,46 +399,54 @@ export function useDndProofModel() {
     setModel((current) => activateProofSurface(current, surfaceId))
   }
 
+  function dispatchLayoutOperation(operation: LayoutOperation) {
+    flushPendingCommit()
+    clearActiveInteraction()
+    setActiveDrag(null)
+    setModel((current) => dispatchProofLayoutOperation(current, operation))
+    resetTabStripDom()
+  }
+
   function removeSurface(surfaceId: SurfaceId) {
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    flushPendingCommit()
     dragStartModelRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     setModel((current) => removeProofSurface(current, surfaceId))
   }
 
   function removeWindow(windowId: WindowId) {
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    flushPendingCommit()
     dragStartModelRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     setModel((current) => removeProofWindow(current, windowId))
   }
 
   function reset() {
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    cancelPendingCommit()
     resetStateLog()
     dragStartModelRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
     setActiveDrag(null)
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     setModel(createInitialProofModel())
   }
 
   function setScenario(scenario: ProofScenario) {
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    cancelPendingCommit()
     resetStateLog()
     dragStartModelRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
     setActiveDrag(null)
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     setModel(createProofScenarioModel(scenario))
   }
@@ -398,29 +461,68 @@ export function useDndProofModel() {
     setStateEvents([])
   }
 
+  function clearActiveInteraction() {
+    stopTabStripBodyAutoscroll()
+    dragStartModelRef.current = null
+    lastResolvedTargetRef.current = null
+    activeDragRef.current = null
+    updateActiveResolvedTarget(null)
+    setPreviewModel(null)
+  }
+
   function restoreDragStartModel() {
+    stopTabStripBodyAutoscroll()
     dragStartModelRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
     setActiveDrag(null)
-    setActiveResolvedTarget(null)
+    updateActiveResolvedTarget(null)
     setPreviewModel(null)
     resetTabStripDom()
   }
 
+  function updateActiveResolvedTarget(target: ResolvedDndProofTarget | null) {
+    activeResolvedTargetRef.current = target
+    setActiveResolvedTarget((current) => {
+      if (resolvedTargetSignature(current) === resolvedTargetSignature(target)) return current
+
+      return target
+    })
+  }
+
   function commitModelAfterDrag(nextModel: ProofModel) {
-    cancelPendingCommitFrame(pendingCommitFrameRef)
+    cancelPendingCommit()
+    pendingCommitModelRef.current = nextModel
     pendingCommitFrameRef.current = requestAnimationFrame(() => {
+      const pendingModel = pendingCommitModelRef.current
       pendingCommitFrameRef.current = null
-      setModel(nextModel)
+      pendingCommitModelRef.current = null
+      if (!pendingModel) return
+
+      setModel(pendingModel)
       resetTabStripDom()
     })
+  }
+
+  function cancelPendingCommit() {
+    cancelPendingCommitFrame(pendingCommitFrameRef)
+    pendingCommitModelRef.current = null
+  }
+
+  function flushPendingCommit() {
+    const pendingModel = pendingCommitModelRef.current
+    cancelPendingCommit()
+    if (!pendingModel) return
+
+    setModel(pendingModel)
+    resetTabStripDom()
   }
 
   function resolvedTargetForDrag({
     candidates,
     coordinateRoot,
     eventPoint,
+    onBodyAutoScroll,
     previousTarget,
     rawTarget,
     source,
@@ -428,6 +530,7 @@ export function useDndProofModel() {
     readonly candidates: readonly DndProofDropCandidate[]
     readonly coordinateRoot: HTMLElement | null
     readonly eventPoint: PointerCoordinates
+    readonly onBodyAutoScroll: (input: BodyAutoScrollInput) => void
     readonly previousTarget: ResolvedDndProofTarget | null
     readonly rawTarget: DndProofDropData | null
     readonly source: DndProofDragData
@@ -438,6 +541,8 @@ export function useDndProofModel() {
       activeDrag: activeDragRef.current,
       eventPoint,
       mode,
+      onBodyAutoScroll,
+      previousTarget,
       rawTarget,
       source,
     })
@@ -448,6 +553,7 @@ export function useDndProofModel() {
       point: localPoint,
       previousTarget,
       source,
+      sourceWindowId: sourceWindowIdForResolver(activeDragRef.current),
       tabTarget,
     })
   }
@@ -469,20 +575,53 @@ export function useDndProofModel() {
       candidates,
       coordinateRoot,
       eventPoint,
+      onBodyAutoScroll: handleBodyAutoScroll,
       previousTarget: null,
       rawTarget: null,
       source,
     })
     if (pointTarget) return pointTarget
 
+    const rawWindowTarget = rawWindowTargetForDrag({
+      mode: intentModeForDrag(activeDragRef.current, source, eventPoint),
+      rawTarget,
+      source,
+    })
+    if (rawWindowTarget) return rawWindowTarget
+
     return resolvedTargetForDrag({
       candidates,
       coordinateRoot,
       eventPoint,
+      onBodyAutoScroll: handleBodyAutoScroll,
       previousTarget: null,
       rawTarget,
       source,
     })
+  }
+
+  function promotedResolvedTargetForDragEnd({
+    candidates,
+    coordinateRoot,
+    eventPoint,
+    rawTarget,
+    source,
+  }: {
+    readonly candidates: readonly DndProofDropCandidate[]
+    readonly coordinateRoot: HTMLElement | null
+    readonly eventPoint: PointerCoordinates
+    readonly rawTarget: DndProofDropData | null
+    readonly source: DndProofDragData
+  }) {
+    const resolvedTarget = resolvedTargetForDragEnd({
+      candidates,
+      coordinateRoot,
+      eventPoint,
+      rawTarget,
+      source,
+    })
+
+    return promoteWindowCenterTabTarget(source, resolvedTarget, eventPoint)
   }
 
   return {
@@ -491,6 +630,7 @@ export function useDndProofModel() {
     activeResolvedTarget,
     addTab,
     addWindow,
+    dispatchLayoutOperation,
     handleDragEnd,
     handleDragMove,
     handleDragOver,
@@ -519,6 +659,18 @@ function stateLogDetails({ debug, layout, phase, source, target }: StateLogInput
     message,
     signature: `${phase}|${sourceLabel}|${targetLabel}|${debug ?? ''}|${layoutLabel}`,
   }
+}
+
+function sourceReturnTargetForDragEnd(
+  source: DndProofDragData,
+  target: ResolvedDndProofTarget | null,
+) {
+  if (source.kind !== 'window') return null
+  if (!target?.candidateId?.includes('source-return')) return null
+  if (target.target.kind !== 'window') return null
+  if (target.target.windowId !== source.windowId) return null
+
+  return target
 }
 
 function noneTargetDebug(
@@ -648,6 +800,13 @@ function sourceTabIndex(data: unknown) {
   return target.index
 }
 
+function sourceWindowIdForResolver(activeDrag: ActiveProofDrag | null) {
+  if (!activeDrag) return null
+  if (activeDrag.kind === 'window') return activeDrag.source.windowId
+
+  return activeDrag.sourceWindowId
+}
+
 function intentModeForDrag(
   activeDrag: ActiveProofDrag | null,
   source: DndProofDragData,
@@ -666,12 +825,16 @@ function tabTargetForDrag({
   activeDrag,
   eventPoint,
   mode,
+  onBodyAutoScroll,
+  previousTarget,
   rawTarget,
   source,
 }: {
   readonly activeDrag: ActiveProofDrag | null
   readonly eventPoint: PointerCoordinates
   readonly mode: DndProofIntentMode
+  readonly onBodyAutoScroll: (input: BodyAutoScrollInput) => void
+  readonly previousTarget: ResolvedDndProofTarget | null
   readonly rawTarget: DndProofDropData | null
   readonly source: DndProofDragData
 }) {
@@ -680,18 +843,32 @@ function tabTargetForDrag({
     const pointTarget = tabTargetFromHit(
       tabStripDropHitAtPoint(source, eventPoint, { sourceStripRect }),
     )
-    if (pointTarget) return pointTarget
+    if (pointTarget) {
+      stopTabStripBodyAutoscroll()
+      return pointTarget
+    }
 
+    const bodyTarget =
+      stickyWindowBodyTabTargetForDrag(source, previousTarget, eventPoint, onBodyAutoScroll) ??
+      windowBodyTabTargetForDrag(source, eventPoint, previousTarget, onBodyAutoScroll)
+    if (bodyTarget) return bodyTarget
+
+    stopTabStripBodyAutoscroll()
     return rawTabTargetForPoint(source, rawTarget, eventPoint)
   }
   if (mode === 'window') {
+    stopTabStripBodyAutoscroll()
     return (
       tabTargetFromHit(tabStripDropHitAtPoint(source, eventPoint)) ??
       rawTabTargetForPoint(source, rawTarget, eventPoint)
     )
   }
-  if (mode !== 'tab-reorder') return null
+  if (mode !== 'tab-reorder') {
+    stopTabStripBodyAutoscroll()
+    return null
+  }
 
+  stopTabStripBodyAutoscroll()
   return tabReorderTargetForDrag({ activeDrag, eventPoint, source })
 }
 
@@ -738,6 +915,134 @@ function rawTabTargetForPoint(
   return tabTargetFromTarget(resolveTabStripDropTarget(source, rawTarget, eventPoint))
 }
 
+function windowBodyTabTargetForDrag(
+  source: DndProofDragData,
+  eventPoint: PointerCoordinates,
+  previousTarget: ResolvedDndProofTarget | null,
+  onBodyAutoScroll: (input: BodyAutoScrollInput) => void,
+): DndProofTabTarget | null {
+  if (source.kind !== 'tab') return null
+
+  const windowId = centerWindowIdAtPoint(eventPoint)
+  if (!windowId) return null
+
+  return tabTargetFromTarget(
+    tabStripDropTargetForWindowBodyPoint(windowId, eventPoint, {
+      continuousAutoscroll: true,
+      onAutoScroll: () => onBodyAutoScroll({ eventPoint, source, windowId }),
+      previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
+    }),
+    WINDOW_BODY_TAB_TARGET_PRIORITY,
+    'app',
+  )
+}
+
+function stickyWindowBodyTabTargetForDrag(
+  source: DndProofDragData,
+  previousTarget: ResolvedDndProofTarget | null,
+  eventPoint: PointerCoordinates,
+  onBodyAutoScroll: (input: BodyAutoScrollInput) => void,
+): DndProofTabTarget | null {
+  if (source.kind !== 'tab') return null
+
+  const windowId = tabTargetWindowId(previousTarget?.target ?? null)
+  if (!windowId) return null
+  if (!pointIsInsideProofWindowCenter(windowId, eventPoint, WINDOW_BODY_STICKY_INFLATE_PX)) {
+    return null
+  }
+
+  return tabTargetFromTarget(
+    tabStripDropTargetForWindowBodyPoint(windowId, eventPoint, {
+      continuousAutoscroll: true,
+      onAutoScroll: () => onBodyAutoScroll({ eventPoint, source, windowId }),
+      previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
+    }),
+    WINDOW_BODY_TAB_TARGET_PRIORITY,
+    'app',
+  )
+}
+
+function previousTargetTabIndexForWindow(
+  previousTarget: ResolvedDndProofTarget | null,
+  windowId: WindowId,
+) {
+  const target = previousTarget?.target ?? null
+  if (tabTargetWindowId(target) !== windowId) return null
+
+  return tabTargetIndex(target)
+}
+
+function tabTargetWindowId(target: DndProofDropData | null): WindowId | null {
+  if (target?.kind === 'tab') return target.windowId
+  if (target?.kind === 'tab-strip') return target.windowId
+
+  return null
+}
+
+function tabTargetIndex(target: DndProofDropData | null) {
+  if (target?.kind === 'tab') return target.index
+  if (target?.kind === 'tab-strip') return target.index
+
+  return null
+}
+
+function centerWindowIdAtPoint(point: PointerCoordinates): WindowId | null {
+  const windowElement = proofWindowCenterElementAtPoint(point)
+  if (!windowElement?.dataset.proofWindowId) return null
+
+  return windowElement.dataset.proofWindowId as WindowId
+}
+
+function rawWindowTargetForDrag({
+  mode,
+  rawTarget,
+  source,
+}: {
+  readonly mode: DndProofIntentMode
+  readonly rawTarget: DndProofDropData | null
+  readonly source: DndProofDragData
+}): ResolvedDndProofTarget | null {
+  if (rawTarget?.kind !== 'window') return null
+  if (source.kind === 'tab') return rawWindowTargetForTab(mode, rawTarget)
+  if (source.windowId === rawTarget.windowId) return null
+  if (mode !== 'window') return null
+
+  return { mode, target: rawTarget }
+}
+
+function rawWindowTargetForTab(
+  mode: DndProofIntentMode,
+  rawTarget: Extract<DndProofDropData, { readonly kind: 'window' }>,
+): ResolvedDndProofTarget | null {
+  if (mode !== 'tab-detached') return null
+
+  return { mode, target: rawTarget }
+}
+
+function promoteWindowCenterTabTarget(
+  source: DndProofDragData,
+  target: ResolvedDndProofTarget | null,
+  eventPoint: PointerCoordinates,
+): ResolvedDndProofTarget | null {
+  if (source.kind !== 'tab') return target
+  if (!target) return null
+  if (target.target.kind !== 'snap-destination') return target
+  if (target.target.destination.kind !== 'window-center') return target
+
+  const tabTarget = tabStripDropTargetForWindowBodyPoint(
+    target.target.destination.windowId,
+    eventPoint,
+    { previousIndex: target.target.destination.tabIndex ?? null },
+  )
+  if (!tabTarget) return target
+
+  return {
+    mode: target.mode,
+    previewKind: 'app',
+    target: tabTarget,
+  }
+}
+
 function sourceForDragEvent(
   data: unknown,
   activeDrag: ActiveProofDrag | null,
@@ -754,18 +1059,37 @@ function tabTargetFromHit(hit: DndProofTabStripHit | null): DndProofTabTarget | 
   if (!hit) return null
 
   return {
+    previewKind: 'dnd-kit',
     priority: tabTargetPriority(hit.strength),
     target: hit.target,
   }
 }
 
-function tabTargetFromTarget(target: DndProofDropData | null): DndProofTabTarget | null {
+function tabTargetFromTarget(
+  target: DndProofDropData | null,
+  priority = DIRECT_TAB_TARGET_PRIORITY,
+  previewKind: DndProofTabTarget['previewKind'] = 'dnd-kit',
+): DndProofTabTarget | null {
   if (!target) return null
   if (!targetBelongsToTabStrip(target)) return null
 
   return {
-    priority: DIRECT_TAB_TARGET_PRIORITY,
+    previewKind,
+    priority,
     target,
+  }
+}
+
+function resolvedWindowBodyTabTarget(
+  target: DndProofDropData | null,
+): ResolvedDndProofTarget | null {
+  const tabTarget = tabTargetFromTarget(target, WINDOW_BODY_TAB_TARGET_PRIORITY, 'app')
+  if (!tabTarget) return null
+
+  return {
+    mode: 'tab-detached',
+    previewKind: 'app',
+    target: tabTarget.target,
   }
 }
 
@@ -889,9 +1213,12 @@ function cancelPendingCommitFrame(ref: { current: number | null }) {
 function previewModelForTarget(
   baseModel: ProofModel,
   source: DndProofDragData,
-  target: DndProofDropData,
+  resolvedTarget: ResolvedDndProofTarget,
 ) {
+  const target = resolvedTarget.target
   if (!dropTargetCanCommit(baseModel.layout, target)) return null
+  if (resolvedTarget.previewKind === 'dnd-kit') return null
+  if (resolvedTarget.previewKind === 'app' && targetBelongsToTabStrip(target)) return null
   if (!tabDragCanPreviewTarget(source, target)) return baseModel
   if (targetMergesWindowIntoTabs(source, target)) return baseModel
 
@@ -905,7 +1232,7 @@ function previewModelForTarget(
 
 function tabDragCanPreviewTarget(source: DndProofDragData, target: DndProofDropData) {
   if (source.kind !== 'tab') return true
-  if (target.kind !== 'snap-destination') return false
+  if (target.kind !== 'snap-destination') return true
 
   return target.destination.kind !== 'window-center'
 }
@@ -982,4 +1309,37 @@ function snapDestinationCanCommit(layout: WorkspaceLayout, destination: SnapDest
   if (destination.kind === 'parent-edge') return Boolean(layout.nodesById[destination.nodeId])
 
   return true
+}
+
+function resolvedTargetSignature(target: ResolvedDndProofTarget | null) {
+  if (!target) return 'none'
+
+  return [
+    target.mode,
+    target.previewKind ?? 'snap',
+    target.candidateId ?? '',
+    dropTargetSignature(target.target),
+  ].join('|')
+}
+
+function dropTargetSignature(target: DndProofDropData) {
+  if (target.kind === 'tab') return `tab:${target.windowId}:${target.surfaceId}:${target.index}`
+  if (target.kind === 'tab-strip') return `strip:${target.windowId}:${target.index}`
+  if (target.kind === 'window') return `window:${target.windowId}`
+
+  return snapDestinationSignature(target.destination)
+}
+
+function snapDestinationSignature(destination: SnapDestination) {
+  if (destination.kind === 'root-edge') return `root:${destination.edge}`
+  if (destination.kind === 'window-edge') {
+    return `window-edge:${destination.windowId}:${destination.edge}`
+  }
+  if (destination.kind === 'window-center') {
+    return `window-center:${destination.windowId}:${destination.tabIndex ?? 'end'}`
+  }
+  if (destination.kind === 'parent-edge') return `parent:${destination.nodeId}:${destination.edge}`
+  if (destination.kind === 'recipe-slot') return `slot:${destination.slot}`
+
+  return destination.kind
 }

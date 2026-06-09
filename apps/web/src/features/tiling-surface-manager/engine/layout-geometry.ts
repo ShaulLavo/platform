@@ -122,6 +122,7 @@ export function deriveNodeRects(
     nodeRectsById,
     options.gapPx ?? 0,
     options.collapsedWindowHeaderPx ?? DEFAULT_COLLAPSED_WINDOW_HEADER_PX,
+    true,
   )
   return nodeRectsById
 }
@@ -184,20 +185,40 @@ function assignNodeRect(
   nodeRectsById: Record<string, LayoutRect>,
   gapPx: number,
   collapsedWindowHeaderPx: number,
+  isRootNode: boolean,
 ) {
   const node = layout.nodesById[nodeId]
   if (!node) return
 
-  nodeRectsById[nodeId] = rect
-  if (node.kind === 'window') return
+  if (node.kind === 'window') {
+    nodeRectsById[nodeId] = windowNodeRect(layout, node, rect, collapsedWindowHeaderPx, isRootNode)
+    return
+  }
 
+  nodeRectsById[nodeId] = rect
   const childRects = childRectsForSplit(layout, node, rect, gapPx, collapsedWindowHeaderPx)
   node.childIds.forEach((childId, index) => {
     const childRect = childRects[index]
     if (!childRect) return
 
-    assignNodeRect(layout, childId, childRect, nodeRectsById, gapPx, collapsedWindowHeaderPx)
+    assignNodeRect(layout, childId, childRect, nodeRectsById, gapPx, collapsedWindowHeaderPx, false)
   })
+}
+
+function windowNodeRect(
+  layout: WorkspaceLayout,
+  node: Extract<LayoutNode, { readonly kind: 'window' }>,
+  rect: LayoutRect,
+  collapsedWindowHeaderPx: number,
+  isRootNode: boolean,
+): LayoutRect {
+  if (!isRootNode) return rect
+  if (layout.windowsById[node.windowId]?.mode !== 'collapsed') return rect
+
+  return {
+    ...rect,
+    height: Math.min(rect.height, Math.max(0, collapsedWindowHeaderPx)),
+  }
 }
 
 function childRectsForSplit(

@@ -4,6 +4,7 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   activateSurface,
+  applyLayoutOperation,
   closeSurface,
   moveSurface,
   moveWindow,
@@ -16,6 +17,7 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-normalize'
 import type {
   LayoutEdge,
+  LayoutOperation,
   SnapDestination,
   Surface,
   SurfaceId,
@@ -132,6 +134,16 @@ export function removeProofWindow(model: ProofModel, windowId: WindowId): ProofM
   return logModel({ ...model, layout }, `closed window: ${windowTitle(model.layout, windowId)}`)
 }
 
+export function dispatchProofLayoutOperation(
+  model: ProofModel,
+  operation: LayoutOperation,
+): ProofModel {
+  const layout = applyLayoutOperation(model.layout, operation)
+  if (layout === model.layout) return model
+
+  return logModel({ ...model, layout }, layoutOperationEvent(model.layout, operation))
+}
+
 export function moveProofSurfaceToDestination(
   model: ProofModel,
   surfaceId: SurfaceId,
@@ -235,6 +247,7 @@ function createProofSurface(surfaceNumber: number): Surface {
   const displayTitle = suffix === 1 ? title : `${title} ${suffix}`
 
   return createPlaceholderSurface({
+    canCollapse: true,
     canClose: true,
     contextKey: `dnd-proof:${surfaceNumber}`,
     title: displayTitle,
@@ -281,6 +294,18 @@ function windowMoveEvent(layout: WorkspaceLayout, destination: SnapDestination) 
   }
 
   return `window -> ${destinationLabel(destination)}`
+}
+
+function layoutOperationEvent(layout: WorkspaceLayout, operation: LayoutOperation) {
+  if (operation.type === 'collapseWindow') {
+    return `collapsed window: ${windowTitle(layout, operation.windowId)}`
+  }
+  if (operation.type === 'expandWindow') {
+    return `expanded window: ${windowTitle(layout, operation.windowId)}`
+  }
+  if (operation.type === 'resizeSplit') return `resized split: ${operation.splitId}`
+
+  return `operation: ${operation.type}`
 }
 
 function logModel(model: ProofModel, event: string): ProofModel {

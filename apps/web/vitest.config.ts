@@ -131,6 +131,8 @@ type ProofMousePoint = {
 
 type ProofMouseDragInput = {
   readonly release?: boolean
+  readonly sourceClientX?: number
+  readonly sourceClientY?: number
   readonly sourceSelector: string
   readonly sourceX?: number
   readonly sourceY?: number
@@ -160,7 +162,7 @@ type ProofMouseDragStep =
 
 async function proofMouseDrag(context: ProofMouseCommandContext, input: ProofMouseDragInput) {
   const frame = await context.frame()
-  let point = await pointForSelector(frame, input.sourceSelector, input.sourceX, input.sourceY)
+  let point = await sourcePointForProofMouseDrag(frame, input)
 
   await context.page.mouse.move(point.x, point.y)
   await context.page.mouse.down()
@@ -172,6 +174,14 @@ async function proofMouseDrag(context: ProofMouseCommandContext, input: ProofMou
   if (input.release === false) return
 
   await context.page.mouse.up()
+}
+
+async function sourcePointForProofMouseDrag(frame: ProofMouseFrame, input: ProofMouseDragInput) {
+  if (typeof input.sourceClientX === 'number' && typeof input.sourceClientY === 'number') {
+    return { x: input.sourceClientX, y: input.sourceClientY }
+  }
+
+  return pointForSelector(frame, input.sourceSelector, input.sourceX, input.sourceY)
 }
 
 async function proofMouseUp(context: ProofMouseCommandContext) {

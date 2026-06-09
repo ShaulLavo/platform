@@ -9,7 +9,7 @@ export type DndProofDropCandidate = {
   readonly edge?: LayoutEdge
   readonly hitRect: LayoutRect
   readonly id: string
-  readonly kind: SnapDestinationLayoutRect['kind']
+  readonly kind: SnapDestinationLayoutRect['kind'] | 'source-return'
   readonly label: string
   readonly previewRect: LayoutRect
   readonly priority: number
@@ -19,31 +19,86 @@ export type DndProofDropCandidate = {
 
 const OUTER_EDGE_EPSILON_PX = 2
 const ROOT_EDGE_PRIORITY = 95
-const INTERNAL_WINDOW_EDGE_PRIORITY = 90
+const SOURCE_RETURN_PRIORITY = 120
+const INTERNAL_WINDOW_EDGE_PRIORITY = 105
+const SOURCE_VACANCY_ROOT_PRIORITY = 89
 const OUTER_WINDOW_EDGE_PRIORITY = 88
 const WINDOW_CENTER_PRIORITY = 100
 const ROOT_EDGE_HIT_INSIDE_PX = 10
 const ROOT_EDGE_HIT_OUTSIDE_PX = 28
-const WINDOW_TOP_HIT_EXTRA_PX = 48
+const WINDOW_EDGE_HIT_PX = 48
+const SOURCE_VACANCY_EDGE_RATIO = 0.32
+const SOURCE_VACANCY_EDGE_SOURCE_MAX_RATIO = 0.48
+const SOURCE_VACANCY_EDGE_MIN_PX = 56
+const SOURCE_VACANCY_EDGE_MAX_PX = 180
 
 export function proofSnapDestinations({
   activeDrag,
   rootRect,
   snapDestinationRects,
+  sourceWindowRect,
   sourceWindowId,
 }: {
   readonly activeDrag: DndProofDragData | null
   readonly rootRect: LayoutRect
   readonly snapDestinationRects: readonly SnapDestinationLayoutRect[]
+  readonly sourceWindowRect?: LayoutRect | null
   readonly sourceWindowId: WindowId | null
 }): readonly DndProofDropCandidate[] {
-  return snapDestinationRects.flatMap((snapDestination) =>
-    proofSnapCandidate({
+  return [
+    ...snapDestinationRects.flatMap((snapDestination) =>
+      proofSnapCandidate({
+        activeDrag,
+        rootRect,
+        snapDestination,
+        sourceWindowId,
+      }),
+    ),
+    ...sourceWindowCandidates({
       activeDrag,
-      rootRect,
-      snapDestination,
+      snapDestinationRects,
       sourceWindowId,
+      sourceWindowRect,
     }),
+  ]
+}
+
+function sourceWindowCandidates({
+  activeDrag,
+  snapDestinationRects,
+  sourceWindowId,
+  sourceWindowRect,
+}: {
+  readonly activeDrag: DndProofDragData | null
+  readonly snapDestinationRects: readonly SnapDestinationLayoutRect[]
+  readonly sourceWindowId: WindowId | null
+  readonly sourceWindowRect?: LayoutRect | null
+}) {
+  if (activeDrag?.kind !== 'window') return []
+  if (!sourceWindowId) return []
+  if (!sourceWindowRect) return []
+
+  const rootEdges = sourceVacancyRootEdges(sourceWindowRect, snapDestinationRects)
+  if (rootEdges.length === 0) return [sourceReturnCandidate(sourceWindowId, sourceWindowRect)]
+
+  return [
+    sourceReturnCandidate(sourceWindowId, sourceReturnHitRect(sourceWindowRect, rootEdges)),
+    ...rootEdges.map((snapDestination) =>
+      sourceVacancyRootCandidate({
+        snapDestination,
+        sourceWindowRect,
+        sourceWindowId,
+      }),
+    ),
+  ]
+}
+
+function sourceVacancyRootEdges(
+  sourceWindowRect: LayoutRect,
+  snapDestinationRects: readonly SnapDestinationLayoutRect[],
+) {
+  return snapDestinationRects.filter((snapDestination) =>
+    sourceWindowIntersectsRootEdge(sourceWindowRect, snapDestination),
   )
 }
 
@@ -80,17 +135,148 @@ function proofSnapCandidate({
   ]
 }
 
-function snapDestinationHitRect(snapDestination: SnapDestinationLayoutRect, rootRect: LayoutRect) {
-  if (snapDestination.kind === 'window-edge' && snapDestination.edge === 'top') {
+function sourceReturnCandidate(
+  sourceWindowId: WindowId,
+  sourceReturnRect: LayoutRect,
+): DndProofDropCandidate {
+  return {
+    hitRect: sourceReturnRect,
+    id: `snap:source-return:${sourceWindowId}`,
+    kind: 'source-return',
+    label: 'return home',
+    previewRect: sourceReturnRect,
+    priority: SOURCE_RETURN_PRIORITY,
+    target: {
+      kind: 'window',
+      windowId: sourceWindowId,
+    },
+    windowId: sourceWindowId,
+  }
+}
+
+function sourceVacancyRootCandidate({
+  snapDestination,
+  sourceWindowId,
+  sourceWindowRect,
+}: {
+  readonly snapDestination: SnapDestinationLayoutRect
+  readonly sourceWindowId: WindowId
+  readonly sourceWindowRect: LayoutRect
+}): DndProofDropCandidate {
+  const target: DndProofDropData = {
+    destination: snapDestination.destination,
+    kind: 'snap-destination',
+  }
+  const hitRect = sourceVacancyHitRect(sourceWindowRect, snapDestination.edge)
+
+  return {
+    edge: snapDestination.edge,
+    hitRect,
+    id: `snap:source-vacancy:${sourceWindowId}:${snapDestination.edge}`,
+    kind: 'root-edge',
+    label: snapDestinationLabel(snapDestination),
+    previewRect: hitRect,
+    priority: SOURCE_VACANCY_ROOT_PRIORITY,
+    target,
+    windowId: sourceWindowId,
+  }
+}
+
+function sourceWindowIntersectsRootEdge(
+  sourceWindowRect: LayoutRect,
+  snapDestination: SnapDestinationLayoutRect,
+) {
+  if (snapDestination.kind !== 'root-edge') return false
+  if (!snapDestination.edge) return false
+
+  return rectsIntersect(sourceWindowRect, snapDestination.rect)
+}
+
+function sourceReturnHitRect(
+  sourceWindowRect: LayoutRect,
+  rootEdges: readonly SnapDestinationLayoutRect[],
+): LayoutRect {
+  let rect = sourceWindowRect
+
+  for (const rootEdge of rootEdges) {
+    if (!rootEdge.edge) continue
+
+    rect = insetRectEdge(
+      rect,
+      rootEdge.edge,
+      sourceVacancyThickness(sourceWindowRect, rootEdge.edge),
+    )
+  }
+
+  return rect
+}
+
+function sourceVacancyHitRect(sourceWindowRect: LayoutRect, edge: LayoutEdge | undefined) {
+  if (!edge) return sourceWindowRect
+
+  const thickness = sourceVacancyThickness(sourceWindowRect, edge)
+  if (edge === 'left') return { ...sourceWindowRect, width: thickness }
+  if (edge === 'right') {
     return {
-      ...snapDestination.rect,
-      height: snapDestination.rect.height + WINDOW_TOP_HIT_EXTRA_PX,
+      ...sourceWindowRect,
+      width: thickness,
+      x: rectRight(sourceWindowRect) - thickness,
     }
   }
+  if (edge === 'top') return { ...sourceWindowRect, height: thickness }
+
+  return {
+    ...sourceWindowRect,
+    height: thickness,
+    y: rectBottom(sourceWindowRect) - thickness,
+  }
+}
+
+function sourceVacancyThickness(sourceWindowRect: LayoutRect, edge: LayoutEdge) {
+  const size =
+    edge === 'left' || edge === 'right' ? sourceWindowRect.width : sourceWindowRect.height
+  const preferred = Math.max(SOURCE_VACANCY_EDGE_MIN_PX, size * SOURCE_VACANCY_EDGE_RATIO)
+  const sourceSafeMaximum = size * SOURCE_VACANCY_EDGE_SOURCE_MAX_RATIO
+
+  return Math.min(SOURCE_VACANCY_EDGE_MAX_PX, sourceSafeMaximum, preferred)
+}
+
+function insetRectEdge(rect: LayoutRect, edge: LayoutEdge, inset: number): LayoutRect {
+  if (edge === 'left') return { ...rect, width: Math.max(0, rect.width - inset), x: rect.x + inset }
+  if (edge === 'right') return { ...rect, width: Math.max(0, rect.width - inset) }
+  if (edge === 'top') {
+    return { ...rect, height: Math.max(0, rect.height - inset), y: rect.y + inset }
+  }
+
+  return { ...rect, height: Math.max(0, rect.height - inset) }
+}
+
+function snapDestinationHitRect(snapDestination: SnapDestinationLayoutRect, rootRect: LayoutRect) {
+  if (snapDestination.kind === 'window-edge') return windowEdgeHitRect(snapDestination)
   if (snapDestination.kind !== 'root-edge') return snapDestination.rect
   if (!snapDestination.edge) return snapDestination.rect
 
   return rootEdgeHitRect(rootRect, snapDestination.edge)
+}
+
+function windowEdgeHitRect(snapDestination: SnapDestinationLayoutRect): LayoutRect {
+  const edge = snapDestination.edge
+  const rect = snapDestination.rect
+  if (edge === 'left') return { ...rect, width: edgeHitThickness(rect.width) }
+  if (edge === 'right') {
+    const width = edgeHitThickness(rect.width)
+
+    return { ...rect, width, x: rectRight(rect) - width }
+  }
+  if (edge === 'top') return { ...rect, height: edgeHitThickness(rect.height) }
+
+  const height = edgeHitThickness(rect.height)
+
+  return { ...rect, height, y: rectBottom(rect) - height }
+}
+
+function edgeHitThickness(size: number) {
+  return Math.min(WINDOW_EDGE_HIT_PX, Math.max(1, size))
 }
 
 function rootEdgeHitRect(rootRect: LayoutRect, edge: LayoutEdge): LayoutRect {
@@ -208,4 +394,12 @@ function rectRight(rect: LayoutRect) {
 
 function rectBottom(rect: LayoutRect) {
   return rect.y + rect.height
+}
+
+function rectsIntersect(left: LayoutRect, right: LayoutRect) {
+  if (rectRight(left) <= right.x) return false
+  if (left.x >= rectRight(right)) return false
+  if (rectBottom(left) <= right.y) return false
+
+  return left.y < rectBottom(right)
 }

@@ -37,19 +37,26 @@ During detached-tab snap preview, the proof keeps committed tab ownership stable
 and drives only window geometry from a projected preview layout. A proof-local
 `DragOverlay` with drop animation disabled gives dnd-kit a feedback element to
 move instead of the React-owned tab node; window drags render a full window frame
-inside that overlay, not a tab/header-only chip. For cross-window tab insertion, the
-proof also restores the source tab DOM node to its drag-start strip immediately
-before the release commit, because dnd-kit's optimistic sortable plugin may have
-temporarily moved that node into the target strip for animation. The proof
-intentionally renders subtle always-visible guides plus one active highlight for
-debugging; this does not change the production no-visible-drop-zone rule above.
+inside that overlay, not a tab/header-only chip. Window drags now also create a
+source-return candidate for the drag-start window core and source-vacancy root
+candidates where the dragged window's old rect intersects root edge previews.
+The source-return candidate releases as a no-op back to the picked-up slot, while
+source-vacancy candidates commit ordinary root-edge window moves. For
+cross-window tab insertion, the proof also restores the source tab DOM node to
+its drag-start strip immediately before the release commit, because dnd-kit's
+optimistic sortable plugin may have temporarily moved that node into the target
+strip for animation. The proof intentionally renders subtle always-visible
+guides plus one active highlight for debugging; this does not change the
+production no-visible-drop-zone rule above.
 
 Browser regression note, 2026-06-08: `dnd-proof` now has provider-backed real
 browser tests using Playwright mouse commands through Vitest browser mode. These
 cover preview-before-release, same-tab cross-window round trip without duplicate
 tabs or React DOM corruption, right-edge reorder, tab detach, tab docking back
 into strips, window snap preview/commit, root/window edge reachability, hidden
-zone chrome, and resize-handle drag continuity.
+zone chrome, resize-handle drag continuity, collapse/expand, collapsed-window
+dragging, collapsed-strip tab moves, and live resize through the same production
+`ResizeOverlay` used by the workbench.
 
 Resize correction note, 2026-06-07: resize handles must not be transform-only
 previews. Pointer movement dispatches incremental `resizeSplit` operations

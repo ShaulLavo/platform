@@ -366,19 +366,21 @@ export function createDiagnosticsSurface(): Surface {
 }
 
 export function createPlaceholderSurface({
+  canCollapse = false,
   canClose = false,
   contextKey,
   title,
 }: {
+  readonly canCollapse?: boolean
   readonly canClose?: boolean
   readonly contextKey: string
   readonly title: string
 }): Surface {
   return createSurface({
     capabilities: surfaceCapabilities({
+      canCollapse,
       canClose,
       canFloat: false,
-      canCollapse: false,
       defaultRecipeSlot: 'editor-center',
       validPlacements: ['active-window', 'window-center', 'window-edge', 'root-edge'],
     }),

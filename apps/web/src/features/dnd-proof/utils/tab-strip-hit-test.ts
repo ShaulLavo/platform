@@ -21,11 +21,27 @@ type TabStripMiss = {
   readonly verticalDistance: number
 }
 
+type BodyAutoscrollState = {
+  readonly onAutoScroll: (() => void) | null
+  readonly point: PointerCoordinates
+  frameId: number | null
+  readonly stripElement: HTMLElement
+  readonly windowElement: HTMLElement
+}
+
 const TAB_STRIP_REORDER_SLOP_PX = 20
 const TAB_STRIP_TRAILING_EDGE_SLOP_PX = 36
 const TAB_STRIP_DOCK_ABOVE_SLOP_PX = 44
 const TAB_STRIP_DOCK_BELOW_SLOP_PX = 44
 const TAB_STRIP_DOCK_HORIZONTAL_SLOP_PX = 48
+const TAB_STRIP_BODY_AUTOSCROLL_EDGE_PX = 160
+const TAB_STRIP_BODY_AUTOSCROLL_MAX_STEP_PX = 14
+const TAB_STRIP_BODY_INDEX_HYSTERESIS_PX = 18
+const WINDOW_BODY_CENTER_EDGE_RATIO = 0.18
+const WINDOW_BODY_CENTER_MIN_EDGE_PX = 44
+const WINDOW_BODY_CENTER_MAX_EDGE_RATIO = 0.35
+
+let bodyAutoscrollState: BodyAutoscrollState | null = null
 
 export function resolveTabStripDropTarget(
   source: DndProofDragData,
@@ -132,6 +148,67 @@ export function tabStripDropTargetForWindowAtPoint(
   return tabStripTargetForPoint(targetStrip, point)
 }
 
+export function tabStripDropTargetForWindowBodyPoint(
+  windowId: WindowId,
+  point: PointerCoordinates,
+  options: {
+    readonly continuousAutoscroll?: boolean
+    readonly onAutoScroll?: (() => void) | null
+    readonly previousIndex?: number | null
+    readonly scroll?: boolean
+  } = {},
+): DndProofDropData | null {
+  if (!validPointerCoordinates(point)) return null
+
+  const targetStrip = tabStripElementForWindow(windowId)
+  if (!targetStrip) return null
+
+  const windowElement = proofWindowElementForId(windowId)
+  if (!windowElement) return tabStripTargetForPoint(targetStrip, point)
+
+  if (options.scroll !== false) {
+    scrollTabStripForBodyPoint(targetStrip, windowElement, point)
+  }
+  updateTabStripBodyAutoscroll({
+    continuous: options.continuousAutoscroll ?? false,
+    onAutoScroll: options.onAutoScroll ?? null,
+    point,
+    stripElement: targetStrip,
+    windowElement,
+  })
+
+  return tabStripTargetForPoint(
+    targetStrip,
+    projectedTabStripPointForWindowBody(targetStrip, windowElement, point),
+    { previousIndex: options.previousIndex },
+  )
+}
+
+export function stopTabStripBodyAutoscroll() {
+  const frameId = bodyAutoscrollState?.frameId ?? null
+  if (frameId !== null) {
+    cancelAnimationFrame(frameId)
+  }
+  bodyAutoscrollState = null
+}
+
+export function proofWindowCenterElementAtPoint(point: PointerCoordinates) {
+  return proofWindowElements()
+    .filter((element) => pointIsInsideWindowCenter(element, point))
+    .toSorted((left, right) => elementArea(left) - elementArea(right))[0]
+}
+
+export function pointIsInsideProofWindowCenter(
+  windowId: WindowId,
+  point: PointerCoordinates,
+  inflatePx = 0,
+) {
+  const element = proofWindowElementForId(windowId)
+  if (!element) return false
+
+  return pointIsInsideWindowCenter(element, point, inflatePx)
+}
+
 export function tabStripDropTargetMatchesPoint(
   target: DndProofDropData,
   point: PointerCoordinates,
@@ -158,23 +235,144 @@ function targetBelongsToTabStrip(
 function tabStripTargetForPoint(
   stripElement: HTMLElement,
   point: PointerCoordinates,
+  options: {
+    readonly previousIndex?: number | null
+  } = {},
 ): Extract<DndProofDropData, { readonly kind: 'tab-strip' }> {
   return {
-    index: tabInsertionIndexForPoint(stripElement, point),
+    index: tabInsertionIndexForPoint(stripElement, point, options.previousIndex ?? null),
     kind: 'tab-strip',
     windowId: stripElement.dataset.proofTabStripId as WindowId,
   }
 }
 
-function tabInsertionIndexForPoint(stripElement: HTMLElement, point: PointerCoordinates) {
+function tabInsertionIndexForPoint(
+  stripElement: HTMLElement,
+  point: PointerCoordinates,
+  previousIndex: number | null,
+) {
   const tabElements = uniqueTabElements(stripElement)
+  const pointCoordinate = tabStripContentCoordinateForPoint(stripElement, point)
+  const proposedIndex = proposedTabInsertionIndex(tabElements, stripElement, pointCoordinate)
 
+  return stableTabInsertionIndex({
+    pointCoordinate,
+    previousIndex,
+    proposedIndex,
+    stripElement,
+    tabElements,
+  })
+}
+
+function proposedTabInsertionIndex(
+  tabElements: readonly HTMLElement[],
+  stripElement: HTMLElement,
+  pointCoordinate: number,
+) {
   for (const [index, tabElement] of tabElements.entries()) {
-    const rect = tabElement.getBoundingClientRect()
-    if (point.x < rect.left + rect.width / 2) return index
+    const range = tabElementContentRange(stripElement, tabElement)
+    if (pointCoordinate < range.start + (range.end - range.start) / 2) return index
   }
 
   return tabElements.length
+}
+
+function stableTabInsertionIndex({
+  pointCoordinate,
+  previousIndex,
+  proposedIndex,
+  stripElement,
+  tabElements,
+}: {
+  readonly pointCoordinate: number
+  readonly previousIndex: number | null
+  readonly proposedIndex: number
+  readonly stripElement: HTMLElement
+  readonly tabElements: readonly HTMLElement[]
+}) {
+  if (previousIndex === null) return proposedIndex
+  if (previousIndex === proposedIndex) return proposedIndex
+  if (Math.abs(previousIndex - proposedIndex) !== 1) return proposedIndex
+
+  const boundary = tabInsertionBoundaryCoordinate(
+    stripElement,
+    tabElements,
+    Math.min(previousIndex, proposedIndex),
+  )
+  if (boundary === null) return proposedIndex
+  if (proposedIndex > previousIndex) {
+    return stableIndexForRightMove(pointCoordinate, boundary, previousIndex, proposedIndex)
+  }
+
+  return stableIndexForLeftMove(pointCoordinate, boundary, previousIndex, proposedIndex)
+}
+
+function stableIndexForRightMove(
+  pointCoordinate: number,
+  boundary: number,
+  previousIndex: number,
+  proposedIndex: number,
+) {
+  if (pointCoordinate < boundary + TAB_STRIP_BODY_INDEX_HYSTERESIS_PX) return previousIndex
+
+  return proposedIndex
+}
+
+function stableIndexForLeftMove(
+  pointCoordinate: number,
+  boundary: number,
+  previousIndex: number,
+  proposedIndex: number,
+) {
+  if (pointCoordinate > boundary - TAB_STRIP_BODY_INDEX_HYSTERESIS_PX) return previousIndex
+
+  return proposedIndex
+}
+
+function tabInsertionBoundaryCoordinate(
+  stripElement: HTMLElement,
+  tabElements: readonly HTMLElement[],
+  index: number,
+) {
+  const tabElement = tabElements[index]
+  if (!tabElement) return null
+
+  const range = tabElementContentRange(stripElement, tabElement)
+
+  return range.start + (range.end - range.start) / 2
+}
+
+function tabStripContentCoordinateForPoint(stripElement: HTMLElement, point: PointerCoordinates) {
+  const rect = stripElement.getBoundingClientRect()
+
+  if (tabStripOrientation(stripElement) === 'vertical') {
+    return stripElement.scrollTop + point.y - rect.top
+  }
+
+  return stripElement.scrollLeft + point.x - rect.left
+}
+
+function tabElementContentRange(stripElement: HTMLElement, tabElement: HTMLElement) {
+  const stripRect = stripElement.getBoundingClientRect()
+  const tabRect = tabElement.getBoundingClientRect()
+
+  if (tabStripOrientation(stripElement) === 'vertical') {
+    return {
+      end: stripElement.scrollTop + tabRect.bottom - stripRect.top,
+      start: stripElement.scrollTop + tabRect.top - stripRect.top,
+    }
+  }
+
+  return {
+    end: stripElement.scrollLeft + tabRect.right - stripRect.left,
+    start: stripElement.scrollLeft + tabRect.left - stripRect.left,
+  }
+}
+
+function tabStripOrientation(stripElement: HTMLElement) {
+  if (stripElement.dataset.proofTabStripOrientation === 'vertical') return 'vertical'
+
+  return 'horizontal'
 }
 
 function uniqueTabElements(stripElement: HTMLElement) {
@@ -237,6 +435,282 @@ function tabStripElements() {
   if (typeof document === 'undefined') return []
 
   return Array.from(document.querySelectorAll<HTMLElement>('[data-proof-tab-strip-id]'))
+}
+
+function proofWindowElementForId(windowId: WindowId) {
+  return proofWindowElements().find((element) => element.dataset.proofWindowId === windowId) ?? null
+}
+
+function proofWindowElements() {
+  if (typeof document === 'undefined') return []
+
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-proof-window-id]'))
+}
+
+function pointIsInsideWindowCenter(element: HTMLElement, point: PointerCoordinates, inflatePx = 0) {
+  const rect = element.getBoundingClientRect()
+  const centerRect = windowBodyCenterRect(rect, inflatePx)
+
+  return (
+    point.x >= centerRect.left &&
+    point.x <= centerRect.right &&
+    point.y >= centerRect.top &&
+    point.y <= centerRect.bottom
+  )
+}
+
+function projectedTabStripPointForWindowBody(
+  stripElement: HTMLElement,
+  windowElement: HTMLElement,
+  point: PointerCoordinates,
+): PointerCoordinates {
+  const centerRect = windowBodyCenterRect(windowElement.getBoundingClientRect())
+  const stripRect = stripElement.getBoundingClientRect()
+  const autoscrollPoint = projectedTabStripAutoscrollPoint(
+    stripElement,
+    stripRect,
+    centerRect,
+    point,
+  )
+  if (autoscrollPoint) return autoscrollPoint
+
+  if (tabStripOrientation(stripElement) === 'vertical') {
+    const ratio = normalizedPosition(point.y, centerRect.top, centerRect.bottom)
+
+    return {
+      x: stripRect.left + stripRect.width / 2,
+      y: stripRect.top + ratio * stripRect.height,
+    }
+  }
+
+  const ratio = normalizedPosition(point.x, centerRect.left, centerRect.right)
+
+  return {
+    x: stripRect.left + ratio * stripRect.width,
+    y: stripRect.top + stripRect.height / 2,
+  }
+}
+
+function projectedTabStripAutoscrollPoint(
+  stripElement: HTMLElement,
+  stripRect: DOMRect,
+  centerRect: ReturnType<typeof windowBodyCenterRect>,
+  point: PointerCoordinates,
+): PointerCoordinates | null {
+  const orientation = tabStripOrientation(stripElement)
+  if (orientation === 'vertical') {
+    return projectedVerticalAutoscrollPoint(stripRect, centerRect, point)
+  }
+
+  return projectedHorizontalAutoscrollPoint(stripRect, centerRect, point)
+}
+
+function projectedHorizontalAutoscrollPoint(
+  stripRect: DOMRect,
+  centerRect: ReturnType<typeof windowBodyCenterRect>,
+  point: PointerCoordinates,
+): PointerCoordinates | null {
+  const delta = edgeScrollDelta(point.x, centerRect.left, centerRect.right)
+  if (delta < 0) {
+    return {
+      x: stripRect.left + 1,
+      y: stripRect.top + stripRect.height / 2,
+    }
+  }
+  if (delta <= 0) return null
+
+  return {
+    x: stripRect.right - 1,
+    y: stripRect.top + stripRect.height / 2,
+  }
+}
+
+function projectedVerticalAutoscrollPoint(
+  stripRect: DOMRect,
+  centerRect: ReturnType<typeof windowBodyCenterRect>,
+  point: PointerCoordinates,
+): PointerCoordinates | null {
+  const delta = edgeScrollDelta(point.y, centerRect.top, centerRect.bottom)
+  if (delta < 0) {
+    return {
+      x: stripRect.left + stripRect.width / 2,
+      y: stripRect.top + 1,
+    }
+  }
+  if (delta <= 0) return null
+
+  return {
+    x: stripRect.left + stripRect.width / 2,
+    y: stripRect.bottom - 1,
+  }
+}
+
+function scrollTabStripForBodyPoint(
+  stripElement: HTMLElement,
+  windowElement: HTMLElement,
+  point: PointerCoordinates,
+) {
+  const centerRect = windowBodyCenterRect(windowElement.getBoundingClientRect())
+
+  if (tabStripOrientation(stripElement) === 'vertical') {
+    return scrollTabStripByDelta(
+      stripElement,
+      edgeScrollDelta(point.y, centerRect.top, centerRect.bottom),
+    )
+  }
+
+  return scrollTabStripByDelta(
+    stripElement,
+    edgeScrollDelta(point.x, centerRect.left, centerRect.right),
+  )
+}
+
+function scrollTabStripByDelta(stripElement: HTMLElement, delta: number) {
+  if (delta === 0) return false
+
+  const before = tabStripScrollPosition(stripElement)
+  setTabStripScrollPosition(stripElement, before + delta)
+
+  return tabStripScrollPosition(stripElement) !== before
+}
+
+function tabStripScrollPosition(stripElement: HTMLElement) {
+  if (tabStripOrientation(stripElement) === 'vertical') return stripElement.scrollTop
+
+  return stripElement.scrollLeft
+}
+
+function setTabStripScrollPosition(stripElement: HTMLElement, value: number) {
+  if (tabStripOrientation(stripElement) === 'vertical') {
+    stripElement.scrollTop = value
+    return
+  }
+
+  stripElement.scrollLeft = value
+}
+
+function updateTabStripBodyAutoscroll({
+  continuous,
+  onAutoScroll,
+  point,
+  stripElement,
+  windowElement,
+}: {
+  readonly continuous: boolean
+  readonly onAutoScroll: (() => void) | null
+  readonly point: PointerCoordinates
+  readonly stripElement: HTMLElement
+  readonly windowElement: HTMLElement
+}) {
+  if (!continuous) return
+  if (!tabStripBodyAutoscrollCanAdvance(stripElement, windowElement, point)) {
+    stopTabStripBodyAutoscroll()
+    return
+  }
+
+  const frameId = bodyAutoscrollState?.frameId ?? null
+  bodyAutoscrollState = {
+    frameId,
+    onAutoScroll,
+    point,
+    stripElement,
+    windowElement,
+  }
+  scheduleTabStripBodyAutoscrollFrame()
+}
+
+function scheduleTabStripBodyAutoscrollFrame() {
+  if (!bodyAutoscrollState) return
+  if (bodyAutoscrollState.frameId !== null) return
+
+  bodyAutoscrollState.frameId = requestAnimationFrame(runTabStripBodyAutoscrollFrame)
+}
+
+function runTabStripBodyAutoscrollFrame() {
+  const state = bodyAutoscrollState
+  if (!state) return
+
+  state.frameId = null
+  if (!tabStripBodyAutoscrollCanAdvance(state.stripElement, state.windowElement, state.point)) {
+    stopTabStripBodyAutoscroll()
+    return
+  }
+
+  const moved = scrollTabStripForBodyPoint(state.stripElement, state.windowElement, state.point)
+  if (!moved) {
+    stopTabStripBodyAutoscroll()
+    return
+  }
+
+  state.onAutoScroll?.()
+  scheduleTabStripBodyAutoscrollFrame()
+}
+
+function tabStripBodyAutoscrollCanAdvance(
+  stripElement: HTMLElement,
+  windowElement: HTMLElement,
+  point: PointerCoordinates,
+) {
+  const centerRect = windowBodyCenterRect(windowElement.getBoundingClientRect())
+
+  if (tabStripOrientation(stripElement) === 'vertical') {
+    return edgeScrollDelta(point.y, centerRect.top, centerRect.bottom) !== 0
+  }
+
+  return edgeScrollDelta(point.x, centerRect.left, centerRect.right) !== 0
+}
+
+function windowBodyCenterRect(rect: DOMRect, inflatePx = 0) {
+  const horizontalInset = windowBodyCenterInset(rect.width)
+  const verticalInset = windowBodyCenterInset(rect.height)
+
+  return {
+    bottom: rect.bottom - verticalInset + inflatePx,
+    left: rect.left + horizontalInset - inflatePx,
+    right: rect.right - horizontalInset + inflatePx,
+    top: rect.top + verticalInset - inflatePx,
+  }
+}
+
+function windowBodyCenterInset(size: number) {
+  const proportionalInset = size * WINDOW_BODY_CENTER_EDGE_RATIO
+  const maxInset = size * WINDOW_BODY_CENTER_MAX_EDGE_RATIO
+
+  return Math.min(maxInset, Math.max(WINDOW_BODY_CENTER_MIN_EDGE_PX, proportionalInset))
+}
+
+function normalizedPosition(value: number, min: number, max: number) {
+  if (max <= min) return 0
+
+  return clamp((value - min) / (max - min), 0, 1)
+}
+
+function edgeScrollDelta(value: number, min: number, max: number) {
+  if (max <= min) return 0
+
+  const edgeSize = Math.min(TAB_STRIP_BODY_AUTOSCROLL_EDGE_PX, (max - min) / 3)
+  if (edgeSize <= 0) return 0
+
+  const startDistance = value - min
+  if (startDistance < edgeSize) return -edgeScrollStep(edgeSize - startDistance, edgeSize)
+
+  const endDistance = max - value
+  if (endDistance < edgeSize) return edgeScrollStep(edgeSize - endDistance, edgeSize)
+
+  return 0
+}
+
+function edgeScrollStep(edgeOverlap: number, edgeSize: number) {
+  const intensity = clamp(edgeOverlap / edgeSize, 0, 1)
+  const easedIntensity = intensity * intensity
+
+  return Math.max(1, Math.ceil(easedIntensity * TAB_STRIP_BODY_AUTOSCROLL_MAX_STEP_PX))
+}
+
+function elementArea(element: HTMLElement) {
+  const rect = element.getBoundingClientRect()
+
+  return rect.width * rect.height
 }
 
 function nearestTabStripMiss(source: DndProofDragData, point: PointerCoordinates) {
@@ -341,4 +815,8 @@ function distanceFromRange(value: number, min: number, max: number) {
   if (value > max) return value - max
 
   return 0
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
 }

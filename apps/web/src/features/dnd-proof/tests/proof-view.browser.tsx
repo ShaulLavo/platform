@@ -20,6 +20,8 @@ declare module '@vitest/browser/context' {
 
 type ProofMouseDragInput = {
   readonly release?: boolean
+  readonly sourceClientX?: number
+  readonly sourceClientY?: number
   readonly sourceSelector: string
   readonly sourceX?: number
   readonly sourceY?: number
@@ -61,11 +63,12 @@ afterEach(async () => {
   currentPointerId = 0
 })
 
-describe('dnd proof browser behavior', () => {
+describe.sequential('dnd proof browser behavior', () => {
   it('renders root guides at the real full surface edges', async () => {
     renderProof()
 
     await waitForProof()
+    await waitForSettledProofGeometry()
 
     const surfaceRect = proofSurfaceArea().getBoundingClientRect()
     const topRect = snapDestinationWithLabel('root top').getBoundingClientRect()
@@ -94,6 +97,7 @@ describe('dnd proof browser behavior', () => {
     renderProof()
 
     await waitForProof()
+    await waitForSettledProofGeometry()
 
     const beforeRects = windowRects()
     const sourceId = firstTabIdInFirstMultiTabStrip()
@@ -125,7 +129,7 @@ describe('dnd proof browser behavior', () => {
     const targetStripId = proofTabStripId(targetStrip)
     if (!sourceId) throw new Error('Missing source tab id')
 
-    await nativeDragTabToStrip(sourceId, targetStrip)
+    await nativeDragTabToStripDropZone(sourceId, targetStrip)
 
     await vi.waitFor(() => {
       expect(tabStripIdContaining(sourceId)).toBe(targetStripId)
@@ -170,6 +174,7 @@ describe('dnd proof browser behavior', () => {
     renderProof()
 
     await waitForProof()
+    await waitForSettledProofGeometry()
 
     const beforeRects = windowRects()
 
@@ -185,6 +190,401 @@ describe('dnd proof browser behavior', () => {
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('window -> root right')
       expect(document.body.textContent).not.toContain('tab -> root right')
+      expectValidProofTabState()
+    })
+  })
+
+  it('lets a picked-up window return to its source slot', async () => {
+    renderProof()
+
+    await waitForProof()
+    await waitForSettledProofGeometry()
+
+    const sourceWindow = rightmostWindowRegion()
+
+    startPointerDrag(windowDragHandleIn(sourceWindow))
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(snapDestinationDropPoint('root left'))
+    await nextFrame()
+    const returnPoint = centerOf(snapDestinationWithLabel('return home'))
+
+    movePointerTo(returnPoint)
+    await holdPointerOver(returnPoint, 2)
+
+    await vi.waitFor(() => {
+      expect(activeSnapDestination()?.textContent?.trim()).toBe('return home')
+    })
+
+    finishPointerDrag(returnPoint)
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('release window:')
+      expect(document.body.textContent).toContain('-> window:')
+      expect(document.body.textContent).not.toContain('window -> root left')
+      expectValidProofTabState()
+    })
+  })
+
+  it('snaps a window through the source vacancy root corridor', async () => {
+    renderProof()
+
+    await waitForProof()
+    await waitForSettledProofGeometry()
+
+    const beforeRects = windowRects()
+    const sourceWindow = topmostWindowRegion()
+
+    startPointerDrag(windowDragHandleIn(sourceWindow))
+    movePointerBy(8, 0)
+    await nextFrame()
+    const vacancyDestination = sourceVacancyDestinationWithLabel('root top')
+    const vacancyPoint = centerOf(vacancyDestination)
+    const vacancyLabel = vacancyDestination.textContent?.trim()
+
+    movePointerTo(vacancyPoint)
+    await holdPointerOver(vacancyPoint, 2)
+
+    await vi.waitFor(() => {
+      expect(activeSnapDestination()?.textContent?.trim()).toBe(vacancyLabel)
+    })
+
+    finishPointerDrag(vacancyPoint)
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain(`window -> ${vacancyLabel}`)
+      expect(windowRects()).not.toEqual(beforeRects)
+      expectValidProofTabState()
+    })
+  })
+
+  it('collapses and expands a proof window in place', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const originalWindowCount = windowRegions().length
+    const originalTabIds = tabStrips().flatMap(tabIdsInStrip)
+    const targetWindow = bottommostWindowRegion()
+    const targetWindowId = proofWindowId(targetWindow)
+    const expandedRect = targetWindow.getBoundingClientRect()
+
+    collapseButtonIn(targetWindow).click()
+
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(targetWindowId)
+      const collapsedRect = collapsedWindow.getBoundingClientRect()
+
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedRect.height).toBeLessThan(expandedRect.height)
+      expect(collapsedRect.height).toBeLessThanOrEqual(42)
+      expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
+      expect(windowRegions()).toHaveLength(originalWindowCount)
+      expect(tabStrips().flatMap(tabIdsInStrip)).toEqual(originalTabIds)
+    })
+
+    expandButtonIn(proofWindowById(targetWindowId)).click()
+
+    await vi.waitFor(() => {
+      const expandedWindow = proofWindowById(targetWindowId)
+
+      expect(expandedWindow.dataset.proofWindowMode).toBe('normal')
+      expect(expandedWindow.getBoundingClientRect().height).toBeGreaterThan(42)
+      expect(getComputedStyle(windowBodyIn(expandedWindow)).display).not.toBe('none')
+      expectValidProofTabState()
+    })
+  })
+
+  it('collapses a single root proof window to its header allocation', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const targetWindow = await closeWindowsUntilOne()
+    const targetWindowId = proofWindowId(targetWindow)
+    const expandedRect = targetWindow.getBoundingClientRect()
+
+    collapseButtonIn(targetWindow).click()
+
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(targetWindowId)
+      const collapsedRect = collapsedWindow.getBoundingClientRect()
+
+      expect(windowRegions()).toHaveLength(1)
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedRect.height).toBeLessThan(expandedRect.height)
+      expect(collapsedRect.height).toBeLessThanOrEqual(42)
+      expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
+    })
+  })
+
+  it('keeps side-collapsed proof window controls reachable in a vertical tab rail', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const targetWindow = leftmostWindowRegion()
+    const targetWindowId = proofWindowId(targetWindow)
+
+    collapseButtonIn(targetWindow).click()
+
+    await vi.waitFor(() => {
+      const collapsedWindow = proofWindowById(targetWindowId)
+      const collapsedRect = collapsedWindow.getBoundingClientRect()
+
+      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.proofWindowChromeOrientation).toBe('vertical')
+      expect(tabStripInWindow(collapsedWindow).dataset.proofTabStripOrientation).toBe('vertical')
+      expect(collapsedRect.width).toBeLessThanOrEqual(42)
+      expect(collapsedRect.height).toBeGreaterThan(42)
+      expectWindowControlsInside(collapsedWindow)
+    })
+  })
+
+  it('drags a collapsed proof window to a snap target', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const targetWindow = await collapseWindowElement(bottommostWindowRegion())
+    const targetWindowId = proofWindowId(targetWindow)
+    const beforeRects = windowRects()
+    const snapPoint = snapDestinationDropPoint('root right')
+
+    startPointerDrag(windowDragHandleIn(targetWindow))
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(snapPoint)
+    await holdPointerOver(snapPoint, 2)
+
+    await vi.waitFor(() => {
+      expect(activeSnapDestination()?.textContent?.trim()).toBe('root right')
+    })
+
+    finishPointerDrag(snapPoint)
+
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('window -> root right')
+      expect(proofWindowById(targetWindowId).dataset.proofWindowMode).toBe('collapsed')
+      expect(windowRects()).not.toEqual(beforeRects)
+      expectValidProofTabState()
+    })
+  })
+
+  it('moves tabs out of and back into a collapsed proof window strip', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const collapsedWindow = await collapseWindowElement(bottommostWindowRegion())
+    const collapsedStrip = tabStripInWindow(collapsedWindow)
+    const collapsedStripId = proofTabStripId(collapsedStrip)
+    const sourceId = tabIdsInStrip(collapsedStrip)[0]
+    if (!sourceId) throw new Error('Missing collapsed-window source tab')
+
+    const targetStrip = tabStripNotContaining(sourceId)
+    const targetStripId = proofTabStripId(targetStrip)
+
+    await nativeDragTabToStrip(sourceId, targetStrip)
+    await vi.waitFor(() => {
+      expect(tabStripIdContaining(sourceId)).toBe(targetStripId)
+      expectValidProofTabState()
+    })
+
+    await nativeDragTabToStripDropZone(sourceId, tabStripWithId(collapsedStripId))
+    await vi.waitFor(() => {
+      expect(tabStripIdContaining(sourceId)).toBe(collapsedStripId)
+      expect(proofWindowById(proofWindowId(collapsedWindow)).dataset.proofWindowMode).toBe(
+        'collapsed',
+      )
+      expectValidProofTabState()
+    })
+  })
+
+  it('sorts a detached tab through the target window body center before release', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const sourceStrip = firstMultiTabStrip()
+    const sourceId = tabIdsInStrip(sourceStrip)[0]
+    if (!sourceId) throw new Error('Missing source tab id')
+
+    const targetWindow = bottommostWindowRegion()
+    const targetWindowId = proofWindowId(targetWindow)
+    const targetStrip = tabStripInWindow(targetWindow)
+    const targetStripId = proofTabStripId(targetStrip)
+    const targetBodyTextBefore = windowBodyIn(targetWindow).textContent
+
+    startPointerDrag(proofTab(sourceId))
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: centerOf(proofTab(sourceId)).x, y: centerOf(proofTab(sourceId)).y + 70 })
+    await nextFrame()
+    const { centerBodyPoint } = bodySortPointsForWindow(proofWindowById(targetWindowId))
+
+    movePointerTo(centerBodyPoint)
+
+    await vi.waitFor(() => {
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expect(windowBodyIn(proofWindowById(targetWindowId)).textContent).toBe(targetBodyTextBefore)
+    })
+
+    const { rightBodyPoint } = bodySortPointsForWindow(proofWindowById(targetWindowId))
+
+    movePointerTo(rightBodyPoint)
+    await nextFrame()
+
+    await vi.waitFor(() => {
+      expect(tabIdsInStrip(tabStripWithId(targetStripId)).at(-1)).toBe(sourceId)
+      expect(windowBodyIn(proofWindowById(targetWindowId)).textContent).toBe(targetBodyTextBefore)
+    })
+
+    const { leftBodyPoint } = bodySortPointsForWindow(proofWindowById(targetWindowId))
+
+    movePointerTo(leftBodyPoint)
+    await nextFrame()
+
+    await vi.waitFor(() => {
+      const ids = tabIdsInStrip(tabStripWithId(targetStripId))
+      const sourceIndex = ids.indexOf(sourceId)
+
+      expect(sourceIndex).toBeGreaterThanOrEqual(0)
+      expect(sourceIndex).toBeLessThan(ids.length - 1)
+      expect(windowBodyIn(proofWindowById(targetWindowId)).textContent).toBe(targetBodyTextBefore)
+    })
+
+    finishPointerDrag(leftBodyPoint)
+
+    await vi.waitFor(() => {
+      expect(tabStripIdContaining(sourceId)).toBe(targetStripId)
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expectValidProofTabState()
+    })
+    await settleProofDrag()
+  })
+
+  it('continues body-center tab autoscroll while the pointer is held near the edge', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const targetWindow = bottommostWindowRegion()
+    const targetWindowId = proofWindowId(targetWindow)
+    await addTabsToWindow(targetWindow, 12)
+
+    const targetStrip = tabStripInWindow(proofWindowById(targetWindowId))
+    const sourceId = tabIdsInStrip(tabStripInWindow(topmostWindowRegion()))[0]
+    if (!sourceId) throw new Error('Missing source tab id')
+
+    targetStrip.scrollLeft = 0
+    await vi.waitFor(() => {
+      expect(targetStrip.scrollWidth).toBeGreaterThan(targetStrip.clientWidth)
+    })
+
+    startPointerDrag(proofTab(sourceId))
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: centerOf(proofTab(sourceId)).x, y: centerOf(proofTab(sourceId)).y + 70 })
+    await nextFrame()
+
+    const { rightEntryPoint } = bodyAutoscrollEntryPointsForWindow(proofWindowById(targetWindowId))
+    movePointerTo(rightEntryPoint)
+    await nextFrame()
+
+    await vi.waitFor(() => {
+      const stripRect = targetStrip.getBoundingClientRect()
+      const tabRect = proofTab(sourceId).getBoundingClientRect()
+
+      expect(tabRect.left + tabRect.width / 2).toBeGreaterThan(stripRect.right - 90)
+    })
+
+    const { rightBodyPoint } = bodySortPointsForWindow(proofWindowById(targetWindowId))
+    movePointerTo(rightBodyPoint)
+    await nextFrame()
+
+    const scrollBeforeHold = targetStrip.scrollLeft
+    await waitFrames(18)
+
+    expect(targetStrip.scrollLeft).toBeGreaterThan(scrollBeforeHold + 30)
+    finishPointerDrag(rightBodyPoint)
+  })
+
+  it('uses the production resize overlay to resize proof windows live', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    expect(resizeOverlay()).not.toBeNull()
+    expect(getComputedStyle(resizeOverlay()).pointerEvents).toBe('none')
+
+    const handle = firstResizeHandle()
+    const startPoint = centerOf(handle)
+    const resizePoint = resizePointForHandle(handle, startPoint, 60)
+    const beforeRects = windowRects()
+
+    expect(getComputedStyle(handle).pointerEvents).toBe('auto')
+
+    currentPointerId += 1
+    handle.dispatchEvent(pointerEvent('pointerdown', startPoint, 1))
+    handle.dispatchEvent(pointerEvent('pointermove', resizePoint, 1))
+
+    await vi.waitFor(() => {
+      expect(windowRects()).not.toEqual(beforeRects)
+    })
+
+    const movedHandlePoint = centerOf(firstResizeHandle())
+    expectResizeHandleMoved(handle, movedHandlePoint, resizePoint)
+
+    handle.dispatchEvent(pointerEvent('pointerup', resizePoint, 0))
+  })
+
+  it.fails('resizes proof windows through a full real browser pointer drag', async () => {
+    renderProof()
+
+    await waitForProof()
+    await waitForSettledProofGeometry()
+
+    const handle = firstResizeHandle()
+    const startPoint = centerOf(handle)
+    const targetPoint = resizePointForHandle(handle, startPoint, 120)
+    const beforeRects = windowRects()
+
+    await commands.proofMouseDrag({
+      sourceSelector: selectorFor(handle),
+      steps: [
+        {
+          dx: targetPoint.x - startPoint.x,
+          dy: targetPoint.y - startPoint.y,
+          kind: 'move-by',
+          steps: 24,
+        },
+        { kind: 'pause', ms: 32 },
+      ],
+    })
+
+    await vi.waitFor(() => {
+      expect(windowRects()).not.toEqual(beforeRects)
+    })
+
+    const movedHandlePoint = centerOf(firstResizeHandle())
+    expectResizeHandleMoved(handle, movedHandlePoint, targetPoint)
+  })
+
+  it('keeps resize handles usable after a window is collapsed', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const collapsedWindow = await collapseWindowElement(bottommostWindowRegion())
+    const targetWindowId = proofWindowId(collapsedWindow)
+    const beforeRects = windowRects()
+
+    resizeFirstHandleBy(48)
+
+    await vi.waitFor(() => {
+      expect(windowRects()).not.toEqual(beforeRects)
+      expect(proofWindowById(targetWindowId).dataset.proofWindowMode).toBe('collapsed')
       expectValidProofTabState()
     })
   })
@@ -261,7 +661,9 @@ describe('dnd proof browser behavior', () => {
       const originalWindowCount = windowRegions().length
       const sourceId = firstTabIdInFirstMultiTabStrip()
 
-      await dragTabToSnap(sourceId, snapLabel)
+      await dragTabToSnap(sourceId, snapLabel, {
+        holdFrames: snapLabel === 'window top' ? 1 : undefined,
+      })
 
       await vi.waitFor(() => {
         expect(document.body.textContent).toContain(`tab -> ${snapLabel}`)
@@ -389,25 +791,29 @@ async function dragTabToSnap(
   snapLabel: string,
   options: {
     readonly assertActive?: boolean
+    readonly holdFrames?: number
   } = {},
 ) {
   const sourceTab = proofTab(tabId)
   const sourceCenter = centerOf(sourceTab)
-  const snapPoint = snapDestinationDropPoint(snapLabel)
 
   startPointerDrag(sourceTab)
   movePointerBy(8, 0)
   await nextFrame()
   movePointerTo({ x: sourceCenter.x, y: sourceCenter.y + 70 })
   await nextFrame()
+  const snapPoint = snapDestinationDropPoint(snapLabel)
   movePointerTo(snapPoint)
-  await holdPointerOver(snapPoint, 2)
+  await nextFrame()
+  const settledSnapPoint = snapDestinationDropPoint(snapLabel)
+  movePointerTo(settledSnapPoint)
+  await holdPointerOver(settledSnapPoint, options.holdFrames ?? 4)
   if (options.assertActive !== false) {
     await vi.waitFor(() => {
       expect(activeSnapDestination()?.textContent?.trim()).toBe(snapLabel)
     })
   }
-  finishPointerDrag(snapPoint)
+  finishPointerDrag(settledSnapPoint)
 }
 
 async function nativeDragTabToSnap(
@@ -420,31 +826,101 @@ async function nativeDragTabToSnap(
   await commands.proofMouseDrag({
     release: options.release,
     sourceSelector: selectorFor(proofTab(tabId)),
-    steps: [
-      { dx: 8, dy: 0, kind: 'move-by', steps: 4 },
-      { dx: 0, dy: 70, kind: 'move-by', steps: 8 },
-      snapDestinationMouseStep(snapLabel),
-      { kind: 'pause', ms: 32 },
-    ],
+    steps: nativeTabSnapSteps(snapLabel),
   })
 }
 
+function nativeTabSnapSteps(snapLabel: string): readonly ProofMouseDragStep[] {
+  const steps: ProofMouseDragStep[] = [
+    { dx: 8, dy: 0, kind: 'move-by', steps: 4 },
+    { dx: 0, dy: 70, kind: 'move-by', steps: 8 },
+    snapDestinationMouseStep(snapLabel),
+    { kind: 'pause', ms: 32 },
+  ]
+  if (snapLabel === 'window top') return steps
+
+  return [...steps, snapDestinationMouseStep(snapLabel), { kind: 'pause', ms: 32 }]
+}
+
 async function nativeDragTabToStrip(tabId: string, targetStrip: HTMLElement) {
+  const targetStripId = proofTabStripId(targetStrip)
+  const source = await settledVisibleTabSource(tabId)
+  const settledTargetStrip = tabStripWithId(targetStripId)
+  const targetElement = tabDockElementInStrip(settledTargetStrip)
+  const sourcePoint = tabPointFromRatio(source.tab, source.point)
+
   await commands.proofMouseDrag({
-    sourceSelector: selectorFor(proofTab(tabId)),
+    sourceClientX: sourcePoint.x,
+    sourceClientY: sourcePoint.y,
+    sourceSelector: selectorFor(source.tab),
+    sourceX: source.point.x,
+    sourceY: source.point.y,
     steps: [
       { dx: 8, dy: 0, kind: 'move-by', steps: 4 },
       { dx: 0, dy: 70, kind: 'move-by', steps: 8 },
       {
         kind: 'move-to-selector',
-        selector: selectorFor(targetStrip),
+        selector: selectorFor(targetElement.element),
         steps: 18,
-        x: 0.92,
-        y: 0.5,
+        x: targetElement.x,
+        y: targetElement.y,
+      },
+      { kind: 'pause', ms: 32 },
+      {
+        kind: 'move-to-selector',
+        selector: selectorFor(targetElement.element),
+        steps: 4,
+        x: targetElement.x,
+        y: targetElement.y,
       },
       { kind: 'pause', ms: 32 },
     ],
   })
+  await settleProofDrag()
+}
+
+async function nativeDragTabToStripDropZone(tabId: string, targetStrip: HTMLElement) {
+  const targetStripId = proofTabStripId(targetStrip)
+  const source = await settledVisibleTabSource(tabId)
+  const settledTargetStrip = tabStripWithId(targetStripId)
+  const targetElement = tabStripDropZoneElement(settledTargetStrip)
+  const sourcePoint = tabPointFromRatio(source.tab, source.point)
+
+  await commands.proofMouseDrag({
+    sourceClientX: sourcePoint.x,
+    sourceClientY: sourcePoint.y,
+    sourceSelector: selectorFor(source.tab),
+    sourceX: source.point.x,
+    sourceY: source.point.y,
+    steps: [
+      { dx: 8, dy: 0, kind: 'move-by', steps: 4 },
+      { dx: 0, dy: 70, kind: 'move-by', steps: 8 },
+      {
+        kind: 'move-to-selector',
+        selector: selectorFor(targetElement.element),
+        steps: 18,
+        x: targetElement.x,
+        y: targetElement.y,
+      },
+      { kind: 'pause', ms: 32 },
+    ],
+  })
+  await settleProofDrag()
+}
+
+function tabDockElementInStrip(strip: HTMLElement) {
+  const lastTab = tabsInStrip(strip).at(-1)
+  if (lastTab) return { element: lastTab, x: 0.5, y: 0.5 }
+
+  return { element: strip, x: 0.5, y: 0.5 }
+}
+
+function tabStripDropZoneElement(strip: HTMLElement) {
+  if (strip.dataset.proofTabStripOrientation === 'vertical') {
+    return { element: strip, x: 0.5, y: 0.95 }
+  }
+
+  return { element: strip, x: 0.98, y: 0.5 }
 }
 
 async function nativeDragWindowToSnap(
@@ -480,13 +956,13 @@ function snapDestinationMouseStep(label: string): ProofMouseDragStep {
     return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
   }
   if (label === 'window left') {
-    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
-  }
-  if (label === 'window right') {
     return { kind: 'move-to-selector', offsetX: 6, selector, steps: 18, x: 0, y: 0.5 }
   }
+  if (label === 'window right') {
+    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
+  }
   if (label === 'window top') {
-    return { kind: 'move-to-selector', offsetX: -96, offsetY: 12, selector, steps: 18, x: 1, y: 1 }
+    return { kind: 'move-to-selector', offsetY: 6, selector, steps: 18, x: 0.5, y: 0 }
   }
   if (label === 'window bottom') {
     return { kind: 'move-to-selector', offsetY: 6, selector, steps: 18, x: 0.5, y: 0 }
@@ -498,46 +974,47 @@ function snapDestinationMouseStep(label: string): ProofMouseDragStep {
 function snapDestinationDropPoint(label: string): PointerPoint {
   const destination = snapDestinationWithLabel(label)
   const rect = destination.getBoundingClientRect()
+  const surfaceRect = proofSurfaceArea().getBoundingClientRect()
   if (label === 'root left') {
     return {
-      x: rect.left + 6,
-      y: rect.top + rect.height / 2,
+      x: surfaceRect.left + 2,
+      y: surfaceRect.top + surfaceRect.height / 2,
     }
   }
   if (label === 'root top') {
     return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + 6,
+      x: surfaceRect.left + surfaceRect.width / 2,
+      y: surfaceRect.top + 2,
     }
   }
   if (label === 'root bottom') {
     return {
-      x: rect.left + rect.width / 2,
-      y: rect.bottom - 6,
+      x: surfaceRect.left + surfaceRect.width / 2,
+      y: surfaceRect.bottom - 2,
     }
   }
   if (label === 'root right') {
     return {
-      x: rect.right - 6,
-      y: rect.top + rect.height / 2,
+      x: surfaceRect.right - 2,
+      y: surfaceRect.top + surfaceRect.height / 2,
     }
   }
   if (label === 'window left') {
     return {
-      x: rect.right - 6,
+      x: rect.left + 6,
       y: rect.top + rect.height / 2,
     }
   }
   if (label === 'window right') {
     return {
-      x: rect.left + 6,
+      x: rect.right - 6,
       y: rect.top + rect.height / 2,
     }
   }
   if (label === 'window top') {
     return {
-      x: rect.right - Math.min(96, rect.width / 3),
-      y: rect.bottom + 12,
+      x: rect.left + rect.width / 2,
+      y: rect.top + 6,
     }
   }
   if (label === 'window bottom') {
@@ -571,6 +1048,221 @@ function windowRects() {
       y: rect.y,
     }
   })
+}
+
+function rightmostWindowRegion() {
+  const window = windowRegions().toSorted((left, right) => {
+    return right.getBoundingClientRect().right - left.getBoundingClientRect().right
+  })[0]
+  if (!window) throw new Error('Missing rightmost window')
+
+  return window
+}
+
+function topmostWindowRegion() {
+  const window = windowRegions().toSorted((left, right) => {
+    return left.getBoundingClientRect().top - right.getBoundingClientRect().top
+  })[0]
+  if (!window) throw new Error('Missing topmost window')
+
+  return window
+}
+
+function leftmostWindowRegion() {
+  const window = windowRegions().toSorted((left, right) => {
+    return left.getBoundingClientRect().left - right.getBoundingClientRect().left
+  })[0]
+  if (!window) throw new Error('Missing leftmost window')
+
+  return window
+}
+
+function bottommostWindowRegion() {
+  const window = windowRegions().toSorted((left, right) => {
+    return right.getBoundingClientRect().bottom - left.getBoundingClientRect().bottom
+  })[0]
+  if (!window) throw new Error('Missing bottommost window')
+
+  return window
+}
+
+function proofWindowId(windowElement: HTMLElement) {
+  const windowId = windowElement.dataset.proofWindowId
+  if (!windowId) throw new Error('Missing proof window id')
+
+  return windowId
+}
+
+function proofWindowById(windowId: string) {
+  const windowElement = document.querySelector<HTMLElement>(`[data-proof-window-id="${windowId}"]`)
+  if (!windowElement) throw new Error(`Missing proof window ${windowId}`)
+
+  return windowElement
+}
+
+async function collapseWindowElement(windowElement: HTMLElement) {
+  const windowId = proofWindowId(windowElement)
+
+  collapseButtonIn(windowElement).click()
+  await vi.waitFor(() => {
+    expect(proofWindowById(windowId).dataset.proofWindowMode).toBe('collapsed')
+  })
+  await vi.waitFor(() => {
+    const rect = proofWindowById(windowId).getBoundingClientRect()
+
+    expect(Math.min(rect.width, rect.height)).toBeLessThanOrEqual(42)
+  })
+  await settleProofDrag()
+
+  return proofWindowById(windowId)
+}
+
+async function closeWindowsUntilOne() {
+  while (windowRegions().length > 1) {
+    const windowElement = windowRegions().at(-1)
+    if (!windowElement) throw new Error('Missing window to close')
+
+    closeButtonIn(windowElement).click()
+    await vi.waitFor(() => {
+      expect(windowRegions().length).toBeGreaterThanOrEqual(1)
+      expect(windowRegions()).not.toContain(windowElement)
+    })
+  }
+
+  const windowElement = windowRegions()[0]
+  if (!windowElement) throw new Error('Missing remaining proof window')
+
+  return windowElement
+}
+
+async function addTabsToWindow(windowElement: HTMLElement, count: number) {
+  const windowId = proofWindowId(windowElement)
+  const startCount = tabIdsInStrip(tabStripInWindow(windowElement)).length
+
+  for (let index = 0; index < count; index += 1) {
+    windowControlButtonWithLabelPrefix(proofWindowById(windowId), 'Add tab to ').click()
+    await nextFrame()
+  }
+
+  await vi.waitFor(() => {
+    const strip = tabStripInWindow(proofWindowById(windowId))
+
+    expect(tabIdsInStrip(strip)).toHaveLength(startCount + count)
+  })
+}
+
+function collapseButtonIn(windowElement: HTMLElement) {
+  const button = buttonInWindowWithLabelPrefix(windowElement, 'Collapse ')
+  if (!button) throw new Error('Missing collapse button')
+
+  return button
+}
+
+function expandButtonIn(windowElement: HTMLElement) {
+  const button = buttonInWindowWithLabelPrefix(windowElement, 'Expand ')
+  if (!button) throw new Error('Missing expand button')
+
+  return button
+}
+
+function closeButtonIn(windowElement: HTMLElement) {
+  const title = windowElement.getAttribute('aria-label')
+  if (!title) throw new Error('Missing window title')
+
+  const button = windowControlButtons(windowElement).find(
+    (candidate) => candidate.getAttribute('aria-label') === `Close ${title}`,
+  )
+  if (!button) throw new Error('Missing close button')
+
+  return button
+}
+
+function windowControlButtonWithLabelPrefix(windowElement: HTMLElement, prefix: string) {
+  const button = windowControlButtons(windowElement).find((candidate) =>
+    candidate.getAttribute('aria-label')?.startsWith(prefix),
+  )
+  if (!button) throw new Error(`Missing window control ${prefix}`)
+
+  return button
+}
+
+function windowControlButtons(windowElement: HTMLElement) {
+  const header = windowElement.querySelector('header')
+  if (!header) throw new Error('Missing window header')
+
+  const controls = header.lastElementChild
+  if (!(controls instanceof HTMLElement)) throw new Error('Missing window controls')
+
+  return Array.from(controls.querySelectorAll<HTMLButtonElement>('button'))
+}
+
+function expectWindowControlsInside(windowElement: HTMLElement) {
+  const buttons = [
+    windowControlButtonWithLabelPrefix(windowElement, 'Add tab to '),
+    windowControlButtonWithLabelPrefix(windowElement, 'Expand '),
+    closeButtonIn(windowElement),
+  ]
+
+  for (const button of buttons) {
+    expectElementInsideWindow(button, windowElement)
+  }
+}
+
+function expectElementInsideWindow(element: HTMLElement, windowElement: HTMLElement) {
+  const rect = element.getBoundingClientRect()
+  const windowRect = windowElement.getBoundingClientRect()
+
+  expect(rect.width).toBeGreaterThan(0)
+  expect(rect.height).toBeGreaterThan(0)
+  expect(rect.left).toBeGreaterThanOrEqual(windowRect.left - 1)
+  expect(rect.right).toBeLessThanOrEqual(windowRect.right + 1)
+  expect(rect.top).toBeGreaterThanOrEqual(windowRect.top - 1)
+  expect(rect.bottom).toBeLessThanOrEqual(windowRect.bottom + 1)
+}
+
+function buttonInWindowWithLabelPrefix(windowElement: HTMLElement, prefix: string) {
+  return Array.from(windowElement.querySelectorAll<HTMLButtonElement>('button')).find((candidate) =>
+    candidate.getAttribute('aria-label')?.startsWith(prefix),
+  )
+}
+
+function windowBodyIn(windowElement: HTMLElement) {
+  const body = windowElement.querySelector<HTMLElement>('[data-proof-window-body]')
+  if (!body) throw new Error('Missing proof window body')
+
+  return body
+}
+
+function tabStripInWindow(windowElement: HTMLElement) {
+  const strip = windowElement.querySelector<HTMLElement>('[data-proof-tab-strip-id]')
+  if (!strip) throw new Error('Missing proof tab strip in window')
+
+  return strip
+}
+
+function bodySortPointsForWindow(windowElement: HTMLElement) {
+  const rect = windowElement.getBoundingClientRect()
+  const insetX = Math.min(rect.width * 0.35, Math.max(44, rect.width * 0.18))
+  const y = rect.top + rect.height / 2
+
+  return {
+    centerBodyPoint: { x: rect.left + rect.width / 2, y },
+    leftBodyPoint: { x: rect.left + insetX + 4, y },
+    rightBodyPoint: { x: rect.right - insetX - 4, y },
+  }
+}
+
+function bodyAutoscrollEntryPointsForWindow(windowElement: HTMLElement) {
+  const rect = windowElement.getBoundingClientRect()
+  const insetX = Math.min(rect.width * 0.35, Math.max(44, rect.width * 0.18))
+  const centerLeft = rect.left + insetX
+  const centerRight = rect.right - insetX
+  const edgeSize = Math.min(160, (centerRight - centerLeft) / 3)
+  const y = rect.top + rect.height / 2
+
+  return {
+    rightEntryPoint: { x: centerRight - edgeSize + 8, y },
+  }
 }
 
 function tabStrips() {
@@ -670,10 +1362,31 @@ function proofTab(tabId: string) {
 }
 
 function snapDestinationWithLabel(label: string) {
-  const destination = snapDestinationsWithLabel(label)[0]
+  const destinations = snapDestinationsWithLabel(label)
+  const destination = preferredSnapDestination(label, destinations)
   if (!destination) throw new Error(`Missing snap destination ${label}`)
 
   return destination
+}
+
+function preferredSnapDestination(label: string, destinations: readonly HTMLElement[]) {
+  if (!label.startsWith('window ')) return destinations[0]
+
+  return internalWindowSnapDestination(label, destinations) ?? destinations[0]
+}
+
+function internalWindowSnapDestination(label: string, destinations: readonly HTMLElement[]) {
+  const surfaceRect = proofSurfaceArea().getBoundingClientRect()
+
+  return destinations.find((destination) => {
+    const rect = destination.getBoundingClientRect()
+    if (label === 'window left') return rect.left > surfaceRect.left + 20
+    if (label === 'window right') return rect.right < surfaceRect.right - 20
+    if (label === 'window top') return rect.top > surfaceRect.top + 20
+    if (label === 'window bottom') return rect.bottom < surfaceRect.bottom - 20
+
+    return false
+  })
 }
 
 function snapDestinationsWithLabel(label: string) {
@@ -684,6 +1397,15 @@ function snapDestinationsWithLabel(label: string) {
 
 function activeSnapDestination() {
   return document.querySelector<HTMLElement>('[data-proof-snap-active="true"]')
+}
+
+function sourceVacancyDestinationWithLabel(label: string) {
+  const destination = snapDestinationsWithLabel(label).find((candidate) =>
+    candidate.dataset.proofSnapDestination?.includes('source-vacancy'),
+  )
+  if (!destination) throw new Error(`Missing source vacancy destination ${label}`)
+
+  return destination
 }
 
 function expectValidProofTabState() {
@@ -718,15 +1440,67 @@ function buttonWithText(text: string) {
 }
 
 function firstResizeHandle() {
-  const handle = document.querySelector<HTMLElement>('[data-proof-resize-handle]')
+  const handle = document.querySelector<HTMLElement>(
+    '[aria-label="Resize columns"], [aria-label="Resize rows"]',
+  )
   if (!handle) throw new Error('Missing proof resize handle')
 
   return handle
 }
 
+function resizeOverlay() {
+  const overlay = document.querySelector<HTMLElement>('[data-workbench-resize-overlay]')
+  if (!overlay) throw new Error('Missing production resize overlay')
+
+  return overlay
+}
+
+function resizeFirstHandleBy(deltaPx: number) {
+  const handle = firstResizeHandle()
+  const startPoint = centerOf(handle)
+  const resizePoint = resizePointForHandle(handle, startPoint, deltaPx)
+
+  currentPointerId += 1
+  handle.dispatchEvent(pointerEvent('pointerdown', startPoint, 1))
+  handle.dispatchEvent(pointerEvent('pointermove', resizePoint, 1))
+  handle.dispatchEvent(pointerEvent('pointerup', resizePoint, 0))
+}
+
+function resizePointForHandle(
+  handle: HTMLElement,
+  startPoint: PointerPoint,
+  deltaPx: number,
+): PointerPoint {
+  if (handle.getAttribute('aria-label') === 'Resize columns') {
+    return { x: startPoint.x + deltaPx, y: startPoint.y }
+  }
+
+  return { x: startPoint.x, y: startPoint.y + deltaPx }
+}
+
+function expectResizeHandleMoved(
+  handle: HTMLElement,
+  movedPoint: PointerPoint,
+  expectedPoint: PointerPoint,
+) {
+  if (handle.getAttribute('aria-label') === 'Resize columns') {
+    expect(Math.abs(movedPoint.x - expectedPoint.x)).toBeLessThanOrEqual(1)
+    return
+  }
+
+  expect(Math.abs(movedPoint.y - expectedPoint.y)).toBeLessThanOrEqual(1)
+}
+
 function firstWindowDragHandle() {
   const handle = document.querySelector<HTMLElement>('[data-proof-window-drag-handle]')
   if (!handle) throw new Error('Missing proof window drag handle')
+
+  return handle
+}
+
+function windowDragHandleIn(windowElement: HTMLElement) {
+  const handle = windowElement.querySelector<HTMLElement>('[data-proof-window-drag-handle]')
+  if (!handle) throw new Error('Missing proof window drag handle in window')
 
   return handle
 }
@@ -739,6 +1513,29 @@ function nextFrame() {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve())
   })
+}
+
+async function waitFrames(frameCount: number) {
+  for (let index = 0; index < frameCount; index += 1) {
+    await nextFrame()
+  }
+}
+
+async function settleProofDrag() {
+  await nextFrame()
+  await nextFrame()
+  await nextFrame()
+  await nextFrame()
+}
+
+async function waitForSettledProofGeometry() {
+  await vi.waitFor(() => {
+    const firstRect = windowRects()[0]
+    if (!firstRect) throw new Error('Missing proof window rect')
+
+    expect(firstRect.width).toBeLessThan(500)
+  })
+  await settleProofDrag()
 }
 
 async function holdPointerOver(point: PointerPoint, frameCount: number) {
@@ -797,6 +1594,187 @@ function centerOf(element: HTMLElement): PointerPoint {
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2,
   }
+}
+
+function scrollTabIntoStripView(tab: HTMLElement) {
+  const strip = tab.closest<HTMLElement>('[data-proof-tab-strip-id]')
+  if (!strip) return
+
+  const stripRect = strip.getBoundingClientRect()
+  const tabRect = tab.getBoundingClientRect()
+  if (tabRect.left < stripRect.left) {
+    strip.scrollLeft -= stripRect.left - tabRect.left + 8
+    return
+  }
+  if (tabRect.right <= stripRect.right) return
+
+  strip.scrollLeft += tabRect.right - stripRect.right + 8
+}
+
+async function settledVisibleTabSource(tabId: string) {
+  for (let index = 0; index < 30; index += 1) {
+    const tab = proofTab(tabId)
+    scrollTabIntoStripView(tab)
+    await nextFrame()
+
+    const settledTab = proofTab(tabId)
+    const sourcePoint = visibleTabSourcePoint(settledTab)
+    if (sourcePointHitsTab(settledTab, sourcePoint)) {
+      return { point: sourcePoint, tab: settledTab }
+    }
+  }
+
+  throw new Error(`Unable to find a hit-testable source tab for ${tabId}`)
+}
+
+function visibleTabSourcePoint(tab: HTMLElement) {
+  const center = { x: 0.5, y: 0.5 }
+  if (sourcePointHitsTab(tab, center)) return center
+
+  const tabRect = tab.getBoundingClientRect()
+  const strip = tab.closest<HTMLElement>('[data-proof-tab-strip-id]')
+  if (!strip) return { x: 0.5, y: 0.5 }
+
+  const stripRect = strip.getBoundingClientRect()
+  if (strip.dataset.proofTabStripOrientation === 'vertical') {
+    return visibleVerticalTabSourcePoint(tab, tabRect, stripRect)
+  }
+
+  const visibleLeft = Math.max(tabRect.left, stripRect.left)
+  const visibleRight = Math.min(tabRect.right, stripRect.right)
+  const visibleWidth = Math.max(0, visibleRight - visibleLeft)
+  if (visibleWidth <= 0) return { x: 0.5, y: 0.5 }
+
+  const hitPoint = firstVisibleTabHitPoint(tab, tabRect, visibleLeft, visibleRight)
+  if (hitPoint) {
+    return {
+      x: (hitPoint.x - tabRect.left) / tabRect.width,
+      y: (hitPoint.y - tabRect.top) / tabRect.height,
+    }
+  }
+
+  const sourceX = visibleLeft + Math.min(20, visibleWidth / 2)
+
+  return {
+    x: (sourceX - tabRect.left) / tabRect.width,
+    y: 0.5,
+  }
+}
+
+function visibleVerticalTabSourcePoint(tab: HTMLElement, tabRect: DOMRect, stripRect: DOMRect) {
+  const visibleTop = Math.max(tabRect.top, stripRect.top)
+  const visibleBottom = Math.min(tabRect.bottom, stripRect.bottom)
+  const visibleHeight = Math.max(0, visibleBottom - visibleTop)
+  if (visibleHeight <= 0) return { x: 0.5, y: 0.5 }
+
+  const hitPoint = firstVisibleVerticalTabHitPoint(tab, tabRect, visibleTop, visibleBottom)
+  if (hitPoint) {
+    return {
+      x: (hitPoint.x - tabRect.left) / tabRect.width,
+      y: (hitPoint.y - tabRect.top) / tabRect.height,
+    }
+  }
+
+  const sourceY = visibleTop + Math.min(20, visibleHeight / 2)
+
+  return {
+    x: 0.5,
+    y: (sourceY - tabRect.top) / tabRect.height,
+  }
+}
+
+function firstVisibleTabHitPoint(
+  tab: HTMLElement,
+  tabRect: DOMRect,
+  visibleLeft: number,
+  visibleRight: number,
+) {
+  for (const yRatio of [0.5, 0.3, 0.75]) {
+    const point = visibleTabHitPointForY(tab, tabRect, visibleLeft, visibleRight, yRatio)
+    if (point) return point
+  }
+
+  return null
+}
+
+function firstVisibleVerticalTabHitPoint(
+  tab: HTMLElement,
+  tabRect: DOMRect,
+  visibleTop: number,
+  visibleBottom: number,
+) {
+  for (const xRatio of [0.5, 0.3, 0.75]) {
+    const point = visibleVerticalTabHitPointForX(tab, tabRect, visibleTop, visibleBottom, xRatio)
+    if (point) return point
+  }
+
+  return null
+}
+
+function visibleTabHitPointForY(
+  tab: HTMLElement,
+  tabRect: DOMRect,
+  visibleLeft: number,
+  visibleRight: number,
+  yRatio: number,
+) {
+  const y = tabRect.top + tabRect.height * yRatio
+
+  for (let x = visibleLeft + 8; x <= visibleRight - 8; x += 8) {
+    if (pointHitsTab(tab, { x, y })) return { x, y }
+  }
+
+  return null
+}
+
+function visibleVerticalTabHitPointForX(
+  tab: HTMLElement,
+  tabRect: DOMRect,
+  visibleTop: number,
+  visibleBottom: number,
+  xRatio: number,
+) {
+  const x = tabRect.left + tabRect.width * xRatio
+
+  for (let y = visibleTop + 8; y <= visibleBottom - 8; y += 8) {
+    if (pointHitsTab(tab, { x, y })) return { x, y }
+  }
+
+  return null
+}
+
+function sourcePointHitsTab(
+  tab: HTMLElement,
+  ratio: {
+    readonly x: number
+    readonly y: number
+  },
+) {
+  const point = tabPointFromRatio(tab, ratio)
+
+  return pointHitsTab(tab, point)
+}
+
+function tabPointFromRatio(
+  tab: HTMLElement,
+  ratio: {
+    readonly x: number
+    readonly y: number
+  },
+) {
+  const rect = tab.getBoundingClientRect()
+
+  return {
+    x: rect.left + rect.width * ratio.x,
+    y: rect.top + rect.height * ratio.y,
+  }
+}
+
+function pointHitsTab(tab: HTMLElement, point: PointerPoint) {
+  const hit = document.elementFromPoint(point.x, point.y)
+  if (!(hit instanceof HTMLElement)) return false
+
+  return hit.closest('[data-proof-tab-id]') === tab
 }
 
 function selectorFor(element: HTMLElement) {

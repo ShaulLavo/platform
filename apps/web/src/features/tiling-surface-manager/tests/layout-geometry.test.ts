@@ -9,6 +9,8 @@ import {
   CLASSIC_MAIN_NODE_ID,
   CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
+  createEmptyWorkspaceLayout,
+  createPlaceholderSurface,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import {
   deriveLayoutGeometry,
@@ -17,6 +19,14 @@ import {
   deriveSnapDestinationRects,
   type LayoutRect,
 } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import {
+  findNodeIdForWindow,
+  findWindowIdContainingSurface,
+} from '@/features/tiling-surface-manager/engine/layout-normalize'
+import {
+  collapseWindow,
+  openSurface,
+} from '@/features/tiling-surface-manager/engine/layout-operations'
 import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
 
 describe('tiling surface layout geometry', () => {
@@ -88,6 +98,27 @@ describe('tiling surface layout geometry', () => {
       x: 50,
       y: 0,
     })
+  })
+
+  it('allocates a collapsed single root window as a header row', () => {
+    const surface = createPlaceholderSurface({
+      canCollapse: true,
+      canClose: true,
+      contextKey: 'single-root-collapse',
+      title: 'Single Root',
+    })
+    const opened = openSurface(createEmptyWorkspaceLayout(), surface)
+    const windowId = findWindowIdContainingSurface(opened, surface.id)
+    if (!windowId) throw new Error('Expected opened surface window')
+
+    const collapsed = collapseWindow(opened, windowId)
+    const nodeId = findNodeIdForWindow(collapsed, windowId)
+    if (!nodeId) throw new Error('Expected collapsed window node')
+
+    const geometry = deriveLayoutGeometry(collapsed, rootRect(), { gapPx: 10 })
+
+    expectRect(geometry.nodeRectsById[nodeId], { height: 40, width: 1000, x: 0, y: 0 })
+    expectRect(geometry.windowRectsById[windowId]?.rect, { height: 40, width: 1000, x: 0, y: 0 })
   })
 
   it('derives background, recipe-slot, root, parent, window-edge, and center snap destinations', () => {

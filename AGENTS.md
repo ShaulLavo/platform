@@ -110,3 +110,11 @@
 - The node-pty bridge must spawn the real Node binary, not Bun's `--bun` node shim.
 - Under `bun --bun`, Bun prepends a temp `node` symlink to `PATH`. `Bun.spawn(['node', ...])` then runs Bun, and `@lydell/node-pty` breaks with `this._socket.write is not a function`.
 - Use `resolveNodeBinary()` in `terminal/service.ts`; it walks `PATH` and skips Bun-backed `node`. Production plain `bun` already resolves `node` correctly, but this protects tests.
+
+`tabular-nums` should be the default for any number that updates ( timers, counters, prices, percentages, scores, live data etc ).
+
+you can enable this tnum OpenType feature using the CSS property `font-variant-numeric`.
+
+.tabular-nums {
+font-variant-numeric: tabular-nums;
+}
