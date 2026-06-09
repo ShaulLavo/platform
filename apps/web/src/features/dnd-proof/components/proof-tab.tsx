@@ -16,21 +16,25 @@ import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofTab({
+  acceptsTabDrops,
   active,
   dropZonesVisible,
   index,
   optimisticSorting,
   orientation,
+  previewAdded,
   surface,
   windowId,
   onClose,
   onSelect,
 }: {
+  readonly acceptsTabDrops: boolean
   readonly active: boolean
   readonly dropZonesVisible: boolean
   readonly index: number
   readonly optimisticSorting: boolean
   readonly orientation: 'horizontal' | 'vertical'
+  readonly previewAdded: boolean
   readonly surface: Surface
   readonly windowId: WindowId
   readonly onClose: (surfaceId: SurfaceId) => void
@@ -45,7 +49,7 @@ export function ProofTab({
   const { handleRef, isDragSource, isDragging, isDropTarget, ref, sourceRef } = useSortable<
     DndProofDragData & DndProofDropData
   >({
-    accept: DND_PROOF_TAB_TYPE,
+    accept: acceptsTabDrops ? DND_PROOF_TAB_TYPE : [],
     data,
     group: windowId,
     id: tabDragId(surface.id),
@@ -72,11 +76,13 @@ export function ProofTab({
         active
           ? 'bg-background text-foreground border-border'
           : 'bg-muted/60 text-muted-foreground border-transparent hover:bg-muted',
+        previewAdded && 'border-info bg-info/10 text-info ring-1 ring-info/30',
         isDragging && 'opacity-45',
         isDragSource && 'ring-2 ring-info',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-tab-id={surface.id}
+      data-proof-tab-preview-added={previewAdded ? 'true' : undefined}
       ref={(element) => {
         ref(element)
         handleRef(element)
@@ -86,7 +92,7 @@ export function ProofTab({
       tabIndex={0}
       onClick={selectSurface}
     >
-      <span className='bg-primary size-2 rounded-full' />
+      <span className={cn('size-2 rounded-full', previewAdded ? 'bg-info' : 'bg-primary')} />
       <span
         className={cn(
           'min-w-0 flex-1 truncate',

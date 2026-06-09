@@ -1,6 +1,7 @@
 import { useDroppable } from '@dnd-kit/react'
 
 import { ProofTab } from '@/features/dnd-proof/components/proof-tab'
+import { ProofTabPreview } from '@/features/dnd-proof/components/proof-tab-preview'
 import {
   DND_PROOF_TAB_TYPE,
   DND_PROOF_WINDOW_TYPE,
@@ -8,15 +9,22 @@ import {
   type DndProofDragData,
   type DndProofDropData,
 } from '@/features/dnd-proof/utils/drag-data'
+import {
+  dndProofTabStripPreviewItems,
+  type DndProofInsertionPreview,
+} from '@/features/dnd-proof/utils/tab-preview'
 import type {
   Surface,
   SurfaceId,
   WorkbenchWindow,
+  WorkspaceLayout,
 } from '@/features/tiling-surface-manager/engine/layout-types'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofTabStrip({
   activeDrag,
+  insertionPreview,
+  insertionPreviewLayout,
   dropZonesVisible,
   optimisticSorting,
   orientation,
@@ -27,6 +35,8 @@ export function ProofTabStrip({
 }: {
   readonly activeDrag: DndProofDragData | null
   readonly dropZonesVisible: boolean
+  readonly insertionPreview: DndProofInsertionPreview | null
+  readonly insertionPreviewLayout: WorkspaceLayout
   readonly optimisticSorting: boolean
   readonly orientation: 'horizontal' | 'vertical'
   readonly surfaces: readonly Surface[]
@@ -40,11 +50,21 @@ export function ProofTabStrip({
     windowId: window.id,
   }
   const { isDropTarget, ref } = useDroppable<DndProofDropData>({
-    accept: [DND_PROOF_TAB_TYPE, DND_PROOF_WINDOW_TYPE],
+    accept: tabStripAcceptedTypes(activeDrag),
     data,
     disabled: activeDrag?.kind === 'window' && activeDrag.windowId === window.id,
     id: tabStripDropId(window.id),
   })
+  const previewActive = insertionPreview?.targetWindowId === window.id
+  const items = dndProofTabStripPreviewItems({
+    insertionPreview,
+    layout: insertionPreviewLayout,
+    surfaces,
+    windowId: window.id,
+  })
+  const tabDropsAccepted = activeTabCanSortInStrip(activeDrag, surfaces)
+  const tabSortingEnabled =
+    optimisticSorting && orientation === 'horizontal' && !insertionPreview && tabDropsAccepted
 
   return (
     <div
@@ -55,28 +75,55 @@ export function ProofTabStrip({
         orientation === 'vertical'
           ? 'w-full flex-col items-center overflow-x-hidden overflow-y-auto py-1'
           : 'min-h-10 items-end overflow-x-auto border-b px-2 pt-2',
+        previewActive && 'bg-info/10 ring-1 ring-info/40',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-tab-strip-orientation={orientation}
       data-proof-tab-strip-id={window.id}
+      data-proof-tab-strip-preview={previewActive ? insertionPreview.kind : undefined}
       ref={ref}
       role='tablist'
     >
-      {surfaces.map((surface, index) => (
-        <ProofTab
-          active={surface.id === window.activeSurfaceId}
-          dropZonesVisible={dropZonesVisible}
-          index={index}
-          key={surface.id}
-          optimisticSorting={optimisticSorting && orientation === 'horizontal'}
-          orientation={orientation}
-          surface={surface}
-          windowId={window.id}
-          onClose={onCloseSurface}
-          onSelect={onSelectSurface}
-        />
-      ))}
-      {surfaces.length === 0 ? (
+      {items.map((item) => {
+        if (item.kind === 'ghost') {
+          return (
+            <ProofTabPreview
+              kind='ghost'
+              key={item.key}
+              orientation={orientation}
+              surface={item.surface}
+            />
+          )
+        }
+        if (item.kind === 'slot') {
+          return (
+            <ProofTabPreview
+              kind='slot'
+              key={item.key}
+              orientation={orientation}
+              sourceSurfaceIds={item.sourceSurfaceIds}
+            />
+          )
+        }
+
+        return (
+          <ProofTab
+            acceptsTabDrops={tabDropsAccepted}
+            active={item.surface.id === window.activeSurfaceId}
+            dropZonesVisible={dropZonesVisible}
+            index={item.index}
+            key={item.key}
+            optimisticSorting={tabSortingEnabled}
+            orientation={orientation}
+            previewAdded={surfaceIsPreviewAdded(insertionPreview, window.id, item.surface.id)}
+            surface={item.surface}
+            windowId={window.id}
+            onClose={onCloseSurface}
+            onSelect={onSelectSurface}
+          />
+        )
+      })}
+      {items.length === 0 ? (
         <div
           className={cn(
             'text-muted-foreground flex items-center justify-center text-xs',
@@ -88,4 +135,30 @@ export function ProofTabStrip({
       ) : null}
     </div>
   )
+}
+
+function activeTabCanSortInStrip(
+  activeDrag: DndProofDragData | null,
+  surfaces: readonly Surface[],
+) {
+  if (activeDrag?.kind !== 'tab') return true
+
+  return surfaces.some((surface) => surface.id === activeDrag.surfaceId)
+}
+
+function tabStripAcceptedTypes(activeDrag: DndProofDragData | null) {
+  if (activeDrag?.kind === 'tab') return [DND_PROOF_WINDOW_TYPE]
+
+  return [DND_PROOF_TAB_TYPE, DND_PROOF_WINDOW_TYPE]
+}
+
+function surfaceIsPreviewAdded(
+  insertionPreview: DndProofInsertionPreview | null,
+  windowId: WorkbenchWindow['id'],
+  surfaceId: SurfaceId,
+) {
+  if (insertionPreview?.kind !== 'window-merge') return false
+  if (insertionPreview.targetWindowId !== windowId) return false
+
+  return insertionPreview.sourceSurfaceIds.includes(surfaceId)
 }

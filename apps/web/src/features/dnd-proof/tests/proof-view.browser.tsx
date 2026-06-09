@@ -159,8 +159,9 @@ describe.sequential('dnd proof browser behavior', () => {
     await nativeDragTabToStripDropZone(sourceId, targetStrip, { release: false })
 
     await vi.waitFor(() => {
-      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
-      expectValidProofTabState()
+      expect(tabPreviewIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).not.toContain(sourceId)
+      expectValidProofTabState({ allowPreviews: true })
     })
 
     await commands.proofMouseUp()
@@ -192,8 +193,9 @@ describe.sequential('dnd proof browser behavior', () => {
     movePointerTo(targetPoint)
 
     await vi.waitFor(() => {
-      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
-      expectValidProofTabState()
+      expect(tabPreviewIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).not.toContain(sourceId)
+      expectValidProofTabState({ allowPreviews: true })
     })
 
     finishPointerDrag(targetPoint)
@@ -214,16 +216,17 @@ describe.sequential('dnd proof browser behavior', () => {
       y: targetElement.y,
     })
     const source = await settledVisibleTabSource(sourceId)
+    const sourceStrip = tabStripWithId(tabStripIdContaining(sourceId))
     const sourcePoint = tabPointFromRatio(source.tab, source.point)
 
     startPointerDrag(source.tab, sourcePoint)
-    movePointerBy(0, 8)
+    movePointerBy(verticalRailDetachDelta(sourceStrip), 0)
     await nextFrame()
     movePointerTo(targetPoint)
 
     await vi.waitFor(() => {
-      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
-      expectValidProofTabState()
+      expect(tabPreviewIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expectValidProofTabState({ allowPreviews: true })
     })
 
     finishPointerDrag(targetPoint)
@@ -278,6 +281,88 @@ describe.sequential('dnd proof browser behavior', () => {
       expect(document.body.textContent).not.toContain('tab -> root right')
       expectValidProofTabState()
     })
+  })
+
+  it('previews a window merge over another window body before release', async () => {
+    renderProof()
+
+    await waitForProof()
+    await waitForSettledProofGeometry()
+
+    const originalWindowCount = windowRegions().length
+    const sourceWindow = topmostWindowRegion()
+    const sourceWindowId = proofWindowId(sourceWindow)
+    const remainingAreaBefore = totalWindowArea() - windowArea(sourceWindow)
+    const targetWindow = bottommostWindowRegion()
+    const targetWindowId = proofWindowId(targetWindow)
+    const sourceIds = tabIdsInStrip(tabStripInWindow(sourceWindow))
+    const { centerBodyPoint } = bodySortPointsForWindow(targetWindow)
+
+    startPointerDrag(windowDragHandleIn(sourceWindow))
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(centerBodyPoint)
+    await holdPointerOver(centerBodyPoint, 2)
+
+    await vi.waitFor(() => {
+      const settledTargetStrip = tabStripInWindow(proofWindowById(targetWindowId))
+
+      expect(tabIdsInStrip(settledTargetStrip)).toEqual(expect.arrayContaining(sourceIds))
+      expectPreviewAddedTabsInStrip(settledTargetStrip, sourceIds)
+      expect(tabPreviewIdsInStrip(settledTargetStrip)).toEqual([])
+      expect(proofWindowById(targetWindowId).dataset.proofWindowInsertionPreview).toBe(
+        'window-merge',
+      )
+      expect(settledTargetStrip.dataset.proofTabStripPreview).toBe('window-merge')
+      expect(proofWindowElementById(sourceWindowId)).toBeNull()
+      expect(windowRegions()).toHaveLength(originalWindowCount - 1)
+      expect(totalWindowArea()).toBeGreaterThan(remainingAreaBefore + 1)
+      expectUniqueRealProofTabs()
+    })
+
+    finishPointerDrag(centerBodyPoint)
+
+    await vi.waitFor(() => {
+      const settledTargetStrip = tabStripInWindow(proofWindowById(targetWindowId))
+
+      expect(windowRegions()).toHaveLength(originalWindowCount - 1)
+      expect(tabIdsInStrip(settledTargetStrip)).toEqual(expect.arrayContaining(sourceIds))
+      expectValidProofTabState()
+    })
+  })
+
+  it('previews a window merge over another tab strip at the insertion index', async () => {
+    renderProof()
+
+    await waitForProof()
+    await waitForSettledProofGeometry()
+
+    const sourceWindow = topmostWindowRegion()
+    const sourceWindowId = proofWindowId(sourceWindow)
+    const targetWindow = bottommostWindowRegion()
+    const targetStrip = tabStripInWindow(targetWindow)
+    const targetStripId = proofTabStripId(targetStrip)
+    const sourceIds = tabIdsInStrip(tabStripInWindow(sourceWindow))
+    const targetPoint = elementPointFromRatio(targetStrip, { x: 0.98, y: 0.5 })
+
+    startPointerDrag(windowDragHandleIn(sourceWindow))
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(targetPoint, targetStrip)
+    await holdPointerOver(targetPoint, 2)
+
+    await vi.waitFor(() => {
+      const ids = tabIdsInStrip(tabStripWithId(targetStripId))
+
+      expect(ids.slice(-sourceIds.length)).toEqual(sourceIds)
+      expectPreviewAddedTabsInStrip(tabStripWithId(targetStripId), sourceIds)
+      expect(tabPreviewIdsInStrip(tabStripWithId(targetStripId))).toEqual([])
+      expect(proofWindowElementById(sourceWindowId)).toBeNull()
+      expectUniqueRealProofTabs()
+    })
+
+    finishPointerDrag(targetPoint)
+    await settleProofDrag()
   })
 
   it('lets a picked-up window return to its source slot', async () => {
@@ -584,7 +669,8 @@ describe.sequential('dnd proof browser behavior', () => {
     movePointerTo(centerBodyPoint)
 
     await vi.waitFor(() => {
-      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expect(tabPreviewIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).not.toContain(sourceId)
       expect(windowBodyIn(proofWindowById(targetWindowId)).textContent).toBe(targetBodyTextBefore)
     })
 
@@ -594,7 +680,7 @@ describe.sequential('dnd proof browser behavior', () => {
     await nextFrame()
 
     await vi.waitFor(() => {
-      expect(tabIdsInStrip(tabStripWithId(targetStripId)).at(-1)).toBe(sourceId)
+      expect(tabVisualIdsInStrip(tabStripWithId(targetStripId)).at(-1)).toBe(sourceId)
       expect(windowBodyIn(proofWindowById(targetWindowId)).textContent).toBe(targetBodyTextBefore)
     })
 
@@ -604,7 +690,7 @@ describe.sequential('dnd proof browser behavior', () => {
     await nextFrame()
 
     await vi.waitFor(() => {
-      const ids = tabIdsInStrip(tabStripWithId(targetStripId))
+      const ids = tabVisualIdsInStrip(tabStripWithId(targetStripId))
       const sourceIndex = ids.indexOf(sourceId)
 
       expect(sourceIndex).toBeGreaterThanOrEqual(0)
@@ -652,7 +738,7 @@ describe.sequential('dnd proof browser behavior', () => {
 
     await vi.waitFor(() => {
       const stripRect = targetStrip.getBoundingClientRect()
-      const tabRect = proofTab(sourceId).getBoundingClientRect()
+      const tabRect = proofTabPreview(sourceId, targetStrip).getBoundingClientRect()
 
       expect(tabRect.left + tabRect.width / 2).toBeGreaterThan(stripRect.right - 90)
     })
@@ -898,13 +984,12 @@ describe.sequential('dnd proof browser behavior', () => {
     })
   })
 
-  it('hides snap target chrome during drag when drop zones are toggled off', async () => {
+  it('hides snap target chrome during drag when drop zones are off by default', async () => {
     renderProof()
 
     await waitForProof()
 
-    buttonWithText('Hide zones').click()
-    await nextFrame()
+    expect(buttonWithText('Show zones')).not.toBeNull()
 
     const dragHandle = firstWindowDragHandle()
     const snapPoint = snapDestinationDropPoint('root right')
@@ -1215,6 +1300,16 @@ function windowRects() {
   })
 }
 
+function totalWindowArea() {
+  return windowRegions().reduce((area, windowElement) => area + windowArea(windowElement), 0)
+}
+
+function windowArea(windowElement: HTMLElement) {
+  const rect = windowElement.getBoundingClientRect()
+
+  return rect.width * rect.height
+}
+
 function rightmostWindowRegion() {
   const window = windowRegions().toSorted((left, right) => {
     return right.getBoundingClientRect().right - left.getBoundingClientRect().right
@@ -1259,10 +1354,14 @@ function proofWindowId(windowElement: HTMLElement) {
 }
 
 function proofWindowById(windowId: string) {
-  const windowElement = document.querySelector<HTMLElement>(`[data-proof-window-id="${windowId}"]`)
+  const windowElement = proofWindowElementById(windowId)
   if (!windowElement) throw new Error(`Missing proof window ${windowId}`)
 
   return windowElement
+}
+
+function proofWindowElementById(windowId: string) {
+  return document.querySelector<HTMLElement>(`[data-proof-window-id="${windowId}"]`)
 }
 
 async function collapseWindowElement(windowElement: HTMLElement) {
@@ -1318,6 +1417,16 @@ function collapsedRailDragPair() {
   }
 
   throw new Error('Missing same-edge collapsed rail pair')
+}
+
+function verticalRailDetachDelta(strip: HTMLElement) {
+  const stripRect = strip.getBoundingClientRect()
+  const surfaceRect = proofSurfaceArea().getBoundingClientRect()
+  const stripCenterX = stripRect.left + stripRect.width / 2
+  const surfaceCenterX = surfaceRect.left + surfaceRect.width / 2
+  if (stripCenterX < surfaceCenterX) return 70
+
+  return -70
 }
 
 function railStripsByCollapsedEdge() {
@@ -1561,6 +1670,62 @@ function tabIdsInStrip(strip: HTMLElement) {
   return tabsInStrip(strip).map((tab) => tab.dataset.proofTabId ?? '')
 }
 
+function tabPreviewsInStrip(strip: HTMLElement) {
+  return Array.from(strip.children).flatMap((child) => {
+    if (!(child instanceof HTMLElement)) return []
+    if (!child.dataset.proofTabPreviewId) return []
+
+    return [child]
+  })
+}
+
+function tabPreviewIdsInStrip(strip: HTMLElement) {
+  return tabPreviewsInStrip(strip).flatMap((tab) => {
+    const previewId = tab.dataset.proofTabPreviewId
+    if (!previewId) return []
+
+    return previewId.split(' ')
+  })
+}
+
+function tabVisualIdsInStrip(strip: HTMLElement) {
+  return Array.from(strip.children).flatMap((child) => {
+    if (!(child instanceof HTMLElement)) return []
+    if (child.dataset.proofTabId) return [child.dataset.proofTabId]
+    if (!child.dataset.proofTabPreviewId) return []
+
+    return child.dataset.proofTabPreviewId.split(' ')
+  })
+}
+
+function expectPreviewAddedTabsInStrip(strip: HTMLElement, expectedIds: readonly string[]) {
+  const tabs = previewAddedTabsInStrip(strip)
+
+  expect(tabs.map(proofTabId)).toEqual(expectedIds)
+
+  for (const tab of tabs) {
+    expect(tab.classList.contains('border-info')).toBe(true)
+    expect(tab.classList.contains('ring-info/30')).toBe(true)
+  }
+}
+
+function previewAddedTabsInStrip(strip: HTMLElement) {
+  return tabsInStrip(strip).filter((tab) => tab.dataset.proofTabPreviewAdded === 'true')
+}
+
+function proofTabPreview(tabId: string, strip: HTMLElement) {
+  const preview = tabPreviewsInStrip(strip).find((candidate) => {
+    return tabPreviewIds(candidate).includes(tabId)
+  })
+  if (!preview) throw new Error(`Missing proof tab preview ${tabId}`)
+
+  return preview
+}
+
+function tabPreviewIds(tab: HTMLElement) {
+  return tab.dataset.proofTabPreviewId?.split(' ') ?? []
+}
+
 function expectTabsInsideOwningStrips() {
   for (const strip of tabStrips()) {
     expectTabsInsideStrip(strip)
@@ -1659,21 +1824,40 @@ function sourceVacancyDestinationWithLabel(label: string) {
   return destination
 }
 
-function expectValidProofTabState() {
+function expectValidProofTabState({
+  allowPreviews = false,
+}: {
+  readonly allowPreviews?: boolean
+} = {}) {
   const ids = tabStrips().flatMap(tabIdsInStrip)
 
   expect(ids).toHaveLength(6)
   expect(new Set(ids).size).toBe(ids.length)
 
   for (const strip of tabStrips()) {
-    expectUnexpectedTabStripChildren(strip)
+    expectUnexpectedTabStripChildren(strip, { allowPreviews })
     expect(tabsInStrip(strip).length).toBeGreaterThan(0)
   }
 }
 
-function expectUnexpectedTabStripChildren(strip: HTMLElement) {
+function expectUniqueRealProofTabs() {
+  const ids = tabStrips().flatMap(tabIdsInStrip)
+
+  expect(ids.length).toBeGreaterThan(0)
+  expect(new Set(ids).size).toBe(ids.length)
+}
+
+function expectUnexpectedTabStripChildren(
+  strip: HTMLElement,
+  {
+    allowPreviews = false,
+  }: {
+    readonly allowPreviews?: boolean
+  } = {},
+) {
   const unexpectedChildren = Array.from(strip.children).filter((child) => {
     if (!(child instanceof HTMLElement)) return true
+    if (allowPreviews && child.dataset.proofTabPreviewId) return false
 
     return !child.dataset.proofTabId
   })

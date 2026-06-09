@@ -25,20 +25,28 @@ type ResizeHandleSnapshot = {
 export function ResizeOverlay({
   resizeHandleRects,
   onDispatch,
+  onResizeEnd,
+  onResizeStart,
 }: {
   readonly resizeHandleRects: readonly ResizeHandleLayoutRect[]
   readonly onDispatch: (operation: LayoutOperation) => void
+  readonly onResizeEnd?: () => void
+  readonly onResizeStart?: () => void
 }) {
   const dragRef = useRef<ResizeDragState | null>(null)
   const onDispatchRef = useRef(onDispatch)
+  const onResizeEndRef = useRef(onResizeEnd)
+  const onResizeStartRef = useRef(onResizeStart)
 
   useEffect(() => {
     onDispatchRef.current = onDispatch
-  }, [onDispatch])
+    onResizeEndRef.current = onResizeEnd
+    onResizeStartRef.current = onResizeStart
+  }, [onDispatch, onResizeEnd, onResizeStart])
 
   useEffect(() => {
     function handleWindowBlur() {
-      cancelPointerDrag(dragRef)
+      cancelPointerDrag(dragRef, onResizeEndRef.current)
     }
 
     function handleWindowPointerCancel(event: PointerEvent) {
@@ -46,7 +54,7 @@ export function ResizeOverlay({
       if (!drag) return
       if (drag.pointerId !== event.pointerId) return
 
-      cancelPointerDrag(dragRef)
+      cancelPointerDrag(dragRef, onResizeEndRef.current)
     }
 
     function handleWindowPointerMove(event: PointerEvent) {
@@ -54,7 +62,7 @@ export function ResizeOverlay({
       if (!drag) return
       if (drag.pointerId !== event.pointerId) return
       if (!primaryPointerButtonIsDown(event)) {
-        cancelPointerDrag(dragRef)
+        cancelPointerDrag(dragRef, onResizeEndRef.current)
         return
       }
 
@@ -66,7 +74,7 @@ export function ResizeOverlay({
       if (!drag) return
       if (drag.pointerId !== event.pointerId) return
 
-      finishPointerDrag(dragRef, onDispatchRef.current, event)
+      finishPointerDrag(dragRef, onDispatchRef.current, onResizeEndRef.current, event)
     }
 
     window.addEventListener('blur', handleWindowBlur)
@@ -75,7 +83,7 @@ export function ResizeOverlay({
     window.addEventListener('pointerup', handleWindowPointerUp, true)
 
     return () => {
-      cancelPointerDrag(dragRef)
+      cancelPointerDrag(dragRef, onResizeEndRef.current)
       window.removeEventListener('blur', handleWindowBlur)
       window.removeEventListener('pointercancel', handleWindowPointerCancel, true)
       window.removeEventListener('pointermove', handleWindowPointerMove, true)
@@ -100,10 +108,11 @@ export function ResizeOverlay({
       lastClientY: event.clientY,
       pointerId: event.pointerId,
     }
+    onResizeStartRef.current?.()
   }
 
   function handlePointerCancel() {
-    cancelPointerDrag(dragRef)
+    cancelPointerDrag(dragRef, onResizeEndRef.current)
   }
 
   function handlePointerUp(event: ReactPointerEvent<HTMLElement>) {
@@ -111,7 +120,7 @@ export function ResizeOverlay({
     if (!drag) return
     if (drag.pointerId !== event.pointerId) return
 
-    finishPointerDrag(dragRef, onDispatch, event)
+    finishPointerDrag(dragRef, onDispatchRef.current, onResizeEndRef.current, event)
   }
 
   return (
@@ -217,6 +226,7 @@ function pointerResizeDelta(
 function finishPointerDrag(
   dragRef: { current: ResizeDragState | null },
   onDispatch: (operation: LayoutOperation) => void,
+  onResizeEnd: (() => void) | undefined,
   event: Pick<PointerEvent | ReactPointerEvent<HTMLElement>, 'clientX' | 'clientY'>,
 ) {
   const drag = dragRef.current
@@ -225,14 +235,16 @@ function finishPointerDrag(
   dispatchPointerDragDelta(dragRef, onDispatch, event)
   dragRef.current = null
   releasePointer(drag.element, drag.pointerId)
+  onResizeEnd?.()
 }
 
-function cancelPointerDrag(dragRef: { current: ResizeDragState | null }) {
+function cancelPointerDrag(dragRef: { current: ResizeDragState | null }, onResizeEnd?: () => void) {
   const drag = dragRef.current
   if (!drag) return
 
   dragRef.current = null
   releasePointer(drag.element, drag.pointerId)
+  onResizeEnd?.()
 }
 
 function dispatchResize(

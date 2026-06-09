@@ -186,6 +186,34 @@ describe('LayoutRenderer', () => {
     expect(operations).toHaveLength(1)
   })
 
+  it('reports pointer drag resize lifecycle', () => {
+    const lifecycleEvents: string[] = []
+
+    render(
+      <ResizeOverlay
+        resizeHandleRects={[
+          {
+            axis: 'horizontal',
+            handleIndex: 0,
+            id: overlayId('resize:test:0'),
+            rect: { height: 720, width: 8, x: 400, y: 0 },
+            resizeReferencePx: 800,
+            splitId: layoutNodeId('split-test'),
+          },
+        ]}
+        onDispatch={() => undefined}
+        onResizeEnd={() => lifecycleEvents.push('end')}
+        onResizeStart={() => lifecycleEvents.push('start')}
+      />,
+    )
+
+    const handle = screen.getByRole('separator', { name: 'Resize columns' })
+    fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(handle, { clientX: 432, clientY: 10, pointerId: 1 })
+
+    expect(lifecycleEvents).toEqual(['start', 'end'])
+  })
+
   it('stops pointer drag resize when hover moves no longer have the primary button down', () => {
     const operations: LayoutOperation[] = []
 

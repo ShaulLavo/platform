@@ -12,6 +12,7 @@ import { useDndProofModel } from '@/features/dnd-proof/hooks/use-dnd-proof-model
 import type { DndProofDragData } from '@/features/dnd-proof/utils/drag-data'
 import { surfaceWindowId } from '@/features/dnd-proof/utils/model'
 import { proofSnapDestinations } from '@/features/dnd-proof/utils/snap-destinations'
+import { dndProofInsertionPreview } from '@/features/dnd-proof/utils/tab-preview'
 import {
   deriveLayoutGeometry,
   insetLayoutRect,
@@ -51,7 +52,8 @@ const GEOMETRY_OPTIONS: LayoutGeometryOptions = {
 }
 
 export function DndProofView() {
-  const [dropZonesVisible, setDropZonesVisible] = useState(true)
+  const [dropZonesVisible, setDropZonesVisible] = useState(false)
+  const [resizingWindows, setResizingWindows] = useState(false)
   const {
     activateSurface,
     activeDrag,
@@ -82,7 +84,16 @@ export function DndProofView() {
     ? deriveLayoutGeometry(previewLayout, surfaceRect, GEOMETRY_OPTIONS)
     : committedGeometry
   const snapGeometry = deriveLayoutGeometry(snapLayout, surfaceRect, GEOMETRY_OPTIONS)
+  const insertionPreview = dndProofInsertionPreview({
+    activeDrag,
+    layout: snapLayout,
+    resolvedTarget: activeResolvedTarget,
+  })
   const visibleWindowIds = visibleWindowIdsInOrder(model.layout)
+  const renderedWindowIds =
+    insertionPreview?.kind === 'window-merge' && previewLayout
+      ? visibleWindowIdsInOrder(previewLayout)
+      : visibleWindowIds
   const optimisticTabSorting = !visibleWindowIds.some((windowId) => {
     return model.layout.windowsById[windowId]?.mode === 'collapsed'
   })
@@ -207,7 +218,7 @@ export function DndProofView() {
                 No windows
               </div>
             ) : null}
-            {visibleWindowIds.map((windowId) => {
+            {renderedWindowIds.map((windowId) => {
               const window =
                 renderLayout.windowsById[windowId] ?? model.layout.windowsById[windowId]
               const windowRect =
@@ -218,8 +229,10 @@ export function DndProofView() {
               return (
                 <ProofWindow
                   activeDrag={activeDrag}
-                  activeResolvedTarget={activeResolvedTarget}
                   dropZonesVisible={dropZonesVisible}
+                  insertionPreview={insertionPreview}
+                  insertionPreviewLayout={snapLayout}
+                  resizingWindows={resizingWindows}
                   key={windowId}
                   layout={renderLayout}
                   optimisticTabSorting={optimisticTabSorting}
@@ -245,6 +258,8 @@ export function DndProofView() {
             <ResizeOverlay
               resizeHandleRects={committedGeometry.resizeHandleRects}
               onDispatch={dispatchLayoutOperation}
+              onResizeEnd={() => setResizingWindows(false)}
+              onResizeStart={() => setResizingWindows(true)}
             />
             {snapDestinations.map((snapDestination) => (
               <ProofSnapDestination

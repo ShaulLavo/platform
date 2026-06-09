@@ -223,6 +223,53 @@ test('detached tab direct strip hit beats an internal window edge', () => {
   expect(result?.candidateId).toBeUndefined()
 })
 
+test('window over another tab strip resolves to tab insertion over window snap', () => {
+  const tabTarget = tabStripTarget('window-b', 1)
+  const windowCandidate = candidate({
+    id: 'window-left',
+    priority: 105,
+    target: snapTarget({ edge: 'left', kind: 'window-edge', windowId: windowId('window-b') }),
+  })
+  const result = resolveTarget({
+    candidates: [windowCandidate],
+    mode: 'window',
+    source: WINDOW_SOURCE,
+    tabTarget,
+  })
+
+  expect(result?.target).toBe(tabTarget)
+  expect(result?.candidateId).toBeUndefined()
+})
+
+test('window over another tab strip resolves to tab insertion over window center', () => {
+  const tabTarget = tabStripTarget('window-b', 1)
+  const centerCandidate = candidate({
+    id: 'window-center',
+    priority: 100,
+    target: snapTarget({ kind: 'window-center', windowId: windowId('window-b') }),
+  })
+  const result = resolveTarget({
+    candidates: [centerCandidate],
+    mode: 'window',
+    source: WINDOW_SOURCE,
+    tabTarget,
+  })
+
+  expect(result?.target).toBe(tabTarget)
+  expect(result?.candidateId).toBeUndefined()
+})
+
+test('window over its own source strip does not create a merge target', () => {
+  const result = resolveTarget({
+    candidates: [],
+    mode: 'window',
+    source: WINDOW_SOURCE,
+    tabTarget: tabStripTarget('window-a', 1),
+  })
+
+  expect(result).toBeNull()
+})
+
 test('root edge beats an outer window edge at the workspace boundary', () => {
   const rootCandidate = candidate({
     id: 'root-left',

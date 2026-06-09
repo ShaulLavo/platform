@@ -1257,11 +1257,20 @@ function previewModelForTarget(
 ) {
   const target = resolvedTarget.target
   if (!dropTargetCanCommit(baseModel.layout, target)) return null
+  if (!tabDragCanPreviewTarget(source, target)) return baseModel
+  if (targetMergesWindowIntoTabs(source, target))
+    return previewModelFromTarget(baseModel, source, target)
   if (resolvedTarget.previewKind === 'dnd-kit') return null
   if (resolvedTarget.previewKind === 'app' && targetBelongsToTabStrip(target)) return null
-  if (!tabDragCanPreviewTarget(source, target)) return baseModel
-  if (targetMergesWindowIntoTabs(source, target)) return baseModel
 
+  return previewModelFromTarget(baseModel, source, target)
+}
+
+function previewModelFromTarget(
+  baseModel: ProofModel,
+  source: DndProofDragData,
+  target: DndProofDropData,
+) {
   const previewModel = proofDragTargetModel(baseModel, source, target)
 
   return {

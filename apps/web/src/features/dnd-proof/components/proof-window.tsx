@@ -9,9 +9,8 @@ import {
   type DndProofDragData,
   type DndProofDropData,
 } from '@/features/dnd-proof/utils/drag-data'
-import type { ResolvedDndProofTarget } from '@/features/dnd-proof/utils/drop-target-resolver'
 import { proofWindowTitle } from '@/features/dnd-proof/utils/model'
-import { tabPreviewSurfacesForWindow } from '@/features/dnd-proof/utils/tab-preview'
+import type { DndProofInsertionPreview } from '@/features/dnd-proof/utils/tab-preview'
 import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
 import type {
   Surface,
@@ -25,11 +24,13 @@ import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofWindow({
   activeDrag,
-  activeResolvedTarget,
   dropZonesVisible,
+  insertionPreview,
+  insertionPreviewLayout,
   layout,
   optimisticTabSorting,
   rect,
+  resizingWindows,
   tabStripRenderEpoch,
   window,
   onAddTab,
@@ -41,11 +42,13 @@ export function ProofWindow({
   onSelectSurface,
 }: {
   readonly activeDrag: DndProofDragData | null
-  readonly activeResolvedTarget: ResolvedDndProofTarget | null
   readonly dropZonesVisible: boolean
+  readonly insertionPreview: DndProofInsertionPreview | null
+  readonly insertionPreviewLayout: WorkspaceLayout
   readonly layout: WorkspaceLayout
   readonly optimisticTabSorting: boolean
   readonly rect: LayoutRect
+  readonly resizingWindows: boolean
   readonly tabStripRenderEpoch: number
   readonly window: WorkbenchWindow
   readonly onAddTab: (windowId: WorkbenchWindow['id']) => void
@@ -82,16 +85,11 @@ export function ProofWindow({
 
     return [surface]
   })
-  const surfaces = tabPreviewSurfacesForWindow({
-    activeDrag,
-    layout,
-    resolvedTarget: activeResolvedTarget,
-    surfaces: baseSurfaces,
-    windowId: window.id,
-  })
+  const surfaces = baseSurfaces
   const activeSurface = activeSurfaceForWindow(surfaces, window)
   const collapsed = window.mode === 'collapsed'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
+  const insertionPreviewActive = insertionPreview?.targetWindowId === window.id
   const title = proofWindowTitle(layout, window.id)
   const activeTitle = activeSurface?.title ?? title
   const collapseToRailLabel = `Collapse ${activeTitle} to rail`
@@ -126,15 +124,21 @@ export function ProofWindow({
       aria-label={title}
       className={cn(
         'bg-card absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border shadow-sm',
-        'transition-[left,top,width,height,background-color,border-color,opacity,box-shadow] duration-150 ease-out',
+        resizingWindows
+          ? 'transition-[background-color,border-color,opacity,box-shadow] duration-150 ease-out'
+          : 'transition-[left,top,width,height,background-color,border-color,opacity,box-shadow] duration-150 ease-out',
         isDragging && 'opacity-55',
         isDragSource && 'ring-2 ring-info',
+        insertionPreviewActive && 'ring-2 ring-info/70 shadow-md',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-window-collapsed={collapsed ? 'true' : 'false'}
       data-proof-window-collapsed-edge={window.collapsedEdge}
       data-proof-window-chrome-orientation={chromeOrientation}
       data-proof-window-id={window.id}
+      data-proof-window-insertion-preview={
+        insertionPreviewActive ? insertionPreview.kind : undefined
+      }
       data-proof-window-mode={window.mode}
       ref={(element) => {
         draggableRef(element)
@@ -167,6 +171,8 @@ export function ProofWindow({
         <ProofTabStrip
           activeDrag={activeDrag}
           dropZonesVisible={dropZonesVisible}
+          insertionPreview={insertionPreview}
+          insertionPreviewLayout={insertionPreviewLayout}
           key={`${window.id}:${tabStripRenderEpoch}`}
           optimisticSorting={optimisticTabSorting}
           orientation={chromeOrientation}
