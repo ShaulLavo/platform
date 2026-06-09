@@ -144,6 +144,28 @@ describe.sequential('dnd proof browser behavior', () => {
     })
   })
 
+  it('previews a detached tab inside the target tab strip before release', async () => {
+    renderProof()
+
+    await waitForProof()
+
+    const sourceStrip = firstMultiTabStrip()
+    const sourceId = tabIdsInStrip(sourceStrip)[0]
+    const targetStrip = tabStripNotContaining(sourceId ?? '')
+    const targetStripId = proofTabStripId(targetStrip)
+    if (!sourceId) throw new Error('Missing source tab id')
+
+    await nativeDragTabToStripDropZone(sourceId, targetStrip, { release: false })
+
+    await vi.waitFor(() => {
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expectValidProofTabState()
+    })
+
+    await commands.proofMouseUp()
+    await settleProofDrag()
+  })
+
   it('survives repeated same-tab cross-window round trips with real browser pointer events', async () => {
     renderProof()
 
@@ -539,7 +561,7 @@ describe.sequential('dnd proof browser behavior', () => {
     handle.dispatchEvent(pointerEvent('pointerup', resizePoint, 0))
   })
 
-  it.fails('resizes proof windows through a full real browser pointer drag', async () => {
+  it('resizes proof windows through a full real browser pointer drag', async () => {
     renderProof()
 
     await waitForProof()
@@ -879,7 +901,13 @@ async function nativeDragTabToStrip(tabId: string, targetStrip: HTMLElement) {
   await settleProofDrag()
 }
 
-async function nativeDragTabToStripDropZone(tabId: string, targetStrip: HTMLElement) {
+async function nativeDragTabToStripDropZone(
+  tabId: string,
+  targetStrip: HTMLElement,
+  options: {
+    readonly release?: boolean
+  } = {},
+) {
   const targetStripId = proofTabStripId(targetStrip)
   const source = await settledVisibleTabSource(tabId)
   const settledTargetStrip = tabStripWithId(targetStripId)
@@ -887,6 +915,7 @@ async function nativeDragTabToStripDropZone(tabId: string, targetStrip: HTMLElem
   const sourcePoint = tabPointFromRatio(source.tab, source.point)
 
   await commands.proofMouseDrag({
+    release: options.release,
     sourceClientX: sourcePoint.x,
     sourceClientY: sourcePoint.y,
     sourceSelector: selectorFor(source.tab),

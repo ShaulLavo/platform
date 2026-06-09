@@ -401,6 +401,11 @@ export function useDndProofModel() {
 
   function dispatchLayoutOperation(operation: LayoutOperation) {
     flushPendingCommit()
+    if (operation.type === 'resizeSplit') {
+      setModel((current) => dispatchProofLayoutOperation(current, operation))
+      return
+    }
+
     clearActiveInteraction()
     setActiveDrag(null)
     setModel((current) => dispatchProofLayoutOperation(current, operation))
