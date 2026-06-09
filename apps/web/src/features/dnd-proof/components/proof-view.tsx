@@ -1,6 +1,6 @@
 import { PointerActivationConstraints } from '@dnd-kit/dom'
 import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { ProofDragOverlay } from '@/features/dnd-proof/components/proof-drag-overlay'
 import { ProofEventLog } from '@/features/dnd-proof/components/proof-event-log'
@@ -110,7 +110,11 @@ export function DndProofView() {
     sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
   })
   const snapDestinationsRef = useRef(snapDestinations)
-  snapDestinationsRef.current = snapDestinations
+
+  useEffect(() => {
+    snapDestinationsRef.current = snapDestinations
+  }, [snapDestinations])
+
   const surfaceCount = visibleWindowIds.reduce((count, windowId) => {
     const window = model.layout.windowsById[windowId]
     if (!window) return count
@@ -213,11 +217,7 @@ export function DndProofView() {
               aria-hidden='true'
               className="pointer-events-none absolute inset-0 z-0 bg-[url('/workbench/wallpaper.png')] bg-cover bg-center opacity-45"
             />
-            {visibleWindowIds.length === 0 ? (
-              <div className='text-muted-foreground relative z-10 grid h-full place-items-center text-sm'>
-                No windows
-              </div>
-            ) : null}
+
             {renderedWindowIds.map((windowId) => {
               const window =
                 renderLayout.windowsById[windowId] ?? model.layout.windowsById[windowId]
