@@ -73,6 +73,10 @@ export default defineConfig({
           include: ['src/**/*.browser.tsx'],
           setupFiles: ['./test/env/jest-dom.ts'],
           browser: {
+            commands: {
+              proofMouseDrag,
+              proofMouseUp,
+            },
             enabled: true,
             headless: true,
             provider: 'playwright',
@@ -94,4 +98,138 @@ function fileServerProxy() {
     target: browserFileServerUrl,
     ws: true,
   }
+}
+
+type ProofMouseCommandContext = {
+  readonly frame: () => Promise<ProofMouseFrame>
+  readonly page: {
+    readonly mouse: {
+      readonly down: () => Promise<void>
+      readonly move: (x: number, y: number, options?: { readonly steps?: number }) => Promise<void>
+      readonly up: () => Promise<void>
+    }
+  }
+}
+
+type ProofMouseFrame = {
+  readonly locator: (selector: string) => {
+    readonly boundingBox: () => Promise<ProofMouseBox | null>
+  }
+}
+
+type ProofMouseBox = {
+  readonly height: number
+  readonly width: number
+  readonly x: number
+  readonly y: number
+}
+
+type ProofMousePoint = {
+  readonly x: number
+  readonly y: number
+}
+
+type ProofMouseDragInput = {
+  readonly release?: boolean
+  readonly sourceSelector: string
+  readonly sourceX?: number
+  readonly sourceY?: number
+  readonly steps: readonly ProofMouseDragStep[]
+}
+
+type ProofMouseDragStep =
+  | {
+      readonly dx: number
+      readonly dy: number
+      readonly kind: 'move-by'
+      readonly steps?: number
+    }
+  | {
+      readonly kind: 'move-to-selector'
+      readonly offsetX?: number
+      readonly offsetY?: number
+      readonly selector: string
+      readonly steps?: number
+      readonly x?: number
+      readonly y?: number
+    }
+  | {
+      readonly kind: 'pause'
+      readonly ms?: number
+    }
+
+async function proofMouseDrag(context: ProofMouseCommandContext, input: ProofMouseDragInput) {
+  const frame = await context.frame()
+  let point = await pointForSelector(frame, input.sourceSelector, input.sourceX, input.sourceY)
+
+  await context.page.mouse.move(point.x, point.y)
+  await context.page.mouse.down()
+
+  for (const step of input.steps) {
+    point = await runProofMouseStep(context, frame, point, step)
+  }
+
+  if (input.release === false) return
+
+  await context.page.mouse.up()
+}
+
+async function proofMouseUp(context: ProofMouseCommandContext) {
+  await context.page.mouse.up()
+}
+
+async function runProofMouseStep(
+  context: ProofMouseCommandContext,
+  frame: ProofMouseFrame,
+  currentPoint: ProofMousePoint,
+  step: ProofMouseDragStep,
+) {
+  if (step.kind === 'pause') {
+    await delay(step.ms ?? 16)
+    return currentPoint
+  }
+
+  const point = await nextProofMousePoint(frame, currentPoint, step)
+
+  await context.page.mouse.move(point.x, point.y, { steps: step.steps ?? 8 })
+
+  return point
+}
+
+async function nextProofMousePoint(
+  frame: ProofMouseFrame,
+  currentPoint: ProofMousePoint,
+  step: Exclude<ProofMouseDragStep, { readonly kind: 'pause' }>,
+) {
+  if (step.kind === 'move-by') {
+    return {
+      x: currentPoint.x + step.dx,
+      y: currentPoint.y + step.dy,
+    }
+  }
+
+  return pointForSelector(frame, step.selector, step.x, step.y, step.offsetX, step.offsetY)
+}
+
+async function pointForSelector(
+  frame: ProofMouseFrame,
+  selector: string,
+  xRatio = 0.5,
+  yRatio = 0.5,
+  offsetX = 0,
+  offsetY = 0,
+) {
+  const box = await frame.locator(selector).boundingBox()
+  if (!box) throw new Error(`Missing browser element for selector ${selector}`)
+
+  return {
+    x: box.x + box.width * xRatio + offsetX,
+    y: box.y + box.height * yRatio + offsetY,
+  }
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }

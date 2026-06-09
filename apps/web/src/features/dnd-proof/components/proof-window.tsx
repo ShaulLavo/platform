@@ -1,8 +1,9 @@
-import { useSortable } from '@dnd-kit/react/sortable'
+import { useDraggable, useDroppable } from '@dnd-kit/react'
 import { DotsSixVerticalIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 
 import { ProofTabStrip } from '@/features/dnd-proof/components/proof-tab-strip'
 import {
+  DND_PROOF_TAB_TYPE,
   DND_PROOF_WINDOW_TYPE,
   windowDragId,
   type DndProofDragData,
@@ -22,9 +23,10 @@ import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofWindow({
   activeDrag,
-  index,
+  dropZonesVisible,
   layout,
   rect,
+  tabStripRenderEpoch,
   window,
   onAddTab,
   onCloseSurface,
@@ -32,9 +34,10 @@ export function ProofWindow({
   onSelectSurface,
 }: {
   readonly activeDrag: DndProofDragData | null
-  readonly index: number
+  readonly dropZonesVisible: boolean
   readonly layout: WorkspaceLayout
   readonly rect: LayoutRect
+  readonly tabStripRenderEpoch: number
   readonly window: WorkbenchWindow
   readonly onAddTab: (windowId: WorkbenchWindow['id']) => void
   readonly onCloseSurface: (surfaceId: SurfaceId) => void
@@ -45,15 +48,21 @@ export function ProofWindow({
     kind: 'window',
     windowId: window.id,
   }
-  const { handleRef, isDragSource, isDragging, isDropTarget, ref, sourceRef } = useSortable<
-    DndProofDragData & DndProofDropData
-  >({
-    accept: DND_PROOF_WINDOW_TYPE,
+  const {
+    handleRef,
+    isDragSource,
+    isDragging,
+    ref: draggableRef,
+  } = useDraggable<DndProofDragData & DndProofDropData>({
     data,
-    group: 'proof-windows',
     id: windowDragId(window.id),
-    index,
     type: DND_PROOF_WINDOW_TYPE,
+  })
+  const { isDropTarget, ref: droppableRef } = useDroppable<DndProofDropData>({
+    accept: [DND_PROOF_TAB_TYPE, DND_PROOF_WINDOW_TYPE],
+    data,
+    disabled: activeDrag?.kind === 'window' && activeDrag.windowId === window.id,
+    id: windowDragId(window.id),
   })
   const surfaces = window.surfaceIds.flatMap((surfaceId) => {
     const surface = layout.surfacesById[surfaceId]
@@ -72,22 +81,24 @@ export function ProofWindow({
         'transition-[left,top,width,height,background-color,border-color,opacity,box-shadow] duration-150 ease-out',
         isDragging && 'opacity-55',
         isDragSource && 'ring-2 ring-info',
-        isDropTarget && 'bg-info/10',
+        dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-window-id={window.id}
-      ref={ref}
+      ref={(element) => {
+        draggableRef(element)
+        droppableRef(element)
+      }}
       role='region'
       style={layoutRectStyle(rect)}
     >
-      <header className='border-border flex h-10 shrink-0 items-end gap-2 border-b pt-1'>
+      <header
+        className='border-border flex h-10 shrink-0 cursor-grab items-end gap-2 border-b pt-1 active:cursor-grabbing'
+        ref={handleRef}
+      >
         <div
           aria-label={`Drag ${title}`}
-          className='text-muted-foreground mb-1 ml-1 grid h-8 w-5 shrink-0 cursor-grab place-items-center text-sm active:cursor-grabbing'
+          className='text-muted-foreground mb-1 ml-1 grid h-8 w-5 shrink-0 place-items-center text-sm'
           data-proof-window-drag-handle=''
-          ref={(element) => {
-            handleRef(element)
-            sourceRef(element)
-          }}
           role='button'
           tabIndex={0}
         >
@@ -95,6 +106,8 @@ export function ProofWindow({
         </div>
         <ProofTabStrip
           activeDrag={activeDrag}
+          dropZonesVisible={dropZonesVisible}
+          key={`${window.id}:${tabStripRenderEpoch}`}
           surfaces={surfaces}
           window={window}
           onCloseSurface={onCloseSurface}

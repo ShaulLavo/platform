@@ -1,94 +1,130 @@
+import type { DndProofDragData, DndProofDropData } from '@/features/dnd-proof/utils/drag-data'
 import type {
   LayoutRect,
   SnapDestinationLayoutRect,
-  WindowLayoutRect,
 } from '@/features/tiling-surface-manager/engine/layout-geometry'
-import type { DndProofDragData } from '@/features/dnd-proof/utils/drag-data'
-import type { WindowId } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { LayoutEdge, WindowId } from '@/features/tiling-surface-manager/engine/layout-types'
 
-export type ProofSnapDestinationRect = Omit<SnapDestinationLayoutRect, 'id' | 'rect'> & {
+export type DndProofDropCandidate = {
+  readonly edge?: LayoutEdge
+  readonly hitRect: LayoutRect
   readonly id: string
-  readonly rect: LayoutRect
+  readonly kind: SnapDestinationLayoutRect['kind']
+  readonly label: string
+  readonly previewRect: LayoutRect
+  readonly priority: number
+  readonly target: DndProofDropData
+  readonly windowId?: WindowId
 }
 
-type SnapEdgeMap = Partial<
-  Record<NonNullable<SnapDestinationLayoutRect['edge']>, SnapDestinationLayoutRect>
->
-
-const TAB_HEADER_EXCLUSION_PX = 48
-const MIN_SNAP_RECT_SIZE_PX = 12
 const OUTER_EDGE_EPSILON_PX = 2
-const INTERNAL_EDGE_DUPLICATE_GAP_PX = 24
+const ROOT_EDGE_PRIORITY = 95
+const INTERNAL_WINDOW_EDGE_PRIORITY = 90
+const OUTER_WINDOW_EDGE_PRIORITY = 88
+const WINDOW_CENTER_PRIORITY = 100
+const ROOT_EDGE_HIT_INSIDE_PX = 10
+const ROOT_EDGE_HIT_OUTSIDE_PX = 28
+const WINDOW_TOP_HIT_EXTRA_PX = 48
 
 export function proofSnapDestinations({
   activeDrag,
   rootRect,
   snapDestinationRects,
   sourceWindowId,
-  windowRectsById,
 }: {
   readonly activeDrag: DndProofDragData | null
   readonly rootRect: LayoutRect
   readonly snapDestinationRects: readonly SnapDestinationLayoutRect[]
   readonly sourceWindowId: WindowId | null
-  readonly windowRectsById: Readonly<Record<string, WindowLayoutRect>>
-}): readonly ProofSnapDestinationRect[] {
-  const rootEdges = edgeMapForSnapDestinations(snapDestinationRects, rootEdgeDestination)
-  const windowEdges = windowEdgeMaps(snapDestinationRects)
-  const headerRects = tabHeaderRects(windowRectsById)
-  const destinations: ProofSnapDestinationRect[] = []
-
-  for (const snapDestination of snapDestinationRects) {
-    destinations.push(
-      ...snapDestinationRectsForDrag({
-        activeDrag,
-        headerRects,
-        rootEdges,
-        rootRect,
-        snapDestination,
-        sourceWindowId,
-        windowEdges,
-      }),
-    )
-  }
-
-  return destinations
+}): readonly DndProofDropCandidate[] {
+  return snapDestinationRects.flatMap((snapDestination) =>
+    proofSnapCandidate({
+      activeDrag,
+      rootRect,
+      snapDestination,
+      sourceWindowId,
+    }),
+  )
 }
 
-function snapDestinationRectsForDrag({
+function proofSnapCandidate({
   activeDrag,
-  headerRects,
-  rootEdges,
   rootRect,
   snapDestination,
   sourceWindowId,
-  windowEdges,
 }: {
   readonly activeDrag: DndProofDragData | null
-  readonly headerRects: readonly LayoutRect[]
-  readonly rootEdges: SnapEdgeMap
   readonly rootRect: LayoutRect
   readonly snapDestination: SnapDestinationLayoutRect
   readonly sourceWindowId: WindowId | null
-  readonly windowEdges: Readonly<Record<string, SnapEdgeMap>>
-}): readonly ProofSnapDestinationRect[] {
+}): readonly DndProofDropCandidate[] {
   if (!snapDestinationEnabledForDrag(snapDestination, activeDrag, sourceWindowId)) return []
-  if (outerWindowEdge(snapDestination, rootRect)) return []
-  if (
-    duplicateInternalWindowEdge(snapDestination, {
-      activeDrag,
-      rootRect,
-      sourceWindowId,
-      windowEdges,
-    })
-  ) {
-    return []
+
+  const target: DndProofDropData = {
+    destination: snapDestination.destination,
+    kind: 'snap-destination',
   }
 
-  const rect = trimSnapCorners(snapDestination, rootEdges, windowEdges)
-  if (!viableRect(rect)) return []
+  return [
+    {
+      edge: snapDestination.edge,
+      hitRect: snapDestinationHitRect(snapDestination, rootRect),
+      id: snapDestination.id,
+      kind: snapDestination.kind,
+      label: snapDestinationLabel(snapDestination),
+      previewRect: snapDestination.rect,
+      priority: snapDestinationPriority(snapDestination, rootRect),
+      target,
+      windowId: snapDestination.windowId,
+    },
+  ]
+}
 
-  return splitSnapRectAroundHeaders(snapDestination, rect, activeDrag, headerRects)
+function snapDestinationHitRect(snapDestination: SnapDestinationLayoutRect, rootRect: LayoutRect) {
+  if (snapDestination.kind === 'window-edge' && snapDestination.edge === 'top') {
+    return {
+      ...snapDestination.rect,
+      height: snapDestination.rect.height + WINDOW_TOP_HIT_EXTRA_PX,
+    }
+  }
+  if (snapDestination.kind !== 'root-edge') return snapDestination.rect
+  if (!snapDestination.edge) return snapDestination.rect
+
+  return rootEdgeHitRect(rootRect, snapDestination.edge)
+}
+
+function rootEdgeHitRect(rootRect: LayoutRect, edge: LayoutEdge): LayoutRect {
+  if (edge === 'left') {
+    return {
+      height: rootRect.height + ROOT_EDGE_HIT_OUTSIDE_PX * 2,
+      width: ROOT_EDGE_HIT_INSIDE_PX + ROOT_EDGE_HIT_OUTSIDE_PX,
+      x: rootRect.x - ROOT_EDGE_HIT_OUTSIDE_PX,
+      y: rootRect.y - ROOT_EDGE_HIT_OUTSIDE_PX,
+    }
+  }
+  if (edge === 'right') {
+    return {
+      height: rootRect.height + ROOT_EDGE_HIT_OUTSIDE_PX * 2,
+      width: ROOT_EDGE_HIT_INSIDE_PX + ROOT_EDGE_HIT_OUTSIDE_PX,
+      x: rectRight(rootRect) - ROOT_EDGE_HIT_INSIDE_PX,
+      y: rootRect.y - ROOT_EDGE_HIT_OUTSIDE_PX,
+    }
+  }
+  if (edge === 'top') {
+    return {
+      height: ROOT_EDGE_HIT_INSIDE_PX + ROOT_EDGE_HIT_OUTSIDE_PX,
+      width: rootRect.width + ROOT_EDGE_HIT_OUTSIDE_PX * 2,
+      x: rootRect.x - ROOT_EDGE_HIT_OUTSIDE_PX,
+      y: rootRect.y - ROOT_EDGE_HIT_OUTSIDE_PX,
+    }
+  }
+
+  return {
+    height: ROOT_EDGE_HIT_INSIDE_PX + ROOT_EDGE_HIT_OUTSIDE_PX,
+    width: rootRect.width + ROOT_EDGE_HIT_OUTSIDE_PX * 2,
+    x: rootRect.x - ROOT_EDGE_HIT_OUTSIDE_PX,
+    y: rectBottom(rootRect) - ROOT_EDGE_HIT_INSIDE_PX,
+  }
 }
 
 function snapDestinationEnabledForDrag(
@@ -96,20 +132,10 @@ function snapDestinationEnabledForDrag(
   activeDrag: DndProofDragData | null,
   sourceWindowId: WindowId | null,
 ) {
-  if (snapDestination.windowId === sourceWindowId) return false
   if (!activeDrag) return idleSnapDestinationVisible(snapDestination)
-  if (
-    activeDrag.kind === 'tab' &&
-    snapDestination.kind === 'window-edge' &&
-    snapDestination.edge === 'top'
-  ) {
-    return false
-  }
-  if (snapDestination.kind === 'root-edge') return true
-  if (snapDestination.kind === 'window-edge') return true
-  if (activeDrag.kind === 'window' && snapDestination.kind === 'window-center') return true
+  if (activeDrag.kind === 'tab') return tabSnapDestinationVisible(snapDestination)
 
-  return false
+  return windowSnapDestinationVisible(snapDestination, sourceWindowId)
 }
 
 function idleSnapDestinationVisible(snapDestination: SnapDestinationLayoutRect) {
@@ -118,290 +144,62 @@ function idleSnapDestinationVisible(snapDestination: SnapDestinationLayoutRect) 
   return snapDestination.kind === 'window-edge'
 }
 
-function trimSnapCorners(
+function tabSnapDestinationVisible(snapDestination: SnapDestinationLayoutRect) {
+  if (snapDestination.kind === 'root-edge') return true
+
+  return snapDestination.kind === 'window-edge'
+}
+
+function windowSnapDestinationVisible(
   snapDestination: SnapDestinationLayoutRect,
-  rootEdges: SnapEdgeMap,
-  windowEdges: Readonly<Record<string, SnapEdgeMap>>,
+  sourceWindowId: WindowId | null,
 ) {
-  const edge = snapDestination.edge
-  if (!edge) return snapDestination.rect
+  if (snapDestination.windowId === sourceWindowId) return false
+  if (snapDestination.kind === 'root-edge') return true
+  if (snapDestination.kind === 'window-edge') return true
 
-  const edgeMap =
-    snapDestination.kind === 'root-edge'
-      ? rootEdges
-      : (windowEdges[String(snapDestination.windowId)] ?? {})
-
-  return trimRectCorners(snapDestination.rect, edge, edgeMap)
+  return snapDestination.kind === 'window-center'
 }
 
-function trimRectCorners(
-  rect: LayoutRect,
-  edge: NonNullable<SnapDestinationLayoutRect['edge']>,
-  edgeMap: SnapEdgeMap,
-): LayoutRect {
-  if (edge === 'left' || edge === 'right') {
-    return verticalEdgeWithoutCorners(rect, edgeMap)
+function snapDestinationPriority(snapDestination: SnapDestinationLayoutRect, rootRect: LayoutRect) {
+  if (snapDestination.kind === 'window-center') return WINDOW_CENTER_PRIORITY
+  if (snapDestination.kind === 'root-edge') return ROOT_EDGE_PRIORITY
+  if (snapDestination.kind === 'window-edge') {
+    return windowEdgePriority(snapDestination, rootRect)
   }
 
-  return horizontalEdgeWithoutCorners(rect, edgeMap)
+  return 0
 }
 
-function verticalEdgeWithoutCorners(rect: LayoutRect, edgeMap: SnapEdgeMap): LayoutRect {
-  const topInset = edgeMap.top?.rect.height ?? 0
-  const bottomInset = edgeMap.bottom?.rect.height ?? 0
+function windowEdgePriority(snapDestination: SnapDestinationLayoutRect, rootRect: LayoutRect) {
+  if (outerWindowEdge(snapDestination, rootRect)) return OUTER_WINDOW_EDGE_PRIORITY
 
-  return {
-    ...rect,
-    height: Math.max(0, rect.height - topInset - bottomInset),
-    y: rect.y + topInset,
-  }
-}
-
-function horizontalEdgeWithoutCorners(rect: LayoutRect, edgeMap: SnapEdgeMap): LayoutRect {
-  const leftInset = edgeMap.left?.rect.width ?? 0
-  const rightInset = edgeMap.right?.rect.width ?? 0
-
-  return {
-    ...rect,
-    width: Math.max(0, rect.width - leftInset - rightInset),
-    x: rect.x + leftInset,
-  }
-}
-
-function splitSnapRectAroundHeaders(
-  snapDestination: SnapDestinationLayoutRect,
-  rect: LayoutRect,
-  activeDrag: DndProofDragData | null,
-  headerRects: readonly LayoutRect[],
-) {
-  if (snapDestination.kind === 'root-edge' && snapDestination.edge === 'top') {
-    return [proofSnapDestinationRect(snapDestination, rect, 0)]
-  }
-  if (activeDrag?.kind === 'window') {
-    return [proofSnapDestinationRect(snapDestination, rect, 0)]
-  }
-
-  return subtractHeaderBands(rect, headerRects).map((segment, index) =>
-    proofSnapDestinationRect(snapDestination, segment, index),
-  )
-}
-
-function subtractHeaderBands(rect: LayoutRect, headerRects: readonly LayoutRect[]) {
-  let segments = [rect]
-
-  for (const headerRect of headerRects) {
-    segments = segments.flatMap((segment) => splitRectByHeader(segment, headerRect))
-  }
-
-  return segments.filter(viableRect)
-}
-
-function splitRectByHeader(rect: LayoutRect, headerRect: LayoutRect): readonly LayoutRect[] {
-  if (!rectsIntersect(rect, headerRect)) return [rect]
-
-  const intersection = rectIntersection(rect, headerRect)
-  if (!intersection) return [rect]
-
-  return rectSegmentsAroundIntersection(rect, intersection).filter(viableRect)
-}
-
-function rectSegmentsAroundIntersection(
-  rect: LayoutRect,
-  intersection: LayoutRect,
-): readonly LayoutRect[] {
-  const intersectionBottom = rectBottom(intersection)
-  const intersectionRight = rectRight(intersection)
-
-  return [
-    { ...rect, height: intersection.y - rect.y },
-    { ...rect, height: rectBottom(rect) - intersectionBottom, y: intersectionBottom },
-    {
-      height: intersection.height,
-      width: intersection.x - rect.x,
-      x: rect.x,
-      y: intersection.y,
-    },
-    {
-      height: intersection.height,
-      width: rectRight(rect) - intersectionRight,
-      x: intersectionRight,
-      y: intersection.y,
-    },
-  ]
-}
-
-function rectIntersection(left: LayoutRect, right: LayoutRect): LayoutRect | null {
-  const x = Math.max(left.x, right.x)
-  const y = Math.max(left.y, right.y)
-  const maxRight = Math.min(rectRight(left), rectRight(right))
-  const maxBottom = Math.min(rectBottom(left), rectBottom(right))
-  if (maxRight <= x) return null
-  if (maxBottom <= y) return null
-
-  return {
-    height: maxBottom - y,
-    width: maxRight - x,
-    x,
-    y,
-  }
-}
-
-function proofSnapDestinationRect(
-  snapDestination: SnapDestinationLayoutRect,
-  rect: LayoutRect,
-  segmentIndex: number,
-): ProofSnapDestinationRect {
-  return {
-    ...snapDestination,
-    id: `${snapDestination.id}:${segmentIndex}`,
-    rect,
-  }
-}
-
-function edgeMapForSnapDestinations(
-  snapDestinationRects: readonly SnapDestinationLayoutRect[],
-  predicate: (snapDestination: SnapDestinationLayoutRect) => boolean,
-) {
-  const edgeMap: SnapEdgeMap = {}
-
-  for (const snapDestination of snapDestinationRects) {
-    if (!predicate(snapDestination)) continue
-    if (!snapDestination.edge) continue
-
-    edgeMap[snapDestination.edge] = snapDestination
-  }
-
-  return edgeMap
-}
-
-function windowEdgeMaps(snapDestinationRects: readonly SnapDestinationLayoutRect[]) {
-  const edgeMaps: Record<string, SnapEdgeMap> = {}
-
-  for (const snapDestination of snapDestinationRects) {
-    if (snapDestination.kind !== 'window-edge') continue
-    if (!snapDestination.windowId) continue
-    if (!snapDestination.edge) continue
-
-    edgeMaps[snapDestination.windowId] ??= {}
-    edgeMaps[snapDestination.windowId][snapDestination.edge] = snapDestination
-  }
-
-  return edgeMaps
-}
-
-function rootEdgeDestination(snapDestination: SnapDestinationLayoutRect) {
-  return snapDestination.kind === 'root-edge'
+  return INTERNAL_WINDOW_EDGE_PRIORITY
 }
 
 function outerWindowEdge(snapDestination: SnapDestinationLayoutRect, rootRect: LayoutRect) {
   if (snapDestination.kind !== 'window-edge') return false
-  if (snapDestination.edge === 'left')
+  if (snapDestination.edge === 'left') {
     return snapDestination.rect.x <= rootRect.x + OUTER_EDGE_EPSILON_PX
+  }
   if (snapDestination.edge === 'right') {
     return rectRight(snapDestination.rect) >= rectRight(rootRect) - OUTER_EDGE_EPSILON_PX
   }
-  if (snapDestination.edge === 'top')
+  if (snapDestination.edge === 'top') {
     return snapDestination.rect.y <= rootRect.y + OUTER_EDGE_EPSILON_PX
+  }
 
   return rectBottom(snapDestination.rect) >= rectBottom(rootRect) - OUTER_EDGE_EPSILON_PX
 }
 
-function duplicateInternalWindowEdge(
-  snapDestination: SnapDestinationLayoutRect,
-  context: {
-    readonly activeDrag: DndProofDragData | null
-    readonly rootRect: LayoutRect
-    readonly sourceWindowId: WindowId | null
-    readonly windowEdges: Readonly<Record<string, SnapEdgeMap>>
-  },
-) {
-  if (snapDestination.kind !== 'window-edge') return false
-  if (snapDestination.edge === 'left') {
-    return enabledPeerEdgeExists(snapDestination, 'right', context, horizontalEdgesAdjacent)
-  }
-  if (snapDestination.edge === 'top') {
-    return enabledPeerEdgeExists(snapDestination, 'bottom', context, verticalEdgesAdjacent)
-  }
+function snapDestinationLabel(snapDestination: SnapDestinationLayoutRect) {
+  if (snapDestination.kind === 'root-edge') return `root ${snapDestination.edge}`
+  if (snapDestination.kind === 'window-edge') return `window ${snapDestination.edge}`
+  if (snapDestination.kind === 'window-center') return 'merge tabs'
+  if (snapDestination.kind === 'parent-edge') return `parent ${snapDestination.edge}`
+  if (snapDestination.kind === 'recipe-slot') return snapDestination.destination.kind
 
-  return false
-}
-
-function enabledPeerEdgeExists(
-  snapDestination: SnapDestinationLayoutRect,
-  peerEdge: NonNullable<SnapDestinationLayoutRect['edge']>,
-  context: {
-    readonly activeDrag: DndProofDragData | null
-    readonly rootRect: LayoutRect
-    readonly sourceWindowId: WindowId | null
-    readonly windowEdges: Readonly<Record<string, SnapEdgeMap>>
-  },
-  adjacent: (leading: LayoutRect, trailing: LayoutRect) => boolean,
-) {
-  for (const edgeMap of Object.values(context.windowEdges)) {
-    const peer = edgeMap[peerEdge]
-    if (!peer) continue
-    if (peer.windowId === snapDestination.windowId) continue
-    if (!snapDestinationEnabledForDrag(peer, context.activeDrag, context.sourceWindowId)) continue
-    if (outerWindowEdge(peer, context.rootRect)) continue
-    if (!adjacent(peer.rect, snapDestination.rect)) continue
-
-    return true
-  }
-
-  return false
-}
-
-function horizontalEdgesAdjacent(leading: LayoutRect, trailing: LayoutRect) {
-  if (!rectsOverlapVertically(leading, trailing)) return false
-
-  const gap = trailing.x - rectRight(leading)
-
-  return gap >= -OUTER_EDGE_EPSILON_PX && gap <= INTERNAL_EDGE_DUPLICATE_GAP_PX
-}
-
-function verticalEdgesAdjacent(leading: LayoutRect, trailing: LayoutRect) {
-  if (!rectsOverlapHorizontally(leading, trailing)) return false
-
-  const gap = trailing.y - rectBottom(leading)
-
-  return gap >= -OUTER_EDGE_EPSILON_PX && gap <= INTERNAL_EDGE_DUPLICATE_GAP_PX
-}
-
-function rectsOverlapVertically(left: LayoutRect, right: LayoutRect) {
-  return rangeOverlap(left.y, rectBottom(left), right.y, rectBottom(right)) > OUTER_EDGE_EPSILON_PX
-}
-
-function rectsOverlapHorizontally(left: LayoutRect, right: LayoutRect) {
-  return rangeOverlap(left.x, rectRight(left), right.x, rectRight(right)) > OUTER_EDGE_EPSILON_PX
-}
-
-function rangeOverlap(leftStart: number, leftEnd: number, rightStart: number, rightEnd: number) {
-  return Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart)
-}
-
-function tabHeaderRects(
-  windowRectsById: Readonly<Record<string, WindowLayoutRect>>,
-): readonly LayoutRect[] {
-  return Object.values(windowRectsById).map((windowRect) => ({
-    height: Math.min(windowRect.rect.height, TAB_HEADER_EXCLUSION_PX),
-    width: windowRect.rect.width,
-    x: windowRect.rect.x,
-    y: windowRect.rect.y,
-  }))
-}
-
-function rectsIntersect(left: LayoutRect, right: LayoutRect) {
-  if (rectRight(left) <= right.x) return false
-  if (rectRight(right) <= left.x) return false
-  if (rectBottom(left) <= right.y) return false
-
-  return rectBottom(right) > left.y
-}
-
-function viableRect(rect: LayoutRect) {
-  if (rect.height < MIN_SNAP_RECT_SIZE_PX) return false
-
-  return rect.width >= MIN_SNAP_RECT_SIZE_PX
+  return snapDestination.kind
 }
 
 function rectRight(rect: LayoutRect) {

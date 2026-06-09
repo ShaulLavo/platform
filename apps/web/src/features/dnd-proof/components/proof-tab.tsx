@@ -17,6 +17,7 @@ import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofTab({
   active,
+  dropZonesVisible,
   index,
   surface,
   windowId,
@@ -24,6 +25,7 @@ export function ProofTab({
   onSelect,
 }: {
   readonly active: boolean
+  readonly dropZonesVisible: boolean
   readonly index: number
   readonly surface: Surface
   readonly windowId: WindowId
@@ -36,7 +38,7 @@ export function ProofTab({
     surfaceId: surface.id,
     windowId,
   }
-  const { handleRef, isDragSource, isDragging, isDropTarget, ref } = useSortable<
+  const { handleRef, isDragSource, isDragging, isDropTarget, ref, sourceRef } = useSortable<
     DndProofDragData & DndProofDropData
   >({
     accept: DND_PROOF_TAB_TYPE,
@@ -57,19 +59,20 @@ export function ProofTab({
     <div
       aria-selected={active}
       className={cn(
-        'group/proof-tab flex h-9 min-w-28 max-w-44 cursor-grab items-center gap-1.5 rounded-t-md border px-2 text-xs shadow-sm active:cursor-grabbing',
+        'group/proof-tab flex h-9 w-28 min-w-20 max-w-44 shrink-0 cursor-grab items-center gap-1.5 rounded-t-md border px-2 text-xs shadow-sm active:cursor-grabbing',
         'transition-[background-color,border-color,opacity,box-shadow]',
         active
           ? 'bg-background text-foreground border-border'
           : 'bg-muted/60 text-muted-foreground border-transparent hover:bg-muted',
         isDragging && 'opacity-45',
         isDragSource && 'ring-2 ring-info',
-        isDropTarget && 'bg-info/10',
+        dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-tab-id={surface.id}
       ref={(element) => {
         ref(element)
         handleRef(element)
+        sourceRef(element)
       }}
       role='tab'
       tabIndex={0}

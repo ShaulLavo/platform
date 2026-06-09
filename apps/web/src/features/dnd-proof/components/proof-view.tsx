@@ -2,7 +2,9 @@ import { PointerActivationConstraints } from '@dnd-kit/dom'
 import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
 import { useState } from 'react'
 
+import { ProofDragOverlay } from '@/features/dnd-proof/components/proof-drag-overlay'
 import { ProofEventLog } from '@/features/dnd-proof/components/proof-event-log'
+import { ProofPreviewWindow } from '@/features/dnd-proof/components/proof-preview-window'
 import { ProofResizeHandles } from '@/features/dnd-proof/components/proof-resize-handles'
 import { ProofSnapDestination } from '@/features/dnd-proof/components/proof-snap-destination'
 import { ProofToolbar } from '@/features/dnd-proof/components/proof-toolbar'
@@ -50,33 +52,42 @@ export function DndProofView() {
   const {
     activateSurface,
     activeDrag,
+    activeResolvedTarget,
     addTab,
     addWindow,
     handleDragEnd,
+    handleDragMove,
     handleDragOver,
     handleDragStart,
     model,
+    previewLayout,
     removeSurface,
     removeWindow,
     reset,
     setScenario,
     snapLayout,
+    stateEvents,
+    tabStripRenderEpoch,
   } = useDndProofModel()
   const { rect, rootRef } = useLayoutRootRect(DEFAULT_LAYOUT_RECT)
   const rootRect = rect ?? DEFAULT_LAYOUT_RECT
   const surfaceRect = insetLayoutRect(rootRect, GEOMETRY_OPTIONS.gapPx ?? 0)
-  const geometry = deriveLayoutGeometry(model.layout, surfaceRect, GEOMETRY_OPTIONS)
-  const snapGeometry =
-    snapLayout === model.layout
-      ? geometry
-      : deriveLayoutGeometry(snapLayout, surfaceRect, GEOMETRY_OPTIONS)
+  const committedGeometry = deriveLayoutGeometry(model.layout, surfaceRect, GEOMETRY_OPTIONS)
+  const previewGeometry = previewLayout
+    ? deriveLayoutGeometry(previewLayout, surfaceRect, GEOMETRY_OPTIONS)
+    : committedGeometry
+  const snapGeometry = deriveLayoutGeometry(snapLayout, surfaceRect, GEOMETRY_OPTIONS)
   const visibleWindowIds = visibleWindowIdsInOrder(model.layout)
+  const previewOnlyWindowIds = previewLayout
+    ? visibleWindowIdsInOrder(previewLayout).filter(
+        (windowId) => !model.layout.windowsById[windowId],
+      )
+    : []
   const snapDestinations = proofSnapDestinations({
     activeDrag,
     rootRect: surfaceRect,
     snapDestinationRects: snapGeometry.snapDestinationRects,
     sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
-    windowRectsById: snapGeometry.windowRectsById,
   })
   const surfaceCount = visibleWindowIds.reduce((count, windowId) => {
     const window = model.layout.windowsById[windowId]
@@ -88,8 +99,9 @@ export function DndProofView() {
   return (
     <DragDropProvider
       sensors={PROOF_SENSORS}
-      onDragEnd={handleDragEnd}
-      onDragOver={handleDragOver}
+      onDragEnd={(event) => handleDragEnd(event, snapDestinations, rootRef.current)}
+      onDragMove={(event) => handleDragMove(event, snapDestinations, rootRef.current)}
+      onDragOver={(event) => handleDragOver(event, snapDestinations, rootRef.current)}
       onDragStart={handleDragStart}
     >
       <main className='bg-background text-foreground flex h-svh flex-col overflow-hidden'>
@@ -119,18 +131,21 @@ export function DndProofView() {
                 No windows
               </div>
             ) : null}
-            {visibleWindowIds.map((windowId, index) => {
+            {visibleWindowIds.map((windowId) => {
               const window = model.layout.windowsById[windowId]
-              const windowRect = geometry.windowRectsById[windowId]
+              const windowRect =
+                previewGeometry.windowRectsById[windowId] ??
+                committedGeometry.windowRectsById[windowId]
               if (!window || !windowRect) return null
 
               return (
                 <ProofWindow
                   activeDrag={activeDrag}
-                  index={index}
+                  dropZonesVisible={dropZonesVisible}
                   key={windowId}
                   layout={model.layout}
                   rect={windowRect.rect}
+                  tabStripRenderEpoch={tabStripRenderEpoch}
                   window={window}
                   onAddTab={addTab}
                   onCloseSurface={removeSurface}
@@ -139,18 +154,26 @@ export function DndProofView() {
                 />
               )
             })}
-            <ProofResizeHandles resizeHandleRects={geometry.resizeHandleRects} />
+            {previewOnlyWindowIds.map((windowId) => {
+              const windowRect = previewGeometry.windowRectsById[windowId]
+              if (!windowRect) return null
+
+              return <ProofPreviewWindow key={windowId} rect={windowRect.rect} />
+            })}
+            <ProofResizeHandles resizeHandleRects={committedGeometry.resizeHandleRects} />
             {snapDestinations.map((snapDestination) => (
               <ProofSnapDestination
                 key={snapDestination.id}
-                snapDestination={snapDestination}
+                active={activeResolvedTarget?.candidateId === snapDestination.id}
+                candidate={snapDestination}
                 visible={dropZonesVisible}
               />
             ))}
           </section>
-          <ProofEventLog events={model.events} />
+          <ProofEventLog events={model.events} stateEvents={stateEvents} />
         </div>
       </main>
+      <ProofDragOverlay activeDrag={activeDrag} layout={model.layout} />
     </DragDropProvider>
   )
 }

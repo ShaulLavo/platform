@@ -8,6 +8,7 @@ import {
   CLASSIC_MAIN_NODE_ID,
   CLASSIC_ROOT_NODE_ID,
   createClassicFirstRunWorkspaceLayout,
+  createEmptyWorkspaceLayout,
   createChatSurface,
   createDiagnosticsSurface,
   createFileNavigatorSurface,
@@ -16,7 +17,10 @@ import {
   createLogsSurface,
   createSearchPreviewSurface,
   createSearchResultsSurface,
+  createSplitNode,
   createTerminalSurface,
+  createWindowNode,
+  createWorkbenchWindow,
 } from '@/features/tiling-surface-manager/engine/layout-builders'
 import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
 import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
@@ -24,6 +28,7 @@ import {
   CLASSIC_POLICY_ID,
   fileEditorSurfaceId,
   gitChangesSurfaceId,
+  layoutNodeId,
   layoutCommandId,
   REVIEW_LAYOUT_COMMAND_ID,
   REVIEW_RECIPE_ID,
@@ -184,6 +189,27 @@ describe('tiling surface layout operations', () => {
       ...sourceSurfaceIds,
     ])
     expectValidLayout(merged)
+  })
+
+  it('reorders same-split windows without resizing them', () => {
+    const layout = threeColumnLayoutWithSizes([0.2, 0.3, 0.5])
+    const moved = moveWindow(layout, workbenchWindowId('test:c'), {
+      edge: 'right',
+      kind: 'window-edge',
+      windowId: workbenchWindowId('test:a'),
+    })
+    const root = moved.nodesById[layoutNodeId('test:root')]
+    if (!root || root.kind !== 'split') throw new Error('Expected test root split')
+
+    expect(root.childIds).toEqual([
+      layoutNodeId('test:a'),
+      layoutNodeId('test:c'),
+      layoutNodeId('test:b'),
+    ])
+    expect(root.sizes[0]).toBeCloseTo(0.2)
+    expect(root.sizes[1]).toBeCloseTo(0.5)
+    expect(root.sizes[2]).toBeCloseTo(0.3)
+    expectValidLayout(moved)
   })
 
   it('supports parent-edge snaps and rejects self or descendant window moves', () => {
@@ -1171,6 +1197,61 @@ describe('tiling surface layout operations', () => {
     })
   })
 })
+
+function threeColumnLayoutWithSizes(sizes: readonly number[]) {
+  const surfaceA = createFileEditorSurface({ path: '/repo/src/a.ts' })
+  const surfaceB = createFileEditorSurface({ path: '/repo/src/b.ts' })
+  const surfaceC = createFileEditorSurface({ path: '/repo/src/c.ts' })
+  const windowAId = workbenchWindowId('test:a')
+  const windowBId = workbenchWindowId('test:b')
+  const windowCId = workbenchWindowId('test:c')
+  const nodeAId = layoutNodeId('test:a')
+  const nodeBId = layoutNodeId('test:b')
+  const nodeCId = layoutNodeId('test:c')
+  const rootNodeId = layoutNodeId('test:root')
+
+  return {
+    ...createEmptyWorkspaceLayout(),
+    activeSurfaceId: surfaceA.id,
+    activeWindowId: windowAId,
+    mruSurfaceIds: [surfaceA.id, surfaceB.id, surfaceC.id],
+    mruWindowIds: [windowAId, windowBId, windowCId],
+    nodesById: {
+      [nodeAId]: createWindowNode({ id: nodeAId, windowId: windowAId }),
+      [nodeBId]: createWindowNode({ id: nodeBId, windowId: windowBId }),
+      [nodeCId]: createWindowNode({ id: nodeCId, windowId: windowCId }),
+      [rootNodeId]: createSplitNode({
+        axis: 'horizontal',
+        childIds: [nodeAId, nodeBId, nodeCId],
+        id: rootNodeId,
+        sizes,
+      }),
+    },
+    rootNodeId,
+    surfacesById: {
+      [surfaceA.id]: surfaceA,
+      [surfaceB.id]: surfaceB,
+      [surfaceC.id]: surfaceC,
+    },
+    windowsById: {
+      [windowAId]: createWorkbenchWindow({
+        activeSurfaceId: surfaceA.id,
+        id: windowAId,
+        surfaceIds: [surfaceA.id],
+      }),
+      [windowBId]: createWorkbenchWindow({
+        activeSurfaceId: surfaceB.id,
+        id: windowBId,
+        surfaceIds: [surfaceB.id],
+      }),
+      [windowCId]: createWorkbenchWindow({
+        activeSurfaceId: surfaceC.id,
+        id: windowCId,
+        surfaceIds: [surfaceC.id],
+      }),
+    },
+  } satisfies WorkspaceLayout
+}
 
 function splitFileFromEditor(
   layout: WorkspaceLayout,

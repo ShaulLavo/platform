@@ -428,6 +428,13 @@ export function moveWindow(
   const nodeId = findNodeIdForWindow(normalizedLayout, windowId)
   if (!nodeId) return normalizedLayout
 
+  const sameSplitLayout = moveNodeWithinSameSplit(normalizedLayout, nodeId, destination)
+  if (sameSplitLayout) {
+    return normalizeWorkspaceLayout(
+      recordStickyPlacementsForWindow(sameSplitLayout, window, destination),
+    )
+  }
+
   const detached = detachNode(normalizedLayout, nodeId)
   if (!detached) return normalizedLayout
 
@@ -1930,6 +1937,75 @@ function insertNodeAroundTarget(
   return wrapTargetWithSplit(layout, node, targetNode, edge)
 }
 
+function moveNodeWithinSameSplit(
+  layout: WorkspaceLayout,
+  nodeId: LayoutNodeId,
+  destination: SnapDestination,
+) {
+  if (destination.kind !== 'window-edge') return null
+
+  const targetNodeId = findNodeIdForWindow(layout, destination.windowId)
+  if (!targetNodeId) return null
+
+  const sourceParentNodeId = findParentNodeId(layout, nodeId)
+  const targetParentNodeId = findParentNodeId(layout, targetNodeId)
+  if (!sourceParentNodeId) return null
+  if (sourceParentNodeId !== targetParentNodeId) return null
+
+  const split = layout.nodesById[sourceParentNodeId]
+  if (!split || split.kind !== 'split') return null
+  if (split.axis !== edgeAxis(destination.edge)) return null
+
+  return layoutWithMovedSplitChild(layout, split, nodeId, targetNodeId, destination.edge)
+}
+
+function layoutWithMovedSplitChild(
+  layout: WorkspaceLayout,
+  split: LayoutSplitNode,
+  sourceNodeId: LayoutNodeId,
+  targetNodeId: LayoutNodeId,
+  edge: LayoutEdge,
+) {
+  const sourceIndex = split.childIds.indexOf(sourceNodeId)
+  const targetIndex = split.childIds.indexOf(targetNodeId)
+  if (sourceIndex < 0) return null
+  if (targetIndex < 0) return null
+
+  const insertIndex = sameSplitMoveInsertIndex(
+    split.childIds.length,
+    sourceIndex,
+    targetIndex,
+    edge,
+  )
+  if (sourceIndex === insertIndex) return layout
+
+  const sizes = repairSplitSizes(split.sizes, split.childIds.length)
+
+  return {
+    ...layout,
+    nodesById: {
+      ...layout.nodesById,
+      [split.id]: {
+        ...split,
+        childIds: moveItem(split.childIds, sourceIndex, insertIndex),
+        sizes: moveItem(sizes, sourceIndex, insertIndex),
+      },
+    },
+  }
+}
+
+function sameSplitMoveInsertIndex(
+  childCount: number,
+  sourceIndex: number,
+  targetIndex: number,
+  edge: LayoutEdge,
+) {
+  const destinationIndex = isLeadingEdge(edge) ? targetIndex : targetIndex + 1
+  const shiftedIndex = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
+
+  return clampIndex(shiftedIndex, Math.max(0, childCount - 1))
+}
+
 function insertNodeIntoSplit(
   layout: WorkspaceLayout,
   node: LayoutNode,
@@ -2501,7 +2577,7 @@ function validReorder(window: WorkbenchWindow, fromIndex: number, toIndex: numbe
 function moveItem<TItem>(items: readonly TItem[], fromIndex: number, toIndex: number) {
   const nextItems = items.slice()
   const [item] = nextItems.splice(fromIndex, 1)
-  if (!item) return items
+  if (item === undefined) return items
 
   nextItems.splice(toIndex, 0, item)
   return nextItems

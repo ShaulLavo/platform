@@ -22,6 +22,35 @@ crossed. The tiled layout reflows to the release result, no native browser drag
 ghost or default animation appears, and no visible drop zones appear anywhere in
 the app.
 
+Proof resolver note, 2026-06-08: `dnd-proof` now uses a proof-local overlapping
+snap intent resolver instead of chopped, non-overlapping visible rectangles. Snap
+candidates keep separate `hitRect` and `previewRect` values. Root `previewRect`
+guides still occupy the full logical surface edge, but root `hitRect` intent is
+a thin rail at the real workspace perimeter plus a small outside margin, so root
+snap no longer blocks docking into tab bars. Window edges can overlap root edges
+and tab chrome, and one resolver chooses the active target by mode, priority,
+sticky previous target, then size/distance. Detached tab docking into a tab strip
+resolves and commits on release without mutating the optimistic layout while
+hovering; this keeps dnd-kit's active source mounted and prevents target-window
+content flicker. Snap edge/window movement still uses optimistic layout preview.
+During detached-tab snap preview, the proof keeps committed tab ownership stable
+and drives only window geometry from a projected preview layout. A proof-local
+`DragOverlay` with drop animation disabled gives dnd-kit a feedback element to
+move instead of the React-owned tab node; window drags render a full window frame
+inside that overlay, not a tab/header-only chip. For cross-window tab insertion, the
+proof also restores the source tab DOM node to its drag-start strip immediately
+before the release commit, because dnd-kit's optimistic sortable plugin may have
+temporarily moved that node into the target strip for animation. The proof
+intentionally renders subtle always-visible guides plus one active highlight for
+debugging; this does not change the production no-visible-drop-zone rule above.
+
+Browser regression note, 2026-06-08: `dnd-proof` now has provider-backed real
+browser tests using Playwright mouse commands through Vitest browser mode. These
+cover preview-before-release, same-tab cross-window round trip without duplicate
+tabs or React DOM corruption, right-edge reorder, tab detach, tab docking back
+into strips, window snap preview/commit, root/window edge reachability, hidden
+zone chrome, and resize-handle drag continuity.
+
 Resize correction note, 2026-06-07: resize handles must not be transform-only
 previews. Pointer movement dispatches incremental `resizeSplit` operations
 immediately, both adjacent panes reflow live, and the handle stays on the
@@ -1184,6 +1213,10 @@ Architecture:
   provider converts dnd-kit client coordinates into the surface-area local
   coordinate space before hit testing because layout geometry is local to the
   surface-area renderer.
+- The proof implementation validates the future production direction for
+  overlapping snap intent: logical hit candidates may overlap, and resolver
+  priority/hysteresis owns intent instead of mutating candidate geometry to avoid
+  overlaps.
 - Keep tab-strip sorting separate from workbench snapping until the detach
   threshold is crossed.
 - Whole-window drags and detached tab drags share the same snap-preview path.
