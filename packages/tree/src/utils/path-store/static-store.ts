@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import {
   getPreparedInputEntries,
   getPreparedInputPresortedPaths,
@@ -219,7 +221,7 @@ function findStaticChildIdBySegment(
 function requireStaticNode(state: StaticPathStoreState, nodeId: number): StaticPathStoreNode {
   const node = state.snapshot.nodes[nodeId]
   if (node == null) {
-    throw new Error(`Unknown node ID: ${String(nodeId)}`)
+    throw createTreeError(`Unknown node ID: ${String(nodeId)}`)
   }
 
   return node
@@ -458,7 +460,7 @@ function selectStaticChildIndexByVisibleIndex(
       childOffset += STATIC_CHILD_INDEX_CHUNK_SIZE
     }
 
-    throw new Error(`Visible child index ${String(visibleIndex)} is out of range`)
+    throw createTreeError(`Visible child index ${String(visibleIndex)} is out of range`)
   }
 
   let remainingIndex = visibleIndex
@@ -476,7 +478,7 @@ function selectStaticChildIndexByVisibleIndex(
     remainingIndex -= childNode.visibleSubtreeCount
   }
 
-  throw new Error(`Visible child index ${String(visibleIndex)} is out of range`)
+  throw createTreeError(`Visible child index ${String(visibleIndex)} is out of range`)
 }
 
 function selectStaticChildIndexWithinChunk(
@@ -505,7 +507,7 @@ function selectStaticChildIndexWithinChunk(
     remainingIndex -= childNode.visibleSubtreeCount
   }
 
-  throw new Error(`Visible child index ${String(visibleIndex)} is out of range`)
+  throw createTreeError(`Visible child index ${String(visibleIndex)} is out of range`)
 }
 
 function createStaticVisibleRowCursor(
@@ -576,7 +578,7 @@ function selectStaticVisibleRowWithinSubtree(
       }
     }
 
-    throw new Error(`Visible index ${String(index)} is out of range for file`)
+    throw createTreeError(`Visible index ${String(index)} is out of range for file`)
   }
 
   const currentCursor = createStaticVisibleRowCursor(state, nodeId, visibleDepth)
@@ -589,7 +591,7 @@ function selectStaticVisibleRowWithinSubtree(
     terminalNode.kind !== PATH_STORE_NODE_KIND_DIRECTORY ||
     !isStaticDirectoryExpanded(state, currentCursor.terminalNodeId)
   ) {
-    throw new Error(`Visible index ${String(index)} is out of range for collapsed directory`)
+    throw createTreeError(`Visible index ${String(index)} is out of range for collapsed directory`)
   }
 
   return selectStaticVisibleRowWithinDirectory(
@@ -818,12 +820,12 @@ export class StaticPathStore {
   public expand(path: string): void {
     const directoryNodeId = findStaticNodeId(this.#state, path)
     if (directoryNodeId == null) {
-      throw new Error(`Path does not exist: "${path}"`)
+      throw createTreeError(`Path does not exist: "${path}"`)
     }
 
     const directoryNode = requireStaticNode(this.#state, directoryNodeId)
     if (directoryNode.kind !== PATH_STORE_NODE_KIND_DIRECTORY) {
-      throw new Error(`Path is not a directory: "${path}"`)
+      throw createTreeError(`Path is not a directory: "${path}"`)
     }
 
     if (isStaticDirectoryExpanded(this.#state, directoryNodeId)) {
@@ -837,12 +839,12 @@ export class StaticPathStore {
   public collapse(path: string): void {
     const directoryNodeId = findStaticNodeId(this.#state, path)
     if (directoryNodeId == null) {
-      throw new Error(`Path does not exist: "${path}"`)
+      throw createTreeError(`Path does not exist: "${path}"`)
     }
 
     const directoryNode = requireStaticNode(this.#state, directoryNodeId)
     if (directoryNode.kind !== PATH_STORE_NODE_KIND_DIRECTORY) {
-      throw new Error(`Path is not a directory: "${path}"`)
+      throw createTreeError(`Path is not a directory: "${path}"`)
     }
 
     if (!isStaticDirectoryExpanded(this.#state, directoryNodeId)) {
@@ -861,12 +863,12 @@ export class StaticPathStore {
     for (const path of expandedPaths) {
       const directoryNodeId = findStaticNodeId(this.#state, path)
       if (directoryNodeId == null) {
-        throw new Error(`Path does not exist: "${path}"`)
+        throw createTreeError(`Path does not exist: "${path}"`)
       }
 
       const directoryNode = requireStaticNode(this.#state, directoryNodeId)
       if (directoryNode.kind !== PATH_STORE_NODE_KIND_DIRECTORY) {
-        throw new Error(`Path is not a directory: "${path}"`)
+        throw createTreeError(`Path is not a directory: "${path}"`)
       }
 
       setStaticDirectoryExpanded(this.#state, directoryNodeId, true)

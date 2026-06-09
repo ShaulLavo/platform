@@ -1,6 +1,7 @@
 import { chromium, firefox, webkit } from 'playwright'
 import { statSync } from 'node:fs'
 import { basename, relative, resolve, sep } from 'node:path'
+import { createBenchmarkError } from './structured-errors.mjs'
 
 const browserTypes = { chromium, firefox, webkit }
 const cacheKey = 'platform.workspace-state.v1'
@@ -140,7 +141,7 @@ async function fetchServerHealth() {
   const response = await fetch(new URL('/health', options.serverUrl), {
     headers: { Origin: new URL(options.appUrl).origin },
   })
-  if (!response.ok) throw new Error(`Server health failed: ${response.status}`)
+  if (!response.ok) throw createBenchmarkError(`Server health failed: ${response.status}`)
 
   return response.json()
 }
@@ -248,10 +249,10 @@ async function waitForHighlightedEditor(page) {
 }
 
 async function runScrollSample(page) {
-  return page.evaluate(
+  const report = await page.evaluate(
     async ({ stepPx, steps }) => {
       const scroller = document.querySelector('.editor-virtualized')
-      if (!scroller) throw new Error('Missing .editor-virtualized')
+      if (!scroller) return { error: 'Missing .editor-virtualized' }
 
       scroller.scrollTop = 0
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
@@ -270,6 +271,9 @@ async function runScrollSample(page) {
       steps: options.steps,
     },
   )
+  if (report?.error) throw createBenchmarkError(report.error)
+
+  return report
 }
 
 function trialSample(browserName, trial, report) {

@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
 import { createEmptyWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
@@ -122,7 +124,7 @@ function normalizeAndVerifyWorkspaceLayout(
   if (report.ok) return normalizedLayout
 
   options.onInvariantViolation?.(report, normalizedLayout)
-  throw new Error(invariantErrorMessage(report))
+  throw createClientInvariantError(invariantErrorMessage(report))
 }
 
 function invariantErrorMessage(report: LayoutInvariantReport) {

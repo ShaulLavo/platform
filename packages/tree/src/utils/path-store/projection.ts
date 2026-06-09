@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import {
   collectAncestorIds,
   findNodeId,
@@ -129,7 +131,7 @@ function selectVisibleRowContextWithinDirectory(
   )
   const childId = directoryIndex.childIds[childIndex]
   if (childId == null) {
-    throw new Error(`Visible index ${String(index)} is out of range`)
+    throw createTreeError(`Visible index ${String(index)} is out of range`)
   }
 
   return selectVisibleRowContextWithinSubtree(
@@ -176,7 +178,7 @@ function selectVisibleRowContextWithinSubtree(
       }
     }
 
-    throw new Error(`Visible index ${String(index)} is out of range for file`)
+    throw createTreeError(`Visible index ${String(index)} is out of range for file`)
   }
 
   const currentCursor = createVisibleRowCursor(state, nodeId, visibleDepth)
@@ -195,7 +197,7 @@ function selectVisibleRowContextWithinSubtree(
     !isDirectoryNode(terminalNode) ||
     !isDirectoryExpanded(state, currentCursor.terminalNodeId, terminalNode)
   ) {
-    throw new Error(`Visible index ${String(index)} is out of range for collapsed directory`)
+    throw createTreeError(`Visible index ${String(index)} is out of range for collapsed directory`)
   }
 
   return selectVisibleRowContextWithinDirectory(
@@ -373,7 +375,7 @@ export function getVisibleIndexByPath(state: PathStoreState, path: string): numb
     const parentIndex = getDirectoryIndex(state, parentId)
     const childPosition = ensureChildPositions(parentIndex).get(currentNodeId)
     if (childPosition == null) {
-      throw new Error(`Child ${String(currentNodeId)} was not found in its parent index`)
+      throw createTreeError(`Child ${String(currentNodeId)} was not found in its parent index`)
     }
 
     visibleIndex += getVisibleChildPrefixCount(nodes, parentIndex, childPosition)
@@ -402,12 +404,12 @@ export function getVisibleIndexByPath(state: PathStoreState, path: string): numb
 export function expandPath(state: PathStoreState, path: string): PathStoreExpandEvent | null {
   const directoryNodeId = findNodeId(state, path)
   if (directoryNodeId == null) {
-    throw new Error(`Path does not exist: "${path}"`)
+    throw createTreeError(`Path does not exist: "${path}"`)
   }
 
   const directoryNode = requireNode(state, directoryNodeId)
   if (!isDirectoryNode(directoryNode)) {
-    throw new Error(`Path is not a directory: "${path}"`)
+    throw createTreeError(`Path is not a directory: "${path}"`)
   }
 
   if (isDirectoryExpanded(state, directoryNodeId, directoryNode)) {
@@ -427,12 +429,12 @@ export function expandPath(state: PathStoreState, path: string): PathStoreExpand
 export function collapsePath(state: PathStoreState, path: string): PathStoreCollapseEvent | null {
   const directoryNodeId = findNodeId(state, path)
   if (directoryNodeId == null) {
-    throw new Error(`Path does not exist: "${path}"`)
+    throw createTreeError(`Path does not exist: "${path}"`)
   }
 
   const directoryNode = requireNode(state, directoryNodeId)
   if (!isDirectoryNode(directoryNode)) {
-    throw new Error(`Path is not a directory: "${path}"`)
+    throw createTreeError(`Path is not a directory: "${path}"`)
   }
 
   if (!isDirectoryExpanded(state, directoryNodeId, directoryNode)) {
@@ -476,7 +478,7 @@ function selectVisibleRowWithinDirectory(
     return selectVisibleRowWithinSubtree(state, childId, localVisibleIndex, parentVisibleDepth + 1)
   }
 
-  throw new Error(`Visible index ${String(index)} is out of range`)
+  throw createTreeError(`Visible index ${String(index)} is out of range`)
 }
 
 function selectVisibleRowWithinSubtree(
@@ -495,7 +497,7 @@ function selectVisibleRowWithinSubtree(
       }
     }
 
-    throw new Error(`Visible index ${String(index)} is out of range for file`)
+    throw createTreeError(`Visible index ${String(index)} is out of range for file`)
   }
 
   const currentCursor = createVisibleRowCursor(state, nodeId, visibleDepth)
@@ -508,7 +510,7 @@ function selectVisibleRowWithinSubtree(
     !isDirectoryNode(terminalNode) ||
     !isDirectoryExpanded(state, currentCursor.terminalNodeId, terminalNode)
   ) {
-    throw new Error(`Visible index ${String(index)} is out of range for collapsed directory`)
+    throw createTreeError(`Visible index ${String(index)} is out of range for collapsed directory`)
   }
 
   return selectVisibleRowWithinDirectory(
@@ -597,7 +599,7 @@ function getNextVisibleRowCursor(
     const parentIndex = getDirectoryIndex(state, parentId)
     const siblingIndex = ensureChildPositions(parentIndex).get(currentNodeId) ?? -1
     if (siblingIndex < 0) {
-      throw new Error(`Child ${String(currentNodeId)} was not found in its parent index`)
+      throw createTreeError(`Child ${String(currentNodeId)} was not found in its parent index`)
     }
 
     const nextSiblingId = parentIndex.childIds[siblingIndex + 1] ?? null

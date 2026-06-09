@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import {
   getPreparedInputEntries,
   getPreparedInputPresortedPaths,
@@ -123,7 +125,7 @@ function initializeOpenVisibleCounts(state: PathStoreState): void {
 
     const currentIndex = directories.get(nodeId)
     if (currentIndex == null) {
-      throw new Error(`Unknown directory child index for node ${String(nodeId)}`)
+      throw createTreeError(`Unknown directory child index for node ${String(nodeId)}`)
     }
 
     const childIds = currentIndex.childIds
@@ -483,7 +485,7 @@ export class PathStore {
     withBenchmarkPhase(this.#state.instrumentation, 'store.markDirectoryUnloaded', () => {
       const directoryNodeId = this.requireDirectoryNodeId(path)
       if (getDirectoryIndex(this.#state, directoryNodeId).childIds.length > 0) {
-        throw new Error(`Cannot mark a directory with known children as unloaded: "${path}"`)
+        throw createTreeError(`Cannot mark a directory with known children as unloaded: "${path}"`)
       }
 
       const previousVisibleCount = getVisibleCount(this.#state)
@@ -668,11 +670,11 @@ export class PathStore {
   public cleanup(options: PathStoreCleanupOptions = {}): PathStoreCleanupResult {
     return withBenchmarkPhase(this.#state.instrumentation, 'store.cleanup', () => {
       if (this.#state.transactionStack.length > 0) {
-        throw new Error('Cleanup cannot run during an open batch or transaction.')
+        throw createTreeError('Cleanup cannot run during an open batch or transaction.')
       }
 
       if (hasActiveCleanupBlockingLoads(this.#state)) {
-        throw new Error('Cleanup cannot run while directory loads are active.')
+        throw createTreeError('Cleanup cannot run while directory loads are active.')
       }
 
       const previousVisibleCount = getVisibleCount(this.#state)
@@ -887,12 +889,12 @@ export class PathStore {
   private requireDirectoryNodeId(path: string): number {
     const directoryNodeId = findNodeId(this.#state, path)
     if (directoryNodeId == null) {
-      throw new Error(`Path does not exist: "${path}"`)
+      throw createTreeError(`Path does not exist: "${path}"`)
     }
 
     const directoryNode = requireNode(this.#state, directoryNodeId)
     if (!isDirectoryNode(directoryNode)) {
-      throw new Error(`Path is not a directory: "${path}"`)
+      throw createTreeError(`Path is not a directory: "${path}"`)
     }
 
     return directoryNodeId
@@ -902,7 +904,7 @@ export class PathStore {
     try {
       const directoryNode = requireNode(this.#state, directoryNodeId)
       if (!isDirectoryNode(directoryNode)) {
-        throw new Error(`Node is not a directory: ${String(directoryNodeId)}`)
+        throw createTreeError(`Node is not a directory: ${String(directoryNodeId)}`)
       }
 
       return directoryNodeId
@@ -955,7 +957,7 @@ function assertOperationTargetsDirectory(
     case 'add':
     case 'remove':
       if (!operation.path.startsWith(directoryPath) || operation.path === directoryPath) {
-        throw new Error(
+        throw createTreeError(
           `Child patch operation must stay within ${directoryPath}: "${operation.path}"`,
         )
       }
@@ -967,7 +969,7 @@ function assertOperationTargetsDirectory(
         operation.from === directoryPath ||
         operation.to === directoryPath
       ) {
-        throw new Error(
+        throw createTreeError(
           `Child patch move must stay within ${directoryPath}: "${operation.from}" -> "${operation.to}"`,
         )
       }

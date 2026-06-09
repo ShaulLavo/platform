@@ -151,9 +151,10 @@ describe.sequential('dnd proof browser behavior', () => {
 
     const sourceStrip = firstMultiTabStrip()
     const sourceId = tabIdsInStrip(sourceStrip)[0]
-    const targetStrip = tabStripNotContaining(sourceId ?? '')
-    const targetStripId = proofTabStripId(targetStrip)
     if (!sourceId) throw new Error('Missing source tab id')
+
+    const targetStrip = tabStripNotContaining(sourceId)
+    const targetStripId = proofTabStripId(targetStrip)
 
     await nativeDragTabToStripDropZone(sourceId, targetStrip, { release: false })
 
@@ -163,6 +164,39 @@ describe.sequential('dnd proof browser behavior', () => {
     })
 
     await commands.proofMouseUp()
+    await settleProofDrag()
+  })
+
+  it('previews a detached tab from the target tab bar dock band before release', async () => {
+    renderProof()
+
+    await waitForProof()
+    await waitForSettledProofGeometry()
+
+    const sourceStrip = tabStripInWindow(bottommostWindowRegion())
+    const sourceId = tabIdsInStrip(sourceStrip)[0]
+    if (!sourceId) throw new Error('Missing bottom-window source tab id')
+
+    const targetStrip = tabStripNotContaining(sourceId)
+    const targetStripId = proofTabStripId(targetStrip)
+    const targetWindow = proofWindowContainingStrip(targetStrip)
+    const targetPoint = tabBarDockPointForWindow(targetWindow)
+    const source = await settledVisibleTabSource(sourceId)
+    const sourcePoint = tabPointFromRatio(source.tab, source.point)
+
+    startPointerDrag(source.tab, sourcePoint)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo({ x: sourcePoint.x, y: sourcePoint.y - 70 })
+    await nextFrame()
+    movePointerTo(targetPoint)
+
+    await vi.waitFor(() => {
+      expect(tabIdsInStrip(tabStripWithId(targetStripId))).toContain(sourceId)
+      expectValidProofTabState()
+    })
+
+    finishPointerDrag(targetPoint)
     await settleProofDrag()
   })
 
@@ -1267,6 +1301,22 @@ function tabStripInWindow(windowElement: HTMLElement) {
   if (!strip) throw new Error('Missing proof tab strip in window')
 
   return strip
+}
+
+function proofWindowContainingStrip(strip: HTMLElement) {
+  const windowElement = strip.closest<HTMLElement>('[data-proof-window-id]')
+  if (!windowElement) throw new Error('Missing proof window for tab strip')
+
+  return windowElement
+}
+
+function tabBarDockPointForWindow(windowElement: HTMLElement) {
+  const stripRect = tabStripInWindow(windowElement).getBoundingClientRect()
+
+  return {
+    x: stripRect.left + stripRect.width / 2,
+    y: stripRect.bottom + 6,
+  }
 }
 
 function bodySortPointsForWindow(windowElement: HTMLElement) {

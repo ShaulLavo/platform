@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import {
   applyChildAggregateDelta,
   createDirectoryChildIndex,
@@ -69,7 +71,7 @@ export function addPath(state: PathStoreState, path: string): PathStoreAddEvent 
   if (preparedPath.isDirectory) {
     const directoryNode = requireNode(state, directoryId)
     if (hasNodeFlag(directoryNode, PATH_STORE_NODE_FLAG_EXPLICIT)) {
-      throw new Error(`Path already exists: "${path}"`)
+      throw createTreeError(`Path already exists: "${path}"`)
     }
 
     addNodeFlag(directoryNode, PATH_STORE_NODE_FLAG_EXPLICIT)
@@ -100,12 +102,12 @@ export function removePath(
 ): PathStoreRemoveEvent {
   const nodeId = findNodeId(state, path)
   if (nodeId == null) {
-    throw new Error(`Path does not exist: "${path}"`)
+    throw createTreeError(`Path does not exist: "${path}"`)
   }
 
   const node = requireNode(state, nodeId)
   if (hasNodeFlag(node, PATH_STORE_NODE_FLAG_ROOT)) {
-    throw new Error('The root node cannot be removed')
+    throw createTreeError('The root node cannot be removed')
   }
 
   if (
@@ -113,7 +115,7 @@ export function removePath(
     getDirectoryIndex(state, nodeId).childIds.length > 0 &&
     options.recursive !== true
   ) {
-    throw new Error(`Cannot remove a non-empty directory without recursive: "${path}"`)
+    throw createTreeError(`Cannot remove a non-empty directory without recursive: "${path}"`)
   }
 
   const parentId = node.parentId
@@ -141,12 +143,12 @@ export function movePath(
 ): PathStoreMoveEvent | null {
   const sourceNodeId = findNodeId(state, fromPath)
   if (sourceNodeId == null) {
-    throw new Error(`Source path does not exist: "${fromPath}"`)
+    throw createTreeError(`Source path does not exist: "${fromPath}"`)
   }
 
   const sourceNode = requireNode(state, sourceNodeId)
   if (hasNodeFlag(sourceNode, PATH_STORE_NODE_FLAG_ROOT)) {
-    throw new Error('The root node cannot be moved')
+    throw createTreeError('The root node cannot be moved')
   }
 
   const collision = options.collision ?? 'error'
@@ -167,7 +169,7 @@ export function movePath(
   }
 
   if (isDirectoryNode(sourceNode) && isAncestor(state, sourceNodeId, moveTarget.parentId)) {
-    throw new Error('Cannot move a directory into one of its descendants')
+    throw createTreeError('Cannot move a directory into one of its descendants')
   }
 
   const siblingCollisionId = ensureChildIdByNameId(
@@ -362,7 +364,7 @@ export function findNodeIdBySegments(
 export function getDirectoryIndex(state: PathStoreState, directoryId: NodeId): DirectoryChildIndex {
   const directoryIndex = state.snapshot.directories.get(directoryId)
   if (directoryIndex === undefined) {
-    throw new Error(`Unknown directory child index for node ${String(directoryId)}`)
+    throw createTreeError(`Unknown directory child index for node ${String(directoryId)}`)
   }
 
   return directoryIndex
@@ -371,7 +373,7 @@ export function getDirectoryIndex(state: PathStoreState, directoryId: NodeId): D
 export function requireNode(state: PathStoreState, nodeId: NodeId): PathStoreNode {
   const node = state.snapshot.nodes[nodeId]
   if (node === undefined || hasNodeFlag(node, PATH_STORE_NODE_FLAG_REMOVED)) {
-    throw new Error(`Unknown node ID: ${String(nodeId)}`)
+    throw createTreeError(`Unknown node ID: ${String(nodeId)}`)
   }
 
   return node
@@ -458,7 +460,7 @@ function ensureDirectoryChain(
     if (existingChildId !== undefined) {
       const existingChild = requireNode(state, existingChildId)
       if (!isDirectoryNode(existingChild)) {
-        throw new Error(
+        throw createTreeError(
           `Cannot create a directory that collides with an existing file: "${segment}"`,
         )
       }
@@ -502,7 +504,7 @@ function createFileNode(state: PathStoreState, parentId: NodeId, basename: strin
   const nameId = internSegment(state.snapshot.segmentTable, basename)
   const parentIndex = getDirectoryIndex(state, parentId)
   if (ensureChildIdByNameId(state.snapshot.nodes, parentIndex).has(nameId)) {
-    throw new Error(`Path already exists: "${buildPathPreview(state, parentId, basename)}"`)
+    throw createTreeError(`Path already exists: "${buildPathPreview(state, parentId, basename)}"`)
   }
 
   const parentNode = requireNode(state, parentId)
@@ -678,7 +680,7 @@ function resolveMoveTarget(
       ? state.snapshot.rootId
       : findNodeIdBySegments(state, parentSegments, true)
   if (parentId == null) {
-    throw new Error(`Destination parent does not exist: "${toPath}"`)
+    throw createTreeError(`Destination parent does not exist: "${toPath}"`)
   }
 
   return {
@@ -699,19 +701,21 @@ function handleMoveCollision(
   }
 
   if (strategy === 'error') {
-    throw new Error(`Destination already exists: "${materializeNodePath(state, collisionNodeId)}"`)
+    throw createTreeError(
+      `Destination already exists: "${materializeNodePath(state, collisionNodeId)}"`,
+    )
   }
 
   const collisionNode = requireNode(state, collisionNodeId)
   if (getNodeKind(collisionNode) !== sourceKind) {
-    throw new Error('replace collision requires the same source and destination kinds')
+    throw createTreeError('replace collision requires the same source and destination kinds')
   }
 
   if (
     isDirectoryNode(collisionNode) &&
     getDirectoryIndex(state, collisionNodeId).childIds.length > 0
   ) {
-    throw new Error('replace collision does not support non-empty directories')
+    throw createTreeError('replace collision does not support non-empty directories')
   }
 
   const collisionParentId = collisionNode.parentId

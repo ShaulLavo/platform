@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, vi } from 'vitest'
 
 import { expect, test } from '../../test/fixtures'
@@ -25,6 +26,7 @@ afterEach(() => {
 
 test('logs render errors and shows a recovery dialog', async () => {
   const { LoggingErrorBoundary } = await import('@/components/logging-error-boundary')
+  const user = userEvent.setup()
 
   renderWithProviders(
     <LoggingErrorBoundary>
@@ -34,6 +36,9 @@ test('logs render errors and shows a recovery dialog', async () => {
 
   expect(screen.getByRole('dialog', { name: 'Application error' })).toBeInTheDocument()
   expect(screen.getByText('render blew up')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Stack trace' }))
+  expect(screen.getByText(/Error stack/)).toBeInTheDocument()
+  expect(screen.getByText(/React component stack/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Reload app' })).toBeInTheDocument()
   expect(reports).toHaveLength(1)
   expect(reports[0]).toMatchObject({

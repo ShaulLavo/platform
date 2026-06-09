@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import { PathStore } from '@workspace/tree/utils/path-store/store'
 import type {
   PathStoreEvent,
@@ -569,7 +571,7 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
         const row = visibleRowByProjectionIndex.get(projectionIndex)
         const projectionPath = this.#projectionPaths[projectionIndex]
         if (row == null || projectionPath == null) {
-          throw new Error(
+          throw createTreeError(
             `Missing projection row for filtered visible index ${String(visibleIndex)}`,
           )
         }
@@ -585,7 +587,7 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
       const index = boundedStart + offset
       const projectionPath = this.#projectionPaths[index]
       if (projectionPath == null) {
-        throw new Error(`Missing projection path for visible index ${String(index)}`)
+        throw createTreeError(`Missing projection path for visible index ${String(index)}`)
       }
 
       return this.#createVisibleRow(row, index, index, {
@@ -928,7 +930,7 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
       if (dropPlan.operations.length === 1) {
         const singleOperation = dropPlan.operations[0]
         if (singleOperation == null || singleOperation.type !== 'move') {
-          throw new Error('Expected a single move operation for one-item drops')
+          throw createTreeError('Expected a single move operation for one-item drops')
         }
 
         this.#store.move(singleOperation.from, singleOperation.to, {

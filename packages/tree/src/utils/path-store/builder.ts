@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import {
   appendChildReference,
   createDirectoryChildIndex,
@@ -199,7 +201,7 @@ export function getPreparedInputEntries(
   }
 
   if (!isPreparedPathArray(preparedPaths)) {
-    throw new Error('preparedInput must come from PathStore.prepareInput()')
+    throw createTreeError('preparedInput must come from PathStore.prepareInput()')
   }
 
   return preparedPaths
@@ -345,7 +347,7 @@ export class PathStoreBuilder {
         // Only catches adjacent duplicates — presorted input guarantees
         // duplicates are consecutive, so this is sufficient.
         if (previousPath === path) {
-          throw new Error(`Duplicate path: "${path}"`)
+          throw createTreeError(`Duplicate path: "${path}"`)
         }
 
         // Inline prefix comparison to avoid per-path result object
@@ -402,7 +404,7 @@ export class PathStoreBuilder {
         while (slashPos >= 0 && slashPos < endIndex) {
           const parentId = dirStack[stackTop]
           if (parentId === undefined) {
-            throw new Error('Directory stack underflow while building the path store')
+            throw createTreeError('Directory stack underflow while building the path store')
           }
 
           currentDepth++
@@ -432,7 +434,7 @@ export class PathStoreBuilder {
           if (segmentStart < endIndex) {
             const parentId = dirStack[stackTop]
             if (parentId === undefined) {
-              throw new Error(`Unable to resolve directory parent for "${path}"`)
+              throw createTreeError(`Unable to resolve directory parent for "${path}"`)
             }
 
             currentDepth++
@@ -461,14 +463,14 @@ export class PathStoreBuilder {
 
           const directoryId = dirStack[stackTop]
           if (directoryId === undefined) {
-            throw new Error(`Unable to resolve directory node for "${path}"`)
+            throw createTreeError(`Unable to resolve directory node for "${path}"`)
           }
 
           this.promoteDirectoryToExplicit(directoryId, path)
         } else {
           const parentId = dirStack[stackTop]
           if (parentId === undefined) {
-            throw new Error(`Unable to resolve file parent for "${path}"`)
+            throw createTreeError(`Unable to resolve file parent for "${path}"`)
           }
 
           const fileSeg = path.slice(segmentStart)
@@ -527,7 +529,7 @@ export class PathStoreBuilder {
 
     for (const path of paths) {
       if (previousPath === path) {
-        throw new Error(`Duplicate path: "${path}"`)
+        throw createTreeError(`Duplicate path: "${path}"`)
       }
 
       const endIndex = path.length
@@ -565,7 +567,7 @@ export class PathStoreBuilder {
       while (slashPos >= 0) {
         const parentId = dirStack[stackTop]
         if (parentId === undefined) {
-          throw new Error('Directory stack underflow while building the path store')
+          throw createTreeError('Directory stack underflow while building the path store')
         }
 
         currentDepth++
@@ -594,7 +596,7 @@ export class PathStoreBuilder {
 
       const parentId = dirStack[stackTop]
       if (parentId === undefined) {
-        throw new Error(`Unable to resolve file parent for "${path}"`)
+        throw createTreeError(`Unable to resolve file parent for "${path}"`)
       }
 
       const fileSeg = path.slice(segmentStart)
@@ -672,7 +674,7 @@ export class PathStoreBuilder {
 
     if (this.lastPreparedPath != null) {
       if (preparedPath.path === this.lastPreparedPath.path) {
-        throw new Error(`Duplicate path: "${preparedPath.path}"`)
+        throw createTreeError(`Duplicate path: "${preparedPath.path}"`)
       }
 
       if (validateOrder) {
@@ -685,7 +687,7 @@ export class PathStoreBuilder {
               )
             : compareWithSortOption(this.lastPreparedPath, preparedPath, this.options.sort)
         if (orderComparison > 0) {
-          throw new Error(
+          throw createTreeError(
             `Builder input must be sorted before appendPaths(): "${preparedPath.path}"`,
           )
         }
@@ -714,7 +716,7 @@ export class PathStoreBuilder {
     ) {
       const parentId = this.directoryStack[this.directoryStack.length - 1]
       if (parentId === undefined) {
-        throw new Error('Directory stack underflow while building the path store')
+        throw createTreeError('Directory stack underflow while building the path store')
       }
 
       const childId = validateOrder
@@ -726,7 +728,7 @@ export class PathStoreBuilder {
     if (preparedPath.isDirectory) {
       const directoryId = this.directoryStack[this.directoryStack.length - 1]
       if (directoryId === undefined) {
-        throw new Error(`Unable to resolve directory node for "${preparedPath.path}"`)
+        throw createTreeError(`Unable to resolve directory node for "${preparedPath.path}"`)
       }
 
       this.promoteDirectoryToExplicit(directoryId, preparedPath.path)
@@ -736,7 +738,7 @@ export class PathStoreBuilder {
 
     const parentId = this.directoryStack[this.directoryStack.length - 1]
     if (parentId === undefined) {
-      throw new Error(`Unable to resolve file parent for "${preparedPath.path}"`)
+      throw createTreeError(`Unable to resolve file parent for "${preparedPath.path}"`)
     }
 
     if (validateOrder) {
@@ -768,13 +770,13 @@ export class PathStoreBuilder {
     if (nameMap != null) {
       const existingChildId = nameMap.get(nameId)
       if (existingChildId !== undefined) {
-        throw new Error(`Path collides with an existing entry: "${path}"`)
+        throw createTreeError(`Path collides with an existing entry: "${path}"`)
       }
     }
 
     const parentNode = this.nodes[parentId]
     if (parentNode === undefined) {
-      throw new Error(`Unknown parent node ID: ${String(parentId)}`)
+      throw createTreeError(`Unknown parent node ID: ${String(parentId)}`)
     }
 
     const nodeId = this.nodes.length
@@ -801,7 +803,7 @@ export class PathStoreBuilder {
     const parentIndex = this.getDirectoryIndex(parentId)
     const parentNode = this.nodes[parentId]
     if (parentNode === undefined) {
-      throw new Error(`Unknown parent node ID: ${String(parentId)}`)
+      throw createTreeError(`Unknown parent node ID: ${String(parentId)}`)
     }
 
     const nodeId = this.nodes.length
@@ -828,7 +830,7 @@ export class PathStoreBuilder {
       if (existingChildId !== undefined) {
         const existingNode = this.nodes[existingChildId]
         if (existingNode != null && !isDirectoryNode(existingNode)) {
-          throw new Error(
+          throw createTreeError(
             `Path collides with an existing file while creating directory "${segment}"`,
           )
         }
@@ -839,7 +841,7 @@ export class PathStoreBuilder {
 
     const parentNode = this.nodes[parentId]
     if (parentNode === undefined) {
-      throw new Error(`Unknown parent node ID: ${String(parentId)}`)
+      throw createTreeError(`Unknown parent node ID: ${String(parentId)}`)
     }
 
     const nodeId = this.nodes.length
@@ -871,7 +873,7 @@ export class PathStoreBuilder {
     const parentIndex = this.getDirectoryIndex(parentId)
     const parentNode = this.nodes[parentId]
     if (parentNode === undefined) {
-      throw new Error(`Unknown parent node ID: ${String(parentId)}`)
+      throw createTreeError(`Unknown parent node ID: ${String(parentId)}`)
     }
 
     const nodeId = this.nodes.length
@@ -898,15 +900,15 @@ export class PathStoreBuilder {
   private promoteDirectoryToExplicit(directoryId: NodeId, path: string): void {
     const directoryNode = this.nodes[directoryId]
     if (directoryNode === undefined) {
-      throw new Error(`Unknown directory node ID: ${String(directoryId)}`)
+      throw createTreeError(`Unknown directory node ID: ${String(directoryId)}`)
     }
 
     if (!isDirectoryNode(directoryNode)) {
-      throw new Error(`Path is not a directory: "${path}"`)
+      throw createTreeError(`Path is not a directory: "${path}"`)
     }
 
     if (hasNodeFlag(directoryNode, PATH_STORE_NODE_FLAG_EXPLICIT)) {
-      throw new Error(`Duplicate path: "${path}"`)
+      throw createTreeError(`Duplicate path: "${path}"`)
     }
 
     addNodeFlag(directoryNode, PATH_STORE_NODE_FLAG_EXPLICIT)
@@ -918,7 +920,7 @@ export class PathStoreBuilder {
       return existingIndex
     }
 
-    throw new Error(`Unknown directory child index for node ${String(directoryId)}`)
+    throw createTreeError(`Unknown directory child index for node ${String(directoryId)}`)
   }
 
   // Builds directory-child indexes from the flat node list created by the
@@ -1036,7 +1038,7 @@ export class PathStoreBuilder {
   private computeSubtreeCounts(nodeId: NodeId): number {
     const node = this.nodes[nodeId]
     if (node === undefined) {
-      throw new Error(`Unknown node ID: ${String(nodeId)}`)
+      throw createTreeError(`Unknown node ID: ${String(nodeId)}`)
     }
 
     if (!isDirectoryNode(node)) {

@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import type { SegmentId, SegmentTable } from './internal-types'
 import { createSegmentSortKey } from './sort'
 
@@ -31,7 +33,7 @@ export function internSegment(segmentTable: SegmentTable, value: string): Segmen
 export function getSegmentValue(segmentTable: SegmentTable, segmentId: SegmentId): string {
   const value = segmentTable.valueById[segmentId]
   if (value === undefined) {
-    throw new Error(`Unknown segment ID: ${String(segmentId)}`)
+    throw createTreeError(`Unknown segment ID: ${String(segmentId)}`)
   }
 
   return value

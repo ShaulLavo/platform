@@ -39,6 +39,18 @@ export function reactErrorDisplayMessage(error: unknown) {
   return 'React render failed.'
 }
 
+export function reactErrorStackTrace(
+  error: unknown,
+  errorInfo?: Pick<ErrorInfo, 'componentStack'> | null,
+) {
+  const stack = errorStackText(error)
+  const componentStack = errorInfo?.componentStack?.trim()
+
+  return [stackSection('Error stack', stack), stackSection('React component stack', componentStack)]
+    .filter((section): section is string => Boolean(section))
+    .join('\n\n')
+}
+
 function alreadyReported(error: unknown) {
   if (error !== null && typeof error === 'object') return alreadyReportedObject(error)
 
@@ -90,4 +102,18 @@ function reactErrorOperation(kind: ReactErrorKind) {
   if (kind === 'recoverable') return 'react.recoverable_error'
 
   return 'react.uncaught_error'
+}
+
+function errorStackText(error: unknown) {
+  if (error instanceof Error && error.stack) return error.stack.trim()
+  if (error instanceof Error) return error.message.trim()
+  if (typeof error === 'string') return error.trim()
+
+  return ''
+}
+
+function stackSection(title: string, stack: string | undefined) {
+  if (!stack) return ''
+
+  return `${title}\n${stack}`
 }

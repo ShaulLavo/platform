@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import { getNodeDepth, hasNodeFlag, isDirectoryNode } from './internal-types'
 import type { DirectoryLoadInfo, NodeId, PathStoreNode, PathStoreSnapshot } from './internal-types'
 import { PATH_STORE_NODE_FLAG_ROOT } from './internal-types'
@@ -81,7 +83,7 @@ export function resolveInitialExpansion(
   }
 
   if (!Number.isInteger(initialExpansion) || initialExpansion < 0) {
-    throw new Error(
+    throw createTreeError(
       `initialExpansion must be "open", "closed", or a non-negative integer depth. Received: ${String(
         initialExpansion,
       )}`,

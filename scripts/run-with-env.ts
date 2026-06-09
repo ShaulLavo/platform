@@ -2,24 +2,31 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { observabilityEnabledFromEnv } from '../packages/observability/src/env'
 import { observabilityEnvFromFile } from '../packages/observability/src/env-file'
+import { createScriptError } from './structured-errors'
 
 const root = path.resolve(import.meta.dirname, '..')
 const cwd = process.cwd()
 const env = observabilityEnvFromFile(path.join(root, '.env'), Bun.env)
-const commandArgs = applyEnvAssignments(Bun.argv.slice(2))
-if (commandArgs.length === 0) throw new Error('Missing command.')
 
-const output = observabilityEnabledFromEnv(env) ? 'inherit' : 'ignore'
-const child = Bun.spawn({
-  cmd: commandForArgs(commandArgs),
-  cwd,
-  env,
-  stderr: output,
-  stdout: output,
-})
+try {
+  const commandArgs = applyEnvAssignments(Bun.argv.slice(2))
+  if (commandArgs.length === 0) throw createScriptError('Missing command.')
 
-installSignalHandlers(child)
-process.exit(await child.exited)
+  const output = observabilityEnabledFromEnv(env) ? 'inherit' : 'ignore'
+  const child = Bun.spawn({
+    cmd: commandForArgs(commandArgs),
+    cwd,
+    env,
+    stderr: output,
+    stdout: output,
+  })
+
+  installSignalHandlers(child)
+  process.exit(await child.exited)
+} catch (error) {
+  console.error(errorMessage(error))
+  process.exit(1)
+}
 
 function applyEnvAssignments(args: string[]) {
   const remaining = [...args]
@@ -44,7 +51,7 @@ function applyEnvAssignment(assignment: string) {
 
 function commandForArgs(args: readonly string[]) {
   const [command, ...rest] = args
-  if (!command) throw new Error('Missing command.')
+  if (!command) throw createScriptError('Missing command.')
   if (command.startsWith('-')) return [process.execPath, ...args]
 
   return [resolveCommand(command), ...rest]
@@ -69,4 +76,10 @@ function installSignalHandlers(child: ReturnType<typeof Bun.spawn>) {
 
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return String(error)
 }

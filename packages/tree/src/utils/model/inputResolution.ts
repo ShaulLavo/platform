@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import { PathStore } from '@workspace/tree/utils/path-store/store'
 
 import type { FileTreePreparedInput } from '@workspace/tree/utils/preparedInput'
@@ -37,7 +39,7 @@ export function resolveFileTreeInput(
   const { paths, preparedInput } = options
   if (preparedInput == null) {
     if (paths == null) {
-      throw new Error('FileTree requires paths or preparedInput')
+      throw createTreeError('FileTree requires paths or preparedInput')
     }
 
     return {
@@ -56,7 +58,9 @@ export function resolveFileTreeInput(
 
   const comparablePaths = PathStore.preparePaths(paths, sort == null ? {} : { sort })
   if (!haveMatchingPaths(comparablePaths, preparedPaths)) {
-    throw new Error(`FileTree ${context} received paths and preparedInput for different path lists`)
+    throw createTreeError(
+      `FileTree ${context} received paths and preparedInput for different path lists`,
+    )
   }
 
   return {

@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
 import type {
   SurfaceId,
@@ -66,16 +68,17 @@ function validateDiagram(
   groups: readonly DiagramGroup[],
 ) {
   const stateCount = groups.reduce((total, group) => total + group.states.length, 0)
-  if (diagram.elements.length <= 200) throw new Error('Expected generated diagram elements')
+  if (diagram.elements.length <= 200)
+    throw createClientInvariantError('Expected generated diagram elements')
   if (stateCount !== EXPECTED_STATE_COUNT) {
-    throw new Error(`Expected ${EXPECTED_STATE_COUNT} captured layout states`)
+    throw createClientInvariantError(`Expected ${EXPECTED_STATE_COUNT} captured layout states`)
   }
 }
 
 function buildDiagram(engine: Engine, groups: readonly DiagramGroup[]) {
   const builder = new DiagramBuilder()
   const mainGroup = groups[0]
-  if (!mainGroup) throw new Error('Expected main diagram group')
+  if (!mainGroup) throw createClientInvariantError('Expected main diagram group')
 
   drawHeader(engine, builder)
   drawMainStates(engine, builder, mainGroup.states)

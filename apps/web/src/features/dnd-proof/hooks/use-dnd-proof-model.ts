@@ -58,8 +58,8 @@ const TAB_MOUSE_DETACH_THRESHOLD_PX = 15
 const TAB_TOUCH_DETACH_THRESHOLD_PX = 50
 const DIRECT_TAB_TARGET_PRIORITY = 110
 const WINDOW_BODY_TAB_TARGET_PRIORITY = 100
-const STRIP_TAB_TARGET_PRIORITY = 85
-const DOCK_TAB_TARGET_PRIORITY = 92
+const STRIP_TAB_TARGET_PRIORITY = 106
+const DOCK_TAB_TARGET_PRIORITY = 108
 const WINDOW_BODY_STICKY_INFLATE_PX = 24
 const STATE_EVENT_LIMIT = 80
 
@@ -847,6 +847,7 @@ function tabTargetForDrag({
     const sourceStripRect = activeDrag?.kind === 'tab' ? activeDrag.stripRect : null
     const pointTarget = tabTargetFromHit(
       tabStripDropHitAtPoint(source, eventPoint, { sourceStripRect }),
+      'app',
     )
     if (pointTarget) {
       stopTabStripBodyAutoscroll()
@@ -1060,11 +1061,14 @@ function sourceForDragEvent(
   return fallback
 }
 
-function tabTargetFromHit(hit: DndProofTabStripHit | null): DndProofTabTarget | null {
+function tabTargetFromHit(
+  hit: DndProofTabStripHit | null,
+  previewKind: DndProofTabTarget['previewKind'] = 'dnd-kit',
+): DndProofTabTarget | null {
   if (!hit) return null
 
   return {
-    previewKind: 'dnd-kit',
+    previewKind,
     priority: tabTargetPriority(hit.strength),
     target: hit.target,
   }

@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import type {
   LayoutOperation,
   Surface,
@@ -60,7 +62,7 @@ export function buildDiagramGroups(engine: Engine): readonly DiagramGroup[] {
 export function previewState(groups: readonly DiagramGroup[]): DiagramState {
   const main = groups[0]
   const state = main?.states.at(-1)
-  if (!state) throw new Error('Expected a main-evolution state to preview')
+  if (!state) throw createClientInvariantError('Expected a main-evolution state to preview')
 
   return state
 }
@@ -363,7 +365,7 @@ function clickRailSurface(
   const item = engine.rail
     .selectWorkbenchRailSurfaceItems(layout)
     .find((candidate) => candidate.surface.id === surfaceId)
-  if (!item) throw new Error(`Expected rail item for ${surfaceId}`)
+  if (!item) throw createClientInvariantError(`Expected rail item for ${surfaceId}`)
 
   return engine.operations.applyLayoutOperation(layout, engine.rail.railItemOperation(layout, item))
 }
@@ -414,16 +416,17 @@ function resizeSurfaceShare(
 ): WorkspaceLayout {
   const windowId = mustFindWindowId(engine, layout, surfaceId)
   const nodeId = engine.normalize.findNodeIdForWindow(layout, windowId)
-  if (!nodeId) throw new Error(`Expected node for ${surfaceId}`)
+  if (!nodeId) throw createClientInvariantError(`Expected node for ${surfaceId}`)
 
   const parentNodeId = engine.normalize.findParentNodeId(layout, nodeId)
-  if (!parentNodeId) throw new Error(`Expected parent split for ${surfaceId}`)
+  if (!parentNodeId) throw createClientInvariantError(`Expected parent split for ${surfaceId}`)
 
   const split = layout.nodesById[parentNodeId]
-  if (split?.kind !== 'split') throw new Error(`Expected split parent for ${surfaceId}`)
+  if (split?.kind !== 'split')
+    throw createClientInvariantError(`Expected split parent for ${surfaceId}`)
 
   const nodeIndex = split.childIds.indexOf(nodeId)
-  if (nodeIndex < 0) throw new Error(`Expected split child for ${surfaceId}`)
+  if (nodeIndex < 0) throw createClientInvariantError(`Expected split child for ${surfaceId}`)
 
   return engine.operations.applyLayoutOperation(layout, {
     deltaPx: resizeDeltaForChildIndex(nodeIndex, amountPx),
@@ -469,7 +472,7 @@ function mustFindWindowId(engine: Engine, layout: WorkspaceLayout, surfaceId: Su
   const windowId = engine.normalize.findWindowIdContainingSurface(layout, surfaceId)
   if (windowId) return windowId
 
-  throw new Error(`Expected ${surfaceId} to be visible`)
+  throw createClientInvariantError(`Expected ${surfaceId} to be visible`)
 }
 
 function captureState(
@@ -479,7 +482,7 @@ function captureState(
   transition: string,
 ): DiagramState {
   if (!engine.selectors.selectMaterializedLayoutTree(layout)) {
-    throw new Error(`Expected materialized layout tree for ${title}`)
+    throw createClientInvariantError(`Expected materialized layout tree for ${title}`)
   }
 
   return { layout, title, transition }

@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import {
   detectPlatform,
   normalizeRegisterableHotkey,
@@ -166,7 +168,7 @@ function windowManagementBinding(
 ): DefaultBindingSpec {
   const command = workspaceCommandIdForWindowManagementCommand(commandId)
   if (!command) {
-    throw new Error(`Missing workspace command for ${commandId}`)
+    throw createClientInvariantError(`Missing workspace command for ${commandId}`)
   }
 
   return workspaceBinding(hotkey, command, {

@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "@typescript/native-preview": "latest",
+    "evlog": "^2.17.0",
     "jscpd": "^4.2.4",
     "knip": "^6.16.0",
     "lefthook": "^2.1.9",

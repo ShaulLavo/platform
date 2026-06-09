@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import type { DirectoryChildIndex, NodeId, PathStoreNode } from './internal-types'
 import type { SegmentId } from './internal-types'
 
@@ -173,7 +175,7 @@ export function selectChildIndexByVisibleIndex(
       childIndex += PATH_STORE_CHILD_INDEX_CHUNK_SIZE
     }
 
-    throw new Error(`Visible child index ${String(visibleIndex)} is out of range`)
+    throw createTreeError(`Visible child index ${String(visibleIndex)} is out of range`)
   }
 
   let remainingIndex = visibleIndex
@@ -199,7 +201,7 @@ export function selectChildIndexByVisibleIndex(
     remainingIndex -= childNode.visibleSubtreeCount
   }
 
-  throw new Error(`Visible child index ${String(visibleIndex)} is out of range`)
+  throw createTreeError(`Visible child index ${String(visibleIndex)} is out of range`)
 }
 
 // Returns the number of visible rows contributed by siblings before a child.
@@ -298,5 +300,5 @@ function selectChildIndexWithinChunk(
     remainingIndex -= childNode.visibleSubtreeCount
   }
 
-  throw new Error(`Visible child index ${String(visibleIndex)} is out of range`)
+  throw createTreeError(`Visible child index ${String(visibleIndex)} is out of range`)
 }

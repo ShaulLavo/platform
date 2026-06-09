@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import {
   layoutNodeId,
   workbenchWindowId,
@@ -1162,7 +1164,7 @@ function allocatedRecipeNodeId(usedNodeIds: ReadonlySet<LayoutNodeId>, key: stri
     if (!usedNodeIds.has(candidate)) return candidate
   }
 
-  throw new Error(`Unable to allocate recipe node id for ${key}`)
+  throw createClientInvariantError(`Unable to allocate recipe node id for ${key}`)
 }
 
 function visibleRecipeBottomWindowId(layout: WorkspaceLayout): WindowId | null {
@@ -2647,5 +2649,5 @@ function uniqueId<TId extends string>(
     if (available(candidate)) return candidate
   }
 
-  throw new Error(`Unable to allocate layout id for ${key}`)
+  throw createClientInvariantError(`Unable to allocate layout id for ${key}`)
 }

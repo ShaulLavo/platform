@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import { withBenchmarkPhase } from './internal/benchmarkInstrumentation'
 import type {
   PathStoreAddEvent,
@@ -303,7 +305,7 @@ function finishTransaction(
 ): void {
   const poppedFrame = state.transactionStack.pop()
   if (poppedFrame !== frame) {
-    throw new Error('Transaction stack underflow')
+    throw createTreeError('Transaction stack underflow')
   }
 
   if (!emit) {

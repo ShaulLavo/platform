@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import { diffDocumentLabel, parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 
@@ -150,7 +152,7 @@ export function createSurfaceRegistry(descriptors: readonly SurfaceDescriptor[])
 
   for (const descriptor of descriptors) {
     if (registry.has(descriptor.type)) {
-      throw new Error(`Duplicate surface descriptor: ${descriptor.type}`)
+      throw createClientInvariantError(`Duplicate surface descriptor: ${descriptor.type}`)
     }
 
     registry.set(descriptor.type, descriptor)

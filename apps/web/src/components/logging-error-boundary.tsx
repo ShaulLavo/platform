@@ -1,4 +1,10 @@
 import { ArrowsClockwiseIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@workspace/ui/components/accordion'
 import { Button } from '@workspace/ui/components/button'
 import {
   Dialog,
@@ -13,6 +19,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import {
   reactErrorDisplayMessage,
   reactErrorDisplayName,
+  reactErrorStackTrace,
   reportReactError,
 } from '@/lib/react-error-reporting'
 
@@ -22,6 +29,7 @@ type LoggingErrorBoundaryProps = {
 
 type LoggingErrorBoundaryState = {
   error: unknown | null
+  errorInfo: Pick<ErrorInfo, 'componentStack'> | null
 }
 
 export class LoggingErrorBoundary extends Component<
@@ -30,13 +38,15 @@ export class LoggingErrorBoundary extends Component<
 > {
   state: LoggingErrorBoundaryState = {
     error: null,
+    errorInfo: null,
   }
 
   static getDerivedStateFromError(error: unknown): LoggingErrorBoundaryState {
-    return { error }
+    return { error, errorInfo: null }
   }
 
   componentDidCatch(error: unknown, errorInfo: ErrorInfo): void {
+    this.setState({ errorInfo })
     reportReactError({ error, errorInfo, kind: 'boundary' })
   }
 
@@ -49,6 +59,7 @@ export class LoggingErrorBoundary extends Component<
   private renderErrorDialog() {
     const errorName = reactErrorDisplayName(this.state.error)
     const errorMessage = reactErrorDisplayMessage(this.state.error)
+    const stackTrace = reactErrorStackTrace(this.state.error, this.state.errorInfo)
 
     return (
       <Dialog open>
@@ -82,6 +93,16 @@ export class LoggingErrorBoundary extends Component<
             <p className='text-muted-foreground text-xs/relaxed'>
               Reload the app after the underlying issue is fixed.
             </p>
+            <Accordion className='border-border border' keepMounted>
+              <AccordionItem value='stack-trace'>
+                <AccordionTrigger className='px-3'>Stack trace</AccordionTrigger>
+                <AccordionContent className='px-3'>
+                  <pre className='bg-muted/30 text-muted-foreground border-border max-h-64 overflow-auto border p-2 font-mono text-[11px]/relaxed whitespace-pre-wrap'>
+                    {stackTrace || 'No stack trace available.'}
+                  </pre>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
           <DialogFooter className='border-border bg-muted/20 border-t px-4 py-3'>
             <Button onClick={reloadPage}>

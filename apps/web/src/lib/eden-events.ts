@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import { clientErrors, createRpcError } from './structured-errors'
 
 export type EdenSseEvent = {
@@ -20,7 +22,7 @@ export function unwrapEdenResponse<T>(
 ): T {
   if (response.error) throw createRpcError(response.error)
   if (options.requireData && response.data == null)
-    throw createRpcError(new Error(options.emptyMessage ?? 'server returned an empty response'))
+    throw createClientInvariantError(options.emptyMessage ?? 'server returned an empty response')
 
   const data = options.normalizeSse ? normalizeEdenSseData(response.data) : response.data
 

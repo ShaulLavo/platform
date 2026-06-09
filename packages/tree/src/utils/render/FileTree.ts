@@ -1,3 +1,5 @@
+import { createTreeError } from '../structured-errors'
+
 import { h } from 'preact'
 import { renderToString } from 'preact-render-to-string'
 
@@ -658,7 +660,7 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
 
     const shadowRoot = host.shadowRoot
     if (shadowRoot == null) {
-      throw new Error('FileTree requires a shadow root')
+      throw createTreeError('FileTree requires a shadow root')
     }
 
     const wrapperCandidates = Array.from(shadowRoot.children).filter(

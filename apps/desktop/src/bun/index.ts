@@ -1,3 +1,5 @@
+import { createDesktopError } from './structured-errors'
+
 import { existsSync, readdirSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
@@ -213,7 +215,7 @@ async function waitForHttp(url: string) {
     await Bun.sleep(250)
   }
 
-  throw new Error(`Timed out waiting for ${url}`)
+  throw createDesktopError(`Timed out waiting for ${url}`)
 }
 
 async function isHttpReady(url: string) {
@@ -238,7 +240,7 @@ async function releasePlatformPort(host: string, port: number, label: string) {
 
   const processes = await platformProcessesOnPort(port)
   if (processes.length === 0) {
-    throw new Error(
+    throw createDesktopError(
       `The desktop ${label} port ${host}:${port} is already in use by a non-platform process.`,
     )
   }
@@ -259,7 +261,7 @@ async function releasePlatformPort(host: string, port: number, label: string) {
 
   if (await waitForPortRelease(host, port, 2_500)) return
 
-  throw new Error(
+  throw createDesktopError(
     `The desktop ${label} port ${host}:${port} did not clear after stopping old platform processes.`,
   )
 }
@@ -465,7 +467,7 @@ function resolvePlatformRoot() {
     if (root) return root
   }
 
-  throw new Error('Could not locate platform repository root.')
+  throw createDesktopError('Could not locate platform repository root.')
 }
 
 function findPlatformRoot(start: string) {

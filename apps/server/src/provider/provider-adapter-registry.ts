@@ -1,3 +1,5 @@
+import { createInternalError } from '../observability/structured-errors'
+
 import {
   providerListResultSchema,
   type ProviderInstanceId,
@@ -79,7 +81,7 @@ export class ProviderAdapterRegistry {
 
   getByInstance(providerInstanceId: ProviderInstanceId) {
     const adapter = this.adapter(providerInstanceId)
-    if (!adapter) throw new Error(`Provider instance not found: ${providerInstanceId}`)
+    if (!adapter) throw createInternalError(`Provider instance not found: ${providerInstanceId}`)
 
     return adapter
   }

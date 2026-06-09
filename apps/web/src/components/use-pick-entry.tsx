@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import { FilePickerDialog, type FilePickerMode } from '@/components/file-picker-dialog'
 import { errorMessage } from '@/lib/file-server'
 import { isDirectoryEntry, isFileEntry, type PickedFsEntry } from '@/lib/file-system-types'
@@ -173,7 +175,9 @@ function assertEntryMatchesMode(entry: PickedFsEntry, mode: FilePickerMode) {
   if (mode === 'folder' && isDirectoryEntry(entry)) return
   if (mode === 'file' && isFileEntry(entry)) return
 
-  throw new Error(mode === 'folder' ? 'Picked path is not a folder.' : 'Picked path is not a file.')
+  throw createClientInvariantError(
+    mode === 'folder' ? 'Picked path is not a folder.' : 'Picked path is not a file.',
+  )
 }
 
 function elapsedMs(startedAt: number) {
