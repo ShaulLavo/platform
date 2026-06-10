@@ -1,10 +1,10 @@
 import { fallbackDocumentPathForSelection } from '@/features/editor/state/editor-fallback-path'
 import {
-  createEditorPaneTab,
-  type EditorPaneDropZone,
-  type EditorPaneSplitDirection,
-  type EditorPaneSplitScope,
-} from '@/features/editor/state/editor-pane-state'
+  createEditorTabRecord,
+  type EditorSnapZone,
+  type EditorSplitDirection,
+  type EditorSplitScope,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
@@ -25,10 +25,7 @@ import {
   type EditorWorkspaceStoreApi,
 } from '@/features/editor/state/editor-workspace-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
-import {
-  createDiffSurface,
-  createFileEditorSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+import { createDiffSurface, createFileEditorSurface } from '@workspace/tiling/utils/layout-builders'
 import {
   activateSurface,
   closeSurface as closeSurfaceInLayout,
@@ -36,22 +33,23 @@ import {
   openSurface,
   reorderSurface,
   tabSurface,
-} from '@/features/tiling-surface-manager/utils/layout-operations'
-import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/utils/layout-normalize'
+} from '@workspace/tiling/utils/layout-operations'
+import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
 import type {
-  DropDestination,
-  DropEdge,
+  SnapDestination,
+  LayoutEdge,
   Surface,
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import {
-  editorPaneIdForWorkbenchWindow,
+  editorGroupIdForWorkbenchWindow,
   editorSurfaceSerializedState,
 } from '@/features/workbench/utils/editor-surface-layout'
+import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
+import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import { useMemo } from 'react'
 
 export type EditorCommands = {
@@ -62,10 +60,11 @@ export type EditorCommands = {
   moveTabToSplit: (
     tabId: string,
     paneId: string,
-    zone: Exclude<EditorPaneDropZone, 'center'>,
-    scope?: EditorPaneSplitScope,
+    zone: Exclude<EditorSnapZone, 'center'>,
+    scope?: EditorSplitScope,
   ) => boolean
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
+  openFileSurface: (path: string) => void
   pickRootFolder: (rootFolder: PickedFsEntry) => void
   reopenClosedEditor: () => boolean
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
@@ -74,7 +73,7 @@ export type EditorCommands = {
   selectPreviousEditor: () => boolean
   selectTab: (paneId: string, tabId: string) => void
   setActivePane: (paneId: string) => void
-  splitTab: (tabId: string, direction: EditorPaneSplitDirection) => boolean
+  splitTab: (tabId: string, direction: EditorSplitDirection) => boolean
 }
 
 export function useEditorCommands() {
@@ -110,6 +109,7 @@ export function createEditorCommands({
     moveTabToSplit: (tabId, paneId, zone, scope) =>
       moveTabToSplit(tabId, paneId, zone, scope, workspaceStore),
     openDefinition: (target) => openDefinition(target, workspaceStore, documentStore, uiStore),
+    openFileSurface: (path) => openFileBackedSurface(path, workspaceStore, documentStore),
     pickRootFolder: (rootFolder) =>
       pickRootFolder(rootFolder, workspaceStore, documentStore, uiStore),
     reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
@@ -132,12 +132,31 @@ function selectFile(
 ) {
   if (!selectedFilePath) return
 
+  openFileBackedSurface(selectedFilePath, workspaceStore, documentStore)
+}
+
+function openFileBackedSurface(
+  selectedFilePath: string,
+  workspaceStore: EditorWorkspaceStoreApi,
+  documentStore: EditorDocumentStoreApi,
+) {
   const workspace = workspaceStore.getState()
   const document = documentStore.getState()
   const workspaceLayout = openEditorPathInWorkspaceLayout(
     workspace.workspaceLayout,
     selectedFilePath,
   )
+  const nextSelection = editorWorkspaceSelectionForWorkspaceLayoutForState(
+    workspace,
+    workspaceLayout,
+  )
+
+  logSelectFileTransition({
+    nextSelection,
+    requestedPath: selectedFilePath,
+    workspace,
+    workspaceLayout,
+  })
 
   documentStore.setState({
     fallbackDocumentPath: fallbackDocumentPathForSelection(
@@ -147,8 +166,40 @@ function selectFile(
     ),
   })
   workspaceStore.setState({
-    ...editorWorkspaceSelectionForWorkspaceLayoutForState(workspace, workspaceLayout),
+    ...nextSelection,
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
+  })
+}
+
+function logSelectFileTransition({
+  nextSelection,
+  requestedPath,
+  workspace,
+  workspaceLayout,
+}: {
+  nextSelection: ReturnType<typeof editorWorkspaceSelectionForWorkspaceLayoutForState>
+  requestedPath: string
+  workspace: EditorWorkspaceStore
+  workspaceLayout: WorkspaceLayout
+}) {
+  const existingSurface = editorSurfaceForPath(workspace.workspaceLayout, requestedPath)
+  const requestedSurface = editorSurfaceForPath(workspaceLayout, requestedPath)
+
+  log.info({
+    action: 'editor.command.select_file',
+    area: 'editor',
+    existingSurfaceId: existingSurface?.id ?? null,
+    nextActiveSurfaceId: workspaceLayout.activeSurfaceId,
+    nextActiveWindowId: workspaceLayout.activeWindowId,
+    nextOpenFilePaths: nextSelection.openFilePaths,
+    nextSelectedFilePath: nextSelection.selectedFilePath,
+    previousActiveSurfaceId: workspace.workspaceLayout.activeSurfaceId,
+    previousActiveWindowId: workspace.workspaceLayout.activeWindowId,
+    previousOpenFilePaths: workspace.openFilePaths,
+    previousSelectedFilePath: workspace.selectedFilePath,
+    requestedPath,
+    requestedSurfaceActive: requestedSurface?.id === workspaceLayout.activeSurfaceId,
+    requestedSurfaceId: requestedSurface?.id ?? null,
   })
 }
 
@@ -158,7 +209,7 @@ function openDefinition(
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
 ) {
-  selectFile(definitionTarget.path, workspaceStore, documentStore)
+  openFileBackedSurface(definitionTarget.path, workspaceStore, documentStore)
   uiStore.setState({
     definitionTarget,
     statusBarSource: null,
@@ -359,7 +410,7 @@ function selectTab(
 
 function setActivePane(paneId: string, workspaceStore: EditorWorkspaceStoreApi) {
   const workspace = workspaceStore.getState()
-  const windowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  const windowId = windowIdForEditorGroupId(workspace.workspaceLayout, paneId)
   if (!windowId) return
   const activeSurfaceId = workspace.workspaceLayout.windowsById[windowId]?.activeSurfaceId
   if (!activeSurfaceId) return
@@ -374,7 +425,7 @@ function setActivePane(paneId: string, workspaceStore: EditorWorkspaceStoreApi) 
 
 function splitTab(
   tabId: string,
-  direction: EditorPaneSplitDirection,
+  direction: EditorSplitDirection,
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
@@ -402,7 +453,7 @@ function moveTabToPane(
 ) {
   const workspace = workspaceStore.getState()
   const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
-  const targetWindowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  const targetWindowId = windowIdForEditorGroupId(workspace.workspaceLayout, paneId)
   if (!location || !targetWindowId) return false
 
   workspaceStore.setState(
@@ -417,13 +468,13 @@ function moveTabToPane(
 function moveTabToSplit(
   tabId: string,
   paneId: string,
-  zone: Exclude<EditorPaneDropZone, 'center'>,
-  scope: EditorPaneSplitScope | undefined,
+  zone: Exclude<EditorSnapZone, 'center'>,
+  scope: EditorSplitScope | undefined,
   workspaceStore: EditorWorkspaceStoreApi,
 ) {
   const workspace = workspaceStore.getState()
   const location = editorSurfaceLocationForTabId(workspace.workspaceLayout, tabId)
-  const targetWindowId = windowIdForEditorPaneId(workspace.workspaceLayout, paneId)
+  const targetWindowId = windowIdForEditorGroupId(workspace.workspaceLayout, paneId)
   if (!location || !targetWindowId) return false
 
   workspaceStore.setState(
@@ -450,15 +501,36 @@ function editorWorkspaceSelectionForWorkspaceLayoutForState(
 
 function openEditorPathInWorkspaceLayout(layout: WorkspaceLayout, path: string) {
   const existingSurface = editorSurfaceForPath(layout, path)
-  if (existingSurface) return activateSurface(layout, existingSurface.id)
+  if (existingSurface) return openExistingEditorSurface(layout, existingSurface, path)
 
-  return openSurface(layout, createEditorSurfaceForPath(layout, path))
+  const surface = createEditorSurfaceForPath(layout, path)
+  const nextLayout = openSurface(layout, surface)
+
+  return closePlaceholderSurfacesInSurfaceWindow(nextLayout, surface.id)
+}
+
+function openExistingEditorSurface(
+  layout: WorkspaceLayout,
+  existingSurface: Surface,
+  path: string,
+) {
+  if (existingSurface.lifecycle === 'transient') {
+    const surface = createEditorSurfaceForPath(layout, path)
+    const nextLayout = openSurface(layout, surface)
+
+    return closePlaceholderSurfacesInSurfaceWindow(nextLayout, surface.id)
+  }
+
+  const windowId = findWindowIdContainingSurface(layout, existingSurface.id)
+  if (windowId) return activateSurface(layout, existingSurface.id, windowId)
+
+  return openSurface(layout, existingSurface)
 }
 
 function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface {
-  const tab = createEditorPaneTab(path)
+  const tab = createEditorTabRecord(path)
   const serializedState = {
-    editorPaneId: editorPaneIdForNewSurface(layout),
+    editorGroupId: editorGroupIdForNewSurface(layout),
     editorTabId: tab.id,
   }
   const surface = parseDiffDocumentId(path)
@@ -468,11 +540,80 @@ function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surf
   return { ...surface, serializedState }
 }
 
-function editorPaneIdForNewSurface(layout: WorkspaceLayout) {
-  const windowId = layout.activeWindowId
+function editorGroupIdForNewSurface(layout: WorkspaceLayout) {
+  const windowId = editorWindowIdForNewSurface(layout)
   if (!windowId) return 'workbench:root'
 
-  return editorPaneIdForWorkbenchWindow(windowId)
+  return editorGroupIdForWorkbenchWindow(windowId)
+}
+
+function editorWindowIdForNewSurface(layout: WorkspaceLayout) {
+  const activeWindowId = layout.activeWindowId
+  if (activeWindowId && windowContainsEditorSurface(layout, activeWindowId)) return activeWindowId
+
+  const activeSurfaceWindowId = activeEditorSurfaceWindowId(layout)
+  if (activeSurfaceWindowId) return activeSurfaceWindowId
+
+  return firstEditorWindowId(layout) ?? activeWindowId ?? null
+}
+
+function activeEditorSurfaceWindowId(layout: WorkspaceLayout) {
+  const activeSurfaceId = layout.activeSurfaceId
+  if (!activeSurfaceId) return null
+
+  const windowId = findWindowIdContainingSurface(layout, activeSurfaceId)
+  if (!windowId) return null
+  if (!windowContainsEditorSurface(layout, windowId)) return null
+
+  return windowId
+}
+
+function firstEditorWindowId(layout: WorkspaceLayout) {
+  for (const window of Object.values(layout.windowsById)) {
+    if (!windowContainsEditorSurface(layout, window.id)) continue
+
+    return window.id
+  }
+
+  return null
+}
+
+function windowContainsEditorSurface(layout: WorkspaceLayout, windowId: WindowId) {
+  const window = layout.windowsById[windowId]
+  if (!window) return false
+
+  return window.surfaceIds.some((surfaceId) =>
+    surfaceBelongsToEditorGroup(layout.surfacesById[surfaceId]),
+  )
+}
+
+function surfaceBelongsToEditorGroup(surface: Surface | undefined) {
+  if (!surface) return false
+  if (surface.type === 'file-editor') return true
+  if (surface.type === 'diff') return true
+
+  return surface.type === 'placeholder'
+}
+
+function closePlaceholderSurfacesInSurfaceWindow(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  const windowId = findWindowIdContainingSurface(layout, surfaceId)
+  if (!windowId) return layout
+
+  return closePlaceholderSurfacesInWindow(layout, windowId)
+}
+
+function closePlaceholderSurfacesInWindow(layout: WorkspaceLayout, windowId: WindowId) {
+  const surfaceIds = layout.windowsById[windowId]?.surfaceIds ?? []
+  let nextLayout = layout
+
+  for (const surfaceId of surfaceIds) {
+    const surface = nextLayout.surfacesById[surfaceId]
+    if (surface?.type !== 'placeholder') continue
+
+    nextLayout = closeSurfaceInLayout(nextLayout, surface.id, { force: true })
+  }
+
+  return nextLayout
 }
 
 function closeEditorPathSurfaces(layout: WorkspaceLayout, path: string) {
@@ -527,8 +668,8 @@ function replaceSurface(
     mruSurfaceIds: replaceSurfaceIds(layout.mruSurfaceIds, surfaceId, replacement.id),
     rail: {
       ...layout.rail,
-      minimizedSurfaceIds: replaceSurfaceIds(
-        layout.rail.minimizedSurfaceIds,
+      backgroundSurfaceIds: replaceSurfaceIds(
+        layout.rail.backgroundSurfaceIds,
         surfaceId,
         replacement.id,
       ),
@@ -646,20 +787,20 @@ function editorSurfacePathCounts(layout: WorkspaceLayout) {
   return counts
 }
 
-function windowIdForEditorPaneId(layout: WorkspaceLayout, paneId: string): WindowId | null {
+function windowIdForEditorGroupId(layout: WorkspaceLayout, paneId: string): WindowId | null {
   for (const window of Object.values(layout.windowsById)) {
-    if (editorPaneIdForWorkbenchWindow(window.id) === paneId) return window.id
+    if (editorGroupIdForWorkbenchWindow(window.id) === paneId) return window.id
   }
 
-  return windowIdForSerializedEditorPaneId(layout, paneId)
+  return windowIdForSerializedEditorGroupId(layout, paneId)
 }
 
-function windowIdForSerializedEditorPaneId(
+function windowIdForSerializedEditorGroupId(
   layout: WorkspaceLayout,
   paneId: string,
 ): WindowId | null {
   for (const surface of Object.values(layout.surfacesById)) {
-    if (editorSurfaceSerializedState(surface)?.editorPaneId !== paneId) continue
+    if (editorSurfaceSerializedState(surface)?.editorGroupId !== paneId) continue
 
     return findWindowIdContainingSurface(layout, surface.id)
   }
@@ -667,15 +808,15 @@ function windowIdForSerializedEditorPaneId(
   return null
 }
 
-function edgeForEditorSplitDirection(direction: EditorPaneSplitDirection): DropEdge {
+function edgeForEditorSplitDirection(direction: EditorSplitDirection): LayoutEdge {
   return direction === 'horizontal' ? 'right' : 'bottom'
 }
 
 function splitDestination(
   windowId: WindowId,
-  zone: Exclude<EditorPaneDropZone, 'center'>,
-  scope: EditorPaneSplitScope | undefined,
-): DropDestination {
+  zone: Exclude<EditorSnapZone, 'center'>,
+  scope: EditorSplitScope | undefined,
+): SnapDestination {
   if (scope === 'root') return { edge: zone, kind: 'root-edge' }
 
   return { edge: zone, kind: 'window-edge', windowId }

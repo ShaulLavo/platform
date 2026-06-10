@@ -1,6 +1,6 @@
 import { clientErrors } from '@/lib/structured-errors'
 import type { FileResult } from '@/lib/file-system-types'
-import { type EditorScrollPosition } from '@editor/core'
+import { type EditorScrollPosition } from '@singapor/core'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'

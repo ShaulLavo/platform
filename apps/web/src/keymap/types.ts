@@ -1,5 +1,5 @@
 import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
-import type { EditorCommandId } from '@editor/core'
+import type { EditorCommandId } from '@singapor/core'
 import type { HotkeyMeta, RegisterableHotkey } from '@tanstack/react-hotkeys'
 
 export type KeyBindingSource = 'default'
@@ -27,6 +27,7 @@ export type WorkspaceCommandId =
   | 'workspace.focusGit'
   | 'workspace.closeCurrentTab'
   | 'workspace.toggleDiffViewMode'
+  | `workspace.window.${string}`
   | 'workspace.selectColorMode'
   | 'workspace.setLightTheme'
   | 'workspace.setDarkTheme'

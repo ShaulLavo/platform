@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import { statPath } from '@/lib/file-server'
 import { isPickedFsEntry, type PickedFsEntry } from '@/lib/file-system-types'
 
@@ -13,7 +15,7 @@ export async function hydratePickedEntry(
 
   if (isPickedFsEntry(entry)) return entry
 
-  throw new Error(`Picked path is not a file or directory: ${path}`)
+  throw createClientInvariantError(`Picked path is not a file or directory: ${path}`)
 }
 
 function clientPathFromOsPath(path: string) {

@@ -1,3 +1,5 @@
+import { createInternalError } from '../observability/structured-errors'
+
 import type {
   InteractionMode,
   ModelSelection,
@@ -309,7 +311,8 @@ export class ProviderService {
   async rollbackConversation(input: { numTurns: number; threadId: ThreadId }) {
     if (input.numTurns === 0) return Promise.resolve()
     const routed = this.routeThread(input.threadId)
-    if (!routed) throw new Error(`No active provider session is bound to thread ${input.threadId}.`)
+    if (!routed)
+      throw createInternalError(`No active provider session is bound to thread ${input.threadId}.`)
 
     await routed.adapter.rollbackThread(input)
   }
@@ -476,12 +479,12 @@ function providerSessionStartInput(
 ): ProviderSessionStartInput {
   const cwd = payload.cwd
   if (typeof cwd !== 'string' || cwd.trim().length === 0) {
-    throw new Error(`Provider session ${input.threadId} is missing a cwd.`)
+    throw createInternalError(`Provider session ${input.threadId} is missing a cwd.`)
   }
 
   const modelSelection = payload.modelSelection
   if (!isModelSelectionLike(modelSelection)) {
-    throw new Error(`Provider session ${input.threadId} is missing a model selection.`)
+    throw createInternalError(`Provider session ${input.threadId} is missing a model selection.`)
   }
 
   return {

@@ -60,9 +60,7 @@ export function EntryIcon({
   const openFolder = open ?? selected
 
   if (iconMode === 'default') {
-    return (
-      <DefaultEntryIcon className={className} entry={entry} open={openFolder} selected={selected} />
-    )
+    return <DefaultEntryIcon className={className} entry={entry} open={openFolder} />
   }
 
   const icon = iconForEntry(entry, { open: openFolder })
@@ -81,18 +79,12 @@ export function EntryIcon({
 export function KindBadge({ entry }: { entry: FsEntry }) {
   if (isDirectoryEntry(entry)) {
     return (
-      <Badge className='justify-center border-amber-200/70 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300'>
-        Folder
-      </Badge>
+      <Badge className='border-warning/20 bg-warning/10 text-warning justify-center'>Folder</Badge>
     )
   }
 
   if (isFileEntry(entry)) {
-    return (
-      <Badge className='justify-center border-sky-200/70 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-300'>
-        File
-      </Badge>
-    )
+    return <Badge className='border-info/20 bg-info/10 text-info justify-center'>File</Badge>
   }
 
   return (
@@ -106,39 +98,19 @@ function DefaultEntryIcon({
   className,
   entry,
   open,
-  selected,
 }: {
   className?: string
   entry: FsEntry
   open: boolean
-  selected: boolean
 }) {
   if (isDirectoryEntry(entry)) {
     const Icon = open ? FolderOpenIcon : FolderIcon
 
-    return (
-      <Icon
-        className={cn(
-          'shrink-0 text-amber-500',
-          selected && 'text-amber-600 dark:text-amber-300',
-          className,
-        )}
-        weight='duotone'
-      />
-    )
+    return <Icon className={cn('shrink-0 text-warning', className)} weight='duotone' />
   }
 
   if (isFileEntry(entry)) {
-    return (
-      <FileIcon
-        className={cn(
-          'shrink-0 text-sky-500',
-          selected && 'text-sky-600 dark:text-sky-300',
-          className,
-        )}
-        weight='duotone'
-      />
-    )
+    return <FileIcon className={cn('shrink-0 text-info', className)} weight='duotone' />
   }
 
   return <FileDashedIcon className={cn('shrink-0 text-muted-foreground', className)} />

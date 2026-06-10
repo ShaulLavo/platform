@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import type { ChatAttachment } from '@workspace/contracts'
 
 import type {
@@ -87,10 +89,10 @@ function readFileAsDataUrl(file: File) {
     const reader = new FileReader()
     reader.addEventListener('load', () => {
       if (typeof reader.result === 'string') resolve(reader.result)
-      else reject(new Error('Image attachment did not produce a data URL.'))
+      else reject(createClientInvariantError('Image attachment did not produce a data URL.'))
     })
     reader.addEventListener('error', () => {
-      reject(reader.error ?? new Error('Image attachment could not be read.'))
+      reject(reader.error ?? createClientInvariantError('Image attachment could not be read.'))
     })
     reader.readAsDataURL(file)
   })

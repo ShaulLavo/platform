@@ -1,4 +1,3 @@
-import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -6,13 +5,17 @@ import { defineConfig, type Plugin } from 'vite'
 import { consumeAppSave } from '../server/src/fs/app-save-marker'
 
 const workspaceRoot = path.resolve(__dirname, '../..')
-const editorSourceRoot = resolveEditorSourceRoot(workspaceRoot)
+const editorSourceRoot = resolveEditorSourceRoot()
+const tilingSourceRoot = path.resolve(workspaceRoot, 'packages/tiling/src')
 
 export default defineConfig({
   define: {
     'import.meta.env.OBSERVABILITY_ENABLED': JSON.stringify(
       process.env.OBSERVABILITY_ENABLED ?? '',
     ),
+  },
+  optimizeDeps: {
+    exclude: ['ghostty-web'],
   },
   plugins: [
     platformSelfSaveHmrPlugin(),
@@ -26,11 +29,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@workspace/tiling': tilingSourceRoot,
     },
     dedupe: ['react', 'react-dom'],
-  },
-  optimizeDeps: {
-    exclude: ['@pierre/trees', '@pierre/trees/react'],
   },
   server: {
     fs: {
@@ -57,18 +58,11 @@ function platformSelfSaveHmrPlugin(): Plugin {
   }
 }
 
-function resolveEditorSourceRoot(root: string) {
+function resolveEditorSourceRoot() {
   const envRoot = process.env.EDITOR_SOURCE_ROOT
   if (envRoot) return path.resolve(envRoot)
 
-  const linkedPackageSource = realpathIfExists(path.join(root, 'packages/editor-core/src'))
-  if (!linkedPackageSource) return null
-
-  return path.resolve(linkedPackageSource, '../../..')
-}
-
-function realpathIfExists(input: string) {
-  return existsSync(input) ? realpathSync(input) : null
+  return null
 }
 
 function uniquePaths(paths: Array<string | null>) {

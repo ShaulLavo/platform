@@ -1,3 +1,6 @@
+> [!NOTE]
+> **STATUS: 🔵 TOUCH-UP ONLY (reviewed 2026-06-06).** Pre-launch guardrails still accurate (`FS_SESSION_TOKEN`, `FS_DEV_MAX_TEXT_FILE_BYTES` exist in `apps/server/src/index.ts`).
+
 # Pre-Launch File System Requirements
 
 The local development server can still browse `/` when the user explicitly picks

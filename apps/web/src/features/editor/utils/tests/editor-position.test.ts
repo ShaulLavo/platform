@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createDocumentSession } from '@editor/core'
+import { createDocumentSession } from '@singapor/core'
 
 import {
   rowStartOffset,

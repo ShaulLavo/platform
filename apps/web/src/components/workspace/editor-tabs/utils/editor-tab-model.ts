@@ -7,7 +7,6 @@ import {
   conflictDiffDocumentTitle,
   parseConflictDiffDocumentId,
 } from '@/features/editor/conflict-diff-document'
-import type { EditorPaneTab } from '@/features/editor/state/editor-pane-state'
 import {
   diffDocumentLabel,
   diffDocumentShortHash,
@@ -26,6 +25,24 @@ import { basename, displayPath } from '@/lib/path-formatters'
 
 export const EMPTY_GIT_FILES: readonly FileStatus[] = []
 
+export type EditorSplitDirection = 'horizontal' | 'vertical'
+export type EditorSnapZone = 'bottom' | 'center' | 'left' | 'right' | 'top'
+export type EditorSplitScope = 'pane' | 'root'
+
+export type EditorTabRecord = {
+  readonly id: string
+  readonly path: string
+}
+
+let nextEditorTabRecordId = 1
+
+export function createEditorTabRecord(path: string): EditorTabRecord {
+  return {
+    id: `editor-tab:${nextEditorTabRecordId++}`,
+    path,
+  }
+}
+
 export function editorTabModel({
   conflicts,
   gitFiles,
@@ -37,7 +54,7 @@ export function editorTabModel({
   gitFiles: readonly FileStatus[]
   rootPath: string
   selectedTabId: string | null
-  tab: EditorPaneTab
+  tab: EditorTabRecord
 }): EditorTabModel {
   const path = tab.path
   const diffStatus = tabDiffStatus(path, gitFiles, rootPath)

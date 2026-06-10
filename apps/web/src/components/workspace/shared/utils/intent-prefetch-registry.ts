@@ -1,4 +1,4 @@
-import { ForesightManager } from 'js.foresight'
+import { ForesightManager, type HitSlop } from 'js.foresight'
 
 export type IntentPrefetchRow<TIntent> = {
   intent: TIntent
@@ -8,6 +8,7 @@ export type IntentPrefetchRow<TIntent> = {
 }
 
 export type IntentPrefetchRegistryConfig<TIntent> = {
+  hitSlop?: HitSlop
   reactivateAfter: number
   resolveRow: (element: HTMLElement) => IntentPrefetchRow<TIntent> | null
 }
@@ -17,7 +18,10 @@ export type IntentPrefetchRegistry<TIntent> = {
   sync: (elements: Iterable<HTMLElement>, onIntent: (intent: TIntent) => void) => void
 }
 
+export const INTENT_PREFETCH_HIT_SLOP_PX = 8
+
 export function createIntentPrefetchRegistry<TIntent>({
+  hitSlop,
   reactivateAfter,
   resolveRow,
 }: IntentPrefetchRegistryConfig<TIntent>): IntentPrefetchRegistry<TIntent> {
@@ -51,6 +55,7 @@ export function createIntentPrefetchRegistry<TIntent>({
     ForesightManager.instance.register({
       callback: () => onIntent(row.intent),
       element,
+      hitSlop,
       meta: row.meta,
       name: row.name,
       reactivateAfter,

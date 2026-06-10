@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { createScriptError } from './structured-errors'
 
 type Mode = 'all' | 'build' | 'start'
 type ChildProcess = ReturnType<typeof Bun.spawn>
@@ -122,7 +123,7 @@ function parseMode(value: string | undefined): Mode {
   if (!value) return 'all'
   if (value === 'all' || value === 'build' || value === 'start') return value
 
-  throw new Error(`Unknown production mode "${value}". Use build, start, or all.`)
+  throw createScriptError(`Unknown production mode "${value}". Use build, start, or all.`)
 }
 
 function portFromEnv(name: 'PORT' | 'WEB_PORT', fallback: number) {
@@ -132,7 +133,7 @@ function portFromEnv(name: 'PORT' | 'WEB_PORT', fallback: number) {
   const port = Number(value)
   if (Number.isInteger(port) && port > 0 && port < 65536) return port
 
-  throw new Error(`${name} must be an integer between 1 and 65535.`)
+  throw createScriptError(`${name} must be an integer between 1 and 65535.`)
 }
 
 function defaultAllowedOrigins(webHost: string, webPort: number) {
@@ -163,7 +164,7 @@ function ensureBuildArtifact(label: string, relativePath: string) {
   const artifactPath = path.join(root, relativePath)
   if (existsSync(artifactPath)) return
 
-  throw new Error(
+  throw createScriptError(
     `Missing ${label} production artifact at ${relativePath}. ` +
       'Run `bun run build` first, or use `bun run prod`.',
   )

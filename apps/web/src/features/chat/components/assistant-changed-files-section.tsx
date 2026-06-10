@@ -59,7 +59,9 @@ export function AssistantChangedFilesSection({
     <section className='border-border/80 bg-card/45 mt-2 rounded-lg border p-2.5'>
       <div className='mb-1.5 flex items-center justify-between gap-2'>
         <p className='text-muted-foreground/65 text-[10px] tracking-[0.12em] uppercase'>
-          <span>Changed files ({files.length})</span>
+          <span>
+            Changed files (<span className='tabular-nums'>{files.length}</span>)
+          </span>
           {hasNonZeroChatTurnDiffStat(summaryStat) ? (
             <>
               <span className='mx-1'>•</span>

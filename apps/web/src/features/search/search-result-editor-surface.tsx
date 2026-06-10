@@ -1,6 +1,6 @@
-import '@editor/core/style.css'
+import '@singapor/core/style.css'
 
-import type { EditorKeymapLayer } from '@editor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {
   memo,
@@ -35,7 +35,7 @@ import {
   searchResultVirtualRows,
   type SearchResultOpenTarget,
 } from '@/features/search/search-result-view-model'
-import { readonlyEditorKeymapLayers } from '@/keymap'
+import { readonlyEditorKeymapLayers } from '@/keymap/editor-keymap'
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null

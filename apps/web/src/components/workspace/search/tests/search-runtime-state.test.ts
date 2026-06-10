@@ -1,13 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
 import { searchRuntimeEnabled } from '@/components/workspace/search/utils/search-runtime-state'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
   createSearchResultsSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@workspace/tiling/utils/layout-builders'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
 
 const rootPath = '/workspace'
 
@@ -21,7 +20,6 @@ describe('workspace search runtime state', () => {
     expect(
       searchRuntimeEnabled(
         {
-          selectedFilePath: null,
           workspaceLayout,
         },
         rootPath,
@@ -29,20 +27,10 @@ describe('workspace search runtime state', () => {
     ).toBe(true)
   })
 
-  test('runs from the selected search editor tab without the sidebar search tab', () => {
+  test('runs while the search results surface is backgrounded', () => {
     expect(
       searchRuntimeEnabled(
         {
-          selectedFilePath: searchBufferDocumentId(rootPath),
-          workspaceLayout: createEmptyWorkspaceLayout(),
-        },
-        rootPath,
-      ),
-    ).toBe(true)
-    expect(
-      searchRuntimeEnabled(
-        {
-          selectedFilePath: searchBufferDocumentId(rootPath),
           workspaceLayout: createClassicFirstRunWorkspaceLayout(),
         },
         rootPath,
@@ -54,16 +42,6 @@ describe('workspace search runtime state', () => {
     expect(
       searchRuntimeEnabled(
         {
-          selectedFilePath: null,
-          workspaceLayout: createEmptyWorkspaceLayout(),
-        },
-        rootPath,
-      ),
-    ).toBe(false)
-    expect(
-      searchRuntimeEnabled(
-        {
-          selectedFilePath: searchBufferDocumentId('/other-workspace'),
           workspaceLayout: createEmptyWorkspaceLayout(),
         },
         rootPath,

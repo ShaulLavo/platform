@@ -7,6 +7,12 @@ type ClientStructuredErrorOptions = Omit<ErrorOptions, 'cause'> & {
 }
 
 export const clientErrors = defineErrorCatalog('client', {
+  CLIENT_INVARIANT_ERROR: {
+    status: 500,
+    message: ({ message }: { message: string }) => message,
+    why: 'A client-side invariant failed while handling application state.',
+    fix: 'Inspect the client state and fix the invariant at the throwing call site.',
+  },
   CLIPBOARD_UNAVAILABLE: {
     status: 400,
     message: 'Clipboard API not available',
@@ -112,6 +118,17 @@ export function createClientError(options: ClientStructuredErrorOptions) {
   return createError({
     ...rest,
     ...(cause === undefined ? {} : { cause: cause as Error }),
+  })
+}
+
+export function createClientInvariantError(message: string, cause?: unknown) {
+  return createClientError({
+    cause,
+    code: clientErrors.CLIENT_INVARIANT_ERROR.code,
+    fix: clientErrors.CLIENT_INVARIANT_ERROR.fix,
+    message,
+    status: clientErrors.CLIENT_INVARIANT_ERROR.status,
+    why: clientErrors.CLIENT_INVARIANT_ERROR.why,
   })
 }
 

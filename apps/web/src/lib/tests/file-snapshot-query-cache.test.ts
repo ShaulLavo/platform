@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   FILE_SNAPSHOT_QUERY_GC_TIME_MS,
+  prefetchFileSnapshotQuery,
   pruneFileSnapshotQueryCache,
   setFileSnapshotQueryData,
 } from '@/lib/file-snapshot-query-cache'
@@ -33,6 +34,48 @@ describe('file snapshot query cache policy', () => {
     expect(client.getQueryData(fileSystemKeys.fileSnapshot('repo/b.ts'))).toEqual(file('repo/b.ts'))
     expect(client.getQueryData(fileSystemKeys.fileSnapshot('repo/c.ts'))).toEqual(file('repo/c.ts'))
     expect(client.getQueryData(fileSystemKeys.quickOpenFiles('repo', 'a'))).toEqual(['repo/a.ts'])
+  })
+
+  it('does not prefetch a file snapshot that is already cached', async () => {
+    const client = new QueryClient()
+    let fetchCount = 0
+
+    setFileSnapshotQueryData(client, file('repo/a.ts'))
+    await prefetchFileSnapshotQuery(client, 'repo/a.ts', {
+      fetcher: async (path) => {
+        fetchCount += 1
+        return file(path)
+      },
+    })
+
+    expect(fetchCount).toBe(0)
+  })
+
+  it('does not start a second prefetch while the same file snapshot is fetching', async () => {
+    const client = new QueryClient()
+    let fetchCount = 0
+    let resolveFetch!: () => void
+    const fetchWait = new Promise<void>((resolve) => {
+      resolveFetch = resolve
+    })
+
+    const firstPrefetch = prefetchFileSnapshotQuery(client, 'repo/a.ts', {
+      fetcher: async (path) => {
+        fetchCount += 1
+        await fetchWait
+        return file(path)
+      },
+    })
+    const secondPrefetch = prefetchFileSnapshotQuery(client, 'repo/a.ts', {
+      fetcher: async (path) => {
+        fetchCount += 1
+        return file(path)
+      },
+    })
+
+    expect(fetchCount).toBe(1)
+    resolveFetch()
+    await Promise.all([firstPrefetch, secondPrefetch])
   })
 })
 

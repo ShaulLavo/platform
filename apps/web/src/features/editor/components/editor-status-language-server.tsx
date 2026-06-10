@@ -9,5 +9,5 @@ type EditorStatusLanguageServerProps = {
 export function EditorStatusLanguageServer({ source }: EditorStatusLanguageServerProps) {
   const { diagnostics, status } = useEditorLanguageServerStatus(source)
 
-  return <span>{formatLanguageServerStatus(status, diagnostics)}</span>
+  return <span className='tabular-nums'>{formatLanguageServerStatus(status, diagnostics)}</span>
 }

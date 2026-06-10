@@ -8,3 +8,5 @@
  */
 export { closeApp, createApp } from './app'
 export type { App, AppOptions } from './app'
+export { createMetadataDatabase } from './db/client'
+export type { MetadataDatabaseHandle, PlatformDatabase } from './db/client'

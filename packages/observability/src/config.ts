@@ -38,7 +38,7 @@ export type ObservabilityConfig = {
 
 const DEFAULT_BATCH_INTERVAL_MS = 5_000
 const DEFAULT_BATCH_SIZE = 50
-const DEFAULT_LOG_DIR = '.evlog/logs'
+const DEFAULT_LOG_DIR = 'logs'
 const DEFAULT_MAX_BUFFER_SIZE = 1_000
 const DEFAULT_MAX_FILES = 14
 const DEFAULT_MAX_SIZE_PER_FILE = 10_485_760

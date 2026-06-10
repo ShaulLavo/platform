@@ -37,7 +37,9 @@ export function ActivityRow({ activity }: { activity: ChatWorkLogEntry }) {
           title={detail ? `${activity.title} - ${detail}` : activity.title}
         >
           <span className='text-foreground/80'>{activity.title}</span>
-          {detail ? <span className='text-muted-foreground/55'> - {detail}</span> : null}
+          {detail ? (
+            <span className='text-muted-foreground/55 tabular-nums'> - {detail}</span>
+          ) : null}
         </p>
       </div>
     </div>
@@ -68,7 +70,7 @@ function activityRowDetail(detail: string | null, status: string | null) {
 function activityIconToneClass(tone: ChatWorkLogTone) {
   if (tone === 'error') return 'text-destructive'
   if (tone === 'thinking') return 'text-muted-foreground/70'
-  if (tone === 'tool') return 'text-sky-600 dark:text-sky-300'
+  if (tone === 'tool') return 'text-info'
 
   return 'text-muted-foreground/65'
 }

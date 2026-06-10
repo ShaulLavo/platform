@@ -181,7 +181,7 @@ export function FilePickerDialog({
           <div className='flex items-center justify-between gap-3'>
             <DialogHeader className='min-w-0 gap-1'>
               <DialogTitle className='flex items-center gap-2 text-sm'>
-                <span className='flex size-7 items-center justify-center rounded-md border border-sky-200/70 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-300'>
+                <span className='border-info/20 bg-info/10 text-info flex size-7 items-center justify-center rounded-md border'>
                   <HardDrivesIcon weight='duotone' />
                 </span>
                 {copy.title}

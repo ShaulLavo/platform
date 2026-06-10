@@ -13,7 +13,7 @@ import {
 } from '@/features/search/search-buffer-state'
 import {
   type CachedWorkspaceState,
-  type WorkspaceCacheState,
+  type WorkspaceCacheWriteState,
   writeWorkspaceCache,
 } from '@/lib/workspace-cache'
 
@@ -21,13 +21,18 @@ const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
 type CacheWriteTimer = ReturnType<typeof setTimeout>
 
+type WorkspaceCacheSnapshot = Pick<
+  CachedWorkspaceState,
+  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workspaceLayout'
+>
+
 type WorkspaceCachePersistenceOptions = {
   clearTimeout?: (timer: CacheWriteTimer) => void
   debounceMs?: number
   searchStore: SearchBufferStoreApi
   setTimeout?: (callback: () => void, delay: number) => CacheWriteTimer
   workspaceStore: EditorWorkspaceStoreApi
-  writeCache?: (state: WorkspaceCacheState) => void
+  writeCache?: (state: WorkspaceCacheWriteState) => void
 }
 
 export function useWorkspaceCachePersistence() {
@@ -54,8 +59,8 @@ export function subscribeWorkspaceCachePersistence({
 }: WorkspaceCachePersistenceOptions) {
   let disposed = false
   let timer: CacheWriteTimer | null = null
-  let workspaceKey = workspacePersistenceKey(workspaceStore.getState())
-  let searchKey = searchPersistenceKey(searchStore.getState())
+  let workspaceSnapshot = cachedWorkspaceState(workspaceStore.getState())
+  let searchSnapshot = cachedSearchBufferState(searchStore.getState().active)
 
   function persistNow() {
     if (disposed) return
@@ -82,17 +87,17 @@ export function subscribeWorkspaceCachePersistence({
   }
 
   const unsubscribeWorkspace = workspaceStore.subscribe((state) => {
-    const nextKey = workspacePersistenceKey(state)
-    if (nextKey === workspaceKey) return
+    const nextSnapshot = cachedWorkspaceState(state)
+    if (cachedWorkspaceStatesEqual(workspaceSnapshot, nextSnapshot)) return
 
-    workspaceKey = nextKey
+    workspaceSnapshot = nextSnapshot
     scheduleWrite()
   })
   const unsubscribeSearch = searchStore.subscribe((state) => {
-    const nextKey = searchPersistenceKey(state)
-    if (nextKey === searchKey) return
+    const nextSnapshot = cachedSearchBufferState(state.active)
+    if (cachedSearchBufferStatesEqual(searchSnapshot, nextSnapshot)) return
 
-    searchKey = nextKey
+    searchSnapshot = nextSnapshot
     scheduleWrite()
   })
   const removeLifecycleFlush = addLifecycleFlush(flushPendingWrite)
@@ -109,32 +114,67 @@ export function subscribeWorkspaceCachePersistence({
 export function workspaceCacheStateForStores(
   workspaceState: EditorWorkspaceStore,
   searchState: SearchBufferStore,
-): WorkspaceCacheState {
+): WorkspaceCacheWriteState {
   return {
     ...cachedWorkspaceState(workspaceState),
     searchBuffer: cachedSearchBufferState(searchState.active),
   }
 }
 
-function cachedWorkspaceState(state: EditorWorkspaceStore): CachedWorkspaceState {
+function cachedWorkspaceState(state: EditorWorkspaceStore): WorkspaceCacheSnapshot {
   return {
     diffViewMode: state.diffViewMode,
     editorHistory: state.editorHistory,
-    editorPaneLayout: state.editorPaneLayout,
-    openFilePaths: state.openFilePaths,
     recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
     rootFolder: state.rootFolder,
-    selectedFilePath: state.selectedFilePath,
     workspaceLayout: state.workspaceLayout,
   }
 }
 
-function workspacePersistenceKey(state: EditorWorkspaceStore) {
-  return JSON.stringify(cachedWorkspaceState(state))
+function cachedWorkspaceStatesEqual(left: WorkspaceCacheSnapshot, right: WorkspaceCacheSnapshot) {
+  return (
+    left.diffViewMode === right.diffViewMode &&
+    left.rootFolder === right.rootFolder &&
+    left.workspaceLayout === right.workspaceLayout &&
+    readonlyArraysEqual(left.editorHistory, right.editorHistory) &&
+    readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)
+  )
 }
 
-function searchPersistenceKey(state: SearchBufferStore) {
-  return JSON.stringify(cachedSearchBufferState(state.active))
+function cachedSearchBufferStatesEqual(
+  left: WorkspaceCacheWriteState['searchBuffer'],
+  right: WorkspaceCacheWriteState['searchBuffer'],
+) {
+  if (left === right) return true
+  if (!left || !right) return false
+
+  return (
+    left.activeResultId === right.activeResultId &&
+    left.caseSensitive === right.caseSensitive &&
+    left.excludeGlobText === right.excludeGlobText &&
+    left.filtersVisible === right.filtersVisible &&
+    left.includeGlobText === right.includeGlobText &&
+    left.matchMode === right.matchMode &&
+    left.query === right.query &&
+    left.replaceText === right.replaceText &&
+    left.replaceVisible === right.replaceVisible &&
+    left.resultsQuery === right.resultsQuery &&
+    left.resultsSearchQuery === right.resultsSearchQuery &&
+    left.rootPath === right.rootPath &&
+    left.totalCount === right.totalCount &&
+    left.truncated === right.truncated &&
+    left.wholeWord === right.wholeWord &&
+    readonlyArraysEqual(left.collapsedPaths, right.collapsedPaths) &&
+    readonlyArraysEqual(left.queryHistory, right.queryHistory) &&
+    readonlyArraysEqual(left.replaceHistory, right.replaceHistory)
+  )
+}
+
+function readonlyArraysEqual<T>(left: readonly T[], right: readonly T[]) {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+
+  return left.every((item, index) => Object.is(item, right[index]))
 }
 
 function addLifecycleFlush(flush: () => void) {

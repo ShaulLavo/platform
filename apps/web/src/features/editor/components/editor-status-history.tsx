@@ -1,4 +1,4 @@
-import type { ReactEditorController } from '@editor/react'
+import type { ReactEditorController } from '@singapor/react'
 
 import { useEditorHistoryStatus } from '@/features/editor/hooks/use-editor-history-status'
 

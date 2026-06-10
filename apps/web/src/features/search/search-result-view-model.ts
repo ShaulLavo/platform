@@ -1,4 +1,4 @@
-import type { EditorSyntaxLanguageId } from '@editor/core'
+import type { EditorSyntaxLanguageId } from '@singapor/core'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'

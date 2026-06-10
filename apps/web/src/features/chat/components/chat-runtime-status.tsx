@@ -62,7 +62,7 @@ export function ChatRuntimeStatus({
               <Icon className={cn('size-4', alert.tone === 'busy' && 'animate-spin')} />
               <AlertTitle>{alert.title}</AlertTitle>
               {alert.detail ? (
-                <AlertDescription className='line-clamp-3' title={alert.detail}>
+                <AlertDescription className='line-clamp-3 tabular-nums' title={alert.detail}>
                   {alert.detail}
                 </AlertDescription>
               ) : null}
@@ -76,7 +76,7 @@ export function ChatRuntimeStatus({
 
 function runtimeAlertClass(tone: ChatRuntimeAlertTone) {
   if (tone === 'warning') {
-    return 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+    return 'border-warning/30 bg-warning/10 text-warning'
   }
   if (tone === 'busy') return 'border-border/70 bg-card text-muted-foreground'
 

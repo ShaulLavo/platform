@@ -1,19 +1,37 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createFileEditorSurface } from '@/features/tiling-surface-manager/utils/layout-builders'
+const clientLogMock = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+}))
+
+vi.mock('@/lib/client-logging', () => ({
+  log: clientLogMock,
+}))
+
+import { createFileEditorSurface } from '@workspace/tiling/utils/layout-builders'
 import {
+  flushPendingWorkbenchLayoutInfoLogs,
   layoutSnapshot,
+  logWorkbenchLayoutInfo,
   operationSummary,
-} from '@/features/tiling-surface-manager/utils/layout-logging'
-import { createWorkbenchWindow } from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@/features/tiling-surface-manager/engine/layout-logging'
+import { createWorkbenchWindow } from '@workspace/tiling/utils/layout-builders'
 import {
   CLASSIC_RECIPE_ID,
   layoutNodeId,
   workbenchWindowId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@workspace/tiling/utils/layout-ids'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('layout logging', () => {
+  afterEach(() => {
+    flushPendingWorkbenchLayoutInfoLogs()
+    clientLogMock.info.mockClear()
+    clientLogMock.warn.mockClear()
+    vi.useRealTimers()
+  })
+
   it('summarizes layout snapshots without raw id arrays or file paths', () => {
     const layout = layoutWithFileEditor('/Users/shaul/Desktop/D/platform/src/app.ts')
     const snapshot = layoutSnapshot(layout)
@@ -23,7 +41,7 @@ describe('layout logging', () => {
         id: 'surface:file-editor:.../src/app.ts',
         type: 'file-editor',
       },
-      minimizedSurfaceCount: 0,
+      backgroundSurfaceCount: 0,
       nodeCount: 1,
       visibleSurfaceCount: 1,
       visibleWindowCount: 1,
@@ -41,6 +59,75 @@ describe('layout logging', () => {
     expect(operationSummary({ surfaceId: file.id, type: 'closeSurface' })).toEqual({
       operationType: 'closeSurface',
       surfaceId: 'surface:file-editor:.../src/very-long-file-name.ts',
+    })
+  })
+
+  it('coalesces successful resize dispatch info logs', () => {
+    vi.useFakeTimers()
+
+    logWorkbenchLayoutInfo('layout.operation.dispatch', {
+      before: { windowCount: 1 },
+      operation: {
+        deltaPx: 8,
+        handleIndex: 0,
+        operationType: 'resizeSplit',
+        splitId: 'node:split-main',
+      },
+      outcome: 'ok',
+      result: { windowCount: 1 },
+    })
+    logWorkbenchLayoutInfo('layout.operation.dispatch', {
+      before: { windowCount: 1 },
+      operation: {
+        deltaPx: 12,
+        handleIndex: 0,
+        operationType: 'resizeSplit',
+        splitId: 'node:split-main',
+      },
+      outcome: 'ok',
+      result: { windowCount: 2 },
+    })
+
+    expect(clientLogMock.info).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(249)
+    expect(clientLogMock.info).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(1)
+    expect(clientLogMock.info).toHaveBeenCalledOnce()
+    expect(clientLogMock.info.mock.calls[0]?.[0]).toMatchObject({
+      action: 'layout.operation.dispatch',
+      area: 'workbench.layout',
+      coalescedCount: 2,
+      operation: {
+        deltaPx: 12,
+        handleIndex: 0,
+        operationType: 'resizeSplit',
+        splitId: 'node:split-main',
+      },
+      outcome: 'ok',
+      result: { windowCount: 2 },
+    })
+  })
+
+  it('keeps non-resize dispatch info logs immediate', () => {
+    logWorkbenchLayoutInfo('layout.operation.dispatch', {
+      operation: {
+        operationType: 'closeSurface',
+        surfaceId: 'surface:logs',
+      },
+      outcome: 'ok',
+    })
+
+    expect(clientLogMock.info).toHaveBeenCalledOnce()
+    expect(clientLogMock.info.mock.calls[0]?.[0]).toMatchObject({
+      action: 'layout.operation.dispatch',
+      area: 'workbench.layout',
+      operation: {
+        operationType: 'closeSurface',
+        surfaceId: 'surface:logs',
+      },
+      outcome: 'ok',
     })
   })
 })
@@ -71,7 +158,7 @@ function layoutWithFileEditor(path: string): WorkspaceLayout {
     },
     policiesById: {},
     rail: {
-      minimizedSurfaceIds: [],
+      backgroundSurfaceIds: [],
       pinnedSurfaceIds: [],
       recipeIds: [],
       runningSurfaceIds: [],

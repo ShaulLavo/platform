@@ -1,3 +1,5 @@
+import { createInternalError } from '../observability/structured-errors'
+
 import type {
   InteractionMode,
   ModelSelection,
@@ -191,7 +193,7 @@ export class ProviderCommandReactor {
         turnId: event.payload.turnId,
       })
       if (context.message.role !== 'user') {
-        throw new Error(`Provider turn ${event.payload.turnId} requires a user message.`)
+        throw createInternalError(`Provider turn ${event.payload.turnId} requires a user message.`)
       }
 
       this.rememberModelSelection(context.thread.id, context.modelSelection)
@@ -369,7 +371,9 @@ export class ProviderCommandReactor {
         ref: context.targetRef,
       })
       if (!restored) {
-        throw new Error(`Checkpoint ref is unavailable for turn ${event.payload.turnCount}.`)
+        throw createInternalError(
+          `Checkpoint ref is unavailable for turn ${event.payload.turnCount}.`,
+        )
       }
 
       const rollbackTurns = context.currentTurnCount - event.payload.turnCount
@@ -656,7 +660,7 @@ export class ProviderCommandReactor {
     )
     const currentTurnCount = maxCheckpointTurnCount(checkpoints)
     if (event.payload.turnCount > currentTurnCount) {
-      throw new Error(
+      throw createInternalError(
         `Checkpoint ${event.payload.turnCount} is newer than current checkpoint ${currentTurnCount}.`,
       )
     }
@@ -794,7 +798,7 @@ function checkpointRefForTurnCount(
 
   const checkpoint = checkpoints.find((candidate) => candidate.checkpointTurnCount === turnCount)
   if (!checkpoint || checkpoint.status !== 'ready') {
-    throw new Error(`Checkpoint ref is unavailable for turn ${turnCount}.`)
+    throw createInternalError(`Checkpoint ref is unavailable for turn ${turnCount}.`)
   }
 
   return checkpoint.checkpointRef

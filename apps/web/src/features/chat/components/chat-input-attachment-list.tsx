@@ -32,7 +32,9 @@ export function ChatInputAttachmentList({
           />
           <span className='min-w-0 flex-1 text-xs'>
             <span className='block truncate font-medium'>{attachment.name}</span>
-            <span className='text-muted-foreground block'>{formatSize(attachment.sizeBytes)}</span>
+            <span className='text-muted-foreground block tabular-nums'>
+              {formatSize(attachment.sizeBytes)}
+            </span>
           </span>
           <Tooltip>
             <TooltipTrigger

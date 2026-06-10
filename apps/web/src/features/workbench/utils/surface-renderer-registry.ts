@@ -1,11 +1,9 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import type { ComponentType } from 'react'
 
 import { FixtureSurface } from '@/features/workbench/components/fixture-surface'
-import type {
-  Surface,
-  SurfaceType,
-  WindowId,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+import type { Surface, SurfaceType, WindowId } from '@workspace/tiling/utils/layout-types'
 
 export type SurfaceRendererProps = {
   readonly active: boolean
@@ -51,7 +49,7 @@ export function createSurfaceRendererRegistry(
 
   for (const descriptor of descriptors) {
     if (registry.has(descriptor.type)) {
-      throw new Error(`Duplicate surface renderer: ${descriptor.type}`)
+      throw createClientInvariantError(`Duplicate surface renderer: ${descriptor.type}`)
     }
 
     registry.set(descriptor.type, descriptor.renderer)

@@ -1,11 +1,23 @@
 {
   "version": 1,
   "skills": {
+    "dnd-kit-implementation": {
+      "source": "atman-33/skills",
+      "sourceType": "github",
+      "skillPath": "dnd-kit-implementation/SKILL.md",
+      "computedHash": "c03f77600c16d1366c209e1372987ae52602696ea3383565a63088dceafa9978"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "skillPath": "skills/frontend-design/SKILL.md",
       "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
+    },
+    "tailwind-css-patterns": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/developer-kit-typescript/skills/tailwind-css-patterns/SKILL.md",
+      "computedHash": "6092620c3af955a46ea2b94ca8a40197ac8392e6bbdc8c7515659328b186c770"
     },
     "tanstack-query-best-practices": {
       "source": "deckardger/tanstack-agent-skills",

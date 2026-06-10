@@ -594,8 +594,8 @@ describe('fs rpc events', () => {
 
     await mkdir(path.join(root, 'node_modules'), { recursive: true })
     await writeFile(path.join(root, 'node_modules', 'ignored.txt'), 'ok')
-    await mkdir(path.join(root, '.evlog', 'logs'), { recursive: true })
-    await writeFile(path.join(root, '.evlog', 'logs', '2026-05-25.jsonl'), '{}\n')
+    await mkdir(path.join(root, 'logs'), { recursive: true })
+    await writeFile(path.join(root, 'logs', '2026-05-25.jsonl'), '{}\n')
 
     // The ignored external changes must emit nothing. Drain deterministically with
     // a visible external write: the watcher preserves order, so a leaked ignored

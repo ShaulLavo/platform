@@ -22,10 +22,10 @@ export function HighlightedPreview({
     return (
       <span className='block max-w-full overflow-hidden text-ellipsis whitespace-nowrap'>
         {highlight.before}
-        <mark className='inline-block max-w-full overflow-hidden rounded-sm bg-red-500/15 px-0.5 align-bottom text-ellipsis whitespace-nowrap text-red-950 line-through decoration-red-700/70 dark:bg-red-500/20 dark:text-red-100'>
+        <mark className='bg-diff-removed/15 text-diff-removed decoration-diff-removed/70 inline-block max-w-full overflow-hidden rounded-sm px-0.5 align-bottom text-ellipsis whitespace-nowrap line-through'>
           {highlight.match}
         </mark>
-        <mark className='ml-0.5 inline-block max-w-full overflow-hidden rounded-sm bg-emerald-500/15 px-0.5 align-bottom text-ellipsis whitespace-nowrap text-emerald-950 dark:bg-emerald-500/20 dark:text-emerald-100'>
+        <mark className='bg-diff-added/15 text-diff-added ml-0.5 inline-block max-w-full overflow-hidden rounded-sm px-0.5 align-bottom text-ellipsis whitespace-nowrap'>
           {replacementText}
         </mark>
         {highlight.after}
@@ -36,7 +36,7 @@ export function HighlightedPreview({
   return (
     <span className='block max-w-full overflow-hidden text-ellipsis whitespace-nowrap'>
       {highlight.before}
-      <mark className='inline-block max-w-full overflow-hidden rounded-sm bg-yellow-200/80 px-0.5 align-bottom text-ellipsis whitespace-nowrap text-yellow-950 dark:bg-yellow-500/30 dark:text-yellow-100'>
+      <mark className='bg-warning/25 text-foreground inline-block max-w-full overflow-hidden rounded-sm px-0.5 align-bottom text-ellipsis whitespace-nowrap'>
         {highlight.match}
       </mark>
       {highlight.after}

@@ -80,7 +80,7 @@ function workspaceSearchRequestQuery(query: WorkspaceSearchQuery) {
     maxDepth: query.maxDepth,
     path: query.path,
     query: query.query,
-    useWorkspaceIndex: query.useWorkspaceIndex,
+    useWorkspaceIndex: query.useWorkspaceIndex !== false,
     wholeWord: query.wholeWord === true,
   }
 }

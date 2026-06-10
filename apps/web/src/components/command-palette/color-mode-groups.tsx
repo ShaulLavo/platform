@@ -1,5 +1,5 @@
 import type { Theme } from '@/components/theme-context'
-import type { PlatformCommandId } from '@/keymap'
+import type { PlatformCommandId } from '@/keymap/types'
 import { CommandIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/components/command'
 

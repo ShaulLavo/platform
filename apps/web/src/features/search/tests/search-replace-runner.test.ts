@@ -1,4 +1,4 @@
-import { createEditorTextBuffer } from '@editor/core'
+import { createEditorTextBuffer } from '@singapor/core'
 import { describe, expect, it } from 'vitest'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 

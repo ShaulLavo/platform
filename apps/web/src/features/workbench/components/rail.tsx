@@ -1,38 +1,34 @@
 import { cn } from '@workspace/ui/lib/utils'
 
 import {
+  isWorkbenchRailBottomPaneItem,
+  isWorkbenchRailSurfaceItem,
   railItemOperation,
-  selectWorkbenchRailSurfaceItems,
-  type WorkbenchRailSurfaceItem,
-} from '@/features/tiling-surface-manager/utils/rail-model'
+  type WorkbenchRailItem,
+} from '@workspace/tiling/utils/rail-model'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
-import { terminalSurfaceId } from '@/features/tiling-surface-manager/utils/layout-ids'
 import {
   layoutSnapshot,
   logWorkbenchLayoutInfo,
   operationSummary,
-} from '@/features/tiling-surface-manager/utils/layout-logging'
-import type {
-  LayoutOperation,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
-
-const DEFAULT_TERMINAL_SURFACE_ID = terminalSurfaceId('terminal-1')
+} from '@/features/tiling-surface-manager/engine/layout-logging'
+import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 export function Rail({
-  layout,
+  getLayout,
+  items,
   onDispatch,
 }: {
-  readonly layout: WorkspaceLayout
+  readonly getLayout: () => WorkspaceLayout
+  readonly items: readonly WorkbenchRailItem[]
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
-  const items = selectWorkbenchRailSurfaceItems(layout)
   if (items.length === 0) return null
 
   return (
     <nav
       aria-label='Workbench rail'
-      className='border-border/80 bg-muted/30 flex w-11 shrink-0 flex-col items-center gap-1 border-r p-1'
+      className='bg-card relative z-10 flex w-11 shrink-0 flex-col items-center gap-1 border-r border-transparent p-1 backdrop-blur-md'
       data-workbench-rail=''
     >
       {items.map((item) => (
@@ -44,13 +40,14 @@ export function Rail({
             item.state === 'visible' && 'bg-muted text-foreground',
           )}
           data-rail-state={item.state}
-          data-rail-surface-id={item.surface.id}
-          key={item.surface.id}
+          data-rail-surface-id={railItemSurfaceId(item)}
+          data-rail-pane-id={railItemPaneId(item)}
+          key={railItemKey(item)}
           title={railItemLabel(item)}
           type='button'
-          onClick={() => dispatchRailItemOperation(layout, item, onDispatch)}
+          onClick={() => dispatchRailItemOperation(getLayout(), item, onDispatch)}
         >
-          <SurfaceIcon className='size-4' type={item.surface.type} />
+          <SurfaceIcon className='size-4' type={railItemSurfaceType(item)} />
         </button>
       ))}
     </nav>
@@ -59,7 +56,7 @@ export function Rail({
 
 function dispatchRailItemOperation(
   layout: WorkspaceLayout,
-  item: WorkbenchRailSurfaceItem,
+  item: WorkbenchRailItem,
   onDispatch: (operation: LayoutOperation) => void,
 ) {
   const operation = railItemOperation(layout, item)
@@ -67,27 +64,69 @@ function dispatchRailItemOperation(
     layout: layoutSnapshot(layout),
     operation: operationSummary(operation),
     railState: item.state,
-    surfaceId: item.surface.id,
-    surfaceTitle: item.surface.title,
-    surfaceType: item.surface.type,
+    railItemId: railItemKey(item),
+    surfaceId: railItemSurfaceId(item),
+    surfaceTitle: railItemTitle(item),
+    surfaceType: railItemSurfaceType(item),
   })
   onDispatch(operation)
 }
 
-function railItemLabel(item: WorkbenchRailSurfaceItem) {
-  if (item.state === 'minimized') return `Restore ${item.surface.title}`
-  if (item.surface.id === DEFAULT_TERMINAL_SURFACE_ID && paneIsVisible(item)) {
-    return 'Hide bottom tool pane'
-  }
-  if (paneIsVisible(item) && item.surface.capabilities.canMinimize) {
-    return `Minimize ${item.surface.title}`
-  }
-  if (item.state === 'active') return `${item.surface.title} active`
-  if (item.state === 'visible') return `Focus ${item.surface.title}`
+function railItemLabel(item: WorkbenchRailItem) {
+  if (isWorkbenchRailBottomPaneItem(item)) return bottomPaneRailItemLabel(item)
+  if (!isWorkbenchRailSurfaceItem(item)) return item.recipe.title
 
-  return `Focus ${item.surface.title}`
+  if (item.state === 'background') return `Restore ${item.surface.title}`
+  if (paneIsVisible(item)) return `Close ${item.surface.title}`
+  if (item.state === 'running') return `Restore ${item.surface.title}`
+
+  return `Open ${item.surface.title}`
 }
 
-function paneIsVisible(item: WorkbenchRailSurfaceItem) {
-  return item.state === 'active' || item.state === 'visible'
+function bottomPaneRailItemLabel(item: WorkbenchRailItem) {
+  if (item.state === 'collapsed') return 'Close Terminal'
+  if (paneIsVisible(item)) return 'Close Terminal'
+  if (item.state === 'running' || item.state === 'background') return 'Restore Terminal'
+
+  return 'Open Terminal'
+}
+
+function paneIsVisible(item: WorkbenchRailItem) {
+  if (item.state === 'active') return true
+  if (item.state === 'collapsed') return true
+
+  return item.state === 'visible'
+}
+
+function railItemKey(item: WorkbenchRailItem) {
+  if (isWorkbenchRailBottomPaneItem(item)) return item.id
+  if (isWorkbenchRailSurfaceItem(item)) return item.surface.id
+
+  return item.recipe.id
+}
+
+function railItemPaneId(item: WorkbenchRailItem) {
+  if (isWorkbenchRailBottomPaneItem(item)) return item.id
+
+  return undefined
+}
+
+function railItemSurfaceId(item: WorkbenchRailItem) {
+  if (isWorkbenchRailSurfaceItem(item)) return item.surface.id
+
+  return undefined
+}
+
+function railItemTitle(item: WorkbenchRailItem) {
+  if (isWorkbenchRailBottomPaneItem(item)) return item.title
+  if (isWorkbenchRailSurfaceItem(item)) return item.surface.title
+
+  return item.recipe.title
+}
+
+function railItemSurfaceType(item: WorkbenchRailItem) {
+  if (isWorkbenchRailBottomPaneItem(item)) return 'terminal'
+  if (isWorkbenchRailSurfaceItem(item)) return item.surface.type
+
+  return 'placeholder'
 }

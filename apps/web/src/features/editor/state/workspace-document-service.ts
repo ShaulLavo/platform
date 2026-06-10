@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import {
   contentRevisionForText,
   textSnapshotEqualsText,
@@ -9,7 +11,7 @@ import {
   type EditorScrollPosition,
   type EditorTextBuffer,
   type EditorViewSession,
-} from '@editor/core'
+} from '@singapor/core'
 
 export type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
 
@@ -160,7 +162,7 @@ export class WorkspaceDocumentService {
       view,
     })
     const nextView = this.viewsByTabId.get(tabId)
-    if (!nextView) throw new Error('editor view was not created')
+    if (!nextView) throw createClientInvariantError('editor view was not created')
 
     return this.viewDocumentProjection(nextView)
   }
@@ -449,7 +451,7 @@ export class WorkspaceDocumentService {
   private getRequiredLiveDocument(documentId: string): LiveEditorDocumentRecord {
     const document = this.liveDocumentsById.get(documentId)
     if (!document) {
-      throw new Error(`Missing live document ${documentId}`)
+      throw createClientInvariantError(`Missing live document ${documentId}`)
     }
 
     return document

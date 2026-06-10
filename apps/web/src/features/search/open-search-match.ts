@@ -1,15 +1,15 @@
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
-import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
+import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 
 import type { EditorCommands } from '@/features/editor/state/editor-commands'
 
 export function openWorkspaceSearchMatch(
   match: WorkspaceSearchMatch,
   query: string,
-  commands: Pick<EditorCommands, 'openDefinition' | 'selectFile'>,
+  commands: Pick<EditorCommands, 'openDefinition' | 'openFileSurface'>,
 ) {
   if (!isContentLocation(match)) {
-    commands.selectFile(match.path)
+    commands.openFileSurface(match.path)
     return
   }
 

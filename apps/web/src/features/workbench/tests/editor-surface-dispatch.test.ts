@@ -1,36 +1,24 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  createEditorPaneLayoutForPaths,
-  splitEditorPaneTab,
-} from '@/features/editor/state/editor-pane-state'
-
+import { splitEditorWorkspaceLayoutForPaths } from '../../../../test/factories/editor-workspace-layout'
 import {
   createChatSurface,
   createClassicFirstRunWorkspaceLayout,
   createFileNavigatorSurface,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
-import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/utils/surface-state'
+} from '@workspace/tiling/utils/layout-builders'
+import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import { dispatchEditorSurfaceOperation } from '@/features/workbench/utils/editor-surface-dispatch'
 import {
   editorSurfaceSerializedState,
-  editorPaneIdForWorkbenchWindowId,
-  workspaceLayoutForEditorPaneLayout,
+  editorGroupIdForWorkbenchWindowId,
 } from '@/features/workbench/utils/editor-surface-layout'
-import { CLASSIC_POLICY_ID } from '@/features/tiling-surface-manager/utils/layout-ids'
+import { CLASSIC_POLICY_ID } from '@workspace/tiling/utils/layout-ids'
 import {
   findWindowIdContainingSurface,
   visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/utils/layout-normalize'
-import {
-  closeSurface,
-  minimizeSurface,
-} from '@/features/tiling-surface-manager/utils/layout-operations'
-import type {
-  LayoutNodeId,
-  SurfaceId,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@workspace/tiling/utils/layout-normalize'
+import { closeSurface, moveSurface } from '@workspace/tiling/utils/layout-operations'
+import type { LayoutNodeId, SurfaceId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('dispatchEditorSurfaceOperation', () => {
   it('commits renderer-owned resize and maximize operations', () => {
@@ -112,7 +100,7 @@ describe('dispatchEditorSurfaceOperation', () => {
     if (!committedLayout) throw new Error('Expected committed layout')
 
     expect(committedLayout.activeSurfaceId).toBe(chat.id)
-    expect(committedLayout.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(committedLayout.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(chat.id)
   })
 
@@ -134,7 +122,7 @@ describe('dispatchEditorSurfaceOperation', () => {
     const committedLayout = committed[0]
     expect(committedLayout).toBeDefined()
     expect(committedLayout?.activeSurfaceId).toBe(chat.id)
-    expect(committedLayout?.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(committedLayout?.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(chat.id)
   })
 
@@ -156,7 +144,7 @@ describe('dispatchEditorSurfaceOperation', () => {
     const committedLayout = committed[0]
     expect(committedLayout).toBeDefined()
     expect(committedLayout?.activeSurfaceId).toBe(chat.id)
-    expect(committedLayout?.rail.minimizedSurfaceIds).not.toContain(chat.id)
+    expect(committedLayout?.rail.backgroundSurfaceIds).not.toContain(chat.id)
     expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(chat.id)
   })
 
@@ -178,7 +166,7 @@ describe('dispatchEditorSurfaceOperation', () => {
     const committedLayout = committed[0]
     expect(committedLayout).toBeDefined()
     expect(committedLayout?.activeSurfaceId).toBe(fileNavigator.id)
-    expect(committedLayout?.rail.minimizedSurfaceIds).not.toContain(fileNavigator.id)
+    expect(committedLayout?.rail.backgroundSurfaceIds).not.toContain(fileNavigator.id)
     expect(visibleSurfaceIdsInOrder(committedLayout)).toContain(fileNavigator.id)
   })
 })
@@ -256,18 +244,19 @@ function layoutWithStaleFilesWindowSurfacePlacement(): WorkspaceLayout {
     },
   }
 
-  return minimizeSurface(withStalePlacement, fileNavigator.id)
+  return backgroundSurface(withStalePlacement, fileNavigator.id)
 }
 
 function splitEditorWorkspaceLayout() {
-  const editorLayout = createEditorPaneLayoutForPaths(
-    ['/repo/src/a.ts', '/repo/src/b.ts'],
-    '/repo/src/a.ts',
-  )
-  const tabId = editorLayout.root.kind === 'leaf' ? editorLayout.root.tabs[1]?.id : null
-  const splitLayout = tabId ? splitEditorPaneTab(editorLayout, tabId, 'horizontal') : editorLayout
+  return splitEditorWorkspaceLayoutForPaths({
+    activePath: '/repo/src/b.ts',
+    leftPaths: ['/repo/src/a.ts'],
+    rightPaths: ['/repo/src/b.ts'],
+  })
+}
 
-  return workspaceLayoutForEditorPaneLayout(splitLayout)
+function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  return moveSurface(layout, surfaceId, { kind: 'background' })
 }
 
 function editorSplitNodeId(layout: WorkspaceLayout): LayoutNodeId | null {
@@ -285,5 +274,5 @@ function editorWindowNode(layout: WorkspaceLayout, nodeId: LayoutNodeId) {
   const node = layout.nodesById[nodeId]
   if (!node || node.kind !== 'window') return false
 
-  return Boolean(editorPaneIdForWorkbenchWindowId(node.windowId))
+  return Boolean(editorGroupIdForWorkbenchWindowId(node.windowId))
 }

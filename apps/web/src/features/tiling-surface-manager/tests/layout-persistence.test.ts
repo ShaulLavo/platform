@@ -7,18 +7,19 @@ import {
   CLASSIC_EDITOR_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
   createDiffSurface,
+  createEmptyWorkspaceLayout,
   createFileEditorSurface,
   createSearchPreviewSurface,
   createSearchResultsSurface,
   createTerminalSurface,
   createWorkbenchWindow,
   createWindowNode,
-} from '@/features/tiling-surface-manager/utils/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import {
   CLOSE_ACTIVE_SURFACE_COMMAND_ID,
   MAXIMIZE_ACTIVE_WINDOW_COMMAND_ID,
-} from '@/features/tiling-surface-manager/utils/layout-command-catalog'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/utils/layout-invariants'
+} from '@workspace/tiling/utils/layout-command-catalog'
+import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-invariants'
 import {
   fileEditorSurfaceId,
   hotkeyPresetId,
@@ -26,19 +27,18 @@ import {
   layoutNodeId,
   CLASSIC_POLICY_ID,
   placeholderSurfaceId,
+  REVIEW_LAYOUT_COMMAND_ID,
+  REVIEW_RECIPE_ID,
   windowManagementCommandId,
   workbenchWindowId,
-} from '@/features/tiling-surface-manager/utils/layout-ids'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/utils/layout-normalize'
-import {
-  minimizeSurface,
-  openSurface,
-} from '@/features/tiling-surface-manager/utils/layout-operations'
+} from '@workspace/tiling/utils/layout-ids'
+import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
+import { collapseWindow, moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
 import {
   restoreWorkspaceLayout,
   serializeWorkspaceLayout,
   type SerializedWorkspaceLayout,
-} from '@/features/tiling-surface-manager/utils/layout-persistence'
+} from '@/features/tiling-surface-manager/engine/layout-persistence'
 import {
   SURFACE_SERIALIZED_VERSION,
   type CustomWindowFrame,
@@ -46,7 +46,7 @@ import {
   type SurfaceId,
   type WorkspaceLayout,
   type WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 const rootPath = '/repo'
 
@@ -124,6 +124,73 @@ describe('tiling surface layout persistence', () => {
     expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
   })
 
+  it('restores fallback saved layout commands for old serialized layouts', () => {
+    const serialized = {
+      ...serializeWorkspaceLayout(createClassicFirstRunWorkspaceLayout()),
+      layoutCommands: [],
+    } satisfies SerializedWorkspaceLayout
+    const restored = restoreWorkspaceLayout(serialized, { rootPath })
+
+    expect(restored.layout.layoutCommandsById[REVIEW_LAYOUT_COMMAND_ID]?.recipeId).toBe(
+      REVIEW_RECIPE_ID,
+    )
+    expect(restored.layout.layoutCommandsById[REVIEW_LAYOUT_COMMAND_ID]?.enabled).toBe(true)
+    expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
+  })
+
+  it('round trips collapsed window edges', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/collapsed-edge.ts' })
+    const opened = openSurface(createEmptyWorkspaceLayout(), file)
+    const windowId = Object.values(opened.windowsById).find((window) =>
+      window.surfaceIds.includes(file.id),
+    )?.id
+    if (!windowId) throw new Error('Expected file window')
+
+    const layout = collapseWindow(opened, windowId, 'left')
+    const restored = restoreWorkspaceLayout(serializeWorkspaceLayout(layout), { rootPath })
+
+    expect(restored.layout.windowsById[windowId]?.mode).toBe('collapsed')
+    expect(restored.layout.windowsById[windowId]?.collapsedEdge).toBe('left')
+    expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
+  })
+
+  it('round trips background placement hints', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/background.ts' })
+    const savedCommand = savedLayoutCommand('/repo/src/background.ts')
+    const commandWithBackgroundHint = {
+      ...savedCommand,
+      slots: savedCommand.slots.map((slot) => ({
+        ...slot,
+        displayHint: { kind: 'background' } as const,
+      })),
+    } satisfies WorkspaceLayoutCommand
+    const layout = {
+      ...openSurface(createClassicFirstRunWorkspaceLayout(), file),
+      layoutCommandsById: {
+        [commandWithBackgroundHint.id]: commandWithBackgroundHint,
+      },
+      policiesById: {
+        ...createClassicFirstRunWorkspaceLayout().policiesById,
+        [CLASSIC_POLICY_ID]: {
+          ...createClassicFirstRunWorkspaceLayout().policiesById[CLASSIC_POLICY_ID],
+          stickyPlacementsBySurfaceId: {
+            [file.id]: { kind: 'background' },
+          },
+        },
+      },
+    } satisfies WorkspaceLayout
+
+    const restored = restoreWorkspaceLayout(serializeWorkspaceLayout(layout), { rootPath })
+
+    expect(
+      restored.layout.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[file.id],
+    ).toEqual({ kind: 'background' })
+    expect(restored.layout.layoutCommandsById[savedCommand.id].slots[0]?.displayHint).toEqual({
+      kind: 'background',
+    })
+    expect(checkWorkspaceLayoutInvariants(restored.layout).ok).toBe(true)
+  })
+
   it('falls back on unsupported serialized versions', () => {
     const fallbackLayout = createClassicFirstRunWorkspaceLayout()
     const serialized = {
@@ -175,7 +242,7 @@ describe('tiling surface layout persistence', () => {
 
   it('restores running terminals by session key', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-restore' })
-    const layout = minimizeSurface(
+    const layout = backgroundSurface(
       openSurface(createClassicFirstRunWorkspaceLayout(), terminal),
       terminal.id,
     )
@@ -249,7 +316,7 @@ describe('tiling surface layout persistence', () => {
       mruWindowIds: [windowId],
       nodes: [createWindowNode({ id: nodeId, windowId })],
       rail: {
-        minimizedSurfaceIds: [],
+        backgroundSurfaceIds: [],
         pinnedSurfaceIds: [],
         recipeIds: [],
         runningSurfaceIds: [],
@@ -368,6 +435,7 @@ function savedLayoutCommand(path: string): WorkspaceLayoutCommand {
     enabled: true,
     icon: 'layout',
     id: layoutCommandId(`saved:${path}`),
+    recipeId: REVIEW_RECIPE_ID,
     slots: [
       {
         frame: frame('center'),
@@ -391,6 +459,10 @@ function customWindowCommand(): CustomWindowManagementCommand {
     targetFrame: frame('center'),
     title: 'Custom Center',
   }
+}
+
+function backgroundSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  return moveSurface(layout, surfaceId, { kind: 'background' })
 }
 
 function frame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {

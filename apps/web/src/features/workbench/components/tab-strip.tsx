@@ -1,35 +1,53 @@
-import { use, useMemo, useRef } from 'react'
+import { use, useMemo, useRef, type ContextType } from 'react'
 
 import { ChromeEditorTabList } from '@/components/workspace/editor-tabs/components/chrome-editor-tab-list'
 import { ChromeTabCloseButton } from '@/components/workspace/editor-tabs/components/chrome-tab-close-button'
 import { chromeTabLayout } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
 import { ChromeTabSelectButton } from '@/components/workspace/editor-tabs/components/chrome-tab-select-button'
-import { chromeTabRootClassName } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
+import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { sameEditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
-import { useChromeVisualTabs } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
+import {
+  primeChromeVisualTabsCache,
+  useChromeVisualTabs,
+} from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import { useElementWidth } from '@/components/workspace/shared/hooks/use-element-width'
-import { useEditorTabDrag } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@workspace/ui/components/context-menu'
 import { cn } from '@workspace/ui/lib/utils'
+import { CheckIcon } from '@phosphor-icons/react'
 
+import { WorkbenchChromeTab } from '@/features/workbench/components/chrome-tab'
 import { surfacePanelId } from '@/features/workbench/components/surface-host'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
 import {
-  editorPaneIdForWorkbenchWindowId,
-  editorSurfaceSerializedState,
-} from '@/features/workbench/utils/editor-surface-layout'
+  bottomPaneSurfaceVisibilityOperation,
+  type BottomPaneSurfaceVisibilityItem,
+} from '@workspace/tiling/utils/bottom-pane-model'
+import { editorGroupIdForWorkbenchWindowId } from '@/features/workbench/utils/editor-surface-layout'
 import { EditorSurfaceContext } from '@/features/workbench/providers/editor-surface-context'
 import { chromeTabStyle } from '@/features/workbench/utils/tab-style'
+import {
+  WORKBENCH_TAB_DRAG_TYPE,
+  workbenchTabCapabilities,
+  type WorkbenchTabDragData,
+} from '@/features/workbench/utils/drag-drop-data'
 import type {
   LayoutOperation,
   Surface,
   WorkbenchWindow,
-} from '@/features/tiling-surface-manager/utils/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 export function TabStrip({
+  bottomPaneSurfaceVisibilityItems = [],
   surfaces,
   window,
   onDispatch,
 }: {
+  readonly bottomPaneSurfaceVisibilityItems?: readonly BottomPaneSurfaceVisibilityItem[]
   readonly surfaces: readonly Surface[]
   readonly window: WorkbenchWindow
   readonly onDispatch: (operation: LayoutOperation) => void
@@ -37,7 +55,7 @@ export function TabStrip({
   const tabListRef = useRef<HTMLDivElement | null>(null)
   const selectedTabRef = useRef<HTMLDivElement | null>(null)
   const editorSurfaceContext = use(EditorSurfaceContext)
-  // useChromeVisualTabs uses tab array identity to decide whether to dispatch a sync.
+  const editorGroupId = editorGroupIdForWorkbenchWindowId(window.id) ?? String(window.id)
   const editorTabs = useMemo(
     () =>
       editorSurfaceContext?.tabModelForSurface
@@ -57,16 +75,21 @@ export function TabStrip({
     editorTabs,
     Boolean(editorSurfaceContext),
     sameEditorTabModel,
+    editorGroupId,
   )
-  const tabDrag = useEditorTabDrag({
-    paneId: editorPaneIdForWorkbenchWindowId(window.id) ?? String(window.id),
-    tabs: editorTabs,
-    tabListRef,
-    onMoveToPane: (tabId, targetIndex) => moveSurfaceTab(tabId, targetIndex),
-    onReorder: (tabId, targetIndex) => reorderSurfaceTab(tabId, targetIndex),
-  })
   const availableWidth = useElementWidth(tabListRef)
   const activeIndex = surfaces.findIndex((surface) => surface.id === window.activeSurfaceId)
+  const bottomPane = bottomPaneSurfaceVisibilityItems.length > 0
+  const editorTabDndById = editorSurfaceContext
+    ? editorTabDragDataById({
+        bottomPane,
+        editorSurfaceContext,
+        editorTabs,
+        stripId: editorGroupId,
+        surfaces,
+        window,
+      })
+    : new Map<string, WorkbenchTabDragData>()
   const layout =
     availableWidth === null
       ? null
@@ -76,19 +99,23 @@ export function TabStrip({
           tabCount: surfaces.length,
         })
 
-  if (editorSurfaceContext && visualTabs.length === surfaces.length && visualTabs.length > 0) {
+  if (editorSurfaceContext && editorTabs.length === surfaces.length && visualTabs.length > 0) {
     return (
       <div
         aria-label='Window tabs'
         className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+        data-workbench-drag-blocker=''
+        data-workbench-tab-strip-id={editorGroupId}
         ref={tabListRef}
         role='tablist'
       >
         <ChromeEditorTabList
-          drag={tabDrag}
+          closeLayoutCacheKey={editorGroupId}
+          dndByTabId={editorTabDndById}
           selectedTabRef={selectedTabRef}
           tabListRef={tabListRef}
           tabs={visualTabs}
+          onBeforeClose={primeEditorTabCloseState}
           onClose={editorSurfaceContext.requestCloseTab}
           onCloseTabs={editorSurfaceContext.requestCloseTabs}
           onSelect={selectEditorTab}
@@ -98,46 +125,43 @@ export function TabStrip({
     )
   }
 
-  return (
-    <div
-      aria-label='Window tabs'
-      className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
-      ref={tabListRef}
-      role='tablist'
-    >
-      <div className='flex min-w-full items-end overflow-visible'>
-        {surfaces.map((surface, index) => {
-          const active = surface.id === window.activeSurfaceId
+  const tabListContent = (
+    <div className='flex min-w-full items-end overflow-visible'>
+      {surfaces.map((surface, index) => {
+        const active = surface.id === window.activeSurfaceId
+        const dnd = surfaceTabDragData({
+          bottomPane,
+          index,
+          stripId: editorGroupId,
+          surface,
+          window,
+        })
 
-          return (
-            <div
-              className={chromeTabRootClassName({
-                active,
-                className: cn(
-                  'z-[var(--chrome-tab-z)] border border-transparent',
-                  active && 'border-border/60 shadow-sm',
-                ),
-              })}
-              data-chrome-tab-root=''
-              data-surface-tab-id={surface.id}
-              key={surface.id}
-              style={chromeTabStyle({
-                active,
-                index,
-                overlap: layout?.overlap ?? 0,
-                width: layout?.tabs[index]?.width ?? null,
-              })}
+        return (
+          <WorkbenchChromeTab
+            active={active}
+            className='border border-transparent'
+            dnd={dnd}
+            key={surface.id}
+            surfaceTabId={surface.id}
+            style={chromeTabStyle({
+              active,
+              index,
+              overlap: layout?.overlap ?? 0,
+              width: layout?.tabs[index]?.width ?? null,
+            })}
+            onClick={() => onDispatch(selectSurfaceOperation(window, surface))}
+          >
+            <ChromeTabSelectButton
+              aria-controls={surfacePanelId(surface.id)}
+              aria-selected={active}
+              role='tab'
+              title={surface.title}
             >
-              <ChromeTabSelectButton
-                aria-controls={surfacePanelId(surface.id)}
-                aria-selected={active}
-                role='tab'
-                title={surface.title}
-                onClick={() => onDispatch(selectSurfaceOperation(window, surface))}
-              >
-                <SurfaceIcon className='size-3.5 shrink-0' type={surface.type} />
-                <span className='min-w-0 truncate'>{surface.title}</span>
-              </ChromeTabSelectButton>
+              <SurfaceIcon className='size-3.5 shrink-0' type={surface.type} />
+              <span className='min-w-0 truncate'>{surface.title}</span>
+            </ChromeTabSelectButton>
+            {bottomPane ? null : (
               <div className='flex h-full w-7 shrink-0 items-center justify-center'>
                 <ChromeTabCloseButton
                   aria-label={`Close ${surface.title} tab`}
@@ -146,7 +170,9 @@ export function TabStrip({
                     active && 'opacity-100',
                     !surface.capabilities.canClose && 'pointer-events-none opacity-30',
                   )}
+                  data-workbench-drag-blocker=''
                   disabled={!surface.capabilities.canClose}
+                  draggable={false}
                   title={`Close ${surface.title} tab`}
                   onClick={(event) => {
                     event.stopPropagation()
@@ -154,40 +180,62 @@ export function TabStrip({
                   }}
                 />
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )}
+          </WorkbenchChromeTab>
+        )
+      })}
     </div>
   )
 
-  function moveSurfaceTab(tabId: string, targetIndex: number) {
-    const surfaceId = editorSurfaceContext?.surfaceIdForEditorTabId(tabId)
-    if (!surfaceId) return false
-
-    onDispatch({
-      index: targetIndex,
-      surfaceId,
-      targetWindowId: window.id,
-      type: 'tabSurface',
-    })
-    return true
+  if (bottomPane) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger
+          aria-label='Window tabs'
+          className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+          data-workbench-drag-blocker=''
+          data-workbench-tab-strip-id={editorGroupId}
+          ref={tabListRef}
+          role='tablist'
+        >
+          {tabListContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent className='w-48'>
+          {bottomPaneSurfaceVisibilityItems.map((item) => (
+            <ContextMenuItem
+              aria-checked={item.checked}
+              disabled={item.disabled}
+              key={item.surface.id}
+              role='menuitemcheckbox'
+              onClick={() => dispatchBottomPaneSurfaceVisibilityChange(item)}
+            >
+              <SurfaceIcon className='size-3.5' type={item.surface.type} />
+              <span className='min-w-0 truncate'>{item.surface.title}</span>
+              <CheckIcon
+                className={cn('ml-auto size-3.5', item.checked ? 'opacity-100' : 'opacity-0')}
+              />
+            </ContextMenuItem>
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
+    )
   }
 
-  function reorderSurfaceTab(tabId: string, targetIndex: number) {
-    const fromIndex = surfaces.findIndex((surface) => {
-      const state = editorSurfaceSerializedState(surface)
-      return state?.editorTabId === tabId
-    })
-    if (fromIndex < 0) return false
+  return (
+    <div
+      aria-label='Window tabs'
+      className='flex min-h-0 min-w-0 flex-1 items-end overflow-hidden'
+      data-workbench-drag-blocker=''
+      data-workbench-tab-strip-id={editorGroupId}
+      ref={tabListRef}
+      role='tablist'
+    >
+      {tabListContent}
+    </div>
+  )
 
-    onDispatch({
-      fromIndex,
-      toIndex: targetIndex,
-      type: 'reorderSurface',
-      windowId: window.id,
-    })
-    return true
+  function primeEditorTabCloseState() {
+    primeChromeVisualTabsCache(editorGroupId, editorTabs, visualTabs)
   }
 
   function selectEditorTab(tab: (typeof editorTabs)[number]) {
@@ -212,6 +260,76 @@ export function TabStrip({
       windowId: window.id,
     })
     return true
+  }
+
+  function dispatchBottomPaneSurfaceVisibilityChange(item: BottomPaneSurfaceVisibilityItem) {
+    const operation = bottomPaneSurfaceVisibilityOperation(item, !item.checked)
+    if (!operation) return
+
+    onDispatch(operation)
+  }
+}
+
+function editorTabDragDataById({
+  bottomPane,
+  editorSurfaceContext,
+  editorTabs,
+  stripId,
+  surfaces,
+  window,
+}: {
+  readonly bottomPane: boolean
+  readonly editorSurfaceContext: NonNullable<ContextType<typeof EditorSurfaceContext>>
+  readonly editorTabs: readonly EditorTabModel[]
+  readonly stripId: string
+  readonly surfaces: readonly Surface[]
+  readonly window: WorkbenchWindow
+}) {
+  const dndById = new Map<string, WorkbenchTabDragData>()
+  for (let index = 0; index < editorTabs.length; index += 1) {
+    const tab = editorTabs[index]
+    if (!tab) continue
+
+    const surface = editorSurfaceForTab(editorSurfaceContext, surfaces, tab.id)
+    if (!surface) continue
+
+    dndById.set(tab.id, surfaceTabDragData({ bottomPane, index, stripId, surface, window }))
+  }
+
+  return dndById
+}
+
+function editorSurfaceForTab(
+  editorSurfaceContext: NonNullable<ContextType<typeof EditorSurfaceContext>>,
+  surfaces: readonly Surface[],
+  tabId: string,
+) {
+  const surfaceId = editorSurfaceContext.surfaceIdForEditorTabId(tabId)
+  if (!surfaceId) return null
+
+  return surfaces.find((surface) => surface.id === surfaceId) ?? null
+}
+
+function surfaceTabDragData({
+  bottomPane,
+  index,
+  stripId,
+  surface,
+  window,
+}: {
+  readonly bottomPane: boolean
+  readonly index: number
+  readonly stripId: string
+  readonly surface: Surface
+  readonly window: WorkbenchWindow
+}): WorkbenchTabDragData {
+  return {
+    capabilities: workbenchTabCapabilities({ bottomPane, surface }),
+    dragType: WORKBENCH_TAB_DRAG_TYPE,
+    sourceIndex: index,
+    sourceWindowId: window.id,
+    stripId,
+    surfaceId: surface.id,
   }
 }
 

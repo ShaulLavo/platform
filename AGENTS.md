@@ -6,10 +6,12 @@
   - `components/` — React render components only (`.tsx`)
   - `hooks/` — `use-*` hooks
   - `providers/` — context providers and `*-context.ts` modules
-  - `utils/` — pure non-React code
+  - `state/` — optional home for stores and other stateful modules. Co-locating a store next to its provider is fine too
+  - `utils/` — pure, stateless, non-React code only. No stores, no module-level mutable state, no subscriptions, nothing that imports React
   - `tests/` — feature tests
 - Do not create empty folders.
 - Import exact files through `@/`. Do not add barrel `index.ts` files.
+- Barrel files are allowed only at package entry points such as `packages/*/src/index.ts` that back the package's `"."` export. Do not add feature, folder, or utility barrels.
 
 ## Control Flow
 
@@ -25,9 +27,26 @@
 
 - One component per file. Do not export multiple components from one component file.
 - One hook per file. Keep hook files focused on the hook and its React wiring.
-- Keep pure helpers out of component and hook files. Move formatters, transforms, constants, stores, models, and other reusable logic into `utils/`.
+- Keep pure helpers out of component and hook files. Move formatters, transforms, constants, models, and other pure reusable logic into `utils/`.
+- Stores are stateful, so they never go in `utils/`. Where they do live is flexible: `state/`, or co-located with the provider or feature code that owns them.
 - Keep providers and context-object modules in `providers/`, not `components/`.
 - Avoid manual React memoization. Do not add `memo`, `useMemo`, or `useCallback` for ordinary render values or callbacks. Use them only for measured performance issues, required stable identity, or correctness. Add a short reason when you do.
+
+## Styling
+
+- Style with Tailwind classes and the `@workspace/ui` primitives. Do not write raw CSS or inline `style` props except for values that must be computed at runtime (dynamic positions, measured sizes).
+- Use theme tokens only. Color classes must resolve to a token: `bg-background`, `text-foreground`, `text-muted-foreground`, `bg-primary`, `bg-card`, `border-border`, etc.
+- Never use raw Tailwind palette colors (`bg-blue-600`, `text-red-500`, `text-sky-300`, `amber-*`, `emerald-*`) or hex/`oklch()` literals in components. They bypass theming and dark mode.
+- Status and diff colors have tokens — use them instead of picking a palette hue:
+  - error / danger → `destructive`
+  - info / primary action → `info`
+  - success / passed → `success`
+  - warning / degraded → `warning`
+  - diff added / removed → `diff-added` / `diff-removed`
+- These tokens flip automatically between light and dark. Do not hand-roll dark variants like `text-sky-700 dark:text-sky-300`; write `text-info` once.
+- A token works with opacity and every utility: `bg-success/10`, `border-warning/30`, `ring-info`.
+- Need a color with no token? Add it to `packages/ui/src/styles/globals.css` (light `:root`, `.dark`, and the `@theme inline` map) instead of inlining a palette class.
+- Compose the shared primitives; do not restyle them ad-hoc or reach for a raw `<button>`/`<input>` when a primitive exists.
 
 ## Naming And Refactors
 
@@ -94,3 +113,11 @@
 - The node-pty bridge must spawn the real Node binary, not Bun's `--bun` node shim.
 - Under `bun --bun`, Bun prepends a temp `node` symlink to `PATH`. `Bun.spawn(['node', ...])` then runs Bun, and `@lydell/node-pty` breaks with `this._socket.write is not a function`.
 - Use `resolveNodeBinary()` in `terminal/service.ts`; it walks `PATH` and skips Bun-backed `node`. Production plain `bun` already resolves `node` correctly, but this protects tests.
+
+`tabular-nums` should be the default for any number that updates ( timers, counters, prices, percentages, scores, live data etc ).
+
+you can enable this tnum OpenType feature using the CSS property `font-variant-numeric`.
+
+.tabular-nums {
+font-variant-numeric: tabular-nums;
+}

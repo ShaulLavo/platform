@@ -6,21 +6,14 @@ import { ToolPaneHeader } from '@/features/workbench/components/tool-pane-header
 import { useEditorSurfaceContext } from '@/features/workbench/hooks/use-editor-surface-context'
 
 export function GitChangesSurface({ surface }: SurfaceRendererProps) {
-  const { gitStore, rootPath, toolSurfaceState } = useEditorSurfaceContext()
+  const { gitStore, rootPath } = useEditorSurfaceContext()
   if (surface.type !== 'git-changes') {
     return <PanelUnavailable message='This surface is not Git changes.' />
-  }
-  if (!toolSurfaceState) {
-    return <PanelUnavailable message='Git changes state is unavailable.' />
   }
 
   return (
     <section className='bg-background flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
-      <ToolPaneHeader
-        tab='git'
-        treeState={toolSurfaceState.treeState}
-        visibleTreeItemCount={toolSurfaceState.visibleTreeItemCount}
-      />
+      <ToolPaneHeader tab='git' />
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
         <GitPanel rootPath={rootPath} store={gitStore} />
       </div>

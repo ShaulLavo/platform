@@ -13,21 +13,12 @@
   width: 1px;
 }
 
-.editor-diff-split
-  .app-git-diff-split-handle:is(
-    [data-editor-pane-handle-state='hover'],
-    [data-editor-pane-handle-state='focus'],
-    [data-editor-pane-handle-state='dragging']
-  ) {
+.editor-diff-split .app-git-diff-split-handle:is(:hover, :focus-visible, :active) {
   background: transparent;
 }
 
 .editor-diff-split
-  .app-git-diff-split-handle:is(
-    [data-editor-pane-handle-state='hover'],
-    [data-editor-pane-handle-state='focus'],
-    [data-editor-pane-handle-state='dragging']
-  )
+  .app-git-diff-split-handle:is(:hover, :focus-visible, :active)
   .app-git-diff-split-handle-line {
   background: var(--editor-diff-modified);
 }

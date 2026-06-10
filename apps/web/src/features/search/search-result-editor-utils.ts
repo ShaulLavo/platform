@@ -1,4 +1,4 @@
-import type { EditorRangeDecoration, EditorScrollMode } from '@editor/core'
+import type { EditorRangeDecoration, EditorScrollMode } from '@singapor/core'
 import type { CSSProperties, KeyboardEvent, RefObject } from 'react'
 
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'

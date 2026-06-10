@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest'
 
+import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
+import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/layout-command-presets'
+import {
+  createClassicFirstRunWorkspaceLayout,
+  createEmptyWorkspaceLayout,
+  createFileEditorSurface,
+} from '@workspace/tiling/utils/layout-builders'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
+import { activeEditorPathForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
+
 import { activePlatformKeyBindings } from '../active-bindings'
-import { commandHotkeyMeta, platformCommandSpec } from '../command-registry'
-import { defaultPlatformKeyBindings } from '../default-bindings'
+import {
+  commandHotkeyMeta,
+  platformCommandSpec,
+  windowManagementCommandSpecs,
+} from '../command-registry'
+import {
+  defaultPlatformKeyBindings,
+  platformKeyBindingsForWorkspaceLayout,
+} from '../default-bindings'
 import {
   editorKeyBindingFromPlatform,
   editorKeymapLayersFromPlatform,
@@ -168,6 +185,24 @@ describe('command registry', () => {
     })
   })
 
+  it('exposes built-in window management commands for the command palette', () => {
+    expect(platformCommandSpec('workspace.window.maximizeActiveWindow')).toMatchObject({
+      aliases: expect.arrayContaining(['fullscreen']),
+      category: 'Window Management',
+      commandFamily: 'window-management',
+      commandKind: 'built-in-window',
+      icon: 'maximize',
+      title: 'Maximize Active Window',
+    })
+    expect(platformCommandSpec('workspace.window.collapseActiveWindow')).toMatchObject({
+      category: 'Window Management',
+      title: 'Collapse Active Window',
+    })
+    expect(windowManagementCommandSpecs.map((spec) => spec.id)).toContain(
+      'workspace.window.splitActiveWindowRight',
+    )
+  })
+
   it('exposes requested VS Code workspace command aliases', () => {
     for (const [command, vscodeCommandId] of requestedWorkspaceAliases) {
       expect(platformCommandSpec(command)).toMatchObject({
@@ -219,6 +254,12 @@ describe('defaultPlatformKeyBindings', () => {
         vscodeCommandId: 'workbench.action.quickOpen',
       }),
     )
+  })
+
+  it('keeps default bindings unique within each pane', () => {
+    for (const platform of defaultBindingPlatforms) {
+      expect(duplicateBindingSlots(defaultPlatformKeyBindings(platform))).toEqual([])
+    }
   })
 
   it('reserves browser-hostile desktop defaults as no-ops', () => {
@@ -275,6 +316,66 @@ describe('defaultPlatformKeyBindings', () => {
       expect.objectContaining({
         command: 'editor.findReplace',
         keys: 'Mod+H',
+      }),
+    )
+  })
+
+  it('uses browser-safe defaults for window management commands', () => {
+    const bindings = defaultPlatformKeyBindings('linux')
+
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.maximizeActiveWindow',
+        keys: 'Alt+Shift+M',
+      }),
+    )
+    expect(commands(appKeyBindingsForPane(bindings, 'global'))).toContain(
+      'workspace.window.closeActiveSurface',
+    )
+  })
+
+  it('replaces default window management bindings with the active hotkey preset', () => {
+    const preset = defaultWindowManagementHotkeyPresets().find(
+      (candidate) => candidate.title === 'VS Code',
+    )
+    if (!preset) throw new Error('Expected VS Code hotkey preset')
+
+    const layout = {
+      ...createClassicFirstRunWorkspaceLayout(),
+      activeHotkeyPresetId: preset.id,
+      hotkeyPresetsById: {
+        [preset.id]: preset,
+      },
+    }
+    const bindings = platformKeyBindingsForWorkspaceLayout(
+      defaultPlatformKeyBindings('linux'),
+      layout,
+      'linux',
+    )
+
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.closeActiveSurface',
+        hotkey: 'Ctrl+W',
+        keys: 'Mod+W',
+      }),
+    )
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.splitActiveWindowBottom',
+        hotkey: 'Ctrl+K Ctrl+\\',
+      }),
+    )
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.splitActiveWindowRight',
+        hotkey: 'Ctrl+\\',
+      }),
+    )
+    expect(bindings).not.toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.closeActiveSurface',
+        keys: 'Alt+Shift+W',
       }),
     )
   })
@@ -342,6 +443,67 @@ describe('defaultPlatformKeyBindings', () => {
         keys: 'Mod+Shift+ArrowUp',
       }),
     )
+  })
+})
+
+describe('command palette command availability', () => {
+  it('uses active layout capabilities for window management commands', () => {
+    const workspaceLayout = createClassicFirstRunWorkspaceLayout()
+    const emptyWorkspaceLayout = createEmptyWorkspaceLayout()
+    const fileWorkspaceLayout = openSurface(
+      workspaceLayout,
+      createFileEditorSurface({ path: '/repo/src/app.ts' }),
+    )
+
+    expect(
+      commandDisabledReason('workspace.window.maximizeActiveWindow', {
+        activeFilePath: null,
+        hasWorkspace: true,
+        workspaceLayout,
+      }),
+    ).toBeNull()
+    expect(
+      commandDisabledReason('workspace.window.closeActiveSurface', {
+        activeFilePath: null,
+        hasWorkspace: true,
+        workspaceLayout,
+      }),
+    ).toBe('Active surface cannot be closed.')
+    expect(
+      commandDisabledReason('workspace.closeCurrentTab', {
+        activeFilePath: null,
+        hasWorkspace: true,
+        workspaceLayout,
+      }),
+    ).toBe('Active surface cannot be closed.')
+    expect(
+      commandDisabledReason('workspace.splitEditor', {
+        activeFilePath: null,
+        hasWorkspace: true,
+        workspaceLayout: emptyWorkspaceLayout,
+      }),
+    ).toBe('No active window.')
+    expect(
+      commandDisabledReason('workspace.closeCurrentTab', {
+        activeFilePath: null,
+        hasWorkspace: true,
+        workspaceLayout: emptyWorkspaceLayout,
+      }),
+    ).toBe('No active surface.')
+    expect(
+      commandDisabledReason('workspace.saveFile', {
+        activeFilePath: null,
+        hasWorkspace: true,
+        workspaceLayout,
+      }),
+    ).toBe('No file-backed surface is active.')
+    expect(
+      commandDisabledReason('workspace.saveFile', {
+        activeFilePath: activeEditorPathForWorkspaceLayout(fileWorkspaceLayout),
+        hasWorkspace: true,
+        workspaceLayout: fileWorkspaceLayout,
+      }),
+    ).toBeNull()
   })
 })
 
@@ -413,6 +575,25 @@ function binding(
 
 function commands(bindings: readonly PlatformKeyBinding[]) {
   return bindings.map((keyBinding) => keyBinding.command)
+}
+
+function duplicateBindingSlots(bindings: readonly PlatformKeyBinding[]) {
+  const commandsBySlot = new Map<string, string[]>()
+
+  for (const binding of bindings) {
+    const slot = `${binding.pane ?? 'any'}:${binding.keys}`
+    const existing = commandsBySlot.get(slot) ?? []
+    commandsBySlot.set(slot, existing.concat(binding.command ?? 'noop'))
+  }
+
+  const duplicates: string[] = []
+  for (const [slot, commandsForSlot] of commandsBySlot) {
+    if (commandsForSlot.length <= 1) continue
+
+    duplicates.push(`${slot}: ${commandsForSlot.join(', ')}`)
+  }
+
+  return duplicates
 }
 
 function layerCommands(layers: ReturnType<typeof editorKeymapLayersFromPlatform>, id: string) {

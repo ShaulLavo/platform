@@ -1,3 +1,5 @@
+import { createInternalError } from '../../observability/structured-errors'
+
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import path from 'node:path'
 import {
@@ -185,7 +187,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
 
   async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
     if (!Number.isInteger(numTurns) || numTurns < 1) {
-      throw new Error('Codex thread rollback requires numTurns to be an integer >= 1.')
+      throw createInternalError('Codex thread rollback requires numTurns to be an integer >= 1.')
     }
 
     return this.requireSession(threadId, 'thread/rollback').rollbackThread(numTurns)
@@ -301,7 +303,9 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const session = this.sessions.get(threadId)
     if (session?.isActive()) return session
 
-    throw new Error(`Codex ${operation} requires an active session for thread ${threadId}.`)
+    throw createInternalError(
+      `Codex ${operation} requires an active session for thread ${threadId}.`,
+    )
   }
 }
 
@@ -536,7 +540,7 @@ class CodexAppServerSession {
       threadId: this.threadId,
     })
     this.status = 'stopped'
-    this.rejectAllTurns(new Error('Codex session stopped.'))
+    this.rejectAllTurns(createInternalError('Codex session stopped.'))
     this.client.close()
   }
 
@@ -573,7 +577,7 @@ class CodexAppServerSession {
 
   async respondApproval(input: ProviderApprovalResponseInput) {
     const pending = this.pendingApprovals.get(input.requestId)
-    if (!pending) throw new Error(`Unknown pending approval request: ${input.requestId}`)
+    if (!pending) throw createInternalError(`Unknown pending approval request: ${input.requestId}`)
 
     this.pendingApprovals.delete(input.requestId)
     this.client.respondSuccess(pending.id, { decision: input.decision })
@@ -598,7 +602,8 @@ class CodexAppServerSession {
 
   async respondUserInput(input: ProviderUserInputResponseInput) {
     const pending = this.pendingUserInputs.get(input.requestId)
-    if (!pending) throw new Error(`Unknown pending user-input request: ${input.requestId}`)
+    if (!pending)
+      throw createInternalError(`Unknown pending user-input request: ${input.requestId}`)
 
     this.pendingUserInputs.delete(input.requestId)
     this.client.respondSuccess(pending.id, { answers: input.answers })
@@ -1451,7 +1456,7 @@ class CodexAppServerSession {
       type: 'runtime.error',
     })
     if (!params.turnId) {
-      this.rejectActiveTurn(new Error(message))
+      this.rejectActiveTurn(createInternalError(message))
       return
     }
 
@@ -1585,7 +1590,7 @@ class CodexAppServerSession {
   private rejectUnmappedTurn(turn: ActiveCodexTurn, error: unknown) {
     if (this.turnsForCanonical(turn.canonicalTurnId).length > 0) return
 
-    turn.reject(new Error(providerErrorMessage(error)))
+    turn.reject(createInternalError(providerErrorMessage(error)))
   }
 
   private rejectAllTurns(error: Error) {
@@ -1636,7 +1641,7 @@ class CodexAppServerSession {
       turnId: turn.canonicalTurnId,
       type: 'runtime.error',
     })
-    turn.reject(new Error(message))
+    turn.reject(createInternalError(message))
   }
 
   private rejectPendingTurn(turn: ActiveCodexTurn, message: string) {
@@ -1666,7 +1671,7 @@ class CodexAppServerSession {
       turnId: turn.canonicalTurnId,
       type: 'runtime.error',
     })
-    turn.reject(new Error(message))
+    turn.reject(createInternalError(message))
   }
 
   private resolveTurn(providerTurnId: string, turn: ActiveCodexTurn) {
@@ -1816,7 +1821,8 @@ class CodexAppServerRpcClient {
     this.process.stderr.on('data', (chunk: string) => this.readStderr(chunk))
     this.process.on('error', (error) => this.closeWithError(error))
     this.process.on('exit', (code) => {
-      if (!this.closed) this.closeWithError(new Error(`Codex app-server exited with ${code}.`))
+      if (!this.closed)
+        this.closeWithError(createInternalError(`Codex app-server exited with ${code}.`))
     })
   }
 
@@ -1839,7 +1845,7 @@ class CodexAppServerRpcClient {
     params: CodexClientRequestParamsByMethod[Method],
     timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<CodexClientRequestResultByMethod[Method]> {
-    if (this.closed) return Promise.reject(new Error('Codex app-server is closed.'))
+    if (this.closed) return Promise.reject(createInternalError('Codex app-server is closed.'))
 
     const id = this.nextId
     this.nextId += 1
@@ -1847,7 +1853,7 @@ class CodexAppServerRpcClient {
     const promise = new Promise<CodexClientRequestResultByMethod[Method]>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(String(id))
-        reject(new Error(`Codex app-server request timed out: ${method}`))
+        reject(createInternalError(`Codex app-server request timed out: ${method}`))
       }, timeoutMs)
       this.pending.set(String(id), {
         method,
@@ -1870,14 +1876,14 @@ class CodexAppServerRpcClient {
     params: unknown,
     timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<Result> {
-    if (this.closed) return Promise.reject(new Error('Codex app-server is closed.'))
+    if (this.closed) return Promise.reject(createInternalError('Codex app-server is closed.'))
 
     const id = this.nextId
     this.nextId += 1
     const promise = new Promise<Result>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(String(id))
-        reject(new Error(`Codex app-server request timed out: ${method}`))
+        reject(createInternalError(`Codex app-server request timed out: ${method}`))
       }, timeoutMs)
       this.pending.set(String(id), {
         method: method as CodexClientRequestMethod,
@@ -1912,7 +1918,7 @@ class CodexAppServerRpcClient {
 
     this.closed = true
     this.process.kill()
-    this.closeWithError(new Error('Codex app-server closed.'))
+    this.closeWithError(createInternalError('Codex app-server closed.'))
   }
 
   private write(message: JsonRpcMessage) {
@@ -1944,7 +1950,7 @@ class CodexAppServerRpcClient {
     try {
       message = parseJsonRpcMessage(line)
     } catch (error) {
-      this.closeWithError(new Error(providerErrorMessage(error)))
+      this.closeWithError(createInternalError(providerErrorMessage(error)))
       return
     }
     if (isJsonRpcResponse(message)) {
@@ -1964,7 +1970,7 @@ class CodexAppServerRpcClient {
     clearTimeout(pending.timer)
     this.pending.delete(id)
     if (message.error) {
-      pending.reject(new Error(jsonRpcErrorMessage(message.error)))
+      pending.reject(createInternalError(jsonRpcErrorMessage(message.error)))
       return
     }
 
@@ -1972,7 +1978,7 @@ class CodexAppServerRpcClient {
       try {
         pending.resolve(parseCodexClientRequestResult(pending.method, message.result))
       } catch (error) {
-        pending.reject(new Error(providerErrorMessage(error)))
+        pending.reject(createInternalError(providerErrorMessage(error)))
       }
       return
     }
@@ -1995,7 +2001,7 @@ class CodexAppServerRpcClient {
 
     clearTimeout(pending.timer)
     this.pending.delete(String(id))
-    pending.reject(new Error(providerErrorMessage(error)))
+    pending.reject(createInternalError(providerErrorMessage(error)))
   }
 
   private closeWithError(error: Error) {
@@ -2379,7 +2385,7 @@ function parseJsonRpcMessage(line: string): JsonRpcMessage {
   try {
     return JSON.parse(line) as JsonRpcMessage
   } catch (error) {
-    throw new Error(
+    throw createInternalError(
       `Failed to parse Codex app-server JSON-RPC message: ${providerErrorMessage(error)}`,
     )
   }

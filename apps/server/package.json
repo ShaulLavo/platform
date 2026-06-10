@@ -29,12 +29,12 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@editor/lsp": "workspace:*",
-    "@editor/typescript-lsp": "workspace:*",
     "@elysia/eden": "^1.4.10",
     "@elysiajs/cors": "^1.4.2",
     "@lydell/node-pty": "1.1.0",
     "@parcel/watcher": "^2.5.6",
+    "@singapor/lsp": "0.1.1",
+    "@singapor/typescript-lsp": "0.1.1",
     "@workspace/contracts": "workspace:*",
     "@workspace/observability": "workspace:*",
     "cheerio": "^1.2.0",

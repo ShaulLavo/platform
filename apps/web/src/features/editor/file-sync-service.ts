@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 import type {
   LiveEditorDocument,
   EditorDocumentStoreApi,
@@ -22,7 +24,7 @@ export class FileSyncService {
 
   async save(document: LiveEditorDocument): Promise<FileResult> {
     if (document.sync.kind !== 'file') {
-      throw new Error(`Cannot save unsynced editor document ${document.id}`)
+      throw createClientInvariantError(`Cannot save unsynced editor document ${document.id}`)
     }
 
     const sync = document.sync

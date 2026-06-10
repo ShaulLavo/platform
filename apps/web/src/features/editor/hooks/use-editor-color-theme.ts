@@ -1,5 +1,5 @@
 import { createContext, createElement, useCallback, use, useMemo, type ReactNode } from 'react'
-import type { EditorTheme } from '@editor/core'
+import type { EditorTheme } from '@singapor/core'
 
 import { useTheme } from '@/components/theme-context'
 import { clientErrors } from '@/lib/structured-errors'

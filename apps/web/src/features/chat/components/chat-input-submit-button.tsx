@@ -22,7 +22,7 @@ export const ChatInputSubmitButton = forwardRef<HTMLButtonElement, ChatInputSubm
           render={
             <Button
               aria-label={label}
-              className='size-8 rounded-full bg-blue-600 text-white shadow-sm shadow-blue-950/20 hover:bg-blue-500 disabled:opacity-45 dark:bg-blue-600 dark:hover:bg-blue-500'
+              className='bg-info text-info-foreground shadow-info/20 hover:bg-info/90 size-8 rounded-full shadow-sm disabled:opacity-45'
               disabled={busy ? disabled : sendDisabled}
               ref={ref}
               size='icon-sm'

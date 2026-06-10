@@ -81,13 +81,18 @@ describe('search buffer store', () => {
     store.getState().appendEvent(runId, doneEvent('needle', 2))
     store.getState().setReplaceVisible('repo', true)
     store.getState().setReplaceText('repo', 'pin')
+    const selectedResultId = store.getState().active?.activeResultId ?? null
     store.getState().collapseAllGroups()
+    const collapsedResultId = store.getState().active?.activeResultId ?? null
 
     const cached = cachedSearchBufferState(store.getState().active)
     const restored = createSearchBufferStore(cached)
 
-    expect(cached && 'matches' in cached).toBe(false)
+    expect(selectedResultId).not.toBeNull()
+    expect(collapsedResultId).not.toBe(selectedResultId)
+    expect(cached?.matches).toHaveLength(2)
     expect(restored.getState().active).toMatchObject({
+      activeResultId: collapsedResultId,
       caseSensitive: true,
       excludeGlobText: '*.test.ts',
       filtersVisible: true,
@@ -97,11 +102,17 @@ describe('search buffer store', () => {
       replaceText: 'pin',
       replaceVisible: true,
       resultsQuery: 'needle',
-      status: 'loading',
+      status: 'ready',
       totalCount: 2,
       wholeWord: true,
     })
-    expect(searchGroupsForSnapshot(restored.getState().active)).toEqual([])
+    expect(searchGroupsForSnapshot(restored.getState().active)).toEqual([
+      expect.objectContaining({
+        collapsed: true,
+        count: 2,
+        path: 'repo/src/app.ts',
+      }),
+    ])
   })
 
   it('sorts file groups with VS Code-style path and filename ordering', () => {

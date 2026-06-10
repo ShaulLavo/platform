@@ -1,3 +1,6 @@
+> [!NOTE]
+> **STATUS: 🔵 TOUCH-UP ONLY (reviewed 2026-06-06).** Stable reference distilled from `references/t3code`; content current.
+
 # T3Code Reference
 
 This is the condensed T3Code-only implementation reference. It combines the
@@ -39,48 +42,48 @@ Sources:
 
 Root/tooling:
 
-| Area | T3Code choice |
-| --- | --- |
-| Runtime/package manager | Bun |
-| Monorepo | Bun workspaces plus Turborepo |
-| Language | TypeScript, ESM |
-| Lint/format | `oxlint`, `oxfmt` |
-| Tests | Vitest, Effect Vitest helpers, browser Vitest with Playwright |
-| Builds | Vite for web, `tsdown` for server/packages |
+| Area                    | T3Code choice                                                 |
+| ----------------------- | ------------------------------------------------------------- |
+| Runtime/package manager | Bun                                                           |
+| Monorepo                | Bun workspaces plus Turborepo                                 |
+| Language                | TypeScript, ESM                                               |
+| Lint/format             | `oxlint`, `oxfmt`                                             |
+| Tests                   | Vitest, Effect Vitest helpers, browser Vitest with Playwright |
+| Builds                  | Vite for web, `tsdown` for server/packages                    |
 
 Frontend:
 
-| Area | Libraries |
-| --- | --- |
-| App | React 19, React DOM, Vite |
-| Routing | `@tanstack/react-router` |
-| Server-side reads | `@tanstack/react-query` |
-| Debounce/throttle | `@tanstack/react-pacer` |
-| Projection/draft state | Zustand |
-| Small shared atoms | `@effect/atom-react` |
-| UI primitives | `@base-ui/react` |
-| UI style helpers | Tailwind v4, `class-variance-authority`, `tailwind-merge` |
-| Icons | `@phosphor-icons/react` |
-| Composer editor | Lexical, `@lexical/react` |
-| Chat timeline | `@legendapp/list` |
-| Markdown | `react-markdown`, `remark-gfm` |
-| Diff/highlight | `@pierre/diffs`, local LRU |
-| Terminal | `@xterm/xterm`, `@xterm/addon-fit` |
-| Drag/reorder | `@dnd-kit/*` |
-| Animation | `@formkit/auto-animate` |
+| Area                   | Libraries                                                 |
+| ---------------------- | --------------------------------------------------------- |
+| App                    | React 19, React DOM, Vite                                 |
+| Routing                | `@tanstack/react-router`                                  |
+| Server-side reads      | `@tanstack/react-query`                                   |
+| Debounce/throttle      | `@tanstack/react-pacer`                                   |
+| Projection/draft state | Zustand                                                   |
+| Small shared atoms     | `@effect/atom-react`                                      |
+| UI primitives          | `@base-ui/react`                                          |
+| UI style helpers       | Tailwind v4, `class-variance-authority`, `tailwind-merge` |
+| Icons                  | `@phosphor-icons/react`                                   |
+| Composer editor        | Lexical, `@lexical/react`                                 |
+| Chat timeline          | `@legendapp/list`                                         |
+| Markdown               | `react-markdown`, `remark-gfm`                            |
+| Diff/highlight         | `@pierre/diffs`, local LRU                                |
+| Terminal               | `@xterm/xterm`, `@xterm/addon-fit`                        |
+| Drag/reorder           | `@dnd-kit/*`                                              |
+| Animation              | `@formkit/auto-animate`                                   |
 
 Backend:
 
-| Area | Libraries |
-| --- | --- |
-| Runtime architecture | `effect` services/layers/streams/cache |
-| Platform adapters | `@effect/platform-node`, `@effect/platform-bun` |
-| RPC/schema | `effect/Schema`, `effect/unstable/rpc` through contracts |
-| Persistence | SQLite through Effect SQL plus custom migrations |
-| Providers | Claude SDK, OpenCode SDK, Codex app-server package, ACP adapters |
-| Terminal | `node-pty` |
-| Diffing | `@pierre/diffs` |
-| Desktop/browser launch | `open` |
+| Area                   | Libraries                                                        |
+| ---------------------- | ---------------------------------------------------------------- |
+| Runtime architecture   | `effect` services/layers/streams/cache                           |
+| Platform adapters      | `@effect/platform-node`, `@effect/platform-bun`                  |
+| RPC/schema             | `effect/Schema`, `effect/unstable/rpc` through contracts         |
+| Persistence            | SQLite through Effect SQL plus custom migrations                 |
+| Providers              | Claude SDK, OpenCode SDK, Codex app-server package, ACP adapters |
+| Terminal               | `node-pty`                                                       |
+| Diffing                | `@pierre/diffs`                                                  |
+| Desktop/browser launch | `open`                                                           |
 
 UI component decision:
 
@@ -479,20 +482,20 @@ for event truth.
 
 Important backend caches:
 
-| Area | Cache behavior |
-| --- | --- |
-| SQLite statements | capacity 200, TTL 10 minutes |
-| Provider status | per-provider-instance JSON files under cache dir |
-| Provider instances | live instance map, reconciled from settings |
-| Claude capability probe | keyed by binary plus resolved HOME, TTL 5 minutes |
-| Provider stream ingestion | bounded per-turn/message/plan buffers |
-| Provider command reactor | recent turn-start dedupe, 30 minute TTL |
-| Git status | local/remote status caches, 1 second TTL, no failure caching |
-| Git upstream fetch | throttle by git common dir and remote, 15 second interval |
-| Git status broadcaster | local/remote fingerprints avoid duplicate publishes |
-| Workspace entries | workspace index TTL 15s, max 4 workspaces, max 25k entries |
-| Repository identity | capacity 512, positive/negative TTL 1 minute |
-| Keybindings | resolved config cache, capacity 1, watcher debounce 100ms |
+| Area                      | Cache behavior                                               |
+| ------------------------- | ------------------------------------------------------------ |
+| SQLite statements         | capacity 200, TTL 10 minutes                                 |
+| Provider status           | per-provider-instance JSON files under cache dir             |
+| Provider instances        | live instance map, reconciled from settings                  |
+| Claude capability probe   | keyed by binary plus resolved HOME, TTL 5 minutes            |
+| Provider stream ingestion | bounded per-turn/message/plan buffers                        |
+| Provider command reactor  | recent turn-start dedupe, 30 minute TTL                      |
+| Git status                | local/remote status caches, 1 second TTL, no failure caching |
+| Git upstream fetch        | throttle by git common dir and remote, 15 second interval    |
+| Git status broadcaster    | local/remote fingerprints avoid duplicate publishes          |
+| Workspace entries         | workspace index TTL 15s, max 4 workspaces, max 25k entries   |
+| Repository identity       | capacity 512, positive/negative TTL 1 minute                 |
+| Keybindings               | resolved config cache, capacity 1, watcher debounce 100ms    |
 
 The consistent rule: every cache has a TTL, capacity, explicit invalidation
 path, version boundary, or some combination of those.
@@ -558,31 +561,31 @@ Sources:
 
 ## Constants To Lift First
 
-| Area | T3Code value |
-| --- | --- |
-| thread detail idle eviction | 15 minutes |
-| max cached thread detail subscriptions | 32 |
-| sidebar thread detail prewarm | 10 visible threads |
-| max thread messages | 2,000 |
-| max checkpoints | 500 |
-| max proposed plans | 200 |
-| max activities | 500 |
-| project search stale time | 15 seconds |
-| Git branch search stale time | 15 seconds |
-| Git branch search refetch interval | 60 seconds |
-| checkpoint diff stale time | Infinity in React Query |
-| composer persistence debounce | 300ms |
-| UI persistence debounce | 500ms |
-| terminal event buffer | 200 |
-| markdown highlight cache | 500 entries, 50MB |
-| diff AST LRU | 240 |
-| workspace index cache | 15s, 4 workspaces, 25k entries |
-| Git status cache | 1s, capacity 2,048 |
-| Git upstream refresh throttle | 15s, 5s failure cooldown |
-| repository identity cache | 512 entries, 1 minute positive/negative TTL |
-| SQLite statement cache | 200 entries, 10 minute TTL |
-| provider turn-start dedupe | 10,000 keys, 30 minute TTL |
-| assistant stream buffer flush cap | 24,000 chars |
+| Area                                   | T3Code value                                |
+| -------------------------------------- | ------------------------------------------- |
+| thread detail idle eviction            | 15 minutes                                  |
+| max cached thread detail subscriptions | 32                                          |
+| sidebar thread detail prewarm          | 10 visible threads                          |
+| max thread messages                    | 2,000                                       |
+| max checkpoints                        | 500                                         |
+| max proposed plans                     | 200                                         |
+| max activities                         | 500                                         |
+| project search stale time              | 15 seconds                                  |
+| Git branch search stale time           | 15 seconds                                  |
+| Git branch search refetch interval     | 60 seconds                                  |
+| checkpoint diff stale time             | Infinity in React Query                     |
+| composer persistence debounce          | 300ms                                       |
+| UI persistence debounce                | 500ms                                       |
+| terminal event buffer                  | 200                                         |
+| markdown highlight cache               | 500 entries, 50MB                           |
+| diff AST LRU                           | 240                                         |
+| workspace index cache                  | 15s, 4 workspaces, 25k entries              |
+| Git status cache                       | 1s, capacity 2,048                          |
+| Git upstream refresh throttle          | 15s, 5s failure cooldown                    |
+| repository identity cache              | 512 entries, 1 minute positive/negative TTL |
+| SQLite statement cache                 | 200 entries, 10 minute TTL                  |
+| provider turn-start dedupe             | 10,000 keys, 30 minute TTL                  |
+| assistant stream buffer flush cap      | 24,000 chars                                |
 
 ## What Platform Should Copy
 
@@ -614,16 +617,16 @@ Non-negotiable shape:
 
 Do not copy Effect as a requirement.
 
-| T3Code primitive | Platform equivalent |
-| --- | --- |
-| `Effect.Cache` | local TTL/LRU helper |
-| `Ref` | private service state plus mutex when needed |
-| `Queue` | async queue or serialized command runner |
-| `PubSub` | typed emitter/observable |
-| `Stream` | async iterator, observable, or WebSocket subscription |
-| `Semaphore` | mutex or concurrency limiter |
-| `Scope` | explicit dispose lifecycle |
-| Effect transaction composition | explicit SQLite transaction wrapper |
+| T3Code primitive               | Platform equivalent                                   |
+| ------------------------------ | ----------------------------------------------------- |
+| `Effect.Cache`                 | local TTL/LRU helper                                  |
+| `Ref`                          | private service state plus mutex when needed          |
+| `Queue`                        | async queue or serialized command runner              |
+| `PubSub`                       | typed emitter/observable                              |
+| `Stream`                       | async iterator, observable, or WebSocket subscription |
+| `Semaphore`                    | mutex or concurrency limiter                          |
+| `Scope`                        | explicit dispose lifecycle                            |
+| Effect transaction composition | explicit SQLite transaction wrapper                   |
 
 Do not copy these patterns:
 

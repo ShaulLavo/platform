@@ -1,3 +1,5 @@
+import { createInternalError } from '../../observability/structured-errors'
+
 import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
   type ProviderApprovalDecision,
@@ -131,7 +133,7 @@ export class MockProviderAdapter implements ProviderAdapter {
   async sendTurn(input: ProviderTurnInput) {
     this.startedTurns.push(input)
     if (!this.sessions.has(input.thread.id)) await this.startSession(sessionInputFromTurn(input))
-    if (this.shouldFail) throw new Error('Mock provider failed')
+    if (this.shouldFail) throw createInternalError('Mock provider failed')
     await Promise.resolve(this.beforeComplete?.())
 
     const messageId = `assistant:${input.turnId}`
@@ -198,14 +200,14 @@ export class MockProviderAdapter implements ProviderAdapter {
 
   async readThread({ threadId }: { threadId: ThreadId }) {
     if (!this.sessions.has(threadId))
-      throw new Error(`Mock provider session not found: ${threadId}`)
+      throw createInternalError(`Mock provider session not found: ${threadId}`)
 
     return { providerThreadId: `mock-thread:${threadId}`, threadId, turns: [] }
   }
 
   async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
     if (!Number.isInteger(numTurns) || numTurns < 1) {
-      throw new Error('Mock provider rollback requires numTurns >= 1.')
+      throw createInternalError('Mock provider rollback requires numTurns >= 1.')
     }
 
     this.rollbacks.push({ numTurns, threadId })
@@ -213,13 +215,13 @@ export class MockProviderAdapter implements ProviderAdapter {
   }
 
   async interruptTurn({ threadId }: { threadId: ThreadId }) {
-    if (this.interruptError) throw new Error(this.interruptError)
+    if (this.interruptError) throw createInternalError(this.interruptError)
 
     this.interruptedThreads.push(threadId)
   }
 
   async stopSession({ threadId }: { threadId: ThreadId }) {
-    if (this.stopError) throw new Error(this.stopError)
+    if (this.stopError) throw createInternalError(this.stopError)
 
     this.sessions.delete(threadId)
     this.interruptedThreads.push(threadId)
@@ -234,7 +236,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     requestId: ApprovalRequestId
     threadId: ThreadId
   }) {
-    if (this.approvalError) throw new Error(this.approvalError)
+    if (this.approvalError) throw createInternalError(this.approvalError)
 
     this.approvalResponses.push(input)
   }
@@ -244,7 +246,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     requestId: ApprovalRequestId
     threadId: ThreadId
   }) {
-    if (this.userInputError) throw new Error(this.userInputError)
+    if (this.userInputError) throw createInternalError(this.userInputError)
 
     this.userInputResponses.push(input)
   }

@@ -3,19 +3,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import {
-  activeEditorPanePath,
-  createEditorPaneLayoutForPaths,
-  editorPaneTabs,
-  type EditorPaneLayout,
-} from '@/features/editor/state/editor-pane-state'
+  editorWorkspaceLayoutForPaths,
+  splitEditorWorkspaceLayoutForPaths,
+} from '../../../test/factories/editor-workspace-layout'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileDiff } from '@/features/git/types'
-import { createGitChangesSurface } from '@/features/tiling-surface-manager/utils/layout-builders'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/utils/layout-normalize'
-import { moveSurface, openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
+import { createGitChangesSurface } from '@workspace/tiling/utils/layout-builders'
+import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
+import { moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
 import {
+  WORKSPACE_CACHE_STORAGE_KEYS,
   readWorkspaceCache,
   writeWorkspaceCache,
   type WorkspaceCacheState,
@@ -52,8 +50,16 @@ describe('workspace cache', () => {
       }),
     )
 
+    const cachedWorkspaceLayout = cacheEntry<Record<string, unknown>>(
+      WORKSPACE_CACHE_STORAGE_KEYS.workspaceLayout,
+    )
     const cached = readWorkspaceCache()
 
+    expect(new Set(STORE.keys())).toEqual(new Set(Object.values(WORKSPACE_CACHE_STORAGE_KEYS)))
+    expect(cachedWorkspaceLayout).not.toHaveProperty('editorPaneLayout')
+    expect(cachedWorkspaceLayout).not.toHaveProperty('openFilePaths')
+    expect(cachedWorkspaceLayout).not.toHaveProperty('selectedFilePath')
+    expect(cachedWorkspaceLayout).toHaveProperty('version')
     expect(cached).toMatchObject({
       diffViewMode: 'stacked',
       editorHistory: [diffPath, '/repo/src/readme.md'],
@@ -63,8 +69,8 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: diffPath,
     })
-    expect(editorPanePaths(cached.editorPaneLayout)).toEqual(['/repo/src/readme.md', diffPath])
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(diffPath)
+    expect(cached.openFilePaths).toEqual(['/repo/src/readme.md', diffPath])
+    expect(cached.selectedFilePath).toBe(diffPath)
   })
 
   it('filters git diff tabs when their backing file is outside the workspace', () => {
@@ -94,8 +100,8 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: null,
     })
-    expect(editorPanePaths(cached.editorPaneLayout)).toEqual([])
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe(null)
+    expect(cached.openFilePaths).toEqual([])
+    expect(cached.selectedFilePath).toBe(null)
   })
 
   it('does not persist transient conflict diff tabs', () => {
@@ -125,68 +131,55 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: '/repo/src/readme.md',
     })
-    expect(editorPanePaths(cached.editorPaneLayout)).toEqual(['/repo/src/readme.md'])
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/readme.md')
+    expect(cached.openFilePaths).toEqual(['/repo/src/readme.md'])
+    expect(cached.selectedFilePath).toBe('/repo/src/readme.md')
   })
 
   it('persists pane split sizes in the workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
-    const editorPaneLayout: EditorPaneLayout = {
-      activePaneId: 'pane-b',
-      root: {
-        children: [
-          {
-            activeTabId: 'tab-a',
-            id: 'pane-a',
-            kind: 'leaf',
-            tabs: [{ id: 'tab-a', path: '/repo/src/a.ts' }],
-          },
-          {
-            activeTabId: 'tab-b',
-            id: 'pane-b',
-            kind: 'leaf',
-            tabs: [{ id: 'tab-b', path: '/repo/src/b.ts' }],
-          },
-        ],
-        direction: 'horizontal',
-        id: 'split-a',
-        kind: 'split',
-        sizes: [30, 70],
-      },
-    }
+    const workspaceLayout = splitEditorWorkspaceLayoutForPaths({
+      activePath: '/repo/src/b.ts',
+      leftPaths: ['/repo/src/a.ts'],
+      rightPaths: ['/repo/src/b.ts'],
+      sizes: [0.3, 0.7],
+    })
 
     writeWorkspaceCache(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
-        editorPaneLayout,
         openFilePaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
         recentlyClosedEditorPaths: [],
         rootFolder,
         searchBuffer: null,
         selectedFilePath: '/repo/src/b.ts',
+        workspaceLayout,
       }),
     )
 
     const cached = readWorkspaceCache()
 
-    expect(cached.editorPaneLayout.root).toMatchObject({
-      direction: 'horizontal',
-      kind: 'split',
-      sizes: [30, 70],
+    expect(Object.values(cached.workspaceLayout.nodesById)).toContainEqual(
+      expect.objectContaining({
+        axis: 'horizontal',
+        kind: 'split',
+        sizes: [0.3, 0.7],
+      }),
+    )
+    expect(cached).toMatchObject({
+      openFilePaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
+      selectedFilePath: '/repo/src/b.ts',
     })
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/b.ts')
   })
 
   it('persists singleton tool surface layout', () => {
     const rootFolder = pickedDirectory('/repo')
-    const editorPaneLayout = createEditorPaneLayoutForPaths(
-      ['/repo/src/app.ts'],
-      '/repo/src/app.ts',
-    )
     const gitChanges = createGitChangesSurface()
     const workspaceLayout = moveSurface(
-      openSurface(workspaceLayoutForEditorPaneLayout(editorPaneLayout), gitChanges),
+      openSurface(
+        editorWorkspaceLayoutForPaths(['/repo/src/app.ts'], '/repo/src/app.ts'),
+        gitChanges,
+      ),
       gitChanges.id,
       {
         edge: 'right',
@@ -198,7 +191,6 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
-        editorPaneLayout,
         openFilePaths: ['/repo/src/app.ts'],
         recentlyClosedEditorPaths: [],
         rootFolder,
@@ -211,11 +203,11 @@ describe('workspace cache', () => {
     const cached = readWorkspaceCache()
 
     expect(visibleSurfaceIdsInOrder(cached.workspaceLayout)).toContain(gitChanges.id)
-    expect(cached.workspaceLayout.rail.minimizedSurfaceIds).not.toContain(gitChanges.id)
-    expect(activeEditorPanePath(cached.editorPaneLayout)).toBe('/repo/src/app.ts')
+    expect(cached.workspaceLayout.rail.backgroundSurfaceIds).not.toContain(gitChanges.id)
+    expect(cached.selectedFilePath).toBe('/repo/src/app.ts')
   })
 
-  it('persists search buffer tabs', () => {
+  it('drops legacy search buffer editor tabs', () => {
     const rootFolder = pickedDirectory('/repo')
     const searchPath = searchBufferDocumentId('/repo')
 
@@ -232,10 +224,10 @@ describe('workspace cache', () => {
     )
 
     expect(readWorkspaceCache()).toMatchObject({
-      editorHistory: [searchPath],
-      openFilePaths: ['/repo/src/readme.md', searchPath],
-      recentlyClosedEditorPaths: [searchPath],
-      selectedFilePath: searchPath,
+      editorHistory: [],
+      openFilePaths: ['/repo/src/readme.md'],
+      recentlyClosedEditorPaths: [],
+      selectedFilePath: '/repo/src/readme.md',
     })
   })
 
@@ -249,6 +241,17 @@ describe('workspace cache', () => {
       filtersVisible: true,
       includeGlobText: 'src/**/*.ts',
       matchMode: 'regex' as const,
+      matches: [
+        {
+          column: 1,
+          kind: 'content' as const,
+          line: 1,
+          path: '/repo/src/app.ts',
+          preview: 'needle',
+          source: 'disk' as const,
+          type: 'file' as const,
+        },
+      ],
       query: 'needle',
       queryHistory: ['needle'],
       replaceHistory: ['pin'],
@@ -294,32 +297,76 @@ describe('workspace cache', () => {
         openFilePaths: [],
         recentlyClosedEditorPaths: [],
         rootFolder: pickedDirectory('/repo'),
-        searchBuffer: {
-          activeResultId: null,
-          caseSensitive: false,
-          collapsedPaths: [],
-          excludeGlobText: '',
-          filtersVisible: false,
-          includeGlobText: '',
-          matchMode: 'literal',
-          query: 'needle',
-          queryHistory: [],
-          replaceHistory: [],
-          replaceText: '',
-          replaceVisible: false,
-          resultsQuery: '',
-          resultsSearchQuery: null,
-          rootPath: '/other',
-          totalCount: 0,
-          truncated: false,
-          wholeWord: false,
-        },
+        searchBuffer: emptySearchBuffer('/other'),
         selectedFilePath: null,
       }),
     )
 
     expect(readWorkspaceCache()).toMatchObject({
       searchBuffer: null,
+    })
+  })
+
+  it('drops only the invalid cache entry while restoring valid workspace state', () => {
+    const rootFolder = pickedDirectory('/repo')
+
+    writeWorkspaceCache(
+      workspaceCacheState({
+        diffViewMode: 'stacked',
+        editorHistory: ['/repo/src/readme.md'],
+        openFilePaths: ['/repo/src/readme.md'],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer: null,
+        selectedFilePath: '/repo/src/readme.md',
+      }),
+    )
+    STORE.set(WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer, JSON.stringify({ rootPath: '/repo' }))
+
+    const cached = readWorkspaceCache()
+
+    expect(STORE.has(WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer)).toBe(false)
+    expect(cached).toMatchObject({
+      diffViewMode: 'stacked',
+      editorHistory: ['/repo/src/readme.md'],
+      openFilePaths: ['/repo/src/readme.md'],
+      rootFolder,
+      searchBuffer: null,
+      selectedFilePath: '/repo/src/readme.md',
+    })
+  })
+
+  it('keeps small cache entries when the search buffer entry fails to write', () => {
+    const rootFolder = pickedDirectory('/repo')
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: fakeLocalStorage({
+        failingSetKeys: new Set([WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer]),
+      }),
+    })
+
+    writeWorkspaceCache(
+      workspaceCacheState({
+        diffViewMode: 'stacked',
+        editorHistory: ['/repo/src/readme.md'],
+        openFilePaths: ['/repo/src/readme.md'],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer: emptySearchBuffer('/repo'),
+        selectedFilePath: '/repo/src/readme.md',
+      }),
+    )
+
+    const cached = readWorkspaceCache()
+
+    expect(STORE.has(WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer)).toBe(false)
+    expect(cached).toMatchObject({
+      diffViewMode: 'stacked',
+      editorHistory: ['/repo/src/readme.md'],
+      openFilePaths: ['/repo/src/readme.md'],
+      rootFolder,
+      searchBuffer: null,
+      selectedFilePath: '/repo/src/readme.md',
     })
   })
 })
@@ -347,34 +394,66 @@ function pickedDirectory(path: string): PickedFsEntry {
   }
 }
 
-function editorPanePaths(layout: EditorPaneLayout) {
-  return editorPaneTabs(layout.root).map((tab) => tab.path)
+function emptySearchBuffer(rootPath: string): WorkspaceCacheState['searchBuffer'] {
+  return {
+    activeResultId: null,
+    caseSensitive: false,
+    collapsedPaths: [],
+    excludeGlobText: '',
+    filtersVisible: false,
+    includeGlobText: '',
+    matchMode: 'literal',
+    matches: [],
+    query: 'needle',
+    queryHistory: [],
+    replaceHistory: [],
+    replaceText: '',
+    replaceVisible: false,
+    resultsQuery: '',
+    resultsSearchQuery: null,
+    rootPath,
+    totalCount: 0,
+    truncated: false,
+    wholeWord: false,
+  }
 }
 
-type WorkspaceCacheTestState = Omit<WorkspaceCacheState, 'editorPaneLayout' | 'workspaceLayout'> & {
-  readonly editorPaneLayout?: EditorPaneLayout
+type WorkspaceCacheTestState = Omit<WorkspaceCacheState, 'workspaceLayout'> & {
   readonly workspaceLayout?: WorkspaceCacheState['workspaceLayout']
 }
 
 function workspaceCacheState(input: WorkspaceCacheTestState): WorkspaceCacheState {
-  const editorPaneLayout =
-    input.editorPaneLayout ??
-    createEditorPaneLayoutForPaths(input.openFilePaths, input.selectedFilePath)
-
   return {
-    ...input,
-    editorPaneLayout,
-    workspaceLayout: input.workspaceLayout ?? workspaceLayoutForEditorPaneLayout(editorPaneLayout),
+    diffViewMode: input.diffViewMode,
+    editorHistory: input.editorHistory,
+    openFilePaths: input.openFilePaths,
+    recentlyClosedEditorPaths: input.recentlyClosedEditorPaths,
+    rootFolder: input.rootFolder,
+    searchBuffer: input.searchBuffer,
+    selectedFilePath: input.selectedFilePath,
+    workspaceLayout:
+      input.workspaceLayout ??
+      editorWorkspaceLayoutForPaths(input.openFilePaths, input.selectedFilePath),
   }
 }
 
-function fakeLocalStorage() {
+function cacheEntry<T>(key: string): T {
+  return JSON.parse(STORE.get(key) ?? 'null') as T
+}
+
+type FakeLocalStorageOptions = {
+  readonly failingSetKeys?: ReadonlySet<string>
+}
+
+function fakeLocalStorage(options: FakeLocalStorageOptions = {}) {
   return {
     getItem: (key: string) => STORE.get(key) ?? null,
     removeItem: (key: string) => {
       STORE.delete(key)
     },
     setItem: (key: string, value: string) => {
+      if (options.failingSetKeys?.has(key)) throw new Error('localStorage quota exceeded')
+
       STORE.set(key, value)
     },
   }

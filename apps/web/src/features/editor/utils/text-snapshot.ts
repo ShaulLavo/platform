@@ -1,4 +1,4 @@
-import type { TextSnapshot } from '@editor/core'
+import type { TextSnapshot } from '@singapor/core'
 
 export type TextSnapshotLineRange = {
   end: number
