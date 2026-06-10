@@ -100,8 +100,22 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
     case 'applyRecipe':
       return { ...base, recipeId: operation.recipeId }
     case 'closeSurface':
+      return {
+        ...base,
+        force: operation.force,
+        surfaceId: compactLayoutId(operation.surfaceId),
+      }
     case 'restoreSurface':
       return { ...base, surfaceId: compactLayoutId(operation.surfaceId) }
+    case 'restoreSurfaces':
+      return {
+        ...base,
+        activeSurfaceId: compactNullableLayoutId(operation.activeSurfaceId),
+        placementSurfaceIds: Object.keys(operation.placementsBySurfaceId ?? {}).map(
+          compactLayoutId,
+        ),
+        surfaceIds: operation.surfaceIds.map(compactLayoutId),
+      }
     case 'collapseWindow':
     case 'expandWindow':
       return { ...base, windowId: compactLayoutId(operation.windowId) }

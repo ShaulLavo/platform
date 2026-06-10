@@ -1,7 +1,8 @@
 import { AppKeymapController } from '@/components/app-keymap-controller'
 import { CommandPalette } from '@/components/command-palette'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
-import { usePlatformCommandDispatch, type PlatformKeyBinding } from '@/keymap'
+import { usePlatformCommandDispatch } from '@/keymap/commands'
+import type { PlatformKeyBinding } from '@/keymap/types'
 import { useCallback, useState } from 'react'
 
 type AppCommandSurfaceProps = {

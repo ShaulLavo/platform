@@ -2,7 +2,7 @@
 
 Date: 2026-06-10
 
-Status: planned. This is the execution plan for closing the "Dnd-Proof
+Status: implemented. This was the execution plan for closing the "Dnd-Proof
 Production Cutover Gaps" in `backlog.md` by building a second proof page that
 rehearses the full future app shell — rail, recipe panes, bottom tool pane,
 main view — with the new tiling drag mechanics and zero real content.
@@ -48,9 +48,9 @@ leap.
   closes the represented window. Collapse/expand to an accordion header is
   pane chrome only (the shrink/unshrink button on the window). The old
   collapse-on-active-click rule was a spec bug, now corrected in
-  `default-recipe.md`; `railItemOperation` in `rail-model.ts` still
-  implements it and must change (see Engine Work Items). Background-vs-dispose
-  on close stays a registry policy decision, separate from the toggle.
+  `default-recipe.md` and `railItemOperation` in `rail-model.ts`.
+  Background-vs-dispose on close stays a registry policy decision, separate
+  from the toggle.
 - **Collapsed panes use the production tool header.** Extract
   `tool-pane-header.tsx` from the workbench rather than reusing the generic
   proof collapsed bar — but first verify feature and alignment parity with
@@ -109,16 +109,20 @@ see "Engine Work Items"):
 ```
 apps/web/src/features/shell-proof/
   components/
-    view.tsx                 # route component: providers, rail, surface area
+    view.tsx                 # route component: shell-proof route entry
+    session.tsx              # per-route seed/restore/store lifecycle
+    layout.tsx               # rail + surface area + interaction-aware dispatch
+    keymap-controller.tsx    # page-scoped window-management hotkeys
     surface-area.tsx         # geometry + drag controller + window rendering
     surface-body.tsx         # generic placeholder body (type-aware visuals)
     file-navigator-body.tsx  # fake file list that opens fake editor surfaces
     debug-panel.tsx          # drag/state log, mounted only with ?debug
   state/
     store.ts                 # createWorkspaceLayoutStore wiring + dispatch helpers
+    persistence.ts           # shell-proof localStorage save/restore/reset
   utils/
     seed.ts                  # default-recipe seed layout + fake file fixtures
-    open-surface.ts          # surface factories for rail/file/keymap opens
+    keymap.ts                # shell-proof command bindings
   tests/
     recipe.browser.tsx       # browser tests for recipe behaviors
     rail-flows.test.tsx      # dom tests for rail click state machine
@@ -278,30 +282,26 @@ gracefully to the seed.
 - Update `backlog.md`: mark cutover gaps as proven/closed as they land;
   update the README doc index to point here.
 
-## Engine Work Items (expected, discovered properly during Phases 2–6)
+## Engine Work Items (resolved during Phases 2–6)
 
-Listed separately because they change `@workspace/tiling`, not the proof:
+Listed separately because they changed `@workspace/tiling`, not just the
+proof:
 
-0. `rail-model.ts`: change `railItemOperation` from the old spec (collapse on
+0. `rail-model.ts`: changed `railItemOperation` from the old spec (collapse on
    active click, expand on collapsed click, activate on visible-inactive
    click) to a pure visibility toggle — visible window → close (registry
-   policy decides background-vs-dispose), absent/background → open/restore.
-   Update the `Rail` component labels in
-   `features/workbench/components/rail.tsx` and the rail-state tests in the
-   same change; production picks up the corrected behavior immediately.
-1. `snap-destinations.ts`: emit `recipe-slot` candidates for tool group and
+   policy decides background-vs-dispose), absent/background → open/restore;
+   updated the `Rail` component labels and rail-state tests in the same
+   change.
+1. `snap-destinations.ts`: emits `recipe-slot` candidates for tool group and
    bottom pane when absent or when the dragged surface prefers them.
 2. `drop-target-resolver.ts`: surface-type capability gate on `window-center`
    (tab merge) candidates; recipe fallback resolution for invalid targets.
-3. Placement hints: ensure drag commits write sticky placement consistently
+3. Placement hints: drag commits write sticky placement consistently
    with what `recipe-packing.ts` (`stickyPlacementForSurface`,
    `placementCanRestoreSurface`) reads.
-4. Whatever invariant gaps the engine store flags once real drag commits flow
-   through `replaceLayout` — fix in operations/normalize, never by relaxing
-   the invariant checks.
-
-If any of these turn out to already work, delete the item — do not build
-speculative layers.
+4. Invariant gaps surfaced by real drag commits were fixed in operations and
+   normalization with invariant checks still enabled.
 
 ## Out Of Scope
 

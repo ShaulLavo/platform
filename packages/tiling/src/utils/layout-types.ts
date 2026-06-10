@@ -251,13 +251,19 @@ export type LayoutOperation =
       readonly windowId?: WindowId
     }
   | { readonly policyId?: LayoutPolicyId; readonly surface: Surface; readonly type: 'openSurface' }
-  | { readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
+  | { readonly force?: boolean; readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
   | { readonly edge?: LayoutEdge; readonly type: 'collapseWindow'; readonly windowId: WindowId }
   | { readonly type: 'expandWindow'; readonly windowId: WindowId }
   | {
       readonly placement?: SurfacePlacementHint
       readonly surfaceId: SurfaceId
       readonly type: 'restoreSurface'
+    }
+  | {
+      readonly activeSurfaceId?: SurfaceId
+      readonly placementsBySurfaceId?: Readonly<Record<string, SurfacePlacementHint>>
+      readonly surfaceIds: readonly SurfaceId[]
+      readonly type: 'restoreSurfaces'
     }
   | {
       readonly edge: LayoutEdge

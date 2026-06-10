@@ -5,7 +5,8 @@ import type {
   WorkspaceLayoutCommand,
 } from '@workspace/tiling/utils/layout-types'
 import type { TreeEntry } from '@/lib/file-system-types'
-import type { PlatformCommandDispatch, PlatformCommandId, PlatformKeyBinding } from '@/keymap'
+import type { PlatformCommandDispatch } from '@/keymap/use-app-keymap'
+import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 
 export type CommandPaletteProps = {
   readonly bindings: readonly PlatformKeyBinding[]

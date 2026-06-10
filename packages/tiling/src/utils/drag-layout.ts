@@ -3,6 +3,10 @@ import {
   type TilingDragData,
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
+import {
+  dragSourceCanUseDropTarget,
+  recipeFallbackTargetForDragSource,
+} from '@workspace/tiling/utils/drag-capabilities'
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
 import { moveSurface, moveWindow, tabSurface } from '@workspace/tiling/utils/layout-operations'
 import type {
@@ -17,8 +21,8 @@ export function previewLayoutForTarget(
   source: TilingDragData,
   resolvedTarget: ResolvedTilingTarget,
 ) {
-  const target = resolvedTarget.target
-  if (!dropTargetCanCommit(baseLayout, target)) return null
+  const target = dragTargetForCommit(baseLayout, source, resolvedTarget.target)
+  if (!target) return null
   if (!tabDragCanPreviewTarget(source, target)) return baseLayout
   if (targetMergesWindowIntoTabs(source, target)) {
     return tilingDragTargetLayout(baseLayout, source, target)
@@ -30,6 +34,44 @@ export function previewLayoutForTarget(
 }
 
 export function tilingDragTargetLayout(
+  layout: WorkspaceLayout,
+  source: TilingDragData,
+  target: TilingDropData,
+) {
+  const commitTarget = dragTargetForCommit(layout, source, target)
+  if (!commitTarget) return layout
+
+  return tilingDragCommitTargetLayout(layout, source, commitTarget)
+}
+
+export function dragTargetForCommit(
+  layout: WorkspaceLayout,
+  source: TilingDragData,
+  target: TilingDropData,
+): TilingDropData | null {
+  if (!targetExistsInLayout(layout, target)) return null
+  if (dragSourceCanUseDropTarget(layout, source, target)) return target
+
+  return recipeFallbackTargetForDragSource(layout, source)
+}
+
+export function resolvedTargetForCommit(
+  layout: WorkspaceLayout,
+  source: TilingDragData,
+  resolvedTarget: ResolvedTilingTarget,
+): ResolvedTilingTarget | null {
+  const target = dragTargetForCommit(layout, source, resolvedTarget.target)
+  if (!target) return null
+  if (target === resolvedTarget.target) return resolvedTarget
+
+  return {
+    mode: resolvedTarget.mode,
+    previewKind: 'app',
+    target,
+  }
+}
+
+function tilingDragCommitTargetLayout(
   layout: WorkspaceLayout,
   source: TilingDragData,
   target: TilingDropData,
@@ -50,7 +92,12 @@ export function tilingDragTargetLayout(
   return layout
 }
 
-export function dropTargetCanCommit(layout: WorkspaceLayout, target: TilingDropData) {
+export function dropTargetCanCommit(
+  layout: WorkspaceLayout,
+  target: TilingDropData,
+  source?: TilingDragData,
+) {
+  if (source) return Boolean(dragTargetForCommit(layout, source, target))
   if (target.kind !== 'snap-destination') return targetExistsInLayout(layout, target)
 
   return snapDestinationCanCommit(layout, target.destination)

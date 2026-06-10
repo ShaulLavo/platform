@@ -30,16 +30,11 @@ import {
   SPLIT_ACTIVE_WINDOW_TOP_COMMAND_ID,
   TEAR_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
 } from '@workspace/tiling/utils/layout-command-catalog'
-import type {
-  HotkeyPresetId,
-  WindowManagementHotkeyPreset,
-} from '@workspace/tiling/utils/layout-types'
+import type { WindowManagementHotkeyPreset } from '@workspace/tiling/utils/layout-types'
 
 export const PLATFORM_HOTKEY_PRESET_ID = hotkeyPresetId('platform')
 export const VSCODE_HOTKEY_PRESET_ID = hotkeyPresetId('vscode')
 export const HYPRLAND_I3_HOTKEY_PRESET_ID = hotkeyPresetId('hyprland-i3')
-
-export const DEFAULT_HOTKEY_PRESET_ID: HotkeyPresetId = PLATFORM_HOTKEY_PRESET_ID
 
 export const DEFAULT_WINDOW_MANAGEMENT_HOTKEY_PRESETS = [
   {

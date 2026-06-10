@@ -11,19 +11,25 @@ abandoned.
 
 ## Dnd-Proof Production Cutover Gaps
 
-`apps/web/src/features/dnd-proof/` is the source of truth for drag/snap
-mechanics, but the proof does not yet cover recipe semantics. Before or during
-production cutover it must reconcile with `default-recipe.md`:
+Status: proven by the temporary `/shell-proof` route and tracked in
+`shell-proof-plan.md`. The original `/dnd-proof` page remains the drag/snap
+mechanics proof; `/shell-proof` covers the app-shell recipe semantics needed
+for production cutover.
 
-- Terminal window semantics: default terminal placement targets the bottom
-  tool pane; terminal tabs do not mix with file editors by default, while
-  user-driven sticky placement can still override.
-- Tool-pane window semantics: nested tool panes (Files, Search, Git, Chat,
-  Logs) with collapse, recipe slots, and rail interaction.
-- Recipe-slot snap destinations and recipe-aware fallback when a drop target
-  is invalid for the surface type.
-- Placement capability rules: which surface types may merge as tabs into
-  which windows.
+- [x] Terminal window semantics: default terminal placement targets the
+      bottom tool pane; terminal tabs do not mix with file editors by default,
+      while user-driven sticky placement can still override.
+- [x] Tool-pane window semantics: nested tool panes (Files, Search, Git,
+      Chat, Logs) with collapse, recipe slots, and rail interaction.
+- [x] Recipe-slot snap destinations and recipe-aware fallback when a drop
+      target is invalid for the surface type.
+- [x] Placement capability rules: which surface types may merge as tabs into
+      which windows.
+
+Regression coverage lives in
+`apps/web/src/features/shell-proof/tests/recipe.browser.tsx`,
+`apps/web/src/features/shell-proof/tests/rail-flows.test.tsx`, and
+`packages/tiling/src/utils/tests/`.
 
 ## Next
 

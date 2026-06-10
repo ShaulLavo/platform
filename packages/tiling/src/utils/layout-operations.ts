@@ -1,6 +1,10 @@
 import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import { clampIndex } from '@workspace/tiling/utils/geometry-primitives'
 import { layoutNodeId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
+import {
+  surfaceCanUseDestination,
+  windowCanTabIntoWindow,
+} from '@workspace/tiling/utils/layout-capabilities'
 import { placementForSurfaceWithPolicy } from '@workspace/tiling/utils/layout-policies'
 import {
   policyForStickyPlacement,
@@ -181,9 +185,30 @@ export function restoreSurface(
   return normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(placedLayout))
 }
 
+export function restoreSurfaces(
+  layout: WorkspaceLayout,
+  surfaceIds: readonly SurfaceId[],
+  activeSurfaceId?: SurfaceId,
+  placementsBySurfaceId: Readonly<Record<string, SurfacePlacementHint>> = {},
+): WorkspaceLayout {
+  let nextLayout = normalizeWorkspaceLayout(layout)
+
+  for (const surfaceId of surfaceIds) {
+    nextLayout = restoreSurface(nextLayout, surfaceId, placementsBySurfaceId[surfaceId])
+  }
+
+  if (!activeSurfaceId) return nextLayout
+
+  return activateSurface(nextLayout, activeSurfaceId)
+}
+
 type PlacementResolution = {
   readonly layout: WorkspaceLayout
   readonly placement: SurfacePlacementHint
+}
+
+type TabSurfaceInLayoutOptions = {
+  readonly recordStickyPlacement?: boolean
 }
 
 function placementForRestore(
@@ -249,7 +274,7 @@ export function moveSurface(
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const surface = normalizedLayout.surfacesById[surfaceId]
   if (!surface) return normalizedLayout
-  if (!surfaceCanUseDestination(surface, destination)) return normalizedLayout
+  if (!surfaceCanUseDestination(normalizedLayout, surfaceId, destination)) return normalizedLayout
   if (destination.kind === 'background' || destination.kind === 'rail') {
     return backgroundSurface(normalizedLayout, surfaceId)
   }
@@ -336,11 +361,17 @@ function tabSurfaceInLayout(
   surfaceId: SurfaceId,
   targetWindowId: WindowId,
   index?: number,
+  options: TabSurfaceInLayoutOptions = {},
 ): WorkspaceLayout {
   const targetWindow = layout.windowsById[targetWindowId]
   const surface = layout.surfacesById[surfaceId]
   if (!targetWindow || !surface) return layout
-  if (!surfaceCanUseDestination(surface, { kind: 'window-center', windowId: targetWindowId })) {
+  if (
+    !surfaceCanUseDestination(layout, surfaceId, {
+      kind: 'window-center',
+      windowId: targetWindowId,
+    })
+  ) {
     return layout
   }
 
@@ -350,6 +381,8 @@ function tabSurfaceInLayout(
     targetWindowId,
   )
   const updatedLayout = addSurfaceToWindow(detachedLayout, surfaceId, targetWindowId, index)
+  if (options.recordStickyPlacement === false) return updatedLayout
+
   const stickyLayout = recordStickyPlacement(updatedLayout, surfaceId, {
     kind: 'window-center',
     tabIndex: index,
@@ -405,7 +438,9 @@ function placeSurface(
     return placeSurface(layout, surfaceId, { kind: 'recipe-slot', slot: destination.slot })
   }
   if (destination.kind === 'window-center') {
-    return tabSurfaceInLayout(layout, surfaceId, destination.windowId, destination.tabIndex)
+    return tabSurfaceInLayout(layout, surfaceId, destination.windowId, destination.tabIndex, {
+      recordStickyPlacement: placement?.kind !== 'recipe-slot',
+    })
   }
 
   return placeSurfaceAtEdgeDestination(layout, surfaceId, destination, {
@@ -430,7 +465,7 @@ function placeSurfaceAtEdgeDestination(
 ): WorkspaceLayout {
   const surface = layout.surfacesById[surfaceId]
   if (!surface) return layout
-  if (!surfaceCanUseDestination(surface, destination)) return layout
+  if (!surfaceCanUseDestination(layout, surfaceId, destination)) return layout
 
   const detachedLayout = removeSurfaceFromWindows(
     removeSurfaceFromRail(layout, surfaceId),
@@ -474,7 +509,12 @@ function destinationForSurfacePlacement(
   placement?: SurfacePlacementHint,
 ) {
   if (surface.lifecycle === 'transient' && placement?.kind === 'recipe-slot') {
-    return activeWindowDestination(layout) ?? destinationForPlacement(layout, placement)
+    const activeDestination = activeWindowDestination(layout)
+    if (activeDestination && surfaceCanUseDestination(layout, surface.id, activeDestination)) {
+      return activeDestination
+    }
+
+    return destinationForPlacement(layout, placement)
   }
 
   return destinationForPlacement(layout, placement)
@@ -752,7 +792,7 @@ function addSurfaceToWindow(
   const window = layout.windowsById[windowId]
   if (!surface || !window) return layout
 
-  const previewCleanup = removeReplacedPreview(layout, window, surface)
+  const previewCleanup = removeReplacedPreview(layout, surface)
   const targetWindow = previewCleanup.windowsById[windowId] ?? window
   const surfaceIds = insertSurfaceId(targetWindow.surfaceIds, surfaceId, index)
 
@@ -772,19 +812,34 @@ function addSurfaceToWindow(
   }
 }
 
-function removeReplacedPreview(
-  layout: WorkspaceLayout,
-  window: WorkbenchWindow,
-  surface: Surface,
-): WorkspaceLayout {
+function removeReplacedPreview(layout: WorkspaceLayout, surface: Surface): WorkspaceLayout {
   if (surface.lifecycle !== 'transient') return layout
-  if (!window.previewSurfaceId) return layout
-  if (window.previewSurfaceId === surface.id) return layout
 
-  const previewSurface = layout.surfacesById[window.previewSurfaceId]
-  if (previewSurface?.lifecycle !== 'transient') return layout
+  const replacedPreviewIds = transientPreviewIdsForReplacement(layout, surface.id)
+  let nextLayout = layout
 
-  return deleteSurfaceFromLayout(layout, previewSurface.id)
+  for (const previewSurfaceId of replacedPreviewIds) {
+    nextLayout = deleteSurfaceFromLayout(nextLayout, previewSurfaceId)
+  }
+
+  return nextLayout
+}
+
+function transientPreviewIdsForReplacement(layout: WorkspaceLayout, incomingSurfaceId: SurfaceId) {
+  const previewSurfaceIds: SurfaceId[] = []
+
+  for (const window of Object.values(layout.windowsById)) {
+    const previewSurfaceId = window.previewSurfaceId
+    if (!previewSurfaceId) continue
+    if (previewSurfaceId === incomingSurfaceId) continue
+
+    const previewSurface = layout.surfacesById[previewSurfaceId]
+    if (previewSurface?.lifecycle !== 'transient') continue
+
+    previewSurfaceIds.push(previewSurfaceId)
+  }
+
+  return previewSurfaceIds
 }
 
 function previewSurfaceIdAfterInsert(surface: Surface, currentPreviewSurfaceId?: SurfaceId) {
@@ -1175,6 +1230,7 @@ function tabWindow(
   const sourceWindow = layout.windowsById[sourceWindowId]
   const targetWindow = layout.windowsById[targetWindowId]
   if (!sourceWindow || !targetWindow) return layout
+  if (!windowCanTabIntoWindow(layout, sourceWindowId, targetWindowId)) return layout
 
   const sourceNodeId = findNodeIdForWindow(layout, sourceWindowId)
   const detachedLayout = sourceNodeId
@@ -1187,8 +1243,13 @@ function tabWindow(
     targetWindowId,
     index,
   )
+  const stickyLayout = recordStickyPlacementsForWindow(mergedLayout, sourceWindow, {
+    kind: 'window-center',
+    tabIndex: index,
+    windowId: targetWindowId,
+  })
 
-  return normalizeWorkspaceLayout(mergedLayout)
+  return normalizeWorkspaceLayout(stickyLayout)
 }
 
 function addSurfacesToWindow(
@@ -1250,10 +1311,6 @@ function surfaceMoveRejected(
   if (!nodeId || destination.kind !== 'parent-edge') return false
 
   return isNodeDescendant(layout, nodeId, destination.nodeId)
-}
-
-function surfaceCanUseDestination(surface: Surface, destination: SnapDestination) {
-  return surface.capabilities.validPlacements.includes(destination.kind)
 }
 
 function addSurfaceToRail(

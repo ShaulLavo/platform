@@ -77,14 +77,10 @@ function railItemLabel(item: WorkbenchRailItem) {
   if (!isWorkbenchRailSurfaceItem(item)) return item.recipe.title
 
   if (item.state === 'background') return `Restore ${item.surface.title}`
-  if (item.state === 'collapsed') return `Expand ${item.surface.title}`
-  if (paneIsVisible(item) && item.surface.capabilities.canCollapse) {
-    return `Collapse ${item.surface.title}`
-  }
-  if (item.state === 'active') return `${item.surface.title} active`
-  if (item.state === 'visible') return `Focus ${item.surface.title}`
+  if (paneIsVisible(item)) return `Close ${item.surface.title}`
+  if (item.state === 'running') return `Restore ${item.surface.title}`
 
-  return `Focus ${item.surface.title}`
+  return `Open ${item.surface.title}`
 }
 
 function bottomPaneRailItemLabel(item: WorkbenchRailItem) {
@@ -96,7 +92,10 @@ function bottomPaneRailItemLabel(item: WorkbenchRailItem) {
 }
 
 function paneIsVisible(item: WorkbenchRailItem) {
-  return item.state === 'active' || item.state === 'visible'
+  if (item.state === 'active') return true
+  if (item.state === 'collapsed') return true
+
+  return item.state === 'visible'
 }
 
 function railItemKey(item: WorkbenchRailItem) {

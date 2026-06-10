@@ -19,6 +19,7 @@ import {
   openSurface,
   reorderSurface,
   restoreSurface,
+  restoreSurfaces,
   splitWindow,
   tabSurface,
 } from '@workspace/tiling/utils/layout-operations'
@@ -35,13 +36,20 @@ export function applyLayoutOperation(
     case 'openSurface':
       return openSurface(layout, operation.surface, { policyId: operation.policyId })
     case 'closeSurface':
-      return closeSurface(layout, operation.surfaceId)
+      return closeSurface(layout, operation.surfaceId, { force: operation.force })
     case 'collapseWindow':
       return collapseWindow(layout, operation.windowId, operation.edge)
     case 'expandWindow':
       return expandWindow(layout, operation.windowId)
     case 'restoreSurface':
       return restoreSurface(layout, operation.surfaceId, operation.placement)
+    case 'restoreSurfaces':
+      return restoreSurfaces(
+        layout,
+        operation.surfaceIds,
+        operation.activeSurfaceId,
+        operation.placementsBySurfaceId,
+      )
     case 'splitWindow':
       return splitWindow(layout, operation)
     case 'moveSurface':

@@ -2,7 +2,8 @@ import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useWorkspaceTreeState } from '@/hooks/use-workspace-tree'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
-import { platformCommandSpecs, type PlatformCommandId } from '@/keymap'
+import { platformCommandSpecs } from '@/keymap/command-registry'
+import type { PlatformCommandId } from '@/keymap/types'
 import {
   CommandDialog,
   CommandEmpty,

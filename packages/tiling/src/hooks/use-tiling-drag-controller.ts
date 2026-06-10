@@ -37,8 +37,9 @@ import {
   type PointerDetails,
 } from '@workspace/tiling/utils/drag-state'
 import {
-  dropTargetCanCommit,
+  dragTargetForCommit,
   previewLayoutForTarget,
+  resolvedTargetForCommit,
   resolvedTargetSignature,
   tilingDragTargetLayout,
 } from '@workspace/tiling/utils/drag-layout'
@@ -102,6 +103,7 @@ export function useTilingDragController({
   const snapLayout = activeDrag && dragStartLayoutRef.current ? dragStartLayoutRef.current : layout
   const snapDestinations = tilingSnapDestinations({
     activeDrag,
+    layout: snapLayout,
     rootRect,
     snapDestinationRects,
     sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
@@ -210,7 +212,8 @@ export function useTilingDragController({
       : null
     const baseLayout = dragStartLayoutRef.current ?? layoutRef.current
     const target = resolvedTarget?.target ?? null
-    if (event.canceled || !source || !target || !dropTargetCanCommit(baseLayout, target)) {
+    const commitTarget = source && target ? dragTargetForCommit(baseLayout, source, target) : null
+    if (event.canceled || !source || !target || !commitTarget) {
       logReleaseWithoutCommit({
         baseLayout,
         event,
@@ -223,12 +226,12 @@ export function useTilingDragController({
       return
     }
 
-    const nextLayout = tilingDragTargetLayout(baseLayout, source, target)
+    const nextLayout = tilingDragTargetLayout(baseLayout, source, commitTarget)
     debugLog?.logStateAfterMove({
       layout: nextLayout,
       phase: 'release',
       source,
-      target,
+      target: commitTarget,
     })
     dragStartLayoutRef.current = null
     lastResolvedTargetRef.current = null
@@ -236,7 +239,7 @@ export function useTilingDragController({
     setActiveDrag(null)
     updateActiveResolvedTarget(null)
     setPreviewLayout(null)
-    commitLayoutAfterDrag(nextLayout, { source, target })
+    commitLayoutAfterDrag(nextLayout, { source, target: commitTarget })
   }
 
   function logReleaseWithoutCommit({
@@ -313,17 +316,26 @@ export function useTilingDragController({
     }
 
     const baseLayout = dragStartLayoutRef.current ?? layoutRef.current
-    const nextPreviewLayout = previewLayoutForTarget(baseLayout, source, previewTarget)
-    if (dropTargetCanCommit(baseLayout, previewTarget.target)) {
-      lastResolvedTargetRef.current = previewTarget
-      updateActiveResolvedTarget(previewTarget)
+    const committableTarget = resolvedTargetForCommit(baseLayout, source, previewTarget)
+    if (!committableTarget) {
+      clearPreviewForMissingTarget({
+        eventPoint,
+        pointSource,
+        rawTarget,
+        source,
+      })
+      return
     }
+
+    const nextPreviewLayout = previewLayoutForTarget(baseLayout, source, committableTarget)
+    lastResolvedTargetRef.current = committableTarget
+    updateActiveResolvedTarget(committableTarget)
     setPreviewLayout(nextPreviewLayout)
     debugLog?.logStateAfterMove({
       layout: nextPreviewLayout ?? baseLayout,
       phase: 'move',
       source,
-      target: previewTarget.target,
+      target: committableTarget.target,
     })
   }
 
@@ -371,15 +383,16 @@ export function useTilingDragController({
     if (!resolvedTarget) return
 
     const baseLayout = dragStartLayoutRef.current ?? layoutRef.current
-    if (!dropTargetCanCommit(baseLayout, resolvedTarget.target)) return
+    const committableTarget = resolvedTargetForCommit(baseLayout, source, resolvedTarget)
+    if (!committableTarget) return
 
-    lastResolvedTargetRef.current = resolvedTarget
-    updateActiveResolvedTarget(resolvedTarget)
+    lastResolvedTargetRef.current = committableTarget
+    updateActiveResolvedTarget(committableTarget)
     debugLog?.logStateAfterMove({
       layout: baseLayout,
       phase: 'move',
       source,
-      target: resolvedTarget.target,
+      target: committableTarget.target,
     })
   }
 

@@ -1,7 +1,7 @@
 import type { Theme } from '@/components/theme-context'
 import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
-import type { PlatformCommandId } from '@/keymap'
+import type { PlatformCommandId } from '@/keymap/types'
 
 import { ColorModeGroups } from './color-mode-groups'
 import { CommandGroups } from './command-groups'

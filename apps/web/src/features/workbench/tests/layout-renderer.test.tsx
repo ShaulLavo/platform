@@ -130,9 +130,9 @@ describe('LayoutRenderer', () => {
     const diagnostics = createDiagnosticsSurface()
     const html = renderLayout(createEmptyWorkspaceLayout())
 
-    expect(html).toContain('Focus Files')
-    expect(html).toContain('Focus Chat')
-    expect(html).toContain('Focus Logs')
+    expect(html).toContain('Open Files')
+    expect(html).toContain('Open Chat')
+    expect(html).toContain('Open Logs')
     expect(html).toContain('Open Terminal')
     expect(html).toContain('data-rail-pane-id="bottom-pane"')
     expect(html).not.toContain(`data-rail-surface-id="${terminal.id}"`)
@@ -344,7 +344,7 @@ describe('LayoutRenderer', () => {
     expect(findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toEqual(expect.any(String))
   })
 
-  it('activates rail panes when another rail pane is already open', () => {
+  it('toggles rail panes when another rail pane is already open', () => {
     const chat = createChatSurface()
     const logs = createLogsSurface()
     const store = renderInteractiveLayout(createClassicFirstRunWorkspaceLayout())
@@ -362,10 +362,10 @@ describe('LayoutRenderer', () => {
 
     fireEvent.click(railButtonForSurface(chat.id))
 
-    expect(store.getState().layout.activeSurfaceId).toBe(chat.id)
-    expect(visibleSurfaceIdsInOrder(store.getState().layout)).toContain(chat.id)
-    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'active')
-    expect(railButtonForSurface(logs.id)).toHaveAttribute('data-rail-state', 'visible')
+    expect(store.getState().layout.activeSurfaceId).toBe(logs.id)
+    expect(visibleSurfaceIdsInOrder(store.getState().layout)).not.toContain(chat.id)
+    expect(railButtonForSurface(chat.id)).toHaveAttribute('data-rail-state', 'pinned')
+    expect(railButtonForSurface(logs.id)).toHaveAttribute('data-rail-state', 'active')
   })
 
   it('does not let tool pane focus steal active editor selection', () => {
@@ -503,13 +503,13 @@ describe('LayoutRenderer', () => {
     expect(counts.fileNavigator).toBe(initialFileNavigatorCount)
   })
 
-  it('keeps surface-area geometry equal when inactive tab close only rewrites node ids', () => {
+  it('keeps surface-area geometry equal when inactive tab close preserves recipe node ids', () => {
     const fileA = createFileEditorSurface({ path: '/repo/src/a.ts' })
     const fileB = createFileEditorSurface({ path: '/repo/src/b.ts' })
     const layout = openSurface(openSurface(createClassicFirstRunWorkspaceLayout(), fileA), fileB)
     const nextLayout = closeSurface(layout, fileA.id)
 
-    expect(layout.rootNodeId).not.toBe(nextLayout.rootNodeId)
+    expect(layout.rootNodeId).toBe(nextLayout.rootNodeId)
     expect(surfaceAreaLayoutEqual(layout, nextLayout)).toBe(true)
   })
 })

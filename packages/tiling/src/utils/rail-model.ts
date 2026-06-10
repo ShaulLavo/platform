@@ -2,6 +2,7 @@ import {
   BOTTOM_PANE_RAIL_ID,
   bottomPaneRailOperation,
   bottomPaneSurfaces,
+  bottomPaneTerminalSurface,
   bottomPaneWindowId,
   isBottomPaneSurface,
 } from '@workspace/tiling/utils/bottom-pane-model'
@@ -204,26 +205,10 @@ export function railItemOperation(
   }
 
   const windowId = railSurfaceWindowId(layout, item.surface.id)
-  const window = windowId ? layout.windowsById[windowId] : null
-  if (windowId && window?.mode === 'collapsed') {
-    return {
-      type: 'expandWindow',
-      windowId,
-    }
-  }
-
   if (windowId) {
-    if (item.state === 'active' && item.surface.capabilities.canCollapse) {
-      return {
-        type: 'collapseWindow',
-        windowId,
-      }
-    }
-
     return {
       surfaceId: item.surface.id,
-      type: 'activateSurface',
-      windowId,
+      type: 'closeSurface',
     }
   }
 
@@ -265,7 +250,28 @@ function bottomPaneRailState(layout: WorkspaceLayout): WorkbenchRailSurfaceState
   const window = windowId ? layout.windowsById[windowId] : null
   if (window?.mode === 'collapsed') return 'collapsed'
   if (windowId) return windowId === layout.activeWindowId ? 'active' : 'visible'
+
+  const terminal = bottomPaneTerminalSurface(layout)
+  if (terminal) {
+    const terminalWindowId = findWindowIdContainingSurface(layout, terminal.id)
+    const terminalWindow = terminalWindowId ? layout.windowsById[terminalWindowId] : null
+    if (terminalWindow?.mode === 'collapsed') return 'collapsed'
+    if (terminalWindowId) return terminal.id === layout.activeSurfaceId ? 'active' : 'visible'
+
+    return hiddenBottomPaneTerminalState(layout, terminal.id)
+  }
+
   if (bottomPaneSurfaces(layout).length > 0) return 'running'
 
   return 'pinned'
+}
+
+function hiddenBottomPaneTerminalState(
+  layout: WorkspaceLayout,
+  terminalId: SurfaceId,
+): WorkbenchRailSurfaceState {
+  if (layout.rail.backgroundSurfaceIds.includes(terminalId)) return 'background'
+  if (layout.rail.runningSurfaceIds.includes(terminalId)) return 'running'
+
+  return 'running'
 }

@@ -8,9 +8,9 @@ import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspac
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import {
   defaultPlatformKeyBindings,
-  editorKeymapLayersFromPlatform,
   platformKeyBindingsForWorkspaceLayout,
-} from '@/keymap'
+} from '@/keymap/default-bindings'
+import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
 
 export function AppRuntimeContent() {
   const setFocusArea = useFocus((state) => state.setFocusArea)

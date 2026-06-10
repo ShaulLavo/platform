@@ -24,14 +24,10 @@ import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'
 import type { TreeModel } from '@/lib/tree-model'
-import {
-  isEditorPlatformCommandId,
-  type CommandSpec,
-  type PlatformCommandId,
-  type PlatformKeyBinding,
-  type WorkspaceCommandId,
-  windowManagementCommandIdForWorkspaceCommand,
-} from '@/keymap'
+import { isEditorPlatformCommandId } from '@/keymap/editor-keymap'
+import type { CommandSpec } from '@/keymap/command-registry'
+import type { PlatformCommandId, PlatformKeyBinding, WorkspaceCommandId } from '@/keymap/types'
+import { windowManagementCommandIdForWorkspaceCommand } from '@/keymap/window-management-command-ids'
 import { fuzzyRankScore } from '@workspace/contracts'
 
 import {

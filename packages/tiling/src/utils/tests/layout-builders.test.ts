@@ -22,6 +22,7 @@ import {
   SEARCH_INVESTIGATE_RECIPE_ID,
   chatSurfaceId,
   diagnosticsSurfaceId,
+  fileEditorSurfaceId,
   fileNavigatorSurfaceId,
   gitChangesSurfaceId,
   logsSurfaceId,
@@ -306,6 +307,24 @@ describe('tiling surface layout builders', () => {
         },
       ],
     })
+  })
+
+  it('creates a classic first-run layout with a caller-provided editor file', () => {
+    const path = 'apps/web/src/app.tsx'
+    const layout = createClassicFirstRunWorkspaceLayout({ editorFile: { path } })
+    const editorId = fileEditorSurfaceId(path)
+
+    expect(layout.activeSurfaceId).toBe(editorId)
+    expect(layout.surfacesById[editorId]).toMatchObject({
+      placement: { kind: 'recipe-slot', slot: 'editor-center' },
+      title: 'app.tsx',
+      type: 'file-editor',
+    })
+    expect(layout.windowsById[CLASSIC_EDITOR_WINDOW_ID]).toMatchObject({
+      activeSurfaceId: editorId,
+      surfaceIds: [editorId],
+    })
+    expect(layout.mruSurfaceIds[0]).toBe(editorId)
   })
 
   it('registers workflow recipes with surface placement slots', () => {

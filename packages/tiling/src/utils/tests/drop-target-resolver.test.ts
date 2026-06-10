@@ -6,12 +6,13 @@ import {
   type ResolvedTilingTarget,
   type TilingIntentMode,
 } from '@workspace/tiling/utils/drop-target-resolver'
+import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
 import {
   deriveLayoutGeometry,
   type LayoutRect,
   type SnapDestinationLayoutRect,
 } from '@workspace/tiling/utils/layout-geometry'
-import { overlayId } from '@workspace/tiling/utils/layout-ids'
+import { overlayId, terminalSurfaceId } from '@workspace/tiling/utils/layout-ids'
 import type {
   LayoutEdge,
   SnapDestination,
@@ -89,6 +90,29 @@ describe('tiling drop target resolver', () => {
     expect(rootBottom.hitRect.y).toBeGreaterThan(sourceReturn.hitRect.y)
     expect(rootRight.hitRect.width).toBeLessThan(sourceWindowRect.width)
     expect(rootBottom.hitRect.height).toBeLessThan(sourceWindowRect.height)
+  })
+
+  it('adds only the matching recipe slot snap candidate for active drags', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const geometry = deriveLayoutGeometry(layout, ROOT_RECT, {
+      minSnapDestinationPx: 44,
+      snapEdgeRatio: 0.18,
+    })
+    const candidates = tilingSnapDestinations({
+      activeDrag: { kind: 'tab', surfaceId: terminalSurfaceId('terminal-1') },
+      layout,
+      rootRect: ROOT_RECT,
+      snapDestinationRects: geometry.snapDestinationRects,
+      sourceWindowId: null,
+      sourceWindowRect: null,
+    })
+    const recipeCandidates = recipeSlotCandidates(candidates)
+    const bottomRoot = rootCandidate(candidates, 'bottom')
+
+    expect(recipeCandidates.map((candidate) => candidate.target)).toEqual([
+      snapTarget({ kind: 'recipe-slot', slot: 'bottom' }),
+    ])
+    expect(recipeCandidates[0]?.priority).toBeGreaterThan(bottomRoot.priority)
   })
 
   it('resolves the source return core back to the dragged window', () => {
@@ -487,6 +511,10 @@ function sourceVacancyCandidate(candidates: readonly TilingDropCandidate[], edge
   expect(value).toBeDefined()
 
   return value as TilingDropCandidate
+}
+
+function recipeSlotCandidates(candidates: readonly TilingDropCandidate[]) {
+  return candidates.filter((candidate) => candidate.kind === 'recipe-slot')
 }
 
 function rootCandidateAtPoint() {

@@ -24,6 +24,7 @@ import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofTabStrip({
   activeDrag,
+  actionsVisible = true,
   insertionPreview,
   insertionPreviewLayout,
   dropZonesVisible,
@@ -35,6 +36,7 @@ export function ProofTabStrip({
   onSelectSurface,
 }: {
   readonly activeDrag: TilingDragData | null
+  readonly actionsVisible?: boolean
   readonly dropZonesVisible: boolean
   readonly insertionPreview: TilingInsertionPreview | null
   readonly insertionPreviewLayout: WorkspaceLayout
@@ -111,6 +113,7 @@ export function ProofTabStrip({
         return (
           <ProofTab
             acceptsTabDrops={tabDropsAccepted}
+            actionsVisible={actionsVisible}
             active={item.surface.id === window.activeSurfaceId}
             dropZonesVisible={dropZonesVisible}
             index={item.index}

@@ -2,19 +2,28 @@ import { describe, expect, it } from 'vitest'
 
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
 import {
+  dragTargetForCommit,
   dropTargetCanCommit,
   previewLayoutForTarget,
   tilingDragTargetLayout,
 } from '@workspace/tiling/utils/drag-layout'
 import {
+  CLASSIC_DIAGNOSTICS_WINDOW_ID,
   CLASSIC_EDITOR_WINDOW_ID,
+  CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
+  createLogsSurface,
+  createSearchResultsSurface,
 } from '@workspace/tiling/utils/layout-builders'
 import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-invariants'
-import { workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
+import {
+  CLASSIC_POLICY_ID,
+  terminalSurfaceId,
+  workbenchWindowId,
+} from '@workspace/tiling/utils/layout-ids'
 import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
-import { moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
+import { moveSurface, openSurface, restoreSurface } from '@workspace/tiling/utils/layout-operations'
 import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
@@ -83,6 +92,95 @@ describe('tiling drag layout mapping', () => {
         kind: 'snap-destination',
       }),
     ).toBe(true)
+  })
+
+  it('falls invalid tab merges back to the source recipe slot', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const terminalId = terminalSurfaceId('terminal-1')
+    const source = { kind: 'tab', surfaceId: terminalId } as const
+    const target = { index: 1, kind: 'tab-strip', windowId: CLASSIC_EDITOR_WINDOW_ID } as const
+    const commitTarget = dragTargetForCommit(layout, source, target)
+
+    expect(commitTarget).toEqual({
+      destination: { kind: 'recipe-slot', slot: 'bottom' },
+      kind: 'snap-destination',
+    })
+
+    const moved = tilingDragTargetLayout(layout, source, target)
+
+    expect(moved.windowsById[CLASSIC_EDITOR_WINDOW_ID].surfaceIds).not.toContain(terminalId)
+    expect(moved.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toContain(terminalId)
+    expectValidLayout(moved)
+  })
+
+  it('falls left tool tab merges back to separate recipe panes', () => {
+    const search = createSearchResultsSurface()
+    const layout = restoreSurface(createClassicFirstRunWorkspaceLayout(), search.id)
+    const source = { kind: 'tab', surfaceId: search.id } as const
+    const target = {
+      index: 1,
+      kind: 'tab-strip',
+      windowId: CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+    } as const
+    const commitTarget = dragTargetForCommit(layout, source, target)
+
+    expect(commitTarget).toEqual({
+      destination: { kind: 'recipe-slot', slot: 'left-tool-pane' },
+      kind: 'snap-destination',
+    })
+
+    const moved = tilingDragTargetLayout(layout, source, target)
+
+    expect(moved.windowsById[CLASSIC_FILE_NAVIGATOR_WINDOW_ID].surfaceIds).not.toContain(search.id)
+    expect(findWindowIdContainingSurface(moved, search.id)).not.toBe(
+      CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+    )
+    expectValidLayout(moved)
+  })
+
+  it('falls logs to the left tool recipe slot instead of merging into the bottom pane', () => {
+    const logs = createLogsSurface()
+    const layout = openSurface(createClassicFirstRunWorkspaceLayout(), logs)
+    const source = { kind: 'tab', surfaceId: logs.id } as const
+    const target = {
+      index: 2,
+      kind: 'tab-strip',
+      windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
+    } as const
+    const commitTarget = dragTargetForCommit(layout, source, target)
+
+    expect(commitTarget).toEqual({
+      destination: { kind: 'recipe-slot', slot: 'left-tool-pane' },
+      kind: 'snap-destination',
+    })
+
+    const moved = tilingDragTargetLayout(layout, source, target)
+
+    expect(moved.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).not.toContain(logs.id)
+    expect(findWindowIdContainingSurface(moved, logs.id)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    expectValidLayout(moved)
+  })
+
+  it('keeps manual edge drops available for recipe-managed surfaces', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const terminalId = terminalSurfaceId('terminal-1')
+    const source = { kind: 'tab', surfaceId: terminalId } as const
+    const target = {
+      destination: { edge: 'left', kind: 'root-edge' },
+      kind: 'snap-destination',
+    } as const
+    const commitTarget = dragTargetForCommit(layout, source, target)
+
+    expect(commitTarget).toBe(target)
+
+    const moved = tilingDragTargetLayout(layout, source, target)
+
+    expect(findWindowIdContainingSurface(moved, terminalId)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    expect(moved.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[terminalId]).toEqual({
+      edge: 'left',
+      kind: 'root-edge',
+    })
+    expectValidLayout(moved)
   })
 
   it('keeps dnd-kit tab previews external but previews window merges immediately', () => {

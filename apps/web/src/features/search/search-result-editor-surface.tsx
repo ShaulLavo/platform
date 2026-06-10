@@ -35,7 +35,7 @@ import {
   searchResultVirtualRows,
   type SearchResultOpenTarget,
 } from '@/features/search/search-result-view-model'
-import { readonlyEditorKeymapLayers } from '@/keymap'
+import { readonlyEditorKeymapLayers } from '@/keymap/editor-keymap'
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null

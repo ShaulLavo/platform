@@ -56,7 +56,7 @@ export default defineConfig({
         },
         optimizeDeps: {
           exclude: ['@singapor/tree-sitter-languages'],
-          include: ['@phosphor-icons/react'],
+          include: ['@phosphor-icons/react', '@tanstack/react-hotkeys'],
         },
         server: {
           host: '127.0.0.1',

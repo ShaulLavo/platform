@@ -69,6 +69,15 @@ const DEFAULT_VALID_PLACEMENTS = [
   'rail',
 ] as const
 
+export type ClassicFirstRunEditorFile = {
+  readonly path: string
+  readonly title?: string
+}
+
+export type CreateClassicFirstRunWorkspaceLayoutOptions = {
+  readonly editorFile?: ClassicFirstRunEditorFile
+}
+
 export function createEmptyWorkspaceLayout(): WorkspaceLayout {
   return {
     activeRecipeId: CLASSIC_RECIPE_ID,
@@ -89,16 +98,15 @@ export function createEmptyWorkspaceLayout(): WorkspaceLayout {
   }
 }
 
-export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
+export function createClassicFirstRunWorkspaceLayout(
+  options: CreateClassicFirstRunWorkspaceLayoutOptions = {},
+): WorkspaceLayout {
   const fileNavigator = createFileNavigatorSurface()
   const searchResults = createSearchResultsSurface()
   const gitChanges = createGitChangesSurface()
   const chat = createChatSurface()
   const logs = createLogsSurface()
-  const editorPlaceholder = createPlaceholderSurface({
-    contextKey: 'empty-editor',
-    title: 'No file selected',
-  })
+  const editorSurface = createClassicFirstRunEditorSurface(options)
   const diagnostics = createDiagnosticsSurface()
   const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
   const sideWindow = createWorkbenchWindow({
@@ -108,9 +116,9 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
     surfaceIds: [fileNavigator.id],
   })
   const editorWindow = createWorkbenchWindow({
-    activeSurfaceId: editorPlaceholder.id,
+    activeSurfaceId: editorSurface.id,
     id: CLASSIC_EDITOR_WINDOW_ID,
-    surfaceIds: [editorPlaceholder.id],
+    surfaceIds: [editorSurface.id],
   })
   const diagnosticsWindow = createWorkbenchWindow({
     activeSurfaceId: terminal.id,
@@ -121,11 +129,11 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
 
   return {
     activeRecipeId: CLASSIC_RECIPE_ID,
-    activeSurfaceId: editorPlaceholder.id,
+    activeSurfaceId: editorSurface.id,
     activeWindowId: editorWindow.id,
     hotkeyPresetsById: {},
     layoutCommandsById: defaultLayoutCommandsById(),
-    mruSurfaceIds: [editorPlaceholder.id, fileNavigator.id, terminal.id, diagnostics.id],
+    mruSurfaceIds: [editorSurface.id, fileNavigator.id, terminal.id, diagnostics.id],
     mruWindowIds: [editorWindow.id, sideWindow.id, diagnosticsWindow.id],
     nodesById: {
       [CLASSIC_DIAGNOSTICS_NODE_ID]: createWindowNode({
@@ -173,7 +181,7 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
     surfaceRegistryVersion: SURFACE_REGISTRY_VERSION,
     surfacesById: {
       [diagnostics.id]: diagnostics,
-      [editorPlaceholder.id]: editorPlaceholder,
+      [editorSurface.id]: editorSurface,
       [fileNavigator.id]: fileNavigator,
       [gitChanges.id]: gitChanges,
       [chat.id]: chat,
@@ -189,6 +197,21 @@ export function createClassicFirstRunWorkspaceLayout(): WorkspaceLayout {
       [sideWindow.id]: sideWindow,
     },
   }
+}
+
+function createEmptyEditorPlaceholderSurface() {
+  return createPlaceholderSurface({
+    contextKey: 'empty-editor',
+    title: 'No file selected',
+  })
+}
+
+function createClassicFirstRunEditorSurface({
+  editorFile,
+}: CreateClassicFirstRunWorkspaceLayoutOptions): Surface {
+  if (!editorFile) return createEmptyEditorPlaceholderSurface()
+
+  return createFileEditorSurface(editorFile)
 }
 
 export function createFileEditorSurface({

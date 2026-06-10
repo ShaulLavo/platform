@@ -14,6 +14,7 @@ import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofTab({
   acceptsTabDrops,
+  actionsVisible = true,
   active,
   dropZonesVisible,
   index,
@@ -26,6 +27,7 @@ export function ProofTab({
   onSelect,
 }: {
   readonly acceptsTabDrops: boolean
+  readonly actionsVisible?: boolean
   readonly active: boolean
   readonly dropZonesVisible: boolean
   readonly index: number
@@ -99,25 +101,27 @@ export function ProofTab({
       >
         {surface.title}
       </span>
-      <Button
-        aria-label={`Close ${surface.title}`}
-        className={cn(
-          'size-5 opacity-0 group-focus-within/proof-tab:opacity-100 group-hover/proof-tab:opacity-100',
-          orientation === 'vertical' && 'mt-1',
-        )}
-        disabled={!surface.capabilities.canClose}
-        draggable={false}
-        size='icon-xs'
-        type='button'
-        variant='ghost'
-        onClick={(event) => {
-          event.stopPropagation()
-          onClose(surface.id)
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <XIcon className='size-3' />
-      </Button>
+      {actionsVisible ? (
+        <Button
+          aria-label={`Close ${surface.title}`}
+          className={cn(
+            'size-5 opacity-0 group-focus-within/proof-tab:opacity-100 group-hover/proof-tab:opacity-100',
+            orientation === 'vertical' && 'mt-1',
+          )}
+          disabled={!surface.capabilities.canClose}
+          draggable={false}
+          size='icon-xs'
+          type='button'
+          variant='ghost'
+          onClick={(event) => {
+            event.stopPropagation()
+            onClose(surface.id)
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <XIcon className='size-3' />
+        </Button>
+      ) : null}
     </div>
   )
 }

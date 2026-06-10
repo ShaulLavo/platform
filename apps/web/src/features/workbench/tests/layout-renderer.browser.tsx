@@ -149,7 +149,7 @@ describe('LayoutRenderer browser rendering', () => {
     handle.dispatchEvent(resizePointerEvent('pointerup', startX + 80, pointerY))
   })
 
-  it('activates rail panes while another rail pane is open', async () => {
+  it('toggles rail panes while another rail pane is open', async () => {
     renderClassicLayout()
 
     await vi.waitFor(() => {
@@ -159,23 +159,23 @@ describe('LayoutRenderer browser rendering', () => {
     buttonWithLabel('Restore Chat').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Collapse Chat').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Close Chat').dataset.railState).toBe('active')
     })
 
     buttonWithLabel('Restore Logs').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Collapse Logs').dataset.railState).toBe('active')
-      expect(buttonWithLabel('Collapse Chat').dataset.railState).toBe('visible')
+      expect(buttonWithLabel('Close Logs').dataset.railState).toBe('active')
+      expect(buttonWithLabel('Close Chat').dataset.railState).toBe('visible')
       expect(windowRegions()).toHaveLength(5)
     })
 
-    buttonWithLabel('Collapse Chat').click()
+    buttonWithLabel('Close Chat').click()
 
     await vi.waitFor(() => {
-      expect(buttonWithLabel('Collapse Chat').dataset.railState).toBe('active')
-      expect(buttonWithLabel('Collapse Logs').dataset.railState).toBe('visible')
-      expect(windowRegions()).toHaveLength(5)
+      expect(buttonWithLabel('Open Chat').dataset.railState).toBe('pinned')
+      expect(buttonWithLabel('Close Logs').dataset.railState).toBe('active')
+      expect(windowRegions()).toHaveLength(4)
     })
   })
 
