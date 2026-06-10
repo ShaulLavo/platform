@@ -24,6 +24,7 @@ export type LayoutInvariantViolationCode =
   | 'invalid-layout-command-recipe'
   | 'invalid-layout-command-slot-surface-type'
   | 'invalid-hotkey-preset-command'
+  | 'duplicate-hotkey-binding'
   | 'missing-node-child'
   | 'missing-root-node'
   | 'missing-surface'
@@ -37,8 +38,11 @@ export type LayoutInvariantViolationCode =
 export type LayoutInvariantViolation = {
   readonly childNodeId?: LayoutNodeId
   readonly code: LayoutInvariantViolationCode
+  readonly commandId?: string
+  readonly hotkey?: string
   readonly message: string
   readonly nodeId?: LayoutNodeId
+  readonly presetId?: string
   readonly surfaceId?: SurfaceId
   readonly windowId?: WindowId
 }
@@ -536,9 +540,14 @@ function checkHotkeyPresetBindings(
   ])
 
   for (const preset of Object.values(layout.hotkeyPresetsById)) {
-    for (const commandId of Object.keys(preset.bindings)) {
+    const commandsByHotkey = new Map<string, string[]>()
+
+    for (const [commandId, hotkey] of Object.entries(preset.bindings)) {
       checkHotkeyPresetBinding(preset.id, commandId, knownCommandIds, violations)
+      appendHotkeyPresetCommand(commandsByHotkey, hotkey, commandId)
     }
+
+    checkDuplicateHotkeyPresetBindings(preset.id, commandsByHotkey, violations)
   }
 }
 
@@ -555,6 +564,41 @@ function checkHotkeyPresetBinding(
     'invalid-hotkey-preset-command',
     `Hotkey preset ${presetId} references unknown command ${commandId}.`,
   )
+}
+
+function appendHotkeyPresetCommand(
+  commandsByHotkey: Map<string, string[]>,
+  hotkey: string,
+  commandId: string,
+) {
+  const existing = commandsByHotkey.get(hotkey)
+  if (!existing) {
+    commandsByHotkey.set(hotkey, [commandId])
+    return
+  }
+
+  commandsByHotkey.set(hotkey, existing.concat(commandId))
+}
+
+function checkDuplicateHotkeyPresetBindings(
+  presetId: string,
+  commandsByHotkey: ReadonlyMap<string, readonly string[]>,
+  violations: LayoutInvariantViolation[],
+) {
+  for (const [hotkey, commandIds] of commandsByHotkey) {
+    if (commandIds.length <= 1) continue
+
+    pushViolation(
+      violations,
+      'duplicate-hotkey-binding',
+      `Hotkey preset ${presetId} binds ${hotkey} to multiple commands: ${commandIds.join(', ')}.`,
+      {
+        commandId: commandIds[0],
+        hotkey,
+        presetId,
+      },
+    )
+  }
 }
 
 function pushViolation(

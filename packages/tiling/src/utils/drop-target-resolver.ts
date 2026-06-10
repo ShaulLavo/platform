@@ -4,12 +4,14 @@ import {
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
 import {
+  clampPointToRect,
   inflateRect,
   pointInRect,
   rectArea,
   rectCenterDistance,
   type PointerCoordinates,
 } from '@workspace/tiling/utils/geometry-primitives'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type { TilingDropCandidate } from '@workspace/tiling/utils/snap-destinations'
 import type { WindowId } from '@workspace/tiling/utils/layout-types'
 
@@ -33,6 +35,7 @@ export type ResolveTilingTargetInput = {
   readonly mode: TilingIntentMode
   readonly point: PointerCoordinates
   readonly previousTarget: ResolvedTilingTarget | null
+  readonly rootRect?: LayoutRect | null
   readonly source: TilingDragData
   readonly sourceWindowId?: WindowId | null
   readonly tabTarget: TilingTabTarget | null
@@ -40,7 +43,10 @@ export type ResolveTilingTargetInput = {
 
 const STICKY_TARGET_INFLATE_PX = 18
 
-export function resolveTilingTarget(input: ResolveTilingTargetInput): ResolvedTilingTarget | null {
+export function resolveTilingTarget(
+  rawInput: ResolveTilingTargetInput,
+): ResolvedTilingTarget | null {
+  const input = offRootResolutionInput(rawInput)
   const tabTarget = resolvedTabTarget(input)
   if (input.mode === 'tab-reorder') return tabTarget
 
@@ -55,6 +61,21 @@ export function resolveTilingTarget(input: ResolveTilingTargetInput): ResolvedTi
   if (candidate.priority > tabPriority) return resolvedCandidateTarget(input, candidate)
 
   return tabTarget
+}
+
+function offRootResolutionInput(input: ResolveTilingTargetInput): ResolveTilingTargetInput {
+  const rootRect = input.rootRect
+  if (!rootRect) return input
+  if (pointInRect(rootRect, input.point)) return input
+
+  // Off-root pointers resolve against the nearest root edge: clamping keeps the
+  // thin root-edge hit bands reachable past the viewport, and window drags must
+  // not be shadowed by a top strip's docking halo that extends above the root.
+  return {
+    ...input,
+    point: clampPointToRect(rootRect, input.point),
+    tabTarget: input.mode === 'window' ? null : input.tabTarget,
+  }
 }
 
 function stickyCandidateBeatsTabTarget(

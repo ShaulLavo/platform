@@ -129,6 +129,75 @@ test('window source vacancy corridor resolves to a root edge', () => {
   expect(result?.target).toEqual(snapTarget({ edge: 'right', kind: 'root-edge' }))
 })
 
+test('window drag past the root top clamps to the root top edge', () => {
+  const result = resolveTarget({
+    candidates: windowDragCandidates(),
+    mode: 'window',
+    point: { x: 400, y: -160 },
+    rootRect: ROOT_RECT,
+    source: WINDOW_SOURCE,
+    tabTarget: null,
+  })
+
+  expect(result?.target).toEqual(snapTarget({ edge: 'top', kind: 'root-edge' }))
+})
+
+test('window drag above the root ignores tab strip docking halos', () => {
+  const result = resolveTarget({
+    candidates: windowDragCandidates(),
+    mode: 'window',
+    point: { x: 400, y: -20 },
+    rootRect: ROOT_RECT,
+    source: WINDOW_SOURCE,
+    tabPriority: 108,
+    tabTarget: tabStripTarget('window-b', 0),
+  })
+
+  expect(result?.target).toEqual(snapTarget({ edge: 'top', kind: 'root-edge' }))
+})
+
+test('window drag inside the root still docks into another strip', () => {
+  const result = resolveTarget({
+    candidates: windowDragCandidates(),
+    mode: 'window',
+    point: { x: 400, y: 4 },
+    rootRect: ROOT_RECT,
+    source: WINDOW_SOURCE,
+    tabPriority: 108,
+    tabTarget: tabStripTarget('window-b', 0),
+  })
+
+  expect(result?.target).toEqual(tabStripTarget('window-b', 0))
+})
+
+test('detached tab above the root still prefers strip docking', () => {
+  const tabTarget = tabStripTarget('window-b', 0)
+  const result = resolveTarget({
+    candidates: tabDragCandidates(),
+    mode: 'tab-detached',
+    point: { x: 400, y: -20 },
+    rootRect: ROOT_RECT,
+    source: TAB_SOURCE,
+    tabPriority: 108,
+    tabTarget,
+  })
+
+  expect(result?.target).toEqual(tabTarget)
+})
+
+test('detached tab past the docking halo clamps to the root top edge', () => {
+  const result = resolveTarget({
+    candidates: tabDragCandidates(),
+    mode: 'tab-detached',
+    point: { x: 400, y: -160 },
+    rootRect: ROOT_RECT,
+    source: TAB_SOURCE,
+    tabTarget: null,
+  })
+
+  expect(result?.target).toEqual(snapTarget({ edge: 'top', kind: 'root-edge' }))
+})
+
 test('attached tab over its strip resolves to tab reorder instead of snap', () => {
   const tabTarget = tabStripTarget('window-a', 1)
   const result = resolveTarget({
@@ -400,6 +469,7 @@ function resolveTarget({
   mode,
   point = { x: 40, y: 40 },
   previousTarget = null,
+  rootRect = null,
   source,
   sourceWindowId = null,
   tabPriority,
@@ -409,6 +479,7 @@ function resolveTarget({
   readonly mode: TilingIntentMode
   readonly point?: { readonly x: number; readonly y: number }
   readonly previousTarget?: ResolvedTilingTarget | null
+  readonly rootRect?: LayoutRect | null
   readonly source: TilingDragData
   readonly sourceWindowId?: WindowId | null
   readonly tabPriority?: number
@@ -419,9 +490,30 @@ function resolveTarget({
     mode,
     point,
     previousTarget,
+    rootRect,
     source,
     sourceWindowId,
     tabTarget: tabTarget ? { priority: tabPriority ?? 110, target: tabTarget } : null,
+  })
+}
+
+function windowDragCandidates() {
+  return tilingSnapDestinations({
+    activeDrag: WINDOW_SOURCE,
+    rootRect: ROOT_RECT,
+    snapDestinationRects: rootSnapDestinationRects(),
+    sourceWindowRect: { height: 600, width: 300, x: 700, y: 0 },
+    sourceWindowId: windowId('window-a'),
+  })
+}
+
+function tabDragCandidates() {
+  return tilingSnapDestinations({
+    activeDrag: TAB_SOURCE,
+    rootRect: ROOT_RECT,
+    snapDestinationRects: rootSnapDestinationRects(),
+    sourceWindowRect: null,
+    sourceWindowId: null,
   })
 }
 

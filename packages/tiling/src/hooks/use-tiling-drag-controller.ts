@@ -535,6 +535,7 @@ export function useTilingDragController({
       mode,
       point: localPoint,
       previousTarget,
+      rootRect,
       source,
       sourceWindowId: sourceWindowIdForResolver(activeDragRef.current),
       tabTarget,

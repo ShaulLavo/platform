@@ -285,7 +285,7 @@ const defaultBindingSpecs = [
     preventDefault: true,
     stopPropagation: true,
   }),
-  workspaceBinding('Alt+Shift+H', 'workspace.window.backgroundActiveSurface', {
+  workspaceBinding('Alt+Shift+B', 'workspace.window.backgroundActiveSurface', {
     preventDefault: true,
     stopPropagation: true,
   }),

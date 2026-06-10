@@ -35,6 +35,13 @@ export function inflateRect(rect: LayoutRect, amount: number): LayoutRect {
   }
 }
 
+export function clampPointToRect(rect: LayoutRect, point: PointerCoordinates): PointerCoordinates {
+  return {
+    x: Math.min(Math.max(point.x, rect.x), rect.x + rect.width),
+    y: Math.min(Math.max(point.y, rect.y), rect.y + rect.height),
+  }
+}
+
 export function pointInRect(rect: LayoutRect, point: PointerCoordinates) {
   if (point.x < rect.x) return false
   if (point.x > rect.x + rect.width) return false

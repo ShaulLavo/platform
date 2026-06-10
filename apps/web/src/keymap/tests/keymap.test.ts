@@ -256,6 +256,12 @@ describe('defaultPlatformKeyBindings', () => {
     )
   })
 
+  it('keeps default bindings unique within each pane', () => {
+    for (const platform of defaultBindingPlatforms) {
+      expect(duplicateBindingSlots(defaultPlatformKeyBindings(platform))).toEqual([])
+    }
+  })
+
   it('reserves browser-hostile desktop defaults as no-ops', () => {
     expect(defaultPlatformKeyBindings('mac')).toContainEqual(
       expect.objectContaining({
@@ -352,6 +358,18 @@ describe('defaultPlatformKeyBindings', () => {
         command: 'workspace.window.closeActiveSurface',
         hotkey: 'Ctrl+W',
         keys: 'Mod+W',
+      }),
+    )
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.splitActiveWindowBottom',
+        hotkey: 'Ctrl+K Ctrl+\\',
+      }),
+    )
+    expect(bindings).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.window.splitActiveWindowRight',
+        hotkey: 'Ctrl+\\',
       }),
     )
     expect(bindings).not.toContainEqual(
@@ -557,6 +575,25 @@ function binding(
 
 function commands(bindings: readonly PlatformKeyBinding[]) {
   return bindings.map((keyBinding) => keyBinding.command)
+}
+
+function duplicateBindingSlots(bindings: readonly PlatformKeyBinding[]) {
+  const commandsBySlot = new Map<string, string[]>()
+
+  for (const binding of bindings) {
+    const slot = `${binding.pane ?? 'any'}:${binding.keys}`
+    const existing = commandsBySlot.get(slot) ?? []
+    commandsBySlot.set(slot, existing.concat(binding.command ?? 'noop'))
+  }
+
+  const duplicates: string[] = []
+  for (const [slot, commandsForSlot] of commandsBySlot) {
+    if (commandsForSlot.length <= 1) continue
+
+    duplicates.push(`${slot}: ${commandsForSlot.join(', ')}`)
+  }
+
+  return duplicates
 }
 
 function layerCommands(layers: ReturnType<typeof editorKeymapLayersFromPlatform>, id: string) {

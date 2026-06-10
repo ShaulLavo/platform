@@ -8,6 +8,11 @@ import {
   createSearchPreviewSurface,
 } from '@workspace/tiling/utils/layout-builders'
 import {
+  FOCUS_WINDOW_LEFT_COMMAND_ID,
+  FOCUS_WINDOW_RIGHT_COMMAND_ID,
+} from '@workspace/tiling/utils/layout-command-catalog'
+import { defaultHotkeyPresetsById } from '@workspace/tiling/utils/layout-command-presets'
+import {
   checkWorkspaceLayoutInvariants,
   type LayoutInvariantViolationCode,
 } from '@workspace/tiling/utils/layout-invariants'
@@ -31,6 +36,18 @@ import type {
 describe('tiling surface layout invariants', () => {
   it('accepts the classic first-run builder output', () => {
     expect(checkWorkspaceLayoutInvariants(createClassicFirstRunWorkspaceLayout())).toEqual({
+      ok: true,
+      violations: [],
+    })
+  })
+
+  it('accepts bundled hotkey presets', () => {
+    const layout = {
+      ...createClassicFirstRunWorkspaceLayout(),
+      hotkeyPresetsById: defaultHotkeyPresetsById(),
+    }
+
+    expect(checkWorkspaceLayoutInvariants(layout)).toEqual({
       ok: true,
       violations: [],
     })
@@ -189,6 +206,26 @@ describe('tiling surface layout invariants', () => {
     } satisfies WorkspaceLayout
 
     expect(violationCodes(layout)).toContain('invalid-hotkey-preset-command')
+  })
+
+  it('reports duplicate hotkey bindings inside a preset', () => {
+    const presetId = hotkeyPresetId('duplicate-preset')
+    const layout = {
+      ...createClassicFirstRunWorkspaceLayout(),
+      hotkeyPresetsById: {
+        [presetId]: {
+          bindings: {
+            [FOCUS_WINDOW_LEFT_COMMAND_ID]: 'Ctrl+Alt+H',
+            [FOCUS_WINDOW_RIGHT_COMMAND_ID]: 'Ctrl+Alt+H',
+          },
+          id: presetId,
+          source: 'platform',
+          title: 'Duplicate Preset',
+        },
+      },
+    } satisfies WorkspaceLayout
+
+    expect(violationCodes(layout)).toContain('duplicate-hotkey-binding')
   })
 
   it('reports a missing root node', () => {
