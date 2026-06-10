@@ -41,6 +41,11 @@ export type ResolveTilingTargetInput = {
   readonly tabTarget: TilingTabTarget | null
 }
 
+export const WINDOW_BODY_TAB_TARGET_PRIORITY = 100
+export const STRIP_TAB_TARGET_PRIORITY = 106
+export const DOCK_TAB_TARGET_PRIORITY = 108
+export const DIRECT_TAB_TARGET_PRIORITY = 110
+
 const STICKY_TARGET_INFLATE_PX = 18
 
 export function resolveTilingTarget(
@@ -91,6 +96,9 @@ function stickyCandidateBeatsTabTarget(
   if (destination.kind !== 'window-edge') return false
   if (destination.edge !== 'top') return false
   if (!input.tabTarget) return true
+  // A pointer directly inside a strip always means tab insertion; stickiness
+  // only suppresses the weaker halo and body hits around the source strip.
+  if (input.tabTarget.priority >= DIRECT_TAB_TARGET_PRIORITY) return false
   if (!input.sourceWindowId) return true
 
   return input.tabTarget.target.windowId === input.sourceWindowId

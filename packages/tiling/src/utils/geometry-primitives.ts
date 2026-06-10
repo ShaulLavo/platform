@@ -5,6 +5,11 @@ export type PointerCoordinates = {
   readonly y: number
 }
 
+export type PointerTravel = {
+  readonly horizontal: 'left' | 'none' | 'right'
+  readonly vertical: 'down' | 'none' | 'up'
+}
+
 export function balancedSizes(count: number) {
   if (count <= 0) return []
 

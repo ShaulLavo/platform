@@ -8,13 +8,18 @@ import {
   type PointerCoordinates,
 } from '@workspace/tiling/utils/geometry-primitives'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
-import type { WindowId } from '@workspace/tiling/utils/layout-types'
+import type { SurfaceId, WindowId } from '@workspace/tiling/utils/layout-types'
 import {
+  DIRECT_TAB_TARGET_PRIORITY,
+  DOCK_TAB_TARGET_PRIORITY,
+  STRIP_TAB_TARGET_PRIORITY,
+  WINDOW_BODY_TAB_TARGET_PRIORITY,
   type ResolvedTilingTarget,
   type TilingIntentMode,
   type TilingTabTarget,
 } from '@workspace/tiling/utils/drop-target-resolver'
 import {
+  pointIsInsideTabStripForWindow,
   pointIsInsideTilingWindowCenter,
   resolveTabStripDropTarget,
   tabStripDropHitAtPoint,
@@ -29,11 +34,7 @@ import type { ActiveTilingDrag } from '@workspace/tiling/utils/drag-state'
 
 const TAB_MOUSE_DETACH_THRESHOLD_PX = 15
 const TAB_TOUCH_DETACH_THRESHOLD_PX = 50
-
-const WINDOW_BODY_TAB_TARGET_PRIORITY = 100
-const STRIP_TAB_TARGET_PRIORITY = 106
-const DOCK_TAB_TARGET_PRIORITY = 108
-const DIRECT_TAB_TARGET_PRIORITY = 110
+const TAB_TRAVEL_DEADBAND_PX = 6
 
 const WINDOW_BODY_STICKY_INFLATE_PX = 24
 
@@ -51,6 +52,7 @@ export function resolveIntentModeAndUpdateDetach(
   if (source.kind === 'window') return 'window'
   if (!activeDrag || activeDrag.kind !== 'tab') return 'tab-detached'
 
+  updateTabTravel(activeDrag, point)
   updateTabDetachState(activeDrag, point)
   if (activeDrag.detached) return 'tab-detached'
 
@@ -133,7 +135,10 @@ export function promoteWindowCenterTabTarget(
   const tabTarget = tabStripDropTargetForWindowBodyPoint(
     target.target.destination.windowId,
     eventPoint,
-    { previousIndex: target.target.destination.tabIndex ?? null },
+    {
+      previousIndex: target.target.destination.tabIndex ?? null,
+      sourceTabId: source.surfaceId,
+    },
   )
   if (!tabTarget) return target
 
@@ -173,17 +178,20 @@ export function resolvedWindowBodyTabTargetForPoint({
   eventPoint,
   previousTarget,
   scroll = true,
+  sourceTabId,
   windowId,
 }: {
   readonly eventPoint: PointerCoordinates
   readonly previousTarget: ResolvedTilingTarget | null
   readonly scroll?: boolean
+  readonly sourceTabId: SurfaceId | null
   readonly windowId: WindowId
 }) {
   return resolvedWindowBodyTabTarget(
     tabStripDropTargetForWindowBodyPoint(windowId, eventPoint, {
       previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
       scroll,
+      sourceTabId,
     }),
   )
 }
@@ -250,10 +258,9 @@ function detachedTabTargetForDrag({
   readonly rawTarget: TilingDropData | null
   readonly source: TilingDragData
 }) {
-  const sourceStripRect = activeDrag?.kind === 'tab' ? activeDrag.stripRect : null
-  const sourceStripOrientation = activeDrag?.kind === 'tab' ? activeDrag.stripOrientation : null
+  const dockTravel = activeDrag?.kind === 'tab' ? activeDrag.travel : null
   const pointTarget = tabTargetFromHit(
-    tabStripDropHitAtPoint(source, eventPoint, { sourceStripOrientation, sourceStripRect }),
+    tabStripDropHitAtPoint(source, eventPoint, { dockTravel }),
     'app',
   )
   if (pointTarget) {
@@ -296,7 +303,11 @@ function tabReorderTargetForDrag({
 
   return (
     directCrossWindowTabTarget(source, eventPoint, activeDrag.sourceWindowId) ??
-    tabTargetFromTarget(tabStripDropTargetForWindowAtPoint(activeDrag.sourceWindowId, eventPoint))
+    tabTargetFromTarget(
+      tabStripDropTargetForWindowAtPoint(activeDrag.sourceWindowId, eventPoint, {
+        sourceTabId: source.kind === 'tab' ? source.surfaceId : null,
+      }),
+    )
   )
 }
 
@@ -342,6 +353,7 @@ function windowBodyTabTargetForDrag(
       bodyAutoscroller,
       onAutoScroll: () => onBodyAutoScroll({ eventPoint, source, windowId }),
       previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
+      sourceTabId: source.surfaceId,
     }),
     WINDOW_BODY_TAB_TARGET_PRIORITY,
     'app',
@@ -368,6 +380,7 @@ function stickyWindowBodyTabTargetForDrag(
       bodyAutoscroller,
       onAutoScroll: () => onBodyAutoScroll({ eventPoint, source, windowId }),
       previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
+      sourceTabId: source.surfaceId,
     }),
     WINDOW_BODY_TAB_TARGET_PRIORITY,
     'app',
@@ -411,11 +424,37 @@ function tabTargetPriority(strength: TilingTabStripHit['strength']) {
   return DOCK_TAB_TARGET_PRIORITY
 }
 
+function updateTabTravel(
+  activeDrag: Extract<ActiveTilingDrag, { readonly kind: 'tab' }>,
+  point: PointerCoordinates,
+) {
+  const travel = activeDrag.travel
+  if (!travel.lastPoint) {
+    travel.lastPoint = { x: point.x, y: point.y }
+    return
+  }
+  if (Math.abs(point.x - travel.lastPoint.x) >= TAB_TRAVEL_DEADBAND_PX) {
+    travel.horizontal = point.x < travel.lastPoint.x ? 'left' : 'right'
+    travel.lastPoint.x = point.x
+  }
+  if (Math.abs(point.y - travel.lastPoint.y) >= TAB_TRAVEL_DEADBAND_PX) {
+    travel.vertical = point.y < travel.lastPoint.y ? 'up' : 'down'
+    travel.lastPoint.y = point.y
+  }
+}
+
 function updateTabDetachState(
   activeDrag: Extract<ActiveTilingDrag, { readonly kind: 'tab' }>,
   point: PointerCoordinates,
 ) {
-  if (activeDrag.detached) return
+  if (activeDrag.detached) {
+    // A detached tab re-attaches when the pointer is back inside its source
+    // strip, so returning to the tab bar behaves like a plain reorder drag.
+    if (!tabCanReattach(activeDrag, point)) return
+
+    activeDrag.detached = false
+    return
+  }
 
   const outsideDistance = tabStripOutsideDistance(
     activeDrag.stripRect,
@@ -424,6 +463,15 @@ function updateTabDetachState(
   )
   const threshold = tabDetachThreshold(activeDrag.pointerType)
   activeDrag.detached = outsideDistance >= threshold
+}
+
+function tabCanReattach(
+  activeDrag: Extract<ActiveTilingDrag, { readonly kind: 'tab' }>,
+  point: PointerCoordinates,
+) {
+  if (!activeDrag.sourceWindowId) return false
+
+  return pointIsInsideTabStripForWindow(activeDrag.sourceWindowId, point)
 }
 
 function tabDetachThreshold(pointerType: string) {

@@ -7,6 +7,41 @@ Production Cutover Gaps" in `backlog.md` by building a second proof page that
 rehearses the full future app shell — rail, recipe panes, bottom tool pane,
 main view — with the new tiling drag mechanics and zero real content.
 
+## Phase 1 Repair: Shared DnD Interaction Surface
+
+The shell proof must not rebuild the dnd-proof drag surface locally. Extract
+the working dnd-proof interaction surface into shared proof code and make both
+`/dnd-proof` and `/shell-proof` consume it.
+
+The shared surface owns:
+
+- dnd-kit sensors and activation constraints
+- layout root measurement and shared geometry options
+- `useTilingDragController` wiring
+- drag overlays, preview windows, snap destinations, and resize overlay
+- row/rail collapse semantics, including explicit edge selection from the
+  committed window geometry
+
+The consuming proof pages may provide only app policy and content:
+
+- layout state and layout commits
+- surface body rendering and collapsed header rendering
+- rail, toolbar, event log, and debug visibility
+- close/add/select behavior
+- an explicit single-collapse target policy such as `row` or `rail`
+
+Acceptance criteria:
+
+- `features/shell-proof/` no longer imports `@dnd-kit/*`,
+  `useTilingDragController`, `deriveLayoutGeometry`, `ProofDragOverlay`,
+  `ProofPreviewWindow`, `ProofSnapDestination`, or `ResizeOverlay`.
+- dnd-proof and shell-proof share the same geometry constants, snap
+  destination rendering, drag preview rendering, resize wiring, and collapse
+  edge calculation.
+- shell-proof's single collapse button dispatches `collapseWindow` with an
+  explicit row/rail-derived edge. It must not call generic collapse without an
+  edge.
+
 ## Goal
 
 `/dnd-proof` proves drag/snap mechanics on a throwaway local model. It does

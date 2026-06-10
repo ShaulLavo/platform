@@ -202,6 +202,64 @@ describe.sequential('dnd proof browser behavior', () => {
     await settleProofDrag()
   })
 
+  it('drops a detached tab between the first two tabs after a body round trip', async () => {
+    renderProof()
+
+    await waitForProof()
+    await waitForSettledProofGeometry()
+
+    const homeStripId = proofTabStripId(firstMultiTabStrip())
+    const firstHomeTabId = tabIdsInStrip(tabStripWithId(homeStripId))[0]
+    if (!firstHomeTabId) throw new Error('Missing home tab id')
+
+    // Grow the home strip to three tabs so an interior insertion index exists.
+    const extraId = tabIdsInStrip(tabStripNotContaining(firstHomeTabId))[0]
+    if (!extraId) throw new Error('Missing extra tab id')
+
+    await nativeDragTabToStrip(extraId, tabStripWithId(homeStripId))
+    await vi.waitFor(() => {
+      expect(tabIdsInStrip(tabStripWithId(homeStripId))).toHaveLength(3)
+      expectValidProofTabState()
+    })
+    await waitForSettledProofGeometry()
+
+    const [firstId, secondId, sourceId] = tabIdsInStrip(tabStripWithId(homeStripId))
+    if (!firstId || !secondId || !sourceId) throw new Error('Missing strip tab ids')
+
+    const source = await settledVisibleTabSource(sourceId)
+    const sourcePoint = tabPointFromRatio(source.tab, source.point)
+    const homeStrip = tabStripWithId(homeStripId)
+    const stripRect = homeStrip.getBoundingClientRect()
+    const firstRect = proofTab(firstId).getBoundingClientRect()
+    const secondRect = proofTab(secondId).getBoundingClientRect()
+    const betweenPoint = {
+      x: (firstRect.right + secondRect.left) / 2,
+      y: stripRect.top + stripRect.height / 2,
+    }
+    const windowRect = proofWindowContainingStrip(homeStrip).getBoundingClientRect()
+    const bodyPoint = {
+      x: windowRect.left + windowRect.width / 2,
+      y: windowRect.top + windowRect.height / 2,
+    }
+
+    startPointerDrag(source.tab, sourcePoint)
+    movePointerBy(8, 0)
+    await nextFrame()
+    movePointerTo(bodyPoint)
+    await nextFrame()
+    movePointerTo(betweenPoint)
+    await nextFrame()
+    await holdPointerOver(betweenPoint, 4)
+
+    finishPointerDrag(betweenPoint)
+    await settleProofDrag()
+
+    await vi.waitFor(() => {
+      expect(tabIdsInStrip(tabStripWithId(homeStripId))).toEqual([firstId, sourceId, secondId])
+      expectValidProofTabState()
+    })
+  })
+
   it('previews a detached tab from a collapsed vertical rail dock band before release', async () => {
     renderProof()
 

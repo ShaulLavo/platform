@@ -55,7 +55,7 @@ export default defineConfig({
           'import.meta.env.VITE_SERVER_URL': 'globalThis.location.origin',
         },
         optimizeDeps: {
-          exclude: ['@singapor/tree-sitter-languages'],
+          exclude: ['@singapor/tree-sitter', '@singapor/tree-sitter-languages'],
           include: ['@phosphor-icons/react', '@tanstack/react-hotkeys'],
         },
         server: {

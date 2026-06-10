@@ -80,7 +80,7 @@ test('window merge preview inserts source ghost tabs into target strip items', (
   ])
 })
 
-test('returning a detached tab to its source strip uses a slot preview', () => {
+test('returning a detached tab to its source strip moves it to the insertion index', () => {
   const { layout } = createProofScenarioModel(3)
   const [sourceWindowId] = visibleWindowIdsInOrder(layout)
   const sourceWindow = layout.windowsById[sourceWindowId]
@@ -95,14 +95,22 @@ test('returning a detached tab to its source strip uses a slot preview', () => {
       target: { index: 1, kind: 'tab-strip', windowId: sourceWindowId },
     },
   })
+  const sourceSurfaces = surfacesForWindow(layout, sourceWindowId)
   const items = tilingTabStripPreviewItems({
     insertionPreview: preview,
     layout,
-    surfaces: surfacesForWindow(layout, sourceWindowId),
+    surfaces: sourceSurfaces,
     windowId: sourceWindowId,
   })
+  const remainingLabels = sourceSurfaces
+    .filter((surface) => surface.id !== sourceSurfaceId)
+    .map((surface) => `surface:${surface.id}`)
 
-  expect(items.map(previewItemLabel)).toContain(`slot:${sourceSurfaceId}`)
+  expect(items.map(previewItemLabel)).toEqual([
+    ...remainingLabels.slice(0, 1),
+    `surface:${sourceSurfaceId}`,
+    ...remainingLabels.slice(1),
+  ])
 })
 
 function windowMergePair(layout: ReturnType<typeof createProofScenarioModel>['layout']) {
@@ -130,7 +138,6 @@ function surfacesForWindow(
 
 function previewItemLabel(item: ReturnType<typeof tilingTabStripPreviewItems>[number]) {
   if (item.kind === 'surface') return `surface:${item.surface.id}`
-  if (item.kind === 'ghost') return `ghost:${item.surface.id}`
 
-  return `slot:${item.sourceSurfaceIds.join(':')}`
+  return `ghost:${item.surface.id}`
 }

@@ -5,7 +5,7 @@ import {
   tilingDropData,
   type TilingDragData,
 } from '@workspace/tiling/utils/drag-data'
-import type { PointerCoordinates } from '@workspace/tiling/utils/geometry-primitives'
+import type { PointerCoordinates, PointerTravel } from '@workspace/tiling/utils/geometry-primitives'
 import type { LayoutGeometry, LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
 import type { WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
@@ -13,6 +13,12 @@ import type { WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-t
 export type PointerDetails = {
   readonly point: PointerCoordinates
   readonly source: 'native' | 'operation' | 'to'
+}
+
+export type TabDragTravel = {
+  horizontal: PointerTravel['horizontal']
+  lastPoint: { x: number; y: number } | null
+  vertical: PointerTravel['vertical']
 }
 
 export type ActiveTilingDrag =
@@ -25,11 +31,16 @@ export type ActiveTilingDrag =
       sourceWindowId: WindowId | null
       stripOrientation: 'horizontal' | 'vertical' | null
       stripRect: LayoutRect | null
+      travel: TabDragTravel
     }
   | {
       kind: 'window'
       source: Extract<TilingDragData, { readonly kind: 'window' }>
     }
+
+export function initialTabDragTravel(): TabDragTravel {
+  return { horizontal: 'none', lastPoint: null, vertical: 'none' }
+}
 
 export function sourceWindowIdForDrag(layout: WorkspaceLayout, activeDrag: TilingDragData | null) {
   if (!activeDrag) return null
@@ -66,6 +77,7 @@ export function activeTilingDragForSource(
     sourceWindowId: findWindowIdContainingSurface(layout, source.surfaceId),
     stripOrientation: tabStripOrientation(sourceElement),
     stripRect: tabStripRect(sourceElement),
+    travel: initialTabDragTravel(),
   }
 }
 

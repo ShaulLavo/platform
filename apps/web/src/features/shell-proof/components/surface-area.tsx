@@ -309,9 +309,5 @@ function emptyWindowBody() {
 }
 
 function emptySurfaceArea() {
-  return (
-    <div className='border-border text-muted-foreground grid h-full place-items-center rounded-md border border-dashed text-sm'>
-      No visible surfaces
-    </div>
-  )
+  return <div />
 }

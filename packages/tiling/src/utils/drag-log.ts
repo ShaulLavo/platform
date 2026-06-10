@@ -40,12 +40,8 @@ export function noneTargetDebug(
   rawTarget: TilingDropData | null,
   activeDrag: ActiveTilingDrag | null,
 ) {
-  const sourceStripRect = activeDrag?.kind === 'tab' ? activeDrag.stripRect : null
-  const sourceStripOrientation = activeDrag?.kind === 'tab' ? activeDrag.stripOrientation : null
-  const tabStripProbe = describeTabStripHitTest(source, point, {
-    sourceStripOrientation,
-    sourceStripRect,
-  })
+  const dockTravel = activeDrag?.kind === 'tab' ? activeDrag.travel : null
+  const tabStripProbe = describeTabStripHitTest(source, point, { dockTravel })
 
   return `${pointSource}@${formatPoint(point)} raw=${rawTargetDebugLabel(rawTarget)} ${tabStripProbe}`
 }

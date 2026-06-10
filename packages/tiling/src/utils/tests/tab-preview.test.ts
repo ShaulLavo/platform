@@ -87,11 +87,12 @@ describe('tiling tab insertion preview', () => {
     ])
   })
 
-  it('uses a slot preview when a detached tab returns to its source strip', () => {
+  it('moves the dragged tab to the insertion index when it returns to its source strip', () => {
     const layout = createMultiWindowTestLayout()
     const [sourceWindowId] = visibleWindowIdsInOrder(layout)
     if (!sourceWindowId) throw createTilingInvariantError('Expected source window')
 
+    const sourceSurfaces = testSurfacesForWindow(layout, sourceWindowId)
     const sourceSurfaceId = firstSurfaceIdForWindow(layout, sourceWindowId)
     const preview = tilingInsertionPreview({
       activeDrag: { kind: 'tab', surfaceId: sourceSurfaceId },
@@ -104,11 +105,14 @@ describe('tiling tab insertion preview', () => {
     const items = tilingTabStripPreviewItems({
       insertionPreview: preview,
       layout,
-      surfaces: testSurfacesForWindow(layout, sourceWindowId),
+      surfaces: sourceSurfaces,
       windowId: sourceWindowId,
     })
 
-    expect(items.map(previewItemLabel)).toContain(`slot:${sourceSurfaceId}`)
+    expect(items.map(previewItemLabel)).toEqual([
+      `surface:${sourceSurfaces[1]?.id}`,
+      `surface:${sourceSurfaceId}`,
+    ])
   })
 
   it('does not ghost a window merge that is already materialized in the strip', () => {
@@ -138,7 +142,6 @@ describe('tiling tab insertion preview', () => {
 
 function previewItemLabel(item: ReturnType<typeof tilingTabStripPreviewItems>[number]) {
   if (item.kind === 'surface') return `surface:${item.surface.id}`
-  if (item.kind === 'ghost') return `ghost:${item.surface.id}`
 
-  return `slot:${item.sourceSurfaceIds.join(':')}`
+  return `ghost:${item.surface.id}`
 }

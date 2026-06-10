@@ -412,7 +412,7 @@ test('sticky target prevents flicker between adjacent overlapping zones', () => 
   expect(result?.target).toBe(stickyCandidate.target)
 })
 
-test('sticky snap target remains active over tab insertion until its hit rect is left', () => {
+test('sticky snap target remains active over strip halo hits until its hit rect is left', () => {
   const stickyCandidate = candidate({
     id: 'sticky-window-top',
     priority: 80,
@@ -424,17 +424,29 @@ test('sticky snap target remains active over tab insertion until its hit rect is
     mode: 'tab-detached',
     target: stickyCandidate.target,
   }
-  const result = resolveTarget({
+  const tabTarget = tabStripTarget('window-b', 1)
+  const haloResult = resolveTarget({
     candidates: [stickyCandidate],
     mode: 'tab-detached',
     point: { x: 80, y: 42 },
     previousTarget,
     source: TAB_SOURCE,
-    tabTarget: tabStripTarget('window-b', 1),
+    tabPriority: 108,
+    tabTarget,
+  })
+  const directHitResult = resolveTarget({
+    candidates: [stickyCandidate],
+    mode: 'tab-detached',
+    point: { x: 80, y: 42 },
+    previousTarget,
+    source: TAB_SOURCE,
+    tabTarget,
   })
 
-  expect(result?.target).toBe(stickyCandidate.target)
-  expect(result?.candidateId).toBe(stickyCandidate.id)
+  expect(haloResult?.target).toBe(stickyCandidate.target)
+  expect(haloResult?.candidateId).toBe(stickyCandidate.id)
+  expect(directHitResult?.target).toBe(tabTarget)
+  expect(directHitResult?.candidateId).toBeUndefined()
 })
 
 test('sticky top snap does not block direct docking into another strip', () => {

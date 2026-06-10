@@ -397,7 +397,7 @@ describe('tiling drop target resolver', () => {
     expect(result?.target).toBe(stickyCandidate.target)
   })
 
-  it('lets sticky top snap targets hold over tab insertion until a foreign strip wins', () => {
+  it('lets sticky top snap targets hold over strip halos until a direct or foreign hit wins', () => {
     const stickyCandidate = candidate({
       id: 'sticky-window-top',
       priority: 80,
@@ -409,15 +409,24 @@ describe('tiling drop target resolver', () => {
       mode: 'tab-detached',
       target: stickyCandidate.target,
     }
-    const stickyResult = resolveTarget({
+    const tabTarget = tabStripTarget('window-b', 1)
+    const dockStickyResult = resolveTarget({
       candidates: [stickyCandidate],
       mode: 'tab-detached',
       point: { x: 80, y: 42 },
       previousTarget,
       source: TAB_SOURCE,
-      tabTarget: tabStripTarget('window-b', 1),
+      tabPriority: 108,
+      tabTarget,
     })
-    const tabTarget = tabStripTarget('window-b', 1)
+    const directHitResult = resolveTarget({
+      candidates: [stickyCandidate],
+      mode: 'tab-detached',
+      point: { x: 80, y: 42 },
+      previousTarget,
+      source: TAB_SOURCE,
+      tabTarget,
+    })
     const foreignStripResult = resolveTarget({
       candidates: [stickyCandidate],
       mode: 'tab-detached',
@@ -425,11 +434,14 @@ describe('tiling drop target resolver', () => {
       previousTarget,
       source: TAB_SOURCE,
       sourceWindowId: windowId('window-a'),
+      tabPriority: 108,
       tabTarget,
     })
 
-    expect(stickyResult?.target).toBe(stickyCandidate.target)
-    expect(stickyResult?.candidateId).toBe(stickyCandidate.id)
+    expect(dockStickyResult?.target).toBe(stickyCandidate.target)
+    expect(dockStickyResult?.candidateId).toBe(stickyCandidate.id)
+    expect(directHitResult?.target).toBe(tabTarget)
+    expect(directHitResult?.candidateId).toBeUndefined()
     expect(foreignStripResult?.target).toBe(tabTarget)
     expect(foreignStripResult?.candidateId).toBeUndefined()
   })

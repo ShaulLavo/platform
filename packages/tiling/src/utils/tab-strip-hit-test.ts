@@ -7,12 +7,9 @@ import {
   distanceFromRange,
   formatPoint,
   type PointerCoordinates,
+  type PointerTravel,
 } from '@workspace/tiling/utils/geometry-primitives'
-import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
-import type { WindowId } from '@workspace/tiling/utils/layout-types'
-
-type TabDockingDirection = 'down' | 'left' | 'none' | 'right' | 'up'
-type TabStripOrientation = 'horizontal' | 'vertical'
+import type { SurfaceId, WindowId } from '@workspace/tiling/utils/layout-types'
 
 export type TilingTabStripHit = {
   readonly strength: 'direct' | 'dock' | 'strip'
@@ -59,57 +56,42 @@ export function resolveTabStripDropTarget(
 ): TilingDropData {
   if (!validPointerCoordinates(point)) return target
 
+  const sourceTabId = sourceTabIdForDrag(source)
   const stripAtPoint = tabStripElementAtPoint(source, point)
-  if (stripAtPoint) return tabStripTargetForPoint(stripAtPoint, point)
+  if (stripAtPoint) return tabStripTargetForPoint(stripAtPoint, point, { sourceTabId })
   if (!targetBelongsToTabStrip(target)) return target
 
   const targetStrip = tabStripElementForWindow(target.windowId)
   if (!targetStrip) return target
   if (!pointIsNearTabStrip(targetStrip, point)) return target
 
-  return tabStripTargetForPoint(targetStrip, point)
-}
-
-export function tabStripDropTargetAtPoint(
-  source: TilingDragData,
-  point: PointerCoordinates,
-  options: {
-    readonly sourceStripOrientation?: TabStripOrientation | null
-    readonly sourceStripRect?: LayoutRect | null
-  } = {},
-): TilingDropData | null {
-  return tabStripDropHitAtPoint(source, point, options)?.target ?? null
+  return tabStripTargetForPoint(targetStrip, point, { sourceTabId })
 }
 
 export function tabStripDropHitAtPoint(
   source: TilingDragData,
   point: PointerCoordinates,
   options: {
-    readonly sourceStripOrientation?: TabStripOrientation | null
-    readonly sourceStripRect?: LayoutRect | null
+    readonly dockTravel?: PointerTravel | null
   } = {},
 ): TilingTabStripHit | null {
   if (!validPointerCoordinates(point)) return null
 
+  const sourceTabId = sourceTabIdForDrag(source)
   const stripAtPoint = tabStripElementAtPoint(source, point)
   if (stripAtPoint) {
     return {
       strength: 'direct',
-      target: tabStripTargetForPoint(stripAtPoint, point),
+      target: tabStripTargetForPoint(stripAtPoint, point, { sourceTabId }),
     }
   }
 
-  const dockingStrip = tabStripElementNearDockingPoint(
-    source,
-    point,
-    options.sourceStripRect ?? null,
-    options.sourceStripOrientation ?? null,
-  )
+  const dockingStrip = tabStripElementNearDockingPoint(source, point, options.dockTravel ?? null)
   if (!dockingStrip) return null
 
   return {
     strength: 'dock',
-    target: tabStripTargetForPoint(dockingStrip, point),
+    target: tabStripTargetForPoint(dockingStrip, point, { sourceTabId }),
   }
 }
 
@@ -117,8 +99,7 @@ export function describeTabStripHitTest(
   source: TilingDragData,
   point: PointerCoordinates,
   options: {
-    readonly sourceStripOrientation?: TabStripOrientation | null
-    readonly sourceStripRect?: LayoutRect | null
+    readonly dockTravel?: PointerTravel | null
   } = {},
 ) {
   if (!validPointerCoordinates(point)) return `invalid point ${formatPoint(point)}`
@@ -126,18 +107,10 @@ export function describeTabStripHitTest(
   const directStrip = tabStripElementAtPoint(source, point)
   if (directStrip) return `direct strip ${tabStripElementId(directStrip)}`
 
-  const direction = tabDockingDirection(
-    options.sourceStripRect ?? null,
-    options.sourceStripOrientation ?? null,
-    point,
-  )
-  const dockingStrip = tabStripElementNearDockingPoint(
-    source,
-    point,
-    options.sourceStripRect ?? null,
-    options.sourceStripOrientation ?? null,
-  )
-  if (dockingStrip) return `dock strip ${tabStripElementId(dockingStrip)} dir=${direction}`
+  const travel = options.dockTravel ?? null
+  const travelLabel = travel ? `${travel.vertical}/${travel.horizontal}` : 'none'
+  const dockingStrip = tabStripElementNearDockingPoint(source, point, travel)
+  if (dockingStrip) return `dock strip ${tabStripElementId(dockingStrip)} travel=${travelLabel}`
 
   const miss = nearestTabStripMiss(source, point)
   if (!miss) return 'no tab strips mounted'
@@ -149,13 +122,16 @@ export function describeTabStripHitTest(
     `direct=${miss.directInside ? 'yes' : 'no'}`,
     `dock=${miss.dockInside ? 'yes' : 'no'}`,
     `source=${miss.ownsSource ? 'yes' : 'no'}`,
-    `dir=${direction}`,
+    `travel=${travelLabel}`,
   ].join(' ')
 }
 
 export function tabStripDropTargetForWindowAtPoint(
   windowId: WindowId,
   point: PointerCoordinates,
+  options: {
+    readonly sourceTabId?: SurfaceId | null
+  } = {},
 ): TilingDropData | null {
   if (!validPointerCoordinates(point)) return null
 
@@ -163,7 +139,16 @@ export function tabStripDropTargetForWindowAtPoint(
   if (!targetStrip) return null
   if (!pointIsNearTabStrip(targetStrip, point)) return null
 
-  return tabStripTargetForPoint(targetStrip, point)
+  return tabStripTargetForPoint(targetStrip, point, { sourceTabId: options.sourceTabId })
+}
+
+export function pointIsInsideTabStripForWindow(windowId: WindowId, point: PointerCoordinates) {
+  if (!validPointerCoordinates(point)) return false
+
+  const stripElement = tabStripElementForWindow(windowId)
+  if (!stripElement) return false
+
+  return pointIsInsideTabStripBand(stripElement, point, 0)
 }
 
 export function tabStripDropTargetForWindowBodyPoint(
@@ -174,6 +159,7 @@ export function tabStripDropTargetForWindowBodyPoint(
     readonly onAutoScroll?: (() => void) | null
     readonly previousIndex?: number | null
     readonly scroll?: boolean
+    readonly sourceTabId?: SurfaceId | null
   } = {},
 ): TilingDropData | null {
   if (!validPointerCoordinates(point)) return null
@@ -182,7 +168,9 @@ export function tabStripDropTargetForWindowBodyPoint(
   if (!targetStrip) return null
 
   const windowElement = tilingWindowElementForId(windowId)
-  if (!windowElement) return tabStripTargetForPoint(targetStrip, point)
+  if (!windowElement) {
+    return tabStripTargetForPoint(targetStrip, point, { sourceTabId: options.sourceTabId })
+  }
 
   if (options.scroll !== false) {
     scrollTabStripForBodyPoint(targetStrip, windowElement, point)
@@ -197,7 +185,7 @@ export function tabStripDropTargetForWindowBodyPoint(
   return tabStripTargetForPoint(
     targetStrip,
     projectedTabStripPointForWindowBody(targetStrip, windowElement, point),
-    { previousIndex: options.previousIndex },
+    { previousIndex: options.previousIndex, sourceTabId: options.sourceTabId },
   )
 }
 
@@ -232,15 +220,22 @@ function validPointerCoordinates(point: PointerCoordinates) {
   return Number.isFinite(point.x) && Number.isFinite(point.y)
 }
 
+function sourceTabIdForDrag(source: TilingDragData): SurfaceId | null {
+  if (source.kind !== 'tab') return null
+
+  return source.surfaceId
+}
+
 function tabStripTargetForPoint(
   stripElement: HTMLElement,
   point: PointerCoordinates,
   options: {
     readonly previousIndex?: number | null
+    readonly sourceTabId?: SurfaceId | null
   } = {},
 ): Extract<TilingDropData, { readonly kind: 'tab-strip' }> {
   return {
-    index: tabInsertionIndexForPoint(stripElement, point, options.previousIndex ?? null),
+    index: tabInsertionIndexForPoint(stripElement, point, options),
     kind: 'tab-strip',
     windowId: stripElement.dataset.tilingTabStripId as WindowId,
   }
@@ -249,15 +244,22 @@ function tabStripTargetForPoint(
 function tabInsertionIndexForPoint(
   stripElement: HTMLElement,
   point: PointerCoordinates,
-  previousIndex: number | null,
+  options: {
+    readonly previousIndex?: number | null
+    readonly sourceTabId?: SurfaceId | null
+  },
 ) {
-  const tabElements = uniqueTabElements(stripElement)
+  // Insertion indices count the strip without the dragged tab: commits remove
+  // the source before inserting, and previews lay the strip out the same way.
+  const tabElements = uniqueTabElements(stripElement).filter(
+    (tabElement) => tabElement.dataset.tilingTabId !== options.sourceTabId,
+  )
   const pointCoordinate = tabStripContentCoordinateForPoint(stripElement, point)
   const proposedIndex = proposedTabInsertionIndex(tabElements, stripElement, pointCoordinate)
 
   return stableTabInsertionIndex({
     pointCoordinate,
-    previousIndex,
+    previousIndex: options.previousIndex ?? null,
     proposedIndex,
     stripElement,
     tabElements,
@@ -405,14 +407,12 @@ function tabStripElementAtPoint(source: TilingDragData, point: PointerCoordinate
 function tabStripElementNearDockingPoint(
   source: TilingDragData,
   point: PointerCoordinates,
-  sourceStripRect: LayoutRect | null,
-  sourceStripOrientation: TabStripOrientation | null,
+  travel: PointerTravel | null,
 ) {
-  const direction = tabDockingDirection(sourceStripRect, sourceStripOrientation, point)
   const candidates = tabStripElements().flatMap((stripElement) => {
     if (sourceWindowOwnsTabStrip(source, stripElement)) return []
     if (!pointIsInsideTabStripDockingBand(stripElement, point)) return []
-    if (!tabStripMatchesDockingDirection(stripElement, point, direction)) return []
+    if (!tabStripMatchesDockTravel(stripElement, point, travel)) return []
 
     return [{ score: tabStripDockingScore(stripElement, point), stripElement }]
   })
@@ -462,6 +462,9 @@ function pointIsInsideWindowCenter(element: HTMLElement, point: PointerCoordinat
   )
 }
 
+// Body points project straight onto the strip so the insertion slot tracks
+// the pointer 1:1 — one tab width of movement moves the tab one slot. Only
+// overflowing strips get the autoscroll snap toward the hidden content.
 function projectedTabStripPointForWindowBody(
   stripElement: HTMLElement,
   windowElement: HTMLElement,
@@ -478,74 +481,53 @@ function projectedTabStripPointForWindowBody(
   if (autoscrollPoint) return autoscrollPoint
 
   if (tabStripOrientation(stripElement) === 'vertical') {
-    const ratio = normalizedPosition(point.y, centerRect.top, centerRect.bottom)
-
     return {
       x: stripRect.left + stripRect.width / 2,
-      y: stripRect.top + ratio * stripRect.height,
+      y: clamp(point.y, stripRect.top + 1, stripRect.bottom - 1),
     }
   }
 
-  const ratio = normalizedPosition(point.x, centerRect.left, centerRect.right)
-
   return {
-    x: stripRect.left + ratio * stripRect.width,
+    x: clamp(point.x, stripRect.left + 1, stripRect.right - 1),
     y: stripRect.top + stripRect.height / 2,
   }
 }
 
+// Snapping the projected point to a strip extreme is only meaningful while
+// autoscroll can actually move the strip; otherwise it would make insertion
+// indices near the edges unreachable from the window body.
 function projectedTabStripAutoscrollPoint(
   stripElement: HTMLElement,
   stripRect: DOMRect,
   centerRect: ReturnType<typeof windowBodyCenterRect>,
   point: PointerCoordinates,
 ): PointerCoordinates | null {
-  const orientation = tabStripOrientation(stripElement)
-  if (orientation === 'vertical') {
-    return projectedVerticalAutoscrollPoint(stripRect, centerRect, point)
-  }
-
-  return projectedHorizontalAutoscrollPoint(stripRect, centerRect, point)
-}
-
-function projectedHorizontalAutoscrollPoint(
-  stripRect: DOMRect,
-  centerRect: ReturnType<typeof windowBodyCenterRect>,
-  point: PointerCoordinates,
-): PointerCoordinates | null {
-  const delta = edgeScrollDelta(point.x, centerRect.left, centerRect.right)
-  if (delta < 0) {
+  const vertical = tabStripOrientation(stripElement) === 'vertical'
+  const delta = vertical
+    ? edgeScrollDelta(point.y, centerRect.top, centerRect.bottom)
+    : edgeScrollDelta(point.x, centerRect.left, centerRect.right)
+  if (delta === 0) return null
+  if (!tabStripCanScrollByDelta(stripElement, delta)) return null
+  if (vertical) {
     return {
-      x: stripRect.left + 1,
-      y: stripRect.top + stripRect.height / 2,
+      x: stripRect.left + stripRect.width / 2,
+      y: delta < 0 ? stripRect.top + 1 : stripRect.bottom - 1,
     }
   }
-  if (delta <= 0) return null
 
   return {
-    x: stripRect.right - 1,
+    x: delta < 0 ? stripRect.left + 1 : stripRect.right - 1,
     y: stripRect.top + stripRect.height / 2,
   }
 }
 
-function projectedVerticalAutoscrollPoint(
-  stripRect: DOMRect,
-  centerRect: ReturnType<typeof windowBodyCenterRect>,
-  point: PointerCoordinates,
-): PointerCoordinates | null {
-  const delta = edgeScrollDelta(point.y, centerRect.top, centerRect.bottom)
-  if (delta < 0) {
-    return {
-      x: stripRect.left + stripRect.width / 2,
-      y: stripRect.top + 1,
-    }
+function tabStripCanScrollByDelta(stripElement: HTMLElement, delta: number) {
+  if (delta < 0) return tabStripScrollPosition(stripElement) > 0
+  if (tabStripOrientation(stripElement) === 'vertical') {
+    return stripElement.scrollTop + stripElement.clientHeight < stripElement.scrollHeight - 1
   }
-  if (delta <= 0) return null
 
-  return {
-    x: stripRect.left + stripRect.width / 2,
-    y: stripRect.bottom - 1,
-  }
+  return stripElement.scrollLeft + stripElement.clientWidth < stripElement.scrollWidth - 1
 }
 
 export function scrollTabStripForBodyPoint(
@@ -623,12 +605,6 @@ function windowBodyCenterInset(size: number) {
   const maxInset = size * WINDOW_BODY_CENTER_MAX_EDGE_RATIO
 
   return Math.min(maxInset, Math.max(WINDOW_BODY_CENTER_MIN_EDGE_PX, proportionalInset))
-}
-
-function normalizedPosition(value: number, min: number, max: number) {
-  if (max <= min) return 0
-
-  return clamp((value - min) / (max - min), 0, 1)
 }
 
 function edgeScrollDelta(value: number, min: number, max: number) {
@@ -746,40 +722,28 @@ function tabStripDockingScore(element: HTMLElement, point: PointerCoordinates) {
   return verticalDistance * 10 + horizontalDistance
 }
 
-function tabDockingDirection(
-  sourceStripRect: LayoutRect | null,
-  sourceStripOrientation: TabStripOrientation | null,
-  point: PointerCoordinates,
-): TabDockingDirection {
-  if (!sourceStripRect) return 'none'
-  if (sourceStripOrientation === 'vertical') {
-    const sourceCenterX = sourceStripRect.x + sourceStripRect.width / 2
-    if (point.x < sourceCenterX) return 'left'
-    if (point.x > sourceCenterX) return 'right'
-
-    return 'none'
-  }
-
-  const sourceCenterY = sourceStripRect.y + sourceStripRect.height / 2
-  if (point.y < sourceCenterY) return 'up'
-  if (point.y > sourceCenterY) return 'down'
-
-  return 'none'
-}
-
-function tabStripMatchesDockingDirection(
+// Docking halos engage only for strips the pointer travels toward; this keeps
+// a strip from recapturing a tab that is being dragged away while letting the
+// same halo catch the tab on the way back.
+function tabStripMatchesDockTravel(
   element: HTMLElement,
   point: PointerCoordinates,
-  direction: TabDockingDirection,
+  travel: PointerTravel | null,
 ) {
-  if (direction === 'none') return true
+  if (!travel) return true
 
   const rect = element.getBoundingClientRect()
-  if (direction === 'left') return rect.right <= point.x
-  if (direction === 'right') return rect.left >= point.x
-  if (direction === 'up') return rect.bottom <= point.y
+  if (tabStripOrientation(element) === 'vertical') {
+    if (point.x < rect.left) return travel.horizontal !== 'left'
+    if (point.x > rect.right) return travel.horizontal !== 'right'
 
-  return rect.top >= point.y
+    return true
+  }
+
+  if (point.y < rect.top) return travel.vertical !== 'up'
+  if (point.y > rect.bottom) return travel.vertical !== 'down'
+
+  return true
 }
 
 function clamp(value: number, min: number, max: number) {

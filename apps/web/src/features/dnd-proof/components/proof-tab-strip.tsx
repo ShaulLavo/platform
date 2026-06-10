@@ -90,24 +90,7 @@ export function ProofTabStrip({
     >
       {items.map((item) => {
         if (item.kind === 'ghost') {
-          return (
-            <ProofTabPreview
-              kind='ghost'
-              key={item.key}
-              orientation={orientation}
-              surface={item.surface}
-            />
-          )
-        }
-        if (item.kind === 'slot') {
-          return (
-            <ProofTabPreview
-              kind='slot'
-              key={item.key}
-              orientation={orientation}
-              sourceSurfaceIds={item.sourceSurfaceIds}
-            />
-          )
+          return <ProofTabPreview key={item.key} orientation={orientation} surface={item.surface} />
         }
 
         return (

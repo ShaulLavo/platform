@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { TilingDropData } from '@workspace/tiling/utils/drag-data'
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
-import type { ActiveTilingDrag } from '@workspace/tiling/utils/drag-state'
+import { initialTabDragTravel, type ActiveTilingDrag } from '@workspace/tiling/utils/drag-state'
 import {
   previousTargetTabIndexForWindow,
   rawWindowTargetForDrag,
@@ -129,6 +129,7 @@ function activeTabDrag(
     sourceWindowId,
     stripOrientation: 'horizontal',
     stripRect: { height: 20, width: 100, x: 0, y: 0 },
+    travel: initialTabDragTravel(),
     ...patch,
   }
 }

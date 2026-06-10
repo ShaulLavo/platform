@@ -29,11 +29,6 @@ export type TilingTabStripPreviewItem =
       readonly kind: 'ghost'
       readonly surface: Surface
     }
-  | {
-      readonly key: string
-      readonly kind: 'slot'
-      readonly sourceSurfaceIds: readonly SurfaceId[]
-    }
 
 export function tilingInsertionPreview({
   activeDrag,
@@ -73,6 +68,9 @@ export function tilingTabStripPreviewItems({
   }))
   if (insertionPreview?.targetWindowId !== windowId) return surfaceItems
 
+  const movedItems = movedSourceTabItems(surfaceItems, insertionPreview)
+  if (movedItems) return movedItems
+
   const previewItems = previewItemsForInsertion(layout, surfaces, insertionPreview)
   if (previewItems.length === 0) return surfaceItems
 
@@ -82,6 +80,28 @@ export function tilingTabStripPreviewItems({
     ...surfaceItems.slice(0, insertionIndex),
     ...previewItems,
     ...surfaceItems.slice(insertionIndex),
+  ]
+}
+
+// A tab dragged within its own strip previews as the strip laid out with the
+// tab already at the insertion index — the tabs themselves move, no slot.
+function movedSourceTabItems(
+  surfaceItems: readonly Extract<TilingTabStripPreviewItem, { readonly kind: 'surface' }>[],
+  insertionPreview: TilingInsertionPreview,
+): readonly TilingTabStripPreviewItem[] | null {
+  if (insertionPreview.kind !== 'tab-insertion') return null
+
+  const sourceSurfaceId = insertionPreview.sourceSurfaceIds[0]
+  const sourceItem = surfaceItems.find((item) => item.surface.id === sourceSurfaceId)
+  if (!sourceItem) return null
+
+  const remainingItems = surfaceItems.filter((item) => item !== sourceItem)
+  const insertionIndex = clampIndex(insertionPreview.insertionIndex, remainingItems.length)
+
+  return [
+    ...remainingItems.slice(0, insertionIndex),
+    sourceItem,
+    ...remainingItems.slice(insertionIndex),
   ]
 }
 
@@ -176,15 +196,6 @@ function previewItemsForInsertion(
   insertionPreview: TilingInsertionPreview,
 ): readonly TilingTabStripPreviewItem[] {
   if (mergePreviewAlreadyMaterialized(surfaces, insertionPreview)) return []
-  if (previewUsesSlot(surfaces, insertionPreview)) {
-    return [
-      {
-        key: `slot:${insertionPreview.sourceSurfaceIds.join(':')}`,
-        kind: 'slot',
-        sourceSurfaceIds: insertionPreview.sourceSurfaceIds,
-      },
-    ]
-  }
 
   return surfacesForIds(layout, insertionPreview.sourceSurfaceIds).map((surface) => ({
     key: `ghost:${insertionPreview.kind}:${surface.id}`,
@@ -202,14 +213,6 @@ function mergePreviewAlreadyMaterialized(
   const surfaceIds = new Set(surfaces.map((surface) => surface.id))
 
   return insertionPreview.sourceSurfaceIds.every((surfaceId) => surfaceIds.has(surfaceId))
-}
-
-function previewUsesSlot(surfaces: readonly Surface[], insertionPreview: TilingInsertionPreview) {
-  if (insertionPreview.kind !== 'tab-insertion') return false
-
-  const surfaceIds = new Set(surfaces.map((surface) => surface.id))
-
-  return insertionPreview.sourceSurfaceIds.some((surfaceId) => surfaceIds.has(surfaceId))
 }
 
 function surfacesForIds(layout: WorkspaceLayout, surfaceIds: readonly SurfaceId[]) {

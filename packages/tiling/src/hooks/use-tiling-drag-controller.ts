@@ -378,6 +378,7 @@ export function useTilingDragController({
       eventPoint,
       previousTarget,
       scroll: false,
+      sourceTabId: source.surfaceId,
       windowId,
     })
     if (!resolvedTarget) return
