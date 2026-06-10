@@ -19,6 +19,18 @@ export type TilingTabStripHit = {
   readonly target: Extract<TilingDropData, { readonly kind: 'tab' | 'tab-strip' }>
 }
 
+export type TabStripBodyAutoscrollInput = {
+  readonly onAutoScroll: (() => void) | null
+  readonly point: PointerCoordinates
+  readonly stripElement: HTMLElement
+  readonly windowElement: HTMLElement
+}
+
+export type TabStripBodyAutoscroller = {
+  readonly stop: () => void
+  readonly update: (input: TabStripBodyAutoscrollInput) => void
+}
+
 type TabStripMiss = {
   readonly directInside: boolean
   readonly dockInside: boolean
@@ -26,14 +38,6 @@ type TabStripMiss = {
   readonly id: string
   readonly ownsSource: boolean
   readonly verticalDistance: number
-}
-
-type BodyAutoscrollState = {
-  readonly onAutoScroll: (() => void) | null
-  readonly point: PointerCoordinates
-  frameId: number | null
-  readonly stripElement: HTMLElement
-  readonly windowElement: HTMLElement
 }
 
 const TAB_STRIP_REORDER_SLOP_PX = 20
@@ -47,8 +51,6 @@ const TAB_STRIP_BODY_INDEX_HYSTERESIS_PX = 18
 const WINDOW_BODY_CENTER_EDGE_RATIO = 0.18
 const WINDOW_BODY_CENTER_MIN_EDGE_PX = 44
 const WINDOW_BODY_CENTER_MAX_EDGE_RATIO = 0.35
-
-let bodyAutoscrollState: BodyAutoscrollState | null = null
 
 export function resolveTabStripDropTarget(
   source: TilingDragData,
@@ -168,7 +170,7 @@ export function tabStripDropTargetForWindowBodyPoint(
   windowId: WindowId,
   point: PointerCoordinates,
   options: {
-    readonly continuousAutoscroll?: boolean
+    readonly bodyAutoscroller?: TabStripBodyAutoscroller | null
     readonly onAutoScroll?: (() => void) | null
     readonly previousIndex?: number | null
     readonly scroll?: boolean
@@ -185,8 +187,7 @@ export function tabStripDropTargetForWindowBodyPoint(
   if (options.scroll !== false) {
     scrollTabStripForBodyPoint(targetStrip, windowElement, point)
   }
-  updateTabStripBodyAutoscroll({
-    continuous: options.continuousAutoscroll ?? false,
+  options.bodyAutoscroller?.update({
     onAutoScroll: options.onAutoScroll ?? null,
     point,
     stripElement: targetStrip,
@@ -198,14 +199,6 @@ export function tabStripDropTargetForWindowBodyPoint(
     projectedTabStripPointForWindowBody(targetStrip, windowElement, point),
     { previousIndex: options.previousIndex },
   )
-}
-
-export function stopTabStripBodyAutoscroll() {
-  const frameId = bodyAutoscrollState?.frameId ?? null
-  if (frameId !== null) {
-    cancelAnimationFrame(frameId)
-  }
-  bodyAutoscrollState = null
 }
 
 export function tilingWindowCenterElementAtPoint(point: PointerCoordinates) {
@@ -555,7 +548,7 @@ function projectedVerticalAutoscrollPoint(
   }
 }
 
-function scrollTabStripForBodyPoint(
+export function scrollTabStripForBodyPoint(
   stripElement: HTMLElement,
   windowElement: HTMLElement,
   point: PointerCoordinates,
@@ -599,64 +592,7 @@ function setTabStripScrollPosition(stripElement: HTMLElement, value: number) {
   stripElement.scrollLeft = value
 }
 
-function updateTabStripBodyAutoscroll({
-  continuous,
-  onAutoScroll,
-  point,
-  stripElement,
-  windowElement,
-}: {
-  readonly continuous: boolean
-  readonly onAutoScroll: (() => void) | null
-  readonly point: PointerCoordinates
-  readonly stripElement: HTMLElement
-  readonly windowElement: HTMLElement
-}) {
-  if (!continuous) return
-  if (!tabStripBodyAutoscrollCanAdvance(stripElement, windowElement, point)) {
-    stopTabStripBodyAutoscroll()
-    return
-  }
-
-  const frameId = bodyAutoscrollState?.frameId ?? null
-  bodyAutoscrollState = {
-    frameId,
-    onAutoScroll,
-    point,
-    stripElement,
-    windowElement,
-  }
-  scheduleTabStripBodyAutoscrollFrame()
-}
-
-function scheduleTabStripBodyAutoscrollFrame() {
-  if (!bodyAutoscrollState) return
-  if (bodyAutoscrollState.frameId !== null) return
-
-  bodyAutoscrollState.frameId = requestAnimationFrame(runTabStripBodyAutoscrollFrame)
-}
-
-function runTabStripBodyAutoscrollFrame() {
-  const state = bodyAutoscrollState
-  if (!state) return
-
-  state.frameId = null
-  if (!tabStripBodyAutoscrollCanAdvance(state.stripElement, state.windowElement, state.point)) {
-    stopTabStripBodyAutoscroll()
-    return
-  }
-
-  const moved = scrollTabStripForBodyPoint(state.stripElement, state.windowElement, state.point)
-  if (!moved) {
-    stopTabStripBodyAutoscroll()
-    return
-  }
-
-  state.onAutoScroll?.()
-  scheduleTabStripBodyAutoscrollFrame()
-}
-
-function tabStripBodyAutoscrollCanAdvance(
+export function tabStripBodyAutoscrollCanAdvance(
   stripElement: HTMLElement,
   windowElement: HTMLElement,
   point: PointerCoordinates,

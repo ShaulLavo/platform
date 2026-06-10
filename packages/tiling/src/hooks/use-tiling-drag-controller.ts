@@ -18,8 +18,11 @@ import {
   tilingSnapDestinations,
   type TilingDropCandidate,
 } from '@workspace/tiling/utils/snap-destinations'
-import { stopTabStripBodyAutoscroll } from '@workspace/tiling/utils/tab-strip-hit-test'
 import { tilingInsertionPreview } from '@workspace/tiling/utils/tab-preview'
+import {
+  createTabStripBodyAutoscroller,
+  type TabStripBodyAutoscroller,
+} from '@workspace/tiling/state/tab-strip-body-autoscroller'
 import {
   activeTilingDragForSource,
   cancelPendingCommitFrame,
@@ -94,6 +97,8 @@ export function useTilingDragController({
   const onCommitLayoutRef = useRef(onCommitLayout)
   const pendingCommitFrameRef = useRef<number | null>(null)
   const pendingCommitRef = useRef<PendingCommit | null>(null)
+  const bodyAutoscrollerRef = useRef<TabStripBodyAutoscroller | null>(null)
+  const bodyAutoscroller = bodyAutoscrollerRef.current ?? createTabStripBodyAutoscroller()
   const snapLayout = activeDrag && dragStartLayoutRef.current ? dragStartLayoutRef.current : layout
   const snapDestinations = tilingSnapDestinations({
     activeDrag,
@@ -112,10 +117,11 @@ export function useTilingDragController({
   layoutRef.current = layout
   onCommitLayoutRef.current = onCommitLayout
   snapDestinationsRef.current = snapDestinations
+  bodyAutoscrollerRef.current = bodyAutoscroller
 
   useEffect(() => {
     return () => {
-      stopTabStripBodyAutoscroll()
+      bodyAutoscroller.stop()
       cancelPendingCommitFrame(pendingCommitFrameRef)
       pendingCommitRef.current = null
     }
@@ -124,7 +130,7 @@ export function useTilingDragController({
   function handleDragStart(event: DragStartEvent) {
     const currentLayout = layoutRef.current
     const source = tilingDragData(event.operation.source?.data)
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller.stop()
     flushPendingCommit()
     setPreviewLayout(null)
     dragStartLayoutRef.current = currentLayout
@@ -182,7 +188,7 @@ export function useTilingDragController({
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller.stop()
     const source = sourceForDragEvent(
       event.operation.source?.data,
       activeDragRef.current,
@@ -332,7 +338,7 @@ export function useTilingDragController({
     readonly rawTarget: TilingDropData | null
     readonly source: TilingDragData
   }) {
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller.stop()
     updateActiveResolvedTarget(null)
     debugLog?.logMissingTarget({
       activeDrag: activeDragRef.current,
@@ -351,7 +357,7 @@ export function useTilingDragController({
   function handleBodyAutoScroll({ eventPoint, source, windowId }: BodyAutoScrollInput) {
     const activeTilingDrag = activeDragRef.current
     if (!activeTilingDrag || activeTilingDrag.kind !== 'tab' || !activeTilingDrag.detached) {
-      stopTabStripBodyAutoscroll()
+      bodyAutoscroller.stop()
       return
     }
 
@@ -384,7 +390,7 @@ export function useTilingDragController({
   }
 
   function clearActiveInteraction() {
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller.stop()
     cancelPendingCommit()
     dragStartLayoutRef.current = null
     lastResolvedTargetRef.current = null
@@ -394,7 +400,7 @@ export function useTilingDragController({
   }
 
   function restoreDragStartLayout() {
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller.stop()
     dragStartLayoutRef.current = null
     lastResolvedTargetRef.current = null
     activeDragRef.current = null
@@ -466,6 +472,7 @@ export function useTilingDragController({
     const localPoint = localPointForRoot(eventPoint, coordinateRoot)
     const tabTarget = tabTargetForDrag({
       activeDrag: activeDragRef.current,
+      bodyAutoscroller,
       eventPoint,
       mode,
       onBodyAutoScroll,

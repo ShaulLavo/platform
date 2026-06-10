@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
 import { promoteWindowCenterTabTarget } from '@workspace/tiling/utils/drag-targets'
-import { stopTabStripBodyAutoscroll } from '@workspace/tiling/utils/tab-strip-hit-test'
 import { fileEditorSurfaceId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
 
 const sourceSurfaceId = fileEditorSurfaceId('/repo/src/source.ts')
@@ -10,7 +9,6 @@ const targetWindowId = workbenchWindowId('drag:target')
 
 describe('tiling drag target promotion', () => {
   afterEach(() => {
-    stopTabStripBodyAutoscroll()
     document.body.replaceChildren()
   })
 

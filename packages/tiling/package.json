@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./hooks/*": "./src/hooks/*.ts",
+    "./state/*": "./src/state/*.ts",
     "./utils/*": "./src/utils/*.ts"
   },
   "scripts": {

@@ -17,12 +17,12 @@ import {
 import {
   pointIsInsideTilingWindowCenter,
   resolveTabStripDropTarget,
-  stopTabStripBodyAutoscroll,
   tabStripDropHitAtPoint,
   tabStripDropTargetForWindowAtPoint,
   tabStripDropTargetForWindowBodyPoint,
   tabStripDropTargetMatchesPoint,
   tilingWindowCenterElementAtPoint,
+  type TabStripBodyAutoscroller,
   type TilingTabStripHit,
 } from '@workspace/tiling/utils/tab-strip-hit-test'
 import type { ActiveTilingDrag } from '@workspace/tiling/utils/drag-state'
@@ -59,6 +59,7 @@ export function intentModeForDrag(
 
 export function tabTargetForDrag({
   activeDrag,
+  bodyAutoscroller,
   eventPoint,
   mode,
   onBodyAutoScroll,
@@ -67,6 +68,7 @@ export function tabTargetForDrag({
   source,
 }: {
   readonly activeDrag: ActiveTilingDrag | null
+  readonly bodyAutoscroller?: TabStripBodyAutoscroller | null
   readonly eventPoint: PointerCoordinates
   readonly mode: TilingIntentMode
   readonly onBodyAutoScroll: (input: BodyAutoScrollInput) => void
@@ -77,6 +79,7 @@ export function tabTargetForDrag({
   if (mode === 'tab-detached') {
     return detachedTabTargetForDrag({
       activeDrag,
+      bodyAutoscroller,
       eventPoint,
       onBodyAutoScroll,
       previousTarget,
@@ -85,18 +88,18 @@ export function tabTargetForDrag({
     })
   }
   if (mode === 'window') {
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller?.stop()
     return (
       tabTargetFromHit(tabStripDropHitAtPoint(source, eventPoint)) ??
       rawTabTargetForPoint(source, rawTarget, eventPoint)
     )
   }
   if (mode !== 'tab-reorder') {
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller?.stop()
     return null
   }
 
-  stopTabStripBodyAutoscroll()
+  bodyAutoscroller?.stop()
   return tabReorderTargetForDrag({ activeDrag, eventPoint, source })
 }
 
@@ -232,6 +235,7 @@ export function snapPreviewMode(activeDrag: ActiveTilingDrag | null) {
 
 function detachedTabTargetForDrag({
   activeDrag,
+  bodyAutoscroller,
   eventPoint,
   onBodyAutoScroll,
   previousTarget,
@@ -239,6 +243,7 @@ function detachedTabTargetForDrag({
   source,
 }: {
   readonly activeDrag: ActiveTilingDrag | null
+  readonly bodyAutoscroller?: TabStripBodyAutoscroller | null
   readonly eventPoint: PointerCoordinates
   readonly onBodyAutoScroll: (input: BodyAutoScrollInput) => void
   readonly previousTarget: ResolvedTilingTarget | null
@@ -252,16 +257,28 @@ function detachedTabTargetForDrag({
     'app',
   )
   if (pointTarget) {
-    stopTabStripBodyAutoscroll()
+    bodyAutoscroller?.stop()
     return pointTarget
   }
 
   const bodyTarget =
-    stickyWindowBodyTabTargetForDrag(source, previousTarget, eventPoint, onBodyAutoScroll) ??
-    windowBodyTabTargetForDrag(source, eventPoint, previousTarget, onBodyAutoScroll)
+    stickyWindowBodyTabTargetForDrag(
+      source,
+      previousTarget,
+      eventPoint,
+      onBodyAutoScroll,
+      bodyAutoscroller,
+    ) ??
+    windowBodyTabTargetForDrag(
+      source,
+      eventPoint,
+      previousTarget,
+      onBodyAutoScroll,
+      bodyAutoscroller,
+    )
   if (bodyTarget) return bodyTarget
 
-  stopTabStripBodyAutoscroll()
+  bodyAutoscroller?.stop()
   return rawTabTargetForPoint(source, rawTarget, eventPoint)
 }
 
@@ -313,6 +330,7 @@ function windowBodyTabTargetForDrag(
   eventPoint: PointerCoordinates,
   previousTarget: ResolvedTilingTarget | null,
   onBodyAutoScroll: (input: BodyAutoScrollInput) => void,
+  bodyAutoscroller: TabStripBodyAutoscroller | null | undefined,
 ): TilingTabTarget | null {
   if (source.kind !== 'tab') return null
 
@@ -321,7 +339,7 @@ function windowBodyTabTargetForDrag(
 
   return tabTargetFromTarget(
     tabStripDropTargetForWindowBodyPoint(windowId, eventPoint, {
-      continuousAutoscroll: true,
+      bodyAutoscroller,
       onAutoScroll: () => onBodyAutoScroll({ eventPoint, source, windowId }),
       previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
     }),
@@ -335,6 +353,7 @@ function stickyWindowBodyTabTargetForDrag(
   previousTarget: ResolvedTilingTarget | null,
   eventPoint: PointerCoordinates,
   onBodyAutoScroll: (input: BodyAutoScrollInput) => void,
+  bodyAutoscroller: TabStripBodyAutoscroller | null | undefined,
 ): TilingTabTarget | null {
   if (source.kind !== 'tab') return null
 
@@ -346,7 +365,7 @@ function stickyWindowBodyTabTargetForDrag(
 
   return tabTargetFromTarget(
     tabStripDropTargetForWindowBodyPoint(windowId, eventPoint, {
-      continuousAutoscroll: true,
+      bodyAutoscroller,
       onAutoScroll: () => onBodyAutoScroll({ eventPoint, source, windowId }),
       previousIndex: previousTargetTabIndexForWindow(previousTarget, windowId),
     }),
