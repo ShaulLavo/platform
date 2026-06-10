@@ -46,8 +46,9 @@ export function pointInRect(rect: LayoutRect, point: PointerCoordinates) {
   if (point.x < rect.x) return false
   if (point.x > rect.x + rect.width) return false
   if (point.y < rect.y) return false
+  if (point.y > rect.y + rect.height) return false
 
-  return point.y <= rect.y + rect.height
+  return true
 }
 
 export function rectArea(rect: LayoutRect) {

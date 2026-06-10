@@ -208,7 +208,7 @@
         "react-dom": "^19.2.4",
         "typescript": "^5.9.3",
         "vite": "catalog:",
-        "vitest": "^3.2.4",
+        "vitest": "catalog:",
       },
       "peerDependencies": {
         "react": "^19.2.4",
@@ -329,6 +329,7 @@
     "tsdown": "0.15.11",
     "typescript": "5.9.2",
     "vite": "npm:rolldown-vite@7.1.12",
+    "vitest": "3.2.4",
   },
   "packages": {
     "@adobe/css-tools": ["@adobe/css-tools@4.5.0", "", {}, "sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q=="],

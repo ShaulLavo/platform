@@ -499,18 +499,20 @@ describe('tiling surface layout operations', () => {
   })
 
   it('includes custom window command frame offsets in the split ratio', () => {
-    const command = customWindowCommand({
-      id: windowManagementCommandId('offset-left'),
-      targetFrame: frame('left', { offsetX: 10, width: 30 }),
-    })
-    const applied = applyCustomWindowCommand(
-      createClassicFirstRunWorkspaceLayout(),
-      command,
-      CLASSIC_EDITOR_WINDOW_ID,
-    )
+    for (const offsetX of [10, -10]) {
+      const command = customWindowCommand({
+        id: windowManagementCommandId('offset-left'),
+        targetFrame: frame('left', { offsetX, width: 30 }),
+      })
+      const applied = applyCustomWindowCommand(
+        createClassicFirstRunWorkspaceLayout(),
+        command,
+        CLASSIC_EDITOR_WINDOW_ID,
+      )
 
-    expectWindowSplitRatio(applied, CLASSIC_EDITOR_WINDOW_ID, 0.4)
-    expectValidLayout(applied)
+      expectWindowSplitRatio(applied, CLASSIC_EDITOR_WINDOW_ID, 0.4)
+      expectValidLayout(applied)
+    }
   })
 
   it('applies saved layout command slots by opening and placing surfaces', () => {

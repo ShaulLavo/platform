@@ -10,7 +10,6 @@
     "./utils/*": "./src/utils/*.ts"
   },
   "scripts": {
-    "build": "tsgo --noEmit",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
@@ -33,7 +32,7 @@
     "react-dom": "^19.2.4",
     "typescript": "^5.9.3",
     "vite": "catalog:",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "react": "^19.2.4",
