@@ -1,5 +1,5 @@
-import type { TilingDropCandidate } from '@workspace/tiling/utils/snap-destinations'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
+import type { TilingDropCandidate } from '@workspace/tiling/utils/snap-destinations'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofSnapDestination({

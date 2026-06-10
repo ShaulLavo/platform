@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/react'
 
-import { ProofTab } from '@/features/dnd-proof/components/proof-tab'
-import { ProofTabPreview } from '@/features/dnd-proof/components/proof-tab-preview'
+import { ProofTab } from '@/features/tiling-proof/components/tab'
+import { ProofTabPreview } from '@/features/tiling-proof/components/tab-preview'
 import {
   TILING_TAB_TYPE,
   TILING_WINDOW_TYPE,

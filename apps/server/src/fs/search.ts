@@ -7,6 +7,8 @@ import {
   isFileEntry,
   matchesEntryType,
   type WorkspaceSearchDoneEvent,
+  type WorkspaceSearchIndexFallbackReason,
+  type WorkspaceSearchIndexMeasurement,
   type WorkspaceSearchProviderSource,
 } from '@workspace/contracts'
 
@@ -84,6 +86,7 @@ type NameCandidateRanker = {
   context: FindContext
   query: string
 }
+type ReadonlyWorkspaceIndexEntry = Readonly<WorkspaceIndexEntry>
 
 const NAME_SEARCH_RANK_BUFFER_MULTIPLIER = 4
 const NAME_SEARCH_MIN_RANK_BUFFER = 32
@@ -136,12 +139,11 @@ class PathIndexSearchProvider {
   }
 
   async *searchNames(context: FindContext): AsyncGenerator<FindMatch> {
-    const entries = this.index.entries()
-    const entriesByPath = new Map(entries.map((entry) => [entry.path, entry]))
+    const entriesByPath = this.index.entryMap()
     const ranker = createNameCandidateRanker(context, nameRankCapacity(context.options.limit))
     const emittedPaths = new Set<string>()
 
-    for (const entry of entries) {
+    for (const entry of entriesByPath.values()) {
       if (!indexEntryMatchesContext(context, entry)) continue
 
       addNameCandidate(ranker, entry.path)
@@ -158,17 +160,17 @@ class PathIndexSearchProvider {
 }
 
 class ContentIndexFilter {
-  private entriesByPath: ReadonlyMap<string, WorkspaceIndexEntry>
+  private entriesByPath: ReadonlyMap<string, ReadonlyWorkspaceIndexEntry>
 
-  constructor(entries: readonly WorkspaceIndexEntry[]) {
-    this.entriesByPath = new Map(entries.map((entry) => [entry.path, entry]))
+  constructor(entriesByPath: ReadonlyMap<string, ReadonlyWorkspaceIndexEntry>) {
+    this.entriesByPath = entriesByPath
   }
 
   static ready(index: WorkspaceIndex | undefined) {
     if (!index) return null
     if (index.status().readiness !== 'ready') return null
 
-    return new ContentIndexFilter(index.entries())
+    return new ContentIndexFilter(index.entryMap())
   }
 
   canSearchContent(relativePath: string) {
@@ -318,6 +320,7 @@ async function* searchWithTools(
       : null
   const contentIndexFilter = searchContent ? ContentIndexFilter.ready(workspaceIndex) : null
   const needsFd = searchNames && !pathIndexProvider
+  recordWorkspaceIndexSearch(context, workspaceIndex, pathIndexProvider, contentIndexFilter)
 
   if (!(await canUseTools({ content: searchContent, names: needsFd }))) {
     // TODO: remove this fallback after fd/rg installation or tool discovery is guaranteed.
@@ -370,6 +373,72 @@ function searchProviderLabel(pathIndexProvider: PathIndexSearchProvider | null, 
   if (pathIndexProvider && !needsFd) return 'index'
 
   return 'disk-tools'
+}
+
+function recordWorkspaceIndexSearch(
+  context: FindContext,
+  index: WorkspaceIndex | undefined,
+  pathIndexProvider: PathIndexSearchProvider | null,
+  contentIndexFilter: ContentIndexFilter | null,
+) {
+  const measurement = workspaceIndexMeasurement(
+    context,
+    index,
+    pathIndexProvider,
+    contentIndexFilter,
+  )
+  if (!measurement) return
+
+  context.measurement.recordWorkspaceIndex(measurement)
+  recordRequestContext({ search: { workspaceIndex: measurement } })
+}
+
+function workspaceIndexMeasurement(
+  context: FindContext,
+  index: WorkspaceIndex | undefined,
+  pathIndexProvider: PathIndexSearchProvider | null,
+  contentIndexFilter: ContentIndexFilter | null,
+): WorkspaceSearchIndexMeasurement | null {
+  if (context.options.useWorkspaceIndex === false) return disabledWorkspaceIndexMeasurement()
+  if (!index) return null
+
+  const status = index.status()
+  const used = Boolean(pathIndexProvider || contentIndexFilter)
+
+  return {
+    fallbackReason: workspaceIndexFallbackReason(context, status.readiness, used),
+    pendingCreatedPathCount: status.pendingCreatedPathCount,
+    readiness: status.readiness,
+    staleEntryCount: status.staleEntryCount,
+    used,
+  }
+}
+
+function disabledWorkspaceIndexMeasurement(): WorkspaceSearchIndexMeasurement {
+  return {
+    fallbackReason: 'disabled',
+    pendingCreatedPathCount: 0,
+    staleEntryCount: 0,
+    used: false,
+  }
+}
+
+function workspaceIndexFallbackReason(
+  context: FindContext,
+  readiness: WorkspaceSearchIndexMeasurement['readiness'],
+  used: boolean,
+): WorkspaceSearchIndexFallbackReason | undefined {
+  if (readiness && readiness !== 'ready') return readiness
+  if (workspaceIndexSkippedForRegexNameQuery(context, used)) return 'regex-name-query'
+
+  return undefined
+}
+
+function workspaceIndexSkippedForRegexNameQuery(context: FindContext, used: boolean) {
+  if (used) return false
+  if (!shouldSearchNames(context.options)) return false
+
+  return !canUsePathIndexForQuery(context.options)
 }
 
 async function canUseTools(required: { content: boolean; names: boolean }) {
@@ -526,7 +595,7 @@ async function* takeRankedIndexNameMatches(
   context: FindContext,
   ranker: NameCandidateRanker,
   emittedPaths: Set<string>,
-  entriesByPath: ReadonlyMap<string, WorkspaceIndexEntry>,
+  entriesByPath: ReadonlyMap<string, ReadonlyWorkspaceIndexEntry>,
   limit: number,
 ): AsyncGenerator<FindMatch> {
   let count = 0
@@ -544,7 +613,7 @@ function takeRankedIndexNameMatch(
   context: FindContext,
   ranker: NameCandidateRanker,
   emittedPaths: Set<string>,
-  entriesByPath: ReadonlyMap<string, WorkspaceIndexEntry>,
+  entriesByPath: ReadonlyMap<string, ReadonlyWorkspaceIndexEntry>,
 ) {
   while (ranker.candidates.length > 0) {
     const relativePath = ranker.candidates.shift()
@@ -757,7 +826,7 @@ async function nameMatchFromPath(
 }
 
 function nameMatchFromIndexEntry(
-  entry: WorkspaceIndexEntry,
+  entry: ReadonlyWorkspaceIndexEntry,
   context: FindContext,
 ): FindMatch | null {
   if (entry.stale) return null
@@ -775,7 +844,7 @@ function nameMatchFromIndexEntry(
   }
 }
 
-function indexEntryMatchesContext(context: FindContext, entry: WorkspaceIndexEntry) {
+function indexEntryMatchesContext(context: FindContext, entry: ReadonlyWorkspaceIndexEntry) {
   if (!indexEntryIsSearchCandidate(entry)) return false
   if (!indexEntryIsInsideRoot(context, entry.path)) return false
   if (!indexEntryMatchesDepth(context, entry.path)) return false
@@ -785,14 +854,14 @@ function indexEntryMatchesContext(context: FindContext, entry: WorkspaceIndexEnt
   return nameCandidateMatchesContext(context, entry.path)
 }
 
-function indexEntryIsSearchCandidate(entry: WorkspaceIndexEntry) {
+function indexEntryIsSearchCandidate(entry: ReadonlyWorkspaceIndexEntry) {
   if (entry.stale) return false
   if (entry.defaultIgnored) return false
 
   return !entry.gitIgnored
 }
 
-function isIndexBinaryContentCandidate(entry: WorkspaceIndexEntry) {
+function isIndexBinaryContentCandidate(entry: ReadonlyWorkspaceIndexEntry) {
   if (entry.contentKind === 'binary') return true
   if (entry.contentKind === 'image') return true
   if (entry.fileKind === 'binary') return true
@@ -800,7 +869,7 @@ function isIndexBinaryContentCandidate(entry: WorkspaceIndexEntry) {
   return entry.fileKind === 'image'
 }
 
-function rgExcludeGlobForIndexEntry(context: FindContext, entry: WorkspaceIndexEntry) {
+function rgExcludeGlobForIndexEntry(context: FindContext, entry: ReadonlyWorkspaceIndexEntry) {
   if (!isIndexBinaryContentCandidate(entry)) return null
   if (entry.stale) return null
   if (!indexEntryIsInsideRoot(context, entry.path)) return null
@@ -855,7 +924,7 @@ function indexEntryDepth(context: FindContext, relativePath: string) {
   return matchPath.split('/').filter(Boolean).length
 }
 
-function indexEntryCharBagMatches(context: FindContext, entry: WorkspaceIndexEntry) {
+function indexEntryCharBagMatches(context: FindContext, entry: ReadonlyWorkspaceIndexEntry) {
   if (searchMatchMode(context.options) !== 'fuzzy') return true
 
   return charBagContainsQuery(entry.charBag, context.query)

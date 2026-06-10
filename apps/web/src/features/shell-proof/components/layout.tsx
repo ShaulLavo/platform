@@ -2,24 +2,20 @@ import { useRef } from 'react'
 
 import { Rail } from '@/features/workbench/components/rail'
 import { ShellProofKeymapController } from '@/features/shell-proof/components/keymap-controller'
-import {
-  SurfaceArea,
-  type ShellProofInteractionController,
-} from '@/features/shell-proof/components/surface-area'
+import { SurfaceArea } from '@/features/shell-proof/components/surface-area'
+import type { ProofInteractionController } from '@/features/tiling-proof/components/interaction-surface'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { selectWorkbenchRailItems } from '@workspace/tiling/utils/rail-model'
 import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
-const IDLE_INTERACTION_CONTROLLER: ShellProofInteractionController = {
+const IDLE_INTERACTION_CONTROLLER: ProofInteractionController = {
   flushPendingCommit: ignoreInteraction,
   resetInteraction: ignoreInteraction,
 }
 
 export function ShellProofLayout({ seedLayout }: { readonly seedLayout: WorkspaceLayout }) {
-  const interactionControllerRef = useRef<ShellProofInteractionController>(
-    IDLE_INTERACTION_CONTROLLER,
-  )
+  const interactionControllerRef = useRef<ProofInteractionController>(IDLE_INTERACTION_CONTROLLER)
   const layoutStore = useLayoutStoreApi()
   const items = useLayoutState((state) => selectWorkbenchRailItems(state.layout))
   const dispatchLayoutOperation = useLayoutState((state) => state.dispatchLayoutOperation)

@@ -240,7 +240,7 @@ describe('workspace index', () => {
       path: 'src/app.ts',
       stale: false,
     })
-    index.markStale('src/../src/app.ts')
+    index.markSubtreeStale('src/../src/app.ts')
     expect(index.get('src/app.ts')).toMatchObject({ stale: true })
   })
 
@@ -252,7 +252,7 @@ describe('workspace index', () => {
 
     expect(index.status()).toMatchObject({ readiness: 'cold' })
     await index.rebuild({ reason: 'initial' })
-    index.markStale('src/app.ts')
+    index.markSubtreeStale('src/app.ts')
 
     expect(index.get('src/app.ts')).toMatchObject({ stale: true })
     expect(index.status()).toMatchObject({
@@ -407,8 +407,8 @@ describe('workspace index', () => {
     await writeFile(path.join(root, 'src', 'b.ts'), 'export const b = true\n')
     const index = await buildWorkspaceIndex(createWorkspacePaths(root))
 
-    index.markStale('src/a.ts')
-    index.markStale('src/b.ts')
+    index.markSubtreeStale('src/a.ts')
+    index.markSubtreeStale('src/b.ts')
     await index.refresh('src/a.ts')
 
     expect(index.status()).toMatchObject({
@@ -614,6 +614,7 @@ describe('workspace index', () => {
       events.push({ type: 'created', path: 'src/new.ts' })
       const status = await waitForStatus(index, 'stale')
 
+      expect(status.pendingCreatedPathCount).toBe(1)
       expect(status.staleEntryCount).toBe(0)
       expect(index.get('src/new.ts')).toBeUndefined()
     } finally {

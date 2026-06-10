@@ -685,6 +685,43 @@ describe('workspace disk search provider', () => {
     expect(nameMatchPaths(events)).toContain('src/needle.txt')
   })
 
+  it('falls back for filename search while created index paths are coalescing', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    const paths = createWorkspacePaths(root)
+    const index = await buildWorkspaceIndex(paths)
+
+    await writeFile(path.join(root, 'src', 'new-file.txt'), '')
+    index.markCreatedPathPending('src/new-file.txt')
+
+    const events = await collectEvents(
+      findInWorkspaceStream(
+        paths,
+        {
+          includeContent: false,
+          limit: 20,
+          maxContentBytes: 1_000_000,
+          path: '',
+          query: 'new-file',
+        },
+        undefined,
+        { workspaceIndex: index },
+      ),
+    )
+    const done = doneEvent(events)
+    const sources = done?.measurement?.providerSources ?? []
+
+    expect(done?.measurement?.workspaceIndex).toMatchObject({
+      fallbackReason: 'stale',
+      pendingCreatedPathCount: 1,
+      readiness: 'stale',
+      used: false,
+    })
+    expect(sources).not.toContain('index')
+    expect(sources.some((source) => source === 'fd' || source === 'fallback')).toBe(true)
+    expect(nameMatchPaths(events)).toContain('src/new-file.txt')
+  })
+
   it('skips a ready workspace index when the query opts out', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })

@@ -1,8 +1,8 @@
 import { DragOverlay } from '@dnd-kit/react'
 import { cn } from '@workspace/ui/lib/utils'
 
+import { proofWindowTitle } from '@/features/tiling-proof/utils/window-title'
 import type { TilingDragData } from '@workspace/tiling/utils/drag-data'
-import { proofWindowTitle } from '@/features/dnd-proof/utils/model'
 import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 export function ProofDragOverlay({
@@ -68,9 +68,9 @@ function windowOverlay(windowId: WindowId, layout: WorkspaceLayout) {
         <div className='flex min-h-10 min-w-0 flex-1 items-end gap-1 overflow-hidden px-2 pt-2'>
           {surfaces.map((surface) => (
             <div
+              aria-selected={surface.id === window.activeSurfaceId}
               className='bg-muted/60 text-muted-foreground aria-selected:bg-background aria-selected:text-foreground aria-selected:border-border flex h-9 w-28 min-w-0 shrink-0 items-center gap-1.5 rounded-t-md border border-transparent px-2 text-xs shadow-sm'
               key={surface.id}
-              aria-selected={surface.id === window.activeSurfaceId}
             >
               <span className='bg-primary size-2 rounded-full' />
               <span className='min-w-0 flex-1 truncate'>{surface.title}</span>

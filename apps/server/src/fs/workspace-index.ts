@@ -50,6 +50,7 @@ export type WorkspaceIndexStatus = {
   lastFullScanAtMs?: number
   lastFullScanDurationMs?: number
   lastIncrementalUpdateAtMs?: number
+  pendingCreatedPathCount: number
   readiness: WorkspaceIndexReadiness
   rebuildReason?: string
   scanWarningCount: number
@@ -94,10 +95,11 @@ type ScanResult = {
   skippedEntryCount: number
 }
 
-type IndexPathAction = 'changed' | 'deleted'
+type IndexPathAction = 'changed' | 'created' | 'deleted'
 
 export class WorkspaceIndex {
   private entriesByPath = new Map<string, WorkspaceIndexEntry>()
+  private pendingCreatedPaths = new Set<string>()
   private readonly paths: WorkspacePaths
   private rebuildSequence = 0
   private state: WorkspaceIndexMutableStatus
@@ -113,6 +115,10 @@ export class WorkspaceIndex {
 
   entries() {
     return Array.from(this.entriesByPath.values(), cloneEntry)
+  }
+
+  entryMap(): ReadonlyMap<string, Readonly<WorkspaceIndexEntry>> {
+    return this.entriesByPath
   }
 
   get(relativePath: string) {
@@ -140,12 +146,14 @@ export class WorkspaceIndex {
       if (!this.isCurrentRebuild(rebuildId)) return this.snapshot()
 
       this.entriesByPath = result.entries
+      this.pendingCreatedPaths.clear()
       this.state = readyStatus(this.paths.workspaceRoot, result, startedAt, reason)
       return this.snapshot()
     } catch (error) {
       if (!this.isCurrentRebuild(rebuildId)) return this.snapshot()
 
       this.entriesByPath = new Map()
+      this.pendingCreatedPaths.clear()
       this.state = failedStatus(this.paths.workspaceRoot, startedAt, reason, error)
       throw error
     }
@@ -169,6 +177,7 @@ export class WorkspaceIndex {
       await this.applyFilesystemEvent(event, updateId)
     }
 
+    this.clearPendingCreatedPaths(queuedEvents)
     return this.snapshot()
   }
 
@@ -207,10 +216,6 @@ export class WorkspaceIndex {
     return this.snapshot()
   }
 
-  markStale(relativePath: string) {
-    this.markSubtreeStale(relativePath)
-  }
-
   markSubtreeStale(relativePath: string) {
     if (!canApplyIncrementalUpdates(this.state.readiness)) return
 
@@ -230,8 +235,16 @@ export class WorkspaceIndex {
     this.state = staleLiveStatus(this.state, this.entriesByPath)
   }
 
+  markCreatedPathPending(relativePath: string) {
+    if (!canApplyIncrementalUpdates(this.state.readiness)) return
+
+    this.pendingCreatedPaths.add(indexPathKey(relativePath))
+    this.state = staleLiveStatus(this.state, this.entriesByPath, this.pendingCreatedPaths)
+  }
+
   markFailed(reason: string, error: unknown) {
     this.nextRebuildId()
+    this.pendingCreatedPaths.clear()
     this.state = failedLiveStatus(this.state, this.entriesByPath, reason, error)
     return this.snapshot()
   }
@@ -244,6 +257,16 @@ export class WorkspaceIndex {
     }
 
     return this.markFailed(reason, error)
+  }
+
+  private clearPendingCreatedPaths(events: readonly WatchServerMessage[]) {
+    for (const event of events) {
+      if (!isWorkspaceIndexFilesystemEvent(event)) continue
+
+      this.pendingCreatedPaths.delete(indexPathKey(event.path))
+    }
+
+    this.state = statusWithPendingCreatedPathCount(this.state, this.pendingCreatedPaths)
   }
 
   private async applyFilesystemEvent(event: WorkspaceIndexFilesystemEvent, updateId: number) {
@@ -953,8 +976,7 @@ function indexQueueEvents(event: WatchServerMessage): WatchServerMessage[] {
   if (!isWorkspaceIndexFilesystemEvent(event)) return []
   if (event.type === 'renamed') return renamedIndexQueueEvents(event)
 
-  const action = event.type === 'deleted' ? 'deleted' : 'changed'
-  return [pathIndexQueueEvent(event.path, action)]
+  return [pathIndexQueueEvent(event.path, event.type)]
 }
 
 function renamedIndexQueueEvents(
@@ -1002,6 +1024,11 @@ function pendingEventKey(event: WatchServerMessage) {
 
 function markWatchEventStale(index: WorkspaceIndex, event: WatchServerMessage) {
   if (!isWorkspaceIndexFilesystemEvent(event)) return
+
+  if (event.type === 'created') {
+    index.markCreatedPathPending(event.path)
+    return
+  }
 
   index.markSubtreeStale(event.path)
   if (event.type !== 'renamed') return
@@ -1062,6 +1089,7 @@ function emptyStatus(scanRoot: string): WorkspaceIndexStatus {
   return {
     entryCount: 0,
     fileCount: 0,
+    pendingCreatedPathCount: 0,
     readiness: 'cold',
     scanWarningCount: 0,
     scanRoot,
@@ -1081,6 +1109,7 @@ function readyStatus(
     fileCount: fileCount(result.entries),
     lastFullScanAtMs: Date.now(),
     lastFullScanDurationMs: elapsedMs(startedAt),
+    pendingCreatedPathCount: 0,
     readiness: 'ready',
     rebuildReason: reason,
     scanWarningCount: result.scanWarningCount,
@@ -1101,6 +1130,7 @@ function failedStatus(
     errorMessage: errorMessage(error),
     fileCount: 0,
     lastFullScanDurationMs: elapsedMs(startedAt),
+    pendingCreatedPathCount: 0,
     readiness: 'failed',
     rebuildReason: reason,
     scanWarningCount: 0,
@@ -1122,6 +1152,7 @@ function failedLiveStatus(
     errorMessage: errorMessage(error),
     fileCount: fileCount(entries),
     lastIncrementalUpdateAtMs: Date.now(),
+    pendingCreatedPathCount: 0,
     readiness: 'failed',
     rebuildReason: reason,
     staleEntryCount: staleEntryCount(entries),
@@ -1131,10 +1162,12 @@ function failedLiveStatus(
 function staleLiveStatus(
   previous: WorkspaceIndexMutableStatus,
   entries: ReadonlyMap<string, WorkspaceIndexEntry>,
+  pendingCreatedPaths = new Set<string>(),
 ): WorkspaceIndexStatus {
   return {
     ...previous,
     lastIncrementalUpdateAtMs: Date.now(),
+    pendingCreatedPathCount: pendingCreatedPaths.size,
     readiness: 'stale',
     staleEntryCount: staleEntryCount(entries),
   }
@@ -1153,10 +1186,21 @@ function incrementalStatus(
     errorMessage: undefined,
     fileCount: fileCount(entries),
     lastIncrementalUpdateAtMs: Date.now(),
+    pendingCreatedPathCount: 0,
     readiness: staleCount === 0 ? 'ready' : 'stale',
     scanWarningCount: previous.scanWarningCount + (result?.scanWarningCount ?? 0),
     skippedEntryCount: previous.skippedEntryCount + (result?.skippedEntryCount ?? 0),
     staleEntryCount: staleCount,
+  }
+}
+
+function statusWithPendingCreatedPathCount(
+  previous: WorkspaceIndexMutableStatus,
+  pendingCreatedPaths: ReadonlySet<string>,
+): WorkspaceIndexStatus {
+  return {
+    ...previous,
+    pendingCreatedPathCount: pendingCreatedPaths.size,
   }
 }
 

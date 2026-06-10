@@ -284,6 +284,24 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(expanded)
   })
 
+  it('keeps explicit left tool-pane collapse inside the packed recipe order', () => {
+    const search = createSearchResultsSurface()
+    const chat = createChatSurface()
+    const withSearch = openSurface(createClassicFirstRunWorkspaceLayout(), search)
+    const opened = openSurface(withSearch, chat)
+    const searchWindowId = mustFindWindowId(opened, search.id)
+    const chatWindowId = mustFindWindowId(opened, chat.id)
+    const collapsed = collapseWindow(opened, chatWindowId, 'left')
+    const expanded = expandWindow(collapsed, chatWindowId)
+
+    expect(collapsed.windowsById[chatWindowId]?.mode).toBe('collapsed')
+    expect(collapsed.windowsById[chatWindowId]?.collapsedEdge).toBe('left')
+    expectWindowBefore(collapsed, searchWindowId, chatWindowId)
+    expectWindowBefore(expanded, searchWindowId, chatWindowId)
+    expectValidLayout(collapsed)
+    expectValidLayout(expanded)
+  })
+
   it('moves surfaces to background and restores recipe-slot snaps through concrete placement', () => {
     const git = createGitChangesSurface()
     const opened = openSurface(createClassicFirstRunWorkspaceLayout(), git)
@@ -1749,6 +1767,16 @@ function mustFindWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   if (!windowId) throw createTilingInvariantError(`Expected visible surface ${surfaceId}`)
 
   return windowId
+}
+
+function expectWindowBefore(
+  layout: WorkspaceLayout,
+  beforeWindowId: WindowId,
+  afterWindowId: WindowId,
+) {
+  const windowIds = visibleWindowIdsInOrder(layout)
+
+  expect(windowIds.indexOf(beforeWindowId)).toBeLessThan(windowIds.indexOf(afterWindowId))
 }
 
 function mustFindRailItem(

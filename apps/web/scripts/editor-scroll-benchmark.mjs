@@ -4,7 +4,7 @@ import { basename, relative, resolve, sep } from 'node:path'
 import { createBenchmarkError } from './structured-errors.mjs'
 
 const browserTypes = { chromium, firefox, webkit }
-const cacheKey = 'platform.workspace-state.v1'
+const cachePrefix = 'platform.workspace-state.v12'
 const defaultAppUrl = 'http://localhost:5173/'
 const defaultServerUrl = process.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 const defaultFilePath = 'apps/web/src/features/editor/components/editor.tsx'
@@ -179,15 +179,11 @@ async function runTrial(browserName, trial, workspace) {
 
 async function runTrialInBrowser(browser, browserName, trial, workspace) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
-  await context.addInitScript(
-    (payload) => {
-      window.localStorage.setItem(payload.cacheKey, JSON.stringify(payload.cache))
-    },
-    {
-      cache: workspaceCache(workspace),
-      cacheKey,
-    },
-  )
+  await context.addInitScript((entries) => {
+    for (const [key, value] of Object.entries(entries)) {
+      window.localStorage.setItem(key, JSON.stringify(value))
+    }
+  }, workspaceCacheEntries(workspace))
 
   const page = await context.newPage()
   page.setDefaultTimeout(25_000)
@@ -197,26 +193,61 @@ async function runTrialInBrowser(browser, browserName, trial, workspace) {
   return trialSample(browserName, trial, report)
 }
 
-function workspaceCache(workspace) {
+function workspaceCacheEntries(workspace) {
   return {
-    diffViewMode: 'split',
-    editorHistory: [workspace.filePath],
-    editorPaneLayout: {
-      activePaneId: 'pane-bench',
-      root: {
-        activeTabId: 'tab-bench',
-        id: 'pane-bench',
-        kind: 'leaf',
-        tabs: [{ id: 'tab-bench', path: workspace.filePath }],
-      },
+    [`${cachePrefix}.diffViewMode`]: 'split',
+    [`${cachePrefix}.editorHistory`]: [workspace.filePath],
+    [`${cachePrefix}.recentlyClosedEditorPaths`]: [],
+    [`${cachePrefix}.rootFolder`]: workspace.rootFolder,
+    [`${cachePrefix}.searchBuffer`]: null,
+    [`${cachePrefix}.workspaceLayout`]: workspaceLayoutEntry(workspace),
+  }
+}
+
+function workspaceLayoutEntry(workspace) {
+  return {
+    activeSurfaceId: 'surface-bench',
+    activeWindowId: 'window-bench',
+    customWindowCommands: [],
+    hotkeyPresets: [],
+    layoutCommands: [],
+    mruSurfaceIds: ['surface-bench'],
+    mruWindowIds: ['window-bench'],
+    nodes: [{ id: 'node-bench', kind: 'window', windowId: 'window-bench' }],
+    policies: [],
+    rail: {
+      backgroundSurfaceIds: [],
+      pinnedSurfaceIds: [],
+      recipeIds: [],
+      runningSurfaceIds: [],
+      visibleSingletonSurfaceIds: [],
     },
-    gitPanelOpen: true,
-    recentlyClosedEditorPaths: [],
-    rootFolder: workspace.rootFolder,
-    searchBuffer: null,
-    sidebarVisible: true,
-    version: 7,
-    workspacePanelTab: 'files',
+    recipes: [],
+    rootNodeId: 'node-bench',
+    surfaceRegistryVersion: 1,
+    surfaces: [
+      {
+        id: 'surface-bench',
+        surface: {
+          lifecycle: 'durable',
+          resourceKey: workspace.filePath,
+          serializedState: { editorGroupId: 'group-bench', editorTabId: 'tab-bench' },
+          title: basename(workspace.filePath),
+          type: 'file-editor',
+          version: 1,
+        },
+      },
+    ],
+    version: 1,
+    windows: [
+      {
+        activeSurfaceId: 'surface-bench',
+        id: 'window-bench',
+        mode: 'normal',
+        pinnedSurfaceIds: [],
+        surfaceIds: ['surface-bench'],
+      },
+    ],
   }
 }
 

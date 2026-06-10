@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { effectiveEntryType, type FileSystemEntryMetadata } from '@workspace/contracts'
 import { createWorkspacePaths } from './path'
-import { FileChangeHub } from './watch'
+import { FileChangeHub, type WatchBackend } from './watch'
 import { statPath } from './stat'
 import { readTree } from './tree'
 import { getBlobFile, readTextFile } from './read'
@@ -55,6 +55,7 @@ export type FileSystemServiceOptions = {
   maxSearchContentBytes?: number
   maxTextFileBytes?: number
   treeConcurrency?: number
+  watchBackend?: WatchBackend
   /** Existing metadata database handle. When omitted the service opens and owns its own. */
   metadataDatabase?: MetadataDatabaseHandle
   /** Path for the service-owned metadata database when no handle is provided. */
@@ -112,6 +113,7 @@ export class FileSystemService {
     this.maxTextFileBytes = options.maxTextFileBytes ?? resolveMaxTextFileBytes()
     this.treeConcurrency = options.treeConcurrency ?? DEFAULT_TREE_CONCURRENCY
     this.changes = new FileChangeHub(this.paths, {
+      backend: options.watchBackend,
       enabled: options.watch ?? true,
     })
     this.workspaceIndex = new WorkspaceIndex(this.paths)

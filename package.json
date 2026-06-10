@@ -9,7 +9,8 @@
       "packages/observability",
       "packages/tiling",
       "packages/tree",
-      "packages/ui"
+      "packages/ui",
+      "../Editor/packages/*"
     ],
     "catalog": {
       "@arethetypeswrong/core": "0.18.2",

@@ -3,6 +3,14 @@ import type { EntryTypeFilter } from './tree-entry'
 export type WorkspaceSearchSource = 'disk' | 'open-buffer'
 export type WorkspaceSearchMatchMode = 'literal' | 'regex' | 'fuzzy'
 export type WorkspaceSearchProviderSource = 'fallback' | 'fd' | 'index' | 'rg'
+export type WorkspaceSearchIndexReadiness = 'cold' | 'building' | 'ready' | 'stale' | 'failed'
+export type WorkspaceSearchIndexFallbackReason =
+  | 'building'
+  | 'cold'
+  | 'disabled'
+  | 'failed'
+  | 'regex-name-query'
+  | 'stale'
 
 export type WorkspaceSearchQuery = {
   caseSensitive?: boolean
@@ -51,6 +59,14 @@ export type WorkspaceSearchStatPathCount = {
   path: string
 }
 
+export type WorkspaceSearchIndexMeasurement = {
+  fallbackReason?: WorkspaceSearchIndexFallbackReason
+  pendingCreatedPathCount: number
+  readiness?: WorkspaceSearchIndexReadiness
+  staleEntryCount: number
+  used: boolean
+}
+
 export type WorkspaceSearchMeasurement = {
   durationMs: number
   firstResultMs?: number
@@ -61,6 +77,7 @@ export type WorkspaceSearchMeasurement = {
   statDurationMs: number
   statPathCount: number
   topStatPaths: WorkspaceSearchStatPathCount[]
+  workspaceIndex?: WorkspaceSearchIndexMeasurement
 }
 
 export type WorkspaceSearchDoneEvent = {

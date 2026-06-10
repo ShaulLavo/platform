@@ -1,68 +1,27 @@
-import { PointerActivationConstraints } from '@dnd-kit/dom'
-import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
-import { useEffect, useState } from 'react'
-
-import { ProofDragOverlay } from '@/features/dnd-proof/components/proof-drag-overlay'
-import { ProofPreviewWindow } from '@/features/dnd-proof/components/proof-preview-window'
-import { ProofSnapDestination } from '@/features/dnd-proof/components/proof-snap-destination'
-import {
-  ProofWindow,
-  type ProofCollapsedWindowHeaderInput,
-} from '@/features/dnd-proof/components/proof-window'
 import { DebugPanel } from '@/features/shell-proof/components/debug-panel'
 import { SurfaceBody } from '@/features/shell-proof/components/surface-body'
+import {
+  ProofInteractionSurface,
+  type ProofInteractionController,
+} from '@/features/tiling-proof/components/interaction-surface'
+import type { ProofCollapsedWindowHeaderInput } from '@/features/tiling-proof/components/window'
 import {
   bottomPaneCloseWindowOperation,
   isBottomPaneWindow,
 } from '@workspace/tiling/utils/bottom-pane-model'
-import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 import { ToolPaneHeader } from '@/features/workbench/components/tool-pane-header'
-import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
-import { useTilingDragController } from '@workspace/tiling/hooks/use-tiling-drag-controller'
 import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
-import {
-  deriveLayoutGeometry,
-  insetLayoutRect,
-  type LayoutGeometryOptions,
-  type LayoutRect,
-} from '@workspace/tiling/utils/layout-geometry'
-import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import type {
   LayoutOperation,
   Surface,
   SurfaceId,
   WorkbenchWindow,
+  WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
 
-const SHELL_PROOF_SENSORS = [
-  PointerSensor.configure({
-    activationConstraints: () => [
-      new PointerActivationConstraints.Distance({
-        value: 4,
-      }),
-    ],
-  }),
-]
-
-const DEFAULT_LAYOUT_RECT: LayoutRect = {
-  height: 720,
-  width: 1080,
-  x: 0,
-  y: 0,
-}
-
-const GEOMETRY_OPTIONS: LayoutGeometryOptions = {
-  gapPx: 8,
-}
-
-export type ShellProofInteractionController = {
-  readonly flushPendingCommit: () => void
-  readonly resetInteraction: () => void
-}
-
 type ShellProofInteractionControllerRef = {
-  current: ShellProofInteractionController
+  current: ProofInteractionController
 }
 
 export function SurfaceArea({
@@ -72,62 +31,10 @@ export function SurfaceArea({
   readonly interactionControllerRef: ShellProofInteractionControllerRef
   readonly onDispatchLayoutOperation: (operation: LayoutOperation) => void
 }) {
-  const [resizingWindows, setResizingWindows] = useState(false)
   const layout = useLayoutState((state) => state.layout)
   const replaceLayout = useLayoutState((state) => state.replaceLayout)
-  const { rect, rootRef } = useLayoutRootRect(DEFAULT_LAYOUT_RECT)
-  const rootRect = rect ?? DEFAULT_LAYOUT_RECT
-  const surfaceRect = insetLayoutRect(rootRect, GEOMETRY_OPTIONS.gapPx ?? 0)
-  const committedGeometry = deriveLayoutGeometry(layout, surfaceRect, GEOMETRY_OPTIONS)
   const debugVisible = shellProofDebugEnabled()
   const dragDebugLog = useTilingDragDebugLog()
-  const {
-    activeDrag,
-    activeResolvedTarget,
-    flushPendingCommit,
-    handleDragEnd,
-    handleDragMove,
-    handleDragOver,
-    handleDragStart,
-    insertionPreview,
-    previewLayout,
-    resetInteraction,
-    snapDestinations,
-    snapLayout,
-    tabStripRenderEpoch,
-  } = useTilingDragController({
-    coordinateRootRef: rootRef,
-    debugLog: debugVisible ? dragDebugLog : undefined,
-    layout,
-    rootRect: surfaceRect,
-    snapDestinationRects: committedGeometry.snapDestinationRects,
-    windowRectsById: committedGeometry.windowRectsById,
-    onCommitLayout: (nextLayout) => {
-      replaceLayout(nextLayout)
-    },
-  })
-  const renderLayout = previewLayout ?? layout
-  const previewGeometry = previewLayout
-    ? deriveLayoutGeometry(previewLayout, surfaceRect, GEOMETRY_OPTIONS)
-    : committedGeometry
-  const visibleWindowIds = visibleWindowIdsInOrder(layout)
-  const renderedWindowIds =
-    insertionPreview?.kind === 'window-merge' && previewLayout
-      ? visibleWindowIdsInOrder(previewLayout)
-      : visibleWindowIds
-  const optimisticTabSorting = !visibleWindowIds.some((windowId) => {
-    return layout.windowsById[windowId]?.mode === 'collapsed'
-  })
-  const previewOnlyWindowIds = previewLayout
-    ? visibleWindowIdsInOrder(previewLayout).filter((windowId) => !layout.windowsById[windowId])
-    : []
-
-  useEffect(() => {
-    interactionControllerRef.current = {
-      flushPendingCommit,
-      resetInteraction,
-    }
-  })
 
   function dispatchOperation(operation: LayoutOperation) {
     onDispatchLayoutOperation(operation)
@@ -145,8 +52,9 @@ export function SurfaceArea({
     const window = layout.windowsById[windowId]
     if (!window) return
 
-    flushPendingCommit()
-    resetInteraction()
+    const controller = interactionControllerRef.current
+    controller.flushPendingCommit()
+    controller.resetInteraction()
     if (isBottomPaneWindow(layout, window)) {
       dispatchOperation(bottomPaneCloseWindowOperation(windowId))
       return
@@ -157,105 +65,31 @@ export function SurfaceArea({
     }
   }
 
-  function collapseWindow(windowId: WorkbenchWindow['id']) {
-    if (!layout.windowsById[windowId]) return
-
-    dispatchOperation({
-      type: 'collapseWindow',
-      windowId,
-    })
-  }
-
-  function expandWindow(windowId: WorkbenchWindow['id']) {
-    const window = layout.windowsById[windowId]
-    if (!window) return
-    if (window.mode !== 'collapsed') return
-
-    dispatchOperation({
-      type: 'expandWindow',
-      windowId,
-    })
-  }
-
   return (
-    <DragDropProvider
-      sensors={SHELL_PROOF_SENSORS}
-      onDragEnd={handleDragEnd}
-      onDragMove={handleDragMove}
-      onDragOver={handleDragOver}
-      onDragStart={handleDragStart}
-    >
-      <section
-        aria-label='Shell proof surface area'
-        className='relative isolate min-h-0 min-w-0 flex-1 overflow-hidden p-0'
-        data-shell-proof-surface-area=''
-        ref={rootRef}
-      >
-        {renderedWindowIds.length > 0
-          ? renderedWindowIds.map((windowId) => {
-              const window = renderLayout.windowsById[windowId] ?? layout.windowsById[windowId]
-              const windowRect =
-                previewGeometry.windowRectsById[windowId] ??
-                committedGeometry.windowRectsById[windowId]
-              if (!window) return null
-              if (!windowRect) return null
-
-              return (
-                <ProofWindow
-                  activeDrag={activeDrag}
-                  addTabVisible={false}
-                  collapseControls='single'
-                  dropZonesVisible={debugVisible}
-                  insertionPreview={insertionPreview}
-                  insertionPreviewLayout={snapLayout}
-                  key={windowId}
-                  layout={renderLayout}
-                  optimisticTabSorting={optimisticTabSorting}
-                  rect={windowRect.rect}
-                  renderCollapsedHeader={renderCollapsedHeader}
-                  renderSurfaceBody={renderSurfaceBody}
-                  resizingWindows={resizingWindows}
-                  tabActionsVisible={!isBottomPaneWindow(renderLayout, window)}
-                  tabStripRenderEpoch={tabStripRenderEpoch}
-                  window={window}
-                  onAddTab={ignoreWindowOperation}
-                  onCollapseWindow={collapseWindow}
-                  onCollapseWindowToRail={collapseWindow}
-                  onCollapseWindowToRow={collapseWindow}
-                  onCloseSurface={closeSurface}
-                  onCloseWindow={closeWindow}
-                  onExpandWindow={expandWindow}
-                  onSelectSurface={activateSurface}
-                />
-              )
-            })
-          : emptySurfaceArea()}
-        {previewOnlyWindowIds.map((windowId) => {
-          const windowRect = previewGeometry.windowRectsById[windowId]
-          if (!windowRect) return null
-
-          return <ProofPreviewWindow key={windowId} rect={windowRect.rect} />
-        })}
-        <ResizeOverlay
-          resizeHandleRects={committedGeometry.resizeHandleRects}
-          onDispatch={dispatchOperation}
-          onResizeEnd={() => setResizingWindows(false)}
-          onResizeStart={() => setResizingWindows(true)}
-        />
-        {debugVisible
-          ? snapDestinations.map((snapDestination) => (
-              <ProofSnapDestination
-                key={snapDestination.id}
-                active={activeResolvedTarget?.candidateId === snapDestination.id}
-                candidate={snapDestination}
-                visible={debugVisible}
-              />
-            ))
-          : null}
-        {debugVisible ? <DebugPanel stateEvents={dragDebugLog.stateEvents} /> : null}
-      </section>
-      <ProofDragOverlay activeDrag={activeDrag} layout={layout} />
-    </DragDropProvider>
+    <ProofInteractionSurface
+      addTabVisible={false}
+      ariaLabel='Shell proof surface area'
+      debugLog={debugVisible ? dragDebugLog : undefined}
+      debugOverlay={debugVisible ? <DebugPanel stateEvents={dragDebugLog.stateEvents} /> : null}
+      dropZonesVisible={debugVisible}
+      emptyContent={emptySurfaceArea()}
+      interactionControllerRef={interactionControllerRef}
+      layout={layout}
+      renderCollapsedHeader={renderCollapsedHeader}
+      renderSurfaceBody={renderSurfaceBody}
+      singleCollapseTarget='rail'
+      snapDestinationsMounted={debugVisible}
+      surfaceClassName='relative isolate min-h-0 min-w-0 flex-1 overflow-hidden p-0'
+      surfaceDataAttributes={{ 'data-shell-proof-surface-area': '' }}
+      tabActionsVisible={shellTabActionsVisible}
+      onCloseSurface={closeSurface}
+      onCloseWindow={closeWindow}
+      onCommitLayout={(nextLayout) => {
+        replaceLayout(nextLayout)
+      }}
+      onDispatchLayoutOperation={dispatchOperation}
+      onSelectSurface={activateSurface}
+    />
   )
 }
 
@@ -290,8 +124,8 @@ function isLeftToolPaneSurface(surface: Surface) {
   return surface.type === 'search-results'
 }
 
-function ignoreWindowOperation(windowId: WorkbenchWindow['id']) {
-  void windowId
+function shellTabActionsVisible(layout: WorkspaceLayout, window: WorkbenchWindow) {
+  return !isBottomPaneWindow(layout, window)
 }
 
 function shellProofDebugEnabled() {

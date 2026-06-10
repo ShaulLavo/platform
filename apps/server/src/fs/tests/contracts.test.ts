@@ -127,6 +127,13 @@ describe('filesystem contracts', () => {
           statDurationMs: 1.5,
           statPathCount: 1,
           topStatPaths: [{ count: 1, durationMs: 1.5, path: 'src/app.ts' }],
+          workspaceIndex: {
+            fallbackReason: 'stale',
+            pendingCreatedPathCount: 1,
+            readiness: 'stale',
+            staleEntryCount: 0,
+            used: false,
+          },
         },
         path: '',
         query: 'app',
@@ -137,6 +144,10 @@ describe('filesystem contracts', () => {
       measurement: {
         providerSources: ['fd'],
         statCallCount: 1,
+        workspaceIndex: {
+          fallbackReason: 'stale',
+          pendingCreatedPathCount: 1,
+        },
       },
       type: 'done',
     })

@@ -1465,11 +1465,27 @@ function layoutWithCollapsedWindow(
   edge: LayoutEdge | undefined,
 ): WorkspaceLayout {
   if (!edge) return layoutWithWindowMode(layout, windowId, 'collapsed')
+  if (windowUsesLeftToolPaneRecipeSlot(layout, windowId)) {
+    return layoutWithWindowMode(layout, windowId, 'collapsed', edge)
+  }
 
   const expandedLayout = layoutWithWindowMode(layout, windowId, 'normal')
   const movedLayout = moveWindow(expandedLayout, windowId, { edge, kind: 'root-edge' })
 
   return layoutWithWindowMode(movedLayout, windowId, 'collapsed', edge)
+}
+
+function windowUsesLeftToolPaneRecipeSlot(layout: WorkspaceLayout, windowId: WindowId) {
+  const window = layout.windowsById[windowId]
+  if (!window) return false
+  if (window.surfaceIds.length === 0) return false
+
+  return window.surfaceIds.every((surfaceId) => {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface) return false
+
+    return isToolPaneRecipeSlot(recipeSlotForSurface(layout, surface))
+  })
 }
 
 function validReorder(window: WorkbenchWindow, fromIndex: number, toIndex: number) {

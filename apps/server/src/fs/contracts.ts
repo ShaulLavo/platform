@@ -80,6 +80,21 @@ export const workspaceSearchProviderSourceSchema = v.union([
   v.literal('index'),
   v.literal('rg'),
 ])
+export const workspaceSearchIndexReadinessSchema = v.union([
+  v.literal('cold'),
+  v.literal('building'),
+  v.literal('ready'),
+  v.literal('stale'),
+  v.literal('failed'),
+])
+export const workspaceSearchIndexFallbackReasonSchema = v.union([
+  v.literal('building'),
+  v.literal('cold'),
+  v.literal('disabled'),
+  v.literal('failed'),
+  v.literal('regex-name-query'),
+  v.literal('stale'),
+])
 
 export const workspaceSearchMatchSchema = v.object({
   birthtimeMs: v.optional(v.number()),
@@ -112,6 +127,14 @@ export const workspaceSearchStatPathCountSchema = v.object({
   path: pathSchema,
 })
 
+export const workspaceSearchIndexMeasurementSchema = v.object({
+  fallbackReason: v.optional(workspaceSearchIndexFallbackReasonSchema),
+  pendingCreatedPathCount: v.number(),
+  readiness: v.optional(workspaceSearchIndexReadinessSchema),
+  staleEntryCount: v.number(),
+  used: v.boolean(),
+})
+
 export const workspaceSearchMeasurementSchema = v.object({
   durationMs: v.number(),
   firstResultMs: v.optional(v.number()),
@@ -122,6 +145,7 @@ export const workspaceSearchMeasurementSchema = v.object({
   statDurationMs: v.number(),
   statPathCount: v.number(),
   topStatPaths: v.array(workspaceSearchStatPathCountSchema),
+  workspaceIndex: v.optional(workspaceSearchIndexMeasurementSchema),
 })
 
 export const workspaceSearchDoneEventSchema = v.object({

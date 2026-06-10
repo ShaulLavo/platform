@@ -26,6 +26,8 @@ import type {
 } from '@workspace/tiling/utils/layout-types'
 import type { TilingCommitEvent } from '@workspace/tiling/hooks/use-tiling-drag-controller'
 
+import { proofWindowTitle } from '@/features/tiling-proof/utils/window-title'
+
 export type ProofScenario = 2 | 3 | 6 | 10
 
 export type ProofModel = {
@@ -132,7 +134,10 @@ export function removeProofWindow(model: ProofModel, windowId: WindowId): ProofM
     model.layout,
   )
 
-  return logModel({ ...model, layout }, `closed window: ${windowTitle(model.layout, windowId)}`)
+  return logModel(
+    { ...model, layout },
+    `closed window: ${proofWindowTitle(model.layout, windowId)}`,
+  )
 }
 
 export function dispatchProofLayoutOperation(
@@ -177,7 +182,7 @@ export function moveProofSurfaceToTab(
 
   return logModel(
     { ...model, layout },
-    `tab -> ${windowTitle(layout, targetWindowId)}:${targetIndex}`,
+    `tab -> ${proofWindowTitle(layout, targetWindowId)}:${targetIndex}`,
   )
 }
 
@@ -215,10 +220,6 @@ export function moveProofWindowNextToWindow(
     kind: 'window-edge',
     windowId: targetWindowId,
   })
-}
-
-export function proofWindowTitle(layout: WorkspaceLayout, windowId: WindowId): string {
-  return windowTitle(layout, windowId)
 }
 
 export function surfaceWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId): WindowId | null {
@@ -281,14 +282,6 @@ function firstWindowId(layout: WorkspaceLayout): WindowId | undefined {
   return visibleWindowIdsInOrder(layout)[0]
 }
 
-function windowTitle(layout: WorkspaceLayout, windowId: WindowId): string {
-  const window = layout.windowsById[windowId]
-  const activeSurface = window ? layout.surfacesById[window.activeSurfaceId] : null
-  if (activeSurface) return activeSurface.title
-
-  return String(windowId)
-}
-
 function destinationLabel(destination: SnapDestination): string {
   if (destination.kind === 'root-edge') return `root ${destination.edge}`
   if (destination.kind === 'window-edge') return `window ${destination.edge}`
@@ -301,7 +294,7 @@ function destinationLabel(destination: SnapDestination): string {
 
 function windowMoveEvent(layout: WorkspaceLayout, destination: SnapDestination) {
   if (destination.kind === 'window-center') {
-    return `window -> merged tabs:${windowTitle(layout, destination.windowId)}`
+    return `window -> merged tabs:${proofWindowTitle(layout, destination.windowId)}`
   }
 
   return `window -> ${destinationLabel(destination)}`
@@ -314,31 +307,33 @@ function proofCommitEvent(layout: WorkspaceLayout, event: TilingCommitEvent) {
 }
 
 function tabCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
-  if (target.kind === 'tab') return `tab -> ${windowTitle(layout, target.windowId)}:${target.index}`
+  if (target.kind === 'tab')
+    return `tab -> ${proofWindowTitle(layout, target.windowId)}:${target.index}`
   if (target.kind === 'tab-strip') {
-    return `tab -> ${windowTitle(layout, target.windowId)}:${target.index}`
+    return `tab -> ${proofWindowTitle(layout, target.windowId)}:${target.index}`
   }
-  if (target.kind === 'window') return `tab -> ${windowTitle(layout, target.windowId)}:end`
+  if (target.kind === 'window') return `tab -> ${proofWindowTitle(layout, target.windowId)}:end`
 
   return `tab -> ${destinationLabel(target.destination)}`
 }
 
 function windowCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
-  if (target.kind === 'tab') return `window -> merged tabs:${windowTitle(layout, target.windowId)}`
+  if (target.kind === 'tab')
+    return `window -> merged tabs:${proofWindowTitle(layout, target.windowId)}`
   if (target.kind === 'tab-strip') {
-    return `window -> merged tabs:${windowTitle(layout, target.windowId)}`
+    return `window -> merged tabs:${proofWindowTitle(layout, target.windowId)}`
   }
-  if (target.kind === 'window') return `window -> ${windowTitle(layout, target.windowId)}`
+  if (target.kind === 'window') return `window -> ${proofWindowTitle(layout, target.windowId)}`
 
   return windowMoveEvent(layout, target.destination)
 }
 
 function layoutOperationEvent(layout: WorkspaceLayout, operation: LayoutOperation) {
   if (operation.type === 'collapseWindow') {
-    return `collapsed window: ${windowTitle(layout, operation.windowId)}`
+    return `collapsed window: ${proofWindowTitle(layout, operation.windowId)}`
   }
   if (operation.type === 'expandWindow') {
-    return `expanded window: ${windowTitle(layout, operation.windowId)}`
+    return `expanded window: ${proofWindowTitle(layout, operation.windowId)}`
   }
   if (operation.type === 'resizeSplit') return `resized split: ${operation.splitId}`
 

@@ -2,7 +2,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/react'
 import { DotsSixVerticalIcon, MinusIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import { ProofTabStrip } from '@/features/dnd-proof/components/proof-tab-strip'
+import { ProofTabStrip } from '@/features/tiling-proof/components/tab-strip'
 import {
   TILING_TAB_TYPE,
   TILING_WINDOW_TYPE,
@@ -10,7 +10,7 @@ import {
   type TilingDragData,
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
-import { proofWindowTitle } from '@/features/dnd-proof/utils/model'
+import { proofWindowTitle } from '@/features/tiling-proof/utils/window-title'
 import type { TilingInsertionPreview } from '@workspace/tiling/utils/tab-preview'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
