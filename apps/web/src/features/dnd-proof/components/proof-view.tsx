@@ -9,6 +9,7 @@ import { ProofSnapDestination } from '@/features/dnd-proof/components/proof-snap
 import { ProofToolbar } from '@/features/dnd-proof/components/proof-toolbar'
 import { ProofWindow } from '@/features/dnd-proof/components/proof-window'
 import { useTilingDragController } from '@workspace/tiling/hooks/use-tiling-drag-controller'
+import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import {
   activateProofSurface,
   addProofTab,
@@ -67,6 +68,7 @@ export function DndProofView() {
   const rootRect = rect ?? DEFAULT_LAYOUT_RECT
   const surfaceRect = insetLayoutRect(rootRect, GEOMETRY_OPTIONS.gapPx ?? 0)
   const committedGeometry = deriveLayoutGeometry(model.layout, surfaceRect, GEOMETRY_OPTIONS)
+  const dragDebugLog = useTilingDragDebugLog()
   const {
     activeDrag,
     activeResolvedTarget,
@@ -78,13 +80,12 @@ export function DndProofView() {
     insertionPreview,
     previewLayout,
     resetInteraction,
-    resetStateLog,
     snapDestinations,
     snapLayout,
-    stateEvents,
     tabStripRenderEpoch,
   } = useTilingDragController({
     coordinateRootRef: rootRef,
+    debugLog: dragDebugLog,
     layout: model.layout,
     rootRect: surfaceRect,
     snapDestinationRects: committedGeometry.snapDestinationRects,
@@ -161,13 +162,13 @@ export function DndProofView() {
 
   function reset() {
     resetInteraction()
-    resetStateLog()
+    dragDebugLog.resetStateLog()
     setModel(createInitialProofModel())
   }
 
   function setScenario(windowCount: Parameters<typeof createProofScenarioModel>[0]) {
     resetInteraction()
-    resetStateLog()
+    dragDebugLog.resetStateLog()
     setModel(createProofScenarioModel(windowCount))
   }
 
@@ -319,7 +320,7 @@ export function DndProofView() {
               />
             ))}
           </section>
-          <ProofEventLog events={model.events} stateEvents={stateEvents} />
+          <ProofEventLog events={model.events} stateEvents={dragDebugLog.stateEvents} />
         </div>
       </main>
       <ProofDragOverlay activeDrag={activeDrag} layout={model.layout} />
