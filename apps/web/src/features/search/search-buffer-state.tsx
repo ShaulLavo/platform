@@ -942,6 +942,7 @@ export function sameWorkspaceSearchQuery(
   if (left.maxDepth !== right.maxDepth) return false
   if (left.path !== right.path) return false
   if (left.query !== right.query) return false
+  if (left.useWorkspaceIndex !== right.useWorkspaceIndex) return false
   if (left.wholeWord !== right.wholeWord) return false
   if (!sameStringList(left.includeGlobs, right.includeGlobs)) return false
 
@@ -957,6 +958,7 @@ function sameWorkspaceSearchScope(left: WorkspaceSearchQuery, right: WorkspaceSe
   if (left.matchMode !== right.matchMode) return false
   if (left.maxDepth !== right.maxDepth) return false
   if (left.path !== right.path) return false
+  if (left.useWorkspaceIndex !== right.useWorkspaceIndex) return false
   if (left.wholeWord !== right.wholeWord) return false
   if (!sameStringList(left.includeGlobs, right.includeGlobs)) return false
 

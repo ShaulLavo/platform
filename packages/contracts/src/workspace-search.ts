@@ -2,6 +2,7 @@ import type { EntryTypeFilter } from './tree-entry'
 
 export type WorkspaceSearchSource = 'disk' | 'open-buffer'
 export type WorkspaceSearchMatchMode = 'literal' | 'regex' | 'fuzzy'
+export type WorkspaceSearchProviderSource = 'fallback' | 'fd' | 'index' | 'rg'
 
 export type WorkspaceSearchQuery = {
   caseSensitive?: boolean
@@ -15,6 +16,7 @@ export type WorkspaceSearchQuery = {
   maxDepth?: number
   path: string
   query: string
+  useWorkspaceIndex?: boolean
   wholeWord?: boolean
 }
 
@@ -34,8 +36,36 @@ export type WorkspaceSearchMatch = {
   type: EntryTypeFilter
 }
 
+export type WorkspaceSearchProviderMeasurement = {
+  durationMs: number
+  firstResultMs?: number
+  resultCount: number
+  source: WorkspaceSearchProviderSource
+  statCallCount: number
+  statDurationMs: number
+}
+
+export type WorkspaceSearchStatPathCount = {
+  count: number
+  durationMs: number
+  path: string
+}
+
+export type WorkspaceSearchMeasurement = {
+  durationMs: number
+  firstResultMs?: number
+  providerSources: WorkspaceSearchProviderSource[]
+  providers: WorkspaceSearchProviderMeasurement[]
+  repeatedStatPathCount: number
+  statCallCount: number
+  statDurationMs: number
+  statPathCount: number
+  topStatPaths: WorkspaceSearchStatPathCount[]
+}
+
 export type WorkspaceSearchDoneEvent = {
   count: number
+  measurement?: WorkspaceSearchMeasurement
   path: string
   query: string
   truncated: boolean

@@ -1,7 +1,12 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { createApp, createMetadataDatabase, type MetadataDatabaseHandle } from 'server/testing'
+import {
+  closeApp,
+  createApp,
+  createMetadataDatabase,
+  type MetadataDatabaseHandle,
+} from 'server/testing'
 
 // Origin the in-process client presents; the app's auth guard requires a
 // trusted origin, so the test client and the app must agree on this value.
@@ -32,14 +37,22 @@ export async function makeTestServer(): Promise<TestServer> {
 
   return {
     app,
-    cleanup: () => cleanupTestServer(root, database),
+    cleanup: () => cleanupTestServer(app, root, database),
     database,
     origin: TEST_ORIGIN,
     root,
   }
 }
 
-async function cleanupTestServer(root: string, database: MetadataDatabaseHandle) {
-  database.close()
-  await rm(root, { force: true, recursive: true })
+async function cleanupTestServer(
+  app: ReturnType<typeof createApp>,
+  root: string,
+  database: MetadataDatabaseHandle,
+) {
+  try {
+    await closeApp(app)
+  } finally {
+    database.close()
+    await rm(root, { force: true, recursive: true })
+  }
 }

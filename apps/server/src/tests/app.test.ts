@@ -2,12 +2,14 @@ import { mkdir, mkdtemp, lstat, readFile, rm, symlink, truncate, writeFile } fro
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp } from '../app'
+import { closeApp, createApp } from '../app'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
+const apps: Array<ReturnType<typeof createApp>> = []
 const roots: string[] = []
 
 afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => closeApp(app)))
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -259,13 +261,51 @@ describe('fs rpc filesystem limits', () => {
       }),
     )
 
-    expect(await enabledHealth.json()).toMatchObject({
-      nativeWatcherCount: 0,
+    const enabledPayload = await enabledHealth.json()
+    const disabledPayload = await disabledHealth.json()
+
+    expect(enabledPayload).toMatchObject({
       watchEnabled: true,
+      workspaceIndex: expect.objectContaining({
+        readiness: expect.any(String),
+      }),
     })
-    expect(await disabledHealth.json()).toMatchObject({
+    expect(enabledPayload.nativeWatcherCount).toEqual(expect.any(Number))
+    expect(disabledPayload).toMatchObject({
       nativeWatcherCount: 0,
       watchEnabled: false,
+      workspaceIndex: expect.objectContaining({
+        readiness: expect.any(String),
+      }),
+    })
+  })
+
+  it('keeps workspace indexing off for system-root browsing without a configured workspace', async () => {
+    const root = await fixtureRoot()
+    const app = createApp({
+      auth: {
+        allowedOrigins: [TRUSTED_ORIGIN],
+      },
+      homeDirectory: root,
+      systemRoot: root,
+    })
+    apps.push(app)
+
+    const health = await app.handle(
+      new Request('http://local/health', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(health.status).toBe(200)
+    expect(await health.json()).toMatchObject({
+      nativeWatcherCount: 0,
+      watchEnabled: true,
+      workspaceIndex: expect.objectContaining({
+        entryCount: 0,
+        readiness: 'cold',
+      }),
+      workspaceRoot: root,
     })
   })
 })
@@ -947,7 +987,7 @@ function testApp(
     watch?: boolean
   } = {},
 ) {
-  return createApp({
+  const app = createApp({
     auth: {
       allowedOrigins: [TRUSTED_ORIGIN],
       sessionToken: options.sessionToken,
@@ -958,6 +998,8 @@ function testApp(
     watch: options.watch,
     workspaceRoot: root,
   })
+  apps.push(app)
+  return app
 }
 
 async function fixtureRoot() {

@@ -1,5 +1,8 @@
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import type { WorkspaceSearchProviderSource, WorkspaceSearchQuery } from '@workspace/contracts'
+import { fetchQuickOpenFiles } from '@/lib/file-server'
+import { collectWorkspaceSearch, type WorkspaceSearchResult } from '@/lib/workspace-search-client'
 import { expect, test } from '../fixtures'
 
 // Proves the phase-2 foundation: a real server, driven in-process through the
@@ -20,6 +23,30 @@ test('reads a file written to the real workspace', async ({ client, server }) =>
   expect(JSON.stringify(data)).toContain('export const greeting')
 })
 
+test('quick-open file search reuses the workspace search index', async ({ client }) => {
+  await client.fs['create-folder'].post({ path: 'src', recursive: true })
+  await client.fs['create-file'].post({
+    content: 'export const commandPalette = true\n',
+    path: 'src/command-palette.ts',
+  })
+
+  const query = quickOpenSearchQuery('command-palette')
+  const indexed = await waitForSearchProvider(query, 'index')
+  const matches = await fetchQuickOpenFiles({
+    path: '',
+    query: query.query,
+    signal: new AbortController().signal,
+  })
+
+  expect(indexed.measurement?.providerSources).toEqual(['index'])
+  expect(matches).toContainEqual(
+    expect.objectContaining({
+      kind: 'name',
+      path: 'src/command-palette.ts',
+    }),
+  )
+})
+
 test('rejects requests from an untrusted origin', async ({ server }) => {
   const response = await server.app.handle(
     new Request('http://localhost:5173/health', { headers: { origin: 'http://evil.test' } }),
@@ -27,3 +54,41 @@ test('rejects requests from an untrusted origin', async ({ server }) => {
 
   expect(response.status).toBe(403)
 })
+
+function quickOpenSearchQuery(query: string): WorkspaceSearchQuery {
+  return {
+    caseSensitive: false,
+    entryType: 'file',
+    includeContent: false,
+    includeNames: true,
+    limit: 200,
+    matchMode: 'fuzzy',
+    path: '',
+    query,
+    wholeWord: false,
+  }
+}
+
+async function waitForSearchProvider(
+  query: WorkspaceSearchQuery,
+  source: WorkspaceSearchProviderSource,
+) {
+  let latest: WorkspaceSearchResult | null = null
+
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    latest = await collectWorkspaceSearch(query)
+    if (latest.measurement?.providerSources.includes(source)) return latest
+
+    await wait(20)
+  }
+
+  throw new Error(`Expected workspace search provider ${source}, got ${latestProviders(latest)}`)
+}
+
+function latestProviders(result: WorkspaceSearchResult | null) {
+  return result?.measurement?.providerSources.join(', ') || 'none'
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}

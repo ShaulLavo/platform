@@ -82,6 +82,7 @@ async function streamSearchScope(
         matchMode: 'literal',
         path,
         query,
+        useWorkspaceIndex: useWorkspaceIndexForScope(scope),
         wholeWord: false,
       },
       scopedSignal,
@@ -144,6 +145,10 @@ export function searchEntryType(mode: FilePickerMode) {
 
 function fallbackEntryVersion(mtimeMs: number, size: number) {
   return `search:${mtimeMs}:${size}`
+}
+
+function useWorkspaceIndexForScope(scope: SearchScope) {
+  return scope !== 'system'
 }
 
 function scopedSearchSignal(signal: AbortSignal, timeoutMs: number | null) {

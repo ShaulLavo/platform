@@ -105,6 +105,7 @@ function searchEventData(event: SearchStreamEvent) {
     query: event.query,
     path: event.path,
     count: event.count,
+    measurement: event.measurement,
     truncated: event.truncated,
   }
 }

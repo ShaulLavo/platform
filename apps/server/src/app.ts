@@ -44,6 +44,8 @@ export type AppOptions = FileSystemServiceOptions & {
   }
 }
 
+const appCleanups = new WeakMap<object, () => Promise<void>>()
+
 export function createApp(options: AppOptions) {
   const fs = new FileSystemService(options)
   const git = new GitService(fs.paths, {
@@ -66,11 +68,12 @@ export function createApp(options: AppOptions) {
     git,
   )
   const auth = createAuthConfig(options.auth)
+  const cleanup = appCleanup(terminal, fs)
 
   const app = new Elysia({ name: 'platform' })
   applyObservability(app)
 
-  return app
+  const configured = app
     .use(
       cors({
         allowedHeaders: ['authorization', 'content-type', 'x-evlog-source'],
@@ -104,14 +107,29 @@ export function createApp(options: AppOptions) {
     .use(fontRoutes(fonts))
     .use(gitRoutes(git))
     .use(fsRoutes(fs))
-    .onStop(async () => {
-      terminal.dispose()
-      await fs.close()
-      await flushObservability()
-    })
+    .onStop(cleanup)
+  appCleanups.set(configured, cleanup)
+  return configured
 }
 
 export type App = ReturnType<typeof createApp>
+
+export async function closeApp(app: App) {
+  await appCleanups.get(app)?.()
+}
+
+function appCleanup(terminal: TerminalService, fs: FileSystemService) {
+  let closed = false
+
+  return async () => {
+    if (closed) return
+
+    closed = true
+    terminal.dispose()
+    await fs.close()
+    await flushObservability()
+  }
+}
 
 function appErrorPayload(
   code: unknown,

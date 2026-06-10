@@ -8,6 +8,7 @@ import type {
 import { fuzzyRank, workspaceSearchPreview } from '@workspace/contracts'
 
 import { isIgnoredPath, toPosix } from './path'
+import type { SearchMeasurementRecorder } from './search-measurement'
 import { readEntryStats, type FsEntryStats } from './stat'
 import type { GitIgnoreMatcher } from './search-gitignore'
 
@@ -24,9 +25,13 @@ export type FindContext = {
   }
   query: string
   matcher: WorkspaceSearchMatcher
+  measurement: SearchMeasurementRecorder
   options: FindOptions
   gitIgnore: GitIgnoreMatcher
+  statCache: SearchStatCache
 }
+
+export type SearchStatCache = Map<string, Promise<FsEntryStats | null>>
 
 export function searchMatchMode(options: FindOptions) {
   return options.matchMode ?? 'literal'
@@ -117,8 +122,40 @@ export function searchMatchMetadata(entry: FsEntryStats) {
   }
 }
 
-export async function safeEntryStats(absolutePath: string) {
+export async function safeEntryStats(
+  absolutePath: string,
+  measurement?: SearchMeasurementRecorder,
+  pathKey = absolutePath,
+  cache?: SearchStatCache,
+) {
+  if (cache) return cachedEntryStats(absolutePath, measurement, pathKey, cache)
+
+  return readSafeEntryStats(absolutePath, measurement, pathKey)
+}
+
+function cachedEntryStats(
+  absolutePath: string,
+  measurement: SearchMeasurementRecorder | undefined,
+  pathKey: string,
+  cache: SearchStatCache,
+) {
+  const cached = cache.get(pathKey)
+  if (cached) return cached
+
+  const pending = readSafeEntryStats(absolutePath, measurement, pathKey)
+  cache.set(pathKey, pending)
+  return pending
+}
+
+async function readSafeEntryStats(
+  absolutePath: string,
+  measurement: SearchMeasurementRecorder | undefined,
+  pathKey: string,
+) {
   try {
+    if (measurement)
+      return await measurement.measureStat(pathKey, () => readEntryStats(absolutePath))
+
     return await readEntryStats(absolutePath)
   } catch {
     return null

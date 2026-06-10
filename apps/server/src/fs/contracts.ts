@@ -69,10 +69,17 @@ export const searchQuerySchema = v.object({
   entryType: v.optional(entryTypeQueryValueSchema),
   matchMode: v.optional(matchModeQueryValueSchema, 'literal'),
   maxDepth: v.optional(depthQueryValueSchema),
+  useWorkspaceIndex: v.optional(booleanQueryValueSchema, 'true'),
   wholeWord: v.optional(booleanQueryValueSchema, 'false'),
 })
 
 export const workspaceSearchSourceSchema = v.union([v.literal('disk'), v.literal('open-buffer')])
+export const workspaceSearchProviderSourceSchema = v.union([
+  v.literal('fallback'),
+  v.literal('fd'),
+  v.literal('index'),
+  v.literal('rg'),
+])
 
 export const workspaceSearchMatchSchema = v.object({
   birthtimeMs: v.optional(v.number()),
@@ -90,8 +97,36 @@ export const workspaceSearchMatchSchema = v.object({
   type: entryTypeQueryValueSchema,
 })
 
+export const workspaceSearchProviderMeasurementSchema = v.object({
+  durationMs: v.number(),
+  firstResultMs: v.optional(v.number()),
+  resultCount: v.number(),
+  source: workspaceSearchProviderSourceSchema,
+  statCallCount: v.number(),
+  statDurationMs: v.number(),
+})
+
+export const workspaceSearchStatPathCountSchema = v.object({
+  count: v.number(),
+  durationMs: v.number(),
+  path: pathSchema,
+})
+
+export const workspaceSearchMeasurementSchema = v.object({
+  durationMs: v.number(),
+  firstResultMs: v.optional(v.number()),
+  providerSources: v.array(workspaceSearchProviderSourceSchema),
+  providers: v.array(workspaceSearchProviderMeasurementSchema),
+  repeatedStatPathCount: v.number(),
+  statCallCount: v.number(),
+  statDurationMs: v.number(),
+  statPathCount: v.number(),
+  topStatPaths: v.array(workspaceSearchStatPathCountSchema),
+})
+
 export const workspaceSearchDoneEventSchema = v.object({
   count: v.number(),
+  measurement: v.optional(workspaceSearchMeasurementSchema),
   path: pathSchema,
   query: v.string(),
   truncated: v.boolean(),

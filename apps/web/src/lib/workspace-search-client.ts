@@ -3,6 +3,10 @@ import type {
   WorkspaceSearchDoneEvent,
   WorkspaceSearchEvent,
   WorkspaceSearchMatch,
+  WorkspaceSearchMeasurement,
+  WorkspaceSearchProviderMeasurement,
+  WorkspaceSearchProviderSource,
+  WorkspaceSearchStatPathCount,
   WorkspaceSearchQuery,
 } from '@workspace/contracts'
 
@@ -13,6 +17,7 @@ import { clientErrors } from '@/lib/structured-errors'
 export type WorkspaceSearchResult = {
   count: number
   matches: WorkspaceSearchMatch[]
+  measurement?: WorkspaceSearchMeasurement
   path: string
   query: string
   truncated: boolean
@@ -37,6 +42,7 @@ export async function collectWorkspaceSearch(
   return {
     count: done?.count ?? matches.length,
     matches,
+    measurement: done?.measurement,
     path: done?.path ?? query.path,
     query: done?.query ?? query.query,
     truncated: done?.truncated ?? false,
@@ -74,6 +80,7 @@ function workspaceSearchRequestQuery(query: WorkspaceSearchQuery) {
     maxDepth: query.maxDepth,
     path: query.path,
     query: query.query,
+    useWorkspaceIndex: query.useWorkspaceIndex !== false,
     wholeWord: query.wholeWord === true,
   }
 }
@@ -109,11 +116,78 @@ function doneEventFromData(data: unknown): WorkspaceSearchDoneEvent {
 
   return {
     count: propertyNumber(data, 'count'),
+    measurement: searchMeasurement(data.measurement),
     path: propertyString(data, 'path'),
     query: propertyString(data, 'query'),
     truncated: propertyBoolean(data, 'truncated'),
     type: 'done',
   }
+}
+
+function searchMeasurement(data: unknown): WorkspaceSearchMeasurement | undefined {
+  if (!isRecord(data)) return undefined
+
+  return {
+    durationMs: propertyNumber(data, 'durationMs'),
+    firstResultMs: optionalNumber(data.firstResultMs),
+    providerSources: providerSources(data.providerSources),
+    providers: providerMeasurements(data.providers),
+    repeatedStatPathCount: propertyNumber(data, 'repeatedStatPathCount'),
+    statCallCount: propertyNumber(data, 'statCallCount'),
+    statDurationMs: propertyNumber(data, 'statDurationMs'),
+    statPathCount: propertyNumber(data, 'statPathCount'),
+    topStatPaths: statPathCounts(data.topStatPaths),
+  }
+}
+
+function providerSources(data: unknown): WorkspaceSearchProviderSource[] {
+  if (!Array.isArray(data)) return []
+
+  return data.filter(isProviderSource)
+}
+
+function providerMeasurements(data: unknown): WorkspaceSearchProviderMeasurement[] {
+  if (!Array.isArray(data)) return []
+
+  return data.flatMap(providerMeasurement)
+}
+
+function providerMeasurement(data: unknown): WorkspaceSearchProviderMeasurement[] {
+  if (!isRecord(data)) return []
+  if (!isProviderSource(data.source)) return []
+
+  return [
+    {
+      durationMs: propertyNumber(data, 'durationMs'),
+      firstResultMs: optionalNumber(data.firstResultMs),
+      resultCount: propertyNumber(data, 'resultCount'),
+      source: data.source,
+      statCallCount: propertyNumber(data, 'statCallCount'),
+      statDurationMs: propertyNumber(data, 'statDurationMs'),
+    },
+  ]
+}
+
+function statPathCounts(data: unknown): WorkspaceSearchStatPathCount[] {
+  if (!Array.isArray(data)) return []
+
+  return data.flatMap(statPathCount)
+}
+
+function statPathCount(data: unknown): WorkspaceSearchStatPathCount[] {
+  if (!isRecord(data)) return []
+
+  return [
+    {
+      count: propertyNumber(data, 'count'),
+      durationMs: propertyNumber(data, 'durationMs'),
+      path: propertyString(data, 'path'),
+    },
+  ]
+}
+
+function isProviderSource(source: unknown): source is WorkspaceSearchProviderSource {
+  return source === 'fallback' || source === 'fd' || source === 'index' || source === 'rg'
 }
 
 function isWorkspaceSearchMatch(match: unknown): match is WorkspaceSearchMatch {
@@ -162,6 +236,12 @@ function isOptionalString(value: unknown) {
   if (value === undefined) return true
 
   return typeof value === 'string'
+}
+
+function optionalNumber(value: unknown) {
+  if (typeof value !== 'number') return undefined
+
+  return value
 }
 
 function searchEventError(data: unknown) {

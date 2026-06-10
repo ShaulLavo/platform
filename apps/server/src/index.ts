@@ -13,7 +13,8 @@ const port = Number(Bun.env.PORT ?? 3001)
 const hostname = Bun.env.FS_HOST ?? Bun.env.HOST ?? '127.0.0.1'
 const homeDirectory = homedir()
 const systemRoot = Bun.env.FS_SYSTEM_ROOT ?? path.parse(homeDirectory).root
-const workspaceRoot = Bun.env.FS_WORKSPACE_ROOT ?? systemRoot
+const configuredWorkspaceRoot = Bun.env.FS_WORKSPACE_ROOT
+const workspaceRoot = configuredWorkspaceRoot ?? systemRoot
 const watch = Bun.env.FS_WATCH !== 'false'
 const allowedOrigins = allowedOriginsFromEnv(Bun.env.SERVER_ALLOWED_ORIGINS)
 const sessionToken = Bun.env.FS_SESSION_TOKEN
@@ -31,7 +32,7 @@ export const app = createApp({
   systemRoot,
   treeConcurrency,
   watch,
-  workspaceRoot,
+  workspaceRoot: configuredWorkspaceRoot,
 }).listen({ hostname, port }, (server) => {
   recordProcessInfo('server.start', {
     homeDirectory,

@@ -83,7 +83,12 @@ async function searchEntry(
   if (isIgnoredSearchPath(context, relativePath)) return
 
   const absolutePath = path.join(absoluteDirectory, name)
-  const entryStats = await safeEntryStats(absolutePath)
+  const entryStats = await safeEntryStats(
+    absolutePath,
+    context.measurement,
+    relativePath,
+    context.statCache,
+  )
   if (!entryStats) return
 
   if (shouldSearchNames(options)) {
