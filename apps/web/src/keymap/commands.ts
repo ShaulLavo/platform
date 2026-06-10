@@ -69,7 +69,7 @@ import {
   findWindowIdContainingSurface,
   visibleWindowIdsInOrder,
 } from '@workspace/tiling/utils/layout-normalize'
-import { applyLayoutOperation } from '@workspace/tiling/utils/layout-operations'
+import { applyLayoutOperation } from '@workspace/tiling'
 import {
   selectMruFallback,
   selectWindowNeighborIds,

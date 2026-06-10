@@ -11,6 +11,7 @@
   - `tests/` — feature tests
 - Do not create empty folders.
 - Import exact files through `@/`. Do not add barrel `index.ts` files.
+- Barrel files are allowed only at package entry points such as `packages/*/src/index.ts` that back the package's `"."` export. Do not add feature, folder, or utility barrels.
 
 ## Control Flow
 

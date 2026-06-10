@@ -8,7 +8,7 @@ import {
   type LayoutInvariantReport,
 } from '@workspace/tiling/utils/layout-invariants'
 import { normalizeWorkspaceLayout } from '@workspace/tiling/utils/layout-normalize'
-import { applyLayoutOperation as applyPureLayoutOperation } from '@workspace/tiling/utils/layout-operations'
+import { applyLayoutOperation as applyPureLayoutOperation } from '@workspace/tiling'
 import {
   layoutSnapshot,
   logWorkbenchLayoutInfo,

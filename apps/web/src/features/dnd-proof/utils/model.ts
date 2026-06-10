@@ -2,9 +2,9 @@ import {
   createEmptyWorkspaceLayout,
   createPlaceholderSurface,
 } from '@workspace/tiling/utils/layout-builders'
+import { applyLayoutOperation } from '@workspace/tiling'
 import {
   activateSurface,
-  applyLayoutOperation,
   closeSurface,
   moveSurface,
   moveWindow,

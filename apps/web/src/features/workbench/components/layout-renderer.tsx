@@ -30,7 +30,7 @@ import {
   defaultSurfaceRendererRegistry,
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
-import { applyLayoutOperation } from '@workspace/tiling/utils/layout-operations'
+import { applyLayoutOperation } from '@workspace/tiling'
 import type {
   LayoutOperation,
   LayoutNode,

@@ -1,6 +1,6 @@
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 
-import { applyLayoutOperation } from '@workspace/tiling/utils/layout-operations'
+import { applyLayoutOperation } from '@workspace/tiling'
 import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { WorkspaceLayoutStoreApi } from '@/features/tiling-surface-manager/engine/surface-state'
 import {

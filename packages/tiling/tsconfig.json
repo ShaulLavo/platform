@@ -4,6 +4,7 @@
     "jsx": "react-jsx",
     "types": ["vite/client", "bun"],
     "paths": {
+      "@workspace/tiling": ["./src/index.ts"],
       "@workspace/tiling/*": ["./src/*"]
     }
   },

@@ -12,7 +12,7 @@ export type Engine = {
   readonly builders: typeof import('@workspace/tiling/utils/layout-builders')
   readonly geometry: typeof import('@workspace/tiling/utils/layout-geometry')
   readonly normalize: typeof import('@workspace/tiling/utils/layout-normalize')
-  readonly operations: typeof import('@workspace/tiling/utils/layout-operations')
+  readonly operations: typeof import('@workspace/tiling')
   readonly rail: typeof import('@workspace/tiling/utils/rail-model')
   readonly selectors: typeof import('@workspace/tiling/utils/layout-selectors')
 }

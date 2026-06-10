@@ -46,24 +46,26 @@ import {
 } from '@workspace/tiling/utils/layout-normalize'
 import { deriveLayoutGeometry } from '@workspace/tiling/utils/layout-geometry'
 import {
-  activateSurface,
-  applyLayoutOperation,
   applyCustomWindowCommand,
   applyLayoutCommand,
   applyRecipe,
+  maximizeWindow,
+  restoreWindow,
+} from '@workspace/tiling/utils/frame-commands'
+import { applyLayoutOperation } from '@workspace/tiling'
+import {
+  activateSurface,
   closeSurface,
   collapseWindow,
   expandWindow,
-  maximizeWindow,
   moveSurface,
   moveWindow,
   openSurface,
   reorderSurface,
-  resizeSplit,
   restoreSurface,
-  restoreWindow,
   tabSurface,
 } from '@workspace/tiling/utils/layout-operations'
+import { resizeSplit } from '@workspace/tiling/utils/resize'
 import {
   bottomPaneSurfaceVisibilityItems,
   bottomPaneSurfaceVisibilityOperation,
