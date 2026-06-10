@@ -335,12 +335,22 @@
 [data-workbench-layout-renderer] {
   /* Workbench panes can make this dynamic without changing component classes. */
   --workbench-surface-opacity: 80%;
+  --workbench-surface-backdrop-filter: blur(12px);
+  --workbench-surface-material-background: color-mix(
+    in oklch,
+    var(--card-solid) var(--workbench-surface-opacity),
+    transparent
+  );
+  --workbench-editor-minimap-background: transparent;
+  --workbench-editor-minimap-backdrop-filter: var(--workbench-surface-backdrop-filter);
+  --workbench-editor-minimap-canvas-background: transparent;
+  --workbench-editor-minimap-canvas-background-opacity: 0;
   --background: color-mix(
     in oklch,
     var(--background-solid) var(--workbench-surface-opacity),
     transparent
   );
-  --card: color-mix(in oklch, var(--card-solid) var(--workbench-surface-opacity), transparent);
+  --card: var(--workbench-surface-material-background);
   --muted: color-mix(in oklch, var(--muted-solid) var(--workbench-surface-opacity), transparent);
   --accent: color-mix(in oklch, var(--accent-solid) var(--workbench-surface-opacity), transparent);
   --border: transparent;
@@ -430,6 +440,19 @@
   font-family: var(--font-mono);
   min-height: 0;
   min-width: 0;
+}
+
+[data-workbench-layout-renderer] .app-editor-host .editor-virtualized {
+  --editor-minimap-background: var(--workbench-editor-minimap-canvas-background) !important;
+  --editor-minimap-background-opacity: var(
+    --workbench-editor-minimap-canvas-background-opacity
+  ) !important;
+}
+
+[data-workbench-layout-renderer] .app-editor-host .editor-minimap {
+  -webkit-backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
+  backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
+  background: var(--workbench-editor-minimap-background);
 }
 
 .search-result-excerpt-editor-host {

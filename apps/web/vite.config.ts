@@ -15,7 +15,7 @@ export default defineConfig({
     ),
   },
   optimizeDeps: {
-    exclude: ['ghostty-web', '@singapor/tree-sitter', '@singapor/tree-sitter-languages'],
+    exclude: ['ghostty-web'],
   },
   plugins: [
     platformSelfSaveHmrPlugin(),
