@@ -6,7 +6,8 @@
   - `components/` — React render components only (`.tsx`)
   - `hooks/` — `use-*` hooks
   - `providers/` — context providers and `*-context.ts` modules
-  - `utils/` — pure non-React code
+  - `state/` — optional home for stores and other stateful modules. Co-locating a store next to its provider is fine too
+  - `utils/` — pure, stateless, non-React code only. No stores, no module-level mutable state, no subscriptions, nothing that imports React
   - `tests/` — feature tests
 - Do not create empty folders.
 - Import exact files through `@/`. Do not add barrel `index.ts` files.
@@ -25,7 +26,8 @@
 
 - One component per file. Do not export multiple components from one component file.
 - One hook per file. Keep hook files focused on the hook and its React wiring.
-- Keep pure helpers out of component and hook files. Move formatters, transforms, constants, stores, models, and other reusable logic into `utils/`.
+- Keep pure helpers out of component and hook files. Move formatters, transforms, constants, models, and other pure reusable logic into `utils/`.
+- Stores are stateful, so they never go in `utils/`. Where they do live is flexible: `state/`, or co-located with the provider or feature code that owns them.
 - Keep providers and context-object modules in `providers/`, not `components/`.
 - Avoid manual React memoization. Do not add `memo`, `useMemo`, or `useCallback` for ordinary render values or callbacks. Use them only for measured performance issues, required stable identity, or correctness. Add a short reason when you do.
 

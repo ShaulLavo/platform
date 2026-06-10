@@ -411,7 +411,7 @@ function checkBackgroundSurfaces(
 ) {
   const visibleSurfaceIds = new Set(references.map((reference) => reference.surfaceId))
 
-  for (const surfaceId of layout.rail.backgroundSurfaceIds ?? []) {
+  for (const surfaceId of layout.rail.backgroundSurfaceIds) {
     if (!visibleSurfaceIds.has(surfaceId)) continue
 
     pushViolation(
@@ -445,12 +445,12 @@ function checkTransientPreviewOwners(
 }
 
 function checkRailReferences(layout: WorkspaceLayout, violations: LayoutInvariantViolation[]) {
-  checkRailSurfaceIds(layout, layout.rail.backgroundSurfaceIds ?? [], violations)
-  checkRailSurfaceIds(layout, layout.rail.pinnedSurfaceIds ?? [], violations)
-  checkRailSurfaceIds(layout, layout.rail.runningSurfaceIds ?? [], violations)
-  checkRailSurfaceIds(layout, layout.rail.visibleSingletonSurfaceIds ?? [], violations)
+  checkRailSurfaceIds(layout, layout.rail.backgroundSurfaceIds, violations)
+  checkRailSurfaceIds(layout, layout.rail.pinnedSurfaceIds, violations)
+  checkRailSurfaceIds(layout, layout.rail.runningSurfaceIds, violations)
+  checkRailSurfaceIds(layout, layout.rail.visibleSingletonSurfaceIds, violations)
 
-  for (const recipeId of layout.rail.recipeIds ?? []) {
+  for (const recipeId of layout.rail.recipeIds) {
     if (layout.recipesById[recipeId]) continue
 
     pushViolation(

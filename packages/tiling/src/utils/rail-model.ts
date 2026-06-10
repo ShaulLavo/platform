@@ -179,9 +179,9 @@ function currentRailSurfaceState(
     return item.surface.id === layout.activeSurfaceId ? 'active' : 'visible'
   }
   if (item.surface.id === layout.activeSurfaceId) return 'active'
-  if ((layout.rail.backgroundSurfaceIds ?? []).includes(item.surface.id)) return 'background'
-  if ((layout.rail.runningSurfaceIds ?? []).includes(item.surface.id)) return 'running'
-  if ((layout.rail.visibleSingletonSurfaceIds ?? []).includes(item.surface.id)) return 'visible'
+  if (layout.rail.backgroundSurfaceIds.includes(item.surface.id)) return 'background'
+  if (layout.rail.runningSurfaceIds.includes(item.surface.id)) return 'running'
+  if (layout.rail.visibleSingletonSurfaceIds.includes(item.surface.id)) return 'visible'
 
   return item.state
 }

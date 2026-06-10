@@ -2197,9 +2197,7 @@ function removeSurfaceFromRail(layout: WorkspaceLayout, surfaceId: SurfaceId): W
     ...layout,
     rail: {
       ...layout.rail,
-      backgroundSurfaceIds: (layout.rail.backgroundSurfaceIds ?? []).filter(
-        (id) => id !== surfaceId,
-      ),
+      backgroundSurfaceIds: layout.rail.backgroundSurfaceIds.filter((id) => id !== surfaceId),
     },
   }
 }
@@ -2209,9 +2207,7 @@ function deleteSurfaceFromRail(layout: WorkspaceLayout, surfaceId: SurfaceId): W
     ...layout,
     rail: {
       ...layout.rail,
-      backgroundSurfaceIds: (layout.rail.backgroundSurfaceIds ?? []).filter(
-        (id) => id !== surfaceId,
-      ),
+      backgroundSurfaceIds: layout.rail.backgroundSurfaceIds.filter((id) => id !== surfaceId),
       pinnedSurfaceIds: layout.rail.pinnedSurfaceIds.filter((id) => id !== surfaceId),
       runningSurfaceIds: layout.rail.runningSurfaceIds.filter((id) => id !== surfaceId),
       visibleSingletonSurfaceIds: layout.rail.visibleSingletonSurfaceIds.filter(

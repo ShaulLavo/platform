@@ -772,13 +772,13 @@ function recipeCommandSlot({
 
 function layoutCommandFrame(anchor: CustomWindowFrame['anchor']): CustomWindowFrame {
   if (anchor === 'bottom') {
-    return { anchor, height: 0.28, offsetX: 0, offsetY: 0, unit: 'percent', width: 1 }
+    return { anchor, height: 28, offsetX: 0, offsetY: 0, unit: 'percent', width: 100 }
   }
   if (anchor === 'left') {
-    return { anchor, height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 0.28 }
+    return { anchor, height: 100, offsetX: 0, offsetY: 0, unit: 'percent', width: 28 }
   }
 
-  return { anchor, height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 1 }
+  return { anchor, height: 100, offsetX: 0, offsetY: 0, unit: 'percent', width: 100 }
 }
 
 function defaultPoliciesById(): Readonly<Record<LayoutPolicyId, LayoutPolicyState>> {

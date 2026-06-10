@@ -856,14 +856,9 @@ function restoredRail(
   fallbackRail: RailState,
 ): RailState {
   if (!isRecord(value)) return fallbackRail
-  const backgroundSurfaceIds = mapSurfaceIds(value.backgroundSurfaceIds, idMap)
-  const migratedBackgroundSurfaceIds = mapSurfaceIds(value.minimizedSurfaceIds, idMap)
 
   return {
-    backgroundSurfaceIds: uniqueSurfaceIds([
-      ...backgroundSurfaceIds,
-      ...migratedBackgroundSurfaceIds,
-    ]),
+    backgroundSurfaceIds: mapSurfaceIds(value.backgroundSurfaceIds, idMap),
     pinnedSurfaceIds: mapSurfaceIds(value.pinnedSurfaceIds, idMap),
     recipeIds: recipeIds(value.recipeIds),
     runningSurfaceIds: mapSurfaceIds(value.runningSurfaceIds, idMap),
@@ -1175,10 +1170,6 @@ function stringArray(value: unknown) {
 
 function numberArray(value: unknown) {
   return arrayValues(value).filter(isFiniteNumber)
-}
-
-function uniqueSurfaceIds(surfaceIds: readonly SurfaceId[]) {
-  return Array.from(new Set(surfaceIds))
 }
 
 function optionalString(value: unknown) {

@@ -414,7 +414,7 @@ function reviewLayoutCommandSnapshot() {
     slots: [
       {
         displayHint: { kind: 'recipe-slot', slot: 'left-tool-pane' },
-        frame: { anchor: 'left', height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 0.28 },
+        frame: { anchor: 'left', height: 100, offsetX: 0, offsetY: 0, unit: 'percent', width: 28 },
         id: 'search',
         surfaceType: 'search-results',
       },
@@ -422,18 +422,18 @@ function reviewLayoutCommandSnapshot() {
         displayHint: { kind: 'recipe-slot', slot: 'bottom' },
         frame: {
           anchor: 'bottom',
-          height: 0.28,
+          height: 28,
           offsetX: 0,
           offsetY: 0,
           unit: 'percent',
-          width: 1,
+          width: 100,
         },
         id: 'diagnostics',
         surfaceType: 'diagnostics',
       },
       {
         displayHint: { kind: 'recipe-slot', slot: 'left-tool-pane' },
-        frame: { anchor: 'left', height: 1, offsetX: 0, offsetY: 0, unit: 'percent', width: 0.28 },
+        frame: { anchor: 'left', height: 100, offsetX: 0, offsetY: 0, unit: 'percent', width: 28 },
         id: 'git-changes',
         surfaceType: 'git-changes',
       },

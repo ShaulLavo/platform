@@ -54,7 +54,10 @@ export default defineConfig({
         define: {
           'import.meta.env.VITE_SERVER_URL': 'globalThis.location.origin',
         },
-        optimizeDeps: { include: ['@phosphor-icons/react'] },
+        optimizeDeps: {
+          exclude: ['@singapor/tree-sitter-languages'],
+          include: ['@phosphor-icons/react'],
+        },
         server: {
           host: '127.0.0.1',
           port: Number(browserTestPort),

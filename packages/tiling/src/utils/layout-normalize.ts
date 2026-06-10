@@ -511,7 +511,7 @@ function ensureFallbackWindow(
 
 function fallbackSurfaceForLayout(layout: WorkspaceLayout) {
   const railSurfaceIds = new Set([
-    ...(layout.rail.backgroundSurfaceIds ?? []),
+    ...layout.rail.backgroundSurfaceIds,
     ...layout.rail.runningSurfaceIds,
   ])
   const preferredSurfaceIds = uniqueSurfaceIds([
@@ -678,20 +678,17 @@ function repairMruWindowIds(layout: WorkspaceLayout) {
 
 function repairRailState(layout: WorkspaceLayout): RailState {
   const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))
-  const backgroundSurfaceIds = uniqueSurfaceIds([
-    ...(layout.rail.backgroundSurfaceIds ?? []),
-    ...legacyMinimizedSurfaceIds(layout.rail),
-  ]).filter(
+  const backgroundSurfaceIds = uniqueSurfaceIds(layout.rail.backgroundSurfaceIds).filter(
     (surfaceId) => Boolean(layout.surfacesById[surfaceId]) && !visibleSurfaceIds.has(surfaceId),
   )
   const runningSurfaceIds = runningSurfaceIdsForLayout(layout)
 
   return {
     backgroundSurfaceIds,
-    pinnedSurfaceIds: uniqueSurfaceIds(layout.rail.pinnedSurfaceIds ?? []).filter((surfaceId) =>
+    pinnedSurfaceIds: uniqueSurfaceIds(layout.rail.pinnedSurfaceIds).filter((surfaceId) =>
       Boolean(layout.surfacesById[surfaceId]),
     ),
-    recipeIds: uniqueRecipeIds(layout.rail.recipeIds ?? []).filter((recipeId) =>
+    recipeIds: uniqueRecipeIds(layout.rail.recipeIds).filter((recipeId) =>
       Boolean(layout.recipesById[recipeId]),
     ),
     runningSurfaceIds,
@@ -699,13 +696,9 @@ function repairRailState(layout: WorkspaceLayout): RailState {
   }
 }
 
-function legacyMinimizedSurfaceIds(rail: RailState) {
-  return (rail as { readonly minimizedSurfaceIds?: readonly SurfaceId[] }).minimizedSurfaceIds ?? []
-}
-
 function runningSurfaceIdsForLayout(layout: WorkspaceLayout) {
   return uniqueSurfaceIds([
-    ...(layout.rail.runningSurfaceIds ?? []),
+    ...layout.rail.runningSurfaceIds,
     ...Object.values(layout.surfacesById)
       .filter((surface) => surface.lifecycle === 'running')
       .map((surface) => surface.id),

@@ -26,6 +26,7 @@ import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/la
 import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-invariants'
 import {
   CLASSIC_POLICY_ID,
+  diagnosticsSurfaceId,
   fileEditorSurfaceId,
   gitChangesSurfaceId,
   layoutNodeId,
@@ -559,6 +560,8 @@ describe('tiling surface layout operations', () => {
     expect(visibleSurfaceIdsInOrder(applied)).toEqual(
       expect.arrayContaining([searchResultsSurfaceId(), gitChangesSurfaceId()]),
     )
+    expectWindowSplitRatio(applied, mustFindWindowId(applied, gitChangesSurfaceId()), 0.28)
+    expectWindowSplitRatio(applied, mustFindWindowId(applied, diagnosticsSurfaceId()), 0.28)
     expectValidLayout(applied)
   })
 
