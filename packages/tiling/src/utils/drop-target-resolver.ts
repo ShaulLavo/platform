@@ -1,6 +1,16 @@
-import type { TilingDragData, TilingDropData } from '@workspace/tiling/utils/drag-data'
+import {
+  targetBelongsToTabStrip,
+  type TilingDragData,
+  type TilingDropData,
+} from '@workspace/tiling/utils/drag-data'
+import {
+  inflateRect,
+  pointInRect,
+  rectArea,
+  rectCenterDistance,
+  type PointerCoordinates,
+} from '@workspace/tiling/utils/geometry-primitives'
 import type { TilingDropCandidate } from '@workspace/tiling/utils/snap-destinations'
-import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type { WindowId } from '@workspace/tiling/utils/layout-types'
 
 export type TilingIntentMode = 'idle' | 'tab-detached' | 'tab-reorder' | 'window'
@@ -26,11 +36,6 @@ export type ResolveTilingTargetInput = {
   readonly source: TilingDragData
   readonly sourceWindowId?: WindowId | null
   readonly tabTarget: TilingTabTarget | null
-}
-
-type PointerCoordinates = {
-  readonly x: number
-  readonly y: number
 }
 
 const STICKY_TARGET_INFLATE_PX = 18
@@ -151,38 +156,4 @@ function compareCandidates(
   if (distanceDelta !== 0) return distanceDelta
 
   return left.id.localeCompare(right.id)
-}
-
-function targetBelongsToTabStrip(
-  target: TilingDropData,
-): target is Extract<TilingDropData, { readonly kind: 'tab' | 'tab-strip' }> {
-  return target.kind === 'tab' || target.kind === 'tab-strip'
-}
-
-function pointInRect(rect: LayoutRect, point: PointerCoordinates) {
-  if (point.x < rect.x) return false
-  if (point.x > rect.x + rect.width) return false
-  if (point.y < rect.y) return false
-
-  return point.y <= rect.y + rect.height
-}
-
-function inflateRect(rect: LayoutRect, amount: number): LayoutRect {
-  return {
-    height: rect.height + amount * 2,
-    width: rect.width + amount * 2,
-    x: rect.x - amount,
-    y: rect.y - amount,
-  }
-}
-
-function rectArea(rect: LayoutRect) {
-  return rect.width * rect.height
-}
-
-function rectCenterDistance(rect: LayoutRect, point: PointerCoordinates) {
-  const centerX = rect.x + rect.width / 2
-  const centerY = rect.y + rect.height / 2
-
-  return Math.hypot(point.x - centerX, point.y - centerY)
 }

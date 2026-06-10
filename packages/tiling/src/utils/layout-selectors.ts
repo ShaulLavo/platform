@@ -11,6 +11,7 @@ import {
   commandSearchText,
   mergeWindowManagementCommands,
 } from '@workspace/tiling/utils/layout-command-catalog'
+import { surfaceCanClose, windowCanCollapse } from '@workspace/tiling/utils/layout-queries'
 import type {
   LayoutEdge,
   LayoutCommandId,
@@ -205,7 +206,7 @@ export function selectCapabilityFilteredCommandTargets(
   return {
     activeSurface: selectActiveSurface(layout),
     activeWindow: selectActiveWindow(layout),
-    closableSurfaceIds: visibleSurfaces.filter(canCloseSurface).map((surface) => surface.id),
+    closableSurfaceIds: visibleSurfaces.filter(surfaceCanClose).map((surface) => surface.id),
     minimizableSurfaceIds: visibleSurfaces
       .filter((surface) => surface.capabilities.canCollapse)
       .map((surface) => surface.id),
@@ -441,7 +442,7 @@ function nearestChildIdForEdge(
 
 function activeCapabilityDisabledReason(layout: WorkspaceLayout, operation: LayoutOperationType) {
   const activeSurface = selectActiveSurface(layout)
-  if (operation === 'closeSurface' && activeSurface && !canCloseSurface(activeSurface)) {
+  if (operation === 'closeSurface' && activeSurface && !surfaceCanClose(activeSurface)) {
     return 'Active surface cannot be closed.'
   }
   if (operation === 'splitWindow' && activeSurface && !activeSurface.capabilities.canSplit) {
@@ -498,7 +499,7 @@ function activeWindowCanExpandDisabledReason(layout: WorkspaceLayout) {
 function activeSurfaceCanCloseDisabledReason(layout: WorkspaceLayout) {
   const activeSurface = selectActiveSurface(layout)
   if (!activeSurface) return 'No active surface.'
-  if (canCloseSurface(activeSurface)) return null
+  if (surfaceCanClose(activeSurface)) return null
 
   return 'Active surface cannot be closed.'
 }
@@ -575,21 +576,6 @@ function savedLayoutCommandSearchText(command: WorkspaceLayoutCommand) {
 
 function compareCommandRows(left: LayoutCommandPaletteRow, right: LayoutCommandPaletteRow) {
   return left.title.localeCompare(right.title)
-}
-
-function canCloseSurface(surface: Surface) {
-  if (!surface.capabilities.canClose) return false
-
-  return surface.closePolicy.type !== 'block'
-}
-
-function windowCanCollapse(layout: WorkspaceLayout, window: WorkbenchWindow) {
-  for (const surfaceId of window.surfaceIds) {
-    const surface = layout.surfacesById[surfaceId]
-    if (!surface?.capabilities.canCollapse) return false
-  }
-
-  return true
 }
 
 function isSurface(surface: Surface | undefined): surface is Surface {

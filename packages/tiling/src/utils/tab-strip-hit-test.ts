@@ -1,11 +1,15 @@
-import type { TilingDragData, TilingDropData } from '@workspace/tiling/utils/drag-data'
+import {
+  targetBelongsToTabStrip,
+  type TilingDragData,
+  type TilingDropData,
+} from '@workspace/tiling/utils/drag-data'
+import {
+  distanceFromRange,
+  formatPoint,
+  type PointerCoordinates,
+} from '@workspace/tiling/utils/geometry-primitives'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type { WindowId } from '@workspace/tiling/utils/layout-types'
-
-type PointerCoordinates = {
-  readonly x: number
-  readonly y: number
-}
 
 type TabDockingDirection = 'down' | 'left' | 'none' | 'right' | 'up'
 type TabStripOrientation = 'horizontal' | 'vertical'
@@ -233,12 +237,6 @@ export function tabStripDropTargetMatchesPoint(target: TilingDropData, point: Po
 
 function validPointerCoordinates(point: PointerCoordinates) {
   return Number.isFinite(point.x) && Number.isFinite(point.y)
-}
-
-function targetBelongsToTabStrip(
-  target: TilingDropData,
-): target is Extract<TilingDropData, { readonly kind: 'tab' | 'tab-strip' }> {
-  return target.kind === 'tab' || target.kind === 'tab-strip'
 }
 
 function tabStripTargetForPoint(
@@ -846,17 +844,6 @@ function tabStripMatchesDockingDirection(
   if (direction === 'up') return rect.bottom <= point.y
 
   return rect.top >= point.y
-}
-
-function formatPoint(point: PointerCoordinates) {
-  return `${Math.round(point.x)},${Math.round(point.y)}`
-}
-
-function distanceFromRange(value: number, min: number, max: number) {
-  if (value < min) return min - value
-  if (value > max) return value - max
-
-  return 0
 }
 
 function clamp(value: number, min: number, max: number) {

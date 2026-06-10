@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import type { DragEndEvent, DragMoveEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/react'
 
 import {
+  targetBelongsToTabStrip,
   tilingDragData,
   tilingDropData,
   type TilingDragData,
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
+import {
+  distanceFromRange,
+  formatPoint,
+  type PointerCoordinates,
+} from '@workspace/tiling/utils/geometry-primitives'
 import type { LayoutGeometry, LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import {
   findWindowIdContainingSurface,
@@ -53,11 +59,6 @@ const DIRECT_TAB_TARGET_PRIORITY = 110
 
 const WINDOW_BODY_STICKY_INFLATE_PX = 24
 const STATE_EVENT_LIMIT = 80
-
-type PointerCoordinates = {
-  readonly x: number
-  readonly y: number
-}
 
 type PointerDetails = {
   readonly point: PointerCoordinates
@@ -689,10 +690,6 @@ function rawTargetDebugLabel(target: TilingDropData | null) {
   return target.destination.kind
 }
 
-function formatPoint(point: PointerCoordinates) {
-  return `${Math.round(point.x)},${Math.round(point.y)}`
-}
-
 function layoutStateSummary(layout: WorkspaceLayout) {
   const windowIds = visibleWindowIdsInOrder(layout)
   if (windowIds.length === 0) return '0w'
@@ -1100,12 +1097,6 @@ function tabTargetPriority(strength: TilingTabStripHit['strength']) {
   return DOCK_TAB_TARGET_PRIORITY
 }
 
-function targetBelongsToTabStrip(
-  target: TilingDropData,
-): target is Extract<TilingDropData, { readonly kind: 'tab' | 'tab-strip' }> {
-  return target.kind === 'tab' || target.kind === 'tab-strip'
-}
-
 function snapPreviewMode(activeDrag: ActiveTilingDrag | null) {
   if (!activeDrag) return false
   if (activeDrag.kind === 'window') return true
@@ -1143,13 +1134,6 @@ function tabStripOutsideDistance(
   if (orientation === 'vertical') return distanceFromRange(point.x, rect.x, rect.x + rect.width)
 
   return distanceFromRange(point.y, rect.y, rect.y + rect.height)
-}
-
-function distanceFromRange(value: number, min: number, max: number) {
-  if (value < min) return min - value
-  if (value > max) return value - max
-
-  return 0
 }
 
 function tabStripRect(sourceElement: Element | undefined): LayoutRect | null {

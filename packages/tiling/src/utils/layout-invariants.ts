@@ -1,11 +1,11 @@
 import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import { hasInvalidTransientOwner } from '@workspace/tiling/utils/layout-queries'
 import type {
   LayoutNode,
   LayoutNodeId,
   LayoutSplitAxis,
   LayoutSplitNode,
   RecipeId,
-  Surface,
   SurfaceId,
   SurfaceType,
   WindowId,
@@ -431,7 +431,7 @@ function checkTransientPreviewOwners(
 ) {
   for (const surface of Object.values(layout.surfacesById)) {
     if (surface.lifecycle !== 'transient') continue
-    if (!hasInvalidTransientOwner(surface, layout)) continue
+    if (!hasInvalidTransientOwner(surface, layout.surfacesById)) continue
 
     pushViolation(
       violations,
@@ -442,20 +442,6 @@ function checkTransientPreviewOwners(
       },
     )
   }
-}
-
-function hasInvalidTransientOwner(surface: Surface, layout: WorkspaceLayout) {
-  if (surface.type === 'search-preview') return !hasValidTransientOwner(surface, layout)
-  if (!surface.ownerSurfaceId && !surface.ownerContextKey) return false
-
-  return !hasValidTransientOwner(surface, layout)
-}
-
-function hasValidTransientOwner(surface: Surface, layout: WorkspaceLayout) {
-  if (!surface.ownerSurfaceId) return false
-  if (!surface.ownerContextKey) return false
-
-  return Boolean(layout.surfacesById[surface.ownerSurfaceId])
 }
 
 function checkRailReferences(layout: WorkspaceLayout, violations: LayoutInvariantViolation[]) {

@@ -1,4 +1,6 @@
 import { layoutNodeId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
+import { balancedSizes } from '@workspace/tiling/utils/geometry-primitives'
+import { hasInvalidTransientOwner } from '@workspace/tiling/utils/layout-queries'
 import type {
   LayoutNode,
   LayoutNodeId,
@@ -736,20 +738,6 @@ function removeInvalidTransientSurfaces(
   return validSurfacesById
 }
 
-function hasInvalidTransientOwner(surface: Surface, surfacesById: WorkspaceLayout['surfacesById']) {
-  if (surface.type === 'search-preview') return !hasValidTransientOwner(surface, surfacesById)
-  if (!surface.ownerSurfaceId && !surface.ownerContextKey) return false
-
-  return !hasValidTransientOwner(surface, surfacesById)
-}
-
-function hasValidTransientOwner(surface: Surface, surfacesById: WorkspaceLayout['surfacesById']) {
-  if (!surface.ownerSurfaceId) return false
-  if (!surface.ownerContextKey) return false
-
-  return Boolean(surfacesById[surface.ownerSurfaceId])
-}
-
 function addRailSurface(
   rail: RailState,
   key: 'backgroundSurfaceIds' | 'runningSurfaceIds',
@@ -801,8 +789,4 @@ function saneSize(size: number | undefined) {
   if (size <= 0) return MIN_SPLIT_SIZE
 
   return Math.max(size, MIN_SPLIT_SIZE)
-}
-
-function balancedSizes(count: number) {
-  return Array.from({ length: count }, () => 1 / count)
 }

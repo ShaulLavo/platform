@@ -1,5 +1,6 @@
 import type { TilingDragData } from '@workspace/tiling/utils/drag-data'
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
+import { clampIndex } from '@workspace/tiling/utils/geometry-primitives'
 import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
 import type {
   Surface,
@@ -222,8 +223,4 @@ function surfacesForIds(layout: WorkspaceLayout, surfaceIds: readonly SurfaceId[
   }
 
   return surfaces
-}
-
-function clampIndex(index: number, length: number) {
-  return Math.max(0, Math.min(index, length))
 }

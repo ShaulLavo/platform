@@ -1,6 +1,10 @@
 import { CLASSIC_POLICY_ID, layoutPolicyId } from '@workspace/tiling/utils/layout-ids'
 import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
 import {
+  recipeSlotForSurface,
+  stickyPlacementForSurface,
+} from '@workspace/tiling/utils/layout-queries'
+import {
   resolveSurfacePath,
   selectActiveSurface,
   selectActiveWindow,
@@ -11,7 +15,6 @@ import type {
   SurfaceId,
   SurfacePlacementHint,
   WorkspaceLayout,
-  WorkspaceRecipeSlot,
 } from '@workspace/tiling/utils/layout-types'
 
 export const PREVIEW_ADJACENT_POLICY_ID = layoutPolicyId('preview-adjacent')
@@ -172,22 +175,4 @@ function workflowSurfaceCanHost(owner: Surface, surface: Surface) {
   if (owner.type === 'search-results' && surface.type === 'search-preview') return true
 
   return owner.type === 'git-changes' && surface.type === 'diff'
-}
-
-function recipeSlotForSurface(layout: WorkspaceLayout, surface: Surface): WorkspaceRecipeSlot {
-  return (
-    layout.recipesById[layout.activeRecipeId]?.surfaceSlots[surface.type] ??
-    surface.capabilities.defaultRecipeSlot
-  )
-}
-
-function stickyPlacementForSurface(
-  layout: WorkspaceLayout,
-  surfaceId: SurfaceId,
-): SurfacePlacementHint | null {
-  const activePolicy = Object.values(layout.policiesById).find(
-    (policy) => policy.recipeId === layout.activeRecipeId,
-  )
-
-  return activePolicy?.stickyPlacementsBySurfaceId[surfaceId] ?? null
 }

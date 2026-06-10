@@ -20,6 +20,7 @@ import {
   terminalSurfaceId,
   workbenchWindowId,
 } from '@workspace/tiling/utils/layout-ids'
+import { balancedSizes } from '@workspace/tiling/utils/geometry-primitives'
 import {
   SURFACE_REGISTRY_VERSION,
   SURFACE_SERIALIZED_VERSION,
@@ -784,12 +785,6 @@ function defaultPoliciesById(): Readonly<Record<LayoutPolicyId, LayoutPolicyStat
   return {
     [CLASSIC_POLICY_ID]: classicLayoutPolicyState(),
   }
-}
-
-function balancedSizes(count: number) {
-  if (count === 0) return []
-
-  return Array.from({ length: count }, () => 1 / count)
 }
 
 function pathTitle(path: string) {

@@ -1,6 +1,15 @@
 import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
+import { balancedSizes, clampIndex } from '@workspace/tiling/utils/geometry-primitives'
+import { selectCommandCycleStep } from '@workspace/tiling/utils/layout-command-cycling'
 import { layoutNodeId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
 import { placementForSurfaceWithPolicy } from '@workspace/tiling/utils/layout-policies'
+import {
+  policyForStickyPlacement,
+  recipeSlotForSurface,
+  stickyPlacementForSurface,
+  surfaceCanClose,
+  windowCanCollapse,
+} from '@workspace/tiling/utils/layout-queries'
 import {
   createChatSurface,
   createDiagnosticsSurface,
@@ -36,7 +45,6 @@ import type {
   LayoutNode,
   LayoutNodeId,
   LayoutPolicyId,
-  LayoutPolicyState,
   LayoutSplitNode,
   LayoutSplitAxis,
   RecipeId,
@@ -309,7 +317,7 @@ function fallbackPlacementForRestore(
 
 function placementCanRestoreSurface(
   layout: WorkspaceLayout,
-  placement: SurfacePlacementHint | undefined,
+  placement: SurfacePlacementHint | null | undefined,
   surface?: Surface,
 ) {
   if (!placement) return false
@@ -585,7 +593,13 @@ export function applyCustomWindowCommand(
   if (!windowId) return normalizedLayout
   if (!normalizedLayout.windowsById[windowId]) return normalizedLayout
 
-  const selection = selectCommandFrame(normalizedLayout, command, windowId, nowMs)
+  const selection = selectCommandCycleStep(normalizedLayout, {
+    commandId: command.id,
+    cycleRule: command.cycleRule,
+    defaultFrame: command.targetFrame,
+    nowMs,
+    targetWindowId: windowId,
+  })
   const layoutWithFrame = applyFrameToWindow(normalizedLayout, windowId, selection.frame)
 
   return normalizeWorkspaceLayout({
@@ -711,64 +725,6 @@ function filePayloadValue(slot: LayoutCommandSurfaceSlot) {
   if (slot.payload?.kind !== 'file') return null
 
   return slot.payload.value
-}
-
-function selectCommandFrame(
-  layout: WorkspaceLayout,
-  command: CustomWindowManagementCommand,
-  targetWindowId: WindowId,
-  nowMs: number,
-) {
-  const cycleRule = command.cycleRule
-  if (!cycleRule || cycleRule.steps.length === 0) {
-    return { cycleState: undefined, frame: command.targetFrame }
-  }
-
-  const scopeKey = commandCycleScopeKey(layout, cycleRule.scope, targetWindowId)
-  const stepIndex = nextCycleStepIndex(layout, command, scopeKey, nowMs)
-
-  return {
-    cycleState: {
-      commandId: command.id,
-      scopeKey,
-      stepIndex,
-      updatedAtMs: nowMs,
-    },
-    frame: cycleRule.steps[stepIndex] ?? command.targetFrame,
-  }
-}
-
-function nextCycleStepIndex(
-  layout: WorkspaceLayout,
-  command: CustomWindowManagementCommand,
-  scopeKey: string,
-  nowMs: number,
-) {
-  const state = layout.commandCycleState
-  if (!state) return 0
-  if (state.commandId !== command.id) return 0
-  if (state.scopeKey !== scopeKey) return 0
-  if (cycleTimedOut(command, state.updatedAtMs, nowMs)) return 0
-
-  return (state.stepIndex + 1) % (command.cycleRule?.steps.length ?? 1)
-}
-
-function cycleTimedOut(command: CustomWindowManagementCommand, updatedAtMs: number, nowMs: number) {
-  const resetMs = command.cycleRule?.resetMs
-  if (resetMs === undefined) return false
-
-  return nowMs - updatedAtMs > resetMs
-}
-
-function commandCycleScopeKey(
-  layout: WorkspaceLayout,
-  scope: 'surface' | 'window' | 'workspace',
-  targetWindowId: WindowId,
-) {
-  if (scope === 'workspace') return 'workspace'
-  if (scope === 'window') return targetWindowId
-
-  return layout.windowsById[targetWindowId]?.activeSurfaceId ?? targetWindowId
 }
 
 function applyFrameToWindow(
@@ -1147,24 +1103,12 @@ function createRecipeNodeAllocator(layout: WorkspaceLayout): RecipeNodeAllocator
 
   return {
     nodeId: (key) => {
-      const nodeId = allocatedRecipeNodeId(usedNodeIds, key)
+      const nodeId = uniqueId((candidate) => !usedNodeIds.has(candidate), layoutNodeId, key)
       usedNodeIds.add(nodeId)
 
       return nodeId
     },
   }
-}
-
-function allocatedRecipeNodeId(usedNodeIds: ReadonlySet<LayoutNodeId>, key: string) {
-  const firstId = layoutNodeId(key)
-  if (!usedNodeIds.has(firstId)) return firstId
-
-  for (let index = 2; index < 1000; index += 1) {
-    const candidate = layoutNodeId(`${key}:${index}`)
-    if (!usedNodeIds.has(candidate)) return candidate
-  }
-
-  throw createTilingInvariantError(`Unable to allocate recipe node id for ${key}`)
 }
 
 function visibleRecipeBottomWindowId(layout: WorkspaceLayout): WindowId | null {
@@ -1185,7 +1129,7 @@ function stackedWindowTree(
   return splitTree({
     axis: 'vertical',
     id: allocator.nodeId(nodeKey),
-    sizes: balancedSplitSizes(windowTrees.length),
+    sizes: balancedSizes(windowTrees.length),
     trees: windowTrees,
   })
 }
@@ -1227,7 +1171,7 @@ function mainContentTree(
   return splitTree({
     axis: 'horizontal',
     id: allocator.nodeId('recipe:main:recovered'),
-    sizes: balancedSplitSizes(2),
+    sizes: balancedSizes(2),
     trees: [compactTree, missingTree],
   })
 }
@@ -1428,10 +1372,6 @@ function mergedRecipeNodes(trees: readonly RecipeTree[]) {
   return nodesById
 }
 
-function balancedSplitSizes(count: number) {
-  return Array.from({ length: count }, () => 1 / count)
-}
-
 function destinationForMainViewSlot(layout: WorkspaceLayout): SnapDestination | null {
   const mainWindowId = visibleWindowIdForRecipeSlot(layout, 'editor-center')
   if (mainWindowId) return { kind: 'window-center', windowId: mainWindowId }
@@ -1550,13 +1490,6 @@ function windowContainsRecipeSlot(
 
     return recipeSlotForSurface(layout, surface) === slot
   })
-}
-
-function recipeSlotForSurface(layout: WorkspaceLayout, surface: Surface): WorkspaceRecipeSlot {
-  return (
-    layout.recipesById[layout.activeRecipeId]?.surfaceSlots[surface.type] ??
-    surface.capabilities.defaultRecipeSlot
-  )
 }
 
 function findExistingSurfaceForOpen(layout: WorkspaceLayout, surface: Surface) {
@@ -2242,22 +2175,6 @@ function surfaceCanUseDestination(surface: Surface, destination: SnapDestination
   return surface.capabilities.validPlacements.includes(destination.kind)
 }
 
-function windowCanCollapse(layout: WorkspaceLayout, window: WorkbenchWindow) {
-  for (const surfaceId of window.surfaceIds) {
-    const surface = layout.surfacesById[surfaceId]
-    if (!surface?.capabilities.canCollapse) return false
-  }
-
-  return true
-}
-
-function surfaceCanClose(surface: Surface) {
-  if (!surface.capabilities.canClose) return false
-  if (surface.closePolicy.type === 'block') return false
-
-  return true
-}
-
 function addSurfaceToRail(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
@@ -2396,25 +2313,6 @@ function clearStickyPlacement(
       },
     },
   }
-}
-
-function stickyPlacementForSurface(
-  layout: WorkspaceLayout,
-  surfaceId: SurfaceId,
-  policyId?: LayoutPolicyId,
-) {
-  const policy = policyId ? layout.policiesById[policyId] : policyForStickyPlacement(layout)
-
-  return policy?.stickyPlacementsBySurfaceId[surfaceId]
-}
-
-function policyForStickyPlacement(layout: WorkspaceLayout): LayoutPolicyState | null {
-  const activeRecipePolicy = Object.values(layout.policiesById).find(
-    (policy) => policy.recipeId === layout.activeRecipeId,
-  )
-  if (activeRecipePolicy) return activeRecipePolicy
-
-  return Object.values(layout.policiesById)[0] ?? null
 }
 
 function deleteWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLayout {
@@ -2656,10 +2554,6 @@ function insertAt<TItem>(items: readonly TItem[], item: TItem, index: number) {
   const insertIndex = clampIndex(index, items.length)
 
   return [...items.slice(0, insertIndex), item, ...items.slice(insertIndex)]
-}
-
-function clampIndex(index: number, length: number) {
-  return Math.max(0, Math.min(index, length))
 }
 
 function uniqueWindowId(layout: WorkspaceLayout, key: string): WindowId {

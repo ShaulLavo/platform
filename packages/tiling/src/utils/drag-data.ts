@@ -73,3 +73,9 @@ export function tilingDropData(value: unknown): TilingDropData | null {
 
   return null
 }
+
+export function targetBelongsToTabStrip(
+  target: TilingDropData,
+): target is Extract<TilingDropData, { readonly kind: 'tab' | 'tab-strip' }> {
+  return target.kind === 'tab' || target.kind === 'tab-strip'
+}
