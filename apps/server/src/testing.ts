@@ -6,5 +6,5 @@
  * in explicitly through `server/testing`, and run under the Bun runtime
  * (`bun --bun vitest`) where those Bun APIs resolve.
  */
-export { createApp } from './app'
+export { closeApp, createApp } from './app'
 export type { App, AppOptions } from './app'

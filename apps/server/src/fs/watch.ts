@@ -11,15 +11,17 @@ import type { TreeEntry, WatchServerMessage } from './contracts'
 type Listener = (event: WatchServerMessage) => void
 type ParcelWatchEvent = parcelWatcher.Event
 type WatchRelease = () => void | Promise<void>
+type RenameWatchServerMessage = Extract<WatchServerMessage, { type: 'renamed' }>
 type WatcherEntry = {
   refCount: number
   release: WatchRelease
 }
+type WakeSlot = {
+  current: (() => void) | null
+}
 
-const watcherIgnoreGlobs = defaultIgnoredNames.flatMap((name) => [
-  name,
+const watcherIgnoredChildGlobs = defaultIgnoredNames.flatMap((name) => [
   `${name}/**`,
-  `**/${name}`,
   `**/${name}/**`,
 ])
 
@@ -27,10 +29,15 @@ export type WatchOptions = {
   enabled: boolean
 }
 
+export type WatchStreamOptions = {
+  includeIgnored?: boolean
+}
+
 export class FileChangeHub {
   private readonly listeners = new Set<Listener>()
   private readonly nativeWatchers = new Map<string, WatcherEntry>()
   private readonly paths: WorkspacePaths
+  private readonly rawListeners = new Set<Listener>()
   private readonly watchEnabled: boolean
   private nextSequence = 1
 
@@ -40,15 +47,29 @@ export class FileChangeHub {
   }
 
   emit(event: WatchServerMessage) {
-    if (!isFilesystemEvent(event)) return this.broadcastSequenced(event)
-    if (isIgnoredPath(event.path)) return
+    const sequenced = this.withSequence(event)
+    if (!isFilesystemEvent(event)) {
+      this.broadcast(sequenced)
+      return
+    }
 
-    this.broadcastSequenced(event)
+    if (sequenced.type === 'renamed') {
+      this.broadcastRenamed(sequenced)
+      return
+    }
+
+    if (isIgnoredPath(event.path)) {
+      this.broadcastRaw(sequenced)
+      return
+    }
+
+    this.broadcast(sequenced)
   }
 
-  stream(inputs: string[], signal?: AbortSignal) {
+  stream(inputs: string[], signal?: AbortSignal, options: WatchStreamOptions = {}) {
     const subscribed = subscribedPaths(this.paths, inputs)
-    return this.createStream(subscribed, signal)
+    const listeners = options.includeIgnored ? this.rawListeners : this.listeners
+    return this.createStream(subscribed, signal, listeners)
   }
 
   info() {
@@ -62,13 +83,11 @@ export class FileChangeHub {
     const releases = Array.from(this.nativeWatchers.values()).map((entry) => entry.release)
     this.nativeWatchers.clear()
     this.listeners.clear()
+    this.rawListeners.clear()
     await releaseWatchers(releases)
   }
 
-  private async retainWatcher(
-    relativeRoot: string,
-    onError: (event: WatchServerMessage) => void,
-  ): Promise<WatchRelease> {
+  private async retainWatcher(relativeRoot: string): Promise<WatchRelease> {
     if (!this.watchEnabled) {
       return noop
     }
@@ -79,7 +98,7 @@ export class FileChangeHub {
       return () => this.releaseWatcher(relativeRoot)
     }
 
-    const release = await this.createWatcher(relativeRoot, onError)
+    const release = await this.createWatcher(relativeRoot)
     this.nativeWatchers.set(relativeRoot, { refCount: 1, release })
 
     return () => this.releaseWatcher(relativeRoot)
@@ -96,27 +115,21 @@ export class FileChangeHub {
     await releaseWatcher(entry.release)
   }
 
-  private async createWatcher(
-    relativeRoot: string,
-    onError: (event: WatchServerMessage) => void,
-  ): Promise<WatchRelease> {
+  private async createWatcher(relativeRoot: string): Promise<WatchRelease> {
     try {
-      return await this.createParcelWatcher(relativeRoot, onError)
+      return await this.createParcelWatcher(relativeRoot)
     } catch {
-      return this.createNodeWatcher(relativeRoot, onError)
+      return this.createNodeWatcher(relativeRoot)
     }
   }
 
-  private async createParcelWatcher(
-    relativeRoot: string,
-    onError: (event: WatchServerMessage) => void,
-  ): Promise<WatchRelease> {
+  private async createParcelWatcher(relativeRoot: string): Promise<WatchRelease> {
     const target = this.paths.resolve(relativeRoot)
     const subscription = await parcelWatcher.subscribe(
       target.absolutePath,
       (error, events) => {
         if (error) {
-          onError(watchError(error, relativeRoot))
+          this.emit(watchError(error, relativeRoot))
           return
         }
 
@@ -124,27 +137,24 @@ export class FileChangeHub {
           void this.handleParcelEvent(relativeRoot, event)
         }
       },
-      { ignore: watcherIgnoreGlobs },
+      { ignore: watcherIgnoredChildGlobs },
     )
 
     return () => subscription.unsubscribe()
   }
 
-  private createNodeWatcher(
-    relativeRoot: string,
-    onError: (event: WatchServerMessage) => void,
-  ): WatchRelease {
+  private createNodeWatcher(relativeRoot: string): WatchRelease {
     try {
       const target = this.paths.resolve(relativeRoot)
       const watcher = watch(target.absolutePath, { recursive: true }, (event, filename) => {
         void this.handleNodeEvent(relativeRoot, event, filename?.toString() ?? '')
       })
       watcher.on('error', (error) => {
-        onError(watchError(error, relativeRoot))
+        this.emit(watchError(error, relativeRoot))
       })
       return () => watcher.close()
     } catch (error) {
-      onError(watchError(error, relativeRoot))
+      this.emit(watchError(error, relativeRoot))
       return noop
     }
   }
@@ -153,9 +163,13 @@ export class FileChangeHub {
     const relativePath = parcelEventPath(this.paths, event.path)
     if (relativePath === null) return
     if (isStaleParcelRootCreate(relativeRoot, event, relativePath)) return
-    if (isIgnoredPath(relativePath)) return
 
     const type = parcelEventType(event.type)
+    if (isIgnoredPath(relativePath)) {
+      this.emit(nativeWatchEvent(type, relativePath, undefined))
+      return
+    }
+
     const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
 
     this.emit(nativeWatchEvent(type, relativePath, entry))
@@ -163,66 +177,78 @@ export class FileChangeHub {
 
   private async handleNodeEvent(relativeRoot: string, nativeEvent: string, filename: string) {
     const relativePath = watchEventPath(relativeRoot, filename)
-    if (isIgnoredPath(relativePath)) return
 
     const type = await nativeEventType(this.paths, relativePath, nativeEvent)
+    if (isIgnoredPath(relativePath)) {
+      this.emit(nativeWatchEvent(type, relativePath, undefined))
+      return
+    }
+
     const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
 
     this.emit(nativeWatchEvent(type, relativePath, entry))
   }
 
-  private async *createStream(subscribed: Set<string>, signal?: AbortSignal) {
+  private async *createStream(
+    subscribed: Set<string>,
+    signal: AbortSignal | undefined,
+    listeners: Set<Listener>,
+  ) {
     const queue: WatchServerMessage[] = [{ type: 'ready', root: '' }]
-    let wake: (() => void) | null = null
+    const wake: WakeSlot = { current: null }
 
     const listener = (event: WatchServerMessage) => {
       if (!shouldDeliver(event, subscribed)) return
 
       queue.push(event)
-      wake?.()
+      wake.current?.()
     }
 
-    const abort = () => wake?.()
-    const enqueue = (event: WatchServerMessage) => {
-      const sequenced = this.withSequence(event)
-      if (!shouldDeliver(sequenced, subscribed)) return
-
-      queue.push(sequenced)
-      wake?.()
-    }
+    const abort = () => wake.current?.()
     let releases: WatchRelease[] = []
-    this.listeners.add(listener)
+    listeners.add(listener)
     signal?.addEventListener('abort', abort)
 
     try {
-      releases = await Promise.all(
-        Array.from(subscribed).map((input) => this.retainWatcher(input, enqueue)),
-      )
+      releases = await Promise.all(Array.from(subscribed).map((input) => this.retainWatcher(input)))
 
-      while (!signal?.aborted) {
-        if (queue.length) {
-          yield queue.shift()!
-          continue
-        }
-
-        await new Promise<void>((resolve) => {
-          wake = resolve
-        })
-        wake = null
-      }
+      yield* drainWatchQueue(queue, signal, wake)
     } finally {
       await releaseWatchers(releases)
-      this.listeners.delete(listener)
+      listeners.delete(listener)
       signal?.removeEventListener('abort', abort)
     }
   }
 
-  private broadcastSequenced(event: WatchServerMessage) {
-    this.broadcast(this.withSequence(event))
+  private broadcast(event: WatchServerMessage) {
+    this.broadcastTo(this.listeners, event)
+    this.broadcastRaw(event)
   }
 
-  private broadcast(event: WatchServerMessage) {
-    for (const listener of this.listeners) listener(event)
+  private broadcastRaw(event: WatchServerMessage) {
+    this.broadcastTo(this.rawListeners, event)
+  }
+
+  private broadcastRenamed(event: RenameWatchServerMessage) {
+    const pathIgnored = isIgnoredPath(event.path)
+    const oldPathIgnored = isIgnoredPath(event.oldPath)
+    if (!pathIgnored && !oldPathIgnored) {
+      this.broadcast(event)
+      return
+    }
+
+    this.broadcastRaw(event)
+    if (pathIgnored && oldPathIgnored) return
+    if (pathIgnored) {
+      this.broadcastTo(this.listeners, renamedDeleteEvent(event))
+      return
+    }
+
+    this.broadcastTo(this.listeners, renamedCreateEvent(event))
+  }
+
+  private broadcastTo(listeners: Set<Listener>, event: WatchServerMessage) {
+    for (const listener of listeners) listener(event)
   }
 
   private withSequence(event: WatchServerMessage): WatchServerMessage {
@@ -288,6 +314,59 @@ function isFilesystemEvent(event: WatchServerMessage) {
     event.type === 'deleted' ||
     event.type === 'renamed'
   )
+}
+
+function renamedCreateEvent(event: RenameWatchServerMessage): WatchServerMessage {
+  return {
+    entry: event.entry,
+    origin: event.origin,
+    path: event.path,
+    sequence: event.sequence,
+    type: 'created',
+    version: event.version,
+    writeId: event.writeId,
+  }
+}
+
+function renamedDeleteEvent(event: RenameWatchServerMessage): WatchServerMessage {
+  return {
+    origin: event.origin,
+    path: event.oldPath,
+    sequence: event.sequence,
+    type: 'deleted',
+    version: event.version,
+    writeId: event.writeId,
+  }
+}
+
+async function* drainWatchQueue(
+  queue: WatchServerMessage[],
+  signal: AbortSignal | undefined,
+  wake: WakeSlot,
+) {
+  while (!signal?.aborted) {
+    const event = queue.shift()
+    if (event) {
+      yield event
+      continue
+    }
+
+    await waitForWatchQueue(signal, wake)
+  }
+}
+
+function waitForWatchQueue(signal: AbortSignal | undefined, wake: WakeSlot) {
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      if (wake.current === finish) wake.current = null
+      signal?.removeEventListener('abort', finish)
+      resolve()
+    }
+
+    wake.current = finish
+    signal?.addEventListener('abort', finish, { once: true })
+    if (signal?.aborted) finish()
+  })
 }
 
 function shouldDeliver(event: WatchServerMessage, subscribed: Set<string>) {

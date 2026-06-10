@@ -26,6 +26,12 @@ import { findInWorkspaceStream, type FindOptions, type SearchStreamEvent } from 
 import { FsError } from './errors'
 import type { MetadataDatabaseHandle } from '../db/client'
 import { FsMetadataStore, metadataRowToEntry, type FsMetadataEntry } from './metadata'
+import {
+  WorkspaceIndex,
+  watchWorkspaceIndex,
+  type WorkspaceIndex as WorkspaceIndexInstance,
+  type WorkspaceIndexWatchSubscription,
+} from './workspace-index'
 import type {
   CopyBody,
   CreateFileBody,
@@ -85,9 +91,12 @@ export class FileSystemService {
   readonly systemRoot
   readonly defaultPath
   readonly metadata
+  readonly workspaceIndex
   private readonly maxSearchContentBytes
   private readonly maxTextFileBytes
   private readonly treeConcurrency
+  private readonly workspaceIndexStartup: Promise<void>
+  private readonly workspaceIndexWatcher: WorkspaceIndexWatchSubscription | undefined
 
   constructor(options: FileSystemServiceOptions = {}) {
     const homeDirectory = options.homeDirectory ?? homedir()
@@ -105,6 +114,17 @@ export class FileSystemService {
     this.changes = new FileChangeHub(this.paths, {
       enabled: options.watch ?? true,
     })
+    this.workspaceIndex = new WorkspaceIndex(this.paths)
+    this.workspaceIndexWatcher = watchWorkspaceIndexIfEnabled(
+      this.workspaceIndex,
+      this.changes,
+      options,
+    )
+    this.workspaceIndexStartup = startWorkspaceIndexIfEnabled(
+      this.workspaceIndex,
+      this.workspaceIndexWatcher,
+      options,
+    )
   }
 
   info() {
@@ -115,6 +135,7 @@ export class FileSystemService {
       defaultPath: this.defaultPath,
       metadataDbPath: this.metadata.databasePath,
       maxTextFileBytes: this.maxTextFileBytes,
+      workspaceIndex: this.workspaceIndex.status(),
       ...this.changes.info(),
     }
   }
@@ -317,6 +338,7 @@ export class FileSystemService {
           maxContentBytes: this.maxSearchContentBytes,
         },
         signal,
+        { workspaceIndex: workspaceIndexForSearch(options, this.workspaceIndex) },
       ),
       options,
     )
@@ -364,6 +386,8 @@ export class FileSystemService {
   }
 
   async close() {
+    await this.workspaceIndexWatcher?.close()
+    await this.workspaceIndexStartup
     await this.changes.close()
     this.metadata.close()
   }
@@ -389,6 +413,50 @@ export class FileSystemService {
   private async statEntry(input: string): Promise<TreeEntry> {
     const stat = await this.stat(input)
     return entryFromStat(stat)
+  }
+}
+
+function startWorkspaceIndexIfEnabled(
+  index: WorkspaceIndex,
+  watcher: WorkspaceIndexWatchSubscription | undefined,
+  options: FileSystemServiceOptions,
+) {
+  if (!workspaceIndexEnabled(options)) return Promise.resolve()
+
+  return startWorkspaceIndex(index, watcher)
+}
+
+function watchWorkspaceIndexIfEnabled(
+  index: WorkspaceIndex,
+  changes: FileChangeHub,
+  options: FileSystemServiceOptions,
+) {
+  if (!workspaceIndexEnabled(options)) return undefined
+
+  return watchWorkspaceIndex(index, (signal) =>
+    changes.stream([''], signal, { includeIgnored: true }),
+  )
+}
+
+function workspaceIndexEnabled(options: FileSystemServiceOptions) {
+  return options.workspaceRoot !== undefined
+}
+
+function workspaceIndexForSearch(options: FileSystemSearchOptions, index: WorkspaceIndexInstance) {
+  if (options.useWorkspaceIndex === false) return undefined
+
+  return index
+}
+
+async function startWorkspaceIndex(
+  index: WorkspaceIndex,
+  watcher: WorkspaceIndexWatchSubscription | undefined,
+) {
+  try {
+    await watcher?.ready
+    await index.rebuild({ reason: 'startup' })
+  } catch {
+    // The index keeps failed status internally; search can continue through fallback paths.
   }
 }
 

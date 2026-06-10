@@ -7,6 +7,7 @@ import {
   type WorkspaceSearchDoneEvent,
   type WorkspaceSearchEvent,
   type WorkspaceSearchMatch,
+  type WorkspaceSearchMeasurement,
   type WorkspaceSearchQuery,
   workspaceSearchPreview,
 } from '@workspace/contracts'
@@ -14,6 +15,8 @@ import {
 import { log } from '@/lib/client-logging'
 import { streamWorkspaceSearch } from '@/lib/workspace-search-client'
 import { compareSearchPaths } from '@/features/search/search-sort'
+
+const MAX_DISK_SEARCH_LIMIT = 200
 
 export type SearchProvider = {
   search(query: WorkspaceSearchQuery, signal?: AbortSignal): AsyncIterable<WorkspaceSearchEvent>
@@ -99,13 +102,13 @@ export class CompositeSearchProvider implements SearchProvider {
       yield* this.searchOpenBuffers(query, state, signal)
       if (shouldStopCompositeSearch(query, state, signal)) {
         logSearchCompleted(query, state, true, startedAt)
-        yield doneEvent(query, state.emittedCount, true)
+        yield doneEvent(query, state.emittedCount, true, state.measurement)
         return
       }
 
       yield* this.searchDisk(query, state, signal)
       logSearchCompleted(query, state, state.truncated, startedAt)
-      yield doneEvent(query, state.emittedCount, state.truncated)
+      yield doneEvent(query, state.emittedCount, state.truncated, state.measurement)
     } catch (error) {
       if (!signal?.aborted) logSearchFailed(query, error, startedAt)
 
@@ -129,19 +132,23 @@ export class CompositeSearchProvider implements SearchProvider {
     state: CompositeSearchState,
     signal?: AbortSignal,
   ) {
-    const diskQuery = { ...query, limit: query.limit }
+    const diskLimit = diskSearchLimit(query.limit, state.emittedCount, this.openBufferPaths.size)
+    if (diskLimit <= 0) return
+
+    const diskQuery = { ...query, limit: diskLimit }
 
     for await (const event of this.disk.search(diskQuery, signal)) {
       if (!shouldEmitDiskEvent(event, this.openBufferPaths)) continue
 
       if (appendCompositeEvent(event, state, query.limit)) yield event
-      if (state.emittedCount >= query.limit) return
+      if (event.type === 'done') return
     }
   }
 }
 
 type CompositeSearchState = {
   emittedCount: number
+  measurement?: WorkspaceSearchMeasurement
   truncated: boolean
 }
 
@@ -215,12 +222,21 @@ function shouldStopCompositeSearch(
   return state.emittedCount >= query.limit
 }
 
+function diskSearchLimit(queryLimit: number, emittedCount: number, dirtyPathCount: number) {
+  const remaining = Math.max(0, queryLimit - emittedCount)
+  if (dirtyPathCount === 0) return remaining
+
+  const dirtyPathAllowance = dirtyPathCount * queryLimit
+  return Math.min(MAX_DISK_SEARCH_LIMIT, Math.max(queryLimit, remaining + dirtyPathAllowance))
+}
+
 function appendCompositeEvent(
   event: WorkspaceSearchEvent,
   state: CompositeSearchState,
   limit: number,
 ) {
   if (event.type === 'done') {
+    state.measurement = event.measurement ?? state.measurement
     state.truncated = state.truncated || event.truncated
     return false
   }
@@ -242,9 +258,11 @@ function doneEvent(
   query: WorkspaceSearchQuery,
   count: number,
   truncated: boolean,
+  measurement?: WorkspaceSearchMeasurement,
 ): WorkspaceSearchDoneEvent {
   return {
     count,
+    measurement,
     path: query.path,
     query: query.query,
     truncated,

@@ -16,6 +16,7 @@ import {
   rpcErrorMessage as structuredRpcErrorMessage,
 } from '@/lib/structured-errors'
 import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
+import type { WorkspaceSearchMeasurement } from '@workspace/contracts'
 
 const TREE_LOAD_DEPTH = 1
 
@@ -69,6 +70,8 @@ export async function fetchQuickOpenFiles({
   query: string
   signal: AbortSignal
 }) {
+  let measurement: WorkspaceSearchMeasurement | undefined
+
   return observeClientOperation(
     {
       action: 'fs.quick_open_files',
@@ -91,10 +94,14 @@ export async function fetchQuickOpenFiles({
         },
         signal,
       )
+      measurement = result.measurement
 
       return result.matches as FindMatch[]
     },
-    (matches) => ({ matchCount: matches.length }),
+    (matches) => ({
+      matchCount: matches.length,
+      providerSources: measurement?.providerSources,
+    }),
   )
 }
 
@@ -212,7 +219,10 @@ export async function fetchServerInfo(signal: AbortSignal) {
 
       return response.data as ServerInfo
     },
-    (info) => ({ homePath: info.homePath }),
+    (info) => ({
+      homePath: info.homePath,
+      workspaceIndexReadiness: info.workspaceIndex?.readiness,
+    }),
   )
 }
 

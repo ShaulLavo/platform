@@ -16,6 +16,21 @@ export {
 
 export type SearchScope = 'current' | 'system'
 
+export type WorkspaceIndexStatus = {
+  entryCount: number
+  errorMessage?: string
+  fileCount: number
+  lastFullScanAtMs?: number
+  lastFullScanDurationMs?: number
+  lastIncrementalUpdateAtMs?: number
+  readiness: 'cold' | 'building' | 'ready' | 'stale' | 'failed'
+  rebuildReason?: string
+  scanRoot: string
+  scanWarningCount: number
+  skippedEntryCount: number
+  staleEntryCount: number
+}
+
 export type FsEntry = FileTreeEntry & {
   searchScope?: SearchScope
 }
@@ -31,6 +46,7 @@ export type RecentResult = {
 export type ServerInfo = {
   ok: boolean
   workspaceRoot: string
+  workspaceIndex?: WorkspaceIndexStatus
   defaultPath: string
   homePath: string
 }

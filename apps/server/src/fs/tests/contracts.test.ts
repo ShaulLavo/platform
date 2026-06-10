@@ -29,6 +29,7 @@ describe('filesystem contracts', () => {
       matchMode: 'literal',
       path: '',
       query: 'button',
+      useWorkspaceIndex: true,
       wholeWord: false,
     })
   })
@@ -103,6 +104,41 @@ describe('filesystem contracts', () => {
     ).toEqual({
       match,
       type: 'match',
+    })
+    expect(
+      v.parse(workspaceSearchEventSchema, {
+        count: 1,
+        measurement: {
+          durationMs: 12.5,
+          firstResultMs: 3.25,
+          providerSources: ['fd'],
+          providers: [
+            {
+              durationMs: 10,
+              firstResultMs: 2,
+              resultCount: 1,
+              source: 'fd',
+              statCallCount: 1,
+              statDurationMs: 1.5,
+            },
+          ],
+          repeatedStatPathCount: 0,
+          statCallCount: 1,
+          statDurationMs: 1.5,
+          statPathCount: 1,
+          topStatPaths: [{ count: 1, durationMs: 1.5, path: 'src/app.ts' }],
+        },
+        path: '',
+        query: 'app',
+        truncated: false,
+        type: 'done',
+      }),
+    ).toMatchObject({
+      measurement: {
+        providerSources: ['fd'],
+        statCallCount: 1,
+      },
+      type: 'done',
     })
   })
 })

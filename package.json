@@ -17,6 +17,7 @@
     "desktop:dev": "bun --env-file=.env scripts/desktop-dev.ts",
     "lint": "turbo lint",
     "prod": "bun scripts/prod.ts",
+    "bench:workspace-search": "bun apps/server/scripts/workspace-search-benchmark.ts",
     "start": "bun scripts/prod.ts start",
     "format": "turbo format",
     "format:check": "turbo format:check",

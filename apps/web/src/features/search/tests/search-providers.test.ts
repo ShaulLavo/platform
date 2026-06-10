@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { WorkspaceSearchEvent, WorkspaceSearchQuery } from '@workspace/contracts'
+import type {
+  WorkspaceSearchEvent,
+  WorkspaceSearchMeasurement,
+  WorkspaceSearchQuery,
+} from '@workspace/contracts'
 
 import {
   CompositeSearchProvider,
@@ -353,6 +357,207 @@ describe('composite search provider', () => {
     ])
     expect(events.at(-1)).toMatchObject({ count: 2, type: 'done' })
   })
+
+  it('overfetches disk search when one dirty path has multiple suppressed matches', async () => {
+    const disk = new QueryLimitedSearchProvider([
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/dirty.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/dirty.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/other.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        count: 3,
+        path: 'repo',
+        query: 'needle',
+        truncated: false,
+        type: 'done',
+      },
+    ])
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(['repo/src/dirty.ts']),
+      openBuffers: new OpenBufferSearchProvider([
+        {
+          path: 'repo/src/dirty.ts',
+          text: 'needle from dirty editor',
+        },
+      ]),
+    })
+
+    const events = await collectEvents(provider.search({ ...QUERY, limit: 2 }))
+    const matches = events.filter((event) => event.type === 'match').map((event) => event.match)
+
+    expect(matches).toEqual([
+      expect.objectContaining({
+        path: 'repo/src/dirty.ts',
+        source: 'open-buffer',
+      }),
+      expect.objectContaining({ path: 'repo/src/other.ts', source: 'disk' }),
+    ])
+    expect(events.at(-1)).toMatchObject({ count: 2, type: 'done' })
+  })
+
+  it('preserves disk search measurement on the composite done event', async () => {
+    const measurement: WorkspaceSearchMeasurement = {
+      durationMs: 12,
+      firstResultMs: 4,
+      providerSources: ['rg'],
+      providers: [
+        {
+          durationMs: 10,
+          firstResultMs: 3,
+          resultCount: 1,
+          source: 'rg',
+          statCallCount: 1,
+          statDurationMs: 2,
+        },
+      ],
+      repeatedStatPathCount: 0,
+      statCallCount: 1,
+      statDurationMs: 2,
+      statPathCount: 1,
+      topStatPaths: [{ count: 1, durationMs: 2, path: 'repo/src/app.ts' }],
+    }
+    const disk = new StaticSearchProvider([
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/app.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        count: 1,
+        measurement,
+        path: 'repo',
+        query: 'needle',
+        truncated: false,
+        type: 'done',
+      },
+    ])
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(),
+      openBuffers: new OpenBufferSearchProvider([]),
+    })
+
+    const events = await collectEvents(provider.search(QUERY))
+
+    expect(events.at(-1)).toMatchObject({
+      measurement,
+      type: 'done',
+    })
+  })
+
+  it('passes only remaining capacity to disk when no dirty paths need suppression', async () => {
+    const disk = new RecordingSearchProvider()
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(),
+      openBuffers: new OpenBufferSearchProvider([
+        {
+          path: 'repo/src/app.ts',
+          text: 'needle\nneedle',
+        },
+      ]),
+    })
+
+    await collectEvents(provider.search({ ...QUERY, limit: 5 }))
+
+    expect(disk.queries.at(0)?.limit).toBe(3)
+  })
+
+  it('keeps consuming disk search until done after the composite limit is reached', async () => {
+    const measurement: WorkspaceSearchMeasurement = {
+      durationMs: 12,
+      firstResultMs: 4,
+      providerSources: ['rg'],
+      providers: [
+        {
+          durationMs: 10,
+          firstResultMs: 3,
+          resultCount: 2,
+          source: 'rg',
+          statCallCount: 2,
+          statDurationMs: 3,
+        },
+      ],
+      repeatedStatPathCount: 0,
+      statCallCount: 2,
+      statDurationMs: 3,
+      statPathCount: 2,
+      topStatPaths: [
+        { count: 1, durationMs: 1, path: 'repo/src/app.ts' },
+        { count: 1, durationMs: 2, path: 'repo/src/other.ts' },
+      ],
+    }
+    const disk = new StaticSearchProvider([
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/app.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/other.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        count: 1,
+        measurement,
+        path: 'repo',
+        query: 'needle',
+        truncated: true,
+        type: 'done',
+      },
+    ])
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(),
+      openBuffers: new OpenBufferSearchProvider([]),
+    })
+
+    const events = await collectEvents(provider.search({ ...QUERY, limit: 1 }))
+
+    expect(events.filter((event) => event.type === 'match')).toHaveLength(1)
+    expect(events.at(-1)).toMatchObject({
+      measurement,
+      truncated: true,
+      type: 'done',
+    })
+  })
 })
 
 class StaticSearchProvider implements SearchProvider {
@@ -382,6 +587,21 @@ class QueryLimitedSearchProvider implements SearchProvider {
       if (event.type === 'match') count += 1
 
       yield event
+    }
+  }
+}
+
+class RecordingSearchProvider implements SearchProvider {
+  queries: WorkspaceSearchQuery[] = []
+
+  async *search(query: WorkspaceSearchQuery): AsyncGenerator<WorkspaceSearchEvent> {
+    this.queries.push(query)
+    yield {
+      count: 0,
+      path: query.path,
+      query: query.query,
+      truncated: false,
+      type: 'done',
     }
   }
 }

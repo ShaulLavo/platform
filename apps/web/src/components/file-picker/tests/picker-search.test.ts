@@ -1,4 +1,8 @@
-import type { WorkspaceSearchEvent, WorkspaceSearchMatch } from '@workspace/contracts'
+import type {
+  WorkspaceSearchEvent,
+  WorkspaceSearchMatch,
+  WorkspaceSearchQuery,
+} from '@workspace/contracts'
 import type { FindMatch } from '@/lib/file-system-types'
 import { describe, expect, it } from 'vitest'
 
@@ -89,9 +93,9 @@ describe('streamPickerSearchEntries', () => {
   })
 
   it('uses the system scope when searching from the workspace root', async () => {
-    let observedQuery = ''
+    let observedQuery: WorkspaceSearchQuery | null = null
     const search: WorkspaceSearchStream = (query) => {
-      observedQuery = query.path
+      observedQuery = query
       return toStream([matchEvent('a.ts'), doneEvent()])
     }
 
@@ -106,7 +110,13 @@ describe('streamPickerSearchEntries', () => {
       },
     )
 
-    expect(observedQuery).toBe('')
+    expect(observedQuery).toMatchObject({
+      includeContent: false,
+      includeNames: true,
+      matchMode: 'literal',
+      path: '',
+      useWorkspaceIndex: false,
+    })
     expect(result[0]).toMatchObject({ searchScope: 'system' })
   })
 

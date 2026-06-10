@@ -39,10 +39,14 @@ export {
 export type {
   WorkspaceSearchDoneEvent,
   WorkspaceSearchEvent,
+  WorkspaceSearchMeasurement,
   WorkspaceSearchMatchMode,
   WorkspaceSearchMatch,
+  WorkspaceSearchProviderMeasurement,
+  WorkspaceSearchProviderSource,
   WorkspaceSearchQuery,
   WorkspaceSearchSource,
+  WorkspaceSearchStatPathCount,
 } from './workspace-search'
 export {
   workspaceSearchPreview,

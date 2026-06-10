@@ -9,6 +9,10 @@ type SearchToolRequirements = {
   names: boolean
 }
 
+type SearchToolRunOptions = {
+  cwd?: string
+}
+
 const commandAvailability = new Map<string, Promise<boolean>>()
 
 export async function canUseSearchTools(requirements: SearchToolRequirements) {
@@ -24,9 +28,13 @@ export async function* runToolLines(
   signal: AbortSignal | undefined,
   successCodes: readonly number[],
   toleratedFailureCodes: readonly number[] = [],
+  options: SearchToolRunOptions = {},
 ): AsyncGenerator<string> {
   const startedAt = performance.now()
-  const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(command, args, {
+    cwd: options.cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
   const exit = waitForExit(child)
   const cleanup = attachAbort(signal, child)
   const stderr = collectDecodedStreamTail(child.stderr)
