@@ -1,5 +1,5 @@
-import { searchResultsSurfaceId } from '@/features/tiling-surface-manager/engine/layout-ids'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import { searchResultsSurfaceId } from '@workspace/tiling/utils/layout-ids'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 type SearchRuntimeSelection = {
   workspaceLayout: WorkspaceLayout

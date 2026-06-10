@@ -9,11 +9,8 @@ import {
   searchPreviewSurfaceId,
   searchResultsSurfaceId,
   terminalSurfaceId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
-import {
-  SURFACE_SERIALIZED_VERSION,
-  type SurfaceType,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-ids'
+import { SURFACE_SERIALIZED_VERSION, type SurfaceType } from '@workspace/tiling/utils/layout-types'
 import {
   canFloatSurface,
   canSplitSurface,

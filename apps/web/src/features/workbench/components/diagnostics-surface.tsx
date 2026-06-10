@@ -2,7 +2,7 @@ import type {
   LanguageServerDefinitionTarget,
   LanguageServerDiagnosticSummary,
   LanguageServerStatus,
-} from '@editor/lsp-plugin'
+} from '@singapor/lsp-plugin'
 
 import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'

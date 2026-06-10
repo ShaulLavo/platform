@@ -1,4 +1,4 @@
-import type { Surface } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { Surface } from '@workspace/tiling/utils/layout-types'
 
 export function surfacesAreEqual(left: Surface | null, right: Surface | null) {
   if (left === right) return true

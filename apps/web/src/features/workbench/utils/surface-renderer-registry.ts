@@ -3,11 +3,7 @@ import { createClientInvariantError } from '@/lib/structured-errors'
 import type { ComponentType } from 'react'
 
 import { FixtureSurface } from '@/features/workbench/components/fixture-surface'
-import type {
-  Surface,
-  SurfaceType,
-  WindowId,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+import type { Surface, SurfaceType, WindowId } from '@workspace/tiling/utils/layout-types'
 
 export type SurfaceRendererProps = {
   readonly active: boolean

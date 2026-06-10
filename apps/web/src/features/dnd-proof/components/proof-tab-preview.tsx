@@ -1,4 +1,4 @@
-import type { Surface, SurfaceId } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { Surface, SurfaceId } from '@workspace/tiling/utils/layout-types'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofTabPreview({

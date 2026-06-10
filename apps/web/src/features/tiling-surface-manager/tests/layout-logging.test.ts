@@ -9,20 +9,20 @@ vi.mock('@/lib/client-logging', () => ({
   log: clientLogMock,
 }))
 
-import { createFileEditorSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { createFileEditorSurface } from '@workspace/tiling/utils/layout-builders'
 import {
   flushPendingWorkbenchLayoutInfoLogs,
   layoutSnapshot,
   logWorkbenchLayoutInfo,
   operationSummary,
 } from '@/features/tiling-surface-manager/engine/layout-logging'
-import { createWorkbenchWindow } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { createWorkbenchWindow } from '@workspace/tiling/utils/layout-builders'
 import {
   CLASSIC_RECIPE_ID,
   layoutNodeId,
   workbenchWindowId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-ids'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('layout logging', () => {
   afterEach(() => {

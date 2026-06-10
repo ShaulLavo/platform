@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
-import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
+import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/layout-command-presets'
 import {
   createClassicFirstRunWorkspaceLayout,
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
-import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-builders'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
 import { activeEditorPathForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 
 import { activePlatformKeyBindings } from '../active-bindings'

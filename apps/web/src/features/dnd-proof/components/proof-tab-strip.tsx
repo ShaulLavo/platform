@@ -3,22 +3,23 @@ import { useDroppable } from '@dnd-kit/react'
 import { ProofTab } from '@/features/dnd-proof/components/proof-tab'
 import { ProofTabPreview } from '@/features/dnd-proof/components/proof-tab-preview'
 import {
-  DND_PROOF_TAB_TYPE,
-  DND_PROOF_WINDOW_TYPE,
+  TILING_TAB_TYPE,
+  TILING_WINDOW_TYPE,
   tabStripDropId,
-  type DndProofDragData,
-  type DndProofDropData,
-} from '@/features/dnd-proof/utils/drag-data'
+  type TilingDragData,
+  type TilingDropData,
+} from '@workspace/tiling/utils/drag-data'
 import {
-  dndProofTabStripPreviewItems,
-  type DndProofInsertionPreview,
-} from '@/features/dnd-proof/utils/tab-preview'
+  tilingTabStripPreviewItems,
+  type TilingInsertionPreview,
+} from '@workspace/tiling/utils/tab-preview'
 import type {
   Surface,
   SurfaceId,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
+import { tilingTabStripAttributes } from '@workspace/tiling/utils/dom-attributes'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ProofTabStrip({
@@ -33,9 +34,9 @@ export function ProofTabStrip({
   onCloseSurface,
   onSelectSurface,
 }: {
-  readonly activeDrag: DndProofDragData | null
+  readonly activeDrag: TilingDragData | null
   readonly dropZonesVisible: boolean
-  readonly insertionPreview: DndProofInsertionPreview | null
+  readonly insertionPreview: TilingInsertionPreview | null
   readonly insertionPreviewLayout: WorkspaceLayout
   readonly optimisticSorting: boolean
   readonly orientation: 'horizontal' | 'vertical'
@@ -44,19 +45,19 @@ export function ProofTabStrip({
   readonly onCloseSurface: (surfaceId: SurfaceId) => void
   readonly onSelectSurface: (surfaceId: SurfaceId) => void
 }) {
-  const data: DndProofDropData = {
+  const data: TilingDropData = {
     index: surfaces.length,
     kind: 'tab-strip',
     windowId: window.id,
   }
-  const { isDropTarget, ref } = useDroppable<DndProofDropData>({
+  const { isDropTarget, ref } = useDroppable<TilingDropData>({
     accept: tabStripAcceptedTypes(activeDrag),
     data,
     disabled: activeDrag?.kind === 'window' && activeDrag.windowId === window.id,
     id: tabStripDropId(window.id),
   })
   const previewActive = insertionPreview?.targetWindowId === window.id
-  const items = dndProofTabStripPreviewItems({
+  const items = tilingTabStripPreviewItems({
     insertionPreview,
     layout: insertionPreviewLayout,
     surfaces,
@@ -81,6 +82,7 @@ export function ProofTabStrip({
       data-proof-tab-strip-orientation={orientation}
       data-proof-tab-strip-id={window.id}
       data-proof-tab-strip-preview={previewActive ? insertionPreview.kind : undefined}
+      {...tilingTabStripAttributes({ orientation, windowId: window.id })}
       ref={ref}
       role='tablist'
     >
@@ -137,23 +139,20 @@ export function ProofTabStrip({
   )
 }
 
-function activeTabCanSortInStrip(
-  activeDrag: DndProofDragData | null,
-  surfaces: readonly Surface[],
-) {
+function activeTabCanSortInStrip(activeDrag: TilingDragData | null, surfaces: readonly Surface[]) {
   if (activeDrag?.kind !== 'tab') return true
 
   return surfaces.some((surface) => surface.id === activeDrag.surfaceId)
 }
 
-function tabStripAcceptedTypes(activeDrag: DndProofDragData | null) {
-  if (activeDrag?.kind === 'tab') return [DND_PROOF_WINDOW_TYPE]
+function tabStripAcceptedTypes(activeDrag: TilingDragData | null) {
+  if (activeDrag?.kind === 'tab') return [TILING_WINDOW_TYPE]
 
-  return [DND_PROOF_TAB_TYPE, DND_PROOF_WINDOW_TYPE]
+  return [TILING_TAB_TYPE, TILING_WINDOW_TYPE]
 }
 
 function surfaceIsPreviewAdded(
-  insertionPreview: DndProofInsertionPreview | null,
+  insertionPreview: TilingInsertionPreview | null,
   windowId: WorkbenchWindow['id'],
   surfaceId: SurfaceId,
 ) {

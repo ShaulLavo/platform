@@ -8,7 +8,7 @@ import { SearchReplaceFields } from '@/features/search/search-replace-fields'
 import { SearchReplaceToggleButton } from '@/features/search/search-replace-toggle-button'
 import { useSearchBufferInputs } from '@/features/search/use-search-buffer-inputs'
 import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
-import { createSearchResultsSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { createSearchResultsSurface } from '@workspace/tiling/utils/layout-builders'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { Button } from '@workspace/ui/components/button'
 

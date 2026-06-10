@@ -8,14 +8,8 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/react'
 
-import type {
-  LayoutOperation,
-  SurfaceId,
-} from '@/features/tiling-surface-manager/engine/layout-types'
-import type {
-  LayoutRect,
-  SnapDestinationLayoutRect,
-} from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutOperation, SurfaceId } from '@workspace/tiling/utils/layout-types'
+import type { LayoutRect, SnapDestinationLayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import {
   isWorkbenchTabDragData,
   isWorkbenchWindowDragData,

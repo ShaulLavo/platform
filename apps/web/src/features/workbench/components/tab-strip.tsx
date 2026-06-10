@@ -26,7 +26,7 @@ import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
 import {
   bottomPaneSurfaceVisibilityOperation,
   type BottomPaneSurfaceVisibilityItem,
-} from '@/features/tiling-surface-manager/engine/bottom-pane-model'
+} from '@workspace/tiling/utils/bottom-pane-model'
 import { editorGroupIdForWorkbenchWindowId } from '@/features/workbench/utils/editor-surface-layout'
 import { EditorSurfaceContext } from '@/features/workbench/providers/editor-surface-context'
 import { chromeTabStyle } from '@/features/workbench/utils/tab-style'
@@ -39,7 +39,7 @@ import type {
   LayoutOperation,
   Surface,
   WorkbenchWindow,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 export function TabStrip({
   bottomPaneSurfaceVisibilityItems = [],

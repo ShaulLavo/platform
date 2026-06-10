@@ -1,6 +1,6 @@
 import { CommandGroup } from '@workspace/ui/components/command'
 
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 import { CommandPaletteRow } from './command-palette-row'
 import type { CommandPaletteItem } from './command-palette-types'

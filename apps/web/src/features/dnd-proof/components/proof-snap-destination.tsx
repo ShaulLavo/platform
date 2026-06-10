@@ -1,4 +1,4 @@
-import type { DndProofDropCandidate } from '@/features/dnd-proof/utils/snap-destinations'
+import type { TilingDropCandidate } from '@workspace/tiling/utils/snap-destinations'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -8,7 +8,7 @@ export function ProofSnapDestination({
   visible,
 }: {
   readonly active: boolean
-  readonly candidate: DndProofDropCandidate
+  readonly candidate: TilingDropCandidate
   readonly visible: boolean
 }) {
   return (

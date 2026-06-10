@@ -5,27 +5,20 @@ import {
   createChatSurface,
   createClassicFirstRunWorkspaceLayout,
   createFileNavigatorSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import { dispatchEditorSurfaceOperation } from '@/features/workbench/utils/editor-surface-dispatch'
 import {
   editorSurfaceSerializedState,
   editorGroupIdForWorkbenchWindowId,
 } from '@/features/workbench/utils/editor-surface-layout'
-import { CLASSIC_POLICY_ID } from '@/features/tiling-surface-manager/engine/layout-ids'
+import { CLASSIC_POLICY_ID } from '@workspace/tiling/utils/layout-ids'
 import {
   findWindowIdContainingSurface,
   visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
-import {
-  closeSurface,
-  moveSurface,
-} from '@/features/tiling-surface-manager/engine/layout-operations'
-import type {
-  LayoutNodeId,
-  SurfaceId,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-normalize'
+import { closeSurface, moveSurface } from '@workspace/tiling/utils/layout-operations'
+import type { LayoutNodeId, SurfaceId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('dispatchEditorSurfaceOperation', () => {
   it('commits renderer-owned resize and maximize operations', () => {

@@ -1,5 +1,5 @@
-import type { EditorKeymapLayer } from '@editor/core'
-import { observeEditorMountTiming } from '@editor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
+import { observeEditorMountTiming } from '@singapor/core'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import { createRoot } from 'react-dom/client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

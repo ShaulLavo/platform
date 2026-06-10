@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
+} from '@workspace/tiling/utils/layout-builders'
+import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-invariants'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 
 describe('tiling surface workspace layout store', () => {

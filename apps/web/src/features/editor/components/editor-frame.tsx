@@ -1,4 +1,4 @@
-import { EditorHost } from '@editor/react'
+import { EditorHost } from '@singapor/react'
 import { memo, type ComponentProps, type ReactNode } from 'react'
 
 type EditorFrameProps = {

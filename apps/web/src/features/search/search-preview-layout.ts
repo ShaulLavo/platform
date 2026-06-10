@@ -1,14 +1,10 @@
 import {
   createSearchPreviewSurface,
   createSearchResultsSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
-import { PREVIEW_ADJACENT_POLICY_ID } from '@/features/tiling-surface-manager/engine/layout-policies'
-import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
-import type {
-  Surface,
-  SurfaceId,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-builders'
+import { PREVIEW_ADJACENT_POLICY_ID } from '@workspace/tiling/utils/layout-policies'
+import { applyLayoutOperation } from '@workspace/tiling/utils/layout-operations'
+import type { Surface, SurfaceId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
 import {
   searchResultItemById,

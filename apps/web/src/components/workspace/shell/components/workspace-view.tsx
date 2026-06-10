@@ -2,7 +2,7 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { SearchRuntime } from '@/components/workspace/search/components/search-runtime'
 import { EditorSurfaceLayoutView } from '@/features/workbench/components/editor-surface-layout-view'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { EditorKeymapLayer } from '@editor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
 import { memo } from 'react'
 
 type WorkspaceViewProps = {

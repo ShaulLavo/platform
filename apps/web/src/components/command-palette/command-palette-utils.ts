@@ -1,17 +1,14 @@
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import { createWindowManagementSettingsSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
-import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
-import {
-  layoutCommandId,
-  windowManagementCommandId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { createWindowManagementSettingsSurface } from '@workspace/tiling/utils/layout-builders'
+import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/layout-command-presets'
+import { layoutCommandId, windowManagementCommandId } from '@workspace/tiling/utils/layout-ids'
 import {
   selectCommandPaletteRows,
   selectVisibleSurfaces,
   windowCommandDisabledReason,
   type LayoutCommandPaletteRow,
-} from '@/features/tiling-surface-manager/engine/layout-selectors'
+} from '@workspace/tiling/utils/layout-selectors'
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
@@ -22,7 +19,7 @@ import type {
   WindowManagementCommand,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'

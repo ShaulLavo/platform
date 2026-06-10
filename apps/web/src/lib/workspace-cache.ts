@@ -7,8 +7,8 @@ import {
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
-import { createClassicFirstRunWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
+import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
 import {
   restoreWorkspaceLayout,
   serializeWorkspaceLayout,

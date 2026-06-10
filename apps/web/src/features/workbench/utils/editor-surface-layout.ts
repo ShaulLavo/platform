@@ -1,13 +1,13 @@
 import {
   normalizeWorkspaceLayout,
   visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-normalize'
 import type {
   Surface,
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 export type EditorSurfaceSerializedState = {
   readonly editorGroupId: string

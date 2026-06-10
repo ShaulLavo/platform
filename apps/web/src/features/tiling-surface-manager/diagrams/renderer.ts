@@ -3,18 +3,18 @@ import type {
   SurfaceType,
   WorkspaceLayout,
   WorkspaceRecipeSlot,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 // The generator script SSR-loads these engine modules through Vite and passes
 // the namespaces in as `engine`. Renderers only need their types, never their
 // runtime, so `typeof import(...)` keeps this file out of the browser bundle.
 export type Engine = {
-  readonly builders: typeof import('@/features/tiling-surface-manager/engine/layout-builders')
-  readonly geometry: typeof import('@/features/tiling-surface-manager/engine/layout-geometry')
-  readonly normalize: typeof import('@/features/tiling-surface-manager/engine/layout-normalize')
-  readonly operations: typeof import('@/features/tiling-surface-manager/engine/layout-operations')
-  readonly rail: typeof import('@/features/tiling-surface-manager/engine/rail-model')
-  readonly selectors: typeof import('@/features/tiling-surface-manager/engine/layout-selectors')
+  readonly builders: typeof import('@workspace/tiling/utils/layout-builders')
+  readonly geometry: typeof import('@workspace/tiling/utils/layout-geometry')
+  readonly normalize: typeof import('@workspace/tiling/utils/layout-normalize')
+  readonly operations: typeof import('@workspace/tiling/utils/layout-operations')
+  readonly rail: typeof import('@workspace/tiling/utils/rail-model')
+  readonly selectors: typeof import('@workspace/tiling/utils/layout-selectors')
 }
 
 export type DiagramState = {

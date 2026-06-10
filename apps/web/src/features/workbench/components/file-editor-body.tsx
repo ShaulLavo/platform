@@ -6,11 +6,11 @@ import type { EditorRenderDocument } from '@/features/editor/editor-render-docum
 import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
-import type { DocumentSessionChange, EditorKeymapLayer, EditorScrollPosition } from '@editor/core'
+import type { DocumentSessionChange, EditorKeymapLayer, EditorScrollPosition } from '@singapor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/lsp-plugin'
+} from '@singapor/lsp-plugin'
 
 export function FileEditorBody({
   active,

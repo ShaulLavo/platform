@@ -35,7 +35,7 @@ import {
 import { useCommandPaletteFiles } from '@/components/command-palette/use-command-palette-files'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
 import { useTheme } from '@/components/theme-context'
-import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
+import { applyLayoutOperation } from '@workspace/tiling/utils/layout-operations'
 import { activeEditorPathForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 
 export function CommandPaletteContent({

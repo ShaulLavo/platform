@@ -1,5 +1,5 @@
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
-import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
+import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 
 import type { EditorCommands } from '@/features/editor/state/editor-commands'
 

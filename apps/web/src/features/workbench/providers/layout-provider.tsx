@@ -5,7 +5,7 @@ import {
   type WorkspaceLayoutStoreApi,
 } from '@/features/tiling-surface-manager/engine/surface-state'
 import { LayoutStateContext } from '@/features/workbench/providers/layout-context'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 export function LayoutProvider({
   children,

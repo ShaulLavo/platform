@@ -6,7 +6,7 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
 import { createGitStore } from '@/features/git/state'
 import { useStatus } from '@/features/git/hooks'
-import type { EditorKeymapLayer } from '@editor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
 import { useState } from 'react'
 
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
@@ -15,7 +15,7 @@ import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-
 import { useEditorSurfaceStore } from '@/features/workbench/hooks/use-editor-surface-store'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
-import type { Surface } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { Surface } from '@workspace/tiling/utils/layout-types'
 
 export function EditorSurfaceLayoutView({
   editorKeymapLayers,

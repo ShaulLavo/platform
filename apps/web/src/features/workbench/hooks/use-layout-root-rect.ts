@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 
 import { rootLayoutRect } from '@/features/workbench/utils/layout-style'
-import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 
 export function useLayoutRootRect(initialRect: LayoutRect | null = null) {
   const rootRef = useRef<HTMLDivElement | null>(null)

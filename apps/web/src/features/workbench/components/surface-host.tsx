@@ -6,7 +6,7 @@ import {
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
 import { surfacesAreEqual } from '@/features/workbench/utils/surface-equality'
-import type { Surface, WindowId } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { Surface, WindowId } from '@workspace/tiling/utils/layout-types'
 
 type SurfaceHostProps = {
   readonly active: boolean

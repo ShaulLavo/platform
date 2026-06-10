@@ -6,15 +6,15 @@ import {
   insetLayoutRect,
   type LayoutGeometryOptions,
   type LayoutRect,
-} from '@/features/tiling-surface-manager/engine/layout-geometry'
-import { selectMaterializedLayoutTree } from '@/features/tiling-surface-manager/engine/layout-selectors'
+} from '@workspace/tiling/utils/layout-geometry'
+import { selectMaterializedLayoutTree } from '@workspace/tiling/utils/layout-selectors'
 import {
   isWorkbenchRailBottomPaneItem,
   isWorkbenchRailRecipeItem,
   isWorkbenchRailSurfaceItem,
   selectWorkbenchRailItems,
   type WorkbenchRailItem,
-} from '@/features/tiling-surface-manager/engine/rail-model'
+} from '@workspace/tiling/utils/rail-model'
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
@@ -30,7 +30,7 @@ import {
   defaultSurfaceRendererRegistry,
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
-import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
+import { applyLayoutOperation } from '@workspace/tiling/utils/layout-operations'
 import type {
   LayoutOperation,
   LayoutNode,
@@ -38,7 +38,7 @@ import type {
   WindowId,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 const DEFAULT_LAYOUT_RECT: LayoutRect = {
   height: 720,

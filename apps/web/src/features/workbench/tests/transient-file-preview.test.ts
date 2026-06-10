@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
+import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import {
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
-import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-builders'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import { openTransientFilePreview } from '@/features/workbench/utils/transient-file-preview'
 

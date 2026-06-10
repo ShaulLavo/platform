@@ -5,17 +5,14 @@ import {
   isWorkbenchRailSurfaceItem,
   railItemOperation,
   type WorkbenchRailItem,
-} from '@/features/tiling-surface-manager/engine/rail-model'
+} from '@workspace/tiling/utils/rail-model'
 import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
 import {
   layoutSnapshot,
   logWorkbenchLayoutInfo,
   operationSummary,
 } from '@/features/tiling-surface-manager/engine/layout-logging'
-import type {
-  LayoutOperation,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 export function Rail({
   getLayout,

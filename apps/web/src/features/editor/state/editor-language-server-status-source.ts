@@ -1,4 +1,4 @@
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/lsp-plugin'
+import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@singapor/lsp-plugin'
 
 export type EditorLanguageServerStatusSnapshot = {
   diagnostics: LanguageServerDiagnosticSummary | null

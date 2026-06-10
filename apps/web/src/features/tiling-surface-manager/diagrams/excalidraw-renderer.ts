@@ -1,13 +1,13 @@
 import { createClientInvariantError } from '@/lib/structured-errors'
 
-import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
   SurfaceId,
   SurfaceType,
   WindowId,
   WorkspaceLayout,
   WorkspaceRecipeSlot,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 import type {
   DiagramGroup,

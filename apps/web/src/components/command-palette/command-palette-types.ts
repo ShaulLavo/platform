@@ -3,7 +3,7 @@ import type {
   CustomWindowManagementCommand,
   LayoutOperation,
   WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { PlatformCommandDispatch, PlatformCommandId, PlatformKeyBinding } from '@/keymap'
 

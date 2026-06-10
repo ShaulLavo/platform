@@ -1,7 +1,7 @@
-import { createEmptyWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
-import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
-import { normalizeWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-normalize'
+import { createEmptyWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
+import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-invariants'
+import { normalizeWorkspaceLayout } from '@workspace/tiling/utils/layout-normalize'
 import {
   defaultSurfaceRegistry,
   restoreRegisteredSurface,
@@ -39,7 +39,7 @@ import {
   type WorkspaceLayoutCommand,
   type WorkspaceRecipe,
   type WorkspaceRecipeSlot,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 export type SerializedWorkspaceSurfaceEntry = {
   readonly id: SurfaceId

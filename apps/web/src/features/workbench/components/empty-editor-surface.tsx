@@ -1,6 +1,6 @@
 import type { SurfaceRendererProps } from '@/features/workbench/utils/surface-renderer-registry'
 import { PanelUnavailable } from '@/features/workbench/components/panel-unavailable'
-import { WINDOW_MANAGEMENT_SETTINGS_PLACEHOLDER_CONTEXT_KEY } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { WINDOW_MANAGEMENT_SETTINGS_PLACEHOLDER_CONTEXT_KEY } from '@workspace/tiling/utils/layout-builders'
 import { WindowManagementSettingsSurface } from '@/features/workbench/components/window-management-settings-surface'
 
 export function EmptyEditorSurface({ surface }: SurfaceRendererProps) {

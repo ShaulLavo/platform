@@ -6,18 +6,15 @@ import {
   createSplitNode,
   createWindowNode,
   createWorkbenchWindow,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
-import {
-  layoutNodeId,
-  workbenchWindowId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
-import { normalizeWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-builders'
+import { layoutNodeId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
+import { normalizeWorkspaceLayout } from '@workspace/tiling/utils/layout-normalize'
 import type {
   LayoutNode,
   Surface,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 export function editorWorkspaceLayoutForPaths(
   paths: readonly string[],

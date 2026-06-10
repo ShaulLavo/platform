@@ -25,10 +25,7 @@ import {
   type EditorWorkspaceStoreApi,
 } from '@/features/editor/state/editor-workspace-state'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
-import {
-  createDiffSurface,
-  createFileEditorSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+import { createDiffSurface, createFileEditorSurface } from '@workspace/tiling/utils/layout-builders'
 import {
   activateSurface,
   closeSurface as closeSurfaceInLayout,
@@ -36,8 +33,8 @@ import {
   openSurface,
   reorderSurface,
   tabSurface,
-} from '@/features/tiling-surface-manager/engine/layout-operations'
-import { findWindowIdContainingSurface } from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-operations'
+import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
 import type {
   SnapDestination,
   LayoutEdge,
@@ -45,14 +42,14 @@ import type {
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import {
   editorGroupIdForWorkbenchWindow,
   editorSurfaceSerializedState,
 } from '@/features/workbench/utils/editor-surface-layout'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
+import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import { useMemo } from 'react'
 
 export type EditorCommands = {

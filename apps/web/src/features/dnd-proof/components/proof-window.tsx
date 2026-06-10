@@ -3,21 +3,22 @@ import { DotsSixVerticalIcon, MinusIcon, PlusIcon, XIcon } from '@phosphor-icons
 
 import { ProofTabStrip } from '@/features/dnd-proof/components/proof-tab-strip'
 import {
-  DND_PROOF_TAB_TYPE,
-  DND_PROOF_WINDOW_TYPE,
+  TILING_TAB_TYPE,
+  TILING_WINDOW_TYPE,
   windowDragId,
-  type DndProofDragData,
-  type DndProofDropData,
-} from '@/features/dnd-proof/utils/drag-data'
+  type TilingDragData,
+  type TilingDropData,
+} from '@workspace/tiling/utils/drag-data'
 import { proofWindowTitle } from '@/features/dnd-proof/utils/model'
-import type { DndProofInsertionPreview } from '@/features/dnd-proof/utils/tab-preview'
-import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { TilingInsertionPreview } from '@workspace/tiling/utils/tab-preview'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
   Surface,
   SurfaceId,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
+import { tilingWindowAttributes } from '@workspace/tiling/utils/dom-attributes'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
@@ -41,9 +42,9 @@ export function ProofWindow({
   onExpandWindow,
   onSelectSurface,
 }: {
-  readonly activeDrag: DndProofDragData | null
+  readonly activeDrag: TilingDragData | null
   readonly dropZonesVisible: boolean
-  readonly insertionPreview: DndProofInsertionPreview | null
+  readonly insertionPreview: TilingInsertionPreview | null
   readonly insertionPreviewLayout: WorkspaceLayout
   readonly layout: WorkspaceLayout
   readonly optimisticTabSorting: boolean
@@ -59,7 +60,7 @@ export function ProofWindow({
   readonly onExpandWindow: (windowId: WorkbenchWindow['id']) => void
   readonly onSelectSurface: (surfaceId: SurfaceId) => void
 }) {
-  const data: DndProofDragData & DndProofDropData = {
+  const data: TilingDragData & TilingDropData = {
     kind: 'window',
     windowId: window.id,
   }
@@ -68,13 +69,13 @@ export function ProofWindow({
     isDragSource,
     isDragging,
     ref: draggableRef,
-  } = useDraggable<DndProofDragData & DndProofDropData>({
+  } = useDraggable<TilingDragData & TilingDropData>({
     data,
     id: windowDragId(window.id),
-    type: DND_PROOF_WINDOW_TYPE,
+    type: TILING_WINDOW_TYPE,
   })
-  const { isDropTarget, ref: droppableRef } = useDroppable<DndProofDropData>({
-    accept: [DND_PROOF_TAB_TYPE, DND_PROOF_WINDOW_TYPE],
+  const { isDropTarget, ref: droppableRef } = useDroppable<TilingDropData>({
+    accept: [TILING_TAB_TYPE, TILING_WINDOW_TYPE],
     data,
     disabled: activeDrag?.kind === 'window' && activeDrag.windowId === window.id,
     id: windowDragId(window.id),
@@ -140,6 +141,7 @@ export function ProofWindow({
         insertionPreviewActive ? insertionPreview.kind : undefined
       }
       data-proof-window-mode={window.mode}
+      {...tilingWindowAttributes(window.id)}
       ref={(element) => {
         draggableRef(element)
         droppableRef(element)

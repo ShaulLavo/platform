@@ -15,7 +15,7 @@ import {
   createSearchPreviewSurface,
   createSearchResultsSurface,
   createTerminalSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import {
   SURFACE_SERIALIZED_VERSION,
   type Surface,
@@ -27,7 +27,7 @@ import {
   type SurfacePlacementKind,
   type SurfaceType,
   type WorkspaceRecipeSlot,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 export type SurfaceCreateContext = {
   readonly rootPath?: string | null

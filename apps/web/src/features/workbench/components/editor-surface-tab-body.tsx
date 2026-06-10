@@ -13,11 +13,11 @@ import { FileEditorBody } from '@/features/workbench/components/file-editor-body
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { openTransientFilePreview } from '@/features/workbench/utils/transient-file-preview'
 import { useSelectedFile } from '@/hooks/use-selected-file'
-import type { DocumentSessionChange, EditorKeymapLayer } from '@editor/core'
+import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/lsp-plugin'
+} from '@singapor/lsp-plugin'
 
 export function EditorSurfaceTabBody({
   active,

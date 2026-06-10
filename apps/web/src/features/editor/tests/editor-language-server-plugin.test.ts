@@ -1,4 +1,4 @@
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/lsp-plugin'
+import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@singapor/lsp-plugin'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -18,7 +18,7 @@ const { createdLanguageServerPlugins } = vi.hoisted(() => ({
   createdLanguageServerPlugins: [] as MockLanguageServerPluginOptions[],
 }))
 
-vi.mock('@editor/lsp-plugin/websocket', () => ({
+vi.mock('@singapor/lsp-plugin/websocket', () => ({
   createLanguageServerPlugin: (options: MockLanguageServerPluginOptions) => {
     createdLanguageServerPlugins.push(options)
     return {

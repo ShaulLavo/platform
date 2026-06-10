@@ -1,7 +1,7 @@
 import {
   createEmptyWorkspaceLayout,
   createPlaceholderSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import {
   activateSurface,
   applyLayoutOperation,
@@ -10,11 +10,11 @@ import {
   moveWindow,
   openSurface,
   tabSurface,
-} from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-operations'
 import {
   findWindowIdContainingSurface,
   visibleWindowIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-normalize'
 import type {
   LayoutEdge,
   LayoutOperation,
@@ -23,7 +23,8 @@ import type {
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
+import type { TilingCommitEvent } from '@workspace/tiling/hooks/use-tiling-drag-controller'
 
 export type ProofScenario = 2 | 3 | 6 | 10
 
@@ -142,6 +143,16 @@ export function dispatchProofLayoutOperation(
   if (layout === model.layout) return model
 
   return logModel({ ...model, layout }, layoutOperationEvent(model.layout, operation))
+}
+
+export function commitProofLayout(
+  model: ProofModel,
+  layout: WorkspaceLayout,
+  event: TilingCommitEvent,
+): ProofModel {
+  if (layout === model.layout) return model
+
+  return logModel({ ...model, layout }, proofCommitEvent(model.layout, event))
 }
 
 export function moveProofSurfaceToDestination(
@@ -294,6 +305,32 @@ function windowMoveEvent(layout: WorkspaceLayout, destination: SnapDestination) 
   }
 
   return `window -> ${destinationLabel(destination)}`
+}
+
+function proofCommitEvent(layout: WorkspaceLayout, event: TilingCommitEvent) {
+  if (event.source.kind === 'tab') return tabCommitEvent(layout, event.target)
+
+  return windowCommitEvent(layout, event.target)
+}
+
+function tabCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
+  if (target.kind === 'tab') return `tab -> ${windowTitle(layout, target.windowId)}:${target.index}`
+  if (target.kind === 'tab-strip') {
+    return `tab -> ${windowTitle(layout, target.windowId)}:${target.index}`
+  }
+  if (target.kind === 'window') return `tab -> ${windowTitle(layout, target.windowId)}:end`
+
+  return `tab -> ${destinationLabel(target.destination)}`
+}
+
+function windowCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
+  if (target.kind === 'tab') return `window -> merged tabs:${windowTitle(layout, target.windowId)}`
+  if (target.kind === 'tab-strip') {
+    return `window -> merged tabs:${windowTitle(layout, target.windowId)}`
+  }
+  if (target.kind === 'window') return `window -> ${windowTitle(layout, target.windowId)}`
+
+  return windowMoveEvent(layout, target.destination)
 }
 
 function layoutOperationEvent(layout: WorkspaceLayout, operation: LayoutOperation) {

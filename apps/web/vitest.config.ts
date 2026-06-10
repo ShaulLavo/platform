@@ -4,7 +4,11 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 // Shared resolution so every project reads the same `@/` paths as the app.
-const alias = { '@': path.resolve(__dirname, './src') }
+const workspaceRoot = path.resolve(__dirname, '../..')
+const alias = {
+  '@': path.resolve(__dirname, './src'),
+  '@workspace/tiling': path.resolve(workspaceRoot, 'packages/tiling/src'),
+}
 const reactPlugin = () => react({ babel: { plugins: ['babel-plugin-react-compiler'] } })
 const browserTestPort = process.env.VITEST_BROWSER_PORT ?? '5179'
 const browserFileServerPort = process.env.VITEST_BROWSER_FILE_SERVER_PORT ?? '33201'

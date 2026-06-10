@@ -6,7 +6,7 @@ import type {
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 import type { DiagramGroup, DiagramState, Engine } from './renderer'
 

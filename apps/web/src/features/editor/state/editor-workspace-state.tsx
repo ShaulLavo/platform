@@ -4,8 +4,8 @@ import {
   activeEditorPathForWorkspaceLayout,
   editorOpenPathsForWorkspaceLayout,
 } from '@/features/workbench/utils/editor-surface-layout'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
-import { createClassicFirstRunWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
+import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'

@@ -11,17 +11,17 @@ import {
   bottomPaneSurfaceVisibilityItems,
   isBottomPaneWindow,
   type BottomPaneSurfaceVisibilityItem,
-} from '@/features/tiling-surface-manager/engine/bottom-pane-model'
+} from '@workspace/tiling/utils/bottom-pane-model'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import { surfacesAreEqual } from '@/features/workbench/utils/surface-equality'
-import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
   LayoutOperation,
   Surface,
   WindowId,
   WorkbenchWindow,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import {

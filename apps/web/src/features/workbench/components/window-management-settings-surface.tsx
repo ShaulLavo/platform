@@ -3,12 +3,9 @@ import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
 import { Switch } from '@workspace/ui/components/switch'
 
-import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
-import {
-  layoutCommandId,
-  windowManagementCommandId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/layout-command-presets'
+import { layoutCommandId, windowManagementCommandId } from '@workspace/tiling/utils/layout-ids'
 import {
   type CustomWindowFrame,
   type CustomWindowManagementCommand,
@@ -16,10 +13,10 @@ import {
   type Surface,
   type WorkspaceLayout,
   type WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
-import { selectVisibleSurfaces } from '@/features/tiling-surface-manager/engine/layout-selectors'
+import { selectVisibleSurfaces } from '@workspace/tiling/utils/layout-selectors'
 
 const FRAME_ANCHORS: readonly CustomWindowFrame['anchor'][] = [
   'top-left',

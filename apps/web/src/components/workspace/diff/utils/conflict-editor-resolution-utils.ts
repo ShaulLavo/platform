@@ -5,7 +5,7 @@ import type {
   EditorConflictStoreApi,
   FilesystemConflict,
 } from '@/features/editor/state/editor-conflict-state'
-import { parseMergeConflicts, type TextSnapshot } from '@editor/core'
+import { parseMergeConflicts, type TextSnapshot } from '@singapor/core'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 

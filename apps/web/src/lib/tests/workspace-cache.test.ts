@@ -9,12 +9,9 @@ import {
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileDiff } from '@/features/git/types'
-import { createGitChangesSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
-import {
-  moveSurface,
-  openSurface,
-} from '@/features/tiling-surface-manager/engine/layout-operations'
+import { createGitChangesSurface } from '@workspace/tiling/utils/layout-builders'
+import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
+import { moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
 import {
   WORKSPACE_CACHE_STORAGE_KEYS,
   readWorkspaceCache,

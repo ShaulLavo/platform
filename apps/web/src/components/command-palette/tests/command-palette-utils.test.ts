@@ -6,19 +6,16 @@ import {
   layoutCommandPaletteItems,
   windowManagementActionPaletteItems,
 } from '@/components/command-palette/command-palette-utils'
-import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
-import { createClassicFirstRunWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
-import { CLOSE_ACTIVE_SURFACE_COMMAND_ID } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import {
-  layoutCommandId,
-  windowManagementCommandId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/layout-command-presets'
+import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
+import { CLOSE_ACTIVE_SURFACE_COMMAND_ID } from '@workspace/tiling/utils/layout-command-catalog'
+import { layoutCommandId, windowManagementCommandId } from '@workspace/tiling/utils/layout-ids'
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
   WorkspaceLayout,
   WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 test('layout command palette items expose custom and saved commands without built-in duplicates', () => {
   const customCommand: CustomWindowManagementCommand = {

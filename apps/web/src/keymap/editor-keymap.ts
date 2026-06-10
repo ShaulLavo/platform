@@ -7,7 +7,7 @@ import {
   type EditorCommandPack,
   type EditorKeyBinding,
   type EditorKeymapLayer,
-} from '@editor/core'
+} from '@singapor/core'
 
 import type { EditorPlatformCommandId, PlatformCommandId, PlatformKeyBinding } from './types'
 

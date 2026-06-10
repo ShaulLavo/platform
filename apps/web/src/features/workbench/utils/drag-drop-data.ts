@@ -3,7 +3,7 @@ import type {
   SurfaceId,
   WindowId,
   WorkbenchWindow,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 export const WORKBENCH_TAB_DRAG_TYPE = 'workbench-tab'
 export const WORKBENCH_WINDOW_DRAG_TYPE = 'workbench-window'

@@ -1,4 +1,4 @@
-import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 
 export function ProofPreviewWindow({ rect }: { readonly rect: LayoutRect }) {

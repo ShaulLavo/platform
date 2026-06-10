@@ -1,10 +1,10 @@
-import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
   SurfaceType,
   WindowId,
   WorkspaceLayout,
   WorkspaceRecipeSlot,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 import { CharGrid } from './char-grid'
 import type {

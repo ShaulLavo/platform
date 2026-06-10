@@ -1,11 +1,11 @@
 import { expect, test } from '../../../../test/fixtures'
 import {
-  dndProofInsertionPreview,
-  dndProofTabStripPreviewItems,
-} from '@/features/dnd-proof/utils/tab-preview'
+  tilingInsertionPreview,
+  tilingTabStripPreviewItems,
+} from '@workspace/tiling/utils/tab-preview'
 import { createProofScenarioModel } from '@/features/dnd-proof/utils/model'
-import { visibleWindowIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
-import type { WindowId } from '@/features/tiling-surface-manager/engine/layout-types'
+import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
+import type { WindowId } from '@workspace/tiling/utils/layout-types'
 
 test('window-center resolves to a merge preview at the target window end', () => {
   const { layout } = createProofScenarioModel(3)
@@ -13,7 +13,7 @@ test('window-center resolves to a merge preview at the target window end', () =>
   const sourceWindow = layout.windowsById[sourceWindowId]
   const targetWindow = layout.windowsById[targetWindowId]
 
-  const preview = dndProofInsertionPreview({
+  const preview = tilingInsertionPreview({
     activeDrag: { kind: 'window', windowId: sourceWindowId },
     layout,
     resolvedTarget: {
@@ -38,7 +38,7 @@ test('window-center resolves to a merge preview at tabIndex', () => {
   const { layout } = createProofScenarioModel(3)
   const { sourceWindowId, targetWindowId } = windowMergePair(layout)
 
-  const preview = dndProofInsertionPreview({
+  const preview = tilingInsertionPreview({
     activeDrag: { kind: 'window', windowId: sourceWindowId },
     layout,
     resolvedTarget: {
@@ -57,7 +57,7 @@ test('window merge preview inserts source ghost tabs into target strip items', (
   const { layout } = createProofScenarioModel(3)
   const { sourceWindowId, targetWindowId } = windowMergePair(layout)
   const targetSurfaces = surfacesForWindow(layout, targetWindowId)
-  const preview = dndProofInsertionPreview({
+  const preview = tilingInsertionPreview({
     activeDrag: { kind: 'window', windowId: sourceWindowId },
     layout,
     resolvedTarget: {
@@ -66,7 +66,7 @@ test('window merge preview inserts source ghost tabs into target strip items', (
     },
   })
 
-  const items = dndProofTabStripPreviewItems({
+  const items = tilingTabStripPreviewItems({
     insertionPreview: preview,
     layout,
     surfaces: targetSurfaces,
@@ -87,7 +87,7 @@ test('returning a detached tab to its source strip uses a slot preview', () => {
   const sourceSurfaceId = sourceWindow?.surfaceIds[0]
   if (!sourceSurfaceId) throw new Error('Missing source surface')
 
-  const preview = dndProofInsertionPreview({
+  const preview = tilingInsertionPreview({
     activeDrag: { kind: 'tab', surfaceId: sourceSurfaceId },
     layout,
     resolvedTarget: {
@@ -95,7 +95,7 @@ test('returning a detached tab to its source strip uses a slot preview', () => {
       target: { index: 1, kind: 'tab-strip', windowId: sourceWindowId },
     },
   })
-  const items = dndProofTabStripPreviewItems({
+  const items = tilingTabStripPreviewItems({
     insertionPreview: preview,
     layout,
     surfaces: surfacesForWindow(layout, sourceWindowId),
@@ -128,7 +128,7 @@ function surfacesForWindow(
   })
 }
 
-function previewItemLabel(item: ReturnType<typeof dndProofTabStripPreviewItems>[number]) {
+function previewItemLabel(item: ReturnType<typeof tilingTabStripPreviewItems>[number]) {
   if (item.kind === 'surface') return `surface:${item.surface.id}`
   if (item.kind === 'ghost') return `ghost:${item.surface.id}`
 

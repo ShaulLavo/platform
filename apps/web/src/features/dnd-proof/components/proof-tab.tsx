@@ -2,16 +2,13 @@ import { useSortable } from '@dnd-kit/react/sortable'
 import { XIcon } from '@phosphor-icons/react'
 
 import {
-  DND_PROOF_TAB_TYPE,
+  TILING_TAB_TYPE,
   tabDragId,
-  type DndProofDragData,
-  type DndProofDropData,
-} from '@/features/dnd-proof/utils/drag-data'
-import type {
-  Surface,
-  SurfaceId,
-  WindowId,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+  type TilingDragData,
+  type TilingDropData,
+} from '@workspace/tiling/utils/drag-data'
+import type { Surface, SurfaceId, WindowId } from '@workspace/tiling/utils/layout-types'
+import { tilingTabAttributes } from '@workspace/tiling/utils/dom-attributes'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -40,22 +37,22 @@ export function ProofTab({
   readonly onClose: (surfaceId: SurfaceId) => void
   readonly onSelect: (surfaceId: SurfaceId) => void
 }) {
-  const data: DndProofDragData & DndProofDropData = {
+  const data: TilingDragData & TilingDropData = {
     index,
     kind: 'tab',
     surfaceId: surface.id,
     windowId,
   }
   const { handleRef, isDragSource, isDragging, isDropTarget, ref, sourceRef } = useSortable<
-    DndProofDragData & DndProofDropData
+    TilingDragData & TilingDropData
   >({
-    accept: acceptsTabDrops ? DND_PROOF_TAB_TYPE : [],
+    accept: acceptsTabDrops ? TILING_TAB_TYPE : [],
     data,
     group: windowId,
     id: tabDragId(surface.id),
     index,
     plugins: optimisticSorting ? undefined : [],
-    type: DND_PROOF_TAB_TYPE,
+    type: TILING_TAB_TYPE,
   })
 
   function selectSurface() {
@@ -83,6 +80,7 @@ export function ProofTab({
       )}
       data-proof-tab-id={surface.id}
       data-proof-tab-preview-added={previewAdded ? 'true' : undefined}
+      {...tilingTabAttributes(surface.id)}
       ref={(element) => {
         ref(element)
         handleRef(element)

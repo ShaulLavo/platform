@@ -29,21 +29,14 @@ import {
   createSearchPreviewSurface,
   createSearchResultsSurface,
   createTerminalSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
-import {
-  closeSurface,
-  moveSurface,
-  openSurface,
-} from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-builders'
+import { closeSurface, moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
 import {
   LayoutRenderer,
   surfaceAreaLayoutEqual,
 } from '@/features/workbench/components/layout-renderer'
-import type {
-  Surface,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+import type { Surface, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
@@ -52,13 +45,13 @@ import {
   type SurfaceRenderer,
 } from '@/features/workbench/utils/surface-renderer-registry'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
-import { layoutNodeId, overlayId } from '@/features/tiling-surface-manager/engine/layout-ids'
-import type { LayoutOperation } from '@/features/tiling-surface-manager/engine/layout-types'
+import { layoutNodeId, overlayId } from '@workspace/tiling/utils/layout-ids'
+import type { LayoutOperation } from '@workspace/tiling/utils/layout-types'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import {
   findNodeIdForWindow,
   visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-normalize'
 
 describe('LayoutRenderer', () => {
   it('renders an empty layout state', () => {

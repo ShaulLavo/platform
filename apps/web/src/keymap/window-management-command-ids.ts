@@ -1,5 +1,5 @@
-import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import type { WindowManagementCommandId } from '@/features/tiling-surface-manager/engine/layout-types'
+import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import type { WindowManagementCommandId } from '@workspace/tiling/utils/layout-types'
 
 import type { WorkspaceCommandId } from './types'
 

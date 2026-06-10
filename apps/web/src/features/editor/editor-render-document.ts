@@ -1,4 +1,4 @@
-import type { EditorScrollPosition, EditorTextBuffer, EditorViewSession } from '@editor/core'
+import type { EditorScrollPosition, EditorTextBuffer, EditorViewSession } from '@singapor/core'
 
 export type EditorRenderDocument = {
   readonly buffer: EditorTextBuffer

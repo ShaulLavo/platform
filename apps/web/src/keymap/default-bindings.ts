@@ -25,13 +25,13 @@ import {
   TAB_ACTIVE_SURFACE_LEFT_COMMAND_ID,
   TAB_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
   TEAR_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
-} from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import { defaultWindowManagementHotkeyPresets } from '@/features/tiling-surface-manager/engine/layout-command-presets'
+} from '@workspace/tiling/utils/layout-command-catalog'
+import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/layout-command-presets'
 import type {
   WindowManagementCommandId,
   WindowManagementHotkeyPreset,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 import { commandHotkeyMeta } from './command-registry'
 import type {

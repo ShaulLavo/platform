@@ -7,9 +7,9 @@
       "apps/*",
       "packages/contracts",
       "packages/observability",
+      "packages/tiling",
       "packages/tree",
-      "packages/ui",
-      "../Editor/packages/*"
+      "packages/ui"
     ],
     "catalog": {
       "@arethetypeswrong/core": "0.18.2",

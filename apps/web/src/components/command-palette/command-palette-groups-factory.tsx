@@ -1,5 +1,5 @@
 import type { Theme } from '@/components/theme-context'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
 import type { PlatformCommandId } from '@/keymap'
 

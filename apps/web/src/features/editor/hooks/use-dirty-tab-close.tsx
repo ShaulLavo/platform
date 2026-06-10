@@ -10,7 +10,7 @@ import {
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
-import type { WorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import {
   editorSurfacePathCounts,
   editorSurfaceTabRecords,

@@ -17,7 +17,7 @@ import {
   createFileNavigatorSurface,
   createGitChangesSurface,
   createTerminalSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import {
   BACKGROUND_ACTIVE_SURFACE_COMMAND_ID,
   CLOSE_ACTIVE_SURFACE_COMMAND_ID,
@@ -62,19 +62,19 @@ import {
   TEAR_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
   builtInWindowManagementCommands,
   customCommandForBuiltInFrameCommand,
-} from '@/features/tiling-surface-manager/engine/layout-command-catalog'
+} from '@workspace/tiling/utils/layout-command-catalog'
 import {
   findNodeIdForWindow,
   findParentNodeId,
   findWindowIdContainingSurface,
   visibleWindowIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
-import { applyLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-normalize'
+import { applyLayoutOperation } from '@workspace/tiling/utils/layout-operations'
 import {
   selectMruFallback,
   selectWindowNeighborIds,
   windowCommandDisabledReason,
-} from '@/features/tiling-surface-manager/engine/layout-selectors'
+} from '@workspace/tiling/utils/layout-selectors'
 import type {
   BuiltInWindowManagementCommand,
   LayoutEdge,
@@ -83,7 +83,7 @@ import type {
   Surface,
   SurfaceId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import {
   nextEditorDiffViewMode,

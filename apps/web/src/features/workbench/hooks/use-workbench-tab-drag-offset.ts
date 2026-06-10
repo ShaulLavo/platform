@@ -1,7 +1,7 @@
 import { useContext } from 'react'
 
 import { WorkbenchTabDragFeedbackContext } from '@/features/workbench/providers/drag-drop-provider'
-import type { SurfaceId } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { SurfaceId } from '@workspace/tiling/utils/layout-types'
 
 export function useWorkbenchTabDragOffset(surfaceId: SurfaceId) {
   const feedback = useContext(WorkbenchTabDragFeedbackContext)

@@ -4,13 +4,13 @@ import { createCoalescedLogQueue } from '@/lib/coalesced-log'
 import {
   visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-normalize'
 import type {
   SnapDestination,
   LayoutNodeId,
   LayoutOperation,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 type WorkbenchLayoutLogContext = Record<string, unknown>
 

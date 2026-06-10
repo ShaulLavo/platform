@@ -23,18 +23,18 @@ import {
   CLASSIC_EDITOR_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import {
   fileEditorSurfaceId,
   fileNavigatorSurfaceId,
   placeholderSurfaceId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-ids'
+import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import {
   activateSurface,
   moveSurface,
   openSurface,
-} from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-operations'
 import {
   editorGroupIdForWorkbenchWindow,
   editorSurfaceTabRecords,
@@ -45,8 +45,8 @@ import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/lsp-plugin'
-import { createEditorBufferSession } from '@editor/core'
+} from '@singapor/lsp-plugin'
+import { createEditorBufferSession } from '@singapor/core'
 
 describe('editor path utilities', () => {
   it('adds, selects, and renames open tab paths', () => {

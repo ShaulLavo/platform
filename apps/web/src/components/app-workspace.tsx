@@ -11,7 +11,7 @@ import { useResetWorkspaceTreeLoad } from '@/hooks/use-workspace-tree'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { PlatformKeyBinding } from '@/keymap'
-import type { EditorKeymapLayer } from '@editor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
 import { useCallback } from 'react'
 
 type AppWorkspaceProps = {

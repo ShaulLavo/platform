@@ -1,5 +1,5 @@
-import type { EditorState } from '@editor/core'
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@editor/lsp-plugin'
+import type { EditorState } from '@singapor/core'
+import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@singapor/lsp-plugin'
 
 export function formatSyntaxStatus(state: EditorState | null) {
   if (!state?.documentId) return 'Plain text'

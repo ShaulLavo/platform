@@ -16,7 +16,7 @@ import {
   editorSurfaceSerializedState,
   editorSurfaceTabRecords,
 } from '@/features/workbench/utils/editor-surface-layout'
-import { fileEditorSurfaceId } from '@/features/tiling-surface-manager/engine/layout-ids'
+import { fileEditorSurfaceId } from '@workspace/tiling/utils/layout-ids'
 
 describe('editor surface layout selectors', () => {
   it('lists visible file and diff editor paths in layout order', () => {

@@ -14,12 +14,12 @@ import {
   createTerminalSurface,
   createWorkbenchWindow,
   createWindowNode,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import {
   CLOSE_ACTIVE_SURFACE_COMMAND_ID,
   MAXIMIZE_ACTIVE_WINDOW_COMMAND_ID,
-} from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import { checkWorkspaceLayoutInvariants } from '@/features/tiling-surface-manager/engine/layout-invariants'
+} from '@workspace/tiling/utils/layout-command-catalog'
+import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-invariants'
 import {
   fileEditorSurfaceId,
   hotkeyPresetId,
@@ -31,13 +31,9 @@ import {
   REVIEW_RECIPE_ID,
   windowManagementCommandId,
   workbenchWindowId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
-import { visibleSurfaceIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
-import {
-  collapseWindow,
-  moveSurface,
-  openSurface,
-} from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-ids'
+import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
+import { collapseWindow, moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
 import {
   restoreWorkspaceLayout,
   serializeWorkspaceLayout,
@@ -50,7 +46,7 @@ import {
   type SurfaceId,
   type WorkspaceLayout,
   type WorkspaceLayoutCommand,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 const rootPath = '/repo'
 

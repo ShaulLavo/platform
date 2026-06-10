@@ -37,10 +37,7 @@ import {
   WORKBENCH_TAB_DRAG_TYPE,
   type WorkbenchTabDragData,
 } from '@/features/workbench/utils/drag-drop-data'
-import {
-  placeholderSurfaceId,
-  workbenchWindowId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { placeholderSurfaceId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
 
 export function ChromeEditorTabList({
   closeLayoutCacheKey,

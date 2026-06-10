@@ -1,12 +1,9 @@
-import type { LanguageServerDefinitionTarget } from '@editor/lsp-plugin'
+import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 
 import type { EditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
-import { createFileEditorSurface } from '@/features/tiling-surface-manager/engine/layout-builders'
-import { PREVIEW_ADJACENT_POLICY_ID } from '@/features/tiling-surface-manager/engine/layout-policies'
-import type {
-  SurfaceId,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+import { createFileEditorSurface } from '@workspace/tiling/utils/layout-builders'
+import { PREVIEW_ADJACENT_POLICY_ID } from '@workspace/tiling/utils/layout-policies'
+import type { SurfaceId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { WorkspaceLayoutStoreApi } from '@/features/tiling-surface-manager/engine/surface-state'
 
 export function openTransientFilePreview({

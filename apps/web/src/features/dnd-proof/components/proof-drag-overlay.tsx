@@ -1,19 +1,15 @@
 import { DragOverlay } from '@dnd-kit/react'
 import { cn } from '@workspace/ui/lib/utils'
 
-import type { DndProofDragData } from '@/features/dnd-proof/utils/drag-data'
+import type { TilingDragData } from '@workspace/tiling/utils/drag-data'
 import { proofWindowTitle } from '@/features/dnd-proof/utils/model'
-import type {
-  SurfaceId,
-  WindowId,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 export function ProofDragOverlay({
   activeDrag,
   layout,
 }: {
-  readonly activeDrag: DndProofDragData | null
+  readonly activeDrag: TilingDragData | null
   readonly layout: WorkspaceLayout
 }) {
   return (
@@ -23,7 +19,7 @@ export function ProofDragOverlay({
   )
 }
 
-function overlayContent(activeDrag: DndProofDragData | null, layout: WorkspaceLayout) {
+function overlayContent(activeDrag: TilingDragData | null, layout: WorkspaceLayout) {
   if (!activeDrag) return null
   if (activeDrag.kind === 'window') return windowOverlay(activeDrag.windowId, layout)
 

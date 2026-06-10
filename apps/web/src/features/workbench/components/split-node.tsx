@@ -1,14 +1,11 @@
 import { WindowFrame } from '@/features/workbench/components/window-frame'
-import type {
-  LayoutRect,
-  WindowLayoutRect,
-} from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutRect, WindowLayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
   LayoutOperation,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
-import type { MaterializedLayoutNode } from '@/features/tiling-surface-manager/engine/layout-selectors'
+} from '@workspace/tiling/utils/layout-types'
+import type { MaterializedLayoutNode } from '@workspace/tiling/utils/layout-selectors'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
 
 export function SplitNode({

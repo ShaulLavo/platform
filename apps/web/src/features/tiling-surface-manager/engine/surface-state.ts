@@ -2,13 +2,13 @@ import { createClientInvariantError } from '@/lib/structured-errors'
 
 import { createStore, type StoreApi } from 'zustand/vanilla'
 
-import { createEmptyWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-builders'
+import { createEmptyWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
 import {
   checkWorkspaceLayoutInvariants,
   type LayoutInvariantReport,
-} from '@/features/tiling-surface-manager/engine/layout-invariants'
-import { normalizeWorkspaceLayout } from '@/features/tiling-surface-manager/engine/layout-normalize'
-import { applyLayoutOperation as applyPureLayoutOperation } from '@/features/tiling-surface-manager/engine/layout-operations'
+} from '@workspace/tiling/utils/layout-invariants'
+import { normalizeWorkspaceLayout } from '@workspace/tiling/utils/layout-normalize'
+import { applyLayoutOperation as applyPureLayoutOperation } from '@workspace/tiling/utils/layout-operations'
 import {
   layoutSnapshot,
   logWorkbenchLayoutInfo,
@@ -16,10 +16,7 @@ import {
   operationSummary,
   visibleLayoutChanged,
 } from '@/features/tiling-surface-manager/engine/layout-logging'
-import type {
-  LayoutOperation,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 export type WorkspaceLayoutStoreState = {
   readonly layout: WorkspaceLayout

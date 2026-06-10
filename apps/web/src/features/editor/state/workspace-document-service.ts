@@ -11,7 +11,7 @@ import {
   type EditorScrollPosition,
   type EditorTextBuffer,
   type EditorViewSession,
-} from '@editor/core'
+} from '@singapor/core'
 
 export type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
 

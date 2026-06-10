@@ -24,9 +24,9 @@ import {
   createEmptyWorkspaceLayout,
   createFileEditorSurface,
   createPlaceholderSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
-import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
-import { visibleWindowIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-builders'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
+import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
 import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
@@ -38,7 +38,7 @@ import type {
   SurfaceId,
   WindowId,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 const THEME_STORAGE_KEY = 'platform-workbench-layout-renderer-browser-theme'
 const TEST_ROOT_PATH = 'repo'

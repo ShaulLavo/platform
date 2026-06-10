@@ -1,8 +1,8 @@
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
-import type { ResizeHandleLayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
-import type { LayoutOperation } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { ResizeHandleLayoutRect } from '@workspace/tiling/utils/layout-geometry'
+import type { LayoutOperation } from '@workspace/tiling/utils/layout-types'
 
 const KEYBOARD_RESIZE_DELTA_PX = 32
 

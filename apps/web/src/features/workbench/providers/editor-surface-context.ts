@@ -3,9 +3,9 @@ import { createContext } from 'react'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import type { GitStoreApi } from '@/features/git/state'
-import type { EditorKeymapLayer } from '@editor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
 
-import type { Surface, SurfaceId } from '@/features/tiling-surface-manager/engine/layout-types'
+import type { Surface, SurfaceId } from '@workspace/tiling/utils/layout-types'
 
 export type EditorSurfaceContextValue = {
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]

@@ -1,4 +1,4 @@
-import type { ReactEditorController } from '@editor/react'
+import type { ReactEditorController } from '@singapor/react'
 
 import { EditorStatusCounterMetric } from '@/features/editor/components/editor-status-counter-metric'
 import { EditorStatusCursorColumnValue } from '@/features/editor/components/editor-status-cursor-column-value'

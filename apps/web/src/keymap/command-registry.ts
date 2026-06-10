@@ -1,7 +1,7 @@
-import type { EditorCommandId } from '@editor/core'
+import type { EditorCommandId } from '@singapor/core'
 
-import { builtInWindowManagementCommands } from '@/features/tiling-surface-manager/engine/layout-command-catalog'
-import type { BuiltInWindowManagementCommand } from '@/features/tiling-surface-manager/engine/layout-types'
+import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import type { BuiltInWindowManagementCommand } from '@workspace/tiling/utils/layout-types'
 
 import type { EditorPlatformCommandId, PlatformCommandId, WorkspaceCommandId } from './types'
 import { workspaceCommandIdForWindowManagementCommand } from './window-management-command-ids'

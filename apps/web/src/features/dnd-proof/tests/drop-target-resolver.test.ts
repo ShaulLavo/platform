@@ -1,31 +1,31 @@
 import { expect, test } from '../../../../test/fixtures'
-import type { DndProofDragData, DndProofDropData } from '@/features/dnd-proof/utils/drag-data'
+import type { TilingDragData, TilingDropData } from '@workspace/tiling/utils/drag-data'
 import {
-  resolveDndProofTarget,
-  type DndProofIntentMode,
-  type ResolvedDndProofTarget,
-} from '@/features/dnd-proof/utils/drop-target-resolver'
+  resolveTilingTarget,
+  type TilingIntentMode,
+  type ResolvedTilingTarget,
+} from '@workspace/tiling/utils/drop-target-resolver'
 import {
-  proofSnapDestinations,
-  type DndProofDropCandidate,
-} from '@/features/dnd-proof/utils/snap-destinations'
+  tilingSnapDestinations,
+  type TilingDropCandidate,
+} from '@workspace/tiling/utils/snap-destinations'
 import { createProofScenarioModel } from '@/features/dnd-proof/utils/model'
-import { overlayId } from '@/features/tiling-surface-manager/engine/layout-ids'
+import { overlayId } from '@workspace/tiling/utils/layout-ids'
 import {
   deriveLayoutGeometry,
   type LayoutRect,
   type SnapDestinationLayoutRect,
-} from '@/features/tiling-surface-manager/engine/layout-geometry'
+} from '@workspace/tiling/utils/layout-geometry'
 import type {
   LayoutEdge,
   SnapDestination,
   SurfaceId,
   WindowId,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 
 const ROOT_RECT: LayoutRect = { height: 600, width: 1000, x: 0, y: 0 }
-const TAB_SOURCE: DndProofDragData = { kind: 'tab', surfaceId: surfaceId('surface-a') }
-const WINDOW_SOURCE: DndProofDragData = { kind: 'window', windowId: windowId('window-a') }
+const TAB_SOURCE: TilingDragData = { kind: 'tab', surfaceId: surfaceId('surface-a') }
+const WINDOW_SOURCE: TilingDragData = { kind: 'window', windowId: windowId('window-a') }
 
 test('root snap candidates preview full edges but hit only the outer edge rail', () => {
   const model = createProofScenarioModel(3)
@@ -35,7 +35,7 @@ test('root snap candidates preview full edges but hit only the outer edge rail',
     resizeHandleThicknessPx: 8,
     snapEdgeRatio: 0.18,
   })
-  const candidates = proofSnapDestinations({
+  const candidates = tilingSnapDestinations({
     activeDrag: null,
     rootRect: ROOT_RECT,
     snapDestinationRects: geometry.snapDestinationRects,
@@ -69,7 +69,7 @@ test('root snap candidates preview full edges but hit only the outer edge rail',
 
 test('window drags add source return and source-vacancy root candidates', () => {
   const sourceWindowRect: LayoutRect = { height: 600, width: 300, x: 700, y: 0 }
-  const candidates = proofSnapDestinations({
+  const candidates = tilingSnapDestinations({
     activeDrag: WINDOW_SOURCE,
     rootRect: ROOT_RECT,
     snapDestinationRects: rootSnapDestinationRects(),
@@ -91,7 +91,7 @@ test('window drags add source return and source-vacancy root candidates', () => 
 
 test('window source return core resolves to the source window', () => {
   const sourceWindowRect: LayoutRect = { height: 600, width: 300, x: 700, y: 0 }
-  const candidates = proofSnapDestinations({
+  const candidates = tilingSnapDestinations({
     activeDrag: WINDOW_SOURCE,
     rootRect: ROOT_RECT,
     snapDestinationRects: rootSnapDestinationRects(),
@@ -111,7 +111,7 @@ test('window source return core resolves to the source window', () => {
 
 test('window source vacancy corridor resolves to a root edge', () => {
   const sourceWindowRect: LayoutRect = { height: 600, width: 300, x: 700, y: 0 }
-  const candidates = proofSnapDestinations({
+  const candidates = tilingSnapDestinations({
     activeDrag: WINDOW_SOURCE,
     rootRect: ROOT_RECT,
     snapDestinationRects: rootSnapDestinationRects(),
@@ -326,7 +326,7 @@ test('sticky target prevents flicker between adjacent overlapping zones', () => 
     priority: 80,
     rect: { height: 50, width: 50, x: 60, y: 0 },
   })
-  const previousTarget: ResolvedDndProofTarget = {
+  const previousTarget: ResolvedTilingTarget = {
     candidateId: stickyCandidate.id,
     mode: 'window',
     target: stickyCandidate.target,
@@ -350,7 +350,7 @@ test('sticky snap target remains active over tab insertion until its hit rect is
     rect: { height: 60, width: 200, x: 0, y: 0 },
     target: snapTarget({ edge: 'top', kind: 'window-edge', windowId: windowId('window-b') }),
   })
-  const previousTarget: ResolvedDndProofTarget = {
+  const previousTarget: ResolvedTilingTarget = {
     candidateId: stickyCandidate.id,
     mode: 'tab-detached',
     target: stickyCandidate.target,
@@ -376,7 +376,7 @@ test('sticky top snap does not block direct docking into another strip', () => {
     target: snapTarget({ edge: 'top', kind: 'window-edge', windowId: windowId('window-b') }),
   })
   const tabTarget = tabStripTarget('window-b', 1)
-  const previousTarget: ResolvedDndProofTarget = {
+  const previousTarget: ResolvedTilingTarget = {
     candidateId: stickyCandidate.id,
     mode: 'tab-detached',
     target: stickyCandidate.target,
@@ -405,16 +405,16 @@ function resolveTarget({
   tabPriority,
   tabTarget,
 }: {
-  readonly candidates: readonly DndProofDropCandidate[]
-  readonly mode: DndProofIntentMode
+  readonly candidates: readonly TilingDropCandidate[]
+  readonly mode: TilingIntentMode
   readonly point?: { readonly x: number; readonly y: number }
-  readonly previousTarget?: ResolvedDndProofTarget | null
-  readonly source: DndProofDragData
+  readonly previousTarget?: ResolvedTilingTarget | null
+  readonly source: TilingDragData
   readonly sourceWindowId?: WindowId | null
   readonly tabPriority?: number
-  readonly tabTarget: Extract<DndProofDropData, { readonly kind: 'tab' | 'tab-strip' }> | null
+  readonly tabTarget: Extract<TilingDropData, { readonly kind: 'tab' | 'tab-strip' }> | null
 }) {
-  return resolveDndProofTarget({
+  return resolveTilingTarget({
     candidates,
     mode,
     point,
@@ -425,27 +425,27 @@ function resolveTarget({
   })
 }
 
-function rootCandidate(candidates: readonly DndProofDropCandidate[], edge: LayoutEdge) {
+function rootCandidate(candidates: readonly TilingDropCandidate[], edge: LayoutEdge) {
   const candidate = candidates.find((value) => value.kind === 'root-edge' && value.edge === edge)
   expect(candidate).toBeDefined()
 
-  return candidate as DndProofDropCandidate
+  return candidate as TilingDropCandidate
 }
 
-function sourceReturnCandidate(candidates: readonly DndProofDropCandidate[]) {
+function sourceReturnCandidate(candidates: readonly TilingDropCandidate[]) {
   const candidate = candidates.find((value) => value.kind === 'source-return')
   expect(candidate).toBeDefined()
 
-  return candidate as DndProofDropCandidate
+  return candidate as TilingDropCandidate
 }
 
-function sourceVacancyCandidate(candidates: readonly DndProofDropCandidate[], edge: LayoutEdge) {
+function sourceVacancyCandidate(candidates: readonly TilingDropCandidate[], edge: LayoutEdge) {
   const candidate = candidates.find(
     (value) => value.id.includes('source-vacancy') && value.edge === edge,
   )
   expect(candidate).toBeDefined()
 
-  return candidate as DndProofDropCandidate
+  return candidate as TilingDropCandidate
 }
 
 function rootCandidateAtPoint() {
@@ -465,8 +465,8 @@ function candidate({
   readonly id: string
   readonly priority: number
   readonly rect?: LayoutRect
-  readonly target?: DndProofDropData
-}): DndProofDropCandidate {
+  readonly target?: TilingDropData
+}): TilingDropCandidate {
   return {
     edge: 'left',
     hitRect: rect,
@@ -482,11 +482,11 @@ function candidate({
 function tabStripTarget(
   windowIdValue: string,
   index: number,
-): Extract<DndProofDropData, { readonly kind: 'tab-strip' }> {
+): Extract<TilingDropData, { readonly kind: 'tab-strip' }> {
   return { index, kind: 'tab-strip', windowId: windowId(windowIdValue) }
 }
 
-function snapTarget(destination: SnapDestination): DndProofDropData {
+function snapTarget(destination: SnapDestination): TilingDropData {
   return { destination, kind: 'snap-destination' }
 }
 

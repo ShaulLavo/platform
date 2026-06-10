@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 
-import type { LayoutRect } from '@/features/tiling-surface-manager/engine/layout-geometry'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 
 export function layoutRectStyle(rect: LayoutRect): CSSProperties {
   return {

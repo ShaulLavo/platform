@@ -11,16 +11,13 @@ import {
   createClassicFirstRunWorkspaceLayout,
   createSearchPreviewSurface,
   createSearchResultsSurface,
-} from '@/features/tiling-surface-manager/engine/layout-builders'
+} from '@workspace/tiling/utils/layout-builders'
 import {
   findWindowIdContainingSurface,
   visibleSurfaceIdsInOrder,
-} from '@/features/tiling-surface-manager/engine/layout-normalize'
-import { openSurface } from '@/features/tiling-surface-manager/engine/layout-operations'
-import type {
-  Surface,
-  WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-normalize'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
+import type { Surface, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('search preview layout', () => {
   it('creates a search preview surface for an active match result', () => {

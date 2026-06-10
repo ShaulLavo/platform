@@ -6,16 +6,16 @@ import {
   type EditorPlugin,
   type EditorScrollPosition,
   type EditorSyntaxProvider,
-} from '@editor/core'
-import type { DiffSyntaxBackend } from '@editor/diff'
-import { createEditorFindPlugin } from '@editor/find'
-import { createFoldGutterPlugin, createLineGutterPlugin } from '@editor/gutters'
-import type { FoldGutterIconContext } from '@editor/gutters'
+} from '@singapor/core'
+import type { DiffSyntaxBackend } from '@singapor/diff'
+import { createEditorFindPlugin } from '@singapor/find'
+import { createFoldGutterPlugin, createLineGutterPlugin } from '@singapor/gutters'
+import type { FoldGutterIconContext } from '@singapor/gutters'
 import {
   createTreeSitterSyntaxProvider,
   createTreeSitterWorkerBackend,
   type TreeSitterBackend,
-} from '@editor/tree-sitter'
+} from '@singapor/tree-sitter'
 import { CaretDownIcon } from '@phosphor-icons/react/ssr'
 import {
   TREE_SITTER_LANGUAGE_CONTRIBUTIONS,
@@ -25,8 +25,8 @@ import {
   json,
   markdown,
   typeScript,
-} from '@editor/tree-sitter-languages'
-import type { LanguageServerPlugin } from '@editor/lsp-plugin'
+} from '@singapor/tree-sitter-languages'
+import type { LanguageServerPlugin } from '@singapor/lsp-plugin'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
@@ -133,15 +133,15 @@ function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>
   const loaders: Promise<EditorPlugin | null>[] = []
   if (!editorPerformanceFeatureDisabled('scope-lines')) {
     loaders.push(
-      loadPlugin('@editor/scope-lines', () =>
-        import('@editor/scope-lines').then((module) => module.createScopeLinesPlugin()),
+      loadPlugin('@singapor/scope-lines', () =>
+        import('@singapor/scope-lines').then((module) => module.createScopeLinesPlugin()),
       ),
     )
   }
   if (!editorPerformanceFeatureDisabled('minimap')) {
     loaders.push(
-      loadPlugin('@editor/minimap', () =>
-        import('@editor/minimap').then((module) => module.createMinimapPlugin()),
+      loadPlugin('@singapor/minimap', () =>
+        import('@singapor/minimap').then((module) => module.createMinimapPlugin()),
       ),
     )
   }

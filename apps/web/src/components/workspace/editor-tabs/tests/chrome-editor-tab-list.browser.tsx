@@ -25,10 +25,7 @@ import {
   WORKBENCH_TAB_DRAG_TYPE,
   type WorkbenchTabDragData,
 } from '@/features/workbench/utils/drag-drop-data'
-import {
-  fileEditorSurfaceId,
-  workbenchWindowId,
-} from '@/features/tiling-surface-manager/engine/layout-ids'
+import { fileEditorSurfaceId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
 
 const THEME_STORAGE_KEY = 'platform-chrome-tab-list-browser-theme'
 

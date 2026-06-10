@@ -1,6 +1,6 @@
 import { PointerActivationConstraints } from '@dnd-kit/dom'
 import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { ProofDragOverlay } from '@/features/dnd-proof/components/proof-drag-overlay'
 import { ProofEventLog } from '@/features/dnd-proof/components/proof-event-log'
@@ -8,22 +8,30 @@ import { ProofPreviewWindow } from '@/features/dnd-proof/components/proof-previe
 import { ProofSnapDestination } from '@/features/dnd-proof/components/proof-snap-destination'
 import { ProofToolbar } from '@/features/dnd-proof/components/proof-toolbar'
 import { ProofWindow } from '@/features/dnd-proof/components/proof-window'
-import { useDndProofModel } from '@/features/dnd-proof/hooks/use-dnd-proof-model'
-import type { DndProofDragData } from '@/features/dnd-proof/utils/drag-data'
-import { surfaceWindowId } from '@/features/dnd-proof/utils/model'
-import { proofSnapDestinations } from '@/features/dnd-proof/utils/snap-destinations'
-import { dndProofInsertionPreview } from '@/features/dnd-proof/utils/tab-preview'
+import { useTilingDragController } from '@workspace/tiling/hooks/use-tiling-drag-controller'
+import {
+  activateProofSurface,
+  addProofTab,
+  addProofWindow,
+  commitProofLayout,
+  createInitialProofModel,
+  createProofScenarioModel,
+  dispatchProofLayoutOperation,
+  removeProofSurface,
+  removeProofWindow,
+} from '@/features/dnd-proof/utils/model'
 import {
   deriveLayoutGeometry,
   insetLayoutRect,
   type LayoutGeometryOptions,
   type LayoutRect,
-} from '@/features/tiling-surface-manager/engine/layout-geometry'
-import { visibleWindowIdsInOrder } from '@/features/tiling-surface-manager/engine/layout-normalize'
+} from '@workspace/tiling/utils/layout-geometry'
+import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import type {
   LayoutEdge,
+  LayoutOperation,
   WorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-types'
+} from '@workspace/tiling/utils/layout-types'
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 
@@ -52,43 +60,43 @@ const GEOMETRY_OPTIONS: LayoutGeometryOptions = {
 }
 
 export function DndProofView() {
+  const [model, setModel] = useState(createInitialProofModel)
   const [dropZonesVisible, setDropZonesVisible] = useState(false)
   const [resizingWindows, setResizingWindows] = useState(false)
-  const {
-    activateSurface,
-    activeDrag,
-    activeResolvedTarget,
-    addTab,
-    addWindow,
-    dispatchLayoutOperation,
-    handleDragEnd,
-    handleDragMove,
-    handleDragOver,
-    handleDragStart,
-    model,
-    previewLayout,
-    removeSurface,
-    removeWindow,
-    reset,
-    setScenario,
-    snapLayout,
-    stateEvents,
-    tabStripRenderEpoch,
-  } = useDndProofModel()
   const { rect, rootRef } = useLayoutRootRect(DEFAULT_LAYOUT_RECT)
   const rootRect = rect ?? DEFAULT_LAYOUT_RECT
   const surfaceRect = insetLayoutRect(rootRect, GEOMETRY_OPTIONS.gapPx ?? 0)
   const committedGeometry = deriveLayoutGeometry(model.layout, surfaceRect, GEOMETRY_OPTIONS)
+  const {
+    activeDrag,
+    activeResolvedTarget,
+    flushPendingCommit,
+    handleDragEnd,
+    handleDragMove,
+    handleDragOver,
+    handleDragStart,
+    insertionPreview,
+    previewLayout,
+    resetInteraction,
+    resetStateLog,
+    snapDestinations,
+    snapLayout,
+    stateEvents,
+    tabStripRenderEpoch,
+  } = useTilingDragController({
+    coordinateRootRef: rootRef,
+    layout: model.layout,
+    rootRect: surfaceRect,
+    snapDestinationRects: committedGeometry.snapDestinationRects,
+    windowRectsById: committedGeometry.windowRectsById,
+    onCommitLayout: (layout, event) => {
+      setModel((current) => commitProofLayout(current, layout, event))
+    },
+  })
   const renderLayout = previewLayout ?? model.layout
   const previewGeometry = previewLayout
     ? deriveLayoutGeometry(previewLayout, surfaceRect, GEOMETRY_OPTIONS)
     : committedGeometry
-  const snapGeometry = deriveLayoutGeometry(snapLayout, surfaceRect, GEOMETRY_OPTIONS)
-  const insertionPreview = dndProofInsertionPreview({
-    activeDrag,
-    layout: snapLayout,
-    resolvedTarget: activeResolvedTarget,
-  })
   const visibleWindowIds = visibleWindowIdsInOrder(model.layout)
   const renderedWindowIds =
     insertionPreview?.kind === 'window-merge' && previewLayout
@@ -102,25 +110,66 @@ export function DndProofView() {
         (windowId) => !model.layout.windowsById[windowId],
       )
     : []
-  const snapDestinations = proofSnapDestinations({
-    activeDrag,
-    rootRect: surfaceRect,
-    snapDestinationRects: snapGeometry.snapDestinationRects,
-    sourceWindowRect: sourceWindowRectForDrag(snapGeometry.windowRectsById, activeDrag),
-    sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
-  })
-  const snapDestinationsRef = useRef(snapDestinations)
-
-  useEffect(() => {
-    snapDestinationsRef.current = snapDestinations
-  }, [snapDestinations])
-
   const surfaceCount = visibleWindowIds.reduce((count, windowId) => {
     const window = model.layout.windowsById[windowId]
     if (!window) return count
 
     return count + window.surfaceIds.length
   }, 0)
+
+  function addWindow() {
+    flushPendingCommit()
+    resetInteraction()
+    setModel((current) => addProofWindow(current))
+  }
+
+  function addTab(windowId?: WorkspaceLayout['activeWindowId']) {
+    flushPendingCommit()
+    resetInteraction()
+    setModel((current) => addProofTab(current, windowId ?? undefined))
+  }
+
+  function activateSurface(surfaceId: WorkspaceLayout['activeSurfaceId']) {
+    if (!surfaceId) return
+
+    flushPendingCommit()
+    setModel((current) => activateProofSurface(current, surfaceId))
+  }
+
+  function dispatchLayoutOperation(operation: LayoutOperation) {
+    flushPendingCommit()
+    if (operation.type !== 'resizeSplit') resetInteraction()
+
+    setModel((current) => dispatchProofLayoutOperation(current, operation))
+  }
+
+  function removeSurface(surfaceId: WorkspaceLayout['activeSurfaceId']) {
+    if (!surfaceId) return
+
+    flushPendingCommit()
+    resetInteraction()
+    setModel((current) => removeProofSurface(current, surfaceId))
+  }
+
+  function removeWindow(windowId: WorkspaceLayout['activeWindowId']) {
+    if (!windowId) return
+
+    flushPendingCommit()
+    resetInteraction()
+    setModel((current) => removeProofWindow(current, windowId))
+  }
+
+  function reset() {
+    resetInteraction()
+    resetStateLog()
+    setModel(createInitialProofModel())
+  }
+
+  function setScenario(windowCount: Parameters<typeof createProofScenarioModel>[0]) {
+    resetInteraction()
+    resetStateLog()
+    setModel(createProofScenarioModel(windowCount))
+  }
 
   function collapseWindowToRow(windowId: WorkspaceLayout['activeWindowId']) {
     if (!windowId) return
@@ -190,9 +239,9 @@ export function DndProofView() {
   return (
     <DragDropProvider
       sensors={PROOF_SENSORS}
-      onDragEnd={(event) => handleDragEnd(event, snapDestinationsRef.current, rootRef.current)}
-      onDragMove={(event) => handleDragMove(event, snapDestinationsRef.current, rootRef.current)}
-      onDragOver={(event) => handleDragOver(event, snapDestinationsRef.current, rootRef.current)}
+      onDragEnd={handleDragEnd}
+      onDragMove={handleDragMove}
+      onDragOver={handleDragOver}
       onDragStart={handleDragStart}
     >
       <main className='bg-background text-foreground flex h-svh flex-col overflow-hidden'>
@@ -276,20 +325,4 @@ export function DndProofView() {
       <ProofDragOverlay activeDrag={activeDrag} layout={model.layout} />
     </DragDropProvider>
   )
-}
-
-function sourceWindowIdForDrag(layout: WorkspaceLayout, activeDrag: DndProofDragData | null) {
-  if (!activeDrag) return null
-  if (activeDrag.kind === 'window') return activeDrag.windowId
-
-  return surfaceWindowId(layout, activeDrag.surfaceId)
-}
-
-function sourceWindowRectForDrag(
-  windowRectsById: ReturnType<typeof deriveLayoutGeometry>['windowRectsById'],
-  activeDrag: DndProofDragData | null,
-) {
-  if (activeDrag?.kind !== 'window') return null
-
-  return windowRectsById[activeDrag.windowId]?.rect ?? null
 }
