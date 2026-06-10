@@ -258,7 +258,7 @@ about workflow-shaped layouts:
 
 ## References
 
-- Research findings: `docs/tiling-surface-manager/research-findings.md`
-- Technical design draft: `docs/tiling-surface-manager/technical-design.md`
-- Raycast Window Management UX research notes captured in
-  `docs/tiling-surface-manager/research-findings.md`
+- Durable invariants: `docs/tiling-surface-manager/behavior-contracts.md`
+- Open work: `docs/tiling-surface-manager/backlog.md`
+- The original research findings, technical design, and implementation plan
+  were deleted after V1 completion; recover them from git history if needed.

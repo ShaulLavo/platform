@@ -857,8 +857,9 @@ function createRootSurfaceWindow(layout: WorkspaceLayout, surfaceId: SurfaceId):
 }
 
 function createSurfaceWindow(layout: WorkspaceLayout, surfaceId: SurfaceId) {
-  const windowId = uniqueWindowId(layout, `surface:${surfaceId}`)
-  const nodeId = uniqueNodeId(layout, `window:${windowId}`)
+  const surfaceType = layout.surfacesById[surfaceId]?.type ?? 'surface'
+  const windowId = uniqueWindowId(layout, surfaceType)
+  const nodeId = uniqueNodeId(layout, surfaceType)
   const window = {
     activeSurfaceId: surfaceId,
     id: windowId,
@@ -1092,7 +1093,7 @@ function createWrappingSplit(
   return {
     axis: edgeAxis(edge),
     childIds,
-    id: uniqueNodeId(layout, `split:${edge}:${targetNodeId}:${insertNodeId}`),
+    id: uniqueNodeId(layout, `split-${edge}`),
     kind: 'split',
     sizes: [0.5, 0.5],
   }

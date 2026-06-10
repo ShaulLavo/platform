@@ -328,8 +328,9 @@ function frameAxisSize(frame: CustomWindowFrame, axis: LayoutSplitAxis) {
   const size = axis === 'horizontal' ? frame.width : frame.height
   const offset = axis === 'horizontal' ? frame.offsetX : frame.offsetY
 
-  // A split ratio can only encode the occupied span from the anchor edge, not a
-  // separate frame origin. Include the offset as reserved span for inset frames.
+  // TODO(frame-offset-policy): This legacy projection folds frame offset into
+  // the target split because split ratios cannot encode free-space origin.
+  // See docs/tiling-surface-manager/future-layout-plan.md.
   return size + Math.abs(offset)
 }
 

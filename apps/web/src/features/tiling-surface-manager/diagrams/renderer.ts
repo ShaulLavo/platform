@@ -1,3 +1,4 @@
+import { decodeIdKey } from '@workspace/tiling/utils/layout-ids'
 import type {
   SurfaceId,
   SurfaceType,
@@ -88,7 +89,7 @@ export function surfaceIdLabel(surfaceId: SurfaceId): string {
   const match = /^surface:([^:]+):(.*)$/.exec(rawId)
   if (!match) return rawId
 
-  return compactSurfaceLabel(match[1] ?? '', decodeURIComponent(match[2] ?? ''))
+  return compactSurfaceLabel(match[1] ?? '', decodeIdKey(match[2] ?? ''))
 }
 
 export function hasVisibleSurfaceType(

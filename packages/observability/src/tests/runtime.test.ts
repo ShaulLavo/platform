@@ -1,3 +1,5 @@
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -32,11 +34,17 @@ describe('observability runtime', () => {
     expect(isObservabilityActive()).toBe(false)
   })
 
-  it('resolves relative log dirs from the monorepo root', () => {
+  it('resolves relative log dirs from the monorepo root', async () => {
     const cwd = process.cwd()
-    const nestedCwd = path.join(cwd, 'apps/server')
+    const root = await realpath(
+      await mkdtemp(path.join(tmpdir(), 'platform-observability-runtime-')),
+    )
 
     try {
+      await writeFile(path.join(root, 'bun.lock'), '')
+      const nestedCwd = path.join(root, 'apps/server')
+      await mkdir(nestedCwd, { recursive: true })
+
       process.chdir(nestedCwd)
       const runtime = initializeObservabilityRuntime({
         env: {
@@ -46,9 +54,10 @@ describe('observability runtime', () => {
         source: 'test',
       })
 
-      expect(runtime.config.logDir).toBe(path.join(cwd, 'logs'))
+      expect(runtime.config.logDir).toBe(path.join(root, 'logs'))
     } finally {
       process.chdir(cwd)
+      await rm(root, { force: true, recursive: true })
     }
   })
 

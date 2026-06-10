@@ -1,3 +1,4 @@
+import { decodeIdKey } from '@workspace/tiling/utils/layout-ids'
 import {
   normalizeWorkspaceLayout,
   visibleSurfaceIdsInOrder,
@@ -63,7 +64,7 @@ export function editorGroupIdForWorkbenchWindowId(windowId: WindowId): string | 
   const rawId = String(windowId)
   if (!rawId.startsWith('window:')) return null
 
-  const decodedKey = decodeURIComponent(rawId.slice('window:'.length))
+  const decodedKey = decodeIdKey(rawId.slice('window:'.length))
   if (!decodedKey.startsWith('editor-group:')) return null
 
   return decodedKey.slice('editor-group:'.length)

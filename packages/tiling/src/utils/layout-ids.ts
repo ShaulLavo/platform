@@ -102,5 +102,13 @@ function surfaceId(prefix: string, key: string): SurfaceId {
 }
 
 function encodedId(prefix: string, key: string) {
-  return `${prefix}:${encodeURIComponent(key)}`
+  return `${prefix}:${encodeIdKey(key)}`
+}
+
+function encodeIdKey(key: string) {
+  return key.replace(/[~:]/g, (char) => (char === '~' ? '~~' : '~:'))
+}
+
+export function decodeIdKey(encoded: string) {
+  return encoded.replace(/~([~:])/g, '$1')
 }

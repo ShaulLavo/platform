@@ -1,6 +1,7 @@
 import { log } from '@/lib/client-logging'
 import { createCoalescedLogQueue } from '@/lib/coalesced-log'
 
+import { decodeIdKey } from '@workspace/tiling/utils/layout-ids'
 import {
   visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
@@ -303,7 +304,7 @@ function compactNullableLayoutId(id: string | null | undefined) {
 }
 
 function compactLayoutId(id: string) {
-  const decoded = safeDecodeId(id)
+  const decoded = decodeIdKey(id)
   const parts = decoded.split(':')
   if (parts.length <= 2) return limitLogText(decoded)
 
@@ -313,26 +314,6 @@ function compactLayoutId(id: string) {
   if (key.includes('/')) return `${prefix}:${compactPathKey(key)}`
 
   return `${prefix}:${limitLogText(key)}`
-}
-
-function safeDecodeId(id: string) {
-  let decoded = id
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const next = safeDecodeURIComponent(decoded)
-    if (next === decoded) return decoded
-
-    decoded = next
-  }
-
-  return decoded
-}
-
-function safeDecodeURIComponent(value: string) {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
 }
 
 function limitLogText(value: string) {

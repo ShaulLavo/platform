@@ -1,4 +1,5 @@
 import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import { decodeIdKey } from '@workspace/tiling/utils/layout-ids'
 import type { WindowManagementCommandId } from '@workspace/tiling/utils/layout-types'
 
 import type { WorkspaceCommandId } from './types'
@@ -45,19 +46,11 @@ function workspaceCommandIdForBuiltInWindowManagementCommand(id: WindowManagemen
   const key = String(id).startsWith(WINDOW_COMMAND_ID_PREFIX)
     ? String(id).slice(WINDOW_COMMAND_ID_PREFIX.length)
     : String(id)
-  const decodedKey = safeDecodeURIComponent(key)
+  const decodedKey = decodeIdKey(key)
 
   return `${WORKSPACE_WINDOW_COMMAND_PREFIX}${camelCaseCommandKey(decodedKey)}` as WorkspaceCommandId
 }
 
 function camelCaseCommandKey(key: string) {
   return key.replace(/-([a-z0-9])/g, (_match, value: string) => value.toUpperCase())
-}
-
-function safeDecodeURIComponent(value: string) {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
 }

@@ -539,8 +539,8 @@ function ensureFallbackWindow(
   const fallbackSurface = fallbackSurfaceForLayout(layout)
   if (!fallbackSurface) return layout
 
-  const windowId = workbenchWindowId(`fallback:${fallbackSurface.id}`)
-  const nodeId = layoutNodeId(`fallback:${fallbackSurface.id}`)
+  const windowId = workbenchWindowId('fallback')
+  const nodeId = layoutNodeId('fallback')
   const window = {
     activeSurfaceId: fallbackSurface.id,
     id: windowId,
