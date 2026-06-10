@@ -1,4 +1,4 @@
-import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@editor/core'
+import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@singapor/core'
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
 import type { EditorRenderDocument } from '@/features/editor/editor-render-document'

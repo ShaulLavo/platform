@@ -320,7 +320,7 @@ function FileRow({
       className={cn(
         'grid h-11 w-full grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 rounded-md px-1.5 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/50 max-sm:grid-cols-[minmax(0,1fr)_68px]',
         'active:scale-[0.995] motion-reduce:active:scale-100',
-        selected && 'bg-sky-50 text-sky-950 dark:bg-sky-950/35 dark:text-sky-100',
+        selected && 'bg-info/10 text-foreground',
         !selected && interactive && 'hover:bg-muted/70',
         !interactive && 'cursor-not-allowed text-muted-foreground/60',
         interactive && !pickable && 'text-muted-foreground/75',
@@ -343,7 +343,7 @@ function FileRow({
         </div>
       </div>
       <KindBadge entry={entry} />
-      <div className='text-muted-foreground truncate max-sm:hidden'>
+      <div className='text-muted-foreground truncate tabular-nums max-sm:hidden'>
         {formatModified(entry.mtimeMs)}
       </div>
       <div className='text-muted-foreground text-right tabular-nums max-sm:hidden'>

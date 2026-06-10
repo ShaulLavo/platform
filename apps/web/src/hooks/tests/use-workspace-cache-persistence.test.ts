@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { createEditorPaneLayoutForPaths } from '@/features/editor/state/editor-pane-state'
+import { editorWorkspaceLayoutForPaths } from '../../../test/factories/editor-workspace-layout'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
 import { createSearchBufferStore } from '@/features/search/search-buffer-state'
-import { createSearchResultsSurface } from '@/features/tiling-surface-manager/utils/layout-builders'
-import { openSurface } from '@/features/tiling-surface-manager/utils/layout-operations'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
+import { createSearchResultsSurface } from '@workspace/tiling/utils/layout-builders'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { CachedWorkspaceState, WorkspaceCacheState } from '@/lib/workspace-cache'
+import type { CachedWorkspaceState, WorkspaceCacheWriteState } from '@/lib/workspace-cache'
 import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 
 describe('workspace cache persistence', () => {
@@ -15,7 +14,7 @@ describe('workspace cache persistence', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
     const timers = deferredTimers()
-    const writes: WorkspaceCacheState[] = []
+    const writes: WorkspaceCacheWriteState[] = []
     const unsubscribe = subscribeWorkspaceCachePersistence({
       clearTimeout: timers.clearTimeout,
       searchStore,
@@ -64,12 +63,17 @@ describe('workspace cache persistence', () => {
     timers.flush()
     expect(writes).toHaveLength(2)
     expect(writes.at(-1)?.searchBuffer).toMatchObject({
+      matches: [
+        expect.objectContaining({
+          path: '/repo/src/app.ts',
+        }),
+      ],
       query: 'needle',
       resultsQuery: 'needle',
       totalCount: 1,
       truncated: false,
     })
-    expect(hasCachedMatches(writes.at(-1))).toBe(false)
+    expect(cachedMatchCount(writes.at(-1))).toBe(1)
 
     unsubscribe()
   })
@@ -89,6 +93,12 @@ describe('workspace cache persistence', () => {
     workspaceStore.getState().setPickerOpen(true)
     expect(timers.hasPending()).toBe(false)
 
+    workspaceStore.setState({
+      openFilePaths: ['/repo/src/a.ts'],
+      selectedFilePath: '/repo/src/a.ts',
+    })
+    expect(timers.hasPending()).toBe(false)
+
     workspaceStore
       .getState()
       .setWorkspaceLayout(
@@ -101,17 +111,14 @@ describe('workspace cache persistence', () => {
 })
 
 function cachedWorkspace(): CachedWorkspaceState {
-  const editorPaneLayout = createEditorPaneLayoutForPaths([], null)
-
   return {
     diffViewMode: 'split',
     editorHistory: [],
-    editorPaneLayout,
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: pickedDirectory('/repo'),
     selectedFilePath: null,
-    workspaceLayout: workspaceLayoutForEditorPaneLayout(editorPaneLayout),
+    workspaceLayout: editorWorkspaceLayoutForPaths([], null),
   }
 }
 
@@ -150,9 +157,9 @@ function deferredTimers() {
   }
 }
 
-function hasCachedMatches(state: WorkspaceCacheState | undefined) {
+function cachedMatchCount(state: WorkspaceCacheWriteState | undefined) {
   const searchBuffer = state?.searchBuffer
-  if (!searchBuffer) return false
+  if (!searchBuffer) return 0
 
-  return 'matches' in searchBuffer
+  return searchBuffer.matches.length
 }

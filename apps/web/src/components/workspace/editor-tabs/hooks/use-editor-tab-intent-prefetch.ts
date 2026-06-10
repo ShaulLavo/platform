@@ -2,7 +2,6 @@ import { useEffect, useEffectEvent, useMemo, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import {
-  EDITOR_TAB_PREFETCH_STALE_MS,
   editorTabElements,
   editorTabIntentPrefetchKey,
   editorTabPrefetchRegistrationKey,
@@ -11,12 +10,15 @@ import {
 } from '@/components/workspace/editor-tabs/utils/editor-tab-prefetch'
 import {
   createIntentPrefetchRegistry,
+  INTENT_PREFETCH_HIT_SLOP_PX,
   type IntentPrefetchRegistry,
   type IntentPrefetchRow,
 } from '@/components/workspace/shared/utils/intent-prefetch-registry'
 import { createAnimationFrameScheduler } from '@/components/workspace/shared/utils/intent-prefetch-scheduler'
-import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
-import { fetchFile } from '@/lib/file-server'
+import {
+  FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
+  prefetchFileSnapshotQuery,
+} from '@/lib/file-snapshot-query-cache'
 
 type EditorTabIntentPrefetchOptions<TElement extends HTMLElement> = {
   enabled: boolean
@@ -33,11 +35,7 @@ export function useEditorTabIntentPrefetch<TElement extends HTMLElement = HTMLEl
   const registrationKey = useMemo(() => editorTabIntentPrefetchKey(tabs), [tabs])
 
   const prefetchPath = useEffectEvent((path: string) => {
-    void queryClient.prefetchQuery({
-      ...fileSnapshotQueryOptions(path),
-      queryFn: ({ signal }) => fetchFile(path, signal),
-      staleTime: EDITOR_TAB_PREFETCH_STALE_MS,
-    })
+    void prefetchFileSnapshotQuery(queryClient, path)
   })
 
   const syncRegistrations = useEffectEvent(
@@ -54,7 +52,8 @@ export function useEditorTabIntentPrefetch<TElement extends HTMLElement = HTMLEl
     if (!root) return
 
     const registry = createIntentPrefetchRegistry({
-      reactivateAfter: EDITOR_TAB_PREFETCH_STALE_MS,
+      hitSlop: INTENT_PREFETCH_HIT_SLOP_PX,
+      reactivateAfter: FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
       resolveRow: resolveEditorTabRow,
     })
     const schedule = createAnimationFrameScheduler(() => {

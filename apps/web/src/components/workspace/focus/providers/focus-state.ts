@@ -1,4 +1,4 @@
-import type { EditorCommandContext, EditorCommandId } from '@editor/core'
+import type { EditorCommandContext, EditorCommandId } from '@singapor/core'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'

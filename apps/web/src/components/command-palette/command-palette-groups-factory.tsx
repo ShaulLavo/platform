@@ -1,6 +1,7 @@
 import type { Theme } from '@/components/theme-context'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
-import type { PlatformCommandId } from '@/keymap'
+import type { PlatformCommandId } from '@/keymap/types'
 
 import { ColorModeGroups } from './color-mode-groups'
 import { CommandGroups } from './command-groups'
@@ -16,6 +17,7 @@ import { SymbolGroups } from './symbol-groups'
 import { ViewGroups } from './view-groups'
 
 type CommandPaletteGroupsFactoryProps = {
+  readonly activeFilePath: string | null
   readonly commandGroups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
   readonly currentTheme: Theme
   readonly editorItems: readonly EditorPaletteItem[]
@@ -24,15 +26,17 @@ type CommandPaletteGroupsFactoryProps = {
   readonly fileSearchError: boolean
   readonly hasWorkspace: boolean
   readonly mode: QuickAccessMode
-  readonly selectedFilePath: string | null
   readonly symbolItems: readonly FlatDocumentSymbol[]
   readonly symbolsPending: boolean
-  readonly onCommandSelect: (command: PlatformCommandId) => void
+  readonly workspaceLayout: WorkspaceLayout
+  readonly onCommandSelect: (item: CommandPaletteItem) => void
   readonly onFileSelect: (path: string) => void
+  readonly onPlatformCommandSelect: (command: PlatformCommandId) => void
   readonly onSymbolSelect: (symbol: FlatDocumentSymbol) => void
 }
 
 export function CommandPaletteGroupsFactory({
+  activeFilePath,
   commandGroups,
   currentTheme,
   editorItems,
@@ -41,30 +45,32 @@ export function CommandPaletteGroupsFactory({
   fileSearchError,
   hasWorkspace,
   mode,
-  selectedFilePath,
   symbolItems,
   symbolsPending,
+  workspaceLayout,
   onCommandSelect,
   onFileSelect,
+  onPlatformCommandSelect,
   onSymbolSelect,
 }: CommandPaletteGroupsFactoryProps) {
   if (mode === 'commands') {
     return (
       <CommandGroups
         groups={commandGroups}
+        activeFilePath={activeFilePath}
         hasWorkspace={hasWorkspace}
-        selectedFilePath={selectedFilePath}
+        workspaceLayout={workspaceLayout}
         onSelect={onCommandSelect}
       />
     )
   }
 
   if (mode === 'views') {
-    return <ViewGroups hasWorkspace={hasWorkspace} onSelect={onCommandSelect} />
+    return <ViewGroups hasWorkspace={hasWorkspace} onSelect={onPlatformCommandSelect} />
   }
 
   if (mode === 'colorMode') {
-    return <ColorModeGroups currentTheme={currentTheme} onSelect={onCommandSelect} />
+    return <ColorModeGroups currentTheme={currentTheme} onSelect={onPlatformCommandSelect} />
   }
 
   if (mode === 'editors') {

@@ -18,6 +18,8 @@
     "noUncheckedSideEffectImports": true,
     "paths": {
       "@/*": ["./src/*"],
+      "@workspace/tiling": ["../../packages/tiling/src/index.ts"],
+      "@workspace/tiling/*": ["../../packages/tiling/src/*"],
       "@workspace/ui/*": ["../../packages/ui/src/*"]
     }
   },

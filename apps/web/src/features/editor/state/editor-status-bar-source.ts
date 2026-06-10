@@ -1,4 +1,4 @@
-import type { ReactEditorController } from '@editor/react'
+import type { ReactEditorController } from '@singapor/react'
 
 import type { EditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
 

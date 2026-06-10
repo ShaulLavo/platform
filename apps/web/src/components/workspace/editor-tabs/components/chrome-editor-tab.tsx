@@ -1,32 +1,29 @@
-import type { RefObject } from 'react'
+import { type MouseEvent, type RefObject } from 'react'
 
 import { ChromeTabSelectButton } from '@/components/workspace/editor-tabs/components/chrome-tab-select-button'
-import { chromeTabRootClassName } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
 import { ChromeTabTitle } from '@/components/workspace/editor-tabs/components/chrome-tab-title'
 import { ChromeTabTrailingSlot } from '@/components/workspace/editor-tabs/components/chrome-tab-trailing-slot'
 import { EditorTabContextMenuContent } from '@/components/workspace/editor-tabs/components/editor-tab-context-menu-content'
 import {
   chromeTabStyle,
   fileIconStyle,
-  tabDragClassName,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
 import type {
   EditorChromeVisualTab,
   EditorTabModel,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import type {
-  EditorTabDragController,
-  EditorTabInsertionEdge,
-} from '@/components/workspace/editor-tabs/hooks/use-editor-tab-drag'
+import type { EditorSplitDirection } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import type { RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
-import type { EditorPaneSplitDirection } from '@/features/editor/state/editor-pane-state'
-import { ContextMenu, ContextMenuTrigger } from '@workspace/ui/components/context-menu'
+import { WorkbenchChromeTab } from '@/features/workbench/components/chrome-tab'
+import type { WorkbenchTabDragData } from '@/features/workbench/utils/drag-drop-data'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ChromeEditorTab({
-  dragged,
+  closedWidth,
+  closeMode,
+  closeTarget,
+  dnd,
   index,
-  insertionEdge,
   layoutWidth,
   overlap,
   tabs,
@@ -34,79 +31,102 @@ export function ChromeEditorTab({
   trailingSlotWidth,
   visualTab,
   onClose,
+  onCloseClosingTab,
   onCloseTabs,
   onSplit,
-  onDragEnd,
-  onDragStart,
   onSelect,
 }: {
-  dragged: boolean
+  closedWidth: number
+  closeMode: boolean
+  closeTarget: boolean
+  dnd: WorkbenchTabDragData
   index: number
-  insertionEdge: EditorTabInsertionEdge
   layoutWidth: number | null
   overlap: number
   tabs: readonly EditorTabModel[]
   tabRef?: RefObject<HTMLDivElement | null>
   trailingSlotWidth: number
   visualTab: EditorChromeVisualTab
-  onClose: (path: string, width: number | null) => void
+  onClose: (path: string) => void
+  onCloseClosingTab: (tabId: string) => void
   onCloseTabs: RequestCloseTabs
-  onSplit: (tabId: string, direction: EditorPaneSplitDirection) => boolean
-  onDragEnd: () => void
-  onDragStart: EditorTabDragController['onDragStart']
+  onSplit: (tabId: string, direction: EditorSplitDirection) => boolean
   onSelect: (tab: EditorTabModel) => void
 }) {
   const tab = visualTab.tab
-  const tabStyle = chromeTabStyle(visualTab, index, overlap, layoutWidth, trailingSlotWidth)
+  const style = chromeTabStyle(
+    visualTab,
+    index,
+    overlap,
+    layoutWidth,
+    trailingSlotWidth,
+    closedWidth,
+  )
+  const closing = visualTab.phase === 'closing'
+
+  function handleClickCapture(event: MouseEvent<HTMLDivElement>) {
+    if (!closing) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    onCloseClosingTab(tab.id)
+  }
+
+  function handleContextMenu(event: MouseEvent<HTMLDivElement>) {
+    if (!closing) return
+
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function handleSelectClick() {
+    if (closing) return
+
+    onSelect(tab)
+  }
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger
-        className={chromeTabRootClassName({
-          active: tab.active,
-          className: cn(
-            'cursor-grab hover:z-20 active:cursor-grabbing',
-            'z-[var(--chrome-tab-z)]',
-            tabDragClassName(insertionEdge, dragged),
-            tab.active && 'z-30',
-          ),
-        })}
-        data-chrome-tab-root=''
-        data-editor-tab-id={tab.id}
-        data-editor-tab-path={tab.path}
-        draggable
-        onDragEnd={onDragEnd}
-        onDragStart={(event) => onDragStart(event, tab)}
-        ref={tabRef}
-        style={tabStyle}
+    <WorkbenchChromeTab
+      active={tab.active}
+      className={cn(closing && 'opacity-0')}
+      contextMenuContent={
+        <EditorTabContextMenuContent
+          tab={tab}
+          tabs={tabs}
+          onCloseTabs={onCloseTabs}
+          onSplit={onSplit}
+        />
+      }
+      dnd={dnd}
+      editorTabId={tab.id}
+      editorTabPath={tab.path}
+      phase={visualTab.phase}
+      tabRef={tabRef}
+      style={style}
+      onClick={handleSelectClick}
+      onClickCapture={handleClickCapture}
+      onContextMenu={handleContextMenu}
+    >
+      <ChromeTabSelectButton
+        aria-selected={tab.active}
+        draggable={false}
+        role='tab'
+        title={tab.title}
       >
-        <ChromeTabSelectButton
-          aria-selected={tab.active}
-          onClick={() => onSelect(tab)}
-          onDragEnd={onDragEnd}
-          onDragStart={(event) => {
-            event.stopPropagation()
-            onDragStart(event, tab)
-          }}
-          draggable
-          role='tab'
-          title={tab.title}
-        >
-          <span
-            aria-hidden='true'
-            className='size-3.5 shrink-0 object-contain'
-            style={fileIconStyle(tab.icon)}
-          />
-          <ChromeTabTitle tab={tab} />
-        </ChromeTabSelectButton>
-        <ChromeTabTrailingSlot tab={tab} width={trailingSlotWidth} onClose={onClose} />
-      </ContextMenuTrigger>
-      <EditorTabContextMenuContent
+        <span
+          aria-hidden='true'
+          className='size-3.5 shrink-0 object-contain'
+          style={fileIconStyle(tab.icon)}
+        />
+        <ChromeTabTitle tab={tab} />
+      </ChromeTabSelectButton>
+      <ChromeTabTrailingSlot
+        closeMode={closeMode}
+        forceVisible={closeTarget}
         tab={tab}
-        tabs={tabs}
-        onCloseTabs={onCloseTabs}
-        onSplit={onSplit}
+        width={trailingSlotWidth}
+        onClose={onClose}
       />
-    </ContextMenu>
+    </WorkbenchChromeTab>
   )
 }

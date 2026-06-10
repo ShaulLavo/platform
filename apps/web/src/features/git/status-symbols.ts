@@ -23,7 +23,7 @@ export function gitChangeSymbol(
   status: FileStatus['index'] | FileStatus['worktree'],
 ): StatusPresentation {
   if (status === 'added') {
-    return { className: 'text-emerald-500', label: 'A', title: 'added' }
+    return { className: 'text-success', label: 'A', title: 'added' }
   }
   if (status === 'deleted') {
     return { className: 'text-destructive', label: 'D', title: 'deleted' }
@@ -32,16 +32,16 @@ export function gitChangeSymbol(
     return { className: 'text-muted-foreground', label: 'I', title: 'ignored' }
   }
   if (status === 'renamed') {
-    return { className: 'text-sky-500', label: 'R', title: 'renamed' }
+    return { className: 'text-info', label: 'R', title: 'renamed' }
   }
   if (status === 'untracked') {
-    return { className: 'text-emerald-500', label: 'U', title: 'untracked' }
+    return { className: 'text-success', label: 'U', title: 'untracked' }
   }
   if (status === 'conflicted') {
     return { className: 'text-destructive', label: '!', title: 'conflicted' }
   }
 
-  return { className: 'text-amber-500', label: 'M', title: 'modified' }
+  return { className: 'text-warning', label: 'M', title: 'modified' }
 }
 
 function gitSourcePrefix(source: GitSymbolSource) {

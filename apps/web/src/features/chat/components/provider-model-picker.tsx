@@ -87,16 +87,16 @@ export function ProviderModelPicker({
 }
 
 function providerStatusDotClass(provider: ProviderSnapshot | undefined, busy: boolean) {
-  if (busy) return 'bg-sky-400'
+  if (busy) return 'bg-info'
   if (!provider) return 'bg-muted-foreground/35'
-  if (provider.status === 'ready') return 'bg-emerald-400'
-  if (provider.status === 'warning') return 'bg-amber-400'
+  if (provider.status === 'ready') return 'bg-success'
+  if (provider.status === 'warning') return 'bg-warning'
 
   return 'bg-destructive'
 }
 
 function optionStatusDotClass(option: ProviderModelOption) {
-  return option.enabled ? 'bg-emerald-400' : 'bg-destructive'
+  return option.enabled ? 'bg-success' : 'bg-destructive'
 }
 
 function providerPickerTitle({

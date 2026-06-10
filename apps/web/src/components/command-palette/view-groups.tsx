@@ -1,4 +1,4 @@
-import type { PlatformCommandId } from '@/keymap'
+import type { PlatformCommandId } from '@/keymap/types'
 import { TerminalWindowIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem } from '@workspace/ui/components/command'
 

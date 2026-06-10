@@ -5,8 +5,8 @@ import {
   type DiffHunkLocation,
   type DiffHunkLine,
   type DiffSplitHandleContext,
-} from '@editor/diff'
-import '@editor/diff/style.css'
+} from '@singapor/diff'
+import '@singapor/diff/style.css'
 import './diff-viewer.css'
 import { WarningCircleIcon } from '@phosphor-icons/react'
 import {
@@ -190,6 +190,9 @@ function createGitDiffSplitHandle({ document }: DiffSplitHandleContext): HTMLEle
   const handle = document.createElement('div')
   const line = document.createElement('span')
   handle.className = 'app-git-diff-split-handle'
+  handle.role = 'separator'
+  handle.tabIndex = 0
+  handle.setAttribute('aria-orientation', 'vertical')
   handle.style.cursor = 'ew-resize'
   handle.style.width = '1px'
   line.className = 'app-git-diff-split-handle-line'

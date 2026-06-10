@@ -67,7 +67,7 @@ export const SearchResultFileHeader = memo(
             </span>
           </span>
         </div>
-        <span className='bg-muted/55 text-muted-foreground rounded-sm px-1.5 text-[10px] leading-4'>
+        <span className='bg-muted/55 text-muted-foreground rounded-sm px-1.5 text-[10px] leading-4 tabular-nums'>
           {file.matchCount.toLocaleString()} {matchNoun(file.matchCount)}
         </span>
         {replaceVisible ? (

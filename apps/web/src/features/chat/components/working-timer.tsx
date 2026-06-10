@@ -10,5 +10,9 @@ export function WorkingTimer({ startedAt }: { startedAt: string }) {
     return () => window.clearInterval(intervalId)
   }, [startedAt])
 
-  return <>{formatWorkingTimer(startedAt, new Date(nowMs).toISOString()) ?? '0s'}</>
+  return (
+    <span className='tabular-nums'>
+      {formatWorkingTimer(startedAt, new Date(nowMs).toISOString()) ?? '0s'}
+    </span>
+  )
 }

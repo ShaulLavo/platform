@@ -1,12 +1,12 @@
-import '@editor/core/style.css'
-import '@editor/find/style.css'
-import '@editor/minimap/style.css'
-import { useEditor } from '@editor/react'
-import '@editor/scope-lines/style.css'
+import '@singapor/core/style.css'
+import '@singapor/find/style.css'
+import '@singapor/minimap/style.css'
+import { useEditor } from '@singapor/react'
+import '@singapor/scope-lines/style.css'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/lsp-plugin'
+} from '@singapor/lsp-plugin'
 import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
 
 import { EditorFrame } from '@/features/editor/components/editor-frame'
@@ -32,7 +32,7 @@ import type {
   EditorKeymapLayer,
   EditorKeymapOptions,
   EditorScrollPosition,
-} from '@editor/core'
+} from '@singapor/core'
 
 type EditorProps = {
   active: boolean

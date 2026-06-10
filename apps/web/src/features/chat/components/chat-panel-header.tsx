@@ -87,10 +87,10 @@ export function ChatPanelHeader({
                   {thread.id === activeThreadId ? 'Current: ' : ''}
                   {thread.title}
                 </span>
-                <span className='text-muted-foreground text-[11px]'>
+                <span className='text-muted-foreground text-[11px] tabular-nums'>
                   {formatChatDateLabel(thread.updatedAt)}
                 </span>
-                <span className='text-muted-foreground col-span-2 truncate text-[11px]'>
+                <span className='text-muted-foreground col-span-2 truncate text-[11px] tabular-nums'>
                   {chatThreadPreview(thread)}
                 </span>
               </DropdownMenuItem>

@@ -1,4 +1,4 @@
-import type { ReactEditorController } from '@editor/react'
+import type { ReactEditorController } from '@singapor/react'
 import { useEffect, useRef } from 'react'
 
 import type { EditorRenderDocument } from '@/features/editor/editor-render-document'

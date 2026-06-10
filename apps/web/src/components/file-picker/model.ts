@@ -150,16 +150,13 @@ export function compareSearchEntries(query: string) {
 export function tileTone(entry: FsEntry, selected: boolean) {
   if (isDirectoryEntry(entry)) {
     return cn(
-      'border-amber-200/70 bg-amber-50 text-amber-600 dark:border-amber-900/70 dark:bg-amber-950/30',
-      selected && 'border-amber-300 bg-amber-100 dark:border-amber-800',
+      'border-warning/20 bg-warning/10 text-warning',
+      selected && 'border-warning/40 bg-warning/15',
     )
   }
 
   if (isFileEntry(entry)) {
-    return cn(
-      'border-sky-200/70 bg-sky-50 text-sky-600 dark:border-sky-900/70 dark:bg-sky-950/30',
-      selected && 'border-sky-300 bg-sky-100 dark:border-sky-800',
-    )
+    return cn('border-info/20 bg-info/10 text-info', selected && 'border-info/40 bg-info/15')
   }
 
   return 'border-border bg-muted/30 text-muted-foreground'

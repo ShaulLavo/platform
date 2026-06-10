@@ -11,7 +11,7 @@ import {
   type EditorSyntaxSessionOptions,
   type EditorToken,
   type PieceTableSnapshot,
-} from '@editor/core'
+} from '@singapor/core'
 
 import { SEARCH_RESULT_FILE_DOCUMENT_ID_PREFIX } from '@/features/search/search-result-editor-utils'
 

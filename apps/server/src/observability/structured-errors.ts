@@ -5,6 +5,12 @@ export type StructuredErrorOptions = Omit<ErrorOptions, 'cause'> & {
 }
 
 export const serverErrors = defineErrorCatalog('server', {
+  INTERNAL_ERROR: {
+    status: 500,
+    message: ({ message }: { message: string }) => message,
+    why: 'A server-side invariant failed while handling internal application state.',
+    fix: 'Inspect the server logs and fix the invariant at the throwing call site.',
+  },
   LOOPBACK_HOST_REQUIRED: {
     status: 500,
     message: 'FS RPC server must bind to a loopback host',
@@ -54,6 +60,17 @@ export const lspErrors = defineErrorCatalog('lsp', {
     fix: 'Review the installer output and retry the language server install.',
   },
 })
+
+export function createInternalError(message: string, cause?: unknown) {
+  return createStructuredError({
+    cause,
+    code: serverErrors.INTERNAL_ERROR.code,
+    fix: serverErrors.INTERNAL_ERROR.fix,
+    message,
+    status: serverErrors.INTERNAL_ERROR.status,
+    why: serverErrors.INTERNAL_ERROR.why,
+  })
+}
 
 export function createStructuredError(options: StructuredErrorOptions) {
   const { cause, internal, ...rest } = options

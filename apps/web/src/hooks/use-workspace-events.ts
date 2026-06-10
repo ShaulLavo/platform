@@ -184,13 +184,27 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       controller.abort()
       queue.clear()
       eventsScope.increment('subscription.unsubscribeCount')
-      eventsScope.end()
+      endWorkspaceEventsScope(eventsScope)
     }
   }, [rootPath])
 
   useEffect(() => {
     return () => dismissFilesystemConflicts(conflictStore)
   }, [conflictStore, rootPath])
+}
+
+function endWorkspaceEventsScope(eventsScope: WideEventScope) {
+  if (!workspaceEventsScopeHasWork(eventsScope)) return
+
+  eventsScope.end()
+}
+
+function workspaceEventsScopeHasWork(eventsScope: WideEventScope) {
+  if (eventsScope.count('events.eventCount') > 0) return true
+  if (eventsScope.count('subscription.readyCount') > 0) return true
+  if (eventsScope.count('subscription.errorCount') > 0) return true
+
+  return eventsScope.count('stream.errorCount') > 0
 }
 
 async function applyWorkspaceEvents({

@@ -1,7 +1,7 @@
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/lsp-plugin'
+} from '@singapor/lsp-plugin'
 import { useEffect, useMemo, useState } from 'react'
 
 import {

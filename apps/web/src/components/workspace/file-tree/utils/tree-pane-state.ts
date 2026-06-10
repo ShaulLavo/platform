@@ -1,8 +1,8 @@
 import type {
-  FileTree as PierreFileTreeModel,
   FileTreeDirectoryHandle,
   FileTreeItemHandle,
-} from '@pierre/trees'
+} from '@workspace/tree/utils/model/publicTypes'
+import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
@@ -19,25 +19,27 @@ export function syncTreePaneState({
   model,
   previousPaths,
   rootPath,
+  syncSelection = true,
   selectedFilePath,
   tree,
 }: {
-  loadExpandedDirectoriesForCurrentModel: (tree: PierreFileTreeModel) => void
+  loadExpandedDirectoriesForCurrentModel: (tree: FileTreeModel) => void
   model: TreeModel
   previousPaths: readonly string[]
   rootPath: string
+  syncSelection?: boolean
   selectedFilePath: string | null
-  tree: PierreFileTreeModel
+  tree: FileTreeModel
 }) {
   syncTreePaths(tree, previousPaths, model.paths, model)
-  syncSelectedFilePath(tree, rootPath, selectedFilePath)
+  if (syncSelection) syncSelectedFilePath(tree, rootPath, selectedFilePath)
   loadExpandedDirectoriesForCurrentModel(tree)
 
   return model.paths
 }
 
 export function loadExpandedDirectories(
-  tree: PierreFileTreeModel,
+  tree: FileTreeModel,
   model: TreeModel,
   onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void,
   previousExpandedDirectoryPaths?: ReadonlySet<string>,
@@ -59,7 +61,7 @@ export function loadExpandedDirectories(
   return expandedPaths
 }
 
-export function visibleTreeItemCount(tree: PierreFileTreeModel, model: TreeModel) {
+export function visibleTreeItemCount(tree: FileTreeModel, model: TreeModel) {
   const childrenByParent = treeChildrenByParentPath(model)
 
   return visibleChildrenCount({
@@ -71,7 +73,7 @@ export function visibleTreeItemCount(tree: PierreFileTreeModel, model: TreeModel
 }
 
 function syncSelectedFilePath(
-  tree: PierreFileTreeModel,
+  tree: FileTreeModel,
   rootPath: string,
   selectedFilePath: string | null,
 ) {
@@ -84,13 +86,13 @@ function syncSelectedFilePath(
   expandKnownAncestorDirectories(tree, canonicalPath)
   const item = tree.getItem(canonicalPath)
   if (!item || item.isDirectory()) return
-  if (isOnlySelectedPath(tree, canonicalPath)) return
+  if (tree.getSelectedPaths().includes(canonicalPath)) return
 
   clearTreeSelection(tree)
   item.select()
 }
 
-function clearTreeSelection(tree: PierreFileTreeModel) {
+function clearTreeSelection(tree: FileTreeModel) {
   for (const selectedPath of tree.getSelectedPaths()) {
     tree.getItem(selectedPath)?.deselect()
   }
@@ -105,7 +107,7 @@ type VisibleChildrenCountOptions = {
   childrenByParent: ReadonlyMap<string, readonly TreeChild[]>
   model: TreeModel
   parentPath: string
-  tree: PierreFileTreeModel
+  tree: FileTreeModel
 }
 
 function visibleChildrenCount({
@@ -205,7 +207,7 @@ type TreePathChanges = {
 }
 
 function syncTreePaths(
-  tree: PierreFileTreeModel,
+  tree: FileTreeModel,
   previousPaths: readonly string[],
   nextPaths: readonly string[],
   model: TreeModel,
@@ -215,9 +217,12 @@ function syncTreePaths(
   const expandedPathsBeforeSync = expandedDirectoryPathSet(model, tree)
 
   if (shouldResetTreePaths(changes)) {
-    tree.resetPaths(nextPaths, {
-      initialExpandedPaths: expandedDirectoryPaths(model, tree),
-    })
+    resetTreePaths(tree, nextPaths, model)
+    return
+  }
+
+  if (treePathChangesDriftedFromLiveTree(tree, changes)) {
+    resetTreePaths(tree, nextPaths, model)
     return
   }
 
@@ -249,6 +254,28 @@ function shouldResetTreePaths({ added, removed }: TreePathChanges) {
   return added.length + removed.length > INCREMENTAL_TREE_SYNC_LIMIT
 }
 
+function resetTreePaths(tree: FileTreeModel, paths: readonly string[], model: TreeModel) {
+  tree.resetPaths(paths, {
+    initialExpandedPaths: expandedDirectoryPaths(model, tree),
+  })
+}
+
+function treePathChangesDriftedFromLiveTree(tree: FileTreeModel, changes: TreePathChanges) {
+  for (const path of changes.removed) {
+    if (treeHasPath(tree, path)) continue
+
+    return true
+  }
+
+  for (const path of changes.added) {
+    if (!treeHasPath(tree, path)) continue
+
+    return true
+  }
+
+  return false
+}
+
 function topLevelRemovedPaths(paths: readonly string[]) {
   const removedPathSet = new Set(paths)
 
@@ -267,7 +294,9 @@ function treePathDepth(path: string) {
   return canonicalTreePath(path).split('/').filter(Boolean).length
 }
 
-function removeTreePath(tree: PierreFileTreeModel, path: string) {
+function removeTreePath(tree: FileTreeModel, path: string) {
+  if (!treeHasPath(tree, path)) return
+
   if (path.endsWith('/')) {
     tree.remove(path, { recursive: true })
     return
@@ -276,7 +305,11 @@ function removeTreePath(tree: PierreFileTreeModel, path: string) {
   tree.remove(path)
 }
 
-function expandKnownAncestorDirectories(tree: PierreFileTreeModel, treePath: string) {
+function treeHasPath(tree: FileTreeModel, path: string) {
+  return tree.getItem(path) !== null
+}
+
+function expandKnownAncestorDirectories(tree: FileTreeModel, treePath: string) {
   for (const directoryPath of ancestorDirectoryPaths(treePath)) {
     const item = tree.getItem(directoryPath)
     if (!isTreeDirectoryHandle(item)) continue
@@ -297,14 +330,7 @@ function ancestorDirectoryPaths(treePath: string) {
   return paths
 }
 
-function isOnlySelectedPath(tree: PierreFileTreeModel, treePath: string) {
-  const selectedPaths = tree.getSelectedPaths()
-  if (selectedPaths.length !== 1) return false
-
-  return canonicalTreePath(selectedPaths[0] ?? '') === treePath
-}
-
-function expandedDirectoryPaths(model: TreeModel, tree: PierreFileTreeModel) {
+function expandedDirectoryPaths(model: TreeModel, tree: FileTreeModel) {
   const paths: string[] = []
   const expandedPaths = expandedDirectoryPathSet(model, tree)
   const childrenByParent = treeChildrenByParentPath(model)
@@ -322,7 +348,7 @@ function expandedDirectoryPaths(model: TreeModel, tree: PierreFileTreeModel) {
   return paths
 }
 
-function expandedDirectoryPathSet(model: TreeModel, tree: PierreFileTreeModel) {
+function expandedDirectoryPathSet(model: TreeModel, tree: FileTreeModel) {
   const paths = new Set<string>()
 
   for (const [treePath, entry] of model.entriesByTreePath) {
@@ -336,7 +362,7 @@ function expandedDirectoryPathSet(model: TreeModel, tree: PierreFileTreeModel) {
 }
 
 function expandNewFlattenedDirectoryTerminals(
-  tree: PierreFileTreeModel,
+  tree: FileTreeModel,
   model: TreeModel,
   addedPaths: readonly string[],
   expandedPathsBeforeSync: ReadonlySet<string>,
@@ -367,7 +393,7 @@ function addedDirectoryPathSet(paths: readonly string[]) {
   return directoryPaths
 }
 
-function expandTreeDirectory(tree: PierreFileTreeModel, treePath: string) {
+function expandTreeDirectory(tree: FileTreeModel, treePath: string) {
   const item = tree.getItem(`${treePath}/`) ?? tree.getItem(treePath)
   if (!isTreeDirectoryHandle(item)) return
   if (item.isExpanded()) return
@@ -375,7 +401,7 @@ function expandTreeDirectory(tree: PierreFileTreeModel, treePath: string) {
   item.expand()
 }
 
-function isTreeDirectoryExpanded(tree: PierreFileTreeModel, treePath: string) {
+function isTreeDirectoryExpanded(tree: FileTreeModel, treePath: string) {
   const item = tree.getItem(`${treePath}/`) ?? tree.getItem(treePath)
   if (!isTreeDirectoryHandle(item)) return false
 

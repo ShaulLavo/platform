@@ -2,7 +2,7 @@ import type { LiveEditorDocument } from '@/features/editor/state/editor-document
 import type { WriteFileContentOptions } from '@/lib/file-server'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
-import { createEditorBufferSession } from '@editor/core'
+import { createEditorBufferSession } from '@singapor/core'
 
 import {
   applyWorkspaceSearchReplaceEdits,

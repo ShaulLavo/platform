@@ -28,6 +28,7 @@ function startServer(serverUrl: URL, browserPort: string) {
     cwd: serverRoot,
     env: {
       ...process.env,
+      FS_METADATA_DB: ':memory:',
       FS_HOST: hostname,
       FS_SYSTEM_ROOT: fixtureRoot,
       FS_WATCH: 'false',

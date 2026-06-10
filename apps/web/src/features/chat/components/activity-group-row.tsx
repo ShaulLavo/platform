@@ -22,12 +22,12 @@ export function ActivityGroupRow({ activities }: { activities: readonly ChatWork
     <section className='border-border/45 bg-card/25 rounded-lg border px-2 py-1.5'>
       {showHeader ? (
         <div className='mb-1.5 flex items-center justify-between gap-2 px-0.5'>
-          <p className='text-muted-foreground/55 text-[9px] tracking-[0.16em] uppercase'>
+          <p className='text-muted-foreground/55 text-[9px] tracking-[0.16em] uppercase tabular-nums'>
             {label} ({activities.length})
           </p>
           {hasOverflow ? (
             <button
-              className='text-muted-foreground/55 hover:text-foreground/75 text-[9px] tracking-[0.12em] uppercase transition-colors'
+              className='text-muted-foreground/55 hover:text-foreground/75 text-[9px] tracking-[0.12em] uppercase tabular-nums transition-colors'
               type='button'
               onClick={() => setExpanded((value) => !value)}
             >

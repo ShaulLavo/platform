@@ -9,22 +9,7 @@ import {
   updateDirtyFilePaths,
 } from '@/features/editor/state/editor-dirty-paths'
 import { createEditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
-import {
-  activeEditorPanePath,
-  closeEditorPaneTabs,
-  createEditorPaneLayoutForPaths,
-  editorPaneLeaves,
-  editorPanePathCounts,
-  findEditorPane,
-  moveEditorPaneTabToPane,
-  moveEditorPaneTabToSplit,
-  normalizeEditorPaneLayout,
-  openEditorPathInActivePane,
-  selectEditorPaneTab,
-  setActiveEditorPane,
-  splitEditorPaneTab,
-  updateEditorPaneSplitSizes,
-} from '@/features/editor/state/editor-pane-state'
+import { editorWorkspaceLayoutForPaths } from '../../../../test/factories/editor-workspace-layout'
 import {
   nextSelectedFilePath,
   openFilePathList,
@@ -33,14 +18,35 @@ import {
 } from '@/features/editor/state/editor-tab-paths'
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
-import { workspaceLayoutForEditorPaneLayout } from '@/features/workbench/utils/editor-surface-layout'
+import {
+  CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+  CLASSIC_EDITOR_WINDOW_ID,
+  createClassicFirstRunWorkspaceLayout,
+  createFileEditorSurface,
+} from '@workspace/tiling/utils/layout-builders'
+import {
+  fileEditorSurfaceId,
+  fileNavigatorSurfaceId,
+  placeholderSurfaceId,
+} from '@workspace/tiling/utils/layout-ids'
+import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
+import {
+  activateSurface,
+  moveSurface,
+  openSurface,
+} from '@workspace/tiling/utils/layout-operations'
+import {
+  editorGroupIdForWorkbenchWindow,
+  editorSurfaceTabRecords,
+  editorSurfaceSerializedState,
+} from '@/features/workbench/utils/editor-surface-layout'
 import type { FileResult } from '@/lib/file-system-types'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/lsp-plugin'
-import { createEditorBufferSession } from '@editor/core'
+} from '@singapor/lsp-plugin'
+import { createEditorBufferSession } from '@singapor/core'
 
 describe('editor path utilities', () => {
   it('adds, selects, and renames open tab paths', () => {
@@ -95,184 +101,6 @@ describe('editor path utilities', () => {
     expect(removeDirtyFilePath(paths, 'src/b.ts')).toBe(null)
     expect(removeDirtyFilePath(paths, 'src/a.ts')).toEqual(new Set())
     expect(renameDirtyFilePath(paths, 'src/a.ts', 'src/b.ts')).toEqual(new Set(['src/b.ts']))
-  })
-})
-
-describe('editor pane state', () => {
-  it('keeps pane layout identity for repeated no-op pane updates', () => {
-    let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts'], 'src/a.ts')
-    layout = splitEditorPaneTab(layout, tabIdForPathInLayout(layout, 'src/a.ts'), 'horizontal')
-
-    const activePane = editorPaneLeaves(layout.root).find((pane) =>
-      pane.tabs.some((tab) => tab.path === 'src/a.ts'),
-    )
-    if (!activePane) throw new Error('Missing active pane')
-
-    expect(setActiveEditorPane(layout, activePane.id)).toBe(layout)
-    expect(selectEditorPaneTab(layout, activePane.id, activePane.activeTabId ?? '')).toBe(layout)
-    expect(updateEditorPaneSplitSizes(layout, layout.root.id, [50, 50])).toBe(layout)
-    expect(normalizeEditorPaneLayout(layout)).toBe(layout)
-  })
-
-  it('splits tabs into panes, persists sizes, and collapses emptied panes', () => {
-    let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts'], 'src/a.ts')
-    const aTabId = tabIdForPathInLayout(layout, 'src/a.ts')
-
-    layout = splitEditorPaneTab(layout, aTabId, 'horizontal')
-
-    expect(layout.root).toMatchObject({
-      direction: 'horizontal',
-      kind: 'split',
-      sizes: [50, 50],
-    })
-    expect(activeEditorPanePath(layout)).toBe('src/a.ts')
-    expect(panePathGroups(layout)).toEqual([['src/b.ts'], ['src/a.ts']])
-
-    layout = updateEditorPaneSplitSizes(layout, layout.root.id, [25, 75])
-
-    expect(layout.root).toMatchObject({
-      kind: 'split',
-      sizes: [25, 75],
-    })
-
-    layout = closeEditorPaneTabs(layout, [tabIdForPathInLayout(layout, 'src/b.ts')])
-
-    expect(layout.root.kind).toBe('leaf')
-    expect(panePathGroups(layout)).toEqual([['src/a.ts']])
-  })
-
-  it('moves tabs between panes and allows duplicate paths across panes', () => {
-    let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts'], 'src/a.ts')
-    layout = splitEditorPaneTab(layout, tabIdForPathInLayout(layout, 'src/a.ts'), 'horizontal')
-
-    const paneWithB = editorPaneLeaves(layout.root).find((pane) =>
-      pane.tabs.some((tab) => tab.path === 'src/b.ts'),
-    )
-    if (!paneWithB) throw new Error('Missing pane for src/b.ts')
-
-    layout = setActiveEditorPane(layout, paneWithB.id)
-    layout = openEditorPathInActivePane(layout, 'src/a.ts')
-
-    expect(editorPanePathCounts(layout).get('src/a.ts')).toBe(2)
-    expect(panePathGroups(layout)).toEqual([['src/b.ts', 'src/a.ts'], ['src/a.ts']])
-
-    const sourcePane = editorPaneLeaves(layout.root).at(1)
-    if (!sourcePane) throw new Error('Missing source pane')
-
-    layout = moveEditorPaneTabToPane(layout, sourcePane.tabs[0]!.id, paneWithB.id)
-
-    expect(layout.root.kind).toBe('leaf')
-    expect(panePathGroups(layout)).toEqual([['src/b.ts', 'src/a.ts', 'src/a.ts']])
-  })
-
-  it('moves a tab into another pane at the requested tab-bar index', () => {
-    let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts', 'src/c.ts'], 'src/a.ts')
-    layout = splitEditorPaneTab(layout, tabIdForPathInLayout(layout, 'src/a.ts'), 'horizontal')
-
-    const targetPane = editorPaneLeaves(layout.root).find((pane) =>
-      pane.tabs.some((tab) => tab.path === 'src/b.ts'),
-    )
-    if (!targetPane) throw new Error('Missing target pane')
-
-    layout = moveEditorPaneTabToPane(
-      layout,
-      tabIdForPathInLayout(layout, 'src/a.ts'),
-      targetPane.id,
-      1,
-    )
-
-    expect(layout.root.kind).toBe('leaf')
-    expect(panePathGroups(layout)).toEqual([['src/b.ts', 'src/a.ts', 'src/c.ts']])
-    expect(activeEditorPanePath(layout)).toBe('src/a.ts')
-  })
-
-  it('can split the root around an existing horizontal split', () => {
-    let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts', 'src/c.ts'], 'src/a.ts')
-    layout = splitEditorPaneTab(layout, tabIdForPathInLayout(layout, 'src/a.ts'), 'horizontal')
-
-    const paneWithC = editorPaneLeaves(layout.root).find((pane) =>
-      pane.tabs.some((tab) => tab.path === 'src/c.ts'),
-    )
-    if (!paneWithC) throw new Error('Missing pane for src/c.ts')
-
-    layout = moveEditorPaneTabToSplit(layout, {
-      scope: 'root',
-      sourceTabId: tabIdForPathInLayout(layout, 'src/b.ts'),
-      targetPaneId: paneWithC.id,
-      zone: 'top',
-    })
-
-    expect(layout.root).toMatchObject({
-      direction: 'vertical',
-      kind: 'split',
-    })
-    expect(panePathGroups(layout)).toEqual([['src/b.ts'], ['src/c.ts'], ['src/a.ts']])
-    expect(activeEditorPanePath(layout)).toBe('src/b.ts')
-  })
-
-  it('limits pane split nesting depth', () => {
-    let layout = createEditorPaneLayoutForPaths(['src/a.ts', 'src/b.ts', 'src/c.ts'], 'src/a.ts')
-    layout = splitEditorPaneTab(layout, tabIdForPathInLayout(layout, 'src/a.ts'), 'horizontal')
-
-    const paneWithC = editorPaneLeaves(layout.root).find((pane) =>
-      pane.tabs.some((tab) => tab.path === 'src/c.ts'),
-    )
-    if (!paneWithC) throw new Error('Missing pane for src/c.ts')
-
-    layout = moveEditorPaneTabToSplit(layout, {
-      scope: 'root',
-      sourceTabId: tabIdForPathInLayout(layout, 'src/b.ts'),
-      targetPaneId: paneWithC.id,
-      zone: 'top',
-    })
-
-    const nestedPaneWithC = editorPaneLeaves(layout.root).find((pane) =>
-      pane.tabs.some((tab) => tab.path === 'src/c.ts'),
-    )
-    if (!nestedPaneWithC) throw new Error('Missing nested pane for src/c.ts')
-
-    const blocked = moveEditorPaneTabToSplit(layout, {
-      sourceTabId: tabIdForPathInLayout(layout, 'src/a.ts'),
-      targetPaneId: nestedPaneWithC.id,
-      zone: 'bottom',
-    })
-
-    expect(blocked).toBe(layout)
-    expect(panePathGroups(blocked)).toEqual([['src/b.ts'], ['src/c.ts'], ['src/a.ts']])
-  })
-
-  it('repairs duplicate persisted pane and tab ids during normalization', () => {
-    const layout = normalizeEditorPaneLayout({
-      activePaneId: 'pane-1',
-      root: {
-        children: [
-          {
-            activeTabId: 'tab-1',
-            id: 'pane-1',
-            kind: 'leaf',
-            tabs: [{ id: 'tab-1', path: 'src/a.ts' }],
-          },
-          {
-            activeTabId: 'tab-1',
-            id: 'pane-1',
-            kind: 'leaf',
-            tabs: [{ id: 'tab-1', path: 'src/b.ts' }],
-          },
-        ],
-        direction: 'horizontal',
-        id: 'split-1',
-        kind: 'split',
-        sizes: [50, 50],
-      },
-    })
-    const panes = editorPaneLeaves(layout.root)
-    const paneIds = panes.map((pane) => pane.id)
-    const tabIds = panes.flatMap((pane) => pane.tabs.map((tab) => tab.id))
-
-    expect(new Set(paneIds).size).toBe(paneIds.length)
-    expect(new Set(tabIds).size).toBe(tabIds.length)
-    expect(panes.every((pane) => pane.tabs[0]?.id === pane.activeTabId)).toBe(true)
-    expect(panePathGroups(layout)).toEqual([['src/a.ts'], ['src/b.ts']])
   })
 })
 
@@ -480,6 +308,91 @@ describe('editor commands', () => {
     expect(uiStore.getState().statusBarSource).toBe(statusBarSource)
   })
 
+  it('replaces the first-run empty editor tab and keeps opening tree selections', () => {
+    const { commands, workspaceStore } = setupStores(classicWorkspaceState())
+    const placeholderId = placeholderSurfaceId('empty-editor')
+
+    commands.selectFile('src/a.ts')
+
+    expect(workspaceStore.getState().workspaceLayout.surfacesById[placeholderId]).toBeUndefined()
+    expect(
+      workspaceStore.getState().workspaceLayout.windowsById[CLASSIC_EDITOR_WINDOW_ID],
+    ).toMatchObject({
+      activeSurfaceId: fileEditorSurfaceId('src/a.ts'),
+      surfaceIds: [fileEditorSurfaceId('src/a.ts')],
+    })
+
+    workspaceStore
+      .getState()
+      .setWorkspaceLayout(
+        activateSurface(
+          workspaceStore.getState().workspaceLayout,
+          fileNavigatorSurfaceId(),
+          CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
+        ),
+      )
+    commands.selectFile('src/b.ts')
+
+    expect(workspaceStore.getState().openFilePaths).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(workspaceStore.getState().selectedFilePath).toBe('src/b.ts')
+    expect(
+      editorSurfaceSerializedState(
+        workspaceStore.getState().workspaceLayout.surfacesById[fileEditorSurfaceId('src/b.ts')]!,
+      )?.editorGroupId,
+    ).toBe(editorGroupIdForWorkbenchWindow(CLASSIC_EDITOR_WINDOW_ID))
+    expect(
+      workspaceStore.getState().workspaceLayout.windowsById[CLASSIC_EDITOR_WINDOW_ID],
+    ).toMatchObject({
+      activeSurfaceId: fileEditorSurfaceId('src/b.ts'),
+      surfaceIds: [fileEditorSurfaceId('src/a.ts'), fileEditorSurfaceId('src/b.ts')],
+    })
+  })
+
+  it('restores backgrounded existing file surfaces when selected', () => {
+    const path = 'src/backgrounded.ts'
+    const surfaceId = fileEditorSurfaceId(path)
+    const backgroundedLayout = moveSurface(editorWorkspaceLayoutForPaths([path], path), surfaceId, {
+      kind: 'background',
+    })
+    const { commands, workspaceStore } = setupStores({
+      ...workspaceState([], null),
+      workspaceLayout: backgroundedLayout,
+    })
+
+    commands.selectFile(path)
+
+    const layout = workspaceStore.getState().workspaceLayout
+    expect(backgroundedLayout.rail.backgroundSurfaceIds).toContain(surfaceId)
+    expect(layout.rail.backgroundSurfaceIds).not.toContain(surfaceId)
+    expect(visibleSurfaceIdsInOrder(layout)).toContain(surfaceId)
+    expect(workspaceStore.getState().openFilePaths).toEqual([path])
+    expect(workspaceStore.getState().selectedFilePath).toBe(path)
+  })
+
+  it('promotes transient file previews when selected as durable files', () => {
+    const path = 'src/preview.ts'
+    const preview = {
+      ...createFileEditorSurface({ lifecycle: 'transient', path }),
+      serializedState: {
+        editorGroupId: 'preview-group',
+        editorTabId: 'preview-tab',
+      },
+    }
+    const previewLayout = openSurface(editorWorkspaceLayoutForPaths([], null), preview)
+    const { commands, workspaceStore } = setupStores({
+      ...workspaceState([path], path),
+      workspaceLayout: previewLayout,
+    })
+
+    commands.selectFile(path)
+
+    const promoted = workspaceStore.getState().workspaceLayout.surfacesById[preview.id]
+    expect(previewLayout.surfacesById[preview.id]?.lifecycle).toBe('transient')
+    expect(promoted?.lifecycle).toBe('durable')
+    expect(promoted ? editorSurfaceSerializedState(promoted) : null).not.toBe(null)
+    expect(workspaceStore.getState().selectedFilePath).toBe(path)
+  })
+
   it('opens definitions through workspace, document, and ui stores', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts'], 'src/a.ts'),
@@ -684,44 +597,42 @@ function workspaceState(
   openFilePaths: string[],
   selectedFilePath: string | null,
 ): CachedWorkspaceState {
-  const editorPaneLayout = createEditorPaneLayoutForPaths(openFilePaths, selectedFilePath)
-
   return {
     diffViewMode: 'split',
     editorHistory: selectedFilePath ? [selectedFilePath] : [],
-    editorPaneLayout,
     openFilePaths,
     recentlyClosedEditorPaths: [],
     rootFolder: rootFolder(''),
     selectedFilePath,
-    workspaceLayout: workspaceLayoutForEditorPaneLayout(editorPaneLayout),
+    workspaceLayout: editorWorkspaceLayoutForPaths(openFilePaths, selectedFilePath),
+  }
+}
+
+function classicWorkspaceState(): CachedWorkspaceState {
+  const workspaceLayout = createClassicFirstRunWorkspaceLayout()
+
+  return {
+    diffViewMode: 'split',
+    editorHistory: [],
+    openFilePaths: [],
+    recentlyClosedEditorPaths: [],
+    rootFolder: rootFolder(''),
+    selectedFilePath: null,
+    workspaceLayout,
   }
 }
 
 function activePaneId(workspaceStore: ReturnType<typeof createEditorWorkspaceStore>) {
-  return workspaceStore.getState().editorPaneLayout.activePaneId
-}
+  const windowId = workspaceStore.getState().workspaceLayout.activeWindowId
+  if (!windowId) throw new Error('Missing active test window')
 
-function panePathGroups(layout: ReturnType<typeof createEditorPaneLayoutForPaths>) {
-  return editorPaneLeaves(layout.root).map((pane) => pane.tabs.map((tab) => tab.path))
-}
-
-function tabIdForPathInLayout(
-  layout: ReturnType<typeof createEditorPaneLayoutForPaths>,
-  path: string,
-) {
-  for (const pane of editorPaneLeaves(layout.root)) {
-    const tab = pane.tabs.find((candidate) => candidate.path === path)
-    if (tab) return tab.id
-  }
-
-  throw new Error(`Missing test tab for ${path}`)
+  return editorGroupIdForWorkbenchWindow(windowId)
 }
 
 function tabIdForPath(workspaceStore: ReturnType<typeof createEditorWorkspaceStore>, path: string) {
-  const layout = workspaceStore.getState().editorPaneLayout
-  const pane = findEditorPane(layout.root, layout.activePaneId)
-  const match = pane?.tabs.find((candidate) => candidate.path === path)
+  const match = editorSurfaceTabRecords(workspaceStore.getState().workspaceLayout).find(
+    (candidate) => candidate.path === path,
+  )
   if (match) return match.id
 
   throw new Error(`Missing test tab for ${path}`)

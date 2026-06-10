@@ -9,7 +9,8 @@ import type {
   TreeResult,
 } from '@/lib/file-system-types'
 import { clientErrorMessage } from '@/lib/client-error-taxonomy'
-import { observeClientOperation } from '@/lib/client-logging'
+import { log, observeClientOperation } from '@/lib/client-logging'
+import { createCoalescedLogQueue } from '@/lib/coalesced-log'
 import { omitNullish } from '@/lib/objects'
 import {
   createRpcError,
@@ -18,6 +19,17 @@ import {
 import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
 
 const TREE_LOAD_DEPTH = 1
+const TREE_LOG_DELAY_MS = 250
+const treeLogs = createCoalescedLogQueue({
+  delayMs: TREE_LOG_DELAY_MS,
+  emit: (event) => log.info(event),
+  merge: mergeTreeLogEvents,
+})
+const READ_LOG_DELAY_MS = 250
+const readLogs = createCoalescedLogQueue({
+  delayMs: READ_LOG_DELAY_MS,
+  emit: (event) => log.info(event),
+})
 
 export type WriteFileContentOptions = {
   baseVersion?: string | null
@@ -27,37 +39,43 @@ export type WriteFileContentOptions = {
 }
 
 export async function fetchTree(path: string, signal: AbortSignal) {
-  return observeClientOperation(
-    { action: 'fs.tree', area: 'fs', path },
-    async () => {
-      const response = await getClient().fs.tree.get({
-        query: { depth: TREE_LOAD_DEPTH, path },
-        fetch: { signal },
-      })
+  const startedAt = performance.now()
 
-      if (response.error) throw createRpcError(response.error)
+  try {
+    const response = await getClient().fs.tree.get({
+      query: { depth: TREE_LOAD_DEPTH, path },
+      fetch: { signal },
+    })
 
-      return response.data as TreeResult
-    },
-    (result) => ({ entryCount: result.entries.length }),
-  )
+    if (response.error) throw createRpcError(response.error)
+
+    const result = response.data as TreeResult
+    queueTreeSuccessLog(path, result, startedAt)
+    return result
+  } catch (error) {
+    logTreeError(path, error, startedAt, signal)
+    throw error
+  }
 }
 
 export async function fetchFile(path: string, signal: AbortSignal) {
-  return observeClientOperation(
-    { action: 'fs.read', area: 'fs', path },
-    async () => {
-      const response = await getClient().fs.read.get({
-        query: { path },
-        fetch: { signal },
-      })
+  const startedAt = performance.now()
 
-      if (response.error) throw createRpcError(response.error)
+  try {
+    const response = await getClient().fs.read.get({
+      query: { path },
+      fetch: { signal },
+    })
 
-      return response.data as FileResult
-    },
-    (result) => ({ size: result.size }),
-  )
+    if (response.error) throw createRpcError(response.error)
+
+    const result = response.data as FileResult
+    queueReadSuccessLog(path, result, startedAt)
+    return result
+  } catch (error) {
+    logReadError(path, error, startedAt, signal)
+    throw error
+  }
 }
 
 export async function fetchQuickOpenFiles({
@@ -260,4 +278,144 @@ export function errorMessage(error: unknown) {
 
 export function rpcErrorMessage(error: unknown) {
   return structuredRpcErrorMessage(error)
+}
+
+function queueTreeSuccessLog(path: string, result: TreeResult, startedAt: number) {
+  treeLogs.queue('fs.tree', {
+    action: 'fs.tree',
+    area: 'fs',
+    durationMs: elapsedMs(startedAt),
+    entryCount: result.entries.length,
+    outcome: 'ok',
+    path,
+  })
+}
+
+function queueReadSuccessLog(path: string, result: FileResult, startedAt: number) {
+  readLogs.queue(`fs.read:${path}`, {
+    action: 'fs.read',
+    area: 'fs',
+    durationMs: elapsedMs(startedAt),
+    outcome: 'ok',
+    path,
+    size: result.size,
+  })
+}
+
+function logReadError(path: string, error: unknown, startedAt: number, signal: AbortSignal) {
+  if (signal.aborted) return
+  if (isAbortError(error)) return
+
+  log.warn({
+    action: 'fs.read',
+    area: 'fs',
+    durationMs: elapsedMs(startedAt),
+    error: operationErrorSummary(error),
+    outcome: 'error',
+    path,
+  })
+}
+
+function logTreeError(path: string, error: unknown, startedAt: number, signal: AbortSignal) {
+  if (signal.aborted) return
+  if (isAbortError(error)) return
+
+  log.warn({
+    action: 'fs.tree',
+    area: 'fs',
+    durationMs: elapsedMs(startedAt),
+    error: operationErrorSummary(error),
+    outcome: 'error',
+    path,
+  })
+}
+
+function mergeTreeLogEvents(current: Record<string, unknown>, next: Record<string, unknown>) {
+  return {
+    action: 'fs.tree',
+    area: 'fs',
+    latestPath: stringField(next, 'path') ?? stringField(next, 'latestPath'),
+    maxDurationMs: Math.max(
+      numberField(current, 'maxDurationMs'),
+      durationMs(current),
+      durationMs(next),
+    ),
+    outcome: 'ok',
+    pathCount: numberField(current, 'pathCount', 1) + 1,
+    pathSample: treePathSample(current, next),
+    totalDurationMs: roundMs(totalDurationMs(current) + durationMs(next)),
+    totalEntryCount: totalEntryCount(current) + entryCount(next),
+  }
+}
+
+function treePathSample(current: Record<string, unknown>, next: Record<string, unknown>) {
+  const paths = currentPathSample(current)
+  const nextPath = stringField(next, 'path') ?? stringField(next, 'latestPath')
+  if (nextPath) paths.push(nextPath)
+
+  return paths.slice(0, 3)
+}
+
+function currentPathSample(event: Record<string, unknown>) {
+  if (Array.isArray(event.pathSample)) {
+    return event.pathSample.filter((value): value is string => typeof value === 'string')
+  }
+
+  const path = stringField(event, 'path') ?? stringField(event, 'latestPath')
+  return path ? [path] : []
+}
+
+function operationErrorSummary(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+    }
+  }
+
+  return {
+    message: String(error),
+    name: typeof error,
+  }
+}
+
+function isAbortError(error: unknown) {
+  if (error instanceof DOMException) return error.name === 'AbortError'
+  if (error instanceof Error) return error.name === 'AbortError'
+
+  return false
+}
+
+function totalDurationMs(event: Record<string, unknown>) {
+  return numberField(event, 'totalDurationMs', durationMs(event))
+}
+
+function totalEntryCount(event: Record<string, unknown>) {
+  return numberField(event, 'totalEntryCount', entryCount(event))
+}
+
+function durationMs(event: Record<string, unknown>) {
+  return numberField(event, 'durationMs')
+}
+
+function entryCount(event: Record<string, unknown>) {
+  return numberField(event, 'entryCount')
+}
+
+function numberField(event: Record<string, unknown>, key: string, fallback = 0) {
+  const value = event[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function stringField(event: Record<string, unknown>, key: string) {
+  const value = event[key]
+  return typeof value === 'string' ? value : null
+}
+
+function elapsedMs(startedAt: number) {
+  return roundMs(performance.now() - startedAt)
+}
+
+function roundMs(value: number) {
+  return Math.round(value * 100) / 100
 }

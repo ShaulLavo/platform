@@ -3,8 +3,8 @@ import type {
   EditorKeymapOptions,
   EditorPlugin,
   EditorTheme,
-} from '@editor/core'
-import { EditorHost, useEditor } from '@editor/react'
+} from '@singapor/core'
+import { EditorHost, useEditor } from '@singapor/react'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {
   memo,

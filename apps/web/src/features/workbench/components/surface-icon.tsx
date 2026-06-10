@@ -11,7 +11,7 @@ import {
   TerminalWindowIcon,
 } from '@phosphor-icons/react'
 
-import type { SurfaceType } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { SurfaceType } from '@workspace/tiling/utils/layout-types'
 
 export function SurfaceIcon({
   className,

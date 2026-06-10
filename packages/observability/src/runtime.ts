@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+
 import { definePlugin, initLogger, log, type DrainContext } from 'evlog'
 import { createFsDrain } from 'evlog/fs'
 import { createDrainPipeline, type PipelineDrainFn } from 'evlog/pipeline'
@@ -39,7 +42,8 @@ let runtime: ObservabilityRuntime = {
 }
 
 export function initializeObservabilityRuntime(options: InitializeObservabilityOptions) {
-  const config = observabilityConfigFromEnv(options.env ?? process.env)
+  const rawConfig = observabilityConfigFromEnv(options.env ?? process.env)
+  const config = { ...rawConfig, logDir: resolveLogDir(rawConfig.logDir) }
   const shouldPersistEvent = options.shouldPersistEvent ?? persistEveryEvent
   const drain = config.enabled ? createObservabilityDrain(config, shouldPersistEvent) : null
 
@@ -227,6 +231,29 @@ function isDrainAdapter(adapter: DrainAdapter | null): adapter is DrainAdapter {
 
 function persistEveryEvent() {
   return true
+}
+
+// Anchor a relative log dir to the monorepo root so every process (server, web,
+// scripts) writes to the same top-level `logs/`, regardless of its own cwd.
+// Absolute dirs (env override, tests) pass through untouched.
+function resolveLogDir(logDir: string) {
+  if (path.isAbsolute(logDir)) return logDir
+
+  const root = monorepoRoot()
+  return root ? path.join(root, logDir) : path.resolve(logDir)
+}
+
+function monorepoRoot() {
+  let dir = process.cwd()
+
+  while (true) {
+    if (existsSync(path.join(dir, 'bun.lock'))) return dir
+
+    const parent = path.dirname(dir)
+    if (parent === dir) return undefined
+
+    dir = parent
+  }
 }
 
 function sourcePlugin(source: string) {

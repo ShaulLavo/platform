@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createEditorTextBuffer } from '@editor/core'
+import { createEditorTextBuffer } from '@singapor/core'
 import type { WorkspaceSearchEvent } from '@workspace/contracts'
 
 import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
@@ -177,6 +177,7 @@ describe('workspace search run state', () => {
       filtersVisible: false,
       includeGlobText: '',
       matchMode: 'literal',
+      matches: [],
       query: 'needle',
       queryHistory: [],
       replaceHistory: [],

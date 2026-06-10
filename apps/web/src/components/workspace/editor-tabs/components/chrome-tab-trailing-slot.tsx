@@ -1,7 +1,6 @@
 import { ChromeTabCloseButton } from '@/components/workspace/editor-tabs/components/chrome-tab-close-button'
 import {
   chromeTabCloseButtonVisibilityClassName,
-  chromeTabRootWidth,
   chromeTabTrailingSlotStyle,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
@@ -9,13 +8,17 @@ import { useEditorTabDirty } from '@/components/workspace/editor-tabs/hooks/use-
 import { cn } from '@workspace/ui/lib/utils'
 
 export function ChromeTabTrailingSlot({
+  closeMode,
+  forceVisible,
   tab,
   width,
   onClose,
 }: {
+  closeMode: boolean
+  forceVisible: boolean
   tab: EditorTabModel
   width: number
-  onClose: (path: string, width: number | null) => void
+  onClose: (path: string) => void
 }) {
   const dirty = useEditorTabDirty(tab.path)
 
@@ -29,26 +32,30 @@ export function ChromeTabTrailingSlot({
           'max-w-[var(--chrome-tab-trailing-slot-width)] min-w-[var(--chrome-tab-trailing-slot-width)] w-[var(--chrome-tab-trailing-slot-width)]',
         width > 0 &&
           'max-w-[var(--chrome-tab-trailing-slot-width)] min-w-[var(--chrome-tab-trailing-slot-width)] w-[var(--chrome-tab-trailing-slot-width)]',
+        forceVisible &&
+          'max-w-[var(--chrome-tab-trailing-slot-width)] min-w-[var(--chrome-tab-trailing-slot-width)] w-[var(--chrome-tab-trailing-slot-width)]',
       )}
-      style={chromeTabTrailingSlotStyle()}
+      style={chromeTabTrailingSlotStyle(closeMode)}
     >
       <ChromeTabCloseButton
         aria-label={`Close ${tab.name}`}
-        className={chromeTabCloseButtonVisibilityClassName(tab, dirty)}
-        data-editor-tab-drag-blocker=''
+        className={cn(
+          chromeTabCloseButtonVisibilityClassName(tab, dirty, forceVisible),
+          closeMode && 'transition-none',
+        )}
+        data-workbench-drag-blocker=''
         draggable={false}
         onClick={(event) => {
           event.stopPropagation()
-          onClose(tab.id, chromeTabRootWidth(event.currentTarget))
+          onClose(tab.id)
         }}
-        onDragStart={(event) => event.preventDefault()}
         title={`Close ${tab.name}`}
       />
-      {dirty ? (
+      {dirty && !forceVisible ? (
         <span
           aria-hidden='true'
           className={cn(
-            'pointer-events-none absolute size-2 rounded-full bg-amber-500 transition-opacity',
+            'pointer-events-none absolute size-2 rounded-full bg-warning transition-opacity',
             'opacity-100 group-focus-within/chrome-tab:opacity-0 group-hover/chrome-tab:opacity-0',
           )}
         />

@@ -2,7 +2,7 @@ import { createEditorDocumentStore } from '@/features/editor/state/editor-docume
 import { FileSyncService, type FileSyncWriteFileContent } from '@/features/editor/file-sync-service'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
-import { createEditorBufferSession } from '@editor/core'
+import { createEditorBufferSession } from '@singapor/core'
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 

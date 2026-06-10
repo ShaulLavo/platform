@@ -1,3 +1,5 @@
+import { createInternalError } from '../../../observability/structured-errors'
+
 import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -149,7 +151,7 @@ async function assertGeneratedFilesCurrent(files: readonly GeneratedFile[]) {
     const current = await readFile(file.path, 'utf8').catch(() => null)
     if (current === file.text) continue
 
-    throw new Error(`Generated Codex protocol file is stale: ${file.path}`)
+    throw createInternalError(`Generated Codex protocol file is stale: ${file.path}`)
   }
 }
 
@@ -166,7 +168,7 @@ async function formatGeneratedText(filePath: string, text: string) {
   const result = await runFormatter(filePath, text)
   if (result.code === 0) return result.stdout
 
-  throw new Error(`oxfmt failed for ${filePath}: ${result.stderr}`)
+  throw createInternalError(`oxfmt failed for ${filePath}: ${result.stderr}`)
 }
 
 function runFormatter(filePath: string, text: string) {
@@ -244,7 +246,7 @@ async function fetchText(url: string) {
   const response = await fetch(url, { headers: { 'user-agent': USER_AGENT } })
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
-    throw new Error(`Failed to download ${url}: ${response.status} ${detail}`)
+    throw createInternalError(`Failed to download ${url}: ${response.status} ${detail}`)
   }
 
   return response.text()
@@ -283,7 +285,7 @@ function responseTypeName(entry: MethodEntry) {
 function requiredType(entry: MethodEntry) {
   if (entry.paramsType && entry.paramsType !== 'undefined') return entry.paramsType
 
-  throw new Error(`Codex protocol entry is missing params type: ${entry.method}`)
+  throw createInternalError(`Codex protocol entry is missing params type: ${entry.method}`)
 }
 
 function assertMethodsPresent(
@@ -295,7 +297,7 @@ function assertMethodsPresent(
   for (const method of expected) {
     if (actual.has(method)) continue
 
-    throw new Error(`Pinned Codex protocol is missing ${label} method: ${method}`)
+    throw createInternalError(`Pinned Codex protocol is missing ${label} method: ${method}`)
   }
 }
 
@@ -365,7 +367,8 @@ function visitDefinition(
   },
 ) {
   if (input.permanent.has(name)) return
-  if (input.temporary.has(name)) throw new Error(`Cyclic Codex protocol definition: ${name}`)
+  if (input.temporary.has(name))
+    throw createInternalError(`Cyclic Codex protocol definition: ${name}`)
 
   input.temporary.add(name)
   for (const dependency of localReferences(objectField(input.definitions, name))) {
@@ -513,11 +516,11 @@ function renderLiteral(value: JsonValue | undefined) {
 
 function renderRef(ref: string, context: RenderContext) {
   const prefix = '#/definitions/'
-  if (!ref.startsWith(prefix)) throw new Error(`Unsupported Codex protocol ref: ${ref}`)
+  if (!ref.startsWith(prefix)) throw createInternalError(`Unsupported Codex protocol ref: ${ref}`)
 
   const name = ref.slice(prefix.length)
   const typeName = context.definitionNames.get(name)
-  if (!typeName) throw new Error(`Unknown Codex protocol ref: ${ref}`)
+  if (!typeName) throw createInternalError(`Unknown Codex protocol ref: ${ref}`)
 
   return schemaConstName(typeName)
 }
@@ -669,7 +672,7 @@ function isPicklistValue(value: JsonValue): value is boolean | number | string {
 function asJsonObject(value: unknown, source: string): JsonObject {
   if (isJsonObject(value)) return value
 
-  throw new Error(`Expected JSON object from ${source}`)
+  throw createInternalError(`Expected JSON object from ${source}`)
 }
 
 if (import.meta.main) {

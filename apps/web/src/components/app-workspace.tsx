@@ -7,11 +7,11 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useWorkspaceEvents } from '@/hooks/use-workspace-events'
-import { useWorkspaceTree } from '@/hooks/use-workspace-tree'
+import { useResetWorkspaceTreeLoad } from '@/hooks/use-workspace-tree'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { PlatformKeyBinding } from '@/keymap'
-import type { EditorKeymapLayer } from '@editor/core'
+import type { PlatformKeyBinding } from '@/keymap/types'
+import type { EditorKeymapLayer } from '@singapor/core'
 import { useCallback } from 'react'
 
 type AppWorkspaceProps = {
@@ -32,8 +32,7 @@ export function AppWorkspace({
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
   const { pickRootFolder } = useEditorCommands()
-  const { loadTreeDirectory, prefetchTreeDirectory, resetTreeLoad, treeState } =
-    useWorkspaceTree(rootFolder)
+  const resetTreeLoad = useResetWorkspaceTreeLoad()
 
   useWorkspaceEvents(rootFolder)
 
@@ -61,19 +60,12 @@ export function AppWorkspace({
   return (
     <>
       <OpenTabLiveDocumentController />
-      <AppCommandSurface
-        bindings={keymapBindings}
-        requestCloseTab={onRequestCloseTab}
-        treeState={treeState}
-      />
+      <AppCommandSurface bindings={keymapBindings} requestCloseTab={onRequestCloseTab} />
       <div className='flex h-full min-h-0 flex-col'>
         {rootFolder ? (
           <WorkspaceView
             editorKeymapLayers={editorKeymapLayers}
             rootFolder={rootFolder}
-            treeState={treeState}
-            onLoadDirectory={loadTreeDirectory}
-            onPrefetchDirectory={prefetchTreeDirectory}
             onRequestCloseTab={onRequestCloseTab}
             onRequestCloseTabs={onRequestCloseTabs}
           />

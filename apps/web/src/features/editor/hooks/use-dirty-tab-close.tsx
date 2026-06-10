@@ -8,13 +8,13 @@ import {
   saveEditorDocumentByPath,
 } from '@/features/editor/editor-save'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import {
-  editorPanePathCounts,
-  findEditorPaneTab,
-  type EditorPaneLayout,
-} from '@/features/editor/state/editor-pane-state'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
+import {
+  editorSurfacePathCounts,
+  editorSurfaceTabRecords,
+} from '@/features/workbench/utils/editor-surface-layout'
 import { errorMessage } from '@/lib/file-server'
 
 export type RequestCloseTab = (tabId: string) => boolean
@@ -24,6 +24,8 @@ type PendingClose = {
   path: string
   tabIds: readonly string[]
 }
+
+const EMPTY_PENDING_CLOSES: readonly PendingClose[] = []
 
 export function useDirtyTabCloseRequest() {
   const documentStore = useEditorDocumentStoreApi()
@@ -38,12 +40,14 @@ export function useDirtyTabCloseRequest() {
   const canSavePendingPath = fileBackedEditorPath(pendingPath) !== null
 
   const clearPendingClose = useCallback(() => {
-    setPendingCloses([])
+    setPendingCloses(emptyPendingCloses)
     setSaveError(null)
   }, [])
 
   const advancePendingClose = useCallback(() => {
-    setPendingCloses((closes) => closes.slice(1))
+    setPendingCloses((closes) =>
+      closes.length <= 1 ? emptyPendingCloses(closes) : closes.slice(1),
+    )
     setSaveError(null)
   }, [])
 
@@ -52,12 +56,12 @@ export function useDirtyTabCloseRequest() {
       if (pendingCloses.length > 0) return false
 
       const workspace = workspaceStore.getState()
-      const openTabs = openTabCloseTargets(tabIds, workspace.editorPaneLayout)
+      const openTabs = openTabCloseTargets(tabIds, workspace.workspaceLayout)
       if (openTabs.length === 0) return false
       const state = documentStore.getState()
       const pending: PendingClose[] = []
       const closingPathCounts = tabClosePathCounts(openTabs)
-      const openPathCounts = editorPanePathCounts(workspace.editorPaneLayout)
+      const openPathCounts = editorSurfacePathCounts(workspace.workspaceLayout)
 
       for (const tab of openTabs) {
         const dirty = isDirtyLiveEditorDocument(state, tab.path)
@@ -70,7 +74,7 @@ export function useDirtyTabCloseRequest() {
         closeTab(tab.id)
       }
 
-      setPendingCloses(pending)
+      setPendingCloses((current) => pendingClosesForRequest(current, pending))
       setSaveError(null)
 
       return pending.length === 0
@@ -155,6 +159,21 @@ export function useDirtyTabCloseRequest() {
   }
 }
 
+function emptyPendingCloses(current: readonly PendingClose[]) {
+  if (current.length === 0) return current
+
+  return EMPTY_PENDING_CLOSES
+}
+
+function pendingClosesForRequest(
+  current: readonly PendingClose[],
+  pending: readonly PendingClose[],
+) {
+  if (pending.length > 0) return pending
+
+  return emptyPendingCloses(current)
+}
+
 async function saveAndClosePendingTab(pendingClose: PendingClose, context: SaveAndCloseContext) {
   context.setSaving(true)
   context.setSaveError(null)
@@ -196,16 +215,17 @@ type SaveAndCloseContext = {
   workspaceStore: ReturnType<typeof useEditorWorkspaceStoreApi>
 }
 
-function openTabCloseTargets(tabIds: readonly string[], editorPaneLayout: EditorPaneLayout) {
+function openTabCloseTargets(tabIds: readonly string[], workspaceLayout: WorkspaceLayout) {
   const seen = new Set<string>()
   const tabs: Array<{ id: string; path: string }> = []
+  const tabsById = new Map(editorSurfaceTabRecords(workspaceLayout).map((tab) => [tab.id, tab]))
 
   for (const tabId of tabIds) {
     if (seen.has(tabId)) continue
     seen.add(tabId)
-    const location = findEditorPaneTab(editorPaneLayout.root, tabId)
-    if (!location) continue
-    tabs.push(location.tab)
+    const tab = tabsById.get(tabId)
+    if (!tab) continue
+    tabs.push(tab)
   }
 
   return tabs
@@ -235,9 +255,10 @@ function appendPendingClose(pending: PendingClose[], path: string, tabId: string
 
 function pendingCloseIsOpen(
   pendingClose: PendingClose,
-  workspace: { editorPaneLayout: EditorPaneLayout },
+  workspace: { workspaceLayout: WorkspaceLayout },
 ) {
-  return pendingClose.tabIds.some((tabId) =>
-    Boolean(findEditorPaneTab(workspace.editorPaneLayout.root, tabId)),
+  const openTabIds = new Set(
+    editorSurfaceTabRecords(workspace.workspaceLayout).map((tab) => tab.id),
   )
+  return pendingClose.tabIds.some((tabId) => openTabIds.has(tabId))
 }

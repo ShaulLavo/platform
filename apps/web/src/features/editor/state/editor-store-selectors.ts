@@ -1,4 +1,4 @@
-import type { ReactEditorStoreSnapshot } from '@editor/react'
+import type { ReactEditorStoreSnapshot } from '@singapor/react'
 
 import { formatHistoryStatus, formatSyntaxStatus } from '@/features/editor/utils/status-formatters'
 

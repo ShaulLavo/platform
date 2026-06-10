@@ -5,8 +5,8 @@ import {
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
-} from '@editor/lsp-plugin'
-import type { ReactEditorController } from '@editor/react'
+} from '@singapor/lsp-plugin'
+import type { ReactEditorController } from '@singapor/react'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'

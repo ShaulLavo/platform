@@ -1,3 +1,5 @@
+import { createInternalError } from '../observability/structured-errors'
+
 import { isRecord } from '@workspace/contracts'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
@@ -563,7 +565,7 @@ class PooledLspProxySession {
 
     this.disposed = true
     removePooledSession(this)
-    this.rejectPendingRequests(new Error(`LSP process closed: ${outcome}`))
+    this.rejectPendingRequests(createInternalError(`LSP process closed: ${outcome}`))
     this.recordSession(outcome)
     for (const connection of this.connections) connection.closeSocket()
     this.connections.clear()
@@ -575,7 +577,7 @@ class PooledLspProxySession {
     this.disposed = true
     this.clearIdleTimer()
     removePooledSession(this)
-    this.rejectPendingRequests(new Error(`LSP session disposed: ${outcome}`))
+    this.rejectPendingRequests(createInternalError(`LSP session disposed: ${outcome}`))
     this.process.kill()
     this.recordSession(outcome)
   }

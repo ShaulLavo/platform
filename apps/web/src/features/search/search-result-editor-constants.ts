@@ -1,4 +1,4 @@
-import type { BrowserTextMetrics, EditorKeymapOptions } from '@editor/core'
+import type { BrowserTextMetrics, EditorKeymapOptions } from '@singapor/core'
 import type { CSSProperties } from 'react'
 
 import type { SearchResultVirtualListViewport } from '@/features/search/search-result-virtual-list'

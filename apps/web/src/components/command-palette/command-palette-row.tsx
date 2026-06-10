@@ -3,33 +3,33 @@ import { cn } from '@workspace/ui/lib/utils'
 
 import { CommandCategoryIcon } from './command-category-icon'
 import type { CommandPaletteItem } from './command-palette-types'
-import { commandKeywords } from './command-palette-utils'
-import type { PlatformCommandId } from '@/keymap'
 
 type CommandPaletteRowProps = {
-  readonly disabled: boolean
+  readonly disabledReason: string | null
   readonly item: CommandPaletteItem
-  readonly onSelect: (command: PlatformCommandId) => void
+  readonly onSelect: (item: CommandPaletteItem) => void
 }
 
-export function CommandPaletteRow({ disabled, item, onSelect }: CommandPaletteRowProps) {
+export function CommandPaletteRow({ disabledReason, item, onSelect }: CommandPaletteRowProps) {
+  const disabled = Boolean(disabledReason)
+
   return (
     <CommandItem
       disabled={disabled}
-      keywords={commandKeywords(item.spec)}
-      value={item.spec.id}
-      onSelect={() => onSelect(item.spec.id)}
+      keywords={item.keywords}
+      value={item.id}
+      onSelect={() => onSelect(item)}
     >
-      <CommandCategoryIcon category={item.spec.category} />
+      <CommandCategoryIcon category={item.category} />
       <span className='min-w-0 flex-1'>
-        <span className='block truncate font-medium'>{item.spec.title}</span>
+        <span className='block truncate font-medium'>{item.title}</span>
         <span
           className={cn(
             'text-muted-foreground block truncate text-[11px]',
             disabled && 'text-muted-foreground/70',
           )}
         >
-          {item.spec.description ?? item.spec.id}
+          {disabledReason ?? item.description ?? item.id}
         </span>
       </span>
       {item.shortcut && <CommandShortcut>{item.shortcut}</CommandShortcut>}

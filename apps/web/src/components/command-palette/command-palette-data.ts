@@ -1,4 +1,4 @@
-import type { PlatformCommandId } from '@/keymap'
+import type { PlatformCommandId } from '@/keymap/types'
 
 import type { ColorModePaletteItem, ViewPaletteItem } from './command-palette-types'
 

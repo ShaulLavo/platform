@@ -1,7 +1,7 @@
-import type { ITheme, Terminal } from 'ghostty-web'
+import type { ITheme } from 'ghostty-web'
 
 const TERMINAL_THEME_VARIABLES = {
-  background: '--terminal-background',
+  background: '--terminal-canvas-background',
   foreground: '--terminal-foreground',
   cursor: '--terminal-cursor',
   cursorAccent: '--terminal-cursor-accent',
@@ -34,10 +34,6 @@ const FALLBACK_TERMINAL_THEME: ITheme = {
   selectionForeground: '#ffffff',
 }
 
-type TerminalRuntimeThemeState = {
-  readonly scrollbarOpacity?: number
-}
-
 /**
  * Builds the terminal palette from the app's CSS design tokens so the terminal
  * stays in sync with the active light/dark theme. ghostty parses CSS color
@@ -57,27 +53,6 @@ export function readTerminalTheme(root: HTMLElement | null = documentRoot()): IT
   }
 
   return { ...FALLBACK_TERMINAL_THEME, ...theme }
-}
-
-export function syncTerminalTheme(
-  terminal: Terminal,
-  root: HTMLElement | null = documentRoot(),
-): ITheme {
-  const theme = readTerminalTheme(root)
-  Object.assign(terminal.options.theme, theme)
-
-  const { renderer, wasmTerm } = terminal
-  if (!renderer || !wasmTerm) return theme
-
-  renderer.setTheme(theme)
-  renderer.render(wasmTerm, true, terminal.viewportY, terminal, terminalScrollbarOpacity(terminal))
-
-  return theme
-}
-
-function terminalScrollbarOpacity(terminal: Terminal) {
-  const runtimeTerminal = terminal as unknown as TerminalRuntimeThemeState
-  return runtimeTerminal.scrollbarOpacity ?? 0
 }
 
 function documentRoot() {

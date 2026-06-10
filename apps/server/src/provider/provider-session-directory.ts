@@ -1,3 +1,5 @@
+import { createInternalError } from '../observability/structured-errors'
+
 import { asc, eq } from 'drizzle-orm'
 import {
   DEFAULT_RUNTIME_MODE,
@@ -206,7 +208,9 @@ function resolveProviderInstanceId(
   const existingProviderInstanceId = providerChanged ? undefined : existing?.providerInstanceId
   const providerInstanceId = binding.providerInstanceId ?? existingProviderInstanceId
   if (!providerInstanceId) {
-    throw new Error('providerInstanceId is required for provider session runtime bindings.')
+    throw createInternalError(
+      'providerInstanceId is required for provider session runtime bindings.',
+    )
   }
 
   return v.parse(providerInstanceIdSchema, providerInstanceId)
@@ -268,7 +272,7 @@ function parseRuntimeStatus(status: string): ProviderRuntimeBindingStatus {
     case 'error':
       return status
     default:
-      throw new Error(`Unknown provider runtime status: ${status}`)
+      throw createInternalError(`Unknown provider runtime status: ${status}`)
   }
 }
 

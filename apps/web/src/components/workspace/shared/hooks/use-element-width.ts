@@ -4,21 +4,37 @@ export function useElementWidth<TElement extends HTMLElement>(ref: RefObject<TEl
   const [width, setWidth] = useState<number | null>(null)
 
   useLayoutEffect(() => {
-    const element = ref.current
-    if (!element) return
+    let disposed = false
+    let observer: ResizeObserver | null = null
+    let retryFrame = 0
 
-    function updateWidth() {
-      setWidth(element?.clientWidth ?? null)
+    function updateWidth(element: TElement) {
+      setWidth(element.clientWidth)
     }
 
-    updateWidth()
+    function attachObserver() {
+      if (disposed) return
 
-    if (!('ResizeObserver' in window)) return
+      const element = ref.current
+      if (!element) {
+        retryFrame = requestAnimationFrame(attachObserver)
+        return
+      }
 
-    const observer = new ResizeObserver(updateWidth)
-    observer.observe(element)
+      updateWidth(element)
+      if (!('ResizeObserver' in window)) return
 
-    return () => observer.disconnect()
+      observer = new ResizeObserver(() => updateWidth(element))
+      observer.observe(element)
+    }
+
+    attachObserver()
+
+    return () => {
+      disposed = true
+      observer?.disconnect()
+      cancelAnimationFrame(retryFrame)
+    }
   }, [ref])
 
   return width

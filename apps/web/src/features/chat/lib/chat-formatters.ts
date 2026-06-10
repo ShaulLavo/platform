@@ -160,10 +160,9 @@ export function sessionLabel(session: OrchestrationSession | null) {
 
 export function activityToneClass(tone: OrchestrationThreadActivityTone) {
   if (tone === 'error') return 'border-destructive/30 bg-destructive/10 text-destructive'
-  if (tone === 'approval')
-    return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  if (tone === 'approval') return 'border-warning/30 bg-warning/10 text-warning'
   if (tone === 'thinking') return 'border-border bg-muted/20 text-muted-foreground'
-  if (tone === 'tool') return 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+  if (tone === 'tool') return 'border-info/25 bg-info/10 text-info'
 
   return 'border-border bg-muted/35 text-muted-foreground'
 }

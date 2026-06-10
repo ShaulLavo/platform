@@ -25,7 +25,8 @@ type Fixtures = {
 // The project's own test entry point. Tests import { test, expect } from here,
 // never from 'vitest' directly, so shared setup/teardown stays in one place.
 export const test = base.extend<Fixtures>({
-  server: async (_ctx, use) => {
+  // eslint-disable-next-line no-empty-pattern -- Vitest fixture callbacks must destructure the context object.
+  server: async ({}, use) => {
     const server = await makeTestServer()
     await use(server)
     await server.cleanup()

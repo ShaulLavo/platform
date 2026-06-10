@@ -1,4 +1,4 @@
-import type { EditorSyntaxLanguageId } from '@editor/core'
+import type { EditorSyntaxLanguageId } from '@singapor/core'
 
 const LANGUAGE_BY_EXTENSION: Record<string, EditorSyntaxLanguageId> = {
   '.babelrc': 'json',

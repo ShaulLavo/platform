@@ -1,13 +1,12 @@
 import type { Theme } from '@/components/theme-context'
-import type { TreeEntry } from '@/lib/file-system-types'
-import type { LoadState } from '@/lib/load-state'
-import type { TreeModel } from '@/lib/tree-model'
 import type {
-  CommandSpec,
-  PlatformCommandDispatch,
-  PlatformCommandId,
-  PlatformKeyBinding,
-} from '@/keymap'
+  CustomWindowManagementCommand,
+  LayoutOperation,
+  WorkspaceLayoutCommand,
+} from '@workspace/tiling/utils/layout-types'
+import type { TreeEntry } from '@/lib/file-system-types'
+import type { PlatformCommandDispatch } from '@/keymap/use-app-keymap'
+import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 
 export type CommandPaletteProps = {
   readonly bindings: readonly PlatformKeyBinding[]
@@ -16,12 +15,25 @@ export type CommandPaletteProps = {
   readonly onSearchChange: (search: string) => void
   readonly open: boolean
   readonly search: string
-  readonly treeState: LoadState<TreeModel>
 }
 
+export type CommandPaletteSelection =
+  | { readonly command: PlatformCommandId; readonly kind: 'platform' }
+  | { readonly command: CustomWindowManagementCommand; readonly kind: 'custom-window' }
+  | { readonly command: WorkspaceLayoutCommand; readonly kind: 'saved-layout' }
+  | { readonly kind: 'layout-operation'; readonly operation: LayoutOperation }
+
 export type CommandPaletteItem = {
-  readonly spec: CommandSpec
+  readonly aliases: readonly string[]
+  readonly category: string
+  readonly command: CommandPaletteSelection
+  readonly description?: string
+  readonly disabledReason?: string | null
+  readonly icon?: string
+  readonly id: string
+  readonly keywords: string[]
   readonly shortcut: string | null
+  readonly title: string
 }
 
 export type FilePaletteItem = {

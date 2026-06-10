@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Living plan — backend `orchestration/`/`persistence/` and `features/chat/` now partly exist; refresh phase status.
+
 # Platform Agent Architecture Plan
 
 This plan turns the T3Code reference into implementation phases for Platform.

@@ -278,7 +278,7 @@ export function ChatInput({
           <div
             className={cn(
               'border-border/80 bg-background/90 overflow-hidden rounded-md border shadow-[0_16px_42px_color-mix(in_oklch,var(--foreground)_7%,transparent)] backdrop-blur transition-[border-color,box-shadow]',
-              editorFocused && 'border-blue-500/70 ring-2 ring-blue-500/20',
+              editorFocused && 'border-info/70 ring-2 ring-info/20',
             )}
           >
             <ChatInputEditor

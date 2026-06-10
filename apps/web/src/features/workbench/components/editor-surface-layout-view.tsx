@@ -6,10 +6,7 @@ import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/
 import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
 import { createGitStore } from '@/features/git/state'
 import { useStatus } from '@/features/git/hooks'
-import type { TreeEntry } from '@/lib/file-system-types'
-import type { LoadState } from '@/lib/load-state'
-import type { DirectoryLoadOptions, TreeModel } from '@/lib/tree-model'
-import type { EditorKeymapLayer } from '@editor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
 import { useState } from 'react'
 
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
@@ -18,26 +15,16 @@ import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-
 import { useEditorSurfaceStore } from '@/features/workbench/hooks/use-editor-surface-store'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
-import type { Surface } from '@/features/tiling-surface-manager/utils/layout-types'
+import type { Surface } from '@workspace/tiling/utils/layout-types'
 
 export function EditorSurfaceLayoutView({
   editorKeymapLayers,
-  onLoadDirectory,
-  onPrefetchDirectory,
   rootPath,
-  treeState,
   onRequestCloseTab,
   onRequestCloseTabs,
 }: {
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
-  readonly treeState: LoadState<TreeModel>
   readonly rootPath: string
-  readonly onLoadDirectory: (
-    entry: TreeEntry,
-    treePath: string,
-    options?: DirectoryLoadOptions,
-  ) => void
-  readonly onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   readonly onRequestCloseTab: RequestCloseTab
   readonly onRequestCloseTabs: RequestCloseTabs
 }) {
@@ -48,20 +35,6 @@ export function EditorSurfaceLayoutView({
   const conflicts = useEditorConflictState((state) => state.conflicts)
   const gitStatus = useStatus(rootPath)
   const gitFiles = gitStatus.data?.files ?? EMPTY_GIT_FILES
-  const [visibleTreeItemCount, setVisibleTreeItemCount] = useState<{
-    readonly count: number
-    readonly rootPath: string
-  } | null>(null)
-  const currentVisibleTreeItemCount =
-    visibleTreeItemCount?.rootPath === rootPath ? visibleTreeItemCount.count : null
-
-  function handleVisibleTreeItemCountChange(count: number) {
-    setVisibleTreeItemCount((current) => {
-      if (current?.count === count && current.rootPath === rootPath) return current
-
-      return { count, rootPath }
-    })
-  }
 
   return (
     <EditorSurfaceProvider
@@ -85,13 +58,6 @@ export function EditorSurfaceLayoutView({
           rootPath,
         })
       }
-      toolSurfaceState={{
-        treeState,
-        visibleTreeItemCount: currentVisibleTreeItemCount,
-        onLoadDirectory,
-        onPrefetchDirectory,
-        onVisibleTreeItemCountChange: handleVisibleTreeItemCountChange,
-      }}
     >
       <LayoutProvider store={store}>
         <LayoutRenderer surfaceRenderers={editorSurfaceRendererRegistry} />

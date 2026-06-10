@@ -1,5 +1,4 @@
-import { EditorPaneTabBody } from '@/components/workspace/editor-panes/components/editor-pane-tab-body'
-
+import { EditorSurfaceTabBody } from '@/features/workbench/components/editor-surface-tab-body'
 import { PanelUnavailable } from '@/features/workbench/components/panel-unavailable'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
 import type { SurfaceRendererProps } from '@/features/workbench/utils/surface-renderer-registry'
@@ -19,7 +18,7 @@ export function DiffEditorSurface({ active, surface }: SurfaceRendererProps) {
   }
 
   return (
-    <EditorPaneTabBody
+    <EditorSurfaceTabBody
       active={active}
       editorKeymapLayers={context.editorKeymapLayers}
       path={surface.resourceKey}

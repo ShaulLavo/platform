@@ -1,5 +1,5 @@
-import type { EditorTheme } from '@editor/core'
-import { editorThemeToShikiTheme } from '@editor/core/shiki'
+import type { EditorTheme } from '@singapor/core'
+import { editorThemeToShikiTheme } from '@singapor/core/shiki'
 import {
   createCodePlugin,
   type CodeHighlighterPlugin,

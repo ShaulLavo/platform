@@ -1,4 +1,4 @@
-import type { EditorKeymapLayer, EditorTheme } from '@editor/core'
+import type { EditorKeymapLayer, EditorTheme } from '@singapor/core'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import { memo, useMemo, type RefObject } from 'react'
 

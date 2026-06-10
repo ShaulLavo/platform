@@ -1,12 +1,20 @@
-import type { EditorCommandId } from '@editor/core'
+import type { EditorCommandId } from '@singapor/core'
+
+import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
+import type { BuiltInWindowManagementCommand } from '@workspace/tiling/utils/layout-types'
 
 import type { EditorPlatformCommandId, PlatformCommandId, WorkspaceCommandId } from './types'
+import { workspaceCommandIdForWindowManagementCommand } from './window-management-command-ids'
 
 export type CommandSpec<Id extends PlatformCommandId = PlatformCommandId> = {
+  readonly aliases?: readonly string[]
+  readonly commandFamily?: 'appearance' | 'editor' | 'window-management' | 'workspace'
+  readonly commandKind?: 'built-in-window' | 'editor' | 'workspace'
   readonly id: Id
   readonly title: string
   readonly category: string
   readonly description?: string
+  readonly icon?: string
   readonly vscodeCommandIds?: readonly string[]
   readonly argsSchema?: unknown
 }
@@ -65,8 +73,8 @@ export const workspaceCommandSpecs = [
   ),
   workspaceCommand(
     'workspace.toggleSidebarVisibility',
-    'Toggle sidebar visibility',
-    'Show or hide the workspace sidebar.',
+    'Toggle Files pane',
+    'Open, collapse, expand, or focus the Files pane.',
     ['workbench.action.toggleSidebarVisibility'],
   ),
   workspaceCommand(
@@ -130,6 +138,13 @@ export const workspaceCommandSpecs = [
     'Follow the system color mode.',
   ),
 ] satisfies readonly CommandSpec<WorkspaceCommandId>[]
+
+export const windowManagementCommandSpecs = builtInWindowManagementCommands().flatMap((command) => {
+  const id = workspaceCommandIdForWindowManagementCommand(command.id)
+  if (!id) return []
+
+  return [windowManagementCommand(id, command)]
+}) satisfies readonly CommandSpec<WorkspaceCommandId>[]
 
 export const editorCommandSpecs = [
   editorCommand('undo', 'Undo', ['undo']),
@@ -243,6 +258,7 @@ export const editorCommandSpecs = [
 
 export const platformCommandSpecs = [
   ...workspaceCommandSpecs,
+  ...windowManagementCommandSpecs,
   ...editorCommandSpecs,
 ] satisfies readonly CommandSpec[]
 
@@ -269,7 +285,15 @@ function workspaceCommand(
   description: string,
   vscodeCommandIds: readonly string[] = [],
 ): CommandSpec<WorkspaceCommandId> {
-  return { category: 'Workspace', description, id, title, vscodeCommandIds }
+  return {
+    category: 'Workspace',
+    commandFamily: 'workspace',
+    commandKind: 'workspace',
+    description,
+    id,
+    title,
+    vscodeCommandIds,
+  }
 }
 
 function appearanceCommand(
@@ -277,7 +301,30 @@ function appearanceCommand(
   title: string,
   description: string,
 ): CommandSpec<WorkspaceCommandId> {
-  return { category: 'Appearance', description, id, title }
+  return {
+    category: 'Appearance',
+    commandFamily: 'appearance',
+    commandKind: 'workspace',
+    description,
+    id,
+    title,
+  }
+}
+
+function windowManagementCommand(
+  id: WorkspaceCommandId,
+  command: BuiltInWindowManagementCommand,
+): CommandSpec<WorkspaceCommandId> {
+  return {
+    aliases: command.aliases,
+    category: command.category,
+    commandFamily: 'window-management',
+    commandKind: 'built-in-window',
+    description: windowManagementDescription(command),
+    icon: command.icon,
+    id,
+    title: command.title,
+  }
 }
 
 function editorCommand(
@@ -285,5 +332,19 @@ function editorCommand(
   title: string,
   vscodeCommandIds: readonly string[] = [],
 ): CommandSpec<EditorPlatformCommandId> {
-  return { category: 'Editor', id: `editor.${id}`, title, vscodeCommandIds }
+  return {
+    category: 'Editor',
+    commandFamily: 'editor',
+    commandKind: 'editor',
+    id: `editor.${id}`,
+    title,
+    vscodeCommandIds,
+  }
+}
+
+function windowManagementDescription(command: BuiltInWindowManagementCommand) {
+  const alias = command.aliases[0]
+  if (!alias) return 'Run a window management operation.'
+
+  return `Run window management: ${alias}.`
 }

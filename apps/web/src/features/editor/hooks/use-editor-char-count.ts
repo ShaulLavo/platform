@@ -1,5 +1,5 @@
-import type { ReactEditorController } from '@editor/react'
-import { useEditorSelector } from '@editor/react'
+import type { ReactEditorController } from '@singapor/react'
+import { useEditorSelector } from '@singapor/react'
 
 import { selectEditorCharCount } from '@/features/editor/state/editor-store-selectors'
 

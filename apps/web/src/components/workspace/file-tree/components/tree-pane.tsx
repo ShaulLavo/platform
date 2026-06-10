@@ -1,11 +1,12 @@
 import type {
-  FileTree as PierreFileTreeModel,
   FileTreeDropContext,
   FileTreeDropResult,
   FileTreeRowDecorationContext,
-  GitStatusEntry,
-} from '@pierre/trees'
-import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
+} from '@workspace/tree/utils/model/publicTypes'
+import { FileTree } from '@workspace/tree/components/FileTree'
+import { useFileTree } from '@workspace/tree/hooks/useFileTree'
+import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
 
 import {
@@ -13,6 +14,7 @@ import {
   syncTreePaneState,
   visibleTreeItemCount,
 } from '@/components/workspace/file-tree/utils/tree-pane-state'
+import { selectedFileEntryForTreeSelection } from '@/components/workspace/file-tree/utils/tree-selection'
 import { useFileTreeIntentPrefetch } from '@/components/workspace/file-tree/hooks/use-file-tree-intent-prefetch'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
@@ -20,13 +22,11 @@ import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileTreeIconsForPaths } from '@/lib/file-icons'
 import type { TreeEntry } from '@/lib/file-system-types'
-import { isFileEntry } from '@/lib/file-system-types'
 import { renamePath } from '@/lib/file-server'
 import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
 import {
-  entryForTreePath,
   type DirectoryLoadOptions,
   moveTreeModelPaths,
   treePathForSelectedPath,
@@ -102,9 +102,24 @@ function ReadyTreePane({
   const queryClient = useQueryClient()
   const expandedDirectoryPathsRef = useRef<ReadonlySet<string> | undefined>(undefined)
   const modelRef = useRef(model)
+  const selectedFilePathRef = useRef(selectedFilePath)
+  const selectFileRef = useRef(selectFile)
   const movePendingRef = useRef(false)
   const pathsRef = useRef(model.paths)
-  const treeRef = useRef<PierreFileTreeModel | null>(null)
+  const selectionSyncRef = useRef<SelectionSyncState>({
+    rootPath: null,
+    selectedFilePath: undefined,
+  })
+  const treeRef = useRef<FileTreeModel | null>(null)
+  // useFileTree consumes options once; keep this callback stable and read live app state from refs.
+  const handleTreeSelectionChangeRef = useRef((selectedPaths: readonly string[]) => {
+    openSelectedTreeFile({
+      model: modelRef.current,
+      selectedFilePath: selectedFilePathRef.current,
+      selectedPaths,
+      selectFile: selectFileRef.current,
+    })
+  })
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const moveMutation = useMutation({
     mutationFn: moveDroppedTreePaths,
@@ -131,17 +146,15 @@ function ReadyTreePane({
       invalidateMoveQueries(queryClient)
     },
   })
-  const loadExpandedDirectoriesForCurrentModel = useEffectEvent(
-    (currentTree: PierreFileTreeModel) => {
-      expandedDirectoryPathsRef.current = loadExpandedDirectories(
-        currentTree,
-        model,
-        onLoadDirectory,
-        expandedDirectoryPathsRef.current,
-      )
-    },
-  )
-  const publishVisibleItemCount = useEffectEvent((currentTree: PierreFileTreeModel) => {
+  const loadExpandedDirectoriesForCurrentModel = useEffectEvent((currentTree: FileTreeModel) => {
+    expandedDirectoryPathsRef.current = loadExpandedDirectories(
+      currentTree,
+      model,
+      onLoadDirectory,
+      expandedDirectoryPathsRef.current,
+    )
+  })
+  const publishVisibleItemCount = useEffectEvent((currentTree: FileTreeModel) => {
     onVisibleItemCountChange?.(visibleTreeItemCount(currentTree, modelRef.current))
   })
 
@@ -169,14 +182,9 @@ function ReadyTreePane({
         reportError(toClientError({ code: 'INVALID_PATH', error }))
       },
     },
+    onSelectionChange: handleTreeSelectionChangeRef.current,
     renderRowDecoration: (context) => treeRowDecoration(modelRef.current, context),
     unsafeCSS: treeUnsafeCss,
-    onSelectionChange: (selectedPaths) => {
-      const entry = entryForTreePath(modelRef.current, selectedPaths[0])
-      if (!entry || !isFileEntry(entry)) return
-
-      selectFile(entry.path)
-    },
   })
 
   useFileTreeIntentPrefetch({
@@ -187,26 +195,28 @@ function ReadyTreePane({
 
   useLayoutEffect(() => {
     modelRef.current = model
+    selectedFilePathRef.current = selectedFilePath
+    selectFileRef.current = selectFile
     treeRef.current = tree
-  }, [model, tree])
+  }, [model, selectFile, selectedFilePath, tree])
 
   useEffect(() => {
-    tree.setIcons(icons)
-  }, [icons, tree])
-
-  useEffect(() => {
-    tree.setGitStatus(gitStatus)
-  }, [gitStatus, tree])
-
-  useEffect(() => {
+    const selectionSync = selectionSyncPlan({
+      rootPath,
+      selectedFilePath,
+      state: selectionSyncRef.current,
+      tree,
+    })
     pathsRef.current = syncTreePaneState({
       loadExpandedDirectoriesForCurrentModel,
       model,
       previousPaths: pathsRef.current,
       rootPath,
+      syncSelection: selectionSync.shouldSync,
       selectedFilePath,
       tree,
     })
+    updateSelectionSyncState(selectionSyncRef.current, selectionSync, rootPath, selectedFilePath)
     publishVisibleItemCount(tree)
   }, [model, rootPath, selectedFilePath, tree])
 
@@ -223,14 +233,27 @@ function ReadyTreePane({
       onFocusCapture={() => setFocusArea('file-tree')}
       onPointerDownCapture={() => setFocusArea('file-tree')}
     >
-      <PierreFileTree
-        aria-label='Folder tree'
-        className='block h-full'
-        model={tree}
-        style={treeStyle}
-      />
+      <FileTree aria-label='Folder tree' className='block h-full' model={tree} style={treeStyle} />
     </div>
   )
+}
+
+function openSelectedTreeFile({
+  model,
+  selectedFilePath,
+  selectedPaths,
+  selectFile,
+}: {
+  model: TreeModel
+  selectedFilePath: string | null
+  selectedPaths: readonly string[]
+  selectFile: (path: string | null) => void
+}) {
+  const entry = selectedFileEntryForTreeSelection(model, selectedPaths)
+  if (!entry) return
+  if (entry.path === selectedFilePath) return
+
+  selectFile(entry.path)
 }
 
 function TreeStatus({ icon, label }: { icon?: ReactNode; label: string }) {
@@ -242,6 +265,72 @@ function TreeStatus({ icon, label }: { icon?: ReactNode; label: string }) {
       </div>
     </div>
   )
+}
+
+type SelectionSyncState = {
+  rootPath: string | null
+  selectedFilePath: string | null | undefined
+}
+
+type SelectionSyncPlan = {
+  canComplete: boolean
+  reason: 'already-synced' | 'pending-selected-file' | 'root-changed' | 'selected-file-changed'
+  shouldSync: boolean
+  treePath: string | null
+}
+
+function selectionSyncPlan({
+  rootPath,
+  selectedFilePath,
+  state,
+  tree,
+}: {
+  rootPath: string
+  selectedFilePath: string | null
+  state: SelectionSyncState
+  tree: FileTreeModel
+}): SelectionSyncPlan {
+  const treePath = selectedTreePath(rootPath, selectedFilePath)
+  const canComplete = selectedFilePathCanCompleteSync(tree, treePath, selectedFilePath)
+  if (state.rootPath !== rootPath) {
+    return { canComplete, reason: 'root-changed', shouldSync: true, treePath }
+  }
+  if (state.selectedFilePath !== selectedFilePath) {
+    const reason = canComplete ? 'selected-file-changed' : 'pending-selected-file'
+    return { canComplete, reason, shouldSync: true, treePath }
+  }
+
+  return { canComplete, reason: 'already-synced', shouldSync: false, treePath }
+}
+
+function selectedTreePath(rootPath: string, selectedFilePath: string | null) {
+  if (!selectedFilePath) return null
+
+  return canonicalTreePath(treePathForSelectedPath(rootPath, selectedFilePath))
+}
+
+function selectedFilePathCanCompleteSync(
+  tree: FileTreeModel,
+  treePath: string | null,
+  selectedFilePath: string | null,
+) {
+  if (!selectedFilePath) return true
+  if (!treePath) return true
+
+  const item = tree.getItem(treePath)
+  return item?.isDirectory() === false
+}
+
+function updateSelectionSyncState(
+  state: SelectionSyncState,
+  plan: SelectionSyncPlan,
+  rootPath: string,
+  selectedFilePath: string | null,
+) {
+  if (!plan.canComplete) return
+
+  state.rootPath = rootPath
+  state.selectedFilePath = selectedFilePath
 }
 
 function treeRowDecoration(model: TreeModel, context: FileTreeRowDecorationContext) {

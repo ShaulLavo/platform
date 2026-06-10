@@ -242,13 +242,14 @@ export function cachedSearchBufferState(
   const resultMetadata = cachedSearchResultMetadata(snapshot)
 
   return {
-    activeResultId: null,
+    activeResultId: resultMetadata.activeResultId,
     caseSensitive: snapshot.caseSensitive,
     collapsedPaths: Array.from(snapshot.collapsedPaths),
     excludeGlobText: snapshot.excludeGlobText,
     filtersVisible: snapshot.filtersVisible,
     includeGlobText: snapshot.includeGlobText,
     matchMode: snapshot.matchMode,
+    matches: Array.from(resultMetadata.matches),
     query: snapshot.query,
     queryHistory: Array.from(snapshot.queryHistory),
     replaceHistory: Array.from(snapshot.replaceHistory),
@@ -264,8 +265,23 @@ export function cachedSearchBufferState(
 }
 
 function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
-  if (snapshot.status !== 'ready') {
+  if (!snapshot.resultsSearchQuery || !snapshot.resultsQuery) {
     return {
+      activeResultId: null,
+      matches: [],
+      resultsQuery: '',
+      resultsSearchQuery: null,
+      totalCount: 0,
+      truncated: false,
+    }
+  }
+  if (
+    snapshot.status === 'loading' &&
+    sameWorkspaceSearchQuery(snapshot.resultsSearchQuery, snapshot.runningSearchQuery)
+  ) {
+    return {
+      activeResultId: null,
+      matches: [],
       resultsQuery: '',
       resultsSearchQuery: null,
       totalCount: 0,
@@ -274,6 +290,8 @@ function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
   }
 
   return {
+    activeResultId: snapshot.activeResultId,
+    matches: Array.from(snapshot.matches),
     resultsQuery: snapshot.resultsQuery,
     resultsSearchQuery: snapshot.resultsSearchQuery,
     totalCount: snapshot.totalCount,
@@ -285,19 +303,21 @@ function searchBufferSnapshotFromCache(
   cached: CachedSearchBufferState | null,
 ): SearchBufferSnapshot | null {
   if (!cached) return null
+  const groups = groupSearchMatches(cached.matches, cached.rootPath, cached.collapsedPaths)
+  const collapsedPaths = prunedCollapsedPaths(cached.collapsedPaths, groups)
 
   return resolveActiveSearchResult({
     activeResultId: cached.activeResultId,
     caseSensitive: cached.caseSensitive,
-    collapsedPaths: cached.collapsedPaths,
+    collapsedPaths,
     error: null,
     excludeGlobText: cached.excludeGlobText,
     filtersVisible: cached.filtersVisible,
-    groups: EMPTY_SEARCH_GROUPS,
+    groups: searchGroupsWithCollapsedPaths(groups, collapsedPaths),
     id: searchBufferDocumentId(cached.rootPath),
     includeGlobText: cached.includeGlobText,
     matchMode: cached.matchMode,
-    matches: [],
+    matches: cached.matches,
     query: cached.query,
     queryHistory: cached.queryHistory,
     queryHistoryCursor: null,
@@ -329,7 +349,6 @@ function searchBufferSnapshotFromCache(
 function cachedSearchBufferStatus(cached: CachedSearchBufferState) {
   if (!cached.query) return 'idle'
   if (!cached.resultsQuery) return 'loading'
-  if (cached.totalCount > 0) return 'loading'
 
   return 'ready'
 }

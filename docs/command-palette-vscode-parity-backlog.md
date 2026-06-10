@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Some backlog items shipped (quick-access modes exist); reconcile done vs open; fix dead `/Desktop/Editors/vscode` paths.
+
 # Command Palette VS Code Parity Backlog
 
 This tracks the gap between the first command palette pass and VS Code's Quick Access / Command Palette model. The reference points are:

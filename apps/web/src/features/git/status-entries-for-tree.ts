@@ -1,4 +1,4 @@
-import type { GitStatusEntry } from '@pierre/trees'
+import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
 
 import { toTreePath } from '@/lib/path-formatters'
 import type { FileStatus, TreeStatus } from './types'
