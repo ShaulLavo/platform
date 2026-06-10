@@ -21,6 +21,7 @@ import {
   visibleSurfaceIdsInOrder,
   visibleWindowIdsInOrder,
 } from '@workspace/tiling/utils/layout-normalize'
+import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import type { LayoutSplitNode, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('tiling surface layout normalization', () => {
@@ -132,7 +133,7 @@ function layoutWithSameAxisSplitAndEmptyWindow(): WorkspaceLayout {
   const emptyNodeId = layoutNodeId('normalizer:empty')
   const sameAxisNodeId = layoutNodeId('normalizer:same-axis')
   const placeholderId = layout.activeSurfaceId
-  if (!placeholderId) throw new Error('Classic layout missing active placeholder')
+  if (!placeholderId) throw createTilingInvariantError('Classic layout missing active placeholder')
 
   return {
     ...layout,

@@ -22,6 +22,7 @@ import {
   PREVIEW_ADJACENT_POLICY_ID,
   placementForSurfaceWithPolicy,
 } from '@workspace/tiling/utils/layout-policies'
+import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import type { Surface, WorkspaceRecipeSlot } from '@workspace/tiling/utils/layout-types'
 
 describe('tiling surface layout policies', () => {
@@ -54,7 +55,7 @@ describe('tiling surface layout policies', () => {
       ownerSurfaceId: search.id,
     })
     const ownerWindowId = findWindowIdContainingSurface(layout, search.id)
-    if (!ownerWindowId) throw new Error('Expected visible search owner')
+    if (!ownerWindowId) throw createTilingInvariantError('Expected visible search owner')
 
     expect(
       placementForSurfaceWithPolicy({
@@ -105,7 +106,7 @@ describe('tiling surface layout policies', () => {
       ownerSurfaceId: search.id,
     })
     const ownerWindowId = findWindowIdContainingSurface(layout, search.id)
-    if (!ownerWindowId) throw new Error('Expected visible search owner')
+    if (!ownerWindowId) throw createTilingInvariantError('Expected visible search owner')
 
     expect(
       placementForSurfaceWithPolicy({

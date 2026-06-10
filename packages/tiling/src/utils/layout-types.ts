@@ -18,18 +18,21 @@ export type SerializedWorkspaceLayoutVersion = typeof WORKSPACE_LAYOUT_VERSION
 export type SurfaceRegistryVersion = typeof SURFACE_REGISTRY_VERSION
 export type SerializedSurfaceVersion = typeof SURFACE_SERIALIZED_VERSION
 
-export type SurfaceType =
-  | 'chat'
-  | 'diagnostics'
-  | 'diff'
-  | 'file-editor'
-  | 'file-navigator'
-  | 'git-changes'
-  | 'logs'
-  | 'placeholder'
-  | 'search-preview'
-  | 'search-results'
-  | 'terminal'
+export const SURFACE_TYPES = [
+  'chat',
+  'diagnostics',
+  'diff',
+  'file-editor',
+  'file-navigator',
+  'git-changes',
+  'logs',
+  'placeholder',
+  'search-preview',
+  'search-results',
+  'terminal',
+] as const
+
+export type SurfaceType = (typeof SURFACE_TYPES)[number]
 
 export type SurfaceLifecycle = 'durable' | 'placeholder' | 'running' | 'transient'
 export type SurfaceCardinality = 'multi' | 'singleton' | 'singleton-per-context'

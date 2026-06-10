@@ -24,6 +24,7 @@ import {
   findWindowIdContainingSurface,
 } from '@workspace/tiling/utils/layout-normalize'
 import { collapseWindow, openSurface } from '@workspace/tiling/utils/layout-operations'
+import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('tiling surface layout geometry', () => {
@@ -106,11 +107,11 @@ describe('tiling surface layout geometry', () => {
     })
     const opened = openSurface(createEmptyWorkspaceLayout(), surface)
     const windowId = findWindowIdContainingSurface(opened, surface.id)
-    if (!windowId) throw new Error('Expected opened surface window')
+    if (!windowId) throw createTilingInvariantError('Expected opened surface window')
 
     const collapsed = collapseWindow(opened, windowId)
     const nodeId = findNodeIdForWindow(collapsed, windowId)
-    if (!nodeId) throw new Error('Expected collapsed window node')
+    if (!nodeId) throw createTilingInvariantError('Expected collapsed window node')
 
     const geometry = deriveLayoutGeometry(collapsed, rootRect(), { gapPx: 10 })
 
@@ -127,12 +128,12 @@ describe('tiling surface layout geometry', () => {
     })
     const opened = openSurface(createEmptyWorkspaceLayout(), surface)
     const windowId = findWindowIdContainingSurface(opened, surface.id)
-    if (!windowId) throw new Error('Expected opened surface window')
+    if (!windowId) throw createTilingInvariantError('Expected opened surface window')
 
     const bottom = collapseWindow(opened, windowId, 'bottom')
     const left = collapseWindow(opened, windowId, 'left')
     const nodeId = findNodeIdForWindow(opened, windowId)
-    if (!nodeId) throw new Error('Expected collapsed window node')
+    if (!nodeId) throw createTilingInvariantError('Expected collapsed window node')
 
     const bottomGeometry = deriveLayoutGeometry(bottom, rootRect(), { gapPx: 10 })
     const leftGeometry = deriveLayoutGeometry(left, rootRect(), { gapPx: 10 })
@@ -210,7 +211,7 @@ function rootRect(): LayoutRect {
 }
 
 function expectRect(actual: LayoutRect | undefined, expected: LayoutRect) {
-  if (!actual) throw new Error('Expected rect')
+  if (!actual) throw createTilingInvariantError('Expected rect')
 
   expect(actual.x).toBeCloseTo(expected.x)
   expect(actual.y).toBeCloseTo(expected.y)

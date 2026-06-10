@@ -1,16 +1,17 @@
 import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
 import { hasInvalidTransientOwner } from '@workspace/tiling/utils/layout-queries'
-import type {
-  LayoutNode,
-  LayoutNodeId,
-  LayoutSplitAxis,
-  LayoutSplitNode,
-  RecipeId,
-  SurfaceId,
-  SurfaceType,
-  WindowId,
-  WorkbenchWindow,
-  WorkspaceLayout,
+import {
+  SURFACE_TYPES,
+  type LayoutNode,
+  type LayoutNodeId,
+  type LayoutSplitAxis,
+  type LayoutSplitNode,
+  type RecipeId,
+  type SurfaceId,
+  type SurfaceType,
+  type WindowId,
+  type WorkbenchWindow,
+  type WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
 
 export type LayoutInvariantViolationCode =
@@ -62,19 +63,7 @@ type VisibleSurfaceReference = {
   readonly windowId: WindowId
 }
 
-const KNOWN_SURFACE_TYPES = new Set<SurfaceType>([
-  'chat',
-  'diagnostics',
-  'diff',
-  'file-editor',
-  'file-navigator',
-  'git-changes',
-  'logs',
-  'placeholder',
-  'search-preview',
-  'search-results',
-  'terminal',
-])
+const KNOWN_SURFACE_TYPES: ReadonlySet<SurfaceType> = new Set(SURFACE_TYPES)
 
 export function checkWorkspaceLayoutInvariants(layout: WorkspaceLayout): LayoutInvariantReport {
   const violations: LayoutInvariantViolation[] = []

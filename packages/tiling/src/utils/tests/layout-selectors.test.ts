@@ -27,6 +27,7 @@ import {
   selectMruFallback,
   selectWindowNeighborIds,
 } from '@workspace/tiling/utils/layout-selectors'
+import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
@@ -39,7 +40,7 @@ describe('tiling surface layout selectors', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const tree = selectMaterializedLayoutTree(layout)
     const activeSurfaceId = layout.activeSurfaceId
-    if (!activeSurfaceId) throw new Error('Expected active surface')
+    if (!activeSurfaceId) throw createTilingInvariantError('Expected active surface')
 
     const nodePath = resolveNodePath(layout, CLASSIC_EDITOR_NODE_ID)
     const surfacePath = resolveSurfacePath(layout, activeSurfaceId)
@@ -109,7 +110,7 @@ describe('tiling surface layout selectors', () => {
     const rows = selectCommandPaletteRows(layout)
     const maximizeRow = rows.find((row) => row.title === 'Maximize Active Window')
     if (!maximizeRow || maximizeRow.kind === 'saved-layout') {
-      throw new Error('Expected built-in maximize command row')
+      throw createTilingInvariantError('Expected built-in maximize command row')
     }
 
     expect(commandMatchesSearch(maximizeRow.command, 'fullscreen')).toBe(true)

@@ -15,6 +15,7 @@ import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-i
 import { workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
 import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
 import { moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
+import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 describe('tiling drag layout mapping', () => {
@@ -123,7 +124,7 @@ function splitFileFromEditor(path: string): {
     windowId: CLASSIC_EDITOR_WINDOW_ID,
   })
   const sourceWindowId = findWindowIdContainingSurface(layout, file.id)
-  if (!sourceWindowId) throw new Error(`Expected visible surface ${file.id}`)
+  if (!sourceWindowId) throw createTilingInvariantError(`Expected visible surface ${file.id}`)
 
   return {
     fileId: file.id,

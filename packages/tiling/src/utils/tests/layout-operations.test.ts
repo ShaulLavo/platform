@@ -77,6 +77,7 @@ import {
   selectWorkbenchRailRecipeItems,
   selectWorkbenchRailSurfaceItems,
 } from '@workspace/tiling/utils/rail-model'
+import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
 import type {
   CustomWindowFrame,
   CustomWindowManagementCommand,
@@ -146,7 +147,7 @@ describe('tiling surface layout operations', () => {
       windowId: CLASSIC_EDITOR_WINDOW_ID,
     })
     const splitWindowId = findWindowIdContainingSurface(split, file.id)
-    if (!splitWindowId) throw new Error('Expected split surface to be visible')
+    if (!splitWindowId) throw createTilingInvariantError('Expected split surface to be visible')
 
     expect(splitWindowId).not.toBe(CLASSIC_EDITOR_WINDOW_ID)
     expect(split.windowsById[splitWindowId].surfaceIds).toEqual([file.id])
@@ -202,7 +203,7 @@ describe('tiling surface layout operations', () => {
       windowId: workbenchWindowId('test:a'),
     })
     const root = moved.nodesById[layoutNodeId('test:root')]
-    if (!root || root.kind !== 'split') throw new Error('Expected test root split')
+    if (!root || root.kind !== 'split') throw createTilingInvariantError('Expected test root split')
 
     expect(root.childIds).toEqual([
       layoutNodeId('test:a'),
@@ -220,7 +221,7 @@ describe('tiling surface layout operations', () => {
     const split = splitFileFromEditor(createClassicFirstRunWorkspaceLayout(), file)
     const fileWindowId = mustFindWindowId(split, file.id)
     const fileNodeId = findNodeIdForWindow(split, fileWindowId)
-    if (!fileNodeId) throw new Error('Expected file window node')
+    if (!fileNodeId) throw createTilingInvariantError('Expected file window node')
 
     const rejected = moveWindow(split, fileWindowId, {
       edge: 'left',
@@ -303,7 +304,7 @@ describe('tiling surface layout operations', () => {
   it('does not close surfaces blocked by close capabilities or close policy', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const placeholderId = layout.activeSurfaceId
-    if (!placeholderId) throw new Error('Expected placeholder')
+    if (!placeholderId) throw createTilingInvariantError('Expected placeholder')
 
     const closed = closeSurface(layout, placeholderId)
 
@@ -552,7 +553,7 @@ describe('tiling surface layout operations', () => {
   it('applies saved workflow layout commands with their recipe and focus order', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const command = layout.layoutCommandsById[REVIEW_LAYOUT_COMMAND_ID]
-    if (!command) throw new Error('Expected default review layout command')
+    if (!command) throw createTilingInvariantError('Expected default review layout command')
 
     const applied = applyLayoutCommand(layout, command)
 
@@ -587,7 +588,7 @@ describe('tiling surface layout operations', () => {
       title: 'Palette Layout',
     }
     const preset = defaultWindowManagementHotkeyPresets()[1]
-    if (!preset) throw new Error('Expected default hotkey preset')
+    if (!preset) throw createTilingInvariantError('Expected default hotkey preset')
 
     const withCustomCommand = applyLayoutOperation(createClassicFirstRunWorkspaceLayout(), {
       command: customCommand,
@@ -830,7 +831,7 @@ describe('tiling surface layout operations', () => {
     const file = createFileEditorSurface({ path: '/repo/src/bottom-only.ts' })
     const base = createClassicFirstRunWorkspaceLayout()
     const placeholderId = firstSurfaceIdOfType(base, 'placeholder')
-    if (!placeholderId) throw new Error('Expected editor placeholder')
+    if (!placeholderId) throw createTilingInvariantError('Expected editor placeholder')
 
     const withoutFileNavigator = closeSurface(base, fileNavigator.id)
     const bottomOnly = closeSurface(withoutFileNavigator, placeholderId, { force: true })
@@ -851,7 +852,7 @@ describe('tiling surface layout operations', () => {
     const bottomNodeId = findNodeIdForWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
     const fileNavigatorNodeId = findNodeIdForWindow(layout, CLASSIC_FILE_NAVIGATOR_WINDOW_ID)
     if (!editorNodeId || !bottomNodeId || !fileNavigatorNodeId) {
-      throw new Error('Expected classic recipe windows')
+      throw createTilingInvariantError('Expected classic recipe windows')
     }
 
     const editorParentId = findParentNodeId(layout, editorNodeId)
@@ -935,10 +936,10 @@ describe('tiling surface layout operations', () => {
       CLASSIC_DIAGNOSTICS_WINDOW_ID,
     )
     const terminalItem = items.find((item) => item.surface.id === terminal.id)
-    if (!terminalItem) throw new Error('Expected terminal visibility item')
+    if (!terminalItem) throw createTilingInvariantError('Expected terminal visibility item')
 
     const hideOperation = bottomPaneSurfaceVisibilityOperation(terminalItem, false)
-    if (!hideOperation) throw new Error('Expected terminal hide operation')
+    if (!hideOperation) throw createTilingInvariantError('Expected terminal hide operation')
 
     const hidden = applyLayoutOperation(createClassicFirstRunWorkspaceLayout(), hideOperation)
     expect(hidden.surfacesById[terminal.id]).toBeDefined()
@@ -948,8 +949,9 @@ describe('tiling surface layout operations', () => {
     const hiddenItems = bottomPaneSurfaceVisibilityItems(hidden, CLASSIC_DIAGNOSTICS_WINDOW_ID)
     const hiddenTerminalItem = hiddenItems.find((item) => item.surface.id === terminal.id)
     const onlyVisibleItem = hiddenItems.find((item) => item.checked)
-    if (!hiddenTerminalItem) throw new Error('Expected hidden terminal visibility item')
-    if (!onlyVisibleItem) throw new Error('Expected one visible bottom pane item')
+    if (!hiddenTerminalItem)
+      throw createTilingInvariantError('Expected hidden terminal visibility item')
+    if (!onlyVisibleItem) throw createTilingInvariantError('Expected one visible bottom pane item')
 
     expect(onlyVisibleItem.disabled).toBe(true)
     expect(bottomPaneSurfaceVisibilityOperation(onlyVisibleItem, false)).toBeNull()
@@ -979,7 +981,7 @@ describe('tiling surface layout operations', () => {
   it('exposes active recipe rail entries that apply recipes', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const item = selectWorkbenchRailRecipeItems(layout)[0]
-    if (!item) throw new Error('Expected recipe rail item')
+    if (!item) throw createTilingInvariantError('Expected recipe rail item')
 
     expect(item.state).toBe('active-recipe')
     expect(railItemOperation(layout, item)).toEqual({
@@ -1050,7 +1052,7 @@ describe('tiling surface layout operations', () => {
     const chat = createChatSurface()
     const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
-    if (!placeholderId) throw new Error('Expected editor placeholder')
+    if (!placeholderId) throw createTilingInvariantError('Expected editor placeholder')
 
     let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
     layout = applyRailItem(layout, git.id)
@@ -1071,7 +1073,7 @@ describe('tiling surface layout operations', () => {
     const chat = createChatSurface()
     const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
-    if (!placeholderId) throw new Error('Expected editor placeholder')
+    if (!placeholderId) throw createTilingInvariantError('Expected editor placeholder')
 
     let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
     layout = backgroundSurface(layout, fileNavigator.id)
@@ -1092,7 +1094,7 @@ describe('tiling surface layout operations', () => {
     const file = createFileEditorSurface({ path: '/repo/src/main-before-files.ts' })
     const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
-    if (!placeholderId) throw new Error('Expected editor placeholder')
+    if (!placeholderId) throw createTilingInvariantError('Expected editor placeholder')
 
     let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
     layout = backgroundSurface(layout, fileNavigator.id)
@@ -1146,7 +1148,7 @@ describe('tiling surface layout operations', () => {
     const file = createFileEditorSurface({ path: '/repo/src/main-from-tool.ts' })
     const hiddenBottom = layoutWithoutBottomSurfaces(createClassicFirstRunWorkspaceLayout())
     const placeholderId = firstSurfaceIdOfType(hiddenBottom, 'placeholder')
-    if (!placeholderId) throw new Error('Expected editor placeholder')
+    if (!placeholderId) throw createTilingInvariantError('Expected editor placeholder')
 
     let toolOnly = closeSurface(hiddenBottom, placeholderId, { force: true })
     toolOnly = applyRailItem(toolOnly, chat.id)
@@ -1180,7 +1182,7 @@ describe('tiling surface layout operations', () => {
     const item = selectWorkbenchRailSurfaceItems(layout).find(
       (candidate) => candidate.surface.id === git.id,
     )
-    if (!item) throw new Error('Expected Git rail item')
+    if (!item) throw createTilingInvariantError('Expected Git rail item')
     const windowId = mustFindWindowId(layout, git.id)
 
     expect(railItemOperation(layout, item)).toEqual({
@@ -1291,7 +1293,7 @@ function expectLeftToolStack(layout: WorkspaceLayout, surfaceIds: readonly Surfa
   if (nodeIds.length === 1) return nodeIds[0]
 
   const parentNodeId = findParentNodeId(layout, nodeIds[0])
-  if (!parentNodeId) throw new Error('Expected tool column parent node')
+  if (!parentNodeId) throw createTilingInvariantError('Expected tool column parent node')
 
   for (const nodeId of nodeIds) {
     expect(findParentNodeId(layout, nodeId)).toBe(parentNodeId)
@@ -1308,7 +1310,7 @@ function expectLeftToolStack(layout: WorkspaceLayout, surfaceIds: readonly Surfa
 function mustFindNodeId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   const windowId = mustFindWindowId(layout, surfaceId)
   const nodeId = findNodeIdForWindow(layout, windowId)
-  if (!nodeId) throw new Error(`Expected node for ${surfaceId}`)
+  if (!nodeId) throw createTilingInvariantError(`Expected node for ${surfaceId}`)
 
   return nodeId
 }
@@ -1316,10 +1318,11 @@ function mustFindNodeId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
 function siblingNodeIds(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   const nodeId = mustFindNodeId(layout, surfaceId)
   const parentNodeId = findParentNodeId(layout, nodeId)
-  if (!parentNodeId) throw new Error(`Expected parent node for ${surfaceId}`)
+  if (!parentNodeId) throw createTilingInvariantError(`Expected parent node for ${surfaceId}`)
 
   const parentNode = layout.nodesById[parentNodeId]
-  if (!parentNode || parentNode.kind !== 'split') throw new Error(`Expected split parent`)
+  if (!parentNode || parentNode.kind !== 'split')
+    throw createTilingInvariantError(`Expected split parent`)
 
   return parentNode.childIds.filter((childId) => childId !== nodeId)
 }
@@ -1342,13 +1345,14 @@ function expectWindowSplitRatioGreaterThan(
 
 function windowSplitRatio(layout: WorkspaceLayout, windowId: WindowId) {
   const nodeId = findNodeIdForWindow(layout, windowId)
-  if (!nodeId) throw new Error(`Expected node for ${windowId}`)
+  if (!nodeId) throw createTilingInvariantError(`Expected node for ${windowId}`)
 
   const parentNodeId = findParentNodeId(layout, nodeId)
-  if (!parentNodeId) throw new Error(`Expected parent split for ${windowId}`)
+  if (!parentNodeId) throw createTilingInvariantError(`Expected parent split for ${windowId}`)
 
   const parentNode = layout.nodesById[parentNodeId]
-  if (!parentNode || parentNode.kind !== 'split') throw new Error(`Expected split parent`)
+  if (!parentNode || parentNode.kind !== 'split')
+    throw createTilingInvariantError(`Expected split parent`)
 
   const childIndex = parentNode.childIds.indexOf(nodeId)
   return parentNode.sizes[childIndex] ?? 0
@@ -1358,7 +1362,7 @@ function surfaceHeight(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   const windowId = mustFindWindowId(layout, surfaceId)
   const geometry = deriveLayoutGeometry(layout, { height: 1000, width: 1000, x: 0, y: 0 })
   const rect = geometry.windowRectsById[windowId]?.rect
-  if (!rect) throw new Error(`Expected rect for ${surfaceId}`)
+  if (!rect) throw createTilingInvariantError(`Expected rect for ${surfaceId}`)
 
   return rect.height
 }
@@ -1393,7 +1397,7 @@ function emptyLayout(): WorkspaceLayout {
 
 function mustFindWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   const windowId = findWindowIdContainingSurface(layout, surfaceId)
-  if (!windowId) throw new Error(`Expected visible surface ${surfaceId}`)
+  if (!windowId) throw createTilingInvariantError(`Expected visible surface ${surfaceId}`)
 
   return windowId
 }
@@ -1403,14 +1407,14 @@ function mustFindRailItem(
   surfaceId: SurfaceId,
 ) {
   const item = items.find((candidate) => candidate.surface.id === surfaceId)
-  if (!item) throw new Error(`Expected rail item ${surfaceId}`)
+  if (!item) throw createTilingInvariantError(`Expected rail item ${surfaceId}`)
 
   return item
 }
 
 function mustFindBottomPaneRailItem(layout: WorkspaceLayout) {
   const item = selectWorkbenchRailItems(layout).find(isWorkbenchRailBottomPaneItem)
-  if (!item) throw new Error('Expected bottom pane rail item')
+  if (!item) throw createTilingInvariantError('Expected bottom pane rail item')
 
   return item
 }
