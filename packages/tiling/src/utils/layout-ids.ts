@@ -18,6 +18,8 @@ export const SEARCH_INVESTIGATE_RECIPE_ID = recipeId('search-investigate')
 export const CLASSIC_POLICY_ID = layoutPolicyId('classic')
 export const REVIEW_LAYOUT_COMMAND_ID = layoutCommandId('review-workspace')
 
+// Layout restore recomputes surface ids from their inputs and remaps all
+// references, so this must stay deterministic: same path, same id.
 export function fileEditorSurfaceId(path: string): SurfaceId {
   return surfaceId('file-editor', path)
 }

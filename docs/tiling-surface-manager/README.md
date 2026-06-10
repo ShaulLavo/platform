@@ -12,6 +12,8 @@ Where the truth lives:
   scope.
 - [default-recipe.md](default-recipe.md) — canonical default placement spec.
 - [prd.md](prd.md) — product requirements.
+- [shell-proof-plan.md](shell-proof-plan.md) — execution plan for the
+  full app-shell proof page that closes the dnd-proof cutover gaps.
 - Follow-up plans: [future-layout-plan.md](future-layout-plan.md),
   [placement-policy-follow-up-plan.md](placement-policy-follow-up-plan.md),
   [agent-surfaces-follow-up-plan.md](agent-surfaces-follow-up-plan.md).

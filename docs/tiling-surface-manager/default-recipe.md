@@ -21,9 +21,9 @@ not a model primitive.
 
 ## Vocabulary
 
-- Rail: command/status surface for focusing, expanding, collapsing, opening, and
-  toggling surfaces or recipe-controlled panes. It is not layout storage and
-  never stores collapsed panes.
+- Rail: command/status surface for toggling surfaces or recipe-controlled
+  panes fully open or closed. It does not collapse or expand panes, is not
+  layout storage, and never stores collapsed panes.
 - Collapsed pane: a normal recipe-placed window that remains in the split tree
   but renders as a fixed accordion header. Collapse is presentation state only.
 - Tool surfaces: Files, Search, Git, Chat, and Logs.
@@ -71,12 +71,19 @@ placement.
 
 ## Rail Behavior
 
+Updated 2026-06-10: rail clicks are visibility toggles. The earlier
+collapse-on-active-click rule was a spec bug; collapse never belongs to the
+rail.
+
+- A rail click toggles the whole represented window fully open or fully
+  closed. It never collapses, expands, or shrinks a pane.
 - Clicking a background or absent tool surface inserts or restores it into the
   left nested tool-pane group through recipe placement.
-- Clicking a visible inactive expanded tool surface focuses it.
-- Clicking the active expanded tool surface collapses its pane into an
-  accordion header in place.
-- Clicking a collapsed tool surface expands and focuses it.
+- Clicking a visible tool surface (expanded or collapsed) closes it out of the
+  visible layout. Whether the surface keeps running in the background or is
+  disposed is registry close policy, a separate semantic from the toggle.
+- Collapse/expand to an accordion header is window chrome only: the
+  shrink/unshrink button on the pane itself, never the rail icon.
 - Clicking Terminal toggles the whole bottom tool pane under the editor/main
   panel, not only the Terminal tab.
 - Terminal is special only as default recipe policy. Snapping a terminal to the
