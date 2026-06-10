@@ -4,9 +4,9 @@ import type { TilingDropData } from '@workspace/tiling/utils/drag-data'
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
 import type { ActiveTilingDrag } from '@workspace/tiling/utils/drag-state'
 import {
-  intentModeForDrag,
   previousTargetTabIndexForWindow,
   rawWindowTargetForDrag,
+  resolveIntentModeAndUpdateDetach,
   sourceReturnTargetForDragEnd,
   tabTargetFromHit,
   tabTargetFromTarget,
@@ -23,21 +23,31 @@ describe('tiling drag targets', () => {
     const source = { kind: 'tab', surfaceId: sourceSurfaceId } as const
     const activeDrag = activeTabDrag()
 
-    expect(intentModeForDrag(activeDrag, source, { x: 50, y: 34 })).toBe('tab-reorder')
+    expect(resolveIntentModeAndUpdateDetach(activeDrag, source, { x: 50, y: 34 })).toBe(
+      'tab-reorder',
+    )
     expect(activeDrag.detached).toBe(false)
 
-    expect(intentModeForDrag(activeDrag, source, { x: 50, y: 35 })).toBe('tab-detached')
+    expect(resolveIntentModeAndUpdateDetach(activeDrag, source, { x: 50, y: 35 })).toBe(
+      'tab-detached',
+    )
     expect(activeDrag.detached).toBe(true)
 
-    expect(intentModeForDrag(activeDrag, source, { x: 50, y: 10 })).toBe('tab-detached')
+    expect(resolveIntentModeAndUpdateDetach(activeDrag, source, { x: 50, y: 10 })).toBe(
+      'tab-detached',
+    )
   })
 
   it('uses the touch detach threshold for touch tab drags', () => {
     const source = { kind: 'tab', surfaceId: sourceSurfaceId } as const
     const activeDrag = activeTabDrag({ pointerType: 'touch' })
 
-    expect(intentModeForDrag(activeDrag, source, { x: 50, y: 69 })).toBe('tab-reorder')
-    expect(intentModeForDrag(activeDrag, source, { x: 50, y: 70 })).toBe('tab-detached')
+    expect(resolveIntentModeAndUpdateDetach(activeDrag, source, { x: 50, y: 69 })).toBe(
+      'tab-reorder',
+    )
+    expect(resolveIntentModeAndUpdateDetach(activeDrag, source, { x: 50, y: 70 })).toBe(
+      'tab-detached',
+    )
   })
 
   it('falls back to raw window targets only for valid drag modes', () => {

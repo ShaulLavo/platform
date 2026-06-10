@@ -44,10 +44,10 @@ import {
 } from '@workspace/tiling/utils/drag-layout'
 import type { TilingDragDebugLogger } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import {
-  intentModeForDrag,
   promoteWindowCenterTabTarget,
   rawWindowTargetForDrag,
   resolvedWindowBodyTabTargetForPoint,
+  resolveIntentModeAndUpdateDetach,
   snapPreviewMode,
   sourceReturnTargetForDragEnd,
   tabTargetForDrag,
@@ -468,7 +468,7 @@ export function useTilingDragController({
     readonly rawTarget: TilingDropData | null
     readonly source: TilingDragData
   }) {
-    const mode = intentModeForDrag(activeDragRef.current, source, eventPoint)
+    const mode = resolveIntentModeAndUpdateDetach(activeDragRef.current, source, eventPoint)
     const localPoint = localPointForRoot(eventPoint, coordinateRoot)
     const tabTarget = tabTargetForDrag({
       activeDrag: activeDragRef.current,
@@ -518,7 +518,7 @@ export function useTilingDragController({
     if (pointTarget) return pointTarget
 
     const rawWindowTarget = rawWindowTargetForDrag({
-      mode: intentModeForDrag(activeDragRef.current, source, eventPoint),
+      mode: resolveIntentModeAndUpdateDetach(activeDragRef.current, source, eventPoint),
       rawTarget,
       source,
     })

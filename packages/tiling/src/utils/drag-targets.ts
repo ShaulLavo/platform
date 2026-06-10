@@ -43,7 +43,7 @@ export type BodyAutoScrollInput = {
   readonly windowId: WindowId
 }
 
-export function intentModeForDrag(
+export function resolveIntentModeAndUpdateDetach(
   activeDrag: ActiveTilingDrag | null,
   source: TilingDragData,
   point: PointerCoordinates,
