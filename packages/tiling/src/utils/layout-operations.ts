@@ -83,6 +83,15 @@ type RecipeNodeAllocator = {
   readonly nodeId: (key: string) => LayoutNodeId
 }
 
+type RecipeLayoutContext = {
+  manualPlacementDependentWindowIds?: ReadonlySet<WindowId>
+  readonly firstSurfaceByType: ReadonlyMap<SurfaceType, Surface>
+  readonly stickyPlacementValidBySurfaceId: Map<SurfaceId, boolean>
+  readonly visibleWindowIdBySurfaceId: ReadonlyMap<SurfaceId, WindowId>
+  readonly visibleWindowIds: readonly WindowId[]
+  readonly visibleWindowIdsSet: ReadonlySet<WindowId>
+}
+
 export type OpenSurfaceOptions = {
   readonly policyId?: LayoutPolicyId
 }
@@ -319,6 +328,7 @@ function placementCanRestoreSurface(
   layout: WorkspaceLayout,
   placement: SurfacePlacementHint | null | undefined,
   surface?: Surface,
+  visibleWindowIds?: ReadonlySet<WindowId>,
 ) {
   if (!placement) return false
   if (surface && !surface.capabilities.validPlacements.includes(placement.kind)) return false
@@ -326,7 +336,10 @@ function placementCanRestoreSurface(
 
   switch (placement.kind) {
     case 'active-window':
-      return Boolean(layout.activeWindowId && layoutHasVisibleWindow(layout, layout.activeWindowId))
+      return Boolean(
+        layout.activeWindowId &&
+        layoutWindowIsVisible(layout, layout.activeWindowId, visibleWindowIds),
+      )
     case 'parent-edge':
       return Boolean(layout.nodesById[placement.nodeId])
     case 'background':
@@ -338,7 +351,7 @@ function placementCanRestoreSurface(
       return Boolean(layout.rootNodeId)
     case 'window-center':
     case 'window-edge':
-      return layoutHasVisibleWindow(layout, placement.windowId)
+      return layoutWindowIsVisible(layout, placement.windowId, visibleWindowIds)
   }
 }
 
@@ -1007,10 +1020,12 @@ function destinationForRecipeSlotDrop(
 }
 
 function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): WorkspaceLayout {
-  const toolWindowIds = managedLeftToolWindowIds(layout)
-  if (toolWindowIds.length === 0 && !visibleRecipeBottomWindowId(layout)) return layout
+  const context = recipeLayoutContext(layout)
+  const toolWindowIds = managedLeftToolWindowIds(layout, context)
+  const bottomWindowId = visibleRecipeBottomWindowId(layout, context)
+  if (toolWindowIds.length === 0 && !bottomWindowId) return layout
 
-  const tree = recipePackedTree(layout, toolWindowIds)
+  const tree = recipePackedTree(layout, toolWindowIds, bottomWindowId)
   if (!tree) return layout
 
   return normalizeWorkspaceLayout({
@@ -1020,12 +1035,64 @@ function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): WorkspaceLayout
   })
 }
 
-function managedLeftToolWindowIds(layout: WorkspaceLayout) {
+function recipeLayoutContext(layout: WorkspaceLayout): RecipeLayoutContext {
+  const visibleWindowIds = visibleWindowIdsInOrder(layout)
+
+  return {
+    firstSurfaceByType: firstSurfaceByType(layout),
+    stickyPlacementValidBySurfaceId: new Map(),
+    visibleWindowIdBySurfaceId: visibleWindowIdBySurfaceId(layout, visibleWindowIds),
+    visibleWindowIds,
+    visibleWindowIdsSet: new Set(visibleWindowIds),
+  }
+}
+
+function firstSurfaceByType(layout: WorkspaceLayout) {
+  const surfacesByType = new Map<SurfaceType, Surface>()
+
+  for (const surface of Object.values(layout.surfacesById)) {
+    if (surfacesByType.has(surface.type)) continue
+
+    surfacesByType.set(surface.type, surface)
+  }
+
+  return surfacesByType
+}
+
+function visibleWindowIdBySurfaceId(
+  layout: WorkspaceLayout,
+  visibleWindowIds: readonly WindowId[],
+) {
+  const windowIdBySurfaceId = new Map<SurfaceId, WindowId>()
+
+  for (const windowId of visibleWindowIds) {
+    const window = layout.windowsById[windowId]
+    if (!window) continue
+
+    appendSurfaceWindowIds(windowIdBySurfaceId, window, windowId)
+  }
+
+  return windowIdBySurfaceId
+}
+
+function appendSurfaceWindowIds(
+  windowIdBySurfaceId: Map<SurfaceId, WindowId>,
+  window: WorkbenchWindow,
+  windowId: WindowId,
+) {
+  for (const surfaceId of window.surfaceIds) {
+    if (windowIdBySurfaceId.has(surfaceId)) continue
+
+    windowIdBySurfaceId.set(surfaceId, windowId)
+  }
+}
+
+function managedLeftToolWindowIds(layout: WorkspaceLayout, context: RecipeLayoutContext) {
   const windowIds: WindowId[] = []
   const seen = new Set<WindowId>()
 
   for (const type of RECIPE_LEFT_TOOL_SURFACE_TYPES) {
-    appendManagedLeftToolWindowId(layout, type, windowIds, seen)
+    appendManagedLeftToolWindowId(layout, type, windowIds, seen, context)
   }
 
   return windowIds
@@ -1036,29 +1103,55 @@ function appendManagedLeftToolWindowId(
   type: SurfaceType,
   windowIds: WindowId[],
   seen: Set<WindowId>,
+  context: RecipeLayoutContext,
 ) {
-  const surface = Object.values(layout.surfacesById).find((candidate) => candidate.type === type)
+  const surface = context.firstSurfaceByType.get(type)
   if (!surface) return
-  if (surfaceHasValidStickyPlacement(layout, surface.id)) return
+  if (surfaceHasValidStickyPlacement(layout, surface.id, context)) return
   if (recipeSlotForSurface(layout, surface) !== 'left-tool-pane') return
 
-  const windowId = findWindowIdContainingSurface(layout, surface.id)
+  const windowId = context.visibleWindowIdBySurfaceId.get(surface.id)
   if (!windowId) return
   if (seen.has(windowId)) return
-  if (windowHasManualPlacementDependent(layout, windowId)) return
+  if (windowHasManualPlacementDependent(layout, windowId, context)) return
 
   seen.add(windowId)
   windowIds.push(windowId)
 }
 
-function surfaceHasValidStickyPlacement(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+function surfaceHasValidStickyPlacement(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  context?: RecipeLayoutContext,
+) {
   const surface = layout.surfacesById[surfaceId]
   if (!surface) return false
+  if (!context) {
+    return placementCanRestoreSurface(layout, stickyPlacementForSurface(layout, surfaceId), surface)
+  }
+  if (context.stickyPlacementValidBySurfaceId.has(surfaceId)) {
+    return context.stickyPlacementValidBySurfaceId.get(surfaceId) ?? false
+  }
 
-  return placementCanRestoreSurface(layout, stickyPlacementForSurface(layout, surfaceId), surface)
+  const placement = stickyPlacementForSurface(layout, surfaceId)
+  const isValid = placementCanRestoreSurface(
+    layout,
+    placement,
+    surface,
+    context.visibleWindowIdsSet,
+  )
+  context.stickyPlacementValidBySurfaceId.set(surfaceId, isValid)
+
+  return isValid
 }
 
-function windowHasManualPlacementDependent(layout: WorkspaceLayout, windowId: WindowId) {
+function windowHasManualPlacementDependent(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  context?: RecipeLayoutContext,
+) {
+  if (context) return manualPlacementDependentWindowIds(layout, context).has(windowId)
+
   for (const surface of Object.values(layout.surfacesById)) {
     if (!surfaceHasValidStickyPlacement(layout, surface.id)) continue
     if (!stickyPlacementTargetsWindow(layout, surface.id, windowId)) continue
@@ -1069,6 +1162,25 @@ function windowHasManualPlacementDependent(layout: WorkspaceLayout, windowId: Wi
   return false
 }
 
+function manualPlacementDependentWindowIds(layout: WorkspaceLayout, context: RecipeLayoutContext) {
+  if (context.manualPlacementDependentWindowIds) return context.manualPlacementDependentWindowIds
+
+  const windowIds = new Set<WindowId>()
+  for (const surface of Object.values(layout.surfacesById)) {
+    if (!surfaceHasValidStickyPlacement(layout, surface.id, context)) continue
+
+    const windowId = stickyPlacementTargetWindowId(layout, surface.id)
+    if (!windowId) continue
+    if (layout.windowsById[windowId]?.surfaceIds.includes(surface.id)) continue
+
+    windowIds.add(windowId)
+  }
+
+  context.manualPlacementDependentWindowIds = windowIds
+
+  return windowIds
+}
+
 function stickyPlacementTargetsWindow(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
@@ -1076,15 +1188,22 @@ function stickyPlacementTargetsWindow(
 ) {
   if (layout.windowsById[windowId]?.surfaceIds.includes(surfaceId)) return false
 
-  const placement = stickyPlacementForSurface(layout, surfaceId)
-  if (placement?.kind === 'window-center') return placement.windowId === windowId
-  if (placement?.kind === 'window-edge') return placement.windowId === windowId
-
-  return false
+  return stickyPlacementTargetWindowId(layout, surfaceId) === windowId
 }
 
-function recipePackedTree(layout: WorkspaceLayout, toolWindowIds: readonly WindowId[]) {
-  const bottomWindowId = visibleRecipeBottomWindowId(layout)
+function stickyPlacementTargetWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
+  const placement = stickyPlacementForSurface(layout, surfaceId)
+  if (placement?.kind === 'window-center') return placement.windowId
+  if (placement?.kind === 'window-edge') return placement.windowId
+
+  return null
+}
+
+function recipePackedTree(
+  layout: WorkspaceLayout,
+  toolWindowIds: readonly WindowId[],
+  bottomWindowId: WindowId | null,
+) {
   const bottomWindowIds = bottomWindowId ? [bottomWindowId] : []
   const excludedWindowIds = new Set([...toolWindowIds, ...bottomWindowIds])
   const allocator = createRecipeNodeAllocator(layout)
@@ -1093,9 +1212,9 @@ function recipePackedTree(layout: WorkspaceLayout, toolWindowIds: readonly Windo
   const bottomTree = bottomWindowId
     ? windowTree(bottomWindowId, allocator.nodeId('recipe:bottom'))
     : null
-  const mainPanelTree = recipeMainPanelTree(layout, mainTree, bottomTree, allocator)
+  const mainPanelTree = recipeMainPanelTree(layout, mainTree, bottomTree, allocator, bottomWindowId)
 
-  return recipeContentTree(layout, leftTree, mainPanelTree, allocator)
+  return recipeContentTree(layout, leftTree, mainPanelTree, allocator, toolWindowIds)
 }
 
 function createRecipeNodeAllocator(layout: WorkspaceLayout): RecipeNodeAllocator {
@@ -1111,8 +1230,11 @@ function createRecipeNodeAllocator(layout: WorkspaceLayout): RecipeNodeAllocator
   }
 }
 
-function visibleRecipeBottomWindowId(layout: WorkspaceLayout): WindowId | null {
-  return visibleWindowIdForRecipeSlot(layout, 'bottom')
+function visibleRecipeBottomWindowId(
+  layout: WorkspaceLayout,
+  context?: RecipeLayoutContext,
+): WindowId | null {
+  return visibleWindowIdForRecipeSlot(layout, 'bottom', context)
 }
 
 function stackedWindowTree(
@@ -1281,6 +1403,7 @@ function recipeContentTree(
   leftTree: RecipeTree | null,
   mainTree: RecipeTree | null,
   allocator: RecipeNodeAllocator,
+  toolWindowIds: readonly WindowId[],
 ) {
   if (!leftTree) return mainTree
   if (!mainTree) return leftTree
@@ -1288,13 +1411,13 @@ function recipeContentTree(
   return splitTree({
     axis: 'horizontal',
     id: allocator.nodeId('recipe:content'),
-    sizes: recipeContentSplitSizes(layout),
+    sizes: recipeContentSplitSizes(layout, toolWindowIds),
     trees: [leftTree, mainTree],
   })
 }
 
-function recipeContentSplitSizes(layout: WorkspaceLayout) {
-  const firstToolWindowId = managedLeftToolWindowIds(layout)[0]
+function recipeContentSplitSizes(layout: WorkspaceLayout, toolWindowIds: readonly WindowId[]) {
+  const firstToolWindowId = toolWindowIds[0]
   const existingLeftNodeId = firstToolWindowId
     ? findNodeIdForWindow(layout, firstToolWindowId)
     : null
@@ -1311,6 +1434,7 @@ function recipeMainPanelTree(
   mainTree: RecipeTree | null,
   bottomTree: RecipeTree | null,
   allocator: RecipeNodeAllocator,
+  bottomWindowId: WindowId | null,
 ) {
   if (!mainTree) return bottomTree
   if (!bottomTree) return mainTree
@@ -1318,13 +1442,12 @@ function recipeMainPanelTree(
   return splitTree({
     axis: 'vertical',
     id: allocator.nodeId('recipe:main-panel'),
-    sizes: recipeMainPanelSplitSizes(layout),
+    sizes: recipeMainPanelSplitSizes(layout, bottomWindowId),
     trees: [mainTree, bottomTree],
   })
 }
 
-function recipeMainPanelSplitSizes(layout: WorkspaceLayout) {
-  const bottomWindowId = visibleRecipeBottomWindowId(layout)
+function recipeMainPanelSplitSizes(layout: WorkspaceLayout, bottomWindowId: WindowId | null) {
   const bottomNodeId = bottomWindowId ? findNodeIdForWindow(layout, bottomWindowId) : null
   const parentNodeId = bottomNodeId ? findParentNodeId(layout, bottomNodeId) : null
   const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
@@ -1445,17 +1568,33 @@ function layoutHasVisibleWindow(layout: WorkspaceLayout, windowId: WindowId) {
   return visibleWindowIdsInOrder(layout).includes(windowId)
 }
 
-function visibleWindowIdForRecipeSlot(layout: WorkspaceLayout, slot: WorkspaceRecipeSlot) {
-  return visibleWindowIdsForRecipeSlots(layout, [slot])[0] ?? null
+function layoutWindowIsVisible(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  visibleWindowIds?: ReadonlySet<WindowId>,
+) {
+  if (visibleWindowIds) return visibleWindowIds.has(windowId)
+
+  return layoutHasVisibleWindow(layout, windowId)
+}
+
+function visibleWindowIdForRecipeSlot(
+  layout: WorkspaceLayout,
+  slot: WorkspaceRecipeSlot,
+  context?: RecipeLayoutContext,
+) {
+  return visibleWindowIdsForRecipeSlots(layout, [slot], context)[0] ?? null
 }
 
 function visibleWindowIdsForRecipeSlots(
   layout: WorkspaceLayout,
   slots: readonly WorkspaceRecipeSlot[],
+  context?: RecipeLayoutContext,
 ) {
   const windowIds: WindowId[] = []
+  const visibleWindowIds = context?.visibleWindowIds ?? visibleWindowIdsInOrder(layout)
 
-  for (const windowId of visibleWindowIdsInOrder(layout)) {
+  for (const windowId of visibleWindowIds) {
     const window = layout.windowsById[windowId]
     if (!windowContainsAnyRecipeSlot(layout, window, slots)) continue
 

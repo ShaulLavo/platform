@@ -17,6 +17,11 @@ import type {
 } from '@workspace/tiling/utils/layout-types'
 
 const MIN_SPLIT_SIZE = 0.05
+const normalizedTreeResults = new WeakMap<WorkspaceLayout, TreeNormalizationResult>()
+const normalizedParentNodeIds = new WeakMap<
+  WorkspaceLayout,
+  ReadonlyMap<LayoutNodeId, LayoutNodeId>
+>()
 
 type TreeNormalizationResult = {
   readonly nodesById: Record<string, LayoutNode>
@@ -41,25 +46,31 @@ type SplitChildNormalization = {
 }
 
 export function normalizeWorkspaceLayout(layout: WorkspaceLayout): WorkspaceLayout {
+  const cachedTree = normalizedTreeResults.get(layout)
+  if (cachedTree) return layout
+
   const surfacesById = removeInvalidTransientSurfaces(layout.surfacesById)
   const layoutWithoutInvalidSurfaces = {
     ...layout,
     surfacesById,
   }
-  const rail = repairRailState(layoutWithoutInvalidSurfaces)
   const windowsById = repairWindows(layoutWithoutInvalidSurfaces)
-  const tree = normalizeTree({
+  const layoutWithWindows = {
     ...layoutWithoutInvalidSurfaces,
-    rail,
     windowsById,
-  })
-  const visibleLayout = removeDuplicateVisibleSurfaces({
-    ...layoutWithoutInvalidSurfaces,
-    nodesById: tree.nodesById,
-    rail,
-    rootNodeId: tree.rootNodeId,
-    windowsById,
-  })
+  }
+  const tree = normalizeTree(layoutWithWindows)
+  const visibleSurfaceIds = visibleSurfaceIdsForWindowIds(layoutWithWindows, tree.visibleWindowIds)
+  const rail = repairRailState(layoutWithWindows, new Set(visibleSurfaceIds))
+  const visibleLayout = removeDuplicateVisibleSurfaces(
+    {
+      ...layoutWithWindows,
+      nodesById: tree.nodesById,
+      rail,
+      rootNodeId: tree.rootNodeId,
+    },
+    tree.visibleWindowIds,
+  )
   const repairedTree = normalizeTree(visibleLayout)
   const layoutWithTree = {
     ...visibleLayout,
@@ -67,23 +78,35 @@ export function normalizeWorkspaceLayout(layout: WorkspaceLayout): WorkspaceLayo
     rootNodeId: repairedTree.rootNodeId,
   }
   const layoutWithFallback = ensureFallbackWindow(layoutWithTree, repairedTree.visibleWindowIds)
-  const finalTree = normalizeTree(layoutWithFallback)
-  const layoutWithOrphans = routeOrphanSurfaces({
-    ...layoutWithFallback,
-    nodesById: finalTree.nodesById,
-    rootNodeId: finalTree.rootNodeId,
-  })
-  const clampedLayout = clampActiveIds(layoutWithOrphans)
-
-  return {
+  const finalTree =
+    layoutWithFallback === layoutWithTree ? repairedTree : normalizeTree(layoutWithFallback)
+  const layoutWithOrphans = routeOrphanSurfaces(
+    {
+      ...layoutWithFallback,
+      nodesById: finalTree.nodesById,
+      rootNodeId: finalTree.rootNodeId,
+    },
+    finalTree.visibleWindowIds,
+  )
+  const finalVisibleSurfaceIds = visibleSurfaceIdsForWindowIds(
+    layoutWithOrphans,
+    finalTree.visibleWindowIds,
+  )
+  const clampedLayout = clampActiveIds(layoutWithOrphans, finalTree.visibleWindowIds)
+  const normalizedLayout = {
     ...clampedLayout,
-    mruSurfaceIds: repairMruSurfaceIds(clampedLayout),
-    mruWindowIds: repairMruWindowIds(clampedLayout),
-    rail: repairRailState(clampedLayout),
+    mruSurfaceIds: repairMruSurfaceIds(clampedLayout, finalVisibleSurfaceIds),
+    mruWindowIds: repairMruWindowIds(clampedLayout, finalTree.visibleWindowIds),
+    rail: repairRailState(clampedLayout, new Set(finalVisibleSurfaceIds)),
   }
+
+  return markNormalizedLayout(normalizedLayout, finalTree)
 }
 
 export function visibleWindowIdsInOrder(layout: WorkspaceLayout) {
+  const cachedTree = normalizedTreeResults.get(layout)
+  if (cachedTree) return cachedTree.visibleWindowIds
+
   return normalizeTree(layout).visibleWindowIds
 }
 
@@ -139,6 +162,13 @@ export function isNodeDescendant(
 }
 
 export function findParentNodeId(layout: WorkspaceLayout, childNodeId: LayoutNodeId) {
+  const parentNodeIds = normalizedParentNodeIds.get(layout)
+  if (parentNodeIds) return parentNodeIds.get(childNodeId) ?? null
+
+  return findParentNodeIdByScan(layout, childNodeId)
+}
+
+function findParentNodeIdByScan(layout: WorkspaceLayout, childNodeId: LayoutNodeId) {
   for (const node of Object.values(layout.nodesById)) {
     if (node.kind !== 'split') continue
     if (!node.childIds.includes(childNodeId)) continue
@@ -180,6 +210,30 @@ function normalizeTree(layout: WorkspaceLayout): TreeNormalizationResult {
     rootNodeId: result.node.id,
     visibleWindowIds: result.visibleWindowIds,
   }
+}
+
+function markNormalizedLayout(
+  layout: WorkspaceLayout,
+  tree: TreeNormalizationResult,
+): WorkspaceLayout {
+  normalizedTreeResults.set(layout, tree)
+  normalizedParentNodeIds.set(layout, parentNodeIdsForNodes(tree.nodesById))
+
+  return layout
+}
+
+function parentNodeIdsForNodes(nodesById: Record<string, LayoutNode>) {
+  const parentNodeIds = new Map<LayoutNodeId, LayoutNodeId>()
+
+  for (const node of Object.values(nodesById)) {
+    if (node.kind !== 'split') continue
+
+    for (const childId of node.childIds) {
+      parentNodeIds.set(childId, node.id)
+    }
+  }
+
+  return parentNodeIds
 }
 
 function normalizeNode(
@@ -412,11 +466,14 @@ function previewSurfaceIdForWindow(
   return window.previewSurfaceId
 }
 
-function removeDuplicateVisibleSurfaces(layout: WorkspaceLayout): WorkspaceLayout {
+function removeDuplicateVisibleSurfaces(
+  layout: WorkspaceLayout,
+  visibleWindowIds: readonly WindowId[],
+): WorkspaceLayout {
   const seenSurfaceIds = new Set<SurfaceId>()
   const windowsById: Record<string, WorkbenchWindow> = { ...layout.windowsById }
 
-  for (const windowId of visibleWindowIdsInOrder(layout)) {
+  for (const windowId of visibleWindowIds) {
     const window = layout.windowsById[windowId]
     if (!window) continue
 
@@ -540,8 +597,11 @@ function canFallbackSurface(surface: Surface) {
   )
 }
 
-function routeOrphanSurfaces(layout: WorkspaceLayout): WorkspaceLayout {
-  const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))
+function routeOrphanSurfaces(
+  layout: WorkspaceLayout,
+  visibleWindowIds: readonly WindowId[],
+): WorkspaceLayout {
+  const visibleSurfaceIds = new Set(visibleSurfaceIdsForWindowIds(layout, visibleWindowIds))
   const surfacesById: Record<string, Surface> = {}
   let rail = layout.rail
 
@@ -575,13 +635,15 @@ function routeOrphanSurface(surface: Surface, rail: RailState) {
   return { rail: addRailSurface(rail, 'backgroundSurfaceIds', surface.id) }
 }
 
-function clampActiveIds(layout: WorkspaceLayout): WorkspaceLayout {
+function clampActiveIds(
+  layout: WorkspaceLayout,
+  visibleWindowIds: readonly WindowId[],
+): WorkspaceLayout {
   const windowsById = repairWindowActiveSurfaces(layout)
   const layoutWithWindows = {
     ...layout,
     windowsById,
   }
-  const visibleWindowIds = visibleWindowIdsInOrder(layoutWithWindows)
   const activeWindowId = activeWindowIdForLayout(layoutWithWindows, visibleWindowIds)
   const activeSurfaceId = activeSurfaceIdForLayout(layoutWithWindows, activeWindowId)
 
@@ -662,22 +724,22 @@ function activeSurfaceIdForLayout(
   return layout.windowsById[activeWindowId]?.activeSurfaceId
 }
 
-function repairMruSurfaceIds(layout: WorkspaceLayout) {
-  const visibleSurfaceIds = visibleSurfaceIdsInOrder(layout)
+function repairMruSurfaceIds(layout: WorkspaceLayout, visibleSurfaceIds: readonly SurfaceId[]) {
   const surfaceIds = uniqueSurfaceIds([...layout.mruSurfaceIds, ...visibleSurfaceIds])
 
   return surfaceIds.filter((surfaceId) => Boolean(layout.surfacesById[surfaceId]))
 }
 
-function repairMruWindowIds(layout: WorkspaceLayout) {
-  const visibleWindowIds = visibleWindowIdsInOrder(layout)
+function repairMruWindowIds(layout: WorkspaceLayout, visibleWindowIds: readonly WindowId[]) {
   const windowIds = uniqueWindowIds([...layout.mruWindowIds, ...visibleWindowIds])
 
   return windowIds.filter((windowId) => Boolean(layout.windowsById[windowId]))
 }
 
-function repairRailState(layout: WorkspaceLayout): RailState {
-  const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))
+function repairRailState(
+  layout: WorkspaceLayout,
+  visibleSurfaceIds: ReadonlySet<SurfaceId>,
+): RailState {
   const backgroundSurfaceIds = uniqueSurfaceIds(layout.rail.backgroundSurfaceIds).filter(
     (surfaceId) => Boolean(layout.surfacesById[surfaceId]) && !visibleSurfaceIds.has(surfaceId),
   )
@@ -713,6 +775,22 @@ function visibleSingletonSurfaceIdsForLayout(
     .filter((surface) => surface.cardinality === 'singleton')
     .filter((surface) => visibleSurfaceIds.has(surface.id))
     .map((surface) => surface.id)
+}
+
+function visibleSurfaceIdsForWindowIds(
+  layout: WorkspaceLayout,
+  visibleWindowIds: readonly WindowId[],
+) {
+  const surfaceIds: SurfaceId[] = []
+
+  for (const windowId of visibleWindowIds) {
+    const window = layout.windowsById[windowId]
+    if (!window) continue
+
+    surfaceIds.push(...window.surfaceIds)
+  }
+
+  return surfaceIds
 }
 
 function removeInvalidTransientSurfaces(

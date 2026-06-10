@@ -171,9 +171,10 @@ function currentRailSurfaceState(
   layout: WorkspaceLayout,
   item: WorkbenchRailSurfaceItem,
 ): WorkbenchRailSurfaceState {
-  if (findWindowIdContainingSurface(layout, item.surface.id)) {
-    const windowId = findWindowIdContainingSurface(layout, item.surface.id)
-    const window = windowId ? layout.windowsById[windowId] : null
+  const windowId = findWindowIdContainingSurface(layout, item.surface.id)
+
+  if (windowId) {
+    const window = layout.windowsById[windowId]
     if (window?.mode === 'collapsed') return 'collapsed'
 
     return item.surface.id === layout.activeSurfaceId ? 'active' : 'visible'
