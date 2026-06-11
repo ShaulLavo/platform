@@ -296,8 +296,8 @@ describe('tiling surface layout operations', () => {
 
     expect(collapsed.windowsById[chatWindowId]?.mode).toBe('collapsed')
     expect(collapsed.windowsById[chatWindowId]?.collapsedEdge).toBe('left')
-    expectWindowBefore(collapsed, searchWindowId, chatWindowId)
-    expectWindowBefore(expanded, searchWindowId, chatWindowId)
+    expectWindowBefore(collapsed, chatWindowId, searchWindowId)
+    expectWindowBefore(expanded, chatWindowId, searchWindowId)
     expectValidLayout(collapsed)
     expectValidLayout(expanded)
   })
@@ -759,8 +759,8 @@ describe('tiling surface layout operations', () => {
 
     expect(firstSurfaceTypesByWindow(layout).slice(0, 4)).toEqual([
       'file-navigator',
-      'search-results',
       'git-changes',
+      'search-results',
       'chat',
     ])
     expect(layout.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[chat.id]).toEqual({
@@ -1384,7 +1384,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(layout)
   })
 
-  it('order-packs no-main tool panes into one stable left stack', () => {
+  it('order-packs no-main tool panes into balanced columns by arrival', () => {
     const fileNavigator = createFileNavigatorSurface()
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
@@ -1395,17 +1395,20 @@ describe('tiling surface layout operations', () => {
 
     let layout = closeSurface(hiddenBottom, placeholderId, { force: true })
     layout = applyRailItem(layout, git.id)
-    expectLeftToolStack(layout, [fileNavigator.id, git.id])
+    expectLeftToolColumns(layout, [[fileNavigator.id], [git.id]])
 
     layout = applyRailItem(layout, search.id)
-    expectLeftToolStack(layout, [fileNavigator.id, search.id, git.id])
+    expectLeftToolColumns(layout, [[fileNavigator.id, search.id], [git.id]])
 
     layout = applyRailItem(layout, chat.id)
-    expectLeftToolStack(layout, [fileNavigator.id, search.id, git.id, chat.id])
+    expectLeftToolColumns(layout, [
+      [fileNavigator.id, search.id],
+      [git.id, chat.id],
+    ])
     expectValidLayout(layout)
   })
 
-  it('restores backgrounded left tools back into stable recipe order', () => {
+  it('restores backgrounded left tools by appending to the packed columns', () => {
     const fileNavigator = createFileNavigatorSurface()
     const search = createSearchResultsSurface()
     const git = createGitChangesSurface()
@@ -1421,7 +1424,10 @@ describe('tiling surface layout operations', () => {
     layout = applyRailItem(layout, chat.id)
     layout = applyRailItem(layout, fileNavigator.id)
 
-    expectLeftToolStack(layout, [fileNavigator.id, search.id, git.id, chat.id])
+    expectLeftToolColumns(layout, [
+      [search.id, chat.id],
+      [git.id, fileNavigator.id],
+    ])
     expectValidLayout(layout)
   })
 
@@ -1445,7 +1451,7 @@ describe('tiling surface layout operations', () => {
 
     expect(mustFindWindowId(layout, fileNavigator.id)).not.toBe(mustFindWindowId(layout, chat.id))
     expect(mustFindWindowId(layout, fileNavigator.id)).not.toBe(mustFindWindowId(layout, git.id))
-    expect(siblingNodeIds(layout, search.id)).toContain(mustFindNodeId(layout, fileNavigator.id))
+    expect(siblingNodeIds(layout, git.id)).toContain(mustFindNodeId(layout, fileNavigator.id))
     expect(
       layout.policiesById[CLASSIC_POLICY_ID].stickyPlacementsBySurfaceId[fileNavigator.id],
     ).toBeUndefined()
@@ -1683,23 +1689,45 @@ function splitFileFromEditor(
   })
 }
 
-function expectLeftToolStack(layout: WorkspaceLayout, surfaceIds: readonly SurfaceId[]) {
-  const nodeIds = surfaceIds.map((surfaceId) => mustFindNodeId(layout, surfaceId))
-  if (nodeIds.length === 1) return nodeIds[0]
+function expectLeftToolColumns(
+  layout: WorkspaceLayout,
+  columns: readonly (readonly SurfaceId[])[],
+) {
+  const columnNodeIds = columns.map((columnSurfaceIds) =>
+    toolColumnNodeId(layout, columnSurfaceIds),
+  )
+  if (columnNodeIds.length <= 1) return
 
-  const parentNodeId = findParentNodeId(layout, nodeIds[0])
-  if (!parentNodeId) throw createTilingInvariantError('Expected tool column parent node')
+  const containerNodeId = findParentNodeId(layout, columnNodeIds[0])
+  if (!containerNodeId) throw createTilingInvariantError('Expected tool columns container')
 
-  for (const nodeId of nodeIds) {
-    expect(findParentNodeId(layout, nodeId)).toBe(parentNodeId)
+  for (const columnNodeId of columnNodeIds) {
+    expect(findParentNodeId(layout, columnNodeId)).toBe(containerNodeId)
   }
-  expect(layout.nodesById[parentNodeId]).toMatchObject({
+
+  const container = layout.nodesById[containerNodeId]
+  expect(container).toMatchObject({ axis: 'horizontal', kind: 'split' })
+  expect((container as LayoutSplitNode).childIds.slice(0, columnNodeIds.length)).toEqual(
+    columnNodeIds,
+  )
+}
+
+function toolColumnNodeId(layout: WorkspaceLayout, columnSurfaceIds: readonly SurfaceId[]) {
+  const nodeIds = columnSurfaceIds.map((surfaceId) => mustFindNodeId(layout, surfaceId))
+  const firstNodeId = nodeIds[0]
+  if (!firstNodeId) throw createTilingInvariantError('Expected column surfaces')
+  if (nodeIds.length === 1) return firstNodeId
+
+  const columnNodeId = findParentNodeId(layout, firstNodeId)
+  if (!columnNodeId) throw createTilingInvariantError('Expected tool column split')
+
+  expect(layout.nodesById[columnNodeId]).toMatchObject({
     axis: 'vertical',
     childIds: nodeIds,
     kind: 'split',
   })
 
-  return parentNodeId
+  return columnNodeId
 }
 
 function mustFindNodeId(layout: WorkspaceLayout, surfaceId: SurfaceId) {

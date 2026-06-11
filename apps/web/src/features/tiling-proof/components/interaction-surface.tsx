@@ -63,6 +63,7 @@ export function ProofInteractionSurface({
   addTabVisible = true,
   ariaLabel,
   debugLog,
+  debugOverlay,
   dropZonesVisible,
   interactionControllerRef,
   layout,
@@ -84,6 +85,7 @@ export function ProofInteractionSurface({
   readonly addTabVisible?: boolean
   readonly ariaLabel: string
   readonly debugLog?: TilingDragDebugLog
+  readonly debugOverlay?: ReactNode
   readonly dropZonesVisible: boolean
   readonly interactionControllerRef?: ProofInteractionControllerRef
   readonly layout: WorkspaceLayout
@@ -268,6 +270,7 @@ export function ProofInteractionSurface({
             visible={dropZonesVisible}
           />
         ))}
+        {debugOverlay}
       </section>
       <ProofDragOverlay activeDrag={activeDrag} layout={layout} />
     </DragDropProvider>

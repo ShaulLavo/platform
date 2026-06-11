@@ -74,8 +74,10 @@ describe.sequential('Shell proof recipe behavior', () => {
       expect(railButton('Close Chat').dataset.railState).toBe('visible')
       expect(railButtonForTitle('Search').dataset.railState).toBe('active')
       expect(proofWindows()).toHaveLength(5)
+      // Balanced columns by arrival: Files and Search stack in the first
+      // column while Chat, opened second, keeps the full-height second one.
       expectWindowAbove('Files', 'Search')
-      expectWindowAbove('Search', 'Chat')
+      expectWindowRightOfWindow('Chat', 'Files')
     })
 
     buttonWithLabel('Collapse Chat').click()
@@ -90,7 +92,7 @@ describe.sequential('Shell proof recipe behavior', () => {
     await vi.waitFor(() => {
       expect(railButton('Close Chat').dataset.railState).toBe('active')
       expect(queryCollapsedToolPaneHeader()).toBeNull()
-      expectWindowAbove('Search', 'Chat')
+      expectWindowRightOfWindow('Chat', 'Search')
     })
 
     railButtonForTitle('Search').click()
@@ -98,7 +100,7 @@ describe.sequential('Shell proof recipe behavior', () => {
     await vi.waitFor(() => {
       expect(railButtonForTitle('Search').dataset.railState).toBe('pinned')
       expect(queryProofWindowWithText('Search')).toBeNull()
-      expectWindowAbove('Files', 'Chat')
+      expectWindowRightOfWindow('Chat', 'Files')
     })
 
     buttonWithLabel(`Open ${FAKE_FILE_PATHS[1]}`).click()
@@ -404,6 +406,12 @@ function expectWindowLeftOfTab(windowText: string, rightTabText: string) {
 function expectWindowAbove(windowText: string, bottomWindowText: string) {
   expect(proofWindowWithText(windowText).getBoundingClientRect().top).toBeLessThan(
     proofWindowWithText(bottomWindowText).getBoundingClientRect().top,
+  )
+}
+
+function expectWindowRightOfWindow(windowText: string, leftWindowText: string) {
+  expect(proofWindowWithText(windowText).getBoundingClientRect().left).toBeGreaterThan(
+    proofWindowWithText(leftWindowText).getBoundingClientRect().right - 4,
   )
 }
 

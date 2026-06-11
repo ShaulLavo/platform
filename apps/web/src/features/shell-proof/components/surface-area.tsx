@@ -1,3 +1,4 @@
+import { DebugPanel } from '@/features/shell-proof/components/debug-panel'
 import { SurfaceBody } from '@/features/shell-proof/components/surface-body'
 import {
   ProofInteractionSurface,
@@ -35,6 +36,7 @@ export function SurfaceArea({
 }) {
   const layout = useLayoutState((state) => state.layout)
   const replaceLayout = useLayoutState((state) => state.replaceLayout)
+  const debugVisible = shellProofDebugEnabled()
 
   function dispatchOperation(operation: LayoutOperation) {
     onDispatchLayoutOperation(operation)
@@ -70,6 +72,7 @@ export function SurfaceArea({
       addTabVisible={false}
       ariaLabel='Shell proof surface area'
       debugLog={debugLog}
+      debugOverlay={debugVisible ? <DebugPanel stateEvents={debugLog.stateEvents} /> : null}
       dropZonesVisible={dropZonesVisible}
       interactionControllerRef={interactionControllerRef}
       layout={layout}
@@ -89,6 +92,12 @@ export function SurfaceArea({
       onSelectSurface={activateSurface}
     />
   )
+}
+
+function shellProofDebugEnabled() {
+  if (typeof window === 'undefined') return false
+
+  return new URLSearchParams(window.location.search).has('debug')
 }
 
 function renderSurfaceBody(surface: Surface | null) {

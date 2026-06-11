@@ -1,4 +1,8 @@
 import {
+  packLayoutIntoBalancedColumns,
+  windowIdsInReadingOrder,
+} from '@workspace/tiling/utils/balanced-columns'
+import {
   createEmptyWorkspaceLayout,
   createPlaceholderSurface,
 } from '@workspace/tiling/utils/layout-builders'
@@ -79,9 +83,7 @@ export function addProofWindow(model: ProofModel): ProofModel {
   const visibleWindowCount = visibleWindowIdsInOrder(model.layout).length
   const openedLayout = openSurface(model.layout, surface)
   const layout =
-    visibleWindowCount === 0
-      ? openedLayout
-      : moveSurface(openedLayout, surface.id, rootEdgeDestination('right'))
+    visibleWindowCount === 0 ? openedLayout : appendProofWindow(openedLayout, surface.id)
 
   return logModel(
     {
@@ -91,6 +93,21 @@ export function addProofWindow(model: ProofModel): ProofModel {
     },
     `added window: ${surface.title}`,
   )
+}
+
+// New windows join the balanced column grid as the latest arrival: existing
+// windows keep their reading-order spots and the grid repacks around them.
+function appendProofWindow(layout: WorkspaceLayout, surfaceId: SurfaceId): WorkspaceLayout {
+  const movedLayout = moveSurface(layout, surfaceId, rootEdgeDestination('right'))
+  const windowId = findWindowIdContainingSurface(movedLayout, surfaceId)
+  if (!windowId) return movedLayout
+
+  const existingWindowIds = visibleWindowIdsInOrder(movedLayout).filter((id) => id !== windowId)
+
+  return packLayoutIntoBalancedColumns(movedLayout, [
+    ...windowIdsInReadingOrder(movedLayout, existingWindowIds),
+    windowId,
+  ])
 }
 
 export function activateProofSurface(model: ProofModel, surfaceId: SurfaceId): ProofModel {
@@ -237,11 +254,12 @@ function proofLayoutForWindowCount(windowCount: ProofScenario) {
     const surface = createProofSurface(nextSurfaceNumber)
     layout = openSurface(layout, surface)
     if (index > 0) {
-      layout = moveSurface(layout, surface.id, rootEdgeDestination(edgeForWindowIndex(index)))
+      layout = moveSurface(layout, surface.id, rootEdgeDestination('right'))
     }
     nextSurfaceNumber += 1
   }
 
+  layout = packLayoutIntoBalancedColumns(layout)
   const visibleWindowIds = visibleWindowIdsInOrder(layout)
   const tabsPerWindow = windowCount <= 3 ? 2 : 1
   if (tabsPerWindow === 1) return { layout, nextSurfaceNumber }
@@ -271,14 +289,6 @@ function createProofSurface(surfaceNumber: number): Surface {
 
 function rootEdgeDestination(edge: LayoutEdge): SnapDestination {
   return { edge, kind: 'root-edge' }
-}
-
-function edgeForWindowIndex(index: number): LayoutEdge {
-  if (index % 4 === 1) return 'right'
-  if (index % 4 === 2) return 'bottom'
-  if (index % 4 === 3) return 'left'
-
-  return 'top'
 }
 
 function firstWindowId(layout: WorkspaceLayout): WindowId | undefined {

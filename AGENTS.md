@@ -58,6 +58,15 @@
 - Delete obsolete tests instead of preserving old behavior.
 - Remove duplicate code aggressively.
 
+## Optimization And Performance Work
+
+- Look beyond the local minimum. Before tuning an implementation, ask whether the data layout, algorithm, or overall design is the real bottleneck. Challenging the frame beats polishing it.
+- Tweak-level wins (caching a value, hoisting a loop, batching calls) are easy to find and easy to overrate. Treat them as a floor, not the goal.
+- Question the expensive work's right to exist: can allocations be eliminated instead of pooled, can the computation be done once instead of cached, can the layer be deleted instead of sped up?
+- State the structural alternative even when only asked for a quick optimization. If a redesign would beat every local tweak, say so before spending effort on tweaks.
+- Measure before and after. An optimization without a benchmark or profile is a guess.
+- Aim for the domain-expert ceiling, not the first improvement that works: zero allocations, no redundant passes, data shaped for how it is actually accessed.
+
 ## TypeScript Fixes
 
 - Treat readonly/mutable mismatches as contract bugs first.

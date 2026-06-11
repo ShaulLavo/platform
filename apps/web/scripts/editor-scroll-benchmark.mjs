@@ -1,10 +1,22 @@
-import { chromium, firefox, webkit } from 'playwright'
-import { statSync } from 'node:fs'
-import { basename, relative, resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
 import { createBenchmarkError } from './structured-errors.mjs'
+import {
+  average,
+  browserList,
+  browserTypes,
+  createWorkspaceContext,
+  fractionOption,
+  jumpToScrollFraction,
+  launchOptions,
+  median,
+  minimum,
+  numberOption,
+  round,
+  seedWorkspaceCache,
+  traceUrl,
+  waitForHighlightedEditor,
+} from './bench-workspace.mjs'
 
-const browserTypes = { chromium, firefox, webkit }
-const cachePrefix = 'platform.workspace-state.v12'
 const defaultAppUrl = 'http://localhost:5173/'
 const defaultServerUrl = process.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 const defaultFilePath = 'apps/web/src/features/editor/components/editor.tsx'
@@ -38,7 +50,7 @@ const gateThresholds = {
 }
 
 const browserNames = options.browsers.length > 0 ? options.browsers : defaultBrowsers(options.gate)
-const workspace = await createWorkspaceContext()
+const workspace = await createWorkspaceContext(options)
 const results = {}
 
 for (const browserName of browserNames) {
@@ -63,7 +75,9 @@ function parseOptions(args) {
     browsers: [],
     filePath: process.env.EDITOR_SCROLL_BENCH_FILE ?? defaultFilePath,
     gate: false,
+    pageTimeoutMs: numberOption(process.env.EDITOR_SCROLL_BENCH_PAGE_TIMEOUT_MS, 25_000),
     serverUrl: process.env.EDITOR_SCROLL_BENCH_SERVER_URL ?? defaultServerUrl,
+    startFraction: fractionOption(process.env.EDITOR_SCROLL_BENCH_START_FRACTION, 0),
     stepPx: numberOption(process.env.EDITOR_SCROLL_BENCH_STEP_PX, 36),
     steps: numberOption(process.env.EDITOR_SCROLL_BENCH_STEPS, 80),
     trials: numberOption(process.env.EDITOR_SCROLL_BENCH_TRIALS, 3),
@@ -87,76 +101,20 @@ function applyOption(parsed, arg) {
   if (name === '--app-url') parsed.appUrl = value ?? parsed.appUrl
   if (name === '--browsers') parsed.browsers = browserList(value)
   if (name === '--file') parsed.filePath = value ?? parsed.filePath
+  if (name === '--page-timeout-ms') parsed.pageTimeoutMs = numberOption(value, parsed.pageTimeoutMs)
   if (name === '--server-url') parsed.serverUrl = value ?? parsed.serverUrl
+  if (name === '--start-fraction')
+    parsed.startFraction = fractionOption(value, parsed.startFraction)
   if (name === '--step-px') parsed.stepPx = numberOption(value, parsed.stepPx)
   if (name === '--steps') parsed.steps = numberOption(value, parsed.steps)
   if (name === '--trials') parsed.trials = numberOption(value, parsed.trials)
   if (name === '--workspace-root') parsed.workspaceRoot = value ?? parsed.workspaceRoot
 }
 
-function browserList(value) {
-  if (!value) return []
-
-  return value
-    .split(',')
-    .map((name) => name.trim())
-    .filter((name) => name in browserTypes)
-}
-
-function numberOption(value, fallback) {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
-
-  return Math.floor(parsed)
-}
-
 function defaultBrowsers(gate) {
   if (gate) return ['chromium']
 
   return ['chromium', 'webkit', 'firefox']
-}
-
-async function createWorkspaceContext() {
-  const health = await fetchServerHealth()
-  const absoluteRootPath = resolve(options.workspaceRoot)
-  const absoluteFilePath = resolve(absoluteRootPath, options.filePath)
-  const rootPath = clientPathForAbsolutePath(absoluteRootPath, health.workspaceRoot)
-  const filePath = clientPathForAbsolutePath(absoluteFilePath, health.workspaceRoot)
-  const rootStat = statSync(absoluteRootPath)
-
-  return {
-    absoluteRootPath,
-    filePath,
-    rootFolder: {
-      birthtimeMs: rootStat.birthtimeMs,
-      mtimeMs: rootStat.mtimeMs,
-      name: basename(absoluteRootPath),
-      path: rootPath,
-      size: rootStat.size,
-      type: 'directory',
-      version: '',
-    },
-  }
-}
-
-async function fetchServerHealth() {
-  const response = await fetch(new URL('/health', options.serverUrl), {
-    headers: { Origin: new URL(options.appUrl).origin },
-  })
-  if (!response.ok) throw createBenchmarkError(`Server health failed: ${response.status}`)
-
-  return response.json()
-}
-
-function clientPathForAbsolutePath(absolutePath, workspaceRoot) {
-  const absoluteWorkspaceRoot = resolve(workspaceRoot)
-  if (absoluteWorkspaceRoot === sep) return stripLeadingSlash(absolutePath)
-
-  return relative(absoluteWorkspaceRoot, absolutePath).split(sep).join('/')
-}
-
-function stripLeadingSlash(path) {
-  return path.startsWith(sep) ? path.slice(1) : path
 }
 
 async function runBrowserSamples(browserName, workspace) {
@@ -179,122 +137,17 @@ async function runTrial(browserName, trial, workspace) {
   }
 }
 
-function launchOptions(browserName) {
-  if (browserName !== 'chromium') return { headless: true }
-
-  // The default chromium headless shell stalls its frame pipeline ~2x vsync
-  // under sustained editor repaint, inflating frame means to ~27ms. The
-  // 'chromium' channel runs new headless on the real browser instead.
-  // Frames run uncapped so the benchmark measures real frame throughput
-  // (~5ms/frame) rather than vsync cadence; regressions surface directly
-  // instead of hiding inside the 16.7ms vsync budget.
-  return {
-    args: ['--disable-frame-rate-limit', '--disable-gpu-vsync'],
-    channel: 'chromium',
-    headless: true,
-  }
-}
-
 async function runTrialInBrowser(browser, browserName, trial, workspace) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
-  await context.addInitScript((entries) => {
-    for (const [key, value] of Object.entries(entries)) {
-      window.localStorage.setItem(key, JSON.stringify(value))
-    }
-  }, workspaceCacheEntries(workspace))
+  await seedWorkspaceCache(context, workspace)
 
   const page = await context.newPage()
-  page.setDefaultTimeout(25_000)
-  await page.goto(traceUrl(), { waitUntil: 'domcontentloaded' })
+  page.setDefaultTimeout(options.pageTimeoutMs)
+  await page.goto(traceUrl(options.appUrl), { waitUntil: 'domcontentloaded' })
   await waitForHighlightedEditor(page)
+  await jumpToScrollFraction(page, options.startFraction)
   const report = await runScrollSample(page)
   return trialSample(browserName, trial, report)
-}
-
-function workspaceCacheEntries(workspace) {
-  return {
-    [`${cachePrefix}.diffViewMode`]: 'split',
-    [`${cachePrefix}.editorHistory`]: [workspace.filePath],
-    [`${cachePrefix}.recentlyClosedEditorPaths`]: [],
-    [`${cachePrefix}.rootFolder`]: workspace.rootFolder,
-    [`${cachePrefix}.searchBuffer`]: null,
-    [`${cachePrefix}.workspaceLayout`]: workspaceLayoutEntry(workspace),
-  }
-}
-
-function workspaceLayoutEntry(workspace) {
-  return {
-    activeSurfaceId: 'surface-bench',
-    activeWindowId: 'window-bench',
-    customWindowCommands: [],
-    hotkeyPresets: [],
-    layoutCommands: [],
-    mruSurfaceIds: ['surface-bench'],
-    mruWindowIds: ['window-bench'],
-    nodes: [{ id: 'node-bench', kind: 'window', windowId: 'window-bench' }],
-    policies: [],
-    rail: {
-      backgroundSurfaceIds: [],
-      pinnedSurfaceIds: [],
-      recipeIds: [],
-      runningSurfaceIds: [],
-      visibleSingletonSurfaceIds: [],
-    },
-    recipes: [],
-    rootNodeId: 'node-bench',
-    surfaceRegistryVersion: 1,
-    surfaces: [
-      {
-        id: 'surface-bench',
-        surface: {
-          lifecycle: 'durable',
-          resourceKey: workspace.filePath,
-          serializedState: { editorGroupId: 'group-bench', editorTabId: 'tab-bench' },
-          title: basename(workspace.filePath),
-          type: 'file-editor',
-          version: 1,
-        },
-      },
-    ],
-    version: 1,
-    windows: [
-      {
-        activeSurfaceId: 'surface-bench',
-        id: 'window-bench',
-        mode: 'normal',
-        pinnedSurfaceIds: [],
-        surfaceIds: ['surface-bench'],
-      },
-    ],
-  }
-}
-
-function traceUrl() {
-  const url = new URL(options.appUrl)
-  url.searchParams.set('editorPerfTrace', '1')
-  return String(url)
-}
-
-async function waitForHighlightedEditor(page) {
-  await page.waitForSelector('.editor-virtualized-row')
-  await page.waitForFunction(() => Boolean(window.__editorPerfTrace))
-  await page.waitForFunction(() => {
-    const registry = window.CSS?.highlights
-    if (!registry) return false
-
-    let ranges = 0
-    for (const [, highlight] of registry) ranges += highlight.size
-    return ranges >= 200
-  })
-  await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
-  await page.evaluate(
-    async () =>
-      new Promise((resolve) =>
-        requestAnimationFrame(() => {
-          requestAnimationFrame(resolve)
-        }),
-      ),
-  )
 }
 
 async function runScrollSample(page) {
@@ -303,7 +156,6 @@ async function runScrollSample(page) {
       const scroller = document.querySelector('.editor-virtualized')
       if (!scroller) return { error: 'Missing .editor-virtualized' }
 
-      scroller.scrollTop = 0
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       window.__editorPerfTrace.reset()
       for (let index = 0; index < steps; index += 1) {
@@ -372,28 +224,6 @@ function summarizeSamples(samples) {
     medianFrameMeanMs: median(samples.map((sample) => sample.frameMeanMs)),
     samples,
   }
-}
-
-function average(values) {
-  return round(values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length))
-}
-
-function minimum(values) {
-  if (values.length === 0) return 0
-
-  return round(Math.min(...values))
-}
-
-function median(values) {
-  const sorted = [...values].sort((left, right) => left - right)
-  const midpoint = Math.floor(sorted.length / 2)
-  if (sorted.length % 2 === 1) return round(sorted[midpoint])
-
-  return average([sorted[midpoint - 1], sorted[midpoint]])
-}
-
-function round(value) {
-  return Math.round(value * 100) / 100
 }
 
 function gateFailures(results) {
