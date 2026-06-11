@@ -14,6 +14,7 @@ import {
   resolveTilingTarget,
   type ResolvedTilingTarget,
 } from '@workspace/tiling/utils/drop-target-resolver'
+import { mergeEquivalentDropCandidates } from '@workspace/tiling/utils/drop-candidate-merge'
 import {
   dropCandidatesForDragSource,
   tilingSnapDestinations,
@@ -103,16 +104,20 @@ export function useTilingDragController({
   const bodyAutoscrollerRef = useRef<TabStripBodyAutoscroller | null>(null)
   const bodyAutoscroller = bodyAutoscrollerRef.current ?? createTabStripBodyAutoscroller()
   const snapLayout = activeDrag && dragStartLayoutRef.current ? dragStartLayoutRef.current : layout
-  const snapDestinations = dropCandidatesForDragSource(
+  const snapDestinations = mergeEquivalentDropCandidates(
     snapLayout,
     activeDrag,
-    tilingSnapDestinations({
+    dropCandidatesForDragSource(
+      snapLayout,
       activeDrag,
-      rootRect,
-      snapDestinationRects,
-      sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
-      sourceWindowRect: sourceWindowRectForDrag(windowRectsById, activeDrag),
-    }),
+      tilingSnapDestinations({
+        activeDrag,
+        rootRect,
+        snapDestinationRects,
+        sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
+        sourceWindowRect: sourceWindowRectForDrag(windowRectsById, activeDrag),
+      }),
+    ),
   )
   const snapDestinationsRef = useRef(snapDestinations)
   const insertionPreview = tilingInsertionPreview({

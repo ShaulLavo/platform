@@ -18,6 +18,7 @@ import { getClient } from '@/lib/client'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
+import { createThrottle } from '@/lib/throttle'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { toTreePath } from '@/lib/path-formatters'
 import { clientErrors } from '@/lib/structured-errors'
@@ -62,6 +63,12 @@ const FILE_REFRESH_RETRY_ATTEMPTS = 5
 
 const READY_ROOT_TREE_FRESH_MS = 10_000
 
+// Leading + trailing throttle so a runaway stream of filesystem events (an
+// external tool writing into the workspace) cannot refetch git status on
+// every batch. Throttle, not debounce: a continuous stream must still
+// invalidate once per interval instead of starving forever.
+const GIT_INVALIDATION_THROTTLE_MS = 2_000
+
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const conflictStore = useEditorConflictStoreApi()
   const documentStore = useEditorDocumentStoreApi()
@@ -75,6 +82,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       signal: AbortSignal,
       currentRootPath: string,
       eventsScope: WideEventScope,
+      scheduleGitInvalidation: () => void,
     ) => {
       const documentState = documentStore.getState()
       const workspaceState = workspaceStore.getState()
@@ -94,6 +102,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         queryClient,
         renameLiveEditorDocument,
         rootPath: currentRootPath,
+        scheduleGitInvalidation,
         selectFile,
         signal,
         scope: eventsScope,
@@ -106,7 +115,12 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     },
   )
   const applyReady = useEffectEvent(
-    (signal: AbortSignal, currentRootPath: string, eventsScope: WideEventScope) => {
+    (
+      signal: AbortSignal,
+      currentRootPath: string,
+      eventsScope: WideEventScope,
+      scheduleGitInvalidation: () => void,
+    ) => {
       const documentState = documentStore.getState()
       const workspaceState = workspaceStore.getState()
 
@@ -124,6 +138,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         queryClient,
         renameLiveEditorDocument,
         rootPath: currentRootPath,
+        scheduleGitInvalidation,
         selectFile,
         signal,
         scope: eventsScope,
@@ -140,20 +155,23 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     if (!rootPath) return
 
     const controller = new AbortController()
+    const gitInvalidation = createThrottle(GIT_INVALIDATION_THROTTLE_MS, () =>
+      invalidateGitState(queryClient),
+    )
     const eventsScope = createWideEventScope({
       action: 'workspace.events.summary',
       area: 'workspace-events',
       path: rootPath,
     })
     const queue = createEventQueue((events) =>
-      applyEvents(events, controller.signal, rootPath, eventsScope),
+      applyEvents(events, controller.signal, rootPath, eventsScope, gitInvalidation.schedule),
     )
     eventsScope.increment('subscription.subscribeCount')
 
     void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
       if (message.type === 'ready') {
         eventsScope.increment('subscription.readyCount')
-        applyReady(controller.signal, rootPath, eventsScope)
+        applyReady(controller.signal, rootPath, eventsScope, gitInvalidation.schedule)
         return
       }
       if (message.type === 'error') {
@@ -182,11 +200,12 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
 
     return () => {
       controller.abort()
+      gitInvalidation.cancel()
       queue.clear()
       eventsScope.increment('subscription.unsubscribeCount')
       endWorkspaceEventsScope(eventsScope)
     }
-  }, [rootPath])
+  }, [queryClient, rootPath])
 
   useEffect(() => {
     return () => dismissFilesystemConflicts(conflictStore)
@@ -219,6 +238,7 @@ async function applyWorkspaceEvents({
   queryClient,
   renameLiveEditorDocument,
   rootPath,
+  scheduleGitInvalidation,
   selectFile,
   signal,
   scope,
@@ -234,6 +254,7 @@ async function applyWorkspaceEvents({
   queryClient: ReturnType<typeof useQueryClient>
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   rootPath: string
+  scheduleGitInvalidation: () => void
   selectFile: (path: string | null) => void
   signal: AbortSignal
   scope: WideEventScope
@@ -257,6 +278,7 @@ async function applyWorkspaceEvents({
     queryClient,
     renameLiveEditorDocument,
     rootPath,
+    scheduleGitInvalidation,
     selectFile,
     signal,
   })
@@ -320,6 +342,7 @@ async function applyWorkspaceReady({
   queryClient,
   renameLiveEditorDocument,
   rootPath,
+  scheduleGitInvalidation,
   selectFile,
   signal,
   scope,
@@ -334,6 +357,7 @@ async function applyWorkspaceReady({
   queryClient: ReturnType<typeof useQueryClient>
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   rootPath: string
+  scheduleGitInvalidation: () => void
   selectFile: (path: string | null) => void
   signal: AbortSignal
   scope: WideEventScope
@@ -356,6 +380,7 @@ async function applyWorkspaceReady({
     queryClient,
     renameLiveEditorDocument,
     rootPath,
+    scheduleGitInvalidation,
     selectFile,
     signal,
   })
@@ -373,6 +398,7 @@ async function applyWorkspaceEventPlan({
   queryClient,
   renameLiveEditorDocument,
   rootPath,
+  scheduleGitInvalidation,
   selectFile,
   signal,
 }: {
@@ -387,6 +413,7 @@ async function applyWorkspaceEventPlan({
   queryClient: ReturnType<typeof useQueryClient>
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   rootPath: string
+  scheduleGitInvalidation: () => void
   selectFile: (path: string | null) => void
   signal: AbortSignal
 }) {
@@ -402,7 +429,7 @@ async function applyWorkspaceEventPlan({
     selectFile,
   }
 
-  if (plan.shouldInvalidateGitState) invalidateGitState(queryClient)
+  if (plan.shouldInvalidateGitState) scheduleGitInvalidation()
 
   await applyTreeOperations(queryClient, rootPath, plan.treeOperations, signal)
   await applyOpenFileOperations({

@@ -6,6 +6,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DndProofView } from '@/features/dnd-proof/components/proof-view'
+import {
+  ROOT_EDGE_HIT_INSIDE_PX,
+  ROOT_EDGE_HIT_OUTSIDE_PX,
+} from '@workspace/tiling/utils/snap-destinations'
 
 let root: Root | null = null
 let currentDragPoint: PointerPoint | null = null
@@ -64,33 +68,33 @@ afterEach(async () => {
 })
 
 describe.sequential('dnd proof browser behavior', () => {
-  it('renders root guides at the real full surface edges', async () => {
+  it('renders root zones as hit rails straddling the real surface edges', async () => {
     renderProof()
 
     await waitForProof()
     await waitForSettledProofGeometry()
 
     const surfaceRect = proofSurfaceArea().getBoundingClientRect()
+    const rootLeftEdge = surfaceRect.left + 8
+    const rootTopEdge = surfaceRect.top + 8
+    const rootRightEdge = surfaceRect.right - 8
+    const rootBottomEdge = surfaceRect.bottom - 8
     const topRect = snapDestinationWithLabel('root top').getBoundingClientRect()
     const leftRect = snapDestinationWithLabel('root left').getBoundingClientRect()
     const rightRect = snapDestinationWithLabel('root right').getBoundingClientRect()
     const bottomRect = snapDestinationWithLabel('root bottom').getBoundingClientRect()
-    const firstStripRect = tabStrips()[0]?.getBoundingClientRect()
-    const firstWindowRect = windowRegions()[0]?.getBoundingClientRect()
-    if (!firstStripRect) throw new Error('Missing first tab strip')
-    if (!firstWindowRect) throw new Error('Missing first window')
 
-    expect(topRect.top).toBeLessThan(firstStripRect.bottom)
-    expectClose(topRect.top, firstWindowRect.top)
-    expectClose(topRect.top, surfaceRect.top + 8)
-    expectClose(topRect.left, surfaceRect.left + 8)
-    expectClose(topRect.width, surfaceRect.width - 16)
-    expectClose(leftRect.top, surfaceRect.top + 8)
-    expectClose(leftRect.height, surfaceRect.height - 16)
-    expectClose(rightRect.top, surfaceRect.top + 8)
-    expectClose(rightRect.height, surfaceRect.height - 16)
-    expectClose(bottomRect.left, surfaceRect.left + 8)
-    expectClose(bottomRect.width, surfaceRect.width - 16)
+    expectClose(topRect.bottom, rootTopEdge + ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(topRect.top, rootTopEdge - ROOT_EDGE_HIT_OUTSIDE_PX)
+    expectClose(topRect.left, rootLeftEdge - ROOT_EDGE_HIT_OUTSIDE_PX)
+    expectClose(topRect.width, rootRightEdge - rootLeftEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
+    expectClose(leftRect.right, rootLeftEdge + ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(leftRect.top, rootTopEdge - ROOT_EDGE_HIT_OUTSIDE_PX)
+    expectClose(leftRect.height, rootBottomEdge - rootTopEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
+    expectClose(rightRect.left, rootRightEdge - ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(rightRect.height, rootBottomEdge - rootTopEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
+    expectClose(bottomRect.top, rootBottomEdge - ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(bottomRect.width, rootRightEdge - rootLeftEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
   })
 
   it('previews detached tab snap layout with real browser pointer events before release', async () => {
@@ -954,7 +958,10 @@ describe.sequential('dnd proof browser behavior', () => {
     }
   })
 
-  for (const snapLabel of ['window right', 'window bottom', 'window left', 'window top']) {
+  // No 'window left' case: internal boundaries merge into the earlier
+  // window's trailing-edge zone ('window right'), and the remaining outer
+  // left zones sit under the window-body tab dock halo, which outranks them.
+  for (const snapLabel of ['window right', 'window bottom', 'window top']) {
     it(`snaps a detached tab to ${snapLabel}`, async () => {
       renderProof()
 
@@ -1248,20 +1255,20 @@ async function nativeDragWindowToSnap(
   })
 }
 
+// Root rails extend past the viewport, so the steps aim at their inner edge.
 function snapDestinationMouseStep(label: string): ProofMouseDragStep {
-  const destination = snapDestinationWithLabel(label)
-  const selector = selectorFor(destination)
+  const selector = snapDestinationSelector(label)
   if (label === 'root left') {
-    return { kind: 'move-to-selector', offsetX: 6, selector, steps: 18, x: 0, y: 0.5 }
+    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
   }
   if (label === 'root top') {
-    return { kind: 'move-to-selector', offsetY: 6, selector, steps: 18, x: 0.5, y: 0 }
-  }
-  if (label === 'root bottom') {
     return { kind: 'move-to-selector', offsetY: -6, selector, steps: 18, x: 0.5, y: 1 }
   }
+  if (label === 'root bottom') {
+    return { kind: 'move-to-selector', offsetY: 6, selector, steps: 18, x: 0.5, y: 0 }
+  }
   if (label === 'root right') {
-    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
+    return { kind: 'move-to-selector', offsetX: 6, selector, steps: 18, x: 0, y: 0.5 }
   }
   if (label === 'window left') {
     return { kind: 'move-to-selector', offsetX: 6, selector, steps: 18, x: 0, y: 0.5 }
@@ -1277,6 +1284,16 @@ function snapDestinationMouseStep(label: string): ProofMouseDragStep {
   }
 
   return { kind: 'move-to-selector', selector, steps: 18, x: 0.5, y: 0.5 }
+}
+
+// Zones re-render under merged ids once a drag starts, so selectors captured
+// before the drag must match by member id instead of the exact element. The
+// rect index keeps the match unique when a merged zone renders several rails.
+function snapDestinationSelector(label: string) {
+  const id = snapDestinationWithLabel(label).dataset.proofSnapDestination
+  if (!id) throw new Error(`Missing snap destination id for ${label}`)
+
+  return `[data-proof-snap-destination*=${JSON.stringify(id)}][data-proof-snap-rect="0"]`
 }
 
 function snapDestinationDropPoint(label: string): PointerPoint {

@@ -5,11 +5,10 @@ import type { LayoutEdge, WindowId, WorkspaceLayout } from '@workspace/tiling/ut
 
 export type TilingDropCandidate = {
   readonly edge?: LayoutEdge
-  readonly hitRect: LayoutRect
+  readonly hitRects: readonly LayoutRect[]
   readonly id: string
-  readonly kind: SnapDestinationLayoutRect['kind'] | 'source-return'
+  readonly kind: SnapDestinationLayoutRect['kind'] | 'source-return' | 'source-vacancy'
   readonly label: string
-  readonly previewRect: LayoutRect
   readonly priority: number
   readonly target: TilingDropData
   readonly windowId?: WindowId
@@ -22,8 +21,8 @@ const INTERNAL_WINDOW_EDGE_PRIORITY = 105
 const SOURCE_VACANCY_ROOT_PRIORITY = 89
 const OUTER_WINDOW_EDGE_PRIORITY = 88
 const WINDOW_CENTER_PRIORITY = 100
-const ROOT_EDGE_HIT_INSIDE_PX = 10
-const ROOT_EDGE_HIT_OUTSIDE_PX = 28
+export const ROOT_EDGE_HIT_INSIDE_PX = 10
+export const ROOT_EDGE_HIT_OUTSIDE_PX = 28
 const WINDOW_EDGE_HIT_PX = 48
 const SOURCE_VACANCY_EDGE_RATIO = 0.32
 const SOURCE_VACANCY_EDGE_SOURCE_MAX_RATIO = 0.48
@@ -139,11 +138,10 @@ function tilingSnapCandidate({
   return [
     {
       edge: snapDestination.edge,
-      hitRect: snapDestinationHitRect(snapDestination, rootRect),
+      hitRects: [snapDestinationHitRect(snapDestination, rootRect)],
       id: snapDestination.id,
       kind: snapDestination.kind,
       label: snapDestinationLabel(snapDestination),
-      previewRect: snapDestination.rect,
       priority: snapDestinationPriority(snapDestination, rootRect),
       target,
       windowId: snapDestination.windowId,
@@ -156,11 +154,10 @@ function sourceReturnCandidate(
   sourceReturnRect: LayoutRect,
 ): TilingDropCandidate {
   return {
-    hitRect: sourceReturnRect,
+    hitRects: [sourceReturnRect],
     id: `snap:source-return:${sourceWindowId}`,
     kind: 'source-return',
     label: 'return home',
-    previewRect: sourceReturnRect,
     priority: SOURCE_RETURN_PRIORITY,
     target: {
       kind: 'window',
@@ -187,11 +184,10 @@ function sourceVacancyRootCandidate({
 
   return {
     edge: snapDestination.edge,
-    hitRect,
+    hitRects: [hitRect],
     id: `snap:source-vacancy:${sourceWindowId}:${snapDestination.edge}`,
-    kind: 'root-edge',
+    kind: 'source-vacancy',
     label: snapDestinationLabel(snapDestination),
-    previewRect: hitRect,
     priority: SOURCE_VACANCY_ROOT_PRIORITY,
     target,
     windowId: sourceWindowId,
