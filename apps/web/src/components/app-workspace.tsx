@@ -6,6 +6,7 @@ import { WorkspaceView } from '@/components/workspace/shell/components/workspace
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useValidateRootFolder } from '@/hooks/use-validate-root-folder'
 import { useWorkspaceEvents } from '@/hooks/use-workspace-events'
 import { useResetWorkspaceTreeLoad } from '@/hooks/use-workspace-tree'
 import { log } from '@/lib/client-logging'
@@ -34,6 +35,7 @@ export function AppWorkspace({
   const { pickRootFolder } = useEditorCommands()
   const resetTreeLoad = useResetWorkspaceTreeLoad()
 
+  useValidateRootFolder()
   useWorkspaceEvents(rootFolder)
 
   const handlePick = useCallback(

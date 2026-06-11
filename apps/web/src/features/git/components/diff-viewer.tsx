@@ -6,7 +6,6 @@ import {
   type DiffHunkLine,
   type DiffSplitHandleContext,
 } from '@singapor/diff'
-import '@singapor/diff/style.css'
 import './diff-viewer.css'
 import { WarningCircleIcon } from '@phosphor-icons/react'
 import {

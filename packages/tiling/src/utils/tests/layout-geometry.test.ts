@@ -154,7 +154,7 @@ describe('tiling surface layout geometry', () => {
     expectRect(leftGeometry.nodeRectsById[nodeId], { height: 800, width: 40, x: 0, y: 0 })
   })
 
-  it('derives background, recipe-slot, root, parent, window-edge, and center snap destinations', () => {
+  it('derives background, root, parent, window-edge, and center snap destinations', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const geometry = deriveLayoutGeometry(layout, rootRect(), {
       minSnapDestinationPx: 20,
@@ -177,14 +177,12 @@ describe('tiling surface layout geometry', () => {
     const background = geometry.snapDestinationRects.find(
       (destination) => destination.kind === 'background',
     )
-    const editorRecipeSlot = geometry.snapDestinationRects.find(
-      (destination) =>
-        destination.destination.kind === 'recipe-slot' &&
-        destination.destination.slot === 'editor-center',
+    const recipeSlots = geometry.snapDestinationRects.filter(
+      (destination) => destination.destination.kind === 'recipe-slot',
     )
 
     expect(background?.destination.kind).toBe('background')
-    expect(editorRecipeSlot?.kind).toBe('recipe-slot')
+    expect(recipeSlots).toEqual([])
     expect(editorCenter?.destination.kind).toBe('window-center')
     expectRect(rootLeft?.rect, { height: 800, width: 200, x: 0, y: 0 })
     expect(parentEditorLeft?.destination.kind).toBe('parent-edge')

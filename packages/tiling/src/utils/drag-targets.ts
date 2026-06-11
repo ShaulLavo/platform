@@ -7,8 +7,9 @@ import {
   distanceFromRange,
   type PointerCoordinates,
 } from '@workspace/tiling/utils/geometry-primitives'
+import { dragSourceCanUseDropTarget } from '@workspace/tiling/utils/drag-capabilities'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
-import type { SurfaceId, WindowId } from '@workspace/tiling/utils/layout-types'
+import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import {
   DIRECT_TAB_TARGET_PRIORITY,
   DOCK_TAB_TARGET_PRIORITY,
@@ -103,6 +104,20 @@ export function tabTargetForDrag({
 
   bodyAutoscroller?.stop()
   return tabReorderTargetForDrag({ activeDrag, eventPoint, source })
+}
+
+// A capability-blocked tab target must resolve to null, not survive until the
+// commit check: its strip/dock priority would beat the window-edge snap
+// candidates under the same point and leave the drag with no target at all.
+export function tabTargetForDragSource(
+  layout: WorkspaceLayout,
+  source: TilingDragData,
+  tabTarget: TilingTabTarget | null,
+): TilingTabTarget | null {
+  if (!tabTarget) return null
+  if (!dragSourceCanUseDropTarget(layout, source, tabTarget.target)) return null
+
+  return tabTarget
 }
 
 export function rawWindowTargetForDrag({

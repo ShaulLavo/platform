@@ -1,8 +1,5 @@
 import type { TilingDragData, TilingDropData } from '@workspace/tiling/utils/drag-data'
-import {
-  dragSourceCanUseDestination,
-  recipeSlotForDragSource,
-} from '@workspace/tiling/utils/drag-capabilities'
+import { dragSourceCanUseDropTarget } from '@workspace/tiling/utils/drag-capabilities'
 import type { LayoutRect, SnapDestinationLayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type { LayoutEdge, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
@@ -20,7 +17,6 @@ export type TilingDropCandidate = {
 
 const OUTER_EDGE_EPSILON_PX = 2
 const ROOT_EDGE_PRIORITY = 95
-const RECIPE_SLOT_PRIORITY = 110
 const SOURCE_RETURN_PRIORITY = 120
 const INTERNAL_WINDOW_EDGE_PRIORITY = 105
 const SOURCE_VACANCY_ROOT_PRIORITY = 89
@@ -36,14 +32,12 @@ const SOURCE_VACANCY_EDGE_MAX_PX = 180
 
 export function tilingSnapDestinations({
   activeDrag,
-  layout,
   rootRect,
   snapDestinationRects,
   sourceWindowRect,
   sourceWindowId,
 }: {
   readonly activeDrag: TilingDragData | null
-  readonly layout?: WorkspaceLayout
   readonly rootRect: LayoutRect
   readonly snapDestinationRects: readonly SnapDestinationLayoutRect[]
   readonly sourceWindowRect?: LayoutRect | null
@@ -53,7 +47,6 @@ export function tilingSnapDestinations({
     ...snapDestinationRects.flatMap((snapDestination) =>
       tilingSnapCandidate({
         activeDrag,
-        layout,
         rootRect,
         snapDestination,
         sourceWindowId,
@@ -66,6 +59,22 @@ export function tilingSnapDestinations({
       sourceWindowRect,
     }),
   ]
+}
+
+// Capability-blocked candidates must not reach the resolver: a blocked
+// high-priority target would otherwise win resolution and then fail the
+// commit check, shadowing the valid lower-priority candidate under the
+// same point instead of falling back to it.
+export function dropCandidatesForDragSource(
+  layout: WorkspaceLayout,
+  source: TilingDragData | null,
+  candidates: readonly TilingDropCandidate[],
+): readonly TilingDropCandidate[] {
+  if (!source) return candidates
+
+  return candidates.filter((candidate) =>
+    dragSourceCanUseDropTarget(layout, source, candidate.target),
+  )
 }
 
 function sourceWindowCandidates({
@@ -109,18 +118,16 @@ function sourceVacancyRootEdges(
 
 function tilingSnapCandidate({
   activeDrag,
-  layout,
   rootRect,
   snapDestination,
   sourceWindowId,
 }: {
   readonly activeDrag: TilingDragData | null
-  readonly layout?: WorkspaceLayout
   readonly rootRect: LayoutRect
   readonly snapDestination: SnapDestinationLayoutRect
   readonly sourceWindowId: WindowId | null
 }): readonly TilingDropCandidate[] {
-  if (!snapDestinationEnabledForDrag({ activeDrag, layout, snapDestination, sourceWindowId })) {
+  if (!snapDestinationEnabledForDrag({ activeDrag, snapDestination, sourceWindowId })) {
     return []
   }
 
@@ -324,19 +331,14 @@ function rootEdgeHitRect(rootRect: LayoutRect, edge: LayoutEdge): LayoutRect {
 
 function snapDestinationEnabledForDrag({
   activeDrag,
-  layout,
   snapDestination,
   sourceWindowId,
 }: {
   readonly activeDrag: TilingDragData | null
-  readonly layout?: WorkspaceLayout
   readonly snapDestination: SnapDestinationLayoutRect
   readonly sourceWindowId: WindowId | null
 }) {
   if (!activeDrag) return idleSnapDestinationVisible(snapDestination)
-  if (snapDestination.kind === 'recipe-slot') {
-    return recipeSlotSnapDestinationVisible(layout, activeDrag, snapDestination)
-  }
   if (activeDrag.kind === 'tab') return tabSnapDestinationVisible(snapDestination)
 
   return windowSnapDestinationVisible(snapDestination, sourceWindowId)
@@ -354,20 +356,6 @@ function tabSnapDestinationVisible(snapDestination: SnapDestinationLayoutRect) {
   return snapDestination.kind === 'window-edge'
 }
 
-function recipeSlotSnapDestinationVisible(
-  layout: WorkspaceLayout | undefined,
-  activeDrag: TilingDragData,
-  snapDestination: SnapDestinationLayoutRect,
-) {
-  if (!layout) return false
-  if (snapDestination.destination.kind !== 'recipe-slot') return false
-  if (recipeSlotForDragSource(layout, activeDrag) !== snapDestination.destination.slot) {
-    return false
-  }
-
-  return dragSourceCanUseDestination(layout, activeDrag, snapDestination.destination)
-}
-
 function windowSnapDestinationVisible(
   snapDestination: SnapDestinationLayoutRect,
   sourceWindowId: WindowId | null,
@@ -380,7 +368,6 @@ function windowSnapDestinationVisible(
 }
 
 function snapDestinationPriority(snapDestination: SnapDestinationLayoutRect, rootRect: LayoutRect) {
-  if (snapDestination.kind === 'recipe-slot') return RECIPE_SLOT_PRIORITY
   if (snapDestination.kind === 'window-center') return WINDOW_CENTER_PRIORITY
   if (snapDestination.kind === 'root-edge') return ROOT_EDGE_PRIORITY
   if (snapDestination.kind === 'window-edge') {
@@ -416,7 +403,6 @@ function snapDestinationLabel(snapDestination: SnapDestinationLayoutRect) {
   if (snapDestination.kind === 'window-edge') return `window ${snapDestination.edge}`
   if (snapDestination.kind === 'window-center') return 'merge tabs'
   if (snapDestination.kind === 'parent-edge') return `parent ${snapDestination.edge}`
-  if (snapDestination.kind === 'recipe-slot') return snapDestination.destination.kind
 
   return snapDestination.kind
 }

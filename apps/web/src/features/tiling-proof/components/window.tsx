@@ -10,7 +10,7 @@ import {
   type TilingDragData,
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
-import { proofWindowTitle } from '@/features/tiling-proof/utils/window-title'
+import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 import type { TilingInsertionPreview } from '@workspace/tiling/utils/tab-preview'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
@@ -118,7 +118,7 @@ export function ProofWindow({
   const collapsed = window.mode === 'collapsed'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
   const insertionPreviewActive = insertionPreview?.targetWindowId === window.id
-  const title = proofWindowTitle(layout, window.id)
+  const title = windowTitle(layout, window.id)
   const activeTitle = activeSurface?.title ?? title
   const collapseToRailLabel = `Collapse ${activeTitle} to rail`
   const collapseToRowLabel = `Collapse ${activeTitle} to row`

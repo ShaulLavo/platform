@@ -15,6 +15,7 @@ import {
   type ResolvedTilingTarget,
 } from '@workspace/tiling/utils/drop-target-resolver'
 import {
+  dropCandidatesForDragSource,
   tilingSnapDestinations,
   type TilingDropCandidate,
 } from '@workspace/tiling/utils/snap-destinations'
@@ -52,6 +53,7 @@ import {
   snapPreviewMode,
   sourceReturnTargetForDragEnd,
   tabTargetForDrag,
+  tabTargetForDragSource,
   type BodyAutoScrollInput,
 } from '@workspace/tiling/utils/drag-targets'
 
@@ -101,14 +103,17 @@ export function useTilingDragController({
   const bodyAutoscrollerRef = useRef<TabStripBodyAutoscroller | null>(null)
   const bodyAutoscroller = bodyAutoscrollerRef.current ?? createTabStripBodyAutoscroller()
   const snapLayout = activeDrag && dragStartLayoutRef.current ? dragStartLayoutRef.current : layout
-  const snapDestinations = tilingSnapDestinations({
+  const snapDestinations = dropCandidatesForDragSource(
+    snapLayout,
     activeDrag,
-    layout: snapLayout,
-    rootRect,
-    snapDestinationRects,
-    sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
-    sourceWindowRect: sourceWindowRectForDrag(windowRectsById, activeDrag),
-  })
+    tilingSnapDestinations({
+      activeDrag,
+      rootRect,
+      snapDestinationRects,
+      sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
+      sourceWindowRect: sourceWindowRectForDrag(windowRectsById, activeDrag),
+    }),
+  )
   const snapDestinationsRef = useRef(snapDestinations)
   const insertionPreview = tilingInsertionPreview({
     activeDrag,
@@ -484,16 +489,20 @@ export function useTilingDragController({
   }) {
     const mode = resolveIntentModeAndUpdateDetach(activeDragRef.current, source, eventPoint)
     const localPoint = localPointForRoot(eventPoint, coordinateRoot)
-    const tabTarget = tabTargetForDrag({
-      activeDrag: activeDragRef.current,
-      bodyAutoscroller,
-      eventPoint,
-      mode,
-      onBodyAutoScroll,
-      previousTarget,
-      rawTarget,
+    const tabTarget = tabTargetForDragSource(
+      dragStartLayoutRef.current ?? layoutRef.current,
       source,
-    })
+      tabTargetForDrag({
+        activeDrag: activeDragRef.current,
+        bodyAutoscroller,
+        eventPoint,
+        mode,
+        onBodyAutoScroll,
+        previousTarget,
+        rawTarget,
+        source,
+      }),
+    )
 
     return resolveTilingTarget({
       candidates,
@@ -536,7 +545,10 @@ export function useTilingDragController({
       rawTarget,
       source,
     })
-    if (rawWindowTarget) return rawWindowTarget
+    const baseLayout = dragStartLayoutRef.current ?? layoutRef.current
+    if (rawWindowTarget && dragTargetForCommit(baseLayout, source, rawWindowTarget.target)) {
+      return rawWindowTarget
+    }
 
     return resolvedTargetForDrag({
       candidates,

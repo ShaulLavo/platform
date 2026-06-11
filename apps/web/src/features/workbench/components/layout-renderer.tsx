@@ -30,6 +30,10 @@ import {
   defaultSurfaceRendererRegistry,
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
+import {
+  DEFAULT_GEOMETRY_OPTIONS,
+  DEFAULT_LAYOUT_RECT,
+} from '@/features/workbench/utils/layout-defaults'
 import { applyLayoutOperation } from '@workspace/tiling'
 import type {
   LayoutOperation,
@@ -39,18 +43,6 @@ import type {
   WorkbenchWindow,
   WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
-
-const DEFAULT_LAYOUT_RECT: LayoutRect = {
-  height: 720,
-  width: 1080,
-  x: 0,
-  y: 0,
-}
-
-const DEFAULT_GEOMETRY_OPTIONS: LayoutGeometryOptions = {
-  gapPx: 8,
-  resizeHandleThicknessPx: 8,
-}
 
 export function LayoutRenderer({
   className,

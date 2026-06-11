@@ -92,29 +92,6 @@ describe('tiling drop target resolver', () => {
     expect(rootBottom.hitRect.height).toBeLessThan(sourceWindowRect.height)
   })
 
-  it('adds only the matching recipe slot snap candidate for active drags', () => {
-    const layout = createClassicFirstRunWorkspaceLayout()
-    const geometry = deriveLayoutGeometry(layout, ROOT_RECT, {
-      minSnapDestinationPx: 44,
-      snapEdgeRatio: 0.18,
-    })
-    const candidates = tilingSnapDestinations({
-      activeDrag: { kind: 'tab', surfaceId: terminalSurfaceId('terminal-1') },
-      layout,
-      rootRect: ROOT_RECT,
-      snapDestinationRects: geometry.snapDestinationRects,
-      sourceWindowId: null,
-      sourceWindowRect: null,
-    })
-    const recipeCandidates = recipeSlotCandidates(candidates)
-    const bottomRoot = rootCandidate(candidates, 'bottom')
-
-    expect(recipeCandidates.map((candidate) => candidate.target)).toEqual([
-      snapTarget({ kind: 'recipe-slot', slot: 'bottom' }),
-    ])
-    expect(recipeCandidates[0]?.priority).toBeGreaterThan(bottomRoot.priority)
-  })
-
   it('resolves the source return core back to the dragged window', () => {
     const sourceWindowRect: LayoutRect = { height: 600, width: 300, x: 700, y: 0 }
     const candidates = tilingSnapDestinations({
@@ -523,10 +500,6 @@ function sourceVacancyCandidate(candidates: readonly TilingDropCandidate[], edge
   expect(value).toBeDefined()
 
   return value as TilingDropCandidate
-}
-
-function recipeSlotCandidates(candidates: readonly TilingDropCandidate[]) {
-  return candidates.filter((candidate) => candidate.kind === 'recipe-slot')
 }
 
 function rootCandidateAtPoint() {

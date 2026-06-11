@@ -1,17 +1,17 @@
-import { DebugPanel } from '@/features/shell-proof/components/debug-panel'
 import { SurfaceBody } from '@/features/shell-proof/components/surface-body'
 import {
   ProofInteractionSurface,
-  type ProofInteractionController,
+  type ProofInteractionControllerRef,
 } from '@/features/tiling-proof/components/interaction-surface'
 import type { ProofCollapsedWindowHeaderInput } from '@/features/tiling-proof/components/window'
+import { commitEventLabel } from '@/features/tiling-proof/utils/event-labels'
 import {
   bottomPaneCloseWindowOperation,
   isBottomPaneWindow,
 } from '@workspace/tiling/utils/bottom-pane-model'
 import { ToolPaneHeader } from '@/features/workbench/components/tool-pane-header'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
-import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
+import type { TilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import type {
   LayoutOperation,
   Surface,
@@ -20,21 +20,21 @@ import type {
   WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
 
-type ShellProofInteractionControllerRef = {
-  current: ProofInteractionController
-}
-
 export function SurfaceArea({
+  debugLog,
+  dropZonesVisible,
   interactionControllerRef,
   onDispatchLayoutOperation,
+  onLogEvent,
 }: {
-  readonly interactionControllerRef: ShellProofInteractionControllerRef
+  readonly debugLog: TilingDragDebugLog
+  readonly dropZonesVisible: boolean
+  readonly interactionControllerRef: ProofInteractionControllerRef
   readonly onDispatchLayoutOperation: (operation: LayoutOperation) => void
+  readonly onLogEvent: (event: string) => void
 }) {
   const layout = useLayoutState((state) => state.layout)
   const replaceLayout = useLayoutState((state) => state.replaceLayout)
-  const debugVisible = shellProofDebugEnabled()
-  const dragDebugLog = useTilingDragDebugLog()
 
   function dispatchOperation(operation: LayoutOperation) {
     onDispatchLayoutOperation(operation)
@@ -69,22 +69,20 @@ export function SurfaceArea({
     <ProofInteractionSurface
       addTabVisible={false}
       ariaLabel='Shell proof surface area'
-      debugLog={debugVisible ? dragDebugLog : undefined}
-      debugOverlay={debugVisible ? <DebugPanel stateEvents={dragDebugLog.stateEvents} /> : null}
-      dropZonesVisible={debugVisible}
-      emptyContent={emptySurfaceArea()}
+      debugLog={debugLog}
+      dropZonesVisible={dropZonesVisible}
       interactionControllerRef={interactionControllerRef}
       layout={layout}
       renderCollapsedHeader={renderCollapsedHeader}
       renderSurfaceBody={renderSurfaceBody}
       singleCollapseTarget='rail'
-      snapDestinationsMounted={debugVisible}
       surfaceClassName='relative isolate min-h-0 min-w-0 flex-1 overflow-hidden p-0'
       surfaceDataAttributes={{ 'data-shell-proof-surface-area': '' }}
       tabActionsVisible={shellTabActionsVisible}
       onCloseSurface={closeSurface}
       onCloseWindow={closeWindow}
-      onCommitLayout={(nextLayout) => {
+      onCommitLayout={(nextLayout, event) => {
+        onLogEvent(commitEventLabel(layout, event))
         replaceLayout(nextLayout)
       }}
       onDispatchLayoutOperation={dispatchOperation}
@@ -128,20 +126,10 @@ function shellTabActionsVisible(layout: WorkspaceLayout, window: WorkbenchWindow
   return !isBottomPaneWindow(layout, window)
 }
 
-function shellProofDebugEnabled() {
-  if (typeof window === 'undefined') return false
-
-  return new URLSearchParams(window.location.search).has('debug')
-}
-
 function emptyWindowBody() {
   return (
     <div className='text-muted-foreground grid h-full place-items-center text-sm'>
       No active surface
     </div>
   )
-}
-
-function emptySurfaceArea() {
-  return <div />
 }

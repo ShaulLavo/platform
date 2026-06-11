@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 
-import { ProofEventLog } from '@/features/dnd-proof/components/proof-event-log'
+import { ProofEventLog } from '@/features/tiling-proof/components/event-log'
 import { ProofToolbar } from '@/features/dnd-proof/components/proof-toolbar'
 import {
   activateProofSurface,
@@ -14,22 +14,17 @@ import {
   removeProofWindow,
 } from '@/features/dnd-proof/utils/model'
 import {
+  IDLE_PROOF_INTERACTION_CONTROLLER,
   ProofInteractionSurface,
-  type ProofInteractionController,
 } from '@/features/tiling-proof/components/interaction-surface'
 import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import type { LayoutOperation, SurfaceId, WindowId } from '@workspace/tiling/utils/layout-types'
 
-const IDLE_INTERACTION_CONTROLLER: ProofInteractionController = {
-  flushPendingCommit: ignoreInteraction,
-  resetInteraction: ignoreInteraction,
-}
-
 export function DndProofView() {
   const [model, setModel] = useState(createInitialProofModel)
   const [dropZonesVisible, setDropZonesVisible] = useState(false)
-  const interactionControllerRef = useRef<ProofInteractionController>(IDLE_INTERACTION_CONTROLLER)
+  const interactionControllerRef = useRef(IDLE_PROOF_INTERACTION_CONTROLLER)
   const dragDebugLog = useTilingDragDebugLog()
   const visibleWindowIds = visibleWindowIdsInOrder(model.layout)
   const surfaceCount = visibleWindowIds.reduce((count, windowId) => {
@@ -139,5 +134,3 @@ export function DndProofView() {
     </main>
   )
 }
-
-function ignoreInteraction() {}

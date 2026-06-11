@@ -14,7 +14,9 @@ const options = parseOptions(process.argv.slice(2))
 const gateThresholds = {
   chromium: {
     maxCssHighlightRanges: 270,
-    maxMedianFrameMeanMs: 25,
+    // Uncapped frame throughput baseline is ~5ms/frame; 10 leaves ~2x
+    // headroom for machine load without letting real regressions hide.
+    maxMedianFrameMeanMs: 10,
     maxMeanRangesCount: 12,
     maxMeanRangesTotalMs: 15,
     maxMeanSegmentsCount: 12,
@@ -169,11 +171,27 @@ async function runBrowserSamples(browserName, workspace) {
 }
 
 async function runTrial(browserName, trial, workspace) {
-  const browser = await browserTypes[browserName].launch({ headless: true })
+  const browser = await browserTypes[browserName].launch(launchOptions(browserName))
   try {
     return await runTrialInBrowser(browser, browserName, trial, workspace)
   } finally {
     await browser.close().catch(() => {})
+  }
+}
+
+function launchOptions(browserName) {
+  if (browserName !== 'chromium') return { headless: true }
+
+  // The default chromium headless shell stalls its frame pipeline ~2x vsync
+  // under sustained editor repaint, inflating frame means to ~27ms. The
+  // 'chromium' channel runs new headless on the real browser instead.
+  // Frames run uncapped so the benchmark measures real frame throughput
+  // (~5ms/frame) rather than vsync cadence; regressions surface directly
+  // instead of hiding inside the 16.7ms vsync budget.
+  return {
+    args: ['--disable-frame-rate-limit', '--disable-gpu-vsync'],
+    channel: 'chromium',
+    headless: true,
   }
 }
 

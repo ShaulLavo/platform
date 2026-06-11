@@ -1,7 +1,7 @@
 import { DragOverlay } from '@dnd-kit/react'
 import { cn } from '@workspace/ui/lib/utils'
 
-import { proofWindowTitle } from '@/features/tiling-proof/utils/window-title'
+import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 import type { TilingDragData } from '@workspace/tiling/utils/drag-data'
 import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
@@ -50,7 +50,7 @@ function windowOverlay(windowId: WindowId, layout: WorkspaceLayout) {
   })
   const activeSurface = surfaces.find((surface) => surface.id === window.activeSurfaceId)
   const displaySurface = activeSurface ?? surfaces[0] ?? null
-  const title = proofWindowTitle(layout, windowId)
+  const title = windowTitle(layout, windowId)
   const collapsed = window.mode === 'collapsed'
 
   return (

@@ -13,11 +13,9 @@ import {
   collapseEdgeForTarget,
   type ProofCollapseTarget,
 } from '@/features/tiling-proof/utils/collapse-edge'
-import {
-  PROOF_DEFAULT_LAYOUT_RECT,
-  PROOF_GEOMETRY_OPTIONS,
-} from '@/features/tiling-proof/utils/geometry'
+import { PROOF_GEOMETRY_OPTIONS } from '@/features/tiling-proof/utils/geometry'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
+import { DEFAULT_LAYOUT_RECT } from '@/features/workbench/utils/layout-defaults'
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import {
   useTilingDragController,
@@ -54,21 +52,23 @@ export type ProofInteractionControllerRef = {
   current: ProofInteractionController
 }
 
+export const IDLE_PROOF_INTERACTION_CONTROLLER: ProofInteractionController = {
+  flushPendingCommit: ignoreInteraction,
+  resetInteraction: ignoreInteraction,
+}
+
 type SurfaceDataAttributes = Readonly<Record<`data-${string}`, string>>
 
 export function ProofInteractionSurface({
   addTabVisible = true,
   ariaLabel,
   debugLog,
-  debugOverlay,
   dropZonesVisible,
-  emptyContent = emptySurfaceArea(),
   interactionControllerRef,
   layout,
   renderCollapsedHeader,
   renderSurfaceBody,
   singleCollapseTarget,
-  snapDestinationsMounted = true,
   surfaceBackdrop,
   surfaceClassName,
   surfaceDataAttributes,
@@ -84,15 +84,12 @@ export function ProofInteractionSurface({
   readonly addTabVisible?: boolean
   readonly ariaLabel: string
   readonly debugLog?: TilingDragDebugLog
-  readonly debugOverlay?: ReactNode
   readonly dropZonesVisible: boolean
-  readonly emptyContent?: ReactNode
   readonly interactionControllerRef?: ProofInteractionControllerRef
   readonly layout: WorkspaceLayout
   readonly renderCollapsedHeader?: (input: ProofCollapsedWindowHeaderInput) => ReactNode
   readonly renderSurfaceBody?: (surface: Surface | null, window: WorkbenchWindow) => ReactNode
   readonly singleCollapseTarget?: ProofCollapseTarget
-  readonly snapDestinationsMounted?: boolean
   readonly surfaceBackdrop?: ReactNode
   readonly surfaceClassName: string
   readonly surfaceDataAttributes?: SurfaceDataAttributes
@@ -106,8 +103,8 @@ export function ProofInteractionSurface({
   readonly onSelectSurface: (surfaceId: SurfaceId) => void
 }) {
   const [resizingWindows, setResizingWindows] = useState(false)
-  const { rect, rootRef } = useLayoutRootRect(PROOF_DEFAULT_LAYOUT_RECT)
-  const rootRect = rect ?? PROOF_DEFAULT_LAYOUT_RECT
+  const { rect, rootRef } = useLayoutRootRect(DEFAULT_LAYOUT_RECT)
+  const rootRect = rect ?? DEFAULT_LAYOUT_RECT
   const surfaceRect = insetLayoutRect(rootRect, PROOF_GEOMETRY_OPTIONS.gapPx ?? 0)
   const committedGeometry = deriveLayoutGeometry(layout, surfaceRect, PROOF_GEOMETRY_OPTIONS)
   const {
@@ -150,6 +147,8 @@ export function ProofInteractionSurface({
     : []
   const collapseControls = singleCollapseTarget ? 'single' : 'dual'
 
+  // No deps array on purpose: the controller functions are recreated by the
+  // drag hook every render, so the ref must republish the latest closures.
   useEffect(() => {
     if (!interactionControllerRef) return
 
@@ -157,7 +156,7 @@ export function ProofInteractionSurface({
       flushPendingCommit,
       resetInteraction,
     }
-  }, [flushPendingCommit, interactionControllerRef, resetInteraction])
+  })
 
   function collapseWindowToTarget(windowId: WorkbenchWindow['id'], target: ProofCollapseTarget) {
     const window = layout.windowsById[windowId]
@@ -212,46 +211,43 @@ export function ProofInteractionSurface({
         {...surfaceDataAttributes}
       >
         {surfaceBackdrop}
-        {renderedWindowIds.length > 0
-          ? renderedWindowIds.map((windowId) => {
-              const window = renderLayout.windowsById[windowId] ?? layout.windowsById[windowId]
-              const windowRect =
-                previewGeometry.windowRectsById[windowId] ??
-                committedGeometry.windowRectsById[windowId]
-              if (!window) return null
-              if (!windowRect) return null
+        {renderedWindowIds.map((windowId) => {
+          const window = renderLayout.windowsById[windowId] ?? layout.windowsById[windowId]
+          const windowRect =
+            previewGeometry.windowRectsById[windowId] ?? committedGeometry.windowRectsById[windowId]
+          if (!window) return null
+          if (!windowRect) return null
 
-              return (
-                <ProofWindow
-                  activeDrag={activeDrag}
-                  addTabVisible={addTabVisible}
-                  collapseControls={collapseControls}
-                  dropZonesVisible={dropZonesVisible}
-                  insertionPreview={insertionPreview}
-                  insertionPreviewLayout={snapLayout}
-                  key={windowId}
-                  layout={renderLayout}
-                  optimisticTabSorting={optimisticTabSorting}
-                  rect={windowRect.rect}
-                  renderCollapsedHeader={renderCollapsedHeader}
-                  renderSurfaceBody={renderSurfaceBody}
-                  resizingWindows={resizingWindows}
-                  tabActionsVisible={tabActionsVisible(renderLayout, window)}
-                  tabStripRenderEpoch={tabStripRenderEpoch}
-                  window={window}
-                  windowActionsVisible={windowActionsVisible}
-                  onAddTab={onAddTab}
-                  onCollapseWindow={collapseWindow}
-                  onCollapseWindowToRail={collapseWindowToRail}
-                  onCollapseWindowToRow={collapseWindowToRow}
-                  onCloseSurface={onCloseSurface}
-                  onCloseWindow={onCloseWindow}
-                  onExpandWindow={expandWindow}
-                  onSelectSurface={onSelectSurface}
-                />
-              )
-            })
-          : emptyContent}
+          return (
+            <ProofWindow
+              activeDrag={activeDrag}
+              addTabVisible={addTabVisible}
+              collapseControls={collapseControls}
+              dropZonesVisible={dropZonesVisible}
+              insertionPreview={insertionPreview}
+              insertionPreviewLayout={snapLayout}
+              key={windowId}
+              layout={renderLayout}
+              optimisticTabSorting={optimisticTabSorting}
+              rect={windowRect.rect}
+              renderCollapsedHeader={renderCollapsedHeader}
+              renderSurfaceBody={renderSurfaceBody}
+              resizingWindows={resizingWindows}
+              tabActionsVisible={tabActionsVisible(renderLayout, window)}
+              tabStripRenderEpoch={tabStripRenderEpoch}
+              window={window}
+              windowActionsVisible={windowActionsVisible}
+              onAddTab={onAddTab}
+              onCollapseWindow={collapseWindow}
+              onCollapseWindowToRail={collapseWindowToRail}
+              onCollapseWindowToRow={collapseWindowToRow}
+              onCloseSurface={onCloseSurface}
+              onCloseWindow={onCloseWindow}
+              onExpandWindow={expandWindow}
+              onSelectSurface={onSelectSurface}
+            />
+          )
+        })}
         {previewOnlyWindowIds.map((windowId) => {
           const windowRect = previewGeometry.windowRectsById[windowId]
           if (!windowRect) return null
@@ -264,17 +260,14 @@ export function ProofInteractionSurface({
           onResizeEnd={() => setResizingWindows(false)}
           onResizeStart={() => setResizingWindows(true)}
         />
-        {snapDestinationsMounted
-          ? snapDestinations.map((snapDestination) => (
-              <ProofSnapDestination
-                active={activeResolvedTarget?.candidateId === snapDestination.id}
-                candidate={snapDestination}
-                key={snapDestination.id}
-                visible={dropZonesVisible}
-              />
-            ))
-          : null}
-        {debugOverlay}
+        {snapDestinations.map((snapDestination) => (
+          <ProofSnapDestination
+            active={activeResolvedTarget?.candidateId === snapDestination.id}
+            candidate={snapDestination}
+            key={snapDestination.id}
+            visible={dropZonesVisible}
+          />
+        ))}
       </section>
       <ProofDragOverlay activeDrag={activeDrag} layout={layout} />
     </DragDropProvider>
@@ -289,6 +282,4 @@ function ignoreWindowOperation(windowId: WorkbenchWindow['id']) {
   void windowId
 }
 
-function emptySurfaceArea() {
-  return <div />
-}
+function ignoreInteraction() {}

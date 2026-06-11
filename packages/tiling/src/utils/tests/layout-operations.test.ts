@@ -302,6 +302,34 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(expanded)
   })
 
+  it('collapses the bottom pane in place without disturbing splits or sticky placements', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const collapsed = collapseWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID, 'left')
+    const expanded = expandWindow(collapsed, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+
+    expect(collapsed.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.mode).toBe('collapsed')
+    expect(expanded.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.mode).toBe('normal')
+    expect(rootSplitSizes(collapsed)).toEqual(rootSplitSizes(layout))
+    expect(rootSplitSizes(expanded)).toEqual(rootSplitSizes(layout))
+    expect(stickyPlacementSurfaceIds(collapsed)).toEqual(stickyPlacementSurfaceIds(layout))
+    expectValidLayout(collapsed)
+    expectValidLayout(expanded)
+  })
+
+  it('collapses a sticky-placed tool pane to the root edge like other free windows', () => {
+    const chat = createChatSurface()
+    const opened = openSurface(createClassicFirstRunWorkspaceLayout(), chat)
+    const chatWindowId = mustFindWindowId(opened, chat.id)
+    const moved = moveWindow(opened, chatWindowId, { edge: 'right', kind: 'root-edge' })
+    const collapsed = collapseWindow(moved, chatWindowId, 'left')
+
+    expect(collapsed.windowsById[chatWindowId]?.mode).toBe('collapsed')
+    expect(collapsed.windowsById[chatWindowId]?.collapsedEdge).toBe('left')
+    expectWindowBefore(moved, CLASSIC_EDITOR_WINDOW_ID, chatWindowId)
+    expectWindowBefore(collapsed, chatWindowId, CLASSIC_EDITOR_WINDOW_ID)
+    expectValidLayout(collapsed)
+  })
+
   it('moves surfaces to background and restores recipe-slot snaps through concrete placement', () => {
     const git = createGitChangesSurface()
     const opened = openSurface(createClassicFirstRunWorkspaceLayout(), git)
@@ -1133,7 +1161,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(layout)
   })
 
-  it('does not merge terminal tabs into editor windows by default', () => {
+  it('merges terminal tabs into editor windows', () => {
     const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
     let layout = createClassicFirstRunWorkspaceLayout({
       editorFile: { path: '/repo/src/app.ts' },
@@ -1146,7 +1174,7 @@ describe('tiling surface layout operations', () => {
       windowId: CLASSIC_EDITOR_WINDOW_ID,
     })
 
-    expect(mustFindWindowId(layout, terminal.id)).toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    expect(mustFindWindowId(layout, terminal.id)).toBe(CLASSIC_EDITOR_WINDOW_ID)
     expect(visibleSurfaceIdsInOrder(layout)).toContain(editorSurfaceId)
     expect(mustFindWindowId(layout, editorSurfaceId)).toBe(CLASSIC_EDITOR_WINDOW_ID)
     expectValidLayout(layout)
@@ -1487,7 +1515,7 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(opened)
   })
 
-  it('does not merge left tool logs into the bottom terminal pane', () => {
+  it('merges left tool logs into the bottom terminal pane', () => {
     const logs = createLogsSurface()
     const layout = openSurface(createClassicFirstRunWorkspaceLayout(), logs)
     const moved = moveSurface(layout, logs.id, {
@@ -1495,8 +1523,8 @@ describe('tiling surface layout operations', () => {
       windowId: CLASSIC_DIAGNOSTICS_WINDOW_ID,
     })
 
-    expect(moved.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).not.toContain(logs.id)
-    expect(mustFindWindowId(moved, logs.id)).not.toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
+    expect(moved.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID].surfaceIds).toContain(logs.id)
+    expect(mustFindWindowId(moved, logs.id)).toBe(CLASSIC_DIAGNOSTICS_WINDOW_ID)
     expectValidLayout(moved)
   })
 
@@ -1775,8 +1803,25 @@ function expectWindowBefore(
   afterWindowId: WindowId,
 ) {
   const windowIds = visibleWindowIdsInOrder(layout)
+  const beforeIndex = windowIds.indexOf(beforeWindowId)
+  const afterIndex = windowIds.indexOf(afterWindowId)
 
-  expect(windowIds.indexOf(beforeWindowId)).toBeLessThan(windowIds.indexOf(afterWindowId))
+  expect(beforeIndex).toBeGreaterThanOrEqual(0)
+  expect(afterIndex).toBeGreaterThanOrEqual(0)
+  expect(beforeIndex).toBeLessThan(afterIndex)
+}
+
+function rootSplitSizes(layout: WorkspaceLayout) {
+  const root = layout.rootNodeId ? layout.nodesById[layout.rootNodeId] : null
+  if (root?.kind !== 'split') return null
+
+  return root.sizes
+}
+
+function stickyPlacementSurfaceIds(layout: WorkspaceLayout) {
+  return Object.values(layout.policiesById).flatMap((policy) =>
+    Object.keys(policy.stickyPlacementsBySurfaceId),
+  )
 }
 
 function mustFindRailItem(

@@ -26,7 +26,13 @@ import type {
 } from '@workspace/tiling/utils/layout-types'
 import type { TilingCommitEvent } from '@workspace/tiling/hooks/use-tiling-drag-controller'
 
-import { proofWindowTitle } from '@/features/tiling-proof/utils/window-title'
+import {
+  commitEventLabel,
+  destinationLabel,
+  layoutOperationLabel,
+  windowMoveLabel,
+} from '@/features/tiling-proof/utils/event-labels'
+import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 
 export type ProofScenario = 2 | 3 | 6 | 10
 
@@ -134,10 +140,7 @@ export function removeProofWindow(model: ProofModel, windowId: WindowId): ProofM
     model.layout,
   )
 
-  return logModel(
-    { ...model, layout },
-    `closed window: ${proofWindowTitle(model.layout, windowId)}`,
-  )
+  return logModel({ ...model, layout }, `closed window: ${windowTitle(model.layout, windowId)}`)
 }
 
 export function dispatchProofLayoutOperation(
@@ -147,7 +150,7 @@ export function dispatchProofLayoutOperation(
   const layout = applyLayoutOperation(model.layout, operation)
   if (layout === model.layout) return model
 
-  return logModel({ ...model, layout }, layoutOperationEvent(model.layout, operation))
+  return logModel({ ...model, layout }, layoutOperationLabel(model.layout, operation))
 }
 
 export function commitProofLayout(
@@ -157,7 +160,7 @@ export function commitProofLayout(
 ): ProofModel {
   if (layout === model.layout) return model
 
-  return logModel({ ...model, layout }, proofCommitEvent(model.layout, event))
+  return logModel({ ...model, layout }, commitEventLabel(model.layout, event))
 }
 
 export function moveProofSurfaceToDestination(
@@ -182,7 +185,7 @@ export function moveProofSurfaceToTab(
 
   return logModel(
     { ...model, layout },
-    `tab -> ${proofWindowTitle(layout, targetWindowId)}:${targetIndex}`,
+    `tab -> ${windowTitle(layout, targetWindowId)}:${targetIndex}`,
   )
 }
 
@@ -205,7 +208,7 @@ export function moveProofWindowToDestination(
   const layout = moveWindow(model.layout, windowId, destination)
   if (layout === model.layout) return model
 
-  return logModel({ ...model, layout }, windowMoveEvent(model.layout, destination))
+  return logModel({ ...model, layout }, windowMoveLabel(model.layout, destination))
 }
 
 export function moveProofWindowNextToWindow(
@@ -280,64 +283,6 @@ function edgeForWindowIndex(index: number): LayoutEdge {
 
 function firstWindowId(layout: WorkspaceLayout): WindowId | undefined {
   return visibleWindowIdsInOrder(layout)[0]
-}
-
-function destinationLabel(destination: SnapDestination): string {
-  if (destination.kind === 'root-edge') return `root ${destination.edge}`
-  if (destination.kind === 'window-edge') return `window ${destination.edge}`
-  if (destination.kind === 'window-center') return 'merged tabs'
-  if (destination.kind === 'parent-edge') return `parent ${destination.edge}`
-  if (destination.kind === 'recipe-slot') return `slot ${destination.slot}`
-
-  return destination.kind
-}
-
-function windowMoveEvent(layout: WorkspaceLayout, destination: SnapDestination) {
-  if (destination.kind === 'window-center') {
-    return `window -> merged tabs:${proofWindowTitle(layout, destination.windowId)}`
-  }
-
-  return `window -> ${destinationLabel(destination)}`
-}
-
-function proofCommitEvent(layout: WorkspaceLayout, event: TilingCommitEvent) {
-  if (event.source.kind === 'tab') return tabCommitEvent(layout, event.target)
-
-  return windowCommitEvent(layout, event.target)
-}
-
-function tabCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
-  if (target.kind === 'tab')
-    return `tab -> ${proofWindowTitle(layout, target.windowId)}:${target.index}`
-  if (target.kind === 'tab-strip') {
-    return `tab -> ${proofWindowTitle(layout, target.windowId)}:${target.index}`
-  }
-  if (target.kind === 'window') return `tab -> ${proofWindowTitle(layout, target.windowId)}:end`
-
-  return `tab -> ${destinationLabel(target.destination)}`
-}
-
-function windowCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
-  if (target.kind === 'tab')
-    return `window -> merged tabs:${proofWindowTitle(layout, target.windowId)}`
-  if (target.kind === 'tab-strip') {
-    return `window -> merged tabs:${proofWindowTitle(layout, target.windowId)}`
-  }
-  if (target.kind === 'window') return `window -> ${proofWindowTitle(layout, target.windowId)}`
-
-  return windowMoveEvent(layout, target.destination)
-}
-
-function layoutOperationEvent(layout: WorkspaceLayout, operation: LayoutOperation) {
-  if (operation.type === 'collapseWindow') {
-    return `collapsed window: ${proofWindowTitle(layout, operation.windowId)}`
-  }
-  if (operation.type === 'expandWindow') {
-    return `expanded window: ${proofWindowTitle(layout, operation.windowId)}`
-  }
-  if (operation.type === 'resizeSplit') return `resized split: ${operation.splitId}`
-
-  return `operation: ${operation.type}`
 }
 
 function logModel(model: ProofModel, event: string): ProofModel {

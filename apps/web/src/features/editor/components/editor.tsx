@@ -1,8 +1,4 @@
-import '@singapor/core/style.css'
-import '@singapor/find/style.css'
-import '@singapor/minimap/style.css'
 import { useEditor } from '@singapor/react'
-import '@singapor/scope-lines/style.css'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,

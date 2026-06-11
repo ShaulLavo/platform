@@ -53,7 +53,7 @@ type RecipeNodeAllocator = {
   readonly nodeId: (key: string) => LayoutNodeId
 }
 
-type RecipeLayoutContext = {
+export type RecipeLayoutContext = {
   readonly firstSurfaceByType: ReadonlyMap<SurfaceType, Surface>
   readonly stickyPlacementValidBySurfaceId: Map<SurfaceId, boolean>
   readonly visibleWindowIdBySurfaceId: ReadonlyMap<SurfaceId, WindowId>
@@ -176,6 +176,12 @@ export function isToolPaneRecipeSlot(slot: WorkspaceRecipeSlot) {
   return slot === 'left-tool-pane'
 }
 
+export function isRecipePackedSlot(slot: WorkspaceRecipeSlot) {
+  if (isToolPaneRecipeSlot(slot)) return true
+
+  return slot === 'bottom'
+}
+
 export function visibleWindowIdForRecipeSlot(layout: WorkspaceLayout, slot: WorkspaceRecipeSlot) {
   return visibleWindowIdForRecipeSlotWithContext(layout, slot)
 }
@@ -296,7 +302,7 @@ function appendManagedLeftToolWindowId(
   windowIds.push(windowId)
 }
 
-function surfaceHasValidStickyPlacement(
+export function surfaceHasValidStickyPlacement(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
   context?: RecipeLayoutContext,

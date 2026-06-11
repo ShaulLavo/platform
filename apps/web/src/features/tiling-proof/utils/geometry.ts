@@ -1,15 +1,8 @@
-import type { LayoutGeometryOptions, LayoutRect } from '@workspace/tiling/utils/layout-geometry'
-
-export const PROOF_DEFAULT_LAYOUT_RECT: LayoutRect = {
-  height: 720,
-  width: 1080,
-  x: 0,
-  y: 0,
-}
+import { DEFAULT_GEOMETRY_OPTIONS } from '@/features/workbench/utils/layout-defaults'
+import type { LayoutGeometryOptions } from '@workspace/tiling/utils/layout-geometry'
 
 export const PROOF_GEOMETRY_OPTIONS: LayoutGeometryOptions = {
-  gapPx: 8,
+  ...DEFAULT_GEOMETRY_OPTIONS,
   minSnapDestinationPx: 44,
-  resizeHandleThicknessPx: 8,
   snapEdgeRatio: 0.18,
 }

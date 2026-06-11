@@ -9,14 +9,17 @@ import { placementForSurfaceWithPolicy } from '@workspace/tiling/utils/layout-po
 import {
   policyForStickyPlacement,
   recipeSlotForSurface,
+  recipeSlotForWindow,
   stickyPlacementForSurface,
   surfaceCanClose,
   windowCanCollapse,
 } from '@workspace/tiling/utils/layout-queries'
 import {
+  isRecipePackedSlot,
   isToolPaneRecipeSlot,
   normalizeToolPaneRecipeLayout,
   placementCanRestoreSurface,
+  surfaceHasValidStickyPlacement,
   visibleWindowIdForRecipeSlot,
   visibleWindowIdsForRecipeSlots,
   windowContainsRecipeSlot,
@@ -1465,7 +1468,7 @@ function layoutWithCollapsedWindow(
   edge: LayoutEdge | undefined,
 ): WorkspaceLayout {
   if (!edge) return layoutWithWindowMode(layout, windowId, 'collapsed')
-  if (windowUsesLeftToolPaneRecipeSlot(layout, windowId)) {
+  if (windowCollapsesInPlace(layout, windowId)) {
     return layoutWithWindowMode(layout, windowId, 'collapsed', edge)
   }
 
@@ -1475,17 +1478,24 @@ function layoutWithCollapsedWindow(
   return layoutWithWindowMode(movedLayout, windowId, 'collapsed', edge)
 }
 
-function windowUsesLeftToolPaneRecipeSlot(layout: WorkspaceLayout, windowId: WindowId) {
+// The recipe normalizer owns packed windows' positions: relocating one to a
+// root edge gets repacked away immediately, corrupting split ratios and
+// recording stale sticky placements. The bottom slot is packed
+// unconditionally; tool-pane windows leave packing once sticky-placed.
+function windowCollapsesInPlace(layout: WorkspaceLayout, windowId: WindowId) {
+  const slot = recipeSlotForWindow(layout, windowId)
+  if (!slot) return false
+  if (!isRecipePackedSlot(slot)) return false
+  if (!isToolPaneRecipeSlot(slot)) return true
+
+  return !windowHasValidStickyPlacement(layout, windowId)
+}
+
+function windowHasValidStickyPlacement(layout: WorkspaceLayout, windowId: WindowId) {
   const window = layout.windowsById[windowId]
   if (!window) return false
-  if (window.surfaceIds.length === 0) return false
 
-  return window.surfaceIds.every((surfaceId) => {
-    const surface = layout.surfacesById[surfaceId]
-    if (!surface) return false
-
-    return isToolPaneRecipeSlot(recipeSlotForSurface(layout, surface))
-  })
+  return window.surfaceIds.some((surfaceId) => surfaceHasValidStickyPlacement(layout, surfaceId))
 }
 
 function validReorder(window: WorkbenchWindow, fromIndex: number, toIndex: number) {

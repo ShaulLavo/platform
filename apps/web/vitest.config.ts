@@ -45,6 +45,10 @@ export default defineConfig({
           include: ['src/**/*.test.tsx', 'test/**/*.test.tsx'],
           exclude: ['src/**/*.browser.tsx'],
           setupFiles: ['./test/env/msw.ts', './test/env/dom.ts'],
+          // happy-dom defaults to Vite's web transform, which stubs `bun:*`
+          // builtins; use the ssr pipeline so dom tests can boot the
+          // in-process server like node tests do.
+          testTransformMode: { ssr: ['**/*'] },
         },
       },
       {
