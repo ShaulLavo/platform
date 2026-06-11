@@ -41,7 +41,7 @@ export function ChatInputCommandMenu({
   return (
     <div className='absolute inset-x-0 bottom-full z-50 mb-2 px-1'>
       <div
-        className='border-border/80 bg-popover/96 relative overflow-hidden rounded-md border shadow-lg backdrop-blur-xs'
+        className='border-border/80 bg-popover backdrop-material relative overflow-hidden rounded-md border shadow-lg'
         role='listbox'
       >
         {items.length > 0 ? (

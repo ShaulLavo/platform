@@ -11,7 +11,7 @@ export function FixtureSurface({ active, surface, visible }: SurfaceRendererProp
       data-visible={visible ? 'true' : 'false'}
     >
       <div className='border-border/70 bg-muted/20 flex min-h-0 flex-1 items-center justify-center border-t p-6'>
-        <div className='border-border/70 bg-background grid w-full max-w-md gap-4 rounded-md border p-5 backdrop-blur-sm'>
+        <div className='border-border/70 bg-background backdrop-material grid w-full max-w-md gap-4 rounded-md border p-5'>
           <div className='flex min-w-0 items-center gap-3'>
             <div className='bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-md'>
               <SurfaceIcon className='size-5' type={surface.type} />

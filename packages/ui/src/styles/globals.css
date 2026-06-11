@@ -54,6 +54,12 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  /* Opaque escape hatches — deliberately ignore --surface-opacity. */
+  --color-background-solid: var(--background-solid);
+  --color-card-solid: var(--card-solid);
+  --color-popover-solid: var(--popover-solid);
+  --color-muted-solid: var(--muted-solid);
+  --color-accent-solid: var(--accent-solid);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -72,23 +78,42 @@
   /* Height of the desktop window's draggable title strip (WindowTitleBar).
      Matches T3 Code's 40px macOS titlebar. */
   --titlebar-height: 40px;
+
+  /* Surface material knobs. Every surface token below is its -solid color at
+     --surface-opacity over transparent. In-flow glass blurs what's behind it
+     with the backdrop-material utility; floating surfaces (dialogs, menus)
+     paint the surface-vibrancy wallpaper layer instead, because the content
+     under a popup is usually a near-white pane that frosts to nothing.
+     A settings UI changes the whole app by setting these on <html>
+     (100% opacity / 0px blur turns the material off). */
+  --surface-opacity: 80%;
+  --surface-blur: 12px;
+  --surface-saturation: 160%;
+  /* Pre-blurred + pre-saturated copy of the workbench wallpaper with ~35%
+     baked-in alpha — a color cast, not an image; stronger alpha drowns the
+     backdrop ghosting. An asset, not a runtime filter, so it works as a plain
+     background layer inside scroll containers. Regenerate it when the
+     wallpaper changes. */
+  --surface-wallpaper: url('/workbench/wallpaper-vibrancy.png');
+
   --background-solid: oklch(1 0.006 70);
-  --background: var(--background-solid);
+  --background: color-mix(in oklch, var(--background-solid) var(--surface-opacity), transparent);
   --foreground: oklch(0.145 0.006 70);
   --card-solid: oklch(1 0.006 70);
-  --card: var(--card-solid);
+  --card: color-mix(in oklch, var(--card-solid) var(--surface-opacity), transparent);
   --card-foreground: oklch(0.145 0.006 70);
-  --popover: oklch(1 0.006 70);
+  --popover-solid: oklch(1 0.006 70);
+  --popover: color-mix(in oklch, var(--popover-solid) var(--surface-opacity), transparent);
   --popover-foreground: oklch(0.145 0.006 70);
   --primary: oklch(0.24 0.014 70);
   --primary-foreground: oklch(0.985 0.006 70);
   --secondary: oklch(0.97 0.006 70);
   --secondary-foreground: oklch(0.205 0.006 70);
   --muted-solid: oklch(0.97 0.006 70);
-  --muted: var(--muted-solid);
+  --muted: color-mix(in oklch, var(--muted-solid) var(--surface-opacity), transparent);
   --muted-foreground: oklch(0.556 0.006 70);
   --accent-solid: oklch(0.97 0.006 70);
-  --accent: var(--accent-solid);
+  --accent: color-mix(in oklch, var(--accent-solid) var(--surface-opacity), transparent);
   --accent-foreground: oklch(0.205 0.006 70);
   --destructive: oklch(0.55 0.17 18);
   --info: oklch(0.55 0.17 230);
@@ -178,8 +203,14 @@
 
   /* Terminal surface — light (matches --background) */
   --terminal-background-solid: #ffffff;
-  --terminal-background: var(--terminal-background-solid);
-  --terminal-canvas-background: var(--terminal-background);
+  --terminal-background: color-mix(
+    in oklch,
+    var(--terminal-background-solid) var(--surface-opacity),
+    transparent
+  );
+  /* Read by readTerminalTheme via getComputedStyle and fed to ghostty's color
+     parser, which cannot parse color-mix() — must resolve to a plain color. */
+  --terminal-canvas-background: var(--terminal-background-solid);
   --terminal-foreground: #3c3c3c;
   --terminal-cursor: #1a1a1a;
   --terminal-cursor-accent: #ffffff;
@@ -205,23 +236,23 @@
 
 .dark {
   color-scheme: dark;
+  /* Only the -solid inputs are redefined here; the translucent formulas live
+     once in :root and re-resolve because .dark sits on <html> (the :root
+     element). Re-adding e.g. `--card: ...` here would override the formula
+     and make dark mode ignore --surface-opacity. */
   --background-solid: oklch(0.145 0.006 70);
-  --background: var(--background-solid);
   --foreground: oklch(0.985 0.006 70);
   --card-solid: oklch(0.205 0.006 70);
-  --card: var(--card-solid);
   --card-foreground: oklch(0.985 0.006 70);
-  --popover: oklch(0.205 0.006 70);
+  --popover-solid: oklch(0.205 0.006 70);
   --popover-foreground: oklch(0.985 0.006 70);
   --primary: oklch(0.92 0.012 70);
   --primary-foreground: oklch(0.22 0.014 70);
   --secondary: oklch(0.269 0.006 70);
   --secondary-foreground: oklch(0.985 0.006 70);
   --muted-solid: oklch(0.269 0.006 70);
-  --muted: var(--muted-solid);
   --muted-foreground: oklch(0.708 0.006 70);
   --accent-solid: oklch(0.269 0.006 70);
-  --accent: var(--accent-solid);
   --accent-foreground: oklch(0.985 0.006 70);
   --destructive: oklch(0.74 0.145 18);
   --info: oklch(0.74 0.145 230);
@@ -307,8 +338,6 @@
 
   /* Terminal surface — dark (matches --background) */
   --terminal-background-solid: #0a0a0a;
-  --terminal-background: var(--terminal-background-solid);
-  --terminal-canvas-background: var(--terminal-background);
   --terminal-foreground: #d7dde5;
   --terminal-cursor: #f4f7fb;
   --terminal-cursor-accent: #0a0a0a;
@@ -333,32 +362,11 @@
 }
 
 [data-workbench-layout-renderer] {
-  /* Workbench panes can make this dynamic without changing component classes. */
-  --workbench-surface-opacity: 80%;
-  --workbench-surface-backdrop-filter: blur(12px);
-  --workbench-surface-material-background: color-mix(
-    in oklch,
-    var(--card-solid) var(--workbench-surface-opacity),
-    transparent
-  );
   --workbench-editor-minimap-background: transparent;
-  /* --workbench-editor-minimap-backdrop-filter: var(--workbench-surface-backdrop-filter); */
+  /* --workbench-editor-minimap-backdrop-filter: blur(calc(var(--surface-blur) / 4)); */
   --workbench-editor-minimap-canvas-background: transparent;
   --workbench-editor-minimap-canvas-background-opacity: 0;
-  --background: color-mix(
-    in oklch,
-    var(--background-solid) var(--workbench-surface-opacity),
-    transparent
-  );
-  --card: var(--workbench-surface-material-background);
-  --muted: color-mix(in oklch, var(--muted-solid) var(--workbench-surface-opacity), transparent);
-  --accent: color-mix(in oklch, var(--accent-solid) var(--workbench-surface-opacity), transparent);
   --border: transparent;
-  --terminal-background: color-mix(
-    in oklch,
-    var(--terminal-background-solid) var(--workbench-surface-opacity),
-    transparent
-  );
   --terminal-canvas-background: rgba(0, 0, 0, 0);
 }
 
@@ -386,9 +394,55 @@
   }
 }
 
+/* Honest glass: blurs and saturates whatever is actually painted behind the
+   element. For surfaces that sit on the wallpaper (window frames, the rail,
+   in-pane chrome). */
+@utility backdrop-material {
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturation));
+  backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturation));
+}
+
+/* macOS-style vibrancy for floating surfaces. Three layers, bottom to top:
+   real backdrop blur (content behind ghosts through), the pre-blurred
+   wallpaper at baked-in low alpha (a color cast so glass never goes flat
+   white over a white pane), and a popover tint thinner than the pane
+   material (a full-opacity tint over the wallpaper layer would composite to
+   near-opaque and kill the ghosting; same precedent as the LSP popups'
+   half-strength material). The wallpaper layer is sized to the viewport, not
+   the element — cover would shrink the whole wallpaper into the popup and
+   visibly mismatch the real wallpaper behind the app. 160vh = 100vh times
+   the asset's 1.6 aspect ratio. Centered popups (dialogs) align with the
+   real wallpaper exactly; anchored popups show a center crop at the correct
+   scale, indistinguishable under the asset's 48px blur. Self-contained — do
+   not add bg-popover on top, it would stack a fourth layer. */
+@utility surface-vibrancy {
+  /* --surface-vibrancy-blur lets a surface scale its ghosting blur relative
+     to the knob (a custom property cannot reference itself). */
+  -webkit-backdrop-filter: blur(var(--surface-vibrancy-blur, var(--surface-blur)))
+    saturate(var(--surface-saturation));
+  backdrop-filter: blur(var(--surface-vibrancy-blur, var(--surface-blur)))
+    saturate(var(--surface-saturation));
+  background-image:
+    linear-gradient(
+      color-mix(in oklch, var(--popover-solid) calc(var(--surface-opacity) * 0.55), transparent),
+      color-mix(in oklch, var(--popover-solid) calc(var(--surface-opacity) * 0.55), transparent)
+    ),
+    var(--surface-wallpaper);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size:
+    auto,
+    max(100vw, 160vh) auto;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  html {
+    /* Solid floor: translucent surfaces must never composite against the UA
+       canvas, whatever --surface-opacity is set to. */
+    background-color: var(--background-solid);
   }
   body {
     @apply bg-background text-foreground;
@@ -453,6 +507,20 @@
   -webkit-backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
   backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
   background: var(--workbench-editor-minimap-background);
+}
+
+/* LSP hover/diagnostic and completion popups mount on document.body, outside
+   the workbench subtree, so the pane material is restated here. !important
+   beats the plugin's inline background. */
+.editor-lsp-plugin-hover,
+.editor-lsp-plugin-completion {
+  -webkit-backdrop-filter: blur(calc(var(--surface-blur) / 2)) saturate(var(--surface-saturation));
+  backdrop-filter: blur(calc(var(--surface-blur) / 2)) saturate(var(--surface-saturation));
+  background: color-mix(
+    in oklch,
+    var(--card-solid) calc(var(--surface-opacity) / 2),
+    transparent
+  ) !important;
 }
 
 .search-result-excerpt-editor-host {

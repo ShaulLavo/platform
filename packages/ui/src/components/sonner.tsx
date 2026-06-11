@@ -36,6 +36,7 @@ export function Toaster({
         ...toastOptions,
         classNames: {
           ...classNames,
+          toast: cn('surface-vibrancy', classNames?.toast),
           error: cn('border-destructive/40', classNames?.error),
         },
       }}

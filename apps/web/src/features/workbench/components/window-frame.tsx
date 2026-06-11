@@ -124,7 +124,7 @@ export const WindowFrame = memo(function WindowFrame({
   return (
     <section
       aria-label={windowLabel({ activeSurface, window })}
-      className='bg-card absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-transparent backdrop-blur-md transition-colors'
+      className='bg-card backdrop-material absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-transparent transition-colors'
       data-active={active ? 'true' : 'false'}
       data-window-mode={window.mode}
       data-window-id={window.id}

@@ -28,7 +28,7 @@ export function Rail({
   return (
     <nav
       aria-label='Workbench rail'
-      className='bg-card relative z-10 flex w-11 shrink-0 flex-col items-center gap-1 border-r border-transparent p-1 backdrop-blur-md'
+      className='bg-card backdrop-material relative z-10 flex w-11 shrink-0 flex-col items-center gap-1 border-r border-transparent p-1'
       data-workbench-rail=''
     >
       {items.map((item) => (

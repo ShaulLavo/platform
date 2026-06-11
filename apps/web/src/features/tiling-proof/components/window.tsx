@@ -334,7 +334,7 @@ function defaultSurfaceBody(
   windowId: WorkbenchWindow['id'],
 ) {
   return (
-    <div className='bg-background/70 border-border flex h-full min-h-0 flex-col rounded-sm border p-4'>
+    <div className='bg-background border-border flex h-full min-h-0 flex-col rounded-sm border p-4'>
       <div className='min-w-0 text-sm font-medium'>{activeSurface?.title ?? title}</div>
       <div className='text-muted-foreground mt-1 text-xs'>{activeSurface?.type ?? 'empty'}</div>
       <div className='bg-muted/50 border-border text-muted-foreground mt-4 min-h-0 flex-1 rounded-sm border p-3 text-xs'>

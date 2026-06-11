@@ -80,7 +80,7 @@ function windowOverlay(windowId: WindowId, layout: WorkspaceLayout) {
       </div>
       {collapsed ? null : (
         <div className='relative min-h-0 flex-1 overflow-hidden p-3'>
-          <div className='bg-background/70 border-border flex h-full min-h-0 flex-col rounded-sm border p-4'>
+          <div className='bg-background border-border flex h-full min-h-0 flex-col rounded-sm border p-4'>
             <div className='min-w-0 text-sm font-medium'>{displaySurface?.title ?? title}</div>
             <div className='text-muted-foreground mt-1 text-xs'>
               {displaySurface?.type ?? 'empty'}

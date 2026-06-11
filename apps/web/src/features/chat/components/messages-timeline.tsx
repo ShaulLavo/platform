@@ -137,7 +137,7 @@ export function MessagesTimeline({
       <Button
         aria-label='Scroll to latest message'
         className={cn(
-          'border-border/70 bg-background/90 absolute right-4 bottom-4 size-8 rounded-full shadow-sm backdrop-blur transition-opacity hover:bg-muted',
+          'border-border/70 bg-background backdrop-material absolute right-4 bottom-4 size-8 rounded-full shadow-sm transition-opacity hover:bg-muted',
           atEnd && 'pointer-events-none opacity-0',
         )}
         size='icon-sm'

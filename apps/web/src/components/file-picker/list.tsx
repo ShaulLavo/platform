@@ -31,7 +31,7 @@ export function ListHeader({
   isSearching: boolean
 }) {
   return (
-    <div className='bg-background/80 text-muted-foreground grid h-8 grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase max-sm:grid-cols-[minmax(0,1fr)_68px]'>
+    <div className='bg-background backdrop-material text-muted-foreground grid h-8 grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase max-sm:grid-cols-[minmax(0,1fr)_68px]'>
       <div className='flex min-w-0 items-center gap-2'>
         <span>{isSearching ? 'Matches' : 'Name'}</span>
         {isLoading && <CircleNotchIcon className='size-3 animate-spin' />}
