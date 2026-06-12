@@ -13,7 +13,6 @@ const reactPlugin = () => react({ babel: { plugins: ['babel-plugin-react-compile
 const browserTestPort = process.env.VITEST_BROWSER_PORT ?? '5179'
 const browserFileServerPort = process.env.VITEST_BROWSER_FILE_SERVER_PORT ?? '33201'
 const browserFileServerUrl = `http://127.0.0.1:${browserFileServerPort}`
-const browserProxyOrigin = `http://127.0.0.1:${browserTestPort}`
 
 process.env.VITEST_BROWSER_PORT = browserTestPort
 process.env.VITEST_BROWSER_FILE_SERVER_PORT = browserFileServerPort
@@ -65,22 +64,6 @@ export default defineConfig({
           exclude: ['@singapor/tree-sitter', '@singapor/tree-sitter-languages'],
           include: ['@phosphor-icons/react', '@tanstack/react-hotkeys'],
         },
-        server: {
-          host: '127.0.0.1',
-          port: Number(browserTestPort),
-          proxy: {
-            '/_log': fileServerProxy(),
-            '/fonts': fileServerProxy(),
-            '/fs': fileServerProxy(),
-            '/git': fileServerProxy(),
-            '/health': fileServerProxy(),
-            '/lsp': fileServerProxy(),
-            '/orchestration': fileServerProxy(),
-            '/provider': fileServerProxy(),
-          },
-          strictPort: true,
-          watch: null,
-        },
         test: {
           name: 'browser',
           globalSetup: ['./test/env/browser-file-server.ts'],
@@ -105,17 +88,6 @@ export default defineConfig({
     ],
   },
 })
-
-function fileServerProxy() {
-  return {
-    changeOrigin: true,
-    headers: {
-      origin: browserProxyOrigin,
-    },
-    target: browserFileServerUrl,
-    ws: true,
-  }
-}
 
 type ProofMouseCommandContext = {
   readonly frame: () => Promise<ProofMouseFrame>
