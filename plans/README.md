@@ -14,12 +14,12 @@ direction option.
 
 ## Execution order & status
 
-| Plan | Title                                                                                | Priority | Effort | Depends on                                         | Status |
-| ---- | ------------------------------------------------------------------------------------ | -------- | ------ | -------------------------------------------------- | ------ |
-| 001  | [CI pipeline + one-command verify + pinned toolchain](001-ci-pipeline-and-verify.md) | P1       | M      | —                                                  | TODO   |
-| 002  | [GitService mutation-path characterization tests](002-git-service-mutation-tests.md) | P1       | M      | — (001 recommended first)                          | TODO   |
-| 003  | [Cold-until-first-reveal editor tabs](003-cold-hidden-editor-tabs.md)                | P2       | M      | — (001 recommended first)                          | TODO   |
-| 004  | [.env.example + truthful README setup docs](004-onboarding-env-and-readme.md)        | P3       | S      | — (references 001's `verify` script; has fallback) | TODO   |
+| Plan | Title                                                                                | Priority | Effort | Depends on                                         | Status                                                              |
+| ---- | ------------------------------------------------------------------------------------ | -------- | ------ | -------------------------------------------------- | ------------------------------------------------------------------- |
+| 001  | [CI pipeline + one-command verify + pinned toolchain](001-ci-pipeline-and-verify.md) | P1       | M      | —                                                  | TODO                                                                |
+| 002  | [GitService mutation-path characterization tests](002-git-service-mutation-tests.md) | P1       | M      | — (001 recommended first)                          | DONE (20 tests; characterized a real parseBranches field-shift bug) |
+| 003  | [Cold-until-first-reveal editor tabs](003-cold-hidden-editor-tabs.md)                | P2       | M      | — (001 recommended first)                          | TODO                                                                |
+| 004  | [.env.example + truthful README setup docs](004-onboarding-env-and-readme.md)        | P3       | S      | — (references 001's `verify` script; has fallback) | TODO                                                                |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
