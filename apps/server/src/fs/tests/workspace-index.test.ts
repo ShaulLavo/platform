@@ -538,7 +538,7 @@ describe('workspace index', () => {
       events.push({ type: 'created', path: 'missing-a.ts' })
       events.push({ type: 'created', path: 'missing-b.ts' })
 
-      const status = await waitForRebuildReason(index, 'watch-event-limit')
+      const status = await waitForCompletedRebuild(index, 'watch-event-limit')
 
       expect(status).toMatchObject({
         readiness: 'ready',
@@ -739,63 +739,64 @@ function waitForControlledEvent(
   })
 }
 
-async function waitForEntry(index: WorkspaceIndex, path: string) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const entry = index.get(path)
-    if (entry) return entry
+// Rebuilds and watcher flushes have no completion signal to await, so tests
+// poll. The deadline is generous because the suite shares the machine with
+// other suites in CI; the helpers return as soon as the condition holds.
+async function waitFor<T>(check: () => T | undefined, message: string) {
+  const deadline = Date.now() + 5_000
+
+  do {
+    const value = check()
+    if (value !== undefined) return value
 
     await delay(5)
-  }
+  } while (Date.now() < deadline)
 
-  throw new Error(`Expected workspace index entry for ${path}`)
+  throw new Error(message)
 }
 
-async function waitForMissingEntry(index: WorkspaceIndex, path: string) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (!index.get(path)) return
-
-    await delay(5)
-  }
-
-  throw new Error(`Expected workspace index entry ${path} to be removed`)
+function waitForEntry(index: WorkspaceIndex, path: string) {
+  return waitFor(() => index.get(path), `Expected workspace index entry for ${path}`)
 }
 
-async function waitForStatus(
+function waitForMissingEntry(index: WorkspaceIndex, path: string) {
+  return waitFor(
+    () => (index.get(path) ? undefined : true),
+    `Expected workspace index entry ${path} to be removed`,
+  )
+}
+
+function waitForStatus(
   index: WorkspaceIndex,
   readiness: ReturnType<WorkspaceIndex['status']>['readiness'],
 ) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  return waitFor(() => {
     const status = index.status()
-    if (status.readiness === readiness) return status
-
-    await delay(5)
-  }
-
-  throw new Error(`Expected workspace index status ${readiness}`)
+    return status.readiness === readiness ? status : undefined
+  }, `Expected workspace index status ${readiness}`)
 }
 
-async function waitForRebuildReason(index: WorkspaceIndex, reason: string) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+function waitForCompletedRebuild(index: WorkspaceIndex, reason: string) {
+  return waitFor(() => {
     const status = index.status()
-    if (status.rebuildReason === reason) return status
+    if (status.rebuildReason !== reason) return undefined
+    if (status.readiness !== 'ready') return undefined
 
-    await delay(5)
-  }
-
-  throw new Error(`Expected workspace index rebuild reason ${reason}`)
+    return status
+  }, `Expected workspace index to finish a rebuild for ${reason}`)
 }
 
-async function waitForIncrementalUpdateAfter(index: WorkspaceIndex, previousUpdate: number) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+function waitForIncrementalUpdateAfter(index: WorkspaceIndex, previousUpdate: number) {
+  return waitFor(() => {
     const status = index.status()
     const updatedAt = status.lastIncrementalUpdateAtMs ?? 0
     if (updatedAt > previousUpdate) return status
+    // Fail fast when the watch-event limit fires: callers assert the reason,
+    // so returning the wrong-path status beats waiting out the deadline.
     if (status.rebuildReason === 'watch-event-limit') return status
 
-    await delay(5)
-  }
-
-  throw new Error('Expected workspace index incremental update')
+    return undefined
+  }, 'Expected workspace index incremental update')
 }
 
 function throwingWatchEvents(): AsyncIterable<WatchServerMessage> {

@@ -12,6 +12,7 @@ import {
 import {
   SURFACE_REGISTRY_VERSION,
   WORKSPACE_LAYOUT_VERSION,
+  type LeftToolPaneState,
   type CommandCycleRule,
   type CustomWindowFrame,
   type CustomWindowManagementCommand,
@@ -51,9 +52,11 @@ export type SerializedWorkspaceLayout = {
   readonly activeRecipeId: RecipeId
   readonly activeSurfaceId?: SurfaceId
   readonly activeWindowId?: WindowId
+  readonly bottomPaneShare: number | null
   readonly customWindowCommands: readonly CustomWindowManagementCommand[]
   readonly hotkeyPresets: readonly WindowManagementHotkeyPreset[]
   readonly layoutCommands: readonly WorkspaceLayoutCommand[]
+  readonly leftToolPane: LeftToolPaneState | null
   readonly mruSurfaceIds: readonly SurfaceId[]
   readonly mruWindowIds: readonly WindowId[]
   readonly nodes: readonly LayoutNode[]
@@ -176,9 +179,11 @@ export function serializeWorkspaceLayout(
     activeRecipeId: serializableLayout.activeRecipeId,
     activeSurfaceId: serializableLayout.activeSurfaceId,
     activeWindowId: serializableLayout.activeWindowId,
+    bottomPaneShare: serializableLayout.bottomPaneShare,
     customWindowCommands: customWindowCommandsForSerialization(serializableLayout),
     hotkeyPresets: Object.values(serializableLayout.hotkeyPresetsById),
     layoutCommands: Object.values(serializableLayout.layoutCommandsById),
+    leftToolPane: serializableLayout.leftToolPane,
     mruSurfaceIds: serializableLayout.mruSurfaceIds,
     mruWindowIds: serializableLayout.mruWindowIds,
     nodes: Object.values(serializableLayout.nodesById),
@@ -476,9 +481,11 @@ function restoreLayoutFromData(
     activeHotkeyPresetId,
     activeSurfaceId: mapOptionalSurfaceId(data.activeSurfaceId, surfaces.idMap),
     activeWindowId: optionalWindowId(data.activeWindowId),
+    bottomPaneShare: optionalNumber(data.bottomPaneShare) ?? null,
     commandCycleState: undefined,
     hotkeyPresetsById: commandResult.hotkeyPresetsById,
     layoutCommandsById: commandResult.layoutCommandsById,
+    leftToolPane: restoredLeftToolPane(data.leftToolPane),
     mruSurfaceIds: mapSurfaceIds(data.mruSurfaceIds, surfaces.idMap),
     mruWindowIds: windowIds(data.mruWindowIds),
     nodesById: recordsById(restoredNodes(data.nodes)),
@@ -848,6 +855,16 @@ function restoredSplitNode(value: Record<string, unknown>): LayoutNode | null {
     kind: 'split',
     sizes: numberArray(value.sizes),
   }
+}
+
+function restoredLeftToolPane(value: unknown): LeftToolPaneState | null {
+  if (!isRecord(value)) return null
+
+  const columnCount = optionalNumber(value.columnCount)
+  const share = optionalNumber(value.share)
+  if (columnCount === undefined || share === undefined) return null
+
+  return { columnCount, share }
 }
 
 function restoredRail(

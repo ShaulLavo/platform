@@ -19,6 +19,7 @@ import { parseDiff, rewriteBlobPatchPaths } from './diff'
 import { mutationPaths, pathspecArgs, repositoryRelativePath } from './path-utils'
 import { gitCwdForPath, lexicalRepositoryRoot } from './repository'
 import { parseRepositoryInfo, parseStatus, statusMatchesPathspec } from './status'
+import { UpstreamFetchScheduler } from './upstream-fetch'
 import type {
   GitBranchesResult,
   GitCommandResult,
@@ -56,11 +57,21 @@ export class GitService {
   private readonly paths: WorkspacePaths
   private readonly diffConcurrency: number
   private readonly maxTextFileBytes: number
+  private readonly upstreamFetch: UpstreamFetchScheduler
 
   constructor(paths: WorkspacePaths, options: GitServiceOptions = {}) {
     this.paths = paths
     this.diffConcurrency = positiveInteger(options.diffConcurrency, DEFAULT_DIFF_CONCURRENCY)
     this.maxTextFileBytes = positiveInteger(options.maxTextFileBytes, DEFAULT_MAX_TEXT_FILE_BYTES)
+    this.upstreamFetch = new UpstreamFetchScheduler({
+      resolveCommonDir: async (rootAbsolutePath) => {
+        const result = await this.git(rootAbsolutePath, ['rev-parse', '--git-common-dir'])
+        return path.resolve(rootAbsolutePath, result.stdout.trim())
+      },
+      runFetch: async (rootAbsolutePath, remote) => {
+        await this.git(rootAbsolutePath, ['fetch', remote])
+      },
+    })
   }
 
   async repo(input = '') {
@@ -83,6 +94,7 @@ export class GitService {
       ...pathspecArgs(repository.pathspec),
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
+    void this.upstreamFetch.schedule(repository.rootAbsolutePath, result.stdout)
     const status = {
       repository: parseRepositoryInfo(result.stdout, repository.rootPath),
       files: parseStatus(result.stdout, repository.rootPath),

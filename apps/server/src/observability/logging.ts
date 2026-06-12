@@ -69,6 +69,17 @@ export function recordRequestContext(context: Record<string, unknown>) {
   logger.set(context)
 }
 
+// The web app sends `x-client-instance` on every request (see
+// `apps/web/src/lib/instance-id.ts`) so request logs can be attributed to the
+// app instance that produced them — multiple tabs and the desktop app share
+// one log file in dev.
+export function recordClientInstance(request: Request) {
+  const instanceId = request.headers.get('x-client-instance')?.trim()
+  if (!instanceId) return
+
+  recordRequestContext({ client: { instanceId: instanceId.slice(0, 64) } })
+}
+
 export function recordRequestWarning(message: string, context: Record<string, unknown> = {}) {
   const logger = currentRequestLogger()
   if (!logger) {

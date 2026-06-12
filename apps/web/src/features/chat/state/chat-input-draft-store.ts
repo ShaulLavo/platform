@@ -5,6 +5,7 @@ import type {
   RuntimeMode,
   ThreadId,
 } from '@workspace/contracts'
+import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { create } from 'zustand'
 
 import {
@@ -96,17 +97,19 @@ const EMPTY_CHAT_INPUT_DRAFT: ChatInputDraft = {
   updatedAt: null,
 }
 
-let draftPersistTimeout: ReturnType<typeof setTimeout> | null = null
+const draftPersist = new Debouncer(() => flushChatInputDraftStorage(), {
+  wait: CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS,
+})
 
 export const useChatInputDraftStore = create<ChatInputDraftStore>((set, get) => ({
   ...createInitialChatInputDraftState(),
   addImages: (target, images) => {
     set((state) => updateDraftForTarget(state, target, (draft) => addImagesToDraft(draft, images)))
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   clearDraft: (target) => {
     set((state) => removeDraftForTarget(state, target))
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   flush: () => flushChatInputDraftStorage(),
   getDraft: (target) => chatInputDraftForTarget(get(), target),
@@ -121,37 +124,37 @@ export const useChatInputDraftStore = create<ChatInputDraftStore>((set, get) => 
         }),
       ),
     )
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   removeImage: (target, imageId) => {
     set((state) =>
       updateDraftForTarget(state, target, (draft) => removeImageFromDraft(draft, imageId)),
     )
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   setInteractionMode: (target, interactionMode) => {
     set((state) =>
       updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { interactionMode })),
     )
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   setModelSelection: (target, modelSelection) => {
     set((state) =>
       updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { modelSelection })),
     )
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   setPrompt: (target, prompt) => {
     set((state) =>
       updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { prompt })),
     )
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   setRuntimeMode: (target, runtimeMode) => {
     set((state) =>
       updateDraftForTarget(state, target, (draft) => withDraftPatch(draft, { runtimeMode })),
     )
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
   setTerminalContexts: (target, terminalContexts) => {
     set((state) =>
@@ -159,7 +162,7 @@ export const useChatInputDraftStore = create<ChatInputDraftStore>((set, get) => 
         withDraftPatch(draft, { terminalContexts: Array.from(terminalContexts) }),
       ),
     )
-    scheduleChatInputDraftStorageFlush()
+    draftPersist.maybeExecute()
   },
 }))
 
@@ -175,7 +178,7 @@ export function readChatInputDraftPrompt(target: ChatInputDraftTarget) {
 }
 
 export function flushChatInputDraftStorage() {
-  clearScheduledChatInputDraftStorageFlush()
+  draftPersist.cancel()
 
   try {
     writePersistedChatInputDrafts(persistedStorageFromState(useChatInputDraftStore.getState()))
@@ -192,7 +195,7 @@ export function hydrateChatInputDraftStoreFromStorage() {
 }
 
 export function resetChatInputDraftStore() {
-  clearScheduledChatInputDraftStorageFlush()
+  draftPersist.cancel()
   useChatInputDraftStore.setState({
     draftsByKey: {},
     persistenceError: null,
@@ -307,21 +310,6 @@ function draftsEqual(left: ChatInputDraft, right: ChatInputDraft) {
     left.interactionMode === right.interactionMode &&
     left.draftPromotion === right.draftPromotion
   )
-}
-
-function scheduleChatInputDraftStorageFlush() {
-  clearScheduledChatInputDraftStorageFlush()
-  draftPersistTimeout = setTimeout(
-    () => flushChatInputDraftStorage(),
-    CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS,
-  )
-}
-
-function clearScheduledChatInputDraftStorageFlush() {
-  if (!draftPersistTimeout) return
-
-  clearTimeout(draftPersistTimeout)
-  draftPersistTimeout = null
 }
 
 function clearDraftPersistenceError() {

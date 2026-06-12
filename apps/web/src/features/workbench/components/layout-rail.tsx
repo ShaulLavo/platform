@@ -1,4 +1,4 @@
-import { selectWorkbenchRailItems } from '@workspace/tiling/utils/rail-model'
+import { selectWorkbenchRailSurfaceItems } from '@workspace/tiling/utils/rail-model'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { Rail } from '@/features/workbench/components/rail'
@@ -11,7 +11,10 @@ export function LayoutRail({
   readonly onDispatch: (operation: LayoutOperation) => void
 }) {
   const layoutStore = useLayoutStoreApi()
-  const items = useLayoutState((state) => selectWorkbenchRailItems(state.layout), railItemsEqual)
+  const items = useLayoutState(
+    (state) => selectWorkbenchRailSurfaceItems(state.layout),
+    railItemsEqual,
+  )
 
   return (
     <Rail getLayout={() => layoutStore.getState().layout} items={items} onDispatch={onDispatch} />

@@ -145,8 +145,10 @@ function layoutWithFileEditor(path: string): WorkspaceLayout {
     activeRecipeId: CLASSIC_RECIPE_ID,
     activeSurfaceId: file.id,
     activeWindowId: window.id,
+    bottomPaneShare: null,
     hotkeyPresetsById: {},
     layoutCommandsById: {},
+    leftToolPane: null,
     mruSurfaceIds: [file.id],
     mruWindowIds: [window.id],
     nodesById: {

@@ -6,6 +6,7 @@ import type {
   FilesystemConflict,
 } from '@/features/editor/state/editor-conflict-state'
 import { parseMergeConflicts, type TextSnapshot } from '@singapor/core'
+import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -41,26 +42,32 @@ export function resolveConflictEditorSnapshot(
     })
 }
 
-export function replaceConflictResolutionTimeout(
-  timeouts: Map<string, ReturnType<typeof setTimeout>>,
+export type ConflictResolutionDebouncers = Map<string, Debouncer<(resolve: () => void) => void>>
+
+export function scheduleConflictResolution(
+  debouncers: ConflictResolutionDebouncers,
   path: string,
   resolve: () => void,
 ) {
-  const current = timeouts.get(path)
-  if (current) clearTimeout(current)
-
-  const timeout = setTimeout(resolve, CONFLICT_RESOLUTION_DEBOUNCE_MS)
-  timeouts.set(path, timeout)
-}
-
-export function clearConflictResolutionTimeouts(
-  timeouts: Map<string, ReturnType<typeof setTimeout>>,
-) {
-  for (const timeout of timeouts.values()) {
-    clearTimeout(timeout)
+  const current = debouncers.get(path)
+  if (current) {
+    current.maybeExecute(resolve)
+    return
   }
 
-  timeouts.clear()
+  const debouncer = new Debouncer((run: () => void) => run(), {
+    wait: CONFLICT_RESOLUTION_DEBOUNCE_MS,
+  })
+  debouncers.set(path, debouncer)
+  debouncer.maybeExecute(resolve)
+}
+
+export function cancelConflictResolutions(debouncers: ConflictResolutionDebouncers) {
+  for (const debouncer of debouncers.values()) {
+    debouncer.cancel()
+  }
+
+  debouncers.clear()
 }
 
 async function applyConflictEditorResolution(

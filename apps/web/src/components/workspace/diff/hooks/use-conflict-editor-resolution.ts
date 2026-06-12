@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 import {
-  clearConflictResolutionTimeouts,
-  replaceConflictResolutionTimeout,
+  cancelConflictResolutions,
+  scheduleConflictResolution,
   resolveConflictEditorSnapshot,
+  type ConflictResolutionDebouncers,
 } from '@/components/workspace/diff/utils/conflict-editor-resolution-utils'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { useEditorConflictStoreApi } from '@/features/editor/state/editor-conflict-state'
@@ -23,17 +24,17 @@ export function useConflictEditorResolution({
   const conflictStore = useEditorConflictStoreApi()
   const queryClient = useQueryClient()
   const resolvingConflictIds = useRef(new Set<string>())
-  const pendingResolutionTimeouts = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const pendingResolutions = useRef<ConflictResolutionDebouncers>(new Map())
 
-  useEffect(() => () => clearConflictResolutionTimeouts(pendingResolutionTimeouts.current), [])
+  useEffect(() => () => cancelConflictResolutions(pendingResolutions.current), [])
 
   return useCallback(
     (path: string, textSnapshot: TextSnapshot) => {
       const conflictDiff = parseConflictDiffDocumentId(path)
       if (!conflictDiff) return
 
-      replaceConflictResolutionTimeout(pendingResolutionTimeouts.current, path, () => {
-        pendingResolutionTimeouts.current.delete(path)
+      scheduleConflictResolution(pendingResolutions.current, path, () => {
+        pendingResolutions.current.delete(path)
         resolveConflictEditorSnapshot(conflictDiff, textSnapshot, {
           conflictStore,
           discardLiveEditorDocument,

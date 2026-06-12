@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { closeApp, createApp } from '../../app'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
@@ -441,6 +441,30 @@ describe('git service refs', () => {
 
     expect(await service.hasRef({ path: '', ref: 'refs/checkpoints/a' })).toBe(false)
     expect(await service.hasRef({ path: '', ref: 'refs/checkpoints/b' })).toBe(false)
+  })
+})
+
+describe('git upstream fetch', () => {
+  it('fetches the upstream remote in the background after status', async () => {
+    const origin = await fixtureRepo()
+    const root = await mkdtemp(path.join(tmpdir(), 'platform-git-clone-'))
+    roots.push(root)
+    await runGit(origin, ['clone', origin, root])
+    await writeFile(path.join(origin, 'tracked.txt'), 'two\n')
+    await runGit(origin, ['commit', '-am', 'second'])
+    const expected = (await runGit(origin, ['rev-parse', 'HEAD'])).stdout.trim()
+    const service = new GitService(createWorkspacePaths(root))
+
+    const status = await service.status('')
+
+    expect(status.repository?.branch).toBe('main')
+    await vi.waitFor(
+      async () => {
+        const remoteHead = await runGit(root, ['rev-parse', 'origin/main'])
+        expect(remoteHead.stdout.trim()).toBe(expected)
+      },
+      { timeout: 5_000 },
+    )
   })
 })
 

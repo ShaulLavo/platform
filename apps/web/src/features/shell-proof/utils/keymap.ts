@@ -1,7 +1,10 @@
-import { bottomPaneRailOperation } from '@workspace/tiling/utils/bottom-pane-model'
 import { builtInWindowManagementCommands } from '@workspace/tiling/utils/layout-command-catalog'
 import { layoutOperationForBuiltInWindowManagementCommand } from '@workspace/tiling/utils/layout-command-operations'
-import { createFileNavigatorSurface } from '@workspace/tiling/utils/layout-builders'
+import {
+  createFileNavigatorSurface,
+  createTerminalSurface,
+  DEFAULT_TERMINAL_SESSION_ID,
+} from '@workspace/tiling/utils/layout-builders'
 import { railItemOperation } from '@workspace/tiling/utils/rail-model'
 import { windowCommandDisabledReason } from '@workspace/tiling/utils/layout-selectors'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
@@ -17,7 +20,7 @@ import type {
 import type { PlatformKeyBinding, WorkspaceCommandId } from '@/keymap/types'
 
 const TOGGLE_FILE_NAVIGATOR_COMMAND_ID = 'workspace.toggleSidebarVisibility'
-const TOGGLE_BOTTOM_PANE_COMMAND_ID = 'workspace.togglePanel'
+const TOGGLE_TERMINAL_COMMAND_ID = 'workspace.togglePanel'
 const RESET_LAYOUT_HOTKEY = 'Control+Alt+Shift+Backspace'
 
 export type ShellProofHotkeyBinding =
@@ -29,7 +32,7 @@ export type ShellProofHotkeyBinding =
     }
   | {
       readonly hotkey: RegisterableHotkey
-      readonly kind: 'reset-layout' | 'toggle-bottom-pane' | 'toggle-file-navigator'
+      readonly kind: 'reset-layout' | 'toggle-file-navigator' | 'toggle-terminal'
       readonly title: string
     }
 
@@ -43,10 +46,10 @@ export function shellProofHotkeyOperation(
   switch (binding.kind) {
     case 'reset-layout':
       return null
-    case 'toggle-bottom-pane':
-      return bottomPaneRailOperation(layout)
     case 'toggle-file-navigator':
       return fileNavigatorToggleOperation(layout)
+    case 'toggle-terminal':
+      return terminalToggleOperation(layout)
     case 'window-command':
       return shellProofWindowCommandOperation(layout, binding.command)
   }
@@ -75,7 +78,7 @@ function shellProofHotkeyBindings(): readonly ShellProofHotkeyBinding[] {
   return [
     ...appWindowCommandBindings(appBindings),
     ...recipeToggleBindings,
-    ...fallbackBottomPaneBinding(recipeToggleBindings),
+    ...fallbackTerminalBinding(recipeToggleBindings),
     resetLayoutBinding(),
   ]
 }
@@ -119,11 +122,11 @@ function recipeToggleBinding(binding: PlatformKeyBinding): readonly ShellProofHo
       },
     ]
   }
-  if (binding.command === TOGGLE_BOTTOM_PANE_COMMAND_ID) {
+  if (binding.command === TOGGLE_TERMINAL_COMMAND_ID) {
     return [
       {
         hotkey: binding.hotkey,
-        kind: 'toggle-bottom-pane',
+        kind: 'toggle-terminal',
         title: 'Toggle Terminal',
       },
     ]
@@ -132,15 +135,15 @@ function recipeToggleBinding(binding: PlatformKeyBinding): readonly ShellProofHo
   return []
 }
 
-function fallbackBottomPaneBinding(
+function fallbackTerminalBinding(
   bindings: readonly ShellProofHotkeyBinding[],
 ): readonly ShellProofHotkeyBinding[] {
-  if (bindings.some((binding) => binding.kind === 'toggle-bottom-pane')) return []
+  if (bindings.some((binding) => binding.kind === 'toggle-terminal')) return []
 
   return [
     {
       hotkey: 'Mod+J',
-      kind: 'toggle-bottom-pane',
+      kind: 'toggle-terminal',
       title: 'Toggle Terminal',
     },
   ]
@@ -170,5 +173,13 @@ function fileNavigatorToggleOperation(layout: WorkspaceLayout): LayoutOperation 
     kind: 'surface',
     state: 'pinned',
     surface: createFileNavigatorSurface(),
+  })
+}
+
+function terminalToggleOperation(layout: WorkspaceLayout): LayoutOperation {
+  return railItemOperation(layout, {
+    kind: 'surface',
+    state: 'pinned',
+    surface: createTerminalSurface({ sessionId: DEFAULT_TERMINAL_SESSION_ID }),
   })
 }

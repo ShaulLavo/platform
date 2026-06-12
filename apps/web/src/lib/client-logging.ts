@@ -3,6 +3,7 @@ import { createHttpLogDrain } from 'evlog/http'
 import { observabilityEnabledFromEnv } from '@workspace/observability/env'
 
 import { serverUrl } from './client'
+import { clientInstanceId, instanceQueryParam } from './instance-id'
 
 export type ClientLogLevel = LogLevel
 
@@ -136,8 +137,13 @@ function emitClientLog(level: ClientLogLevel, event: ClientLogInput): void {
   }
 }
 
+// The instance id rides the endpoint URL instead of a header because the
+// drain falls back to sendBeacon on page hide, and sendBeacon cannot send
+// custom headers.
 function logIngestEndpoint() {
-  return `${serverUrl.replace(/\/$/u, '')}${ingestPath}`
+  const endpoint = `${serverUrl.replace(/\/$/u, '')}${ingestPath}`
+
+  return `${endpoint}?${instanceQueryParam}=${encodeURIComponent(clientInstanceId())}`
 }
 
 export function clientLoggingEnabled() {

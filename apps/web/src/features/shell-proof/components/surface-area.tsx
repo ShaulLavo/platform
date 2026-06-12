@@ -6,10 +6,6 @@ import {
 } from '@/features/tiling-proof/components/interaction-surface'
 import type { ProofCollapsedWindowHeaderInput } from '@/features/tiling-proof/components/window'
 import { commitEventLabel } from '@/features/tiling-proof/utils/event-labels'
-import {
-  bottomPaneCloseWindowOperation,
-  isBottomPaneWindow,
-} from '@workspace/tiling/utils/bottom-pane-model'
 import { ToolPaneHeader } from '@/features/workbench/components/tool-pane-header'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import type { TilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
@@ -18,7 +14,6 @@ import type {
   Surface,
   SurfaceId,
   WorkbenchWindow,
-  WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
 
 export function SurfaceArea({
@@ -57,10 +52,6 @@ export function SurfaceArea({
     const controller = interactionControllerRef.current
     controller.flushPendingCommit()
     controller.resetInteraction()
-    if (isBottomPaneWindow(layout, window)) {
-      dispatchOperation(bottomPaneCloseWindowOperation(windowId))
-      return
-    }
 
     for (const surfaceId of window.surfaceIds) {
       onDispatchLayoutOperation({ surfaceId, type: 'closeSurface' })
@@ -81,7 +72,6 @@ export function SurfaceArea({
       singleCollapseTarget='rail'
       surfaceClassName='relative isolate min-h-0 min-w-0 flex-1 overflow-hidden p-0'
       surfaceDataAttributes={{ 'data-shell-proof-surface-area': '' }}
-      tabActionsVisible={shellTabActionsVisible}
       onCloseSurface={closeSurface}
       onCloseWindow={closeWindow}
       onCommitLayout={(nextLayout, event) => {
@@ -129,10 +119,6 @@ function isLeftToolPaneSurface(surface: Surface) {
   if (surface.type === 'logs') return true
 
   return surface.type === 'search-results'
-}
-
-function shellTabActionsVisible(layout: WorkspaceLayout, window: WorkbenchWindow) {
-  return !isBottomPaneWindow(layout, window)
 }
 
 function emptyWindowBody() {

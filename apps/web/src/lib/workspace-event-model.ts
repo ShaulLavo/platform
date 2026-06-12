@@ -271,7 +271,7 @@ export function isLikelyTemporarySavePath(path: string) {
   return false
 }
 
-function parentPath(path: string, rootPath: string) {
+export function parentPath(path: string, rootPath: string) {
   if (path === rootPath) return rootPath
 
   const index = path.lastIndexOf('/')

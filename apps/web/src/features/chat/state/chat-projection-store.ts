@@ -20,6 +20,7 @@ import {
   type ThreadId,
   type TurnId,
 } from '@workspace/contracts'
+import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { create } from 'zustand'
 
 import {
@@ -139,7 +140,9 @@ export type ChatProjectionStore = ChatProjectionState & ChatProjectionActions
 const CHAT_PROJECTION_LOG_FLUSH_MS = 250
 
 let projectionLogScope: ChatPipelineScope | null = null
-let projectionLogFlushId: ReturnType<typeof setTimeout> | null = null
+const projectionLogFlush = new Debouncer(flushProjectionLogScope, {
+  wait: CHAT_PROJECTION_LOG_FLUSH_MS,
+})
 
 export function createInitialChatProjectionState(): ChatProjectionState {
   return {
@@ -218,7 +221,7 @@ function recordProjectionMutation(kind: string, context: Record<string, unknown>
       },
     },
   })
-  scheduleProjectionLogFlush()
+  projectionLogFlush.maybeExecute()
 }
 
 function currentProjectionLogScope() {
@@ -228,15 +231,8 @@ function currentProjectionLogScope() {
   return projectionLogScope
 }
 
-function scheduleProjectionLogFlush() {
-  if (projectionLogFlushId !== null) clearTimeout(projectionLogFlushId)
-
-  projectionLogFlushId = setTimeout(flushProjectionLogScope, CHAT_PROJECTION_LOG_FLUSH_MS)
-}
-
 function flushProjectionLogScope() {
   const scope = projectionLogScope
   projectionLogScope = null
-  projectionLogFlushId = null
   scope?.end()
 }

@@ -1,5 +1,4 @@
 import {
-  isWorkbenchRailBottomPaneItem,
   isWorkbenchRailRecipeItem,
   isWorkbenchRailSurfaceItem,
   type WorkbenchRailItem,
@@ -18,7 +17,6 @@ export function railItemsEqual(
 function railItemsAreEqual(left: WorkbenchRailItem, right: WorkbenchRailItem | undefined) {
   if (!right) return false
   if (left.state !== right.state) return false
-  if (isWorkbenchRailBottomPaneItem(left)) return isWorkbenchRailBottomPaneItem(right)
   if (isWorkbenchRailSurfaceItem(left)) return surfaceRailItemsAreEqual(left, right)
   if (isWorkbenchRailRecipeItem(left)) return recipeRailItemsAreEqual(left, right)
 

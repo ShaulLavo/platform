@@ -56,6 +56,7 @@ export const CLASSIC_DIAGNOSTICS_NODE_ID = layoutNodeId('classic:diagnostics')
 export const CLASSIC_FILE_NAVIGATOR_WINDOW_ID = workbenchWindowId('classic:file-navigator')
 export const CLASSIC_EDITOR_WINDOW_ID = workbenchWindowId('classic:editor')
 export const CLASSIC_DIAGNOSTICS_WINDOW_ID = workbenchWindowId('classic:diagnostics')
+export const DEFAULT_TERMINAL_SESSION_ID = 'terminal-1'
 export const WINDOW_MANAGEMENT_SETTINGS_PLACEHOLDER_CONTEXT_KEY = 'window-management-settings'
 
 const DEFAULT_VALID_PLACEMENTS = [
@@ -81,8 +82,10 @@ export type CreateClassicFirstRunWorkspaceLayoutOptions = {
 export function createEmptyWorkspaceLayout(): WorkspaceLayout {
   return {
     activeRecipeId: CLASSIC_RECIPE_ID,
+    bottomPaneShare: null,
     hotkeyPresetsById: {},
     layoutCommandsById: defaultLayoutCommandsById(),
+    leftToolPane: null,
     mruSurfaceIds: [],
     mruWindowIds: [],
     nodesById: {},
@@ -108,7 +111,7 @@ export function createClassicFirstRunWorkspaceLayout(
   const logs = createLogsSurface()
   const editorSurface = createClassicFirstRunEditorSurface(options)
   const diagnostics = createDiagnosticsSurface()
-  const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
+  const terminal = createTerminalSurface({ sessionId: DEFAULT_TERMINAL_SESSION_ID })
   const sideWindow = createWorkbenchWindow({
     activeSurfaceId: fileNavigator.id,
     id: CLASSIC_FILE_NAVIGATOR_WINDOW_ID,
@@ -131,8 +134,10 @@ export function createClassicFirstRunWorkspaceLayout(
     activeRecipeId: CLASSIC_RECIPE_ID,
     activeSurfaceId: editorSurface.id,
     activeWindowId: editorWindow.id,
+    bottomPaneShare: null,
     hotkeyPresetsById: {},
     layoutCommandsById: defaultLayoutCommandsById(),
+    leftToolPane: null,
     mruSurfaceIds: [editorSurface.id, fileNavigator.id, terminal.id, diagnostics.id],
     mruWindowIds: [editorWindow.id, sideWindow.id, diagnosticsWindow.id],
     nodesById: {

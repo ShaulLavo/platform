@@ -1,4 +1,5 @@
 import { repairSplitSizes } from '@workspace/tiling/utils/layout-normalize'
+import { recordUserPaneShares } from '@workspace/tiling/utils/recipe-packing'
 import type {
   LayoutNodeId,
   LayoutSplitAxis,
@@ -30,8 +31,7 @@ export function resizeSplit(
   if (handleIndex < 0 || handleIndex >= split.childIds.length - 1) return normalizedLayout
 
   const sizes = resizeAdjacentSizes(normalizedLayout, split, handleIndex, deltaPx, referencePx)
-
-  return normalizeWorkspaceLayout({
+  const resizedLayout = {
     ...normalizedLayout,
     nodesById: {
       ...normalizedLayout.nodesById,
@@ -40,7 +40,9 @@ export function resizeSplit(
         sizes,
       },
     },
-  })
+  }
+
+  return normalizeWorkspaceLayout(recordUserPaneShares(resizedLayout, splitId))
 }
 
 function resizeAdjacentSizes(

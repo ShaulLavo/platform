@@ -140,6 +140,14 @@ export type RailState = {
   readonly visibleSingletonSurfaceIds: readonly SurfaceId[]
 }
 
+// User-resized width of the left tool pane, recorded with the column count it
+// was resized at so reopening with a different column count scales linearly.
+// Null until the user resizes the pane boundary; defaults apply meanwhile.
+export type LeftToolPaneState = {
+  readonly columnCount: number
+  readonly share: number
+}
+
 export type WorkspaceRecipe = {
   readonly description?: string
   readonly id: RecipeId
@@ -250,7 +258,12 @@ export type LayoutOperation =
       readonly type: 'activateSurface'
       readonly windowId?: WindowId
     }
-  | { readonly policyId?: LayoutPolicyId; readonly surface: Surface; readonly type: 'openSurface' }
+  | {
+      readonly placement?: SurfacePlacementHint
+      readonly policyId?: LayoutPolicyId
+      readonly surface: Surface
+      readonly type: 'openSurface'
+    }
   | { readonly force?: boolean; readonly surfaceId: SurfaceId; readonly type: 'closeSurface' }
   | { readonly edge?: LayoutEdge; readonly type: 'collapseWindow'; readonly windowId: WindowId }
   | { readonly type: 'expandWindow'; readonly windowId: WindowId }
@@ -333,9 +346,13 @@ export type WorkspaceLayout = {
   readonly activeHotkeyPresetId?: HotkeyPresetId
   readonly activeSurfaceId?: SurfaceId
   readonly activeWindowId?: WindowId
+  // Height share of the bottom dock, set only by an explicit user resize of
+  // its boundary; while null, bottom-slot surfaces open at the default share.
+  readonly bottomPaneShare: number | null
   readonly commandCycleState?: CommandCycleState
   readonly hotkeyPresetsById: Readonly<Record<HotkeyPresetId, WindowManagementHotkeyPreset>>
   readonly layoutCommandsById: Readonly<Record<LayoutCommandId, WorkspaceLayoutCommand>>
+  readonly leftToolPane: LeftToolPaneState | null
   readonly mruSurfaceIds: readonly SurfaceId[]
   readonly mruWindowIds: readonly WindowId[]
   readonly nodesById: Readonly<Record<LayoutNodeId, LayoutNode>>

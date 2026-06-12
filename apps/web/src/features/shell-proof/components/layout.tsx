@@ -10,7 +10,7 @@ import { layoutOperationLabel } from '@/features/tiling-proof/utils/event-labels
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
-import { selectWorkbenchRailItems } from '@workspace/tiling/utils/rail-model'
+import { selectWorkbenchRailSurfaceItems } from '@workspace/tiling/utils/rail-model'
 import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
 const EVENT_LOG_LIMIT = 8
@@ -18,7 +18,7 @@ const EVENT_LOG_LIMIT = 8
 export function ShellProofLayout({ seedLayout }: { readonly seedLayout: WorkspaceLayout }) {
   const interactionControllerRef = useRef(IDLE_PROOF_INTERACTION_CONTROLLER)
   const layoutStore = useLayoutStoreApi()
-  const items = useLayoutState((state) => selectWorkbenchRailItems(state.layout))
+  const items = useLayoutState((state) => selectWorkbenchRailSurfaceItems(state.layout))
   const dispatchLayoutOperation = useLayoutState((state) => state.dispatchLayoutOperation)
   const resetLayout = useLayoutState((state) => state.resetLayout)
   const [events, setEvents] = useState<readonly string[]>([])

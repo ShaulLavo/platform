@@ -17,13 +17,15 @@ import type { FileResult } from '@/lib/file-system-types'
 import { getClient } from '@/lib/client'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { createDirectoryChurn, type DirectoryChurn } from '@/lib/directory-churn'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
-import { createThrottle } from '@/lib/throttle'
+import { Throttler } from '@tanstack/react-pacer/throttler'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { toTreePath } from '@/lib/path-formatters'
 import { clientErrors } from '@/lib/structured-errors'
 import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import {
+  parentPath,
   planFetchedOpenFileRefresh,
   planWorkspaceFilesystemEvents,
   planWorkspaceReady,
@@ -155,23 +157,25 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     if (!rootPath) return
 
     const controller = new AbortController()
-    const gitInvalidation = createThrottle(GIT_INVALIDATION_THROTTLE_MS, () =>
-      invalidateGitState(queryClient),
-    )
+    const gitInvalidation = new Throttler(() => invalidateGitState(queryClient), {
+      wait: GIT_INVALIDATION_THROTTLE_MS,
+    })
     const eventsScope = createWideEventScope({
       action: 'workspace.events.summary',
       area: 'workspace-events',
       path: rootPath,
     })
-    const queue = createEventQueue((events) =>
-      applyEvents(events, controller.signal, rootPath, eventsScope, gitInvalidation.schedule),
-    )
+    const churn = createDirectoryChurn()
+    const queue = createEventQueue((events) => {
+      churn.record(events.flatMap((event) => filesystemEventDirectories(event, rootPath)))
+      applyEvents(events, controller.signal, rootPath, eventsScope, gitInvalidation.maybeExecute)
+    })
     eventsScope.increment('subscription.subscribeCount')
 
     void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
       if (message.type === 'ready') {
         eventsScope.increment('subscription.readyCount')
-        applyReady(controller.signal, rootPath, eventsScope, gitInvalidation.schedule)
+        applyReady(controller.signal, rootPath, eventsScope, gitInvalidation.maybeExecute)
         return
       }
       if (message.type === 'error') {
@@ -203,6 +207,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       gitInvalidation.cancel()
       queue.clear()
       eventsScope.increment('subscription.unsubscribeCount')
+      recordEventChurn(eventsScope, churn)
       endWorkspaceEventsScope(eventsScope)
     }
   }, [queryClient, rootPath])
@@ -329,6 +334,24 @@ function filesystemEventCounts(events: readonly FilesystemEvent[]) {
   }
 
   return counts
+}
+
+function filesystemEventDirectories(event: FilesystemEvent, rootPath: string): readonly string[] {
+  if (event.type === 'renamed') {
+    return [parentPath(event.path, rootPath), parentPath(event.oldPath, rootPath)]
+  }
+
+  return [parentPath(event.path, rootPath)]
+}
+
+// Folded into the summary at scope end (not per batch) because `set` deep-merge
+// concatenates arrays — repeated sets of `topDirectories` would grow without
+// bound.
+function recordEventChurn(scope: WideEventScope, churn: DirectoryChurn) {
+  const summary = churn.summary()
+  if (!summary) return
+
+  scope.set({ events: { churn: summary } })
 }
 
 async function applyWorkspaceReady({

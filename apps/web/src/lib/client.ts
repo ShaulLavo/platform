@@ -2,13 +2,17 @@ import { treaty } from '@elysia/eden'
 
 import type { App } from 'server/client-contract'
 
+import { clientInstanceId, instanceHeaderName } from './instance-id'
+
 const defaultServerUrl = 'http://localhost:3001'
 
 export const serverUrl = import.meta.env.VITE_SERVER_URL ?? defaultServerUrl
 
 export type Client = ReturnType<typeof treaty<App>>
 
-const productionClient: Client = treaty<App>(serverUrl)
+const productionClient: Client = treaty<App>(serverUrl, {
+  headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
+})
 
 // The app talks to the server through this single holder. Tests point it at a
 // real in-process server via `setClient`, so production code stays untouched

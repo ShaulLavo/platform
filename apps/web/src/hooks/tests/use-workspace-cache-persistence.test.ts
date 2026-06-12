@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { editorWorkspaceLayoutForPaths } from '../../../test/factories/editor-workspace-layout'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
@@ -10,15 +10,20 @@ import type { CachedWorkspaceState, WorkspaceCacheWriteState } from '@/lib/works
 import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 
 describe('workspace cache persistence', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('does not persist every streaming search match batch', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
-    const timers = deferredTimers()
     const writes: WorkspaceCacheWriteState[] = []
     const unsubscribe = subscribeWorkspaceCachePersistence({
-      clearTimeout: timers.clearTimeout,
       searchStore,
-      setTimeout: timers.setTimeout,
       workspaceStore,
       writeCache: (state) => writes.push(state),
     })
@@ -29,8 +34,8 @@ describe('workspace cache persistence', () => {
       query: 'needle',
     })
 
-    expect(timers.hasPending()).toBe(true)
-    timers.flush()
+    vi.runAllTimers()
+    expect(writes).toHaveLength(1)
     expect(writes.at(-1)?.searchBuffer).toMatchObject({
       query: 'needle',
       resultsQuery: '',
@@ -49,7 +54,8 @@ describe('workspace cache persistence', () => {
       },
     ])
 
-    expect(timers.hasPending()).toBe(false)
+    vi.runAllTimers()
+    expect(writes).toHaveLength(1)
 
     searchStore.getState().appendEvent(runId, {
       count: 1,
@@ -59,8 +65,7 @@ describe('workspace cache persistence', () => {
       type: 'done',
     })
 
-    expect(timers.hasPending()).toBe(true)
-    timers.flush()
+    vi.runAllTimers()
     expect(writes).toHaveLength(2)
     expect(writes.at(-1)?.searchBuffer).toMatchObject({
       matches: [
@@ -81,30 +86,31 @@ describe('workspace cache persistence', () => {
   it('ignores transient workspace picker state', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
-    const timers = deferredTimers()
+    const writes: WorkspaceCacheWriteState[] = []
     const unsubscribe = subscribeWorkspaceCachePersistence({
-      clearTimeout: timers.clearTimeout,
       searchStore,
-      setTimeout: timers.setTimeout,
       workspaceStore,
-      writeCache: () => {},
+      writeCache: (state) => writes.push(state),
     })
 
     workspaceStore.getState().setPickerOpen(true)
-    expect(timers.hasPending()).toBe(false)
+    vi.runAllTimers()
+    expect(writes).toHaveLength(0)
 
     workspaceStore.setState({
       openFilePaths: ['/repo/src/a.ts'],
       selectedFilePath: '/repo/src/a.ts',
     })
-    expect(timers.hasPending()).toBe(false)
+    vi.runAllTimers()
+    expect(writes).toHaveLength(0)
 
     workspaceStore
       .getState()
       .setWorkspaceLayout(
         openSurface(workspaceStore.getState().workspaceLayout, createSearchResultsSurface()),
       )
-    expect(timers.hasPending()).toBe(true)
+    vi.runAllTimers()
+    expect(writes).toHaveLength(1)
 
     unsubscribe()
   })
@@ -131,29 +137,6 @@ function pickedDirectory(path: string): PickedFsEntry {
     size: 1,
     type: 'directory',
     version: 'test:1:1',
-  }
-}
-
-function deferredTimers() {
-  let callback: (() => void) | null = null
-  const timer = 1 as unknown as ReturnType<typeof setTimeout>
-
-  return {
-    clearTimeout() {
-      callback = null
-    },
-    flush() {
-      const next = callback
-      callback = null
-      next?.()
-    },
-    hasPending() {
-      return callback !== null
-    },
-    setTimeout(next: () => void) {
-      callback = next
-      return timer
-    },
   }
 }
 

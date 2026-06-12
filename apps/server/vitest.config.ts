@@ -6,5 +6,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
+    // The suite spawns real processes (git, PTYs, LSP servers); cold spawns
+    // under parallel load blow Vitest's 5s default. Server project only —
+    // web and packages keep the default.
+    testTimeout: 15_000,
   },
 })
