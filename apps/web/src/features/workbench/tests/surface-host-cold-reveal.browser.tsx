@@ -32,9 +32,9 @@ import type { Surface, SurfaceId, WorkspaceLayout } from '@workspace/tiling/util
 
 const THEME_STORAGE_KEY = 'platform-workbench-surface-host-cold-reveal-theme'
 const TEST_ROOT_PATH = 'repo'
-const FILE_A_PATH = `${TEST_ROOT_PATH}/src/a.ts`
-const FILE_B_PATH = `${TEST_ROOT_PATH}/src/b.ts`
-const FILE_C_PATH = `${TEST_ROOT_PATH}/src/c.ts`
+const FILE_A_PATH = `${TEST_ROOT_PATH}/src/editor-tab-a.ts`
+const FILE_B_PATH = `${TEST_ROOT_PATH}/src/editor-tab-b.ts`
+const FILE_C_PATH = `${TEST_ROOT_PATH}/src/editor-tab-c.ts`
 const FILE_A_TEXT = 'real browser fixture A'
 const FILE_C_TEXT = 'real browser fixture C'
 

@@ -42,8 +42,8 @@ import type {
 
 const THEME_STORAGE_KEY = 'platform-workbench-layout-renderer-browser-theme'
 const TEST_ROOT_PATH = 'repo'
-const FILE_A_PATH = `${TEST_ROOT_PATH}/src/a.ts`
-const FILE_B_PATH = `${TEST_ROOT_PATH}/src/b.ts`
+const FILE_A_PATH = `${TEST_ROOT_PATH}/src/editor-tab-a.ts`
+const FILE_B_PATH = `${TEST_ROOT_PATH}/src/editor-tab-b.ts`
 
 let root: Root | null = null
 
@@ -219,8 +219,8 @@ describe('LayoutRenderer browser rendering', () => {
 
     await vi.waitFor(() => {
       expect(editorChromeTabs()).toHaveLength(2)
-      expect(document.body.textContent).toContain('a.ts')
-      expect(document.body.textContent).toContain('b.ts')
+      expect(document.body.textContent).toContain('editor-tab-a.ts')
+      expect(document.body.textContent).toContain('editor-tab-b.ts')
     })
 
     expect(editorChromeTabButton('tab-b')).toHaveAttribute('aria-selected', 'true')
