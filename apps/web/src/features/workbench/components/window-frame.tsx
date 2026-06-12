@@ -13,7 +13,7 @@ import {
   type BottomPaneSurfaceVisibilityItem,
 } from '@workspace/tiling/utils/bottom-pane-model'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
-import { surfacesAreEqual } from '@/features/workbench/utils/surface-equality'
+import { surfaceEqual } from '@/features/workbench/utils/surface-equality'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
   LayoutOperation,
@@ -246,7 +246,7 @@ function windowFrameStateEqual(left: WindowFrameState | null, right: WindowFrame
   if (left === right) return true
   if (!left || !right) return false
   if (left.active !== right.active) return false
-  if (!surfacesAreEqual(left.activeSurface, right.activeSurface)) return false
+  if (!surfaceEqual(left.activeSurface, right.activeSurface)) return false
   if (left.bottomPane !== right.bottomPane) return false
   if (
     !bottomPaneSurfaceVisibilityItemsEqual(
@@ -280,7 +280,7 @@ function bottomPaneSurfaceVisibilityItemEqual(
   if (left.disabled !== right.disabled) return false
   if (left.exists !== right.exists) return false
 
-  return surfacesAreEqual(left.surface, right.surface)
+  return surfaceEqual(left.surface, right.surface)
 }
 
 function windowsEqual(left: WorkbenchWindow, right: WorkbenchWindow) {
@@ -297,7 +297,7 @@ function surfacesEqual(left: readonly Surface[], right: readonly Surface[]) {
   if (left === right) return true
   if (left.length !== right.length) return false
 
-  return left.every((surface, index) => surfacesAreEqual(surface, right[index] ?? null))
+  return left.every((surface, index) => surfaceEqual(surface, right[index] ?? null))
 }
 
 function surfaceIdsEqual(left: readonly string[], right: readonly string[]) {

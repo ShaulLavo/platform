@@ -32,10 +32,8 @@ import {
 } from '@workspace/tiling/utils/layout-builders'
 import { closeSurface, moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
-import {
-  LayoutRenderer,
-  surfaceAreaLayoutEqual,
-} from '@/features/workbench/components/layout-renderer'
+import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
+import { surfaceAreaLayoutEqual } from '@/features/workbench/utils/layout-equality'
 import type { Surface, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'

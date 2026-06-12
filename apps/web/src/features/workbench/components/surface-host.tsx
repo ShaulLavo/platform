@@ -5,7 +5,7 @@ import {
   surfaceRendererFor,
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
-import { surfacesAreEqual } from '@/features/workbench/utils/surface-equality'
+import { surfaceEqual } from '@/features/workbench/utils/surface-equality'
 import type { Surface, WindowId } from '@workspace/tiling/utils/layout-types'
 
 type SurfaceHostProps = {
@@ -54,7 +54,7 @@ function surfaceHostPropsEqual(left: SurfaceHostProps, right: SurfaceHostProps) 
   if (left.windowId !== right.windowId) return false
   if (left.surfaceRenderers !== right.surfaceRenderers) return false
 
-  return surfacesAreEqual(left.surface, right.surface)
+  return surfaceEqual(left.surface, right.surface)
 }
 
 export function surfacePanelId(surfaceId: Surface['id']) {
