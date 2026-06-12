@@ -28,6 +28,11 @@ export type TabStripBodyAutoscroller = {
   readonly update: (input: TabStripBodyAutoscrollInput) => void
 }
 
+type TabStripTabEntry = {
+  readonly afterPreviewBlock: boolean
+  readonly element: HTMLElement
+}
+
 type TabStripMiss = {
   readonly directInside: boolean
   readonly dockInside: boolean
@@ -38,6 +43,7 @@ type TabStripMiss = {
 }
 
 const TAB_STRIP_REORDER_SLOP_PX = 20
+const TAB_STRIP_PREVIEW_EDGE_SLOP_PX = 12
 const TAB_STRIP_TRAILING_EDGE_SLOP_PX = 36
 const TAB_STRIP_DOCK_ABOVE_SLOP_PX = 44
 const TAB_STRIP_DOCK_BELOW_SLOP_PX = 44
@@ -249,34 +255,59 @@ function tabInsertionIndexForPoint(
     readonly sourceTabId?: SurfaceId | null
   },
 ) {
-  // Insertion indices count the strip without the dragged tab: commits remove
-  // the source before inserting, and previews lay the strip out the same way.
-  const tabElements = uniqueTabElements(stripElement).filter(
-    (tabElement) => tabElement.dataset.tilingTabId !== options.sourceTabId,
-  )
+  // Insertion indices count the strip without the dragged tab and without
+  // preview-block elements: commits remove the source and apply the index to
+  // the pre-preview layout, and previews lay the strip out the same way.
+  const { previewBlockPresent, tabEntries } = tabStripTabEntries(stripElement, options.sourceTabId)
   const pointCoordinate = tabStripContentCoordinateForPoint(stripElement, point)
-  const proposedIndex = proposedTabInsertionIndex(tabElements, stripElement, pointCoordinate)
+  const proposedIndex = proposedTabInsertionIndex(
+    tabEntries,
+    stripElement,
+    pointCoordinate,
+    previewBlockPresent,
+  )
+  // The near-edge boundaries around a preview block sit a block-width apart,
+  // so they already provide the anti-jitter gap the midpoint hysteresis adds.
+  if (previewBlockPresent) return proposedIndex
 
   return stableTabInsertionIndex({
     pointCoordinate,
     previousIndex: options.previousIndex ?? null,
     proposedIndex,
     stripElement,
-    tabElements,
+    tabElements: tabEntries.map((entry) => entry.element),
   })
 }
 
 function proposedTabInsertionIndex(
-  tabElements: readonly HTMLElement[],
+  tabEntries: readonly TabStripTabEntry[],
   stripElement: HTMLElement,
   pointCoordinate: number,
+  previewBlockPresent: boolean,
 ) {
-  for (const [index, tabElement] of tabElements.entries()) {
-    const range = tabElementContentRange(stripElement, tabElement)
-    if (pointCoordinate < range.start + (range.end - range.start) / 2) return index
+  for (const [index, entry] of tabEntries.entries()) {
+    const range = tabElementContentRange(stripElement, entry.element)
+    if (pointCoordinate < insertionBoundaryForEntry(range, entry, previewBlockPresent)) return index
   }
 
-  return tabElements.length
+  return tabEntries.length
+}
+
+// While a preview block occupies the strip it has already pushed the
+// neighboring tabs a full block-width aside, so the midpoint rule would add
+// half a tab of over-drag on every step. With a block present the boundary
+// moves to the neighbor's near edge: nudging onto the next tab advances the
+// slot and nudging back onto the previous one retreats it, matching the feel
+// of a native in-strip sort.
+function insertionBoundaryForEntry(
+  range: { readonly end: number; readonly start: number },
+  entry: TabStripTabEntry,
+  previewBlockPresent: boolean,
+) {
+  if (!previewBlockPresent) return range.start + (range.end - range.start) / 2
+  if (entry.afterPreviewBlock) return range.start + TAB_STRIP_PREVIEW_EDGE_SLOP_PX
+
+  return range.end - TAB_STRIP_PREVIEW_EDGE_SLOP_PX
 }
 
 function stableTabInsertionIndex({
@@ -377,20 +408,26 @@ function tabStripOrientation(stripElement: HTMLElement) {
   return 'horizontal'
 }
 
-function uniqueTabElements(stripElement: HTMLElement) {
+function tabStripTabEntries(stripElement: HTMLElement, sourceTabId?: SurfaceId | null) {
   const tabIds = new Set<string>()
-  const tabElements: HTMLElement[] = []
+  const tabEntries: TabStripTabEntry[] = []
+  let previewBlockPresent = false
 
   for (const child of stripElement.children) {
     if (!(child instanceof HTMLElement)) continue
+    if (child.dataset.tilingTabPreview) {
+      previewBlockPresent = true
+      continue
+    }
     if (!child.dataset.tilingTabId) continue
+    if (child.dataset.tilingTabId === sourceTabId) continue
     if (tabIds.has(child.dataset.tilingTabId)) continue
 
     tabIds.add(child.dataset.tilingTabId)
-    tabElements.push(child)
+    tabEntries.push({ afterPreviewBlock: previewBlockPresent, element: child })
   }
 
-  return tabElements
+  return { previewBlockPresent, tabEntries }
 }
 
 function tabStripElementAtPoint(source: TilingDragData, point: PointerCoordinates) {

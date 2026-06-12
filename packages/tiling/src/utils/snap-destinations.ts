@@ -87,7 +87,9 @@ function sourceWindowCandidates({
   readonly sourceWindowId: WindowId | null
   readonly sourceWindowRect?: LayoutRect | null
 }) {
-  if (activeDrag?.kind !== 'window') return []
+  // The caller supplies sourceWindowRect only for drags that vacate their
+  // window (window drags and lone-tab drags), so the rect doubles as the gate.
+  if (!activeDrag) return []
   if (!sourceWindowId) return []
   if (!sourceWindowRect) return []
 

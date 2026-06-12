@@ -1797,8 +1797,8 @@ function expectPreviewAddedTabsInStrip(strip: HTMLElement, expectedIds: readonly
   expect(tabs.map(proofTabId)).toEqual(expectedIds)
 
   for (const tab of tabs) {
-    expect(tab.classList.contains('border-info')).toBe(true)
-    expect(tab.classList.contains('ring-info/30')).toBe(true)
+    expect(tab.classList.contains('ring-info')).toBe(true)
+    expect(tab.classList.contains('opacity-45')).toBe(true)
   }
 }
 

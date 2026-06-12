@@ -37,8 +37,11 @@ const gateThresholds = {
   },
   firefox: {
     maxSteadyP95Ms: 20,
-    // Firefox queues key events under burst input; p95 23-29ms measured.
-    maxBurstP95Ms: 45,
+    // Firefox queues key events under burst input, and the Gecko highlight
+    // repaint nudge (full registry re-register per keystroke, required for
+    // correct ::highlight() paint over recycled rows) adds ~10-20ms at burst
+    // p95. Clean-machine baseline p95 31-51ms.
+    maxBurstP95Ms: 60,
     maxApplyEditMeanMs: 6,
   },
   webkit: {

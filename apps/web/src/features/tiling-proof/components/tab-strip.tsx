@@ -78,7 +78,6 @@ export function ProofTabStrip({
         orientation === 'vertical'
           ? 'w-full flex-col items-center overflow-x-hidden overflow-y-auto py-1'
           : 'min-h-10 items-end overflow-x-auto border-b px-2 pt-2',
-        previewActive && 'bg-info/10 ring-1 ring-info/40',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-tab-strip-orientation={orientation}

@@ -115,7 +115,7 @@ export function useTilingDragController({
         rootRect,
         snapDestinationRects,
         sourceWindowId: sourceWindowIdForDrag(snapLayout, activeDrag),
-        sourceWindowRect: sourceWindowRectForDrag(windowRectsById, activeDrag),
+        sourceWindowRect: sourceWindowRectForDrag(snapLayout, windowRectsById, activeDrag),
       }),
     ),
   )

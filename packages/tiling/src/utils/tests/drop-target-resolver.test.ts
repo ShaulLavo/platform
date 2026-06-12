@@ -124,6 +124,31 @@ describe('tiling drop target resolver', () => {
     expect(result?.target).toEqual(snapTarget({ edge: 'right', kind: 'root-edge' }))
   })
 
+  it('resolves the source-vacancy corridor for lone-tab drags to the root edge', () => {
+    const sourceWindowRect: LayoutRect = { height: 300, width: 1000, x: 0, y: 0 }
+    const candidates = tilingSnapDestinations({
+      activeDrag: TAB_SOURCE,
+      rootRect: ROOT_RECT,
+      snapDestinationRects: rootSnapDestinationRects(),
+      sourceWindowId: windowId('window-a'),
+      sourceWindowRect,
+    })
+    // Below the thin root-top rail but inside the corridor over the window
+    // the tab vacates.
+    const result = resolveTarget({
+      candidates,
+      mode: 'tab-detached',
+      point: { x: 500, y: 60 },
+      source: TAB_SOURCE,
+      tabTarget: null,
+    })
+
+    expect(sourceVacancyCandidate(candidates, 'top').target).toEqual(
+      snapTarget({ edge: 'top', kind: 'root-edge' }),
+    )
+    expect(result?.target).toEqual(snapTarget({ edge: 'top', kind: 'root-edge' }))
+  })
+
   it('clamps window drags outside the root to the nearest root edge', () => {
     const result = resolveTarget({
       candidates: windowDragCandidates(),

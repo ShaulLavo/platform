@@ -73,6 +73,11 @@
 - Measure before and after. An optimization without a benchmark or profile is a guess.
 - Aim for the domain-expert ceiling, not the first improvement that works: zero allocations, no redundant passes, data shaped for how it is actually accessed.
 
+## Debugging
+
+- Calibrate the instrument before trusting its readings. Before debugging "X isn't happening", first confirm X would be observable if it did happen — e.g. before chasing a highlight that "doesn't paint", check what color it is supposed to paint and that the color is distinguishable from the background. Verify the expected observable on a known-good case as a control.
+- Treat contradictions as falsification, not as detail to patch around. When a theory needs a new special case after each new observation (per-object, then per-node, then per-row, then global), the theory is wrong — stop patching it, go back to raw ground truth, and re-derive. Two epicycles is the limit.
+
 ## TypeScript Fixes
 
 - Treat readonly/mutable mismatches as contract bugs first.

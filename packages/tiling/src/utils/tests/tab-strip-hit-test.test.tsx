@@ -127,6 +127,29 @@ describe('tab strip hit testing', () => {
     })
   })
 
+  it('uses near-edge boundaries while a preview block occupies the strip', () => {
+    // A two-tab preview block (x 100-300) has pushed tab-b from x=100 to
+    // x=300. Indices count originals only, and the slot moves as soon as the
+    // pointer nudges past a neighbor's near edge instead of its midpoint.
+    mountTestTabStrip({
+      rect: { height: 40, width: 400, x: 0, y: 0 },
+      tabs: [
+        testTabRect('tab-a', { height: 40, width: 100, x: 0, y: 0 }),
+        { id: 'ghost-a', preview: true, rect: { height: 40, width: 100, x: 100, y: 0 } },
+        { id: 'ghost-b', preview: true, rect: { height: 40, width: 100, x: 200, y: 0 } },
+        testTabRect('tab-b', { height: 40, width: 100, x: 300, y: 0 }),
+      ],
+      windowId: targetWindowId,
+    })
+    const index = (x: number) => tabStripDropHitAtPoint(source, { x, y: 20 })?.target.index
+
+    expect(index(150)).toBe(1)
+    expect(index(311)).toBe(1)
+    expect(index(313)).toBe(2)
+    expect(index(89)).toBe(1)
+    expect(index(87)).toBe(0)
+  })
+
   it('projects body points into tab strip coordinates with index hysteresis', () => {
     mountTestWindowWithTabStrip({
       stripRect: { height: 40, width: 200, x: 0, y: 0 },
