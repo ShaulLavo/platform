@@ -46,7 +46,6 @@ import type {
 import {
   editorGroupIdForWorkbenchWindow,
   editorSurfaceSerializedState,
-  editorSurfaceTabRecords,
 } from '@/features/workbench/utils/editor-surface-layout'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
@@ -530,7 +529,6 @@ function openExistingEditorSurface(
 
 function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface {
   const tab = createEditorTabRecord(path)
-  warnOnMintedDuplicateEditorTabId(layout, tab.id, path)
   const serializedState = {
     editorGroupId: editorGroupIdForNewSurface(layout),
     editorTabId: tab.id,
@@ -540,23 +538,6 @@ function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surf
     : createFileEditorSurface({ path })
 
   return { ...surface, serializedState }
-}
-
-// Tab ids come from a module-level counter that resets on reload/HMR while
-// existing ids survive in the persisted layout, so a fresh id can collide
-// with a restored tab's id. A duplicate makes tab clicks resolve to the
-// wrong surface; surface it in the logs the moment it is minted.
-function warnOnMintedDuplicateEditorTabId(layout: WorkspaceLayout, tabId: string, path: string) {
-  const collisions = editorSurfaceTabRecords(layout).filter((tab) => tab.id === tabId)
-  if (collisions.length === 0) return
-
-  log.warn({
-    action: 'editor.tab-id.duplicate-minted',
-    area: 'workbench.layout',
-    collisions,
-    path,
-    tabId,
-  })
 }
 
 function editorGroupIdForNewSurface(layout: WorkspaceLayout) {
