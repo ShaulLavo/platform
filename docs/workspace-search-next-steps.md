@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Refresh Done/open status; fix dead `/Desktop/platform` and `/Desktop/Editors` paths (repo moved to `/D/platform`, refs now in `references/`).
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Refresh Done/open status. (Reference paths repaired 2026-06-12: platform paths are repo-relative, VS Code paths point at the vendored `references/vscode/`, and `zed:` paths are upstream-relative — the zed checkout is not vendored; see https://github.com/zed-industries/zed.)
 
 # Workspace Search Next Steps
 
@@ -13,17 +13,17 @@ Priority rule for every item:
 
 ## Current Local Implementation
 
-- Shared contract: `/Users/shaul/Desktop/platform/packages/contracts/src/workspace-search.ts`
-- Server disk provider: `/Users/shaul/Desktop/platform/apps/server/src/fs/search.ts`
-- Server endpoint adapter: `/Users/shaul/Desktop/platform/apps/server/src/app.ts`
-- Web providers: `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-providers.ts`
-- Search buffer state: `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-state.tsx`
-- Search runtime/batching/dirty overlay: `/Users/shaul/Desktop/platform/apps/web/src/features/search/use-search-buffer.ts`
-- Virtualized results view: `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-results-view.tsx`
-- Result row display/highlighting: `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-match-row.tsx`
-- Match display window helper: `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-match-display.ts`
-- Search editor tab shell: `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-editor.tsx`
-- Sidebar controller: `/Users/shaul/Desktop/platform/apps/web/src/components/workspace/workspace-search-pane.tsx`
+- Shared contract: `packages/contracts/src/workspace-search.ts`
+- Server disk provider: `apps/server/src/fs/search.ts`
+- Server endpoint adapter: `apps/server/src/app.ts`
+- Web providers: `apps/web/src/features/search/search-providers.ts`
+- Search buffer state: `apps/web/src/features/search/search-buffer-state.tsx`
+- Search runtime/batching/dirty overlay: `apps/web/src/features/search/use-search-buffer.ts`
+- Virtualized results view: `apps/web/src/features/search/search-results-view.tsx`
+- Result row display/highlighting: `apps/web/src/features/search/search-match-row.tsx`
+- Match display window helper: `apps/web/src/features/search/search-match-display.ts`
+- Search editor tab shell: `apps/web/src/components/workspace/search/components/` (formerly `features/search/search-buffer-editor.tsx`, removed in the search-preview refactor)
+- Sidebar controller: `apps/web/src/components/workspace/search/components/search-pane.tsx`
 
 ## Product Behavior Still Missing
 
@@ -43,11 +43,11 @@ Completed:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/project/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/fileMatch.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchResultsView.ts`
+- `zed:crates/project/src/project_search.rs`
+- `zed:crates/search/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/fileMatch.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchResultsView.ts`
 
 ### 2. First-Class Search Modes
 
@@ -68,11 +68,11 @@ Completed:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/zed/crates/project/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/common/constants.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchView.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchWidget.ts`
+- `zed:crates/search/src/project_search.rs`
+- `zed:crates/project/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/common/constants.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchView.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchWidget.ts`
 
 ### 3. Replace In Files
 
@@ -95,11 +95,11 @@ Completed:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/fileMatch.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/replace.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/media/searchview.css`
+- `zed:crates/search/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/fileMatch.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/replace.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/media/searchview.css`
 
 ### 4. Result Tree Semantics
 
@@ -121,12 +121,12 @@ Completed:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchResultsView.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/searchTreeCommon.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/searchResult.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/folderMatch.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/common/constants.ts`
+- `zed:crates/search/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchResultsView.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/searchTreeCommon.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/searchResult.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/folderMatch.ts`
+- `references/vscode/src/vs/workbench/contrib/search/common/constants.ts`
 
 ### 5. Search Result Editor Fidelity
 
@@ -148,17 +148,18 @@ Completed:
 Remaining work:
 
 - Use the structured result editor refactor plan as the canonical path for
-  replacing the current temporary mega-document renderer:
-  `/Users/shaul/Desktop/platform/docs/search-result-editor-refactor-plan.md`
+  replacing the current temporary mega-document renderer
+  (`docs/search-result-editor-refactor-plan.md` — since removed; the refactor
+  shipped and the doc was deleted in commit `a92f810`)
 - Add richer multibuffer styling for file headers and excerpts if the plain text projection feels too flat.
 - Decide whether result tabs should be live views of the active search or saved snapshots.
 - Support multiple saved search result tabs if needed.
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/zed/crates/project/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchResultsView.ts`
+- `zed:crates/search/src/project_search.rs`
+- `zed:crates/project/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchResultsView.ts`
 
 ### 6. Ordering, Batching, And Limits
 
@@ -174,10 +175,10 @@ Remaining work:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/project/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/searchResult.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/textSearchHeading.ts`
+- `zed:crates/project/src/project_search.rs`
+- `zed:crates/search/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/searchResult.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/textSearchHeading.ts`
 
 ### 7. Dirty Buffer Overlay Robustness
 
@@ -193,9 +194,9 @@ Remaining work:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/project/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/fileMatch.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
+- `zed:crates/project/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/fileMatch.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
 
 ### 8. Error And Warning Model
 
@@ -210,9 +211,9 @@ Remaining work:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchView.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchModel.ts`
+- `zed:crates/search/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchView.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/searchModel.ts`
 
 ### 9. Preview And Highlight Fidelity
 
@@ -228,9 +229,9 @@ Remaining work:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/browser/media/searchview.css`
+- `zed:crates/search/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/browser/searchTreeModel/match.ts`
+- `references/vscode/src/vs/workbench/contrib/search/browser/media/searchview.css`
 
 ### 10. Test Coverage Still Needed
 
@@ -249,6 +250,6 @@ Remaining work:
 
 References:
 
-- `/Users/shaul/Desktop/Editors/zed/crates/search/src/project_search.rs`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/test/browser/searchModel.test.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/search/test/browser/searchNotebookHelpers.test.ts`
+- `zed:crates/search/src/project_search.rs`
+- `references/vscode/src/vs/workbench/contrib/search/test/browser/searchModel.test.ts`
+- `references/vscode/src/vs/workbench/contrib/search/test/browser/searchNotebookHelpers.test.ts`

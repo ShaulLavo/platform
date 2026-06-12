@@ -19,7 +19,7 @@ direction option.
 | 001  | [CI pipeline + one-command verify + pinned toolchain](001-ci-pipeline-and-verify.md) | P1       | M      | —                                                  | TODO                                                                |
 | 002  | [GitService mutation-path characterization tests](002-git-service-mutation-tests.md) | P1       | M      | — (001 recommended first)                          | DONE (20 tests; characterized a real parseBranches field-shift bug) |
 | 003  | [Cold-until-first-reveal editor tabs](003-cold-hidden-editor-tabs.md)                | P2       | M      | — (001 recommended first)                          | DONE (cold tabs render 0 rows/0 ranges; +3 browser lifecycle tests) |
-| 004  | [.env.example + truthful README setup docs](004-onboarding-env-and-readme.md)        | P3       | S      | — (references 001's `verify` script; has fallback) | TODO                                                                |
+| 004  | [.env.example + truthful README setup docs](004-onboarding-env-and-readme.md)        | P3       | S      | — (references 001's `verify` script; has fallback) | DONE (used the four-command fallback; 001 has not landed)           |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
