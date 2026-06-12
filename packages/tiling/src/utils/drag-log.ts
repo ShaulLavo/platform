@@ -1,6 +1,7 @@
 import { type TilingDragData, type TilingDropData } from '@workspace/tiling/utils/drag-data'
 import { formatPoint, type PointerCoordinates } from '@workspace/tiling/utils/geometry-primitives'
 import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
+import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 import type {
   SnapDestination,
   SurfaceId,
@@ -91,16 +92,16 @@ function layoutTabSummary(
 function stateSourceLabel(layout: WorkspaceLayout, source: TilingDragData) {
   if (source.kind === 'tab') return `tab:${stateSurfaceTitle(layout, source.surfaceId)}`
 
-  return `window:${stateWindowTitle(layout, source.windowId)}`
+  return `window:${windowTitle(layout, source.windowId)}`
 }
 
 function stateTargetLabel(layout: WorkspaceLayout, target: TilingDropData | null) {
   if (!target) return 'none'
-  if (target.kind === 'tab') return `${stateWindowTitle(layout, target.windowId)}:${target.index}`
+  if (target.kind === 'tab') return `${windowTitle(layout, target.windowId)}:${target.index}`
   if (target.kind === 'tab-strip') {
-    return `${stateWindowTitle(layout, target.windowId)}:${target.index}`
+    return `${windowTitle(layout, target.windowId)}:${target.index}`
   }
-  if (target.kind === 'window') return `window:${stateWindowTitle(layout, target.windowId)}`
+  if (target.kind === 'window') return `window:${windowTitle(layout, target.windowId)}`
 
   return stateDestinationLabel(layout, target.destination)
 }
@@ -108,22 +109,15 @@ function stateTargetLabel(layout: WorkspaceLayout, target: TilingDropData | null
 function stateDestinationLabel(layout: WorkspaceLayout, destination: SnapDestination) {
   if (destination.kind === 'root-edge') return `root ${destination.edge}`
   if (destination.kind === 'window-edge') {
-    return `${stateWindowTitle(layout, destination.windowId)} ${destination.edge}`
+    return `${windowTitle(layout, destination.windowId)} ${destination.edge}`
   }
   if (destination.kind === 'window-center') {
-    return `${stateWindowTitle(layout, destination.windowId)}:${destination.tabIndex ?? 'end'}`
+    return `${windowTitle(layout, destination.windowId)}:${destination.tabIndex ?? 'end'}`
   }
   if (destination.kind === 'parent-edge') return `parent ${destination.edge}`
   if (destination.kind === 'recipe-slot') return `slot ${destination.slot}`
 
   return destination.kind
-}
-
-function stateWindowTitle(layout: WorkspaceLayout, windowId: WindowId) {
-  const window = layout.windowsById[windowId]
-  if (!window) return String(windowId)
-
-  return stateSurfaceTitle(layout, window.activeSurfaceId)
 }
 
 function stateSurfaceTitle(layout: WorkspaceLayout, surfaceId: SurfaceId) {

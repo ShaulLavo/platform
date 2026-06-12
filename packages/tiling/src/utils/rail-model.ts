@@ -1,18 +1,13 @@
-import {
-  BOTTOM_PANE_RAIL_ID,
-  bottomPaneRailOperation,
-  bottomPaneSurfaces,
-  bottomPaneTerminalSurface,
-  bottomPaneWindowId,
-  isBottomPaneSurface,
-} from '@workspace/tiling/utils/bottom-pane-model'
 import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
 import {
   createChatSurface,
+  createDiagnosticsSurface,
   createFileNavigatorSurface,
   createGitChangesSurface,
   createLogsSurface,
   createSearchResultsSurface,
+  createTerminalSurface,
+  DEFAULT_TERMINAL_SESSION_ID,
 } from '@workspace/tiling/utils/layout-builders'
 import type {
   LayoutOperation,
@@ -37,13 +32,6 @@ export type WorkbenchRailSurfaceItem = {
   readonly surface: Surface
 }
 
-export type WorkbenchRailBottomPaneItem = {
-  readonly id: typeof BOTTOM_PANE_RAIL_ID
-  readonly kind: 'bottom-pane'
-  readonly state: WorkbenchRailSurfaceState
-  readonly title: 'Terminal'
-}
-
 export type WorkbenchRailRecipeState = 'active-recipe' | 'recipe'
 
 export type WorkbenchRailRecipeItem = {
@@ -51,14 +39,7 @@ export type WorkbenchRailRecipeItem = {
   readonly state: WorkbenchRailRecipeState
 }
 
-export type WorkbenchRailItem =
-  | WorkbenchRailBottomPaneItem
-  | WorkbenchRailRecipeItem
-  | WorkbenchRailSurfaceItem
-
-export function selectWorkbenchRailItems(layout: WorkspaceLayout): readonly WorkbenchRailItem[] {
-  return [...selectWorkbenchRailSurfaceItems(layout), bottomPaneRailItem(layout)]
-}
+export type WorkbenchRailItem = WorkbenchRailRecipeItem | WorkbenchRailSurfaceItem
 
 export function selectWorkbenchRailSurfaceItems(
   layout: WorkspaceLayout,
@@ -103,6 +84,8 @@ function appendDefaultRailItems(
     createGitChangesSurface(),
     createChatSurface(),
     createLogsSurface(),
+    createTerminalSurface({ sessionId: DEFAULT_TERMINAL_SESSION_ID }),
+    createDiagnosticsSurface(),
   ]
 
   for (const surface of surfaces) {
@@ -126,7 +109,6 @@ function appendRailItems(
 
     const surface = layout.surfacesById[surfaceId]
     if (!surface) continue
-    if (isBottomPaneSurface(surface)) continue
 
     appendRailItem(items, seen, surface, state)
   }
@@ -140,7 +122,6 @@ function appendSingletonItems(
   for (const surface of Object.values(layout.surfacesById)) {
     if (surface.cardinality !== 'singleton') continue
     if (seen.has(surface.id)) continue
-    if (isBottomPaneSurface(surface)) continue
 
     appendRailItem(items, seen, surface, 'singleton')
   }
@@ -195,8 +176,6 @@ export function railItemOperation(
   if (isWorkbenchRailRecipeItem(item)) {
     return { recipeId: item.recipe.id, type: 'applyRecipe' }
   }
-  if (isWorkbenchRailBottomPaneItem(item)) return bottomPaneRailOperation(layout)
-
   if (!layout.surfacesById[item.surface.id]) {
     return {
       surface: item.surface,
@@ -224,54 +203,8 @@ export function isWorkbenchRailRecipeItem(
   return 'recipe' in item
 }
 
-export function isWorkbenchRailBottomPaneItem(
-  item: WorkbenchRailItem,
-): item is WorkbenchRailBottomPaneItem {
-  return 'kind' in item && item.kind === 'bottom-pane'
-}
-
 export function isWorkbenchRailSurfaceItem(
   item: WorkbenchRailItem,
 ): item is WorkbenchRailSurfaceItem {
   return 'kind' in item && item.kind === 'surface'
-}
-
-function bottomPaneRailItem(layout: WorkspaceLayout): WorkbenchRailBottomPaneItem {
-  return {
-    id: BOTTOM_PANE_RAIL_ID,
-    kind: 'bottom-pane',
-    state: bottomPaneRailState(layout),
-    title: 'Terminal',
-  }
-}
-
-function bottomPaneRailState(layout: WorkspaceLayout): WorkbenchRailSurfaceState {
-  const windowId = bottomPaneWindowId(layout)
-  const window = windowId ? layout.windowsById[windowId] : null
-  if (window?.mode === 'collapsed') return 'collapsed'
-  if (windowId) return windowId === layout.activeWindowId ? 'active' : 'visible'
-
-  const terminal = bottomPaneTerminalSurface(layout)
-  if (terminal) {
-    const terminalWindowId = findWindowIdContainingSurface(layout, terminal.id)
-    const terminalWindow = terminalWindowId ? layout.windowsById[terminalWindowId] : null
-    if (terminalWindow?.mode === 'collapsed') return 'collapsed'
-    if (terminalWindowId) return terminal.id === layout.activeSurfaceId ? 'active' : 'visible'
-
-    return hiddenBottomPaneTerminalState(layout, terminal.id)
-  }
-
-  if (bottomPaneSurfaces(layout).length > 0) return 'running'
-
-  return 'pinned'
-}
-
-function hiddenBottomPaneTerminalState(
-  layout: WorkspaceLayout,
-  terminalId: SurfaceId,
-): WorkbenchRailSurfaceState {
-  if (layout.rail.backgroundSurfaceIds.includes(terminalId)) return 'background'
-  if (layout.rail.runningSurfaceIds.includes(terminalId)) return 'running'
-
-  return 'running'
 }

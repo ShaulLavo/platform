@@ -6,10 +6,19 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DndProofView } from '@/features/dnd-proof/components/proof-view'
+import {
+  ROOT_EDGE_HIT_INSIDE_PX,
+  ROOT_EDGE_HIT_OUTSIDE_PX,
+} from '@workspace/tiling/utils/snap-destinations'
 
 let root: Root | null = null
 let currentDragPoint: PointerPoint | null = null
 let currentPointerId = 0
+
+// Matches the configured browser viewport. It must not exceed the real
+// browser window: vitest scales the test iframe to fit, which breaks the
+// raw client-coordinate bridge into the native mouse commands.
+const PROOF_VIEWPORT = { height: 700, width: 900 }
 
 declare module '@vitest/browser/context' {
   interface BrowserCommands {
@@ -64,33 +73,33 @@ afterEach(async () => {
 })
 
 describe.sequential('dnd proof browser behavior', () => {
-  it('renders root guides at the real full surface edges', async () => {
+  it('renders root zones as hit rails straddling the real surface edges', async () => {
     renderProof()
 
     await waitForProof()
     await waitForSettledProofGeometry()
 
     const surfaceRect = proofSurfaceArea().getBoundingClientRect()
+    const rootLeftEdge = surfaceRect.left + 8
+    const rootTopEdge = surfaceRect.top + 8
+    const rootRightEdge = surfaceRect.right - 8
+    const rootBottomEdge = surfaceRect.bottom - 8
     const topRect = snapDestinationWithLabel('root top').getBoundingClientRect()
     const leftRect = snapDestinationWithLabel('root left').getBoundingClientRect()
     const rightRect = snapDestinationWithLabel('root right').getBoundingClientRect()
     const bottomRect = snapDestinationWithLabel('root bottom').getBoundingClientRect()
-    const firstStripRect = tabStrips()[0]?.getBoundingClientRect()
-    const firstWindowRect = windowRegions()[0]?.getBoundingClientRect()
-    if (!firstStripRect) throw new Error('Missing first tab strip')
-    if (!firstWindowRect) throw new Error('Missing first window')
 
-    expect(topRect.top).toBeLessThan(firstStripRect.bottom)
-    expectClose(topRect.top, firstWindowRect.top)
-    expectClose(topRect.top, surfaceRect.top + 8)
-    expectClose(topRect.left, surfaceRect.left + 8)
-    expectClose(topRect.width, surfaceRect.width - 16)
-    expectClose(leftRect.top, surfaceRect.top + 8)
-    expectClose(leftRect.height, surfaceRect.height - 16)
-    expectClose(rightRect.top, surfaceRect.top + 8)
-    expectClose(rightRect.height, surfaceRect.height - 16)
-    expectClose(bottomRect.left, surfaceRect.left + 8)
-    expectClose(bottomRect.width, surfaceRect.width - 16)
+    expectClose(topRect.bottom, rootTopEdge + ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(topRect.top, rootTopEdge - ROOT_EDGE_HIT_OUTSIDE_PX)
+    expectClose(topRect.left, rootLeftEdge - ROOT_EDGE_HIT_OUTSIDE_PX)
+    expectClose(topRect.width, rootRightEdge - rootLeftEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
+    expectClose(leftRect.right, rootLeftEdge + ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(leftRect.top, rootTopEdge - ROOT_EDGE_HIT_OUTSIDE_PX)
+    expectClose(leftRect.height, rootBottomEdge - rootTopEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
+    expectClose(rightRect.left, rootRightEdge - ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(rightRect.height, rootBottomEdge - rootTopEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
+    expectClose(bottomRect.top, rootBottomEdge - ROOT_EDGE_HIT_INSIDE_PX)
+    expectClose(bottomRect.width, rootRightEdge - rootLeftEdge + ROOT_EDGE_HIT_OUTSIDE_PX * 2)
   })
 
   it('previews detached tab snap layout with real browser pointer events before release', async () => {
@@ -397,7 +406,9 @@ describe.sequential('dnd proof browser behavior', () => {
 
     const sourceWindow = topmostWindowRegion()
     const sourceWindowId = proofWindowId(sourceWindow)
-    const targetWindow = bottommostWindowRegion()
+    // The full-height column's strip keeps its position across the lift and
+    // merge previews; the half-height cells reflow while the drag is live.
+    const targetWindow = rightmostWindowRegion()
     const targetStrip = tabStripInWindow(targetWindow)
     const targetStripId = proofTabStripId(targetStrip)
     const sourceIds = tabIdsInStrip(tabStripInWindow(sourceWindow))
@@ -494,7 +505,9 @@ describe.sequential('dnd proof browser behavior', () => {
 
     const originalWindowCount = windowRegions().length
     const originalTabIds = tabStrips().flatMap(tabIdsInStrip)
-    const targetWindow = bottommostWindowRegion()
+    // The full-height column keeps the window order stable across the
+    // collapse-to-bottom move; half-height cells would reorder the tree.
+    const targetWindow = rightmostWindowRegion()
     const targetWindowId = proofWindowId(targetWindow)
     const expandedRect = targetWindow.getBoundingClientRect()
 
@@ -847,7 +860,9 @@ describe.sequential('dnd proof browser behavior', () => {
     await waitForProof()
     await waitForSettledProofGeometry()
 
-    const handle = firstResizeHandle()
+    // The column handle has room for the full 120px drag; the row handle
+    // inside a half-height column hits the 22% editor minimum first.
+    const handle = resizeHandleWithLabel('Resize columns')
     const startPoint = centerOf(handle)
     const targetPoint = resizePointForHandle(handle, startPoint, 120)
     const beforeRects = windowRects()
@@ -869,7 +884,7 @@ describe.sequential('dnd proof browser behavior', () => {
       expect(windowRects()).not.toEqual(beforeRects)
     })
 
-    const movedHandlePoint = centerOf(firstResizeHandle())
+    const movedHandlePoint = centerOf(resizeHandleWithLabel('Resize columns'))
     expectResizeHandleMoved(handle, movedHandlePoint, targetPoint)
   })
 
@@ -954,7 +969,13 @@ describe.sequential('dnd proof browser behavior', () => {
     }
   })
 
-  for (const snapLabel of ['window right', 'window bottom', 'window left', 'window top']) {
+  // No 'window top' case: in the balanced column grid the only internal
+  // horizontal boundary merges into the upper window's trailing-edge zone
+  // ('window bottom'), and the remaining top zones hug the root edge, where
+  // the root corridor outranks them. 'window left' exists because dropping
+  // left of the full-height column inserts a new root column, which is not
+  // structurally equivalent to splitting the neighbor cell at its right edge.
+  for (const snapLabel of ['window right', 'window bottom', 'window left']) {
     it(`snaps a detached tab to ${snapLabel}`, async () => {
       renderProof()
 
@@ -1071,8 +1092,8 @@ describe.sequential('dnd proof browser behavior', () => {
 function renderProof() {
   document.body.style.margin = '0'
   const container = document.createElement('main')
-  container.style.height = '700px'
-  container.style.width = '900px'
+  container.style.height = `${PROOF_VIEWPORT.height}px`
+  container.style.width = `${PROOF_VIEWPORT.width}px`
   document.body.append(container)
   root = createRoot(container)
   flushSync(() => root?.render(<DndProofView />))
@@ -1248,26 +1269,28 @@ async function nativeDragWindowToSnap(
   })
 }
 
+// Root rails extend past the viewport, so the steps aim at their inner edge.
 function snapDestinationMouseStep(label: string): ProofMouseDragStep {
-  const destination = snapDestinationWithLabel(label)
-  const selector = selectorFor(destination)
+  const selector = snapDestinationSelector(label)
   if (label === 'root left') {
-    return { kind: 'move-to-selector', offsetX: 6, selector, steps: 18, x: 0, y: 0.5 }
+    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
   }
   if (label === 'root top') {
-    return { kind: 'move-to-selector', offsetY: 6, selector, steps: 18, x: 0.5, y: 0 }
-  }
-  if (label === 'root bottom') {
     return { kind: 'move-to-selector', offsetY: -6, selector, steps: 18, x: 0.5, y: 1 }
   }
-  if (label === 'root right') {
-    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
+  if (label === 'root bottom') {
+    return { kind: 'move-to-selector', offsetY: 6, selector, steps: 18, x: 0.5, y: 0 }
   }
-  if (label === 'window left') {
+  if (label === 'root right') {
     return { kind: 'move-to-selector', offsetX: 6, selector, steps: 18, x: 0, y: 0.5 }
   }
+  // Half-height grid cells leave only a narrow vertical band on side zones
+  // that clears both neighbors' 44px tab-strip dock halos; aim inside it.
+  if (label === 'window left') {
+    return { kind: 'move-to-selector', offsetX: 6, selector, steps: 18, x: 0, y: 0.32 }
+  }
   if (label === 'window right') {
-    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.5 }
+    return { kind: 'move-to-selector', offsetX: -6, selector, steps: 18, x: 1, y: 0.65 }
   }
   if (label === 'window top') {
     return { kind: 'move-to-selector', offsetY: 6, selector, steps: 18, x: 0.5, y: 0 }
@@ -1277,6 +1300,16 @@ function snapDestinationMouseStep(label: string): ProofMouseDragStep {
   }
 
   return { kind: 'move-to-selector', selector, steps: 18, x: 0.5, y: 0.5 }
+}
+
+// Zones re-render under merged ids once a drag starts, so selectors captured
+// before the drag must match by member id instead of the exact element. The
+// rect index keeps the match unique when a merged zone renders several rails.
+function snapDestinationSelector(label: string) {
+  const id = snapDestinationWithLabel(label).dataset.proofSnapDestination
+  if (!id) throw new Error(`Missing snap destination id for ${label}`)
+
+  return `[data-proof-snap-destination*=${JSON.stringify(id)}][data-proof-snap-rect="0"]`
 }
 
 function snapDestinationDropPoint(label: string): PointerPoint {
@@ -1307,16 +1340,18 @@ function snapDestinationDropPoint(label: string): PointerPoint {
       y: surfaceRect.top + surfaceRect.height / 2,
     }
   }
+  // Side-zone drop points sit in the vertical band that clears the adjacent
+  // windows' 44px tab-strip dock halos, which outrank window-edge snaps.
   if (label === 'window left') {
     return {
       x: rect.left + 6,
-      y: rect.top + rect.height / 2,
+      y: rect.top + rect.height * 0.32,
     }
   }
   if (label === 'window right') {
     return {
       x: rect.right - 6,
-      y: rect.top + rect.height / 2,
+      y: rect.top + rect.height * 0.65,
     }
   }
   if (label === 'window top') {
@@ -1762,8 +1797,8 @@ function expectPreviewAddedTabsInStrip(strip: HTMLElement, expectedIds: readonly
   expect(tabs.map(proofTabId)).toEqual(expectedIds)
 
   for (const tab of tabs) {
-    expect(tab.classList.contains('border-info')).toBe(true)
-    expect(tab.classList.contains('ring-info/30')).toBe(true)
+    expect(tab.classList.contains('ring-info')).toBe(true)
+    expect(tab.classList.contains('opacity-45')).toBe(true)
   }
 }
 
@@ -1937,6 +1972,13 @@ function firstResizeHandle() {
     '[aria-label="Resize columns"], [aria-label="Resize rows"]',
   )
   if (!handle) throw new Error('Missing proof resize handle')
+
+  return handle
+}
+
+function resizeHandleWithLabel(label: 'Resize columns' | 'Resize rows') {
+  const handle = document.querySelector<HTMLElement>(`[aria-label="${label}"]`)
+  if (!handle) throw new Error(`Missing proof resize handle ${label}`)
 
   return handle
 }

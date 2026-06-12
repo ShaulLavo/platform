@@ -1,4 +1,8 @@
 import {
+  packLayoutIntoBalancedColumns,
+  windowIdsInReadingOrder,
+} from '@workspace/tiling/utils/balanced-columns'
+import {
   createEmptyWorkspaceLayout,
   createPlaceholderSurface,
 } from '@workspace/tiling/utils/layout-builders'
@@ -25,6 +29,14 @@ import type {
   WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
 import type { TilingCommitEvent } from '@workspace/tiling/hooks/use-tiling-drag-controller'
+
+import {
+  commitEventLabel,
+  destinationLabel,
+  layoutOperationLabel,
+  windowMoveLabel,
+} from '@/features/tiling-proof/utils/event-labels'
+import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 
 export type ProofScenario = 2 | 3 | 6 | 10
 
@@ -71,9 +83,7 @@ export function addProofWindow(model: ProofModel): ProofModel {
   const visibleWindowCount = visibleWindowIdsInOrder(model.layout).length
   const openedLayout = openSurface(model.layout, surface)
   const layout =
-    visibleWindowCount === 0
-      ? openedLayout
-      : moveSurface(openedLayout, surface.id, rootEdgeDestination('right'))
+    visibleWindowCount === 0 ? openedLayout : appendProofWindow(openedLayout, surface.id)
 
   return logModel(
     {
@@ -83,6 +93,21 @@ export function addProofWindow(model: ProofModel): ProofModel {
     },
     `added window: ${surface.title}`,
   )
+}
+
+// New windows join the balanced column grid as the latest arrival: existing
+// windows keep their reading-order spots and the grid repacks around them.
+function appendProofWindow(layout: WorkspaceLayout, surfaceId: SurfaceId): WorkspaceLayout {
+  const movedLayout = moveSurface(layout, surfaceId, rootEdgeDestination('right'))
+  const windowId = findWindowIdContainingSurface(movedLayout, surfaceId)
+  if (!windowId) return movedLayout
+
+  const existingWindowIds = visibleWindowIdsInOrder(movedLayout).filter((id) => id !== windowId)
+
+  return packLayoutIntoBalancedColumns(movedLayout, [
+    ...windowIdsInReadingOrder(movedLayout, existingWindowIds),
+    windowId,
+  ])
 }
 
 export function activateProofSurface(model: ProofModel, surfaceId: SurfaceId): ProofModel {
@@ -142,7 +167,7 @@ export function dispatchProofLayoutOperation(
   const layout = applyLayoutOperation(model.layout, operation)
   if (layout === model.layout) return model
 
-  return logModel({ ...model, layout }, layoutOperationEvent(model.layout, operation))
+  return logModel({ ...model, layout }, layoutOperationLabel(model.layout, operation))
 }
 
 export function commitProofLayout(
@@ -152,7 +177,7 @@ export function commitProofLayout(
 ): ProofModel {
   if (layout === model.layout) return model
 
-  return logModel({ ...model, layout }, proofCommitEvent(model.layout, event))
+  return logModel({ ...model, layout }, commitEventLabel(model.layout, event))
 }
 
 export function moveProofSurfaceToDestination(
@@ -200,7 +225,7 @@ export function moveProofWindowToDestination(
   const layout = moveWindow(model.layout, windowId, destination)
   if (layout === model.layout) return model
 
-  return logModel({ ...model, layout }, windowMoveEvent(model.layout, destination))
+  return logModel({ ...model, layout }, windowMoveLabel(model.layout, destination))
 }
 
 export function moveProofWindowNextToWindow(
@@ -217,10 +242,6 @@ export function moveProofWindowNextToWindow(
   })
 }
 
-export function proofWindowTitle(layout: WorkspaceLayout, windowId: WindowId): string {
-  return windowTitle(layout, windowId)
-}
-
 export function surfaceWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId): WindowId | null {
   return findWindowIdContainingSurface(layout, surfaceId)
 }
@@ -233,11 +254,12 @@ function proofLayoutForWindowCount(windowCount: ProofScenario) {
     const surface = createProofSurface(nextSurfaceNumber)
     layout = openSurface(layout, surface)
     if (index > 0) {
-      layout = moveSurface(layout, surface.id, rootEdgeDestination(edgeForWindowIndex(index)))
+      layout = moveSurface(layout, surface.id, rootEdgeDestination('right'))
     }
     nextSurfaceNumber += 1
   }
 
+  layout = packLayoutIntoBalancedColumns(layout)
   const visibleWindowIds = visibleWindowIdsInOrder(layout)
   const tabsPerWindow = windowCount <= 3 ? 2 : 1
   if (tabsPerWindow === 1) return { layout, nextSurfaceNumber }
@@ -269,80 +291,8 @@ function rootEdgeDestination(edge: LayoutEdge): SnapDestination {
   return { edge, kind: 'root-edge' }
 }
 
-function edgeForWindowIndex(index: number): LayoutEdge {
-  if (index % 4 === 1) return 'right'
-  if (index % 4 === 2) return 'bottom'
-  if (index % 4 === 3) return 'left'
-
-  return 'top'
-}
-
 function firstWindowId(layout: WorkspaceLayout): WindowId | undefined {
   return visibleWindowIdsInOrder(layout)[0]
-}
-
-function windowTitle(layout: WorkspaceLayout, windowId: WindowId): string {
-  const window = layout.windowsById[windowId]
-  const activeSurface = window ? layout.surfacesById[window.activeSurfaceId] : null
-  if (activeSurface) return activeSurface.title
-
-  return String(windowId)
-}
-
-function destinationLabel(destination: SnapDestination): string {
-  if (destination.kind === 'root-edge') return `root ${destination.edge}`
-  if (destination.kind === 'window-edge') return `window ${destination.edge}`
-  if (destination.kind === 'window-center') return 'merged tabs'
-  if (destination.kind === 'parent-edge') return `parent ${destination.edge}`
-  if (destination.kind === 'recipe-slot') return `slot ${destination.slot}`
-
-  return destination.kind
-}
-
-function windowMoveEvent(layout: WorkspaceLayout, destination: SnapDestination) {
-  if (destination.kind === 'window-center') {
-    return `window -> merged tabs:${windowTitle(layout, destination.windowId)}`
-  }
-
-  return `window -> ${destinationLabel(destination)}`
-}
-
-function proofCommitEvent(layout: WorkspaceLayout, event: TilingCommitEvent) {
-  if (event.source.kind === 'tab') return tabCommitEvent(layout, event.target)
-
-  return windowCommitEvent(layout, event.target)
-}
-
-function tabCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
-  if (target.kind === 'tab') return `tab -> ${windowTitle(layout, target.windowId)}:${target.index}`
-  if (target.kind === 'tab-strip') {
-    return `tab -> ${windowTitle(layout, target.windowId)}:${target.index}`
-  }
-  if (target.kind === 'window') return `tab -> ${windowTitle(layout, target.windowId)}:end`
-
-  return `tab -> ${destinationLabel(target.destination)}`
-}
-
-function windowCommitEvent(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {
-  if (target.kind === 'tab') return `window -> merged tabs:${windowTitle(layout, target.windowId)}`
-  if (target.kind === 'tab-strip') {
-    return `window -> merged tabs:${windowTitle(layout, target.windowId)}`
-  }
-  if (target.kind === 'window') return `window -> ${windowTitle(layout, target.windowId)}`
-
-  return windowMoveEvent(layout, target.destination)
-}
-
-function layoutOperationEvent(layout: WorkspaceLayout, operation: LayoutOperation) {
-  if (operation.type === 'collapseWindow') {
-    return `collapsed window: ${windowTitle(layout, operation.windowId)}`
-  }
-  if (operation.type === 'expandWindow') {
-    return `expanded window: ${windowTitle(layout, operation.windowId)}`
-  }
-  if (operation.type === 'resizeSplit') return `resized split: ${operation.splitId}`
-
-  return `operation: ${operation.type}`
 }
 
 function logModel(model: ProofModel, event: string): ProofModel {

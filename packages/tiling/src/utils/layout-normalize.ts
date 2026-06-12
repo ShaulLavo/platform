@@ -317,67 +317,22 @@ function collectSplitChildren(
   return { entries, nodesById, visibleWindowIds }
 }
 
+// A vanished child's size is dropped, not handed to a neighbor: the
+// surviving sizes renormalize pro-rata, so removing a window and later
+// re-inserting it lands every sibling back at its original ratio.
 function normalizedSplitChildren(
   layout: WorkspaceLayout,
   node: LayoutSplitNode,
   seenNodeIds: Set<LayoutNodeId>,
 ) {
   const childSizes = repairSplitSizes(node.sizes, node.childIds.length)
-  const children = node.childIds.map((childId, index) => {
+
+  return node.childIds.map((childId, index): SplitChildNormalization | null => {
     const result = normalizeNode(layout, childId, seenNodeIds)
     if (!result) return null
 
     return { result, size: childSizes[index] ?? 0 }
   })
-
-  return transferMissingSplitChildSizes(children, childSizes)
-}
-
-function transferMissingSplitChildSizes(
-  children: readonly (SplitChildNormalization | null)[],
-  childSizes: readonly number[],
-) {
-  const adjustedChildren = children.slice()
-
-  for (const [index, child] of children.entries()) {
-    if (child) continue
-
-    transferMissingSplitChildSize(adjustedChildren, index, childSizes[index] ?? 0)
-  }
-
-  return adjustedChildren
-}
-
-function transferMissingSplitChildSize(
-  children: (SplitChildNormalization | null)[],
-  missingIndex: number,
-  missingSize: number,
-) {
-  const recipientIndex = adjacentVisibleChildIndex(children, missingIndex)
-  if (recipientIndex === null) return
-
-  const recipient = children[recipientIndex]
-  if (!recipient) return
-
-  children[recipientIndex] = {
-    ...recipient,
-    size: recipient.size + missingSize,
-  }
-}
-
-function adjacentVisibleChildIndex(
-  children: readonly (SplitChildNormalization | null)[],
-  missingIndex: number,
-) {
-  for (let index = missingIndex - 1; index >= 0; index -= 1) {
-    if (children[index]) return index
-  }
-
-  for (let index = missingIndex + 1; index < children.length; index += 1) {
-    if (children[index]) return index
-  }
-
-  return null
 }
 
 function addNormalizedChild(

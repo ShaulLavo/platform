@@ -15,6 +15,7 @@ import {
   flushObservability,
   isEvlogError,
   observabilityRoutes,
+  recordClientInstance,
   recordRequestContext,
   recordRequestError,
 } from './observability'
@@ -76,7 +77,7 @@ export function createApp(options: AppOptions) {
   const configured = app
     .use(
       cors({
-        allowedHeaders: ['authorization', 'content-type', 'x-evlog-source'],
+        allowedHeaders: ['authorization', 'content-type', 'x-client-instance', 'x-evlog-source'],
         exposeHeaders: [
           'cache-control',
           'content-length',
@@ -89,6 +90,9 @@ export function createApp(options: AppOptions) {
       }),
     )
     .onError(({ code, error, set }) => appErrorPayload(code, error, set))
+    .onBeforeHandle(({ request }) => {
+      recordClientInstance(request)
+    })
     .onBeforeHandle(authGuard(auth))
     .use(observabilityRoutes())
     .get('/health', () => ({

@@ -1,4 +1,4 @@
-import { errorMessage, fetchFile } from '@/lib/file-server'
+import { errorMessage } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
@@ -14,7 +14,6 @@ export function useSelectedFile(selectedFilePath: string | null) {
     ...fileSnapshotQueryOptions(filePath ?? ''),
     enabled: Boolean(filePath),
     placeholderData: (previousFile) => previousFile,
-    queryFn: ({ signal }) => fetchFile(filePath ?? '', signal),
   })
   const fileState = useMemo(
     () => (filePath ? fileLoadState(query, filePath) : idleState),

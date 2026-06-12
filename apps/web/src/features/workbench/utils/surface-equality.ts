@@ -1,6 +1,7 @@
+import { arraysEqual } from '@/lib/arrays'
 import type { Surface } from '@workspace/tiling/utils/layout-types'
 
-export function surfacesAreEqual(left: Surface | null, right: Surface | null) {
+export function surfaceEqual(left: Surface | null, right: Surface | null) {
   if (left === right) return true
   if (!left || !right) return false
   if (left.id !== right.id) return false
@@ -26,12 +27,5 @@ function surfaceCapabilitiesEqual(left: Surface['capabilities'], right: Surface[
   if (left.defaultRecipeSlot !== right.defaultRecipeSlot) return false
   if (left.supportsPreview !== right.supportsPreview) return false
 
-  return stringArraysEqual(left.validPlacements, right.validPlacements)
-}
-
-function stringArraysEqual(left: readonly string[], right: readonly string[]) {
-  if (left === right) return true
-  if (left.length !== right.length) return false
-
-  return left.every((value, index) => value === right[index])
+  return arraysEqual(left.validPlacements, right.validPlacements)
 }

@@ -99,13 +99,13 @@ function mainEvolutionStates(engine: Engine): readonly DiagramState[] {
 
   layout = openSurface(engine, layout, engine.builders.createGitChangesSurface())
   states.push(
-    captureState(engine, layout, '6. Git dock', 'left-tool-pane -> order-pack left stack'),
+    captureState(engine, layout, '6. Git dock', 'left-tool-pane -> balanced columns by arrival'),
   )
 
   layout = openSurface(engine, layout, engine.builders.createChatSurface())
   layout = openSurface(engine, layout, engine.builders.createLogsSurface())
   states.push(
-    captureState(engine, layout, '7. Secondary stack', 'same secondary slot -> flat V-split'),
+    captureState(engine, layout, '7. Secondary grid', 'same slot -> fill shortest column'),
   )
 
   layout = openSurface(engine, layout, engine.builders.createDiagnosticsSurface())

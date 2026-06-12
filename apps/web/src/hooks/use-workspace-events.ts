@@ -11,18 +11,21 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
+import { fileSnapshotQueryOptions, setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { getClient } from '@/lib/client'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { createDirectoryChurn, type DirectoryChurn } from '@/lib/directory-churn'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
+import { Throttler } from '@tanstack/react-pacer/throttler'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { toTreePath } from '@/lib/path-formatters'
 import { clientErrors } from '@/lib/structured-errors'
 import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import {
+  parentPath,
   planFetchedOpenFileRefresh,
   planWorkspaceFilesystemEvents,
   planWorkspaceReady,
@@ -62,6 +65,12 @@ const FILE_REFRESH_RETRY_ATTEMPTS = 5
 
 const READY_ROOT_TREE_FRESH_MS = 10_000
 
+// Leading + trailing throttle so a runaway stream of filesystem events (an
+// external tool writing into the workspace) cannot refetch git status on
+// every batch. Throttle, not debounce: a continuous stream must still
+// invalidate once per interval instead of starving forever.
+const GIT_INVALIDATION_THROTTLE_MS = 2_000
+
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const conflictStore = useEditorConflictStoreApi()
   const documentStore = useEditorDocumentStoreApi()
@@ -75,6 +84,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
       signal: AbortSignal,
       currentRootPath: string,
       eventsScope: WideEventScope,
+      scheduleGitInvalidation: () => void,
     ) => {
       const documentState = documentStore.getState()
       const workspaceState = workspaceStore.getState()
@@ -94,6 +104,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         queryClient,
         renameLiveEditorDocument,
         rootPath: currentRootPath,
+        scheduleGitInvalidation,
         selectFile,
         signal,
         scope: eventsScope,
@@ -106,7 +117,12 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     },
   )
   const applyReady = useEffectEvent(
-    (signal: AbortSignal, currentRootPath: string, eventsScope: WideEventScope) => {
+    (
+      signal: AbortSignal,
+      currentRootPath: string,
+      eventsScope: WideEventScope,
+      scheduleGitInvalidation: () => void,
+    ) => {
       const documentState = documentStore.getState()
       const workspaceState = workspaceStore.getState()
 
@@ -124,6 +140,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         queryClient,
         renameLiveEditorDocument,
         rootPath: currentRootPath,
+        scheduleGitInvalidation,
         selectFile,
         signal,
         scope: eventsScope,
@@ -140,20 +157,25 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     if (!rootPath) return
 
     const controller = new AbortController()
+    const gitInvalidation = new Throttler(() => invalidateGitState(queryClient), {
+      wait: GIT_INVALIDATION_THROTTLE_MS,
+    })
     const eventsScope = createWideEventScope({
       action: 'workspace.events.summary',
       area: 'workspace-events',
       path: rootPath,
     })
-    const queue = createEventQueue((events) =>
-      applyEvents(events, controller.signal, rootPath, eventsScope),
-    )
+    const churn = createDirectoryChurn()
+    const queue = createEventQueue((events) => {
+      churn.record(events.flatMap((event) => filesystemEventDirectories(event, rootPath)))
+      applyEvents(events, controller.signal, rootPath, eventsScope, gitInvalidation.maybeExecute)
+    })
     eventsScope.increment('subscription.subscribeCount')
 
     void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
       if (message.type === 'ready') {
         eventsScope.increment('subscription.readyCount')
-        applyReady(controller.signal, rootPath, eventsScope)
+        applyReady(controller.signal, rootPath, eventsScope, gitInvalidation.maybeExecute)
         return
       }
       if (message.type === 'error') {
@@ -182,11 +204,13 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
 
     return () => {
       controller.abort()
+      gitInvalidation.cancel()
       queue.clear()
       eventsScope.increment('subscription.unsubscribeCount')
+      recordEventChurn(eventsScope, churn)
       endWorkspaceEventsScope(eventsScope)
     }
-  }, [rootPath])
+  }, [queryClient, rootPath])
 
   useEffect(() => {
     return () => dismissFilesystemConflicts(conflictStore)
@@ -219,6 +243,7 @@ async function applyWorkspaceEvents({
   queryClient,
   renameLiveEditorDocument,
   rootPath,
+  scheduleGitInvalidation,
   selectFile,
   signal,
   scope,
@@ -234,6 +259,7 @@ async function applyWorkspaceEvents({
   queryClient: ReturnType<typeof useQueryClient>
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   rootPath: string
+  scheduleGitInvalidation: () => void
   selectFile: (path: string | null) => void
   signal: AbortSignal
   scope: WideEventScope
@@ -257,6 +283,7 @@ async function applyWorkspaceEvents({
     queryClient,
     renameLiveEditorDocument,
     rootPath,
+    scheduleGitInvalidation,
     selectFile,
     signal,
   })
@@ -309,6 +336,24 @@ function filesystemEventCounts(events: readonly FilesystemEvent[]) {
   return counts
 }
 
+function filesystemEventDirectories(event: FilesystemEvent, rootPath: string): readonly string[] {
+  if (event.type === 'renamed') {
+    return [parentPath(event.path, rootPath), parentPath(event.oldPath, rootPath)]
+  }
+
+  return [parentPath(event.path, rootPath)]
+}
+
+// Folded into the summary at scope end (not per batch) because `set` deep-merge
+// concatenates arrays — repeated sets of `topDirectories` would grow without
+// bound.
+function recordEventChurn(scope: WideEventScope, churn: DirectoryChurn) {
+  const summary = churn.summary()
+  if (!summary) return
+
+  scope.set({ events: { churn: summary } })
+}
+
 async function applyWorkspaceReady({
   conflictStore,
   discardLiveEditorDocument,
@@ -320,6 +365,7 @@ async function applyWorkspaceReady({
   queryClient,
   renameLiveEditorDocument,
   rootPath,
+  scheduleGitInvalidation,
   selectFile,
   signal,
   scope,
@@ -334,6 +380,7 @@ async function applyWorkspaceReady({
   queryClient: ReturnType<typeof useQueryClient>
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   rootPath: string
+  scheduleGitInvalidation: () => void
   selectFile: (path: string | null) => void
   signal: AbortSignal
   scope: WideEventScope
@@ -356,6 +403,7 @@ async function applyWorkspaceReady({
     queryClient,
     renameLiveEditorDocument,
     rootPath,
+    scheduleGitInvalidation,
     selectFile,
     signal,
   })
@@ -373,6 +421,7 @@ async function applyWorkspaceEventPlan({
   queryClient,
   renameLiveEditorDocument,
   rootPath,
+  scheduleGitInvalidation,
   selectFile,
   signal,
 }: {
@@ -387,6 +436,7 @@ async function applyWorkspaceEventPlan({
   queryClient: ReturnType<typeof useQueryClient>
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   rootPath: string
+  scheduleGitInvalidation: () => void
   selectFile: (path: string | null) => void
   signal: AbortSignal
 }) {
@@ -402,7 +452,7 @@ async function applyWorkspaceEventPlan({
     selectFile,
   }
 
-  if (plan.shouldInvalidateGitState) invalidateGitState(queryClient)
+  if (plan.shouldInvalidateGitState) scheduleGitInvalidation()
 
   await applyTreeOperations(queryClient, rootPath, plan.treeOperations, signal)
   await applyOpenFileOperations({
@@ -628,7 +678,24 @@ async function applyRefreshOpenFileOperation({
   queryClient: ReturnType<typeof useQueryClient>
   signal: AbortSignal
 }) {
-  const file = await fetchFileWithRetry(path, signal)
+  // The selected file's useQuery races this refresh on workspace load (and
+  // StrictMode can deliver two ready events); fetchQuery on the same key joins
+  // any in-flight fetch instead of reading the same file again. A reconnect
+  // later still hits the network: the cache entry is stale by then.
+  //
+  // The outer signal deliberately does not reach the fetch: the fetch is
+  // shared with other consumers, so only the query's own lifecycle may cancel
+  // it. Teardown therefore lets an in-flight read finish in the background
+  // (and warm the cache); it only stops new work and result application.
+  if (signal.aborted) return
+
+  const file = await queryClient.fetchQuery({
+    ...fileSnapshotQueryOptions(path, { fetcher: fetchFileWithRetry }),
+    // fetchFileWithRetry retries internally; query-level retry would stack.
+    retry: false,
+  })
+  if (signal.aborted) return
+
   setFileSnapshotQueryData(queryClient, file)
   const operation = planFetchedOpenFileRefresh({
     isDirty: isDirtyLiveDocument(path, dirtyFilePaths, conflictContext),

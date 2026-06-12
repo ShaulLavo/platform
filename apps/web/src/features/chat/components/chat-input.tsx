@@ -277,7 +277,7 @@ export function ChatInput({
         <LexicalComposer initialConfig={initialConfig} key={inputKey}>
           <div
             className={cn(
-              'border-border/80 bg-background/90 overflow-hidden rounded-md border shadow-[0_16px_42px_color-mix(in_oklch,var(--foreground)_7%,transparent)] backdrop-blur transition-[border-color,box-shadow]',
+              'border-border/80 bg-background backdrop-material overflow-hidden rounded-md border shadow-[0_16px_42px_color-mix(in_oklch,var(--foreground)_7%,transparent)] transition-[border-color,box-shadow]',
               editorFocused && 'border-info/70 ring-2 ring-info/20',
             )}
           >

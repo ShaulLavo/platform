@@ -24,6 +24,7 @@ export {
   errorSummary,
   limitText,
   observeRequestOperation,
+  recordClientInstance,
   recordGitCommand,
   recordRequestContext,
   recordRequestError,

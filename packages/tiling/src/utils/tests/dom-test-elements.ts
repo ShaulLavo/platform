@@ -3,6 +3,7 @@ import type { WindowId } from '@workspace/tiling/utils/layout-types'
 
 export type TestTabRect = {
   readonly id: string
+  readonly preview?: boolean
   readonly rect: LayoutRect
 }
 
@@ -78,6 +79,7 @@ export function testDomRect({ height, width, x, y }: LayoutRect): DOMRect {
 function testTabElement(tab: TestTabRect) {
   const element = document.createElement('button')
   element.dataset.tilingTabId = tab.id
+  if (tab.preview) element.dataset.tilingTabPreview = 'true'
   element.getBoundingClientRect = () => testDomRect(tab.rect)
 
   return element

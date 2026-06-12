@@ -50,12 +50,29 @@ export function sourceWindowIdForDrag(layout: WorkspaceLayout, activeDrag: Tilin
 }
 
 export function sourceWindowRectForDrag(
+  layout: WorkspaceLayout,
   windowRectsById: LayoutGeometry['windowRectsById'],
   activeDrag: TilingDragData | null,
 ) {
-  if (activeDrag?.kind !== 'window') return null
+  const windowId = vacatingWindowIdForDrag(layout, activeDrag)
+  if (!windowId) return null
 
-  return windowRectsById[activeDrag.windowId]?.rect ?? null
+  return windowRectsById[windowId]?.rect ?? null
+}
+
+// A tab that is its window's only surface vacates the window when it leaves,
+// so dragging it is dragging the window: it earns the same source-return and
+// source-vacancy zones. Tabs from multi-tab windows leave the window standing
+// and get neither.
+function vacatingWindowIdForDrag(layout: WorkspaceLayout, activeDrag: TilingDragData | null) {
+  if (!activeDrag) return null
+  if (activeDrag.kind === 'window') return activeDrag.windowId
+
+  const windowId = findWindowIdContainingSurface(layout, activeDrag.surfaceId)
+  if (!windowId) return null
+  if (layout.windowsById[windowId]?.surfaceIds.length !== 1) return null
+
+  return windowId
 }
 
 export function activeTilingDragForSource(

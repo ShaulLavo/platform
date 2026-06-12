@@ -1,15 +1,15 @@
 > [!IMPORTANT]
-> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Some backlog items shipped (quick-access modes exist); reconcile done vs open; fix dead `/Desktop/Editors/vscode` paths.
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Some backlog items shipped (quick-access modes exist); reconcile done vs open. (Reference paths repaired 2026-06-12.)
 
 # Command Palette VS Code Parity Backlog
 
 This tracks the gap between the first command palette pass and VS Code's Quick Access / Command Palette model. The reference points are:
 
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/platform/quickinput/common/quickAccess.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/platform/quickinput/browser/quickAccess.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/platform/quickinput/browser/commandsQuickAccess.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/contrib/quickaccess/browser/commandsQuickAccess.ts`
-- `/Users/shaul/Desktop/Editors/vscode/src/vs/workbench/browser/actions/quickAccessActions.ts`
+- `references/vscode/src/vs/platform/quickinput/common/quickAccess.ts`
+- `references/vscode/src/vs/platform/quickinput/browser/quickAccess.ts`
+- `references/vscode/src/vs/platform/quickinput/browser/commandsQuickAccess.ts`
+- `references/vscode/src/vs/workbench/contrib/quickaccess/browser/commandsQuickAccess.ts`
+- `references/vscode/src/vs/workbench/browser/actions/quickAccessActions.ts`
 
 ## Current Baseline
 

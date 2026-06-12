@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Tied to a one-off 2026-05-13 trace; mark what was addressed; fix dead paths.
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Tied to a one-off 2026-05-13 trace; mark what was addressed. (File paths repaired 2026-06-12: platform paths are repo-relative.)
 
 # Search Tab Performance Workstreams
 
@@ -9,7 +9,7 @@
 - Captured: `2026-05-13T14:28:14.492Z`
 - Breadcrumb window: `12.28s`
 - App target in trace: `localhost:5173` web app with `localhost:3001` server
-- Workspace searched: `Users/shaul/Desktop/platform`
+- Workspace searched: the platform repo root (at its pre-move location)
 - Main observed query path: `/fs/search/events`
 
 Important caveat: this trace was captured in Vite/dev mode with React DevTools instrumentation. Absolute timings are inflated, but the repeated bottleneck shape is clear enough to plan work.
@@ -43,8 +43,8 @@ UI symptoms:
 
 Files:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/use-search-buffer.ts`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-state.tsx`
+- `apps/web/src/features/search/use-search-buffer.ts`
+- `apps/web/src/features/search/search-buffer-state.tsx`
 
 Current behavior:
 
@@ -62,12 +62,12 @@ Trace evidence:
 
 Files:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-editor.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.tsx`
-- `/Users/shaul/Desktop/Editor/packages/react/src/index.ts`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/editor/Editor.ts`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/plugins.ts`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/virtualization/virtualizedTextViewRows.ts`
+- `apps/web/src/components/workspace/search/components/` (formerly `features/search/search-buffer-editor.tsx`)
+- `apps/web/src/features/search/search-result-editor-surface.tsx`
+- `packages/editor-react/src/index.ts`
+- `packages/editor-core/src/editor/Editor.ts`
+- `packages/editor-core/src/plugins.ts`
+- `packages/editor-core/src/virtualization/virtualizedTextViewRows.ts`
 
 Current behavior:
 
@@ -87,9 +87,9 @@ Trace evidence:
 
 Files:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-results-view.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-match-row.tsx`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/virtualization/browserMetrics.ts`
+- `apps/web/src/features/search/search-results-view.tsx`
+- `apps/web/src/features/search/search-match-row.tsx`
+- `packages/editor-core/src/virtualization/browserMetrics.ts`
 
 Current behavior:
 
@@ -105,11 +105,11 @@ Trace evidence:
 
 Files:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-editor.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-results-view.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-items.ts`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-view-model.ts`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-state.tsx`
+- `apps/web/src/components/workspace/search/components/` (formerly `features/search/search-buffer-editor.tsx`)
+- `apps/web/src/features/search/search-results-view.tsx`
+- `apps/web/src/features/search/search-result-items.ts`
+- `apps/web/src/features/search/search-result-view-model.ts`
+- `apps/web/src/features/search/search-buffer-state.tsx`
 
 Current behavior:
 
@@ -125,9 +125,9 @@ Trace evidence:
 
 Files:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.perf-entry.tsx`
-- `/Users/shaul/Desktop/platform/package.json`
-- `/Users/shaul/Desktop/platform/apps/web/package.json`
+- `apps/web/src/features/search/search-result-editor-surface.perf-entry.tsx`
+- `package.json`
+- `apps/web/package.json`
 
 Current state:
 
@@ -149,8 +149,8 @@ Goal: reduce React commit frequency while preserving streamed feedback.
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/use-search-buffer.ts`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-state.test.ts`
+- `apps/web/src/features/search/use-search-buffer.ts`
+- `apps/web/src/features/search/tests/search-buffer-state.test.ts`
 
 Tasks:
 
@@ -178,9 +178,9 @@ Goal: stop rebuilding all derived result objects on every append.
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-state.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-items.ts`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-state.test.ts`
+- `apps/web/src/features/search/search-buffer-state.tsx`
+- `apps/web/src/features/search/search-result-items.ts`
+- `apps/web/src/features/search/tests/search-buffer-state.test.ts`
 
 Tasks:
 
@@ -209,9 +209,9 @@ Goal: avoid mounting heavy editor-backed result rows for every streamed update w
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-buffer-editor.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.perf-entry.tsx`
+- `apps/web/src/components/workspace/search/components/` (formerly `features/search/search-buffer-editor.tsx`)
+- `apps/web/src/features/search/search-result-editor-surface.tsx`
+- `apps/web/src/features/search/search-result-editor-surface.perf-entry.tsx`
 
 Tasks:
 
@@ -239,12 +239,12 @@ Goal: reduce editor-core work for readonly search result excerpts.
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.tsx`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/editor/Editor.ts`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/editor/pluginLifecycle.test.ts`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/plugins.ts`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/virtualization/virtualizedTextViewRows.ts`
-- `/Users/shaul/Desktop/Editor/packages/gutters/src/lineGutter.ts`
+- `apps/web/src/features/search/search-result-editor-surface.tsx`
+- `packages/editor-core/src/editor/Editor.ts`
+- `packages/editor-core/src/editor/pluginLifecycle.test.ts`
+- `packages/editor-core/src/plugins.ts`
+- `packages/editor-core/src/virtualization/virtualizedTextViewRows.ts`
+- `packages/editor-gutters/src/lineGutter.ts`
 
 Tasks:
 
@@ -274,11 +274,11 @@ Goal: stop treating same-file search result excerpt changes as full editor docum
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-view-model.ts`
-- `/Users/shaul/Desktop/Editor/packages/react/src/index.ts`
-- `/Users/shaul/Desktop/Editor/packages/editor/src/editor/Editor.ts`
-- `/Users/shaul/Desktop/Editor/packages/tree-sitter/src/session.ts`
+- `apps/web/src/features/search/search-result-editor-surface.tsx`
+- `apps/web/src/features/search/search-result-view-model.ts`
+- `packages/editor-react/src/index.ts`
+- `packages/editor-core/src/editor/Editor.ts`
+- `packages/editor-tree-sitter/src/session.ts`
 
 Tasks:
 
@@ -310,9 +310,9 @@ Goal: eliminate `clientWidth` and `ResizeObserver` per visible row in search res
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-results-view.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-match-row.tsx`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-match-display.ts`
+- `apps/web/src/features/search/search-results-view.tsx`
+- `apps/web/src/features/search/search-match-row.tsx`
+- `apps/web/src/features/search/search-match-display.ts`
 
 Tasks:
 
@@ -339,10 +339,10 @@ Goal: make performance improvements measurable and repeatable.
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-result-editor-surface.perf-entry.tsx`
-- `/Users/shaul/Desktop/platform/scripts`
-- `/Users/shaul/Desktop/platform/package.json`
-- `/Users/shaul/Desktop/platform/docs`
+- `apps/web/src/features/search/search-result-editor-surface.perf-entry.tsx`
+- `scripts`
+- `package.json`
+- `docs`
 
 Tasks:
 
@@ -381,10 +381,10 @@ Goal: confirm backend search is not hiding a second-order issue.
 
 Owner write scope:
 
-- `/Users/shaul/Desktop/platform/apps/server/src/fs/search.ts`
-- `/Users/shaul/Desktop/platform/apps/server/src/app.ts`
-- `/Users/shaul/Desktop/platform/apps/web/src/features/search/search-providers.ts`
-- `/Users/shaul/Desktop/platform/packages/contracts/src/workspace-search.ts`
+- `apps/server/src/fs/search.ts`
+- `apps/server/src/app.ts`
+- `apps/web/src/features/search/search-providers.ts`
+- `packages/contracts/src/workspace-search.ts`
 
 Tasks:
 
@@ -446,7 +446,7 @@ These are starting targets, not final product SLAs. Update them after the first 
 
 Run after each workstream:
 
-1. Search for `const` in `/Users/shaul/Desktop/platform`.
+1. Search for `const` in the platform repo root.
 2. Type through `c`, `co`, `con`, `cons`, `const`.
 3. Toggle case-sensitive, regex, whole-word, and filters.
 4. Select next/previous match while results are loading.

@@ -42,13 +42,7 @@ export type SnapDestinationLayoutRect = {
   readonly destination: SnapDestination
   readonly edge?: LayoutEdge
   readonly id: OverlayId
-  readonly kind:
-    | 'background'
-    | 'parent-edge'
-    | 'recipe-slot'
-    | 'root-edge'
-    | 'window-center'
-    | 'window-edge'
+  readonly kind: 'background' | 'parent-edge' | 'root-edge' | 'window-center' | 'window-edge'
   readonly rect: LayoutRect
   readonly windowId?: WindowId
 }
@@ -169,9 +163,12 @@ export function deriveSnapDestinationRects(
   windowRectsById: Readonly<Record<string, WindowLayoutRect>>,
   options: LayoutGeometryOptions = {},
 ): readonly SnapDestinationLayoutRect[] {
+  // TODO(recipe-return): recipe-slot drop zones were removed because their huge
+  // top-priority hit rects swallowed real drop targets and made drags feel dead.
+  // Reintroduce "return to recipe slot" as a small, visible dock target (e.g. the
+  // rail) instead of a screen-region field.
   return [
     backgroundSnapDestinationRect(rootRect),
-    ...recipeSlotSnapDestinationRects(rootRect),
     ...rootEdgeSnapDestinationRects(rootRect, options),
     ...windowSnapDestinationRects(windowRectsById, options),
     ...parentEdgeSnapDestinationRects(layout, nodeRectsById, options),
@@ -478,31 +475,6 @@ function backgroundSnapDestinationRect(rootRect: LayoutRect): SnapDestinationLay
     kind: 'background',
     rect: insetLayoutRect(rootRect, Math.min(rootRect.width, rootRect.height) * 0.35),
   }
-}
-
-function recipeSlotSnapDestinationRects(
-  rootRect: LayoutRect,
-): readonly SnapDestinationLayoutRect[] {
-  return [
-    {
-      destination: { kind: 'recipe-slot', slot: 'editor-center' },
-      id: overlayId('snap:recipe-slot:editor-center'),
-      kind: 'recipe-slot',
-      rect: centerRect(rootRect, {}),
-    },
-    {
-      destination: { kind: 'recipe-slot', slot: 'left-tool-pane' },
-      id: overlayId('snap:recipe-slot:left-tool-pane'),
-      kind: 'recipe-slot',
-      rect: edgeRect(rootRect, 'left', Math.max(48, rootRect.width * 0.18)),
-    },
-    {
-      destination: { kind: 'recipe-slot', slot: 'bottom' },
-      id: overlayId('snap:recipe-slot:bottom'),
-      kind: 'recipe-slot',
-      rect: edgeRect(rootRect, 'bottom', Math.max(48, rootRect.height * 0.18)),
-    },
-  ]
 }
 
 function rootEdgeSnapDestinationRects(

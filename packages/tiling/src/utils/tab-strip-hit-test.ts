@@ -28,6 +28,11 @@ export type TabStripBodyAutoscroller = {
   readonly update: (input: TabStripBodyAutoscrollInput) => void
 }
 
+type TabStripTabEntry = {
+  readonly afterPreviewBlock: boolean
+  readonly element: HTMLElement
+}
+
 type TabStripMiss = {
   readonly directInside: boolean
   readonly dockInside: boolean
@@ -38,6 +43,7 @@ type TabStripMiss = {
 }
 
 const TAB_STRIP_REORDER_SLOP_PX = 20
+const TAB_STRIP_PREVIEW_EDGE_SLOP_PX = 12
 const TAB_STRIP_TRAILING_EDGE_SLOP_PX = 36
 const TAB_STRIP_DOCK_ABOVE_SLOP_PX = 44
 const TAB_STRIP_DOCK_BELOW_SLOP_PX = 44
@@ -249,34 +255,59 @@ function tabInsertionIndexForPoint(
     readonly sourceTabId?: SurfaceId | null
   },
 ) {
-  // Insertion indices count the strip without the dragged tab: commits remove
-  // the source before inserting, and previews lay the strip out the same way.
-  const tabElements = uniqueTabElements(stripElement).filter(
-    (tabElement) => tabElement.dataset.tilingTabId !== options.sourceTabId,
-  )
+  // Insertion indices count the strip without the dragged tab and without
+  // preview-block elements: commits remove the source and apply the index to
+  // the pre-preview layout, and previews lay the strip out the same way.
+  const { previewBlockPresent, tabEntries } = tabStripTabEntries(stripElement, options.sourceTabId)
   const pointCoordinate = tabStripContentCoordinateForPoint(stripElement, point)
-  const proposedIndex = proposedTabInsertionIndex(tabElements, stripElement, pointCoordinate)
+  const proposedIndex = proposedTabInsertionIndex(
+    tabEntries,
+    stripElement,
+    pointCoordinate,
+    previewBlockPresent,
+  )
+  // The near-edge boundaries around a preview block sit a block-width apart,
+  // so they already provide the anti-jitter gap the midpoint hysteresis adds.
+  if (previewBlockPresent) return proposedIndex
 
   return stableTabInsertionIndex({
     pointCoordinate,
     previousIndex: options.previousIndex ?? null,
     proposedIndex,
     stripElement,
-    tabElements,
+    tabElements: tabEntries.map((entry) => entry.element),
   })
 }
 
 function proposedTabInsertionIndex(
-  tabElements: readonly HTMLElement[],
+  tabEntries: readonly TabStripTabEntry[],
   stripElement: HTMLElement,
   pointCoordinate: number,
+  previewBlockPresent: boolean,
 ) {
-  for (const [index, tabElement] of tabElements.entries()) {
-    const range = tabElementContentRange(stripElement, tabElement)
-    if (pointCoordinate < range.start + (range.end - range.start) / 2) return index
+  for (const [index, entry] of tabEntries.entries()) {
+    const range = tabElementContentRange(stripElement, entry.element)
+    if (pointCoordinate < insertionBoundaryForEntry(range, entry, previewBlockPresent)) return index
   }
 
-  return tabElements.length
+  return tabEntries.length
+}
+
+// While a preview block occupies the strip it has already pushed the
+// neighboring tabs a full block-width aside, so the midpoint rule would add
+// half a tab of over-drag on every step. With a block present the boundary
+// moves to the neighbor's near edge: nudging onto the next tab advances the
+// slot and nudging back onto the previous one retreats it, matching the feel
+// of a native in-strip sort.
+function insertionBoundaryForEntry(
+  range: { readonly end: number; readonly start: number },
+  entry: TabStripTabEntry,
+  previewBlockPresent: boolean,
+) {
+  if (!previewBlockPresent) return range.start + (range.end - range.start) / 2
+  if (entry.afterPreviewBlock) return range.start + TAB_STRIP_PREVIEW_EDGE_SLOP_PX
+
+  return range.end - TAB_STRIP_PREVIEW_EDGE_SLOP_PX
 }
 
 function stableTabInsertionIndex({
@@ -377,20 +408,26 @@ function tabStripOrientation(stripElement: HTMLElement) {
   return 'horizontal'
 }
 
-function uniqueTabElements(stripElement: HTMLElement) {
+function tabStripTabEntries(stripElement: HTMLElement, sourceTabId?: SurfaceId | null) {
   const tabIds = new Set<string>()
-  const tabElements: HTMLElement[] = []
+  const tabEntries: TabStripTabEntry[] = []
+  let previewBlockPresent = false
 
   for (const child of stripElement.children) {
     if (!(child instanceof HTMLElement)) continue
+    if (child.dataset.tilingTabPreview) {
+      previewBlockPresent = true
+      continue
+    }
     if (!child.dataset.tilingTabId) continue
+    if (child.dataset.tilingTabId === sourceTabId) continue
     if (tabIds.has(child.dataset.tilingTabId)) continue
 
     tabIds.add(child.dataset.tilingTabId)
-    tabElements.push(child)
+    tabEntries.push({ afterPreviewBlock: previewBlockPresent, element: child })
   }
 
-  return tabElements
+  return { previewBlockPresent, tabEntries }
 }
 
 function tabStripElementAtPoint(source: TilingDragData, point: PointerCoordinates) {
@@ -462,9 +499,13 @@ function pointIsInsideWindowCenter(element: HTMLElement, point: PointerCoordinat
   )
 }
 
-// Body points project straight onto the strip so the insertion slot tracks
-// the pointer 1:1 — one tab width of movement moves the tab one slot. Only
-// overflowing strips get the autoscroll snap toward the hidden content.
+// Body points project straight onto the strip in the middle of the body
+// center so the insertion slot tracks the pointer 1:1 — one tab width of
+// movement moves the tab one slot. Overflowing strips get the autoscroll
+// snap toward the hidden content; otherwise the edge zones compress the
+// strip range left outside the body center, keeping the extreme insertion
+// indices reachable (the body center is inset from the window, so a plain
+// clamp could never reach slots under the first tabs of a wide strip).
 function projectedTabStripPointForWindowBody(
   stripElement: HTMLElement,
   windowElement: HTMLElement,
@@ -483,14 +524,48 @@ function projectedTabStripPointForWindowBody(
   if (tabStripOrientation(stripElement) === 'vertical') {
     return {
       x: stripRect.left + stripRect.width / 2,
-      y: clamp(point.y, stripRect.top + 1, stripRect.bottom - 1),
+      y: bodyCoordinateProjectedToStrip(
+        point.y,
+        { max: centerRect.bottom, min: centerRect.top },
+        { max: stripRect.bottom - 1, min: stripRect.top + 1 },
+      ),
     }
   }
 
   return {
-    x: clamp(point.x, stripRect.left + 1, stripRect.right - 1),
+    x: bodyCoordinateProjectedToStrip(
+      point.x,
+      { max: centerRect.right, min: centerRect.left },
+      { max: stripRect.right - 1, min: stripRect.left + 1 },
+    ),
     y: stripRect.top + stripRect.height / 2,
   }
+}
+
+function bodyCoordinateProjectedToStrip(
+  value: number,
+  center: { readonly max: number; readonly min: number },
+  strip: { readonly max: number; readonly min: number },
+) {
+  const clamped = clamp(value, strip.min, strip.max)
+  const edgeSize = Math.min(TAB_STRIP_BODY_AUTOSCROLL_EDGE_PX, (center.max - center.min) / 3)
+  if (edgeSize <= 0) return clamped
+
+  const startZoneEnd = center.min + edgeSize
+  if (value < startZoneEnd && strip.min < startZoneEnd) {
+    const reach = clamp((value - center.min) / edgeSize, 0, 1)
+
+    return clamp(strip.min + reach * (startZoneEnd - strip.min), strip.min, strip.max)
+  }
+
+  const endZoneStart = center.max - edgeSize
+  if (value > endZoneStart && strip.max > endZoneStart) {
+    const reach = clamp((center.max - value) / edgeSize, 0, 1)
+
+    return clamp(strip.max - reach * (strip.max - endZoneStart), strip.min, strip.max)
+  }
+
+  return clamped
 }
 
 // Snapping the projected point to a strip extreme is only meaningful while

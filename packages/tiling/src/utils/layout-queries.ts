@@ -4,6 +4,7 @@ import type {
   Surface,
   SurfaceId,
   SurfacePlacementHint,
+  WindowId,
   WorkbenchWindow,
   WorkspaceLayout,
   WorkspaceRecipeSlot,
@@ -17,6 +18,37 @@ export function recipeSlotForSurface(
     layout.recipesById[layout.activeRecipeId]?.surfaceSlots[surface.type] ??
     surface.capabilities.defaultRecipeSlot
   )
+}
+
+export function recipeSlotForWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+): WorkspaceRecipeSlot | null {
+  const window = layout.windowsById[windowId]
+  if (!window) return null
+
+  let slot: WorkspaceRecipeSlot | null = null
+  for (const surfaceId of window.surfaceIds) {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface) return null
+
+    const surfaceSlot = recipeSlotForSurface(layout, surface)
+    if (!slot) {
+      slot = surfaceSlot
+      continue
+    }
+    if (slot !== surfaceSlot) return null
+  }
+
+  return slot
+}
+
+export function windowTitle(layout: WorkspaceLayout, windowId: WindowId): string {
+  const window = layout.windowsById[windowId]
+  const activeSurface = window ? layout.surfacesById[window.activeSurfaceId] : null
+  if (activeSurface) return activeSurface.title
+
+  return String(windowId)
 }
 
 export function stickyPlacementForSurface(

@@ -2,7 +2,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/react'
 import { DotsSixVerticalIcon, MinusIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import { ProofTabStrip } from '@/features/dnd-proof/components/proof-tab-strip'
+import { ProofTabStrip } from '@/features/tiling-proof/components/tab-strip'
 import {
   TILING_TAB_TYPE,
   TILING_WINDOW_TYPE,
@@ -10,7 +10,7 @@ import {
   type TilingDragData,
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
-import { proofWindowTitle } from '@/features/dnd-proof/utils/model'
+import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 import type { TilingInsertionPreview } from '@workspace/tiling/utils/tab-preview'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
@@ -118,7 +118,7 @@ export function ProofWindow({
   const collapsed = window.mode === 'collapsed'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
   const insertionPreviewActive = insertionPreview?.targetWindowId === window.id
-  const title = proofWindowTitle(layout, window.id)
+  const title = windowTitle(layout, window.id)
   const activeTitle = activeSurface?.title ?? title
   const collapseToRailLabel = `Collapse ${activeTitle} to rail`
   const collapseToRowLabel = `Collapse ${activeTitle} to row`
@@ -334,7 +334,7 @@ function defaultSurfaceBody(
   windowId: WorkbenchWindow['id'],
 ) {
   return (
-    <div className='bg-background/70 border-border flex h-full min-h-0 flex-col rounded-sm border p-4'>
+    <div className='bg-background border-border flex h-full min-h-0 flex-col rounded-sm border p-4'>
       <div className='min-w-0 text-sm font-medium'>{activeSurface?.title ?? title}</div>
       <div className='text-muted-foreground mt-1 text-xs'>{activeSurface?.type ?? 'empty'}</div>
       <div className='bg-muted/50 border-border text-muted-foreground mt-4 min-h-0 flex-1 rounded-sm border p-3 text-xs'>

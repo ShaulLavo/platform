@@ -1,7 +1,6 @@
 import { cn } from '@workspace/ui/lib/utils'
 
 import {
-  isWorkbenchRailBottomPaneItem,
   isWorkbenchRailSurfaceItem,
   railItemOperation,
   type WorkbenchRailItem,
@@ -28,7 +27,7 @@ export function Rail({
   return (
     <nav
       aria-label='Workbench rail'
-      className='bg-card relative z-10 flex w-11 shrink-0 flex-col items-center gap-1 border-r border-transparent p-1 backdrop-blur-md'
+      className='bg-card backdrop-material relative z-10 flex w-11 shrink-0 flex-col items-center gap-1 border-r border-transparent p-1'
       data-workbench-rail=''
     >
       {items.map((item) => (
@@ -41,7 +40,6 @@ export function Rail({
           )}
           data-rail-state={item.state}
           data-rail-surface-id={railItemSurfaceId(item)}
-          data-rail-pane-id={railItemPaneId(item)}
           key={railItemKey(item)}
           title={railItemLabel(item)}
           type='button'
@@ -73,25 +71,16 @@ function dispatchRailItemOperation(
 }
 
 function railItemLabel(item: WorkbenchRailItem) {
-  if (isWorkbenchRailBottomPaneItem(item)) return bottomPaneRailItemLabel(item)
   if (!isWorkbenchRailSurfaceItem(item)) return item.recipe.title
 
   if (item.state === 'background') return `Restore ${item.surface.title}`
-  if (paneIsVisible(item)) return `Close ${item.surface.title}`
+  if (surfaceIsVisible(item)) return `Close ${item.surface.title}`
   if (item.state === 'running') return `Restore ${item.surface.title}`
 
   return `Open ${item.surface.title}`
 }
 
-function bottomPaneRailItemLabel(item: WorkbenchRailItem) {
-  if (item.state === 'collapsed') return 'Close Terminal'
-  if (paneIsVisible(item)) return 'Close Terminal'
-  if (item.state === 'running' || item.state === 'background') return 'Restore Terminal'
-
-  return 'Open Terminal'
-}
-
-function paneIsVisible(item: WorkbenchRailItem) {
+function surfaceIsVisible(item: WorkbenchRailItem) {
   if (item.state === 'active') return true
   if (item.state === 'collapsed') return true
 
@@ -99,16 +88,9 @@ function paneIsVisible(item: WorkbenchRailItem) {
 }
 
 function railItemKey(item: WorkbenchRailItem) {
-  if (isWorkbenchRailBottomPaneItem(item)) return item.id
   if (isWorkbenchRailSurfaceItem(item)) return item.surface.id
 
   return item.recipe.id
-}
-
-function railItemPaneId(item: WorkbenchRailItem) {
-  if (isWorkbenchRailBottomPaneItem(item)) return item.id
-
-  return undefined
 }
 
 function railItemSurfaceId(item: WorkbenchRailItem) {
@@ -118,14 +100,12 @@ function railItemSurfaceId(item: WorkbenchRailItem) {
 }
 
 function railItemTitle(item: WorkbenchRailItem) {
-  if (isWorkbenchRailBottomPaneItem(item)) return item.title
   if (isWorkbenchRailSurfaceItem(item)) return item.surface.title
 
   return item.recipe.title
 }
 
 function railItemSurfaceType(item: WorkbenchRailItem) {
-  if (isWorkbenchRailBottomPaneItem(item)) return 'terminal'
   if (isWorkbenchRailSurfaceItem(item)) return item.surface.type
 
   return 'placeholder'

@@ -5,7 +5,7 @@ import type { BlobDiffRequest, StatusResult } from './types'
 
 export async function fetchStatus(path: string, signal?: AbortSignal) {
   return observeGitOperation(
-    { action: 'git.status', path },
+    { action: 'git.status', path, signal },
     async () => {
       const response = await getClient().git.status.get({
         query: { path },
@@ -23,7 +23,7 @@ export async function fetchStatus(path: string, signal?: AbortSignal) {
 
 export async function fetchDiff(path: string, staged: boolean, signal?: AbortSignal) {
   return observeGitOperation(
-    { action: 'git.diff', path, staged },
+    { action: 'git.diff', path, signal, staged },
     async () => {
       const response = await getClient().git.diff.get({
         query: { path, staged },
@@ -46,6 +46,7 @@ export async function fetchBlobDiff(query: BlobDiffRequest, signal?: AbortSignal
       hasNewObjectId: Boolean(query.newObjectId),
       hasOldObjectId: Boolean(query.oldObjectId),
       path: query.path,
+      signal,
     },
     async () => {
       const response = await getClient().git.diff.blob.get({
@@ -64,7 +65,7 @@ export async function fetchBlobDiff(query: BlobDiffRequest, signal?: AbortSignal
 
 export async function fetchBranches(path: string, signal?: AbortSignal) {
   return observeGitOperation(
-    { action: 'git.branches', path },
+    { action: 'git.branches', path, signal },
     async () => {
       const response = await getClient().git.branches.get({
         query: { path },
@@ -236,7 +237,11 @@ export async function syncRemote(path: string) {
 }
 
 function observeGitOperation<T>(
-  event: { readonly action: string; readonly [key: string]: unknown },
+  event: {
+    readonly action: string
+    readonly signal?: AbortSignal
+    readonly [key: string]: unknown
+  },
   operation: () => Promise<T>,
   summarize?: (result: T) => Record<string, unknown>,
 ) {

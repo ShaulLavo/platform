@@ -13,6 +13,7 @@ export type ClientLogIngestResult =
     }
 
 const validLogLevels: ReadonlySet<LogLevel> = new Set(['debug', 'error', 'info', 'warn'])
+const maxInstanceIdLength = 64
 const maxTimestampSkewMs = 24 * 60 * 60 * 1_000
 const maxArrayItems = 25
 const maxObjectKeys = 50
@@ -84,22 +85,31 @@ function clientLogEvent(payload: unknown, request: Request): ClientLogEvent | nu
   const config = observabilityConfig()
   const safePayload = clientFields(sanitizeClientPayload(eventPayload))
   const clientService = stringField(eventPayload.service) ?? `${config.service}-web`
+  const url = new URL(request.url)
 
   return {
     level,
     fields: {
       ...safePayload,
-      client: {
-        service: clientService,
-        timestamp,
-      },
+      client: clientEnvelope(clientService, timestamp, url),
       ingest: {
         method: request.method,
-        path: new URL(request.url).pathname,
+        path: url.pathname,
       },
       source: 'client',
     },
   }
+}
+
+// The web app appends `?instance=<id>` to the drain endpoint (see
+// `apps/web/src/lib/instance-id.ts`) so every ingested event can be
+// attributed to the app instance that produced it.
+function clientEnvelope(service: string, timestamp: string, url: URL) {
+  const envelope: Record<string, unknown> = { service, timestamp }
+  const instanceId = stringField(url.searchParams.get('instance'))
+  if (instanceId) envelope.instanceId = instanceId.slice(0, maxInstanceIdLength)
+
+  return envelope
 }
 
 type ClientLogEvent = {

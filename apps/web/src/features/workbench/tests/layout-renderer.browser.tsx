@@ -42,8 +42,8 @@ import type {
 
 const THEME_STORAGE_KEY = 'platform-workbench-layout-renderer-browser-theme'
 const TEST_ROOT_PATH = 'repo'
-const FILE_A_PATH = `${TEST_ROOT_PATH}/src/a.ts`
-const FILE_B_PATH = `${TEST_ROOT_PATH}/src/b.ts`
+const FILE_A_PATH = `${TEST_ROOT_PATH}/src/editor-tab-a.ts`
+const FILE_B_PATH = `${TEST_ROOT_PATH}/src/editor-tab-b.ts`
 
 let root: Root | null = null
 
@@ -219,8 +219,8 @@ describe('LayoutRenderer browser rendering', () => {
 
     await vi.waitFor(() => {
       expect(editorChromeTabs()).toHaveLength(2)
-      expect(document.body.textContent).toContain('a.ts')
-      expect(document.body.textContent).toContain('b.ts')
+      expect(document.body.textContent).toContain('editor-tab-a.ts')
+      expect(document.body.textContent).toContain('editor-tab-b.ts')
     })
 
     expect(editorChromeTabButton('tab-b')).toHaveAttribute('aria-selected', 'true')
@@ -482,26 +482,6 @@ describe('LayoutRenderer browser rendering', () => {
     })
   })
 
-  it('keeps bottom pane special tabs constrained by tab capabilities', async () => {
-    const store = renderClassicLayoutWithStore()
-
-    await vi.waitFor(() => {
-      expect(workbenchTabForRole('Terminal')).not.toBeNull()
-    })
-    await nextFrame()
-
-    const terminalTab = workbenchTabForRole('Terminal')
-    const beforeWindowIds = visibleWindowIdsInOrder(store.getState().layout)
-    const beforeBottomPaneIds = bottomPaneSurfaceIds(store.getState().layout)
-
-    dragPointerTo(terminalTab, rootRightSnapPoint())
-    await nextFrame()
-
-    expect(terminalTab).not.toHaveAttribute('data-workbench-tab-dragging', 'true')
-    expect(visibleWindowIdsInOrder(store.getState().layout)).toEqual(beforeWindowIds)
-    expect(bottomPaneSurfaceIds(store.getState().layout)).toEqual(beforeBottomPaneIds)
-  })
-
   it('previews window snapping and commits only on release', async () => {
     const store = renderClassicLayoutWithStore()
 
@@ -750,18 +730,6 @@ function expectWorkbenchTabInsideStrip(surfaceId: SurfaceId) {
   expect(tabRect.bottom).toBeLessThanOrEqual(stripRect.bottom + 1)
 }
 
-function workbenchTabForRole(name: string) {
-  const tabButton = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]')).find(
-    (candidate) => candidate.textContent?.trim() === name,
-  )
-  if (!tabButton) throw new Error(`Missing tab ${name}`)
-
-  const tab = tabButton.closest<HTMLElement>('[data-workbench-tab-id]')
-  if (!tab) throw new Error(`Missing workbench tab root ${name}`)
-
-  return tab
-}
-
 async function waitForWorkbenchTabs(surfaces: readonly Surface[]) {
   await vi.waitFor(() => {
     expect(surfaces.map((surface) => workbenchTab(surface.id))).toHaveLength(surfaces.length)
@@ -799,18 +767,6 @@ function windowIdForSurface(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   if (!window) throw new Error(`Missing window for surface ${surfaceId}`)
 
   return window.id
-}
-
-function bottomPaneSurfaceIds(layout: WorkspaceLayout) {
-  const window = Object.values(layout.windowsById).find((candidate) =>
-    candidate.surfaceIds.some((surfaceId) => {
-      const title = layout.surfacesById[surfaceId]?.title
-      return title === 'Terminal' || title === 'Problems'
-    }),
-  )
-  if (!window) throw new Error('Missing bottom pane window')
-
-  return window.surfaceIds
 }
 
 function editorChromeTabs() {

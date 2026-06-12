@@ -1,5 +1,3 @@
-import '@singapor/core/style.css'
-
 import type { EditorKeymapLayer } from '@singapor/core'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {

@@ -23,6 +23,7 @@ export type WorkspaceIndexStatus = {
   lastFullScanAtMs?: number
   lastFullScanDurationMs?: number
   lastIncrementalUpdateAtMs?: number
+  pendingCreatedPathCount: number
   readiness: 'cold' | 'building' | 'ready' | 'stale' | 'failed'
   rebuildReason?: string
   scanRoot: string

@@ -25,7 +25,10 @@ const watcherIgnoredChildGlobs = defaultIgnoredNames.flatMap((name) => [
   `**/${name}/**`,
 ])
 
+export type WatchBackend = 'auto' | 'node'
+
 export type WatchOptions = {
+  backend?: WatchBackend
   enabled: boolean
 }
 
@@ -34,6 +37,8 @@ export type WatchStreamOptions = {
 }
 
 export class FileChangeHub {
+  private readonly backend: WatchBackend
+  private readonly knownNativePaths = new Set<string>()
   private readonly listeners = new Set<Listener>()
   private readonly nativeWatchers = new Map<string, WatcherEntry>()
   private readonly paths: WorkspacePaths
@@ -42,6 +47,7 @@ export class FileChangeHub {
   private nextSequence = 1
 
   constructor(paths: WorkspacePaths, options: WatchOptions) {
+    this.backend = options.backend ?? 'auto'
     this.paths = paths
     this.watchEnabled = options.enabled
   }
@@ -116,6 +122,8 @@ export class FileChangeHub {
   }
 
   private async createWatcher(relativeRoot: string): Promise<WatchRelease> {
+    if (this.backend === 'node') return this.createNodeWatcher(relativeRoot)
+
     try {
       return await this.createParcelWatcher(relativeRoot)
     } catch {
@@ -178,15 +186,39 @@ export class FileChangeHub {
   private async handleNodeEvent(relativeRoot: string, nativeEvent: string, filename: string) {
     const relativePath = watchEventPath(relativeRoot, filename)
 
-    const type = await nativeEventType(this.paths, relativePath, nativeEvent)
+    const type = await this.nativeEventType(relativePath, nativeEvent)
     if (isIgnoredPath(relativePath)) {
+      this.recordNativeEventPath(relativePath, type)
       this.emit(nativeWatchEvent(type, relativePath, undefined))
       return
     }
 
     const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
 
+    this.recordNativeEventPath(relativePath, type)
     this.emit(nativeWatchEvent(type, relativePath, entry))
+  }
+
+  private async nativeEventType(
+    relativePath: string,
+    nativeEvent: string,
+  ): Promise<'created' | 'changed' | 'deleted'> {
+    if (nativeEvent === 'change') return 'changed'
+
+    const exists = await pathExists(this.paths, relativePath)
+    if (!exists) return 'deleted'
+    if (this.knownNativePaths.has(relativePath)) return 'changed'
+
+    return 'created'
+  }
+
+  private recordNativeEventPath(relativePath: string, type: 'created' | 'changed' | 'deleted') {
+    if (type === 'deleted') {
+      this.knownNativePaths.delete(relativePath)
+      return
+    }
+
+    this.knownNativePaths.add(relativePath)
   }
 
   private async *createStream(
@@ -385,17 +417,6 @@ function isSubscribedPath(relativePath: string, subscribed: Set<string>) {
   }
 
   return false
-}
-
-async function nativeEventType(
-  paths: WorkspacePaths,
-  relativePath: string,
-  nativeEvent: string,
-): Promise<'created' | 'changed' | 'deleted'> {
-  if (nativeEvent === 'change') return 'changed'
-
-  const exists = await pathExists(paths, relativePath)
-  return exists ? 'created' : 'deleted'
 }
 
 function nativeWatchEvent(

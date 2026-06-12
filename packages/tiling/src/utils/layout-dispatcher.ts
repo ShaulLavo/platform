@@ -34,7 +34,10 @@ export function applyLayoutOperation(
     case 'activateSurface':
       return activateSurface(layout, operation.surfaceId, operation.windowId)
     case 'openSurface':
-      return openSurface(layout, operation.surface, { policyId: operation.policyId })
+      return openSurface(layout, operation.surface, {
+        placement: operation.placement,
+        policyId: operation.policyId,
+      })
     case 'closeSurface':
       return closeSurface(layout, operation.surfaceId, { force: operation.force })
     case 'collapseWindow':

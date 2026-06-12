@@ -1,5 +1,6 @@
 import type {
   WorkspaceSearchMeasurement,
+  WorkspaceSearchIndexMeasurement,
   WorkspaceSearchProviderMeasurement,
   WorkspaceSearchProviderSource,
   WorkspaceSearchStatPathCount,
@@ -23,6 +24,7 @@ export class SearchMeasurementRecorder {
   private readonly activeProviders: MutableProviderMeasurement[] = []
   private readonly statsByPath = new Map<string, StatMeasurement>()
   private firstResultMs: number | undefined
+  private workspaceIndex: WorkspaceSearchIndexMeasurement | undefined
 
   startProvider(source: WorkspaceSearchProviderSource) {
     const provider: MutableProviderMeasurement = {
@@ -80,8 +82,12 @@ export class SearchMeasurementRecorder {
     provider.statDurationMs = roundMs(provider.statDurationMs + durationMs)
   }
 
+  recordWorkspaceIndex(measurement: WorkspaceSearchIndexMeasurement) {
+    this.workspaceIndex = measurement
+  }
+
   snapshot(): WorkspaceSearchMeasurement {
-    return {
+    const snapshot: WorkspaceSearchMeasurement = {
       durationMs: elapsedMs(this.startedAt),
       firstResultMs: this.firstResultMs,
       providerSources: providerSources(this.providers),
@@ -92,6 +98,10 @@ export class SearchMeasurementRecorder {
       statPathCount: this.statsByPath.size,
       topStatPaths: topStatPaths(this.statsByPath),
     }
+
+    if (this.workspaceIndex) snapshot.workspaceIndex = this.workspaceIndex
+
+    return snapshot
   }
 
   private recordResult() {

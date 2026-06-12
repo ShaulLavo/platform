@@ -6,14 +6,8 @@ import { cn } from '@workspace/ui/lib/utils'
 import { SurfaceHost } from '@/features/workbench/components/surface-host'
 import { TabStrip } from '@/features/workbench/components/tab-strip'
 import { WindowControlButton } from '@/features/workbench/components/window-control-button'
-import {
-  bottomPaneCloseWindowOperation,
-  bottomPaneSurfaceVisibilityItems,
-  isBottomPaneWindow,
-  type BottomPaneSurfaceVisibilityItem,
-} from '@workspace/tiling/utils/bottom-pane-model'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
-import { surfacesAreEqual } from '@/features/workbench/utils/surface-equality'
+import { surfaceEqual } from '@/features/workbench/utils/surface-equality'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
   LayoutOperation,
@@ -34,8 +28,6 @@ import {
 type WindowFrameState = {
   readonly active: boolean
   readonly activeSurface: Surface | null
-  readonly bottomPane: boolean
-  readonly bottomPaneSurfaceVisibilityItems: readonly BottomPaneSurfaceVisibilityItem[]
   readonly surfaces: readonly Surface[]
   readonly window: WorkbenchWindow
 }
@@ -76,12 +68,11 @@ export const WindowFrame = memo(function WindowFrame({
   })
   if (!state) return null
 
-  const { active, activeSurface, bottomPane, bottomPaneSurfaceVisibilityItems, surfaces, window } =
-    state
+  const { active, activeSurface, surfaces, window } = state
   const collapsed = window.mode === 'collapsed'
   const fullSurface = window.mode === 'fullscreen' || window.mode === 'maximized'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
-  const windowCanClose = bottomPane || Boolean(activeSurface?.capabilities.canClose)
+  const windowCanClose = Boolean(activeSurface?.capabilities.canClose)
   const collapseLabel = collapsed
     ? `Expand ${activeSurface?.title ?? 'window'}`
     : `Collapse ${activeSurface?.title ?? 'window'}`
@@ -115,16 +106,15 @@ export const WindowFrame = memo(function WindowFrame({
   }
 
   function closeWindow() {
-    const operation = closeWindowOperation({ activeSurface, bottomPane, window })
-    if (!operation) return
+    if (!activeSurface) return
 
-    onDispatch(operation)
+    onDispatch({ surfaceId: activeSurface.id, type: 'closeSurface' })
   }
 
   return (
     <section
       aria-label={windowLabel({ activeSurface, window })}
-      className='bg-card absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-transparent backdrop-blur-md transition-colors'
+      className='bg-card backdrop-material absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-transparent transition-colors'
       data-active={active ? 'true' : 'false'}
       data-window-mode={window.mode}
       data-window-id={window.id}
@@ -141,12 +131,7 @@ export const WindowFrame = memo(function WindowFrame({
         data-workbench-window-drag-handle=''
         ref={setWindowHandle}
       >
-        <TabStrip
-          bottomPaneSurfaceVisibilityItems={bottomPaneSurfaceVisibilityItems}
-          surfaces={surfaces}
-          window={window}
-          onDispatch={onDispatch}
-        />
+        <TabStrip surfaces={surfaces} window={window} onDispatch={onDispatch} />
         <div
           className='ml-1 flex h-8 shrink-0 items-center gap-0.5 pb-1 pl-1'
           data-workbench-drag-blocker=''
@@ -226,15 +211,10 @@ function selectWindowFrameState(
 ): WindowFrameState | null {
   const window = layout.windowsById[windowId]
   if (!window) return null
-  const bottomPane = isBottomPaneWindow(layout, window)
 
   return {
     active: layout.activeWindowId === windowId,
     activeSurface: layout.surfacesById[window.activeSurfaceId] ?? null,
-    bottomPane,
-    bottomPaneSurfaceVisibilityItems: bottomPane
-      ? bottomPaneSurfaceVisibilityItems(layout, windowId)
-      : [],
     surfaces: window.surfaceIds
       .map((surfaceId) => layout.surfacesById[surfaceId])
       .filter(isSurface),
@@ -246,41 +226,10 @@ function windowFrameStateEqual(left: WindowFrameState | null, right: WindowFrame
   if (left === right) return true
   if (!left || !right) return false
   if (left.active !== right.active) return false
-  if (!surfacesAreEqual(left.activeSurface, right.activeSurface)) return false
-  if (left.bottomPane !== right.bottomPane) return false
-  if (
-    !bottomPaneSurfaceVisibilityItemsEqual(
-      left.bottomPaneSurfaceVisibilityItems,
-      right.bottomPaneSurfaceVisibilityItems,
-    )
-  ) {
-    return false
-  }
+  if (!surfaceEqual(left.activeSurface, right.activeSurface)) return false
   if (!windowsEqual(left.window, right.window)) return false
 
   return surfacesEqual(left.surfaces, right.surfaces)
-}
-
-function bottomPaneSurfaceVisibilityItemsEqual(
-  left: readonly BottomPaneSurfaceVisibilityItem[],
-  right: readonly BottomPaneSurfaceVisibilityItem[],
-) {
-  if (left === right) return true
-  if (left.length !== right.length) return false
-
-  return left.every((item, index) => bottomPaneSurfaceVisibilityItemEqual(item, right[index]))
-}
-
-function bottomPaneSurfaceVisibilityItemEqual(
-  left: BottomPaneSurfaceVisibilityItem,
-  right: BottomPaneSurfaceVisibilityItem | undefined,
-) {
-  if (!right) return false
-  if (left.checked !== right.checked) return false
-  if (left.disabled !== right.disabled) return false
-  if (left.exists !== right.exists) return false
-
-  return surfacesAreEqual(left.surface, right.surface)
 }
 
 function windowsEqual(left: WorkbenchWindow, right: WorkbenchWindow) {
@@ -297,7 +246,7 @@ function surfacesEqual(left: readonly Surface[], right: readonly Surface[]) {
   if (left === right) return true
   if (left.length !== right.length) return false
 
-  return left.every((surface, index) => surfacesAreEqual(surface, right[index] ?? null))
+  return left.every((surface, index) => surfaceEqual(surface, right[index] ?? null))
 }
 
 function surfaceIdsEqual(left: readonly string[], right: readonly string[]) {
@@ -317,21 +266,6 @@ function selectWindowOperation(window: WorkbenchWindow): LayoutOperation {
     type: 'activateSurface',
     windowId: window.id,
   }
-}
-
-function closeWindowOperation({
-  activeSurface,
-  bottomPane,
-  window,
-}: {
-  readonly activeSurface: Surface | null
-  readonly bottomPane: boolean
-  readonly window: WorkbenchWindow
-}): LayoutOperation | null {
-  if (bottomPane) return bottomPaneCloseWindowOperation(window.id)
-  if (!activeSurface) return null
-
-  return { surfaceId: activeSurface.id, type: 'closeSurface' }
 }
 
 function focusCameFromToolSurface(event: FocusEvent<HTMLElement>) {

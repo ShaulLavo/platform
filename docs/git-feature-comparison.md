@@ -1,11 +1,11 @@
 > [!IMPORTANT]
-> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Re-baseline parity status; fix dead `/Desktop/Editors/{zed,vscode}` paths (now under `references/`).
+> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Re-baseline parity status. (Reference paths repaired 2026-06-12.)
 
 # Git Feature Comparison
 
-This compares the current Platform Git implementation with Zed at
-`/Users/shaul/Desktop/Editors/zed` and VS Code at
-`/Users/shaul/Desktop/Editors/vscode`.
+This compares the current Platform Git implementation with Zed (checkout not
+vendored — see upstream https://github.com/zed-industries/zed) and VS Code at
+the vendored checkout `references/vscode`.
 
 The main target is feature parity with Zed. VS Code is treated as a second pass
 for useful extras once the Zed-level workflow is covered.

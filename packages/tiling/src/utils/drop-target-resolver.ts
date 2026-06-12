@@ -146,7 +146,7 @@ function resolvedSnapCandidate(
   stickyCandidate: TilingDropCandidate | null,
 ) {
   const candidatesAtPoint = input.candidates.filter((candidate) =>
-    pointInRect(candidate.hitRect, input.point),
+    candidateContainsPoint(candidate, input.point),
   )
   const topCandidate = bestCandidate(candidatesAtPoint, input.point)
   if (!stickyCandidate) return topCandidate
@@ -161,9 +161,19 @@ function previousStickyCandidate({ candidates, point, previousTarget }: ResolveT
 
   const candidate = candidates.find((value) => value.id === previousTarget.candidateId)
   if (!candidate) return null
-  if (!pointInRect(inflateRect(candidate.hitRect, STICKY_TARGET_INFLATE_PX), point)) return null
+  if (!candidateContainsInflatedPoint(candidate, point)) return null
 
   return candidate
+}
+
+function candidateContainsPoint(candidate: TilingDropCandidate, point: PointerCoordinates) {
+  return candidate.hitRects.some((rect) => pointInRect(rect, point))
+}
+
+function candidateContainsInflatedPoint(candidate: TilingDropCandidate, point: PointerCoordinates) {
+  return candidate.hitRects.some((rect) =>
+    pointInRect(inflateRect(rect, STICKY_TARGET_INFLATE_PX), point),
+  )
 }
 
 function bestCandidate(candidates: readonly TilingDropCandidate[], point: PointerCoordinates) {
@@ -177,12 +187,19 @@ function compareCandidates(
 ) {
   if (left.priority !== right.priority) return right.priority - left.priority
 
-  const areaDelta = rectArea(left.hitRect) - rectArea(right.hitRect)
+  const areaDelta = candidateHitArea(left) - candidateHitArea(right)
   if (areaDelta !== 0) return areaDelta
 
-  const distanceDelta =
-    rectCenterDistance(left.hitRect, point) - rectCenterDistance(right.hitRect, point)
+  const distanceDelta = candidateCenterDistance(left, point) - candidateCenterDistance(right, point)
   if (distanceDelta !== 0) return distanceDelta
 
   return left.id.localeCompare(right.id)
+}
+
+function candidateHitArea(candidate: TilingDropCandidate) {
+  return candidate.hitRects.reduce((sum, rect) => sum + rectArea(rect), 0)
+}
+
+function candidateCenterDistance(candidate: TilingDropCandidate, point: PointerCoordinates) {
+  return Math.min(...candidate.hitRects.map((rect) => rectCenterDistance(rect, point)))
 }

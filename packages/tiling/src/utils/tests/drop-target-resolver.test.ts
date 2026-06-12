@@ -6,13 +6,12 @@ import {
   type ResolvedTilingTarget,
   type TilingIntentMode,
 } from '@workspace/tiling/utils/drop-target-resolver'
-import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
 import {
   deriveLayoutGeometry,
   type LayoutRect,
   type SnapDestinationLayoutRect,
 } from '@workspace/tiling/utils/layout-geometry'
-import { overlayId, terminalSurfaceId } from '@workspace/tiling/utils/layout-ids'
+import { overlayId } from '@workspace/tiling/utils/layout-ids'
 import type {
   LayoutEdge,
   SnapDestination,
@@ -30,7 +29,7 @@ const TAB_SOURCE: TilingDragData = { kind: 'tab', surfaceId: surfaceId('surface-
 const WINDOW_SOURCE: TilingDragData = { kind: 'window', windowId: windowId('window-a') }
 
 describe('tiling drop target resolver', () => {
-  it('builds root snap candidates with full previews and thin outer hit rails', () => {
+  it('builds root snap candidates as thin hit rails straddling the root edges', () => {
     const layout = createMultiWindowTestLayout()
     const geometry = deriveLayoutGeometry(layout, ROOT_RECT, {
       gapPx: 8,
@@ -51,23 +50,16 @@ describe('tiling drop target resolver', () => {
     const rootRight = rootCandidate(candidates, 'right')
     const rootBottom = rootCandidate(candidates, 'bottom')
 
-    expect(rootTop.previewRect.y).toBe(ROOT_RECT.y)
-    expect(rootTop.previewRect.x).toBe(ROOT_RECT.x)
-    expect(rootTop.previewRect.width).toBe(ROOT_RECT.width)
-    expect(rootLeft.previewRect.y).toBe(ROOT_RECT.y)
-    expect(rootLeft.previewRect.height).toBe(ROOT_RECT.height)
-    expect(rootRight.previewRect.y).toBe(ROOT_RECT.y)
-    expect(rootRight.previewRect.height).toBe(ROOT_RECT.height)
-    expect(rootBottom.previewRect.x).toBe(ROOT_RECT.x)
-    expect(rootBottom.previewRect.width).toBe(ROOT_RECT.width)
-    expect(rootTop.hitRect.y).toBeLessThan(ROOT_RECT.y)
-    expect(rootTop.hitRect.height).toBeLessThan(rootTop.previewRect.height)
-    expect(rootLeft.hitRect.x).toBeLessThan(ROOT_RECT.x)
-    expect(rootLeft.hitRect.width).toBeLessThan(rootLeft.previewRect.width)
-    expect(rootRight.hitRect.x).toBeGreaterThan(ROOT_RECT.x)
-    expect(rootRight.hitRect.width).toBeLessThan(rootRight.previewRect.width)
-    expect(rootBottom.hitRect.y).toBeGreaterThan(ROOT_RECT.y)
-    expect(rootBottom.hitRect.height).toBeLessThan(rootBottom.previewRect.height)
+    expect(soleHitRect(rootTop).y).toBeLessThan(ROOT_RECT.y)
+    expect(soleHitRect(rootTop).height).toBeLessThan(ROOT_RECT.height / 4)
+    expect(soleHitRect(rootTop).width).toBeGreaterThan(ROOT_RECT.width)
+    expect(soleHitRect(rootLeft).x).toBeLessThan(ROOT_RECT.x)
+    expect(soleHitRect(rootLeft).width).toBeLessThan(ROOT_RECT.width / 4)
+    expect(soleHitRect(rootLeft).height).toBeGreaterThan(ROOT_RECT.height)
+    expect(soleHitRect(rootRight).x).toBeGreaterThan(ROOT_RECT.x)
+    expect(soleHitRect(rootRight).width).toBeLessThan(ROOT_RECT.width / 4)
+    expect(soleHitRect(rootBottom).y).toBeGreaterThan(ROOT_RECT.y)
+    expect(soleHitRect(rootBottom).height).toBeLessThan(ROOT_RECT.height / 4)
   })
 
   it('adds source return and source-vacancy root candidates for window drags', () => {
@@ -86,33 +78,10 @@ describe('tiling drop target resolver', () => {
     expect(sourceReturn.target).toEqual({ kind: 'window', windowId: WINDOW_SOURCE.windowId })
     expect(rootRight.target).toEqual(snapTarget({ edge: 'right', kind: 'root-edge' }))
     expect(rootBottom.target).toEqual(snapTarget({ edge: 'bottom', kind: 'root-edge' }))
-    expect(rootRight.hitRect.x).toBeGreaterThan(sourceReturn.hitRect.x)
-    expect(rootBottom.hitRect.y).toBeGreaterThan(sourceReturn.hitRect.y)
-    expect(rootRight.hitRect.width).toBeLessThan(sourceWindowRect.width)
-    expect(rootBottom.hitRect.height).toBeLessThan(sourceWindowRect.height)
-  })
-
-  it('adds only the matching recipe slot snap candidate for active drags', () => {
-    const layout = createClassicFirstRunWorkspaceLayout()
-    const geometry = deriveLayoutGeometry(layout, ROOT_RECT, {
-      minSnapDestinationPx: 44,
-      snapEdgeRatio: 0.18,
-    })
-    const candidates = tilingSnapDestinations({
-      activeDrag: { kind: 'tab', surfaceId: terminalSurfaceId('terminal-1') },
-      layout,
-      rootRect: ROOT_RECT,
-      snapDestinationRects: geometry.snapDestinationRects,
-      sourceWindowId: null,
-      sourceWindowRect: null,
-    })
-    const recipeCandidates = recipeSlotCandidates(candidates)
-    const bottomRoot = rootCandidate(candidates, 'bottom')
-
-    expect(recipeCandidates.map((candidate) => candidate.target)).toEqual([
-      snapTarget({ kind: 'recipe-slot', slot: 'bottom' }),
-    ])
-    expect(recipeCandidates[0]?.priority).toBeGreaterThan(bottomRoot.priority)
+    expect(soleHitRect(rootRight).x).toBeGreaterThan(soleHitRect(sourceReturn).x)
+    expect(soleHitRect(rootBottom).y).toBeGreaterThan(soleHitRect(sourceReturn).y)
+    expect(soleHitRect(rootRight).width).toBeLessThan(sourceWindowRect.width)
+    expect(soleHitRect(rootBottom).height).toBeLessThan(sourceWindowRect.height)
   })
 
   it('resolves the source return core back to the dragged window', () => {
@@ -153,6 +122,31 @@ describe('tiling drop target resolver', () => {
     })
 
     expect(result?.target).toEqual(snapTarget({ edge: 'right', kind: 'root-edge' }))
+  })
+
+  it('resolves the source-vacancy corridor for lone-tab drags to the root edge', () => {
+    const sourceWindowRect: LayoutRect = { height: 300, width: 1000, x: 0, y: 0 }
+    const candidates = tilingSnapDestinations({
+      activeDrag: TAB_SOURCE,
+      rootRect: ROOT_RECT,
+      snapDestinationRects: rootSnapDestinationRects(),
+      sourceWindowId: windowId('window-a'),
+      sourceWindowRect,
+    })
+    // Below the thin root-top rail but inside the corridor over the window
+    // the tab vacates.
+    const result = resolveTarget({
+      candidates,
+      mode: 'tab-detached',
+      point: { x: 500, y: 60 },
+      source: TAB_SOURCE,
+      tabTarget: null,
+    })
+
+    expect(sourceVacancyCandidate(candidates, 'top').target).toEqual(
+      snapTarget({ edge: 'top', kind: 'root-edge' }),
+    )
+    expect(result?.target).toEqual(snapTarget({ edge: 'top', kind: 'root-edge' }))
   })
 
   it('clamps window drags outside the root to the nearest root edge', () => {
@@ -509,6 +503,12 @@ function rootCandidate(candidates: readonly TilingDropCandidate[], edge: LayoutE
   return value as TilingDropCandidate
 }
 
+function soleHitRect(candidate: TilingDropCandidate): LayoutRect {
+  expect(candidate.hitRects).toHaveLength(1)
+
+  return candidate.hitRects[0] as LayoutRect
+}
+
 function sourceReturnCandidate(candidates: readonly TilingDropCandidate[]) {
   const value = candidates.find((candidate) => candidate.kind === 'source-return')
   expect(value).toBeDefined()
@@ -523,10 +523,6 @@ function sourceVacancyCandidate(candidates: readonly TilingDropCandidate[], edge
   expect(value).toBeDefined()
 
   return value as TilingDropCandidate
-}
-
-function recipeSlotCandidates(candidates: readonly TilingDropCandidate[]) {
-  return candidates.filter((candidate) => candidate.kind === 'recipe-slot')
 }
 
 function rootCandidateAtPoint() {
@@ -550,11 +546,10 @@ function candidate({
 }): TilingDropCandidate {
   return {
     edge: 'left',
-    hitRect: rect,
+    hitRects: [rect],
     id,
     kind: 'root-edge',
     label: id,
-    previewRect: rect,
     priority,
     target,
   }

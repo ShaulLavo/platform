@@ -138,6 +138,7 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
     case 'openSurface':
       return {
         ...base,
+        placementKind: operation.placement?.kind,
         policyId: operation.policyId,
         surfaceId: compactLayoutId(operation.surface.id),
         surfaceTitle: operation.surface.title,

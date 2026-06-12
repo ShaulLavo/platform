@@ -11,11 +11,12 @@ import {
 import type { WorkspaceSearchQueryOptions } from '@/features/search/search-buffer-query'
 import { workspaceSearchQuery } from '@/features/search/search-buffer-query'
 import { useSearchBufferStoreApi } from '@/features/search/search-buffer-state'
+import { useDebouncedValue } from '@tanstack/react-pacer/debouncer'
+
 import {
   clientOnlyWorkspaceSearchProvider,
   runSearch,
 } from '@/features/search/search-buffer-runner'
-import { useDebouncedValue } from '@/features/search/use-debounced-value'
 
 const DIRTY_BUFFER_DEBOUNCE_MS = 220
 
@@ -38,7 +39,9 @@ export function useRunDirtySearchBufferOverlay(
         )
       : '',
   )
-  const debouncedDirtyRevisionKey = useDebouncedValue(dirtyRevisionKey, DIRTY_BUFFER_DEBOUNCE_MS)
+  const [debouncedDirtyRevisionKey] = useDebouncedValue(dirtyRevisionKey, {
+    wait: DIRTY_BUFFER_DEBOUNCE_MS,
+  })
 
   useEffect(() => {
     if (!query) return

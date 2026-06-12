@@ -8,13 +8,10 @@ import {
   surfaceCanUseDestination,
   windowCanTabIntoWindow,
 } from '@workspace/tiling/utils/layout-capabilities'
-import { recipeSlotForSurface } from '@workspace/tiling/utils/layout-queries'
 import type {
   SnapDestination,
-  SurfaceId,
   WindowId,
   WorkspaceLayout,
-  WorkspaceRecipeSlot,
 } from '@workspace/tiling/utils/layout-types'
 
 export function dragSourceCanUseDropTarget(
@@ -47,28 +44,6 @@ export function dragSourceCanUseDestination(
   return windowCanUseDestination(layout, source.windowId, destination)
 }
 
-export function recipeFallbackTargetForDragSource(
-  layout: WorkspaceLayout,
-  source: TilingDragData,
-): TilingDropData | null {
-  const slot = recipeSlotForDragSource(layout, source)
-  if (!slot) return null
-
-  const destination = { kind: 'recipe-slot', slot } as const
-  if (!dragSourceCanUseDestination(layout, source, destination)) return null
-
-  return { destination, kind: 'snap-destination' }
-}
-
-export function recipeSlotForDragSource(
-  layout: WorkspaceLayout,
-  source: TilingDragData,
-): WorkspaceRecipeSlot | null {
-  if (source.kind === 'tab') return recipeSlotForSurfaceId(layout, source.surfaceId)
-
-  return recipeSlotForWindow(layout, source.windowId)
-}
-
 function dragSourceCanTabIntoWindow(
   layout: WorkspaceLayout,
   source: TilingDragData,
@@ -96,29 +71,4 @@ function windowCanUseDestination(
   return window.surfaceIds.every((surfaceId) =>
     surfaceCanUseDestination(layout, surfaceId, destination),
   )
-}
-
-function recipeSlotForWindow(layout: WorkspaceLayout, windowId: WindowId) {
-  const window = layout.windowsById[windowId]
-  if (!window) return null
-
-  let slot: WorkspaceRecipeSlot | null = null
-  for (const surfaceId of window.surfaceIds) {
-    const surfaceSlot = recipeSlotForSurfaceId(layout, surfaceId)
-    if (!surfaceSlot) return null
-    if (!slot) {
-      slot = surfaceSlot
-      continue
-    }
-    if (slot !== surfaceSlot) return null
-  }
-
-  return slot
-}
-
-function recipeSlotForSurfaceId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
-  const surface = layout.surfacesById[surfaceId]
-  if (!surface) return null
-
-  return recipeSlotForSurface(layout, surface)
 }

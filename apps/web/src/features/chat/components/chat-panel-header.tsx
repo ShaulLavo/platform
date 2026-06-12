@@ -31,7 +31,7 @@ export function ChatPanelHeader({
   const activeThread = threads.find((thread) => thread.id === activeThreadId)
 
   return (
-    <header className='border-border/70 bg-background/80 flex h-12 shrink-0 items-center justify-between border-b px-3 backdrop-blur'>
+    <header className='border-border/70 bg-background backdrop-material flex h-12 shrink-0 items-center justify-between border-b px-3'>
       <div className='min-w-0 pr-3'>
         <div className='truncate text-sm font-semibold'>Chat</div>
         {activeThread ? (
@@ -73,7 +73,7 @@ export function ChatPanelHeader({
           >
             <ClockCounterClockwiseIcon className='size-4' />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align='end' className='bg-popover/98 w-72 rounded-md p-1'>
+          <DropdownMenuContent align='end' className='w-72 rounded-md p-1'>
             {threads.map((thread) => (
               <DropdownMenuItem
                 className={cn(

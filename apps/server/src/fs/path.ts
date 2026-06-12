@@ -7,6 +7,7 @@ export const defaultIgnoredNames = [
   'node_modules',
   '.git',
   '.evlog',
+  '.playwright-mcp',
   'logs',
   'dist',
   'build',

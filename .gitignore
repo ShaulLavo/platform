@@ -40,3 +40,4 @@ references/
 
 # jscpd duplication report
 jscpd-report/
+.bench-fixtures/

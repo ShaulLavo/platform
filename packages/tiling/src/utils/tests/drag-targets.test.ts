@@ -8,10 +8,17 @@ import {
   rawWindowTargetForDrag,
   resolveIntentModeAndUpdateDetach,
   sourceReturnTargetForDragEnd,
+  tabTargetForDragSource,
   tabTargetFromHit,
   tabTargetFromTarget,
 } from '@workspace/tiling/utils/drag-targets'
+import {
+  CLASSIC_EDITOR_WINDOW_ID,
+  createClassicFirstRunWorkspaceLayout,
+  createTerminalSurface,
+} from '@workspace/tiling/utils/layout-builders'
 import { fileEditorSurfaceId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
+import { openSurface } from '@workspace/tiling/utils/layout-operations'
 
 const sourceSurfaceId = fileEditorSurfaceId('/repo/src/source.ts')
 const targetSurfaceId = fileEditorSurfaceId('/repo/src/target.ts')
@@ -102,6 +109,31 @@ describe('tiling drag targets', () => {
     expect(sourceReturnTargetForDragEnd({ kind: 'tab', surfaceId: sourceSurfaceId }, target)).toBe(
       null,
     )
+  })
+
+  it('nulls capability-blocked tab targets so lower-priority snaps can resolve', () => {
+    const terminal = createTerminalSurface({ sessionId: 'session-1' })
+    const layout = openSurface(
+      createClassicFirstRunWorkspaceLayout({ editorFile: { path: '/repo/src/app.tsx' } }),
+      terminal,
+    )
+    const terminalSource = { kind: 'tab', surfaceId: terminal.id } as const
+    const editorStripTarget = tabTargetFromTarget({
+      index: 0,
+      kind: 'tab-strip',
+      windowId: CLASSIC_EDITOR_WINDOW_ID,
+    })
+    const missingWindowTarget = tabTargetFromTarget({
+      index: 0,
+      kind: 'tab-strip',
+      windowId: workbenchWindowId('drag:missing'),
+    })
+
+    expect(tabTargetForDragSource(layout, terminalSource, editorStripTarget)).toBe(
+      editorStripTarget,
+    )
+    expect(tabTargetForDragSource(layout, terminalSource, missingWindowTarget)).toBeNull()
+    expect(tabTargetForDragSource(layout, terminalSource, null)).toBeNull()
   })
 
   it('reads previous tab indices only when the previous target belongs to the window', () => {

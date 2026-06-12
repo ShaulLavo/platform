@@ -1,8 +1,16 @@
 import { createTilingInvariantError } from '@workspace/tiling/utils/structured-errors'
+import {
+  balancedColumnCount,
+  partitionIntoBalancedColumns,
+  windowColumnSummary,
+  windowIdsInReadingOrder,
+  type WindowColumnSummary,
+} from '@workspace/tiling/utils/balanced-columns'
 import { balancedSizes } from '@workspace/tiling/utils/geometry-primitives'
 import { layoutNodeId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
 import {
   recipeSlotForSurface,
+  recipeSlotForWindow,
   stickyPlacementForSurface,
 } from '@workspace/tiling/utils/layout-queries'
 import {
@@ -39,6 +47,13 @@ const RECIPE_LEFT_TOOL_SURFACE_TYPES = [
   'chat',
   'logs',
 ] as const satisfies readonly SurfaceType[]
+export const DEFAULT_BOTTOM_PANE_SHARE = 0.26
+const TOOL_PANE_COLUMN_SHARE = 0.24
+const MIN_TOOL_PANE_SHARE = 0.15
+const MAX_TOOL_PANE_SHARE = 0.55
+// Above this right edge the tool pane previously had no main content beside
+// it, so its old width says nothing about a usable left/main ratio.
+const FULL_BLEED_TOOL_PANE_EDGE = 0.95
 const EMPTY_MAIN_PLACEHOLDER_CONTEXT_KEY = 'empty-editor'
 const EMPTY_MAIN_PLACEHOLDER_WINDOW_ID = workbenchWindowId('empty-editor')
 const EMPTY_MAIN_PLACEHOLDER_NODE_ID = layoutNodeId('empty-editor')
@@ -53,7 +68,7 @@ type RecipeNodeAllocator = {
   readonly nodeId: (key: string) => LayoutNodeId
 }
 
-type RecipeLayoutContext = {
+export type RecipeLayoutContext = {
   readonly firstSurfaceByType: ReadonlyMap<SurfaceType, Surface>
   readonly stickyPlacementValidBySurfaceId: Map<SurfaceId, boolean>
   readonly visibleWindowIdBySurfaceId: ReadonlyMap<SurfaceId, WindowId>
@@ -95,11 +110,22 @@ export function placementCanRestoreSurface(
 export function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): WorkspaceLayout {
   const layoutWithMainPlaceholder = layoutWithEmptyMainPlaceholder(layout)
   const context = recipeLayoutContext(layoutWithMainPlaceholder)
-  const toolWindowIds = managedLeftToolWindowIds(layoutWithMainPlaceholder, context)
+  // Arrival order and the previous pane footprint come from the pre-placeholder
+  // tree: the placeholder bootstrap split halves every tool rect.
+  const toolWindowIds = windowIdsInReadingOrder(
+    layout,
+    managedLeftToolWindowIds(layoutWithMainPlaceholder, context),
+  )
   const bottomWindowId = visibleRecipeBottomWindowId(layoutWithMainPlaceholder, context)
   if (toolWindowIds.length === 0 && !bottomWindowId) return layout
 
-  const tree = recipePackedTree(layoutWithMainPlaceholder, toolWindowIds, bottomWindowId)
+  const toolPaneSummary = windowColumnSummary(layout, toolWindowIds)
+  const tree = recipePackedTree(
+    layoutWithMainPlaceholder,
+    toolWindowIds,
+    bottomWindowId,
+    toolPaneSummary,
+  )
   if (!tree) return layout
 
   return normalizeWorkspaceLayout({
@@ -107,6 +133,97 @@ export function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): Workspac
     nodesById: tree.nodesById,
     rootNodeId: tree.nodeId,
   })
+}
+
+// Pane sizes are user intent, recorded only when a resize drag touches a
+// pane boundary split. Toggling a pane that was never resized re-opens it at
+// the default share.
+export function recordUserPaneShares(
+  layout: WorkspaceLayout,
+  splitId: LayoutNodeId,
+): WorkspaceLayout {
+  const split = layout.nodesById[splitId]
+  if (split?.kind !== 'split') return layout
+
+  return recordToolPaneResize(recordBottomPaneResize(layout, split), split)
+}
+
+function recordBottomPaneResize(layout: WorkspaceLayout, split: LayoutSplitNode): WorkspaceLayout {
+  if (split.axis !== 'vertical') return layout
+
+  const windowId = visibleRecipeBottomWindowId(layout)
+  if (!windowId) return layout
+
+  const nodeId = findNodeIdForWindow(layout, windowId)
+  if (!nodeId) return layout
+
+  const childIndex = split.childIds.indexOf(nodeId)
+  if (childIndex < 0) return layout
+
+  const share = repairSplitSizes(split.sizes, split.childIds.length)[childIndex]
+  if (share === undefined || share === layout.bottomPaneShare) return layout
+
+  return { ...layout, bottomPaneShare: share }
+}
+
+// The tool pane boundary is the horizontal split whose leading children hold
+// only left-tool windows while the rest hold something else. Same-axis
+// flattening can spread the pane's columns directly into that split, so the
+// pane share is the sum of the leading all-tool children.
+function recordToolPaneResize(layout: WorkspaceLayout, split: LayoutSplitNode): WorkspaceLayout {
+  if (split.axis !== 'horizontal') return layout
+
+  const columnCount = leadingToolChildCount(layout, split)
+  if (columnCount === 0) return layout
+  if (columnCount === split.childIds.length) return layout
+
+  const sizes = repairSplitSizes(split.sizes, split.childIds.length)
+  const share = sizes.slice(0, columnCount).reduce((sum, size) => sum + size, 0)
+  if (share === layout.leftToolPane?.share) return layout
+
+  return { ...layout, leftToolPane: { columnCount, share } }
+}
+
+function leadingToolChildCount(layout: WorkspaceLayout, split: LayoutSplitNode) {
+  let count = 0
+
+  for (const childId of split.childIds) {
+    if (!subtreeHoldsOnlyToolWindows(layout, childId)) break
+
+    count += 1
+  }
+
+  return count
+}
+
+function subtreeHoldsOnlyToolWindows(layout: WorkspaceLayout, nodeId: LayoutNodeId) {
+  const windowIds = subtreeWindowIds(layout, nodeId)
+  if (windowIds.length === 0) return false
+
+  return windowIds.every((windowId) => recipeSlotForWindow(layout, windowId) === 'left-tool-pane')
+}
+
+function subtreeWindowIds(layout: WorkspaceLayout, nodeId: LayoutNodeId): readonly WindowId[] {
+  const windowIds: WindowId[] = []
+  const pending = [nodeId]
+  const seen = new Set<LayoutNodeId>()
+
+  while (pending.length > 0) {
+    const currentId = pending.pop()
+    if (!currentId || seen.has(currentId)) continue
+
+    seen.add(currentId)
+    const node = layout.nodesById[currentId]
+    if (!node) continue
+    if (node.kind === 'window') {
+      windowIds.push(node.windowId)
+      continue
+    }
+
+    pending.push(...node.childIds)
+  }
+
+  return windowIds
 }
 
 function layoutWithEmptyMainPlaceholder(layout: WorkspaceLayout): WorkspaceLayout {
@@ -176,7 +293,15 @@ export function isToolPaneRecipeSlot(slot: WorkspaceRecipeSlot) {
   return slot === 'left-tool-pane'
 }
 
+export function isRecipePackedSlot(slot: WorkspaceRecipeSlot) {
+  if (isToolPaneRecipeSlot(slot)) return true
+
+  return slot === 'bottom'
+}
+
 export function visibleWindowIdForRecipeSlot(layout: WorkspaceLayout, slot: WorkspaceRecipeSlot) {
+  if (slot === 'bottom') return visibleRecipeBottomWindowId(layout)
+
   return visibleWindowIdForRecipeSlotWithContext(layout, slot)
 }
 
@@ -187,7 +312,7 @@ export function visibleWindowIdsForRecipeSlots(
   return visibleWindowIdsForRecipeSlotsWithContext(layout, slots)
 }
 
-export function windowContainsRecipeSlot(
+function windowContainsRecipeSlot(
   layout: WorkspaceLayout,
   window: WorkbenchWindow | undefined,
   slot: WorkspaceRecipeSlot,
@@ -296,7 +421,7 @@ function appendManagedLeftToolWindowId(
   windowIds.push(windowId)
 }
 
-function surfaceHasValidStickyPlacement(
+export function surfaceHasValidStickyPlacement(
   layout: WorkspaceLayout,
   surfaceId: SurfaceId,
   context?: RecipeLayoutContext,
@@ -370,19 +495,27 @@ function recipePackedTree(
   layout: WorkspaceLayout,
   toolWindowIds: readonly WindowId[],
   bottomWindowId: WindowId | null,
+  toolPaneSummary: WindowColumnSummary | null,
 ) {
   const bottomWindowIds = bottomWindowId ? [bottomWindowId] : []
   const excludedWindowIds = new Set([...toolWindowIds, ...bottomWindowIds])
   const compactMainTree = compactTreeWithoutWindows(layout, excludedWindowIds)
   const allocator = createRecipeNodeAllocator(recipeTreeNodeIds(compactMainTree))
-  const leftTree = stackedWindowTree(allocator, toolWindowIds, 'recipe:left-tool-pane')
+  const leftTree = balancedWindowTree(allocator, toolWindowIds, 'recipe:left-tool-pane')
   const mainTree = mainContentTree(layout, excludedWindowIds, allocator, compactMainTree)
   const bottomTree = bottomWindowId
     ? windowTree(bottomWindowId, allocator.nodeId('recipe:bottom'))
     : null
   const mainPanelTree = recipeMainPanelTree(layout, mainTree, bottomTree, allocator, bottomWindowId)
 
-  return recipeContentTree(layout, leftTree, mainPanelTree, allocator, toolWindowIds)
+  return recipeContentTree(
+    layout,
+    leftTree,
+    mainPanelTree,
+    allocator,
+    toolWindowIds,
+    toolPaneSummary,
+  )
 }
 
 function createRecipeNodeAllocator(usedNodeIdsInput: readonly LayoutNodeId[]): RecipeNodeAllocator {
@@ -398,27 +531,79 @@ function createRecipeNodeAllocator(usedNodeIdsInput: readonly LayoutNodeId[]): R
   }
 }
 
+// The bottom dock is content-derived, mirroring the tool pane: the first
+// visible window holding a bottom-slot surface the user has not manually
+// placed. Manually dragged-out terminals carry a sticky placement, so their
+// windows stay unmanaged and keep their spot.
 function visibleRecipeBottomWindowId(
   layout: WorkspaceLayout,
   context?: RecipeLayoutContext,
 ): WindowId | null {
-  return visibleWindowIdForRecipeSlotWithContext(layout, 'bottom', context)
+  const visibleWindowIds = context?.visibleWindowIds ?? visibleWindowIdsInOrder(layout)
+
+  for (const windowId of visibleWindowIds) {
+    if (windowHoldsManagedBottomSurface(layout, windowId, context)) return windowId
+  }
+
+  return null
 }
 
-function stackedWindowTree(
+function windowHoldsManagedBottomSurface(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  context?: RecipeLayoutContext,
+) {
+  const window = layout.windowsById[windowId]
+  if (!window) return false
+
+  for (const surfaceId of window.surfaceIds) {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface) continue
+    if (recipeSlotForSurface(layout, surface) !== 'bottom') continue
+    if (surfaceHasValidStickyPlacement(layout, surfaceId, context)) continue
+
+    return true
+  }
+
+  return false
+}
+
+// Packs windows into balanced columns: a horizontal split of columns where
+// each column stacks its windows vertically, per the order-based packing rule.
+function balancedWindowTree(
   allocator: RecipeNodeAllocator,
   windowIds: readonly WindowId[],
   nodeKey: string,
 ) {
-  const windowTrees = windowIds.map((windowId) =>
+  const columns = partitionIntoBalancedColumns(windowIds)
+  const columnTrees = columns.map((columnWindowIds, columnIndex) =>
+    columnWindowTree(allocator, columnWindowIds, nodeKey, columnIndex),
+  )
+  if (columnTrees.length === 0) return null
+  if (columnTrees.length === 1) return columnTrees[0]
+
+  return splitTree({
+    axis: 'horizontal',
+    id: allocator.nodeId(nodeKey),
+    sizes: balancedSizes(columnTrees.length),
+    trees: columnTrees,
+  })
+}
+
+function columnWindowTree(
+  allocator: RecipeNodeAllocator,
+  columnWindowIds: readonly WindowId[],
+  nodeKey: string,
+  columnIndex: number,
+) {
+  const windowTrees = columnWindowIds.map((windowId) =>
     windowTree(windowId, allocator.nodeId(`${nodeKey}:window:${windowId}`)),
   )
-  if (windowTrees.length === 0) return null
   if (windowTrees.length === 1) return windowTrees[0]
 
   return splitTree({
     axis: 'vertical',
-    id: allocator.nodeId(nodeKey),
+    id: allocator.nodeId(`${nodeKey}:col:${columnIndex}`),
     sizes: balancedSizes(windowTrees.length),
     trees: windowTrees,
   })
@@ -460,7 +645,7 @@ function mainContentTree(
   const missingWindowIds = unmanagedWindowIds(layout, excludedWindowIds, compactWindowIds)
   if (missingWindowIds.length === 0) return compactTree
 
-  const missingTree = stackedWindowTree(allocator, missingWindowIds, 'recipe:main:missing')
+  const missingTree = balancedWindowTree(allocator, missingWindowIds, 'recipe:main:missing')
   if (!compactTree) return missingTree
   if (!missingTree) return compactTree
 
@@ -578,6 +763,7 @@ function recipeContentTree(
   mainTree: RecipeTree | null,
   allocator: RecipeNodeAllocator,
   toolWindowIds: readonly WindowId[],
+  toolPaneSummary: WindowColumnSummary | null,
 ) {
   if (!leftTree) return mainTree
   if (!mainTree) return leftTree
@@ -585,22 +771,50 @@ function recipeContentTree(
   return splitTree({
     axis: 'horizontal',
     id: allocator.nodeId('recipe:content'),
-    sizes: recipeContentSplitSizes(layout, toolWindowIds),
+    sizes: recipeContentSplitSizes(layout, toolWindowIds.length, toolPaneSummary),
     trees: [leftTree, mainTree],
   })
 }
 
-function recipeContentSplitSizes(layout: WorkspaceLayout, toolWindowIds: readonly WindowId[]) {
-  const firstToolWindowId = toolWindowIds[0]
-  const existingLeftNodeId = firstToolWindowId
-    ? findNodeIdForWindow(layout, firstToolWindowId)
-    : null
-  const parentNodeId = existingLeftNodeId ? findParentNodeId(layout, existingLeftNodeId) : null
-  const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
-  if (parentNode?.kind !== 'split') return [0.24, 0.76]
-  if (parentNode.axis !== 'horizontal') return [0.24, 0.76]
+function recipeContentSplitSizes(
+  layout: WorkspaceLayout,
+  toolWindowCount: number,
+  toolPaneSummary: WindowColumnSummary | null,
+) {
+  const columnCount = Math.max(1, balancedColumnCount(toolWindowCount))
+  const share = toolPaneShare(layout, columnCount, toolPaneSummary)
 
-  return repairSplitSizes(parentNode.sizes, 2)
+  return [share, 1 - share]
+}
+
+function toolPaneShare(
+  layout: WorkspaceLayout,
+  columnCount: number,
+  summary: WindowColumnSummary | null,
+) {
+  if (!summary) return toolPaneRestoreShare(layout, columnCount)
+  if (summary.rightEdge >= FULL_BLEED_TOOL_PANE_EDGE) {
+    return toolPaneRestoreShare(layout, columnCount)
+  }
+
+  // Scale the previous pane share by the column count change so columns keep
+  // their width instead of resetting user-resized ratios.
+  return clampToolPaneShare(summary.rightEdge * (columnCount / Math.max(1, summary.columnCount)))
+}
+
+// The width a freshly shown tool pane should take: the user-resized share
+// scaled to the column count, or the default column share if never resized.
+export function toolPaneRestoreShare(layout: WorkspaceLayout, columnCount: number) {
+  const stored = layout.leftToolPane
+  const share = stored
+    ? stored.share * (columnCount / Math.max(1, stored.columnCount))
+    : TOOL_PANE_COLUMN_SHARE * columnCount
+
+  return clampToolPaneShare(share)
+}
+
+function clampToolPaneShare(share: number) {
+  return Math.min(MAX_TOOL_PANE_SHARE, Math.max(MIN_TOOL_PANE_SHARE, share))
 }
 
 function recipeMainPanelTree(
@@ -622,13 +836,26 @@ function recipeMainPanelTree(
 }
 
 function recipeMainPanelSplitSizes(layout: WorkspaceLayout, bottomWindowId: WindowId | null) {
+  const share =
+    currentBottomDockShare(layout, bottomWindowId) ??
+    layout.bottomPaneShare ??
+    DEFAULT_BOTTOM_PANE_SHARE
+
+  return [1 - share, share]
+}
+
+// The dock's current footprint is its size at its own index in the enclosing
+// vertical split. Same-axis flattening can spread siblings into that split,
+// so never assume it is a two-child [main, bottom] pair.
+function currentBottomDockShare(layout: WorkspaceLayout, bottomWindowId: WindowId | null) {
   const bottomNodeId = bottomWindowId ? findNodeIdForWindow(layout, bottomWindowId) : null
   const parentNodeId = bottomNodeId ? findParentNodeId(layout, bottomNodeId) : null
   const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
-  if (parentNode?.kind !== 'split') return [0.74, 0.26]
-  if (parentNode.axis !== 'vertical') return [0.74, 0.26]
+  if (!bottomNodeId || parentNode?.kind !== 'split' || parentNode.axis !== 'vertical') return null
 
-  return repairSplitSizes(parentNode.sizes, 2)
+  const sizes = repairSplitSizes(parentNode.sizes, parentNode.childIds.length)
+
+  return sizes[parentNode.childIds.indexOf(bottomNodeId)] ?? null
 }
 
 function splitTree({

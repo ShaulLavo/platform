@@ -1,5 +1,6 @@
+import { useDebouncedValue } from '@tanstack/react-pacer/debouncer'
+
 import { useSearchBufferState } from '@/features/search/search-buffer-state'
-import { useDebouncedValue } from '@/features/search/use-debounced-value'
 import { usePrepareSearchBuffer } from '@/features/search/use-prepare-search-buffer'
 import { useRunSearchBuffer } from '@/features/search/use-run-search-buffer'
 
@@ -30,9 +31,13 @@ export function useSearchBufferRuntime(rootPath: string, enabled = true) {
   const wholeWord = useSearchBufferState((state) =>
     enabled && state.active?.rootPath === rootPath ? state.active.wholeWord : false,
   )
-  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS)
-  const debouncedIncludeGlobText = useDebouncedValue(includeGlobText, SEARCH_DEBOUNCE_MS)
-  const debouncedExcludeGlobText = useDebouncedValue(excludeGlobText, SEARCH_DEBOUNCE_MS)
+  const [debouncedQuery] = useDebouncedValue(query, { wait: SEARCH_DEBOUNCE_MS })
+  const [debouncedIncludeGlobText] = useDebouncedValue(includeGlobText, {
+    wait: SEARCH_DEBOUNCE_MS,
+  })
+  const [debouncedExcludeGlobText] = useDebouncedValue(excludeGlobText, {
+    wait: SEARCH_DEBOUNCE_MS,
+  })
 
   usePrepareSearchBuffer(rootPath, enabled)
   useRunSearchBuffer(rootPath, enabled ? debouncedQuery : '', searchRevision, {

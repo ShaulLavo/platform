@@ -1,3 +1,4 @@
+import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { useEffect } from 'react'
 
 import {
@@ -19,18 +20,14 @@ import {
 
 const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
-type CacheWriteTimer = ReturnType<typeof setTimeout>
-
 type WorkspaceCacheSnapshot = Pick<
   CachedWorkspaceState,
   'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workspaceLayout'
 >
 
 type WorkspaceCachePersistenceOptions = {
-  clearTimeout?: (timer: CacheWriteTimer) => void
   debounceMs?: number
   searchStore: SearchBufferStoreApi
-  setTimeout?: (callback: () => void, delay: number) => CacheWriteTimer
   workspaceStore: EditorWorkspaceStoreApi
   writeCache?: (state: WorkspaceCacheWriteState) => void
 }
@@ -50,64 +47,41 @@ export function useWorkspaceCachePersistence() {
 }
 
 export function subscribeWorkspaceCachePersistence({
-  clearTimeout = globalThis.clearTimeout,
   debounceMs = WORKSPACE_CACHE_WRITE_DEBOUNCE_MS,
   searchStore,
-  setTimeout = globalThis.setTimeout,
   workspaceStore,
   writeCache = writeWorkspaceCache,
 }: WorkspaceCachePersistenceOptions) {
-  let disposed = false
-  let timer: CacheWriteTimer | null = null
   let workspaceSnapshot = cachedWorkspaceState(workspaceStore.getState())
   let searchSnapshot = cachedSearchBufferState(searchStore.getState().active)
 
-  function persistNow() {
-    if (disposed) return
-
-    writeCache(workspaceCacheStateForStores(workspaceStore.getState(), searchStore.getState()))
-  }
-
-  function scheduleWrite() {
-    if (disposed) return
-    if (timer !== null) clearTimeout(timer)
-
-    timer = setTimeout(() => {
-      timer = null
-      persistNow()
-    }, debounceMs)
-  }
-
-  function flushPendingWrite() {
-    if (timer === null) return
-
-    clearTimeout(timer)
-    timer = null
-    persistNow()
-  }
+  const pendingWrite = new Debouncer(
+    () =>
+      writeCache(workspaceCacheStateForStores(workspaceStore.getState(), searchStore.getState())),
+    { wait: debounceMs },
+  )
 
   const unsubscribeWorkspace = workspaceStore.subscribe((state) => {
     const nextSnapshot = cachedWorkspaceState(state)
     if (cachedWorkspaceStatesEqual(workspaceSnapshot, nextSnapshot)) return
 
     workspaceSnapshot = nextSnapshot
-    scheduleWrite()
+    pendingWrite.maybeExecute()
   })
   const unsubscribeSearch = searchStore.subscribe((state) => {
     const nextSnapshot = cachedSearchBufferState(state.active)
     if (cachedSearchBufferStatesEqual(searchSnapshot, nextSnapshot)) return
 
     searchSnapshot = nextSnapshot
-    scheduleWrite()
+    pendingWrite.maybeExecute()
   })
-  const removeLifecycleFlush = addLifecycleFlush(flushPendingWrite)
+  const removeLifecycleFlush = addLifecycleFlush(pendingWrite.flush)
 
   return () => {
     unsubscribeWorkspace()
     unsubscribeSearch()
     removeLifecycleFlush()
-    flushPendingWrite()
-    disposed = true
+    pendingWrite.flush()
   }
 }
 

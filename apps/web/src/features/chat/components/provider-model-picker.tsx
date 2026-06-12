@@ -61,7 +61,7 @@ export function ProviderModelPicker({
           className={cn('size-1.5 shrink-0 rounded-full', providerStatusDotClass(provider, busy))}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='end' className='bg-popover/98 w-60 rounded-md p-1'>
+      <DropdownMenuContent align='end' className='w-60 rounded-md p-1'>
         <DropdownMenuLabel>Provider</DropdownMenuLabel>
         {options.map((option) => (
           <DropdownMenuItem

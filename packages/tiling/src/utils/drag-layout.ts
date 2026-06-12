@@ -3,10 +3,7 @@ import {
   type TilingDragData,
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
-import {
-  dragSourceCanUseDropTarget,
-  recipeFallbackTargetForDragSource,
-} from '@workspace/tiling/utils/drag-capabilities'
+import { dragSourceCanUseDropTarget } from '@workspace/tiling/utils/drag-capabilities'
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
 import { moveSurface, moveWindow, tabSurface } from '@workspace/tiling/utils/layout-operations'
 import type {
@@ -52,7 +49,7 @@ export function dragTargetForCommit(
   if (!targetExistsInLayout(layout, target)) return null
   if (dragSourceCanUseDropTarget(layout, source, target)) return target
 
-  return recipeFallbackTargetForDragSource(layout, source)
+  return null
 }
 
 export function resolvedTargetForCommit(

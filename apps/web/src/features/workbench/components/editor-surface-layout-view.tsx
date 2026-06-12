@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
 import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
+import { resolveEditorSurfaceIdForTabId } from '@/features/workbench/utils/editor-tab-resolution'
 import { useEditorSurfaceStore } from '@/features/workbench/hooks/use-editor-surface-store'
 import { EditorSurfaceProvider } from '@/features/workbench/providers/editor-surface-provider'
 import { editorSurfaceRendererRegistry } from '@/features/workbench/utils/editor-surface-renderers'
@@ -43,13 +44,9 @@ export function EditorSurfaceLayoutView({
       requestCloseTab={onRequestCloseTab}
       requestCloseTabs={onRequestCloseTabs}
       rootPath={rootPath}
-      surfaceIdForEditorTabId={(tabId) => {
-        const surface = Object.values(store.getState().layout.surfacesById).find(
-          (surface) => editorSurfaceSerializedState(surface)?.editorTabId === tabId,
-        )
-
-        return surface?.id ?? null
-      }}
+      surfaceIdForEditorTabId={(tabId) =>
+        resolveEditorSurfaceIdForTabId(store.getState().layout, tabId)
+      }
       tabModelForSurface={(surface, active) =>
         editorTabModelForSurface(surface, {
           active,

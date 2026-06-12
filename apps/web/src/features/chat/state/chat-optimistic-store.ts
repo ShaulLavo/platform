@@ -1,4 +1,5 @@
 import type { CommandId, MessageId, OrchestrationMessage, ThreadId } from '@workspace/contracts'
+import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { create } from 'zustand'
 
 import {
@@ -31,7 +32,9 @@ const EMPTY_OPTIMISTIC_MESSAGES: OptimisticChatMessage[] = []
 const CHAT_OPTIMISTIC_LOG_FLUSH_MS = 250
 
 let optimisticLogScope: ChatPipelineScope | null = null
-let optimisticLogFlushId: ReturnType<typeof setTimeout> | null = null
+const optimisticLogFlush = new Debouncer(flushOptimisticLogScope, {
+  wait: CHAT_OPTIMISTIC_LOG_FLUSH_MS,
+})
 
 export const useChatOptimisticStore = create<ChatOptimisticStore>((set) => ({
   messagesByThreadId: {},
@@ -85,7 +88,7 @@ function recordOptimisticMutation(kind: string, context: Record<string, unknown>
       },
     },
   })
-  scheduleOptimisticLogFlush()
+  optimisticLogFlush.maybeExecute()
 }
 
 function currentOptimisticLogScope() {
@@ -95,16 +98,9 @@ function currentOptimisticLogScope() {
   return optimisticLogScope
 }
 
-function scheduleOptimisticLogFlush() {
-  if (optimisticLogFlushId !== null) clearTimeout(optimisticLogFlushId)
-
-  optimisticLogFlushId = setTimeout(flushOptimisticLogScope, CHAT_OPTIMISTIC_LOG_FLUSH_MS)
-}
-
 function flushOptimisticLogScope() {
   const scope = optimisticLogScope
   optimisticLogScope = null
-  optimisticLogFlushId = null
   scope?.end()
 }
 

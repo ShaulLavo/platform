@@ -34,11 +34,13 @@ export type EditorTabRecord = {
   readonly path: string
 }
 
-let nextEditorTabRecordId = 1
-
+// Tab ids are persisted with the workspace layout, so they must stay unique
+// across reloads and HMR — a counter here resets and collides with restored
+// ids, routing tab clicks to the wrong surface.
+// TODO: replace crypto.randomUUID with fast-ulid.
 export function createEditorTabRecord(path: string): EditorTabRecord {
   return {
-    id: `editor-tab:${nextEditorTabRecordId++}`,
+    id: `editor-tab:${crypto.randomUUID()}`,
     path,
   }
 }

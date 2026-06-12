@@ -533,6 +533,9 @@ const defaultBindingSpecs = [
   editorBinding('Control+D', 'editor.deleteForward', {
     platforms: ['mac'],
   }),
+  // TODO: Tab should not insert spaces at the cursor position; it should indent
+  // at the beginning of the line. Make this behavior configurable — may want to
+  // wait for the settings feature before wiring it up.
   editorBinding('Tab', 'editor.indentSelection', 'tab'),
   editorBinding('Shift+Tab', 'editor.outdentSelection', 'outdent'),
 

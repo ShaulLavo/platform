@@ -19,6 +19,7 @@ type EditorWorkspaceStoreState = CachedWorkspaceState & {
 }
 
 type EditorWorkspaceStoreActions = {
+  clearRootFolder: () => void
   openPicker: () => void
   resetForRootFolder: (rootFolder: PickedFsEntry) => void
   setDiffViewMode: (mode: EditorDiffViewMode) => void
@@ -61,6 +62,8 @@ export function createEditorWorkspaceStore(
     rootFolder: initialState.rootFolder,
     selectedFilePath: initialState.selectedFilePath,
     workspaceLayout: initialState.workspaceLayout,
+    clearRootFolder: () =>
+      set((state) => workspaceStateForRootFolderReset(null, state.diffViewMode)),
     openPicker: () => set({ pickerOpen: true }),
     resetForRootFolder: (rootFolder) =>
       set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
@@ -78,7 +81,7 @@ export function createEditorWorkspaceStore(
 }
 
 function workspaceStateForRootFolderReset(
-  rootFolder: PickedFsEntry,
+  rootFolder: PickedFsEntry | null,
   diffViewMode: EditorDiffViewMode,
 ) {
   const workspaceLayout = createClassicFirstRunWorkspaceLayout()

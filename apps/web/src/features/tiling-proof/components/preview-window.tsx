@@ -1,5 +1,5 @@
-import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
+import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 
 export function ProofPreviewWindow({ rect }: { readonly rect: LayoutRect }) {
   return (

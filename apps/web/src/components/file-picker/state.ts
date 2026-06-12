@@ -1,5 +1,6 @@
 import type { FsEntry, PickedFsEntry, ServerInfo } from '@/lib/file-system-types'
-import { useEffect, useRef, useState } from 'react'
+import { useDebouncedValue } from '@tanstack/react-pacer/debouncer'
+import { useRef, useState } from 'react'
 
 import { ROOT_PATH, initialPathForOpen } from './model'
 
@@ -8,7 +9,7 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
   const [currentPath, setCurrentPath] = useState(ROOT_PATH)
   const [history, setHistory] = useState<string[]>([])
   const [query, setQuery] = useState('')
-  const debouncedQuery = useDebouncedValue(query, 180)
+  const [debouncedQuery] = useDebouncedValue(query, { wait: 180 })
   const effectiveQuery = query.trim() ? debouncedQuery : ''
   const [selectedEntry, setSelectedEntry] = useState<FsEntry | null>(value)
 
@@ -70,15 +71,4 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
     setQuery,
     setSelectedEntry,
   }
-}
-
-function useDebouncedValue(value: string, delay: number) {
-  const [debounced, setDebounced] = useState(value)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay)
-    return () => window.clearTimeout(timer)
-  }, [delay, value])
-
-  return debounced
 }

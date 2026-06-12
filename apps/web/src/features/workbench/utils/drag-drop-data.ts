@@ -44,20 +44,11 @@ export function workbenchWindowDragId(windowId: WindowId) {
 }
 
 export function workbenchTabCapabilities({
-  bottomPane,
   surface,
 }: {
-  readonly bottomPane: boolean
   readonly surface: Surface
 }): WorkbenchTabCapabilities {
   const canMove = surface.capabilities.validPlacements.length > 0
-  if (bottomPane) {
-    return {
-      canDetach: false,
-      canDrag: false,
-      canReorder: false,
-    }
-  }
 
   return {
     canDetach: canMove,

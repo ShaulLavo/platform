@@ -13,10 +13,7 @@ import {
   type IntentPrefetchRow,
 } from '@/components/workspace/shared/utils/intent-prefetch-registry'
 import { createAnimationFrameScheduler } from '@/components/workspace/shared/utils/intent-prefetch-scheduler'
-import {
-  FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
-  prefetchFileSnapshotQuery,
-} from '@/lib/file-snapshot-query-cache'
+import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
@@ -67,7 +64,7 @@ export function useFileTreeIntentPrefetch({
 
     const registry = createIntentPrefetchRegistry({
       hitSlop: INTENT_PREFETCH_HIT_SLOP_PX,
-      reactivateAfter: FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
+      reactivateAfter: FILE_SNAPSHOT_STALE_MS,
       resolveRow: resolveFileTreeRow,
     })
     let observer: MutationObserver | null = null

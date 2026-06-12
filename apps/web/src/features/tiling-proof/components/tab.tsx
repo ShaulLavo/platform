@@ -8,7 +8,10 @@ import {
   type TilingDropData,
 } from '@workspace/tiling/utils/drag-data'
 import type { Surface, SurfaceId, WindowId } from '@workspace/tiling/utils/layout-types'
-import { tilingTabAttributes } from '@workspace/tiling/utils/dom-attributes'
+import {
+  tilingTabAttributes,
+  tilingTabPreviewAttributes,
+} from '@workspace/tiling/utils/dom-attributes'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -75,14 +78,15 @@ export function ProofTab({
         active
           ? 'bg-background text-foreground border-border'
           : 'bg-muted/60 text-muted-foreground border-transparent hover:bg-muted',
-        previewAdded && 'border-info bg-info/10 text-info ring-1 ring-info/30',
+        previewAdded && 'ring-info opacity-45 ring-2',
         isDragging && 'opacity-45',
-        isDragSource && 'ring-2 ring-info',
+        isDragSource && 'ring-info ring-2',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
       data-proof-tab-id={surface.id}
       data-proof-tab-preview-added={previewAdded ? 'true' : undefined}
       {...tilingTabAttributes(surface.id)}
+      {...(previewAdded ? tilingTabPreviewAttributes() : null)}
       ref={(element) => {
         ref(element)
         handleRef(element)
@@ -92,7 +96,7 @@ export function ProofTab({
       tabIndex={0}
       onClick={selectSurface}
     >
-      <span className={cn('size-2 rounded-full', previewAdded ? 'bg-info' : 'bg-primary')} />
+      <span className='bg-primary size-2 rounded-full' />
       <span
         className={cn(
           'min-w-0 flex-1 truncate',

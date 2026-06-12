@@ -56,12 +56,12 @@ async function loadEngine() {
 
   try {
     const [builders, geometry, normalize, operations, rail, selectors] = await Promise.all([
-      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-builders.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-geometry.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-normalize.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-operations.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/rail-model.ts'),
-      server.ssrLoadModule('/src/features/tiling-surface-manager/engine/layout-selectors.ts'),
+      server.ssrLoadModule('@workspace/tiling/utils/layout-builders.ts'),
+      server.ssrLoadModule('@workspace/tiling/utils/layout-geometry.ts'),
+      server.ssrLoadModule('@workspace/tiling/utils/layout-normalize.ts'),
+      server.ssrLoadModule('@workspace/tiling/index.ts'),
+      server.ssrLoadModule('@workspace/tiling/utils/rail-model.ts'),
+      server.ssrLoadModule('@workspace/tiling/utils/layout-selectors.ts'),
     ])
 
     return {

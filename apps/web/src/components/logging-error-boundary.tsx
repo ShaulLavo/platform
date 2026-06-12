@@ -83,10 +83,10 @@ export class LoggingErrorBoundary extends Component<
               </div>
             </DialogHeader>
           </div>
-          <div className='grid gap-3 px-4 py-4'>
+          <div className='grid min-w-0 gap-3 px-4 py-4'>
             <div className='border-border bg-card text-card-foreground grid gap-1 border p-3'>
               <div className='text-muted-foreground text-xs font-medium'>{errorName}</div>
-              <div className='text-foreground font-mono text-xs/relaxed break-words'>
+              <div className='text-foreground font-mono text-xs/relaxed wrap-anywhere'>
                 {errorMessage}
               </div>
             </div>
@@ -97,7 +97,7 @@ export class LoggingErrorBoundary extends Component<
               <AccordionItem value='stack-trace'>
                 <AccordionTrigger className='px-3'>Stack trace</AccordionTrigger>
                 <AccordionContent className='px-3'>
-                  <pre className='bg-muted/30 text-muted-foreground border-border max-h-64 overflow-auto border p-2 font-mono text-[11px]/relaxed whitespace-pre-wrap'>
+                  <pre className='app-scrollbar-thin bg-muted/30 text-muted-foreground border-border max-h-64 overflow-y-auto overscroll-contain border p-2.5 font-mono text-[11px]/relaxed wrap-anywhere whitespace-pre-wrap'>
                     {stackTrace || 'No stack trace available.'}
                   </pre>
                 </AccordionContent>

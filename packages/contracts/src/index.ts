@@ -39,6 +39,9 @@ export {
 export type {
   WorkspaceSearchDoneEvent,
   WorkspaceSearchEvent,
+  WorkspaceSearchIndexFallbackReason,
+  WorkspaceSearchIndexMeasurement,
+  WorkspaceSearchIndexReadiness,
   WorkspaceSearchMeasurement,
   WorkspaceSearchMatchMode,
   WorkspaceSearchMatch,

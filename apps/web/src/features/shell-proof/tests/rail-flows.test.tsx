@@ -63,28 +63,34 @@ test('uses tool pane header for collapsed shell proof tools', () => {
   expect(proofWindowCount()).toBe(3)
 })
 
-test('closes and restores the bottom pane through shell proof chrome', () => {
+test('toggles bottom tabs through the rail and dock chrome', () => {
   renderShellProofRoute()
 
   const rail = shellProofRail()
   const bottomPane = screen.getByRole('region', { name: 'Terminal' })
   expect(within(bottomPane).getByRole('tab', { name: 'Terminal' })).toBeVisible()
   expect(within(bottomPane).getByRole('tab', { name: 'Problems' })).toBeVisible()
-  expect(within(bottomPane).getAllByRole('button', { name: 'Close Terminal' })).toHaveLength(1)
-  expect(within(bottomPane).queryByRole('button', { name: 'Close Problems' })).toBeNull()
 
-  fireEvent.click(within(bottomPane).getByRole('button', { name: 'Close Terminal' }))
+  fireEvent.click(within(bottomPane).getByRole('button', { name: 'Close Problems' }))
 
-  expect(railButton(rail, 'Restore Terminal')).toHaveAttribute('data-rail-state', 'background')
+  expect(railButton(rail, 'Open Problems')).toHaveAttribute('data-rail-state', 'pinned')
+  expect(proofWindowCount()).toBe(3)
+
+  fireEvent.click(railButton(rail, 'Close Terminal'))
+
+  expect(railButton(rail, 'Open Terminal')).toHaveAttribute('data-rail-state', 'pinned')
   expect(proofWindowCount()).toBe(2)
 
-  fireEvent.click(railButton(rail, 'Restore Terminal'))
+  fireEvent.click(railButton(rail, 'Open Terminal'))
 
   expect(railButton(rail, 'Close Terminal')).toHaveAttribute('data-rail-state', 'active')
-  const restoredBottomPane = screen.getByRole('region', { name: 'Terminal' })
-  expect(restoredBottomPane).toBeVisible()
-  expect(within(restoredBottomPane).getByRole('tab', { name: 'Terminal' })).toBeVisible()
-  expect(within(restoredBottomPane).getByRole('tab', { name: 'Problems' })).toBeVisible()
+  expect(proofWindowCount()).toBe(3)
+
+  fireEvent.click(railButton(rail, 'Open Problems'))
+
+  const restoredDock = screen.getByRole('region', { name: 'Problems' })
+  expect(within(restoredDock).getByRole('tab', { name: 'Terminal' })).toBeVisible()
+  expect(within(restoredDock).getByRole('tab', { name: 'Problems' })).toBeVisible()
   expect(proofWindowCount()).toBe(3)
 })
 
@@ -195,8 +201,8 @@ test('toggles recipe panes from shell proof keyboard shortcuts', () => {
 
   pressModKey('j')
 
-  expect(railButton(rail, 'Restore Terminal')).toHaveAttribute('data-rail-state', 'background')
-  expect(proofWindowCount()).toBe(2)
+  expect(railButton(rail, 'Open Terminal')).toHaveAttribute('data-rail-state', 'pinned')
+  expect(proofWindowCount()).toBe(3)
 
   pressModKey('j')
 

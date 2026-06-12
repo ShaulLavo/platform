@@ -4,5 +4,10 @@
   // (tsconfig.node.json). It compiles nothing itself; `typecheck` runs
   // `tsgo --build` so both referenced projects are type-checked.
   "files": [],
-  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
 }

@@ -985,6 +985,7 @@ function testApp(
     sessionToken?: string
     treeConcurrency?: number
     watch?: boolean
+    watchBackend?: 'auto' | 'node'
   } = {},
 ) {
   const app = createApp({
@@ -996,6 +997,7 @@ function testApp(
     maxTextFileBytes: options.maxTextFileBytes,
     treeConcurrency: options.treeConcurrency,
     watch: options.watch,
+    watchBackend: options.watchBackend ?? 'node',
     workspaceRoot: root,
   })
   apps.push(app)

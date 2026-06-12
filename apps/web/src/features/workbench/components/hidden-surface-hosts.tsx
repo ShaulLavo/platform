@@ -1,7 +1,6 @@
 import { SurfaceHost } from '@/features/workbench/components/surface-host'
-import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
-import type { Surface, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
+import type { Surface } from '@workspace/tiling/utils/layout-types'
 
 export function HiddenSurfaceHosts({
   surfaces,
@@ -25,21 +24,4 @@ export function HiddenSurfaceHosts({
       ))}
     </div>
   )
-}
-
-export function selectHiddenMountedSurfaces(layout: WorkspaceLayout): readonly Surface[] {
-  const hiddenSurfaceIds = new Set([
-    ...layout.rail.backgroundSurfaceIds,
-    ...layout.rail.runningSurfaceIds,
-  ])
-  const visibleSurfaceIds = new Set(visibleSurfaceIdsInOrder(layout))
-
-  return Array.from(hiddenSurfaceIds)
-    .filter((surfaceId) => !visibleSurfaceIds.has(surfaceId))
-    .map((surfaceId) => layout.surfacesById[surfaceId])
-    .filter(isKeepMountedSurface)
-}
-
-function isKeepMountedSurface(surface: Surface | undefined): surface is Surface {
-  return surface?.rendererLifecycle === 'keep-mounted'
 }

@@ -6,18 +6,27 @@ import { fileSystemKeys } from '@/lib/query-keys'
 
 export const FILE_SNAPSHOT_QUERY_GC_TIME_MS = 2 * 60 * 1000
 export const FILE_SNAPSHOT_QUERY_CACHE_LIMIT = 64
-export const FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS = 5_000
+export const FILE_SNAPSHOT_STALE_MS = 5_000
 
-type PrefetchFileSnapshotQueryOptions = {
-  readonly fetcher?: (path: string, signal: AbortSignal) => Promise<FileResult>
-  readonly staleTime?: number
+type FileSnapshotFetcher = (path: string, signal: AbortSignal) => Promise<FileResult>
+
+type FileSnapshotQueryConfig = {
+  readonly fetcher?: FileSnapshotFetcher
 }
 
-export function fileSnapshotQueryOptions(path: string) {
+// Single source of truth for file-snapshot queries. Every consumer — the
+// selected-file useQuery, intent prefetches, and the workspace-ready open-file
+// refresh — must build its options here so all of them share one query key,
+// one freshness window, and one in-flight fetch instead of racing duplicate
+// reads of the same file.
+export function fileSnapshotQueryOptions(path: string, config: FileSnapshotQueryConfig = {}) {
+  const fetcher = config.fetcher ?? fetchFile
   return {
     gcTime: FILE_SNAPSHOT_QUERY_GC_TIME_MS,
+    queryFn: ({ signal }: { signal: AbortSignal }) => fetcher(path, signal),
     queryKey: fileSystemKeys.fileSnapshot(path),
-  } as const
+    staleTime: FILE_SNAPSHOT_STALE_MS,
+  }
 }
 
 export function setFileSnapshotQueryData(
@@ -26,13 +35,12 @@ export function setFileSnapshotQueryData(
   options: { readonly updatedAt?: number } = {},
 ) {
   const queryKey = fileSystemKeys.fileSnapshot(file.path)
-  const query = queryClient.getQueryCache().build<FileResult, unknown, FileResult, typeof queryKey>(
-    queryClient,
-    queryClient.defaultQueryOptions({
-      gcTime: FILE_SNAPSHOT_QUERY_GC_TIME_MS,
-      queryKey,
-    }),
-  )
+  const query = queryClient
+    .getQueryCache()
+    .build<FileResult, unknown, FileResult, typeof queryKey>(
+      queryClient,
+      queryClient.defaultQueryOptions(fileSnapshotQueryOptions(file.path)),
+    )
   query.setData(file, { manual: true, updatedAt: options.updatedAt })
   pruneFileSnapshotQueryCache(queryClient)
 }
@@ -40,19 +48,13 @@ export function setFileSnapshotQueryData(
 export function prefetchFileSnapshotQuery(
   queryClient: QueryClient,
   path: string,
-  options: PrefetchFileSnapshotQueryOptions = {},
+  config: FileSnapshotQueryConfig = {},
 ) {
-  const staleTime = options.staleTime ?? FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS
   if (!shouldPrefetchFileSnapshotQuery(queryClient, path)) {
     return Promise.resolve()
   }
 
-  const fetcher = options.fetcher ?? fetchFile
-  return queryClient.prefetchQuery({
-    ...fileSnapshotQueryOptions(path),
-    queryFn: ({ signal }) => fetcher(path, signal),
-    staleTime,
-  })
+  return queryClient.prefetchQuery(fileSnapshotQueryOptions(path, config))
 }
 
 export function installFileSnapshotQueryCachePolicy(queryClient: QueryClient) {

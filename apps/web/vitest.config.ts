@@ -13,7 +13,6 @@ const reactPlugin = () => react({ babel: { plugins: ['babel-plugin-react-compile
 const browserTestPort = process.env.VITEST_BROWSER_PORT ?? '5179'
 const browserFileServerPort = process.env.VITEST_BROWSER_FILE_SERVER_PORT ?? '33201'
 const browserFileServerUrl = `http://127.0.0.1:${browserFileServerPort}`
-const browserProxyOrigin = `http://127.0.0.1:${browserTestPort}`
 
 process.env.VITEST_BROWSER_PORT = browserTestPort
 process.env.VITEST_BROWSER_FILE_SERVER_PORT = browserFileServerPort
@@ -45,6 +44,10 @@ export default defineConfig({
           include: ['src/**/*.test.tsx', 'test/**/*.test.tsx'],
           exclude: ['src/**/*.browser.tsx'],
           setupFiles: ['./test/env/msw.ts', './test/env/dom.ts'],
+          // happy-dom defaults to Vite's web transform, which stubs `bun:*`
+          // builtins; use the ssr pipeline so dom tests can boot the
+          // in-process server like node tests do.
+          testTransformMode: { ssr: ['**/*'] },
         },
       },
       {
@@ -52,27 +55,14 @@ export default defineConfig({
         plugins: [reactPlugin(), tailwindcss()],
         resolve: { alias, dedupe: ['react', 'react-dom'] },
         define: {
-          'import.meta.env.VITE_SERVER_URL': 'globalThis.location.origin',
+          // Browser tests talk to the spawned file server directly: the
+          // Vitest browser runner serves tests from its own API server, so
+          // the project-level `server.proxy` never applies to them.
+          'import.meta.env.VITE_SERVER_URL': JSON.stringify(browserFileServerUrl),
         },
         optimizeDeps: {
           exclude: ['@singapor/tree-sitter', '@singapor/tree-sitter-languages'],
           include: ['@phosphor-icons/react', '@tanstack/react-hotkeys'],
-        },
-        server: {
-          host: '127.0.0.1',
-          port: Number(browserTestPort),
-          proxy: {
-            '/_log': fileServerProxy(),
-            '/fonts': fileServerProxy(),
-            '/fs': fileServerProxy(),
-            '/git': fileServerProxy(),
-            '/health': fileServerProxy(),
-            '/lsp': fileServerProxy(),
-            '/orchestration': fileServerProxy(),
-            '/provider': fileServerProxy(),
-          },
-          strictPort: true,
-          watch: null,
         },
         test: {
           name: 'browser',
@@ -80,6 +70,9 @@ export default defineConfig({
           include: ['src/**/*.browser.tsx'],
           setupFiles: ['./test/env/jest-dom.ts'],
           browser: {
+            // Pin the runner origin so the file server's allowed-origins
+            // list (built from this port) matches the real test origin.
+            api: { host: '127.0.0.1', port: Number(browserTestPort) },
             commands: {
               proofMouseDrag,
               proofMouseUp,
@@ -95,17 +88,6 @@ export default defineConfig({
     ],
   },
 })
-
-function fileServerProxy() {
-  return {
-    changeOrigin: true,
-    headers: {
-      origin: browserProxyOrigin,
-    },
-    target: browserFileServerUrl,
-    ws: true,
-  }
-}
 
 type ProofMouseCommandContext = {
   readonly frame: () => Promise<ProofMouseFrame>

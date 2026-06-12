@@ -9,17 +9,21 @@ import { placementForSurfaceWithPolicy } from '@workspace/tiling/utils/layout-po
 import {
   policyForStickyPlacement,
   recipeSlotForSurface,
+  recipeSlotForWindow,
   stickyPlacementForSurface,
   surfaceCanClose,
   windowCanCollapse,
 } from '@workspace/tiling/utils/layout-queries'
 import {
+  DEFAULT_BOTTOM_PANE_SHARE,
+  isRecipePackedSlot,
   isToolPaneRecipeSlot,
   normalizeToolPaneRecipeLayout,
   placementCanRestoreSurface,
+  surfaceHasValidStickyPlacement,
+  toolPaneRestoreShare,
   visibleWindowIdForRecipeSlot,
   visibleWindowIdsForRecipeSlots,
-  windowContainsRecipeSlot,
 } from '@workspace/tiling/utils/recipe-packing'
 import {
   edgeAxis,
@@ -50,6 +54,7 @@ import type {
 } from '@workspace/tiling/utils/layout-types'
 
 export type OpenSurfaceOptions = {
+  readonly placement?: SurfacePlacementHint
   readonly policyId?: LayoutPolicyId
 }
 
@@ -93,7 +98,7 @@ export function openSurface(
   const surfaceToOpen = surfaceForOpen(existingSurface, surface)
   const layoutWithSurface = upsertSurface(normalizedLayout, surfaceToOpen)
   const restoredLayout = removeSurfaceFromRail(layoutWithSurface, surfaceToOpen.id)
-  const resolvedPlacement = placementForOpen(restoredLayout, surfaceToOpen, options.policyId)
+  const resolvedPlacement = placementForOpen(restoredLayout, surfaceToOpen, options)
   const placedLayout = placeSurface(
     resolvedPlacement.layout,
     surfaceToOpen.id,
@@ -166,6 +171,87 @@ function activateWindow(layout: WorkspaceLayout, window: WorkbenchWindow): Works
     ...layout,
     activeSurfaceId: window.activeSurfaceId,
     activeWindowId: window.id,
+  }
+}
+
+function insertNodeAtBottomWithShare(layout: WorkspaceLayout, node: LayoutNode): WorkspaceLayout {
+  if (!layout.rootNodeId) return layoutWithRootNode(layout, node)
+
+  const share = layout.bottomPaneShare ?? DEFAULT_BOTTOM_PANE_SHARE
+  const splitNode = {
+    axis: 'vertical',
+    childIds: [layout.rootNodeId, node.id],
+    id: uniqueNodeId(layout, 'split-bottom'),
+    kind: 'split',
+    sizes: [1 - share, share],
+  } satisfies LayoutSplitNode
+
+  return {
+    ...layout,
+    nodesById: {
+      ...layout.nodesById,
+      [node.id]: node,
+      [splitNode.id]: splitNode,
+    },
+    rootNodeId: splitNode.id,
+  }
+}
+
+// A recipe-slot placement with no live pane creates the pane window. The
+// generic root-edge insert would wrap the tree at half size and the packer
+// would adopt that lie as the pane share, so insert with the remembered (or
+// default) share instead.
+function placeRecipePaneSurfaceWindow(
+  layout: WorkspaceLayout,
+  surfaceId: SurfaceId,
+  edge: Extract<LayoutEdge, 'bottom' | 'left'>,
+): WorkspaceLayout {
+  if (!surfaceCanUseDestination(layout, surfaceId, { edge, kind: 'root-edge' })) return layout
+
+  const detachedLayout = removeSurfaceFromWindows(
+    removeSurfaceFromRail(layout, surfaceId),
+    surfaceId,
+  )
+  const surfaceWindow = createSurfaceWindow(detachedLayout, surfaceId)
+  const layoutWithWindow = {
+    ...detachedLayout,
+    windowsById: {
+      ...detachedLayout.windowsById,
+      [surfaceWindow.window.id]: surfaceWindow.window,
+    },
+  }
+  const insertedLayout =
+    edge === 'bottom'
+      ? insertNodeAtBottomWithShare(layoutWithWindow, surfaceWindow.node)
+      : insertNodeAtLeftWithShare(layoutWithWindow, surfaceWindow.node)
+
+  return {
+    ...insertedLayout,
+    activeSurfaceId: surfaceId,
+    activeWindowId: surfaceWindow.window.id,
+  }
+}
+
+function insertNodeAtLeftWithShare(layout: WorkspaceLayout, node: LayoutNode): WorkspaceLayout {
+  if (!layout.rootNodeId) return layoutWithRootNode(layout, node)
+
+  const share = toolPaneRestoreShare(layout, 1)
+  const splitNode = {
+    axis: 'horizontal',
+    childIds: [node.id, layout.rootNodeId],
+    id: uniqueNodeId(layout, 'split-left'),
+    kind: 'split',
+    sizes: [share, 1 - share],
+  } satisfies LayoutSplitNode
+
+  return {
+    ...layout,
+    nodesById: {
+      ...layout.nodesById,
+      [node.id]: node,
+      [splitNode.id]: splitNode,
+    },
+    rootNodeId: splitNode.id,
   }
 }
 
@@ -442,6 +528,14 @@ function placeSurface(
       recordStickyPlacement: placement?.kind !== 'recipe-slot',
     })
   }
+  if (placement?.kind === 'recipe-slot' && destination.kind === 'root-edge') {
+    if (placement.slot === 'bottom') {
+      return placeRecipePaneSurfaceWindow(layout, surfaceId, 'bottom')
+    }
+    if (placement.slot === 'left-tool-pane') {
+      return placeRecipePaneSurfaceWindow(layout, surfaceId, 'left')
+    }
+  }
 
   return placeSurfaceAtEdgeDestination(layout, surfaceId, destination, {
     recordStickyPlacement: placement?.kind !== 'recipe-slot',
@@ -586,16 +680,12 @@ function rootOrActiveDestination(
 function mainViewFallbackDestination(layout: WorkspaceLayout): SnapDestination | null {
   const activeDestination = activeWindowDestination(layout)
   if (activeDestination?.kind !== 'window-center') return activeDestination
-  if (activeWindowContainsRecipeSlot(layout, 'bottom'))
+  // Editors must not tab into the bottom dock when it is the only thing left.
+  if (recipeSlotForWindow(layout, activeDestination.windowId) === 'bottom') {
     return rootOrActiveDestination(layout, 'top')
+  }
+
   return activeDestination
-}
-
-function activeWindowContainsRecipeSlot(layout: WorkspaceLayout, slot: WorkspaceRecipeSlot) {
-  const activeWindowId = layout.activeWindowId
-  if (!activeWindowId) return false
-
-  return windowContainsRecipeSlot(layout, layout.windowsById[activeWindowId], slot)
 }
 
 function activeWindowDestination(
@@ -652,21 +742,40 @@ function shouldPromoteSurface(existingSurface: Surface, incomingSurface: Surface
 function placementForOpen(
   layout: WorkspaceLayout,
   surface: Surface,
-  policyId?: LayoutPolicyId,
+  options: OpenSurfaceOptions,
 ): PlacementResolution {
-  const stickyPlacement = stickyPlacementForSurface(layout, surface.id, policyId)
+  const explicitPlacement = explicitPlacementForOpen(layout, surface, options)
+  if (explicitPlacement) return explicitPlacement
+
+  const stickyPlacement = stickyPlacementForSurface(layout, surface.id, options.policyId)
   if (stickyPlacement && placementCanRestoreSurface(layout, stickyPlacement, surface)) {
     return { layout, placement: stickyPlacement }
   }
   if (stickyPlacement) {
     return fallbackPlacementForOpen(
-      clearStickyPlacement(layout, surface.id, policyId),
+      clearStickyPlacement(layout, surface.id, options.policyId),
       surface,
-      policyId,
+      options.policyId,
     )
   }
 
-  return fallbackPlacementForOpen(layout, surface, policyId)
+  return fallbackPlacementForOpen(layout, surface, options.policyId)
+}
+
+// An explicit open placement is a direct "put it there" request: it wins over
+// the surface's remembered manual spot, and a recipe-slot target resets that
+// memory so the slot owns the surface again.
+function explicitPlacementForOpen(
+  layout: WorkspaceLayout,
+  surface: Surface,
+  options: OpenSurfaceOptions,
+): PlacementResolution | null {
+  const placement = options.placement
+  if (!placement) return null
+  if (!placementCanRestoreSurface(layout, placement, surface)) return null
+  if (placement.kind !== 'recipe-slot') return { layout, placement }
+
+  return { layout: clearStickyPlacement(layout, surface.id, options.policyId), placement }
 }
 
 function fallbackPlacementForOpen(
@@ -1465,11 +1574,34 @@ function layoutWithCollapsedWindow(
   edge: LayoutEdge | undefined,
 ): WorkspaceLayout {
   if (!edge) return layoutWithWindowMode(layout, windowId, 'collapsed')
+  if (windowCollapsesInPlace(layout, windowId)) {
+    return layoutWithWindowMode(layout, windowId, 'collapsed', edge)
+  }
 
   const expandedLayout = layoutWithWindowMode(layout, windowId, 'normal')
   const movedLayout = moveWindow(expandedLayout, windowId, { edge, kind: 'root-edge' })
 
   return layoutWithWindowMode(movedLayout, windowId, 'collapsed', edge)
+}
+
+// The recipe normalizer owns packed windows' positions: relocating one to a
+// root edge gets repacked away immediately, corrupting split ratios and
+// recording stale sticky placements. The bottom slot is packed
+// unconditionally; tool-pane windows leave packing once sticky-placed.
+function windowCollapsesInPlace(layout: WorkspaceLayout, windowId: WindowId) {
+  const slot = recipeSlotForWindow(layout, windowId)
+  if (!slot) return false
+  if (!isRecipePackedSlot(slot)) return false
+  if (!isToolPaneRecipeSlot(slot)) return true
+
+  return !windowHasValidStickyPlacement(layout, windowId)
+}
+
+function windowHasValidStickyPlacement(layout: WorkspaceLayout, windowId: WindowId) {
+  const window = layout.windowsById[windowId]
+  if (!window) return false
+
+  return window.surfaceIds.some((surfaceId) => surfaceHasValidStickyPlacement(layout, surfaceId))
 }
 
 function validReorder(window: WorkbenchWindow, fromIndex: number, toIndex: number) {
@@ -1502,23 +1634,15 @@ function splitSizesWithInsertedNode(
   return repairSplitSizes(nextSizes, nextSizes.length)
 }
 
+// Proportional redistribution keeps the remaining siblings' ratios intact, so
+// removing a node and re-inserting it later lands every window back where it
+// was. Handing the freed space to one adjacent sibling would skew the ratios
+// a little further on every close/reopen cycle.
 function splitSizesWithoutChild(split: LayoutSplitNode, removedIndex: number) {
   const sizes = repairSplitSizes(split.sizes, split.childIds.length)
-  if (removedIndex < 0) return repairSplitSizes(sizes.slice(0, -1), Math.max(0, sizes.length - 1))
-
-  const removedSize = sizes[removedIndex] ?? 0
   const nextSizes = sizes.filter((_, index) => index !== removedIndex)
-  const recipientIndex = removedSizeRecipientIndex(removedIndex, nextSizes.length)
-  if (recipientIndex >= 0)
-    nextSizes[recipientIndex] = (nextSizes[recipientIndex] ?? 0) + removedSize
 
   return repairSplitSizes(nextSizes, nextSizes.length)
-}
-
-function removedSizeRecipientIndex(removedIndex: number, remainingCount: number) {
-  if (remainingCount <= 0) return -1
-
-  return Math.max(0, Math.min(removedIndex - 1, remainingCount - 1))
 }
 
 function insertAt<TItem>(items: readonly TItem[], item: TItem, index: number): TItem[] {
