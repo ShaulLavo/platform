@@ -11,7 +11,7 @@ import {
 } from '@/features/editor/state/editor-document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
+import { fileSnapshotQueryOptions, setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { getClient } from '@/lib/client'
@@ -655,7 +655,24 @@ async function applyRefreshOpenFileOperation({
   queryClient: ReturnType<typeof useQueryClient>
   signal: AbortSignal
 }) {
-  const file = await fetchFileWithRetry(path, signal)
+  // The selected file's useQuery races this refresh on workspace load (and
+  // StrictMode can deliver two ready events); fetchQuery on the same key joins
+  // any in-flight fetch instead of reading the same file again. A reconnect
+  // later still hits the network: the cache entry is stale by then.
+  //
+  // The outer signal deliberately does not reach the fetch: the fetch is
+  // shared with other consumers, so only the query's own lifecycle may cancel
+  // it. Teardown therefore lets an in-flight read finish in the background
+  // (and warm the cache); it only stops new work and result application.
+  if (signal.aborted) return
+
+  const file = await queryClient.fetchQuery({
+    ...fileSnapshotQueryOptions(path, { fetcher: fetchFileWithRetry }),
+    // fetchFileWithRetry retries internally; query-level retry would stack.
+    retry: false,
+  })
+  if (signal.aborted) return
+
   setFileSnapshotQueryData(queryClient, file)
   const operation = planFetchedOpenFileRefresh({
     isDirty: isDirtyLiveDocument(path, dirtyFilePaths, conflictContext),

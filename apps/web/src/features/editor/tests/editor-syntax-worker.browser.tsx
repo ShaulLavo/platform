@@ -29,7 +29,9 @@ test('parses chat-model.ts through the editor Tree-sitter worker', async () => {
     })
 
     expect(parsed?.snapshotVersion).toBe(1)
-    expect(queried?.tokens?.length ?? 0).toBeGreaterThan(0)
+    // Range responses ship tokens as packed typed arrays (SoA transport);
+    // the plain tokens field is no longer populated on the wire.
+    expect(queried?.tokensPacked?.starts.length ?? 0).toBeGreaterThan(0)
   } finally {
     await workerClient.dispose()
   }

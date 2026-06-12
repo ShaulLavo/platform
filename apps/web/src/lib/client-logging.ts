@@ -81,12 +81,12 @@ export function initializeClientLogging() {
 }
 
 export async function observeClientOperation<T>(
-  event: ClientLogEvent,
+  event: ClientLogEvent & { readonly signal?: AbortSignal },
   operation: () => Promise<T>,
   summarize?: (result: T) => Record<string, unknown>,
 ): Promise<T> {
   const startedAt = performance.now()
-  const { level, ...baseEvent } = event
+  const { level, signal, ...baseEvent } = event
 
   try {
     const result = await operation()
@@ -98,7 +98,11 @@ export async function observeClientOperation<T>(
     })
     return result
   } catch (error) {
-    if (!isAbortError(error)) {
+    // A failure after the caller aborted is cancellation, not an error —
+    // Chromium surfaces mid-stream cancellation as TypeError ("Error in
+    // input stream"), which no error-shape check can tell apart from a real
+    // network failure. The signal is ground truth.
+    if (!isAbortError(error) && !signal?.aborted) {
       log[failedOperationLevel(level)]({
         ...baseEvent,
         durationMs: elapsedMs(startedAt),
@@ -221,6 +225,9 @@ function failedOperationLevel(level: ClientLogLevel | undefined): ClientLogLevel
   return 'warn'
 }
 
+// Catches only direct, unwrapped aborts. Wrapped aborts and mid-stream
+// cancellations are unrecognizable by shape — operations that can be aborted
+// must pass their AbortSignal to observeClientOperation instead.
 function isAbortError(error: unknown) {
   if (error instanceof DOMException) return error.name === 'AbortError'
   if (error instanceof Error) return error.name === 'AbortError'

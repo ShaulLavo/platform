@@ -15,10 +15,7 @@ import {
   type IntentPrefetchRow,
 } from '@/components/workspace/shared/utils/intent-prefetch-registry'
 import { createAnimationFrameScheduler } from '@/components/workspace/shared/utils/intent-prefetch-scheduler'
-import {
-  FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
-  prefetchFileSnapshotQuery,
-} from '@/lib/file-snapshot-query-cache'
+import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
 
 type EditorTabIntentPrefetchOptions<TElement extends HTMLElement> = {
   enabled: boolean
@@ -53,7 +50,7 @@ export function useEditorTabIntentPrefetch<TElement extends HTMLElement = HTMLEl
 
     const registry = createIntentPrefetchRegistry({
       hitSlop: INTENT_PREFETCH_HIT_SLOP_PX,
-      reactivateAfter: FILE_SNAPSHOT_INTENT_PREFETCH_STALE_MS,
+      reactivateAfter: FILE_SNAPSHOT_STALE_MS,
       resolveRow: resolveEditorTabRow,
     })
     const schedule = createAnimationFrameScheduler(() => {

@@ -215,6 +215,34 @@ describe('tab strip hit testing', () => {
     )
   })
 
+  it('keeps extreme insertion indices reachable from a wide window body', () => {
+    // The body center insets 18% (180px) per side, past the first tab's
+    // midpoint (90), so a 1:1 clamp could never produce index 0. The edge
+    // zone (center x 180-340) compresses onto the leftover strip range
+    // instead of snapping, so intermediate indices stay reachable too.
+    mountTestWindowWithTabStrip({
+      stripRect: { height: 40, width: 1000, x: 0, y: 0 },
+      tabs: [
+        testTabRect('tab-a', { height: 40, width: 180, x: 0, y: 0 }),
+        testTabRect('tab-b', { height: 40, width: 180, x: 180, y: 0 }),
+      ],
+      windowId: targetWindowId,
+      windowRect: { height: 600, width: 1000, x: 0, y: 60 },
+    })
+
+    const target = (index: number) => ({ index, kind: 'tab-strip', windowId: targetWindowId })
+
+    expect(tabStripDropTargetForWindowBodyPoint(targetWindowId, { x: 185, y: 300 })).toEqual(
+      target(0),
+    )
+    expect(tabStripDropTargetForWindowBodyPoint(targetWindowId, { x: 250, y: 300 })).toEqual(
+      target(1),
+    )
+    expect(tabStripDropTargetForWindowBodyPoint(targetWindowId, { x: 500, y: 300 })).toEqual(
+      target(2),
+    )
+  })
+
   it('scrolls a strip when the body point is inside an autoscroll edge', () => {
     const { stripElement, windowElement } = mountTestWindowWithTabStrip({
       stripRect: { height: 40, width: 200, x: 0, y: 0 },

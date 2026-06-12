@@ -499,9 +499,13 @@ function pointIsInsideWindowCenter(element: HTMLElement, point: PointerCoordinat
   )
 }
 
-// Body points project straight onto the strip so the insertion slot tracks
-// the pointer 1:1 — one tab width of movement moves the tab one slot. Only
-// overflowing strips get the autoscroll snap toward the hidden content.
+// Body points project straight onto the strip in the middle of the body
+// center so the insertion slot tracks the pointer 1:1 — one tab width of
+// movement moves the tab one slot. Overflowing strips get the autoscroll
+// snap toward the hidden content; otherwise the edge zones compress the
+// strip range left outside the body center, keeping the extreme insertion
+// indices reachable (the body center is inset from the window, so a plain
+// clamp could never reach slots under the first tabs of a wide strip).
 function projectedTabStripPointForWindowBody(
   stripElement: HTMLElement,
   windowElement: HTMLElement,
@@ -520,14 +524,48 @@ function projectedTabStripPointForWindowBody(
   if (tabStripOrientation(stripElement) === 'vertical') {
     return {
       x: stripRect.left + stripRect.width / 2,
-      y: clamp(point.y, stripRect.top + 1, stripRect.bottom - 1),
+      y: bodyCoordinateProjectedToStrip(
+        point.y,
+        { max: centerRect.bottom, min: centerRect.top },
+        { max: stripRect.bottom - 1, min: stripRect.top + 1 },
+      ),
     }
   }
 
   return {
-    x: clamp(point.x, stripRect.left + 1, stripRect.right - 1),
+    x: bodyCoordinateProjectedToStrip(
+      point.x,
+      { max: centerRect.right, min: centerRect.left },
+      { max: stripRect.right - 1, min: stripRect.left + 1 },
+    ),
     y: stripRect.top + stripRect.height / 2,
   }
+}
+
+function bodyCoordinateProjectedToStrip(
+  value: number,
+  center: { readonly max: number; readonly min: number },
+  strip: { readonly max: number; readonly min: number },
+) {
+  const clamped = clamp(value, strip.min, strip.max)
+  const edgeSize = Math.min(TAB_STRIP_BODY_AUTOSCROLL_EDGE_PX, (center.max - center.min) / 3)
+  if (edgeSize <= 0) return clamped
+
+  const startZoneEnd = center.min + edgeSize
+  if (value < startZoneEnd && strip.min < startZoneEnd) {
+    const reach = clamp((value - center.min) / edgeSize, 0, 1)
+
+    return clamp(strip.min + reach * (startZoneEnd - strip.min), strip.min, strip.max)
+  }
+
+  const endZoneStart = center.max - edgeSize
+  if (value > endZoneStart && strip.max > endZoneStart) {
+    const reach = clamp((center.max - value) / edgeSize, 0, 1)
+
+    return clamp(strip.max - reach * (strip.max - endZoneStart), strip.min, strip.max)
+  }
+
+  return clamped
 }
 
 // Snapping the projected point to a strip extreme is only meaningful while

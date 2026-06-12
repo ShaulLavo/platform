@@ -229,7 +229,7 @@ export async function renamePath(from: string, to: string) {
 
 export async function fetchServerInfo(signal: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.server_info', area: 'fs' },
+    { action: 'fs.server_info', area: 'fs', signal },
     async () => {
       const response = await getClient().health.get({ fetch: { signal } })
 
@@ -246,7 +246,7 @@ export async function fetchServerInfo(signal: AbortSignal) {
 
 export async function statPath(path: string, signal: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.stat', area: 'fs', path },
+    { action: 'fs.stat', area: 'fs', path, signal },
     async () => {
       const response = await getClient().fs.stat.get({ query: { path }, fetch: { signal } })
 
@@ -260,7 +260,7 @@ export async function statPath(path: string, signal: AbortSignal) {
 
 export async function fetchRecentEntries(limit: number, signal: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.recents', area: 'fs', limit },
+    { action: 'fs.recents', area: 'fs', limit, signal },
     async () => {
       const response = await getClient().fs.recents.get({ query: { limit }, fetch: { signal } })
 
