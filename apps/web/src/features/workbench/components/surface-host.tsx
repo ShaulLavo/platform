@@ -6,7 +6,8 @@ import {
   type SurfaceRendererRegistry,
 } from '@/features/workbench/utils/surface-renderer-registry'
 import { surfaceEqual } from '@/features/workbench/utils/surface-equality'
-import type { Surface, WindowId } from '@workspace/tiling/utils/layout-types'
+import { useSurfaceRevealed } from '@/features/workbench/hooks/use-surface-reveal'
+import type { Surface, SurfaceType, WindowId } from '@workspace/tiling/utils/layout-types'
 
 type SurfaceHostProps = {
   readonly active: boolean
@@ -24,8 +25,10 @@ export const SurfaceHost = memo(function SurfaceHost({
   visible,
   windowId,
 }: SurfaceHostProps) {
+  const revealed = useSurfaceRevealed(visible)
   if (!visible && surface.rendererLifecycle === 'unmount-when-not-expanded') return null
 
+  const cold = !revealed && coldUntilFirstReveal(surface.type)
   const Renderer = surfaceRendererFor(surfaceRenderers, surface.type)
 
   return (
@@ -36,6 +39,7 @@ export const SurfaceHost = memo(function SurfaceHost({
         visible ? 'z-10 opacity-100' : 'pointer-events-none z-0 opacity-0',
       )}
       data-renderer-lifecycle={surface.rendererLifecycle}
+      data-surface-cold={cold ? '' : undefined}
       data-surface-host=''
       data-surface-id={surface.id}
       data-surface-type={surface.type}
@@ -43,10 +47,21 @@ export const SurfaceHost = memo(function SurfaceHost({
       id={surfacePanelId(surface.id)}
       role={visible ? 'tabpanel' : undefined}
     >
-      <Renderer active={active} surface={surface} visible={visible} windowId={windowId} />
+      {cold ? null : (
+        <Renderer active={active} surface={surface} visible={visible} windowId={windowId} />
+      )}
     </div>
   )
 }, surfaceHostPropsEqual)
+
+// Editor surfaces pay a document load + full parse + highlight registration
+// on mount, so never-revealed tabs stay cold until first reveal, then stay
+// mounted for keep-alive (undo history, scroll, selection).
+function coldUntilFirstReveal(type: SurfaceType) {
+  if (type === 'file-editor') return true
+
+  return type === 'diff'
+}
 
 function surfaceHostPropsEqual(left: SurfaceHostProps, right: SurfaceHostProps) {
   if (left.active !== right.active) return false

@@ -1,5 +1,10 @@
 > [!IMPORTANT]
-> **STATUS: 🔴 TODO (captured 2026-06-11).** Root-caused, not started. Needs a deliberate lifecycle policy — do not "fix" by blindly unmounting hidden editors or by keeping the current mount-everything behavior.
+> **STATUS: 🟡 PARTIAL (candidate #3 landed 2026-06-12).** Never-revealed editor
+> tabs now stay cold until first reveal, then keep alive (`surface-host.tsx`
+> gates `file-editor`/`diff` renderers on `useSurfaceRevealed`; covered by
+> `surface-host-cold-reveal.browser.tsx`). Measured in the browser suite: cold
+> tabs contribute 0 rows / 0 highlight ranges (was 13 rows / 32–47 ranges
+> each). Candidates #1 and #2 are Editor-repo work and remain open.
 
 # Editor Tab Lifecycle Performance
 

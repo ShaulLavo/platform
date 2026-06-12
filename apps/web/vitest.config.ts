@@ -56,7 +56,10 @@ export default defineConfig({
         plugins: [reactPlugin(), tailwindcss()],
         resolve: { alias, dedupe: ['react', 'react-dom'] },
         define: {
-          'import.meta.env.VITE_SERVER_URL': 'globalThis.location.origin',
+          // Browser tests talk to the spawned file server directly: the
+          // Vitest browser runner serves tests from its own API server, so
+          // the project-level `server.proxy` never applies to them.
+          'import.meta.env.VITE_SERVER_URL': JSON.stringify(browserFileServerUrl),
         },
         optimizeDeps: {
           exclude: ['@singapor/tree-sitter', '@singapor/tree-sitter-languages'],
@@ -84,6 +87,9 @@ export default defineConfig({
           include: ['src/**/*.browser.tsx'],
           setupFiles: ['./test/env/jest-dom.ts'],
           browser: {
+            // Pin the runner origin so the file server's allowed-origins
+            // list (built from this port) matches the real test origin.
+            api: { host: '127.0.0.1', port: Number(browserTestPort) },
             commands: {
               proofMouseDrag,
               proofMouseUp,
