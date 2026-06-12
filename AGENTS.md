@@ -54,13 +54,17 @@
 - Opaque-on-purpose surfaces use the `-solid` utilities (`bg-background-solid`, `bg-card-solid`, ...). They deliberately ignore the user's transparency setting — use them for things that must never fade (e.g. switch thumbs, active tab fills).
 - Regenerate `apps/web/public/workbench/wallpaper-vibrancy.png` (blur 48px, saturate 160%, 35% opacity baked into the alpha channel, ~1280px wide) whenever the wallpaper image changes. Keep the alpha low — it is a color cast; higher values drown the backdrop ghosting.
 
+## Greenfield, No Backward Compatibility
+
+- This project is greenfield and not live: no releases, no external users, no data anyone needs migrated.
+- No backward compatibility shims, no legacy aliases, no deprecation windows. Update every call site in the same pass.
+- When a bug fix invalidates state the buggy code already persisted (localStorage, caches, on-disk files), do not write healing or migration code. Delete the bad state, or tell the user what to delete. One corrupted dev machine never justifies permanent code.
+
 ## Naming And Refactors
 
 - Do not repeat the folder name in file or symbol names. In `workspace/`, prefer `sidebar.tsx`, not `workspace-sidebar.tsx`.
 - Keep qualifiers only when they add meaning: domain types like `WorkspaceCommand`, domain terms like `workspacePath`, or root components like `WorkspaceView`.
 - When removing a redundant prefix, rename the file, exports, and all call sites in one pass.
-- No backward compatibility shims.
-- No legacy aliases.
 - Delete obsolete tests instead of preserving old behavior.
 - Remove duplicate code aggressively.
 
@@ -78,12 +82,25 @@
 - Calibrate the instrument before trusting its readings. Before debugging "X isn't happening", first confirm X would be observable if it did happen — e.g. before chasing a highlight that "doesn't paint", check what color it is supposed to paint and that the color is distinguishable from the background. Verify the expected observable on a known-good case as a control.
 - Treat contradictions as falsification, not as detail to patch around. When a theory needs a new special case after each new observation (per-object, then per-node, then per-row, then global), the theory is wrong — stop patching it, go back to raw ground truth, and re-derive. Two epicycles is the limit.
 
+## Logs
+
+- The app writes structured JSONL logs to `logs/`, one file per day (`logs/2026-06-12.jsonl`). Days that grow too big roll over into numbered continuations (`2026-06-12.1.jsonl`); the highest number is the newest.
+- Each line is one JSON object with `timestamp`, `level` (`debug`/`info`/`warn`/`error`), and `source` (`be` = server, `client` = web app, `keyboard`), plus request/operation fields like `requestId` and `area`. Filter with `grep`/`jq` instead of reading raw.
+- Looking at the logs is highly encouraged for any task. When debugging, it is a must — check them before forming a theory.
+- If the logs do not explain the failure, that is itself the bug to fix first: add the missing log events or fields, then debug with the better logs. Do not debug blind.
+- Logging is wide-event style (evlog). Always prefer wide logs: enrich the one event per operation/request with more fields instead of emitting extra narrow log lines.
+- Never throw `new Error`. Create errors with `createError` from `evlog` — in practice through the feature's `structured-errors.ts` wrapper (`createStructuredError` or a `defineErrorCatalog` entry) so the error carries `code`, `status`, `why`, and `fix`.
+
 ## TypeScript Fixes
 
 - Treat readonly/mutable mismatches as contract bugs first.
 - Do not copy containers just to satisfy TypeScript.
 - If a callee does not mutate a value, make its parameter or model type accept readonly data.
 - Avoid fake fixes like `sizes: [...node.sizes]`. Copy only for a real ownership boundary or real mutation.
+
+## Dev Server
+
+- A dev server is always running. Never spin up your own server to test or verify changes — reuse the running one.
 
 ## Testing
 
