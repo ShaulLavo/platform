@@ -16,14 +16,7 @@ afterEach(async () => {
 })
 
 describe('git rpc branches', () => {
-  // KNOWN BUG (characterized, do not "fix" the assertions): parseBranches splits
-  // `git branch --format '…%00…'` output on NUL and drops empty fields with
-  // `.filter(Boolean)`. A branch without an upstream emits an empty upstream
-  // field, so every later field shifts: the short sha lands in `upstream`, the
-  // line's trailing newline plus the NEXT branch name land in `commit`, and all
-  // branches after the first are dropped entirely. These tests pin today's
-  // behavior; fixing parseBranches must update them deliberately.
-  it('lists the initial branch as current with shifted upstream and commit fields', async () => {
+  it('lists the initial branch as current', async () => {
     const root = await fixtureRepo()
     const shortSha = (await runGit(root, ['rev-parse', '--short', 'HEAD'])).stdout.trim()
     const app = testApp(root)
@@ -38,11 +31,11 @@ describe('git rpc branches', () => {
     const payload = (await response.json()) as GitBranchesTestPayload
     expect(payload.repository).toMatchObject({ branch: 'main', path: '' })
     expect(payload.branches).toEqual([
-      { commit: '\n', current: true, name: 'main', upstream: shortSha },
+      { commit: shortSha, current: true, name: 'main', upstream: null },
     ])
   })
 
-  it('creates a branch and checks it out by default, listing only the first branch', async () => {
+  it('creates a branch and checks it out by default', async () => {
     const root = await fixtureRepo()
     const shortSha = (await runGit(root, ['rev-parse', '--short', 'HEAD'])).stdout.trim()
     const app = testApp(root)
@@ -58,7 +51,8 @@ describe('git rpc branches', () => {
     expect(response.status).toBe(200)
     const payload = (await response.json()) as GitBranchesTestPayload
     expect(payload.branches).toEqual([
-      { commit: '\nmain', current: true, name: 'feature', upstream: shortSha },
+      { commit: shortSha, current: true, name: 'feature', upstream: null },
+      { commit: shortSha, current: false, name: 'main', upstream: null },
     ])
     const head = await runGit(root, ['rev-parse', '--abbrev-ref', 'HEAD'])
     expect(head.stdout.trim()).toBe('feature')
@@ -80,10 +74,32 @@ describe('git rpc branches', () => {
     expect(response.status).toBe(200)
     const payload = (await response.json()) as GitBranchesTestPayload
     expect(payload.branches).toEqual([
-      { commit: '\nmain', current: false, name: 'feature', upstream: shortSha },
+      { commit: shortSha, current: false, name: 'feature', upstream: null },
+      { commit: shortSha, current: true, name: 'main', upstream: null },
     ])
     const head = await runGit(root, ['rev-parse', '--abbrev-ref', 'HEAD'])
     expect(head.stdout.trim()).toBe('main')
+  })
+
+  it('reports the upstream when a branch tracks another ref', async () => {
+    const root = await fixtureRepo()
+    const shortSha = (await runGit(root, ['rev-parse', '--short', 'HEAD'])).stdout.trim()
+    await runGit(root, ['branch', 'feature'])
+    await runGit(root, ['branch', '--set-upstream-to=main', 'feature'])
+    const app = testApp(root)
+
+    const response = await app.handle(
+      new Request('http://local/git/branches', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const payload = (await response.json()) as GitBranchesTestPayload
+    expect(payload.branches).toEqual([
+      { commit: shortSha, current: false, name: 'feature', upstream: 'main' },
+      { commit: shortSha, current: true, name: 'main', upstream: null },
+    ])
   })
 
   it('checks out an existing branch and reports it in status', async () => {
