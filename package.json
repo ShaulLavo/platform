@@ -46,6 +46,7 @@
     "jscpd": "^4.2.4",
     "knip": "^6.16.0",
     "lefthook": "^2.1.9",
+    "oxc-plugin-react-compiler": "^0.2.0",
     "oxfmt": "latest",
     "oxlint": "latest",
     "turbo": "^2.9.2",
