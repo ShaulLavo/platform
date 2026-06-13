@@ -13,7 +13,7 @@
     ],
     "catalog": {
       "preact": "11.0.0-beta.0",
-      "preact-render-to-string": "6.6.5",
+      "preact-render-to-string": "6.7.0",
       "vite": "8.0.16",
       "vitest": "4.1.8"
     }
@@ -30,7 +30,7 @@
     "start": "bun scripts/prod.ts start",
     "format": "bun run --filter '*' format",
     "format:check": "bun run --filter '*' format:check",
-    "typecheck": "bun run --filter '*' typecheck",
+    "typecheck": "bun run --sequential --filter '*' typecheck",
     "test": "bun run --filter '*' test",
     "dupes": "jscpd apps packages",
     "dupes:report": "jscpd apps packages --reporters html,console --output ./jscpd-report",
@@ -40,15 +40,15 @@
     "hooks:pre-commit": "lefthook run pre-commit"
   },
   "devDependencies": {
-    "@typescript/native-preview": "latest",
+    "@typescript/native-preview": "^7.0.0-dev.20260613.1",
     "evlog": "^2.19.1",
-    "jscpd": "^4.2.4",
-    "knip": "^6.16.0",
+    "jscpd": "^5.0.9",
+    "knip": "^6.16.1",
     "lefthook": "^2.1.9",
     "oxc-plugin-react-compiler": "^0.2.0",
-    "oxfmt": "latest",
-    "oxlint": "latest",
-    "typescript": "5.9.3"
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.69.0",
+    "typescript": "6.0.3"
   },
   "overrides": {
     "@singapor/core": "link:@singapor/core",

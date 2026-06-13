@@ -22,6 +22,8 @@ coverage
 # Build Outputs
 dist
 apps/desktop/build/
+# Native macOS vibrancy dylib — compiled by scripts/build-macos-effects.sh
+apps/desktop/src/bun/*.dylib
 
 # Debug
 npm-debug.log*

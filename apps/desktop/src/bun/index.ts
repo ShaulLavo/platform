@@ -3,7 +3,8 @@ import { createDesktopError } from './structured-errors'
 import { existsSync, readdirSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
-import Electrobun, { BrowserView, BrowserWindow, Utils } from 'electrobun/bun'
+import { dlopen, FFIType } from 'bun:ffi'
+import Electrobun, { BrowserView, BrowserWindow, Screen, Utils } from 'electrobun/bun'
 import { applyEnvFileOverrides } from '@workspace/observability/env-file'
 import type { DesktopRPC, PlatformPickOptions } from '../shared/rpc'
 import {
@@ -111,6 +112,24 @@ function spawnWeb() {
   )
 }
 
+// CEF (Chromium) by default; PLATFORM_DESKTOP_RENDERER=native swaps the main
+// window to the system WebKit renderer. Used to A/B whether the transparent
+// blur + disappear are CEF-transparency integration gaps (the working vibrancy
+// reference ran on the native renderer) rather than inherent to transparency.
+const MAIN_WINDOW_RENDERER: 'cef' | 'native' =
+  Bun.env.PLATFORM_DESKTOP_RENDERER === 'native' ? 'native' : 'cef'
+
+// Kill switch for the whole wallpaper-vibrancy experiment. PLATFORM_DESKTOP_VIBRANCY=0
+// makes the window opaque, skips the native effect view, and tells the web app to
+// drop its [data-desktop] styling — i.e. the pre-change desktop app, for A/B.
+const VIBRANCY_ENABLED = Bun.env.PLATFORM_DESKTOP_VIBRANCY !== '0'
+
+const PREFERRED_WINDOW_WIDTH = 1440
+const PREFERRED_WINDOW_HEIGHT = 960
+const MIN_WINDOW_WIDTH = 1024
+const MIN_WINDOW_HEIGHT = 720
+const WINDOW_WORK_AREA_MARGIN = 48
+
 function openMainWindow() {
   const rpc = BrowserView.defineRPC<DesktopRPC>({
     maxRequestTime: 120_000,
@@ -120,27 +139,90 @@ function openMainWindow() {
       },
     },
   })
+  const frame = mainWindowFrame()
 
-  new BrowserWindow({
+  const mainWindow = new BrowserWindow({
     title: 'Platform',
-    frame: {
-      x: 100,
-      y: 100,
-      width: 1440,
-      height: 960,
-    },
+    frame,
     preload: 'views://preload/index.js',
     rpc,
+    renderer: MAIN_WINDOW_RENDERER,
     // Ghostty-style seamless chrome: full-size content view with inset traffic
     // lights floating over the web UI (no separate native titlebar). The web app
     // renders its own draggable title strip; see WindowTitleBar.
     titleBarStyle: 'hiddenInset',
+    // Transparent webview so the native NSVisualEffectView (applied below) can
+    // frost the user's real macOS wallpaper behind it. The web app drops its
+    // in-page wallpaper and opaque floor under [data-desktop]; see globals.css.
+    transparent: VIBRANCY_ENABLED,
     // Push the traffic lights right (x) and down (y) so they sit centered and
     // inset within the 40px web title strip, matching T3 Code's macOS chrome
     // (hiddenInset, lights ~{x:16,y:18}). Tweak alongside --titlebar-height.
     trafficLightOffset: { x: 12, y: 6 },
-    url: WEB_URL,
+    url: VIBRANCY_ENABLED ? WEB_URL : `${WEB_URL}/?desktopVibrancy=0`,
   })
+
+  applyMacOSWindowEffects(mainWindow)
+}
+
+function mainWindowFrame() {
+  const display = Screen.getPrimaryDisplay()
+  const { workArea } = display
+  const width = clampedWindowDimension(PREFERRED_WINDOW_WIDTH, workArea.width, MIN_WINDOW_WIDTH)
+  const height = clampedWindowDimension(PREFERRED_WINDOW_HEIGHT, workArea.height, MIN_WINDOW_HEIGHT)
+  const frame = {
+    height,
+    width,
+    x: centeredWindowCoordinate(workArea.x, workArea.width, width),
+    y: centeredWindowCoordinate(workArea.y, workArea.height, height),
+  }
+
+  recordDesktopInfo('desktop.window.frame', {
+    displayBounds: display.bounds,
+    displayScaleFactor: display.scaleFactor,
+    displayWorkArea: workArea,
+    frame,
+  })
+
+  return frame
+}
+
+function clampedWindowDimension(preferred: number, available: number, minimum: number) {
+  if (available <= 0) return preferred
+
+  const availableWithMargin = Math.max(minimum, available - WINDOW_WORK_AREA_MARGIN * 2)
+  return Math.min(preferred, availableWithMargin)
+}
+
+function centeredWindowCoordinate(origin: number, available: number, size: number) {
+  if (available <= 0) return origin
+
+  return Math.max(origin, Math.round(origin + (available - size) / 2))
+}
+
+// Compiled by scripts/build-macos-effects.sh and copied next to the bundled Bun
+// entry by electrobun.config.ts. Adds the native NSVisualEffectView that frosts
+// the user's real macOS wallpaper behind the transparent webview.
+const NATIVE_EFFECTS_DYLIB = path.join(import.meta.dirname, 'libMacWindowEffects.dylib')
+
+function applyMacOSWindowEffects(browserWindow: BrowserWindow) {
+  if (!VIBRANCY_ENABLED) return
+  if (process.platform !== 'darwin') return
+
+  if (!existsSync(NATIVE_EFFECTS_DYLIB)) {
+    recordDesktopError('desktop.vibrancy.missing_dylib', { path: NATIVE_EFFECTS_DYLIB })
+    return
+  }
+
+  try {
+    const lib = dlopen(NATIVE_EFFECTS_DYLIB, {
+      enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
+    })
+    const enabled = lib.symbols.enableWindowVibrancy(browserWindow.ptr)
+    recordDesktopInfo('desktop.vibrancy.applied', { enabled, renderer: MAIN_WINDOW_RENDERER })
+  } catch (error) {
+    recordDesktopError('desktop.vibrancy.failed', { error: errorMessage(error) })
+  }
 }
 
 async function pickEntry(options: PlatformPickOptions) {

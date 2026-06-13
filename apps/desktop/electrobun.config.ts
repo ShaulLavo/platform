@@ -10,6 +10,10 @@ export default {
     exitOnLastWindowClosed: true,
   },
   build: {
+    copy: {
+      // Native macOS vibrancy bridge, loaded by src/bun/index.ts over FFI.
+      'src/bun/libMacWindowEffects.dylib': 'bun/libMacWindowEffects.dylib',
+    },
     bun: {
       entrypoint: 'src/bun/index.ts',
     },

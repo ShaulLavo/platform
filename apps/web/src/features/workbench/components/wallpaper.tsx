@@ -1,8 +1,13 @@
 import { cn } from '@workspace/ui/lib/utils'
 
+import { isDesktop } from '@/lib/platform/bridge'
 import { WALLPAPER_URL } from '@/features/workbench/utils/wallpaper'
 
 export function Wallpaper({ className }: { readonly className?: string }) {
+  // Desktop frosts the user's real macOS wallpaper natively (see globals.css
+  // [data-desktop] + apps/desktop window-effects.mm); skip the shipped image.
+  if (isDesktop()) return null
+
   return (
     <div
       aria-hidden='true'
