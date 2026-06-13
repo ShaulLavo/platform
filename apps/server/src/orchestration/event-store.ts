@@ -13,6 +13,7 @@ import {
   orchestrationReplaySummary,
   recordChatPipelineInfo,
 } from './orchestration-logging'
+import { orchestrationErrors } from '../observability/structured-errors'
 
 export type OrchestrationDatabase = PlatformDatabase
 export type PendingOrchestrationEvent = {
@@ -163,10 +164,23 @@ export function rowToEvent(row: OrchestrationEventRow) {
     commandId: row.commandId,
     correlationId: row.correlationId,
     eventId: row.eventId,
-    metadata: JSON.parse(row.metadataJson) as unknown,
+    metadata: parseEventJson(row, 'metadataJson'),
     occurredAt: row.occurredAt,
-    payload: JSON.parse(row.payloadJson) as unknown,
+    payload: parseEventJson(row, 'payloadJson'),
     sequence: row.sequence,
     type: row.eventType,
   })
+}
+
+function parseEventJson(row: OrchestrationEventRow, field: 'metadataJson' | 'payloadJson') {
+  try {
+    return JSON.parse(row[field]) as unknown
+  } catch (cause) {
+    throw orchestrationErrors.EVENT_JSON_INVALID({
+      cause: cause instanceof Error ? cause : undefined,
+      field,
+      internal: { field, sequence: row.sequence },
+      sequence: row.sequence,
+    })
+  }
 }

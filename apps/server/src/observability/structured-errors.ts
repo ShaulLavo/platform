@@ -26,6 +26,13 @@ export const orchestrationErrors = defineErrorCatalog('orchestration', {
     why: 'The command receipt was already marked as rejected.',
     fix: 'Inspect the stored rejection and dispatch a new command when retrying.',
   },
+  EVENT_JSON_INVALID: {
+    status: 500,
+    message: ({ field, sequence }: { field: string; sequence: number }) =>
+      `Invalid orchestration event ${field} JSON at sequence ${sequence}`,
+    why: 'A persisted orchestration event row contains malformed JSON.',
+    fix: 'Inspect the stored orchestration event row and repair or remove the malformed JSON field.',
+  },
   PROJECT_ALREADY_EXISTS: {
     status: 409,
     message: ({ projectId }: { projectId: string }) => `Project already exists: ${projectId}`,

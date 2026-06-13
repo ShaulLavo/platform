@@ -125,6 +125,51 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
+  it('reports malformed persisted event JSON as a structured invariant error', () => {
+    const fixture = createFixture()
+    const store = new OrchestrationEventStore(fixture.database)
+    fixture.database
+      .insert(schema.orchestrationEvents)
+      .values({
+        actorKind: 'client',
+        aggregateId: 'project-1',
+        aggregateKind: 'project',
+        causationEventId: null,
+        commandId: 'cmd-project-create',
+        correlationId: 'cmd-project-create',
+        eventId: 'event-project-created',
+        eventType: 'project.created',
+        metadataJson: '{',
+        occurredAt: now,
+        payloadJson: JSON.stringify({
+          createdAt: now,
+          defaultModelSelection: null,
+          projectId: 'project-1',
+          title: 'Platform',
+          updatedAt: now,
+          workspaceRoot: '/workspace',
+        }),
+        streamVersion: 1,
+      })
+      .run()
+
+    try {
+      store.readAfter({ afterSequence: 0 })
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'orchestration.EVENT_JSON_INVALID',
+        internal: { field: 'metadataJson', sequence: 1 },
+        message: 'Invalid orchestration event metadataJson JSON at sequence 1',
+        status: 500,
+      })
+      fixture.close()
+      return
+    }
+
+    fixture.close()
+    throw new Error('expected malformed event JSON to throw')
+  })
+
   it('persists projection rows and returns shell/detail snapshots', async () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)

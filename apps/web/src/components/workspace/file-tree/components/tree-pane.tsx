@@ -1,4 +1,3 @@
-/* eslint-disable oxc-react-compiler/refs -- DEFERRED (see handoff): the latest-ref pattern (modelRef/selectedFilePathRef/selectFileRef/handleTreeSelectionChangeRef read+written during render) makes the React Compiler bail on TreePane, so it is not memoized. Regaining memoization needs a careful refactor of a critical component. */
 import type {
   FileTreeDropContext,
   FileTreeDropResult,
@@ -112,15 +111,6 @@ function ReadyTreePane({
     selectedFilePath: undefined,
   })
   const treeRef = useRef<FileTreeModel | null>(null)
-  // useFileTree consumes options once; keep this callback stable and read live app state from refs.
-  const handleTreeSelectionChangeRef = useRef((selectedPaths: readonly string[]) => {
-    openSelectedTreeFile({
-      model: modelRef.current,
-      selectedFilePath: selectedFilePathRef.current,
-      selectedPaths,
-      selectFile: selectFileRef.current,
-    })
-  })
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const moveMutation = useMutation({
     mutationFn: moveDroppedTreePaths,
@@ -183,7 +173,15 @@ function ReadyTreePane({
         reportError(toClientError({ code: 'INVALID_PATH', error }))
       },
     },
-    onSelectionChange: handleTreeSelectionChangeRef.current,
+    // useFileTree captures these options once, so read live app state from refs
+    // at call time — the same pattern as the drag/drop and row-decoration callbacks.
+    onSelectionChange: (selectedPaths) =>
+      openSelectedTreeFile({
+        model: modelRef.current,
+        selectedFilePath: selectedFilePathRef.current,
+        selectedPaths,
+        selectFile: selectFileRef.current,
+      }),
     renderRowDecoration: (context) => treeRowDecoration(modelRef.current, context),
     unsafeCSS: treeUnsafeCss,
   })
