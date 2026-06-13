@@ -21,7 +21,7 @@ export function imageFilesFromClipboard(clipboardData: DataTransfer | null) {
   return imageFilesFromFileList(clipboardData.files)
 }
 
-export async function createChatInputImageAttachments(files: readonly File[]) {
+async function createChatInputImageAttachments(files: readonly File[]) {
   const attachments: ChatInputImageAttachment[] = []
 
   for (const file of files) {

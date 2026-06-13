@@ -7,7 +7,7 @@ import {
 import * as v from 'valibot'
 
 export const CHAT_INPUT_DRAFT_STORAGE_KEY = 'platform.chat-input-drafts.v1'
-export const CHAT_INPUT_DRAFT_STORAGE_VERSION = 1
+const CHAT_INPUT_DRAFT_STORAGE_VERSION = 1
 
 const persistedImageAttachmentSchema = v.object({
   dataUrl: v.pipe(v.string(), v.minLength(1)),

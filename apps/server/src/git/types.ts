@@ -10,7 +10,6 @@ export type {
   GitLineChange,
   GitRepositoryInfo,
   GitStatusResult,
-  GitTreeStatus,
 } from '@workspace/contracts'
 
 export type GitCommandResult = {

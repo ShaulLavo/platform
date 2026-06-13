@@ -131,7 +131,7 @@ export type SurfaceDescriptor = {
 
 export type SurfaceRegistry = ReadonlyMap<SurfaceType, SurfaceDescriptor>
 
-export const defaultSurfaceDescriptors = [
+const defaultSurfaceDescriptors = [
   fileEditorDescriptor(),
   diffDescriptor(),
   searchResultsDescriptor(),
@@ -159,10 +159,6 @@ export function createSurfaceRegistry(descriptors: readonly SurfaceDescriptor[])
   }
 
   return registry
-}
-
-export function surfaceDescriptor(registry: SurfaceRegistry, type: SurfaceType) {
-  return registry.get(type) ?? null
 }
 
 export function createRegisteredSurface(
@@ -201,23 +197,8 @@ export function surfaceClosePolicy(
   return descriptor.closePolicy(surface, context)
 }
 
-export function canCloseSurface(
-  registry: SurfaceRegistry,
-  surface: Surface,
-  context: SurfaceCloseContext = {},
-) {
-  const capabilities = registeredSurfaceCapabilities(registry, surface)
-  if (!capabilities?.canClose) return false
-
-  return surfaceClosePolicy(registry, surface, context).type !== 'block'
-}
-
 export function canSplitSurface(registry: SurfaceRegistry, surface: Surface) {
   return registeredSurfaceCapabilities(registry, surface)?.canSplit ?? false
-}
-
-export function canCollapseSurface(registry: SurfaceRegistry, surface: Surface) {
-  return registeredSurfaceCapabilities(registry, surface)?.canCollapse ?? false
 }
 
 export function canFloatSurface(registry: SurfaceRegistry, surface: Surface) {

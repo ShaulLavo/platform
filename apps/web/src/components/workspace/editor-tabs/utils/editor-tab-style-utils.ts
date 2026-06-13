@@ -5,71 +5,9 @@ import {
   CHROME_TAB_HEIGHT,
   CHROME_TAB_INACTIVE_MIN_WIDTH,
   CHROME_TAB_STANDARD_WIDTH,
-  CHROME_TAB_TRAILING_SLOT_WIDTH,
 } from '@/components/workspace/editor-tabs/utils/chrome-tab-layout'
-import {
-  CHROME_TAB_SLOT_TRANSITION,
-  CHROME_TAB_TRANSITION,
-} from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
-import type {
-  EditorChromeVisualTab,
-  EditorTabModel,
-  EditorTabSizing,
-} from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import { colorForFileIcon, type ResolvedFileIcon } from '@/lib/file-icons'
-
-export const CHROME_TAB_GROW_DELAY_MS = 1000
-
-export function tabSizingClassName(tabSizing: EditorTabSizing) {
-  if (tabSizing === 'fixed') return 'min-w-[50px] max-w-40 flex-[1_0_0]'
-  if (tabSizing === 'shrink') return 'min-w-20 max-w-fit basis-0 grow'
-
-  return 'w-[120px] min-w-fit shrink-0'
-}
-
-export function fileIconStyle(icon: ResolvedFileIcon): CSSProperties {
-  const mask = `url(${icon.src}) center / contain no-repeat`
-
-  return {
-    backgroundColor: colorForFileIcon(icon),
-    mask,
-    WebkitMask: mask,
-  }
-}
-
-export function activeChromeTabId(visualTabs: readonly EditorChromeVisualTab[]) {
-  return (
-    visualTabs.find((visualTab) => visualTab.phase !== 'closing' && visualTab.tab.active)?.tab.id ??
-    null
-  )
-}
-
-export function chromeTrailingSlotWidths(visualTabs: readonly EditorChromeVisualTab[]) {
-  return visualTabs.map((visualTab) => {
-    if (visualTab.phase === 'closing') return 0
-    if (!visualTab.tab.active) return 0
-
-    return CHROME_TAB_TRAILING_SLOT_WIDTH
-  })
-}
-
-export function chromeTabCloseButtonVisibilityClassName(
-  tab: EditorTabModel,
-  dirty: boolean,
-  forceVisible: boolean,
-) {
-  if (forceVisible) return 'opacity-100'
-  if (tab.active && !dirty) return 'opacity-100'
-
-  return 'pointer-events-none opacity-0 group-focus-within/chrome-tab:pointer-events-auto group-focus-within/chrome-tab:opacity-100 group-hover/chrome-tab:pointer-events-auto group-hover/chrome-tab:opacity-100'
-}
-
-export function chromeTabTrailingSlotStyle(closeMode: boolean) {
-  return {
-    '--chrome-tab-trailing-slot-width': `${CHROME_TAB_TRAILING_SLOT_WIDTH}px`,
-    transition: closeMode ? 'none' : CHROME_TAB_SLOT_TRANSITION,
-  } as CSSProperties
-}
+import { CHROME_TAB_TRANSITION } from '@/components/workspace/editor-tabs/utils/chrome-tab-style'
+import type { EditorChromeVisualTab } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 
 export function chromeTabStyle(
   visualTab: EditorChromeVisualTab,

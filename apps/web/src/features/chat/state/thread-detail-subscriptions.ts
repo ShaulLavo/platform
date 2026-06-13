@@ -54,8 +54,6 @@ type ThreadDetailSubscriptionEntry = {
   threadId: ThreadId
 }
 
-const NOOP = () => undefined
-
 export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscriptionCacheOptions) {
   const entries = new Map<ThreadId, ThreadDetailSubscriptionEntry>()
   const store = options.store ?? useChatProjectionStore
@@ -333,7 +331,7 @@ function isBusySession(session: OrchestrationSession | null) {
   return session.status !== 'idle' && session.status !== 'stopped'
 }
 
-export const localThreadDetailSubscriptionCache = createThreadDetailSubscriptionCache({
+const localThreadDetailSubscriptionCache = createThreadDetailSubscriptionCache({
   environment: createLocalChatEnvironment(),
   store: useChatProjectionStore,
 })
@@ -344,20 +342,4 @@ export function retainThreadDetailSubscription(threadId: ThreadId) {
 
 export function prewarmSidebarThreadDetails(threadIds: ReadonlyArray<ThreadId>) {
   localThreadDetailSubscriptionCache.prewarmSidebarThreadDetails(threadIds)
-}
-
-export function reconcileThreadDetailSubscription(threadId: ThreadId) {
-  localThreadDetailSubscriptionCache.reconcileThread(threadId)
-}
-
-export function disposeThreadDetailSubscription(threadId: ThreadId) {
-  return localThreadDetailSubscriptionCache.dispose(threadId)
-}
-
-export function disposeAllThreadDetailSubscriptions() {
-  localThreadDetailSubscriptionCache.disposeAll()
-}
-
-export function noopThreadDetailRelease() {
-  return NOOP
 }

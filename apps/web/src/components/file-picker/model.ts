@@ -4,7 +4,6 @@ import { effectiveEntryType, isDirectoryEntry, isFileEntry } from '@/lib/file-sy
 import type { LoadState } from '@/lib/load-state'
 import { formatSize } from '@/lib/path-formatters'
 
-export type { LoadState } from '@/lib/load-state'
 export { basename, displayPath, formatSize } from '@/lib/path-formatters'
 import { compareFuzzyRankedTargets } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
@@ -133,7 +132,7 @@ export function joinPaths(parent: string, child: string) {
   return `${parent}/${child}`
 }
 
-export function compareEntries(a: FsEntry, b: FsEntry) {
+function compareEntries(a: FsEntry, b: FsEntry) {
   const aType = effectiveEntryType(a)
   const bType = effectiveEntryType(b)
   if (aType === 'directory' && bType !== 'directory') return -1
@@ -196,19 +195,6 @@ export function formatModified(mtimeMs: number) {
   return modifiedDateFormatter.format(new Date(mtimeMs))
 }
 
-export function rpcErrorMessage(error: unknown) {
-  const value = errorValue(error)
-  if (isErrorPayload(value)) return value.error.message
-
-  return 'The file server rejected the request.'
-}
-
-export function rawRpcErrorMessage(payload: unknown) {
-  if (isErrorPayload(payload)) return payload.error.message
-
-  return 'The file server rejected the request.'
-}
-
 export function loadStateEntries(state: EntriesLoadState) {
   if (state.status === 'ready') return state.data
   if (state.status === 'loading') return state.data ?? []
@@ -235,20 +221,4 @@ function entryRankTarget(entry: FsEntry) {
     label: entry.name,
     path: entry.path,
   }
-}
-
-function errorValue(error: unknown) {
-  if (!error || typeof error !== 'object') return null
-  if (!('value' in error)) return null
-
-  return error.value
-}
-
-function isErrorPayload(value: unknown): value is { error: { message: string } } {
-  if (!value || typeof value !== 'object') return false
-  if (!('error' in value)) return false
-
-  const error = value.error
-  if (!error || typeof error !== 'object') return false
-  return 'message' in error && typeof error.message === 'string'
 }

@@ -148,7 +148,7 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
   )
 }
 
-export async function fetchFullThreadCheckpointDiff(
+async function fetchFullThreadCheckpointDiff(
   input: Pick<CheckpointDiffQueryInput, 'threadId' | 'toTurnCount'>,
   signal?: AbortSignal,
 ) {

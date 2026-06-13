@@ -44,7 +44,6 @@ import type {
   WriteBody,
 } from './contracts'
 
-export type FileSystemInfo = ReturnType<FileSystemService['info']>
 export type FileSystemSearchOptions = Omit<FindOptions, 'maxContentBytes'>
 
 export type FileSystemServiceOptions = {
@@ -62,13 +61,13 @@ export type FileSystemServiceOptions = {
   metadataDatabasePath?: string
 }
 
-export const DEFAULT_TREE_CONCURRENCY = 32
+const DEFAULT_TREE_CONCURRENCY = 32
 
-export const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
+const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
 
 const MAX_TEXT_FILE_BYTES_UPPER_BOUND = 2_147_483_647
 
-export function resolveMaxTextFileBytes(env: NodeJS.ProcessEnv = process.env): number {
+function resolveMaxTextFileBytes(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.MAX_TEXT_FILE_BYTES
   if (raw === undefined) return DEFAULT_MAX_TEXT_FILE_BYTES
 

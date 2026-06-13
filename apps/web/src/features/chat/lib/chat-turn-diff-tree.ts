@@ -7,7 +7,7 @@ export type ChatTurnDiffStat = {
   deletions: number
 }
 
-export type ChatTurnDiffTreeDirectoryNode = {
+type ChatTurnDiffTreeDirectoryNode = {
   children: ChatTurnDiffTreeNode[]
   kind: 'directory'
   name: string
@@ -15,7 +15,7 @@ export type ChatTurnDiffTreeDirectoryNode = {
   stat: ChatTurnDiffStat
 }
 
-export type ChatTurnDiffTreeFileNode = {
+type ChatTurnDiffTreeFileNode = {
   kind: 'file'
   name: string
   path: string

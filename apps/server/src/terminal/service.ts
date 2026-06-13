@@ -29,7 +29,7 @@ export type TerminalPtyExitEvent = {
   signal?: number
 }
 
-export type TerminalPtySpawnOptions = {
+type TerminalPtySpawnOptions = {
   cols: number
   cwd: string
   env: NodeJS.ProcessEnv

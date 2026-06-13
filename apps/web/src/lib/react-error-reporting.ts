@@ -2,7 +2,7 @@ import type { ErrorInfo } from 'react'
 
 import { reportClientError } from './client-error-reporting'
 
-export type ReactErrorKind = 'boundary' | 'caught' | 'recoverable' | 'uncaught'
+type ReactErrorKind = 'boundary' | 'caught' | 'recoverable' | 'uncaught'
 
 export type ReactErrorReportInput = {
   error: unknown

@@ -4,7 +4,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla'
 
 import { clientErrors } from '@/lib/structured-errors'
 
-export type FilesystemConflictEventType = 'changed' | 'deleted' | 'renamed'
+type FilesystemConflictEventType = 'changed' | 'deleted' | 'renamed'
 
 export type FilesystemConflict = {
   diffDocumentId?: string

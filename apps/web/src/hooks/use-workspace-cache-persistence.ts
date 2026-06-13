@@ -85,7 +85,7 @@ export function subscribeWorkspaceCachePersistence({
   }
 }
 
-export function workspaceCacheStateForStores(
+function workspaceCacheStateForStores(
   workspaceState: EditorWorkspaceStore,
   searchState: SearchBufferStore,
 ): WorkspaceCacheWriteState {

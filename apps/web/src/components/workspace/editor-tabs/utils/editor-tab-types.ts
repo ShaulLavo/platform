@@ -2,10 +2,6 @@ import type { ChromeVisualTab } from '@/components/workspace/editor-tabs/hooks/u
 import type { StatusPresentation } from '@/features/git/types'
 import type { ResolvedFileIcon } from '@/lib/file-icons'
 
-export type EditorTabSizing = 'chrome' | 'fit' | 'fixed' | 'shrink'
-
-export const DEFAULT_EDITOR_TAB_SIZING: EditorTabSizing = 'chrome'
-
 export type EditorTabConflictMap = Readonly<Record<string, { remotePath: string }>>
 
 export type EditorTabModel = {

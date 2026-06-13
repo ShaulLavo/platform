@@ -143,7 +143,7 @@ export function editorPaletteItems(
   }))
 }
 
-export function commandKeywords(spec: CommandSpec) {
+function commandKeywords(spec: CommandSpec) {
   return [
     spec.title,
     spec.category,

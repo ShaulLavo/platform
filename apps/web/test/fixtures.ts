@@ -4,11 +4,11 @@ import { test as base } from 'vitest'
 import { resetClient, setClient } from '@/lib/client'
 import { makeTestServer, TEST_ORIGIN, type TestServer } from './server'
 
-export type TestClient = ReturnType<typeof createInProcessClient>
+type TestClient = ReturnType<typeof createInProcessClient>
 
 // Eden client that calls the real app directly — every request goes through
 // `app.handle`, so there is no socket, no port, and nothing mocked.
-export function createInProcessClient(server: TestServer): ReturnType<typeof treaty<App>> {
+function createInProcessClient(server: TestServer): ReturnType<typeof treaty<App>> {
   return treaty<App>(TEST_ORIGIN, {
     fetcher: ((input, init) =>
       server.app.handle(withOrigin(new Request(input, init), server.origin))) as typeof fetch,

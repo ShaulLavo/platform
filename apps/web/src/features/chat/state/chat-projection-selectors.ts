@@ -1,14 +1,10 @@
 import type {
-  EventId,
-  MessageId,
   OrchestrationLatestTurn,
   OrchestrationThreadActivity,
   OrchestrationProjectShell,
   OrchestrationSession,
   ProjectId,
-  ProposedPlanId,
   ThreadId,
-  TurnId,
 } from '@workspace/contracts'
 
 import type {
@@ -25,7 +21,6 @@ const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = []
 const EMPTY_PROJECTS: OrchestrationProjectShell[] = []
 const EMPTY_PROPOSED_PLANS: ChatThread['proposedPlans'] = []
 const EMPTY_SIDEBAR_THREADS: ChatSidebarThreadSummary[] = []
-const EMPTY_THREAD_SHELLS: ChatProjectionThreadShell[] = []
 const EMPTY_TURN_DIFF_SUMMARIES: ChatTurnDiffSummary[] = []
 
 const collectedByIdsCache = new WeakMap<readonly string[], WeakMap<object, readonly unknown[]>>()
@@ -45,14 +40,6 @@ const threadCache = new WeakMap<
 
 export function selectChatProjects(state: ChatProjectionState) {
   return collectByIds(state.projectIds, state.projectById, EMPTY_PROJECTS)
-}
-
-export function selectChatThreadShells(state: ChatProjectionState) {
-  return collectByIds(state.threadIds, state.threadShellById, EMPTY_THREAD_SHELLS)
-}
-
-export function selectChatSidebarThreads(state: ChatProjectionState) {
-  return collectByIds(state.threadIds, state.sidebarThreadSummaryById, EMPTY_SIDEBAR_THREADS)
 }
 
 export function selectChatSidebarThreadsForProject(
@@ -156,7 +143,7 @@ function terminalLatestTurn(
   }
 }
 
-export function selectChatMessagesForThread(state: ChatProjectionState, threadId: ThreadId) {
+function selectChatMessagesForThread(state: ChatProjectionState, threadId: ThreadId) {
   return collectByIds(
     state.messageIdsByThreadId[threadId],
     state.messageByThreadId[threadId],
@@ -164,7 +151,7 @@ export function selectChatMessagesForThread(state: ChatProjectionState, threadId
   )
 }
 
-export function selectChatActivitiesForThread(state: ChatProjectionState, threadId: ThreadId) {
+function selectChatActivitiesForThread(state: ChatProjectionState, threadId: ThreadId) {
   return collectByIds(
     state.activityIdsByThreadId[threadId],
     state.activityByThreadId[threadId],
@@ -172,7 +159,7 @@ export function selectChatActivitiesForThread(state: ChatProjectionState, thread
   )
 }
 
-export function selectChatProposedPlansForThread(state: ChatProjectionState, threadId: ThreadId) {
+function selectChatProposedPlansForThread(state: ChatProjectionState, threadId: ThreadId) {
   return collectByIds(
     state.proposedPlanIdsByThreadId[threadId],
     state.proposedPlanByThreadId[threadId],
@@ -180,10 +167,7 @@ export function selectChatProposedPlansForThread(state: ChatProjectionState, thr
   )
 }
 
-export function selectChatTurnDiffSummariesForThread(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-) {
+function selectChatTurnDiffSummariesForThread(state: ChatProjectionState, threadId: ThreadId) {
   return collectByIds(
     state.turnDiffIdsByThreadId[threadId],
     state.turnDiffSummaryByThreadId[threadId],
@@ -229,11 +213,3 @@ function collectByIds<TKey extends string, TValue>(
 
   return values
 }
-
-export type ChatProjectionMessageIndex = Record<MessageId, ChatThread['messages'][number]>
-export type ChatProjectionActivityIndex = Record<EventId, ChatThread['activities'][number]>
-export type ChatProjectionProposedPlanIndex = Record<
-  ProposedPlanId,
-  ChatThread['proposedPlans'][number]
->
-export type ChatProjectionTurnDiffIndex = Record<TurnId, ChatTurnDiffSummary>

@@ -1,4 +1,4 @@
-export type CoalescedLogEvent = Record<string, unknown>
+type CoalescedLogEvent = Record<string, unknown>
 
 type CoalescedLogQueue = {
   readonly flushAll: () => void

@@ -1,5 +1,4 @@
-import type { ChangeRow, FileStatus, RepositoryInfo, StatusPresentation } from './types'
-import { gitChangeSymbol } from './status-symbols'
+import type { ChangeRow, FileStatus, RepositoryInfo } from './types'
 
 export function changeRows(files: readonly FileStatus[]) {
   const staged: ChangeRow[] = []
@@ -15,12 +14,6 @@ export function changeRows(files: readonly FileStatus[]) {
   }
 
   return { staged, worktree }
-}
-
-export function statusPresentation(
-  status: FileStatus['index'] | FileStatus['worktree'],
-): StatusPresentation {
-  return gitChangeSymbol(status)
 }
 
 export function parentPath(path: string) {

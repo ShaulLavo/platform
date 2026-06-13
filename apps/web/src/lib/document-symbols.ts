@@ -1,7 +1,7 @@
 import { connectLanguageServerSocket, type EdenServerSocket } from '@/lib/server-sockets'
 import { clientErrors } from '@/lib/structured-errors'
 
-export type DocumentSymbolRange = {
+type DocumentSymbolRange = {
   start: { line: number; character: number }
   end: { line: number; character: number }
 }

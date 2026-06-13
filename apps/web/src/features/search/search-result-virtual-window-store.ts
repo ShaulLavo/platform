@@ -227,7 +227,7 @@ export class SearchResultVirtualWindowStore {
   }
 }
 
-export function searchResultVirtualWindowsEqual(
+function searchResultVirtualWindowsEqual(
   left: SearchResultVirtualWindow,
   right: SearchResultVirtualWindow,
 ) {

@@ -31,16 +31,11 @@ import type {
 } from './types'
 
 export type {
-  GitBranch,
   GitBranchesResult,
   GitCommitResult,
-  GitDiffHunk,
   GitFileDiff,
-  GitFileStatus,
-  GitLineChange,
   GitRepositoryInfo,
   GitStatusResult,
-  GitTreeStatus,
 } from './types'
 
 type GitRepositoryLocation = Omit<GitRepository, 'info'>

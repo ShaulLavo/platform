@@ -5,7 +5,7 @@ import type {
   SearchResultRenderedFileResultItem,
 } from '@/features/search/search-result-editor-types'
 
-export const SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE = 1
+const SEARCH_RESULT_FILE_EDITOR_POOL_RECENT_SIZE = 1
 
 export function createSearchResultFileEditorPoolState(): SearchResultFileEditorPoolState {
   return {
@@ -51,7 +51,7 @@ export function nextSearchResultFileEditorPoolKeys(
   return stableSearchResultFileEditorPoolKeys(currentKeys, nextKeys)
 }
 
-export function searchResultFileEditorPoolKeysEqual(
+function searchResultFileEditorPoolKeysEqual(
   left: readonly SearchResultId[],
   right: readonly SearchResultId[],
 ) {
@@ -60,7 +60,7 @@ export function searchResultFileEditorPoolKeysEqual(
   return left.every((key, index) => key === right[index])
 }
 
-export function searchResultFileEditorPoolItemKey(item: SearchResultRenderedFileResultItem) {
+function searchResultFileEditorPoolItemKey(item: SearchResultRenderedFileResultItem) {
   return item.row.file.id
 }
 

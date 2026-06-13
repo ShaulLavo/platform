@@ -74,7 +74,7 @@ export function editorGroupIdForWorkbenchWindow(windowId: WindowId): string {
   return editorGroupIdForWorkbenchWindowId(windowId) ?? `workbench:${windowId}`
 }
 
-export function editorTabIdForSurface(surface: Surface): string {
+function editorTabIdForSurface(surface: Surface): string {
   return editorSurfaceSerializedState(surface)?.editorTabId ?? `surface-tab:${surface.id}`
 }
 

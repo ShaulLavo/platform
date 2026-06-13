@@ -12,14 +12,9 @@ import {
   type UnsyncedLiveEditorDocumentInput,
 } from '@/features/editor/state/workspace-document-service'
 
-export type {
-  EditorDocumentView,
-  LiveEditorDocument,
-  LiveEditorViewDocument,
-  UnsyncedLiveEditorDocumentInput,
-}
+export type { LiveEditorDocument, UnsyncedLiveEditorDocumentInput }
 
-export type DeleteLiveEditorDocumentResult = {
+type DeleteLiveEditorDocumentResult = {
   hadLiveDocument: boolean
   wasDirty: boolean
 }

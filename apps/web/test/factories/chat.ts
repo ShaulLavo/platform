@@ -14,7 +14,7 @@ import * as v from 'valibot'
 import type { ChatThread, ChatTurnDiffSummary } from '@/features/chat/state/chat-projection-store'
 
 // Deterministic timestamps so factory output is stable across runs.
-export function timestamp(index: number) {
+function timestamp(index: number) {
   return `2026-05-28T00:00:0${index}.000Z`
 }
 
@@ -33,7 +33,7 @@ export function chatMessage(overrides: Partial<OrchestrationMessage> = {}): Orch
   } as OrchestrationMessage
 }
 
-export function userMessage(overrides: Partial<OrchestrationMessage> = {}): OrchestrationMessage {
+function userMessage(overrides: Partial<OrchestrationMessage> = {}): OrchestrationMessage {
   return chatMessage({
     id: 'message-user-1',
     role: 'user',

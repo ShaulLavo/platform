@@ -25,7 +25,7 @@ import {
 const SEARCH_HISTORY_LIMIT = 50
 
 export type SearchBufferStatus = 'idle' | 'loading' | 'ready' | 'error'
-export type SearchReplaceStatus = 'idle' | 'running' | 'success' | 'error'
+type SearchReplaceStatus = 'idle' | 'running' | 'success' | 'error'
 
 export type SearchBufferOptionPatch = Partial<
   Pick<

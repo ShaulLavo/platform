@@ -14,20 +14,12 @@ import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scop
 type ChatLogContext = Record<string, unknown>
 export type ChatPipelineScope = WideEventScope
 
-export function logChatPipelineDebug(action: string, context: ChatLogContext = {}) {
-  log.debug(chatLogEvent(action, context))
-}
-
 export function logChatPipelineInfo(action: string, context: ChatLogContext = {}) {
   log.info(chatLogEvent(action, context))
 }
 
 export function logChatPipelineWarn(action: string, context: ChatLogContext = {}) {
   log.warn(chatLogEvent(action, context))
-}
-
-export function logChatPipelineError(action: string, context: ChatLogContext = {}) {
-  log.error(chatLogEvent(action, context))
 }
 
 export function createChatPipelineScope(action: string, context: ChatLogContext = {}) {

@@ -1,15 +1,5 @@
 import type { TreeEntry } from './tree-entry'
 
-export type WatchServerMessageMetadata = {
-  sequence?: number
-}
-
-export type WatchServerFilesystemMetadata = WatchServerMessageMetadata & {
-  origin?: string
-  version?: string
-  writeId?: string
-}
-
 export type WatchServerMessage =
   | { type: 'ready'; root: string; sequence?: number }
   | { type: 'subscribed'; path: string; sequence?: number }

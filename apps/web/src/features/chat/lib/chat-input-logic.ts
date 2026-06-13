@@ -9,7 +9,7 @@ export type ChatInputTrigger = {
   rangeStart: number
 }
 
-export type ChatInputSlashCommand = 'default' | 'plan'
+type ChatInputSlashCommand = 'default' | 'plan'
 
 export type ChatInputCommandItem =
   | {
@@ -36,7 +36,7 @@ export type ChatInputCommandGroup = {
   label: string | null
 }
 
-export const CHAT_INPUT_SLASH_COMMANDS: readonly ChatInputCommandItem[] = [
+const CHAT_INPUT_SLASH_COMMANDS: readonly ChatInputCommandItem[] = [
   {
     description: 'Use default build mode',
     id: 'slash-default',
@@ -93,7 +93,7 @@ export function replaceChatInputTextRange({
   }
 }
 
-export function chatInputMentionReplacement(path: string) {
+function chatInputMentionReplacement(path: string) {
   return `@${path} `
 }
 

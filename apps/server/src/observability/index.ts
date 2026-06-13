@@ -1,23 +1,12 @@
 export { applyObservability } from './elysia'
-export { observabilityConfigFromEnv, type ObservabilityConfig } from '@workspace/observability'
+
 export { observabilityRoutes } from './routes'
-export {
-  createStructuredError,
-  isEvlogError,
-  lspErrors,
-  orchestrationErrors,
-  serverErrors,
-  type StructuredErrorOptions,
-} from './structured-errors'
+export { isEvlogError, lspErrors, orchestrationErrors, serverErrors } from './structured-errors'
 export {
   flushObservability,
   initializeObservability,
-  isObservabilityActive,
-  observabilityConfig,
-  recordProcessError,
   recordProcessInfo,
   recordProcessWarning,
-  resetObservabilityForTests,
 } from './runtime'
 export {
   elapsedMs,

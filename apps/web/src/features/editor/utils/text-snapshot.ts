@@ -24,15 +24,6 @@ export function contentRevisionForText(text: string) {
   return contentRevision(text.length, textHash(0x811c9dc5, text))
 }
 
-export function contentRevisionForTextSnapshot(textSnapshot: TextSnapshot) {
-  let hash = 0x811c9dc5
-  textSnapshot.forEachTextChunk((text) => {
-    hash = textHash(hash, text)
-  })
-
-  return contentRevision(textSnapshot.length, hash)
-}
-
 export function textSnapshotLineRange(
   textSnapshot: TextSnapshot,
   row: number,

@@ -29,7 +29,6 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@elysia/eden": "^1.4.10",
     "@elysiajs/cors": "^1.4.2",
     "@lydell/node-pty": "1.1.0",
     "@parcel/watcher": "^2.5.6",
@@ -55,7 +54,6 @@
     "@types/subset-font": "^2.3.0",
     "@typescript/native-preview": "latest",
     "eslint": "^9.39.2",
-    "fast-check": "^4.6.0",
     "globals": "^17.2.0",
     "oxfmt": "latest",
     "oxlint": "latest",

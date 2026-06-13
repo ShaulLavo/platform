@@ -1,6 +1,5 @@
 import path from 'node:path'
 import { realpathSync } from 'node:fs'
-import { realpath } from 'node:fs/promises'
 import { FsError } from './errors'
 
 export const defaultIgnoredNames = [
@@ -52,19 +51,6 @@ export function createWorkspacePaths(workspaceRootInput = process.cwd()) {
       assertInside(workspaceRootReal, absolutePath)
     },
   }
-}
-
-export async function assertExistingRealPathInside(paths: WorkspacePaths, absolutePath: string) {
-  const resolved = await realpath(absolutePath)
-  paths.assertRealInside(resolved)
-
-  return resolved
-}
-
-export async function assertParentRealPathInside(paths: WorkspacePaths, absolutePath: string) {
-  const parent = path.dirname(absolutePath)
-  const resolved = await realpath(parent)
-  paths.assertRealInside(resolved)
 }
 
 export function isIgnoredPath(

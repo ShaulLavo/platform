@@ -1,7 +1,7 @@
 import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
-import type { BlobDiffRequest, StatusResult } from './types'
+import type { StatusResult } from './types'
 
 export async function fetchStatus(path: string, signal?: AbortSignal) {
   return observeGitOperation(
@@ -27,30 +27,6 @@ export async function fetchDiff(path: string, staged: boolean, signal?: AbortSig
     async () => {
       const response = await getClient().git.diff.get({
         query: { path, staged },
-        fetch: { signal },
-      })
-
-      return unwrapEdenResponse(response, {
-        requireData: true,
-        emptyMessage: 'git server returned an empty response',
-      })
-    },
-    (diffs) => ({ diffCount: diffs.length }),
-  )
-}
-
-export async function fetchBlobDiff(query: BlobDiffRequest, signal?: AbortSignal) {
-  return observeGitOperation(
-    {
-      action: 'git.diff_blob',
-      hasNewObjectId: Boolean(query.newObjectId),
-      hasOldObjectId: Boolean(query.oldObjectId),
-      path: query.path,
-      signal,
-    },
-    async () => {
-      const response = await getClient().git.diff.blob.get({
-        query,
         fetch: { signal },
       })
 
@@ -145,40 +121,6 @@ export async function commitChanges(path: string, message: string) {
       })
     },
     (result) => ({ kind: result.kind }),
-  )
-}
-
-export async function checkoutBranch(path: string, branch: string) {
-  return observeGitOperation(
-    { action: 'git.checkout', branch, path },
-    async () => {
-      const response = await getClient().git.checkout.post({ branch, path })
-
-      return unwrapEdenResponse(response, {
-        requireData: true,
-        emptyMessage: 'git server returned an empty response',
-      })
-    },
-    statusSummary,
-  )
-}
-
-export async function createBranch(path: string, branch: string) {
-  return observeGitOperation(
-    { action: 'git.create_branch', branch, checkout: true, path },
-    async () => {
-      const response = await getClient().git['create-branch'].post({
-        branch,
-        checkout: true,
-        path,
-      })
-
-      return unwrapEdenResponse(response, {
-        requireData: true,
-        emptyMessage: 'git server returned an empty response',
-      })
-    },
-    (result) => ({ branchCount: result.branches.length }),
   )
 }
 

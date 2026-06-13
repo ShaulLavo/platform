@@ -1,11 +1,6 @@
 import type {
-  GitBranch,
-  GitBranchesResult,
-  GitCommitResult,
-  GitDiffHunk,
   GitFileDiff,
   GitFileStatus,
-  GitLineChange,
   GitRepositoryInfo,
   GitStatusResult,
   GitTreeStatus,
@@ -15,12 +10,7 @@ export type TreeStatus = GitTreeStatus
 export type FileStatus = GitFileStatus
 export type RepositoryInfo = GitRepositoryInfo
 export type StatusResult = GitStatusResult
-export type LineChange = GitLineChange
-export type DiffHunk = GitDiffHunk
 export type FileDiff = GitFileDiff
-export type Branch = GitBranch
-export type BranchesResult = GitBranchesResult
-export type CommitResult = GitCommitResult
 
 export type PanelSection = 'staged' | 'worktree'
 

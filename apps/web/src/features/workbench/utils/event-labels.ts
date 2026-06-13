@@ -8,7 +8,7 @@ import type {
   WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
 
-export function destinationLabel(destination: SnapDestination): string {
+function destinationLabel(destination: SnapDestination): string {
   if (destination.kind === 'root-edge') return `root ${destination.edge}`
   if (destination.kind === 'window-edge') return `window ${destination.edge}`
   if (destination.kind === 'window-center') return 'merged tabs'
@@ -18,7 +18,7 @@ export function destinationLabel(destination: SnapDestination): string {
   return destination.kind
 }
 
-export function windowMoveLabel(layout: WorkspaceLayout, destination: SnapDestination): string {
+function windowMoveLabel(layout: WorkspaceLayout, destination: SnapDestination): string {
   if (destination.kind === 'window-center') {
     return `window -> merged tabs:${windowTitle(layout, destination.windowId)}`
   }

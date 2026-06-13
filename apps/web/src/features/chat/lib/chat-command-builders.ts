@@ -17,8 +17,6 @@ import {
   type ProjectId,
   type RuntimeMode,
   type ThreadCheckpointRevertCommand,
-  type ThreadCreateCommand,
-  type ThreadDeleteCommand,
   type ThreadId,
   type ThreadTurnInterruptCommand,
   type ThreadTurnStartCommand,
@@ -54,32 +52,6 @@ export function createWorkspaceProjectCommand({
     title: workspaceProjectTitle(rootPath),
     type: 'project.create',
     workspaceRoot: rootPath,
-  }
-}
-
-export function createThreadCommand({
-  createdAt,
-  projectId,
-  rootPath,
-  title,
-}: {
-  createdAt: string
-  projectId: ProjectId
-  rootPath: string
-  title?: string
-}): ThreadCreateCommand {
-  return {
-    branch: null,
-    commandId: createCommandId(),
-    createdAt,
-    interactionMode: DEFAULT_INTERACTION_MODE,
-    modelSelection: defaultChatModelSelection(),
-    projectId,
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    threadId: createThreadId(),
-    title: cleanThreadTitle(title) ?? 'New chat',
-    type: 'thread.create',
-    worktreePath: rootPath,
   }
 }
 
@@ -188,21 +160,6 @@ export function createDraftThreadSubmission({
   }
 }
 
-export function createThreadDeleteCommand({
-  deletedAt,
-  threadId,
-}: {
-  deletedAt: string
-  threadId: ThreadId
-}): ThreadDeleteCommand {
-  return {
-    commandId: createCommandId(),
-    deletedAt,
-    threadId,
-    type: 'thread.delete',
-  }
-}
-
 export function createThreadInterruptCommand({
   createdAt,
   threadId,
@@ -261,7 +218,7 @@ export function threadTitleFromPrompt(prompt: string) {
   return cleanThreadTitle(prompt.split(/\r?\n/)[0])
 }
 
-export function createCommandId(): CommandId {
+function createCommandId(): CommandId {
   return v.parse(commandIdSchema, `command-${crypto.randomUUID()}`)
 }
 

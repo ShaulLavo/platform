@@ -30,10 +30,6 @@ const directoryLoadSkippedLogs = createCoalescedLogQueue({
   emit: (event) => log.info(event),
 })
 
-export function useWorkspaceTree(rootFolder: PickedFsEntry | null) {
-  return useWorkspaceTreeForRootPath(rootFolder?.path ?? null)
-}
-
 export function useWorkspaceTreeForRootPath(rootPath: string | null) {
   const { rootTreeKey, treeState } = useWorkspaceTreeQuery(rootPath)
   const queryClient = useQueryClient()

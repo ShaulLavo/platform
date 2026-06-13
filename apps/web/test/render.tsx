@@ -7,7 +7,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
-export function createTestQueryClient() {
+function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY, retry: false } },
   })

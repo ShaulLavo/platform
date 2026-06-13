@@ -1,4 +1,4 @@
-export type PlatformPickOptions = {
+type PlatformPickOptions = {
   mode: 'folder' | 'file'
   accept?: readonly string[]
   startingPath?: string

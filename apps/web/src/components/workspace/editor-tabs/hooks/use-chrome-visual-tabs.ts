@@ -1,8 +1,4 @@
-import { useLayoutEffect, useReducer, type Reducer } from 'react'
-
-import { CHROME_TAB_GROW_DELAY_MS } from '@/components/workspace/editor-tabs/utils/editor-tab-style-utils'
-
-export type ChromeVisualTabPhase = 'closing' | 'opening' | 'present'
+type ChromeVisualTabPhase = 'closing' | 'opening' | 'present'
 
 export type ChromeVisualTabSource = {
   id?: string
@@ -40,67 +36,6 @@ export type ChromeVisualTabsAction<TTab extends ChromeVisualTabSource> =
     }
 
 const chromeVisualTabsStateCache = new Map<string, ChromeVisualTabsState<ChromeVisualTabSource>>()
-
-export function useChromeVisualTabs<TTab extends ChromeVisualTabSource>(
-  tabs: readonly TTab[],
-  enabled: boolean,
-  areTabsEqual: ChromeVisualTabEquality<TTab> = sameChromeVisualTabSource,
-  cacheKey?: string,
-) {
-  const reducer: Reducer<
-    ChromeVisualTabsState<TTab>,
-    ChromeVisualTabsAction<TTab>
-  > = chromeVisualTabsReducer
-  const [state, dispatch] = useReducer(reducer, tabs, (initialTabs) =>
-    chromeVisualTabsInitialState(initialTabs, cacheKey, areTabsEqual),
-  )
-  const sourceTabsChanged =
-    enabled && !sameChromeVisualTabSources(state.sourceTabs, tabs, areTabsEqual)
-  const visualTabs = sourceTabsChanged
-    ? syncChromeVisualTabs(state.visualTabs, tabs, areTabsEqual)
-    : state.visualTabs
-  const openingKey = chromeVisualTabPhaseKey(visualTabs, 'opening')
-  const closingKey = chromeVisualTabPhaseKey(visualTabs, 'closing')
-
-  useLayoutEffect(() => {
-    if (!enabled) return
-    if (!sourceTabsChanged) return
-
-    dispatch({ areTabsEqual, tabs, type: 'sync-tabs' })
-  }, [areTabsEqual, enabled, sourceTabsChanged, tabs])
-
-  useLayoutEffect(() => {
-    if (!enabled) return
-
-    cacheChromeVisualTabsState(cacheKey, tabs, visualTabs)
-  }, [cacheKey, enabled, tabs, visualTabs])
-
-  useLayoutEffect(() => {
-    if (!enabled) return
-    if (!openingKey) return
-
-    const frame = requestAnimationFrame(() => {
-      dispatch({ openingKey, type: 'finish-opening' })
-    })
-
-    return () => cancelAnimationFrame(frame)
-  }, [enabled, openingKey])
-
-  useLayoutEffect(() => {
-    if (!enabled) return
-    if (!closingKey) return
-
-    const timeout = window.setTimeout(() => {
-      dispatch({ closingKey, type: 'remove-closing' })
-    }, CHROME_TAB_GROW_DELAY_MS)
-
-    return () => window.clearTimeout(timeout)
-  }, [closingKey, enabled])
-
-  if (!enabled) return []
-
-  return visualTabs
-}
 
 export function primeChromeVisualTabsCache<TTab extends ChromeVisualTabSource>(
   cacheKey: string | undefined,

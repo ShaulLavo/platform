@@ -13,7 +13,7 @@ import type { EditorPlatformCommandId, PlatformCommandId, PlatformKeyBinding } f
 
 const EDITOR_COMMAND_PREFIX = 'editor.'
 
-export function editorKeyBindingsFromPlatform(
+function editorKeyBindingsFromPlatform(
   bindings: readonly PlatformKeyBinding[],
 ): readonly EditorKeyBinding[] {
   return bindings.flatMap((binding) => {

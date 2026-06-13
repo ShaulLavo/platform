@@ -19,9 +19,7 @@ export function gitStatusSymbol(
   }
 }
 
-export function gitChangeSymbol(
-  status: FileStatus['index'] | FileStatus['worktree'],
-): StatusPresentation {
+function gitChangeSymbol(status: FileStatus['index'] | FileStatus['worktree']): StatusPresentation {
   if (status === 'added') {
     return { className: 'text-success', label: 'A', title: 'added' }
   }

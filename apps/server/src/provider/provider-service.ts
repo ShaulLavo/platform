@@ -444,10 +444,6 @@ export class ProviderService {
   }
 }
 
-export function createDefaultProviderService(options: ProviderServiceOptions = {}) {
-  return new ProviderService(options)
-}
-
 function bindingForUpsert(binding: ProviderRuntimeBindingWithMetadata) {
   return {
     adapterKey: binding.adapterKey,

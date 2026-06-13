@@ -8,7 +8,7 @@ export type FileIconEntry = {
   type: 'file' | 'directory' | 'symlink' | 'other'
 }
 
-export const VSCODE_ICON_NAMES = [
+const VSCODE_ICON_NAMES = [
   'IconLayers3Middle',
   'astro',
   'babel',
@@ -391,7 +391,7 @@ export function fileMatchesAccept(name: string, accept?: readonly string[]) {
   return accept.some((token) => fileMatchesAcceptToken(name, token))
 }
 
-export function mimeForFileName(name: string) {
+function mimeForFileName(name: string) {
   for (const extension of extensionCandidates(name)) {
     const mime = MIME_BY_EXTENSION.get(extension)
     if (mime) return mime

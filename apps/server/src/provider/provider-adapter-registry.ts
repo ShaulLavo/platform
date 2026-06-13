@@ -125,7 +125,7 @@ export function createDefaultProviderAdapterRegistry() {
   return new ProviderAdapterRegistry([new CodexProviderAdapter()])
 }
 
-export function compareProviderSnapshots(left: ProviderSnapshot, right: ProviderSnapshot) {
+function compareProviderSnapshots(left: ProviderSnapshot, right: ProviderSnapshot) {
   return (
     left.displayLabel.localeCompare(right.displayLabel) ||
     left.driverKind.localeCompare(right.driverKind) ||

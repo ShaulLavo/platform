@@ -250,11 +250,6 @@ export function migrateOrchestrationDatabase(
 	`)
 }
 
-export function migratePlatformDatabase(database: PlatformDatabase = getDefaultPlatformDatabase()) {
-  migrateMetadataDatabase(database)
-  migrateOrchestrationDatabase(database)
-}
-
 function addBirthtimeColumn(database: PlatformDatabase) {
   try {
     database.run(sql`

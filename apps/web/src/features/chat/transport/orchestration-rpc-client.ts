@@ -44,7 +44,7 @@ type RpcSubscription<T> = {
   threadId?: ThreadId
 }
 
-export class OrchestrationRpcClient {
+class OrchestrationRpcClient {
   private heartbeatId: ReturnType<typeof setInterval> | null = null
   private opening: Promise<WebSocket> | null = null
   private pendingRequests = new Map<string, PendingRequest>()
@@ -559,9 +559,6 @@ class AsyncSubscriptionQueue<T> {
 const localOrchestrationRpcClient = new OrchestrationRpcClient()
 
 export const dispatchOrchestrationCommandRpc = localOrchestrationRpcClient.dispatchCommand.bind(
-  localOrchestrationRpcClient,
-)
-export const fetchOrchestrationShellSnapshotRpc = localOrchestrationRpcClient.shellSnapshot.bind(
   localOrchestrationRpcClient,
 )
 export const fetchOrchestrationThreadDetailSnapshotRpc =

@@ -1,10 +1,4 @@
-import type {
-  ModelSelection,
-  OrchestrationLatestTurn,
-  OrchestrationSession,
-  OrchestrationThreadActivityTone,
-  ProviderSnapshot,
-} from '@workspace/contracts'
+import type { ModelSelection, ProviderSnapshot } from '@workspace/contracts'
 
 import type { ChatSidebarThreadSummary } from '../state/chat-projection-store'
 
@@ -32,7 +26,7 @@ export function chatThreadPreview(thread: ChatSidebarThreadSummary) {
   return 'No messages yet'
 }
 
-export function formatChatModelLabel(modelSelection: Pick<ModelSelection, 'model'>) {
+function formatChatModelLabel(modelSelection: Pick<ModelSelection, 'model'>) {
   return CHAT_MODEL_LABELS[modelSelection.model] ?? modelSelection.model
 }
 
@@ -86,7 +80,7 @@ export function formatChatDateLabel(value: string) {
   }).format(date)
 }
 
-export function formatChatDuration(durationMs: number) {
+function formatChatDuration(durationMs: number) {
   if (!Number.isFinite(durationMs)) return '0ms'
   if (durationMs < 0) return '0ms'
   if (durationMs < 1000) return `${Math.max(1, Math.round(durationMs))}ms`
@@ -135,36 +129,6 @@ export function formatWorkingTimer(startIso: string, endIso: string) {
   if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
 
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
-}
-
-export function latestTurnLabel(latestTurn: OrchestrationLatestTurn | null) {
-  if (!latestTurn) return 'Idle'
-  if (latestTurn.state === 'running') return 'Working'
-  if (latestTurn.state === 'completed') return 'Complete'
-  if (latestTurn.state === 'interrupted') return 'Stopped'
-
-  return 'Error'
-}
-
-export function sessionLabel(session: OrchestrationSession | null) {
-  if (!session) return 'No session'
-  if (session.status === 'idle') return 'Idle'
-  if (session.status === 'starting') return 'Starting'
-  if (session.status === 'running') return 'Running'
-  if (session.status === 'ready') return 'Ready'
-  if (session.status === 'interrupted') return 'Interrupted'
-  if (session.status === 'stopped') return 'Stopped'
-
-  return 'Error'
-}
-
-export function activityToneClass(tone: OrchestrationThreadActivityTone) {
-  if (tone === 'error') return 'border-destructive/30 bg-destructive/10 text-destructive'
-  if (tone === 'approval') return 'border-warning/30 bg-warning/10 text-warning'
-  if (tone === 'thinking') return 'border-border bg-muted/20 text-muted-foreground'
-  if (tone === 'tool') return 'border-info/25 bg-info/10 text-info'
-
-  return 'border-border bg-muted/35 text-muted-foreground'
 }
 
 function threadSortTimestamp(thread: ChatSidebarThreadSummary) {

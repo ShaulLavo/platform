@@ -80,27 +80,6 @@ export function editorTabModel({
   }
 }
 
-export function sameEditorTabModel(left: EditorTabModel, right: EditorTabModel) {
-  if (left.active !== right.active) return false
-  if (left.copyPath !== right.copyPath) return false
-  if (left.copyRelativePath !== right.copyRelativePath) return false
-  if (left.diffSuffix !== right.diffSuffix) return false
-  if (left.icon.name !== right.icon.name) return false
-  if (left.id !== right.id) return false
-  if (left.name !== right.name) return false
-  if (left.path !== right.path) return false
-  if (left.title !== right.title) return false
-
-  return sameDiffStatus(left.diffStatus, right.diffStatus)
-}
-
-function sameDiffStatus(left: StatusPresentation | null, right: StatusPresentation | null) {
-  if (left?.className !== right?.className) return false
-  if (left?.label !== right?.label) return false
-
-  return left?.title === right?.title
-}
-
 function iconName(path: string, conflicts: EditorTabConflictMap) {
   const diff = parseDiffDocumentId(path)
   const searchBuffer = parseSearchBufferDocumentId(path)

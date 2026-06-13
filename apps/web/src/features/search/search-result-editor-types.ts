@@ -1,19 +1,8 @@
 import type { SearchResultId } from '@/features/search/search-result-items'
 import type { SearchResultVirtualRow } from '@/features/search/search-result-view-model'
-import type {
-  SearchResultVirtualListMetrics,
-  SearchResultVirtualListViewport,
-} from '@/features/search/search-result-virtual-list'
+import type { SearchResultVirtualListMetrics } from '@/features/search/search-result-virtual-list'
 
-export type SearchResultEditorVirtualizer = {
-  readonly items: SearchResultVirtualListMetrics['items']
-  readonly totalSize: number
-  readonly viewport: SearchResultVirtualListViewport
-  readonly scrollToIndex: SearchResultEditorScrollToIndex
-  readonly scrollToOffset: (offset: number) => void
-}
-
-export type SearchResultRenderedVirtualItem = {
+type SearchResultRenderedVirtualItem = {
   readonly renderKey: string
   readonly row: SearchResultVirtualRow
   readonly virtualItem: SearchResultVirtualListMetrics['items'][number]
@@ -41,11 +30,6 @@ export type SearchResultVirtualScrollSample = {
   readonly time: number
   readonly top: number
 }
-
-export type SearchResultEditorScrollToIndex = (
-  index: number,
-  target?: SearchResultVirtualRowScrollTarget | null,
-) => void
 
 export type SearchResultVirtualRowScrollTarget = {
   readonly offset: number

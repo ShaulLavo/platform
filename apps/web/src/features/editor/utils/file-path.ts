@@ -33,7 +33,7 @@ export function languageIdForFilePath(filePath: string) {
   return LANGUAGE_BY_EXTENSION[extensionForFilePath(filePath)] ?? null
 }
 
-export function extensionForFilePath(filePath: string) {
+function extensionForFilePath(filePath: string) {
   const dotIndex = filePath.lastIndexOf('.')
   if (dotIndex === -1) return ''
 

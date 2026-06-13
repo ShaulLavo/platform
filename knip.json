@@ -1,5 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreWorkspaces": ["packages/editor-*", "../Editor/packages/*"],
+  "ignoreDependencies": ["@lydell/node-pty", "@typescript/native-preview"],
+  "ignoreBinaries": ["src/index.ts"],
   "workspaces": {
     "apps/desktop": {
       "entry": ["src/bun/index.ts", "src/preload/index.ts", "electrobun.config.ts"]

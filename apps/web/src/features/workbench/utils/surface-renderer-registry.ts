@@ -12,7 +12,7 @@ export type SurfaceRendererProps = {
   readonly windowId?: WindowId
 }
 
-export type SurfaceRenderer = ComponentType<SurfaceRendererProps>
+type SurfaceRenderer = ComponentType<SurfaceRendererProps>
 
 export type SurfaceRendererDescriptor = {
   readonly renderer: SurfaceRenderer
@@ -20,27 +20,6 @@ export type SurfaceRendererDescriptor = {
 }
 
 export type SurfaceRendererRegistry = ReadonlyMap<SurfaceType, SurfaceRenderer>
-
-const DEFAULT_RENDERED_SURFACE_TYPES = [
-  'chat',
-  'diagnostics',
-  'diff',
-  'file-editor',
-  'file-navigator',
-  'git-changes',
-  'logs',
-  'placeholder',
-  'search-preview',
-  'search-results',
-  'terminal',
-] as const satisfies readonly SurfaceType[]
-
-export const defaultSurfaceRendererRegistry = createSurfaceRendererRegistry(
-  DEFAULT_RENDERED_SURFACE_TYPES.map((type) => ({
-    renderer: FixtureSurface,
-    type,
-  })),
-)
 
 export function createSurfaceRendererRegistry(
   descriptors: readonly SurfaceRendererDescriptor[],

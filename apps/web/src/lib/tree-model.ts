@@ -1,6 +1,5 @@
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
-import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath, toTreePath } from '@/lib/path-formatters'
 
 export type TreeModel = {
@@ -18,14 +17,6 @@ export type TreePathMove = {
 
 export type DirectoryLoadOptions = {
   retry?: boolean
-}
-
-export const EMPTY_TREE_MODEL: TreeModel = {
-  paths: [],
-  entriesByTreePath: new Map(),
-  errorByDirectoryPath: new Map(),
-  loadedDirectoryPaths: new Set(),
-  loadingDirectoryPaths: new Set(),
 }
 
 export function treeModel(result: TreeResult, rootPath: string): TreeModel {
@@ -50,11 +41,7 @@ export function treeModelWithDirectoryLoads(
   return mergeDirectoryLoads(treeModel(result, rootPath), rootPath, directoryResults)
 }
 
-export function mergeDirectoryLoads(
-  model: TreeModel,
-  rootPath: string,
-  results: readonly TreeResult[],
-) {
+function mergeDirectoryLoads(model: TreeModel, rootPath: string, results: readonly TreeResult[]) {
   if (results.length === 0) return model
 
   const next = cloneTreeModel(model)
@@ -160,42 +147,14 @@ export function moveTreeModelPaths(
   )
 }
 
-export function selectedTreeEntry(
-  state: LoadState<TreeModel>,
-  rootPath: string | null,
-  selectedFilePath: string,
-) {
-  if (state.status !== 'ready' || !rootPath) return null
-
-  return entryForTreePath(state.data, toTreePath(selectedFilePath, rootPath))
-}
-
 export function entryForTreePath(model: TreeModel, treePath: string | undefined) {
   if (!treePath) return null
 
   return model.entriesByTreePath.get(canonicalTreePath(treePath)) ?? null
 }
 
-export function treePathForAbsolutePath(model: TreeModel, path: string) {
-  for (const [treePath, entry] of model.entriesByTreePath) {
-    if (entry.path === path) return treePath
-  }
-
-  return path
-}
-
 export function treePathForSelectedPath(rootPath: string, selectedFilePath: string) {
   return toTreePath(selectedFilePath, rootPath)
-}
-
-export function treeStateLabel(state: LoadState<TreeModel>) {
-  if (state.status === 'ready') {
-    return `${state.data.paths.length.toLocaleString()} items`
-  }
-  if (state.status === 'error') return 'Could not load'
-  if (state.status === 'loading') return 'Loading'
-
-  return 'Idle'
 }
 
 function addFlattenedTreeEntries(

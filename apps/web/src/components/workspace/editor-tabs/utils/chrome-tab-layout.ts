@@ -4,7 +4,6 @@ export const CHROME_TAB_INACTIVE_MIN_WIDTH = 64
 export const CHROME_TAB_OVERLAP = 18
 export const CHROME_TAB_CLOSED_WIDTH = 18
 export const CHROME_TAB_HEIGHT = 41
-export const CHROME_TAB_INACTIVE_CLOSE_THRESHOLD = 68
 export const CHROME_TAB_TRAILING_SLOT_WIDTH = 28
 
 const EMPTY_TRAILING_SLOT_WIDTHS: readonly number[] = []
@@ -16,7 +15,7 @@ export type ChromeTabLayoutInput = {
   trailingSlotWidths?: readonly number[]
 }
 
-export type ChromeTabBounds = {
+type ChromeTabBounds = {
   index: number
   width: number
   x: number

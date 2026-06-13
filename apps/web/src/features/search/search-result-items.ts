@@ -143,7 +143,7 @@ export function searchResultItemById(
   return items.find((item) => item.id === id) ?? null
 }
 
-export function firstSelectableSearchResultId(groups: readonly WorkspaceSearchFileGroup[]) {
+function firstSelectableSearchResultId(groups: readonly WorkspaceSearchFileGroup[]) {
   let firstVisibleId: SearchResultId | null = null
 
   for (const group of groups) {

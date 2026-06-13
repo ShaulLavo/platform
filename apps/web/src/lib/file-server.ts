@@ -12,10 +12,7 @@ import { clientErrorMessage } from '@/lib/client-error-taxonomy'
 import { log, observeClientOperation } from '@/lib/client-logging'
 import { createCoalescedLogQueue } from '@/lib/coalesced-log'
 import { omitNullish } from '@/lib/objects'
-import {
-  createRpcError,
-  rpcErrorMessage as structuredRpcErrorMessage,
-} from '@/lib/structured-errors'
+import { createRpcError } from '@/lib/structured-errors'
 import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
 import type { WorkspaceSearchMeasurement } from '@workspace/contracts'
 
@@ -284,10 +281,6 @@ export async function recordRecentEntry(path: string) {
 
 export function errorMessage(error: unknown) {
   return clientErrorMessage(error)
-}
-
-export function rpcErrorMessage(error: unknown) {
-  return structuredRpcErrorMessage(error)
 }
 
 function queueTreeSuccessLog(path: string, result: TreeResult, startedAt: number) {

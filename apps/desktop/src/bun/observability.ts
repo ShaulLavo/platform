@@ -4,7 +4,6 @@ import {
   observabilityConfig,
   recordObservabilityError,
   recordObservabilityInfo,
-  recordObservabilityWarning,
 } from '@workspace/observability'
 
 export function initializeDesktopObservability() {
@@ -18,10 +17,6 @@ export { flushObservability as flushDesktopObservability }
 
 export function recordDesktopInfo(action: string, context: Record<string, unknown> = {}) {
   recordObservabilityInfo(action, desktopContext(context))
-}
-
-export function recordDesktopWarning(action: string, context: Record<string, unknown> = {}) {
-  recordObservabilityWarning(action, desktopContext(context))
 }
 
 export function recordDesktopError(action: string, context: Record<string, unknown> = {}) {

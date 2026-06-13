@@ -12,10 +12,6 @@ const WINDOW_MANAGEMENT_COMMAND_PAIRS = builtInWindowManagementCommands().map(
     [command.id, workspaceCommandIdForBuiltInWindowManagementCommand(command.id)] as const,
 )
 
-export const workspaceWindowManagementCommandIds = WINDOW_MANAGEMENT_COMMAND_PAIRS.map(
-  ([, workspaceCommandId]) => workspaceCommandId,
-)
-
 const workspaceCommandIdByWindowManagementId = new Map<
   WindowManagementCommandId,
   WorkspaceCommandId

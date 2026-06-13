@@ -18,11 +18,11 @@ import {
 } from '@/features/tiling-surface-manager/engine/layout-logging'
 import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
-export type WorkspaceLayoutStoreState = {
+type WorkspaceLayoutStoreState = {
   readonly layout: WorkspaceLayout
 }
 
-export type WorkspaceLayoutStoreActions = {
+type WorkspaceLayoutStoreActions = {
   readonly dispatchLayoutOperation: (operation: LayoutOperation) => void
   readonly replaceLayout: (layout: WorkspaceLayout) => void
   readonly resetLayout: (layout?: WorkspaceLayout) => void

@@ -11,7 +11,7 @@ export type PlatformBridge = {
   pickEntry(options: PlatformPickOptions): Promise<string[]>
 }
 
-export type PlatformPickResult = {
+type PlatformPickResult = {
   paths: string[]
 }
 

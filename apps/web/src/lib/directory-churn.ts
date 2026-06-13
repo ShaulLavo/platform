@@ -1,9 +1,9 @@
-export type DirectoryChurnEntry = {
+type DirectoryChurnEntry = {
   readonly count: number
   readonly path: string
 }
 
-export type DirectoryChurnSummary = {
+type DirectoryChurnSummary = {
   readonly evictedDirectoryCount: number
   readonly topDirectories: readonly DirectoryChurnEntry[]
   readonly trackedDirectoryCount: number

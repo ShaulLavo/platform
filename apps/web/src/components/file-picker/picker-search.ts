@@ -4,8 +4,8 @@ import { streamWorkspaceSearch } from '@/lib/workspace-search-client'
 
 import { ROOT_PATH, basename, compareSearchEntries, type FilePickerMode } from './model'
 
-export const SEARCH_LIMIT = 80
-export const SEARCH_SCOPE_TIMEOUT_MS = 6000
+const SEARCH_LIMIT = 80
+const SEARCH_SCOPE_TIMEOUT_MS = 6000
 
 /**
  * Streaming search source. Defaults to the workspace SSE client but is injectable
@@ -119,7 +119,7 @@ export function appendSearchMatch(
   return true
 }
 
-export function fallbackEntry(match: FindMatch): FsEntry {
+function fallbackEntry(match: FindMatch): FsEntry {
   return {
     birthtimeMs: match.birthtimeMs ?? 0,
     mtimeMs: match.mtimeMs ?? 0,

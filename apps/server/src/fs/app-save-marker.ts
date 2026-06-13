@@ -16,7 +16,7 @@ type AppSaveMarkerOptions = {
   ttlMs?: number
 }
 
-export function appSaveMarkerFilePath(env: NodeJS.ProcessEnv = process.env): string {
+function appSaveMarkerFilePath(env: NodeJS.ProcessEnv = process.env): string {
   return (
     env.PLATFORM_APP_SAVE_MARKER_FILE ??
     path.join(homedir(), '.platform-file-picker', 'app-save-markers.json')

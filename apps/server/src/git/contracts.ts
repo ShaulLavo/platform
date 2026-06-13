@@ -56,11 +56,7 @@ export const gitCreateBranchBodySchema = v.object({
   startPoint: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1))),
 })
 
-export type GitPathQuery = v.InferOutput<typeof gitPathQuerySchema>
-export type GitPathBody = v.InferOutput<typeof gitPathBodySchema>
-export type GitDiffQuery = v.InferOutput<typeof gitDiffQuerySchema>
 export type GitBlobDiffQuery = v.InferOutput<typeof gitBlobDiffQuerySchema>
-export type GitFileQuery = v.InferOutput<typeof gitFileQuerySchema>
 export type GitPathsBody = v.InferOutput<typeof gitPathsBodySchema>
 export type GitApplyPatchBody = v.InferOutput<typeof gitApplyPatchBodySchema>
 export type GitCommitBody = v.InferOutput<typeof gitCommitBodySchema>

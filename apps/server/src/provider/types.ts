@@ -71,7 +71,7 @@ type ProviderRuntimeBaseEvent = {
   turnId?: TurnId
 }
 
-export type RuntimeEventRawSource =
+type RuntimeEventRawSource =
   | 'codex.app-server.notification'
   | 'codex.app-server.request'
   | 'codex.app-server.stderr'
@@ -83,20 +83,20 @@ export type RuntimeEventRawSource =
   | 'acp.jsonrpc'
   | `acp.${string}.extension`
 
-export type RuntimeEventRaw = {
+type RuntimeEventRaw = {
   messageType?: string
   method?: string
   payload: unknown
   source: RuntimeEventRawSource
 }
 
-export type ProviderRefs = {
+type ProviderRefs = {
   providerItemId?: string
   providerRequestId?: string
   providerTurnId?: string
 }
 
-export type ProviderRuntimeContentStreamKind =
+type ProviderRuntimeContentStreamKind =
   | 'assistant_text'
   | 'reasoning_text'
   | 'reasoning_summary_text'
@@ -105,9 +105,9 @@ export type ProviderRuntimeContentStreamKind =
   | 'file_change_output'
   | 'unknown'
 
-export type ProviderRuntimeItemStatus = 'inProgress' | 'completed' | 'failed' | 'declined'
+type ProviderRuntimeItemStatus = 'inProgress' | 'completed' | 'failed' | 'declined'
 
-export type ProviderRuntimeSessionState =
+type ProviderRuntimeSessionState =
   | 'starting'
   | 'ready'
   | 'running'
@@ -115,17 +115,11 @@ export type ProviderRuntimeSessionState =
   | 'stopped'
   | 'error'
 
-export type ProviderRuntimeThreadState =
-  | 'active'
-  | 'idle'
-  | 'archived'
-  | 'closed'
-  | 'compacted'
-  | 'error'
+type ProviderRuntimeThreadState = 'active' | 'idle' | 'archived' | 'closed' | 'compacted' | 'error'
 
-export type ProviderRuntimeTurnState = 'completed' | 'failed' | 'interrupted' | 'cancelled'
+type ProviderRuntimeTurnState = 'completed' | 'failed' | 'interrupted' | 'cancelled'
 
-export type ProviderRuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
+type ProviderRuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
 
 export type ProviderRuntimeEvent =
   | {
@@ -438,11 +432,7 @@ export type ProviderRuntimeEvent =
       }
     })
 
-export type ProviderRuntimeSink = {
-  ingest: (event: ProviderRuntimeEvent) => Promise<void>
-}
-
-export type ProviderAdapterCapabilities = {
+type ProviderAdapterCapabilities = {
   readThread: boolean
   rollbackThread: boolean
   sessionModelSwitch: 'in-session' | 'unsupported'
@@ -461,7 +451,7 @@ export type ProviderAdapterSession = {
   threadId: ThreadId
 }
 
-export type ProviderThreadTurnSnapshot = {
+type ProviderThreadTurnSnapshot = {
   id: string
   items: unknown[]
 }

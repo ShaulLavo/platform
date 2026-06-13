@@ -16,7 +16,7 @@ export {
 
 export type SearchScope = 'current' | 'system'
 
-export type WorkspaceIndexStatus = {
+type WorkspaceIndexStatus = {
   entryCount: number
   errorMessage?: string
   fileCount: number

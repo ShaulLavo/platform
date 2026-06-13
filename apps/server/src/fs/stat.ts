@@ -38,17 +38,6 @@ export async function statPath(
   }
 }
 
-export async function lstatPath(paths: WorkspacePaths, input: string) {
-  const target = paths.resolve(input)
-
-  try {
-    const stats = await lstat(target.absolutePath)
-    return { target, stats }
-  } catch (error) {
-    throw mapNodeError(error)
-  }
-}
-
 export async function readEntryStats(absolutePath: string) {
   const displayStats = await lstat(absolutePath)
   const type = typeFromStats(displayStats)
@@ -77,7 +66,7 @@ export async function readEntryStats(absolutePath: string) {
   } satisfies FsEntryStats
 }
 
-export function typeFromStats(stats: Stats): EntryTypeFilter {
+function typeFromStats(stats: Stats): EntryTypeFilter {
   if (stats.isFile()) return 'file'
   if (stats.isDirectory()) return 'directory'
   if (stats.isSymbolicLink()) return 'symlink'

@@ -139,7 +139,7 @@ export async function seedWorkspaceCache(context, workspace) {
   }, workspaceCacheEntries(workspace))
 }
 
-export function workspaceCacheEntries(workspace) {
+function workspaceCacheEntries(workspace) {
   return {
     [`${cachePrefix}.diffViewMode`]: 'split',
     [`${cachePrefix}.editorHistory`]: [workspace.filePath],

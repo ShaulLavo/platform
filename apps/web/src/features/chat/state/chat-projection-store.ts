@@ -125,7 +125,7 @@ export type ChatProjectionState = {
   turnDiffSummaryByThreadId: Record<ThreadId, Record<TurnId, ChatTurnDiffSummary>>
 }
 
-export type ChatProjectionActions = {
+type ChatProjectionActions = {
   applyOrchestrationEvent: (event: OrchestrationEvent) => void
   applyOrchestrationEvents: (events: ReadonlyArray<OrchestrationEvent>) => void
   applyShellStreamItem: (item: OrchestrationShellStreamItem) => void

@@ -104,18 +104,6 @@ function flushOptimisticLogScope() {
   scope?.end()
 }
 
-export function selectOptimisticMessagesForThread(
-  state: ChatOptimisticStore,
-  threadId: ThreadId | null | undefined,
-) {
-  if (!threadId) return EMPTY_OPTIMISTIC_MESSAGES
-
-  const messages = state.messagesByThreadId[threadId]
-  if (!messages) return EMPTY_OPTIMISTIC_MESSAGES
-
-  return Object.values(messages)
-}
-
 export function createOptimisticMessagesForThreadSelector(threadId: ThreadId | null | undefined) {
   let previousMessagesById: Record<MessageId, OptimisticChatMessage> | undefined
   let previousMessages: OptimisticChatMessage[] = EMPTY_OPTIMISTIC_MESSAGES

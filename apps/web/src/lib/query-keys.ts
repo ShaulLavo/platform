@@ -49,6 +49,7 @@ export const documentSymbolKeys = {
     [...documentSymbolKeys.all, rootPath, path, contentRevision] as const,
 }
 
+// Consumed across features/logs/*; knip mis-reports this self-referential object const as unused.
 export const logsKeys = {
   all: ['logs'] as const,
   detail: (id: string) => [...logsKeys.all, 'detail', id] as const,

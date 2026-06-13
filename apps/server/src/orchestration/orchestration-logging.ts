@@ -1,10 +1,5 @@
 import type { ThreadId } from '@workspace/contracts'
-import {
-  recordProcessError,
-  recordProcessInfo,
-  recordProcessWarning,
-  type OperationContext,
-} from '../observability'
+import { recordProcessInfo, recordProcessWarning, type OperationContext } from '../observability'
 import type {
   OrchestrationCommand,
   OrchestrationEvent,
@@ -25,10 +20,6 @@ export function recordChatPipelineInfo(action: string, context: ChatPipelineCont
 
 export function recordChatPipelineWarning(action: string, context: ChatPipelineContext = {}) {
   recordProcessWarning(action, chatPipelineContext(context))
-}
-
-export function recordChatPipelineError(action: string, context: ChatPipelineContext = {}) {
-  recordProcessError(action, chatPipelineContext(context))
 }
 
 export function chatOperationContext(

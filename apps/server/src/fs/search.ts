@@ -40,8 +40,7 @@ import { recordRequestContext } from '../observability'
 import type { EntryTypeFilter } from './contracts'
 import type { WorkspaceIndex, WorkspaceIndexEntry } from './workspace-index'
 
-export { SEARCH_LINE_BUFFER_BYTES } from './search-line-decoder'
-export type { FindMatch, FindOptions } from './search-shared'
+export type { FindOptions } from './search-shared'
 
 export type FindResult = {
   query: string
@@ -56,7 +55,7 @@ export type SearchStreamEvent =
     }
   | WorkspaceSearchDoneEvent
 
-export type SearchProvider = {
+type SearchProvider = {
   search(query: FindOptions, signal?: AbortSignal): AsyncIterable<SearchStreamEvent>
 }
 

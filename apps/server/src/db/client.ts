@@ -5,7 +5,7 @@ import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as schema from './schema'
 
-export const defaultMetadataDatabasePath =
+const defaultMetadataDatabasePath =
   Bun.env.FS_METADATA_DB ?? path.join(homedir(), '.platform-file-picker', 'fs-metadata.sqlite')
 
 export type PlatformDatabase = ReturnType<typeof openPlatformDatabase>['db']

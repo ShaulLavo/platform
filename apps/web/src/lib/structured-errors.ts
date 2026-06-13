@@ -146,10 +146,6 @@ export function createRpcError(error: unknown) {
   })
 }
 
-export function rpcErrorMessage(error: unknown) {
-  return toClientError(error).message
-}
-
 function rpcErrorCode(error: unknown) {
   const payload = rpcErrorPayload(error)
   if (!payload || typeof payload !== 'object') return null

@@ -42,7 +42,7 @@ import {
   type WorkspaceRecipeSlot,
 } from '@workspace/tiling/utils/layout-types'
 
-export type SerializedWorkspaceSurfaceEntry = {
+type SerializedWorkspaceSurfaceEntry = {
   readonly id: SurfaceId
   readonly surface: SerializedSurface
 }
@@ -70,7 +70,7 @@ export type SerializedWorkspaceLayout = {
   readonly windows: readonly WorkbenchWindow[]
 }
 
-export type WorkspaceLayoutRestoreWarningCode =
+type WorkspaceLayoutRestoreWarningCode =
   | 'command-recovered'
   | 'invalid-shape'
   | 'layout-recovered'
@@ -78,12 +78,12 @@ export type WorkspaceLayoutRestoreWarningCode =
   | 'unsupported-surface-registry-version'
   | 'unsupported-version'
 
-export type WorkspaceLayoutRestoreWarning = {
+type WorkspaceLayoutRestoreWarning = {
   readonly code: WorkspaceLayoutRestoreWarningCode
   readonly message: string
 }
 
-export type WorkspaceLayoutRestoreStatus = 'recovered' | 'restored' | 'unsupported-version'
+type WorkspaceLayoutRestoreStatus = 'recovered' | 'restored' | 'unsupported-version'
 
 export type RestoreWorkspaceLayoutOptions = {
   readonly fallbackLayout?: WorkspaceLayout

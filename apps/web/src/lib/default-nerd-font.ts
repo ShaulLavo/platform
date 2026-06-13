@@ -1,6 +1,6 @@
 import { serverUrl } from '@/lib/client'
 
-export const DEFAULT_NERD_FONT_ID = 'JetBrainsMono'
+const DEFAULT_NERD_FONT_ID = 'JetBrainsMono'
 export const DEFAULT_NERD_FONT_FAMILY = 'JetBrains Mono Nerd Font'
 export const DEFAULT_MONO_FONT_STACK = `"${DEFAULT_NERD_FONT_FAMILY}", "JetBrains Mono Variable", ui-monospace, SFMono-Regular, monospace`
 export const DEFAULT_MONO_FONT_VARIABLE = '--font-mono'
@@ -56,7 +56,7 @@ export async function loadDefaultNerdFont(options: DefaultNerdFontOptions = {}) 
   }
 }
 
-export function applyDefaultMonoFontStack(root: CssVariableTarget | null = documentRoot()) {
+function applyDefaultMonoFontStack(root: CssVariableTarget | null = documentRoot()) {
   root?.style.setProperty(DEFAULT_MONO_FONT_VARIABLE, DEFAULT_MONO_FONT_STACK)
 }
 

@@ -50,8 +50,6 @@ import type { TreeEntry, WatchServerMessage } from '@workspace/contracts'
 
 export type { WatchServerMessage }
 
-export { affectedDirectoryPaths } from '@/lib/workspace-event-model'
-
 export type FilesystemEvent = Extract<
   WatchServerMessage,
   { type: 'created' | 'changed' | 'deleted' | 'renamed' }

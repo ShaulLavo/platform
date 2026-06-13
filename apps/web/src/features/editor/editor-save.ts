@@ -50,7 +50,7 @@ export async function saveAllEditorDocuments(
   }
 }
 
-export async function saveLiveEditorDocument(
+async function saveLiveEditorDocument(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
   document: LiveEditorDocument,

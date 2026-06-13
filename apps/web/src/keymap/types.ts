@@ -2,7 +2,7 @@ import type { FocusArea } from '@/components/workspace/focus/providers/focus-sta
 import type { EditorCommandId } from '@singapor/core'
 import type { HotkeyMeta, RegisterableHotkey } from '@tanstack/react-hotkeys'
 
-export type KeyBindingSource = 'default'
+type KeyBindingSource = 'default'
 
 export type WorkspaceCommandId =
   | 'workspace.showQuickAccess'

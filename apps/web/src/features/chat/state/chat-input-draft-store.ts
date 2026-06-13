@@ -30,13 +30,13 @@ export type ChatInputImageAttachment = ChatAttachment & {
   previewUrl: string
 }
 
-export type ChatInputTerminalContext = {
+type ChatInputTerminalContext = {
   id: string
   label: string
   value: string
 }
 
-export type ChatInputDraftPromotion = {
+type ChatInputDraftPromotion = {
   promotedThreadId?: ThreadId
   status: 'idle' | 'promoting' | 'promoted'
   threadId?: ThreadId

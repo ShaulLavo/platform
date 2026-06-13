@@ -10,7 +10,7 @@ export type ClientError = {
   readonly cause?: unknown
 }
 
-export const messagesByCategory: Record<ErrorCategory, string> = {
+const messagesByCategory: Record<ErrorCategory, string> = {
   not_found: 'The requested file or folder could not be found.',
   permission_denied: 'You do not have permission to access that path.',
   not_a_file: 'That path is a directory, not a file.',

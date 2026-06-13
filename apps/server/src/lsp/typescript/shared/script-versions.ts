@@ -22,10 +22,6 @@ export function createScriptVersionRegistry(): ScriptVersionRegistry {
   return new ScriptVersionRegistry()
 }
 
-export function scriptVersion(registry: ScriptVersionRegistry, fileName: string): string {
-  return registry.get(fileName)
-}
-
 export function bumpScriptVersion(registry: ScriptVersionRegistry, fileName: string): void {
   registry.bump(fileName)
 }

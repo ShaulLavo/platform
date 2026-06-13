@@ -521,34 +521,6 @@ function diagnosticFileName(diagnostic: ts.Diagnostic, fallback: string): string
   return diagnostic.file?.fileName ? normalizeNativePath(diagnostic.file.fileName) : fallback
 }
 
-function offsetToLspPosition(text: string, offset: number): lsp.Position {
-  const clamped = clampOffset(offset, text)
-  let line = 0
-  let lineStart = 0
-  for (let index = 0; index < clamped; index += 1) {
-    if (text[index] !== '\n') continue
-    line += 1
-    lineStart = index + 1
-  }
-  return { line, character: clamped - lineStart }
-}
-
-function lspPositionToOffset(text: string, position: lsp.Position): number {
-  let line = 0
-  let lineStart = 0
-  for (let index = 0; index < text.length; index += 1) {
-    if (line >= position.line) break
-    if (text[index] !== '\n') continue
-    line += 1
-    lineStart = index + 1
-  }
-  return line < position.line ? text.length : clampOffset(lineStart + position.character, text)
-}
-
-function clampOffset(offset: number, text: string): number {
-  return Math.min(text.length, Math.max(0, offset))
-}
-
 function referencedConfigFileName(
   parentConfigFileName: string,
   reference: ts.ProjectReference,
@@ -610,50 +582,4 @@ function isNotificationMessage(message: unknown): message is lsp.NotificationMes
 
 function rpcError(code: number, message: string, data?: unknown): JsonRpcError {
   return data === undefined ? { code, message } : { code, message, data }
-}
-
-export const testInternals = {
-  documentUriToFileName: documentUriToFileNameForTest,
-  documentUriToWorkspaceFileName,
-  fileNameToDocumentUri,
-  relativePathToDocumentUri,
-  lspPositionToOffset,
-  offsetToLspPosition,
-}
-
-function documentUriToFileNameForTest(uri: string): string | null {
-  try {
-    const url = new URL(uri)
-    if (url.protocol !== 'file:') return null
-    return normalizeNativePath(decodeURIComponent(url.pathname))
-  } catch {
-    return null
-  }
-}
-
-function documentUriToWorkspaceFileName(workspaceRoot: string, uri: string): string | null {
-  try {
-    const url = new URL(uri)
-    if (url.protocol !== 'file:') return null
-    const relativePath = decodeURIComponent(url.pathname).replace(/^\/+/, '')
-    if (relativePath === '') return normalizeNativePath(workspaceRoot)
-    return normalizeNativePath(path.join(workspaceRoot, relativePath))
-  } catch {
-    return null
-  }
-}
-
-function fileNameToDocumentUri(fileName: string): lsp.DocumentUri {
-  const normalized = normalizeNativePath(fileName)
-  return `file://${normalized.split('/').map(encodePathPart).join('/')}`
-}
-
-function relativePathToDocumentUri(relativePath: string): lsp.DocumentUri {
-  const normalized = relativePath.split(path.sep).join('/').replace(/^\/+/, '')
-  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
-}
-
-function encodePathPart(part: string, index: number): string {
-  if (index === 0 && part === '') return ''
-  return encodeURIComponent(part)
 }

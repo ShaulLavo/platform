@@ -19,7 +19,7 @@ export type CommandSpec<Id extends PlatformCommandId = PlatformCommandId> = {
   readonly argsSchema?: unknown
 }
 
-export const workspaceCommandSpecs = [
+const workspaceCommandSpecs = [
   workspaceCommand(
     'workspace.showQuickAccess',
     'Quick Open',
@@ -146,7 +146,7 @@ export const windowManagementCommandSpecs = builtInWindowManagementCommands().fl
   return [windowManagementCommand(id, command)]
 }) satisfies readonly CommandSpec<WorkspaceCommandId>[]
 
-export const editorCommandSpecs = [
+const editorCommandSpecs = [
   editorCommand('undo', 'Undo', ['undo']),
   editorCommand('redo', 'Redo', ['redo']),
   editorCommand('find', 'Find', ['actions.find']),

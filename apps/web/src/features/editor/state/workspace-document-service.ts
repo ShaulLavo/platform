@@ -13,9 +13,9 @@ import {
   type EditorViewSession,
 } from '@singapor/core'
 
-export type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
+type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
 
-export type LiveDocumentSync =
+type LiveDocumentSync =
   | {
       fileVersion: string
       kind: 'file'

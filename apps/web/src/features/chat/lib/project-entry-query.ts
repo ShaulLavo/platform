@@ -15,14 +15,14 @@ export type ProjectEntrySearchResult = {
   truncated: boolean
 }
 
-export type ProjectEntrySearchItem = {
+type ProjectEntrySearchItem = {
   id: string
   label: string
   path: string
   type: EntryTypeFilter
 }
 
-export const projectEntryQueryKeys = {
+const projectEntryQueryKeys = {
   all: ['chat-project-entries'] as const,
   search: (rootPath: string, query: string, limit: number) =>
     [...projectEntryQueryKeys.all, rootPath, query, limit] as const,

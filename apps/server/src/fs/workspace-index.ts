@@ -12,15 +12,10 @@ const SNIFF_BYTES = 512
 const DEFAULT_INDEX_UPDATE_COALESCE_MS = 25
 const DEFAULT_INDEX_REBUILD_EVENT_LIMIT = 500
 
-export type WorkspaceIndexReadiness = 'cold' | 'building' | 'ready' | 'stale' | 'failed'
-export type WorkspaceIndexContentKind = 'binary' | 'image' | 'text' | 'unknown'
-export type WorkspaceIndexFileKind = 'binary' | 'config' | 'document' | 'image' | 'other' | 'source'
-export type WorkspaceIndexSpecialKind =
-  | 'block-device'
-  | 'character-device'
-  | 'fifo'
-  | 'socket'
-  | 'unknown'
+type WorkspaceIndexReadiness = 'cold' | 'building' | 'ready' | 'stale' | 'failed'
+type WorkspaceIndexContentKind = 'binary' | 'image' | 'text' | 'unknown'
+type WorkspaceIndexFileKind = 'binary' | 'config' | 'document' | 'image' | 'other' | 'source'
+type WorkspaceIndexSpecialKind = 'block-device' | 'character-device' | 'fifo' | 'socket' | 'unknown'
 
 export type WorkspaceIndexEntry = {
   basename: string

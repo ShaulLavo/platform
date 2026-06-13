@@ -6,7 +6,7 @@ import {
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type { LayoutEdge, WindowId } from '@workspace/tiling/utils/layout-types'
 
-export type DropRegionWedge = LayoutEdge | 'center'
+type DropRegionWedge = LayoutEdge | 'center'
 
 // What the resolved target means for the partition overlay: which window the
 // pointer is acting on and which wedge, or a whole-workspace root dock.

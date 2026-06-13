@@ -5,7 +5,7 @@ import { fetchFile } from '@/lib/file-server'
 import { fileSystemKeys } from '@/lib/query-keys'
 
 export const FILE_SNAPSHOT_QUERY_GC_TIME_MS = 2 * 60 * 1000
-export const FILE_SNAPSHOT_QUERY_CACHE_LIMIT = 64
+const FILE_SNAPSHOT_QUERY_CACHE_LIMIT = 64
 export const FILE_SNAPSHOT_STALE_MS = 5_000
 
 type FileSnapshotFetcher = (path: string, signal: AbortSignal) => Promise<FileResult>

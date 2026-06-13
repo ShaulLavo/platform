@@ -11,7 +11,6 @@ import {
   activateSurface,
   closeSurface,
   moveSurface,
-  moveWindow,
   openSurface,
   tabSurface,
 } from '@workspace/tiling/utils/layout-operations'
@@ -30,12 +29,7 @@ import type {
 } from '@workspace/tiling/utils/layout-types'
 import type { TilingCommitEvent } from '@workspace/tiling/hooks/use-tiling-drag-controller'
 
-import {
-  commitEventLabel,
-  destinationLabel,
-  layoutOperationLabel,
-  windowMoveLabel,
-} from '@/features/workbench/utils/event-labels'
+import { commitEventLabel, layoutOperationLabel } from '@/features/workbench/utils/event-labels'
 import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 
 export type ProofScenario = 2 | 3 | 6 | 10
@@ -178,72 +172,6 @@ export function commitProofLayout(
   if (layout === model.layout) return model
 
   return logModel({ ...model, layout }, commitEventLabel(model.layout, event))
-}
-
-export function moveProofSurfaceToDestination(
-  model: ProofModel,
-  surfaceId: SurfaceId,
-  destination: SnapDestination,
-): ProofModel {
-  const layout = moveSurface(model.layout, surfaceId, destination)
-  if (layout === model.layout) return model
-
-  return logModel({ ...model, layout }, `tab -> ${destinationLabel(destination)}`)
-}
-
-export function moveProofSurfaceToTab(
-  model: ProofModel,
-  surfaceId: SurfaceId,
-  targetWindowId: WindowId,
-  targetIndex: number,
-): ProofModel {
-  const layout = tabSurface(model.layout, surfaceId, targetWindowId, targetIndex)
-  if (layout === model.layout) return model
-
-  return logModel(
-    { ...model, layout },
-    `tab -> ${windowTitle(layout, targetWindowId)}:${targetIndex}`,
-  )
-}
-
-export function moveProofSurfaceToWindowEnd(
-  model: ProofModel,
-  surfaceId: SurfaceId,
-  targetWindowId: WindowId,
-): ProofModel {
-  const targetWindow = model.layout.windowsById[targetWindowId]
-  if (!targetWindow) return model
-
-  return moveProofSurfaceToTab(model, surfaceId, targetWindowId, targetWindow.surfaceIds.length)
-}
-
-export function moveProofWindowToDestination(
-  model: ProofModel,
-  windowId: WindowId,
-  destination: SnapDestination,
-): ProofModel {
-  const layout = moveWindow(model.layout, windowId, destination)
-  if (layout === model.layout) return model
-
-  return logModel({ ...model, layout }, windowMoveLabel(model.layout, destination))
-}
-
-export function moveProofWindowNextToWindow(
-  model: ProofModel,
-  windowId: WindowId,
-  targetWindowId: WindowId,
-): ProofModel {
-  if (windowId === targetWindowId) return model
-
-  return moveProofWindowToDestination(model, windowId, {
-    edge: 'right',
-    kind: 'window-edge',
-    windowId: targetWindowId,
-  })
-}
-
-export function surfaceWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId): WindowId | null {
-  return findWindowIdContainingSurface(layout, surfaceId)
 }
 
 function proofLayoutForWindowCount(windowCount: ProofScenario) {

@@ -5,28 +5,12 @@ import {
   type EditorLogEvent,
   type EditorPlugin,
   type EditorScrollPosition,
-  type EditorSyntaxProvider,
 } from '@singapor/core'
-import type { DiffSyntaxBackend } from '@singapor/diff'
 import { createEditorFindPlugin } from '@singapor/find'
 import { createFoldGutterPlugin, createLineGutterPlugin } from '@singapor/gutters'
 import type { FoldGutterIconContext } from '@singapor/gutters'
-import {
-  createTreeSitterSyntaxProvider,
-  createTreeSitterWorkerBackend,
-  type TreeSitterBackend,
-} from '@singapor/tree-sitter'
 import { CaretDownIcon } from '@phosphor-icons/react/ssr'
-import {
-  TREE_SITTER_LANGUAGE_CONTRIBUTIONS,
-  css,
-  html,
-  javaScript,
-  json,
-  markdown,
-  typeScript,
-} from '@singapor/tree-sitter-languages'
-import type { LanguageServerPlugin } from '@singapor/lsp-plugin'
+import { css, html, javaScript, json, markdown, typeScript } from '@singapor/tree-sitter-languages'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
@@ -41,8 +25,6 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
   }),
 )
 
-let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
-let treeSitterSyntaxBackend: TreeSitterBackend | null = null
 const editorScrollPositionsByInstanceId = new Map<string, EditorScrollPosition>()
 const ignoredEditorInfoActions = new Set([
   'editor.plugins.gutters.changed',
@@ -51,24 +33,11 @@ const ignoredEditorInfoActions = new Set([
 const PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN = createEditorLoggingPlugin(logEditorEventToConsole, {
   name: 'platform.editor-logging',
 })
-const PLATFORM_SEARCH_RESULT_EDITOR_LOGGING_PLUGIN = createEditorLoggingPlugin(
-  logSearchResultEditorEventToConsole,
-  {
-    name: 'platform.search-result-editor-logging',
-  },
-)
 let nonCriticalEditorPlugins: readonly EditorPlugin[] | null = null
 let nonCriticalEditorPluginsPromise: Promise<readonly EditorPlugin[]> | null = null
 
 export type EditorSyntaxHighlightingOptions = {
   readonly highlighter?: 'tree-sitter'
-}
-
-export function createCriticalEditorPlugins(
-  languageServer: LanguageServerPlugin,
-  syntaxOptions: EditorSyntaxHighlightingOptions = {},
-): readonly EditorPlugin[] {
-  return createCriticalEditorCorePlugins(syntaxOptions).concat(languageServer)
 }
 
 export function createCriticalEditorCorePlugins(
@@ -115,7 +84,7 @@ export function createNonCriticalEditorPluginsLoaderPlugin(): EditorPlugin {
   }
 }
 
-export function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
+function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
   if (nonCriticalEditorPlugins) return Promise.resolve(nonCriticalEditorPlugins)
   if (nonCriticalEditorPluginsPromise) return nonCriticalEditorPluginsPromise
 
@@ -193,14 +162,7 @@ function disposeAll(disposables: readonly EditorDisposable[]) {
   for (const disposable of disposables) disposable.dispose()
 }
 
-export function createEditorPlugins(
-  languageServer: LanguageServerPlugin,
-  syntaxOptions: EditorSyntaxHighlightingOptions = {},
-): readonly EditorPlugin[] {
-  return createCriticalEditorPlugins(languageServer, syntaxOptions)
-}
-
-export function createEditorSyntaxHighlightingPlugins(
+function createEditorSyntaxHighlightingPlugins(
   _options: EditorSyntaxHighlightingOptions = {},
 ): readonly EditorPlugin[] {
   void _options
@@ -208,38 +170,6 @@ export function createEditorSyntaxHighlightingPlugins(
   if (editorPerformanceFeatureDisabled('syntax')) return []
 
   return [javaScript({ jsx: true }), typeScript({ tsx: true }), html(), css(), json(), markdown()]
-}
-
-export function createEditorDiffSyntaxBackend(
-  _options: EditorSyntaxHighlightingOptions = {},
-): DiffSyntaxBackend {
-  void _options
-
-  return {
-    kind: 'tree-sitter',
-    provider: editorTreeSitterSyntaxProvider(),
-  }
-}
-
-export function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {
-  if (treeSitterSyntaxProvider) return treeSitterSyntaxProvider
-
-  const backend = createTreeSitterWorkerBackend()
-  const provider = createTreeSitterSyntaxProvider({ backend })
-  for (const contribution of TREE_SITTER_LANGUAGE_CONTRIBUTIONS) {
-    provider.registerLanguage(contribution, { replace: true })
-  }
-
-  treeSitterSyntaxBackend = backend
-  treeSitterSyntaxProvider = provider
-  return provider
-}
-
-export async function disposeEditorTreeSitterSyntaxProvider() {
-  const backend = treeSitterSyntaxBackend
-  treeSitterSyntaxBackend = null
-  treeSitterSyntaxProvider = null
-  await backend?.dispose?.()
 }
 
 async function loadPlugin(
@@ -260,12 +190,8 @@ function createFoldChevronIcon({ document }: FoldGutterIconContext): SVGSVGEleme
   return template.content.firstElementChild as SVGSVGElement
 }
 
-export function createPlatformEditorConsoleLoggingPlugin(): EditorPlugin {
+function createPlatformEditorConsoleLoggingPlugin(): EditorPlugin {
   return PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN
-}
-
-export function createPlatformSearchResultEditorLoggingPlugin(): EditorPlugin {
-  return PLATFORM_SEARCH_RESULT_EDITOR_LOGGING_PLUGIN
 }
 
 function logEditorEventToConsole(event: EditorLogEvent): void {
@@ -304,16 +230,6 @@ function editorLogLevel(event: EditorLogEvent) {
   if (event.level === 'warn' || event.level === 'error') return event.level
 
   return 'info'
-}
-
-function logSearchResultEditorEventToConsole(event: EditorLogEvent): void {
-  if (event.level !== 'warn' && event.level !== 'error') return
-
-  log[event.level]({
-    ...event,
-    area: 'editor',
-    surface: 'search-result',
-  })
 }
 
 function cacheEditorScrollPosition(event: EditorLogEvent): void {

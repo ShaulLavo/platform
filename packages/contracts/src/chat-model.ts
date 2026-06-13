@@ -103,7 +103,7 @@ export const orchestrationSessionSchema = v.object({
   updatedAt: isoDateTimeSchema,
 })
 
-export const orchestrationLatestTurnStateSchema = v.picklist([
+const orchestrationLatestTurnStateSchema = v.picklist([
   'running',
   'interrupted',
   'completed',

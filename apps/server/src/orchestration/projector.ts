@@ -20,7 +20,7 @@ export function projectEvents(events: OrchestrationEvent[], base = createEmptyRe
   return model
 }
 
-export function projectEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
+function projectEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
   const next = cloneReadModel(model)
   next.sequence = Math.max(next.sequence, event.sequence)
 

@@ -18,7 +18,7 @@ export async function assertExistingPath(absolutePath: string) {
   await lstat(absolutePath)
 }
 
-export async function destinationExists(absolutePath: string) {
+async function destinationExists(absolutePath: string) {
   return (await lstatOptional(absolutePath)) !== null
 }
 

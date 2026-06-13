@@ -66,7 +66,7 @@ const jsProjectMarkers = [
 
 const tsExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'] as const
 
-export const lspServers: readonly LspServerDefinition[] = [
+const lspServers: readonly LspServerDefinition[] = [
   {
     id: 'astro',
     extensions: ['.astro'],

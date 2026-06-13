@@ -58,7 +58,7 @@ type FilePickerDialogProps = {
   onPick: (entry: PickedFsEntry) => void
 }
 
-export type { FilePickerIconMode, FilePickerMode }
+export type { FilePickerMode }
 
 export function FilePickerDialog({
   accept,

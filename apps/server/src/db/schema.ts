@@ -16,7 +16,6 @@ export const fsMetadata = sqliteTable('fs_metadata', {
 })
 
 export type FsMetadataRow = typeof fsMetadata.$inferSelect
-export type NewFsMetadataRow = typeof fsMetadata.$inferInsert
 
 export const orchestrationEvents = sqliteTable(
   'orchestration_events',
@@ -240,18 +239,10 @@ export const providerSessionRuntime = sqliteTable(
 )
 
 export type OrchestrationEventRow = typeof orchestrationEvents.$inferSelect
-export type NewOrchestrationEventRow = typeof orchestrationEvents.$inferInsert
 export type OrchestrationCommandReceiptRow = typeof orchestrationCommandReceipts.$inferSelect
-export type NewOrchestrationCommandReceiptRow = typeof orchestrationCommandReceipts.$inferInsert
 export type ProjectionProjectRow = typeof projectionProjects.$inferSelect
-export type NewProjectionProjectRow = typeof projectionProjects.$inferInsert
 export type ProjectionThreadRow = typeof projectionThreads.$inferSelect
-export type NewProjectionThreadRow = typeof projectionThreads.$inferInsert
 export type OrchestrationThreadMessageRow = typeof projectionThreadMessages.$inferSelect
-export type NewOrchestrationThreadMessageRow = typeof projectionThreadMessages.$inferInsert
 export type OrchestrationThreadActivityRow = typeof projectionThreadActivities.$inferSelect
-export type NewOrchestrationThreadActivityRow = typeof projectionThreadActivities.$inferInsert
 export type ProjectionThreadSessionRow = typeof projectionThreadSessions.$inferSelect
-export type NewProjectionThreadSessionRow = typeof projectionThreadSessions.$inferInsert
 export type ProviderSessionRuntimeRow = typeof providerSessionRuntime.$inferSelect
-export type NewProviderSessionRuntimeRow = typeof providerSessionRuntime.$inferInsert

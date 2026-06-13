@@ -3,9 +3,9 @@ import { isRecord } from '@workspace/contracts'
 import { errorPayload, FsError } from './fs/errors'
 import { recordRequestContext, recordRequestWarning } from './observability'
 
-export type AuthCapability = 'filesystem:read' | 'filesystem:write'
+type AuthCapability = 'filesystem:read' | 'filesystem:write'
 
-export type AuthPrincipal = {
+type AuthPrincipal = {
   kind: 'local'
   capabilities: readonly AuthCapability[]
 }
@@ -31,7 +31,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
 ] as const
 
-export const localAuthPrincipal: AuthPrincipal = {
+const localAuthPrincipal: AuthPrincipal = {
   kind: 'local',
   capabilities: ['filesystem:read', 'filesystem:write'],
 }
@@ -70,7 +70,7 @@ export function authGuard(auth: AuthConfig) {
   }
 }
 
-export function authenticateRequest(
+function authenticateRequest(
   request: Request,
   auth: AuthConfig,
   options: { allowMissingSessionToken?: boolean } = {},

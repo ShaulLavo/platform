@@ -1,9 +1,9 @@
 import * as v from 'valibot'
 
 export const defaultPreviewText = 'The quick brown fox jumps 0123'
-export const fontNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
+const fontNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 
-export const fontNameSchema = v.pipe(
+const fontNameSchema = v.pipe(
   v.string(),
   v.minLength(1),
   v.maxLength(128),
@@ -21,8 +21,6 @@ export const fontNameParamsSchema = v.object({
 export const fontBatchBodySchema = v.object({
   names: v.pipe(v.array(fontNameSchema), v.minLength(1), v.maxLength(20)),
 })
-
-export type FontBatchBody = v.InferOutput<typeof fontBatchBodySchema>
 
 export function isValidFontName(name: string) {
   return fontNamePattern.test(name)
