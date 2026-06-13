@@ -24,12 +24,23 @@ export function fileEditorSurfaceId(path: string): SurfaceId {
   return surfaceId('file-editor', path)
 }
 
+export function fileEditorPreviewSurfaceId(
+  ownerSurfaceId: SurfaceId,
+  ownerContextKey: string,
+): SurfaceId {
+  return surfaceId('file-editor-preview', `${ownerSurfaceId}:${ownerContextKey}`)
+}
+
 export function diffSurfaceId(diffDocumentId: string): SurfaceId {
   return surfaceId('diff', diffDocumentId)
 }
 
 export function searchResultsSurfaceId(): SurfaceId {
   return surfaceId('search-results', 'workspace')
+}
+
+export function searchResultsDetailSurfaceId(): SurfaceId {
+  return surfaceId('search-results-detail', 'workspace')
 }
 
 export function searchPreviewSurfaceId(

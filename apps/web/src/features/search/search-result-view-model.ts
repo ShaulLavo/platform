@@ -13,7 +13,7 @@ import {
 
 const SEARCH_RESULT_EXCERPT_MAX_LENGTH = 160
 
-type SearchResultRange = {
+export type SearchResultRange = {
   readonly end: number
   readonly start: number
 }
@@ -29,7 +29,7 @@ export type SearchResultFileBlock = {
   readonly pathLabel: string
 }
 
-type SearchResultExcerpt = {
+export type SearchResultExcerpt = {
   readonly id: SearchResultId
   readonly languageId: EditorSyntaxLanguageId | null
   readonly matchRanges: readonly SearchResultRange[]

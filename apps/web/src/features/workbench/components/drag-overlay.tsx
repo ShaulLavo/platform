@@ -1,6 +1,7 @@
 import { DragOverlay } from '@dnd-kit/react'
 import { cn } from '@workspace/ui/lib/utils'
 
+import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
 import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 import type { TilingDragData } from '@workspace/tiling/utils/drag-data'
 import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
@@ -32,7 +33,7 @@ function tabOverlay(surfaceId: SurfaceId, layout: WorkspaceLayout) {
 
   return (
     <div className='bg-background text-foreground border-border flex h-9 max-w-48 min-w-32 items-center gap-1.5 rounded-t-md border px-2 text-xs shadow-lg'>
-      <span className='bg-primary size-2 rounded-full' />
+      <SurfaceIcon className='size-3.5 shrink-0' type={surface.type} />
       <span className='min-w-0 flex-1 truncate'>{surface.title}</span>
     </div>
   )
@@ -72,7 +73,7 @@ function windowOverlay(windowId: WindowId, layout: WorkspaceLayout) {
               className='bg-muted/60 text-muted-foreground aria-selected:bg-background aria-selected:text-foreground aria-selected:border-border flex h-9 w-28 min-w-0 shrink-0 items-center gap-1.5 rounded-t-md border border-transparent px-2 text-xs shadow-sm'
               key={surface.id}
             >
-              <span className='bg-primary size-2 rounded-full' />
+              <SurfaceIcon className='size-3.5 shrink-0' type={surface.type} />
               <span className='min-w-0 flex-1 truncate'>{surface.title}</span>
             </div>
           ))}

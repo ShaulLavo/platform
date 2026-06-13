@@ -20,6 +20,7 @@ export function FileEditorSurface({ active, surface }: SurfaceRendererProps) {
   return (
     <EditorSurfaceTabBody
       active={active}
+      definitionTarget={editorState.definitionTarget}
       editorKeymapLayers={context.editorKeymapLayers}
       path={surface.resourceKey}
       rootPath={context.rootPath}

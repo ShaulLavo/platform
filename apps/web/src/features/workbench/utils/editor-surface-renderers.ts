@@ -8,6 +8,7 @@ import { FileNavigatorSurface } from '@/features/workbench/components/file-navig
 import { GitChangesSurface } from '@/features/workbench/components/git-changes-surface'
 import { LogsSurface } from '@/features/workbench/components/logs-surface'
 import { SearchResultsSurface } from '@/features/workbench/components/search-results-surface'
+import { SearchResultsDetailSurface } from '@/features/workbench/components/search-results-detail-surface'
 import { SearchPreviewSurface } from '@/features/workbench/components/search-preview-surface'
 import { TerminalSurface } from '@/features/workbench/components/terminal-surface'
 
@@ -47,6 +48,10 @@ export const editorSurfaceRendererRegistry = createSurfaceRendererRegistry([
   {
     renderer: SearchResultsSurface,
     type: 'search-results',
+  },
+  {
+    renderer: SearchResultsDetailSurface,
+    type: 'search-results-detail',
   },
   {
     renderer: SearchPreviewSurface,

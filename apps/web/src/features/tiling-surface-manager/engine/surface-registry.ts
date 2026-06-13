@@ -13,6 +13,7 @@ import {
   createLogsSurface,
   createPlaceholderSurface,
   createSearchPreviewSurface,
+  createSearchResultsDetailSurface,
   createSearchResultsSurface,
   createTerminalSurface,
 } from '@workspace/tiling/utils/layout-builders'
@@ -63,6 +64,10 @@ export type SurfaceCreateInput =
   | {
       readonly serializedState?: unknown
       readonly type: 'search-results'
+    }
+  | {
+      readonly serializedState?: unknown
+      readonly type: 'search-results-detail'
     }
   | {
       readonly ownerContextKey: string
@@ -135,6 +140,7 @@ const defaultSurfaceDescriptors = [
   fileEditorDescriptor(),
   diffDescriptor(),
   searchResultsDescriptor(),
+  searchResultsDetailDescriptor(),
   searchPreviewDescriptor(),
   terminalDescriptor(),
   fileNavigatorDescriptor(),
@@ -246,6 +252,15 @@ function searchResultsDescriptor(): SurfaceDescriptor {
     create: createSearchResultsFromInput,
     restore: restoreSearchResultsSurface,
     type: 'search-results',
+  })
+}
+
+function searchResultsDetailDescriptor(): SurfaceDescriptor {
+  return descriptor({
+    cardinality: 'singleton',
+    create: createSearchResultsDetailFromInput,
+    restore: restoreSearchResultsDetailSurface,
+    type: 'search-results-detail',
   })
 }
 
@@ -399,6 +414,16 @@ function createSearchResultsFromInput(input: SurfaceCreateInput, context: Surfac
   return withSerializedState(createSearchResultsSurface(), input.serializedState)
 }
 
+function createSearchResultsDetailFromInput(
+  input: SurfaceCreateInput,
+  context: SurfaceCreateContext,
+) {
+  if (input.type !== 'search-results-detail') return null
+  if (!workspaceAllowedForCreate(context)) return null
+
+  return withSerializedState(createSearchResultsDetailSurface(), input.serializedState)
+}
+
 function createSearchPreviewFromInput(input: SurfaceCreateInput, context: SurfaceCreateContext) {
   if (input.type !== 'search-preview') return null
   if (!input.ownerContextKey) return null
@@ -499,6 +524,15 @@ function restoreSearchResultsSurface(data: unknown, context: SurfaceRestoreConte
     context,
     'search-results',
     createSearchResultsSurface,
+  )
+}
+
+function restoreSearchResultsDetailSurface(data: unknown, context: SurfaceRestoreContext) {
+  return restoreWorkspaceSingletonSurface(
+    data,
+    context,
+    'search-results-detail',
+    createSearchResultsDetailSurface,
   )
 }
 
@@ -664,6 +698,7 @@ function isSurfaceType(value: unknown): value is SurfaceType {
     value === 'placeholder' ||
     value === 'search-preview' ||
     value === 'search-results' ||
+    value === 'search-results-detail' ||
     value === 'terminal'
   )
 }

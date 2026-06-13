@@ -75,6 +75,13 @@ export function activateSurface(
 
   const window = normalizedLayout.windowsById[targetWindowId]
   if (!window?.surfaceIds.includes(surfaceId)) return normalizedLayout
+  if (
+    normalizedLayout.activeSurfaceId === surfaceId &&
+    normalizedLayout.activeWindowId === targetWindowId &&
+    window.activeSurfaceId === surfaceId
+  ) {
+    return normalizedLayout
+  }
 
   return normalizeWorkspaceLayout({
     ...normalizedLayout,
@@ -98,6 +105,13 @@ export function openSurface(
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const existingSurface = findExistingSurfaceForOpen(normalizedLayout, surface)
   const surfaceToOpen = surfaceForOpen(existingSurface, surface)
+  const existingWindowId = existingSurface
+    ? findWindowIdContainingSurface(normalizedLayout, existingSurface.id)
+    : null
+  if (existingWindowId && surfaceToOpen === existingSurface && !openHasPlacementIntent(options)) {
+    return activateSurface(normalizedLayout, existingSurface.id, existingWindowId)
+  }
+
   const layoutWithSurface = upsertSurface(normalizedLayout, surfaceToOpen)
   const restoredLayout = removeSurfaceFromRail(layoutWithSurface, surfaceToOpen.id)
   const resolvedPlacement = placementForOpen(restoredLayout, surfaceToOpen, options)
@@ -108,6 +122,12 @@ export function openSurface(
   )
 
   return normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(placedLayout))
+}
+
+function openHasPlacementIntent(options: OpenSurfaceOptions) {
+  if (options.placement) return true
+
+  return Boolean(options.policyId)
 }
 
 export function closeSurface(

@@ -19,7 +19,7 @@ export interface OverflowTextProps extends PropsWithChildren {
   style?: Omit<CSSPropertiesWithVars, 'height' | 'overflow'>
   className?: string
   marker?: ComponentChildren | ((props: MarkerProps) => ComponentChildren)
-  variant?: 'default' | 'fade'
+  variant?: 'default' | 'fade' | 'native'
 }
 
 export type MiddleTruncateProps = Omit<OverflowTextProps, 'mode' | 'children'> &

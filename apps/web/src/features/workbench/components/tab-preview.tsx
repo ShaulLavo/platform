@@ -1,6 +1,7 @@
 import { tilingTabPreviewAttributes } from '@workspace/tiling/utils/dom-attributes'
 import type { Surface } from '@workspace/tiling/utils/layout-types'
 import { cn } from '@workspace/ui/lib/utils'
+import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
 
 // Styled to match a native in-strip sort source: a regular tab dimmed to 45%
 // with the info ring, so cross-window insertion previews read the same as
@@ -25,7 +26,7 @@ export function TabPreview({
       data-workbench-tab-preview-kind='ghost'
       {...tilingTabPreviewAttributes()}
     >
-      <span className='bg-primary size-2 rounded-full' />
+      <SurfaceIcon className='size-3.5 shrink-0' type={surface.type} />
       <span
         className={cn(
           'min-w-0 flex-1 truncate',

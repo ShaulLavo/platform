@@ -1,4 +1,11 @@
+import type { BrowserTextMetrics, EditorKeymapOptions } from '@singapor/core'
+import type { CSSProperties } from 'react'
+
+import type { SearchResultVirtualListViewport } from '@/features/search/search-result-virtual-list'
+
+export const FILE_ROW_ESTIMATE = 44
 export const EXCERPT_EDITOR_LINE_HEIGHT = 22
+export const EXCERPT_EDITOR_CHARACTER_WIDTH = 8
 export const SEARCH_RESULT_FILE_EDITOR_ROW_GAP = 6
 export const SEARCH_RESULT_VIRTUAL_FALLBACK_COUNT = 8
 export const SEARCH_RESULT_VIRTUAL_BASE_MIN_OVERSCAN = 640
@@ -14,6 +21,29 @@ export const SEARCH_RESULT_FILE_EDITOR_FULL_RENDER_LINE_LIMIT = 16
 export const SEARCH_RESULT_FILE_EDITOR_LINE_OVERSCAN = 560
 export const SEARCH_RESULT_VIRTUAL_PADDING = 12
 export const SEARCH_RESULT_VIRTUAL_ROW_OFFSET = 6
+export const INITIAL_SEARCH_RESULT_VIRTUAL_VIEWPORT = {
+  height: 0,
+  top: 0,
+} satisfies SearchResultVirtualListViewport
 export const FILE_RESULTS_EDITOR_MIN_HEIGHT = 28
 export const FILE_RESULTS_ROW_VERTICAL_PADDING = 8
 export const SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT = 200
+
+export const SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE = {
+  contain: 'layout paint style',
+  display: 'none',
+  pointerEvents: 'none',
+} satisfies CSSProperties
+
+export const SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT = {
+  gutterBackground: false,
+  gutterNumber: false,
+  rowBackground: false,
+} as const
+export const SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS = {
+  characterWidth: EXCERPT_EDITOR_CHARACTER_WIDTH,
+  rowHeight: EXCERPT_EDITOR_LINE_HEIGHT,
+} satisfies BrowserTextMetrics
+export const SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP = {
+  enabled: false,
+} satisfies EditorKeymapOptions

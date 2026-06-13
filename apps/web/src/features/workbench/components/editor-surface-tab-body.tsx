@@ -21,12 +21,14 @@ import type {
 
 export function EditorSurfaceTabBody({
   active,
+  definitionTarget,
   editorKeymapLayers,
   path,
   rootPath,
   tabId,
 }: {
   active: boolean
+  definitionTarget?: LanguageServerDefinitionTarget
   editorKeymapLayers: readonly EditorKeymapLayer[]
   path: string
   rootPath: string
@@ -75,7 +77,7 @@ export function EditorSurfaceTabBody({
   const setEditorViewScrollPosition = useEditorDocumentState(
     (state) => state.setEditorViewScrollPosition,
   )
-  const definitionTarget = useEditorUiState((state) => state.definitionTarget)
+  const uiDefinitionTarget = useEditorUiState((state) => state.definitionTarget)
   const languageServerReferences = useEditorUiState((state) => state.languageServerReferences)
   const setLanguageServerReferences = useEditorUiState((state) => state.setLanguageServerReferences)
   const clearStatusBarSource = useEditorUiState((state) => state.clearStatusBarSource)
@@ -141,7 +143,7 @@ export function EditorSurfaceTabBody({
     <FileEditorBody
       active={active}
       liveDocument={selectedLiveDocument}
-      definitionTarget={active ? definitionTarget : null}
+      definitionTarget={definitionTarget ?? (active ? uiDefinitionTarget : null)}
       editorKeymapLayers={editorKeymapLayers}
       fileState={fileState}
       languageServerReferences={active ? languageServerReferences : null}

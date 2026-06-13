@@ -3,6 +3,7 @@ import {
   createEmptySyntaxResult,
   createPieceTableSnapshot,
   type DocumentSessionChange,
+  type EditorPlugin,
   type EditorSyntaxLanguageId,
   type EditorSyntaxProvider,
   type EditorSyntaxResult,
@@ -18,6 +19,16 @@ type SearchResultSyntaxLine = {
   readonly end: number
   readonly start: number
   readonly text: string
+}
+
+export function createSearchResultSyntaxHighlightingPlugin(
+  syntaxProvider: EditorSyntaxProvider,
+): EditorPlugin {
+  return {
+    name: 'platform.search-result-syntax',
+    activate: (context) =>
+      context.registerSyntaxProvider(createSearchResultSyntaxProvider(syntaxProvider)),
+  }
 }
 
 export function createSearchResultSyntaxProvider(

@@ -16,6 +16,7 @@ import {
   logsSurfaceId,
   placeholderSurfaceId,
   searchPreviewSurfaceId,
+  searchResultsDetailSurfaceId,
   searchResultsSurfaceId,
   terminalSurfaceId,
   workbenchWindowId,
@@ -292,6 +293,25 @@ export function createSearchResultsSurface(): Surface {
   })
 }
 
+export function createSearchResultsDetailSurface(): Surface {
+  return createSurface({
+    capabilities: surfaceCapabilities({
+      canCollapse: false,
+      defaultRecipeSlot: 'editor-center',
+      supportsPreview: true,
+    }),
+    cardinality: 'singleton',
+    closePolicy: { type: 'close' },
+    id: searchResultsDetailSurfaceId(),
+    lifecycle: 'durable',
+    placement: { kind: 'recipe-slot', slot: 'editor-center' },
+    resourceKey: 'workspace-search-results',
+    stateKey: 'workspace-search-results',
+    title: 'Search Results',
+    type: 'search-results-detail',
+  })
+}
+
 export function createSearchPreviewSurface({
   ownerContextKey,
   ownerSurfaceId,
@@ -519,6 +539,7 @@ export function classicWorkspaceRecipe(): WorkspaceRecipe {
       placeholder: 'editor-center',
       'search-preview': 'transient-preview',
       'search-results': 'left-tool-pane',
+      'search-results-detail': 'editor-center',
       terminal: 'bottom',
     },
     title: 'Classic',
@@ -541,6 +562,7 @@ export function searchInvestigateWorkspaceRecipe(): WorkspaceRecipe {
       placeholder: 'editor-center',
       'search-preview': 'transient-preview',
       'search-results': 'left-tool-pane',
+      'search-results-detail': 'editor-center',
       terminal: 'bottom',
     },
     title: 'Search And Investigate',
@@ -563,6 +585,7 @@ export function reviewWorkspaceRecipe(): WorkspaceRecipe {
       placeholder: 'editor-center',
       'search-preview': 'transient-preview',
       'search-results': 'left-tool-pane',
+      'search-results-detail': 'editor-center',
       terminal: 'bottom',
     },
     title: 'Review',
@@ -585,6 +608,7 @@ export function agentPairingWorkspaceRecipe(): WorkspaceRecipe {
       placeholder: 'editor-center',
       'search-preview': 'transient-preview',
       'search-results': 'rail',
+      'search-results-detail': 'editor-center',
       terminal: 'bottom',
     },
     title: 'Agent Pairing',
@@ -606,6 +630,7 @@ export function focusWorkspaceRecipe(): WorkspaceRecipe {
       placeholder: 'editor-center',
       'search-preview': 'transient-preview',
       'search-results': 'rail',
+      'search-results-detail': 'editor-center',
       terminal: 'rail',
     },
     title: 'Focus',

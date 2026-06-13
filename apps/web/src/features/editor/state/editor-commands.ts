@@ -504,7 +504,7 @@ function openEditorPathInWorkspaceLayout(layout: WorkspaceLayout, path: string) 
   if (existingSurface) return openExistingEditorSurface(layout, existingSurface, path)
 
   const surface = createEditorSurfaceForPath(layout, path)
-  const nextLayout = openSurface(layout, surface)
+  const nextLayout = openEditorSurfaceInPreferredWindow(layout, surface)
 
   return closePlaceholderSurfacesInSurfaceWindow(nextLayout, surface.id)
 }
@@ -516,7 +516,7 @@ function openExistingEditorSurface(
 ) {
   if (existingSurface.lifecycle === 'transient') {
     const surface = createEditorSurfaceForPath(layout, path)
-    const nextLayout = openSurface(layout, surface)
+    const nextLayout = openEditorSurfaceInPreferredWindow(layout, surface)
 
     return closePlaceholderSurfacesInSurfaceWindow(nextLayout, surface.id)
   }
@@ -538,6 +538,15 @@ function createEditorSurfaceForPath(layout: WorkspaceLayout, path: string): Surf
     : createFileEditorSurface({ path })
 
   return { ...surface, serializedState }
+}
+
+function openEditorSurfaceInPreferredWindow(layout: WorkspaceLayout, surface: Surface) {
+  const windowId = editorWindowIdForNewSurface(layout)
+  if (!windowId) return openSurface(layout, surface)
+
+  return openSurface(layout, surface, {
+    placement: { kind: 'window-center', windowId },
+  })
 }
 
 function editorGroupIdForNewSurface(layout: WorkspaceLayout) {
@@ -589,6 +598,7 @@ function windowContainsEditorSurface(layout: WorkspaceLayout, windowId: WindowId
 
 function surfaceBelongsToEditorGroup(surface: Surface | undefined) {
   if (!surface) return false
+  if (surface.lifecycle === 'transient') return false
   if (surface.type === 'file-editor') return true
   if (surface.type === 'diff') return true
 
@@ -726,7 +736,8 @@ function replaceSurfaceId<TId extends SurfaceId | undefined>(
 }
 
 function editorSurfaceForPath(layout: WorkspaceLayout, path: string): Surface | null {
-  return editorSurfacesForPath(layout, path)[0] ?? null
+  const surfaces = editorSurfacesForPath(layout, path)
+  return surfaces.find((surface) => surface.lifecycle !== 'transient') ?? surfaces[0] ?? null
 }
 
 function editorSurfacesForPath(layout: WorkspaceLayout, path: string) {

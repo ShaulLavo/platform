@@ -16,6 +16,7 @@ import {
   createGitChangesSurface,
   createLogsSurface,
   createSearchPreviewSurface,
+  createSearchResultsDetailSurface,
   createSearchResultsSurface,
   createSplitNode,
   createTerminalSurface,
@@ -674,6 +675,30 @@ describe('tiling surface layout operations', () => {
     expect(promoted.surfacesById[durableFile.id]?.lifecycle).toBe('durable')
     expect(windowPreviewSurfaceIds(promoted)).not.toContain(durableFile.id)
     expectValidLayout(promoted)
+  })
+
+  it('activates an already visible singleton without repacking the layout', () => {
+    const search = createSearchResultsSurface()
+    const chat = createChatSurface()
+    const layout = openSurface(openSurface(createClassicFirstRunWorkspaceLayout(), search), chat)
+    const searchWindowId = mustFindWindowId(layout, search.id)
+    const windowIds = visibleWindowIdsInOrder(layout)
+    const reopened = openSurface(layout, createSearchResultsSurface())
+
+    expect(mustFindWindowId(reopened, search.id)).toBe(searchWindowId)
+    expect(visibleWindowIdsInOrder(reopened)).toEqual(windowIds)
+    expect(visibleSurfaceIdsInOrder(reopened)).toContain(chat.id)
+    expect(reopened.activeSurfaceId).toBe(search.id)
+    expect(reopened.activeWindowId).toBe(searchWindowId)
+    expectValidLayout(reopened)
+  })
+
+  it('returns the same layout when activating the already-active surface', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/active.ts' })
+    const layout = openSurface(createClassicFirstRunWorkspaceLayout(), file)
+    const activated = activateSurface(layout, file.id)
+
+    expect(activated).toBe(layout)
   })
 
   it('opens transient search and file previews before normalization can clean orphans', () => {
@@ -1532,6 +1557,24 @@ describe('tiling surface layout operations', () => {
       surface: chat,
       type: 'openSurface',
     })
+  })
+
+  it('does not expose dynamically backgrounded surfaces as rail entries', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/rail-leak.ts' })
+    const searchDetails = createSearchResultsDetailSurface()
+    let layout = openSurface(createClassicFirstRunWorkspaceLayout(), file)
+    layout = openSurface(layout, searchDetails)
+    layout = moveSurface(layout, file.id, { kind: 'background' })
+
+    const items = selectWorkbenchRailSurfaceItems(layout)
+
+    expect(items.map((item) => item.surface.id)).not.toContain(file.id)
+    expect(items.map((item) => item.surface.id)).not.toContain(searchDetails.id)
+    expect(layout.rail.backgroundSurfaceIds).toContain(file.id)
+  })
+
+  it('marks the expanded search results surface as non-collapsible', () => {
+    expect(createSearchResultsDetailSurface().capabilities.canCollapse).toBe(false)
   })
 
   it('exposes active recipe rail entries that apply recipes', () => {

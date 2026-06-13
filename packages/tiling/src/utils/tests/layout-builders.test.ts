@@ -333,6 +333,7 @@ describe('tiling surface layout builders', () => {
     expect(layout.recipesById[SEARCH_INVESTIGATE_RECIPE_ID].surfaceSlots).toMatchObject({
       'search-preview': 'transient-preview',
       'search-results': 'left-tool-pane',
+      'search-results-detail': 'editor-center',
     })
     expect(layout.recipesById[REVIEW_RECIPE_ID].surfaceSlots).toMatchObject({
       diff: 'editor-center',

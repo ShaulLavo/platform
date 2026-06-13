@@ -90,7 +90,11 @@ function formatFlattenedSegments(
         return (
           <Fragment key={segment.path}>
             <span data-item-flattened-subitem={segment.path}>
-              {isLast && renameInput != null ? renameInput : <Truncate>{segment.name}</Truncate>}
+              {isLast && renameInput != null ? (
+                renameInput
+              ) : (
+                <Truncate variant='native'>{segment.name}</Truncate>
+              )}
             </span>
             {index < segments.length - 1 ? ' / ' : ''}
           </Fragment>
@@ -814,7 +818,7 @@ function renderFileTreeRowContent(
         {row.isFlattened
           ? formatFlattenedSegments(row, renameInput)
           : (renameInput ?? (
-              <MiddleTruncate minimumLength={5} split='extension'>
+              <MiddleTruncate minimumLength={5} split='extension' variant='native'>
                 {row.name}
               </MiddleTruncate>
             ))}

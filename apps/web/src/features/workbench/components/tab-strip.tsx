@@ -1,7 +1,21 @@
 import { useDroppable } from '@dnd-kit/react'
+import { useRef } from 'react'
 
+import { useChromeVisualTabs } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
+import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-intent-prefetch'
 import { Tab } from '@/features/workbench/components/tab'
+import { TabContextMenuContent } from '@/features/workbench/components/tab-context-menu-content'
 import { TabPreview } from '@/features/workbench/components/tab-preview'
+import { useEditorSurfaceContext } from '@/features/workbench/hooks/use-editor-surface-context'
+import {
+  sameWorkbenchTabModel,
+  workbenchTabModel,
+  type WorkbenchTabModel,
+} from '@/features/workbench/utils/tab-model'
+import {
+  chromeTabCloseBurstTargetId,
+  chromeTabCloseTargetAfterClosingTab,
+} from '@/components/workspace/editor-tabs/utils/editor-tab-close-retarget'
 import {
   TILING_TAB_TYPE,
   TILING_WINDOW_TYPE,
@@ -51,6 +65,8 @@ export function TabStrip({
   readonly onCloseSurface: (surfaceId: SurfaceId) => void
   readonly onSelectSurface: (surfaceId: SurfaceId) => void
 }) {
+  const tabListRef = useRef<HTMLDivElement | null>(null)
+  const editorSurfaceContext = useEditorSurfaceContext()
   const data: TilingDropData = {
     index: surfaces.length,
     kind: 'tab-strip',
@@ -72,6 +88,31 @@ export function TabStrip({
   const tabDropsAccepted = activeTabCanSortInStrip(activeDrag, surfaces)
   const tabSortingEnabled =
     optimisticSorting && orientation === 'horizontal' && !insertionPreview && tabDropsAccepted
+  const tabModels = surfaces.map((surface) =>
+    workbenchTabModelForSurface(surface, {
+      editorSurfaceContext,
+      window,
+    }),
+  )
+  const visualTabs = useChromeVisualTabs(
+    tabModels,
+    true,
+    sameWorkbenchTabModel,
+    `workbench-tab-strip:${window.id}`,
+  )
+  const closeBurstTargetId = chromeTabCloseBurstTargetId(visualTabs)
+  const empty = insertionPreview ? items.length === 0 : visualTabs.length === 0
+
+  useEditorTabIntentPrefetch({
+    enabled: interactive,
+    tabListRef,
+    tabs: tabModels.flatMap((tab) => (tab.editorTab ? [tab.editorTab] : [])),
+  })
+
+  function setTabStripElement(element: HTMLDivElement | null) {
+    tabListRef.current = element
+    ref(element)
+  }
 
   return (
     <div
@@ -88,34 +129,81 @@ export function TabStrip({
       data-workbench-tab-strip-id={window.id}
       data-workbench-tab-strip-preview={previewActive ? insertionPreview.kind : undefined}
       {...tilingTabStripAttributes({ orientation, windowId: window.id })}
-      ref={ref}
+      ref={setTabStripElement}
       role='tablist'
     >
-      {items.map((item) => {
-        if (item.kind === 'ghost') {
-          return <TabPreview key={item.key} orientation={orientation} surface={item.surface} />
-        }
+      {insertionPreview
+        ? items.map((item) => {
+            if (item.kind === 'ghost') {
+              return <TabPreview key={item.key} orientation={orientation} surface={item.surface} />
+            }
 
-        return (
-          <Tab
-            acceptsTabDrops={tabDropsAccepted}
-            actionsVisible={actionsVisible}
-            active={item.surface.id === window.activeSurfaceId}
-            dropZonesVisible={dropZonesVisible}
-            index={item.index}
-            interactive={interactive}
-            key={item.key}
-            optimisticSorting={tabSortingEnabled}
-            orientation={orientation}
-            previewAdded={surfaceIsPreviewAdded(insertionPreview, window.id, item.surface.id)}
-            surface={item.surface}
-            windowId={window.id}
-            onClose={onCloseSurface}
-            onSelect={onSelectSurface}
-          />
-        )
-      })}
-      {items.length === 0 ? (
+            const tab = workbenchTabModelForSurface(item.surface, {
+              editorSurfaceContext,
+              window,
+            })
+            return (
+              <Tab
+                acceptsTabDrops={tabDropsAccepted}
+                actionsVisible={actionsVisible}
+                closeTarget={null}
+                contextMenuContent={
+                  interactive ? (
+                    <TabContextMenuContent
+                      tab={tab}
+                      tabs={tabModels}
+                      onCloseSurface={onCloseSurface}
+                    />
+                  ) : undefined
+                }
+                dropZonesVisible={dropZonesVisible}
+                index={item.index}
+                interactive={interactive}
+                key={item.key}
+                optimisticSorting={tabSortingEnabled}
+                orientation={orientation}
+                phase='present'
+                previewAdded={surfaceIsPreviewAdded(insertionPreview, window.id, item.surface.id)}
+                tab={tab}
+                windowId={window.id}
+                onClose={onCloseSurface}
+                onSelect={onSelectSurface}
+              />
+            )
+          })
+        : visualTabs.map((visualTab, index) => {
+            const tab = visualTab.tab
+            const closeTarget = closeTargetForVisualTab(visualTabs, visualTab, closeBurstTargetId)
+            return (
+              <Tab
+                acceptsTabDrops={visualTab.phase !== 'closing' && tabDropsAccepted}
+                actionsVisible={actionsVisible}
+                closeTarget={closeTarget}
+                contextMenuContent={
+                  interactive && visualTab.phase !== 'closing' ? (
+                    <TabContextMenuContent
+                      tab={tab}
+                      tabs={tabModels}
+                      onCloseSurface={onCloseSurface}
+                    />
+                  ) : undefined
+                }
+                dropZonesVisible={dropZonesVisible}
+                index={index}
+                interactive={interactive && visualTab.phase !== 'closing'}
+                key={tab.id}
+                optimisticSorting={tabSortingEnabled}
+                orientation={orientation}
+                phase={visualTab.phase}
+                previewAdded={false}
+                tab={tab}
+                windowId={window.id}
+                onClose={onCloseSurface}
+                onSelect={onSelectSurface}
+              />
+            )
+          })}
+      {empty ? (
         <div
           className={cn(
             'text-muted-foreground flex items-center justify-center text-xs',
@@ -127,6 +215,36 @@ export function TabStrip({
       ) : null}
     </div>
   )
+}
+
+function workbenchTabModelForSurface(
+  surface: Surface,
+  {
+    editorSurfaceContext,
+    window,
+  }: {
+    readonly editorSurfaceContext: ReturnType<typeof useEditorSurfaceContext>
+    readonly window: WorkbenchWindow
+  },
+) {
+  const active = surface.id === window.activeSurfaceId
+  return workbenchTabModel({
+    active,
+    editorTab: editorSurfaceContext.tabModelForSurface(surface, active),
+    surface,
+    windowId: window.id,
+  })
+}
+
+function closeTargetForVisualTab(
+  visualTabs: ReturnType<typeof useChromeVisualTabs<WorkbenchTabModel>>,
+  visualTab: ReturnType<typeof useChromeVisualTabs<WorkbenchTabModel>>[number],
+  closeBurstTargetId: WorkbenchTabModel['id'] | null,
+) {
+  if (closeBurstTargetId === visualTab.tab.id) return visualTab.tab.id
+  if (visualTab.phase !== 'closing') return null
+
+  return chromeTabCloseTargetAfterClosingTab(visualTabs, visualTab.tab.id)
 }
 
 function activeTabCanSortInStrip(activeDrag: TilingDragData | null, surfaces: readonly Surface[]) {

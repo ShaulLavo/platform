@@ -48,11 +48,6 @@ export function selectWorkbenchRailSurfaceItems(
   const seen = new Set<SurfaceId>()
 
   appendDefaultRailItems(items, seen, layout)
-  appendRailItems(items, seen, layout, layout.rail.pinnedSurfaceIds, 'pinned')
-  appendRailItems(items, seen, layout, layout.rail.visibleSingletonSurfaceIds, 'visible')
-  appendRailItems(items, seen, layout, layout.rail.backgroundSurfaceIds, 'background')
-  appendRailItems(items, seen, layout, layout.rail.runningSurfaceIds, 'running')
-  appendSingletonItems(items, seen, layout)
 
   return items.map((item) => railItemWithCurrentState(layout, item))
 }
@@ -95,36 +90,6 @@ function appendDefaultRailItems(
 
 export function railSurfaceWindowId(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   return findWindowIdContainingSurface(layout, surfaceId)
-}
-
-function appendRailItems(
-  items: WorkbenchRailSurfaceItem[],
-  seen: Set<SurfaceId>,
-  layout: WorkspaceLayout,
-  surfaceIds: readonly SurfaceId[],
-  state: WorkbenchRailSurfaceState,
-) {
-  for (const surfaceId of surfaceIds ?? []) {
-    if (seen.has(surfaceId)) continue
-
-    const surface = layout.surfacesById[surfaceId]
-    if (!surface) continue
-
-    appendRailItem(items, seen, surface, state)
-  }
-}
-
-function appendSingletonItems(
-  items: WorkbenchRailSurfaceItem[],
-  seen: Set<SurfaceId>,
-  layout: WorkspaceLayout,
-) {
-  for (const surface of Object.values(layout.surfacesById)) {
-    if (surface.cardinality !== 'singleton') continue
-    if (seen.has(surface.id)) continue
-
-    appendRailItem(items, seen, surface, 'singleton')
-  }
 }
 
 function appendRailItem(

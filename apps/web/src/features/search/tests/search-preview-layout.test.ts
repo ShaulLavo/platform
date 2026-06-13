@@ -9,7 +9,7 @@ import {
 import { searchResultItems } from '@/features/search/search-result-items'
 import {
   createClassicFirstRunWorkspaceLayout,
-  createSearchPreviewSurface,
+  createSearchResultsDetailSurface,
   createSearchResultsSurface,
 } from '@workspace/tiling/utils/layout-builders'
 import {
@@ -35,10 +35,20 @@ describe('search preview layout', () => {
         ownerContextKey: matchId,
         ownerSurfaceId: createSearchResultsSurface().id,
         resourceKey: match.path,
-        title: `Search Preview: ${match.path}`,
-        type: 'search-preview',
+        title: 'app.ts',
+        type: 'file-editor',
       }),
     )
+    expect(preview?.serializedState).toMatchObject({
+      definitionTarget: {
+        path: match.path,
+        range: {
+          end: { character: 19, line: 11 },
+          start: { character: 13, line: 11 },
+        },
+      },
+      editorTabId: `editor-tab:preview:${matchId}`,
+    })
   })
 
   it('does not create a preview for group rows or missing results', () => {
@@ -65,7 +75,24 @@ describe('search preview layout', () => {
     )
     expect(openedB.surfacesById[previewA.id]).toBeUndefined()
     expect(openedB.surfacesById[previewB.id]).toBeDefined()
-    expect(visibleSearchPreviewIds(openedB)).toEqual([previewB.id])
+    expect(visibleOwnedPreviewIds(openedB, search.id)).toEqual([previewB.id])
+  })
+
+  it('keeps same-result previews for different search owners', () => {
+    const search = createSearchResultsSurface()
+    const details = createSearchResultsDetailSurface()
+    const group = fileGroup([contentMatch({ path: '/repo/src/app.ts' })])
+    const resultId = firstMatchResultId(group)
+    const compactPreview = previewForResult(group, resultId, search.id)
+    const detailPreview = previewForResult(group, resultId, details.id)
+    const withSearchPreview = layoutWithSearchPreview(layoutWithSearch(search), compactPreview)
+    const opened = layoutWithSearchPreview(openSurface(withSearchPreview, details), detailPreview)
+
+    expect(compactPreview.id).not.toBe(detailPreview.id)
+    expect(opened.surfacesById[compactPreview.id]).toBeDefined()
+    expect(opened.surfacesById[detailPreview.id]).toBeDefined()
+    expect(visibleOwnedPreviewIds(opened, search.id)).toEqual([compactPreview.id])
+    expect(visibleOwnedPreviewIds(opened, details.id)).toEqual([detailPreview.id])
   })
 
   it('removes transient previews when the owner has no active match', () => {
@@ -77,7 +104,7 @@ describe('search preview layout', () => {
 
     expect(opened.surfacesById[preview.id]).toBeDefined()
     expect(closed.surfacesById[preview.id]).toBeUndefined()
-    expect(visibleSearchPreviewIds(closed)).toEqual([])
+    expect(visibleOwnedPreviewIds(closed, search.id)).toEqual([])
   })
 })
 
@@ -92,28 +119,18 @@ function previewsForMatches(group: WorkspaceSearchFileGroup): readonly [Surface,
   const second = matchIds[1]
   if (!first || !second) throw new Error('Expected two match ids')
 
+  const ownerSurfaceId = createSearchResultsSurface().id
+
   return [
-    createSearchPreviewSurface({
-      ownerContextKey: first,
-      ownerSurfaceId: createSearchResultsSurface().id,
-      resourceKey: group.matches[0]?.path,
-    }),
-    createSearchPreviewSurface({
-      ownerContextKey: second,
-      ownerSurfaceId: createSearchResultsSurface().id,
-      resourceKey: group.matches[1]?.path,
-    }),
+    previewForResult(group, first, ownerSurfaceId),
+    previewForResult(group, second, ownerSurfaceId),
   ]
 }
 
 function previewForFirstMatch(group: WorkspaceSearchFileGroup): Surface {
   const matchId = firstMatchResultId(group)
 
-  return createSearchPreviewSurface({
-    ownerContextKey: matchId,
-    ownerSurfaceId: createSearchResultsSurface().id,
-    resourceKey: group.matches[0]?.path,
-  })
+  return previewForResult(group, matchId, createSearchResultsSurface().id)
 }
 
 function firstMatchResultId(group: WorkspaceSearchFileGroup) {
@@ -123,10 +140,25 @@ function firstMatchResultId(group: WorkspaceSearchFileGroup) {
   return matchId
 }
 
-function visibleSearchPreviewIds(layout: WorkspaceLayout) {
+function previewForResult(
+  group: WorkspaceSearchFileGroup,
+  activeResultId: string,
+  ownerSurfaceId: Surface['id'],
+): Surface {
+  const preview = searchPreviewSurfaceForResult({
+    activeResultId,
+    groups: [group],
+    ownerSurfaceId,
+  })
+  if (!preview) throw new Error('Expected preview surface')
+
+  return preview
+}
+
+function visibleOwnedPreviewIds(layout: WorkspaceLayout, ownerSurfaceId: Surface['id']) {
   return visibleSurfaceIdsInOrder(layout).filter((surfaceId) => {
     const surface = layout.surfacesById[surfaceId]
-    return surface?.type === 'search-preview'
+    return surface?.type === 'file-editor' && surface.ownerSurfaceId === ownerSurfaceId
   })
 }
 

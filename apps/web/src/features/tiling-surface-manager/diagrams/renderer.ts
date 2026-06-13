@@ -142,6 +142,7 @@ function compactSurfaceLabel(type: string, key: string): string {
   if (type === 'file-navigator') return 'files'
   if (type === 'git-changes') return 'git'
   if (type === 'search-results') return 'search'
+  if (type === 'search-results-detail') return 'search'
   if (type === 'diagnostics') return 'problems'
   if (type === 'terminal') return `term:${key.replace(/^terminal-/, '')}`
 

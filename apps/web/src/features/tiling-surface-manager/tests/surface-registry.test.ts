@@ -7,6 +7,7 @@ import {
   diffSurfaceId,
   fileEditorSurfaceId,
   searchPreviewSurfaceId,
+  searchResultsDetailSurfaceId,
   searchResultsSurfaceId,
   terminalSurfaceId,
 } from '@workspace/tiling/utils/layout-ids'
@@ -51,11 +52,15 @@ describe('tiling surface registry', () => {
       type: 'terminal',
     })
     const search = createRegisteredSurface(defaultSurfaceRegistry, { type: 'search-results' })
+    const searchDetails = createRegisteredSurface(defaultSurfaceRegistry, {
+      type: 'search-results-detail',
+    })
 
     expect(file?.id).toBe(fileEditorSurfaceId('/repo/src/app.ts'))
     expect(diff?.id).toBe(diffSurfaceId(diffDocumentId))
     expect(terminal?.id).toBe(terminalSurfaceId('terminal-1'))
     expect(search?.id).toBe(searchResultsSurfaceId())
+    expect(searchDetails?.id).toBe(searchResultsDetailSurfaceId())
   })
 
   it('keeps dirty-file and terminal close semantics', () => {
@@ -87,6 +92,7 @@ describe('tiling surface registry', () => {
       type: 'file-editor',
     })
     const search = mustCreateSurface({ type: 'search-results' })
+    const searchDetails = mustCreateSurface({ type: 'search-results-detail' })
     const terminal = mustCreateSurface({
       sessionId: 'terminal-1',
       type: 'terminal',
@@ -96,7 +102,9 @@ describe('tiling surface registry', () => {
     expect(canSplitSurface(defaultSurfaceRegistry, file)).toBe(true)
     expect(supportsSurfacePreview(defaultSurfaceRegistry, file)).toBe(true)
     expect(canSplitSurface(defaultSurfaceRegistry, search)).toBe(false)
+    expect(canSplitSurface(defaultSurfaceRegistry, searchDetails)).toBe(true)
     expect(canUnmountSurfaceWhenNotExpanded(defaultSurfaceRegistry, search)).toBe(true)
+    expect(defaultSurfaceRecipeSlot(defaultSurfaceRegistry, searchDetails)).toBe('editor-center')
     expect(canUnmountSurfaceWhenNotExpanded(defaultSurfaceRegistry, terminal)).toBe(false)
     expect(defaultSurfaceRecipeSlot(defaultSurfaceRegistry, search)).toBe('left-tool-pane')
     expect(validSurfacePlacements(defaultSurfaceRegistry, file)).toContain('window-edge')
@@ -116,9 +124,17 @@ describe('tiling surface registry', () => {
       serializedState: { query: 'needle' },
       type: 'search-results',
     })
+    const searchDetails = mustCreateSurface({
+      serializedState: { query: 'needle' },
+      type: 'search-results-detail',
+    })
     const serializedFile = serializeRegisteredSurface(defaultSurfaceRegistry, file)
     const serializedDiff = serializeRegisteredSurface(defaultSurfaceRegistry, diff)
     const serializedSearch = serializeRegisteredSurface(defaultSurfaceRegistry, search)
+    const serializedSearchDetails = serializeRegisteredSurface(
+      defaultSurfaceRegistry,
+      searchDetails,
+    )
 
     expect(restoreRegisteredSurface(defaultSurfaceRegistry, serializedFile, { rootPath })?.id).toBe(
       file.id,
@@ -128,6 +144,10 @@ describe('tiling surface registry', () => {
     )
     expect(
       restoreRegisteredSurface(defaultSurfaceRegistry, serializedSearch, { rootPath })
+        ?.serializedState,
+    ).toEqual({ query: 'needle' })
+    expect(
+      restoreRegisteredSurface(defaultSurfaceRegistry, serializedSearchDetails, { rootPath })
         ?.serializedState,
     ).toEqual({ query: 'needle' })
     expect(

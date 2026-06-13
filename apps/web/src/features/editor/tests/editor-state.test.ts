@@ -23,9 +23,12 @@ import {
   CLASSIC_EDITOR_WINDOW_ID,
   createClassicFirstRunWorkspaceLayout,
   createFileEditorSurface,
+  createSearchResultsDetailSurface,
 } from '@workspace/tiling/utils/layout-builders'
+import { PREVIEW_ADJACENT_POLICY_ID } from '@workspace/tiling/utils/layout-policies'
 import {
   fileEditorSurfaceId,
+  fileEditorPreviewSurfaceId,
   fileNavigatorSurfaceId,
   placeholderSurfaceId,
 } from '@workspace/tiling/utils/layout-ids'
@@ -393,6 +396,40 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().selectedFilePath).toBe(path)
   })
 
+  it('focuses durable file editors instead of same-path transient previews', () => {
+    const path = 'src/open.ts'
+    const searchDetails = createSearchResultsDetailSurface()
+    const previewContext = 'result:src/open.ts:1'
+    const preview = {
+      ...createFileEditorSurface({ lifecycle: 'transient', path }),
+      id: fileEditorPreviewSurfaceId(searchDetails.id, previewContext),
+      ownerContextKey: previewContext,
+      ownerSurfaceId: searchDetails.id,
+      serializedState: {
+        editorGroupId: 'preview-group',
+        editorTabId: 'preview-tab',
+      },
+    }
+    const durableLayout = editorWorkspaceLayoutForPaths([path], path)
+    const layoutWithSearch = openSurface(durableLayout, searchDetails, {
+      placement: { edge: 'right', kind: 'root-edge' },
+    })
+    const layoutWithPreview = openSurface(layoutWithSearch, preview, {
+      policyId: PREVIEW_ADJACENT_POLICY_ID,
+    })
+    const { commands, workspaceStore } = setupStores({
+      ...workspaceState([path], path),
+      workspaceLayout: layoutWithPreview,
+    })
+
+    commands.selectFile(path)
+
+    const layout = workspaceStore.getState().workspaceLayout
+    expect(layout.activeSurfaceId).toBe(fileEditorSurfaceId(path))
+    expect(layout.surfacesById[preview.id]).toBeDefined()
+    expect(layout.surfacesById[fileEditorSurfaceId(path)]?.lifecycle).toBe('durable')
+  })
+
   it('opens definitions through workspace, document, and ui stores', () => {
     const { commands, documentStore, uiStore, workspaceStore } = setupStores(
       workspaceState(['src/a.ts'], 'src/a.ts'),
@@ -407,6 +444,38 @@ describe('editor commands', () => {
     expect(workspaceStore.getState().selectedFilePath).toBe('src/target.ts')
     expect(workspaceStore.getState().editorHistory).toEqual(['src/target.ts', 'src/a.ts'])
     expect(documentStore.getState().fallbackDocumentPath).toBe('src/a.ts')
+  })
+
+  it('opens definitions into the placeholder editor instead of transient preview windows', () => {
+    const searchDetails = createSearchResultsDetailSurface()
+    const preview = {
+      ...createFileEditorSurface({ lifecycle: 'transient', path: 'src/preview.ts' }),
+      ownerContextKey: 'result:src/preview.ts:1',
+      ownerSurfaceId: searchDetails.id,
+      serializedState: {
+        editorGroupId: 'preview-group',
+        editorTabId: 'preview-tab',
+      },
+    }
+    const withSearch = openSurface(createClassicFirstRunWorkspaceLayout(), searchDetails, {
+      placement: { edge: 'right', kind: 'root-edge' },
+    })
+    const withPreview = openSurface(withSearch, preview, {
+      policyId: PREVIEW_ADJACENT_POLICY_ID,
+    })
+    const { commands, workspaceStore } = setupStores({
+      ...classicWorkspaceState(),
+      workspaceLayout: withPreview,
+    })
+
+    commands.openDefinition(definitionTarget('src/target.ts'))
+
+    const layout = workspaceStore.getState().workspaceLayout
+    expect(layout.surfacesById[placeholderSurfaceId('empty-editor')]).toBeUndefined()
+    expect(layout.windowsById[CLASSIC_EDITOR_WINDOW_ID]).toMatchObject({
+      activeSurfaceId: fileEditorSurfaceId('src/target.ts'),
+      surfaceIds: [fileEditorSurfaceId('src/target.ts')],
+    })
   })
 
   it('discards live documents and closes deleted tabs', () => {

@@ -2,12 +2,14 @@ import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/cont
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   memo,
+  useCallback,
   useLayoutEffect,
   useId,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type RefObject,
 } from 'react'
 
@@ -53,6 +55,7 @@ export function SearchResultsView({
   resultsSearchQuery,
   status,
   onOpenMatch,
+  onPreviewResultSelect,
   onReplaceGroup,
   onReplaceMatch,
 }: {
@@ -68,6 +71,7 @@ export function SearchResultsView({
   resultsSearchQuery: WorkspaceSearchQuery | null
   status: SearchBufferStatus
   onOpenMatch: (match: WorkspaceSearchMatch) => void
+  onPreviewResultSelect?: (id: SearchResultId | null) => void
   onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
   onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
@@ -77,6 +81,13 @@ export function SearchResultsView({
   const previousDisplayedResultsQueryRef = useRef<string | null>(null)
   const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
+  const handleSelectResult = useCallback(
+    (id: SearchResultId | null) => {
+      selectResult(id)
+      onPreviewResultSelect?.(id)
+    },
+    [onPreviewResultSelect, selectResult],
+  )
   const previewMaxLength = useSearchPreviewMaxLength(parentRef, replaceVisible)
   const items = useMemo(() => searchResultItems(groups), [groups])
   const activeItem = useMemo(
@@ -131,7 +142,10 @@ export function SearchResultsView({
 
   return (
     <div
-      className={cn('app-scrollbar-thin min-h-0 overflow-x-hidden overflow-y-auto', className)}
+      className={cn(
+        'app-scrollbar-thin h-full min-h-0 overflow-x-hidden overflow-y-auto',
+        className,
+      )}
       ref={parentRef}
       role='tree'
       tabIndex={0}
@@ -143,7 +157,7 @@ export function SearchResultsView({
           event,
           items,
           onOpenMatch,
-          onSelectResult: selectResult,
+          onSelectResult: handleSelectResult,
           onToggleGroup: toggleGroup,
         })
       }
@@ -172,7 +186,11 @@ export function SearchResultsView({
               aria-expanded={item.type === 'group' ? !item.group.collapsed : undefined}
               aria-level={item.level}
               aria-selected={item.id === activeResultId}
-              onMouseDown={() => selectResult(item.id)}
+              onMouseDown={(event) => {
+                if (mouseDownStartedInSearchResultControl(event)) return
+
+                handleSelectResult(item.id)
+              }}
             >
               <SearchResultRow
                 item={item}
@@ -187,7 +205,7 @@ export function SearchResultsView({
                 onOpenMatch={onOpenMatch}
                 onReplaceGroup={onReplaceGroup}
                 onReplaceMatch={onReplaceMatch}
-                onSelectResult={selectResult}
+                onSelectResult={handleSelectResult}
                 onToggleGroup={toggleGroup}
               />
             </div>
@@ -315,6 +333,13 @@ function searchResultItemEstimate(
 
 function resultListPadding(compact: boolean | undefined) {
   return compact ? 4 : 6
+}
+
+function mouseDownStartedInSearchResultControl(event: MouseEvent<HTMLElement>) {
+  const target = event.target
+  if (!(target instanceof Element)) return false
+
+  return Boolean(target.closest('button'))
 }
 
 function useSearchPreviewMaxLength(

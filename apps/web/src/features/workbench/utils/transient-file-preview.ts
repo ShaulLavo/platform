@@ -2,6 +2,7 @@ import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 
 import type { EditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import { createFileEditorSurface } from '@workspace/tiling/utils/layout-builders'
+import { fileEditorPreviewSurfaceId } from '@workspace/tiling/utils/layout-ids'
 import { PREVIEW_ADJACENT_POLICY_ID } from '@workspace/tiling/utils/layout-policies'
 import type { SurfaceId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { WorkspaceLayoutStoreApi } from '@/features/tiling-surface-manager/engine/surface-state'
@@ -29,7 +30,7 @@ export function openTransientFilePreview({
 
   layoutStore.getState().dispatchLayoutOperation({
     policyId: PREVIEW_ADJACENT_POLICY_ID,
-    surface: previewSurfaceForTarget(target, ownerSurfaceId),
+    surface: transientFilePreviewSurfaceForTarget({ ownerSurfaceId, target }),
     type: 'openSurface',
   })
   uiStore.getState().setDefinitionTarget(target)
@@ -49,16 +50,32 @@ function previewOwnerContextKey(target: LanguageServerDefinitionTarget) {
   return `${target.path}:${target.range.start.line}:${target.range.start.character}`
 }
 
-function previewSurfaceForTarget(
-  target: LanguageServerDefinitionTarget,
-  ownerSurfaceId: SurfaceId | undefined,
-) {
+export function transientFilePreviewSurfaceForTarget({
+  ownerContextKey,
+  ownerSurfaceId,
+  target,
+}: {
+  readonly ownerContextKey?: string
+  readonly ownerSurfaceId?: SurfaceId
+  readonly target: LanguageServerDefinitionTarget
+}) {
+  const contextKey = ownerContextKey ?? previewOwnerContextKey(target)
   const surface = createFileEditorSurface({ lifecycle: 'transient', path: target.path })
-  if (!ownerSurfaceId) return surface
+  const previewSurface = {
+    ...surface,
+    serializedState: {
+      definitionTarget: target,
+      editorGroupId: 'workbench:preview',
+      editorTabId: `editor-tab:preview:${contextKey}`,
+    },
+  }
+  if (!ownerSurfaceId) return previewSurface
 
   return {
-    ...surface,
-    ownerContextKey: previewOwnerContextKey(target),
+    ...previewSurface,
+    id: fileEditorPreviewSurfaceId(ownerSurfaceId, contextKey),
+    ownerContextKey: contextKey,
     ownerSurfaceId,
+    stateKey: contextKey,
   }
 }

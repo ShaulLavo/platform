@@ -3,6 +3,7 @@ import {
   normalizeWorkspaceLayout,
   visibleSurfaceIdsInOrder,
 } from '@workspace/tiling/utils/layout-normalize'
+import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import type {
   Surface,
   SurfaceId,
@@ -11,6 +12,7 @@ import type {
 } from '@workspace/tiling/utils/layout-types'
 
 export type EditorSurfaceSerializedState = {
+  readonly definitionTarget?: LanguageServerDefinitionTarget
   readonly editorGroupId: string
   readonly editorTabId: string
 }
@@ -54,7 +56,10 @@ export function editorSurfaceSerializedState(
   if (typeof surface.serializedState.editorGroupId !== 'string') return null
   if (typeof surface.serializedState.editorTabId !== 'string') return null
 
+  const definitionTarget = languageServerDefinitionTarget(surface.serializedState.definitionTarget)
+
   return {
+    ...(definitionTarget ? { definitionTarget } : {}),
     editorGroupId: surface.serializedState.editorGroupId,
     editorTabId: surface.serializedState.editorTabId,
   }
@@ -181,4 +186,34 @@ function editorPathForSurface(surface: Surface | undefined) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function languageServerDefinitionTarget(value: unknown): LanguageServerDefinitionTarget | null {
+  if (!isRecord(value)) return null
+  if (typeof value.path !== 'string') return null
+  if (typeof value.uri !== 'string') return null
+  if (!languageServerRange(value.range)) return null
+
+  return {
+    path: value.path,
+    range: value.range,
+    uri: value.uri,
+  }
+}
+
+type LanguageServerRange = LanguageServerDefinitionTarget['range']
+type LanguageServerPosition = LanguageServerRange['start']
+
+function languageServerRange(value: unknown): value is LanguageServerRange {
+  if (!isRecord(value)) return false
+  if (!languageServerPosition(value.start)) return false
+
+  return languageServerPosition(value.end)
+}
+
+function languageServerPosition(value: unknown): value is LanguageServerPosition {
+  if (!isRecord(value)) return false
+  if (typeof value.character !== 'number') return false
+
+  return typeof value.line === 'number'
 }

@@ -442,7 +442,8 @@ function workspacePathForTreePath(rootPath: string, treePath: string) {
 }
 
 const treeStyle = {
-  '--trees-bg-override': 'var(--background)',
+  '--trees-bg-muted-override': 'var(--accent)',
+  '--trees-bg-override': 'transparent',
   '--trees-selected-bg-override': 'var(--accent)',
   '--trees-border-color-override': 'var(--border)',
   '--trees-fg-override': 'var(--foreground)',

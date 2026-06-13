@@ -8,7 +8,7 @@ import { SearchReplaceFields } from '@/features/search/search-replace-fields'
 import { SearchReplaceToggleButton } from '@/features/search/search-replace-toggle-button'
 import { useSearchBufferInputs } from '@/features/search/use-search-buffer-inputs'
 import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
-import { createSearchResultsSurface } from '@workspace/tiling/utils/layout-builders'
+import { createSearchResultsDetailSurface } from '@workspace/tiling/utils/layout-builders'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { Button } from '@workspace/ui/components/button'
 
@@ -33,7 +33,7 @@ export function SearchControls({ rootPath }: { rootPath: string }) {
 
   function handleOpenSearchResults() {
     dispatchLayoutOperation({
-      surface: createSearchResultsSurface(),
+      surface: createSearchResultsDetailSurface(),
       type: 'openSurface',
     })
   }

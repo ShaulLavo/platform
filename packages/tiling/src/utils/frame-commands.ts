@@ -8,6 +8,7 @@ import {
   createGitChangesSurface,
   createLogsSurface,
   createPlaceholderSurface,
+  createSearchResultsDetailSurface,
   createSearchResultsSurface,
   createTerminalSurface,
 } from '@workspace/tiling/utils/layout-builders'
@@ -178,6 +179,7 @@ function surfaceForLayoutCommandSlot(slot: LayoutCommandSurfaceSlot): Surface | 
   if (slot.surfaceType === 'file-editor') return fileEditorSurfaceForSlot(slot)
   if (slot.surfaceType === 'diff') return diffSurfaceForSlot(slot)
   if (slot.surfaceType === 'search-results') return createSearchResultsSurface()
+  if (slot.surfaceType === 'search-results-detail') return createSearchResultsDetailSurface()
   if (slot.surfaceType === 'terminal') return terminalSurfaceForSlot(slot)
   if (slot.surfaceType === 'file-navigator') return createFileNavigatorSurface()
   if (slot.surfaceType === 'git-changes') return createGitChangesSurface()

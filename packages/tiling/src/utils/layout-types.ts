@@ -29,6 +29,7 @@ export const SURFACE_TYPES = [
   'placeholder',
   'search-preview',
   'search-results',
+  'search-results-detail',
   'terminal',
 ] as const
 

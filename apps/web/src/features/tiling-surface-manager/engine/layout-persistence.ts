@@ -126,6 +126,7 @@ const KNOWN_SURFACE_TYPES = new Set<SurfaceType>([
   'placeholder',
   'search-preview',
   'search-results',
+  'search-results-detail',
   'terminal',
 ])
 const KNOWN_RECIPE_SLOTS = new Set<WorkspaceRecipeSlot>([

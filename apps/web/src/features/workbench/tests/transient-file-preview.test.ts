@@ -8,7 +8,10 @@ import {
 } from '@workspace/tiling/utils/layout-builders'
 import { openSurface } from '@workspace/tiling/utils/layout-operations'
 import { createWorkspaceLayoutStore } from '@/features/tiling-surface-manager/engine/surface-state'
-import { openTransientFilePreview } from '@/features/workbench/utils/transient-file-preview'
+import {
+  openTransientFilePreview,
+  transientFilePreviewSurfaceForTarget,
+} from '@/features/workbench/utils/transient-file-preview'
 
 describe('transient file previews', () => {
   it('opens a transient file editor for unopened preview targets', () => {
@@ -45,6 +48,23 @@ describe('transient file previews', () => {
     })
     expect(layoutStore.getState().layout.activeSurfaceId).toBe(durableSurface.id)
     expect(uiStore.getState().definitionTarget).toBe(target)
+  })
+
+  it('creates owner-scoped preview ids for the same target', () => {
+    const target = definitionTarget('/repo/src/shared.ts')
+    const first = transientFilePreviewSurfaceForTarget({
+      ownerSurfaceId: createFileEditorSurface({ path: '/repo/src/owner-a.ts' }).id,
+      target,
+    })
+    const second = transientFilePreviewSurfaceForTarget({
+      ownerSurfaceId: createFileEditorSurface({ path: '/repo/src/owner-b.ts' }).id,
+      target,
+    })
+
+    expect(first.id).not.toBe(second.id)
+    expect(first.resourceKey).toBe(second.resourceKey)
+    expect(first.serializedState).toMatchObject({ definitionTarget: target })
+    expect(second.serializedState).toMatchObject({ definitionTarget: target })
   })
 })
 

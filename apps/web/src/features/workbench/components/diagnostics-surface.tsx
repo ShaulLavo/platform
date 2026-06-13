@@ -116,7 +116,7 @@ function DiagnosticList({
               <div className='text-muted-foreground text-[11px]'>
                 {diagnosticSeverityLabel(diagnostic.severity)}
               </div>
-              <div className='text-foreground'>{diagnostic.message}</div>
+              <div className='text-foreground'>{diagnosticMessageText(diagnostic.message)}</div>
             </button>
           </li>
         )
@@ -153,7 +153,15 @@ function diagnosticKey(
   diagnostic: LanguageServerDiagnosticSummary['diagnostics'][number],
   index: number,
 ) {
-  return `${diagnostic.message}:${index}`
+  return `${diagnosticMessageText(diagnostic.message)}:${index}`
+}
+
+function diagnosticMessageText(
+  message: LanguageServerDiagnosticSummary['diagnostics'][number]['message'],
+) {
+  if (typeof message === 'string') return message
+
+  return message.value
 }
 
 function diagnosticTarget(

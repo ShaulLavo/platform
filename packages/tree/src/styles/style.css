@@ -26,6 +26,7 @@
       --trees-focus-ring-color-override
       --trees-focus-ring-width-override
       --trees-focus-ring-offset-override
+      --trees-truncate-marker-bg-override
 
       --trees-search-fg-override
       --trees-search-font-weight-override
@@ -225,6 +226,7 @@
       --trees-selected-focused-border-color-override,
       var(--trees-theme-focus-ring, var(--trees-accent))
     );
+    --trees-truncate-marker-bg: var(--trees-truncate-marker-bg-override, var(--trees-bg));
 
     /* Git status (e.g. from Shiki theme gitDecoration.*) */
     --trees-status-added: var(
@@ -376,7 +378,7 @@
     font-size: var(--trees-font-size);
     color: var(--trees-fg);
     background-color: var(--trees-bg);
-    --truncate-marker-background-color: var(--trees-bg);
+    --truncate-marker-background-color: var(--trees-truncate-marker-bg);
     --truncate-marker-background-overlay-color: transparent;
     font-family: var(--trees-font-family);
     font-weight: var(--trees-font-weight-regular);
@@ -625,7 +627,7 @@
     border-radius: var(--trees-border-radius);
     /* Row states may be translucent, so markers paint the tree background first
      * and then the state color on top to avoid compositing the same alpha twice. */
-    --truncate-marker-background-color: var(--trees-bg);
+    --truncate-marker-background-color: var(--trees-truncate-marker-bg);
     --truncate-marker-background-overlay-color: transparent;
     --truncate-marker-block-inset: 0px;
 
@@ -1254,6 +1256,10 @@
     position: relative;
   }
 
+  [data-truncate-grid] > div {
+    min-width: 0;
+  }
+
   [data-truncate-content='visible'] {
     white-space: nowrap;
   }
@@ -1356,6 +1362,25 @@
   [data-truncate-variant='fade'] {
     & [data-truncate-marker] {
       background: transparent;
+    }
+  }
+
+  [data-truncate-variant='native'] {
+    & [data-truncate-content='visible'] {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    & [data-truncate-content='overflow'],
+    & [data-truncate-marker-cell] {
+      display: none;
+    }
+  }
+
+  [data-truncate-container='truncate'][data-truncate-variant='native'],
+  [data-truncate-container='fruncate'][data-truncate-variant='native'] {
+    & [data-truncate-grid] {
+      grid-template-columns: minmax(0, max-content);
     }
   }
 
