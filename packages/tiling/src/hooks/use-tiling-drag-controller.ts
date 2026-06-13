@@ -134,7 +134,7 @@ export function useTilingDragController({
 
   useEffect(() => {
     return () => {
-      bodyAutoscroller.stop()
+      bodyAutoscrollerRef.current?.stop()
       cancelPendingCommitFrame(pendingCommitFrameRef)
       pendingCommitRef.current = null
     }

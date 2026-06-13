@@ -497,6 +497,7 @@
   font-family: var(--font-mono);
   min-height: 0;
   min-width: 0;
+  overflow-anchor: none;
 }
 
 [data-workbench-layout-renderer] .app-editor-host .editor-virtualized {

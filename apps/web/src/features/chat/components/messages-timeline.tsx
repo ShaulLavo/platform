@@ -1,4 +1,5 @@
-/* eslint-disable oxc-react-compiler/refs -- This component cannot be memoized by the React Compiler regardless: it bails on @tanstack/react-virtual (an incompatible-library), so fixing ref-during-render here buys no memoization. */
+/* eslint-disable oxc-react-compiler/refs -- The React Compiler bails on this whole component with "Use of incompatible library": @tanstack/react-virtual's instance methods (getVirtualItems/getTotalSize/measureElement) are consumed during render. The bail is structural — no useVirtualizer option clears it (directDomUpdates ruled out 2026-06-13: not a real option in the installed virtual-core 3.16.0, and forcing it into the source still bails per the babel react-compiler probe). So fixing the ref-in-render here buys no memoization.
+   TODO: revisit memoizing this component. The only real fix is swapping to a React-Compiler-compatible virtualizer (e.g. react-hook-tanstack-virtual) to reach CompileSuccess, then dropping this disable. Low priority — a chat timeline re-rendering on message/scroll change is cheap, so there's no measured cost to buy back yet. */
 import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
@@ -112,6 +113,7 @@ export function MessagesTimeline({
           className='relative w-full'
           style={{
             height: virtualizer.getTotalSize(),
+            overflowAnchor: 'none',
           }}
         >
           {virtualItems.map((virtualItem) => (

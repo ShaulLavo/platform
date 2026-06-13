@@ -41,6 +41,10 @@ function DelayedElementWidthProbe() {
   const width = useElementWidth(ref)
 
   useEffect(() => {
+    // Attaching the measured element on a later render is the scenario under test:
+    // it exercises useElementWidth's rAF retry when the ref is empty on first layout.
+    // Setting state in the effect is the point of the probe, not an anti-pattern.
+    // oxlint-disable-next-line oxc-react-compiler/set-state-in-effect
     setAttached(true)
   }, [])
 

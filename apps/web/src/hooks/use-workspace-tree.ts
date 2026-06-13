@@ -21,7 +21,7 @@ import {
   treeModelWithDirectoryLoads,
   type TreeModel,
 } from '@/lib/tree-model'
-import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 
 const DIRECTORY_LOAD_SKIPPED_LOG_DELAY_MS = 250
@@ -164,9 +164,10 @@ function useWorkspaceTreeQuery(rootPath: string | null) {
     },
     queryKey: rootTreeKey,
   })
+  const { data, error, isError, isPending } = query
   const treeState = useMemo(
-    () => (rootPath ? treeLoadState(query) : idleState),
-    [query.data, query.error, query.isError, query.isPending, rootPath],
+    () => (rootPath ? treeLoadState({ data, error, isError, isPending }) : idleState),
+    [data, error, isError, isPending, rootPath],
   )
 
   return {
@@ -242,7 +243,12 @@ function isTreeResult(result: TreeResult | null): result is TreeResult {
   return result !== null
 }
 
-function treeLoadState(query: UseQueryResult<TreeModel>): LoadState<TreeModel> {
+function treeLoadState(query: {
+  data: TreeModel | undefined
+  error: Error | null
+  isError: boolean
+  isPending: boolean
+}): LoadState<TreeModel> {
   if (query.data) return { status: 'ready', data: query.data }
   if (query.isError) return { status: 'error', message: errorMessage(query.error) }
   if (query.isPending) return { status: 'loading' }

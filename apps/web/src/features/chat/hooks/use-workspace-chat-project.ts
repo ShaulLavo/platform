@@ -1,5 +1,5 @@
 import type { OrchestrationProjectShell } from '@workspace/contracts'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
@@ -10,8 +10,10 @@ import { useChatProjectionStore } from '../state/chat-projection-store'
 export type WorkspaceChatProjectState = {
   error: string | null
   project: OrchestrationProjectShell | null
-  status: 'creating' | 'ready' | 'waiting'
+  status: 'ready' | 'waiting'
 }
+
+type ProjectFailure = { message: string; projectId: string }
 
 export function useWorkspaceChatProject({
   environment,
@@ -22,38 +24,38 @@ export function useWorkspaceChatProject({
 }): WorkspaceChatProjectState {
   const projects = useChatProjectionStore(selectChatProjects)
   const bootstrapComplete = useChatProjectionStore((state) => state.bootstrapComplete)
-  const [error, setError] = useState<string | null>(null)
-  const [creatingProjectId, setCreatingProjectId] = useState<string | null>(null)
+  const [failure, setFailure] = useState<ProjectFailure | null>(null)
+  const dispatchedProjectId = useRef<string | null>(null)
   const projectId = useMemo(() => workspaceProjectId(rootPath), [rootPath])
   const project = projects.find((candidate) => candidate.id === projectId) ?? null
-  const status = project ? 'ready' : creatingProjectId === projectId ? 'creating' : 'waiting'
-
-  useEffect(() => {
-    setCreatingProjectId(null)
-    setError(null)
-  }, [projectId])
 
   useEffect(() => {
     if (!bootstrapComplete) return
     if (project) return
-    if (creatingProjectId === projectId) return
+    if (dispatchedProjectId.current === projectId) return
 
-    setCreatingProjectId(projectId)
-    void createWorkspaceProject(environment, rootPath, setError)
-  }, [bootstrapComplete, creatingProjectId, environment, project, projectId, rootPath])
+    dispatchedProjectId.current = projectId
+    void createWorkspaceProject({ environment, projectId, rootPath, setFailure })
+  }, [bootstrapComplete, environment, project, projectId, rootPath])
 
   return {
-    error,
+    error: failure?.projectId === projectId ? failure.message : null,
     project,
-    status,
+    status: project ? 'ready' : 'waiting',
   }
 }
 
-async function createWorkspaceProject(
-  environment: ChatEnvironment,
-  rootPath: string,
-  setError: (message: string | null) => void,
-) {
+async function createWorkspaceProject({
+  environment,
+  projectId,
+  rootPath,
+  setFailure,
+}: {
+  environment: ChatEnvironment
+  projectId: string
+  rootPath: string
+  setFailure: (failure: ProjectFailure) => void
+}) {
   try {
     await environment.dispatchCommand(
       createWorkspaceProjectCommand({
@@ -62,6 +64,9 @@ async function createWorkspaceProject(
       }),
     )
   } catch (error) {
-    setError(errorMessage(error, 'Could not prepare chat for this workspace.'))
+    setFailure({
+      message: errorMessage(error, 'Could not prepare chat for this workspace.'),
+      projectId,
+    })
   }
 }

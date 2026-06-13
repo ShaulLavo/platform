@@ -15,9 +15,10 @@ export function useSelectedFile(selectedFilePath: string | null) {
     enabled: Boolean(filePath),
     placeholderData: (previousFile) => previousFile,
   })
+  const { data, error, isError, isPending } = query
   const fileState = useMemo(
-    () => (filePath ? fileLoadState(query, filePath) : idleState),
-    [filePath, query.data, query.error, query.isError, query.isPending],
+    () => (filePath ? fileLoadState({ data, error, isError, isPending }, filePath) : idleState),
+    [data, error, filePath, isError, isPending],
   )
 
   function resetFileLoad() {

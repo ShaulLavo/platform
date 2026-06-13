@@ -24,6 +24,12 @@ export function useActiveChatThreadId(threadIds: readonly ThreadId[]) {
     if (!selectedWasAvailable.current) return
 
     selectedWasAvailable.current = false
+    // Syncing local selection to the external thread list: a thread we were showing
+    // got deleted, so fall back to auto. This can't be derived during render —
+    // telling "deleted" apart from the create-time race (selected before the thread
+    // lands in the projection store) needs the selectedWasAvailable history, and
+    // reading a ref or setting state during render trips the other compiler rules.
+    // oxlint-disable-next-line oxc-react-compiler/set-state-in-effect
     setSelection({ kind: 'auto' })
   }, [availableThreadIds, selectedThreadId, selection.kind])
 

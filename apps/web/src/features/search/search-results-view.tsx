@@ -152,6 +152,7 @@ export function SearchResultsView({
         className='relative'
         style={{
           height: virtualizer.getTotalSize() + resultListPadding(compact) * 2,
+          overflowAnchor: 'none',
         }}
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {

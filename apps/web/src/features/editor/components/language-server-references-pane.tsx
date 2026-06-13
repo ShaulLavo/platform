@@ -46,6 +46,10 @@ export function LanguageServerReferencesPane({
   )
   const documents = useMemo(
     () => referenceDocumentsByPath(documentStore.getState().liveDocumentsById, references.targets),
+    // documentRevisionKey is the intentional invalidation token: the memo reads liveDocumentsById
+    // imperatively via getState() instead of subscribing (to avoid a re-render storm), so the key
+    // must stay in deps to rebuild when document content revisions change in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [documentRevisionKey, documentStore, references.targets],
   )
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(() => new Set())

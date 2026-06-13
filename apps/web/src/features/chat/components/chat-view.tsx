@@ -68,10 +68,6 @@ export function ChatView({
       )
   }, [thread])
 
-  useEffect(() => {
-    setSendError(null)
-  }, [activeThreadId])
-
   if (!activeThreadId) {
     return (
       <div className='text-muted-foreground flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs'>

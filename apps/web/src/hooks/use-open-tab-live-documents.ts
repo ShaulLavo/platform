@@ -55,7 +55,7 @@ export function useOpenTabLiveDocuments() {
       active = false
       unsubscribe()
     }
-  }, [warmPaths, workspaceStore])
+  }, [workspaceStore])
 }
 
 function unwarmedOpenFilePaths(

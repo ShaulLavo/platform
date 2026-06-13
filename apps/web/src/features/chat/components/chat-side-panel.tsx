@@ -48,7 +48,12 @@ export const ChatSidePanel = memo(({ rootPath }: { rootPath: string }) => {
         onSelectThread={setActiveThreadId}
       />
       {activeThreadId ? (
-        <ChatView activeThreadId={activeThreadId} environment={environment} rootPath={rootPath} />
+        <ChatView
+          key={activeThreadId}
+          activeThreadId={activeThreadId}
+          environment={environment}
+          rootPath={rootPath}
+        />
       ) : (
         <ChatDraftView
           disabled={disabled}
