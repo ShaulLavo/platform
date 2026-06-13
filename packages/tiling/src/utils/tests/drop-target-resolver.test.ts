@@ -5,6 +5,7 @@ import {
   resolveTilingTarget,
   type ResolvedTilingTarget,
   type TilingIntentMode,
+  type TilingWindowRegion,
 } from '@workspace/tiling/utils/drop-target-resolver'
 import {
   deriveLayoutGeometry,
@@ -441,6 +442,224 @@ describe('tiling drop target resolver', () => {
   })
 })
 
+describe('tiling drop target partition', () => {
+  const WINDOW_B = windowId('window-b')
+  const WINDOW_B_RECT: LayoutRect = { height: 400, width: 400, x: 200, y: 0 }
+
+  function interiorWindowCandidates() {
+    return [
+      windowEdgeCandidate('window-b', 'left', { height: 400, width: 48, x: 200, y: 0 }),
+      windowEdgeCandidate('window-b', 'right', { height: 400, width: 48, x: 552, y: 0 }),
+      windowEdgeCandidate('window-b', 'top', { height: 48, width: 400, x: 200, y: 0 }),
+      windowEdgeCandidate('window-b', 'bottom', { height: 48, width: 400, x: 200, y: 352 }),
+      windowCenterCandidate('window-b', { height: 200, width: 200, x: 300, y: 100 }),
+    ]
+  }
+
+  // Wedge partition is for whole-window drags only.
+  function resolveWindowWedge(point: { readonly x: number; readonly y: number }) {
+    return resolveTarget({
+      candidates: interiorWindowCandidates(),
+      mode: 'window',
+      point,
+      rootRect: ROOT_RECT,
+      source: WINDOW_SOURCE,
+      tabTarget: null,
+      windowRegions: [{ rect: WINDOW_B_RECT, windowId: WINDOW_B }],
+    })
+  }
+
+  it('maps each wedge of a window-drag target to its edge split, with no dead space', () => {
+    expect(resolveWindowWedge({ x: 520, y: 200 })?.target).toEqual(
+      snapTarget({ edge: 'right', kind: 'window-edge', windowId: WINDOW_B }),
+    )
+    expect(resolveWindowWedge({ x: 280, y: 200 })?.target).toEqual(
+      snapTarget({ edge: 'left', kind: 'window-edge', windowId: WINDOW_B }),
+    )
+    expect(resolveWindowWedge({ x: 400, y: 60 })?.target).toEqual(
+      snapTarget({ edge: 'top', kind: 'window-edge', windowId: WINDOW_B }),
+    )
+    expect(resolveWindowWedge({ x: 400, y: 340 })?.target).toEqual(
+      snapTarget({ edge: 'bottom', kind: 'window-edge', windowId: WINDOW_B }),
+    )
+  })
+
+  it('routes the inner center of a window-drag target to the merge target', () => {
+    expect(resolveWindowWedge({ x: 400, y: 200 })?.target).toEqual(
+      snapTarget({ kind: 'window-center', windowId: WINDOW_B }),
+    )
+  })
+
+  it('holds the previous wedge inside the angular deadband at a seam', () => {
+    const previousTarget: ResolvedTilingTarget = {
+      candidateId: 'win:window-b:right',
+      mode: 'window',
+      target: snapTarget({ edge: 'right', kind: 'window-edge', windowId: WINDOW_B }),
+    }
+    const held = resolveTarget({
+      candidates: interiorWindowCandidates(),
+      mode: 'window',
+      point: { x: 520, y: 60 },
+      previousTarget,
+      rootRect: ROOT_RECT,
+      source: WINDOW_SOURCE,
+      tabTarget: null,
+      windowRegions: [{ rect: WINDOW_B_RECT, windowId: WINDOW_B }],
+    })
+    const fresh = resolveWindowWedge({ x: 520, y: 60 })
+
+    expect(held?.target).toEqual(
+      snapTarget({ edge: 'right', kind: 'window-edge', windowId: WINDOW_B }),
+    )
+    expect(fresh?.target).toEqual(
+      snapTarget({ edge: 'top', kind: 'window-edge', windowId: WINDOW_B }),
+    )
+  })
+
+  it('does not wedge-split a window for a tab drag, so its body stays a merge field', () => {
+    // The point sits in what would be the right wedge; for a tab it resolves to
+    // no snap split (the body is left to the merge/return path instead).
+    const result = resolveTarget({
+      candidates: interiorWindowCandidates(),
+      mode: 'tab-detached',
+      point: { x: 520, y: 200 },
+      rootRect: ROOT_RECT,
+      source: TAB_SOURCE,
+      sourceWindowId: WINDOW_B,
+      tabTarget: null,
+      windowRegions: [{ rect: WINDOW_B_RECT, windowId: WINDOW_B }],
+    })
+
+    expect(result).toBeNull()
+  })
+
+  it('docks a tab to the root in the outer gravity margin', () => {
+    const result = resolveTarget({
+      candidates: [rootEdgeCandidate('right', { height: 600, width: 180, x: 820, y: 0 })],
+      mode: 'tab-detached',
+      point: { x: 950, y: 300 },
+      rootRect: ROOT_RECT,
+      source: TAB_SOURCE,
+      sourceWindowId: WINDOW_B,
+      tabTarget: null,
+      windowRegions: [{ rect: { height: 600, width: 400, x: 600, y: 0 }, windowId: WINDOW_B }],
+    })
+
+    expect(result?.target).toEqual(snapTarget({ edge: 'right', kind: 'root-edge' }))
+  })
+
+  it('falls back to the nearest root edge in true gaps between windows', () => {
+    const result = resolveTarget({
+      candidates: [
+        rootEdgeCandidate('left', { height: 600, width: 180, x: 0, y: 0 }),
+        rootEdgeCandidate('right', { height: 600, width: 180, x: 820, y: 0 }),
+      ],
+      mode: 'window',
+      point: { x: 200, y: 300 },
+      rootRect: ROOT_RECT,
+      source: WINDOW_SOURCE,
+      tabTarget: null,
+      windowRegions: [{ rect: { height: 600, width: 400, x: 600, y: 0 }, windowId: WINDOW_B }],
+    })
+
+    expect(result?.target).toEqual(snapTarget({ edge: 'left', kind: 'root-edge' }))
+  })
+
+  it('leaves the vacating window unpartitioned instead of docking it to the nearest root', () => {
+    const result = resolveTarget({
+      candidates: [
+        windowEdgeCandidate('window-b', 'left', { height: 600, width: 48, x: 600, y: 0 }),
+        rootEdgeCandidate('right', { height: 600, width: 180, x: 820, y: 0 }),
+      ],
+      mode: 'window',
+      point: { x: 700, y: 300 },
+      rootRect: ROOT_RECT,
+      source: WINDOW_SOURCE,
+      tabTarget: null,
+      vacatingWindowId: WINDOW_B,
+      windowRegions: [{ rect: { height: 600, width: 400, x: 600, y: 0 }, windowId: WINDOW_B }],
+    })
+
+    expect(result).toBeNull()
+  })
+
+  it('keeps a higher-priority literal hit (source-return) ahead of the partition', () => {
+    const candidates = [
+      ...interiorWindowCandidates(),
+      sourceReturnTestCandidate('window-a', { height: 400, width: 400, x: 200, y: 0 }),
+    ]
+    const result = resolveTarget({
+      candidates,
+      mode: 'window',
+      point: { x: 280, y: 200 },
+      rootRect: ROOT_RECT,
+      source: WINDOW_SOURCE,
+      tabTarget: null,
+      windowRegions: [{ rect: WINDOW_B_RECT, windowId: WINDOW_B }],
+    })
+
+    expect(result?.target).toEqual({ kind: 'window', windowId: windowId('window-a') })
+  })
+})
+
+function windowEdgeCandidate(
+  windowIdValue: string,
+  edge: LayoutEdge,
+  rect: LayoutRect,
+  priority = 105,
+): TilingDropCandidate {
+  return {
+    edge,
+    hitRects: [rect],
+    id: `win:${windowIdValue}:${edge}`,
+    kind: 'window-edge',
+    label: `${windowIdValue} ${edge}`,
+    priority,
+    target: snapTarget({ edge, kind: 'window-edge', windowId: windowId(windowIdValue) }),
+    windowId: windowId(windowIdValue),
+  }
+}
+
+function windowCenterCandidate(
+  windowIdValue: string,
+  rect: LayoutRect,
+  priority = 100,
+): TilingDropCandidate {
+  return {
+    hitRects: [rect],
+    id: `win:${windowIdValue}:center`,
+    kind: 'window-center',
+    label: `${windowIdValue} center`,
+    priority,
+    target: snapTarget({ kind: 'window-center', windowId: windowId(windowIdValue) }),
+    windowId: windowId(windowIdValue),
+  }
+}
+
+function rootEdgeCandidate(edge: LayoutEdge, rect: LayoutRect, priority = 95): TilingDropCandidate {
+  return {
+    edge,
+    hitRects: [rect],
+    id: `root:${edge}`,
+    kind: 'root-edge',
+    label: `root ${edge}`,
+    priority,
+    target: snapTarget({ edge, kind: 'root-edge' }),
+  }
+}
+
+function sourceReturnTestCandidate(windowIdValue: string, rect: LayoutRect): TilingDropCandidate {
+  return {
+    hitRects: [rect],
+    id: `snap:source-return:${windowIdValue}`,
+    kind: 'source-return',
+    label: 'return home',
+    priority: 120,
+    target: { kind: 'window', windowId: windowId(windowIdValue) },
+    windowId: windowId(windowIdValue),
+  }
+}
+
 function resolveTarget({
   candidates,
   mode,
@@ -451,6 +670,8 @@ function resolveTarget({
   sourceWindowId = null,
   tabPriority,
   tabTarget,
+  vacatingWindowId = null,
+  windowRegions,
 }: {
   readonly candidates: readonly TilingDropCandidate[]
   readonly mode: TilingIntentMode
@@ -461,6 +682,8 @@ function resolveTarget({
   readonly sourceWindowId?: WindowId | null
   readonly tabPriority?: number
   readonly tabTarget: Extract<TilingDropData, { readonly kind: 'tab' | 'tab-strip' }> | null
+  readonly vacatingWindowId?: WindowId | null
+  readonly windowRegions?: readonly TilingWindowRegion[]
 }) {
   return resolveTilingTarget({
     candidates,
@@ -471,6 +694,8 @@ function resolveTarget({
     source,
     sourceWindowId,
     tabTarget: tabTarget ? { priority: tabPriority ?? 110, target: tabTarget } : null,
+    vacatingWindowId,
+    windowRegions,
   })
 }
 

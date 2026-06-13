@@ -35,6 +35,7 @@ import {
   sourceWindowIdForDrag,
   sourceWindowIdForResolver,
   sourceWindowRectForDrag,
+  vacatingWindowIdForDrag,
   type ActiveTilingDrag,
   type PointerDetails,
 } from '@workspace/tiling/utils/drag-state'
@@ -518,6 +519,14 @@ export function useTilingDragController({
       source,
       sourceWindowId: sourceWindowIdForResolver(activeDragRef.current),
       tabTarget,
+      vacatingWindowId: vacatingWindowIdForDrag(
+        dragStartLayoutRef.current ?? layoutRef.current,
+        source,
+      ),
+      windowRegions: Object.values(windowRectsById).map((windowRect) => ({
+        rect: windowRect.rect,
+        windowId: windowRect.windowId,
+      })),
     })
   }
 

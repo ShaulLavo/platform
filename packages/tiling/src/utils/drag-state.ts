@@ -64,7 +64,10 @@ export function sourceWindowRectForDrag(
 // so dragging it is dragging the window: it earns the same source-return and
 // source-vacancy zones. Tabs from multi-tab windows leave the window standing
 // and get neither.
-function vacatingWindowIdForDrag(layout: WorkspaceLayout, activeDrag: TilingDragData | null) {
+export function vacatingWindowIdForDrag(
+  layout: WorkspaceLayout,
+  activeDrag: TilingDragData | null,
+) {
   if (!activeDrag) return null
   if (activeDrag.kind === 'window') return activeDrag.windowId
 

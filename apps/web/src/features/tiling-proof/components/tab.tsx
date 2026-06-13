@@ -21,6 +21,7 @@ export function ProofTab({
   active,
   dropZonesVisible,
   index,
+  interactive = true,
   optimisticSorting,
   orientation,
   previewAdded,
@@ -34,6 +35,9 @@ export function ProofTab({
   readonly active: boolean
   readonly dropZonesVisible: boolean
   readonly index: number
+  // False inside a preview-only window: the tab renders but is not a sortable
+  // source or target, so the snapped-out preview never joins the drag.
+  readonly interactive?: boolean
   readonly optimisticSorting: boolean
   readonly orientation: 'horizontal' | 'vertical'
   readonly previewAdded: boolean
@@ -51,8 +55,9 @@ export function ProofTab({
   const { handleRef, isDragSource, isDragging, isDropTarget, ref, sourceRef } = useSortable<
     TilingDragData & TilingDropData
   >({
-    accept: acceptsTabDrops ? TILING_TAB_TYPE : [],
+    accept: interactive && acceptsTabDrops ? TILING_TAB_TYPE : [],
     data,
+    disabled: !interactive,
     group: windowId,
     id: tabDragId(surface.id),
     index,

@@ -28,6 +28,7 @@ export function ProofTabStrip({
   insertionPreview,
   insertionPreviewLayout,
   dropZonesVisible,
+  interactive = true,
   optimisticSorting,
   orientation,
   surfaces,
@@ -40,6 +41,9 @@ export function ProofTabStrip({
   readonly dropZonesVisible: boolean
   readonly insertionPreview: TilingInsertionPreview | null
   readonly insertionPreviewLayout: WorkspaceLayout
+  // False inside a preview-only window: the strip and its tabs render but stay
+  // out of the drag system so the snapped-out preview can't capture drops.
+  readonly interactive?: boolean
   readonly optimisticSorting: boolean
   readonly orientation: 'horizontal' | 'vertical'
   readonly surfaces: readonly Surface[]
@@ -55,7 +59,7 @@ export function ProofTabStrip({
   const { isDropTarget, ref } = useDroppable<TilingDropData>({
     accept: tabStripAcceptedTypes(activeDrag),
     data,
-    disabled: activeDrag?.kind === 'window' && activeDrag.windowId === window.id,
+    disabled: !interactive || (activeDrag?.kind === 'window' && activeDrag.windowId === window.id),
     id: tabStripDropId(window.id),
   })
   const previewActive = insertionPreview?.targetWindowId === window.id
@@ -99,6 +103,7 @@ export function ProofTabStrip({
             active={item.surface.id === window.activeSurfaceId}
             dropZonesVisible={dropZonesVisible}
             index={item.index}
+            interactive={interactive}
             key={item.key}
             optimisticSorting={tabSortingEnabled}
             orientation={orientation}

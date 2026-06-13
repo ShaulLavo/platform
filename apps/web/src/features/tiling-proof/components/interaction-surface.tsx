@@ -3,7 +3,7 @@ import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { ProofDragOverlay } from '@/features/tiling-proof/components/drag-overlay'
-import { ProofPreviewWindow } from '@/features/tiling-proof/components/preview-window'
+import { DropRegionOverlay } from '@/features/tiling-proof/components/drop-region-overlay'
 import { ProofSnapDestination } from '@/features/tiling-proof/components/snap-destination'
 import { ProofWindow } from '@/features/tiling-proof/components/window'
 import {
@@ -201,7 +201,7 @@ export function ProofInteractionSurface({
         {...surfaceDataAttributes}
       >
         {surfaceBackdrop}
-        {renderedWindowIds.map((windowId) => {
+        {[...renderedWindowIds, ...previewOnlyWindowIds].map((windowId) => {
           const window = renderLayout.windowsById[windowId] ?? layout.windowsById[windowId]
           const windowRect =
             previewGeometry.windowRectsById[windowId] ?? committedGeometry.windowRectsById[windowId]
@@ -218,6 +218,7 @@ export function ProofInteractionSurface({
               key={windowId}
               layout={renderLayout}
               optimisticTabSorting={optimisticTabSorting}
+              preview={!layout.windowsById[windowId]}
               rect={windowRect.rect}
               renderSurfaceBody={renderSurfaceBody}
               resizingWindows={resizingWindows}
@@ -235,12 +236,6 @@ export function ProofInteractionSurface({
             />
           )
         })}
-        {previewOnlyWindowIds.map((windowId) => {
-          const windowRect = previewGeometry.windowRectsById[windowId]
-          if (!windowRect) return null
-
-          return <ProofPreviewWindow key={windowId} rect={windowRect.rect} />
-        })}
         <ResizeOverlay
           resizeHandleRects={committedGeometry.resizeHandleRects}
           onDispatch={onDispatchLayoutOperation}
@@ -255,6 +250,13 @@ export function ProofInteractionSurface({
             visible={dropZonesVisible}
           />
         ))}
+        <DropRegionOverlay
+          activeDrag={activeDrag}
+          activeResolvedTarget={activeResolvedTarget}
+          rootRect={surfaceRect}
+          visible={dropZonesVisible}
+          windowRectsById={committedGeometry.windowRectsById}
+        />
         {debugOverlay}
       </section>
       <ProofDragOverlay activeDrag={activeDrag} layout={layout} />

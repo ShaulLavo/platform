@@ -38,6 +38,7 @@ export function ProofWindow({
   insertionPreviewLayout,
   layout,
   optimisticTabSorting,
+  preview = false,
   rect,
   resizingWindows,
   renderSurfaceBody,
@@ -60,6 +61,10 @@ export function ProofWindow({
   readonly insertionPreviewLayout: WorkspaceLayout
   readonly layout: WorkspaceLayout
   readonly optimisticTabSorting: boolean
+  // A preview-only window (a tab snapped out to its own window) renders as the
+  // real window faded out at its destination, but inert: no drag/drop wiring,
+  // so it never becomes a drop target or feeds back into the live drag.
+  readonly preview?: boolean
   readonly rect: LayoutRect
   readonly resizingWindows: boolean
   readonly renderSurfaceBody?: (surface: Surface | null, window: WorkbenchWindow) => ReactNode
@@ -86,13 +91,14 @@ export function ProofWindow({
     ref: draggableRef,
   } = useDraggable<TilingDragData & TilingDropData>({
     data,
+    disabled: preview,
     id: windowDragId(window.id),
     type: TILING_WINDOW_TYPE,
   })
   const { isDropTarget, ref: droppableRef } = useDroppable<TilingDropData>({
     accept: [TILING_TAB_TYPE, TILING_WINDOW_TYPE],
     data,
-    disabled: activeDrag?.kind === 'window' && activeDrag.windowId === window.id,
+    disabled: preview || (activeDrag?.kind === 'window' && activeDrag.windowId === window.id),
     id: windowDragId(window.id),
   })
   const baseSurfaces = window.surfaceIds.flatMap((surfaceId) => {
@@ -144,8 +150,9 @@ export function ProofWindow({
         resizingWindows
           ? 'transition-[background-color,border-color,opacity,box-shadow] duration-150 ease-out'
           : 'transition-[left,top,width,height,background-color,border-color,opacity,box-shadow] duration-150 ease-out',
-        isDragging && 'opacity-55',
-        isDragSource && 'ring-2 ring-info',
+        (isDragging || preview) && 'opacity-55',
+        (isDragSource || preview) && 'ring-2 ring-info',
+        preview && 'pointer-events-none',
         insertionPreviewActive && 'ring-2 ring-info/70 shadow-md',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
@@ -192,6 +199,7 @@ export function ProofWindow({
           dropZonesVisible={dropZonesVisible}
           insertionPreview={insertionPreview}
           insertionPreviewLayout={insertionPreviewLayout}
+          interactive={!preview}
           key={`${window.id}:${tabStripRenderEpoch}`}
           optimisticSorting={optimisticTabSorting}
           orientation={chromeOrientation}

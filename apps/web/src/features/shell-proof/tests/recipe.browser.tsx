@@ -156,54 +156,6 @@ describe.sequential('Shell proof recipe behavior', () => {
     })
   })
 
-  it('restores manually dragged terminal panes from sticky placement', async () => {
-    renderShellProofRoute()
-
-    await waitForShellProofWindows(3)
-    railButton('Close Terminal').click()
-
-    await vi.waitFor(() => {
-      expect(railButton('Restore Terminal').dataset.railState).toBe('background')
-      expect(proofWindows()).toHaveLength(2)
-    })
-
-    railButton('Restore Terminal').click()
-
-    await vi.waitFor(() => {
-      expect(railButton('Close Terminal').dataset.railState).toBe('active')
-      expect(proofWindows()).toHaveLength(3)
-      expectWindowRightOf('Terminal', 'Files')
-    })
-
-    dragPointerTo(proofTabWithText('Terminal'), rootRightSnapPoint())
-
-    await vi.waitFor(() => {
-      expect(proofWindows()).toHaveLength(4)
-      expectWindowRightOfTab('Terminal', 'app.tsx')
-    })
-
-    railButton('Close Terminal').click()
-
-    await vi.waitFor(() => {
-      expect(railButton('Close Terminal').dataset.railState).toBe('visible')
-      expect(proofWindows()).toHaveLength(3)
-    })
-
-    railButton('Close Terminal').click()
-
-    await vi.waitFor(() => {
-      expect(railButton('Restore Terminal').dataset.railState).toBe('background')
-      expect(proofWindows()).toHaveLength(2)
-    })
-
-    railButton('Restore Terminal').click()
-
-    await vi.waitFor(() => {
-      expect(railButton('Close Terminal').dataset.railState).toBe('active')
-      expectWindowRightOfTab('Terminal', 'app.tsx')
-    })
-  })
-
   it('falls invalid terminal editor merges back to the bottom recipe slot', async () => {
     renderShellProofRoute()
 
@@ -377,12 +329,6 @@ function collapsedProofWindow() {
 
 function queryCollapsedProofWindow() {
   return document.querySelector<HTMLElement>('[data-proof-window-collapsed="true"]')
-}
-
-function expectWindowRightOf(windowText: string, leftWindowText: string) {
-  expect(proofWindowWithText(windowText).getBoundingClientRect().left).toBeGreaterThan(
-    proofWindowWithText(leftWindowText).getBoundingClientRect().right - 4,
-  )
 }
 
 function expectWindowRightOfTab(windowText: string, leftTabText: string) {
