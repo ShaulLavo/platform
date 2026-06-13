@@ -9,8 +9,7 @@
       "packages/observability",
       "packages/tiling",
       "packages/tree",
-      "packages/ui",
-      "../Editor/packages/*"
+      "packages/ui"
     ],
     "catalog": {
       "preact": "11.0.0-beta.0",
@@ -52,6 +51,19 @@
     "typescript": "5.9.3"
   },
   "overrides": {
+    "@singapor/core": "link:@singapor/core",
+    "@singapor/diff": "link:@singapor/diff",
+    "@singapor/find": "link:@singapor/find",
+    "@singapor/gutters": "link:@singapor/gutters",
+    "@singapor/lsp": "link:@singapor/lsp",
+    "@singapor/lsp-plugin": "link:@singapor/lsp-plugin",
+    "@singapor/minimap": "link:@singapor/minimap",
+    "@singapor/panes": "link:@singapor/panes",
+    "@singapor/react": "link:@singapor/react",
+    "@singapor/scope-lines": "link:@singapor/scope-lines",
+    "@singapor/tree-sitter": "link:@singapor/tree-sitter",
+    "@singapor/tree-sitter-languages": "link:@singapor/tree-sitter-languages",
+    "@singapor/typescript-lsp": "link:@singapor/typescript-lsp",
     "brace-expansion": "5.0.6",
     "esbuild": "0.28.1",
     "ws": "8.21.0"

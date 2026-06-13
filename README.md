@@ -25,15 +25,25 @@ The editor runtime resolves in one of two modes:
 - **Default (standalone)**: the editor packages are consumed from public npm
   packages under the `@singapor/*` scope. A fresh clone plus `bun install` is
   intended to work without any sibling checkout.
-- **Editor development (hybrid)**: the root `package.json` workspace glob
-  `"../Editor/packages/*"` and the `packages/editor-*` symlinks deliberately
-  link a sibling checkout of the separate `Editor` monorepo into this
-  workspace when one exists at `../Editor`. With the sibling present, local
-  editor changes are picked up directly so both repos can be developed in
-  tandem.
+- **Editor development (hybrid)**: the root `package.json` `overrides` map
+  redirects every `@singapor/*` package to a sibling checkout of the separate
+  `Editor` monorepo via bun's `link:` protocol (`"@singapor/core":
+"link:@singapor/core"`, etc.), backed by `bun link` global links created from
+  `../Editor/packages/*`. With the sibling present, local editor changes are
+  picked up directly — by typecheck, tests, and the dev server alike — so both
+  repos can be developed in tandem.
 
-If you are not working on the editor itself, you do not need the sibling
-checkout — ignore the `packages/editor-*` symlinks.
+  The editor packages are deliberately **not** bun workspaces: turbo refuses to
+  discover any workspace package whose realpath is outside the repository root,
+  so a `"../Editor/packages/*"` workspace glob (or the `packages/editor-*`
+  symlinks) breaks `bun run dev`. The `overrides` + `link:` approach links the
+  live source without making the packages workspace members, keeping turbo
+  happy. To enable it, run `bun link` inside each `../Editor/packages/*` once,
+  then `bun install` here.
+
+If you are not working on the editor itself, drop the `@singapor/*` entries from
+`overrides` (standalone mode) — a fresh clone plus `bun install` then resolves
+the published packages without any sibling checkout.
 
 ## Common Commands
 

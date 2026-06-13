@@ -84,6 +84,33 @@ describe('chat command builders', () => {
     expect(submission.command.threadId).toBe(submission.optimisticMessage.threadId)
   })
 
+  it('does not derive thread titles from secret-bearing prompts', () => {
+    const projectId = workspaceProjectId('/Users/test/workspace/platform')
+    const draft = createDraftThreadSubmission({
+      createdAt: '2026-05-24T12:00:00.000Z',
+      projectId,
+      rootPath: '/Users/test/workspace/platform',
+      text: 'Rotate the API key in staging',
+    })
+    const turn = createTurnSubmission({
+      createdAt: '2026-05-24T12:00:00.000Z',
+      interactionMode: DEFAULT_INTERACTION_MODE,
+      modelSelection: {
+        model: 'codex-test',
+        providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+      },
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      text: 'The password is hunter2',
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+    })
+
+    expect(threadTitleFromPrompt('Fix tokenizer tests')).toBe('Fix tokenizer tests')
+    expect(threadTitleFromPrompt('The access_key is abc123')).toBeUndefined()
+    expect(draft.command.bootstrap?.createThread?.title).toBe('New chat')
+    expect(draft.command.titleSeed).toBe('New chat')
+    expect(turn.command.titleSeed).toBeUndefined()
+  })
+
   it('keeps interrupt commands scoped to the active thread and turn', () => {
     const threadId = v.parse(threadIdSchema, 'thread-1')
     const command = createThreadInterruptCommand({

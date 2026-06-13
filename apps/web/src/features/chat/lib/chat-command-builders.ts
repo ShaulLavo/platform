@@ -26,6 +26,23 @@ import * as v from 'valibot'
 
 const DEFAULT_CODEX_MODEL = 'gpt-5.5'
 const THREAD_TITLE_MAX_LENGTH = 48
+const SENSITIVE_THREAD_TITLE_WORDS = new Set([
+  'apikey',
+  'bearer',
+  'credential',
+  'credentials',
+  'keystore',
+  'oauth',
+  'passwd',
+  'password',
+  'passwords',
+  'pat',
+  'secret',
+  'secrets',
+  'token',
+  'tokens',
+])
+const SENSITIVE_THREAD_TITLE_COMPOUNDS = ['accesskey', 'apikey', 'privatekey'] as const
 
 export type ChatTurnSubmission = {
   command: ThreadTurnStartCommand
@@ -237,9 +254,21 @@ function createTurnId(): TurnId {
 function cleanThreadTitle(value: string | undefined) {
   const title = value?.trim().replaceAll(/\s+/g, ' ')
   if (!title) return undefined
+  if (hasSensitiveThreadTitleWord(title)) return undefined
   if (title.length <= THREAD_TITLE_MAX_LENGTH) return title
 
   return `${title.slice(0, THREAD_TITLE_MAX_LENGTH - 1).trim()}...`
+}
+
+function hasSensitiveThreadTitleWord(title: string) {
+  const words = title
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+  if (words.some((word) => SENSITIVE_THREAD_TITLE_WORDS.has(word))) return true
+
+  const compact = words.join('')
+  return SENSITIVE_THREAD_TITLE_COMPOUNDS.some((word) => compact.includes(word))
 }
 
 function stablePathHash(value: string) {

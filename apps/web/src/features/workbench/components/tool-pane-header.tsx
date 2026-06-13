@@ -1,4 +1,3 @@
-/* eslint-disable oxc-react-compiler/refs -- DEFERRED (see handoff): reading the `dragHandleRef` callback-ref prop during render to gate styling/markup makes the React Compiler bail on ToolPaneHeader. Proper fix is an explicit `draggable` boolean prop so the ref is only ever attached, never read in render. */
 import { DotsSixVerticalIcon, MinusIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 
 import { Button } from '@workspace/ui/components/button'
@@ -15,6 +14,7 @@ type ToolPaneHeaderTab = 'chat' | 'files' | 'git' | 'logs' | 'search'
 export function ToolPaneHeader({
   className,
   collapsed = false,
+  draggable = false,
   dragHandleRef,
   orientation = 'horizontal',
   railActive = false,
@@ -30,6 +30,7 @@ export function ToolPaneHeader({
 }: {
   readonly className?: string
   readonly collapsed?: boolean
+  readonly draggable?: boolean
   readonly dragHandleRef?: (element: HTMLElement | null) => void
   readonly orientation?: ToolPaneHeaderOrientation
   readonly railActive?: boolean
@@ -62,17 +63,17 @@ export function ToolPaneHeader({
         orientation === 'vertical'
           ? 'h-full w-full flex-col items-center gap-1 border-r px-1 py-1'
           : 'h-10 items-center gap-2 border-b px-3',
-        dragHandleRef && 'cursor-grab active:cursor-grabbing',
+        draggable && 'cursor-grab active:cursor-grabbing',
         className,
       )}
-      data-workbench-window-drag-handle={dragHandleRef ? '' : undefined}
-      data-workbench-tool-pane-drag-handle={dragHandleRef ? '' : undefined}
+      data-workbench-window-drag-handle={draggable ? '' : undefined}
+      data-workbench-tool-pane-drag-handle={draggable ? '' : undefined}
       data-workbench-tool-pane-header=''
       data-workbench-tool-pane-header-collapsed={collapsed ? 'true' : 'false'}
       data-workbench-tool-pane-header-orientation={orientation}
       ref={dragHandleRef}
     >
-      {dragHandleRef ? (
+      {draggable ? (
         <div
           aria-label={`Drag ${title}`}
           className={cn(

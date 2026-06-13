@@ -62,4 +62,40 @@ describe('chat input logic', () => {
       { entryType: 'file', type: 'mention' },
     ])
   })
+
+  it('omits sensitive-looking paths from mention suggestions', () => {
+    const items = chatInputMentionCommandItems([
+      { id: 'path:.env.local', label: '.env.local', path: '.env.local', type: 'file' },
+      {
+        id: 'path:token.json',
+        label: 'token.json',
+        path: 'config/token.json',
+        type: 'file',
+      },
+      {
+        id: 'path:id_rsa.pub',
+        label: 'id_rsa.pub',
+        path: '.ssh/id_rsa.pub',
+        type: 'file',
+      },
+      {
+        id: 'path:api-key.txt',
+        label: 'api-key.txt',
+        path: 'docs/api-key.txt',
+        type: 'file',
+      },
+      {
+        id: 'path:tokenizer.ts',
+        label: 'tokenizer.ts',
+        path: 'src/tokenizer.ts',
+        type: 'file',
+      },
+      { id: 'path:app.tsx', label: 'app.tsx', path: 'src/app.tsx', type: 'file' },
+    ])
+
+    expect(items.map((item) => (item.type === 'mention' ? item.path : null))).toEqual([
+      'src/tokenizer.ts',
+      'src/app.tsx',
+    ])
+  })
 })

@@ -55,6 +55,38 @@ const CHAT_INPUT_SLASH_COMMANDS: readonly ChatInputCommandItem[] = [
   },
 ]
 
+const SENSITIVE_MENTION_PATH_WORDS = new Set([
+  'apikey',
+  'cert',
+  'certificate',
+  'certificates',
+  'certs',
+  'credential',
+  'credentials',
+  'env',
+  'keystore',
+  'oauth',
+  'passwd',
+  'password',
+  'passwords',
+  'pem',
+  'secret',
+  'secrets',
+  'token',
+  'tokens',
+])
+const SENSITIVE_MENTION_PATH_COMPOUNDS = ['accesskey', 'apikey', 'privatekey'] as const
+const SENSITIVE_MENTION_PATH_SEGMENTS = new Set([
+  '.env',
+  '.netrc',
+  '.npmrc',
+  '.pypirc',
+  'id_dsa',
+  'id_ecdsa',
+  'id_ed25519',
+  'id_rsa',
+])
+
 export function detectChatInputTrigger(text: string, cursorInput: number): ChatInputTrigger | null {
   const cursor = clampCursor(text, cursorInput)
   const slashTrigger = slashCommandTrigger(text, cursor)
@@ -114,15 +146,17 @@ export function chatInputMentionCommandItems(
     type: EntryTypeFilter
   }[],
 ): ChatInputCommandItem[] {
-  return entries.map((entry) => ({
-    description: entry.path,
-    entryType: entry.type,
-    id: entry.id,
-    label: entry.label,
-    path: entry.path,
-    replacement: chatInputMentionReplacement(entry.path),
-    type: 'mention',
-  }))
+  return entries
+    .filter((entry) => !isSensitiveMentionPath(entry.path))
+    .map((entry) => ({
+      description: entry.path,
+      entryType: entry.type,
+      id: entry.id,
+      label: entry.label,
+      path: entry.path,
+      replacement: chatInputMentionReplacement(entry.path),
+      type: 'mention',
+    }))
 }
 
 export function chatInputCommandItems(
@@ -215,4 +249,22 @@ function tokenStartForCursor(text: string, cursor: number) {
 
 function chatInputTriggerBoundary(char: string) {
   return char === ' ' || char === '\n' || char === '\r' || char === '\t'
+}
+
+function isSensitiveMentionPath(path: string) {
+  return path.split('/').some(isSensitiveMentionPathSegment)
+}
+
+function isSensitiveMentionPathSegment(segment: string) {
+  const normalized = segment.trim().toLowerCase()
+  if (!normalized) return false
+  if (normalized === '.env' || normalized.startsWith('.env.')) return true
+  if (SENSITIVE_MENTION_PATH_SEGMENTS.has(normalized)) return true
+  if (SENSITIVE_MENTION_PATH_SEGMENTS.has(normalized.split('.')[0] ?? normalized)) return true
+
+  const words = normalized.split(/[^a-z0-9]+/).filter(Boolean)
+  if (words.some((word) => SENSITIVE_MENTION_PATH_WORDS.has(word))) return true
+
+  const compact = words.join('')
+  return SENSITIVE_MENTION_PATH_COMPOUNDS.some((word) => compact.includes(word))
 }
