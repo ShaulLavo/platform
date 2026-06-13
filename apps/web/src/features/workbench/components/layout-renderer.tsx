@@ -5,6 +5,7 @@ import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { LayoutHiddenSurfaceHosts } from '@/features/workbench/components/layout-hidden-surface-hosts'
 import { LayoutRail } from '@/features/workbench/components/layout-rail'
 import { SurfaceArea } from '@/features/workbench/components/surface-area'
+import { Wallpaper } from '@/features/workbench/components/wallpaper'
 import {
   defaultSurfaceRendererRegistry,
   type SurfaceRendererRegistry,
@@ -37,11 +38,7 @@ export function LayoutRenderer({
       data-workbench-layout-renderer=''
       role='application'
     >
-      <div
-        aria-hidden='true'
-        className="pointer-events-none absolute inset-0 z-0 bg-[url('/workbench/wallpaper.png')] bg-cover bg-center"
-        data-workbench-wallpaper=''
-      />
+      <Wallpaper />
       <LayoutRail onDispatch={dispatchLayoutOperation} />
       <SurfaceArea
         geometryOptions={geometryOptions}

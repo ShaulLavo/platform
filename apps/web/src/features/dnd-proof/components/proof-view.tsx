@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 
 import { ProofEventLog } from '@/features/tiling-proof/components/event-log'
 import { ProofToolbar } from '@/features/dnd-proof/components/proof-toolbar'
+import { Wallpaper } from '@/features/workbench/components/wallpaper'
 import {
   activateProofSurface,
   addProofTab,
@@ -112,12 +113,7 @@ export function DndProofView() {
           dropZonesVisible={dropZonesVisible}
           interactionControllerRef={interactionControllerRef}
           layout={model.layout}
-          surfaceBackdrop={
-            <div
-              aria-hidden='true'
-              className="pointer-events-none absolute inset-0 z-0 bg-[url('/workbench/wallpaper.png')] bg-cover bg-center opacity-45"
-            />
-          }
+          surfaceBackdrop={<Wallpaper className='opacity-45' />}
           surfaceClassName='bg-muted/20 border-border relative isolate min-h-0 min-w-0 overflow-hidden rounded-md border'
           surfaceDataAttributes={{ 'data-proof-surface-area': '' }}
           onAddTab={addTab}

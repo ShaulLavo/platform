@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { createBenchmarkError } from './structured-errors.mjs'
 import {
+  applyCpuThrottle,
   average,
   browserList,
   browserTypes,
@@ -8,6 +9,7 @@ import {
   fractionOption,
   jumpToScrollFraction,
   launchOptions,
+  measureCpuCalibration,
   median,
   minimum,
   numberOption,
@@ -73,6 +75,8 @@ function parseOptions(args) {
   const parsed = {
     appUrl: process.env.EDITOR_SCROLL_BENCH_APP_URL ?? defaultAppUrl,
     browsers: [],
+    cpuThrottle: numberOption(process.env.EDITOR_SCROLL_BENCH_CPU_THROTTLE, 1),
+    expectHighlights: true,
     filePath: process.env.EDITOR_SCROLL_BENCH_FILE ?? defaultFilePath,
     gate: false,
     pageTimeoutMs: numberOption(process.env.EDITOR_SCROLL_BENCH_PAGE_TIMEOUT_MS, 25_000),
@@ -97,9 +101,17 @@ function applyOption(parsed, arg) {
     return
   }
 
+  // For files with no syntax language (binary blobs, plain text); skips the
+  // CSS highlight-registry readiness wait, which would otherwise time out.
+  if (arg === '--no-highlights') {
+    parsed.expectHighlights = false
+    return
+  }
+
   const [name, value] = arg.split('=')
   if (name === '--app-url') parsed.appUrl = value ?? parsed.appUrl
   if (name === '--browsers') parsed.browsers = browserList(value)
+  if (name === '--cpu-throttle') parsed.cpuThrottle = numberOption(value, parsed.cpuThrottle)
   if (name === '--file') parsed.filePath = value ?? parsed.filePath
   if (name === '--page-timeout-ms') parsed.pageTimeoutMs = numberOption(value, parsed.pageTimeoutMs)
   if (name === '--server-url') parsed.serverUrl = value ?? parsed.serverUrl
@@ -144,10 +156,12 @@ async function runTrialInBrowser(browser, browserName, trial, workspace) {
   const page = await context.newPage()
   page.setDefaultTimeout(options.pageTimeoutMs)
   await page.goto(traceUrl(options.appUrl), { waitUntil: 'domcontentloaded' })
-  await waitForHighlightedEditor(page)
-  await jumpToScrollFraction(page, options.startFraction)
+  await waitForHighlightedEditor(page, options.expectHighlights)
+  await jumpToScrollFraction(page, options.startFraction, options.expectHighlights)
+  await applyCpuThrottle(page, browserName, options.cpuThrottle)
+  const cpuCalibrationMs = await measureCpuCalibration(page)
   const report = await runScrollSample(page)
-  return trialSample(browserName, trial, report)
+  return trialSample(browserName, trial, report, cpuCalibrationMs)
 }
 
 async function runScrollSample(page) {
@@ -177,12 +191,13 @@ async function runScrollSample(page) {
   return report
 }
 
-function trialSample(browserName, trial, report) {
+function trialSample(browserName, trial, report, cpuCalibrationMs) {
   const ranges = diagnostic(report, 'editor.tokenHighlights.ranges')
   const segments = diagnostic(report, 'editor.tokenHighlights.segments')
   return {
     browserName,
     trial,
+    cpuCalibrationMs,
     cssHighlightRanges: report.dom.cssHighlightRanges,
     editorRows: report.dom.editorRows,
     frameMaxMs: report.frameStats.maxMs,
@@ -212,6 +227,7 @@ function summarizeSamples(samples) {
     trials: samples.length,
     bestFrameMeanMs: minimum(samples.map((sample) => sample.frameMeanMs)),
     cssHighlightRanges: samples.at(-1)?.cssHighlightRanges ?? 0,
+    meanCpuCalibrationMs: average(samples.map((sample) => sample.cpuCalibrationMs)),
     editorRows: samples.at(-1)?.editorRows ?? 0,
     meanFrameMaxMs: average(samples.map((sample) => sample.frameMaxMs)),
     meanFrameMeanMs: average(samples.map((sample) => sample.frameMeanMs)),

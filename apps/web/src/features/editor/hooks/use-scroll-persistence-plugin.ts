@@ -37,20 +37,11 @@ export function useScrollPersistencePlugin({
         if (editorPerformanceFeatureDisabled('scroll-persistence')) return undefined
 
         return context.registerViewContribution({
-          createContribution: ({ scrollElement }) => {
-            const persister = createScrollPositionPersister(stateRef, scrollElement)
-            scrollElement.addEventListener('scroll', persister.handleScroll, {
-              passive: true,
-            })
-
+          createContribution: () => {
+            const persister = createScrollPositionPersister(stateRef)
             return {
-              update: (snapshot) =>
-                persistSnapshotScrollPosition(
-                  stateRef.current,
-                  snapshot,
-                  persister.activeDocumentChanged,
-                ),
-              dispose: () => scrollElement.removeEventListener('scroll', persister.handleScroll),
+              update: (snapshot) => persister.persistSnapshot(snapshot),
+              dispose: () => persister.dispose(),
             }
           },
         })
@@ -71,46 +62,47 @@ export function scrollPositionFromSnapshot(
   }
 }
 
-function createScrollPositionPersister(
-  stateRef: RefObject<ScrollPersistenceState>,
-  scrollElement: HTMLElement,
-) {
-  let activePath = stateRef.current.path
+// Scroll offsets come from the snapshot (editor tracked state, never the
+// DOM), but the store write is flushed on the next animation frame: updates
+// arrive synchronously inside the editor's scroll render pass, and notifying
+// React subscribers there puts their work back into the hot frame.
+function createScrollPositionPersister(stateRef: RefObject<ScrollPersistenceState>) {
   let lastPath = ''
   let lastLeft = -1
   let lastTop = -1
+  let pendingPath = ''
+  let pendingLeft = 0
+  let pendingTop = 0
+  let frame: number | null = null
 
-  const handleScroll = () => {
-    const state = stateRef.current
-    const left = scrollElement.scrollLeft
-    const top = scrollElement.scrollTop
-    if (activePath === lastPath && left === lastLeft && top === lastTop) {
+  const flush = () => {
+    frame = null
+    if (pendingPath === lastPath && pendingLeft === lastLeft && pendingTop === lastTop) {
       return
     }
 
-    lastPath = activePath
-    lastLeft = left
-    lastTop = top
-    state.onChange?.(activePath, { left, top })
+    lastPath = pendingPath
+    lastLeft = pendingLeft
+    lastTop = pendingTop
+    stateRef.current.onChange?.(pendingPath, { left: pendingLeft, top: pendingTop })
   }
 
   return {
-    activeDocumentChanged: (path: string) => {
-      activePath = path
-    },
-    handleScroll,
-  }
-}
+    persistSnapshot: (snapshot: EditorViewSnapshot) => {
+      pendingPath = snapshot.documentId ?? stateRef.current.path
+      pendingLeft = snapshot.viewport.scrollLeft
+      pendingTop = snapshot.viewport.scrollTop
+      if (frame !== null) return
+      if (pendingPath === lastPath && pendingLeft === lastLeft && pendingTop === lastTop) return
 
-function persistSnapshotScrollPosition(
-  state: ScrollPersistenceState,
-  snapshot: EditorViewSnapshot,
-  activeDocumentChanged: (path: string) => void,
-) {
-  const path = snapshot.documentId ?? state.path
-  activeDocumentChanged(path)
-  state.onChange?.(path, {
-    left: snapshot.viewport.scrollLeft,
-    top: snapshot.viewport.scrollTop,
-  })
+      frame = requestAnimationFrame(flush)
+    },
+    dispose: () => {
+      if (frame === null) return
+
+      cancelAnimationFrame(frame)
+      frame = null
+      flush()
+    },
+  }
 }

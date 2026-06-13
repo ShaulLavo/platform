@@ -23,6 +23,33 @@ export function launchOptions(browserName) {
   }
 }
 
+// Reproducible "under load" benching via DevTools CPU throttling. Applied
+// after the editor is ready so setup stays fast and only the measured
+// interaction runs degraded. Chromium-only; other browsers run unthrottled.
+export async function applyCpuThrottle(page, browserName, rate) {
+  if (rate <= 1) return false
+  if (browserName !== 'chromium') return false
+
+  const session = await page.context().newCDPSession(page)
+  await session.send('Emulation.setCPUThrottlingRate', { rate })
+  return true
+}
+
+// Fixed deterministic workload timed in-page right before sampling. Reported
+// with every trial so runs are comparable across machine states: an inflated
+// value means the machine (or --cpu-throttle) was slow, and by how much.
+export async function measureCpuCalibration(page) {
+  return page.evaluate(() => {
+    const start = performance.now()
+    let acc = 0
+    for (let index = 0; index < 20_000_000; index += 1) {
+      acc = (acc + index * 31) % 1000003
+    }
+    if (acc === -1) console.log(acc)
+    return Math.round((performance.now() - start) * 100) / 100
+  })
+}
+
 export function browserList(value) {
   if (!value) return []
 
@@ -46,7 +73,7 @@ export function fractionOption(value, fallback) {
   return parsed
 }
 
-export async function jumpToScrollFraction(page, fraction) {
+export async function jumpToScrollFraction(page, fraction, expectHighlights = true) {
   if (fraction <= 0) return
 
   await page.evaluate(async (targetFraction) => {
@@ -57,14 +84,7 @@ export async function jumpToScrollFraction(page, fraction) {
     scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   }, fraction)
-  await page.waitForFunction(() => {
-    const registry = window.CSS?.highlights
-    if (!registry) return false
-
-    let ranges = 0
-    for (const [, highlight] of registry) ranges += highlight.size
-    return ranges >= 200
-  })
+  if (expectHighlights) await waitForHighlightRanges(page)
   await page.waitForTimeout(250)
 }
 
@@ -183,17 +203,10 @@ export function traceUrl(appUrl) {
   return String(url)
 }
 
-export async function waitForHighlightedEditor(page) {
+export async function waitForHighlightedEditor(page, expectHighlights = true) {
   await page.waitForSelector('.editor-virtualized-row')
   await page.waitForFunction(() => Boolean(window.__editorPerfTrace))
-  await page.waitForFunction(() => {
-    const registry = window.CSS?.highlights
-    if (!registry) return false
-
-    let ranges = 0
-    for (const [, highlight] of registry) ranges += highlight.size
-    return ranges >= 200
-  })
+  if (expectHighlights) await waitForHighlightRanges(page)
   await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
   await page.evaluate(
     async () =>
@@ -203,6 +216,17 @@ export async function waitForHighlightedEditor(page) {
         }),
       ),
   )
+}
+
+function waitForHighlightRanges(page) {
+  return page.waitForFunction(() => {
+    const registry = window.CSS?.highlights
+    if (!registry) return false
+
+    let ranges = 0
+    for (const [, highlight] of registry) ranges += highlight.size
+    return ranges >= 200
+  })
 }
 
 export function average(values) {
