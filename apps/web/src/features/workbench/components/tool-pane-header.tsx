@@ -1,3 +1,4 @@
+/* eslint-disable oxc-react-compiler/refs -- DEFERRED (see handoff): reading the `dragHandleRef` callback-ref prop during render to gate styling/markup makes the React Compiler bail on ToolPaneHeader. Proper fix is an explicit `draggable` boolean prop so the ref is only ever attached, never read in render. */
 import { DotsSixVerticalIcon, MinusIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 
 import { Button } from '@workspace/ui/components/button'

@@ -175,7 +175,7 @@ export function commandPaletteItemDisabledReason(
 
 export function commandPaletteSelectionLayoutOperation(
   selection: CommandPaletteSelection,
-  nowMs: number,
+  nowMs: number = Date.now(),
 ): LayoutOperation | null {
   if (selection.kind === 'layout-operation') return selection.operation
   if (selection.kind === 'custom-window') {

@@ -1,6 +1,6 @@
 import { PointerActivationConstraints } from '@dnd-kit/dom'
 import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useImperativeHandle, useState, type ReactNode } from 'react'
 
 import { TilingDragOverlay } from '@/features/workbench/components/drag-overlay'
 import { DropRegionOverlay } from '@/features/workbench/components/drop-region-overlay'
@@ -146,15 +146,11 @@ export function InteractionSurface({
     : []
 
   // No deps array on purpose: the controller functions are recreated by the
-  // drag hook every render, so the ref must republish the latest closures.
-  useEffect(() => {
-    if (!interactionControllerRef) return
-
-    interactionControllerRef.current = {
-      flushPendingCommit,
-      resetInteraction,
-    }
-  })
+  // drag hook every render, so the handle must republish the latest closures.
+  useImperativeHandle(interactionControllerRef, () => ({
+    flushPendingCommit,
+    resetInteraction,
+  }))
 
   function collapseWindowToTarget(windowId: WorkbenchWindow['id'], target: CollapseTarget) {
     const window = layout.windowsById[windowId]

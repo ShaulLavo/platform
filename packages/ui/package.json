@@ -24,7 +24,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "embla-carousel-react": "^8.6.0",
-    "evlog": "^2.17.0",
+    "evlog": "^2.19.1",
     "react-resizable-panels": "^4.11.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",

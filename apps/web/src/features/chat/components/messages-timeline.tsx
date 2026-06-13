@@ -1,3 +1,4 @@
+/* eslint-disable oxc-react-compiler/refs -- This component cannot be memoized by the React Compiler regardless: it bails on @tanstack/react-virtual (an incompatible-library), so fixing ref-during-render here buys no memoization. */
 import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'

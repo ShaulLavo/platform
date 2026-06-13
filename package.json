@@ -15,8 +15,8 @@
     "catalog": {
       "preact": "11.0.0-beta.0",
       "preact-render-to-string": "6.6.5",
-      "vite": "npm:rolldown-vite@7.1.12",
-      "vitest": "3.2.4"
+      "vite": "8.0.16",
+      "vitest": "4.1.8"
     }
   },
   "scripts": {
@@ -25,14 +25,14 @@
     "dev:web": "bun --env-file=.env scripts/dev.ts --filter=!desktop",
     "diagram": "bun apps/web/scripts/generate-layout-evolution-diagram.ts",
     "desktop:dev": "bun --env-file=.env scripts/desktop-dev.ts",
-    "lint": "turbo lint",
+    "lint": "bun run --filter '*' lint",
     "prod": "bun scripts/prod.ts",
     "bench:workspace-search": "bun apps/server/scripts/workspace-search-benchmark.ts",
     "start": "bun scripts/prod.ts start",
-    "format": "turbo format",
-    "format:check": "turbo format:check",
-    "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "format": "bun run --filter '*' format",
+    "format:check": "bun run --filter '*' format:check",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test",
     "dupes": "jscpd apps packages",
     "dupes:report": "jscpd apps packages --reporters html,console --output ./jscpd-report",
     "unused:exports": "knip --exports --no-config-hints",
@@ -42,15 +42,19 @@
   },
   "devDependencies": {
     "@typescript/native-preview": "latest",
-    "evlog": "^2.17.0",
+    "evlog": "^2.19.1",
     "jscpd": "^4.2.4",
     "knip": "^6.16.0",
     "lefthook": "^2.1.9",
     "oxc-plugin-react-compiler": "^0.2.0",
     "oxfmt": "latest",
     "oxlint": "latest",
-    "turbo": "^2.9.2",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.6",
+    "esbuild": "0.28.1",
+    "ws": "8.21.0"
   },
   "engines": {
     "node": ">=20"

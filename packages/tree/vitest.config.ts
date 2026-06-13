@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
 const alias = {
@@ -33,7 +34,7 @@ export default defineConfig({
           browser: {
             enabled: true,
             headless: true,
-            provider: 'playwright',
+            provider: playwright(),
             screenshotFailures: false,
             instances: [{ browser: 'chromium', viewport: { height: 600, width: 560 } }],
           },

@@ -209,8 +209,11 @@
     transparent
   );
   /* Read by readTerminalTheme via getComputedStyle and fed to ghostty's color
-     parser, which cannot parse color-mix() — must resolve to a plain color. */
-  --terminal-canvas-background: var(--terminal-background-solid);
+     parser, which cannot parse color-mix() — keep this a plain color. Transparent
+     so the canvas paints only glyphs and the section's --terminal-background
+     provides the translucent material; an opaque value makes the terminal an
+     opaque box that hides the pane. */
+  --terminal-canvas-background: rgba(0, 0, 0, 0);
   --terminal-foreground: #3c3c3c;
   --terminal-cursor: #1a1a1a;
   --terminal-cursor-accent: #ffffff;
@@ -363,11 +366,11 @@
 
 [data-workbench-layout-renderer] {
   --workbench-editor-minimap-background: transparent;
-  /* --workbench-editor-minimap-backdrop-filter: blur(calc(var(--surface-blur) / 4)); */
+  --editor-minimap-background-opacity: 0;
+  /* --workbench-editor-minimap-backdrop-filter: blur(calc(var(--surface-blur) )); */
   --workbench-editor-minimap-canvas-background: transparent;
   --workbench-editor-minimap-canvas-background-opacity: 0;
   --border: transparent;
-  --terminal-canvas-background: rgba(0, 0, 0, 0);
 }
 
 [data-workbench-layout-renderer] [data-surface-host] {
@@ -518,7 +521,7 @@
   backdrop-filter: blur(calc(var(--surface-blur) / 2)) saturate(var(--surface-saturation));
   background: color-mix(
     in oklch,
-    var(--card-solid) calc(var(--surface-opacity) / 2),
+    var(--card-solid) calc(var(--surface-opacity)),
     transparent
   ) !important;
 }

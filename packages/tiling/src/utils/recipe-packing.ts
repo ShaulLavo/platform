@@ -51,7 +51,13 @@ const RECIPE_LEFT_TOOL_SURFACE_TYPES = [
 export const DEFAULT_BOTTOM_PANE_SHARE = 0.26
 const TOOL_PANE_COLUMN_SHARE = 0.24
 const MIN_TOOL_PANE_SHARE = 0.15
+// Default packing keeps the tool pane from dominating the editor.
 const MAX_TOOL_PANE_SHARE = 0.55
+// A pane the user explicitly dragged wider is honored up to the live-resize
+// limit (the editor's minimum, 1 - MIN_EDITOR_RESIZE_SIZE = 0.78) instead of
+// snapping back to the default cap on collapse/expand. Without this, a Files
+// pane resized to e.g. 68% loses its width every collapse.
+const MAX_USER_TOOL_PANE_SHARE = 0.78
 // Above this right edge the tool pane previously had no main content beside
 // it, so its old width says nothing about a usable left/main ratio.
 const FULL_BLEED_TOOL_PANE_EDGE = 0.95
@@ -162,7 +168,7 @@ export function recordRecipePaneShares(layout: WorkspaceLayout): WorkspaceLayout
     summary && summary.rightEdge < FULL_BLEED_TOOL_PANE_EDGE
       ? {
           columnCount: Math.max(1, summary.columnCount),
-          share: clampToolPaneShare(summary.rightEdge),
+          share: clampUserToolPaneShare(summary.rightEdge),
         }
       : layout.leftToolPane
   const bottomShare = currentBottomDockShare(layout, bottomWindowId)
@@ -918,23 +924,28 @@ function toolPaneShare(
   }
 
   // Scale the previous pane share by the column count change so columns keep
-  // their width instead of resetting user-resized ratios.
-  return clampToolPaneShare(summary.rightEdge * (columnCount / Math.max(1, summary.columnCount)))
+  // their width instead of resetting user-resized ratios. This footprint is a
+  // real (possibly user-dragged) width, so honor the wider user cap.
+  return clampUserToolPaneShare(
+    summary.rightEdge * (columnCount / Math.max(1, summary.columnCount)),
+  )
 }
 
 // The width a freshly shown tool pane should take: the user-resized share
 // scaled to the column count, or the default column share if never resized.
 export function toolPaneRestoreShare(layout: WorkspaceLayout, columnCount: number) {
   const stored = layout.leftToolPane
-  const share = stored
-    ? stored.share * (columnCount / Math.max(1, stored.columnCount))
-    : TOOL_PANE_COLUMN_SHARE * columnCount
+  if (!stored) return clampToolPaneShare(TOOL_PANE_COLUMN_SHARE * columnCount)
 
-  return clampToolPaneShare(share)
+  return clampUserToolPaneShare(stored.share * (columnCount / Math.max(1, stored.columnCount)))
 }
 
 function clampToolPaneShare(share: number) {
   return Math.min(MAX_TOOL_PANE_SHARE, Math.max(MIN_TOOL_PANE_SHARE, share))
+}
+
+function clampUserToolPaneShare(share: number) {
+  return Math.min(MAX_USER_TOOL_PANE_SHARE, Math.max(MIN_TOOL_PANE_SHARE, share))
 }
 
 function recipeMainPanelTree(

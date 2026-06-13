@@ -1,6 +1,6 @@
 import '@workspace/ui/globals.css'
 
-import { commands, page } from '@vitest/browser/context'
+import { commands, page } from 'vitest/browser'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -14,13 +14,10 @@ import {
 let root: Root | null = null
 let currentDragPoint: PointerPoint | null = null
 let currentPointerId = 0
+const DEFAULT_PROOF_IFRAME_VIEWPORT = { height: 700, width: 900 }
+const SCALED_PROOF_IFRAME_VIEWPORT = { height: 760, width: 1000 }
 
-// Matches the configured browser viewport. It must not exceed the real
-// browser window: vitest scales the test iframe to fit, which breaks the
-// raw client-coordinate bridge into the native mouse commands.
-const PROOF_VIEWPORT = { height: 700, width: 900 }
-
-declare module '@vitest/browser/context' {
+declare module 'vitest/browser' {
   interface BrowserCommands {
     proofMouseDrag(input: ProofMouseDragInput): Promise<void>
     proofMouseUp(): Promise<void>
@@ -357,6 +354,28 @@ describe.sequential('dnd proof browser behavior', () => {
       expect(document.body.textContent).not.toContain('tab -> root right')
       expectValidProofTabState()
     })
+  })
+
+  it('grabs a window with real browser pointer events when the iframe is scaled', async () => {
+    await page.viewport(SCALED_PROOF_IFRAME_VIEWPORT.width, SCALED_PROOF_IFRAME_VIEWPORT.height)
+    try {
+      renderProof()
+
+      await waitForProof()
+      await waitForSettledProofGeometry()
+
+      const beforeRects = windowRects()
+
+      await nativeDragWindowToSnap('root right')
+
+      await vi.waitFor(() => {
+        expect(document.body.textContent).toContain('window -> root right')
+        expect(windowRects()).not.toEqual(beforeRects)
+        expectValidProofTabState()
+      })
+    } finally {
+      await page.viewport(DEFAULT_PROOF_IFRAME_VIEWPORT.width, DEFAULT_PROOF_IFRAME_VIEWPORT.height)
+    }
   })
 
   it('previews a window merge over another window body before release', async () => {
@@ -1103,8 +1122,8 @@ describe.sequential('dnd proof browser behavior', () => {
 function renderProof() {
   document.body.style.margin = '0'
   const container = document.createElement('main')
-  container.style.height = `${PROOF_VIEWPORT.height}px`
-  container.style.width = `${PROOF_VIEWPORT.width}px`
+  container.style.height = '100vh'
+  container.style.width = '100vw'
   document.body.append(container)
   root = createRoot(container)
   flushSync(() => root?.render(<DndProofView />))

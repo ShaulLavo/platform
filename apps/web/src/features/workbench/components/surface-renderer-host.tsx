@@ -29,6 +29,7 @@ export function SurfaceRendererHost({
       data-surface-type={surface.type}
       role='tabpanel'
     >
+      {/* eslint-disable-next-line oxc-react-compiler/static-components -- Renderer is a stable component resolved from the surface registry, not one created during render. */}
       <Renderer active={active} surface={surface} visible windowId={windowId} />
     </div>
   )

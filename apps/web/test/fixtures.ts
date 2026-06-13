@@ -38,17 +38,17 @@ type Fixtures = {
 // never from 'vitest' directly, so shared setup/teardown stays in one place.
 export const test = base.extend<Fixtures>({
   // eslint-disable-next-line no-empty-pattern -- Vitest fixture callbacks must destructure the context object.
-  server: async ({}, use) => {
+  server: async ({}, provide) => {
     const server = await makeTestServer()
-    await use(server)
+    await provide(server)
     await server.cleanup()
   },
-  client: async ({ server }, use) => {
+  client: async ({ server }, provide) => {
     const client = createInProcessClient(server)
     // Point the app's RPC singleton at the in-process server so code that calls
     // `getClient()` (api.ts, hooks, components) hits the real server, not a mock.
     setClient(client)
-    await use(client)
+    await provide(client)
     resetClient()
   },
 })

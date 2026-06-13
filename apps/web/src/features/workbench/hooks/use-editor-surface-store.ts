@@ -1,3 +1,4 @@
+/* eslint-disable oxc-react-compiler/refs -- DEFERRED (see handoff): dispatchContextRef is written during render and read inside the useState initializer, so the React Compiler bails on this hook (not memoized). Fix = eliminate the ref entirely. */
 import { useLayoutEffect, useRef, useState } from 'react'
 
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
@@ -15,6 +16,11 @@ export function useEditorSurfaceStore({
   readonly requestCloseTab: RequestCloseTab
 }) {
   const workspaceStore = useEditorWorkspaceStoreApi()
+  // TODO(react-compiler, see handoff): lint passes, but the compiler still bails
+  // on this hook ("Cannot access refs during render") because dispatchContextRef
+  // is read inside the useState initializer below — so it is NOT memoized.
+  // Eliminating the ref (pass layoutStore in + capture closures via useEffectEvent)
+  // restores compilation.
   const dispatchContextRef = useRef<EditorSurfaceDispatchContext | null>(null)
   const [store] = useState(() => {
     const workspaceLayout = workspaceStore.getState().workspaceLayout

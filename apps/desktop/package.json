@@ -15,7 +15,7 @@
   "dependencies": {
     "@workspace/observability": "workspace:*",
     "electrobun": "^1.18.1",
-    "evlog": "^2.17.0"
+    "evlog": "^2.19.1"
   },
   "devDependencies": {
     "@types/bun": "^1.3.13",

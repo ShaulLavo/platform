@@ -59,6 +59,8 @@ export function layoutSnapshot(layout: WorkspaceLayout) {
         }
       : null,
     backgroundSurfaceCount: layout.rail.backgroundSurfaceIds.length,
+    bottomPaneShare: layout.bottomPaneShare ?? null,
+    leftToolPane: layout.leftToolPane ?? null,
     nodeCount: Object.keys(layout.nodesById).length,
     rootNodeId: compactNullableLayoutId(layout.rootNodeId),
     runningSurfaceCount: layout.rail.runningSurfaceIds.length,

@@ -50,10 +50,7 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
-        className={cn(
-          'top-1/3 translate-y-0 overflow-hidden rounded-none p-0 [--surface-vibrancy-blur:calc(var(--surface-blur)/2)]',
-          className,
-        )}
+        className={cn('top-1/3 translate-y-0 overflow-hidden rounded-none p-0', className)}
         showCloseButton={showCloseButton}
       >
         <Command {...commandProps}>{children}</Command>

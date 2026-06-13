@@ -78,11 +78,10 @@ export function CommandPaletteContent({
     rootPath: rootFolder?.path ?? null,
     selectedFilePath: activeFilePath,
   })
-  const commandItems = [
-    ...commandPaletteItems(platformCommandSpecs, bindings),
-    ...layoutCommandPaletteItems(workspaceLayout),
-    ...windowManagementActionPaletteItems(workspaceLayout),
-  ]
+  const commandItems = commandPaletteItems(platformCommandSpecs, bindings).concat(
+    layoutCommandPaletteItems(workspaceLayout),
+    windowManagementActionPaletteItems(workspaceLayout),
+  )
   const groups = groupedCommandItems(commandItems)
 
   function runCommand(item: CommandPaletteItem) {
@@ -111,7 +110,7 @@ export function CommandPaletteContent({
   }
 
   function dispatchCommandPaletteSelection(item: CommandPaletteItem) {
-    const operation = commandPaletteSelectionLayoutOperation(item.command, Date.now())
+    const operation = commandPaletteSelectionLayoutOperation(item.command)
     if (!operation) return dispatchPlatformPaletteSelection(item)
 
     setWorkspaceLayout(applyLayoutOperation(workspaceLayout, operation))

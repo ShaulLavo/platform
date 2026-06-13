@@ -28,7 +28,12 @@ import * as v from 'valibot'
 
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 12
+// v13: drop pre-recipe persisted layouts. Older builds persisted non-recipe
+// workspace layouts (windows like `window:file-navigator` instead of the recipe
+// `window:classic:…`), where a tool pane is re-packed on expand but its resize
+// is never recorded — so resize → collapse → expand reset the pane to ~50%.
+// Discarding the stale layout rebuilds a recipe layout, which preserves size.
+const CACHE_VERSION = 13
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
 const LEGACY_WORKSPACE_CACHE_KEY = 'platform.workspace-state.v1'
 

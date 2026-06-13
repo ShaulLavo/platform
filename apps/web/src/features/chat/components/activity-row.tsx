@@ -27,6 +27,7 @@ export function ActivityRow({ activity }: { activity: ChatWorkLogEntry }) {
             activityIconToneClass(activity.tone),
           )}
         >
+          {/* eslint-disable-next-line oxc-react-compiler/static-components -- Icon is a stable Phosphor component chosen by activityIcon, not created during render. */}
           <Icon className='size-3' />
         </span>
         <p

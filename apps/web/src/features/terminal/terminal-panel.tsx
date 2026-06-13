@@ -26,14 +26,12 @@ export function TerminalPanel({
   sessionId,
   ...sectionProps
 }: TerminalPanelProps) {
-  const activeRef = useRef(active)
   const activationFrameRef = useRef<number | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
   const setFocusArea = useFocus((state) => state.setFocusArea)
-  activeRef.current = active
   const activateTerminalAfterFrame = useEffectEvent(() => {
     if (activationFrameRef.current !== null) {
       window.cancelAnimationFrame(activationFrameRef.current)
@@ -44,6 +42,9 @@ export function TerminalPanel({
       fitAddonRef.current?.fit()
       terminalRef.current?.focus()
     })
+  })
+  const activateTerminalIfActive = useEffectEvent(() => {
+    if (active) activateTerminalAfterFrame()
   })
 
   // ghostty-web bakes the theme into its WASM terminal at construction and has
@@ -61,7 +62,7 @@ export function TerminalPanel({
       onReady: (terminal, fitAddon) => {
         fitAddonRef.current = fitAddon
         terminalRef.current = terminal
-        if (activeRef.current) activateTerminalAfterFrame()
+        activateTerminalIfActive()
       },
     })
 

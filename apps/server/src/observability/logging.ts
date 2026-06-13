@@ -1,6 +1,6 @@
 import { errorNumberField, errorStringField, isRecord } from '@workspace/contracts'
 import type { RequestLogger } from 'evlog'
-import { useLogger } from 'evlog/elysia'
+import { useLogger as getRequestLogger } from 'evlog/elysia'
 
 import { isObservabilityActive, recordProcessWarning } from './runtime'
 import { createStructuredError } from './structured-errors'
@@ -160,7 +160,7 @@ function currentRequestLogger(): RequestLogger<Record<string, unknown>> | null {
   if (!isObservabilityActive()) return null
 
   try {
-    return useLogger()
+    return getRequestLogger()
   } catch {
     return null
   }

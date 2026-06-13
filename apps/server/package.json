@@ -40,7 +40,7 @@
     "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
-    "evlog": "^2.17.0",
+    "evlog": "^2.19.1",
     "jszip": "^3.10.1",
     "subset-font": "^2.5.0",
     "typescript": "^5.9.3",
@@ -58,6 +58,6 @@
     "oxfmt": "latest",
     "oxlint": "latest",
     "typescript-eslint": "^8.54.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.8"
   }
 }

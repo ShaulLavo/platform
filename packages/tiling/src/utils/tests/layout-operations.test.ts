@@ -316,6 +316,150 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(expanded)
   })
 
+  it('preserves a user-resized window share through collapse and expand', () => {
+    let layout = createClassicFirstRunWorkspaceLayout()
+    layout = resizeSplit(layout, CLASSIC_MAIN_NODE_ID, 0, -190)
+    expect(layout.bottomPaneShare).toBe(0.45)
+
+    const dockSurfaceId = layout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.activeSurfaceId
+    if (!dockSurfaceId) throw new Error('missing dock surface')
+    expect(paneParentSizes(layout, dockSurfaceId).at(-1)).toBeCloseTo(0.45)
+
+    layout = collapseWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID, 'bottom')
+    layout = expandWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID)
+
+    expect(layout.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.mode).toBe('normal')
+    expect(paneParentSizes(layout, dockSurfaceId).at(-1)).toBeCloseTo(0.45)
+    expectValidLayout(layout)
+  })
+
+  it('preserves a resized free-window share through collapse and expand', () => {
+    const side = createFileEditorSurface({ path: '/repo/src/side.ts' })
+    let layout = openSurface(createClassicFirstRunWorkspaceLayout(), side, {
+      placement: { edge: 'right', kind: 'window-edge', windowId: CLASSIC_EDITOR_WINDOW_ID },
+    })
+    const sideWindowId = mustFindWindowId(layout, side.id)
+    const sideNodeId = findNodeIdForWindow(layout, sideWindowId)
+    if (!sideNodeId) throw new Error('missing side node')
+    const splitId = findParentNodeId(layout, sideNodeId)
+    if (!splitId) throw new Error('missing parent split')
+
+    layout = resizeSplit(layout, splitId, 0, 220)
+    const beforeShare = paneParentSizes(layout, side.id).at(-1)
+    expect(beforeShare).not.toBeCloseTo(0.5)
+
+    layout = collapseWindow(layout, sideWindowId, 'right')
+    layout = expandWindow(layout, sideWindowId)
+
+    expect(layout.windowsById[sideWindowId]?.mode).toBe('normal')
+    expect(paneParentSizes(layout, side.id).at(-1)).toBeCloseTo(beforeShare ?? 0)
+    expectValidLayout(layout)
+  })
+
+  it('preserves a user-resized left tool pane through collapse and expand', () => {
+    let layout = createClassicFirstRunWorkspaceLayout()
+    layout = resizeSplit(layout, CLASSIC_ROOT_NODE_ID, 0, 180)
+    expect(layout.leftToolPane).toEqual({ columnCount: 1, share: 0.4 })
+
+    const navSurfaceId = layout.windowsById[CLASSIC_FILE_NAVIGATOR_WINDOW_ID]?.activeSurfaceId
+    if (!navSurfaceId) throw new Error('missing nav surface')
+    expect(paneParentSizes(layout, navSurfaceId)[0]).toBeCloseTo(0.4)
+
+    layout = collapseWindow(layout, CLASSIC_FILE_NAVIGATOR_WINDOW_ID, 'left')
+    layout = expandWindow(layout, CLASSIC_FILE_NAVIGATOR_WINDOW_ID)
+
+    expect(layout.windowsById[CLASSIC_FILE_NAVIGATOR_WINDOW_ID]?.mode).toBe('normal')
+    expect(paneParentSizes(layout, navSurfaceId)[0]).toBeCloseTo(0.4)
+    expectValidLayout(layout)
+  })
+
+  // A pane the user drags wider than the default cap (0.55) must keep that
+  // width: collapse used to re-derive and clamp the recorded share back to the
+  // cap, so a Files pane resized to ~65% snapped to ~55% ("half the screen").
+  it('preserves a wide user-resized tool pane beyond the default cap', () => {
+    let layout = createClassicFirstRunWorkspaceLayout()
+    layout = resizeSplit(layout, CLASSIC_ROOT_NODE_ID, 0, 430)
+    expect(layout.leftToolPane?.share ?? 0).toBeGreaterThan(0.55)
+
+    const navSurfaceId = layout.windowsById[CLASSIC_FILE_NAVIGATOR_WINDOW_ID]?.activeSurfaceId
+    if (!navSurfaceId) throw new Error('missing nav surface')
+    const beforeShare = paneParentSizes(layout, navSurfaceId)[0]
+    expect(beforeShare).toBeGreaterThan(0.55)
+
+    layout = collapseWindow(layout, CLASSIC_FILE_NAVIGATOR_WINDOW_ID, 'left')
+    layout = expandWindow(layout, CLASSIC_FILE_NAVIGATOR_WINDOW_ID)
+
+    expect(layout.windowsById[CLASSIC_FILE_NAVIGATOR_WINDOW_ID]?.mode).toBe('normal')
+    expect(paneParentSizes(layout, navSurfaceId)[0]).toBeCloseTo(beforeShare ?? 0)
+    expectValidLayout(layout)
+  })
+
+  // Restore re-inserts the expanding window beside the neighbor it sat next to
+  // before collapsing. When that neighbor is its direct sibling in one split (a
+  // two-window layout), moveWindow used to take the same-split reorder shortcut,
+  // which preserves existing sizes and dropped the recorded restore share — so
+  // the pane snapped back to ~50%. The restore now routes through detach+insert,
+  // which applies the share.
+  it('preserves a resized pane share when expanding beside a same-split sibling', () => {
+    let layout = createEmptyWorkspaceLayout()
+    const nav = createFileNavigatorSurface()
+    layout = openSurface(layout, nav)
+    const navWindowId = mustFindWindowId(layout, nav.id)
+    const editor = createFileEditorSurface({ path: '/repo/src/main.ts' })
+    layout = openSurface(layout, editor, {
+      placement: { edge: 'right', kind: 'window-edge', windowId: navWindowId },
+    })
+
+    // No resize yet, so no pane share is recorded.
+    expect(layout.leftToolPane).toBeNull()
+
+    const navNodeId = findNodeIdForWindow(layout, navWindowId)
+    if (!navNodeId) throw new Error('missing nav node')
+    const splitId = findParentNodeId(layout, navNodeId)
+    if (!splitId) throw new Error('missing split')
+
+    layout = resizeSplit(layout, splitId, 0, 220)
+    const beforeShare = paneParentSizes(layout, nav.id)[0]
+    expect(beforeShare).not.toBeCloseTo(0.5)
+
+    layout = collapseWindow(layout, navWindowId, 'left')
+    layout = expandWindow(layout, navWindowId)
+
+    expect(layout.windowsById[navWindowId]?.mode).toBe('normal')
+    expect(paneParentSizes(layout, nav.id)[0]).toBeCloseTo(beforeShare ?? 0)
+    expectValidLayout(layout)
+  })
+
+  // The same same-split-sibling restore, without any tool pane: two editors
+  // side by side record no leftToolPane, so this proves the fix lives in the
+  // restore path, not in tool-pane share bookkeeping.
+  it('preserves a resized editor split share through collapse and expand', () => {
+    let layout = createEmptyWorkspaceLayout()
+    const left = createFileEditorSurface({ path: '/repo/src/left.ts' })
+    layout = openSurface(layout, left)
+    const leftWindowId = mustFindWindowId(layout, left.id)
+    const right = createFileEditorSurface({ path: '/repo/src/right.ts' })
+    layout = openSurface(layout, right, {
+      placement: { edge: 'right', kind: 'window-edge', windowId: leftWindowId },
+    })
+
+    const leftNodeId = findNodeIdForWindow(layout, leftWindowId)
+    if (!leftNodeId) throw new Error('missing left node')
+    const splitId = findParentNodeId(layout, leftNodeId)
+    if (!splitId) throw new Error('missing split')
+
+    layout = resizeSplit(layout, splitId, 0, 220)
+    const beforeShare = paneParentSizes(layout, left.id)[0]
+    expect(beforeShare).not.toBeCloseTo(0.5)
+
+    layout = collapseWindow(layout, leftWindowId, 'left')
+    layout = expandWindow(layout, leftWindowId)
+
+    expect(layout.windowsById[leftWindowId]?.mode).toBe('normal')
+    expect(paneParentSizes(layout, left.id)[0]).toBeCloseTo(beforeShare ?? 0)
+    expectValidLayout(layout)
+  })
+
   it('keeps a collapsed row horizontal when a sibling row collapses to a rail', () => {
     // Editor + diagnostics collapsed as top/bottom rows, file navigator as a
     // left rail: two horizontal rows and one vertical rail.

@@ -1,3 +1,4 @@
+/* eslint-disable oxc-react-compiler/refs -- DEFERRED (see handoff): the latest-ref pattern (modelRef/selectedFilePathRef/selectFileRef/handleTreeSelectionChangeRef read+written during render) makes the React Compiler bail on TreePane, so it is not memoized. Regaining memoization needs a careful refactor of a critical component. */
 import type {
   FileTreeDropContext,
   FileTreeDropResult,

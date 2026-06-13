@@ -82,7 +82,7 @@ async function streamSearchScope(
         matchMode: 'literal',
         path,
         query,
-        useWorkspaceIndex: useWorkspaceIndexForScope(scope),
+        useWorkspaceIndex: workspaceIndexEnabledForScope(scope),
         wholeWord: false,
       },
       scopedSignal,
@@ -147,7 +147,7 @@ function fallbackEntryVersion(mtimeMs: number, size: number) {
   return `search:${mtimeMs}:${size}`
 }
 
-function useWorkspaceIndexForScope(scope: SearchScope) {
+function workspaceIndexEnabledForScope(scope: SearchScope) {
   return scope !== 'system'
 }
 

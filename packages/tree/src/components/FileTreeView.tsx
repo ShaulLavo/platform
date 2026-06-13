@@ -1,4 +1,10 @@
 /** @jsxImportSource preact */
+
+// TODO: split this up — at 3545 lines this component is far too large and should
+// be broken into focused pieces (rows, keyboard nav, drag, sticky focus, rename).
+// NOTE: oxc-react-compiler/* rules are turned off for packages/tree in
+// .oxlintrc.json because this package is Preact, not React — the React Compiler
+// never runs here, so its immutability/refs diagnostics are not real constraints.
 import { Fragment } from 'preact'
 import type { JSX } from 'preact'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'

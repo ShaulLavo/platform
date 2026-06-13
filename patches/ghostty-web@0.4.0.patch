@@ -12,7 +12,7 @@ index a4ca427b95288e70c782ce303013cd644893dcec..dc14831fbb629564410c03e5d53929a4
 +      this.ctx.clearRect(A, B, g, E);
 +      return;
 +    }
-+    this.ctx.globalCompositeOperation = "copy";
++    this.ctx.globalCompositeOperation = "source-over";
 +    this.ctx.fillStyle = this.theme.background;
 +    this.ctx.fillRect(A, B, g, E);
 +    this.ctx.globalCompositeOperation = C;

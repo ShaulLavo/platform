@@ -454,7 +454,13 @@ export function moveWindow(
   const nodeId = findNodeIdForWindow(normalizedLayout, windowId)
   if (!nodeId) return normalizedLayout
 
-  const sameSplitLayout = moveNodeWithinSameSplit(normalizedLayout, nodeId, destination)
+  // A restore passes an explicit insertShare; the same-split reorder shortcut
+  // preserves existing sizes and would drop it, so route restores through the
+  // detach+insert path that applies the recorded share.
+  const sameSplitLayout =
+    options.insertShare === undefined
+      ? moveNodeWithinSameSplit(normalizedLayout, nodeId, destination)
+      : null
   if (sameSplitLayout) {
     return normalizeWorkspaceLayout(
       movedWindowLayoutWithPlacements(sameSplitLayout, window, destination, options),

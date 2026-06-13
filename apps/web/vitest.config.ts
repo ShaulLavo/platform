@@ -1,6 +1,8 @@
 import path from 'node:path'
+import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
 // Shared resolution so every project reads the same `@/` paths as the app.
@@ -9,7 +11,8 @@ const alias = {
   '@': path.resolve(__dirname, './src'),
   '@workspace/tiling': path.resolve(workspaceRoot, 'packages/tiling/src'),
 }
-const reactPlugin = () => react({ babel: { plugins: ['babel-plugin-react-compiler'] } })
+const reactPlugin = () => react()
+const reactCompilerPlugin = () => babel({ presets: [reactCompilerPreset()] })
 const browserTestPort = process.env.VITEST_BROWSER_PORT ?? '5179'
 const browserFileServerPort = process.env.VITEST_BROWSER_FILE_SERVER_PORT ?? '33201'
 const browserFileServerUrl = `http://127.0.0.1:${browserFileServerPort}`
@@ -36,23 +39,19 @@ export default defineConfig({
       },
       {
         // Hooks + light component/render tests. happy-dom, not jsdom.
-        plugins: [reactPlugin()],
+        plugins: [reactPlugin(), reactCompilerPlugin()],
         resolve: { alias, dedupe: ['react', 'react-dom'] },
         test: {
           name: 'dom',
-          environment: 'happy-dom',
+          environment: './test/env/happy-dom-ssr.ts',
           include: ['src/**/*.test.tsx', 'test/**/*.test.tsx'],
           exclude: ['src/**/*.browser.tsx'],
           setupFiles: ['./test/env/msw.ts', './test/env/dom.ts'],
-          // happy-dom defaults to Vite's web transform, which stubs `bun:*`
-          // builtins; use the ssr pipeline so dom tests can boot the
-          // in-process server like node tests do.
-          testTransformMode: { ssr: ['**/*'] },
         },
       },
       {
         // Real-paint / layout / visual tests in a real browser via Playwright.
-        plugins: [reactPlugin(), tailwindcss()],
+        plugins: [reactPlugin(), reactCompilerPlugin(), tailwindcss()],
         resolve: { alias, dedupe: ['react', 'react-dom'] },
         define: {
           // Browser tests talk to the spawned file server directly: the
@@ -79,7 +78,7 @@ export default defineConfig({
             },
             enabled: true,
             headless: true,
-            provider: 'playwright',
+            provider: playwright(),
             screenshotFailures: false,
             instances: [{ browser: 'chromium', viewport: { height: 700, width: 900 } }],
           },
@@ -101,6 +100,7 @@ type ProofMouseCommandContext = {
 }
 
 type ProofMouseFrame = {
+  readonly evaluate: <TResult>(callback: () => TResult) => Promise<TResult>
   readonly locator: (selector: string) => {
     readonly boundingBox: () => Promise<ProofMouseBox | null>
   }
@@ -116,6 +116,13 @@ type ProofMouseBox = {
 type ProofMousePoint = {
   readonly x: number
   readonly y: number
+}
+
+type ProofMouseFrameTransform = {
+  readonly originX: number
+  readonly originY: number
+  readonly scaleX: number
+  readonly scaleY: number
 }
 
 type ProofMouseDragInput = {
@@ -151,13 +158,14 @@ type ProofMouseDragStep =
 
 async function proofMouseDrag(context: ProofMouseCommandContext, input: ProofMouseDragInput) {
   const frame = await context.frame()
-  let point = await sourcePointForProofMouseDrag(frame, input)
+  const transform = await proofMouseFrameTransform(frame)
+  let point = await sourcePointForProofMouseDrag(frame, transform, input)
 
   await context.page.mouse.move(point.x, point.y)
   await context.page.mouse.down()
 
   for (const step of input.steps) {
-    point = await runProofMouseStep(context, frame, point, step)
+    point = await runProofMouseStep(context, frame, transform, point, step)
   }
 
   if (input.release === false) return
@@ -165,12 +173,19 @@ async function proofMouseDrag(context: ProofMouseCommandContext, input: ProofMou
   await context.page.mouse.up()
 }
 
-async function sourcePointForProofMouseDrag(frame: ProofMouseFrame, input: ProofMouseDragInput) {
+async function sourcePointForProofMouseDrag(
+  frame: ProofMouseFrame,
+  transform: ProofMouseFrameTransform,
+  input: ProofMouseDragInput,
+) {
   if (typeof input.sourceClientX === 'number' && typeof input.sourceClientY === 'number') {
-    return { x: input.sourceClientX, y: input.sourceClientY }
+    return frameClientPointToPagePoint(transform, {
+      x: input.sourceClientX,
+      y: input.sourceClientY,
+    })
   }
 
-  return pointForSelector(frame, input.sourceSelector, input.sourceX, input.sourceY)
+  return pointForSelector(frame, transform, input.sourceSelector, input.sourceX, input.sourceY)
 }
 
 async function proofMouseUp(context: ProofMouseCommandContext) {
@@ -180,6 +195,7 @@ async function proofMouseUp(context: ProofMouseCommandContext) {
 async function runProofMouseStep(
   context: ProofMouseCommandContext,
   frame: ProofMouseFrame,
+  transform: ProofMouseFrameTransform,
   currentPoint: ProofMousePoint,
   step: ProofMouseDragStep,
 ) {
@@ -188,7 +204,7 @@ async function runProofMouseStep(
     return currentPoint
   }
 
-  const point = await nextProofMousePoint(frame, currentPoint, step)
+  const point = await nextProofMousePoint(frame, transform, currentPoint, step)
 
   await context.page.mouse.move(point.x, point.y, { steps: step.steps ?? 8 })
 
@@ -197,21 +213,31 @@ async function runProofMouseStep(
 
 async function nextProofMousePoint(
   frame: ProofMouseFrame,
+  transform: ProofMouseFrameTransform,
   currentPoint: ProofMousePoint,
   step: Exclude<ProofMouseDragStep, { readonly kind: 'pause' }>,
 ) {
   if (step.kind === 'move-by') {
     return {
-      x: currentPoint.x + step.dx,
-      y: currentPoint.y + step.dy,
+      x: currentPoint.x + step.dx * transform.scaleX,
+      y: currentPoint.y + step.dy * transform.scaleY,
     }
   }
 
-  return pointForSelector(frame, step.selector, step.x, step.y, step.offsetX, step.offsetY)
+  return pointForSelector(
+    frame,
+    transform,
+    step.selector,
+    step.x,
+    step.y,
+    step.offsetX,
+    step.offsetY,
+  )
 }
 
 async function pointForSelector(
   frame: ProofMouseFrame,
+  transform: ProofMouseFrameTransform,
   selector: string,
   xRatio = 0.5,
   yRatio = 0.5,
@@ -222,8 +248,44 @@ async function pointForSelector(
   if (!box) throw new Error(`Missing browser element for selector ${selector}`)
 
   return {
-    x: box.x + box.width * xRatio + offsetX,
-    y: box.y + box.height * yRatio + offsetY,
+    x: box.x + box.width * xRatio + offsetX * transform.scaleX,
+    y: box.y + box.height * yRatio + offsetY * transform.scaleY,
+  }
+}
+
+async function proofMouseFrameTransform(frame: ProofMouseFrame): Promise<ProofMouseFrameTransform> {
+  const rootBox = await frame.locator('html').boundingBox()
+  const viewport = await frame.evaluate(() => ({
+    height: window.innerHeight,
+    width: window.innerWidth,
+  }))
+  if (!rootBox) return identityProofMouseFrameTransform()
+  if (viewport.width <= 0 || viewport.height <= 0) return identityProofMouseFrameTransform()
+
+  return {
+    originX: rootBox.x,
+    originY: rootBox.y,
+    scaleX: rootBox.width / viewport.width,
+    scaleY: rootBox.height / viewport.height,
+  }
+}
+
+function frameClientPointToPagePoint(
+  transform: ProofMouseFrameTransform,
+  point: ProofMousePoint,
+): ProofMousePoint {
+  return {
+    x: transform.originX + point.x * transform.scaleX,
+    y: transform.originY + point.y * transform.scaleY,
+  }
+}
+
+function identityProofMouseFrameTransform(): ProofMouseFrameTransform {
+  return {
+    originX: 0,
+    originY: 0,
+    scaleX: 1,
+    scaleY: 1,
   }
 }
 

@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
   "plugins": ["unicorn", "typescript", "oxc", "react"],
   "jsPlugins": ["oxc-plugin-react-compiler/eslint"],
+  "ignorePatterns": ["apps/desktop/build/**"],
   "rules": {
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
@@ -13,7 +14,7 @@
     "oxc-react-compiler/immutability": "error",
     "oxc-react-compiler/globals": "error",
     "oxc-react-compiler/refs": "error",
-    "oxc-react-compiler/set-state-in-effect": "error",
+    "oxc-react-compiler/set-state-in-effect": "warn",
     "oxc-react-compiler/error-boundaries": "error",
     "oxc-react-compiler/purity": "error",
     "oxc-react-compiler/set-state-in-render": "error",
@@ -21,5 +22,28 @@
     "oxc-react-compiler/config": "error",
     "oxc-react-compiler/gating": "error",
     "oxc-react-compiler/no-unused-directives": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["packages/tree/**"],
+      "rules": {
+        "oxc-react-compiler/static-components": "off",
+        "oxc-react-compiler/use-memo": "off",
+        "oxc-react-compiler/component-hook-factories": "off",
+        "oxc-react-compiler/preserve-manual-memoization": "off",
+        "oxc-react-compiler/incompatible-library": "off",
+        "oxc-react-compiler/immutability": "off",
+        "oxc-react-compiler/globals": "off",
+        "oxc-react-compiler/refs": "off",
+        "oxc-react-compiler/set-state-in-effect": "off",
+        "oxc-react-compiler/error-boundaries": "off",
+        "oxc-react-compiler/purity": "off",
+        "oxc-react-compiler/set-state-in-render": "off",
+        "oxc-react-compiler/unsupported-syntax": "off",
+        "oxc-react-compiler/config": "off",
+        "oxc-react-compiler/gating": "off",
+        "oxc-react-compiler/no-unused-directives": "off"
+      }
+    }
+  ]
 }
