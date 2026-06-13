@@ -119,6 +119,28 @@ test('opens fake navigator files as regular editor tabs without duplicating them
   expect(screen.getByRole('tab', { name: title })).toHaveAttribute('aria-selected', 'true')
 })
 
+test('focuses a window when pointer down lands inside a click-swallowing surface', () => {
+  renderShellProofRoute()
+
+  const fileButton = screen.getByRole('button', { name: `Open ${FAKE_FILE_PATHS[2]}` })
+  const filesWindow = proofWindowOf(fileButton)
+  const editorWindow = activeProofWindow()
+
+  expect(filesWindow).not.toBe(editorWindow)
+  expect(filesWindow).toHaveAttribute('data-proof-window-active', 'false')
+
+  // A non-primary button never steals focus.
+  fireEvent.pointerDown(fileButton, { button: 2, pointerId: 1 })
+  expect(filesWindow).toHaveAttribute('data-proof-window-active', 'false')
+
+  // Left pointer-down activates the window even though the navigator button
+  // swallows the click, so a bubbling onClick would never reach the frame.
+  fireEvent.pointerDown(fileButton, { button: 0, pointerId: 1 })
+
+  expect(filesWindow).toHaveAttribute('data-proof-window-active', 'true')
+  expect(editorWindow).toHaveAttribute('data-proof-window-active', 'false')
+})
+
 test('registers app baseline shell proof window command hotkeys', () => {
   expect(shellProofWindowHotkeys()).toEqual(
     expect.arrayContaining(['Alt+Shift+X', 'Alt+Shift+H', 'Alt+Shift+L', 'Alt+Shift+W']),
@@ -306,6 +328,20 @@ function railButton(rail: HTMLElement, name: string) {
 
 function proofWindowCount() {
   return document.querySelectorAll('[data-proof-window-id]').length
+}
+
+function proofWindowOf(element: Element) {
+  const window = element.closest('[data-proof-window-id]')
+  if (!(window instanceof HTMLElement)) throw new Error('Expected an enclosing proof window')
+
+  return window
+}
+
+function activeProofWindow() {
+  const window = document.querySelector('[data-proof-window-active="true"]')
+  if (!(window instanceof HTMLElement)) throw new Error('Expected an active proof window')
+
+  return window
 }
 
 function shellProofWindowHotkeys() {

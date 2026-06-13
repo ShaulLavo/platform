@@ -13,6 +13,7 @@ import {
 import { PROOF_GEOMETRY_OPTIONS } from '@/features/tiling-proof/utils/geometry'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 import { DEFAULT_LAYOUT_RECT } from '@/features/workbench/utils/layout-defaults'
+import { fullSurfaceLayoutWindowId } from '@/features/workbench/utils/full-surface-window'
 import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
 import {
   useTilingDragController,
@@ -126,6 +127,7 @@ export function ProofInteractionSurface({
     onCommitLayout,
   })
   const renderLayout = previewLayout ?? layout
+  const maximizedWindowId = fullSurfaceLayoutWindowId(renderLayout.windowsById)
   const previewGeometry = previewLayout
     ? deriveLayoutGeometry(previewLayout, surfaceRect, PROOF_GEOMETRY_OPTIONS)
     : committedGeometry
@@ -186,6 +188,14 @@ export function ProofInteractionSurface({
     })
   }
 
+  function maximizeWindow(windowId: WorkbenchWindow['id']) {
+    onDispatchLayoutOperation({ type: 'maximizeWindow', windowId })
+  }
+
+  function restoreWindow(windowId: WorkbenchWindow['id']) {
+    onDispatchLayoutOperation({ type: 'restoreWindow', windowId })
+  }
+
   return (
     <DragDropProvider
       sensors={PROOF_SENSORS}
@@ -201,67 +211,87 @@ export function ProofInteractionSurface({
         {...surfaceDataAttributes}
       >
         {surfaceBackdrop}
-        {[...renderedWindowIds, ...previewOnlyWindowIds].map((windowId) => {
-          const window = renderLayout.windowsById[windowId] ?? layout.windowsById[windowId]
-          const windowRect =
-            previewGeometry.windowRectsById[windowId] ?? committedGeometry.windowRectsById[windowId]
-          if (!window) return null
-          if (!windowRect) return null
+        {windowIdsToRender(maximizedWindowId, renderedWindowIds, previewOnlyWindowIds).map(
+          (windowId) => {
+            const window = renderLayout.windowsById[windowId] ?? layout.windowsById[windowId]
+            const windowRect =
+              previewGeometry.windowRectsById[windowId] ??
+              committedGeometry.windowRectsById[windowId]
+            const rect = maximizedWindowId ? surfaceRect : windowRect?.rect
+            if (!window) return null
+            if (!rect) return null
 
-          return (
-            <ProofWindow
-              activeDrag={activeDrag}
-              addTabVisible={addTabVisible}
-              dropZonesVisible={dropZonesVisible}
-              insertionPreview={insertionPreview}
-              insertionPreviewLayout={snapLayout}
-              key={windowId}
-              layout={renderLayout}
-              optimisticTabSorting={optimisticTabSorting}
-              preview={!layout.windowsById[windowId]}
-              rect={windowRect.rect}
-              renderSurfaceBody={renderSurfaceBody}
-              resizingWindows={resizingWindows}
-              tabActionsVisible={tabActionsVisible(renderLayout, window)}
-              tabStripRenderEpoch={tabStripRenderEpoch}
-              window={window}
-              windowActionsVisible={windowActionsVisible}
-              onAddTab={onAddTab}
-              onCollapseWindowToRail={collapseWindowToRail}
-              onCollapseWindowToRow={collapseWindowToRow}
-              onCloseSurface={onCloseSurface}
-              onCloseWindow={onCloseWindow}
-              onExpandWindow={expandWindow}
-              onSelectSurface={onSelectSurface}
+            return (
+              <ProofWindow
+                activeDrag={activeDrag}
+                addTabVisible={addTabVisible}
+                dropZonesVisible={dropZonesVisible}
+                insertionPreview={insertionPreview}
+                insertionPreviewLayout={snapLayout}
+                key={windowId}
+                layout={renderLayout}
+                optimisticTabSorting={optimisticTabSorting}
+                preview={!layout.windowsById[windowId]}
+                rect={rect}
+                renderSurfaceBody={renderSurfaceBody}
+                resizingWindows={resizingWindows}
+                tabActionsVisible={tabActionsVisible(renderLayout, window)}
+                tabStripRenderEpoch={tabStripRenderEpoch}
+                window={window}
+                windowActionsVisible={windowActionsVisible}
+                onAddTab={onAddTab}
+                onCollapseWindowToRail={collapseWindowToRail}
+                onCollapseWindowToRow={collapseWindowToRow}
+                onCloseSurface={onCloseSurface}
+                onCloseWindow={onCloseWindow}
+                onExpandWindow={expandWindow}
+                onMaximizeWindow={maximizeWindow}
+                onRestoreWindow={restoreWindow}
+                onSelectSurface={onSelectSurface}
+              />
+            )
+          },
+        )}
+        {maximizedWindowId ? null : (
+          <>
+            <ResizeOverlay
+              resizeHandleRects={committedGeometry.resizeHandleRects}
+              onDispatch={onDispatchLayoutOperation}
+              onResizeEnd={() => setResizingWindows(false)}
+              onResizeStart={() => setResizingWindows(true)}
             />
-          )
-        })}
-        <ResizeOverlay
-          resizeHandleRects={committedGeometry.resizeHandleRects}
-          onDispatch={onDispatchLayoutOperation}
-          onResizeEnd={() => setResizingWindows(false)}
-          onResizeStart={() => setResizingWindows(true)}
-        />
-        {snapDestinations.map((snapDestination) => (
-          <ProofSnapDestination
-            active={activeResolvedTarget?.candidateId === snapDestination.id}
-            candidate={snapDestination}
-            key={snapDestination.id}
-            visible={dropZonesVisible}
-          />
-        ))}
-        <DropRegionOverlay
-          activeDrag={activeDrag}
-          activeResolvedTarget={activeResolvedTarget}
-          rootRect={surfaceRect}
-          visible={dropZonesVisible}
-          windowRectsById={committedGeometry.windowRectsById}
-        />
+            {snapDestinations.map((snapDestination) => (
+              <ProofSnapDestination
+                active={activeResolvedTarget?.candidateId === snapDestination.id}
+                candidate={snapDestination}
+                key={snapDestination.id}
+                visible={dropZonesVisible}
+              />
+            ))}
+            <DropRegionOverlay
+              activeDrag={activeDrag}
+              activeResolvedTarget={activeResolvedTarget}
+              rootRect={surfaceRect}
+              visible={dropZonesVisible}
+              windowRectsById={committedGeometry.windowRectsById}
+            />
+          </>
+        )}
         {debugOverlay}
       </section>
       <ProofDragOverlay activeDrag={activeDrag} layout={layout} />
     </DragDropProvider>
   )
+}
+
+function windowIdsToRender(
+  maximizedWindowId: WorkbenchWindow['id'] | undefined,
+  renderedWindowIds: readonly WorkbenchWindow['id'][],
+  previewOnlyWindowIds: readonly WorkbenchWindow['id'][],
+): readonly WorkbenchWindow['id'][] {
+  if (maximizedWindowId) return [maximizedWindowId]
+
+  return [...renderedWindowIds, ...previewOnlyWindowIds]
 }
 
 function visibleTabActions() {

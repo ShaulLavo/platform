@@ -1,12 +1,16 @@
 import { useDraggable, useDroppable } from '@dnd-kit/react'
 import {
+  ArrowsInLineHorizontalIcon,
+  ArrowsInLineVerticalIcon,
+  ArrowsInSimpleIcon,
+  ArrowsOutLineHorizontalIcon,
+  ArrowsOutLineVerticalIcon,
   ArrowsOutSimpleIcon,
   DotsSixVerticalIcon,
-  MinusIcon,
   PlusIcon,
   XIcon,
 } from '@phosphor-icons/react'
-import type { ReactNode } from 'react'
+import type { PointerEvent, ReactNode } from 'react'
 
 import { ProofTabStrip } from '@/features/tiling-proof/components/tab-strip'
 import {
@@ -52,6 +56,8 @@ export function ProofWindow({
   onCloseSurface,
   onCloseWindow,
   onExpandWindow,
+  onMaximizeWindow,
+  onRestoreWindow,
   onSelectSurface,
 }: {
   readonly activeDrag: TilingDragData | null
@@ -78,6 +84,8 @@ export function ProofWindow({
   readonly onCloseSurface: (surfaceId: SurfaceId) => void
   readonly onCloseWindow: (windowId: WorkbenchWindow['id']) => void
   readonly onExpandWindow: (windowId: WorkbenchWindow['id']) => void
+  readonly onMaximizeWindow: (windowId: WorkbenchWindow['id']) => void
+  readonly onRestoreWindow: (windowId: WorkbenchWindow['id']) => void
   readonly onSelectSurface: (surfaceId: SurfaceId) => void
 }) {
   const data: TilingDragData & TilingDropData = {
@@ -109,7 +117,9 @@ export function ProofWindow({
   })
   const surfaces = baseSurfaces
   const activeSurface = activeSurfaceForWindow(surfaces, window)
+  const active = layout.activeWindowId === window.id
   const collapsed = window.mode === 'collapsed'
+  const fullSurface = window.mode === 'maximized' || window.mode === 'fullscreen'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
   const insertionPreviewActive = insertionPreview?.targetWindowId === window.id
   const title = windowTitle(layout, window.id)
@@ -117,6 +127,7 @@ export function ProofWindow({
   const collapseToRailLabel = `Collapse ${activeTitle} to rail`
   const collapseToRowLabel = `Collapse ${activeTitle} to row`
   const expandLabel = `Expand ${activeTitle}`
+  const maximizeLabel = fullSurface ? `Restore ${activeTitle}` : `Maximize ${activeTitle}`
   const chromeOrientation = collapsedChromeOrientation(collapsed, rect)
   const rowButtonActive = collapsed && collapsedWindowLooksLikeRow(window, chromeOrientation)
   const railButtonActive = collapsed && collapsedWindowLooksLikeRail(window, chromeOrientation)
@@ -124,6 +135,15 @@ export function ProofWindow({
   const railButtonLabel = railButtonActive ? expandLabel : collapseToRailLabel
   const headerActionsVisible = addTabVisible || windowActionsVisible
 
+  // TODO(small-window-ergonomics): in narrow proof windows (e.g. the 3-window proof
+  // layout) these action buttons crowd the header and start covering tabs, and the
+  // shrunken tab strip makes native cross-window tab drops land in edge snap zones.
+  // Needs a real small-window story (overflow menu, hide-on-narrow, or a min
+  // tab-strip width). Two dnd-proof drag tests are skipped pending this.
+  // TODO(collapse-direction): row/rail collapse resolves its target edge
+  // heuristically (see collapsedWindowLooksLikeRow/Rail + collapse-edge.ts). Make
+  // the collapse edge deterministic (left/right/up/down) and point the icon at that
+  // edge with ArrowLine{Up,Down,Left,Right} instead of the axis-only line arrows.
   function handleRowButtonClick() {
     if (rowButtonActive) {
       onExpandWindow(window.id)
@@ -142,20 +162,55 @@ export function ProofWindow({
     onCollapseWindowToRail(window.id)
   }
 
+  function handleMaximizeButtonClick() {
+    if (fullSurface) {
+      onRestoreWindow(window.id)
+      return
+    }
+
+    onMaximizeWindow(window.id)
+  }
+
+  function activateWindow() {
+    if (active) return
+    if (!activeSurface) return
+
+    onSelectSurface(activeSurface.id)
+  }
+
+  // Pointer-down (capture) is the reliable focus signal: surfaces like the
+  // terminal and file navigator swallow clicks, so a bubbling onClick never
+  // reaches the window. Capture fires before the surface can consume it.
+  function handleWindowPointerDown(event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0) return
+
+    activateWindow()
+  }
+
+  // Keyboard/programmatic focus activates the window too. The editor guards
+  // tool-surface focus to protect the active editor's selection (window-frame.tsx
+  // focusCameFromToolSurface); the proofs have no editor selection to protect,
+  // so any inner focus activates.
+  function handleWindowFocus() {
+    activateWindow()
+  }
+
   return (
     <section
       aria-label={title}
       className={cn(
-        'bg-card absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border shadow-sm',
+        'bg-card absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border shadow-sm',
         resizingWindows
           ? 'transition-[background-color,border-color,opacity,box-shadow] duration-150 ease-out'
           : 'transition-[left,top,width,height,background-color,border-color,opacity,box-shadow] duration-150 ease-out',
+        active && !preview ? 'border-ring' : 'border-border',
         (isDragging || preview) && 'opacity-55',
         (isDragSource || preview) && 'ring-2 ring-info',
         preview && 'pointer-events-none',
         insertionPreviewActive && 'ring-2 ring-info/70 shadow-md',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
+      data-proof-window-active={active ? 'true' : 'false'}
       data-proof-window-collapsed={collapsed ? 'true' : 'false'}
       data-proof-window-collapsed-edge={window.collapsedEdge}
       data-proof-window-chrome-orientation={chromeOrientation}
@@ -171,6 +226,9 @@ export function ProofWindow({
       }}
       role='region'
       style={layoutRectStyle(rect)}
+      tabIndex={preview ? undefined : 0}
+      onFocusCapture={preview ? undefined : handleWindowFocus}
+      onPointerDownCapture={preview ? undefined : handleWindowPointerDown}
     >
       <header
         className={cn(
@@ -241,9 +299,9 @@ export function ProofWindow({
                   onPointerDown={(event) => event.stopPropagation()}
                 >
                   {rowButtonActive ? (
-                    <ArrowsOutSimpleIcon className='size-3.5' />
+                    <ArrowsOutLineVerticalIcon className='size-3.5' />
                   ) : (
-                    <MinusIcon className='size-3.5' />
+                    <ArrowsInLineVerticalIcon className='size-3.5' />
                   )}
                 </Button>
                 <Button
@@ -258,11 +316,29 @@ export function ProofWindow({
                   onPointerDown={(event) => event.stopPropagation()}
                 >
                   {railButtonActive ? (
-                    <ArrowsOutSimpleIcon className='size-3.5' />
+                    <ArrowsOutLineHorizontalIcon className='size-3.5' />
                   ) : (
-                    <MinusIcon className='size-3.5 rotate-90' />
+                    <ArrowsInLineHorizontalIcon className='size-3.5' />
                   )}
                 </Button>
+                {collapsed ? null : (
+                  <Button
+                    aria-label={maximizeLabel}
+                    className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                    size='icon-sm'
+                    title={maximizeLabel}
+                    type='button'
+                    variant='ghost'
+                    onClick={handleMaximizeButtonClick}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    {fullSurface ? (
+                      <ArrowsInSimpleIcon className='size-3.5' />
+                    ) : (
+                      <ArrowsOutSimpleIcon className='size-3.5' />
+                    )}
+                  </Button>
+                )}
                 <Button
                   aria-label={`Close ${title}`}
                   size='icon-xs'
