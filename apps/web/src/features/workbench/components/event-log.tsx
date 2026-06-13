@@ -3,12 +3,12 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@workspace/ui/components/button'
 
-type ProofEventLogProps = {
+type EventLogProps = {
   readonly events: readonly string[]
   readonly stateEvents: readonly string[]
 }
 
-export function ProofEventLog({ events, stateEvents }: ProofEventLogProps) {
+export function EventLog({ events, stateEvents }: EventLogProps) {
   const [copied, setCopied] = useState(false)
   const copiedResetRef = useRef<number | null>(null)
 

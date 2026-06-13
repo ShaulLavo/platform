@@ -49,13 +49,13 @@ test('renders collapsed shell proof tools with the unified tab strip', () => {
 
   clickButtonByLabel('Expand Chat', collapsed)
 
-  expect(document.querySelector('[data-proof-window-collapsed="true"]')).toBeNull()
+  expect(document.querySelector('[data-workbench-window-collapsed="true"]')).toBeNull()
   expect(railButton(rail, 'Close Chat')).toHaveAttribute('data-rail-state', 'active')
 
   clickButtonByLabel('Collapse Chat to row')
   clickButtonByLabel('Close Chat', collapsedProofWindow())
 
-  expect(document.querySelector('[data-proof-window-collapsed="true"]')).toBeNull()
+  expect(document.querySelector('[data-workbench-window-collapsed="true"]')).toBeNull()
   expect(railButton(rail, 'Open Chat')).toHaveAttribute('data-rail-state', 'pinned')
   expect(proofWindowCount()).toBe(3)
 })
@@ -127,18 +127,18 @@ test('focuses a window when pointer down lands inside a click-swallowing surface
   const editorWindow = activeProofWindow()
 
   expect(filesWindow).not.toBe(editorWindow)
-  expect(filesWindow).toHaveAttribute('data-proof-window-active', 'false')
+  expect(filesWindow).toHaveAttribute('data-workbench-window-active', 'false')
 
   // A non-primary button never steals focus.
   fireEvent.pointerDown(fileButton, { button: 2, pointerId: 1 })
-  expect(filesWindow).toHaveAttribute('data-proof-window-active', 'false')
+  expect(filesWindow).toHaveAttribute('data-workbench-window-active', 'false')
 
   // Left pointer-down activates the window even though the navigator button
   // swallows the click, so a bubbling onClick would never reach the frame.
   fireEvent.pointerDown(fileButton, { button: 0, pointerId: 1 })
 
-  expect(filesWindow).toHaveAttribute('data-proof-window-active', 'true')
-  expect(editorWindow).toHaveAttribute('data-proof-window-active', 'false')
+  expect(filesWindow).toHaveAttribute('data-workbench-window-active', 'true')
+  expect(editorWindow).toHaveAttribute('data-workbench-window-active', 'false')
 })
 
 test('registers app baseline shell proof window command hotkeys', () => {
@@ -327,18 +327,18 @@ function railButton(rail: HTMLElement, name: string) {
 }
 
 function proofWindowCount() {
-  return document.querySelectorAll('[data-proof-window-id]').length
+  return document.querySelectorAll('[data-workbench-window-id]').length
 }
 
 function proofWindowOf(element: Element) {
-  const window = element.closest('[data-proof-window-id]')
+  const window = element.closest('[data-workbench-window-id]')
   if (!(window instanceof HTMLElement)) throw new Error('Expected an enclosing proof window')
 
   return window
 }
 
 function activeProofWindow() {
-  const window = document.querySelector('[data-proof-window-active="true"]')
+  const window = document.querySelector('[data-workbench-window-active="true"]')
   if (!(window instanceof HTMLElement)) throw new Error('Expected an active proof window')
 
   return window
@@ -357,7 +357,7 @@ function fileTitle(path: string) {
 }
 
 function collapsedProofWindow() {
-  const window = document.querySelector('[data-proof-window-collapsed="true"]')
+  const window = document.querySelector('[data-workbench-window-collapsed="true"]')
   if (!(window instanceof HTMLElement)) throw new Error('Expected collapsed proof window')
 
   return window

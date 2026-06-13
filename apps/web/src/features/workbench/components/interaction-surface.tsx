@@ -2,15 +2,15 @@ import { PointerActivationConstraints } from '@dnd-kit/dom'
 import { DragDropProvider, PointerSensor } from '@dnd-kit/react'
 import { useEffect, useState, type ReactNode } from 'react'
 
-import { ProofDragOverlay } from '@/features/tiling-proof/components/drag-overlay'
-import { DropRegionOverlay } from '@/features/tiling-proof/components/drop-region-overlay'
-import { ProofSnapDestination } from '@/features/tiling-proof/components/snap-destination'
-import { ProofWindow } from '@/features/tiling-proof/components/window'
+import { TilingDragOverlay } from '@/features/workbench/components/drag-overlay'
+import { DropRegionOverlay } from '@/features/workbench/components/drop-region-overlay'
+import { SnapDestinationMarker } from '@/features/workbench/components/snap-destination'
+import { WindowFrame } from '@/features/workbench/components/window-frame'
 import {
   collapseEdgeForTarget,
-  type ProofCollapseTarget,
-} from '@/features/tiling-proof/utils/collapse-edge'
-import { PROOF_GEOMETRY_OPTIONS } from '@/features/tiling-proof/utils/geometry'
+  type CollapseTarget,
+} from '@/features/workbench/utils/collapse-edge'
+import { TILING_GEOMETRY_OPTIONS } from '@/features/workbench/utils/geometry'
 import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
 import { DEFAULT_LAYOUT_RECT } from '@/features/workbench/utils/layout-defaults'
 import { fullSurfaceLayoutWindowId } from '@/features/workbench/utils/full-surface-window'
@@ -41,23 +41,23 @@ const PROOF_SENSORS = [
   }),
 ]
 
-export type ProofInteractionController = {
+export type InteractionController = {
   readonly flushPendingCommit: () => void
   readonly resetInteraction: () => void
 }
 
-export type ProofInteractionControllerRef = {
-  current: ProofInteractionController
+export type InteractionControllerRef = {
+  current: InteractionController
 }
 
-export const IDLE_PROOF_INTERACTION_CONTROLLER: ProofInteractionController = {
+export const IDLE_INTERACTION_CONTROLLER: InteractionController = {
   flushPendingCommit: ignoreInteraction,
   resetInteraction: ignoreInteraction,
 }
 
 type SurfaceDataAttributes = Readonly<Record<`data-${string}`, string>>
 
-export function ProofInteractionSurface({
+export function InteractionSurface({
   addTabVisible = true,
   ariaLabel,
   debugLog,
@@ -67,6 +67,7 @@ export function ProofInteractionSurface({
   layout,
   renderSurfaceBody,
   surfaceBackdrop,
+  surfaceBodyClassName,
   surfaceClassName,
   surfaceDataAttributes,
   tabActionsVisible = visibleTabActions,
@@ -83,10 +84,11 @@ export function ProofInteractionSurface({
   readonly debugLog?: TilingDragDebugLog
   readonly debugOverlay?: ReactNode
   readonly dropZonesVisible: boolean
-  readonly interactionControllerRef?: ProofInteractionControllerRef
+  readonly interactionControllerRef?: InteractionControllerRef
   readonly layout: WorkspaceLayout
   readonly renderSurfaceBody?: (surface: Surface | null, window: WorkbenchWindow) => ReactNode
   readonly surfaceBackdrop?: ReactNode
+  readonly surfaceBodyClassName?: string
   readonly surfaceClassName: string
   readonly surfaceDataAttributes?: SurfaceDataAttributes
   readonly tabActionsVisible?: (layout: WorkspaceLayout, window: WorkbenchWindow) => boolean
@@ -101,8 +103,8 @@ export function ProofInteractionSurface({
   const [resizingWindows, setResizingWindows] = useState(false)
   const { rect, rootRef } = useLayoutRootRect(DEFAULT_LAYOUT_RECT)
   const rootRect = rect ?? DEFAULT_LAYOUT_RECT
-  const surfaceRect = insetLayoutRect(rootRect, PROOF_GEOMETRY_OPTIONS.gapPx ?? 0)
-  const committedGeometry = deriveLayoutGeometry(layout, surfaceRect, PROOF_GEOMETRY_OPTIONS)
+  const surfaceRect = insetLayoutRect(rootRect, TILING_GEOMETRY_OPTIONS.gapPx ?? 0)
+  const committedGeometry = deriveLayoutGeometry(layout, surfaceRect, TILING_GEOMETRY_OPTIONS)
   const {
     activeDrag,
     activeResolvedTarget,
@@ -129,7 +131,7 @@ export function ProofInteractionSurface({
   const renderLayout = previewLayout ?? layout
   const maximizedWindowId = fullSurfaceLayoutWindowId(renderLayout.windowsById)
   const previewGeometry = previewLayout
-    ? deriveLayoutGeometry(previewLayout, surfaceRect, PROOF_GEOMETRY_OPTIONS)
+    ? deriveLayoutGeometry(previewLayout, surfaceRect, TILING_GEOMETRY_OPTIONS)
     : committedGeometry
   const visibleWindowIds = visibleWindowIdsInOrder(layout)
   const renderedWindowIds =
@@ -154,7 +156,7 @@ export function ProofInteractionSurface({
     }
   })
 
-  function collapseWindowToTarget(windowId: WorkbenchWindow['id'], target: ProofCollapseTarget) {
+  function collapseWindowToTarget(windowId: WorkbenchWindow['id'], target: CollapseTarget) {
     const window = layout.windowsById[windowId]
     if (!window) return
 
@@ -222,7 +224,7 @@ export function ProofInteractionSurface({
             if (!rect) return null
 
             return (
-              <ProofWindow
+              <WindowFrame
                 activeDrag={activeDrag}
                 addTabVisible={addTabVisible}
                 dropZonesVisible={dropZonesVisible}
@@ -235,6 +237,7 @@ export function ProofInteractionSurface({
                 rect={rect}
                 renderSurfaceBody={renderSurfaceBody}
                 resizingWindows={resizingWindows}
+                surfaceBodyClassName={surfaceBodyClassName}
                 tabActionsVisible={tabActionsVisible(renderLayout, window)}
                 tabStripRenderEpoch={tabStripRenderEpoch}
                 window={window}
@@ -261,7 +264,7 @@ export function ProofInteractionSurface({
               onResizeStart={() => setResizingWindows(true)}
             />
             {snapDestinations.map((snapDestination) => (
-              <ProofSnapDestination
+              <SnapDestinationMarker
                 active={activeResolvedTarget?.candidateId === snapDestination.id}
                 candidate={snapDestination}
                 key={snapDestination.id}
@@ -279,7 +282,7 @@ export function ProofInteractionSurface({
         )}
         {debugOverlay}
       </section>
-      <ProofDragOverlay activeDrag={activeDrag} layout={layout} />
+      <TilingDragOverlay activeDrag={activeDrag} layout={layout} />
     </DragDropProvider>
   )
 }

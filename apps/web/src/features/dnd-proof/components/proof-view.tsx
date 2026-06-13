@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 
-import { ProofEventLog } from '@/features/tiling-proof/components/event-log'
+import { EventLog } from '@/features/workbench/components/event-log'
 import { ProofToolbar } from '@/features/dnd-proof/components/proof-toolbar'
 import { Wallpaper } from '@/features/workbench/components/wallpaper'
 import {
@@ -15,9 +15,9 @@ import {
   removeProofWindow,
 } from '@/features/dnd-proof/utils/model'
 import {
-  IDLE_PROOF_INTERACTION_CONTROLLER,
-  ProofInteractionSurface,
-} from '@/features/tiling-proof/components/interaction-surface'
+  IDLE_INTERACTION_CONTROLLER,
+  InteractionSurface,
+} from '@/features/workbench/components/interaction-surface'
 import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import type { LayoutOperation, SurfaceId, WindowId } from '@workspace/tiling/utils/layout-types'
@@ -25,7 +25,7 @@ import type { LayoutOperation, SurfaceId, WindowId } from '@workspace/tiling/uti
 export function DndProofView() {
   const [model, setModel] = useState(createInitialProofModel)
   const [dropZonesVisible, setDropZonesVisible] = useState(false)
-  const interactionControllerRef = useRef(IDLE_PROOF_INTERACTION_CONTROLLER)
+  const interactionControllerRef = useRef(IDLE_INTERACTION_CONTROLLER)
   const dragDebugLog = useTilingDragDebugLog()
   const visibleWindowIds = visibleWindowIdsInOrder(model.layout)
   const surfaceCount = visibleWindowIds.reduce((count, windowId) => {
@@ -107,7 +107,7 @@ export function DndProofView() {
         onToggleDropZones={() => setDropZonesVisible((visible) => !visible)}
       />
       <div className='grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_18rem] gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_18rem] xl:grid-rows-1'>
-        <ProofInteractionSurface
+        <InteractionSurface
           ariaLabel='dnd-kit tiling proof surface'
           debugLog={dragDebugLog}
           dropZonesVisible={dropZonesVisible}
@@ -125,7 +125,7 @@ export function DndProofView() {
           onDispatchLayoutOperation={dispatchLayoutOperation}
           onSelectSurface={activateSurface}
         />
-        <ProofEventLog events={model.events} stateEvents={dragDebugLog.stateEvents} />
+        <EventLog events={model.events} stateEvents={dragDebugLog.stateEvents} />
       </div>
     </main>
   )

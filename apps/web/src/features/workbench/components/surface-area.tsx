@@ -1,81 +1,101 @@
-import { useState } from 'react'
+import { useRef } from 'react'
 
 import {
-  deriveLayoutGeometry,
-  insetLayoutRect,
-  type LayoutGeometryOptions,
-  type LayoutRect,
-} from '@workspace/tiling/utils/layout-geometry'
-import { selectMaterializedLayoutTree } from '@workspace/tiling/utils/layout-selectors'
-import { useLayoutRootRect } from '@/features/workbench/hooks/use-layout-root-rect'
+  IDLE_INTERACTION_CONTROLLER,
+  InteractionSurface,
+} from '@/features/workbench/components/interaction-surface'
+import { SurfaceRendererHost } from '@/features/workbench/components/surface-renderer-host'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
-import { WorkbenchDragDropProvider } from '@/features/workbench/providers/drag-drop-provider'
-import { ResizeOverlay } from '@/features/workbench/components/resize-overlay'
-import { SplitNode } from '@/features/workbench/components/split-node'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
-import { DEFAULT_LAYOUT_RECT } from '@/features/workbench/utils/layout-defaults'
-import { fullSurfaceLayoutWindowId } from '@/features/workbench/utils/full-surface-window'
-import { previewLayoutForOperation } from '@/features/workbench/utils/layout-preview'
-import { surfaceAreaLayoutEqual } from '@/features/workbench/utils/layout-equality'
-import type { LayoutOperation } from '@workspace/tiling/utils/layout-types'
+import type {
+  LayoutOperation,
+  Surface,
+  SurfaceId,
+  WorkbenchWindow,
+  WorkspaceLayout,
+} from '@workspace/tiling/utils/layout-types'
 
 export function SurfaceArea({
-  geometryOptions,
-  initialRect,
   surfaceRenderers,
-  onDispatch,
 }: {
-  readonly geometryOptions: LayoutGeometryOptions
-  readonly initialRect: LayoutRect | null
   readonly surfaceRenderers: SurfaceRendererRegistry
-  readonly onDispatch: (operation: LayoutOperation) => void
 }) {
-  const layout = useLayoutState((state) => state.layout, surfaceAreaLayoutEqual)
-  const [previewOperation, setPreviewOperation] = useState<LayoutOperation | null>(null)
-  const { rect, rootRef } = useLayoutRootRect(initialRect)
-  const rootRect = rect ?? DEFAULT_LAYOUT_RECT
-  const surfaceRect = insetLayoutRect(rootRect, geometryOptions.gapPx ?? 0)
-  const geometry = deriveLayoutGeometry(layout, surfaceRect, geometryOptions)
-  const previewLayout = previewLayoutForOperation(layout, previewOperation)
-  const previewLayoutSnapshot = previewLayout === layout ? null : previewLayout
-  const previewGeometry =
-    previewLayout === layout
-      ? geometry
-      : deriveLayoutGeometry(previewLayout, surfaceRect, geometryOptions)
-  const tree = selectMaterializedLayoutTree(previewLayout)
-  const maximizedWindowId = fullSurfaceLayoutWindowId(previewLayout.windowsById)
+  const layout = useLayoutState((state) => state.layout)
+  const dispatchLayoutOperation = useLayoutState((state) => state.dispatchLayoutOperation)
+  const workspaceStore = useEditorWorkspaceStoreApi()
+  const interactionControllerRef = useRef(IDLE_INTERACTION_CONTROLLER)
+
+  function activateSurface(surfaceId: SurfaceId) {
+    dispatchLayoutOperation({ surfaceId, type: 'activateSurface' })
+  }
+
+  function closeSurface(surfaceId: SurfaceId) {
+    dispatchLayoutOperation({ surfaceId, type: 'closeSurface' })
+  }
+
+  function closeWindow(windowId: WorkbenchWindow['id']) {
+    const window = layout.windowsById[windowId]
+    if (!window) return
+
+    const controller = interactionControllerRef.current
+    controller.flushPendingCommit()
+    controller.resetInteraction()
+
+    for (const surfaceId of window.surfaceIds) {
+      dispatchLayoutOperation({ surfaceId, type: 'closeSurface' })
+    }
+  }
+
+  // A drag commits a whole new layout: push it to the editor workspace store
+  // (the source of truth); the layout store mirrors it back via subscription.
+  function commitLayout(nextLayout: WorkspaceLayout) {
+    workspaceStore.getState().setWorkspaceLayout(nextLayout)
+  }
 
   return (
-    <div
-      className='relative z-10 min-h-0 min-w-0 flex-1 overflow-hidden'
-      data-workbench-surface-area=''
-      ref={rootRef}
-    >
-      <WorkbenchDragDropProvider
-        coordinateRootRef={rootRef}
-        snapDestinationRects={geometry.snapDestinationRects}
-        onDispatch={onDispatch}
-        onPreview={setPreviewOperation}
-      >
-        {tree ? (
-          <SplitNode
-            maximizedRect={surfaceRect}
-            maximizedWindowId={maximizedWindowId}
-            node={tree}
-            previewLayout={previewLayoutSnapshot}
-            surfaceRenderers={surfaceRenderers}
-            windowRectsById={previewGeometry.windowRectsById}
-            onDispatch={onDispatch}
-          />
-        ) : (
-          <div className='text-muted-foreground grid h-full place-items-center text-sm'>
-            No surfaces
-          </div>
-        )}
-        {maximizedWindowId ? null : (
-          <ResizeOverlay resizeHandleRects={geometry.resizeHandleRects} onDispatch={onDispatch} />
-        )}
-      </WorkbenchDragDropProvider>
+    <InteractionSurface
+      ariaLabel='Workbench surface area'
+      dropZonesVisible={false}
+      interactionControllerRef={interactionControllerRef}
+      layout={layout}
+      renderSurfaceBody={(surface, window) =>
+        renderSurfaceBody(surface, window, layout, surfaceRenderers)
+      }
+      surfaceBodyClassName=''
+      surfaceClassName='relative isolate min-h-0 min-w-0 flex-1 overflow-hidden p-0'
+      surfaceDataAttributes={{ 'data-workbench-surface-area': '' }}
+      onCloseSurface={closeSurface}
+      onCloseWindow={closeWindow}
+      onCommitLayout={commitLayout}
+      onDispatchLayoutOperation={(operation: LayoutOperation) => dispatchLayoutOperation(operation)}
+      onSelectSurface={activateSurface}
+    />
+  )
+}
+
+function renderSurfaceBody(
+  surface: Surface | null,
+  window: WorkbenchWindow,
+  layout: WorkspaceLayout,
+  surfaceRenderers: SurfaceRendererRegistry,
+) {
+  if (!surface) return emptyWindowBody()
+
+  return (
+    <SurfaceRendererHost
+      active={layout.activeWindowId === window.id}
+      surface={surface}
+      surfaceRenderers={surfaceRenderers}
+      windowId={window.id}
+    />
+  )
+}
+
+function emptyWindowBody() {
+  return (
+    <div className='text-muted-foreground grid h-full place-items-center text-sm'>
+      No active surface
     </div>
   )
 }

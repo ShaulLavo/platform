@@ -15,7 +15,7 @@ import {
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export function ProofTab({
+export function Tab({
   acceptsTabDrops,
   actionsVisible = true,
   active,
@@ -88,8 +88,8 @@ export function ProofTab({
         isDragSource && 'ring-info ring-2',
         dropZonesVisible && isDropTarget && 'bg-info/10',
       )}
-      data-proof-tab-id={surface.id}
-      data-proof-tab-preview-added={previewAdded ? 'true' : undefined}
+      data-workbench-tab-id={surface.id}
+      data-workbench-tab-preview-added={previewAdded ? 'true' : undefined}
       {...tilingTabAttributes(surface.id)}
       {...(previewAdded ? tilingTabPreviewAttributes() : null)}
       ref={(element) => {

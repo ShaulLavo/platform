@@ -10,7 +10,7 @@ import type { EditorKeymapLayer } from '@singapor/core'
 import { useState } from 'react'
 
 import { LayoutProvider } from '@/features/workbench/providers/layout-provider'
-import { LayoutRenderer } from '@/features/workbench/components/layout-renderer'
+import { WorkbenchLayout } from '@/features/workbench/components/layout'
 import { editorSurfaceSerializedState } from '@/features/workbench/utils/editor-surface-layout'
 import { resolveEditorSurfaceIdForTabId } from '@/features/workbench/utils/editor-tab-resolution'
 import { useEditorSurfaceStore } from '@/features/workbench/hooks/use-editor-surface-store'
@@ -57,7 +57,7 @@ export function EditorSurfaceLayoutView({
       }
     >
       <LayoutProvider store={store}>
-        <LayoutRenderer surfaceRenderers={editorSurfaceRendererRegistry} />
+        <WorkbenchLayout surfaceRenderers={editorSurfaceRendererRegistry} />
       </LayoutProvider>
     </EditorSurfaceProvider>
   )

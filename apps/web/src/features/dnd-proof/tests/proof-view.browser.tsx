@@ -215,7 +215,7 @@ describe.sequential('dnd proof browser behavior', () => {
   // header crowds the controls in the 3-window/900px layout, clipping tabs behind
   // the controls so this native interior-insertion drop lands in an edge snap zone.
   // Re-enable once the header stops covering tabs in narrow windows. See the
-  // matching TODO in tiling-proof/components/window.tsx.
+  // matching TODO in workbench/components/window-frame.tsx.
   it.skip('drops a detached tab between the first two tabs after a body round trip', async () => {
     renderProof()
 
@@ -308,7 +308,7 @@ describe.sequential('dnd proof browser behavior', () => {
   // TODO(small-window-ergonomics): same cause as the skipped interior-insertion test
   // above — the crowded header shrinks the tab strip so repeated native cross-window
   // round trips drop into an edge snap zone and spawn an extra window. Re-enable once
-  // small-window header ergonomics are fixed (see tiling-proof/components/window.tsx).
+  // small-window header ergonomics are fixed (see workbench/components/window-frame.tsx).
   it.skip('survives repeated same-tab cross-window round trips with real browser pointer events', async () => {
     renderProof()
 
@@ -386,10 +386,10 @@ describe.sequential('dnd proof browser behavior', () => {
       expect(tabIdsInStrip(settledTargetStrip)).toEqual(expect.arrayContaining(sourceIds))
       expectPreviewAddedTabsInStrip(settledTargetStrip, sourceIds)
       expect(tabPreviewIdsInStrip(settledTargetStrip)).toEqual([])
-      expect(proofWindowById(targetWindowId).dataset.proofWindowInsertionPreview).toBe(
+      expect(proofWindowById(targetWindowId).dataset.workbenchWindowInsertionPreview).toBe(
         'window-merge',
       )
-      expect(settledTargetStrip.dataset.proofTabStripPreview).toBe('window-merge')
+      expect(settledTargetStrip.dataset.workbenchTabStripPreview).toBe('window-merge')
       expect(proofWindowElementById(sourceWindowId)).toBeNull()
       expect(windowRegions()).toHaveLength(originalWindowCount - 1)
       expect(totalWindowArea()).toBeGreaterThan(remainingAreaBefore + 1)
@@ -526,8 +526,8 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedWindow = proofWindowById(targetWindowId)
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('bottom')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowCollapsedEdge).toBe('bottom')
       expect(collapsedRect.height).toBeLessThan(expandedRect.height)
       expect(collapsedRect.height).toBeLessThanOrEqual(42)
       expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
@@ -540,7 +540,7 @@ describe.sequential('dnd proof browser behavior', () => {
     await vi.waitFor(() => {
       const expandedWindow = proofWindowById(targetWindowId)
 
-      expect(expandedWindow.dataset.proofWindowMode).toBe('normal')
+      expect(expandedWindow.dataset.workbenchWindowMode).toBe('normal')
       expect(expandedWindow.getBoundingClientRect().height).toBeGreaterThan(42)
       expect(getComputedStyle(windowBodyIn(expandedWindow)).display).not.toBe('none')
       expectValidProofTabState()
@@ -563,8 +563,8 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
       expect(windowRegions()).toHaveLength(1)
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('bottom')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowCollapsedEdge).toBe('bottom')
       expect(collapsedRect.height).toBeLessThan(expandedRect.height)
       expect(collapsedRect.height).toBeLessThanOrEqual(42)
       expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
@@ -587,9 +587,9 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
       expect(windowRegions()).toHaveLength(1)
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
-      expect(collapsedWindow.dataset.proofWindowChromeOrientation).toBe('vertical')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowCollapsedEdge).toBe('left')
+      expect(collapsedWindow.dataset.workbenchWindowChromeOrientation).toBe('vertical')
       expect(collapsedRect.width).toBeLessThan(expandedRect.width)
       expect(collapsedRect.width).toBeLessThanOrEqual(42)
       expect(getComputedStyle(windowBodyIn(collapsedWindow)).display).toBe('none')
@@ -610,8 +610,8 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedWindow = proofWindowById(targetWindowId)
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowCollapsedEdge).toBe('left')
       expect(collapsedRect.width).toBeLessThanOrEqual(42)
     })
 
@@ -621,8 +621,8 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedWindow = proofWindowById(targetWindowId)
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('bottom')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowCollapsedEdge).toBe('bottom')
       expect(collapsedRect.height).toBeLessThanOrEqual(42)
       expect(collapsedRect.width).toBeGreaterThan(42)
     })
@@ -633,8 +633,8 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedWindow = proofWindowById(targetWindowId)
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowCollapsedEdge).toBe('left')
       expect(collapsedRect.width).toBeLessThanOrEqual(42)
       expect(collapsedRect.height).toBeGreaterThan(42)
     })
@@ -654,10 +654,12 @@ describe.sequential('dnd proof browser behavior', () => {
       const collapsedWindow = proofWindowById(targetWindowId)
       const collapsedRect = collapsedWindow.getBoundingClientRect()
 
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowCollapsedEdge).toBe('left')
-      expect(collapsedWindow.dataset.proofWindowChromeOrientation).toBe('vertical')
-      expect(tabStripInWindow(collapsedWindow).dataset.proofTabStripOrientation).toBe('vertical')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowCollapsedEdge).toBe('left')
+      expect(collapsedWindow.dataset.workbenchWindowChromeOrientation).toBe('vertical')
+      expect(tabStripInWindow(collapsedWindow).dataset.workbenchTabStripOrientation).toBe(
+        'vertical',
+      )
       expect(collapsedRect.width).toBeLessThanOrEqual(42)
       expect(collapsedRect.height).toBeGreaterThan(42)
       expectWindowControlsInside(collapsedWindow)
@@ -688,7 +690,7 @@ describe.sequential('dnd proof browser behavior', () => {
 
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('window -> root right')
-      expect(proofWindowById(targetWindowId).dataset.proofWindowMode).toBe('collapsed')
+      expect(proofWindowById(targetWindowId).dataset.workbenchWindowMode).toBe('collapsed')
       expect(windowRects()).not.toEqual(beforeRects)
       expectValidProofTabState()
     })
@@ -717,7 +719,7 @@ describe.sequential('dnd proof browser behavior', () => {
     await nativeDragTabToStripDropZone(sourceId, tabStripWithId(collapsedStripId))
     await vi.waitFor(() => {
       expect(tabStripIdContaining(sourceId)).toBe(collapsedStripId)
-      expect(proofWindowById(proofWindowId(collapsedWindow)).dataset.proofWindowMode).toBe(
+      expect(proofWindowById(proofWindowId(collapsedWindow)).dataset.workbenchWindowMode).toBe(
         'collapsed',
       )
       expectValidProofTabState()
@@ -910,7 +912,7 @@ describe.sequential('dnd proof browser behavior', () => {
 
     await vi.waitFor(() => {
       expect(windowRects()).not.toEqual(beforeRects)
-      expect(proofWindowById(targetWindowId).dataset.proofWindowMode).toBe('collapsed')
+      expect(proofWindowById(targetWindowId).dataset.workbenchWindowMode).toBe('collapsed')
       expectValidProofTabState()
     })
   })
@@ -954,7 +956,7 @@ describe.sequential('dnd proof browser behavior', () => {
     const originalStrip = firstMultiTabStrip()
     const sourceId = tabIdsInStrip(originalStrip)[0]
     if (!sourceId) throw new Error('Missing source tab id')
-    const originalStripId = originalStrip.dataset.proofTabStripId
+    const originalStripId = originalStrip.dataset.workbenchTabStripId
 
     await dragTabToSnap(sourceId, 'root bottom')
 
@@ -1028,7 +1030,7 @@ describe.sequential('dnd proof browser behavior', () => {
     movePointerTo({ x: sourceCenter.x, y: sourceCenter.y + 70 })
     await nextFrame()
     const targetStrip = tabStripNotContaining(sourceId)
-    const targetStripId = targetStrip.dataset.proofTabStripId
+    const targetStripId = targetStrip.dataset.workbenchTabStripId
     const targetRect = targetStrip.getBoundingClientRect()
     const targetPoint = { x: targetRect.right - 16, y: targetRect.top + targetRect.height / 2 }
 
@@ -1254,7 +1256,7 @@ function tabDockElementInStrip(strip: HTMLElement) {
 }
 
 function tabStripDropZoneElement(strip: HTMLElement) {
-  if (strip.dataset.proofTabStripOrientation === 'vertical') {
+  if (strip.dataset.workbenchTabStripOrientation === 'vertical') {
     return { element: strip, x: 0.5, y: 0.95 }
   }
 
@@ -1315,10 +1317,10 @@ function snapDestinationMouseStep(label: string): ProofMouseDragStep {
 // before the drag must match by member id instead of the exact element. The
 // rect index keeps the match unique when a merged zone renders several rails.
 function snapDestinationSelector(label: string) {
-  const id = snapDestinationWithLabel(label).dataset.proofSnapDestination
+  const id = snapDestinationWithLabel(label).dataset.workbenchSnapDestination
   if (!id) throw new Error(`Missing snap destination id for ${label}`)
 
-  return `[data-proof-snap-destination*=${JSON.stringify(id)}][data-proof-snap-rect="0"]`
+  return `[data-workbench-snap-destination*=${JSON.stringify(id)}][data-workbench-snap-rect="0"]`
 }
 
 function snapDestinationDropPoint(label: string): PointerPoint {
@@ -1387,7 +1389,7 @@ function proofSurfaceArea() {
 }
 
 function windowRegions() {
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-proof-window-id]'))
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-workbench-window-id]'))
 }
 
 function windowRects() {
@@ -1449,7 +1451,7 @@ function bottommostWindowRegion() {
 }
 
 function proofWindowId(windowElement: HTMLElement) {
-  const windowId = windowElement.dataset.proofWindowId
+  const windowId = windowElement.dataset.workbenchWindowId
   if (!windowId) throw new Error('Missing proof window id')
 
   return windowId
@@ -1463,7 +1465,7 @@ function proofWindowById(windowId: string) {
 }
 
 function proofWindowElementById(windowId: string) {
-  return document.querySelector<HTMLElement>(`[data-proof-window-id="${windowId}"]`)
+  return document.querySelector<HTMLElement>(`[data-workbench-window-id="${windowId}"]`)
 }
 
 async function collapseWindowElement(windowElement: HTMLElement) {
@@ -1471,7 +1473,7 @@ async function collapseWindowElement(windowElement: HTMLElement) {
 
   collapseButtonIn(windowElement).click()
   await vi.waitFor(() => {
-    expect(proofWindowById(windowId).dataset.proofWindowMode).toBe('collapsed')
+    expect(proofWindowById(windowId).dataset.workbenchWindowMode).toBe('collapsed')
   })
   await vi.waitFor(() => {
     const rect = proofWindowById(windowId).getBoundingClientRect()
@@ -1491,8 +1493,8 @@ async function collapseAllWindowsToRails() {
     await vi.waitFor(() => {
       const collapsedWindow = proofWindowById(windowId)
 
-      expect(collapsedWindow.dataset.proofWindowMode).toBe('collapsed')
-      expect(collapsedWindow.dataset.proofWindowChromeOrientation).toBe('vertical')
+      expect(collapsedWindow.dataset.workbenchWindowMode).toBe('collapsed')
+      expect(collapsedWindow.dataset.workbenchWindowChromeOrientation).toBe('vertical')
     })
   }
 
@@ -1536,9 +1538,9 @@ function railStripsByCollapsedEdge() {
 
   for (const strip of tabStrips()) {
     const windowElement = proofWindowContainingStrip(strip)
-    if (strip.dataset.proofTabStripOrientation !== 'vertical') continue
+    if (strip.dataset.workbenchTabStripOrientation !== 'vertical') continue
 
-    const edge = windowElement.dataset.proofWindowCollapsedEdge ?? 'none'
+    const edge = windowElement.dataset.workbenchWindowCollapsedEdge ?? 'none'
     groups.set(edge, [...(groups.get(edge) ?? []), strip])
   }
 
@@ -1666,21 +1668,21 @@ function buttonInWindowWithLabelText(windowElement: HTMLElement, text: string) {
 }
 
 function windowBodyIn(windowElement: HTMLElement) {
-  const body = windowElement.querySelector<HTMLElement>('[data-proof-window-body]')
+  const body = windowElement.querySelector<HTMLElement>('[data-workbench-window-body]')
   if (!body) throw new Error('Missing proof window body')
 
   return body
 }
 
 function tabStripInWindow(windowElement: HTMLElement) {
-  const strip = windowElement.querySelector<HTMLElement>('[data-proof-tab-strip-id]')
+  const strip = windowElement.querySelector<HTMLElement>('[data-workbench-tab-strip-id]')
   if (!strip) throw new Error('Missing proof tab strip in window')
 
   return strip
 }
 
 function proofWindowContainingStrip(strip: HTMLElement) {
-  const windowElement = strip.closest<HTMLElement>('[data-proof-window-id]')
+  const windowElement = strip.closest<HTMLElement>('[data-workbench-window-id]')
   if (!windowElement) throw new Error('Missing proof window for tab strip')
 
   return windowElement
@@ -1721,7 +1723,7 @@ function bodyAutoscrollEntryPointsForWindow(windowElement: HTMLElement) {
 }
 
 function tabStrips() {
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-proof-tab-strip-id]'))
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-workbench-tab-strip-id]'))
 }
 
 function firstMultiTabStrip() {
@@ -1753,7 +1755,9 @@ function tabStripNotContaining(tabId: string) {
 }
 
 function tabStripWithId(tabStripId: string) {
-  const strip = tabStrips().find((candidate) => candidate.dataset.proofTabStripId === tabStripId)
+  const strip = tabStrips().find(
+    (candidate) => candidate.dataset.workbenchTabStripId === tabStripId,
+  )
   if (!strip) throw new Error(`Missing tab strip ${tabStripId}`)
 
   return strip
@@ -1762,20 +1766,20 @@ function tabStripWithId(tabStripId: string) {
 function tabsInStrip(strip: HTMLElement) {
   return Array.from(strip.children).flatMap((child) => {
     if (!(child instanceof HTMLElement)) return []
-    if (!child.dataset.proofTabId) return []
+    if (!child.dataset.workbenchTabId) return []
 
     return [child]
   })
 }
 
 function tabIdsInStrip(strip: HTMLElement) {
-  return tabsInStrip(strip).map((tab) => tab.dataset.proofTabId ?? '')
+  return tabsInStrip(strip).map((tab) => tab.dataset.workbenchTabId ?? '')
 }
 
 function tabPreviewsInStrip(strip: HTMLElement) {
   return Array.from(strip.children).flatMap((child) => {
     if (!(child instanceof HTMLElement)) return []
-    if (!child.dataset.proofTabPreviewId) return []
+    if (!child.dataset.workbenchTabPreviewId) return []
 
     return [child]
   })
@@ -1783,7 +1787,7 @@ function tabPreviewsInStrip(strip: HTMLElement) {
 
 function tabPreviewIdsInStrip(strip: HTMLElement) {
   return tabPreviewsInStrip(strip).flatMap((tab) => {
-    const previewId = tab.dataset.proofTabPreviewId
+    const previewId = tab.dataset.workbenchTabPreviewId
     if (!previewId) return []
 
     return previewId.split(' ')
@@ -1793,10 +1797,10 @@ function tabPreviewIdsInStrip(strip: HTMLElement) {
 function tabVisualIdsInStrip(strip: HTMLElement) {
   return Array.from(strip.children).flatMap((child) => {
     if (!(child instanceof HTMLElement)) return []
-    if (child.dataset.proofTabId) return [child.dataset.proofTabId]
-    if (!child.dataset.proofTabPreviewId) return []
+    if (child.dataset.workbenchTabId) return [child.dataset.workbenchTabId]
+    if (!child.dataset.workbenchTabPreviewId) return []
 
-    return child.dataset.proofTabPreviewId.split(' ')
+    return child.dataset.workbenchTabPreviewId.split(' ')
   })
 }
 
@@ -1812,7 +1816,7 @@ function expectPreviewAddedTabsInStrip(strip: HTMLElement, expectedIds: readonly
 }
 
 function previewAddedTabsInStrip(strip: HTMLElement) {
-  return tabsInStrip(strip).filter((tab) => tab.dataset.proofTabPreviewAdded === 'true')
+  return tabsInStrip(strip).filter((tab) => tab.dataset.workbenchTabPreviewAdded === 'true')
 }
 
 function proofTabPreview(tabId: string, strip: HTMLElement) {
@@ -1825,7 +1829,7 @@ function proofTabPreview(tabId: string, strip: HTMLElement) {
 }
 
 function tabPreviewIds(tab: HTMLElement) {
-  return tab.dataset.proofTabPreviewId?.split(' ') ?? []
+  return tab.dataset.workbenchTabPreviewId?.split(' ') ?? []
 }
 
 function expectTabsInsideOwningStrips() {
@@ -1851,13 +1855,13 @@ function expectTabsInsideStrip(strip: HTMLElement) {
 
 function tabStripIdContaining(tabId: string) {
   const strip = tabStrips().find((candidate) => tabIdsInStrip(candidate).includes(tabId))
-  if (!strip?.dataset.proofTabStripId) throw new Error(`Missing tab strip containing ${tabId}`)
+  if (!strip?.dataset.workbenchTabStripId) throw new Error(`Missing tab strip containing ${tabId}`)
 
-  return strip.dataset.proofTabStripId
+  return strip.dataset.workbenchTabStripId
 }
 
 function proofTabStripId(strip: HTMLElement) {
-  const tabStripId = strip.dataset.proofTabStripId
+  const tabStripId = strip.dataset.workbenchTabStripId
   if (!tabStripId) throw new Error('Missing proof tab strip id')
 
   return tabStripId
@@ -1866,14 +1870,14 @@ function proofTabStripId(strip: HTMLElement) {
 function proofTab(tabId: string) {
   const tab = tabStrips()
     .flatMap(tabsInStrip)
-    .find((candidate) => candidate.dataset.proofTabId === tabId)
+    .find((candidate) => candidate.dataset.workbenchTabId === tabId)
   if (!tab) throw new Error(`Missing proof tab ${tabId}`)
 
   return tab
 }
 
 function proofTabId(tab: HTMLElement) {
-  const tabId = tab.dataset.proofTabId
+  const tabId = tab.dataset.workbenchTabId
   if (!tabId) throw new Error('Missing proof tab id')
 
   return tabId
@@ -1908,18 +1912,18 @@ function internalWindowSnapDestination(label: string, destinations: readonly HTM
 }
 
 function snapDestinationsWithLabel(label: string) {
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-proof-snap-destination]')).filter(
-    (candidate) => candidate.textContent?.trim() === label,
-  )
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('[data-workbench-snap-destination]'),
+  ).filter((candidate) => candidate.textContent?.trim() === label)
 }
 
 function activeSnapDestination() {
-  return document.querySelector<HTMLElement>('[data-proof-snap-active="true"]')
+  return document.querySelector<HTMLElement>('[data-workbench-snap-active="true"]')
 }
 
 function sourceVacancyDestinationWithLabel(label: string) {
   const destination = snapDestinationsWithLabel(label).find((candidate) =>
-    candidate.dataset.proofSnapDestination?.includes('source-vacancy'),
+    candidate.dataset.workbenchSnapDestination?.includes('source-vacancy'),
   )
   if (!destination) throw new Error(`Missing source vacancy destination ${label}`)
 
@@ -1959,9 +1963,9 @@ function expectUnexpectedTabStripChildren(
 ) {
   const unexpectedChildren = Array.from(strip.children).filter((child) => {
     if (!(child instanceof HTMLElement)) return true
-    if (allowPreviews && child.dataset.proofTabPreviewId) return false
+    if (allowPreviews && child.dataset.workbenchTabPreviewId) return false
 
-    return !child.dataset.proofTabId
+    return !child.dataset.workbenchTabId
   })
 
   expect(unexpectedChildren).toHaveLength(0)
@@ -2036,14 +2040,14 @@ function expectResizeHandleMoved(
 }
 
 function firstWindowDragHandle() {
-  const handle = document.querySelector<HTMLElement>('[data-proof-window-drag-handle]')
+  const handle = document.querySelector<HTMLElement>('[data-workbench-window-drag-handle]')
   if (!handle) throw new Error('Missing proof window drag handle')
 
   return handle
 }
 
 function windowDragHandleIn(windowElement: HTMLElement) {
-  const handle = windowElement.querySelector<HTMLElement>('[data-proof-window-drag-handle]')
+  const handle = windowElement.querySelector<HTMLElement>('[data-workbench-window-drag-handle]')
   if (!handle) throw new Error('Missing proof window drag handle in window')
 
   return handle
@@ -2141,7 +2145,7 @@ function centerOf(element: HTMLElement): PointerPoint {
 }
 
 function scrollTabIntoStripView(tab: HTMLElement) {
-  const strip = tab.closest<HTMLElement>('[data-proof-tab-strip-id]')
+  const strip = tab.closest<HTMLElement>('[data-workbench-tab-strip-id]')
   if (!strip) return
 
   const stripRect = strip.getBoundingClientRect()
@@ -2176,11 +2180,11 @@ function visibleTabSourcePoint(tab: HTMLElement) {
   if (sourcePointHitsTab(tab, center)) return center
 
   const tabRect = tab.getBoundingClientRect()
-  const strip = tab.closest<HTMLElement>('[data-proof-tab-strip-id]')
+  const strip = tab.closest<HTMLElement>('[data-workbench-tab-strip-id]')
   if (!strip) return { x: 0.5, y: 0.5 }
 
   const stripRect = strip.getBoundingClientRect()
-  if (strip.dataset.proofTabStripOrientation === 'vertical') {
+  if (strip.dataset.workbenchTabStripOrientation === 'vertical') {
     return visibleVerticalTabSourcePoint(tab, tabRect, stripRect)
   }
 
@@ -2328,7 +2332,7 @@ function pointHitsTab(tab: HTMLElement, point: PointerPoint) {
   const hit = document.elementFromPoint(point.x, point.y)
   if (!(hit instanceof HTMLElement)) return false
 
-  return hit.closest('[data-proof-tab-id]') === tab
+  return hit.closest('[data-workbench-tab-id]') === tab
 }
 
 function selectorFor(element: HTMLElement) {

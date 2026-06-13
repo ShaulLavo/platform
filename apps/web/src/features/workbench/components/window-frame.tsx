@@ -1,298 +1,428 @@
-import { ArrowsInSimpleIcon, ArrowsOutSimpleIcon, MinusIcon, XIcon } from '@phosphor-icons/react'
-import { memo, type FocusEvent, type PointerEvent } from 'react'
-import { useDraggable } from '@dnd-kit/react'
-import { cn } from '@workspace/ui/lib/utils'
+import { useDraggable, useDroppable } from '@dnd-kit/react'
+import {
+  ArrowsInLineHorizontalIcon,
+  ArrowsInLineVerticalIcon,
+  ArrowsInSimpleIcon,
+  ArrowsOutLineHorizontalIcon,
+  ArrowsOutLineVerticalIcon,
+  ArrowsOutSimpleIcon,
+  DotsSixVerticalIcon,
+  PlusIcon,
+  XIcon,
+} from '@phosphor-icons/react'
+import type { PointerEvent, ReactNode } from 'react'
 
-import { SurfaceHost } from '@/features/workbench/components/surface-host'
 import { TabStrip } from '@/features/workbench/components/tab-strip'
-import { WindowControlButton } from '@/features/workbench/components/window-control-button'
-import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
-import { surfaceEqual } from '@/features/workbench/utils/surface-equality'
+import {
+  TILING_TAB_TYPE,
+  TILING_WINDOW_TYPE,
+  windowDragId,
+  type TilingDragData,
+  type TilingDropData,
+} from '@workspace/tiling/utils/drag-data'
+import { windowTitle } from '@workspace/tiling/utils/layout-queries'
+import type { TilingInsertionPreview } from '@workspace/tiling/utils/tab-preview'
 import type { LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type {
-  LayoutOperation,
   Surface,
-  WindowId,
+  SurfaceId,
   WorkbenchWindow,
   WorkspaceLayout,
 } from '@workspace/tiling/utils/layout-types'
-import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
-import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
-import {
-  WORKBENCH_WINDOW_DRAG_TYPE,
-  type WorkbenchWindowDragData,
-  workbenchWindowDragCapabilities,
-  workbenchWindowDragId,
-} from '@/features/workbench/utils/drag-drop-data'
+import { tilingWindowAttributes } from '@workspace/tiling/utils/dom-attributes'
+import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
+import { Button } from '@workspace/ui/components/button'
+import { cn } from '@workspace/ui/lib/utils'
 
-type WindowFrameState = {
-  readonly active: boolean
-  readonly activeSurface: Surface | null
-  readonly surfaces: readonly Surface[]
-  readonly window: WorkbenchWindow
-}
-
-type WindowFrameProps = {
-  readonly previewLayout: WorkspaceLayout | null
-  readonly rect: LayoutRect
-  readonly surfaceRenderers: SurfaceRendererRegistry
-  readonly windowId: WindowId
-  readonly onDispatch: (operation: LayoutOperation) => void
-}
-
-// Measured: surface-area rect/layout updates were repainting every window subtree.
-export const WindowFrame = memo(function WindowFrame({
-  previewLayout,
+export function WindowFrame({
+  activeDrag,
+  addTabVisible = true,
+  dropZonesVisible,
+  insertionPreview,
+  insertionPreviewLayout,
+  layout,
+  optimisticTabSorting,
+  preview = false,
   rect,
-  surfaceRenderers,
-  windowId,
-  onDispatch,
-}: WindowFrameProps) {
-  const storeState = useLayoutState(
-    (store) => selectWindowFrameState(store.layout, windowId),
-    windowFrameStateEqual,
-  )
-  const previewState = previewLayout ? selectWindowFrameState(previewLayout, windowId) : null
-  const state = previewState ?? storeState
-  const windowDragCapabilities = state
-    ? workbenchWindowDragCapabilities({ surfaces: state.surfaces, window: state.window })
-    : { canDrag: false }
-  const windowDrag = useDraggable<WorkbenchWindowDragData>({
-    data: {
-      capabilities: windowDragCapabilities,
-      dragType: WORKBENCH_WINDOW_DRAG_TYPE,
-      windowId: state?.window.id ?? windowId,
-    },
-    disabled: !windowDragCapabilities.canDrag,
-    id: workbenchWindowDragId(state?.window.id ?? windowId),
+  resizingWindows,
+  renderSurfaceBody,
+  surfaceBodyClassName = 'p-3',
+  tabActionsVisible = true,
+  tabStripRenderEpoch,
+  window,
+  windowActionsVisible = true,
+  onAddTab,
+  onCollapseWindowToRail,
+  onCollapseWindowToRow,
+  onCloseSurface,
+  onCloseWindow,
+  onExpandWindow,
+  onMaximizeWindow,
+  onRestoreWindow,
+  onSelectSurface,
+}: {
+  readonly activeDrag: TilingDragData | null
+  readonly addTabVisible?: boolean
+  readonly dropZonesVisible: boolean
+  readonly insertionPreview: TilingInsertionPreview | null
+  readonly insertionPreviewLayout: WorkspaceLayout
+  readonly layout: WorkspaceLayout
+  readonly optimisticTabSorting: boolean
+  // A preview-only window (a tab snapped out to its own window) renders as the
+  // real window faded out at its destination, but inert: no drag/drop wiring,
+  // so it never becomes a drop target or feeds back into the live drag.
+  readonly preview?: boolean
+  readonly rect: LayoutRect
+  readonly resizingWindows: boolean
+  readonly renderSurfaceBody?: (surface: Surface | null, window: WorkbenchWindow) => ReactNode
+  readonly surfaceBodyClassName?: string
+  readonly tabActionsVisible?: boolean
+  readonly tabStripRenderEpoch: number
+  readonly window: WorkbenchWindow
+  readonly windowActionsVisible?: boolean
+  readonly onAddTab: (windowId: WorkbenchWindow['id']) => void
+  readonly onCollapseWindowToRail: (windowId: WorkbenchWindow['id']) => void
+  readonly onCollapseWindowToRow: (windowId: WorkbenchWindow['id']) => void
+  readonly onCloseSurface: (surfaceId: SurfaceId) => void
+  readonly onCloseWindow: (windowId: WorkbenchWindow['id']) => void
+  readonly onExpandWindow: (windowId: WorkbenchWindow['id']) => void
+  readonly onMaximizeWindow: (windowId: WorkbenchWindow['id']) => void
+  readonly onRestoreWindow: (windowId: WorkbenchWindow['id']) => void
+  readonly onSelectSurface: (surfaceId: SurfaceId) => void
+}) {
+  const data: TilingDragData & TilingDropData = {
+    kind: 'window',
+    windowId: window.id,
+  }
+  const {
+    handleRef,
+    isDragSource,
+    isDragging,
+    ref: draggableRef,
+  } = useDraggable<TilingDragData & TilingDropData>({
+    data,
+    disabled: preview,
+    id: windowDragId(window.id),
+    type: TILING_WINDOW_TYPE,
   })
-  if (!state) return null
+  const { isDropTarget, ref: droppableRef } = useDroppable<TilingDropData>({
+    accept: [TILING_TAB_TYPE, TILING_WINDOW_TYPE],
+    data,
+    disabled: preview || (activeDrag?.kind === 'window' && activeDrag.windowId === window.id),
+    id: windowDragId(window.id),
+  })
+  const baseSurfaces = window.surfaceIds.flatMap((surfaceId) => {
+    const surface = layout.surfacesById[surfaceId]
+    if (!surface) return []
 
-  const { active, activeSurface, surfaces, window } = state
+    return [surface]
+  })
+  const surfaces = baseSurfaces
+  const activeSurface = activeSurfaceForWindow(surfaces, window)
+  const active = layout.activeWindowId === window.id
   const collapsed = window.mode === 'collapsed'
-  const fullSurface = window.mode === 'fullscreen' || window.mode === 'maximized'
+  const fullSurface = window.mode === 'maximized' || window.mode === 'fullscreen'
   const windowCanCollapse = surfaces.every((surface) => surface.capabilities.canCollapse)
-  const windowCanClose = Boolean(activeSurface?.capabilities.canClose)
-  const collapseLabel = collapsed
-    ? `Expand ${activeSurface?.title ?? 'window'}`
-    : `Collapse ${activeSurface?.title ?? 'window'}`
-  const closeLabel = `Close ${activeSurface?.title ?? 'surface'}`
+  const insertionPreviewActive = insertionPreview?.targetWindowId === window.id
+  const title = windowTitle(layout, window.id)
+  const activeTitle = activeSurface?.title ?? title
+  const collapseToRailLabel = `Collapse ${activeTitle} to rail`
+  const collapseToRowLabel = `Collapse ${activeTitle} to row`
+  const expandLabel = `Expand ${activeTitle}`
+  const maximizeLabel = fullSurface ? `Restore ${activeTitle}` : `Maximize ${activeTitle}`
+  const chromeOrientation = collapsedChromeOrientation(collapsed, rect)
+  const rowButtonActive = collapsed && collapsedWindowLooksLikeRow(window, chromeOrientation)
+  const railButtonActive = collapsed && collapsedWindowLooksLikeRail(window, chromeOrientation)
+  const rowButtonLabel = rowButtonActive ? expandLabel : collapseToRowLabel
+  const railButtonLabel = railButtonActive ? expandLabel : collapseToRailLabel
+  const headerActionsVisible = addTabVisible || windowActionsVisible
 
-  function setWindowElement(element: HTMLElement | null) {
-    windowDrag.ref(element)
+  // TODO(small-window-ergonomics): in narrow proof windows (e.g. the 3-window proof
+  // layout) these action buttons crowd the header and start covering tabs, and the
+  // shrunken tab strip makes native cross-window tab drops land in edge snap zones.
+  // Needs a real small-window story (overflow menu, hide-on-narrow, or a min
+  // tab-strip width). Two dnd-proof drag tests are skipped pending this.
+  // TODO(collapse-direction): row/rail collapse resolves its target edge
+  // heuristically (see collapsedWindowLooksLikeRow/Rail + collapse-edge.ts). Make
+  // the collapse edge deterministic (left/right/up/down) and point the icon at that
+  // edge with ArrowLine{Up,Down,Left,Right} instead of the axis-only line arrows.
+  function handleRowButtonClick() {
+    if (rowButtonActive) {
+      onExpandWindow(window.id)
+      return
+    }
+
+    onCollapseWindowToRow(window.id)
   }
 
-  function setWindowHandle(element: HTMLElement | null) {
-    windowDrag.handleRef(element)
+  function handleRailButtonClick() {
+    if (railButtonActive) {
+      onExpandWindow(window.id)
+      return
+    }
+
+    onCollapseWindowToRail(window.id)
   }
 
-  function handleWindowFocus(event: FocusEvent<HTMLElement>) {
-    if (focusCameFromToolSurface(event)) return
+  function handleMaximizeButtonClick() {
+    if (fullSurface) {
+      onRestoreWindow(window.id)
+      return
+    }
 
-    activateWindow()
-  }
-
-  function handleWindowFocusPointerDown(event: PointerEvent<HTMLElement>) {
-    if (event.button !== 0) return
-
-    activateWindow()
+    onMaximizeWindow(window.id)
   }
 
   function activateWindow() {
     if (active) return
     if (!activeSurface) return
 
-    onDispatch(selectWindowOperation(window))
+    onSelectSurface(activeSurface.id)
   }
 
-  function closeWindow() {
-    if (!activeSurface) return
+  // Pointer-down (capture) is the reliable focus signal: surfaces like the
+  // terminal and file navigator swallow clicks, so a bubbling onClick never
+  // reaches the window. Capture fires before the surface can consume it.
+  function handleWindowPointerDown(event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0) return
 
-    onDispatch({ surfaceId: activeSurface.id, type: 'closeSurface' })
+    activateWindow()
+  }
+
+  // Keyboard/programmatic focus activates the window too. The editor guards
+  // tool-surface focus to protect the active editor's selection (window-frame.tsx
+  // focusCameFromToolSurface); the proofs have no editor selection to protect,
+  // so any inner focus activates.
+  function handleWindowFocus() {
+    activateWindow()
   }
 
   return (
     <section
-      aria-label={windowLabel({ activeSurface, window })}
-      className='bg-card backdrop-material absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-transparent transition-colors'
-      data-active={active ? 'true' : 'false'}
-      data-window-mode={window.mode}
-      data-window-id={window.id}
-      data-workbench-window-dragging={windowDrag.isDragging ? 'true' : undefined}
-      ref={setWindowElement}
+      aria-label={title}
+      className={cn(
+        'bg-card absolute isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border shadow-sm',
+        resizingWindows
+          ? 'transition-[background-color,border-color,opacity,box-shadow] duration-150 ease-out'
+          : 'transition-[left,top,width,height,background-color,border-color,opacity,box-shadow] duration-150 ease-out',
+        active && !preview ? 'border-ring' : 'border-border',
+        (isDragging || preview) && 'opacity-55',
+        (isDragSource || preview) && 'ring-2 ring-info',
+        preview && 'pointer-events-none',
+        insertionPreviewActive && 'ring-2 ring-info/70 shadow-md',
+        dropZonesVisible && isDropTarget && 'bg-info/10',
+      )}
+      data-workbench-window-active={active ? 'true' : 'false'}
+      data-workbench-window-collapsed={collapsed ? 'true' : 'false'}
+      data-workbench-window-collapsed-edge={window.collapsedEdge}
+      data-workbench-window-chrome-orientation={chromeOrientation}
+      data-workbench-window-id={window.id}
+      data-workbench-window-insertion-preview={
+        insertionPreviewActive ? insertionPreview.kind : undefined
+      }
+      data-workbench-window-mode={window.mode}
+      {...tilingWindowAttributes(window.id)}
+      ref={(element) => {
+        draggableRef(element)
+        droppableRef(element)
+      }}
       role='region'
       style={layoutRectStyle(rect)}
-      tabIndex={0}
-      onFocusCapture={handleWindowFocus}
-      onPointerDownCapture={handleWindowFocusPointerDown}
+      tabIndex={preview ? undefined : 0}
+      onFocusCapture={preview ? undefined : handleWindowFocus}
+      onPointerDownCapture={preview ? undefined : handleWindowPointerDown}
     >
       <header
-        className='flex h-10 shrink-0 cursor-grab items-end gap-2 border-b border-transparent pt-1 active:cursor-grabbing'
-        data-workbench-window-drag-handle=''
-        ref={setWindowHandle}
+        className={cn(
+          'border-border flex shrink-0 cursor-grab active:cursor-grabbing',
+          chromeOrientation === 'vertical'
+            ? 'h-full w-full flex-col items-center gap-1 border-r px-1 py-1'
+            : 'h-10 items-end gap-2 border-b pt-1',
+        )}
+        ref={handleRef}
       >
-        <TabStrip surfaces={surfaces} window={window} onDispatch={onDispatch} />
         <div
-          className='ml-1 flex h-8 shrink-0 items-center gap-0.5 pb-1 pl-1'
-          data-workbench-drag-blocker=''
+          aria-label={`Drag ${title}`}
+          className={cn(
+            'text-muted-foreground grid shrink-0 place-items-center text-sm',
+            chromeOrientation === 'vertical' ? 'h-7 w-8' : 'mb-1 ml-1 h-8 w-5',
+          )}
+          data-workbench-window-drag-handle=''
+          role='button'
+          tabIndex={0}
         >
-          <WindowControlButton
-            disabled={!windowCanCollapse}
-            label={collapseLabel}
-            onClick={() => {
-              onDispatch({
-                type: collapsed ? 'expandWindow' : 'collapseWindow',
-                windowId: window.id,
-              })
-            }}
-          >
-            <MinusIcon className='size-3.5' />
-          </WindowControlButton>
-          <WindowControlButton
-            label={fullSurface ? 'Restore window' : 'Maximize window'}
-            onClick={() =>
-              onDispatch({
-                type: fullSurface ? 'restoreWindow' : 'maximizeWindow',
-                windowId: window.id,
-              })
-            }
-          >
-            {fullSurface ? (
-              <ArrowsInSimpleIcon className='size-3.5' />
-            ) : (
-              <ArrowsOutSimpleIcon className='size-3.5' />
-            )}
-          </WindowControlButton>
-          <WindowControlButton disabled={!windowCanClose} label={closeLabel} onClick={closeWindow}>
-            <XIcon className='size-3.5' />
-          </WindowControlButton>
+          <DotsSixVerticalIcon className='size-3.5' />
         </div>
+        <TabStrip
+          activeDrag={activeDrag}
+          actionsVisible={tabActionsVisible}
+          dropZonesVisible={dropZonesVisible}
+          insertionPreview={insertionPreview}
+          insertionPreviewLayout={insertionPreviewLayout}
+          interactive={!preview}
+          key={`${window.id}:${tabStripRenderEpoch}`}
+          optimisticSorting={optimisticTabSorting}
+          orientation={chromeOrientation}
+          surfaces={surfaces}
+          window={window}
+          onCloseSurface={onCloseSurface}
+          onSelectSurface={onSelectSurface}
+        />
+        {headerActionsVisible ? (
+          <div
+            className={cn(
+              'flex shrink-0 items-center gap-0.5',
+              chromeOrientation === 'vertical' ? 'w-full flex-col px-0 pb-1' : 'h-8 pr-1 pb-1',
+            )}
+          >
+            {addTabVisible ? (
+              <Button
+                aria-label={`Add tab to ${title}`}
+                size='icon-xs'
+                type='button'
+                variant='ghost'
+                onClick={() => onAddTab(window.id)}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <PlusIcon className='size-3' />
+              </Button>
+            ) : null}
+            {windowActionsVisible ? (
+              <>
+                <Button
+                  aria-label={rowButtonLabel}
+                  className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                  disabled={!rowButtonActive && !windowCanCollapse}
+                  size='icon-sm'
+                  title={rowButtonLabel}
+                  type='button'
+                  variant='ghost'
+                  onClick={handleRowButtonClick}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  {rowButtonActive ? (
+                    <ArrowsOutLineVerticalIcon className='size-3.5' />
+                  ) : (
+                    <ArrowsInLineVerticalIcon className='size-3.5' />
+                  )}
+                </Button>
+                <Button
+                  aria-label={railButtonLabel}
+                  className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                  disabled={!railButtonActive && !windowCanCollapse}
+                  size='icon-sm'
+                  title={railButtonLabel}
+                  type='button'
+                  variant='ghost'
+                  onClick={handleRailButtonClick}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  {railButtonActive ? (
+                    <ArrowsOutLineHorizontalIcon className='size-3.5' />
+                  ) : (
+                    <ArrowsInLineHorizontalIcon className='size-3.5' />
+                  )}
+                </Button>
+                {collapsed ? null : (
+                  <Button
+                    aria-label={maximizeLabel}
+                    className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                    size='icon-sm'
+                    title={maximizeLabel}
+                    type='button'
+                    variant='ghost'
+                    onClick={handleMaximizeButtonClick}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    {fullSurface ? (
+                      <ArrowsInSimpleIcon className='size-3.5' />
+                    ) : (
+                      <ArrowsOutSimpleIcon className='size-3.5' />
+                    )}
+                  </Button>
+                )}
+                <Button
+                  aria-label={`Close ${title}`}
+                  size='icon-xs'
+                  type='button'
+                  variant='ghost'
+                  onClick={() => onCloseWindow(window.id)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <XIcon className='size-3' />
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </header>
-      <div className={cn('relative min-h-0 flex-1 overflow-hidden', collapsed && 'hidden')}>
-        {surfaces.map((surface) => {
-          const visible = surface.id === window.activeSurfaceId
-
-          return (
-            <SurfaceHost
-              active={active && visible}
-              key={surface.id}
-              surface={surface}
-              surfaceRenderers={surfaceRenderers}
-              visible={visible}
-              windowId={window.id}
-            />
-          )
-        })}
+      <div
+        className={cn(
+          'relative min-h-0 flex-1 overflow-hidden',
+          surfaceBodyClassName,
+          collapsed && 'hidden',
+        )}
+        data-workbench-window-body=''
+      >
+        {renderSurfaceBody
+          ? renderSurfaceBody(activeSurface, window)
+          : defaultSurfaceBody(activeSurface, title, window.id)}
       </div>
     </section>
   )
-}, windowFramePropsEqual)
-
-function windowFramePropsEqual(left: WindowFrameProps, right: WindowFrameProps) {
-  if (left.previewLayout !== right.previewLayout) return false
-  if (left.windowId !== right.windowId) return false
-  if (left.surfaceRenderers !== right.surfaceRenderers) return false
-  if (left.onDispatch !== right.onDispatch) return false
-
-  return layoutRectsEqual(left.rect, right.rect)
 }
 
-function layoutRectsEqual(left: LayoutRect, right: LayoutRect) {
-  if (left.height !== right.height) return false
-  if (left.width !== right.width) return false
-  if (left.x !== right.x) return false
-
-  return left.y === right.y
+function defaultSurfaceBody(
+  activeSurface: Surface | null,
+  title: string,
+  windowId: WorkbenchWindow['id'],
+) {
+  return (
+    <div className='bg-background border-border flex h-full min-h-0 flex-col rounded-sm border p-4'>
+      <div className='min-w-0 text-sm font-medium'>{activeSurface?.title ?? title}</div>
+      <div className='text-muted-foreground mt-1 text-xs'>{activeSurface?.type ?? 'empty'}</div>
+      <div className='bg-muted/50 border-border text-muted-foreground mt-4 min-h-0 flex-1 rounded-sm border p-3 text-xs'>
+        {activeSurface?.stateKey ?? activeSurface?.id ?? windowId}
+      </div>
+    </div>
+  )
 }
 
-function selectWindowFrameState(
-  layout: WorkspaceLayout,
-  windowId: WindowId,
-): WindowFrameState | null {
-  const window = layout.windowsById[windowId]
-  if (!window) return null
+function collapsedChromeOrientation(collapsed: boolean, rect: LayoutRect) {
+  if (!collapsed) return 'horizontal'
+  if (rect.width >= rect.height) return 'horizontal'
 
-  return {
-    active: layout.activeWindowId === windowId,
-    activeSurface: layout.surfacesById[window.activeSurfaceId] ?? null,
-    surfaces: window.surfaceIds
-      .map((surfaceId) => layout.surfacesById[surfaceId])
-      .filter(isSurface),
-    window,
-  }
+  return 'vertical'
 }
 
-function windowFrameStateEqual(left: WindowFrameState | null, right: WindowFrameState | null) {
-  if (left === right) return true
-  if (!left || !right) return false
-  if (left.active !== right.active) return false
-  if (!surfaceEqual(left.activeSurface, right.activeSurface)) return false
-  if (!windowsEqual(left.window, right.window)) return false
+function collapsedWindowLooksLikeRow(
+  window: WorkbenchWindow,
+  chromeOrientation: 'horizontal' | 'vertical',
+) {
+  if (window.collapsedEdge === 'top') return true
+  if (window.collapsedEdge === 'bottom') return true
+  if (window.collapsedEdge) return false
 
-  return surfacesEqual(left.surfaces, right.surfaces)
+  return chromeOrientation === 'horizontal'
 }
 
-function windowsEqual(left: WorkbenchWindow, right: WorkbenchWindow) {
-  if (left === right) return true
-  if (left.id !== right.id) return false
-  if (left.mode !== right.mode) return false
-  if (left.collapsedEdge !== right.collapsedEdge) return false
-  if (left.activeSurfaceId !== right.activeSurfaceId) return false
+function collapsedWindowLooksLikeRail(
+  window: WorkbenchWindow,
+  chromeOrientation: 'horizontal' | 'vertical',
+) {
+  if (window.collapsedEdge === 'left') return true
+  if (window.collapsedEdge === 'right') return true
+  if (window.collapsedEdge) return false
 
-  return surfaceIdsEqual(left.surfaceIds, right.surfaceIds)
+  return chromeOrientation === 'vertical'
 }
 
-function surfacesEqual(left: readonly Surface[], right: readonly Surface[]) {
-  if (left === right) return true
-  if (left.length !== right.length) return false
+function activeSurfaceForWindow(
+  surfaces: readonly Surface[],
+  window: WorkbenchWindow,
+): Surface | null {
+  const activeSurface = surfaces.find((surface) => surface.id === window.activeSurfaceId)
+  if (activeSurface) return activeSurface
 
-  return left.every((surface, index) => surfaceEqual(surface, right[index] ?? null))
-}
-
-function surfaceIdsEqual(left: readonly string[], right: readonly string[]) {
-  if (left === right) return true
-  if (left.length !== right.length) return false
-
-  return left.every((surfaceId, index) => surfaceId === right[index])
-}
-
-function isSurface(surface: Surface | undefined): surface is Surface {
-  return Boolean(surface)
-}
-
-function selectWindowOperation(window: WorkbenchWindow): LayoutOperation {
-  return {
-    surfaceId: window.activeSurfaceId,
-    type: 'activateSurface',
-    windowId: window.id,
-  }
-}
-
-function focusCameFromToolSurface(event: FocusEvent<HTMLElement>) {
-  const surfaceType = focusedSurfaceType(event.target)
-  if (!surfaceType) return false
-  if (surfaceType === 'file-editor') return false
-
-  return surfaceType !== 'diff'
-}
-
-function focusedSurfaceType(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return null
-
-  const host = target.closest('[data-surface-host]')
-  if (!(host instanceof HTMLElement)) return null
-
-  return host.dataset.surfaceType ?? null
-}
-
-function windowLabel({
-  activeSurface,
-  window,
-}: {
-  readonly activeSurface: Surface | null
-  readonly window: WorkbenchWindow
-}) {
-  if (activeSurface) return `Window: ${activeSurface.title}`
-
-  return `Window ${window.id}`
+  return surfaces[0] ?? null
 }

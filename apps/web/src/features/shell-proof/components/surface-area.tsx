@@ -1,10 +1,10 @@
 import { DebugPanel } from '@/features/shell-proof/components/debug-panel'
 import { SurfaceBody } from '@/features/shell-proof/components/surface-body'
 import {
-  ProofInteractionSurface,
-  type ProofInteractionControllerRef,
-} from '@/features/tiling-proof/components/interaction-surface'
-import { commitEventLabel, windowModesLabel } from '@/features/tiling-proof/utils/event-labels'
+  InteractionSurface,
+  type InteractionControllerRef,
+} from '@/features/workbench/components/interaction-surface'
+import { commitEventLabel, windowModesLabel } from '@/features/workbench/utils/event-labels'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import type { TilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import type {
@@ -23,7 +23,7 @@ export function SurfaceArea({
 }: {
   readonly debugLog: TilingDragDebugLog
   readonly dropZonesVisible: boolean
-  readonly interactionControllerRef: ProofInteractionControllerRef
+  readonly interactionControllerRef: InteractionControllerRef
   readonly onDispatchLayoutOperation: (operation: LayoutOperation) => void
   readonly onLogEvent: (event: string) => void
 }) {
@@ -57,7 +57,7 @@ export function SurfaceArea({
   }
 
   return (
-    <ProofInteractionSurface
+    <InteractionSurface
       addTabVisible={false}
       ariaLabel='Shell proof surface area'
       debugLog={debugLog}

@@ -4,9 +4,9 @@ import { Rail } from '@/features/workbench/components/rail'
 import { ShellProofKeymapController } from '@/features/shell-proof/components/keymap-controller'
 import { SurfaceArea } from '@/features/shell-proof/components/surface-area'
 import { Toolbar } from '@/features/shell-proof/components/toolbar'
-import { ProofEventLog } from '@/features/tiling-proof/components/event-log'
-import { IDLE_PROOF_INTERACTION_CONTROLLER } from '@/features/tiling-proof/components/interaction-surface'
-import { layoutOperationLabel, windowModesLabel } from '@/features/tiling-proof/utils/event-labels'
+import { EventLog } from '@/features/workbench/components/event-log'
+import { IDLE_INTERACTION_CONTROLLER } from '@/features/workbench/components/interaction-surface'
+import { layoutOperationLabel, windowModesLabel } from '@/features/workbench/utils/event-labels'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
@@ -16,7 +16,7 @@ import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/l
 const EVENT_LOG_LIMIT = 16
 
 export function ShellProofLayout({ seedLayout }: { readonly seedLayout: WorkspaceLayout }) {
-  const interactionControllerRef = useRef(IDLE_PROOF_INTERACTION_CONTROLLER)
+  const interactionControllerRef = useRef(IDLE_INTERACTION_CONTROLLER)
   const layoutStore = useLayoutStoreApi()
   const items = useLayoutState((state) => selectWorkbenchRailSurfaceItems(state.layout))
   const dispatchLayoutOperation = useLayoutState((state) => state.dispatchLayoutOperation)
@@ -102,7 +102,7 @@ export function ShellProofLayout({ seedLayout }: { readonly seedLayout: Workspac
             onLogEvent={logEvent}
           />
           <div className='border-border w-72 shrink-0 overflow-hidden border-l p-3'>
-            <ProofEventLog events={events} stateEvents={dragDebugLog.stateEvents} />
+            <EventLog events={events} stateEvents={dragDebugLog.stateEvents} />
           </div>
         </div>
       </main>

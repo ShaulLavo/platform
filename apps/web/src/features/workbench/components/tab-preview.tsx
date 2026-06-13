@@ -5,7 +5,7 @@ import { cn } from '@workspace/ui/lib/utils'
 // Styled to match a native in-strip sort source: a regular tab dimmed to 45%
 // with the info ring, so cross-window insertion previews read the same as
 // reordering a tab inside its own strip.
-export function ProofTabPreview({
+export function TabPreview({
   orientation,
   surface,
 }: {
@@ -21,8 +21,8 @@ export function ProofTabPreview({
           ? 'h-24 w-8 flex-col gap-1 rounded-md px-1 py-2'
           : 'h-9 w-28 min-w-20 max-w-44 gap-1.5 rounded-t-md px-2',
       )}
-      data-proof-tab-preview-id={surface.id}
-      data-proof-tab-preview-kind='ghost'
+      data-workbench-tab-preview-id={surface.id}
+      data-workbench-tab-preview-kind='ghost'
       {...tilingTabPreviewAttributes()}
     >
       <span className='bg-primary size-2 rounded-full' />

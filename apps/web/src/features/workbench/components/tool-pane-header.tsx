@@ -64,7 +64,7 @@ export function ToolPaneHeader({
         dragHandleRef && 'cursor-grab active:cursor-grabbing',
         className,
       )}
-      data-proof-window-drag-handle={dragHandleRef ? '' : undefined}
+      data-workbench-window-drag-handle={dragHandleRef ? '' : undefined}
       data-workbench-tool-pane-drag-handle={dragHandleRef ? '' : undefined}
       data-workbench-tool-pane-header=''
       data-workbench-tool-pane-header-collapsed={collapsed ? 'true' : 'false'}

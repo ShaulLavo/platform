@@ -1,7 +1,7 @@
 import type { LayoutGeometry, LayoutRect } from '@workspace/tiling/utils/layout-geometry'
 import type { LayoutEdge, WindowId } from '@workspace/tiling/utils/layout-types'
 
-export type ProofCollapseTarget = 'rail' | 'row'
+export type CollapseTarget = 'rail' | 'row'
 
 type CollapseEdgeInput = {
   readonly surfaceRect: LayoutRect
@@ -10,7 +10,7 @@ type CollapseEdgeInput = {
 }
 
 export function collapseEdgeForTarget(
-  target: ProofCollapseTarget,
+  target: CollapseTarget,
   input: CollapseEdgeInput,
 ): LayoutEdge {
   if (target === 'row') return rowCollapseEdge(input)

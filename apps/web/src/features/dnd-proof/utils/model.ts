@@ -35,7 +35,7 @@ import {
   destinationLabel,
   layoutOperationLabel,
   windowMoveLabel,
-} from '@/features/tiling-proof/utils/event-labels'
+} from '@/features/workbench/utils/event-labels'
 import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 
 export type ProofScenario = 2 | 3 | 6 | 10

@@ -5,7 +5,7 @@ import { windowTitle } from '@workspace/tiling/utils/layout-queries'
 import type { TilingDragData } from '@workspace/tiling/utils/drag-data'
 import type { SurfaceId, WindowId, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
-export function ProofDragOverlay({
+export function TilingDragOverlay({
   activeDrag,
   layout,
 }: {
@@ -59,7 +59,7 @@ function windowOverlay(windowId: WindowId, layout: WorkspaceLayout) {
         'bg-card text-card-foreground border-border flex min-w-44 flex-col overflow-hidden rounded-md border shadow-lg',
         collapsed ? 'h-10' : 'h-full w-full',
       )}
-      data-proof-drag-overlay-window-mode={window.mode}
+      data-workbench-drag-overlay-window-mode={window.mode}
     >
       <div className='border-border flex h-10 shrink-0 items-end gap-2 border-b pt-1'>
         <div className='mb-1 ml-1 grid h-8 w-5 shrink-0 place-items-center'>

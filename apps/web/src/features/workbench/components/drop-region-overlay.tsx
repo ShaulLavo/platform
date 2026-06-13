@@ -3,7 +3,7 @@ import {
   regionCenterRect,
   rootEdgeRibbonRect,
   wedgeTrianglePoints,
-} from '@/features/tiling-proof/utils/drop-region'
+} from '@/features/workbench/utils/drop-region'
 import type { TilingDragData } from '@workspace/tiling/utils/drag-data'
 import type { ResolvedTilingTarget } from '@workspace/tiling/utils/drop-target-resolver'
 import type { LayoutGeometry, LayoutRect } from '@workspace/tiling/utils/layout-geometry'

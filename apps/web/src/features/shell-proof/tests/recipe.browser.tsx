@@ -276,7 +276,7 @@ function railButtonForTitle(title: string) {
 }
 
 function proofWindows() {
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-proof-window-id]'))
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-workbench-window-id]'))
 }
 
 function proofWindowWithText(text: string) {
@@ -291,7 +291,7 @@ function queryProofWindowWithText(text: string) {
 }
 
 function proofTabWithText(text: string) {
-  const tab = Array.from(document.querySelectorAll<HTMLElement>('[data-proof-tab-id]')).find(
+  const tab = Array.from(document.querySelectorAll<HTMLElement>('[data-workbench-tab-id]')).find(
     (candidate) => candidate.textContent?.includes(text),
   )
   if (!tab) throw new Error(`Missing proof tab containing ${text}`)
@@ -300,14 +300,14 @@ function proofTabWithText(text: string) {
 }
 
 function proofWindowWithTabText(text: string) {
-  const windowElement = proofTabWithText(text).closest<HTMLElement>('[data-proof-window-id]')
+  const windowElement = proofTabWithText(text).closest<HTMLElement>('[data-workbench-window-id]')
   if (!windowElement) throw new Error(`Missing proof window for tab ${text}`)
 
   return windowElement
 }
 
 function windowDragHandleIn(windowElement: HTMLElement) {
-  const handle = windowElement.querySelector<HTMLElement>('[data-proof-window-drag-handle]')
+  const handle = windowElement.querySelector<HTMLElement>('[data-workbench-window-drag-handle]')
   if (!handle) throw new Error('Missing proof window drag handle')
 
   return handle
@@ -328,7 +328,7 @@ function collapsedProofWindow() {
 }
 
 function queryCollapsedProofWindow() {
-  return document.querySelector<HTMLElement>('[data-proof-window-collapsed="true"]')
+  return document.querySelector<HTMLElement>('[data-workbench-window-collapsed="true"]')
 }
 
 function expectWindowRightOfTab(windowText: string, leftTabText: string) {
