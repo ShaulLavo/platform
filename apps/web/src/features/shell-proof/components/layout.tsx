@@ -6,14 +6,14 @@ import { SurfaceArea } from '@/features/shell-proof/components/surface-area'
 import { Toolbar } from '@/features/shell-proof/components/toolbar'
 import { ProofEventLog } from '@/features/tiling-proof/components/event-log'
 import { IDLE_PROOF_INTERACTION_CONTROLLER } from '@/features/tiling-proof/components/interaction-surface'
-import { layoutOperationLabel } from '@/features/tiling-proof/utils/event-labels'
+import { layoutOperationLabel, windowModesLabel } from '@/features/tiling-proof/utils/event-labels'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
 import { useTilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import { selectWorkbenchRailSurfaceItems } from '@workspace/tiling/utils/rail-model'
 import type { LayoutOperation, WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 
-const EVENT_LOG_LIMIT = 8
+const EVENT_LOG_LIMIT = 16
 
 export function ShellProofLayout({ seedLayout }: { readonly seedLayout: WorkspaceLayout }) {
   const interactionControllerRef = useRef(IDLE_PROOF_INTERACTION_CONTROLLER)
@@ -36,6 +36,7 @@ export function ShellProofLayout({ seedLayout }: { readonly seedLayout: Workspac
 
     logEvent(layoutOperationLabel(layoutStore.getState().layout, operation))
     dispatchLayoutOperation(operation)
+    logStateAfterDispatch(operation)
   }
 
   function dispatchCurrentLayoutOperationAfterInteraction(
@@ -51,6 +52,15 @@ export function ShellProofLayout({ seedLayout }: { readonly seedLayout: Workspac
 
     logEvent(layoutOperationLabel(layout, operation))
     dispatchLayoutOperation(operation)
+    logStateAfterDispatch(operation)
+  }
+
+  // Resize floods the log with identical state lines; every other operation
+  // logs the resulting window arrangement so layout bugs are visible.
+  function logStateAfterDispatch(operation: LayoutOperation) {
+    if (operation.type === 'resizeSplit') return
+
+    logEvent(`state: ${windowModesLabel(layoutStore.getState().layout)}`)
   }
 
   function resetLayoutAfterInteraction() {

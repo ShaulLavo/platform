@@ -36,29 +36,26 @@ test('toggles rail tools through the shell proof route', () => {
   expect(proofWindowCount()).toBe(3)
 })
 
-test('uses tool pane header for collapsed shell proof tools', () => {
+test('renders collapsed shell proof tools with the unified tab strip', () => {
   renderShellProofRoute()
 
   const rail = shellProofRail()
   fireEvent.click(railButton(rail, 'Restore Chat'))
-  expect(document.querySelector('button[aria-label="Collapse Chat to rail"]')).toBeNull()
-  expect(document.querySelector('button[aria-label="Collapse Chat to row"]')).toBeNull()
-  clickButtonByLabel('Collapse Chat')
+  clickButtonByLabel('Collapse Chat to rail')
 
-  const collapsedHeader = toolPaneHeader()
-  expect(collapsedHeader).toHaveAttribute('data-workbench-tool-pane-header-collapsed', 'true')
-  expect(collapsedHeader).toHaveTextContent('Chat')
+  const collapsed = collapsedProofWindow()
+  expect(collapsed).toHaveTextContent('Chat')
   expect(railButton(rail, 'Close Chat')).toHaveAttribute('data-rail-state', 'collapsed')
 
-  clickButtonByLabel('Expand Chat', collapsedHeader)
+  clickButtonByLabel('Expand Chat', collapsed)
 
-  expect(document.querySelector('[data-workbench-tool-pane-header-collapsed="true"]')).toBeNull()
+  expect(document.querySelector('[data-proof-window-collapsed="true"]')).toBeNull()
   expect(railButton(rail, 'Close Chat')).toHaveAttribute('data-rail-state', 'active')
 
-  clickButtonByLabel('Collapse Chat')
-  clickButtonByLabel('Close Chat', toolPaneHeader())
+  clickButtonByLabel('Collapse Chat to row')
+  clickButtonByLabel('Close Chat', collapsedProofWindow())
 
-  expect(document.querySelector('[data-workbench-tool-pane-header-collapsed="true"]')).toBeNull()
+  expect(document.querySelector('[data-proof-window-collapsed="true"]')).toBeNull()
   expect(railButton(rail, 'Open Chat')).toHaveAttribute('data-rail-state', 'pinned')
   expect(proofWindowCount()).toBe(3)
 })
@@ -323,11 +320,11 @@ function fileTitle(path: string) {
   return path.split('/').at(-1) ?? path
 }
 
-function toolPaneHeader() {
-  const header = document.querySelector('[data-workbench-tool-pane-header-collapsed="true"]')
-  if (!(header instanceof HTMLElement)) throw new Error('Expected collapsed tool pane header')
+function collapsedProofWindow() {
+  const window = document.querySelector('[data-proof-window-collapsed="true"]')
+  if (!(window instanceof HTMLElement)) throw new Error('Expected collapsed proof window')
 
-  return header
+  return window
 }
 
 function clickButtonByLabel(label: string, root: ParentNode = document) {

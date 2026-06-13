@@ -792,7 +792,17 @@ function restoredWindow(
   return {
     ...window,
     collapsedEdge,
+    collapsedRestore: restoredCollapsedRestore(value.collapsedRestore),
   }
+}
+
+function restoredCollapsedRestore(value: unknown): WorkbenchWindow['collapsedRestore'] {
+  if (!isRecord(value)) return undefined
+  if (!isLayoutEdge(value.edge)) return undefined
+  if (!isString(value.windowId)) return undefined
+  if (typeof value.share !== 'number' || !Number.isFinite(value.share)) return undefined
+
+  return { edge: value.edge, share: value.share, windowId: value.windowId as WindowId }
 }
 
 function restoredWindowMode(value: unknown): WorkbenchWindow['mode'] {

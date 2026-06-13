@@ -1,5 +1,6 @@
 import { normalizeWorkspaceLayout } from '@workspace/tiling/utils/layout-normalize'
 import type {
+  CollapsedWindowRestore,
   LayoutEdge,
   WindowId,
   WorkbenchWindow,
@@ -23,6 +24,7 @@ export function layoutWithWindowMode(
   windowId: WindowId,
   mode: WorkbenchWindow['mode'],
   collapsedEdge?: LayoutEdge,
+  collapsedRestore?: CollapsedWindowRestore,
 ): WorkspaceLayout {
   const window = layout.windowsById[windowId]
   if (!window) return layout
@@ -31,7 +33,7 @@ export function layoutWithWindowMode(
     ...layout,
     windowsById: {
       ...layout.windowsById,
-      [windowId]: windowWithMode(window, mode, collapsedEdge),
+      [windowId]: windowWithMode(window, mode, collapsedEdge, collapsedRestore),
     },
   }
 }
@@ -40,11 +42,13 @@ function windowWithMode(
   window: WorkbenchWindow,
   mode: WorkbenchWindow['mode'],
   collapsedEdge: LayoutEdge | undefined,
+  collapsedRestore: CollapsedWindowRestore | undefined,
 ): WorkbenchWindow {
   if (mode === 'collapsed') {
     return {
       ...window,
       collapsedEdge,
+      collapsedRestore,
       mode,
     }
   }

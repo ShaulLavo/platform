@@ -1,4 +1,5 @@
 import type {
+  LayoutNodeId,
   LayoutPolicyId,
   LayoutPolicyState,
   Surface,
@@ -79,6 +80,15 @@ export function hasValidTransientOwner(
   if (!surface.ownerContextKey) return false
 
   return Boolean(surfacesById[surface.ownerSurfaceId])
+}
+
+// Collapsed strips occupy fixed pixels, not split ratio, so ratio reads over
+// a split must skip them to recover the shares of the real panes.
+export function nodeIsCollapsedWindow(layout: WorkspaceLayout, nodeId: LayoutNodeId) {
+  const node = layout.nodesById[nodeId]
+  if (node?.kind !== 'window') return false
+
+  return layout.windowsById[node.windowId]?.mode === 'collapsed'
 }
 
 export function windowCanCollapse(layout: WorkspaceLayout, window: WorkbenchWindow) {

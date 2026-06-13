@@ -5,10 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { ProofDragOverlay } from '@/features/tiling-proof/components/drag-overlay'
 import { ProofPreviewWindow } from '@/features/tiling-proof/components/preview-window'
 import { ProofSnapDestination } from '@/features/tiling-proof/components/snap-destination'
-import {
-  ProofWindow,
-  type ProofCollapsedWindowHeaderInput,
-} from '@/features/tiling-proof/components/window'
+import { ProofWindow } from '@/features/tiling-proof/components/window'
 import {
   collapseEdgeForTarget,
   type ProofCollapseTarget,
@@ -67,9 +64,7 @@ export function ProofInteractionSurface({
   dropZonesVisible,
   interactionControllerRef,
   layout,
-  renderCollapsedHeader,
   renderSurfaceBody,
-  singleCollapseTarget,
   surfaceBackdrop,
   surfaceClassName,
   surfaceDataAttributes,
@@ -89,9 +84,7 @@ export function ProofInteractionSurface({
   readonly dropZonesVisible: boolean
   readonly interactionControllerRef?: ProofInteractionControllerRef
   readonly layout: WorkspaceLayout
-  readonly renderCollapsedHeader?: (input: ProofCollapsedWindowHeaderInput) => ReactNode
   readonly renderSurfaceBody?: (surface: Surface | null, window: WorkbenchWindow) => ReactNode
-  readonly singleCollapseTarget?: ProofCollapseTarget
   readonly surfaceBackdrop?: ReactNode
   readonly surfaceClassName: string
   readonly surfaceDataAttributes?: SurfaceDataAttributes
@@ -147,7 +140,6 @@ export function ProofInteractionSurface({
   const previewOnlyWindowIds = previewLayout
     ? visibleWindowIdsInOrder(previewLayout).filter((windowId) => !layout.windowsById[windowId])
     : []
-  const collapseControls = singleCollapseTarget ? 'single' : 'dual'
 
   // No deps array on purpose: the controller functions are recreated by the
   // drag hook every render, so the ref must republish the latest closures.
@@ -173,10 +165,6 @@ export function ProofInteractionSurface({
       type: 'collapseWindow',
       windowId,
     })
-  }
-
-  function collapseWindow(windowId: WorkbenchWindow['id']) {
-    collapseWindowToTarget(windowId, singleCollapseTarget ?? 'rail')
   }
 
   function collapseWindowToRail(windowId: WorkbenchWindow['id']) {
@@ -224,7 +212,6 @@ export function ProofInteractionSurface({
             <ProofWindow
               activeDrag={activeDrag}
               addTabVisible={addTabVisible}
-              collapseControls={collapseControls}
               dropZonesVisible={dropZonesVisible}
               insertionPreview={insertionPreview}
               insertionPreviewLayout={snapLayout}
@@ -232,7 +219,6 @@ export function ProofInteractionSurface({
               layout={renderLayout}
               optimisticTabSorting={optimisticTabSorting}
               rect={windowRect.rect}
-              renderCollapsedHeader={renderCollapsedHeader}
               renderSurfaceBody={renderSurfaceBody}
               resizingWindows={resizingWindows}
               tabActionsVisible={tabActionsVisible(renderLayout, window)}
@@ -240,7 +226,6 @@ export function ProofInteractionSurface({
               window={window}
               windowActionsVisible={windowActionsVisible}
               onAddTab={onAddTab}
-              onCollapseWindow={collapseWindow}
               onCollapseWindowToRail={collapseWindowToRail}
               onCollapseWindowToRow={collapseWindowToRow}
               onCloseSurface={onCloseSurface}

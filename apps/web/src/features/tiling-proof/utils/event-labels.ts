@@ -1,6 +1,8 @@
 import { windowTitle } from '@workspace/tiling/utils/layout-queries'
+import { visibleWindowIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
 import type { TilingCommitEvent } from '@workspace/tiling/hooks/use-tiling-drag-controller'
 import type {
+  LayoutEdge,
   LayoutOperation,
   SnapDestination,
   WorkspaceLayout,
@@ -32,7 +34,9 @@ export function commitEventLabel(layout: WorkspaceLayout, event: TilingCommitEve
 
 export function layoutOperationLabel(layout: WorkspaceLayout, operation: LayoutOperation): string {
   if (operation.type === 'collapseWindow') {
-    return `collapsed window: ${windowTitle(layout, operation.windowId)}`
+    const title = windowTitle(layout, operation.windowId)
+
+    return `collapsed window: ${title} -> ${collapseDirectionLabel(operation.edge)}`
   }
   if (operation.type === 'expandWindow') {
     return `expanded window: ${windowTitle(layout, operation.windowId)}`
@@ -40,6 +44,27 @@ export function layoutOperationLabel(layout: WorkspaceLayout, operation: LayoutO
   if (operation.type === 'resizeSplit') return `resized split: ${operation.splitId}`
 
   return `operation: ${operation.type}`
+}
+
+function collapseDirectionLabel(edge: LayoutEdge | undefined): string {
+  if (!edge) return 'in place'
+  if (edge === 'top' || edge === 'bottom') return `row ${edge}`
+
+  return `rail ${edge}`
+}
+
+// One-line layout state in reading order, e.g.
+// "Files=normal · app.tsx=rail right · Terminal=row bottom".
+export function windowModesLabel(layout: WorkspaceLayout): string {
+  const parts = visibleWindowIdsInOrder(layout).map((windowId) => {
+    const window = layout.windowsById[windowId]
+    const title = windowTitle(layout, windowId)
+    if (window?.mode !== 'collapsed') return `${title}=${window?.mode ?? 'missing'}`
+
+    return `${title}=${collapseDirectionLabel(window.collapsedEdge)}`
+  })
+
+  return parts.join(' · ')
 }
 
 function tabCommitLabel(layout: WorkspaceLayout, target: TilingCommitEvent['target']) {

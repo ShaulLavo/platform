@@ -262,6 +262,43 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(expanded)
   })
 
+  it('expands a collapsed free window back beside its pre-collapse neighbor', () => {
+    const file = createFileEditorSurface({ path: '/repo/src/neighbor.ts' })
+    const opened = openSurface(createClassicFirstRunWorkspaceLayout(), file, {
+      placement: { edge: 'right', kind: 'window-edge', windowId: CLASSIC_EDITOR_WINDOW_ID },
+    })
+    const windowId = mustFindWindowId(opened, file.id)
+    const collapsed = collapseWindow(opened, windowId, 'bottom')
+    const expanded = expandWindow(collapsed, windowId)
+
+    expect(collapsed.windowsById[windowId]?.mode).toBe('collapsed')
+    expect(collapsed.windowsById[windowId]?.collapsedEdge).toBe('bottom')
+    expect(visibleWindowIdsInOrder(expanded)).toEqual(visibleWindowIdsInOrder(opened))
+    expectValidLayout(collapsed)
+    expectValidLayout(expanded)
+  })
+
+  it('restores a multi-collapsed layout regardless of expand order', () => {
+    const layout = createClassicFirstRunWorkspaceLayout()
+    const baselineOrder = visibleWindowIdsInOrder(layout)
+    const oneCollapsed = collapseWindow(layout, CLASSIC_EDITOR_WINDOW_ID, 'right')
+    const bothCollapsed = collapseWindow(oneCollapsed, CLASSIC_DIAGNOSTICS_WINDOW_ID, 'left')
+
+    const editorFirst = expandWindow(
+      expandWindow(bothCollapsed, CLASSIC_EDITOR_WINDOW_ID),
+      CLASSIC_DIAGNOSTICS_WINDOW_ID,
+    )
+    const dockFirst = expandWindow(
+      expandWindow(bothCollapsed, CLASSIC_DIAGNOSTICS_WINDOW_ID),
+      CLASSIC_EDITOR_WINDOW_ID,
+    )
+
+    expect(visibleWindowIdsInOrder(editorFirst)).toEqual(baselineOrder)
+    expect(visibleWindowIdsInOrder(dockFirst)).toEqual(baselineOrder)
+    expectValidLayout(editorFirst)
+    expectValidLayout(dockFirst)
+  })
+
   it('stores explicit collapsed edges and clears them on expand', () => {
     const file = createFileEditorSurface({ path: '/repo/src/collapsible-edge.ts' })
     const opened = openSurface(emptyLayout(), file)
@@ -279,34 +316,61 @@ describe('tiling surface layout operations', () => {
     expectValidLayout(expanded)
   })
 
-  it('keeps explicit left tool-pane collapse inside the packed recipe order', () => {
+  it('keeps a collapsed row horizontal when a sibling row collapses to a rail', () => {
+    // Editor + diagnostics collapsed as top/bottom rows, file navigator as a
+    // left rail: two horizontal rows and one vertical rail.
+    const layout = createClassicFirstRunWorkspaceLayout({
+      editorFile: { path: '/repo/src/app.tsx' },
+    })
+    const diagBottom = collapseWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID, 'bottom')
+    const editorTop = collapseWindow(diagBottom, CLASSIC_EDITOR_WINDOW_ID, 'top')
+    const filesRail = collapseWindow(editorTop, CLASSIC_FILE_NAVIGATOR_WINDOW_ID, 'left')
+
+    expect(windowStripOrientation(filesRail, CLASSIC_EDITOR_WINDOW_ID)).toBe('horizontal')
+    expect(windowStripOrientation(filesRail, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBe('horizontal')
+    expect(windowStripOrientation(filesRail, CLASSIC_FILE_NAVIGATOR_WINDOW_ID)).toBe('vertical')
+
+    // Collapse the editor row to a rail. Only the editor should turn vertical;
+    // the untouched diagnostics row must stay a horizontal strip.
+    const editorRail = collapseWindow(filesRail, CLASSIC_EDITOR_WINDOW_ID, 'right')
+
+    expect(editorRail.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.collapsedEdge).toBe('bottom')
+    expect(windowStripOrientation(editorRail, CLASSIC_EDITOR_WINDOW_ID)).toBe('vertical')
+    expect(windowStripOrientation(editorRail, CLASSIC_DIAGNOSTICS_WINDOW_ID)).toBe('horizontal')
+    expect(windowStripOrientation(editorRail, CLASSIC_FILE_NAVIGATOR_WINDOW_ID)).toBe('vertical')
+    expectValidLayout(editorRail)
+  })
+
+  it('collapses a packed tool pane to the requested root edge and repacks it on expand', () => {
     const search = createSearchResultsSurface()
     const chat = createChatSurface()
     const withSearch = openSurface(createClassicFirstRunWorkspaceLayout(), search)
     const opened = openSurface(withSearch, chat)
     const searchWindowId = mustFindWindowId(opened, search.id)
     const chatWindowId = mustFindWindowId(opened, chat.id)
-    const collapsed = collapseWindow(opened, chatWindowId, 'left')
+    const collapsed = collapseWindow(opened, chatWindowId, 'right')
     const expanded = expandWindow(collapsed, chatWindowId)
 
     expect(collapsed.windowsById[chatWindowId]?.mode).toBe('collapsed')
-    expect(collapsed.windowsById[chatWindowId]?.collapsedEdge).toBe('left')
-    expectWindowBefore(collapsed, chatWindowId, searchWindowId)
-    expectWindowBefore(expanded, chatWindowId, searchWindowId)
+    expect(collapsed.windowsById[chatWindowId]?.collapsedEdge).toBe('right')
+    expectWindowBefore(collapsed, searchWindowId, chatWindowId)
+    expect(stickyPlacementSurfaceIds(collapsed)).toEqual(stickyPlacementSurfaceIds(opened))
+    expect(visibleWindowIdsInOrder(expanded)).toEqual(visibleWindowIdsInOrder(opened))
     expectValidLayout(collapsed)
     expectValidLayout(expanded)
   })
 
-  it('collapses the bottom pane in place without disturbing splits or sticky placements', () => {
+  it('collapses the bottom pane to the requested root edge and restores it on expand', () => {
     const layout = createClassicFirstRunWorkspaceLayout()
     const collapsed = collapseWindow(layout, CLASSIC_DIAGNOSTICS_WINDOW_ID, 'left')
     const expanded = expandWindow(collapsed, CLASSIC_DIAGNOSTICS_WINDOW_ID)
 
     expect(collapsed.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.mode).toBe('collapsed')
+    expect(collapsed.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.collapsedEdge).toBe('left')
+    expectWindowBefore(collapsed, CLASSIC_DIAGNOSTICS_WINDOW_ID, CLASSIC_EDITOR_WINDOW_ID)
     expect(expanded.windowsById[CLASSIC_DIAGNOSTICS_WINDOW_ID]?.mode).toBe('normal')
-    expect(rootSplitSizes(collapsed)).toEqual(rootSplitSizes(layout))
-    expect(rootSplitSizes(expanded)).toEqual(rootSplitSizes(layout))
     expect(stickyPlacementSurfaceIds(collapsed)).toEqual(stickyPlacementSurfaceIds(layout))
+    expect(visibleWindowIdsInOrder(expanded)).toEqual(visibleWindowIdsInOrder(layout))
     expectValidLayout(collapsed)
     expectValidLayout(expanded)
   })
@@ -1799,6 +1863,16 @@ function surfaceHeight(layout: WorkspaceLayout, surfaceId: SurfaceId) {
   return rect.height
 }
 
+// A collapsed window renders as a strip; a wide-short rect is a horizontal
+// row, a narrow-tall rect is a vertical rail.
+function windowStripOrientation(layout: WorkspaceLayout, windowId: WindowId) {
+  const geometry = deriveLayoutGeometry(layout, { height: 1000, width: 1000, x: 0, y: 0 })
+  const rect = geometry.windowRectsById[windowId]?.rect
+  if (!rect) throw createTilingInvariantError(`Expected rect for ${windowId}`)
+
+  return rect.width >= rect.height ? 'horizontal' : 'vertical'
+}
+
 function layoutWithoutBottomSurfaces(layout: WorkspaceLayout) {
   const diagnostics = createDiagnosticsSurface()
   const terminal = createTerminalSurface({ sessionId: 'terminal-1' })
@@ -1846,13 +1920,6 @@ function expectWindowBefore(
   expect(beforeIndex).toBeGreaterThanOrEqual(0)
   expect(afterIndex).toBeGreaterThanOrEqual(0)
   expect(beforeIndex).toBeLessThan(afterIndex)
-}
-
-function rootSplitSizes(layout: WorkspaceLayout) {
-  const root = layout.rootNodeId ? layout.nodesById[layout.rootNodeId] : null
-  if (root?.kind !== 'split') return null
-
-  return root.sizes
 }
 
 function stickyPlacementSurfaceIds(layout: WorkspaceLayout) {

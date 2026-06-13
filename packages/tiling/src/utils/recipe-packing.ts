@@ -9,6 +9,7 @@ import {
 import { balancedSizes } from '@workspace/tiling/utils/geometry-primitives'
 import { layoutNodeId, workbenchWindowId } from '@workspace/tiling/utils/layout-ids'
 import {
+  nodeIsCollapsedWindow,
   recipeSlotForSurface,
   recipeSlotForWindow,
   stickyPlacementForSurface,
@@ -107,7 +108,17 @@ export function placementCanRestoreSurface(
   }
 }
 
-export function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): WorkspaceLayout {
+export type RecipeNormalizeOptions = {
+  // Windows whose current footprint says nothing about pane sizing — e.g. a
+  // window expanding out of a collapsed strip still sits at the strip
+  // position. Packing falls back to the recorded shares for them.
+  readonly footprintIgnoredWindowIds?: ReadonlySet<WindowId>
+}
+
+export function normalizeToolPaneRecipeLayout(
+  layout: WorkspaceLayout,
+  options: RecipeNormalizeOptions = {},
+): WorkspaceLayout {
   const layoutWithMainPlaceholder = layoutWithEmptyMainPlaceholder(layout)
   const context = recipeLayoutContext(layoutWithMainPlaceholder)
   // Arrival order and the previous pane footprint come from the pre-placeholder
@@ -119,12 +130,14 @@ export function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): Workspac
   const bottomWindowId = visibleRecipeBottomWindowId(layoutWithMainPlaceholder, context)
   if (toolWindowIds.length === 0 && !bottomWindowId) return layout
 
-  const toolPaneSummary = windowColumnSummary(layout, toolWindowIds)
+  const bandWindowIds = collapsedBandWindowIds(layoutWithMainPlaceholder, context)
   const tree = recipePackedTree(
     layoutWithMainPlaceholder,
     toolWindowIds,
     bottomWindowId,
-    toolPaneSummary,
+    recipeToolPaneSummary(layout, toolWindowIds, bandWindowIds, options),
+    bandWindowIds,
+    options,
   )
   if (!tree) return layout
 
@@ -133,6 +146,32 @@ export function normalizeToolPaneRecipeLayout(layout: WorkspaceLayout): Workspac
     nodesById: tree.nodesById,
     rootNodeId: tree.nodeId,
   })
+}
+
+// Snapshot the live pane shares before a collapse creates the first band.
+// Band-state packs read these recorded shares instead of the degenerate
+// footprints, so every pane returns at its pre-collapse size.
+export function recordRecipePaneShares(layout: WorkspaceLayout): WorkspaceLayout {
+  const context = recipeLayoutContext(layout)
+  if (collapsedBandWindowIds(layout, context).length > 0) return layout
+
+  const toolWindowIds = windowIdsInReadingOrder(layout, managedLeftToolWindowIds(layout, context))
+  const bottomWindowId = visibleRecipeBottomWindowId(layout, context)
+  const summary = windowColumnSummary(layout, toolWindowIds)
+  const leftToolPane =
+    summary && summary.rightEdge < FULL_BLEED_TOOL_PANE_EDGE
+      ? {
+          columnCount: Math.max(1, summary.columnCount),
+          share: clampToolPaneShare(summary.rightEdge),
+        }
+      : layout.leftToolPane
+  const bottomShare = currentBottomDockShare(layout, bottomWindowId)
+
+  return {
+    ...layout,
+    bottomPaneShare: bottomShare ?? layout.bottomPaneShare,
+    leftToolPane,
+  }
 }
 
 // Pane sizes are user intent, recorded only when a resize drag touches a
@@ -415,6 +454,9 @@ function appendManagedLeftToolWindowId(
   const windowId = context.visibleWindowIdBySurfaceId.get(surface.id)
   if (!windowId) return
   if (seen.has(windowId)) return
+  // Collapsed windows live at the root edge the user collapsed them to; the
+  // packer leaves them there and re-manages the window on expand.
+  if (layout.windowsById[windowId]?.mode === 'collapsed') return
   if (windowHasEarlierManualPlacementDependent(layout, windowId, type, context)) return
 
   seen.add(windowId)
@@ -491,14 +533,37 @@ function recipeLeftToolSurfaceTypeIndex(type: SurfaceType) {
   )
 }
 
+// While collapsed bands exist, the live footprints are degenerate (panes
+// balloon into the space the strips vacated), so packing falls back to the
+// shares recorded before the first collapse. A window that just expanded
+// out of a strip still occupies the strip's split slot, which skews every
+// rect in the tree — so its presence makes the whole footprint unreliable.
+function recipeToolPaneSummary(
+  layout: WorkspaceLayout,
+  toolWindowIds: readonly WindowId[],
+  bandWindowIds: readonly WindowId[],
+  options: RecipeNormalizeOptions,
+) {
+  if (bandWindowIds.length > 0) return null
+  if (footprintsUnreliable(options)) return null
+
+  return windowColumnSummary(layout, toolWindowIds)
+}
+
+function footprintsUnreliable(options: RecipeNormalizeOptions) {
+  return Boolean(options.footprintIgnoredWindowIds && options.footprintIgnoredWindowIds.size > 0)
+}
+
 function recipePackedTree(
   layout: WorkspaceLayout,
   toolWindowIds: readonly WindowId[],
   bottomWindowId: WindowId | null,
   toolPaneSummary: WindowColumnSummary | null,
+  bandWindowIds: readonly WindowId[],
+  options: RecipeNormalizeOptions,
 ) {
   const bottomWindowIds = bottomWindowId ? [bottomWindowId] : []
-  const excludedWindowIds = new Set([...toolWindowIds, ...bottomWindowIds])
+  const excludedWindowIds = new Set([...toolWindowIds, ...bottomWindowIds, ...bandWindowIds])
   const compactMainTree = compactTreeWithoutWindows(layout, excludedWindowIds)
   const allocator = createRecipeNodeAllocator(recipeTreeNodeIds(compactMainTree))
   const leftTree = balancedWindowTree(allocator, toolWindowIds, 'recipe:left-tool-pane')
@@ -506,9 +571,15 @@ function recipePackedTree(
   const bottomTree = bottomWindowId
     ? windowTree(bottomWindowId, allocator.nodeId('recipe:bottom'))
     : null
-  const mainPanelTree = recipeMainPanelTree(layout, mainTree, bottomTree, allocator, bottomWindowId)
-
-  return recipeContentTree(
+  const mainPanelTree = recipeMainPanelTree(
+    layout,
+    mainTree,
+    bottomTree,
+    allocator,
+    bottomWindowId,
+    options,
+  )
+  const contentTree = recipeContentTree(
     layout,
     leftTree,
     mainPanelTree,
@@ -516,6 +587,53 @@ function recipePackedTree(
     toolWindowIds,
     toolPaneSummary,
   )
+
+  return wrapCollapsedBands(layout, contentTree, bandWindowIds, allocator)
+}
+
+// Collapsed windows render as strips at their collapse edge. Rebuilding the
+// recipe tree around them would drag the strip back into the main panel (a
+// right rail would end up stacked above the bottom dock), so the packer
+// keeps them out of the rebuild and wraps them around the packed content.
+function collapsedBandWindowIds(layout: WorkspaceLayout, context: RecipeLayoutContext) {
+  const bandWindowIds = context.visibleWindowIds.filter((windowId) => {
+    const window = layout.windowsById[windowId]
+    if (window?.mode !== 'collapsed') return false
+
+    return Boolean(window.collapsedEdge)
+  })
+
+  return windowIdsInReadingOrder(layout, bandWindowIds)
+}
+
+function wrapCollapsedBands(
+  layout: WorkspaceLayout,
+  contentTree: RecipeTree | null,
+  bandWindowIds: readonly WindowId[],
+  allocator: RecipeNodeAllocator,
+) {
+  let wrapped = contentTree
+
+  for (const windowId of bandWindowIds) {
+    const band = windowTree(windowId, allocator.nodeId(`recipe:band:${windowId}`))
+    if (!wrapped) {
+      wrapped = band
+      continue
+    }
+
+    const edge = layout.windowsById[windowId]?.collapsedEdge
+    if (!edge) continue
+
+    const leading = edge === 'left' || edge === 'top'
+    wrapped = splitTree({
+      axis: edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical',
+      id: allocator.nodeId(`recipe:band-split:${windowId}`),
+      sizes: balancedSizes(2),
+      trees: leading ? [band, wrapped] : [wrapped, band],
+    })
+  }
+
+  return wrapped
 }
 
 function createRecipeNodeAllocator(usedNodeIdsInput: readonly LayoutNodeId[]): RecipeNodeAllocator {
@@ -555,6 +673,8 @@ function windowHoldsManagedBottomSurface(
 ) {
   const window = layout.windowsById[windowId]
   if (!window) return false
+  // Collapsed docks stay at their collapse edge until expanded.
+  if (window.mode === 'collapsed') return false
 
   for (const surfaceId of window.surfaceIds) {
     const surface = layout.surfacesById[surfaceId]
@@ -823,6 +943,7 @@ function recipeMainPanelTree(
   bottomTree: RecipeTree | null,
   allocator: RecipeNodeAllocator,
   bottomWindowId: WindowId | null,
+  options: RecipeNormalizeOptions,
 ) {
   if (!mainTree) return bottomTree
   if (!bottomTree) return mainTree
@@ -830,23 +951,29 @@ function recipeMainPanelTree(
   return splitTree({
     axis: 'vertical',
     id: allocator.nodeId('recipe:main-panel'),
-    sizes: recipeMainPanelSplitSizes(layout, bottomWindowId),
+    sizes: recipeMainPanelSplitSizes(layout, bottomWindowId, options),
     trees: [mainTree, bottomTree],
   })
 }
 
-function recipeMainPanelSplitSizes(layout: WorkspaceLayout, bottomWindowId: WindowId | null) {
-  const share =
-    currentBottomDockShare(layout, bottomWindowId) ??
-    layout.bottomPaneShare ??
-    DEFAULT_BOTTOM_PANE_SHARE
+function recipeMainPanelSplitSizes(
+  layout: WorkspaceLayout,
+  bottomWindowId: WindowId | null,
+  options: RecipeNormalizeOptions,
+) {
+  const footprintShare = footprintsUnreliable(options)
+    ? null
+    : currentBottomDockShare(layout, bottomWindowId)
+  const share = footprintShare ?? layout.bottomPaneShare ?? DEFAULT_BOTTOM_PANE_SHARE
 
   return [1 - share, share]
 }
 
 // The dock's current footprint is its size at its own index in the enclosing
 // vertical split. Same-axis flattening can spread siblings into that split,
-// so never assume it is a two-child [main, bottom] pair.
+// so never assume it is a two-child [main, bottom] pair. Collapsed strips in
+// the split hold fixed pixels, not ratio, so the share renormalizes over the
+// real panes — otherwise a flattened band ratio shrinks the dock every pack.
 function currentBottomDockShare(layout: WorkspaceLayout, bottomWindowId: WindowId | null) {
   const bottomNodeId = bottomWindowId ? findNodeIdForWindow(layout, bottomWindowId) : null
   const parentNodeId = bottomNodeId ? findParentNodeId(layout, bottomNodeId) : null
@@ -854,8 +981,17 @@ function currentBottomDockShare(layout: WorkspaceLayout, bottomWindowId: WindowI
   if (!bottomNodeId || parentNode?.kind !== 'split' || parentNode.axis !== 'vertical') return null
 
   const sizes = repairSplitSizes(parentNode.sizes, parentNode.childIds.length)
+  const dockSize = sizes[parentNode.childIds.indexOf(bottomNodeId)]
+  if (dockSize === undefined) return null
 
-  return sizes[parentNode.childIds.indexOf(bottomNodeId)] ?? null
+  const flexibleTotal = parentNode.childIds.reduce((sum, childId, index) => {
+    if (nodeIsCollapsedWindow(layout, childId)) return sum
+
+    return sum + (sizes[index] ?? 0)
+  }, 0)
+  if (flexibleTotal <= 0) return null
+
+  return dockSize / flexibleTotal
 }
 
 function splitTree({

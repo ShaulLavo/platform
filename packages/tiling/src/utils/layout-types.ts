@@ -106,9 +106,19 @@ export type Surface = {
 
 export type WorkbenchWindowMode = 'collapsed' | 'fullscreen' | 'maximized' | 'normal'
 
+// Where an expanded window re-inserts after a collapse moved it to a root
+// edge: beside the sibling window it sat next to before collapsing, at the
+// share of the split it held back then.
+export type CollapsedWindowRestore = {
+  readonly edge: LayoutEdge
+  readonly share: number
+  readonly windowId: WindowId
+}
+
 export type WorkbenchWindow = {
   readonly activeSurfaceId: SurfaceId
   readonly collapsedEdge?: LayoutEdge
+  readonly collapsedRestore?: CollapsedWindowRestore
   readonly id: WindowId
   readonly mode: WorkbenchWindowMode
   readonly pinnedSurfaceIds: readonly SurfaceId[]

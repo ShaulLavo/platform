@@ -1,5 +1,11 @@
 import { useDraggable, useDroppable } from '@dnd-kit/react'
-import { DotsSixVerticalIcon, MinusIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
+import {
+  ArrowsOutSimpleIcon,
+  DotsSixVerticalIcon,
+  MinusIcon,
+  PlusIcon,
+  XIcon,
+} from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
 import { ProofTabStrip } from '@/features/tiling-proof/components/tab-strip'
@@ -24,22 +30,9 @@ import { layoutRectStyle } from '@/features/workbench/utils/layout-style'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
-export type ProofCollapsedWindowHeaderInput = {
-  readonly activeSurface: Surface | null
-  readonly chromeOrientation: 'horizontal' | 'vertical'
-  readonly dragHandleRef: (element: HTMLElement | null) => void
-  readonly title: string
-  readonly window: WorkbenchWindow
-  readonly onClose: () => void
-  readonly onExpand: () => void
-}
-
-type ProofWindowCollapseControls = 'dual' | 'single'
-
 export function ProofWindow({
   activeDrag,
   addTabVisible = true,
-  collapseControls = 'dual',
   dropZonesVisible,
   insertionPreview,
   insertionPreviewLayout,
@@ -47,14 +40,12 @@ export function ProofWindow({
   optimisticTabSorting,
   rect,
   resizingWindows,
-  renderCollapsedHeader,
   renderSurfaceBody,
   tabActionsVisible = true,
   tabStripRenderEpoch,
   window,
   windowActionsVisible = true,
   onAddTab,
-  onCollapseWindow,
   onCollapseWindowToRail,
   onCollapseWindowToRow,
   onCloseSurface,
@@ -64,7 +55,6 @@ export function ProofWindow({
 }: {
   readonly activeDrag: TilingDragData | null
   readonly addTabVisible?: boolean
-  readonly collapseControls?: ProofWindowCollapseControls
   readonly dropZonesVisible: boolean
   readonly insertionPreview: TilingInsertionPreview | null
   readonly insertionPreviewLayout: WorkspaceLayout
@@ -72,14 +62,12 @@ export function ProofWindow({
   readonly optimisticTabSorting: boolean
   readonly rect: LayoutRect
   readonly resizingWindows: boolean
-  readonly renderCollapsedHeader?: (input: ProofCollapsedWindowHeaderInput) => ReactNode
   readonly renderSurfaceBody?: (surface: Surface | null, window: WorkbenchWindow) => ReactNode
   readonly tabActionsVisible?: boolean
   readonly tabStripRenderEpoch: number
   readonly window: WorkbenchWindow
   readonly windowActionsVisible?: boolean
   readonly onAddTab: (windowId: WorkbenchWindow['id']) => void
-  readonly onCollapseWindow?: (windowId: WorkbenchWindow['id']) => void
   readonly onCollapseWindowToRail: (windowId: WorkbenchWindow['id']) => void
   readonly onCollapseWindowToRow: (windowId: WorkbenchWindow['id']) => void
   readonly onCloseSurface: (surfaceId: SurfaceId) => void
@@ -123,24 +111,12 @@ export function ProofWindow({
   const collapseToRailLabel = `Collapse ${activeTitle} to rail`
   const collapseToRowLabel = `Collapse ${activeTitle} to row`
   const expandLabel = `Expand ${activeTitle}`
-  const collapseLabel = collapsed ? expandLabel : `Collapse ${activeTitle}`
   const chromeOrientation = collapsedChromeOrientation(collapsed, rect)
   const rowButtonActive = collapsed && collapsedWindowLooksLikeRow(window, chromeOrientation)
   const railButtonActive = collapsed && collapsedWindowLooksLikeRail(window, chromeOrientation)
   const rowButtonLabel = rowButtonActive ? expandLabel : collapseToRowLabel
   const railButtonLabel = railButtonActive ? expandLabel : collapseToRailLabel
   const headerActionsVisible = addTabVisible || windowActionsVisible
-  const collapsedHeader = collapsed
-    ? renderCollapsedHeader?.({
-        activeSurface,
-        chromeOrientation,
-        dragHandleRef: handleRef,
-        title: activeTitle,
-        window,
-        onClose: () => onCloseWindow(window.id),
-        onExpand: () => onExpandWindow(window.id),
-      })
-    : null
 
   function handleRowButtonClick() {
     if (rowButtonActive) {
@@ -158,16 +134,6 @@ export function ProofWindow({
     }
 
     onCollapseWindowToRail(window.id)
-  }
-
-  function handleCollapseButtonClick() {
-    if (collapsed) {
-      onExpandWindow(window.id)
-      return
-    }
-
-    const collapseWindow = onCollapseWindow ?? onCollapseWindowToRail
-    collapseWindow(window.id)
   }
 
   return (
@@ -199,123 +165,111 @@ export function ProofWindow({
       role='region'
       style={layoutRectStyle(rect)}
     >
-      {collapsedHeader ?? (
-        <header
+      <header
+        className={cn(
+          'border-border flex shrink-0 cursor-grab active:cursor-grabbing',
+          chromeOrientation === 'vertical'
+            ? 'h-full w-full flex-col items-center gap-1 border-r px-1 py-1'
+            : 'h-10 items-end gap-2 border-b pt-1',
+        )}
+        ref={handleRef}
+      >
+        <div
+          aria-label={`Drag ${title}`}
           className={cn(
-            'border-border flex shrink-0 cursor-grab active:cursor-grabbing',
-            chromeOrientation === 'vertical'
-              ? 'h-full w-full flex-col items-center gap-1 border-r px-1 py-1'
-              : 'h-10 items-end gap-2 border-b pt-1',
+            'text-muted-foreground grid shrink-0 place-items-center text-sm',
+            chromeOrientation === 'vertical' ? 'h-7 w-8' : 'mb-1 ml-1 h-8 w-5',
           )}
-          ref={handleRef}
+          data-proof-window-drag-handle=''
+          role='button'
+          tabIndex={0}
         >
+          <DotsSixVerticalIcon className='size-3.5' />
+        </div>
+        <ProofTabStrip
+          activeDrag={activeDrag}
+          actionsVisible={tabActionsVisible}
+          dropZonesVisible={dropZonesVisible}
+          insertionPreview={insertionPreview}
+          insertionPreviewLayout={insertionPreviewLayout}
+          key={`${window.id}:${tabStripRenderEpoch}`}
+          optimisticSorting={optimisticTabSorting}
+          orientation={chromeOrientation}
+          surfaces={surfaces}
+          window={window}
+          onCloseSurface={onCloseSurface}
+          onSelectSurface={onSelectSurface}
+        />
+        {headerActionsVisible ? (
           <div
-            aria-label={`Drag ${title}`}
             className={cn(
-              'text-muted-foreground grid shrink-0 place-items-center text-sm',
-              chromeOrientation === 'vertical' ? 'h-7 w-8' : 'mb-1 ml-1 h-8 w-5',
+              'flex shrink-0 items-center gap-0.5',
+              chromeOrientation === 'vertical' ? 'w-full flex-col px-0 pb-1' : 'h-8 pr-1 pb-1',
             )}
-            data-proof-window-drag-handle=''
-            role='button'
-            tabIndex={0}
           >
-            <DotsSixVerticalIcon className='size-3.5' />
-          </div>
-          <ProofTabStrip
-            activeDrag={activeDrag}
-            actionsVisible={tabActionsVisible}
-            dropZonesVisible={dropZonesVisible}
-            insertionPreview={insertionPreview}
-            insertionPreviewLayout={insertionPreviewLayout}
-            key={`${window.id}:${tabStripRenderEpoch}`}
-            optimisticSorting={optimisticTabSorting}
-            orientation={chromeOrientation}
-            surfaces={surfaces}
-            window={window}
-            onCloseSurface={onCloseSurface}
-            onSelectSurface={onSelectSurface}
-          />
-          {headerActionsVisible ? (
-            <div
-              className={cn(
-                'flex shrink-0 items-center gap-0.5',
-                chromeOrientation === 'vertical' ? 'w-full flex-col px-0 pb-1' : 'h-8 pr-1 pb-1',
-              )}
-            >
-              {addTabVisible ? (
+            {addTabVisible ? (
+              <Button
+                aria-label={`Add tab to ${title}`}
+                size='icon-xs'
+                type='button'
+                variant='ghost'
+                onClick={() => onAddTab(window.id)}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <PlusIcon className='size-3' />
+              </Button>
+            ) : null}
+            {windowActionsVisible ? (
+              <>
                 <Button
-                  aria-label={`Add tab to ${title}`}
+                  aria-label={rowButtonLabel}
+                  className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                  disabled={!rowButtonActive && !windowCanCollapse}
+                  size='icon-sm'
+                  title={rowButtonLabel}
+                  type='button'
+                  variant='ghost'
+                  onClick={handleRowButtonClick}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  {rowButtonActive ? (
+                    <ArrowsOutSimpleIcon className='size-3.5' />
+                  ) : (
+                    <MinusIcon className='size-3.5' />
+                  )}
+                </Button>
+                <Button
+                  aria-label={railButtonLabel}
+                  className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                  disabled={!railButtonActive && !windowCanCollapse}
+                  size='icon-sm'
+                  title={railButtonLabel}
+                  type='button'
+                  variant='ghost'
+                  onClick={handleRailButtonClick}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  {railButtonActive ? (
+                    <ArrowsOutSimpleIcon className='size-3.5' />
+                  ) : (
+                    <MinusIcon className='size-3.5 rotate-90' />
+                  )}
+                </Button>
+                <Button
+                  aria-label={`Close ${title}`}
                   size='icon-xs'
                   type='button'
                   variant='ghost'
-                  onClick={() => onAddTab(window.id)}
+                  onClick={() => onCloseWindow(window.id)}
                   onPointerDown={(event) => event.stopPropagation()}
                 >
-                  <PlusIcon className='size-3' />
+                  <XIcon className='size-3' />
                 </Button>
-              ) : null}
-              {windowActionsVisible ? (
-                <>
-                  {collapseControls === 'single' ? (
-                    <Button
-                      aria-label={collapseLabel}
-                      className='text-muted-foreground hover:text-foreground size-7 rounded-md'
-                      disabled={!windowCanCollapse}
-                      size='icon-sm'
-                      title={collapseLabel}
-                      type='button'
-                      variant='ghost'
-                      onClick={handleCollapseButtonClick}
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
-                      <MinusIcon className='size-3.5' />
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        aria-label={rowButtonLabel}
-                        className='text-muted-foreground hover:text-foreground size-7 rounded-md'
-                        disabled={!rowButtonActive && !windowCanCollapse}
-                        size='icon-sm'
-                        title={rowButtonLabel}
-                        type='button'
-                        variant='ghost'
-                        onClick={handleRowButtonClick}
-                        onPointerDown={(event) => event.stopPropagation()}
-                      >
-                        <MinusIcon className='size-3.5' />
-                      </Button>
-                      <Button
-                        aria-label={railButtonLabel}
-                        className='text-muted-foreground hover:text-foreground size-7 rounded-md'
-                        disabled={!railButtonActive && !windowCanCollapse}
-                        size='icon-sm'
-                        title={railButtonLabel}
-                        type='button'
-                        variant='ghost'
-                        onClick={handleRailButtonClick}
-                        onPointerDown={(event) => event.stopPropagation()}
-                      >
-                        <MinusIcon className='size-3.5 rotate-90' />
-                      </Button>
-                    </>
-                  )}
-                  <Button
-                    aria-label={`Close ${title}`}
-                    size='icon-xs'
-                    type='button'
-                    variant='ghost'
-                    onClick={() => onCloseWindow(window.id)}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    <XIcon className='size-3' />
-                  </Button>
-                </>
-              ) : null}
-            </div>
-          ) : null}
-        </header>
-      )}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </header>
       <div
         className={cn('relative min-h-0 flex-1 overflow-hidden p-3', collapsed && 'hidden')}
         data-proof-window-body=''

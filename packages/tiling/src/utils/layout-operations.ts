@@ -7,6 +7,7 @@ import {
 } from '@workspace/tiling/utils/layout-capabilities'
 import { placementForSurfaceWithPolicy } from '@workspace/tiling/utils/layout-policies'
 import {
+  nodeIsCollapsedWindow,
   policyForStickyPlacement,
   recipeSlotForSurface,
   recipeSlotForWindow,
@@ -16,11 +17,10 @@ import {
 } from '@workspace/tiling/utils/layout-queries'
 import {
   DEFAULT_BOTTOM_PANE_SHARE,
-  isRecipePackedSlot,
   isToolPaneRecipeSlot,
   normalizeToolPaneRecipeLayout,
   placementCanRestoreSurface,
-  surfaceHasValidStickyPlacement,
+  recordRecipePaneShares,
   toolPaneRestoreShare,
   visibleWindowIdForRecipeSlot,
   visibleWindowIdsForRecipeSlots,
@@ -38,11 +38,13 @@ import {
 } from '@workspace/tiling/utils/layout-normalize'
 import { layoutWithWindowMode } from '@workspace/tiling/utils/window-modes'
 import type {
+  CollapsedWindowRestore,
   LayoutEdge,
   SnapDestination,
   LayoutNode,
   LayoutNodeId,
   LayoutPolicyId,
+  LayoutSplitAxis,
   LayoutSplitNode,
   Surface,
   SurfaceId,
@@ -149,9 +151,12 @@ export function collapseWindow(
   if (!window) return normalizedLayout
   if (!windowCanCollapse(normalizedLayout, window)) return normalizedLayout
 
-  const collapsedLayout = layoutWithCollapsedWindow(normalizedLayout, windowId, edge)
+  const layoutWithShares = recordRecipePaneShares(normalizedLayout)
+  const collapsedLayout = layoutWithCollapsedWindow(layoutWithShares, windowId, edge)
 
-  return normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(collapsedLayout))
+  return reconcileCollapsedWindowAxes(
+    normalizeToolPaneRecipeLayout(normalizeWorkspaceLayout(collapsedLayout)),
+  )
 }
 
 export function expandWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLayout {
@@ -160,9 +165,38 @@ export function expandWindow(layout: WorkspaceLayout, windowId: WindowId): Works
   if (!window) return normalizedLayout
 
   const expandedLayout = layoutWithWindowMode(normalizedLayout, windowId, 'normal')
+  const restoredLayout = restoreExpandedWindow(expandedLayout, windowId, window.collapsedRestore)
 
-  return normalizeToolPaneRecipeLayout(
-    normalizeWorkspaceLayout(activateWindow(expandedLayout, window)),
+  // The expanded window still sits at its strip position when the packer
+  // runs; its footprint says nothing about pane sizes, so packing falls back
+  // to the shares recorded at collapse time.
+  return reconcileCollapsedWindowAxes(
+    normalizeToolPaneRecipeLayout(
+      normalizeWorkspaceLayout(activateWindow(restoredLayout, window)),
+      { footprintIgnoredWindowIds: new Set([windowId]) },
+    ),
+  )
+}
+
+// Expand undoes the collapse move: the window returns beside the sibling it
+// sat next to before collapsing instead of staying parked at the edge. A
+// target that is itself collapsed right now is a strip at some edge —
+// inserting beside it would graft the window into the strip, so the move is
+// skipped and the recipe packer places the window instead.
+function restoreExpandedWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  restore: CollapsedWindowRestore | undefined,
+): WorkspaceLayout {
+  if (!restore) return layout
+  if (layout.windowsById[restore.windowId]?.mode === 'collapsed') return layout
+  if (!findNodeIdForWindow(layout, restore.windowId)) return layout
+
+  return moveWindow(
+    layout,
+    windowId,
+    { edge: restore.edge, kind: 'window-edge', windowId: restore.windowId },
+    { insertShare: restore.share, recordStickyPlacement: false },
   )
 }
 
@@ -387,10 +421,16 @@ export function moveSurface(
   return normalizeWorkspaceLayout(recordStickyPlacement(nextLayout, surfaceId, destination))
 }
 
+type MoveWindowOptions = {
+  readonly insertShare?: number
+  readonly recordStickyPlacement?: boolean
+}
+
 export function moveWindow(
   layout: WorkspaceLayout,
   windowId: WindowId,
   destination: SnapDestination,
+  options: MoveWindowOptions = {},
 ): WorkspaceLayout {
   const normalizedLayout = normalizeWorkspaceLayout(layout)
   const window = normalizedLayout.windowsById[windowId]
@@ -403,6 +443,7 @@ export function moveWindow(
       normalizedLayout,
       windowId,
       destinationForRecipeSlotDrop(normalizedLayout, destination),
+      options,
     )
   }
   if (destination.kind === 'window-center') {
@@ -416,18 +457,34 @@ export function moveWindow(
   const sameSplitLayout = moveNodeWithinSameSplit(normalizedLayout, nodeId, destination)
   if (sameSplitLayout) {
     return normalizeWorkspaceLayout(
-      recordStickyPlacementsForWindow(sameSplitLayout, window, destination),
+      movedWindowLayoutWithPlacements(sameSplitLayout, window, destination, options),
     )
   }
 
   const detached = detachNode(normalizedLayout, nodeId)
   if (!detached) return normalizedLayout
 
-  const insertedLayout = insertNodeAtDestination(detached.layout, detached.node, destination)
+  const insertedLayout = insertNodeAtDestination(
+    detached.layout,
+    detached.node,
+    destination,
+    options.insertShare,
+  )
 
   return normalizeWorkspaceLayout(
-    recordStickyPlacementsForWindow(insertedLayout, window, destination),
+    movedWindowLayoutWithPlacements(insertedLayout, window, destination, options),
   )
+}
+
+function movedWindowLayoutWithPlacements(
+  layout: WorkspaceLayout,
+  window: WorkbenchWindow,
+  destination: SnapDestination,
+  options: MoveWindowOptions,
+): WorkspaceLayout {
+  if (options.recordStickyPlacement === false) return layout
+
+  return recordStickyPlacementsForWindow(layout, window, destination)
 }
 
 export function tabSurface(
@@ -1052,10 +1109,11 @@ function insertNodeAtDestination(
   layout: WorkspaceLayout,
   node: LayoutNode,
   destination: SnapDestination,
+  insertShare?: number,
 ): WorkspaceLayout {
   if (destination.kind === 'root-edge') return insertNodeAtRootEdge(layout, node, destination.edge)
   if (destination.kind === 'window-edge') {
-    return insertNodeAtWindowEdge(layout, node, destination.windowId, destination.edge)
+    return insertNodeAtWindowEdge(layout, node, destination.windowId, destination.edge, insertShare)
   }
   if (destination.kind === 'parent-edge') {
     return insertNodeAtParentEdge(layout, node, destination.nodeId, destination.edge)
@@ -1069,11 +1127,12 @@ function insertNodeAtWindowEdge(
   node: LayoutNode,
   targetWindowId: WindowId,
   edge: LayoutEdge,
+  insertShare?: number,
 ): WorkspaceLayout {
   const targetNodeId = findNodeIdForWindow(layout, targetWindowId)
   if (!targetNodeId) return insertNodeAtRootEdge(layout, node, edge)
 
-  return insertNodeAroundTarget(layout, node, targetNodeId, edge)
+  return insertNodeAroundTarget(layout, node, targetNodeId, edge, insertShare)
 }
 
 function insertNodeAtParentEdge(
@@ -1104,6 +1163,7 @@ function insertNodeAroundTarget(
   node: LayoutNode,
   targetNodeId: LayoutNodeId,
   edge: LayoutEdge,
+  insertShare?: number,
 ): WorkspaceLayout {
   const targetNode = layout.nodesById[targetNodeId]
   if (!targetNode) return layoutWithRootNode(layout, node)
@@ -1111,10 +1171,10 @@ function insertNodeAroundTarget(
   const parentNodeId = findParentNodeId(layout, targetNodeId)
   const parentNode = parentNodeId ? layout.nodesById[parentNodeId] : null
   if (parentNode?.kind === 'split' && parentNode.axis === edgeAxis(edge)) {
-    return insertNodeIntoSplit(layout, node, parentNode, targetNodeId, edge)
+    return insertNodeIntoSplit(layout, node, parentNode, targetNodeId, edge, insertShare)
   }
 
-  return wrapTargetWithSplit(layout, node, targetNode, edge)
+  return wrapTargetWithSplit(layout, node, targetNode, edge, insertShare)
 }
 
 function moveNodeWithinSameSplit(
@@ -1192,13 +1252,17 @@ function insertNodeIntoSplit(
   split: LayoutSplitNode,
   targetNodeId: LayoutNodeId,
   edge: LayoutEdge,
+  insertShare?: number,
 ): WorkspaceLayout {
   const targetIndex = split.childIds.indexOf(targetNodeId)
   if (targetIndex < 0) return layout
 
   const insertIndex = isLeadingEdge(edge) ? targetIndex : targetIndex + 1
   const childIds = insertAt(split.childIds, node.id, insertIndex)
-  const sizes = splitSizesWithInsertedNode(split, targetIndex, insertIndex)
+  const sizes =
+    insertShare === undefined
+      ? splitSizesWithInsertedNode(split, targetIndex, insertIndex)
+      : splitSizesWithInsertedShare(split, insertIndex, insertShare)
 
   return {
     ...layout,
@@ -1219,8 +1283,9 @@ function wrapTargetWithSplit(
   node: LayoutNode,
   targetNode: LayoutNode,
   edge: LayoutEdge,
+  insertShare?: number,
 ): WorkspaceLayout {
-  const splitNode = createWrappingSplit(layout, node.id, targetNode.id, edge)
+  const splitNode = createWrappingSplit(layout, node.id, targetNode.id, edge, insertShare)
   const nodesById = {
     ...layout.nodesById,
     [node.id]: node,
@@ -1251,15 +1316,18 @@ function createWrappingSplit(
   insertNodeId: LayoutNodeId,
   targetNodeId: LayoutNodeId,
   edge: LayoutEdge,
+  insertShare?: number,
 ): LayoutSplitNode {
-  const childIds = isLeadingEdge(edge) ? [insertNodeId, targetNodeId] : [targetNodeId, insertNodeId]
+  const leading = isLeadingEdge(edge)
+  const childIds = leading ? [insertNodeId, targetNodeId] : [targetNodeId, insertNodeId]
+  const share = clampInsertShare(insertShare)
 
   return {
     axis: edgeAxis(edge),
     childIds,
     id: uniqueNodeId(layout, `split-${edge}`),
     kind: 'split',
-    sizes: [0.5, 0.5],
+    sizes: leading ? [share, 1 - share] : [1 - share, share],
   }
 }
 
@@ -1568,40 +1636,198 @@ function deleteWindow(layout: WorkspaceLayout, windowId: WindowId): WorkspaceLay
   }
 }
 
+// Each pass re-docks one drifted strip; re-docking can pull a sibling out of
+// alignment, so the bound covers several rounds of settling. Real layouts hold
+// only a handful of collapsed windows, so this is never approached in practice.
+const MAX_COLLAPSE_RECONCILE_PASSES = 64
+
+// A collapsed window renders as a strip whose orientation is dictated by its
+// parent split's axis, not by its own collapsedEdge: a window in a vertical
+// split is a horizontal row, one in a horizontal split is a vertical rail.
+// Collapsing or expanding a window can dissolve a split and re-parent a
+// neighboring collapsed window into the perpendicular split, silently flipping
+// a bottom row into a side rail (and vice versa) even though the user never
+// touched it. Re-dock every collapsed window whose parent axis no longer
+// matches its edge, so a strip's orientation always follows its collapsedEdge.
+function reconcileCollapsedWindowAxes(layout: WorkspaceLayout): WorkspaceLayout {
+  let nextLayout = layout
+
+  for (let pass = 0; pass < MAX_COLLAPSE_RECONCILE_PASSES; pass += 1) {
+    const windowId = firstMisalignedCollapsedWindowId(nextLayout)
+    if (!windowId) return nextLayout
+
+    const edge = nextLayout.windowsById[windowId]?.collapsedEdge
+    if (!edge) return nextLayout
+
+    nextLayout = moveWindow(
+      nextLayout,
+      windowId,
+      { edge, kind: 'root-edge' },
+      { recordStickyPlacement: false },
+    )
+  }
+
+  return nextLayout
+}
+
+function firstMisalignedCollapsedWindowId(layout: WorkspaceLayout): WindowId | null {
+  for (const window of Object.values(layout.windowsById)) {
+    if (window.mode !== 'collapsed' || !window.collapsedEdge) continue
+    if (!collapsedWindowAxisMatchesEdge(layout, window.id, window.collapsedEdge)) return window.id
+  }
+
+  return null
+}
+
+function collapsedWindowAxisMatchesEdge(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+  edge: LayoutEdge,
+): boolean {
+  const nodeId = findNodeIdForWindow(layout, windowId)
+  if (!nodeId) return true
+
+  const parentId = findParentNodeId(layout, nodeId)
+  const parent = parentId ? layout.nodesById[parentId] : null
+  // A root-level collapsed strip is sized straight from its edge, so it is
+  // never misaligned; only a window parked inside a split can drift.
+  if (parent?.kind !== 'split') return true
+
+  return parent.axis === edgeAxis(edge)
+}
+
+// Collapsing to an edge relocates the window to that root edge so the strip
+// direction always matches the request, exactly like a manual drag there.
+// The move must not record sticky placements: collapse is a transient mode,
+// and a recorded root-edge placement would keep recipe-packed windows
+// unmanaged after expand instead of returning them to their pane.
 function layoutWithCollapsedWindow(
   layout: WorkspaceLayout,
   windowId: WindowId,
   edge: LayoutEdge | undefined,
 ): WorkspaceLayout {
   if (!edge) return layoutWithWindowMode(layout, windowId, 'collapsed')
-  if (windowCollapsesInPlace(layout, windowId)) {
-    return layoutWithWindowMode(layout, windowId, 'collapsed', edge)
+
+  const restore = collapseRestoreForWindow(layout, windowId)
+  const expandedLayout = layoutWithWindowMode(layout, windowId, 'normal')
+  const movedLayout = moveWindow(
+    expandedLayout,
+    windowId,
+    { edge, kind: 'root-edge' },
+    { recordStickyPlacement: false },
+  )
+
+  return layoutWithWindowMode(movedLayout, windowId, 'collapsed', edge, restore)
+}
+
+// Every window records a restore target: the move back fixes its reading-
+// order position (which decides where the packer slots tool windows), while
+// the sizes come from the pane shares recorded at collapse time — the
+// restore insert's own ratios are never read back. Re-collapsing an
+// already-collapsed window keeps the original origin instead of recording
+// the strip position.
+function collapseRestoreForWindow(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+): CollapsedWindowRestore | undefined {
+  const window = layout.windowsById[windowId]
+  if (!window) return undefined
+  if (window.mode === 'collapsed') return window.collapsedRestore
+
+  return nearestSiblingRestore(layout, windowId)
+}
+
+// The restore anchor must be a real pane: collapsed siblings are transient
+// strips whose position says nothing about where this window belongs.
+function nearestSiblingRestore(
+  layout: WorkspaceLayout,
+  windowId: WindowId,
+): CollapsedWindowRestore | undefined {
+  const nodeId = findNodeIdForWindow(layout, windowId)
+  if (!nodeId) return undefined
+
+  const parentId = findParentNodeId(layout, nodeId)
+  const parent = parentId ? layout.nodesById[parentId] : null
+  if (parent?.kind !== 'split') return undefined
+
+  const index = parent.childIds.indexOf(nodeId)
+  const sibling = nearestExpandedSibling(layout, parent, index)
+  if (!sibling) return undefined
+
+  return {
+    edge: restoreEdge(parent.axis, sibling.before),
+    share: splitChildFlexibleShare(layout, parent, index),
+    windowId: sibling.windowId,
+  }
+}
+
+function nearestExpandedSibling(
+  layout: WorkspaceLayout,
+  parent: LayoutSplitNode,
+  index: number,
+): { readonly before: boolean; readonly windowId: WindowId } | null {
+  for (let distance = 1; distance < parent.childIds.length; distance += 1) {
+    const beforeId = index - distance >= 0 ? parent.childIds[index - distance] : undefined
+    const beforeWindowId = beforeId ? firstExpandedWindowIdInSubtree(layout, beforeId) : null
+    if (beforeWindowId) return { before: true, windowId: beforeWindowId }
+
+    const afterId = parent.childIds[index + distance]
+    const afterWindowId = afterId ? firstExpandedWindowIdInSubtree(layout, afterId) : null
+    if (afterWindowId) return { before: false, windowId: afterWindowId }
   }
 
-  const expandedLayout = layoutWithWindowMode(layout, windowId, 'normal')
-  const movedLayout = moveWindow(expandedLayout, windowId, { edge, kind: 'root-edge' })
-
-  return layoutWithWindowMode(movedLayout, windowId, 'collapsed', edge)
+  return null
 }
 
-// The recipe normalizer owns packed windows' positions: relocating one to a
-// root edge gets repacked away immediately, corrupting split ratios and
-// recording stale sticky placements. The bottom slot is packed
-// unconditionally; tool-pane windows leave packing once sticky-placed.
-function windowCollapsesInPlace(layout: WorkspaceLayout, windowId: WindowId) {
-  const slot = recipeSlotForWindow(layout, windowId)
-  if (!slot) return false
-  if (!isRecipePackedSlot(slot)) return false
-  if (!isToolPaneRecipeSlot(slot)) return true
+// The window's share among the split's real panes: collapsed strips hold
+// fixed pixels, so their ratios are noise and get skipped.
+function splitChildFlexibleShare(
+  layout: WorkspaceLayout,
+  split: LayoutSplitNode,
+  childIndex: number,
+): number {
+  const sizes = repairSplitSizes(split.sizes, split.childIds.length)
+  const ownSize = sizes[childIndex] ?? 0
+  const flexibleTotal = split.childIds.reduce((sum, childId, index) => {
+    if (nodeIsCollapsedWindow(layout, childId)) return sum
 
-  return !windowHasValidStickyPlacement(layout, windowId)
+    return sum + (sizes[index] ?? 0)
+  }, 0)
+  if (flexibleTotal <= 0) return 0.5
+
+  return ownSize / flexibleTotal
 }
 
-function windowHasValidStickyPlacement(layout: WorkspaceLayout, windowId: WindowId) {
-  const window = layout.windowsById[windowId]
-  if (!window) return false
+function restoreEdge(axis: LayoutSplitAxis, afterSibling: boolean): LayoutEdge {
+  if (axis === 'horizontal') return afterSibling ? 'right' : 'left'
 
-  return window.surfaceIds.some((surfaceId) => surfaceHasValidStickyPlacement(layout, surfaceId))
+  return afterSibling ? 'bottom' : 'top'
+}
+
+function firstExpandedWindowIdInSubtree(
+  layout: WorkspaceLayout,
+  rootId: LayoutNodeId,
+): WindowId | null {
+  const pending: LayoutNodeId[] = [rootId]
+  const seen = new Set<LayoutNodeId>()
+
+  while (pending.length > 0) {
+    const currentId = pending.shift()
+    if (!currentId || seen.has(currentId)) continue
+
+    seen.add(currentId)
+    const node = layout.nodesById[currentId]
+    if (!node) continue
+    if (node.kind === 'window') {
+      if (layout.windowsById[node.windowId]?.mode !== 'collapsed') return node.windowId
+
+      continue
+    }
+
+    pending.unshift(...node.childIds)
+  }
+
+  return null
 }
 
 function validReorder(window: WorkbenchWindow, fromIndex: number, toIndex: number) {
@@ -1632,6 +1858,29 @@ function splitSizesWithInsertedNode(
   nextSizes.splice(insertIndex, 0, targetSize / 2)
 
   return repairSplitSizes(nextSizes, nextSizes.length)
+}
+
+// Share-preserving insert: the new node takes its recorded fraction of the
+// split and every sibling scales down proportionally, instead of halving the
+// drop target.
+function splitSizesWithInsertedShare(
+  split: LayoutSplitNode,
+  insertIndex: number,
+  insertShare: number,
+) {
+  const sizes = repairSplitSizes(split.sizes, split.childIds.length)
+  const share = clampInsertShare(insertShare)
+  const nextSizes = sizes.map((size) => size * (1 - share))
+  nextSizes.splice(insertIndex, 0, share)
+
+  return repairSplitSizes(nextSizes, nextSizes.length)
+}
+
+function clampInsertShare(insertShare: number | undefined) {
+  if (insertShare === undefined) return 0.5
+  if (!Number.isFinite(insertShare)) return 0.5
+
+  return Math.min(0.95, Math.max(0.05, insertShare))
 }
 
 // Proportional redistribution keeps the remaining siblings' ratios intact, so

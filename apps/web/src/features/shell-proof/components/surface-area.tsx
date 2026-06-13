@@ -4,9 +4,7 @@ import {
   ProofInteractionSurface,
   type ProofInteractionControllerRef,
 } from '@/features/tiling-proof/components/interaction-surface'
-import type { ProofCollapsedWindowHeaderInput } from '@/features/tiling-proof/components/window'
-import { commitEventLabel } from '@/features/tiling-proof/utils/event-labels'
-import { ToolPaneHeader } from '@/features/workbench/components/tool-pane-header'
+import { commitEventLabel, windowModesLabel } from '@/features/tiling-proof/utils/event-labels'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import type { TilingDragDebugLog } from '@workspace/tiling/hooks/use-tiling-drag-debug-log'
 import type {
@@ -67,9 +65,7 @@ export function SurfaceArea({
       dropZonesVisible={dropZonesVisible}
       interactionControllerRef={interactionControllerRef}
       layout={layout}
-      renderCollapsedHeader={renderCollapsedHeader}
       renderSurfaceBody={renderSurfaceBody}
-      singleCollapseTarget='rail'
       surfaceClassName='relative isolate min-h-0 min-w-0 flex-1 overflow-hidden p-0'
       surfaceDataAttributes={{ 'data-shell-proof-surface-area': '' }}
       onCloseSurface={closeSurface}
@@ -77,6 +73,7 @@ export function SurfaceArea({
       onCommitLayout={(nextLayout, event) => {
         onLogEvent(commitEventLabel(layout, event))
         replaceLayout(nextLayout)
+        onLogEvent(`state: ${windowModesLabel(nextLayout)}`)
       }}
       onDispatchLayoutOperation={dispatchOperation}
       onSelectSurface={activateSurface}
@@ -94,31 +91,6 @@ function renderSurfaceBody(surface: Surface | null) {
   if (!surface) return emptyWindowBody()
 
   return <SurfaceBody surface={surface} />
-}
-
-function renderCollapsedHeader(input: ProofCollapsedWindowHeaderInput) {
-  if (!input.activeSurface) return null
-  if (!isLeftToolPaneSurface(input.activeSurface)) return null
-
-  return (
-    <ToolPaneHeader
-      collapsed
-      dragHandleRef={input.dragHandleRef}
-      orientation={input.chromeOrientation}
-      surface={input.activeSurface}
-      onClose={input.onClose}
-      onToggleCollapse={input.onExpand}
-    />
-  )
-}
-
-function isLeftToolPaneSurface(surface: Surface) {
-  if (surface.type === 'chat') return true
-  if (surface.type === 'file-navigator') return true
-  if (surface.type === 'git-changes') return true
-  if (surface.type === 'logs') return true
-
-  return surface.type === 'search-results'
 }
 
 function emptyWindowBody() {

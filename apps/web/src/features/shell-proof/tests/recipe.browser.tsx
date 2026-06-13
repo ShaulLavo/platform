@@ -80,18 +80,18 @@ describe.sequential('Shell proof recipe behavior', () => {
       expectWindowRightOfWindow('Chat', 'Files')
     })
 
-    buttonWithLabel('Collapse Chat').click()
+    buttonWithLabel('Collapse Chat to rail').click()
 
     await vi.waitFor(() => {
       expect(railButton('Close Chat').dataset.railState).toBe('collapsed')
-      expect(collapsedToolPaneHeader()).toHaveTextContent('Chat')
+      expect(collapsedProofWindow()).toHaveTextContent('Chat')
     })
 
     buttonWithLabel('Expand Chat').click()
 
     await vi.waitFor(() => {
       expect(railButton('Close Chat').dataset.railState).toBe('active')
-      expect(queryCollapsedToolPaneHeader()).toBeNull()
+      expect(queryCollapsedProofWindow()).toBeNull()
       expectWindowRightOfWindow('Chat', 'Search')
     })
 
@@ -368,15 +368,15 @@ function buttonWithLabel(label: string) {
   return button
 }
 
-function collapsedToolPaneHeader() {
-  const header = queryCollapsedToolPaneHeader()
-  if (!header) throw new Error('Missing collapsed tool pane header')
+function collapsedProofWindow() {
+  const window = queryCollapsedProofWindow()
+  if (!window) throw new Error('Missing collapsed proof window')
 
-  return header
+  return window
 }
 
-function queryCollapsedToolPaneHeader() {
-  return document.querySelector<HTMLElement>('[data-workbench-tool-pane-header-collapsed="true"]')
+function queryCollapsedProofWindow() {
+  return document.querySelector<HTMLElement>('[data-proof-window-collapsed="true"]')
 }
 
 function expectWindowRightOf(windowText: string, leftWindowText: string) {

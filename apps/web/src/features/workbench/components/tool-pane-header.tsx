@@ -16,22 +16,30 @@ export function ToolPaneHeader({
   collapsed = false,
   dragHandleRef,
   orientation = 'horizontal',
+  railActive = false,
+  rowActive = false,
   surface,
   tab,
   treeState,
   visibleTreeItemCount,
   onClose,
+  onCollapseToRail,
+  onCollapseToRow,
   onToggleCollapse,
 }: {
   readonly className?: string
   readonly collapsed?: boolean
   readonly dragHandleRef?: (element: HTMLElement | null) => void
   readonly orientation?: ToolPaneHeaderOrientation
+  readonly railActive?: boolean
+  readonly rowActive?: boolean
   readonly surface?: Surface | null
   readonly tab?: ToolPaneHeaderTab
   readonly treeState?: LoadState<TreeModel>
   readonly visibleTreeItemCount?: number | null
   readonly onClose?: () => void
+  readonly onCollapseToRail?: () => void
+  readonly onCollapseToRow?: () => void
   readonly onToggleCollapse?: () => void
 }) {
   const title = toolPaneHeaderTitle(surface, tab)
@@ -41,7 +49,10 @@ export function ToolPaneHeader({
       : null
   const surfaceType = surface?.type ?? toolPaneHeaderSurfaceType(tab)
   const toggleLabel = collapsed ? `Expand ${title}` : `Collapse ${title}`
-  const actionsVisible = Boolean(onClose || onToggleCollapse)
+  const dualCollapseVisible = Boolean(onCollapseToRow && onCollapseToRail)
+  const rowLabel = rowActive ? `Expand ${title}` : `Collapse ${title} to row`
+  const railLabel = railActive ? `Expand ${title}` : `Collapse ${title} to rail`
+  const actionsVisible = Boolean(onClose || onToggleCollapse || dualCollapseVisible)
 
   return (
     <div
@@ -108,7 +119,35 @@ export function ToolPaneHeader({
           )}
           data-workbench-drag-blocker=''
         >
-          {onToggleCollapse ? (
+          {dualCollapseVisible ? (
+            <>
+              <Button
+                aria-label={rowLabel}
+                className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                size='icon-sm'
+                title={rowLabel}
+                type='button'
+                variant='ghost'
+                onClick={rowActive ? onToggleCollapse : onCollapseToRow}
+                onPointerDown={stopToolPaneHeaderPointerDown}
+              >
+                <MinusIcon className='size-3.5' />
+              </Button>
+              <Button
+                aria-label={railLabel}
+                className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+                size='icon-sm'
+                title={railLabel}
+                type='button'
+                variant='ghost'
+                onClick={railActive ? onToggleCollapse : onCollapseToRail}
+                onPointerDown={stopToolPaneHeaderPointerDown}
+              >
+                <MinusIcon className='size-3.5 rotate-90' />
+              </Button>
+            </>
+          ) : null}
+          {!dualCollapseVisible && onToggleCollapse ? (
             <Button
               aria-label={toggleLabel}
               className='text-muted-foreground hover:text-foreground size-7 rounded-md'

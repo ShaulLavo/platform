@@ -117,6 +117,11 @@ export function operationSummary(operation: LayoutOperation): WorkbenchLayoutLog
         surfaceIds: operation.surfaceIds.map(compactLayoutId),
       }
     case 'collapseWindow':
+      return {
+        ...base,
+        collapsedEdge: operation.edge ?? null,
+        windowId: compactLayoutId(operation.windowId),
+      }
     case 'expandWindow':
       return { ...base, windowId: compactLayoutId(operation.windowId) }
     case 'fullscreenWindow':
