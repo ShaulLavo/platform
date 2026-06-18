@@ -22,5 +22,8 @@ describe('search buffer document ids', () => {
     expect(searchBufferDocumentTitle('Users/shaul/project')).toBe(
       '/Users/shaul/project search results',
     )
+    expect(searchBufferDocumentTitle('/Users/shaul/project')).toBe(
+      '/Users/shaul/project search results',
+    )
   })
 })

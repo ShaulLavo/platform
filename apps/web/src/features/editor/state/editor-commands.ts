@@ -33,6 +33,7 @@ import {
   selectEditorTabInWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
+import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
@@ -51,6 +52,7 @@ export type EditorCommands = {
   ) => boolean
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
   openFileSurface: (path: string) => void
+  openSearchEditor: (rootPath: string) => void
   pickRootFolder: (rootFolder: PickedFsEntry) => void
   reopenClosedEditor: () => boolean
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
@@ -93,7 +95,9 @@ export function createEditorCommands({
     moveTabToPane: () => false,
     moveTabToSplit: () => false,
     openDefinition: (target) => openDefinition(target, workspaceStore, documentStore, uiStore),
-    openFileSurface: (path) => openFileBackedSurface(path, workspaceStore, documentStore),
+    openFileSurface: (path) => openEditorPathSurface(path, workspaceStore, documentStore),
+    openSearchEditor: (rootPath) =>
+      openEditorPathSurface(searchBufferDocumentId(rootPath), workspaceStore, documentStore),
     pickRootFolder: (rootFolder) =>
       pickRootFolder(rootFolder, workspaceStore, documentStore, uiStore),
     reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
@@ -115,10 +119,10 @@ function selectFile(
 ) {
   if (!selectedFilePath) return
 
-  openFileBackedSurface(selectedFilePath, workspaceStore, documentStore)
+  openEditorPathSurface(selectedFilePath, workspaceStore, documentStore)
 }
 
-function openFileBackedSurface(
+function openEditorPathSurface(
   selectedFilePath: string,
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
@@ -190,7 +194,7 @@ function openDefinition(
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
 ) {
-  openFileBackedSurface(definitionTarget.path, workspaceStore, documentStore)
+  openEditorPathSurface(definitionTarget.path, workspaceStore, documentStore)
   uiStore.setState({
     definitionTarget,
     statusBarSource: null,

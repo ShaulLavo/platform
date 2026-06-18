@@ -41,10 +41,12 @@ type WorkspaceCommandContext = {
   readonly diffViewMode: EditorDiffViewMode
   readonly documentStore: EditorDocumentStoreApi
   readonly openPicker: () => void
+  readonly openSearchEditor: (rootPath: string) => void
   readonly queryClient: QueryClient
   readonly reopenClosedEditor: () => boolean
   readonly requestCloseTab: RequestCloseTab
   readonly requestEditorFocus: () => void
+  readonly rootPath: string | null
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: FocusArea) => void
   readonly setTheme: (theme: Theme) => void
@@ -70,7 +72,8 @@ export function usePlatformCommandDispatch({
   const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
   const dispatchEditorCommand = useFocus((state) => state.dispatchEditorCommand)
   const setFocusArea = useFocus((state) => state.setFocusArea)
-  const { closeTab, reopenClosedEditor, selectPreviousEditor } = useEditorCommands()
+  const { closeTab, openSearchEditor, reopenClosedEditor, selectPreviousEditor } =
+    useEditorCommands()
   const fallbackRequestCloseTab = useCallback<RequestCloseTab>(
     (tabId) => {
       closeTab(tabId)
@@ -94,10 +97,12 @@ export function usePlatformCommandDispatch({
         diffViewMode: workspace.diffViewMode,
         documentStore,
         openPicker: workspace.openPicker,
+        openSearchEditor,
         queryClient,
         reopenClosedEditor,
         requestCloseTab: resolvedRequestCloseTab,
         requestEditorFocus,
+        rootPath: workspace.rootFolder?.path ?? null,
         setDiffViewMode: workspace.setDiffViewMode,
         setFocusArea,
         setTheme,
@@ -111,6 +116,7 @@ export function usePlatformCommandDispatch({
       documentStore,
       dispatchEditorCommand,
       queryClient,
+      openSearchEditor,
       reopenClosedEditor,
       requestEditorFocus,
       resolvedRequestCloseTab,
@@ -175,6 +181,13 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
   },
   'workspace.openFilePicker': ({ openPicker }) => {
     openPicker()
+    return true
+  },
+  'workspace.openSearchEditor': ({ openSearchEditor, requestEditorFocus, rootPath }) => {
+    if (!rootPath) return false
+
+    openSearchEditor(rootPath)
+    requestEditorFocus()
     return true
   },
   'workspace.quickOpenPreviousEditor': ({ requestEditorFocus, selectPreviousEditor }) => {

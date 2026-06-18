@@ -31,5 +31,11 @@ export function searchBufferDocumentLabel() {
 }
 
 export function searchBufferDocumentTitle(rootPath: string) {
-  return `${displayPath(rootPath)} search results`
+  return `${displaySearchBufferRootPath(rootPath)} search results`
+}
+
+function displaySearchBufferRootPath(rootPath: string) {
+  if (rootPath.startsWith('/')) return rootPath
+
+  return displayPath(rootPath)
 }

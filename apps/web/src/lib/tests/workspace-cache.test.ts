@@ -128,9 +128,32 @@ describe('workspace cache', () => {
     })
   })
 
-  it('does not persist legacy search buffer editor tabs', () => {
+  it('persists search buffer editor tabs for the active workspace', () => {
     const rootFolder = pickedDirectory('/repo')
     const searchPath = searchBufferDocumentId('/repo')
+
+    writeWorkspaceCache(
+      workspaceCacheState({
+        diffViewMode: 'split',
+        editorHistory: [searchPath],
+        recentlyClosedEditorPaths: [searchPath],
+        rootFolder,
+        searchBuffer: null,
+        workbenchPanels: workbenchPanelsForPaths(['/repo/src/readme.md', searchPath], searchPath),
+      }),
+    )
+
+    expect(readWorkspaceCache()).toMatchObject({
+      editorHistory: [searchPath],
+      openFilePaths: ['/repo/src/readme.md', searchPath],
+      recentlyClosedEditorPaths: [searchPath],
+      selectedFilePath: searchPath,
+    })
+  })
+
+  it('filters search buffer editor tabs for a different workspace', () => {
+    const rootFolder = pickedDirectory('/repo')
+    const searchPath = searchBufferDocumentId('/other')
 
     writeWorkspaceCache(
       workspaceCacheState({

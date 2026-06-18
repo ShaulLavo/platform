@@ -49,6 +49,7 @@ const COMMAND_ICONS: Partial<Record<PlatformCommandId, Icon>> = {
   'workspace.showQuickAccess': FileMagnifyingGlassIcon,
   'workspace.showCommandPalette': CommandIcon,
   'workspace.openFilePicker': FolderOpenIcon,
+  'workspace.openSearchEditor': FileMagnifyingGlassIcon,
   'workspace.quickOpenPreviousEditor': ClockCounterClockwiseIcon,
   'workspace.quickOpenView': SquaresFourIcon,
   'workspace.gotoSymbol': BracketsCurlyIcon,

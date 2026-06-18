@@ -377,6 +377,7 @@ describe('command palette command availability', () => {
 })
 
 const requestedWorkspaceAliases = [
+  ['workspace.openSearchEditor', 'search.action.openNewEditor'],
   ['workspace.quickOpenPreviousEditor', 'workbench.action.quickOpenPreviousEditor'],
   ['workspace.quickOpenView', 'workbench.action.quickOpenView'],
   ['workspace.gotoSymbol', 'workbench.action.gotoSymbol'],

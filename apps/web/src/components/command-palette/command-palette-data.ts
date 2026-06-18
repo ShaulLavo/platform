@@ -48,6 +48,12 @@ export const viewPaletteItems: readonly ViewPaletteItem[] = [
     value: 'view:source-control',
   },
   {
+    command: 'workspace.openSearchEditor',
+    description: 'Open workspace search results in an editor tab.',
+    title: 'Search',
+    value: 'view:search',
+  },
+  {
     command: 'workspace.focusEditor',
     description: 'Focus the active editor.',
     title: 'Editor',

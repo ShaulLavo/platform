@@ -16,7 +16,7 @@ export const SearchPane = memo(
   }) => {
     return (
       <section className='grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden'>
-        <SearchControls rootPath={rootPath} />
+        <SearchControls rootPath={rootPath} showOpenInEditorButton={compact} />
         <SearchResults
           compact={compact}
           editorKeymapLayers={editorKeymapLayers}

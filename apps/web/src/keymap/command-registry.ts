@@ -34,6 +34,12 @@ const workspaceCommandSpecs = [
     ['workbench.action.quickOpen'],
   ),
   workspaceCommand(
+    'workspace.openSearchEditor',
+    'Open Search Editor',
+    'Open workspace search results in an editor tab.',
+    ['search.action.openNewEditor'],
+  ),
+  workspaceCommand(
     'workspace.quickOpenPreviousEditor',
     'Quick open previous editor',
     'Switch to the previously active editor.',

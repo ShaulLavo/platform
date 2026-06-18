@@ -3,6 +3,7 @@ import { expect, test } from '../../../../test/fixtures'
 import {
   commandDisabledReason,
   commandPaletteItems,
+  editorPaletteItems,
   fileBackedPath,
   groupedCommandItems,
   quickAccessMode,
@@ -76,6 +77,19 @@ test('file-backed paths exclude transient search buffers', () => {
   expect(fileBackedPath(null)).toBeNull()
   expect(fileBackedPath(searchBufferDocumentId('/repo'))).toBeNull()
   expect(fileBackedPath('/repo/src/app.ts')).toBe('/repo/src/app.ts')
+})
+
+test('open editor items format search buffers as search tabs', () => {
+  const searchPath = searchBufferDocumentId('/repo')
+
+  expect(editorPaletteItems([searchPath], searchPath)).toEqual([
+    {
+      active: true,
+      name: 'Search',
+      path: searchPath,
+      pathLabel: '/repo search results',
+    },
+  ])
 })
 
 test('quick access prefixes select the expected mode and query', () => {

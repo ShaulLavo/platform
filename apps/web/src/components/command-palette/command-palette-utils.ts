@@ -1,4 +1,8 @@
-import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import {
+  parseSearchBufferDocumentId,
+  searchBufferDocumentLabel,
+  searchBufferDocumentTitle,
+} from '@/features/search/search-buffer-document'
 import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'
@@ -153,12 +157,26 @@ export function editorPaletteItems(
   openFilePaths: readonly string[],
   selectedFilePath: string | null,
 ): readonly EditorPaletteItem[] {
-  return openFilePaths.map((path) => ({
+  return openFilePaths.map((path) => editorPaletteItem(path, selectedFilePath))
+}
+
+function editorPaletteItem(path: string, selectedFilePath: string | null): EditorPaletteItem {
+  const searchBuffer = parseSearchBufferDocumentId(path)
+  if (searchBuffer) {
+    return {
+      active: path === selectedFilePath,
+      name: searchBufferDocumentLabel(),
+      path,
+      pathLabel: searchBufferDocumentTitle(searchBuffer.rootPath),
+    }
+  }
+
+  return {
     active: path === selectedFilePath,
     name: basename(path),
     path,
     pathLabel: displayPath(path),
-  }))
+  }
 }
 
 function commandKeywords(spec: CommandSpec) {

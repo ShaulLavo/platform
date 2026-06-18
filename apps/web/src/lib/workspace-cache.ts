@@ -306,7 +306,9 @@ function workspacePathsForCache(rootFolder: PickedFsEntry | null, paths: readonl
 function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
   if (!rootFolder) return false
   if (parseConflictDiffDocumentId(path)) return false
-  if (parseSearchBufferDocumentId(path)) return false
+
+  const searchBuffer = parseSearchBufferDocumentId(path)
+  if (searchBuffer) return searchBuffer.rootPath === rootFolder.path
 
   return isPathInWorkspace(backingPathForWorkspace(path), rootFolder.path)
 }

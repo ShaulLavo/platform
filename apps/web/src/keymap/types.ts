@@ -8,6 +8,7 @@ export type WorkspaceCommandId =
   | 'workspace.showQuickAccess'
   | 'workspace.showCommandPalette'
   | 'workspace.openFilePicker'
+  | 'workspace.openSearchEditor'
   | 'workspace.quickOpenPreviousEditor'
   | 'workspace.quickOpenView'
   | 'workspace.gotoSymbol'

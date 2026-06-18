@@ -5,11 +5,13 @@ import {
   readyFile,
 } from '@/components/workspace/diff/utils/editor-render-document-utils'
 import { useConflictEditorResolution } from '@/components/workspace/diff/hooks/use-conflict-editor-resolution'
+import { SearchPane } from '@/components/workspace/search/components/search-pane'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
 import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
+import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
 import type {
@@ -33,7 +35,8 @@ export function EditorSurfaceTabBody({
   tabId: string
 }) {
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
-  const { fileState } = useSelectedFile(selectedConflictDiff ? null : path)
+  const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
+  const { fileState } = useSelectedFile(selectedConflictDiff || selectedSearchBuffer ? null : path)
   const selectedViewDocumentId = useEditorDocumentState(
     (state) => state.viewsByTabId[tabId]?.documentId ?? null,
   )
@@ -131,6 +134,16 @@ export function EditorSurfaceTabBody({
     },
     [uiStore],
   )
+
+  if (selectedSearchBuffer) {
+    return (
+      <SearchPane
+        compact={false}
+        editorKeymapLayers={editorKeymapLayers}
+        rootPath={selectedSearchBuffer.rootPath}
+      />
+    )
+  }
 
   return (
     <FileEditorBody

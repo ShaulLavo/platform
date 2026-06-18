@@ -5,6 +5,7 @@ import { createEditorDocumentStore } from '@/features/editor/state/editor-docume
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
 import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
+import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
@@ -25,6 +26,22 @@ describe('editor workspace state', () => {
     })
     expect(workspaceStore.getState().workbenchPanels.editorTabs).toEqual([
       expect.objectContaining({ path: '/repo/src/app.ts' }),
+    ])
+  })
+
+  it('opens search as an editor tab for the workspace root', () => {
+    const { commands, workspaceStore } = editorHarness()
+    const searchPath = searchBufferDocumentId('/repo')
+
+    commands.openSearchEditor('/repo')
+
+    expect(workspaceStore.getState()).toMatchObject({
+      editorHistory: [searchPath],
+      openFilePaths: [searchPath],
+      selectedFilePath: searchPath,
+    })
+    expect(workspaceStore.getState().workbenchPanels.editorTabs).toEqual([
+      expect.objectContaining({ path: searchPath }),
     ])
   })
 
