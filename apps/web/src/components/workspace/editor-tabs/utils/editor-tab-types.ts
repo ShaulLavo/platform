@@ -1,4 +1,3 @@
-import type { ChromeVisualTab } from '@/components/workspace/editor-tabs/hooks/use-chrome-visual-tabs'
 import type { StatusPresentation } from '@/features/git/types'
 import type { ResolvedFileIcon } from '@/lib/file-icons'
 
@@ -16,5 +15,3 @@ export type EditorTabModel = {
   path: string
   title: string
 }
-
-export type EditorChromeVisualTab = ChromeVisualTab<EditorTabModel>

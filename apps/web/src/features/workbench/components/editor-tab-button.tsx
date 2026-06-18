@@ -5,14 +5,10 @@ import { fileIconStyle } from '@/lib/file-icon-style'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function EditorTabButton({
-  closeTarget,
-  phase,
   tab,
   onCloseTab,
   onSelectTab,
 }: {
-  readonly closeTarget: string | null
-  readonly phase: 'closing' | 'opening' | 'present'
   readonly tab: EditorTabModel
   readonly onCloseTab: (tabId: string) => void
   readonly onSelectTab: (tabId: string) => void
@@ -20,13 +16,7 @@ export function EditorTabButton({
   const dirty = useEditorTabDirty(tab.path)
 
   function selectTab() {
-    if (phase !== 'closing') {
-      onSelectTab(tab.id)
-      return
-    }
-    if (!closeTarget) return
-
-    onCloseTab(closeTarget)
+    onSelectTab(tab.id)
   }
 
   return (
@@ -34,15 +24,10 @@ export function EditorTabButton({
       aria-selected={tab.active}
       className={cn(
         'group/proof-tab flex h-9 w-36 min-w-24 max-w-48 shrink-0 items-center gap-1.5 rounded-t-md border px-2 text-left text-xs shadow-sm outline-none transition-[background-color,border-color,opacity,box-shadow] focus-visible:ring-1 focus-visible:ring-ring/50',
-        tab.active
-          ? 'border-border text-foreground'
-          : 'border-transparent text-muted-foreground hover:bg-muted',
-        phase === 'opening' && 'opacity-0',
-        phase === 'closing' && 'opacity-0',
+        tab.active ? 'border-border text-foreground' : 'border-transparent text-muted-foreground',
       )}
       data-editor-tab-id={tab.id}
       data-editor-tab-path={tab.path}
-      data-editor-tab-phase={phase}
       role='tab'
       title={tab.title}
       type='button'
@@ -56,12 +41,10 @@ export function EditorTabButton({
       {editorTabTitle(tab)}
       <TabTrailingSlot
         active={tab.active}
-        canClose
         dirty={dirty}
-        forceVisible={closeTarget === tab.id}
         orientation='horizontal'
         title={tab.title}
-        onClose={() => onCloseTab(closeTarget ?? tab.id)}
+        onClose={() => onCloseTab(tab.id)}
       />
     </button>
   )

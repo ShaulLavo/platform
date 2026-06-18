@@ -988,16 +988,54 @@ async function contentMatchesFromRgEvent(
   const line = event.data.lines.text
   if (event.data.submatches.length === 0) return []
 
-  return event.data.submatches.map((match) =>
-    contentMatch({
-      columnIndex: match.start,
-      endColumnIndex: match.end,
+  return event.data.submatches.map((match) => {
+    const range = utf8ByteRangeToStringRange(line, match.start, match.end)
+
+    return contentMatch({
+      columnIndex: range.start,
+      endColumnIndex: range.end,
       entry: entryStats,
       line,
       lineNumber: event.data.line_number,
       relativePath,
-    }),
-  )
+    })
+  })
+}
+
+function utf8ByteRangeToStringRange(text: string, startByte: number, endByte: number) {
+  const start = utf8ByteOffsetToStringIndex(text, startByte)
+  const end = utf8ByteOffsetToStringIndex(text, endByte)
+
+  return { end: Math.max(start, end), start }
+}
+
+function utf8ByteOffsetToStringIndex(text: string, byteOffset: number) {
+  if (byteOffset <= 0) return 0
+
+  let byteIndex = 0
+  let stringIndex = 0
+  while (stringIndex < text.length) {
+    if (byteIndex >= byteOffset) return stringIndex
+
+    const characterLength = utf16CharacterLength(text, stringIndex)
+    const nextStringIndex = stringIndex + characterLength
+    const character = text.slice(stringIndex, nextStringIndex)
+    const nextByteIndex = byteIndex + Buffer.byteLength(character, 'utf8')
+    if (nextByteIndex > byteOffset) return stringIndex
+
+    byteIndex = nextByteIndex
+    stringIndex = nextStringIndex
+  }
+
+  return text.length
+}
+
+function utf16CharacterLength(text: string, index: number) {
+  const codePoint = text.codePointAt(index)
+  if (codePoint === undefined) return 1
+  if (codePoint > 0xffff) return 2
+
+  return 1
 }
 
 function safeRgRelativePath(paths: WorkspacePaths, context: FindContext, input: string) {

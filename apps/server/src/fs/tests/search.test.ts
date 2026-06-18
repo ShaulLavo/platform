@@ -101,6 +101,56 @@ describe('workspace disk search provider', () => {
     ])
   })
 
+  it('converts ripgrep utf-8 byte ranges to content columns', async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, 'unicode.md'), 'before — needle\nemoji 😀 needle')
+
+    const result = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: '',
+      query: 'needle',
+    })
+
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        column: 10,
+        endColumn: 16,
+        line: 1,
+        path: 'unicode.md',
+        preview: 'before — needle',
+      }),
+      expect.objectContaining({
+        column: 10,
+        endColumn: 16,
+        line: 2,
+        path: 'unicode.md',
+        preview: 'emoji 😀 needle',
+      }),
+    ])
+
+    const emojiResult = await findInWorkspace(createWorkspacePaths(root), {
+      includeContent: true,
+      includeNames: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: '',
+      query: '😀',
+    })
+
+    expect(emojiResult.matches).toEqual([
+      expect.objectContaining({
+        column: 7,
+        endColumn: 9,
+        line: 2,
+        path: 'unicode.md',
+        preview: 'emoji 😀 needle',
+      }),
+    ])
+  })
+
   it('treats query spaces as part of the content search text', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'spaces.ts'), 'needle here\nneedlehere')
