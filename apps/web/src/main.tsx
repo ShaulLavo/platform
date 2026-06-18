@@ -36,15 +36,6 @@ log.info({
 })
 void loadDefaultNerdFont()
 
-// Desktop (Electrobun) runs over a native vibrancy view; the data attribute
-// flips globals.css to a transparent floor so the real wallpaper frosts through.
-// PLATFORM_DESKTOP_VIBRANCY=0 launches with ?desktopVibrancy=0 to opt out (A/B).
-const desktopVibrancyOff =
-  new URLSearchParams(window.location.search).get('desktopVibrancy') === '0'
-if (isDesktop() && !desktopVibrancyOff) {
-  document.documentElement.dataset.desktop = ''
-}
-
 createRoot(document.getElementById('root')!, {
   onCaughtError: (error, errorInfo) => {
     reportReactError({ error, errorInfo, kind: 'caught' })

@@ -7,6 +7,15 @@ import {
 import { SurfaceRendererHost } from '@/features/workbench/components/surface-renderer-host'
 import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import { commitEventLabel } from '@/features/workbench/utils/event-labels'
+import {
+  layoutSnapshot,
+  logWorkbenchLayoutInfo,
+  logWorkbenchLayoutWarn,
+  visibleLayoutChanged,
+} from '@/features/tiling-surface-manager/engine/layout-logging'
+import type { TilingCommitEvent } from '@workspace/tiling/hooks/use-tiling-drag-controller'
+import { checkWorkspaceLayoutInvariants } from '@workspace/tiling/utils/layout-invariants'
 import type { SurfaceRendererRegistry } from '@/features/workbench/utils/surface-renderer-registry'
 import type {
   LayoutOperation,
@@ -49,7 +58,10 @@ export function SurfaceArea({
 
   // A drag commits a whole new layout: push it to the editor workspace store
   // (the source of truth); the layout store mirrors it back via subscription.
-  function commitLayout(nextLayout: WorkspaceLayout) {
+  // Drags bypass the operation dispatcher, so this is the only place that can
+  // log them — and the only place to catch a drag that corrupts the tree.
+  function commitLayout(nextLayout: WorkspaceLayout, event: TilingCommitEvent) {
+    logDragCommit(layout, nextLayout, event)
     workspaceStore.getState().setWorkspaceLayout(nextLayout)
   }
 
@@ -72,6 +84,29 @@ export function SurfaceArea({
       onSelectSurface={activateSurface}
     />
   )
+}
+
+function logDragCommit(before: WorkspaceLayout, after: WorkspaceLayout, event: TilingCommitEvent) {
+  const context = {
+    before: layoutSnapshot(before),
+    changed: visibleLayoutChanged(before, after),
+    commit: commitEventLabel(before, event),
+    dispatcher: 'drag' as const,
+    operation: { source: event.source.kind, target: event.target.kind },
+    result: layoutSnapshot(after),
+    source: 'drag-commit',
+  }
+  const report = checkWorkspaceLayoutInvariants(after)
+  if (report.ok) {
+    logWorkbenchLayoutInfo('layout.operation.dispatch', { ...context, outcome: 'ok' })
+    return
+  }
+
+  logWorkbenchLayoutWarn('layout.invariant.violation', {
+    ...context,
+    outcome: 'invalid',
+    violations: report.violations.map((violation) => violation.code),
+  })
 }
 
 function renderSurfaceBody(

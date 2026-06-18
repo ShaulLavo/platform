@@ -4,10 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:effects": "bash scripts/build-macos-effects.sh",
-    "dev": "bun run build:effects && bun ../../scripts/run-with-env.ts PLATFORM_DESKTOP_SHARED_DEV=1 electrobun dev",
-    "dev:standalone": "bun run build:effects && bun ../../scripts/run-with-env.ts electrobun dev",
-    "build": "bun run build:effects && electrobun build",
+    "dev": "bun ../../scripts/run-with-env.ts PLATFORM_DESKTOP_SHARED_DEV=1 electrobun dev",
+    "dev:standalone": "bun ../../scripts/run-with-env.ts electrobun dev",
+    "build": "electrobun build",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

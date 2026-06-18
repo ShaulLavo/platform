@@ -452,32 +452,6 @@
   }
 }
 
-/* Desktop (Electrobun): the window is transparent and a native
-   NSVisualEffectView frosts the user's real macOS wallpaper behind it (see
-   apps/desktop/native/macos/window-effects.mm). The web app must stop painting
-   its own opaque floor and shipped wallpaper so the OS frost reads through the
-   chrome and the gaps between panes. Content panes keep their -solid material
-   and stay crisp; one thin scrim over the whole workbench is the luminance
-   floor that keeps chrome legible over any wallpaper. Unlayered so it beats the
-   @layer base floor above. */
-:root[data-desktop],
-:root[data-desktop] body {
-  background-color: transparent;
-}
-
-:root[data-desktop] {
-  /* The baked cast is a copy of the shipped wallpaper — meaningless over the
-     user's real desktop. surface-vibrancy popups fall back to tint-only. */
-  --surface-wallpaper: none;
-}
-
-:root[data-desktop] [data-workbench-layout] {
-  /* One deliberate thin scrim instead of the ~80% bg-background floor: brand
-     tint + contrast floor while the OS frost shows through. Lower for more
-     wallpaper, raise for more legibility. */
-  background-color: color-mix(in oklch, var(--background-solid) 22%, transparent);
-}
-
 .app-editor-host {
   display: flex;
   flex: 1;

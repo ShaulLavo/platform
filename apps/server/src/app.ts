@@ -30,6 +30,7 @@ import {
 } from './provider/provider-adapter-registry'
 import { providerRoutes } from './provider/routes'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
+import { wallpaperRoutes } from './wallpaper/routes'
 
 export type AppOptions = FileSystemServiceOptions & {
   auth?: AuthOptions
@@ -109,6 +110,7 @@ export function createApp(options: AppOptions) {
     .use(orchestrationWsRoutes(orchestration, auth))
     .use(orchestrationRoutes(orchestration, checkpointDiff))
     .use(fontRoutes(fonts))
+    .use(wallpaperRoutes())
     .use(gitRoutes(git))
     .use(fsRoutes(fs))
     .onStop(cleanup)
