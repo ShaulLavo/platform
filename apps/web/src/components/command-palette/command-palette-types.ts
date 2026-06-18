@@ -23,7 +23,6 @@ export type CommandPaletteItem = {
   readonly command: CommandPaletteSelection
   readonly description?: string
   readonly disabledReason?: string | null
-  readonly icon?: string
   readonly id: string
   readonly keywords: string[]
   readonly shortcut: string | null

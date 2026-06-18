@@ -29,6 +29,7 @@ describe('filesystem contracts', () => {
       matchMode: 'literal',
       path: '',
       query: 'button',
+      streamNameMatchesEarly: true,
       useWorkspaceIndex: true,
       wholeWord: false,
     })
@@ -48,6 +49,7 @@ describe('filesystem contracts', () => {
         includeGlobs: ['src/**/*.ts', 'tests/{unit,integration}/**/*.ts'],
         matchMode: 'regex',
         query: 'button',
+        streamNameMatchesEarly: '0',
         wholeWord: 'true',
       }),
     ).toMatchObject({
@@ -55,6 +57,7 @@ describe('filesystem contracts', () => {
       excludeGlobs: ['*.test.ts'],
       includeGlobs: ['src/**/*.ts', 'tests/{unit,integration}/**/*.ts'],
       matchMode: 'regex',
+      streamNameMatchesEarly: false,
       wholeWord: true,
     })
   })

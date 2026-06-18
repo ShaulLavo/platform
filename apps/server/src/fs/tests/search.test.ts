@@ -1134,6 +1134,39 @@ describe('workspace disk search provider', () => {
     expect(result.matches.map((match) => match.path)).toEqual(['a/search.ts', 'b/search.ts'])
   })
 
+  it('keeps early name streaming opt-in while supporting fully ranked fuzzy names', async () => {
+    const root = await fixtureRoot()
+    await writeWeakFuzzyNameMatches(root)
+    await writeFile(path.join(root, 'zz-ab.ts'), '')
+    const paths = createWorkspacePaths(root)
+    const options = {
+      includeContent: false,
+      limit: 5,
+      matchMode: 'fuzzy' as const,
+      maxContentBytes: 1_000_000,
+      path: '',
+      query: 'ab',
+      useWorkspaceIndex: false,
+    }
+
+    const earlyEvents = await collectEvents(findInWorkspaceStream(paths, options))
+    const earlyDone = doneEvent(earlyEvents)
+    if (!earlyDone?.measurement?.providerSources.includes('fd')) return
+
+    const earlyPaths = nameMatchPaths(earlyEvents)
+    expect(earlyPaths[0]).not.toBe('zz-ab.ts')
+    expect(earlyPaths).toContain('zz-ab.ts')
+
+    const rankedEvents = await collectEvents(
+      findInWorkspaceStream(paths, {
+        ...options,
+        streamNameMatchesEarly: false,
+      }),
+    )
+
+    expect(nameMatchPaths(rankedEvents)[0]).toBe('zz-ab.ts')
+  })
+
   it('returns symlink name matches when filtering by symlink type', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'target.ts'), '')
@@ -1197,6 +1230,14 @@ async function fixtureRoot() {
   const root = await mkdtemp(path.join(tmpdir(), 'platform-search-'))
   roots.push(root)
   return root
+}
+
+async function writeWeakFuzzyNameMatches(root: string) {
+  const writes = Array.from({ length: 80 }, (_, index) =>
+    writeFile(path.join(root, `aa-${String(index).padStart(3, '0')}-b.ts`), ''),
+  )
+
+  await Promise.all(writes)
 }
 
 async function collectEvents<T>(events: AsyncIterable<T>) {

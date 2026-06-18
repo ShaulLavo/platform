@@ -58,6 +58,7 @@ export const searchQuerySchema = v.object({
   entryType: v.optional(entryTypeQueryValueSchema),
   matchMode: v.optional(matchModeQueryValueSchema, 'literal'),
   maxDepth: v.optional(depthQueryValueSchema),
+  streamNameMatchesEarly: v.optional(booleanQueryValueSchema, 'true'),
   useWorkspaceIndex: v.optional(booleanQueryValueSchema, 'true'),
   wholeWord: v.optional(booleanQueryValueSchema, 'false'),
 })

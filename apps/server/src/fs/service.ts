@@ -493,6 +493,7 @@ async function* observedSearchEvents(
       limit: options.limit,
       matchMode: options.matchMode,
       queryLength: options.query.length,
+      streamNameMatchesEarly: options.streamNameMatchesEarly,
     },
   })
 
@@ -597,6 +598,7 @@ function searchStreamSummary(
     search: {
       matchCount: state.matchCount,
       queryLength: options.query.length,
+      streamNameMatchesEarly: options.streamNameMatchesEarly,
       truncated: state.truncated,
     },
     status,

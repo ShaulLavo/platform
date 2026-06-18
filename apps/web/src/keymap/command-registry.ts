@@ -10,7 +10,6 @@ export type CommandSpec<Id extends PlatformCommandId = PlatformCommandId> = {
   readonly title: string
   readonly category: string
   readonly description?: string
-  readonly icon?: string
   readonly vscodeCommandIds?: readonly string[]
   readonly argsSchema?: unknown
 }

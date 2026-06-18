@@ -24,6 +24,7 @@ export type WorkspaceSearchQuery = {
   maxDepth?: number
   path: string
   query: string
+  streamNameMatchesEarly?: boolean
   useWorkspaceIndex?: boolean
   wholeWord?: boolean
 }

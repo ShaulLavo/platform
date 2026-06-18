@@ -105,6 +105,7 @@ export async function fetchQuickOpenFiles({
           matchMode: 'fuzzy',
           path,
           query,
+          streamNameMatchesEarly: false,
           wholeWord: false,
         },
         signal,

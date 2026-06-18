@@ -2,7 +2,7 @@ import type { LoadState } from '@/lib/load-state'
 import { fetchQuickOpenFiles } from '@/lib/file-server'
 import { fileSystemKeys } from '@/lib/query-keys'
 import type { TreeModel } from '@/lib/tree-model'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useLayoutEffect, useState } from 'react'
 
 import type { QuickAccessMode } from './command-palette-types'
@@ -33,7 +33,6 @@ export function useCommandPaletteFiles({
   const fileSearchEnabled = open && mode === 'files' && Boolean(rootPath && fileQuery)
   const fileSearchQuery = useQuery({
     enabled: fileSearchEnabled,
-    placeholderData: keepPreviousData,
     queryFn: ({ signal }) =>
       fetchQuickOpenFiles({
         path: rootPath ?? '',

@@ -72,7 +72,7 @@ export function CommandPaletteContent({
     selectedFilePath: activeFilePath,
   })
   const commandItems = commandPaletteItems(platformCommandSpecs, bindings)
-  const groups = groupedCommandItems(commandItems)
+  const groups = groupedCommandItems(commandItems, search)
 
   function runCommand(item: CommandPaletteItem) {
     const disabledReason = commandPaletteItemDisabledReason(item, {
@@ -96,6 +96,12 @@ export function CommandPaletteContent({
     if (commandKeepsPaletteOpen(command)) return
 
     onOpenChange(false)
+  }
+
+  function previewPlatformCommand(command: PlatformCommandId) {
+    if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
+
+    dispatch(command)
   }
 
   function dispatchPlatformPaletteSelection(item: CommandPaletteItem) {
@@ -151,7 +157,7 @@ export function CommandPaletteContent({
         value={search}
         onValueChange={handleSearchChange}
       />
-      <CommandList>
+      <CommandList className='max-h-[min(58vh,440px)] py-1'>
         <CommandEmpty>{emptyLabelForMode(mode)}</CommandEmpty>
         <CommandPaletteGroupsFactory
           commandGroups={groups}
@@ -167,6 +173,7 @@ export function CommandPaletteContent({
           symbolsPending={symbolsEnabled && symbolQuery.isPending}
           onCommandSelect={runCommand}
           onFileSelect={openFile}
+          onPlatformCommandPreview={previewPlatformCommand}
           onPlatformCommandSelect={runPlatformCommand}
           onSymbolSelect={openSymbol}
         />

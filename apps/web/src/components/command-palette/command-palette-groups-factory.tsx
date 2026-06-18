@@ -29,6 +29,7 @@ type CommandPaletteGroupsFactoryProps = {
   readonly symbolsPending: boolean
   readonly onCommandSelect: (item: CommandPaletteItem) => void
   readonly onFileSelect: (path: string) => void
+  readonly onPlatformCommandPreview: (command: PlatformCommandId) => void
   readonly onPlatformCommandSelect: (command: PlatformCommandId) => void
   readonly onSymbolSelect: (symbol: FlatDocumentSymbol) => void
 }
@@ -47,6 +48,7 @@ export function CommandPaletteGroupsFactory({
   symbolsPending,
   onCommandSelect,
   onFileSelect,
+  onPlatformCommandPreview,
   onPlatformCommandSelect,
   onSymbolSelect,
 }: CommandPaletteGroupsFactoryProps) {
@@ -66,7 +68,13 @@ export function CommandPaletteGroupsFactory({
   }
 
   if (mode === 'colorMode') {
-    return <ColorModeGroups currentTheme={currentTheme} onSelect={onPlatformCommandSelect} />
+    return (
+      <ColorModeGroups
+        currentTheme={currentTheme}
+        onPreview={onPlatformCommandPreview}
+        onSelect={onPlatformCommandSelect}
+      />
+    )
   }
 
   if (mode === 'editors') {

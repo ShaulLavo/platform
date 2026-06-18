@@ -168,9 +168,37 @@ function fuzzyFieldRank(
   piece: string,
   field: FieldRank['field'],
 ): FieldRank | null {
+  if (field === 'path') return fuzzyPathFieldRank(text, normalized, piece)
+
   const positions = fuzzyPositions(normalized, piece)
   if (!positions) return null
 
+  return fuzzyRankFromPositions(text, piece, field, positions)
+}
+
+function fuzzyPathFieldRank(text: string, normalized: string, piece: string): FieldRank | null {
+  if (piece.includes('/')) return null
+
+  const ranks: FieldRank[] = []
+  let offset = 0
+
+  for (const segment of normalized.split('/')) {
+    const positions = fuzzyPositions(segment, piece)
+    if (positions)
+      ranks.push(fuzzyRankFromPositions(text, piece, 'path', offsetPositions(positions, offset)))
+
+    offset += segment.length + 1
+  }
+
+  return ranks.sort(compareFieldRanks)[0] ?? null
+}
+
+function fuzzyRankFromPositions(
+  text: string,
+  piece: string,
+  field: FieldRank['field'],
+  positions: readonly number[],
+): FieldRank {
   const firstIndex = positions[0] ?? 0
   const lastIndex = positions.at(-1) ?? firstIndex
   const span = lastIndex - firstIndex + 1
@@ -186,6 +214,10 @@ function fuzzyFieldRank(
     score,
     span,
   }
+}
+
+function offsetPositions(positions: readonly number[], offset: number) {
+  return positions.map((position) => position + offset)
 }
 
 function fuzzyPositions(text: string, piece: string) {

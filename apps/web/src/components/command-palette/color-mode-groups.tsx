@@ -7,10 +7,17 @@ import { colorModePaletteItems } from './command-palette-data'
 
 type ColorModeGroupsProps = {
   readonly currentTheme: Theme
+  readonly onPreview: (command: PlatformCommandId) => void
   readonly onSelect: (command: PlatformCommandId) => void
 }
 
-export function ColorModeGroups({ currentTheme, onSelect }: ColorModeGroupsProps) {
+export function ColorModeGroups({ currentTheme, onPreview, onSelect }: ColorModeGroupsProps) {
+  function previewColorMode(command: PlatformCommandId, mode: Theme) {
+    if (mode === currentTheme) return
+
+    onPreview(command)
+  }
+
   return (
     <CommandGroup heading='Color Mode'>
       {colorModePaletteItems.map((item) => (
@@ -18,6 +25,7 @@ export function ColorModeGroups({ currentTheme, onSelect }: ColorModeGroupsProps
           key={item.value}
           keywords={[item.title, item.description, item.command]}
           value={item.value}
+          onPointerEnter={() => previewColorMode(item.command, item.mode)}
           onSelect={() => onSelect(item.command)}
         >
           <CommandIcon className='text-muted-foreground' />

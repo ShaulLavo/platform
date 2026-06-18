@@ -29,6 +29,41 @@ describe('fuzzy ranking', () => {
 
     expect(ranked).toEqual(['a/search.ts', 'b/search.ts'])
   })
+
+  it('does not let one fuzzy path piece span path segments', () => {
+    expect(
+      fuzzyRankScore(rankTarget('packages/editor-core/src/public/rendering.ts'), 'binding'),
+    ).toBe(0)
+    expect(
+      fuzzyRankScore(
+        rankTarget('apps/web/src/features/git/hooks/use-commit-pending.ts'),
+        'binding',
+      ),
+    ).toBe(0)
+  })
+
+  it('keeps filename binding matches ahead of weak path matches', () => {
+    const query = 'binding'
+    const paths = [
+      'packages/editor-core/src/public/rendering.ts',
+      'apps/web/src/features/git/hooks/use-commit-pending.ts',
+      'apps/web/src/keymap/default-bindings.ts',
+      'apps/web/src/keymap/active-bindings.ts',
+    ]
+
+    const ranked = paths.toSorted((left, right) =>
+      compareFuzzyRankedTargets(rankTarget(left), rankTarget(right), query),
+    )
+
+    expect(ranked.slice(0, 2)).toEqual([
+      'apps/web/src/keymap/active-bindings.ts',
+      'apps/web/src/keymap/default-bindings.ts',
+    ])
+  })
+
+  it('still supports contiguous slash path queries', () => {
+    expect(fuzzyRankScore(rankTarget('src/app.ts'), 'src/app')).toBeGreaterThan(0)
+  })
 })
 
 function rankTarget(path: string) {

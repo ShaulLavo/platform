@@ -33,6 +33,16 @@ export function commandPaletteItems(
 
 export function groupedCommandItems(
   items: readonly CommandPaletteItem[],
+  search = '',
+): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
+  const query = quickAccessQuery(search)
+  if (query) return groupedCommandItemsInOrder(rankedCommandItems(items, query))
+
+  return groupedCommandItemsInOrder(items)
+}
+
+function groupedCommandItemsInOrder(
+  items: readonly CommandPaletteItem[],
 ): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
   const groups = new Map<string, CommandPaletteItem[]>()
   for (const item of items) {
@@ -46,6 +56,52 @@ export function groupedCommandItems(
   }
 
   return Array.from(groups.entries())
+}
+
+type RankedCommandItem = {
+  readonly item: CommandPaletteItem
+  readonly order: number
+  readonly score: number
+  readonly strong: boolean
+}
+
+function rankedCommandItems(items: readonly CommandPaletteItem[], query: string) {
+  const ranked = items.flatMap((item, order) => rankedCommandItem(item, query, order))
+  const hasStrongMatch = ranked.some((item) => item.strong)
+
+  return ranked
+    .filter((item) => !hasStrongMatch || item.strong)
+    .toSorted(compareRankedCommandItems)
+    .map((item) => item.item)
+}
+
+function rankedCommandItem(item: CommandPaletteItem, query: string, order: number) {
+  const score = quickAccessFilter(item.id, query, item.keywords)
+  if (score <= 0) return []
+
+  return [
+    {
+      item,
+      order,
+      score,
+      strong: commandItemStrongMatch(item, query),
+    },
+  ]
+}
+
+function commandItemStrongMatch(item: CommandPaletteItem, query: string) {
+  const pieces = queryPieces(query)
+  if (pieces.length === 0) return true
+
+  return pieces.every((piece) => commandItemMatchesPiece(item, piece))
+}
+
+function commandItemMatchesPiece(item: CommandPaletteItem, piece: string) {
+  return item.keywords.some((keyword) => keyword.toLocaleLowerCase().includes(piece))
+}
+
+function compareRankedCommandItems(left: RankedCommandItem, right: RankedCommandItem) {
+  return compareNumbers(right.score, left.score) || compareNumbers(left.order, right.order)
 }
 
 export function filePaletteItems(state: LoadState<TreeModel>): readonly FilePaletteItem[] {
@@ -247,7 +303,6 @@ function platformCommandPaletteItem(
     category: spec.category,
     command: { command: spec.id, kind: 'platform' },
     description: spec.description,
-    icon: spec.icon,
     id: spec.id,
     keywords: commandKeywords(spec),
     shortcut: commandShortcut(spec.id, bindings),
@@ -261,6 +316,14 @@ function quickAccessRankTarget(value: string, keywords: readonly string[] | unde
   const extraKeywords = [value].concat(keywords?.slice(2) ?? [])
 
   return { label, keywords: extraKeywords, path }
+}
+
+function queryPieces(query: string) {
+  return query.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean)
+}
+
+function compareNumbers(left: number, right: number) {
+  return left === right ? 0 : left < right ? -1 : 1
 }
 
 function formatHotkey(hotkey: string) {

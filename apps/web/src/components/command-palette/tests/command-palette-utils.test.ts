@@ -4,6 +4,7 @@ import {
   commandDisabledReason,
   commandPaletteItems,
   fileBackedPath,
+  groupedCommandItems,
   quickAccessMode,
   quickAccessQuery,
 } from '@/components/command-palette/command-palette-utils'
@@ -22,6 +23,17 @@ test('command palette items expose platform command metadata and shortcuts', () 
     title: 'Quick Open',
   })
   expect(quickOpen?.keywords).toContain('workbench.action.quickOpen')
+})
+
+test('command groups rank strong command matches above earlier weak fuzzy groups', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+  const groups = groupedCommandItems(items, '> color')
+
+  expect(groups[0]?.[0]).toBe('Appearance')
+  expect(groups[0]?.[1].map((item) => item.id)).toEqual(['workspace.selectColorMode'])
+  expect(groups.flatMap(([, groupItems]) => groupItems.map((item) => item.id))).not.toContain(
+    'workspace.toggleSidebarVisibility',
+  )
 })
 
 test('workspace commands require a workspace unless explicitly optional', () => {

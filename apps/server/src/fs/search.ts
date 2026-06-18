@@ -103,6 +103,12 @@ const streamingSearchRuntimeOptions: SearchRuntimeOptions = {
   streamNameMatchesEarly: true,
 }
 
+function searchRuntimeOptions(options: FindOptions) {
+  if (options.streamNameMatchesEarly === false) return exactSearchRuntimeOptions
+
+  return streamingSearchRuntimeOptions
+}
+
 export class DiskWorkspaceSearchProvider implements SearchProvider {
   private options: SearchProviderOptions
   private paths: WorkspacePaths
@@ -117,7 +123,7 @@ export class DiskWorkspaceSearchProvider implements SearchProvider {
       this.paths,
       query,
       signal,
-      streamingSearchRuntimeOptions,
+      searchRuntimeOptions(query),
       this.options,
     )
   }
