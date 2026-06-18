@@ -25,7 +25,6 @@ export default defineConfig({
     exclude: ['ghostty-web'],
   },
   plugins: [
-    wallpaperPreloadPlugin(),
     editorSourcePlugin(editorSourceModules),
     platformSelfSaveHmrPlugin(),
     react(),
@@ -59,33 +58,6 @@ function platformSelfSaveHmrPlugin(): Plugin {
 
         return []
       },
-    },
-  }
-}
-
-// Preload the server's wallpaper image during HTML parse — before the JS bundle —
-// so the desktop backdrop is cached by the time React mounts. crossorigin matches
-// the <img crossorigin> in Wallpaper so the same request is reused and carries an
-// Origin past the server auth guard. Mirrors client.ts's VITE_SERVER_URL fallback.
-function wallpaperPreloadPlugin(): Plugin {
-  const serverUrl = process.env.VITE_SERVER_URL ?? 'http://localhost:3001'
-
-  return {
-    name: 'platform-wallpaper-preload',
-    transformIndexHtml() {
-      return [
-        {
-          attrs: {
-            as: 'image',
-            crossorigin: 'anonymous',
-            fetchpriority: 'high',
-            href: `${serverUrl}/wallpaper`,
-            rel: 'preload',
-          },
-          injectTo: 'head',
-          tag: 'link',
-        },
-      ]
     },
   }
 }
