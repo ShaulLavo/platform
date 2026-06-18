@@ -1,9 +1,4 @@
 import type { Theme } from '@/components/theme-context'
-import type {
-  CustomWindowManagementCommand,
-  LayoutOperation,
-  WorkspaceLayoutCommand,
-} from '@workspace/tiling/utils/layout-types'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { PlatformCommandDispatch } from '@/keymap/use-app-keymap'
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
@@ -17,11 +12,10 @@ export type CommandPaletteProps = {
   readonly search: string
 }
 
-export type CommandPaletteSelection =
-  | { readonly command: PlatformCommandId; readonly kind: 'platform' }
-  | { readonly command: CustomWindowManagementCommand; readonly kind: 'custom-window' }
-  | { readonly command: WorkspaceLayoutCommand; readonly kind: 'saved-layout' }
-  | { readonly kind: 'layout-operation'; readonly operation: LayoutOperation }
+export type CommandPaletteSelection = {
+  readonly command: PlatformCommandId
+  readonly kind: 'platform'
+}
 
 export type CommandPaletteItem = {
   readonly aliases: readonly string[]

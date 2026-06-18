@@ -65,7 +65,7 @@ export function LanguageServerReferencesPane({
   return (
     <aside
       aria-label='References'
-      className='bg-background grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l'
+      className='grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l'
     >
       <div className='flex h-10 items-center justify-between gap-2 border-b px-3'>
         <div className='flex min-w-0 items-center gap-2'>

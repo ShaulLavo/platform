@@ -22,7 +22,7 @@ const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
 type WorkspaceCacheSnapshot = Pick<
   CachedWorkspaceState,
-  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workspaceLayout'
+  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workbenchPanels'
 >
 
 type WorkspaceCachePersistenceOptions = {
@@ -101,7 +101,7 @@ function cachedWorkspaceState(state: EditorWorkspaceStore): WorkspaceCacheSnapsh
     editorHistory: state.editorHistory,
     recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
     rootFolder: state.rootFolder,
-    workspaceLayout: state.workspaceLayout,
+    workbenchPanels: state.workbenchPanels,
   }
 }
 
@@ -109,7 +109,7 @@ function cachedWorkspaceStatesEqual(left: WorkspaceCacheSnapshot, right: Workspa
   return (
     left.diffViewMode === right.diffViewMode &&
     left.rootFolder === right.rootFolder &&
-    left.workspaceLayout === right.workspaceLayout &&
+    left.workbenchPanels === right.workbenchPanels &&
     readonlyArraysEqual(left.editorHistory, right.editorHistory) &&
     readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)
   )

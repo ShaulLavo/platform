@@ -55,7 +55,7 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
 
   return (
     <section
-      className={cn('flex h-full min-h-0 flex-col bg-background text-foreground', className)}
+      className={cn('flex h-full min-h-0 flex-col text-foreground', className)}
       onFocusCapture={() => setFocusArea('git')}
       onPointerDownCapture={() => setFocusArea('git')}
     >
@@ -86,7 +86,7 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
           </div>
         </>
       ) : (
-        <div aria-hidden='true' className='bg-background min-h-0 flex-1' />
+        <div aria-hidden='true' className='min-h-0 flex-1' />
       )}
     </section>
   )

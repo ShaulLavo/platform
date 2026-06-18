@@ -4,7 +4,16 @@ import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { clientErrors } from '@/lib/structured-errors'
 
-export type FocusArea = 'editor' | 'file-tree' | 'git' | 'global' | 'logs' | 'terminal' | null
+export type FocusArea =
+  | 'editor'
+  | 'file-tree'
+  | 'git'
+  | 'global'
+  | 'logs'
+  | 'problems'
+  | 'search'
+  | 'terminal'
+  | null
 
 type FocusStoreState = {
   activeArea: FocusArea

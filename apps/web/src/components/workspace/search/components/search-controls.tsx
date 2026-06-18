@@ -1,5 +1,3 @@
-import { ArrowSquareOutIcon } from '@phosphor-icons/react'
-
 import { SearchSummary } from '@/components/workspace/search/components/search-summary'
 import { SearchFilterFields } from '@/features/search/search-filter-fields'
 import { SearchHistoryInput } from '@/features/search/search-history-input'
@@ -8,9 +6,6 @@ import { SearchReplaceFields } from '@/features/search/search-replace-fields'
 import { SearchReplaceToggleButton } from '@/features/search/search-replace-toggle-button'
 import { useSearchBufferInputs } from '@/features/search/use-search-buffer-inputs'
 import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
-import { createSearchResultsDetailSurface } from '@workspace/tiling/utils/layout-builders'
-import { useLayoutState } from '@/features/workbench/hooks/use-layout-state'
-import { Button } from '@workspace/ui/components/button'
 
 export function SearchControls({ rootPath }: { rootPath: string }) {
   const {
@@ -29,17 +24,9 @@ export function SearchControls({ rootPath }: { rootPath: string }) {
     setSearchOptions,
   } = useSearchBufferInputs(rootPath)
   const replace = useWorkspaceSearchReplace(rootPath, replaceVisible)
-  const dispatchLayoutOperation = useLayoutState((state) => state.dispatchLayoutOperation)
-
-  function handleOpenSearchResults() {
-    dispatchLayoutOperation({
-      surface: createSearchResultsDetailSurface(),
-      type: 'openSurface',
-    })
-  }
 
   return (
-    <div className='bg-muted/20 border-b p-1.5'>
+    <div className='border-b p-1.5'>
       <div className='flex items-center gap-1'>
         <SearchHistoryInput
           aria-label='Search workspace'
@@ -65,17 +52,6 @@ export function SearchControls({ rootPath }: { rootPath: string }) {
           className='h-7 px-1.5'
           onToggle={setReplaceVisible}
         />
-        <Button
-          aria-label='Open search results surface'
-          className='text-muted-foreground hover:text-foreground size-7 shrink-0'
-          size='icon-sm'
-          title='Open search results surface'
-          type='button'
-          variant='ghost'
-          onClick={handleOpenSearchResults}
-        >
-          <ArrowSquareOutIcon className='size-4' />
-        </Button>
       </div>
       <SearchFilterFields
         className='mt-1.5 gap-1'

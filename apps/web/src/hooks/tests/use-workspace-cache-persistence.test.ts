@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { editorWorkspaceLayoutForPaths } from '../../../test/factories/editor-workspace-layout'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
+import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { createSearchBufferStore } from '@/features/search/search-buffer-state'
-import { createSearchResultsSurface } from '@workspace/tiling/utils/layout-builders'
-import { openSurface } from '@workspace/tiling/utils/layout-operations'
+import {
+  createDefaultWorkbenchPanels,
+  openEditorPathInWorkbenchPanels,
+} from '@/features/workbench/utils/workbench-panels'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { CachedWorkspaceState, WorkspaceCacheWriteState } from '@/lib/workspace-cache'
 import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
@@ -83,7 +85,7 @@ describe('workspace cache persistence', () => {
     unsubscribe()
   })
 
-  it('ignores transient workspace picker state', () => {
+  it('ignores transient workspace picker and denormalized selection state', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
     const writes: WorkspaceCacheWriteState[] = []
@@ -106,11 +108,17 @@ describe('workspace cache persistence', () => {
 
     workspaceStore
       .getState()
-      .setWorkspaceLayout(
-        openSurface(workspaceStore.getState().workspaceLayout, createSearchResultsSurface()),
+      .setWorkbenchPanels(
+        openEditorPathInWorkbenchPanels(
+          workspaceStore.getState().workbenchPanels,
+          '/repo/src/a.ts',
+        ),
       )
     vi.runAllTimers()
     expect(writes).toHaveLength(1)
+    expect(writes.at(-1)?.workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
+      '/repo/src/a.ts',
+    ])
 
     unsubscribe()
   })
@@ -118,13 +126,13 @@ describe('workspace cache persistence', () => {
 
 function cachedWorkspace(): CachedWorkspaceState {
   return {
-    diffViewMode: 'split',
+    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: pickedDirectory('/repo'),
     selectedFilePath: null,
-    workspaceLayout: editorWorkspaceLayoutForPaths([], null),
+    workbenchPanels: createDefaultWorkbenchPanels(),
   }
 }
 

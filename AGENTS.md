@@ -49,7 +49,7 @@
 - Compose the shared primitives; do not restyle them ad-hoc or reach for a raw `<button>`/`<input>` when a primitive exists.
 - Surface material is built into the theme: `bg-background`, `bg-card`, `bg-popover`, `bg-muted`, `bg-accent` are already translucent via `--surface-opacity`. Never hand-roll material with `/NN` opacity modifiers or ad-hoc `backdrop-blur-*` on a surface.
 - Two material utilities, pick by what is behind the surface:
-  - `backdrop-material` — honest glass (blur + saturate via `--surface-blur`/`--surface-saturation`) for surfaces that sit on the wallpaper or real content: window frames, the rail, in-pane chrome.
+  - `backdrop-material` — honest glass (blur + saturate via `--surface-blur`/`--surface-saturation`) for surfaces that sit on the wallpaper or real content: window frames, sidebars, in-pane chrome.
   - `surface-vibrancy` — macOS-style vibrancy for floating surfaces (dialogs, menus, popovers, toasts): backdrop blur for content ghosting, plus the semi-transparent pre-blurred wallpaper (`--surface-wallpaper`) under a popover tint so color survives even over a white pane. Self-contained — do not also paint `bg-popover` on the element; that stacks a fourth layer and goes opaque.
 - Opaque-on-purpose surfaces use the `-solid` utilities (`bg-background-solid`, `bg-card-solid`, ...). They deliberately ignore the user's transparency setting — use them for things that must never fade (e.g. switch thumbs, active tab fills).
 - Regenerate `apps/web/public/workbench/wallpaper-vibrancy.png` (blur 48px, saturate 160%, 35% opacity baked into the alpha channel, ~1280px wide) whenever the wallpaper image changes. Keep the alpha low — it is a color cast; higher values drown the backdrop ghosting.

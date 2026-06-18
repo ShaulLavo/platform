@@ -11,7 +11,6 @@ const EDITOR_SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '/index.ts', '/index.tsx
 type EditorSourceModules = Map<string, Map<string, string>>
 
 const workspaceRoot = path.resolve(__dirname, '../..')
-const tilingSourceRoot = path.resolve(workspaceRoot, 'packages/tiling/src')
 const editorPackagesRoot = path.resolve(workspaceRoot, 'node_modules/@singapor')
 const editorSourceModules = buildEditorSourceModules(editorPackagesRoot)
 const editorRepoRoots = collectEditorRepoRoots(editorPackagesRoot, editorSourceModules)
@@ -36,7 +35,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@workspace/tiling': tilingSourceRoot,
     },
     dedupe: ['react', 'react-dom'],
   },
@@ -94,7 +92,7 @@ function wallpaperPreloadPlugin(): Plugin {
 
 // In dev, resolve every `@singapor/*` import (bare entry and subpaths alike) to the
 // editor's TypeScript source instead of its prebuilt `dist/`, so edits in the linked
-// editor repo are live — the same "served from source" behavior as `@workspace/tiling`.
+// editor repo are live.
 // A plain alias cannot do this: the packages remap subpaths non-literally in `exports`
 // (`./document` -> `dist/public/document.js`, `./completion-controller` ->
 // `completionController.js`), so we derive each source target from the package's own

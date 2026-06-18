@@ -1,11 +1,18 @@
-import { DotsSixVerticalIcon, MinusIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
+import {
+  ChatCircleIcon,
+  FilesIcon,
+  GitBranchIcon,
+  MagnifyingGlassIcon,
+  MinusIcon,
+  PlusIcon,
+  ScrollIcon,
+  XIcon,
+} from '@phosphor-icons/react'
 
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
-import { SurfaceIcon } from '@/features/workbench/components/surface-icon'
 import type { LoadState } from '@/lib/load-state'
 import type { TreeModel } from '@/lib/tree-model'
-import type { Surface, SurfaceType } from '@workspace/tiling/utils/layout-types'
 import type { PointerEvent } from 'react'
 
 type ToolPaneHeaderOrientation = 'horizontal' | 'vertical'
@@ -14,87 +21,49 @@ type ToolPaneHeaderTab = 'chat' | 'files' | 'git' | 'logs' | 'search'
 export function ToolPaneHeader({
   className,
   collapsed = false,
-  draggable = false,
-  dragHandleRef,
   orientation = 'horizontal',
-  railActive = false,
   rowActive = false,
-  surface,
   tab,
   treeState,
   visibleTreeItemCount,
   onClose,
-  onCollapseToRail,
   onCollapseToRow,
   onToggleCollapse,
 }: {
   readonly className?: string
   readonly collapsed?: boolean
-  readonly draggable?: boolean
-  readonly dragHandleRef?: (element: HTMLElement | null) => void
   readonly orientation?: ToolPaneHeaderOrientation
-  readonly railActive?: boolean
   readonly rowActive?: boolean
-  readonly surface?: Surface | null
   readonly tab?: ToolPaneHeaderTab
   readonly treeState?: LoadState<TreeModel>
   readonly visibleTreeItemCount?: number | null
   readonly onClose?: () => void
-  readonly onCollapseToRail?: () => void
   readonly onCollapseToRow?: () => void
   readonly onToggleCollapse?: () => void
 }) {
-  const title = toolPaneHeaderTitle(surface, tab)
+  const title = panelTabTitle(tab)
   const detail =
     tab === 'files' && orientation === 'horizontal'
       ? treeHeaderDetail(treeState, visibleTreeItemCount ?? null)
       : null
-  const surfaceType = surface?.type ?? toolPaneHeaderSurfaceType(tab)
   const toggleLabel = collapsed ? `Expand ${title}` : `Collapse ${title}`
-  const dualCollapseVisible = Boolean(onCollapseToRow && onCollapseToRail)
   const rowLabel = rowActive ? `Expand ${title}` : `Collapse ${title} to row`
-  const railLabel = railActive ? `Expand ${title}` : `Collapse ${title} to rail`
-  const actionsVisible = Boolean(onClose || onToggleCollapse || dualCollapseVisible)
+  const actionsVisible = Boolean(onClose || onToggleCollapse || onCollapseToRow)
 
   return (
     <div
       className={cn(
-        'border-border flex shrink-0 bg-card text-foreground',
+        'border-border flex shrink-0 text-foreground',
         orientation === 'vertical'
           ? 'h-full w-full flex-col items-center gap-1 border-r px-1 py-1'
           : 'h-10 items-center gap-2 border-b px-3',
-        draggable && 'cursor-grab active:cursor-grabbing',
         className,
       )}
-      data-workbench-window-drag-handle={draggable ? '' : undefined}
-      data-workbench-tool-pane-drag-handle={draggable ? '' : undefined}
       data-workbench-tool-pane-header=''
       data-workbench-tool-pane-header-collapsed={collapsed ? 'true' : 'false'}
       data-workbench-tool-pane-header-orientation={orientation}
-      ref={dragHandleRef}
     >
-      {draggable ? (
-        <div
-          aria-label={`Drag ${title}`}
-          className={cn(
-            'text-muted-foreground grid shrink-0 place-items-center text-sm',
-            orientation === 'vertical' ? 'h-7 w-8' : 'h-8 w-5',
-          )}
-          role='button'
-          tabIndex={0}
-        >
-          <DotsSixVerticalIcon className='size-3.5' />
-        </div>
-      ) : null}
-      {surfaceType ? (
-        <SurfaceIcon
-          className={cn(
-            'text-muted-foreground shrink-0',
-            orientation === 'vertical' ? 'size-4' : 'size-4',
-          )}
-          type={surfaceType}
-        />
-      ) : null}
+      {toolPaneHeaderIcon(tab)}
       <div
         className={cn(
           'min-w-0 flex-1',
@@ -121,35 +90,21 @@ export function ToolPaneHeader({
           )}
           data-workbench-drag-blocker=''
         >
-          {dualCollapseVisible ? (
-            <>
-              <Button
-                aria-label={rowLabel}
-                className='text-muted-foreground hover:text-foreground size-7 rounded-md'
-                size='icon-sm'
-                title={rowLabel}
-                type='button'
-                variant='ghost'
-                onClick={rowActive ? onToggleCollapse : onCollapseToRow}
-                onPointerDown={stopToolPaneHeaderPointerDown}
-              >
-                <MinusIcon className='size-3.5' />
-              </Button>
-              <Button
-                aria-label={railLabel}
-                className='text-muted-foreground hover:text-foreground size-7 rounded-md'
-                size='icon-sm'
-                title={railLabel}
-                type='button'
-                variant='ghost'
-                onClick={railActive ? onToggleCollapse : onCollapseToRail}
-                onPointerDown={stopToolPaneHeaderPointerDown}
-              >
-                <MinusIcon className='size-3.5 rotate-90' />
-              </Button>
-            </>
+          {onCollapseToRow ? (
+            <Button
+              aria-label={rowLabel}
+              className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+              size='icon-sm'
+              title={rowLabel}
+              type='button'
+              variant='ghost'
+              onClick={rowActive ? onToggleCollapse : onCollapseToRow}
+              onPointerDown={stopToolPaneHeaderPointerDown}
+            >
+              <MinusIcon className='size-3.5' />
+            </Button>
           ) : null}
-          {!dualCollapseVisible && onToggleCollapse ? (
+          {!onCollapseToRow && onToggleCollapse ? (
             <Button
               aria-label={toggleLabel}
               className='text-muted-foreground hover:text-foreground size-7 rounded-md'
@@ -187,25 +142,6 @@ function stopToolPaneHeaderPointerDown(event: PointerEvent<HTMLButtonElement>) {
   event.stopPropagation()
 }
 
-function toolPaneHeaderTitle(
-  surface: Surface | null | undefined,
-  tab: ToolPaneHeaderTab | undefined,
-) {
-  if (surface) return surface.title
-
-  return panelTabTitle(tab)
-}
-
-function toolPaneHeaderSurfaceType(tab: ToolPaneHeaderTab | undefined): SurfaceType | null {
-  if (tab === 'chat') return 'chat'
-  if (tab === 'files') return 'file-navigator'
-  if (tab === 'git') return 'git-changes'
-  if (tab === 'logs') return 'logs'
-  if (tab === 'search') return 'search-results'
-
-  return null
-}
-
 function panelTabTitle(tab: ToolPaneHeaderTab | undefined) {
   if (tab === 'chat') return 'Chat'
   if (tab === 'files') return 'Files'
@@ -214,6 +150,17 @@ function panelTabTitle(tab: ToolPaneHeaderTab | undefined) {
   if (tab === 'search') return 'Search'
 
   return 'Tool Pane'
+}
+
+function toolPaneHeaderIcon(tab: ToolPaneHeaderTab | undefined) {
+  const className = cn('text-muted-foreground size-4 shrink-0')
+  if (tab === 'chat') return <ChatCircleIcon className={className} />
+  if (tab === 'files') return <FilesIcon className={className} />
+  if (tab === 'git') return <GitBranchIcon className={className} />
+  if (tab === 'logs') return <ScrollIcon className={className} />
+  if (tab === 'search') return <MagnifyingGlassIcon className={className} />
+
+  return null
 }
 
 function treeHeaderDetail(

@@ -2,21 +2,24 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import {
-  editorWorkspaceLayoutForPaths,
-  splitEditorWorkspaceLayoutForPaths,
-} from '../../../test/factories/editor-workspace-layout'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import type { FileDiff } from '@/features/git/types'
-import { createGitChangesSurface } from '@workspace/tiling/utils/layout-builders'
-import { visibleSurfaceIdsInOrder } from '@workspace/tiling/utils/layout-normalize'
-import { moveSurface, openSurface } from '@workspace/tiling/utils/layout-operations'
+import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import {
+  createDefaultWorkbenchPanels,
+  openEditorPathInWorkbenchPanels,
+  resizeWorkbenchBottom,
+  resizeWorkbenchSidebar,
+  setWorkbenchBottomTab,
+  setWorkbenchSidebarTab,
+  type WorkbenchPanels,
+} from '@/features/workbench/utils/workbench-panels'
 import {
   WORKSPACE_CACHE_STORAGE_KEYS,
   readWorkspaceCache,
   writeWorkspaceCache,
-  type WorkspaceCacheState,
+  type CachedSearchBufferState,
+  type WorkspaceCacheWriteState,
 } from '@/lib/workspace-cache'
 
 const STORE = new Map<string, string>()
@@ -42,24 +45,23 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'stacked',
         editorHistory: [diffPath, '/repo/src/readme.md'],
-        openFilePaths: ['/repo/src/readme.md', diffPath],
         recentlyClosedEditorPaths: ['/repo/src/closed.ts'],
         rootFolder,
         searchBuffer: null,
-        selectedFilePath: diffPath,
+        workbenchPanels: workbenchPanelsForPaths(['/repo/src/readme.md', diffPath], diffPath),
       }),
     )
 
-    const cachedWorkspaceLayout = cacheEntry<Record<string, unknown>>(
-      WORKSPACE_CACHE_STORAGE_KEYS.workspaceLayout,
-    )
+    const cachedPanels = cacheEntry<WorkbenchPanels>(WORKSPACE_CACHE_STORAGE_KEYS.workbenchPanels)
     const cached = readWorkspaceCache()
 
     expect(new Set(STORE.keys())).toEqual(new Set(Object.values(WORKSPACE_CACHE_STORAGE_KEYS)))
-    expect(cachedWorkspaceLayout).not.toHaveProperty('editorPaneLayout')
-    expect(cachedWorkspaceLayout).not.toHaveProperty('openFilePaths')
-    expect(cachedWorkspaceLayout).not.toHaveProperty('selectedFilePath')
-    expect(cachedWorkspaceLayout).toHaveProperty('version')
+    expect(cachedPanels).not.toHaveProperty('editorPaneLayout')
+    expect(cachedPanels).not.toHaveProperty('openFilePaths')
+    expect(cachedPanels.editorTabs.map((tab) => tab.path)).toEqual([
+      '/repo/src/readme.md',
+      diffPath,
+    ])
     expect(cached).toMatchObject({
       diffViewMode: 'stacked',
       editorHistory: [diffPath, '/repo/src/readme.md'],
@@ -69,8 +71,6 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: diffPath,
     })
-    expect(cached.openFilePaths).toEqual(['/repo/src/readme.md', diffPath])
-    expect(cached.selectedFilePath).toBe(diffPath)
   })
 
   it('filters git diff tabs when their backing file is outside the workspace', () => {
@@ -81,11 +81,10 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [diffPath],
-        openFilePaths: [diffPath],
         recentlyClosedEditorPaths: ['/other/src/closed.ts'],
         rootFolder,
         searchBuffer: null,
-        selectedFilePath: diffPath,
+        workbenchPanels: workbenchPanelsForPaths([diffPath], diffPath),
       }),
     )
 
@@ -100,8 +99,7 @@ describe('workspace cache', () => {
       searchBuffer: null,
       selectedFilePath: null,
     })
-    expect(cached.openFilePaths).toEqual([])
-    expect(cached.selectedFilePath).toBe(null)
+    expect(cached.workbenchPanels.editorTabs).toEqual([])
   })
 
   it('does not persist transient conflict diff tabs', () => {
@@ -112,102 +110,25 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [conflictPath, '/repo/src/readme.md'],
-        openFilePaths: ['/repo/src/readme.md', conflictPath],
         recentlyClosedEditorPaths: [conflictPath],
         rootFolder,
         searchBuffer: null,
-        selectedFilePath: conflictPath,
+        workbenchPanels: workbenchPanelsForPaths(
+          ['/repo/src/readme.md', conflictPath],
+          conflictPath,
+        ),
       }),
     )
 
-    const cached = readWorkspaceCache()
-
-    expect(cached).toMatchObject({
-      diffViewMode: 'split',
+    expect(readWorkspaceCache()).toMatchObject({
       editorHistory: ['/repo/src/readme.md'],
       openFilePaths: ['/repo/src/readme.md'],
       recentlyClosedEditorPaths: [],
-      rootFolder,
-      searchBuffer: null,
       selectedFilePath: '/repo/src/readme.md',
     })
-    expect(cached.openFilePaths).toEqual(['/repo/src/readme.md'])
-    expect(cached.selectedFilePath).toBe('/repo/src/readme.md')
   })
 
-  it('persists pane split sizes in the workspace cache', () => {
-    const rootFolder = pickedDirectory('/repo')
-    const workspaceLayout = splitEditorWorkspaceLayoutForPaths({
-      activePath: '/repo/src/b.ts',
-      leftPaths: ['/repo/src/a.ts'],
-      rightPaths: ['/repo/src/b.ts'],
-      sizes: [0.3, 0.7],
-    })
-
-    writeWorkspaceCache(
-      workspaceCacheState({
-        diffViewMode: 'split',
-        editorHistory: [],
-        openFilePaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
-        recentlyClosedEditorPaths: [],
-        rootFolder,
-        searchBuffer: null,
-        selectedFilePath: '/repo/src/b.ts',
-        workspaceLayout,
-      }),
-    )
-
-    const cached = readWorkspaceCache()
-
-    expect(Object.values(cached.workspaceLayout.nodesById)).toContainEqual(
-      expect.objectContaining({
-        axis: 'horizontal',
-        kind: 'split',
-        sizes: [0.3, 0.7],
-      }),
-    )
-    expect(cached).toMatchObject({
-      openFilePaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
-      selectedFilePath: '/repo/src/b.ts',
-    })
-  })
-
-  it('persists singleton tool surface layout', () => {
-    const rootFolder = pickedDirectory('/repo')
-    const gitChanges = createGitChangesSurface()
-    const workspaceLayout = moveSurface(
-      openSurface(
-        editorWorkspaceLayoutForPaths(['/repo/src/app.ts'], '/repo/src/app.ts'),
-        gitChanges,
-      ),
-      gitChanges.id,
-      {
-        edge: 'right',
-        kind: 'root-edge',
-      },
-    )
-
-    writeWorkspaceCache(
-      workspaceCacheState({
-        diffViewMode: 'split',
-        editorHistory: [],
-        openFilePaths: ['/repo/src/app.ts'],
-        recentlyClosedEditorPaths: [],
-        rootFolder,
-        searchBuffer: null,
-        selectedFilePath: '/repo/src/app.ts',
-        workspaceLayout,
-      }),
-    )
-
-    const cached = readWorkspaceCache()
-
-    expect(visibleSurfaceIdsInOrder(cached.workspaceLayout)).toContain(gitChanges.id)
-    expect(cached.workspaceLayout.rail.backgroundSurfaceIds).not.toContain(gitChanges.id)
-    expect(cached.selectedFilePath).toBe('/repo/src/app.ts')
-  })
-
-  it('drops legacy search buffer editor tabs', () => {
+  it('does not persist legacy search buffer editor tabs', () => {
     const rootFolder = pickedDirectory('/repo')
     const searchPath = searchBufferDocumentId('/repo')
 
@@ -215,11 +136,10 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [searchPath],
-        openFilePaths: ['/repo/src/readme.md', searchPath],
         recentlyClosedEditorPaths: [searchPath],
         rootFolder,
         searchBuffer: null,
-        selectedFilePath: searchPath,
+        workbenchPanels: workbenchPanelsForPaths(['/repo/src/readme.md', searchPath], searchPath),
       }),
     )
 
@@ -231,62 +151,53 @@ describe('workspace cache', () => {
     })
   })
 
-  it('persists cached search buffer metadata for the active workspace', () => {
+  it('persists fixed panel tabs and resize dimensions', () => {
     const rootFolder = pickedDirectory('/repo')
-    const searchBuffer = {
-      activeResultId: null,
-      caseSensitive: true,
-      collapsedPaths: ['/repo/src/app.ts'],
-      excludeGlobText: '*.test.ts',
-      filtersVisible: true,
-      includeGlobText: 'src/**/*.ts',
-      matchMode: 'regex' as const,
-      matches: [
-        {
-          column: 1,
-          kind: 'content' as const,
-          line: 1,
-          path: '/repo/src/app.ts',
-          preview: 'needle',
-          source: 'disk' as const,
-          type: 'file' as const,
-        },
-      ],
-      query: 'needle',
-      queryHistory: ['needle'],
-      replaceHistory: ['pin'],
-      replaceText: 'pin',
-      replaceVisible: true,
-      resultsQuery: 'needle',
-      resultsSearchQuery: {
-        caseSensitive: true,
-        excludeGlobs: ['*.test.ts'],
-        includeContent: true,
-        includeGlobs: ['src/**/*.ts'],
-        limit: 200,
-        matchMode: 'regex' as const,
-        path: '/repo',
-        query: 'needle',
-      },
-      rootPath: '/repo',
-      totalCount: 1,
-      truncated: false,
-      wholeWord: false,
-    }
+    let panels = workbenchPanelsForPaths(['/repo/src/a.ts', '/repo/src/b.ts'], '/repo/src/b.ts')
+    panels = setWorkbenchSidebarTab(panels, 'git')
+    panels = setWorkbenchBottomTab(panels, 'problems')
+    panels = resizeWorkbenchSidebar(panels, 420)
+    panels = resizeWorkbenchBottom(panels, 320)
 
     writeWorkspaceCache(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
-        openFilePaths: [],
         recentlyClosedEditorPaths: [],
         rootFolder,
-        searchBuffer,
-        selectedFilePath: null,
+        searchBuffer: null,
+        workbenchPanels: panels,
       }),
     )
 
-    expect(readWorkspaceCache().searchBuffer).toEqual(searchBuffer)
+    expect(readWorkspaceCache()).toMatchObject({
+      openFilePaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
+      selectedFilePath: '/repo/src/b.ts',
+      workbenchPanels: {
+        activeBottomTab: 'problems',
+        activeSidebarTab: 'git',
+        bottomHeight: 320,
+        sidebarWidth: 420,
+      },
+    })
+  })
+
+  it('persists cached search buffer metadata for the active workspace', () => {
+    const rootFolder = pickedDirectory('/repo')
+    const buffer = cachedSearchBuffer('/repo')
+
+    writeWorkspaceCache(
+      workspaceCacheState({
+        diffViewMode: 'split',
+        editorHistory: [],
+        recentlyClosedEditorPaths: [],
+        rootFolder,
+        searchBuffer: buffer,
+        workbenchPanels: createDefaultWorkbenchPanels(),
+      }),
+    )
+
+    expect(readWorkspaceCache().searchBuffer).toEqual(buffer)
   })
 
   it('drops cached search buffer state for a different workspace', () => {
@@ -294,11 +205,10 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
-        openFilePaths: [],
         recentlyClosedEditorPaths: [],
         rootFolder: pickedDirectory('/repo'),
         searchBuffer: emptySearchBuffer('/other'),
-        selectedFilePath: null,
+        workbenchPanels: createDefaultWorkbenchPanels(),
       }),
     )
 
@@ -314,11 +224,10 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'stacked',
         editorHistory: ['/repo/src/readme.md'],
-        openFilePaths: ['/repo/src/readme.md'],
         recentlyClosedEditorPaths: [],
         rootFolder,
         searchBuffer: null,
-        selectedFilePath: '/repo/src/readme.md',
+        workbenchPanels: workbenchPanelsForPaths(['/repo/src/readme.md'], '/repo/src/readme.md'),
       }),
     )
     STORE.set(WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer, JSON.stringify({ rootPath: '/repo' }))
@@ -349,11 +258,10 @@ describe('workspace cache', () => {
       workspaceCacheState({
         diffViewMode: 'stacked',
         editorHistory: ['/repo/src/readme.md'],
-        openFilePaths: ['/repo/src/readme.md'],
         recentlyClosedEditorPaths: [],
         rootFolder,
         searchBuffer: emptySearchBuffer('/repo'),
-        selectedFilePath: '/repo/src/readme.md',
+        workbenchPanels: workbenchPanelsForPaths(['/repo/src/readme.md'], '/repo/src/readme.md'),
       }),
     )
 
@@ -394,7 +302,45 @@ function pickedDirectory(path: string): PickedFsEntry {
   }
 }
 
-function emptySearchBuffer(rootPath: string): WorkspaceCacheState['searchBuffer'] {
+function cachedSearchBuffer(rootPath: string): CachedSearchBufferState {
+  return {
+    ...emptySearchBuffer(rootPath),
+    caseSensitive: true,
+    collapsedPaths: ['/repo/src/app.ts'],
+    excludeGlobText: '*.test.ts',
+    includeGlobText: 'src/**/*.ts',
+    matchMode: 'regex',
+    matches: [
+      {
+        column: 1,
+        kind: 'content',
+        line: 1,
+        path: '/repo/src/app.ts',
+        preview: 'needle',
+        source: 'disk',
+        type: 'file',
+      },
+    ],
+    queryHistory: ['needle'],
+    replaceHistory: ['pin'],
+    replaceText: 'pin',
+    replaceVisible: true,
+    resultsQuery: 'needle',
+    resultsSearchQuery: {
+      caseSensitive: true,
+      excludeGlobs: ['*.test.ts'],
+      includeContent: true,
+      includeGlobs: ['src/**/*.ts'],
+      limit: 200,
+      matchMode: 'regex',
+      path: rootPath,
+      query: 'needle',
+    },
+    totalCount: 1,
+  }
+}
+
+function emptySearchBuffer(rootPath: string): CachedSearchBufferState {
   return {
     activeResultId: null,
     caseSensitive: false,
@@ -418,23 +364,16 @@ function emptySearchBuffer(rootPath: string): WorkspaceCacheState['searchBuffer'
   }
 }
 
-type WorkspaceCacheTestState = Omit<WorkspaceCacheState, 'workspaceLayout'> & {
-  readonly workspaceLayout?: WorkspaceCacheState['workspaceLayout']
+function workbenchPanelsForPaths(paths: readonly string[], activePath: string | null) {
+  let panels = createDefaultWorkbenchPanels()
+  for (const path of paths) panels = openEditorPathInWorkbenchPanels(panels, path)
+  if (!activePath) return panels
+
+  return openEditorPathInWorkbenchPanels(panels, activePath)
 }
 
-function workspaceCacheState(input: WorkspaceCacheTestState): WorkspaceCacheState {
-  return {
-    diffViewMode: input.diffViewMode,
-    editorHistory: input.editorHistory,
-    openFilePaths: input.openFilePaths,
-    recentlyClosedEditorPaths: input.recentlyClosedEditorPaths,
-    rootFolder: input.rootFolder,
-    searchBuffer: input.searchBuffer,
-    selectedFilePath: input.selectedFilePath,
-    workspaceLayout:
-      input.workspaceLayout ??
-      editorWorkspaceLayoutForPaths(input.openFilePaths, input.selectedFilePath),
-  }
+function workspaceCacheState(input: WorkspaceCacheWriteState): WorkspaceCacheWriteState {
+  return input
 }
 
 function cacheEntry<T>(key: string): T {
@@ -452,7 +391,7 @@ function fakeLocalStorage(options: FakeLocalStorageOptions = {}) {
       STORE.delete(key)
     },
     setItem: (key: string, value: string) => {
-      if (options.failingSetKeys?.has(key)) throw new Error('localStorage quota exceeded')
+      if (options.failingSetKeys?.has(key)) throw new DOMException('localStorage quota exceeded')
 
       STORE.set(key, value)
     },

@@ -3,7 +3,7 @@ import { EmptyWorkspace } from '@/components/empty-workspace'
 import { OpenTabLiveDocumentController } from '@/components/open-tab-live-document-controller'
 import { usePickEntry } from '@/components/use-pick-entry'
 import { WorkspaceView } from '@/components/workspace/shell/components/workspace-view'
-import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
+import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useValidateRootFolder } from '@/hooks/use-validate-root-folder'
@@ -19,14 +19,12 @@ type AppWorkspaceProps = {
   editorKeymapLayers: readonly EditorKeymapLayer[]
   keymapBindings: readonly PlatformKeyBinding[]
   onRequestCloseTab: RequestCloseTab
-  onRequestCloseTabs: RequestCloseTabs
 }
 
 export function AppWorkspace({
   editorKeymapLayers,
   keymapBindings,
   onRequestCloseTab,
-  onRequestCloseTabs,
 }: AppWorkspaceProps) {
   const pickerOpen = useEditorWorkspaceState((state) => state.pickerOpen)
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
@@ -69,7 +67,6 @@ export function AppWorkspace({
             editorKeymapLayers={editorKeymapLayers}
             rootFolder={rootFolder}
             onRequestCloseTab={onRequestCloseTab}
-            onRequestCloseTabs={onRequestCloseTabs}
           />
         ) : (
           <EmptyWorkspace onChooseFolder={openPicker} />

@@ -12,7 +12,7 @@ export function PanelShell({
   return (
     <section
       className={cn(
-        'h-full min-h-0 bg-background px-4 py-3 text-xs',
+        'h-full min-h-0 px-4 py-3 text-xs',
         tone === 'error' ? 'text-destructive' : 'text-muted-foreground',
         className,
       )}

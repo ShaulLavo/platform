@@ -15,7 +15,6 @@
     "bench:editor-typing:gate:all": "node scripts/editor-typing-benchmark.mjs --gate --browsers=chromium,webkit,firefox",
     "bench:editor-typing:huge": "node scripts/generate-bench-fixture.mjs && node scripts/editor-typing-benchmark.mjs --file=.bench-fixtures/huge.ts --start-fraction=0.5 --page-timeout-ms=180000 --app-url=http://localhost:3000/",
     "bench:fixture": "node scripts/generate-bench-fixture.mjs",
-    "diagram": "bun scripts/generate-layout-evolution-diagram.ts",
     "start": "bun --env-file=../../.env vite preview",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
@@ -27,8 +26,6 @@
     "preview": "bun --env-file=../../.env vite preview"
   },
   "dependencies": {
-    "@dnd-kit/dom": "0.5.0",
-    "@dnd-kit/react": "0.5.0",
     "@elysia/eden": "^1.4.10",
     "@lexical/react": "^0.45.0",
     "@phosphor-icons/react": "^2.1.10",
@@ -52,7 +49,6 @@
     "@tanstack/react-virtual": "3.14.2",
     "@workspace/contracts": "workspace:*",
     "@workspace/observability": "workspace:*",
-    "@workspace/tiling": "workspace:*",
     "@workspace/tree": "workspace:*",
     "@workspace/ui": "workspace:*",
     "evlog": "^2.19.1",

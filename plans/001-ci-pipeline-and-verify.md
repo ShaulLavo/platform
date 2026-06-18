@@ -50,7 +50,6 @@ GitHub Actions workflow runs that command on every push/PR.
 - Per-workspace test scripts (already exclude Playwright browser tests from the default run):
   - `apps/web/package.json:23` — `"test": "bun --bun vitest run --project node --project dom"`
   - `apps/server/package.json:25` — `"test": "bun --bun vitest run"`
-  - `packages/tiling/package.json:17` — `"test": "vitest run"` (runtime-neutral packages run plain vitest — this is intentional, do not change)
 - Typecheck uses `tsgo` (from `@typescript/native-preview`), e.g. `apps/web/package.json:26` — `"typecheck": "tsgo --build"`.
 - `lefthook.yml` pre-commit runs oxfmt/oxlint on staged files and `bun run typecheck`; tests are not run anywhere automatically.
 - Workspace caveat: root `package.json` `workspaces.packages` includes `"../Editor/packages/*"` (a sibling repo used for local editor development). `README.md:23-25` states a sibling checkout is **not** required for `bun install` — the editor runtime comes from npm `@singapor/*` packages. CI will not have the sibling checkout; this is expected to work.

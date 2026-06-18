@@ -9,7 +9,6 @@ import { defineConfig } from 'vitest/config'
 const workspaceRoot = path.resolve(__dirname, '../..')
 const alias = {
   '@': path.resolve(__dirname, './src'),
-  '@workspace/tiling': path.resolve(workspaceRoot, 'packages/tiling/src'),
 }
 const reactPlugin = () => react()
 const reactCompilerPlugin = () => babel({ presets: [reactCompilerPreset()] })

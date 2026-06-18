@@ -1,11 +1,11 @@
 import { chromium, firefox, webkit } from 'playwright'
 import { statSync } from 'node:fs'
-import { basename, relative, resolve, sep } from 'node:path'
+import { relative, resolve, sep } from 'node:path'
 import { createBenchmarkError } from './structured-errors.mjs'
 
 export const browserTypes = { chromium, firefox, webkit }
 
-const cachePrefix = 'platform.workspace-state.v12'
+const cachePrefix = 'platform.workspace-state.v14'
 
 export function launchOptions(browserName) {
   if (browserName !== 'chromium') return { headless: true }
@@ -146,54 +146,18 @@ function workspaceCacheEntries(workspace) {
     [`${cachePrefix}.recentlyClosedEditorPaths`]: [],
     [`${cachePrefix}.rootFolder`]: workspace.rootFolder,
     [`${cachePrefix}.searchBuffer`]: null,
-    [`${cachePrefix}.workspaceLayout`]: workspaceLayoutEntry(workspace),
+    [`${cachePrefix}.workbenchPanels`]: workbenchPanelsEntry(workspace),
   }
 }
 
-function workspaceLayoutEntry(workspace) {
+function workbenchPanelsEntry(workspace) {
   return {
-    activeSurfaceId: 'surface-bench',
-    activeWindowId: 'window-bench',
-    customWindowCommands: [],
-    hotkeyPresets: [],
-    layoutCommands: [],
-    mruSurfaceIds: ['surface-bench'],
-    mruWindowIds: ['window-bench'],
-    nodes: [{ id: 'node-bench', kind: 'window', windowId: 'window-bench' }],
-    policies: [],
-    rail: {
-      backgroundSurfaceIds: [],
-      pinnedSurfaceIds: [],
-      recipeIds: [],
-      runningSurfaceIds: [],
-      visibleSingletonSurfaceIds: [],
-    },
-    recipes: [],
-    rootNodeId: 'node-bench',
-    surfaceRegistryVersion: 1,
-    surfaces: [
-      {
-        id: 'surface-bench',
-        surface: {
-          lifecycle: 'durable',
-          resourceKey: workspace.filePath,
-          serializedState: { editorGroupId: 'group-bench', editorTabId: 'tab-bench' },
-          title: basename(workspace.filePath),
-          type: 'file-editor',
-          version: 1,
-        },
-      },
-    ],
-    version: 1,
-    windows: [
-      {
-        activeSurfaceId: 'surface-bench',
-        id: 'window-bench',
-        mode: 'normal',
-        pinnedSurfaceIds: [],
-        surfaceIds: ['surface-bench'],
-      },
-    ],
+    activeBottomTab: 'terminal',
+    activeEditorTabId: 'tab-bench',
+    activeSidebarTab: 'files',
+    bottomHeight: 240,
+    editorTabs: [{ id: 'tab-bench', path: workspace.filePath }],
+    sidebarWidth: 300,
   }
 }
 

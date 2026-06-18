@@ -1,6 +1,5 @@
 import { memo } from 'react'
 import type { EditorKeymapLayer } from '@singapor/core'
-import type { SurfaceId } from '@workspace/tiling/utils/layout-types'
 
 import { SearchControls } from '@/components/workspace/search/components/search-controls'
 import { SearchResults } from '@/components/workspace/search/components/search-results'
@@ -9,12 +8,10 @@ export const SearchPane = memo(
   ({
     compact = true,
     editorKeymapLayers,
-    ownerSurfaceId,
     rootPath,
   }: {
     readonly compact?: boolean
     readonly editorKeymapLayers: readonly EditorKeymapLayer[]
-    readonly ownerSurfaceId?: SurfaceId
     readonly rootPath: string
   }) => {
     return (
@@ -23,7 +20,6 @@ export const SearchPane = memo(
         <SearchResults
           compact={compact}
           editorKeymapLayers={editorKeymapLayers}
-          ownerSurfaceId={ownerSurfaceId}
           rootPath={rootPath}
         />
       </section>

@@ -364,29 +364,14 @@
   --terminal-ansi-bright-white: #ffffff;
 }
 
-[data-workbench-layout-renderer] {
+[data-workbench] {
   --workbench-editor-minimap-background: transparent;
   --editor-minimap-background-opacity: 0;
   /* --workbench-editor-minimap-backdrop-filter: blur(calc(var(--surface-blur) )); */
   --workbench-editor-minimap-canvas-background: transparent;
   --workbench-editor-minimap-canvas-background-opacity: 0;
   --border: transparent;
-}
-
-[data-workbench-layout-renderer] [data-surface-host] {
-  /* WindowFrame owns pane material; mounted surface content must not stack it. */
-  --background: transparent;
-  --card: transparent;
-  --muted: transparent;
-  --accent: transparent;
-  --border: transparent;
   --terminal-background: transparent;
-}
-
-[data-workbench-rail] {
-  /* Rail owns its material; item states should not add another fill layer. */
-  --muted: transparent;
-  --accent: transparent;
 }
 
 @media (forced-colors: active) {
@@ -398,8 +383,7 @@
 }
 
 /* Honest glass: blurs and saturates whatever is actually painted behind the
-   element. For surfaces that sit on the wallpaper (window frames, the rail,
-   in-pane chrome). */
+   element. For surfaces that sit on the wallpaper or in-pane chrome. */
 @utility backdrop-material {
   -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturation));
   backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturation));
@@ -500,14 +484,22 @@
   overflow-anchor: none;
 }
 
-[data-workbench-layout-renderer] .app-editor-host .editor-virtualized {
+[data-workbench] .app-editor-host .editor-virtualized {
+  --editor-background: transparent !important;
+  --editor-gutter-background: transparent !important;
   --editor-minimap-background: var(--workbench-editor-minimap-canvas-background) !important;
   --editor-minimap-background-opacity: var(
     --workbench-editor-minimap-canvas-background-opacity
   ) !important;
+
+  background: transparent !important;
 }
 
-[data-workbench-layout-renderer] .app-editor-host .editor-minimap {
+[data-workbench] .app-editor-host .editor-virtualized-gutter {
+  background: transparent;
+}
+
+[data-workbench] .app-editor-host .editor-minimap {
   -webkit-backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
   backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
   background: var(--workbench-editor-minimap-background);

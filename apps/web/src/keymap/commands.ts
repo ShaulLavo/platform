@@ -13,47 +13,27 @@ import {
   saveAllEditorDocuments,
   saveSelectedEditorDocument,
 } from '@/features/editor/editor-save'
-import {
-  createFileNavigatorSurface,
-  createGitChangesSurface,
-  createTerminalSurface,
-} from '@workspace/tiling/utils/layout-builders'
-import {
-  CLOSE_ACTIVE_SURFACE_COMMAND_ID,
-  FOCUS_RAIL_COMMAND_ID,
-  builtInWindowManagementCommands,
-} from '@workspace/tiling/utils/layout-command-catalog'
-import { findWindowIdContainingSurface } from '@workspace/tiling/utils/layout-normalize'
-import { applyLayoutOperation } from '@workspace/tiling'
-import { windowCommandDisabledReason } from '@workspace/tiling/utils/layout-selectors'
-import { layoutOperationForBuiltInWindowManagementCommand } from '@workspace/tiling/utils/layout-command-operations'
-import type {
-  LayoutOperation,
-  Surface,
-  WorkspaceLayout,
-} from '@workspace/tiling/utils/layout-types'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from '@/features/editor/utils/diff-view-mode'
 import {
-  activeEditorPathForWorkspaceLayout,
-  activeEditorSurfaceTab,
-} from '@/features/workbench/utils/editor-surface-layout'
+  activeEditorPathForWorkbenchPanels,
+  activeEditorTabForWorkbenchPanels,
+  setWorkbenchBottomTab,
+  setWorkbenchSidebarTab,
+  type WorkbenchPanels,
+} from '@/features/workbench/utils/workbench-panels'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { fetchFile } from '@/lib/file-server'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
-import { editorCommandIdFromPlatform, isEditorPlatformCommandId } from './editor-keymap'
+import { editorCommandIdFromPlatform } from './editor-keymap'
 import type { PlatformCommandId, WorkspaceCommandId } from './types'
 import type { PlatformCommandDispatch } from './use-app-keymap'
-import {
-  isWindowManagementWorkspaceCommand,
-  windowManagementCommandIdForWorkspaceCommand,
-} from './window-management-command-ids'
 
 type WorkspaceCommandContext = {
   readonly activeFilePath: string | null
@@ -68,10 +48,10 @@ type WorkspaceCommandContext = {
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: FocusArea) => void
   readonly setTheme: (theme: Theme) => void
-  readonly setWorkspaceLayout: (layout: WorkspaceLayout) => void
+  readonly setWorkbenchPanels: (panels: WorkbenchPanels) => void
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly selectPreviousEditor: () => boolean
-  readonly workspaceLayout: WorkspaceLayout
+  readonly workbenchPanels: WorkbenchPanels
 }
 
 type WorkspaceCommandHandler = (context: WorkspaceCommandContext) => boolean | void
@@ -109,8 +89,8 @@ export function usePlatformCommandDispatch({
 
       const workspace = workspaceStore.getState()
       return dispatchWorkspaceCommand(workspaceCommand, {
-        activeFilePath: activeEditorPathForWorkspaceLayout(workspace.workspaceLayout),
-        activeTabId: activeEditorSurfaceTab(workspace.workspaceLayout)?.id ?? null,
+        activeFilePath: activeEditorPathForWorkbenchPanels(workspace.workbenchPanels),
+        activeTabId: activeEditorTabForWorkbenchPanels(workspace.workbenchPanels)?.id ?? null,
         diffViewMode: workspace.diffViewMode,
         documentStore,
         openPicker: workspace.openPicker,
@@ -121,10 +101,10 @@ export function usePlatformCommandDispatch({
         setDiffViewMode: workspace.setDiffViewMode,
         setFocusArea,
         setTheme,
-        setWorkspaceLayout: workspace.setWorkspaceLayout,
+        setWorkbenchPanels: workspace.setWorkbenchPanels,
         showCommandPalette,
         selectPreviousEditor,
-        workspaceLayout: workspace.workspaceLayout,
+        workbenchPanels: workspace.workbenchPanels,
       })
     },
     [
@@ -132,19 +112,19 @@ export function usePlatformCommandDispatch({
       dispatchEditorCommand,
       queryClient,
       reopenClosedEditor,
-      resolvedRequestCloseTab,
       requestEditorFocus,
+      resolvedRequestCloseTab,
+      selectPreviousEditor,
       setFocusArea,
       setTheme,
       showCommandPalette,
-      selectPreviousEditor,
       workspaceStore,
     ],
   )
 }
 
 function dispatchWorkspaceCommand(command: WorkspaceCommandId, context: WorkspaceCommandContext) {
-  const handler = workspaceCommandHandlers[command] ?? windowManagementHandler(command)
+  const handler = workspaceCommandHandlers[command]
   if (!handler) return false
 
   const handled = handler(context) ?? true
@@ -159,7 +139,8 @@ function dispatchWorkspaceCommand(command: WorkspaceCommandId, context: Workspac
 }
 
 const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceCommandHandler>> = {
-  'workspace.closeCurrentTab': closeActiveSurface,
+  'workspace.closeCurrentTab': ({ activeTabId, requestCloseTab }) =>
+    closeSelectedTab(activeTabId, requestCloseTab),
   'workspace.focusEditor': ({ requestEditorFocus }) => {
     requestEditorFocus()
     return true
@@ -176,13 +157,13 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     requestEditorFocus()
     return true
   },
-  'workspace.focusFileTree': ({ setFocusArea, setWorkspaceLayout, workspaceLayout }) => {
-    setWorkspaceLayout(layoutWithFocusedSurface(workspaceLayout, createFileNavigatorSurface()))
+  'workspace.focusFileTree': ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
+    setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
     setFocusArea('file-tree')
     return true
   },
-  'workspace.focusGit': ({ setFocusArea, setWorkspaceLayout, workspaceLayout }) => {
-    setWorkspaceLayout(layoutWithFocusedSurface(workspaceLayout, createGitChangesSurface()))
+  'workspace.focusGit': ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
+    setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'git'))
     setFocusArea('git')
     return true
   },
@@ -248,65 +229,20 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     setTheme('system')
     return true
   },
-  'workspace.splitEditor': windowCommandHandler('workspace.window.splitActiveWindowRight'),
   'workspace.toggleDiffViewMode': ({ diffViewMode, setDiffViewMode }) => {
     setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
     return true
   },
-  'workspace.togglePanel': ({ setFocusArea, setWorkspaceLayout, workspaceLayout }) => {
-    setWorkspaceLayout(
-      layoutWithToggledSurface(workspaceLayout, createTerminalSurface({ sessionId: 'terminal-1' })),
-    )
+  'workspace.togglePanel': ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
+    setWorkbenchPanels(setWorkbenchBottomTab(workbenchPanels, 'terminal'))
     setFocusArea('terminal')
     return true
   },
-  'workspace.toggleSidebarVisibility': ({ setWorkspaceLayout, workspaceLayout }) => {
-    setWorkspaceLayout(layoutWithToggledSurface(workspaceLayout, createFileNavigatorSurface()))
+  'workspace.toggleSidebarVisibility': ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
+    setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
+    setFocusArea('file-tree')
     return true
   },
-  'workspace.window.backgroundActiveSurface': windowCommandHandler(
-    'workspace.window.backgroundActiveSurface',
-  ),
-  'workspace.window.closeActiveSurface': closeActiveSurface,
-  'workspace.window.collapseActiveWindow': windowCommandHandler(
-    'workspace.window.collapseActiveWindow',
-  ),
-  'workspace.window.expandActiveWindow': windowCommandHandler(
-    'workspace.window.expandActiveWindow',
-  ),
-  'workspace.window.maximizeActiveWindow': windowCommandHandler(
-    'workspace.window.maximizeActiveWindow',
-  ),
-  'workspace.window.moveActiveSurfaceToBackground': windowCommandHandler(
-    'workspace.window.moveActiveSurfaceToBackground',
-  ),
-  'workspace.window.moveActiveWindowBottom': windowCommandHandler(
-    'workspace.window.moveActiveWindowBottom',
-  ),
-  'workspace.window.moveActiveWindowLeft': windowCommandHandler(
-    'workspace.window.moveActiveWindowLeft',
-  ),
-  'workspace.window.moveActiveWindowRight': windowCommandHandler(
-    'workspace.window.moveActiveWindowRight',
-  ),
-  'workspace.window.moveActiveWindowTop': windowCommandHandler(
-    'workspace.window.moveActiveWindowTop',
-  ),
-  'workspace.window.restoreActiveWindow': windowCommandHandler(
-    'workspace.window.restoreActiveWindow',
-  ),
-  'workspace.window.splitActiveWindowBottom': windowCommandHandler(
-    'workspace.window.splitActiveWindowBottom',
-  ),
-  'workspace.window.splitActiveWindowLeft': windowCommandHandler(
-    'workspace.window.splitActiveWindowLeft',
-  ),
-  'workspace.window.splitActiveWindowRight': windowCommandHandler(
-    'workspace.window.splitActiveWindowRight',
-  ),
-  'workspace.window.splitActiveWindowTop': windowCommandHandler(
-    'workspace.window.splitActiveWindowTop',
-  ),
 }
 
 function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCloseTab) {
@@ -314,95 +250,6 @@ function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCl
 
   requestCloseTab(activeTabId)
   return true
-}
-
-function closeActiveSurface(context: WorkspaceCommandContext) {
-  if (activeSurfaceCloseDisabledReason(context.workspaceLayout)) return false
-
-  const activeSurface = activeSurfaceForLayout(context.workspaceLayout)
-  if (!activeSurface) return false
-  if (activeSurface.closePolicy.type === 'confirm-dirty-file') {
-    return closeSelectedTab(context.activeTabId, context.requestCloseTab)
-  }
-
-  return applyWorkspaceLayoutOperation(context, {
-    surfaceId: activeSurface.id,
-    type: 'closeSurface',
-  })
-}
-
-function windowCommandHandler(commandId: WorkspaceCommandId): WorkspaceCommandHandler {
-  return (context) => dispatchBuiltInWindowCommand(commandId, context)
-}
-
-function windowManagementHandler(commandId: WorkspaceCommandId): WorkspaceCommandHandler | null {
-  if (!isWindowManagementWorkspaceCommand(commandId)) return null
-
-  return windowCommandHandler(commandId)
-}
-
-function dispatchBuiltInWindowCommand(
-  commandId: WorkspaceCommandId,
-  context: WorkspaceCommandContext,
-) {
-  const command = builtInWindowCommandForWorkspaceCommand(commandId)
-  if (!command) return false
-  if (windowCommandDisabledReason(context.workspaceLayout, command)) return false
-  if (command.id === CLOSE_ACTIVE_SURFACE_COMMAND_ID) return closeActiveSurface(context)
-  if (command.id === FOCUS_RAIL_COMMAND_ID) return focusRail(context)
-
-  const operation = layoutOperationForBuiltInWindowManagementCommand(
-    context.workspaceLayout,
-    command,
-  )
-  if (!operation) return false
-
-  return applyWorkspaceLayoutOperation(context, operation)
-}
-
-function applyWorkspaceLayoutOperation(
-  context: WorkspaceCommandContext,
-  operation: LayoutOperation,
-) {
-  context.setWorkspaceLayout(applyLayoutOperation(context.workspaceLayout, operation))
-  return true
-}
-
-function builtInWindowCommandForWorkspaceCommand(commandId: WorkspaceCommandId) {
-  const windowCommandId = windowManagementCommandIdForWorkspaceCommand(commandId)
-  if (!windowCommandId) return null
-
-  return builtInWindowCommandsById.get(windowCommandId) ?? null
-}
-
-function focusRail(context: WorkspaceCommandContext) {
-  context.setFocusArea('global')
-  const focused = focusFirstRailButton()
-  return focused
-}
-
-function focusFirstRailButton() {
-  if (typeof document === 'undefined') return false
-
-  const button = document.querySelector<HTMLButtonElement>('[data-workbench-rail] button')
-  if (!button) return false
-
-  button.focus()
-  return true
-}
-
-function activeSurfaceForLayout(layout: WorkspaceLayout) {
-  const activeSurfaceId = layout.activeSurfaceId
-  if (!activeSurfaceId) return null
-
-  return layout.surfacesById[activeSurfaceId] ?? null
-}
-
-function activeSurfaceCloseDisabledReason(layout: WorkspaceLayout) {
-  const command = builtInWindowCommandsById.get(CLOSE_ACTIVE_SURFACE_COMMAND_ID)
-  if (!command) return 'Close surface command is unavailable.'
-
-  return windowCommandDisabledReason(layout, command)
 }
 
 function runFileLifecycle(activeFilePath: string | null, operation: () => Promise<boolean>) {
@@ -430,61 +277,10 @@ function reportCommandError(error: unknown) {
   reportError(toClientError(error))
 }
 
-function layoutWithFocusedSurface(layout: WorkspaceLayout, surface: Surface) {
-  const existingSurface = surfaceForCommand(layout, surface)
-  const visibleWindowId = findWindowIdContainingSurface(layout, existingSurface.id)
-  if (visibleWindowId) {
-    return applyLayoutOperation(layout, {
-      surfaceId: existingSurface.id,
-      type: 'activateSurface',
-      windowId: visibleWindowId,
-    })
-  }
-  if (layout.surfacesById[existingSurface.id]) {
-    return applyLayoutOperation(layout, { surfaceId: existingSurface.id, type: 'restoreSurface' })
-  }
-
-  return applyLayoutOperation(layout, { surface: existingSurface, type: 'openSurface' })
-}
-
-function layoutWithToggledSurface(layout: WorkspaceLayout, surface: Surface) {
-  const existingSurface = surfaceForCommand(layout, surface)
-  const visibleWindowId = findWindowIdContainingSurface(layout, existingSurface.id)
-  const visibleWindow = visibleWindowId ? layout.windowsById[visibleWindowId] : null
-  if (visibleWindowId && visibleWindow?.mode === 'collapsed') {
-    return applyLayoutOperation(layout, {
-      type: 'expandWindow',
-      windowId: visibleWindowId,
-    })
-  }
-  if (visibleWindowId && layout.activeSurfaceId === existingSurface.id) {
-    return applyLayoutOperation(layout, { type: 'collapseWindow', windowId: visibleWindowId })
-  }
-  if (visibleWindowId) return layoutWithFocusedSurface(layout, existingSurface)
-
-  return layoutWithFocusedSurface(layout, existingSurface)
-}
-
-function surfaceForCommand(layout: WorkspaceLayout, surface: Surface): Surface {
-  return layout.surfacesById[surface.id] ?? singletonSurfaceByType(layout, surface) ?? surface
-}
-
-function singletonSurfaceByType(layout: WorkspaceLayout, surface: Surface): Surface | null {
-  if (surface.cardinality !== 'singleton') return null
-
-  return (
-    Object.values(layout.surfacesById).find((candidate) => candidate.type === surface.type) ?? null
-  )
-}
-
 function workspaceCommandIdFromPlatform(command: PlatformCommandId): WorkspaceCommandId | null {
-  if (isEditorPlatformCommandId(command)) return null
+  if (command.startsWith('editor.')) return null
 
-  return command
+  return command as WorkspaceCommandId
 }
-
-const builtInWindowCommandsById = new Map(
-  builtInWindowManagementCommands().map((command) => [command.id, command]),
-)
 
 function noop() {}

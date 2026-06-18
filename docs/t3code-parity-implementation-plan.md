@@ -167,8 +167,8 @@ Locked decisions:
 - First runtime mode: `full-access`. Keep `approval-required` and
   `auto-accept-edits` in contracts/data as supervised-mode placeholders, but do
   not build supervised UI or enforcement in V1.
-- First UI shape: extend the existing workspace left rail with a chat symbol and
-  render chat as a left-sidebar tab. This side panel is a view over shared agent
+- First UI shape: extend the existing workspace sidebar with a chat symbol and
+  render chat as a sidebar tab. This side panel is a view over shared agent
   core/components.
 - Second UI shape: standalone agent app/workbench view using the same
   contracts, projection cache, runtime, and UI primitives.
@@ -818,7 +818,7 @@ Frontend work:
   - maintain-scroll-at-end behavior
   - explicit scroll-to-bottom affordance
   - no full-detail subscription for inactive sidebar threads
-- Add a chat symbol/button to the existing left sidebar or side rail.
+- Add a chat symbol/button to the existing left sidebar.
 - Render chat as a left-sidebar panel for now.
 - Keep the layout narrow and sidebar-native; defer right-side panel/split-pane
   layout work.

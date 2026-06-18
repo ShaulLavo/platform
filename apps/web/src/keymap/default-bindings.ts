@@ -1,37 +1,8 @@
-import { createClientInvariantError } from '@/lib/structured-errors'
-
 import {
   detectPlatform,
   normalizeRegisterableHotkey,
   type RegisterableHotkey,
 } from '@tanstack/react-hotkeys'
-
-import {
-  CENTER_ACTIVE_WINDOW_COMMAND_ID,
-  FOCUS_WINDOW_BOTTOM_COMMAND_ID,
-  FOCUS_WINDOW_LEFT_COMMAND_ID,
-  FOCUS_WINDOW_RIGHT_COMMAND_ID,
-  FOCUS_WINDOW_TOP_COMMAND_ID,
-  FULLSCREEN_ACTIVE_WINDOW_COMMAND_ID,
-  LEFT_HALF_ACTIVE_WINDOW_COMMAND_ID,
-  NEXT_SURFACE_IN_WINDOW_COMMAND_ID,
-  PREVIOUS_SURFACE_IN_WINDOW_COMMAND_ID,
-  REASONABLE_SIZE_ACTIVE_WINDOW_COMMAND_ID,
-  RESIZE_ACTIVE_SPLIT_BOTTOM_COMMAND_ID,
-  RESIZE_ACTIVE_SPLIT_LEFT_COMMAND_ID,
-  RESIZE_ACTIVE_SPLIT_RIGHT_COMMAND_ID,
-  RESIZE_ACTIVE_SPLIT_TOP_COMMAND_ID,
-  RIGHT_HALF_ACTIVE_WINDOW_COMMAND_ID,
-  TAB_ACTIVE_SURFACE_LEFT_COMMAND_ID,
-  TAB_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
-  TEAR_ACTIVE_SURFACE_RIGHT_COMMAND_ID,
-} from '@workspace/tiling/utils/layout-command-catalog'
-import { defaultWindowManagementHotkeyPresets } from '@workspace/tiling/utils/layout-command-presets'
-import type {
-  WindowManagementCommandId,
-  WindowManagementHotkeyPreset,
-  WorkspaceLayout,
-} from '@workspace/tiling/utils/layout-types'
 
 import { commandHotkeyMeta } from './command-registry'
 import type {
@@ -40,7 +11,6 @@ import type {
   PlatformKeyBinding,
   WorkspaceCommandId,
 } from './types'
-import { workspaceCommandIdForWindowManagementCommand } from './window-management-command-ids'
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
@@ -65,21 +35,6 @@ export function defaultPlatformKeyBindings(
   return defaultBindingSpecs.flatMap((spec) => bindingForPlatform(spec, platform))
 }
 
-export function platformKeyBindingsForWorkspaceLayout(
-  bindings: readonly PlatformKeyBinding[],
-  layout: Pick<WorkspaceLayout, 'activeHotkeyPresetId' | 'hotkeyPresetsById'>,
-  platform: PlatformName = detectPlatform(),
-): readonly PlatformKeyBinding[] {
-  const preset = activeHotkeyPresetForWorkspaceLayout(layout)
-  if (!preset) return bindings
-
-  const presetBindings = platformKeyBindingsForHotkeyPreset(preset, platform)
-  if (presetBindings.length === 0) return bindings
-
-  const presetCommands = new Set(presetBindings.map((binding) => binding.command))
-  return [...bindings.filter((binding) => !presetCommands.has(binding.command)), ...presetBindings]
-}
-
 function bindingForPlatform(
   spec: DefaultBindingSpec,
   platform: PlatformName,
@@ -101,52 +56,6 @@ function bindingForPlatform(
   ]
 }
 
-function activeHotkeyPresetForWorkspaceLayout(
-  layout: Pick<WorkspaceLayout, 'activeHotkeyPresetId' | 'hotkeyPresetsById'>,
-) {
-  const activePresetId = layout.activeHotkeyPresetId
-  if (!activePresetId) return null
-
-  return (
-    layout.hotkeyPresetsById[activePresetId] ??
-    defaultWindowManagementHotkeyPresets().find((preset) => preset.id === activePresetId) ??
-    null
-  )
-}
-
-function platformKeyBindingsForHotkeyPreset(
-  preset: WindowManagementHotkeyPreset,
-  platform: PlatformName,
-) {
-  return Object.entries(preset.bindings).flatMap(([commandId, hotkey]) =>
-    platformKeyBindingForPresetBinding(commandId, hotkey, platform),
-  )
-}
-
-function platformKeyBindingForPresetBinding(
-  commandId: string,
-  hotkey: string,
-  platform: PlatformName,
-): readonly PlatformKeyBinding[] {
-  const command = workspaceCommandIdForWindowManagementCommand(
-    commandId as WindowManagementCommandId,
-  )
-  if (!command) return []
-
-  return [
-    {
-      command,
-      hotkey: hotkey as RegisterableHotkey,
-      keys: normalizeRegisterableHotkey(hotkey as RegisterableHotkey, platform),
-      meta: commandHotkeyMeta(command),
-      pane: 'any',
-      preventDefault: true,
-      source: 'default',
-      stopPropagation: true,
-    },
-  ]
-}
-
 function specMatchesPlatform(spec: DefaultBindingSpec, platform: PlatformName) {
   if (!spec.platforms) return true
 
@@ -159,23 +68,6 @@ function workspaceBinding(
   options: Omit<DefaultBindingSpec, 'command' | 'hotkey'> = {},
 ): DefaultBindingSpec {
   return { command, hotkey, pane: 'any', ...options }
-}
-
-function windowManagementBinding(
-  hotkey: RegisterableHotkey,
-  commandId: WindowManagementCommandId,
-  options: Omit<DefaultBindingSpec, 'command' | 'hotkey'> = {},
-): DefaultBindingSpec {
-  const command = workspaceCommandIdForWindowManagementCommand(commandId)
-  if (!command) {
-    throw createClientInvariantError(`Missing workspace command for ${commandId}`)
-  }
-
-  return workspaceBinding(hotkey, command, {
-    preventDefault: true,
-    stopPropagation: true,
-    ...options,
-  })
 }
 
 function editorBinding(
@@ -281,80 +173,6 @@ const defaultBindingSpecs = [
     vscodeCommandId: 'workbench.action.closeActiveEditor',
   }),
   workspaceBinding('Mod+Shift+D', 'workspace.toggleDiffViewMode'),
-  workspaceBinding('Alt+Shift+W', 'workspace.window.closeActiveSurface', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+B', 'workspace.window.backgroundActiveSurface', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+M', 'workspace.window.maximizeActiveWindow', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+R', 'workspace.window.restoreActiveWindow', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+C', 'workspace.window.collapseActiveWindow', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+E', 'workspace.window.expandActiveWindow', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+A', 'workspace.window.splitActiveWindowLeft', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+D', 'workspace.window.splitActiveWindowRight', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+K', 'workspace.window.splitActiveWindowTop', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+J', 'workspace.window.splitActiveWindowBottom', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+ArrowLeft', 'workspace.window.moveActiveWindowLeft', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+ArrowRight', 'workspace.window.moveActiveWindowRight', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+ArrowUp', 'workspace.window.moveActiveWindowTop', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  workspaceBinding('Alt+Shift+ArrowDown', 'workspace.window.moveActiveWindowBottom', {
-    preventDefault: true,
-    stopPropagation: true,
-  }),
-  windowManagementBinding('Alt+Shift+F', FULLSCREEN_ACTIVE_WINDOW_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+X', CENTER_ACTIVE_WINDOW_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+Z', REASONABLE_SIZE_ACTIVE_WINDOW_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+1', LEFT_HALF_ACTIVE_WINDOW_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+2', RIGHT_HALF_ACTIVE_WINDOW_COMMAND_ID),
-  windowManagementBinding('Control+Alt+Shift+ArrowLeft', FOCUS_WINDOW_LEFT_COMMAND_ID),
-  windowManagementBinding('Control+Alt+Shift+ArrowRight', FOCUS_WINDOW_RIGHT_COMMAND_ID),
-  windowManagementBinding('Control+Alt+Shift+ArrowUp', FOCUS_WINDOW_TOP_COMMAND_ID),
-  windowManagementBinding('Control+Alt+Shift+ArrowDown', FOCUS_WINDOW_BOTTOM_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+P', PREVIOUS_SURFACE_IN_WINDOW_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+N', NEXT_SURFACE_IN_WINDOW_COMMAND_ID),
-  windowManagementBinding('Control+Alt+ArrowLeft', RESIZE_ACTIVE_SPLIT_LEFT_COMMAND_ID),
-  windowManagementBinding('Control+Alt+ArrowRight', RESIZE_ACTIVE_SPLIT_RIGHT_COMMAND_ID),
-  windowManagementBinding('Control+Alt+ArrowUp', RESIZE_ACTIVE_SPLIT_TOP_COMMAND_ID),
-  windowManagementBinding('Control+Alt+ArrowDown', RESIZE_ACTIVE_SPLIT_BOTTOM_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+H', TAB_ACTIVE_SURFACE_LEFT_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+L', TAB_ACTIVE_SURFACE_RIGHT_COMMAND_ID),
-  windowManagementBinding('Alt+Shift+T', TEAR_ACTIVE_SURFACE_RIGHT_COMMAND_ID),
 
   editorBinding('Mod+Z', 'editor.undo', 'undo'),
   editorBinding('Mod+Shift+Z', 'editor.redo', 'redo'),

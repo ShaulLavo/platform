@@ -1,11 +1,12 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import {
-  activeEditorPathForWorkspaceLayout,
-  editorOpenPathsForWorkspaceLayout,
-} from '@/features/workbench/utils/editor-surface-layout'
-import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
-import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
+  activeEditorPathForWorkbenchPanels,
+  createDefaultWorkbenchPanels,
+  editorOpenPathsForWorkbenchPanels,
+  normalizeWorkbenchPanels,
+  type WorkbenchPanels,
+} from '@/features/workbench/utils/workbench-panels'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
@@ -15,7 +16,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla'
 
 type EditorWorkspaceStoreState = CachedWorkspaceState & {
   pickerOpen: boolean
-  workspaceLayout: WorkspaceLayout
+  workbenchPanels: WorkbenchPanels
 }
 
 type EditorWorkspaceStoreActions = {
@@ -26,7 +27,7 @@ type EditorWorkspaceStoreActions = {
   setEditorHistory: (paths: string[]) => void
   setPickerOpen: (open: boolean) => void
   setRecentlyClosedEditorPaths: (paths: string[]) => void
-  setWorkspaceLayout: (layout: WorkspaceLayout) => void
+  setWorkbenchPanels: (panels: WorkbenchPanels) => void
 }
 
 export type EditorWorkspaceStore = EditorWorkspaceStoreState & EditorWorkspaceStoreActions
@@ -61,7 +62,7 @@ export function createEditorWorkspaceStore(
     recentlyClosedEditorPaths: initialState.recentlyClosedEditorPaths,
     rootFolder: initialState.rootFolder,
     selectedFilePath: initialState.selectedFilePath,
-    workspaceLayout: initialState.workspaceLayout,
+    workbenchPanels: initialState.workbenchPanels,
     clearRootFolder: () =>
       set((state) => workspaceStateForRootFolderReset(null, state.diffViewMode)),
     openPicker: () => set({ pickerOpen: true }),
@@ -71,9 +72,9 @@ export function createEditorWorkspaceStore(
     setEditorHistory: (editorHistory) => set({ editorHistory }),
     setPickerOpen: (pickerOpen) => set({ pickerOpen }),
     setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) => set({ recentlyClosedEditorPaths }),
-    setWorkspaceLayout: (workspaceLayout) =>
+    setWorkbenchPanels: (workbenchPanels) =>
       set((state) =>
-        editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout, {
+        editorWorkspaceSelectionForWorkbenchPanels(workbenchPanels, {
           currentOpenFilePaths: state.openFilePaths,
         }),
       ),
@@ -84,10 +85,10 @@ function workspaceStateForRootFolderReset(
   rootFolder: PickedFsEntry | null,
   diffViewMode: EditorDiffViewMode,
 ) {
-  const workspaceLayout = createClassicFirstRunWorkspaceLayout()
+  const workbenchPanels = createDefaultWorkbenchPanels()
 
   return {
-    ...editorWorkspaceSelectionForWorkspaceLayout(workspaceLayout),
+    ...editorWorkspaceSelectionForWorkbenchPanels(workbenchPanels),
     diffViewMode,
     editorHistory: [],
     pickerOpen: false,
@@ -96,19 +97,20 @@ function workspaceStateForRootFolderReset(
   }
 }
 
-export function editorWorkspaceSelectionForWorkspaceLayout(
-  workspaceLayout: WorkspaceLayout,
+export function editorWorkspaceSelectionForWorkbenchPanels(
+  workbenchPanels: WorkbenchPanels,
   options: { currentOpenFilePaths?: string[] } = {},
 ) {
+  const normalizedPanels = normalizeWorkbenchPanels(workbenchPanels)
   const openFilePaths = stableOpenFilePaths(
     options.currentOpenFilePaths,
-    editorOpenPathsForWorkspaceLayout(workspaceLayout),
+    editorOpenPathsForWorkbenchPanels(normalizedPanels),
   )
 
   return {
     openFilePaths,
-    selectedFilePath: activeEditorPathForWorkspaceLayout(workspaceLayout),
-    workspaceLayout,
+    selectedFilePath: activeEditorPathForWorkbenchPanels(normalizedPanels),
+    workbenchPanels: normalizedPanels,
   }
 }
 

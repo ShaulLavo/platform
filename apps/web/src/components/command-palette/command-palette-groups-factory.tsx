@@ -1,5 +1,4 @@
 import type { Theme } from '@/components/theme-context'
-import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
 import type { PlatformCommandId } from '@/keymap/types'
 
@@ -28,7 +27,6 @@ type CommandPaletteGroupsFactoryProps = {
   readonly mode: QuickAccessMode
   readonly symbolItems: readonly FlatDocumentSymbol[]
   readonly symbolsPending: boolean
-  readonly workspaceLayout: WorkspaceLayout
   readonly onCommandSelect: (item: CommandPaletteItem) => void
   readonly onFileSelect: (path: string) => void
   readonly onPlatformCommandSelect: (command: PlatformCommandId) => void
@@ -47,7 +45,6 @@ export function CommandPaletteGroupsFactory({
   mode,
   symbolItems,
   symbolsPending,
-  workspaceLayout,
   onCommandSelect,
   onFileSelect,
   onPlatformCommandSelect,
@@ -59,7 +56,6 @@ export function CommandPaletteGroupsFactory({
         groups={commandGroups}
         activeFilePath={activeFilePath}
         hasWorkspace={hasWorkspace}
-        workspaceLayout={workspaceLayout}
         onSelect={onCommandSelect}
       />
     )

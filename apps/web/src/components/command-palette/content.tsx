@@ -20,24 +20,19 @@ import {
   commandKeepsPaletteOpen,
   commandPaletteItemDisabledReason,
   commandPaletteItems,
-  commandPaletteSelectionLayoutOperation,
   editorPaletteItems,
   emptyLabelForMode,
   fileUriForPath,
   groupedCommandItems,
   isCommandDisabled,
-  layoutCommandPaletteItems,
   placeholderForMode,
   quickAccessFilter,
   quickAccessMode,
   quickAccessQuery,
-  windowManagementActionPaletteItems,
 } from '@/components/command-palette/command-palette-utils'
 import { useCommandPaletteFiles } from '@/components/command-palette/use-command-palette-files'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
 import { useTheme } from '@/components/theme-context'
-import { applyLayoutOperation } from '@workspace/tiling'
-import { activeEditorPathForWorkspaceLayout } from '@/features/workbench/utils/editor-surface-layout'
 
 export function CommandPaletteContent({
   bindings,
@@ -52,9 +47,7 @@ export function CommandPaletteContent({
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
-  const workspaceLayout = useEditorWorkspaceState((state) => state.workspaceLayout)
-  const setWorkspaceLayout = useEditorWorkspaceState((state) => state.setWorkspaceLayout)
-  const activeFilePath = activeEditorPathForWorkspaceLayout(workspaceLayout)
+  const activeFilePath = selectedFilePath
   const { openDefinition, selectFile } = useEditorCommands()
   const mode = quickAccessMode(search)
   const query = quickAccessQuery(search)
@@ -78,21 +71,17 @@ export function CommandPaletteContent({
     rootPath: rootFolder?.path ?? null,
     selectedFilePath: activeFilePath,
   })
-  const commandItems = commandPaletteItems(platformCommandSpecs, bindings).concat(
-    layoutCommandPaletteItems(workspaceLayout),
-    windowManagementActionPaletteItems(workspaceLayout),
-  )
+  const commandItems = commandPaletteItems(platformCommandSpecs, bindings)
   const groups = groupedCommandItems(commandItems)
 
   function runCommand(item: CommandPaletteItem) {
     const disabledReason = commandPaletteItemDisabledReason(item, {
       activeFilePath,
       hasWorkspace,
-      workspaceLayout,
     })
     if (disabledReason) return
 
-    const handled = dispatchCommandPaletteSelection(item)
+    const handled = dispatchPlatformPaletteSelection(item)
     if (handled === false) return
     if (commandPaletteItemKeepsOpen(item)) return
 
@@ -100,7 +89,7 @@ export function CommandPaletteContent({
   }
 
   function runPlatformCommand(command: PlatformCommandId) {
-    if (isCommandDisabled(command, { activeFilePath, hasWorkspace, workspaceLayout })) return
+    if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
 
     const handled = dispatch(command)
     if (handled === false) return
@@ -109,17 +98,7 @@ export function CommandPaletteContent({
     onOpenChange(false)
   }
 
-  function dispatchCommandPaletteSelection(item: CommandPaletteItem) {
-    const operation = commandPaletteSelectionLayoutOperation(item.command)
-    if (!operation) return dispatchPlatformPaletteSelection(item)
-
-    setWorkspaceLayout(applyLayoutOperation(workspaceLayout, operation))
-    return true
-  }
-
   function dispatchPlatformPaletteSelection(item: CommandPaletteItem) {
-    if (item.command.kind !== 'platform') return false
-
     return dispatch(item.command.command)
   }
 
@@ -186,7 +165,6 @@ export function CommandPaletteContent({
           mode={mode}
           symbolItems={symbolQuery.data ?? []}
           symbolsPending={symbolsEnabled && symbolQuery.isPending}
-          workspaceLayout={workspaceLayout}
           onCommandSelect={runCommand}
           onFileSelect={openFile}
           onPlatformCommandSelect={runPlatformCommand}

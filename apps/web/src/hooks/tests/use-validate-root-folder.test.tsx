@@ -7,10 +7,10 @@ import {
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/editor-workspace-state'
 import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
+import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
 import { useValidateRootFolder } from '@/hooks/use-validate-root-folder'
 import { createFileContent, ensureFolderPath } from '@/lib/file-server'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
 
 test('clears a cached root folder that no longer exists on disk', async ({ client }) => {
   void client
@@ -63,7 +63,7 @@ function storeWithRoot(rootFolder: PickedFsEntry) {
     recentlyClosedEditorPaths: [],
     rootFolder,
     selectedFilePath: null,
-    workspaceLayout: createClassicFirstRunWorkspaceLayout(),
+    workbenchPanels: createDefaultWorkbenchPanels(),
   })
 }
 

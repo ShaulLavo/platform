@@ -7,17 +7,13 @@ import {
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
-import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
-import { createClassicFirstRunWorkspaceLayout } from '@workspace/tiling/utils/layout-builders'
 import {
-  restoreWorkspaceLayout,
-  serializeWorkspaceLayout,
-  type SerializedWorkspaceLayout,
-} from '@/features/tiling-surface-manager/engine/layout-persistence'
-import {
-  activeEditorPathForWorkspaceLayout,
-  editorOpenPathsForWorkspaceLayout,
-} from '@/features/workbench/utils/editor-surface-layout'
+  activeEditorPathForWorkbenchPanels,
+  createDefaultWorkbenchPanels,
+  editorOpenPathsForWorkbenchPanels,
+  normalizeWorkbenchPanels,
+  type WorkbenchPanels,
+} from '@/features/workbench/utils/workbench-panels'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import type {
   WorkspaceSearchMatch,
@@ -28,12 +24,7 @@ import * as v from 'valibot'
 
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-// v13: drop pre-recipe persisted layouts. Older builds persisted non-recipe
-// workspace layouts (windows like `window:file-navigator` instead of the recipe
-// `window:classic:…`), where a tool pane is re-packed on expand but its resize
-// is never recorded — so resize → collapse → expand reset the pane to ~50%.
-// Discarding the stale layout rebuilds a recipe layout, which preserves size.
-const CACHE_VERSION = 13
+const CACHE_VERSION = 14
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
 const LEGACY_WORKSPACE_CACHE_KEY = 'platform.workspace-state.v1'
 
@@ -43,7 +34,7 @@ export const WORKSPACE_CACHE_STORAGE_KEYS = {
   recentlyClosedEditorPaths: `${CACHE_KEY_PREFIX}.recentlyClosedEditorPaths`,
   rootFolder: `${CACHE_KEY_PREFIX}.rootFolder`,
   searchBuffer: `${CACHE_KEY_PREFIX}.searchBuffer`,
-  workspaceLayout: `${CACHE_KEY_PREFIX}.workspaceLayout`,
+  workbenchPanels: `${CACHE_KEY_PREFIX}.workbenchPanels`,
 } as const
 
 export type CachedSearchBufferState = {
@@ -153,7 +144,20 @@ const cachedSearchBufferStateSchema = v.strictObject({
   truncated: v.boolean(),
   wholeWord: v.boolean(),
 })
-const serializedWorkspaceLayoutSchema = v.unknown()
+const sidebarTabSchema = v.union([v.literal('files'), v.literal('git'), v.literal('search')])
+const bottomTabSchema = v.union([v.literal('terminal'), v.literal('problems')])
+const editorTabRecordSchema = v.strictObject({
+  id: v.string(),
+  path: v.string(),
+})
+const workbenchPanelsSchema = v.strictObject({
+  activeBottomTab: bottomTabSchema,
+  activeEditorTabId: nullableStringSchema,
+  activeSidebarTab: sidebarTabSchema,
+  bottomHeight: v.number(),
+  editorTabs: v.array(editorTabRecordSchema),
+  sidebarWidth: v.number(),
+})
 
 export type CachedWorkspaceState = {
   diffViewMode: EditorDiffViewMode
@@ -162,7 +166,7 @@ export type CachedWorkspaceState = {
   recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
-  workspaceLayout: WorkspaceLayout
+  workbenchPanels: WorkbenchPanels
 }
 
 export type WorkspaceCacheState = CachedWorkspaceState & {
@@ -171,7 +175,7 @@ export type WorkspaceCacheState = CachedWorkspaceState & {
 
 export type WorkspaceCacheWriteState = Pick<
   CachedWorkspaceState,
-  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workspaceLayout'
+  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workbenchPanels'
 > & {
   searchBuffer: CachedSearchBufferState | null
 }
@@ -188,7 +192,7 @@ export function writeWorkspaceCache({
   editorHistory,
   recentlyClosedEditorPaths,
   searchBuffer,
-  workspaceLayout,
+  workbenchPanels,
 }: WorkspaceCacheWriteState) {
   if (!canUseLocalStorage()) return
 
@@ -204,8 +208,8 @@ export function writeWorkspaceCache({
   )
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.rootFolder, rootFolder)
   writeCacheEntry(
-    WORKSPACE_CACHE_STORAGE_KEYS.workspaceLayout,
-    workspaceLayoutPayload(rootFolder, workspaceLayout),
+    WORKSPACE_CACHE_STORAGE_KEYS.workbenchPanels,
+    workbenchPanelsForCache(rootFolder, workbenchPanels),
   )
   writeCacheEntry(
     WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer,
@@ -219,15 +223,14 @@ function workspaceStateFromCache(): WorkspaceCacheState {
     rootFolderSchema,
     null,
   )
-  const serializedWorkspaceLayout = readCacheEntry<unknown>(
-    WORKSPACE_CACHE_STORAGE_KEYS.workspaceLayout,
-    serializedWorkspaceLayoutSchema,
-    null,
+  const workbenchPanels = workbenchPanelsForWorkspace(
+    rootFolder,
+    readCacheEntry<WorkbenchPanels>(
+      WORKSPACE_CACHE_STORAGE_KEYS.workbenchPanels,
+      workbenchPanelsSchema,
+      createDefaultWorkbenchPanels(),
+    ),
   )
-  const workspaceLayout = restoreWorkspaceLayout(serializedWorkspaceLayout, {
-    fallbackLayout: createClassicFirstRunWorkspaceLayout(),
-    rootPath: rootFolder?.path ?? null,
-  }).layout
 
   return {
     diffViewMode: readCacheEntry(
@@ -239,7 +242,7 @@ function workspaceStateFromCache(): WorkspaceCacheState {
       rootFolder,
       readCacheEntry<string[]>(WORKSPACE_CACHE_STORAGE_KEYS.editorHistory, stringArraySchema, []),
     ),
-    openFilePaths: editorOpenPathsForWorkspaceLayout(workspaceLayout),
+    openFilePaths: editorOpenPathsForWorkbenchPanels(workbenchPanels),
     recentlyClosedEditorPaths: workspacePathsForCache(
       rootFolder,
       readCacheEntry<string[]>(
@@ -257,8 +260,8 @@ function workspaceStateFromCache(): WorkspaceCacheState {
         null,
       ),
     ),
-    selectedFilePath: activeEditorPathForWorkspaceLayout(workspaceLayout),
-    workspaceLayout,
+    selectedFilePath: activeEditorPathForWorkbenchPanels(workbenchPanels),
+    workbenchPanels,
   }
 }
 
@@ -336,7 +339,7 @@ function isPathInWorkspace(path: string, rootPath: string) {
 }
 
 function emptyWorkspaceState(): WorkspaceCacheState {
-  const workspaceLayout = createClassicFirstRunWorkspaceLayout()
+  const workbenchPanels = createDefaultWorkbenchPanels()
 
   return {
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
@@ -346,26 +349,44 @@ function emptyWorkspaceState(): WorkspaceCacheState {
     rootFolder: null,
     searchBuffer: null,
     selectedFilePath: null,
-    workspaceLayout,
+    workbenchPanels,
   }
 }
 
-function workspaceLayoutForCache(
+function workbenchPanelsForWorkspace(
   rootFolder: PickedFsEntry | null,
-  workspaceLayout: WorkspaceLayout,
+  workbenchPanels: WorkbenchPanels,
 ) {
-  const serializedLayout = serializeWorkspaceLayout(workspaceLayout)
-  return restoreWorkspaceLayout(serializedLayout, {
-    fallbackLayout: createClassicFirstRunWorkspaceLayout(),
-    rootPath: rootFolder?.path ?? null,
-  }).layout
+  const editorTabs = workbenchPanels.editorTabs.filter((tab) =>
+    pathForWorkspace(rootFolder, tab.path),
+  )
+  const activeEditorTabId = activeEditorTabIdForTabs(editorTabs, workbenchPanels.activeEditorTabId)
+
+  return normalizeWorkbenchPanels({
+    activeBottomTab: workbenchPanels.activeBottomTab,
+    activeEditorTabId,
+    activeSidebarTab: workbenchPanels.activeSidebarTab,
+    bottomHeight: workbenchPanels.bottomHeight,
+    editorTabs,
+    sidebarWidth: workbenchPanels.sidebarWidth,
+  })
 }
 
-function workspaceLayoutPayload(
+function workbenchPanelsForCache(
   rootFolder: PickedFsEntry | null,
-  workspaceLayout: WorkspaceLayout,
-): SerializedWorkspaceLayout {
-  return serializeWorkspaceLayout(workspaceLayoutForCache(rootFolder, workspaceLayout))
+  workbenchPanels: WorkbenchPanels,
+) {
+  return workbenchPanelsForWorkspace(rootFolder, workbenchPanels)
+}
+
+function activeEditorTabIdForTabs(
+  editorTabs: WorkbenchPanels['editorTabs'],
+  activeEditorTabId: string | null,
+) {
+  if (!activeEditorTabId) return editorTabs[0]?.id ?? null
+  if (editorTabs.some((tab) => tab.id === activeEditorTabId)) return activeEditorTabId
+
+  return editorTabs[0]?.id ?? null
 }
 
 function canUseLocalStorage() {

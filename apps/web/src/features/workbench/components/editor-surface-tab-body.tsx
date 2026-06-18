@@ -10,8 +10,6 @@ import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
 import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
-import { useLayoutStoreApi } from '@/features/workbench/hooks/use-layout-store-api'
-import { openTransientFilePreview } from '@/features/workbench/utils/transient-file-preview'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
 import type {
@@ -82,7 +80,6 @@ export function EditorSurfaceTabBody({
   const setLanguageServerReferences = useEditorUiState((state) => state.setLanguageServerReferences)
   const clearStatusBarSource = useEditorUiState((state) => state.clearStatusBarSource)
   const setStatusBarSource = useEditorUiState((state) => state.setStatusBarSource)
-  const layoutStore = useLayoutStoreApi()
   const uiStore = useEditorUiStoreApi()
   const { discardLiveEditorDocument, openDefinition, renameLiveEditorDocument } =
     useEditorCommands()
@@ -130,13 +127,9 @@ export function EditorSurfaceTabBody({
   )
   const handlePreviewDefinition = useCallback(
     (target: LanguageServerDefinitionTarget) => {
-      openTransientFilePreview({
-        layoutStore,
-        target,
-        uiStore,
-      })
+      uiStore.getState().setDefinitionTarget(target)
     },
-    [layoutStore, uiStore],
+    [uiStore],
   )
 
   return (

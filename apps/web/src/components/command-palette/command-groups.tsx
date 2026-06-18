@@ -1,7 +1,5 @@
 import { CommandGroup } from '@workspace/ui/components/command'
 
-import type { WorkspaceLayout } from '@workspace/tiling/utils/layout-types'
-
 import { CommandPaletteRow } from './command-palette-row'
 import type { CommandPaletteItem } from './command-palette-types'
 import { commandPaletteItemDisabledReason } from './command-palette-utils'
@@ -10,7 +8,6 @@ type CommandGroupsProps = {
   readonly activeFilePath: string | null
   readonly groups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
   readonly hasWorkspace: boolean
-  readonly workspaceLayout: WorkspaceLayout
   readonly onSelect: (item: CommandPaletteItem) => void
 }
 
@@ -18,7 +15,6 @@ export function CommandGroups({
   activeFilePath,
   groups,
   hasWorkspace,
-  workspaceLayout,
   onSelect,
 }: CommandGroupsProps) {
   return (
@@ -30,7 +26,6 @@ export function CommandGroups({
               disabledReason={commandPaletteItemDisabledReason(item, {
                 activeFilePath,
                 hasWorkspace,
-                workspaceLayout,
               })}
               item={item}
               key={item.id}

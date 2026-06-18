@@ -21,13 +21,11 @@ export type WorkspaceCommandId =
   | 'workspace.focusFirstEditorGroup'
   | 'workspace.focusSecondEditorGroup'
   | 'workspace.focusThirdEditorGroup'
-  | 'workspace.splitEditor'
   | 'workspace.focusEditor'
   | 'workspace.focusFileTree'
   | 'workspace.focusGit'
   | 'workspace.closeCurrentTab'
   | 'workspace.toggleDiffViewMode'
-  | `workspace.window.${string}`
   | 'workspace.selectColorMode'
   | 'workspace.setLightTheme'
   | 'workspace.setDarkTheme'

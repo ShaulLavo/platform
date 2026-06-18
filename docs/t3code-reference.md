@@ -69,7 +69,6 @@ Frontend:
 | Markdown               | `react-markdown`, `remark-gfm`                            |
 | Diff/highlight         | `@pierre/diffs`, local LRU                                |
 | Terminal               | `@xterm/xterm`, `@xterm/addon-fit`                        |
-| Drag/reorder           | `@dnd-kit/*`                                              |
 | Animation              | `@formkit/auto-animate`                                   |
 
 Backend:
