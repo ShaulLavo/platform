@@ -14,11 +14,10 @@ type FileSnapshotQueryConfig = {
   readonly fetcher?: FileSnapshotFetcher
 }
 
-// Single source of truth for file-snapshot queries. Every consumer — the
-// selected-file useQuery, intent prefetches, and the workspace-ready open-file
-// refresh — must build its options here so all of them share one query key,
-// one freshness window, and one in-flight fetch instead of racing duplicate
-// reads of the same file.
+// Single source of truth for file-snapshot queries. The selected-file useQuery,
+// intent prefetches, and workspace event sync all build their options here so
+// they share one query key, one freshness window, and one in-flight fetch
+// instead of racing duplicate reads of the same file.
 export function fileSnapshotQueryOptions(path: string, config: FileSnapshotQueryConfig = {}) {
   const fetcher = config.fetcher ?? fetchFile
   return {

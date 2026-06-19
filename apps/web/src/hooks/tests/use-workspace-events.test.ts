@@ -97,7 +97,7 @@ describe('planWorkspaceFilesystemEvents', () => {
     const entry = treeEntry('repo/a.ts')
     const plan = planWorkspaceFilesystemEvents({
       events: [{ entry, path: 'repo/a.ts', type: 'changed' }],
-      openFiles: [{ isDirty: false, path: 'repo/a.ts' }],
+      openFiles: [{ hasLiveDocument: true, isDirty: false, path: 'repo/a.ts' }],
       rootPath,
     })
 
@@ -112,8 +112,8 @@ describe('planWorkspaceFilesystemEvents', () => {
     const plan = planWorkspaceFilesystemEvents({
       events: [{ path: 'repo/src', type: 'deleted' }],
       openFiles: [
-        { isDirty: false, path: 'repo/src/a.ts' },
-        { isDirty: true, path: 'repo/src/b.ts' },
+        { hasLiveDocument: false, isDirty: false, path: 'repo/src/a.ts' },
+        { hasLiveDocument: true, isDirty: true, path: 'repo/src/b.ts' },
       ],
       rootPath,
     })
@@ -130,7 +130,7 @@ describe('planWorkspaceFilesystemEvents', () => {
         { path: 'repo/a.ts', type: 'deleted' },
         { path: 'repo/a.ts', type: 'created' },
       ],
-      openFiles: [{ isDirty: false, path: 'repo/a.ts' }],
+      openFiles: [{ hasLiveDocument: true, isDirty: false, path: 'repo/a.ts' }],
       rootPath,
     })
 
@@ -141,8 +141,8 @@ describe('planWorkspaceFilesystemEvents', () => {
     const plan = planWorkspaceFilesystemEvents({
       events: [{ oldPath: 'repo/old', path: 'repo/new', type: 'renamed' }],
       openFiles: [
-        { isDirty: false, path: 'repo/old/a.ts' },
-        { isDirty: true, path: 'repo/old/b.ts' },
+        { hasLiveDocument: false, isDirty: false, path: 'repo/old/a.ts' },
+        { hasLiveDocument: true, isDirty: true, path: 'repo/old/b.ts' },
       ],
       rootPath,
     })
@@ -156,14 +156,25 @@ describe('planWorkspaceFilesystemEvents', () => {
       },
     ])
   })
+
+  it('does not refresh changed open files without a live document', () => {
+    const plan = planWorkspaceFilesystemEvents({
+      events: [{ path: 'repo/a.ts', type: 'changed' }],
+      openFiles: [{ hasLiveDocument: false, isDirty: false, path: 'repo/a.ts' }],
+      rootPath,
+    })
+
+    expect(plan.openFileOperations).toEqual([])
+  })
 })
 
 describe('planWorkspaceReady', () => {
-  it('refreshes only clean file-backed open files', () => {
+  it('refreshes only clean open files with live documents', () => {
     const plan = planWorkspaceReady({
       openFiles: [
-        { isDirty: false, path: 'repo/a.ts' },
-        { isDirty: true, path: 'repo/b.ts' },
+        { hasLiveDocument: true, isDirty: false, path: 'repo/a.ts' },
+        { hasLiveDocument: true, isDirty: true, path: 'repo/b.ts' },
+        { hasLiveDocument: false, isDirty: false, path: 'repo/c.ts' },
       ],
       rootPath: 'repo',
     })

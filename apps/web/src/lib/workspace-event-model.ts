@@ -7,6 +7,8 @@ export type WorkspaceFilesystemEvent =
   | { type: 'renamed'; path: string; oldPath: string; entry?: TreeEntry }
 
 export type WorkspaceOpenFileSnapshot = {
+  // Open tabs without live documents should not trigger content reads.
+  hasLiveDocument: boolean
   isDirty: boolean
   path: string
 }
@@ -60,11 +62,17 @@ export function planWorkspaceReady({
 }): WorkspaceEventPlan {
   return {
     openFileOperations: openFiles.flatMap((file) =>
-      file.isDirty ? [] : [{ type: 'refresh-open-file', path: file.path }],
+      shouldRefreshReadyOpenFile(file) ? [{ type: 'refresh-open-file', path: file.path }] : [],
     ),
     shouldInvalidateGitState: true,
     treeOperations: [{ type: 'refresh-ready-root-tree', path: rootPath }],
   }
+}
+
+function shouldRefreshReadyOpenFile(file: WorkspaceOpenFileSnapshot) {
+  if (file.isDirty) return false
+
+  return file.hasLiveDocument
 }
 
 export function planFetchedOpenFileRefresh({
@@ -112,7 +120,9 @@ function planOpenFileOperations(
   rootPath: string,
 ): WorkspaceOpenFileOperation[] {
   const operations: WorkspaceOpenFileOperation[] = []
-  const openFilePaths = openFiles.map((file) => file.path)
+  const liveOpenFilePaths = openFiles
+    .filter((file) => file.hasLiveDocument)
+    .map((file) => file.path)
 
   for (const event of events) {
     if (event.type === 'deleted') {
@@ -126,7 +136,12 @@ function planOpenFileOperations(
     operations.push(...planRenamedOpenFileOperations(event, openFiles))
   }
 
-  const refreshPaths = affectedOpenFileRefreshPaths(events, openFilePaths, recreatedPaths, rootPath)
+  const refreshPaths = affectedOpenFileRefreshPaths(
+    events,
+    liveOpenFilePaths,
+    recreatedPaths,
+    rootPath,
+  )
   for (const path of refreshPaths) {
     operations.push({ type: 'refresh-open-file', path })
   }

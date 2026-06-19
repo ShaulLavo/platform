@@ -1,6 +1,5 @@
 import { AppCommandSurface } from '@/components/app-command-surface'
 import { EmptyWorkspace } from '@/components/empty-workspace'
-import { OpenTabLiveDocumentController } from '@/components/open-tab-live-document-controller'
 import { usePickEntry } from '@/components/use-pick-entry'
 import { WorkspaceView } from '@/components/workspace/shell/components/workspace-view'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
@@ -59,7 +58,6 @@ export function AppWorkspace({
 
   return (
     <>
-      <OpenTabLiveDocumentController />
       <AppCommandSurface bindings={keymapBindings} requestCloseTab={onRequestCloseTab} />
       <div className='flex h-full min-h-0 flex-col'>
         {rootFolder ? (

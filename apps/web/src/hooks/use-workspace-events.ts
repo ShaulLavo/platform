@@ -65,14 +65,13 @@ const READY_ROOT_TREE_FRESH_MS = 10_000
 
 // Leading + trailing throttle so a runaway stream of filesystem events (an
 // external tool writing into the workspace) cannot refetch git status on
-// every batch. Throttle, not debounce: a continuous stream must still
-// invalidate once per interval instead of starving forever.
+// every batch.
 const GIT_INVALIDATION_THROTTLE_MS = 2_000
 
 export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
+  const queryClient = useQueryClient()
   const conflictStore = useEditorConflictStoreApi()
   const documentStore = useEditorDocumentStoreApi()
-  const queryClient = useQueryClient()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const { discardLiveEditorDocument, renameLiveEditorDocument, selectFile } = useEditorCommands()
   const rootPath = rootFolder?.path ?? null
@@ -605,18 +604,23 @@ function openFileSnapshots(
   dirtyFilePaths: ReadonlySet<string>,
   getLiveEditorDocument: (path: string) => LiveEditorDocument | null,
 ): WorkspaceOpenFileSnapshot[] {
-  return fileBackedOpenPaths(openFilePaths).map((path) => ({
-    isDirty: isDirtyOpenFilePath(path, dirtyFilePaths, getLiveEditorDocument),
-    path,
-  }))
+  return fileBackedOpenPaths(openFilePaths).map((path) =>
+    openFileSnapshot(path, dirtyFilePaths, getLiveEditorDocument),
+  )
 }
 
-function isDirtyOpenFilePath(
+function openFileSnapshot(
   path: string,
   dirtyFilePaths: ReadonlySet<string>,
   getLiveEditorDocument: (path: string) => LiveEditorDocument | null,
-) {
-  return dirtyFilePaths.has(path) || getLiveEditorDocument(path)?.buffer.isDirty() === true
+): WorkspaceOpenFileSnapshot {
+  const liveDocument = getLiveEditorDocument(path)
+
+  return {
+    hasLiveDocument: Boolean(liveDocument),
+    isDirty: dirtyFilePaths.has(path) || liveDocument?.buffer.isDirty() === true,
+    path,
+  }
 }
 
 async function applyOpenFileOperation({
@@ -676,10 +680,10 @@ async function applyRefreshOpenFileOperation({
   queryClient: ReturnType<typeof useQueryClient>
   signal: AbortSignal
 }) {
-  // The selected file's useQuery races this refresh on workspace load (and
-  // StrictMode can deliver two ready events); fetchQuery on the same key joins
-  // any in-flight fetch instead of reading the same file again. A reconnect
-  // later still hits the network: the cache entry is stale by then.
+  // Existing live documents can race the selected file's useQuery on workspace
+  // load (and StrictMode can deliver two ready events); fetchQuery on the same
+  // key joins any in-flight fetch instead of reading the same file again. A
+  // reconnect later still hits the network: the cache entry is stale by then.
   //
   // The outer signal deliberately does not reach the fetch: the fetch is
   // shared with other consumers, so only the query's own lifecycle may cancel
@@ -714,6 +718,7 @@ function applyFetchedOpenFileOperation(
     notifyChangedFilesystemConflict(operation.path, file, context)
     return
   }
+  if (!context.getLiveEditorDocument(file.path)) return
 
   const result = forceReplaceLiveEditorDocument(file)
   if (result.wasDirty && operation.notifyDirtyOverwrite) notifyDirtyOverwrite(operation.path)
