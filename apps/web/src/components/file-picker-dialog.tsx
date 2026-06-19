@@ -20,7 +20,7 @@ import {
 } from '@workspace/ui/components/dialog'
 import { Input } from '@workspace/ui/components/input'
 import { Separator } from '@workspace/ui/components/separator'
-import { useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useMemo, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import {
   useDirectoryLoad,
   useRecentEntries,
@@ -33,6 +33,10 @@ import { Breadcrumbs } from './file-picker/navigation/breadcrumbs'
 import { MobileLocations } from './file-picker/navigation/mobile-locations'
 import { PlacesSidebar } from './file-picker/navigation/places-sidebar'
 import { PreviewPane, SelectedSummary } from './file-picker/preview'
+import {
+  FilePickerSessionActionsContext,
+  type FilePickerSessionActions,
+} from './file-picker/providers/session-actions-context'
 import {
   ROOT_PATH,
   currentPickableEntry,
@@ -104,6 +108,15 @@ export function FilePickerDialog({
     toPickedEntry(session.selectedEntry, mode, accept) ?? currentPickableEntry(currentEntry, mode)
   const homePath = serverInfo?.homePath ?? ROOT_PATH
   const copy = pickerCopy(mode)
+  // Keep session actions stable while the dialog search and preview state changes.
+  const sessionActions = useMemo<FilePickerSessionActions>(
+    () => ({
+      jumpTo: session.jumpTo,
+      navigateTo: session.navigateTo,
+      selectEntry: session.setSelectedEntry,
+    }),
+    [session.jumpTo, session.navigateTo, session.setSelectedEntry],
+  )
 
   function refresh() {
     setReloadVersion((version) => version + 1)
@@ -177,122 +190,120 @@ export function FilePickerDialog({
         className='bg-background flex h-[min(760px,calc(100svh-2rem))] w-[min(1080px,calc(100vw-1.5rem))] max-w-none flex-col gap-0 overflow-hidden rounded-xl border p-0 text-sm shadow-2xl sm:max-w-none'
         showCloseButton={false}
       >
-        <div className='bg-muted/35 border-b px-4 py-3'>
-          <div className='flex items-center justify-between gap-3'>
-            <DialogHeader className='min-w-0 gap-1'>
-              <DialogTitle className='flex items-center gap-2 text-sm'>
-                <span className='border-info/20 bg-info/10 text-info flex size-7 items-center justify-center rounded-md border'>
-                  <HardDrivesIcon weight='duotone' />
-                </span>
-                {copy.title}
-              </DialogTitle>
-              <DialogDescription>Browsing your home directory.</DialogDescription>
-            </DialogHeader>
-            <div className='flex shrink-0 items-center gap-1'>
-              <IconTooltip label='Back'>
-                <Button
-                  aria-label='Back'
-                  disabled={!session.canGoBack}
-                  onClick={session.goBack}
-                  size='icon-sm'
-                  type='button'
-                  variant='ghost'
-                >
-                  <ArrowLeftIcon />
-                </Button>
-              </IconTooltip>
-              <IconTooltip label='Up one folder'>
-                <Button
-                  aria-label='Up one folder'
-                  disabled={!session.canGoUp}
-                  onClick={() => session.navigateTo(parentPath(session.currentPath))}
-                  size='icon-sm'
-                  type='button'
-                  variant='ghost'
-                >
-                  <ArrowUpIcon />
-                </Button>
-              </IconTooltip>
-              <IconTooltip label='Refresh'>
-                <Button
-                  aria-label='Refresh'
-                  onClick={refresh}
-                  size='icon-sm'
-                  type='button'
-                  variant='ghost'
-                >
-                  <ArrowClockwiseIcon />
-                </Button>
-              </IconTooltip>
+        <FilePickerSessionActionsContext value={sessionActions}>
+          <div className='bg-muted/35 border-b px-4 py-3'>
+            <div className='flex items-center justify-between gap-3'>
+              <DialogHeader className='min-w-0 gap-1'>
+                <DialogTitle className='flex items-center gap-2 text-sm'>
+                  <span className='border-info/20 bg-info/10 text-info flex size-7 items-center justify-center rounded-md border'>
+                    <HardDrivesIcon weight='duotone' />
+                  </span>
+                  {copy.title}
+                </DialogTitle>
+                <DialogDescription>Browsing your home directory.</DialogDescription>
+              </DialogHeader>
+              <div className='flex shrink-0 items-center gap-1'>
+                <IconTooltip label='Back'>
+                  <Button
+                    aria-label='Back'
+                    disabled={!session.canGoBack}
+                    onClick={session.goBack}
+                    size='icon-sm'
+                    type='button'
+                    variant='ghost'
+                  >
+                    <ArrowLeftIcon />
+                  </Button>
+                </IconTooltip>
+                <IconTooltip label='Up one folder'>
+                  <Button
+                    aria-label='Up one folder'
+                    disabled={!session.canGoUp}
+                    onClick={() => session.navigateTo(parentPath(session.currentPath))}
+                    size='icon-sm'
+                    type='button'
+                    variant='ghost'
+                  >
+                    <ArrowUpIcon />
+                  </Button>
+                </IconTooltip>
+                <IconTooltip label='Refresh'>
+                  <Button
+                    aria-label='Refresh'
+                    onClick={refresh}
+                    size='icon-sm'
+                    type='button'
+                    variant='ghost'
+                  >
+                    <ArrowClockwiseIcon />
+                  </Button>
+                </IconTooltip>
+              </div>
             </div>
-          </div>
-          <div className='mt-3 grid gap-2 lg:grid-cols-[170px_minmax(0,1fr)_240px]'>
-            <div className='hidden lg:block' />
-            <Breadcrumbs currentPath={session.currentPath} onNavigate={session.navigateTo} />
-            <div className='relative'>
-              <MagnifyingGlassIcon className='text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2' />
-              <Input
-                aria-label={copy.searchLabel}
-                className='h-8 pl-8'
-                onChange={handleSearchChange}
-                placeholder={copy.searchPlaceholder}
-                value={session.query}
-              />
+            <div className='mt-3 grid gap-2 lg:grid-cols-[170px_minmax(0,1fr)_240px]'>
+              <div className='hidden lg:block' />
+              <Breadcrumbs currentPath={session.currentPath} />
+              <div className='relative'>
+                <MagnifyingGlassIcon className='text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2' />
+                <Input
+                  aria-label={copy.searchLabel}
+                  className='h-8 pl-8'
+                  onChange={handleSearchChange}
+                  placeholder={copy.searchPlaceholder}
+                  value={session.query}
+                />
+              </div>
             </div>
-          </div>
-          <MobileLocations
-            currentPath={session.currentPath}
-            homePath={homePath}
-            onNavigate={session.jumpTo}
-            recentState={recentState}
-          />
-        </div>
-
-        <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[170px_minmax(0,1fr)_240px]'>
-          <PlacesSidebar
-            currentPath={session.currentPath}
-            homePath={homePath}
-            onNavigate={session.jumpTo}
-            recentState={recentState}
-          />
-          <div className='grid min-h-0 grid-rows-[auto_minmax(0,1fr)]'>
-            <ListHeader isLoading={isLoadingEntries} isSearching={isSearching} />
-            <FileList
-              entries={visibleEntries}
-              accept={accept}
-              iconMode={iconMode}
-              isSearching={isSearching}
-              loadState={loadState}
-              mode={mode}
-              onKeyDown={handleListKeyDown}
-              onNavigate={session.navigateTo}
-              onRetry={refresh}
-              onSelect={session.setSelectedEntry}
-              selectedPath={session.selectedEntry?.path ?? null}
+            <MobileLocations
+              currentPath={session.currentPath}
+              homePath={homePath}
+              recentState={recentState}
             />
           </div>
-          <PreviewPane
-            currentPath={session.currentPath}
-            entry={previewEntry}
-            iconMode={iconMode}
-            isSearching={isSearching}
-            mode={mode}
-          />
-        </div>
 
-        <Separator />
-        <DialogFooter className='bg-muted/20 grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center'>
-          <SelectedSummary entry={selectedPickable} iconMode={iconMode} mode={mode} />
-          <div className='flex justify-end gap-2'>
-            <Button onClick={() => onOpenChange(false)} type='button' variant='outline'>
-              Cancel
-            </Button>
-            <Button disabled={!selectedPickable} onClick={chooseSelected} type='button'>
-              <CheckIcon data-icon='inline-start' />
-              {copy.chooseLabel}
-            </Button>
+          <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[170px_minmax(0,1fr)_240px]'>
+            <PlacesSidebar
+              currentPath={session.currentPath}
+              homePath={homePath}
+              recentState={recentState}
+            />
+            <div className='grid min-h-0 grid-rows-[auto_minmax(0,1fr)]'>
+              <ListHeader isLoading={isLoadingEntries} isSearching={isSearching} />
+              <FileList
+                entries={visibleEntries}
+                accept={accept}
+                iconMode={iconMode}
+                isSearching={isSearching}
+                loadState={loadState}
+                mode={mode}
+                onKeyDown={handleListKeyDown}
+                onRetry={refresh}
+                selectedPath={session.selectedEntry?.path ?? null}
+              />
+            </div>
+            <PreviewPane
+              currentPath={session.currentPath}
+              entry={previewEntry}
+              iconMode={iconMode}
+              isSearching={isSearching}
+              mode={mode}
+            />
           </div>
-        </DialogFooter>
+
+          <Separator />
+          <DialogFooter className='bg-muted/20 grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center'>
+            <SelectedSummary entry={selectedPickable} iconMode={iconMode} mode={mode} />
+            <div className='flex justify-end gap-2'>
+              <Button onClick={() => onOpenChange(false)} type='button' variant='outline'>
+                Cancel
+              </Button>
+              <Button disabled={!selectedPickable} onClick={chooseSelected} type='button'>
+                <CheckIcon data-icon='inline-start' />
+                {copy.chooseLabel}
+              </Button>
+            </div>
+          </DialogFooter>
+        </FilePickerSessionActionsContext>
       </DialogContent>
     </Dialog>
   )

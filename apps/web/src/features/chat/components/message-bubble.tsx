@@ -7,6 +7,7 @@ import { formatChatTimestamp } from '../lib/chat-formatters'
 import { resolveAssistantMessageCopyState } from '../lib/chat-message-metadata'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
+import { useChatTimelineActions } from '../hooks/use-chat-timeline-actions'
 import { AssistantChangedFilesSection } from './assistant-changed-files-section'
 import { AssistantMessageMeta } from './assistant-message-meta'
 import { AssistantMarkdown } from './assistant-markdown'
@@ -20,9 +21,6 @@ export function MessageBubble({
   durationEnd,
   durationStart,
   message,
-  onOpenCheckpointDiff,
-  onOpenThreadCheckpointDiff,
-  onRevertToCheckpoint,
   renderAssistantCopyButton,
   revertTurnCount = null,
   showAssistantCopyButton = false,
@@ -36,15 +34,13 @@ export function MessageBubble({
   durationEnd?: string
   durationStart?: string
   message: OrchestrationMessage | OptimisticChatMessage
-  onOpenCheckpointDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
-  onOpenThreadCheckpointDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
-  onRevertToCheckpoint?: (turnCount: number) => void
   renderAssistantCopyButton?: (text: string) => ReactNode
   revertTurnCount?: number | null
   showAssistantCopyButton?: boolean
   showCompletionDivider?: boolean
   turnDiffSummary?: ChatTurnDiffSummary | null
 }) {
+  const { revertToCheckpoint } = useChatTimelineActions()
   const user = message.role === 'user'
   const assistant = message.role === 'assistant'
   const effectiveAssistantStreaming = assistantStreaming ?? (assistant ? message.streaming : false)
@@ -81,13 +77,12 @@ export function MessageBubble({
     streaming: effectiveAssistantStreaming || assistantTurnInProgress,
     text: message.text,
   })
-  const canRevertCheckpoint =
-    user && typeof revertTurnCount === 'number' && Boolean(onRevertToCheckpoint)
+  const canRevertCheckpoint = user && typeof revertTurnCount === 'number'
 
   function handleRevertClick() {
     if (typeof revertTurnCount !== 'number') return
 
-    onRevertToCheckpoint?.(revertTurnCount)
+    revertToCheckpoint(revertTurnCount)
   }
 
   return (
@@ -121,13 +116,7 @@ export function MessageBubble({
           ) : (
             <>
               <AssistantMarkdown text={assistantText} streaming={effectiveAssistantStreaming} />
-              {turnDiffSummary ? (
-                <AssistantChangedFilesSection
-                  summary={turnDiffSummary}
-                  onOpenDiff={onOpenCheckpointDiff}
-                  onOpenThreadDiff={onOpenThreadCheckpointDiff}
-                />
-              ) : null}
+              {turnDiffSummary ? <AssistantChangedFilesSection summary={turnDiffSummary} /> : null}
               {attachmentList}
             </>
           )}

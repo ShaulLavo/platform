@@ -7,12 +7,10 @@ import { sidebarLocationsFor } from './sidebar-locations'
 export function MobileLocations({
   currentPath,
   homePath,
-  onNavigate,
   recentState,
 }: {
   currentPath: string
   homePath: string
-  onNavigate: (path: string) => void
   recentState: EntriesLoadState
 }) {
   const locations = sidebarLocationsFor(homePath)
@@ -22,12 +20,7 @@ export function MobileLocations({
     <div className='mt-2 space-y-1 lg:hidden'>
       <div className='flex gap-1 overflow-x-auto pb-0.5'>
         {locations.map((location) => (
-          <LocationPill
-            currentPath={currentPath}
-            key={location.id}
-            location={location}
-            onNavigate={onNavigate}
-          />
+          <LocationPill currentPath={currentPath} key={location.id} location={location} />
         ))}
       </div>
       {recents.length > 0 && (
@@ -36,12 +29,7 @@ export function MobileLocations({
             Recent
           </span>
           {recents.map((entry) => (
-            <RecentPill
-              currentPath={currentPath}
-              entry={entry}
-              key={entry.path}
-              onNavigate={onNavigate}
-            />
+            <RecentPill currentPath={currentPath} entry={entry} key={entry.path} />
           ))}
         </div>
       )}

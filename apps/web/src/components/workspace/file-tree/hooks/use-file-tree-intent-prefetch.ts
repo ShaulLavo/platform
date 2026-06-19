@@ -6,6 +6,7 @@ import {
   fileTreeRowElements,
   fileTreeRowPath,
 } from '@/components/workspace/file-tree/utils/file-tree-prefetch'
+import { useFileTreeActions } from '@/components/workspace/file-tree/hooks/use-file-tree-actions'
 import {
   createIntentPrefetchRegistry,
   INTENT_PREFETCH_HIT_SLOP_PX,
@@ -14,23 +15,18 @@ import {
 } from '@/components/workspace/shared/utils/intent-prefetch-registry'
 import { createAnimationFrameScheduler } from '@/components/workspace/shared/utils/intent-prefetch-scheduler'
 import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
-import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
 import type { FileTree } from '@workspace/tree/utils/render/FileTree'
 
 type FileTreeIntentPrefetchOptions = {
   model: TreeModel
-  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   tree: FileTree
 }
 
-export function useFileTreeIntentPrefetch({
-  model,
-  onPrefetchDirectory,
-  tree,
-}: FileTreeIntentPrefetchOptions) {
+export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetchOptions) {
   const queryClient = useQueryClient()
+  const { prefetchDirectory } = useFileTreeActions()
   const modelRef = useRef(model)
 
   useLayoutEffect(() => {
@@ -41,7 +37,7 @@ export function useFileTreeIntentPrefetch({
     const entry = entryForTreePath(modelRef.current, treePath)
     if (!entry) return
     if (isDirectoryEntry(entry)) {
-      onPrefetchDirectory(entry, `${treePath}/`)
+      prefetchDirectory(entry, `${treePath}/`)
       return
     }
     if (!canPrefetchFileEntry(entry)) return

@@ -10,6 +10,7 @@ import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
 
+import { useFilePickerSessionActions } from '@/components/file-picker/hooks/use-file-picker-session-actions'
 import { EntryPreviewTile, KindBadge } from './entry-ui'
 import {
   displayPath,
@@ -51,9 +52,7 @@ export function FileList({
   loadState,
   mode,
   onKeyDown,
-  onNavigate,
   onRetry,
-  onSelect,
   selectedPath,
 }: {
   accept?: readonly string[]
@@ -63,9 +62,7 @@ export function FileList({
   loadState: EntriesLoadState
   mode: FilePickerMode
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
-  onNavigate: (path: string) => void
   onRetry: () => void
-  onSelect: (entry: FsEntry) => void
   selectedPath: string | null
 }) {
   const rows = useMemo(() => fileListRows(entries, isSearching), [entries, isSearching])
@@ -104,8 +101,6 @@ export function FileList({
             accept={accept}
             iconMode={iconMode}
             mode={mode}
-            onNavigate={onNavigate}
-            onSelect={onSelect}
             row={rows[virtualRow.index]}
             selectedPath={selectedPath}
             virtualRow={virtualRow}
@@ -145,8 +140,6 @@ function FileListVirtualRow({
   accept,
   iconMode,
   mode,
-  onNavigate,
-  onSelect,
   row,
   selectedPath,
   virtualRow,
@@ -154,8 +147,6 @@ function FileListVirtualRow({
   accept?: readonly string[]
   iconMode: FilePickerIconMode
   mode: FilePickerMode
-  onNavigate: (path: string) => void
-  onSelect: (entry: FsEntry) => void
   row: FileListRow | undefined
   selectedPath: string | null
   virtualRow: FileListVirtualItem
@@ -177,8 +168,6 @@ function FileListVirtualRow({
           entry={row.entry}
           iconMode={iconMode}
           mode={mode}
-          onNavigate={onNavigate}
-          onSelect={onSelect}
           selected={row.entry.path === selectedPath}
           showPath={row.showPath}
         />
@@ -292,8 +281,6 @@ function FileRow({
   entry,
   iconMode,
   mode,
-  onNavigate,
-  onSelect,
   selected,
   showPath,
 }: {
@@ -301,16 +288,15 @@ function FileRow({
   entry: FsEntry
   iconMode: FilePickerIconMode
   mode: FilePickerMode
-  onNavigate: (path: string) => void
-  onSelect: (entry: FsEntry) => void
   selected: boolean
   showPath: boolean
 }) {
+  const { navigateTo, selectEntry } = useFilePickerSessionActions()
   const pickable = isPickableEntry(entry, mode, accept)
   const interactive = pickable || isDirectoryEntry(entry)
 
   function handleDoubleClick() {
-    if (isDirectoryEntry(entry)) return onNavigate(entry.path)
+    if (isDirectoryEntry(entry)) return navigateTo(entry.path)
   }
 
   return (
@@ -326,7 +312,7 @@ function FileRow({
         interactive && !pickable && 'text-muted-foreground/75',
       )}
       disabled={!interactive}
-      onClick={() => onSelect(entry)}
+      onClick={() => selectEntry(entry)}
       onDoubleClick={handleDoubleClick}
       role='option'
       type='button'

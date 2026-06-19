@@ -4,20 +4,21 @@ import { fileIconStyle } from '@/lib/file-icon-style'
 import { iconForEntry } from '@/lib/file-icons'
 
 import type { EditorPaletteItem } from './command-palette-types'
+import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 
 type EditorPaletteRowProps = {
   readonly item: EditorPaletteItem
-  readonly onSelect: (path: string) => void
 }
 
-export function EditorPaletteRow({ item, onSelect }: EditorPaletteRowProps) {
+export function EditorPaletteRow({ item }: EditorPaletteRowProps) {
+  const { selectFile } = useCommandPaletteActions()
   const icon = iconForEntry({ name: item.name, type: 'file' })
 
   return (
     <CommandItem
       keywords={[item.name, item.path, item.pathLabel]}
       value={`editor:${item.path}`}
-      onSelect={() => onSelect(item.path)}
+      onSelect={() => selectFile(item.path)}
     >
       <span aria-hidden='true' className='size-4' style={fileIconStyle(icon)} />
       <span className='max-w-[55%] shrink-0 truncate font-medium'>{item.name}</span>

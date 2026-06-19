@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { errorMessage } from '@/lib/error-message'
 import { canOpenCheckpointDiff } from '../lib/checkpoint-diff-query'
 import { hasNonZeroChatTurnDiffStat, summarizeChatTurnDiffStats } from '../lib/chat-turn-diff-tree'
+import { useChatTimelineActions } from '../hooks/use-chat-timeline-actions'
 import {
   chatChangedFilesExpansionKey,
   useChatChangedFilesExpansionStore,
@@ -11,15 +12,8 @@ import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { AssistantChangedFilesTree } from './assistant-changed-files-tree'
 import { ChatDiffStatLabel } from './chat-diff-stat-label'
 
-export function AssistantChangedFilesSection({
-  summary,
-  onOpenDiff,
-  onOpenThreadDiff,
-}: {
-  summary: ChatTurnDiffSummary
-  onOpenDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
-  onOpenThreadDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
-}) {
+export function AssistantChangedFilesSection({ summary }: { summary: ChatTurnDiffSummary }) {
+  const { openCheckpointDiff, openThreadCheckpointDiff } = useChatTimelineActions()
   const expansionKey = chatChangedFilesExpansionKey(summary)
   const allDirectoriesExpanded = useChatChangedFilesExpansionStore(
     (state) => state.expandedBySummaryId[expansionKey] ?? true,
@@ -30,15 +24,15 @@ export function AssistantChangedFilesSection({
   if (files.length === 0) return null
 
   const summaryStat = summarizeChatTurnDiffStats(files)
-  const checkpointDiffAvailable = Boolean(onOpenDiff) && canOpenCheckpointDiff(summary)
-  const threadDiffAvailable = Boolean(onOpenThreadDiff) && canOpenCheckpointDiff(summary)
+  const checkpointDiffAvailable = canOpenCheckpointDiff(summary)
+  const threadDiffAvailable = canOpenCheckpointDiff(summary)
 
   async function handleOpenCheckpointDiff(path?: string) {
     if (!checkpointDiffAvailable) return
 
     setDiffError(null)
     try {
-      await onOpenDiff?.(summary, path)
+      await openCheckpointDiff(summary, path)
     } catch (error) {
       setDiffError(errorMessage(error, 'Checkpoint diff unavailable.'))
     }
@@ -49,7 +43,7 @@ export function AssistantChangedFilesSection({
 
     setDiffError(null)
     try {
-      await onOpenThreadDiff?.(summary)
+      await openThreadCheckpointDiff(summary)
     } catch (error) {
       setDiffError(errorMessage(error, 'Checkpoint diff unavailable.'))
     }

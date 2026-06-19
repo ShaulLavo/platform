@@ -9,12 +9,10 @@ import { sidebarLocationsFor } from './sidebar-locations'
 export function PlacesSidebar({
   currentPath,
   homePath,
-  onNavigate,
   recentState,
 }: {
   currentPath: string
   homePath: string
-  onNavigate: (path: string) => void
   recentState: EntriesLoadState
 }) {
   const locations = sidebarLocationsFor(homePath)
@@ -26,16 +24,11 @@ export function PlacesSidebar({
       </div>
       <div className='space-y-0.5'>
         {locations.map((location) => (
-          <LocationButton
-            currentPath={currentPath}
-            key={location.id}
-            location={location}
-            onNavigate={onNavigate}
-          />
+          <LocationButton currentPath={currentPath} key={location.id} location={location} />
         ))}
       </div>
       <Separator className='my-2' />
-      <RecentSidebarSection currentPath={currentPath} onNavigate={onNavigate} state={recentState} />
+      <RecentSidebarSection currentPath={currentPath} state={recentState} />
     </aside>
   )
 }

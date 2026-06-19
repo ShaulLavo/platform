@@ -11,6 +11,10 @@ import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
 import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
+import {
+  EditorSurfaceActionsContext,
+  type EditorSurfaceActions,
+} from '@/features/workbench/providers/editor-surface-actions-context'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
@@ -134,6 +138,34 @@ export function EditorSurfaceTabBody({
     },
     [uiStore],
   )
+  const handleCloseReferences = useCallback(
+    () => setLanguageServerReferences(null),
+    [setLanguageServerReferences],
+  )
+  // This is a bound workbench action surface; Editor still receives explicit plugin callbacks.
+  const editorSurfaceActions = useMemo<EditorSurfaceActions>(
+    () => ({
+      closeReferences: handleCloseReferences,
+      openDefinition,
+      openReferences: handleOpenReferences,
+      previewReference: handlePreviewDefinition,
+      recordTextChange: handleEditorTextChange,
+      setDirtyState: setLiveEditorDocumentDirty,
+      setScrollPosition: (scrollPosition) => setEditorViewScrollPosition(tabId, scrollPosition),
+      setStatusSource: setStatusBarSource,
+    }),
+    [
+      handleCloseReferences,
+      handleEditorTextChange,
+      handleOpenReferences,
+      handlePreviewDefinition,
+      openDefinition,
+      setEditorViewScrollPosition,
+      setLiveEditorDocumentDirty,
+      setStatusBarSource,
+      tabId,
+    ],
+  )
 
   if (selectedSearchBuffer) {
     return (
@@ -146,23 +178,17 @@ export function EditorSurfaceTabBody({
   }
 
   return (
-    <FileEditorBody
-      active={active}
-      liveDocument={selectedLiveDocument}
-      definitionTarget={definitionTarget ?? (active ? uiDefinitionTarget : null)}
-      editorKeymapLayers={editorKeymapLayers}
-      fileState={fileState}
-      languageServerReferences={active ? languageServerReferences : null}
-      rootPath={rootPath}
-      tabId={tabId}
-      onEditorDirtyChange={setLiveEditorDocumentDirty}
-      onEditorScrollPositionChange={setEditorViewScrollPosition}
-      onEditorStatusSourceChange={setStatusBarSource}
-      onEditorTextChange={handleEditorTextChange}
-      onOpenDefinition={openDefinition}
-      onOpenReferences={handleOpenReferences}
-      onPreviewDefinition={handlePreviewDefinition}
-      onReferencesClose={() => setLanguageServerReferences(null)}
-    />
+    <EditorSurfaceActionsContext value={editorSurfaceActions}>
+      <FileEditorBody
+        active={active}
+        liveDocument={selectedLiveDocument}
+        definitionTarget={definitionTarget ?? (active ? uiDefinitionTarget : null)}
+        editorKeymapLayers={editorKeymapLayers}
+        fileState={fileState}
+        languageServerReferences={active ? languageServerReferences : null}
+        rootPath={rootPath}
+        tabId={tabId}
+      />
+    </EditorSurfaceActionsContext>
   )
 }

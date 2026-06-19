@@ -9,16 +9,9 @@ type QuickOpenGroupsProps = {
   readonly hasWorkspace: boolean
   readonly query: string
   readonly searchError: boolean
-  readonly onFileSelect: (path: string) => void
 }
 
-export function QuickOpenGroups({
-  files,
-  hasWorkspace,
-  query,
-  searchError,
-  onFileSelect,
-}: QuickOpenGroupsProps) {
+export function QuickOpenGroups({ files, hasWorkspace, query, searchError }: QuickOpenGroupsProps) {
   if (!hasWorkspace) {
     return null
   }
@@ -32,7 +25,7 @@ export function QuickOpenGroups({
         </CommandItem>
       )}
       {files.map((item) => (
-        <FilePaletteRow item={item} key={item.entry.path} onSelect={onFileSelect} />
+        <FilePaletteRow item={item} key={item.entry.path} />
       ))}
     </CommandGroup>
   )

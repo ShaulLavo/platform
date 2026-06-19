@@ -76,6 +76,7 @@
         "@lexical/react": "^0.45.0",
         "@phosphor-icons/react": "^2.1.10",
         "@singapor/core": "0.1.1",
+        "@singapor/decode": "0.1.1",
         "@singapor/diff": "0.1.1",
         "@singapor/find": "0.1.1",
         "@singapor/gutters": "0.1.1",
@@ -259,6 +260,7 @@
   },
   "overrides": {
     "@singapor/core": "link:@singapor/core",
+    "@singapor/decode": "link:@singapor/decode",
     "@singapor/diff": "link:@singapor/diff",
     "@singapor/find": "link:@singapor/find",
     "@singapor/gutters": "link:@singapor/gutters",
@@ -791,6 +793,8 @@
     "@sinclair/typebox": ["@sinclair/typebox@0.34.49", "", {}, "sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A=="],
 
     "@singapor/core": ["@singapor/core@link:@singapor/core", {}],
+
+    "@singapor/decode": ["@singapor/decode@link:@singapor/decode", {}],
 
     "@singapor/diff": ["@singapor/diff@link:@singapor/diff", {}],
 

@@ -1,6 +1,5 @@
 import type { Theme } from '@/components/theme-context'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
-import type { PlatformCommandId } from '@/keymap/types'
 
 import { ColorModeGroups } from './color-mode-groups'
 import { CommandGroups } from './command-groups'
@@ -27,11 +26,6 @@ type CommandPaletteGroupsFactoryProps = {
   readonly mode: QuickAccessMode
   readonly symbolItems: readonly FlatDocumentSymbol[]
   readonly symbolsPending: boolean
-  readonly onCommandSelect: (item: CommandPaletteItem) => void
-  readonly onFileSelect: (path: string) => void
-  readonly onPlatformCommandPreview: (command: PlatformCommandId) => void
-  readonly onPlatformCommandSelect: (command: PlatformCommandId) => void
-  readonly onSymbolSelect: (symbol: FlatDocumentSymbol) => void
 }
 
 export function CommandPaletteGroupsFactory({
@@ -46,11 +40,6 @@ export function CommandPaletteGroupsFactory({
   mode,
   symbolItems,
   symbolsPending,
-  onCommandSelect,
-  onFileSelect,
-  onPlatformCommandPreview,
-  onPlatformCommandSelect,
-  onSymbolSelect,
 }: CommandPaletteGroupsFactoryProps) {
   if (mode === 'commands') {
     return (
@@ -58,31 +47,24 @@ export function CommandPaletteGroupsFactory({
         groups={commandGroups}
         activeFilePath={activeFilePath}
         hasWorkspace={hasWorkspace}
-        onSelect={onCommandSelect}
       />
     )
   }
 
   if (mode === 'views') {
-    return <ViewGroups hasWorkspace={hasWorkspace} onSelect={onPlatformCommandSelect} />
+    return <ViewGroups hasWorkspace={hasWorkspace} />
   }
 
   if (mode === 'colorMode') {
-    return (
-      <ColorModeGroups
-        currentTheme={currentTheme}
-        onPreview={onPlatformCommandPreview}
-        onSelect={onPlatformCommandSelect}
-      />
-    )
+    return <ColorModeGroups currentTheme={currentTheme} />
   }
 
   if (mode === 'editors') {
-    return <EditorGroups items={editorItems} onSelect={onFileSelect} />
+    return <EditorGroups items={editorItems} />
   }
 
   if (mode === 'symbols') {
-    return <SymbolGroups isPending={symbolsPending} items={symbolItems} onSelect={onSymbolSelect} />
+    return <SymbolGroups isPending={symbolsPending} items={symbolItems} />
   }
 
   return (
@@ -91,7 +73,6 @@ export function CommandPaletteGroupsFactory({
       hasWorkspace={hasWorkspace}
       query={fileQuery}
       searchError={fileSearchError}
-      onFileSelect={onFileSelect}
     />
   )
 }

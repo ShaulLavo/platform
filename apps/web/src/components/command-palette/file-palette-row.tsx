@@ -5,20 +5,21 @@ import { iconForEntry } from '@/lib/file-icons'
 
 import type { FilePaletteItem } from './command-palette-types'
 import { fileItemValue } from './command-palette-utils'
+import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 
 type FilePaletteRowProps = {
   readonly item: FilePaletteItem
-  readonly onSelect: (path: string) => void
 }
 
-export function FilePaletteRow({ item, onSelect }: FilePaletteRowProps) {
+export function FilePaletteRow({ item }: FilePaletteRowProps) {
+  const { selectFile } = useCommandPaletteActions()
   const icon = iconForEntry({ name: item.entry.name, type: item.entry.type })
 
   return (
     <CommandItem
       keywords={[item.entry.name, item.entry.path, item.pathLabel]}
       value={fileItemValue(item)}
-      onSelect={() => onSelect(item.entry.path)}
+      onSelect={() => selectFile(item.entry.path)}
     >
       <span aria-hidden='true' className='size-4' style={fileIconStyle(icon)} />
       <span className='max-w-[55%] shrink-0 truncate font-medium'>{item.entry.name}</span>

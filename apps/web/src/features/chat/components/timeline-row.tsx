@@ -1,5 +1,4 @@
 import type { ChatTimelineItem } from '../lib/chat-timeline-items'
-import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { ActivityGroupRow } from './activity-group-row'
 import { AssistantMessageCopyButton } from './assistant-message-copy-button'
 import { MessageBubble } from './message-bubble'
@@ -9,15 +8,9 @@ import { WorkingRow } from './working-row'
 export function TimelineRow({
   checkpointRevertPending = false,
   item,
-  onOpenCheckpointDiff,
-  onOpenThreadCheckpointDiff,
-  onRevertToCheckpoint,
 }: {
   checkpointRevertPending?: boolean
   item: ChatTimelineItem
-  onOpenCheckpointDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
-  onOpenThreadCheckpointDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
-  onRevertToCheckpoint?: (turnCount: number) => void
 }) {
   return (
     <div
@@ -28,9 +21,6 @@ export function TimelineRow({
       {timelineRowContent({
         checkpointRevertPending,
         item,
-        onOpenCheckpointDiff,
-        onOpenThreadCheckpointDiff,
-        onRevertToCheckpoint,
       })}
     </div>
   )
@@ -39,15 +29,9 @@ export function TimelineRow({
 function timelineRowContent({
   checkpointRevertPending,
   item,
-  onOpenCheckpointDiff,
-  onOpenThreadCheckpointDiff,
-  onRevertToCheckpoint,
 }: {
   checkpointRevertPending: boolean
   item: ChatTimelineItem
-  onOpenCheckpointDiff?: (summary: ChatTurnDiffSummary, path?: string) => Promise<unknown> | unknown
-  onOpenThreadCheckpointDiff?: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
-  onRevertToCheckpoint?: (turnCount: number) => void
 }) {
   if (item.type === 'message') {
     return (
@@ -59,9 +43,6 @@ function timelineRowContent({
         durationEnd={item.durationEnd}
         durationStart={item.durationStart}
         message={item.message}
-        onOpenCheckpointDiff={onOpenCheckpointDiff}
-        onOpenThreadCheckpointDiff={onOpenThreadCheckpointDiff}
-        onRevertToCheckpoint={onRevertToCheckpoint}
         renderAssistantCopyButton={renderAssistantCopyButton}
         revertTurnCount={item.revertTurnCount}
         showAssistantCopyButton={item.showAssistantCopyButton}

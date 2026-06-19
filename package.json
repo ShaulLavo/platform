@@ -51,6 +51,7 @@
   },
   "overrides": {
     "@singapor/core": "link:@singapor/core",
+    "@singapor/decode": "link:@singapor/decode",
     "@singapor/diff": "link:@singapor/diff",
     "@singapor/find": "link:@singapor/find",
     "@singapor/gutters": "link:@singapor/gutters",

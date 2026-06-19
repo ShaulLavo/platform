@@ -1,12 +1,16 @@
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
 import type { OrchestrationMessage } from '@workspace/contracts'
 import '@workspace/ui/globals.css'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/components/theme-provider'
+import {
+  ChatTimelineActionsContext,
+  type ChatTimelineActions,
+} from '../providers/timeline-actions-context'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { MessageBubble } from './message-bubble'
 
@@ -42,13 +46,15 @@ describe('MessageBubble browser rendering', () => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
           <EditorColorThemeProvider>
-            <MessageBubble
-              message={{
-                ...assistantCodeMessage,
-                streaming: true,
-                text: 'Streaming code:\n\n```html\n<!doctype html>\n<html',
-              }}
-            />
+            {withChatTimelineActions(
+              <MessageBubble
+                message={{
+                  ...assistantCodeMessage,
+                  streaming: true,
+                  text: 'Streaming code:\n\n```html\n<!doctype html>\n<html',
+                }}
+              />,
+            )}
           </EditorColorThemeProvider>
         </ThemeProvider>,
       )
@@ -72,7 +78,7 @@ describe('MessageBubble browser rendering', () => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
           <EditorColorThemeProvider>
-            <StreamingMessageBubble />
+            {withChatTimelineActions(<StreamingMessageBubble />)}
           </EditorColorThemeProvider>
         </ThemeProvider>,
       )
@@ -116,13 +122,15 @@ describe('MessageBubble browser rendering', () => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
           <EditorColorThemeProvider>
-            <MessageBubble
-              message={{
-                ...assistantCodeMessage,
-                text: 'Changed these files:',
-              }}
-              turnDiffSummary={assistantChangedFilesSummary}
-            />
+            {withChatTimelineActions(
+              <MessageBubble
+                message={{
+                  ...assistantCodeMessage,
+                  text: 'Changed these files:',
+                }}
+                turnDiffSummary={assistantChangedFilesSummary}
+              />,
+            )}
           </EditorColorThemeProvider>
         </ThemeProvider>,
       )
@@ -151,12 +159,14 @@ describe('MessageBubble browser rendering', () => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
           <EditorColorThemeProvider>
-            <MessageBubble
-              message={{
-                ...assistantCodeMessage,
-                text: 'First line\nsecond line\n\nNext paragraph\nwith detail',
-              }}
-            />
+            {withChatTimelineActions(
+              <MessageBubble
+                message={{
+                  ...assistantCodeMessage,
+                  text: 'First line\nsecond line\n\nNext paragraph\nwith detail',
+                }}
+              />,
+            )}
           </EditorColorThemeProvider>
         </ThemeProvider>,
       )
@@ -179,20 +189,23 @@ describe('MessageBubble browser rendering', () => {
     container.style.width = '720px'
     document.body.append(container)
     root = createRoot(container)
-    const onOpenCheckpointDiff = vi.fn(() => Promise.resolve())
+    const openCheckpointDiff = vi.fn(() => Promise.resolve())
+    const actions = chatTimelineActions({ openCheckpointDiff })
 
     flushSync(() => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
           <EditorColorThemeProvider>
-            <MessageBubble
-              message={{
-                ...assistantCodeMessage,
-                text: 'Changed these files:',
-              }}
-              turnDiffSummary={assistantChangedFilesSummary}
-              onOpenCheckpointDiff={onOpenCheckpointDiff}
-            />
+            {withChatTimelineActions(
+              <MessageBubble
+                message={{
+                  ...assistantCodeMessage,
+                  text: 'Changed these files:',
+                }}
+                turnDiffSummary={assistantChangedFilesSummary}
+              />,
+              actions,
+            )}
           </EditorColorThemeProvider>
         </ThemeProvider>,
       )
@@ -200,12 +213,12 @@ describe('MessageBubble browser rendering', () => {
 
     viewDiffButton().click()
     await vi.waitFor(() => {
-      expect(onOpenCheckpointDiff).toHaveBeenCalledWith(assistantChangedFilesSummary, undefined)
+      expect(openCheckpointDiff).toHaveBeenCalledWith(assistantChangedFilesSummary, undefined)
     })
 
     changedFileButton('src/features/chat/lib/chat-timeline-items.ts').click()
     await vi.waitFor(() => {
-      expect(onOpenCheckpointDiff).toHaveBeenCalledWith(
+      expect(openCheckpointDiff).toHaveBeenCalledWith(
         assistantChangedFilesSummary,
         'src/features/chat/lib/chat-timeline-items.ts',
       )
@@ -222,17 +235,18 @@ describe('MessageBubble browser rendering', () => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
           <EditorColorThemeProvider>
-            <MessageBubble
-              message={{
-                ...assistantCodeMessage,
-                text: 'Changed these files:',
-              }}
-              turnDiffSummary={{
-                ...assistantChangedFilesSummary,
-                status: 'missing',
-              }}
-              onOpenCheckpointDiff={vi.fn()}
-            />
+            {withChatTimelineActions(
+              <MessageBubble
+                message={{
+                  ...assistantCodeMessage,
+                  text: 'Changed these files:',
+                }}
+                turnDiffSummary={{
+                  ...assistantChangedFilesSummary,
+                  status: 'missing',
+                }}
+              />,
+            )}
           </EditorColorThemeProvider>
         </ThemeProvider>,
       )
@@ -250,17 +264,17 @@ describe('MessageBubble browser rendering', () => {
     container.style.width = '720px'
     document.body.append(container)
     root = createRoot(container)
-    const onRevertToCheckpoint = vi.fn()
+    const revertToCheckpoint = vi.fn()
+    const actions = chatTimelineActions({ revertToCheckpoint })
 
     flushSync(() => {
       root?.render(
         <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
           <EditorColorThemeProvider>
-            <MessageBubble
-              message={userMessage}
-              revertTurnCount={2}
-              onRevertToCheckpoint={onRevertToCheckpoint}
-            />
+            {withChatTimelineActions(
+              <MessageBubble message={userMessage} revertTurnCount={2} />,
+              actions,
+            )}
           </EditorColorThemeProvider>
         </ThemeProvider>,
       )
@@ -268,10 +282,26 @@ describe('MessageBubble browser rendering', () => {
 
     revertButton().click()
     await vi.waitFor(() => {
-      expect(onRevertToCheckpoint).toHaveBeenCalledWith(2)
+      expect(revertToCheckpoint).toHaveBeenCalledWith(2)
     })
   })
 })
+
+function withChatTimelineActions(
+  children: ReactNode,
+  actions: ChatTimelineActions = chatTimelineActions(),
+) {
+  return <ChatTimelineActionsContext value={actions}>{children}</ChatTimelineActionsContext>
+}
+
+function chatTimelineActions(overrides: Partial<ChatTimelineActions> = {}): ChatTimelineActions {
+  return {
+    openCheckpointDiff: vi.fn(() => Promise.resolve()),
+    openThreadCheckpointDiff: vi.fn(() => Promise.resolve()),
+    revertToCheckpoint: vi.fn(),
+    ...overrides,
+  }
+}
 
 const streamingAssistantChunks = [
   'Here is an HTML helper:',

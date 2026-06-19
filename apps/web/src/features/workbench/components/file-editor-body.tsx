@@ -3,10 +3,10 @@ import { WarningCircleIcon } from '@phosphor-icons/react'
 import { Editor } from '@/features/editor/components/editor'
 import { LanguageServerReferencesPane } from '@/features/editor/components/language-server-references-pane'
 import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
-import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
+import { useEditorSurfaceActions } from '@/features/workbench/hooks/use-editor-surface-actions'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
-import type { DocumentSessionChange, EditorKeymapLayer, EditorScrollPosition } from '@singapor/core'
+import type { EditorKeymapLayer } from '@singapor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
@@ -21,14 +21,6 @@ export function FileEditorBody({
   languageServerReferences,
   rootPath,
   tabId,
-  onEditorDirtyChange,
-  onEditorScrollPositionChange,
-  onEditorStatusSourceChange,
-  onEditorTextChange,
-  onOpenDefinition,
-  onOpenReferences,
-  onPreviewDefinition,
-  onReferencesClose,
 }: {
   active: boolean
   liveDocument: EditorRenderDocument | null
@@ -38,15 +30,9 @@ export function FileEditorBody({
   languageServerReferences: LanguageServerReferencesResult | null
   rootPath: string
   tabId: string
-  onEditorDirtyChange?: (path: string, dirty: boolean) => void
-  onEditorScrollPositionChange: (tabId: string, scrollPosition: EditorScrollPosition) => void
-  onEditorStatusSourceChange: (source: EditorStatusBarSource | null) => void
-  onEditorTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
-  onOpenDefinition: (target: LanguageServerDefinitionTarget) => void | boolean
-  onOpenReferences: (result: LanguageServerReferencesResult) => void | boolean
-  onPreviewDefinition: (target: LanguageServerDefinitionTarget) => void
-  onReferencesClose: () => void
 }) {
+  const actions = useEditorSurfaceActions()
+
   if (liveDocument) {
     return (
       <div
@@ -63,22 +49,22 @@ export function FileEditorBody({
           keymapLayers={editorKeymapLayers}
           rootPath={rootPath}
           tabId={tabId}
-          onDirtyChange={onEditorDirtyChange}
+          onDirtyChange={actions.setDirtyState}
           onScrollPositionChange={(_path, scrollPosition) =>
-            onEditorScrollPositionChange(tabId, scrollPosition)
+            actions.setScrollPosition(scrollPosition)
           }
-          onStatusSourceChange={onEditorStatusSourceChange}
-          onTextChange={onEditorTextChange}
-          onOpenDefinition={onOpenDefinition}
-          onOpenReferences={onOpenReferences}
+          onStatusSourceChange={actions.setStatusSource}
+          onTextChange={actions.recordTextChange}
+          onOpenDefinition={actions.openDefinition}
+          onOpenReferences={actions.openReferences}
         />
         {languageServerReferences ? (
           <LanguageServerReferencesPane
             references={languageServerReferences}
             rootPath={rootPath}
-            onClose={onReferencesClose}
-            onOpenReference={onOpenDefinition}
-            onPreviewReference={onPreviewDefinition}
+            onClose={actions.closeReferences}
+            onOpenReference={actions.openDefinition}
+            onPreviewReference={actions.previewReference}
           />
         ) : null}
       </div>

@@ -1,6 +1,6 @@
 import type { FsEntry, PickedFsEntry, ServerInfo } from '@/lib/file-system-types'
 import { useDebouncedValue } from '@tanstack/react-pacer/debouncer'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import { ROOT_PATH, initialPathForOpen } from './model'
 
@@ -13,33 +13,52 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
   const effectiveQuery = query.trim() ? debouncedQuery : ''
   const [selectedEntry, setSelectedEntry] = useState<FsEntry | null>(value)
 
-  function initializeOpenSession(info: ServerInfo) {
-    if (initializedOpenRef.current) return
+  const initializeOpenSession = useCallback(
+    (info: ServerInfo) => {
+      if (initializedOpenRef.current) return
 
-    initializedOpenRef.current = true
-    setHistory([])
-    setQuery('')
-    setSelectedEntry(value)
-    setCurrentPath(initialPathForOpen(value, info.defaultPath ?? info.homePath))
-  }
+      initializedOpenRef.current = true
+      setHistory([])
+      setQuery('')
+      setSelectedEntry(value)
+      setCurrentPath(initialPathForOpen(value, info.defaultPath ?? info.homePath))
+    },
+    [value],
+  )
 
-  function resetOpenSession() {
+  const resetOpenSession = useCallback(() => {
     initializedOpenRef.current = false
-  }
+  }, [])
 
-  function navigateTo(path: string) {
-    if (path === currentPath) return
+  const moveToPath = useCallback(
+    (path: string, keepHistory: boolean) => {
+      if (keepHistory) setHistory((items) => items.concat(currentPath))
+      setCurrentPath(path)
+      setSelectedEntry(null)
+      setQuery('')
+    },
+    [currentPath],
+  )
 
-    moveToPath(path, true)
-  }
+  const navigateTo = useCallback(
+    (path: string) => {
+      if (path === currentPath) return
 
-  function jumpTo(path: string) {
-    if (path === currentPath) return
+      moveToPath(path, true)
+    },
+    [currentPath, moveToPath],
+  )
 
-    moveToPath(path, true)
-  }
+  const jumpTo = useCallback(
+    (path: string) => {
+      if (path === currentPath) return
 
-  function goBack() {
+      moveToPath(path, true)
+    },
+    [currentPath, moveToPath],
+  )
+
+  const goBack = useCallback(() => {
     const previous = history.at(-1)
     if (previous === undefined) return
 
@@ -47,14 +66,7 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
     setCurrentPath(previous)
     setSelectedEntry(null)
     setQuery('')
-  }
-
-  function moveToPath(path: string, keepHistory: boolean) {
-    if (keepHistory) setHistory((items) => items.concat(currentPath))
-    setCurrentPath(path)
-    setSelectedEntry(null)
-    setQuery('')
-  }
+  }, [history])
 
   return {
     canGoBack: history.length > 0,

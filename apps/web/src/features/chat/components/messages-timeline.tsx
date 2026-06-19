@@ -6,9 +6,8 @@ import { cn } from '@workspace/ui/lib/utils'
 import { ArrowDownIcon } from '@phosphor-icons/react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import { useOpenCheckpointDiffDocument } from '../hooks/use-open-checkpoint-diff-document'
 import { chatTimelineItemEstimate, chatTimelineItems } from '../lib/chat-timeline-items'
-import type { ChatThread, ChatTurnDiffSummary } from '../state/chat-projection-store'
+import type { ChatThread } from '../state/chat-projection-store'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import { ChatWelcomeView } from './chat-welcome-view'
 import { TimelineRow } from './timeline-row'
@@ -19,19 +18,16 @@ const CHAT_TIMELINE_OVERSCAN = 6
 export function MessagesTimeline({
   checkpointRevertPending = false,
   optimisticMessages,
-  onRevertToCheckpoint,
   thread,
 }: {
   checkpointRevertPending?: boolean
   optimisticMessages: readonly OptimisticChatMessage[]
-  onRevertToCheckpoint?: (turnCount: number) => void
   thread: ChatThread
 }) {
   const scrollElementRef = useRef<HTMLDivElement | null>(null)
   const pinnedToEndRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
   const [atEnd, setAtEnd] = useState(true)
-  const { openCheckpointDiff, openFullThreadCheckpointDiff } = useOpenCheckpointDiffDocument()
   const items = useMemo(
     () =>
       chatTimelineItems({
@@ -73,15 +69,6 @@ export function MessagesTimeline({
     scrollVirtualizerToEnd(virtualizer, items.length, 'smooth')
     updatePinnedState(true)
   }, [items.length, updatePinnedState, virtualizer])
-
-  const handleOpenCheckpointDiff = useCallback(
-    (summary: ChatTurnDiffSummary, path?: string) => openCheckpointDiff(summary, path),
-    [openCheckpointDiff],
-  )
-  const handleOpenThreadCheckpointDiff = useCallback(
-    (summary: ChatTurnDiffSummary) => openFullThreadCheckpointDiff(summary),
-    [openFullThreadCheckpointDiff],
-  )
 
   useLayoutEffect(() => {
     if (items.length === 0) return
@@ -129,9 +116,6 @@ export function MessagesTimeline({
               <TimelineRow
                 checkpointRevertPending={checkpointRevertPending}
                 item={items[virtualItem.index]!}
-                onOpenCheckpointDiff={handleOpenCheckpointDiff}
-                onOpenThreadCheckpointDiff={handleOpenThreadCheckpointDiff}
-                onRevertToCheckpoint={onRevertToCheckpoint}
               />
             </div>
           ))}

@@ -2,15 +2,11 @@ import { CaretRightIcon } from '@phosphor-icons/react'
 import { cn } from '@workspace/ui/lib/utils'
 import { Fragment } from 'react'
 
+import { useFilePickerSessionActions } from '@/components/file-picker/hooks/use-file-picker-session-actions'
 import { pathCrumbs } from '../model'
 
-export function Breadcrumbs({
-  currentPath,
-  onNavigate,
-}: {
-  currentPath: string
-  onNavigate: (path: string) => void
-}) {
+export function Breadcrumbs({ currentPath }: { currentPath: string }) {
+  const { navigateTo } = useFilePickerSessionActions()
   const crumbs = pathCrumbs(currentPath)
 
   return (
@@ -23,7 +19,7 @@ export function Breadcrumbs({
               'min-w-0 shrink truncate rounded-sm px-1.5 py-1 text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
               crumb.path === currentPath && 'text-foreground',
             )}
-            onClick={() => onNavigate(crumb.path)}
+            onClick={() => navigateTo(crumb.path)}
             type='button'
           >
             {crumb.label}

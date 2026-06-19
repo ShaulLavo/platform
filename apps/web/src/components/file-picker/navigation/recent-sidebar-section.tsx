@@ -6,11 +6,9 @@ import { RecentShortcutList } from './recent-shortcut-list'
 
 export function RecentSidebarSection({
   currentPath,
-  onNavigate,
   state,
 }: {
   currentPath: string
-  onNavigate: (path: string) => void
   state: EntriesLoadState
 }) {
   return (
@@ -19,7 +17,7 @@ export function RecentSidebarSection({
         <ClockCounterClockwiseIcon className='size-3.5' />
         Recent
       </div>
-      <RecentShortcutList currentPath={currentPath} onNavigate={onNavigate} state={state} />
+      <RecentShortcutList currentPath={currentPath} state={state} />
     </div>
   )
 }

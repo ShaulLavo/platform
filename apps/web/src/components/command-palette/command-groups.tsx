@@ -8,15 +8,9 @@ type CommandGroupsProps = {
   readonly activeFilePath: string | null
   readonly groups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
   readonly hasWorkspace: boolean
-  readonly onSelect: (item: CommandPaletteItem) => void
 }
 
-export function CommandGroups({
-  activeFilePath,
-  groups,
-  hasWorkspace,
-  onSelect,
-}: CommandGroupsProps) {
+export function CommandGroups({ activeFilePath, groups, hasWorkspace }: CommandGroupsProps) {
   return (
     <>
       {groups.map(([category, groupItems]) => (
@@ -29,7 +23,6 @@ export function CommandGroups({
               })}
               item={item}
               key={item.id}
-              onSelect={onSelect}
             />
           ))}
         </CommandGroup>

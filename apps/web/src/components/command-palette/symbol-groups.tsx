@@ -2,15 +2,17 @@ import type { FlatDocumentSymbol } from '@/lib/document-symbols'
 import { TextTIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/components/command'
 
+import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { symbolDescription, symbolKindLabel } from './command-palette-utils'
 
 type SymbolGroupsProps = {
   readonly isPending: boolean
   readonly items: readonly FlatDocumentSymbol[]
-  readonly onSelect: (symbol: FlatDocumentSymbol) => void
 }
 
-export function SymbolGroups({ isPending, items, onSelect }: SymbolGroupsProps) {
+export function SymbolGroups({ isPending, items }: SymbolGroupsProps) {
+  const { selectSymbol } = useCommandPaletteActions()
+
   if (isPending) {
     return (
       <CommandGroup heading='Symbols'>
@@ -29,7 +31,7 @@ export function SymbolGroups({ isPending, items, onSelect }: SymbolGroupsProps) 
           key={`${item.name}:${item.selectionRange.start.line}:${index}`}
           keywords={[item.name, item.containerName ?? '', symbolKindLabel(item.kind)]}
           value={`symbol:${item.name}:${index}`}
-          onSelect={() => onSelect(item)}
+          onSelect={() => selectSymbol(item)}
         >
           <TextTIcon className='text-muted-foreground' />
           <span className='min-w-0 flex-1'>

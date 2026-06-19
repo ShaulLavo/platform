@@ -1,9 +1,7 @@
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useWorkspaceTreeState } from '@/hooks/use-workspace-tree'
-import type { FlatDocumentSymbol } from '@/lib/document-symbols'
 import { platformCommandSpecs } from '@/keymap/command-registry'
-import type { PlatformCommandId } from '@/keymap/types'
 import {
   CommandDialog,
   CommandEmpty,
@@ -32,7 +30,12 @@ import {
 } from '@/components/command-palette/command-palette-utils'
 import { useCommandPaletteFiles } from '@/components/command-palette/use-command-palette-files'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
+import {
+  CommandPaletteActionsContext,
+  type CommandPaletteActions,
+} from '@/components/command-palette/providers/actions-context'
 import { useTheme } from '@/components/theme-context'
+import { useMemo } from 'react'
 
 export function CommandPaletteContent({
   bindings,
@@ -74,40 +77,6 @@ export function CommandPaletteContent({
   const commandItems = commandPaletteItems(platformCommandSpecs, bindings)
   const groups = groupedCommandItems(commandItems, search)
 
-  function runCommand(item: CommandPaletteItem) {
-    const disabledReason = commandPaletteItemDisabledReason(item, {
-      activeFilePath,
-      hasWorkspace,
-    })
-    if (disabledReason) return
-
-    const handled = dispatchPlatformPaletteSelection(item)
-    if (handled === false) return
-    if (commandPaletteItemKeepsOpen(item)) return
-
-    onOpenChange(false)
-  }
-
-  function runPlatformCommand(command: PlatformCommandId) {
-    if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
-
-    const handled = dispatch(command)
-    if (handled === false) return
-    if (commandKeepsPaletteOpen(command)) return
-
-    onOpenChange(false)
-  }
-
-  function previewPlatformCommand(command: PlatformCommandId) {
-    if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
-
-    dispatch(command)
-  }
-
-  function dispatchPlatformPaletteSelection(item: CommandPaletteItem) {
-    return dispatch(item.command.command)
-  }
-
   function handleCommandValueChange(value: string) {
     if (mode !== 'files') return
 
@@ -122,23 +91,63 @@ export function CommandPaletteContent({
     onSearchChange(value)
   }
 
-  function openFile(path: string) {
-    selectFile(path)
-    onOpenChange(false)
-  }
+  // Stable action identity keeps palette rows from repainting on root input state updates.
+  const actions = useMemo<CommandPaletteActions>(
+    () => ({
+      previewPlatformCommand: (command) => {
+        if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
 
-  function openSymbol(symbol: FlatDocumentSymbol) {
-    if (!selectedFileBackedPath) return
+        dispatch(command)
+      },
+      selectCommand: (item) => {
+        const disabledReason = commandPaletteItemDisabledReason(item, {
+          activeFilePath,
+          hasWorkspace,
+        })
+        if (disabledReason) return
 
-    const handled = openDefinition({
-      path: selectedFileBackedPath,
-      range: symbol.selectionRange,
-      uri: fileUriForPath(selectedFileBackedPath),
-    })
-    if (handled === false) return
+        const handled = dispatch(item.command.command)
+        if (handled === false) return
+        if (commandPaletteItemKeepsOpen(item)) return
 
-    onOpenChange(false)
-  }
+        onOpenChange(false)
+      },
+      selectFile: (path) => {
+        selectFile(path)
+        onOpenChange(false)
+      },
+      selectPlatformCommand: (command) => {
+        if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
+
+        const handled = dispatch(command)
+        if (handled === false) return
+        if (commandKeepsPaletteOpen(command)) return
+
+        onOpenChange(false)
+      },
+      selectSymbol: (symbol) => {
+        if (!selectedFileBackedPath) return
+
+        const handled = openDefinition({
+          path: selectedFileBackedPath,
+          range: symbol.selectionRange,
+          uri: fileUriForPath(selectedFileBackedPath),
+        })
+        if (handled === false) return
+
+        onOpenChange(false)
+      },
+    }),
+    [
+      activeFilePath,
+      dispatch,
+      hasWorkspace,
+      onOpenChange,
+      openDefinition,
+      selectFile,
+      selectedFileBackedPath,
+    ],
+  )
 
   return (
     <CommandDialog
@@ -159,24 +168,21 @@ export function CommandPaletteContent({
       />
       <CommandList className='max-h-[min(58vh,440px)] py-1'>
         <CommandEmpty>{emptyLabelForMode(mode)}</CommandEmpty>
-        <CommandPaletteGroupsFactory
-          commandGroups={groups}
-          currentTheme={theme}
-          editorItems={editorItems}
-          fileItems={visibleFileItems}
-          fileQuery={fileQuery}
-          fileSearchError={fileSearchQuery.isError}
-          hasWorkspace={hasWorkspace}
-          activeFilePath={activeFilePath}
-          mode={mode}
-          symbolItems={symbolQuery.data ?? []}
-          symbolsPending={symbolsEnabled && symbolQuery.isPending}
-          onCommandSelect={runCommand}
-          onFileSelect={openFile}
-          onPlatformCommandPreview={previewPlatformCommand}
-          onPlatformCommandSelect={runPlatformCommand}
-          onSymbolSelect={openSymbol}
-        />
+        <CommandPaletteActionsContext value={actions}>
+          <CommandPaletteGroupsFactory
+            commandGroups={groups}
+            currentTheme={theme}
+            editorItems={editorItems}
+            fileItems={visibleFileItems}
+            fileQuery={fileQuery}
+            fileSearchError={fileSearchQuery.isError}
+            hasWorkspace={hasWorkspace}
+            activeFilePath={activeFilePath}
+            mode={mode}
+            symbolItems={symbolQuery.data ?? []}
+            symbolsPending={symbolsEnabled && symbolQuery.isPending}
+          />
+        </CommandPaletteActionsContext>
       </CommandList>
     </CommandDialog>
   )

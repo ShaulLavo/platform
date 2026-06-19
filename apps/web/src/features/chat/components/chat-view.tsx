@@ -1,5 +1,5 @@
 import type { ThreadId } from '@workspace/contracts'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
@@ -28,6 +28,7 @@ import { retainThreadDetailSubscription } from '../state/thread-detail-subscript
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatRuntimeStatus } from './chat-runtime-status'
 import { MessagesTimeline } from './messages-timeline'
+import { ChatTimelineActionsProvider } from '../providers/timeline-actions-provider'
 
 export function ChatView({
   activeThreadId,
@@ -50,6 +51,26 @@ export function ChatView({
   const [revertingCheckpoint, setRevertingCheckpoint] = useState(false)
   const [sending, setSending] = useState(false)
   const busy = isChatThreadBusy(thread)
+  // Stable identity is required because this is part of the timeline action context value.
+  const handleRevertToCheckpoint = useCallback(
+    async (turnCount: number) => {
+      if (!thread) return
+      if (busy) {
+        setSendError('Interrupt the current turn before reverting checkpoints.')
+        return
+      }
+      if (!confirmCheckpointRevert(turnCount)) return
+
+      await revertThreadToCheckpoint({
+        environment,
+        setRevertingCheckpoint,
+        setSendError,
+        thread,
+        turnCount,
+      })
+    },
+    [busy, environment, thread],
+  )
 
   useEffect(() => {
     if (!activeThreadId) return
@@ -95,23 +116,6 @@ export function ChatView({
     await dispatchThreadStop({ environment, setInterrupting, setSendError, thread })
   }
 
-  async function handleRevertToCheckpoint(turnCount: number) {
-    if (!thread) return
-    if (busy) {
-      setSendError('Interrupt the current turn before reverting checkpoints.')
-      return
-    }
-    if (!confirmCheckpointRevert(turnCount)) return
-
-    await revertThreadToCheckpoint({
-      environment,
-      setRevertingCheckpoint,
-      setSendError,
-      thread,
-      turnCount,
-    })
-  }
-
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
       <ChatRuntimeStatus
@@ -121,12 +125,13 @@ export function ChatView({
         stopPending={false}
         thread={thread}
       />
-      <MessagesTimeline
-        checkpointRevertPending={revertingCheckpoint}
-        optimisticMessages={optimisticMessages}
-        thread={thread}
-        onRevertToCheckpoint={handleRevertToCheckpoint}
-      />
+      <ChatTimelineActionsProvider revertToCheckpoint={handleRevertToCheckpoint}>
+        <MessagesTimeline
+          checkpointRevertPending={revertingCheckpoint}
+          optimisticMessages={optimisticMessages}
+          thread={thread}
+        />
+      </ChatTimelineActionsProvider>
       <ChatInput
         busy={busy}
         commandStatusLabel={interrupting ? 'Interrupting' : null}

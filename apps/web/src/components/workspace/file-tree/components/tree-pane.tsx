@@ -15,19 +15,18 @@ import {
   visibleTreeItemCount,
 } from '@/components/workspace/file-tree/utils/tree-pane-state'
 import { selectedFileEntryForTreeSelection } from '@/components/workspace/file-tree/utils/tree-selection'
+import { useFileTreeActions } from '@/components/workspace/file-tree/hooks/use-file-tree-actions'
 import { useFileTreeIntentPrefetch } from '@/components/workspace/file-tree/hooks/use-file-tree-intent-prefetch'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileTreeIconsForPaths } from '@/lib/file-icons'
-import type { TreeEntry } from '@/lib/file-system-types'
 import { renamePath } from '@/lib/file-server'
 import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
 import {
-  type DirectoryLoadOptions,
   moveTreeModelPaths,
   treePathForSelectedPath,
   type TreePathMove,
@@ -48,16 +47,10 @@ import {
 export const TreePane = memo(
   ({
     gitStatus,
-    onVisibleItemCountChange,
-    onLoadDirectory,
-    onPrefetchDirectory,
     rootPath,
     state,
   }: {
     gitStatus?: readonly GitStatusEntry[]
-    onVisibleItemCountChange?: (count: number) => void
-    onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void
-    onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
     rootPath: string
     state: LoadState<TreeModel>
   }) => {
@@ -68,36 +61,23 @@ export const TreePane = memo(
     if (state.status !== 'ready') return <TreeStatus label='No files' />
     if (state.data.paths.length === 0) return <TreeStatus label='No files' />
 
-    return (
-      <ReadyTreePane
-        gitStatus={gitStatus}
-        model={state.data}
-        rootPath={rootPath}
-        onVisibleItemCountChange={onVisibleItemCountChange}
-        onLoadDirectory={onLoadDirectory}
-        onPrefetchDirectory={onPrefetchDirectory}
-      />
-    )
+    return <ReadyTreePane gitStatus={gitStatus} model={state.data} rootPath={rootPath} />
   },
 )
 
 function ReadyTreePane({
   gitStatus,
   model,
-  onVisibleItemCountChange,
-  onLoadDirectory,
-  onPrefetchDirectory,
   rootPath,
 }: {
   gitStatus?: readonly GitStatusEntry[]
   model: TreeModel
-  onVisibleItemCountChange?: (count: number) => void
-  onLoadDirectory: (entry: TreeEntry, treePath: string, options?: DirectoryLoadOptions) => void
-  onPrefetchDirectory: (entry: TreeEntry, treePath: string) => void
   rootPath: string
 }) {
   const selectedFilePath = useEditorWorkspaceState((store) => store.selectedFilePath)
   const { selectFile } = useEditorCommands()
+  const { loadDirectory, publishVisibleItemCount: publishVisibleItemCountAction } =
+    useFileTreeActions()
   const setFocusArea = useFocus((store) => store.setFocusArea)
   const queryClient = useQueryClient()
   const expandedDirectoryPathsRef = useRef<ReadonlySet<string> | undefined>(undefined)
@@ -141,12 +121,12 @@ function ReadyTreePane({
     expandedDirectoryPathsRef.current = loadExpandedDirectories(
       currentTree,
       model,
-      onLoadDirectory,
+      loadDirectory,
       expandedDirectoryPathsRef.current,
     )
   })
-  const publishVisibleItemCount = useEffectEvent((currentTree: FileTreeModel) => {
-    onVisibleItemCountChange?.(visibleTreeItemCount(currentTree, modelRef.current))
+  const publishVisibleTreeItemCount = useEffectEvent((currentTree: FileTreeModel) => {
+    publishVisibleItemCountAction(visibleTreeItemCount(currentTree, modelRef.current))
   })
 
   const initialSelectedPaths = selectedFilePath
@@ -188,7 +168,6 @@ function ReadyTreePane({
 
   useFileTreeIntentPrefetch({
     model,
-    onPrefetchDirectory,
     tree,
   })
 
@@ -216,13 +195,13 @@ function ReadyTreePane({
       tree,
     })
     updateSelectionSyncState(selectionSyncRef.current, selectionSync, rootPath, selectedFilePath)
-    publishVisibleItemCount(tree)
+    publishVisibleTreeItemCount(tree)
   }, [model, rootPath, selectedFilePath, tree])
 
   useEffect(() => {
     return tree.subscribe(() => {
       loadExpandedDirectoriesForCurrentModel(tree)
-      publishVisibleItemCount(tree)
+      publishVisibleTreeItemCount(tree)
     })
   }, [tree])
 

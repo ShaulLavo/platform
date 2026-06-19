@@ -6,16 +6,16 @@ import {
   SIDEBAR_NAV_BUTTON_SELECTED_CLASS,
 } from './navigation-styles'
 import type { SidebarLocation } from './sidebar-locations'
+import { useFilePickerSessionActions } from '@/components/file-picker/hooks/use-file-picker-session-actions'
 
 export function LocationButton({
   currentPath,
   location,
-  onNavigate,
 }: {
   currentPath: string
   location: SidebarLocation
-  onNavigate: (path: string) => void
 }) {
+  const { jumpTo } = useFilePickerSessionActions()
   const selected = currentPath === location.path
   const Icon = selected && 'openIcon' in location ? location.openIcon : location.icon
 
@@ -27,7 +27,7 @@ export function LocationButton({
         selected && SIDEBAR_NAV_BUTTON_SELECTED_CLASS,
         !selected && SIDEBAR_NAV_BUTTON_IDLE_CLASS,
       )}
-      onClick={() => onNavigate(location.path)}
+      onClick={() => jumpTo(location.path)}
       type='button'
     >
       <Icon

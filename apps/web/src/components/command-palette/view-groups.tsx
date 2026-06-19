@@ -1,15 +1,16 @@
-import type { PlatformCommandId } from '@/keymap/types'
 import { TerminalWindowIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem } from '@workspace/ui/components/command'
 
+import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { viewPaletteItems } from './command-palette-data'
 
 type ViewGroupsProps = {
   readonly hasWorkspace: boolean
-  readonly onSelect: (command: PlatformCommandId) => void
 }
 
-export function ViewGroups({ hasWorkspace, onSelect }: ViewGroupsProps) {
+export function ViewGroups({ hasWorkspace }: ViewGroupsProps) {
+  const { selectPlatformCommand } = useCommandPaletteActions()
+
   return (
     <CommandGroup heading='Views'>
       {viewPaletteItems.map((item) => (
@@ -18,7 +19,7 @@ export function ViewGroups({ hasWorkspace, onSelect }: ViewGroupsProps) {
           key={item.value}
           keywords={[item.title, item.description, item.command]}
           value={item.value}
-          onSelect={() => onSelect(item.command)}
+          onSelect={() => selectPlatformCommand(item.command)}
         >
           <TerminalWindowIcon className='text-muted-foreground' />
           <span className='min-w-0 flex-1'>

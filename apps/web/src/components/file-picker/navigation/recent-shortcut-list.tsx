@@ -6,11 +6,9 @@ import { RecentSidebarNote } from './recent-sidebar-note'
 
 export function RecentShortcutList({
   currentPath,
-  onNavigate,
   state,
 }: {
   currentPath: string
-  onNavigate: (path: string) => void
   state: EntriesLoadState
 }) {
   if (state.status === 'loading') return <RecentShortcutLoading />
@@ -24,12 +22,7 @@ export function RecentShortcutList({
   return (
     <div className='space-y-0.5'>
       {entries.map((entry) => (
-        <RecentShortcut
-          currentPath={currentPath}
-          entry={entry}
-          key={entry.path}
-          onNavigate={onNavigate}
-        />
+        <RecentShortcut currentPath={currentPath} entry={entry} key={entry.path} />
       ))}
     </div>
   )

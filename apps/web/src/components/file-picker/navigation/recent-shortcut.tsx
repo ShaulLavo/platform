@@ -2,6 +2,7 @@ import type { FsEntry } from '@/lib/file-system-types'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { EntryIcon } from '../entry-ui'
+import { useFilePickerSessionActions } from '@/components/file-picker/hooks/use-file-picker-session-actions'
 
 import {
   SIDEBAR_NAV_BUTTON_BASE_CLASS,
@@ -9,15 +10,8 @@ import {
   SIDEBAR_NAV_BUTTON_SELECTED_CLASS,
 } from './navigation-styles'
 
-export function RecentShortcut({
-  currentPath,
-  entry,
-  onNavigate,
-}: {
-  currentPath: string
-  entry: FsEntry
-  onNavigate: (path: string) => void
-}) {
+export function RecentShortcut({ currentPath, entry }: { currentPath: string; entry: FsEntry }) {
+  const { jumpTo } = useFilePickerSessionActions()
   const selected = currentPath === entry.path
 
   return (
@@ -28,7 +22,7 @@ export function RecentShortcut({
         selected && SIDEBAR_NAV_BUTTON_SELECTED_CLASS,
         !selected && SIDEBAR_NAV_BUTTON_IDLE_CLASS,
       )}
-      onClick={() => onNavigate(entry.path)}
+      onClick={() => jumpTo(entry.path)}
       type='button'
     >
       <EntryIcon className='size-4' entry={entry} iconMode='default' selected={selected} />
