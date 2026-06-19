@@ -2,7 +2,6 @@ import type { EditorKeymapLayer } from '@singapor/core'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
 import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { GitStoreApi } from '@/features/git/state'
 import type { FileStatus } from '@/features/git/types'
 import { BottomPanel } from '@/features/workbench/components/bottom-panel'
@@ -23,8 +22,6 @@ export function WorkbenchLayout({
   panels,
   rootPath,
   onPanelsChange,
-  onRequestCloseTab,
-  onSelectTab,
 }: {
   readonly conflicts: EditorTabConflictMap
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
@@ -33,8 +30,6 @@ export function WorkbenchLayout({
   readonly panels: WorkbenchPanels
   readonly rootPath: string
   readonly onPanelsChange: (panels: WorkbenchPanels) => void
-  readonly onRequestCloseTab: RequestCloseTab
-  readonly onSelectTab: (tabId: string) => void
 }) {
   function startSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
     event.preventDefault()
@@ -96,8 +91,6 @@ export function WorkbenchLayout({
               gitFiles={gitFiles}
               panels={panels}
               rootPath={rootPath}
-              onRequestCloseTab={onRequestCloseTab}
-              onSelectTab={onSelectTab}
             />
           </div>
           <div

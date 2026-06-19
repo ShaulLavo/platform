@@ -3,6 +3,7 @@ import { useCallback, useMemo, type FocusEvent, type MouseEvent, type PointerEve
 import { AppWorkspace } from '@/components/app-workspace'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
+import { EditorTabActionsProvider } from '@/features/editor/providers/editor-tab-actions-provider'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
@@ -48,11 +49,12 @@ export function AppRuntimeContent() {
       onPointerDownCapture={handleGlobalPointerDownCapture}
     >
       <div className='min-h-0 flex-1'>
-        <AppWorkspace
-          editorKeymapLayers={editorKeymapLayers}
-          keymapBindings={defaultKeymapBindings}
-          onRequestCloseTab={requestCloseTab}
-        />
+        <EditorTabActionsProvider requestCloseTab={requestCloseTab}>
+          <AppWorkspace
+            editorKeymapLayers={editorKeymapLayers}
+            keymapBindings={defaultKeymapBindings}
+          />
+        </EditorTabActionsProvider>
       </div>
       {dirtyTabCloseDialog}
     </main>

@@ -1,6 +1,7 @@
 import { CaretRightIcon } from '@phosphor-icons/react'
 import { memo, useCallback, useMemo } from 'react'
 
+import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
@@ -13,23 +14,15 @@ type SearchResultFileHeaderProps = {
   canReplace?: boolean
   file: SearchResultFileBlock
   replaceVisible: boolean
-  onReplaceFile?: (path: string) => void
-  onToggleFile: (path: string) => void
 }
 
 export const SearchResultFileHeader = memo(
-  ({
-    active,
-    canReplace,
-    file,
-    replaceVisible,
-    onReplaceFile,
-    onToggleFile,
-  }: SearchResultFileHeaderProps) => {
+  ({ active, canReplace, file, replaceVisible }: SearchResultFileHeaderProps) => {
+    const { replacePath, toggleGroup } = useSearchResultActions()
     const name = fileName(file.path)
     const icon = useMemo(() => iconForEntry({ name, type: 'file' }), [name])
-    const handleReplace = useCallback(() => onReplaceFile?.(file.path), [file.path, onReplaceFile])
-    const handleToggle = useCallback(() => onToggleFile(file.path), [file.path, onToggleFile])
+    const handleReplace = useCallback(() => replacePath(file.path), [file.path, replacePath])
+    const handleToggle = useCallback(() => toggleGroup(file.path), [file.path, toggleGroup])
 
     return (
       <div

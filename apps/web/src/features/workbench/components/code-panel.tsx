@@ -4,7 +4,6 @@ import {
   EMPTY_GIT_FILES,
   editorTabModel,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
-import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { EditorSurfaceTabBody } from '@/features/workbench/components/editor-surface-tab-body'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'
 import type { FileStatus } from '@/features/git/types'
@@ -17,16 +16,12 @@ export function CodePanel({
   gitFiles = EMPTY_GIT_FILES,
   panels,
   rootPath,
-  onRequestCloseTab,
-  onSelectTab,
 }: {
   readonly conflicts: EditorTabConflictMap
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
   readonly gitFiles?: readonly FileStatus[]
   readonly panels: WorkbenchPanels
   readonly rootPath: string
-  readonly onRequestCloseTab: RequestCloseTab
-  readonly onSelectTab: (tabId: string) => void
 }) {
   const tabModels = panels.editorTabs.map((tab) =>
     editorTabModel({
@@ -41,7 +36,7 @@ export function CodePanel({
 
   return (
     <section className='bg-card border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
-      <EditorTabBar tabs={tabModels} onCloseTab={onRequestCloseTab} onSelectTab={onSelectTab} />
+      <EditorTabBar tabs={tabModels} />
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
         {activeTab ? (
           <EditorSurfaceTabBody

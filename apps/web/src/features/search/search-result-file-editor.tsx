@@ -5,7 +5,6 @@ import type {
   EditorTheme,
 } from '@singapor/core'
 import { EditorHost, useEditor } from '@singapor/react'
-import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {
   memo,
   useCallback,
@@ -21,6 +20,7 @@ import {
   createPlatformSearchResultEditorLoggingPlugin,
   editorTreeSitterSyntaxProvider,
 } from '@/features/editor/editor-plugins'
+import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
 import { SearchResultFileLineActions } from '@/features/search/search-result-file-line-actions'
 import { SearchResultSourceLineGutter } from '@/features/search/search-result-source-line-gutter'
 import { createSearchResultSyntaxHighlightingPlugin } from '@/features/search/search-result-syntax-plugin'
@@ -52,7 +52,6 @@ import {
   searchResultFileDocument,
   type SearchResultFileBlock,
   type SearchResultFileDocumentLine,
-  type SearchResultOpenTarget,
 } from '@/features/search/search-result-view-model'
 
 type SearchResultFileEditorProps = {
@@ -64,9 +63,6 @@ type SearchResultFileEditorProps = {
   keymapLayers: readonly EditorKeymapLayer[]
   lineWindow: SearchResultFileEditorLineWindow
   replaceVisible: boolean
-  onOpenTarget: (target: SearchResultOpenTarget) => void
-  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-  onSelectResultWithoutReveal: (id: SearchResultId | null) => void
 }
 
 export const SearchResultFileEditor = memo(
@@ -79,10 +75,8 @@ export const SearchResultFileEditor = memo(
     keymapLayers,
     lineWindow,
     replaceVisible,
-    onOpenTarget,
-    onReplaceMatch,
-    onSelectResultWithoutReveal,
   }: SearchResultFileEditorProps) => {
+    const { openTarget, replaceMatch, selectResultWithoutReveal } = useSearchResultActions()
     const setFocusArea = useFocus((state) => state.setFocusArea)
     const setActiveEditorCommandDispatch = useFocus((state) => state.setActiveEditorCommandDispatch)
     const fileDocument = useMemo(() => searchResultFileDocument(file), [file])
@@ -192,10 +186,10 @@ export const SearchResultFileEditor = memo(
         }
         pendingActivationFrameRef.current = window.requestAnimationFrame(() => {
           pendingActivationFrameRef.current = null
-          onSelectResultWithoutReveal(nextResultId)
+          selectResultWithoutReveal(nextResultId)
         })
       },
-      [file.id, fileDocument, onSelectResultWithoutReveal],
+      [file.id, fileDocument, selectResultWithoutReveal],
     )
 
     const handlePointerMove = useCallback(
@@ -218,29 +212,29 @@ export const SearchResultFileEditor = memo(
       const line = currentSearchResultFileLine(visibleDocument, controller)
       if (!line) return
 
-      onOpenTarget({
+      openTarget({
         match: line.sourceMatch,
         path: file.path,
       })
-    }, [controller, file.path, onOpenTarget, visibleDocument])
+    }, [controller, file.path, openTarget, visibleDocument])
 
     const handleOpenLine = useCallback(
       (line: SearchResultFileDocumentLine) => {
-        onSelectResultWithoutReveal(line.id)
-        onOpenTarget({
+        selectResultWithoutReveal(line.id)
+        openTarget({
           match: line.sourceMatch,
           path: file.path,
         })
       },
-      [file.path, onOpenTarget, onSelectResultWithoutReveal],
+      [file.path, openTarget, selectResultWithoutReveal],
     )
 
     const handleReplaceLine = useCallback(
       (line: SearchResultFileDocumentLine) => {
-        onSelectResultWithoutReveal(line.id)
-        onReplaceMatch?.(line.sourceMatch)
+        selectResultWithoutReveal(line.id)
+        replaceMatch(line.sourceMatch)
       },
-      [onReplaceMatch, onSelectResultWithoutReveal],
+      [replaceMatch, selectResultWithoutReveal],
     )
 
     const handleKeyDownCapture = useCallback(

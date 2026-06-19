@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react'
 
+import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
 import {
   searchResultDomId,
   searchResultFileContainsId,
@@ -21,9 +22,6 @@ type SearchResultFileHeaderRowProps = {
   readonly row: Extract<SearchResultVirtualRow, { type: 'file' }>
   readonly treeId: string
   readonly virtualItem: SearchResultVirtualListMetrics['items'][number]
-  readonly onReplaceFile?: (path: string) => void
-  readonly onSelectResult: (id: SearchResultId | null) => void
-  readonly onToggleFile: (path: string) => void
 }
 
 export const SearchResultFileHeaderRow = memo(
@@ -34,13 +32,11 @@ export const SearchResultFileHeaderRow = memo(
     row,
     treeId,
     virtualItem,
-    onReplaceFile,
-    onSelectResult,
-    onToggleFile,
   }: SearchResultFileHeaderRowProps) => {
+    const { selectResult } = useSearchResultActions()
     const id = searchResultVirtualRowId(row)
     const active = searchResultFileContainsId(row.file, activeResultId)
-    const handleMouseDown = useCallback(() => onSelectResult(id), [id, onSelectResult])
+    const handleMouseDown = useCallback(() => selectResult(id), [id, selectResult])
 
     return (
       <div
@@ -59,8 +55,6 @@ export const SearchResultFileHeaderRow = memo(
           canReplace={canReplace}
           file={row.file}
           replaceVisible={replaceVisible}
-          onReplaceFile={onReplaceFile}
-          onToggleFile={onToggleFile}
         />
       </div>
     )

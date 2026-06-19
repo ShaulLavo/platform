@@ -1,13 +1,20 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import type { EditorKeymapLayer } from '@singapor/core'
 
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import {
+  SearchResultActionsContext,
+  type SearchResultActions,
+} from '@/features/search/providers/result-actions-context'
 import { openWorkspaceSearchMatch } from '@/features/search/open-search-match'
 import { SearchResultsView } from '@/features/search/search-results-view'
 import { SearchResultEditorSurface } from '@/features/search/search-result-editor-surface'
 import { SearchBufferStatus } from '@/features/search/search-buffer-status'
-import { useSearchBufferState } from '@/features/search/search-buffer-state'
+import {
+  useSearchBufferState,
+  type WorkspaceSearchFileGroup,
+} from '@/features/search/search-buffer-state'
 import { useSearchBufferResults } from '@/features/search/use-search-buffer-results'
 import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
 import type { SearchResultOpenTarget } from '@/features/search/search-result-view-model'
@@ -23,10 +30,14 @@ export function SearchResults({
 }) {
   const { activeResultId, groups, replaceText, replaceVisible, resultsQuery, resultsSearchQuery } =
     useSearchBufferResults(rootPath)
-  const replace = useWorkspaceSearchReplace(rootPath, replaceVisible)
+  const { canReplace, replaceGroup, replaceMatch } = useWorkspaceSearchReplace(
+    rootPath,
+    replaceVisible,
+  )
   const commands = useEditorCommands()
   const selectResult = useSearchBufferState((state) => state.selectResult)
   const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
+  const groupByPath = useMemo(() => searchResultGroupByPath(groups), [groups])
   const handleOpenMatch = useCallback(
     (match: WorkspaceSearchMatch) => openWorkspaceSearchMatch(match, resultsQuery, commands),
     [commands, resultsQuery],
@@ -42,6 +53,37 @@ export function SearchResults({
     },
     [commands, resultsQuery],
   )
+  const replacePath = useCallback(
+    (path: string) => {
+      const group = groupByPath.get(path)
+      if (!group) return
+
+      replaceGroup(group)
+    },
+    [groupByPath, replaceGroup],
+  )
+  // Search renderers are memoized; keep domain actions stable across unrelated result renders.
+  const actions = useMemo<SearchResultActions>(
+    () => ({
+      openMatch: handleOpenMatch,
+      openTarget: handleOpenTarget,
+      replaceGroup,
+      replaceMatch,
+      replacePath,
+      selectResult,
+      selectResultWithoutReveal: selectResult,
+      toggleGroup,
+    }),
+    [
+      handleOpenMatch,
+      handleOpenTarget,
+      replaceGroup,
+      replaceMatch,
+      replacePath,
+      selectResult,
+      toggleGroup,
+    ],
+  )
 
   if (groups.length === 0) {
     return <SearchBufferStatus rootPath={rootPath} />
@@ -49,39 +91,38 @@ export function SearchResults({
 
   if (!compact) {
     return (
-      <SearchResultEditorSurface
-        activeResultId={activeResultId}
-        canReplace={replaceVisible ? replace.canReplace : false}
-        displayedResultsQuery={resultsSearchQuery?.query ?? null}
-        groups={groups}
-        keymapLayers={editorKeymapLayers}
-        replaceVisible={Boolean(replaceVisible)}
-        resultsQuery={resultsQuery}
-        onOpenTarget={handleOpenTarget}
-        onReplaceGroup={replace.replaceGroup}
-        onReplaceMatch={replace.replaceMatch}
-        onSelectResult={selectResult}
-        onToggleGroup={toggleGroup}
-      />
+      <SearchResultActionsContext value={actions}>
+        <SearchResultEditorSurface
+          activeResultId={activeResultId}
+          canReplace={replaceVisible ? canReplace : false}
+          displayedResultsQuery={resultsSearchQuery?.query ?? null}
+          groups={groups}
+          keymapLayers={editorKeymapLayers}
+          replaceVisible={Boolean(replaceVisible)}
+          resultsQuery={resultsQuery}
+        />
+      </SearchResultActionsContext>
     )
   }
 
   return (
-    <SearchResultsView
-      activeResultId={activeResultId}
-      canReplace={replaceVisible ? replace.canReplace : false}
-      compact={compact}
-      error={null}
-      groups={groups}
-      query={resultsQuery}
-      replaceText={replaceText}
-      replaceVisible={replaceVisible}
-      resultsSearchQuery={resultsSearchQuery}
-      status='ready'
-      onOpenMatch={handleOpenMatch}
-      onPreviewResultSelect={selectResult}
-      onReplaceGroup={replace.replaceGroup}
-      onReplaceMatch={replace.replaceMatch}
-    />
+    <SearchResultActionsContext value={actions}>
+      <SearchResultsView
+        activeResultId={activeResultId}
+        canReplace={replaceVisible ? canReplace : false}
+        compact={compact}
+        error={null}
+        groups={groups}
+        query={resultsQuery}
+        replaceText={replaceText}
+        replaceVisible={replaceVisible}
+        resultsSearchQuery={resultsSearchQuery}
+        status='ready'
+      />
+    </SearchResultActionsContext>
   )
+}
+
+function searchResultGroupByPath(groups: readonly WorkspaceSearchFileGroup[]) {
+  return new Map(groups.map((group) => [group.path, group]))
 }

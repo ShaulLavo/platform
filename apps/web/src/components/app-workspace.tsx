@@ -2,7 +2,6 @@ import { AppCommandSurface } from '@/components/app-command-surface'
 import { EmptyWorkspace } from '@/components/empty-workspace'
 import { usePickEntry } from '@/components/use-pick-entry'
 import { WorkspaceView } from '@/components/workspace/shell/components/workspace-view'
-import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useValidateRootFolder } from '@/hooks/use-validate-root-folder'
@@ -17,14 +16,9 @@ import { useCallback } from 'react'
 type AppWorkspaceProps = {
   editorKeymapLayers: readonly EditorKeymapLayer[]
   keymapBindings: readonly PlatformKeyBinding[]
-  onRequestCloseTab: RequestCloseTab
 }
 
-export function AppWorkspace({
-  editorKeymapLayers,
-  keymapBindings,
-  onRequestCloseTab,
-}: AppWorkspaceProps) {
+export function AppWorkspace({ editorKeymapLayers, keymapBindings }: AppWorkspaceProps) {
   const pickerOpen = useEditorWorkspaceState((state) => state.pickerOpen)
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
@@ -58,14 +52,10 @@ export function AppWorkspace({
 
   return (
     <>
-      <AppCommandSurface bindings={keymapBindings} requestCloseTab={onRequestCloseTab} />
+      <AppCommandSurface bindings={keymapBindings} />
       <div className='flex h-full min-h-0 flex-col'>
         {rootFolder ? (
-          <WorkspaceView
-            editorKeymapLayers={editorKeymapLayers}
-            rootFolder={rootFolder}
-            onRequestCloseTab={onRequestCloseTab}
-          />
+          <WorkspaceView editorKeymapLayers={editorKeymapLayers} rootFolder={rootFolder} />
         ) : (
           <EmptyWorkspace onChooseFolder={openPicker} />
         )}

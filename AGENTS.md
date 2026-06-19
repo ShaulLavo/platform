@@ -30,6 +30,8 @@
 - Keep pure helpers out of component and hook files. Move formatters, transforms, constants, models, and other pure reusable logic into `utils/`.
 - Stores are stateful, so they never go in `utils/`. Where they do live is flexible: `state/`, or co-located with the provider or feature code that owns them.
 - Keep providers and context-object modules in `providers/`, not `components/`.
+- Do not prop-drill app-level commands, state setters, or callbacks through layout/presentation components. If a prop is only forwarded, or a command crosses more than two component boundaries, stop and add a narrow feature provider/hook or colocate the command with the state owner.
+- Keep leaf callbacks as props only when they are local UI behavior owned by the direct parent. Context/provider APIs should expose small domain actions such as `selectTab` or `requestCloseTab`, not broad state blobs.
 - Avoid manual React memoization. Do not add `memo`, `useMemo`, or `useCallback` for ordinary render values or callbacks. Use them only for measured performance issues, required stable identity, or correctness. Add a short reason when you do.
 
 ## Styling

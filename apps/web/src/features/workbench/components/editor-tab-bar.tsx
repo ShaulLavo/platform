@@ -4,15 +4,7 @@ import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/h
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { EditorTabButton } from '@/features/workbench/components/editor-tab-button'
 
-export function EditorTabBar({
-  tabs,
-  onCloseTab,
-  onSelectTab,
-}: {
-  readonly tabs: readonly EditorTabModel[]
-  readonly onCloseTab: (tabId: string) => void
-  readonly onSelectTab: (tabId: string) => void
-}) {
+export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[] }) {
   const tabListRef = useRef<HTMLDivElement | null>(null)
 
   useEditorTabIntentPrefetch({
@@ -29,14 +21,7 @@ export function EditorTabBar({
       role='tablist'
     >
       {tabs.map((tab) => {
-        return (
-          <EditorTabButton
-            key={tab.id}
-            tab={tab}
-            onCloseTab={onCloseTab}
-            onSelectTab={onSelectTab}
-          />
-        )
+        return <EditorTabButton key={tab.id} tab={tab} />
       })}
     </div>
   )

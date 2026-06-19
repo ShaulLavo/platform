@@ -1,5 +1,4 @@
 import type { EditorKeymapLayer, EditorTheme } from '@singapor/core'
-import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import { memo, useRef } from 'react'
 
 import { SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE } from '@/features/search/search-result-editor-constants'
@@ -14,10 +13,7 @@ import {
 } from '@/features/search/search-result-editor-utils'
 import { SearchResultFileEditor } from '@/features/search/search-result-file-editor'
 import type { SearchResultId } from '@/features/search/search-result-items'
-import {
-  searchResultVirtualRowId,
-  type SearchResultOpenTarget,
-} from '@/features/search/search-result-view-model'
+import { searchResultVirtualRowId } from '@/features/search/search-result-view-model'
 import type { SearchResultVirtualListViewport } from '@/features/search/search-result-virtual-list'
 
 type SearchResultFileEditorPoolSlotProps = {
@@ -29,9 +25,6 @@ type SearchResultFileEditorPoolSlotProps = {
   replaceVisible: boolean
   treeId: string
   viewport: SearchResultVirtualListViewport
-  onOpenTarget: (target: SearchResultOpenTarget) => void
-  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-  onSelectResultWithoutReveal: (id: SearchResultId | null) => void
 }
 
 export const SearchResultFileEditorPoolSlot = memo(
@@ -44,9 +37,6 @@ export const SearchResultFileEditorPoolSlot = memo(
     replaceVisible,
     treeId,
     viewport,
-    onOpenTarget,
-    onReplaceMatch,
-    onSelectResultWithoutReveal,
   }: SearchResultFileEditorPoolSlotProps) => {
     const { item, visible } = entry
     const row = item.row
@@ -93,9 +83,6 @@ export const SearchResultFileEditorPoolSlot = memo(
             keymapLayers={keymapLayers}
             lineWindow={lineWindow}
             replaceVisible={replaceVisible}
-            onOpenTarget={onOpenTarget}
-            onReplaceMatch={onReplaceMatch}
-            onSelectResultWithoutReveal={onSelectResultWithoutReveal}
           />
         ) : null}
       </div>

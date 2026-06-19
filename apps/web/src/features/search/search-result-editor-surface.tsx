@@ -1,5 +1,4 @@
 import type { EditorKeymapLayer } from '@singapor/core'
-import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import {
   memo,
   useCallback,
@@ -14,10 +13,14 @@ import {
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
+import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
+import {
+  SearchResultActionsContext,
+  type SearchResultActions,
+} from '@/features/search/providers/result-actions-context'
 import { handleSearchResultSurfaceKeyDown } from '@/features/search/search-result-editor-keyboard'
 import type { SearchResultEditorScrollToIndex } from '@/features/search/search-result-editor-types'
 import {
-  groupMap,
   resetSearchResultScroll,
   scrollActiveSearchResultIntoView,
   searchResultDomId,
@@ -31,7 +34,6 @@ import {
   searchResultVirtualRowById,
   searchResultVirtualRowId,
   searchResultVirtualRows,
-  type SearchResultOpenTarget,
 } from '@/features/search/search-result-view-model'
 import { readonlyEditorKeymapLayers } from '@/keymap/editor-keymap'
 
@@ -44,11 +46,6 @@ type SearchResultEditorSurfaceProps = {
   prewarmEditorPool?: boolean
   replaceVisible: boolean
   resultsQuery: string
-  onOpenTarget: (target: SearchResultOpenTarget) => void
-  onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
-  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-  onSelectResult: (id: SearchResultId | null) => void
-  onToggleGroup: (path: string) => void
 }
 
 const noopScrollToIndex: SearchResultEditorScrollToIndex = () => {}
@@ -64,12 +61,8 @@ export const SearchResultEditorSurface = memo(
     prewarmEditorPool = true,
     replaceVisible,
     resultsQuery,
-    onOpenTarget,
-    onReplaceGroup,
-    onReplaceMatch,
-    onSelectResult,
-    onToggleGroup,
   }: SearchResultEditorSurfaceProps) => {
+    const actions = useSearchResultActions()
     const treeId = useId()
     const parentRef = useRef<HTMLDivElement | null>(null)
     const setFocusArea = useFocus((state) => state.setFocusArea)
@@ -83,7 +76,6 @@ export const SearchResultEditorSurface = memo(
       [groups, resultsQuery],
     )
     const rows = useMemo(() => searchResultVirtualRows(blocks), [blocks])
-    const groupByPath = useMemo(() => groupMap(groups), [groups])
     const activeRow = useMemo(
       () => searchResultVirtualRowById(rows, activeResultId),
       [activeResultId, rows],
@@ -108,9 +100,17 @@ export const SearchResultEditorSurface = memo(
         if (id === activeResultId) return
 
         suppressNextActiveRevealRef.current = true
-        onSelectResult(id)
+        actions.selectResult(id)
       },
-      [activeResultId, onSelectResult],
+      [actions, activeResultId],
+    )
+    // The editor surface changes selection reveal semantics for editor-pool interactions.
+    const editorActions = useMemo<SearchResultActions>(
+      () => ({
+        ...actions,
+        selectResultWithoutReveal,
+      }),
+      [actions, selectResultWithoutReveal],
     )
 
     useLayoutEffect(() => {
@@ -151,24 +151,14 @@ export const SearchResultEditorSurface = memo(
       setActiveEditorCommandDispatch(null)
     }, [activeRow, setActiveEditorCommandDispatch])
 
-    const handleReplaceFile = useCallback(
-      (path: string) => {
-        const group = groupByPath.get(path)
-        if (!group) return
-
-        onReplaceGroup?.(group)
-      },
-      [groupByPath, onReplaceGroup],
-    )
-
     function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
       handleSearchResultSurfaceKeyDown({
         activeResultId,
         blocks,
         event,
-        onOpenTarget,
-        onSelectResult,
-        onToggleGroup,
+        onOpenTarget: actions.openTarget,
+        onSelectResult: actions.selectResult,
+        onToggleGroup: actions.toggleGroup,
         rows,
       })
     }
@@ -187,25 +177,21 @@ export const SearchResultEditorSurface = memo(
         onKeyDown={handleKeyDown}
         onPointerDownCapture={() => setFocusArea('editor')}
       >
-        <SearchResultEditorVirtualWindow
-          activeResultId={activeResultId}
-          canReplace={canReplace}
-          editorTheme={editorTheme}
-          keymapLayers={readonlyKeymapLayers}
-          parentRef={parentRef}
-          prewarmEditorPool={prewarmEditorPool}
-          replaceVisible={replaceVisible}
-          rows={rows}
-          scrollToIndexRef={scrollToIndexRef}
-          scrollToOffsetRef={scrollToOffsetRef}
-          treeId={treeId}
-          onOpenTarget={onOpenTarget}
-          onReplaceFile={handleReplaceFile}
-          onReplaceMatch={onReplaceMatch}
-          onSelectResult={onSelectResult}
-          onSelectResultWithoutReveal={selectResultWithoutReveal}
-          onToggleGroup={onToggleGroup}
-        />
+        <SearchResultActionsContext value={editorActions}>
+          <SearchResultEditorVirtualWindow
+            activeResultId={activeResultId}
+            canReplace={canReplace}
+            editorTheme={editorTheme}
+            keymapLayers={readonlyKeymapLayers}
+            parentRef={parentRef}
+            prewarmEditorPool={prewarmEditorPool}
+            replaceVisible={replaceVisible}
+            rows={rows}
+            scrollToIndexRef={scrollToIndexRef}
+            scrollToOffsetRef={scrollToOffsetRef}
+            treeId={treeId}
+          />
+        </SearchResultActionsContext>
       </div>
     )
   },

@@ -2,7 +2,6 @@ import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/cont
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   memo,
-  useCallback,
   useLayoutEffect,
   useId,
   useMemo,
@@ -18,8 +17,8 @@ import type {
   SearchBufferStatus,
   WorkspaceSearchFileGroup,
 } from '@/features/search/search-buffer-state'
-import { useSearchBufferState } from '@/features/search/search-buffer-state'
 import { SearchMatchRow, SearchNameMatchRow } from '@/features/search/search-match-row'
+import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
 import {
   firstSearchResultChildId,
   firstSearchResultId,
@@ -54,10 +53,6 @@ export function SearchResultsView({
   replaceVisible,
   resultsSearchQuery,
   status,
-  onOpenMatch,
-  onPreviewResultSelect,
-  onReplaceGroup,
-  onReplaceMatch,
 }: {
   activeResultId: SearchResultId | null
   className?: string
@@ -70,24 +65,12 @@ export function SearchResultsView({
   replaceVisible?: boolean
   resultsSearchQuery: WorkspaceSearchQuery | null
   status: SearchBufferStatus
-  onOpenMatch: (match: WorkspaceSearchMatch) => void
-  onPreviewResultSelect?: (id: SearchResultId | null) => void
-  onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
-  onReplaceMatch?: (match: WorkspaceSearchMatch) => void
 }) {
   const treeId = useId()
   const parentRef = useRef<HTMLDivElement | null>(null)
   const displayedResultsQuery = resultsSearchQuery?.query ?? null
   const previousDisplayedResultsQueryRef = useRef<string | null>(null)
-  const selectResult = useSearchBufferState((state) => state.selectResult)
-  const toggleGroup = useSearchBufferState((state) => state.toggleGroup)
-  const handleSelectResult = useCallback(
-    (id: SearchResultId | null) => {
-      selectResult(id)
-      onPreviewResultSelect?.(id)
-    },
-    [onPreviewResultSelect, selectResult],
-  )
+  const { openMatch, selectResult, toggleGroup } = useSearchResultActions()
   const previewMaxLength = useSearchPreviewMaxLength(parentRef, replaceVisible)
   const items = useMemo(() => searchResultItems(groups), [groups])
   const activeItem = useMemo(
@@ -156,8 +139,8 @@ export function SearchResultsView({
           activeResultId,
           event,
           items,
-          onOpenMatch,
-          onSelectResult: handleSelectResult,
+          onOpenMatch: openMatch,
+          onSelectResult: selectResult,
           onToggleGroup: toggleGroup,
         })
       }
@@ -189,7 +172,7 @@ export function SearchResultsView({
               onMouseDown={(event) => {
                 if (mouseDownStartedInSearchResultControl(event)) return
 
-                handleSelectResult(item.id)
+                selectResult(item.id)
               }}
             >
               <SearchResultRow
@@ -202,11 +185,6 @@ export function SearchResultsView({
                 replaceQuery={resultsSearchQuery}
                 replaceText={replaceText}
                 replaceVisible={replaceVisible}
-                onOpenMatch={onOpenMatch}
-                onReplaceGroup={onReplaceGroup}
-                onReplaceMatch={onReplaceMatch}
-                onSelectResult={handleSelectResult}
-                onToggleGroup={toggleGroup}
               />
             </div>
           )
@@ -246,11 +224,6 @@ const SearchResultRow = memo(
     replaceQuery,
     replaceText,
     replaceVisible,
-    onOpenMatch,
-    onReplaceGroup,
-    onReplaceMatch,
-    onSelectResult,
-    onToggleGroup,
   }: {
     active: boolean
     item: SearchResultItem
@@ -261,12 +234,10 @@ const SearchResultRow = memo(
     replaceQuery: WorkspaceSearchQuery | null
     replaceText: string
     replaceVisible?: boolean
-    onOpenMatch: (match: WorkspaceSearchMatch) => void
-    onReplaceGroup?: (group: WorkspaceSearchFileGroup) => void
-    onReplaceMatch?: (match: WorkspaceSearchMatch) => void
-    onSelectResult: (id: string | null) => void
-    onToggleGroup: (path: string) => void
   }) => {
+    const { openMatch, replaceGroup, replaceMatch, selectResult, toggleGroup } =
+      useSearchResultActions()
+
     if (item.type === 'group') {
       return (
         <SearchFileGroupHeader
@@ -275,10 +246,10 @@ const SearchResultRow = memo(
           compact={compact}
           group={item.group}
           replaceVisible={replaceVisible}
-          onReplace={onReplaceGroup}
+          onReplace={replaceGroup}
           onToggle={() => {
-            onSelectResult(item.id)
-            onToggleGroup(item.group.path)
+            selectResult(item.id)
+            toggleGroup(item.group.path)
           }}
         />
       )
@@ -292,8 +263,8 @@ const SearchResultRow = memo(
           previewMaxLength={previewMaxLength}
           query={query}
           onOpenMatch={() => {
-            onSelectResult(item.id)
-            onOpenMatch(item.match)
+            selectResult(item.id)
+            openMatch(item.match)
           }}
         />
       )
@@ -312,10 +283,10 @@ const SearchResultRow = memo(
           replaceVisible={replaceVisible}
           query={query}
           onOpenMatch={() => {
-            onSelectResult(item.id)
-            onOpenMatch(item.match)
+            selectResult(item.id)
+            openMatch(item.match)
           }}
-          onReplaceMatch={onReplaceMatch}
+          onReplaceMatch={replaceMatch}
         />
       </div>
     )

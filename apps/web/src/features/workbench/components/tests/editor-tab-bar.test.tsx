@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorTabActionsContext } from '@/features/editor/providers/editor-tab-actions-context'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'
 import { renderWithProviders } from '../../../../../test/render'
 
@@ -27,20 +28,34 @@ describe('EditorTabBar', () => {
 
     expect(closeTab).toHaveBeenCalledWith('tab-a')
   })
+
+  it('selects the clicked tab id', () => {
+    const selectTab = vi.fn()
+
+    const { container } = renderWithProviders(
+      <TestEditorTabs tabs={editorTabs()} onSelectTab={selectTab} />,
+    )
+
+    fireEvent.click(editorTabElement(container, 'tab-b')!)
+
+    expect(selectTab).toHaveBeenCalledWith('tab-b')
+  })
 })
 
 function TestEditorTabs({
   tabs,
-  onCloseTab = () => undefined,
+  onCloseTab = () => true,
   onSelectTab = () => undefined,
 }: {
   readonly tabs: readonly EditorTabModel[]
-  readonly onCloseTab?: (tabId: string) => void
+  readonly onCloseTab?: (tabId: string) => boolean
   readonly onSelectTab?: (tabId: string) => void
 }) {
   return (
     <EditorStateProvider>
-      <EditorTabBar tabs={tabs} onCloseTab={onCloseTab} onSelectTab={onSelectTab} />
+      <EditorTabActionsContext value={{ requestCloseTab: onCloseTab, selectTab: onSelectTab }}>
+        <EditorTabBar tabs={tabs} />
+      </EditorTabActionsContext>
     </EditorStateProvider>
   )
 }
