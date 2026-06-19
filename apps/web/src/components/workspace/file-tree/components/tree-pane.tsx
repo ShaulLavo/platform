@@ -229,6 +229,7 @@ function ReadyTreePane({
   return (
     <div
       className='h-full'
+      data-native-window-drag-blocker=''
       onFocusCapture={() => setFocusArea('file-tree')}
       onPointerDownCapture={() => setFocusArea('file-tree')}
     >

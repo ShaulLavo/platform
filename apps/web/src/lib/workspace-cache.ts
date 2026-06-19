@@ -26,7 +26,6 @@ import * as v from 'valibot'
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
 const CACHE_VERSION = 14
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
-const LEGACY_WORKSPACE_CACHE_KEY = 'platform.workspace-state.v1'
 
 export const WORKSPACE_CACHE_STORAGE_KEYS = {
   diffViewMode: `${CACHE_KEY_PREFIX}.diffViewMode`,
@@ -196,7 +195,6 @@ export function writeWorkspaceCache({
 }: WorkspaceCacheWriteState) {
   if (!canUseLocalStorage()) return
 
-  removeCacheEntry(LEGACY_WORKSPACE_CACHE_KEY)
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode, diffViewMode)
   writeCacheEntry(
     WORKSPACE_CACHE_STORAGE_KEYS.editorHistory,

@@ -5,7 +5,7 @@ import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { createGitStore } from '@/features/git/state'
 import { useStatus } from '@/features/git/hooks'
-import { FixedWorkbenchLayout } from '@/features/workbench/components/fixed-workbench-layout'
+import { WorkbenchLayout } from '@/features/workbench/components/workbench-layout'
 import type { EditorKeymapLayer } from '@singapor/core'
 import { useState } from 'react'
 
@@ -27,7 +27,7 @@ export function EditorSurfaceLayoutView({
   const setWorkbenchPanels = useEditorWorkspaceState((state) => state.setWorkbenchPanels)
 
   return (
-    <FixedWorkbenchLayout
+    <WorkbenchLayout
       conflicts={conflicts}
       editorKeymapLayers={editorKeymapLayers}
       gitFiles={gitFiles}

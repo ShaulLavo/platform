@@ -15,7 +15,7 @@ import {
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 
-export function FixedWorkbenchLayout({
+export function WorkbenchLayout({
   conflicts,
   editorKeymapLayers,
   gitFiles,
@@ -68,7 +68,7 @@ export function FixedWorkbenchLayout({
       role='application'
     >
       <Wallpaper />
-      <div className='relative z-10 flex h-full min-h-0 min-w-0 flex-1'>
+      <div className='border-border/70 relative z-10 flex h-full min-h-0 min-w-0 flex-1 border-4'>
         <div
           className='h-full min-h-0 shrink-0 overflow-hidden'
           style={{ width: panels.sidebarWidth }}

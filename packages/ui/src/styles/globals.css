@@ -75,9 +75,6 @@
 
 :root {
   color-scheme: light;
-  /* Height of the desktop window's draggable title strip (WindowTitleBar).
-     Matches T3 Code's 40px macOS titlebar. */
-  --titlebar-height: 40px;
 
   /* Surface material knobs. Every surface token below is its -solid color at
      --surface-opacity over transparent. In-flow glass blurs what's behind it

@@ -114,7 +114,7 @@ describe('editor workspace state', () => {
     expect(uiStore.getState().definitionTarget?.path).toBe('/repo/src/renamed.ts')
   })
 
-  it('keeps split and pane movement commands inert in the fixed workbench', () => {
+  it('keeps split and pane movement commands inert in the workbench', () => {
     const panels = workbenchPanelsForPaths(['/repo/src/a.ts'], '/repo/src/a.ts')
     const { commands, workspaceStore } = editorHarness({ workbenchPanels: panels })
     const activeTabId = workspaceStore.getState().workbenchPanels.activeEditorTabId
