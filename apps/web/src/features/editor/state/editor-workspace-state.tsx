@@ -12,7 +12,8 @@ import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
-import { createStore, type StoreApi } from 'zustand/vanilla'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { createStore, type Mutate, type StoreApi } from 'zustand/vanilla'
 
 type EditorWorkspaceStoreState = CachedWorkspaceState & {
   pickerOpen: boolean
@@ -32,7 +33,10 @@ type EditorWorkspaceStoreActions = {
 
 export type EditorWorkspaceStore = EditorWorkspaceStoreState & EditorWorkspaceStoreActions
 
-export type EditorWorkspaceStoreApi = StoreApi<EditorWorkspaceStore>
+export type EditorWorkspaceStoreApi = Mutate<
+  StoreApi<EditorWorkspaceStore>,
+  [['zustand/subscribeWithSelector', never]]
+>
 
 export const EditorWorkspaceStateContext = createContext<EditorWorkspaceStoreApi | null>(null)
 
@@ -54,31 +58,34 @@ export function useEditorWorkspaceState<T>(selector: (state: EditorWorkspaceStor
 export function createEditorWorkspaceStore(
   initialState: CachedWorkspaceState = readWorkspaceCache(),
 ) {
-  return createStore<EditorWorkspaceStore>()((set) => ({
-    diffViewMode: initialState.diffViewMode,
-    editorHistory: initialState.editorHistory,
-    openFilePaths: initialState.openFilePaths,
-    pickerOpen: false,
-    recentlyClosedEditorPaths: initialState.recentlyClosedEditorPaths,
-    rootFolder: initialState.rootFolder,
-    selectedFilePath: initialState.selectedFilePath,
-    workbenchPanels: initialState.workbenchPanels,
-    clearRootFolder: () =>
-      set((state) => workspaceStateForRootFolderReset(null, state.diffViewMode)),
-    openPicker: () => set({ pickerOpen: true }),
-    resetForRootFolder: (rootFolder) =>
-      set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
-    setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
-    setEditorHistory: (editorHistory) => set({ editorHistory }),
-    setPickerOpen: (pickerOpen) => set({ pickerOpen }),
-    setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) => set({ recentlyClosedEditorPaths }),
-    setWorkbenchPanels: (workbenchPanels) =>
-      set((state) =>
-        editorWorkspaceSelectionForWorkbenchPanels(workbenchPanels, {
-          currentOpenFilePaths: state.openFilePaths,
-        }),
-      ),
-  }))
+  return createStore<EditorWorkspaceStore>()(
+    subscribeWithSelector((set) => ({
+      diffViewMode: initialState.diffViewMode,
+      editorHistory: initialState.editorHistory,
+      openFilePaths: initialState.openFilePaths,
+      pickerOpen: false,
+      recentlyClosedEditorPaths: initialState.recentlyClosedEditorPaths,
+      rootFolder: initialState.rootFolder,
+      selectedFilePath: initialState.selectedFilePath,
+      workbenchPanels: initialState.workbenchPanels,
+      clearRootFolder: () =>
+        set((state) => workspaceStateForRootFolderReset(null, state.diffViewMode)),
+      openPicker: () => set({ pickerOpen: true }),
+      resetForRootFolder: (rootFolder) =>
+        set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
+      setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
+      setEditorHistory: (editorHistory) => set({ editorHistory }),
+      setPickerOpen: (pickerOpen) => set({ pickerOpen }),
+      setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) =>
+        set({ recentlyClosedEditorPaths }),
+      setWorkbenchPanels: (workbenchPanels) =>
+        set((state) =>
+          editorWorkspaceSelectionForWorkbenchPanels(workbenchPanels, {
+            currentOpenFilePaths: state.openFilePaths,
+          }),
+        ),
+    })),
+  )
 }
 
 function workspaceStateForRootFolderReset(

@@ -172,43 +172,54 @@ export type WorkspaceCacheState = CachedWorkspaceState & {
   searchBuffer: CachedSearchBufferState | null
 }
 
-export type WorkspaceCacheWriteState = Pick<
-  CachedWorkspaceState,
-  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workbenchPanels'
-> & {
-  searchBuffer: CachedSearchBufferState | null
-}
-
 export function readWorkspaceCache(): WorkspaceCacheState {
   if (!canUseLocalStorage()) return emptyWorkspaceState()
 
   return workspaceStateFromCache()
 }
 
-export function writeWorkspaceCache({
-  rootFolder,
-  diffViewMode,
-  editorHistory,
-  recentlyClosedEditorPaths,
-  searchBuffer,
-  workbenchPanels,
-}: WorkspaceCacheWriteState) {
-  if (!canUseLocalStorage()) return
-
+export function writeDiffViewModeCache(diffViewMode: EditorDiffViewMode) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode, diffViewMode)
+}
+
+export function writeEditorHistoryCache(
+  rootFolder: PickedFsEntry | null,
+  editorHistory: readonly string[],
+) {
   writeCacheEntry(
     WORKSPACE_CACHE_STORAGE_KEYS.editorHistory,
     workspacePathsForCache(rootFolder, editorHistory),
   )
+}
+
+export function writeRecentlyClosedEditorPathsCache(
+  rootFolder: PickedFsEntry | null,
+  recentlyClosedEditorPaths: readonly string[],
+) {
   writeCacheEntry(
     WORKSPACE_CACHE_STORAGE_KEYS.recentlyClosedEditorPaths,
     workspacePathsForCache(rootFolder, recentlyClosedEditorPaths),
   )
+}
+
+export function writeRootFolderCache(rootFolder: PickedFsEntry | null) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.rootFolder, rootFolder)
+}
+
+export function writeWorkbenchPanelsCache(
+  rootFolder: PickedFsEntry | null,
+  workbenchPanels: WorkbenchPanels,
+) {
   writeCacheEntry(
     WORKSPACE_CACHE_STORAGE_KEYS.workbenchPanels,
     workbenchPanelsForCache(rootFolder, workbenchPanels),
   )
+}
+
+export function writeSearchBufferCache(
+  rootFolder: PickedFsEntry | null,
+  searchBuffer: CachedSearchBufferState | null,
+) {
   writeCacheEntry(
     WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer,
     searchBufferForWorkspace(rootFolder, searchBuffer),
@@ -282,6 +293,8 @@ function readCacheEntry<T>(key: string, schema: v.GenericSchema, fallback: T): T
 }
 
 function writeCacheEntry(key: string, value: unknown) {
+  if (!canUseLocalStorage()) return
+
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {

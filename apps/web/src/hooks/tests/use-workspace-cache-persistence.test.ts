@@ -6,10 +6,44 @@ import { createSearchBufferStore } from '@/features/search/search-buffer-state'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
+  type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { CachedWorkspaceState, WorkspaceCacheWriteState } from '@/lib/workspace-cache'
-import { subscribeWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
+import type { CachedSearchBufferState, CachedWorkspaceState } from '@/lib/workspace-cache'
+import {
+  subscribeWorkspaceCachePersistence,
+  type WorkspaceCacheWriters,
+} from '@/hooks/use-workspace-cache-persistence'
+
+type CacheWrite =
+  | {
+      diffViewMode: CachedWorkspaceState['diffViewMode']
+      key: 'diffViewMode'
+    }
+  | {
+      key: 'editorHistory'
+      paths: readonly string[]
+      rootFolder: PickedFsEntry | null
+    }
+  | {
+      key: 'recentlyClosedEditorPaths'
+      paths: readonly string[]
+      rootFolder: PickedFsEntry | null
+    }
+  | {
+      key: 'rootFolder'
+      rootFolder: PickedFsEntry | null
+    }
+  | {
+      key: 'searchBuffer'
+      rootFolder: PickedFsEntry | null
+      searchBuffer: CachedSearchBufferState | null
+    }
+  | {
+      key: 'workbenchPanels'
+      rootFolder: PickedFsEntry | null
+      workbenchPanels: WorkbenchPanels
+    }
 
 describe('workspace cache persistence', () => {
   beforeEach(() => {
@@ -23,11 +57,11 @@ describe('workspace cache persistence', () => {
   it('does not persist every streaming search match batch', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
-    const writes: WorkspaceCacheWriteState[] = []
+    const writes: CacheWrite[] = []
     const unsubscribe = subscribeWorkspaceCachePersistence({
+      cacheWriters: recordingCacheWriters(writes),
       searchStore,
       workspaceStore,
-      writeCache: (state) => writes.push(state),
     })
     const runId = searchStore.getState().startSearch({
       includeContent: true,
@@ -37,8 +71,8 @@ describe('workspace cache persistence', () => {
     })
 
     vi.runAllTimers()
-    expect(writes).toHaveLength(1)
-    expect(writes.at(-1)?.searchBuffer).toMatchObject({
+    expect(writeKeys(writes)).toEqual(['searchBuffer'])
+    expect(lastCacheWrite(writes, 'searchBuffer')?.searchBuffer).toMatchObject({
       query: 'needle',
       resultsQuery: '',
       totalCount: 0,
@@ -57,7 +91,7 @@ describe('workspace cache persistence', () => {
     ])
 
     vi.runAllTimers()
-    expect(writes).toHaveLength(1)
+    expect(writeKeys(writes)).toEqual(['searchBuffer'])
 
     searchStore.getState().appendEvent(runId, {
       count: 1,
@@ -68,8 +102,8 @@ describe('workspace cache persistence', () => {
     })
 
     vi.runAllTimers()
-    expect(writes).toHaveLength(2)
-    expect(writes.at(-1)?.searchBuffer).toMatchObject({
+    expect(writeKeys(writes)).toEqual(['searchBuffer', 'searchBuffer'])
+    expect(lastCacheWrite(writes, 'searchBuffer')?.searchBuffer).toMatchObject({
       matches: [
         expect.objectContaining({
           path: '/repo/src/app.ts',
@@ -80,7 +114,7 @@ describe('workspace cache persistence', () => {
       totalCount: 1,
       truncated: false,
     })
-    expect(cachedMatchCount(writes.at(-1))).toBe(1)
+    expect(cachedMatchCount(lastCacheWrite(writes, 'searchBuffer')?.searchBuffer)).toBe(1)
 
     unsubscribe()
   })
@@ -88,11 +122,11 @@ describe('workspace cache persistence', () => {
   it('ignores transient workspace picker and denormalized selection state', () => {
     const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
     const searchStore = createSearchBufferStore()
-    const writes: WorkspaceCacheWriteState[] = []
+    const writes: CacheWrite[] = []
     const unsubscribe = subscribeWorkspaceCachePersistence({
+      cacheWriters: recordingCacheWriters(writes),
       searchStore,
       workspaceStore,
-      writeCache: (state) => writes.push(state),
     })
 
     workspaceStore.getState().setPickerOpen(true)
@@ -115,10 +149,36 @@ describe('workspace cache persistence', () => {
         ),
       )
     vi.runAllTimers()
-    expect(writes).toHaveLength(1)
-    expect(writes.at(-1)?.workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
-      '/repo/src/a.ts',
+    expect(writeKeys(writes)).toEqual(['workbenchPanels'])
+    expect(lastCacheWrite(writes, 'workbenchPanels')?.workbenchPanels.editorTabs).toMatchObject([
+      { path: '/repo/src/a.ts' },
     ])
+
+    unsubscribe()
+  })
+
+  it('writes only the cache key owned by the changed workspace field', () => {
+    const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
+    const searchStore = createSearchBufferStore()
+    const writes: CacheWrite[] = []
+    const unsubscribe = subscribeWorkspaceCachePersistence({
+      cacheWriters: recordingCacheWriters(writes),
+      searchStore,
+      workspaceStore,
+    })
+
+    workspaceStore.getState().setDiffViewMode('stacked')
+    vi.runAllTimers()
+    expect(writeKeys(writes)).toEqual(['diffViewMode'])
+
+    writes.length = 0
+    workspaceStore.getState().setEditorHistory(['/repo/src/a.ts'])
+    vi.runAllTimers()
+    expect(writeKeys(writes)).toEqual(['editorHistory'])
+    expect(lastCacheWrite(writes, 'editorHistory')).toMatchObject({
+      paths: ['/repo/src/a.ts'],
+      rootFolder: expect.objectContaining({ path: '/repo' }),
+    })
 
     unsubscribe()
   })
@@ -148,8 +208,37 @@ function pickedDirectory(path: string): PickedFsEntry {
   }
 }
 
-function cachedMatchCount(state: WorkspaceCacheWriteState | undefined) {
-  const searchBuffer = state?.searchBuffer
+function recordingCacheWriters(writes: CacheWrite[]): WorkspaceCacheWriters {
+  return {
+    diffViewMode: (diffViewMode) => writes.push({ diffViewMode, key: 'diffViewMode' }),
+    editorHistory: (rootFolder, paths) =>
+      writes.push({ key: 'editorHistory', paths: Array.from(paths), rootFolder }),
+    recentlyClosedEditorPaths: (rootFolder, paths) =>
+      writes.push({ key: 'recentlyClosedEditorPaths', paths: Array.from(paths), rootFolder }),
+    rootFolder: (rootFolder) => writes.push({ key: 'rootFolder', rootFolder }),
+    searchBuffer: (rootFolder, searchBuffer) =>
+      writes.push({ key: 'searchBuffer', rootFolder, searchBuffer }),
+    workbenchPanels: (rootFolder, workbenchPanels) =>
+      writes.push({ key: 'workbenchPanels', rootFolder, workbenchPanels }),
+  }
+}
+
+function writeKeys(writes: readonly CacheWrite[]) {
+  return writes.map((write) => write.key)
+}
+
+function lastCacheWrite<TKey extends CacheWrite['key']>(writes: readonly CacheWrite[], key: TKey) {
+  return cacheWrites(writes, key).at(-1)
+}
+
+function cacheWrites<TKey extends CacheWrite['key']>(
+  writes: readonly CacheWrite[],
+  key: TKey,
+): Extract<CacheWrite, { key: TKey }>[] {
+  return writes.filter((write): write is Extract<CacheWrite, { key: TKey }> => write.key === key)
+}
+
+function cachedMatchCount(searchBuffer: CachedSearchBufferState | null | undefined) {
   if (!searchBuffer) return 0
 
   return searchBuffer.matches.length

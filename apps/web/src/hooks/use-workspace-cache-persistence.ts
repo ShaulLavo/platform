@@ -13,24 +13,42 @@ import {
   useSearchBufferStoreApi,
 } from '@/features/search/search-buffer-state'
 import {
+  type CachedSearchBufferState,
   type CachedWorkspaceState,
-  type WorkspaceCacheWriteState,
-  writeWorkspaceCache,
+  writeDiffViewModeCache,
+  writeEditorHistoryCache,
+  writeRecentlyClosedEditorPathsCache,
+  writeRootFolderCache,
+  writeSearchBufferCache,
+  writeWorkbenchPanelsCache,
 } from '@/lib/workspace-cache'
 
 const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
-type WorkspaceCacheSnapshot = Pick<
-  CachedWorkspaceState,
-  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workbenchPanels'
->
+export type WorkspaceCacheWriters = {
+  diffViewMode: typeof writeDiffViewModeCache
+  editorHistory: typeof writeEditorHistoryCache
+  recentlyClosedEditorPaths: typeof writeRecentlyClosedEditorPathsCache
+  rootFolder: typeof writeRootFolderCache
+  searchBuffer: typeof writeSearchBufferCache
+  workbenchPanels: typeof writeWorkbenchPanelsCache
+}
 
 type WorkspaceCachePersistenceOptions = {
+  cacheWriters?: WorkspaceCacheWriters
   debounceMs?: number
   searchStore: SearchBufferStoreApi
   workspaceStore: EditorWorkspaceStoreApi
-  writeCache?: (state: WorkspaceCacheWriteState) => void
 }
+
+const WORKSPACE_CACHE_WRITERS = {
+  diffViewMode: writeDiffViewModeCache,
+  editorHistory: writeEditorHistoryCache,
+  recentlyClosedEditorPaths: writeRecentlyClosedEditorPathsCache,
+  rootFolder: writeRootFolderCache,
+  searchBuffer: writeSearchBufferCache,
+  workbenchPanels: writeWorkbenchPanelsCache,
+} satisfies WorkspaceCacheWriters
 
 export function useWorkspaceCachePersistence() {
   const workspaceStore = useEditorWorkspaceStoreApi()
@@ -47,77 +65,236 @@ export function useWorkspaceCachePersistence() {
 }
 
 export function subscribeWorkspaceCachePersistence({
+  cacheWriters = WORKSPACE_CACHE_WRITERS,
   debounceMs = WORKSPACE_CACHE_WRITE_DEBOUNCE_MS,
   searchStore,
   workspaceStore,
-  writeCache = writeWorkspaceCache,
 }: WorkspaceCachePersistenceOptions) {
-  let workspaceSnapshot = cachedWorkspaceState(workspaceStore.getState())
-  let searchSnapshot = cachedSearchBufferState(searchStore.getState().active)
-
-  const pendingWrite = new Debouncer(
-    () =>
-      writeCache(workspaceCacheStateForStores(workspaceStore.getState(), searchStore.getState())),
-    { wait: debounceMs },
-  )
-
-  const unsubscribeWorkspace = workspaceStore.subscribe((state) => {
-    const nextSnapshot = cachedWorkspaceState(state)
-    if (cachedWorkspaceStatesEqual(workspaceSnapshot, nextSnapshot)) return
-
-    workspaceSnapshot = nextSnapshot
-    pendingWrite.maybeExecute()
+  const subscriptions = workspaceCacheSubscriptions({
+    cacheWriters,
+    debounceMs,
+    searchStore,
+    workspaceStore,
   })
-  const unsubscribeSearch = searchStore.subscribe((state) => {
-    const nextSnapshot = cachedSearchBufferState(state.active)
-    if (cachedSearchBufferStatesEqual(searchSnapshot, nextSnapshot)) return
-
-    searchSnapshot = nextSnapshot
-    pendingWrite.maybeExecute()
-  })
-  const removeLifecycleFlush = addLifecycleFlush(pendingWrite.flush)
+  const removeLifecycleFlush = addLifecycleFlush(() => flushCacheSubscriptions(subscriptions))
 
   return () => {
-    unsubscribeWorkspace()
-    unsubscribeSearch()
+    unsubscribeCacheSubscriptions(subscriptions)
     removeLifecycleFlush()
-    pendingWrite.flush()
+    flushCacheSubscriptions(subscriptions)
   }
 }
 
-function workspaceCacheStateForStores(
-  workspaceState: EditorWorkspaceStore,
-  searchState: SearchBufferStore,
-): WorkspaceCacheWriteState {
-  return {
-    ...cachedWorkspaceState(workspaceState),
-    searchBuffer: cachedSearchBufferState(searchState.active),
+type EqualityFn<T> = (left: T, right: T) => boolean
+
+type SelectorStore<TState> = {
+  getState: () => TState
+  subscribe: {
+    <TValue>(
+      selector: (state: TState) => TValue,
+      listener: (selectedState: TValue, previousSelectedState: TValue) => void,
+      options?: {
+        equalityFn?: EqualityFn<TValue>
+        fireImmediately?: boolean
+      },
+    ): () => void
   }
 }
 
-function cachedWorkspaceState(state: EditorWorkspaceStore): WorkspaceCacheSnapshot {
+type CacheSubscription = {
+  flush: () => void
+  unsubscribe: () => void
+}
+
+type CacheEntrySubscriptionOptions<TState, TValue> = {
+  debounceMs: number
+  equalityFn?: EqualityFn<TValue>
+  select: (state: TState) => TValue
+  store: SelectorStore<TState>
+  write: (value: TValue) => void
+}
+
+type WorkspacePathsCacheValue = {
+  paths: readonly string[]
+  rootFolder: CachedWorkspaceState['rootFolder']
+}
+
+type WorkbenchPanelsCacheValue = {
+  rootFolder: CachedWorkspaceState['rootFolder']
+  workbenchPanels: CachedWorkspaceState['workbenchPanels']
+}
+
+type SearchBufferCacheValue = {
+  rootFolder: CachedWorkspaceState['rootFolder']
+  searchBuffer: CachedSearchBufferState | null
+}
+
+type WorkspaceCacheSubscriptionOptions = {
+  cacheWriters: WorkspaceCacheWriters
+  debounceMs: number
+  searchStore: SearchBufferStoreApi
+  workspaceStore: EditorWorkspaceStoreApi
+}
+
+function workspaceCacheSubscriptions({
+  cacheWriters,
+  debounceMs,
+  searchStore,
+  workspaceStore,
+}: WorkspaceCacheSubscriptionOptions): CacheSubscription[] {
+  return [
+    subscribeCacheEntry({
+      debounceMs,
+      select: (state) => state.diffViewMode,
+      store: workspaceStore,
+      write: cacheWriters.diffViewMode,
+    }),
+    subscribeCacheEntry({
+      debounceMs,
+      equalityFn: workspacePathsCacheValuesEqual,
+      select: editorHistoryCacheValue,
+      store: workspaceStore,
+      write: (value) => cacheWriters.editorHistory(value.rootFolder, value.paths),
+    }),
+    subscribeCacheEntry({
+      debounceMs,
+      equalityFn: workspacePathsCacheValuesEqual,
+      select: recentlyClosedEditorPathsCacheValue,
+      store: workspaceStore,
+      write: (value) => cacheWriters.recentlyClosedEditorPaths(value.rootFolder, value.paths),
+    }),
+    subscribeCacheEntry({
+      debounceMs,
+      select: (state) => state.rootFolder,
+      store: workspaceStore,
+      write: cacheWriters.rootFolder,
+    }),
+    subscribeCacheEntry({
+      debounceMs,
+      equalityFn: workbenchPanelsCacheValuesEqual,
+      select: workbenchPanelsCacheValue,
+      store: workspaceStore,
+      write: (value) => cacheWriters.workbenchPanels(value.rootFolder, value.workbenchPanels),
+    }),
+    subscribeSearchBufferCacheEntry({
+      cacheWriters,
+      debounceMs,
+      searchStore,
+      workspaceStore,
+    }),
+  ]
+}
+
+function subscribeCacheEntry<TState, TValue>({
+  debounceMs,
+  equalityFn = Object.is,
+  select,
+  store,
+  write,
+}: CacheEntrySubscriptionOptions<TState, TValue>): CacheSubscription {
+  let value = select(store.getState())
+  const pendingWrite = new Debouncer(() => write(value), { wait: debounceMs })
+  const unsubscribe = store.subscribe(
+    select,
+    (nextValue) => {
+      value = nextValue
+      pendingWrite.maybeExecute()
+    },
+    { equalityFn },
+  )
+
   return {
-    diffViewMode: state.diffViewMode,
-    editorHistory: state.editorHistory,
-    recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
+    flush: () => pendingWrite.flush(),
+    unsubscribe,
+  }
+}
+
+function subscribeSearchBufferCacheEntry({
+  cacheWriters,
+  debounceMs,
+  searchStore,
+  workspaceStore,
+}: WorkspaceCacheSubscriptionOptions): CacheSubscription {
+  let value = searchBufferCacheValue(workspaceStore.getState(), searchStore.getState())
+  const pendingWrite = new Debouncer(
+    () => cacheWriters.searchBuffer(value.rootFolder, value.searchBuffer),
+    { wait: debounceMs },
+  )
+  const unsubscribeRootFolder = workspaceStore.subscribe(
+    (state) => state.rootFolder,
+    (rootFolder) => {
+      value = { ...value, rootFolder }
+      pendingWrite.maybeExecute()
+    },
+  )
+  const unsubscribeSearchBuffer = searchStore.subscribe(
+    (state) => cachedSearchBufferState(state.active),
+    (searchBuffer) => {
+      value = { rootFolder: workspaceStore.getState().rootFolder, searchBuffer }
+      pendingWrite.maybeExecute()
+    },
+    { equalityFn: cachedSearchBufferStatesEqual },
+  )
+
+  return {
+    flush: () => pendingWrite.flush(),
+    unsubscribe: () => {
+      unsubscribeRootFolder()
+      unsubscribeSearchBuffer()
+    },
+  }
+}
+
+function editorHistoryCacheValue(state: EditorWorkspaceStore): WorkspacePathsCacheValue {
+  return {
+    paths: state.editorHistory,
+    rootFolder: state.rootFolder,
+  }
+}
+
+function recentlyClosedEditorPathsCacheValue(
+  state: EditorWorkspaceStore,
+): WorkspacePathsCacheValue {
+  return {
+    paths: state.recentlyClosedEditorPaths,
+    rootFolder: state.rootFolder,
+  }
+}
+
+function workbenchPanelsCacheValue(state: EditorWorkspaceStore): WorkbenchPanelsCacheValue {
+  return {
     rootFolder: state.rootFolder,
     workbenchPanels: state.workbenchPanels,
   }
 }
 
-function cachedWorkspaceStatesEqual(left: WorkspaceCacheSnapshot, right: WorkspaceCacheSnapshot) {
-  return (
-    left.diffViewMode === right.diffViewMode &&
-    left.rootFolder === right.rootFolder &&
-    left.workbenchPanels === right.workbenchPanels &&
-    readonlyArraysEqual(left.editorHistory, right.editorHistory) &&
-    readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)
-  )
+function searchBufferCacheValue(
+  workspaceState: EditorWorkspaceStore,
+  searchState: SearchBufferStore,
+): SearchBufferCacheValue {
+  return {
+    rootFolder: workspaceState.rootFolder,
+    searchBuffer: cachedSearchBufferState(searchState.active),
+  }
+}
+
+function workspacePathsCacheValuesEqual(
+  left: WorkspacePathsCacheValue,
+  right: WorkspacePathsCacheValue,
+) {
+  return left.rootFolder === right.rootFolder && readonlyArraysEqual(left.paths, right.paths)
+}
+
+function workbenchPanelsCacheValuesEqual(
+  left: WorkbenchPanelsCacheValue,
+  right: WorkbenchPanelsCacheValue,
+) {
+  return left.rootFolder === right.rootFolder && left.workbenchPanels === right.workbenchPanels
 }
 
 function cachedSearchBufferStatesEqual(
-  left: WorkspaceCacheWriteState['searchBuffer'],
-  right: WorkspaceCacheWriteState['searchBuffer'],
+  left: CachedSearchBufferState | null,
+  right: CachedSearchBufferState | null,
 ) {
   if (left === right) return true
   if (!left || !right) return false
@@ -149,6 +326,14 @@ function readonlyArraysEqual<T>(left: readonly T[], right: readonly T[]) {
   if (left.length !== right.length) return false
 
   return left.every((item, index) => Object.is(item, right[index]))
+}
+
+function flushCacheSubscriptions(subscriptions: readonly CacheSubscription[]) {
+  for (const subscription of subscriptions) subscription.flush()
+}
+
+function unsubscribeCacheSubscriptions(subscriptions: readonly CacheSubscription[]) {
+  for (const subscription of subscriptions) subscription.unsubscribe()
 }
 
 function addLifecycleFlush(flush: () => void) {

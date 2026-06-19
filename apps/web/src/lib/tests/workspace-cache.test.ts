@@ -17,10 +17,22 @@ import {
 import {
   WORKSPACE_CACHE_STORAGE_KEYS,
   readWorkspaceCache,
-  writeWorkspaceCache,
   type CachedSearchBufferState,
-  type WorkspaceCacheWriteState,
+  type CachedWorkspaceState,
+  writeDiffViewModeCache,
+  writeEditorHistoryCache,
+  writeRecentlyClosedEditorPathsCache,
+  writeRootFolderCache,
+  writeSearchBufferCache,
+  writeWorkbenchPanelsCache,
 } from '@/lib/workspace-cache'
+
+type WorkspaceCacheFixtureState = Pick<
+  CachedWorkspaceState,
+  'diffViewMode' | 'editorHistory' | 'recentlyClosedEditorPaths' | 'rootFolder' | 'workbenchPanels'
+> & {
+  searchBuffer: CachedSearchBufferState | null
+}
 
 const STORE = new Map<string, string>()
 
@@ -41,7 +53,7 @@ describe('workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const diffPath = snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts'))
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'stacked',
         editorHistory: [diffPath, '/repo/src/readme.md'],
@@ -77,7 +89,7 @@ describe('workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const diffPath = snapshotDiffDocumentId(snapshotDiff('/other/src/app.ts'))
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [diffPath],
@@ -106,7 +118,7 @@ describe('workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const conflictPath = conflictDiffDocumentId('conflict-1')
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [conflictPath, '/repo/src/readme.md'],
@@ -132,7 +144,7 @@ describe('workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const searchPath = searchBufferDocumentId('/repo')
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [searchPath],
@@ -155,7 +167,7 @@ describe('workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const searchPath = searchBufferDocumentId('/other')
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [searchPath],
@@ -182,7 +194,7 @@ describe('workspace cache', () => {
     panels = resizeWorkbenchSidebar(panels, 420)
     panels = resizeWorkbenchBottom(panels, 320)
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
@@ -209,7 +221,7 @@ describe('workspace cache', () => {
     const rootFolder = pickedDirectory('/repo')
     const buffer = cachedSearchBuffer('/repo')
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
@@ -224,7 +236,7 @@ describe('workspace cache', () => {
   })
 
   it('drops cached search buffer state for a different workspace', () => {
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'split',
         editorHistory: [],
@@ -243,7 +255,7 @@ describe('workspace cache', () => {
   it('drops only the invalid cache entry while restoring valid workspace state', () => {
     const rootFolder = pickedDirectory('/repo')
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'stacked',
         editorHistory: ['/repo/src/readme.md'],
@@ -277,7 +289,7 @@ describe('workspace cache', () => {
       }),
     })
 
-    writeWorkspaceCache(
+    writeCacheFixtureEntries(
       workspaceCacheState({
         diffViewMode: 'stacked',
         editorHistory: ['/repo/src/readme.md'],
@@ -395,7 +407,23 @@ function workbenchPanelsForPaths(paths: readonly string[], activePath: string | 
   return openEditorPathInWorkbenchPanels(panels, activePath)
 }
 
-function workspaceCacheState(input: WorkspaceCacheWriteState): WorkspaceCacheWriteState {
+function writeCacheFixtureEntries({
+  diffViewMode,
+  editorHistory,
+  recentlyClosedEditorPaths,
+  rootFolder,
+  searchBuffer,
+  workbenchPanels,
+}: WorkspaceCacheFixtureState) {
+  writeDiffViewModeCache(diffViewMode)
+  writeEditorHistoryCache(rootFolder, editorHistory)
+  writeRecentlyClosedEditorPathsCache(rootFolder, recentlyClosedEditorPaths)
+  writeRootFolderCache(rootFolder)
+  writeWorkbenchPanelsCache(rootFolder, workbenchPanels)
+  writeSearchBufferCache(rootFolder, searchBuffer)
+}
+
+function workspaceCacheState(input: WorkspaceCacheFixtureState): WorkspaceCacheFixtureState {
   return input
 }
 

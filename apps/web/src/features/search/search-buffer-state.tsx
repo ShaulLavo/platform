@@ -6,7 +6,8 @@ import type {
 } from '@workspace/contracts'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
-import { createStore, type StoreApi } from 'zustand/vanilla'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { createStore, type Mutate, type StoreApi } from 'zustand/vanilla'
 
 import type { CachedSearchBufferState } from '@/lib/workspace-cache'
 import { basename, toTreePath } from '@/lib/path-formatters'
@@ -120,7 +121,10 @@ type SearchBufferStoreActions = {
 
 export type SearchBufferStore = SearchBufferStoreState & SearchBufferStoreActions
 
-export type SearchBufferStoreApi = StoreApi<SearchBufferStore>
+export type SearchBufferStoreApi = Mutate<
+  StoreApi<SearchBufferStore>,
+  [['zustand/subscribeWithSelector', never]]
+>
 
 const EMPTY_SEARCH_GROUPS: readonly WorkspaceSearchFileGroup[] = []
 
@@ -144,94 +148,96 @@ export function useSearchBufferState<T>(selector: (state: SearchBufferStore) => 
 export function createSearchBufferStore(cachedActive: CachedSearchBufferState | null = null) {
   const active = searchBufferSnapshotFromCache(cachedActive)
 
-  return createStore<SearchBufferStore>()((set, get) => ({
-    active,
-    appendEvent: (runId, event) => set((state) => appendSearchEvent(state, runId, event)),
-    appendEvents: (runId, events) => set((state) => appendSearchEvents(state, runId, events)),
-    collapseAllGroups: () => set((state) => ({ active: collapseSearchGroups(state.active) })),
-    expandAllGroups: () => set((state) => ({ active: expandSearchGroups(state.active) })),
-    failSearch: (runId, error) => set((state) => failSearchBuffer(state, runId, error)),
-    failReplace: (rootPath, error) =>
-      set((state) => ({
-        active: replaceSearchBuffer(state.active, rootPath, {
-          replaceMessage: error,
-          replaceStatus: 'error',
-        }),
-      })),
-    finishReplace: (rootPath, message) =>
-      set((state) => ({
-        active: replaceSearchBuffer(state.active, rootPath, {
-          replaceMessage: message,
-          replaceStatus: 'success',
-        }),
-      })),
-    prepareBuffer: (rootPath) => {
-      const current = get().active
-      if (current?.rootPath === rootPath) return current
+  return createStore<SearchBufferStore>()(
+    subscribeWithSelector((set, get) => ({
+      active,
+      appendEvent: (runId, event) => set((state) => appendSearchEvent(state, runId, event)),
+      appendEvents: (runId, events) => set((state) => appendSearchEvents(state, runId, events)),
+      collapseAllGroups: () => set((state) => ({ active: collapseSearchGroups(state.active) })),
+      expandAllGroups: () => set((state) => ({ active: expandSearchGroups(state.active) })),
+      failSearch: (runId, error) => set((state) => failSearchBuffer(state, runId, error)),
+      failReplace: (rootPath, error) =>
+        set((state) => ({
+          active: replaceSearchBuffer(state.active, rootPath, {
+            replaceMessage: error,
+            replaceStatus: 'error',
+          }),
+        })),
+      finishReplace: (rootPath, message) =>
+        set((state) => ({
+          active: replaceSearchBuffer(state.active, rootPath, {
+            replaceMessage: message,
+            replaceStatus: 'success',
+          }),
+        })),
+      prepareBuffer: (rootPath) => {
+        const current = get().active
+        if (current?.rootPath === rootPath) return current
 
-      const next = emptySearchBuffer(rootPath)
-      set({ active: next })
-      return next
-    },
-    resetBuffer: (rootPath) => set({ active: emptySearchBuffer(rootPath) }),
-    requestSearchRefresh: (rootPath) =>
-      set((state) => ({
-        active: refreshSearchBuffer(state.active, rootPath),
-      })),
-    setSearchOptions: (rootPath, options) =>
-      set((state) => ({
-        active: optionSearchBuffer(state.active, rootPath, options),
-      })),
-    setQuery: (rootPath, query) =>
-      set((state) => ({
-        active: querySearchBuffer(state.active, rootPath, query),
-      })),
-    setReplaceText: (rootPath, replaceText) =>
-      set((state) => ({
-        active: replaceTextSearchBuffer(state.active, rootPath, replaceText),
-      })),
-    setReplaceVisible: (rootPath, replaceVisible) =>
-      set((state) => ({
-        active: replaceSearchBuffer(state.active, rootPath, {
-          replaceMessage: null,
-          replaceStatus: 'idle',
-          replaceVisible,
-        }),
-      })),
-    selectNextQuery: (rootPath) =>
-      set((state) => ({
-        active: selectSearchHistoryQuery(state.active, rootPath, 1),
-      })),
-    selectNextReplaceText: (rootPath) =>
-      set((state) => ({
-        active: selectReplaceHistoryText(state.active, rootPath, 1),
-      })),
-    selectNextMatch: () => set((state) => ({ active: selectSearchMatch(state.active, 1) })),
-    selectPreviousQuery: (rootPath) =>
-      set((state) => ({
-        active: selectSearchHistoryQuery(state.active, rootPath, -1),
-      })),
-    selectPreviousReplaceText: (rootPath) =>
-      set((state) => ({
-        active: selectReplaceHistoryText(state.active, rootPath, -1),
-      })),
-    selectPreviousMatch: () => set((state) => ({ active: selectSearchMatch(state.active, -1) })),
-    selectResult: (id) => set((state) => ({ active: selectSearchResult(state.active, id) })),
-    startReplace: (rootPath) =>
-      set((state) => ({
-        active: startReplaceSearchBuffer(state.active, rootPath),
-      })),
-    startSearch: (query) => {
-      const current = get().active
-      const runId = (current?.runId ?? 0) + 1
-      set({ active: loadingSearchBuffer(query, runId, current) })
-      return runId
-    },
-    toggleGroup: (path) =>
-      set((state) => ({
-        active: toggleSearchGroup(state.active, path),
-      })),
-  }))
+        const next = emptySearchBuffer(rootPath)
+        set({ active: next })
+        return next
+      },
+      resetBuffer: (rootPath) => set({ active: emptySearchBuffer(rootPath) }),
+      requestSearchRefresh: (rootPath) =>
+        set((state) => ({
+          active: refreshSearchBuffer(state.active, rootPath),
+        })),
+      setSearchOptions: (rootPath, options) =>
+        set((state) => ({
+          active: optionSearchBuffer(state.active, rootPath, options),
+        })),
+      setQuery: (rootPath, query) =>
+        set((state) => ({
+          active: querySearchBuffer(state.active, rootPath, query),
+        })),
+      setReplaceText: (rootPath, replaceText) =>
+        set((state) => ({
+          active: replaceTextSearchBuffer(state.active, rootPath, replaceText),
+        })),
+      setReplaceVisible: (rootPath, replaceVisible) =>
+        set((state) => ({
+          active: replaceSearchBuffer(state.active, rootPath, {
+            replaceMessage: null,
+            replaceStatus: 'idle',
+            replaceVisible,
+          }),
+        })),
+      selectNextQuery: (rootPath) =>
+        set((state) => ({
+          active: selectSearchHistoryQuery(state.active, rootPath, 1),
+        })),
+      selectNextReplaceText: (rootPath) =>
+        set((state) => ({
+          active: selectReplaceHistoryText(state.active, rootPath, 1),
+        })),
+      selectNextMatch: () => set((state) => ({ active: selectSearchMatch(state.active, 1) })),
+      selectPreviousQuery: (rootPath) =>
+        set((state) => ({
+          active: selectSearchHistoryQuery(state.active, rootPath, -1),
+        })),
+      selectPreviousReplaceText: (rootPath) =>
+        set((state) => ({
+          active: selectReplaceHistoryText(state.active, rootPath, -1),
+        })),
+      selectPreviousMatch: () => set((state) => ({ active: selectSearchMatch(state.active, -1) })),
+      selectResult: (id) => set((state) => ({ active: selectSearchResult(state.active, id) })),
+      startReplace: (rootPath) =>
+        set((state) => ({
+          active: startReplaceSearchBuffer(state.active, rootPath),
+        })),
+      startSearch: (query) => {
+        const current = get().active
+        const runId = (current?.runId ?? 0) + 1
+        set({ active: loadingSearchBuffer(query, runId, current) })
+        return runId
+      },
+      toggleGroup: (path) =>
+        set((state) => ({
+          active: toggleSearchGroup(state.active, path),
+        })),
+    })),
+  )
 }
 
 export function cachedSearchBufferState(
