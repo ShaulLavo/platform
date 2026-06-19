@@ -1,28 +1,62 @@
-import { useRef } from 'react'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
+import {
+  horizontalListSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable'
 
-import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-intent-prefetch'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import { EditorTabButton } from '@/features/workbench/components/editor-tab-button'
+import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
+import { SortableEditorTabButton } from '@/features/workbench/components/sortable-editor-tab-button'
+import { editorTabReorderIntent } from '@/features/workbench/utils/editor-tab-dnd'
 
 export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[] }) {
-  const tabListRef = useRef<HTMLDivElement | null>(null)
+  const { reorderTab } = useEditorTabActions()
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
 
-  useEditorTabIntentPrefetch({
-    enabled: true,
-    tabListRef,
-    tabs,
-  })
+  function handleDragEnd(event: DragEndEvent) {
+    const intent = editorTabReorderIntent(tabs, event.active.id, event.over?.id)
+    if (!intent) return
+
+    reorderTab(intent.tabId, intent.targetIndex)
+  }
 
   return (
-    <div
-      aria-label='Editor tabs'
-      className='border-border flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b px-2 pt-1'
-      ref={tabListRef}
-      role='tablist'
+    <DndContext
+      collisionDetection={closestCenter}
+      modifiers={[restrictToHorizontalAxis]}
+      sensors={sensors}
+      onDragEnd={handleDragEnd}
     >
-      {tabs.map((tab) => {
-        return <EditorTabButton key={tab.id} tab={tab} />
-      })}
-    </div>
+      <SortableContext items={tabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
+        <div
+          aria-label='Editor tabs'
+          className='border-border flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b px-2 pt-1'
+          role='tablist'
+        >
+          {tabs.map((tab) => {
+            return <SortableEditorTabButton key={tab.id} tab={tab} />
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
   )
 }

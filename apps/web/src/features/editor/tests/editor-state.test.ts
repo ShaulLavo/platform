@@ -124,6 +124,25 @@ describe('editor workspace state', () => {
     expect(commands.moveTabToPane(activeTabId!, 'secondary')).toBe(false)
     expect(commands.moveTabToSplit(activeTabId!, 'main', 'right')).toBe(false)
   })
+
+  it('reorders editor tabs without changing the selected path', () => {
+    const panels = workbenchPanelsForPaths(
+      ['/repo/src/a.ts', '/repo/src/b.ts', '/repo/src/c.ts'],
+      '/repo/src/b.ts',
+    )
+    const { commands, workspaceStore } = editorHarness({ workbenchPanels: panels })
+    const tabId = workspaceStore.getState().workbenchPanels.editorTabs[0]?.id
+    expect(tabId).toBeTruthy()
+
+    expect(commands.reorderTab('main', tabId!, 2)).toBe(true)
+
+    expect(workspaceStore.getState().selectedFilePath).toBe('/repo/src/b.ts')
+    expect(workspaceStore.getState().workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
+      '/repo/src/b.ts',
+      '/repo/src/c.ts',
+      '/repo/src/a.ts',
+    ])
+  })
 })
 
 function editorHarness(overrides: Partial<CachedWorkspaceState> = {}) {

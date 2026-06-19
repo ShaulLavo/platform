@@ -19,6 +19,7 @@ export function EditorTabActionsProvider({
   const value = useMemo<EditorTabActions>(
     () => ({
       requestCloseTab,
+      reorderTab: (tabId, targetIndex) => commands.reorderTab('main', tabId, targetIndex),
       selectTab: (tabId) => commands.selectTab('main', tabId),
     }),
     [commands, requestCloseTab],

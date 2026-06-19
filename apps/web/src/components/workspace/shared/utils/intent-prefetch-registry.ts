@@ -18,8 +18,6 @@ export type IntentPrefetchRegistry<TIntent> = {
   sync: (elements: Iterable<HTMLElement>, onIntent: (intent: TIntent) => void) => void
 }
 
-export const INTENT_PREFETCH_HIT_SLOP_PX = 8
-
 export function createIntentPrefetchRegistry<TIntent>({
   hitSlop,
   reactivateAfter,

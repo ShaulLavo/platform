@@ -53,7 +53,13 @@ function TestEditorTabs({
 }) {
   return (
     <EditorStateProvider>
-      <EditorTabActionsContext value={{ requestCloseTab: onCloseTab, selectTab: onSelectTab }}>
+      <EditorTabActionsContext
+        value={{
+          requestCloseTab: onCloseTab,
+          reorderTab: () => false,
+          selectTab: onSelectTab,
+        }}
+      >
         <EditorTabBar tabs={tabs} />
       </EditorTabActionsContext>
     </EditorStateProvider>

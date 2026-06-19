@@ -9,10 +9,10 @@ import {
 import { useFileTreeActions } from '@/components/workspace/file-tree/hooks/use-file-tree-actions'
 import {
   createIntentPrefetchRegistry,
-  INTENT_PREFETCH_HIT_SLOP_PX,
   type IntentPrefetchRegistry,
   type IntentPrefetchRow,
 } from '@/components/workspace/shared/utils/intent-prefetch-registry'
+import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/components/workspace/shared/utils/intent-prefetch-options'
 import { createAnimationFrameScheduler } from '@/components/workspace/shared/utils/intent-prefetch-scheduler'
 import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
 import { isDirectoryEntry } from '@/lib/file-system-types'

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  editorTabIntentPrefetchKey,
   editorTabPrefetchRegistrationKey,
+  editorTabPrefetchTarget,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-prefetch'
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
@@ -16,15 +16,26 @@ describe('editor tab prefetch helpers', () => {
     )
   })
 
-  it('keys only file-backed tabs for intent prefetching', () => {
+  it('targets file-backed tabs for intent prefetching', () => {
+    expect(editorTabPrefetchTarget({ id: 'tab-a', path: '/repo/src/app.ts' })).toEqual({
+      id: 'tab-a',
+      path: '/repo/src/app.ts',
+    })
+  })
+
+  it('ignores virtual document tabs for intent prefetching', () => {
     expect(
-      editorTabIntentPrefetchKey([
-        { id: 'tab-a', path: '/repo/src/app.ts' },
-        { id: 'tab-b', path: snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts')) },
-        { id: 'tab-c', path: conflictDiffDocumentId('conflict-1') },
-        { id: 'tab-d', path: searchBufferDocumentId('/repo') },
-      ]),
-    ).toBe('tab-a:/repo/src/app.ts')
+      editorTabPrefetchTarget({
+        id: 'tab-b',
+        path: snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts')),
+      }),
+    ).toBeNull()
+    expect(
+      editorTabPrefetchTarget({ id: 'tab-c', path: conflictDiffDocumentId('conflict-1') }),
+    ).toBeNull()
+    expect(
+      editorTabPrefetchTarget({ id: 'tab-d', path: searchBufferDocumentId('/repo') }),
+    ).toBeNull()
   })
 })
 
