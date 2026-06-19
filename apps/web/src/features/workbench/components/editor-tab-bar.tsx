@@ -19,6 +19,8 @@ import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-acti
 import { SortableEditorTabButton } from '@/features/workbench/components/sortable-editor-tab-button'
 import { editorTabReorderIntent } from '@/features/workbench/utils/editor-tab-dnd'
 
+const EDITOR_TAB_DND_MODIFIERS = [restrictToHorizontalAxis]
+
 export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[] }) {
   const { reorderTab } = useEditorTabActions()
   const sensors = useSensors(
@@ -42,7 +44,7 @@ export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[
   return (
     <DndContext
       collisionDetection={closestCenter}
-      modifiers={[restrictToHorizontalAxis]}
+      modifiers={EDITOR_TAB_DND_MODIFIERS}
       sensors={sensors}
       onDragEnd={handleDragEnd}
     >

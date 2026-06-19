@@ -138,12 +138,11 @@ function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>
   }
 
   // File-open "writes itself" animation. Presence is the switch — remove this
-  // loader to turn it off. `mode`: 'autoregressive' (typewriter) | 'parallel'.
+  // loader to turn it off. `mode`: 'autoregressive' (typewriter) | 'parallel' |
+  // 'diffusion' (glyphs scramble out of static and settle, out of order).
   loaders.push(
     loadPlugin('@singapor/decode', () =>
-      import('@singapor/decode').then((module) =>
-        module.createDecodePlugin({ mode: 'autoregressive' }),
-      ),
+      import('@singapor/decode').then((module) => module.createDecodePlugin({ mode: 'diffusion' })),
     ),
   )
 
