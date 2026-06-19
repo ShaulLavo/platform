@@ -305,12 +305,7 @@ export class OrchestrationProjectionPipeline {
     const requestedAt = turn?.requestedAt ?? event.payload.createdAt
 
     this.upsertAssistantTurn(event, { completedAt, requestedAt, startedAt, state })
-    this.updateThreadLatestTurnForAssistantMessage(event, {
-      completedAt,
-      requestedAt,
-      startedAt,
-      state,
-    })
+    this.updateThreadLatestTurnForAssistantMessage(event)
   }
 
   private upsertTurn(event: Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }>) {
@@ -437,21 +432,10 @@ export class OrchestrationProjectionPipeline {
       .set({ assistantMessageId: nextAssistantMessageId, completedAt, state })
       .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.turnId, turnId)))
       .run()
-    const row = this.database
-      .select()
-      .from(projectionThreads)
-      .where(eq(projectionThreads.threadId, threadId))
-      .get()
-    const current = row?.latestTurnJson ? (JSON.parse(row.latestTurnJson) as object) : {}
+    const updatedTurn = this.selectTurn(threadId, turnId)
 
     this.updateThread(threadId, {
-      latestTurnJson: JSON.stringify({
-        ...current,
-        assistantMessageId: nextAssistantMessageId,
-        completedAt,
-        state,
-        turnId,
-      }),
+      latestTurnJson: updatedTurn ? JSON.stringify(latestTurnJson(updatedTurn)) : null,
       updatedAt: completedAt,
     })
   }
@@ -504,34 +488,22 @@ export class OrchestrationProjectionPipeline {
 
   private updateThreadLatestTurnForAssistantMessage(
     event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
-    turn: {
-      completedAt: string | null
-      requestedAt: string
-      startedAt: string
-      state: 'running' | 'completed' | 'interrupted' | 'error'
-    },
   ) {
+    const turnId = event.payload.turnId
+    if (!turnId) return
+
     const row = this.database
       .select()
       .from(projectionThreads)
       .where(eq(projectionThreads.threadId, event.payload.threadId))
       .get()
-    const current = row?.latestTurnJson
-      ? (JSON.parse(row.latestTurnJson) as { turnId?: string })
-      : null
-    if (current?.turnId && current.turnId !== event.payload.turnId) return
+    if (row?.latestTurnId && row.latestTurnId !== turnId) return
+
+    const updatedTurn = this.selectTurn(event.payload.threadId, turnId)
 
     this.updateThread(event.payload.threadId, {
-      latestTurnId: event.payload.turnId,
-      latestTurnJson: JSON.stringify({
-        ...current,
-        assistantMessageId: event.payload.messageId,
-        completedAt: turn.completedAt,
-        requestedAt: turn.requestedAt,
-        startedAt: turn.startedAt,
-        state: turn.state,
-        turnId: event.payload.turnId,
-      }),
+      latestTurnId: turnId,
+      latestTurnJson: updatedTurn ? JSON.stringify(latestTurnJson(updatedTurn)) : null,
       updatedAt: event.payload.updatedAt,
     })
   }
