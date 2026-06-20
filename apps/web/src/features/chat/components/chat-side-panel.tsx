@@ -38,7 +38,7 @@ export const ChatSidePanel = memo(({ rootPath }: { rootPath: string }) => {
   }, [selectDraftThread])
 
   return (
-    <div className='from-muted/35 via-background to-background flex h-full min-h-0 flex-col bg-linear-to-b'>
+    <div className='flex h-full min-h-0 flex-col'>
       <ChatPanelHeader
         activeThreadId={activeThreadId}
         creating={false}

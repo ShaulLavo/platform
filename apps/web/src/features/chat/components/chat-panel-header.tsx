@@ -31,7 +31,7 @@ export function ChatPanelHeader({
   const activeThread = threads.find((thread) => thread.id === activeThreadId)
 
   return (
-    <header className='border-border/70 bg-background backdrop-material flex h-12 shrink-0 items-center justify-between border-b px-3'>
+    <header className='border-border/70 flex h-12 shrink-0 items-center justify-between border-b px-3'>
       <div className='min-w-0 pr-3'>
         <div className='truncate text-sm font-semibold'>Chat</div>
         {activeThread ? (
@@ -51,10 +51,7 @@ export function ChatPanelHeader({
         >
           <span className='relative flex size-4 items-center justify-center'>
             <ChatCircleIcon className='size-4' />
-            <PlusIcon
-              className='bg-background absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full'
-              weight='bold'
-            />
+            <PlusIcon className='absolute -right-0.5 -bottom-0.5 size-2.5' weight='bold' />
           </span>
         </Button>
         <DropdownMenu>

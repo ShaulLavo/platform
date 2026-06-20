@@ -8,10 +8,10 @@ import {
   openEditorPathInWorkbenchPanels,
   renameEditorPathInWorkbenchPanels,
   reorderEditorTabInWorkbenchPanels,
-  resizeWorkbenchBottom,
-  resizeWorkbenchSidebar,
   selectEditorTabInWorkbenchPanels,
   setWorkbenchBottomTab,
+  setWorkbenchMainLayout,
+  setWorkbenchOuterLayout,
   setWorkbenchSidebarTab,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
@@ -22,9 +22,15 @@ describe('workbench panel-state model', () => {
       activeBottomTab: 'terminal',
       activeEditorTabId: null,
       activeSidebarTab: 'files',
-      bottomHeight: 240,
       editorTabs: [],
-      sidebarWidth: 300,
+      mainLayout: {
+        bottom: 30,
+        editor: 70,
+      },
+      outerLayout: {
+        main: 76,
+        sidebar: 24,
+      },
     })
   })
 
@@ -158,22 +164,24 @@ describe('workbench panel-state model', () => {
     expect(closeEditorPathInWorkbenchPanels(panels, '/repo/missing.ts')).toBe(panels)
   })
 
-  it('clamps sidebar resizes and keeps unchanged widths referentially stable', () => {
+  it('stores outer split layout percentages and keeps unchanged values referentially stable', () => {
     const panels = createDefaultWorkbenchPanels()
 
-    expect(resizeWorkbenchSidebar(panels, 100).sidebarWidth).toBe(220)
-    expect(resizeWorkbenchSidebar(panels, 600).sidebarWidth).toBe(520)
-    expect(resizeWorkbenchSidebar(panels, 320).sidebarWidth).toBe(320)
-    expect(resizeWorkbenchSidebar(panels, 300)).toBe(panels)
+    expect(setWorkbenchOuterLayout(panels, { main: 68, sidebar: 32 }).outerLayout).toEqual({
+      main: 68,
+      sidebar: 32,
+    })
+    expect(setWorkbenchOuterLayout(panels, { main: 76, sidebar: 24 })).toBe(panels)
   })
 
-  it('clamps bottom resizes and keeps unchanged heights referentially stable', () => {
+  it('stores main split layout percentages and keeps unchanged values referentially stable', () => {
     const panels = createDefaultWorkbenchPanels()
 
-    expect(resizeWorkbenchBottom(panels, 100).bottomHeight).toBe(140)
-    expect(resizeWorkbenchBottom(panels, 600).bottomHeight).toBe(480)
-    expect(resizeWorkbenchBottom(panels, 300).bottomHeight).toBe(300)
-    expect(resizeWorkbenchBottom(panels, 240)).toBe(panels)
+    expect(setWorkbenchMainLayout(panels, { bottom: 36, editor: 64 }).mainLayout).toEqual({
+      bottom: 36,
+      editor: 64,
+    })
+    expect(setWorkbenchMainLayout(panels, { bottom: 30, editor: 70 })).toBe(panels)
   })
 
   it('sets sidebar and bottom tabs while keeping current values referentially stable', () => {
@@ -195,12 +203,24 @@ describe('workbench panel-state model', () => {
     const result = normalizeWorkbenchPanels({
       ...panels,
       activeEditorTabId: 'missing-tab',
-      bottomHeight: 999,
-      sidebarWidth: 1,
+      mainLayout: {
+        bottom: 999,
+        editor: 0,
+      },
+      outerLayout: {
+        main: 0,
+        sidebar: 999,
+      },
     })
 
-    expect(result.bottomHeight).toBe(480)
-    expect(result.sidebarWidth).toBe(220)
+    expect(result.mainLayout).toEqual({
+      bottom: 30,
+      editor: 70,
+    })
+    expect(result.outerLayout).toEqual({
+      main: 76,
+      sidebar: 24,
+    })
     expect(result.activeEditorTabId).toBe(firstTabId)
   })
 

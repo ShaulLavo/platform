@@ -15,7 +15,7 @@ import {
 
 export function AppRuntimeContent() {
   const setFocusArea = useFocus((state) => state.setFocusArea)
-  const { dirtyTabCloseDialog, requestCloseTab } = useDirtyTabCloseRequest()
+  const { dirtyTabCloseDialog, requestCloseTab, requestCloseTabs } = useDirtyTabCloseRequest()
   const defaultKeymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
   const editorKeymapLayers = useMemo(
     () => editorKeymapLayersFromPlatform(defaultKeymapBindings),
@@ -45,11 +45,14 @@ export function AppRuntimeContent() {
     <main
       className={`${NATIVE_WINDOW_DRAG_CLASS} bg-background text-foreground flex h-svh flex-col overflow-hidden`}
       onFocusCapture={handleGlobalFocusCapture}
-      onMouseDown={handleNativeWindowDragMouseDown}
+      onMouseDownCapture={handleNativeWindowDragMouseDownCapture}
       onPointerDownCapture={handleGlobalPointerDownCapture}
     >
       <div className='min-h-0 flex-1'>
-        <EditorTabActionsProvider requestCloseTab={requestCloseTab}>
+        <EditorTabActionsProvider
+          requestCloseTab={requestCloseTab}
+          requestCloseTabs={requestCloseTabs}
+        >
           <AppWorkspace
             editorKeymapLayers={editorKeymapLayers}
             keymapBindings={defaultKeymapBindings}
@@ -61,7 +64,7 @@ export function AppRuntimeContent() {
   )
 }
 
-function handleNativeWindowDragMouseDown(event: MouseEvent<HTMLElement>) {
+function handleNativeWindowDragMouseDownCapture(event: MouseEvent<HTMLElement>) {
   if (!isDesktop()) return
 
   markNativeWindowNoDragForCurrentEvent(event.target)

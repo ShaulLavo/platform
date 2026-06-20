@@ -1,10 +1,18 @@
-import { FilesIcon, GitBranchIcon, MagnifyingGlassIcon } from '@phosphor-icons/react'
+import {
+  ChatCircleIcon,
+  FilesIcon,
+  GitBranchIcon,
+  MagnifyingGlassIcon,
+  ScrollIcon,
+} from '@phosphor-icons/react'
 import type { EditorKeymapLayer } from '@singapor/core'
 import type { ReactNode } from 'react'
 
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { SearchPane } from '@/components/workspace/search/components/search-pane'
+import { ChatSidePanel } from '@/features/chat/components/chat-side-panel'
 import type { GitStoreApi } from '@/features/git/state'
+import { LogsPanel } from '@/features/logs/panel'
 import { FileNavigatorPanel } from '@/features/workbench/components/file-navigator-panel'
 import { GitChangesPanel } from '@/features/workbench/components/git-changes-panel'
 import {
@@ -58,6 +66,18 @@ export function SidebarPanel({
           icon: <MagnifyingGlassIcon className='size-4' />,
           label: 'Search',
           onClick: () => selectTab('search'),
+        })}
+        {sidebarTabButton({
+          active: panels.activeSidebarTab === 'logs',
+          icon: <ScrollIcon className='size-4' />,
+          label: 'Logs',
+          onClick: () => selectTab('logs'),
+        })}
+        {sidebarTabButton({
+          active: panels.activeSidebarTab === 'chat',
+          icon: <ChatCircleIcon className='size-4' />,
+          label: 'Chat',
+          onClick: () => selectTab('chat'),
         })}
       </nav>
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
@@ -113,7 +133,9 @@ function renderSidebarPanel({
   readonly rootPath: string
   readonly tab: WorkbenchSidebarTab
 }) {
+  if (tab === 'chat') return <ChatSidePanel rootPath={rootPath} />
   if (tab === 'git') return <GitChangesPanel rootPath={rootPath} store={gitStore} />
+  if (tab === 'logs') return <LogsPanel active />
   if (tab === 'search')
     return <SearchPane editorKeymapLayers={editorKeymapLayers} rootPath={rootPath} />
 
@@ -121,8 +143,10 @@ function renderSidebarPanel({
 }
 
 function focusAreaForSidebarTab(tab: WorkbenchSidebarTab) {
+  if (tab === 'chat') return 'global'
   if (tab === 'files') return 'file-tree'
   if (tab === 'git') return 'git'
+  if (tab === 'logs') return 'logs'
 
   return 'search'
 }

@@ -59,3 +59,23 @@ index a4ca427b95288e70c782ce303013cd644893dcec..dc14831fbb629564410c03e5d53929a4
    }
    /**
     * Cleanup resources
+diff --git a/dist/ghostty-web.js b/dist/ghostty-web.js
+index a4ca427b95288e70c782ce303013cd644893dcec..dc14831fbb629564410c03e5d53929a4c8acdf7d 100644
+--- a/dist/ghostty-web.js
++++ b/dist/ghostty-web.js
+@@ -1579,6 +1579,15 @@ class $ {
+       case "block":
+         this.ctx.fillRect(g, E, this.metrics.width, this.metrics.height);
+         break;
++      case "outline":
++        const D = Math.max(1, Math.floor(Math.min(this.metrics.width, this.metrics.height) * 0.1));
++        this.ctx.strokeStyle = this.theme.cursor, this.ctx.lineWidth = D, this.ctx.strokeRect(
++          g + D / 2,
++          E + D / 2,
++          this.metrics.width - D,
++          this.metrics.height - D
++        );
++        break;
+       case "underline":
+         const C = Math.max(2, Math.floor(this.metrics.height * 0.15));
+         this.ctx.fillRect(

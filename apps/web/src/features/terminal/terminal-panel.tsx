@@ -1,7 +1,13 @@
 import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
-import { useEffect, useEffectEvent, useRef, type ComponentPropsWithoutRef } from 'react'
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type ComponentPropsWithoutRef,
+  type FocusEvent,
+} from 'react'
 
 import { useTheme } from '@/components/theme-context'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
@@ -11,10 +17,28 @@ import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-socke
 
 import { sendTerminalClientMessage } from './terminal-socket'
 import { readTerminalTheme } from './terminal-theme'
+import { isFocusOutsideElement } from './utils/focus-target'
 
 type TerminalDimensions = {
   cols: number
   rows: number
+}
+
+type TerminalCursorStyle = 'block' | 'underline' | 'bar' | 'outline'
+
+type TerminalCursorOptions = {
+  cursorBlink: boolean
+  cursorStyle: TerminalCursorStyle
+}
+
+const FOCUSED_TERMINAL_CURSOR: TerminalCursorOptions = {
+  cursorBlink: true,
+  cursorStyle: 'block',
+}
+
+const UNFOCUSED_TERMINAL_CURSOR: TerminalCursorOptions = {
+  cursorBlink: false,
+  cursorStyle: 'outline',
 }
 
 let ghosttyInitPromise: Promise<void> | null = null
@@ -31,6 +55,7 @@ export function TerminalPanel({
   const hostRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
+  const terminalHasFocusArea = useFocus((state) => state.activeArea === 'terminal')
   const setFocusArea = useFocus((state) => state.setFocusArea)
   const activateTerminalAfterFrame = useEffectEvent(() => {
     if (activationFrameRef.current !== null) {
@@ -46,6 +71,19 @@ export function TerminalPanel({
   const activateTerminalIfActive = useEffectEvent(() => {
     if (active) activateTerminalAfterFrame()
   })
+  const handleTerminalFocus = () => {
+    setFocusArea('terminal')
+    applyTerminalCursorOptions(terminalRef.current, FOCUSED_TERMINAL_CURSOR)
+  }
+  const handleTerminalBlur = (event: FocusEvent<HTMLElement>) => {
+    if (!isFocusOutsideElement(event.currentTarget, event.relatedTarget)) return
+
+    applyTerminalCursorOptions(terminalRef.current, UNFOCUSED_TERMINAL_CURSOR)
+  }
+  const handleTerminalPointerDown = () => {
+    setFocusArea('terminal')
+    applyTerminalCursorOptions(terminalRef.current, FOCUSED_TERMINAL_CURSOR)
+  }
 
   // ghostty-web bakes the theme into its WASM terminal at construction and has
   // no runtime theme API, so a live theme switch is applied by rebuilding the
@@ -91,6 +129,13 @@ export function TerminalPanel({
     }
   }, [active])
 
+  useEffect(() => {
+    applyTerminalCursorOptions(
+      terminalRef.current,
+      terminalHasFocusArea ? FOCUSED_TERMINAL_CURSOR : UNFOCUSED_TERMINAL_CURSOR,
+    )
+  }, [terminalHasFocusArea])
+
   return (
     <section
       aria-label='Terminal'
@@ -98,8 +143,9 @@ export function TerminalPanel({
       className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
       data-native-window-drag-blocker=''
       style={{ background: 'var(--terminal-background)' }}
-      onFocusCapture={() => setFocusArea('terminal')}
-      onPointerDownCapture={() => setFocusArea('terminal')}
+      onBlurCapture={handleTerminalBlur}
+      onFocusCapture={handleTerminalFocus}
+      onPointerDownCapture={handleTerminalPointerDown}
     >
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono' ref={hostRef} />
     </section>
@@ -237,14 +283,26 @@ function handleTerminalServerMessage({
 function createTerminal(root: HTMLElement) {
   return new Terminal({
     allowTransparency: true,
-    cursorBlink: true,
-    cursorStyle: 'block',
+    cursorBlink: UNFOCUSED_TERMINAL_CURSOR.cursorBlink,
+    cursorStyle: patchedTerminalCursorStyle(UNFOCUSED_TERMINAL_CURSOR.cursorStyle),
     fontFamily: DEFAULT_MONO_FONT_STACK,
     fontSize: 12,
     scrollback: 10_000,
     smoothScrollDuration: 80,
     theme: readTerminalTheme(root),
   })
+}
+
+function applyTerminalCursorOptions(terminal: Terminal | null, options: TerminalCursorOptions) {
+  if (!terminal) return
+
+  terminal.options.cursorStyle = patchedTerminalCursorStyle(options.cursorStyle)
+  terminal.options.cursorBlink = options.cursorBlink
+}
+
+function patchedTerminalCursorStyle(style: TerminalCursorStyle) {
+  // ghostty-web is patched to support outline before its published types do.
+  return style as Terminal['options']['cursorStyle']
 }
 
 function currentTerminalDimensions(terminal: Terminal) {

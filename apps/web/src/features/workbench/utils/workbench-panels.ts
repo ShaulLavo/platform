@@ -3,33 +3,50 @@ import {
   type EditorTabRecord,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 
-export type WorkbenchSidebarTab = 'files' | 'git' | 'search'
+export type WorkbenchSidebarTab = 'chat' | 'files' | 'git' | 'logs' | 'search'
 export type WorkbenchBottomTab = 'terminal' | 'problems'
+
+export type WorkbenchOuterLayout = {
+  readonly main: number
+  readonly sidebar: number
+}
+
+export type WorkbenchMainLayout = {
+  readonly bottom: number
+  readonly editor: number
+}
 
 export type WorkbenchPanels = {
   readonly activeBottomTab: WorkbenchBottomTab
   readonly activeEditorTabId: string | null
   readonly activeSidebarTab: WorkbenchSidebarTab
-  readonly bottomHeight: number
   readonly editorTabs: readonly EditorTabRecord[]
-  readonly sidebarWidth: number
+  readonly mainLayout: WorkbenchMainLayout
+  readonly outerLayout: WorkbenchOuterLayout
 }
 
-const DEFAULT_SIDEBAR_WIDTH = 300
-const DEFAULT_BOTTOM_HEIGHT = 240
-const MIN_SIDEBAR_WIDTH = 220
-const MAX_SIDEBAR_WIDTH = 520
-const MIN_BOTTOM_HEIGHT = 140
-const MAX_BOTTOM_HEIGHT = 480
+export const SIDEBAR_MIN_SIZE = 220
+export const SIDEBAR_MAX_SIZE = 520
+export const BOTTOM_MIN_SIZE = 140
+export const BOTTOM_MAX_SIZE = 480
+
+const DEFAULT_OUTER_LAYOUT: WorkbenchOuterLayout = {
+  main: 76,
+  sidebar: 24,
+}
+const DEFAULT_MAIN_LAYOUT: WorkbenchMainLayout = {
+  bottom: 30,
+  editor: 70,
+}
 
 export function createDefaultWorkbenchPanels(): WorkbenchPanels {
   return {
     activeBottomTab: 'terminal',
     activeEditorTabId: null,
     activeSidebarTab: 'files',
-    bottomHeight: DEFAULT_BOTTOM_HEIGHT,
     editorTabs: [],
-    sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+    mainLayout: DEFAULT_MAIN_LAYOUT,
+    outerLayout: DEFAULT_OUTER_LAYOUT,
   }
 }
 
@@ -154,18 +171,24 @@ export function setWorkbenchBottomTab(
   return { ...panels, activeBottomTab }
 }
 
-export function resizeWorkbenchSidebar(panels: WorkbenchPanels, sidebarWidth: number) {
-  const nextWidth = clamp(sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
-  if (panels.sidebarWidth === nextWidth) return panels
+export function setWorkbenchOuterLayout(
+  panels: WorkbenchPanels,
+  layout: Partial<Record<keyof WorkbenchOuterLayout, number>>,
+) {
+  const outerLayout = normalizeOuterLayout(layout)
+  if (outerLayoutsEqual(panels.outerLayout, outerLayout)) return panels
 
-  return { ...panels, sidebarWidth: nextWidth }
+  return { ...panels, outerLayout }
 }
 
-export function resizeWorkbenchBottom(panels: WorkbenchPanels, bottomHeight: number) {
-  const nextHeight = clamp(bottomHeight, MIN_BOTTOM_HEIGHT, MAX_BOTTOM_HEIGHT)
-  if (panels.bottomHeight === nextHeight) return panels
+export function setWorkbenchMainLayout(
+  panels: WorkbenchPanels,
+  layout: Partial<Record<keyof WorkbenchMainLayout, number>>,
+) {
+  const mainLayout = normalizeMainLayout(layout)
+  if (mainLayoutsEqual(panels.mainLayout, mainLayout)) return panels
 
-  return { ...panels, bottomHeight: nextHeight }
+  return { ...panels, mainLayout }
 }
 
 export function normalizeWorkbenchPanels(value: WorkbenchPanels): WorkbenchPanels {
@@ -173,9 +196,9 @@ export function normalizeWorkbenchPanels(value: WorkbenchPanels): WorkbenchPanel
     activeBottomTab: value.activeBottomTab,
     activeEditorTabId: normalizedActiveTabId(value),
     activeSidebarTab: value.activeSidebarTab,
-    bottomHeight: clamp(value.bottomHeight, MIN_BOTTOM_HEIGHT, MAX_BOTTOM_HEIGHT),
     editorTabs: value.editorTabs,
-    sidebarWidth: clamp(value.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH),
+    mainLayout: normalizeMainLayout(value.mainLayout),
+    outerLayout: normalizeOuterLayout(value.outerLayout),
   }
 }
 
@@ -221,4 +244,78 @@ function clampedInsertionIndex(index: number, length: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+function normalizeOuterLayout(
+  layout: Partial<Record<keyof WorkbenchOuterLayout, number>>,
+): WorkbenchOuterLayout {
+  const normalized = normalizeSplitLayout(
+    layout.sidebar,
+    layout.main,
+    DEFAULT_OUTER_LAYOUT.sidebar,
+    DEFAULT_OUTER_LAYOUT.main,
+  )
+
+  return {
+    main: normalized.second,
+    sidebar: normalized.first,
+  }
+}
+
+function normalizeMainLayout(
+  layout: Partial<Record<keyof WorkbenchMainLayout, number>>,
+): WorkbenchMainLayout {
+  const normalized = normalizeSplitLayout(
+    layout.editor,
+    layout.bottom,
+    DEFAULT_MAIN_LAYOUT.editor,
+    DEFAULT_MAIN_LAYOUT.bottom,
+  )
+
+  return {
+    bottom: normalized.second,
+    editor: normalized.first,
+  }
+}
+
+function normalizeSplitLayout(
+  first: number | undefined,
+  second: number | undefined,
+  fallbackFirst: number,
+  fallbackSecond: number,
+) {
+  const fallback = {
+    first: fallbackFirst,
+    second: fallbackSecond,
+  }
+  if (!isLayoutSize(first)) return fallback
+  if (!isLayoutSize(second)) return fallback
+
+  const total = first + second
+  if (total <= 0) return fallback
+
+  const normalizedFirst = (first / total) * 100
+  return {
+    first: normalizedFirst,
+    second: 100 - normalizedFirst,
+  }
+}
+
+function isLayoutSize(value: number | undefined): value is number {
+  if (typeof value !== 'number') return false
+  if (!Number.isFinite(value)) return false
+
+  return value >= 0 && value <= 100
+}
+
+function outerLayoutsEqual(left: WorkbenchOuterLayout, right: WorkbenchOuterLayout) {
+  if (left.sidebar !== right.sidebar) return false
+
+  return left.main === right.main
+}
+
+function mainLayoutsEqual(left: WorkbenchMainLayout, right: WorkbenchMainLayout) {
+  if (left.editor !== right.editor) return false
+
+  return left.bottom === right.bottom
 }

@@ -24,7 +24,7 @@ The full table and the rejected findings are below.
 | 005  | [Patch vulnerable dependencies (bun audit)](005-patch-vulnerable-dependencies.md)              | P2       | S–M    | — (cleaner after 001)              | TODO                                                                                                                                                      |
 | 006  | [Workbench panel-state characterization tests](006-workbench-panels-characterization-tests.md) | P2       | M      | —                                  | DONE (22 tests; characterized active-tab-after-close, path close, resize, setter, and normalize behavior)                                                 |
 | 007  | [Projection latestTurnJson read-modify-write dedup](007-projection-latest-turn-json-dedup.md)  | P3       | S–M    | — (Step 1 tests gate the refactor) | DONE (3 latestTurn characterization tests; server typecheck/lint/test green)                                                                              |
-| 008  | [SPIKE: wire the chat panel into the workbench](008-wire-up-chat-panel-spike.md)               | P3       | M      | —                                  | TODO                                                                                                                                                      |
+| 008  | [SPIKE: wire the chat panel into the workbench](008-wire-up-chat-panel-spike.md)               | P3       | M      | —                                  | DONE (2026-06-19): sidebar mounts chat/logs; browser verified both panels; web typecheck/lint/test green; notes in `docs/chat-and-logs-wiring-notes.md`   |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

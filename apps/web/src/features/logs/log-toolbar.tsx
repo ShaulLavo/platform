@@ -46,7 +46,7 @@ export function LogsToolbar({
   const areaValues = logBreakdownOptionValues(areas, filters.area)
 
   return (
-    <div className='bg-muted/20 border-b p-1.5'>
+    <div className='border-b p-1.5'>
       <div className='flex items-center gap-1'>
         <select
           aria-label='Log time range'
@@ -97,7 +97,7 @@ export function LogsToolbar({
           <MagnifyingGlassIcon className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2' />
           <Input
             aria-label='Search logs'
-            className='h-7 pl-7 text-[11px]'
+            className='bg-background h-7 pl-7 text-[11px]'
             placeholder='Search logs'
             value={filters.search}
             onChange={(event) => onFiltersChange({ ...filters, search: event.target.value })}

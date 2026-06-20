@@ -63,7 +63,7 @@ export const LogsEventRow = memo(
 
     return (
       <div
-        className='bg-background absolute left-0 w-full border-b select-text'
+        className='absolute left-0 w-full border-b select-text'
         data-index={index}
         ref={ref}
         style={{ transform: `translateY(${start}px)` }}
@@ -112,7 +112,7 @@ export const LogsEventRow = memo(
                 <LogsRowChevron expanded={expanded} />
               </div>
             </div>
-            <AccordionContent className='bg-muted/10 border-t px-2 py-2'>
+            <AccordionContent className='border-t px-2 py-2'>
               <LogsEventInlineDetail detail={detail} event={event} />
             </AccordionContent>
           </AccordionItem>

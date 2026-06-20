@@ -1,5 +1,9 @@
 import type { EditorKeymapLayer } from '@singapor/core'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@workspace/ui/components/resizable'
 
 import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import type { GitStoreApi } from '@/features/git/state'
@@ -9,8 +13,12 @@ import { CodePanel } from '@/features/workbench/components/code-panel'
 import { SidebarPanel } from '@/features/workbench/components/sidebar-panel'
 import { Wallpaper } from '@/features/workbench/components/wallpaper'
 import {
-  resizeWorkbenchBottom,
-  resizeWorkbenchSidebar,
+  BOTTOM_MAX_SIZE,
+  BOTTOM_MIN_SIZE,
+  SIDEBAR_MAX_SIZE,
+  SIDEBAR_MIN_SIZE,
+  setWorkbenchMainLayout,
+  setWorkbenchOuterLayout,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 
@@ -31,28 +39,12 @@ export function WorkbenchLayout({
   readonly rootPath: string
   readonly onPanelsChange: (panels: WorkbenchPanels) => void
 }) {
-  function startSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = panels.sidebarWidth
-
-    function handlePointerMove(moveEvent: PointerEvent) {
-      onPanelsChange(resizeWorkbenchSidebar(panels, startWidth + moveEvent.clientX - startX))
-    }
-
-    addResizeListeners(handlePointerMove)
+  function handleOuterLayoutChanged(layout: Record<string, number>) {
+    onPanelsChange(setWorkbenchOuterLayout(panels, layout))
   }
 
-  function startBottomResize(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault()
-    const startY = event.clientY
-    const startHeight = panels.bottomHeight
-
-    function handlePointerMove(moveEvent: PointerEvent) {
-      onPanelsChange(resizeWorkbenchBottom(panels, startHeight + startY - moveEvent.clientY))
-    }
-
-    addResizeListeners(handlePointerMove)
+  function handleMainLayoutChanged(layout: Record<string, number>) {
+    onPanelsChange(setWorkbenchMainLayout(panels, layout))
   }
 
   return (
@@ -63,10 +55,18 @@ export function WorkbenchLayout({
       role='application'
     >
       <Wallpaper />
-      <div className='border-border/70 relative z-10 flex h-full min-h-0 min-w-0 flex-1 border-4'>
-        <div
-          className='h-full min-h-0 shrink-0 overflow-hidden'
-          style={{ width: panels.sidebarWidth }}
+      <ResizablePanelGroup
+        key={rootPath}
+        className='border-border/70 relative z-10 min-h-0 min-w-0 flex-1 border-4'
+        defaultLayout={panels.outerLayout}
+        id='workbench-outer'
+        onLayoutChanged={handleOuterLayoutChanged}
+      >
+        <ResizablePanel
+          className='h-full min-h-0 overflow-hidden'
+          id='sidebar'
+          maxSize={SIDEBAR_MAX_SIZE}
+          minSize={SIDEBAR_MIN_SIZE}
         >
           <SidebarPanel
             editorKeymapLayers={editorKeymapLayers}
@@ -75,48 +75,37 @@ export function WorkbenchLayout({
             rootPath={rootPath}
             onPanelsChange={onPanelsChange}
           />
-        </div>
-        <div
-          aria-label='Resize sidebar'
-          className='bg-border/70 hover:bg-ring relative z-20 w-1 shrink-0 cursor-col-resize'
-          role='separator'
-          tabIndex={0}
-          onPointerDown={startSidebarResize}
-        />
-        <div className='flex min-h-0 min-w-0 flex-1 flex-col'>
-          <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
-            <CodePanel
-              conflicts={conflicts}
-              editorKeymapLayers={editorKeymapLayers}
-              gitFiles={gitFiles}
-              panels={panels}
-              rootPath={rootPath}
-            />
-          </div>
-          <div
-            aria-label='Resize bottom panel'
-            className='bg-border/70 hover:bg-ring relative z-20 h-1 shrink-0 cursor-row-resize'
-            role='separator'
-            tabIndex={0}
-            onPointerDown={startBottomResize}
-          />
-          <div
-            className='min-h-0 min-w-0 shrink-0 overflow-hidden'
-            style={{ height: panels.bottomHeight }}
+        </ResizablePanel>
+        <ResizableHandle id='sidebar-handle' withHandle />
+        <ResizablePanel className='min-h-0 min-w-0' id='main' minSize={360}>
+          <ResizablePanelGroup
+            className='min-h-0 min-w-0'
+            defaultLayout={panels.mainLayout}
+            id='workbench-main'
+            orientation='vertical'
+            onLayoutChanged={handleMainLayoutChanged}
           >
-            <BottomPanel panels={panels} rootPath={rootPath} onPanelsChange={onPanelsChange} />
-          </div>
-        </div>
-      </div>
+            <ResizablePanel className='min-h-0 min-w-0 overflow-hidden' id='editor' minSize={160}>
+              <CodePanel
+                conflicts={conflicts}
+                editorKeymapLayers={editorKeymapLayers}
+                gitFiles={gitFiles}
+                panels={panels}
+                rootPath={rootPath}
+              />
+            </ResizablePanel>
+            <ResizableHandle id='bottom-handle' withHandle />
+            <ResizablePanel
+              className='min-h-0 min-w-0 overflow-hidden'
+              id='bottom'
+              maxSize={BOTTOM_MAX_SIZE}
+              minSize={BOTTOM_MIN_SIZE}
+            >
+              <BottomPanel panels={panels} rootPath={rootPath} onPanelsChange={onPanelsChange} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   )
-}
-
-function addResizeListeners(handlePointerMove: (event: PointerEvent) => void) {
-  window.addEventListener('pointermove', handlePointerMove)
-  window.addEventListener('pointerup', handlePointerUp, { once: true })
-
-  function handlePointerUp() {
-    window.removeEventListener('pointermove', handlePointerMove)
-  }
 }

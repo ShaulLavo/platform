@@ -1,54 +1,74 @@
 import { fireEvent, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { vi } from 'vitest'
 
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import { EditorTabActionsContext } from '@/features/editor/providers/editor-tab-actions-context'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'
+import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 
-describe('EditorTabBar', () => {
-  it('removes closed tabs from the DOM on the next render', () => {
-    const { container, rerender } = renderWithProviders(<TestEditorTabs tabs={editorTabs()} />)
+test('removes closed tabs from the DOM on the next render', () => {
+  const { container, rerender } = renderWithProviders(<TestEditorTabs tabs={editorTabs()} />)
 
-    expect(editorTabElement(container, 'tab-a')).toBeInTheDocument()
+  expect(editorTabElement(container, 'tab-a')).toBeInTheDocument()
 
-    rerender(<TestEditorTabs tabs={editorTabs().filter((tab) => tab.id !== 'tab-a')} />)
+  rerender(<TestEditorTabs tabs={editorTabs().filter((tab) => tab.id !== 'tab-a')} />)
 
-    expect(editorTabElement(container, 'tab-a')).toBeNull()
-    expect(editorTabElement(container, 'tab-b')).toBeInTheDocument()
-  })
+  expect(editorTabElement(container, 'tab-a')).toBeNull()
+  expect(editorTabElement(container, 'tab-b')).toBeInTheDocument()
+})
 
-  it('closes the clicked tab id', () => {
-    const closeTab = vi.fn()
+test('hides the horizontal tab strip scrollbar', () => {
+  renderWithProviders(<TestEditorTabs tabs={editorTabs()} />)
 
-    renderWithProviders(<TestEditorTabs tabs={editorTabs()} onCloseTab={closeTab} />)
+  expect(screen.getByRole('tablist', { name: 'Editor tabs' })).toHaveClass('no-scrollbar')
+})
 
-    fireEvent.click(screen.getByLabelText('Close src/a.ts'))
+test('closes the clicked tab id', () => {
+  const closeTab = vi.fn()
 
-    expect(closeTab).toHaveBeenCalledWith('tab-a')
-  })
+  renderWithProviders(<TestEditorTabs tabs={editorTabs()} onCloseTab={closeTab} />)
 
-  it('selects the clicked tab id', () => {
-    const selectTab = vi.fn()
+  fireEvent.click(screen.getByLabelText('Close src/a.ts'))
 
-    const { container } = renderWithProviders(
-      <TestEditorTabs tabs={editorTabs()} onSelectTab={selectTab} />,
-    )
+  expect(closeTab).toHaveBeenCalledWith('tab-a')
+})
 
-    fireEvent.click(editorTabElement(container, 'tab-b')!)
+test('selects the clicked tab id', () => {
+  const selectTab = vi.fn()
 
-    expect(selectTab).toHaveBeenCalledWith('tab-b')
-  })
+  const { container } = renderWithProviders(
+    <TestEditorTabs tabs={editorTabs()} onSelectTab={selectTab} />,
+  )
+
+  fireEvent.click(editorTabElement(container, 'tab-b')!)
+
+  expect(selectTab).toHaveBeenCalledWith('tab-b')
+})
+
+test('requests bulk close ids from the tab context menu', () => {
+  const closeTabs = vi.fn()
+
+  const { container } = renderWithProviders(
+    <TestEditorTabs tabs={editorTabs()} onCloseTabs={closeTabs} />,
+  )
+
+  fireEvent.contextMenu(editorTabElement(container, 'tab-b')!)
+  fireEvent.click(screen.getByText('Close Others'))
+
+  expect(closeTabs).toHaveBeenCalledWith(['tab-a', 'tab-c'])
 })
 
 function TestEditorTabs({
   tabs,
   onCloseTab = () => true,
+  onCloseTabs = () => true,
   onSelectTab = () => undefined,
 }: {
   readonly tabs: readonly EditorTabModel[]
   readonly onCloseTab?: (tabId: string) => boolean
+  readonly onCloseTabs?: (tabIds: readonly string[]) => boolean
   readonly onSelectTab?: (tabId: string) => void
 }) {
   return (
@@ -56,6 +76,7 @@ function TestEditorTabs({
       <EditorTabActionsContext
         value={{
           requestCloseTab: onCloseTab,
+          requestCloseTabs: onCloseTabs,
           reorderTab: () => false,
           selectTab: onSelectTab,
         }}
@@ -74,6 +95,7 @@ function editorTabs(): EditorTabModel[] {
   return [
     editorTab({ active: true, id: 'tab-a', name: 'a.ts', path: 'src/a.ts' }),
     editorTab({ active: false, id: 'tab-b', name: 'b.ts', path: 'src/b.ts' }),
+    editorTab({ active: false, id: 'tab-c', name: 'c.ts', path: 'src/c.ts' }),
   ]
 }
 

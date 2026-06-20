@@ -1,4 +1,4 @@
-import { AppKeymapController } from '@/components/app-keymap-controller'
+import { AppKeymapController } from '@/app-keymap-controller'
 import { CommandPalette } from '@/components/command-palette'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { usePlatformCommandDispatch } from '@/keymap/commands'

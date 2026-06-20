@@ -15,6 +15,8 @@ import {
 } from '@dnd-kit/sortable'
 
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
+import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { SortableEditorTabButton } from '@/features/workbench/components/sortable-editor-tab-button'
 import { editorTabReorderIntent } from '@/features/workbench/utils/editor-tab-dnd'
@@ -22,7 +24,9 @@ import { editorTabReorderIntent } from '@/features/workbench/utils/editor-tab-dn
 const EDITOR_TAB_DND_MODIFIERS = [restrictToHorizontalAxis]
 
 export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[] }) {
+  const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
   const { reorderTab } = useEditorTabActions()
+  const closeTargets = editorTabCloseTargets(tabs, dirtyFilePaths)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -51,14 +55,32 @@ export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[
       <SortableContext items={tabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
         <div
           aria-label='Editor tabs'
-          className='border-border flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b px-2 pt-1'
+          className='no-scrollbar border-border flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b px-2 pt-1'
           role='tablist'
         >
           {tabs.map((tab) => {
-            return <SortableEditorTabButton key={tab.id} tab={tab} />
+            return (
+              <SortableEditorTabButton
+                closeTargets={closeTargets}
+                dirty={dirtyFilePaths.has(tab.path)}
+                key={tab.id}
+                tab={tab}
+              />
+            )
           })}
         </div>
       </SortableContext>
     </DndContext>
   )
+}
+
+function editorTabCloseTargets(
+  tabs: readonly EditorTabModel[],
+  dirtyFilePaths: ReadonlySet<string>,
+): EditorTabCloseTarget[] {
+  return tabs.map((tab) => ({
+    dirty: dirtyFilePaths.has(tab.path),
+    id: tab.id,
+    path: tab.path,
+  }))
 }

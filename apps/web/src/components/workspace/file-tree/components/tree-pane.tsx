@@ -424,7 +424,12 @@ function workspacePathForTreePath(rootPath: string, treePath: string) {
 const treeStyle = {
   '--trees-bg-muted-override': 'var(--accent)',
   '--trees-bg-override': 'transparent',
-  '--trees-selected-bg-override': 'var(--accent)',
+  // Selection marks the current file and must stay legible when the tree is blurred
+  // (editor focused) and under transparent mode. Hover uses var(--accent), which scales
+  // with --surface-opacity and washes out; give selection a fixed alpha off accent-solid
+  // so it keeps a visible floor and a clear edge over hover, while still letting the
+  // wallpaper through rather than reading as a solid block.
+  '--trees-selected-bg-override': 'color-mix(in oklch, var(--accent-solid) 60%, transparent)',
   '--trees-border-color-override': 'var(--border)',
   '--trees-fg-override': 'var(--foreground)',
   height: '100%',

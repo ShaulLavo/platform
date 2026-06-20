@@ -2,14 +2,17 @@ import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/
 import { useCallback, type CSSProperties, type Ref } from 'react'
 
 import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-intent-prefetch'
-import { useEditorTabDirty } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-dirty'
+import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
+import { EditorTabContextMenu } from '@/features/workbench/components/editor-tab-context-menu'
 import { TabTrailingSlot } from '@/features/workbench/components/tab-trailing-slot'
 import { fileIconStyle } from '@/lib/file-icon-style'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function EditorTabButton({
+  closeTargets,
+  dirty,
   dragAttributes,
   dragListeners,
   dragging = false,
@@ -17,6 +20,8 @@ export function EditorTabButton({
   dragStyle,
   tab,
 }: {
+  readonly closeTargets: readonly EditorTabCloseTarget[]
+  readonly dirty: boolean
   readonly dragAttributes?: DraggableAttributes
   readonly dragListeners?: DraggableSyntheticListeners
   readonly dragging?: boolean
@@ -24,7 +29,6 @@ export function EditorTabButton({
   readonly dragStyle?: CSSProperties
   readonly tab: EditorTabModel
 }) {
-  const dirty = useEditorTabDirty(tab.path)
   const intentPrefetchRef = useEditorTabIntentPrefetch(tab)
   const { requestCloseTab, selectTab } = useEditorTabActions()
   // Stable ref composition keeps Foresight and DnD from re-registering on every render.
@@ -44,7 +48,7 @@ export function EditorTabButton({
     requestCloseTab(tab.id)
   }
 
-  return (
+  const trigger = (
     <button
       {...dragAttributes}
       {...dragListeners}
@@ -79,6 +83,8 @@ export function EditorTabButton({
       />
     </button>
   )
+
+  return <EditorTabContextMenu closeTargets={closeTargets} tab={tab} trigger={trigger} />
 }
 
 function assignRef<TElement>(ref: Ref<TElement> | undefined, node: TElement | null) {

@@ -8,8 +8,8 @@ import { searchBufferDocumentId } from '@/features/search/search-buffer-document
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
-  resizeWorkbenchBottom,
-  resizeWorkbenchSidebar,
+  setWorkbenchMainLayout,
+  setWorkbenchOuterLayout,
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
   type WorkbenchPanels,
@@ -186,13 +186,13 @@ describe('workspace cache', () => {
     })
   })
 
-  it('persists fixed panel tabs and resize dimensions', () => {
+  it('persists fixed panel tabs and layout percentages', () => {
     const rootFolder = pickedDirectory('/repo')
     let panels = workbenchPanelsForPaths(['/repo/src/a.ts', '/repo/src/b.ts'], '/repo/src/b.ts')
     panels = setWorkbenchSidebarTab(panels, 'git')
     panels = setWorkbenchBottomTab(panels, 'problems')
-    panels = resizeWorkbenchSidebar(panels, 420)
-    panels = resizeWorkbenchBottom(panels, 320)
+    panels = setWorkbenchOuterLayout(panels, { main: 68, sidebar: 32 })
+    panels = setWorkbenchMainLayout(panels, { bottom: 36, editor: 64 })
 
     writeCacheFixtureEntries(
       workspaceCacheState({
@@ -211,8 +211,14 @@ describe('workspace cache', () => {
       workbenchPanels: {
         activeBottomTab: 'problems',
         activeSidebarTab: 'git',
-        bottomHeight: 320,
-        sidebarWidth: 420,
+        mainLayout: {
+          bottom: 36,
+          editor: 64,
+        },
+        outerLayout: {
+          main: 68,
+          sidebar: 32,
+        },
       },
     })
   })

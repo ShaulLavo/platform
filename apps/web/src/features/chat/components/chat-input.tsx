@@ -258,7 +258,7 @@ export function ChatInput({
   )
 
   return (
-    <div className='shrink-0 px-3 pt-2 pb-3'>
+    <div className='border-border/60 shrink-0 border-t px-3 pt-2.5 pb-3'>
       <form
         className='relative mx-auto w-full max-w-3xl'
         onSubmit={(event) => event.preventDefault()}
@@ -277,8 +277,8 @@ export function ChatInput({
         <LexicalComposer initialConfig={initialConfig} key={inputKey}>
           <div
             className={cn(
-              'border-border/80 bg-background backdrop-material overflow-hidden rounded-md border shadow-[0_16px_42px_color-mix(in_oklch,var(--foreground)_7%,transparent)] transition-[border-color,box-shadow]',
-              editorFocused && 'border-info/70 ring-2 ring-info/20',
+              'border-border/80 bg-background overflow-hidden rounded-xl border shadow-[0_1px_2px_color-mix(in_oklch,var(--foreground)_5%,transparent)] transition-[border-color,box-shadow]',
+              editorFocused && 'border-foreground/25 ring-2 ring-foreground/[0.07]',
             )}
           >
             <ChatInputEditor

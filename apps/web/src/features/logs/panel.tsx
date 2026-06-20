@@ -48,7 +48,7 @@ export const LogsPanel = memo(({ active }: LogsPanelProps) => {
 
   return (
     <section
-      className='bg-background text-foreground flex h-full min-h-0 flex-col'
+      className='text-foreground flex h-full min-h-0 flex-col'
       onFocusCapture={() => setFocusArea('logs')}
       onPointerDownCapture={() => setFocusArea('logs')}
     >

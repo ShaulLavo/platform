@@ -10,7 +10,7 @@ export function LogsTimeline({ summary }: LogsTimelineProps) {
   const maxTotal = Math.max(1, ...(summary?.timeline.map((bucket) => bucket.total) ?? [0]))
 
   return (
-    <div className='bg-background border-b px-2 py-2'>
+    <div className='border-b px-2 py-2'>
       <div className='mb-2 grid grid-cols-4 gap-2 text-[10px]'>
         <LogsTimelineMetric label='Events' value={summary?.total ?? 0} />
         <LogsTimelineMetric label='Errors' tone='error' value={summary?.errorCount ?? 0} />

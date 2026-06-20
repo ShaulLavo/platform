@@ -143,19 +143,33 @@ const cachedSearchBufferStateSchema = v.strictObject({
   truncated: v.boolean(),
   wholeWord: v.boolean(),
 })
-const sidebarTabSchema = v.union([v.literal('files'), v.literal('git'), v.literal('search')])
+const sidebarTabSchema = v.union([
+  v.literal('chat'),
+  v.literal('files'),
+  v.literal('git'),
+  v.literal('logs'),
+  v.literal('search'),
+])
 const bottomTabSchema = v.union([v.literal('terminal'), v.literal('problems')])
 const editorTabRecordSchema = v.strictObject({
   id: v.string(),
   path: v.string(),
 })
+const outerLayoutSchema = v.strictObject({
+  main: v.number(),
+  sidebar: v.number(),
+})
+const mainLayoutSchema = v.strictObject({
+  bottom: v.number(),
+  editor: v.number(),
+})
 const workbenchPanelsSchema = v.strictObject({
   activeBottomTab: bottomTabSchema,
   activeEditorTabId: nullableStringSchema,
   activeSidebarTab: sidebarTabSchema,
-  bottomHeight: v.number(),
   editorTabs: v.array(editorTabRecordSchema),
-  sidebarWidth: v.number(),
+  mainLayout: mainLayoutSchema,
+  outerLayout: outerLayoutSchema,
 })
 
 export type CachedWorkspaceState = {
@@ -379,9 +393,9 @@ function workbenchPanelsForWorkspace(
     activeBottomTab: workbenchPanels.activeBottomTab,
     activeEditorTabId,
     activeSidebarTab: workbenchPanels.activeSidebarTab,
-    bottomHeight: workbenchPanels.bottomHeight,
     editorTabs,
-    sidebarWidth: workbenchPanels.sidebarWidth,
+    mainLayout: workbenchPanels.mainLayout,
+    outerLayout: workbenchPanels.outerLayout,
   })
 }
 

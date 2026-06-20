@@ -143,9 +143,7 @@ function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>
   // `speed` scales any mode (1 = default, 2 = twice as fast, 0.5 = half).
   loaders.push(
     loadPlugin('@singapor/decode', () =>
-      import('@singapor/decode').then((module) =>
-        module.createDecodePlugin({ mode: 'token', speed: 1 }),
-      ),
+      import('@singapor/decode').then((module) => module.createDecodePlugin({ mode: 'diffusion' })),
     ),
   )
 
