@@ -41,3 +41,7 @@ references/
 # jscpd duplication report
 jscpd-report/
 .bench-fixtures/
+
+# namecheck.mjs generated artifacts
+/results.csv
+/run.log
