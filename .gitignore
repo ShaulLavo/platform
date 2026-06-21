@@ -46,3 +46,6 @@ jscpd-report/
 /run.log
 /orig.txt
 /orig.log
+/orig*.txt
+/orig*.log
+/results-*.csv
