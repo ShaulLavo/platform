@@ -318,23 +318,25 @@ function toCsv(rows) {
   return `${lines.join('\n')}\n`;
 }
 
+// Shortlist gate: the name must be ownable on npm and reachable on a primary
+// domain. GitHub is a soft signal (it still feeds the score and is shown per
+// row), not a gate — the npm name + domain are what actually must be claimable.
 function qualifies(r) {
   const npmOk = r.npm.code === 'FREE' || r.npm.code === 'DEAD-SQUAT';
   const domainOk = r.domains.dev === 'free' || r.domains.com === 'free';
-  return npmOk && domainOk && r.gh === 'FREE';
+  return npmOk && domainOk;
 }
 
 function printShortlist(rows) {
   const list = rows.filter(qualifies);
-  console.log('\nSHORTLIST — npm free/dead-squat + (.dev or .com free) + github handle free:');
+  console.log('\nSHORTLIST — npm free/dead-squat + (.dev or .com free):');
   if (list.length === 0) {
     console.log('  (none qualified)');
-    if (!GH_TOKEN) console.log('  note: github handles are UNKNOWN without a token — set GITHUB_TOKEN and rerun.');
     return;
   }
   for (const r of list) {
     const freeDomains = TLDS.filter((t) => r.domains[t] === 'free').map((t) => `.${t}`).join(' ') || '(none)';
-    console.log(`  ${r.platform} / ${r.unit}  —  npm ${r.npm.code}, domains ${freeDomains}, gh free, score ${r.score}`);
+    console.log(`  ${r.platform} / ${r.unit}  —  npm ${r.npm.code}, domains ${freeDomains}, gh ${GH_LABEL[r.gh]}, score ${r.score}`);
     console.log(`      eyeball the lane: ${r.lane}`);
   }
 }
