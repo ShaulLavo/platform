@@ -44,3 +44,5 @@ jscpd-report/
 
 # namecheck.mjs run log
 /run.log
+/orig.txt
+/orig.log
