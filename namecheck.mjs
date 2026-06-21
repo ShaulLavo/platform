@@ -29,7 +29,7 @@ const TLDS = ['dev', 'com', 'io', 'sh', 'app']; // .dev/.com weighted x2 in scor
 const CONCURRENCY = 8; // global in-flight HTTP cap — polite, deterministic
 const REQ_TIMEOUT_MS = 8000;
 const MAX_RETRIES = 1;
-const DOMAIN_RETRIES = 3; // RDAP servers throttle in bursts; give them a few tries
+const DOMAIN_RETRIES = 5; // RDAP servers throttle in bursts; give them a few tries
 const RETRY_AFTER_CAP_MS = 6000; // honor Retry-After but never block longer than this
 const TWO_YEARS_MS = 1000 * 60 * 60 * 24 * 365 * 2;
 const UA = 'namecheck.mjs name-availability-checker';
@@ -38,7 +38,7 @@ const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
 // Some authoritative RDAP hosts (notably Google's, shared by .dev + .app) 429
 // on bursts. Cap our concurrency *per host* so we never trip them in the first
 // place; everything else rides the global limiter.
-const HOST_CAPS = { 'pubapi.registry.google': 3 };
+const HOST_CAPS = { 'pubapi.registry.google': 2 };
 
 // ccTLDs missing from IANA's RDAP bootstrap. rdap.org can't route these and
 // returns a misleading 404 for every name (registered or not), so we point at
@@ -137,7 +137,7 @@ function backoffMs(res, attempt) {
   const ra = Number(res.retryAfter);
   if (Number.isFinite(ra) && ra > 0) return Math.min(ra * 1000, RETRY_AFTER_CAP_MS);
   const throttled = res.status === 403 || res.status === 429;
-  return (throttled ? 500 : 300) * attempt;
+  return (throttled ? 600 : 300) * attempt;
 }
 
 // Per-host circuit breaker — opens ONLY on a definitive "stop" signal, never on
