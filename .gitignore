@@ -42,6 +42,5 @@ references/
 jscpd-report/
 .bench-fixtures/
 
-# namecheck.mjs generated artifacts
-/results.csv
+# namecheck.mjs run log
 /run.log
