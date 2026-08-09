@@ -1,6 +1,15 @@
-import { asc, desc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm'
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import * as v from 'valibot'
-import type { OrchestrationCheckpointFile } from '@workspace/contracts'
+import {
+  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+  orchestrationThreadDetailPageInputSchema,
+  orchestrationThreadDetailPageSchema,
+  type OrchestrationCheckpointFile,
+  type OrchestrationThreadDetailAnchor,
+  type OrchestrationThreadDetailPage,
+  type OrchestrationThreadDetailPageInput,
+} from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
 import {
   orchestrationShellSnapshotSchema,
@@ -113,6 +122,12 @@ export class OrchestrationSnapshotQuery {
     })
   }
 
+  /**
+   * The newest window of the thread, never the whole thread: opening a 5,000
+   * message thread has to cost the same as opening a 5 message one. Older rows
+   * are reached with `threadDetailPage`, walking backwards from the oldest row
+   * the caller holds — nothing here is trimmed out of reach.
+   */
   threadDetailSnapshot(threadId: string): OrchestrationThreadDetailSnapshot {
     const row = this.database
       .select()
@@ -127,51 +142,94 @@ export class OrchestrationSnapshotQuery {
       snapshotSequence: this.currentSequence(),
       thread: threadFromRow(
         row,
-        this.threadMessages(threadId),
-        this.threadActivities(threadId),
+        this.messagesBefore(threadId, null, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE).rows,
+        this.activitiesBefore(threadId, null, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE).rows,
         this.threadSession(threadId),
       ),
     })
   }
 
-  private threadMessages(threadId: string) {
-    return this.database
-      .select()
-      .from(projectionThreadMessages)
-      .where(eq(projectionThreadMessages.threadId, threadId))
-      .orderBy(asc(projectionThreadMessages.createdAt))
-      .all()
+  /**
+   * One page of strictly older rows. Messages and activities are two streams
+   * with their own boundaries, so each walks back independently and the page is
+   * exhausted only once both have reached the start of the thread.
+   */
+  threadDetailPage(input: OrchestrationThreadDetailPageInput): OrchestrationThreadDetailPage {
+    const query = v.parse(orchestrationThreadDetailPageInputSchema, input)
+    const exists = this.database
+      .select({ threadId: projectionThreads.threadId })
+      .from(projectionThreads)
+      .where(eq(projectionThreads.threadId, query.threadId))
+      .get()
+    if (!exists) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId: query.threadId })
+
+    const messages = this.messagesBefore(query.threadId, query.beforeMessage, query.limit)
+    const activities = this.activitiesBefore(query.threadId, query.beforeActivity, query.limit)
+
+    return v.parse(orchestrationThreadDetailPageSchema, {
+      activities: activities.rows.map(activityFromRow),
+      hasEarlier: messages.hasEarlier || activities.hasEarlier,
+      messages: messages.rows.map(messageFromRow),
+      snapshotSequence: this.currentSequence(),
+      threadId: query.threadId,
+    })
   }
 
-  private threadActivities(threadId: string) {
-    return this.database
+  private messagesBefore(
+    threadId: string,
+    before: OrchestrationThreadDetailAnchor | null,
+    limit: number,
+  ) {
+    const rows = this.database
+      .select()
+      .from(projectionThreadMessages)
+      .where(
+        and(
+          eq(projectionThreadMessages.threadId, threadId),
+          olderThan(projectionThreadMessages.createdAt, projectionThreadMessages.messageId, before),
+        ),
+      )
+      .orderBy(desc(projectionThreadMessages.createdAt), desc(projectionThreadMessages.messageId))
+      .limit(limit + 1)
+      .all()
+
+    return takeBackwardsPage(rows, limit)
+  }
+
+  private activitiesBefore(
+    threadId: string,
+    before: OrchestrationThreadDetailAnchor | null,
+    limit: number,
+  ) {
+    const rows = this.database
       .select()
       .from(projectionThreadActivities)
-      .where(eq(projectionThreadActivities.threadId, threadId))
-      .orderBy(asc(projectionThreadActivities.createdAt))
+      .where(
+        and(
+          eq(projectionThreadActivities.threadId, threadId),
+          olderThan(
+            projectionThreadActivities.createdAt,
+            projectionThreadActivities.activityId,
+            before,
+          ),
+        ),
+      )
+      .orderBy(
+        desc(projectionThreadActivities.createdAt),
+        desc(projectionThreadActivities.activityId),
+      )
+      .limit(limit + 1)
       .all()
+
+    return takeBackwardsPage(rows, limit)
   }
 
   private recentThreadMessages(threadId: string) {
-    return this.database
-      .select()
-      .from(projectionThreadMessages)
-      .where(eq(projectionThreadMessages.threadId, threadId))
-      .orderBy(desc(projectionThreadMessages.createdAt))
-      .limit(MAX_THREAD_MESSAGES)
-      .all()
-      .toReversed()
+    return this.messagesBefore(threadId, null, MAX_THREAD_MESSAGES).rows
   }
 
   private recentThreadActivities(threadId: string) {
-    return this.database
-      .select()
-      .from(projectionThreadActivities)
-      .where(eq(projectionThreadActivities.threadId, threadId))
-      .orderBy(desc(projectionThreadActivities.createdAt))
-      .limit(MAX_THREAD_ACTIVITIES)
-      .all()
-      .toReversed()
+    return this.activitiesBefore(threadId, null, MAX_THREAD_ACTIVITIES).rows
   }
 
   private threadSession(threadId: string) {
@@ -219,6 +277,36 @@ export class OrchestrationSnapshotQuery {
         .where(eq(projectionState.projector, ORCHESTRATION_PROJECTOR_NAME))
         .get()?.sequence ?? 0
     )
+  }
+}
+
+/**
+ * Strictly-older predicate under `(createdAt, id)` ordering. A `null` boundary
+ * is "hold nothing yet", which reads the newest rows — the same slice the
+ * detail snapshot's window carries.
+ */
+function olderThan(
+  createdAtColumn: SQLiteColumn,
+  idColumn: SQLiteColumn,
+  before: OrchestrationThreadDetailAnchor | null,
+): SQL | undefined {
+  if (!before) return undefined
+
+  return or(
+    lt(createdAtColumn, before.createdAt),
+    and(eq(createdAtColumn, before.createdAt), lt(idColumn, before.id)),
+  )
+}
+
+/**
+ * Rows arrive newest-first and one past the limit: reading the extra row is how
+ * `hasEarlier` stays exact without a second count query. The page is returned
+ * oldest-first so callers prepend it as-is.
+ */
+function takeBackwardsPage<Row>(rows: Row[], limit: number) {
+  return {
+    hasEarlier: rows.length > limit,
+    rows: rows.slice(0, limit).toReversed(),
   }
 }
 

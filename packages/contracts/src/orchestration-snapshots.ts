@@ -5,9 +5,11 @@ import {
   nonNegativeIntegerSchema,
   orchestrationCheckpointSummarySchema,
   orchestrationLatestTurnSchema,
+  orchestrationMessageSchema,
   orchestrationProjectSchema,
   orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
+  orchestrationThreadActivitySchema,
   orchestrationThreadSchema,
   trimmedNonEmptyStringSchema,
 } from './chat-model'
@@ -48,9 +50,66 @@ export const orchestrationShellSnapshotSchema = v.object({
 })
 
 /**
+ * How many messages and how many activities one thread-detail window carries.
+ * A thread is unbounded, so the detail snapshot ships only its tail — a 5,000
+ * message thread must open as fast as a 5 message one. Everything older stays
+ * reachable through `threadDetailPage`.
+ */
+export const ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE = 200
+
+/** Ceiling on a client-chosen page size: the page read is client-reachable. */
+export const ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE = 1_000
+
+/**
+ * Keyset boundary for one backwards walk: the oldest row the caller already
+ * holds, as `(createdAt, id)`.
+ *
+ * Deliberately derived from row content instead of an opaque server-minted
+ * token. The caller can always rebuild the boundary from what it is currently
+ * holding, so trimming a client cache, a reconnect that replaces the window, or
+ * a revert that rewrites projection rows can never strand history behind a
+ * stale cursor — which is the only way "capped" stops meaning "unreachable".
+ */
+export const orchestrationThreadDetailAnchorSchema = v.object({
+  id: trimmedNonEmptyStringSchema,
+  createdAt: isoDateTimeSchema,
+})
+
+/**
+ * `null` on a boundary means "hold nothing of this kind yet", which reads the
+ * newest rows — the same slice the detail snapshot's window carries.
+ */
+export const orchestrationThreadDetailPageInputSchema = v.object({
+  threadId: threadIdSchema,
+  beforeMessage: v.nullish(orchestrationThreadDetailAnchorSchema, null),
+  beforeActivity: v.nullish(orchestrationThreadDetailAnchorSchema, null),
+  limit: v.optional(
+    v.pipe(
+      nonNegativeIntegerSchema,
+      v.minValue(1),
+      v.maxValue(ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE),
+    ),
+    ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+  ),
+})
+
+/** Rows are oldest-first, so a caller prepends the page as it arrives. */
+export const orchestrationThreadDetailPageSchema = v.object({
+  threadId: threadIdSchema,
+  snapshotSequence: nonNegativeIntegerSchema,
+  messages: v.array(orchestrationMessageSchema),
+  activities: v.array(orchestrationThreadActivitySchema),
+  /** False only once both walks have reached the start of the thread. */
+  hasEarlier: v.boolean(),
+})
+
+/**
  * Plans and checkpoints ride on the snapshot rather than on the thread: they
  * are history, and the engine's in-memory thread deliberately keeps only the
  * live tail. A cold reload gets them here; live updates arrive as events.
+ *
+ * `thread.messages` and `thread.activities` are the newest
+ * `ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE` rows, not the whole thread.
  */
 export const orchestrationThreadDetailSnapshotSchema = v.object({
   snapshotSequence: nonNegativeIntegerSchema,
@@ -132,6 +191,16 @@ export const orchestrationCommandReceiptSchema = v.object({
   error: v.nullable(v.string()),
 })
 
+export type OrchestrationThreadDetailAnchor = v.InferOutput<
+  typeof orchestrationThreadDetailAnchorSchema
+>
+/** Input side: boundaries and `limit` are the caller's to omit. */
+export type OrchestrationThreadDetailPageInput = v.InferInput<
+  typeof orchestrationThreadDetailPageInputSchema
+>
+export type OrchestrationThreadDetailPage = v.InferOutput<
+  typeof orchestrationThreadDetailPageSchema
+>
 export type OrchestrationProjectShell = v.InferOutput<typeof orchestrationProjectShellSchema>
 export type OrchestrationThreadShell = v.InferOutput<typeof orchestrationThreadShellSchema>
 export type OrchestrationShellSnapshot = v.InferOutput<typeof orchestrationShellSnapshotSchema>

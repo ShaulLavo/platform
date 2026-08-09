@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE } from '@workspace/contracts'
 import { projectEvents } from '../projector'
 import {
   MAX_THREAD_ACTIVITIES,
@@ -96,9 +97,11 @@ describe('in-memory read model bounds', () => {
 
     expect(hydrated.messages).toHaveLength(MAX_THREAD_MESSAGES)
     expect(hydrated.messages.at(-1)?.id).toBe(`message-${MAX_THREAD_MESSAGES + 49}`)
-    expect(fixture.snapshots.threadDetailSnapshot(THREAD_ID).thread.messages).toHaveLength(
-      MAX_THREAD_MESSAGES + 50,
-    )
+    // The detail snapshot is a window, not the thread: everything older is a
+    // `threadDetailPage` walk away, so nothing here is trimmed out of reach.
+    const window = fixture.snapshots.threadDetailSnapshot(THREAD_ID).thread.messages
+    expect(window).toHaveLength(ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE)
+    expect(window.at(-1)?.id).toBe(`message-${MAX_THREAD_MESSAGES + 49}`)
   })
 })
 

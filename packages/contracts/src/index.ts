@@ -292,6 +292,8 @@ export {
   type ThreadCreatedPayload,
 } from './orchestration-events'
 export {
+  ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE,
+  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
   orchestrationCommandReceiptSchema,
   orchestrationCommandReceiptStatusSchema,
   orchestrationGetFullThreadDiffInputSchema,
@@ -301,6 +303,9 @@ export {
   orchestrationReplayEventsResultSchema,
   orchestrationShellSnapshotSchema,
   orchestrationShellStreamItemSchema,
+  orchestrationThreadDetailAnchorSchema,
+  orchestrationThreadDetailPageInputSchema,
+  orchestrationThreadDetailPageSchema,
   orchestrationThreadDetailSnapshotSchema,
   orchestrationThreadShellSchema,
   orchestrationThreadStreamItemSchema,
@@ -312,6 +317,9 @@ export {
   type OrchestrationReplayEventsResult,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
+  type OrchestrationThreadDetailAnchor,
+  type OrchestrationThreadDetailPage,
+  type OrchestrationThreadDetailPageInput,
   type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadShell,
   type OrchestrationThreadStreamItem,

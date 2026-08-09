@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia'
 import * as v from 'valibot'
+import { ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE } from '@workspace/contracts'
 import {
   clientOrchestrationCommandSchema,
   orchestrationReplayEventsInputSchema,
@@ -84,8 +85,16 @@ export function orchestrationRoutes(
             async () => engine.threadDetailSnapshot(query.threadId),
             (snapshot) => ({
               activityCount: snapshot.thread.activities.length,
+              // A full window means the thread is longer than the snapshot: the
+              // rest is reachable only if the client pages backwards, so these
+              // are the fields that tell a truncated timeline from a short one.
+              activityWindowFull:
+                snapshot.thread.activities.length === ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
               messageCount: snapshot.thread.messages.length,
+              messageWindowFull:
+                snapshot.thread.messages.length === ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
               snapshotSequence: snapshot.snapshotSequence,
+              windowSize: ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
             }),
           ),
         {

@@ -12,6 +12,7 @@ import {
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
   type OrchestrationThreadActivity,
+  type OrchestrationThreadDetailPage,
   type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadShell,
   type OrchestrationThreadStreamItem,
@@ -21,6 +22,7 @@ import {
   type TurnId,
 } from '@workspace/contracts'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
+import { Throttler } from '@tanstack/react-pacer/throttler'
 import { create } from 'zustand'
 
 import {
@@ -30,10 +32,18 @@ import {
   createChatPipelineScope,
   type ChatPipelineScope,
 } from '../lib/chat-pipeline-logging'
+import { CHAT_PROJECTION_CACHE_PERSIST_MS } from './chat-cache-constants'
+import {
+  chatProjectionCacheFromState,
+  hydrateChatProjectionState,
+  readChatProjectionCache,
+  writeChatProjectionCache,
+} from './chat-projection-cache'
 import {
   applyChatProjectionEvents,
   applyChatProjectionShellStreamItem,
   applyChatProjectionThreadStreamItem,
+  prependChatProjectionThreadDetailPage,
   syncChatProjectionShellSnapshot,
   syncChatProjectionThreadDetailSnapshot,
 } from './chat-projection-writers'
@@ -128,6 +138,13 @@ export type ChatProjectionState = {
   proposedPlanIdsByThreadId: Record<ThreadId, ProposedPlanId[]>
   sidebarThreadSummaryById: Record<ThreadId, ChatSidebarThreadSummary>
   threadDetailMetaById: Record<ThreadId, ChatProjectionThreadDetailMeta>
+  /**
+   * Whether older rows exist behind the oldest one currently held. An absent
+   * entry means "not asked yet" and reads as `true`: the server's answer to the
+   * first page request is what settles it, and a cap that trims the front puts
+   * it back to `true` so trimmed history never becomes unreachable.
+   */
+  threadHasEarlierById: Record<ThreadId, boolean>
   threadDetailSequenceById: Record<ThreadId, number>
   threadIds: ThreadId[]
   threadIdsByProjectId: Record<ProjectId, ThreadId[]>
@@ -143,6 +160,7 @@ type ChatProjectionActions = {
   applyOrchestrationEvents: (events: ReadonlyArray<OrchestrationEvent>) => void
   applyShellStreamItem: (item: OrchestrationShellStreamItem) => void
   applyThreadStreamItem: (item: OrchestrationThreadStreamItem) => void
+  prependThreadDetailPage: (page: OrchestrationThreadDetailPage) => void
   resetChatProjection: () => void
   syncShellSnapshot: (snapshot: OrchestrationShellSnapshot) => void
   syncThreadDetailSnapshot: (snapshot: OrchestrationThreadDetailSnapshot) => void
@@ -173,6 +191,7 @@ export function createInitialChatProjectionState(): ChatProjectionState {
     sidebarThreadSummaryById: {},
     threadDetailMetaById: {},
     threadDetailSequenceById: {},
+    threadHasEarlierById: {},
     threadIds: [],
     threadIdsByProjectId: {},
     threadSessionById: {},
@@ -183,8 +202,18 @@ export function createInitialChatProjectionState(): ChatProjectionState {
   }
 }
 
+/**
+ * The socket takes a moment to connect on a cold load, and until it does the
+ * store is the only thing the sidebar and the open transcript can read. Starting
+ * from the cached snapshot paints them immediately; the sequence cursors stay at
+ * zero so the first served snapshot outranks the cache and replaces it.
+ */
+export function restoredChatProjectionState(): ChatProjectionState {
+  return hydrateChatProjectionState(createInitialChatProjectionState(), readChatProjectionCache())
+}
+
 export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
-  ...createInitialChatProjectionState(),
+  ...restoredChatProjectionState(),
   applyOrchestrationEvent: (event) => {
     recordProjectionMutation('applyEvent', chatEventSummary(event))
     set((state) => applyChatProjectionEvents(state, [event]))
@@ -204,6 +233,15 @@ export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
   applyThreadStreamItem: (item) => {
     recordProjectionMutation('applyThreadStreamItem', chatStreamItemSummary(item))
     set((state) => applyChatProjectionThreadStreamItem(state, item))
+  },
+  prependThreadDetailPage: (page) => {
+    recordProjectionMutation('prependThreadDetailPage', {
+      activityCount: page.activities.length,
+      hasEarlier: page.hasEarlier,
+      messageCount: page.messages.length,
+      threadId: page.threadId,
+    })
+    set((state) => prependChatProjectionThreadDetailPage(state, page))
   },
   resetChatProjection: () => {
     recordProjectionMutation('reset')
@@ -253,4 +291,30 @@ function flushProjectionLogScope() {
   const scope = projectionLogScope
   projectionLogScope = null
   scope?.end()
+}
+
+/**
+ * Throttled rather than debounced: a streaming turn mutates the projection
+ * faster than any debounce window closes, so a debounce would never write until
+ * the turn ended. Leading edge is off so the write costs one serialization per
+ * window instead of one per burst start.
+ */
+const projectionPersist = new Throttler(flushChatProjectionCache, {
+  leading: false,
+  trailing: true,
+  wait: CHAT_PROJECTION_CACHE_PERSIST_MS,
+})
+
+export function flushChatProjectionCache() {
+  return writeChatProjectionCache(chatProjectionCacheFromState(useChatProjectionStore.getState()))
+}
+
+useChatProjectionStore.subscribe(() => {
+  projectionPersist.maybeExecute()
+})
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('beforeunload', () => {
+    flushChatProjectionCache()
+  })
 }

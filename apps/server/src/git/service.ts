@@ -20,6 +20,7 @@ import { mutationPaths, pathspecArgs, repositoryRelativePath } from './path-util
 import { gitCwdForPath, lexicalRepositoryRoot } from './repository'
 import { parseRepositoryInfo, parseStatus, statusMatchesPathspec } from './status'
 import { UpstreamFetchScheduler } from './upstream-fetch'
+import { BoundedTtlCache } from './utils/bounded-cache'
 import {
   MAX_OUTPUT_BYTES,
   processLimitError,
@@ -46,10 +47,19 @@ export type {
 
 type GitRepositoryLocation = Omit<GitRepository, 'info'>
 
+/** The part of a repository's identity that costs a `git` process to learn. */
+type GitRepositoryRoot = {
+  rootAbsolutePath: string
+  rootDisplayAbsolutePath: string
+}
+
 type GitServiceOptions = {
   diffConcurrency?: number
   maxCommandOutputBytes?: number
   maxTextFileBytes?: number
+  now?: () => number
+  repositoryCacheTtlMs?: number
+  statusCacheTtlMs?: number
 }
 
 type GitCommandOptions = {
@@ -77,11 +87,47 @@ export type GitRepositoryRunner = {
 const DEFAULT_DIFF_CONCURRENCY = 4
 const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
 
+/**
+ * Status is polled by every open pane and re-read after every mutation, so the
+ * window only has to be wide enough to collapse one burst of callers into one
+ * `git status`. A second of staleness is invisible; a longer one would outlive
+ * the edit that caused the poll.
+ */
+const STATUS_CACHE_TTL_MS = 1_000
+const STATUS_CACHE_CAPACITY = 2_048
+
+/**
+ * Where a path's repository root is barely changes, and the answers are tiny.
+ * A miss is cached for the same minute as a hit so a workspace full of
+ * non-repository folders cannot turn every poll into a `rev-parse`.
+ */
+const REPOSITORY_CACHE_TTL_MS = 60_000
+const REPOSITORY_CACHE_CAPACITY = 512
+
+/**
+ * Verbs that cannot change what `git status` reports. `hash-object -w` is in
+ * here because it only adds a loose object; the index and the worktree are
+ * untouched. Everything absent from this set invalidates.
+ */
+const READ_ONLY_GIT_ACTIONS = new Set([
+  'cat-file',
+  'diff',
+  'for-each-ref',
+  'hash-object',
+  'log',
+  'ls-files',
+  'rev-parse',
+  'show',
+  'status',
+])
+
 export class GitService {
   private readonly paths: WorkspacePaths
   private readonly diffConcurrency: number
   private readonly maxCommandOutputBytes: number
   private readonly maxTextFileBytes: number
+  private readonly repositoryRoots: BoundedTtlCache<GitRepositoryRoot | null>
+  private readonly statuses: BoundedTtlCache<GitStatusResult>
   private readonly upstreamFetch: UpstreamFetchScheduler
 
   constructor(paths: WorkspacePaths, options: GitServiceOptions = {}) {
@@ -89,6 +135,16 @@ export class GitService {
     this.diffConcurrency = positiveInteger(options.diffConcurrency, DEFAULT_DIFF_CONCURRENCY)
     this.maxCommandOutputBytes = positiveInteger(options.maxCommandOutputBytes, MAX_OUTPUT_BYTES)
     this.maxTextFileBytes = positiveInteger(options.maxTextFileBytes, DEFAULT_MAX_TEXT_FILE_BYTES)
+    this.repositoryRoots = new BoundedTtlCache({
+      capacity: REPOSITORY_CACHE_CAPACITY,
+      now: options.now,
+      ttlMs: options.repositoryCacheTtlMs ?? REPOSITORY_CACHE_TTL_MS,
+    })
+    this.statuses = new BoundedTtlCache({
+      capacity: STATUS_CACHE_CAPACITY,
+      now: options.now,
+      ttlMs: options.statusCacheTtlMs ?? STATUS_CACHE_TTL_MS,
+    })
     this.upstreamFetch = new UpstreamFetchScheduler({
       resolveCommonDir: async (rootAbsolutePath) => {
         const result = await this.git(rootAbsolutePath, ['rev-parse', '--git-common-dir'])
@@ -111,21 +167,12 @@ export class GitService {
     const repository = await this.resolveRepositoryLocation(input)
     if (!repository) return { repository: null, files: [] }
 
-    const args = [
-      'status',
-      '--porcelain=v2',
-      '--branch',
-      '-z',
-      '--untracked-files=all',
-      ...pathspecArgs(repository.pathspec),
-    ]
-    const result = await this.git(repository.rootAbsolutePath, args)
-    void this.upstreamFetch.schedule(repository.rootAbsolutePath, result.stdout)
-    const status = {
-      repository: parseRepositoryInfo(result.stdout, repository.rootPath),
-      files: parseStatus(result.stdout, repository.rootPath),
-    }
-    recordRequestContext({ git: { fileCount: status.files.length } })
+    const cacheKey = statusCacheKey(repository)
+    const cacheHit = this.statuses.read(cacheKey) !== undefined
+    const status = await this.statuses.load(cacheKey, () => this.readStatus(repository))
+    recordRequestContext({
+      git: { fileCount: status.files.length, statusCacheHit: cacheHit },
+    })
     return status
   }
 
@@ -462,25 +509,61 @@ export class GitService {
   private async resolveRepositoryLocation(input = ''): Promise<GitRepositoryLocation | null> {
     const resolved = this.resolveServicePath(input)
     const cwd = await gitCwdForPath(resolved.absolutePath)
+    const root = await this.repositoryRoots.load(cwd, () => this.readRepositoryRoot(cwd))
+    if (!root) return null
+
+    // Containment is re-checked per call, never cached: the cache stores where
+    // the repository is, not permission to reach it.
+    this.paths.assertRealInside(root.rootAbsolutePath)
+    this.paths.assertInside(root.rootDisplayAbsolutePath)
+
+    return {
+      pathspec: this.pathspecForRepository(root.rootDisplayAbsolutePath, input),
+      rootAbsolutePath: root.rootAbsolutePath,
+      rootDisplayAbsolutePath: root.rootDisplayAbsolutePath,
+      rootPath: this.paths.toRelative(root.rootDisplayAbsolutePath),
+    }
+  }
+
+  private async readRepositoryRoot(cwd: string): Promise<GitRepositoryRoot | null> {
     const root = await this.git(cwd, ['rev-parse', '--show-toplevel', '--show-prefix'], {
       allowFailure: true,
     })
     if (root.exitCode !== 0) return null
 
     const [rootOutput = '', prefix = ''] = root.stdout.split(/\r?\n/)
-    const rootAbsolutePath = path.resolve(rootOutput)
-    const rootDisplayAbsolutePath = lexicalRepositoryRoot(cwd, prefix)
-    this.paths.assertRealInside(rootAbsolutePath)
-    this.paths.assertInside(rootDisplayAbsolutePath)
-    const rootPath = this.paths.toRelative(rootDisplayAbsolutePath)
-    const pathspec = this.pathspecForRepository(rootDisplayAbsolutePath, input)
 
     return {
-      pathspec,
-      rootAbsolutePath,
-      rootDisplayAbsolutePath,
-      rootPath,
+      rootAbsolutePath: path.resolve(rootOutput),
+      rootDisplayAbsolutePath: lexicalRepositoryRoot(cwd, prefix),
     }
+  }
+
+  private async readStatus(repository: GitRepositoryLocation): Promise<GitStatusResult> {
+    const result = await this.git(repository.rootAbsolutePath, [
+      'status',
+      '--porcelain=v2',
+      '--branch',
+      '-z',
+      '--untracked-files=all',
+      ...pathspecArgs(repository.pathspec),
+    ])
+    void this.upstreamFetch.schedule(repository.rootAbsolutePath, result.stdout)
+
+    return {
+      repository: parseRepositoryInfo(result.stdout, repository.rootPath),
+      files: parseStatus(result.stdout, repository.rootPath),
+    }
+  }
+
+  /**
+   * The explicit invalidation path. Every write verb calls it before reporting
+   * the new status, so a mutation is never answered out of the pre-mutation
+   * window — a cache that can outlive the edit that invalidated it is a bug,
+   * not a stale read.
+   */
+  private invalidateStatus(rootAbsolutePath: string) {
+    this.statuses.invalidatePrefix(`${rootAbsolutePath}\u0000`)
   }
 
   private pathspecForRepository(rootAbsolutePath: string, input = '') {
@@ -910,6 +993,12 @@ export class GitService {
       maxOutputBytes: options.maxOutputBytes ?? this.maxCommandOutputBytes,
       timeoutMs: options.timeoutMs,
     })
+    // Invalidation lives at the chokepoint every git call already goes through,
+    // including the checkpoint runner's plumbing. Unknown verbs count as writers,
+    // so forgetting one costs an extra `git status` rather than leaving a cache
+    // that outlives the change it should have seen. A failed write still
+    // invalidates: a half-applied patch changed the tree too.
+    if (!READ_ONLY_GIT_ACTIONS.has(action)) this.invalidateStatus(cwd)
     // A limit violation is not an "allowed failure": the command produced no
     // usable output, so every caller has to hear about it.
     const limitError = outcome.limit ? processLimitError(outcome.limit, action) : null
@@ -986,6 +1075,11 @@ function recordGitServiceOperation(
 
 function gitAction(args: readonly string[]) {
   return args[0] ?? 'unknown'
+}
+
+/** NUL-joined so the root prefix can never be forged by a pathspec. */
+function statusCacheKey(repository: GitRepositoryLocation) {
+  return `${repository.rootAbsolutePath}\u0000${repository.pathspec ?? ''}`
 }
 
 function commandFailureTail(outcome: GitProcessResult, limitError: Error | null) {

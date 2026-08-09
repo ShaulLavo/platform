@@ -10,8 +10,10 @@ import {
   type OrchestrationSession,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
+  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
   type OrchestrationThread,
   type OrchestrationThreadActivity,
+  type OrchestrationThreadDetailPage,
   type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadShell,
   type OrchestrationThreadStreamItem,
@@ -80,6 +82,99 @@ export function syncChatProjectionThreadDetailSnapshot(
 }
 
 /**
+ * Merges one backwards page in front of the thread's timeline. Rows already held
+ * are dropped rather than re-inserted, so a page that overlaps the window — a
+ * boundary row read twice, a page raced against a live append — is idempotent.
+ */
+export function prependChatProjectionThreadDetailPage(
+  state: ChatProjectionState,
+  page: OrchestrationThreadDetailPage,
+): ChatProjectionState {
+  const threadId = page.threadId
+  const messages = prependUnheld(page.messages, selectMessages(state, threadId), messageKey)
+  const activities = prependUnheld(page.activities, selectActivities(state, threadId), activityKey)
+  const withRows = {
+    ...state,
+    activityByThreadId: {
+      ...state.activityByThreadId,
+      [threadId]: recordById(activities, activityKey),
+    },
+    activityIdsByThreadId: {
+      ...state.activityIdsByThreadId,
+      [threadId]: activities.map(activityKey),
+    },
+    messageByThreadId: {
+      ...state.messageByThreadId,
+      [threadId]: recordById(messages, messageKey),
+    },
+    messageIdsByThreadId: {
+      ...state.messageIdsByThreadId,
+      [threadId]: messages.map(messageKey),
+    },
+  }
+
+  return writeThreadHasEarlier(withRows, threadId, page.hasEarlier)
+}
+
+function prependUnheld<TValue, TKey extends string>(
+  older: readonly TValue[],
+  held: readonly TValue[],
+  getKey: (value: TValue) => TKey,
+): TValue[] {
+  const heldKeys = new Set(held.map(getKey))
+
+  return [...older.filter((value) => !heldKeys.has(getKey(value))), ...held]
+}
+
+function messageKey(message: OrchestrationMessage) {
+  return message.id
+}
+
+function activityKey(activity: OrchestrationThreadActivity) {
+  return activity.id
+}
+
+/**
+ * The cache limit bounds what the live stream may grow to on its own; it must
+ * not shrink a transcript the user explicitly paged back into, so an already
+ * expanded thread keeps its length and slides forward instead. Either way the
+ * trim is recoverable: the earlier-page boundary is derived from the oldest row
+ * still held, so a trimmed row is one "load earlier" away rather than lost.
+ */
+function boundedTail<TValue>(rows: TValue[], limit: number, heldCount: number): TValue[] {
+  const max = Math.max(limit, heldCount)
+  if (rows.length <= max) return rows
+
+  return rows.slice(-max)
+}
+
+function markTrimmedFront(
+  state: ChatProjectionState,
+  threadId: ThreadId,
+  trimmedCount: number,
+): ChatProjectionState {
+  if (trimmedCount <= 0) return state
+
+  return writeThreadHasEarlier(state, threadId, true)
+}
+
+function writeThreadHasEarlier(
+  state: ChatProjectionState,
+  threadId: ThreadId,
+  hasEarlier: boolean,
+): ChatProjectionState {
+  if (state.threadHasEarlierById[threadId] === hasEarlier) return state
+
+  return {
+    ...state,
+    threadHasEarlierById: {
+      ...state.threadHasEarlierById,
+      [threadId]: hasEarlier,
+    },
+  }
+}
+
+/**
  * Everything the detail subscription owns survives a shell resnapshot for threads that
  * still exist. `threadTurnStateById` is in here because it is event-derived: the
  * retained `afterSequence` cursor means a wiped `pendingSourceProposedPlan` would never
@@ -95,6 +190,7 @@ function retainDetailSlices(state: ChatProjectionState, threadIds: ReadonlySet<T
     proposedPlanIdsByThreadId: retainThreadScopedRecord(state.proposedPlanIdsByThreadId, threadIds),
     threadDetailMetaById: retainThreadScopedRecord(state.threadDetailMetaById, threadIds),
     threadDetailSequenceById: retainThreadScopedRecord(state.threadDetailSequenceById, threadIds),
+    threadHasEarlierById: retainThreadScopedRecord(state.threadHasEarlierById, threadIds),
     threadTurnStateById: retainThreadScopedRecord(state.threadTurnStateById, threadIds),
     turnDiffIdsByThreadId: retainThreadScopedRecord(state.turnDiffIdsByThreadId, threadIds),
     turnDiffSummaryByThreadId: retainThreadScopedRecord(state.turnDiffSummaryByThreadId, threadIds),
@@ -414,45 +510,62 @@ function writeThreadDetailState(
   const planSlice = buildProposedPlanSlice(snapshot.proposedPlans)
   const turnDiffSlice = buildTurnDiffSlice(thread.id, snapshot.checkpoints)
 
-  return {
-    ...state,
-    activityByThreadId: {
-      ...state.activityByThreadId,
-      [thread.id]: activitySlice.byId,
+  return writeThreadHasEarlier(
+    {
+      ...state,
+      activityByThreadId: {
+        ...state.activityByThreadId,
+        [thread.id]: activitySlice.byId,
+      },
+      activityIdsByThreadId: {
+        ...state.activityIdsByThreadId,
+        [thread.id]: activitySlice.ids,
+      },
+      messageByThreadId: {
+        ...state.messageByThreadId,
+        [thread.id]: messageSlice.byId,
+      },
+      messageIdsByThreadId: {
+        ...state.messageIdsByThreadId,
+        [thread.id]: messageSlice.ids,
+      },
+      proposedPlanByThreadId: {
+        ...state.proposedPlanByThreadId,
+        [thread.id]: planSlice.byId,
+      },
+      proposedPlanIdsByThreadId: {
+        ...state.proposedPlanIdsByThreadId,
+        [thread.id]: planSlice.ids,
+      },
+      threadDetailMetaById: {
+        ...state.threadDetailMetaById,
+        [thread.id]: detailMetaFromThread(thread),
+      },
+      turnDiffIdsByThreadId: {
+        ...state.turnDiffIdsByThreadId,
+        [thread.id]: turnDiffSlice.ids,
+      },
+      turnDiffSummaryByThreadId: {
+        ...state.turnDiffSummaryByThreadId,
+        [thread.id]: turnDiffSlice.byId,
+      },
     },
-    activityIdsByThreadId: {
-      ...state.activityIdsByThreadId,
-      [thread.id]: activitySlice.ids,
-    },
-    messageByThreadId: {
-      ...state.messageByThreadId,
-      [thread.id]: messageSlice.byId,
-    },
-    messageIdsByThreadId: {
-      ...state.messageIdsByThreadId,
-      [thread.id]: messageSlice.ids,
-    },
-    proposedPlanByThreadId: {
-      ...state.proposedPlanByThreadId,
-      [thread.id]: planSlice.byId,
-    },
-    proposedPlanIdsByThreadId: {
-      ...state.proposedPlanIdsByThreadId,
-      [thread.id]: planSlice.ids,
-    },
-    threadDetailMetaById: {
-      ...state.threadDetailMetaById,
-      [thread.id]: detailMetaFromThread(thread),
-    },
-    turnDiffIdsByThreadId: {
-      ...state.turnDiffIdsByThreadId,
-      [thread.id]: turnDiffSlice.ids,
-    },
-    turnDiffSummaryByThreadId: {
-      ...state.turnDiffSummaryByThreadId,
-      [thread.id]: turnDiffSlice.byId,
-    },
-  }
+    thread.id,
+    snapshotWindowFull(thread),
+  )
+}
+
+/**
+ * A full window is the only truncation signal a detail snapshot carries: the
+ * server ships the newest `ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE` rows of each
+ * stream, so a short window proves the thread has nothing earlier, and a full
+ * one leaves it to the first backwards page to settle.
+ */
+function snapshotWindowFull(thread: OrchestrationThread) {
+  return (
+    thread.messages.length >= ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE ||
+    thread.activities.length >= ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE
+  )
 }
 
 /**
@@ -593,7 +706,8 @@ function applyThreadMessageSentEvent(
   const currentIds = state.messageIdsByThreadId[threadId] ?? []
   const currentById = state.messageByThreadId[threadId] ?? {}
   const nextMessage = mergeMessage(currentById[message.id], message)
-  const nextIds = appendId(currentIds, message.id).slice(-CHAT_MESSAGE_CACHE_LIMIT)
+  const appendedIds = appendId(currentIds, message.id)
+  const nextIds = boundedTail(appendedIds, CHAT_MESSAGE_CACHE_LIMIT, currentIds.length)
   const nextById = retainRecordKeys(
     {
       ...currentById,
@@ -603,17 +717,21 @@ function applyThreadMessageSentEvent(
   )
 
   const nextState = patchThreadShell(
-    {
-      ...state,
-      messageByThreadId: {
-        ...state.messageByThreadId,
-        [threadId]: nextById,
+    markTrimmedFront(
+      {
+        ...state,
+        messageByThreadId: {
+          ...state.messageByThreadId,
+          [threadId]: nextById,
+        },
+        messageIdsByThreadId: {
+          ...state.messageIdsByThreadId,
+          [threadId]: nextIds,
+        },
       },
-      messageIdsByThreadId: {
-        ...state.messageIdsByThreadId,
-        [threadId]: nextIds,
-      },
-    },
+      threadId,
+      appendedIds.length - nextIds.length,
+    ),
     threadId,
     {
       updatedAt: event.payload.updatedAt,
@@ -637,21 +755,26 @@ function applyThreadActivityAppendedEvent(
     ...currentById,
     [activity.id]: activity,
   }).sort(compareActivities)
-  const cappedActivities = activities.slice(-CHAT_ACTIVITY_CACHE_LIMIT)
+  const heldCount = state.activityIdsByThreadId[threadId]?.length ?? 0
+  const cappedActivities = boundedTail(activities, CHAT_ACTIVITY_CACHE_LIMIT, heldCount)
   const nextIds = cappedActivities.map((entry) => entry.id)
 
   return writeTurnFailureState(
-    {
-      ...patchThreadShell(state, threadId, { updatedAt: activity.createdAt }),
-      activityByThreadId: {
-        ...state.activityByThreadId,
-        [threadId]: recordById(cappedActivities, (entry) => entry.id),
+    markTrimmedFront(
+      {
+        ...patchThreadShell(state, threadId, { updatedAt: activity.createdAt }),
+        activityByThreadId: {
+          ...state.activityByThreadId,
+          [threadId]: recordById(cappedActivities, (entry) => entry.id),
+        },
+        activityIdsByThreadId: {
+          ...state.activityIdsByThreadId,
+          [threadId]: nextIds,
+        },
       },
-      activityIdsByThreadId: {
-        ...state.activityIdsByThreadId,
-        [threadId]: nextIds,
-      },
-    },
+      threadId,
+      activities.length - cappedActivities.length,
+    ),
     activity,
   )
 }
@@ -1032,6 +1155,7 @@ function removeThreadState(state: ChatProjectionState, threadId: ThreadId): Chat
     sidebarThreadSummaryById: removeRecordKey(state.sidebarThreadSummaryById, threadId),
     threadDetailMetaById: removeRecordKey(state.threadDetailMetaById, threadId),
     threadDetailSequenceById: removeRecordKey(state.threadDetailSequenceById, threadId),
+    threadHasEarlierById: removeRecordKey(state.threadHasEarlierById, threadId),
     threadIds: removeId(state.threadIds, threadId),
     threadIdsByProjectId: removeThreadFromAllProjectIndexes(state.threadIdsByProjectId, threadId),
     threadSessionById: removeRecordKey(state.threadSessionById, threadId),

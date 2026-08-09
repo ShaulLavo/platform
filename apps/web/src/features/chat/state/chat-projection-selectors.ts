@@ -1,6 +1,8 @@
 import type {
   OrchestrationLatestTurn,
   OrchestrationThreadActivity,
+  OrchestrationThreadDetailAnchor,
+  OrchestrationThreadDetailPageInput,
   OrchestrationProjectShell,
   OrchestrationSession,
   ProjectId,
@@ -237,6 +239,49 @@ function selectChatTurnDiffSummariesForThread(state: ChatProjectionState, thread
     state.turnDiffSummaryByThreadId[threadId],
     EMPTY_TURN_DIFF_SUMMARIES,
   )
+}
+
+/**
+ * Whether a "load earlier" affordance is worth offering. An unknown thread reads
+ * as `true` rather than `false`: nothing held is indistinguishable from a window
+ * that has not arrived yet, and offering a page that turns out to be empty is
+ * recoverable where hiding reachable history is not.
+ */
+export function selectChatThreadHasEarlier(
+  state: ChatProjectionState,
+  threadId: ThreadId | null | undefined,
+): boolean {
+  if (!threadId) return false
+
+  return state.threadHasEarlierById[threadId] ?? true
+}
+
+/**
+ * Builds the backwards page request from the oldest rows the store still holds,
+ * so the boundary is always the caller's own edge of the timeline — a trimmed
+ * cache or a replaced window re-derives it instead of stranding history behind a
+ * stale server-minted cursor.
+ *
+ * Imperative on purpose: it mints a fresh object, so read it through
+ * `getState()` when the request is made rather than subscribing to it.
+ */
+export function chatThreadEarlierPageInput(
+  state: ChatProjectionState,
+  threadId: ThreadId,
+): OrchestrationThreadDetailPageInput {
+  return {
+    beforeActivity: anchorFrom(selectChatActivitiesForThread(state, threadId)[0]),
+    beforeMessage: anchorFrom(selectChatMessagesForThread(state, threadId)[0]),
+    threadId,
+  }
+}
+
+function anchorFrom(
+  row: { createdAt: string; id: string } | undefined,
+): OrchestrationThreadDetailAnchor | null {
+  if (!row) return null
+
+  return { createdAt: row.createdAt, id: row.id }
 }
 
 export function createChatThreadSelector(threadId: ThreadId | null | undefined) {
