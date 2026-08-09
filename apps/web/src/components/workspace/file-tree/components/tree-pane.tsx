@@ -22,6 +22,7 @@ import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspac
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileTreeIconsForPaths } from '@/lib/file-icons'
+import { TreeRowMenu } from '@/components/workspace/file-tree/components/row-menu'
 import { renamePath } from '@/lib/file-server'
 import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
@@ -211,7 +212,15 @@ function ReadyTreePane({
       onFocusCapture={() => setFocusArea('file-tree')}
       onPointerDownCapture={() => setFocusArea('file-tree')}
     >
-      <FileTree aria-label='Folder tree' className='block h-full' model={tree} style={treeStyle} />
+      <FileTree
+        aria-label='Folder tree'
+        className='block h-full'
+        model={tree}
+        renderContextMenu={(item, menuContext) => (
+          <TreeRowMenu item={item} menuContext={menuContext} model={model} />
+        )}
+        style={treeStyle}
+      />
     </div>
   )
 }

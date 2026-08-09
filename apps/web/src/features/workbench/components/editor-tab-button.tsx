@@ -5,7 +5,7 @@ import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/h
 import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
-import { EditorTabContextMenu } from '@/features/workbench/components/editor-tab-context-menu'
+import { EditorTabMenu } from '@/features/workbench/components/editor-tab-menu'
 import { TabTrailingSlot } from '@/features/workbench/components/tab-trailing-slot'
 import { fileIconStyle } from '@/lib/file-icon-style'
 import { cn } from '@workspace/ui/lib/utils'
@@ -84,7 +84,7 @@ export function EditorTabButton({
     </button>
   )
 
-  return <EditorTabContextMenu closeTargets={closeTargets} tab={tab} trigger={trigger} />
+  return <EditorTabMenu closeTargets={closeTargets} tab={tab} trigger={trigger} />
 }
 
 function assignRef<TElement>(ref: Ref<TElement> | undefined, node: TElement | null) {

@@ -5,6 +5,8 @@ import { AppWorkspace } from '@/components/app-workspace'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
 import { EditorTabActionsProvider } from '@/features/editor/providers/editor-tab-actions-provider'
+import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
+import { useUnsavedWorkGuard } from '@/hooks/use-unsaved-work-guard'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
@@ -19,6 +21,7 @@ export function AppRuntimeContent() {
   )
 
   useWorkspaceCachePersistence()
+  useUnsavedWorkGuard()
 
   const handleGlobalFocusCapture = useCallback(
     (event: FocusEvent<HTMLElement>) => {
@@ -38,25 +41,29 @@ export function AppRuntimeContent() {
   )
 
   return (
-    <div
-      className='bg-background text-foreground flex h-svh flex-col overflow-hidden'
-      onFocusCapture={handleGlobalFocusCapture}
-      onPointerDownCapture={handleGlobalPointerDownCapture}
-    >
-      <AppTitlebar />
-      <main className='min-h-0 flex-1'>
-        <EditorTabActionsProvider
-          requestCloseTab={requestCloseTab}
-          requestCloseTabs={requestCloseTabs}
-        >
-          <AppWorkspace
-            editorKeymapLayers={editorKeymapLayers}
-            keymapBindings={defaultKeymapBindings}
-          />
-        </EditorTabActionsProvider>
-      </main>
-      {dirtyTabCloseDialog}
-    </div>
+    // The menu command store sits above the title bar so title-bar menus can
+    // reach the dispatch that `AppCommandSurface` publishes from inside <main>.
+    <MenuCommandProvider>
+      <div
+        className='bg-background text-foreground flex h-svh flex-col overflow-hidden'
+        onFocusCapture={handleGlobalFocusCapture}
+        onPointerDownCapture={handleGlobalPointerDownCapture}
+      >
+        <AppTitlebar />
+        <main className='min-h-0 flex-1'>
+          <EditorTabActionsProvider
+            requestCloseTab={requestCloseTab}
+            requestCloseTabs={requestCloseTabs}
+          >
+            <AppWorkspace
+              editorKeymapLayers={editorKeymapLayers}
+              keymapBindings={defaultKeymapBindings}
+            />
+          </EditorTabActionsProvider>
+        </main>
+        {dirtyTabCloseDialog}
+      </div>
+    </MenuCommandProvider>
   )
 }
 

@@ -5,6 +5,7 @@ import type { ReactElement, ReactNode } from 'react'
 
 import { ThemeProvider } from '@/components/theme-provider'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
+import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
 function createTestQueryClient() {
@@ -35,7 +36,9 @@ export function renderWithProviders(
       <QueryClientProvider client={queryClient}>
         <ThemeProvider defaultTheme={theme} storageKey='platform-test-theme'>
           <EditorColorThemeProvider>
-            <TooltipProvider delay={0}>{children}</TooltipProvider>
+            <MenuCommandProvider>
+              <TooltipProvider delay={0}>{children}</TooltipProvider>
+            </MenuCommandProvider>
           </EditorColorThemeProvider>
         </ThemeProvider>
       </QueryClientProvider>

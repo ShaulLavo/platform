@@ -26,17 +26,32 @@ function ContextMenuContent({
   className,
   align = 'start',
   alignOffset = 4,
+  anchor,
+  collisionAvoidance,
+  collisionBoundary,
   side = 'right',
   sideOffset = 0,
   ...props
 }: ContextMenuPrimitive.Popup.Props &
-  Pick<ContextMenuPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset'>) {
+  Pick<
+    ContextMenuPrimitive.Positioner.Props,
+    | 'align'
+    | 'alignOffset'
+    | 'anchor'
+    | 'collisionAvoidance'
+    | 'collisionBoundary'
+    | 'side'
+    | 'sideOffset'
+  >) {
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Positioner
         className='isolate z-50 outline-none'
         align={align}
         alignOffset={alignOffset}
+        anchor={anchor}
+        collisionAvoidance={collisionAvoidance}
+        collisionBoundary={collisionBoundary}
         side={side}
         sideOffset={sideOffset}
       >
@@ -114,7 +129,7 @@ function ContextMenuSubTrigger({
       data-slot='context-menu-sub-trigger'
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-none px-2 py-2 text-xs outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex cursor-default items-center gap-2 rounded-none px-2 py-2 text-xs outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}
@@ -125,11 +140,14 @@ function ContextMenuSubTrigger({
   )
 }
 
-function ContextMenuSubContent({ ...props }: React.ComponentProps<typeof ContextMenuContent>) {
+function ContextMenuSubContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof ContextMenuContent>) {
   return (
     <ContextMenuContent
       data-slot='context-menu-sub-content'
-      className='shadow-lg'
+      className={cn('shadow-lg', className)}
       side='right'
       {...props}
     />

@@ -3,6 +3,7 @@ import {
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
 } from '@/features/search/search-buffer-document'
+import { commandShortcut } from '@/features/menus/utils/shortcut'
 import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'
@@ -304,14 +305,6 @@ function searchEntryVersion(mtimeMs: number, size: number) {
   return `search:${mtimeMs}:${size}`
 }
 
-function commandShortcut(command: PlatformCommandId, bindings: readonly PlatformKeyBinding[]) {
-  const binding = bindings.find((candidate) => candidate.command === command)
-  if (!binding) return null
-  if (typeof binding.hotkey === 'string') return formatHotkey(binding.hotkey)
-
-  return formatHotkey(binding.keys)
-}
-
 function platformCommandPaletteItem(
   spec: CommandSpec,
   bindings: readonly PlatformKeyBinding[],
@@ -342,35 +335,4 @@ function queryPieces(query: string) {
 
 function compareNumbers(left: number, right: number) {
   return left === right ? 0 : left < right ? -1 : 1
-}
-
-function formatHotkey(hotkey: string) {
-  const isMac = isMacPlatform()
-  const separator = isMac ? '' : '+'
-
-  return hotkey
-    .split('+')
-    .map((token) => hotkeyTokenLabel(token, isMac))
-    .join(separator)
-}
-
-function hotkeyTokenLabel(token: string, isMac: boolean) {
-  const normalized = token.toLowerCase()
-  if (normalized === 'mod') return isMac ? '⌘' : 'Ctrl'
-  if (normalized === 'meta') return isMac ? '⌘' : 'Meta'
-  if (normalized === 'cmd') return isMac ? '⌘' : 'Cmd'
-  if (normalized === 'ctrl') return isMac ? '⌃' : 'Ctrl'
-  if (normalized === 'shift') return isMac ? '⇧' : 'Shift'
-  if (normalized === 'alt') return isMac ? '⌥' : 'Alt'
-  if (normalized === 'enter') return '↵'
-  if (normalized === 'escape') return 'Esc'
-  if (normalized.length === 1) return normalized.toUpperCase()
-
-  return token
-}
-
-function isMacPlatform() {
-  if (typeof navigator === 'undefined') return false
-
-  return /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 }
