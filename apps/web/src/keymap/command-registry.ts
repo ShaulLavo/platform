@@ -120,6 +120,21 @@ const workspaceCommandSpecs = [
     'Toggle diff view mode',
     'Switch the active diff viewer between split and unified modes.',
   ),
+  workspaceCommand(
+    'workspace.toggleUiMode',
+    'Toggle Chat mode',
+    'Switch between the Workbench and Chat layouts.',
+  ),
+  workspaceCommand(
+    'workspace.showChatMode',
+    'Chat mode',
+    'Show sessions, chat, and tools in the chat layout.',
+  ),
+  workspaceCommand(
+    'workspace.showWorkbenchMode',
+    'Workbench mode',
+    'Show the editor-centred workbench layout.',
+  ),
   appearanceCommand(
     'workspace.selectColorMode',
     'Choose color mode',

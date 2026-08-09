@@ -1,6 +1,5 @@
 import {
   DEFAULT_INTERACTION_MODE,
-  DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
   commandIdSchema,
   messageIdSchema,
@@ -9,12 +8,14 @@ import {
   turnIdSchema,
   type CommandId,
   type ChatAttachment,
+  type ChatAttachmentUpload,
   type InteractionMode,
   type MessageId,
   type ModelSelection,
   type OrchestrationMessage,
   type ProjectCreateCommand,
   type ProjectId,
+  type ProjectMetaUpdateCommand,
   type RuntimeMode,
   type ThreadCheckpointRevertCommand,
   type ThreadId,
@@ -24,7 +25,6 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-const DEFAULT_CODEX_MODEL = 'gpt-5.5'
 const THREAD_TITLE_MAX_LENGTH = 48
 const SENSITIVE_THREAD_TITLE_WORDS = new Set([
   'apikey',
@@ -64,7 +64,7 @@ export function createWorkspaceProjectCommand({
   return {
     commandId: createCommandId(),
     createdAt,
-    defaultModelSelection: defaultChatModelSelection(),
+    defaultModelSelection: null,
     projectId: workspaceProjectId(rootPath),
     title: workspaceProjectTitle(rootPath),
     type: 'project.create',
@@ -81,7 +81,7 @@ export function createTurnSubmission({
   text,
   threadId,
 }: {
-  attachments?: ChatAttachment[]
+  attachments?: ChatAttachmentUpload[]
   createdAt: string
   interactionMode: InteractionMode
   modelSelection: ModelSelection
@@ -112,7 +112,9 @@ export function createTurnSubmission({
       type: 'thread.turn.start',
     },
     optimisticMessage: {
-      attachments,
+      // Metadata only: the base64 bytes belong on the wire, not in the
+      // projection the timeline renders from.
+      attachments: attachments.map(chatAttachmentMetadata),
       createdAt,
       id: messageId,
       role: 'user',
@@ -129,16 +131,16 @@ export function createDraftThreadSubmission({
   attachments = [],
   createdAt,
   interactionMode = DEFAULT_INTERACTION_MODE,
-  modelSelection = defaultChatModelSelection(),
+  modelSelection,
   projectId,
   rootPath,
   runtimeMode = DEFAULT_RUNTIME_MODE,
   text,
 }: {
-  attachments?: ChatAttachment[]
+  attachments?: ChatAttachmentUpload[]
   createdAt: string
   interactionMode?: InteractionMode
-  modelSelection?: ModelSelection
+  modelSelection: ModelSelection
   projectId: ProjectId
   rootPath: string
   runtimeMode?: RuntimeMode
@@ -213,10 +215,25 @@ export function createCheckpointRevertCommand({
   }
 }
 
-export function defaultChatModelSelection(): ModelSelection {
+/**
+ * Updates only the project's default model. Title and workspaceRoot are deliberately
+ * omitted so the projection's compact patch leaves them untouched.
+ */
+export function createProjectDefaultModelCommand({
+  defaultModelSelection,
+  projectId,
+  updatedAt,
+}: {
+  defaultModelSelection: ModelSelection
+  projectId: ProjectId
+  updatedAt: string
+}): ProjectMetaUpdateCommand {
   return {
-    model: DEFAULT_CODEX_MODEL,
-    providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+    commandId: createCommandId(),
+    defaultModelSelection,
+    projectId,
+    type: 'project.meta.update',
+    updatedAt,
   }
 }
 
@@ -233,6 +250,16 @@ export function workspaceProjectTitle(rootPath: string) {
 
 export function threadTitleFromPrompt(prompt: string) {
   return cleanThreadTitle(prompt.split(/\r?\n/)[0])
+}
+
+function chatAttachmentMetadata(attachment: ChatAttachmentUpload): ChatAttachment {
+  return {
+    id: attachment.id,
+    mimeType: attachment.mimeType,
+    name: attachment.name,
+    sizeBytes: attachment.sizeBytes,
+    type: attachment.type,
+  }
 }
 
 function createCommandId(): CommandId {

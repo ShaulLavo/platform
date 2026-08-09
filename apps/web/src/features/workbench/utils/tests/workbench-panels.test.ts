@@ -10,8 +10,6 @@ import {
   reorderEditorTabInWorkbenchPanels,
   selectEditorTabInWorkbenchPanels,
   setWorkbenchBottomTab,
-  setWorkbenchMainLayout,
-  setWorkbenchOuterLayout,
   setWorkbenchSidebarTab,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
@@ -23,14 +21,6 @@ describe('workbench panel-state model', () => {
       activeEditorTabId: null,
       activeSidebarTab: 'files',
       editorTabs: [],
-      mainLayout: {
-        bottom: 30,
-        editor: 70,
-      },
-      outerLayout: {
-        main: 76,
-        sidebar: 24,
-      },
     })
   })
 
@@ -164,26 +154,6 @@ describe('workbench panel-state model', () => {
     expect(closeEditorPathInWorkbenchPanels(panels, '/repo/missing.ts')).toBe(panels)
   })
 
-  it('stores outer split layout percentages and keeps unchanged values referentially stable', () => {
-    const panels = createDefaultWorkbenchPanels()
-
-    expect(setWorkbenchOuterLayout(panels, { main: 68, sidebar: 32 }).outerLayout).toEqual({
-      main: 68,
-      sidebar: 32,
-    })
-    expect(setWorkbenchOuterLayout(panels, { main: 76, sidebar: 24 })).toBe(panels)
-  })
-
-  it('stores main split layout percentages and keeps unchanged values referentially stable', () => {
-    const panels = createDefaultWorkbenchPanels()
-
-    expect(setWorkbenchMainLayout(panels, { bottom: 36, editor: 64 }).mainLayout).toEqual({
-      bottom: 36,
-      editor: 64,
-    })
-    expect(setWorkbenchMainLayout(panels, { bottom: 30, editor: 70 })).toBe(panels)
-  })
-
   it('sets sidebar and bottom tabs while keeping current values referentially stable', () => {
     const panels = createDefaultWorkbenchPanels()
     const sidebarResult = setWorkbenchSidebarTab(panels, 'git')
@@ -197,30 +167,14 @@ describe('workbench panel-state model', () => {
     expect(setWorkbenchBottomTab(panels, 'terminal')).toBe(panels)
   })
 
-  it('normalizes out-of-range dimensions and stale active editor ids', () => {
+  it('normalizes a stale active editor id', () => {
     const panels = workbenchPanelsForPaths(['/repo/a.ts', '/repo/b.ts'])
     const firstTabId = editorTabIdAt(panels, 0)
     const result = normalizeWorkbenchPanels({
       ...panels,
       activeEditorTabId: 'missing-tab',
-      mainLayout: {
-        bottom: 999,
-        editor: 0,
-      },
-      outerLayout: {
-        main: 0,
-        sidebar: 999,
-      },
     })
 
-    expect(result.mainLayout).toEqual({
-      bottom: 30,
-      editor: 70,
-    })
-    expect(result.outerLayout).toEqual({
-      main: 76,
-      sidebar: 24,
-    })
     expect(result.activeEditorTabId).toBe(firstTabId)
   })
 

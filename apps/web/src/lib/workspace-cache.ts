@@ -8,6 +8,18 @@ import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-doc
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import {
+  createDefaultChatModePanels,
+  isChatModeToolTab,
+  type ChatModePanels,
+  type ChatModeToolTab,
+} from '@/features/chat-mode/utils/panels'
+import {
+  createDefaultWorkbenchLayout,
+  normalizeWorkbenchLayout,
+  type WorkbenchLayout,
+} from '@/features/workbench/utils/workbench-layout'
+import { DEFAULT_WORKSPACE_UI_MODE, isWorkspaceUiMode, type WorkspaceUiMode } from '@/lib/ui-mode'
+import {
   activeEditorPathForWorkbenchPanels,
   createDefaultWorkbenchPanels,
   editorOpenPathsForWorkbenchPanels,
@@ -28,11 +40,14 @@ const CACHE_VERSION = 14
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
 
 export const WORKSPACE_CACHE_STORAGE_KEYS = {
+  chatModePanels: `${CACHE_KEY_PREFIX}.chatModePanels`,
   diffViewMode: `${CACHE_KEY_PREFIX}.diffViewMode`,
   editorHistory: `${CACHE_KEY_PREFIX}.editorHistory`,
   recentlyClosedEditorPaths: `${CACHE_KEY_PREFIX}.recentlyClosedEditorPaths`,
   rootFolder: `${CACHE_KEY_PREFIX}.rootFolder`,
   searchBuffer: `${CACHE_KEY_PREFIX}.searchBuffer`,
+  uiMode: `${CACHE_KEY_PREFIX}.uiMode`,
+  workbenchLayout: `${CACHE_KEY_PREFIX}.workbenchLayout`,
   workbenchPanels: `${CACHE_KEY_PREFIX}.workbenchPanels`,
 } as const
 
@@ -168,17 +183,28 @@ const workbenchPanelsSchema = v.strictObject({
   activeEditorTabId: nullableStringSchema,
   activeSidebarTab: sidebarTabSchema,
   editorTabs: v.array(editorTabRecordSchema),
+})
+const workbenchLayoutSchema = v.strictObject({
   mainLayout: mainLayoutSchema,
   outerLayout: outerLayoutSchema,
 })
+const uiModeSchema = v.custom<WorkspaceUiMode>(isWorkspaceUiMode)
+const chatModePanelsSchema = v.strictObject({
+  activeToolTab: v.custom<ChatModeToolTab>(isChatModeToolTab),
+  sessionRailOpen: v.boolean(),
+  toolPaneOpen: v.boolean(),
+})
 
 export type CachedWorkspaceState = {
+  chatModePanels: ChatModePanels
   diffViewMode: EditorDiffViewMode
   editorHistory: string[]
   openFilePaths: string[]
   recentlyClosedEditorPaths: string[]
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
+  uiMode: WorkspaceUiMode
+  workbenchLayout: WorkbenchLayout
   workbenchPanels: WorkbenchPanels
 }
 
@@ -194,6 +220,18 @@ export function readWorkspaceCache(): WorkspaceCacheState {
 
 export function writeDiffViewModeCache(diffViewMode: EditorDiffViewMode) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode, diffViewMode)
+}
+
+export function writeUiModeCache(uiMode: WorkspaceUiMode) {
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.uiMode, uiMode)
+}
+
+export function writeWorkbenchLayoutCache(workbenchLayout: WorkbenchLayout) {
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.workbenchLayout, workbenchLayout)
+}
+
+export function writeChatModePanelsCache(chatModePanels: ChatModePanels) {
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.chatModePanels, chatModePanels)
 }
 
 export function writeEditorHistoryCache(
@@ -256,6 +294,11 @@ function workspaceStateFromCache(): WorkspaceCacheState {
   )
 
   return {
+    chatModePanels: readCacheEntry(
+      WORKSPACE_CACHE_STORAGE_KEYS.chatModePanels,
+      chatModePanelsSchema,
+      createDefaultChatModePanels(),
+    ),
     diffViewMode: readCacheEntry(
       WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode,
       diffViewModeSchema,
@@ -284,6 +327,18 @@ function workspaceStateFromCache(): WorkspaceCacheState {
       ),
     ),
     selectedFilePath: activeEditorPathForWorkbenchPanels(workbenchPanels),
+    uiMode: readCacheEntry(
+      WORKSPACE_CACHE_STORAGE_KEYS.uiMode,
+      uiModeSchema,
+      DEFAULT_WORKSPACE_UI_MODE,
+    ),
+    workbenchLayout: normalizeWorkbenchLayout(
+      readCacheEntry(
+        WORKSPACE_CACHE_STORAGE_KEYS.workbenchLayout,
+        workbenchLayoutSchema,
+        createDefaultWorkbenchLayout(),
+      ),
+    ),
     workbenchPanels,
   }
 }
@@ -369,6 +424,7 @@ function emptyWorkspaceState(): WorkspaceCacheState {
   const workbenchPanels = createDefaultWorkbenchPanels()
 
   return {
+    chatModePanels: createDefaultChatModePanels(),
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
     openFilePaths: [],
@@ -376,6 +432,8 @@ function emptyWorkspaceState(): WorkspaceCacheState {
     rootFolder: null,
     searchBuffer: null,
     selectedFilePath: null,
+    uiMode: DEFAULT_WORKSPACE_UI_MODE,
+    workbenchLayout: createDefaultWorkbenchLayout(),
     workbenchPanels,
   }
 }
@@ -394,8 +452,6 @@ function workbenchPanelsForWorkspace(
     activeEditorTabId,
     activeSidebarTab: workbenchPanels.activeSidebarTab,
     editorTabs,
-    mainLayout: workbenchPanels.mainLayout,
-    outerLayout: workbenchPanels.outerLayout,
   })
 }
 

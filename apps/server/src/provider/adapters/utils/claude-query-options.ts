@@ -1,0 +1,134 @@
+import type { CanUseTool, Options, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
+import type {
+  InteractionMode,
+  ModelSelection,
+  ProviderInstanceId,
+  RuntimeMode,
+} from '@workspace/contracts'
+import { DEFAULT_CLAUDE_MODEL, ONE_MILLION_CONTEXT_SUFFIX } from './claude-models'
+import { claudeReasoningQueryOptions, type ClaudeReasoning } from './claude-reasoning'
+import { modelOptionValue, type ModelOptions } from './model-options'
+
+/**
+ * Pure translation layer between our runtime/interaction modes and the agent
+ * SDK's `Options`. Type-only SDK imports on purpose: nothing here may pull in
+ * the SDK runtime, or importing it would spawn-check the `claude` binary.
+ */
+
+export type ClaudeRuntimeSelection = {
+  interactionMode?: InteractionMode
+  runtimeMode: RuntimeMode
+}
+
+export type ClaudePermissionOptions = Pick<
+  Options,
+  'allowDangerouslySkipPermissions' | 'permissionMode'
+>
+
+export type ClaudeQueryOptionsInput = ClaudeRuntimeSelection & {
+  abortController: AbortController
+  canUseTool?: CanUseTool
+  cwd: string
+  model: string
+  /** Effort/thinking for this thread; absent means "send neither". */
+  reasoning?: ClaudeReasoning
+  resumeCursor?: unknown
+  /** Session id minted by the caller for a brand-new conversation. */
+  sessionId?: string
+}
+
+export type ClaudeSessionOptions = Pick<Options, 'resume' | 'sessionId'>
+
+export function claudePermissionMode(input: ClaudeRuntimeSelection): PermissionMode {
+  if (input.interactionMode === 'plan') return 'plan'
+  // 'default' is the only mode that routes every tool call through the
+  // `canUseTool` callback. 'dontAsk' looks closer by name but denies anything
+  // not pre-approved instead of asking us.
+  if (input.runtimeMode === 'approval-required') return 'default'
+  if (input.runtimeMode === 'auto-accept-edits') return 'acceptEdits'
+
+  return 'bypassPermissions'
+}
+
+/**
+ * `permissionMode: 'bypassPermissions'` is rejected by the SDK unless
+ * `allowDangerouslySkipPermissions: true` rides along in the same object. The
+ * two are only ever produced together, here, so no call site can emit one
+ * without the other.
+ */
+export function claudePermissionOptions(input: ClaudeRuntimeSelection): ClaudePermissionOptions {
+  const permissionMode = claudePermissionMode(input)
+  if (permissionMode !== 'bypassPermissions') return { permissionMode }
+
+  return { allowDangerouslySkipPermissions: true, permissionMode }
+}
+
+export function claudeModelId(input: {
+  modelSelection: ModelSelection
+  providerInstanceId: ProviderInstanceId
+}): string {
+  // Same instance-mismatch guard as codexModelOptions: a selection aimed at
+  // another provider carries none of our model's options, so ignore it wholesale.
+  if (input.modelSelection.providerInstanceId !== input.providerInstanceId) {
+    return DEFAULT_CLAUDE_MODEL
+  }
+
+  const model = input.modelSelection.model.trim() || DEFAULT_CLAUDE_MODEL
+  if (!wantsOneMillionContext(input.modelSelection.options)) return model
+  if (model.endsWith(ONE_MILLION_CONTEXT_SUFFIX)) return model
+
+  return `${model}${ONE_MILLION_CONTEXT_SUFFIX}`
+}
+
+/** Resume cursors are persisted as `unknown`; ours is the SDK `session_id`. */
+export function claudeResumeSessionId(resumeCursor: unknown): string | null {
+  if (typeof resumeCursor !== 'string') return null
+
+  const sessionId = resumeCursor.trim()
+  return sessionId.length > 0 ? sessionId : null
+}
+
+/**
+ * `resume` and `sessionId` are mutually exclusive — the SDK rejects the pair
+ * unless `forkSession` rides along, which we never want. Resuming keeps the id
+ * the CLI already persisted; a fresh conversation adopts the id we minted, which
+ * is what lets the caller know the session id before the CLI announces it.
+ */
+export function claudeSessionOptions(input: {
+  resume: string | null
+  sessionId?: string
+}): ClaudeSessionOptions {
+  if (input.resume) return { resume: input.resume }
+  if (input.sessionId) return { sessionId: input.sessionId }
+
+  return {}
+}
+
+export function claudeQueryOptions(input: ClaudeQueryOptionsInput): Options {
+  const resume = claudeResumeSessionId(input.resumeCursor)
+
+  return {
+    abortController: input.abortController,
+    cwd: input.cwd,
+    includePartialMessages: true,
+    model: input.model,
+    settingSources: ['user', 'project', 'local'],
+    systemPrompt: { preset: 'claude_code', type: 'preset' },
+    ...claudeReasoningQueryOptions(input.reasoning ?? {}),
+    ...claudePermissionOptions(input),
+    ...claudeSessionOptions({ resume, ...(input.sessionId ? { sessionId: input.sessionId } : {}) }),
+    ...(input.canUseTool ? { canUseTool: input.canUseTool } : {}),
+    // `env` is deliberately absent so the CLI inherits process.env untouched.
+    // NEVER isolate a Claude instance by overriding HOME: that relocates the
+    // macOS login-keychain lookup ($HOME/Library/Keychains), the CLI cannot find
+    // its stored OAuth credentials, and it reports "Not logged in".
+    // CLAUDE_CONFIG_DIR is the correct knob if we ever ship more than one instance.
+  }
+}
+
+function wantsOneMillionContext(options: ModelOptions): boolean {
+  const value = modelOptionValue(options, 'contextWindow')
+  if (typeof value !== 'string') return false
+
+  return value.trim().toLowerCase() === '1m'
+}

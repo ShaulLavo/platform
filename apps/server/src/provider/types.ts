@@ -6,8 +6,11 @@ import type {
   OrchestrationProject,
   OrchestrationThread,
   ProviderApprovalDecision,
+  ProviderAuth,
   ProviderDriverKind,
   ProviderInstanceId,
+  ProviderLoginAttempt,
+  ProviderSignInMethod,
   ProviderSnapshot,
   ProviderUserInputAnswers,
   RuntimeMode,
@@ -436,7 +439,17 @@ type ProviderAdapterCapabilities = {
   readThread: boolean
   rollbackThread: boolean
   sessionModelSwitch: 'in-session' | 'unsupported'
+  /**
+   * Whether the adapter implements the optional auth members below. Optional so
+   * adapters that cannot drive a sign-in flow (codex, mock) stay untouched.
+   */
+  signIn?: boolean
   stopAll: boolean
+}
+
+export type ProviderSignInInput = {
+  email?: string
+  method: ProviderSignInMethod
 }
 
 export type ProviderAdapterSession = {
@@ -464,6 +477,12 @@ export type ProviderThreadSnapshot = {
 
 export type ProviderAdapter = {
   adapterKey: string
+  /**
+   * Current account state, read from the provider CLI rather than from a cached
+   * snapshot. Present only when `capabilities.signIn` is true.
+   */
+  authStatus?: () => Promise<ProviderAuth>
+  cancelSignIn?: (input: { attemptId: string }) => Promise<ProviderLoginAttempt | null>
   capabilities: ProviderAdapterCapabilities
   driverKind: ProviderDriverKind
   hasSession: (input: { threadId: ThreadId }) => Promise<boolean>
@@ -476,6 +495,14 @@ export type ProviderAdapter = {
     numTurns: number
     threadId: ThreadId
   }) => Promise<ProviderThreadSnapshot>
+  /**
+   * Starts an interactive sign-in. Returns as soon as the flow is running — the
+   * user still has a browser round trip to finish — so callers poll
+   * `signInAttempt` with the returned id until it leaves `pending`.
+   */
+  signIn?: (input: ProviderSignInInput) => Promise<ProviderLoginAttempt>
+  signInAttempt?: (input: { attemptId: string }) => Promise<ProviderLoginAttempt | null>
+  signOut?: () => Promise<void>
   snapshot: () => Promise<ProviderSnapshot>
   startSession: (input: ProviderSessionStartInput) => Promise<ProviderAdapterSession>
   sendTurn: (input: ProviderTurnInput) => Promise<void>

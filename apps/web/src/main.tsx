@@ -11,6 +11,7 @@ import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-col
 import { initializeClientLogging, log } from '@/lib/client-logging.ts'
 import { loadDefaultNerdFont } from '@/lib/default-nerd-font.ts'
 import { isDesktop } from '@/lib/platform/bridge.ts'
+import { applyNativeVibrancy } from '@/lib/platform/native-vibrancy.ts'
 import { installEditorPerformanceTraceFromUrl } from '@/lib/editor-performance-trace.ts'
 import { queryClient } from '@/lib/query-client.ts'
 import { reportReactError } from '@/lib/react-error-reporting.ts'
@@ -18,6 +19,7 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
 installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
+applyNativeVibrancy(isDesktop())
 const visualViewport = window.visualViewport
 log.info({
   action: 'app.bootstrap',

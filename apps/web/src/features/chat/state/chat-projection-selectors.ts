@@ -42,6 +42,10 @@ export function selectChatProjects(state: ChatProjectionState) {
   return collectByIds(state.projectIds, state.projectById, EMPTY_PROJECTS)
 }
 
+export function selectChatSidebarThreads(state: ChatProjectionState): ChatSidebarThreadSummary[] {
+  return collectByIds(state.threadIds, state.sidebarThreadSummaryById, EMPTY_SIDEBAR_THREADS)
+}
+
 export function selectChatSidebarThreadsForProject(
   state: ChatProjectionState,
   projectId: ProjectId | null | undefined,

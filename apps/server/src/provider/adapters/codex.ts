@@ -1,14 +1,14 @@
 import { createInternalError } from '../../observability/structured-errors'
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import path from 'node:path'
 import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
   approvalRequestIdSchema,
   messageIdSchema,
-  turnIdSchema,
   type ApprovalRequestId,
+  type ModelReasoningEffortOption,
   type ProviderModel,
+  type ProviderModelCapabilities,
   type ProviderSnapshot,
   type RuntimeMode,
   type ThreadId,
@@ -33,6 +33,7 @@ import {
 } from '../../orchestration/orchestration-logging'
 import {
   CODEX_CLIENT_REQUEST_METHODS,
+  V2ThreadTokenUsageUpdatedNotificationSchema,
   codexServerNotification,
   parseCodexClientRequestParams,
   parseCodexClientRequestResult,
@@ -41,6 +42,14 @@ import {
   type CodexClientRequestResultByMethod,
   type CodexServerNotificationParamsByMethod,
 } from './codex-protocol'
+import { providerErrorMessage } from './utils/adapters'
+import { activeProviderTurn, type ActiveProviderTurn } from './utils/active-turn'
+import { modelOptionValue, type ModelOptions } from './utils/model-options'
+import { asRecord, numberField, stringField } from './utils/records'
+import { isPresent, noop, runtimeEventId } from './utils/runtime-ids'
+import { sessionInputFromTurn } from './utils/session-input'
+import { normalizeWorkspaceCwd } from './utils/workspace-cwd'
+import { canonicalTurnId, parseOptionalTurnId } from './utils/turn-ids'
 
 const DEFAULT_CODEX_BINARY = 'codex'
 const DEFAULT_CODEX_MODEL = 'gpt-5.5'
@@ -54,8 +63,6 @@ const BENIGN_CODEX_STDERR_ERROR_SNIPPETS = [
   'state db missing rollout path for thread',
   'state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back',
 ]
-const CODEX_REASONING_EFFORTS = new Set<CodexReasoningEffort>(['minimal', 'low', 'medium', 'high'])
-
 const CODEX_ADAPTER_CAPABILITIES = {
   readThread: true,
   rollbackThread: true,
@@ -70,15 +77,6 @@ type JsonRpcMessage = {
   method?: CodexClientRequestMethod | string
   params?: unknown
   result?: unknown
-}
-
-type ActiveCodexTurn = {
-  canonicalTurnId: TurnId
-  messageId: string
-  promise: Promise<void>
-  reject: (error: Error) => void
-  resolve: () => void
-  settled: () => boolean
 }
 
 type CodexReasoningState = {
@@ -251,7 +249,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
 
   private async ensureRuntimeSession(input: ProviderSessionStartInput) {
     const existing = this.sessions.get(input.threadId)
-    const cwd = normalizeCodexCwd(input.cwd)
+    const cwd = normalizeWorkspaceCwd(input.cwd)
     const model = normalizeCodexModel(input.modelSelection.model)
     const modelOptions = codexModelOptions(input)
     if (existing?.matches({ cwd, model, runtimeMode: input.runtimeMode })) {
@@ -324,9 +322,9 @@ class CodexAppServerSession {
   private readonly reasoningItems = new Map<string, CodexReasoningState>()
   private readonly runtimeMode: RuntimeMode
   private readonly threadId: ThreadId
-  private readonly turns = new Map<string, ActiveCodexTurn>()
+  private readonly turns = new Map<string, ActiveProviderTurn>()
   private activeProviderTurnId: string | null = null
-  private pendingTurn: ActiveCodexTurn | null = null
+  private pendingTurn: ActiveProviderTurn | null = null
   private status: ProviderAdapterSession['status'] = 'ready'
 
   private constructor(input: {
@@ -456,7 +454,7 @@ class CodexAppServerSession {
       providerSessionId: this.providerSessionId,
       providerThreadId: this.providerThreadId,
     })
-    const activeTurn = activeCodexTurn({
+    const activeTurn = activeProviderTurn({
       canonicalTurnId: input.turnId,
       messageId,
     })
@@ -1464,7 +1462,7 @@ class CodexAppServerSession {
     if (turn) this.rejectTurn(params.turnId, turn, message)
   }
 
-  private async completeTurn(providerTurnId: string, turn: ActiveCodexTurn) {
+  private async completeTurn(providerTurnId: string, turn: ActiveProviderTurn) {
     const completedAt = new Date().toISOString()
     recordChatPipelineInfo('chat.pipeline.codex_session.complete_turn', {
       messageId: turn.messageId,
@@ -1518,7 +1516,7 @@ class CodexAppServerSession {
     this.rejectTurn(providerTurnId, activeTurn, turnErrorMessage(response.turn))
   }
 
-  private attachProviderTurn(providerTurnId: string, turn: ActiveCodexTurn) {
+  private attachProviderTurn(providerTurnId: string, turn: ActiveProviderTurn) {
     const existing = this.turns.get(providerTurnId)
     if (existing === turn) return
     if (existing) return
@@ -1544,7 +1542,7 @@ class CodexAppServerSession {
     return this.turns.get(providerTurnId)
   }
 
-  private clearPendingTurn(turn: ActiveCodexTurn) {
+  private clearPendingTurn(turn: ActiveProviderTurn) {
     if (this.pendingTurn === turn) this.pendingTurn = null
   }
 
@@ -1587,7 +1585,7 @@ class CodexAppServerSession {
     if (this.pendingTurn) this.rejectPendingTurn(this.pendingTurn, message)
   }
 
-  private rejectUnmappedTurn(turn: ActiveCodexTurn, error: unknown) {
+  private rejectUnmappedTurn(turn: ActiveProviderTurn, error: unknown) {
     if (this.turnsForCanonical(turn.canonicalTurnId).length > 0) return
 
     turn.reject(createInternalError(providerErrorMessage(error)))
@@ -1609,7 +1607,7 @@ class CodexAppServerSession {
     )
   }
 
-  private rejectTurn(providerTurnId: string, turn: ActiveCodexTurn, message: string) {
+  private rejectTurn(providerTurnId: string, turn: ActiveProviderTurn, message: string) {
     this.turns.delete(providerTurnId)
     this.canonicalTurnByProviderTurnId.delete(providerTurnId)
     this.clearReasoningForProviderTurn(providerTurnId)
@@ -1644,7 +1642,7 @@ class CodexAppServerSession {
     turn.reject(createInternalError(message))
   }
 
-  private rejectPendingTurn(turn: ActiveCodexTurn, message: string) {
+  private rejectPendingTurn(turn: ActiveProviderTurn, message: string) {
     this.clearPendingTurn(turn)
     this.status = 'error'
     this.emit({
@@ -1674,7 +1672,7 @@ class CodexAppServerSession {
     turn.reject(createInternalError(message))
   }
 
-  private resolveTurn(providerTurnId: string, turn: ActiveCodexTurn) {
+  private resolveTurn(providerTurnId: string, turn: ActiveProviderTurn) {
     this.turns.delete(providerTurnId)
     this.canonicalTurnByProviderTurnId.delete(providerTurnId)
     this.clearReasoningForProviderTurn(providerTurnId)
@@ -1682,7 +1680,11 @@ class CodexAppServerSession {
     turn.resolve()
   }
 
-  private getOrCreateReasoningState(providerTurnId: string, itemId: string, turn: ActiveCodexTurn) {
+  private getOrCreateReasoningState(
+    providerTurnId: string,
+    itemId: string,
+    turn: ActiveProviderTurn,
+  ) {
     const key = reasoningStateKey(providerTurnId, itemId)
     const existing = this.reasoningItems.get(key)
     if (existing) return existing
@@ -1718,7 +1720,7 @@ class CodexAppServerSession {
   private async emitCompletedReasoningItem(
     providerTurnId: string,
     item: CodexReasoningItem,
-    turn: ActiveCodexTurn,
+    turn: ActiveProviderTurn,
     createdAt: string,
   ) {
     const state = this.getOrCreateReasoningState(providerTurnId, item.id, turn)
@@ -1741,7 +1743,7 @@ class CodexAppServerSession {
       readonly id: string
       readonly items: readonly unknown[]
     },
-    activeTurn: ActiveCodexTurn,
+    activeTurn: ActiveProviderTurn,
   ) {
     const createdAt = isoFromUnixMs(turnValue.completedAt) ?? new Date().toISOString()
     for (const item of turnValue.items) {
@@ -2088,42 +2090,6 @@ async function requestCodexModels(client: CodexAppServerRpcClient) {
   return models.length > 0 ? models : fallbackModels()
 }
 
-function activeCodexTurn(input: { canonicalTurnId: TurnId; messageId: string }): ActiveCodexTurn {
-  let settled = false
-  let resolveTurn: () => void = noop
-  let rejectTurn: (error: Error) => void = noop
-  const promise = new Promise<void>((resolve, reject) => {
-    resolveTurn = () => {
-      settled = true
-      resolve()
-    }
-    rejectTurn = (error) => {
-      settled = true
-      reject(error)
-    }
-  })
-
-  return {
-    canonicalTurnId: input.canonicalTurnId,
-    messageId: input.messageId,
-    promise,
-    reject: rejectTurn,
-    resolve: resolveTurn,
-    settled: () => settled,
-  }
-}
-
-function sessionInputFromTurn(input: ProviderTurnInput): ProviderSessionStartInput {
-  return {
-    cwd: input.cwd,
-    interactionMode: input.interactionMode,
-    modelSelection: input.modelSelection,
-    providerInstanceId: input.providerInstanceId,
-    runtimeMode: input.runtimeMode,
-    threadId: input.thread.id,
-  }
-}
-
 function threadStartParams(input: {
   cwd: string
   model: string
@@ -2230,33 +2196,18 @@ function codexModelOptions(
   }
 }
 
+/**
+ * The effort came out of the model's own `supportedReasoningEfforts`, so it is
+ * relayed as-is rather than filtered against a list this process pins. Codex
+ * rejects an effort it does not know, and a visible turn error beats silently
+ * downgrading the user to the default.
+ */
 function codexReasoningEffort(options: ModelOptions): CodexReasoningEffort | undefined {
-  const value = modelOptionValue(options, 'reasoningEffort') ?? modelOptionValue(options, 'effort')
+  const value = modelOptionValue(options, 'reasoningEffort')
   if (typeof value !== 'string') return undefined
 
-  return isCodexReasoningEffort(value) ? value : undefined
-}
-
-function isCodexReasoningEffort(value: string): value is CodexReasoningEffort {
-  return CODEX_REASONING_EFFORTS.has(value as CodexReasoningEffort)
-}
-
-function modelOptionValue(options: ModelOptions, key: string): unknown {
-  if (!options) return undefined
-  if (Array.isArray(options)) return modelOptionArrayValue(options, key)
-
-  return asRecord(options)[key]
-}
-
-type ModelOptions = ProviderTurnInput['modelSelection']['options']
-
-function modelOptionArrayValue(options: unknown[], key: string) {
-  for (const option of options) {
-    const record = asRecord(option)
-    if (record.id === key) return record.value
-  }
-
-  return undefined
+  const effort = value.trim()
+  return effort.length > 0 ? effort : undefined
 }
 
 function runtimeModeToThreadConfig(runtimeMode: RuntimeMode) {
@@ -2330,11 +2281,50 @@ function modelFromCodexModel(
 
   const name = value.displayName || slug
   return {
-    capabilities: null,
+    capabilities: codexModelCapabilities(value),
     isCustom: false,
     name,
     shortName: name,
     slug,
+  }
+}
+
+/**
+ * Absent capabilities are `null`, never `{ reasoningEfforts: [] }`: an empty
+ * list reads to the client as "this model has levels, just none of them" and
+ * would render an empty picker. A default with nothing to pick from is equally
+ * useless, so the whole object hangs on the list having members.
+ */
+function codexModelCapabilities(
+  value: CodexClientRequestResultByMethod['model/list']['data'][number],
+): ProviderModelCapabilities | null {
+  const reasoningEfforts = value.supportedReasoningEfforts
+    .map(codexReasoningEffortChoice)
+    .filter(isPresent)
+  if (reasoningEfforts.length === 0) return null
+
+  const defaultReasoningEffort = value.defaultReasoningEffort.trim()
+  return {
+    ...(defaultReasoningEffort.length > 0 ? { defaultReasoningEffort } : {}),
+    reasoningEfforts,
+  }
+}
+
+/**
+ * Codex is the authority on which efforts a model accepts, so the advertised
+ * list is relayed verbatim — including members this pinned schema predates.
+ * Only a blank id is dropped, because it can never be sent back to `turn/start`.
+ */
+function codexReasoningEffortChoice(
+  value: CodexClientRequestResultByMethod['model/list']['data'][number]['supportedReasoningEfforts'][number],
+): ModelReasoningEffortOption | null {
+  const effort = value.reasoningEffort.trim()
+  if (effort.length === 0) return null
+
+  const description = value.description.trim()
+  return {
+    ...(description.length > 0 ? { description } : {}),
+    effort,
   }
 }
 
@@ -2435,13 +2425,6 @@ function unavailableCodexSnapshot(checkedAt: string): ProviderSnapshot {
 function normalizeCodexModel(model: string | null | undefined) {
   const normalized = model?.trim()
   return normalized || DEFAULT_CODEX_MODEL
-}
-
-function normalizeCodexCwd(cwd: string) {
-  if (cwd.startsWith('/')) return cwd
-  if (cwd.startsWith('Users/')) return `/${cwd}`
-
-  return path.resolve(cwd)
 }
 
 function turnErrorMessage(turn: unknown) {
@@ -2592,43 +2575,6 @@ function isoFromUnixMs(value: number | null | undefined) {
   return new Date(value).toISOString()
 }
 
-function providerErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return String(error)
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value === 'object' && value !== null) return value as Record<string, unknown>
-
-  return {}
-}
-
-function stringField(record: Record<string, unknown>, key: string) {
-  const value = record[key]
-  return typeof value === 'string' && value.trim().length > 0 ? value : null
-}
-
-function numberField(record: Record<string, unknown>, key: string) {
-  const value = record[key]
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function parseOptionalTurnId(value: string | null) {
-  if (!value) return undefined
-
-  return v.parse(turnIdSchema, value)
-}
-
-function canonicalTurnId(
-  turnIds: Map<string, TurnId>,
-  providerTurnId: string | undefined,
-): TurnId | undefined {
-  if (!providerTurnId) return undefined
-
-  return turnIds.get(providerTurnId)
-}
-
 function rawNotification(method: string, payload: unknown) {
   return {
     method,
@@ -2695,16 +2641,39 @@ function threadStateFromValue(value: string | null) {
   }
 }
 
+/**
+ * `thread/tokenUsage/updated` is routed by handleManualNotification, which runs before
+ * the generated-schema parse, so this is the only place the payload gets validated.
+ * Parse it against the generated schema rather than digging at records by hand — the
+ * previous hand-rolled version read `params.usage`, but the wire field is `tokenUsage`,
+ * so every snapshot resolved to 0 used tokens and was then dropped by
+ * tokenUsageActivity in provider-runtime-ingestion.ts.
+ */
 function tokenUsageSnapshot(params: unknown) {
-  const record = asRecord(params)
-  const usage = asRecord(record.usage)
-  const usedTokens =
-    numberField(usage, 'usedTokens') ??
-    numberField(usage, 'totalTokens') ??
-    numberField(record, 'usedTokens') ??
-    0
+  const parsed = v.safeParse(V2ThreadTokenUsageUpdatedNotificationSchema, params)
+  if (!parsed.success) {
+    recordChatPipelineWarning('codex_adapter.token_usage.unparsed', {
+      detail: v.summarize(parsed.issues),
+    })
+    return { usedTokens: 0 }
+  }
 
-  return { ...usage, usedTokens }
+  const { last, modelContextWindow, total } = parsed.output.tokenUsage
+
+  return {
+    cachedInputTokens: last.cachedInputTokens,
+    // Codex compacts on its own once the window fills; the gauge reads this to
+    // explain a used-token count that drops mid-thread.
+    compactsAutomatically: true,
+    inputTokens: last.inputTokens,
+    outputTokens: last.outputTokens,
+    reasoningOutputTokens: last.reasoningOutputTokens,
+    usedTokens: last.totalTokens,
+    ...(modelContextWindow === null || modelContextWindow === undefined
+      ? {}
+      : { maxTokens: modelContextWindow }),
+    ...(total.totalTokens > last.totalTokens ? { totalProcessedTokens: total.totalTokens } : {}),
+  }
 }
 
 function turnPlanPayload(params: unknown) {
@@ -2818,10 +2787,6 @@ function codexDeveloperInstructions(runtimeMode: RuntimeMode) {
   return 'Use the current collaboration mode and keep provider runtime events granular for UI ingestion.'
 }
 
-function isPresent<T>(value: T | null | undefined): value is T {
-  return value !== null && value !== undefined
-}
-
 function classifyCodexStderrLine(rawLine: string) {
   const line = rawLine.replaceAll(ANSI_ESCAPE_REGEX, '').trim()
   if (!line) return null
@@ -2835,9 +2800,3 @@ function classifyCodexStderrLine(rawLine: string) {
 
   return { message: line }
 }
-
-function runtimeEventId(prefix: string) {
-  return `${prefix}:${crypto.randomUUID()}`
-}
-
-function noop() {}

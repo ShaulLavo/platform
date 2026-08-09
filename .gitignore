@@ -41,3 +41,6 @@ references/
 # jscpd duplication report
 jscpd-report/
 .bench-fixtures/
+
+# Compiled native helpers (rebuilt by apps/desktop `build:native`)
+apps/desktop/native/build/

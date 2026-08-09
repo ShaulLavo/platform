@@ -11,6 +11,24 @@ const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/openai/codex/${CODEX_
 const USER_AGENT = 'platform-codex-protocol-generator'
 const GENERATED_DIR = path.join(fileURLToPath(new URL('.', import.meta.url)), 'generated')
 
+/**
+ * Codex adds enum members (reasoning efforts, plan types, item kinds) in
+ * releases that ship faster than this pinned schema is regenerated. With a
+ * closed `v.picklist` a single unknown member fails the whole payload — the
+ * `max` and `ultra` efforts emptied the entire model list. Multi-member string
+ * enums are therefore open: known members keep their literal types for
+ * autocomplete and narrowing, unknown members pass through as plain strings and
+ * are left for the caller to ignore. Single-member enums stay `v.literal` so
+ * union discriminators keep discriminating.
+ */
+const OPEN_ENUM_HELPER_SOURCE = `function openEnum<const TOptions extends readonly string[]>(options: TOptions) {
+  return v.union([
+    v.picklist(options),
+    // \`string & {}\` keeps the known members in autocomplete while accepting new ones.
+    v.pipe(v.string(), v.transform((value): TOptions[number] | (string & {}) => value)),
+  ])
+}`
+
 const CLIENT_REQUEST_METHODS = [
   'initialize',
   'account/read',
@@ -313,7 +331,15 @@ function renderSchemaModule(
   documents: readonly { readonly document: JsonObject; readonly file: ProtocolSchemaFile }[],
 ) {
   const sections = documents.flatMap(({ document, file }) => renderSchemaFile(file, document))
-  return [...generatedPrelude(), "import * as v from 'valibot'", '', ...sections, ''].join('\n')
+  return [
+    ...generatedPrelude(),
+    "import * as v from 'valibot'",
+    '',
+    OPEN_ENUM_HELPER_SOURCE,
+    '',
+    ...sections,
+    '',
+  ].join('\n')
 }
 
 function renderSchemaFile(file: ProtocolSchemaFile, document: JsonObject) {
@@ -451,7 +477,26 @@ function renderUnion(values: readonly JsonValue[], context: RenderContext): stri
   if (expressions.length === 0) return 'v.unknown()'
   if (expressions.length === 1) return expressions[0] ?? 'v.unknown()'
 
+  const literals = expressions.map(stringLiteralOfExpression)
+  if (literals.every(isString)) return renderOpenEnum(literals)
+
   return `v.union([${expressions.join(', ')}])`
+}
+
+/**
+ * `oneOf` lists of documented `const`s and plain `enum` arrays are the same
+ * closed set once rendered, so both go through the open-enum helper.
+ */
+function stringLiteralOfExpression(expression: string) {
+  const match = /^v\.literal\((".*")\)$/.exec(expression)
+  if (!match?.[1]) return null
+
+  const value: unknown = JSON.parse(match[1])
+  return typeof value === 'string' ? value : null
+}
+
+function renderOpenEnum(values: readonly string[]) {
+  return `openEnum(${JSON.stringify(values)})`
 }
 
 function renderObjectSchema(schema: JsonObject, context: RenderContext): string {
@@ -500,6 +545,7 @@ function renderNumberSchema(schema: JsonObject, integer: boolean) {
 
 function renderEnum(values: readonly JsonValue[]) {
   if (values.length === 1) return renderLiteral(values[0])
+  if (values.every(isString)) return renderOpenEnum(values)
   if (values.every(isPicklistValue)) return `v.picklist(${JSON.stringify(values)})`
 
   return `v.union([${values.map(renderLiteral).join(', ')}])`
@@ -663,6 +709,10 @@ function stringField(value: JsonObject, key: string) {
 
 function isJsonObject(value: JsonValue | unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string'
 }
 
 function isPicklistValue(value: JsonValue): value is boolean | number | string {

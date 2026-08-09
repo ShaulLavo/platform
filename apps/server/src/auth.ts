@@ -108,8 +108,24 @@ function localBrowserOriginError(auth: AuthConfig, origin: string | null) {
 
 function hasTrustedOrigin(auth: AuthConfig, origin: string | null) {
   if (!origin) return false
+  if (auth.allowedOrigins.includes(origin)) return true
+  if (auth.mode === 'dev-origin') return isLoopbackOrigin(origin)
 
-  return auth.allowedOrigins.includes(origin)
+  return false
+}
+
+// In dev-origin mode the web port is a moving target (vite falls to the next
+// free port when the preferred one is taken), so trust any loopback origin
+// rather than an exact port list. Session-token mode stays exact.
+function isLoopbackOrigin(origin: string) {
+  try {
+    const url = new URL(origin)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+
+    return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+  } catch {
+    return false
+  }
 }
 
 function sessionTokenError(auth: AuthConfig, authorization: string | null) {

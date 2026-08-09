@@ -28,6 +28,7 @@ import {
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
+import { toggledWorkspaceUiMode, type WorkspaceUiMode } from '@/lib/ui-mode'
 import { fetchFile } from '@/lib/file-server'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
@@ -50,9 +51,11 @@ type WorkspaceCommandContext = {
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: FocusArea) => void
   readonly setTheme: (theme: Theme) => void
+  readonly setUiMode: (mode: WorkspaceUiMode) => void
   readonly setWorkbenchPanels: (panels: WorkbenchPanels) => void
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly selectPreviousEditor: () => boolean
+  readonly uiMode: WorkspaceUiMode
   readonly workbenchPanels: WorkbenchPanels
 }
 
@@ -106,9 +109,11 @@ export function usePlatformCommandDispatch({
         setDiffViewMode: workspace.setDiffViewMode,
         setFocusArea,
         setTheme,
+        setUiMode: workspace.setUiMode,
         setWorkbenchPanels: workspace.setWorkbenchPanels,
         showCommandPalette,
         selectPreviousEditor,
+        uiMode: workspace.uiMode,
         workbenchPanels: workspace.workbenchPanels,
       })
     },
@@ -254,6 +259,18 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
   'workspace.toggleSidebarVisibility': ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
     setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
     setFocusArea('file-tree')
+    return true
+  },
+  'workspace.toggleUiMode': ({ setUiMode, uiMode }) => {
+    setUiMode(toggledWorkspaceUiMode(uiMode))
+    return true
+  },
+  'workspace.showChatMode': ({ setUiMode }) => {
+    setUiMode('chat')
+    return true
+  },
+  'workspace.showWorkbenchMode': ({ setUiMode }) => {
+    setUiMode('workbench')
     return true
   },
 }

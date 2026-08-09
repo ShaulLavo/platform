@@ -38,8 +38,12 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-update: var(--update);
+  --color-update-foreground: var(--update-foreground);
   --color-diff-added: var(--diff-added);
   --color-diff-removed: var(--diff-removed);
+  --color-brand-anthropic: var(--brand-anthropic);
+  --color-brand-openai: var(--brand-openai);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -84,6 +88,9 @@
      A settings UI changes the whole app by setting these on <html>
      (100% opacity / 0px blur turns the material off). */
   --surface-opacity: 80%;
+  /* Content wells (editor, terminal) get their own, much higher opacity:
+     text needs a stable ground, but a 5% wallpaper ghost keeps the material. */
+  --content-opacity: 95%;
   --surface-blur: 12px;
   --surface-saturation: 160%;
   /* Pre-blurred + pre-saturated copy of the workbench wallpaper with ~35%
@@ -119,9 +126,22 @@
   --success-foreground: oklch(0.985 0.006 70);
   --warning: oklch(0.7 0.155 92);
   --warning-foreground: oklch(0.205 0.006 70);
+  /* "new / recently added" marker. Violet is the one hue left unclaimed by the
+     other status families (destructive 18, warning 92, success 165, info 230),
+     so it never reads as a state the user has to act on. Same L/C register as
+     info and success so a NEW badge sits beside them without shouting. */
+  --update: oklch(0.55 0.17 300);
+  --update-foreground: oklch(0.985 0.006 70);
   /* Diff colors alias the status tokens so they track theme changes automatically. */
   --diff-added: var(--success);
   --diff-removed: var(--destructive);
+  /* Brand marks. Fixed identities, not semantic roles: these are the colors the
+     vendor's logo is allowed to be, so they do not take part in theming beyond
+     staying legible on both surfaces. Never inline the hex in a component. */
+  --brand-anthropic: oklch(0.672 0.131 38.8); /* Anthropic rust, exactly #d97757 */
+  /* OpenAI's mark is monochrome and follows the text color by design, so it
+     aliases --foreground rather than pinning black. */
+  --brand-openai: var(--foreground);
   --border: oklch(0.922 0.006 70);
   --input: oklch(0.922 0.006 70);
   --ring: oklch(0.708 0.006 70);
@@ -261,6 +281,12 @@
   --success-foreground: oklch(0.205 0.006 70);
   --warning: oklch(0.82 0.14 92);
   --warning-foreground: oklch(0.205 0.006 70);
+  --update: oklch(0.74 0.145 300);
+  --update-foreground: oklch(0.205 0.006 70);
+  /* Same rust hue and chroma, lifted in lightness so the glyph keeps its
+     presence on a dark popover — the lift --trees-file-icon-color-claude
+     already makes, kept smaller because this is the real brand color. */
+  --brand-anthropic: oklch(0.76 0.131 38.8);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0.006 70);
@@ -368,7 +394,11 @@
   --workbench-editor-minimap-canvas-background: transparent;
   --workbench-editor-minimap-canvas-background-opacity: 0;
   --border: transparent;
-  --terminal-background: transparent;
+  --terminal-background: color-mix(
+    in oklch,
+    var(--terminal-background-solid) var(--content-opacity),
+    transparent
+  );
 }
 
 @media (forced-colors: active) {
@@ -427,6 +457,12 @@
     /* Solid floor: translucent surfaces must never composite against the UA
        canvas, whatever --surface-opacity is set to. */
     background-color: var(--background-solid);
+  }
+  /* Except in the desktop shell, where the window is transparent over a real
+     NSVisualEffectView. There the floor is the macOS compositor's blur of the
+     live desktop, and painting over it would hide the thing we want. */
+  html[data-native-vibrancy] {
+    background-color: transparent;
   }
   body {
     @apply bg-background text-foreground;

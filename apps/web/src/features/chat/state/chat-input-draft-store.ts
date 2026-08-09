@@ -327,20 +327,15 @@ function hydrateDrafts(storage: PersistedChatInputDraftStorage) {
 function hydrateDraft(draft: PersistedChatInputDraft): ChatInputDraft {
   return {
     draftPromotion: draft.draftPromotion as ChatInputDraftPromotion | null,
-    images: draft.images.map(hydrateImage),
+    // Image bytes never reach storage, so a stored draft has no preview source:
+    // restoring its attachments would only render broken thumbnails.
+    images: EMPTY_IMAGES,
     interactionMode: draft.interactionMode,
     modelSelection: draft.modelSelection,
     prompt: draft.prompt,
     runtimeMode: draft.runtimeMode,
     terminalContexts: draft.terminalContexts,
     updatedAt: draft.updatedAt,
-  }
-}
-
-function hydrateImage(image: PersistedChatInputDraft['images'][number]): ChatInputImageAttachment {
-  return {
-    ...image,
-    previewUrl: image.dataUrl,
   }
 }
 
@@ -359,26 +354,12 @@ function persistedStorageFromState(state: ChatInputDraftState): PersistedChatInp
 function persistedDraft(draft: ChatInputDraft): PersistedChatInputDraft {
   return {
     draftPromotion: draft.draftPromotion,
-    images: draft.images.map(persistedImage),
     interactionMode: draft.interactionMode,
     modelSelection: draft.modelSelection,
     prompt: draft.prompt,
     runtimeMode: draft.runtimeMode,
     terminalContexts: draft.terminalContexts,
     updatedAt: draft.updatedAt,
-  }
-}
-
-function persistedImage(
-  image: ChatInputImageAttachment,
-): PersistedChatInputDraft['images'][number] {
-  return {
-    dataUrl: image.dataUrl,
-    id: image.id,
-    mimeType: image.mimeType,
-    name: image.name,
-    sizeBytes: image.sizeBytes,
-    type: image.type,
   }
 }
 

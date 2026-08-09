@@ -11,7 +11,6 @@ import type { ReactNode } from 'react'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { SearchPane } from '@/components/workspace/search/components/search-pane'
 import { ChatSidePanel } from '@/features/chat/components/chat-side-panel'
-import type { GitStoreApi } from '@/features/git/state'
 import { LogsPanel } from '@/features/logs/panel'
 import { FileNavigatorPanel } from '@/features/workbench/components/file-navigator-panel'
 import { GitChangesPanel } from '@/features/workbench/components/git-changes-panel'
@@ -25,13 +24,11 @@ import { cn } from '@workspace/ui/lib/utils'
 
 export function SidebarPanel({
   editorKeymapLayers,
-  gitStore,
   panels,
   rootPath,
   onPanelsChange,
 }: {
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
-  readonly gitStore: GitStoreApi
   readonly panels: WorkbenchPanels
   readonly rootPath: string
   readonly onPanelsChange: (panels: WorkbenchPanels) => void
@@ -44,7 +41,7 @@ export function SidebarPanel({
   }
 
   return (
-    <aside className='bg-card border-border flex h-full min-h-0 min-w-0 overflow-hidden border-r'>
+    <aside className='bg-card backdrop-material border-border flex h-full min-h-0 min-w-0 overflow-hidden border-r'>
       <nav
         aria-label='Sidebar tabs'
         className='border-border flex w-11 shrink-0 flex-col items-center gap-1 border-r p-1'
@@ -83,7 +80,6 @@ export function SidebarPanel({
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
         {renderSidebarPanel({
           editorKeymapLayers,
-          gitStore,
           rootPath,
           tab: panels.activeSidebarTab,
         })}
@@ -124,17 +120,15 @@ function sidebarTabButton({
 
 function renderSidebarPanel({
   editorKeymapLayers,
-  gitStore,
   rootPath,
   tab,
 }: {
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
-  readonly gitStore: GitStoreApi
   readonly rootPath: string
   readonly tab: WorkbenchSidebarTab
 }) {
   if (tab === 'chat') return <ChatSidePanel rootPath={rootPath} />
-  if (tab === 'git') return <GitChangesPanel rootPath={rootPath} store={gitStore} />
+  if (tab === 'git') return <GitChangesPanel rootPath={rootPath} />
   if (tab === 'logs') return <LogsPanel active />
   if (tab === 'search')
     return <SearchPane editorKeymapLayers={editorKeymapLayers} rootPath={rootPath} />

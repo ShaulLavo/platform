@@ -86,18 +86,51 @@ export class WorkspaceDocumentService {
   private readonly liveDocumentsById = new Map<string, LiveEditorDocumentRecord>()
   private readonly viewsByTabId = new Map<string, EditorDocumentViewRecord>()
 
-  clear(): void {
-    this.documentContentRevisions.clear()
-    this.dirtyFilePaths.clear()
-    this.dirtyContentRevision = 0
-    this.liveDocumentsById.clear()
-    this.viewsByTabId.clear()
+  /**
+   * The single eviction path. Drops every live document and view outside the keep
+   * sets, and nothing else — dirty buffers and unsynced documents (conflict and
+   * search buffers, which have no disk backing) are never evictable, so switching
+   * projects can no longer destroy unrecoverable content.
+   *
+   * Deleting through deleteLiveDocument is mandatory, not stylistic: it removes
+   * every view bound to the document. A view outliving its document is a hard
+   * crash through getRequiredLiveDocument.
+   */
+  retain({
+    documentIds,
+    tabIds,
+  }: {
+    documentIds: ReadonlySet<string>
+    tabIds: ReadonlySet<string>
+  }): { evictedDocumentIds: string[]; evictedTabIds: string[] } {
+    const evictedDocumentIds: string[] = []
+    for (const [documentId, document] of this.liveDocumentsById) {
+      if (documentIds.has(documentId)) continue
+      if (this.isDirtyDocument(documentId)) continue
+      if (document.sync.kind !== 'file') continue
+
+      this.deleteLiveDocument(documentId)
+      evictedDocumentIds.push(documentId)
+    }
+
+    // After the document pass: deleteLiveDocument has already removed the views
+    // belonging to evicted documents, so anything left here is a kept document
+    // whose tab is simply gone.
+    const evictedTabIds: string[] = []
+    for (const tabId of this.viewsByTabId.keys()) {
+      if (tabIds.has(tabId)) continue
+
+      this.viewsByTabId.delete(tabId)
+      evictedTabIds.push(tabId)
+    }
+
+    return { evictedDocumentIds, evictedTabIds }
   }
 
   deleteLiveDocument(documentId: string): { hadLiveDocument: boolean; wasDirty: boolean } {
     const document = this.liveDocumentsById.get(documentId)
     const path = document?.path ?? documentId
-    const wasDirty = this.isDirtyDocumentId(documentId)
+    const wasDirty = this.isDirtyDocument(documentId)
     const hadLiveDocument = this.liveDocumentsById.delete(documentId)
 
     this.dirtyFilePaths.delete(path)
@@ -167,21 +200,6 @@ export class WorkspaceDocumentService {
     return this.viewDocumentProjection(nextView)
   }
 
-  evictCleanLiveDocument(documentId: string): boolean {
-    const document = this.liveDocumentsById.get(documentId)
-    if (!document) return false
-    if (document.buffer.isDirty()) return false
-
-    this.deleteLiveDocument(documentId)
-    return true
-  }
-
-  evictCleanUnviewedLiveDocument(documentId: string): boolean {
-    if (this.hasViewsForDocument(documentId)) return false
-
-    return this.evictCleanLiveDocument(documentId)
-  }
-
   removeView(tabId: string): boolean {
     const view = this.viewsByTabId.get(tabId)
     if (!view) return false
@@ -191,7 +209,7 @@ export class WorkspaceDocumentService {
   }
 
   forceReplaceLiveDocument(file: FileResult): { changed: boolean; wasDirty: boolean } {
-    const wasDirty = this.isDirtyDocumentId(file.path)
+    const wasDirty = this.isDirtyDocument(file.path)
     const existing = this.liveDocumentsById.get(file.path)
     if (existing && !wasDirty && fileSyncVersion(existing) === file.version) {
       if (textSnapshotEqualsText(existing.buffer.getTextSnapshot(), file.content)) {
@@ -278,7 +296,7 @@ export class WorkspaceDocumentService {
   }
 
   renameLiveDocument(from: string, to: string): { wasDirty: boolean } {
-    const wasDirty = this.isDirtyDocumentId(from)
+    const wasDirty = this.isDirtyDocument(from)
     const document = this.liveDocumentsById.get(from)
     const contentRevision = this.documentContentRevisions.get(from)
 
@@ -457,15 +475,7 @@ export class WorkspaceDocumentService {
     return document
   }
 
-  private hasViewsForDocument(documentId: string): boolean {
-    for (const view of this.viewsByTabId.values()) {
-      if (view.documentId === documentId) return true
-    }
-
-    return false
-  }
-
-  private isDirtyDocumentId(documentId: string): boolean {
+  isDirtyDocument(documentId: string): boolean {
     const document = this.liveDocumentsById.get(documentId)
     if (!document) return this.dirtyFilePaths.has(documentId)
     if (this.dirtyFilePaths.has(document.path)) return true

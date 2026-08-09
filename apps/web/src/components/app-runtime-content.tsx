@@ -1,5 +1,6 @@
-import { useCallback, useMemo, type FocusEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useCallback, useMemo, type FocusEvent, type PointerEvent } from 'react'
 
+import { AppTitlebar } from '@/components/app-titlebar'
 import { AppWorkspace } from '@/components/app-workspace'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
@@ -7,11 +8,6 @@ import { EditorTabActionsProvider } from '@/features/editor/providers/editor-tab
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
-import { isDesktop } from '@/lib/platform/bridge'
-import {
-  NATIVE_WINDOW_DRAG_CLASS,
-  markNativeWindowNoDragForCurrentEvent,
-} from '@/lib/platform/window-drag'
 
 export function AppRuntimeContent() {
   const setFocusArea = useFocus((state) => state.setFocusArea)
@@ -42,13 +38,13 @@ export function AppRuntimeContent() {
   )
 
   return (
-    <main
-      className={`${NATIVE_WINDOW_DRAG_CLASS} bg-background text-foreground flex h-svh flex-col overflow-hidden`}
+    <div
+      className='bg-background text-foreground flex h-svh flex-col overflow-hidden'
       onFocusCapture={handleGlobalFocusCapture}
-      onMouseDownCapture={handleNativeWindowDragMouseDownCapture}
       onPointerDownCapture={handleGlobalPointerDownCapture}
     >
-      <div className='min-h-0 flex-1'>
+      <AppTitlebar />
+      <main className='min-h-0 flex-1'>
         <EditorTabActionsProvider
           requestCloseTab={requestCloseTab}
           requestCloseTabs={requestCloseTabs}
@@ -58,16 +54,10 @@ export function AppRuntimeContent() {
             keymapBindings={defaultKeymapBindings}
           />
         </EditorTabActionsProvider>
-      </div>
+      </main>
       {dirtyTabCloseDialog}
-    </main>
+    </div>
   )
-}
-
-function handleNativeWindowDragMouseDownCapture(event: MouseEvent<HTMLElement>) {
-  if (!isDesktop()) return
-
-  markNativeWindowNoDragForCurrentEvent(event.target)
 }
 
 function eventTargetsCurrentElement(event: {

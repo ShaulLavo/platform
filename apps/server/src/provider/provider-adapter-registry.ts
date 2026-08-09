@@ -7,6 +7,7 @@ import {
   type ProviderSnapshot,
 } from '@workspace/contracts'
 import * as v from 'valibot'
+import { ClaudeProviderAdapter } from './adapters/claude'
 import { CodexProviderAdapter } from './adapters/codex'
 import { ProviderStatusCache } from './status-cache'
 import type { ProviderAdapter } from './types'
@@ -103,6 +104,15 @@ export class ProviderAdapterRegistry {
     const cached = this.statusCache.get(providerInstanceId)
     if (cached) return cached
 
+    return this.refreshSnapshot(providerInstanceId)
+  }
+
+  /**
+   * Bypasses the status cache. Sign-in and sign-out change auth state directly,
+   * and the cached snapshot would otherwise keep reporting the old state for the
+   * rest of its TTL — i.e. a user who just signed in still sees "not signed in".
+   */
+  async refreshSnapshot(providerInstanceId: ProviderInstanceId) {
     const adapter = this.getByInstance(providerInstanceId)
     const snapshot = await adapter.snapshot()
     this.statusCache.set(snapshot)
@@ -121,8 +131,14 @@ export class ProviderAdapterRegistry {
   }
 }
 
+/**
+ * The registry keys purely on `adapter.adapterKey` and silently overwrites on
+ * collision, so each adapter's key must be its own provider instance id.
+ * `ClaudeProviderAdapter.adapterKey` is `DEFAULT_CLAUDE_PROVIDER_SETTINGS.providerInstanceId`;
+ * copying codex's key here would delete the Codex adapter with no error.
+ */
 export function createDefaultProviderAdapterRegistry() {
-  return new ProviderAdapterRegistry([new CodexProviderAdapter()])
+  return new ProviderAdapterRegistry([new CodexProviderAdapter(), new ClaudeProviderAdapter()])
 }
 
 function compareProviderSnapshots(left: ProviderSnapshot, right: ProviderSnapshot) {

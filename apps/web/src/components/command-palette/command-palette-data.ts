@@ -36,6 +36,18 @@ export const workspaceOptionalCommands: ReadonlySet<PlatformCommandId> = new Set
 
 export const viewPaletteItems: readonly ViewPaletteItem[] = [
   {
+    command: 'workspace.showChatMode',
+    description: 'Sessions, chat, and tools in the chat layout.',
+    title: 'Chat mode',
+    value: 'view:chat-mode',
+  },
+  {
+    command: 'workspace.showWorkbenchMode',
+    description: 'The editor-centred workbench layout.',
+    title: 'Workbench mode',
+    value: 'view:workbench-mode',
+  },
+  {
     command: 'workspace.focusFileTree',
     description: 'Focus the workspace file explorer.',
     title: 'Explorer',

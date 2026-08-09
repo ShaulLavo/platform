@@ -11,6 +11,7 @@ import {
 } from '@workspace/contracts'
 import { ProviderRuntimeEventStream } from '../provider-runtime-event-stream'
 import type { ProviderAdapter, ProviderSessionStartInput, ProviderTurnInput } from '../types'
+import { sessionInputFromTurn } from './utils/session-input'
 
 type MockProviderAdapterOptions = {
   approvalError?: string
@@ -249,16 +250,5 @@ export class MockProviderAdapter implements ProviderAdapter {
     if (this.userInputError) throw createInternalError(this.userInputError)
 
     this.userInputResponses.push(input)
-  }
-}
-
-function sessionInputFromTurn(input: ProviderTurnInput): ProviderSessionStartInput {
-  return {
-    cwd: input.cwd,
-    interactionMode: input.interactionMode,
-    modelSelection: input.modelSelection,
-    providerInstanceId: input.providerInstanceId,
-    runtimeMode: input.runtimeMode,
-    threadId: input.thread.id,
   }
 }

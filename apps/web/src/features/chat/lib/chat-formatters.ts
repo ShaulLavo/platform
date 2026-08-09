@@ -2,11 +2,6 @@ import type { ModelSelection, ProviderSnapshot } from '@workspace/contracts'
 
 import type { ChatSidebarThreadSummary } from '../state/chat-projection-store'
 
-const CHAT_MODEL_LABELS: Record<string, string> = {
-  codex: 'GPT-5.5',
-  'gpt-5.5': 'GPT-5.5',
-}
-
 export function compareChatSidebarThreads(
   left: ChatSidebarThreadSummary,
   right: ChatSidebarThreadSummary,
@@ -26,16 +21,14 @@ export function chatThreadPreview(thread: ChatSidebarThreadSummary) {
   return 'No messages yet'
 }
 
-function formatChatModelLabel(modelSelection: Pick<ModelSelection, 'model'>) {
-  return CHAT_MODEL_LABELS[modelSelection.model] ?? modelSelection.model
-}
-
 export function providerModelDisplayLabel(
   provider: ProviderSnapshot | null | undefined,
   modelSelection: Pick<ModelSelection, 'model'>,
 ) {
   const model = provider?.models.find((candidate) => candidate.slug === modelSelection.model)
-  if (!model) return formatChatModelLabel(modelSelection)
+  // Fall back to the raw slug: a pretty label for a model the provider does not
+  // offer is how a broken catalog ends up confidently naming a model we cannot run.
+  if (!model) return modelSelection.model
 
   return model.shortName ?? model.name
 }

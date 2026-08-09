@@ -28,6 +28,16 @@ export const chatAttachmentSchema = v.object({
   sizeBytes: nonNegativeIntegerSchema,
 })
 
+/**
+ * Wire-only attachment shape: carries the bytes on their way in from the client.
+ * The bytes are written to the blob store at ingest and never reach the event
+ * log or the projection, which keep the metadata-only `chatAttachmentSchema`.
+ */
+export const chatAttachmentUploadSchema = v.object({
+  ...chatAttachmentSchema.entries,
+  dataUrl: v.optional(v.pipe(v.string(), v.regex(/^data:image\/[a-z+]+;base64,/i))),
+})
+
 export const orchestrationProjectSchema = v.object({
   id: projectIdSchema,
   title: trimmedNonEmptyStringSchema,
@@ -155,6 +165,7 @@ export const orchestrationThreadSchema = v.object({
 
 export type IsoDateTime = v.InferOutput<typeof isoDateTimeSchema>
 export type ChatAttachment = v.InferOutput<typeof chatAttachmentSchema>
+export type ChatAttachmentUpload = v.InferOutput<typeof chatAttachmentUploadSchema>
 export type OrchestrationProject = v.InferOutput<typeof orchestrationProjectSchema>
 export type OrchestrationMessageRole = v.InferOutput<typeof orchestrationMessageRoleSchema>
 export type OrchestrationMessage = v.InferOutput<typeof orchestrationMessageSchema>

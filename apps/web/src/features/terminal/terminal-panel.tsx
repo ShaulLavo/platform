@@ -141,7 +141,6 @@ export function TerminalPanel({
       aria-label='Terminal'
       {...sectionProps}
       className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
-      data-native-window-drag-blocker=''
       style={{ background: 'var(--terminal-background)' }}
       onBlurCapture={handleTerminalBlur}
       onFocusCapture={handleTerminalFocus}

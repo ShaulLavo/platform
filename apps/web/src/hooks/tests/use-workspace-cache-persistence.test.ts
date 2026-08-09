@@ -1,3 +1,5 @@
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
@@ -17,8 +19,16 @@ import {
 
 type CacheWrite =
   | {
+      chatModePanels: CachedWorkspaceState['chatModePanels']
+      key: 'chatModePanels'
+    }
+  | {
       diffViewMode: CachedWorkspaceState['diffViewMode']
       key: 'diffViewMode'
+    }
+  | {
+      key: 'uiMode'
+      uiMode: CachedWorkspaceState['uiMode']
     }
   | {
       key: 'editorHistory'
@@ -38,6 +48,10 @@ type CacheWrite =
       key: 'searchBuffer'
       rootFolder: PickedFsEntry | null
       searchBuffer: CachedSearchBufferState | null
+    }
+  | {
+      key: 'workbenchLayout'
+      workbenchLayout: CachedWorkspaceState['workbenchLayout']
     }
   | {
       key: 'workbenchPanels'
@@ -186,12 +200,15 @@ describe('workspace cache persistence', () => {
 
 function cachedWorkspace(): CachedWorkspaceState {
   return {
+    chatModePanels: createDefaultChatModePanels(),
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder: pickedDirectory('/repo'),
     selectedFilePath: null,
+    uiMode: 'workbench',
+    workbenchLayout: createDefaultWorkbenchLayout(),
     workbenchPanels: createDefaultWorkbenchPanels(),
   }
 }
@@ -210,6 +227,7 @@ function pickedDirectory(path: string): PickedFsEntry {
 
 function recordingCacheWriters(writes: CacheWrite[]): WorkspaceCacheWriters {
   return {
+    chatModePanels: (chatModePanels) => writes.push({ chatModePanels, key: 'chatModePanels' }),
     diffViewMode: (diffViewMode) => writes.push({ diffViewMode, key: 'diffViewMode' }),
     editorHistory: (rootFolder, paths) =>
       writes.push({ key: 'editorHistory', paths: Array.from(paths), rootFolder }),
@@ -218,6 +236,8 @@ function recordingCacheWriters(writes: CacheWrite[]): WorkspaceCacheWriters {
     rootFolder: (rootFolder) => writes.push({ key: 'rootFolder', rootFolder }),
     searchBuffer: (rootFolder, searchBuffer) =>
       writes.push({ key: 'searchBuffer', rootFolder, searchBuffer }),
+    uiMode: (uiMode) => writes.push({ key: 'uiMode', uiMode }),
+    workbenchLayout: (workbenchLayout) => writes.push({ key: 'workbenchLayout', workbenchLayout }),
     workbenchPanels: (rootFolder, workbenchPanels) =>
       writes.push({ key: 'workbenchPanels', rootFolder, workbenchPanels }),
   }

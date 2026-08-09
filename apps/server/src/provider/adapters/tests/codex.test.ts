@@ -69,8 +69,20 @@ function fakeModel() {
     id: 'gpt-5.5',
     isDefault: true,
     model: 'gpt-5.5',
-    supportedReasoningEfforts: [],
+    supportedReasoningEfforts: [
+      { description: 'Fastest responses', reasoningEffort: 'low' },
+      { description: 'Balanced', reasoningEffort: 'medium' },
+      { description: 'Deeper reasoning', reasoningEffort: 'high' },
+      { description: 'Even deeper reasoning', reasoningEffort: 'xhigh' },
+      { description: 'Maximum reasoning depth', reasoningEffort: 'max' },
+      { description: 'Maximum reasoning with delegation', reasoningEffort: 'ultra' },
+      { description: 'An effort level this schema predates', reasoningEffort: 'hyperdrive' },
+    ],
   };
+}
+
+function fakeModelWithoutReasoningEfforts() {
+  return { ...fakeModel(), supportedReasoningEfforts: [] };
 }
 
 function sendReasoningEvents() {
@@ -222,9 +234,10 @@ function handle(message) {
     return;
   }
   if (message.method === 'model/list') {
+    const model = mode === 'no-reasoning-efforts' ? fakeModelWithoutReasoningEfforts() : fakeModel();
     send({
       id: message.id,
-      result: { data: [fakeModel()], nextCursor: null },
+      result: { data: [model], nextCursor: null },
     });
     return;
   }
@@ -259,8 +272,49 @@ function handle(message) {
       method: 'turn/started',
       params: { threadId: 'provider-thread-1', turn: fakeTurn('inProgress') },
     });
+    if (mode === 'echo-turn-params') {
+      sendAgentMessageItemCompleted(
+        'item-1',
+        JSON.stringify({
+          effort: message.params.effort ?? null,
+          serviceTier: message.params.serviceTier ?? null,
+        })
+      );
+      send({
+        method: 'turn/completed',
+        params: { threadId: 'provider-thread-1', turn: fakeTurn('completed') },
+      });
+      send({ id: message.id, result: { turn: fakeTurn('completed') } });
+      return;
+    }
     if (mode === 'reasoning-events') {
       sendReasoningEvents();
+    }
+    if (mode === 'token-usage') {
+      send({
+        method: 'thread/tokenUsage/updated',
+        params: {
+          threadId: 'provider-thread-1',
+          turnId: 'provider-turn-1',
+          tokenUsage: {
+            last: {
+              cachedInputTokens: 400,
+              inputTokens: 1200,
+              outputTokens: 300,
+              reasoningOutputTokens: 100,
+              totalTokens: 1600,
+            },
+            modelContextWindow: 272000,
+            total: {
+              cachedInputTokens: 800,
+              inputTokens: 2400,
+              outputTokens: 600,
+              reasoningOutputTokens: 200,
+              totalTokens: 3200,
+            },
+          },
+        },
+      });
     }
     if (mode === 'malformed-delta') {
       send({
@@ -389,6 +443,20 @@ describe('CodexProviderAdapter', () => {
         version: '9.9.9',
       })
       expect(snapshot.models[0]).toMatchObject({ slug: 'gpt-5.5' })
+      // Efforts newer than the pinned protocol schema (`max`, `ultra`) and one
+      // it has never heard of must reach the snapshot instead of emptying it.
+      expect(snapshot.models[0]?.capabilities).toEqual({
+        defaultReasoningEffort: 'medium',
+        reasoningEfforts: [
+          { description: 'Fastest responses', effort: 'low' },
+          { description: 'Balanced', effort: 'medium' },
+          { description: 'Deeper reasoning', effort: 'high' },
+          { description: 'Even deeper reasoning', effort: 'xhigh' },
+          { description: 'Maximum reasoning depth', effort: 'max' },
+          { description: 'Maximum reasoning with delegation', effort: 'ultra' },
+          { description: 'An effort level this schema predates', effort: 'hyperdrive' },
+        ],
+      })
       expect(hasSession).toBe(true)
       expect(hasSessionAfterStop).toBe(false)
       expect(sessions).toContainEqual(
@@ -472,6 +540,55 @@ describe('CodexProviderAdapter', () => {
     })
   })
 
+  it('relays the selected reasoning effort to turn/start verbatim', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const events: ProviderRuntimeEvent[] = []
+        // `ultra` is past the end of the pinned protocol enum, so it also proves
+        // no allowlist between the selection and the CLI silently downgrades it.
+        const selected = providerTurnInput()
+        selected.modelSelection = {
+          model: 'codex',
+          options: { reasoningEffort: 'ultra' },
+          providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID as ProviderInstanceId,
+        }
+        const unselected = providerTurnInput()
+        unselected.turnId = v.parse(turnIdSchema, 'turn-2')
+        collectAdapterEvents(adapter, events)
+
+        await adapter.sendTurn(selected)
+        await settleRuntimeEvents()
+        await adapter.sendTurn(unselected)
+        await settleRuntimeEvents()
+        await adapter.stopAll()
+
+        const echoes = events.filter(
+          (event) =>
+            event.type === 'item.completed' && event.payload.itemType === 'assistant_message',
+        )
+        expect(echoes).toMatchObject([
+          { payload: { detail: '{"effort":"ultra","serviceTier":null}' } },
+          { payload: { detail: '{"effort":null,"serviceTier":null}' } },
+        ])
+      },
+      { mode: 'echo-turn-params' },
+    )
+  })
+
+  it('reports no capabilities for a model that advertises no reasoning efforts', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const snapshot = await adapter.snapshot()
+
+        expect(snapshot.models[0]).toMatchObject({ slug: 'gpt-5.5' })
+        expect(snapshot.models[0]?.capabilities).toBeNull()
+      },
+      { mode: 'no-reasoning-efforts' },
+    )
+  })
+
   it('streams Codex reasoning notifications as thinking progress', async () => {
     await withFakeCodex(
       async () => {
@@ -509,6 +626,42 @@ describe('CodexProviderAdapter', () => {
         ])
       },
       { mode: 'reasoning-events' },
+    )
+  })
+
+  it('reads token usage from the tokenUsage notification field', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const events: ProviderRuntimeEvent[] = []
+        const input = providerTurnInput()
+        collectAdapterEvents(adapter, events)
+
+        await adapter.sendTurn(input)
+        await settleRuntimeEvents()
+        await adapter.stopAll()
+
+        const usageEvents = events.filter((event) => event.type === 'thread.token-usage.updated')
+        expect(usageEvents).toEqual([
+          expect.objectContaining({
+            payload: {
+              usage: {
+                cachedInputTokens: 400,
+                compactsAutomatically: true,
+                inputTokens: 1200,
+                maxTokens: 272000,
+                outputTokens: 300,
+                reasoningOutputTokens: 100,
+                totalProcessedTokens: 3200,
+                usedTokens: 1600,
+              },
+            },
+            threadId: input.thread.id,
+            type: 'thread.token-usage.updated',
+          }),
+        ])
+      },
+      { mode: 'token-usage' },
     )
   })
 

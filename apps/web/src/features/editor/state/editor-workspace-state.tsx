@@ -1,5 +1,8 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
+import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
+import type { WorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import type { WorkspaceUiMode } from '@/lib/ui-mode'
 import {
   activeEditorPathForWorkbenchPanels,
   createDefaultWorkbenchPanels,
@@ -24,10 +27,13 @@ type EditorWorkspaceStoreActions = {
   clearRootFolder: () => void
   openPicker: () => void
   resetForRootFolder: (rootFolder: PickedFsEntry) => void
+  setChatModePanels: (panels: ChatModePanels) => void
   setDiffViewMode: (mode: EditorDiffViewMode) => void
   setEditorHistory: (paths: string[]) => void
   setPickerOpen: (open: boolean) => void
   setRecentlyClosedEditorPaths: (paths: string[]) => void
+  setUiMode: (mode: WorkspaceUiMode) => void
+  setWorkbenchLayout: (layout: WorkbenchLayout) => void
   setWorkbenchPanels: (panels: WorkbenchPanels) => void
 }
 
@@ -60,6 +66,7 @@ export function createEditorWorkspaceStore(
 ) {
   return createStore<EditorWorkspaceStore>()(
     subscribeWithSelector((set) => ({
+      chatModePanels: initialState.chatModePanels,
       diffViewMode: initialState.diffViewMode,
       editorHistory: initialState.editorHistory,
       openFilePaths: initialState.openFilePaths,
@@ -67,17 +74,22 @@ export function createEditorWorkspaceStore(
       recentlyClosedEditorPaths: initialState.recentlyClosedEditorPaths,
       rootFolder: initialState.rootFolder,
       selectedFilePath: initialState.selectedFilePath,
+      uiMode: initialState.uiMode,
+      workbenchLayout: initialState.workbenchLayout,
       workbenchPanels: initialState.workbenchPanels,
       clearRootFolder: () =>
         set((state) => workspaceStateForRootFolderReset(null, state.diffViewMode)),
       openPicker: () => set({ pickerOpen: true }),
       resetForRootFolder: (rootFolder) =>
         set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
+      setChatModePanels: (chatModePanels) => set({ chatModePanels }),
       setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
       setEditorHistory: (editorHistory) => set({ editorHistory }),
       setPickerOpen: (pickerOpen) => set({ pickerOpen }),
       setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) =>
         set({ recentlyClosedEditorPaths }),
+      setUiMode: (uiMode) => set({ uiMode }),
+      setWorkbenchLayout: (workbenchLayout) => set({ workbenchLayout }),
       setWorkbenchPanels: (workbenchPanels) =>
         set((state) =>
           editorWorkspaceSelectionForWorkbenchPanels(workbenchPanels, {

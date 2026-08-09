@@ -1,7 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach } from 'vitest'
 import { DEFAULT_PROVIDER_INSTANCE_ID } from '@workspace/contracts'
 
-import { CHAT_INPUT_DRAFT_STORAGE_KEY } from '../../lib/chat-draft-storage'
+import { expect, test } from '../../../../../test/fixtures'
+import {
+  CHAT_INPUT_DRAFT_STORAGE_KEY,
+  chatInputDraftStorageId,
+} from '@/features/chat/lib/chat-draft-storage'
 import {
   flushChatInputDraftStorage,
   hydrateChatInputDraftStoreFromStorage,
@@ -9,7 +13,12 @@ import {
   useChatInputDraftStore,
   type ChatInputDraftTarget,
   type ChatInputImageAttachment,
-} from '../chat-input-draft-store'
+} from '@/features/chat/state/chat-input-draft-store'
+
+// Browsers cap localStorage around 5 MB of UTF-16 code units; a single pasted
+// screenshot is a few MB once base64-encoded, so two of them used to overflow it.
+const LOCAL_STORAGE_QUOTA_CHARS = 5 * 1024 * 1024
+const SCREENSHOT_BASE64_CHARS = 3 * 1024 * 1024
 
 const STORE = new Map<string, string>()
 const TARGET: ChatInputDraftTarget = {
@@ -17,94 +26,150 @@ const TARGET: ChatInputDraftTarget = {
   rootPath: '/repo',
 }
 
-describe('chat input draft store', () => {
-  beforeEach(() => {
-    STORE.clear()
-    Object.defineProperty(globalThis, 'localStorage', {
-      configurable: true,
-      value: fakeLocalStorage(),
-    })
-    resetChatInputDraftStore()
+beforeEach(() => {
+  STORE.clear()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: quotaLimitedLocalStorage(),
   })
-
-  afterEach(() => {
-    resetChatInputDraftStore()
-    delete (globalThis as { localStorage?: Storage }).localStorage
-  })
-
-  it('persists and hydrates versioned prompt, model, and images', () => {
-    useChatInputDraftStore.getState().setPrompt(TARGET, 'Explain this screenshot')
-    useChatInputDraftStore.getState().setModelSelection(TARGET, {
-      model: 'codex-test',
-      providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
-    })
-    useChatInputDraftStore.getState().addImages(TARGET, [imageAttachment('image-1')])
-
-    expect(flushChatInputDraftStorage()).toBe(true)
-
-    const persisted = JSON.parse(STORE.get(CHAT_INPUT_DRAFT_STORAGE_KEY) ?? '{}')
-    expect(persisted.version).toBe(1)
-
-    resetChatInputDraftStore()
-    hydrateChatInputDraftStoreFromStorage()
-
-    const draft = useChatInputDraftStore.getState().getDraft(TARGET)
-    expect(draft.prompt).toBe('Explain this screenshot')
-    expect(draft.modelSelection?.model).toBe('codex-test')
-    expect(draft.images).toMatchObject([
-      {
-        dataUrl: 'data:image/png;base64,abc',
-        id: 'image-1',
-        previewUrl: 'data:image/png;base64,abc',
-      },
-    ])
-  })
-
-  it('clears a draft after successful send cleanup', () => {
-    useChatInputDraftStore.getState().setPrompt(TARGET, 'Ship it')
-    useChatInputDraftStore.getState().addImages(TARGET, [imageAttachment('image-1')])
-    useChatInputDraftStore.getState().clearDraft(TARGET)
-
-    expect(flushChatInputDraftStorage()).toBe(true)
-    expect(useChatInputDraftStore.getState().getDraft(TARGET).prompt).toBe('')
-    expect(STORE.get(CHAT_INPUT_DRAFT_STORAGE_KEY)).toContain('"draftsByKey":{}')
-  })
-
-  it('keeps in-memory attachments when local storage persistence fails', () => {
-    Object.defineProperty(globalThis, 'localStorage', {
-      configurable: true,
-      value: throwingLocalStorage(),
-    })
-    resetChatInputDraftStore()
-    useChatInputDraftStore.getState().addImages(TARGET, [imageAttachment('image-1')])
-
-    expect(flushChatInputDraftStorage()).toBe(false)
-    expect(useChatInputDraftStore.getState().persistenceError).toBe(
-      'Chat draft could not be saved locally.',
-    )
-    expect(useChatInputDraftStore.getState().getDraft(TARGET).images).toHaveLength(1)
-  })
+  resetChatInputDraftStore()
 })
 
-function imageAttachment(id: string): ChatInputImageAttachment {
+afterEach(() => {
+  resetChatInputDraftStore()
+  delete (globalThis as { localStorage?: Storage }).localStorage
+})
+
+test('persists a draft with images without writing the image bytes', () => {
+  useChatInputDraftStore.getState().setPrompt(TARGET, 'Explain this screenshot')
+  useChatInputDraftStore.getState().addImages(TARGET, [imageAttachment('image-1')])
+
+  expect(flushChatInputDraftStorage()).toBe(true)
+
+  const raw = STORE.get(CHAT_INPUT_DRAFT_STORAGE_KEY) ?? ''
+  expect(raw).not.toContain('base64')
+  expect(JSON.parse(raw).version).toBe(1)
+  // The composer still shows the attachment — only the persisted copy loses it.
+  expect(useChatInputDraftStore.getState().getDraft(TARGET).images).toHaveLength(1)
+})
+
+test('restores prompt and model selection but drops attachments on hydrate', () => {
+  useChatInputDraftStore.getState().setPrompt(TARGET, 'Explain this screenshot')
+  useChatInputDraftStore.getState().setModelSelection(TARGET, {
+    model: 'codex-test',
+    providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+  })
+  useChatInputDraftStore.getState().addImages(TARGET, [imageAttachment('image-1')])
+
+  expect(flushChatInputDraftStorage()).toBe(true)
+
+  resetChatInputDraftStore()
+  hydrateChatInputDraftStoreFromStorage()
+
+  const draft = useChatInputDraftStore.getState().getDraft(TARGET)
+  expect(draft.prompt).toBe('Explain this screenshot')
+  expect(draft.modelSelection?.model).toBe('codex-test')
+  expect(draft.images).toHaveLength(0)
+})
+
+test('keeps the text draft when the images would blow the storage quota', () => {
+  useChatInputDraftStore.getState().setPrompt(TARGET, 'Compare these two screenshots')
+  useChatInputDraftStore
+    .getState()
+    .addImages(TARGET, [
+      imageAttachment('image-1', SCREENSHOT_BASE64_CHARS),
+      imageAttachment('image-2', SCREENSHOT_BASE64_CHARS),
+    ])
+
+  expect(flushChatInputDraftStorage()).toBe(true)
+  expect(useChatInputDraftStore.getState().persistenceError).toBeNull()
+
+  resetChatInputDraftStore()
+  hydrateChatInputDraftStoreFromStorage()
+
+  expect(useChatInputDraftStore.getState().getDraft(TARGET).prompt).toBe(
+    'Compare these two screenshots',
+  )
+})
+
+test('drops stored image records that carry no preview source', () => {
+  const draftId = chatInputDraftStorageId(TARGET.rootPath, TARGET.draftKey) ?? ''
+  STORE.set(
+    CHAT_INPUT_DRAFT_STORAGE_KEY,
+    JSON.stringify({
+      draftsByKey: {
+        [draftId]: {
+          images: [
+            {
+              id: 'image-1',
+              mimeType: 'image/png',
+              name: 'screenshot.png',
+              sizeBytes: 3,
+              type: 'image',
+            },
+          ],
+          prompt: 'Ship it',
+        },
+      },
+      version: 1,
+    }),
+  )
+
+  hydrateChatInputDraftStoreFromStorage()
+
+  const draft = useChatInputDraftStore.getState().getDraft(TARGET)
+  expect(draft.prompt).toBe('Ship it')
+  expect(draft.images).toHaveLength(0)
+})
+
+test('clears a draft after successful send cleanup', () => {
+  useChatInputDraftStore.getState().setPrompt(TARGET, 'Ship it')
+  useChatInputDraftStore.getState().addImages(TARGET, [imageAttachment('image-1')])
+  useChatInputDraftStore.getState().clearDraft(TARGET)
+
+  expect(flushChatInputDraftStorage()).toBe(true)
+  expect(useChatInputDraftStore.getState().getDraft(TARGET).prompt).toBe('')
+  expect(STORE.get(CHAT_INPUT_DRAFT_STORAGE_KEY)).toContain('"draftsByKey":{}')
+})
+
+test('keeps in-memory attachments when local storage persistence fails', () => {
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: throwingLocalStorage(),
+  })
+  resetChatInputDraftStore()
+  useChatInputDraftStore.getState().addImages(TARGET, [imageAttachment('image-1')])
+
+  expect(flushChatInputDraftStorage()).toBe(false)
+  expect(useChatInputDraftStore.getState().persistenceError).toBe(
+    'Chat draft could not be saved locally.',
+  )
+  expect(useChatInputDraftStore.getState().getDraft(TARGET).images).toHaveLength(1)
+})
+
+function imageAttachment(id: string, base64Chars = 8): ChatInputImageAttachment {
+  const dataUrl = `data:image/png;base64,${'A'.repeat(base64Chars)}`
+
   return {
-    dataUrl: 'data:image/png;base64,abc',
+    dataUrl,
     id,
     mimeType: 'image/png',
-    name: 'screenshot.png',
-    previewUrl: 'data:image/png;base64,abc',
-    sizeBytes: 3,
+    name: `${id}.png`,
+    previewUrl: dataUrl,
+    sizeBytes: base64Chars,
     type: 'image',
   }
 }
 
-function fakeLocalStorage() {
+function quotaLimitedLocalStorage() {
   return {
     getItem: (key: string) => STORE.get(key) ?? null,
     removeItem: (key: string) => {
       STORE.delete(key)
     },
     setItem: (key: string, value: string) => {
+      if (value.length > LOCAL_STORAGE_QUOTA_CHARS) throw quotaExceeded()
+
       STORE.set(key, value)
     },
   }
@@ -115,7 +180,12 @@ function throwingLocalStorage() {
     getItem: () => null,
     removeItem: () => undefined,
     setItem: () => {
-      throw new Error('quota')
+      throw quotaExceeded()
     },
   }
+}
+
+// What a browser actually throws once the origin's storage is full.
+function quotaExceeded() {
+  return new DOMException('The quota has been exceeded.', 'QuotaExceededError')
 }

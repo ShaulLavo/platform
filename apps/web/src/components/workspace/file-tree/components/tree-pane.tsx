@@ -208,7 +208,6 @@ function ReadyTreePane({
   return (
     <div
       className='h-full'
-      data-native-window-drag-blocker=''
       onFocusCapture={() => setFocusArea('file-tree')}
       onPointerDownCapture={() => setFocusArea('file-tree')}
     >
@@ -424,6 +423,16 @@ function workspacePathForTreePath(rootPath: string, treePath: string) {
 const treeStyle = {
   '--trees-bg-muted-override': 'var(--accent)',
   '--trees-bg-override': 'transparent',
+  // The tree package's built-in accent (#009fff) and git palette are raw hexes that
+  // bypass the theme; point every override at tokens so selection and git status
+  // track light/dark and never go neon against the wallpaper.
+  '--trees-accent-override': 'var(--ring)',
+  '--trees-status-added-override': 'var(--success)',
+  '--trees-status-untracked-override': 'var(--success)',
+  '--trees-status-modified-override': 'var(--warning)',
+  '--trees-status-renamed-override': 'var(--warning)',
+  '--trees-status-deleted-override': 'var(--destructive)',
+  '--trees-status-ignored-override': 'var(--muted-foreground)',
   // Selection marks the current file and must stay legible when the tree is blurred
   // (editor focused) and under transparent mode. Hover uses var(--accent), which scales
   // with --surface-opacity and washes out; give selection a fixed alpha off accent-solid

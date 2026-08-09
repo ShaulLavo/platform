@@ -1,10 +1,10 @@
 import { cn } from '@workspace/ui/lib/utils'
-import { memo, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
+import { memo, useMemo, type ComponentProps } from 'react'
 
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { errorMessage } from '@/lib/file-server'
 import { useStatus } from './hooks'
-import { StateContext, createGitStore, useGitState, type GitStoreApi } from './state'
+import { useGitState } from './state'
 import type { FileStatus } from './types'
 import { changeRows } from './utils'
 import { ChangeGroup } from './components/change-group'
@@ -15,24 +15,10 @@ import { PanelShell } from './components/panel-shell'
 const EMPTY_FILES: readonly FileStatus[] = []
 
 export const Panel = memo(
-  ({
-    className,
-    rootPath,
-    store,
-  }: ComponentProps<'section'> & { rootPath: string; store?: GitStoreApi }) => {
-    return (
-      <StateProvider store={store}>
-        <PanelContent className={className} rootPath={rootPath} />
-      </StateProvider>
-    )
+  ({ className, rootPath }: ComponentProps<'section'> & { rootPath: string }) => {
+    return <PanelContent className={className} rootPath={rootPath} />
   },
 )
-
-function StateProvider({ children, store }: { children: ReactNode; store?: GitStoreApi }) {
-  const [localStore] = useState(createGitStore)
-
-  return <StateContext value={store ?? localStore}>{children}</StateContext>
-}
 
 function PanelContent({ className, rootPath }: ComponentProps<'section'> & { rootPath: string }) {
   const status = useStatus(rootPath)

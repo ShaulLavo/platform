@@ -8,8 +8,6 @@ import { searchBufferDocumentId } from '@/features/search/search-buffer-document
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
-  setWorkbenchMainLayout,
-  setWorkbenchOuterLayout,
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
   type WorkbenchPanels,
@@ -23,9 +21,15 @@ import {
   writeEditorHistoryCache,
   writeRecentlyClosedEditorPathsCache,
   writeRootFolderCache,
+  writeChatModePanelsCache,
   writeSearchBufferCache,
+  writeUiModeCache,
+  writeWorkbenchLayoutCache,
   writeWorkbenchPanelsCache,
 } from '@/lib/workspace-cache'
+import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { DEFAULT_WORKSPACE_UI_MODE } from '@/lib/ui-mode'
 
 type WorkspaceCacheFixtureState = Pick<
   CachedWorkspaceState,
@@ -186,13 +190,11 @@ describe('workspace cache', () => {
     })
   })
 
-  it('persists fixed panel tabs and layout percentages', () => {
+  it('persists fixed panel tabs', () => {
     const rootFolder = pickedDirectory('/repo')
     let panels = workbenchPanelsForPaths(['/repo/src/a.ts', '/repo/src/b.ts'], '/repo/src/b.ts')
     panels = setWorkbenchSidebarTab(panels, 'git')
     panels = setWorkbenchBottomTab(panels, 'problems')
-    panels = setWorkbenchOuterLayout(panels, { main: 68, sidebar: 32 })
-    panels = setWorkbenchMainLayout(panels, { bottom: 36, editor: 64 })
 
     writeCacheFixtureEntries(
       workspaceCacheState({
@@ -211,14 +213,6 @@ describe('workspace cache', () => {
       workbenchPanels: {
         activeBottomTab: 'problems',
         activeSidebarTab: 'git',
-        mainLayout: {
-          bottom: 36,
-          editor: 64,
-        },
-        outerLayout: {
-          main: 68,
-          sidebar: 32,
-        },
       },
     })
   })
@@ -427,6 +421,10 @@ function writeCacheFixtureEntries({
   writeRootFolderCache(rootFolder)
   writeWorkbenchPanelsCache(rootFolder, workbenchPanels)
   writeSearchBufferCache(rootFolder, searchBuffer)
+  // Workspace-independent entries: written so key-coverage assertions stay meaningful.
+  writeChatModePanelsCache(createDefaultChatModePanels())
+  writeUiModeCache(DEFAULT_WORKSPACE_UI_MODE)
+  writeWorkbenchLayoutCache(createDefaultWorkbenchLayout())
 }
 
 function workspaceCacheState(input: WorkspaceCacheFixtureState): WorkspaceCacheFixtureState {

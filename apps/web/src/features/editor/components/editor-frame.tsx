@@ -14,7 +14,6 @@ export const EditorFrame = memo(
       <div
         className='flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden'
         data-editor-focus-active={active ? 'true' : 'false'}
-        data-native-window-drag-blocker=''
         onFocusCapture={onActivate}
         onPointerDownCapture={onActivate}
       >

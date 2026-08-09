@@ -27,6 +27,7 @@ import {
 } from '@singapor/tree-sitter-languages'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { requestedDecodeMode } from '@/features/editor/utils/decode-mode'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
@@ -137,15 +138,19 @@ function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>
     )
   }
 
-  // File-open "writes itself" animation. Presence is the switch — remove this
-  // loader to turn it off. `mode`: 'autoregressive' (typewriter) | 'parallel' |
-  // 'token' (one LLM-style token at a time) | 'diffusion' (denoise into the file).
-  // `speed` scales any mode (1 = default, 2 = twice as fast, 0.5 = half).
-  loaders.push(
-    loadPlugin('@singapor/decode', () =>
-      import('@singapor/decode').then((module) => module.createDecodePlugin({ mode: 'diffusion' })),
-    ),
-  )
+  // File-open "writes itself" animation. Off unless the URL asks for it, e.g.
+  // `?decode=diffusion` (denoise into the file) | 'autoregressive' (typewriter) |
+  // 'parallel' | 'token' (one LLM-style token at a time).
+  const decodeMode = requestedDecodeMode(typeof window === 'undefined' ? '' : location.search)
+  if (decodeMode) {
+    loaders.push(
+      loadPlugin('@singapor/decode', () =>
+        import('@singapor/decode').then((module) =>
+          module.createDecodePlugin({ mode: decodeMode }),
+        ),
+      ),
+    )
+  }
 
   return loaders
 }

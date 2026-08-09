@@ -160,6 +160,9 @@ const defaultBindingSpecs = [
   noOpBinding('Mod+J', {
     vscodeCommandId: 'workbench.action.togglePanel',
   }),
+  workspaceBinding('Mod+Shift+M', 'workspace.toggleUiMode', {
+    preventDefault: true,
+  }),
   noOpBinding('Mod+1', {
     vscodeCommandId: 'workbench.action.focusFirstEditorGroup',
   }),

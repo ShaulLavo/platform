@@ -3,6 +3,7 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
+  projectMetaUpdateCommandSchema,
   threadIdSchema,
   type ModelSelection,
 } from '@workspace/contracts'
@@ -11,6 +12,7 @@ import * as v from 'valibot'
 import {
   createDraftThreadSubmission,
   createCheckpointRevertCommand,
+  createProjectDefaultModelCommand,
   createThreadInterruptCommand,
   createTurnSubmission,
   createWorkspaceProjectCommand,
@@ -18,6 +20,11 @@ import {
   workspaceProjectId,
   workspaceProjectTitle,
 } from '../chat-command-builders'
+
+const testModelSelection: ModelSelection = {
+  model: 'claude-opus-5',
+  providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+}
 
 describe('chat command builders', () => {
   it('derives a stable project identity from the workspace path', () => {
@@ -28,10 +35,25 @@ describe('chat command builders', () => {
     expect(command.projectId).toBe(workspaceProjectId(rootPath))
     expect(command.title).toBe('platform')
     expect(command.workspaceRoot).toBe(rootPath)
-    expect(command.defaultModelSelection).toEqual({
-      model: 'gpt-5.5',
-      providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+    // No invented default: the model is resolved from live providers at compose time.
+    expect(command.defaultModelSelection).toBeNull()
+  })
+
+  it('builds a project default-model update that touches nothing else', () => {
+    const projectId = workspaceProjectId('/Users/test/workspace/platform')
+    const command = createProjectDefaultModelCommand({
+      defaultModelSelection: testModelSelection,
+      projectId,
+      updatedAt: '2026-05-24T12:00:00.000Z',
     })
+
+    expect(v.parse(projectMetaUpdateCommandSchema, command)).toMatchObject({
+      defaultModelSelection: testModelSelection,
+      projectId,
+      type: 'project.meta.update',
+    })
+    expect(command).not.toHaveProperty('title')
+    expect(command).not.toHaveProperty('workspaceRoot')
   })
 
   it('builds a turn command and matching optimistic user message', () => {
@@ -69,6 +91,7 @@ describe('chat command builders', () => {
     const projectId = workspaceProjectId('/Users/test/workspace/platform')
     const submission = createDraftThreadSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
+      modelSelection: testModelSelection,
       projectId,
       rootPath: '/Users/test/workspace/platform',
       text: 'Fix the draft thread flow',
@@ -88,6 +111,7 @@ describe('chat command builders', () => {
     const projectId = workspaceProjectId('/Users/test/workspace/platform')
     const draft = createDraftThreadSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
+      modelSelection: testModelSelection,
       projectId,
       rootPath: '/Users/test/workspace/platform',
       text: 'Rotate the API key in staging',

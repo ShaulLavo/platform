@@ -3,6 +3,17 @@
 
 import * as v from 'valibot'
 
+function openEnum<const TOptions extends readonly string[]>(options: TOptions) {
+  return v.union([
+    v.picklist(options),
+    // `string & {}` keeps the known members in autocomplete while accepting new ones.
+    v.pipe(
+      v.string(),
+      v.transform((value): TOptions[number] | (string & {}) => value),
+    ),
+  ])
+}
+
 export const V1InitializeParams__ClientInfoSchema = v.looseObject({
   name: v.string(),
   title: v.optional(v.union([v.string(), v.null()])),
@@ -57,7 +68,7 @@ export type V2AccountRateLimitsUpdatedNotification__CreditsSnapshot = v.InferOut
   typeof V2AccountRateLimitsUpdatedNotification__CreditsSnapshotSchema
 >
 
-export const V2AccountRateLimitsUpdatedNotification__PlanTypeSchema = v.picklist([
+export const V2AccountRateLimitsUpdatedNotification__PlanTypeSchema = openEnum([
   'free',
   'go',
   'plus',
@@ -75,7 +86,7 @@ export type V2AccountRateLimitsUpdatedNotification__PlanType = v.InferOutput<
   typeof V2AccountRateLimitsUpdatedNotification__PlanTypeSchema
 >
 
-export const V2AccountRateLimitsUpdatedNotification__RateLimitReachedTypeSchema = v.picklist([
+export const V2AccountRateLimitsUpdatedNotification__RateLimitReachedTypeSchema = openEnum([
   'rate_limit_reached',
   'workspace_owner_credits_depleted',
   'workspace_member_credits_depleted',
@@ -123,16 +134,16 @@ export type V2AccountRateLimitsUpdatedNotification = v.InferOutput<
   typeof V2AccountRateLimitsUpdatedNotificationSchema
 >
 
-export const V2AccountUpdatedNotification__AuthModeSchema = v.union([
-  v.literal('apikey'),
-  v.literal('chatgpt'),
-  v.literal('chatgptAuthTokens'),
+export const V2AccountUpdatedNotification__AuthModeSchema = openEnum([
+  'apikey',
+  'chatgpt',
+  'chatgptAuthTokens',
 ])
 export type V2AccountUpdatedNotification__AuthMode = v.InferOutput<
   typeof V2AccountUpdatedNotification__AuthModeSchema
 >
 
-export const V2AccountUpdatedNotification__PlanTypeSchema = v.picklist([
+export const V2AccountUpdatedNotification__PlanTypeSchema = openEnum([
   'free',
   'go',
   'plus',
@@ -236,9 +247,9 @@ export const V2AppListUpdatedNotificationSchema = v.looseObject({
 })
 export type V2AppListUpdatedNotification = v.InferOutput<typeof V2AppListUpdatedNotificationSchema>
 
-export const V2CommandExecOutputDeltaNotification__CommandExecOutputStreamSchema = v.union([
-  v.literal('stdout'),
-  v.literal('stderr'),
+export const V2CommandExecOutputDeltaNotification__CommandExecOutputStreamSchema = openEnum([
+  'stdout',
+  'stderr',
 ])
 export type V2CommandExecOutputDeltaNotification__CommandExecOutputStream = v.InferOutput<
   typeof V2CommandExecOutputDeltaNotification__CommandExecOutputStreamSchema
@@ -304,13 +315,13 @@ export type V2DeprecationNoticeNotification = v.InferOutput<
   typeof V2DeprecationNoticeNotificationSchema
 >
 
-export const V2ErrorNotification__NonSteerableTurnKindSchema = v.picklist(['review', 'compact'])
+export const V2ErrorNotification__NonSteerableTurnKindSchema = openEnum(['review', 'compact'])
 export type V2ErrorNotification__NonSteerableTurnKind = v.InferOutput<
   typeof V2ErrorNotification__NonSteerableTurnKindSchema
 >
 
 export const V2ErrorNotification__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -436,7 +447,7 @@ export type V2FsChangedNotification = v.InferOutput<typeof V2FsChangedNotificati
 export const V2GetAccountParamsSchema = v.looseObject({ refreshToken: v.optional(v.boolean()) })
 export type V2GetAccountParams = v.InferOutput<typeof V2GetAccountParamsSchema>
 
-export const V2GetAccountResponse__PlanTypeSchema = v.picklist([
+export const V2GetAccountResponse__PlanTypeSchema = openEnum([
   'free',
   'go',
   'plus',
@@ -477,7 +488,7 @@ export type V2HookCompletedNotification__AbsolutePathBuf = v.InferOutput<
   typeof V2HookCompletedNotification__AbsolutePathBufSchema
 >
 
-export const V2HookCompletedNotification__HookEventNameSchema = v.picklist([
+export const V2HookCompletedNotification__HookEventNameSchema = openEnum([
   'preToolUse',
   'permissionRequest',
   'postToolUse',
@@ -489,12 +500,12 @@ export type V2HookCompletedNotification__HookEventName = v.InferOutput<
   typeof V2HookCompletedNotification__HookEventNameSchema
 >
 
-export const V2HookCompletedNotification__HookExecutionModeSchema = v.picklist(['sync', 'async'])
+export const V2HookCompletedNotification__HookExecutionModeSchema = openEnum(['sync', 'async'])
 export type V2HookCompletedNotification__HookExecutionMode = v.InferOutput<
   typeof V2HookCompletedNotification__HookExecutionModeSchema
 >
 
-export const V2HookCompletedNotification__HookHandlerTypeSchema = v.picklist([
+export const V2HookCompletedNotification__HookHandlerTypeSchema = openEnum([
   'command',
   'prompt',
   'agent',
@@ -503,7 +514,7 @@ export type V2HookCompletedNotification__HookHandlerType = v.InferOutput<
   typeof V2HookCompletedNotification__HookHandlerTypeSchema
 >
 
-export const V2HookCompletedNotification__HookOutputEntryKindSchema = v.picklist([
+export const V2HookCompletedNotification__HookOutputEntryKindSchema = openEnum([
   'warning',
   'stop',
   'feedback',
@@ -522,7 +533,7 @@ export type V2HookCompletedNotification__HookOutputEntry = v.InferOutput<
   typeof V2HookCompletedNotification__HookOutputEntrySchema
 >
 
-export const V2HookCompletedNotification__HookRunStatusSchema = v.picklist([
+export const V2HookCompletedNotification__HookRunStatusSchema = openEnum([
   'running',
   'completed',
   'failed',
@@ -533,12 +544,12 @@ export type V2HookCompletedNotification__HookRunStatus = v.InferOutput<
   typeof V2HookCompletedNotification__HookRunStatusSchema
 >
 
-export const V2HookCompletedNotification__HookScopeSchema = v.picklist(['thread', 'turn'])
+export const V2HookCompletedNotification__HookScopeSchema = openEnum(['thread', 'turn'])
 export type V2HookCompletedNotification__HookScope = v.InferOutput<
   typeof V2HookCompletedNotification__HookScopeSchema
 >
 
-export const V2HookCompletedNotification__HookSourceSchema = v.picklist([
+export const V2HookCompletedNotification__HookSourceSchema = openEnum([
   'system',
   'user',
   'project',
@@ -584,7 +595,7 @@ export type V2HookStartedNotification__AbsolutePathBuf = v.InferOutput<
   typeof V2HookStartedNotification__AbsolutePathBufSchema
 >
 
-export const V2HookStartedNotification__HookEventNameSchema = v.picklist([
+export const V2HookStartedNotification__HookEventNameSchema = openEnum([
   'preToolUse',
   'permissionRequest',
   'postToolUse',
@@ -596,12 +607,12 @@ export type V2HookStartedNotification__HookEventName = v.InferOutput<
   typeof V2HookStartedNotification__HookEventNameSchema
 >
 
-export const V2HookStartedNotification__HookExecutionModeSchema = v.picklist(['sync', 'async'])
+export const V2HookStartedNotification__HookExecutionModeSchema = openEnum(['sync', 'async'])
 export type V2HookStartedNotification__HookExecutionMode = v.InferOutput<
   typeof V2HookStartedNotification__HookExecutionModeSchema
 >
 
-export const V2HookStartedNotification__HookHandlerTypeSchema = v.picklist([
+export const V2HookStartedNotification__HookHandlerTypeSchema = openEnum([
   'command',
   'prompt',
   'agent',
@@ -610,7 +621,7 @@ export type V2HookStartedNotification__HookHandlerType = v.InferOutput<
   typeof V2HookStartedNotification__HookHandlerTypeSchema
 >
 
-export const V2HookStartedNotification__HookOutputEntryKindSchema = v.picklist([
+export const V2HookStartedNotification__HookOutputEntryKindSchema = openEnum([
   'warning',
   'stop',
   'feedback',
@@ -629,7 +640,7 @@ export type V2HookStartedNotification__HookOutputEntry = v.InferOutput<
   typeof V2HookStartedNotification__HookOutputEntrySchema
 >
 
-export const V2HookStartedNotification__HookRunStatusSchema = v.picklist([
+export const V2HookStartedNotification__HookRunStatusSchema = openEnum([
   'running',
   'completed',
   'failed',
@@ -640,12 +651,12 @@ export type V2HookStartedNotification__HookRunStatus = v.InferOutput<
   typeof V2HookStartedNotification__HookRunStatusSchema
 >
 
-export const V2HookStartedNotification__HookScopeSchema = v.picklist(['thread', 'turn'])
+export const V2HookStartedNotification__HookScopeSchema = openEnum(['thread', 'turn'])
 export type V2HookStartedNotification__HookScope = v.InferOutput<
   typeof V2HookStartedNotification__HookScopeSchema
 >
 
-export const V2HookStartedNotification__HookSourceSchema = v.picklist([
+export const V2HookStartedNotification__HookSourceSchema = openEnum([
   'system',
   'user',
   'project',
@@ -699,7 +710,7 @@ export type V2ItemCompletedNotification__ByteRange = v.InferOutput<
   typeof V2ItemCompletedNotification__ByteRangeSchema
 >
 
-export const V2ItemCompletedNotification__CollabAgentStatusSchema = v.picklist([
+export const V2ItemCompletedNotification__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -720,7 +731,7 @@ export type V2ItemCompletedNotification__CollabAgentState = v.InferOutput<
   typeof V2ItemCompletedNotification__CollabAgentStateSchema
 >
 
-export const V2ItemCompletedNotification__CollabAgentToolSchema = v.picklist([
+export const V2ItemCompletedNotification__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -731,7 +742,7 @@ export type V2ItemCompletedNotification__CollabAgentTool = v.InferOutput<
   typeof V2ItemCompletedNotification__CollabAgentToolSchema
 >
 
-export const V2ItemCompletedNotification__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2ItemCompletedNotification__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -764,7 +775,7 @@ export type V2ItemCompletedNotification__CommandAction = v.InferOutput<
   typeof V2ItemCompletedNotification__CommandActionSchema
 >
 
-export const V2ItemCompletedNotification__CommandExecutionSourceSchema = v.picklist([
+export const V2ItemCompletedNotification__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -774,7 +785,7 @@ export type V2ItemCompletedNotification__CommandExecutionSource = v.InferOutput<
   typeof V2ItemCompletedNotification__CommandExecutionSourceSchema
 >
 
-export const V2ItemCompletedNotification__CommandExecutionStatusSchema = v.picklist([
+export const V2ItemCompletedNotification__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -792,7 +803,7 @@ export type V2ItemCompletedNotification__DynamicToolCallOutputContentItem = v.In
   typeof V2ItemCompletedNotification__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2ItemCompletedNotification__DynamicToolCallStatusSchema = v.picklist([
+export const V2ItemCompletedNotification__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -846,7 +857,7 @@ export type V2ItemCompletedNotification__McpToolCallResult = v.InferOutput<
   typeof V2ItemCompletedNotification__McpToolCallResultSchema
 >
 
-export const V2ItemCompletedNotification__McpToolCallStatusSchema = v.picklist([
+export const V2ItemCompletedNotification__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -873,15 +884,15 @@ export type V2ItemCompletedNotification__MemoryCitation = v.InferOutput<
   typeof V2ItemCompletedNotification__MemoryCitationSchema
 >
 
-export const V2ItemCompletedNotification__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
+export const V2ItemCompletedNotification__MessagePhaseSchema = openEnum([
+  'commentary',
+  'final_answer',
 ])
 export type V2ItemCompletedNotification__MessagePhase = v.InferOutput<
   typeof V2ItemCompletedNotification__MessagePhaseSchema
 >
 
-export const V2ItemCompletedNotification__PatchApplyStatusSchema = v.picklist([
+export const V2ItemCompletedNotification__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -891,7 +902,7 @@ export type V2ItemCompletedNotification__PatchApplyStatus = v.InferOutput<
   typeof V2ItemCompletedNotification__PatchApplyStatusSchema
 >
 
-export const V2ItemCompletedNotification__ReasoningEffortSchema = v.picklist([
+export const V2ItemCompletedNotification__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -1072,7 +1083,7 @@ export type V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf =
 >
 
 export const V2ItemGuardianApprovalReviewCompletedNotification__FileSystemAccessModeSchema =
-  v.picklist(['read', 'write', 'none'])
+  openEnum(['read', 'write', 'none'])
 export type V2ItemGuardianApprovalReviewCompletedNotification__FileSystemAccessMode = v.InferOutput<
   typeof V2ItemGuardianApprovalReviewCompletedNotification__FileSystemAccessModeSchema
 >
@@ -1167,21 +1178,25 @@ export type V2ItemGuardianApprovalReviewCompletedNotification__AutoReviewDecisio
     typeof V2ItemGuardianApprovalReviewCompletedNotification__AutoReviewDecisionSourceSchema
   >
 
-export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevelSchema =
-  v.picklist(['low', 'medium', 'high', 'critical'])
+export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevelSchema = openEnum([
+  'low',
+  'medium',
+  'high',
+  'critical',
+])
 export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevel = v.InferOutput<
   typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianRiskLevelSchema
 >
 
 export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewStatusSchema =
-  v.picklist(['inProgress', 'approved', 'denied', 'timedOut', 'aborted'])
+  openEnum(['inProgress', 'approved', 'denied', 'timedOut', 'aborted'])
 export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewStatus =
   v.InferOutput<
     typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewStatusSchema
   >
 
 export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorizationSchema =
-  v.picklist(['unknown', 'low', 'medium', 'high'])
+  openEnum(['unknown', 'low', 'medium', 'high'])
 export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorization =
   v.InferOutput<
     typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorizationSchema
@@ -1210,14 +1225,14 @@ export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalR
   >
 
 export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSourceSchema =
-  v.picklist(['shell', 'unifiedExec'])
+  openEnum(['shell', 'unifiedExec'])
 export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSource =
   v.InferOutput<
     typeof V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSourceSchema
   >
 
 export const V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocolSchema =
-  v.picklist(['http', 'https', 'socks5Tcp', 'socks5Udp'])
+  openEnum(['http', 'https', 'socks5Tcp', 'socks5Udp'])
 export type V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocol =
   v.InferOutput<
     typeof V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocolSchema
@@ -1308,8 +1323,9 @@ export type V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf = v
   typeof V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBufSchema
 >
 
-export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessModeSchema =
-  v.picklist(['read', 'write', 'none'])
+export const V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessModeSchema = openEnum(
+  ['read', 'write', 'none'],
+)
 export type V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessMode = v.InferOutput<
   typeof V2ItemGuardianApprovalReviewStartedNotification__FileSystemAccessModeSchema
 >
@@ -1396,7 +1412,7 @@ export type V2ItemGuardianApprovalReviewStartedNotification__AdditionalNetworkPe
     typeof V2ItemGuardianApprovalReviewStartedNotification__AdditionalNetworkPermissionsSchema
   >
 
-export const V2ItemGuardianApprovalReviewStartedNotification__GuardianRiskLevelSchema = v.picklist([
+export const V2ItemGuardianApprovalReviewStartedNotification__GuardianRiskLevelSchema = openEnum([
   'low',
   'medium',
   'high',
@@ -1407,14 +1423,14 @@ export type V2ItemGuardianApprovalReviewStartedNotification__GuardianRiskLevel =
 >
 
 export const V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewStatusSchema =
-  v.picklist(['inProgress', 'approved', 'denied', 'timedOut', 'aborted'])
+  openEnum(['inProgress', 'approved', 'denied', 'timedOut', 'aborted'])
 export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewStatus =
   v.InferOutput<
     typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewStatusSchema
   >
 
 export const V2ItemGuardianApprovalReviewStartedNotification__GuardianUserAuthorizationSchema =
-  v.picklist(['unknown', 'low', 'medium', 'high'])
+  openEnum(['unknown', 'low', 'medium', 'high'])
 export type V2ItemGuardianApprovalReviewStartedNotification__GuardianUserAuthorization =
   v.InferOutput<
     typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianUserAuthorizationSchema
@@ -1439,13 +1455,13 @@ export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalRev
 >
 
 export const V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSourceSchema =
-  v.picklist(['shell', 'unifiedExec'])
+  openEnum(['shell', 'unifiedExec'])
 export type V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSource = v.InferOutput<
   typeof V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSourceSchema
 >
 
 export const V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocolSchema =
-  v.picklist(['http', 'https', 'socks5Tcp', 'socks5Udp'])
+  openEnum(['http', 'https', 'socks5Tcp', 'socks5Udp'])
 export type V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocol =
   v.InferOutput<
     typeof V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocolSchema
@@ -1542,7 +1558,7 @@ export type V2ItemStartedNotification__ByteRange = v.InferOutput<
   typeof V2ItemStartedNotification__ByteRangeSchema
 >
 
-export const V2ItemStartedNotification__CollabAgentStatusSchema = v.picklist([
+export const V2ItemStartedNotification__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -1563,7 +1579,7 @@ export type V2ItemStartedNotification__CollabAgentState = v.InferOutput<
   typeof V2ItemStartedNotification__CollabAgentStateSchema
 >
 
-export const V2ItemStartedNotification__CollabAgentToolSchema = v.picklist([
+export const V2ItemStartedNotification__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -1574,7 +1590,7 @@ export type V2ItemStartedNotification__CollabAgentTool = v.InferOutput<
   typeof V2ItemStartedNotification__CollabAgentToolSchema
 >
 
-export const V2ItemStartedNotification__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2ItemStartedNotification__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -1607,7 +1623,7 @@ export type V2ItemStartedNotification__CommandAction = v.InferOutput<
   typeof V2ItemStartedNotification__CommandActionSchema
 >
 
-export const V2ItemStartedNotification__CommandExecutionSourceSchema = v.picklist([
+export const V2ItemStartedNotification__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -1617,7 +1633,7 @@ export type V2ItemStartedNotification__CommandExecutionSource = v.InferOutput<
   typeof V2ItemStartedNotification__CommandExecutionSourceSchema
 >
 
-export const V2ItemStartedNotification__CommandExecutionStatusSchema = v.picklist([
+export const V2ItemStartedNotification__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -1635,7 +1651,7 @@ export type V2ItemStartedNotification__DynamicToolCallOutputContentItem = v.Infe
   typeof V2ItemStartedNotification__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2ItemStartedNotification__DynamicToolCallStatusSchema = v.picklist([
+export const V2ItemStartedNotification__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -1689,7 +1705,7 @@ export type V2ItemStartedNotification__McpToolCallResult = v.InferOutput<
   typeof V2ItemStartedNotification__McpToolCallResultSchema
 >
 
-export const V2ItemStartedNotification__McpToolCallStatusSchema = v.picklist([
+export const V2ItemStartedNotification__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -1716,15 +1732,15 @@ export type V2ItemStartedNotification__MemoryCitation = v.InferOutput<
   typeof V2ItemStartedNotification__MemoryCitationSchema
 >
 
-export const V2ItemStartedNotification__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
+export const V2ItemStartedNotification__MessagePhaseSchema = openEnum([
+  'commentary',
+  'final_answer',
 ])
 export type V2ItemStartedNotification__MessagePhase = v.InferOutput<
   typeof V2ItemStartedNotification__MessagePhaseSchema
 >
 
-export const V2ItemStartedNotification__PatchApplyStatusSchema = v.picklist([
+export const V2ItemStartedNotification__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -1734,7 +1750,7 @@ export type V2ItemStartedNotification__PatchApplyStatus = v.InferOutput<
   typeof V2ItemStartedNotification__PatchApplyStatusSchema
 >
 
-export const V2ItemStartedNotification__ReasoningEffortSchema = v.picklist([
+export const V2ItemStartedNotification__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -1918,7 +1934,7 @@ export type V2McpServerOauthLoginCompletedNotification = v.InferOutput<
   typeof V2McpServerOauthLoginCompletedNotificationSchema
 >
 
-export const V2McpServerStatusUpdatedNotification__McpServerStartupStateSchema = v.picklist([
+export const V2McpServerStatusUpdatedNotification__McpServerStartupStateSchema = openEnum([
   'starting',
   'ready',
   'failed',
@@ -1954,10 +1970,7 @@ export const V2ModelListParamsSchema = v.looseObject({
 })
 export type V2ModelListParams = v.InferOutput<typeof V2ModelListParamsSchema>
 
-export const V2ModelListResponse__InputModalitySchema = v.union([
-  v.literal('text'),
-  v.literal('image'),
-])
+export const V2ModelListResponse__InputModalitySchema = openEnum(['text', 'image'])
 export type V2ModelListResponse__InputModality = v.InferOutput<
   typeof V2ModelListResponse__InputModalitySchema
 >
@@ -1969,7 +1982,7 @@ export type V2ModelListResponse__ModelAvailabilityNux = v.InferOutput<
   typeof V2ModelListResponse__ModelAvailabilityNuxSchema
 >
 
-export const V2ModelListResponse__ReasoningEffortSchema = v.picklist([
+export const V2ModelListResponse__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -2046,7 +2059,7 @@ export const V2PlanDeltaNotificationSchema = v.looseObject({
 })
 export type V2PlanDeltaNotification = v.InferOutput<typeof V2PlanDeltaNotificationSchema>
 
-export const V2RawResponseItemCompletedNotification__ImageDetailSchema = v.picklist([
+export const V2RawResponseItemCompletedNotification__ImageDetailSchema = openEnum([
   'auto',
   'low',
   'high',
@@ -2115,7 +2128,7 @@ export type V2RawResponseItemCompletedNotification__LocalShellAction = v.InferOu
   typeof V2RawResponseItemCompletedNotification__LocalShellActionSchema
 >
 
-export const V2RawResponseItemCompletedNotification__LocalShellStatusSchema = v.picklist([
+export const V2RawResponseItemCompletedNotification__LocalShellStatusSchema = openEnum([
   'completed',
   'in_progress',
   'incomplete',
@@ -2124,9 +2137,9 @@ export type V2RawResponseItemCompletedNotification__LocalShellStatus = v.InferOu
   typeof V2RawResponseItemCompletedNotification__LocalShellStatusSchema
 >
 
-export const V2RawResponseItemCompletedNotification__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
+export const V2RawResponseItemCompletedNotification__MessagePhaseSchema = openEnum([
+  'commentary',
+  'final_answer',
 ])
 export type V2RawResponseItemCompletedNotification__MessagePhase = v.InferOutput<
   typeof V2RawResponseItemCompletedNotification__MessagePhaseSchema
@@ -2373,13 +2386,13 @@ export type V2ThreadReadResponse__ByteRange = v.InferOutput<
   typeof V2ThreadReadResponse__ByteRangeSchema
 >
 
-export const V2ThreadReadResponse__NonSteerableTurnKindSchema = v.picklist(['review', 'compact'])
+export const V2ThreadReadResponse__NonSteerableTurnKindSchema = openEnum(['review', 'compact'])
 export type V2ThreadReadResponse__NonSteerableTurnKind = v.InferOutput<
   typeof V2ThreadReadResponse__NonSteerableTurnKindSchema
 >
 
 export const V2ThreadReadResponse__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -2428,7 +2441,7 @@ export type V2ThreadReadResponse__CodexErrorInfo = v.InferOutput<
   typeof V2ThreadReadResponse__CodexErrorInfoSchema
 >
 
-export const V2ThreadReadResponse__CollabAgentStatusSchema = v.picklist([
+export const V2ThreadReadResponse__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -2449,7 +2462,7 @@ export type V2ThreadReadResponse__CollabAgentState = v.InferOutput<
   typeof V2ThreadReadResponse__CollabAgentStateSchema
 >
 
-export const V2ThreadReadResponse__CollabAgentToolSchema = v.picklist([
+export const V2ThreadReadResponse__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -2460,7 +2473,7 @@ export type V2ThreadReadResponse__CollabAgentTool = v.InferOutput<
   typeof V2ThreadReadResponse__CollabAgentToolSchema
 >
 
-export const V2ThreadReadResponse__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2ThreadReadResponse__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -2493,7 +2506,7 @@ export type V2ThreadReadResponse__CommandAction = v.InferOutput<
   typeof V2ThreadReadResponse__CommandActionSchema
 >
 
-export const V2ThreadReadResponse__CommandExecutionSourceSchema = v.picklist([
+export const V2ThreadReadResponse__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -2503,7 +2516,7 @@ export type V2ThreadReadResponse__CommandExecutionSource = v.InferOutput<
   typeof V2ThreadReadResponse__CommandExecutionSourceSchema
 >
 
-export const V2ThreadReadResponse__CommandExecutionStatusSchema = v.picklist([
+export const V2ThreadReadResponse__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -2521,7 +2534,7 @@ export type V2ThreadReadResponse__DynamicToolCallOutputContentItem = v.InferOutp
   typeof V2ThreadReadResponse__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2ThreadReadResponse__DynamicToolCallStatusSchema = v.picklist([
+export const V2ThreadReadResponse__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -2582,7 +2595,7 @@ export type V2ThreadReadResponse__McpToolCallResult = v.InferOutput<
   typeof V2ThreadReadResponse__McpToolCallResultSchema
 >
 
-export const V2ThreadReadResponse__McpToolCallStatusSchema = v.picklist([
+export const V2ThreadReadResponse__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -2609,15 +2622,12 @@ export type V2ThreadReadResponse__MemoryCitation = v.InferOutput<
   typeof V2ThreadReadResponse__MemoryCitationSchema
 >
 
-export const V2ThreadReadResponse__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
-])
+export const V2ThreadReadResponse__MessagePhaseSchema = openEnum(['commentary', 'final_answer'])
 export type V2ThreadReadResponse__MessagePhase = v.InferOutput<
   typeof V2ThreadReadResponse__MessagePhaseSchema
 >
 
-export const V2ThreadReadResponse__PatchApplyStatusSchema = v.picklist([
+export const V2ThreadReadResponse__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -2627,7 +2637,7 @@ export type V2ThreadReadResponse__PatchApplyStatus = v.InferOutput<
   typeof V2ThreadReadResponse__PatchApplyStatusSchema
 >
 
-export const V2ThreadReadResponse__ReasoningEffortSchema = v.picklist([
+export const V2ThreadReadResponse__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -2645,7 +2655,7 @@ export type V2ThreadReadResponse__ThreadId = v.InferOutput<
 >
 
 export const V2ThreadReadResponse__SubAgentSourceSchema = v.union([
-  v.picklist(['review', 'compact', 'memory_consolidation']),
+  openEnum(['review', 'compact', 'memory_consolidation']),
   v.looseObject({
     thread_spawn: v.looseObject({
       agent_nickname: v.optional(v.union([v.string(), v.null()])),
@@ -2662,7 +2672,7 @@ export type V2ThreadReadResponse__SubAgentSource = v.InferOutput<
 >
 
 export const V2ThreadReadResponse__SessionSourceSchema = v.union([
-  v.picklist(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
+  openEnum(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
   v.looseObject({ custom: v.string() }),
   v.looseObject({ subAgent: V2ThreadReadResponse__SubAgentSourceSchema }),
 ])
@@ -2678,7 +2688,7 @@ export type V2ThreadReadResponse__TextElement = v.InferOutput<
   typeof V2ThreadReadResponse__TextElementSchema
 >
 
-export const V2ThreadReadResponse__ThreadActiveFlagSchema = v.picklist([
+export const V2ThreadReadResponse__ThreadActiveFlagSchema = openEnum([
   'waitingOnApproval',
   'waitingOnUserInput',
 ])
@@ -2849,7 +2859,7 @@ export type V2ThreadReadResponse__ThreadItem = v.InferOutput<
   typeof V2ThreadReadResponse__ThreadItemSchema
 >
 
-export const V2ThreadReadResponse__TurnStatusSchema = v.picklist([
+export const V2ThreadReadResponse__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -2950,7 +2960,7 @@ export type V2ThreadRealtimeSdpNotification = v.InferOutput<
   typeof V2ThreadRealtimeSdpNotificationSchema
 >
 
-export const V2ThreadRealtimeStartedNotification__RealtimeConversationVersionSchema = v.picklist([
+export const V2ThreadRealtimeStartedNotification__RealtimeConversationVersionSchema = openEnum([
   'v1',
   'v2',
 ])
@@ -2985,16 +2995,13 @@ export type V2ThreadRealtimeTranscriptDoneNotification = v.InferOutput<
   typeof V2ThreadRealtimeTranscriptDoneNotificationSchema
 >
 
-export const V2ThreadResumeParams__ApprovalsReviewerSchema = v.picklist([
-  'user',
-  'guardian_subagent',
-])
+export const V2ThreadResumeParams__ApprovalsReviewerSchema = openEnum(['user', 'guardian_subagent'])
 export type V2ThreadResumeParams__ApprovalsReviewer = v.InferOutput<
   typeof V2ThreadResumeParams__ApprovalsReviewerSchema
 >
 
 export const V2ThreadResumeParams__AskForApprovalSchema = v.union([
-  v.picklist(['untrusted', 'on-failure', 'on-request', 'never']),
+  openEnum(['untrusted', 'on-failure', 'on-request', 'never']),
   v.looseObject({
     granular: v.looseObject({
       mcp_elicitations: v.boolean(),
@@ -3009,12 +3016,7 @@ export type V2ThreadResumeParams__AskForApproval = v.InferOutput<
   typeof V2ThreadResumeParams__AskForApprovalSchema
 >
 
-export const V2ThreadResumeParams__ImageDetailSchema = v.picklist([
-  'auto',
-  'low',
-  'high',
-  'original',
-])
+export const V2ThreadResumeParams__ImageDetailSchema = openEnum(['auto', 'low', 'high', 'original'])
 export type V2ThreadResumeParams__ImageDetail = v.InferOutput<
   typeof V2ThreadResumeParams__ImageDetailSchema
 >
@@ -3074,7 +3076,7 @@ export type V2ThreadResumeParams__LocalShellAction = v.InferOutput<
   typeof V2ThreadResumeParams__LocalShellActionSchema
 >
 
-export const V2ThreadResumeParams__LocalShellStatusSchema = v.picklist([
+export const V2ThreadResumeParams__LocalShellStatusSchema = openEnum([
   'completed',
   'in_progress',
   'incomplete',
@@ -3083,15 +3085,12 @@ export type V2ThreadResumeParams__LocalShellStatus = v.InferOutput<
   typeof V2ThreadResumeParams__LocalShellStatusSchema
 >
 
-export const V2ThreadResumeParams__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
-])
+export const V2ThreadResumeParams__MessagePhaseSchema = openEnum(['commentary', 'final_answer'])
 export type V2ThreadResumeParams__MessagePhase = v.InferOutput<
   typeof V2ThreadResumeParams__MessagePhaseSchema
 >
 
-export const V2ThreadResumeParams__PersonalitySchema = v.picklist(['none', 'friendly', 'pragmatic'])
+export const V2ThreadResumeParams__PersonalitySchema = openEnum(['none', 'friendly', 'pragmatic'])
 export type V2ThreadResumeParams__Personality = v.InferOutput<
   typeof V2ThreadResumeParams__PersonalitySchema
 >
@@ -3222,7 +3221,7 @@ export type V2ThreadResumeParams__ResponseItem = v.InferOutput<
   typeof V2ThreadResumeParams__ResponseItemSchema
 >
 
-export const V2ThreadResumeParams__SandboxModeSchema = v.picklist([
+export const V2ThreadResumeParams__SandboxModeSchema = openEnum([
   'read-only',
   'workspace-write',
   'danger-full-access',
@@ -3231,7 +3230,7 @@ export type V2ThreadResumeParams__SandboxMode = v.InferOutput<
   typeof V2ThreadResumeParams__SandboxModeSchema
 >
 
-export const V2ThreadResumeParams__ServiceTierSchema = v.picklist(['fast', 'flex'])
+export const V2ThreadResumeParams__ServiceTierSchema = openEnum(['fast', 'flex'])
 export type V2ThreadResumeParams__ServiceTier = v.InferOutput<
   typeof V2ThreadResumeParams__ServiceTierSchema
 >
@@ -3264,7 +3263,7 @@ export type V2ThreadResumeResponse__AgentPath = v.InferOutput<
   typeof V2ThreadResumeResponse__AgentPathSchema
 >
 
-export const V2ThreadResumeResponse__ApprovalsReviewerSchema = v.picklist([
+export const V2ThreadResumeResponse__ApprovalsReviewerSchema = openEnum([
   'user',
   'guardian_subagent',
 ])
@@ -3273,7 +3272,7 @@ export type V2ThreadResumeResponse__ApprovalsReviewer = v.InferOutput<
 >
 
 export const V2ThreadResumeResponse__AskForApprovalSchema = v.union([
-  v.picklist(['untrusted', 'on-failure', 'on-request', 'never']),
+  openEnum(['untrusted', 'on-failure', 'on-request', 'never']),
   v.looseObject({
     granular: v.looseObject({
       mcp_elicitations: v.boolean(),
@@ -3296,13 +3295,13 @@ export type V2ThreadResumeResponse__ByteRange = v.InferOutput<
   typeof V2ThreadResumeResponse__ByteRangeSchema
 >
 
-export const V2ThreadResumeResponse__NonSteerableTurnKindSchema = v.picklist(['review', 'compact'])
+export const V2ThreadResumeResponse__NonSteerableTurnKindSchema = openEnum(['review', 'compact'])
 export type V2ThreadResumeResponse__NonSteerableTurnKind = v.InferOutput<
   typeof V2ThreadResumeResponse__NonSteerableTurnKindSchema
 >
 
 export const V2ThreadResumeResponse__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -3351,7 +3350,7 @@ export type V2ThreadResumeResponse__CodexErrorInfo = v.InferOutput<
   typeof V2ThreadResumeResponse__CodexErrorInfoSchema
 >
 
-export const V2ThreadResumeResponse__CollabAgentStatusSchema = v.picklist([
+export const V2ThreadResumeResponse__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -3372,7 +3371,7 @@ export type V2ThreadResumeResponse__CollabAgentState = v.InferOutput<
   typeof V2ThreadResumeResponse__CollabAgentStateSchema
 >
 
-export const V2ThreadResumeResponse__CollabAgentToolSchema = v.picklist([
+export const V2ThreadResumeResponse__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -3383,7 +3382,7 @@ export type V2ThreadResumeResponse__CollabAgentTool = v.InferOutput<
   typeof V2ThreadResumeResponse__CollabAgentToolSchema
 >
 
-export const V2ThreadResumeResponse__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2ThreadResumeResponse__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -3416,7 +3415,7 @@ export type V2ThreadResumeResponse__CommandAction = v.InferOutput<
   typeof V2ThreadResumeResponse__CommandActionSchema
 >
 
-export const V2ThreadResumeResponse__CommandExecutionSourceSchema = v.picklist([
+export const V2ThreadResumeResponse__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -3426,7 +3425,7 @@ export type V2ThreadResumeResponse__CommandExecutionSource = v.InferOutput<
   typeof V2ThreadResumeResponse__CommandExecutionSourceSchema
 >
 
-export const V2ThreadResumeResponse__CommandExecutionStatusSchema = v.picklist([
+export const V2ThreadResumeResponse__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -3444,7 +3443,7 @@ export type V2ThreadResumeResponse__DynamicToolCallOutputContentItem = v.InferOu
   typeof V2ThreadResumeResponse__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2ThreadResumeResponse__DynamicToolCallStatusSchema = v.picklist([
+export const V2ThreadResumeResponse__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -3505,7 +3504,7 @@ export type V2ThreadResumeResponse__McpToolCallResult = v.InferOutput<
   typeof V2ThreadResumeResponse__McpToolCallResultSchema
 >
 
-export const V2ThreadResumeResponse__McpToolCallStatusSchema = v.picklist([
+export const V2ThreadResumeResponse__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -3532,20 +3531,17 @@ export type V2ThreadResumeResponse__MemoryCitation = v.InferOutput<
   typeof V2ThreadResumeResponse__MemoryCitationSchema
 >
 
-export const V2ThreadResumeResponse__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
-])
+export const V2ThreadResumeResponse__MessagePhaseSchema = openEnum(['commentary', 'final_answer'])
 export type V2ThreadResumeResponse__MessagePhase = v.InferOutput<
   typeof V2ThreadResumeResponse__MessagePhaseSchema
 >
 
-export const V2ThreadResumeResponse__NetworkAccessSchema = v.picklist(['restricted', 'enabled'])
+export const V2ThreadResumeResponse__NetworkAccessSchema = openEnum(['restricted', 'enabled'])
 export type V2ThreadResumeResponse__NetworkAccess = v.InferOutput<
   typeof V2ThreadResumeResponse__NetworkAccessSchema
 >
 
-export const V2ThreadResumeResponse__PatchApplyStatusSchema = v.picklist([
+export const V2ThreadResumeResponse__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -3567,7 +3563,7 @@ export type V2ThreadResumeResponse__ReadOnlyAccess = v.InferOutput<
   typeof V2ThreadResumeResponse__ReadOnlyAccessSchema
 >
 
-export const V2ThreadResumeResponse__ReasoningEffortSchema = v.picklist([
+export const V2ThreadResumeResponse__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -3603,7 +3599,7 @@ export type V2ThreadResumeResponse__SandboxPolicy = v.InferOutput<
   typeof V2ThreadResumeResponse__SandboxPolicySchema
 >
 
-export const V2ThreadResumeResponse__ServiceTierSchema = v.picklist(['fast', 'flex'])
+export const V2ThreadResumeResponse__ServiceTierSchema = openEnum(['fast', 'flex'])
 export type V2ThreadResumeResponse__ServiceTier = v.InferOutput<
   typeof V2ThreadResumeResponse__ServiceTierSchema
 >
@@ -3614,7 +3610,7 @@ export type V2ThreadResumeResponse__ThreadId = v.InferOutput<
 >
 
 export const V2ThreadResumeResponse__SubAgentSourceSchema = v.union([
-  v.picklist(['review', 'compact', 'memory_consolidation']),
+  openEnum(['review', 'compact', 'memory_consolidation']),
   v.looseObject({
     thread_spawn: v.looseObject({
       agent_nickname: v.optional(v.union([v.string(), v.null()])),
@@ -3631,7 +3627,7 @@ export type V2ThreadResumeResponse__SubAgentSource = v.InferOutput<
 >
 
 export const V2ThreadResumeResponse__SessionSourceSchema = v.union([
-  v.picklist(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
+  openEnum(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
   v.looseObject({ custom: v.string() }),
   v.looseObject({ subAgent: V2ThreadResumeResponse__SubAgentSourceSchema }),
 ])
@@ -3647,7 +3643,7 @@ export type V2ThreadResumeResponse__TextElement = v.InferOutput<
   typeof V2ThreadResumeResponse__TextElementSchema
 >
 
-export const V2ThreadResumeResponse__ThreadActiveFlagSchema = v.picklist([
+export const V2ThreadResumeResponse__ThreadActiveFlagSchema = openEnum([
   'waitingOnApproval',
   'waitingOnUserInput',
 ])
@@ -3818,7 +3814,7 @@ export type V2ThreadResumeResponse__ThreadItem = v.InferOutput<
   typeof V2ThreadResumeResponse__ThreadItemSchema
 >
 
-export const V2ThreadResumeResponse__TurnStatusSchema = v.picklist([
+export const V2ThreadResumeResponse__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -3900,16 +3896,13 @@ export type V2ThreadRollbackResponse__ByteRange = v.InferOutput<
   typeof V2ThreadRollbackResponse__ByteRangeSchema
 >
 
-export const V2ThreadRollbackResponse__NonSteerableTurnKindSchema = v.picklist([
-  'review',
-  'compact',
-])
+export const V2ThreadRollbackResponse__NonSteerableTurnKindSchema = openEnum(['review', 'compact'])
 export type V2ThreadRollbackResponse__NonSteerableTurnKind = v.InferOutput<
   typeof V2ThreadRollbackResponse__NonSteerableTurnKindSchema
 >
 
 export const V2ThreadRollbackResponse__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -3958,7 +3951,7 @@ export type V2ThreadRollbackResponse__CodexErrorInfo = v.InferOutput<
   typeof V2ThreadRollbackResponse__CodexErrorInfoSchema
 >
 
-export const V2ThreadRollbackResponse__CollabAgentStatusSchema = v.picklist([
+export const V2ThreadRollbackResponse__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -3979,7 +3972,7 @@ export type V2ThreadRollbackResponse__CollabAgentState = v.InferOutput<
   typeof V2ThreadRollbackResponse__CollabAgentStateSchema
 >
 
-export const V2ThreadRollbackResponse__CollabAgentToolSchema = v.picklist([
+export const V2ThreadRollbackResponse__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -3990,7 +3983,7 @@ export type V2ThreadRollbackResponse__CollabAgentTool = v.InferOutput<
   typeof V2ThreadRollbackResponse__CollabAgentToolSchema
 >
 
-export const V2ThreadRollbackResponse__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2ThreadRollbackResponse__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4023,7 +4016,7 @@ export type V2ThreadRollbackResponse__CommandAction = v.InferOutput<
   typeof V2ThreadRollbackResponse__CommandActionSchema
 >
 
-export const V2ThreadRollbackResponse__CommandExecutionSourceSchema = v.picklist([
+export const V2ThreadRollbackResponse__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -4033,7 +4026,7 @@ export type V2ThreadRollbackResponse__CommandExecutionSource = v.InferOutput<
   typeof V2ThreadRollbackResponse__CommandExecutionSourceSchema
 >
 
-export const V2ThreadRollbackResponse__CommandExecutionStatusSchema = v.picklist([
+export const V2ThreadRollbackResponse__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4051,7 +4044,7 @@ export type V2ThreadRollbackResponse__DynamicToolCallOutputContentItem = v.Infer
   typeof V2ThreadRollbackResponse__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2ThreadRollbackResponse__DynamicToolCallStatusSchema = v.picklist([
+export const V2ThreadRollbackResponse__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4114,7 +4107,7 @@ export type V2ThreadRollbackResponse__McpToolCallResult = v.InferOutput<
   typeof V2ThreadRollbackResponse__McpToolCallResultSchema
 >
 
-export const V2ThreadRollbackResponse__McpToolCallStatusSchema = v.picklist([
+export const V2ThreadRollbackResponse__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4141,15 +4134,12 @@ export type V2ThreadRollbackResponse__MemoryCitation = v.InferOutput<
   typeof V2ThreadRollbackResponse__MemoryCitationSchema
 >
 
-export const V2ThreadRollbackResponse__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
-])
+export const V2ThreadRollbackResponse__MessagePhaseSchema = openEnum(['commentary', 'final_answer'])
 export type V2ThreadRollbackResponse__MessagePhase = v.InferOutput<
   typeof V2ThreadRollbackResponse__MessagePhaseSchema
 >
 
-export const V2ThreadRollbackResponse__PatchApplyStatusSchema = v.picklist([
+export const V2ThreadRollbackResponse__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4159,7 +4149,7 @@ export type V2ThreadRollbackResponse__PatchApplyStatus = v.InferOutput<
   typeof V2ThreadRollbackResponse__PatchApplyStatusSchema
 >
 
-export const V2ThreadRollbackResponse__ReasoningEffortSchema = v.picklist([
+export const V2ThreadRollbackResponse__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -4177,7 +4167,7 @@ export type V2ThreadRollbackResponse__ThreadId = v.InferOutput<
 >
 
 export const V2ThreadRollbackResponse__SubAgentSourceSchema = v.union([
-  v.picklist(['review', 'compact', 'memory_consolidation']),
+  openEnum(['review', 'compact', 'memory_consolidation']),
   v.looseObject({
     thread_spawn: v.looseObject({
       agent_nickname: v.optional(v.union([v.string(), v.null()])),
@@ -4194,7 +4184,7 @@ export type V2ThreadRollbackResponse__SubAgentSource = v.InferOutput<
 >
 
 export const V2ThreadRollbackResponse__SessionSourceSchema = v.union([
-  v.picklist(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
+  openEnum(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
   v.looseObject({ custom: v.string() }),
   v.looseObject({ subAgent: V2ThreadRollbackResponse__SubAgentSourceSchema }),
 ])
@@ -4210,7 +4200,7 @@ export type V2ThreadRollbackResponse__TextElement = v.InferOutput<
   typeof V2ThreadRollbackResponse__TextElementSchema
 >
 
-export const V2ThreadRollbackResponse__ThreadActiveFlagSchema = v.picklist([
+export const V2ThreadRollbackResponse__ThreadActiveFlagSchema = openEnum([
   'waitingOnApproval',
   'waitingOnUserInput',
 ])
@@ -4386,7 +4376,7 @@ export type V2ThreadRollbackResponse__ThreadItem = v.InferOutput<
   typeof V2ThreadRollbackResponse__ThreadItemSchema
 >
 
-export const V2ThreadRollbackResponse__TurnStatusSchema = v.picklist([
+export const V2ThreadRollbackResponse__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -4455,7 +4445,7 @@ export type V2ThreadStartedNotification__ByteRange = v.InferOutput<
   typeof V2ThreadStartedNotification__ByteRangeSchema
 >
 
-export const V2ThreadStartedNotification__NonSteerableTurnKindSchema = v.picklist([
+export const V2ThreadStartedNotification__NonSteerableTurnKindSchema = openEnum([
   'review',
   'compact',
 ])
@@ -4464,7 +4454,7 @@ export type V2ThreadStartedNotification__NonSteerableTurnKind = v.InferOutput<
 >
 
 export const V2ThreadStartedNotification__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -4513,7 +4503,7 @@ export type V2ThreadStartedNotification__CodexErrorInfo = v.InferOutput<
   typeof V2ThreadStartedNotification__CodexErrorInfoSchema
 >
 
-export const V2ThreadStartedNotification__CollabAgentStatusSchema = v.picklist([
+export const V2ThreadStartedNotification__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -4534,7 +4524,7 @@ export type V2ThreadStartedNotification__CollabAgentState = v.InferOutput<
   typeof V2ThreadStartedNotification__CollabAgentStateSchema
 >
 
-export const V2ThreadStartedNotification__CollabAgentToolSchema = v.picklist([
+export const V2ThreadStartedNotification__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -4545,7 +4535,7 @@ export type V2ThreadStartedNotification__CollabAgentTool = v.InferOutput<
   typeof V2ThreadStartedNotification__CollabAgentToolSchema
 >
 
-export const V2ThreadStartedNotification__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2ThreadStartedNotification__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4578,7 +4568,7 @@ export type V2ThreadStartedNotification__CommandAction = v.InferOutput<
   typeof V2ThreadStartedNotification__CommandActionSchema
 >
 
-export const V2ThreadStartedNotification__CommandExecutionSourceSchema = v.picklist([
+export const V2ThreadStartedNotification__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -4588,7 +4578,7 @@ export type V2ThreadStartedNotification__CommandExecutionSource = v.InferOutput<
   typeof V2ThreadStartedNotification__CommandExecutionSourceSchema
 >
 
-export const V2ThreadStartedNotification__CommandExecutionStatusSchema = v.picklist([
+export const V2ThreadStartedNotification__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4606,7 +4596,7 @@ export type V2ThreadStartedNotification__DynamicToolCallOutputContentItem = v.In
   typeof V2ThreadStartedNotification__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2ThreadStartedNotification__DynamicToolCallStatusSchema = v.picklist([
+export const V2ThreadStartedNotification__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4669,7 +4659,7 @@ export type V2ThreadStartedNotification__McpToolCallResult = v.InferOutput<
   typeof V2ThreadStartedNotification__McpToolCallResultSchema
 >
 
-export const V2ThreadStartedNotification__McpToolCallStatusSchema = v.picklist([
+export const V2ThreadStartedNotification__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4696,15 +4686,15 @@ export type V2ThreadStartedNotification__MemoryCitation = v.InferOutput<
   typeof V2ThreadStartedNotification__MemoryCitationSchema
 >
 
-export const V2ThreadStartedNotification__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
+export const V2ThreadStartedNotification__MessagePhaseSchema = openEnum([
+  'commentary',
+  'final_answer',
 ])
 export type V2ThreadStartedNotification__MessagePhase = v.InferOutput<
   typeof V2ThreadStartedNotification__MessagePhaseSchema
 >
 
-export const V2ThreadStartedNotification__PatchApplyStatusSchema = v.picklist([
+export const V2ThreadStartedNotification__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -4714,7 +4704,7 @@ export type V2ThreadStartedNotification__PatchApplyStatus = v.InferOutput<
   typeof V2ThreadStartedNotification__PatchApplyStatusSchema
 >
 
-export const V2ThreadStartedNotification__ReasoningEffortSchema = v.picklist([
+export const V2ThreadStartedNotification__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -4732,7 +4722,7 @@ export type V2ThreadStartedNotification__ThreadId = v.InferOutput<
 >
 
 export const V2ThreadStartedNotification__SubAgentSourceSchema = v.union([
-  v.picklist(['review', 'compact', 'memory_consolidation']),
+  openEnum(['review', 'compact', 'memory_consolidation']),
   v.looseObject({
     thread_spawn: v.looseObject({
       agent_nickname: v.optional(v.union([v.string(), v.null()])),
@@ -4749,7 +4739,7 @@ export type V2ThreadStartedNotification__SubAgentSource = v.InferOutput<
 >
 
 export const V2ThreadStartedNotification__SessionSourceSchema = v.union([
-  v.picklist(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
+  openEnum(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
   v.looseObject({ custom: v.string() }),
   v.looseObject({ subAgent: V2ThreadStartedNotification__SubAgentSourceSchema }),
 ])
@@ -4765,7 +4755,7 @@ export type V2ThreadStartedNotification__TextElement = v.InferOutput<
   typeof V2ThreadStartedNotification__TextElementSchema
 >
 
-export const V2ThreadStartedNotification__ThreadActiveFlagSchema = v.picklist([
+export const V2ThreadStartedNotification__ThreadActiveFlagSchema = openEnum([
   'waitingOnApproval',
   'waitingOnUserInput',
 ])
@@ -4945,7 +4935,7 @@ export type V2ThreadStartedNotification__ThreadItem = v.InferOutput<
   typeof V2ThreadStartedNotification__ThreadItemSchema
 >
 
-export const V2ThreadStartedNotification__TurnStatusSchema = v.picklist([
+export const V2ThreadStartedNotification__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -4996,16 +4986,13 @@ export const V2ThreadStartedNotificationSchema = v.looseObject({
 })
 export type V2ThreadStartedNotification = v.InferOutput<typeof V2ThreadStartedNotificationSchema>
 
-export const V2ThreadStartParams__ApprovalsReviewerSchema = v.picklist([
-  'user',
-  'guardian_subagent',
-])
+export const V2ThreadStartParams__ApprovalsReviewerSchema = openEnum(['user', 'guardian_subagent'])
 export type V2ThreadStartParams__ApprovalsReviewer = v.InferOutput<
   typeof V2ThreadStartParams__ApprovalsReviewerSchema
 >
 
 export const V2ThreadStartParams__AskForApprovalSchema = v.union([
-  v.picklist(['untrusted', 'on-failure', 'on-request', 'never']),
+  openEnum(['untrusted', 'on-failure', 'on-request', 'never']),
   v.looseObject({
     granular: v.looseObject({
       mcp_elicitations: v.boolean(),
@@ -5031,12 +5018,12 @@ export type V2ThreadStartParams__DynamicToolSpec = v.InferOutput<
   typeof V2ThreadStartParams__DynamicToolSpecSchema
 >
 
-export const V2ThreadStartParams__PersonalitySchema = v.picklist(['none', 'friendly', 'pragmatic'])
+export const V2ThreadStartParams__PersonalitySchema = openEnum(['none', 'friendly', 'pragmatic'])
 export type V2ThreadStartParams__Personality = v.InferOutput<
   typeof V2ThreadStartParams__PersonalitySchema
 >
 
-export const V2ThreadStartParams__SandboxModeSchema = v.picklist([
+export const V2ThreadStartParams__SandboxModeSchema = openEnum([
   'read-only',
   'workspace-write',
   'danger-full-access',
@@ -5045,12 +5032,12 @@ export type V2ThreadStartParams__SandboxMode = v.InferOutput<
   typeof V2ThreadStartParams__SandboxModeSchema
 >
 
-export const V2ThreadStartParams__ServiceTierSchema = v.picklist(['fast', 'flex'])
+export const V2ThreadStartParams__ServiceTierSchema = openEnum(['fast', 'flex'])
 export type V2ThreadStartParams__ServiceTier = v.InferOutput<
   typeof V2ThreadStartParams__ServiceTierSchema
 >
 
-export const V2ThreadStartParams__ThreadStartSourceSchema = v.picklist(['startup', 'clear'])
+export const V2ThreadStartParams__ThreadStartSourceSchema = openEnum(['startup', 'clear'])
 export type V2ThreadStartParams__ThreadStartSource = v.InferOutput<
   typeof V2ThreadStartParams__ThreadStartSourceSchema
 >
@@ -5085,7 +5072,7 @@ export type V2ThreadStartResponse__AgentPath = v.InferOutput<
   typeof V2ThreadStartResponse__AgentPathSchema
 >
 
-export const V2ThreadStartResponse__ApprovalsReviewerSchema = v.picklist([
+export const V2ThreadStartResponse__ApprovalsReviewerSchema = openEnum([
   'user',
   'guardian_subagent',
 ])
@@ -5094,7 +5081,7 @@ export type V2ThreadStartResponse__ApprovalsReviewer = v.InferOutput<
 >
 
 export const V2ThreadStartResponse__AskForApprovalSchema = v.union([
-  v.picklist(['untrusted', 'on-failure', 'on-request', 'never']),
+  openEnum(['untrusted', 'on-failure', 'on-request', 'never']),
   v.looseObject({
     granular: v.looseObject({
       mcp_elicitations: v.boolean(),
@@ -5117,13 +5104,13 @@ export type V2ThreadStartResponse__ByteRange = v.InferOutput<
   typeof V2ThreadStartResponse__ByteRangeSchema
 >
 
-export const V2ThreadStartResponse__NonSteerableTurnKindSchema = v.picklist(['review', 'compact'])
+export const V2ThreadStartResponse__NonSteerableTurnKindSchema = openEnum(['review', 'compact'])
 export type V2ThreadStartResponse__NonSteerableTurnKind = v.InferOutput<
   typeof V2ThreadStartResponse__NonSteerableTurnKindSchema
 >
 
 export const V2ThreadStartResponse__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -5172,7 +5159,7 @@ export type V2ThreadStartResponse__CodexErrorInfo = v.InferOutput<
   typeof V2ThreadStartResponse__CodexErrorInfoSchema
 >
 
-export const V2ThreadStartResponse__CollabAgentStatusSchema = v.picklist([
+export const V2ThreadStartResponse__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -5193,7 +5180,7 @@ export type V2ThreadStartResponse__CollabAgentState = v.InferOutput<
   typeof V2ThreadStartResponse__CollabAgentStateSchema
 >
 
-export const V2ThreadStartResponse__CollabAgentToolSchema = v.picklist([
+export const V2ThreadStartResponse__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -5204,7 +5191,7 @@ export type V2ThreadStartResponse__CollabAgentTool = v.InferOutput<
   typeof V2ThreadStartResponse__CollabAgentToolSchema
 >
 
-export const V2ThreadStartResponse__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2ThreadStartResponse__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5237,7 +5224,7 @@ export type V2ThreadStartResponse__CommandAction = v.InferOutput<
   typeof V2ThreadStartResponse__CommandActionSchema
 >
 
-export const V2ThreadStartResponse__CommandExecutionSourceSchema = v.picklist([
+export const V2ThreadStartResponse__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -5247,7 +5234,7 @@ export type V2ThreadStartResponse__CommandExecutionSource = v.InferOutput<
   typeof V2ThreadStartResponse__CommandExecutionSourceSchema
 >
 
-export const V2ThreadStartResponse__CommandExecutionStatusSchema = v.picklist([
+export const V2ThreadStartResponse__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5265,7 +5252,7 @@ export type V2ThreadStartResponse__DynamicToolCallOutputContentItem = v.InferOut
   typeof V2ThreadStartResponse__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2ThreadStartResponse__DynamicToolCallStatusSchema = v.picklist([
+export const V2ThreadStartResponse__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5326,7 +5313,7 @@ export type V2ThreadStartResponse__McpToolCallResult = v.InferOutput<
   typeof V2ThreadStartResponse__McpToolCallResultSchema
 >
 
-export const V2ThreadStartResponse__McpToolCallStatusSchema = v.picklist([
+export const V2ThreadStartResponse__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5353,20 +5340,17 @@ export type V2ThreadStartResponse__MemoryCitation = v.InferOutput<
   typeof V2ThreadStartResponse__MemoryCitationSchema
 >
 
-export const V2ThreadStartResponse__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
-])
+export const V2ThreadStartResponse__MessagePhaseSchema = openEnum(['commentary', 'final_answer'])
 export type V2ThreadStartResponse__MessagePhase = v.InferOutput<
   typeof V2ThreadStartResponse__MessagePhaseSchema
 >
 
-export const V2ThreadStartResponse__NetworkAccessSchema = v.picklist(['restricted', 'enabled'])
+export const V2ThreadStartResponse__NetworkAccessSchema = openEnum(['restricted', 'enabled'])
 export type V2ThreadStartResponse__NetworkAccess = v.InferOutput<
   typeof V2ThreadStartResponse__NetworkAccessSchema
 >
 
-export const V2ThreadStartResponse__PatchApplyStatusSchema = v.picklist([
+export const V2ThreadStartResponse__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5388,7 +5372,7 @@ export type V2ThreadStartResponse__ReadOnlyAccess = v.InferOutput<
   typeof V2ThreadStartResponse__ReadOnlyAccessSchema
 >
 
-export const V2ThreadStartResponse__ReasoningEffortSchema = v.picklist([
+export const V2ThreadStartResponse__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -5424,7 +5408,7 @@ export type V2ThreadStartResponse__SandboxPolicy = v.InferOutput<
   typeof V2ThreadStartResponse__SandboxPolicySchema
 >
 
-export const V2ThreadStartResponse__ServiceTierSchema = v.picklist(['fast', 'flex'])
+export const V2ThreadStartResponse__ServiceTierSchema = openEnum(['fast', 'flex'])
 export type V2ThreadStartResponse__ServiceTier = v.InferOutput<
   typeof V2ThreadStartResponse__ServiceTierSchema
 >
@@ -5435,7 +5419,7 @@ export type V2ThreadStartResponse__ThreadId = v.InferOutput<
 >
 
 export const V2ThreadStartResponse__SubAgentSourceSchema = v.union([
-  v.picklist(['review', 'compact', 'memory_consolidation']),
+  openEnum(['review', 'compact', 'memory_consolidation']),
   v.looseObject({
     thread_spawn: v.looseObject({
       agent_nickname: v.optional(v.union([v.string(), v.null()])),
@@ -5452,7 +5436,7 @@ export type V2ThreadStartResponse__SubAgentSource = v.InferOutput<
 >
 
 export const V2ThreadStartResponse__SessionSourceSchema = v.union([
-  v.picklist(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
+  openEnum(['cli', 'vscode', 'exec', 'appServer', 'unknown']),
   v.looseObject({ custom: v.string() }),
   v.looseObject({ subAgent: V2ThreadStartResponse__SubAgentSourceSchema }),
 ])
@@ -5468,7 +5452,7 @@ export type V2ThreadStartResponse__TextElement = v.InferOutput<
   typeof V2ThreadStartResponse__TextElementSchema
 >
 
-export const V2ThreadStartResponse__ThreadActiveFlagSchema = v.picklist([
+export const V2ThreadStartResponse__ThreadActiveFlagSchema = openEnum([
   'waitingOnApproval',
   'waitingOnUserInput',
 ])
@@ -5639,7 +5623,7 @@ export type V2ThreadStartResponse__ThreadItem = v.InferOutput<
   typeof V2ThreadStartResponse__ThreadItemSchema
 >
 
-export const V2ThreadStartResponse__TurnStatusSchema = v.picklist([
+export const V2ThreadStartResponse__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -5697,7 +5681,7 @@ export const V2ThreadStartResponseSchema = v.looseObject({
 })
 export type V2ThreadStartResponse = v.InferOutput<typeof V2ThreadStartResponseSchema>
 
-export const V2ThreadStatusChangedNotification__ThreadActiveFlagSchema = v.picklist([
+export const V2ThreadStatusChangedNotification__ThreadActiveFlagSchema = openEnum([
   'waitingOnApproval',
   'waitingOnUserInput',
 ])
@@ -5773,7 +5757,7 @@ export type V2TurnCompletedNotification__ByteRange = v.InferOutput<
   typeof V2TurnCompletedNotification__ByteRangeSchema
 >
 
-export const V2TurnCompletedNotification__NonSteerableTurnKindSchema = v.picklist([
+export const V2TurnCompletedNotification__NonSteerableTurnKindSchema = openEnum([
   'review',
   'compact',
 ])
@@ -5782,7 +5766,7 @@ export type V2TurnCompletedNotification__NonSteerableTurnKind = v.InferOutput<
 >
 
 export const V2TurnCompletedNotification__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -5831,7 +5815,7 @@ export type V2TurnCompletedNotification__CodexErrorInfo = v.InferOutput<
   typeof V2TurnCompletedNotification__CodexErrorInfoSchema
 >
 
-export const V2TurnCompletedNotification__CollabAgentStatusSchema = v.picklist([
+export const V2TurnCompletedNotification__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -5852,7 +5836,7 @@ export type V2TurnCompletedNotification__CollabAgentState = v.InferOutput<
   typeof V2TurnCompletedNotification__CollabAgentStateSchema
 >
 
-export const V2TurnCompletedNotification__CollabAgentToolSchema = v.picklist([
+export const V2TurnCompletedNotification__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -5863,7 +5847,7 @@ export type V2TurnCompletedNotification__CollabAgentTool = v.InferOutput<
   typeof V2TurnCompletedNotification__CollabAgentToolSchema
 >
 
-export const V2TurnCompletedNotification__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2TurnCompletedNotification__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5896,7 +5880,7 @@ export type V2TurnCompletedNotification__CommandAction = v.InferOutput<
   typeof V2TurnCompletedNotification__CommandActionSchema
 >
 
-export const V2TurnCompletedNotification__CommandExecutionSourceSchema = v.picklist([
+export const V2TurnCompletedNotification__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -5906,7 +5890,7 @@ export type V2TurnCompletedNotification__CommandExecutionSource = v.InferOutput<
   typeof V2TurnCompletedNotification__CommandExecutionSourceSchema
 >
 
-export const V2TurnCompletedNotification__CommandExecutionStatusSchema = v.picklist([
+export const V2TurnCompletedNotification__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5924,7 +5908,7 @@ export type V2TurnCompletedNotification__DynamicToolCallOutputContentItem = v.In
   typeof V2TurnCompletedNotification__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2TurnCompletedNotification__DynamicToolCallStatusSchema = v.picklist([
+export const V2TurnCompletedNotification__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -5978,7 +5962,7 @@ export type V2TurnCompletedNotification__McpToolCallResult = v.InferOutput<
   typeof V2TurnCompletedNotification__McpToolCallResultSchema
 >
 
-export const V2TurnCompletedNotification__McpToolCallStatusSchema = v.picklist([
+export const V2TurnCompletedNotification__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -6005,15 +5989,15 @@ export type V2TurnCompletedNotification__MemoryCitation = v.InferOutput<
   typeof V2TurnCompletedNotification__MemoryCitationSchema
 >
 
-export const V2TurnCompletedNotification__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
+export const V2TurnCompletedNotification__MessagePhaseSchema = openEnum([
+  'commentary',
+  'final_answer',
 ])
 export type V2TurnCompletedNotification__MessagePhase = v.InferOutput<
   typeof V2TurnCompletedNotification__MessagePhaseSchema
 >
 
-export const V2TurnCompletedNotification__PatchApplyStatusSchema = v.picklist([
+export const V2TurnCompletedNotification__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -6023,7 +6007,7 @@ export type V2TurnCompletedNotification__PatchApplyStatus = v.InferOutput<
   typeof V2TurnCompletedNotification__PatchApplyStatusSchema
 >
 
-export const V2TurnCompletedNotification__ReasoningEffortSchema = v.picklist([
+export const V2TurnCompletedNotification__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -6202,7 +6186,7 @@ export type V2TurnCompletedNotification__TurnError = v.InferOutput<
   typeof V2TurnCompletedNotification__TurnErrorSchema
 >
 
-export const V2TurnCompletedNotification__TurnStatusSchema = v.picklist([
+export const V2TurnCompletedNotification__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -6249,7 +6233,7 @@ export type V2TurnInterruptParams = v.InferOutput<typeof V2TurnInterruptParamsSc
 export const V2TurnInterruptResponseSchema = v.looseObject({})
 export type V2TurnInterruptResponse = v.InferOutput<typeof V2TurnInterruptResponseSchema>
 
-export const V2TurnPlanUpdatedNotification__TurnPlanStepStatusSchema = v.picklist([
+export const V2TurnPlanUpdatedNotification__TurnPlanStepStatusSchema = openEnum([
   'pending',
   'inProgress',
   'completed',
@@ -6289,16 +6273,13 @@ export type V2TurnStartedNotification__ByteRange = v.InferOutput<
   typeof V2TurnStartedNotification__ByteRangeSchema
 >
 
-export const V2TurnStartedNotification__NonSteerableTurnKindSchema = v.picklist([
-  'review',
-  'compact',
-])
+export const V2TurnStartedNotification__NonSteerableTurnKindSchema = openEnum(['review', 'compact'])
 export type V2TurnStartedNotification__NonSteerableTurnKind = v.InferOutput<
   typeof V2TurnStartedNotification__NonSteerableTurnKindSchema
 >
 
 export const V2TurnStartedNotification__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -6347,7 +6328,7 @@ export type V2TurnStartedNotification__CodexErrorInfo = v.InferOutput<
   typeof V2TurnStartedNotification__CodexErrorInfoSchema
 >
 
-export const V2TurnStartedNotification__CollabAgentStatusSchema = v.picklist([
+export const V2TurnStartedNotification__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -6368,7 +6349,7 @@ export type V2TurnStartedNotification__CollabAgentState = v.InferOutput<
   typeof V2TurnStartedNotification__CollabAgentStateSchema
 >
 
-export const V2TurnStartedNotification__CollabAgentToolSchema = v.picklist([
+export const V2TurnStartedNotification__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -6379,7 +6360,7 @@ export type V2TurnStartedNotification__CollabAgentTool = v.InferOutput<
   typeof V2TurnStartedNotification__CollabAgentToolSchema
 >
 
-export const V2TurnStartedNotification__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2TurnStartedNotification__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -6412,7 +6393,7 @@ export type V2TurnStartedNotification__CommandAction = v.InferOutput<
   typeof V2TurnStartedNotification__CommandActionSchema
 >
 
-export const V2TurnStartedNotification__CommandExecutionSourceSchema = v.picklist([
+export const V2TurnStartedNotification__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -6422,7 +6403,7 @@ export type V2TurnStartedNotification__CommandExecutionSource = v.InferOutput<
   typeof V2TurnStartedNotification__CommandExecutionSourceSchema
 >
 
-export const V2TurnStartedNotification__CommandExecutionStatusSchema = v.picklist([
+export const V2TurnStartedNotification__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -6440,7 +6421,7 @@ export type V2TurnStartedNotification__DynamicToolCallOutputContentItem = v.Infe
   typeof V2TurnStartedNotification__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2TurnStartedNotification__DynamicToolCallStatusSchema = v.picklist([
+export const V2TurnStartedNotification__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -6494,7 +6475,7 @@ export type V2TurnStartedNotification__McpToolCallResult = v.InferOutput<
   typeof V2TurnStartedNotification__McpToolCallResultSchema
 >
 
-export const V2TurnStartedNotification__McpToolCallStatusSchema = v.picklist([
+export const V2TurnStartedNotification__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -6521,15 +6502,15 @@ export type V2TurnStartedNotification__MemoryCitation = v.InferOutput<
   typeof V2TurnStartedNotification__MemoryCitationSchema
 >
 
-export const V2TurnStartedNotification__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
+export const V2TurnStartedNotification__MessagePhaseSchema = openEnum([
+  'commentary',
+  'final_answer',
 ])
 export type V2TurnStartedNotification__MessagePhase = v.InferOutput<
   typeof V2TurnStartedNotification__MessagePhaseSchema
 >
 
-export const V2TurnStartedNotification__PatchApplyStatusSchema = v.picklist([
+export const V2TurnStartedNotification__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -6539,7 +6520,7 @@ export type V2TurnStartedNotification__PatchApplyStatus = v.InferOutput<
   typeof V2TurnStartedNotification__PatchApplyStatusSchema
 >
 
-export const V2TurnStartedNotification__ReasoningEffortSchema = v.picklist([
+export const V2TurnStartedNotification__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -6716,7 +6697,7 @@ export type V2TurnStartedNotification__TurnError = v.InferOutput<
   typeof V2TurnStartedNotification__TurnErrorSchema
 >
 
-export const V2TurnStartedNotification__TurnStatusSchema = v.picklist([
+export const V2TurnStartedNotification__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -6750,13 +6731,13 @@ export type V2TurnStartParams__AbsolutePathBuf = v.InferOutput<
   typeof V2TurnStartParams__AbsolutePathBufSchema
 >
 
-export const V2TurnStartParams__ApprovalsReviewerSchema = v.picklist(['user', 'guardian_subagent'])
+export const V2TurnStartParams__ApprovalsReviewerSchema = openEnum(['user', 'guardian_subagent'])
 export type V2TurnStartParams__ApprovalsReviewer = v.InferOutput<
   typeof V2TurnStartParams__ApprovalsReviewerSchema
 >
 
 export const V2TurnStartParams__AskForApprovalSchema = v.union([
-  v.picklist(['untrusted', 'on-failure', 'on-request', 'never']),
+  openEnum(['untrusted', 'on-failure', 'on-request', 'never']),
   v.looseObject({
     granular: v.looseObject({
       mcp_elicitations: v.boolean(),
@@ -6777,10 +6758,10 @@ export const V2TurnStartParams__ByteRangeSchema = v.looseObject({
 })
 export type V2TurnStartParams__ByteRange = v.InferOutput<typeof V2TurnStartParams__ByteRangeSchema>
 
-export const V2TurnStartParams__ModeKindSchema = v.picklist(['plan', 'default'])
+export const V2TurnStartParams__ModeKindSchema = openEnum(['plan', 'default'])
 export type V2TurnStartParams__ModeKind = v.InferOutput<typeof V2TurnStartParams__ModeKindSchema>
 
-export const V2TurnStartParams__ReasoningEffortSchema = v.picklist([
+export const V2TurnStartParams__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -6807,12 +6788,12 @@ export type V2TurnStartParams__CollaborationMode = v.InferOutput<
   typeof V2TurnStartParams__CollaborationModeSchema
 >
 
-export const V2TurnStartParams__NetworkAccessSchema = v.picklist(['restricted', 'enabled'])
+export const V2TurnStartParams__NetworkAccessSchema = openEnum(['restricted', 'enabled'])
 export type V2TurnStartParams__NetworkAccess = v.InferOutput<
   typeof V2TurnStartParams__NetworkAccessSchema
 >
 
-export const V2TurnStartParams__PersonalitySchema = v.picklist(['none', 'friendly', 'pragmatic'])
+export const V2TurnStartParams__PersonalitySchema = openEnum(['none', 'friendly', 'pragmatic'])
 export type V2TurnStartParams__Personality = v.InferOutput<
   typeof V2TurnStartParams__PersonalitySchema
 >
@@ -6830,7 +6811,7 @@ export type V2TurnStartParams__ReadOnlyAccess = v.InferOutput<
 >
 
 export const V2TurnStartParams__ReasoningSummarySchema = v.union([
-  v.picklist(['auto', 'concise', 'detailed']),
+  openEnum(['auto', 'concise', 'detailed']),
   v.literal('none'),
 ])
 export type V2TurnStartParams__ReasoningSummary = v.InferOutput<
@@ -6861,7 +6842,7 @@ export type V2TurnStartParams__SandboxPolicy = v.InferOutput<
   typeof V2TurnStartParams__SandboxPolicySchema
 >
 
-export const V2TurnStartParams__ServiceTierSchema = v.picklist(['fast', 'flex'])
+export const V2TurnStartParams__ServiceTierSchema = openEnum(['fast', 'flex'])
 export type V2TurnStartParams__ServiceTier = v.InferOutput<
   typeof V2TurnStartParams__ServiceTierSchema
 >
@@ -6918,13 +6899,13 @@ export type V2TurnStartResponse__ByteRange = v.InferOutput<
   typeof V2TurnStartResponse__ByteRangeSchema
 >
 
-export const V2TurnStartResponse__NonSteerableTurnKindSchema = v.picklist(['review', 'compact'])
+export const V2TurnStartResponse__NonSteerableTurnKindSchema = openEnum(['review', 'compact'])
 export type V2TurnStartResponse__NonSteerableTurnKind = v.InferOutput<
   typeof V2TurnStartResponse__NonSteerableTurnKindSchema
 >
 
 export const V2TurnStartResponse__CodexErrorInfoSchema = v.union([
-  v.picklist([
+  openEnum([
     'contextWindowExceeded',
     'usageLimitExceeded',
     'serverOverloaded',
@@ -6973,7 +6954,7 @@ export type V2TurnStartResponse__CodexErrorInfo = v.InferOutput<
   typeof V2TurnStartResponse__CodexErrorInfoSchema
 >
 
-export const V2TurnStartResponse__CollabAgentStatusSchema = v.picklist([
+export const V2TurnStartResponse__CollabAgentStatusSchema = openEnum([
   'pendingInit',
   'running',
   'interrupted',
@@ -6994,7 +6975,7 @@ export type V2TurnStartResponse__CollabAgentState = v.InferOutput<
   typeof V2TurnStartResponse__CollabAgentStateSchema
 >
 
-export const V2TurnStartResponse__CollabAgentToolSchema = v.picklist([
+export const V2TurnStartResponse__CollabAgentToolSchema = openEnum([
   'spawnAgent',
   'sendInput',
   'resumeAgent',
@@ -7005,7 +6986,7 @@ export type V2TurnStartResponse__CollabAgentTool = v.InferOutput<
   typeof V2TurnStartResponse__CollabAgentToolSchema
 >
 
-export const V2TurnStartResponse__CollabAgentToolCallStatusSchema = v.picklist([
+export const V2TurnStartResponse__CollabAgentToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -7038,7 +7019,7 @@ export type V2TurnStartResponse__CommandAction = v.InferOutput<
   typeof V2TurnStartResponse__CommandActionSchema
 >
 
-export const V2TurnStartResponse__CommandExecutionSourceSchema = v.picklist([
+export const V2TurnStartResponse__CommandExecutionSourceSchema = openEnum([
   'agent',
   'userShell',
   'unifiedExecStartup',
@@ -7048,7 +7029,7 @@ export type V2TurnStartResponse__CommandExecutionSource = v.InferOutput<
   typeof V2TurnStartResponse__CommandExecutionSourceSchema
 >
 
-export const V2TurnStartResponse__CommandExecutionStatusSchema = v.picklist([
+export const V2TurnStartResponse__CommandExecutionStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -7066,7 +7047,7 @@ export type V2TurnStartResponse__DynamicToolCallOutputContentItem = v.InferOutpu
   typeof V2TurnStartResponse__DynamicToolCallOutputContentItemSchema
 >
 
-export const V2TurnStartResponse__DynamicToolCallStatusSchema = v.picklist([
+export const V2TurnStartResponse__DynamicToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -7118,7 +7099,7 @@ export type V2TurnStartResponse__McpToolCallResult = v.InferOutput<
   typeof V2TurnStartResponse__McpToolCallResultSchema
 >
 
-export const V2TurnStartResponse__McpToolCallStatusSchema = v.picklist([
+export const V2TurnStartResponse__McpToolCallStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -7145,15 +7126,12 @@ export type V2TurnStartResponse__MemoryCitation = v.InferOutput<
   typeof V2TurnStartResponse__MemoryCitationSchema
 >
 
-export const V2TurnStartResponse__MessagePhaseSchema = v.union([
-  v.literal('commentary'),
-  v.literal('final_answer'),
-])
+export const V2TurnStartResponse__MessagePhaseSchema = openEnum(['commentary', 'final_answer'])
 export type V2TurnStartResponse__MessagePhase = v.InferOutput<
   typeof V2TurnStartResponse__MessagePhaseSchema
 >
 
-export const V2TurnStartResponse__PatchApplyStatusSchema = v.picklist([
+export const V2TurnStartResponse__PatchApplyStatusSchema = openEnum([
   'inProgress',
   'completed',
   'failed',
@@ -7163,7 +7141,7 @@ export type V2TurnStartResponse__PatchApplyStatus = v.InferOutput<
   typeof V2TurnStartResponse__PatchApplyStatusSchema
 >
 
-export const V2TurnStartResponse__ReasoningEffortSchema = v.picklist([
+export const V2TurnStartResponse__ReasoningEffortSchema = openEnum([
   'none',
   'minimal',
   'low',
@@ -7333,7 +7311,7 @@ export type V2TurnStartResponse__TurnError = v.InferOutput<
   typeof V2TurnStartResponse__TurnErrorSchema
 >
 
-export const V2TurnStartResponse__TurnStatusSchema = v.picklist([
+export const V2TurnStartResponse__TurnStatusSchema = openEnum([
   'completed',
   'interrupted',
   'failed',
@@ -7363,9 +7341,10 @@ export const V2WarningNotificationSchema = v.looseObject({
 })
 export type V2WarningNotification = v.InferOutput<typeof V2WarningNotificationSchema>
 
-export const V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupModeSchema = v.picklist(
-  ['elevated', 'unelevated'],
-)
+export const V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupModeSchema = openEnum([
+  'elevated',
+  'unelevated',
+])
 export type V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupMode = v.InferOutput<
   typeof V2WindowsSandboxSetupCompletedNotification__WindowsSandboxSetupModeSchema
 >

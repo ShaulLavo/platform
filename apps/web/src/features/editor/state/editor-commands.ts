@@ -26,6 +26,7 @@ import {
 import {
   closeEditorPathInWorkbenchPanels,
   closeEditorTabInWorkbenchPanels,
+  editorOpenPathsForWorkbenchPanels,
   editorPathCountsForWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
   renameEditorPathInWorkbenchPanels,
@@ -209,9 +210,24 @@ function pickRootFolder(
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
 ) {
-  documentStore.getState().clearLiveEditorDocuments()
+  // Behaviourally the old clear(), except dirty and unsynced documents now survive.
+  // Harmless while the confirm dialog still gates the switch, and the foundation for
+  // per-project retention once slices land.
+  documentStore.getState().retainEditorDocuments(EMPTY_RETENTION)
   uiStore.getState().resetEditorUiState()
   workspaceStore.getState().resetForRootFolder(rootFolder)
+}
+
+const EMPTY_RETENTION = {
+  documentIds: new Set<string>(),
+  tabIds: new Set<string>(),
+}
+
+function retentionForPanels(panels: WorkbenchPanels) {
+  return {
+    documentIds: new Set(editorOpenPathsForWorkbenchPanels(panels)),
+    tabIds: new Set(panels.editorTabs.map((tab) => tab.id)),
+  }
 }
 
 function closeTab(
@@ -237,7 +253,9 @@ function closeTab(
   if (!options.discard || remainingCount > 0) {
     documentStore.getState().removeEditorView(tabId)
     if (remainingCount === 0) {
-      documentStore.getState().evictCleanUnviewedLiveEditorDocument(path)
+      // One eviction policy in the codebase: keep everything the remaining tabs
+      // still reference, and let retain() decide what that leaves behind.
+      documentStore.getState().retainEditorDocuments(retentionForPanels(nextPanels))
     }
   }
 

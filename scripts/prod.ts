@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { allowedOriginsForWebPort, portFromEnv, runtimeUrl } from './runtime-network'
 import { createScriptError } from './structured-errors'
 
 type Mode = 'all' | 'build' | 'start'
@@ -88,11 +89,11 @@ async function startProd(config: ProdConfig) {
 function readProdConfig(): ProdConfig {
   const serverHost = Bun.env.FS_HOST ?? Bun.env.HOST ?? '127.0.0.1'
   const webHost = Bun.env.WEB_HOST ?? '127.0.0.1'
-  const serverPort = portFromEnv('PORT', 3001)
-  const webPort = portFromEnv('WEB_PORT', 3000)
-  const serverUrl = Bun.env.VITE_SERVER_URL ?? `http://${urlHost(serverHost)}:${serverPort}`
-  const webUrl = `http://${urlHost(webHost)}:${webPort}`
-  const allowedOrigins = Bun.env.SERVER_ALLOWED_ORIGINS ?? defaultAllowedOrigins(webHost, webPort)
+  const serverPort = portFromEnv(Bun.env, 'PORT', 3001)
+  const webPort = portFromEnv(Bun.env, 'WEB_PORT', 3000)
+  const serverUrl = Bun.env.VITE_SERVER_URL ?? runtimeUrl(serverHost, serverPort)
+  const webUrl = runtimeUrl(webHost, webPort)
+  const allowedOrigins = allowedOriginsForWebPort(Bun.env.SERVER_ALLOWED_ORIGINS, webHost, webPort)
 
   const buildEnv = {
     ...Bun.env,
@@ -126,40 +127,6 @@ function parseMode(value: string | undefined): Mode {
   throw createScriptError(`Unknown production mode "${value}". Use build, start, or all.`)
 }
 
-function portFromEnv(name: 'PORT' | 'WEB_PORT', fallback: number) {
-  const value = Bun.env[name]
-  if (!value) return fallback
-
-  const port = Number(value)
-  if (Number.isInteger(port) && port > 0 && port < 65536) return port
-
-  throw createScriptError(`${name} must be an integer between 1 and 65535.`)
-}
-
-function defaultAllowedOrigins(webHost: string, webPort: number) {
-  return unique([
-    `http://localhost:${webPort}`,
-    `http://127.0.0.1:${webPort}`,
-    `http://${urlHost(webHost)}:${webPort}`,
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:4173',
-    'http://127.0.0.1:4173',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-  ]).join(',')
-}
-
-function unique(values: string[]) {
-  return Array.from(new Set(values))
-}
-
-function urlHost(host: string) {
-  if (host.includes(':') && !host.startsWith('[')) return `[${host}]`
-
-  return host
-}
-
 function ensureBuildArtifact(label: string, relativePath: string) {
   const artifactPath = path.join(root, relativePath)
   if (existsSync(artifactPath)) return
@@ -178,7 +145,7 @@ function printBuildSummary(config: ProdConfig) {
 function printStartSummary(config: ProdConfig) {
   console.log('[prod] Starting production app')
   console.log(`[prod] Client: ${config.webUrl}`)
-  console.log(`[prod] Server: http://${urlHost(config.serverHost)}:${config.serverPort}`)
+  console.log(`[prod] Server: ${runtimeUrl(config.serverHost, config.serverPort)}`)
   console.log(`[prod] Server allowed origins: ${config.allowedOrigins}`)
 }
 

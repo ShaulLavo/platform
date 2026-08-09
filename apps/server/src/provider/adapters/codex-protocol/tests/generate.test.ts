@@ -28,9 +28,19 @@ describe('Codex protocol generator', () => {
 
     expect(source).toContain('v.looseObject')
     expect(source).toContain('"id": v.string()')
-    expect(source).toContain('"mode": v.picklist(["fast","safe"])')
+    expect(source).toContain('"mode": openEnum(["fast","safe"])')
     expect(source).toContain('"score": v.optional(v.pipe(v.number(), v.integer(), v.minValue(0)))')
     expect(source).toContain('"flags": v.optional(v.record(v.string(), v.boolean()))')
+  })
+
+  it('leaves single-member enums closed so union discriminators keep discriminating', () => {
+    const source = renderValibotExpressionForTest({
+      properties: { type: { enum: ['reasoning'], type: 'string' } },
+      required: ['type'],
+      type: 'object',
+    })
+
+    expect(source).toContain('"type": v.literal("reasoning")')
   })
 
   it('generates method maps for Platform-used Codex protocol methods', () => {

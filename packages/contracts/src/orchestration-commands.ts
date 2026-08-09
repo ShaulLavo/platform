@@ -8,7 +8,7 @@ import {
   turnIdSchema,
 } from './chat-ids'
 import {
-  chatAttachmentSchema,
+  chatAttachmentUploadSchema,
   isoDateTimeSchema,
   nonNegativeIntegerSchema,
   orchestrationCheckpointFileSchema,
@@ -146,7 +146,7 @@ export const threadTurnStartCommandSchema = v.object({
     messageId: messageIdSchema,
     role: v.literal('user'),
     text: v.string(),
-    attachments: v.optional(v.array(chatAttachmentSchema), []),
+    attachments: v.optional(v.array(chatAttachmentUploadSchema), []),
   }),
   modelSelection: v.optional(modelSelectionSchema),
   titleSeed: v.optional(trimmedNonEmptyStringSchema),

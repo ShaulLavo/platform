@@ -6,19 +6,21 @@ import {
 } from '@workspace/ui/components/resizable'
 
 import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import type { GitStoreApi } from '@/features/git/state'
 import type { FileStatus } from '@/features/git/types'
 import { BottomPanel } from '@/features/workbench/components/bottom-panel'
 import { CodePanel } from '@/features/workbench/components/code-panel'
 import { SidebarPanel } from '@/features/workbench/components/sidebar-panel'
 import { Wallpaper } from '@/features/workbench/components/wallpaper'
 import {
+  setWorkbenchMainLayout,
+  setWorkbenchOuterLayout,
+  type WorkbenchLayout,
+} from '@/features/workbench/utils/workbench-layout'
+import {
   BOTTOM_MAX_SIZE,
   BOTTOM_MIN_SIZE,
   SIDEBAR_MAX_SIZE,
   SIDEBAR_MIN_SIZE,
-  setWorkbenchMainLayout,
-  setWorkbenchOuterLayout,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 
@@ -26,25 +28,27 @@ export function WorkbenchLayout({
   conflicts,
   editorKeymapLayers,
   gitFiles,
-  gitStore,
+  layout,
   panels,
   rootPath,
+  onLayoutChange,
   onPanelsChange,
 }: {
   readonly conflicts: EditorTabConflictMap
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
   readonly gitFiles: readonly FileStatus[]
-  readonly gitStore: GitStoreApi
+  readonly layout: WorkbenchLayout
   readonly panels: WorkbenchPanels
   readonly rootPath: string
+  readonly onLayoutChange: (layout: WorkbenchLayout) => void
   readonly onPanelsChange: (panels: WorkbenchPanels) => void
 }) {
-  function handleOuterLayoutChanged(layout: Record<string, number>) {
-    onPanelsChange(setWorkbenchOuterLayout(panels, layout))
+  function handleOuterLayoutChanged(next: Record<string, number>) {
+    onLayoutChange(setWorkbenchOuterLayout(layout, next))
   }
 
-  function handleMainLayoutChanged(layout: Record<string, number>) {
-    onPanelsChange(setWorkbenchMainLayout(panels, layout))
+  function handleMainLayoutChanged(next: Record<string, number>) {
+    onLayoutChange(setWorkbenchMainLayout(layout, next))
   }
 
   return (
@@ -56,9 +60,8 @@ export function WorkbenchLayout({
     >
       <Wallpaper />
       <ResizablePanelGroup
-        key={rootPath}
-        className='border-border/70 relative z-10 min-h-0 min-w-0 flex-1 border-4'
-        defaultLayout={panels.outerLayout}
+        className='relative z-10 min-h-0 min-w-0 flex-1'
+        defaultLayout={layout.outerLayout}
         id='workbench-outer'
         onLayoutChanged={handleOuterLayoutChanged}
       >
@@ -70,7 +73,6 @@ export function WorkbenchLayout({
         >
           <SidebarPanel
             editorKeymapLayers={editorKeymapLayers}
-            gitStore={gitStore}
             panels={panels}
             rootPath={rootPath}
             onPanelsChange={onPanelsChange}
@@ -80,7 +82,7 @@ export function WorkbenchLayout({
         <ResizablePanel className='min-h-0 min-w-0' id='main' minSize={360}>
           <ResizablePanelGroup
             className='min-h-0 min-w-0'
-            defaultLayout={panels.mainLayout}
+            defaultLayout={layout.mainLayout}
             id='workbench-main'
             orientation='vertical'
             onLayoutChanged={handleMainLayoutChanged}

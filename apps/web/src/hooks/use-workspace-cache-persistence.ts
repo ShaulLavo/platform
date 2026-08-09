@@ -15,22 +15,28 @@ import {
 import {
   type CachedSearchBufferState,
   type CachedWorkspaceState,
+  writeChatModePanelsCache,
   writeDiffViewModeCache,
   writeEditorHistoryCache,
   writeRecentlyClosedEditorPathsCache,
   writeRootFolderCache,
   writeSearchBufferCache,
+  writeUiModeCache,
+  writeWorkbenchLayoutCache,
   writeWorkbenchPanelsCache,
 } from '@/lib/workspace-cache'
 
 const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
 export type WorkspaceCacheWriters = {
+  chatModePanels: typeof writeChatModePanelsCache
   diffViewMode: typeof writeDiffViewModeCache
   editorHistory: typeof writeEditorHistoryCache
   recentlyClosedEditorPaths: typeof writeRecentlyClosedEditorPathsCache
   rootFolder: typeof writeRootFolderCache
   searchBuffer: typeof writeSearchBufferCache
+  uiMode: typeof writeUiModeCache
+  workbenchLayout: typeof writeWorkbenchLayoutCache
   workbenchPanels: typeof writeWorkbenchPanelsCache
 }
 
@@ -42,11 +48,14 @@ type WorkspaceCachePersistenceOptions = {
 }
 
 const WORKSPACE_CACHE_WRITERS = {
+  chatModePanels: writeChatModePanelsCache,
   diffViewMode: writeDiffViewModeCache,
   editorHistory: writeEditorHistoryCache,
   recentlyClosedEditorPaths: writeRecentlyClosedEditorPathsCache,
   rootFolder: writeRootFolderCache,
   searchBuffer: writeSearchBufferCache,
+  uiMode: writeUiModeCache,
+  workbenchLayout: writeWorkbenchLayoutCache,
   workbenchPanels: writeWorkbenchPanelsCache,
 } satisfies WorkspaceCacheWriters
 
@@ -145,9 +154,27 @@ function workspaceCacheSubscriptions({
   return [
     subscribeCacheEntry({
       debounceMs,
+      select: (state) => state.chatModePanels,
+      store: workspaceStore,
+      write: cacheWriters.chatModePanels,
+    }),
+    subscribeCacheEntry({
+      debounceMs,
       select: (state) => state.diffViewMode,
       store: workspaceStore,
       write: cacheWriters.diffViewMode,
+    }),
+    subscribeCacheEntry({
+      debounceMs,
+      select: (state) => state.uiMode,
+      store: workspaceStore,
+      write: cacheWriters.uiMode,
+    }),
+    subscribeCacheEntry({
+      debounceMs,
+      select: (state) => state.workbenchLayout,
+      store: workspaceStore,
+      write: cacheWriters.workbenchLayout,
     }),
     subscribeCacheEntry({
       debounceMs,

@@ -3,9 +3,9 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
 import type { LexicalEditor } from 'lexical'
-import { useCallback, type ClipboardEvent, type DragEvent, type RefObject } from 'react'
+import { useCallback, type ClipboardEvent, type RefObject } from 'react'
 
-import { imageFilesFromClipboard, imageFilesFromTransfer } from '../lib/chat-input-attachments'
+import { imageFilesFromClipboard } from '../lib/chat-input-attachments'
 import type { ChatInputTrigger } from '../lib/chat-input-logic'
 import { ChatInputDraftPlugin } from './chat-input-draft-plugin'
 import { ChatInputSubmitPlugin } from './chat-input-submit-plugin'
@@ -45,21 +45,9 @@ export function ChatInputEditor({
   submitting: boolean
   trigger: ChatInputTrigger | null
 }) {
-  const handleDragOver = useCallback((event: DragEvent<HTMLElement>) => {
-    if (!event.dataTransfer.types.includes('Files')) return
-
-    event.preventDefault()
-  }, [])
-  const handleDrop = useCallback(
-    (event: DragEvent<HTMLElement>) => {
-      const files = imageFilesFromTransfer(event.dataTransfer)
-      if (files.length === 0) return
-
-      event.preventDefault()
-      onImageFiles(files)
-    },
-    [onImageFiles],
-  )
+  // Drops are handled by the composer container so the attachment strip and the
+  // action row are droppable too; paste stays here, on the element that owns the
+  // caret.
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLElement>) => {
       const files = imageFilesFromClipboard(event.clipboardData)
@@ -84,8 +72,6 @@ export function ChatInputEditor({
             data-testid='chat-input-editor'
             placeholder={<span />}
             onBlur={handleBlur}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
             onFocus={handleFocus}
             onPaste={handlePaste}
           />

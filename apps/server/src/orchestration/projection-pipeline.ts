@@ -78,7 +78,7 @@ export class OrchestrationProjectionPipeline {
         return
       case 'project.meta-updated':
         this.updateProject(event.payload.projectId, {
-          defaultModelSelectionJson: jsonOrNull(event.payload.defaultModelSelection),
+          defaultModelSelectionJson: jsonPatch(event.payload.defaultModelSelection),
           title: event.payload.title,
           updatedAt: event.payload.updatedAt,
           workspaceRoot: event.payload.workspaceRoot,
@@ -346,6 +346,9 @@ export class OrchestrationProjectionPipeline {
       interactionMode: event.payload.interactionMode,
       latestTurnId: event.payload.turnId,
       latestTurnJson: JSON.stringify(latestTurn),
+      // turn-start's modelSelection is optional but never null, so absent means
+      // "leave it alone" — jsonOrUndefined, not jsonPatch.
+      modelSelectionJson: jsonOrUndefined(event.payload.modelSelection),
       runtimeMode: event.payload.runtimeMode,
       updatedAt: event.payload.createdAt,
     })
@@ -629,6 +632,18 @@ function compactPatch<T extends Record<string, unknown>>(patch: T) {
 
 function jsonOrNull(value: unknown) {
   if (value === undefined || value === null) return null
+
+  return JSON.stringify(value)
+}
+
+/**
+ * Three-way, for nullable-and-optional payload fields: absent leaves the column alone
+ * (compactPatch drops undefined), explicit null clears it. Collapsing the two would let
+ * a partial update — say a rename carrying no defaultModelSelection — wipe the stored value.
+ */
+function jsonPatch(value: unknown) {
+  if (value === undefined) return undefined
+  if (value === null) return null
 
   return JSON.stringify(value)
 }

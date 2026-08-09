@@ -61,6 +61,9 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       updateThread(model, event.payload.threadId, (thread) => ({
         ...thread,
         interactionMode: event.payload.interactionMode ?? thread.interactionMode,
+        // The turn carries the model it will actually run on; without this the read
+        // model keeps reporting whatever the thread was created with.
+        modelSelection: event.payload.modelSelection ?? thread.modelSelection,
         latestTurn: {
           assistantMessageId: null,
           completedAt: null,

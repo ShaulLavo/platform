@@ -1,10 +1,11 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { ModelSelection, ThreadId } from '@workspace/contracts'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import {
   createCheckpointRevertCommand,
+  createProjectDefaultModelCommand,
   createThreadInterruptCommand,
   createTurnSubmission,
 } from '../lib/chat-command-builders'
@@ -70,6 +71,23 @@ export function ChatView({
       })
     },
     [busy, environment, thread],
+  )
+
+  const projectId = thread?.projectId
+  // Stable identity is required because this is part of the model picker context value.
+  const handlePersistModelSelection = useCallback(
+    (next: ModelSelection) => {
+      if (!projectId) return
+
+      void environment.dispatchCommand(
+        createProjectDefaultModelCommand({
+          defaultModelSelection: next,
+          projectId,
+          updatedAt: new Date().toISOString(),
+        }),
+      )
+    },
+    [environment, projectId],
   )
 
   useEffect(() => {
@@ -143,6 +161,7 @@ export function ChatView({
         modelSelectionLocked={thread.messages.length > 0 || thread.latestTurn !== null}
         rootPath={rootPath}
         runtimeMode={thread.runtimeMode}
+        onPersistModelSelection={handlePersistModelSelection}
         onStop={handleStop}
         onSubmit={handleSend}
       />

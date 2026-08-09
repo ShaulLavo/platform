@@ -10,10 +10,28 @@ export const interactionModeSchema = v.picklist(['default', 'plan'])
 
 export const providerDriverKindSchema = v.pipe(providerSlugSchema, v.brand('ProviderDriverKind'))
 
+/**
+ * Reasoning effort ids stay open strings: Codex speaks `low..ultra` and the
+ * Claude SDK stops at `max`, so any closed enum shared across providers would
+ * reject the other's levels.
+ */
+export const reasoningEffortSchema = v.pipe(v.string(), v.trim(), v.minLength(1))
+
+/**
+ * Still open — adapters read their own keys out of it — but the reasoning
+ * effort is typed because it is the one option the picker, the persisted
+ * per-thread selection, and every adapter must agree on. Typed *inside*
+ * `options` rather than as a sibling field so the Codex adapter, which already
+ * reads `options.reasoningEffort`, keeps working untouched.
+ */
+export const modelSelectionOptionsSchema = v.looseObject({
+  reasoningEffort: v.optional(reasoningEffortSchema),
+})
+
 export const modelSelectionSchema = v.object({
   providerInstanceId: providerInstanceIdSchema,
   model: v.pipe(v.string(), v.trim(), v.minLength(1)),
-  options: v.optional(v.record(v.string(), v.unknown())),
+  options: v.optional(modelSelectionOptionsSchema),
 })
 
 export const providerUserInputAnswersSchema = v.record(v.string(), v.unknown())
@@ -28,6 +46,8 @@ export type RuntimeMode = v.InferOutput<typeof runtimeModeSchema>
 export type InteractionMode = v.InferOutput<typeof interactionModeSchema>
 export type ProviderDriverKind = v.InferOutput<typeof providerDriverKindSchema>
 export type ModelSelection = v.InferOutput<typeof modelSelectionSchema>
+export type ModelSelectionOptions = v.InferOutput<typeof modelSelectionOptionsSchema>
+export type ReasoningEffort = v.InferOutput<typeof reasoningEffortSchema>
 export type ProviderUserInputAnswers = v.InferOutput<typeof providerUserInputAnswersSchema>
 export type ProviderApprovalDecision = v.InferOutput<typeof providerApprovalDecisionSchema>
 

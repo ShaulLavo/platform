@@ -1,0 +1,81 @@
+import net from 'node:net'
+
+import { createScriptError } from './structured-errors'
+
+const MAX_PORT_ATTEMPTS = 100
+
+type RuntimeEnv = Readonly<Record<string, string | undefined>>
+
+type AvailablePortOptions = {
+  blockedPorts?: readonly number[]
+  isAvailable: (port: number) => Promise<boolean>
+  preferredPort: number
+}
+
+export async function selectAvailablePort(options: AvailablePortOptions) {
+  const blockedPorts = new Set(options.blockedPorts)
+
+  for (let offset = 0; offset < MAX_PORT_ATTEMPTS; offset += 1) {
+    const port = options.preferredPort + offset
+    if (port > 65_535) break
+    if (blockedPorts.has(port)) continue
+    if (await options.isAvailable(port)) return port
+  }
+
+  throw createScriptError(
+    `Could not find an available port at or above ${options.preferredPort} after ${MAX_PORT_ATTEMPTS} attempts.`,
+  )
+}
+
+export function isPortAvailable(host: string, port: number) {
+  return new Promise<boolean>((resolve) => {
+    const server = net.createServer()
+    server.once('error', () => resolve(false))
+    server.listen({ exclusive: true, host, port }, () => closePortProbe(server, resolve))
+  })
+}
+
+export function portFromEnv(env: RuntimeEnv, name: string, fallback: number) {
+  const value = env[name]
+  if (!value) return fallback
+
+  const port = Number(value)
+  if (Number.isInteger(port) && port > 0 && port < 65_536) return port
+
+  throw createScriptError(`${name} must be an integer between 1 and 65535.`)
+}
+
+export function runtimeUrl(host: string, port: number) {
+  return `http://${urlHost(host)}:${port}`
+}
+
+export function allowedOriginsForWebPort(
+  configuredOrigins: string | undefined,
+  webHost: string,
+  webPort: number,
+) {
+  return unique([runtimeUrl(webHost, webPort), ...originsFromEnv(configuredOrigins)]).join(',')
+}
+
+function closePortProbe(server: net.Server, resolve: (available: boolean) => void) {
+  server.close(() => resolve(true))
+}
+
+function originsFromEnv(value: string | undefined) {
+  if (!value) return []
+
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+}
+
+function unique(values: readonly string[]) {
+  return Array.from(new Set(values))
+}
+
+function urlHost(host: string) {
+  if (host.includes(':') && !host.startsWith('[')) return `[${host}]`
+
+  return host
+}

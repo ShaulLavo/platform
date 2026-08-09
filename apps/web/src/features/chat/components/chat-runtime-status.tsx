@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Alert, AlertDescription, AlertTitle } from '@workspace/ui/components/alert'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@workspace/ui/components/alert'
+import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { useMemo } from 'react'
@@ -10,6 +11,7 @@ import {
   type ChatRuntimeAlertTone,
 } from '../lib/chat-runtime-state'
 import { errorMessage } from '@/lib/error-message'
+import { useProviderSignInDialog } from '../hooks/use-provider-sign-in-dialog'
 import { providerListQueryOptions } from '../lib/provider-query'
 import type { ChatThread } from '../state/chat-projection-store'
 
@@ -22,6 +24,7 @@ export function ChatRuntimeStatus({
 }: ChatCommandState & {
   thread: ChatThread
 }) {
+  const { openSignIn } = useProviderSignInDialog()
   const providersQuery = useQuery(providerListQueryOptions())
   const provider = providersQuery.data?.providers.find(
     (candidate) => candidate.providerInstanceId === thread.modelSelection.providerInstanceId,
@@ -52,6 +55,7 @@ export function ChatRuntimeStatus({
       <div className='mx-auto max-w-3xl space-y-2'>
         {alerts.map((alert) => {
           const Icon = alert.tone === 'busy' ? CircleNotchIcon : WarningCircleIcon
+          const signIn = alert.signIn
 
           return (
             <Alert
@@ -65,6 +69,18 @@ export function ChatRuntimeStatus({
                 <AlertDescription className='line-clamp-3 tabular-nums' title={alert.detail}>
                   {alert.detail}
                 </AlertDescription>
+              ) : null}
+              {signIn ? (
+                <AlertAction>
+                  <Button
+                    onClick={() => openSignIn(signIn)}
+                    size='xs'
+                    type='button'
+                    variant='outline'
+                  >
+                    Sign in
+                  </Button>
+                </AlertAction>
               ) : null}
             </Alert>
           )

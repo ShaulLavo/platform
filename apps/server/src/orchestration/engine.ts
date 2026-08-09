@@ -1,4 +1,6 @@
 import * as v from 'valibot'
+import type { ChatAttachment, ChatAttachmentUpload } from '@workspace/contracts'
+import { defaultAttachmentsDir, writeAttachmentFromDataUrl } from '../attachments/store'
 import { migrateOrchestrationDatabase } from '../db/migrations'
 import { orchestrationErrors } from '../observability'
 import { clientOrchestrationCommandSchema, type OrchestrationCommand } from './schemas'
@@ -20,6 +22,7 @@ import {
   orchestrationEventBatchSummary,
   recordChatPipelineInfo,
   recordChatPipelineWarning,
+  type CommandAttachmentIngest,
 } from './orchestration-logging'
 import { projectEvents } from './projector'
 import type { OrchestrationReadModel } from './read-model'
@@ -33,6 +36,7 @@ export type OrchestrationDispatchResult = {
 }
 
 export type OrchestrationEngineOptions = {
+  attachmentsDir?: string
   providerRuntime?:
     | boolean
     | {
@@ -42,8 +46,11 @@ export type OrchestrationEngineOptions = {
       }
 }
 
+type OrchestrationCommandSummary = ReturnType<typeof orchestrationCommandSummary>
+
 export class OrchestrationEngine {
   private queue = Promise.resolve()
+  private readonly attachmentsDir: string
   private readonly database: OrchestrationDatabase
   private readonly receipts: OrchestrationCommandReceipts
   private readonly eventStore: OrchestrationEventStore
@@ -54,6 +61,7 @@ export class OrchestrationEngine {
   private readModel: OrchestrationReadModel
 
   constructor(database: OrchestrationDatabase, options: OrchestrationEngineOptions = {}) {
+    this.attachmentsDir = options.attachmentsDir ?? defaultAttachmentsDir()
     this.database = database
     migrateOrchestrationDatabase(database)
     this.eventStore = new OrchestrationEventStore(database)
@@ -66,13 +74,25 @@ export class OrchestrationEngine {
     this.providerCommandReactor = this.createProviderCommandReactor(options)
   }
 
-  dispatchClientCommand(command: unknown) {
-    return this.dispatch(v.parse(clientOrchestrationCommandSchema, command))
+  /**
+   * The single client ingress: both `POST /orchestration/commands` and the
+   * `dispatchCommand` WS RPC land here. Attachment bytes are written to the blob
+   * store and stripped from the command before it is dispatched, so base64 never
+   * reaches the append-only event log, the projection, or a snapshot.
+   */
+  async dispatchClientCommand(command: unknown) {
+    const parsed = v.parse(clientOrchestrationCommandSchema, command)
+    const ingested = await ingestCommandAttachments(parsed, this.attachmentsDir)
+
+    return this.dispatch(ingested.command, ingested.attachmentIngest)
   }
 
-  dispatch(command: OrchestrationCommand) {
-    recordChatPipelineInfo('chat.pipeline.command.queued', orchestrationCommandSummary(command))
-    const task = this.queue.then(() => this.dispatchNow(command))
+  dispatch(command: OrchestrationCommand, attachmentIngest?: CommandAttachmentIngest) {
+    recordChatPipelineInfo(
+      'chat.pipeline.command.queued',
+      orchestrationCommandSummary(command, attachmentIngest),
+    )
+    const task = this.queue.then(() => this.dispatchNow(command, attachmentIngest))
     this.queue = task.then(noop, noop)
 
     return task
@@ -106,51 +126,55 @@ export class OrchestrationEngine {
     return this.providerCommandReactor?.drain() ?? Promise.resolve()
   }
 
-  private dispatchNow(command: OrchestrationCommand): OrchestrationDispatchResult {
+  private dispatchNow(
+    command: OrchestrationCommand,
+    attachmentIngest?: CommandAttachmentIngest,
+  ): OrchestrationDispatchResult {
     const startedAt = performance.now()
-    recordChatPipelineInfo('chat.pipeline.command.start', orchestrationCommandSummary(command))
+    const summary = orchestrationCommandSummary(command, attachmentIngest)
+    recordChatPipelineInfo('chat.pipeline.command.start', summary)
 
     const existing = this.receipts.find(command.commandId)
     if (existing) {
       if (existing.status === 'accepted') {
         recordChatPipelineInfo('chat.pipeline.command.deduped', {
-          ...orchestrationCommandSummary(command),
+          ...summary,
           resultSequence: existing.resultSequence,
         })
         return dedupedDispatchResult(existing)
       }
 
       recordChatPipelineWarning('chat.pipeline.command.previously_rejected', {
-        ...orchestrationCommandSummary(command),
+        ...summary,
         storedError: existing.error,
       })
       throw previouslyRejectedCommandError(existing)
     }
 
-    const committed = this.commitNewCommand(command)
+    const committed = this.commitNewCommand(command, summary)
     recordChatPipelineInfo('chat.pipeline.command.committed', {
-      ...orchestrationCommandSummary(command),
+      ...summary,
       ...orchestrationEventBatchSummary(committed.events),
       sequence: committed.sequence,
     })
     this.readModel = projectEvents(committed.events, this.readModel)
     recordChatPipelineInfo('chat.pipeline.read_model.projected', {
-      ...orchestrationCommandSummary(command),
+      ...summary,
       ...orchestrationEventBatchSummary(committed.events),
     })
     this.streams.publish(committed.events)
     recordChatPipelineInfo('chat.pipeline.streams.published', {
-      ...orchestrationCommandSummary(command),
+      ...summary,
       ...orchestrationEventBatchSummary(committed.events),
     })
     this.providerCommandReactor?.handleEvents(committed.events)
     recordChatPipelineInfo('chat.pipeline.provider_reactor.notified', {
-      ...orchestrationCommandSummary(command),
+      ...summary,
       ...orchestrationEventBatchSummary(committed.events),
       enabled: this.providerCommandReactor !== null,
     })
     recordChatPipelineInfo('chat.pipeline.command.complete', {
-      ...orchestrationCommandSummary(command),
+      ...summary,
       durationMs: elapsedMs(startedAt),
       sequence: committed.sequence,
     })
@@ -162,11 +186,11 @@ export class OrchestrationEngine {
     }
   }
 
-  private commitNewCommand(command: OrchestrationCommand) {
+  private commitNewCommand(command: OrchestrationCommand, summary: OrchestrationCommandSummary) {
     try {
       const pendingEvents = decideOrchestrationCommand(command, this.readModel)
       recordChatPipelineInfo('chat.pipeline.command.decided', {
-        ...orchestrationCommandSummary(command),
+        ...summary,
         eventCount: pendingEvents.length,
         eventTypes: pendingEvents.map((event) => event.type),
       })
@@ -175,7 +199,7 @@ export class OrchestrationEngine {
     } catch (error) {
       this.receipts.recordRejected(command, error)
       recordChatPipelineWarning('chat.pipeline.command.rejected', {
-        ...orchestrationCommandSummary(command),
+        ...summary,
         error,
       })
       throw error
@@ -228,6 +252,88 @@ export class OrchestrationEngine {
       providerService,
     })
   }
+}
+
+/**
+ * Write-through between parse and dispatch. Attachment bytes hit the blob store
+ * exactly once here; everything downstream sees metadata only.
+ */
+async function ingestCommandAttachments(
+  command: OrchestrationCommand,
+  attachmentsDir: string,
+): Promise<{ attachmentIngest?: CommandAttachmentIngest; command: OrchestrationCommand }> {
+  if (command.type !== 'thread.turn.start') return { command }
+  if (command.message.attachments.length === 0) return { command }
+
+  const ingested = await persistTurnAttachments(command.message.attachments, attachmentsDir)
+
+  return {
+    attachmentIngest: ingested.attachmentIngest,
+    command: {
+      ...command,
+      message: { ...command.message, attachments: ingested.attachments },
+    },
+  }
+}
+
+async function persistTurnAttachments(
+  attachments: readonly ChatAttachmentUpload[],
+  attachmentsDir: string,
+) {
+  const kept: ChatAttachment[] = []
+  const dropReasons: string[] = []
+  let bytesPersisted = 0
+  let persisted = 0
+
+  for (const attachment of attachments) {
+    if (!attachment.dataUrl) {
+      kept.push(attachmentMetadata(attachment))
+      continue
+    }
+
+    const written = await writeAttachment(attachment, attachmentsDir)
+    // A broken paste drops its image, never the user's message.
+    if ('dropReason' in written) {
+      dropReasons.push(written.dropReason)
+      continue
+    }
+
+    bytesPersisted += written.bytesWritten
+    persisted += 1
+    kept.push(attachmentMetadata(attachment))
+  }
+
+  return {
+    attachmentIngest: { bytesPersisted, dropReasons, dropped: dropReasons.length, persisted },
+    attachments: kept,
+  }
+}
+
+async function writeAttachment(
+  attachment: ChatAttachmentUpload,
+  attachmentsDir: string,
+): Promise<{ bytesWritten: number } | { dropReason: string }> {
+  try {
+    return await writeAttachmentFromDataUrl({ attachment, attachmentsDir })
+  } catch (error) {
+    return { dropReason: `${attachment.id}: ${errorMessage(error)}` }
+  }
+}
+
+function attachmentMetadata(attachment: ChatAttachmentUpload): ChatAttachment {
+  return {
+    type: attachment.type,
+    id: attachment.id,
+    name: attachment.name,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+  }
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return String(error)
 }
 
 function noop() {}

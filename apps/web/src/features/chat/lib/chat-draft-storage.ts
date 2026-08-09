@@ -9,15 +9,6 @@ import * as v from 'valibot'
 export const CHAT_INPUT_DRAFT_STORAGE_KEY = 'platform.chat-input-drafts.v1'
 const CHAT_INPUT_DRAFT_STORAGE_VERSION = 1
 
-const persistedImageAttachmentSchema = v.object({
-  dataUrl: v.pipe(v.string(), v.minLength(1)),
-  id: trimmedNonEmptyStringSchema,
-  mimeType: v.pipe(v.string(), v.regex(/^image\//i)),
-  name: trimmedNonEmptyStringSchema,
-  sizeBytes: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  type: v.literal('image'),
-})
-
 const persistedTerminalContextSchema = v.object({
   id: trimmedNonEmptyStringSchema,
   label: trimmedNonEmptyStringSchema,
@@ -31,9 +22,14 @@ const draftPromotionSchema = v.object({
   updatedAt: trimmedNonEmptyStringSchema,
 })
 
+// Image attachments are deliberately absent: a draft is text-sized state, and a
+// couple of pasted screenshots serialize to megabytes of base64 that blow the
+// ~5 MB localStorage quota. The failed write took the whole text draft with it,
+// so image bytes stay in memory only and stored attachments are not restored.
+// `v.object` ignores unknown entries, so drafts written by the old schema still
+// parse — their `images` array is stripped instead of rehydrated.
 const persistedChatInputDraftSchema = v.object({
   draftPromotion: v.optional(v.nullable(draftPromotionSchema), null),
-  images: v.optional(v.array(persistedImageAttachmentSchema), []),
   interactionMode: v.optional(v.nullable(interactionModeSchema), null),
   modelSelection: v.optional(v.nullable(modelSelectionSchema), null),
   prompt: v.optional(v.string(), ''),

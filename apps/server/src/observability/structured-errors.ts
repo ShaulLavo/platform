@@ -59,6 +59,29 @@ export const orchestrationErrors = defineErrorCatalog('orchestration', {
   },
 })
 
+export const providerErrors = defineErrorCatalog('provider', {
+  INSTANCE_NOT_FOUND: {
+    status: 404,
+    message: ({ providerInstanceId }: { providerInstanceId: string }) =>
+      `Provider instance not found: ${providerInstanceId}`,
+    why: 'The requested provider instance is not registered in the adapter registry.',
+    fix: 'Reload the provider list and address a registered provider instance.',
+  },
+  LOGIN_ATTEMPT_NOT_FOUND: {
+    status: 404,
+    message: ({ attemptId }: { attemptId: string }) => `Login attempt not found: ${attemptId}`,
+    why: 'The sign-in attempt has been superseded by a newer one or the server restarted.',
+    fix: 'Start a new sign-in and poll the attempt id it returns.',
+  },
+  SIGN_IN_UNSUPPORTED: {
+    status: 400,
+    message: ({ providerInstanceId }: { providerInstanceId: string }) =>
+      `Provider does not support in-app sign-in: ${providerInstanceId}`,
+    why: 'The provider adapter does not implement the optional sign-in members.',
+    fix: 'Check `supportsSignIn` on the provider snapshot before offering sign-in.',
+  },
+})
+
 export const lspErrors = defineErrorCatalog('lsp', {
   PACKAGE_INSTALL_FAILED: {
     status: 500,

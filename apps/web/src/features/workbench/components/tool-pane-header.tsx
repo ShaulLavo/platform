@@ -6,6 +6,8 @@ import {
   MinusIcon,
   PlusIcon,
   ScrollIcon,
+  TerminalIcon,
+  WarningCircleIcon,
   XIcon,
 } from '@phosphor-icons/react'
 
@@ -16,7 +18,7 @@ import type { TreeModel } from '@/lib/tree-model'
 import type { PointerEvent } from 'react'
 
 type ToolPaneHeaderOrientation = 'horizontal' | 'vertical'
-type ToolPaneHeaderTab = 'chat' | 'files' | 'git' | 'logs' | 'search'
+type ToolPaneHeaderTab = 'chat' | 'files' | 'git' | 'logs' | 'problems' | 'search' | 'terminal'
 
 export function ToolPaneHeader({
   className,
@@ -147,7 +149,9 @@ function panelTabTitle(tab: ToolPaneHeaderTab | undefined) {
   if (tab === 'files') return 'Files'
   if (tab === 'git') return 'Source Control'
   if (tab === 'logs') return 'Logs'
+  if (tab === 'problems') return 'Problems'
   if (tab === 'search') return 'Search'
+  if (tab === 'terminal') return 'Terminal'
 
   return 'Tool Pane'
 }
@@ -158,7 +162,9 @@ function toolPaneHeaderIcon(tab: ToolPaneHeaderTab | undefined) {
   if (tab === 'files') return <FilesIcon className={className} />
   if (tab === 'git') return <GitBranchIcon className={className} />
   if (tab === 'logs') return <ScrollIcon className={className} />
+  if (tab === 'problems') return <WarningCircleIcon className={className} />
   if (tab === 'search') return <MagnifyingGlassIcon className={className} />
+  if (tab === 'terminal') return <TerminalIcon className={className} />
 
   return null
 }

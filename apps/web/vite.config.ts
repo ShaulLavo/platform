@@ -4,6 +4,7 @@ import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+import { portFromEnv } from '../../scripts/runtime-network'
 import { consumeAppSave } from '../server/src/fs/app-save-marker'
 
 const EDITOR_SCOPE = '@singapor/'
@@ -14,6 +15,8 @@ const workspaceRoot = path.resolve(__dirname, '../..')
 const editorPackagesRoot = path.resolve(workspaceRoot, 'node_modules/@singapor')
 const editorSourceModules = buildEditorSourceModules(editorPackagesRoot)
 const editorRepoRoots = collectEditorRepoRoots(editorPackagesRoot, editorSourceModules)
+const devServerHost = process.env.WEB_HOST ?? '127.0.0.1'
+const devServerPort = portFromEnv(process.env, 'WEB_PORT', 5173)
 
 export default defineConfig({
   define: {
@@ -41,6 +44,12 @@ export default defineConfig({
     fs: {
       allow: uniquePaths([workspaceRoot, resolveEditorSourceRoot(), ...editorRepoRoots]),
     },
+    host: devServerHost,
+    port: devServerPort,
+    // Port-agnostic dev: if the preferred port is taken, vite moves to the next
+    // free one. The dev server trusts any loopback origin (see auth.ts), so the
+    // fallback port needs no allowlist plumbing.
+    strictPort: false,
   },
   worker: {
     format: 'es',

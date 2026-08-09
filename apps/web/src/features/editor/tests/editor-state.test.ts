@@ -1,3 +1,5 @@
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { describe, expect, it } from 'vitest'
 
 import { createEditorCommands } from '@/features/editor/state/editor-commands'
@@ -158,6 +160,7 @@ function cachedWorkspace(overrides: Partial<CachedWorkspaceState>): CachedWorksp
   const workbenchPanels = overrides.workbenchPanels ?? createDefaultWorkbenchPanels()
 
   return {
+    chatModePanels: createDefaultChatModePanels(),
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
     openFilePaths: workbenchPanels.editorTabs.map((tab) => tab.path),
@@ -166,6 +169,8 @@ function cachedWorkspace(overrides: Partial<CachedWorkspaceState>): CachedWorksp
     selectedFilePath:
       workbenchPanels.editorTabs.find((tab) => tab.id === workbenchPanels.activeEditorTabId)
         ?.path ?? null,
+    uiMode: 'workbench',
+    workbenchLayout: createDefaultWorkbenchLayout(),
     workbenchPanels,
     ...overrides,
   }

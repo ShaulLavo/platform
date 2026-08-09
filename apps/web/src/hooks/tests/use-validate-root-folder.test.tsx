@@ -1,3 +1,5 @@
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
@@ -57,12 +59,15 @@ function pickedDirectory(path: string): PickedFsEntry {
 
 function storeWithRoot(rootFolder: PickedFsEntry) {
   return createEditorWorkspaceStore({
+    chatModePanels: createDefaultChatModePanels(),
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
     openFilePaths: [],
     recentlyClosedEditorPaths: [],
     rootFolder,
     selectedFilePath: null,
+    uiMode: 'workbench',
+    workbenchLayout: createDefaultWorkbenchLayout(),
     workbenchPanels: createDefaultWorkbenchPanels(),
   })
 }

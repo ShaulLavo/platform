@@ -40,6 +40,94 @@ describe('chat runtime state', () => {
     ])
   })
 
+  it('offers sign-in on the authentication alert of a provider the app can sign in', () => {
+    const [providerAlert] = chatRuntimeAlerts({
+      commandState: idle(),
+      provider: provider({
+        auth: { status: 'unauthenticated' },
+        message: 'Claude Code is not signed in.',
+        status: 'error',
+        supportsSignIn: true,
+      }),
+      providerError: null,
+      thread: thread(),
+    })
+
+    expect(providerAlert.signIn).toEqual({
+      providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+      providerLabel: 'Codex',
+    })
+    expect(providerAlert.detail).toBe('Claude Code is not signed in.')
+  })
+
+  it('offers sign-in on a mid-turn credential failure instead of a dead-end message', () => {
+    const lastError = 'OAuth session expired and could not be refreshed'
+    // Auth `unknown`, not `unauthenticated`: the CLI has not said either way, so
+    // the only signal that credentials are gone is the turn that just failed.
+    const [threadAlert] = chatRuntimeAlerts({
+      commandState: idle(),
+      provider: provider({ auth: { status: 'unknown' }, supportsSignIn: true }),
+      providerError: null,
+      thread: threadWithError(lastError),
+    })
+
+    expect(threadAlert).toMatchObject({
+      detail: lastError,
+      id: 'thread:error',
+      signIn: { providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID, providerLabel: 'Codex' },
+      title: 'Sign-in required',
+    })
+  })
+
+  /**
+   * `lastError` is persisted, so a credential failure outlives the credentials
+   * that caused it. Matching on the message alone told an already-signed-in user
+   * to sign in, and the dialog then reported their own account back at them.
+   */
+  it('stops demanding sign-in once the provider is authenticated again', () => {
+    const lastError = 'OAuth session expired and could not be refreshed'
+    const [threadAlert] = chatRuntimeAlerts({
+      commandState: idle(),
+      provider: provider({
+        auth: { email: 'someone@example.com', status: 'authenticated' },
+        supportsSignIn: true,
+      }),
+      providerError: null,
+      thread: threadWithError(lastError),
+    })
+
+    expect(threadAlert).toMatchObject({
+      detail: lastError,
+      id: 'thread:error',
+      signIn: null,
+      title: 'Thread error',
+    })
+  })
+
+  it('leaves non-auth thread errors alone', () => {
+    const [threadAlert] = chatRuntimeAlerts({
+      commandState: idle(),
+      provider: provider({ supportsSignIn: true }),
+      providerError: null,
+      thread: threadWithError('spawn claude ENOENT'),
+    })
+
+    expect(threadAlert.title).toBe('Thread error')
+    expect(threadAlert.signIn).toBe(null)
+  })
+
+  it('never offers sign-in for a provider the server cannot sign in', () => {
+    const [threadAlert] = chatRuntimeAlerts({
+      commandState: idle(),
+      provider: provider({ auth: { status: 'unknown' } }),
+      providerError: null,
+      thread: threadWithError('Invalid API key · Please run /login'),
+    })
+
+    expect(threadAlert.title).toBe('Sign-in required')
+    expect(threadAlert.signIn).toBe(null)
+  })
+
   it('hides ready provider, running session, running turn, and available plan states', () => {
     const alerts = chatRuntimeAlerts({
       commandState: {
@@ -56,6 +144,21 @@ describe('chat runtime state', () => {
     expect(alerts).toEqual([])
   })
 })
+
+function idle() {
+  return {
+    commandFailure: null,
+    interruptPending: false,
+    sendPending: false,
+    stopPending: false,
+  }
+}
+
+function threadWithError(lastError: string): ChatThread {
+  const base = thread()
+
+  return { ...base, session: base.session ? { ...base.session, lastError } : null }
+}
 
 function thread(overrides: Partial<ChatThread> = {}): ChatThread {
   const threadId = v.parse(threadIdSchema, 'thread-1')

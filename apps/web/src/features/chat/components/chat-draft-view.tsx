@@ -2,18 +2,22 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   type CommandId,
+  type ModelSelection,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type ThreadId,
 } from '@workspace/contracts'
-import { useCallback, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import {
   createDraftThreadSubmission,
-  defaultChatModelSelection,
+  createProjectDefaultModelCommand,
 } from '../lib/chat-command-builders'
+import { providerListQueryOptions } from '../lib/provider-query'
+import { resolveChatModelSelection } from '../lib/resolve-model-selection'
 import {
   replayAfterDraftTurnDispatch,
   scheduleThreadProjectionSyncAfterDispatch,
@@ -44,11 +48,26 @@ export function ChatDraftView({
   rootPath: string
 }) {
   const [sendError, setSendError] = useState<string | null>(null)
-  const modelSelection = useMemo(
-    () => project?.defaultModelSelection ?? defaultChatModelSelection(),
-    [project?.defaultModelSelection],
+  const providersQuery = useQuery(providerListQueryOptions())
+  const modelSelection = resolveChatModelSelection(
+    providersQuery.data?.providers,
+    project?.defaultModelSelection ?? null,
   )
   const handleStop = useCallback(() => undefined, [])
+  const handlePersistModelSelection = useCallback(
+    (next: ModelSelection) => {
+      if (!project) return
+
+      void environment.dispatchCommand(
+        createProjectDefaultModelCommand({
+          defaultModelSelection: next,
+          projectId: project.id,
+          updatedAt: new Date().toISOString(),
+        }),
+      )
+    },
+    [environment, project],
+  )
   const handleSend = useCallback(
     async ({
       attachments,
@@ -114,6 +133,7 @@ export function ChatDraftView({
         modelSelection={modelSelection}
         rootPath={rootPath}
         runtimeMode={DEFAULT_RUNTIME_MODE}
+        onPersistModelSelection={handlePersistModelSelection}
         onStop={handleStop}
         onSubmit={handleSend}
       />

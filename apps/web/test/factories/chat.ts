@@ -4,6 +4,10 @@ import {
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
   type OrchestrationMessage,
+  type OrchestrationProjectShell,
+  type OrchestrationShellSnapshot,
+  type OrchestrationThreadShell,
+  type ProviderModel,
   type ProviderSnapshot,
   projectIdSchema,
   threadIdSchema,
@@ -11,7 +15,11 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import type { ChatThread, ChatTurnDiffSummary } from '@/features/chat/state/chat-projection-store'
+import type {
+  ChatSidebarThreadSummary,
+  ChatThread,
+  ChatTurnDiffSummary,
+} from '@/features/chat/state/chat-projection-store'
 
 // Deterministic timestamps so factory output is stable across runs.
 function timestamp(index: number) {
@@ -31,16 +39,6 @@ export function chatMessage(overrides: Partial<OrchestrationMessage> = {}): Orch
     updatedAt: timestamp(0),
     ...overrides,
   } as OrchestrationMessage
-}
-
-function userMessage(overrides: Partial<OrchestrationMessage> = {}): OrchestrationMessage {
-  return chatMessage({
-    id: 'message-user-1',
-    role: 'user',
-    text: 'Please update the chat view.',
-    turnId: 'turn-1',
-    ...overrides,
-  })
 }
 
 export function turnDiffSummary(overrides: Partial<ChatTurnDiffSummary> = {}): ChatTurnDiffSummary {
@@ -82,7 +80,7 @@ export function thread(overrides: Partial<ChatThread> = {}): ChatThread {
     },
     latestUserMessageAt: timestamp(1),
     messages: [],
-    modelSelection: { model: 'gpt-5.5', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
+    modelSelection: { model: 'claude-opus-5', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
     pendingApprovalCount: 0,
     pendingUserInputCount: 0,
     projectId: v.parse(projectIdSchema, 'project-1'),
@@ -103,6 +101,84 @@ export function thread(overrides: Partial<ChatThread> = {}): ChatThread {
     turnDiffSummaries: [],
     updatedAt: timestamp(2),
     worktreePath: null,
+    ...overrides,
+  }
+}
+
+export function chatProject(
+  overrides: Partial<OrchestrationProjectShell> = {},
+): OrchestrationProjectShell {
+  return {
+    createdAt: timestamp(0),
+    defaultModelSelection: null,
+    id: v.parse(projectIdSchema, 'project-1'),
+    title: 'platform',
+    updatedAt: timestamp(1),
+    workspaceRoot: '/repo/platform',
+    ...overrides,
+  }
+}
+
+export function sidebarThreadSummary(
+  overrides: Partial<ChatSidebarThreadSummary> = {},
+): ChatSidebarThreadSummary {
+  const source = thread()
+
+  return {
+    archivedAt: source.archivedAt,
+    branch: source.branch,
+    createdAt: source.createdAt,
+    hasActionableProposedPlan: source.hasActionableProposedPlan,
+    id: source.id,
+    interactionMode: source.interactionMode,
+    latestTurn: source.latestTurn,
+    latestUserMessageAt: source.latestUserMessageAt,
+    pendingApprovalCount: source.pendingApprovalCount,
+    pendingUserInputCount: source.pendingUserInputCount,
+    projectId: source.projectId,
+    session: source.session,
+    title: source.title,
+    updatedAt: source.updatedAt,
+    worktreePath: source.worktreePath,
+    ...overrides,
+  }
+}
+
+export function threadShell(
+  overrides: Partial<OrchestrationThreadShell> = {},
+): OrchestrationThreadShell {
+  const source = thread()
+
+  return {
+    ...sidebarThreadSummary(),
+    modelSelection: source.modelSelection,
+    runtimeMode: source.runtimeMode,
+    ...overrides,
+  }
+}
+
+export function shellSnapshot({
+  projects = [chatProject()],
+  threads = [threadShell()],
+}: {
+  projects?: OrchestrationProjectShell[]
+  threads?: OrchestrationThreadShell[]
+} = {}): OrchestrationShellSnapshot {
+  return {
+    projects,
+    snapshotSequence: 1,
+    threads,
+    updatedAt: timestamp(2),
+  }
+}
+
+export function providerModel(overrides: Partial<ProviderModel> = {}): ProviderModel {
+  return {
+    capabilities: null,
+    isCustom: false,
+    name: 'GPT-5.5 Codex',
+    shortName: 'GPT-5.5',
+    slug: 'gpt-5.5',
     ...overrides,
   }
 }

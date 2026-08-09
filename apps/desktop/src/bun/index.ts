@@ -5,6 +5,11 @@ import net from 'node:net'
 import path from 'node:path'
 import Electrobun, { BrowserView, BrowserWindow, Utils } from 'electrobun/bun'
 import { applyEnvFileOverrides } from '@workspace/observability/env-file'
+import {
+  allowedOriginsForWebPort,
+  portFromEnv,
+  runtimeUrl,
+} from '../../../../scripts/runtime-network'
 import type { DesktopRPC, PlatformPickOptions } from '../shared/rpc'
 import {
   flushDesktopObservability,
@@ -13,6 +18,7 @@ import {
   recordDesktopInfo,
   shouldInheritChildOutput,
 } from './observability'
+import { attachWindowVibrancy } from './vibrancy'
 
 type ChildProcess = ReturnType<typeof Bun.spawn>
 
@@ -20,18 +26,20 @@ const ROOT_DIR = resolvePlatformRoot()
 applyEnvFileOverrides(path.join(ROOT_DIR, '.env'), Bun.env)
 initializeDesktopObservability()
 const WEB_DIR = path.join(ROOT_DIR, 'apps/web')
+const MAIN_WINDOW_TITLE = 'Platform'
 const SHARED_DEV = Bun.env.PLATFORM_DESKTOP_SHARED_DEV === '1'
-const WEB_HOST = '127.0.0.1'
-const WEB_PORT = 5173
-const WEB_URL = SHARED_DEV ? `http://localhost:${WEB_PORT}` : `http://${WEB_HOST}:${WEB_PORT}`
-const SERVER_HOST = '127.0.0.1'
-const SERVER_PORT = 3001
-const SERVER_URL = `http://${SERVER_HOST}:${SERVER_PORT}`
-const SERVER_PROBE_ORIGIN = `http://localhost:${WEB_PORT}`
-const SERVER_ALLOWED_ORIGINS = allowedOrigins([
-  `http://localhost:${WEB_PORT}`,
-  `http://127.0.0.1:${WEB_PORT}`,
-])
+const WEB_HOST = Bun.env.WEB_HOST ?? '127.0.0.1'
+const WEB_PORT = portFromEnv(Bun.env, 'WEB_PORT', 5173)
+const WEB_URL = runtimeUrl(WEB_HOST, WEB_PORT)
+const SERVER_HOST = Bun.env.FS_HOST ?? '127.0.0.1'
+const SERVER_PORT = portFromEnv(Bun.env, 'PORT', 3001)
+const SERVER_URL = runtimeUrl(SERVER_HOST, SERVER_PORT)
+const SERVER_PROBE_ORIGIN = WEB_URL
+const SERVER_ALLOWED_ORIGINS = allowedOriginsForWebPort(
+  Bun.env.SERVER_ALLOWED_ORIGINS,
+  WEB_HOST,
+  WEB_PORT,
+)
 const childProcesses = new Set<ChildProcess>()
 
 let stopping = false
@@ -122,7 +130,7 @@ function openMainWindow() {
   })
 
   new BrowserWindow({
-    title: 'Platform',
+    title: MAIN_WINDOW_TITLE,
     frame: {
       height: 960,
       width: 1440,
@@ -131,11 +139,22 @@ function openMainWindow() {
     },
     preload: 'views://preload/index.js',
     rpc,
-    // Fully custom chrome: no native titlebar and no native traffic lights.
-    // The web app root is the native drag region.
-    titleBarStyle: 'hidden',
+    // Full-size app content with native macOS controls over our own toolbar.
+    trafficLightOffset: { x: 0, y: 9 },
+    titleBarStyle: 'hiddenInset',
+    // The NSVisualEffectView attached below only shows through once this is
+    // true — but Electrobun's CEF renderer implements window transparency by
+    // switching to offscreen rendering (osr_enabled=1), which blits the whole
+    // 1440x960 surface through a CPU memcpy on every paint instead of letting
+    // the GPU composite it. Measured: transparent:false produces zero OnPaint
+    // events, transparent:true produces a 5.5MB copy per paint. For an editor
+    // that trade is worse than the wallpaper video it would replace, so this
+    // stays off until the shell can be transparent without OSR.
+    transparent: false,
     url: WEB_URL,
   })
+
+  void attachWindowVibrancy(MAIN_WINDOW_TITLE, ROOT_DIR)
 }
 
 async function pickEntry(options: PlatformPickOptions) {
@@ -373,23 +392,6 @@ async function stopProcesses() {
   }
 
   await Promise.allSettled(children.map((child) => child.exited))
-}
-
-function allowedOrigins(origins: readonly string[]) {
-  return unique([...origins, ...originsFromEnv(Bun.env.SERVER_ALLOWED_ORIGINS)]).join(',')
-}
-
-function originsFromEnv(value: string | undefined) {
-  if (!value) return []
-
-  return value
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-}
-
-function unique(values: readonly string[]) {
-  return Array.from(new Set(values))
 }
 
 function allowedFileTypes(accept: readonly string[] | undefined) {

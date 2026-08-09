@@ -1,15 +1,13 @@
-import type { ModelSelection } from '@workspace/contracts'
 import type { RefObject } from 'react'
 
+import { ChatInputAttachButton } from './chat-input-attach-button'
 import { ChatInputSubmitButton } from './chat-input-submit-button'
-import { ProviderModelPicker } from './provider-model-picker'
+import { ModelPicker } from './model-picker'
 
 export function ChatInputActions({
   busy,
   disabled,
-  modelSelectionLocked,
-  modelSelection,
-  onModelSelectionChange,
+  onSelectImageFiles,
   onStop,
   onSubmit,
   sendButtonRef,
@@ -18,9 +16,7 @@ export function ChatInputActions({
 }: {
   busy: boolean
   disabled: boolean
-  modelSelectionLocked: boolean
-  modelSelection: ModelSelection
-  onModelSelectionChange: (modelSelection: ModelSelection) => void
+  onSelectImageFiles: (files: readonly File[]) => void
   onStop: () => void
   onSubmit: () => Promise<boolean>
   sendButtonRef: RefObject<HTMLButtonElement | null>
@@ -29,17 +25,12 @@ export function ChatInputActions({
 }) {
   return (
     <div className='flex min-w-0 items-center justify-between gap-2 px-3 pb-2.5'>
-      <div className='flex min-w-0 flex-1 items-center gap-2'>
-        <ProviderModelPicker
-          busy={busy}
-          disabled={disabled}
-          locked={modelSelectionLocked}
-          modelSelection={modelSelection}
-          onChange={onModelSelectionChange}
-        />
+      <div className='flex min-w-0 flex-1 items-center gap-1'>
+        <ModelPicker busy={busy} disabled={disabled} />
+        <ChatInputAttachButton disabled={disabled} onSelectFiles={onSelectImageFiles} />
         {statusLabel ? (
           <span
-            className='text-muted-foreground min-w-0 flex-1 truncate text-[11px]'
+            className='text-muted-foreground min-w-0 flex-1 truncate pl-1 text-[11px]'
             title={statusLabel}
           >
             {statusLabel}

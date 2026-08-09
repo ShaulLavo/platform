@@ -4,6 +4,7 @@ import { type EditorScrollPosition } from '@singapor/core'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
+import type { DocumentRetention } from '@/features/editor/utils/document-retention'
 import {
   WorkspaceDocumentService,
   type EditorDocumentView,
@@ -30,7 +31,6 @@ type EditorDocumentStoreState = {
 }
 
 type EditorDocumentStoreActions = {
-  clearLiveEditorDocuments: () => void
   deleteLiveEditorDocument: (documentId: string) => DeleteLiveEditorDocumentResult
   ensureEditorView: (tabId: string, file: FileResult) => LiveEditorViewDocument
   ensureEditorViewForDocument: (tabId: string, documentId: string) => LiveEditorViewDocument
@@ -39,8 +39,6 @@ type EditorDocumentStoreActions = {
     selectedFilePath?: string | null,
   ) => LiveEditorDocument
   ensureUnsyncedEditorDocument: (input: UnsyncedLiveEditorDocumentInput) => LiveEditorDocument
-  evictCleanLiveEditorDocument: (documentId: string) => boolean
-  evictCleanUnviewedLiveEditorDocument: (documentId: string) => boolean
   forceReplaceLiveEditorDocument: (
     file: FileResult,
     selectedFilePath?: string | null,
@@ -59,6 +57,11 @@ type EditorDocumentStoreActions = {
   recordLiveEditorDocumentTextChange: (documentId: string) => void
   removeEditorView: (tabId: string) => boolean
   renameLiveEditorDocumentPath: (from: string, to: string) => { wasDirty: boolean }
+  /** The single eviction path: everything outside the keep sets is dropped. */
+  retainEditorDocuments: (keep: DocumentRetention) => {
+    evictedDocumentIds: string[]
+    evictedTabIds: string[]
+  }
   setEditorViewScrollPosition: (tabId: string, scrollPosition: EditorScrollPosition) => void
   setFallbackDocumentPath: (path: string | null) => void
   setLiveEditorDocumentDirty: (documentId: string, dirty: boolean) => void
@@ -92,10 +95,6 @@ export function createEditorDocumentStore() {
   return createStore<EditorDocumentStore>()((set, get) => ({
     ...initialDocuments,
     fallbackDocumentPath: null,
-    clearLiveEditorDocuments: () => {
-      service.clear()
-      set({ ...service.state(), fallbackDocumentPath: null })
-    },
     deleteLiveEditorDocument: (documentId) => {
       const result = service.deleteLiveDocument(documentId)
       set({ ...service.state() })
@@ -124,16 +123,6 @@ export function createEditorDocumentStore() {
       service.ensureUnsyncedDocument(input)
       set({ ...service.state() })
       return get().liveDocumentsById[input.id]!
-    },
-    evictCleanLiveEditorDocument: (documentId) => {
-      const evicted = service.evictCleanLiveDocument(documentId)
-      if (evicted) set({ ...service.state() })
-      return evicted
-    },
-    evictCleanUnviewedLiveEditorDocument: (documentId) => {
-      const evicted = service.evictCleanUnviewedLiveDocument(documentId)
-      if (evicted) set({ ...service.state() })
-      return evicted
     },
     forceReplaceLiveEditorDocument: (file, selectedFilePath = null) => {
       const result = service.forceReplaceLiveDocument(file)
@@ -182,6 +171,16 @@ export function createEditorDocumentStore() {
       set((state) => ({
         ...service.state(),
         fallbackDocumentPath: state.fallbackDocumentPath === from ? to : state.fallbackDocumentPath,
+      }))
+      return result
+    },
+    retainEditorDocuments: (keep) => {
+      const result = service.retain(keep)
+      set((state) => ({
+        ...service.state(),
+        fallbackDocumentPath: result.evictedDocumentIds.includes(state.fallbackDocumentPath ?? '')
+          ? null
+          : state.fallbackDocumentPath,
       }))
       return result
     },
