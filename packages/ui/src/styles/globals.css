@@ -387,12 +387,19 @@
   --terminal-ansi-bright-white: #ffffff;
 }
 
-[data-workbench] {
+/* Both shells give the editor a pane that already paints the content well, so
+   the editor surface and its minimap stay transparent instead of stacking a
+   second (and darker) ground on top of it. */
+[data-workbench],
+[data-chat-mode] {
   --workbench-editor-minimap-background: transparent;
   --editor-minimap-background-opacity: 0;
   /* --workbench-editor-minimap-backdrop-filter: blur(calc(var(--surface-blur) )); */
   --workbench-editor-minimap-canvas-background: transparent;
   --workbench-editor-minimap-canvas-background-opacity: 0;
+}
+
+[data-workbench] {
   --border: transparent;
   --terminal-background: color-mix(
     in oklch,
@@ -429,6 +436,14 @@
    real wallpaper exactly; anchored popups show a center crop at the correct
    scale, indistinguishable under the asset's 48px blur. Self-contained — do
    not add bg-popover on top, it would stack a fourth layer. */
+/* With the wallpaper turned off there is nothing for the vibrancy layer to
+   echo, so its baked-in wallpaper copy would tint every menu, dialog, and
+   popover with an image the user has explicitly hidden. Drop that layer and
+   leave the popover tint plus real backdrop ghosting. */
+html[data-wallpaper-hidden] {
+  --surface-wallpaper: none;
+}
+
 @utility surface-vibrancy {
   /* --surface-vibrancy-blur lets a surface scale its ghosting blur relative
      to the knob (a custom property cannot reference itself). */
@@ -517,7 +532,8 @@
   overflow-anchor: none;
 }
 
-[data-workbench] .app-editor-host .editor-virtualized {
+[data-workbench] .app-editor-host .editor-virtualized,
+[data-chat-mode] .app-editor-host .editor-virtualized {
   --editor-background: transparent !important;
   --editor-gutter-background: transparent !important;
   --editor-minimap-background: var(--workbench-editor-minimap-canvas-background) !important;
@@ -528,11 +544,13 @@
   background: transparent !important;
 }
 
-[data-workbench] .app-editor-host .editor-virtualized-gutter {
+[data-workbench] .app-editor-host .editor-virtualized-gutter,
+[data-chat-mode] .app-editor-host .editor-virtualized-gutter {
   background: transparent;
 }
 
-[data-workbench] .app-editor-host .editor-minimap {
+[data-workbench] .app-editor-host .editor-minimap,
+[data-chat-mode] .app-editor-host .editor-minimap {
   -webkit-backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
   backdrop-filter: var(--workbench-editor-minimap-backdrop-filter);
   background: var(--workbench-editor-minimap-background);

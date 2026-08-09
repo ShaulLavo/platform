@@ -2,8 +2,9 @@ import type {
   FileTreeContextMenuItem,
   FileTreeContextMenuOpenContext,
 } from '@workspace/tree/utils/model/publicTypes'
+import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
 
-import { treeRowMenu } from '@/components/workspace/file-tree/utils/row-menu'
+import { rowHasGitChanges, treeRowMenu } from '@/components/workspace/file-tree/utils/row-menu'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import {
   useDiscardPathsMutation,
@@ -20,14 +21,17 @@ import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
  * can bake in this row's path at render time.
  */
 export function TreeRowMenu({
+  gitStatus,
   item,
   menuContext,
   model,
 }: {
+  readonly gitStatus?: readonly GitStatusEntry[]
   readonly item: FileTreeContextMenuItem
   readonly menuContext: FileTreeContextMenuOpenContext
   readonly model: TreeModel
 }) {
+  const isDirectory = item.kind === 'directory'
   const path = entryForTreePath(model, item.path)?.path ?? null
   const paths = path ? [path] : []
   const discard = useDiscardPathsMutation(paths)
@@ -38,7 +42,8 @@ export function TreeRowMenu({
   const menu = treeRowMenu({
     copyPath: (value, label) => void copyTextToClipboard(value, label),
     discard: () => discard.mutate(),
-    isDirectory: item.kind === 'directory',
+    hasGitChanges: rowHasGitChanges(gitStatus, item.path, isDirectory),
+    isDirectory,
     openFile: () => selectFile(path),
     path,
     relativePath: item.path,

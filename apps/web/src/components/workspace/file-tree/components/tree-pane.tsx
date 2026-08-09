@@ -217,7 +217,7 @@ function ReadyTreePane({
         className='block h-full'
         model={tree}
         renderContextMenu={(item, menuContext) => (
-          <TreeRowMenu item={item} menuContext={menuContext} model={model} />
+          <TreeRowMenu gitStatus={gitStatus} item={item} menuContext={menuContext} model={model} />
         )}
         style={treeStyle}
       />
