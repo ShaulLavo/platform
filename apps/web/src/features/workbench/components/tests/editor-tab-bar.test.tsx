@@ -114,6 +114,7 @@ function editorTab({
     active,
     copyPath: path,
     copyRelativePath: path,
+    diffSource: null,
     diffStatus: null,
     diffSuffix: '',
     icon: { name: 'typescript', src: '' },

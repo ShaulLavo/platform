@@ -10,7 +10,6 @@ import {
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
 import type { PanelSection } from '../types'
-import { DIFF_VIEWER_MISSING } from './diff-viewer-availability'
 
 export type FileMenuContext = {
   readonly copyPath: (value: string, label: string) => void
@@ -43,11 +42,6 @@ export function fileMenu(context: FileMenuContext): Menu {
         id: 'openChanges',
         label: 'Open Changes',
         run: context.openDiff,
-        // The `git-diff:` document has no renderer: `fileBackedDocumentPath`
-        // rejects the id and nothing else claims it, so the tab opens onto an
-        // empty pane. Shown disabled rather than removed — the action is one
-        // line from working again once a diff viewer exists.
-        unavailable: DIFF_VIEWER_MISSING,
       }),
       actionItem({
         disabled: !context.onDisk,

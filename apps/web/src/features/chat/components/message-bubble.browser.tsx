@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/components/theme-provider'
+import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import {
   ChatTimelineActionsContext,
   type ChatTimelineActions,
@@ -36,7 +37,7 @@ afterEach(() => {
 })
 
 describe('MessageBubble browser rendering', () => {
-  it('renders incomplete streamed code without highlight tokens', async () => {
+  it('highlights streamed code while the fence is still open', async () => {
     const container = document.createElement('main')
     container.style.width = '720px'
     document.body.append(container)
@@ -63,7 +64,10 @@ describe('MessageBubble browser rendering', () => {
     await vi.waitFor(() => {
       expect(streamdownCodeBlock()?.dataset.incomplete).toBe('true')
       expect(streamdownCodeText()).toContain('<!doctype html>')
-      expect(streamdownTokenSpans()).toHaveLength(0)
+      // Completed lines are coloured immediately; only the half-typed trailing
+      // line stays plain until its newline lands.
+      expect(streamdownTokenSpans().length).toBeGreaterThan(0)
+      expect(streamdownCodeText()).toContain('<html')
     })
   })
 
@@ -291,7 +295,11 @@ function withChatTimelineActions(
   children: ReactNode,
   actions: ChatTimelineActions = chatTimelineActions(),
 ) {
-  return <ChatTimelineActionsContext value={actions}>{children}</ChatTimelineActionsContext>
+  return (
+    <EditorStateProvider>
+      <ChatTimelineActionsContext value={actions}>{children}</ChatTimelineActionsContext>
+    </EditorStateProvider>
+  )
 }
 
 function chatTimelineActions(overrides: Partial<ChatTimelineActions> = {}): ChatTimelineActions {

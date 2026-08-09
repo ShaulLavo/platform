@@ -6,6 +6,7 @@ import {
   projectIdSchema,
   threadIdSchema,
   turnIdSchema,
+  type ApprovalRequestId,
   type CommandId,
   type ChatAttachment,
   type ChatAttachmentUpload,
@@ -16,16 +17,22 @@ import {
   type ProjectCreateCommand,
   type ProjectId,
   type ProjectMetaUpdateCommand,
+  type ProviderApprovalDecision,
+  type ProviderUserInputAnswers,
   type RuntimeMode,
+  type ThreadApprovalRespondCommand,
   type ThreadArchiveCommand,
   type ThreadCheckpointRevertCommand,
   type ThreadDeleteCommand,
   type ThreadId,
+  type ThreadInteractionModeSetCommand,
   type ThreadMetaUpdateCommand,
+  type ThreadRuntimeModeSetCommand,
   type ThreadSessionStopCommand,
   type ThreadTurnInterruptCommand,
   type ThreadTurnStartCommand,
   type ThreadUnarchiveCommand,
+  type ThreadUserInputRespondCommand,
   type TurnId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -49,6 +56,13 @@ const SENSITIVE_THREAD_TITLE_WORDS = new Set([
 ])
 const SENSITIVE_THREAD_TITLE_COMPOUNDS = ['accesskey', 'apikey', 'privatekey'] as const
 
+/**
+ * The plan an implementation turn came from. The server stamps that plan
+ * implemented when the turn starts, which is what stops every surface offering
+ * "Implement" a second time.
+ */
+export type SourceProposedPlanReference = NonNullable<ThreadTurnStartCommand['sourceProposedPlan']>
+
 export type ChatTurnSubmission = {
   command: ThreadTurnStartCommand
   optimisticMessage: OrchestrationMessage
@@ -60,15 +74,12 @@ export type DraftThreadSubmission = {
 }
 
 export function createWorkspaceProjectCommand({
-  createdAt,
   rootPath,
 }: {
-  createdAt: string
   rootPath: string
 }): ProjectCreateCommand {
   return {
     commandId: createCommandId(),
-    createdAt,
     defaultModelSelection: null,
     projectId: workspaceProjectId(rootPath),
     title: workspaceProjectTitle(rootPath),
@@ -83,6 +94,7 @@ export function createTurnSubmission({
   interactionMode,
   modelSelection,
   runtimeMode,
+  sourceProposedPlan,
   text,
   threadId,
 }: {
@@ -91,6 +103,7 @@ export function createTurnSubmission({
   interactionMode: InteractionMode
   modelSelection: ModelSelection
   runtimeMode: RuntimeMode
+  sourceProposedPlan?: SourceProposedPlanReference
   text: string
   threadId: ThreadId
 }): ChatTurnSubmission {
@@ -101,7 +114,6 @@ export function createTurnSubmission({
   return {
     command: {
       commandId,
-      createdAt,
       interactionMode,
       message: {
         attachments,
@@ -111,6 +123,7 @@ export function createTurnSubmission({
       },
       modelSelection,
       runtimeMode,
+      sourceProposedPlan,
       threadId,
       titleSeed: threadTitleFromPrompt(text),
       turnId,
@@ -169,7 +182,6 @@ export function createDraftThreadSubmission({
       bootstrap: {
         createThread: {
           branch: null,
-          createdAt,
           interactionMode,
           modelSelection,
           projectId,
@@ -185,17 +197,14 @@ export function createDraftThreadSubmission({
 }
 
 export function createThreadInterruptCommand({
-  createdAt,
   threadId,
   turnId,
 }: {
-  createdAt: string
   threadId: ThreadId
   turnId?: TurnId
 }): ThreadTurnInterruptCommand {
   return {
     commandId: createCommandId(),
-    createdAt,
     threadId,
     turnId,
     type: 'thread.turn.interrupt',
@@ -203,15 +212,12 @@ export function createThreadInterruptCommand({
 }
 
 export function createThreadSessionStopCommand({
-  createdAt,
   threadId,
 }: {
-  createdAt: string
   threadId: ThreadId
 }): ThreadSessionStopCommand {
   return {
     commandId: createCommandId(),
-    createdAt,
     threadId,
     type: 'thread.session.stop',
   }
@@ -225,30 +231,24 @@ export function createThreadSessionStopCommand({
 export function createThreadRenameCommand({
   threadId,
   title,
-  updatedAt,
 }: {
   threadId: ThreadId
   title: string
-  updatedAt: string
 }): ThreadMetaUpdateCommand {
   return {
     commandId: createCommandId(),
     threadId,
     title,
     type: 'thread.meta.update',
-    updatedAt,
   }
 }
 
 export function createThreadArchiveCommand({
-  archivedAt,
   threadId,
 }: {
-  archivedAt: string
   threadId: ThreadId
 }): ThreadArchiveCommand {
   return {
-    archivedAt,
     commandId: createCommandId(),
     threadId,
     type: 'thread.archive',
@@ -257,46 +257,103 @@ export function createThreadArchiveCommand({
 
 export function createThreadUnarchiveCommand({
   threadId,
-  updatedAt,
 }: {
   threadId: ThreadId
-  updatedAt: string
 }): ThreadUnarchiveCommand {
   return {
     commandId: createCommandId(),
     threadId,
     type: 'thread.unarchive',
-    updatedAt,
   }
 }
 
 export function createThreadDeleteCommand({
-  deletedAt,
   threadId,
 }: {
-  deletedAt: string
   threadId: ThreadId
 }): ThreadDeleteCommand {
   return {
     commandId: createCommandId(),
-    deletedAt,
     threadId,
     type: 'thread.delete',
   }
 }
 
+export function createApprovalRespondCommand({
+  decision,
+  requestId,
+  threadId,
+}: {
+  decision: ProviderApprovalDecision
+  requestId: ApprovalRequestId
+  threadId: ThreadId
+}): ThreadApprovalRespondCommand {
+  return {
+    commandId: createCommandId(),
+    decision,
+    requestId,
+    threadId,
+    type: 'thread.approval.respond',
+  }
+}
+
+export function createUserInputRespondCommand({
+  answers,
+  requestId,
+  threadId,
+}: {
+  answers: ProviderUserInputAnswers
+  requestId: ApprovalRequestId
+  threadId: ThreadId
+}): ThreadUserInputRespondCommand {
+  return {
+    answers,
+    commandId: createCommandId(),
+    requestId,
+    threadId,
+    type: 'thread.user-input.respond',
+  }
+}
+
+export function createRuntimeModeSetCommand({
+  runtimeMode,
+  threadId,
+}: {
+  runtimeMode: RuntimeMode
+  threadId: ThreadId
+}): ThreadRuntimeModeSetCommand {
+  return {
+    commandId: createCommandId(),
+    runtimeMode,
+    threadId,
+    type: 'thread.runtime-mode.set',
+  }
+}
+
+export function createInteractionModeSetCommand({
+  interactionMode,
+  threadId,
+}: {
+  interactionMode: InteractionMode
+  threadId: ThreadId
+}): ThreadInteractionModeSetCommand {
+  return {
+    commandId: createCommandId(),
+    interactionMode,
+    threadId,
+    type: 'thread.interaction-mode.set',
+  }
+}
+
 export function createCheckpointRevertCommand({
-  createdAt,
   threadId,
   turnCount,
 }: {
-  createdAt: string
   threadId: ThreadId
   turnCount: number
 }): ThreadCheckpointRevertCommand {
   return {
     commandId: createCommandId(),
-    createdAt,
     threadId,
     turnCount,
     type: 'thread.checkpoint.revert',
@@ -310,18 +367,15 @@ export function createCheckpointRevertCommand({
 export function createProjectDefaultModelCommand({
   defaultModelSelection,
   projectId,
-  updatedAt,
 }: {
   defaultModelSelection: ModelSelection
   projectId: ProjectId
-  updatedAt: string
 }): ProjectMetaUpdateCommand {
   return {
     commandId: createCommandId(),
     defaultModelSelection,
     projectId,
     type: 'project.meta.update',
-    updatedAt,
   }
 }
 

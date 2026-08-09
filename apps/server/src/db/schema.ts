@@ -1,4 +1,15 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+
+/**
+ * The migration ledger. One row per applied migration, written in the same
+ * transaction as that migration's DDL, so a crash can never record a version
+ * whose statements did not commit.
+ */
+export const schemaMigrations = sqliteTable('schema_migrations', {
+  version: integer('version').primaryKey(),
+  name: text('name').notNull(),
+  appliedAt: text('applied_at').notNull(),
+})
 
 export const fsMetadata = sqliteTable('fs_metadata', {
   path: text('path').primaryKey(),
@@ -213,6 +224,51 @@ export const projectionTurns = sqliteTable(
   ],
 )
 
+export const projectionThreadProposedPlans = sqliteTable(
+  'projection_thread_proposed_plans',
+  {
+    planId: text('plan_id').primaryKey(),
+    threadId: text('thread_id').notNull(),
+    turnId: text('turn_id'),
+    planMarkdown: text('plan_markdown').notNull(),
+    implementedAt: text('implemented_at'),
+    implementationThreadId: text('implementation_thread_id'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('projection_thread_proposed_plans_thread_created_idx').on(
+      table.threadId,
+      table.createdAt,
+    ),
+    index('projection_thread_proposed_plans_thread_updated_idx').on(
+      table.threadId,
+      table.updatedAt,
+    ),
+  ],
+)
+
+export const projectionThreadCheckpoints = sqliteTable(
+  'projection_thread_checkpoints',
+  {
+    threadId: text('thread_id').notNull(),
+    turnId: text('turn_id').notNull(),
+    checkpointTurnCount: integer('checkpoint_turn_count').notNull(),
+    checkpointRef: text('checkpoint_ref').notNull(),
+    status: text('status', { enum: ['ready', 'missing', 'error'] }).notNull(),
+    filesJson: text('files_json').notNull(),
+    assistantMessageId: text('assistant_message_id'),
+    completedAt: text('completed_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.threadId, table.turnId] }),
+    index('projection_thread_checkpoints_thread_turn_count_idx').on(
+      table.threadId,
+      table.checkpointTurnCount,
+    ),
+  ],
+)
+
 export const providerSessionRuntime = sqliteTable(
   'provider_session_runtime',
   {
@@ -245,4 +301,6 @@ export type ProjectionThreadRow = typeof projectionThreads.$inferSelect
 export type OrchestrationThreadMessageRow = typeof projectionThreadMessages.$inferSelect
 export type OrchestrationThreadActivityRow = typeof projectionThreadActivities.$inferSelect
 export type ProjectionThreadSessionRow = typeof projectionThreadSessions.$inferSelect
+export type ProjectionThreadProposedPlanRow = typeof projectionThreadProposedPlans.$inferSelect
+export type ProjectionThreadCheckpointRow = typeof projectionThreadCheckpoints.$inferSelect
 export type ProviderSessionRuntimeRow = typeof providerSessionRuntime.$inferSelect

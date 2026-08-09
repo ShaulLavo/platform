@@ -5,6 +5,7 @@ import {
 } from '@tanstack/react-hotkeys'
 
 import { commandHotkeyMeta } from './command-registry'
+import { SESSION_JUMP_POSITIONS, sessionJumpCommandId } from './types'
 import type {
   EditorPlatformCommandId,
   PlatformCommandId,
@@ -100,6 +101,14 @@ function editorBinding(
   return { command, hotkey, pane: 'editor', ...vscodeCommandIdOrOptions }
 }
 
+function sessionJumpBindings(): readonly DefaultBindingSpec[] {
+  return SESSION_JUMP_POSITIONS.map((position) =>
+    workspaceBinding(`Mod+Alt+${position}`, sessionJumpCommandId(position), {
+      preventDefault: true,
+    }),
+  )
+}
+
 function noOpBinding(
   hotkey: RegisterableHotkey,
   options: Omit<DefaultBindingSpec, 'command' | 'hotkey'>,
@@ -176,6 +185,14 @@ const defaultBindingSpecs = [
     vscodeCommandId: 'workbench.action.closeActiveEditor',
   }),
   workspaceBinding('Mod+Shift+D', 'workspace.toggleDiffViewMode'),
+
+  // Chat sessions all sit under Mod+Alt: the plain Mod digits are reserved for the
+  // editor groups VS Code puts there, and Mod+B already toggles the Files pane.
+  workspaceBinding('Mod+Alt+N', 'workspace.newSession', { preventDefault: true }),
+  workspaceBinding('Mod+Alt+B', 'workspace.toggleSessionRail', { preventDefault: true }),
+  workspaceBinding('Mod+Alt+[', 'workspace.previousSession', { preventDefault: true }),
+  workspaceBinding('Mod+Alt+]', 'workspace.nextSession', { preventDefault: true }),
+  ...sessionJumpBindings(),
 
   editorBinding('Mod+Z', 'editor.undo', 'undo'),
   editorBinding('Mod+Shift+Z', 'editor.redo', 'redo'),

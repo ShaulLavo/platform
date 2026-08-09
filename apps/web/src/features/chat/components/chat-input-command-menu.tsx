@@ -1,3 +1,4 @@
+import { Popover, PopoverContent, PopoverTrigger } from '@workspace/ui/components/popover'
 import { cn } from '@workspace/ui/lib/utils'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 
@@ -9,22 +10,33 @@ import {
 } from '../lib/chat-input-logic'
 import { ChatInputCommandItemIcon } from './chat-input-command-item-icon'
 
+/**
+ * Matches the composer's width through the positioner's anchor variables and
+ * takes whatever height is left above it. The composer lives in tiling panes
+ * that resize constantly, so a fixed cap would either clip the list or float it
+ * over the messages.
+ */
+const MENU_CLASS =
+  'max-h-(--available-height) w-(--anchor-width) gap-0 overflow-hidden rounded-md p-0'
+
 export function ChatInputCommandMenu({
   activeItemId,
   emptyLabel,
   isLoading,
   items,
-  triggerKind,
   onActiveItemChange,
+  onDismiss,
   onSelect,
+  triggerKind,
 }: {
   activeItemId: string | null
   emptyLabel: string
   isLoading: boolean
   items: readonly ChatInputCommandItem[]
-  triggerKind: ChatInputTriggerKind
   onActiveItemChange: (itemId: string | null) => void
+  onDismiss: () => void
   onSelect: (item: ChatInputCommandItem) => void
+  triggerKind: ChatInputTriggerKind
 }) {
   const listRef = useRef<HTMLDivElement>(null)
   const groups = useMemo(() => groupChatInputCommandItems(items, triggerKind), [items, triggerKind])
@@ -38,14 +50,34 @@ export function ChatInputCommandMenu({
     activeItem?.scrollIntoView({ block: 'nearest' })
   }, [activeItemId])
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) return
+
+    onDismiss()
+  }
+
   return (
-    <div className='absolute inset-x-0 bottom-full z-50 mb-2 px-1'>
-      <div
-        className='border-border/80 bg-background relative overflow-hidden rounded-md border shadow-lg'
+    <Popover open onOpenChange={handleOpenChange}>
+      {/* Anchor only. The composer has no button to hang the menu off, and the
+          caret must never leave the editor, so the trigger is an inert strip
+          across the top of the composer. */}
+      <PopoverTrigger
+        aria-hidden
+        className='pointer-events-none absolute inset-x-0 top-0 h-0'
+        nativeButton={false}
+        render={<span />}
+        tabIndex={-1}
+      />
+      <PopoverContent
+        align='start'
+        className={MENU_CLASS}
+        finalFocus={false}
+        initialFocus={false}
         role='listbox'
+        side='top'
       >
         {items.length > 0 ? (
-          <div ref={listRef} className='app-scrollbar-thin max-h-72 overflow-y-auto py-1'>
+          <div ref={listRef} className='app-scrollbar-thin min-h-0 flex-1 overflow-y-auto py-1'>
             {groups.map((group, groupIndex) => (
               <div key={group.id}>
                 {groupIndex > 0 ? <div className='bg-border my-0.5 h-px' /> : null}
@@ -95,7 +127,7 @@ export function ChatInputCommandMenu({
             </p>
           </div>
         )}
-      </div>
-    </div>
+      </PopoverContent>
+    </Popover>
   )
 }

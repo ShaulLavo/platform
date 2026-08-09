@@ -31,6 +31,23 @@ export function streamdownThemesForEditorTheme(
   ]
 }
 
+/**
+ * Identity of the palette a highlight was produced with. Colour mode alone is
+ * not enough: two themes can share a mode, and cached tokens carry baked colours.
+ */
+export function streamdownEditorThemeKey(theme: EditorTheme, colorMode: StreamdownEditorColorMode) {
+  const syntax = theme.syntax
+
+  return [
+    colorMode,
+    theme.backgroundColor ?? '',
+    theme.foregroundColor ?? '',
+    syntax?.keyword ?? '',
+    syntax?.string ?? '',
+    syntax?.property ?? '',
+  ].join('|')
+}
+
 export function createStreamdownEditorCodePlugin(
   themes: [ThemeInput, ThemeInput],
   editorTheme: EditorTheme,

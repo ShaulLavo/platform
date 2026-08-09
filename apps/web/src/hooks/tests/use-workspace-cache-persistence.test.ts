@@ -125,7 +125,9 @@ describe('workspace cache persistence', () => {
   it('writes only the cache key owned by the changed workspace field', () => {
     const { unsubscribe, workspaceStore, writes } = harness()
 
-    workspaceStore.getState().setDiffViewMode('stacked')
+    // Must differ from DEFAULT_DIFF_VIEW_MODE, or the store short-circuits and
+    // there is no change for the persistence hook to write.
+    workspaceStore.getState().setDiffViewMode('split')
     vi.runAllTimers()
     expect(writeKeys(writes)).toEqual(['diffViewMode'])
 

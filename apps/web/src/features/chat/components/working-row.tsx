@@ -1,8 +1,15 @@
 import type { OrchestrationLatestTurn } from '@workspace/contracts'
 
+import type { ChatWorkLogPlan } from '../lib/chat-work-log'
 import { WorkingTimer } from './working-timer'
 
-export function WorkingRow({ latestTurn }: { latestTurn: OrchestrationLatestTurn }) {
+export function WorkingRow({
+  latestTurn,
+  plan = null,
+}: {
+  latestTurn: OrchestrationLatestTurn
+  plan?: ChatWorkLogPlan | null
+}) {
   const startedAt = latestTurn.startedAt ?? latestTurn.requestedAt
 
   return (
@@ -18,6 +25,14 @@ export function WorkingRow({ latestTurn }: { latestTurn: OrchestrationLatestTurn
           <WorkingTimer startedAt={startedAt} />
         </span>
       </div>
+      {plan?.currentStep ? (
+        <p className='text-muted-foreground/60 mt-0.5 flex min-w-0 items-center gap-1.5 pl-[26px] text-[11px]'>
+          <span className='shrink-0 tabular-nums'>
+            {plan.completedCount}/{plan.steps.length}
+          </span>
+          <span className='truncate'>{plan.currentStep}</span>
+        </p>
+      ) : null}
     </div>
   )
 }

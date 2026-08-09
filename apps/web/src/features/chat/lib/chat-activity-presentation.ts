@@ -10,25 +10,117 @@ export type ChatActivityIconKey =
   | 'tool'
   | 'user-input'
 
+export type ChatActivityOutcome = 'failed' | 'neutral' | 'succeeded'
+
+export type ChatActivityPlanStepStatus = 'completed' | 'inProgress' | 'pending'
+
+export type ChatActivityPlanStep = {
+  status: ChatActivityPlanStepStatus
+  step: string
+}
+
 export type ChatActivityPresentation = {
+  changedFiles: readonly string[]
+  command: string | null
   detail: string | null
   icon: ChatActivityIconKey
+  outcome: ChatActivityOutcome | null
+  output: string | null
   status: string | null
   title: string
+  toolCallId: string | null
 }
+
+/** Raw provider payloads carry whole file bodies; the row only ever shows a scrollable excerpt. */
+const MAX_COMMAND_LENGTH = 2_000
+const MAX_OUTPUT_LENGTH = 4_000
+
+/**
+ * Providers routinely report a successful lifecycle status while the failure only
+ * exists as text in the tool's own output, so the row has to read the output too.
+ */
+const TOOL_FAILURE_PHRASES = [
+  'command not found',
+  'commandnotfoundexception',
+  'enoent',
+  'file not found',
+  'is not recognized as the name of a cmdlet',
+  'no files found',
+  'no such file or directory',
+  'permission denied',
+]
+
+const TOOL_FAILURE_PATTERNS = [
+  /exit(?:ed)? with exit code\s+[1-9]\d*/i,
+  /exit code\s*[:=\s]\s*[1-9]\d*\b/i,
+]
 
 export function chatActivityPresentation(
   activity: OrchestrationThreadActivity,
 ): ChatActivityPresentation {
   const payload = recordPayload(activity.payload)
+  const data = recordPayload(payload.data)
   const title = activityTitle(activity, payload)
+  const command = activityCommand(data)
+  const output = activityOutput(data)
+  const detail = activityDetail(activity, payload, title)
 
   return {
-    detail: activityDetail(activity, payload, title),
+    changedFiles: activityChangedFiles(data),
+    command,
+    detail,
     icon: activityIcon(activity),
+    outcome: activityOutcome(activity, payload, data, [detail, command, output]),
+    output,
     status: activityStatus(activity, payload),
     title,
+    toolCallId: chatActivityToolCallId(activity),
   }
+}
+
+/**
+ * Lifecycle events of one tool call share a provider item id (Codex `id`, Claude
+ * `tool_use_id`); it is the only key that folds "started" and "completed" into one row.
+ */
+export function chatActivityToolCallId(activity: OrchestrationThreadActivity) {
+  const data = recordPayload(recordPayload(activity.payload).data)
+
+  return stringValue(data.id) ?? stringValue(data.tool_use_id) ?? stringValue(data.toolUseId)
+}
+
+export function chatActivityPlanSteps(
+  activity: OrchestrationThreadActivity,
+): readonly ChatActivityPlanStep[] {
+  if (activity.kind !== 'turn.plan.updated') return []
+
+  const rawPlan = recordPayload(activity.payload).plan
+  if (!Array.isArray(rawPlan)) return []
+
+  const steps: ChatActivityPlanStep[] = []
+  for (const entry of rawPlan) {
+    const step = stringValue(recordPayload(entry).step)
+    if (!step) continue
+
+    steps.push({ status: planStepStatus(recordPayload(entry).status), step })
+  }
+
+  return steps
+}
+
+export function toolTextLooksLikeFailure(text: string) {
+  if (text.trim().length === 0) return false
+
+  const lowered = text.toLowerCase()
+  if (TOOL_FAILURE_PHRASES.some((phrase) => lowered.includes(phrase))) return true
+
+  return TOOL_FAILURE_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function planStepStatus(value: unknown): ChatActivityPlanStepStatus {
+  if (value === 'completed') return 'completed'
+  if (value === 'inProgress') return 'inProgress'
+
+  return 'pending'
 }
 
 function activityTitle(activity: OrchestrationThreadActivity, payload: Record<string, unknown>) {
@@ -92,6 +184,7 @@ function toolTitle(activity: OrchestrationThreadActivity) {
 }
 
 function activityIcon(activity: OrchestrationThreadActivity): ChatActivityIconKey {
+  if (activity.kind === 'turn.plan.updated') return 'task'
   if (activity.tone === 'error') return 'error'
   if (activity.tone === 'thinking') return 'thinking'
   if (activity.kind.startsWith('approval.')) return 'approval'
@@ -128,6 +221,110 @@ function activityStatus(activity: OrchestrationThreadActivity, payload: Record<s
   if (activity.kind.endsWith('.resolved')) return 'Resolved'
 
   return null
+}
+
+function activityOutcome(
+  activity: OrchestrationThreadActivity,
+  payload: Record<string, unknown>,
+  data: Record<string, unknown>,
+  texts: readonly (string | null)[],
+): ChatActivityOutcome | null {
+  if (!activity.kind.startsWith('tool.')) return null
+  if (activity.tone === 'error') return 'failed'
+  if (data.is_error === true) return 'failed'
+  if (isFailedExitCode(data)) return 'failed'
+
+  const status = stringValue(payload.status)
+  if (status === 'failed' || status === 'declined') return 'failed'
+  if (toolTextLooksLikeFailure(texts.filter(Boolean).join('\n'))) return 'failed'
+  if (activity.kind === 'tool.started') return 'neutral'
+  if (status === 'inProgress' || status === 'stopped') return 'neutral'
+
+  return 'succeeded'
+}
+
+function isFailedExitCode(data: Record<string, unknown>) {
+  const exitCode = data.exitCode ?? data.exit_code
+
+  return typeof exitCode === 'number' && exitCode !== 0
+}
+
+function activityCommand(data: Record<string, unknown>) {
+  const input = recordPayload(data.input)
+  const command =
+    stringValue(data.command) ??
+    stringValue(input.command) ??
+    argvCommand(data.command) ??
+    argvCommand(input.command)
+  if (!command) return null
+
+  return truncateText(command, MAX_COMMAND_LENGTH)
+}
+
+function argvCommand(value: unknown) {
+  if (!Array.isArray(value)) return null
+
+  const parts = value.filter((entry): entry is string => typeof entry === 'string')
+
+  return parts.length > 0 ? parts.join(' ') : null
+}
+
+function activityOutput(data: Record<string, unknown>) {
+  const output =
+    stringValue(data.aggregatedOutput) ??
+    stringValue(data.aggregated_output) ??
+    stringValue(data.output) ??
+    stringValue(data.stdout) ??
+    toolResultText(data.content)
+  if (!output) return null
+
+  return truncateText(output, MAX_OUTPUT_LENGTH)
+}
+
+function toolResultText(content: unknown) {
+  if (typeof content === 'string') return stringValue(content)
+  if (!Array.isArray(content)) return null
+
+  const parts: string[] = []
+  for (const entry of content) {
+    const text = stringValue(recordPayload(entry).text)
+    if (!text) continue
+
+    parts.push(text)
+  }
+
+  return parts.length > 0 ? parts.join('\n') : null
+}
+
+function activityChangedFiles(data: Record<string, unknown>): readonly string[] {
+  const paths = changePaths(data.changes)
+  if (paths.length > 0) return paths
+
+  const input = recordPayload(data.input)
+  const singlePath =
+    stringValue(input.file_path) ?? stringValue(input.notebook_path) ?? stringValue(data.path)
+
+  return singlePath ? [singlePath] : []
+}
+
+function changePaths(changes: unknown) {
+  if (!Array.isArray(changes)) return []
+
+  const paths: string[] = []
+  for (const change of changes) {
+    const path = stringValue(recordPayload(change).path)
+    if (!path) continue
+
+    paths.push(path)
+  }
+
+  return paths
+}
+
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value
+
+  return `${value.slice(0, maxLength)}\n…`
 }
 
 function firstStringValue(record: Record<string, unknown>, keys: readonly string[]) {

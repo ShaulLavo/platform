@@ -20,12 +20,27 @@ export const isoDateTimeSchema = v.string()
 export const nonNegativeIntegerSchema = v.pipe(v.number(), v.integer(), v.minValue(0))
 export const trimmedNonEmptyStringSchema = v.pipe(v.string(), v.trim(), v.minLength(1))
 
+/**
+ * Attachments per message. Beyond this the prompt is mostly pixels.
+ * Same number the composer enforces in the browser — the browser check is the
+ * fast, explainable refusal, this one is what actually holds when a client
+ * skips it.
+ */
+export const MAX_CHAT_ATTACHMENTS = 8
+
+/**
+ * Ceiling on the encoded bytes per attachment. The composer downscales
+ * anything larger before it reaches the wire, so a request over this is a
+ * client that did not, not a user with a big screenshot.
+ */
+export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
 export const chatAttachmentSchema = v.object({
   type: v.literal('image'),
   id: trimmedNonEmptyStringSchema,
   name: trimmedNonEmptyStringSchema,
   mimeType: v.pipe(v.string(), v.regex(/^image\//i)),
-  sizeBytes: nonNegativeIntegerSchema,
+  sizeBytes: v.pipe(nonNegativeIntegerSchema, v.maxValue(MAX_CHAT_ATTACHMENT_BYTES)),
 })
 
 /**
@@ -37,6 +52,20 @@ export const chatAttachmentUploadSchema = v.object({
   ...chatAttachmentSchema.entries,
   dataUrl: v.optional(v.pipe(v.string(), v.regex(/^data:image\/[a-z+]+;base64,/i))),
 })
+
+/**
+ * The count cap lives on the array, so every place a message declares its
+ * attachments must use these rather than re-wrapping the element schema.
+ */
+export const chatAttachmentsSchema = v.pipe(
+  v.array(chatAttachmentSchema),
+  v.maxLength(MAX_CHAT_ATTACHMENTS),
+)
+
+export const chatAttachmentUploadsSchema = v.pipe(
+  v.array(chatAttachmentUploadSchema),
+  v.maxLength(MAX_CHAT_ATTACHMENTS),
+)
 
 export const orchestrationProjectSchema = v.object({
   id: projectIdSchema,
@@ -55,7 +84,7 @@ export const orchestrationMessageSchema = v.object({
   threadId: threadIdSchema,
   role: orchestrationMessageRoleSchema,
   text: v.string(),
-  attachments: v.optional(v.array(chatAttachmentSchema), []),
+  attachments: v.optional(chatAttachmentsSchema, []),
   turnId: v.nullable(turnIdSchema),
   streaming: v.boolean(),
   createdAt: isoDateTimeSchema,
@@ -87,6 +116,15 @@ export const orchestrationProposedPlanSchema = v.object({
   threadId: threadIdSchema,
   turnId: v.nullable(turnIdSchema),
   planMarkdown: trimmedNonEmptyStringSchema,
+  /**
+   * Stamped once a turn has been started from this plan. It is what makes the
+   * plan card stop offering "Implement", and the only honest source for a
+   * thread's actionable-plan flag — without it the flag can only latch true.
+   * Absent and null both mean "not implemented": the producer of a brand new
+   * plan has nothing to say about implementation yet.
+   */
+  implementedAt: v.optional(v.nullable(isoDateTimeSchema)),
+  implementationThreadId: v.optional(v.nullable(threadIdSchema)),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 })
@@ -144,6 +182,16 @@ export const orchestrationCheckpointFileSchema = v.object({
   deletions: nonNegativeIntegerSchema,
 })
 
+export const orchestrationCheckpointSummarySchema = v.object({
+  turnId: turnIdSchema,
+  checkpointTurnCount: nonNegativeIntegerSchema,
+  checkpointRef: trimmedNonEmptyStringSchema,
+  status: orchestrationCheckpointStatusSchema,
+  files: v.array(orchestrationCheckpointFileSchema),
+  assistantMessageId: v.nullable(messageIdSchema),
+  completedAt: isoDateTimeSchema,
+})
+
 export const orchestrationThreadSchema = v.object({
   id: threadIdSchema,
   projectId: projectIdSchema,
@@ -181,4 +229,7 @@ export type OrchestrationCheckpointStatus = v.InferOutput<
   typeof orchestrationCheckpointStatusSchema
 >
 export type OrchestrationCheckpointFile = v.InferOutput<typeof orchestrationCheckpointFileSchema>
+export type OrchestrationCheckpointSummary = v.InferOutput<
+  typeof orchestrationCheckpointSummarySchema
+>
 export type OrchestrationThread = v.InferOutput<typeof orchestrationThreadSchema>

@@ -9,7 +9,7 @@ import { iconForEntry } from '@/lib/file-icons'
 import { expect, test } from '../../../../../test/fixtures'
 
 test('the tab menu offers the close family, then the copy pair', () => {
-  expect(editorTabMenu(menuContext()).map((entry) => entry.id)).toEqual(['close', 'copy'])
+  expect(sectionIds(menuContext())).toEqual(['close', 'copy'])
   expect(allLabels(menuContext())).toEqual([
     'Close',
     'Close Others',
@@ -19,6 +19,28 @@ test('the tab menu offers the close family, then the copy pair', () => {
     'Copy Path',
     'Copy Relative Path',
   ])
+})
+
+test('a diff tab can jump to the file it is comparing', () => {
+  const opened: string[] = []
+  const context = menuContext({
+    openFile: (path) => opened.push(path),
+    tab: diffTabModel({ onDisk: true }),
+  })
+
+  expect(sectionIds(context)).toEqual(['close', 'open', 'copy'])
+
+  const openFile = byId(items(context), 'openFile')
+  expect(openFile.disabled).toBe(false)
+  openFile.run()
+
+  expect(opened).toEqual(['/repo/src/b.ts'])
+})
+
+test('a diff of a deleted file has no file left to open', () => {
+  const deleted = items(menuContext({ tab: diffTabModel({ onDisk: false }) }))
+
+  expect(byId(deleted, 'openFile').disabled).toBe(true)
 })
 
 test('a lone clean tab keeps only the close actions that still mean something', () => {
@@ -94,6 +116,13 @@ function allLabels(context: EditorTabMenuContext) {
   return items(context).map((item) => item.label)
 }
 
+/** Sections that survive resolution — an all-empty one is dropped before render. */
+function sectionIds(context: EditorTabMenuContext) {
+  return editorTabMenu(context)
+    .filter((entry) => entry.items.some(Boolean))
+    .map((entry) => entry.id)
+}
+
 function enabledIds(entries: readonly MenuActionItem[]) {
   return entries.filter((item) => !item.disabled).map((item) => item.id)
 }
@@ -110,11 +139,16 @@ function target(id: string, dirty = false): EditorTabCloseTarget {
   return { dirty, id, path: `/repo/src/${id}.ts` }
 }
 
+function diffTabModel({ onDisk }: { onDisk: boolean }): EditorTabModel {
+  return { ...tabModel('b'), diffSource: { onDisk, path: '/repo/src/b.ts' } }
+}
+
 function tabModel(id: string): EditorTabModel {
   return {
     active: id === 'b',
     copyPath: `/repo/src/${id}.ts`,
     copyRelativePath: `src/${id}.ts`,
+    diffSource: null,
     diffStatus: null,
     diffSuffix: '',
     icon: iconForEntry({ name: `${id}.ts`, type: 'file' }),
@@ -131,6 +165,7 @@ function menuContext(overrides: Partial<EditorTabMenuContext> = {}): EditorTabMe
     closeTabs: () => {},
     closeTargets: [target('a'), target('b', true), target('c')],
     copyPath: () => {},
+    openFile: () => {},
     tab: tabModel('b'),
     ...overrides,
   }

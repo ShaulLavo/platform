@@ -44,3 +44,7 @@ jscpd-report/
 
 # Compiled native helpers (rebuilt by apps/desktop `build:native`)
 apps/desktop/native/build/
+
+# TypeScript incremental build state
+tsconfig.tsbuildinfo
+*.tsbuildinfo

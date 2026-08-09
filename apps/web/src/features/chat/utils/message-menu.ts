@@ -5,7 +5,6 @@ import {
   MarkdownLogoIcon,
 } from '@phosphor-icons/react'
 
-import { DIFF_VIEWER_MISSING } from '@/features/git/utils/diff-viewer-availability'
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
 /**
@@ -68,9 +67,6 @@ export function chatMessageMenu(context: ChatMessageMenuContext): Menu {
           id: 'viewChangedFiles',
           label: 'View Changed Files',
           run: context.viewChangedFiles,
-          // The checkpoint diff opens as a `git-diff:` document, which nothing
-          // renders. See `diff-viewer-availability`.
-          unavailable: DIFF_VIEWER_MISSING,
         }),
       // Last in its section like every other destructive item, even though the
       // two never appear together — they live on opposite message roles.

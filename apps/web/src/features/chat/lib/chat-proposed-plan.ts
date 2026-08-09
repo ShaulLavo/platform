@@ -1,6 +1,25 @@
+import type { InteractionMode, OrchestrationProposedPlan } from '@workspace/contracts'
+
 const PROPOSED_PLAN_COLLAPSE_LENGTH = 900
 const PROPOSED_PLAN_COLLAPSE_LINES = 20
 const PROPOSED_PLAN_PREVIEW_LINES = 10
+const PROPOSED_PLAN_IMPLEMENTATION_HEADER = 'PLEASE IMPLEMENT THIS PLAN:'
+
+/**
+ * What the composer does next once a plan is on screen. An empty composer means
+ * the user read the plan and had nothing to add, which is the whole point of
+ * plan mode: the next turn implements it. Any typed text is feedback, so the
+ * next turn stays in plan mode and produces a revised plan instead.
+ */
+export type PlanFollowUpSubmission = {
+  readonly interactionMode: InteractionMode
+  /**
+   * Only an implementation turn is worth correlating back to the plan — a
+   * refinement produces a new plan rather than acting on this one.
+   */
+  readonly implementsPlan: boolean
+  readonly text: string
+}
 
 export function proposedPlanTitle(planMarkdown: string) {
   const heading = planMarkdown.match(/^\s{0,3}#{1,6}\s+(.+)$/m)?.[1]?.trim()
@@ -56,6 +75,67 @@ export function collapsedProposedPlanMarkdown(planMarkdown: string) {
   if (hasMoreContent) previewLines.push('', '...')
 
   return previewLines.join('\n')
+}
+
+/**
+ * The one plan a thread can still act on: the newest one nothing has been built
+ * from yet. `implementedAt` is the server's stamp, so a plan stops being
+ * actionable the moment its implementation turn starts — not when this client
+ * happens to guess it did.
+ */
+export function actionableProposedPlan(plans: readonly OrchestrationProposedPlan[]) {
+  let actionable: OrchestrationProposedPlan | null = null
+
+  for (const plan of plans) {
+    if (plan.implementedAt) continue
+    if (actionable && actionable.updatedAt > plan.updatedAt) continue
+
+    actionable = plan
+  }
+
+  return actionable
+}
+
+export function planImplementationPrompt(planMarkdown: string) {
+  return `${PROPOSED_PLAN_IMPLEMENTATION_HEADER}\n${planMarkdown.trim()}`
+}
+
+export function resolvePlanFollowUpSubmission({
+  draftText,
+  planMarkdown,
+}: {
+  draftText: string
+  planMarkdown: string
+}): PlanFollowUpSubmission {
+  const feedback = draftText.trim()
+  if (feedback) {
+    return {
+      implementsPlan: false,
+      interactionMode: 'plan',
+      text: feedback,
+    }
+  }
+
+  return {
+    implementsPlan: true,
+    interactionMode: 'default',
+    text: planImplementationPrompt(planMarkdown),
+  }
+}
+
+/** Markdown files end in a newline; the stored plan is trimmed. */
+export function proposedPlanExportMarkdown(planMarkdown: string) {
+  return `${planMarkdown.trimEnd()}\n`
+}
+
+export function proposedPlanExportFilename(planMarkdown: string) {
+  const slug = proposedPlanTitle(planMarkdown)
+    .toLowerCase()
+    .replaceAll(/[`'".,!?()[\]{}]+/g, '')
+    .replaceAll(/[^a-z0-9]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '')
+
+  return `${slug || 'plan'}.md`
 }
 
 function removeBlankPrefix(lines: string[]) {

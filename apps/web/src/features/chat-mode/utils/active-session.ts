@@ -14,11 +14,20 @@ export type ActiveSession =
   | { readonly status: 'resolving'; readonly threadId: null }
   | { readonly status: 'ready'; readonly threadId: ThreadId }
 
+const NO_THREAD_IDS: readonly ThreadId[] = []
+
 export function activeSession({
+  archivedThreadIds = NO_THREAD_IDS,
   projectId,
   selection,
   threadIds,
 }: {
+  /**
+   * The project's filed-away sessions. They are pickable but never auto-picked: the
+   * archive browser can hand one to the stage, while an archived newest thread must
+   * not become the session a cold start opens onto.
+   */
+  readonly archivedThreadIds?: readonly ThreadId[]
   readonly projectId: ProjectId | null
   readonly selection: SessionSelection
   readonly threadIds: readonly ThreadId[]
@@ -30,7 +39,9 @@ export function activeSession({
   // show that project's newest session rather than stranding the stage on a spinner.
   if (selection.projectId !== projectId) return newest
   if (selection.kind === 'draft') return { status: 'draft', threadId: null }
-  if (!threadIds.includes(selection.threadId)) return { status: 'resolving', threadId: null }
+  const known =
+    threadIds.includes(selection.threadId) || archivedThreadIds.includes(selection.threadId)
+  if (!known) return { status: 'resolving', threadId: null }
 
   return { status: 'ready', threadId: selection.threadId }
 }

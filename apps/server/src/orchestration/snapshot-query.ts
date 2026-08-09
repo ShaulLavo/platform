@@ -1,5 +1,6 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { asc, desc, eq, isNull } from 'drizzle-orm'
 import * as v from 'valibot'
+import type { OrchestrationCheckpointFile } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
 import {
   orchestrationShellSnapshotSchema,
@@ -21,23 +22,28 @@ import {
 } from './schemas'
 import { getDefaultPlatformDatabase } from '../db/client'
 import {
-  orchestrationEvents,
   projectionProjects,
   projectionState,
   projectionThreadActivities,
+  projectionThreadCheckpoints,
   projectionThreadMessages,
+  projectionThreadProposedPlans,
   projectionThreadSessions,
   projectionThreads,
   type OrchestrationThreadActivityRow,
   type OrchestrationThreadMessageRow,
   type ProjectionProjectRow,
+  type ProjectionThreadCheckpointRow,
+  type ProjectionThreadProposedPlanRow,
   type ProjectionThreadRow,
   type ProjectionThreadSessionRow,
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
-import { rowToEvent } from './event-store'
 import {
+  boundCheckpoints,
   createEmptyReadModel,
+  MAX_THREAD_ACTIVITIES,
+  MAX_THREAD_MESSAGES,
   type OrchestrationProjectedCheckpoint,
   type OrchestrationReadModel,
 } from './read-model'
@@ -50,6 +56,12 @@ export class OrchestrationSnapshotQuery {
     this.database = database
   }
 
+  /**
+   * Hydrates the engine's in-memory model, so it takes only the tail of each
+   * thread: the decider and the provider reactor ask about the live turn, and
+   * loading every message of every thread at boot is how a server runs out of
+   * memory. Full history stays one `threadDetailSnapshot` away.
+   */
   fullReadModel(sequence = this.currentSequence()): OrchestrationReadModel {
     const model = createEmptyReadModel(sequence)
 
@@ -59,13 +71,13 @@ export class OrchestrationSnapshotQuery {
     for (const row of this.database.select().from(projectionThreads).all()) {
       const thread = threadFromRow(
         row,
-        this.threadMessages(row.threadId),
-        this.threadActivities(row.threadId),
+        this.recentThreadMessages(row.threadId),
+        this.recentThreadActivities(row.threadId),
         this.threadSession(row.threadId),
       )
       model.threads.set(row.threadId, {
         ...thread,
-        checkpointByTurnId: this.threadCheckpoints(row.threadId),
+        checkpointByTurnId: boundCheckpoints(this.threadCheckpointIndex(row.threadId)),
         hasActionableProposedPlan: row.hasActionableProposedPlan,
         latestUserMessageAt: row.latestUserMessageAt,
         pendingApprovalCount: row.pendingApprovalCount,
@@ -110,6 +122,8 @@ export class OrchestrationSnapshotQuery {
     if (!row) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId })
 
     return v.parse(orchestrationThreadDetailSnapshotSchema, {
+      checkpoints: this.threadCheckpointRows(threadId).map(checkpointFromRow),
+      proposedPlans: this.threadProposedPlans(threadId).map(proposedPlanFromRow),
       snapshotSequence: this.currentSequence(),
       thread: threadFromRow(
         row,
@@ -138,6 +152,28 @@ export class OrchestrationSnapshotQuery {
       .all()
   }
 
+  private recentThreadMessages(threadId: string) {
+    return this.database
+      .select()
+      .from(projectionThreadMessages)
+      .where(eq(projectionThreadMessages.threadId, threadId))
+      .orderBy(desc(projectionThreadMessages.createdAt))
+      .limit(MAX_THREAD_MESSAGES)
+      .all()
+      .toReversed()
+  }
+
+  private recentThreadActivities(threadId: string) {
+    return this.database
+      .select()
+      .from(projectionThreadActivities)
+      .where(eq(projectionThreadActivities.threadId, threadId))
+      .orderBy(desc(projectionThreadActivities.createdAt))
+      .limit(MAX_THREAD_ACTIVITIES)
+      .all()
+      .toReversed()
+  }
+
   private threadSession(threadId: string) {
     return this.database
       .select()
@@ -146,25 +182,33 @@ export class OrchestrationSnapshotQuery {
       .get()
   }
 
-  private threadCheckpoints(threadId: string) {
-    const summaries = new Map<string, OrchestrationProjectedCheckpoint>()
-    const rows = this.database
+  private threadCheckpointRows(threadId: string) {
+    return this.database
       .select()
-      .from(orchestrationEvents)
-      .where(
-        and(
-          eq(orchestrationEvents.aggregateKind, 'thread'),
-          eq(orchestrationEvents.aggregateId, threadId),
-        ),
-      )
-      .orderBy(asc(orchestrationEvents.sequence))
+      .from(projectionThreadCheckpoints)
+      .where(eq(projectionThreadCheckpoints.threadId, threadId))
+      .orderBy(asc(projectionThreadCheckpoints.checkpointTurnCount))
       .all()
+  }
 
-    for (const row of rows) {
-      applyCheckpointEvent(summaries, rowToEvent(row))
-    }
+  private threadProposedPlans(threadId: string) {
+    return this.database
+      .select()
+      .from(projectionThreadProposedPlans)
+      .where(eq(projectionThreadProposedPlans.threadId, threadId))
+      .orderBy(
+        asc(projectionThreadProposedPlans.createdAt),
+        asc(projectionThreadProposedPlans.planId),
+      )
+      .all()
+  }
 
-    return Object.fromEntries(summaries) as Record<string, OrchestrationProjectedCheckpoint>
+  private threadCheckpointIndex(threadId: string) {
+    const entries = this.threadCheckpointRows(threadId).map(
+      (row) => [row.turnId, projectedCheckpointFromRow(row)] as const,
+    )
+
+    return Object.fromEntries(entries) as Record<string, OrchestrationProjectedCheckpoint>
   }
 
   private currentSequence() {
@@ -308,27 +352,40 @@ function sessionFromRow(row: ProjectionThreadSessionRow): OrchestrationSession {
   })
 }
 
-function applyCheckpointEvent(
-  summaries: Map<string, OrchestrationProjectedCheckpoint>,
-  event: ReturnType<typeof rowToEvent>,
-) {
-  if (event.type === 'thread.turn-diff-completed') {
-    summaries.set(event.payload.turnId, {
-      assistantMessageId: event.payload.assistantMessageId,
-      checkpointRef: event.payload.checkpointRef,
-      checkpointTurnCount: event.payload.checkpointTurnCount,
-      completedAt: event.payload.completedAt,
-      status: event.payload.status,
-      turnId: event.payload.turnId,
-    })
-    return
+function checkpointFromRow(row: ProjectionThreadCheckpointRow) {
+  return {
+    assistantMessageId: row.assistantMessageId,
+    checkpointRef: row.checkpointRef,
+    checkpointTurnCount: row.checkpointTurnCount,
+    completedAt: row.completedAt,
+    files: parseJson<OrchestrationCheckpointFile[]>(row.filesJson, []),
+    status: row.status,
+    turnId: row.turnId,
   }
-  if (event.type !== 'thread.reverted') return
+}
 
-  for (const summary of summaries.values()) {
-    if (summary.checkpointTurnCount <= event.payload.turnCount) continue
+/** The in-memory model answers "what can be reverted", so it drops the files. */
+function projectedCheckpointFromRow(row: ProjectionThreadCheckpointRow) {
+  return {
+    assistantMessageId: row.assistantMessageId,
+    checkpointRef: row.checkpointRef,
+    checkpointTurnCount: row.checkpointTurnCount,
+    completedAt: row.completedAt,
+    status: row.status,
+    turnId: row.turnId,
+  } as OrchestrationProjectedCheckpoint
+}
 
-    summaries.delete(summary.turnId)
+function proposedPlanFromRow(row: ProjectionThreadProposedPlanRow) {
+  return {
+    createdAt: row.createdAt,
+    id: row.planId,
+    implementationThreadId: row.implementationThreadId,
+    implementedAt: row.implementedAt,
+    planMarkdown: row.planMarkdown,
+    threadId: row.threadId,
+    turnId: row.turnId,
+    updatedAt: row.updatedAt,
   }
 }
 

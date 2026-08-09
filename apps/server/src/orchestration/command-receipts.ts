@@ -7,6 +7,7 @@ import type {
 } from './schemas'
 import { orchestrationCommandReceiptSchema } from './schemas'
 import { getDefaultPlatformDatabase } from '../db/client'
+import { isEvlogError } from '../observability'
 import { orchestrationCommandReceipts, type OrchestrationCommandReceiptRow } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 import {
@@ -36,7 +37,7 @@ export class OrchestrationCommandReceipts {
     const sequence = lastSequence(events)
     const aggregate = commandAggregate(command)
     const receipt = {
-      acceptedAt: commandTimestamp(command),
+      acceptedAt: new Date().toISOString(),
       aggregateId: aggregate.id,
       aggregateKind: aggregate.kind,
       commandId: command.commandId,
@@ -60,7 +61,7 @@ export class OrchestrationCommandReceipts {
   recordRejected(command: OrchestrationCommand, error: unknown) {
     const aggregate = commandAggregate(command)
     const receipt = {
-      acceptedAt: commandTimestamp(command),
+      acceptedAt: new Date().toISOString(),
       aggregateId: aggregate.id,
       aggregateKind: aggregate.kind,
       commandId: command.commandId,
@@ -82,6 +83,28 @@ export class OrchestrationCommandReceipts {
   }
 }
 
+/**
+ * A rejection receipt is permanent: once written, that `commandId` is poisoned
+ * and can never be retried. Only a decision about the command *itself* earns
+ * one — the catalogued invariant violations the decider raises, which are
+ * structured errors carrying a 4xx status and which will fail identically no
+ * matter how often the command is replayed.
+ *
+ * Everything else — a plain `Error`, a `SQLiteError` from a disk blip, any 5xx
+ * structured error — is an infrastructure failure whose next attempt may well
+ * succeed. Those leave no receipt at all, so the client can retry the same
+ * `commandId` and still get exactly-once semantics.
+ *
+ * The test is the structured error's identity (`EvlogError` + `status`), never
+ * its message text: rewording a catalog entry must not silently change which
+ * failures become permanent.
+ */
+export function isDurableCommandRejection(error: unknown) {
+  if (!isEvlogError(error)) return false
+
+  return error.status >= 400 && error.status < 500
+}
+
 function commandAggregate(command: OrchestrationCommand) {
   if (isProjectCommand(command)) {
     return { id: command.projectId, kind: 'project' as const }
@@ -97,16 +120,6 @@ function isProjectCommand(
   { type: 'project.create' | 'project.meta.update' | 'project.delete' }
 > {
   return command.type.startsWith('project.')
-}
-
-function commandTimestamp(command: OrchestrationCommand) {
-  if ('createdAt' in command) return command.createdAt
-  if ('updatedAt' in command) return command.updatedAt
-  if ('deletedAt' in command) return command.deletedAt
-  if ('archivedAt' in command) return command.archivedAt
-  if ('completedAt' in command) return command.completedAt
-
-  return new Date().toISOString()
 }
 
 function lastSequence(events: OrchestrationEvent[]) {

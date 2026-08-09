@@ -19,6 +19,7 @@ import { useEditorDocumentState } from '@/features/editor/state/editor-document-
 import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { SortableEditorTabButton } from '@/features/workbench/components/sortable-editor-tab-button'
+import { useActiveTabStripScroll } from '@/features/workbench/hooks/use-active-tab-strip-scroll'
 import { editorTabReorderIntent } from '@/features/workbench/utils/editor-tab-dnd'
 
 const EDITOR_TAB_DND_MODIFIERS = [restrictToHorizontalAxis]
@@ -27,6 +28,7 @@ export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[
   const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
   const { reorderTab } = useEditorTabActions()
   const closeTargets = editorTabCloseTargets(tabs, dirtyFilePaths)
+  const stripRef = useActiveTabStripScroll(tabs.find((tab) => tab.active)?.id ?? null)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -56,6 +58,7 @@ export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[
         <div
           aria-label='Editor tabs'
           className='no-scrollbar border-border flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b px-2 pt-1'
+          ref={stripRef}
           role='tablist'
         >
           {tabs.map((tab) => {

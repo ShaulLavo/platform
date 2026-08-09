@@ -3,19 +3,22 @@ import { useEffect, useMemo, type ReactNode } from 'react'
 import { createLocalChatEnvironment } from '@/features/chat/environment/local-chat-environment'
 import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-subscription'
 import { useWorkspaceChatProject } from '@/features/chat/hooks/use-workspace-chat-project'
-import { compareChatSidebarThreads } from '@/features/chat/lib/chat-formatters'
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { prewarmSidebarThreadDetails } from '@/features/chat/state/thread-detail-subscriptions'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
 import {
   ChatModeSessionContext,
   type ChatModeSession,
 } from '@/features/chat-mode/providers/session-context'
+import { setSessionProjectOpener } from '@/features/chat-mode/state/session-commands'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { activeSession } from '@/features/chat-mode/utils/active-session'
+import { compareSessionsByCreation } from '@/features/chat-mode/utils/session-order'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import { useActiveProjectStore } from '@/state/active-project-store'
+
+const NO_PROJECT_THREAD_IDS: readonly never[] = []
 
 export function ChatModeSessionProvider({
   children,
@@ -35,8 +38,17 @@ export function ChatModeSessionProvider({
   const projectThreads = useChatProjectionStore((state) =>
     selectChatSidebarThreadsForProject(state, projectId),
   )
-  const threads = projectThreads.toSorted(compareChatSidebarThreads)
+  const projectThreadIds = useChatProjectionStore((state) =>
+    projectId
+      ? (state.threadIdsByProjectId[projectId] ?? NO_PROJECT_THREAD_IDS)
+      : NO_PROJECT_THREAD_IDS,
+  )
+  const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
+  const threads = projectThreads.toSorted(compareSessionsByCreation)
   const threadIds = threads.map((thread) => thread.id)
+  const archivedThreadIds = projectThreadIds.filter((threadId) =>
+    Boolean(summaryById[threadId]?.archivedAt),
+  )
   const selection = useSessionSelectionStore((state) => state.selection)
   const selectSession = useSessionSelectionStore((state) => state.selectSession)
   const startDraft = useSessionSelectionStore((state) => state.startDraft)
@@ -44,8 +56,17 @@ export function ChatModeSessionProvider({
   // Reuses the workspace picker already mounted by AppWorkspace: picking a folder
   // opens it, and useWorkspaceChatProject creates the project for it.
   const addProject = useEditorWorkspaceState((state) => state.openPicker)
+
+  // Keyboard session commands run from the app keymap, far above this tree, so the
+  // one app-level thing they need is handed down to them for as long as chat mode is up.
+  useEffect(() => {
+    setSessionProjectOpener(openWorkspaceRoot)
+
+    return () => setSessionProjectOpener(null)
+  }, [openWorkspaceRoot])
+
   const value: ChatModeSession = {
-    activeSession: activeSession({ projectId, selection, threadIds }),
+    activeSession: activeSession({ archivedThreadIds, projectId, selection, threadIds }),
     addProject,
     environment,
     error: projectState.error ?? shell.error,
@@ -60,9 +81,12 @@ export function ChatModeSessionProvider({
     threads,
   }
 
-  useEffect(() => {
-    prewarmSidebarThreadDetails(threadIds)
-  }, [threadIds])
-
-  return <ChatModeSessionContext value={value}>{children}</ChatModeSessionContext>
+  return (
+    <ChatModeSessionContext value={value}>
+      {children}
+      {/* Mounted here, not in the rail: the row that asks for the delete is the first
+          thing to unmount once the answer is yes. */}
+      <SessionDeleteDialog />
+    </ChatModeSessionContext>
+  )
 }

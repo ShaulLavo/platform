@@ -3,8 +3,10 @@ import { commandIdSchema, projectIdSchema, threadIdSchema } from './chat-ids'
 import {
   isoDateTimeSchema,
   nonNegativeIntegerSchema,
+  orchestrationCheckpointSummarySchema,
   orchestrationLatestTurnSchema,
   orchestrationProjectSchema,
+  orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
   orchestrationThreadSchema,
   trimmedNonEmptyStringSchema,
@@ -45,9 +47,16 @@ export const orchestrationShellSnapshotSchema = v.object({
   updatedAt: isoDateTimeSchema,
 })
 
+/**
+ * Plans and checkpoints ride on the snapshot rather than on the thread: they
+ * are history, and the engine's in-memory thread deliberately keeps only the
+ * live tail. A cold reload gets them here; live updates arrive as events.
+ */
 export const orchestrationThreadDetailSnapshotSchema = v.object({
   snapshotSequence: nonNegativeIntegerSchema,
   thread: orchestrationThreadSchema,
+  proposedPlans: v.array(orchestrationProposedPlanSchema),
+  checkpoints: v.array(orchestrationCheckpointSummarySchema),
 })
 
 export const orchestrationShellStreamItemSchema = v.variant('kind', [

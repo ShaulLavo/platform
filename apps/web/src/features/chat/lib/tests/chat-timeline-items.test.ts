@@ -117,7 +117,7 @@ describe('chat timeline items', () => {
     ])
   })
 
-  it('uses T3 work-log derivation for the latest turn', () => {
+  it('keeps older turns in the work log and groups them where they happened', () => {
     const threadId = v.parse(threadIdSchema, 'thread-1')
     const turnId = v.parse(turnIdSchema, 'turn-2')
     const latestTurn: OrchestrationLatestTurn = {
@@ -144,11 +144,46 @@ describe('chat timeline items', () => {
 
     expect(items.map((item) => item.id)).toEqual([
       'message:message-1',
-      'activity-group:thinking',
+      'activity-group:old-turn-tool',
       'working:turn-2',
     ])
     expect(items[1]).toMatchObject({
-      activities: [{ title: 'Inspecting repository state', tone: 'thinking' }],
+      activities: [
+        { title: 'old-turn-tool', turnId: 'turn-1' },
+        { title: 'Inspecting repository state', tone: 'thinking', turnId: 'turn-2' },
+      ],
+    })
+  })
+
+  it('hands the running turn its plan so the working row can name the current step', () => {
+    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const turnId = v.parse(turnIdSchema, 'turn-1')
+    const latestTurn: OrchestrationLatestTurn = {
+      assistantMessageId: null,
+      completedAt: null,
+      requestedAt: timestamp(1),
+      startedAt: timestamp(1),
+      state: 'running',
+      turnId,
+    }
+    const items = chatTimelineItems({
+      activities: [
+        activity('plan-1', threadId, timestamp(2), turnId, 'turn.plan.updated', 'thinking', {
+          plan: [
+            { status: 'completed', step: 'Read the code' },
+            { status: 'inProgress', step: 'Write the test' },
+          ],
+        }),
+      ],
+      latestTurn,
+      messages: [],
+      optimisticMessages: [],
+      proposedPlans: [],
+    })
+    const workingItem = items.find((item) => item.type === 'working')
+
+    expect(workingItem).toMatchObject({
+      plan: { completedCount: 1, currentStep: 'Write the test' },
     })
   })
 

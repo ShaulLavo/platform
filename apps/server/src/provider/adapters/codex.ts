@@ -3,9 +3,11 @@ import { createInternalError } from '../../observability/structured-errors'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
+  DEFAULT_INTERACTION_MODE,
   approvalRequestIdSchema,
   messageIdSchema,
   type ApprovalRequestId,
+  type InteractionMode,
   type ModelReasoningEffortOption,
   type ProviderModel,
   type ProviderModelCapabilities,
@@ -44,6 +46,7 @@ import {
 } from './codex-protocol'
 import { providerErrorMessage } from './utils/adapters'
 import { activeProviderTurn, type ActiveProviderTurn } from './utils/active-turn'
+import { codexDeveloperInstructions } from './utils/codex-instructions'
 import { modelOptionValue, type ModelOptions } from './utils/model-options'
 import { asRecord, numberField, stringField } from './utils/records'
 import { isPresent, noop, runtimeEventId } from './utils/runtime-ids'
@@ -117,6 +120,22 @@ type CodexModelOptions = {
 }
 
 type CodexReasoningEffort = NonNullable<CodexClientRequestParamsByMethod['turn/start']['effort']>
+
+/**
+ * Absent from the pinned protocol schema — Codex ships collaboration modes as
+ * experimental — but `turn/start` params parse as a loose object, so the field
+ * survives validation and reaches the app-server. The snake_case keys inside
+ * `settings` are the wire names Codex expects; the rest of the protocol is
+ * camelCase.
+ */
+type CodexCollaborationMode = {
+  mode: InteractionMode
+  settings: {
+    developer_instructions: string
+    model: string
+    reasoning_effort?: CodexReasoningEffort
+  }
+}
 
 type CodexTurnInputItem =
   | { text: string; text_elements: unknown[]; type: 'text' }
@@ -251,10 +270,13 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const existing = this.sessions.get(input.threadId)
     const cwd = normalizeWorkspaceCwd(input.cwd)
     const model = normalizeCodexModel(input.modelSelection.model)
+    const interactionMode = input.interactionMode ?? DEFAULT_INTERACTION_MODE
     const modelOptions = codexModelOptions(input)
     if (existing?.matches({ cwd, model, runtimeMode: input.runtimeMode })) {
       recordChatPipelineInfo('chat.pipeline.codex_adapter.session.reuse', {
+        interactionMode,
         model,
+        reconfigured: existing.reconfigureInteractionMode(interactionMode),
         runtimeMode: input.runtimeMode,
         threadId: input.threadId,
       })
@@ -263,6 +285,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
 
     if (existing) {
       recordChatPipelineInfo('chat.pipeline.codex_adapter.session.replace', {
+        interactionMode,
         model,
         runtimeMode: input.runtimeMode,
         threadId: input.threadId,
@@ -272,6 +295,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     }
 
     recordChatPipelineInfo('chat.pipeline.codex_adapter.session.start', {
+      interactionMode,
       model,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
@@ -280,6 +304,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const session = await CodexAppServerSession.start({
       cwd,
       emit: (event) => this.events.publish(event),
+      interactionMode,
       model,
       modelOptions,
       providerInstanceId: input.providerInstanceId,
@@ -289,6 +314,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     })
     this.sessions.set(input.threadId, session)
     recordChatPipelineInfo('chat.pipeline.codex_adapter.session.started', {
+      interactionMode,
       model,
       runtimeMode: input.runtimeMode,
       threadId: input.threadId,
@@ -324,6 +350,7 @@ class CodexAppServerSession {
   private readonly threadId: ThreadId
   private readonly turns = new Map<string, ActiveProviderTurn>()
   private activeProviderTurnId: string | null = null
+  private interactionMode: InteractionMode
   private pendingTurn: ActiveProviderTurn | null = null
   private status: ProviderAdapterSession['status'] = 'ready'
 
@@ -331,6 +358,7 @@ class CodexAppServerSession {
     client: CodexAppServerRpcClient
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
+    interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
     providerThreadId: string
@@ -341,6 +369,7 @@ class CodexAppServerSession {
     this.client = input.client
     this.cwd = input.cwd
     this.emit = input.emit
+    this.interactionMode = input.interactionMode
     this.model = input.model
     this.providerInstanceId = input.providerInstanceId
     this.providerSessionId = `codex:${input.providerThreadId}`
@@ -354,6 +383,7 @@ class CodexAppServerSession {
   static async start(input: {
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
+    interactionMode: InteractionMode
     model: string
     modelOptions: CodexModelOptions
     providerInstanceId: ProviderTurnInput['providerInstanceId']
@@ -362,6 +392,7 @@ class CodexAppServerSession {
     threadId: ThreadId
   }) {
     recordChatPipelineInfo('chat.pipeline.codex_session.start', {
+      interactionMode: input.interactionMode,
       model: input.model,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
@@ -381,6 +412,7 @@ class CodexAppServerSession {
         client,
         cwd: input.cwd,
         emit: input.emit,
+        interactionMode: input.interactionMode,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
         providerThreadId,
@@ -402,12 +434,31 @@ class CodexAppServerSession {
     }
   }
 
+  /**
+   * Interaction mode is deliberately not part of this check. cwd, model, and
+   * runtime mode are baked into `thread/start`, so changing one needs a new
+   * app-server thread; the collaboration mode rides on every `turn/start`, so
+   * changing it only needs `reconfigureInteractionMode` — replacing the session
+   * would throw away the conversation Codex holds for this thread.
+   */
   matches(input: { cwd: string; model: string; runtimeMode: RuntimeMode }) {
     if (this.client.isClosed()) return false
     if (this.cwd !== input.cwd) return false
     if (this.model !== input.model) return false
 
     return this.runtimeMode === input.runtimeMode
+  }
+
+  /** Reports whether the live session had to change mode, for the reuse event. */
+  reconfigureInteractionMode(interactionMode: InteractionMode) {
+    if (this.interactionMode === interactionMode) return false
+
+    this.interactionMode = interactionMode
+    return true
+  }
+
+  interactionModeForTurn() {
+    return this.interactionMode
   }
 
   isActive() {
@@ -2100,8 +2151,8 @@ function threadStartParams(input: {
 
   return {
     approvalPolicy: runtime.approvalPolicy,
+    approvalsReviewer: runtime.approvalsReviewer,
     cwd: input.cwd,
-    developerInstructions: codexDeveloperInstructions(input.runtimeMode),
     experimentalRawEvents: true,
     model: input.model,
     persistExtendedHistory: true,
@@ -2119,8 +2170,8 @@ function threadResumeParams(input: {
   const runtime = runtimeModeToThreadConfig(input.runtimeMode)
 
   return {
+    approvalsReviewer: runtime.approvalsReviewer,
     cwd: input.cwd,
-    developerInstructions: codexDeveloperInstructions(input.runtimeMode),
     model: input.model,
     sandbox: runtime.sandbox,
     ...(input.modelOptions.serviceTier ? { serviceTier: input.modelOptions.serviceTier } : {}),
@@ -2133,17 +2184,51 @@ function turnStartParams(
 ): CodexClientRequestParamsByMethod['turn/start'] {
   const runtime = runtimeModeToThreadConfig(input.runtimeMode)
   const modelOptions = codexModelOptions(input)
+  const model = normalizeCodexModel(input.modelSelection.model)
 
   return {
     approvalPolicy: runtime.approvalPolicy,
-    developerInstructions: codexDeveloperInstructions(input.runtimeMode),
+    approvalsReviewer: runtime.approvalsReviewer,
+    // The live session owns the mode, not the turn: `ensureRuntimeSession` has
+    // already reconciled a mid-thread switch against the running app-server.
+    collaborationMode: codexCollaborationMode({
+      interactionMode: session.interactionModeForTurn(),
+      model,
+      ...(modelOptions.effort ? { effort: modelOptions.effort } : {}),
+    }),
     input: codexTurnInput(input),
-    model: normalizeCodexModel(input.modelSelection.model),
+    model,
     sandboxPolicy: runtime.sandboxPolicy,
     ...(modelOptions.effort ? { effort: modelOptions.effort } : {}),
     ...(modelOptions.serviceTier ? { serviceTier: modelOptions.serviceTier } : {}),
     threadId: session.providerThreadIdForTurn(),
   } as CodexClientRequestParamsByMethod['turn/start']
+}
+
+/**
+ * Codex resolves the mode name to its built-in prompt and lets
+ * `developer_instructions` replace it, so this object is the whole of what
+ * makes a plan turn behave differently from a default one. It goes out on every
+ * turn: a thread that switched modes must not keep running the old prompt.
+ */
+function codexCollaborationMode(input: {
+  effort?: CodexReasoningEffort
+  interactionMode: InteractionMode
+  model: string
+}): CodexCollaborationMode {
+  return {
+    mode: input.interactionMode,
+    settings: {
+      developer_instructions: codexDeveloperInstructions(input.interactionMode, {
+        model: input.model,
+        ...(input.effort ? { reasoningEffort: input.effort } : {}),
+      }),
+      model: input.model,
+      // Omitted when unselected, so Codex keeps the model's own default effort
+      // instead of being pinned to whatever this process would guess.
+      ...(input.effort ? { reasoning_effort: input.effort } : {}),
+    },
+  }
 }
 
 function codexTurnInput(input: ProviderTurnInput): CodexTurnInputItem[] {
@@ -2210,10 +2295,19 @@ function codexReasoningEffort(options: ModelOptions): CodexReasoningEffort | und
   return effort.length > 0 ? effort : undefined
 }
 
+/**
+ * `approvalsReviewer` is always spelled out, never left to default. Codex keeps
+ * whatever reviewer the thread was last configured with when the field is
+ * omitted, so a runtime-mode switch would keep routing approvals the way the
+ * previous mode wanted. Every mode we ship routes them to the user; Codex also
+ * accepts `auto_review` and `guardian_subagent`, and a mode that wants one
+ * changes this table rather than any call site.
+ */
 function runtimeModeToThreadConfig(runtimeMode: RuntimeMode) {
   if (runtimeMode === 'approval-required') {
     return {
       approvalPolicy: 'untrusted',
+      approvalsReviewer: 'user',
       sandbox: 'read-only',
       sandboxPolicy: { networkAccess: false, type: 'readOnly' },
     }
@@ -2221,6 +2315,7 @@ function runtimeModeToThreadConfig(runtimeMode: RuntimeMode) {
   if (runtimeMode === 'auto-accept-edits') {
     return {
       approvalPolicy: 'on-request',
+      approvalsReviewer: 'user',
       sandbox: 'workspace-write',
       sandboxPolicy: {
         excludeSlashTmp: false,
@@ -2234,6 +2329,7 @@ function runtimeModeToThreadConfig(runtimeMode: RuntimeMode) {
 
   return {
     approvalPolicy: 'never',
+    approvalsReviewer: 'user',
     sandbox: 'danger-full-access',
     sandboxPolicy: { type: 'dangerFullAccess' },
   }
@@ -2777,14 +2873,6 @@ function realtimePayload(method: string, params: unknown) {
     default:
       return { message: stringField(record, 'message') ?? 'Realtime error' }
   }
-}
-
-function codexDeveloperInstructions(runtimeMode: RuntimeMode) {
-  if (runtimeMode === 'approval-required') {
-    return 'Use Plan mode when the user is planning. Request approval before running commands or editing files.'
-  }
-
-  return 'Use the current collaboration mode and keep provider runtime events granular for UI ingestion.'
 }
 
 function classifyCodexStderrLine(rawLine: string) {

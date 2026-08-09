@@ -1,7 +1,14 @@
 import type { OrchestrationEvent, OrchestrationMessage } from './schemas'
+import type { OrchestrationSession } from '@workspace/contracts'
 import {
-  cloneReadModel,
+  appendBounded,
+  boundCheckpoints,
   createEmptyReadModel,
+  MAX_THREAD_ACTIVITIES,
+  MAX_THREAD_MESSAGES,
+  mergedMessageText,
+  settledTurnStateForSessionStatus,
+  settleRunningTurn,
   setLatestTurnState,
   setThreadSession,
   type OrchestrationProjectedThread,
@@ -10,23 +17,19 @@ import {
 
 type LatestTurnState = NonNullable<OrchestrationProjectedThread['latestTurn']>['state']
 
-export function projectEvents(events: OrchestrationEvent[], base = createEmptyReadModel()) {
-  let model = cloneReadModel(base)
-
+/**
+ * Projects in place. The read model is engine-private and every consumer reads
+ * it through `getReadModel()` at the moment of use, so nobody held the old
+ * value — the per-event deep clone only copied every message and activity of
+ * every thread, which made dispatch cost grow with thread length.
+ */
+export function projectEvents(events: OrchestrationEvent[], model = createEmptyReadModel()) {
   for (const event of events) {
-    model = projectEvent(event, model)
+    model.sequence = Math.max(model.sequence, event.sequence)
+    applyEvent(event, model)
   }
 
   return model
-}
-
-function projectEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
-  const next = cloneReadModel(model)
-  next.sequence = Math.max(next.sequence, event.sequence)
-
-  applyEvent(event, next)
-
-  return next
 }
 
 function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
@@ -58,37 +61,23 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       upsertMessage(event, model)
       return
     case 'thread.turn-start-requested':
-      updateThread(model, event.payload.threadId, (thread) => ({
-        ...thread,
-        interactionMode: event.payload.interactionMode ?? thread.interactionMode,
-        // The turn carries the model it will actually run on; without this the read
-        // model keeps reporting whatever the thread was created with.
-        modelSelection: event.payload.modelSelection ?? thread.modelSelection,
-        latestTurn: {
-          assistantMessageId: null,
-          completedAt: null,
-          requestedAt: event.payload.createdAt,
-          sourceProposedPlan: event.payload.sourceProposedPlan,
-          startedAt: null,
-          state: 'running',
-          turnId: event.payload.turnId,
-        },
-        runtimeMode: event.payload.runtimeMode ?? thread.runtimeMode,
-        updatedAt: event.payload.createdAt,
-      }))
+      startTurn(event, model)
       return
     case 'thread.session-set':
       updateThread(model, event.payload.threadId, (thread) =>
-        setThreadSession(thread, event.payload.session),
+        threadAfterSessionSet(thread, event.payload.session),
       )
       return
     case 'thread.activity-appended':
-      updateThread(model, event.payload.threadId, (thread) => ({
-        ...thread,
-        activities: [...thread.activities, { ...event.payload.activity, sequence: event.sequence }],
-        latestTurn: latestTurnAfterActivity(thread.latestTurn, event),
-        updatedAt: event.payload.activity.createdAt,
-      }))
+      updateThread(model, event.payload.threadId, (thread) => {
+        appendActivity(thread.activities, event)
+
+        return {
+          ...thread,
+          latestTurn: latestTurnAfterActivity(thread.latestTurn, event),
+          updatedAt: event.payload.activity.createdAt,
+        }
+      })
       return
     case 'thread.meta-updated':
       updateThreadMeta(event, model)
@@ -129,35 +118,19 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       )
       return
     case 'thread.turn-diff-completed':
-      updateThread(model, event.payload.threadId, (thread) => {
-        const updated = setLatestTurnState(
-          thread,
-          event.payload.status === 'error' ? 'error' : 'completed',
-          event.payload.completedAt,
-          event.payload.assistantMessageId,
-        )
-
-        return {
-          ...updated,
-          checkpointByTurnId: {
-            ...updated.checkpointByTurnId,
-            [event.payload.turnId]: {
-              assistantMessageId: event.payload.assistantMessageId,
-              checkpointRef: event.payload.checkpointRef,
-              checkpointTurnCount: event.payload.checkpointTurnCount,
-              completedAt: event.payload.completedAt,
-              status: event.payload.status,
-              turnId: event.payload.turnId,
-            },
-          },
-        }
-      })
+      updateThread(model, event.payload.threadId, (thread) => threadAfterCheckpoint(thread, event))
       return
     case 'thread.session-stop-requested':
-      updateThread(model, event.payload.threadId, (thread) => setThreadSession(thread, null))
+      updateThread(model, event.payload.threadId, (thread) =>
+        threadAfterSessionStop(thread, event.payload.createdAt),
+      )
       return
     case 'thread.proposed-plan-upserted':
-      updateThreadValue(model, event.payload.threadId, { hasActionableProposedPlan: true })
+      // Derived, never latched: a plan that already carries an implementation
+      // stamp is history, not an offer.
+      updateThreadValue(model, event.payload.threadId, {
+        hasActionableProposedPlan: !event.payload.proposedPlan.implementedAt,
+      })
       return
     case 'thread.checkpoint-revert-requested':
       return
@@ -168,6 +141,78 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
     case 'thread.user-input-response-requested':
       return
   }
+}
+
+function startTurn(
+  event: Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }>,
+  model: OrchestrationReadModel,
+) {
+  updateThread(model, event.payload.threadId, (thread) => ({
+    ...thread,
+    interactionMode: event.payload.interactionMode ?? thread.interactionMode,
+    // The turn carries the model it will actually run on; without this the read
+    // model keeps reporting whatever the thread was created with.
+    modelSelection: event.payload.modelSelection ?? thread.modelSelection,
+    latestTurn: {
+      assistantMessageId: null,
+      completedAt: null,
+      requestedAt: event.payload.createdAt,
+      sourceProposedPlan: event.payload.sourceProposedPlan,
+      startedAt: null,
+      state: 'running' as const,
+      turnId: event.payload.turnId,
+    },
+    runtimeMode: event.payload.runtimeMode ?? thread.runtimeMode,
+    updatedAt: event.payload.createdAt,
+  }))
+
+  const source = event.payload.sourceProposedPlan
+  if (!source) return
+
+  // Starting a turn from a plan is the moment it stops being actionable, and
+  // the plan can live on another thread than the one running the turn.
+  updateThreadValue(model, source.threadId, { hasActionableProposedPlan: false })
+}
+
+function threadAfterCheckpoint(
+  thread: OrchestrationProjectedThread,
+  event: Extract<OrchestrationEvent, { type: 'thread.turn-diff-completed' }>,
+): OrchestrationProjectedThread {
+  const existing = thread.checkpointByTurnId[event.payload.turnId]
+  // Mid-turn diff updates carry a placeholder ref with status "missing". Once a
+  // real capture has landed, a later placeholder must change nothing at all.
+  if (existing && existing.status !== 'missing' && event.payload.status === 'missing') return thread
+
+  const withCheckpoint = {
+    ...thread,
+    checkpointByTurnId: boundCheckpoints({
+      ...thread.checkpointByTurnId,
+      [event.payload.turnId]: {
+        assistantMessageId: event.payload.assistantMessageId,
+        checkpointRef: event.payload.checkpointRef,
+        checkpointTurnCount: event.payload.checkpointTurnCount,
+        completedAt: event.payload.completedAt,
+        status: event.payload.status,
+        turnId: event.payload.turnId,
+      },
+    }),
+  }
+  // Recording a checkpoint is not a turn ending: a placeholder arrives while
+  // the session is still streaming the very turn it describes.
+  if (isSessionRunningTurn(thread.session, event.payload.turnId)) return withCheckpoint
+
+  return setLatestTurnState(
+    withCheckpoint,
+    event.payload.status === 'error' ? 'error' : 'completed',
+    event.payload.completedAt,
+    event.payload.assistantMessageId,
+  )
+}
+
+function isSessionRunningTurn(session: OrchestrationSession | null, turnId: string) {
+  if (session?.status !== 'running') return false
+
+  return session.activeTurnId === turnId
 }
 
 function createdThread(event: Extract<OrchestrationEvent, { type: 'thread.created' }>) {
@@ -281,19 +326,42 @@ function updateThreadMeta(
   })
 }
 
+function threadAfterSessionSet(
+  thread: OrchestrationProjectedThread,
+  session: OrchestrationSession,
+) {
+  const next = setThreadSession(thread, session)
+  const settledState = settledTurnStateForSessionStatus(session.status)
+  if (!settledState) return next
+
+  return settleRunningTurn(next, settledState, session.updatedAt)
+}
+
+/**
+ * A stop marks the session row stopped instead of dropping it: the SQL
+ * projection keeps a stopped row and `hasActiveSession` reads the status, so
+ * nulling the session here left the two read models answering differently.
+ */
+function threadAfterSessionStop(thread: OrchestrationProjectedThread, stoppedAt: string) {
+  const stopped = thread.session
+    ? setThreadSession(thread, { ...thread.session, status: 'stopped', updatedAt: stoppedAt })
+    : thread
+
+  return settleRunningTurn(stopped, 'interrupted', stoppedAt)
+}
+
 function upsertMessage(
   event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
   model: OrchestrationReadModel,
 ) {
   updateThread(model, event.payload.threadId, (thread) => {
-    const messages = upsertThreadMessage(thread.messages, event)
+    upsertThreadMessage(thread.messages, event)
 
     return {
       ...thread,
       latestUserMessageAt:
         event.payload.role === 'user' ? event.payload.createdAt : thread.latestUserMessageAt,
       latestTurn: latestTurnAfterMessage(thread.latestTurn, event),
-      messages,
       updatedAt: event.payload.updatedAt,
     }
   })
@@ -303,19 +371,48 @@ function upsertThreadMessage(
   messages: OrchestrationMessage[],
   event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
 ) {
-  const existing = messages.find((message) => message.id === event.payload.messageId)
-  if (!existing) return [...messages, messageFromEvent(event)]
+  // Streaming deltas land on the newest message, so scan from the end.
+  const index = messages.findLastIndex((message) => message.id === event.payload.messageId)
+  if (index < 0) {
+    appendBounded(messages, messageFromEvent(event), MAX_THREAD_MESSAGES)
+    return
+  }
 
-  return messages.map((message) => {
-    if (message.id !== event.payload.messageId) return message
+  messages[index] = mergedMessage(messages[index]!, event)
+}
 
-    return {
-      ...message,
-      streaming: event.payload.streaming,
-      text: event.payload.text ? `${message.text}${event.payload.text}` : message.text,
-      updatedAt: event.payload.updatedAt,
-    }
-  })
+function mergedMessage(
+  message: OrchestrationMessage,
+  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+): OrchestrationMessage {
+  return {
+    ...message,
+    // turnId and attachments are backfilled, never erased: a later frame that
+    // carries neither (a bare completion) must keep what the first one bound.
+    attachments:
+      event.payload.attachments.length > 0 ? event.payload.attachments : message.attachments,
+    streaming: event.payload.streaming,
+    text: mergedMessageText(message.text, event.payload),
+    turnId: event.payload.turnId ?? message.turnId,
+    updatedAt: event.payload.updatedAt,
+  }
+}
+
+/** Mirrors the SQL projection's conflict-do-nothing: a replayed id is not a second activity. */
+function appendActivity(
+  activities: OrchestrationProjectedThread['activities'],
+  event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+) {
+  const duplicate = activities.findLastIndex(
+    (activity) => activity.id === event.payload.activity.id,
+  )
+  if (duplicate >= 0) return
+
+  appendBounded(
+    activities,
+    { ...event.payload.activity, sequence: event.sequence },
+    MAX_THREAD_ACTIVITIES,
+  )
 }
 
 function messageFromEvent(event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>) {

@@ -1,13 +1,13 @@
 import { createClientInvariantError } from '@/lib/structured-errors'
 
-import type { ChatAttachmentUpload } from '@workspace/contracts'
+import { MAX_CHAT_ATTACHMENT_BYTES, type ChatAttachmentUpload } from '@workspace/contracts'
 
 import type {
   ChatInputDraftTarget,
   ChatInputImageAttachment,
 } from '../state/chat-input-draft-store'
 
-import { classifyChatImageFile, MAX_CHAT_IMAGE_BYTES } from './chat-input-attachment-limits'
+import { classifyChatImageFile } from './chat-input-attachment-limits'
 import { compressImageToByteLimit, type ImageCompressionFailureReason } from './image-compression'
 
 const IMAGE_ATTACHMENT_ID_PREFIX = 'image'
@@ -87,7 +87,7 @@ async function prepareChatInputImage(
     return { status: 'reject', message: classification.message }
   }
 
-  const compressed = await compressImageToByteLimit(file, MAX_CHAT_IMAGE_BYTES)
+  const compressed = await compressImageToByteLimit(file, MAX_CHAT_ATTACHMENT_BYTES)
   if (!compressed.ok) {
     return { status: 'reject', message: compressionFailureMessage(compressed.reason) }
   }

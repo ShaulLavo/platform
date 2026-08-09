@@ -18,9 +18,9 @@ test('ranks every project’s sessions into one list, newest first', () => {
       chatProject({ id: siteId, title: 'site', workspaceRoot: '/repo/site' }),
     ],
     threads: [
-      threadSummary({ id: 'thread-old', projectId: platformId, updatedAt: '2026-05-01T00:00:00Z' }),
-      threadSummary({ id: 'thread-new', projectId: siteId, updatedAt: '2026-05-09T00:00:00Z' }),
-      threadSummary({ id: 'thread-mid', projectId: platformId, updatedAt: '2026-05-05T00:00:00Z' }),
+      threadSummary({ createdAt: '2026-05-01T00:00:00Z', id: 'thread-old', projectId: platformId }),
+      threadSummary({ createdAt: '2026-05-09T00:00:00Z', id: 'thread-new', projectId: siteId }),
+      threadSummary({ createdAt: '2026-05-05T00:00:00Z', id: 'thread-mid', projectId: platformId }),
     ],
   })
 
@@ -31,6 +31,39 @@ test('ranks every project’s sessions into one list, newest first', () => {
   ])
   expect(model.scopeTitle).toBe('All projects')
   expect(model.projects.map((project) => project.title)).toEqual(['platform', 'site'])
+})
+
+test('activity never reorders the list — a session holds the slot it was created in', () => {
+  const threads = [
+    threadSummary({ createdAt: '2026-05-09T00:00:00Z', id: 'thread-new', projectId: platformId }),
+    threadSummary({ createdAt: '2026-05-01T00:00:00Z', id: 'thread-old', projectId: platformId }),
+  ]
+  const busyOldThread = threads.map((thread) =>
+    thread.id === 'thread-old'
+      ? sidebarThreadSummary({ ...thread, latestUserMessageAt: '2026-06-01T00:00:00Z' })
+      : thread,
+  )
+
+  const order = (list: readonly ChatSidebarThreadSummary[]) =>
+    sessionRailModel({
+      projects: [chatProject({ id: platformId })],
+      threads: list,
+    }).sessions.map((session) => session.id)
+
+  expect(order(threads)).toEqual(['thread-new', 'thread-old'])
+  expect(order(busyOldThread)).toEqual(['thread-new', 'thread-old'])
+})
+
+test('ties break on id, so two sessions created in the same instant never swap', () => {
+  const model = sessionRailModel({
+    projects: [chatProject({ id: platformId })],
+    threads: [
+      threadSummary({ createdAt: '2026-05-09T00:00:00Z', id: 'thread-b', projectId: platformId }),
+      threadSummary({ createdAt: '2026-05-09T00:00:00Z', id: 'thread-a', projectId: platformId }),
+    ],
+  })
+
+  expect(model.sessions.map((session) => session.id)).toEqual(['thread-a', 'thread-b'])
 })
 
 test('scoping to a project drops the others and names the scope', () => {
@@ -86,7 +119,7 @@ test('search reaches the branch a session is on', () => {
   expect(model.sessions.map((session) => session.id)).toEqual(['thread-a'])
 })
 
-test('omits archived sessions from the list and the counts', () => {
+test('the inbox omits archived sessions but still counts them', () => {
   const model = sessionRailModel({
     activeProjectId: platformId,
     projects: [chatProject({ id: platformId })],
@@ -98,6 +131,23 @@ test('omits archived sessions from the list and the counts', () => {
 
   expect(model.sessions.map((session) => session.id)).toEqual(['thread-b'])
   expect(model.projects[0]?.sessionCount).toBe(1)
+  expect(model.archivedCount).toBe(1)
+})
+
+test('the archive view lists exactly what the inbox hides', () => {
+  const model = sessionRailModel({
+    activeProjectId: platformId,
+    projects: [chatProject({ id: platformId })],
+    threads: [
+      threadSummary({ archivedAt: '2026-05-04T00:00:00Z', id: 'thread-a', projectId: platformId }),
+      threadSummary({ id: 'thread-b', projectId: platformId }),
+    ],
+    view: 'archived',
+  })
+
+  expect(model.sessions.map((session) => session.id)).toEqual(['thread-a'])
+  expect(model.sessions[0]?.archived).toBe(true)
+  expect(model.scopedCount).toBe(1)
 })
 
 test('sorts the active project ahead of a project with more sessions', () => {
@@ -138,6 +188,37 @@ test('reports the status a session is in', () => {
   expect(statuses.get(v.parse(threadIdSchema, 'thread-b'))).toBe('idle')
 })
 
+test('a session that finished after it was last read comes back unread', () => {
+  const runningTurn = sidebarThreadSummary().latestTurn
+  const finished: Partial<ChatSidebarThreadSummary> = {
+    latestTurn: runningTurn && {
+      ...runningTurn,
+      completedAt: '2026-05-09T10:00:00.000Z',
+      state: 'completed',
+    },
+  }
+  const model = sessionRailModel({
+    projects: [chatProject({ id: platformId })],
+    seenByThreadId: {
+      [v.parse(threadIdSchema, 'thread-read')]: '2026-05-09T10:00:00.000Z',
+      [v.parse(threadIdSchema, 'thread-stale')]: '2026-05-09T08:00:00.000Z',
+    },
+    threads: [
+      threadSummary({ ...finished, id: 'thread-read', projectId: platformId }),
+      threadSummary({ ...finished, id: 'thread-stale', projectId: platformId }),
+      threadSummary({ ...finished, id: 'thread-never', projectId: platformId }),
+      threadSummary({ id: 'thread-running', projectId: platformId }),
+    ],
+  })
+
+  const unread = new Map(model.sessions.map((session) => [session.id, session.unread]))
+  expect(unread.get(v.parse(threadIdSchema, 'thread-read'))).toBe(false)
+  expect(unread.get(v.parse(threadIdSchema, 'thread-stale'))).toBe(true)
+  expect(unread.get(v.parse(threadIdSchema, 'thread-never'))).toBe(true)
+  // Still working: there is no finish to have missed yet.
+  expect(unread.get(v.parse(threadIdSchema, 'thread-running'))).toBe(false)
+})
+
 test('disambiguates projects whose folder leaf is identical', () => {
   const model = sessionRailModel({
     activeProjectId: platformId,
@@ -160,15 +241,12 @@ test('disambiguates projects whose folder leaf is identical', () => {
   expect(byId.get(docsId)?.qualifier).toBeNull()
 })
 
-// `latestUserMessageAt` wins over `updatedAt` when ranking, so null it out to keep
-// these cases driven by the single timestamp each one sets.
 function threadSummary({
   id,
   ...overrides
 }: Omit<Partial<ChatSidebarThreadSummary>, 'id'> & { id: string }) {
   return sidebarThreadSummary({
     id: v.parse(threadIdSchema, id),
-    latestUserMessageAt: null,
     ...overrides,
   })
 }

@@ -35,10 +35,9 @@ test('a deleted row cannot open the file', () => {
   expect(byId(items(menuContext({ onDisk: false })), 'openFile').disabled).toBe(true)
 })
 
-test('opening the diff is unavailable while nothing renders a diff document', () => {
-  const unavailable = items(menuContext()).filter((item) => item.unavailable)
-
-  expect(unavailable.map((item) => item.id)).toEqual(['openChanges'])
+test('opening the diff dispatches instead of being gated off', () => {
+  expect(items(menuContext()).filter((item) => item.unavailable)).toEqual([])
+  expect(byId(items(menuContext()), 'openChanges').disabled).toBeFalsy()
 })
 
 test('an existing row can open the file', () => {

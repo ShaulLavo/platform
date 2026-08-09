@@ -32,8 +32,21 @@ export function threadStatus(thread: ThreadStatusSource): ThreadStatus {
 function threadNeedsAttention(thread: ThreadStatusSource) {
   if (thread.pendingApprovalCount > 0) return true
   if (thread.pendingUserInputCount > 0) return true
+  if (!thread.hasActionableProposedPlan) return false
 
-  return thread.hasActionableProposedPlan
+  return !isImplementingProposedPlan(thread)
+}
+
+/**
+ * The turn that implements a plan is the answer to it. The plan's own
+ * `implementedAt` stamp only reaches this client on the next projection sync,
+ * so without this the thread reads "waiting for you" through the opening
+ * seconds of the build the user just asked for.
+ */
+function isImplementingProposedPlan(thread: ThreadStatusSource) {
+  if (thread.latestTurn?.state !== 'running') return false
+
+  return Boolean(thread.latestTurn.sourceProposedPlan)
 }
 
 export function threadStatusLabel(status: ThreadStatus) {

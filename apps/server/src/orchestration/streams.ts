@@ -1,23 +1,86 @@
 import {
+  ORCHESTRATION_RESUME_MAX_GAP,
+  type OrchestrationShellStreamFrame,
+  type OrchestrationThreadStreamFrame,
+} from '@workspace/contracts'
+import {
   orchestrationShellStreamItemSchema,
-  orchestrationThreadStreamItemSchema,
   type OrchestrationEvent,
   type OrchestrationShellStreamItem,
   type OrchestrationThreadStreamItem,
 } from './schemas'
 import type { OrchestrationSnapshotQuery } from './snapshot-query'
 import * as v from 'valibot'
+import type { PlatformDatabase } from '../db/client'
 import { orchestrationEventBatchSummary, recordChatPipelineInfo } from './orchestration-logging'
+import { appendBounded } from './read-model'
+import { createShellRowReader, type OrchestrationShellRowReader } from './shell-row-reader'
 
 export type OrchestrationStreamOptions = {
   afterSequence?: number
   signal?: AbortSignal
 }
 
+export type OrchestrationStreamsOptions = {
+  coalesceWindowMs?: number
+  database?: PlatformDatabase
+  hub?: OrchestrationStreamHub
+}
+
 type EventSubscriber = {
   close: () => void
   publish: (events: OrchestrationEvent[]) => void
 }
+
+/**
+ * A server-side consumer of committed domain events. Reactors are named so a
+ * failure can be attributed on the dispatching operation's wide event.
+ */
+export type OrchestrationDomainEventReactor = {
+  readonly name: string
+  readonly handleEvents: (events: OrchestrationEvent[]) => void
+}
+
+export type OrchestrationReactorFailure = {
+  readonly code?: string
+  readonly message: string
+  readonly reactor: string
+}
+
+export type OrchestrationDomainPublishResult = {
+  readonly failures: readonly OrchestrationReactorFailure[]
+  readonly reactorCount: number
+}
+
+export type OrchestrationResumeSkipReason =
+  | 'cursor-ahead'
+  | 'gap-too-large'
+  | 'history-evicted'
+  | 'no-cursor'
+
+export type OrchestrationResumePlan =
+  | { readonly events: OrchestrationEvent[]; readonly gap: number; readonly kind: 'replay' }
+  | {
+      readonly gap: number
+      readonly kind: 'snapshot'
+      readonly reason: OrchestrationResumeSkipReason
+    }
+
+/**
+ * Live tail the hub keeps so a reconnecting subscriber can be resumed by replay
+ * instead of re-downloading the workspace. Sized well above
+ * `ORCHESTRATION_RESUME_MAX_GAP` so the gap cap — not eviction — is what decides
+ * whether a resume is served.
+ */
+const RETAINED_EVENT_LIMIT = 4_000
+
+/**
+ * Shell deltas are coalesced over this window. It bounds the extra latency
+ * before a new thread appears in the sidebar (imperceptible) while collapsing a
+ * streaming turn's delta storm into one read per changed aggregate.
+ */
+const SHELL_COALESCE_WINDOW_MS = 25
+const SHELL_COALESCE_MAX_EVENTS = 512
 
 const DETAIL_EVENT_TYPES = new Set<OrchestrationEvent['type']>([
   'thread.message-sent',
@@ -33,18 +96,55 @@ const DETAIL_EVENT_TYPES = new Set<OrchestrationEvent['type']>([
 ])
 
 export class OrchestrationStreamHub {
+  private readonly retained: OrchestrationEvent[] = []
   private readonly subscribers = new Set<EventSubscriber>()
+  private headSequence = 0
 
   publish(events: OrchestrationEvent[]) {
     if (events.length === 0) return
 
+    this.retain(events)
     recordChatPipelineInfo('chat.pipeline.stream_hub.publish', {
+      headSequence: this.headSequence,
+      retainedCount: this.retained.length,
       subscriberCount: this.subscribers.size,
       ...orchestrationEventBatchSummary(events),
     })
     for (const subscriber of this.subscribers) {
       subscriber.publish(events)
     }
+  }
+
+  /**
+   * Teaches the hub about a sequence it did not publish — the sequence a
+   * snapshot was taken at. Without it a process that has published nothing yet
+   * treats every resume cursor as "ahead of the server" and answers a reconnect
+   * that needs nothing with a full snapshot.
+   */
+  observeSequence(sequence: number) {
+    if (sequence <= this.headSequence) return
+
+    this.headSequence = sequence
+  }
+
+  /**
+   * Decides how a subscriber holding `afterSequence` is brought up to date.
+   * Replay is only offered for a cursor the hub can serve completely: past the
+   * gap cap, or past what the retained tail covers, a snapshot is both cheaper
+   * and the only correct answer, because a truncated replay would silently drop
+   * events the client never learns it is missing.
+   */
+  resumePlan(afterSequence: number): OrchestrationResumePlan {
+    const gap = this.headSequence - afterSequence
+    if (afterSequence <= 0) return { gap, kind: 'snapshot', reason: 'no-cursor' }
+    if (gap < 0) return { gap, kind: 'snapshot', reason: 'cursor-ahead' }
+    if (gap > ORCHESTRATION_RESUME_MAX_GAP)
+      return { gap, kind: 'snapshot', reason: 'gap-too-large' }
+
+    const events = this.retainedAfter(afterSequence)
+    if (!events) return { gap, kind: 'snapshot', reason: 'history-evicted' }
+
+    return { events, gap, kind: 'replay' }
   }
 
   subscribe(signal?: AbortSignal): AsyncGenerator<OrchestrationEvent[]> {
@@ -84,14 +184,73 @@ export class OrchestrationStreamHub {
 
     return eventBatchGenerator(subscriber, queue, waiters, signal)
   }
+
+  private retain(events: OrchestrationEvent[]) {
+    for (const event of events) {
+      appendBounded(this.retained, event, RETAINED_EVENT_LIMIT)
+      this.observeSequence(event.sequence)
+    }
+  }
+
+  private retainedAfter(afterSequence: number): OrchestrationEvent[] | null {
+    if (afterSequence >= this.headSequence) return []
+
+    const oldest = this.retained[0]
+    // The tail can only answer for cursors at or after the event before its
+    // first retained event; anything older has holes we cannot see.
+    if (!oldest || afterSequence < oldest.sequence - 1) return null
+
+    return this.retained.filter((event) => event.sequence > afterSequence)
+  }
+}
+
+/**
+ * Fan-out for committed domain events to server-side reactors (provider command
+ * reactor, checkpoint reactor, thread deletion reactor, ...).
+ *
+ * Reactors run *after* the write transaction has committed, so a reactor may
+ * never unwind an event that is already durable: each one is isolated, and a
+ * throw is returned as data for the caller to attach to its wide event rather
+ * than propagated. Subscription is dynamic so new reactors attach without the
+ * engine growing another hard-wired slot.
+ */
+export class OrchestrationDomainEventBus {
+  private readonly reactors = new Set<OrchestrationDomainEventReactor>()
+
+  subscribe(reactor: OrchestrationDomainEventReactor) {
+    this.reactors.add(reactor)
+
+    return () => {
+      this.reactors.delete(reactor)
+    }
+  }
+
+  publish(events: OrchestrationEvent[]): OrchestrationDomainPublishResult {
+    const reactorCount = this.reactors.size
+    if (events.length === 0) return { failures: [], reactorCount }
+
+    const failures: OrchestrationReactorFailure[] = []
+    for (const reactor of this.reactors) {
+      const failure = runReactor(reactor, events)
+      if (!failure) continue
+
+      failures.push(failure)
+    }
+
+    return { failures, reactorCount }
+  }
 }
 
 export class OrchestrationStreams {
+  private readonly coalesceWindowMs: number
   private readonly hub: OrchestrationStreamHub
+  private readonly rowReader: OrchestrationShellRowReader
   private readonly snapshots: OrchestrationSnapshotQuery
 
-  constructor(snapshots: OrchestrationSnapshotQuery, hub = new OrchestrationStreamHub()) {
-    this.hub = hub
+  constructor(snapshots: OrchestrationSnapshotQuery, options: OrchestrationStreamsOptions = {}) {
+    this.coalesceWindowMs = options.coalesceWindowMs ?? SHELL_COALESCE_WINDOW_MS
+    this.hub = options.hub ?? new OrchestrationStreamHub()
+    this.rowReader = createShellRowReader(snapshots, options.database)
     this.snapshots = snapshots
   }
 
@@ -104,26 +263,24 @@ export class OrchestrationStreams {
 
   async *shell(
     options: OrchestrationStreamOptions = {},
-  ): AsyncGenerator<OrchestrationShellStreamItem> {
+  ): AsyncGenerator<OrchestrationShellStreamFrame> {
     const eventBatches = this.hub.subscribe(options.signal)
-    const snapshot = this.snapshots.shellSnapshot()
-    let sequence = Math.max(options.afterSequence ?? 0, snapshot.snapshotSequence)
-    recordChatPipelineInfo('chat.pipeline.shell_stream.snapshot', {
-      afterSequence: options.afterSequence ?? 0,
-      projectCount: snapshot.projects.length,
-      snapshotSequence: snapshot.snapshotSequence,
-      threadCount: snapshot.threads.length,
-    })
+    const start = this.startShell(options.afterSequence ?? 0)
+    let sequence = start.sequence
 
-    yield v.parse(orchestrationShellStreamItemSchema, {
-      kind: 'snapshot',
-      snapshot,
-    })
+    yield* start.items
+    yield { kind: 'synchronized', sequence }
 
-    for await (const events of eventBatches) {
+    const windows = coalesceEventBatches(
+      eventBatches,
+      this.coalesceWindowMs,
+      SHELL_COALESCE_MAX_EVENTS,
+    )
+    for await (const events of windows) {
       const result = this.shellItemsAfter(events, sequence)
       sequence = result.sequence
       recordChatPipelineInfo('chat.pipeline.shell_stream.batch', {
+        coalescedEventCount: result.coalescedFrom,
         emittedItemCount: result.items.length,
         sequence,
         ...orchestrationEventBatchSummary(events),
@@ -135,24 +292,13 @@ export class OrchestrationStreams {
   async *threadDetail(
     threadId: string,
     options: OrchestrationStreamOptions = {},
-  ): AsyncGenerator<OrchestrationThreadStreamItem> {
+  ): AsyncGenerator<OrchestrationThreadStreamFrame> {
     const eventBatches = this.hub.subscribe(options.signal)
-    const snapshot = this.snapshots.threadDetailSnapshot(threadId)
-    let sequence = Math.max(options.afterSequence ?? 0, snapshot.snapshotSequence)
-    recordChatPipelineInfo('chat.pipeline.thread_stream.snapshot', {
-      activityCount: snapshot.thread.activities.length,
-      afterSequence: options.afterSequence ?? 0,
-      latestTurnState: snapshot.thread.latestTurn?.state ?? null,
-      messageCount: snapshot.thread.messages.length,
-      sessionStatus: snapshot.thread.session?.status ?? null,
-      snapshotSequence: snapshot.snapshotSequence,
-      threadId,
-    })
+    const start = this.startThreadDetail(threadId, options.afterSequence ?? 0)
+    let sequence = start.sequence
 
-    yield v.parse(orchestrationThreadStreamItemSchema, {
-      kind: 'snapshot',
-      snapshot,
-    })
+    yield* start.items
+    yield { kind: 'synchronized', sequence }
 
     for await (const events of eventBatches) {
       const result = detailItemsAfter(events, threadId, sequence)
@@ -167,65 +313,181 @@ export class OrchestrationStreams {
     }
   }
 
-  private shellItemsAfter(events: OrchestrationEvent[], sequence: number) {
-    const items: OrchestrationShellStreamItem[] = []
-    let nextSequence = sequence
+  private startShell(afterSequence: number) {
+    const plan = this.hub.resumePlan(afterSequence)
+    if (plan.kind === 'replay') {
+      const result = this.shellItemsAfter(plan.events, afterSequence)
+      recordChatPipelineInfo('chat.pipeline.shell_stream.start', {
+        afterSequence,
+        emittedItemCount: result.items.length,
+        mode: 'replay',
+        replayEventCount: plan.events.length,
+        resumeGap: plan.gap,
+        sequence: result.sequence,
+      })
 
-    for (const event of events) {
-      if (event.sequence <= nextSequence) continue
-
-      nextSequence = event.sequence
-      const item = this.shellItemForEvent(event)
-      if (item) items.push(item)
+      return { items: result.items, sequence: result.sequence }
     }
 
-    return { items, sequence: nextSequence }
+    const snapshot = this.snapshots.shellSnapshot()
+    this.hub.observeSequence(snapshot.snapshotSequence)
+    recordChatPipelineInfo('chat.pipeline.shell_stream.start', {
+      afterSequence,
+      mode: 'snapshot',
+      projectCount: snapshot.projects.length,
+      resumeGap: plan.gap,
+      resumeSkipReason: plan.reason,
+      snapshotSequence: snapshot.snapshotSequence,
+      threadCount: snapshot.threads.length,
+    })
+
+    return {
+      items: [{ kind: 'snapshot', snapshot } satisfies OrchestrationShellStreamItem],
+      sequence: Math.max(afterSequence, snapshot.snapshotSequence),
+    }
+  }
+
+  private startThreadDetail(threadId: string, afterSequence: number) {
+    const plan = this.hub.resumePlan(afterSequence)
+    if (plan.kind === 'replay') {
+      const result = detailItemsAfter(plan.events, threadId, afterSequence)
+      recordChatPipelineInfo('chat.pipeline.thread_stream.start', {
+        afterSequence,
+        emittedItemCount: result.items.length,
+        mode: 'replay',
+        replayEventCount: plan.events.length,
+        resumeGap: plan.gap,
+        sequence: result.sequence,
+        threadId,
+      })
+
+      return { items: result.items, sequence: result.sequence }
+    }
+
+    const snapshot = this.snapshots.threadDetailSnapshot(threadId)
+    this.hub.observeSequence(snapshot.snapshotSequence)
+    recordChatPipelineInfo('chat.pipeline.thread_stream.start', {
+      activityCount: snapshot.thread.activities.length,
+      afterSequence,
+      latestTurnState: snapshot.thread.latestTurn?.state ?? null,
+      messageCount: snapshot.thread.messages.length,
+      mode: 'snapshot',
+      resumeGap: plan.gap,
+      resumeSkipReason: plan.reason,
+      sessionStatus: snapshot.thread.session?.status ?? null,
+      snapshotSequence: snapshot.snapshotSequence,
+      threadId,
+    })
+
+    return {
+      items: [{ kind: 'snapshot', snapshot } satisfies OrchestrationThreadStreamItem],
+      sequence: Math.max(afterSequence, snapshot.snapshotSequence),
+    }
+  }
+
+  /**
+   * One read per *changed aggregate*, not per event: within a window the last
+   * event for an aggregate is the only one that matters, because the read
+   * returns that aggregate's current shell either way. A `none` is emitted as a
+   * removal rather than dropped — that is what keeps coalescing correct when a
+   * burst collapses a deletion into a later event for the same aggregate.
+   */
+  private shellItemsAfter(events: OrchestrationEvent[], sequence: number) {
+    const fresh = events.filter((event) => event.sequence > sequence)
+    const survivors = latestEventPerAggregate(fresh)
+    if (survivors.length > 0) this.rowReader.beginWindow()
+
+    const items: OrchestrationShellStreamItem[] = []
+    for (const event of survivors) {
+      const item = this.shellItemForEvent(event)
+      if (!item) continue
+
+      items.push(item)
+    }
+
+    return { coalescedFrom: fresh.length, items, sequence: maxSequence(fresh, sequence) }
   }
 
   private shellItemForEvent(event: OrchestrationEvent): OrchestrationShellStreamItem | null {
-    if (event.type === 'project.deleted') {
-      return v.parse(orchestrationShellStreamItemSchema, {
-        kind: 'project-removed',
-        projectId: event.payload.projectId,
-        sequence: event.sequence,
-      })
-    }
-    if (event.type === 'thread.deleted') {
-      return v.parse(orchestrationShellStreamItemSchema, {
-        kind: 'thread-removed',
-        sequence: event.sequence,
-        threadId: event.payload.threadId,
-      })
-    }
-    if (event.aggregateKind === 'project') return this.projectUpsert(event)
-    if (event.aggregateKind === 'thread') return this.threadUpsert(event)
+    if (event.aggregateKind === 'project') return this.projectItem(event)
+    if (event.aggregateKind === 'thread') return this.threadItem(event)
 
     return null
   }
 
-  private projectUpsert(event: OrchestrationEvent): OrchestrationShellStreamItem | null {
-    const snapshot = this.snapshots.shellSnapshot()
-    const project = snapshot.projects.find((candidate) => candidate.id === event.aggregateId)
-    if (!project) return null
+  private projectItem(event: OrchestrationEvent): OrchestrationShellStreamItem {
+    const project = this.rowReader.projectShell(event.aggregateId)
+    if (project) return { kind: 'project-upserted', project, sequence: event.sequence }
 
     return v.parse(orchestrationShellStreamItemSchema, {
-      kind: 'project-upserted',
-      project,
+      kind: 'project-removed',
+      projectId: event.aggregateId,
       sequence: event.sequence,
     })
   }
 
-  private threadUpsert(event: OrchestrationEvent): OrchestrationShellStreamItem | null {
-    const snapshot = this.snapshots.shellSnapshot()
-    const thread = snapshot.threads.find((candidate) => candidate.id === event.aggregateId)
-    if (!thread) return null
+  private threadItem(event: OrchestrationEvent): OrchestrationShellStreamItem {
+    const thread = this.rowReader.threadShell(event.aggregateId)
+    if (thread) return { kind: 'thread-upserted', sequence: event.sequence, thread }
 
     return v.parse(orchestrationShellStreamItemSchema, {
-      kind: 'thread-upserted',
+      kind: 'thread-removed',
       sequence: event.sequence,
-      thread,
+      threadId: event.aggregateId,
     })
   }
+}
+
+function runReactor(
+  reactor: OrchestrationDomainEventReactor,
+  events: OrchestrationEvent[],
+): OrchestrationReactorFailure | null {
+  try {
+    reactor.handleEvents(events)
+
+    return null
+  } catch (error) {
+    return {
+      ...reactorErrorCode(error),
+      message: reactorErrorMessage(error),
+      reactor: reactor.name,
+    }
+  }
+}
+
+function reactorErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  return String(error)
+}
+
+function reactorErrorCode(error: unknown) {
+  const code = (error as { code?: unknown } | null)?.code
+  if (typeof code !== 'string') return {}
+
+  return { code }
+}
+
+function latestEventPerAggregate(events: readonly OrchestrationEvent[]) {
+  const latest = new Map<string, OrchestrationEvent>()
+
+  for (const event of events) {
+    latest.set(`${event.aggregateKind}:${event.aggregateId}`, event)
+  }
+
+  return [...latest.values()].toSorted((left, right) => left.sequence - right.sequence)
+}
+
+function maxSequence(events: readonly OrchestrationEvent[], sequence: number) {
+  let highest = sequence
+
+  for (const event of events) {
+    if (event.sequence <= highest) continue
+
+    highest = event.sequence
+  }
+
+  return highest
 }
 
 function detailItemsAfter(events: OrchestrationEvent[], threadId: string, sequence: number) {
@@ -238,15 +500,76 @@ function detailItemsAfter(events: OrchestrationEvent[], threadId: string, sequen
     nextSequence = event.sequence
     if (!isDetailEventForThread(event, threadId)) continue
 
-    items.push(
-      v.parse(orchestrationThreadStreamItemSchema, {
-        event,
-        kind: 'event',
-      }),
-    )
+    items.push({ event, kind: 'event' })
   }
 
   return { items, sequence: nextSequence }
+}
+
+const COALESCE_WINDOW_ELAPSED = Symbol('coalesce-window-elapsed')
+
+/**
+ * Groups published batches into windows: at most `windowMs` after the first
+ * event of a window, or as soon as `maxEvents` have accumulated. The pending
+ * `next()` promise is carried across iterations rather than re-issued, because
+ * calling `next()` again on a generator that is already suspended in one would
+ * interleave two reads of the same subscription.
+ */
+async function* coalesceEventBatches(
+  batches: AsyncGenerator<OrchestrationEvent[]>,
+  windowMs: number,
+  maxEvents: number,
+): AsyncGenerator<OrchestrationEvent[]> {
+  const pending: OrchestrationEvent[] = []
+  let inflight: Promise<IteratorResult<OrchestrationEvent[]>> | null = null
+  let closesAt = 0
+
+  try {
+    while (true) {
+      inflight ??= batches.next()
+      const result = await raceCoalesceWindow(inflight, pending.length === 0 ? null : closesAt)
+      if (result === COALESCE_WINDOW_ELAPSED) {
+        yield pending.splice(0)
+        continue
+      }
+
+      inflight = null
+      if (result.done) break
+
+      if (pending.length === 0) closesAt = Date.now() + windowMs
+      pending.push(...result.value)
+      if (pending.length < maxEvents) continue
+
+      yield pending.splice(0)
+    }
+
+    if (pending.length > 0) yield pending.splice(0)
+  } finally {
+    void batches.return(undefined)
+  }
+}
+
+async function raceCoalesceWindow(
+  inflight: Promise<IteratorResult<OrchestrationEvent[]>>,
+  closesAt: number | null,
+) {
+  if (closesAt === null) return await inflight
+
+  const deadline = coalesceDeadline(Math.max(0, closesAt - Date.now()))
+  try {
+    return await Promise.race([inflight, deadline.promise])
+  } finally {
+    deadline.cancel()
+  }
+}
+
+function coalesceDeadline(delayMs: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const promise = new Promise<typeof COALESCE_WINDOW_ELAPSED>((resolve) => {
+    timer = setTimeout(() => resolve(COALESCE_WINDOW_ELAPSED), delayMs)
+  })
+
+  return { cancel: () => clearTimeout(timer), promise }
 }
 
 async function* eventBatchGenerator(

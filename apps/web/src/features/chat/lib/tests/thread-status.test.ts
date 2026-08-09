@@ -1,3 +1,6 @@
+import { proposedPlanIdSchema } from '@workspace/contracts'
+import * as v from 'valibot'
+
 import { threadStatus } from '@/features/chat/lib/thread-status'
 import { sidebarThreadSummary } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
@@ -20,6 +23,27 @@ test('a proposed plan waiting on a decision counts as waiting', () => {
   )
 
   expect(status).toBe('waiting')
+})
+
+test('a plan already being implemented reads as working, not waiting', () => {
+  // The implementing turn is the answer to the plan; the plan's own
+  // `implementedAt` stamp arrives a sync later.
+  const source = sidebarThreadSummary({ hasActionableProposedPlan: true })
+  const status = threadStatus({
+    ...source,
+    latestTurn: source.latestTurn
+      ? {
+          ...source.latestTurn,
+          sourceProposedPlan: {
+            planId: v.parse(proposedPlanIdSchema, 'plan-1'),
+            threadId: source.id,
+          },
+          state: 'running',
+        }
+      : null,
+  })
+
+  expect(status).toBe('working')
 })
 
 test('a failed turn reads as failed', () => {

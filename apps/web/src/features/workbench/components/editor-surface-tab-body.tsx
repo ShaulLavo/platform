@@ -186,6 +186,7 @@ export function EditorSurfaceTabBody({
         editorKeymapLayers={editorKeymapLayers}
         fileState={fileState}
         languageServerReferences={active ? languageServerReferences : null}
+        path={path}
         rootPath={rootPath}
         tabId={tabId}
       />

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  chatInputLineBoundaryOffset,
   chatInputMentionCommandItems,
+  chatInputRangeReplacement,
+  chatInputStandaloneSlashCommand,
+  chatInputSurroundClose,
   detectChatInputTrigger,
-  replaceChatInputTextRange,
   searchChatInputSlashCommands,
 } from '../chat-input-logic'
 
@@ -14,12 +17,14 @@ describe('chat input logic', () => {
       query: 'pl',
       rangeEnd: 3,
       rangeStart: 0,
+      text: '/pl',
     })
     expect(detectChatInputTrigger('hello\n/de', 9)).toEqual({
       kind: 'slash-command',
       query: 'de',
       rangeEnd: 9,
       rangeStart: 6,
+      text: '/de',
     })
   })
 
@@ -29,13 +34,14 @@ describe('chat input logic', () => {
       query: 'src/app',
       rangeEnd: 13,
       rangeStart: 5,
+      text: '@src/app',
     })
     expect(detectChatInputTrigger('email user@example.com', 18)).toBeNull()
   })
 
-  it('replaces a trigger range with stable mention text', () => {
+  it('replaces a trigger range and swallows the space the prompt already had', () => {
     expect(
-      replaceChatInputTextRange({
+      chatInputRangeReplacement({
         rangeEnd: 8,
         rangeStart: 5,
         replacement: '@src/app.ts ',
@@ -43,8 +49,70 @@ describe('chat input logic', () => {
       }),
     ).toEqual({
       cursor: 17,
-      text: 'read @src/app.ts  now',
+      rangeEnd: 9,
+      rangeStart: 5,
+      text: 'read @src/app.ts now',
     })
+  })
+
+  it('keeps a replacement that carries no trailing blank away from the next character', () => {
+    expect(
+      chatInputRangeReplacement({
+        rangeEnd: 8,
+        rangeStart: 5,
+        replacement: '@src/app.ts',
+        text: 'read @ap now',
+      })?.text,
+    ).toBe('read @src/app.ts now')
+  })
+
+  it('refuses a replacement whose range no longer covers the trigger it was made for', () => {
+    expect(
+      chatInputRangeReplacement({
+        expectedText: '@ap',
+        rangeEnd: 8,
+        rangeStart: 5,
+        replacement: '@src/app.ts ',
+        text: 'read @src/app.ts now',
+      }),
+    ).toBeNull()
+  })
+
+  it('resolves line boundaries against the logical line the caret sits on', () => {
+    const text = 'first line\nsecond line'
+
+    expect(chatInputLineBoundaryOffset(text, 22, 'start')).toBe(11)
+    expect(chatInputLineBoundaryOffset(text, 11, 'end')).toBe(22)
+    expect(chatInputLineBoundaryOffset(text, 4, 'start')).toBe(0)
+    expect(chatInputLineBoundaryOffset(text, 4, 'end')).toBe(10)
+    expect(chatInputLineBoundaryOffset('\nsecond', 0, 'start')).toBe(0)
+  })
+
+  it('pairs surround symbols and ignores everything else', () => {
+    expect(chatInputSurroundClose('(')).toBe(')')
+    expect(chatInputSurroundClose('`')).toBe('`')
+    expect(chatInputSurroundClose('a')).toBeNull()
+  })
+
+  it('keeps a finished slash command triggered through its trailing blanks', () => {
+    expect(detectChatInputTrigger('/plan ', 6)).toEqual({
+      kind: 'slash-command',
+      query: 'plan',
+      rangeEnd: 6,
+      rangeStart: 0,
+      text: '/plan ',
+    })
+    // Prose after the command is a message, not a command.
+    expect(detectChatInputTrigger('/plan ship it', 13)).toBeNull()
+  })
+
+  it('resolves a prompt that is only a slash command, spaced or not', () => {
+    expect(chatInputStandaloneSlashCommand('/plan')).toBe('plan')
+    expect(chatInputStandaloneSlashCommand('/plan ')).toBe('plan')
+    expect(chatInputStandaloneSlashCommand('/PLAN\n')).toBe('plan')
+    expect(chatInputStandaloneSlashCommand('/default ')).toBe('default')
+    expect(chatInputStandaloneSlashCommand('/plan ship it')).toBeNull()
+    expect(chatInputStandaloneSlashCommand('plan')).toBeNull()
   })
 
   it('filters slash commands by query', () => {

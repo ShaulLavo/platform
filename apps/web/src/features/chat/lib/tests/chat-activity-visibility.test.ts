@@ -36,13 +36,19 @@ describe('chat activity visibility', () => {
 
 function activity(id: string, tone: ChatWorkLogTone): ChatWorkLogEntry {
   return {
+    changedFiles: [],
+    command: null,
     createdAt: '2026-05-28T00:00:00.000Z',
     detail: null,
     icon: tone === 'thinking' ? 'thinking' : 'tool',
     id,
     itemType: tone === 'tool' ? 'command_execution' : null,
+    outcome: null,
+    output: null,
+    plan: null,
     status: null,
     title: tone,
     tone,
+    turnId: null,
   }
 }

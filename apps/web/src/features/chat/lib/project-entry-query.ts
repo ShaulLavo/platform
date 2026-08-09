@@ -5,6 +5,12 @@ import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
 
 const PROJECT_ENTRY_QUERY_LIMIT = 40
 const PROJECT_ENTRY_QUERY_STALE_TIME_MS = 15_000
+
+/**
+ * How long typing has to pause before a mention search runs. Long enough to
+ * swallow a burst of keystrokes, short enough that the list still feels live.
+ */
+export const PROJECT_ENTRY_SEARCH_DEBOUNCE_MS = 140
 const EMPTY_PROJECT_ENTRIES: ProjectEntrySearchResult = {
   entries: [],
   truncated: false,

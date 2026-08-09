@@ -1,11 +1,14 @@
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm'
+import type { OrchestrationSessionStatus } from '@workspace/contracts'
 import type { OrchestrationEvent } from './schemas'
 import { getDefaultPlatformDatabase } from '../db/client'
 import {
   projectionProjects,
   projectionState,
   projectionThreadActivities,
+  projectionThreadCheckpoints,
   projectionThreadMessages,
+  projectionThreadProposedPlans,
   projectionThreadSessions,
   projectionThreads,
   projectionTurns,
@@ -17,6 +20,7 @@ import {
   orchestrationEventSummary,
   recordChatPipelineInfo,
 } from './orchestration-logging'
+import { mergedMessageText, settledTurnStateForSessionStatus } from './read-model'
 
 export const ORCHESTRATION_PROJECTOR_NAME = 'orchestration'
 
@@ -53,8 +57,7 @@ export class OrchestrationProjectionPipeline {
       recordChatPipelineInfo('chat.pipeline.projection.apply_event', {
         ...orchestrationEventSummary(event),
       })
-      this.applyEvent(event)
-      this.markApplied(event.sequence)
+      this.applyEventAtomically(event)
     }
     recordChatPipelineInfo('chat.pipeline.projection.apply_events.complete', {
       ...orchestrationEventBatchSummary(events),
@@ -69,6 +72,19 @@ export class OrchestrationProjectionPipeline {
         .where(eq(projectionState.projector, ORCHESTRATION_PROJECTOR_NAME))
         .get()?.lastAppliedSequence ?? 0
     )
+  }
+
+  /**
+   * The cursor advance rides in the same transaction as the projection write.
+   * Split, a crash in between replays an already-applied event on the next
+   * start, and a streaming assistant frame appends its text a second time.
+   * Nested under the engine's command transaction this is a savepoint.
+   */
+  private applyEventAtomically(event: OrchestrationEvent) {
+    this.database.transaction(() => {
+      this.applyEvent(event)
+      this.markApplied(event.sequence)
+    })
   }
 
   private applyEvent(event: OrchestrationEvent) {
@@ -110,6 +126,11 @@ export class OrchestrationProjectionPipeline {
         return
       case 'thread.session-set':
         this.upsertSession(event)
+        this.settleRunningTurns(
+          event.payload.threadId,
+          event.payload.session.status,
+          event.payload.session.updatedAt,
+        )
         return
       case 'thread.activity-appended':
         this.insertActivity(event)
@@ -154,19 +175,14 @@ export class OrchestrationProjectionPipeline {
         )
         return
       case 'thread.turn-diff-completed':
-        this.completeTurn(
-          event.payload.threadId,
-          event.payload.turnId,
-          event.payload.status === 'error' ? 'error' : 'completed',
-          event.payload.completedAt,
-          event.payload.assistantMessageId,
-        )
+        this.upsertCheckpoint(event)
         return
       case 'thread.session-stop-requested':
         this.updateSessionStatus(event.payload.threadId, 'stopped', event.payload.createdAt)
+        this.settleRunningTurns(event.payload.threadId, 'stopped', event.payload.createdAt)
         return
       case 'thread.proposed-plan-upserted':
-        this.updateThread(event.payload.threadId, { hasActionableProposedPlan: true })
+        this.upsertProposedPlan(event)
         return
       case 'thread.checkpoint-revert-requested':
         return
@@ -251,26 +267,35 @@ export class OrchestrationProjectionPipeline {
       .from(projectionThreadMessages)
       .where(eq(projectionThreadMessages.messageId, event.payload.messageId))
       .get()
-    const text = existing ? `${existing.text}${event.payload.text}` : event.payload.text
+    const text = mergedMessageText(existing?.text ?? null, event.payload)
+    // turnId and attachments are backfilled, never erased: a later frame that
+    // carries neither (a bare completion) must keep what the first one bound.
+    const turnId = event.payload.turnId ?? existing?.turnId ?? null
+    const attachmentsJson =
+      event.payload.attachments.length > 0
+        ? JSON.stringify(event.payload.attachments)
+        : (existing?.attachmentsJson ?? '[]')
 
     this.database
       .insert(projectionThreadMessages)
       .values({
-        attachmentsJson: JSON.stringify(event.payload.attachments),
+        attachmentsJson,
         createdAt: event.payload.createdAt,
         messageId: event.payload.messageId,
         role: event.payload.role,
         streaming: event.payload.streaming,
         text,
         threadId: event.payload.threadId,
-        turnId: event.payload.turnId,
+        turnId,
         updatedAt: event.payload.updatedAt,
       })
       .onConflictDoUpdate({
         target: projectionThreadMessages.messageId,
         set: {
+          attachmentsJson,
           streaming: event.payload.streaming,
           text,
+          turnId,
           updatedAt: event.payload.updatedAt,
         },
       })
@@ -352,6 +377,165 @@ export class OrchestrationProjectionPipeline {
       runtimeMode: event.payload.runtimeMode,
       updatedAt: event.payload.createdAt,
     })
+    this.markProposedPlanImplemented(event)
+  }
+
+  /**
+   * Starting a turn from a plan is the moment the plan stops being actionable.
+   * The plan can live on another thread, so the flag is refreshed there, not on
+   * the thread that ran the turn.
+   */
+  private markProposedPlanImplemented(
+    event: Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }>,
+  ) {
+    const source = event.payload.sourceProposedPlan
+    if (!source) return
+
+    this.database
+      .update(projectionThreadProposedPlans)
+      .set({
+        implementationThreadId: event.payload.threadId,
+        implementedAt: event.payload.createdAt,
+        updatedAt: event.payload.createdAt,
+      })
+      .where(
+        and(
+          eq(projectionThreadProposedPlans.planId, source.planId),
+          isNull(projectionThreadProposedPlans.implementedAt),
+        ),
+      )
+      .run()
+    this.refreshActionableProposedPlan(source.threadId)
+  }
+
+  private upsertProposedPlan(
+    event: Extract<OrchestrationEvent, { type: 'thread.proposed-plan-upserted' }>,
+  ) {
+    const plan = event.payload.proposedPlan
+    const row = {
+      createdAt: plan.createdAt,
+      implementationThreadId: plan.implementationThreadId ?? null,
+      implementedAt: plan.implementedAt ?? null,
+      planId: plan.id,
+      planMarkdown: plan.planMarkdown,
+      threadId: event.payload.threadId,
+      turnId: plan.turnId,
+      updatedAt: plan.updatedAt,
+    }
+
+    this.database
+      .insert(projectionThreadProposedPlans)
+      .values(row)
+      .onConflictDoUpdate({
+        target: projectionThreadProposedPlans.planId,
+        set: {
+          implementationThreadId: row.implementationThreadId,
+          implementedAt: row.implementedAt,
+          planMarkdown: row.planMarkdown,
+          turnId: row.turnId,
+          updatedAt: row.updatedAt,
+        },
+      })
+      .run()
+    this.updateThread(event.payload.threadId, { updatedAt: plan.updatedAt })
+    this.refreshActionableProposedPlan(event.payload.threadId)
+  }
+
+  /**
+   * Derived, never latched: the newest plan decides. The in-memory projector
+   * carries no plan history, so both projections read "the last plan we heard
+   * about" and agree.
+   */
+  private refreshActionableProposedPlan(threadId: string) {
+    const latest = this.latestProposedPlan(threadId)
+
+    this.updateThread(threadId, {
+      hasActionableProposedPlan: latest !== undefined && latest.implementedAt === null,
+    })
+  }
+
+  private latestProposedPlan(threadId: string) {
+    return this.database
+      .select()
+      .from(projectionThreadProposedPlans)
+      .where(eq(projectionThreadProposedPlans.threadId, threadId))
+      .orderBy(
+        desc(projectionThreadProposedPlans.updatedAt),
+        desc(projectionThreadProposedPlans.planId),
+      )
+      .limit(1)
+      .get()
+  }
+
+  private upsertCheckpoint(
+    event: Extract<OrchestrationEvent, { type: 'thread.turn-diff-completed' }>,
+  ) {
+    const { assistantMessageId, completedAt, status, threadId, turnId } = event.payload
+    const existing = this.selectCheckpoint(threadId, turnId)
+    // Mid-turn diff updates carry a placeholder ref with status "missing". Once
+    // a real capture has landed, a later placeholder must change nothing at all
+    // — not the ref, and not the turn's state.
+    if (existing && existing.status !== 'missing' && status === 'missing') return
+
+    this.database
+      .insert(projectionThreadCheckpoints)
+      .values({
+        assistantMessageId,
+        checkpointRef: event.payload.checkpointRef,
+        checkpointTurnCount: event.payload.checkpointTurnCount,
+        completedAt,
+        filesJson: JSON.stringify(event.payload.files),
+        status,
+        threadId,
+        turnId,
+      })
+      .onConflictDoUpdate({
+        target: [projectionThreadCheckpoints.threadId, projectionThreadCheckpoints.turnId],
+        set: {
+          assistantMessageId,
+          checkpointRef: event.payload.checkpointRef,
+          checkpointTurnCount: event.payload.checkpointTurnCount,
+          completedAt,
+          filesJson: JSON.stringify(event.payload.files),
+          status,
+        },
+      })
+      .run()
+    // Recording a checkpoint is not a turn ending: a placeholder arrives while
+    // the session is still streaming the very turn it describes.
+    if (this.isSessionRunningTurn(threadId, turnId)) return
+
+    this.completeTurn(
+      threadId,
+      turnId,
+      status === 'error' ? 'error' : 'completed',
+      completedAt,
+      assistantMessageId,
+    )
+  }
+
+  private isSessionRunningTurn(threadId: string, turnId: string) {
+    const session = this.database
+      .select()
+      .from(projectionThreadSessions)
+      .where(eq(projectionThreadSessions.threadId, threadId))
+      .get()
+    if (session?.status !== 'running') return false
+
+    return session.activeTurnId === turnId
+  }
+
+  private selectCheckpoint(threadId: string, turnId: string) {
+    return this.database
+      .select()
+      .from(projectionThreadCheckpoints)
+      .where(
+        and(
+          eq(projectionThreadCheckpoints.threadId, threadId),
+          eq(projectionThreadCheckpoints.turnId, turnId),
+        ),
+      )
+      .get()
   }
 
   private upsertSession(event: Extract<OrchestrationEvent, { type: 'thread.session-set' }>) {
@@ -443,6 +627,53 @@ export class OrchestrationProjectionPipeline {
     })
   }
 
+  /**
+   * Leaving the "running" session status is the turn-end signal. Without it a
+   * turn that ended with no assistant message — or whose session errored
+   * mid-turn — stays `running` in SQL forever and the thread spins.
+   */
+  private settleRunningTurns(
+    threadId: string,
+    status: OrchestrationSessionStatus,
+    settledAt: string,
+  ) {
+    const state = settledTurnStateForSessionStatus(status)
+    if (!state) return
+
+    const running = this.database
+      .select({ turnId: projectionTurns.turnId })
+      .from(projectionTurns)
+      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.state, 'running')))
+      .all()
+    // Touching nothing keeps the thread's updatedAt — and the shell snapshot
+    // timestamp — stable when a session status carries no turn news.
+    if (running.length === 0) return
+
+    this.database
+      .update(projectionTurns)
+      .set({ completedAt: settledAt, state })
+      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.state, 'running')))
+      .run()
+    this.refreshLatestTurn(threadId, settledAt)
+  }
+
+  private refreshLatestTurn(threadId: string, updatedAt: string) {
+    const row = this.database
+      .select()
+      .from(projectionThreads)
+      .where(eq(projectionThreads.threadId, threadId))
+      .get()
+    if (!row?.latestTurnId) return
+
+    const turn = this.selectTurn(threadId, row.latestTurnId)
+    if (!turn) return
+
+    this.updateThread(threadId, {
+      latestTurnJson: JSON.stringify(latestTurnJson(turn)),
+      updatedAt,
+    })
+  }
+
   private selectTurn(threadId: string, turnId: string) {
     return this.database
       .select()
@@ -513,10 +744,9 @@ export class OrchestrationProjectionPipeline {
 
   private pruneThreadAfterRevert(event: Extract<OrchestrationEvent, { type: 'thread.reverted' }>) {
     const threadId = event.payload.threadId
-    const summaries = checkpointSummariesAfterReverts(
-      this.eventStore.readAfter({ afterSequence: 0, threadId }),
-    ).filter((summary) => summary.checkpointTurnCount <= event.payload.turnCount)
-    const retainedTurnIds = new Set(summaries.map((summary) => summary.turnId))
+    const retainedTurnIds = new Set(
+      this.dropCheckpointsAfterRevert(threadId, event.payload.turnCount).map((row) => row.turnId),
+    )
     const messages = this.database
       .select()
       .from(projectionThreadMessages)
@@ -545,12 +775,56 @@ export class OrchestrationProjectionPipeline {
     }
 
     this.updateThread(threadId, {
-      hasActionableProposedPlan: false,
       latestTurnId: latestTurn?.turnId ?? null,
       latestTurnJson: latestTurn ? JSON.stringify(latestTurnJson(latestTurn)) : null,
       latestUserMessageAt: latestUserMessageAt(messages),
       updatedAt: event.payload.revertedAt,
     })
+    this.dropProposedPlansAfterRevert(threadId, retainedTurnIds)
+    this.refreshActionableProposedPlan(threadId)
+  }
+
+  /** Drops the checkpoints the revert undid and returns the ones that survive. */
+  private dropCheckpointsAfterRevert(threadId: string, turnCount: number) {
+    this.database
+      .delete(projectionThreadCheckpoints)
+      .where(
+        and(
+          eq(projectionThreadCheckpoints.threadId, threadId),
+          gt(projectionThreadCheckpoints.checkpointTurnCount, turnCount),
+        ),
+      )
+      .run()
+
+    return this.threadCheckpointRows(threadId)
+  }
+
+  /** A plan belongs to the turn that proposed it; an unturned plan outlives every revert. */
+  private dropProposedPlansAfterRevert(threadId: string, retainedTurnIds: Set<string>) {
+    const droppedIds = this.database
+      .select({
+        planId: projectionThreadProposedPlans.planId,
+        turnId: projectionThreadProposedPlans.turnId,
+      })
+      .from(projectionThreadProposedPlans)
+      .where(eq(projectionThreadProposedPlans.threadId, threadId))
+      .all()
+      .filter((plan) => !shouldRetainAfterRevert(plan.turnId, retainedTurnIds))
+      .map((plan) => plan.planId)
+    if (droppedIds.length === 0) return
+
+    this.database
+      .delete(projectionThreadProposedPlans)
+      .where(inArray(projectionThreadProposedPlans.planId, droppedIds))
+      .run()
+  }
+
+  private threadCheckpointRows(threadId: string) {
+    return this.database
+      .select()
+      .from(projectionThreadCheckpoints)
+      .where(eq(projectionThreadCheckpoints.threadId, threadId))
+      .all()
   }
 
   private replaceThreadMessages(
@@ -675,36 +949,6 @@ function assistantTurnCompletedAt(
   if (event.payload.streaming) return current ?? null
 
   return current ?? event.payload.updatedAt
-}
-
-type CheckpointSummary = {
-  checkpointTurnCount: number
-  turnId: string
-}
-
-function checkpointSummariesAfterReverts(events: readonly OrchestrationEvent[]) {
-  const summaries = new Map<string, CheckpointSummary>()
-
-  for (const event of events) {
-    if (event.type === 'thread.turn-diff-completed') {
-      summaries.set(event.payload.turnId, {
-        checkpointTurnCount: event.payload.checkpointTurnCount,
-        turnId: event.payload.turnId,
-      })
-      continue
-    }
-    if (event.type !== 'thread.reverted') continue
-
-    for (const summary of summaries.values()) {
-      if (summary.checkpointTurnCount <= event.payload.turnCount) continue
-
-      summaries.delete(summary.turnId)
-    }
-  }
-
-  return Array.from(summaries.values()).toSorted(
-    (left, right) => left.checkpointTurnCount - right.checkpointTurnCount,
-  )
 }
 
 function shouldRetainAfterRevert(turnId: string | null, retainedTurnIds: Set<string>) {

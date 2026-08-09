@@ -1,81 +1,52 @@
-import type { ProjectId, ThreadId } from '@workspace/contracts'
-import { FolderPlusIcon, MagnifyingGlassIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
-import { useState } from 'react'
-
 import {
-  selectChatProjects,
-  selectChatSidebarThreads,
-} from '@/features/chat/state/chat-projection-selectors'
+  ArchiveIcon,
+  FolderPlusIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  XIcon,
+} from '@phosphor-icons/react'
+
+import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionRow } from '@/features/chat-mode/components/session-row'
 import { SessionScopeMenu } from '@/features/chat-mode/components/session-scope-menu'
-import {
-  SessionRailContext,
-  type SessionRailActions,
-} from '@/features/chat-mode/providers/rail-context'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
+import { startScopedSessionDraft } from '@/features/chat-mode/state/session-commands'
+import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
+import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import {
   sessionRailModel,
-  type SessionRailItem,
-  type SessionRailScope,
+  type SessionRailView,
 } from '@/features/chat-mode/utils/session-rail-model'
+import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
 import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
+import { cn } from '@workspace/ui/lib/utils'
 
 export function SessionRail() {
-  const { activeSession, addProject, openProject, project, ready, selectSession, startDraft } =
-    useChatModeSession()
+  const { activeSession, addProject, project, ready } = useChatModeSession()
   const projects = useChatProjectionStore(selectChatProjects)
-  const threads = useChatProjectionStore(selectChatSidebarThreads)
-  const [scope, setScope] = useState<SessionRailScope>(null)
-  const [query, setQuery] = useState('')
-  const [renamingSessionId, setRenamingSessionId] = useState<ThreadId | null>(null)
+  const threadIds = useChatProjectionStore((state) => state.threadIds)
+  const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
+  const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
+  const query = useSessionRailStore((state) => state.query)
+  const scope = useSessionRailStore((state) => state.scope)
+  const view = useSessionRailStore((state) => state.view)
+  const setQuery = useSessionRailStore((state) => state.setQuery)
+  const setScope = useSessionRailStore((state) => state.setScope)
+  const setView = useSessionRailStore((state) => state.setView)
   const model = sessionRailModel({
     activeProjectId: project?.id ?? null,
     projects,
     query,
     scope,
-    threads,
+    seenByThreadId,
+    threads: sessionThreads(threadIds, summaryById),
+    view,
   })
 
-  function activateProject(projectId: string) {
-    const owner = model.projects.find((candidate) => candidate.id === projectId)
-    if (!owner) return
-    if (owner.active) return
-
-    openProject(owner.workspaceRoot)
-  }
-
-  function handleSelect(session: SessionRailItem) {
-    activateProject(session.projectId)
-    selectSession(session.projectId, session.id)
-  }
-
-  function startNewSession(projectId: ProjectId) {
-    activateProject(projectId)
-    startDraft(projectId)
-  }
-
-  function handleNewSession() {
-    // Scoped to one project, "new session" means that one — otherwise the open one.
-    const target = scope ? model.projects.find((candidate) => candidate.id === scope) : null
-    if (target) {
-      startNewSession(target.id)
-      return
-    }
-    if (!project) return
-
-    startDraft(project.id)
-  }
-
-  const rail: SessionRailActions = {
-    endRename: () => setRenamingSessionId(null),
-    openSession: handleSelect,
-    renamingSessionId,
-    scope,
-    setScope,
-    startNewSession,
-    startRename: setRenamingSessionId,
+  function toggleView() {
+    setView(view === 'archived' ? 'active' : 'archived')
   }
 
   return (
@@ -87,7 +58,7 @@ export function SessionRail() {
           size='sm'
           type='button'
           variant='ghost'
-          onClick={handleNewSession}
+          onClick={startScopedSessionDraft}
         >
           <PlusIcon className='size-4 shrink-0' weight='bold' />
           <span className='truncate'>New session</span>
@@ -111,7 +82,22 @@ export function SessionRail() {
           scopeTitle={model.scopeTitle}
           onSelectScope={setScope}
         />
-        <span className='text-muted-foreground/60 ml-auto shrink-0 text-[11px] tabular-nums'>
+        <Button
+          aria-label='Archived sessions'
+          aria-pressed={view === 'archived'}
+          className={cn(
+            'text-muted-foreground hover:text-foreground ml-auto size-7 shrink-0 rounded-md',
+            view === 'archived' && 'bg-accent text-accent-foreground',
+          )}
+          size='icon-sm'
+          title={`Archived sessions (${model.archivedCount})`}
+          type='button'
+          variant='ghost'
+          onClick={toggleView}
+        >
+          <ArchiveIcon className='size-3.5' />
+        </Button>
+        <span className='text-muted-foreground/60 shrink-0 text-[11px] tabular-nums'>
           {model.scopedCount}
         </span>
       </div>
@@ -140,23 +126,21 @@ export function SessionRail() {
         ) : null}
       </div>
       <div className='min-h-0 flex-1 overflow-y-auto'>
-        <SessionRailContext value={rail}>
-          <div className='flex flex-col gap-0.5 px-1 pb-3'>
-            {model.sessions.map((session) => (
-              <SessionRow
-                active={session.id === activeSession.threadId}
-                key={session.id}
-                session={session}
-                showProject={scope === null}
-              />
-            ))}
-            {model.sessions.length === 0 ? (
-              <p className='text-muted-foreground/60 px-2 py-3 text-[11px]'>
-                {emptyLabel({ query, ready, scopedCount: model.scopedCount })}
-              </p>
-            ) : null}
-          </div>
-        </SessionRailContext>
+        <div className='flex flex-col gap-0.5 px-1 pb-3'>
+          {model.sessions.map((session) => (
+            <SessionRow
+              active={session.id === activeSession.threadId}
+              key={session.id}
+              session={session}
+              showProject={scope === null}
+            />
+          ))}
+          {model.sessions.length === 0 ? (
+            <p className='text-muted-foreground/60 px-2 py-3 text-[11px]'>
+              {emptyLabel({ query, ready, scopedCount: model.scopedCount, view })}
+            </p>
+          ) : null}
+        </div>
       </div>
     </aside>
   )
@@ -166,12 +150,15 @@ function emptyLabel({
   query,
   ready,
   scopedCount,
+  view,
 }: {
   readonly query: string
   readonly ready: boolean
   readonly scopedCount: number
+  readonly view: SessionRailView
 }) {
   if (query.trim()) return `No sessions match “${query.trim()}”.`
+  if (view === 'archived') return 'No archived sessions.'
   if (scopedCount === 0 && !ready) return 'Connecting…'
 
   return 'No sessions yet.'

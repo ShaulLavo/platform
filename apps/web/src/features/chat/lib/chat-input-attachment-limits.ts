@@ -8,6 +8,8 @@
  * rather than surfacing as a mid-turn server error with no way back.
  */
 
+import { MAX_CHAT_ATTACHMENTS } from '@workspace/contracts'
+
 const BYTES_PER_MEGABYTE = 1024 * 1024
 
 /** Exactly the media types the Claude SDK accepts. Do not widen. */
@@ -19,12 +21,6 @@ export const CHAT_IMAGE_MIME_ALLOWLIST = [
 ] as const
 
 export type ChatImageMimeType = (typeof CHAT_IMAGE_MIME_ALLOWLIST)[number]
-
-/** Attachments per message. Beyond this the prompt is mostly pixels. */
-export const MAX_CHAT_ATTACHMENTS = 8
-
-/** Ceiling on the encoded bytes we are willing to put on the wire per image. */
-export const MAX_CHAT_IMAGE_BYTES = 10 * BYTES_PER_MEGABYTE
 
 /**
  * Ceiling on the *source* file handed to the re-encoder. File size is a proxy
@@ -48,7 +44,7 @@ export type ChatImageClassification =
  * staged. Rejections carry the sentence shown to the user, so every refusal
  * names its own cause instead of collapsing into one generic error.
  *
- * Note what is *not* rejected here: anything between `MAX_CHAT_IMAGE_BYTES` and
+ * Note what is *not* rejected here: anything between `MAX_CHAT_ATTACHMENT_BYTES` and
  * `MAX_COMPRESSIBLE_SOURCE_BYTES` is accepted and downscaled instead, so the
  * wire cap never shows up as a refusal the user cannot act on.
  */

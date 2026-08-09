@@ -8,7 +8,7 @@ import {
   type ThreadId,
 } from '@workspace/contracts'
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
@@ -28,7 +28,9 @@ import {
   type ChatPipelineScope,
   optimisticMessageSummary,
 } from '../lib/chat-pipeline-logging'
+import { ChatComposerModesProvider } from '../providers/composer-modes-provider'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
+import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatWelcomeView } from './chat-welcome-view'
 
@@ -48,6 +50,12 @@ export function ChatDraftView({
   rootPath: string
 }) {
   const [sendError, setSendError] = useState<string | null>(null)
+  // The same target ChatInput builds for itself, so a mode pick lands on the
+  // draft the send path reads. Stable identity: it feeds the modes context value.
+  const draftTarget = useMemo<ChatInputDraftTarget>(
+    () => ({ draftKey: DRAFT_CHAT_KEY, rootPath }),
+    [rootPath],
+  )
   const providersQuery = useQuery(providerListQueryOptions())
   const modelSelection = resolveChatModelSelection(
     providersQuery.data?.providers,
@@ -62,7 +70,6 @@ export function ChatDraftView({
         createProjectDefaultModelCommand({
           defaultModelSelection: next,
           projectId: project.id,
-          updatedAt: new Date().toISOString(),
         }),
       )
     },
@@ -124,19 +131,27 @@ export function ChatDraftView({
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
       <ChatWelcomeView />
-      <ChatInput
-        busy={false}
-        disabled={disabled || !project}
-        draftKey={DRAFT_CHAT_KEY}
-        error={sendError}
-        interactionMode={DEFAULT_INTERACTION_MODE}
-        modelSelection={modelSelection}
-        rootPath={rootPath}
-        runtimeMode={DEFAULT_RUNTIME_MODE}
-        onPersistModelSelection={handlePersistModelSelection}
-        onStop={handleStop}
-        onSubmit={handleSend}
-      />
+      {/* No thread exists yet, so a mode pick only lands in the draft — the turn
+          that creates the thread carries it through `bootstrap.createThread`. */}
+      <ChatComposerModesProvider
+        dispatchCommand={environment.dispatchCommand}
+        draftTarget={draftTarget}
+        threadId={null}
+      >
+        <ChatInput
+          busy={false}
+          disabled={disabled || !project}
+          draftKey={DRAFT_CHAT_KEY}
+          error={sendError}
+          interactionMode={DEFAULT_INTERACTION_MODE}
+          modelSelection={modelSelection}
+          rootPath={rootPath}
+          runtimeMode={DEFAULT_RUNTIME_MODE}
+          onPersistModelSelection={handlePersistModelSelection}
+          onStop={handleStop}
+          onSubmit={handleSend}
+        />
+      </ChatComposerModesProvider>
     </section>
   )
 }

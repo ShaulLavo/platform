@@ -1,7 +1,176 @@
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
+import { elapsedMs } from '../observability/logging'
+import { recordProcessInfo } from '../observability/runtime'
+import { createStructuredError } from '../observability/structured-errors'
 import { getDefaultPlatformDatabase, type PlatformDatabase } from './client'
+import { schemaMigrations } from './schema'
 
+export type Migration = {
+  readonly version: number
+  readonly name: string
+  readonly up: (database: PlatformDatabase) => void
+}
+
+/**
+ * The ordered, forward-only ledger for the platform database. Append new
+ * versions here; never edit or renumber an existing one — a developer database
+ * that already recorded it will not run it again.
+ *
+ * Version 1 is the baseline: it is the whole schema as it stood before the
+ * ledger existed, written entirely with `IF NOT EXISTS`. That is what makes it
+ * safe against developer databases created by the old ad-hoc migrate function —
+ * against those it does nothing and only records the baseline row, which is
+ * exactly the reconciliation later versions need to start from.
+ */
+export const platformMigrations: readonly Migration[] = [
+  { version: 1, name: 'platform_baseline', up: applyPlatformBaseline },
+  {
+    version: 2,
+    name: 'thread_proposed_plan_and_checkpoint_projections',
+    up: applyThreadProposedPlanAndCheckpointProjections,
+  },
+]
+
+/**
+ * Applies every migration the database has not recorded yet, in version order.
+ *
+ * Each migration runs in its own `IMMEDIATE` transaction together with its
+ * ledger row, so the write lock is held for the whole step: two processes
+ * starting at once cannot both apply the same version, and a crash mid-step
+ * leaves neither the DDL nor the ledger row behind.
+ */
+export function migratePlatformDatabase(
+  database: PlatformDatabase = getDefaultPlatformDatabase(),
+  migrations: readonly Migration[] = platformMigrations,
+): readonly Migration[] {
+  const startedAt = performance.now()
+  createLedger(database)
+
+  const recorded = recordedVersions(database)
+  const applied: Migration[] = []
+
+  for (const migration of migrations) {
+    if (recorded.has(migration.version)) continue
+    if (!applyMigration(database, migration)) continue
+    applied.push(migration)
+  }
+
+  reportApplied(applied, startedAt)
+
+  return applied
+}
+
+/**
+ * Feature entry points. The platform runs on a single SQLite file, so both of
+ * these run the same ledger over the same tables.
+ */
 export function migrateMetadataDatabase(database: PlatformDatabase = getDefaultPlatformDatabase()) {
+  return migratePlatformDatabase(database)
+}
+
+export function migrateOrchestrationDatabase(
+  database: PlatformDatabase = getDefaultPlatformDatabase(),
+) {
+  return migratePlatformDatabase(database)
+}
+
+function applyMigration(database: PlatformDatabase, migration: Migration) {
+  try {
+    return database.transaction(
+      (transaction) => {
+        // The transaction handle exposes the same query API as the database; the
+        // cast lets migrations be written as plain database code (same pattern as
+        // `OrchestrationEngine.commitCommand`).
+        const scoped = transaction as unknown as PlatformDatabase
+        // Re-checked under the write lock: a peer process may have applied this
+        // version between our ledger read and this transaction.
+        if (isRecorded(scoped, migration.version)) return false
+
+        migration.up(scoped)
+        recordApplied(scoped, migration)
+
+        return true
+      },
+      { behavior: 'immediate' },
+    )
+  } catch (cause) {
+    throw createStructuredError({
+      cause,
+      code: 'db.MIGRATION_FAILED',
+      fix: 'Fix the migration statements, then restart the server. The database is unchanged — the failed version rolled back and was not recorded.',
+      internal: { migrationName: migration.name, migrationVersion: migration.version },
+      message: `Database migration ${migration.version}_${migration.name} failed`,
+      status: 500,
+      why: 'A migration threw while applying its statements, so its transaction rolled back.',
+    })
+  }
+}
+
+function createLedger(database: PlatformDatabase) {
+  database.run(sql`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY NOT NULL,
+			name TEXT NOT NULL,
+			applied_at TEXT NOT NULL
+		)
+	`)
+}
+
+function recordedVersions(database: PlatformDatabase) {
+  const rows = database.select({ version: schemaMigrations.version }).from(schemaMigrations).all()
+
+  return new Set(rows.map((row) => row.version))
+}
+
+function isRecorded(database: PlatformDatabase, version: number) {
+  const row = database
+    .select({ version: schemaMigrations.version })
+    .from(schemaMigrations)
+    .where(eq(schemaMigrations.version, version))
+    .get()
+
+  return row !== undefined
+}
+
+function recordApplied(database: PlatformDatabase, migration: Migration) {
+  database
+    .insert(schemaMigrations)
+    .values({
+      appliedAt: new Date().toISOString(),
+      name: migration.name,
+      version: migration.version,
+    })
+    .run()
+}
+
+/**
+ * One wide event for the whole run, not one per migration. A startup that
+ * applied nothing is the normal case and stays silent.
+ */
+function reportApplied(applied: readonly Migration[], startedAt: number) {
+  if (applied.length === 0) return
+
+  recordProcessInfo('db.migrations.applied', {
+    area: 'db',
+    migrations: {
+      appliedCount: applied.length,
+      durationMs: elapsedMs(startedAt),
+      latestVersion: applied.at(-1)?.version,
+      names: applied.map((migration) => migration.name),
+      versions: applied.map((migration) => migration.version),
+    },
+    operation: 'migrate',
+  })
+}
+
+function applyPlatformBaseline(database: PlatformDatabase) {
+  createFileMetadataTables(database)
+  createOrchestrationEventTables(database)
+  createProjectionTables(database)
+  createProviderRuntimeTables(database)
+}
+
+function createFileMetadataTables(database: PlatformDatabase) {
   database.run(sql`
 		CREATE TABLE IF NOT EXISTS fs_metadata (
 			path TEXT PRIMARY KEY NOT NULL,
@@ -16,7 +185,6 @@ export function migrateMetadataDatabase(database: PlatformDatabase = getDefaultP
 			updated_at INTEGER NOT NULL
 		)
 	`)
-  addBirthtimeColumn(database)
   database.run(sql`
 		CREATE INDEX IF NOT EXISTS fs_metadata_recent_idx
 		ON fs_metadata (last_picked_at DESC)
@@ -27,9 +195,7 @@ export function migrateMetadataDatabase(database: PlatformDatabase = getDefaultP
 	`)
 }
 
-export function migrateOrchestrationDatabase(
-  database: PlatformDatabase = getDefaultPlatformDatabase(),
-) {
+function createOrchestrationEventTables(database: PlatformDatabase) {
   database.run(sql`
 		CREATE TABLE IF NOT EXISTS orchestration_events (
 			sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,7 +256,9 @@ export function migrateOrchestrationDatabase(
 		CREATE INDEX IF NOT EXISTS orchestration_command_receipts_sequence_idx
 		ON orchestration_command_receipts (result_sequence)
 	`)
+}
 
+function createProjectionTables(database: PlatformDatabase) {
   database.run(sql`
 		CREATE TABLE IF NOT EXISTS projection_state (
 			projector TEXT PRIMARY KEY NOT NULL,
@@ -220,7 +388,56 @@ export function migrateOrchestrationDatabase(
 		CREATE INDEX IF NOT EXISTS projection_turns_thread_requested_idx
 		ON projection_turns (thread_id, requested_at)
 	`)
+}
 
+/**
+ * Plan markdown and checkpoint summaries used to exist only inside the event
+ * log: the plan payload was thrown away at projection time, and every reader
+ * that wanted checkpoints re-folded the whole thread stream. These two tables
+ * are what makes both survive a reload without a scan.
+ */
+function applyThreadProposedPlanAndCheckpointProjections(database: PlatformDatabase) {
+  database.run(sql`
+		CREATE TABLE projection_thread_proposed_plans (
+			plan_id TEXT PRIMARY KEY NOT NULL,
+			thread_id TEXT NOT NULL,
+			turn_id TEXT,
+			plan_markdown TEXT NOT NULL,
+			implemented_at TEXT,
+			implementation_thread_id TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`)
+  database.run(sql`
+		CREATE INDEX projection_thread_proposed_plans_thread_created_idx
+		ON projection_thread_proposed_plans (thread_id, created_at)
+	`)
+  database.run(sql`
+		CREATE INDEX projection_thread_proposed_plans_thread_updated_idx
+		ON projection_thread_proposed_plans (thread_id, updated_at)
+	`)
+
+  database.run(sql`
+		CREATE TABLE projection_thread_checkpoints (
+			thread_id TEXT NOT NULL,
+			turn_id TEXT NOT NULL,
+			checkpoint_turn_count INTEGER NOT NULL,
+			checkpoint_ref TEXT NOT NULL,
+			status TEXT NOT NULL,
+			files_json TEXT NOT NULL,
+			assistant_message_id TEXT,
+			completed_at TEXT NOT NULL,
+			PRIMARY KEY (thread_id, turn_id)
+		)
+	`)
+  database.run(sql`
+		CREATE INDEX projection_thread_checkpoints_thread_turn_count_idx
+		ON projection_thread_checkpoints (thread_id, checkpoint_turn_count)
+	`)
+}
+
+function createProviderRuntimeTables(database: PlatformDatabase) {
   database.run(sql`
 		CREATE TABLE IF NOT EXISTS provider_session_runtime (
 			thread_id TEXT PRIMARY KEY NOT NULL,
@@ -235,7 +452,6 @@ export function migrateOrchestrationDatabase(
 			runtime_payload_json TEXT
 		)
 	`)
-  deleteLegacyProviderSessionRuntimeRows(database)
   database.run(sql`
 		CREATE INDEX IF NOT EXISTS provider_session_runtime_status_idx
 		ON provider_session_runtime (status)
@@ -247,23 +463,5 @@ export function migrateOrchestrationDatabase(
   database.run(sql`
 		CREATE INDEX IF NOT EXISTS provider_session_runtime_provider_session_idx
 		ON provider_session_runtime (provider_session_id)
-	`)
-}
-
-function addBirthtimeColumn(database: PlatformDatabase) {
-  try {
-    database.run(sql`
-			ALTER TABLE fs_metadata
-			ADD COLUMN birthtime_ms INTEGER NOT NULL DEFAULT 0
-		`)
-  } catch {
-    // Existing databases already have this column after the first migration run.
-  }
-}
-
-function deleteLegacyProviderSessionRuntimeRows(database: PlatformDatabase) {
-  database.run(sql`
-		DELETE FROM provider_session_runtime
-		WHERE provider_instance_id IS NULL
 	`)
 }

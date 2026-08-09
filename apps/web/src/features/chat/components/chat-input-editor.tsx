@@ -8,7 +8,9 @@ import { useCallback, type ClipboardEvent, type RefObject } from 'react'
 import { imageFilesFromClipboard } from '../lib/chat-input-attachments'
 import type { ChatInputTrigger } from '../lib/chat-input-logic'
 import { ChatInputDraftPlugin } from './chat-input-draft-plugin'
+import { ChatInputLineBoundaryPlugin } from './chat-input-line-boundary-plugin'
 import { ChatInputSubmitPlugin } from './chat-input-submit-plugin'
+import { ChatInputSurroundPlugin } from './chat-input-surround-plugin'
 
 export function ChatInputEditor({
   busy,
@@ -101,6 +103,8 @@ export function ChatInputEditor({
         onCommandMenuMove={onCommandMenuMove}
         onSubmitRequest={onSubmitRequest}
       />
+      <ChatInputLineBoundaryPlugin />
+      <ChatInputSurroundPlugin />
       <HistoryPlugin />
     </div>
   )

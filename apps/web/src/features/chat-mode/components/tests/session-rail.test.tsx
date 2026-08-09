@@ -1,4 +1,10 @@
-import { projectIdSchema, threadIdSchema } from '@workspace/contracts'
+import {
+  projectIdSchema,
+  threadIdSchema,
+  turnIdSchema,
+  type ClientOrchestrationCommand,
+  type OrchestrationThreadShell,
+} from '@workspace/contracts'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as v from 'valibot'
@@ -11,6 +17,11 @@ import {
   ChatModeSessionContext,
   type ChatModeSession,
 } from '@/features/chat-mode/providers/session-context'
+import { setSessionProjectOpener } from '@/features/chat-mode/state/session-commands'
+import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
+import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
+import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
+import { useActiveProjectStore } from '@/state/active-project-store'
 import { chatProject, shellSnapshot, threadShell } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
@@ -20,6 +31,8 @@ const siteId = v.parse(projectIdSchema, 'project-site')
 const docsId = v.parse(projectIdSchema, 'project-docs')
 const platformThreadId = v.parse(threadIdSchema, 'thread-platform')
 const siteThreadId = v.parse(threadIdSchema, 'thread-site')
+const archivedThreadId = v.parse(threadIdSchema, 'thread-archived')
+const settled = { latestTurn: null, session: null } satisfies Partial<OrchestrationThreadShell>
 
 test('lists every project’s sessions in one ordered list', () => {
   seedProjection()
@@ -45,7 +58,11 @@ test('activates the owning project before selecting a session from another proje
   await userEvent.click(screen.getByTitle('Fix the footer'))
 
   expect(calls.openedProjects).toEqual(['/repo/site'])
-  expect(calls.selected).toEqual([{ projectId: siteId, threadId: siteThreadId }])
+  expect(useSessionSelectionStore.getState().selection).toEqual({
+    kind: 'session',
+    projectId: siteId,
+    threadId: siteThreadId,
+  })
 })
 
 test('selects a session in the active project without reopening it', async () => {
@@ -55,7 +72,36 @@ test('selects a session in the active project without reopening it', async () =>
   await userEvent.click(screen.getByTitle('Ship the rail'))
 
   expect(calls.openedProjects).toEqual([])
-  expect(calls.selected).toEqual([{ projectId: platformId, threadId: platformThreadId }])
+  expect(useSessionSelectionStore.getState().selection).toEqual({
+    kind: 'session',
+    projectId: platformId,
+    threadId: platformThreadId,
+  })
+})
+
+test('a message arriving in another session does not move the row under the cursor', () => {
+  seedProjection()
+  renderSessionRail()
+  useSessionSelectionStore.getState().selectSession(platformId, platformThreadId)
+  expect(sessionTitles()).toEqual(['Ship the rail', 'Fix the footer'])
+
+  // The bottom row becomes the most recently active one. Under activity ordering it
+  // would jump to the top and drag the selected row down a slot.
+  useChatProjectionStore.getState().syncShellSnapshot(
+    shellSnapshot({
+      projects: seededProjects(),
+      threads: [
+        seededThread(platformThreadId, 'Ship the rail', '2026-05-09T00:00:00.000Z', platformId),
+        {
+          ...seededThread(siteThreadId, 'Fix the footer', '2026-05-01T00:00:00.000Z', siteId),
+          latestUserMessageAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+    }),
+  )
+
+  expect(sessionTitles()).toEqual(['Ship the rail', 'Fix the footer'])
 })
 
 test('narrows the list to sessions matching the search text', async () => {
@@ -90,12 +136,14 @@ test('scoping to a project hides the others and drops the project label', async 
 
 test('starts a draft in the open project from the new session button', async () => {
   seedProjection()
-  const calls = renderSessionRail()
+  renderSessionRail()
 
   await userEvent.click(screen.getByRole('button', { name: 'New session' }))
 
-  expect(calls.openedProjects).toEqual([])
-  expect(calls.drafted).toEqual([platformId])
+  expect(useSessionSelectionStore.getState().selection).toEqual({
+    kind: 'draft',
+    projectId: platformId,
+  })
 })
 
 test('drafts into the scoped project, activating it first', async () => {
@@ -107,7 +155,10 @@ test('drafts into the scoped project, activating it first', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'New session' }))
 
   expect(calls.openedProjects).toEqual(['/repo/site'])
-  expect(calls.drafted).toEqual([siteId])
+  expect(useSessionSelectionStore.getState().selection).toEqual({
+    kind: 'draft',
+    projectId: siteId,
+  })
 })
 
 test('offers a project with no sessions yet as a scope so it can be drafted into', async () => {
@@ -128,6 +179,45 @@ test('offers a way to add a directory as a project', async () => {
   expect(calls.addProjectCount).toBe(1)
 })
 
+test('the archive browser lists filed sessions and hands one back to the inbox', async () => {
+  seedProjection({ withArchivedSession: true })
+  const calls = renderSessionRail()
+
+  // Archived sessions are invisible in the inbox — the whole reason they need a view.
+  expect(sessionTitles()).not.toContain('Filed away')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Archived sessions' }))
+  expect(sessionTitles()).toEqual(['Filed away'])
+
+  await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByTitle('Filed away') })
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Unarchive' }))
+
+  expect(calls.dispatched.map((command) => command.type)).toEqual(['thread.unarchive'])
+})
+
+test('an archived session opens on the stage from the archive browser', async () => {
+  seedProjection({ withArchivedSession: true })
+  renderSessionRail()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Archived sessions' }))
+  await userEvent.click(screen.getByTitle('Filed away'))
+
+  expect(useSessionSelectionStore.getState().selection).toEqual({
+    kind: 'session',
+    projectId: platformId,
+    threadId: archivedThreadId,
+  })
+})
+
+test('marks a session that finished while it was not the open one', () => {
+  seedProjection({ withFinishedSession: true })
+  renderSessionRail()
+
+  const unread = screen.getAllByTitle('Finished since you last opened it')
+  expect(unread).toHaveLength(1)
+  expect(screen.getByTitle('Fix the footer')).toContainElement(unread[0] ?? null)
+})
+
 function sessionTitles() {
   return screen
     .queryAllByRole('button')
@@ -139,59 +229,112 @@ function isSessionRow(element: HTMLElement) {
   return element.className.includes('group/session')
 }
 
-function seedProjection({ withEmptyProject = false }: { withEmptyProject?: boolean } = {}) {
+function seededProjects() {
+  return [
+    chatProject({ id: platformId, title: 'platform', workspaceRoot: '/repo/platform' }),
+    chatProject({ id: siteId, title: 'site', workspaceRoot: '/repo/site' }),
+  ]
+}
+
+function seededThread(
+  id: typeof platformThreadId,
+  title: string,
+  createdAt: string,
+  projectId: typeof platformId,
+) {
+  return threadShell({ ...settled, createdAt, id, projectId, title })
+}
+
+function seedProjection({
+  withArchivedSession = false,
+  withEmptyProject = false,
+  withFinishedSession = false,
+}: {
+  withArchivedSession?: boolean
+  withEmptyProject?: boolean
+  withFinishedSession?: boolean
+} = {}) {
   const emptyProject = withEmptyProject
     ? [chatProject({ id: docsId, title: 'docs', workspaceRoot: '/repo/docs' })]
     : []
+  const archived = withArchivedSession
+    ? [
+        threadShell({
+          ...settled,
+          archivedAt: '2026-05-11T00:00:00.000Z',
+          createdAt: '2026-05-05T00:00:00.000Z',
+          id: archivedThreadId,
+          projectId: platformId,
+          title: 'Filed away',
+        }),
+      ]
+    : []
+  const siteThread = seededThread(
+    siteThreadId,
+    'Fix the footer',
+    '2026-05-01T00:00:00.000Z',
+    siteId,
+  )
 
+  useSessionRailStore.setState({ query: '', renaming: null, scope: null, view: 'active' })
+  useSessionSelectionStore.setState({ selection: { kind: 'auto' } })
+  useActiveProjectStore.setState({ workspaceRoot: '/repo/platform' })
+  resetSessionReadStore()
   useChatProjectionStore.getState().resetChatProjection()
   useChatProjectionStore.getState().syncShellSnapshot(
     shellSnapshot({
-      projects: [
-        chatProject({ id: platformId, title: 'platform', workspaceRoot: '/repo/platform' }),
-        chatProject({ id: siteId, title: 'site', workspaceRoot: '/repo/site' }),
-        ...emptyProject,
-      ],
+      projects: [...seededProjects(), ...emptyProject],
       threads: [
-        threadShell({
-          id: platformThreadId,
-          latestUserMessageAt: '2026-05-09T00:00:00.000Z',
-          projectId: platformId,
-          title: 'Ship the rail',
-        }),
-        threadShell({
-          id: siteThreadId,
-          latestUserMessageAt: '2026-05-01T00:00:00.000Z',
-          projectId: siteId,
-          title: 'Fix the footer',
-        }),
+        seededThread(platformThreadId, 'Ship the rail', '2026-05-09T00:00:00.000Z', platformId),
+        withFinishedSession ? { ...siteThread, latestTurn: finishedTurn() } : siteThread,
+        ...archived,
       ],
     }),
   )
 }
 
+function finishedTurn(): NonNullable<OrchestrationThreadShell['latestTurn']> {
+  return {
+    assistantMessageId: null,
+    completedAt: '2026-05-09T10:00:00.000Z',
+    requestedAt: '2026-05-09T09:00:00.000Z',
+    startedAt: '2026-05-09T09:00:00.000Z',
+    state: 'completed',
+    turnId: v.parse(turnIdSchema, 'turn-finished'),
+  }
+}
+
 function renderSessionRail() {
   const calls = {
     addProjectCount: 0,
-    drafted: [] as string[],
+    dispatched: [] as ClientOrchestrationCommand[],
     openedProjects: [] as string[],
-    selected: [] as { projectId: string; threadId: string }[],
   }
   const session: ChatModeSession = {
     activeSession: { status: 'ready', threadId: platformThreadId },
     addProject: () => {
       calls.addProjectCount += 1
     },
-    environment: {} as ChatEnvironment,
+    environment: {
+      dispatchCommand: async (command: ClientOrchestrationCommand) => {
+        calls.dispatched.push(command)
+
+        return { deduped: false, sequence: calls.dispatched.length }
+      },
+    } as ChatEnvironment,
     error: null,
     openProject: (workspaceRoot) => calls.openedProjects.push(workspaceRoot),
     project: chatProject({ id: platformId, title: 'platform', workspaceRoot: '/repo/platform' }),
     ready: true,
     rootPath: '/repo/platform',
-    selectSession: (projectId, threadId) => calls.selected.push({ projectId, threadId }),
-    startDraft: (projectId) => calls.drafted.push(projectId),
+    selectSession: () => {},
+    startDraft: () => {},
     threads: [],
   }
+
+  // ChatModeSessionProvider hands the app-level project opener over while chat mode
+  // is mounted; the rail's own row clicks go through the same seam.
+  setSessionProjectOpener((workspaceRoot) => calls.openedProjects.push(workspaceRoot))
 
   // App.tsx mounts chat mode inside the editor stores, and the row context menu
   // resolves command availability from them.

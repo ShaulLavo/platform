@@ -8,7 +8,7 @@ import {
   turnIdSchema,
 } from './chat-ids'
 import {
-  chatAttachmentUploadSchema,
+  chatAttachmentUploadsSchema,
   isoDateTimeSchema,
   nonNegativeIntegerSchema,
   orchestrationCheckpointFileSchema,
@@ -33,6 +33,13 @@ const commandBaseSchema = {
   commandId: commandIdSchema,
 } as const
 
+/**
+ * Client commands carry no timestamps: the server clock stamps `occurredAt` and
+ * every projected `createdAt`/`updatedAt`/`deletedAt`/`archivedAt`. A skewed or
+ * hostile client must not be able to place an event in the past or the future.
+ * Internal (provider-runtime) commands below still carry the provider's own
+ * event time, which is already a server clock reading.
+ */
 export const projectCreateCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('project.create'),
@@ -40,7 +47,6 @@ export const projectCreateCommandSchema = v.object({
   title: trimmedNonEmptyStringSchema,
   workspaceRoot: trimmedNonEmptyStringSchema,
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema), null),
-  createdAt: isoDateTimeSchema,
 })
 
 export const projectMetaUpdateCommandSchema = v.object({
@@ -50,14 +56,15 @@ export const projectMetaUpdateCommandSchema = v.object({
   title: v.optional(trimmedNonEmptyStringSchema),
   workspaceRoot: v.optional(trimmedNonEmptyStringSchema),
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema)),
-  updatedAt: isoDateTimeSchema,
 })
 
 export const projectDeleteCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('project.delete'),
   projectId: projectIdSchema,
-  deletedAt: isoDateTimeSchema,
+  // Deleting a project cascades to its threads, so a project that still has
+  // live threads needs an explicit opt-in rather than a silent mass delete.
+  force: v.optional(v.boolean(), false),
 })
 
 export const threadCreateCommandSchema = v.object({
@@ -71,7 +78,6 @@ export const threadCreateCommandSchema = v.object({
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
   branch: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
   worktreePath: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
-  createdAt: isoDateTimeSchema,
 })
 
 export const threadTurnBootstrapCreateThreadSchema = v.object({
@@ -82,7 +88,6 @@ export const threadTurnBootstrapCreateThreadSchema = v.object({
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
   branch: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
   worktreePath: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
-  createdAt: isoDateTimeSchema,
 })
 
 export const threadTurnBootstrapSchema = v.object({
@@ -96,29 +101,29 @@ export const threadMetaUpdateCommandSchema = v.object({
   title: v.optional(trimmedNonEmptyStringSchema),
   modelSelection: v.optional(modelSelectionSchema),
   branch: v.optional(v.nullable(trimmedNonEmptyStringSchema)),
+  // Compare-and-swap guard: when present, the update only applies if the thread
+  // still sits on this branch. Two clients editing the same thread from stale
+  // snapshots would otherwise silently clobber each other's branch.
+  expectedBranch: v.optional(v.nullable(trimmedNonEmptyStringSchema)),
   worktreePath: v.optional(v.nullable(trimmedNonEmptyStringSchema)),
-  updatedAt: isoDateTimeSchema,
 })
 
 export const threadDeleteCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('thread.delete'),
   threadId: threadIdSchema,
-  deletedAt: isoDateTimeSchema,
 })
 
 export const threadArchiveCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('thread.archive'),
   threadId: threadIdSchema,
-  archivedAt: isoDateTimeSchema,
 })
 
 export const threadUnarchiveCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('thread.unarchive'),
   threadId: threadIdSchema,
-  updatedAt: isoDateTimeSchema,
 })
 
 export const threadRuntimeModeSetCommandSchema = v.object({
@@ -126,7 +131,6 @@ export const threadRuntimeModeSetCommandSchema = v.object({
   type: v.literal('thread.runtime-mode.set'),
   threadId: threadIdSchema,
   runtimeMode: runtimeModeSchema,
-  updatedAt: isoDateTimeSchema,
 })
 
 export const threadInteractionModeSetCommandSchema = v.object({
@@ -134,7 +138,6 @@ export const threadInteractionModeSetCommandSchema = v.object({
   type: v.literal('thread.interaction-mode.set'),
   threadId: threadIdSchema,
   interactionMode: interactionModeSchema,
-  updatedAt: isoDateTimeSchema,
 })
 
 export const threadTurnStartCommandSchema = v.object({
@@ -146,7 +149,7 @@ export const threadTurnStartCommandSchema = v.object({
     messageId: messageIdSchema,
     role: v.literal('user'),
     text: v.string(),
-    attachments: v.optional(v.array(chatAttachmentUploadSchema), []),
+    attachments: v.optional(chatAttachmentUploadsSchema, []),
   }),
   modelSelection: v.optional(modelSelectionSchema),
   titleSeed: v.optional(trimmedNonEmptyStringSchema),
@@ -154,7 +157,6 @@ export const threadTurnStartCommandSchema = v.object({
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
   sourceProposedPlan: v.optional(sourceProposedPlanReferenceSchema),
   bootstrap: v.optional(threadTurnBootstrapSchema),
-  createdAt: isoDateTimeSchema,
 })
 
 export const threadTurnInterruptCommandSchema = v.object({
@@ -162,14 +164,12 @@ export const threadTurnInterruptCommandSchema = v.object({
   type: v.literal('thread.turn.interrupt'),
   threadId: threadIdSchema,
   turnId: v.optional(turnIdSchema),
-  createdAt: isoDateTimeSchema,
 })
 
 export const threadSessionStopCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('thread.session.stop'),
   threadId: threadIdSchema,
-  createdAt: isoDateTimeSchema,
 })
 
 export const threadApprovalRespondCommandSchema = v.object({
@@ -178,7 +178,6 @@ export const threadApprovalRespondCommandSchema = v.object({
   threadId: threadIdSchema,
   requestId: approvalRequestIdSchema,
   decision: providerApprovalDecisionSchema,
-  createdAt: isoDateTimeSchema,
 })
 
 export const threadUserInputRespondCommandSchema = v.object({
@@ -187,7 +186,6 @@ export const threadUserInputRespondCommandSchema = v.object({
   threadId: threadIdSchema,
   requestId: approvalRequestIdSchema,
   answers: providerUserInputAnswersSchema,
-  createdAt: isoDateTimeSchema,
 })
 
 export const threadCheckpointRevertCommandSchema = v.object({
@@ -195,7 +193,6 @@ export const threadCheckpointRevertCommandSchema = v.object({
   type: v.literal('thread.checkpoint.revert'),
   threadId: threadIdSchema,
   turnCount: nonNegativeIntegerSchema,
-  createdAt: isoDateTimeSchema,
 })
 
 export const clientOrchestrationCommandSchema = v.variant('type', [

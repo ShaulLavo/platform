@@ -4,8 +4,9 @@ import {
   turnIdSchema,
   type OrchestrationCommand,
 } from '@workspace/contracts'
-import { describe, expect, it } from 'vitest'
+import { assert, describe, expect, it } from 'vitest'
 import * as v from 'valibot'
+import type { ProviderRuntimeEvent } from '../../provider/types'
 import { MAX_BUFFERED_ASSISTANT_CHARS } from '../provider-runtime-buffers'
 import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'
 
@@ -310,7 +311,146 @@ describe('provider runtime ingestion', () => {
       },
     ])
   })
+
+  it('labels a generic tool approval instead of leaving it kindless', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest({
+      createdAt: now,
+      eventId: 'approval-dynamic-1',
+      payload: {
+        detail: 'mcp__linear__create_issue: file a bug',
+        requestType: 'dynamic_tool_call_approval',
+      },
+      requestId: 'claude:req-1',
+      threadId,
+      turnId,
+      type: 'request.opened',
+    })
+
+    expect(dispatched).toMatchObject([
+      {
+        activity: {
+          kind: 'approval.requested',
+          payload: {
+            requestId: 'claude:req-1',
+            requestKind: 'tool',
+            requestType: 'dynamic_tool_call_approval',
+          },
+          summary: 'Tool approval requested',
+          tone: 'approval',
+        },
+        type: 'thread.activity.append',
+      },
+    ])
+  })
+
+  it('carries typed questions for a codex user-input request', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest(
+      userInputRequested('user-input-1', [
+        {
+          header: 'Deploy target',
+          id: 'q-1',
+          isOther: true,
+          isSecret: false,
+          options: [
+            { description: 'Ships to users', label: 'production' },
+            { description: '', label: 'staging' },
+          ],
+          question: 'Which environment should I deploy to?',
+        },
+        {
+          header: '',
+          id: 'q-2',
+          isOther: false,
+          isSecret: true,
+          options: null,
+          question: 'Token?',
+        },
+      ]),
+    )
+
+    expect(dispatched).toMatchObject([
+      {
+        activity: {
+          kind: 'user-input.requested',
+          payload: {
+            questions: [
+              {
+                allowOther: true,
+                answerKind: 'single-select',
+                header: 'Deploy target',
+                id: 'q-1',
+                options: [
+                  { description: 'Ships to users', label: 'production', value: 'production' },
+                  { label: 'staging', value: 'staging' },
+                ],
+                prompt: 'Which environment should I deploy to?',
+                secret: false,
+              },
+              {
+                allowOther: false,
+                answerKind: 'text',
+                id: 'q-2',
+                options: [],
+                prompt: 'Token?',
+                secret: true,
+              },
+            ],
+            requestId: 'codex:req-1',
+          },
+          summary: 'User input requested',
+        },
+        type: 'thread.activity.append',
+      },
+    ])
+
+    const [command] = dispatched
+    assert(command && 'activity' in command, 'no activity command was dispatched')
+    const payload = command.activity.payload as Record<string, unknown>
+    expect(payload.droppedQuestionCount).toBeUndefined()
+    expect(payload.questions).toHaveLength(2)
+  })
+
+  it('drops a malformed question and keeps the rest of the request', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest(
+      userInputRequested('user-input-2', [
+        'not a question',
+        { id: 'q-1', prompt: '   ' },
+        { prompt: 'no id at all' },
+        { id: 'q-2', prompt: 'Still answerable?' },
+      ]),
+    )
+
+    const [command] = dispatched
+    assert(command && 'activity' in command, 'no activity command was dispatched')
+    expect(command.activity.payload).toMatchObject({
+      droppedQuestionCount: 3,
+      questions: [{ answerKind: 'text', id: 'q-2', options: [], prompt: 'Still answerable?' }],
+    })
+  })
 })
+
+/**
+ * Adapters assemble questions out of untyped provider JSON, so the event's
+ * contract type states the target shape rather than a guarantee — this is the
+ * raw Codex payload production actually hands ingestion.
+ */
+function userInputRequested(eventId: string, questions: readonly unknown[]) {
+  return {
+    createdAt: now,
+    eventId,
+    payload: { questions },
+    requestId: 'codex:req-1',
+    threadId,
+    turnId,
+    type: 'user-input.requested',
+  } as unknown as ProviderRuntimeEvent
+}
 
 function fixture(options: ConstructorParameters<typeof ProviderRuntimeIngestion>[1] = {}) {
   const dispatched: OrchestrationCommand[] = []

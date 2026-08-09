@@ -77,6 +77,13 @@ function handleEnterCommand({
   onSubmitRequest: () => Promise<boolean>
 }) {
   if (disabled) return false
+  if (event && isImeCompositionEnter(event)) {
+    // The keystroke belongs to the IME, which is committing a composition —
+    // sending here would ship a half-composed message. Swallowed rather than
+    // prevented: the IME still needs its own default to land the characters.
+    event.stopPropagation()
+    return true
+  }
   if (event?.shiftKey) return false
   if (handleMenuCommitCommand(commandMenuOpen, event, onCommandMenuCommit)) return true
 
@@ -85,6 +92,15 @@ function handleEnterCommand({
   void onSubmitRequest()
 
   return true
+}
+
+/**
+ * `keyCode` 229 is the pre-`isComposing` signal every IME still sends, and some
+ * of them (macOS Japanese, Windows Chinese) only set that one on the commit
+ * keystroke, so both signals have to count.
+ */
+function isImeCompositionEnter(event: KeyboardEvent) {
+  return event.isComposing || event.keyCode === 229
 }
 
 function handleMenuCommitCommand(

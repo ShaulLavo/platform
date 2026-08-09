@@ -57,12 +57,7 @@ async function createWorkspaceProject({
   setFailure: (failure: ProjectFailure) => void
 }) {
   try {
-    await environment.dispatchCommand(
-      createWorkspaceProjectCommand({
-        createdAt: new Date().toISOString(),
-        rootPath,
-      }),
-    )
+    await environment.dispatchCommand(createWorkspaceProjectCommand({ rootPath }))
   } catch (error) {
     setFailure({
       message: errorMessage(error, 'Could not prepare chat for this workspace.'),

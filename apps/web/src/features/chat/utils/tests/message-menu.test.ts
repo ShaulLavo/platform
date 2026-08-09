@@ -62,13 +62,22 @@ test('an assistant message with a readable turn diff offers the changed files', 
   ).toEqual(['View Changed Files'])
 })
 
-test('the changed-files item is unavailable while nothing renders a diff document', () => {
+test('the changed-files item dispatches instead of being gated off', () => {
+  const calls: string[] = []
   const [changedFiles] = sectionItems(
-    menuContext({ canViewChangedFiles: true, isAssistant: true }),
+    menuContext({
+      canViewChangedFiles: true,
+      isAssistant: true,
+      viewChangedFiles: () => calls.push('viewChangedFiles'),
+    }),
     'checkpoint',
   )
 
-  expect(changedFiles?.unavailable).toBe('No diff viewer')
+  expect(changedFiles?.unavailable).toBeUndefined()
+
+  changedFiles?.run()
+
+  expect(calls).toEqual(['viewChangedFiles'])
 })
 
 function sectionItems(context: ChatMessageMenuContext, sectionId: string) {

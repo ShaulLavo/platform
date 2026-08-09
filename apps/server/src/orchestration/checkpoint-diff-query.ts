@@ -1,35 +1,28 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import * as v from 'valibot'
 
-import { FsError } from '../fs/errors'
+import { orchestrationErrors } from '../observability'
 import type { GitFileDiff, GitService } from '../git/service'
 import {
-  orchestrationEvents,
   projectionProjects,
+  projectionThreadCheckpoints,
   projectionThreads,
   type ProjectionProjectRow,
+  type ProjectionThreadCheckpointRow,
   type ProjectionThreadRow,
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
-import { rowToEvent } from './event-store'
 import { checkpointRefForThreadTurn } from './checkpoint-refs'
+import { checkpointErrors } from './structured-errors'
 import {
   orchestrationGetFullThreadDiffInputSchema,
   orchestrationGetTurnDiffInputSchema,
-  type OrchestrationEvent,
   type OrchestrationGetFullThreadDiffInput,
   type OrchestrationGetTurnDiffInput,
 } from './schemas'
 
-type CheckpointSummary = {
-  checkpointRef: string
-  checkpointTurnCount: number
-  status: 'ready' | 'missing' | 'error'
-  turnId: string
-}
-
 type ThreadCheckpointContext = {
-  checkpoints: CheckpointSummary[]
+  checkpoints: ProjectionThreadCheckpointRow[]
   threadId: string
   workspacePath: string
 }
@@ -76,7 +69,7 @@ export class OrchestrationCheckpointDiffQuery {
     const workspacePath = thread.worktreePath ?? project.workspaceRoot
 
     return {
-      checkpoints: this.checkpointSummaries(threadId),
+      checkpoints: this.checkpointRows(threadId),
       threadId,
       workspacePath,
     }
@@ -88,7 +81,7 @@ export class OrchestrationCheckpointDiffQuery {
       .from(projectionThreads)
       .where(eq(projectionThreads.threadId, threadId))
       .get()
-    if (!row || row.deletedAt) throw new FsError('NOT_FOUND', `Thread not found: ${threadId}`)
+    if (!row || row.deletedAt) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId })
 
     return row
   }
@@ -99,32 +92,19 @@ export class OrchestrationCheckpointDiffQuery {
       .from(projectionProjects)
       .where(eq(projectionProjects.projectId, projectId))
       .get()
-    if (!row || row.deletedAt) throw new FsError('NOT_FOUND', `Project not found: ${projectId}`)
+    if (!row || row.deletedAt) throw orchestrationErrors.PROJECT_NOT_FOUND({ projectId })
 
     return row
   }
 
-  private checkpointSummaries(threadId: string) {
-    const summaries = new Map<string, CheckpointSummary>()
-    const rows = this.database
+  /** The projection is the source: reverts already pruned what it no longer holds. */
+  private checkpointRows(threadId: string) {
+    return this.database
       .select()
-      .from(orchestrationEvents)
-      .where(
-        and(
-          eq(orchestrationEvents.aggregateKind, 'thread'),
-          eq(orchestrationEvents.aggregateId, threadId),
-        ),
-      )
-      .orderBy(asc(orchestrationEvents.sequence))
+      .from(projectionThreadCheckpoints)
+      .where(eq(projectionThreadCheckpoints.threadId, threadId))
+      .orderBy(asc(projectionThreadCheckpoints.checkpointTurnCount))
       .all()
-
-    for (const row of rows) {
-      applyCheckpointEvent(summaries, rowToEvent(row))
-    }
-
-    return Array.from(summaries.values()).toSorted(
-      (left, right) => left.checkpointTurnCount - right.checkpointTurnCount,
-    )
   }
 
   private async assertCheckpointRefAvailable(
@@ -134,48 +114,29 @@ export class OrchestrationCheckpointDiffQuery {
   ) {
     if (await this.git.hasRef({ path: context.workspacePath, ref })) return
 
-    throw checkpointUnavailable(turnCount)
-  }
-}
-
-function applyCheckpointEvent(
-  summaries: Map<string, CheckpointSummary>,
-  event: OrchestrationEvent,
-) {
-  if (event.type === 'thread.turn-diff-completed') {
-    summaries.set(event.payload.turnId, {
-      checkpointRef: event.payload.checkpointRef,
-      checkpointTurnCount: event.payload.checkpointTurnCount,
-      status: event.payload.status,
-      turnId: event.payload.turnId,
-    })
-    return
-  }
-  if (event.type !== 'thread.reverted') return
-
-  for (const summary of summaries.values()) {
-    if (summary.checkpointTurnCount <= event.payload.turnCount) continue
-
-    summaries.delete(summary.turnId)
+    throw checkpointErrors.REF_UNAVAILABLE({ turnCount })
   }
 }
 
 function validateTurnRange(input: OrchestrationGetTurnDiffInput) {
   if (input.fromTurnCount <= input.toTurnCount) return
 
-  throw new FsError('INVALID_PATH', 'fromTurnCount must be less than or equal to toTurnCount')
+  throw checkpointErrors.RANGE_INVALID({
+    fromTurnCount: input.fromTurnCount,
+    toTurnCount: input.toTurnCount,
+  })
 }
 
 function checkpointRefsForRange(
   input: OrchestrationGetTurnDiffInput,
   context: ThreadCheckpointContext,
 ) {
-  const maxTurnCount = maxCheckpointTurnCount(context.checkpoints)
-  if (input.toTurnCount > maxTurnCount) {
-    throw new FsError(
-      'NOT_FOUND',
-      `Turn diff range exceeds current turn count: requested ${input.toTurnCount}, current ${maxTurnCount}`,
-    )
+  const availableTurnCount = maxCheckpointTurnCount(context.checkpoints)
+  if (input.toTurnCount > availableTurnCount) {
+    throw checkpointErrors.RANGE_EXCEEDS_TURN_COUNT({
+      availableTurnCount,
+      requestedTurnCount: input.toTurnCount,
+    })
   }
 
   return {
@@ -184,7 +145,7 @@ function checkpointRefsForRange(
   }
 }
 
-function maxCheckpointTurnCount(checkpoints: readonly CheckpointSummary[]) {
+function maxCheckpointTurnCount(checkpoints: readonly ProjectionThreadCheckpointRow[]) {
   let maxTurnCount = 0
 
   for (const checkpoint of checkpoints) {
@@ -200,12 +161,8 @@ function checkpointRefForTurnCount(context: ThreadCheckpointContext, turnCount: 
   const checkpoint = context.checkpoints.find(
     (candidate) => candidate.checkpointTurnCount === turnCount,
   )
-  if (!checkpoint) throw checkpointUnavailable(turnCount)
-  if (checkpoint.status !== 'ready') throw checkpointUnavailable(turnCount)
+  if (!checkpoint) throw checkpointErrors.REF_UNAVAILABLE({ turnCount })
+  if (checkpoint.status !== 'ready') throw checkpointErrors.REF_UNAVAILABLE({ turnCount })
 
   return checkpoint.checkpointRef
-}
-
-function checkpointUnavailable(turnCount: number) {
-  return new FsError('NOT_FOUND', `Checkpoint ref is unavailable for turn ${turnCount}`)
 }

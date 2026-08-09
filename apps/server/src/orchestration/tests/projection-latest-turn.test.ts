@@ -7,12 +7,8 @@ import * as schema from '../../db/schema'
 import { OrchestrationEngine } from '../engine'
 import { orchestrationCommandSchema, type OrchestrationCommand } from '../schemas'
 
-const createdAt = '2026-05-24T00:00:00.000Z'
-const requestedAt = '2026-05-24T00:01:00.000Z'
 const assistantStartedAt = '2026-05-24T00:02:00.000Z'
 const assistantCompletedAt = '2026-05-24T00:03:00.000Z'
-const interruptedAt = '2026-05-24T00:04:00.000Z'
-const latestRequestedAt = '2026-05-24T00:05:00.000Z'
 const modelSelection = {
   providerInstanceId: 'codex',
   model: 'gpt-5-codex',
@@ -33,38 +29,49 @@ describe('projection latest turn snapshots', () => {
   it('returns the canonical latest turn after an assistant turn completes', async () => {
     const engine = createEngine()
     const sourceProposedPlan = { planId: 'plan-1', threadId: 'thread-source' }
+    const before = new Date().toISOString()
 
     await dispatchProjectThread(engine)
     await engine.dispatch(startTurnCommand({ sourceProposedPlan }))
     await engine.dispatch(assistantDeltaCommand())
     await engine.dispatch(assistantCompleteCommand())
 
-    expect(latestTurn(engine)).toEqual({
+    const turn = latestTurn(engine)
+
+    expect(turn).toEqual({
       assistantMessageId: 'message-2',
+      // Provider-runtime commands still carry their own event time.
       completedAt: assistantCompletedAt,
-      requestedAt,
+      requestedAt: turn?.requestedAt,
       sourceProposedPlan,
       startedAt: assistantStartedAt,
       state: 'completed',
       turnId: 'turn-1',
     })
+    expectServerStamped(turn?.requestedAt, before)
   })
 
   it('returns interrupted latest turn state after a turn interrupt', async () => {
     const engine = createEngine()
+    const before = new Date().toISOString()
 
     await dispatchProjectThread(engine)
     await engine.dispatch(startTurnCommand())
     await engine.dispatch(interruptTurnCommand())
 
-    expect(latestTurn(engine)).toEqual({
+    const turn = latestTurn(engine)
+
+    expect(turn).toEqual({
       assistantMessageId: null,
-      completedAt: interruptedAt,
-      requestedAt,
+      completedAt: turn?.completedAt,
+      requestedAt: turn?.requestedAt,
       startedAt: null,
       state: 'interrupted',
       turnId: 'turn-1',
     })
+    expectServerStamped(turn?.requestedAt, before)
+    // The interrupt is a client command, so the server clock closes the turn.
+    expectServerStamped(turn?.completedAt, turn?.requestedAt)
   })
 
   it('keeps a late older-turn assistant message from replacing the latest turn', async () => {
@@ -78,10 +85,10 @@ describe('projection latest turn snapshots', () => {
         turnId: 'turn-old',
       }),
     )
+    const oldRequestedAt = latestTurn(engine)?.requestedAt
     await engine.dispatch(
       startTurnCommand({
         commandId: 'cmd-turn-latest-start',
-        createdAt: latestRequestedAt,
         messageId: 'message-latest',
         text: 'Latest request',
         turnId: 'turn-latest',
@@ -95,16 +102,30 @@ describe('projection latest turn snapshots', () => {
       }),
     )
 
-    expect(latestTurn(engine)).toEqual({
+    const turn = latestTurn(engine)
+
+    expect(turn).toEqual({
       assistantMessageId: null,
       completedAt: null,
-      requestedAt: latestRequestedAt,
+      requestedAt: turn?.requestedAt,
       startedAt: null,
       state: 'running',
       turnId: 'turn-latest',
     })
+    expectServerStamped(turn?.requestedAt, oldRequestedAt)
   })
 })
+
+/**
+ * ISO-8601 UTC strings sort lexicographically, so a plain compare is a real
+ * ordering assertion: the value has to be the server's own reading taken at or
+ * after `notBefore`, never a timestamp a client could have supplied.
+ */
+function expectServerStamped(value: string | null | undefined, notBefore: string | undefined) {
+  expect(typeof value).toBe('string')
+  expect(Number.isNaN(Date.parse(value ?? ''))).toBe(false)
+  expect(value! >= notBefore!).toBe(true)
+}
 
 async function dispatchProjectThread(engine: OrchestrationEngine) {
   await engine.dispatch(projectCreateCommand())
@@ -129,7 +150,6 @@ function createFixture() {
 function projectCreateCommand() {
   return command({
     commandId: 'cmd-project-create',
-    createdAt,
     defaultModelSelection: null,
     projectId: 'project-1',
     title: 'Platform',
@@ -142,7 +162,6 @@ function threadCreateCommand() {
   return command({
     branch: null,
     commandId: 'cmd-thread-create',
-    createdAt,
     interactionMode: 'default',
     modelSelection,
     projectId: 'project-1',
@@ -157,7 +176,6 @@ function threadCreateCommand() {
 function startTurnCommand(input: Partial<StartTurnInput> = {}) {
   return command({
     commandId: input.commandId ?? 'cmd-turn-start',
-    createdAt: input.createdAt ?? requestedAt,
     interactionMode: 'default',
     message: {
       attachments: [],
@@ -175,7 +193,6 @@ function startTurnCommand(input: Partial<StartTurnInput> = {}) {
 
 type StartTurnInput = {
   commandId: string
-  createdAt: string
   messageId: string
   sourceProposedPlan: { planId: string; threadId: string }
   text: string
@@ -214,7 +231,6 @@ type AssistantCompleteInput = {
 function interruptTurnCommand() {
   return command({
     commandId: 'cmd-turn-interrupt',
-    createdAt: interruptedAt,
     threadId: 'thread-1',
     turnId: 'turn-1',
     type: 'thread.turn.interrupt',

@@ -1,14 +1,23 @@
 import type { OrchestrationProposedPlan } from '@workspace/contracts'
 import { Badge } from '@workspace/ui/components/badge'
 import { Button } from '@workspace/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@workspace/ui/components/dropdown-menu'
 import { cn } from '@workspace/ui/lib/utils'
-import { CaretDownIcon, CaretUpIcon } from '@phosphor-icons/react'
+import { CaretDownIcon, CaretUpIcon, DotsThreeIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { formatChatTimestamp } from '../lib/chat-formatters'
 import {
   canCollapseProposedPlan,
   collapsedProposedPlanMarkdown,
+  proposedPlanExportFilename,
+  proposedPlanExportMarkdown,
   proposedPlanTitle,
   stripDisplayedPlanMarkdown,
 } from '../lib/chat-proposed-plan'
@@ -23,17 +32,51 @@ export function ProposedPlanCard({ plan }: { plan: OrchestrationProposedPlan }) 
       : stripDisplayedPlanMarkdown(plan.planMarkdown)
   const title = proposedPlanTitle(plan.planMarkdown)
   const ExpandIcon = expanded ? CaretUpIcon : CaretDownIcon
+  // The plan outlives the thread it was written in, so the export carries the
+  // heading the card strips for display.
+  const exportMarkdown = proposedPlanExportMarkdown(plan.planMarkdown)
 
   return (
     <article className='border-border/80 bg-card/70 rounded-lg border p-4 text-sm sm:p-5'>
       <div className='flex min-w-0 flex-wrap items-center justify-between gap-3'>
         <div className='flex min-w-0 items-center gap-2'>
           <Badge variant='secondary'>Plan</Badge>
+          {plan.implementedAt ? (
+            <Badge className='border-success/40 text-success' variant='outline'>
+              Implemented
+            </Badge>
+          ) : null}
           <p className='text-foreground truncate text-sm font-medium'>{title}</p>
         </div>
-        <span className='text-muted-foreground/50 shrink-0 text-[10px] tabular-nums'>
-          {formatChatTimestamp(plan.updatedAt)}
-        </span>
+        <div className='flex shrink-0 items-center gap-2'>
+          <span className='text-muted-foreground/50 text-[10px] tabular-nums'>
+            {formatChatTimestamp(plan.updatedAt)}
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button aria-label='Plan actions' size='icon-xs' type='button' variant='outline'>
+                  <DotsThreeIcon aria-hidden='true' className='size-3.5' />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align='end'>
+              <DropdownMenuItem onClick={() => void copyPlanMarkdown(exportMarkdown)}>
+                Copy to clipboard
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  downloadPlanMarkdown(
+                    proposedPlanExportFilename(plan.planMarkdown),
+                    exportMarkdown,
+                  )
+                }
+              >
+                Download as markdown
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       <div className='mt-4'>
         <div
@@ -61,4 +104,26 @@ export function ProposedPlanCard({ plan }: { plan: OrchestrationProposedPlan }) 
       </div>
     </article>
   )
+}
+
+async function copyPlanMarkdown(markdown: string) {
+  if (!navigator.clipboard?.writeText) {
+    toast.error('Clipboard is unavailable')
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(markdown)
+    toast.success('Plan copied')
+  } catch {
+    toast.error('Could not copy plan')
+  }
+}
+
+function downloadPlanMarkdown(filename: string, markdown: string) {
+  const link = document.createElement('a')
+  link.download = filename
+  link.href = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
+  link.click()
+  URL.revokeObjectURL(link.href)
 }

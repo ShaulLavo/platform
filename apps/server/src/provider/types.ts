@@ -16,6 +16,7 @@ import type {
   RuntimeMode,
   ThreadId,
   TurnId,
+  UserInputQuestions,
 } from '@workspace/contracts'
 
 export type ProviderTurnInput = {
@@ -242,7 +243,12 @@ export type ProviderRuntimeEvent =
     })
   | (ProviderRuntimeBaseEvent & {
       type: 'user-input.requested'
-      payload: { questions: unknown[] }
+      /**
+       * Adapters build these out of untyped provider JSON, so the contract here
+       * states the target shape rather than a guarantee: ingestion re-parses
+       * every question and drops the ones that miss it.
+       */
+      payload: { questions: UserInputQuestions }
     })
   | (ProviderRuntimeBaseEvent & {
       type: 'user-input.resolved'

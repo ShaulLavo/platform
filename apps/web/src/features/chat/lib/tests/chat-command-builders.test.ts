@@ -29,8 +29,7 @@ const testModelSelection: ModelSelection = {
 describe('chat command builders', () => {
   it('derives a stable project identity from the workspace path', () => {
     const rootPath = '/Users/test/workspace/platform'
-    const createdAt = '2026-05-24T12:00:00.000Z'
-    const command = createWorkspaceProjectCommand({ createdAt, rootPath })
+    const command = createWorkspaceProjectCommand({ rootPath })
 
     expect(command.projectId).toBe(workspaceProjectId(rootPath))
     expect(command.title).toBe('platform')
@@ -44,7 +43,6 @@ describe('chat command builders', () => {
     const command = createProjectDefaultModelCommand({
       defaultModelSelection: testModelSelection,
       projectId,
-      updatedAt: '2026-05-24T12:00:00.000Z',
     })
 
     expect(v.parse(projectMetaUpdateCommandSchema, command)).toMatchObject({
@@ -137,10 +135,7 @@ describe('chat command builders', () => {
 
   it('keeps interrupt commands scoped to the active thread and turn', () => {
     const threadId = v.parse(threadIdSchema, 'thread-1')
-    const command = createThreadInterruptCommand({
-      createdAt: '2026-05-24T12:00:00.000Z',
-      threadId,
-    })
+    const command = createThreadInterruptCommand({ threadId })
 
     expect(command.type).toBe('thread.turn.interrupt')
     expect(command.threadId).toBe(threadId)
@@ -150,7 +145,6 @@ describe('chat command builders', () => {
   it('builds checkpoint revert commands for user-row rollback affordances', () => {
     const threadId = v.parse(threadIdSchema, 'thread-1')
     const command = createCheckpointRevertCommand({
-      createdAt: '2026-05-24T12:00:00.000Z',
       threadId,
       turnCount: 2,
     })

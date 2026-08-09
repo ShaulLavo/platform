@@ -173,6 +173,20 @@ export function selectChatInputDraftImages(
   return chatInputDraftForTarget(state, target).images
 }
 
+export function selectChatInputDraftInteractionMode(
+  state: ChatInputDraftStore,
+  target: ChatInputDraftTarget,
+) {
+  return chatInputDraftForTarget(state, target).interactionMode
+}
+
+export function selectChatInputDraftRuntimeMode(
+  state: ChatInputDraftStore,
+  target: ChatInputDraftTarget,
+) {
+  return chatInputDraftForTarget(state, target).runtimeMode
+}
+
 export function readChatInputDraftPrompt(target: ChatInputDraftTarget) {
   return useChatInputDraftStore.getState().getDraft(target).prompt
 }

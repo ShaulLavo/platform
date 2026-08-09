@@ -1,3 +1,4 @@
+import { documentLabel } from '@/components/workspace/editor-tabs/utils/document-label'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import {
   activeEditorTabForWorkbenchPanels,
@@ -35,12 +36,8 @@ export function titlebarModel(
 
   const activeTab = activeEditorTabForWorkbenchPanels(panels)
   return {
-    documentTitle: activeTab ? pathName(activeTab.path) : 'Workbench',
+    documentTitle: activeTab ? documentLabel(activeTab.path) : 'Workbench',
     gridTemplateColumns: `${layout.outerLayout.sidebar}% minmax(0, 1fr) auto`,
     workspaceTitle: rootFolder.name,
   }
-}
-
-function pathName(path: string) {
-  return path.split(/[\\/]/).at(-1) || path
 }

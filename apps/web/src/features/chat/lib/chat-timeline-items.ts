@@ -12,7 +12,12 @@ import {
   type ChatTimelineMessage,
   fallbackChatMessageTimelineMetadata,
 } from './chat-message-metadata'
-import { chatWorkLogEntries, type ChatWorkLogEntry } from './chat-work-log'
+import {
+  chatActiveWorkLogPlan,
+  chatWorkLogEntries,
+  type ChatWorkLogEntry,
+  type ChatWorkLogPlan,
+} from './chat-work-log'
 
 export type ChatTimelineItem =
   | {
@@ -39,6 +44,7 @@ export type ChatTimelineItem =
   | {
       id: string
       latestTurn: OrchestrationLatestTurn
+      plan: ChatWorkLogPlan | null
       timestamp: string
       type: 'working'
     }
@@ -101,11 +107,13 @@ export function chatTimelineItems({
     (message) => !resolvedMessageIds.has(message.id),
   )
   const timelineMessages = [...messages, ...visibleOptimisticMessages]
-  const workLogEntries = chatWorkLogEntries({ activities, latestTurnId: latestTurn?.turnId })
+  const workLogEntries = chatWorkLogEntries({ activities })
   const messageMetadata = chatMessageTimelineMetadata({
     latestTurn,
     messages: timelineMessages,
-    showCompletionSummary: workLogEntries.length > 0,
+    // The completion divider reports the latest turn's duration, so only that turn's
+    // work decides whether there was anything to report.
+    showCompletionSummary: latestTurnWorkLogEntryCount(workLogEntries, latestTurn) > 0,
   })
   const turnDiffSummaryByAssistantMessageId = deriveTurnDiffSummaryByAssistantMessageId(
     turnDiffSummaries,
@@ -153,17 +161,28 @@ export function chatTimelineItems({
 
   const timelineItems = groupActivityTimelineItems(items.toSorted(compareTimelineEntries))
   if (latestTurn?.state === 'running') {
-    timelineItems.push(workingTimelineItem(latestTurn))
+    timelineItems.push(
+      workingTimelineItem(latestTurn, chatActiveWorkLogPlan(workLogEntries, latestTurn.turnId)),
+    )
   }
 
   return timelineItems
+}
+
+function latestTurnWorkLogEntryCount(
+  entries: readonly ChatWorkLogEntry[],
+  latestTurn: OrchestrationLatestTurn | null,
+) {
+  if (!latestTurn) return entries.length
+
+  return entries.filter((entry) => entry.turnId === latestTurn.turnId).length
 }
 
 export function chatTimelineItemEstimate(item: ChatTimelineItem | undefined) {
   if (!item) return 64
   if (item.type === 'activity-group') return Math.min(220, 36 + item.activities.length * 28)
   if (item.type === 'proposed-plan') return 160
-  if (item.type === 'working') return 52
+  if (item.type === 'working') return item.plan?.currentStep ? 72 : 52
 
   const dividerHeight = item.showCompletionDivider ? 34 : 0
   const changedFilesHeight =
@@ -216,10 +235,14 @@ function activityTimelineItem(
   }
 }
 
-function workingTimelineItem(latestTurn: OrchestrationLatestTurn): ChatTimelineItem {
+function workingTimelineItem(
+  latestTurn: OrchestrationLatestTurn,
+  plan: ChatWorkLogPlan | null,
+): ChatTimelineItem {
   return {
     id: `working:${latestTurn.turnId}`,
     latestTurn,
+    plan,
     timestamp: latestTurn.startedAt ?? latestTurn.requestedAt,
     type: 'working',
   }

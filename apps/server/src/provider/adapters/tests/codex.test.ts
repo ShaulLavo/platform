@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -27,6 +27,12 @@ if (process.argv[2] !== 'app-server') {
   console.error('unsupported fake codex command');
   process.exit(1);
 }
+
+let threadStartCount = 0;
+let lastThreadStartParams = null;
+
+const spawnLogPath = process.env.PLATFORM_FAKE_CODEX_SPAWN_LOG;
+if (spawnLogPath) require('node:fs').appendFileSync(spawnLogPath, 'spawn\\n');
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + '\\n');
@@ -242,7 +248,9 @@ function handle(message) {
     return;
   }
   if (message.method === 'thread/start') {
-    if (!assertStartParams(message)) return;
+    threadStartCount += 1;
+    lastThreadStartParams = message.params;
+    if (mode !== 'echo-mode-params' && !assertStartParams(message)) return;
     if (mode === 'malformed-thread-start') {
       send({ id: message.id, result: { thread: {} } });
       return;
@@ -266,12 +274,34 @@ function handle(message) {
     return;
   }
   if (message.method === 'turn/start') {
-    if (!assertTurnParams(message)) return;
+    if (mode !== 'echo-mode-params' && !assertTurnParams(message)) return;
     process.stderr.write('2026-05-28T00:00:00Z INFO codex: harmless diagnostic\\n');
     send({
       method: 'turn/started',
       params: { threadId: 'provider-thread-1', turn: fakeTurn('inProgress') },
     });
+    if (mode === 'echo-mode-params') {
+      const collaborationMode = message.params.collaborationMode ?? null;
+      sendAgentMessageItemCompleted(
+        'item-1',
+        JSON.stringify({
+          approvalsReviewer: message.params.approvalsReviewer ?? null,
+          developerInstructions: collaborationMode?.settings?.developer_instructions ?? null,
+          mode: collaborationMode?.mode ?? null,
+          reasoningEffort: collaborationMode?.settings?.reasoning_effort ?? null,
+          settingsModel: collaborationMode?.settings?.model ?? null,
+          threadApprovalsReviewer: lastThreadStartParams?.approvalsReviewer ?? null,
+          threadStarts: threadStartCount,
+          turnDeveloperInstructions: message.params.developerInstructions ?? null,
+        })
+      );
+      send({
+        method: 'turn/completed',
+        params: { threadId: 'provider-thread-1', turn: fakeTurn('completed') },
+      });
+      send({ id: message.id, result: { turn: fakeTurn('completed') } });
+      return;
+    }
     if (mode === 'echo-turn-params') {
       sendAgentMessageItemCompleted(
         'item-1',
@@ -414,6 +444,21 @@ setInterval(() => {}, 1000);
 `
 
 let fakeCodexLock: Promise<void> = Promise.resolve()
+
+const RUNTIME_MODES = ['approval-required', 'auto-accept-edits', 'full-access'] as const
+
+type FakeCodexContext = { readonly spawnLogPath: string }
+
+type EchoedModeParams = {
+  approvalsReviewer: string | null
+  developerInstructions: string | null
+  mode: string | null
+  reasoningEffort: string | null
+  settingsModel: string | null
+  threadApprovalsReviewer: string | null
+  threadStarts: number
+  turnDeveloperInstructions: string | null
+}
 
 describe('CodexProviderAdapter', () => {
   it('uses the app-server protocol and keeps early turn notifications', async () => {
@@ -573,6 +618,78 @@ describe('CodexProviderAdapter', () => {
         ])
       },
       { mode: 'echo-turn-params' },
+    )
+  })
+
+  it('switches a live session into plan mode without restarting the Codex thread', async () => {
+    await withFakeCodex(
+      async ({ spawnLogPath }) => {
+        const adapter = new CodexProviderAdapter()
+        const events: ProviderRuntimeEvent[] = []
+        const defaultTurn = providerTurnInput()
+        const planTurn = providerTurnInput()
+        planTurn.interactionMode = 'plan'
+        planTurn.turnId = v.parse(turnIdSchema, 'turn-2')
+        collectAdapterEvents(adapter, events)
+
+        await adapter.sendTurn(defaultTurn)
+        await settleRuntimeEvents()
+        await adapter.sendTurn(planTurn)
+        await settleRuntimeEvents()
+        const sessions = await adapter.listSessions()
+        const spawns = await countFakeCodexSpawns(spawnLogPath)
+        await adapter.stopAll()
+
+        const [first, second] = echoedModeParams(events)
+        expect(first?.mode).toBe('default')
+        expect(first?.settingsModel).toBe('codex')
+        expect(first?.developerInstructions).toContain('Collaboration Mode: Default')
+        // No effort was selected, so Codex keeps the model's own default.
+        expect(first?.reasoningEffort).toBeNull()
+        // Codex ignores a top-level `developerInstructions` on turn/start; the
+        // collaboration mode is the only channel that carries them.
+        expect(first?.turnDeveloperInstructions).toBeNull()
+        expect(second?.mode).toBe('plan')
+        expect(second?.developerInstructions).toContain('Collaboration Mode: Plan')
+        expect(second?.developerInstructions).toContain('Your output is a plan')
+        // One app-server process and one thread/start across both turns: the
+        // mode switch reconfigured the live session instead of replacing it and
+        // dropping the conversation Codex holds.
+        expect(spawns).toBe(1)
+        expect(second?.threadStarts).toBe(1)
+        expect(sessions).toHaveLength(1)
+      },
+      { mode: 'echo-mode-params' },
+    )
+  })
+
+  it('sends approvalsReviewer on every turn so a mode switch cannot inherit it', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const events: ProviderRuntimeEvent[] = []
+        const turns = RUNTIME_MODES.map((runtimeMode, index) => {
+          const turn = providerTurnInput()
+          turn.runtimeMode = runtimeMode
+          turn.turnId = v.parse(turnIdSchema, `turn-${index + 1}`)
+          return turn
+        })
+        collectAdapterEvents(adapter, events)
+
+        for (const turn of turns) {
+          await adapter.sendTurn(turn)
+          await settleRuntimeEvents()
+        }
+        await adapter.stopAll()
+
+        // Every runtime mode we ship reviews with the user. What matters is that
+        // the field is spelled out each time: omit it and Codex keeps whichever
+        // reviewer the thread was last configured with.
+        const echoes = echoedModeParams(events)
+        expect(echoes.map((echo) => echo.approvalsReviewer)).toEqual(['user', 'user', 'user'])
+        expect(echoes.map((echo) => echo.threadApprovalsReviewer)).toEqual(['user', 'user', 'user'])
+      },
+      { mode: 'echo-mode-params' },
     )
   })
 
@@ -783,7 +900,10 @@ describe('CodexProviderAdapter', () => {
   })
 })
 
-async function withFakeCodex(run: () => Promise<void>, options: { readonly mode?: string } = {}) {
+async function withFakeCodex(
+  run: (context: FakeCodexContext) => Promise<void>,
+  options: { readonly mode?: string } = {},
+) {
   const previousLock = fakeCodexLock
   let releaseLock: () => void = () => {}
   fakeCodexLock = new Promise<void>((resolve) => {
@@ -793,21 +913,31 @@ async function withFakeCodex(run: () => Promise<void>, options: { readonly mode?
 
   const directory = await mkdtemp(path.join(tmpdir(), 'platform-fake-codex-'))
   const binaryPath = path.join(directory, 'codex')
+  const spawnLogPath = path.join(directory, 'spawns.log')
   const previousBinary = process.env.PLATFORM_CODEX_BINARY
   const previousMode = process.env.PLATFORM_FAKE_CODEX_MODE
   await writeFile(binaryPath, fakeCodexScript)
+  await writeFile(spawnLogPath, '')
   await chmod(binaryPath, 0o755)
   process.env.PLATFORM_CODEX_BINARY = binaryPath
+  process.env.PLATFORM_FAKE_CODEX_SPAWN_LOG = spawnLogPath
   if (options.mode) process.env.PLATFORM_FAKE_CODEX_MODE = options.mode
 
   try {
-    await run()
+    await run({ spawnLogPath })
   } finally {
     restoreCodexBinary(previousBinary)
     restoreFakeCodexMode(previousMode)
+    delete process.env.PLATFORM_FAKE_CODEX_SPAWN_LOG
     await rm(directory, { force: true, recursive: true })
     releaseLock()
   }
+}
+
+/** One line per fake app-server process, so a test can prove a session was reused. */
+async function countFakeCodexSpawns(spawnLogPath: string) {
+  const log = await readFile(spawnLogPath, 'utf8')
+  return log.split('\n').filter(Boolean).length
 }
 
 function collectAdapterEvents(adapter: CodexProviderAdapter, events: ProviderRuntimeEvent[]) {
@@ -816,6 +946,17 @@ function collectAdapterEvents(adapter: CodexProviderAdapter, events: ProviderRun
       events.push(event)
     }
   })()
+}
+
+function echoedModeParams(events: ProviderRuntimeEvent[]) {
+  const echoes: EchoedModeParams[] = []
+  for (const event of events) {
+    if (event.type !== 'item.completed') continue
+    if (event.payload.itemType !== 'assistant_message') continue
+    echoes.push(JSON.parse(String(event.payload.detail)) as EchoedModeParams)
+  }
+
+  return echoes
 }
 
 async function settleRuntimeEvents() {

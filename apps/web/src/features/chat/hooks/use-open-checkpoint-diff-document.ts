@@ -45,8 +45,10 @@ export function useOpenCheckpointDiffDocument() {
     if (!documentPath) return false
 
     const documentInput = checkpointDiffDocumentInput(summary, documentPath, diff)
-    const documentQueryKey = checkpointDiffQueryKey(documentInput)
-    queryClient.setQueryData(documentQueryKey, diff ? [diff] : [])
+    // Seed only a diff we actually have: the viewer reads this key and treats a
+    // seeded entry as final, so seeding an empty list for a file the range fetch
+    // missed would pin the tab to "no changes" instead of letting it ask again.
+    if (diff) queryClient.setQueryData(checkpointDiffQueryKey(documentInput), [diff])
     selectFile(checkpointDiffDocumentId(documentInput))
 
     return true

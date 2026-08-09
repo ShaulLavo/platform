@@ -68,7 +68,13 @@ export function fallbackChatMessageTimelineMetadata(
   }
 }
 
-export function resolveAssistantMessageCopyState({
+/**
+ * Only the message that ends a response carries the turn's chrome. Every
+ * assistant chunk showing its own timestamp turned a single answer into a
+ * column of clocks, so the timestamp is gated on the same terminal-message set
+ * the copy button already uses.
+ */
+export function resolveAssistantMessageChromeState({
   showCopyButton,
   streaming,
   text,
@@ -80,8 +86,9 @@ export function resolveAssistantMessageCopyState({
   const copyText = text?.trim() ? text : null
 
   return {
-    text: copyText,
-    visible: showCopyButton && copyText !== null && !streaming,
+    copyText,
+    copyVisible: showCopyButton && copyText !== null && !streaming,
+    metaVisible: showCopyButton,
   }
 }
 

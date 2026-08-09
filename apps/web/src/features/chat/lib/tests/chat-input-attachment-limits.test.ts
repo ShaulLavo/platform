@@ -1,9 +1,9 @@
 import { expect, test } from '../../../../../test/fixtures'
 
+import { MAX_CHAT_ATTACHMENT_BYTES, MAX_CHAT_ATTACHMENTS } from '@workspace/contracts'
+
 import {
   classifyChatImageFile,
-  MAX_CHAT_ATTACHMENTS,
-  MAX_CHAT_IMAGE_BYTES,
   MAX_COMPRESSIBLE_SOURCE_BYTES,
 } from '@/features/chat/lib/chat-input-attachment-limits'
 
@@ -89,9 +89,9 @@ test('rejects an empty file rather than letting it fail to decode later', () => 
 })
 
 test('accepts an oversize image so it can be downscaled instead of refused', () => {
-  expect(classifyChatImageFile(imageFile('image/png', MAX_CHAT_IMAGE_BYTES * 2), 0).status).toBe(
-    'accept',
-  )
+  expect(
+    classifyChatImageFile(imageFile('image/png', MAX_CHAT_ATTACHMENT_BYTES * 2), 0).status,
+  ).toBe('accept')
 })
 
 test('accepts a source right at the compressible ceiling', () => {

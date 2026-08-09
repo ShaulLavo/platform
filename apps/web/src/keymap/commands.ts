@@ -9,6 +9,13 @@ import {
   type EditorDocumentStoreApi,
 } from '@/features/editor/state/editor-document-state'
 import {
+  jumpToSession,
+  selectAdjacentSession,
+  startScopedSessionDraft,
+  type SessionTraversalDirection,
+} from '@/features/chat-mode/state/session-commands'
+import { setChatModeSessionRailOpen, type ChatModePanels } from '@/features/chat-mode/utils/panels'
+import {
   fileBackedEditorPath,
   saveAllEditorDocuments,
   saveSelectedEditorDocument,
@@ -33,12 +40,14 @@ import { fetchFile } from '@/lib/file-server'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { editorCommandIdFromPlatform } from './editor-keymap'
+import { SESSION_JUMP_POSITIONS, sessionJumpCommandId } from './types'
 import type { PlatformCommandId, WorkspaceCommandId } from './types'
 import type { PlatformCommandDispatch } from './use-app-keymap'
 
 type WorkspaceCommandContext = {
   readonly activeFilePath: string | null
   readonly activeTabId: string | null
+  readonly chatModePanels: ChatModePanels
   readonly diffViewMode: EditorDiffViewMode
   readonly documentStore: EditorDocumentStoreApi
   readonly openPicker: () => void
@@ -48,6 +57,7 @@ type WorkspaceCommandContext = {
   readonly requestCloseTab: RequestCloseTab
   readonly requestEditorFocus: () => void
   readonly rootPath: string | null
+  readonly setChatModePanels: (panels: ChatModePanels) => void
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: FocusArea) => void
   readonly setTheme: (theme: Theme) => void
@@ -99,6 +109,7 @@ export function usePlatformCommandDispatch({
       return dispatchWorkspaceCommand(workspaceCommand, {
         activeFilePath: activeEditorPathForWorkbenchPanels(workspace.workbenchPanels),
         activeTabId: activeEditorTabForWorkbenchPanels(workspace.workbenchPanels)?.id ?? null,
+        chatModePanels: workspace.chatModePanels,
         diffViewMode: workspace.diffViewMode,
         documentStore,
         openPicker: workspace.openPicker,
@@ -108,6 +119,7 @@ export function usePlatformCommandDispatch({
         requestCloseTab: resolvedRequestCloseTab,
         requestEditorFocus,
         rootPath: workspace.rootFolder?.path ?? null,
+        setChatModePanels: workspace.setChatModePanels,
         setDiffViewMode: workspace.setDiffViewMode,
         setFocusArea,
         setTheme,
@@ -153,7 +165,43 @@ function dispatchWorkspaceCommand(command: WorkspaceCommandId, context: Workspac
   return handled
 }
 
+/**
+ * Session traversal only means something while the chat layout is the one on screen —
+ * in the workbench there is no rail to count rows in and no stage to hand them to.
+ */
+function runSessionCommand(context: WorkspaceCommandContext, run: () => boolean) {
+  if (context.uiMode !== 'chat') return false
+
+  return run()
+}
+
+function sessionTraversalHandler(direction: SessionTraversalDirection): WorkspaceCommandHandler {
+  return (context) => runSessionCommand(context, () => selectAdjacentSession(direction))
+}
+
+function sessionJumpHandlers(): Partial<Record<WorkspaceCommandId, WorkspaceCommandHandler>> {
+  return Object.fromEntries(
+    SESSION_JUMP_POSITIONS.map((position) => [
+      sessionJumpCommandId(position),
+      (context: WorkspaceCommandContext) =>
+        runSessionCommand(context, () => jumpToSession(position)),
+    ]),
+  )
+}
+
 const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceCommandHandler>> = {
+  ...sessionJumpHandlers(),
+  'workspace.newSession': (context) => runSessionCommand(context, startScopedSessionDraft),
+  'workspace.nextSession': sessionTraversalHandler('next'),
+  'workspace.previousSession': sessionTraversalHandler('previous'),
+  'workspace.toggleSessionRail': (context) =>
+    runSessionCommand(context, () => {
+      context.setChatModePanels(
+        setChatModeSessionRailOpen(context.chatModePanels, !context.chatModePanels.sessionRailOpen),
+      )
+
+      return true
+    }),
   'workspace.closeCurrentTab': ({ activeTabId, requestCloseTab }) =>
     closeSelectedTab(activeTabId, requestCloseTab),
   'workspace.focusEditor': ({ requestEditorFocus }) => {

@@ -1,6 +1,17 @@
-import { errorNumberField, errorStringField, isRecord } from '@workspace/contracts'
+import {
+  errorNumberField,
+  errorStringField,
+  isRecord,
+  ORCHESTRATION_REPLAY_MAX_EVENTS,
+  ORCHESTRATION_RESUME_MAX_GAP,
+  ORCHESTRATION_WS_PROTOCOL_VERSION,
+  type OrchestrationShellStreamFrame,
+  type OrchestrationThreadStreamFrame,
+  type OrchestrationWsServerConfig,
+} from '@workspace/contracts'
 import { Elysia } from 'elysia'
 
+import serverPackage from '../../package.json' with { type: 'json' }
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
 import {
   orchestrationCommandSummary,
@@ -11,14 +22,37 @@ import {
 import type { OrchestrationEngine } from './engine'
 import {
   orchestrationWsClientMessageSchema,
-  type OrchestrationShellStreamItem,
-  type OrchestrationThreadStreamItem,
   type OrchestrationWsClientMessage,
   type OrchestrationWsRequest,
   type OrchestrationWsServerMessage,
   type OrchestrationWsSubscribe,
   type OrchestrationWsSubscriptionId,
 } from './schemas'
+
+/**
+ * Identity of this server process. `serverInstanceId` changes on every restart,
+ * which is how a reconnecting client learns that its resume cursor belongs to a
+ * server generation that no longer holds a live tail for it.
+ */
+const SERVER_INSTANCE_ID = crypto.randomUUID()
+const SERVER_STARTED_AT = new Date().toISOString()
+
+export function orchestrationWsServerConfig(): OrchestrationWsServerConfig {
+  return {
+    capabilities: {
+      resume: true,
+      synchronizedMarker: true,
+    },
+    limits: {
+      replayMaxEvents: ORCHESTRATION_REPLAY_MAX_EVENTS,
+      resumeMaxGap: ORCHESTRATION_RESUME_MAX_GAP,
+    },
+    protocolVersion: ORCHESTRATION_WS_PROTOCOL_VERSION,
+    serverInstanceId: SERVER_INSTANCE_ID,
+    serverVersion: serverPackage.version,
+    startedAt: SERVER_STARTED_AT,
+  }
+}
 
 type OrchestrationRpcWebSocket = {
   close(): unknown
@@ -37,7 +71,7 @@ type OrchestrationRpcSubscription = {
   threadId?: string
 }
 
-type OrchestrationStreamItem = OrchestrationShellStreamItem | OrchestrationThreadStreamItem
+type OrchestrationStreamItem = OrchestrationShellStreamFrame | OrchestrationThreadStreamFrame
 
 export function orchestrationWsRoutes(engine: OrchestrationEngine, auth: AuthConfig) {
   const states = new WeakMap<object, OrchestrationRpcConnectionState>()
@@ -59,7 +93,16 @@ export function orchestrationWsRoutes(engine: OrchestrationEngine, auth: AuthCon
       }
 
       states.set(socket.key, { subscriptions: new Map() })
-      recordChatPipelineInfo('chat.pipeline.ws.open')
+      // The handshake is pushed rather than requested so the client reaches an
+      // honest `connected` phase — and can compare protocol versions — without
+      // paying a round trip before it may subscribe.
+      const config = orchestrationWsServerConfig()
+      sendOrchestrationRpcMessage(socket, { config, kind: 'connected' })
+      recordChatPipelineInfo('chat.pipeline.ws.open', {
+        protocolVersion: config.protocolVersion,
+        serverInstanceId: config.serverInstanceId,
+        serverVersion: config.serverVersion,
+      })
     },
     message(ws, message) {
       const socket = orchestrationRpcWebSocket(ws)
@@ -154,6 +197,7 @@ function resolveOrchestrationRpcRequest(
   message: OrchestrationWsRequest,
 ) {
   if (message.method === 'dispatchCommand') return engine.dispatchClientCommand(message.command)
+  if (message.method === 'serverConfig') return orchestrationWsServerConfig()
   if (message.method === 'shellSnapshot') return engine.shellSnapshot()
   if (message.method === 'threadDetailSnapshot')
     return engine.threadDetailSnapshot(message.threadId)

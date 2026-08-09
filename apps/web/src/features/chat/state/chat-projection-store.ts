@@ -53,6 +53,18 @@ export type ChatProjectionThreadShell = Pick<
   | 'worktreePath'
 >
 
+/**
+ * The metadata a thread detail snapshot carries about the thread itself. It is kept
+ * apart from `threadShellById` because the shell and detail subscriptions run
+ * independently: a detail cached before a reconnect can land after a newer shell
+ * snapshot, and the shell is authoritative for branch/worktree/title/session.
+ * `selectChatThreadById` merges the two shell-wins; nothing merges them in a write.
+ */
+export type ChatProjectionThreadDetailMeta = ChatProjectionThreadShell & {
+  latestTurn: OrchestrationLatestTurn | null
+  session: OrchestrationSession | null
+}
+
 export type ChatProjectionThreadTurnState = {
   latestTurn: OrchestrationLatestTurn | null
   pendingSourceProposedPlan?: OrchestrationLatestTurn['sourceProposedPlan']
@@ -115,6 +127,7 @@ export type ChatProjectionState = {
   proposedPlanByThreadId: Record<ThreadId, Record<ProposedPlanId, OrchestrationProposedPlan>>
   proposedPlanIdsByThreadId: Record<ThreadId, ProposedPlanId[]>
   sidebarThreadSummaryById: Record<ThreadId, ChatSidebarThreadSummary>
+  threadDetailMetaById: Record<ThreadId, ChatProjectionThreadDetailMeta>
   threadDetailSequenceById: Record<ThreadId, number>
   threadIds: ThreadId[]
   threadIdsByProjectId: Record<ProjectId, ThreadId[]>
@@ -158,6 +171,7 @@ export function createInitialChatProjectionState(): ChatProjectionState {
     proposedPlanByThreadId: {},
     proposedPlanIdsByThreadId: {},
     sidebarThreadSummaryById: {},
+    threadDetailMetaById: {},
     threadDetailSequenceById: {},
     threadIds: [],
     threadIdsByProjectId: {},
@@ -204,7 +218,11 @@ export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
     set((state) => syncChatProjectionShellSnapshot(state, snapshot))
   },
   syncThreadDetailSnapshot: (snapshot) => {
-    recordProjectionMutation('syncThreadDetailSnapshot', chatThreadSnapshotSummary(snapshot))
+    recordProjectionMutation('syncThreadDetailSnapshot', {
+      ...chatThreadSnapshotSummary(snapshot),
+      checkpointCount: snapshot.checkpoints.length,
+      proposedPlanCount: snapshot.proposedPlans.length,
+    })
     set((state) => syncChatProjectionThreadDetailSnapshot(state, snapshot))
   },
 }))

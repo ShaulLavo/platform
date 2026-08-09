@@ -25,10 +25,8 @@ test('discard all is the only destructive item', () => {
   expect(destructive.map((item) => item.id)).toEqual(['discardAll'])
 })
 
-test('opening every diff is the only unavailable item, and the mutations stay live', () => {
-  const unavailable = items(menuContext()).filter((item) => item.unavailable)
-
-  expect(unavailable.map((item) => item.id)).toEqual(['openAllDiffs'])
+test('every item dispatches — nothing is gated off', () => {
+  expect(items(menuContext()).filter((item) => item.unavailable)).toEqual([])
   expect(items(menuContext()).every((item) => !item.disabled)).toBe(true)
 })
 

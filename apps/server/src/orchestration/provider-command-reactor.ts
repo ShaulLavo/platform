@@ -50,6 +50,13 @@ const HANDLED_TURN_START_KEY_MAX = 10_000
 const HANDLED_TURN_START_KEY_TTL_MS = 30 * 60 * 1000
 
 export class ProviderCommandReactor {
+  /**
+   * Settled before a turn reaches the provider. The checkpoint reactor hangs
+   * the pre-turn baseline capture here: a photograph of the worktree taken
+   * after the agent's first write is worse than no photograph at all, because
+   * turn one then diffs against its own output.
+   */
+  private readonly beforeTurnStart: ((threadId: ThreadId) => Promise<void>) | null
   private readonly checkpointGit: GitService | null
   private readonly dispatch: ((command: OrchestrationCommand) => Promise<unknown> | unknown) | null
   private readonly getReadModel: () => OrchestrationReadModel
@@ -63,6 +70,7 @@ export class ProviderCommandReactor {
   private readonly worker: DrainableProviderIntentWorker<ProviderIntentEvent>
 
   constructor({
+    beforeTurnStart,
     checkpointGit,
     dispatch,
     getReadModel,
@@ -71,6 +79,7 @@ export class ProviderCommandReactor {
     providerService,
     turnStartKeyTtlMs,
   }: {
+    beforeTurnStart?: (threadId: ThreadId) => Promise<void>
     checkpointGit?: GitService | null
     dispatch?: (command: OrchestrationCommand) => Promise<unknown> | unknown
     getReadModel: () => OrchestrationReadModel
@@ -79,6 +88,7 @@ export class ProviderCommandReactor {
     providerService: ProviderService
     turnStartKeyTtlMs?: number
   }) {
+    this.beforeTurnStart = beforeTurnStart ?? null
     this.checkpointGit = checkpointGit ?? null
     this.dispatch = dispatch ?? null
     this.getReadModel = getReadModel
@@ -197,6 +207,7 @@ export class ProviderCommandReactor {
       }
 
       this.rememberModelSelection(context.thread.id, context.modelSelection)
+      await this.beforeTurnStart?.(context.thread.id)
       await this.ensureSessionForTurn(context, event.payload.turnId)
       this.trackProviderAction(this.sendTurn(event, context))
     } catch (error) {
@@ -384,10 +395,9 @@ export class ProviderCommandReactor {
         })
       }
 
-      await context.git.deleteRefs({
-        path: context.workspacePath,
-        refs: context.staleRefs,
-      })
+      // The projection prune comes first: `thread.reverted` is what tells every
+      // client which checkpoints still exist, and a ref deleted ahead of it
+      // leaves the UI offering a diff whose ref is already gone.
       await Promise.resolve(
         context.dispatch({
           commandId: v.parse(commandIdSchema, `checkpoint-revert-complete:${event.eventId}`),
@@ -397,11 +407,18 @@ export class ProviderCommandReactor {
           type: 'thread.revert.complete',
         }),
       )
+      await context.git.deleteRefs({
+        path: context.workspacePath,
+        refs: context.staleRefs,
+      })
       recordChatPipelineInfo('chat.pipeline.provider_reactor.checkpoint_revert.complete', {
         deletedRefCount: context.staleRefs.length,
         rollbackTurns,
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
+        // A revert must read as an edit, not as a commit someone prepared. This
+        // is the observable for that: anything staged here is the bug.
+        ...(await revertedIndexSummary(context.git, context.workspacePath)),
       })
     } catch (error) {
       await this.appendProviderFailureActivity({
@@ -705,6 +722,21 @@ export class ProviderCommandReactor {
     recordChatPipelineInfo('chat.pipeline.provider_reactor.task_tracked', {
       pendingCount: this.pendingProviderActions.size,
     })
+  }
+}
+
+/**
+ * Never rejects: the revert already happened, so a failed status read costs a
+ * log field and nothing else.
+ */
+async function revertedIndexSummary(git: GitService, workspacePath: string) {
+  try {
+    const status = await git.status(workspacePath)
+    const staged = status.files.filter((file) => file.index !== 'unmodified')
+
+    return { changedFileCount: status.files.length, stagedFileCount: staged.length }
+  } catch (error) {
+    return { statusError: providerErrorMessage(error) }
   }
 }
 

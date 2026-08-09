@@ -6,9 +6,11 @@ import {
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type OrchestrationShellSnapshot,
+  type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
   type ProviderModel,
   type ProviderSnapshot,
+  eventIdSchema,
   projectIdSchema,
   threadIdSchema,
   turnIdSchema,
@@ -24,6 +26,28 @@ import type {
 // Deterministic timestamps so factory output is stable across runs.
 function timestamp(index: number) {
   return `2026-05-28T00:00:0${index}.000Z`
+}
+
+/**
+ * Mirrors what `provider-runtime-ingestion` actually appends: the payload shape
+ * is the contract the pending-request derivation reads, so tests that invent a
+ * different one prove nothing.
+ */
+export function threadActivity(
+  overrides: Partial<OrchestrationThreadActivity> = {},
+): OrchestrationThreadActivity {
+  return {
+    createdAt: timestamp(3),
+    id: v.parse(eventIdSchema, 'event-activity-1'),
+    kind: 'approval.requested',
+    payload: {},
+    sequence: 1,
+    summary: 'Approval requested',
+    threadId: v.parse(threadIdSchema, 'thread-1'),
+    tone: 'approval',
+    turnId: v.parse(turnIdSchema, 'turn-1'),
+    ...overrides,
+  }
 }
 
 export function chatMessage(overrides: Partial<OrchestrationMessage> = {}): OrchestrationMessage {

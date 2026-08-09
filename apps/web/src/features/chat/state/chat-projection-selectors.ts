@@ -9,6 +9,7 @@ import type {
 
 import type {
   ChatProjectionState,
+  ChatProjectionThreadDetailMeta,
   ChatProjectionThreadShell,
   ChatProjectionThreadTurnState,
   ChatSidebarThreadSummary,
@@ -24,10 +25,12 @@ const EMPTY_SIDEBAR_THREADS: ChatSidebarThreadSummary[] = []
 const EMPTY_TURN_DIFF_SUMMARIES: ChatTurnDiffSummary[] = []
 
 const collectedByIdsCache = new WeakMap<readonly string[], WeakMap<object, readonly unknown[]>>()
+const unarchivedThreadsCache = new WeakMap<object, ChatSidebarThreadSummary[]>()
 const threadCache = new WeakMap<
-  ChatProjectionThreadShell,
+  ChatProjectionThreadShell | ChatProjectionThreadDetailMeta,
   {
     activities: ChatThread['activities']
+    detailMeta: ChatProjectionThreadDetailMeta | undefined
     messages: ChatThread['messages']
     proposedPlans: ChatThread['proposedPlans']
     session: ChatThread['session']
@@ -43,7 +46,9 @@ export function selectChatProjects(state: ChatProjectionState) {
 }
 
 export function selectChatSidebarThreads(state: ChatProjectionState): ChatSidebarThreadSummary[] {
-  return collectByIds(state.threadIds, state.sidebarThreadSummaryById, EMPTY_SIDEBAR_THREADS)
+  return unarchivedThreads(
+    collectByIds(state.threadIds, state.sidebarThreadSummaryById, EMPTY_SIDEBAR_THREADS),
+  )
 }
 
 export function selectChatSidebarThreadsForProject(
@@ -54,31 +59,65 @@ export function selectChatSidebarThreadsForProject(
 
   const threadIds = state.threadIdsByProjectId[projectId]
 
-  return collectByIds(threadIds, state.sidebarThreadSummaryById, EMPTY_SIDEBAR_THREADS)
+  return unarchivedThreads(
+    collectByIds(threadIds, state.sidebarThreadSummaryById, EMPTY_SIDEBAR_THREADS),
+  )
 }
 
+/**
+ * Archiving means "leave the list", so an archived thread is not a sidebar thread at
+ * all: every surface that picks one — the rail, the side panel, chat mode's auto-pick —
+ * reads it out of here, which is the only way they can agree by construction. Cached on
+ * the collected array's identity because these feed zustand selectors, and a fresh array
+ * per read is a re-render loop.
+ */
+function unarchivedThreads(threads: ChatSidebarThreadSummary[]): ChatSidebarThreadSummary[] {
+  if (threads.length === 0) return EMPTY_SIDEBAR_THREADS
+
+  const cached = unarchivedThreadsCache.get(threads)
+  if (cached) return cached
+
+  const visible = threads.filter((thread) => !thread.archivedAt)
+  const result = visible.length === threads.length ? threads : visible
+  unarchivedThreadsCache.set(threads, result)
+
+  return result
+}
+
+/**
+ * The one place shell and detail meet. Both subscriptions run independently, so a
+ * detail cached before a reconnect can be older than the rail's copy of the thread —
+ * the shell record therefore wins on branch, worktree, title and session, and the
+ * detail record only fills in for a thread the shell has not delivered yet. Writers
+ * stay slice-scoped so neither can quietly revert the other.
+ */
 export function selectChatThreadById(
   state: ChatProjectionState,
   threadId: ThreadId | null | undefined,
 ): ChatThread | undefined {
   if (!threadId) return undefined
 
-  const shell = state.threadShellById[threadId]
-  if (!shell) return undefined
+  const detailMeta = state.threadDetailMetaById[threadId]
+  const meta = state.threadShellById[threadId] ?? detailMeta
+  if (!meta) return undefined
 
-  const session = state.threadSessionById[threadId] ?? null
+  const session = selectSessionForThread(state, threadId, detailMeta)
   const turnState = state.threadTurnStateById[threadId]
   const messages = selectChatMessagesForThread(state, threadId)
   const activities = selectChatActivitiesForThread(state, threadId)
   const proposedPlans = selectChatProposedPlansForThread(state, threadId)
   const turnDiffSummaries = selectChatTurnDiffSummariesForThread(state, threadId)
-  const latestTurn = latestTurnForSession(turnState?.latestTurn ?? null, session)
+  const latestTurn = latestTurnForSession(
+    turnState?.latestTurn ?? detailMeta?.latestTurn ?? null,
+    session,
+  )
   const summary = state.sidebarThreadSummaryById[threadId]
-  const cached = threadCache.get(shell)
+  const cached = threadCache.get(meta)
 
   if (
     cached &&
     cached.activities === activities &&
+    cached.detailMeta === detailMeta &&
     cached.messages === messages &&
     cached.proposedPlans === proposedPlans &&
     cached.session === session &&
@@ -90,9 +129,9 @@ export function selectChatThreadById(
   }
 
   const thread: ChatThread = {
-    ...shell,
+    ...meta,
     activities,
-    hasActionableProposedPlan: summary?.hasActionableProposedPlan ?? proposedPlans.length > 0,
+    hasActionableProposedPlan: summary?.hasActionableProposedPlan ?? hasOpenPlan(proposedPlans),
     latestTurn,
     latestUserMessageAt: summary?.latestUserMessageAt ?? null,
     messages,
@@ -104,8 +143,9 @@ export function selectChatThreadById(
     turnDiffSummaries,
   }
 
-  threadCache.set(shell, {
+  threadCache.set(meta, {
     activities,
+    detailMeta,
     messages,
     proposedPlans,
     session,
@@ -116,6 +156,26 @@ export function selectChatThreadById(
   })
 
   return thread
+}
+
+/**
+ * `null` is a real session value (stopped), so presence decides: only a thread the
+ * shell has never delivered falls back to whatever its detail snapshot carried.
+ */
+function selectSessionForThread(
+  state: ChatProjectionState,
+  threadId: ThreadId,
+  detailMeta: ChatProjectionThreadDetailMeta | undefined,
+) {
+  if (Object.hasOwn(state.threadSessionById, threadId)) {
+    return state.threadSessionById[threadId] ?? null
+  }
+
+  return detailMeta?.session ?? null
+}
+
+function hasOpenPlan(proposedPlans: ChatThread['proposedPlans']) {
+  return proposedPlans.some((plan) => !plan.implementedAt)
 }
 
 function latestTurnForSession(

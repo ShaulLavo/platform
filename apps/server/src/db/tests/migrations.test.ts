@@ -1,10 +1,19 @@
-import { Database } from 'bun:sqlite'
-import { describe, expect, it } from 'vitest'
-import { drizzle } from 'drizzle-orm/bun-sqlite'
-import { migrateOrchestrationDatabase } from '../migrations'
-import * as schema from '../schema'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { sql } from 'drizzle-orm'
+import { afterEach, describe, expect, it } from 'vitest'
+import { createMetadataDatabase, type MetadataDatabaseHandle } from '../client'
+import {
+  migrateOrchestrationDatabase,
+  migratePlatformDatabase,
+  platformMigrations,
+  type Migration,
+} from '../migrations'
 
-const expectedOrchestrationTables = [
+const expectedTables = [
+  'schema_migrations',
+  'fs_metadata',
   'orchestration_events',
   'orchestration_command_receipts',
   'projection_state',
@@ -13,168 +22,202 @@ const expectedOrchestrationTables = [
   'projection_thread_messages',
   'projection_thread_activities',
   'projection_thread_sessions',
+  'projection_thread_proposed_plans',
+  'projection_thread_checkpoints',
   'projection_turns',
   'provider_session_runtime',
 ] as const
 
-describe('orchestration migrations', () => {
-  it('creates the Phase 1 orchestration tables in an empty database', () => {
-    const sqlite = createMigratedDatabase()
+/** Every real migration in the ledger, so the assertions below move with it. */
+const ledgerVersionNumbers = platformMigrations.map((migration) => migration.version)
+const nextVersion = Math.max(...ledgerVersionNumbers) + 1
 
-    expect(tableNames(sqlite)).toEqual(expect.arrayContaining([...expectedOrchestrationTables]))
-    expect(tableNames(sqlite)).not.toContain('projection_pending_approvals')
-    expect(tableNames(sqlite)).not.toContain('projection_thread_proposed_plans')
+const openHandles: MetadataDatabaseHandle[] = []
+const tempDirs: string[] = []
 
-    sqlite.close()
+afterEach(() => {
+  for (const handle of openHandles.splice(0)) handle.close()
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { force: true, recursive: true })
+})
+
+describe('platform migration ledger', () => {
+  it('creates every table in a fresh database and records the baseline', () => {
+    const handle = openTempDatabase()
+
+    const applied = migratePlatformDatabase(handle.db)
+
+    expect(applied.map((migration) => migration.version)).toEqual(ledgerVersionNumbers)
+    expect(tableNames(handle)).toEqual(expect.arrayContaining([...expectedTables]))
+    expect(ledgerVersions(handle)).toEqual(ledgerVersionNumbers)
+    expect(ledgerRow(handle, 1)?.applied_at).toEqual(expect.any(String))
   })
 
-  it('creates shell summary and runtime columns on projection tables', () => {
-    const sqlite = createMigratedDatabase()
+  it('applies nothing on the second run', () => {
+    const handle = openTempDatabase()
 
-    expect(columnNames(sqlite, 'projection_threads')).toEqual(
-      expect.arrayContaining([
-        'latest_user_message_at',
-        'pending_approval_count',
-        'pending_user_input_count',
-        'has_actionable_proposed_plan',
-        'runtime_mode',
-        'interaction_mode',
-        'model_selection_json',
-        'archived_at',
-        'deleted_at',
-      ]),
-    )
-    expect(columnNames(sqlite, 'projection_thread_sessions')).toContain('provider_instance_id')
-    expect(columnNames(sqlite, 'provider_session_runtime')).toContain('provider_instance_id')
-    expect(columnInfo(sqlite, 'provider_session_runtime', 'provider_instance_id')?.not_null).toBe(1)
+    migratePlatformDatabase(handle.db)
+    const second = migratePlatformDatabase(handle.db)
 
-    sqlite.close()
+    expect(second).toEqual([])
+    expect(ledgerVersions(handle)).toEqual(ledgerVersionNumbers)
   })
 
-  it('removes legacy provider runtime rows without provider instance ids', () => {
-    const sqlite = new Database(':memory:', { create: true })
-    const database = drizzle({ client: sqlite, schema })
+  it('applies nothing from a second connection to the same file', () => {
+    const first = openTempDatabase()
+    const second = openTempDatabase(first.databasePath)
 
-    sqlite.exec(`
-      CREATE TABLE provider_session_runtime (
-        thread_id TEXT PRIMARY KEY NOT NULL,
-        provider_driver_kind TEXT NOT NULL,
-        provider_instance_id TEXT,
-        provider_session_id TEXT,
-        adapter_key TEXT NOT NULL,
-        runtime_mode TEXT NOT NULL,
-        status TEXT NOT NULL,
-        last_seen_at TEXT NOT NULL,
-        resume_cursor_json TEXT,
-        runtime_payload_json TEXT
-      )
-    `)
-    sqlite.exec(`
-      INSERT INTO provider_session_runtime (
-        thread_id,
-        provider_driver_kind,
-        provider_instance_id,
-        provider_session_id,
-        adapter_key,
-        runtime_mode,
-        status,
-        last_seen_at,
-        resume_cursor_json,
-        runtime_payload_json
-      )
-      VALUES (
-        'thread-legacy',
-        'codex',
-        NULL,
-        'provider-session:thread-legacy',
-        'codex',
-        'full-access',
-        'running',
-        '2026-05-28T00:00:00.000Z',
-        NULL,
-        NULL
-      )
-    `)
+    migratePlatformDatabase(first.db)
+    const applied = migratePlatformDatabase(second.db)
 
-    migrateOrchestrationDatabase(database)
-
-    expect(providerSessionRuntimeRowCount(sqlite)).toBe(0)
-    sqlite.close()
+    expect(applied).toEqual([])
+    expect(ledgerVersions(second)).toEqual(ledgerVersionNumbers)
   })
 
-  it('creates lookup indexes for shell snapshots, detail snapshots, and replay', () => {
-    const sqlite = createMigratedDatabase()
+  it('creates the orchestration lookup indexes the snapshot queries rely on', () => {
+    const handle = openTempDatabase()
 
-    expect(indexNames(sqlite, 'orchestration_events')).toEqual(
+    migrateOrchestrationDatabase(handle.db)
+
+    expect(indexNames(handle, 'orchestration_events')).toEqual(
       expect.arrayContaining([
         'orchestration_events_sequence_idx',
         'orchestration_events_aggregate_sequence_idx',
       ]),
     )
-    expect(indexNames(sqlite, 'projection_threads')).toContain(
+    expect(indexNames(handle, 'projection_threads')).toContain(
       'projection_threads_project_deleted_created_idx',
     )
-    expect(indexNames(sqlite, 'projection_thread_messages')).toContain(
-      'projection_thread_messages_thread_created_idx',
-    )
-    expect(indexNames(sqlite, 'projection_thread_activities')).toContain(
-      'projection_thread_activities_thread_created_idx',
-    )
-    expect(indexNames(sqlite, 'projection_thread_sessions')).toEqual(
+    expect(indexNames(handle, 'projection_thread_sessions')).toEqual(
       expect.arrayContaining([
         'projection_thread_sessions_provider_session_idx',
         'projection_thread_sessions_provider_instance_idx',
       ]),
     )
+    expect(columnInfo(handle, 'provider_session_runtime', 'provider_instance_id')?.not_null).toBe(1)
+  })
 
-    sqlite.close()
+  it('adds a column to a database already at the 001 baseline', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+
+    const applied = migratePlatformDatabase(handle.db, [...platformMigrations, addSnoozedAt])
+
+    expect(applied.map((migration) => migration.version)).toEqual([nextVersion])
+    expect(columnNames(handle, 'projection_threads')).toContain('snoozed_at')
+    expect(ledgerVersions(handle)).toEqual([...ledgerVersionNumbers, nextVersion])
+  })
+
+  it('rolls back the DDL and records nothing when a migration throws', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+
+    expect(() =>
+      migratePlatformDatabase(handle.db, [...platformMigrations, addSnoozedAtThenThrow]),
+    ).toThrow(new RegExp(`migration ${nextVersion}_add_projection_threads_snoozed_at failed`, 'i'))
+
+    expect(columnNames(handle, 'projection_threads')).not.toContain('snoozed_at')
+    expect(ledgerVersions(handle)).toEqual(ledgerVersionNumbers)
+  })
+
+  it('reports the failure as a structured error', () => {
+    const handle = openTempDatabase()
+
+    const error = captureError(() =>
+      migratePlatformDatabase(handle.db, [...platformMigrations, addSnoozedAtThenThrow]),
+    )
+
+    expect(error).toMatchObject({
+      code: 'db.MIGRATION_FAILED',
+      name: 'EvlogError',
+    })
+    expect(error).toHaveProperty('why')
+    expect(error).toHaveProperty('fix')
   })
 })
 
-function createMigratedDatabase() {
-  const sqlite = new Database(':memory:', { create: true })
-  const database = drizzle({ client: sqlite, schema })
-
-  migrateOrchestrationDatabase(database)
-
-  return sqlite
+const addSnoozedAt: Migration = {
+  name: 'add_projection_threads_snoozed_at',
+  up: (database) => {
+    database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_at TEXT`)
+  },
+  version: nextVersion,
 }
 
-function tableNames(sqlite: Database) {
-  return sqlite
-    .query<{ name: string }, []>(
-      "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
-    )
-    .all()
-    .map((row) => row.name)
+const addSnoozedAtThenThrow: Migration = {
+  name: 'add_projection_threads_snoozed_at',
+  up: (database) => {
+    database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_at TEXT`)
+    throw new Error('migration exploded after its DDL')
+  },
+  version: nextVersion,
 }
 
-function columnNames(sqlite: Database, tableName: string) {
-  return sqlite
-    .query<{ name: string }, [string]>('SELECT name FROM pragma_table_info(?) ORDER BY cid')
-    .all(tableName)
-    .map((row) => row.name)
+function openTempDatabase(databasePath?: string) {
+  const handle = createMetadataDatabase({ databasePath: databasePath ?? tempDatabasePath() })
+  openHandles.push(handle)
+
+  return handle
 }
 
-function columnInfo(sqlite: Database, tableName: string, columnName: string) {
-  return sqlite
-    .query<{ not_null: number }, [string, string]>(
-      'SELECT "notnull" AS not_null FROM pragma_table_info(?) WHERE name = ?',
-    )
-    .get(tableName, columnName)
+function tempDatabasePath() {
+  const directory = mkdtempSync(path.join(tmpdir(), 'platform-migrations-'))
+  tempDirs.push(directory)
+
+  return path.join(directory, 'platform.sqlite')
 }
 
-function indexNames(sqlite: Database, tableName: string) {
-  return sqlite
-    .query<{ name: string }, [string]>('SELECT name FROM pragma_index_list(?) ORDER BY name')
-    .all(tableName)
-    .map((row) => row.name)
+function captureError(run: () => unknown) {
+  try {
+    run()
+  } catch (error) {
+    return error
+  }
+
+  return expect.unreachable('expected the migration run to throw')
 }
 
-function providerSessionRuntimeRowCount(sqlite: Database) {
-  return (
-    sqlite
-      .query<{ count: number }, []>('SELECT COUNT(*) AS count FROM provider_session_runtime')
-      .get()?.count ?? 0
-  )
+function tableNames(handle: MetadataDatabaseHandle) {
+  return rows<{ name: string }>(
+    handle,
+    sql`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
+  ).map((row) => row.name)
+}
+
+function columnNames(handle: MetadataDatabaseHandle, tableName: string) {
+  return rows<{ name: string }>(
+    handle,
+    sql`SELECT name FROM pragma_table_info(${tableName}) ORDER BY cid`,
+  ).map((row) => row.name)
+}
+
+function columnInfo(handle: MetadataDatabaseHandle, tableName: string, columnName: string) {
+  return rows<{ not_null: number }>(
+    handle,
+    sql`SELECT "notnull" AS not_null FROM pragma_table_info(${tableName}) WHERE name = ${columnName}`,
+  ).at(0)
+}
+
+function indexNames(handle: MetadataDatabaseHandle, tableName: string) {
+  return rows<{ name: string }>(
+    handle,
+    sql`SELECT name FROM pragma_index_list(${tableName}) ORDER BY name`,
+  ).map((row) => row.name)
+}
+
+function ledgerVersions(handle: MetadataDatabaseHandle) {
+  return rows<{ version: number }>(
+    handle,
+    sql`SELECT version FROM schema_migrations ORDER BY version`,
+  ).map((row) => row.version)
+}
+
+function ledgerRow(handle: MetadataDatabaseHandle, version: number) {
+  return rows<{ applied_at: string; name: string }>(
+    handle,
+    sql`SELECT name, applied_at FROM schema_migrations WHERE version = ${version}`,
+  ).at(0)
+}
+
+function rows<T>(handle: MetadataDatabaseHandle, query: ReturnType<typeof sql>) {
+  return handle.db.all<T>(query)
 }

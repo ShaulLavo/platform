@@ -100,12 +100,15 @@ function assignRef<TElement>(ref: Ref<TElement> | undefined, node: TElement | nu
 function editorTabTitle(tab: EditorTabModel) {
   return (
     <span className='flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden whitespace-nowrap'>
-      <span className='min-w-0 shrink truncate'>{tab.name}</span>
+      <span className='min-w-0 flex-1 truncate'>{tab.name}</span>
       {tab.diffSuffix ? (
         <span
           aria-hidden='true'
           className={cn(
-            'shrink-0 text-xs leading-none font-semibold tabular-nums',
+            // Yields space before the filename does: a tab is 144px wide and
+            // `(b25d374 *M)` alone nearly fills it, so a `shrink-0` suffix
+            // truncated the name away entirely.
+            'min-w-0 shrink truncate text-xs leading-none font-semibold tabular-nums',
             tab.diffStatus?.className ?? 'text-muted-foreground',
           )}
           title={tab.diffStatus?.title}

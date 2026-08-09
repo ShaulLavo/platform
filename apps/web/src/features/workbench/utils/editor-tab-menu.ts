@@ -1,4 +1,11 @@
-import { ArrowRightIcon, CopyIcon, FilesIcon, FloppyDiskIcon, XIcon } from '@phosphor-icons/react'
+import {
+  ArrowRightIcon,
+  CopyIcon,
+  FileIcon,
+  FilesIcon,
+  FloppyDiskIcon,
+  XIcon,
+} from '@phosphor-icons/react'
 
 import {
   editorTabCloseTargetIds,
@@ -12,10 +19,13 @@ export type EditorTabMenuContext = {
   readonly closeTargets: readonly EditorTabCloseTarget[]
   readonly copyPath: (path: string, label: string) => void
   readonly closeTabs: (tabIds: readonly string[]) => void
+  readonly openFile: (path: string) => void
   readonly tab: EditorTabModel
 }
 
 export function editorTabMenu(context: EditorTabMenuContext): Menu {
+  const diffSource = context.tab.diffSource
+
   return [
     section('close', [
       closeAction(context, 'close', 'Close', XIcon),
@@ -23,6 +33,18 @@ export function editorTabMenu(context: EditorTabMenuContext): Menu {
       closeAction(context, 'closeToRight', 'Close to the Right', ArrowRightIcon),
       closeAction(context, 'closeSaved', 'Close Saved', FloppyDiskIcon),
       closeAction(context, 'closeAll', 'Close All', XIcon),
+    ]),
+    section('open', [
+      // Only a diff tab has a file behind it worth jumping to; a file tab is
+      // already the file.
+      diffSource &&
+        actionItem({
+          disabled: !diffSource.onDisk,
+          icon: FileIcon,
+          id: 'openFile',
+          label: 'Open File',
+          run: () => context.openFile(diffSource.path),
+        }),
     ]),
     section('copy', [
       actionItem({

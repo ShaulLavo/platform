@@ -1,87 +1,245 @@
 import type { OrchestrationLatestTurn, OrchestrationThreadActivity } from '@workspace/contracts'
 
-import { chatActivityPresentation, type ChatActivityIconKey } from './chat-activity-presentation'
+import {
+  chatActivityPlanSteps,
+  chatActivityPresentation,
+  chatActivityToolCallId,
+  type ChatActivityIconKey,
+  type ChatActivityOutcome,
+  type ChatActivityPlanStep,
+} from './chat-activity-presentation'
 
 export type ChatWorkLogTone = 'error' | 'info' | 'thinking' | 'tool'
 
+export type ChatWorkLogPlan = {
+  completedCount: number
+  currentStep: string | null
+  steps: readonly ChatActivityPlanStep[]
+}
+
 export type ChatWorkLogEntry = {
+  changedFiles: readonly string[]
+  command: string | null
   createdAt: string
   detail: string | null
   icon: ChatActivityIconKey
   id: string
   itemType: string | null
+  outcome: ChatActivityOutcome | null
+  output: string | null
+  plan: ChatWorkLogPlan | null
   status: string | null
   title: string
   tone: ChatWorkLogTone
+  turnId: OrchestrationThreadActivity['turnId']
 }
 
 type DerivedChatWorkLogEntry = ChatWorkLogEntry & {
   activityKind: string
   collapseKey: string | null
+  toolCallKey: string | null
 }
 
+type TurnPlanRow = {
+  anchorId: string
+  createdAt: string
+  entry: DerivedChatWorkLogEntry
+}
+
+/**
+ * Every turn's work is derived, not just the running one: scrolling back through a
+ * finished thread must still show the tool calls, reasoning and approvals that produced it.
+ */
 export function chatWorkLogEntries({
   activities,
-  latestTurnId,
 }: {
   activities: readonly OrchestrationThreadActivity[]
-  latestTurnId: OrchestrationLatestTurn['turnId'] | null | undefined
 }) {
-  const entries = [...activities]
-    .toSorted(compareActivities)
-    .filter((activity) => isActivityForWorkLog(activity, latestTurnId))
-    .map(derivedWorkLogEntry)
+  const ordered = [...activities].toSorted(compareActivities)
+  const planRows = turnPlanRows(ordered)
+  const entries: DerivedChatWorkLogEntry[] = []
+
+  for (const activity of ordered) {
+    if (activity.kind === 'turn.plan.updated') {
+      appendTurnPlanRow(entries, planRows, activity)
+      continue
+    }
+    if (!isActivityForWorkLog(activity)) continue
+
+    entries.push(derivedWorkLogEntry(activity))
+  }
 
   return collapseWorkLogEntries(entries).map(
-    ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
+    ({
+      activityKind: _activityKind,
+      collapseKey: _collapseKey,
+      toolCallKey: _toolCallKey,
+      ...entry
+    }) => entry,
   )
+}
+
+/** The plan the working row narrates: this turn's, falling back to the thread's most recent. */
+export function chatActiveWorkLogPlan(
+  entries: readonly ChatWorkLogEntry[],
+  latestTurnId: OrchestrationLatestTurn['turnId'] | null | undefined,
+) {
+  const planEntries = entries.filter((entry) => entry.plan !== null)
+  const turnPlan = latestTurnId
+    ? planEntries.findLast((entry) => entry.turnId === latestTurnId)
+    : undefined
+
+  return (turnPlan ?? planEntries.at(-1))?.plan ?? null
 }
 
 function compareActivities(left: OrchestrationThreadActivity, right: OrchestrationThreadActivity) {
   return left.createdAt.localeCompare(right.createdAt)
 }
 
-function isActivityForWorkLog(
-  activity: OrchestrationThreadActivity,
-  latestTurnId: OrchestrationLatestTurn['turnId'] | null | undefined,
-) {
-  if (latestTurnId && activity.turnId !== latestTurnId) return false
-  if (activity.kind === 'tool.started') return false
+function isActivityForWorkLog(activity: OrchestrationThreadActivity) {
   if (activity.kind === 'task.started') return false
   if (activity.kind === 'context-window.updated') return false
   if (activity.summary === 'Checkpoint captured') return false
   if (isPlanBoundaryToolActivity(activity)) return false
+  // A start with no tool-call id cannot fold into its completion, so it would
+  // duplicate the row it belongs to.
+  if (activity.kind === 'tool.started') return chatActivityToolCallId(activity) !== null
 
   return true
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity) {
-  if (activity.kind !== 'tool.updated' && activity.kind !== 'tool.completed') return false
+  if (!activity.kind.startsWith('tool.')) return false
 
   const detail = stringPayloadValue(activity.payload, 'detail')
   return Boolean(detail?.startsWith('ExitPlanMode:'))
 }
 
+/**
+ * Plans rewrite themselves on every step, so one row per turn holds the latest snapshot
+ * anchored where planning began — a row per snapshot would bury the rest of the log.
+ */
+function turnPlanRows(ordered: readonly OrchestrationThreadActivity[]) {
+  const rows = new Map<string, TurnPlanRow>()
+
+  for (const activity of ordered) {
+    if (activity.kind !== 'turn.plan.updated') continue
+
+    const key = turnPlanKey(activity)
+    const plan = workLogPlan(activity)
+    // A later snapshot with no steps withdraws the plan; keeping the stale row would
+    // freeze the timeline on a plan the model already abandoned.
+    if (!plan) {
+      rows.delete(key)
+      continue
+    }
+
+    const existing = rows.get(key)
+    const createdAt = existing?.createdAt ?? activity.createdAt
+    rows.set(key, {
+      anchorId: existing?.anchorId ?? activity.id,
+      createdAt,
+      entry: planWorkLogEntry(activity, key, createdAt, plan),
+    })
+  }
+
+  return rows
+}
+
+function appendTurnPlanRow(
+  entries: DerivedChatWorkLogEntry[],
+  planRows: ReadonlyMap<string, TurnPlanRow>,
+  activity: OrchestrationThreadActivity,
+) {
+  const row = planRows.get(turnPlanKey(activity))
+  if (!row) return
+  if (row.anchorId !== activity.id) return
+
+  entries.push(row.entry)
+}
+
+function turnPlanKey(activity: OrchestrationThreadActivity) {
+  return activity.turnId ?? 'no-turn'
+}
+
+function workLogPlan(activity: OrchestrationThreadActivity): ChatWorkLogPlan | null {
+  const steps = chatActivityPlanSteps(activity)
+  if (steps.length === 0) return null
+
+  return {
+    completedCount: steps.filter((step) => step.status === 'completed').length,
+    currentStep: currentPlanStep(steps),
+    steps,
+  }
+}
+
+function currentPlanStep(steps: readonly ChatActivityPlanStep[]) {
+  const inProgress = steps.find((step) => step.status === 'inProgress')
+  if (inProgress) return inProgress.step
+
+  return steps.find((step) => step.status === 'pending')?.step ?? null
+}
+
+function planWorkLogEntry(
+  activity: OrchestrationThreadActivity,
+  key: string,
+  createdAt: string,
+  plan: ChatWorkLogPlan,
+): DerivedChatWorkLogEntry {
+  return {
+    activityKind: activity.kind,
+    changedFiles: [],
+    collapseKey: null,
+    command: null,
+    createdAt,
+    detail: null,
+    icon: 'task',
+    id: `turn-plan:${key}`,
+    itemType: null,
+    outcome: null,
+    output: null,
+    plan,
+    status: null,
+    title: activity.summary || 'Plan updated',
+    toolCallKey: null,
+    tone: 'info',
+    turnId: activity.turnId,
+  }
+}
+
 function derivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedChatWorkLogEntry {
   const presentation = chatActivityPresentation(activity)
-  const itemType = stringPayloadValue(activity.payload, 'itemType')
   const entry = {
     activityKind: activity.kind,
+    changedFiles: presentation.changedFiles,
     collapseKey: null,
+    command: presentation.command,
     createdAt: activity.createdAt,
     detail: presentation.detail,
     icon: presentation.icon,
     id: activity.id,
-    itemType,
+    itemType: stringPayloadValue(activity.payload, 'itemType'),
+    outcome: presentation.outcome,
+    output: presentation.output,
+    plan: null,
     status: presentation.status,
     title: presentation.title,
+    toolCallKey: toolCallKey(activity, presentation.toolCallId),
     tone: workLogTone(activity),
+    turnId: activity.turnId,
   }
 
   return {
     ...entry,
     collapseKey: workLogCollapseKey(entry),
   }
+}
+
+function toolCallKey(activity: OrchestrationThreadActivity, toolCallId: string | null) {
+  if (!toolCallId) return null
+  if (!activity.kind.startsWith('tool.')) return null
+
+  return [activity.turnId ?? 'no-turn', toolCallId].join('')
 }
 
 function workLogTone(activity: OrchestrationThreadActivity): ChatWorkLogTone {
@@ -94,13 +252,28 @@ function workLogTone(activity: OrchestrationThreadActivity): ChatWorkLogTone {
   return 'info'
 }
 
+/**
+ * Two folds, deliberately different: a provider tool-call id folds the whole lifecycle
+ * into the row where the call started, while the text key only ever merges neighbours —
+ * running the same command twice must stay two rows.
+ */
 function collapseWorkLogEntries(entries: readonly DerivedChatWorkLogEntry[]) {
   const collapsed: DerivedChatWorkLogEntry[] = []
+  const indexByToolCallKey = new Map<string, number>()
+
   for (const entry of entries) {
+    const foldIndex = entry.toolCallKey ? indexByToolCallKey.get(entry.toolCallKey) : undefined
+    if (foldIndex !== undefined) {
+      collapsed[foldIndex] = mergeWorkLogEntries(collapsed[foldIndex]!, entry)
+      continue
+    }
     const previous = collapsed.at(-1)
     if (previous && shouldCollapseWorkLogEntries(previous, entry)) {
       collapsed[collapsed.length - 1] = mergeWorkLogEntries(previous, entry)
       continue
+    }
+    if (entry.toolCallKey) {
+      indexByToolCallKey.set(entry.toolCallKey, collapsed.length)
     }
     collapsed.push(entry)
   }
@@ -112,6 +285,7 @@ function shouldCollapseWorkLogEntries(
   previous: DerivedChatWorkLogEntry,
   next: DerivedChatWorkLogEntry,
 ) {
+  if (previous.turnId !== next.turnId) return false
   if (!isCollapsibleToolLifecycleKind(previous.activityKind)) return false
   if (!isCollapsibleToolLifecycleKind(next.activityKind)) return false
   if (previous.activityKind === 'tool.completed') return false
@@ -124,6 +298,7 @@ function isCollapsibleToolLifecycleKind(kind: string) {
   return kind === 'tool.updated' || kind === 'tool.completed'
 }
 
+/** The surviving row keeps the first event's id and timestamp so it never moves or remounts. */
 function mergeWorkLogEntries(
   previous: DerivedChatWorkLogEntry,
   next: DerivedChatWorkLogEntry,
@@ -131,11 +306,26 @@ function mergeWorkLogEntries(
   return {
     ...previous,
     ...next,
+    changedFiles: next.changedFiles.length > 0 ? next.changedFiles : previous.changedFiles,
+    command: next.command ?? previous.command,
+    createdAt: previous.createdAt,
     detail: next.detail ?? previous.detail,
+    id: previous.id,
     itemType: next.itemType ?? previous.itemType,
+    outcome: mergedOutcome(previous.outcome, next.outcome),
+    output: next.output ?? previous.output,
     status: next.status ?? previous.status,
     title: next.title || previous.title,
   }
+}
+
+function mergedOutcome(
+  previous: ChatActivityOutcome | null,
+  next: ChatActivityOutcome | null,
+): ChatActivityOutcome | null {
+  if (previous === 'failed' || next === 'failed') return 'failed'
+
+  return next ?? previous
 }
 
 function workLogCollapseKey(entry: Omit<DerivedChatWorkLogEntry, 'collapseKey'>) {
@@ -146,7 +336,7 @@ function workLogCollapseKey(entry: Omit<DerivedChatWorkLogEntry, 'collapseKey'>)
   const itemType = entry.itemType ?? ''
   if (!title && !detail && !itemType) return null
 
-  return [itemType, title, detail].join('\u001f')
+  return [itemType, title, detail].join('')
 }
 
 function stringPayloadValue(payload: unknown, key: string) {

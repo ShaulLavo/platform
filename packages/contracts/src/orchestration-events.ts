@@ -9,7 +9,7 @@ import {
   turnIdSchema,
 } from './chat-ids'
 import {
-  chatAttachmentSchema,
+  chatAttachmentsSchema,
   isoDateTimeSchema,
   nonNegativeIntegerSchema,
   orchestrationCheckpointFileSchema,
@@ -137,7 +137,7 @@ export const threadMessageSentPayloadSchema = v.object({
   messageId: messageIdSchema,
   role: orchestrationMessageRoleSchema,
   text: v.string(),
-  attachments: v.optional(v.array(chatAttachmentSchema), []),
+  attachments: v.optional(chatAttachmentsSchema, []),
   turnId: v.nullable(turnIdSchema),
   streaming: v.boolean(),
   createdAt: isoDateTimeSchema,

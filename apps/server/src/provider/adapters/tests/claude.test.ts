@@ -17,6 +17,7 @@ import {
   threadIdSchema,
   turnIdSchema,
   type ChatAttachment,
+  type InteractionMode,
   type ModelSelection,
   type RuntimeMode,
   type ThreadId,
@@ -304,6 +305,182 @@ describe('ClaudeProviderAdapter', () => {
         threadId,
       }),
     ).rejects.toThrow('Unknown pending approval request: claude:missing')
+    await harness.adapter.stopAll()
+  })
+
+  it('types MCP, read and custom tool approvals so none arrive kindless', async () => {
+    const harness = claudeHarness()
+    const threadId = v.parse(threadIdSchema, 'thread-approval-kinds')
+    await harness.adapter.startSession(
+      sessionStartInput({ runtimeMode: 'approval-required', threadId }),
+    )
+
+    const canUseTool = latestOptions(harness).canUseTool
+    assert(canUseTool, 'canUseTool was not passed to the SDK')
+    void canUseTool('mcp__linear__create_issue', { title: 'Bug' }, canUseToolOptions())
+    void canUseTool('Read', { file_path: '/etc/hosts' }, canUseToolOptions())
+    void canUseTool('SomeCustomTool', { description: 'do it' }, canUseToolOptions())
+
+    await waitFor(() => openedRequests(harness).length === 3, 'not every approval was opened')
+    expect(openedRequests(harness).map((event) => event.payload.requestType)).toEqual([
+      'mcp_tool_call_approval',
+      'file_read_approval',
+      'dynamic_tool_call_approval',
+    ])
+    expect(openedRequests(harness)[1]?.payload.detail).toBe('Read: /etc/hosts')
+
+    await harness.adapter.stopAll()
+  })
+
+  /**
+   * The ordering regression: full-access is the mode most threads run in, and a
+   * short circuit placed ahead of the intercept would allow `ExitPlanMode`
+   * outright — Claude would leave plan mode and start editing, and the plan the
+   * user was supposed to approve would never exist.
+   */
+  it('captures an ExitPlanMode plan as a proposed plan even under full access', async () => {
+    const harness = claudeHarness()
+    const input = providerTurnInput({ interactionMode: 'plan' })
+
+    const pending = harness.adapter.sendTurn(input)
+    await waitForEvent(harness, 'turn.started')
+    expect(latestOptions(harness).permissionMode).toBe('plan')
+
+    const canUseTool = latestOptions(harness).canUseTool
+    assert(canUseTool, 'canUseTool was not passed to the SDK')
+    await expect(
+      canUseTool(
+        'ExitPlanMode',
+        { plan: '  1. Read the adapter\n2. Patch it  ' },
+        canUseToolOptions(),
+      ),
+    ).resolves.toMatchObject({ behavior: 'deny' })
+
+    expect(await waitForEvent(harness, 'proposed-plan.upsert')).toMatchObject({
+      planMarkdown: '1. Read the adapter\n2. Patch it',
+      threadId: input.thread.id,
+      turnId: input.turnId,
+      type: 'proposed-plan.upsert',
+    })
+
+    // Same session, ordinary tool: full-access still short circuits to allow, so
+    // the intercept above is the only reason the plan survived.
+    await expect(canUseTool('Bash', { command: 'ls' }, canUseToolOptions())).resolves.toEqual({
+      behavior: 'allow',
+      updatedInput: { command: 'ls' },
+    })
+    expect(openedRequests(harness)).toHaveLength(0)
+
+    latestQuery(harness).emit(successResult())
+    await pending
+    await harness.adapter.stopAll()
+  })
+
+  it('turns AskUserQuestion into a typed user-input request the answer resolves', async () => {
+    const harness = claudeHarness()
+    const input = providerTurnInput()
+
+    const pending = harness.adapter.sendTurn(input)
+    await waitForEvent(harness, 'turn.started')
+
+    const canUseTool = latestOptions(harness).canUseTool
+    assert(canUseTool, 'canUseTool was not passed to the SDK')
+    const permission = canUseTool('AskUserQuestion', askUserQuestionInput(), canUseToolOptions())
+
+    const requested = await waitForEvent(harness, 'user-input.requested')
+    expect(requested.payload.questions).toEqual([
+      {
+        allowOther: true,
+        answerKind: 'single-select',
+        header: 'Library',
+        // The id IS the question text: the SDK looks its answers up by it.
+        id: 'Which date library?',
+        options: [
+          { description: 'Small and modern', label: 'date-fns', value: 'date-fns' },
+          { label: 'dayjs', value: 'dayjs' },
+        ],
+        prompt: 'Which date library?',
+        secret: false,
+      },
+      {
+        allowOther: true,
+        answerKind: 'multi-select',
+        header: 'Extras',
+        id: 'Which extras?',
+        options: [
+          { label: 'Tests', value: 'Tests' },
+          { label: 'Docs', value: 'Docs' },
+        ],
+        prompt: 'Which extras?',
+        secret: false,
+      },
+    ])
+
+    const requestId = requested.requestId
+    assert(requestId, 'user-input.requested carried no requestId')
+    await harness.adapter.respondUserInput({
+      answers: { 'Which date library?': 'date-fns', 'Which extras?': ['Tests', 'Docs'] },
+      requestId: v.parse(approvalRequestIdSchema, requestId),
+      threadId: input.thread.id,
+    })
+
+    await expect(permission).resolves.toEqual({
+      behavior: 'allow',
+      updatedInput: {
+        // Multi-select collapses to the comma-separated string the SDK declares.
+        answers: { 'Which date library?': 'date-fns', 'Which extras?': 'Tests, Docs' },
+        questions: askUserQuestionInput().questions,
+      },
+    })
+    expect(await waitForEvent(harness, 'user-input.resolved')).toMatchObject({
+      payload: { answers: { 'Which date library?': 'date-fns' } },
+      requestId,
+    })
+
+    await expect(
+      harness.adapter.respondUserInput({
+        answers: {},
+        requestId: v.parse(approvalRequestIdSchema, 'claude:missing'),
+        threadId: input.thread.id,
+      }),
+    ).rejects.toThrow('Unknown pending user-input request: claude:missing')
+
+    latestQuery(harness).emit(successResult())
+    await pending
+    await harness.adapter.stopAll()
+  })
+
+  it('denies AskUserQuestion instead of parking the turn on a panel it cannot open', async () => {
+    const harness = claudeHarness()
+    await harness.adapter.startSession(sessionStartInput({}))
+
+    const canUseTool = latestOptions(harness).canUseTool
+    assert(canUseTool, 'canUseTool was not passed to the SDK')
+
+    await expect(
+      canUseTool('AskUserQuestion', { questions: [{ header: 'Ghost' }] }, canUseToolOptions()),
+    ).resolves.toMatchObject({ behavior: 'deny' })
+    expect(harness.events.some((event) => event.type === 'user-input.requested')).toBe(false)
+    await harness.adapter.stopAll()
+  })
+
+  /**
+   * Plan mode is a spawn-time permission mode, so a reused session keeps running
+   * the mode the thread started in — which is the whole bug: switching to plan
+   * did nothing until the thread was restarted for some other reason.
+   */
+  it('restarts the session when the thread switches interaction mode', async () => {
+    const harness = claudeHarness()
+    const threadId = v.parse(threadIdSchema, 'thread-interaction-mode')
+
+    await harness.adapter.startSession(sessionStartInput({ interactionMode: 'default', threadId }))
+    await harness.adapter.startSession(sessionStartInput({ interactionMode: 'default', threadId }))
+    expect(harness.queries).toHaveLength(1)
+    expect(latestOptions(harness).permissionMode).toBe('bypassPermissions')
+
+    await harness.adapter.startSession(sessionStartInput({ interactionMode: 'plan', threadId }))
+    expect(harness.queries).toHaveLength(2)
+    expect(latestOptions(harness).permissionMode).toBe('plan')
     await harness.adapter.stopAll()
   })
 
@@ -689,6 +866,14 @@ async function waitForEvent<Type extends ProviderRuntimeEvent['type']>(
   return event
 }
 
+/** In emission order, which `waitForEvent` cannot give: it always finds the first. */
+function openedRequests(harness: ClaudeHarness) {
+  return harness.events.filter(
+    (event): event is Extract<ProviderRuntimeEvent, { type: 'request.opened' }> =>
+      event.type === 'request.opened',
+  )
+}
+
 async function waitFor(predicate: () => boolean, label: string) {
   for (let attempt = 0; attempt < 500; attempt += 1) {
     if (predicate()) return
@@ -704,6 +889,32 @@ function canUseToolOptions(): Parameters<CanUseTool>[2] {
     requestId: 'permission-request-1',
     signal: new AbortController().signal,
     toolUseID: 'toolu_1',
+  }
+}
+
+/** The SDK's `AskUserQuestionInput`: 1-4 questions, 2-4 label/description options each. */
+function askUserQuestionInput() {
+  return {
+    questions: [
+      {
+        header: 'Library',
+        multiSelect: false,
+        options: [
+          { description: 'Small and modern', label: 'date-fns' },
+          // No description: an option that carries none must not invent one.
+          { label: 'dayjs' },
+        ],
+        question: 'Which date library?',
+      },
+      {
+        header: 'Extras',
+        multiSelect: true,
+        options: [{ label: 'Tests' }, { label: 'Docs' }],
+        question: 'Which extras?',
+      },
+      // Unreadable: no question text, so it is dropped instead of failing the turn.
+      { header: 'Ghost', options: [] },
+    ],
   }
 }
 
@@ -727,6 +938,7 @@ function modelSelection(options?: ModelSelection['options']): ModelSelection {
 }
 
 function sessionStartInput(overrides: {
+  interactionMode?: InteractionMode
   options?: ModelSelection['options']
   resumeCursor?: unknown
   runtimeMode?: RuntimeMode
@@ -734,7 +946,7 @@ function sessionStartInput(overrides: {
 }): ProviderSessionStartInput {
   return {
     cwd: WORKSPACE_ROOT,
-    interactionMode: DEFAULT_INTERACTION_MODE,
+    interactionMode: overrides.interactionMode ?? DEFAULT_INTERACTION_MODE,
     modelSelection: modelSelection(overrides.options),
     providerInstanceId: DEFAULT_CLAUDE_PROVIDER_SETTINGS.providerInstanceId,
     runtimeMode: overrides.runtimeMode ?? 'full-access',
@@ -746,6 +958,7 @@ function sessionStartInput(overrides: {
 function providerTurnInput(
   overrides: {
     attachments?: ChatAttachment[]
+    interactionMode?: InteractionMode
     messageText?: string
     options?: ModelSelection['options']
     turnId?: string
@@ -756,11 +969,12 @@ function providerTurnInput(
   const threadId = v.parse(threadIdSchema, 'thread-1')
   const turnId = v.parse(turnIdSchema, overrides.turnId ?? 'turn-1')
   const selection = modelSelection(overrides.options)
+  const interactionMode = overrides.interactionMode ?? DEFAULT_INTERACTION_MODE
 
   return {
     attachments: overrides.attachments ?? [],
     cwd: WORKSPACE_ROOT,
-    interactionMode: DEFAULT_INTERACTION_MODE,
+    interactionMode,
     messageText: overrides.messageText ?? 'Say hello',
     modelSelection: selection,
     project: {
@@ -781,7 +995,7 @@ function providerTurnInput(
       createdAt: now,
       deletedAt: null,
       id: threadId,
-      interactionMode: DEFAULT_INTERACTION_MODE,
+      interactionMode,
       latestTurn: null,
       messages: [],
       modelSelection: selection,

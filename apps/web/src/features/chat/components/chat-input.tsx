@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import { LexicalComposer, type InitialConfigType } from '@lexical/react/LexicalComposer'
 import type {
   ChatAttachmentUpload,
@@ -14,7 +13,7 @@ import {
   $setChatInputText,
   clearChatInputEditor,
   readChatInputText,
-  replaceChatInputEditorTextRange,
+  replaceChatInputEditorRange,
 } from '../lib/chat-input-editor-actions'
 import {
   chatInputUploadAttachments,
@@ -29,7 +28,7 @@ import {
   type ChatInputCommandItem,
   type ChatInputTrigger,
 } from '../lib/chat-input-logic'
-import { projectEntrySearchQueryOptions } from '../lib/project-entry-query'
+import { useProjectEntrySearch } from '../hooks/use-project-entry-search'
 import { ChatModelPickerProvider } from '../providers/model-picker-provider'
 import {
   readChatInputDraftPrompt,
@@ -108,16 +107,14 @@ export function ChatInput({
   const sendDisabled = disabled || submitting || (!hasAttachments && !initialDraft.trim())
   const statusLabel =
     attachmentError ?? error ?? (submitting ? 'Sending' : (commandStatusLabel ?? busyLabel(busy)))
-  const projectEntriesQuery = useQuery(
-    projectEntrySearchQueryOptions({
-      enabled: trigger?.kind === 'mention',
-      query: trigger?.kind === 'mention' ? trigger.query : '',
-      rootPath,
-    }),
-  )
+  const projectEntries = useProjectEntrySearch({
+    enabled: trigger?.kind === 'mention',
+    query: trigger?.kind === 'mention' ? trigger.query : '',
+    rootPath,
+  })
   const commandMenuItems = useMemo(
-    () => chatInputCommandItems(trigger, projectEntriesQuery.data?.entries ?? []),
-    [projectEntriesQuery.data?.entries, trigger],
+    () => chatInputCommandItems(trigger, projectEntries.entries),
+    [projectEntries.entries, trigger],
   )
   const commandMenuEmptyLabel = chatInputCommandMenuEmptyLabel(trigger)
   const initialConfig = useMemo<InitialConfigType>(
@@ -224,15 +221,20 @@ export function ChatInput({
       const editor = editorRef.current
       if (!editor || !trigger) return
 
-      const nextText = replaceChatInputEditorTextRange(editor, {
+      // The trigger is React state, so it can already describe a prompt that has
+      // moved on — a stale or repeated commit is refused rather than spliced in.
+      const applied = replaceChatInputEditorRange(editor, {
+        expectedText: trigger.text,
         rangeEnd: trigger.rangeEnd,
         rangeStart: trigger.rangeStart,
         replacement: item.replacement,
       })
-      useChatInputDraftStore.getState().setPrompt(draftTarget, nextText)
+      setTrigger(null)
+      if (!applied) return
+
+      useChatInputDraftStore.getState().setPrompt(draftTarget, applied.text)
       if (item.type === 'slash-command') setInteractionMode(draftTarget, item.value)
 
-      setTrigger(null)
       editor.focus()
     },
     [draftTarget, setInteractionMode, trigger],
@@ -254,6 +256,11 @@ export function ChatInput({
     },
     [activeCommandItemId, commandMenuItems],
   )
+
+  /** The popover dismissed itself — a press outside it, most of the time. */
+  function handleCommandMenuDismiss() {
+    setTrigger(null)
+  }
 
   function handleComposerDragOver(event: DragEvent<HTMLElement>) {
     if (composerDisabled) return
@@ -298,10 +305,11 @@ export function ChatInput({
             <ChatInputCommandMenu
               activeItemId={activeCommandItemId}
               emptyLabel={commandMenuEmptyLabel}
-              isLoading={projectEntriesQuery.isFetching}
+              isLoading={projectEntries.isSearching}
               items={commandMenuItems}
               triggerKind={trigger.kind}
               onActiveItemChange={setActiveCommandItemId}
+              onDismiss={handleCommandMenuDismiss}
               onSelect={handleCommandItemSelect}
             />
           ) : null}
@@ -345,6 +353,9 @@ export function ChatInput({
               <ChatInputActions
                 busy={busy}
                 disabled={disabled}
+                draftTarget={draftTarget}
+                interactionMode={interactionMode}
+                runtimeMode={runtimeMode}
                 sendButtonRef={submitButtonRef}
                 sendDisabled={sendDisabled}
                 statusLabel={statusLabel}

@@ -28,6 +28,9 @@ import type { OrchestrationStreamInput } from './orchestration-streams'
 const ORCHESTRATION_RPC_CONNECT_TIMEOUT_MS = 10_000
 const ORCHESTRATION_RPC_REQUEST_TIMEOUT_MS = 60_000
 const ORCHESTRATION_RPC_HEARTBEAT_MS = 30_000
+const ORCHESTRATION_RPC_HEARTBEAT_TIMEOUT_MS = 10_000
+/** Codes a server uses to say "you may not connect"; retrying them never helps. */
+const ORCHESTRATION_RPC_UNAUTHORIZED_CLOSE_CODES = new Set([1008, 4401, 4403])
 
 type PendingRequest = {
   method: OrchestrationWsRequest['method']
@@ -44,15 +47,28 @@ type RpcSubscription<T> = {
   threadId?: ThreadId
 }
 
-class OrchestrationRpcClient {
+export type OrchestrationRpcClientOptions = {
+  createSocket?: (url: string) => WebSocket
+  heartbeatIntervalMs?: number
+  heartbeatTimeoutMs?: number
+  url?: () => string
+}
+
+export class OrchestrationRpcClient {
   private heartbeatId: ReturnType<typeof setInterval> | null = null
   private opening: Promise<WebSocket> | null = null
+  private pendingPingRequestId: string | null = null
   private pendingRequests = new Map<string, PendingRequest>()
+  private pongTimeoutId: ReturnType<typeof setTimeout> | null = null
   private requestCounter = 0
   private socket: WebSocket | null = null
+  /** A socket that never delivered a frame was refused, not dropped. */
+  private socketDeliveredMessage = false
   private socketScope: WideEventScope | null = null
   private subscriptionCounter = 0
   private subscriptions = new Map<OrchestrationWsSubscriptionId, RpcSubscription<unknown>>()
+
+  constructor(private readonly options: OrchestrationRpcClientOptions = {}) {}
 
   dispatchCommand(command: ClientOrchestrationCommand) {
     return observeClientOperation(
@@ -255,12 +271,14 @@ class OrchestrationRpcClient {
     if (open) return open
     if (this.opening) return this.opening
 
-    const socket = new WebSocket(orchestrationRpcUrl())
+    const url = (this.options.url ?? orchestrationRpcUrl)()
+    const socket = (this.options.createSocket ?? createOrchestrationRpcSocket)(url)
     this.socket = socket
+    this.socketDeliveredMessage = false
     this.socketScope = createWideEventScope({
       action: 'orchestration.ws.connection.summary',
       area: 'orchestration',
-      url: orchestrationRpcUrl(),
+      url,
     })
     this.opening = this.openSocketConnection(socket)
 
@@ -289,7 +307,7 @@ class OrchestrationRpcClient {
         settled = true
         clearTimeout(timeoutId)
         this.opening = null
-        this.startHeartbeat()
+        this.startHeartbeat(socket)
         this.socketScope?.increment('socket.openCount')
         resolve(socket)
       })
@@ -302,8 +320,9 @@ class OrchestrationRpcClient {
         rejectOpening(createOrchestrationRpcSocketError())
       })
       socket.addEventListener('close', (event) => {
-        rejectOpening(createOrchestrationRpcCloseError(event))
-        this.handleSocketClose(socket, event)
+        const error = this.closeError(event)
+        rejectOpening(error)
+        this.handleSocketClose(socket, event, error)
       })
     })
   }
@@ -337,6 +356,7 @@ class OrchestrationRpcClient {
   }
 
   private handleSocketMessage(event: MessageEvent) {
+    this.socketDeliveredMessage = true
     const message = this.parseSocketMessage(event.data)
     if (!message) return
     if (message.kind === 'response') {
@@ -351,6 +371,11 @@ class OrchestrationRpcClient {
 
     if (message.kind === 'subscription.error') {
       this.handleSubscriptionError(message)
+      return
+    }
+
+    if (message.kind === 'pong') {
+      this.handlePongMessage(message.requestId)
       return
     }
 
@@ -407,7 +432,20 @@ class OrchestrationRpcClient {
     subscription.queue.fail(createOrchestrationRpcServerError(message.error))
   }
 
-  private handleSocketClose(socket: WebSocket, event: CloseEvent) {
+  private handleSocketClose(socket: WebSocket, event: CloseEvent, error: unknown) {
+    this.teardownSocket(socket, error, {
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean,
+    })
+  }
+
+  /**
+   * Single exit for a socket: whatever killed it, every pending request and
+   * every subscription must learn about it, or their supervisors sit forever on
+   * a transport that will never speak again.
+   */
+  private teardownSocket(socket: WebSocket, error: unknown, summary: Record<string, unknown>) {
     if (this.socket !== socket) return
 
     this.socket = null
@@ -415,15 +453,14 @@ class OrchestrationRpcClient {
     this.stopHeartbeat()
     const scope = this.socketScope
     this.socketScope = null
-    const error = createOrchestrationRpcCloseError(event)
     this.rejectPendingRequests(error)
     this.failSubscriptions(error)
     scope?.increment('socket.closeCount')
-    scope?.end({
-      code: event.code,
-      reason: event.reason,
-      wasClean: event.wasClean,
-    })
+    scope?.end(summary)
+  }
+
+  private closeError(event: CloseEvent) {
+    return createOrchestrationRpcCloseError(event, this.socketDeliveredMessage)
   }
 
   private rejectPendingRequests(error: unknown) {
@@ -462,21 +499,67 @@ class OrchestrationRpcClient {
     }
   }
 
-  private startHeartbeat() {
+  private startHeartbeat(socket: WebSocket) {
     this.stopHeartbeat()
-    this.heartbeatId = setInterval(() => {
-      this.sendClientMessageIfOpen({
-        kind: 'ping',
-        requestId: this.nextRequestId('ping'),
-      })
-    }, ORCHESTRATION_RPC_HEARTBEAT_MS)
+    this.heartbeatId = setInterval(
+      () => this.sendHeartbeat(socket),
+      this.options.heartbeatIntervalMs ?? ORCHESTRATION_RPC_HEARTBEAT_MS,
+    )
+  }
+
+  /**
+   * The pong is the only proof the socket is still two-way. A half-open socket
+   * keeps `readyState === OPEN` while every subscription silently starves, so an
+   * unanswered ping tears the connection down and lets the supervisors retry.
+   */
+  private sendHeartbeat(socket: WebSocket) {
+    if (this.socket !== socket) return
+    if (this.pendingPingRequestId !== null) return
+
+    const requestId = this.nextRequestId('ping')
+    this.pendingPingRequestId = requestId
+    this.pongTimeoutId = setTimeout(
+      () => this.failSocketLiveness(socket, requestId),
+      this.options.heartbeatTimeoutMs ?? ORCHESTRATION_RPC_HEARTBEAT_TIMEOUT_MS,
+    )
+    this.socketScope?.increment('heartbeat.pingCount')
+    this.sendClientMessageIfOpen({ kind: 'ping', requestId })
+  }
+
+  private handlePongMessage(requestId: string) {
+    if (this.pendingPingRequestId !== requestId) return
+
+    this.clearPendingPing()
+    this.socketScope?.increment('heartbeat.pongCount')
+  }
+
+  private failSocketLiveness(socket: WebSocket, requestId: string) {
+    if (this.socket !== socket) return
+    if (this.pendingPingRequestId !== requestId) return
+
+    this.socketScope?.increment('heartbeat.timeoutCount')
+    this.socketScope?.warn('Orchestration WebSocket heartbeat went unanswered.', { requestId })
+    this.teardownSocket(socket, createOrchestrationRpcHeartbeatTimeoutError(), {
+      heartbeatTimedOut: true,
+      requestId,
+    })
+    socket.close()
   }
 
   private stopHeartbeat() {
+    this.clearPendingPing()
     if (this.heartbeatId === null) return
 
     clearInterval(this.heartbeatId)
     this.heartbeatId = null
+  }
+
+  private clearPendingPing() {
+    this.pendingPingRequestId = null
+    if (this.pongTimeoutId === null) return
+
+    clearTimeout(this.pongTimeoutId)
+    this.pongTimeoutId = null
   }
 
   private nextRequestId(method: string) {
@@ -633,7 +716,17 @@ function createOrchestrationRpcSocketError() {
   })
 }
 
-function createOrchestrationRpcCloseError(event: CloseEvent) {
+function createOrchestrationRpcCloseError(event: CloseEvent, deliveredMessage: boolean) {
+  if (isUnauthorizedClose(event, deliveredMessage)) {
+    return createClientError({
+      code: 'ORCHESTRATION_WS_UNAUTHORIZED',
+      message: 'The orchestration WebSocket was rejected before any data arrived.',
+      status: 401,
+      why: 'The server refused the WebSocket upgrade, so no orchestration data can flow.',
+      fix: 'Sign in again or fix the server auth configuration; retrying the socket will not help.',
+    })
+  }
+
   return createClientError({
     code: 'ORCHESTRATION_WS_CLOSED',
     message: 'The orchestration WebSocket closed before the request completed.',
@@ -641,6 +734,30 @@ function createOrchestrationRpcCloseError(event: CloseEvent) {
     why: 'The shared orchestration RPC connection closed while work was still in flight.',
     fix: 'Reconnect the chat view and inspect the server WebSocket logs if it repeats.',
   })
+}
+
+function createOrchestrationRpcHeartbeatTimeoutError() {
+  return createClientError({
+    code: 'ORCHESTRATION_WS_HEARTBEAT_TIMEOUT',
+    message: 'The orchestration WebSocket stopped answering heartbeats.',
+    status: 504,
+    why: 'The socket stayed open but the server never answered a ping, so it is half-open.',
+    fix: 'Let the chat supervisors reconnect; inspect the server if heartbeats keep timing out.',
+  })
+}
+
+/**
+ * The server closes a rejected upgrade cleanly and immediately, before sending
+ * anything, so a silent clean close is an auth refusal rather than a drop.
+ */
+function isUnauthorizedClose(event: CloseEvent, deliveredMessage: boolean) {
+  if (ORCHESTRATION_RPC_UNAUTHORIZED_CLOSE_CODES.has(event.code)) return true
+
+  return event.wasClean && !deliveredMessage
+}
+
+function createOrchestrationRpcSocket(url: string) {
+  return new WebSocket(url)
 }
 
 function elapsedMs(startedAt: number) {

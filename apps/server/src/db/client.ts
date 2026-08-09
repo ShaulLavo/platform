@@ -38,7 +38,10 @@ function openPlatformDatabase(databasePath: string) {
   ensureDatabaseDirectory(databasePath)
 
   const sqlite = new Database(databasePath, { create: true })
-  sqlite.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;')
+  // `busy_timeout` is what makes concurrent startup safe: two processes opening
+  // the same file both run the migration ledger, and the loser of the
+  // `BEGIN IMMEDIATE` race waits for the write lock instead of failing busy.
+  sqlite.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;')
 
   return {
     db: drizzle({ client: sqlite, schema }),

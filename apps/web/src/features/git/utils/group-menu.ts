@@ -3,7 +3,6 @@ import { ArrowBendUpLeftIcon, GitDiffIcon, MinusIcon, PlusIcon } from '@phosphor
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
 import type { PanelSection } from '../types'
-import { DIFF_VIEWER_MISSING } from './diff-viewer-availability'
 
 export type GroupMenuContext = {
   /** Unstage-then-discard for the staged group, a plain discard for the worktree one. */
@@ -31,9 +30,6 @@ export function groupMenu(context: GroupMenuContext): Menu {
         id: 'openAllDiffs',
         label: 'Open All Diffs',
         run: context.openAllDiffs,
-        // Nothing renders a `git-diff:` document, so this would open one blank
-        // tab per changed file. See `diff-viewer-availability`.
-        unavailable: DIFF_VIEWER_MISSING,
       }),
     ]),
     section('changes', [

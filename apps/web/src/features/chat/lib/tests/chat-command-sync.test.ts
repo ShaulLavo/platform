@@ -137,6 +137,8 @@ function threadDetailSnapshot({
   threadId: ThreadId
 }): OrchestrationThreadDetailSnapshot {
   return {
+    checkpoints: [],
+    proposedPlans: [],
     snapshotSequence: sequence,
     thread: {
       activities: [],

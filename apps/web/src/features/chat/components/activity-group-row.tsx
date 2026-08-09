@@ -1,13 +1,15 @@
-import { useState } from 'react'
-
 import { visibleActivityGroupRows } from '../lib/chat-activity-visibility'
 import type { ChatWorkLogEntry } from '../lib/chat-work-log'
+import { useChatWorkLogExpansionStore } from '../state/chat-work-log-expansion-store'
 import { ActivityRow } from './activity-row'
 
 const MAX_VISIBLE_ACTIVITY_ROWS = 6
 
 export function ActivityGroupRow({ activities }: { activities: readonly ChatWorkLogEntry[] }) {
-  const [expanded, setExpanded] = useState(false)
+  // Mirrors the group id `chatTimelineItems` builds, so expansion keys survive re-derivation.
+  const groupId = activities[0]?.id ?? ''
+  const expanded = useChatWorkLogExpansionStore((state) => state.expandedGroupIds[groupId] ?? false)
+  const toggleGroupExpanded = useChatWorkLogExpansionStore((state) => state.toggleGroupExpanded)
   const hasOverflow = activities.length > MAX_VISIBLE_ACTIVITY_ROWS
   const visibleActivities =
     hasOverflow && !expanded
@@ -29,7 +31,7 @@ export function ActivityGroupRow({ activities }: { activities: readonly ChatWork
             <button
               className='text-muted-foreground/55 hover:text-foreground/75 text-[9px] tracking-[0.12em] uppercase tabular-nums transition-colors'
               type='button'
-              onClick={() => setExpanded((value) => !value)}
+              onClick={() => toggleGroupExpanded(groupId)}
             >
               {expanded ? 'Show less' : `Show ${hiddenCount} more`}
             </button>

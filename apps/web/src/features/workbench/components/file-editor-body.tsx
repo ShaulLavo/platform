@@ -3,6 +3,8 @@ import { WarningCircleIcon } from '@phosphor-icons/react'
 import { Editor } from '@/features/editor/components/editor'
 import { LanguageServerReferencesPane } from '@/features/editor/components/language-server-references-pane'
 import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
+import { DiffView } from '@/features/git/components/diff-view'
+import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { useEditorSurfaceActions } from '@/features/workbench/hooks/use-editor-surface-actions'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
@@ -19,6 +21,7 @@ export function FileEditorBody({
   editorKeymapLayers,
   fileState,
   languageServerReferences,
+  path,
   rootPath,
   tabId,
 }: {
@@ -28,10 +31,16 @@ export function FileEditorBody({
   editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
   languageServerReferences: LanguageServerReferencesResult | null
+  path: string
   rootPath: string
   tabId: string
 }) {
   const actions = useEditorSurfaceActions()
+  // A diff document is never file-backed, so it can never own a live editor
+  // document — claim it before the editor branch rather than after.
+  const diffDocument = parseDiffDocumentId(path)
+
+  if (diffDocument) return <DiffView documentInfo={diffDocument} rootPath={rootPath} />
 
   if (liveDocument) {
     return (

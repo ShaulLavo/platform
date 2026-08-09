@@ -3,28 +3,43 @@ import type { ThreadId } from '@workspace/contracts'
 import { ChatDraftView } from '@/features/chat/components/chat-draft-view'
 import { ChatView } from '@/features/chat/components/chat-view'
 import { contextUsageForActivities } from '@/features/chat/lib/context-usage'
-import { threadStatus } from '@/features/chat/lib/thread-status'
 import { selectChatThreadById } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { StageHeader } from '@/features/chat-mode/components/stage-header'
+import { useMarkSessionSeen } from '@/features/chat-mode/hooks/use-mark-session-seen'
 import {
   useChatModeSession,
   type ChatModeSession,
 } from '@/features/chat-mode/providers/session-context'
+import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { activeSessionShowsComposer, isDraftFor } from '@/features/chat-mode/utils/active-session'
+import { sessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
+import { sessionCompletedAt } from '@/features/chat-mode/utils/session-unread'
 
 const EMPTY_ACTIVITIES: readonly [] = []
 
 export function ChatStage() {
-  const { activeSession, environment, error, project, ready, rootPath, selectSession, threads } =
+  const { activeSession, environment, error, project, ready, rootPath, selectSession } =
     useChatModeSession()
-  const summary = threads.find((candidate) => candidate.id === activeSession.threadId) ?? null
+  // Read by id rather than from the provider's list: the archive browser can put a
+  // filed-away session on the stage, and that list deliberately excludes them.
+  const summary = useChatProjectionStore((state) =>
+    activeSession.threadId
+      ? (state.sidebarThreadSummaryById[activeSession.threadId] ?? null)
+      : null,
+  )
+  const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
   // Activities carry the provider's context-window snapshots, and only the detail
   // projection has them — the sidebar summary stops at the turn state.
   const activities = useChatProjectionStore(
     (state) => selectChatThreadById(state, activeSession.threadId)?.activities ?? EMPTY_ACTIVITIES,
   )
+  const session = summary
+    ? sessionRailItem(summary, project?.title ?? 'Workspace', seenByThreadId[summary.id])
+    : null
+
+  useMarkSessionSeen(summary?.id ?? null, summary ? sessionCompletedAt(summary) : null)
 
   function handleThreadCreated(threadId: ThreadId) {
     if (!project) return
@@ -38,11 +53,9 @@ export function ChatStage() {
   return (
     <section className='bg-background backdrop-material flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
       <StageHeader
-        branch={summary?.branch ?? null}
         contextUsage={contextUsageForActivities(activities)}
         projectTitle={project?.title ?? null}
-        status={summary ? threadStatus(summary) : null}
-        title={summary?.title ?? 'New session'}
+        session={session}
       />
       <div className='mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden'>
         {stageBody({

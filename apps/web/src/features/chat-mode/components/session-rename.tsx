@@ -1,27 +1,40 @@
 import type { KeyboardEvent } from 'react'
+import { toast } from 'sonner'
 
 import { useSessionActions } from '@/features/chat-mode/hooks/use-session-actions'
-import { useSessionRail } from '@/features/chat-mode/providers/rail-context'
+import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
+import { sessionRenameOutcome } from '@/features/chat-mode/utils/session-rename'
 import { Input } from '@workspace/ui/components/input'
 
 /**
- * Takes the row's place while a session is being renamed. Enter and blur commit,
- * Escape restores the original title — an unmount can fire a trailing blur, and
- * restoring first makes that blur a no-op instead of a stealth commit.
+ * Takes the place of whatever was showing the session's title while it is renamed —
+ * the rail row or the stage header. Enter and blur commit, Escape restores the
+ * original title: an unmount can fire a trailing blur, and restoring first makes that
+ * blur a no-op instead of a stealth commit.
  */
-export function SessionRename({ session }: { readonly session: SessionRailItem }) {
-  const { endRename } = useSessionRail()
+export function SessionRename({
+  className,
+  session,
+}: {
+  readonly className: string
+  readonly session: SessionRailItem
+}) {
+  const endRename = useSessionRailStore((state) => state.endRename)
   const { rename } = useSessionActions()
 
   function commit(value: string) {
-    const title = value.trim()
+    const outcome = sessionRenameOutcome(value, session.title)
     endRename()
-    // The server rejects blank titles, and an unchanged one is not an edit.
-    if (!title) return
-    if (title === session.title) return
+    if (outcome.kind === 'unchanged') return
+    // Said out loud rather than swallowed: an edit that vanishes without a word reads
+    // exactly like a rename the server rejected.
+    if (outcome.kind === 'empty') {
+      toast.error('A session needs a title.')
+      return
+    }
 
-    rename(session.id, title)
+    rename(session.id, outcome.title)
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -41,7 +54,7 @@ export function SessionRename({ session }: { readonly session: SessionRailItem }
     <Input
       aria-label='Session title'
       autoFocus
-      className='bg-accent text-foreground h-auto rounded-md border-transparent px-2 py-1.5 text-[13px] leading-5'
+      className={className}
       defaultValue={session.title}
       onBlur={(event) => commit(event.currentTarget.value)}
       onKeyDown={handleKeyDown}

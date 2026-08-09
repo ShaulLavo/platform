@@ -6,7 +6,7 @@ import type { MouseEvent, ReactNode } from 'react'
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 
 import { formatChatTimestamp } from '../lib/chat-formatters'
-import { resolveAssistantMessageCopyState } from '../lib/chat-message-metadata'
+import { resolveAssistantMessageChromeState } from '../lib/chat-message-metadata'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { allowsMessageContextMenu } from '../utils/message-menu'
@@ -16,6 +16,7 @@ import { AssistantMessageMeta } from './assistant-message-meta'
 import { AssistantMarkdown } from './assistant-markdown'
 import { MessageCompletionDivider } from './message-completion-divider'
 import { MessageMenu } from './message-menu'
+import { UserMessageBody } from './user-message-body'
 
 export function MessageBubble({
   assistantStreaming,
@@ -77,7 +78,7 @@ export function MessageBubble({
         ))}
       </div>
     ) : null
-  const assistantCopyState = resolveAssistantMessageCopyState({
+  const assistantChrome = resolveAssistantMessageChromeState({
     showCopyButton: showAssistantCopyButton,
     streaming: effectiveAssistantStreaming || assistantTurnInProgress,
     text: message.text,
@@ -123,9 +124,7 @@ export function MessageBubble({
           {user ? (
             <>
               {attachmentList}
-              {message.text.trim().length > 0 ? (
-                <div className='break-words whitespace-pre-wrap'>{message.text}</div>
-              ) : null}
+              {message.text.trim().length > 0 ? <UserMessageBody text={message.text} /> : null}
             </>
           ) : (
             <>
@@ -151,8 +150,9 @@ export function MessageBubble({
               ) : null}
               <span>{messageTimestampLabel(message, optimistic)}</span>
             </div>
-          ) : (
-            <div className='mt-1.5 flex items-center gap-2'>
+          ) : null}
+          {!user && assistantChrome.metaVisible ? (
+            <div className='mt-1.5 flex items-center gap-2' data-assistant-message-meta='true'>
               <p className='text-muted-foreground/30 text-[10px] tabular-nums'>
                 <AssistantMessageMeta
                   createdAt={message.createdAt}
@@ -161,13 +161,13 @@ export function MessageBubble({
                   streaming={effectiveAssistantStreaming}
                 />
               </p>
-              {assistantCopyState.visible && renderAssistantCopyButton ? (
+              {assistantChrome.copyVisible && renderAssistantCopyButton ? (
                 <div className='flex items-center opacity-0 transition-opacity duration-200 group-hover/assistant:opacity-100'>
-                  {renderAssistantCopyButton(assistantCopyState.text ?? '')}
+                  {renderAssistantCopyButton(assistantChrome.copyText ?? '')}
                 </div>
               ) : null}
             </div>
-          )}
+          ) : null}
         </article>
         {contextMenu.open ? (
           <MessageMenu

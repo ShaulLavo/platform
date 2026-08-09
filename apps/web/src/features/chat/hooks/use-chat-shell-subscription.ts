@@ -3,83 +3,216 @@ import { useEffect, useState } from 'react'
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { useChatProjectionStore } from '../state/chat-projection-store'
+import { isBlockedStreamError, streamReconnectDelayMs } from '../utils/stream-reconnect'
 
-const SHELL_RECONNECT_DELAY_MS = 1_200
+/**
+ * What the shell transport is doing right now.
+ * - `connecting` / `live` — first attempt, then frames are flowing.
+ * - `reconnecting` — the stream died and a backoff rung is being served.
+ * - `offline` — the browser says there is no network; parked, no timer burning.
+ * - `blocked` — the server refused us (auth) or the resource is gone; retrying
+ *   on a timer would never succeed, so we wait for the user to come back.
+ */
+export type ChatShellConnectionPhase =
+  | 'blocked'
+  | 'connecting'
+  | 'live'
+  | 'offline'
+  | 'reconnecting'
 
 export type ChatShellSubscriptionState = {
+  /** Consecutive failed attempts; zero while live. */
+  attempt: number
   error: string | null
-  status: 'connecting' | 'error' | 'live'
+  phase: ChatShellConnectionPhase
+}
+
+type ShellStreamOutcome = {
+  blocked: boolean
+  error: string | null
+  /** True once the attempt delivered a frame, which proves the transport works. */
+  established: boolean
+}
+
+type WakeSource = {
+  stop: () => void
+  /** Resolves `true` when the app woke early, `false` when the delay elapsed. */
+  wait: (delayMs: number | null) => Promise<boolean>
+}
+
+type ShellSupervisor = {
+  environment: ChatEnvironment
+  setState: (state: ChatShellSubscriptionState) => void
+  signal: AbortSignal
+  wake: WakeSource
+}
+
+const SHELL_STREAM_FAILED = 'Chat connection failed.'
+const CONNECTING_STATE: ChatShellSubscriptionState = {
+  attempt: 0,
+  error: null,
+  phase: 'connecting',
 }
 
 export function useChatShellSubscription(environment: ChatEnvironment): ChatShellSubscriptionState {
-  const [state, setState] = useState<ChatShellSubscriptionState>({
-    error: null,
-    status: 'connecting',
-  })
+  const [state, setState] = useState<ChatShellSubscriptionState>(CONNECTING_STATE)
 
   useEffect(() => {
     const abortController = new AbortController()
+    const wake = createWakeSource()
 
-    void runShellSubscription(environment, abortController.signal, setState)
+    void superviseShellSubscription({
+      environment,
+      setState,
+      signal: abortController.signal,
+      wake,
+    })
 
-    return () => abortController.abort()
+    return () => {
+      abortController.abort()
+      wake.stop()
+    }
   }, [environment])
 
   return state
 }
 
-async function runShellSubscription(
-  environment: ChatEnvironment,
-  signal: AbortSignal,
-  setState: (state: ChatShellSubscriptionState) => void,
-) {
-  while (!signal.aborted) {
-    await subscribeShellOnce(environment, signal, setState)
-    await reconnectDelay(signal)
+/**
+ * A fixed retry interval hammered an unreachable (or rejecting) server forever.
+ * This walks the shared backoff ladder instead, parks while the browser is
+ * offline or the server refused us, and treats a wake — regaining network,
+ * refocusing the tab — as a probe that resets the ladder.
+ */
+async function superviseShellSubscription(supervisor: ShellSupervisor) {
+  let failureCount = 0
+  let lastError: string | null = null
+
+  while (!supervisor.signal.aborted) {
+    if (!isBrowserOnline()) {
+      supervisor.setState({ attempt: failureCount, error: lastError, phase: 'offline' })
+      await supervisor.wake.wait(null)
+      failureCount = 0
+      continue
+    }
+
+    supervisor.setState({
+      attempt: failureCount,
+      error: lastError,
+      phase: connectingPhase(failureCount),
+    })
+    const outcome = await runShellStream(supervisor)
+    if (supervisor.signal.aborted) return
+
+    lastError = outcome.error
+    // An attempt that ran proves the transport works, so its failure starts the
+    // ladder from the bottom instead of the rung it happened to die on.
+    if (outcome.established) failureCount = 0
+    if (outcome.blocked) {
+      supervisor.setState({ attempt: failureCount, error: lastError, phase: 'blocked' })
+      await supervisor.wake.wait(null)
+      failureCount = 0
+      continue
+    }
+
+    failureCount += 1
+    supervisor.setState({ attempt: failureCount, error: lastError, phase: 'reconnecting' })
+    const wokeEarly = await supervisor.wake.wait(streamReconnectDelayMs(failureCount))
+    if (!wokeEarly) continue
+
+    failureCount = 0
   }
 }
 
-async function subscribeShellOnce(
-  environment: ChatEnvironment,
-  signal: AbortSignal,
-  setState: (state: ChatShellSubscriptionState) => void,
-) {
+async function runShellStream(supervisor: ShellSupervisor): Promise<ShellStreamOutcome> {
+  let live = false
+
   try {
-    setState({ error: null, status: 'connecting' })
-    await applyShellStream(environment, signal, setState)
+    const afterSequence = useChatProjectionStore.getState().lastAppliedShellSequence
+
+    for await (const item of supervisor.environment.shellStream({
+      afterSequence,
+      signal: supervisor.signal,
+    })) {
+      useChatProjectionStore.getState().applyShellStreamItem(item)
+      if (live) continue
+
+      // Reported once per attempt: a state write per frame re-renders every
+      // consumer of this hook for no new information.
+      live = true
+      supervisor.setState({ attempt: 0, error: null, phase: 'live' })
+    }
+
+    return { blocked: false, error: null, established: live }
   } catch (error) {
-    if (signal.aborted) return
+    if (supervisor.signal.aborted) return { blocked: false, error: null, established: live }
 
-    setState({ error: errorMessage(error, 'Chat connection failed.'), status: 'error' })
+    return {
+      blocked: isBlockedStreamError(error),
+      error: errorMessage(error, SHELL_STREAM_FAILED),
+      established: live,
+    }
   }
 }
 
-async function applyShellStream(
-  environment: ChatEnvironment,
-  signal: AbortSignal,
-  setState: (state: ChatShellSubscriptionState) => void,
-) {
-  const afterSequence = useChatProjectionStore.getState().lastAppliedShellSequence
+function connectingPhase(failureCount: number): ChatShellConnectionPhase {
+  if (failureCount === 0) return 'connecting'
 
-  for await (const item of environment.shellStream({ afterSequence, signal })) {
-    useChatProjectionStore.getState().applyShellStreamItem(item)
-    setState({ error: null, status: 'live' })
+  return 'reconnecting'
+}
+
+function isBrowserOnline() {
+  if (typeof navigator === 'undefined') return true
+
+  return navigator.onLine !== false
+}
+
+/**
+ * Wake signals: regaining network, refocusing the window, or the tab becoming
+ * visible again. Any of them short-circuits a pending backoff sleep so a user
+ * returning to the app gets an immediate probe instead of the rest of the rung.
+ */
+function createWakeSource(): WakeSource {
+  const waiters = new Set<(woke: boolean) => void>()
+
+  // Copied: settling a waiter removes it from the set mid-iteration.
+  const notify = () => {
+    for (const settle of Array.from(waiters)) {
+      settle(true)
+    }
+  }
+  const notifyIfVisible = () => {
+    if (document.visibilityState !== 'visible') return
+
+    notify()
+  }
+
+  window.addEventListener('online', notify)
+  window.addEventListener('focus', notify)
+  document.addEventListener('visibilitychange', notifyIfVisible)
+
+  return {
+    stop: () => {
+      window.removeEventListener('online', notify)
+      window.removeEventListener('focus', notify)
+      document.removeEventListener('visibilitychange', notifyIfVisible)
+
+      for (const settle of Array.from(waiters)) {
+        settle(false)
+      }
+    },
+    wait: (delayMs) => waitForWake(waiters, delayMs),
   }
 }
 
-async function reconnectDelay(signal: AbortSignal) {
-  if (signal.aborted) return
+function waitForWake(waiters: Set<(woke: boolean) => void>, delayMs: number | null) {
+  return new Promise<boolean>((resolve) => {
+    const settle = (woke: boolean) => {
+      waiters.delete(settle)
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+      resolve(woke)
+    }
+    const timeoutId = delayMs === null ? null : window.setTimeout(() => settle(false), delayMs)
 
-  await new Promise<void>((resolve) => {
-    const timeout = window.setTimeout(resolve, SHELL_RECONNECT_DELAY_MS)
-
-    signal.addEventListener(
-      'abort',
-      () => {
-        window.clearTimeout(timeout)
-        resolve()
-      },
-      { once: true },
-    )
+    waiters.add(settle)
   })
 }

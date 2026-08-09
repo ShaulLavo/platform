@@ -5,7 +5,7 @@ import type { WorkspacePaths } from '../fs/path'
 import { toPosix } from '../fs/path'
 import { elapsedMs, limitText, recordGitCommand, recordRequestContext } from '../observability'
 import { parseBranches } from './branches'
-import { commandOutput, gitErrorMessage, writeProcessInput } from './command'
+import { commandOutput, gitErrorMessage } from './command'
 import { commitMessageTemplate } from './commit-message'
 import type {
   GitApplyPatchBody,
@@ -20,6 +20,12 @@ import { mutationPaths, pathspecArgs, repositoryRelativePath } from './path-util
 import { gitCwdForPath, lexicalRepositoryRoot } from './repository'
 import { parseRepositoryInfo, parseStatus, statusMatchesPathspec } from './status'
 import { UpstreamFetchScheduler } from './upstream-fetch'
+import {
+  MAX_OUTPUT_BYTES,
+  processLimitError,
+  runProcess,
+  type GitProcessResult,
+} from './utils/process'
 import type {
   GitBranchesResult,
   GitCommandResult,
@@ -42,7 +48,30 @@ type GitRepositoryLocation = Omit<GitRepository, 'info'>
 
 type GitServiceOptions = {
   diffConcurrency?: number
+  maxCommandOutputBytes?: number
   maxTextFileBytes?: number
+}
+
+type GitCommandOptions = {
+  allowFailure?: boolean
+  env?: Readonly<Record<string, string>>
+  input?: string
+  maxOutputBytes?: number
+  timeoutMs?: number
+}
+
+export type GitRunOptions = Pick<GitCommandOptions, 'allowFailure' | 'env'>
+
+/**
+ * A git command runner already bound to one resolved repository root. It is the
+ * seam the checkpoint store needs: capture drives plumbing (`read-tree`,
+ * `write-tree`, `commit-tree`) that has no business being a public verb on
+ * `GitService`, yet must run through the same bounded process wrapper and the
+ * same workspace-containment checks as every other git call.
+ */
+export type GitRepositoryRunner = {
+  readonly rootAbsolutePath: string
+  run: (args: readonly string[], options?: GitRunOptions) => Promise<GitCommandResult>
 }
 
 const DEFAULT_DIFF_CONCURRENCY = 4
@@ -51,12 +80,14 @@ const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
 export class GitService {
   private readonly paths: WorkspacePaths
   private readonly diffConcurrency: number
+  private readonly maxCommandOutputBytes: number
   private readonly maxTextFileBytes: number
   private readonly upstreamFetch: UpstreamFetchScheduler
 
   constructor(paths: WorkspacePaths, options: GitServiceOptions = {}) {
     this.paths = paths
     this.diffConcurrency = positiveInteger(options.diffConcurrency, DEFAULT_DIFF_CONCURRENCY)
+    this.maxCommandOutputBytes = positiveInteger(options.maxCommandOutputBytes, MAX_OUTPUT_BYTES)
     this.maxTextFileBytes = positiveInteger(options.maxTextFileBytes, DEFAULT_MAX_TEXT_FILE_BYTES)
     this.upstreamFetch = new UpstreamFetchScheduler({
       resolveCommonDir: async (rootAbsolutePath) => {
@@ -147,19 +178,37 @@ export class GitService {
     return results
   }
 
-  async diffRefs(input: { path: string; oldRef: string; newRef: string }): Promise<GitFileDiff[]> {
-    recordGitServiceOperation('diff_refs', input.path)
+  async diffRefs(input: {
+    path: string
+    oldRef: string
+    newRef: string
+    /**
+     * Whitespace-only hunks are noise when a human reads a turn diff and are
+     * real changes when we count them, so the split is the caller's call. Off
+     * by default: git's own behaviour, and the honest one for stat counting.
+     */
+    ignoreWhitespace?: boolean
+  }): Promise<GitFileDiff[]> {
+    recordGitServiceOperation('diff_refs', input.path, {
+      ignoreWhitespace: input.ignoreWhitespace ?? false,
+    })
     const repository = await this.requiredRepositoryLocation(input.path)
     const result = await this.git(repository.rootAbsolutePath, [
       'diff',
       '--no-color',
       '--no-ext-diff',
+      '--no-textconv',
       '--src-prefix=a/',
       '--dst-prefix=b/',
       '--find-renames',
       '--unified=3',
-      input.oldRef,
-      input.newRef,
+      ...(input.ignoreWhitespace ? ['--ignore-all-space'] : []),
+      // Peel to a commit and close the revision list, exactly like the `hasRef`
+      // gate does. Without both, a checkpoint ref that `hasRef` accepts can
+      // still be read as a pathspec here and resolve to a different thing.
+      `${input.oldRef}^{commit}`,
+      `${input.newRef}^{commit}`,
+      '--',
     ])
     const diffs = parseDiff(result.stdout, repository.rootPath, false)
     const results = await mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
@@ -198,6 +247,13 @@ export class GitService {
       '.',
     ])
     await this.git(repository.rootAbsolutePath, ['clean', '-fd', '--', '.'])
+    // `restore --staged` left the index pointing at the restored commit, so
+    // every reverted file reads as staged. Resetting the index back to HEAD
+    // (worktree untouched) is what makes a revert look like an edit rather
+    // than a commit someone already prepared. Skipped before the first commit,
+    // where there is no HEAD to reset to.
+    const head = await this.resolveRefCommit(repository, 'HEAD')
+    if (head) await this.git(repository.rootAbsolutePath, ['reset', '--quiet', '--', '.'])
 
     return true
   }
@@ -215,13 +271,24 @@ export class GitService {
     }
   }
 
+  async repositoryRunner(input = ''): Promise<GitRepositoryRunner> {
+    const repository = await this.requiredRepositoryLocation(input)
+
+    return {
+      rootAbsolutePath: repository.rootAbsolutePath,
+      run: (args, options = {}) => this.git(repository.rootAbsolutePath, args, options),
+    }
+  }
+
   async file(input: string, ref: string) {
     recordGitServiceOperation('file', input)
     const repository = await this.resolveRepositoryLocation(input)
     if (!repository?.pathspec) throw new FsError('GIT_REPOSITORY_NOT_FOUND')
 
     const revisionPath = `${ref}:${repository.pathspec}`
-    const result = await this.git(repository.rootAbsolutePath, ['show', revisionPath])
+    const result = await this.git(repository.rootAbsolutePath, ['show', revisionPath], {
+      maxOutputBytes: this.maxTextFileBytes,
+    })
     return { content: result.stdout, path: input, ref }
   }
 
@@ -741,8 +808,12 @@ export class GitService {
     }
   }
 
+  // File content, not command output: the caller already gated on the blob
+  // size, so the budget here is the workspace's text-file limit.
   private async gitObjectText(repository: GitRepositoryLocation, objectId: string) {
-    const result = await this.git(repository.rootAbsolutePath, ['cat-file', '-p', objectId])
+    const result = await this.git(repository.rootAbsolutePath, ['cat-file', '-p', objectId], {
+      maxOutputBytes: this.maxTextFileBytes,
+    })
     return result.stdout
   }
 
@@ -827,33 +898,32 @@ export class GitService {
   private async git(
     cwd: string,
     args: readonly string[],
-    options: { allowFailure?: boolean; input?: string } = {},
+    options: GitCommandOptions = {},
   ): Promise<GitCommandResult> {
     const startedAt = performance.now()
-    const process = Bun.spawn(['git', '-C', cwd].concat(args), {
-      stderr: 'pipe',
-      stdin: options.input === undefined ? 'ignore' : 'pipe',
-      stdout: 'pipe',
+    const action = gitAction(args)
+    const outcome = await runProcess({
+      args,
+      cwd,
+      env: options.env,
+      input: options.input,
+      maxOutputBytes: options.maxOutputBytes ?? this.maxCommandOutputBytes,
+      timeoutMs: options.timeoutMs,
     })
-
-    if (options.input !== undefined) {
-      await writeProcessInput(process.stdin, options.input)
-    }
-
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
-      process.exited,
-    ])
-    const result = { exitCode, stderr, stdout }
+    // A limit violation is not an "allowed failure": the command produced no
+    // usable output, so every caller has to hear about it.
+    const limitError = outcome.limit ? processLimitError(outcome.limit, action) : null
     recordGitCommand({
-      action: gitAction(args),
+      action,
       allowFailure: options.allowFailure ?? false,
       durationMs: elapsedMs(startedAt),
-      exitCode,
-      stderrTail: exitCode === 0 ? undefined : limitText(stderr, 500),
+      exitCode: outcome.exitCode,
+      stderrTail: commandFailureTail(outcome, limitError),
     })
-    if (options.allowFailure || exitCode === 0) return result
+    if (limitError) throw limitError
+
+    const result = { exitCode: outcome.exitCode, stderr: outcome.stderr, stdout: outcome.stdout }
+    if (options.allowFailure || outcome.exitCode === 0) return result
 
     throw new FsError('GIT_COMMAND_FAILED', gitErrorMessage(result))
   }
@@ -916,4 +986,11 @@ function recordGitServiceOperation(
 
 function gitAction(args: readonly string[]) {
   return args[0] ?? 'unknown'
+}
+
+function commandFailureTail(outcome: GitProcessResult, limitError: Error | null) {
+  if (limitError) return limitError.message
+  if (outcome.exitCode === 0) return undefined
+
+  return limitText(outcome.stderr, 500)
 }

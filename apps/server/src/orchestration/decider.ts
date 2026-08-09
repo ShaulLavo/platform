@@ -5,111 +5,136 @@ import {
   type OrchestrationCommand,
 } from './schemas'
 import * as v from 'valibot'
+import type { ProjectId, ThreadId } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
+import {
+  liveProjectThreads,
+  requireActiveProjectWorkspaceRootAbsent,
+  requireExpectedBranch,
+  requireProject,
+  requireProjectAbsent,
+  requireThreadAbsent,
+  requireThreadArchived,
+  requireThreadNotArchived,
+  requireThreadNotDeleted,
+} from './command-invariants'
 import type { PendingOrchestrationEvent } from './event-store'
-import { requireProject, requireThread, type OrchestrationReadModel } from './read-model'
+import type { OrchestrationReadModel } from './read-model'
 
+/**
+ * One server clock reading per command. It stamps every event's `occurredAt`
+ * and every projected timestamp, so a batch (a cascade, a turn start) lands as
+ * one instant and a client can never place an event in the past or the future.
+ */
 export function decideOrchestrationCommand(
   command: OrchestrationCommand,
   model: OrchestrationReadModel,
 ) {
+  const at = new Date().toISOString()
+
   switch (command.type) {
     case 'project.create':
-      return projectCreated(command, model)
+      return projectCreated(command, model, at)
     case 'project.meta.update':
-      return one(command, 'project.meta-updated', {
-        defaultModelSelection: command.defaultModelSelection,
-        projectId: command.projectId,
-        title: command.title,
-        updatedAt: command.updatedAt,
-        workspaceRoot: command.workspaceRoot,
-      })
+      return projectMetaUpdated(command, model, at)
     case 'project.delete':
-      return one(command, 'project.deleted', {
-        deletedAt: command.deletedAt,
-        projectId: command.projectId,
-      })
+      return projectDeleted(command, model, at)
     case 'thread.create':
-      return threadCreated(command, model)
+      return threadCreated(command, model, at)
     case 'thread.meta.update':
-      return one(command, 'thread.meta-updated', {
-        branch: command.branch,
-        modelSelection: command.modelSelection,
-        threadId: command.threadId,
-        title: command.title,
-        updatedAt: command.updatedAt,
-        worktreePath: command.worktreePath,
-      })
+      return threadMetaUpdated(command, model, at)
     case 'thread.delete':
-      return one(command, 'thread.deleted', {
-        deletedAt: command.deletedAt,
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.deleted', {
+        deletedAt: at,
         threadId: command.threadId,
       })
     case 'thread.archive':
-      return one(command, 'thread.archived', {
-        archivedAt: command.archivedAt,
+      requireThreadNotArchived(model, command.threadId, command.type)
+
+      return one(command, at, 'thread.archived', {
+        archivedAt: at,
         threadId: command.threadId,
-        updatedAt: command.archivedAt,
+        updatedAt: at,
       })
     case 'thread.unarchive':
-      return one(command, 'thread.unarchived', {
+      requireThreadArchived(model, command.threadId)
+
+      return one(command, at, 'thread.unarchived', {
         threadId: command.threadId,
-        updatedAt: command.updatedAt,
+        updatedAt: at,
       })
     case 'thread.runtime-mode.set':
-      return one(command, 'thread.runtime-mode-set', {
+      requireThreadNotArchived(model, command.threadId, command.type)
+
+      return one(command, at, 'thread.runtime-mode-set', {
         runtimeMode: command.runtimeMode,
         threadId: command.threadId,
-        updatedAt: command.updatedAt,
+        updatedAt: at,
       })
     case 'thread.interaction-mode.set':
-      return one(command, 'thread.interaction-mode-set', {
+      requireThreadNotArchived(model, command.threadId, command.type)
+
+      return one(command, at, 'thread.interaction-mode-set', {
         interactionMode: command.interactionMode,
         threadId: command.threadId,
-        updatedAt: command.updatedAt,
+        updatedAt: at,
       })
     case 'thread.turn.start':
-      return turnStartRequested(command, model)
+      return turnStartRequested(command, model, at)
     case 'thread.turn.interrupt':
-      return one(command, 'thread.turn-interrupt-requested', {
-        createdAt: command.createdAt,
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.turn-interrupt-requested', {
+        createdAt: at,
         threadId: command.threadId,
         turnId: command.turnId,
       })
     case 'thread.session.stop':
-      return one(command, 'thread.session-stop-requested', {
-        createdAt: command.createdAt,
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.session-stop-requested', {
+        createdAt: at,
         threadId: command.threadId,
       })
     case 'thread.approval.respond':
-      return one(command, 'thread.approval-response-requested', {
-        createdAt: command.createdAt,
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.approval-response-requested', {
+        createdAt: at,
         decision: command.decision,
         requestId: command.requestId,
         threadId: command.threadId,
       })
     case 'thread.user-input.respond':
-      return one(command, 'thread.user-input-response-requested', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.user-input-response-requested', {
         answers: command.answers,
-        createdAt: command.createdAt,
+        createdAt: at,
         requestId: command.requestId,
         threadId: command.threadId,
       })
     case 'thread.checkpoint.revert':
-      requireThread(model, command.threadId)
+      requireThreadNotArchived(model, command.threadId, command.type)
 
-      return one(command, 'thread.checkpoint-revert-requested', {
-        createdAt: command.createdAt,
+      return one(command, at, 'thread.checkpoint-revert-requested', {
+        createdAt: at,
         threadId: command.threadId,
         turnCount: command.turnCount,
       })
     case 'thread.session.set':
-      return one(command, 'thread.session-set', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.session-set', {
         session: command.session,
         threadId: command.threadId,
       })
     case 'thread.message.assistant.delta':
-      return one(command, 'thread.message-sent', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.message-sent', {
         attachments: [],
         createdAt: command.createdAt,
         messageId: command.messageId,
@@ -121,7 +146,9 @@ export function decideOrchestrationCommand(
         updatedAt: command.createdAt,
       })
     case 'thread.message.assistant.complete':
-      return one(command, 'thread.message-sent', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.message-sent', {
         attachments: [],
         createdAt: command.completedAt,
         messageId: command.messageId,
@@ -133,17 +160,23 @@ export function decideOrchestrationCommand(
         updatedAt: command.completedAt,
       })
     case 'thread.activity.append':
-      return one(command, 'thread.activity-appended', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.activity-appended', {
         activity: command.activity,
         threadId: command.threadId,
       })
     case 'thread.proposed-plan.upsert':
-      return one(command, 'thread.proposed-plan-upserted', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.proposed-plan-upserted', {
         proposedPlan: command.proposedPlan,
         threadId: command.threadId,
       })
     case 'thread.turn.diff.complete':
-      return one(command, 'thread.turn-diff-completed', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.turn-diff-completed', {
         assistantMessageId: command.assistantMessageId ?? null,
         checkpointRef: command.checkpointRef,
         checkpointTurnCount: command.checkpointTurnCount,
@@ -154,7 +187,9 @@ export function decideOrchestrationCommand(
         turnId: command.turnId,
       })
     case 'thread.revert.complete':
-      return one(command, 'thread.reverted', {
+      requireThreadNotDeleted(model, command.threadId)
+
+      return one(command, at, 'thread.reverted', {
         revertedAt: command.createdAt,
         threadId: command.threadId,
         turnCount: command.turnCount,
@@ -165,38 +200,112 @@ export function decideOrchestrationCommand(
 function projectCreated(
   command: Extract<OrchestrationCommand, { type: 'project.create' }>,
   model: OrchestrationReadModel,
+  at: string,
 ) {
-  if (model.projects.has(command.projectId))
-    throw orchestrationErrors.PROJECT_ALREADY_EXISTS({ projectId: command.projectId })
+  requireProjectAbsent(model, command.projectId)
+  requireActiveProjectWorkspaceRootAbsent(model, command.workspaceRoot, command.projectId)
 
-  return one(command, 'project.created', {
-    createdAt: command.createdAt,
+  return one(command, at, 'project.created', {
+    createdAt: at,
     defaultModelSelection: command.defaultModelSelection,
     projectId: command.projectId,
     title: command.title,
-    updatedAt: command.createdAt,
+    updatedAt: at,
     workspaceRoot: command.workspaceRoot,
   })
+}
+
+function projectMetaUpdated(
+  command: Extract<OrchestrationCommand, { type: 'project.meta.update' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  requireProject(model, command.projectId)
+  if (command.workspaceRoot !== undefined) {
+    requireActiveProjectWorkspaceRootAbsent(model, command.workspaceRoot, command.projectId)
+  }
+
+  return one(command, at, 'project.meta-updated', {
+    defaultModelSelection: command.defaultModelSelection,
+    projectId: command.projectId,
+    title: command.title,
+    updatedAt: at,
+    workspaceRoot: command.workspaceRoot,
+  })
+}
+
+/**
+ * Deleting a project is a cascade, not a flag flip: every thread it owns keeps
+ * a live provider session and keeps showing up in thread queries until it is
+ * tombstoned too. The threads are deleted in the same batch as the project so
+ * the whole cascade commits or rolls back as one transaction.
+ */
+function projectDeleted(
+  command: Extract<OrchestrationCommand, { type: 'project.delete' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  requireProject(model, command.projectId)
+  const threads = liveProjectThreads(model, command.projectId)
+  if (threads.length > 0 && !command.force) {
+    throw orchestrationErrors.PROJECT_NOT_EMPTY({
+      projectId: command.projectId,
+      threadCount: threads.length,
+    })
+  }
+
+  const cascade = threads.map((thread) =>
+    event(command, at, 'thread.deleted', {
+      deletedAt: at,
+      threadId: thread.id,
+    }),
+  )
+
+  return [
+    ...cascade,
+    event(command, at, 'project.deleted', {
+      deletedAt: at,
+      projectId: command.projectId,
+    }),
+  ]
 }
 
 function threadCreated(
   command: Extract<OrchestrationCommand, { type: 'thread.create' }>,
   model: OrchestrationReadModel,
+  at: string,
 ) {
   requireProject(model, command.projectId)
-  if (model.threads.has(command.threadId))
-    throw orchestrationErrors.THREAD_ALREADY_EXISTS({ threadId: command.threadId })
+  requireThreadAbsent(model, command.threadId)
 
-  return one(command, 'thread.created', {
+  return one(command, at, 'thread.created', {
     branch: command.branch,
-    createdAt: command.createdAt,
+    createdAt: at,
     interactionMode: command.interactionMode ?? DEFAULT_INTERACTION_MODE,
     modelSelection: command.modelSelection,
     projectId: command.projectId,
     runtimeMode: command.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     threadId: command.threadId,
     title: command.title,
-    updatedAt: command.createdAt,
+    updatedAt: at,
+    worktreePath: command.worktreePath,
+  })
+}
+
+function threadMetaUpdated(
+  command: Extract<OrchestrationCommand, { type: 'thread.meta.update' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotDeleted(model, command.threadId)
+  requireExpectedBranch(thread, command.expectedBranch)
+
+  return one(command, at, 'thread.meta-updated', {
+    branch: command.branch,
+    modelSelection: command.modelSelection,
+    threadId: command.threadId,
+    title: command.title,
+    updatedAt: at,
     worktreePath: command.worktreePath,
   })
 }
@@ -204,24 +313,25 @@ function threadCreated(
 function turnStartRequested(
   command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
   model: OrchestrationReadModel,
+  at: string,
 ) {
-  const bootstrapEvent = bootstrapThreadCreated(command, model)
-  if (!bootstrapEvent) requireThread(model, command.threadId)
+  const bootstrapEvent = bootstrapThreadCreated(command, model, at)
+  if (!bootstrapEvent) requireThreadNotArchived(model, command.threadId, command.type)
 
   const turnEvents = [
-    event(command, 'thread.message-sent', {
+    event(command, at, 'thread.message-sent', {
       attachments: command.message.attachments,
-      createdAt: command.createdAt,
+      createdAt: at,
       messageId: command.message.messageId,
       role: command.message.role,
       streaming: false,
       text: command.message.text,
       threadId: command.threadId,
       turnId: command.turnId,
-      updatedAt: command.createdAt,
+      updatedAt: at,
     }),
-    event(command, 'thread.turn-start-requested', {
-      createdAt: command.createdAt,
+    event(command, at, 'thread.turn-start-requested', {
+      createdAt: at,
       interactionMode: command.interactionMode,
       messageId: command.message.messageId,
       modelSelection: command.modelSelection,
@@ -239,54 +349,57 @@ function turnStartRequested(
 function bootstrapThreadCreated(
   command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
   model: OrchestrationReadModel,
+  at: string,
 ) {
   const createThread = command.bootstrap?.createThread
   if (!createThread) return null
 
   requireProject(model, createThread.projectId)
-  if (model.threads.has(command.threadId))
-    throw orchestrationErrors.THREAD_ALREADY_EXISTS({ threadId: command.threadId })
+  requireThreadAbsent(model, command.threadId)
 
-  return event(command, 'thread.created', {
+  return event(command, at, 'thread.created', {
     branch: createThread.branch,
-    createdAt: createThread.createdAt,
+    createdAt: at,
     interactionMode: createThread.interactionMode ?? DEFAULT_INTERACTION_MODE,
     modelSelection: createThread.modelSelection,
     projectId: createThread.projectId,
     runtimeMode: createThread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     threadId: command.threadId,
     title: createThread.title,
-    updatedAt: createThread.createdAt,
+    updatedAt: at,
     worktreePath: createThread.worktreePath,
   })
 }
 
+type EventPayload = Record<string, unknown> & ({ projectId: ProjectId } | { threadId: ThreadId })
+
 function one<Type extends PendingOrchestrationEvent['type']>(
   command: OrchestrationCommand,
+  at: string,
   type: Type,
-  payload: unknown,
+  payload: EventPayload,
 ) {
-  return [event(command, type, payload)]
+  return [event(command, at, type, payload)]
 }
 
 function event<Type extends PendingOrchestrationEvent['type']>(
   command: OrchestrationCommand,
+  at: string,
   type: Type,
-  payload: unknown,
+  payload: EventPayload,
 ) {
-  const pending = {
+  const pending: unknown = {
     actorKind:
       command.type.startsWith('thread.message.') || command.type === 'thread.session.set'
         ? 'provider'
         : 'client',
-    aggregateId: aggregateId(command),
-    aggregateKind: command.type.startsWith('project.') ? 'project' : 'thread',
+    ...aggregate(payload),
     causationEventId: null,
     commandId: command.commandId,
     correlationId: command.commandId,
     eventId: v.parse(eventIdSchema, `event-${crypto.randomUUID()}`),
     metadata: {},
-    occurredAt: eventTimestamp(command),
+    occurredAt: at,
     payload,
     type,
   }
@@ -294,27 +407,14 @@ function event<Type extends PendingOrchestrationEvent['type']>(
   return pending as PendingOrchestrationEvent
 }
 
-function aggregateId(command: OrchestrationCommand) {
-  if (isProjectCommand(command)) return command.projectId
+/**
+ * The aggregate follows the payload, not the command: the cascade under
+ * `project.delete` plans thread events from a project command.
+ */
+function aggregate(payload: EventPayload) {
+  if ('threadId' in payload) {
+    return { aggregateId: payload.threadId, aggregateKind: 'thread' } as const
+  }
 
-  return command.threadId
-}
-
-function isProjectCommand(
-  command: OrchestrationCommand,
-): command is Extract<
-  OrchestrationCommand,
-  { type: 'project.create' | 'project.meta.update' | 'project.delete' }
-> {
-  return command.type.startsWith('project.')
-}
-
-function eventTimestamp(command: OrchestrationCommand) {
-  if ('createdAt' in command) return command.createdAt
-  if ('updatedAt' in command) return command.updatedAt
-  if ('deletedAt' in command) return command.deletedAt
-  if ('archivedAt' in command) return command.archivedAt
-  if ('completedAt' in command) return command.completedAt
-
-  return new Date().toISOString()
+  return { aggregateId: payload.projectId, aggregateKind: 'project' } as const
 }

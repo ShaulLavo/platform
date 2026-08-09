@@ -8,22 +8,26 @@ import {
   threadStatusTextClass,
   type ThreadStatus,
 } from '@/features/chat/lib/thread-status'
+import { SessionRename } from '@/features/chat-mode/components/session-rename'
+import { StageSessionMenu } from '@/features/chat-mode/components/stage-session-menu'
+import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
+import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function StageHeader({
-  branch,
   contextUsage,
   projectTitle,
-  status,
-  title,
+  session,
 }: {
-  readonly branch: string | null
   readonly contextUsage: ContextUsage | null
   readonly projectTitle: string | null
-  /** Null while the stage is on the composer — there is no session to have a status. */
-  readonly status: ThreadStatus | null
-  readonly title: string
+  /** Null while the stage is on the composer — there is no session to name or act on. */
+  readonly session: SessionRailItem | null
 }) {
+  const renaming = useSessionRailStore((state) => state.renaming)
+  const editing =
+    Boolean(session) && renaming?.surface === 'header' && renaming.threadId === session?.id
+
   return (
     <header className='border-border/60 flex h-11 shrink-0 items-center gap-2 border-b px-3'>
       <nav aria-label='Session' className='flex min-w-0 flex-1 items-center gap-1.5 text-[12px]'>
@@ -35,19 +39,27 @@ export function StageHeader({
             <CaretRightIcon className='text-muted-foreground/50 size-3 shrink-0' />
           </>
         ) : null}
-        {branch ? (
+        {session?.branch ? (
           <>
             <span className='text-muted-foreground flex min-w-0 shrink items-center gap-1'>
               <GitBranchIcon className='size-3 shrink-0' />
-              <span className='max-w-[9rem] truncate'>{branch}</span>
+              <span className='max-w-[9rem] truncate'>{session.branch}</span>
             </span>
             <CaretRightIcon className='text-muted-foreground/50 size-3 shrink-0' />
           </>
         ) : null}
-        <h1 className='min-w-0 flex-1 truncate font-medium'>{title}</h1>
+        {session && editing ? (
+          <SessionRename
+            className='text-foreground h-7 min-w-0 flex-1 rounded-md px-2 text-[13px] font-medium'
+            session={session}
+          />
+        ) : (
+          <h1 className='min-w-0 flex-1 truncate font-medium'>{session?.title ?? 'New session'}</h1>
+        )}
       </nav>
-      {status ? statusBadge(status) : null}
+      {session ? statusBadge(session.status) : null}
       {contextUsage ? <ContextUsageRing usage={contextUsage} /> : null}
+      {session ? <StageSessionMenu session={session} /> : null}
     </header>
   )
 }

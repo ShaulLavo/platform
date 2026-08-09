@@ -1,32 +1,35 @@
-import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  DEFAULT_INTERACTION_MODE,
-  DEFAULT_PROVIDER_INSTANCE_ID,
-  DEFAULT_RUNTIME_MODE,
-  projectIdSchema,
   threadIdSchema,
   type ClientOrchestrationCommand,
   type OrchestrationReplayEventsInput,
   type OrchestrationReplayEventsResult,
-  type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
-  type OrchestrationThreadShell,
+  type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadStreamItem,
   type ThreadId,
-  turnIdSchema,
 } from '@workspace/contracts'
+import { beforeEach, describe } from 'vitest'
 import * as v from 'valibot'
 
+import { createClientError } from '@/lib/structured-errors'
+import { expect, test } from '../../../../../test/fixtures'
+import { shellSnapshot, threadShell } from '../../../../../test/factories/chat'
 import type { ChatEnvironment } from '../../environment/chat-environment'
 import { useChatProjectionStore } from '../chat-projection-store'
 import { createThreadDetailSubscriptionCache } from '../thread-detail-subscriptions'
+
+type ScriptedAttempt = {
+  /** Thrown after the attempt's items. Omit to hang until aborted. */
+  fail?: unknown
+  items?: OrchestrationThreadStreamItem[]
+}
 
 describe('thread detail subscription cache', () => {
   beforeEach(() => {
     useChatProjectionStore.getState().resetChatProjection()
   })
 
-  it('retains one active stream per thread and evicts after final release', async () => {
+  test('retains one active stream per thread and evicts after final release', async () => {
     const fake = createFakeEnvironment()
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
@@ -39,7 +42,7 @@ describe('thread detail subscription cache', () => {
     const releaseFirst = cache.retain(threadId)
     const releaseSecond = cache.retain(threadId)
 
-    expect(fake.starts.map((start) => start.threadId)).toEqual([threadId])
+    expect(fake.attempts.map((attempt) => attempt.threadId)).toEqual([threadId])
     expect(cache.snapshot()[0]?.refCount).toBe(2)
 
     releaseFirst()
@@ -49,17 +52,19 @@ describe('thread detail subscription cache', () => {
     releaseSecond()
     expect(cache.snapshot()[0]?.refCount).toBe(0)
     expect(timers.size()).toBe(1)
-    await waitForMicrotasks()
+    await tick()
     expect(fake.aborts).toEqual([])
 
     timers.runAll()
-    await waitForMicrotasks()
+    await tick()
 
     expect(cache.size()).toBe(0)
     expect(fake.aborts).toEqual([threadId])
+
+    cache.disposeAll()
   })
 
-  it('protects running and actionable threads from idle eviction', () => {
+  test('protects running and actionable threads from idle eviction', () => {
     const fake = createFakeEnvironment()
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
@@ -69,9 +74,10 @@ describe('thread detail subscription cache', () => {
     })
     const threadId = parseThreadId('thread-1')
 
+    // The shared factory thread is mid-run, which is exactly the protected shape.
     useChatProjectionStore
       .getState()
-      .syncShellSnapshot(makeShellSnapshot([makeThreadShell({ id: threadId, status: 'running' })]))
+      .syncShellSnapshot(shellSnapshot({ threads: [threadShell({ id: threadId })] }))
 
     const release = cache.retain(threadId)
     release()
@@ -83,7 +89,7 @@ describe('thread detail subscription cache', () => {
     cache.disposeAll()
   })
 
-  it('evicts the oldest idle entries when the cache exceeds capacity', async () => {
+  test('evicts the oldest idle entries when the cache exceeds capacity', async () => {
     const fake = createFakeEnvironment()
     const cache = createThreadDetailSubscriptionCache({
       environment: fake.environment,
@@ -98,7 +104,7 @@ describe('thread detail subscription cache', () => {
     cache.retain(secondThreadId)()
     cache.retain(thirdThreadId)()
 
-    await waitForMicrotasks()
+    await tick()
 
     expect(cache.size()).toBe(2)
     expect(cache.snapshot().map((entry) => entry.threadId)).toEqual([secondThreadId, thirdThreadId])
@@ -107,25 +113,155 @@ describe('thread detail subscription cache', () => {
     cache.disposeAll()
   })
 
-  it('prewarms only first visible sidebar thread details', () => {
-    const fake = createFakeEnvironment()
+  test('reconnects after a stream error and resumes from the applied sequence', async () => {
+    const threadId = parseThreadId('thread-1')
+    const fake = createFakeEnvironment([
+      {
+        fail: streamFailure(),
+        items: [{ kind: 'snapshot', snapshot: detailSnapshot(threadId, 7) }],
+      },
+    ])
+    const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
       environment: fake.environment,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
     })
-    const threadIds = Array.from({ length: 12 }, (_, index) => parseThreadId(`thread-${index}`))
 
-    cache.prewarmSidebarThreadDetails(threadIds)
+    cache.retain(threadId)
+    await tick()
 
-    expect(fake.starts.map((start) => start.threadId)).toEqual(threadIds.slice(0, 10))
-    expect(cache.size()).toBe(10)
-    expect(cache.snapshot().map((entry) => entry.refCount)).toEqual(Array(10).fill(0))
+    expect(cache.snapshot()[0]?.status).toBe('reconnecting')
+    expect(timers.delays()).toEqual([250])
+
+    timers.runAll()
+    await tick()
+
+    expect(fake.attempts.map((attempt) => attempt.afterSequence)).toEqual([0, 7])
+    expect(cache.snapshot()[0]?.active).toBe(true)
+
+    cache.disposeAll()
+  })
+
+  test('climbs the backoff ladder while every attempt keeps failing', async () => {
+    const threadId = parseThreadId('thread-1')
+    const fake = createFakeEnvironment([
+      { fail: streamFailure() },
+      { fail: streamFailure() },
+      { fail: streamFailure() },
+    ])
+    const timers = createManualTimers()
+    const cache = createThreadDetailSubscriptionCache({
+      environment: fake.environment,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
+    })
+
+    cache.retain(threadId)
+    await tick()
+    timers.runAll()
+    await tick()
+    timers.runAll()
+    await tick()
+
+    expect(timers.scheduled()).toEqual([250, 500, 1_000])
+    expect(fake.attempts).toHaveLength(3)
+    expect(cache.snapshot()[0]?.attempt).toBe(3)
+
+    cache.disposeAll()
+  })
+
+  test('stops retrying once the server rejects the subscription', async () => {
+    const threadId = parseThreadId('thread-1')
+    const fake = createFakeEnvironment([{ fail: unauthorizedFailure() }])
+    const timers = createManualTimers()
+    const cache = createThreadDetailSubscriptionCache({
+      environment: fake.environment,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
+    })
+
+    cache.retain(threadId)
+    await tick()
+
+    expect(fake.attempts).toHaveLength(1)
+    expect(timers.size()).toBe(0)
+    expect(cache.snapshot()[0]?.status).toBe('blocked')
+    expect(cache.snapshot()[0]?.error).toBe('Subscription rejected.')
+
+    timers.runAll()
+    await tick()
+
+    expect(fake.attempts).toHaveLength(1)
+
+    cache.disposeAll()
+  })
+
+  test('disposes a thread that leaves the projection', async () => {
+    const threadId = parseThreadId('thread-1')
+    const fake = createFakeEnvironment()
+    const cache = createThreadDetailSubscriptionCache({ environment: fake.environment })
+
+    useChatProjectionStore
+      .getState()
+      .syncShellSnapshot(shellSnapshot({ threads: [threadShell({ id: threadId })] }))
+    cache.retain(threadId)
+    await tick()
+
+    expect(cache.size()).toBe(1)
+
+    useChatProjectionStore.getState().syncShellSnapshot({
+      ...shellSnapshot({ threads: [] }),
+      snapshotSequence: 2,
+      updatedAt: '2026-05-28T00:00:09.000Z',
+    })
+    await tick()
+
+    expect(cache.size()).toBe(0)
+    expect(fake.aborts).toEqual([threadId])
+
+    cache.disposeAll()
+  })
+
+  test('opens no stream for sidebar threads it was never asked to retain', async () => {
+    const fake = createFakeEnvironment()
+    const cache = createThreadDetailSubscriptionCache({ environment: fake.environment })
+    const threads = Array.from({ length: 12 }, (_, index) =>
+      threadShell({ id: parseThreadId(`thread-${index}`) }),
+    )
+
+    useChatProjectionStore.getState().syncShellSnapshot(shellSnapshot({ threads }))
+    await tick()
+
+    expect(fake.attempts).toEqual([])
+    expect(cache.size()).toBe(0)
+
+    cache.disposeAll()
+  })
+
+  test('treats stream traffic as access so the LRU keeps the busiest thread', async () => {
+    const threadId = parseThreadId('thread-1')
+    const clock = incrementingClock()
+    const fake = createFakeEnvironment([
+      { items: [{ kind: 'snapshot', snapshot: detailSnapshot(threadId, 3) }] },
+    ])
+    const cache = createThreadDetailSubscriptionCache({
+      environment: fake.environment,
+      now: clock,
+    })
+
+    cache.retain(threadId)
+    const retainedAt = cache.snapshot()[0]?.lastAccessedAt ?? 0
+    await tick()
+
+    expect(cache.snapshot()[0]?.lastAccessedAt).toBeGreaterThan(retainedAt)
 
     cache.disposeAll()
   })
 })
 
-function createFakeEnvironment() {
-  const starts: Array<{ afterSequence: number | undefined; threadId: ThreadId }> = []
+function createFakeEnvironment(script: ScriptedAttempt[] = []) {
+  const attempts: Array<{ afterSequence: number | undefined; threadId: ThreadId }> = []
   const aborts: ThreadId[] = []
 
   const environment: ChatEnvironment = {
@@ -142,129 +278,105 @@ function createFakeEnvironment() {
       yield item
     },
     threadDetailSnapshot: async () => {
-      throw new Error('threadDetailSnapshot is not used by subscription cache tests.')
+      throw createClientError({
+        code: 'TEST_UNSUPPORTED',
+        message: 'threadDetailSnapshot is not used by subscription cache tests.',
+        status: 500,
+        why: 'The subscription cache only reads the thread detail stream.',
+        fix: 'Assert on threadDetailStream instead.',
+      })
     },
     threadDetailStream: async function* (threadId, input = {}) {
-      starts.push({ afterSequence: input.afterSequence, threadId })
+      const attempt = script[attempts.length] ?? {}
+      attempts.push({ afterSequence: input.afterSequence, threadId })
 
-      await new Promise<void>((resolve) => {
-        input.signal?.addEventListener('abort', () => resolve(), { once: true })
-      })
-
-      aborts.push(threadId)
-      if (!input.signal?.aborted) {
-        const item = await new Promise<OrchestrationThreadStreamItem>(() => undefined)
-
+      for (const item of attempt.items ?? []) {
         yield item
       }
+      if (attempt.fail) throw attempt.fail
+
+      await waitForAbort(input.signal)
+      aborts.push(threadId)
     },
   }
 
-  return { aborts, environment, starts }
+  return { aborts, attempts, environment }
+}
+
+function waitForAbort(signal: AbortSignal | undefined) {
+  return new Promise<void>((resolve) => {
+    signal?.addEventListener('abort', () => resolve(), { once: true })
+  })
 }
 
 function createManualTimers() {
   let nextId = 1
-  const timers = new Map<number, () => void>()
+  const scheduled: number[] = []
+  const timers = new Map<number, { callback: () => void; delay: number }>()
 
   return {
     clear: (handle: number | ReturnType<typeof setTimeout>) => {
       timers.delete(handle as unknown as number)
     },
+    /** Delays of the timers still pending. */
+    delays: () => [...timers.values()].map((timer) => timer.delay),
     runAll: () => {
-      const callbacks = [...timers.values()]
+      const pending = [...timers.values()]
       timers.clear()
 
-      for (const callback of callbacks) {
-        callback()
+      for (const timer of pending) {
+        timer.callback()
       }
     },
-    schedule: (callback: () => void) => {
+    schedule: (callback: () => void, delay: number) => {
       const handle = nextId
       nextId += 1
-      timers.set(handle, callback)
+      timers.set(handle, { callback, delay })
+      scheduled.push(delay)
 
       return handle
     },
+    /** Every delay ever scheduled, in order. */
+    scheduled: () => scheduled,
     size: () => timers.size,
   }
 }
 
-function makeShellSnapshot(threads: OrchestrationThreadShell[]): OrchestrationShellSnapshot {
+function detailSnapshot(
+  threadId: ThreadId,
+  snapshotSequence: number,
+): OrchestrationThreadDetailSnapshot {
   return {
-    projects: [
-      {
-        createdAt: timestamp(0),
-        defaultModelSelection: null,
-        id: parseProjectId('project-1'),
-        title: 'Project',
-        updatedAt: timestamp(0),
-        workspaceRoot: '/workspace',
-      },
-    ],
-    snapshotSequence: 1,
-    threads,
-    updatedAt: timestamp(1),
-  }
-}
-
-function makeThreadShell(
-  overrides: Partial<OrchestrationThreadShell> & { status?: 'idle' | 'running' } = {},
-): OrchestrationThreadShell {
-  const status = overrides.status ?? 'idle'
-
-  return {
-    archivedAt: null,
-    branch: null,
-    createdAt: timestamp(0),
-    hasActionableProposedPlan: false,
-    id: parseThreadId('thread-1'),
-    interactionMode: DEFAULT_INTERACTION_MODE,
-    latestTurn:
-      status === 'running'
-        ? {
-            assistantMessageId: null,
-            completedAt: null,
-            requestedAt: timestamp(0),
-            startedAt: timestamp(0),
-            state: 'running',
-            turnId: parseTurnId('turn-1'),
-          }
-        : null,
-    latestUserMessageAt: null,
-    modelSelection: {
-      model: 'codex-test',
-      providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+    checkpoints: [],
+    proposedPlans: [],
+    snapshotSequence,
+    thread: {
+      ...threadShell({ id: threadId }),
+      activities: [],
+      deletedAt: null,
+      messages: [],
     },
-    pendingApprovalCount: 0,
-    pendingUserInputCount: 0,
-    projectId: parseProjectId('project-1'),
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    session:
-      status === 'running'
-        ? {
-            activeTurnId: parseTurnId('turn-1'),
-            lastError: null,
-            providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
-            providerName: 'codex',
-            providerSessionId: 'session-1',
-            runtimeMode: DEFAULT_RUNTIME_MODE,
-            status: 'running',
-            threadId: overrides.id ?? parseThreadId('thread-1'),
-            updatedAt: timestamp(0),
-          }
-        : null,
-    title: 'Thread',
-    updatedAt: timestamp(0),
-    worktreePath: null,
-    ...withoutStatus(overrides),
   }
 }
 
-function withoutStatus<T extends { status?: unknown }>(value: T) {
-  const { status: _status, ...rest } = value
+function streamFailure() {
+  return createClientError({
+    code: 'ORCHESTRATION_WS_CLOSED',
+    message: 'Stream closed.',
+    status: 502,
+    why: 'The test stream dropped mid-flight.',
+    fix: 'Reconnect.',
+  })
+}
 
-  return rest
+function unauthorizedFailure() {
+  return createClientError({
+    code: 'ORCHESTRATION_WS_UNAUTHORIZED',
+    message: 'Subscription rejected.',
+    status: 401,
+    why: 'The test server refused the subscription.',
+    fix: 'Sign in again.',
+  })
 }
 
 function incrementingClock() {
@@ -272,27 +384,15 @@ function incrementingClock() {
 
   return () => {
     value += 1
+
     return value
   }
 }
 
-async function waitForMicrotasks() {
-  await Promise.resolve()
-  await Promise.resolve()
-}
-
-function parseProjectId(value: string) {
-  return v.parse(projectIdSchema, value)
+async function tick() {
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 function parseThreadId(value: string) {
   return v.parse(threadIdSchema, value)
-}
-
-function parseTurnId(value: string) {
-  return v.parse(turnIdSchema, value)
-}
-
-function timestamp(index: number) {
-  return `2026-05-24T00:00:${String(index).padStart(2, '0')}.000Z`
 }

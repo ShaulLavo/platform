@@ -66,18 +66,23 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
-  it('rejects duplicate commands with previously rejected receipts', async () => {
+  it('writes a durable rejection for an invariant violation', async () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
     await expect(engine.dispatch(threadCreateCommand())).rejects.toThrow('Project not found')
-    await expect(engine.dispatch(threadCreateCommand())).rejects.toThrow('Project not found')
 
+    expect(fixture.database.select().from(schema.orchestrationCommandReceipts).all()).toMatchObject(
+      [{ commandId: 'cmd-thread-create', resultSequence: null, status: 'rejected' }],
+    )
+    await expect(engine.dispatch(threadCreateCommand())).rejects.toMatchObject({
+      code: 'orchestration.COMMAND_PREVIOUSLY_REJECTED',
+    })
     expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(0)
     fixture.close()
   })
 
-  it('rolls back events and projections when command commit fails', async () => {
+  it('rolls back a failed commit without poisoning the command id', async () => {
     const fixture = createFixture()
     fixture.sqlite.exec(`
       CREATE TRIGGER fail_projection_project_insert
@@ -87,26 +92,118 @@ describe('orchestration engine', () => {
       END;
     `)
     const engine = new OrchestrationEngine(fixture.database)
+    const retried = projectCreateCommand({
+      commandId: 'cmd-project-create-retried',
+      projectId: 'project-retried',
+    })
 
-    await expect(
-      engine.dispatch(
-        projectCreateCommand({
-          commandId: 'cmd-project-create-fails',
-          projectId: 'project-fails',
-        }),
-      ),
-    ).rejects.toThrow('projection failed')
-
-    const receipts = fixture.database.select().from(schema.orchestrationCommandReceipts).all()
+    await expect(engine.dispatch(retried)).rejects.toThrow('projection failed')
 
     expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(0)
-    expect(receipts).toMatchObject([
-      {
-        commandId: 'cmd-project-create-fails',
-        resultSequence: null,
-        status: 'rejected',
+    expect(fixture.database.select().from(schema.orchestrationCommandReceipts).all()).toHaveLength(
+      0,
+    )
+
+    fixture.sqlite.exec('DROP TRIGGER fail_projection_project_insert')
+
+    expect(await engine.dispatch(retried)).toMatchObject({ deduped: false, sequence: 1 })
+    expect(fixture.database.select().from(schema.orchestrationCommandReceipts).all()).toMatchObject(
+      [{ commandId: 'cmd-project-create-retried', status: 'accepted' }],
+    )
+    fixture.close()
+  })
+
+  it('fans committed events out to every reactor and isolates a throwing one', async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+    const observed: OrchestrationEvent[] = []
+    let throwingCalls = 0
+
+    engine.subscribeDomainEvents({
+      handleEvents: () => {
+        throwingCalls += 1
+        throw new Error('reactor exploded')
       },
+      name: 'throwing',
+    })
+    const unsubscribe = engine.subscribeDomainEvents({
+      handleEvents: (events) => observed.push(...events),
+      name: 'observing',
+    })
+
+    const committed = await engine.dispatch(projectCreateCommand())
+    unsubscribe()
+    await engine.dispatch(threadCreateCommand())
+
+    expect(committed).toMatchObject({ deduped: false, sequence: 1 })
+    expect(throwingCalls).toBe(2)
+    expect(observed.map((event) => event.type)).toEqual(['project.created'])
+    expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(2)
+    fixture.close()
+  })
+
+  it('reconciles the read model from the event log after a failed dispatch', async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+    const observed: OrchestrationEvent[] = []
+    engine.subscribeDomainEvents({
+      handleEvents: (events) => observed.push(...events),
+      name: 'observing',
+    })
+
+    await engine.dispatch(projectCreateCommand())
+    // A writer the engine never saw — the same drift a dispatch that throws
+    // after its events are durable would leave behind.
+    new OrchestrationEventStore(fixture.database).append([unobservedProjectCreatedEvent()])
+
+    expect(engine.readModelSnapshot().projects.has('project-unobserved')).toBe(false)
+
+    await expect(
+      engine.dispatch(projectCreateCommand({ commandId: 'cmd-project-duplicate' })),
+    ).rejects.toThrow('Project already exists')
+
+    expect(engine.readModelSnapshot().projects.has('project-unobserved')).toBe(true)
+    expect(observed.map((event) => event.type)).toEqual(['project.created', 'project.created'])
+    fixture.close()
+  })
+
+  it('allocates stream_version inside the insert so an interleaved append cannot collide', () => {
+    const fixture = createFixture()
+    // Fires between the two batched appends below, claiming the version the old
+    // pre-computed allocation would have handed to the second event.
+    fixture.sqlite.exec(`
+      CREATE TRIGGER interleave_competing_event
+      AFTER INSERT ON orchestration_events
+      WHEN new.aggregate_id = 'project-race'
+      BEGIN
+        INSERT INTO orchestration_events (
+          event_id, aggregate_kind, aggregate_id, stream_version, event_type,
+          occurred_at, command_id, causation_event_id, correlation_id, actor_kind,
+          payload_json, metadata_json
+        ) VALUES (
+          'event-competing-' || new.sequence, 'project', 'project-race',
+          (SELECT coalesce(max(stream_version), 0) + 1 FROM orchestration_events
+            WHERE aggregate_kind = 'project' AND aggregate_id = 'project-race'),
+          'project.deleted', new.occurred_at, NULL, NULL, NULL, 'server',
+          new.payload_json, new.metadata_json
+        );
+      END;
+    `)
+    const store = new OrchestrationEventStore(fixture.database)
+
+    const appended = store.append([raceEvent('event-race-1'), raceEvent('event-race-2')])
+    const versions = fixture.database
+      .select({ streamVersion: schema.orchestrationEvents.streamVersion })
+      .from(schema.orchestrationEvents)
+      .all()
+      .map((row) => row.streamVersion)
+      .sort((left, right) => left - right)
+
+    expect(appended.map((event) => event.eventId as string)).toEqual([
+      'event-race-1',
+      'event-race-2',
     ])
+    expect(versions).toEqual([1, 2, 3, 4])
     fixture.close()
   })
 
@@ -180,13 +277,14 @@ describe('orchestration engine', () => {
 
     expect(shell.snapshotSequence).toBe(4)
     expect(shell.projects).toContainEqual(expect.objectContaining({ id: 'project-1' }))
-    expect(shell.threads).toContainEqual(
-      expect.objectContaining({
-        id: 'thread-1',
-        latestUserMessageAt: later,
-        latestTurn: expect.objectContaining({ state: 'running', turnId: 'turn-1' }),
-      }),
-    )
+    const thread = shell.threads.find((candidate) => candidate.id === 'thread-1')
+
+    expect(thread).toMatchObject({
+      latestTurn: expect.objectContaining({ state: 'running', turnId: 'turn-1' }),
+    })
+    // One server clock reading per command, so the user message and the turn it
+    // opened land on the same instant instead of on two client-supplied ones.
+    expect(thread?.latestUserMessageAt).toBe(thread?.latestTurn?.requestedAt)
     expect(detail.thread.messages).toContainEqual(
       expect.objectContaining({ id: 'message-1', role: 'user', text: 'Build the first slice' }),
     )
@@ -236,7 +334,7 @@ describe('orchestration engine', () => {
     const projectedFirst = engine.shellSnapshot()
     const projectedSecond = engine.shellSnapshot()
 
-    expect(projectedFirst.updatedAt).toBe(now)
+    expect(projectedFirst.updatedAt).not.toBe(emptyFirst.updatedAt)
     expect(projectedSecond.updatedAt).toBe(projectedFirst.updatedAt)
     fixture.close()
   })
@@ -358,6 +456,7 @@ describe('orchestration engine', () => {
       kind: 'snapshot',
       snapshot: { snapshotSequence: 0 },
     })
+    expect(await events.next()).toMatchObject({ kind: 'synchronized', sequence: 0 })
 
     const created = postCommand(app, projectCreateCommand())
 
@@ -391,6 +490,7 @@ describe('orchestration engine', () => {
       kind: 'snapshot',
       snapshot: { snapshotSequence: 3 },
     })
+    expect(await events.next()).toMatchObject({ kind: 'synchronized', sequence: 3 })
 
     await postCommand(
       app,
@@ -637,21 +737,24 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const root = await fixtureRoot()
     await initGitRepository(root)
-    const adapter = new MockProviderAdapter()
+    // The agent's edit lands inside the turn, so the ref `CheckpointReactor`
+    // captures when the turn settles is that turn's own result.
+    let turnFileContent = 'one\n'
+    const adapter = new MockProviderAdapter({
+      beforeComplete: () => writeFile(path.join(root, 'app.txt'), turnFileContent),
+    })
     const engine = new OrchestrationEngine(fixture.database, {
       providerRuntime: {
         checkpointGit: new GitService(createWorkspacePaths(root)),
         adapterRegistry: new ProviderAdapterRegistry([adapter]),
       },
     })
-    const turnZeroRef = checkpointRefForThreadTurn('thread-1', 0)
-    const turnOneRef = checkpointRefForThreadTurn('thread-1', 1)
     const turnTwoRef = checkpointRefForThreadTurn('thread-1', 2)
 
-    await commitFileCheckpoint(root, 'base\n', 'turn zero', turnZeroRef)
-    await commitFileCheckpoint(root, 'one\n', 'turn one', turnOneRef)
-    await commitFileCheckpoint(root, 'two\n', 'turn two', turnTwoRef)
-    await dispatchCheckpointRuntimeThread(engine, root, turnOneRef, turnTwoRef)
+    await commitFile(root, 'base\n', 'base commit')
+    await dispatchCheckpointRuntimeThread(engine, root, () => {
+      turnFileContent = 'two\n'
+    })
 
     await engine.dispatch(
       command({
@@ -840,8 +943,7 @@ async function dispatchFirstThread(engine: OrchestrationEngine) {
 async function dispatchCheckpointRuntimeThread(
   engine: OrchestrationEngine,
   workspaceRoot: string,
-  turnOneRef: string,
-  turnTwoRef: string,
+  beforeSecondTurn: () => void,
 ) {
   await engine.dispatch(projectCreateCommand({ workspaceRoot }))
   await engine.dispatch(
@@ -849,7 +951,7 @@ async function dispatchCheckpointRuntimeThread(
   )
   await engine.dispatch(threadTurnStartCommand())
   await engine.providerRuntimeIdle()
-  await engine.dispatch(turnDiffCompleteCommand('cmd-turn-1-diff', 'turn-1', turnOneRef, 1))
+  beforeSecondTurn()
   await engine.dispatch(
     threadTurnStartCommand({
       commandId: 'cmd-turn-2-start',
@@ -859,7 +961,6 @@ async function dispatchCheckpointRuntimeThread(
     }),
   )
   await engine.providerRuntimeIdle()
-  await engine.dispatch(turnDiffCompleteCommand('cmd-turn-2-diff', 'turn-2', turnTwoRef, 2))
 }
 
 function projectCreateCommand(input: Partial<ProjectCreateFixture> = {}) {
@@ -878,6 +979,45 @@ type ProjectCreateFixture = {
   commandId: string
   projectId: string
   workspaceRoot: string
+}
+
+function unobservedProjectCreatedEvent() {
+  return {
+    actorKind: 'client',
+    aggregateId: 'project-unobserved',
+    aggregateKind: 'project',
+    causationEventId: null,
+    commandId: 'cmd-project-unobserved',
+    correlationId: 'cmd-project-unobserved',
+    eventId: 'event-project-unobserved',
+    metadata: {},
+    occurredAt: now,
+    payload: {
+      createdAt: now,
+      defaultModelSelection: null,
+      projectId: 'project-unobserved',
+      title: 'Unobserved',
+      updatedAt: now,
+      workspaceRoot: '/workspace',
+    },
+    type: 'project.created',
+  } as PendingOrchestrationEvent
+}
+
+function raceEvent(eventId: string) {
+  return {
+    actorKind: 'client',
+    aggregateId: 'project-race',
+    aggregateKind: 'project',
+    causationEventId: null,
+    commandId: 'cmd-project-race',
+    correlationId: 'cmd-project-race',
+    eventId,
+    metadata: {},
+    occurredAt: now,
+    payload: { deletedAt: now, projectId: 'project-race' },
+    type: 'project.deleted',
+  } as PendingOrchestrationEvent
 }
 
 function threadCreateCommand(
@@ -951,27 +1091,6 @@ function assistantCompleteCommand() {
     threadId: 'thread-1',
     turnId: 'turn-1',
     type: 'thread.message.assistant.complete',
-  })
-}
-
-function turnDiffCompleteCommand(
-  commandId: string,
-  turnId: string,
-  checkpointRef: string,
-  checkpointTurnCount: number,
-) {
-  return command({
-    assistantMessageId: `assistant:${turnId}`,
-    checkpointRef,
-    checkpointTurnCount,
-    commandId,
-    completedAt: assistantCompleted,
-    createdAt: assistantCompleted,
-    files: [{ additions: 1, deletions: 1, kind: 'modified', path: 'app.txt' }],
-    status: 'ready',
-    threadId: 'thread-1',
-    turnId,
-    type: 'thread.turn.diff.complete',
   })
 }
 
@@ -1058,16 +1177,10 @@ async function initGitRepository(root: string) {
   await runGit(root, ['config', 'user.name', 'Test User'])
 }
 
-async function commitFileCheckpoint(
-  root: string,
-  content: string,
-  message: string,
-  checkpointRef: string,
-) {
+async function commitFile(root: string, content: string, message: string) {
   await writeFile(path.join(root, 'app.txt'), content)
   await runGit(root, ['add', 'app.txt'])
   await runGit(root, ['commit', '-m', message])
-  await runGit(root, ['update-ref', checkpointRef, 'HEAD'])
 }
 
 async function gitRefExists(root: string, ref: string) {

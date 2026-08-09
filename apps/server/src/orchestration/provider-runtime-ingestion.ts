@@ -1,9 +1,12 @@
 import {
   commandIdSchema,
   DEFAULT_RUNTIME_MODE,
+  DEFAULT_USER_INPUT_ANSWER_KIND,
   eventIdSchema,
   messageIdSchema,
   proposedPlanIdSchema,
+  userInputQuestionOptionSchema,
+  userInputQuestionSchema,
   type InternalOrchestrationCommand,
   type OrchestrationCommand,
   type MessageId,
@@ -11,10 +14,14 @@ import {
   type OrchestrationThreadActivity,
   type ThreadId,
   type TurnId,
+  type UserInputQuestion,
+  type UserInputQuestionOption,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import type { ProviderRuntimeEvent } from '../provider/types'
-import type { OrchestrationReadModel } from './read-model'
+import { checkpointFilesFromUnifiedDiff } from './checkpoint-files'
+import { checkpointRefForThreadTurn } from './checkpoint-refs'
+import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
 import {
   BoundedTtlCache,
   PROVIDER_RUNTIME_BUFFER_TTL_MS,
@@ -82,7 +89,41 @@ export class ProviderRuntimeIngestion {
     await this.dispatchSessionCommand(event)
     await this.dispatchMetadataCommands(event)
     await this.dispatchContentCommands(event)
+    await this.dispatchCheckpointPlaceholder(event)
     await this.dispatchActivityCommands(event)
+  }
+
+  /**
+   * A turn's changed files have to appear while the agent is still working, and
+   * the only mid-turn signal is the provider's own unified diff. It lands as a
+   * checkpoint with status `missing`: the file list is real, the git ref is not
+   * written yet. `CheckpointReactor` upgrades the turn to a captured ref when
+   * the turn ends, and the projection refuses the reverse — so a placeholder
+   * arriving late can never erase a capture.
+   */
+  private async dispatchCheckpointPlaceholder(event: ProviderRuntimeEvent) {
+    if (event.type !== 'turn.diff.updated') return
+    if (!event.turnId) return
+
+    const thread = this.getReadModel?.().threads.get(event.threadId)
+    if (!thread || thread.deletedAt) return
+
+    const files = checkpointFilesFromUnifiedDiff(event.payload.unifiedDiff)
+    if (files.length === 0) return
+
+    const checkpointTurnCount = placeholderCheckpointTurnCount(thread, event.turnId)
+    await this.dispatch({
+      checkpointRef: checkpointRefForThreadTurn(event.threadId, checkpointTurnCount),
+      checkpointTurnCount,
+      commandId: providerCommandId(event.eventId, 'turn-diff-placeholder'),
+      completedAt: event.createdAt,
+      createdAt: event.createdAt,
+      files,
+      status: 'missing',
+      threadId: event.threadId,
+      turnId: event.turnId,
+      type: 'thread.turn.diff.complete',
+    })
   }
 
   private async dispatchSessionCommand(event: ProviderRuntimeEvent) {
@@ -113,7 +154,6 @@ export class ProviderRuntimeIngestion {
       threadId: event.threadId,
       title: event.payload.name,
       type: 'thread.meta.update',
-      updatedAt: event.createdAt,
     })
   }
 
@@ -442,6 +482,24 @@ export class ProviderRuntimeIngestion {
   }
 }
 
+/**
+ * A placeholder claims the slot the real capture will land in, so the ref name
+ * it advertises is the one `CheckpointReactor` writes. Reusing an existing
+ * slot matters: every mid-turn update of the same turn must describe one
+ * checkpoint, not push the turn count forward on each diff frame.
+ */
+function placeholderCheckpointTurnCount(thread: OrchestrationProjectedThread, turnId: TurnId) {
+  const existing = thread.checkpointByTurnId[turnId]
+  if (existing) return existing.checkpointTurnCount
+
+  let maxTurnCount = 0
+  for (const checkpoint of Object.values(thread.checkpointByTurnId)) {
+    maxTurnCount = Math.max(maxTurnCount, checkpoint.checkpointTurnCount)
+  }
+
+  return maxTurnCount + 1
+}
+
 function sessionSetCommand(
   event: Extract<ProviderRuntimeEvent, { type: 'session.set' }>,
 ): InternalOrchestrationCommand {
@@ -600,12 +658,7 @@ function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationTh
     case 'request.resolved':
       return requestResolvedActivity(event)
     case 'user-input.requested':
-      return [
-        baseActivity(event, 'info', 'user-input.requested', 'User input requested', {
-          questions: event.payload.questions,
-          requestId: event.requestId,
-        }),
-      ]
+      return [userInputRequestedActivity(event)]
     case 'user-input.resolved':
       return [
         baseActivity(event, 'info', 'user-input.resolved', 'User input submitted', {
@@ -742,6 +795,115 @@ function requestResolvedActivity(
       requestType: event.payload.requestType,
     }),
   ]
+}
+
+function userInputRequestedActivity(
+  event: Extract<ProviderRuntimeEvent, { type: 'user-input.requested' }>,
+) {
+  const { droppedQuestionCount, questions } = normalizeUserInputQuestions(event.payload.questions)
+
+  return baseActivity(event, 'info', 'user-input.requested', 'User input requested', {
+    // Widening the activity rather than logging a second line: whoever reads
+    // the request also sees how much of it we could not read.
+    droppedQuestionCount: droppedQuestionCount === 0 ? undefined : droppedQuestionCount,
+    questions,
+    requestId: event.requestId,
+  })
+}
+
+/**
+ * Providers disagree on the wire shape — Codex sends `question`/`isOther`/
+ * `isSecret` and label-only options — so each question is aligned to the
+ * contract and then parsed. A question we still cannot read is dropped, never
+ * thrown: an unknown shape costs that question, not the turn.
+ */
+function normalizeUserInputQuestions(rawQuestions: readonly unknown[]) {
+  const questions: UserInputQuestion[] = []
+  let droppedQuestionCount = 0
+
+  for (const raw of rawQuestions) {
+    const parsed = v.safeParse(userInputQuestionSchema, userInputQuestionCandidate(raw))
+    if (!parsed.success) {
+      droppedQuestionCount += 1
+      continue
+    }
+
+    questions.push(parsed.output)
+  }
+
+  return { droppedQuestionCount, questions }
+}
+
+function userInputQuestionCandidate(raw: unknown) {
+  if (!isPlainRecord(raw)) return raw
+
+  const options = userInputQuestionOptions(raw.options)
+
+  return {
+    ...raw,
+    allowOther: firstBoolean(raw.allowOther, raw.isOther),
+    answerKind: userInputAnswerKind(raw.answerKind, options),
+    header: firstText(raw.header),
+    options,
+    prompt: firstText(raw.prompt, raw.question),
+    secret: firstBoolean(raw.secret, raw.isSecret),
+  }
+}
+
+/** An option-less question is a text field; options make it a picker. */
+function userInputAnswerKind(rawAnswerKind: unknown, options: readonly UserInputQuestionOption[]) {
+  if (rawAnswerKind !== undefined) return rawAnswerKind
+  if (options.length > 0) return 'single-select'
+
+  return DEFAULT_USER_INPUT_ANSWER_KIND
+}
+
+function userInputQuestionOptions(rawOptions: unknown) {
+  if (!Array.isArray(rawOptions)) return []
+
+  const options: UserInputQuestionOption[] = []
+  for (const raw of rawOptions) {
+    const parsed = v.safeParse(userInputQuestionOptionSchema, userInputQuestionOptionCandidate(raw))
+    if (!parsed.success) continue
+
+    options.push(parsed.output)
+  }
+
+  return options
+}
+
+/** Codex options carry no id, so the label doubles as the value sent back. */
+function userInputQuestionOptionCandidate(raw: unknown) {
+  if (!isPlainRecord(raw)) return raw
+
+  return {
+    ...raw,
+    description: firstText(raw.description),
+    label: firstText(raw.label, raw.value),
+    value: firstText(raw.value, raw.label),
+  }
+}
+
+/** Blank counts as absent: Codex sends `""` where it has no header or description. */
+function firstText(...values: readonly unknown[]) {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    if (value.trim().length === 0) continue
+
+    return value
+  }
+
+  return undefined
+}
+
+function firstBoolean(...values: readonly unknown[]) {
+  for (const value of values) {
+    if (typeof value !== 'boolean') continue
+
+    return value
+  }
+
+  return undefined
 }
 
 function taskStartedActivity(event: Extract<ProviderRuntimeEvent, { type: 'task.started' }>) {
@@ -1034,15 +1196,28 @@ function taskCompletedSummary(event: Extract<ProviderRuntimeEvent, { type: 'task
   return 'Task completed'
 }
 
-function approvalRequestSummary(requestKind: string | undefined) {
-  if (requestKind === 'command') return 'Command approval requested'
-  if (requestKind === 'file-read') return 'File-read approval requested'
-  if (requestKind === 'file-change') return 'File-change approval requested'
-
-  return 'Approval requested'
+function approvalRequestSummary(requestKind: ApprovalRequestKind) {
+  switch (requestKind) {
+    case 'command':
+      return 'Command approval requested'
+    case 'file-read':
+      return 'File-read approval requested'
+    case 'file-change':
+      return 'File-change approval requested'
+    case 'tool':
+      return 'Tool approval requested'
+  }
 }
 
-function requestKindFromRequestType(requestType: string) {
+type ApprovalRequestKind = 'command' | 'file-change' | 'file-read' | 'tool'
+
+/**
+ * Every `request.opened` blocks the turn until it is answered, so an
+ * unrecognised type falls back to the generic tool kind. Leaving it undefined
+ * used to hide MCP and custom-tool approvals (Claude's
+ * `dynamic_tool_call_approval`) from the panel while they still blocked.
+ */
+function requestKindFromRequestType(requestType: string): ApprovalRequestKind {
   switch (requestType) {
     case 'command_execution_approval':
     case 'exec_command_approval':
@@ -1053,7 +1228,7 @@ function requestKindFromRequestType(requestType: string) {
     case 'file_change_approval':
       return 'file-change'
     default:
-      return undefined
+      return 'tool'
   }
 }
 

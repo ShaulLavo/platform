@@ -7,9 +7,24 @@ export type ChatInputTrigger = {
   query: string
   rangeEnd: number
   rangeStart: number
+  /**
+   * Exactly what the range covered when the trigger was detected. A menu commit
+   * arrives one or more renders later, so this is the proof that the range still
+   * points at the same characters.
+   */
+  text: string
 }
 
-type ChatInputSlashCommand = 'default' | 'plan'
+export type ChatInputRangeReplacement = {
+  cursor: number
+  rangeEnd: number
+  rangeStart: number
+  text: string
+}
+
+export type ChatInputLineEdge = 'end' | 'start'
+
+export type ChatInputSlashCommand = 'default' | 'plan'
 
 export type ChatInputCommandItem =
   | {
@@ -54,6 +69,24 @@ const CHAT_INPUT_SLASH_COMMANDS: readonly ChatInputCommandItem[] = [
     value: 'plan',
   },
 ]
+
+/**
+ * Typing an opening symbol while text is selected wraps the selection instead of
+ * replacing it — the editing affordance a prose composer is most often missing.
+ */
+const CHAT_INPUT_SURROUND_PAIRS = new Map<string, string>([
+  ['"', '"'],
+  ["'", "'"],
+  ['(', ')'],
+  ['*', '*'],
+  ['<', '>'],
+  ['[', ']'],
+  ['_', '_'],
+  ['`', '`'],
+  ['{', '}'],
+  ['«', '»'],
+  ['“', '”'],
+])
 
 const SENSITIVE_MENTION_PATH_WORDS = new Set([
   'apikey',
@@ -101,28 +134,71 @@ export function detectChatInputTrigger(text: string, cursorInput: number): ChatI
     query: token.slice(1),
     rangeEnd: cursor,
     rangeStart: tokenStart,
+    text: token,
   }
 }
 
-export function replaceChatInputTextRange({
+/**
+ * The splice a menu commit performs, or `null` when the range no longer covers
+ * `expectedText`. Refusing is the only safe answer: the prompt has moved since
+ * the menu opened, so the recorded offsets would cut a hole somewhere else — and
+ * a second commit of the same item lands here too, because the first one already
+ * changed the text the range points at.
+ */
+export function chatInputRangeReplacement({
+  expectedText,
   rangeEnd,
   rangeStart,
   replacement,
   text,
 }: {
+  expectedText?: string
   rangeEnd: number
   rangeStart: number
   replacement: string
   text: string
-}) {
+}): ChatInputRangeReplacement | null {
   const safeStart = Math.max(0, Math.min(text.length, rangeStart))
   const safeEnd = Math.max(safeStart, Math.min(text.length, rangeEnd))
-  const nextText = `${text.slice(0, safeStart)}${replacement}${text.slice(safeEnd)}`
+  if (expectedText !== undefined && text.slice(safeStart, safeEnd) !== expectedText) return null
+
+  const spliceEnd = spliceEndForTrailingSpace(text, safeEnd, replacement)
 
   return {
     cursor: safeStart + replacement.length,
-    text: nextText,
+    rangeEnd: spliceEnd,
+    rangeStart: safeStart,
+    text: `${text.slice(0, safeStart)}${replacement}${text.slice(spliceEnd)}`,
   }
+}
+
+/** Replacements carry their own trailing blank, so mid-sentence commits ate one. */
+function spliceEndForTrailingSpace(text: string, rangeEnd: number, replacement: string) {
+  if (!replacement.endsWith(' ')) return rangeEnd
+  if (text[rangeEnd] !== ' ') return rangeEnd
+
+  return rangeEnd + 1
+}
+
+export function chatInputSurroundClose(character: string) {
+  return CHAT_INPUT_SURROUND_PAIRS.get(character) ?? null
+}
+
+/**
+ * Home/End target the logical line, not the wrapped visual one: the browser's
+ * own `lineboundary` motion needs a live DOM selection, and on macOS it never
+ * runs for these keys at all.
+ */
+export function chatInputLineBoundaryOffset(text: string, cursor: number, edge: ChatInputLineEdge) {
+  const safeCursor = clampCursor(text, cursor)
+  if (edge === 'end') {
+    const lineEnd = text.indexOf('\n', safeCursor)
+
+    return lineEnd === -1 ? text.length : lineEnd
+  }
+  if (safeCursor === 0) return 0
+
+  return text.lastIndexOf('\n', safeCursor - 1) + 1
 }
 
 function chatInputMentionReplacement(path: string) {
@@ -136,6 +212,21 @@ export function searchChatInputSlashCommands(query: string) {
   return CHAT_INPUT_SLASH_COMMANDS.filter((command) =>
     command.label.slice(1).toLowerCase().includes(normalizedQuery),
   )
+}
+
+/**
+ * The mode a prompt that is *only* a slash command asks for. Picking the command
+ * from the menu already clears the text, but a prompt that reaches submit
+ * untouched — pasted, or sent with the mouse while the menu was open — must
+ * still resolve to a mode instead of reaching the provider as prose.
+ */
+export function chatInputStandaloneSlashCommand(text: string): ChatInputSlashCommand | null {
+  const match = /^\/(default|plan)$/i.exec(text.trim())
+  const command = match?.[1]?.toLowerCase()
+  if (command === 'plan') return 'plan'
+  if (command === 'default') return 'default'
+
+  return null
 }
 
 export function chatInputMentionCommandItems(
@@ -221,7 +312,10 @@ function slashCommandTrigger(text: string, cursor: number): ChatInputTrigger | n
   const linePrefix = text.slice(lineStart, cursor)
   if (!linePrefix.startsWith('/')) return null
 
-  const commandMatch = /^\/(\S*)$/.exec(linePrefix)
+  // Trailing blanks stay part of the command: `/plan ` is a finished command,
+  // not prose, and dropping the trigger there used to ship the literal text to
+  // the provider. Prose after the command (`/plan ship it`) still ends it.
+  const commandMatch = /^\/(\S*)[ \t]*$/.exec(linePrefix)
   if (!commandMatch) return null
 
   return {
@@ -229,6 +323,7 @@ function slashCommandTrigger(text: string, cursor: number): ChatInputTrigger | n
     query: commandMatch[1] ?? '',
     rangeEnd: cursor,
     rangeStart: lineStart,
+    text: linePrefix,
   }
 }
 

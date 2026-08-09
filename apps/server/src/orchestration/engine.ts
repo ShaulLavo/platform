@@ -3,13 +3,19 @@ import type { ChatAttachment, ChatAttachmentUpload } from '@workspace/contracts'
 import { defaultAttachmentsDir, writeAttachmentFromDataUrl } from '../attachments/store'
 import { migrateOrchestrationDatabase } from '../db/migrations'
 import { orchestrationErrors } from '../observability'
-import { clientOrchestrationCommandSchema, type OrchestrationCommand } from './schemas'
-import { OrchestrationCommandReceipts } from './command-receipts'
+import {
+  clientOrchestrationCommandSchema,
+  type OrchestrationCommand,
+  type OrchestrationEvent,
+} from './schemas'
+import { CheckpointReactor } from './checkpoint-reactor'
+import { isDurableCommandRejection, OrchestrationCommandReceipts } from './command-receipts'
 import { decideOrchestrationCommand } from './decider'
 import { OrchestrationEventStore, type OrchestrationDatabase } from './event-store'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
 import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
+import { ThreadDeletionReactor } from './thread-deletion-reactor'
 import {
   createDefaultProviderAdapterRegistry,
   type ProviderAdapterRegistry,
@@ -27,7 +33,12 @@ import {
 import { projectEvents } from './projector'
 import type { OrchestrationReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
-import { OrchestrationStreams, type OrchestrationStreamOptions } from './streams'
+import {
+  OrchestrationDomainEventBus,
+  OrchestrationStreams,
+  type OrchestrationDomainEventReactor,
+  type OrchestrationStreamOptions,
+} from './streams'
 
 export type OrchestrationDispatchResult = {
   deduped: boolean
@@ -51,7 +62,9 @@ type OrchestrationCommandSummary = ReturnType<typeof orchestrationCommandSummary
 export class OrchestrationEngine {
   private queue = Promise.resolve()
   private readonly attachmentsDir: string
+  private checkpointReactor: CheckpointReactor | null = null
   private readonly database: OrchestrationDatabase
+  private readonly domainEvents = new OrchestrationDomainEventBus()
   private readonly receipts: OrchestrationCommandReceipts
   private readonly eventStore: OrchestrationEventStore
   private readonly projectionPipeline: OrchestrationProjectionPipeline
@@ -72,6 +85,17 @@ export class OrchestrationEngine {
     this.projectionPipeline.catchUp()
     this.readModel = this.snapshotQuery.fullReadModel()
     this.providerCommandReactor = this.createProviderCommandReactor(options)
+    this.subscribeProviderCommandReactor()
+  }
+
+  /**
+   * Attach a server-side reactor to the committed domain-event stream. Reactors
+   * observe events only after they are durable, so returning an unsubscribe
+   * handle — rather than a constructor slot — is what lets later reactors
+   * (checkpoints, thread deletion) attach without the engine knowing them.
+   */
+  subscribeDomainEvents(reactor: OrchestrationDomainEventReactor) {
+    return this.domainEvents.subscribe(reactor)
   }
 
   /**
@@ -122,8 +146,13 @@ export class OrchestrationEngine {
     return this.readModel
   }
 
-  providerRuntimeIdle() {
-    return this.providerCommandReactor?.drain() ?? Promise.resolve()
+  /**
+   * Provider work first: ingestion is what settles a turn, and settling a turn
+   * is what gives the checkpoint reactor something to capture.
+   */
+  async providerRuntimeIdle() {
+    await this.providerCommandReactor?.drain()
+    await this.checkpointReactor?.drain()
   }
 
   private dispatchNow(
@@ -135,15 +164,14 @@ export class OrchestrationEngine {
     recordChatPipelineInfo('chat.pipeline.command.start', summary)
 
     const existing = this.receipts.find(command.commandId)
+    if (existing?.status === 'accepted') {
+      recordChatPipelineInfo('chat.pipeline.command.deduped', {
+        ...summary,
+        resultSequence: existing.resultSequence,
+      })
+      return dedupedDispatchResult(existing)
+    }
     if (existing) {
-      if (existing.status === 'accepted') {
-        recordChatPipelineInfo('chat.pipeline.command.deduped', {
-          ...summary,
-          resultSequence: existing.resultSequence,
-        })
-        return dedupedDispatchResult(existing)
-      }
-
       recordChatPipelineWarning('chat.pipeline.command.previously_rejected', {
         ...summary,
         storedError: existing.error,
@@ -152,30 +180,12 @@ export class OrchestrationEngine {
     }
 
     const committed = this.commitNewCommand(command, summary)
-    recordChatPipelineInfo('chat.pipeline.command.committed', {
-      ...summary,
-      ...orchestrationEventBatchSummary(committed.events),
-      sequence: committed.sequence,
-    })
-    this.readModel = projectEvents(committed.events, this.readModel)
-    recordChatPipelineInfo('chat.pipeline.read_model.projected', {
-      ...summary,
-      ...orchestrationEventBatchSummary(committed.events),
-    })
-    this.streams.publish(committed.events)
-    recordChatPipelineInfo('chat.pipeline.streams.published', {
-      ...summary,
-      ...orchestrationEventBatchSummary(committed.events),
-    })
-    this.providerCommandReactor?.handleEvents(committed.events)
-    recordChatPipelineInfo('chat.pipeline.provider_reactor.notified', {
-      ...summary,
-      ...orchestrationEventBatchSummary(committed.events),
-      enabled: this.providerCommandReactor !== null,
-    })
     recordChatPipelineInfo('chat.pipeline.command.complete', {
       ...summary,
+      ...orchestrationEventBatchSummary(committed.events),
       durationMs: elapsedMs(startedAt),
+      reactorCount: committed.published.reactorCount,
+      reactorFailures: committed.published.failures,
       sequence: committed.sequence,
     })
 
@@ -194,16 +204,69 @@ export class OrchestrationEngine {
         eventCount: pendingEvents.length,
         eventTypes: pendingEvents.map((event) => event.type),
       })
+      const committed = this.commitCommand(command, pendingEvents)
+      this.readModel = projectEvents(committed.events, this.readModel)
 
-      return this.commitCommand(command, pendingEvents)
+      return { ...committed, published: this.publishCommitted(committed.events) }
     } catch (error) {
-      this.receipts.recordRejected(command, error)
-      recordChatPipelineWarning('chat.pipeline.command.rejected', {
-        ...summary,
-        error,
-      })
+      this.recordDispatchFailure(command, summary, error)
       throw error
     }
+  }
+
+  /**
+   * A failed dispatch leaves two things to settle, in this order: the in-memory
+   * read model may now lag durable truth, and only *then* can the failure be
+   * classified — because whether a rejection is durable is a property of the
+   * error, and the reconcile must not be skipped by an early return.
+   */
+  private recordDispatchFailure(
+    command: OrchestrationCommand,
+    summary: OrchestrationCommandSummary,
+    error: unknown,
+  ) {
+    const reconciled = this.reconcileReadModel()
+    const durable = isDurableCommandRejection(error)
+    if (durable) this.receipts.recordRejected(command, error)
+
+    recordChatPipelineWarning('chat.pipeline.command.rejected', {
+      ...summary,
+      ...reconciled,
+      error,
+      receiptRecorded: durable,
+      retryable: !durable,
+    })
+  }
+
+  /**
+   * Re-derives the command read model from the event log. Without this a
+   * dispatch that threw after its events were durable leaves the engine
+   * deciding later commands against a read model that is missing them.
+   */
+  private reconcileReadModel() {
+    try {
+      const events = this.eventStore.readAfter({ afterSequence: this.readModel.sequence })
+      if (events.length === 0) return { reconciledEventCount: 0 }
+
+      this.readModel = projectEvents(events, this.readModel)
+      const published = this.publishCommitted(events)
+
+      return {
+        reconciledEventCount: events.length,
+        reconciledSequence: this.readModel.sequence,
+        reconcileReactorFailures: published.failures,
+      }
+    } catch (error) {
+      // Reconcile is best-effort: the dispatch failure it is annotating is the
+      // error the caller has to see, so this one rides along as a field.
+      return { reconcileError: errorMessage(error), reconciledEventCount: 0 }
+    }
+  }
+
+  private publishCommitted(events: OrchestrationEvent[]) {
+    this.streams.publish(events)
+
+    return this.domainEvents.publish(events)
   }
 
   private commitCommand(
@@ -227,6 +290,49 @@ export class OrchestrationEngine {
     })
   }
 
+  /**
+   * The provider reactor is the engine's own consumer, but it attaches through
+   * the same bus as everyone else — there is no privileged slot left to grow.
+   */
+  private subscribeProviderCommandReactor() {
+    const reactor = this.providerCommandReactor
+    if (!reactor) return
+
+    this.domainEvents.subscribe({
+      handleEvents: (events) => reactor.handleEvents(events),
+      name: 'provider-command-reactor',
+    })
+  }
+
+  /**
+   * The pre-turn baseline is enqueued while `thread.turn-start-requested` is
+   * still being published, so draining the reactor here is what puts the
+   * capture strictly before the provider is allowed to touch the worktree.
+   */
+  private checkpointBaselineSettled() {
+    return this.checkpointReactor?.drain() ?? Promise.resolve()
+  }
+
+  /**
+   * Checkpoints are photographs of a git worktree, so a deployment without a
+   * git service has nothing to photograph and the reactor stays off rather than
+   * failing once per turn.
+   */
+  private subscribeCheckpointReactor(
+    git: GitService | undefined,
+    providerService: ProviderService,
+  ) {
+    if (!git) return
+
+    this.checkpointReactor = new CheckpointReactor({
+      dispatch: (command) => this.dispatch(command),
+      getReadModel: () => this.readModel,
+      git,
+      providerService,
+    })
+    this.domainEvents.subscribe(this.checkpointReactor)
+  }
+
   private createProviderCommandReactor(options: OrchestrationEngineOptions) {
     if (!options.providerRuntime) return null
 
@@ -244,7 +350,13 @@ export class OrchestrationEngine {
           sessionDirectory: new ProviderSessionDirectory(this.database),
         })
 
+    // Stopping a deleted thread's session is only meaningful where a runtime
+    // exists to stop, so the deletion reactor attaches with this one.
+    this.domainEvents.subscribe(new ThreadDeletionReactor({ providerService }))
+    this.subscribeCheckpointReactor(providerRuntimeOptions?.checkpointGit, providerService)
+
     return new ProviderCommandReactor({
+      beforeTurnStart: () => this.checkpointBaselineSettled(),
       checkpointGit: providerRuntimeOptions?.checkpointGit ?? null,
       dispatch: (command) => this.dispatch(command),
       getReadModel: () => this.readModel,

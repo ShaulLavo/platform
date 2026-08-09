@@ -1,8 +1,8 @@
 import { and, asc, eq, gt, sql } from 'drizzle-orm'
 import * as v from 'valibot'
+import { ORCHESTRATION_REPLAY_MAX_EVENTS } from '@workspace/contracts'
 import {
   orchestrationEventSchema,
-  type OrchestrationAggregateKind,
   type OrchestrationEvent,
   type OrchestrationReplayEventsInput,
 } from './schemas'
@@ -16,6 +16,15 @@ import {
 import { orchestrationErrors } from '../observability/structured-errors'
 
 export type OrchestrationDatabase = PlatformDatabase
+
+/**
+ * A replay read with an optional caller-supplied page size. `limit` is clamped
+ * to `ORCHESTRATION_REPLAY_MAX_EVENTS`, so it can only ever ask for less.
+ */
+export type OrchestrationReplayEventsQuery = OrchestrationReplayEventsInput & {
+  limit?: number
+}
+
 export type PendingOrchestrationEvent = {
   [Type in OrchestrationEvent['type']]: Omit<
     Extract<OrchestrationEvent, { type: Type }>,
@@ -37,11 +46,10 @@ export class OrchestrationEventStore {
       eventCount: events.length,
       eventTypes: events.map((event) => event.type),
     })
-    const streamVersions = new Map<string, number>()
     const appended: OrchestrationEvent[] = []
+    const streamVersions: number[] = []
 
     for (const event of events) {
-      const streamVersion = nextStreamVersion(this.database, event, streamVersions)
       const inserted = this.database
         .insert(orchestrationEvents)
         .values({
@@ -56,16 +64,21 @@ export class OrchestrationEventStore {
           metadataJson: JSON.stringify(event.metadata),
           occurredAt: event.occurredAt,
           payloadJson: JSON.stringify(event.payload),
-          streamVersion,
+          streamVersion: nextStreamVersion(event),
         })
-        .returning({ sequence: orchestrationEvents.sequence })
+        .returning({
+          sequence: orchestrationEvents.sequence,
+          streamVersion: orchestrationEvents.streamVersion,
+        })
         .get()
 
+      streamVersions.push(inserted.streamVersion)
       appended.push(v.parse(orchestrationEventSchema, { ...event, sequence: inserted.sequence }))
     }
 
     recordChatPipelineInfo('chat.pipeline.event_store.append_complete', {
       ...orchestrationEventBatchSummary(appended),
+      streamVersions,
     })
     return appended
   }
@@ -79,11 +92,19 @@ export class OrchestrationEventStore {
     return row?.sequence ?? 0
   }
 
-  readAfter(input: OrchestrationReplayEventsInput) {
-    recordChatPipelineInfo(
-      'chat.pipeline.event_store.replay_start',
-      orchestrationReplaySummary(input),
-    )
+  /**
+   * Reachable from a client through the `replayEvents` RPC and the `/replay`
+   * route, so it is always paged: an unbounded read is a request-shaped way to
+   * make the server decode the entire event log — every other thread's tool
+   * payloads included — into one array. Callers that want the rest page by
+   * passing the last returned sequence back as `afterSequence`.
+   */
+  readAfter(input: OrchestrationReplayEventsQuery) {
+    const limit = replayLimit(input.limit)
+    recordChatPipelineInfo('chat.pipeline.event_store.replay_start', {
+      ...orchestrationReplaySummary(input),
+      limit,
+    })
     const conditions = [gt(orchestrationEvents.sequence, input.afterSequence)]
     const aggregateFilter = aggregateConditions(input)
 
@@ -94,16 +115,25 @@ export class OrchestrationEventStore {
       .from(orchestrationEvents)
       .where(and(...conditions))
       .orderBy(asc(orchestrationEvents.sequence))
+      .limit(limit)
       .all()
       .map(rowToEvent)
 
     recordChatPipelineInfo('chat.pipeline.event_store.replay_complete', {
       ...orchestrationReplaySummary(input),
       ...orchestrationEventBatchSummary(events),
+      limit,
+      truncated: events.length === limit,
     })
 
     return events
   }
+}
+
+function replayLimit(requested: number | undefined) {
+  if (!requested) return ORCHESTRATION_REPLAY_MAX_EVENTS
+
+  return Math.min(requested, ORCHESTRATION_REPLAY_MAX_EVENTS)
 }
 
 function aggregateConditions(input: OrchestrationReplayEventsInput) {
@@ -121,38 +151,21 @@ function aggregateConditions(input: OrchestrationReplayEventsInput) {
   )
 }
 
-function nextStreamVersion(
-  database: OrchestrationDatabase,
-  event: PendingOrchestrationEvent,
-  streamVersions: Map<string, number>,
-) {
-  const key = streamKey(event.aggregateKind, event.aggregateId)
-  const cached = streamVersions.get(key)
-
-  if (cached !== undefined) {
-    const next = cached + 1
-    streamVersions.set(key, next)
-    return next
-  }
-
-  const row = database
-    .select({ version: sql<number>`coalesce(max(${orchestrationEvents.streamVersion}), 0)` })
-    .from(orchestrationEvents)
-    .where(
-      and(
-        eq(orchestrationEvents.aggregateKind, event.aggregateKind),
-        eq(orchestrationEvents.aggregateId, event.aggregateId),
-      ),
-    )
-    .get()
-  const next = (row?.version ?? 0) + 1
-  streamVersions.set(key, next)
-
-  return next
-}
-
-function streamKey(kind: OrchestrationAggregateKind, id: string) {
-  return `${kind}:${id}`
+/**
+ * The version is computed by the database inside the INSERT, not read out first
+ * and handed back. A separate `SELECT max(...)` leaves a window in which another
+ * writer can claim the same version; folded in here the read and the write are
+ * one statement under the same write lock, so the
+ * `(aggregate_kind, aggregate_id, stream_version)` unique index is enforced
+ * against live truth rather than against whatever the caller last saw.
+ */
+function nextStreamVersion(event: PendingOrchestrationEvent) {
+  return sql<number>`(
+    select coalesce(max(${orchestrationEvents.streamVersion}), 0) + 1
+    from ${orchestrationEvents}
+    where ${orchestrationEvents.aggregateKind} = ${event.aggregateKind}
+      and ${orchestrationEvents.aggregateId} = ${event.aggregateId}
+  )`
 }
 
 export function rowToEvent(row: OrchestrationEventRow) {

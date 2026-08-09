@@ -11,6 +11,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import {
   DEFAULT_CLAUDE_PROVIDER_SETTINGS,
+  DEFAULT_INTERACTION_MODE,
   approvalRequestIdSchema,
   messageIdSchema,
   type ApprovalRequestId,
@@ -20,6 +21,7 @@ import {
   type RuntimeMode,
   type ThreadId,
   type TurnId,
+  type UserInputQuestions,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { defaultAttachmentsDir, readAttachmentBytes } from '../../attachments/store'
@@ -37,6 +39,7 @@ import type {
   ProviderSessionStartInput,
   ProviderSignInInput,
   ProviderTurnInput,
+  ProviderUserInputResponseInput,
 } from '../types'
 import { activeProviderTurn, type ActiveProviderTurn } from './utils/active-turn'
 import { providerErrorMessage } from './utils/adapters'
@@ -63,6 +66,7 @@ import {
   claudeUserMessage,
   type ResolvedAttachment,
 } from './utils/claude-turn-input'
+import { claudeUserInputAnswers, claudeUserInputQuestions } from './utils/claude-user-input'
 import { asRecord, numberField, stringField } from './utils/records'
 import { noop, runtimeEventId } from './utils/runtime-ids'
 import { sessionInputFromTurn } from './utils/session-input'
@@ -109,6 +113,12 @@ type PendingClaudeApproval = {
   resolve: (result: PermissionResult) => void
   toolInput: Record<string, unknown>
   toolName: string
+}
+
+/** `toolInput` is kept because the SDK wants the questions echoed back beside the answers. */
+type PendingClaudeUserInput = {
+  resolve: (result: PermissionResult) => void
+  toolInput: Record<string, unknown>
 }
 
 type InFlightClaudeTool = {
@@ -317,12 +327,12 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   }
 
   /**
-   * `DEFAULT_CLAUDE_PROVIDER_SETTINGS.traits.supportsUserInput` is false: the
-   * agent SDK has no analog of codex's `item/tool/requestUserInput`, so nothing
-   * can ever open one of these requests and nothing can answer one.
+   * The SDK's analog of codex's `item/tool/requestUserInput` is the
+   * `AskUserQuestion` tool arriving through `canUseTool`, so the answer travels
+   * back as that tool's permission result rather than as its own control reply.
    */
-  async respondUserInput(): Promise<never> {
-    throw createInternalError('Claude does not support user-input requests.')
+  async respondUserInput(input: ProviderUserInputResponseInput) {
+    await this.requireSession(input.threadId, 'user-input/respond').respondUserInput(input)
   }
 
   private async ensureRuntimeSession(input: ProviderSessionStartInput) {
@@ -340,8 +350,21 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       providerInstanceId: input.providerInstanceId,
     })
     const reasoningKey = claudeReasoningKey(reasoning)
-    if (existing?.matches({ cwd, model, reasoningKey, runtimeMode: input.runtimeMode })) {
+    // Plan mode is a spawn-time `permissionMode`, exactly like effort: reusing a
+    // session across a switch runs the new mode against the old query, which is
+    // what made "plan" silently behave as whatever the thread started in.
+    const interactionMode = input.interactionMode ?? DEFAULT_INTERACTION_MODE
+    if (
+      existing?.matches({
+        cwd,
+        interactionMode,
+        model,
+        reasoningKey,
+        runtimeMode: input.runtimeMode,
+      })
+    ) {
       recordChatPipelineInfo('chat.pipeline.claude_adapter.session.reuse', {
+        interactionMode,
         model,
         reasoning,
         runtimeMode: input.runtimeMode,
@@ -352,6 +375,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
 
     if (existing) {
       recordChatPipelineInfo('chat.pipeline.claude_adapter.session.replace', {
+        interactionMode,
         model,
         reasoning,
         runtimeMode: input.runtimeMode,
@@ -362,6 +386,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     }
 
     recordChatPipelineInfo('chat.pipeline.claude_adapter.session.start', {
+      interactionMode,
       model,
       providerInstanceId: input.providerInstanceId,
       reasoning,
@@ -373,7 +398,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       createQuery: this.createQuery,
       cwd,
       emit: (event) => this.events.publish(event),
-      interactionMode: input.interactionMode,
+      interactionMode,
       model,
       providerInstanceId: input.providerInstanceId,
       reasoning,
@@ -383,6 +408,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     })
     this.sessions.set(input.threadId, session)
     recordChatPipelineInfo('chat.pipeline.claude_adapter.session.started', {
+      interactionMode,
       model,
       reasoning,
       runtimeMode: input.runtimeMode,
@@ -408,8 +434,10 @@ class ClaudeAgentSession {
   private readonly cwd: string
   private readonly emit: (event: ProviderRuntimeEvent) => void
   private readonly inFlightTools = new Map<string, InFlightClaudeTool>()
+  private readonly interactionMode: InteractionMode
   private readonly model: string
   private readonly pendingApprovals = new Map<ApprovalRequestId, PendingClaudeApproval>()
+  private readonly pendingUserInputs = new Map<ApprovalRequestId, PendingClaudeUserInput>()
   private readonly prompt = new ClaudePromptQueue()
   private readonly providerInstanceId: ProviderTurnInput['providerInstanceId']
   private readonly reasoning: ClaudeReasoning
@@ -426,6 +454,7 @@ class ClaudeAgentSession {
     attachmentsDir: string
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
+    interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
     reasoning: ClaudeReasoning
@@ -436,6 +465,7 @@ class ClaudeAgentSession {
     this.attachmentsDir = input.attachmentsDir
     this.cwd = input.cwd
     this.emit = input.emit
+    this.interactionMode = input.interactionMode
     this.model = input.model
     this.providerInstanceId = input.providerInstanceId
     this.reasoning = input.reasoning
@@ -463,7 +493,7 @@ class ClaudeAgentSession {
     createQuery: ClaudeCreateQuery
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
-    interactionMode?: InteractionMode
+    interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
     reasoning: ClaudeReasoning
@@ -472,6 +502,7 @@ class ClaudeAgentSession {
     threadId: ThreadId
   }) {
     recordChatPipelineInfo('chat.pipeline.claude_session.start', {
+      interactionMode: input.interactionMode,
       model: input.model,
       providerInstanceId: input.providerInstanceId,
       reasoning: input.reasoning,
@@ -486,12 +517,12 @@ class ClaudeAgentSession {
       abortController: session.abortController,
       canUseTool: session.canUseTool(),
       cwd: input.cwd,
+      interactionMode: input.interactionMode,
       model: input.model,
       reasoning: input.reasoning,
       resumeCursor: input.resumeCursor,
       runtimeMode: input.runtimeMode,
       sessionId,
-      ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
     })
 
     try {
@@ -524,9 +555,16 @@ class ClaudeAgentSession {
     return session
   }
 
-  matches(input: { cwd: string; model: string; reasoningKey: string; runtimeMode: RuntimeMode }) {
+  matches(input: {
+    cwd: string
+    interactionMode: InteractionMode
+    model: string
+    reasoningKey: string
+    runtimeMode: RuntimeMode
+  }) {
     if (!this.isActive()) return false
     if (this.cwd !== input.cwd) return false
+    if (this.interactionMode !== input.interactionMode) return false
     if (this.model !== input.model) return false
     if (this.reasoningKey !== input.reasoningKey) return false
 
@@ -1439,7 +1477,169 @@ class ClaudeAgentSession {
   }
 
   private canUseTool(): CanUseTool {
-    return (toolName, toolInput, options) => this.requestApproval(toolName, toolInput, options)
+    return (toolName, toolInput, options) => this.handleToolPermission(toolName, toolInput, options)
+  }
+
+  /**
+   * ORDER IS THE CONTRACT. `AskUserQuestion` and `ExitPlanMode` are not
+   * permission questions at all — they are how the SDK hands us a clarifying
+   * question and a finished plan — so they are answered here in EVERY runtime
+   * mode. Short-circuiting full-access first would swallow both exactly where
+   * most threads run, leaving plan mode with no plan to approve.
+   */
+  private handleToolPermission(
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    options: Parameters<CanUseTool>[2],
+  ): Promise<PermissionResult> {
+    if (toolName === 'AskUserQuestion') return this.requestUserInput(toolInput, options)
+    if (toolName === 'ExitPlanMode') return Promise.resolve(this.captureProposedPlan(toolInput))
+    // Every other tool is pre-approved in full-access. The callback still runs
+    // there because plan mode overrides `bypassPermissions` with `plan`.
+    if (this.runtimeMode === 'full-access') {
+      return Promise.resolve({ behavior: 'allow', updatedInput: toolInput })
+    }
+
+    return this.requestApproval(toolName, toolInput, options)
+  }
+
+  /**
+   * The plan is captured, never executed: the SDK would otherwise leave plan
+   * mode on its own and start editing. Denying parks the turn on the proposal,
+   * which is the whole point of plan mode.
+   */
+  private captureProposedPlan(toolInput: Record<string, unknown>): PermissionResult {
+    const planMarkdown = claudeExitPlanMarkdown(toolInput)
+    recordChatPipelineInfo('chat.pipeline.claude_session.proposed_plan.captured', {
+      interactionMode: this.interactionMode,
+      planLength: planMarkdown?.length ?? 0,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      turnId: this.activeTurn?.canonicalTurnId,
+    })
+    if (planMarkdown) this.emitProposedPlan(planMarkdown)
+
+    return {
+      behavior: 'deny',
+      message:
+        'The client captured your proposed plan. Stop here and wait for the user to accept it or ask for changes.',
+    }
+  }
+
+  private emitProposedPlan(planMarkdown: string) {
+    const createdAt = new Date().toISOString()
+    this.emit({
+      createdAt,
+      eventId: runtimeEventId('claude-proposed-plan'),
+      planMarkdown,
+      threadId: this.threadId,
+      turnId: this.activeTurn?.canonicalTurnId ?? null,
+      type: 'proposed-plan.upsert',
+      updatedAt: createdAt,
+    })
+  }
+
+  /**
+   * `AskUserQuestion` blocks the tool call until the user answers, so the
+   * pending entry holds the SDK's `resolve` the same way an approval does — the
+   * answers come back through `respondUserInput` as this tool's result.
+   */
+  private requestUserInput(
+    toolInput: Record<string, unknown>,
+    options: Parameters<CanUseTool>[2],
+  ): Promise<PermissionResult> {
+    const questions = claudeUserInputQuestions(toolInput)
+    recordChatPipelineInfo('chat.pipeline.claude_session.user_input.requested', {
+      questionCount: questions.length,
+      threadId: this.threadId,
+      turnId: this.activeTurn?.canonicalTurnId,
+    })
+    // Nothing renderable means nothing to answer; denying tells Claude to ask in
+    // prose instead of leaving the turn parked on a panel that cannot open.
+    if (questions.length === 0) {
+      return Promise.resolve({
+        behavior: 'deny',
+        message: 'No answerable question was provided, so nothing was asked. Ask in prose instead.',
+      })
+    }
+
+    const requestId = v.parse(approvalRequestIdSchema, `claude:${crypto.randomUUID()}`)
+    return new Promise<PermissionResult>((resolve) => {
+      this.pendingUserInputs.set(requestId, { resolve, toolInput })
+      options.signal.addEventListener('abort', () => this.abortUserInput(requestId), { once: true })
+      this.emitUserInputRequested(requestId, questions, toolInput, options.toolUseID)
+    })
+  }
+
+  async respondUserInput(input: ProviderUserInputResponseInput) {
+    const pending = this.pendingUserInputs.get(input.requestId)
+    if (!pending) {
+      throw createInternalError(`Unknown pending user-input request: ${input.requestId}`)
+    }
+
+    this.pendingUserInputs.delete(input.requestId)
+    // The SDK reads the answers off `updatedInput`, keyed by question text, and
+    // wants the questions echoed back beside them.
+    pending.resolve({
+      behavior: 'allow',
+      updatedInput: {
+        answers: claudeUserInputAnswers(input.answers),
+        questions: pending.toolInput.questions,
+      },
+    })
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('claude-user-input-resolved'),
+      payload: { answers: input.answers },
+      provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerSessionId: this.providerSessionId(),
+      requestId: input.requestId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
+      type: 'user-input.resolved',
+    })
+  }
+
+  private abortUserInput(requestId: ApprovalRequestId) {
+    const pending = this.pendingUserInputs.get(requestId)
+    if (!pending) return
+
+    this.pendingUserInputs.delete(requestId)
+    pending.resolve({ behavior: 'deny', message: 'The question was cancelled by the user.' })
+  }
+
+  private emitUserInputRequested(
+    requestId: ApprovalRequestId,
+    questions: UserInputQuestions,
+    toolInput: Record<string, unknown>,
+    toolUseId: string | undefined,
+  ) {
+    this.emit({
+      createdAt: new Date().toISOString(),
+      eventId: runtimeEventId('claude-user-input-requested'),
+      ...(toolUseId ? { itemId: toolUseId } : {}),
+      payload: { questions },
+      provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
+      providerInstanceId: this.providerInstanceId,
+      providerRefs: {
+        ...(toolUseId ? { providerItemId: toolUseId } : {}),
+        providerRequestId: requestId,
+        ...(this.activeProviderTurnId ? { providerTurnId: this.activeProviderTurnId } : {}),
+      },
+      providerSessionId: this.providerSessionId(),
+      raw: {
+        method: 'canUseTool/AskUserQuestion',
+        payload: toolInput,
+        source: 'claude.sdk.permission',
+      },
+      requestId,
+      runtimeMode: this.runtimeMode,
+      threadId: this.threadId,
+      ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
+      type: 'user-input.requested',
+    })
   }
 
   private requestApproval(
@@ -1953,12 +2153,28 @@ function claudeToolSummary(toolName: string, toolInput: Record<string, unknown>)
   return toolName
 }
 
+/**
+ * Everything the SDK can ask about goes through `canUseTool`, so the tool name
+ * is the only signal for what the approval is really about. Anything we cannot
+ * place stays `dynamic_tool_call_approval`, which ingestion maps to the generic
+ * tool kind rather than dropping.
+ */
 function claudeApprovalRequestType(toolName: string) {
   const itemType = claudeItemType(toolName)
   if (itemType === 'command_execution') return 'command_execution_approval'
   if (itemType === 'file_change') return 'file_change_approval'
+  if (itemType === 'image_view') return 'file_read_approval'
+  if (itemType === 'mcp_tool_call') return 'mcp_tool_call_approval'
 
   return 'dynamic_tool_call_approval'
+}
+
+/**
+ * `ExitPlanModeInput` is declared open (`[k: string]: unknown`) by the SDK, so
+ * the markdown is read defensively off `plan` rather than typed.
+ */
+function claudeExitPlanMarkdown(toolInput: Record<string, unknown>) {
+  return stringField(toolInput, 'plan')?.trim() ?? null
 }
 
 /** TodoWrite is Claude's plan surface; it becomes `turn.plan.updated`, not an item. */

@@ -29,7 +29,14 @@ import { retainThreadDetailSubscription } from '../state/thread-detail-subscript
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatRuntimeStatus } from './chat-runtime-status'
 import { MessagesTimeline } from './messages-timeline'
+import { PendingApprovalPanel } from './pending-approval-panel'
+import { PendingUserInputPanel } from './pending-user-input-panel'
+import { PlanFollowUpBanner } from './plan-follow-up-banner'
+import { ChatComposerModesProvider } from '../providers/composer-modes-provider'
+import { ChatPendingRequestsProvider } from '../providers/pending-requests-provider'
+import { ChatPlanFollowUpProvider } from '../providers/plan-follow-up-provider'
 import { ChatTimelineActionsProvider } from '../providers/timeline-actions-provider'
+import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
 
 export function ChatView({
   activeThreadId,
@@ -44,6 +51,13 @@ export function ChatView({
   const optimisticMessagesSelector = useMemo(
     () => createOptimisticMessagesForThreadSelector(activeThreadId),
     [activeThreadId],
+  )
+  // The same target ChatInput builds for itself, so a mode pick lands on the
+  // draft the send path reads. Stable identity is required: it feeds the
+  // composer modes context value.
+  const draftTarget = useMemo<ChatInputDraftTarget>(
+    () => ({ draftKey: activeThreadId, rootPath }),
+    [activeThreadId, rootPath],
   )
   const thread = useChatProjectionStore(threadSelector)
   const optimisticMessages = useChatOptimisticStore(optimisticMessagesSelector)
@@ -83,7 +97,6 @@ export function ChatView({
         createProjectDefaultModelCommand({
           defaultModelSelection: next,
           projectId,
-          updatedAt: new Date().toISOString(),
         }),
       )
     },
@@ -150,21 +163,44 @@ export function ChatView({
           thread={thread}
         />
       </ChatTimelineActionsProvider>
-      <ChatInput
-        busy={busy}
-        commandStatusLabel={interrupting ? 'Interrupting' : null}
-        disabled={interrupting}
-        draftKey={thread.id}
-        error={null}
-        interactionMode={thread.interactionMode}
-        modelSelection={thread.modelSelection}
-        modelSelectionLocked={thread.messages.length > 0 || thread.latestTurn !== null}
-        rootPath={rootPath}
-        runtimeMode={thread.runtimeMode}
-        onPersistModelSelection={handlePersistModelSelection}
-        onStop={handleStop}
-        onSubmit={handleSend}
-      />
+      {/* The panels sit above the composer rather than inside it: each one is a
+          request holding the turn open, so it stays visible while the user
+          types their answer. */}
+      <ChatComposerModesProvider
+        dispatchCommand={environment.dispatchCommand}
+        draftTarget={draftTarget}
+        threadId={thread.id}
+      >
+        <ChatPendingRequestsProvider
+          dispatchCommand={environment.dispatchCommand}
+          threadId={thread.id}
+        >
+          <PendingApprovalPanel />
+          <PendingUserInputPanel />
+          <ChatPlanFollowUpProvider
+            draftTarget={draftTarget}
+            environment={environment}
+            threadId={thread.id}
+          >
+            <PlanFollowUpBanner draftTarget={draftTarget} />
+          </ChatPlanFollowUpProvider>
+          <ChatInput
+            busy={busy}
+            commandStatusLabel={interrupting ? 'Interrupting' : null}
+            disabled={interrupting}
+            draftKey={thread.id}
+            error={null}
+            interactionMode={thread.interactionMode}
+            modelSelection={thread.modelSelection}
+            modelSelectionLocked={thread.messages.length > 0 || thread.latestTurn !== null}
+            rootPath={rootPath}
+            runtimeMode={thread.runtimeMode}
+            onPersistModelSelection={handlePersistModelSelection}
+            onStop={handleStop}
+            onSubmit={handleSend}
+          />
+        </ChatPendingRequestsProvider>
+      </ChatComposerModesProvider>
     </section>
   )
 }
@@ -262,7 +298,6 @@ async function dispatchThreadStop({
   setInterrupting(true)
   const startedAt = performance.now()
   const command = createThreadInterruptCommand({
-    createdAt: new Date().toISOString(),
     threadId: thread.id,
     turnId: thread.latestTurn?.turnId,
   })
@@ -300,7 +335,6 @@ async function revertThreadToCheckpoint({
   setSendError(null)
   const startedAt = performance.now()
   const command = createCheckpointRevertCommand({
-    createdAt: new Date().toISOString(),
     threadId: thread.id,
     turnCount,
   })

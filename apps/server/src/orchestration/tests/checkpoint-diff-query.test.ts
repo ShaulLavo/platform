@@ -119,7 +119,6 @@ async function dispatchCheckpointThread(
 ) {
   await engine.dispatch({
     commandId: v.parse(commandIdSchema, 'cmd-project'),
-    createdAt: now,
     defaultModelSelection: modelSelection,
     projectId,
     title: 'Platform',
@@ -129,7 +128,6 @@ async function dispatchCheckpointThread(
   await engine.dispatch({
     branch: null,
     commandId: v.parse(commandIdSchema, 'cmd-thread'),
-    createdAt: now,
     interactionMode: 'default',
     modelSelection,
     projectId,

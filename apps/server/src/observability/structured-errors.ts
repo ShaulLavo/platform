@@ -39,17 +39,59 @@ export const orchestrationErrors = defineErrorCatalog('orchestration', {
     why: 'The project id is already present in the orchestration stream.',
     fix: 'Use a new project id or load the existing project.',
   },
+  PROJECT_NOT_EMPTY: {
+    status: 409,
+    message: ({ projectId, threadCount }: { projectId: string; threadCount: number }) =>
+      `Project ${projectId} still has ${threadCount} live thread(s)`,
+    why: 'Deleting a project cascades to every thread it owns, so it is not a silent operation.',
+    fix: 'Delete the threads first, or resend the command with force set to true.',
+  },
   PROJECT_NOT_FOUND: {
     status: 404,
     message: ({ projectId }: { projectId: string }) => `Project not found: ${projectId}`,
     why: 'The requested project is missing or has been deleted.',
     fix: 'Refresh the orchestration shell and select an existing project.',
   },
+  PROJECT_WORKSPACE_ROOT_TAKEN: {
+    status: 409,
+    message: ({ projectId, workspaceRoot }: { projectId: string; workspaceRoot: string }) =>
+      `Workspace root ${workspaceRoot} already belongs to project ${projectId}`,
+    why: 'Two active projects on one workspace root would fight over the same worktrees and checkpoints.',
+    fix: 'Open the existing project for this workspace root, or delete it before recreating.',
+  },
   THREAD_ALREADY_EXISTS: {
     status: 409,
     message: ({ threadId }: { threadId: string }) => `Thread already exists: ${threadId}`,
     why: 'The thread id is already present in the orchestration stream.',
     fix: 'Use a new thread id or load the existing thread.',
+  },
+  THREAD_ARCHIVED: {
+    status: 409,
+    message: ({ commandType, threadId }: { commandType: string; threadId: string }) =>
+      `Thread ${threadId} is archived and cannot handle ${commandType}`,
+    why: 'An archived thread is parked: accepting work on it would resurrect it invisibly.',
+    fix: 'Unarchive the thread before sending this command.',
+  },
+  THREAD_BRANCH_CONFLICT: {
+    status: 409,
+    message: ({
+      actualBranch,
+      expectedBranch,
+      threadId,
+    }: {
+      actualBranch: string | null
+      expectedBranch: string | null
+      threadId: string
+    }) =>
+      `Thread ${threadId} is on branch ${actualBranch ?? 'none'}, not the expected ${expectedBranch ?? 'none'}`,
+    why: 'The compare-and-swap guard failed: the thread moved branches since the client read it.',
+    fix: 'Reload the thread and reissue the update against its current branch.',
+  },
+  THREAD_NOT_ARCHIVED: {
+    status: 409,
+    message: ({ threadId }: { threadId: string }) => `Thread is not archived: ${threadId}`,
+    why: 'Unarchiving only applies to a thread that is currently archived.',
+    fix: 'Refresh the orchestration shell; the thread is already active.',
   },
   THREAD_NOT_FOUND: {
     status: 404,

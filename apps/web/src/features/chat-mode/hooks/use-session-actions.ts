@@ -1,4 +1,5 @@
 import type { ClientOrchestrationCommand, ThreadId } from '@workspace/contracts'
+import { toast } from 'sonner'
 
 import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
 import {
@@ -8,8 +9,19 @@ import {
   createThreadSessionStopCommand,
   createThreadUnarchiveCommand,
 } from '@/features/chat/lib/chat-command-builders'
+import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
+import {
+  useChatProjectionStore,
+  type ChatSidebarThreadSummary,
+} from '@/features/chat/state/chat-projection-store'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
+import {
+  useSessionDeleteRequestStore,
+  type SessionDeleteRequest,
+} from '@/features/chat-mode/state/session-delete-request-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
+import { compareSessionsByCreation } from '@/features/chat-mode/utils/session-order'
+import { hasRunningTurn } from '@/features/chat-mode/utils/running-turn'
 import { log } from '@/lib/client-logging'
 import { errorMessage } from '@/lib/error-message'
 
@@ -20,7 +32,9 @@ import { errorMessage } from '@/lib/error-message'
  */
 export function useSessionActions() {
   const { environment } = useChatModeSession()
-  const clearSession = useSessionSelectionStore((state) => state.clearSession)
+  const releaseSession = useSessionSelectionStore((state) => state.releaseSession)
+  const requestDelete = useSessionDeleteRequestStore((state) => state.requestDelete)
+  const dismissDelete = useSessionDeleteRequestStore((state) => state.dismissDelete)
 
   function dispatch(action: string, threadId: ThreadId, command: ClientOrchestrationCommand) {
     void dispatchSessionCommand({ action, command, environment, threadId })
@@ -28,48 +42,77 @@ export function useSessionActions() {
 
   return {
     archive(threadId: ThreadId) {
+      const thread = threadSummary(threadId)
+      // Archiving only hides the row; the agent would keep writing to a thread the user
+      // can no longer reach. Stopping it is a deliberate act, so ask for it instead.
+      if (hasRunningTurn(thread)) {
+        toast.error(`“${thread?.title ?? 'This session'}” is still running`, {
+          description: 'Stop the agent session before archiving it.',
+        })
+        log.warn({
+          action: 'chat.session.archive',
+          area: 'chat',
+          commandType: 'thread.archive',
+          outcome: 'blocked',
+          reason: 'turn-running',
+          sessionStatus: thread?.session?.status ?? null,
+          threadId,
+          turnState: thread?.latestTurn?.state ?? null,
+        })
+
+        return
+      }
+
       // The rail hides archived sessions, so the stage must let go of this one
       // before it vanishes from the list.
-      clearSession(threadId)
-      dispatch(
-        'chat.session.archive',
-        threadId,
-        createThreadArchiveCommand({ archivedAt: new Date().toISOString(), threadId }),
-      )
+      releaseSession(threadId, railOrderThreadIds(thread))
+      dispatch('chat.session.archive', threadId, createThreadArchiveCommand({ threadId }))
     },
-    deleteSession(threadId: ThreadId, title: string) {
-      if (!confirmSessionDelete(title)) return
-
-      clearSession(threadId)
+    cancelDelete() {
+      dismissDelete()
+    },
+    /** Runs the delete the dialog just confirmed — nothing else may call it. */
+    confirmDelete(request: SessionDeleteRequest) {
+      dismissDelete()
+      releaseSession(request.threadId, railOrderThreadIds(threadSummary(request.threadId)))
       dispatch(
         'chat.session.delete',
-        threadId,
-        createThreadDeleteCommand({ deletedAt: new Date().toISOString(), threadId }),
+        request.threadId,
+        createThreadDeleteCommand({ threadId: request.threadId }),
       )
+    },
+    /** Deleting drops the whole event history for the thread, so it always asks first. */
+    deleteSession(threadId: ThreadId, title: string) {
+      requestDelete({ threadId, title })
     },
     /** `title` must already be trimmed and non-empty — the server rejects blanks. */
     rename(threadId: ThreadId, title: string) {
-      dispatch(
-        'chat.session.rename',
-        threadId,
-        createThreadRenameCommand({ threadId, title, updatedAt: new Date().toISOString() }),
-      )
+      dispatch('chat.session.rename', threadId, createThreadRenameCommand({ threadId, title }))
     },
     stopAgent(threadId: ThreadId) {
-      dispatch(
-        'chat.session.stopAgent',
-        threadId,
-        createThreadSessionStopCommand({ createdAt: new Date().toISOString(), threadId }),
-      )
+      dispatch('chat.session.stopAgent', threadId, createThreadSessionStopCommand({ threadId }))
     },
     unarchive(threadId: ThreadId) {
-      dispatch(
-        'chat.session.unarchive',
-        threadId,
-        createThreadUnarchiveCommand({ threadId, updatedAt: new Date().toISOString() }),
-      )
+      dispatch('chat.session.unarchive', threadId, createThreadUnarchiveCommand({ threadId }))
     },
   }
+}
+
+/**
+ * Read at call time rather than subscribed: the rail lists every project, so the session
+ * being acted on is not always one the surrounding surface is showing.
+ */
+function threadSummary(threadId: ThreadId) {
+  return useChatProjectionStore.getState().sidebarThreadSummaryById[threadId]
+}
+
+/** The departing session's own project, in the order the rail draws it. */
+function railOrderThreadIds(thread: ChatSidebarThreadSummary | undefined) {
+  if (!thread) return []
+
+  return selectChatSidebarThreadsForProject(useChatProjectionStore.getState(), thread.projectId)
+    .toSorted(compareSessionsByCreation)
+    .map((entry) => entry.id)
 }
 
 async function dispatchSessionCommand({
@@ -104,14 +147,4 @@ async function dispatchSessionCommand({
       threadId,
     })
   }
-}
-
-/** Deleting drops the whole event history for the thread and cannot be undone. */
-function confirmSessionDelete(title: string) {
-  if (typeof window === 'undefined') return true
-  if (typeof window.confirm !== 'function') return true
-
-  return window.confirm(
-    [`Delete “${title}”?`, 'This removes the session and its history permanently.'].join('\n'),
-  )
 }

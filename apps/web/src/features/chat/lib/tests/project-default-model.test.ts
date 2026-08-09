@@ -15,7 +15,7 @@ const claudeSelection: ModelSelection = {
 
 test('a new project stores no invented model default', async ({ client }) => {
   const rootPath = '/workspace/no-default'
-  await dispatch(client, createWorkspaceProjectCommand({ createdAt: now(), rootPath }))
+  await dispatch(client, createWorkspaceProjectCommand({ rootPath }))
 
   const project = await readProject(client, rootPath)
   expect(project?.defaultModelSelection).toBeNull()
@@ -23,14 +23,13 @@ test('a new project stores no invented model default', async ({ client }) => {
 
 test('picking a model persists it as the project default', async ({ client }) => {
   const rootPath = '/workspace/persisted'
-  await dispatch(client, createWorkspaceProjectCommand({ createdAt: now(), rootPath }))
+  await dispatch(client, createWorkspaceProjectCommand({ rootPath }))
 
   await dispatch(
     client,
     createProjectDefaultModelCommand({
       defaultModelSelection: claudeSelection,
       projectId: workspaceProjectId(rootPath),
-      updatedAt: now(),
     }),
   )
 
@@ -44,13 +43,12 @@ test('a metadata update that omits the model leaves the stored default alone', a
 }) => {
   const rootPath = '/workspace/rename-safe'
   const projectId = workspaceProjectId(rootPath)
-  await dispatch(client, createWorkspaceProjectCommand({ createdAt: now(), rootPath }))
+  await dispatch(client, createWorkspaceProjectCommand({ rootPath }))
   await dispatch(
     client,
     createProjectDefaultModelCommand({
       defaultModelSelection: claudeSelection,
       projectId,
-      updatedAt: now(),
     }),
   )
 
@@ -61,17 +59,12 @@ test('a metadata update that omits the model leaves the stored default alone', a
     projectId,
     title: 'Renamed',
     type: 'project.meta.update',
-    updatedAt: now(),
   })
 
   const project = await readProject(client, rootPath)
   expect(project?.title).toBe('Renamed')
   expect(project?.defaultModelSelection).toEqual(claudeSelection)
 })
-
-function now() {
-  return new Date().toISOString()
-}
 
 async function dispatch(
   client: { orchestration: { commands: { post: Function } } },
