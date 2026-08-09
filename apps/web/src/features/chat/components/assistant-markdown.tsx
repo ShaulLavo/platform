@@ -4,7 +4,7 @@ import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
 import { cn } from '@workspace/ui/lib/utils'
 import { useMemo, type ClipboardEvent, type ComponentProps } from 'react'
-import { Streamdown, type Components } from 'streamdown'
+import { defaultRemarkPlugins, Streamdown, type Components } from 'streamdown'
 
 import { useOpenFileReference } from '../hooks/use-open-file-reference'
 import { normalizeAgentMarkdown } from '../lib/agent-markdown'
@@ -20,9 +20,23 @@ import { MarkdownCodeHighlighterContext } from '../providers/markdown-code-highl
 import { MarkdownFileLinkContext } from '../providers/markdown-file-link-context'
 import { AssistantMarkdownCodeBlock } from './assistant-markdown-code-block'
 import { AssistantMarkdownInlineCode } from './assistant-markdown-inline-code'
+import { AssistantMarkdownLink } from './assistant-markdown-link'
+import { AssistantMarkdownStrong } from './assistant-markdown-strong'
 
-const markdownComponents = { inlineCode: AssistantMarkdownInlineCode } as unknown as Components
+const markdownComponents = {
+  a: AssistantMarkdownLink,
+  inlineCode: AssistantMarkdownInlineCode,
+  strong: AssistantMarkdownStrong,
+} as unknown as Components
 type StreamdownProps = ComponentProps<typeof Streamdown>
+
+/**
+ * `remarkPlugins` replaces Streamdown's defaults rather than extending them, so
+ * ours are appended to the stock set. Dropping it costs GFM (tables, task
+ * lists, strikethrough) and the fence metastring the code header titles itself
+ * from.
+ */
+const STREAMDOWN_REMARK_PLUGINS = Object.values(defaultRemarkPlugins)
 
 export function AssistantMarkdown({
   className,
@@ -84,7 +98,11 @@ export function AssistantMarkdown({
     [openFileReference, rootPath],
   )
   const remarkPlugins = useMemo(
-    () => [remarkNormalizeListItemIndentation, remarkFileLinkChips(rootPath)],
+    () => [
+      ...STREAMDOWN_REMARK_PLUGINS,
+      remarkNormalizeListItemIndentation,
+      remarkFileLinkChips(rootPath),
+    ],
     [rootPath],
   )
   const renderedText = useMemo(() => normalizeAgentMarkdown(text), [text])

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   attachmentFileName,
-  extensionForMimeType,
+  mimeTypeForAttachmentFileName,
   normalizeAttachmentRelativePath,
   resolveAttachmentRelativePath,
 } from '../utils/paths'
@@ -76,20 +76,25 @@ describe('resolveAttachmentRelativePath', () => {
   })
 })
 
-describe('extensionForMimeType', () => {
-  it('maps the four types Anthropic accepts', () => {
-    expect(extensionForMimeType('image/jpeg')).toBe('.jpg')
-    expect(extensionForMimeType('image/png')).toBe('.png')
-    expect(extensionForMimeType('image/gif')).toBe('.gif')
-    expect(extensionForMimeType('IMAGE/WEBP')).toBe('.webp')
+describe('mimeTypeForAttachmentFileName', () => {
+  it('maps every stored extension back to the type it was written as', () => {
+    expect(mimeTypeForAttachmentFileName('a.jpg')).toBe('image/jpeg')
+    expect(mimeTypeForAttachmentFileName('a.png')).toBe('image/png')
+    expect(mimeTypeForAttachmentFileName('a.gif')).toBe('image/gif')
+    expect(mimeTypeForAttachmentFileName('a.WEBP')).toBe('image/webp')
   })
 
-  it('returns null for image types the contract regex allows but Claude rejects', () => {
-    expect(extensionForMimeType('image/svg+xml')).toBeNull()
-    expect(extensionForMimeType('image/bmp')).toBeNull()
-    expect(extensionForMimeType('image/heic')).toBeNull()
-    expect(extensionForMimeType('image/jpg')).toBeNull()
-    expect(extensionForMimeType('application/pdf')).toBeNull()
+  it('round-trips the name the store writes', () => {
+    expect(mimeTypeForAttachmentFileName(attachmentFileName(imageAttachment()) ?? '')).toBe(
+      'image/png',
+    )
+  })
+
+  it('returns null for extensions no attachment is ever written with', () => {
+    expect(mimeTypeForAttachmentFileName('a.svg')).toBeNull()
+    expect(mimeTypeForAttachmentFileName('a.jpeg')).toBeNull()
+    expect(mimeTypeForAttachmentFileName('a.heic')).toBeNull()
+    expect(mimeTypeForAttachmentFileName('noextension')).toBeNull()
   })
 })
 

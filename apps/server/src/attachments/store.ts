@@ -1,12 +1,16 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { ChatAttachment, ChatAttachmentUpload } from '@workspace/contracts'
+import {
+  chatAttachmentExtension,
+  type ChatAttachment,
+  type ChatAttachmentUpload,
+} from '@workspace/contracts'
 
 import { createInternalError } from '../observability/structured-errors'
 import {
   attachmentFileName,
-  extensionForMimeType,
+  mimeTypeForAttachmentFileName,
   resolveAttachmentRelativePath,
 } from './utils/paths'
 
@@ -14,6 +18,12 @@ const DATA_URL_PATTERN = /^data:([^;,]+);base64,([\s\S]+)$/
 
 export type AttachmentWriteResult = {
   readonly bytesWritten: number
+  readonly filePath: string
+}
+
+export type AttachmentFile = {
+  readonly byteLength: number
+  readonly contentType: string
   readonly filePath: string
 }
 
@@ -34,7 +44,7 @@ export async function writeAttachmentFromDataUrl(input: {
   if (!attachment.dataUrl) {
     throw createInternalError(`Attachment ${attachment.id} carries no dataUrl to persist.`)
   }
-  if (!extensionForMimeType(attachment.mimeType)) {
+  if (!chatAttachmentExtension(attachment.mimeType)) {
     throw createInternalError(
       `Attachment ${attachment.id} has an unsupported image type: ${attachment.mimeType}.`,
     )
@@ -77,6 +87,36 @@ export async function readAttachmentBytes(input: {
   } catch {
     return null
   }
+}
+
+/**
+ * Resolves a blob addressed the way a URL addresses it — by file name — to the
+ * path and length a response needs. The bytes are deliberately not read: the
+ * route streams the file, so a 10 MB screenshot never lands in the heap.
+ *
+ * Null, never a throw, for every miss. An extension outside the allowlist, a
+ * name that is not a single segment inside the root, and a file that is simply
+ * not there are all the same 404 to a browser.
+ */
+export async function resolveAttachmentFile(input: {
+  readonly attachmentsDir: string
+  readonly fileName: string
+}): Promise<AttachmentFile | null> {
+  const contentType = mimeTypeForAttachmentFileName(input.fileName)
+  if (!contentType) return null
+
+  const filePath = resolveAttachmentRelativePath({
+    attachmentsDir: input.attachmentsDir,
+    relativePath: input.fileName,
+  })
+  if (!filePath) return null
+  // Blobs are written flat, so anything nested is a probe, not an attachment.
+  if (path.dirname(filePath) !== path.resolve(input.attachmentsDir)) return null
+
+  const stats = await stat(filePath).catch(() => null)
+  if (!stats?.isFile()) return null
+
+  return { byteLength: stats.size, contentType, filePath }
 }
 
 function attachmentFilePath(input: {

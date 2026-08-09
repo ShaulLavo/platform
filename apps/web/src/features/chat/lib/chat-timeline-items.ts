@@ -3,10 +3,12 @@ import type {
   OrchestrationMessage,
   OrchestrationProposedPlan,
   OrchestrationThreadActivity,
+  TurnId,
 } from '@workspace/contracts'
 
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
+import { formatChatElapsed } from './chat-formatters'
 import {
   chatMessageTimelineMetadata,
   type ChatTimelineMessage,
@@ -15,6 +17,8 @@ import {
 import {
   chatActiveWorkLogPlan,
   chatWorkLogEntries,
+  chatWorkLogEntryEquals,
+  chatWorkLogPlanEquals,
   type ChatWorkLogEntry,
   type ChatWorkLogPlan,
 } from './chat-work-log'
@@ -40,6 +44,15 @@ export type ChatTimelineItem =
       timestamp: string
       turnDiffSummary: ChatTurnDiffSummary | null
       type: 'message'
+    }
+  | {
+      hiddenCount: number
+      id: string
+      items: readonly ChatTimelineItem[]
+      label: string
+      timestamp: string
+      turnId: TurnId
+      type: 'turn-fold'
     }
   | {
       id: string
@@ -86,6 +99,40 @@ type ChronologicalTimelineItem =
       timestamp: string
       type: 'proposed-plan'
     }
+
+type TurnFold = {
+  entries: readonly ChronologicalTimelineItem[]
+  label: string
+  turnId: TurnId
+}
+
+type TurnFoldGroup = {
+  entries: ChronologicalTimelineItem[]
+  hasStreamingMessage: boolean
+  /**
+   * The user message that kicked the turn off. Entry timestamps alone undercount the
+   * duration: the first entry only appears once the provider starts producing output.
+   */
+  startBoundary: string | null
+  terminalMessageId: string | null
+}
+
+type StableTimelineItems = {
+  byId: ReadonlyMap<string, ChatTimelineItem>
+  result: readonly ChatTimelineItem[]
+}
+
+const NO_FOLDS: ReadonlyMap<string, TurnFold> = new Map()
+const EMPTY_STABLE_TIMELINE_ITEMS: StableTimelineItems = { byId: new Map(), result: [] }
+/** One entry per thread the user has open; threads are switched, not held. */
+const MAX_STABLE_TIMELINES = 8
+
+/**
+ * Rows are re-derived from scratch on every projection tick, so identity has to be
+ * handed back here — the consumer memoizes on the items array, and that array changes
+ * on every streaming delta. Without this, one chunk re-renders every visible row.
+ */
+const stableTimelineItemsByThread = new Map<string, StableTimelineItems>()
 
 export function chatTimelineItems({
   activities,
@@ -159,14 +206,21 @@ export function chatTimelineItems({
     sourceOrder += 1
   }
 
-  const timelineItems = groupActivityTimelineItems(items.toSorted(compareTimelineEntries))
+  const chronological = items.toSorted(compareTimelineEntries)
+  const timelineItems = arrangeTimelineItems(
+    chronological,
+    deriveTurnFolds(chronological, latestTurn),
+  )
   if (latestTurn?.state === 'running') {
     timelineItems.push(
       workingTimelineItem(latestTurn, chatActiveWorkLogPlan(workLogEntries, latestTurn.turnId)),
     )
   }
 
-  return timelineItems
+  return shareTimelineItems(
+    timelineCacheKey(messages, activities, proposedPlans, optimisticMessages),
+    timelineItems,
+  )
 }
 
 function latestTurnWorkLogEntryCount(
@@ -182,6 +236,7 @@ export function chatTimelineItemEstimate(item: ChatTimelineItem | undefined) {
   if (!item) return 64
   if (item.type === 'activity-group') return Math.min(220, 36 + item.activities.length * 28)
   if (item.type === 'proposed-plan') return 160
+  if (item.type === 'turn-fold') return 34
   if (item.type === 'working') return item.plan?.currentStep ? 72 : 52
 
   const dividerHeight = item.showCompletionDivider ? 34 : 0
@@ -265,28 +320,74 @@ function compareTimelineEntries(left: ChronologicalTimelineItem, right: Chronolo
   return left.timestamp.localeCompare(right.timestamp) || left.sourceOrder - right.sourceOrder
 }
 
-function groupActivityTimelineItems(items: readonly ChronologicalTimelineItem[]) {
-  const groupedItems: ChatTimelineItem[] = []
+/**
+ * Walks the chronological entries once, emitting a fold row where a settled turn's work
+ * begins, dropping that work, and merging whatever activity rows remain adjacent.
+ */
+function arrangeTimelineItems(
+  entries: readonly ChronologicalTimelineItem[],
+  folds: ReadonlyMap<string, TurnFold>,
+) {
+  const hiddenEntryIds = foldedEntryIds(folds)
+  const foldedTurnIds = new Set([...folds.values()].map((fold) => fold.turnId))
+  const arranged: ChatTimelineItem[] = []
   let pendingActivities: ChatWorkLogEntry[] = []
+  const flushActivities = () => {
+    appendActivityGroup(arranged, pendingActivities)
+    pendingActivities = []
+  }
 
-  for (const item of items) {
-    if (item.type === 'activity') {
-      pendingActivities.push(item.activity)
+  for (const entry of entries) {
+    const fold = folds.get(entry.id)
+    if (fold) {
+      flushActivities()
+      arranged.push(turnFoldTimelineItem(fold))
+    }
+    if (hiddenEntryIds.has(entry.id)) continue
+    if (entry.type === 'activity') {
+      pendingActivities.push(entry.activity)
       continue
     }
 
-    appendActivityGroup(groupedItems, pendingActivities)
-    pendingActivities = []
-    groupedItems.push(timelineItemFromEntry(item))
+    flushActivities()
+    arranged.push(timelineItemFromEntry(entry, foldedTurnIds))
   }
 
-  appendActivityGroup(groupedItems, pendingActivities)
+  flushActivities()
 
-  return groupedItems
+  return arranged
 }
 
-function timelineItemFromEntry(item: Exclude<ChronologicalTimelineItem, { type: 'activity' }>) {
+function foldedEntryIds(folds: ReadonlyMap<string, TurnFold>) {
+  const ids = new Set<string>()
+  for (const fold of folds.values()) {
+    for (const entry of fold.entries) ids.add(entry.id)
+  }
+
+  return ids
+}
+
+function turnFoldTimelineItem(fold: TurnFold): ChatTimelineItem {
+  const anchor = fold.entries[0]
+
+  return {
+    hiddenCount: fold.entries.length,
+    id: `turn-fold:${fold.turnId}`,
+    items: arrangeTimelineItems(fold.entries, NO_FOLDS),
+    label: fold.label,
+    timestamp: anchor?.timestamp ?? '',
+    turnId: fold.turnId,
+    type: 'turn-fold',
+  }
+}
+
+function timelineItemFromEntry(
+  item: Exclude<ChronologicalTimelineItem, { type: 'activity' }>,
+  foldedTurnIds: ReadonlySet<TurnId>,
+): ChatTimelineItem {
   if (item.type === 'message') {
+    const turnId = entryTurnId(item)
+
     return {
       assistantStreaming: item.assistantStreaming,
       assistantTurnInProgress: item.assistantTurnInProgress,
@@ -297,7 +398,10 @@ function timelineItemFromEntry(item: Exclude<ChronologicalTimelineItem, { type: 
       message: item.message,
       revertTurnCount: item.revertTurnCount,
       showAssistantCopyButton: item.showAssistantCopyButton,
-      showCompletionDivider: item.showCompletionDivider,
+      // A folded turn already reports its duration on the fold row, so the message-level
+      // divider under it would draw a second rule saying the same thing.
+      showCompletionDivider:
+        item.showCompletionDivider && !(turnId !== null && foldedTurnIds.has(turnId)),
       timestamp: item.timestamp,
       turnDiffSummary: item.turnDiffSummary,
       type: item.type,
@@ -310,6 +414,154 @@ function timelineItemFromEntry(item: Exclude<ChronologicalTimelineItem, { type: 
     timestamp: item.timestamp,
     type: item.type,
   }
+}
+
+/**
+ * A settled turn folds its commentary and tool work behind a "Worked for ..." row anchored
+ * where the work began; the message that ends the turn stays visible below it. Restoring
+ * history without this turns a long thread into a wall of tool rows.
+ */
+function deriveTurnFolds(
+  entries: readonly ChronologicalTimelineItem[],
+  latestTurn: OrchestrationLatestTurn | null,
+) {
+  const unsettledTurnId = deriveUnsettledTurnId(latestTurn)
+  const folds = new Map<string, TurnFold>()
+
+  for (const [turnId, group] of turnFoldGroups(entries)) {
+    if (turnId === unsettledTurnId) continue
+    // A turn whose text is still arriving has no duration to report yet, and folding
+    // mid-stream would yank the rows the user is watching.
+    if (group.hasStreamingMessage) continue
+
+    const foldable = group.entries.filter((entry) => entry.id !== group.terminalMessageId)
+    const anchor = foldable[0]
+    if (!anchor) continue
+
+    folds.set(anchor.id, {
+      entries: foldable,
+      label: turnFoldLabel(group, latestTurn, turnId),
+      turnId,
+    })
+  }
+
+  return folds
+}
+
+/**
+ * Keyed on turn lifecycle rather than transient working state: right after the user sends,
+ * the previous turn is still the latest one until the server creates the new turn, and the
+ * fold must not flicker through that window.
+ */
+function deriveUnsettledTurnId(latestTurn: OrchestrationLatestTurn | null) {
+  if (!latestTurn) return null
+  if (latestTurn.completedAt !== null && latestTurn.state !== 'running') return null
+
+  return latestTurn.turnId
+}
+
+function turnFoldGroups(entries: readonly ChronologicalTimelineItem[]) {
+  const groups = new Map<TurnId, TurnFoldGroup>()
+  let pendingUserBoundary: string | null = null
+
+  for (const entry of entries) {
+    if (isUserMessageEntry(entry)) {
+      pendingUserBoundary = entry.timestamp
+      continue
+    }
+
+    const turnId = entryTurnId(entry)
+    if (!turnId) continue
+
+    const group = groups.get(turnId)
+    if (!group) {
+      // Each user boundary starts at most one turn; a later turn under the same user
+      // message falls back to its own first entry.
+      groups.set(turnId, newTurnFoldGroup(entry, pendingUserBoundary))
+      pendingUserBoundary = null
+      continue
+    }
+
+    appendTurnFoldEntry(group, entry)
+  }
+
+  return groups
+}
+
+function newTurnFoldGroup(
+  entry: ChronologicalTimelineItem,
+  startBoundary: string | null,
+): TurnFoldGroup {
+  const group: TurnFoldGroup = {
+    entries: [],
+    hasStreamingMessage: false,
+    startBoundary,
+    terminalMessageId: null,
+  }
+  appendTurnFoldEntry(group, entry)
+
+  return group
+}
+
+function appendTurnFoldEntry(group: TurnFoldGroup, entry: ChronologicalTimelineItem) {
+  group.entries.push(entry)
+  if (entry.type !== 'message') return
+  if (entry.showAssistantCopyButton) group.terminalMessageId = entry.id
+  if (entry.assistantStreaming || entry.assistantTurnInProgress) group.hasStreamingMessage = true
+}
+
+function isUserMessageEntry(entry: ChronologicalTimelineItem) {
+  return entry.type === 'message' && entry.message.role === 'user'
+}
+
+/** Proposed plans stay out of every fold: they are the user's decision, not the turn's work. */
+function entryTurnId(entry: ChronologicalTimelineItem): TurnId | null {
+  if (entry.type === 'activity') return entry.activity.turnId
+  if (entry.type !== 'message') return null
+  if (entry.message.role !== 'assistant') return null
+
+  return entry.message.turnId
+}
+
+function turnFoldLabel(
+  group: TurnFoldGroup,
+  latestTurn: OrchestrationLatestTurn | null,
+  turnId: TurnId,
+) {
+  const elapsed = turnFoldElapsed(group, latestTurn, turnId)
+  if (latestTurn?.turnId === turnId && latestTurn.state === 'interrupted') {
+    return elapsed ? `You stopped after ${elapsed}` : 'You stopped this response'
+  }
+
+  return elapsed ? `Worked for ${elapsed}` : 'Worked'
+}
+
+function turnFoldElapsed(
+  group: TurnFoldGroup,
+  latestTurn: OrchestrationLatestTurn | null,
+  turnId: TurnId,
+) {
+  if (latestTurn?.turnId === turnId && latestTurn.startedAt && latestTurn.completedAt) {
+    return formatChatElapsed(latestTurn.startedAt, latestTurn.completedAt)
+  }
+
+  const first = group.entries[0]
+  if (!first) return null
+
+  return formatChatElapsed(group.startBoundary ?? first.timestamp, turnFoldEnd(group))
+}
+
+/** A turn cut short by a steer leaves work behind its last message — take whichever ended last. */
+function turnFoldEnd(group: TurnFoldGroup) {
+  let end = ''
+  for (const entry of group.entries) {
+    const entryEnd = entry.type === 'message' ? entry.message.updatedAt : entry.timestamp
+    if (entryEnd.localeCompare(end) <= 0) continue
+
+    end = entryEnd
+  }
+
+  return end
 }
 
 function deriveTurnDiffSummaryByAssistantMessageId(
@@ -393,5 +645,134 @@ function appendActivityGroup(items: ChatTimelineItem[], activities: readonly Cha
     id: `activity-group:${firstActivity.id}`,
     timestamp: firstActivity.createdAt,
     type: 'activity-group',
+  })
+}
+
+function timelineCacheKey(
+  messages: readonly OrchestrationMessage[],
+  activities: readonly OrchestrationThreadActivity[],
+  proposedPlans: readonly OrchestrationProposedPlan[],
+  optimisticMessages: readonly OptimisticChatMessage[],
+) {
+  return (
+    messages[0]?.threadId ??
+    activities[0]?.threadId ??
+    proposedPlans[0]?.threadId ??
+    optimisticMessages[0]?.threadId ??
+    ''
+  )
+}
+
+/**
+ * Hands every unchanged row back its previous object, and the whole array back when nothing
+ * moved, so a streaming chunk only re-renders the row it actually touched.
+ */
+function shareTimelineItems(cacheKey: string, items: readonly ChatTimelineItem[]) {
+  const previous = stableTimelineItemsByThread.get(cacheKey) ?? EMPTY_STABLE_TIMELINE_ITEMS
+  const byId = new Map<string, ChatTimelineItem>()
+  const result = shareItems(items, previous.byId, byId)
+  const unchanged =
+    previous.result.length === result.length &&
+    result.every((item, index) => previous.result[index] === item)
+
+  return rememberStableTimelineItems(cacheKey, unchanged ? previous : { byId, result }).result
+}
+
+function rememberStableTimelineItems(cacheKey: string, stable: StableTimelineItems) {
+  // Re-inserting keeps the map in least-recently-used order, so the eviction below drops
+  // the thread the user left longest ago.
+  stableTimelineItemsByThread.delete(cacheKey)
+  stableTimelineItemsByThread.set(cacheKey, stable)
+
+  const oldest = stableTimelineItemsByThread.keys().next()
+  if (stableTimelineItemsByThread.size > MAX_STABLE_TIMELINES && !oldest.done) {
+    stableTimelineItemsByThread.delete(oldest.value)
+  }
+
+  return stable
+}
+
+function shareItems(
+  items: readonly ChatTimelineItem[],
+  previousById: ReadonlyMap<string, ChatTimelineItem>,
+  nextById: Map<string, ChatTimelineItem>,
+): ChatTimelineItem[] {
+  return items.map((item) => {
+    const candidate = withSharedFoldItems(item, previousById, nextById)
+    const previous = previousById.get(candidate.id)
+    const shared = previous && timelineItemsEqual(previous, candidate) ? previous : candidate
+    nextById.set(shared.id, shared)
+
+    return shared
+  })
+}
+
+/** Folded rows are shared first so the fold itself can compare its children by identity. */
+function withSharedFoldItems(
+  item: ChatTimelineItem,
+  previousById: ReadonlyMap<string, ChatTimelineItem>,
+  nextById: Map<string, ChatTimelineItem>,
+): ChatTimelineItem {
+  if (item.type !== 'turn-fold') return item
+
+  return { ...item, items: shareItems(item.items, previousById, nextById) }
+}
+
+function timelineItemsEqual(left: ChatTimelineItem, right: ChatTimelineItem): boolean {
+  if (left === right) return true
+  if (left.id !== right.id) return false
+  if (left.timestamp !== right.timestamp) return false
+  if (left.type === 'message' && right.type === 'message') return messageItemsEqual(left, right)
+  if (left.type === 'activity-group' && right.type === 'activity-group') {
+    return activityListsEqual(left.activities, right.activities)
+  }
+  if (left.type === 'turn-fold' && right.type === 'turn-fold')
+    return turnFoldItemsEqual(left, right)
+  if (left.type === 'proposed-plan' && right.type === 'proposed-plan') {
+    return left.plan === right.plan
+  }
+  if (left.type === 'working' && right.type === 'working') {
+    return left.latestTurn === right.latestTurn && chatWorkLogPlanEquals(left.plan, right.plan)
+  }
+
+  return false
+}
+
+function messageItemsEqual(
+  left: Extract<ChatTimelineItem, { type: 'message' }>,
+  right: Extract<ChatTimelineItem, { type: 'message' }>,
+) {
+  return (
+    left.message === right.message &&
+    left.turnDiffSummary === right.turnDiffSummary &&
+    left.assistantStreaming === right.assistantStreaming &&
+    left.assistantTurnInProgress === right.assistantTurnInProgress &&
+    left.completionSummary === right.completionSummary &&
+    left.durationEnd === right.durationEnd &&
+    left.durationStart === right.durationStart &&
+    left.revertTurnCount === right.revertTurnCount &&
+    left.showAssistantCopyButton === right.showAssistantCopyButton &&
+    left.showCompletionDivider === right.showCompletionDivider
+  )
+}
+
+function turnFoldItemsEqual(
+  left: Extract<ChatTimelineItem, { type: 'turn-fold' }>,
+  right: Extract<ChatTimelineItem, { type: 'turn-fold' }>,
+) {
+  if (left.label !== right.label) return false
+  if (left.hiddenCount !== right.hiddenCount) return false
+  if (left.turnId !== right.turnId) return false
+  if (left.items.length !== right.items.length) return false
+
+  return left.items.every((item, index) => item === right.items[index])
+}
+
+function activityListsEqual(left: readonly ChatWorkLogEntry[], right: readonly ChatWorkLogEntry[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((entry, index) => {
+    const other = right[index]
+    return other !== undefined && chatWorkLogEntryEquals(entry, other)
   })
 }

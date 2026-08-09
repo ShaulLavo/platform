@@ -1,5 +1,6 @@
 import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
+import { attachmentRoutes } from './attachments/routes'
 import { authGuard, createAuthConfig, isCorsOriginAllowed, type AuthOptions } from './auth'
 import { getDefaultPlatformDatabase } from './db/client'
 import { fontRoutes } from './fonts/routes'
@@ -115,6 +116,7 @@ export function createApp(options: AppOptions) {
     .use(providerRoutes(providerAdapterRegistry))
     .use(orchestrationWsRoutes(orchestration, auth))
     .use(orchestrationRoutes(orchestration, checkpointDiff))
+    .use(attachmentRoutes())
     .use(fontRoutes(fonts))
     .use(wallpaperRoutes())
     .use(settingsRoutes(settings))

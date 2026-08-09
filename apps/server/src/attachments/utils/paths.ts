@@ -1,19 +1,23 @@
 import path from 'node:path'
-import type { ChatAttachment } from '@workspace/contracts'
+import {
+  CHAT_ATTACHMENT_FILE_EXTENSIONS,
+  chatAttachmentExtension,
+  type ChatAttachment,
+} from '@workspace/contracts'
 
 /**
- * The only image types the Anthropic API accepts. `chatAttachmentSchema` only
- * enforces `/^image\//i`, which is far wider (svg, bmp, heic, ...), so this
- * mapping — not the wire schema — is the real allowlist for what we persist
- * and what we are willing to hand back to a model.
+ * Inverse of the contract's mime allowlist, for the one direction the blob
+ * route needs: a request carries a file name and has to answer with a
+ * content type. Unknown extension means "not one of ours", never a guess.
  */
-export function extensionForMimeType(mimeType: string): string | null {
-  const normalized = mimeType.trim().toLowerCase()
+export function mimeTypeForAttachmentFileName(fileName: string): string | null {
+  const extension = path.extname(fileName).toLowerCase()
+  if (!extension) return null
 
-  if (normalized === 'image/jpeg') return '.jpg'
-  if (normalized === 'image/png') return '.png'
-  if (normalized === 'image/gif') return '.gif'
-  if (normalized === 'image/webp') return '.webp'
+  for (const [mimeType, candidate] of Object.entries(CHAT_ATTACHMENT_FILE_EXTENSIONS)) {
+    if (candidate === extension) return mimeType
+  }
+
   return null
 }
 
@@ -57,7 +61,7 @@ export function resolveAttachmentRelativePath(input: {
  * single safe path segment.
  */
 export function attachmentFileName(attachment: ChatAttachment): string | null {
-  const extension = extensionForMimeType(attachment.mimeType)
+  const extension = chatAttachmentExtension(attachment.mimeType)
   if (!extension) return null
 
   const fileName = normalizeAttachmentRelativePath(`${attachment.id}${extension}`)

@@ -67,6 +67,50 @@ export const chatAttachmentUploadsSchema = v.pipe(
   v.maxLength(MAX_CHAT_ATTACHMENTS),
 )
 
+/**
+ * Path prefix the attachment blob route is mounted on. The server mounts its
+ * route from this and the web builds every `<img>` src from it, so the two can
+ * only disagree by editing this one line.
+ */
+export const CHAT_ATTACHMENT_URL_PREFIX = '/attachments'
+
+/**
+ * The only image types the Anthropic API accepts. `chatAttachmentSchema` only
+ * enforces `/^image\//i`, which is far wider (svg, bmp, heic, ...), so this
+ * mapping — not the wire schema — is the real allowlist for what gets written
+ * to the blob store, served back, and handed to a model.
+ */
+export const CHAT_ATTACHMENT_FILE_EXTENSIONS = {
+  'image/gif': '.gif',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+} as const
+
+export type ChatAttachmentMimeType = keyof typeof CHAT_ATTACHMENT_FILE_EXTENSIONS
+
+export function chatAttachmentExtension(mimeType: string): string | null {
+  const normalized = mimeType.trim().toLowerCase()
+  if (!Object.hasOwn(CHAT_ATTACHMENT_FILE_EXTENSIONS, normalized)) return null
+
+  return CHAT_ATTACHMENT_FILE_EXTENSIONS[normalized as ChatAttachmentMimeType]
+}
+
+/**
+ * Where an attachment's bytes are served from, relative to the server origin.
+ * Derived rather than stored on the message: `id` and `mimeType` already decide
+ * the blob's name on disk, so a persisted second copy could only ever go stale.
+ * Null for a type outside the allowlist — which is exactly when no blob exists.
+ */
+export function chatAttachmentUrlPath(
+  attachment: Pick<ChatAttachment, 'id' | 'mimeType'>,
+): string | null {
+  const extension = chatAttachmentExtension(attachment.mimeType)
+  if (!extension) return null
+
+  return `${CHAT_ATTACHMENT_URL_PREFIX}/${encodeURIComponent(attachment.id)}${extension}`
+}
+
 export const orchestrationProjectSchema = v.object({
   id: projectIdSchema,
   title: trimmedNonEmptyStringSchema,

@@ -1,4 +1,6 @@
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ChatAttachment } from '@workspace/contracts'
 import type { ReactNode } from 'react'
 
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
@@ -51,6 +53,49 @@ test('only the terminal assistant message shows its metadata row', () => {
   const hidden = renderBubble(chatMessage({ text: 'Still working.' }))
   expect(hidden.container.querySelector('[data-assistant-message-meta]')).toBeNull()
 })
+
+test('a sent image renders as a thumbnail and opens in a lightbox', async () => {
+  const user = userEvent.setup()
+  const { container } = renderBubble(
+    chatMessage({
+      attachments: [
+        imageAttachment('image-1', 'shot.png'),
+        imageAttachment('image-2', 'diagram.png'),
+      ],
+      role: 'user',
+      text: 'look at these',
+    }),
+  )
+
+  const thumbnail = container.querySelector<HTMLImageElement>('[data-chat-attachments] img')
+  expect(thumbnail?.getAttribute('src')).toContain('/attachments/image-1.png')
+
+  await user.click(screen.getByRole('button', { name: 'Open shot.png' }))
+
+  const full = await screen.findByAltText('shot.png')
+  expect(full.getAttribute('src')).toContain('/attachments/image-1.png')
+
+  await user.click(screen.getByRole('button', { name: 'Next image' }))
+
+  expect(await screen.findByAltText('diagram.png')).toBeInTheDocument()
+})
+
+test('an image type the server never stored falls back to its file name', () => {
+  const { container } = renderBubble(
+    chatMessage({
+      attachments: [imageAttachment('image-3', 'vector.svg', 'image/svg+xml')],
+      role: 'user',
+      text: 'this one',
+    }),
+  )
+
+  expect(container.querySelector('[data-chat-attachments] img')).toBeNull()
+  expect(container.textContent).toContain('vector.svg')
+})
+
+function imageAttachment(id: string, name: string, mimeType = 'image/png'): ChatAttachment {
+  return { id, mimeType, name, sizeBytes: 2_048, type: 'image' }
+}
 
 function userMessageBody(container: HTMLElement) {
   return container.querySelector<HTMLElement>('[data-user-message-body]')

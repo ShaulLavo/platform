@@ -96,10 +96,14 @@ export {
   type TurnId,
 } from './chat-ids'
 export {
+  CHAT_ATTACHMENT_FILE_EXTENSIONS,
+  CHAT_ATTACHMENT_URL_PREFIX,
+  chatAttachmentExtension,
   chatAttachmentSchema,
   chatAttachmentsSchema,
   chatAttachmentUploadSchema,
   chatAttachmentUploadsSchema,
+  chatAttachmentUrlPath,
   isoDateTimeSchema,
   MAX_CHAT_ATTACHMENT_BYTES,
   MAX_CHAT_ATTACHMENTS,
@@ -120,6 +124,7 @@ export {
   sourceProposedPlanReferenceSchema,
   trimmedNonEmptyStringSchema,
   type ChatAttachment,
+  type ChatAttachmentMimeType,
   type ChatAttachmentUpload,
   type IsoDateTime,
   type OrchestrationCheckpointFile,

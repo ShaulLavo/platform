@@ -142,13 +142,13 @@ describe('MessageBubble browser rendering', () => {
 
     await vi.waitFor(() => {
       const bodyText = document.body.textContent ?? ''
-      expect(bodyText).toContain('Changed files (3)')
+      expect(bodyText).toContain('3 changed files')
       expect(bodyText).toContain('+20')
       expect(bodyText).toContain('-4')
       expect(bodyText).toContain('message-bubble.tsx')
       expect(bodyText).toContain('chat-timeline-items.ts')
       expect(bodyText.indexOf('Changed these files:')).toBeLessThan(
-        bodyText.indexOf('Changed files (3)'),
+        bodyText.indexOf('3 changed files'),
       )
     })
   })

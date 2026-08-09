@@ -46,6 +46,22 @@ type TurnPlanRow = {
   entry: DerivedChatWorkLogEntry
 }
 
+/** Every field of `ChatWorkLogEntry` that compares by `===`; the rest are handled by hand. */
+const WORK_LOG_SCALAR_FIELDS = [
+  'command',
+  'createdAt',
+  'detail',
+  'icon',
+  'id',
+  'itemType',
+  'outcome',
+  'output',
+  'status',
+  'title',
+  'tone',
+  'turnId',
+] as const satisfies readonly (keyof ChatWorkLogEntry)[]
+
 /**
  * Every turn's work is derived, not just the running one: scrolling back through a
  * finished thread must still show the tool calls, reasoning and approvals that produced it.
@@ -90,6 +106,41 @@ export function chatActiveWorkLogPlan(
     : undefined
 
   return (turnPlan ?? planEntries.at(-1))?.plan ?? null
+}
+
+/**
+ * Value equality, because every projection tick re-derives fresh entry objects — an
+ * identity check would report "changed" on every streaming delta and defeat the
+ * structural sharing the timeline rows depend on.
+ */
+export function chatWorkLogEntryEquals(left: ChatWorkLogEntry, right: ChatWorkLogEntry) {
+  if (left === right) return true
+
+  const scalarsMatch = WORK_LOG_SCALAR_FIELDS.every((field) => left[field] === right[field])
+  if (!scalarsMatch) return false
+  if (!stringListsEqual(left.changedFiles, right.changedFiles)) return false
+
+  return chatWorkLogPlanEquals(left.plan, right.plan)
+}
+
+export function chatWorkLogPlanEquals(left: ChatWorkLogPlan | null, right: ChatWorkLogPlan | null) {
+  if (left === right) return true
+  if (!left || !right) return false
+  if (left.completedCount !== right.completedCount) return false
+  if (left.currentStep !== right.currentStep) return false
+  if (left.steps.length !== right.steps.length) return false
+
+  return left.steps.every((step, index) => planStepEquals(step, right.steps[index]))
+}
+
+function planStepEquals(left: ChatActivityPlanStep, right: ChatActivityPlanStep | undefined) {
+  return left.status === right?.status && left.step === right.step
+}
+
+function stringListsEqual(left: readonly string[], right: readonly string[]) {
+  if (left.length !== right.length) return false
+
+  return left.every((value, index) => value === right[index])
 }
 
 function compareActivities(left: OrchestrationThreadActivity, right: OrchestrationThreadActivity) {

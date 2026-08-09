@@ -1,7 +1,9 @@
 import type { ChatTimelineItem } from '../lib/chat-timeline-items'
+import { useChatWorkLogExpansionStore } from '../state/chat-work-log-expansion-store'
 import { ActivityGroupRow } from './activity-group-row'
 import { AssistantMessageCopyButton } from './assistant-message-copy-button'
 import { MessageBubble } from './message-bubble'
+import { MessageCompletionDivider } from './message-completion-divider'
 import { ProposedPlanCard } from './proposed-plan-card'
 import { WorkingRow } from './working-row'
 
@@ -12,6 +14,14 @@ export function TimelineRow({
   checkpointRevertPending?: boolean
   item: ChatTimelineItem
 }) {
+  // The fold's own row is what unmounts when it scrolls out of overscan, so its open
+  // state lives above the list, keyed by the id the derivation already guarantees.
+  const foldId = item.type === 'turn-fold' ? item.id : ''
+  const foldExpanded = useChatWorkLogExpansionStore(
+    (state) => state.expandedGroupIds[foldId] ?? false,
+  )
+  const toggleGroupExpanded = useChatWorkLogExpansionStore((state) => state.toggleGroupExpanded)
+
   return (
     <div
       className='mx-auto w-full max-w-3xl min-w-0'
@@ -20,7 +30,9 @@ export function TimelineRow({
     >
       {timelineRowContent({
         checkpointRevertPending,
+        foldExpanded,
         item,
+        toggleFold: () => toggleGroupExpanded(foldId),
       })}
     </div>
   )
@@ -28,10 +40,14 @@ export function TimelineRow({
 
 function timelineRowContent({
   checkpointRevertPending,
+  foldExpanded,
   item,
+  toggleFold,
 }: {
   checkpointRevertPending: boolean
+  foldExpanded: boolean
   item: ChatTimelineItem
+  toggleFold: () => void
 }) {
   if (item.type === 'message') {
     return (
@@ -49,6 +65,29 @@ function timelineRowContent({
         showCompletionDivider={item.showCompletionDivider}
         turnDiffSummary={item.turnDiffSummary}
       />
+    )
+  }
+  if (item.type === 'turn-fold') {
+    return (
+      <>
+        <MessageCompletionDivider
+          completionSummary={item.label}
+          expanded={foldExpanded}
+          hiddenCount={item.hiddenCount}
+          onToggle={toggleFold}
+        />
+        {foldExpanded ? (
+          <div className='space-y-3'>
+            {item.items.map((folded) => (
+              <TimelineRow
+                checkpointRevertPending={checkpointRevertPending}
+                item={folded}
+                key={folded.id}
+              />
+            ))}
+          </div>
+        ) : null}
+      </>
     )
   }
   if (item.type === 'activity-group') return <ActivityGroupRow activities={item.activities} />

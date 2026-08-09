@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import * as v from 'valibot'
 import {
+  CHAT_ATTACHMENT_URL_PREFIX,
+  chatAttachmentExtension,
   chatAttachmentSchema,
   chatAttachmentsSchema,
   chatAttachmentUploadsSchema,
+  chatAttachmentUrlPath,
   MAX_CHAT_ATTACHMENT_BYTES,
   MAX_CHAT_ATTACHMENTS,
   orchestrationMessageSchema,
@@ -80,5 +83,28 @@ describe('chat attachment limits', () => {
       }),
     ).toThrow()
     expect(v.parse(orchestrationMessageSchema, message).attachments).toEqual([])
+  })
+})
+
+describe('chat attachment blob urls', () => {
+  it('addresses a stored blob by id and stored extension', () => {
+    expect(chatAttachmentUrlPath({ id: 'image-a1b2', mimeType: 'image/png' })).toBe(
+      `${CHAT_ATTACHMENT_URL_PREFIX}/image-a1b2.png`,
+    )
+    expect(chatAttachmentUrlPath({ id: 'image-a1b2', mimeType: 'IMAGE/JPEG' })).toBe(
+      `${CHAT_ATTACHMENT_URL_PREFIX}/image-a1b2.jpg`,
+    )
+  })
+
+  it('escapes an id that would otherwise reshape the url', () => {
+    expect(chatAttachmentUrlPath({ id: '../evil', mimeType: 'image/png' })).toBe(
+      `${CHAT_ATTACHMENT_URL_PREFIX}/..%2Fevil.png`,
+    )
+  })
+
+  it('has no url for a type that was never written to the blob store', () => {
+    expect(chatAttachmentUrlPath({ id: 'image-a1b2', mimeType: 'image/svg+xml' })).toBeNull()
+    expect(chatAttachmentExtension('image/heic')).toBeNull()
+    expect(chatAttachmentExtension('application/pdf')).toBeNull()
   })
 })

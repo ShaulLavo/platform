@@ -12,6 +12,7 @@ import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { allowsMessageContextMenu } from '../utils/message-menu'
 import { useChatTimelineActions } from '../hooks/use-chat-timeline-actions'
 import { AssistantChangedFilesSection } from './assistant-changed-files-section'
+import { ChatAttachmentThumbnails } from './chat-attachment-thumbnails'
 import { AssistantMessageMeta } from './assistant-message-meta'
 import { AssistantMarkdown } from './assistant-markdown'
 import { MessageCompletionDivider } from './message-completion-divider'
@@ -55,29 +56,12 @@ export function MessageBubble({
   const assistantText = assistant
     ? message.text || (effectiveAssistantStreaming ? '' : '(empty response)')
     : ''
-  const attachmentList =
-    attachments.length > 0 ? (
-      <div
-        className={cn(
-          'flex flex-wrap gap-1.5',
-          user ? message.text.trim().length > 0 && 'mb-2' : 'mt-2',
-        )}
-      >
-        {attachments.map((attachment) => (
-          <span
-            className={cn(
-              'rounded border px-1.5 py-0.5 text-[10px]',
-              user
-                ? 'border-border/70 text-muted-foreground'
-                : 'border-border text-muted-foreground',
-            )}
-            key={attachment.id}
-          >
-            {attachment.name}
-          </span>
-        ))}
-      </div>
-    ) : null
+  const attachmentList = (
+    <ChatAttachmentThumbnails
+      attachments={attachments}
+      className={cn(user && message.text.trim().length > 0 && 'mb-2', !user && 'mt-2')}
+    />
+  )
   const assistantChrome = resolveAssistantMessageChromeState({
     showCopyButton: showAssistantCopyButton,
     streaming: effectiveAssistantStreaming || assistantTurnInProgress,
